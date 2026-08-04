@@ -54,9 +54,11 @@ const ANIM = `
 // Exporté pour PlanDetailsModal (modale « mon plan » du badge header), qui lit
 // coin_config avec le même repli.
 export const COIN_CONFIG_FALLBACK = {
-  price_original: 3,
-  price_ia_light: 12,
-  price_ia_advanced: 35,
+  // Grille 2 axes du 2026-08-04 : photos (par article) + 3 Pépites/plateforme.
+  price_original: 0,
+  price_ia_light: 9,
+  price_ia_advanced: 32,
+  price_per_platform: 3,
   price_lens_overflow: 6,
   monthly_grant_premium: 150,
   monthly_grant_pro: 600,
@@ -275,7 +277,7 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, onUpgrade }) {
 // paliers. On annonce ce que le grant permet réellement (calculé).
 // Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
-export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, pubMin, pubMax, onUpgrade }) {
+export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, pubUnit, retouchMax, onUpgrade }) {
   return (
     <div style={{
       position: 'relative',
@@ -308,8 +310,8 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
         items={[
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
-          fr ? `De quoi publier bien plus d'annonces (${pubMin} à ${pubMax} Pépites l'annonce)`
-             : `Room for many more listings (${pubMin} to ${pubMax} Nuggets each)`,
+          fr ? `De quoi publier bien plus d'annonces (${pubUnit} Pépites par plateforme, retouche photos en option jusqu'à ${retouchMax})`
+             : `Room for many more listings (${pubUnit} Nuggets per platform, optional photo editing up to ${retouchMax})`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Support prioritaire' : 'Priority support',
         ]}
@@ -351,7 +353,7 @@ function PlansStack({ fr, isPremium, targetTiers, grantPrem, grantPro, lensCost,
         <ProPlanCard
           fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensPerMonth(grantPro)}
           proFactor={proFactor} showFactor
-          pubMin={K.price_original} pubMax={K.price_ia_advanced}
+          pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced}
           onUpgrade={onUpgrade}
         />
       )}
@@ -450,15 +452,11 @@ export default function ConversionModal({
   const lensPerMonth = (grant) => (lensCost > 0 ? Math.floor(grant / lensCost) : 0);
   const proFactor = grantPrem > 0 ? Math.round((grantPro / grantPrem) * 10) / 10 : null;
 
-  // Libellé du tier de publication : déduit du COÛT renvoyé par le serveur,
-  // confronté aux trois prix de coin_config. Aucun mapping supposé — c'est la
-  // correction de l'erreur du design (12 = légère, pas avancée).
-  const tierLabel = (cost) => {
-    if (cost === K.price_original)    return fr ? "Photos d'origine" : 'Original photos';
-    if (cost === K.price_ia_light)    return fr ? 'Retouche légère'  : 'Light editing';
-    if (cost === K.price_ia_advanced) return fr ? 'Retouche avancée' : 'Advanced editing';
-    return fr ? 'Cette publication' : 'This publication';
-  };
+  // Libellé du coût affiché. Grille 2 axes (2026-08-04) : le serveur renvoie
+  // un TOTAL (photos + 3 × plateformes) — le confronter aux prix d'OPTION
+  // produirait de faux libellés (photos perso × 3 plateformes = 9 = l'ancien
+  // match « Retouche légère »). Libellé générique, toujours vrai.
+  const tierLabel = () => (fr ? 'Cette publication' : 'This publication');
 
   const isCoinCase = coinPrice != null;                    // CAS 1 et CAS 2
   const missing = isCoinCase && coinBalance != null ? Math.max(0, coinPrice - coinBalance) : null;
@@ -573,7 +571,7 @@ export default function ConversionModal({
         <ProPlanCard
           fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensPerMonth(grantPro)}
           proFactor={proFactor} showFactor
-          pubMin={K.price_original} pubMax={K.price_ia_advanced}
+          pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced}
           onUpgrade={onUpgrade}
         />
         <Dismiss onClose={onClose} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />

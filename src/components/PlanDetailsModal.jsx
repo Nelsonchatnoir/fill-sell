@@ -85,8 +85,10 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
   const lensCost = K.price_lens_overflow;
   const grant = isPro ? K.monthly_grant_pro : K.monthly_grant_premium;
   const lensScans = lensCost > 0 ? Math.floor(grant / lensCost) : 0;
-  const pubMin = K.price_original;
-  const pubMax = K.price_ia_advanced;
+  // Grille 2 axes (2026-08-04) : publication 3 Pépites/plateforme, retouche
+  // photos en option (0/9/32, une fois par article).
+  const pubUnit = K.price_per_platform;
+  const retouchMax = K.price_ia_advanced;
   // Upsell Pro (Premium uniquement) — mêmes formules que ConversionModal.
   const grantPro = K.monthly_grant_pro;
   const grantPrem = K.monthly_grant_premium;
@@ -101,8 +103,8 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
     fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
        : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
     ...(isPro ? [
-      fr ? `De quoi publier bien plus d'annonces (${pubMin} à ${pubMax} Pépites l'annonce)`
-         : `Room for many more listings (${pubMin} to ${pubMax} Nuggets each)`,
+      fr ? `De quoi publier bien plus d'annonces (${pubUnit} Pépites par plateforme, retouche photos en option jusqu'à ${retouchMax})`
+         : `Room for many more listings (${pubUnit} Nuggets per platform, optional photo editing up to ${retouchMax})`,
     ] : []),
     fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
     fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',

@@ -234,6 +234,9 @@ export const translations = {
     ctaContinueToPublish:"Continuer vers la publication",
     ctaPublishing:"Publication en cours…",
     ctaPublishOnPlatforms:"Publier sur {n} plateforme{s}",
+    // Grille 2 axes (2026-08-04) : le CTA porte le TOTAL (photos + 3/plateforme)
+    // et se met à jour quand une plateforme est cochée/décochée.
+    ctaPublishOnPlatformsPriced:"Publier sur {n} plateforme{s} · {price} Pépites",
 
     quotaModalTitle:"Limite Pro atteinte",
     quotaModalText:"Tu as atteint ta limite Pro. Des crédits supplémentaires arrivent bientôt.",
@@ -533,6 +536,7 @@ export const translations = {
     ctaContinueToPublish:"Continue to publish",
     ctaPublishing:"Publishing…",
     ctaPublishOnPlatforms:"Publish on {n} platform{s}",
+    ctaPublishOnPlatformsPriced:"Publish on {n} platform{s} · {price} Nuggets",
 
     quotaModalTitle:"Pro limit reached",
     quotaModalText:"You've reached your Pro limit. Additional credits are coming soon.",

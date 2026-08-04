@@ -728,13 +728,21 @@ serve(async (req) => {
     // demandée (système de pièces). Simple CHECK ici : le débit réel a lieu à la
     // publication via spend_coins_and_publish. 402 + prix/solde pour piloter l'UI.
     // Premium/Pro passent sans check (leur quota est géré à la publication).
+    // Grille à deux axes (2026-08-04) : photos (0/9/32, une fois) + 3 Pépites
+    // PAR PLATEFORME — même formule que spend_coins_and_publish, sur le nombre
+    // de plateformes demandées à CETTE génération.
     if (!isPremium) {
-      const [{ data: wallet }, { data: priceRow }] = await Promise.all([
+      const [{ data: wallet }, { data: priceRows }] = await Promise.all([
         adminClient.from("coin_wallets").select("included_balance, purchased_balance").eq("user_id", user.id).maybeSingle(),
-        adminClient.from("coin_config").select("value").eq("key", `price_${photo_option}`).single(),
+        adminClient.from("coin_config").select("key, value").in("key", [`price_${photo_option}`, "price_per_platform"]),
       ]);
       const balance = (wallet?.included_balance ?? 0) + (wallet?.purchased_balance ?? 0);
-      const price = priceRow?.value ?? null;
+      const cfg = new Map((priceRows ?? []).map((r: { key: string; value: number }) => [r.key, r.value]));
+      const photoPrice = cfg.get(`price_${photo_option}`) ?? null;
+      const perPlatform = cfg.get("price_per_platform") ?? null;
+      const price = photoPrice != null && perPlatform != null
+        ? photoPrice + perPlatform * platforms.length
+        : null;
       if (price == null || balance < price) {
         return json({ error: "insufficient_coins", price, balance }, 402);
       }

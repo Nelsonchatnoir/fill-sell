@@ -1212,8 +1212,15 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
       <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:12 }}>
         {retouchOptions.map(o => {
           const active = photoOption === o.id;
+          // Grille 2 axes (2026-08-04) : le chip porte le prix PHOTOS de
+          // l'option (0 = « Gratuit ») ; la publication (3/plateforme) vit
+          // dans le récap sous les plateformes. L'accessibilité (rouge) se
+          // juge sur le TOTAL — un solde qui couvre les photos mais pas la
+          // publication est bien un solde insuffisant.
           const price = coinPrices?.[o.id] ?? null;
-          const affordable = price == null || coinBalance >= price;
+          const unit = coinPrices?.per_platform ?? null;
+          const totalFor = price != null && unit != null ? price + unit * selected.size : null;
+          const affordable = totalFor == null || coinBalance >= totalFor;
           return (
             <button
               key={o.id}
@@ -1508,6 +1515,24 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
           );
         })}
       </div>
+      {/* ── Récap du prix (grille 2 axes, 2026-08-04) ─────────────────────────
+          LE point de compréhension : photos une fois (0/9/32 selon l'option) +
+          3 Pépites par plateforme. Recalculé à CHAQUE case cochée/décochée et
+          à chaque changement d'option — c'est ce total que le CTA Publier
+          débitera. Masqué tant que coin_config n'a pas répondu : jamais un
+          total faux. */}
+      {coinPrices?.per_platform != null && coinPrices?.[photoOption] != null && (
+        <div style={{ marginTop:12, padding:"11px 14px", borderRadius:12, background:T.paper, border:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+          <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, lineHeight:1.45 }}>
+            {lang === 'en'
+              ? <>Photos: {coinPrices[photoOption] === 0 ? 'free' : coinPrices[photoOption]} · Publishing: {selected.size} × {coinPrices.per_platform}</>
+              : <>Photos : {coinPrices[photoOption] === 0 ? 'offertes' : coinPrices[photoOption]} · Publication : {selected.size} × {coinPrices.per_platform}</>}
+          </span>
+          <strong style={{ fontSize:13.5, fontWeight:700, color:T.ink, display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
+            = <PepiteIcon size={14} /> {coinPrices[photoOption] + coinPrices.per_platform * selected.size}
+          </strong>
+        </div>
+      )}
       {PLATFORMS_DEFAULT.filter(p => (publishedSet?.has(p) || queuedSet?.has(p))).length > 0 && (
         <p style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {lang === 'en'
@@ -3070,6 +3095,18 @@ export default function ListingPreviewScreen({
   const [storeOpen, setStoreOpen]   = useState(false);
   const coinBalance = (wallet?.included_balance ?? 0) + (wallet?.purchased_balance ?? 0);
   const coinPriceFor = (opt) => coinPrices?.[opt] ?? null;
+  // Grille à deux axes (2026-08-04) : coinPriceFor rend le prix PHOTOS de
+  // l'option (0/9/32, une fois par article) ; la publication coûte EN PLUS
+  // 3 Pépites par plateforme (coin_config.price_per_platform — jamais en dur).
+  // Le total est la seule somme qui engage l'utilisateur : c'est LUI que
+  // lisent le pré-check du step 1, le CTA Publier et la ConversionModal, et il
+  // se recalcule à chaque plateforme cochée/décochée.
+  const pubUnitPrice = coinPrices?.per_platform ?? null;
+  const publishTotalFor = (opt, nPlatforms) => {
+    const photo = coinPriceFor(opt);
+    if (photo == null || pubUnitPrice == null) return null;
+    return photo + pubUnitPrice * nPlatforms;
+  };
 
   async function refreshWallet() {
     const { data: w } = await supabase
@@ -5366,6 +5403,11 @@ export default function ListingPreviewScreen({
       if (inventoryFull) return lang === "en" ? "Move up a plan" : "Passer au niveau supérieur";
       if (publishing) return t("ctaPublishing");
       const n = publishChips.length;
+      // Grille 2 axes : le CTA affiche le TOTAL débité au clic, recalculé à
+      // chaque plateforme cochée/décochée. Config pas encore lue → libellé
+      // sans prix (jamais un total faux).
+      const total = publishTotalFor(photoOption, n);
+      if (total != null) return tpl("ctaPublishOnPlatformsPriced", { n, price: total });
       return tpl("ctaPublishOnPlatforms", { n });
     }
     return "";
@@ -5415,7 +5457,10 @@ export default function ListingPreviewScreen({
       // Pièces : blocage doux si le solde ne couvre pas l'option choisie —
       // remplace l'ancien blocage dur Free. Le débit réel a lieu à Publier,
       // ici on évite juste de lancer une génération qu'on ne pourra pas payer.
-      const price = coinPriceFor(photoOption);
+      // Grille 2 axes : le TOTAL (photos + 3 × plateformes cochées), jamais le
+      // seul prix photos — sinon « photos perso » (0) laisserait passer un
+      // solde vide vers un débit de 3×n au Publier.
+      const price = publishTotalFor(photoOption, selected.size);
       if (price != null && coinBalance < price) {
         setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
         return;
@@ -5693,7 +5738,7 @@ export default function ListingPreviewScreen({
           // Le déclencheur stock (inventaire plein) n'est pas une histoire de
           // Pépites : coinPrice DOIT être null pour atteindre le CAS 3, qui
           // empile les deux cartes Premium + Pro (PlansStack).
-          coinPrice={quotaModal.trigger === "stock" ? null : (quotaModal.coinPrice ?? coinPriceFor(photoOption))}
+          coinPrice={quotaModal.trigger === "stock" ? null : (quotaModal.coinPrice ?? publishTotalFor(photoOption, selected.size))}
           onUseCoins={() => { setQuotaModal(m => ({ ...m, open: false })); setStoreOpen(true); }}
         />
       )}
