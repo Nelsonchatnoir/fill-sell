@@ -1642,10 +1642,13 @@ const StockTab = memo(function StockTab({
       .then(({ data }) => { if (!stale && Number.isFinite(data?.value)) setRepublishPrice(data.value); });
     return () => { stale = true; };
   }, [republishActif]);
-  // File vivante toutes annonces confondues — nourrit l'estimation de durée.
-  const repubVivants = republishActif
-    ? Object.values(jobsByInventaire).flat().filter(j => j.action === 'republish' && (j.status === 'pending' || j.status === 'processing')).length
-    : 0;
+  // ⚠️ repubVivants / repubEtat / repubActionnables sont déclarés PLUS BAS,
+  // APRÈS le state jobsByInventaire qu'ils lisent AU RENDU — les poser ici
+  // levait une TDZ (« Cannot access 'jobsByInventaire' before
+  // initialization ») au montage, écran blanc en prod pour les seuls comptes
+  // bêta (le ternaire republishActif court-circuitait les autres). Incident
+  // Safari iOS du 05/08. Les HANDLERS, eux, peuvent vivre ici : ils ne
+  // s'exécutent qu'au clic, bien après l'initialisation.
 
   async function lancerRepublication(item, prixRepublication = null) {
     if (repubBusy) return;
@@ -1713,17 +1716,8 @@ const StockTab = memo(function StockTab({
   const [modeRepublish, setModeRepublish] = useState(false);
   const [repubSel, setRepubSel] = useState(new Set());
   const [repubLot, setRepubLot] = useState(null); // {fait, total, refus:[]} pendant/après un lot
-  const repubEtat = (item) => {
-    if (!(item.vinted_item_id && !item.disparu_le && item.statut !== 'vendu')) return 'ineligible';
-    const rjobs = (jobsByInventaire[item.id] || []).filter(j => j.action === 'republish');
-    let last = null;
-    for (const j of rjobs) { if (!last || Date.parse(j.created_at || 0) > Date.parse(last.created_at || 0)) last = j; }
-    if (last && (last.status === 'pending' || last.status === 'processing' || last.status === 'needs_user')) return 'vivant';
-    if (last && last.status === 'published' && last.platform_fields?.recreated_at
-      && Date.now() - Date.parse(last.platform_fields.recreated_at) < 24 * 3600 * 1000) return 'cadence';
-    return 'ok';
-  };
-  const repubActionnables = republishActif ? stockFiltre.filter(i => repubEtat(i) === 'ok') : [];
+  // (repubEtat / repubActionnables : déclarés plus bas, après jobsByInventaire
+  // — cf. le commentaire TDZ au-dessus de lancerRepublication.)
 
   async function lancerRepublicationLot(cibles /* [{item, prix}] */) {
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) return;
@@ -1782,6 +1776,27 @@ const StockTab = memo(function StockTab({
     }
   }
   const [jobsByInventaire, setJobsByInventaire] = useState({});
+  // ── É5 : dérivations de RENDU qui lisent jobsByInventaire ────────────────
+  // IMPÉRATIVEMENT APRÈS la déclaration du state ci-dessus : posées avant,
+  // elles levaient une TDZ au montage (« Cannot access 'jobsByInventaire'
+  // before initialization ») → écran blanc en prod pour les comptes bêta,
+  // incident Safari iOS du 05/08. Les non-bêta étaient épargnés par le
+  // court-circuit du ternaire republishActif — c'est ce qui a fait croire à
+  // un bug spécifique iOS.
+  const repubVivants = republishActif
+    ? Object.values(jobsByInventaire).flat().filter(j => j.action === 'republish' && (j.status === 'pending' || j.status === 'processing')).length
+    : 0;
+  const repubEtat = (item) => {
+    if (!(item.vinted_item_id && !item.disparu_le && item.statut !== 'vendu')) return 'ineligible';
+    const rjobs = (jobsByInventaire[item.id] || []).filter(j => j.action === 'republish');
+    let last = null;
+    for (const j of rjobs) { if (!last || Date.parse(j.created_at || 0) > Date.parse(last.created_at || 0)) last = j; }
+    if (last && (last.status === 'pending' || last.status === 'processing' || last.status === 'needs_user')) return 'vivant';
+    if (last && last.status === 'published' && last.platform_fields?.recreated_at
+      && Date.now() - Date.parse(last.platform_fields.recreated_at) < 24 * 3600 * 1000) return 'cadence';
+    return 'ok';
+  };
+  const repubActionnables = republishActif ? stockFiltre.filter(i => repubEtat(i) === 'ok') : [];
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
   // à RIEN : le job reste needs_user, le badge reste affiché.
