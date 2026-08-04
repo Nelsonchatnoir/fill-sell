@@ -6040,13 +6040,24 @@ async function processRepublishJob(job, accessToken) {
         return { status: "needsUser", error: "capture invalide avant suppression" };
       }
       if (Date.parse(capMeta.captured_at) < Date.now() - 24 * 3600 * 1000) {
+        // Compteur de péremption (validé par Nico) : détecte le cycle
+        // « dort → périmée → relance → dort ». Il survit aux relances (la
+        // relance d'É5 CONSERVE platform_fields) et n'est remis à zéro qu'à
+        // une republication ABOUTIE — sinon l'utilisateur traînerait son
+        // diagnostic pour toujours.
+        const peremptions = (Number(pf.recaptures_perimees) || 0) + 1;
+        pf.recaptures_perimees = peremptions;
+        const message = peremptions >= 2
+          ? "Deux tentatives ont expiré : ton Chrome s'ouvre trop longtemps après tes clics. " +
+            "Republie cet article quand tu es DEVANT ton ordinateur — le clic, puis Chrome ouvert une dizaine de minutes, et c'est réglé. " +
+            "Rien n'a été touché, ton annonce est intacte."
+          : "Republication en attente : ta capture date de plus de 24 h et l'annonce a pu changer sur Vinted entre-temps — rien n'a été touché, ton annonce est intacte. " +
+            "La republication a besoin que Chrome reste ouvert peu après ton clic : relance-la depuis l'app à un moment où ton ordinateur reste allumé la dizaine de minutes qui suit.";
         await updateJobStatus(accessToken, job.id, "needs_user", {
           platform_fields: pf,
-          error:
-            "Republication en attente : ta capture date de plus de 24 h et l'annonce a pu changer sur Vinted entre-temps — rien n'a été touché, ton annonce est intacte. " +
-            "La republication a besoin que Chrome reste ouvert peu après ton clic : relance-la depuis l'app à un moment où ton ordinateur reste allumé la dizaine de minutes qui suit.",
+          error: message,
         });
-        return { status: "needsUser", error: "capture périmée (>24 h) à l'exécution" };
+        return { status: "needsUser", error: `capture périmée (>24 h) à l'exécution — occurrence ${peremptions}` };
       }
 
       pf.processing_since = new Date().toISOString();
@@ -6173,6 +6184,8 @@ async function processRepublishJob(job, accessToken) {
         if (ancienId) pf.old_vinted_item_id = ancienId;
         if (nouvelId) pf.new_vinted_item_id = nouvelId;
         delete pf.next_action_after;
+        // Republication aboutie : le diagnostic de péremption repart de zéro.
+        delete pf.recaptures_perimees;
         if (nouvelId && job.inventaire_id != null) {
           await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
             method: "PATCH",

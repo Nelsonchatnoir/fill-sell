@@ -56,6 +56,17 @@ export function syncDressingVisiblePour(email) {
   return BETA_COMPTES.includes(canonique);
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// ⛔ MASQUAGE BÊTA DE LA REPUBLICATION (É5, 2026-08-05) — À RETIRER D'UN GESTE
+// quand Nico valide : faire retourner `true` à cette fonction (ou supprimer
+// ses appels dans StockTab.jsx). Fonction SÉPARÉE de syncDressingVisiblePour
+// exprès : les deux features se dévoilent indépendamment, même si la liste
+// bêta est aujourd'hui la même.
+// ═════════════════════════════════════════════════════════════════════════════
+export function republishVisiblePour(email) {
+  return syncDressingVisiblePour(email);
+}
+
 // ── Garde de VERSION (permanente) ───────────────────────────────────────────
 // Le bouton testait la PRÉSENCE d'une extension, jamais sa CAPACITÉ. Or :
 //   · le heartbeat serveur (profiles.extension_last_seen_at) prouve qu'UNE
@@ -216,9 +227,10 @@ export async function capturerEtPersisterArticleVinted(supabase, { userId, inven
     }
   }
 
-  // 3. Persistance immuable, verdict final. La capture la plus récente fait foi.
+  // 3. Persistance immuable, verdict final. La capture la plus récente fait
+  // foi ; l'id inséré est rendu (la relance d'un republish le repointe).
   const verdict = manquants.length ? 'incomplet' : 'valide';
-  const { error: insErr } = await supabase.from('vinted_republish_captures').insert({
+  const { data: insData, error: insErr } = await supabase.from('vinted_republish_captures').insert({
     user_id: userId,
     inventaire_id: inventaireId ?? null,
     vinted_item_id: id,
@@ -229,9 +241,9 @@ export async function capturerEtPersisterArticleVinted(supabase, { userId, inven
                description: capture.description ?? null, photos_cdn: capture.photos_cdn ?? [] },
     libelles: capture.libelles ?? null,
     photos_urls: photosUrls,
-  });
+  }).select('id').single();
   if (insErr) return { success: false, error: `persistance : ${insErr.message}` };
-  return { success: true, verdict, champs_manquants: manquants, photos_urls: photosUrls };
+  return { success: true, verdict, champs_manquants: manquants, photos_urls: photosUrls, capture_id: insData?.id ?? null };
 }
 
 // ── É2 : republier une annonce Vinted (2026-08-05) ──────────────────────────
@@ -259,6 +271,49 @@ export async function republierArticleVinted(supabase, { userId, inventaireId, v
   if (error) return { success: false, error: error.message };
   if (data?.allowed === false) return { success: false, ...data };
   return { success: true, job_id: data?.job_id ?? null, price: data?.price ?? null };
+}
+
+// ── É5 : relancer un republish en needs_user (2026-08-05) ───────────────────
+// LE point structurel signalé par Nico : la relance RECAPTURE D'ABORD — le
+// mini-éditeur générique re-pend sans recapturer, ce qui rejouerait la
+// péremption à l'infini. Deux cas, par l'étape EN BASE :
+//   · 'captured' (rien n'a été supprimé) : capture FRAÎCHE obligatoire, le
+//     job est repointé dessus (capture_id) puis re-pend. Le compteur
+//     recaptures_perimees est CONSERVÉ (il ne se remet à zéro qu'à une
+//     republication aboutie — côté extension).
+//   · 'deleted' (annonce déjà supprimée) : PAS de recapture (l'annonce
+//     n'existe plus, la capture en base est la seule source) — simple
+//     re-pend, la reprise repart directement à la recréation.
+export async function relancerRepublishVinted(supabase, { userId, job }) {
+  const pf = job?.platform_fields ?? {};
+  const item = pf.vinted_item_id;
+  if (!job?.id || !item) return { success: false, error: 'job de republication illisible' };
+
+  if ((pf.republish_step ?? 'captured') === 'deleted') {
+    const { data, error } = await supabase.from('cross_post_jobs')
+      .update({ status: 'pending', error: null })
+      .eq('id', job.id).select('id');
+    if (error || !data?.length) return { success: false, error: error?.message ?? 'relance non écrite (RLS ?)' };
+    return { success: true, recapture: false };
+  }
+
+  const capture = await capturerEtPersisterArticleVinted(supabase, {
+    userId, inventaireId: job.inventaire_id ?? null, vintedItemId: item,
+  });
+  if (!capture.success) return capture;
+  if (capture.verdict !== 'valide' || !capture.capture_id) {
+    return {
+      success: false, verdict: capture.verdict, champs_manquants: capture.champs_manquants,
+      error: 'Nouvelle capture incomplète — relance refusée, rien n\'a été touché.',
+    };
+  }
+  const pfNext = { ...pf, capture_id: capture.capture_id, republish_step: 'captured' };
+  delete pfNext.next_action_after;
+  const { data, error } = await supabase.from('cross_post_jobs')
+    .update({ status: 'pending', error: null, platform_fields: pfNext })
+    .eq('id', job.id).select('id');
+  if (error || !data?.length) return { success: false, error: error?.message ?? 'relance non écrite (RLS ?)' };
+  return { success: true, recapture: true };
 }
 
 const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at';

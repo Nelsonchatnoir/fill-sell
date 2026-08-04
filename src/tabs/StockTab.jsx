@@ -31,6 +31,7 @@ import {
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS,
   lireDernierRunDressing, aDejaSynchroniseDressing,
   DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
+  republishVisiblePour, republierArticleVinted, relancerRepublishVinted,
 } from '../utils/vintedSync';
 
 // ── Échecs actionnables (chantier onboarding 2026-07-27) ──────────────────────
@@ -1405,6 +1406,88 @@ const StockTab = memo(function StockTab({
   // coin_config.free_stock_limit). L'ancien items.length comptait TOUT —
   // vendus et sync compris.
   const quotaFree = compteArticlesQuota(items);
+
+  // ── É5 Republication Vinted (2026-08-05, masquée hors bêta) ───────────────
+  // Prix lu en config (jamais en dur) ; libellé sans prix tant que la config
+  // n'a pas répondu — jamais un montant faux.
+  const republishActif = republishVisiblePour(user?.email) && !isNative;
+  const [republishPrice, setRepublishPrice] = useState(null);
+  const [repubBusy, setRepubBusy] = useState(null);          // inventaire_id en cours
+  const [repubMsgs, setRepubMsgs] = useState({});            // inventaire_id → {ton, texte}
+  useEffect(() => {
+    if (!republishActif) return;
+    let stale = false;
+    supabase.from('coin_config').select('value').eq('key', 'price_republish').maybeSingle()
+      .then(({ data }) => { if (!stale && Number.isFinite(data?.value)) setRepublishPrice(data.value); });
+    return () => { stale = true; };
+  }, [republishActif]);
+  // File vivante toutes annonces confondues — nourrit l'estimation de durée.
+  const repubVivants = republishActif
+    ? Object.values(jobsByInventaire).flat().filter(j => j.action === 'republish' && (j.status === 'pending' || j.status === 'processing')).length
+    : 0;
+
+  async function lancerRepublication(item) {
+    if (repubBusy) return;
+    if (extensionNeverSeen === true) { setExtPitchItem(item); return; }
+    setRepubBusy(item.id);
+    setRepubMsgs(m => ({ ...m, [item.id]: null }));
+    try {
+      const res = await republierArticleVinted(supabase, {
+        userId: user.id, inventaireId: item.id, vintedItemId: item.vinted_item_id,
+      });
+      if (!res.success) {
+        const raisons = {
+          capture_incomplete: lang === 'fr'
+            ? `Capture incomplète (${(res.champs_manquants ?? []).slice(0, 2).join(' ; ') || 'champs manquants'}) — rien n'a été touché.`
+            : `Incomplete capture (${(res.champs_manquants ?? []).slice(0, 2).join('; ') || 'missing fields'}) — nothing was touched.`,
+          capture_perimee: lang === 'fr' ? 'Capture expirée — réessaie, elle sera refaite.' : 'Capture expired — try again, it will be redone.',
+          republish_en_cours: lang === 'fr' ? 'Une republication est déjà en cours sur cet article.' : 'A repost is already running for this item.',
+          cadence_24h: lang === 'fr' ? 'Déjà republié il y a moins de 24 h — une republication par article et par jour.' : 'Already reposted less than 24 h ago — one repost per item per day.',
+          insufficient_coins: lang === 'fr' ? `Il manque des Pépites (${res.price ?? 1} nécessaire).` : `Not enough Nuggets (${res.price ?? 1} needed).`,
+        };
+        setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: res.message ?? raisons[res.reason] ?? res.error ?? (lang === 'fr' ? 'Republication impossible.' : 'Repost failed.') } }));
+        return;
+      }
+      // Patch optimiste : la carte montre l'état « en file » sans attendre le
+      // poll de 20 s (même principe que la publication).
+      const now = new Date().toISOString();
+      setJobsByInventaire(prev => ({
+        ...prev,
+        [item.id]: [...(prev[item.id] ?? []), {
+          id: `optimistic-repub-${item.id}-${now}`, inventaire_id: item.id, platform: 'vinted',
+          action: 'republish', status: 'pending', error: null, created_at: now, listing_url: null, title: item.title,
+          platform_fields: { republish_step: 'captured', vinted_item_id: String(item.vinted_item_id) },
+        }],
+      }));
+      setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'vert', texte: lang === 'fr'
+        ? 'Republication en file — laisse Chrome ouvert quelques minutes, elle supprime puis recrée l\'annonce à l\'identique.'
+        : 'Repost queued — keep Chrome open a few minutes; it deletes then recreates the listing identically.' } }));
+    } finally {
+      setRepubBusy(null);
+    }
+  }
+
+  async function relancerRepublication(item, job) {
+    if (repubBusy) return;
+    setRepubBusy(item.id);
+    setRepubMsgs(m => ({ ...m, [item.id]: null }));
+    try {
+      const res = await relancerRepublishVinted(supabase, { userId: user.id, job });
+      if (!res.success) {
+        setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: res.error ?? (lang === 'fr' ? 'Relance impossible.' : 'Relaunch failed.') } }));
+        return;
+      }
+      setJobsByInventaire(prev => ({
+        ...prev,
+        [item.id]: (prev[item.id] ?? []).map(j => j.id === job.id ? { ...j, status: 'pending', error: null } : j),
+      }));
+      setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'vert', texte: res.recapture
+        ? (lang === 'fr' ? 'Capture refaite, republication relancée — laisse Chrome ouvert quelques minutes.' : 'Fresh capture done, repost relaunched — keep Chrome open a few minutes.')
+        : (lang === 'fr' ? 'Recréation relancée — laisse Chrome ouvert quelques minutes.' : 'Recreation relaunched — keep Chrome open a few minutes.') } }));
+    } finally {
+      setRepubBusy(null);
+    }
+  }
   const [jobsByInventaire, setJobsByInventaire] = useState({});
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
@@ -2397,6 +2480,17 @@ const StockTab = memo(function StockTab({
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {/* Mode « à compléter » : liste COMPLÈTE des incomplets (filtres
                     actifs respectés via stockFiltre, pas de plafond de 10). */}
+                {/* É5 : estimation de durée quand la file de republication
+                    grossit — jamais une promesse que le poll ne tient pas :
+                    ~2 gestes espacés de 2 min + attentes 2-5 min ⇒ ~5-7 min
+                    par annonce, arrondi large. */}
+                {repubVivants>=3&&(
+                  <div style={{background:"#EFF3F8",border:"1px solid #C7D6E5",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#334155",fontWeight:600,lineHeight:1.5,marginBottom:8}}>
+                    ⏳ {lang==='fr'
+                      ?`${repubVivants} republications en file — compte environ ${repubVivants*5>=60?`${Math.ceil(repubVivants*5/60)} h`:`${repubVivants*5}-${repubVivants*7} min`}, au rythme humain. Ça reprend tout seul si tu fermes Chrome.`
+                      :`${repubVivants} reposts queued — expect about ${repubVivants*5>=60?`${Math.ceil(repubVivants*5/60)} h`:`${repubVivants*5}-${repubVivants*7} min`}, at a human pace. It resumes on its own if you close Chrome.`}
+                  </div>
+                )}
                 {(modePrixAchat?stockFiltre.filter(paIncomplet):stockVisible).map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
@@ -2413,7 +2507,22 @@ const StockTab = memo(function StockTab({
                   // mélangés aux publish, un delete pending affichait « En
                   // cours… » (dépôt) et un delete failed un badge « Échec » de
                   // publication — deux mensonges.
-                  const jobs=jobsAll.filter(j=>j.action!=="delete");
+                  // É5 (2026-08-05) : les jobs republish sortent AUSSI du flux
+                  // générique — mêlés aux publish, un republish pending
+                  // affichait « En cours… » (dépôt) et son needs_user ouvrait
+                  // le mini-éditeur générique, qui re-pend SANS recapturer :
+                  // exactement la boucle de péremption qu'on vient de fermer.
+                  // Ils ont leur bloc dédié (badge + bouton) plus bas.
+                  const jobs=jobsAll.filter(j=>j.action!=="delete"&&j.action!=="republish");
+                  const repubLatest=(()=>{
+                    let r=null;
+                    for(const j of jobsAll){
+                      if(j.action!=="republish")continue;
+                      if(!r||Date.parse(j.created_at||0)>Date.parse(r.created_at||0))r=j;
+                    }
+                    return r;
+                  })();
+                  const repubEligible=republishActif&&item.vinted_item_id&&!item.disparu_le&&item.statut!=="vendu";
                   // "processing" = publication en cours côté extension : même
                   // affichage « En cours… » que pending (pour le vendeur, c'est
                   // le même moment ; la nuance est purement interne).
@@ -2614,6 +2723,36 @@ const StockTab = memo(function StockTab({
                                 </div>
                               )}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
+                              {/* É5 : état de la republication — badge dédié,
+                                  jamais confondu avec la publication. */}
+                              {repubEligible&&repubLatest&&(()=>{
+                                const st=repubLatest.status;
+                                const step=repubLatest.platform_fields?.republish_step??"captured";
+                                if(st==="pending"&&step==="deleted")return(
+                                  <div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>
+                                    🔁 {lang==='fr'?'Republication : recréation en attente':'Repost: recreation pending'}
+                                  </div>);
+                                if(st==="pending"||st==="processing")return(
+                                  <div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>
+                                    🔁 {lang==='fr'?'Republication en cours…':'Reposting…'}
+                                  </div>);
+                                if(st==="needs_user")return(
+                                  <div className="micon" title={repubLatest.error??undefined}
+                                    onClick={e=>{e.stopPropagation();if(repubLatest.error)alert(repubLatest.error);}}
+                                    style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}>
+                                    🔁✋ {lang==='fr'?'Republication à relancer':'Repost needs action'}
+                                  </div>);
+                                return null;
+                              })()}
+                              {repubEligible&&repubMsgs[item.id]&&(
+                                <div className="micon"
+                                  onClick={e=>{e.stopPropagation();setRepubMsgs(m=>({...m,[item.id]:null}));}}
+                                  style={repubMsgs[item.id].ton==='vert'
+                                    ?{background:"#F0FDFB",border:"1px solid rgba(13,148,136,0.25)",color:"#1B6E62",cursor:"pointer"}
+                                    :{background:"#FFF7ED",border:"1px solid #FED7AA",color:"#9A3412",cursor:"pointer"}}>
+                                  {repubMsgs[item.id].texte}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -2667,6 +2806,44 @@ const StockTab = memo(function StockTab({
                             <button className="btn-vendre" onClick={e=>{e.stopPropagation();markSold(item);}}>
                               {lang==='fr'?'Vendre':'Sell'}
                             </button>
+                            {/* É5 : Republier — remonte l'annonce Vinted dans le
+                                fil (suppression puis recréation à l'identique).
+                                Le bouton dit POURQUOI il est inerte, il
+                                n'échoue jamais après le clic sur une borne
+                                connue (cadence 24 h, republish vivant). */}
+                            {repubEligible&&(()=>{
+                              const st=repubLatest?.status;
+                              const vivant=st==="pending"||st==="processing"||st==="needs_user";
+                              if(st==="needs_user")return(
+                                <button className="btn-vendre" disabled={repubBusy===item.id}
+                                  onClick={e=>{e.stopPropagation();relancerRepublication(item,repubLatest);}}
+                                  style={{opacity:repubBusy===item.id?0.6:1}}>
+                                  {repubBusy===item.id?(lang==='fr'?'Relance…':'Relaunching…'):(lang==='fr'?'🔁 Relancer':'🔁 Relaunch')}
+                                </button>);
+                              if(vivant)return(
+                                <button className="btn-vendre" disabled style={{opacity:0.55,cursor:"default"}}>
+                                  {lang==='fr'?'🔁 En cours':'🔁 Running'}
+                                </button>);
+                              if(st==="published"&&repubLatest?.platform_fields?.recreated_at
+                                &&Date.now()-Date.parse(repubLatest.platform_fields.recreated_at)<24*3600*1000){
+                                const restant=Math.max(1,Math.ceil((24*3600*1000-(Date.now()-Date.parse(repubLatest.platform_fields.recreated_at)))/3600000));
+                                return(
+                                  <button className="btn-vendre" disabled style={{opacity:0.55,cursor:"default"}}
+                                    title={lang==='fr'?`Une republication par article et par 24 h — de nouveau possible dans ~${restant} h.`:`One repost per item per 24 h — available again in ~${restant} h.`}>
+                                    {lang==='fr'?`🔁 Dans ~${restant} h`:`🔁 In ~${restant} h`}
+                                  </button>);
+                              }
+                              return(
+                                <button className="btn-vendre" disabled={repubBusy===item.id}
+                                  onClick={e=>{e.stopPropagation();lancerRepublication(item);}}
+                                  style={{opacity:repubBusy===item.id?0.6:1}}
+                                  title={lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed."}>
+                                  {repubBusy===item.id
+                                    ?(lang==='fr'?'Capture…':'Capturing…')
+                                    :(lang==='fr'?`🔁 Republier${republishPrice!=null?` (${republishPrice} Pépite${republishPrice>1?'s':''})`:''}`
+                                                 :`🔁 Repost${republishPrice!=null?` (${republishPrice} Nugget${republishPrice>1?'s':''})`:''}`)}
+                                </button>);
+                            })()}
                           </div>
                         </div>
                       </div>
