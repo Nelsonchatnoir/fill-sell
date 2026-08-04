@@ -32,6 +32,7 @@ const buildIdTimestamp = (id) => {
   return m ? Date.parse(m[1]) : null;
 };
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
+import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import Toast from './components/Toast';
 import ConversionModal from './components/ConversionModal';
 import StatsPage from './pages/StatsPage';
@@ -3839,7 +3840,9 @@ export default function App({ loginOnly = false }){
       track('login', { method: 'email' });
       // Splash jusqu'à la fin de fetchAll (lancé par SIGNED_IN) — évite le flash d'app vide
       setAppLoading(true);
-      navigate("/app");
+      // Cible protégée mémorisée par RequireAuth (ex. /extension depuis le
+      // lien e-mail de l'accroche) : elle prime sur /app, une seule fois.
+      navigate(consumePostLoginTarget() ?? "/app");
     }catch(e){setLoginError(e.message);}finally{setIsSigningIn(false);}
   }
 

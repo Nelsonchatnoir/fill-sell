@@ -485,7 +485,7 @@ serve(async (req) => {
 
     const { data: profile } = await adminClient
       .from("profiles")
-      .select("is_premium, is_pro, is_comped")
+      .select("is_premium, is_pro, is_comped, lang")
       .eq("id", user.id)
       .single();
 
@@ -684,6 +684,44 @@ serve(async (req) => {
       !Array.isArray(platforms) || platforms.length === 0
     ) {
       return json({ error: "Missing required fields: inventaire_id or item_data, photos, platforms" }, 400);
+    }
+
+    // ── Plafond de générations (2026-08-04) ─────────────────────────────────
+    // Texte + retouche sont GRATUITS et rejouables tant qu'on ne publie pas —
+    // et l'accroche extension invite désormais les comptes bloqués à
+    // « préparer leur annonce », donc à consommer Haiku + GPT Image sans
+    // qu'aucun débit ne soit jamais possible. Borne SIMPLE, pas de
+    // facturation : N générations complètes par fenêtre glissante de 24 h
+    // (le calendrier Paris créerait un effet minuit ; « réessaie plus tard »
+    // est plus honnête qu'un compteur qui saute à 00:00).
+    // Compté sur usage_logs feature='generate_listing' (posé à CHAQUE
+    // génération réussie depuis le 28/07, index user/feature/created_at) :
+    // les générations en ÉCHEC ne comptent pas — on ne pénalise pas un retry
+    // légitime. Les modes ciblés resolve_genre/resolve_aspects (retours plus
+    // haut) restent hors plafond : ils font partie du flux de publication.
+    // Échec de comptage → OUVERT (on laisse passer) : bloquer un utilisateur
+    // légitime sur une erreur de mesure serait pire que le trou d'un appel.
+    const GEN_CAP = isPremium ? 60 : 15;
+    {
+      const { count: genCount, error: genCountErr } = await adminClient
+        .from("usage_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("feature", "generate_listing")
+        .gte("created_at", new Date(Date.now() - 24 * 3600 * 1000).toISOString());
+      if (genCountErr) {
+        console.error("[generate-listing] plafond: comptage en échec (laissé passer):", genCountErr.message);
+      } else if ((genCount ?? 0) >= GEN_CAP) {
+        const en = profile?.lang === "en";
+        console.warn(`[generate-listing] plafond atteint user=${user.id} cap=${GEN_CAP} premium=${isPremium}`);
+        return json({
+          error: "generation_limit",
+          cap: GEN_CAP,
+          message: en
+            ? `Text and photo generation are free — to keep them free, they're capped at ${GEN_CAP} runs per 24 hours, and you've just reached it. Try again in a few hours.`
+            : `La génération du texte et des photos est offerte — pour qu'elle le reste, elle est plafonnée à ${GEN_CAP} générations par 24 h, et tu viens d'y arriver. Réessaie dans quelques heures.`,
+        }, 429);
+      }
     }
 
     // Free : plus de 403 sec — autorisé si le wallet couvre le prix de l'option

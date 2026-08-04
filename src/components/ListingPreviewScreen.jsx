@@ -3420,6 +3420,12 @@ export default function ListingPreviewScreen({
           setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
           return;
         }
+        // Plafond de générations (2026-08-04) : le serveur explique déjà tout
+        // (quota, fenêtre 24 h) dans sa langue — le message s'affiche tel quel
+        // dans le bandeau d'erreur de l'étape, jamais le générique.
+        if (errBody?.error === "generation_limit" && errBody?.message) {
+          throw new Error(errBody.message);
+        }
         throw new Error(fnErr.message || t("stepGenErrorTitle"));
       }
       if (!data?.platforms) throw new Error(t("stepGenNoListingsError"));

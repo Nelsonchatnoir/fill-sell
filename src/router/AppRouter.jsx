@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { useState, useEffect, lazy, Suspense } from "react";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "../lib/supabase";
+import { rememberPostLoginTarget } from "../lib/postLoginRedirect";
 import LandingPage from "../pages/LandingPage";
 import Success from "../pages/Success";
 import Cancel from "../pages/Cancel";
@@ -43,6 +44,12 @@ function RequireAuth({ children }) {
       setUser(session?.user ?? null);
     });
   }, []);
+  // Cible protégée hors /app (ex. /extension depuis le lien e-mail de
+  // l'accroche) : mémorisée AVANT la redirection, consommée par les chemins
+  // de login (handleLogin, AuthCallback) — sinon navigate('/app') l'avale.
+  useEffect(() => {
+    if (user === null) rememberPostLoginTarget(location.pathname);
+  }, [user, location.pathname]);
   if (user === undefined) return null;
   if (!user) return <Navigate to="/" replace state={{ from: location }} />;
   return children;

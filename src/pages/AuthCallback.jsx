@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { consumePostLoginTarget } from "../lib/postLoginRedirect";
 import { UI, Loader } from "../components/ui";
 import useSeo from "../lib/seo";
 
@@ -20,7 +21,10 @@ export default function AuthCallback() {
     let cancelled = false;
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (cancelled) return;
-      if (session) { navigate("/app", { replace: true }); return; }
+      // Cible protégée mémorisée par RequireAuth (ex. /extension depuis le
+      // lien e-mail de l'accroche) : le flux OAuth web repasse par ici, c'est
+      // LE point où la destination était perdue.
+      if (session) { navigate(consumePostLoginTarget() ?? "/app", { replace: true }); return; }
       const params = new URLSearchParams(window.location.search);
       // Refus/annulation côté provider : retour au login sans bruit.
       if (params.get("error")) { navigate("/login", { replace: true }); return; }
@@ -28,7 +32,7 @@ export default function AuthCallback() {
       if (code) {
         const { data, error: exErr } = await supabase.auth.exchangeCodeForSession(code);
         if (cancelled) return;
-        if (!exErr && data?.session) { navigate("/app", { replace: true }); return; }
+        if (!exErr && data?.session) { navigate(consumePostLoginTarget() ?? "/app", { replace: true }); return; }
       }
       setError("Connexion impossible. Réessaie depuis la page de connexion.");
     });
