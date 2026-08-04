@@ -339,6 +339,10 @@ async function recordRecentResult(job, status, error = null) {
       error: error ? String(error).slice(0, 300) : null,
       title: job.title ?? "",
       inventaire_id: job.inventaire_id ?? null,
+      // action (É5 popup, 2026-08-05) : le popup distingue un résultat de
+      // REPUBLICATION d'un résultat de publication — sans ça, un republish
+      // échoué s'affichait « Échec » sur la ligne Vinted du flux de dépôt.
+      action: job.action ?? "publish",
       annonceKey: job.inventaire_id != null ? `inv:${job.inventaire_id}` : `title:${job.title || job.id}`,
       ts: now,
     };

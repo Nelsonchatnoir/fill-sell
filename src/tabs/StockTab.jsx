@@ -1467,6 +1467,61 @@ const StockTab = memo(function StockTab({
     }
   }
 
+  // ── É5.2 : sélection multiple (2026-08-05) — même patron que la saisie des
+  // prix d'achat (toggle + Set + checkboxes + barre sticky). Seuls les
+  // articles ACTIONNABLES sont cochables : les bornes (republish vivant,
+  // cadence 24 h) rendent la case absente, jamais un échec après le clic.
+  const [modeRepublish, setModeRepublish] = useState(false);
+  const [repubSel, setRepubSel] = useState(new Set());
+  const [repubLot, setRepubLot] = useState(null); // {fait, total, refus:[]} pendant/après un lot
+  const repubEtat = (item) => {
+    if (!(item.vinted_item_id && !item.disparu_le && item.statut !== 'vendu')) return 'ineligible';
+    const rjobs = (jobsByInventaire[item.id] || []).filter(j => j.action === 'republish');
+    let last = null;
+    for (const j of rjobs) { if (!last || Date.parse(j.created_at || 0) > Date.parse(last.created_at || 0)) last = j; }
+    if (last && (last.status === 'pending' || last.status === 'processing' || last.status === 'needs_user')) return 'vivant';
+    if (last && last.status === 'published' && last.platform_fields?.recreated_at
+      && Date.now() - Date.parse(last.platform_fields.recreated_at) < 24 * 3600 * 1000) return 'cadence';
+    return 'ok';
+  };
+  const repubActionnables = republishActif ? stockFiltre.filter(i => repubEtat(i) === 'ok') : [];
+
+  async function lancerRepublicationLot() {
+    const cibles = repubActionnables.filter(i => repubSel.has(i.id));
+    if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) return;
+    setRepubLot({ fait: 0, total: cibles.length, refus: [] });
+    const refus = [];
+    // SÉQUENTIEL : chaque capture passe par l'onglet de travail de l'extension
+    // (verrou de flux) — un Promise.all se battrait pour lui. L'onglet
+    // FillSell doit rester ouvert pendant la mise en file ; la file, elle,
+    // vit en base et survit à tout.
+    for (let i = 0; i < cibles.length; i++) {
+      const item = cibles[i];
+      try {
+        const res = await republierArticleVinted(supabase, {
+          userId: user.id, inventaireId: item.id, vintedItemId: item.vinted_item_id,
+        });
+        if (res.success) {
+          const now = new Date().toISOString();
+          setJobsByInventaire(prev => ({
+            ...prev,
+            [item.id]: [...(prev[item.id] ?? []), {
+              id: `optimistic-repub-${item.id}-${now}`, inventaire_id: item.id, platform: 'vinted',
+              action: 'republish', status: 'pending', error: null, created_at: now, listing_url: null, title: item.title,
+              platform_fields: { republish_step: 'captured', vinted_item_id: String(item.vinted_item_id) },
+            }],
+          }));
+        } else {
+          refus.push({ titre: item.title, raison: res.reason ?? res.error ?? 'refus' });
+        }
+      } catch (e) {
+        refus.push({ titre: item.title, raison: String(e?.message ?? e) });
+      }
+      setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] });
+    }
+    setRepubSel(new Set());
+  }
+
   async function relancerRepublication(item, job) {
     if (repubBusy) return;
     setRepubBusy(item.id);
@@ -2371,6 +2426,72 @@ const StockTab = memo(function StockTab({
               </div>
             )}
 
+            {/* ── É5.2 : republication en lot (bêta) — même patron que la
+                saisie des prix d'achat. Le toggle n'apparaît que s'il y a
+                quelque chose à republier ; en mode, seuls les articles
+                ACTIONNABLES portent une case (bornes = pas de case, jamais un
+                échec post-clic). */}
+            {republishActif&&!modePrixAchat&&(repubActionnables.length>0||modeRepublish)&&(
+              <button className={`pa-call${modeRepublish?" on":""}`}
+                onClick={()=>{setModeRepublish(v=>!v);setRepubSel(new Set());setRepubLot(null);}}>
+                <span style={{fontSize:17,flexShrink:0}}>{modeRepublish?"↩":"🔁"}</span>
+                <span style={{flex:1,minWidth:0}}>
+                  <span className="n">
+                    {modeRepublish
+                      ?(lang==='fr'?"Quitter la republication en lot":"Exit bulk repost")
+                      :(lang==='fr'?`Republier en lot (${repubActionnables.length} article${repubActionnables.length>1?"s":""} possible${repubActionnables.length>1?"s":""})`
+                          :`Bulk repost (${repubActionnables.length} item${repubActionnables.length>1?"s":""} available)`)}
+                  </span>
+                  <span className="sub">
+                    {modeRepublish
+                      ?(lang==='fr'?"Coche les annonces à faire remonter, puis lance — 1 Pépite par annonce."
+                          :"Tick the listings to bump, then launch — 1 Nugget each.")
+                      :(lang==='fr'?"Supprime puis recrée chaque annonce à l'identique pour la faire remonter dans le fil Vinted."
+                          :"Deletes then recreates each listing identically to bump it in the Vinted feed.")}
+                  </span>
+                </span>
+              </button>
+            )}
+            {modeRepublish&&(repubSel.size>0||repubLot)&&(
+              <div className="pa-bar">
+                {repubLot&&repubLot.fait<repubLot.total?(
+                  <span className="lbl">
+                    {lang==='fr'?`Mise en file ${repubLot.fait}/${repubLot.total}… (garde cet onglet ouvert)`:`Queuing ${repubLot.fait}/${repubLot.total}… (keep this tab open)`}
+                  </span>
+                ):(
+                  <>
+                    <span className="lbl">
+                      {lang==='fr'
+                        ?`${repubSel.size} sélectionné${repubSel.size>1?"s":""} · ${repubSel.size} Pépite${repubSel.size>1?"s":""} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`
+                        :`${repubSel.size} selected · ${repubSel.size} Nugget${repubSel.size>1?"s":""} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`}
+                    </span>
+                    <button className="apply" disabled={repubSel.size===0} onClick={lancerRepublicationLot}>
+                      {lang==='fr'?`Republier les ${repubSel.size}`:`Repost ${repubSel.size}`}
+                    </button>
+                    <button className="pa-ghost" onClick={()=>{setRepubSel(new Set(repubActionnables.map(i=>i.id)));}}>
+                      {lang==='fr'?'Tout':'All'}
+                    </button>
+                    <button className="pa-ghost" onClick={()=>{setRepubSel(new Set());setRepubLot(null);}}>✕</button>
+                  </>
+                )}
+                {repubLot&&repubLot.fait>=repubLot.total&&(
+                  <div style={{flexBasis:"100%",display:"flex",flexDirection:"column",gap:2}}>
+                    <span className="pa-hint">
+                      {lang==='fr'
+                        ?`${repubLot.total-repubLot.refus.length}/${repubLot.total} en file — ça tourne tout seul, Chrome ouvert. Reprise automatique si tu le fermes.`
+                        :`${repubLot.total-repubLot.refus.length}/${repubLot.total} queued — runs on its own with Chrome open, resumes if you close it.`}
+                    </span>
+                    {repubLot.refus.length>0&&(
+                      <span className="pa-err">
+                        {lang==='fr'?`${repubLot.refus.length} refus : `:`${repubLot.refus.length} refused: `}
+                        {repubLot.refus.slice(0,3).map(r=>`${r.titre??''} (${r.raison})`).join(' · ')}{repubLot.refus.length>3?'…':''}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {stock.length===0?(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
@@ -2588,6 +2709,14 @@ const StockTab = memo(function StockTab({
                                 <input type="checkbox" className="pa-check" checked={paSel.has(item.id)}
                                   onChange={()=>setPaSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
                                   aria-label={lang==='fr'?"Sélectionner cet article":"Select this item"}/>
+                              )}
+                              {/* É5.2 : case de republication — seulement sur
+                                  les articles ACTIONNABLES (bornes = pas de
+                                  case). */}
+                              {modeRepublish&&repubEtat(item)==="ok"&&(
+                                <input type="checkbox" className="pa-check" checked={repubSel.has(item.id)}
+                                  onChange={()=>setRepubSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
+                                  aria-label={lang==='fr'?"Republier cet article":"Repost this item"}/>
                               )}
                               {paOpenId===item.id?(
                                 <>

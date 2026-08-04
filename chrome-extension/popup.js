@@ -39,7 +39,9 @@ const els = {
 
 const state = {
   session: null,        // { access_token, email, ... }
-  jobs: [],             // tous les jobs pending
+  jobs: [],             // jobs pending de PUBLICATION (republish exclus, cf. splitRepublish)
+  repub: [],            // jobs republish pending/processing — ligne d'état au footer
+  recentRepub: null,    // dernier résultat récent d'une republication (<30 min)
   annonce: null,        // { key, title, price, photo, tag, byPlatform: {vinted: job, ...} }
   selected: new Set(),  // plateformes cochées (parmi celles "prêtes")
   status: {},           // { [platform]: { phase: 'idle'|'busy'|'done'|'err'|'connect', msg } }
@@ -121,6 +123,18 @@ async function fetchPendingJobs(accessToken) {
   return jobs.filter((j) => j.action !== "delete");
 }
 
+// É5 popup (2026-08-05) : les jobs action='republish' ne sont PAS des annonces
+// à publier — les mêler au flux de dépôt affichait « Publier maintenant » sur
+// une opération qui SUPPRIME d'abord. Ils ont leur ligne d'état dédiée au
+// footer (renderFooter), lisible et rassurante : en file, recréation en
+// attente, en cours.
+function splitRepublish(jobs) {
+  const repub = [];
+  const autres = [];
+  for (const j of jobs) (j.action === "republish" ? repub : autres).push(j);
+  return { repub, autres };
+}
+
 // ── Chargement ───────────────────────────────────────────────────────────────
 
 async function load() {
@@ -140,10 +154,14 @@ async function load() {
 
   if (state.session) {
     try {
-      state.jobs = await fetchPendingJobs(state.session.access_token);
+      const tous = await fetchPendingJobs(state.session.access_token);
+      const { repub, autres } = splitRepublish(tous);
+      state.jobs = autres;
+      state.repub = repub;
     } catch (e) {
       console.warn("[popup] get-pending-jobs:", e);
       state.jobs = [];
+      state.repub = [];
     }
     state.annonce = firstAnnonce(state.jobs);
     // Sélection par défaut : toutes les plateformes supportées présentes dans
@@ -188,8 +206,13 @@ async function load() {
       // Ordre croissant assumé partout : le dernier écrit gagne, refKey = le
       // plus récent, dans les DEUX branches.
       fresh.sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
-      const refKey = state.annonce?.key ?? fresh[fresh.length - 1]?.annonceKey ?? null;
-      for (const r of fresh) {
+      // É5 : les résultats de REPUBLICATION ne colorent pas les lignes du flux
+      // de dépôt (un republish échoué affichait « Échec » sur Vinted alors
+      // qu'aucune publication n'était en cause). Ils vivent au footer.
+      const freshPub = fresh.filter((r) => (r.action ?? "publish") !== "republish");
+      state.recentRepub = fresh.filter((r) => (r.action ?? "publish") === "republish").pop() ?? null;
+      const refKey = state.annonce?.key ?? freshPub[freshPub.length - 1]?.annonceKey ?? null;
+      for (const r of freshPub) {
         if (r.annonceKey === refKey) state.recent[r.platform] = r;
       }
     } catch (e) {
@@ -197,6 +220,8 @@ async function load() {
     }
   } else {
     state.jobs = [];
+    state.repub = [];
+    state.recentRepub = null;
     state.annonce = null;
     state.selected = new Set();
     state.recent = {};
@@ -389,7 +414,25 @@ function renderCta() {
 
 function renderFooter() {
   const n = state.jobs.length;
-  els.queueLabel.textContent = n === 0 ? "0 en file" : `${n} en file`;
+  let texte = n === 0 ? "0 en file" : `${n} en file`;
+  // É5 : état des republications — lisible et rassurant, jamais mêlé au flux
+  // de dépôt. « recréation en attente » = suppression faite, la recréation
+  // part au prochain passage (rien n'est perdu).
+  const repub = state.repub ?? [];
+  if (repub.length) {
+    const reprise = repub.filter((j) => j.status === "pending" && j.platform_fields?.republish_step === "deleted").length;
+    const enCours = repub.filter((j) => j.status === "processing").length;
+    const morceaux = [`${repub.length} republication${repub.length > 1 ? "s" : ""}`];
+    if (enCours) morceaux.push("en cours");
+    if (reprise) morceaux.push(`${reprise} recréation${reprise > 1 ? "s" : ""} en attente`);
+    texte += ` · 🔁 ${morceaux.join(", ")}`;
+  } else if (state.recentRepub) {
+    const r = state.recentRepub;
+    if (r.status === "published") texte += " · 🔁 republication terminée ✓";
+    else if (r.status === "dry_run_completed") texte += " · 🔁 republication testée (dry run) ✓";
+    else if (r.status === "needsUser") texte += " · 🔁 republication à relancer depuis l'app";
+  }
+  els.queueLabel.textContent = texte;
 }
 
 function render() {
