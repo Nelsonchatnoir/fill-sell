@@ -1254,6 +1254,10 @@ async function processJob(rawJob, accessToken) {
   // pas de pré-check catégorie ni de formulaire de dépôt à ouvrir.
   if (job.action === "delete") return processDeleteJob(job, accessToken);
 
+  // Jobs de REPUBLICATION (É2, 2026-08-05) : machine à étapes persistée en
+  // base — voir processRepublishJob et son drapeau REPUBLISH_DRY_RUN.
+  if (job.action === "republish") return processRepublishJob(job, accessToken);
+
   console.log(`[background] Job ${job.id} → ${job.platform}`);
 
   // Hissé hors du try : sur canal coupé, le catch doit pouvoir interroger la
@@ -5912,6 +5916,206 @@ async function cancelPublishAfterDelete(accessToken, deleteJob) {
   } catch (e) {
     console.warn("[background] cancelPublishAfterDelete:", String(e?.message ?? e));
   }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// É2 REPUBLICATION VINTED (2026-08-05) — machine à étapes PERSISTÉE EN BASE.
+// platform_fields.republish_step : 'captured' → 'deleted' → 'recreated'.
+// Chaque transition est écrite AVANT le geste suivant : une interruption
+// (réseau, Chrome quitté, service worker tué) reprend exactement où elle
+// s'est arrêtée au prochain poll. Le job n'existe que si le RPC
+// spend_coins_and_republish a validé une capture verdict='valide' fraîche —
+// et on RE-vérifie la capture ici avant de recréer : double verrou.
+//
+// ⛔⛔ REPUBLISH_DRY_RUN — LE drapeau (décision Nico, É2) ⛔⛔
+// true  = AUCUNE suppression réelle, AUCUNE création : le job vérifie ses
+//         prérequis puis se clôt en 'dry_run_completed' (Pépite remboursée
+//         par le trigger republish_refund_on_terminal — un dry run ne se
+//         paie pas). C'est la VALEUR PAR DÉFAUT.
+// false = suppression puis recréation réelles.
+// LA BASCULE : éditer CETTE constante, rebuild (npm run build:extension),
+// recharger l'unpacked, et committer le changement — il n'existe AUCUN
+// autre chemin (pas de réglage UI, pas de chrome.storage, pas de valeur
+// par job) : rien d'activable par accident. Même doctrine que
+// DELETE_DRY_RUN en son temps (vinted.js, basculé le 12/07 sur décision).
+const REPUBLISH_DRY_RUN = true;
+
+// Espacement humain entre deux GESTES de republication (suppression OU
+// recréation), toutes annonces confondues : un humain qui republie 50
+// annonces ne les enchaîne pas en rafale. Combiné au poll (~2 min) et à
+// next_action_after (2-5 min entre suppression et recréation d'un même
+// article), le rythme réel est de quelques gestes par tranche de 5 minutes.
+const REPUBLISH_ESPACEMENT_MS = 2 * 60 * 1000;
+let dernierGesteRepublishAt = 0;
+
+async function processRepublishJob(job, accessToken) {
+  const pf = { ...(job.platform_fields ?? {}) };
+  const step = pf.republish_step ?? "captured";
+  console.log(`[background] Job ${job.id} → vinted (REPUBLISH, étape ${step}${REPUBLISH_DRY_RUN ? ", DRY RUN" : ""})`);
+
+  if (job.platform !== "vinted") {
+    const msg = `Republication non supportée sur ${job.platform} (Vinted seulement).`;
+    await updateJobStatus(accessToken, job.id, "failed", { error: msg });
+    return { status: "failed", error: msg };
+  }
+
+  // Espacement entre gestes + attente programmée suppression→recréation.
+  // 'skipped' laisse le job en pending : le prochain poll le reprendra.
+  if (Date.now() - dernierGesteRepublishAt < REPUBLISH_ESPACEMENT_MS) {
+    return { status: "skipped", error: "espacement entre gestes de republication" };
+  }
+  if (pf.next_action_after && Date.now() < Date.parse(pf.next_action_after)) {
+    return { status: "skipped", error: "attente humanisée avant recréation" };
+  }
+
+  // ── Étape 1 : SUPPRESSION ──────────────────────────────────────────────────
+  if (step === "captured") {
+    if (REPUBLISH_DRY_RUN) {
+      // Rien n'est touché ; le trigger serveur rembourse la Pépite.
+      pf.republish_dry_run = {
+        at: new Date().toISOString(),
+        note: "simulation : prérequis vérifiés, aucune suppression, aucune création",
+      };
+      await updateJobStatus(accessToken, job.id, "dry_run_completed", { platform_fields: pf, error: null });
+      return { status: "dry_run_completed" };
+    }
+    if (!job.listing_url) {
+      const msg = "Job republish sans listing_url : rien n'a été touché.";
+      await updateJobStatus(accessToken, job.id, "failed", { error: msg });
+      return { status: "failed", error: msg };
+    }
+    try {
+      pf.processing_since = new Date().toISOString();
+      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
+      const tabId = await getOrCreateWorkTab("vinted", job.listing_url);
+      const restore = await paintTab(tabId);
+      let result;
+      try {
+        result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
+      } finally {
+        await restore();
+      }
+      dernierGesteRepublishAt = Date.now();
+      if (!result?.success) {
+        // « Introuvable » peut vouloir dire « déjà supprimée » (leçon delete) :
+        // l'état réel de l'annonce tranche avant toute conclusion.
+        const { state } = await checkListingState(job.listing_url, "vinted").catch(() => ({ state: "unknown" }));
+        if (state !== "unavailable" && state !== "sold") {
+          // RIEN n'a été supprimé (deleteListing ne conclut jamais sans preuve) :
+          // needs_user honnête, l'annonce d'origine est intacte.
+          await updateJobStatus(accessToken, job.id, "needs_user", {
+            platform_fields: pf,
+            error: `Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : ${result?.error ?? "inconnu"}. Corrige puis relance depuis l'app.`,
+          });
+          return { status: "needsUser", error: result?.error };
+        }
+      }
+      // Supprimée (par nous, ou déjà absente). ÉTAPE ÉCRITE EN BASE avant tout
+      // autre geste + attente humanisée avant la recréation (2 à 5 min).
+      pf.republish_step = "deleted";
+      pf.deleted_at = new Date().toISOString();
+      pf.next_action_after = new Date(Date.now() + 120_000 + Math.floor(Math.random() * 180_000)).toISOString();
+      await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+      return { status: "retry", error: "annonce supprimée — recréation à la prochaine passe" };
+    } catch (e) {
+      // Doute (canal coupé pendant la suppression ?) → needs_user, jamais un
+      // silence : l'étape en base dit encore 'captured', la reprise re-sondera
+      // l'état réel de l'annonce avant d'agir.
+      await updateJobStatus(accessToken, job.id, "needs_user", {
+        platform_fields: pf,
+        error: `Republication interrompue pendant la suppression (${String(e?.message ?? e)}). Relance depuis l'app : l'état réel de l'annonce sera re-vérifié avant tout geste.`,
+      }).catch(() => {});
+      return { status: "needsUser", error: String(e?.message ?? e) };
+    }
+  }
+
+  // ── Étape 2 : RECRÉATION ───────────────────────────────────────────────────
+  if (step === "deleted") {
+    try {
+      // Double verrou : la capture est RELUE et revalidée — jamais de
+      // recréation sur parole. (Le RPC l'a déjà exigée à la création du job.)
+      const rows = await restRequest(
+        `vinted_republish_captures?id=eq.${Number(pf.capture_id)}&select=verdict,payload,libelles,photos_urls`,
+        accessToken,
+      );
+      const cap = rows?.[0];
+      if (!cap || cap.verdict !== "valide") {
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          platform_fields: pf,
+          error: "Annonce supprimée sur Vinted, capture introuvable ou invalide pour la recréation — tes données restent en base, contacte le support si ça persiste.",
+        });
+        return { status: "needsUser", error: "capture invalide à la recréation" };
+      }
+      pf.processing_since = new Date().toISOString();
+      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
+
+      // Job « comme un publish » : le handler éprouvé fait TOUT le travail —
+      // photos = NOS URLs re-hébergées, champs = libellés résolus à la capture.
+      const jobLike = {
+        id: job.id,
+        platform: "vinted",
+        action: "publish",
+        title: cap.payload?.titre ?? job.title ?? "",
+        description: cap.payload?.description ?? "",
+        price: cap.payload?.prix ?? job.price ?? null,
+        photo_option: "original",
+        photos: (cap.photos_urls ?? []).map((url, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url })),
+        inventaire_id: job.inventaire_id ?? null,
+        platform_fields: {
+          categoryPath: cap.libelles?.categoryPath ?? null,
+          etat: cap.libelles?.etat ?? null,
+          taille: cap.libelles?.taille ?? null,
+          marque: cap.libelles?.marque ?? null,
+          colors: cap.libelles?.couleurs ?? null,
+          packageSize: cap.libelles?.colis ?? null,
+        },
+      };
+
+      const handler = PLATFORM_HANDLERS.vinted;
+      const listingUrl = typeof handler.newListingUrl === "function" ? handler.newListingUrl(jobLike) : handler.newListingUrl;
+      const tabId = await getOrCreateWorkTab("vinted", listingUrl);
+      clearProbeCaptures(tabId);
+      await installNetworkProbe(tabId, "vinted");
+      let result;
+      try {
+        result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job: jobLike });
+      } catch (e) {
+        result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
+      }
+      dernierGesteRepublishAt = Date.now();
+
+      if (result?.success && result.listingUrl) {
+        pf.republish_step = "recreated";
+        pf.recreated_at = new Date().toISOString();
+        delete pf.next_action_after;
+        await updateJobStatus(accessToken, job.id, "published", {
+          listing_url: result.listingUrl, platform_fields: pf, error: null,
+        });
+        console.log(`[background] Republish ${job.id} : recréée → ${result.listingUrl}`);
+        return { status: "published", listingUrl: result.listingUrl };
+      }
+
+      // Échec APRÈS suppression : JAMAIS un failed sec (le trigger
+      // rembourserait et abandonnerait un article dont l'annonce n'existe
+      // plus). needs_user honnête : tout est au chaud, la relance depuis
+      // l'app repart directement à la recréation (l'étape en base le dit).
+      await updateJobStatus(accessToken, job.id, "needs_user", {
+        platform_fields: pf,
+        error: `L'annonce d'origine a été supprimée sur Vinted et la recréation n'a pas encore abouti (${result?.error ?? "raison inconnue"}). Rien n'est perdu : photos et fiche sont au chaud, relance depuis l'app — la reprise repart directement à la recréation.`,
+      });
+      return { status: "needsUser", error: result?.error };
+    } catch (e) {
+      await updateJobStatus(accessToken, job.id, "needs_user", {
+        platform_fields: pf,
+        error: `Recréation interrompue (${String(e?.message ?? e)}). Rien n'est perdu — relance depuis l'app, la reprise repart directement à la recréation.`,
+      }).catch(() => {});
+      return { status: "needsUser", error: String(e?.message ?? e) };
+    }
+  }
+
+  const msg = `Étape de republication inconnue : ${step}`;
+  await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg }).catch(() => {});
+  return { status: "needsUser", error: msg };
 }
 
 async function processDeleteJob(job, accessToken) {

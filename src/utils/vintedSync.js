@@ -127,7 +127,14 @@ export function demanderSyncDressing() {
 // relayé par fillsell-auth.js) : un seul article, pas de run à suivre en base.
 // GRATUIT : aucune Pépite — c'est la publication qui est payante, pas la
 // lecture.
-export const DETAIL_VERSION_MIN = '0.5.1';
+// ── Règle de versionnage (Nico, 2026-08-05) ─────────────────────────────────
+// L'extension RESTE en 0.5.0 : c'est CE numéro qui sera empaqueté et soumis
+// au CWS. Les commits ne bumpent plus la version — EXTENSION_LAST_COMMIT
+// (scripts/build-id.mjs) identifie un build pour les tests unpacked. Le
+// numéro ne bouge que sur décision de Nico (nouvelle soumission). Les gardes
+// *_VERSION_MIN ci-dessous sont donc TOUTES à 0.5.0 tant qu'une seule 0.5.0
+// existe — une garde plus haute refuserait une capacité pourtant présente.
+export const DETAIL_VERSION_MIN = '0.5.0';
 
 export function demanderDetailArticleVinted(vintedItemId) {
   window.postMessage({ __fillsellCmd: 'FETCH_VINTED_ITEM', vintedItemId: String(vintedItemId) }, window.location.origin);
@@ -152,7 +159,7 @@ export function ecouterDetailArticleVinted(onDetail) {
 // Tant que le re-hébergement des photos n'est pas en place (edge function à
 // valider), TOUTE capture est 'incomplet' par construction
 // (champs_manquants contient 'photos_rehebergees') : c'est voulu.
-export const CAPTURE_VERSION_MIN = '0.5.2';
+export const CAPTURE_VERSION_MIN = '0.5.0';
 
 export function demanderCaptureArticleVinted(vintedItemId) {
   window.postMessage({ __fillsellCmd: 'CAPTURE_VINTED_ITEM', vintedItemId: String(vintedItemId) }, window.location.origin);
@@ -225,6 +232,33 @@ export async function capturerEtPersisterArticleVinted(supabase, { userId, inven
   });
   if (insErr) return { success: false, error: `persistance : ${insErr.message}` };
   return { success: true, verdict, champs_manquants: manquants, photos_urls: photosUrls };
+}
+
+// ── É2 : republier une annonce Vinted (2026-08-05) ──────────────────────────
+// Capture fraîche → persistance → RPC spend_coins_and_republish (1 Pépite,
+// débitée à la capture réussie ; remboursée automatiquement si la recréation
+// n'aboutit jamais — trigger serveur). Le RPC REFUSE sans capture
+// verdict='valide' de moins de 60 min : une capture incomplète ne peut
+// JAMAIS mener à une suppression. L'extension exécute ensuite la machine à
+// étapes (supprimer → attendre → recréer), en DRY RUN tant que Nico n'a pas
+// basculé REPUBLISH_DRY_RUN (background.js). Pas d'UI ici : le bouton
+// « Republier » (É5) appellera cette fonction telle quelle.
+export async function republierArticleVinted(supabase, { userId, inventaireId, vintedItemId }) {
+  const capture = await capturerEtPersisterArticleVinted(supabase, { userId, inventaireId, vintedItemId });
+  if (!capture.success) return capture;
+  if (capture.verdict !== 'valide') {
+    return {
+      success: false, verdict: capture.verdict, champs_manquants: capture.champs_manquants,
+      error: "Capture incomplète — republication refusée AVANT toute suppression (rien n'a été touché).",
+    };
+  }
+  const { data, error } = await supabase.rpc('spend_coins_and_republish', {
+    p_inventaire_id: inventaireId ?? null,
+    p_vinted_item_id: String(vintedItemId),
+  });
+  if (error) return { success: false, error: error.message };
+  if (data?.allowed === false) return { success: false, ...data };
+  return { success: true, job_id: data?.job_id ?? null, price: data?.price ?? null };
 }
 
 const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at';
