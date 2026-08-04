@@ -168,6 +168,65 @@ export function ecouterCaptureArticleVinted(onCapture) {
   return () => window.removeEventListener('message', onMessage);
 }
 
+// Orchestration complète d'É1 (2026-08-05, infra validée) : capture par
+// l'extension → re-hébergement des photos (edge republish-capture-photos,
+// hôtes Vinted seulement, ≤20, 10 Mo/photo, timeout 15 s) → INSERT immuable
+// dans vinted_republish_captures avec le VERDICT FINAL. Les échecs photo ne
+// font pas tomber la capture : ils rejoignent champs_manquants et le verdict
+// reste 'incomplet' — la garde anti-perte (É2) fera le reste. Pas d'UI ici :
+// le bouton « Republier » (É5) appellera cette fonction telle quelle.
+export async function capturerEtPersisterArticleVinted(supabase, { userId, inventaireId, vintedItemId }) {
+  const id = String(vintedItemId ?? '').trim();
+  if (!id) return { success: false, error: "vinted_item_id manquant" };
+
+  // 1. Capture par l'extension (aller-retour, timeout local : une extension
+  // absente/muette ne doit pas laisser une promesse pendante à vie).
+  const capture = await new Promise((resolve) => {
+    const timer = setTimeout(() => { stop(); resolve({ success: false, error: "extension muette (30 s)" }); }, 30_000);
+    const stop = ecouterCaptureArticleVinted((rep) => {
+      if (String(rep?.vintedItemId ?? '') !== id) return;
+      clearTimeout(timer); stop(); resolve(rep);
+    });
+    demanderCaptureArticleVinted(id);
+  });
+  if (!capture.success) return capture;
+
+  // 2. Re-hébergement des photos — remplace le marqueur 'photos_rehebergees'
+  // posé par l'extension par le résultat RÉEL, échec par échec.
+  const manquants = (capture.champs_manquants ?? []).filter((c) => !c.startsWith('photos_rehebergees'));
+  let photosUrls = [];
+  if (capture.photos_cdn?.length) {
+    try {
+      const { data, error } = await supabase.functions.invoke('republish-capture-photos', {
+        body: { vinted_item_id: id, urls: capture.photos_cdn },
+      });
+      if (error) throw new Error(error.message ?? 'appel en échec');
+      photosUrls = data?.photos ?? [];
+      for (const e of data?.echecs ?? []) manquants.push(`photo non re-hébergée (${e.raison})`);
+      if (!photosUrls.length) manquants.push('photos_rehebergees (aucune photo re-hébergée)');
+    } catch (e) {
+      manquants.push(`photos_rehebergees (${String(e?.message ?? e)})`);
+    }
+  }
+
+  // 3. Persistance immuable, verdict final. La capture la plus récente fait foi.
+  const verdict = manquants.length ? 'incomplet' : 'valide';
+  const { error: insErr } = await supabase.from('vinted_republish_captures').insert({
+    user_id: userId,
+    inventaire_id: inventaireId ?? null,
+    vinted_item_id: id,
+    verdict,
+    champs_manquants: manquants,
+    payload: { natif: capture.natif ?? null, dto_public: capture.dto_public ?? null,
+               titre: capture.titre ?? null, prix: capture.prix ?? null,
+               description: capture.description ?? null, photos_cdn: capture.photos_cdn ?? [] },
+    libelles: capture.libelles ?? null,
+    photos_urls: photosUrls,
+  });
+  if (insErr) return { success: false, error: `persistance : ${insErr.message}` };
+  return { success: true, verdict, champs_manquants: manquants, photos_urls: photosUrls };
+}
+
 const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at';
 
 // RLS filtre déjà sur auth.uid() ; le `.eq('user_id')` explicite reste pour que
