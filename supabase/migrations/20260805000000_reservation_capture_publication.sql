@@ -32,6 +32,19 @@
 -- concerné. cron.schedule est GARDÉ par une vérification d'existence — jamais
 -- de job planifié en double (règle CLAUDE.md).
 
+-- 0. coin_ledger accepte le kind 'release_publish'. La contrainte d'origine
+-- (coins_foundations) est une liste FERMÉE — sans cet élargissement, le
+-- PREMIER job en échec plantait le règlement (23514, attrapé par le test
+-- transactionnel auto-annulé du 04/08 AVANT tout utilisateur). Idempotent :
+-- drop + add sous le même nom.
+ALTER TABLE public.coin_ledger DROP CONSTRAINT IF EXISTS coin_ledger_kind_check;
+ALTER TABLE public.coin_ledger ADD CONSTRAINT coin_ledger_kind_check
+  CHECK (kind = ANY (ARRAY[
+    'grant_monthly'::text, 'grant_upgrade'::text, 'purchase'::text,
+    'spend_publish'::text, 'spend_lens'::text, 'refund'::text, 'admin'::text,
+    'release_publish'::text
+  ]));
+
 -- 1. Colonne de solde réservé — affichée « dont X en attente de publication ».
 ALTER TABLE public.coin_wallets
   ADD COLUMN IF NOT EXISTS reserved_balance integer NOT NULL DEFAULT 0;
