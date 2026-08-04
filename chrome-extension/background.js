@@ -4870,17 +4870,92 @@ async function fetchVintedItemDetail(vintedItemId) {
 async function captureVintedItem(vintedItemId) {
   const id = String(vintedItemId ?? "").trim();
   if (!id) return { success: false, error: "id d'article Vinted manquant" };
-  return await withJobFlowLock("capture-vinted-item", async () => {
-    let tabId;
+  return await withJobFlowLock("capture-vinted-item", () => captureVintedItemUnlocked(id));
+}
+
+// ⚠️ SANS VERROU — à n'appeler QUE depuis un contexte qui le détient déjà.
+// C'est le cas de processRepublishJob, qui tourne dans le poll, lui-même sous
+// withJobFlowLock : réclamer le verrou ici serait un auto-blocage (le même
+// piège que la commande de sync distante, cf. traiterCommandeSyncDistante).
+async function captureVintedItemUnlocked(vintedItemId) {
+  const id = String(vintedItemId ?? "").trim();
+  if (!id) return { success: false, error: "id d'article Vinted manquant" };
+  let tabId;
+  try {
+    tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+  } catch (e) {
+    return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
+  }
+  const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_CAPTURE", vintedItemId: id })
+    .catch((e) => ({ success: false, error: `sonde injoignable : ${String(e?.message ?? e)}` }));
+  return res ?? { success: false, error: "réponse vide du content script" };
+}
+
+// ── Capture + re-hébergement + persistance, CÔTÉ EXTENSION (2026-08-05) ──────
+// Reprend à l'identique ce que faisait capturerEtPersisterArticleVinted côté
+// site (src/utils/vintedSync.js), y compris l'injection du prix ajusté dans
+// payload.prix et la conservation de payload.prix_origine. Le déplacement est
+// TOUT l'objet du chantier : capturer ici, c'est capturer quelques secondes
+// avant de supprimer — au lieu de plusieurs heures avant, au clic.
+async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, prixRepublication, userId, accessToken }) {
+  const id = String(vintedItemId ?? "").trim();
+  const capture = await captureVintedItemUnlocked(id);
+  if (!capture?.success) {
+    return { success: false, error: capture?.error ?? "capture en échec" };
+  }
+
+  // Re-hébergement des photos : remplace le marqueur 'photos_rehebergees' posé
+  // par la capture par le résultat RÉEL, échec par échec. Un échec photo ne
+  // fait pas tomber la capture — il rejoint champs_manquants et le verdict
+  // devient 'incomplet', ce qui interdit toute suppression plus loin.
+  const manquants = (capture.champs_manquants ?? []).filter((c) => !String(c).startsWith("photos_rehebergees"));
+  let photosUrls = [];
+  if (capture.photos_cdn?.length) {
     try {
-      tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+      const rep = await callEdgeFunction("republish-capture-photos", accessToken, {
+        vinted_item_id: id, urls: capture.photos_cdn,
+      });
+      photosUrls = rep?.photos ?? [];
+      for (const e of rep?.echecs ?? []) manquants.push(`photo non re-hébergée (${e.raison})`);
+      if (!photosUrls.length) manquants.push("photos_rehebergees (aucune photo re-hébergée)");
     } catch (e) {
-      return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
+      manquants.push(`photos_rehebergees (${String(e?.message ?? e)})`);
     }
-    const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_CAPTURE", vintedItemId: id })
-      .catch((e) => ({ success: false, error: `sonde injoignable : ${String(e?.message ?? e)}` }));
-    return res ?? { success: false, error: "réponse vide du content script" };
-  });
+  }
+
+  const prix = Number(prixRepublication);
+  const prixAjuste = Number.isFinite(prix) && prix >= 1;
+  const verdict = manquants.length ? "incomplet" : "valide";
+  let ligne;
+  try {
+    ligne = await restRequest("vinted_republish_captures", accessToken, {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        user_id: userId,
+        inventaire_id: inventaireId ?? null,
+        vinted_item_id: id,
+        verdict,
+        champs_manquants: manquants,
+        payload: {
+          natif: capture.natif ?? null,
+          dto_public: capture.dto_public ?? null,
+          titre: capture.titre ?? null,
+          prix: prixAjuste ? prix : (capture.prix ?? null),
+          ...(prixAjuste ? { prix_origine: capture.prix ?? null } : {}),
+          description: capture.description ?? null,
+          photos_cdn: capture.photos_cdn ?? [],
+        },
+        libelles: capture.libelles ?? null,
+        photos_urls: photosUrls,
+      }),
+    });
+  } catch (e) {
+    return { success: false, error: `persistance : ${String(e?.message ?? e)}` };
+  }
+  const captureId = Array.isArray(ligne) && ligne.length ? ligne[0].id : null;
+  if (!captureId) return { success: false, error: "persistance : identifiant de capture non rendu" };
+  return { success: true, verdict, champs_manquants: manquants, capture_id: captureId, titre: capture.titre ?? null };
 }
 
 // ── Commande de sync venue du mobile (2026-08-05) ────────────────────────────
@@ -6116,6 +6191,58 @@ async function processRepublishJob(job, accessToken) {
   }
   if (pf.next_action_after && Date.now() < Date.parse(pf.next_action_after)) {
     return { status: "skipped", error: "attente humanisée avant recréation" };
+  }
+
+  // ── Étape 0 : CAPTURE (2026-08-05) ─────────────────────────────────────────
+  // Le clic ne capture plus rien : il pose un job 'a_capturer'. On capture ICI,
+  // quelques secondes avant d'agir, ce qui rend la republication commandable
+  // depuis un téléphone SANS affaiblir quoi que ce soit — au contraire, la
+  // capture ne peut plus être périmée au moment de supprimer.
+  // On ne s'enchaîne PAS sur la suppression dans le même passage : le job
+  // repasse 'pending' en étape 'captured' et le poll suivant supprimera. C'est
+  // ce qui fait respecter l'espacement entre gestes sans cas particulier, et
+  // ça laisse la borne de fraîcheur de 24 h vérifier une capture de 2 minutes.
+  if (step === "a_capturer") {
+    const userId = decodeJwtSub(accessToken);
+    if (!userId) {
+      const msg = "Session illisible — rien n'a été touché, ton annonce est intacte.";
+      await updateJobStatus(accessToken, job.id, "failed", { error: msg });
+      return { status: "failed", error: msg };
+    }
+    const cap = await capturerEtPersisterDepuisExtension({
+      vintedItemId: pf.vinted_item_id,
+      inventaireId: job.inventaire_id ?? null,
+      prixRepublication: pf.prix_republication ?? null,
+      userId, accessToken,
+    });
+
+    // ⚠️ 'failed' et NON 'needs_user' (arbitrage Nico) : rien n'a été touché,
+    // l'annonce est intacte, il n'y a RIEN à reprendre — et seul un statut
+    // terminal déclenche republish_refund_on_terminal. Un job laissé en
+    // needs_user garderait la Pépite d'un service jamais rendu, ce que
+    // l'article 5 des CGV interdit.
+    if (!cap.success) {
+      const msg = `Republication annulée avant toute suppression : ${cap.error}. Ton annonce est intacte, la Pépite est rendue.`;
+      await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
+      return { status: "failed", error: msg };
+    }
+    if (cap.verdict !== "valide") {
+      const detail = (cap.champs_manquants ?? []).slice(0, 3).join(" ; ") || "champs manquants";
+      const msg = `Capture incomplète (${detail}) — republication annulée AVANT toute suppression. Ton annonce est intacte, la Pépite est rendue.`;
+      await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
+      return { status: "failed", error: msg };
+    }
+
+    pf.capture_id = cap.capture_id;
+    pf.republish_step = "captured";
+    // Le titre du job reste celui de l'inventaire, posé par la RPC : c'est de
+    // l'affichage (popup, cartes), et update-job-status a un contrat de champs
+    // qui lui est propre — on ne lui passe pas un `title` non prévu pour du
+    // cosmétique. Le titre qui compte pour recréer l'annonce est celui de la
+    // CAPTURE, en base, qui est bien le titre réel relevé sur Vinted.
+    await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+    console.log(`[background] Job ${job.id} → capture ${cap.capture_id} valide, suppression au prochain passage`);
+    return { status: "skipped", error: "capture faite — suppression au prochain passage" };
   }
 
   // ── Étape 1 : SUPPRESSION ──────────────────────────────────────────────────

@@ -248,156 +248,66 @@ export function ecouterDetailArticleVinted(onDetail) {
 // (champs_manquants contient 'photos_rehebergees') : c'est voulu.
 export const CAPTURE_VERSION_MIN = '0.5.0';
 
-export function demanderCaptureArticleVinted(vintedItemId) {
-  window.postMessage({ __fillsellCmd: 'CAPTURE_VINTED_ITEM', vintedItemId: String(vintedItemId) }, window.location.origin);
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// ⛔ LA CAPTURE NE SE FAIT PLUS ICI (2026-08-05) — NE PAS LA REMETTRE
+// ═══════════════════════════════════════════════════════════════════════════
+// demanderCaptureArticleVinted / ecouterCaptureArticleVinted /
+// capturerEtPersisterArticleVinted ont été SUPPRIMÉES de ce fichier.
+//
+// Elles capturaient via postMessage à l'extension DU NAVIGATEUR COURANT :
+// depuis un téléphone personne ne répond, on attendait 30 s et on affichait
+// « extension muette (30 s) ». La republication était desktop-only de fait,
+// sans que rien ne l'annonce — le même piège que le bouton de sync, découvert
+// deux fois.
+//
+// La capture est désormais faite par l'EXTENSION au moment où elle ramasse le
+// job (background.js, étape 'a_capturer' de processRepublishJob), quelques
+// secondes avant de supprimer. Bénéfice au passage : une capture ne peut plus
+// être périmée à l'instant d'agir.
+//
+// Si un jour tu as besoin d'une capture depuis le site : ne rétablis pas ce
+// chemin, passe par la file. Le canal CAPTURE_VINTED_ITEM reste en place côté
+// extension, mais plus aucun code du site ne doit l'emprunter.
 
-// Pose l'écoute des réponses de capture. Retourne le démontage.
-export function ecouterCaptureArticleVinted(onCapture) {
-  const onMessage = (e) => {
-    if (e.source !== window || !e.data?.__fillsellItemCapture) return;
-    onCapture(e.data.__fillsellItemCapture);
-  };
-  window.addEventListener('message', onMessage);
-  return () => window.removeEventListener('message', onMessage);
-}
-
-// Orchestration complète d'É1 (2026-08-05, infra validée) : capture par
-// l'extension → re-hébergement des photos (edge republish-capture-photos,
-// hôtes Vinted seulement, ≤20, 10 Mo/photo, timeout 15 s) → INSERT immuable
-// dans vinted_republish_captures avec le VERDICT FINAL. Les échecs photo ne
-// font pas tomber la capture : ils rejoignent champs_manquants et le verdict
-// reste 'incomplet' — la garde anti-perte (É2) fera le reste. Pas d'UI ici :
-// le bouton « Republier » (É5) appellera cette fonction telle quelle.
-// prixRepublication (2026-08-05, feuille de prix validée) : le prix AJUSTÉ
-// entre DANS la capture (payload.prix) — jamais appliqué après coup. Le prix
-// relevé sur l'annonce est conservé en payload.prix_origine. Tout le reste de
-// la capture reste « à l'identique ».
-export async function capturerEtPersisterArticleVinted(supabase, { userId, inventaireId, vintedItemId, prixRepublication = null }) {
-  const id = String(vintedItemId ?? '').trim();
-  if (!id) return { success: false, error: "vinted_item_id manquant" };
-
-  // 1. Capture par l'extension (aller-retour, timeout local : une extension
-  // absente/muette ne doit pas laisser une promesse pendante à vie).
-  const capture = await new Promise((resolve) => {
-    const timer = setTimeout(() => { stop(); resolve({ success: false, error: "extension muette (30 s)" }); }, 30_000);
-    const stop = ecouterCaptureArticleVinted((rep) => {
-      if (String(rep?.vintedItemId ?? '') !== id) return;
-      clearTimeout(timer); stop(); resolve(rep);
-    });
-    demanderCaptureArticleVinted(id);
-  });
-  if (!capture.success) return capture;
-
-  // 2. Re-hébergement des photos — remplace le marqueur 'photos_rehebergees'
-  // posé par l'extension par le résultat RÉEL, échec par échec.
-  const manquants = (capture.champs_manquants ?? []).filter((c) => !c.startsWith('photos_rehebergees'));
-  let photosUrls = [];
-  if (capture.photos_cdn?.length) {
-    try {
-      const { data, error } = await supabase.functions.invoke('republish-capture-photos', {
-        body: { vinted_item_id: id, urls: capture.photos_cdn },
-      });
-      if (error) throw new Error(error.message ?? 'appel en échec');
-      photosUrls = data?.photos ?? [];
-      for (const e of data?.echecs ?? []) manquants.push(`photo non re-hébergée (${e.raison})`);
-      if (!photosUrls.length) manquants.push('photos_rehebergees (aucune photo re-hébergée)');
-    } catch (e) {
-      manquants.push(`photos_rehebergees (${String(e?.message ?? e)})`);
-    }
-  }
-
-  // 3. Persistance immuable, verdict final. La capture la plus récente fait
-  // foi ; l'id inséré est rendu (la relance d'un republish le repointe).
-  const verdict = manquants.length ? 'incomplet' : 'valide';
-  const { data: insData, error: insErr } = await supabase.from('vinted_republish_captures').insert({
-    user_id: userId,
-    inventaire_id: inventaireId ?? null,
-    vinted_item_id: id,
-    verdict,
-    champs_manquants: manquants,
-    payload: { natif: capture.natif ?? null, dto_public: capture.dto_public ?? null,
-               titre: capture.titre ?? null,
-               prix: Number.isFinite(Number(prixRepublication)) && Number(prixRepublication) >= 1
-                 ? Number(prixRepublication) : (capture.prix ?? null),
-               ...(Number.isFinite(Number(prixRepublication)) && Number(prixRepublication) >= 1
-                 ? { prix_origine: capture.prix ?? null } : {}),
-               description: capture.description ?? null, photos_cdn: capture.photos_cdn ?? [] },
-    libelles: capture.libelles ?? null,
-    photos_urls: photosUrls,
-  }).select('id').single();
-  if (insErr) return { success: false, error: `persistance : ${insErr.message}` };
-  return { success: true, verdict, champs_manquants: manquants, photos_urls: photosUrls, capture_id: insData?.id ?? null };
-}
-
-// ── É2 : republier une annonce Vinted (2026-08-05) ──────────────────────────
-// Capture fraîche → persistance → RPC spend_coins_and_republish (1 Pépite,
-// débitée à la capture réussie ; remboursée automatiquement si la recréation
-// n'aboutit jamais — trigger serveur). Le RPC REFUSE sans capture
-// verdict='valide' de moins de 60 min : une capture incomplète ne peut
-// JAMAIS mener à une suppression. L'extension exécute ensuite la machine à
-// étapes (supprimer → attendre → recréer), en DRY RUN tant que Nico n'a pas
-// basculé REPUBLISH_DRY_RUN (background.js). Pas d'UI ici : le bouton
-// « Republier » (É5) appellera cette fonction telle quelle.
-export async function republierArticleVinted(supabase, { userId, inventaireId, vintedItemId, prixRepublication = null }) {
-  const capture = await capturerEtPersisterArticleVinted(supabase, { userId, inventaireId, vintedItemId, prixRepublication });
-  if (!capture.success) return capture;
-  if (capture.verdict !== 'valide') {
-    return {
-      success: false, verdict: capture.verdict, champs_manquants: capture.champs_manquants,
-      error: "Capture incomplète — republication refusée AVANT toute suppression (rien n'a été touché).",
-    };
-  }
+// ── Republier une annonce Vinted (refondu 2026-08-05) ───────────────────────
+// UN SEUL appel : la RPC pose le job 'a_capturer' et débite la Pépite (Free
+// seulement — Premium/Pro/comped à 0). Aucune capture ici : c'est l'extension
+// qui capture au moment où elle ramasse le job, quelques secondes avant de
+// supprimer. Conséquence directe : ce bouton marche depuis un TÉLÉPHONE, et
+// une capture ne peut plus être périmée à l'instant d'agir.
+// Le prix ajusté voyage dans platform_fields.prix_republication entre le clic
+// et l'exécution ; l'extension l'injecte dans payload.prix de la capture,
+// exactement comme le site le faisait, prix_origine compris.
+export async function republierArticleVinted(supabase, { inventaireId, vintedItemId, prixRepublication = null }) {
+  const prix = Number(prixRepublication);
   const { data, error } = await supabase.rpc('spend_coins_and_republish', {
     p_inventaire_id: inventaireId ?? null,
     p_vinted_item_id: String(vintedItemId),
+    p_source: 'manuel',
+    p_prix_republication: Number.isFinite(prix) && prix >= 1 ? prix : null,
   });
   if (error) return { success: false, error: error.message };
   if (data?.allowed === false) return { success: false, ...data };
   return { success: true, job_id: data?.job_id ?? null, price: data?.price ?? null };
 }
 
-// ── É5 : relancer un republish en needs_user (2026-08-05) ───────────────────
-// LE point structurel signalé par Nico : la relance RECAPTURE D'ABORD — le
-// mini-éditeur générique re-pend sans recapturer, ce qui rejouerait la
-// péremption à l'infini. Deux cas, par l'étape EN BASE :
-//   · 'captured' (rien n'a été supprimé) : capture FRAÎCHE obligatoire, le
-//     job est repointé dessus (capture_id) puis re-pend. Le compteur
-//     recaptures_perimees est CONSERVÉ (il ne se remet à zéro qu'à une
-//     republication aboutie — côté extension).
-//   · 'deleted' (annonce déjà supprimée) : PAS de recapture (l'annonce
-//     n'existe plus, la capture en base est la seule source) — simple
-//     re-pend, la reprise repart directement à la recréation.
-export async function relancerRepublishVinted(supabase, { userId, job }) {
-  const pf = job?.platform_fields ?? {};
-  const item = pf.vinted_item_id;
-  if (!job?.id || !item) return { success: false, error: 'job de republication illisible' };
-
-  if ((pf.republish_step ?? 'captured') === 'deleted') {
-    const { data, error } = await supabase.from('cross_post_jobs')
-      .update({ status: 'pending', error: null })
-      .eq('id', job.id).select('id');
-    if (error || !data?.length) return { success: false, error: error?.message ?? 'relance non écrite (RLS ?)' };
-    return { success: true, recapture: false };
-  }
-
-  const capture = await capturerEtPersisterArticleVinted(supabase, {
-    userId, inventaireId: job.inventaire_id ?? null, vintedItemId: item,
-  });
-  if (!capture.success) return capture;
-  if (capture.verdict !== 'valide' || !capture.capture_id) {
-    return {
-      success: false, verdict: capture.verdict, champs_manquants: capture.champs_manquants,
-      error: 'Nouvelle capture incomplète — relance refusée, rien n\'a été touché.',
-    };
-  }
-  const pfNext = { ...pf, capture_id: capture.capture_id, republish_step: 'captured' };
-  delete pfNext.next_action_after;
-  const { data, error } = await supabase.from('cross_post_jobs')
-    .update({ status: 'pending', error: null, platform_fields: pfNext })
-    .eq('id', job.id).select('id');
-  if (error || !data?.length) return { success: false, error: error?.message ?? 'relance non écrite (RLS ?)' };
-  return { success: true, recapture: true };
+// ── Relancer un republish arrêté (refondu 2026-08-05) ───────────────────────
+// La relance RECAPTURAIT depuis le navigateur courant quand l'étape était
+// 'captured' : elle marchait donc sur un ordinateur et pas sur un téléphone,
+// alors que la branche 'deleted' (simple re-pend) marchait partout. Le bouton
+// « Relancer » fonctionnait ou non selon l'étape où le job s'était arrêté,
+// sans que rien ne l'annonce.
+// Désormais UNE seule RPC, sans capture, quel que soit le support :
+//   · annonce encore en ligne → le job repart à l'étape 'a_capturer' et
+//     l'extension recapturera juste avant d'agir ;
+//   · annonce DÉJÀ supprimée ('deleted') → pas de recapture possible, la
+//     capture en base est la seule source : reprise directe à la recréation.
+export async function relancerRepublishVinted(supabase, { job }) {
+  if (!job?.id) return { success: false, error: 'job de republication illisible' };
+  const { data, error } = await supabase.rpc('relancer_republish', { p_job_id: job.id });
+  if (error) return { success: false, error: error.message };
+  if (data?.ok === false) return { success: false, reason: data.reason, error: data.reason };
+  return { success: true, recapture: (data?.republish_step ?? 'a_capturer') !== 'deleted' };
 }
 
 const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at';

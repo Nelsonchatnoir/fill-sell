@@ -1817,7 +1817,24 @@ const StockTab = memo(function StockTab({
   // ── É5 Republication Vinted (2026-08-05, masquée hors bêta) ───────────────
   // Prix lu en config (jamais en dur) ; libellé sans prix tant que la config
   // n'a pas répondu — jamais un montant faux.
-  const republishActif = republishVisiblePour(user?.email) && !isNative;
+  // Capacité EXTENSION DU COMPTE (2026-08-05) — plus « y a-t-il une extension
+  // dans ce navigateur ». La republication ne capture plus au clic : elle pose
+  // un job que le Chrome de l'utilisateur ramassera. Elle est donc ouverte au
+  // téléphone, web mobile ET application native, dès lors que le COMPTE a une
+  // extension capable. `{inconnu:true}` = migration pas encore appliquée → on
+  // retombe sur le comportement d'avant (desktop seulement).
+  const surTelephoneStock = isNative || isMobile;
+  const [capaciteExt, setCapaciteExt] = useState(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    let annule = false;
+    lireCapaciteSyncCompte(user.id)
+      .then((c) => { if (!annule) setCapaciteExt(c); })
+      .catch(() => { if (!annule) setCapaciteExt({ inconnu: true }); });
+    return () => { annule = true; };
+  }, [user?.id]);
+  const republishActif = republishVisiblePour(user?.email)
+    && (capaciteExt?.inconnu === false ? capaciteExt.capable === true : !isNative);
   const [republishPrice, setRepublishPrice] = useState(null);
   const [repubBusy, setRepubBusy] = useState(null);          // inventaire_id en cours
   const [repubMsgs, setRepubMsgs] = useState({});            // inventaire_id → {ton, texte}
@@ -1843,14 +1860,16 @@ const StockTab = memo(function StockTab({
     setRepubMsgs(m => ({ ...m, [item.id]: null }));
     try {
       const res = await republierArticleVinted(supabase, {
-        userId: user.id, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication,
+        inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication,
       });
       if (!res.success) {
         const raisons = {
-          capture_incomplete: lang === 'fr'
-            ? `Capture incomplète (${(res.champs_manquants ?? []).slice(0, 2).join(' ; ') || 'champs manquants'}) — rien n'a été touché.`
-            : `Incomplete capture (${(res.champs_manquants ?? []).slice(0, 2).join('; ') || 'missing fields'}) — nothing was touched.`,
-          capture_perimee: lang === 'fr' ? 'Capture expirée — réessaie, elle sera refaite.' : 'Capture expired — try again, it will be redone.',
+          // capture_* ont disparu du RPC : la capture ne se fait plus au clic.
+          // Un échec de capture se produit désormais à l'exécution et clôt le
+          // job en 'failed' avec un message écrit par l'extension.
+          extension_trop_ancienne: lang === 'fr'
+            ? "L'extension de ton ordinateur doit passer en 0.5.0 ou plus récente pour republier."
+            : 'The extension on your computer needs version 0.5.0 or newer to repost.',
           republish_en_cours: lang === 'fr' ? 'Une republication est déjà en cours sur cet article.' : 'A repost is already running for this item.',
           cadence_24h: lang === 'fr' ? 'Déjà republié il y a moins de 24 h — une republication par article et par jour.' : 'Already reposted less than 24 h ago — one repost per item per day.',
           insufficient_coins: lang === 'fr' ? `Il manque des Pépites (${res.price ?? 1} nécessaire).` : `Not enough Nuggets (${res.price ?? 1} needed).`,
@@ -1866,12 +1885,18 @@ const StockTab = memo(function StockTab({
         [item.id]: [...(prev[item.id] ?? []), {
           id: `optimistic-repub-${item.id}-${now}`, inventaire_id: item.id, platform: 'vinted',
           action: 'republish', status: 'pending', error: null, created_at: now, listing_url: null, title: item.title,
-          platform_fields: { republish_step: 'captured', vinted_item_id: String(item.vinted_item_id) },
+          platform_fields: { republish_step: 'a_capturer', vinted_item_id: String(item.vinted_item_id) },
         }],
       }));
-      setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'vert', texte: lang === 'fr'
-        ? 'Republication en file — laisse Chrome ouvert quelques minutes, elle supprime puis recrée l\'annonce à l\'identique.'
-        : 'Repost queued — keep Chrome open a few minutes; it deletes then recreates the listing identically.' } }));
+      // Le message dépend du support : sur un téléphone, « laisse Chrome
+      // ouvert » n'a aucun sens — c'est l'ordinateur qui exécutera.
+      setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'vert', texte: surTelephoneStock
+        ? (lang === 'fr'
+            ? "Republication en file — elle partira à la prochaine ouverture de Chrome sur ton ordinateur, qui supprimera puis recréera l'annonce à l'identique."
+            : 'Repost queued — it will run the next time you open Chrome on your computer, which deletes then recreates the listing identically.')
+        : (lang === 'fr'
+            ? 'Republication en file — laisse Chrome ouvert quelques minutes, elle supprime puis recrée l\'annonce à l\'identique.'
+            : 'Repost queued — keep Chrome open a few minutes; it deletes then recreates the listing identically.') } }));
     } finally {
       setRepubBusy(null);
     }
@@ -1917,7 +1942,7 @@ const StockTab = memo(function StockTab({
       const { item, prix } = cibles[i];
       try {
         const res = await republierArticleVinted(supabase, {
-          userId: user.id, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prix,
+          inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prix,
         });
         if (res.success) {
           const now = new Date().toISOString();
@@ -1926,7 +1951,7 @@ const StockTab = memo(function StockTab({
             [item.id]: [...(prev[item.id] ?? []), {
               id: `optimistic-repub-${item.id}-${now}`, inventaire_id: item.id, platform: 'vinted',
               action: 'republish', status: 'pending', error: null, created_at: now, listing_url: null, title: item.title,
-              platform_fields: { republish_step: 'captured', vinted_item_id: String(item.vinted_item_id) },
+              platform_fields: { republish_step: 'a_capturer', vinted_item_id: String(item.vinted_item_id) },
             }],
           }));
         } else {
@@ -1945,7 +1970,7 @@ const StockTab = memo(function StockTab({
     setRepubBusy(item.id);
     setRepubMsgs(m => ({ ...m, [item.id]: null }));
     try {
-      const res = await relancerRepublishVinted(supabase, { userId: user.id, job });
+      const res = await relancerRepublishVinted(supabase, { job });
       if (!res.success) {
         setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: res.error ?? (lang === 'fr' ? 'Relance impossible.' : 'Relaunch failed.') } }));
         return;
@@ -1954,9 +1979,14 @@ const StockTab = memo(function StockTab({
         ...prev,
         [item.id]: (prev[item.id] ?? []).map(j => j.id === job.id ? { ...j, status: 'pending', error: null } : j),
       }));
+      // La capture n'est plus refaite ICI mais par l'extension, juste avant
+      // d'agir : le message ne promet donc plus une capture déjà faite.
+      const suite = surTelephoneStock
+        ? (lang === 'fr' ? 'à la prochaine ouverture de Chrome sur ton ordinateur.' : 'the next time you open Chrome on your computer.')
+        : (lang === 'fr' ? '— laisse Chrome ouvert quelques minutes.' : '— keep Chrome open a few minutes.');
       setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'vert', texte: res.recapture
-        ? (lang === 'fr' ? 'Capture refaite, republication relancée — laisse Chrome ouvert quelques minutes.' : 'Fresh capture done, repost relaunched — keep Chrome open a few minutes.')
-        : (lang === 'fr' ? 'Recréation relancée — laisse Chrome ouvert quelques minutes.' : 'Recreation relaunched — keep Chrome open a few minutes.') } }));
+        ? (lang === 'fr' ? `Republication relancée : l'annonce sera recapturée puis republiée ${suite}` : `Repost relaunched: the listing will be re-captured then reposted ${suite}`)
+        : (lang === 'fr' ? `Recréation relancée ${suite}` : `Recreation relaunched ${suite}`) } }));
     } finally {
       setRepubBusy(null);
     }
