@@ -29,7 +29,8 @@ import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS, SYNC_DEMARRAGE_MAX_MS,
   ecouterPresenceExtension, demanderSyncDressing, syncDressingVisiblePour,
   lireCapaciteSyncCompte, demanderSyncDressingServeur,
-  versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS,
+  versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS, SYNC_FILE_TTL_MS,
+  SYNC_MAJ_DISPONIBLE,
   lireDernierRunDressing, aDejaSynchroniseDressing,
   DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
   republishVisiblePour, republierArticleVinted, relancerRepublishVinted,
@@ -877,6 +878,12 @@ function formatDepuis(ts, lang) {
 //     republier sur Vinted, c'est la confiance perdue en un écran.
 function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone }) {
   const fr = lang !== 'en';
+  // « Téléphone » = web mobile (Safari/Chrome) ET application native. Les deux
+  // reçoivent le MÊME sens de message : l'installation se fait une fois sur un
+  // ordinateur. Seule l'action de repli diffère à la marge (fermer cette page
+  // vs fermer l'application).
+  const isMobile = useIsMobile();
+  const surTelephone = isNative || isMobile;
   const [extVue, setExtVue] = useState(false);
   // Version annoncée par l'extension (null tant qu'elle ne s'est pas annoncée).
   const [extVersion, setExtVersion] = useState(null);
@@ -1012,7 +1019,15 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const capaciteConnue = capacite != null && capacite.inconnu === false;
   const compteCapable = capaciteConnue && capacite.capable === true;
   const peutLancer = extCapable || compteCapable;
-  const enAttenteDistante = run?.status === 'queued';
+  // Attente RÉELLE : une demande 'queued' de plus de 6 h ne sera jamais
+  // exécutée (get-pending-jobs ne la sert plus). Elle n'est marquée 'expired'
+  // qu'au prochain poll d'une extension — donc jamais si Chrome n'est pas
+  // rouvert. Sans cette borne, l'écran resterait bloqué sur « demande en
+  // attente » et le bouton grisé indéfiniment. started_at porte l'heure de la
+  // mise en file (queued_at n'est volontairement pas lu : il n'existe pas
+  // tant que la migration n'est pas appliquée).
+  const enAttenteDistante = run?.status === 'queued'
+    && Date.now() - Date.parse(run.started_at ?? 0) < SYNC_FILE_TTL_MS;
   const enCours = attente || (suivi && run?.status === 'running');
 
   // ── Cadence des syncs manuelles ───────────────────────────────────────────
@@ -1059,46 +1074,66 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   //    insuffisante → là seulement, le message de version, SANS la promesse
   //    « elle se met à jour toute seule depuis le Chrome Web Store » (la
   //    0.5.x n'y a jamais été soumise : personne n'aurait rien reçu).
-  const raisonGrisee = (() => {
+  // Quatre cas EXCLUSIFS, arbitrés par Nico le 05/08. Ce qui décide, c'est
+  // l'état du COMPTE croisé au SUPPORT — jamais « une extension répond-elle
+  // dans ce navigateur », qui est faux par construction sur un téléphone et
+  // faisait afficher un message d'installation inapplicable sur iPhone.
+  //   · null               → rien à dire, le bouton est actif (cas D)
+  //   · 'version_ici'      → l'extension a répondu ICI, mais trop ancienne
+  //   · 'maj'              → le compte a une extension, aucune ne sait lire (C)
+  //   · 'tel_sans_ext'     → téléphone, aucune extension jamais vue (B)
+  //   · 'desktop_sans_ext' → ordinateur, aucune extension jamais vue (A)
+  //   · 'natif_indispo'    → repli AVANT migration seulement (capacité illisible)
+  const casCarte = (() => {
     if (peutLancer) return null;
-    // On ne conclut RIEN tant qu'on ne sait pas : ni la sonde locale finie, ni
-    // la capacité du compte lue. Sinon le message clignote au montage.
+    // Tant qu'on ne sait rien (sonde en cours ET capacité pas lue), on ne
+    // conclut RIEN : sinon le message clignote au montage.
     if (!sondeFinie && !capaciteConnue) return null;
-    if (extVue) {
+    if (extVue) return 'version_ici';
+    if (capaciteConnue) return capacite.jamaisVue
+      ? (surTelephone ? 'tel_sans_ext' : 'desktop_sans_ext')
+      : 'maj';
+    // Capacité illisible = migration pas encore appliquée. On garde le repli
+    // d'avant pour l'application native (où rien ne marchait de toute façon),
+    // et on route déjà le web mobile vers le bon message.
+    if (isNative) return 'natif_indispo';
+    return surTelephone ? 'tel_sans_ext' : 'desktop_sans_ext';
+  })();
+
+  // Ligne grise sous le bouton : les cas qui n'appellent AUCUNE action ici.
+  const raisonGrisee = (() => {
+    if (casCarte === 'version_ici') {
       // L'extension a répondu ICI : la version est un fait, pas une déduction.
       return fr
         ? `Ton extension FillSell${extVersion ? ` (${extVersion})` : ''} ne sait pas encore lire ton dressing — il lui faut la version ${SYNC_VERSION_MIN} ou plus récente.`
         : `Your FillSell extension${extVersion ? ` (${extVersion})` : ''} can't read your closet yet — it needs version ${SYNC_VERSION_MIN} or newer.`;
     }
-    // Le compte CONNAÎT une extension, mais aucune ne sait synchroniser : c'est
-    // une mise à jour, pas une installation. Le dire depuis le téléphone évite
-    // d'envoyer réinstaller une extension déjà présente sur l'ordinateur.
-    if (capaciteConnue && !capacite.jamaisVue) {
+    if (casCarte === 'maj') {
+      // CAS C. Le compte A une extension : c'est une mise à jour, pas une
+      // installation — ne jamais renvoyer installer ce qui est déjà là.
+      // ⚠️ SYNC_MAJ_DISPONIBLE garde la promesse « elle se met à jour toute
+      // seule » sous clé tant que la 0.5.x n'est pas servie par le CWS :
+      // avant ça, personne ne recevrait rien (promesse retirée le 05/08).
+      if (!SYNC_MAJ_DISPONIBLE) {
+        return fr
+          ? "FillSell est bien installé sur ton ordinateur, mais il ne sait pas encore lire ton dressing. Cette fonction arrive dans une prochaine mise à jour de l'extension."
+          : "FillSell is installed on your computer, but it can't read your closet yet. This is coming in an upcoming extension update.";
+      }
       return fr
-        ? `L'extension FillSell de ton ordinateur ne sait pas encore lire ton dressing — il lui faut la version ${SYNC_VERSION_MIN} ou plus récente. Ouvre Chrome pour la mettre à jour, puis reviens.`
-        : `The FillSell extension on your computer can't read your closet yet — it needs version ${SYNC_VERSION_MIN} or newer. Open Chrome to update it, then come back.`;
+        ? "FillSell est bien installé sur ton ordinateur, mais dans une version trop ancienne pour lire ton dressing. Ouvre Chrome sur ton ordinateur : l'extension se met à jour toute seule, puis reviens ici."
+        : "FillSell is installed on your computer, but it's too old to read your closet. Open Chrome on your computer: the extension updates itself, then come back here.";
     }
-    // Repli tant que la migration n'est pas appliquée (capacité illisible) :
-    // l'ancien message de l'application native, honnête et inchangé.
-    if (!capaciteConnue && isNative) {
+    if (casCarte === 'natif_indispo') {
       return fr
         ? "La synchronisation lit ton dressing depuis Chrome, sur ordinateur — elle n'est pas disponible dans l'application mobile."
         : 'The sync reads your closet from Chrome on desktop — it isn\'t available in the mobile app.';
     }
-    return null; // aucune extension jamais vue → bloc d'accroche dédié
+    return null;
   })();
-  // Accroche d'installation : RÉSERVÉE aux comptes qui n'ont JAMAIS eu
-  // d'extension (consigne produit du 05/08). Un compte équipé qui consulte
-  // depuis son téléphone ne doit plus jamais lire « installe l'extension ».
-  // Avant migration (capacité illisible), on garde le comportement d'avant :
-  // sonde locale négative sur un navigateur non natif.
-  const extAbsente = !peutLancer && (capaciteConnue
-    ? capacite.jamaisVue === true
-    : (sondeFinie && !extVue && !isNative));
   // Un état bloquant PRÉSENT prime sur le résultat d'un run PASSÉ : les deux
   // ensemble se contredisent (« synchronisé ✓ » + « impossible de lire ton
   // dressing »). Le bilan et la cadence ne s'affichent que débloqué.
-  const blocage = raisonGrisee != null || extAbsente;
+  const blocage = casCarte != null;
 
   const progression = (() => {
     if (attente) return fr ? 'Démarrage…' : 'Starting…';
@@ -1156,6 +1191,12 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         return fr
           ? "Une demande est déjà en attente : elle partira à la prochaine ouverture de Chrome sur ton ordinateur."
           : 'A request is already pending: it will start the next time you open Chrome on your computer.';
+      }
+      // Distinct de « déjà en attente » : là, ça tourne pour de bon.
+      if (r?.reason === 'sync_en_cours') {
+        return fr
+          ? "Une synchronisation est déjà en cours sur ton ordinateur. Laisse-la finir, le résultat s'affichera ici."
+          : 'A sync is already running on your computer. Let it finish — the result will show up here.';
       }
       if (r?.reason === 'extension_trop_ancienne') {
         return fr
@@ -1270,9 +1311,11 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
               {fr?"Demande envoyée":"Request sent"}
             </div>
             <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",marginTop:2}}>
+              {/* Une application ne se « ferme » pas comme une page — seule
+                  différence de formulation entre les deux supports. */}
               {fr
-                ? "Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur. Tu peux fermer cette page."
-                : 'Your sync will start the next time you open Chrome on your computer. You can close this page.'}
+                ? `Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur. Tu peux fermer ${isNative ? "l'application" : 'cette page'}.`
+                : `Your sync will start the next time you open Chrome on your computer. You can close ${isNative ? 'this app' : 'this page'}.`}
             </div>
           </div>
         </div>
@@ -1310,23 +1353,30 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{raisonGrisee}</div>
       )}
 
-      {/* Aucune extension n'a répondu DANS CE navigateur : accroche
-          d'installation — l'écran de pitch sait parler mobile (s'envoyer le
-          lien par mail, copier) comme desktop (lien /extension). Jamais un
-          mot sur la « version » ici : sur mobile il n'y a structurellement
-          aucune extension possible. */}
-      {extAbsente&&(
+      {/* Comptes SANS aucune extension connue. Deux formulations, une par
+          support : sur un ordinateur l'installation est faisable ici et
+          maintenant ; sur un téléphone elle ne l'est pas — on ne parle donc
+          JAMAIS de « ce navigateur », l'utilisateur n'y peut rien. L'écran de
+          pitch gère l'action de chaque support (lien direct sur ordinateur ;
+          mailto pré-rempli + copie sur téléphone, y compris en WebView native). */}
+      {(casCarte==='desktop_sans_ext'||casCarte==='tel_sans_ext')&&(
         <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
           <div style={{fontSize:12,lineHeight:1.5,color:"#5C6560",fontWeight:600}}>
-            {fr
-              ? "L'extension FillSell n'est pas dans ce navigateur — c'est elle qui lit ton dressing, depuis Chrome sur ordinateur."
-              : "The FillSell extension isn't in this browser — it's what reads your closet, from Chrome on a computer."}
+            {casCarte==='tel_sans_ext'
+              ? (fr
+                  ? "Ton dressing Vinted se lit depuis ton ordinateur. Tu installes FillSell une seule fois sur Chrome, et ensuite tu pourras lancer la synchronisation d'ici, depuis ton téléphone."
+                  : "Your Vinted closet is read from your computer. You install FillSell once on Chrome, and after that you'll be able to start the sync right here, from your phone.")
+              : (fr
+                  ? "L'extension FillSell n'est pas dans ce navigateur — c'est elle qui lit ton dressing, depuis Chrome sur ordinateur."
+                  : "The FillSell extension isn't in this browser — it's what reads your closet, from Chrome on a computer.")}
           </div>
           <button
             onClick={()=>setShowPitch(true)}
             style={{marginTop:8,width:"100%",padding:"10px 12px",borderRadius:10,border:"none",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}
           >
-            {fr ? "Installer l'extension / recevoir le lien" : 'Install the extension / get the link'}
+            {casCarte==='tel_sans_ext'
+              ? (fr ? "M'envoyer le lien pour mon ordinateur" : 'Email me the link for my computer')
+              : (fr ? "Installer l'extension" : 'Install the extension')}
           </button>
         </div>
       )}

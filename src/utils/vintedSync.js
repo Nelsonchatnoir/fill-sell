@@ -28,6 +28,31 @@ export const SYNC_POLL_MAX_MS = 10 * 60 * 1000;
 // l'UI, seule l'absence de trace au bout d'un moment tranche.
 export const SYNC_DEMARRAGE_MAX_MS = 30 * 1000;
 
+// Durée de vie d'une demande de sync mise en file depuis un téléphone. Miroir
+// d'affichage du TTL SQL (purger_sync_queue_perimee) et du filtre de
+// get-pending-jobs — les trois à faire évoluer ENSEMBLE.
+// ⚠️ Ce miroir n'est PAS cosmétique : le marquage en 'expired' n'a lieu qu'au
+// poll d'une extension. Si Chrome n'est jamais rouvert, la ligne reste 'queued'
+// en base pour toujours ; sans cette borne côté écran, la carte afficherait une
+// attente éternelle et le bouton resterait grisé sans aucun moyen de repartir.
+export const SYNC_FILE_TTL_MS = 6 * 60 * 60 * 1000;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ⛔ BASCULE DU MESSAGE « extension trop ancienne » — false AUJOURD'HUI
+// ═══════════════════════════════════════════════════════════════════════════
+// false → « cette fonction arrive dans une prochaine mise à jour » (C1).
+// true  → « ouvre Chrome, l'extension se met à jour toute seule » (C2).
+//
+// C2 est FAUX tant que la 0.5.x n'est pas servie par le Chrome Web Store :
+// personne ne recevrait rien, et on renverrait l'utilisateur vérifier une mise
+// à jour qui n'existe pas. C'est exactement la promesse retirée le 05/08
+// (commit 835b981) — ne pas la réintroduire à l'aveugle.
+//
+// À PASSER À true DANS LE MÊME GESTE que le bump d'EXTENSION_MIN_BUILD
+// (scripts/build-id.mjs), qui n'est lui-même bumpé qu'après une publication
+// ACCEPTÉE par le CWS. Un seul rituel, deux constantes.
+export const SYNC_MAJ_DISPONIBLE = false;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ⛔ MASQUAGE TEMPORAIRE — À RETIRER DÈS QUE LA 0.5.0 EST EN LIGNE SUR LE CWS
 // ═══════════════════════════════════════════════════════════════════════════

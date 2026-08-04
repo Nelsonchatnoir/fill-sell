@@ -159,6 +159,14 @@ serve(async (req) => {
     let syncCommand: { id: string } | null = null;
     if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing) {
       try {
+        // Marque en 'expired' les demandes trop vieilles AVANT de lire. Sans
+        // cet appel, une demande jamais réclamée resterait 'queued' pour
+        // toujours : l'écran afficherait une attente qui ne viendra jamais, et
+        // le bouton resterait grisé. Ici, elle est nettoyée dans les 2 min qui
+        // suivent l'ouverture de Chrome.
+        await userClient.rpc("purger_ma_sync_queue");
+        // Le .gte reste la garde qui FAIT FOI : même si le marquage ci-dessus
+        // échoue, une demande périmée n'est jamais servie.
         const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
         const { data: cmds } = await userClient
           .from("vinted_sync_runs")

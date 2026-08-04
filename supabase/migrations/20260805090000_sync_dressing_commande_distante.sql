@@ -137,6 +137,24 @@ $$;
 revoke all on function public.purger_sync_queue_perimee(uuid) from public, anon, authenticated;
 grant execute on function public.purger_sync_queue_perimee(uuid) to service_role;
 
+-- Variante SANS paramètre, pour les appelants porteurs d'un JWT utilisateur
+-- (get-pending-jobs à chaque poll). La version à p_user_id n'est PAS ouverte à
+-- `authenticated` : elle permettrait d'expirer la demande d'autrui.
+-- Appelée au poll, elle marque la demande périmée en 'expired' dans les 2 min
+-- qui suivent l'ouverture de Chrome — sans quoi la ligne resterait 'queued'
+-- pour toujours et l'écran afficherait une attente qui ne viendra jamais.
+create or replace function public.purger_ma_sync_queue()
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  select purger_sync_queue_perimee(auth.uid());
+$$;
+
+revoke all on function public.purger_ma_sync_queue() from public, anon;
+grant execute on function public.purger_ma_sync_queue() to authenticated, service_role;
+
 -- ── 4. Mise en file, depuis le client ───────────────────────────────────────
 -- SECURITY DEFINER + auth.uid() : l'utilisateur est pris dans le jeton, JAMAIS
 -- dans un paramètre (même règle que spend_coins_and_publish — un p_user_id
@@ -153,6 +171,7 @@ declare
   v_capable boolean;
   v_fini    timestamptz;
   v_dans    integer;
+  v_actif   text;
   v_id      uuid;
 begin
   if v_user is null then
@@ -194,14 +213,34 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'cadence', 'prochaine_dans_min', v_dans);
   end if;
 
-  -- L'index unique partiel est le juge : deux clics concurrents ne peuvent pas
-  -- créer deux demandes, même à la milliseconde près.
+  -- Deux situations que l'index unique confond (il interdit les deux) et que
+  -- l'utilisateur vit très différemment : une demande QUI ATTEND encore, et une
+  -- sync DÉJÀ EN TRAIN de tourner sur l'ordinateur. Dire « déjà en attente »
+  -- pendant qu'une sync tourne serait faux. On lit donc l'état avant d'insérer.
+  select status into v_actif
+  from vinted_sync_runs
+  where user_id = v_user and kind = 'dressing' and status in ('queued', 'running')
+  limit 1;
+  if v_actif = 'running' then
+    return jsonb_build_object('ok', false, 'reason', 'sync_en_cours');
+  elsif v_actif = 'queued' then
+    return jsonb_build_object('ok', false, 'reason', 'deja_en_attente');
+  end if;
+
+  -- L'index unique reste le juge en cas de course (deux clics à la
+  -- milliseconde) : on relit alors l'état pour rendre le bon motif plutôt
+  -- qu'un « déjà en attente » par défaut.
   begin
     insert into vinted_sync_runs (user_id, kind, status, declencheur, queued_at)
     values (v_user, 'dressing', 'queued', 'bouton_distant', now())
     returning id into v_id;
   exception when unique_violation then
-    return jsonb_build_object('ok', false, 'reason', 'deja_en_attente');
+    select status into v_actif
+    from vinted_sync_runs
+    where user_id = v_user and kind = 'dressing' and status in ('queued', 'running')
+    limit 1;
+    return jsonb_build_object('ok', false,
+      'reason', case when v_actif = 'running' then 'sync_en_cours' else 'deja_en_attente' end);
   end;
 
   return jsonb_build_object('ok', true, 'run_id', v_id);
