@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Camera, Mic, Sparkles, Plus, HelpCircle, X, Image as ImageIcon } from 'lucide-react';
 import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
+import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteIcon from '../components/PepiteIcon';
 import { getRotatingLensPlaceholders, getTypeStyle, typeLabel } from '../utils/shared';
@@ -465,12 +466,17 @@ const LensTab = memo(function LensTab({
   openUpgradeModal,
   supabase, saveLensItemForListing, lensInventaireId, onStepperOpenChange,
   resetLensParcours,
+  extensionNeverSeen = null,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
   const [lensListingPhotos,setLensListingPhotos]=useState([]);
   const [showListingPreview,setShowListingPreview]=useState(false);
   const [listingError,setListingError]=useState('');
   const [showExtReminder,setShowExtReminder]=useState(false);
+  // Accroche extension (2026-08-04) : extension JAMAIS vue → accroche (sync
+  // dressing + récupération du lien) à la place du rappel. Porte l'action à
+  // reprendre : 'identify' (viseur) ou 'create' (écran résultat).
+  const [extPitchAction,setExtPitchAction]=useState(null);
   // Ajout de photos depuis l'écran résultat : même feuille de choix
   // caméra/photothèque que le viseur (2026-07-27, remplace les deux tuiles
   // pointillées 📷/🖼️ de 501c26c). Sur le web, l'input file couvre déjà les
@@ -647,6 +653,7 @@ const LensTab = memo(function LensTab({
           // passe explicitement la source de CETTE session de publication.
           createStockItem={(prixAchat)=>saveLensItemForListing(prixAchat,listingSource)}
           alreadyInStock={!!effectiveInvId}
+          extensionNeverSeen={extensionNeverSeen}
         />
       </div>
     );
@@ -662,7 +669,7 @@ const LensTab = memo(function LensTab({
           lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
           lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative}
           analyzeLens={analyzeLens} lensLoading={lensLoading}
-          onCreateListing={()=>shouldShowExtensionReminder()?setShowExtReminder(true):handleIdentifyAndCreate()}
+          onCreateListing={()=>extensionNeverSeen===true?setExtPitchAction('identify'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleIdentifyAndCreate())}
           creatingListing={generatingListing}
         />
         {listingError&&(
@@ -677,6 +684,18 @@ const LensTab = memo(function LensTab({
             lang={lang}
             onClose={()=>setShowExtReminder(false)}
             onContinue={()=>{setShowExtReminder(false);handleIdentifyAndCreate();}}
+          />
+        )}
+        {/* Accroche extension : même règle de montage que le rappel — le
+            viseur DOIT la porter lui aussi. */}
+        {extPitchAction&&(
+          <ExtensionPitchScreen
+            lang={lang}
+            onClose={()=>setExtPitchAction(null)}
+            onContinue={()=>{const a=extPitchAction;setExtPitchAction(null);(a==='create'?handleCreateListing:handleIdentifyAndCreate)();}}
+            supabase={supabase}
+            userId={user?.id}
+            onExtensionSeen={()=>{const a=extPitchAction;setExtPitchAction(null);(a==='create'?handleCreateListing:handleIdentifyAndCreate)();}}
           />
         )}
         {generatingListing&&(
@@ -863,7 +882,7 @@ const LensTab = memo(function LensTab({
             {!lensResult.error&&(
               <>
                 <PrimaryButton
-                  onClick={()=>shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing()}
+                  onClick={()=>extensionNeverSeen===true?setExtPitchAction('create'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing())}
                   disabled={generatingListing}
                   style={{marginTop:8}}
                 >
@@ -887,6 +906,17 @@ const LensTab = memo(function LensTab({
           lang={lang}
           onClose={()=>setShowExtReminder(false)}
           onContinue={()=>{setShowExtReminder(false);handleCreateListing();}}
+        />
+      )}
+
+      {extPitchAction&&(
+        <ExtensionPitchScreen
+          lang={lang}
+          onClose={()=>setExtPitchAction(null)}
+          onContinue={()=>{const a=extPitchAction;setExtPitchAction(null);(a==='create'?handleCreateListing:handleIdentifyAndCreate)();}}
+          supabase={supabase}
+          userId={user?.id}
+          onExtensionSeen={()=>{const a=extPitchAction;setExtPitchAction(null);(a==='create'?handleCreateListing:handleIdentifyAndCreate)();}}
         />
       )}
 

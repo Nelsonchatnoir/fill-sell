@@ -1820,6 +1820,13 @@ export default function App({ loginOnly = false }){
   // positif systématique dès que le web bougeait sans l'extension.
   const [extensionBuild,setExtensionBuild]=useState(null);
   const [extensionLastSeenAt,setExtensionLastSeenAt]=useState(null);
+  // Le profil a répondu au moins une fois : différencie « extension jamais vue »
+  // (extension_last_seen_at NULL, profil chargé) de « on ne sait pas encore »
+  // (fetch en cours). La garde de publication (2026-08-04) ne bloque côté UI
+  // que sur le premier cas — le RPC tranche de toute façon côté serveur.
+  const [extensionSeenLoaded,setExtensionSeenLoaded]=useState(false);
+  // Tri-état passé aux tabs : true = jamais vue, false = déjà vue, null = inconnu.
+  const extensionNeverSeen=extensionSeenLoaded?(extensionLastSeenAt==null):null;
   // Renvoi de la bannière mémorisé par couple (build installé | build minimal
   // requis) : elle revient si l'extension change de build en restant obsolète,
   // OU si un nouveau commit extension bumpe l'exigence — jamais pour rien.
@@ -2218,6 +2225,7 @@ export default function App({ loginOnly = false }){
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
       setExtensionBuild(p.data?.extension_build??null);
       setExtensionLastSeenAt(p.data?.extension_last_seen_at??null);
+      setExtensionSeenLoaded(true);
       const confirmed=!!localStorage.getItem('fs_currency_confirmed');
       if(confirmed&&p.data?.currency){
         setCurrency(p.data.currency);
@@ -4908,6 +4916,7 @@ export default function App({ loginOnly = false }){
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
             items={items} user={user} voiceUsedToday={voiceUsedToday}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
+            extensionNeverSeen={extensionNeverSeen}
             iapProduct={iapProduct} iapLoading={iapLoading}
             stock={stock} sold={sold}
             stockFiltre={stockFiltre} soldFiltre={soldFiltre}
@@ -4999,6 +5008,7 @@ export default function App({ loginOnly = false }){
             lensInventaireId={lensInventaireId}
             resetLensParcours={resetLensParcours}
             onStepperOpenChange={setListingStepperOpen}
+            extensionNeverSeen={extensionNeverSeen}
           />
         )}
 

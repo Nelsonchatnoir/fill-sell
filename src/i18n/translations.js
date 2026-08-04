@@ -218,6 +218,8 @@ export const translations = {
     doneTitle:"Annonces envoyées !",
     doneSubtitle:"L'extension Chrome va les publier automatiquement dès que tu l'ouvres.",
     doneButton:"Terminer",
+    doneAddedToStock:"Ton article a été ajouté à ton stock 📦",
+    doneAddedToStockRetouched:"Ton article a été ajouté à ton stock, avec ses photos retouchées ✨",
 
     stepLabelUpload:"Upload",
     stepLabelPhotos:"Photos",
@@ -515,6 +517,8 @@ export const translations = {
     doneTitle:"Listings sent!",
     doneSubtitle:"Your Chrome extension will publish them automatically when you open it.",
     doneButton:"Done",
+    doneAddedToStock:"Your item has been added to your stock 📦",
+    doneAddedToStockRetouched:"Your item has been added to your stock, with its retouched photos ✨",
 
     stepLabelUpload:"Upload",
     stepLabelPhotos:"Photos",

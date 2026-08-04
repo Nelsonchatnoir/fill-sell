@@ -5,6 +5,7 @@ import { Capacitor } from "@capacitor/core";
 import { Camera as CapCamera } from "@capacitor/camera";
 import ConversionModal from "./ConversionModal";
 import CoinStoreModal from "./CoinStoreModal";
+import ExtensionPitchScreen from "./ExtensionPitchScreen";
 import PepiteIcon from "./PepiteIcon";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import AnalyseMarche from "./AnalyseMarche";
@@ -2711,6 +2712,13 @@ export default function ListingPreviewScreen({
   // attendre le poll de 20 s) — même principe que le retrait par logo et le
   // mini-éditeur needs_user, qui patchent déjà en optimiste.
   onJobsQueued = null,
+  // Garde extension (2026-08-04). Tri-état : true = extension JAMAIS vue
+  // (profiles.extension_last_seen_at NULL, profil chargé) → le clic Publier
+  // ouvre l'écran d'accroche au lieu de tenter le RPC ; false = vue au moins
+  // une fois → parcours normal, même si Chrome est fermé en ce moment ;
+  // null/undefined = profil pas encore chargé → on ne bloque PAS côté client
+  // (le RPC porte la même garde, reason 'extension_required').
+  extensionNeverSeen = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -2801,6 +2809,15 @@ export default function ListingPreviewScreen({
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
       .neq("statut", "vendu")
+      // Miroir de check_inventory_limit VERSION 03/08 (migration
+      // 20260803190000) : le dressing Vinted synchronisé est HORS quota, à
+      // l'insert comme au comptage. Sans ce filtre, un compte Free avec 15
+      // articles synchronisés + 6 saisis à la main voyait ici 21 ≥ 20 et
+      // récoltait l'écran « Passer au niveau supérieur » alors que le serveur
+      // l'aurait laissé publier. .or : origine <> 'vinted_sync' seul jette
+      // aussi les NULL (SQL trivalué), or les articles saisis à la main ont
+      // origine NULL.
+      .or("origine.is.null,origine.neq.vinted_sync")
       .then(({ count, error }) => {
         if (!stale && !error && typeof count === "number") setStockCount(count);
       });
@@ -2974,6 +2991,17 @@ export default function ListingPreviewScreen({
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
+  // Écran d'accroche extension (2026-08-04). extSeenOverride : le bouton
+  // « J'ai installé — vérifier » de l'écran a relu le profil et trouvé un
+  // extension_last_seen_at → la garde se lève pour la session sans attendre
+  // que l'hôte re-fetche le profil.
+  const [showExtGate, setShowExtGate]       = useState(false);
+  const [extSeenOverride, setExtSeenOverride] = useState(false);
+  const extensionBlocked = extensionNeverSeen === true && !extSeenOverride;
+  // La ligne inventaire a été créée PAR CETTE publication (et non préexistante) :
+  // l'écran de fin le dit positivement — l'article est au stock, avec ses
+  // photos (retouchées si option IA). Jamais formulé en avertissement.
+  const [createdThisRun, setCreatedThisRun] = useState(false);
 
   // Sauvegarde continue du brouillon : tout ce qui permet de reprendre le
   // stepper après un remount (reload d'onglet Chrome, changement d'onglet
@@ -4587,6 +4615,10 @@ export default function ListingPreviewScreen({
     // relecture des plateformes en ligne n'a pas répondu — on ne publie pas
     // sans connaître l'état publié de l'article.
     if (!publishedStateLoaded) return;
+    // Garde extension (2026-08-04) : extension jamais vue → écran d'accroche,
+    // AVANT toute création de ligne et tout appel réseau. handleNext route
+    // déjà ; ce re-check attrape un état périmé. Le RPC porte la même garde.
+    if (extensionBlocked) { setShowExtGate(true); return; }
     // Garde-fou prix (2026-07-13, job 3d194668) : un job price=NULL a atteint
     // la base via « Republier » et n'a été refusé qu'en bout de chaîne, par
     // Vinted. AUCUN flux ne doit pouvoir publier sans prix valide — seuil à
@@ -4656,6 +4688,7 @@ export default function ListingPreviewScreen({
         }
         if (!currentInvId) throw new Error(t("genericError"));
         setInvId(currentInvId);
+        setCreatedThisRun(true);
       }
 
       // Adresse de remise (Settings) : lue une fois par publication, injectée
@@ -5232,6 +5265,14 @@ export default function ListingPreviewScreen({
           setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
           return;
         }
+        // Garde serveur extension (2026-08-04) : la garde UI (handleNext /
+        // handlePublish) rend ce chemin rare — profil pas encore chargé, ou
+        // client qui a contourné. Aucune Pépite débitée. L'accroche vaut
+        // mieux qu'un bandeau ici aussi.
+        if (pubRes.reason === "extension_required") {
+          setShowExtGate(true);
+          return;
+        }
         // Garde serveur anti-republication (2026-07-25, S7) : le RPC refuse un
         // job pour une plateforme déjà en ligne ou déjà en file — dernier filet
         // quand le griséage front n'a pas suffi (chemin Lens, course).
@@ -5242,6 +5283,12 @@ export default function ListingPreviewScreen({
             ? `Already live or queued on: ${plats}. Remove that listing first (tap the platform logo on the item card) or unselect the platform.`
             : `Déjà en ligne (ou en file) sur : ${plats}. Retire d'abord cette annonce (tap sur le logo de la plateforme sur la carte de l'article) ou décoche la plateforme.`);
         }
+        // Filet générique (2026-08-04) : un refus futur du RPC qui porte un
+        // `message` s'affiche tel quel dans le bandeau — plus jamais « Une
+        // erreur est survenue » quand le serveur a pris la peine d'expliquer.
+        if (typeof pubRes.message === "string" && pubRes.message.trim()) {
+          throw new Error(pubRes.message);
+        }
         throw new Error(t("genericError"));
       }
       setWallet({ included_balance: pubRes.included_after, purchased_balance: pubRes.purchased_after });
@@ -5249,9 +5296,12 @@ export default function ListingPreviewScreen({
       // suite (patch optimiste, cf. prop onJobsQueued). Une relecture réelle
       // écrasera ces lignes synthétiques au prochain poll.
       onJobsQueued?.(currentInvId ?? null, [...selected]);
-      if (addToStock && currentInvId && processedPhotos?.length) {
-        await supabase.from("inventaire").update({ photos: processedPhotos }).eq("id", currentInvId);
-      }
+      // Photos : PLUS d'UPDATE client ici (2026-08-04). spend_coins_and_publish
+      // écrit inventaire.photos DANS la transaction du débit (migration
+      // 20260804210000) : la retouche payée est rattachée à l'article même si
+      // l'app meurt ou perd le réseau juste après le RPC. L'ancien UPDATE
+      // post-RPC était le seul porteur de cette écriture — et sautait dans ces
+      // deux cas, retouche payée et perdue.
       // Le DERNIER prix publié fait foi dans l'inventaire (2026-07-13, job
       // 3d194668) : le prix saisi au stepper n'était JAMAIS persisté — la
       // ligne inventaire gardait le prix de la génération initiale (souvent
@@ -5374,6 +5424,12 @@ export default function ListingPreviewScreen({
         setQuotaModal({ open: true, trigger: "stock", targetTiers: ["premium", "pro"] });
         return;
       }
+      // Extension jamais vue : le CTA ouvre l'accroche (sync dressing, lien à
+      // récupérer sur ordinateur) — aucun RPC tenté, aucune Pépite engagée.
+      if (extensionBlocked) {
+        setShowExtGate(true);
+        return;
+      }
       handlePublish();
     }
   }
@@ -5418,6 +5474,15 @@ export default function ListingPreviewScreen({
       <div style={{ fontSize:14, color:T.mute2, textAlign:"center", lineHeight:1.6, marginTop:8, maxWidth:280 }}>
         {t("doneSubtitle")}
       </div>
+      {/* Ligne POSITIVE (2026-08-04) : la publication vient de créer la ligne
+          inventaire (1-bis) — on le dit comme un acquis (« ajouté à ton
+          stock »), jamais comme un avertissement : la contrainte technique est
+          la nôtre, pas la sienne, et il a payé. */}
+      {createdThisRun && (
+        <div style={{ fontSize:13, color:T.tealDeep, fontWeight:600, textAlign:"center", lineHeight:1.5, marginTop:12, maxWidth:300 }}>
+          {photoOption !== "original" ? t("doneAddedToStockRetouched") : t("doneAddedToStock")}
+        </div>
+      )}
       <button
         // onClose(true) = fermeture APRÈS publication réussie — l'hôte Lens
         // purge alors tout le parcours (photos, analyse, prix) au lieu de
@@ -5634,6 +5699,21 @@ export default function ListingPreviewScreen({
         supabase={supabase}
         onPurchased={refreshWallet}
       />
+
+      {/* Accroche extension (2026-08-04) : ouverte par le CTA Publier quand
+          l'extension n'a jamais été vue (ou par le reason extension_required
+          du RPC). Pas de « continuer » ici — l'utilisateur EST déjà au bout du
+          parcours ; le bouton « vérifier » lève la garde dès que le premier
+          poll de l'extension a stampé le profil. */}
+      {showExtGate && (
+        <ExtensionPitchScreen
+          lang={lang}
+          onClose={() => setShowExtGate(false)}
+          supabase={supabase}
+          userId={userId}
+          onExtensionSeen={() => { setExtSeenOverride(true); setShowExtGate(false); }}
+        />
+      )}
 
       <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>

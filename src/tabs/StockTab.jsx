@@ -7,6 +7,7 @@ import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost } from '../components/ListingPreviewScreen';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
+import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import { computeRemovalInfo } from '../utils/publicationState';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
@@ -1182,7 +1183,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
-  iapProduct, iapLoading, extensionStatus = null,
+  iapProduct, iapLoading, extensionStatus = null, extensionNeverSeen = null,
   // Computed lists
   stock, sold, stockFiltre, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
   // Voice/AI state
@@ -1353,6 +1354,11 @@ const StockTab = memo(function StockTab({
   // Article en attente derrière le rappel extension : le clic « Publier » passe
   // d'abord par le modal, l'ouverture du stepper n'a lieu qu'au « Continuer ».
   const [extReminderItem, setExtReminderItem] = useState(null);
+  // Accroche extension (2026-08-04) : extension JAMAIS vue → au clic Publier,
+  // écran d'accroche (sync dressing + récupération du lien) AVANT le stepper,
+  // à la place du simple rappel. « Préparer mon annonce » reste possible — la
+  // garde de publication (stepper + RPC) prendra le relais au dernier clic.
+  const [extPitchItem, setExtPitchItem] = useState(null);
   const [jobsByInventaire, setJobsByInventaire] = useState({});
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
@@ -2601,7 +2607,9 @@ const StockTab = memo(function StockTab({
                                   // le stepper ne doit pas pouvoir s'ouvrir sans une
                                   // seule plateforme à publier.
                                   if(toutEnLigne||detailFetchId)return;
-                                  if(shouldShowExtensionReminder()){setExtReminderItem(item);}else{publierAvecDetail(item);}
+                                  if(extensionNeverSeen===true){setExtPitchItem(item);}
+                                  else if(shouldShowExtensionReminder()){setExtReminderItem(item);}
+                                  else{publierAvecDetail(item);}
                                 }}
                               >
                                 {detailFetchId===item.id
@@ -2676,6 +2684,22 @@ const StockTab = memo(function StockTab({
           lang={lang}
           onClose={()=>setExtReminderItem(null)}
           onContinue={()=>{const it=extReminderItem;setExtReminderItem(null);publierAvecDetail(it);}}
+        />
+      )}
+      {/* Accroche extension (2026-08-04) : remplace le rappel quand l'extension
+          n'a JAMAIS été vue — le rappel supposait qu'elle pouvait être là,
+          cette hypothèse est fausse ici. « Préparer mon annonce » ouvre le
+          stepper normalement ; le mur réel est au clic Publier (garde stepper
+          + RPC). Le bouton « vérifier » relance directement le parcours dès
+          que le profil est stampé. */}
+      {extPitchItem&&(
+        <ExtensionPitchScreen
+          lang={lang}
+          onClose={()=>setExtPitchItem(null)}
+          onContinue={()=>{const it=extPitchItem;setExtPitchItem(null);publierAvecDetail(it);}}
+          supabase={supabase}
+          userId={user?.id}
+          onExtensionSeen={()=>{const it=extPitchItem;setExtPitchItem(null);publierAvecDetail(it);}}
         />
       )}
       {/* Mini-éditeur « À compléter » (socle needs_user, 2026-07-19).
@@ -2830,6 +2854,7 @@ const StockTab = memo(function StockTab({
           isPremium={isPremium}
           isPro={isPro}
           onUpgrade={openUpgradeModal}
+          extensionNeverSeen={extensionNeverSeen}
         />
       )}
     </>
