@@ -649,10 +649,14 @@ export const landingTranslations = {
     pricingFreeTitle: "Gratuit",
     pricingFreePrice: "0€",
     pricingFreePeriod: "pour toujours",
-    pricingFreeFeatures: ["Jusqu'à 200 articles","Dashboard & stats de base","Calculateur de marge","Historique des ventes"],
+    // pricingFreeFeatures / pricingProPrice / faqItems SUPPRIMÉES (2026-08-05) :
+    // dictionnaire de l'ANCIENNE landing, zéro consommateur dans le repo
+    // (vérifié js/jsx/ts/html/md), et elles affirmaient « Premium 9,99 €/mois »
+    // — le vrai prix est 12,99 € depuis la fin du tarif founder. Le reste du
+    // bloc hero/pricing/cta semble mort aussi mais n'a pas été purgé (hors
+    // périmètre du nettoyage, aucune valeur mensongère).
     pricingFreeCta: "Commencer gratuitement",
     pricingProTitle: "Premium",
-    pricingProPrice: "9,99€",
     pricingProPeriod: "par mois",
     pricingProBadge: "Le plus populaire",
     pricingProFeatures: ["Articles illimités","Stats avancées","Export Excel","Import en masse","Support prioritaire"],
@@ -666,13 +670,6 @@ export const landingTranslations = {
     platformsSub: "Vinted · eBay · Depop · Leboncoin · Beebeep · Facebook Marketplace · Poshmark · Mercari · Wallapop · Vestiaire Collective · GOAT · StockX · et toutes les autres marketplaces",
     platforms: ["Vinted","eBay","Depop","Leboncoin","Beebeep","Facebook Marketplace","Poshmark","Mercari","Wallapop","Vestiaire Collective","GOAT","StockX"],
     faqTitle: "Questions fréquentes",
-    faqItems: [
-      { q: "FillSell est-il gratuit ?", a: "Oui, FillSell est entièrement gratuit jusqu'à 200 articles — suivi de tes profits vinted gratuit, sans carte bancaire. La version Premium à 9,99€/mois offre des articles illimités, des statistiques avancées et l'export Excel." },
-      { q: "Quelles plateformes sont compatibles ?", a: "FillSell fonctionne avec toutes les plateformes d'achats revente : Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop et toutes les autres marketplaces." },
-      { q: "Comment calculer ma marge sur Vinted ?", a: "Entre ton prix d'achat et ton prix de vente dans le calculateur pour un calcul marge vinted instantané. FillSell calcule ta marge nette, ta rentabilité en pourcentage et assure le suivi ventes vinted article par article." },
-      { q: "Puis-je importer et exporter mes données en Excel ?", a: "Oui, l'import ET l'export Excel sont disponibles en Premium à 9,99€/mois. Importe tes articles en masse en un clic, et exporte tout ton historique de ventes pour ta comptabilité." },
-      { q: "FillSell fonctionne-t-il sur mobile ?", a: "Oui, l'app est optimisée mobile-first pour iPhone et Android, directement dans ton navigateur. Suis tes profits vinted, eBay Leboncoin Depop où que tu sois, sans téléchargement." }
-    ],
   },
   en: {
     navLogin: "Log in",
@@ -713,10 +710,8 @@ export const landingTranslations = {
     pricingFreeTitle: "Free",
     pricingFreePrice: "€0",
     pricingFreePeriod: "forever",
-    pricingFreeFeatures: ["Up to 200 items","Dashboard & basic stats","Margin calculator","Sales history"],
     pricingFreeCta: "Start for free",
     pricingProTitle: "Premium",
-    pricingProPrice: "€9.99",
     pricingProPeriod: "per month",
     pricingProBadge: "Most popular",
     pricingProFeatures: ["Unlimited items","Advanced stats","Excel export","Bulk import","Priority support"],
@@ -730,12 +725,5 @@ export const landingTranslations = {
     platformsSub: "Vinted · eBay · Depop · Leboncoin · Beebeep · Facebook Marketplace · Poshmark · Mercari · Wallapop · Vestiaire Collective · GOAT · StockX · and all other marketplaces",
     platforms: ["Vinted","eBay","Depop","Leboncoin","Beebeep","Facebook Marketplace","Poshmark","Mercari","Wallapop","Vestiaire Collective","GOAT","StockX"],
     faqTitle: "Frequently asked questions",
-    faqItems: [
-      { q: "Is FillSell free?", a: "Yes, FillSell is completely free for up to 200 items — track your profits vinted for free, no credit card needed. The Premium plan at €9.99/month offers unlimited items, advanced stats and Excel export." },
-      { q: "Which platforms are supported?", a: "FillSell works with all resale platforms: Vinted, eBay, Depop, Leboncoin, Beebeep, Facebook Marketplace, Poshmark, Mercari, Wallapop and all other marketplaces." },
-      { q: "How do I calculate my margin on Vinted?", a: "Enter your purchase price and selling price for an instant Vinted margin calculation. FillSell tracks your net margin, profitability percentage and full sales history item by item — across Vinted, eBay, Leboncoin, Depop and more." },
-      { q: "Can I import and export my data to Excel?", a: "Yes, both Excel import AND export are available in the Premium plan at €9.99/month. Import your items in bulk with one click, and export your full sales history for accounting." },
-      { q: "Does FillSell work on mobile?", a: "Yes, the app is mobile-first optimized for iPhone and Android, directly in your browser. Track your resale profits on Vinted, eBay, Leboncoin, Depop wherever you are — no download needed." }
-    ],
   },
 };
