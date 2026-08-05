@@ -17,7 +17,7 @@ import { VOICE_KIT_CSS } from '../components/voice/tokens';
 import { supabase } from '../lib/supabase';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
-  getTypeStyle, typeLabel, marqueLabel, marqueHorsTitre, parseLocDesc, detectType,
+  getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType,
   getRotatingExamples, SKELETON_ITEMS, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
@@ -3275,9 +3275,10 @@ const StockTab = memo(function StockTab({
                               <span className="title">{it.nom}</span>
                               {it.quantite>1&&<span className="qty-badge">×{it.quantite}</span>}
                             </div>
+                            {/* Même règle que les vraies cartes : marque toujours
+                                visible, en tête de la ligne meta. */}
                             <div className="meta">
-                              {(()=>{const mq=marqueHorsTitre(it.nom,it.marque);
-                                return mq?(<><span className="hl">{mq}</span>{" · "}</>):null;})()}
+                              {it.marque&&(<><span className="hl">{it.marque}</span>{" · "}</>)}
                               {(_desc||_loc)&&(<>{_desc||_loc}{" · "}</>)}
                               {typeLabel(it.categorie,lang)}
                             </div>
@@ -3476,19 +3477,30 @@ const StockTab = memo(function StockTab({
                       <div className="row in-swipe" onClick={openEdit}>
                         <div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>
                         <div className="left">
-                          {/* La marque a quitté la ligne de titre (2026-08-05) :
-                              elle y était rognée en « • Q… » et volait la place
-                              du titre. Elle ouvre la ligne meta — entière — et
-                              disparaît quand le titre la contient déjà. */}
+                          {/* Titre sur DEUX lignes (CSS) : c'est la fin du titre
+                              qui distingue deux articles de la même marque. */}
                           <div className="title-line">
                             <span className="title">{item.title}</span>
                             {(item.quantite||1)>1&&<span className="qty-badge">×{item.quantite}</span>}
                           </div>
                           <div className="meta">
-                            {(()=>{const mq=marqueHorsTitre(item.title,marqueLabel(item.marque,lang));
-                              return mq?(<><span className="hl">{mq}</span>{" · "}</>):null;})()}
+                            {/* MARQUE TOUJOURS VISIBLE (décision Nico, 2026-08-05).
+                                La règle « on la masque quand le titre la porte »
+                                est retirée : combinée à la troncature, elle
+                                faisait perdre les DEUX à la fois. La répétition
+                                est un moindre mal que l'absence. */}
+                            {marqueLabel(item.marque,lang)&&(
+                              <><span className="hl">{marqueLabel(item.marque,lang)}</span>{" · "}</>
+                            )}
                             {(_itemDesc||_itemLoc)&&(<>{_itemDesc||_itemLoc}{" · "}</>)}
-                            {typeLabel(item.type||"Autre",lang)}
+                            {/* TYPE seulement s'il EXISTE : « Autre » est un type
+                                que l'utilisateur peut choisir, l'afficher par
+                                défaut rendrait « non classé » indistinguable de
+                                « classé Autre ». 27 articles importés sont dans
+                                ce cas, en attente de leur catalog_id Vinted. */}
+                            {item.typeConnu
+                              ?typeLabel(item.type,lang)
+                              :<span style={{opacity:.75}}>{lang==='fr'?'catégorie à venir':'category pending'}</span>}
                           </div>
                           {/* ── Prix d'achat manquant : saisie DANS la ligne ──
                               stopPropagation obligatoire : la carte entière

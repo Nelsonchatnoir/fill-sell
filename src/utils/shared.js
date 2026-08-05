@@ -993,17 +993,29 @@ ${s} .row.in-swipe{padding:0;border:none;border-radius:0;background:transparent;
 ${s} .cat-tile{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
 ${Object.entries(CAT_TILE_COLORS).map(([type,color])=>`${s} .${catClass(type)}{background:${color};}`).join('\n')}
 ${s} .left{min-width:0;}
-${s} .title-line{display:flex;align-items:center;gap:6px;}
-/* Le titre PREND la place restante (flex:1) au lieu de se la disputer à parts
-   égales avec la marque : c'est lui qui identifie l'article. La marque, elle,
-   n'est plus jamais rognée — quand elle ne tient pas EN ENTIER, elle n'est pas
-   rendue du tout (marqueTientDansLaLigne, StockTab) plutôt que réduite à
-   « • Q… », qui n'apprenait rien et mangeait le titre. */
-${s} .title{font-weight:700;font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0;}
+/* align-items:flex-start : le titre fait désormais jusqu'à deux lignes, un
+   centrage collerait le compteur de quantité au milieu du bloc. */
+${s} .title-line{display:flex;align-items:flex-start;gap:6px;}
+/* TITRE SUR DEUX LIGNES (2026-08-05, décision Nico). Sur une seule ligne, la
+   fin du titre était coupée — or c'est ELLE qui distingue (« …blanc imprimé
+   logos taille S » vs « …bleu marine taille S ») quand on a 15 articles de la
+   même marque. Nico s'est trompé d'article à cause de ça.
+   Règle qui prime : ne JAMAIS masquer une information pour gagner de la place.
+   Une carte plus haute vaut mieux qu'une carte qui ment. */
+   ⚠️ TROIS lignes et non deux : MESURÉ à 390 px sur les vrais titres du compte
+   (colonne de gauche = 201 px), « Picture Organic Clothing T-shirt blanc
+   imprimé logos taille S » demande 3 lignes. À 2, la fin — « taille S », celle
+   qui distingue — restait coupée : la carte aurait encore menti. */
+${s} .title{font-weight:700;font-size:14.5px;line-height:1.3;color:var(--ink);flex:1 1 auto;min-width:0;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
 ${s} .brand-dot{width:3px;height:3px;border-radius:50%;background:var(--mute);opacity:.7;flex-shrink:0;}
 ${s} .brandname{font-size:12px;color:var(--mute);white-space:nowrap;flex:0 0 auto;}
 ${s} .qty-badge{font-size:11px;font-weight:700;color:var(--teal-deep);flex-shrink:0;}
-${s} .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* La meta RETOURNE À LA LIGNE (2026-08-05) : elle porte désormais la marque,
+   toujours affichée, et le nowrap la coupait — « Picture Organic Clothing ·
+   catégorie … ». Couper la marque pour tenir sur une ligne, c'est exactement
+   l'information que Nico a demandé de ne plus perdre. */
+${s} .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:normal;overflow-wrap:anywhere;line-height:1.35;}
 ${s} .meta .hl{color:var(--ink);}
 /* ⚠️⚠️ AUCUN BACKTICK DANS CE FICHIER — tout ce CSS est un template literal JS.
    Un backtick posé ici (j'avais écrit .left entre backticks, à la mode Markdown)
