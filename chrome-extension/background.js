@@ -6150,7 +6150,11 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
 
 // ═════════════════════════════════════════════════════════════════════════════
 // É2 REPUBLICATION VINTED (2026-08-05) — machine à étapes PERSISTÉE EN BASE.
-// platform_fields.republish_step : 'captured' → 'deleted' → 'recreated'.
+// platform_fields.republish_step :
+//   'a_capturer' → 'captured' → 'deleted' → 'recreated'
+// ('a_capturer' est devenu la première étape avec la capture différée,
+//  migration 20260805100000 : le clic pose le job, l'extension capture juste
+//  avant d'agir.)
 // Chaque transition est écrite AVANT le geste suivant : une interruption
 // (réseau, Chrome quitté, service worker tué) reprend exactement où elle
 // s'est arrêtée au prochain poll. Le job n'existe que si le RPC
@@ -6191,7 +6195,15 @@ let dernierGesteRepublishAt = 0;
 
 async function processRepublishJob(job, accessToken) {
   const pf = { ...(job.platform_fields ?? {}) };
-  const step = pf.republish_step ?? "captured";
+  // Défaut = 'a_capturer', PREMIÈRE étape de la machine (corrigé le 2026-08-05,
+  // il était resté à 'captured', l'ancienne première étape d'avant la migration
+  // 20260805100000). Un job sans étape lisible tombait donc directement dans la
+  // branche SUPPRESSION. Rien n'a jamais été supprimé à tort — la relecture de
+  // capture (capture_id absent → capMeta vide → needs_user) l'arrêtait avant le
+  // moindre geste — mais faire reposer ça sur un filet plutôt que sur un défaut
+  // juste n'a plus lieu d'être maintenant que le dry run est levé. Le bon défaut
+  // est celui qui ne touche à rien : on (re)capture.
+  const step = pf.republish_step ?? "a_capturer";
   console.log(`[background] Job ${job.id} → vinted (REPUBLISH, étape ${step}${REPUBLISH_DRY_RUN ? ", DRY RUN" : ""})`);
 
   if (job.platform !== "vinted") {

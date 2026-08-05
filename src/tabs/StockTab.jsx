@@ -1683,6 +1683,14 @@ function etapeRepublication(job, fr) {
   };
 }
 
+// Date courte en heure de Paris (« 4 août »), ou null. Même garde que
+// heureParis : Intl rend « Invalid Date » au lieu de lever, on filtre avant.
+function dateCourteParis(iso) {
+  const t = Date.parse(iso ?? '');
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' });
+}
+
 // Heure de Paris, ou null. ⚠️ Une date invalide donne « Invalid Date » avec
 // Intl, jamais une exception : on filtre AVANT de formater.
 function heureParis(iso) {
@@ -2308,7 +2316,15 @@ const StockTab = memo(function StockTab({
         // une colonne inconnue ne dégrade pas, elle annule.
         .select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title")
         .eq("user_id", user.id)
-        .in("status", ["pending", "processing", "published", "failed", "needs_user", "deleted"]);
+        // 'cancelled' et 'dry_run_completed' AJOUTÉS le 2026-08-05 : sans eux,
+        // un republish qui se terminait DISPARAISSAIT de l'écran et la carte
+        // retombait sur le job précédent — un dry run réussi à 10:01 s'affichait
+        // comme l'échec de 08:01, message rouge compris. Un job terminé ne doit
+        // jamais être masqué au profit d'un plus ancien.
+        .in("status", ["pending", "processing", "published", "failed", "needs_user", "deleted", "cancelled", "dry_run_completed"])
+        // Le plus récent d'abord : tout ce qui lit « le dernier job » lit la
+        // même chose, sans dépendre de l'ordre de retour de PostgREST.
+        .order("created_at", { ascending: false });
       if (annule || !data) return;
       const map = {};
       for (const job of data) {
@@ -3359,7 +3375,17 @@ const StockTab = memo(function StockTab({
                   // le mini-éditeur générique, qui re-pend SANS recapturer :
                   // exactement la boucle de péremption qu'on vient de fermer.
                   // Ils ont leur bloc dédié (badge + bouton) plus bas.
-                  const jobs=jobsAll.filter(j=>j.action!=="delete"&&j.action!=="republish");
+                  // ⚠️ 'cancelled' / 'dry_run_completed' sont EXCLUS ici, alors
+                  // qu'ils viennent d'entrer dans le select (pour que la
+                  // republication la plus récente soit toujours visible). Sans
+                  // cette exclusion, un publish 'cancelled' — celui que pose
+                  // justement cancelPublishAfterDelete — deviendrait « le job le
+                  // plus récent de la plateforme » dans latestByPlatform et
+                  // ÉTEINDRAIT un badge Échec ou « À compléter » légitime. Ces
+                  // badges doivent continuer de voir exactement ce qu'ils
+                  // voyaient avant : publish et delete non terminaux.
+                  const jobs=jobsAll.filter(j=>j.action!=="delete"&&j.action!=="republish"
+                    &&j.status!=="cancelled"&&j.status!=="dry_run_completed");
                   const repubLatest=(()=>{
                     let r=null;
                     for(const j of jobsAll){
@@ -3371,7 +3397,12 @@ const StockTab = memo(function StockTab({
                   const repubEligible=republishActif&&item.vinted_item_id&&!item.disparu_le&&item.statut!=="vendu";
                   // Vocabulaire d'étape partagé pastille ↔ feuille (une seule
                   // source : etapeRepublication). null = rien à afficher.
-                  const repubEtape=repubEligible?etapeRepublication(repubLatest,lang!=='en'):null;
+                  // ⚠️ Volontairement décorrélé de repubEligible (2026-08-05) :
+                  // l'ÉTAT d'une republication doit rester lisible même quand
+                  // l'article n'est plus republiable — un article devenu
+                  // 'disparu' juste après sa republication perdait sinon
+                  // l'affichage du job qui venait de tourner.
+                  const repubEtape=republishActif?etapeRepublication(repubLatest,lang!=='en'):null;
                   // La pastille dit déjà l'état : le message transitoire ne le
                   // répète pas. Il ne reste affiché que quand il apporte autre
                   // chose (refus, échec de relance).
@@ -3405,7 +3436,17 @@ const StockTab = memo(function StockTab({
                   // modal de retrait (computeRemovalInfo, en tête de fichier) —
                   // un seul calcul, jamais deux vérités carte/modal.
                   const {removalState,publishedActive}=computeRemovalInfo(jobsAll);
-                  const enLigne=publishedActive.length>0;
+                  // ── Article DISPARU de Vinted (2026-08-05) ────────────────
+                  // `disparu_le` = la sync du dressing n'a pas retrouvé
+                  // l'annonce sur Vinted (vérifié en réel : l'id Vinted rend
+                  // 404). L'annonce n'existe plus, donc la carte ne montre NI
+                  // logo Vinted NI « En ligne » — seulement la pastille ambre
+                  // qui le dit. Une seule chose affichée, et elle est vraie.
+                  // Surgical : seul Vinted sort. Un article aussi publié sur
+                  // eBay ou LBC garde ces logos-là, qui restent exacts.
+                  const disparuDeVinted=!!item.disparu_le;
+                  const logosEnLigne=disparuDeVinted?publishedActive.filter(p=>p!=="vinted"):publishedActive;
+                  const enLigne=logosEnLigne.length>0;
                   // Compteur de plateformes réellement en ligne : pilote le 3e état
                   // du bouton (4/4 = plus rien à publier).
                   const nbEnLigne=publishedActive.length;
@@ -3500,12 +3541,26 @@ const StockTab = memo(function StockTab({
                                 : `Publishing lists 1 unit · ${(item.quantite||1)-1} stay in stock`}
                             </div>
                           )}
-                          {(enLigne||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.plateforme||item.emplacement||prixAnnonce!=null)&&(
+                          {/* `item.plateforme` a quitté cette condition avec le
+                              repli textuel qu'il servait à afficher : le champ
+                              libre ne déclenche plus une rangée à lui seul. */}
+                          {(enLigne||disparuDeVinted||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.emplacement||prixAnnonce!=null||repubEtape)&&(
                             <div className="icons">
                               {/* Statut explicite : les pastilles de plateformes disaient OÙ,
                                   jamais QUE l'article est en ligne — d'où la confusion avec
                                   un article jamais publié. */}
                               {enLigne&&<div className="micon ic-online"><span className="dot"/>{lang==="en"?"Live":"En ligne"}</div>}
+                              {/* Annonce Vinted introuvable à la dernière sync.
+                                  Elle REMPLACE le prix (masqué au même titre) :
+                                  la place libérée dit maintenant la seule chose
+                                  vraie de cette carte. Ambre du design system,
+                                  aucune teinte nouvelle. */}
+                              {disparuDeVinted&&(
+                                <div className="micon ic-gone"
+                                  title={lang==='fr'?"L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing.":'This Vinted listing was not found during the last wardrobe sync.'}>
+                                  ⚠️ {lang==='fr'?'Plus en ligne':'Gone'}{dateCourteParis(item.disparu_le)?` · ${dateCourteParis(item.disparu_le)}`:''}
+                                </div>
+                              )}
                               {/* LOGOS, pas les noms écrits : « Leboncoin » + « Beebs » en
                                   toutes lettres débordaient la carte en largeur mobile, quel
                                   que soit le CSS. Un logo carré de 18 px règle le problème à
@@ -3516,7 +3571,7 @@ const StockTab = memo(function StockTab({
                                   action de retrait par ligne, confirmation inline).
                                   stopPropagation : ne pas ouvrir l'édition.
                                   Estompé = retrait en cours. */}
-                              {publishedActive.map(p=>{
+                              {logosEnLigne.map(p=>{
                                 const removing=removalState[p]==="removing";
                                 return(
                                   <span key={p} className="plogo"
@@ -3579,7 +3634,14 @@ const StockTab = memo(function StockTab({
                                   ⚠️ {lang==="en"?"Failed":"Échec"} {PLATFORM_LABELS[j.platform]||j.platform}
                                 </div>
                               ))}
-                              {!enLigne&&!hasPending&&item.plateforme&&<div className="micon ic-plateforme">🏪 {item.plateforme}</div>}
+                              {/* ⛔ NE PAS réintroduire un repli « 🏪 <plateforme> »
+                                  quand !enLigne (retiré le 2026-08-05, décision
+                                  de Nico). Il affichait le champ LIBRE
+                                  item.plateforme (d'où « vinted » en minuscules)
+                                  et affirmait une présence sur la plateforme
+                                  alors que, justement, aucune annonce n'y est en
+                                  ligne. Pas d'annonce en ligne = pas de logo, et
+                                  rien à la place. */}
                               {/* Prix de l'ANNONCE (demandé, pas encaissé) —
                                   lu dans vinted_listing_snapshots, une seule
                                   requête pour toute la liste. */}

@@ -1038,6 +1038,11 @@ ${s} .ic-ebay{background:#0064D2;}
 ${s} .ic-plateforme{background:var(--teal-deep);}
 ${s} .ic-pending{background:var(--amber);}
 ${s} .ic-loc{background:var(--mute);}
+/* « Plus en ligne » — l'annonce Vinted n'a pas été retrouvée à la dernière
+   sync. Ambre du design system (var(--amber)), la même famille que ic-pending :
+   un état qui appelle l'attention sans être une erreur. Encre foncée dessus
+   plutôt que blanc, l'ambre étant trop clair pour du #fff (contraste). */
+${s} .ic-gone{background:var(--amber);color:var(--ink);}
 /* Prix DEMANDÉ sur l'annonce en ligne — l'info la plus regardée de la carte.
    Elle portait le teal de .ic-plateforme, donc exactement la couleur du statut
    « En ligne » ET du bouton « Publier » : trois choses différentes, un seul

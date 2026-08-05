@@ -47,9 +47,9 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-05T07:41:00Z = REPUBLISH_DRY_RUN basculé à false (décision Nico) :
-// la republication supprime et recrée pour de vrai.
-export const EXTENSION_LAST_COMMIT = '2026-08-05T07:41:00Z';
+// 2026-08-05T08:19:00Z = etape par defaut corrigee a 'a_capturer' (elle etait
+// restee a 'captured', l'ancienne premiere etape).
+export const EXTENSION_LAST_COMMIT = '2026-08-05T08:19:00Z';
 // 2026-07-27T17:50:06Z = build du commit de release 0faa5e5 « extension 0.4.5,
 // Android 2.3.3 » — la version que servait le CWS ce soir-là (4 des 6 installs
 // actives remontaient exactement ce build via profiles.extension_build).
