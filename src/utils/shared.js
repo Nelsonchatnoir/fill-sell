@@ -994,9 +994,14 @@ ${s} .cat-tile{width:38px;height:38px;border-radius:11px;display:flex;align-item
 ${Object.entries(CAT_TILE_COLORS).map(([type,color])=>`${s} .${catClass(type)}{background:${color};}`).join('\n')}
 ${s} .left{min-width:0;}
 ${s} .title-line{display:flex;align-items:center;gap:6px;}
-${s} .title{font-weight:700;font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* Le titre PREND la place restante (flex:1) au lieu de se la disputer à parts
+   égales avec la marque : c'est lui qui identifie l'article. La marque, elle,
+   n'est plus jamais rognée — quand elle ne tient pas EN ENTIER, elle n'est pas
+   rendue du tout (marqueTientDansLaLigne, StockTab) plutôt que réduite à
+   « • Q… », qui n'apprenait rien et mangeait le titre. */
+${s} .title{font-weight:700;font-size:14.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0;}
 ${s} .brand-dot{width:3px;height:3px;border-radius:50%;background:var(--mute);opacity:.7;flex-shrink:0;}
-${s} .brandname{font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+${s} .brandname{font-size:12px;color:var(--mute);white-space:nowrap;flex:0 0 auto;}
 ${s} .qty-badge{font-size:11px;font-weight:700;color:var(--teal-deep);flex-shrink:0;}
 ${s} .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 ${s} .meta .hl{color:var(--ink);}
@@ -1015,7 +1020,17 @@ ${s} .meta .hl{color:var(--ink);}
    La 5e pastille (« En ligne ») n'a fait que révéler le défaut, elle ne l'a pas
    créé : 4 plateformes suffisaient déjà à serrer la carte sur mobile. */
 ${s} .icons{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6px;min-width:0;}
-${s} .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;flex:0 0 auto;white-space:nowrap;}
+/* max-width + ellipsis : filet de sécurité. .micon est nowrap et flex:0 0 auto,
+   donc un libellé trop long prenait une largeur IRRÉDUCTIBLE et sortait de la
+   carte par la droite, par-dessus les boutons. Une pastille reste courte par
+   contrat (les phrases vont dans .cardnote ou dans une feuille) ; si l'une
+   déborde quand même, elle se coupe proprement au lieu de casser la carte. */
+${s} .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;flex:0 0 auto;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
+/* Point qui respire : une republication en cours doit se VOIR vivante sur la
+   carte, sans y installer un spinner (le détail animé vit dans la feuille). */
+${s} .micon .pulse{width:5px;height:5px;border-radius:50%;background:currentColor;flex:0 0 auto;animation:fs-pulse 1.4s ease-in-out infinite;}
+@keyframes fs-pulse{0%,100%{opacity:.25;}50%{opacity:1;}}
+@media (prefers-reduced-motion:reduce){${s} .micon .pulse{animation:none;opacity:.7;}}
 ${s} .ic-vinted{background:#09B584;}
 ${s} .ic-leboncoin{background:#EA5B0C;}
 ${s} .ic-beebs{background:#FF6B35;}
@@ -1023,6 +1038,23 @@ ${s} .ic-ebay{background:#0064D2;}
 ${s} .ic-plateforme{background:var(--teal-deep);}
 ${s} .ic-pending{background:var(--amber);}
 ${s} .ic-loc{background:var(--mute);}
+/* Prix DEMANDÉ sur l'annonce en ligne — l'info la plus regardée de la carte.
+   Elle portait le teal de .ic-plateforme, donc exactement la couleur du statut
+   « En ligne » ET du bouton « Publier » : trois choses différentes, un seul
+   vert, le prix se noyait dans du statut. Traitement à l'ENCRE (aucune teinte
+   nouvelle : var(--ink) sur var(--paper), déjà au design system) — c'est la
+   seule pastille sombre de la rangée, donc la première lue, et elle ne peut
+   plus être confondue avec un état. Contraste #F6F5F1 sur #10201B ≈ 16:1. */
+${s} .ic-price{background:var(--ink);color:var(--paper);}
+/* Note pleine largeur SOUS les deux colonnes (2026-08-05). Une phrase entière
+   ne peut pas vivre dans .icons : .micon est nowrap + flex:0 0 auto, donc un
+   message long prend une largeur IRRÉDUCTIBLE, sort de la colonne de gauche et
+   passe par-dessus les boutons de droite (constaté sur iPhone : texte coupé au
+   bord de l'écran). Ici : enfant direct de la grille, sur toutes les colonnes,
+   et le texte RETOURNE À LA LIGNE. */
+${s} .cardnote{grid-column:1/-1;margin-top:8px;padding:8px 10px;border-radius:10px;font-size:11.5px;font-weight:600;line-height:1.45;white-space:normal;overflow-wrap:anywhere;display:flex;align-items:flex-start;gap:7px;}
+${s} .cardnote.is-info{background:#F0FDFB;border:1px solid rgba(13,148,136,0.25);color:var(--teal-deep);}
+${s} .cardnote.is-warn{background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412;}
 /* « En ligne » : un STATUT, pas une plateforme. Il ouvre la rangée, et se
    distingue par sa FORME (chip clair cerclé de teal + point) plutôt que par une
    6e couleur pleine : cinq aplats saturés côte à côte rendaient la carte
@@ -1059,6 +1091,21 @@ ${s} .fdot{width:8px;height:8px;border-radius:50%;flex-shrink:0;box-shadow:inset
 const TYPE_LABELS_EN={'High-Tech':'High-Tech','Mode':'Fashion','Luxe':'Luxury','Maison':'Home','Électroménager':'Appliances','Jouets':'Toys','Livres':'Books','Sport':'Sport','Auto-Moto':'Vehicles','Beauté':'Beauty','Musique':'Music','Collection':'Collection','Multimédia':'Multimedia','Jardin':'Garden','Bricolage':'DIY','Autre':'Other'};
 export function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 export function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
+
+// La marque n'a plus sa place sur la LIGNE DE TITRE (2026-08-05) : elle s'y
+// disputait la largeur avec le titre et finissait rognée en « • Q… » / « • To… »,
+// c'est-à-dire illisible ET coûteuse. Elle passe en tête de la ligne meta, où
+// elle est entière. Restait le doublon : « Short de bain Quiksilver taille M »
+// suivi de « Quiksilver ». On ne la répète donc pas quand le titre la porte
+// déjà — comparaison sans accents ni ponctuation (« Levi's » vs « Levis »).
+const _plat=(s)=>String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+export function marqueHorsTitre(titre,marque){
+  const m=String(marque??'').trim();
+  if(!m)return null;
+  const mp=_plat(m);
+  if(!mp)return null;
+  return _plat(titre).includes(mp)?null:m;
+}
 
 export const SKELETON_ITEMS=[
   {title:'Veste Zara oversize',  type:'Mode',       marque:'Zara',    buy:12,  qty:1,  days:2},

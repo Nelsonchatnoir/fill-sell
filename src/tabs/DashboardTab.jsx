@@ -58,6 +58,30 @@ const CHART_CSS = `
 }
 .db-charts{display:grid;grid-template-columns:1fr;gap:18px}
 @media (min-width:900px){.db-charts{grid-template-columns:1fr 1fr}}
+/* En-tête du bloc graphes : libellé + sélecteur de période (déplacé ici le
+   04/08). Sur mobile, les deux ne tiennent PAS sur une ligne — mesuré à 390 px :
+   134 px de libellé + 253 px de pilules = 397 px pour 358 px disponibles. Les
+   5 pilules passaient donc à la ligne À L'INTÉRIEUR de la capsule
+   border-radius:999 (capsule de 65 px de haut pour des pilules de 26 px, YTD
+   seule sur un 2e rang, libellé décentré) — c'est ça, « pills désorganisées ».
+   Parade : sous 560 px le libellé prend sa propre ligne et la capsule occupe
+   toute la largeur, les 5 pilules se partageant la place à parts égales. Plus
+   rien ne peut se replier.
+   ⚠️ !important assumé : SegmentedPills pose flex-wrap, gap et le padding des
+   pilules en style INLINE, et un style inline bat une feuille de style — sauf
+   !important, seul cas où la feuille reprend la main. L'alternative (une prop
+   sur SegmentedPills) ne marcherait pas : le choix dépend de la LARGEUR, donc
+   d'une media query, pas d'un booléen JS. Le composant reste inchangé pour ses
+   autres appelants. */
+.db-period{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:-8px}
+.db-period-cap{display:inline-flex;background:#F6F5F1;border:1px solid #E7E3D8;border-radius:999px;padding:3px}
+.db-period-cap>div{flex-wrap:nowrap !important}
+@media (max-width:559px){
+  .db-period{flex-direction:column;align-items:stretch;gap:8px}
+  .db-period-cap{display:flex;width:100%}
+  .db-period-cap>div{width:100%;gap:4px !important}
+  .db-period-cap button{flex:1 1 0;padding:6px 2px !important;text-align:center}
+}
 `;
 
 // Géométrie commune aux deux graphes (identique au design).
@@ -458,11 +482,11 @@ const DashboardTab = memo(function DashboardTab({
               comme l'EN-TÊTE du bloc graphes, avec son libellé, collé aux
               cartes qu'il commande — pas comme un contrôle flottant qu'on
               croirait maître de toute la page. */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:-8}}>
+          <div className="db-period">
             <span style={{fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em",color:UI.mute2}}>
               {lang==='en'?'Charts period':'Période des graphes'}
             </span>
-            <div style={{display:"inline-flex",background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:999,padding:3}}>
+            <div className="db-period-cap">
               <SegmentedPills
                 options={['7j','1M','6M','1A','YTD']}
                 value={selectedRange}

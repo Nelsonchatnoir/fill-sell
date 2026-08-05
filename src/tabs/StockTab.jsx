@@ -17,7 +17,7 @@ import { VOICE_KIT_CSS } from '../components/voice/tokens';
 import { supabase } from '../lib/supabase';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
-  getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType,
+  getTypeStyle, typeLabel, marqueLabel, marqueHorsTitre, parseLocDesc, detectType,
   getRotatingExamples, SKELETON_ITEMS, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
@@ -1583,6 +1583,187 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
 }
 
 const REPUB_PLANCHER_EUR = 2;
+// ── Avancement d'une republication (2026-08-05) ───────────────────────────────
+// UNE SEULE source de vocabulaire pour la pastille de carte ET la feuille : la
+// carte porte le mot court, la feuille la phrase entière. Ils ne peuvent pas se
+// contredire.
+// Machine à étapes RÉELLE (migration 20260805100000, background.js) :
+//   a_capturer → captured → deleted → recreated
+// Règle d'écriture : chaque étape dit CE QUI EST EN SÉCURITÉ. L'utilisateur qui
+// ouvre cette feuille cherche à savoir s'il risque de perdre son annonce — la
+// réponse doit être dans la phrase, pas déduite.
+const REPUB_ORDRE = ['a_capturer', 'captured', 'deleted', 'recreated'];
+
+function etapeRepublication(job, fr) {
+  if (!job) return null;
+  const pf = job.platform_fields ?? {};
+  const step = pf.republish_step ?? 'a_capturer';
+  const st = job.status;
+  const encours = st === 'pending' || st === 'processing';
+  const T = {
+    file:      fr ? 'En file'      : 'Queued',
+    lecture:   fr ? 'Lecture…'     : 'Reading…',
+    prete:     fr ? 'Prête'        : 'Ready',
+    recreation:fr ? 'Recréation…'  : 'Recreating…',
+    enligne:   fr ? 'En ligne'     : 'Live',
+    relancer:  fr ? 'À relancer'   : 'Needs action',
+    arretee:   fr ? 'Arrêtée'      : 'Stopped',
+  };
+  const bleu  = { fond: '#EFF3F8', bord: '#C7D6E5', encre: '#334155' };
+  const vert  = { fond: '#F0FDFB', bord: 'rgba(13,148,136,0.25)', encre: '#1B6E62' };
+  const ambre = { fond: '#FFF6E3', bord: '#EED9A6', encre: '#8A6100' };
+
+  // Terminal d'abord : un job fini ne doit jamais être lu comme « en cours ».
+  if (st === 'published' || step === 'recreated') return {
+    cle: 'recreated', court: T.enligne, ...vert, fini: true,
+    titre: fr ? 'Annonce en ligne' : 'Listing is live',
+    detail: fr ? "C'est fait : ton annonce a été recréée et elle est de nouveau en ligne, en tête du fil Vinted."
+               : 'Done: your listing was recreated and is live again, at the top of the Vinted feed.',
+  };
+  // Un dry run n'est pas un échec : il va AU BOUT sans rien toucher. L'appeler
+  // « interrompue » ferait passer un test réussi pour une panne — et c'est
+  // précisément l'état visible pendant la recette de REPUBLISH_DRY_RUN.
+  if (st === 'dry_run_completed') return {
+    cle: 'arret', court: fr ? 'Test à blanc' : 'Dry run', ...bleu, fini: true,
+    titre: fr ? 'Test à blanc terminé' : 'Dry run complete',
+    detail: fr ? "Tout le parcours a été vérifié sans rien toucher : ton annonce n'a été ni retirée ni recréée, et la Pépite t'a été rendue."
+               : 'The whole flow was checked without touching anything: your listing was neither removed nor recreated, and your Nugget was refunded.',
+  };
+  if (st === 'failed' || st === 'cancelled') {
+    const apres = step === 'deleted';
+    return {
+      cle: 'arret', court: T.arretee, ...(apres ? ambre : bleu), fini: true, apresSuppression: apres,
+      titre: apres ? (fr ? 'Interrompue après la suppression' : 'Stopped after deletion')
+                   : (fr ? 'Interrompue — annonce intacte' : 'Stopped — listing untouched'),
+      detail: apres
+        ? (fr ? "Rien n'est perdu : ton annonce a été lue et sauvegardée avant d'être retirée. La reprise repart directement à la recréation."
+              : 'Nothing is lost: your listing was read and saved before removal. Retrying resumes straight at recreation.')
+        : (fr ? "Ton annonce est intacte — elle n'a jamais été retirée de Vinted."
+              : 'Your listing is untouched — it was never removed from Vinted.'),
+    };
+  }
+  if (st === 'needs_user') {
+    const apres = step === 'deleted';
+    return {
+      cle: 'needs_user', court: T.relancer, ...ambre, fini: true, apresSuppression: apres,
+      titre: fr ? 'En attente de toi' : 'Waiting for you',
+      detail: apres
+        ? (fr ? "Rien n'est perdu : l'annonce a été sauvegardée avant d'être retirée. Relance — ça repart à la recréation."
+              : 'Nothing is lost: the listing was saved before removal. Relaunch — it resumes at recreation.')
+        : (fr ? "Ton annonce est intacte, rien n'a été retiré. Tu peux relancer."
+              : 'Your listing is untouched, nothing was removed. You can relaunch.'),
+    };
+  }
+  if (!encours) return null;
+
+  if (step === 'deleted') return {
+    cle: 'deleted', court: T.recreation, ...bleu,
+    titre: fr ? 'Ancienne annonce retirée, recréation en cours' : 'Old listing removed, recreating',
+    detail: fr ? "Rien n'est perdu : le contenu de ton annonce a été lu et sauvegardé AVANT le retrait. Elle est en train d'être recréée à l'identique."
+               : 'Nothing is lost: your listing was read and saved BEFORE removal. It is being recreated identically.',
+  };
+  if (step === 'captured') return {
+    cle: 'captured', court: T.prete, ...bleu,
+    titre: fr ? 'Annonce lue et sauvegardée' : 'Listing read and saved',
+    detail: fr ? "Tout le contenu est en sécurité chez nous (photos comprises). La suppression puis la recréation suivent."
+               : 'All the content is safely stored with us (photos included). Deletion then recreation follow.',
+  };
+  // a_capturer : le seul état où RIEN n'a encore été touché côté Vinted.
+  if (st === 'processing') return {
+    cle: 'lecture', court: T.lecture, ...bleu,
+    titre: fr ? 'Lecture de ton annonce' : 'Reading your listing',
+    detail: fr ? "On relit l'annonce en ligne pour pouvoir la recréer à l'identique. Rien n'est encore touché."
+               : 'We are reading the live listing so it can be recreated identically. Nothing has been touched yet.',
+  };
+  return {
+    cle: 'file', court: T.file, ...bleu, enFile: true,
+    titre: fr ? 'En attente de ton Chrome' : 'Waiting for your Chrome',
+    detail: fr ? "La republication part dès que ton ordinateur reprend la main — environ 2 minutes si Chrome est déjà ouvert. Rien n'est touché d'ici là."
+               : 'The repost starts as soon as your computer picks it up — about 2 minutes if Chrome is already open. Nothing is touched until then.',
+  };
+}
+
+// Heure de Paris, ou null. ⚠️ Une date invalide donne « Invalid Date » avec
+// Intl, jamais une exception : on filtre AVANT de formater.
+function heureParis(iso) {
+  const t = Date.parse(iso ?? '');
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
+}
+
+// Feuille « où ça en est » — même patron que RepublishSheet (portail, feuille
+// basse, canvas). Ouverte au tap sur la pastille de la carte.
+function RepublishProgressSheet({ lang, job, onClose }) {
+  const fr = lang !== 'en';
+  const et = etapeRepublication(job, fr);
+  if (!et) return null;
+  const pf = job.platform_fields ?? {};
+  const courant = et.cle === 'arret' || et.cle === 'needs_user'
+    ? (pf.republish_step ?? 'a_capturer')
+    : (et.cle === 'file' || et.cle === 'lecture' ? 'a_capturer' : et.cle);
+  const iCourant = REPUB_ORDRE.indexOf(courant);
+  const heureTransition = heureParis(job.updated_at ?? pf.recreated_at ?? pf.deleted_at ?? job.created_at);
+  const attenteVolontaire = et.cle === 'deleted' ? heureParis(pf.next_action_after) : null;
+  const lignes = [
+    { cle: 'a_capturer', txt: fr ? "Lecture de l'annonce en ligne" : 'Reading the live listing' },
+    { cle: 'captured',   txt: fr ? 'Contenu sauvegardé chez nous'  : 'Content saved with us' },
+    { cle: 'deleted',    txt: fr ? 'Ancienne annonce retirée'      : 'Old listing removed' },
+    { cle: 'recreated',  txt: fr ? 'Nouvelle annonce en ligne'     : 'New listing live' },
+  ];
+  return createPortal(
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'rgba(16,32,27,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: '#EDEAE0', borderRadius: '26px 26px 0 0', maxHeight: '92vh', overflowY: 'auto', padding: '18px 18px calc(env(safe-area-inset-bottom,0px) + 24px)', fontFamily: "'Space Grotesk', sans-serif" }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 4 }}>
+          {!et.fini && <Loader size={16} thickness={2} />}
+          <div style={{ fontSize: 17, fontWeight: 700, color: '#10201B' }}>{et.titre}</div>
+        </div>
+        <div style={{ fontSize: 12.5, color: '#5C6560', lineHeight: 1.5, marginBottom: 14 }}>{et.detail}</div>
+
+        <div style={{ background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
+          {lignes.map((l, i) => {
+            const idx = REPUB_ORDRE.indexOf(l.cle);
+            const fait = iCourant > idx || (et.cle === 'recreated' && idx <= iCourant);
+            const actif = idx === iCourant && !et.fini;
+            return (
+              <div key={l.cle} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 0', borderTop: i > 0 ? '1px solid #E7E3D8' : 'none' }}>
+                <span style={{ width: 17, textAlign: 'center', fontSize: 12 }}>{fait ? '✅' : actif ? '⏳' : '·'}</span>
+                <span style={{ fontSize: 12.5, fontWeight: actif ? 700 : 500, color: fait || actif ? '#10201B' : '#8A8578' }}>{l.txt}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {attenteVolontaire && (
+          <div style={{ background: '#F0FDFB', border: '1px solid rgba(13,148,136,0.25)', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#1B6E62', lineHeight: 1.5, marginBottom: 12 }}>
+            {fr ? `Recréation prévue vers ${attenteVolontaire}. FillSell attend volontairement 2 à 5 minutes entre le retrait et la recréation, comme le ferait une vraie personne — ce n'est pas un blocage.`
+                : `Recreation planned around ${attenteVolontaire}. FillSell deliberately waits 2 to 5 minutes between removal and recreation, like a real person would — this is not a stall.`}
+          </div>
+        )}
+        {heureTransition && (
+          <div style={{ fontSize: 11.5, color: '#8A8578', marginBottom: 12 }}>
+            {fr ? `Dernière avancée à ${heureTransition} (heure de Paris).` : `Last update at ${heureTransition} (Paris time).`}
+          </div>
+        )}
+        {job.error && (
+          <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#9A3412', lineHeight: 1.5, marginBottom: 12 }}>
+            {job.error}
+          </div>
+        )}
+        {et.cle === 'recreated' && job.listing_url && (
+          <a href={job.listing_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+            style={{ display: 'block', textAlign: 'center', padding: '11px 0', borderRadius: 12, background: '#2F9E90', color: '#fff', fontSize: 13.5, fontWeight: 700, textDecoration: 'none', marginBottom: 10 }}>
+            {fr ? 'Voir la nouvelle annonce' : 'View the new listing'}
+          </a>
+        )}
+        <button onClick={onClose} style={{ width: '100%', padding: '11px 0', borderRadius: 12, border: '1px solid #E7E3D8', background: '#F6F5F1', color: '#5C6560', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+          {fr ? 'Fermer' : 'Close'}
+        </button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function RepublishSheet({ lang, items, gratuit, prixUnitaire, onClose, onConfirm }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
@@ -1868,7 +2049,11 @@ const StockTab = memo(function StockTab({
   // téléphone, web mobile ET application native, dès lors que le COMPTE a une
   // extension capable. `{inconnu:true}` = migration pas encore appliquée → on
   // retombe sur le comportement d'avant (desktop seulement).
-  const surTelephoneStock = isNative || isMobile;
+  // (surTelephoneStock retiré le 2026-08-05 : il ne servait plus qu'à choisir
+  // entre deux formulations d'attente — « laisse Chrome ouvert » sur desktop,
+  // « à la prochaine ouverture de Chrome » sur téléphone. Les deux disaient le
+  // pire cas ; l'attente réelle est le poll, et c'est la feuille d'avancement
+  // qui la dit désormais, la même pour tous les supports.)
   const [capaciteExt, setCapaciteExt] = useState(null);
   useEffect(() => {
     if (!user?.id) return;
@@ -1933,15 +2118,13 @@ const StockTab = memo(function StockTab({
           platform_fields: { republish_step: 'a_capturer', vinted_item_id: String(item.vinted_item_id) },
         }],
       }));
-      // Le message dépend du support : sur un téléphone, « laisse Chrome
-      // ouvert » n'a aucun sens — c'est l'ordinateur qui exécutera.
-      setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'vert', texte: surTelephoneStock
-        ? (lang === 'fr'
-            ? "Republication en file — elle partira à la prochaine ouverture de Chrome sur ton ordinateur, qui supprimera puis recréera l'annonce à l'identique."
-            : 'Repost queued — it will run the next time you open Chrome on your computer, which deletes then recreates the listing identically.')
-        : (lang === 'fr'
-            ? 'Republication en file — laisse Chrome ouvert quelques minutes, elle supprime puis recrée l\'annonce à l\'identique.'
-            : 'Repost queued — keep Chrome open a few minutes; it deletes then recreates the listing identically.') } }));
+      // AUCUN message de mise en file ici (2026-08-05). Il disait « elle
+      // partira à la prochaine ouverture de Chrome » — le discours du PIRE cas,
+      // faux dès que Chrome tourne, où l'attente réelle est le passage du poll
+      // (~2 min). Même défaut que le message d'attente de la sync, corrigé le
+      // 04/08 de la même façon. L'état est désormais porté par la pastille de
+      // la carte (posée juste au-dessus par le patch optimiste) et détaillé
+      // dans la feuille d'avancement, qui parle du poll ET montre un loader.
     } finally {
       setRepubBusy(null);
     }
@@ -1955,6 +2138,7 @@ const StockTab = memo(function StockTab({
   // des absurdités — l'aperçu nomme les articles plafonnés). Champ libre en
   // solo : minimum 1 € (la garde de publication existante).
   const [repubSheet, setRepubSheet] = useState(null); // {items:[{item, prixActuel}]}
+  const [repubProgress, setRepubProgress] = useState(null); // job republish affiché en détail
   const repubGratuit = isPremium || isPro;
   function ouvrirFeuilleRepublication(itemsCibles) {
     setRepubSheet({
@@ -2024,14 +2208,9 @@ const StockTab = memo(function StockTab({
         ...prev,
         [item.id]: (prev[item.id] ?? []).map(j => j.id === job.id ? { ...j, status: 'pending', error: null } : j),
       }));
-      // La capture n'est plus refaite ICI mais par l'extension, juste avant
-      // d'agir : le message ne promet donc plus une capture déjà faite.
-      const suite = surTelephoneStock
-        ? (lang === 'fr' ? 'à la prochaine ouverture de Chrome sur ton ordinateur.' : 'the next time you open Chrome on your computer.')
-        : (lang === 'fr' ? '— laisse Chrome ouvert quelques minutes.' : '— keep Chrome open a few minutes.');
-      setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'vert', texte: res.recapture
-        ? (lang === 'fr' ? `Republication relancée : l'annonce sera recapturée puis republiée ${suite}` : `Repost relaunched: the listing will be re-captured then reposted ${suite}`)
-        : (lang === 'fr' ? `Recréation relancée ${suite}` : `Recreation relaunched ${suite}`) } }));
+      // Idem à la relance : pas de message « à la prochaine ouverture de
+      // Chrome ». Le job repasse 'pending' juste au-dessus, donc la pastille
+      // reprend la main et la feuille dit l'attente RÉELLE (le poll).
     } finally {
       setRepubBusy(null);
     }
@@ -2112,7 +2291,10 @@ const StockTab = memo(function StockTab({
       // listing_url croisée : tout repli supprime l'annonce d'un autre article).
       const { data } = await supabase
         .from("cross_post_jobs")
-        .select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title")
+        // updated_at : horodatage de la DERNIÈRE transition, affiché dans la
+        // feuille d'avancement d'une republication — c'est lui qui distingue
+        // « ça avance » de « ça dort ». Lecture seule, aucun autre usage.
+        .select("id, inventaire_id, platform, status, error, created_at, updated_at, platform_fields, action, listing_url, title")
         .eq("user_id", user.id)
         .in("status", ["pending", "processing", "published", "failed", "needs_user", "deleted"]);
       if (annule || !data) return;
@@ -3063,11 +3245,12 @@ const StockTab = memo(function StockTab({
                           <div className="left">
                             <div className="title-line">
                               <span className="title">{it.nom}</span>
-                              {it.marque&&(<><span className="brand-dot"/><span className="brandname">{it.marque}</span></>)}
                               {it.quantite>1&&<span className="qty-badge">×{it.quantite}</span>}
                             </div>
                             <div className="meta">
-                              {(_desc||_loc)&&(<><span className="hl">{_desc||_loc}</span>{" · "}</>)}
+                              {(()=>{const mq=marqueHorsTitre(it.nom,it.marque);
+                                return mq?(<><span className="hl">{mq}</span>{" · "}</>):null;})()}
+                              {(_desc||_loc)&&(<>{_desc||_loc}{" · "}</>)}
                               {typeLabel(it.categorie,lang)}
                             </div>
                             {it.emplacement&&(
@@ -3159,6 +3342,13 @@ const StockTab = memo(function StockTab({
                     return r;
                   })();
                   const repubEligible=republishActif&&item.vinted_item_id&&!item.disparu_le&&item.statut!=="vendu";
+                  // Vocabulaire d'étape partagé pastille ↔ feuille (une seule
+                  // source : etapeRepublication). null = rien à afficher.
+                  const repubEtape=repubEligible?etapeRepublication(repubLatest,lang!=='en'):null;
+                  // La pastille dit déjà l'état : le message transitoire ne le
+                  // répète pas. Il ne reste affiché que quand il apporte autre
+                  // chose (refus, échec de relance).
+                  const repubNote=repubEligible&&repubMsgs[item.id]&&!repubEtape?repubMsgs[item.id]:null;
                   // "processing" = publication en cours côté extension : même
                   // affichage « En cours… » que pending (pour le vendeur, c'est
                   // le même moment ; la nuance est purement interne).
@@ -3205,13 +3395,18 @@ const StockTab = memo(function StockTab({
                       <div className="row in-swipe" onClick={openEdit}>
                         <div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>
                         <div className="left">
+                          {/* La marque a quitté la ligne de titre (2026-08-05) :
+                              elle y était rognée en « • Q… » et volait la place
+                              du titre. Elle ouvre la ligne meta — entière — et
+                              disparaît quand le titre la contient déjà. */}
                           <div className="title-line">
                             <span className="title">{item.title}</span>
-                            {item.marque&&(<><span className="brand-dot"/><span className="brandname">{marqueLabel(item.marque,lang)}</span></>)}
                             {(item.quantite||1)>1&&<span className="qty-badge">×{item.quantite}</span>}
                           </div>
                           <div className="meta">
-                            {(_itemDesc||_itemLoc)&&(<><span className="hl">{_itemDesc||_itemLoc}</span>{" · "}</>)}
+                            {(()=>{const mq=marqueHorsTitre(item.title,marqueLabel(item.marque,lang));
+                              return mq?(<><span className="hl">{mq}</span>{" · "}</>):null;})()}
+                            {(_itemDesc||_itemLoc)&&(<>{_itemDesc||_itemLoc}{" · "}</>)}
                             {typeLabel(item.type||"Autre",lang)}
                           </div>
                           {/* ── Prix d'achat manquant : saisie DANS la ligne ──
@@ -3362,39 +3557,30 @@ const StockTab = memo(function StockTab({
                                   lu dans vinted_listing_snapshots, une seule
                                   requête pour toute la liste. */}
                               {prixAnnonce!=null&&(
-                                <div className="micon ic-plateforme" title={lang==='fr'?"Prix affiché sur l'annonce Vinted — pas un prix de vente réalisé":"Asking price on the Vinted listing — not a realized sale price"}>
+                                <div className="micon ic-price" title={lang==='fr'?"Prix affiché sur l'annonce Vinted — pas un prix de vente réalisé":"Asking price on the Vinted listing — not a realized sale price"}>
                                   🏷️ {lang==='fr'?'Annonce Vinted':'Vinted listing'} · {fmt(prixAnnonce)}
                                 </div>
                               )}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
                               {/* É5 : état de la republication — badge dédié,
                                   jamais confondu avec la publication. */}
-                              {repubEligible&&repubLatest&&(()=>{
-                                const st=repubLatest.status;
-                                const step=repubLatest.platform_fields?.republish_step??"captured";
-                                if(st==="pending"&&step==="deleted")return(
-                                  <div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>
-                                    🔁 {lang==='fr'?'Republication : recréation en attente':'Repost: recreation pending'}
-                                  </div>);
-                                if(st==="pending"||st==="processing")return(
-                                  <div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>
-                                    🔁 {lang==='fr'?'Republication en cours…':'Reposting…'}
-                                  </div>);
-                                if(st==="needs_user")return(
-                                  <div className="micon" title={repubLatest.error??undefined}
-                                    onClick={e=>{e.stopPropagation();if(repubLatest.error)alert(repubLatest.error);}}
-                                    style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}>
-                                    🔁✋ {lang==='fr'?'Republication à relancer':'Repost needs action'}
-                                  </div>);
-                                return null;
-                              })()}
-                              {repubEligible&&repubMsgs[item.id]&&(
-                                <div className="micon"
-                                  onClick={e=>{e.stopPropagation();setRepubMsgs(m=>({...m,[item.id]:null}));}}
-                                  style={repubMsgs[item.id].ton==='vert'
-                                    ?{background:"#F0FDFB",border:"1px solid rgba(13,148,136,0.25)",color:"#1B6E62",cursor:"pointer"}
-                                    :{background:"#FFF7ED",border:"1px solid #FED7AA",color:"#9A3412",cursor:"pointer"}}>
-                                  {repubMsgs[item.id].texte}
+                              {/* État de la republication — L'UNIQUE endroit qui
+                                  le porte (2026-08-05). Il y en avait TROIS qui
+                                  se marchaient dessus : cette pastille, un
+                                  bouton fantôme « 🔁 En cours » à droite, et une
+                                  bannière qui débordait la carte. Ne rien
+                                  rajouter ici sans en retirer un.
+                                  Mot COURT obligatoire : .micon est nowrap, une
+                                  phrase entière y prend une largeur
+                                  irréductible et ressort de la colonne. Le
+                                  détail vit dans la feuille, au tap. */}
+                              {repubEligible&&repubEtape&&(
+                                <div className="micon" role="button" tabIndex={0}
+                                  title={lang==='fr'?'Voir où en est la republication':'See repost progress'}
+                                  onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}
+                                  onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();setRepubProgress(repubLatest);}}}
+                                  style={{background:repubEtape.fond,border:`1px solid ${repubEtape.bord}`,color:repubEtape.encre,cursor:"pointer"}}>
+                                  🔁 {!repubEtape.fini&&<span className="pulse"/>} {repubEtape.court} ›
                                 </div>
                               )}
                             </div>
@@ -3464,10 +3650,13 @@ const StockTab = memo(function StockTab({
                                   style={{opacity:repubBusy===item.id?0.6:1}}>
                                   {repubBusy===item.id?(lang==='fr'?'Relance…':'Relaunching…'):(lang==='fr'?'🔁 Relancer':'🔁 Relaunch')}
                                 </button>);
-                              if(vivant)return(
-                                <button className="btn-vendre" disabled style={{opacity:0.55,cursor:"default"}}>
-                                  {lang==='fr'?'🔁 En cours':'🔁 Running'}
-                                </button>);
+                              // Republication vivante : AUCUN bouton ici. L'état
+                              // est porté par la seule pastille de gauche
+                              // (cliquable → feuille d'avancement) ; ce bouton
+                              // fantôme « 🔁 En cours » ne faisait que répéter
+                              // ce qu'elle disait déjà, sur la colonne qui doit
+                              // rester celle des ACTIONS.
+                              if(vivant)return null;
                               if(st==="published"&&repubLatest?.platform_fields?.recreated_at
                                 &&Date.now()-Date.parse(repubLatest.platform_fields.recreated_at)<24*3600*1000){
                                 const restant=Math.max(1,Math.ceil((24*3600*1000-(Date.now()-Date.parse(repubLatest.platform_fields.recreated_at)))/3600000));
@@ -3498,6 +3687,18 @@ const StockTab = memo(function StockTab({
                             })()}
                           </div>
                         </div>
+                        {/* Message transitoire — SA PROPRE LIGNE, en pleine
+                            largeur de carte, sous les deux colonnes. Il vivait
+                            dans .icons (colonne de gauche) où .micon impose
+                            nowrap : la phrase sortait de la carte par la droite
+                            et passait par-dessus les boutons. */}
+                        {repubNote&&(
+                          <div className={`cardnote ${repubNote.ton==='vert'?'is-info':'is-warn'}`}
+                            onClick={e=>{e.stopPropagation();setRepubMsgs(m=>({...m,[item.id]:null}));}}
+                            style={{cursor:"pointer"}}>
+                            <span>{repubNote.texte}</span>
+                          </div>
+                        )}
                       </div>
                     </SwipeRow>
                   );})}
@@ -3598,6 +3799,17 @@ const StockTab = memo(function StockTab({
           }}
         />
       )}
+      {/* Où en est ma republication — ouverte au tap sur la pastille de carte.
+          Le job est relu dans jobsByInventaire à chaque poll : on ré-appelle
+          etapeRepublication sur la version FRAÎCHE, sinon la feuille resterait
+          figée sur l'étape du moment où elle a été ouverte. */}
+      {repubProgress&&(()=>{
+        const frais=(jobsByInventaire[repubProgress.inventaire_id]??[])
+          .find(j=>j.id===repubProgress.id)??repubProgress;
+        return(
+          <RepublishProgressSheet lang={lang} job={frais} onClose={()=>setRepubProgress(null)}/>
+        );
+      })()}
       {/* Mini-éditeur « À compléter » (socle needs_user, 2026-07-19).
           Fermeture sans valider → aucun écrit, le job reste needs_user et le
           badge reste. Après validation : patch LOCAL immédiat (le badge
