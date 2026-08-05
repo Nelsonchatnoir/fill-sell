@@ -1114,29 +1114,31 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   //    insuffisante → là seulement, le message de version, SANS la promesse
   //    « elle se met à jour toute seule depuis le Chrome Web Store » (la
   //    0.5.x n'y a jamais été soumise : personne n'aurait rien reçu).
-  // Quatre cas EXCLUSIFS, arbitrés par Nico le 05/08. Ce qui décide, c'est
-  // l'état du COMPTE croisé au SUPPORT — jamais « une extension répond-elle
-  // dans ce navigateur », qui est faux par construction sur un téléphone et
-  // faisait afficher un message d'installation inapplicable sur iPhone.
-  //   · null               → rien à dire, le bouton est actif (cas D)
-  //   · 'version_ici'      → l'extension a répondu ICI, mais trop ancienne
-  //   · 'maj'              → le compte a une extension, aucune ne sait lire (C)
-  //   · 'tel_sans_ext'     → téléphone, aucune extension jamais vue (B)
-  //   · 'desktop_sans_ext' → ordinateur, aucune extension jamais vue (A)
-  //   · 'natif_indispo'    → repli AVANT migration seulement (capacité illisible)
+  // TROIS états EXCLUSIFS (resserrés le 05/08 soir — avant, le repli natif
+  // 'natif_indispo' disait « pas disponible dans l'application mobile » sans
+  // un mot sur l'installation : un visiteur mobile sans extension — le cas le
+  // plus fréquent — repartait sans savoir quoi faire). Ce qui décide, c'est
+  // la DÉTECTION : ce que le compte et ce navigateur prouvent — jamais une
+  // supposition.
+  //   · null               → extension à jour : bouton actif, aucun message (c)
+  //   · 'version_ici'      → l'extension a répondu ICI, mais trop ancienne (b)
+  //   · 'maj'              → le compte a une extension, aucune ne sait lire (b)
+  //   · 'tel_sans_ext'     → téléphone, AUCUNE extension détectée (a)
+  //   · 'desktop_sans_ext' → ordinateur, AUCUNE extension détectée (a)
+  // Capacité illisible (migration pas appliquée) = rien de détecté = cas (a),
+  // application native comprise : l'accroche d'installation sait parler
+  // mobile ET desktop, et ne promet rien qui exige un ordinateur sans le dire.
   const casCarte = (() => {
     if (peutLancer) return null;
     // Tant qu'on ne sait rien (sonde en cours ET capacité pas lue), on ne
     // conclut RIEN : sinon le message clignote au montage.
     if (!sondeFinie && !capaciteConnue) return null;
     if (extVue) return 'version_ici';
-    if (capaciteConnue) return capacite.jamaisVue
-      ? (surTelephone ? 'tel_sans_ext' : 'desktop_sans_ext')
-      : 'maj';
-    // Capacité illisible = migration pas encore appliquée. On garde le repli
-    // d'avant pour l'application native (où rien ne marchait de toute façon),
-    // et on route déjà le web mobile vers le bon message.
-    if (isNative) return 'natif_indispo';
+    // Le compte a une extension quelque part (heartbeat) : c'est une mise à
+    // jour qu'il lui faut, jamais une installation.
+    if (capaciteConnue && !capacite.jamaisVue) return 'maj';
+    // Rien de détecté — ni ici, ni sur le compte (ou capacité illisible) :
+    // l'accroche d'installation, déclinée par support.
     return surTelephone ? 'tel_sans_ext' : 'desktop_sans_ext';
   })();
 
@@ -1162,11 +1164,6 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       return fr
         ? "FillSell est bien installé sur ton ordinateur, mais dans une version trop ancienne pour lire ton dressing. Ouvre Chrome sur ton ordinateur : l'extension se met à jour toute seule, puis reviens ici."
         : "FillSell is installed on your computer, but it's too old to read your closet. Open Chrome on your computer: the extension updates itself, then come back here.";
-    }
-    if (casCarte === 'natif_indispo') {
-      return fr
-        ? "La synchronisation lit ton dressing depuis Chrome, sur ordinateur — elle n'est pas disponible dans l'application mobile."
-        : 'The sync reads your closet from Chrome on desktop — it isn\'t available in the mobile app.';
     }
     return null;
   })();
@@ -1401,22 +1398,30 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{raisonGrisee}</div>
       )}
 
-      {/* Comptes SANS aucune extension connue. Deux formulations, une par
-          support : sur un ordinateur l'installation est faisable ici et
-          maintenant ; sur un téléphone elle ne l'est pas — on ne parle donc
-          JAMAIS de « ce navigateur », l'utilisateur n'y peut rien. L'écran de
-          pitch gère l'action de chaque support (lien direct sur ordinateur ;
-          mailto pré-rempli + copie sur téléphone, y compris en WebView native). */}
+      {/* Cas (a) : AUCUNE extension détectée — le cas le plus fréquent, et le
+          message qui doit CONVERTIR : le bénéfice d'abord (récupérer ses
+          annonces en un clic, sans rien toucher sur Vinted), le comment
+          ensuite. Deux formulations, une par support : sur un ordinateur
+          l'installation est faisable ici et maintenant ; sur un téléphone
+          elle ne l'est pas — on le dit en toutes lettres (jamais une promesse
+          qui exige un ordinateur sans le nommer). L'écran de pitch gère
+          l'action de chaque support (lien direct sur ordinateur ; mailto
+          pré-rempli + copie sur téléphone, y compris en WebView native). */}
       {(casCarte==='desktop_sans_ext'||casCarte==='tel_sans_ext')&&(
         <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
-          <div style={{fontSize:12,lineHeight:1.5,color:"#5C6560",fontWeight:600}}>
+          <div style={{fontSize:12,lineHeight:1.5,color:"#10201B",fontWeight:700}}>
+            {fr
+              ? "Récupère toutes tes annonces Vinted ici en un clic — titre, prix, photos, vues, favoris — sans rien republier ni modifier."
+              : "Bring all your Vinted listings in here in one click — title, price, photos, views, favourites — without republishing or changing anything."}
+          </div>
+          <div style={{fontSize:12,lineHeight:1.5,color:"#5C6560",fontWeight:600,marginTop:6}}>
             {casCarte==='tel_sans_ext'
               ? (fr
-                  ? "Ton dressing Vinted se lit depuis ton ordinateur. Tu installes FillSell une seule fois sur Chrome, et ensuite tu pourras lancer la synchronisation d'ici, depuis ton téléphone."
-                  : "Your Vinted closet is read from your computer. You install FillSell once on Chrome, and after that you'll be able to start the sync right here, from your phone.")
+                  ? "Ça passe par l'extension Chrome FillSell, qui s'installe une seule fois sur un ordinateur. Ensuite, tu lanceras la synchronisation d'ici, depuis ton téléphone."
+                  : "It works through the FillSell Chrome extension, installed once on a computer. After that, you'll start the sync right here, from your phone.")
               : (fr
-                  ? "L'extension FillSell n'est pas dans ce navigateur — c'est elle qui lit ton dressing, depuis Chrome sur ordinateur."
-                  : "The FillSell extension isn't in this browser — it's what reads your closet, from Chrome on a computer.")}
+                  ? "Ça passe par l'extension Chrome FillSell — installe-la dans ce navigateur, c'est fait en une minute."
+                  : "It works through the FillSell Chrome extension — install it in this browser, it takes a minute.")}
           </div>
           <button
             onClick={()=>setShowPitch(true)}
