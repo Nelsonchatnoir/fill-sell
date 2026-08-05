@@ -1014,8 +1014,22 @@ ${s} .qty-badge{font-size:11px;font-weight:700;color:var(--teal-deep);flex-shrin
 /* La meta RETOURNE À LA LIGNE (2026-08-05) : elle porte désormais la marque,
    toujours affichée, et le nowrap la coupait — « Picture Organic Clothing ·
    catégorie … ». Couper la marque pour tenir sur une ligne, c'est exactement
-   l'information que Nico a demandé de ne plus perdre. */
-${s} .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:normal;overflow-wrap:anywhere;line-height:1.35;}
+   l'information que Nico a demandé de ne plus perdre.
+
+   MAIS bornée à DEUX LIGNES, hauteur RÉSERVÉE (2026-08-05, Nico sur iPhone) :
+   la meta porte la description générée, longue de 5 à 7 lignes sur un article
+   réel (« Montre G-Shock … pas de défaut apparent visible »). Sans borne, une
+   carte faisait le double de la voisine et la liste devenait illisible au
+   défilement. On assume de ne PAS voir la description en entier — elle est
+   lisible au tap (édition).
+   Le couple line-clamp + min-height est indissociable : le clamp seul
+   n'égalise rien (une meta d'une ligne reste 15 px plus courte), le
+   min-height seul ne coupe rien. Les deux, et le bloc de gauche a une
+   hauteur CONSTANTE, quel que soit le texte.
+   ⛔ Ne pas remettre overflow:visible ni retirer le -webkit-box : c'est le
+   seul mécanisme qui tronque sur plusieurs lignes avec des points de
+   suspension (aucun équivalent en text-overflow, qui est mono-ligne). */
+${s} .meta{font-size:11.5px;color:var(--mute);margin-top:3px;white-space:normal;overflow-wrap:anywhere;line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;min-height:2.7em;}
 ${s} .meta .hl{color:var(--ink);}
 /* ⚠️⚠️ AUCUN BACKTICK DANS CE FICHIER — tout ce CSS est un template literal JS.
    Un backtick posé ici (j'avais écrit .left entre backticks, à la mode Markdown)
