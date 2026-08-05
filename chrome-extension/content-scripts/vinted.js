@@ -1941,7 +1941,28 @@ async function fillPriceField(value) {
   // laisse le masque formater une fois : "200" → "200,00 €" (vérifié).
   // L'exception au timing humain reste assumée (un prix fait 2-4 caractères,
   // ce n'est pas le signal de vitesse qui a déclenché le blocage LBC).
-  const str = String(value).replace(".", ",");
+  //
+  // ⚠️⚠️ SÉPARATEUR DÉCIMAL — le masque attend un POINT et rend « NaN € » sur
+  // toute VIRGULE. MESURÉ sur le formulaire réel le 2026-08-05 :
+  //     "5"    → 5,00 €        "5,0"  → NaN €
+  //     "5.0"  → 5,00 €        "5,00" → NaN €
+  //     "12.5" → 12,50 €       "12,5" → NaN €
+  //     "7.99" → 7,99 €
+  // Le code faisait exactement l'INVERSE : String(value).replace(".", ",").
+  // Ça ne se voyait pas tant que les prix étaient ENTIERS — aucun point à
+  // remplacer, "200" partait intact. La première valeur DÉCIMALE l'a révélé :
+  // la republication rejoue le prix relevé sur Vinted ("5.0", une CHAÎNE), d'où
+  // « NaN € », recréation refusée, et l'annonce laissée supprimée (job
+  // 9bd4839e, 05/08). ⚠️ Le même trou avalait une publication NORMALE à
+  // 7,50 € — ce n'était pas propre à la republication.
+  const n = Number(String(value ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) {
+    // JAMAIS de valeur non finie dans le champ : on ne saisit RIEN et on nomme
+    // le problème. Un « NaN € » posé ici ne se voit qu'au clic Publier.
+    throw new Error(`Prix inutilisable (reçu : ${JSON.stringify(value)}) — aucune saisie tentée dans le champ prix.`);
+  }
+  // toFixed(2) : point décimal garanti, jamais de séparateur de milliers.
+  const str = n.toFixed(2);
 
   // Saisie complète, ré-exécutable telle quelle (le nœud peut être remonté par
   // React entre deux poses : on le re-résout à chaque appel).
@@ -2037,8 +2058,14 @@ async function fillPriceField(value) {
 // infirmer : comportement historique conservé (pas de blocage sur illisible ici
 // — c'est le garde-fou systémique de l'objectif 3 qui tranchera ce cas).
 async function ensurePriceCommitted(value) {
-  const str = String(value).replace(".", ",");
-  const expected = parseFloat(String(value).replace(",", "."));
+  // Même normalisation que fillPriceField : la valeur re-commitée par
+  // props.onChange doit avoir la forme que le masque accepte (POINT décimal),
+  // sinon on réinjecterait le « NaN € » qu'on vient de corriger.
+  const expected = Number(String(value ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(expected) || expected <= 0) {
+    throw new Error(`Prix inutilisable (reçu : ${JSON.stringify(value)}) — commit du prix abandonné.`);
+  }
+  const str = expected.toFixed(2);
   const committedOk = (s) =>
     Array.isArray(s?.levels) &&
     s.levels.some((v) => {

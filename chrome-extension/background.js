@@ -6270,6 +6270,24 @@ const REPUBLISH_DRY_RUN = false;
 const REPUBLISH_ESPACEMENT_MS = 2 * 60 * 1000;
 let dernierGesteRepublishAt = 0;
 
+// Prix de la recréation — UNE seule résolution, utilisée AUX DEUX BOUTS :
+// éprouvée AVANT la suppression (l'annonce est encore en ligne, on peut encore
+// renoncer sans rien perdre) et relue à la recréation. Les deux ne peuvent donc
+// pas diverger.
+// Ordre : le prix ajusté au clic s'il existe, sinon celui relevé sur l'annonce.
+// ⚠️ TYPAGE : payload.prix vient de l'API Vinted et est une CHAÎNE ("5.0"),
+// jamais un nombre — d'où le parse explicite. `Number(null)` vaut 0 et
+// `Number(undefined)` vaut NaN : on ne se repose sur aucun des deux, chaque
+// candidat est validé fini ET strictement positif avant d'être retenu.
+function resoudrePrixRepublication(pf, payload) {
+  for (const brut of [pf?.prix_republication, payload?.prix]) {
+    if (brut === null || brut === undefined || brut === "") continue;
+    const n = Number(String(brut).trim().replace(",", "."));
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+}
+
 async function processRepublishJob(job, accessToken) {
   const pf = { ...(job.platform_fields ?? {}) };
   // Défaut = 'a_capturer', PREMIÈRE étape de la machine (corrigé le 2026-08-05,
@@ -6374,8 +6392,14 @@ async function processRepublishJob(job, accessToken) {
       // moment d'AGIR → needs_user AVANT toute suppression, avec la vraie
       // cause et la vraie solution (Chrome ouvert peu après le clic), pas un
       // « relance » sec.
+      // `prix` et `titre` sont tirés du payload DÈS ICI : ce sont les deux
+      // champs que la recréation EXIGE et que le verdict ne prouve pas (lui ne
+      // couvre que les libellés, la description et les photos). Sélection
+      // ciblée en JSON plutôt que le payload entier : celui-ci embarque le
+      // natif complet et les URLs de photos, inutiles à cette vérification.
       const capRows = await restRequest(
-        `vinted_republish_captures?id=eq.${Number(pf.capture_id)}&select=verdict,captured_at`,
+        `vinted_republish_captures?id=eq.${Number(pf.capture_id)}` +
+        `&select=verdict,captured_at,prix:payload->prix,titre:payload->titre`,
         accessToken,
       );
       const capMeta = capRows?.[0];
@@ -6386,6 +6410,35 @@ async function processRepublishJob(job, accessToken) {
         });
         return { status: "needsUser", error: "capture invalide avant suppression" };
       }
+
+      // ── RÈGLE D'OR, ÉPROUVÉE DU BON CÔTÉ (2026-08-05) ────────────────────
+      // « On ne supprime jamais tant que tout ce qu'il faut pour recréer n'est
+      // pas écrit en base. » Le 05/08, tout ÉTAIT en base — mais le prix était
+      // lu par un chemin faux, et personne ne l'avait éprouvé avant de
+      // supprimer : l'annonce est partie, la recréation a échoué sur un
+      // « NaN € », et l'article est resté hors ligne (job 9bd4839e).
+      // Le verdict 'valide' ne prouve QUE les libellés, la description et les
+      // photos. Les deux champs que la recréation exige en plus — le PRIX et le
+      // TITRE — n'étaient contrôlés nulle part. On les résout donc ICI, avec
+      // EXACTEMENT la fonction qu'utilisera la recréation, pendant que
+      // l'annonce est encore en ligne et qu'un refus ne coûte rien.
+      // ⛔ Tout nouveau champ exigé par la recréation doit être ajouté à cette
+      // vérification, pas seulement lu plus bas.
+      const prixPrevu = resoudrePrixRepublication(pf, { prix: capMeta.prix });
+      const titrePrevu = String(capMeta.titre ?? job.title ?? "").trim();
+      if (prixPrevu === null || !titrePrevu) {
+        const manque = [prixPrevu === null ? "le prix" : null, !titrePrevu ? "le titre" : null].filter(Boolean).join(" et ");
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          platform_fields: pf,
+          error: `Republication arrêtée AVANT toute suppression : ${manque} de la nouvelle annonce n'a pas pu être déterminé. ` +
+                 "Ton annonce est intacte, elle est toujours en ligne. Relance la republication depuis l'app.",
+        });
+        return { status: "needsUser", error: `recréation impossible (${manque}) — aucune suppression` };
+      }
+      // Figé sur le job : la recréation republiera CE prix, celui qu'on vient
+      // de valider, et non une seconde résolution qui pourrait diverger.
+      pf.prix_recreation = prixPrevu;
+
       if (Date.parse(capMeta.captured_at) < Date.now() - 24 * 3600 * 1000) {
         // Compteur de péremption (validé par Nico) : détecte le cycle
         // « dort → périmée → relance → dort ». Il survit aux relances (la
@@ -6495,6 +6548,22 @@ async function processRepublishJob(job, accessToken) {
         });
         return { status: "needsUser", error: "capture invalide à la recréation" };
       }
+      // Prix : celui figé avant la suppression s'il est là, sinon re-résolu par
+      // la MÊME fonction. Dernier filet — un prix non résoluble ici ne doit
+      // JAMAIS partir vers le formulaire : on s'arrête en needs_user plutôt que
+      // d'écrire « NaN € » dans le champ (l'échec du 05/08).
+      const prixRecreation = resoudrePrixRepublication(
+        { prix_republication: pf.prix_recreation ?? pf.prix_republication },
+        cap.payload,
+      );
+      if (prixRecreation === null) {
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          platform_fields: pf,
+          error: "L'annonce d'origine a été supprimée et le prix de la nouvelle annonce n'a pas pu être déterminé — " +
+                 "rien n'est perdu, photos et fiche sont au chaud. Relance depuis l'app.",
+        });
+        return { status: "needsUser", error: "prix de recréation irrésoluble" };
+      }
       pf.processing_since = new Date().toISOString();
       await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
 
@@ -6506,7 +6575,7 @@ async function processRepublishJob(job, accessToken) {
         action: "publish",
         title: cap.payload?.titre ?? job.title ?? "",
         description: cap.payload?.description ?? "",
-        price: cap.payload?.prix ?? job.price ?? null,
+        price: prixRecreation,
         photo_option: "original",
         photos: (cap.photos_urls ?? []).map((url, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url })),
         inventaire_id: job.inventaire_id ?? null,
