@@ -230,8 +230,34 @@ serve(async (req) => {
     const userId = purchase?.externalAccountIdentifiers?.obfuscatedExternalAccountId as string | undefined;
 
     if (!userId) {
-      console.warn("[google-play-webhook] No obfuscatedExternalAccountId in purchase");
-      return new Response(JSON.stringify({ ok: true, skipped: "no userId" }), {
+      // ── Encaissement non rattachable (2026-08-05) ────────────────────────
+      // Aligné sur la branche oneTimeProduct ci-dessus, qui traitait déjà ce
+      // cas correctement : payload complet dans les logs + alerte immédiate,
+      // seule trace permettant de régulariser à la main via l'orderId.
+      //
+      // POURQUOI 200 ET NON UN 5xx — décision explicite :
+      // l'absence d'obfuscatedExternalAccountId est une propriété de l'ACHAT
+      // tel que l'API Publisher le renvoie, pas un aléa de transport.
+      // Re-interroger le même token renverra éternellement le même payload :
+      // un 5xx ferait rejouer Pub/Sub pendant ses 7 jours de rétention, une
+      // alerte à chaque tentative, pour finir perdu quand même. Le réessai
+      // n'a aucune chance d'aboutir, donc on acquitte et on alerte.
+      // Les 5xx restent réservés à ce qui EST transitoire, et le sont déjà :
+      // API Publisher injoignable (plus haut) et erreur d'écriture DB (plus
+      // bas). Ne pas transformer ce 200 en 500 sans changer d'abord la
+      // cause : ce serait rejouer un échec déterministe.
+      console.error(
+        "[google-play-webhook] abonnement sans obfuscatedExternalAccountId —",
+        JSON.stringify({ notificationType, subscriptionId, purchase }),
+      );
+      await alerterPaiementNonCredite({
+        canal: "google", type: "abonnement", produit: subscriptionId,
+        ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: null,
+        erreur: "obfuscatedExternalAccountId absent : compte non identifiable. "
+              + "Retrouver l'abonné via l'orderId dans la Play Console, puis "
+              + "poser le droit à la main (aucun réessai Pub/Sub n'aboutira).",
+      });
+      return new Response(JSON.stringify({ ok: true, skipped: "no_user_id" }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
     }

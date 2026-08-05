@@ -134,6 +134,9 @@ verify_jwt = true
 [functions.validate-apple-receipt]
 verify_jwt = true
 
+[functions.validate-google-purchase]
+verify_jwt = true
+
 [functions.delete-account]
 verify_jwt = true
 

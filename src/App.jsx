@@ -505,9 +505,16 @@ async function checkAndResetDaily(supabase, userId, field_count, field_date) {
     .single();
   const currentCount = profile?.[field_date] === today ? (profile?.[field_count] ?? 0) : 0;
   if (profile?.[field_date] !== today) {
-    await supabase.from('profiles')
+    // Règle projet « profiles-rls-update-policy » : toute écriture client sur
+    // profiles est suivie d'un .select() et d'un test d'erreur. Sans lui, un
+    // refus de GRANT colonne est silencieux — c'est exactement ce qui a laissé
+    // le chemin d'achat Google mentir pendant des mois. Ici l'échec n'est pas
+    // bloquant (compteur du jour), donc on journalise sans lever.
+    const { error } = await supabase.from('profiles')
       .update({ [field_count]: 0, [field_date]: today })
-      .eq('id', userId);
+      .eq('id', userId)
+      .select(field_count);
+    if (error) console.warn(`[quota] remise à zéro ${field_count} refusée:`, error.message);
   }
   return currentCount;
 }
@@ -1312,23 +1319,37 @@ function EmptyStateDashboard({ lang, onTryVoice, onOpenLens }) {
   );
 }
 
-function PremiumWelcomeModal({ lang, onClose }) {
+// pro : la MÊME modale sert aux deux tiers (setShowPremiumWelcome est appelé
+// pour Premium comme pour Pro). Tant qu'elle n'affichait aucun chiffre, la
+// confusion était sans conséquence ; depuis qu'elle annonce un nombre de
+// Pépites, elle DOIT savoir lequel des deux a été acheté.
+function PremiumWelcomeModal({ lang, onClose, pro = false }) {
+  // Montants alignés sur coin_config (monthly_grant_premium = 150,
+  // monthly_grant_pro = 600, price_lens_overflow = 6 — relevés en prod le
+  // 2026-08-05). ⚠️ coin_config est la SOURCE : si ces valeurs y changent,
+  // ce libellé ment jusqu'à ce qu'on le suive. Ne pas y écrire un chiffre
+  // qu'on n'a pas lu dans la table.
+  const pepites = pro ? 600 : 150;
   const PERKS = lang === 'en'
     ? [
         { icon: '🎙️', label: 'AI Voice — Unlimited' },
-        { icon: '📸', label: 'Lens Pro — 10/day · live market price' },
+        { icon: '🪙', label: `${pepites} Nuggets included every month` },
+        { icon: '📸', label: 'AI Lens — 6 Nuggets per scan · live market price' },
         { icon: '📦', label: 'Unlimited stock' },
         { icon: '📊', label: 'Advanced AI-powered stats' },
         { icon: '📤', label: 'Import / Export Excel' },
       ]
     : [
         { icon: '🎙️', label: 'IA vocale — Illimité' },
-        { icon: '📸', label: 'Lens Pro — 10/jour · prix marché en direct' },
+        { icon: '🪙', label: `${pepites} Pépites offertes chaque mois` },
+        { icon: '📸', label: 'Lens IA — 6 Pépites par scan · prix marché en direct' },
         { icon: '📦', label: 'Stock illimité' },
         { icon: '📊', label: 'Stats avancées analysées par IA' },
         { icon: '📤', label: 'Import / Export Excel' },
       ];
-  const title = lang === 'en' ? 'Welcome to FillSell Premium' : 'Bienvenue dans FillSell Premium';
+  const title = lang === 'en'
+    ? (pro ? 'Welcome to FillSell Pro' : 'Welcome to FillSell Premium')
+    : (pro ? 'Bienvenue dans FillSell Pro' : 'Bienvenue dans FillSell Premium');
   const subtitle = lang === 'en'
     ? 'Your benefits are active right now'
     : 'Tes avantages sont actifs dès maintenant';
@@ -1520,7 +1541,9 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
         // Incrément avant le fetch pour qu'Android accumule le compteur même si le réseau coupe
         const nextCount=voiceUsedToday+1;
         if(setVoiceUsedToday)setVoiceUsedToday(nextCount);
-        supabase.from('profiles').update({voice_count_today:nextCount,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);
+        supabase.from('profiles').update({voice_count_today:nextCount,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id)
+          .select('voice_count_today')
+          .then(({error})=>{if(error)console.warn('[quota] compteur vocal non enregistré:',error.message);});
       }
       setVaStep("thinking");
         try{
@@ -2057,6 +2080,26 @@ export default function App({ loginOnly = false }){
     }
   }
 
+  // ── Confirmation SERVEUR d'un droit payant (2026-08-05) ──────────────────
+  // Aucun écran de succès ne s'affiche sans que le SERVEUR ait porté le droit.
+  // Avant, seul iOS attendait (le webhook Apple écrivait) ; Android écrivait
+  // lui-même profiles et affichait « Bienvenue dans Premium » sur une écriture
+  // que Postgres avait refusée (42501). Les deux plateformes passent désormais
+  // par ici — factorisé exprès pour que l'asymétrie ne puisse pas revenir.
+  //
+  // Premier essai IMMÉDIAT : sur Android, validate-google-purchase a déjà
+  // écrit quand elle rend la main, donc la confirmation est instantanée. Sur
+  // iOS le webhook met quelques secondes, d'où les relances.
+  async function attendreConfirmationServeur(userId,{pro=false,essais=10,delaiMs=2000}={}){
+    for(let i=0;i<essais;i++){
+      if(i>0) await new Promise(r=>setTimeout(r,delaiMs));
+      const{data,error}=await supabase.from('profiles').select('is_premium,is_pro').eq('id',userId).maybeSingle();
+      if(error){console.warn('[IAP] relecture profil:',error.message);continue;}
+      if(data?.is_premium===true&&(!pro||data?.is_pro===true))return data;
+    }
+    return null;
+  }
+
   // tier : 'pro' → abonnement Pro (app.fillsell.pro2.sub sur iOS,
   // app.fillsell.pro.sub sur Google Play — cf. PRODUCT_IDS) ; toute autre valeur
   // (undefined, event de clic…) → Premium standard. Comparaison stricte voulue.
@@ -2105,35 +2148,50 @@ export default function App({ loginOnly = false }){
       const {cancelled,purchaseToken}=await purchasePremium(productId,user.id,{oldPurchaseToken:upgradeOldToken});
       if(cancelled) return;
       if(platform==='android'){
-        // Android : succès Play Billing côté client → écriture directe + sauvegarde du token
-        // Le webhook Google Play gère les renouvellements ; le token ici couvre le 1er achat
-        const updates={is_premium:true};
-        if(isProPurchase) updates.is_pro=true;
-        if(purchaseToken){updates.google_purchase_token=purchaseToken;updates.google_product_id=productId;}
-        await supabase.from('profiles').update(updates).eq('id',user.id);
-      } else {
-        // iOS : attendre confirmation via webhook Apple
-        let confirmed=false;
-        for(let i=0;i<10;i++){
-          await new Promise(r=>setTimeout(r,2000));
-          const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
-          if(data?.is_premium){confirmed=true;break;}
-        }
-        if(!confirmed) throw new Error('Premium not confirmed by server');
+        // ⛔ NE JAMAIS réintroduire ici un supabase.from('profiles').update(...).
+        // Ce bloc a contenu, du lancement au 2026-08-05, une écriture directe
+        // de is_premium / is_pro / google_purchase_token / google_product_id
+        // avec le JWT utilisateur. Ces colonnes ne sont pas — et ne doivent
+        // pas être — dans le GRANT UPDATE de `authenticated` : le refus 42501
+        // est la seule chose qui empêche un utilisateur de se passer Premium
+        // seul. L'écriture appartient au serveur, en service_role.
+        if(!purchaseToken) throw new Error(lang==='fr'
+          ?"Achat sans jeton Google : impossible à valider."
+          :'Purchase without a Google token: cannot be validated.');
+        const{data:vg,error:vgErr}=await supabase.functions.invoke('validate-google-purchase',{
+          body:{productId,purchaseToken,userId:user.id},
+        });
+        if(vgErr||!vg?.is_premium) throw new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server');
       }
+      // iOS : le droit vient d'apple-iap-webhook. Android : de la fonction
+      // ci-dessus. Dans les deux cas on ne croit que le serveur.
+      const confirme=await attendreConfirmationServeur(user.id,{pro:isProPurchase});
+      if(!confirme) throw new Error('Premium not confirmed by server');
       setIsPremium(true);
       if(isProPurchase) setIsPro(true);
       setShowPremiumWelcome(true);
     }catch(e){
       console.error('[IAP] purchase failed:',e);
+      // Filet DURCI (2026-08-05). L'ancienne version se contentait d'un
+      // is_premium=true pour afficher le succès : un is_comped, un abonné
+      // Stripe ou un ex-premium Apple voyait donc « Bienvenue dans Premium »
+      // après un achat Google qui venait d'échouer — et un achat Pro raté
+      // affichait un écran Premium. On n'accepte plus que l'état serveur
+      // portant EXACTEMENT le droit qui vient d'être acheté.
       try{
-        const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
-        if(data?.is_premium){
+        const{data,error}=await supabase.from('profiles')
+          .select('is_premium,is_pro,google_product_id').eq('id',user.id).maybeSingle();
+        if(error)console.warn('[IAP] relecture après échec:',error.message);
+        const droitAcquis=data?.is_premium===true
+          &&(!isProPurchase||data?.is_pro===true)
+          &&(platform!=='android'||data?.google_product_id===productId);
+        if(droitAcquis){
           setIsPremium(true);
-              setShowPremiumWelcome(true);
+          if(isProPurchase) setIsPro(true);
+          setShowPremiumWelcome(true);
           return;
         }
-      }catch{}
+      }catch(err){console.warn('[IAP] relecture après échec:',err?.message);}
       const errMsg=e?.message||e?.code||String(e);
       setToast({visible:true,message:`❌ ${errMsg}`});
       setTimeout(()=>setToast({visible:false,message:''}),8000);
@@ -2143,32 +2201,50 @@ export default function App({ loginOnly = false }){
   async function handleIAPRestore(){
     setIapLoading(true);
     try{
-      const {isPremium,receipt,purchaseToken,productId}=await restorePurchases('button');
-      if(isPremium){
+      // `restaure` et non `isPremium` : le nom d'origine masquait l'état du
+      // composant à l'intérieur de tout le bloc.
+      const {isPremium:restaure,receipt,purchaseToken,productId}=await restorePurchases('button');
+      if(restaure){
+        const estPro=productId===PRODUCT_IDS.pro;
         if(receipt&&platform==='ios'){
           const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
           if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
         } else if(platform==='android'){
-          const updates={is_premium:true};
-          if(purchaseToken){updates.google_purchase_token=purchaseToken;updates.google_product_id=productId;}
-          await supabase.from('profiles').update(updates).eq('id',user.id);
+          // ⛔ Même interdit qu'à l'achat : jamais d'écriture client ici.
+          // La restauration Android était cassée à l'identique — elle ne
+          // pouvait donc même pas réparer un abonnement payé.
+          if(!purchaseToken||!productId) throw new Error(lang==='fr'
+            ?"Abonnement Google incomplet : impossible à restaurer."
+            :'Incomplete Google subscription: cannot restore.');
+          const{data:vg,error:vgErr}=await supabase.functions.invoke('validate-google-purchase',{
+            body:{productId,purchaseToken,userId:user.id},
+          });
+          if(vgErr||!vg?.is_premium) throw new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server');
         }
+        const confirme=await attendreConfirmationServeur(user.id,{pro:estPro});
+        if(!confirme) throw new Error('Premium not confirmed by server');
         setIsPremium(true);
-          setShowPremiumWelcome(true);
+        if(estPro) setIsPro(true);
+        setShowPremiumWelcome(true);
       }else{
         setToast({visible:true,message:lang==='fr'?'Aucun achat actif trouvé':'No active purchase found'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
       }
     }catch(e){
       console.error('[IAP] restore failed:',e);
+      // Même durcissement qu'à l'achat : un is_premium venu d'ailleurs
+      // (comped, Stripe, Apple) ne vaut pas restauration réussie.
       try{
-        const{data}=await supabase.from('profiles').select('is_premium').eq('id',user.id).single();
-        if(data?.is_premium){
+        const{data,error}=await supabase.from('profiles')
+          .select('is_premium,is_pro').eq('id',user.id).maybeSingle();
+        if(error)console.warn('[IAP] relecture après échec restore:',error.message);
+        if(data?.is_premium===true){
           setIsPremium(true);
-              setShowPremiumWelcome(true);
+          if(data?.is_pro===true) setIsPro(true);
+          setShowPremiumWelcome(true);
           return;
         }
-      }catch{}
+      }catch(err){console.warn('[IAP] relecture après échec restore:',err?.message);}
       setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de la restauration':'❌ Restore failed'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);
     }finally{setIapLoading(false);}
@@ -2644,7 +2720,8 @@ export default function App({ loginOnly = false }){
         setConversionModal({open:true,trigger:'voice'});
         setVoiceStep("");return;
       }
-      await supabase.from('profiles').update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id);
+      {const{error:qErr}=await supabase.from('profiles').update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id).select('voice_count_today');
+       if(qErr)console.warn('[quota] compteur vocal non enregistré:',qErr.message);}
       supabase.from('usage_logs').insert({user_id:user.id,feature:'voice'}).then(()=>{});
       setVoiceUsedToday(count+1);
     }
@@ -5743,7 +5820,7 @@ export default function App({ loginOnly = false }){
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
       {showPremiumWelcome&&(
-        <PremiumWelcomeModal lang={lang} onClose={()=>setShowPremiumWelcome(false)}/>
+        <PremiumWelcomeModal lang={lang} pro={isPro} onClose={()=>setShowPremiumWelcome(false)}/>
       )}
 
       {/* ── MODALE « MON PLAN » (badge Premium/Pro du header) ──
