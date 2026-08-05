@@ -47,9 +47,10 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-04T21:00:00Z = la popup devient le poste de pilotage (ligne de vie,
-// bloc needs_user, en cours, reste de la file, diagnostic discret).
-export const EXTENSION_LAST_COMMIT = '2026-08-04T21:00:00Z';
+// 2026-08-05T06:22:00Z = capture republication : libellés lus dans le payload
+// natif d'abord, chemins de référentiels corrigés (mesurés en prod), trace des
+// lectures réseau dans payload.diagnostics.
+export const EXTENSION_LAST_COMMIT = '2026-08-05T06:22:00Z';
 // 2026-07-27T17:50:06Z = build du commit de release 0faa5e5 « extension 0.4.5,
 // Android 2.3.3 » — la version que servait le CWS ce soir-là (4 des 6 installs
 // actives remontaient exactement ce build via profiles.extension_build).

@@ -46,6 +46,19 @@ const VINTED_SERVER_FIELD_LABELS = {
   package_size_id: "Format du colis",
 };
 
+// Format de colis : id Vinted ↔ libellé ↔ rang du radio (publish.package_type).
+// MESURÉ le 2026-08-05 sur l'annonce 8428482383 (package_size_id = 1) : le
+// radio `package_type_selector_1` est celui coché sur la page d'édition, et son
+// bloc affiche « Petit » (2 → « Moyen », 3 → « Grand »). Il n'existe AUCUN
+// endpoint de référentiel pour ce champ — /api/v2/package_sizes,
+// /api/v2/package_size_groups, /api/v2/shipping/package_sizes et
+// /api/v2/item_upload/shipping_options rendent tous 404 (relevé du 05/08).
+// C'est donc cette table qui fait foi, dans les DEUX sens : selectPackageSize
+// la lit pour cliquer, la capture la lit pour nommer. Une seule table = les
+// deux ne peuvent pas diverger. Un id hors 1..3 n'est JAMAIS approché : le
+// champ part dans champs_manquants.
+const VINTED_PACKAGE_SIZES_PAR_ID = { 1: "Petit", 2: "Moyen", 3: "Grand" };
+
 // Sélecteur d'input pour un code d'attribut Vinted. Les champs « historiques »
 // ont des testids spécifiques (relevés en réel) ; tout nouveau champ dynamique
 // suit le motif générique category-<code>-… constaté sur stockage/simlock/état.
@@ -481,30 +494,80 @@ async function lireDetailArticle(vintedItemId) {
 // CONFIRMER sur les comptes bêta : en cas de 404/forme inattendue, la
 // résolution échoue PROPREMENT (champ nommé, jamais une valeur inventée) —
 // c'est le comportement voulu, et le relevé réel corrigera le chemin.
+// Chaque lecture réseau de la capture laisse une TRACE (statut HTTP, type de
+// contenu, taille, clés de premier niveau, début du corps en cas d'échec),
+// rangée dans payload.diagnostics. Sans ça, un endpoint qui bouge se lit comme
+// « champ manquant » sans qu'on sache pourquoi — c'est exactement ce qui est
+// arrivé le 05/08 au premier test réel : dto_public null, cause invisible.
+// Le corps n'est JAMAIS stocké en entier (les catalogues font ~1,5 Mo) : 300
+// caractères suffisent à distinguer 404 / 403 / DataDome / shape changée.
 const _refCache = {};
-async function lireReferentielVinted(cle, chemin, extraire) {
-  if (_refCache[cle]) return _refCache[cle];
+// opts.memoiser=false : lecture propre à UN article (le dto public), qui n'a
+// rien à faire dans un cache à durée de vie de page — l'onglet de travail vit
+// des heures et resservirait le dto d'une autre capture.
+async function lireReferentielVinted(cle, chemin, extraire, diag, opts = {}) {
+  const memoiser = opts.memoiser !== false;
+  if (memoiser && _refCache[cle]) {
+    diag?.push({ cle, url: chemin, memoise: true });
+    return _refCache[cle];
+  }
+  const trace = { cle, url: chemin };
   try {
     const r = await fetch(chemin, { headers: { Accept: "application/json" }, credentials: "include" });
-    if (!r.ok) return null;
+    trace.status = r.status;
+    trace.content_type = (r.headers.get("content-type") ?? "").split(";")[0] || null;
     const brut = await r.text();
-    if (!brut.trim().startsWith("{")) return null;
-    const data = JSON.parse(brut);
+    trace.taille = brut.length;
+    const amorce = brut.trim();
+    const estJson = amorce.startsWith("{") || amorce.startsWith("[");
+    if (!r.ok || !estJson) {
+      // ⚠️ Vinted rend ses 404 avec content-type: application/json ET un corps
+      // HTML (relevé du 05/08) : le statut seul ne suffit pas, on garde l'amorce.
+      trace.forme = estJson ? "json" : "non-json (corps HTML ?)";
+      trace.corps_debut = brut.slice(0, 300);
+      return null;
+    }
+    let data;
+    try {
+      data = JSON.parse(brut);
+    } catch (e) {
+      trace.forme = `json illisible : ${String(e?.message ?? e)}`;
+      trace.corps_debut = brut.slice(0, 300);
+      return null;
+    }
+    trace.forme = Array.isArray(data) ? `array(${data.length})` : Object.keys(data).slice(0, 12).join(",");
     const extrait = extraire(data);
-    if (extrait) _refCache[cle] = extrait;
+    if (extrait) {
+      if (memoiser) _refCache[cle] = extrait;
+      trace.resolu = true;
+    } else {
+      // 200 + JSON mais forme inattendue : le cas le plus traître, on garde tout
+      // ce qu'il faut pour corriger le parseur sans redemander un relevé.
+      trace.resolu = false;
+      trace.corps_debut = brut.slice(0, 300);
+    }
     return extrait ?? null;
-  } catch {
+  } catch (e) {
+    trace.erreur = String(e?.message ?? e);
     return null;
+  } finally {
+    diag?.push(trace);
   }
 }
 
-// catalog_id → chemin de libellés (["Femmes","Vêtements","Robes","Midi"]),
-// prêt pour platform_fields.categoryPath du handler publish.
-async function resoudreCheminCatalogue(catalogId) {
+// catalog_id → chemin de libellés (["Hommes","Vêtements","Vêtements de sport et
+// accessoires","Shorts"]), prêt pour platform_fields.categoryPath du publish.
+// ⚠️ CHEMIN CORRIGÉ le 2026-08-05, mesuré : /api/v2/catalogs rend 404 (corps
+// HTML) — c'était l'hypothèse du 05/08 au matin, elle était fausse. Le seul
+// endpoint qui rend l'arbre est /api/v2/item_upload/catalogs (200, ~1,5 Mo,
+// 8 racines, enfants sous `catalogs`, libellé sous `title`) : la descente
+// ci-dessous, elle, était juste. Vérifié : 586 → Hommes > Vêtements >
+// Vêtements de sport et accessoires > Shorts.
+async function resoudreCheminCatalogue(catalogId, diag) {
   const id = Number(catalogId);
   if (!Number.isFinite(id)) return null;
-  const racines = await lireReferentielVinted("catalogs", "/api/v2/catalogs", (d) =>
-    Array.isArray(d?.catalogs) ? d.catalogs : null);
+  const racines = await lireReferentielVinted("catalogs", "/api/v2/item_upload/catalogs", (d) =>
+    Array.isArray(d?.catalogs) && d.catalogs.length ? d.catalogs : null, diag);
   if (!racines) return null;
   const chemin = [];
   const descendre = (noeuds) => {
@@ -519,78 +582,141 @@ async function resoudreCheminCatalogue(catalogId) {
   return descendre(racines) && chemin.every(Boolean) ? chemin.slice() : null;
 }
 
-async function resoudreCouleurs(colorIds) {
-  const ids = (Array.isArray(colorIds) ? colorIds : []).map(Number).filter(Number.isFinite);
-  if (!ids.length) return { libelles: [], ok: true }; // couleurs optionnelles sur Vinted
-  const table = await lireReferentielVinted("colors", "/api/v2/colors", (d) =>
-    Array.isArray(d?.colors) ? new Map(d.colors.map((c) => [Number(c?.id), String(c?.title ?? "")])) : null);
-  if (!table) return { libelles: null, ok: false };
-  const libelles = ids.map((i) => table.get(i)).filter(Boolean);
-  return { libelles, ok: libelles.length === ids.length };
+// size_id → libellé ("M"). MESURÉ le 2026-08-05 : /api/v2/sizes rend 404, le
+// référentiel vit sous /api/v2/size_groups (200, 74 groupes, chaque groupe
+// portant ses `sizes: [{id,title}]`). Table PLATE assumée : les 709 ids relevés
+// sont globalement uniques (0 collision de libellé entre groupes), donc pas
+// besoin de scoper par catégorie. Si un jour deux groupes se disputaient un id,
+// c'est ce commentaire qu'il faudra rouvrir — pas le résultat qu'il faudra
+// deviner. Vérifié : 208 → « M » (groupe 14).
+async function resoudreTaille(sizeId, diag) {
+  const id = Number(sizeId);
+  if (!Number.isFinite(id)) return null;
+  const table = await lireReferentielVinted("size_groups", "/api/v2/size_groups", (d) =>
+    Array.isArray(d?.size_groups) && d.size_groups.length
+      ? new Map(d.size_groups.flatMap((g) =>
+          (Array.isArray(g?.sizes) ? g.sizes : []).map((s) => [Number(s?.id), String(s?.title ?? "")])))
+      : null, diag);
+  const libelle = table?.get(id);
+  return libelle ? libelle : null;
 }
 
-// Capture complète d'UNE annonce en ligne. Combine les DEUX endpoints déjà
-// relevés en prod : item_upload/items/{id} (ids + description — formulaire
-// d'édition) et items/{id} (dto public — libellés status/size/brand, déjà
-// utilisé par les sondes du delete depuis juillet), plus les référentiels.
+// Couleurs. Vinted ne porte PAS de `color_ids` : le payload d'édition expose
+// deux emplacements nommés (color1/color2 + color1_id/color2_id), et il porte
+// les libellés EN CLAIR. Le code du 05/08 au matin lisait `natif.color_ids`,
+// champ inexistant → liste vide → « aucune couleur », déclaré ok : les deux
+// couleurs (Marine, Orange) disparaissaient SANS être signalées manquantes.
+// C'était le pire cas possible au regard de la règle (une perte silencieuse,
+// pas un échec nommé). Désormais : libellé de natif d'abord, référentiel
+// /api/v2/colors (200, 29 entrées — chemin déjà correct) en repli, et tout id
+// non résolu part dans champs_manquants.
+async function resoudreCouleurs(natif, diag) {
+  const emplacements = [
+    { rang: 1, id: natif?.color1_id ?? null, libelle: String(natif?.color1 ?? "").trim() },
+    { rang: 2, id: natif?.color2_id ?? null, libelle: String(natif?.color2 ?? "").trim() },
+  ].filter((c) => c.id != null || c.libelle);
+  // Aucune couleur posée : cas VALIDE (le champ est optionnel sur Vinted).
+  if (!emplacements.length) return { libelles: [], manquants: [] };
+
+  const aResoudre = emplacements.filter((c) => !c.libelle && c.id != null);
+  const table = aResoudre.length
+    ? await lireReferentielVinted("colors", "/api/v2/colors", (d) =>
+        Array.isArray(d?.colors) && d.colors.length
+          ? new Map(d.colors.map((c) => [Number(c?.id), String(c?.title ?? "")]))
+          : null, diag)
+    : null;
+
+  const libelles = [];
+  const manquants = [];
+  for (const c of emplacements) {
+    const resolu = c.libelle || (c.id != null ? table?.get(Number(c.id)) : null);
+    if (resolu) libelles.push(String(resolu));
+    else manquants.push(`couleur ${c.rang} (color${c.rang}_id=${c.id} → libellé)`);
+  }
+  return { libelles, manquants };
+}
+
+// Capture complète d'UNE annonce en ligne. SOURCE PRINCIPALE : le payload
+// d'édition item_upload/items/{id} — il porte les ids ET, en clair, `status`,
+// `color1`/`color2`, `brand_dto.title`. Les référentiels (catalogues, groupes
+// de tailles, couleurs) ne servent qu'aux ids que ce payload ne traduit pas
+// (catalog_id, size_id), et items/{id} n'est plus qu'un dernier repli.
+// Ordre posé le 2026-08-05 après le premier test réel : partir des libellés
+// déjà présents, c'est trois requêtes de moins et un point de panne de moins.
 async function capturerAnnonceVinted(vintedItemId) {
   const detail = await lireDetailArticle(vintedItemId);
   if (!detail.success) return detail; // erreurs déjà typées (session, 404, bot-shield…)
   const natif = detail.natif ?? {};
   const manquants = [];
+  const diagnostics = [];
 
-  // dto PUBLIC : source de LIBELLÉS (état, taille, marque) tant que l'annonce
-  // est en ligne. Échec toléré champ par champ — chaque absence est nommée.
+  // dto PUBLIC — REPLI SEULEMENT depuis le 2026-08-05. Il était le chemin
+  // PRINCIPAL des libellés ; le premier test réel a montré qu'il ne rend plus
+  // rien, et la mesure a tranché la cause : GET /api/v2/items/{id} → 404 avec
+  // un corps HTML (ni 403, ni DataDome, ni forme changée — l'endpoint n'est
+  // plus là). Or le payload d'édition porte déjà `status`, `color1`/`color2` et
+  // `brand_dto.title` EN CLAIR : natif est donc la première source partout où
+  // il porte un libellé, et cet appel n'est plus tenté que si un libellé
+  // manque encore. Un endpoint mort ne coûte plus une requête par capture, et
+  // s'il revient un jour on en profite sans rien changer.
   let dtoPublic = null;
-  try {
-    const r = await fetch(`/api/v2/items/${encodeURIComponent(String(vintedItemId))}`, {
-      headers: { Accept: "application/json" }, credentials: "include",
-    });
-    if (r.ok) {
-      const brut = await r.text();
-      if (brut.trim().startsWith("{")) { const d = JSON.parse(brut); dtoPublic = d?.item ?? d; }
-    }
-  } catch { /* dto public indisponible : les champs concernés seront nommés */ }
+  let dtoTente = false;
+  const lireDtoPublic = async () => {
+    if (dtoTente) return dtoPublic;
+    dtoTente = true;
+    dtoPublic = await lireReferentielVinted(
+      `dto_public_${vintedItemId}`,
+      `/api/v2/items/${encodeURIComponent(String(vintedItemId))}`,
+      (d) => d?.item ?? d ?? null,
+      diagnostics,
+      { memoiser: false },
+    );
+    return dtoPublic;
+  };
 
   const libelles = {};
 
   // Catégorie — le champ le plus important pour « à l'identique ».
-  const catalogId = natif?.catalog_id ?? dtoPublic?.catalog_id ?? null;
-  const chemin = catalogId != null ? await resoudreCheminCatalogue(catalogId) : null;
+  const catalogId = natif?.catalog_id ?? null;
+  const chemin = catalogId != null ? await resoudreCheminCatalogue(catalogId, diagnostics) : null;
   if (chemin?.length) libelles.categoryPath = chemin;
   else manquants.push("categorie (catalog_id → chemin de libellés)");
 
-  // État — libellé public ("Très bon état"), jamais déduit du seul status_id.
-  const etat = String(dtoPublic?.status ?? "").trim();
+  // État — libellé ("Bon état"), jamais déduit du seul status_id.
+  const etat = String(natif?.status ?? "").trim() || String((await lireDtoPublic())?.status ?? "").trim();
   if (etat) libelles.etat = etat;
-  else manquants.push("etat (libellé public)");
+  else manquants.push("etat (libellé d'état absent du payload)");
 
   // Taille — size_id null est VALIDE (catégories sans taille) ; sinon un
-  // libellé est requis (size_title du dto public, ou embarqué dans l'édition).
+  // libellé est requis, résolu par le référentiel des groupes de tailles.
   const sizeId = natif?.size_id ?? null;
-  const taille = String(dtoPublic?.size_title ?? natif?.size_title ?? natif?.size?.title ?? "").trim();
-  if (taille) libelles.taille = taille;
-  else if (sizeId != null) manquants.push("taille (size_id présent sans libellé)");
+  if (sizeId != null) {
+    const taille = await resoudreTaille(sizeId, diagnostics);
+    if (taille) libelles.taille = taille;
+    else manquants.push(`taille (size_id=${sizeId} → libellé)`);
+  }
 
   // Marque — brand_id null/vide = « Sans marque », valide.
-  const marque = String(dtoPublic?.brand ?? natif?.brand ?? natif?.brand_dto?.title ?? "").trim();
+  const marque = String(natif?.brand_dto?.title ?? natif?.brand ?? "").trim()
+    || String((natif?.brand_id != null ? await lireDtoPublic() : null)?.brand ?? "").trim();
   if (marque) libelles.marque = marque;
   else if (natif?.brand_id != null) manquants.push("marque (brand_id présent sans libellé)");
 
-  // Couleurs.
-  const couleurs = await resoudreCouleurs(natif?.color_ids ?? natif?.colors);
-  if (couleurs.ok) libelles.couleurs = couleurs.libelles ?? [];
-  else manquants.push("couleurs (color_ids → libellés)");
+  // Couleurs — libellés en clair dans natif, référentiel en repli.
+  const couleurs = await resoudreCouleurs(natif, diagnostics);
+  libelles.couleurs = couleurs.libelles;
+  manquants.push(...couleurs.manquants);
 
-  // Colis — requis au dépôt ; selectPackageSize (handler publish) attend un
-  // libellé. Référentiel dédié, même politique d'échec nommé.
+  // Colis — requis au dépôt ; selectPackageSize (handler publish) attend le
+  // libellé. Aucun référentiel distant n'existe (tous 404, relevé du 05/08) :
+  // la table partagée VINTED_PACKAGE_SIZES_PAR_ID fait foi, et un id inconnu
+  // est nommé plutôt qu'approché — un mauvais format de colis ne se voit qu'à
+  // la première vente, en frais de port faux.
   const packageId = natif?.package_size_id ?? null;
   if (packageId != null) {
-    const colis = await lireReferentielVinted("package_sizes", "/api/v2/package_sizes", (d) =>
-      Array.isArray(d?.package_sizes) ? new Map(d.package_sizes.map((p) => [Number(p?.id), String(p?.title ?? "")])) : null);
-    const libelle = colis?.get(Number(packageId));
+    const libelle = VINTED_PACKAGE_SIZES_PAR_ID[Number(packageId)];
     if (libelle) libelles.colis = libelle;
-    else manquants.push("colis (package_size_id → libellé)");
+    else manquants.push(`colis (package_size_id=${packageId} hors table connue 1..3)`);
   } else {
     manquants.push("colis (package_size_id absent du payload)");
   }
@@ -616,7 +742,10 @@ async function capturerAnnonceVinted(vintedItemId) {
     photos_cdn: photosCdn,
     libelles,
     natif,        // payload d'édition COMPLET — rien n'est jeté
-    dto_public: dtoPublic, // idem pour le dto public (libellés, compteurs…)
+    dto_public: dtoPublic, // null tant qu'aucun libellé ne l'a réclamé (repli)
+    // Trace des lectures réseau de CETTE capture. C'est elle qui doit répondre
+    // « pourquoi ce champ manque » sans redemander un relevé à Nico.
+    diagnostics,
   };
 }
 
@@ -2686,8 +2815,11 @@ async function selectColors(colorNames, warnings = []) {
 // chaussures), c'est TOUJOURS « Petit », sans exception. On CLIQUE désormais le
 // format, on ne le suppose plus.
 async function selectPackageSize(size = "Petit") {
-  const map = { Petit: 1, Moyen: 2, Grand: 3 };
-  const n = map[size] || 1;
+  // Table partagée avec la capture republication (VINTED_PACKAGE_SIZES_PAR_ID,
+  // en tête de fichier) : le rang du radio EST le package_size_id. Une seule
+  // table dans les deux sens — capturer « Petit » puis recliquer « Petit » ne
+  // peut pas dériver.
+  const n = Number(Object.entries(VINTED_PACKAGE_SIZES_PAR_ID).find(([, l]) => l === size)?.[0]) || 1;
   // publish.package_type (migré au registre) : maillon template {n}, n = 1..3.
   const radio = await waitForKey("publish.package_type", { params: { n } });
   if (!radio.checked) {

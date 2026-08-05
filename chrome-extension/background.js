@@ -4945,6 +4945,11 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
           ...(prixAjuste ? { prix_origine: capture.prix ?? null } : {}),
           description: capture.description ?? null,
           photos_cdn: capture.photos_cdn ?? [],
+          // Trace des lectures réseau de la capture (statut HTTP, forme,
+          // amorce du corps en cas d'échec). Sans elle, un champ manquant ne
+          // dit pas POURQUOI il manque — le premier test réel du 05/08 a coûté
+          // un aller-retour de diagnostic pour ça.
+          diagnostics: capture.diagnostics ?? null,
         },
         libelles: capture.libelles ?? null,
         photos_urls: photosUrls,
@@ -6631,7 +6636,8 @@ async function autoCaptureEtRepublier(cand, token, userId) {
       verdict, champs_manquants: manquants,
       payload: { natif: cap.natif ?? null, dto_public: cap.dto_public ?? null,
                  titre: cap.titre ?? null, prix: cap.prix ?? null,
-                 description: cap.description ?? null, photos_cdn: cap.photos_cdn ?? [] },
+                 description: cap.description ?? null, photos_cdn: cap.photos_cdn ?? [],
+                 diagnostics: cap.diagnostics ?? null },
       libelles: cap.libelles ?? null, photos_urls: photos,
     }),
   }).catch((e) => console.warn("[republish-auto] persistance capture:", String(e?.message ?? e)));
