@@ -1103,14 +1103,37 @@ ${s} .plogo{display:flex;align-items:center;flex:0 0 auto;line-height:0;}
 ${s} .right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
 ${s} .price{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:1px;}
 ${s} .price .lbl{font-weight:500;font-size:9px;color:var(--mute);display:block;text-align:right;}
-${s} .btn-stack{display:flex;flex-direction:column;gap:4px;width:78px;}
+/* 92px et non 78 (2026-08-05) — MESURÉ, pas estimé. La pastille de cooldown de
+   republication « 🔁 Dans ~24 h » se cassait en deux lignes et la carte
+   grandissait avec. Largeurs relevées en Space Grotesk 600/11px sur la vraie
+   page, pour 76px de place utile (78 − 2 de bordures) :
+       « 🔁 Dans ~14 h » 75,2  ✅      « 🔁 Dans ~20 h » 77,0  ❌
+       « 🔁 Dans ~17 h » 74,3  ✅      « 🔁 Dans ~24 h » 76,6  ❌
+   Exactement le partage décrit : 14 et 17 tenaient, 20 et 24 non. Le cas le
+   plus long fait 77,0px en chiffres tabulaires ; 92 − 2 de bordures − 8 de
+   padding = 82px utiles, soit 5px de marge. La colonne d'actions prend ces
+   14px sur le titre (grid auto/1fr/auto), jamais sur la hauteur. */
+${s} .btn-stack{display:flex;flex-direction:column;gap:4px;width:92px;}
 ${s} .btn-publier{font-size:11.5px;font-weight:700;color:#fff;text-align:center;background:linear-gradient(155deg,var(--teal),var(--teal-deep));padding:6px 0;border-radius:9px;border:none;cursor:pointer;font-family:inherit;}
 /* 4 plateformes sur 4 en ligne : il n'y a PLUS RIEN à publier. Bouton inerte
    (disabled côté handler aussi), ton neutre — c'est un état, pas une action.
    Tant qu'il reste une plateforme libre, le bouton garde son aplat plein :
    « Publier » y est une vraie action (les manquantes), pas une republication. */
 ${s} .btn-publier.is-complete{background:#F1F1EE;color:var(--mute);border:1px solid var(--border);font-weight:600;font-size:10px;padding:5px 0;cursor:default;}
-${s} .btn-vendre{font-size:11px;font-weight:600;color:var(--mute);text-align:center;background:transparent;border:1px solid var(--border);padding:5px 0;border-radius:9px;cursor:pointer;font-family:inherit;}
+${s} .btn-vendre{font-size:11px;font-weight:600;color:var(--mute);text-align:center;background:transparent;border:1px solid var(--border);padding:5px 4px;border-radius:9px;cursor:pointer;font-family:inherit;}
+/* Pastille de cooldown de republication — « 🔁 Dans ~N h ». Classe DÉDIÉE,
+   posée en plus de .btn-vendre : nowrap ne doit surtout PAS être global à
+   .btn-vendre, car « 🔁 Republier (1 Pépite) » (~123px, plan Free) s'y replie
+   volontairement sur deux lignes — l'y interdire le ferait DÉBORDER au lieu de
+   se replier.
+   · white-space:nowrap  → le libellé ne se coupe jamais ;
+   · tabular-nums        → 1, 2, 0 occupent la même chasse. Mesuré : sans lui,
+     les valeurs à deux chiffres vont de 73,1 à 77,0px (8,8px d'écart entre
+     « ~1 h » et « ~20 h ») et la largeur bougeait d'un article à l'autre ;
+     avec lui, tout deux-chiffres fait exactement 77,0px. La pastille ne
+     respire donc plus au rythme du compteur, et la hauteur de carte est
+     constante quelle que soit la valeur. */
+${s} .btn-cooldown{white-space:nowrap;font-variant-numeric:tabular-nums;}
 ${s} .cat-filters{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:2px 2px 4px;}
 ${s} .cat-filters::-webkit-scrollbar{display:none;}
 ${s} .fpill{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#fff;border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--mute);white-space:nowrap;flex-shrink:0;cursor:pointer;font-family:inherit;transition:all 0.15s;}

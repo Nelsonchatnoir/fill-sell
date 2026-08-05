@@ -3838,7 +3838,7 @@ const StockTab = memo(function StockTab({
                                 &&Date.now()-Date.parse(repubLatest.platform_fields.recreated_at)<24*3600*1000){
                                 const restant=Math.max(1,Math.ceil((24*3600*1000-(Date.now()-Date.parse(repubLatest.platform_fields.recreated_at)))/3600000));
                                 return(
-                                  <button className="btn-vendre" disabled style={{opacity:0.55,cursor:"default"}}
+                                  <button className="btn-vendre btn-cooldown" disabled style={{opacity:0.55,cursor:"default"}}
                                     title={lang==='fr'?`Une republication par article et par 24 h — de nouveau possible dans ~${restant} h.`:`One repost per item per 24 h — available again in ~${restant} h.`}>
                                     {lang==='fr'?`🔁 Dans ~${restant} h`:`🔁 In ~${restant} h`}
                                   </button>);
