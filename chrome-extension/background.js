@@ -5147,6 +5147,9 @@ async function syncDressingUnlocked(declencheur) {
   };
 
   const echec = async (message) => {
+    // Message NU, sans préfixe : c'est un VRAI échec de run. Cf. la convention
+    // du champ `erreur` détaillée à la clôture 'done' (les notes de journal,
+    // elles, partent avec « [note] »).
     console.error("[sync-dressing] échec:", message);
     await clore({ status: "failed", erreur: String(message).slice(0, 500) });
     return { ok: false, reason: "echec", error: message };
@@ -5325,19 +5328,38 @@ async function syncDressingUnlocked(declencheur) {
     }
   }
 
-  // Des échecs d'écriture isolés ne dégradent PAS le statut (la sync est
-  // allée au bout) mais sont consignés dans `erreur` : items_vus − créés −
-  // maj doit toujours s'expliquer en lisant la ligne du run.
-  // `erreur` sur un run 'done' n'est PAS montré à l'utilisateur (StockTab ne le
-  // lit que pour failed/cancelled/expired) : c'est le journal de bord du run.
-  // On y consigne donc aussi le renoncement au marquage des disparitions —
-  // sans écraser les échecs d'écriture, les deux peuvent coexister.
+  // ⚠️⚠️ CONVENTION DU CHAMP `erreur` (posée le 2026-08-05) ⚠️⚠️
+  // `vinted_sync_runs.erreur` porte TROIS choses de nature différente. Le
+  // STATUT de la ligne dit laquelle, et le préfixe le confirme :
+  //   · 'failed' / 'interrupted' → un run réellement en ÉCHEC. Message NU.
+  //     C'est CE cas, et lui seul, qu'un filtre d'alerte doit compter.
+  //   · 'cancelled' / 'expired'  → une commande distante non exécutée (cadence
+  //     de 15 min, ou 6 h sans extension). Message NU AUSSI : il est RENDU TEL
+  //     QUEL à l'utilisateur par StockTab, un « [note] » lui apparaîtrait à
+  //     l'écran. Ce n'est pas un échec de run pour autant — le statut suffit à
+  //     l'exclure.
+  //   · 'done' → NOTES DE JOURNAL sur un run allé au bout. TOUJOURS préfixées
+  //     « [note] », et jamais montrées à l'utilisateur (StockTab ne lit
+  //     `erreur` que pour failed/cancelled/expired).
+  // Donc : un filtre sur les vrais échecs = status in ('failed','interrupted'),
+  // et le préfixe « [note] » est la ceinture qui rattrape un filtre écrit trop
+  // largement (`erreur is not null`) — il doit alors exclure ces lignes.
+  // Toute nouvelle écriture non-échec sur un run 'done' DOIT reprendre le
+  // préfixe : c'est ce qui garde le filtre juste.
+  // (Aucune alerte ne lit ce champ aujourd'hui — ops-digest, handler-watch et
+  // les 7 jobs cron ignorent la table. La convention est là pour que ça reste
+  // vrai le jour où l'un d'eux s'y intéressera.)
+  const NOTE = "[note] ";
   const notes = [];
   if (echecsEcriture.length) {
-    notes.push(`${echecsEcriture.length} article(s) non écrit(s) : ` +
+    // Des échecs d'écriture isolés ne dégradent PAS le statut (la sync est
+    // allée au bout) mais sont consignés : items_vus − créés − maj doit
+    // toujours s'expliquer en lisant la ligne du run. Ce ne sont pas des
+    // échecs DU RUN — d'où le préfixe, au même titre que le reste.
+    notes.push(`${NOTE}${echecsEcriture.length} article(s) non écrit(s) : ` +
       echecsEcriture.map((f) => `${f.vinted_item_id} (${f.erreur})`).join(" ; "));
   }
-  if (motifSautDisparitions) notes.push(`disparitions non marquées — ${motifSautDisparitions}`);
+  if (motifSautDisparitions) notes.push(`${NOTE}disparitions non marquées — ${motifSautDisparitions}`);
   await clore({
     status: "done", items_vus, items_crees, items_maj,
     total_entries: totalEntries,
