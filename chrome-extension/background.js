@@ -5059,6 +5059,22 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
   }
   const captureId = Array.isArray(ligne) && ligne.length ? ligne[0].id : null;
   if (!captureId) return { success: false, error: "persistance : identifiant de capture non rendu" };
+
+  // Catégorie Vinted d'origine, récoltée au passage (2026-08-05). La capture
+  // vient de lire le payload natif : le catalog_id y est, gratuitement. C'est
+  // le point d'entrée du mapping de catégories des 4 plateformes — sans lui, un
+  // article importé du dressing reste impubliable ailleurs.
+  // Écrit SEULEMENT s'il manque : on ne réécrit jamais une valeur déjà posée.
+  // Best-effort : un échec ici ne compromet pas la capture, qui est le geste
+  // important (la colonne se remplira à la publication suivante).
+  const catalogId = Number(capture.natif?.catalog_id);
+  if (Number.isFinite(catalogId) && catalogId > 0 && inventaireId != null) {
+    await restRequest(
+      `inventaire?id=eq.${inventaireId}&vinted_catalog_id=is.null`,
+      accessToken,
+      { method: "PATCH", body: JSON.stringify({ vinted_catalog_id: catalogId }) },
+    ).catch((e) => console.warn("[republish] catalog_id non écrit:", e?.message ?? e));
+  }
   return { success: true, verdict, champs_manquants: manquants, capture_id: captureId, titre: capture.titre ?? null };
 }
 

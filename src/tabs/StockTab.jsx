@@ -1970,7 +1970,16 @@ const StockTab = memo(function StockTab({
   };
   const DETAIL_TIMEOUT_MS = 12000;
   const publierAvecDetail = async (item) => {
-    const doitCompleter = item.origine === 'vinted_sync' && item.vinted_item_id && !item.description;
+    // ⚠️ « OU catalog_id manquant » (2026-08-05) : la description servait seule
+    // de drapeau « rien à compléter ». Or elle est PERSISTÉE au premier passage
+    // — un article déjà pourvu d'une description n'aurait donc plus jamais
+    // déclenché de lecture de détail, et n'aurait JAMAIS livré son catalog_id.
+    // C'est cette lecture-ci, et la capture de republication, qui remplissent
+    // la colonne : aucune requête n'est ajoutée ailleurs (le rattrapage de
+    // masse et le goutte-à-goutte ont été abandonnés — pas de rafale sur
+    // l'endpoint le plus surveillé).
+    const doitCompleter = item.origine === 'vinted_sync' && item.vinted_item_id
+      && (!item.description || !item.vinted_catalog_id);
     // Rien à compléter, ou pas d'extension capable (mobile, extension < 0.5.1) :
     // ouverture directe — on n'attend JAMAIS un canal qui n'existe pas.
     if (!doitCompleter || !extDetailOk) {
@@ -1993,12 +2002,29 @@ const StockTab = memo(function StockTab({
       demanderDetailArticleVinted(item.vinted_item_id);
     });
     setDetailFetchId(null);
+    // Catégorie Vinted d'origine : elle voyage dans le payload natif qu'on
+    // vient de lire, gratuitement. C'est ELLE qui rendra l'article publiable
+    // sur les 3 autres plateformes (point d'entrée du mapping de catégories) —
+    // l'affichage du type n'en est qu'un sous-produit.
+    const catalogId = Number(detail?.natif?.catalog_id);
+    const catalogAEcrire = Number.isFinite(catalogId) && catalogId > 0 && !item.vinted_catalog_id
+      ? catalogId : null;
     if (detail?.success && detail.description) {
       // Persistée pour ne plus jamais re-demander cet article ; la sync ne
       // réécrit pas `description` (champ à l'utilisateur), elle survivra.
-      await supabase.from('inventaire').update({ description: detail.description })
+      await supabase.from('inventaire')
+        .update({ description: detail.description, ...(catalogAEcrire ? { vinted_catalog_id: catalogAEcrire } : {}) })
         .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
-      ouvrirStepper({ ...item, description: detail.description });
+      ouvrirStepper({ ...item, description: detail.description, vinted_catalog_id: catalogAEcrire ?? item.vinted_catalog_id });
+    } else if (catalogAEcrire) {
+      // Description absente mais catégorie lue : on écrit quand même ce qu'on a
+      // — la lecture a eu lieu, ne pas en tirer parti serait la gaspiller.
+      await supabase.from('inventaire').update({ vinted_catalog_id: catalogAEcrire })
+        .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
+      montrerNoteDetail(lang === 'fr'
+        ? "La description Vinted n'a pas pu être récupérée cette fois — les photos sont là, tu peux compléter le texte à la main."
+        : "The Vinted description couldn't be fetched this time — photos are in place, you can fill in the text manually.");
+      ouvrirStepper({ ...item, vinted_catalog_id: catalogAEcrire });
     } else {
       montrerNoteDetail(lang === 'fr'
         ? "La description Vinted n'a pas pu être récupérée cette fois — les photos sont là, tu peux compléter le texte à la main."
@@ -3483,25 +3509,35 @@ const StockTab = memo(function StockTab({
                             <span className="title">{item.title}</span>
                             {(item.quantite||1)>1&&<span className="qty-badge">×{item.quantite}</span>}
                           </div>
-                          <div className="meta">
-                            {/* MARQUE TOUJOURS VISIBLE (décision Nico, 2026-08-05).
-                                La règle « on la masque quand le titre la porte »
-                                est retirée : combinée à la troncature, elle
-                                faisait perdre les DEUX à la fois. La répétition
-                                est un moindre mal que l'absence. */}
-                            {marqueLabel(item.marque,lang)&&(
-                              <><span className="hl">{marqueLabel(item.marque,lang)}</span>{" · "}</>
-                            )}
-                            {(_itemDesc||_itemLoc)&&(<>{_itemDesc||_itemLoc}{" · "}</>)}
-                            {/* TYPE seulement s'il EXISTE : « Autre » est un type
-                                que l'utilisateur peut choisir, l'afficher par
-                                défaut rendrait « non classé » indistinguable de
-                                « classé Autre ». 27 articles importés sont dans
-                                ce cas, en attente de leur catalog_id Vinted. */}
-                            {item.typeConnu
-                              ?typeLabel(item.type,lang)
-                              :<span style={{opacity:.75}}>{lang==='fr'?'catégorie à venir':'category pending'}</span>}
-                          </div>
+                          {/* Ligne meta = MARQUE (toujours visible, décision Nico
+                              du 2026-08-05 : la règle « on la masque quand le
+                              titre la porte » est retirée, la répétition est un
+                              moindre mal que l'absence) puis ce qui EXISTE
+                              réellement.
+                              ⛔ Aucun remplissage : pas de « Autre » par défaut,
+                              pas de « catégorie à venir ». Un type détecté depuis
+                              le titre a été mesuré sur les 30 articles réels —
+                              29 « Mode » et une montre classée « Mode » : ça
+                              n'apprend rien et c'est parfois faux. Rien n'occupe
+                              donc la place tant que le vrai catalog_id Vinted
+                              n'est pas là. Les morceaux sont JOINTS, jamais
+                              suffixés : sinon un point médian restait orphelin
+                              quand la suite était vide. */}
+                          {(()=>{
+                            const mq=marqueLabel(item.marque,lang);
+                            const suite=[
+                              _itemDesc||_itemLoc||null,
+                              item.typeConnu?typeLabel(item.type,lang):null,
+                            ].filter(Boolean);
+                            if(!mq&&!suite.length)return null;
+                            return(
+                              <div className="meta">
+                                {mq&&<span className="hl">{mq}</span>}
+                                {mq&&suite.length?" · ":null}
+                                {suite.join(" · ")}
+                              </div>
+                            );
+                          })()}
                           {/* ── Prix d'achat manquant : saisie DANS la ligne ──
                               stopPropagation obligatoire : la carte entière
                               ouvre l'édition au clic. Le « je ne sais plus »
