@@ -163,11 +163,42 @@ function precheckJob(job) {
 
 // ── Alarme 30 min ──────────────────────────────────────────────────────────────
 
-chrome.runtime.onInstalled.addListener(() => scheduleAlarm());
-chrome.runtime.onStartup.addListener(() => scheduleAlarm());
+// .catch obligatoire : scheduleAlarm est devenue asynchrone (elle interroge
+// chrome.alarms.get avant de créer). Un rejet non capturé dans un listener de
+// service worker n'a personne pour l'attraper.
+const planifierAlarmes = () => scheduleAlarm().catch((e) =>
+  console.error("[background] planification des alarmes:", e?.message ?? e));
+chrome.runtime.onInstalled.addListener(planifierAlarmes);
+chrome.runtime.onStartup.addListener(planifierAlarmes);
 
-function scheduleAlarm() {
-  chrome.alarms.create(ALARM_NAME, {
+// ⚠️ chrome.alarms.create sur un nom EXISTANT ne « met pas à jour » l'alarme :
+// il la REMPLACE et redémarre son cycle à zéro, delayInMinutes compris. Or
+// scheduleAlarm() est appelé sur onInstalled ET onStartup — donc à CHAQUE
+// rechargement d'une extension unpacked et à chaque démarrage de Chrome.
+// Conséquence mesurée le 05/08 : la sync « une fois par jour » repartait
+// 10 minutes après chaque rechargement. Relevé réel des runs 'cron' —
+// 21:38, 22:59, 11:10, 11:44 — soit 80 min, 12 h, 34 min d'écart : ce
+// n'étaient pas des périodes, c'étaient les rechargements de la matinée.
+// Pour un utilisateur, ça veut dire une sync 10 min après CHAQUE démarrage de
+// Chrome, en plus des 24 h. Quelqu'un qui éteint son PC le midi en fait deux
+// par jour sans le savoir.
+// Parade : ne (re)créer une alarme que si elle est ABSENTE ou si sa période a
+// changé. Le test sur la période est ce qui permet à une future version de
+// modifier la cadence — sans lui, l'alarme d'origine survivrait pour toujours.
+async function creerAlarmeSiBesoin(nom, options) {
+  try {
+    const existante = await chrome.alarms.get(nom);
+    if (existante && existante.periodInMinutes === options.periodInMinutes) return false;
+  } catch {
+    // API indisponible : on retombe sur la création inconditionnelle, jamais
+    // sur l'absence d'alarme (mieux vaut une cadence trop courte que rien).
+  }
+  chrome.alarms.create(nom, options);
+  return true;
+}
+
+async function scheduleAlarm() {
+  await creerAlarmeSiBesoin(ALARM_NAME, {
     periodInMinutes: FILLSELL_CONFIG.POLL_INTERVAL_MINUTES,
     delayInMinutes: 1,
   });
@@ -180,7 +211,7 @@ function scheduleAlarm() {
   // ⚠️ La sync des MESSAGES, elle, aura besoin des 5 minutes : ce sera une
   // alarme SÉPARÉE (kind='messages' côté vinted_sync_runs), surtout pas un
   // raccourcissement de celle-ci.
-  chrome.alarms.create(SYNC_DRESSING_ALARM, {
+  await creerAlarmeSiBesoin(SYNC_DRESSING_ALARM, {
     periodInMinutes: 24 * 60,
     delayInMinutes: 10, // pas au démarrage : on laisse la publication passer d'abord
   });
