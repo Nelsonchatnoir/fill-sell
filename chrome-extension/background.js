@@ -4855,6 +4855,34 @@ const SYNC_CHUNK = 8;
 // (declencheur='cron'). Miroir front : SYNC_CADENCE_MANUELLE_MS dans
 // src/utils/vintedSync.js — même valeur, à faire évoluer ENSEMBLE.
 const SYNC_MANUAL_COOLDOWN_MS = 15 * 60 * 1000;
+// Cadence CRON : 20 h et non 24 h — cf. la garde dans syncDressingVinted.
+const SYNC_CRON_COOLDOWN_MS = 20 * 60 * 60 * 1000;
+
+// Journalise un refus de sync 'cron' SUR LE RUN QUI LE CAUSE — sans créer de
+// ligne de run : une sync qui n'a pas eu lieu n'est pas un run, et en fabriquer
+// une pour chaque refus polluerait l'historique de lignes vides (il peut y en
+// avoir plusieurs par jour). C'est le dernier run 'done' qui « possède » la
+// fenêtre de cadence, c'est donc lui qui la raconte.
+// Le segment est REMPLACÉ à chaque refus, jamais empilé : un compteur et une
+// date, longueur bornée. Préfixe « [note] » comme le reste du journal — ce
+// n'est pas un échec de run (cf. la convention à la clôture 'done').
+async function journaliserRefusCron(dernier, token) {
+  if (!dernier?.id) return;
+  const MARQUEUR = "cadence cron :";
+  const segments = String(dernier.erreur ?? "")
+    .split(" | ")
+    .filter((s) => s.trim() && !s.includes(MARQUEUR));
+  const precedent = String(dernier.erreur ?? "").split(" | ").find((s) => s.includes(MARQUEUR));
+  const n = (Number(precedent?.match(/(\d+)\s+sync/)?.[1]) || 0) + 1;
+  segments.push(
+    `[note] ${MARQUEUR} ${n} sync 'cron' refusée(s) depuis ce run ` +
+    `(fenêtre de 20 h), dernière le ${new Date().toISOString()}`
+  );
+  await restRequest(`vinted_sync_runs?id=eq.${dernier.id}`, token, {
+    method: "PATCH",
+    body: JSON.stringify({ erreur: segments.join(" | ").slice(0, 500) }),
+  });
+}
 let syncDressingEnCours = false;
 
 function syncPauseMs() {
@@ -5124,6 +5152,41 @@ async function syncDressingUnlocked(declencheur) {
     // au-dessus n'est jamais bornée : continuer un run interrompu n'est pas
     // une nouvelle sync. Lecture indisponible → on laisse passer : c'est un
     // régulateur de cadence, pas une barrière de sécurité.
+    // ── Cadence CRON (2026-08-05) — la moitié SERVEUR ─────────────────────
+    // L'alarme locale ne suffit pas : elle vit dans un profil Chrome. Une
+    // extension réinstallée, un profil neuf, une seconde machine, et le
+    // compteur repart de zéro. Cette garde-ci, elle, lit la BASE : elle vaut
+    // pour le compte, quelle que soit l'installation.
+    // 20 h et non 24 h : une borne stricte à 24 h dérive. L'alarme retombe à
+    // la même heure ± quelques minutes ; une minute trop tôt et la sync est
+    // refusée, l'utilisateur saute une journée ENTIÈRE, puis se met à syncer
+    // un jour sur deux. 20 h absorbe le décalage tout en garantissant au plus
+    // une sync par jour dans les usages réels.
+    // Référence = dernier run 'done', comme la garde 'bouton' et pour la même
+    // raison : un run bloqué par DataDome ou par une session morte n'a RIEN
+    // lu, le compter interdirait la reprise pendant 20 h alors que le code
+    // est fait pour repartir là où il s'est arrêté.
+    if (declencheur === "cron") {
+      try {
+        const derniers = await restRequest(
+          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.done&select=id,finished_at,erreur&order=finished_at.desc&limit=1`,
+          token, { headers: { Prefer: "return=representation" } },
+        );
+        const dernier = derniers?.[0] ?? null;
+        const dernierFini = Date.parse(dernier?.finished_at ?? "");
+        if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_CRON_COOLDOWN_MS) {
+          const dansMin = Math.max(1, Math.ceil((dernierFini + SYNC_CRON_COOLDOWN_MS - Date.now()) / 60000));
+          console.log(`[sync-dressing][cron] refusée par la cadence — prochaine possible dans ~${Math.round(dansMin / 60)} h`);
+          await journaliserRefusCron(dernier, token).catch((e) =>
+            console.warn("[sync-dressing][cron] refus non journalisé:", e?.message ?? e));
+          return { ok: false, reason: "cadence_cron", prochaine_dans_min: dansMin };
+        }
+      } catch (e) {
+        // Même doctrine que la garde 'bouton' : un aléa de lecture ne doit pas
+        // condamner la sync. C'est un régulateur, pas une serrure.
+        console.warn("[sync-dressing][cron] lecture de cadence impossible (on laisse passer):", e?.message ?? e);
+      }
+    }
     if (declencheur === "bouton") {
       try {
         const derniers = await restRequest(
