@@ -5081,6 +5081,10 @@ async function syncDressingUnlocked(declencheur) {
   } catch (e) {
     console.warn("[sync-dressing] lecture du run en cours impossible:", e?.message ?? e);
   }
+  // Repris ou neuf ? Capté ICI, avant que `run` soit réaffecté par la création
+  // d'une nouvelle ligne : c'est ce drapeau qui interdira le marquage des
+  // disparitions plus bas (garde (a), 2026-08-05).
+  const runRepris = !!run;
   if (run) {
     console.log(`[sync-dressing] reprise du run ${run.id} à la page ${run.page_suivante}`);
   } else {
@@ -5214,7 +5218,10 @@ async function syncDressingUnlocked(declencheur) {
     // portent la progression, pas le curseur.
     for (let debut = 0; debut < articles.length; debut += SYNC_CHUNK) {
       const tranche = articles.slice(debut, debut + SYNC_CHUNK);
-      for (const a of tranche) vusCetteSync.add(a.vinted_item_id);
+      // Filtré : un article sans id ne peut de toute façon pas se rapprocher de
+      // `connus` (qui exige vinted_item_id), et un `undefined` dans le Set
+      // fausserait la comparaison vu/annoncé de la garde (b).
+      for (const a of tranche) if (a.vinted_item_id) vusCetteSync.add(a.vinted_item_id);
       const bilan = await enregistrerArticlesDressing(tranche, { token, userId });
       if (bilan.echecs?.length) echecsEcriture.push(...bilan.echecs);
       items_vus += tranche.length;
@@ -5235,7 +5242,45 @@ async function syncDressingUnlocked(declencheur) {
   // ── Disparitions : datées, JAMAIS supprimées ─────────────────────────────
   // Uniquement si la sync est allée au bout : interrompue à la page 2, on ne
   // sait rien des pages suivantes et tout marquer « disparu » serait faux.
-  if (vusCetteSync.size > 0) {
+  //
+  // ⛔ DEUX GARDES AVANT TOUT MARQUAGE (2026-08-05). Échec FERMÉ dans les deux
+  // cas — donnée manquante ou incohérente ⇒ on ne marque RIEN. Le coût est nul :
+  // le run suivant marquera. Le coût inverse ne l'est pas — un marquage de masse
+  // à tort éteint « Republier » et allume « Plus en ligne » sur des articles
+  // bel et bien en ligne, jusqu'au run qui les revoit.
+  //
+  // (a) RUN REPRIS. `vusCetteSync` est reconstruit à CHAQUE exécution et repart
+  //     VIDE, alors que c'est LUI qui décide qui a disparu. Une reprise à la
+  //     page 2 ignore tout de la page 1 : ses articles seraient tous marqués
+  //     disparus alors qu'ils ont été vus quelques minutes plus tôt. `items_vus`
+  //     est restauré depuis la ligne du run, mais il ne sert qu'aux compteurs.
+  //     Aucune comparaison ne peut rattraper ça — d'où le saut pur et simple.
+  //     Choix ASSUMÉ (Nico, 05/08) : sauter plutôt que persister l'ensemble des
+  //     vus — moins d'état à tenir, et le prochain run complet fera le travail.
+  //     Aujourd'hui le défaut est masqué par le monopage (une reprise à la
+  //     page 2 rend 0 article et `vusCetteSync.size > 0` est faux) ; il devient
+  //     atteignable dès 2 pages, soit au-delà de 96 articles.
+  //
+  // (b) VU < ANNONCÉ. `total_entries` vient de la pagination Vinted et n'était
+  //     jamais confronté à ce qu'on a réellement vu. Strict, sans tolérance :
+  //     le sens de l'écart le permet. Un article RETIRÉ pendant le run fait
+  //     baisser total_entries (relu à chaque page), donc vu >= annoncé — la
+  //     garde ne se déclenche pas. Elle ne se déclenche que quand il MANQUE
+  //     des articles à l'appel : page silencieusement courte, item sauté par un
+  //     décalage de pagination, ajout pendant le run. Les deux premiers sont
+  //     exactement ce qu'on veut attraper ; le troisième ne coûte qu'un report.
+  //     total_entries absent = donnée manquante = on ne marque pas non plus.
+  let motifSautDisparitions = runRepris
+    ? `run repris à la page ${run.page_suivante ?? "?"} : les articles vus avant la reprise sont inconnus de ce passage`
+    : totalEntries == null
+      ? "total_entries absent de la pagination Vinted : périmètre du dressing invérifiable"
+      : vusCetteSync.size < totalEntries
+        ? `vu ${vusCetteSync.size} article(s) pour ${totalEntries} annoncé(s) par Vinted : relevé incomplet`
+        : null;
+  if (motifSautDisparitions) {
+    console.warn(`[sync-dressing] disparitions NON marquées — ${motifSautDisparitions}`);
+  }
+  if (vusCetteSync.size > 0 && !motifSautDisparitions) {
     try {
       const connus = await restRequest(
         `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null&select=id,vinted_item_id`,
@@ -5263,6 +5308,9 @@ async function syncDressingUnlocked(declencheur) {
         // un marquage retardé qu'un faux « vendue ? » sur une republication.
         console.warn("[sync-dressing] republish actifs illisibles — marquage des disparus sauté ce run:", e?.message ?? e);
         republishActifs = null;
+        // Journalisé au même titre que les deux autres gardes : un run qui
+        // renonce à marquer doit être constatable en base, avec son motif.
+        motifSautDisparitions = `republications actives illisibles (${String(e?.message ?? e).slice(0, 120)})`;
       }
       const disparus = republishActifs === null ? [] : (connus ?? []).filter((r) =>
         r.vinted_item_id && !vusCetteSync.has(r.vinted_item_id) && !republishActifs.has(r.vinted_item_id));
@@ -5280,13 +5328,20 @@ async function syncDressingUnlocked(declencheur) {
   // Des échecs d'écriture isolés ne dégradent PAS le statut (la sync est
   // allée au bout) mais sont consignés dans `erreur` : items_vus − créés −
   // maj doit toujours s'expliquer en lisant la ligne du run.
+  // `erreur` sur un run 'done' n'est PAS montré à l'utilisateur (StockTab ne le
+  // lit que pour failed/cancelled/expired) : c'est le journal de bord du run.
+  // On y consigne donc aussi le renoncement au marquage des disparitions —
+  // sans écraser les échecs d'écriture, les deux peuvent coexister.
+  const notes = [];
+  if (echecsEcriture.length) {
+    notes.push(`${echecsEcriture.length} article(s) non écrit(s) : ` +
+      echecsEcriture.map((f) => `${f.vinted_item_id} (${f.erreur})`).join(" ; "));
+  }
+  if (motifSautDisparitions) notes.push(`disparitions non marquées — ${motifSautDisparitions}`);
   await clore({
     status: "done", items_vus, items_crees, items_maj,
     total_entries: totalEntries,
-    ...(echecsEcriture.length ? {
-      erreur: (`${echecsEcriture.length} article(s) non écrit(s) : ` +
-        echecsEcriture.map((f) => `${f.vinted_item_id} (${f.erreur})`).join(" ; ")).slice(0, 500),
-    } : {}),
+    ...(notes.length ? { erreur: notes.join(" | ").slice(0, 500) } : {}),
   });
   if (echecsEcriture.length) console.error(`[sync-dressing] ${echecsEcriture.length} article(s) non écrit(s) — détail dans vinted_sync_runs.erreur`);
   console.log(`[sync-dressing] terminée : ${items_vus} articles (${items_crees} créés, ${items_maj} mis à jour)`);
