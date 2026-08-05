@@ -64,20 +64,24 @@ android {
         // la marge). 2.4 reste RÉSERVÉE à la prochaine release commune avec iOS
         // (règle posée le 22/07, iOS inchangé).
         //
-        // versionCode 27 / versionName 2.3.8 (05/08) — LE binaire soumis.
-        // Le 27 avait été préparé le 31/07 en 2.3.7 mais n'a JAMAIS été soumis :
-        // on le réutilise, et le versionName passe à 2.3.8 pour que le numéro
-        // publié ne désigne pas un contenu qui n'est jamais sorti.
+        // versionCode 27 / versionName 2.3.8 (05/08) : préparé mais JAMAIS
+        // téléversé sur Play — aucun AAB produit pour lui (comme le 2.3.7 du
+        // 31/07 avant lui). Le parc est resté sur versionCode 26 / 2.3.6.
+        //
+        // versionCode 28 / versionName 2.3.9 (05/08 soir) — LE binaire soumis.
+        // Le saut 26 → 28 côté Play est donc normal : 27 n'est jamais sorti.
         // Ce binaire porte, en plus du lot du 30/07 ci-dessus, tout le main du
         // 31/07 au 05/08 — dont le CORRECTIF DE PAIEMENT Google (6e82d65,
         // 62baea4) : l'app n'écrit plus jamais elle-même un droit payant, elle
-        // appelle validate-google-purchase et attend la confirmation serveur.
+        // appelle validate-google-purchase et attend la confirmation serveur —
+        // et les retouches Stock mobile de 438d371 (synchro dressing en tête
+        // de liste, header « Passer Pro », branche native comprise).
         // Sans ce binaire, le parc Android reste sur le code du 30/07 : l'écran
         // « Bienvenue dans Premium » continue de s'afficher par-dessus une
         // écriture refusée par Postgres (42501).
         // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
-        versionCode 27
-        versionName "2.3.8"
+        versionCode 28
+        versionName "2.3.9"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
