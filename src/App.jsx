@@ -2090,7 +2090,14 @@ export default function App({ loginOnly = false }){
   // Premier essai IMMÉDIAT : sur Android, validate-google-purchase a déjà
   // écrit quand elle rend la main, donc la confirmation est instantanée. Sur
   // iOS le webhook met quelques secondes, d'où les relances.
-  async function attendreConfirmationServeur(userId,{pro=false,essais=10,delaiMs=2000}={}){
+  //
+  // essais = 11, PAS 10 (2026-08-05). La boucle iOS d'origine dormait AVANT
+  // chaque lecture : 10 tours = lectures à 2,4,…,20 s, soit 20 s d'attente.
+  // Ici le 1er tour ne dort pas (pour l'instantané Android) : à 10 tours la
+  // dernière lecture tomberait à 18 s et on RÉDUIRAIT la fenêtre iOS de 2 s
+  // sur un chemin qui, lui, marchait. 11 tours → lectures à 0,2,…,20 s : la
+  // fenêtre iOS est conservée à l'identique, l'instantané Android aussi.
+  async function attendreConfirmationServeur(userId,{pro=false,essais=11,delaiMs=2000}={}){
     for(let i=0;i<essais;i++){
       if(i>0) await new Promise(r=>setTimeout(r,delaiMs));
       const{data,error}=await supabase.from('profiles').select('is_premium,is_pro').eq('id',userId).maybeSingle();

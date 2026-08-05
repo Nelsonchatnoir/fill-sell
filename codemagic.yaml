@@ -150,8 +150,10 @@ workflows:
       #      correspondre exactement à defaultChannel de capacitor.config.ts,
       #      sinon le serveur ne renvoie jamais de bundle, sans erreur visible ;
       #   4. VÉRIFIER LA VERSION DU BUNDLE. Le CLI la prend par défaut dans
-      #      package.json ("version": "2.4" aujourd'hui) alors que ce workflow
-      #      fige la marketing version iOS à 2.3 (étape « Set build number »).
+      #      package.json ("version": "2.4.0" depuis le 05/08 — c'était "2.4",
+      #      deux segments, que le CLI refuse : ce n'est pas du semver) alors
+      #      que ce workflow fige la marketing version iOS à 2.3 (étape
+      #      « Set build number »).
       #      Capgo compare la version du bundle à celle installée : un bundle
       #      numéroté plus bas que le natif n'est pas servi. Aligner les deux,
       #      ou forcer explicitement avec --bundle <version>.

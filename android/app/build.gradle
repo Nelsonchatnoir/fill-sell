@@ -61,11 +61,23 @@ android {
         // pendant l'affichage (fce4f2f), règle d'unicité « un champ manquant =
         // un seul encart » (c4c0e37), et AnalyseMarche (f00f650) : un composant
         // partagé écran Lens / stepper, deal score supprimé, verdict dérivé de
-        // la marge). versionName 2.3.7 : la lignée 2.3.x continue et 2.4 reste
-        // RÉSERVÉE à la prochaine release commune avec iOS (règle posée le
-        // 22/07, iOS inchangé ce soir).
+        // la marge). 2.4 reste RÉSERVÉE à la prochaine release commune avec iOS
+        // (règle posée le 22/07, iOS inchangé).
+        //
+        // versionCode 27 / versionName 2.3.8 (05/08) — LE binaire soumis.
+        // Le 27 avait été préparé le 31/07 en 2.3.7 mais n'a JAMAIS été soumis :
+        // on le réutilise, et le versionName passe à 2.3.8 pour que le numéro
+        // publié ne désigne pas un contenu qui n'est jamais sorti.
+        // Ce binaire porte, en plus du lot du 30/07 ci-dessus, tout le main du
+        // 31/07 au 05/08 — dont le CORRECTIF DE PAIEMENT Google (6e82d65,
+        // 62baea4) : l'app n'écrit plus jamais elle-même un droit payant, elle
+        // appelle validate-google-purchase et attend la confirmation serveur.
+        // Sans ce binaire, le parc Android reste sur le code du 30/07 : l'écran
+        // « Bienvenue dans Premium » continue de s'afficher par-dessus une
+        // écriture refusée par Postgres (42501).
+        // ⚠️ versionCode ne recule JAMAIS : Google Play le refuserait.
         versionCode 27
-        versionName "2.3.7"
+        versionName "2.3.8"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
