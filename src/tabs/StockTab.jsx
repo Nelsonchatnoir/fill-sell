@@ -1702,7 +1702,13 @@ function RepublishProgressSheet({ lang, job, onClose }) {
     ? (pf.republish_step ?? 'a_capturer')
     : (et.cle === 'file' || et.cle === 'lecture' ? 'a_capturer' : et.cle);
   const iCourant = REPUB_ORDRE.indexOf(courant);
-  const heureTransition = heureParis(job.updated_at ?? pf.recreated_at ?? pf.deleted_at ?? job.created_at);
+  // Dernière avancée : reconstituée à partir des horodatages QUI EXISTENT —
+  // cross_post_jobs n'a pas d'`updated_at` (vérifié au schéma). Ordre du plus
+  // récent au plus ancien, chacun posé par la transition correspondante dans
+  // processRepublishJob ; created_at ferme la marche (job jamais repris).
+  const heureTransition = heureParis(
+    pf.recreated_at ?? pf.deleted_at ?? pf.republish_dry_run?.at ?? pf.processing_since ?? job.created_at,
+  );
   const attenteVolontaire = et.cle === 'deleted' ? heureParis(pf.next_action_after) : null;
   const lignes = [
     { cle: 'a_capturer', txt: fr ? "Lecture de l'annonce en ligne" : 'Reading the live listing' },
@@ -2291,10 +2297,16 @@ const StockTab = memo(function StockTab({
       // listing_url croisée : tout repli supprime l'annonce d'un autre article).
       const { data } = await supabase
         .from("cross_post_jobs")
-        // updated_at : horodatage de la DERNIÈRE transition, affiché dans la
-        // feuille d'avancement d'une republication — c'est lui qui distingue
-        // « ça avance » de « ça dort ». Lecture seule, aucun autre usage.
-        .select("id, inventaire_id, platform, status, error, created_at, updated_at, platform_fields, action, listing_url, title")
+        // ⛔ NE JAMAIS ajouter une colonne ici sans l'avoir vérifiée dans le
+        // schéma réel. cross_post_jobs n'a PAS d'`updated_at` — l'y avoir mis
+        // (2de66f1) a fait échouer la requête ENTIÈRE côté PostgREST : `data`
+        // revenait null, le garde-fou `if (!data) return` laissait
+        // jobsByInventaire vide, et TOUTES les cartes de TOUS les comptes
+        // perdaient d'un coup leurs logos de plateforme, leur pastille
+        // « En ligne » et leurs badges de job — remplacés par le repli
+        // textuel « 🏪 <plateforme> ». Un select PostgREST est tout ou rien :
+        // une colonne inconnue ne dégrade pas, elle annule.
+        .select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title")
         .eq("user_id", user.id)
         .in("status", ["pending", "processing", "published", "failed", "needs_user", "deleted"]);
       if (annule || !data) return;
