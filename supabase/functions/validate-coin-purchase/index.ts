@@ -2,10 +2,14 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as x509 from "https://esm.sh/@peculiar/x509@1.9.0";
 
-// Valide un achat IAP CONSUMABLE (pack de pièces) et crédite le wallet via
-// credit_purchased_coins (idempotent sur la ref de transaction store).
+// Valide un achat IAP CONSUMABLE APPLE (pack de pièces) et crédite le wallet
+// via credit_purchased_coins (idempotent sur la ref de transaction store).
 // Auth : JWT utilisateur (verify_jwt=true au déploiement, comme get-pending-jobs).
 // Déploiement : supabase functions deploy validate-coin-purchase
+//
+// ⚠️ APPLE UNIQUEMENT depuis le 2026-08-05. Google (packs ET abonnements) passe
+// par validate-google-purchase, chemin unique. Ne pas réintroduire de branche
+// android ici.
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -111,39 +115,11 @@ async function verifyWithApple(receipt: string, url: string): Promise<any> {
   return res.json();
 }
 
-// Même mécanique service account que google-play-webhook
-async function getGoogleAccessToken(): Promise<string> {
-  const email = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL")!;
-  const rawKey = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY")!;
-  const pemBody = rawKey
-    .replace("-----BEGIN PRIVATE KEY-----", "")
-    .replace("-----END PRIVATE KEY-----", "")
-    .replace(/\n/g, "");
-  const keyData = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
-  const privateKey = await crypto.subtle.importKey(
-    "pkcs8", keyData,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false, ["sign"]
-  );
-  const now = Math.floor(Date.now() / 1000);
-  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const payload = btoa(JSON.stringify({
-    iss: email,
-    scope: "https://www.googleapis.com/auth/androidpublisher",
-    aud: "https://oauth2.googleapis.com/token",
-    iat: now, exp: now + 3600,
-  }));
-  const signingInput = new TextEncoder().encode(`${header}.${payload}`);
-  const sig = await crypto.subtle.sign({ name: "RSASSA-PKCS1-v1_5" }, privateKey, signingInput);
-  const jwt = `${header}.${payload}.${btoa(String.fromCharCode(...new Uint8Array(sig)))}`;
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
-  });
-  const { access_token } = await res.json();
-  return access_token;
-}
+// getGoogleAccessToken a été SUPPRIMÉ ici le 2026-08-05 avec la branche
+// android : plus aucun appel à l'API Publisher depuis cette fonction, qui est
+// désormais Apple-only. Le helper vit dans validate-google-purchase et
+// google-play-webhook (copié dans chacune à dessein — une edge function se
+// déploie isolément, on ne les couple pas par un import partagé).
 
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
@@ -171,7 +147,7 @@ serve(async (req) => {
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
     if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { platform, productId, receipt, jwsRepresentation, purchaseToken } = await req.json();
+    const { platform, productId, receipt, jwsRepresentation } = await req.json();
     const coins = COIN_PRODUCTS[productId as string];
     if (!coins) return json({ error: "unknown_product", productId }, 400);
 
@@ -221,31 +197,18 @@ serve(async (req) => {
       } else {
         return json({ error: "missing_receipt" }, 400);
       }
-    } else if (platform === "android") {
-      if (!purchaseToken) return json({ error: "missing_purchase_token" }, 400);
-      const accessToken = await getGoogleAccessToken();
-      const apiUrl = `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${PACKAGE_NAME}/purchases/products/${productId}/tokens/${purchaseToken}`;
-      const apiRes = await fetch(apiUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
-      if (!apiRes.ok) {
-        console.error("[validate-coin-purchase] Publisher API:", await apiRes.text());
-        return json({ error: "google_validation_failed" }, 400);
-      }
-      const purchase = await apiRes.json();
-      // purchaseState 0 = purchased (1 = cancelled, 2 = pending)
-      if (purchase.purchaseState !== 0) {
-        return json({ error: "purchase_not_completed", state: purchase.purchaseState }, 400);
-      }
-      // Acknowledge best-effort (sinon Google rembourse au bout de 3 jours)
-      if (purchase.acknowledgementState === 0) {
-        await fetch(`${apiUrl}:acknowledge`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-          body: "{}",
-        }).catch((e) => console.error("[validate-coin-purchase] acknowledge:", e));
-      }
-      ref = `google:${purchase.orderId ?? purchaseToken}`;
     } else {
-      return json({ error: "invalid_platform" }, 400);
+      // ⛔ Android N'ARRIVE PLUS ICI (2026-08-05). La branche android de cette
+      // fonction a été retirée au profit de validate-google-purchase, qui porte
+      // désormais le SEUL chemin Google (packs ET abonnements). Elle produisait
+      // exactement le même crédit et la même réf idempotente google:<orderId> —
+      // c'est bien pour ça qu'elle était retirable sans risque, et c'est aussi
+      // pour ça qu'il ne faut pas la remettre : deux implémentations du même
+      // paiement finissent par diverger, et cette divergence-là ne se voit
+      // qu'au moment où quelqu'un est débité pour rien.
+      // Appelants basculés le même jour : CoinStoreModal et le filet
+      // recoverAndroidCoinPurchases (App.jsx).
+      return json({ error: "invalid_platform", platform, hint: "android → validate-google-purchase" }, 400);
     }
 
     const { data: credit, error: rpcErr } = await adminClient.rpc("credit_purchased_coins", {

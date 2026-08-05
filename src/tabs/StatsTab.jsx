@@ -463,7 +463,13 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
             setAiText(result);setAiLoading(false);setOutdated(false);
             setAiCache(prev=>({...prev,[cacheKey]:{hash:dataHash,result}}));
             const updatedCache={...cache,[cacheKey]:{hash:dataHash,result}};
-            supabase.from('profiles').update({stats_analysis_cache:updatedCache}).eq('id',user.id);
+            // Règle projet « profiles-rls-update-policy » : .select() + test
+            // d'erreur sur toute écriture client. Non bloquant (cache d'analyse,
+            // recalculé au prochain passage), mais un refus de GRANT doit se
+            // VOIR — c'est un refus silencieux qui a masqué la panne des
+            // abonnements Google pendant des mois.
+            supabase.from('profiles').update({stats_analysis_cache:updatedCache}).eq('id',user.id).select('id')
+              .then(({error})=>{if(error)console.warn('[stats] cache d\'analyse non enregistré:',error.message);});
           })
           .catch(()=>{setAiLoading(false);});
       });

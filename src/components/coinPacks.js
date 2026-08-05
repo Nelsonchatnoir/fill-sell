@@ -11,7 +11,8 @@
 //
 // ⚠️ La QUANTITÉ créditée, elle, est définie ici ET côté serveur — les trois
 // doivent rester alignés, c'est le serveur qui crédite :
-//   • supabase/functions/validate-coin-purchase (iOS / Android, map COIN_PRODUCTS)
+//   • supabase/functions/validate-coin-purchase   (iOS seul, map COIN_PRODUCTS)
+//   • supabase/functions/validate-google-purchase (Android, map COIN_PRODUCTS)
 //   • supabase/functions/create-checkout-session (web, metadata.coins → stripe-webhook)
 //
 // 2026-07-14 — pack le plus haut : 1150 → 1300 Pépites, PRIX INCHANGÉ (49,99 €).

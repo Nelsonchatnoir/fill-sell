@@ -32,10 +32,22 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
       if (isNative) {
         const res = await purchaseCoins(pack.product, session?.user?.id);
         if (res.cancelled) return;
-        const r = await fetch(`${supabaseUrl}/functions/v1/validate-coin-purchase`, {
+        // UN SEUL chemin Google (2026-08-05) : Android part sur
+        // validate-google-purchase, iOS reste sur validate-coin-purchase. La
+        // branche android de cette dernière a été retirée le même jour — deux
+        // implémentations du même paiement finissent par diverger, et cette
+        // divergence-là ne se voit qu'au moment où quelqu'un est débité pour
+        // rien. Même réf idempotente google:<orderId> des deux côtés : un achat
+        // en vol pendant la bascule ne peut pas être crédité deux fois.
+        const androidPack = platform === "android";
+        const fn = androidPack ? "validate-google-purchase" : "validate-coin-purchase";
+        const payload = androidPack
+          ? { productId: pack.product, purchaseToken: res.purchaseToken, userId: session?.user?.id }
+          : { platform, productId: pack.product, receipt: res.receipt, jwsRepresentation: res.jwsRepresentation, purchaseToken: res.purchaseToken };
+        const r = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}`, "apikey": supabaseAnonKey },
-          body: JSON.stringify({ platform, productId: pack.product, receipt: res.receipt, jwsRepresentation: res.jwsRepresentation, purchaseToken: res.purchaseToken }),
+          body: JSON.stringify(payload),
         });
         const body = await r.json();
         if (!r.ok || body.error) throw new Error(body.error || `HTTP ${r.status}`);

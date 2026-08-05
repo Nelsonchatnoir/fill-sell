@@ -2449,10 +2449,14 @@ export default function App({ loginOnly = false }){
         const rcToken=rcSess?.access_token;
         if(!rcToken) return; // session pas encore restaurée → prochain lancement
         const recovered=await recoverAndroidCoinPurchases(async(p)=>{
-          const r=await fetch(`${supabaseUrl}/functions/v1/validate-coin-purchase`,{
+          // validate-google-purchase depuis le 2026-08-05 : la branche android
+          // de validate-coin-purchase a été retirée le même jour. Oublier ce
+          // filet dans la bascule aurait rendu irrécupérable exactement l'achat
+          // qu'il existe pour rattraper.
+          const r=await fetch(`${supabaseUrl}/functions/v1/validate-google-purchase`,{
             method:'POST',
             headers:{'Content-Type':'application/json','Authorization':`Bearer ${rcToken}`,'apikey':supabaseAnonKey},
-            body:JSON.stringify({platform:'android',productId:p.productIdentifier,purchaseToken:p.purchaseToken}),
+            body:JSON.stringify({productId:p.productIdentifier,purchaseToken:p.purchaseToken,userId:rcSess.user.id}),
           });
           const body=await r.json().catch(()=>({}));
           if(!r.ok||body.error) throw new Error(body.error||`HTTP ${r.status}`);

@@ -108,7 +108,7 @@ export const purchaseCoins = async (productId, appAccountToken = undefined) => {
     const purchaseOptions = { productIdentifier: productId, productType: 'inapp' };
     if (appAccountToken) purchaseOptions.appAccountToken = appAccountToken;
     // Android (2026-07-27) : ne JAMAIS acknowledge côté client. C'est la
-    // validation serveur qui acknowledge (validate-coin-purchase), puis le
+    // validation serveur qui acknowledge (validate-google-purchase), puis le
     // client consomme (consumeCoinPurchase). Si la validation n'aboutit
     // jamais, l'achat reste non-acknowledged → Google rembourse sous 3 jours
     // au lieu de laisser l'utilisateur débité sans crédit. iOS inchangé :
