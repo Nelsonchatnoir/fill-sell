@@ -6893,19 +6893,49 @@ async function processRepublishJob(job, accessToken) {
         },
       };
 
+      // Même PRÉPARATION que la publication normale, pas seulement le même
+      // remplisseur : processJob fait passer TOUT job par sanitizeJob avant de
+      // l'envoyer (sa 1re ligne). Les emoji sortent du titre, sinon Vinted
+      // répond 400 « le titre contient trop de symboles d'affilée » —
+      // déclenché par UN SEUL symbole (⌚ du Casio, 19/07). Le titre de la
+      // recréation vient de la CAPTURE (cap.payload.titre), qui n'a jamais vu
+      // ce nettoyage : il partait brut. Une SEULE variable en aval, pour
+      // qu'aucun rapprochement ne compare deux titres différents.
+      const jobRecreation = sanitizeJob(jobLike);
+
       const handler = PLATFORM_HANDLERS.vinted;
-      const listingUrl = typeof handler.newListingUrl === "function" ? handler.newListingUrl(jobLike) : handler.newListingUrl;
-      const tabId = await getOrCreateWorkTab("vinted", listingUrl);
+      const listingUrl = typeof handler.newListingUrl === "function" ? handler.newListingUrl(jobRecreation) : handler.newListingUrl;
 
       // ── VOLET (b) : l'annonce existe-t-elle DÉJÀ ? ────────────────────────
       // Avant de recréer, on regarde le dressing. Sans ça, chaque reprise est
       // un pari : le 05/08, la recréation avait abouti et la reprise aurait
       // créé un doublon. Échec de lecture = on recrée comme avant (le filet ne
       // doit jamais empêcher le travail), abstention = idem.
+      //
+      // ⛔ CE VOLET NE S'EXÉCUTE PLUS SUR LA PAGE DE DÉPÔT (2026-08-05) ⛔
+      // Il y tournait, ENTRE l'ouverture de /items/new et FILL_LISTING, et
+      // c'était la SEULE différence entre ce chemin et la publication normale,
+      // qui remplit le même formulaire avec le même remplisseur et réussit :
+      // là-bas, rien ne s'intercale entre la page fraîchement chargée et
+      // l'envoi du job (cf. processJob, getOrCreateWorkTab → clearProbeCaptures
+      // → installNetworkProbe → FILL_LISTING, sans un await de plus).
+      // Ici s'intercalaient DEUX allers-retours au content script et un appel
+      // REST Supabase — un délai non borné pendant lequel le formulaire de
+      // dépôt vieillissait, plus un GET /api/v2/wardrobe/…?per_page=96 tiré
+      // DEPUIS la page de dépôt (le profil de trafic que le bandeau de
+      // lirePageDressing demande précisément d'éviter). Symptôme : le clic sur
+      // #category n'ouvrait plus le panneau (job 24a28fcb, 05/08 19:03).
+      // La vérification se fait donc sur l'onglet de travail TEL QU'IL EST —
+      // aucune navigation, donc aucune page de dépôt à abîmer. Ce sont de purs
+      // appels d'API : ils marchent depuis n'importe quelle page vinted.fr.
+      // Sans onglet de travail (premier job après un redémarrage de Chrome),
+      // on en ouvre un sur la HOME — jamais sur /items/new.
+      let tabVerif = await findExistingWorkTabId("vinted");
+      if (tabVerif == null) tabVerif = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
       try {
-        const ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch(() => null);
+        const ident = await sendMessageToTab(tabVerif, { type: "VINTED_CURRENT_USER" }).catch(() => null);
         if (ident?.userId) {
-          const page = await sendMessageToTab(tabId, {
+          const page = await sendMessageToTab(tabVerif, {
             type: "SYNC_DRESSING_PAGE", page: 1, userId: ident.userId,
           }).catch(() => null);
           if (page?.success) {
@@ -6914,7 +6944,7 @@ async function processRepublishJob(job, accessToken) {
               accessToken,
             ).catch(() => []);
             const { item, raison } = reconnaitreAnnonceRecreee(page.articles, {
-              titre: jobLike.title,
+              titre: jobRecreation.title,
               deletedAt: pf.deleted_at,
               idsConnus: new Set((connus ?? []).map((r) => String(r.vinted_item_id))),
             });
@@ -6933,11 +6963,22 @@ async function processRepublishJob(job, accessToken) {
         console.warn("[republish] vérification du dressing impossible (on recrée):", e?.message ?? e);
       }
 
+      // ── LA PAGE DE DÉPÔT S'OUVRE ICI, ET LE REMPLISSAGE PART TOUT DE SUITE ──
+      // Ces quatre lignes sont la COPIE EXACTE de la séquence de la publication
+      // normale (processJob) : ouvrir, purger les captures de la sonde,
+      // installer la sonde, envoyer FILL_LISTING. Rien d'autre entre le
+      // chargement de /items/new et le job — c'est tout le correctif.
+      // ⛔ NE JAMAIS réinsérer un await ici : chaque chose glissée entre ces
+      // lignes vieillit un formulaire de dépôt que personne ne surveille.
+      // Ce qui doit être vérifié AVANT se fait plus haut (volet b, sur l'onglet
+      // de travail) ; ce qui se vérifie APRÈS se fait plus bas (sonde,
+      // ceinture dressing).
+      const tabId = await getOrCreateWorkTab("vinted", listingUrl);
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
       let result;
       try {
-        result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job: jobLike });
+        result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job: jobRecreation });
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
       }
@@ -6951,7 +6992,7 @@ async function processRepublishJob(job, accessToken) {
       // laissé l'annonce de Nico en ligne avec un job en needs_user le 05/08.
       // Les captures de la sonde SURVIVENT à la mort de la page.
       if (!result?.success) {
-        const urlSonde = await vintedUploadSucceededForTitle(tabId, jobLike.title).catch(() => null);
+        const urlSonde = await vintedUploadSucceededForTitle(tabId, jobRecreation.title).catch(() => null);
         if (urlSonde) {
           const idSonde = urlSonde.match(/\/items\/(\d+)/)?.[1] ?? null;
           if (idSonde) {
@@ -6982,7 +7023,7 @@ async function processRepublishJob(job, accessToken) {
                 accessToken,
               ).catch(() => []);
               const { item: trouve, raison: pourquoi } = reconnaitreAnnonceRecreee(page2.articles, {
-                titre: jobLike.title,
+                titre: jobRecreation.title,
                 deletedAt: pf.deleted_at,
                 idsConnus: new Set((connus2 ?? []).map((r) => String(r.vinted_item_id))),
               });
