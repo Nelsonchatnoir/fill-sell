@@ -5276,6 +5276,42 @@ async function syncDressingUnlocked(declencheur) {
     return await echec(`sonde de session Vinted : ${ident?.error ?? "échec inconnu"}`);
   }
 
+  // ── Réservations de republication (volet c, 2026-08-05) ───────────────────
+  // Les republications ARRÊTÉES À L'ÉTAPE 'deleted' : leur annonce a été
+  // retirée et sa remplaçante peut déjà être en ligne. On charge leur titre
+  // CAPTURÉ (celui de l'annonce Vinted, pas celui de la fiche FillSell, qui
+  // peut différer) pour que la sync reconnaisse la recréation au lieu de
+  // l'importer comme un article neuf. Lecture best-effort : en cas d'échec on
+  // sync normalement — le filet ne doit jamais bloquer l'import.
+  const reservesRepublish = [];
+  try {
+    const enVol = await restRequest(
+      `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
+      `&status=in.(pending,processing,needs_user)` +
+      `&platform_fields->>republish_step=eq.deleted&select=id,title,platform_fields`,
+      token, { headers: { Prefer: "return=representation" } },
+    );
+    for (const j of enVol ?? []) {
+      const capId = Number(j.platform_fields?.capture_id);
+      let titre = j.title ?? null;
+      if (Number.isFinite(capId)) {
+        const c = await restRequest(
+          `vinted_republish_captures?id=eq.${capId}&select=titre:payload->titre`,
+          token, { headers: { Prefer: "return=representation" } },
+        ).catch(() => null);
+        if (c?.[0]?.titre) titre = c[0].titre;
+      }
+      if (titre && j.platform_fields?.deleted_at) {
+        reservesRepublish.push({ job_id: j.id, titre, deleted_at: j.platform_fields.deleted_at });
+      }
+    }
+    if (reservesRepublish.length) {
+      console.log(`[sync-dressing] ${reservesRepublish.length} republication(s) à l'étape 'deleted' — leurs recréations ne seront pas importées`);
+    }
+  } catch (e) {
+    console.warn("[sync-dressing] réservations republish illisibles (import normal):", e?.message ?? e);
+  }
+
   const vusCetteSync = new Set();
   const echecsEcriture = []; // articles refusés par la base, rapportés à la clôture
   let page = run.page_suivante || 1;
@@ -5319,7 +5355,7 @@ async function syncDressingUnlocked(declencheur) {
       // `connus` (qui exige vinted_item_id), et un `undefined` dans le Set
       // fausserait la comparaison vu/annoncé de la garde (b).
       for (const a of tranche) if (a.vinted_item_id) vusCetteSync.add(a.vinted_item_id);
-      const bilan = await enregistrerArticlesDressing(tranche, { token, userId });
+      const bilan = await enregistrerArticlesDressing(tranche, { token, userId, reservesRepublish });
       if (bilan.echecs?.length) echecsEcriture.push(...bilan.echecs);
       items_vus += tranche.length;
       items_crees += bilan.crees;
@@ -5475,7 +5511,7 @@ async function syncDressingUnlocked(declencheur) {
  * Écrit une page d'articles : upsert inventaire + relevé du jour + entrée dans
  * le cycle de détection de vente. Rend le nombre de créations/mises à jour.
  */
-async function enregistrerArticlesDressing(articles, { token, userId }) {
+async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [] }) {
   if (!articles.length) return { crees: 0, majs: 0 };
 
   // Ce qui existe déjà, pour distinguer création et mise à jour (l'upsert seul
@@ -5492,6 +5528,33 @@ async function enregistrerArticlesDressing(articles, { token, userId }) {
     console.warn("[sync-dressing] lecture des existants:", e?.message ?? e);
   }
   const parVintedId = new Map(existants.map((r) => [r.vinted_item_id, r]));
+
+  // ── VOLET (c) : ne pas importer l'annonce qu'un republish est en train de
+  // recréer (2026-08-05). Une sync passée pendant l'étape 'deleted' voyait
+  // l'annonce recréée comme un article INCONNU et en faisait une ligne de plus
+  // — le doublon vécu le 05/08 (deux lignes, l'ancienne gardant un id mort).
+  // La garde des disparitions empêchait le faux « disparu », pas ça.
+  // On SAUTE l'import : c'est au republish de rattacher l'annonce à SA ligne
+  // (volets a et b), avec son historique et son prix d'achat. Sauter est
+  // réversible et sans perte — dès que le job quitte l'étape 'deleted',
+  // l'article redevient importable normalement par la sync suivante.
+  const connusIds = new Set(existants.map((r) => String(r.vinted_item_id)));
+  const reserves = new Set();
+  for (const r of reservesRepublish ?? []) {
+    const { item } = reconnaitreAnnonceRecreee(articles, {
+      titre: r.titre, deletedAt: r.deleted_at, idsConnus: connusIds,
+    });
+    if (item) {
+      reserves.add(String(item.vinted_item_id));
+      console.log(
+        `[sync-dressing] article ${item.vinted_item_id} NON importé : c'est la recréation ` +
+        `du republish ${r.job_id} (étape 'deleted') — il sera rattaché à sa ligne d'origine`
+      );
+    }
+  }
+  if (reserves.size) articles = articles.filter((a) => !reserves.has(String(a.vinted_item_id)));
+  if (!articles.length) return { crees: 0, majs: 0, reserves: reserves.size };
+
   const maintenant = new Date().toISOString();
   const aujourdhui = jourParis();
 
@@ -6259,10 +6322,25 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
   try {
     let pubs = null;
     if (deleteJob.listing_url) {
+      // ⚠️ ÉGALITÉ D'URL = PIÈGE (corrigé le 2026-08-05). Une même annonce a
+      // DEUX URLs valides : avec slug (…/items/8428482383-short-de-bain-…)
+      // et sans (…/items/8428482383). Le job publish porte la première, le job
+      // republish la seconde — l'égalité stricte ne matchait donc RIEN, aucun
+      // repli ne se déclenchait (le repli par titre exige listing_url vide) et
+      // la fonction sortait en silence. Constaté le 05/08 : après une
+      // republication réussie, l'ancien publish est resté 'published' sur une
+      // annonce supprimée — checkPublishedListings l'aurait scannée, trouvée
+      // morte, et aurait posé un faux « plus en ligne — vendue ? ».
+      // On matche donc sur l'ID d'annonce, seule partie stable de l'URL.
+      const idAnnonce = String(deleteJob.listing_url).match(/\/items\/(\d+)/)?.[1] ?? null;
       pubs = await restRequest(
         "cross_post_jobs?select=id,platform_fields" +
           `&action=eq.publish&status=eq.published&platform=eq.${deleteJob.platform}` +
-          `&listing_url=eq.${encodeURIComponent(deleteJob.listing_url)}`,
+          (idAnnonce
+            // like=*\/items\/<id>* : couvre les deux formes, et l'ancrage sur
+            // « /items/<id> » évite qu'un id soit préfixe d'un autre.
+            ? `&or=(listing_url.like.*/items/${idAnnonce},listing_url.like.*/items/${idAnnonce}-*,platform_listing_id.eq.${idAnnonce})`
+            : `&listing_url=eq.${encodeURIComponent(deleteJob.listing_url)}`),
         accessToken
       );
     } else if (deleteJob.inventaire_id != null && String(deleteJob.title ?? "").trim()) {
@@ -6380,6 +6458,82 @@ function resoudrePrixRepublication(pf, payload) {
     if (Number.isFinite(n) && n > 0) return n;
   }
   return null;
+}
+
+// ── RECONNAISSANCE D'UNE ANNONCE RECRÉÉE (2026-08-05) ────────────────────────
+// UNE SEULE fonction, appelée des DEUX côtés — la recréation (avant de recréer,
+// pour ne pas doubler ce qui existe déjà) et la sync (avant de créer une ligne
+// pour une annonce inconnue). Deux appelants, un seul critère : ils ne peuvent
+// pas se contredire.
+//
+// Née de l'incident du 05/08 : la recréation avait ABOUTI, le canal a été coupé
+// par la redirection de succès de Vinted, l'extension a conclu à l'échec, et la
+// sync passée entre-temps a importé l'annonce recréée comme un article neuf —
+// doublon dans le stock, ancien id resté sur la ligne d'origine.
+//
+// CRITÈRE, en trois conditions CUMULATIVES :
+//   1. id INCONNU de l'inventaire — écarte d'emblée tout ce qui est déjà suivi ;
+//   2. titre STRICTEMENT égal (normalisé) au titre capturé ;
+//   3. photos POSTÉRIEURES à la suppression de l'ancienne annonce.
+// La 3e est le vrai discriminant : nos photos sont RÉUPLOADÉES à la recréation,
+// donc leur horodatage date la nouvelle annonce. Vérifié sur le cas réel —
+// photos à 09:38:20Z pour une suppression à 09:05:54Z. L'API wardrobe ne
+// fournit aucune date de mise en ligne, c'est le seul substitut et il tient.
+//
+// ⛔ TITRE + PRIX NE SUFFISENT PAS, et c'est pour ça qu'on ne s'en contente
+// pas : un revendeur a couramment deux articles identiques en ligne. Sans les
+// conditions 1 et 3, on rattacherait le mauvais — un filet trop lâche est PIRE
+// que pas de filet, il déplace la perte au lieu de l'éviter.
+// ⛔ PLUSIEURS CANDIDATS ⇒ ON N'ATTACHE RIEN. L'abstention est un résultat
+// légitime, pas un échec : mieux vaut laisser l'utilisateur trancher qu'un
+// rattachement au hasard, irréversible côté inventaire.
+function reconnaitreAnnonceRecreee(articles, { titre, deletedAt, idsConnus }) {
+  const norm = (s) => String(s ?? "").toLowerCase().normalize("NFKC")
+    .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const cible = norm(titre);
+  if (!cible) return { item: null, raison: "titre de référence vide" };
+  const seuil = Date.parse(deletedAt ?? "");
+  if (!Number.isFinite(seuil)) return { item: null, raison: "date de suppression illisible" };
+  const connus = idsConnus instanceof Set ? idsConnus : new Set(idsConnus ?? []);
+  const candidats = (articles ?? []).filter((a) => {
+    if (!a?.vinted_item_id || connus.has(String(a.vinted_item_id))) return false;
+    if (norm(a.titre) !== cible) return false;
+    const ts = Number(a.photo_ts);
+    return Number.isFinite(ts) && ts * 1000 > seuil;
+  });
+  if (candidats.length === 1) return { item: candidats[0], raison: null };
+  if (!candidats.length) return { item: null, raison: "aucune annonce du dressing ne correspond" };
+  return { item: null, raison: `${candidats.length} annonces correspondent — abstention volontaire` };
+}
+
+// Clôt un job republish en SUCCÈS sur une annonce déjà en ligne (reconnue par
+// la sonde ou par le dressing) : rattache le nouvel id à l'inventaire puis
+// écrit le job. Même séquence que la fin de recréation nominale — l'inventaire
+// AVANT le job, pour qu'un échec d'écriture laisse un job encore repérable.
+async function cloreRepublishSurAnnonceExistante(accessToken, job, pf, nouvelId, url, motif) {
+  const ancienId = pf.vinted_item_id ?? null;
+  pf.republish_step = "recreated";
+  pf.recreated_at = new Date().toISOString();
+  if (ancienId) pf.old_vinted_item_id = ancienId;
+  pf.new_vinted_item_id = String(nouvelId);
+  pf.reconciliation = motif; // trace : ce succès n'a PAS été observé en direct
+  delete pf.next_action_after;
+  delete pf.recaptures_perimees;
+  if (job.inventaire_id != null) {
+    await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
+      method: "PATCH",
+      body: JSON.stringify({
+        vinted_item_id: String(nouvelId),
+        disparu_le: null,
+        listed_at_guess: new Date().toISOString(),
+      }),
+    }).catch((e) => console.error("[republish] rattachement inventaire échoué:", e?.message ?? e));
+  }
+  await updateJobStatus(accessToken, job.id, "published", {
+    platform_fields: pf, error: null, listing_url: url,
+  });
+  await recordRecentResult(job, "published").catch(() => {});
+  console.log(`[republish] job ${job.id} clos en succès par réconciliation (${motif}) → ${url}`);
 }
 
 async function processRepublishJob(job, accessToken) {
@@ -6686,6 +6840,43 @@ async function processRepublishJob(job, accessToken) {
       const handler = PLATFORM_HANDLERS.vinted;
       const listingUrl = typeof handler.newListingUrl === "function" ? handler.newListingUrl(jobLike) : handler.newListingUrl;
       const tabId = await getOrCreateWorkTab("vinted", listingUrl);
+
+      // ── VOLET (b) : l'annonce existe-t-elle DÉJÀ ? ────────────────────────
+      // Avant de recréer, on regarde le dressing. Sans ça, chaque reprise est
+      // un pari : le 05/08, la recréation avait abouti et la reprise aurait
+      // créé un doublon. Échec de lecture = on recrée comme avant (le filet ne
+      // doit jamais empêcher le travail), abstention = idem.
+      try {
+        const ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch(() => null);
+        if (ident?.userId) {
+          const page = await sendMessageToTab(tabId, {
+            type: "SYNC_DRESSING_PAGE", page: 1, userId: ident.userId,
+          }).catch(() => null);
+          if (page?.success) {
+            const connus = await restRequest(
+              `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
+              accessToken,
+            ).catch(() => []);
+            const { item, raison } = reconnaitreAnnonceRecreee(page.articles, {
+              titre: jobLike.title,
+              deletedAt: pf.deleted_at,
+              idsConnus: new Set((connus ?? []).map((r) => String(r.vinted_item_id))),
+            });
+            if (item) {
+              await cloreRepublishSurAnnonceExistante(
+                accessToken, job, pf, item.vinted_item_id,
+                item.url ?? `https://www.vinted.fr/items/${item.vinted_item_id}`,
+                "annonce retrouvée dans le dressing avant recréation",
+              );
+              return { status: "published", listingUrl: item.url ?? null };
+            }
+            console.log(`[republish] pas de recréation à éviter (${raison}) — on recrée`);
+          }
+        }
+      } catch (e) {
+        console.warn("[republish] vérification du dressing impossible (on recrée):", e?.message ?? e);
+      }
+
       clearProbeCaptures(tabId);
       await installNetworkProbe(tabId, "vinted");
       let result;
@@ -6695,6 +6886,27 @@ async function processRepublishJob(job, accessToken) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
       }
       dernierGesteRepublishAt = Date.now();
+
+      // ── VOLET (a) : le canal coupé peut être la SIGNATURE D'UN SUCCÈS ─────
+      // Vinted REDIRIGE vers la nouvelle annonce dès qu'elle est créée : la
+      // redirection détruit le content script AVANT sa réponse. La publication
+      // normale interroge la sonde dans ce cas depuis le 13/07 (job ba84ebb0) ;
+      // la recréation, elle, concluait à l'échec — c'est exactement ce qui a
+      // laissé l'annonce de Nico en ligne avec un job en needs_user le 05/08.
+      // Les captures de la sonde SURVIVENT à la mort de la page.
+      if (!result?.success) {
+        const urlSonde = await vintedUploadSucceededForTitle(tabId, jobLike.title).catch(() => null);
+        if (urlSonde) {
+          const idSonde = urlSonde.match(/\/items\/(\d+)/)?.[1] ?? null;
+          if (idSonde) {
+            await cloreRepublishSurAnnonceExistante(
+              accessToken, job, pf, idSonde, urlSonde,
+              "canal coupé par la redirection de succès — création confirmée par la réponse serveur",
+            );
+            return { status: "published", listingUrl: urlSonde };
+          }
+        }
+      }
 
       if (result?.success && result.listingUrl) {
         // ── É4 : RATTACHEMENT du nouvel id (2026-08-05) ─────────────────────
