@@ -3445,11 +3445,24 @@ const StockTab = memo(function StockTab({
                   // Surgical : seul Vinted sort. Un article aussi publié sur
                   // eBay ou LBC garde ces logos-là, qui restent exacts.
                   const disparuDeVinted=!!item.disparu_le;
+                  // Vinted sort de la liste des plateformes en ligne — pour
+                  // l'AFFICHAGE **et** pour le bouton (2026-08-05). La carte et
+                  // le compteur ne peuvent pas se contredire : afficher « Plus
+                  // en ligne » pendant que le bouton dit « En ligne (4/4) »,
+                  // c'est reproduire à l'échelle du bouton le mensonge qu'on
+                  // vient de retirer de la rangée.
+                  // CONSÉQUENCE VOULUE : « Publier » redevient disponible pour
+                  // Vinted. C'est le comportement juste — pour un article
+                  // disparu, publier est le SEUL chemin de retour en ligne, la
+                  // republication lui étant fermée (repubEligible exige
+                  // !disparu_le). Ne tient que parce que disparu_le est
+                  // désormais fiable : marquage sauté sur un run repris ou un
+                  // relevé incomplet (gardes de syncDressing, background.js).
                   const logosEnLigne=disparuDeVinted?publishedActive.filter(p=>p!=="vinted"):publishedActive;
                   const enLigne=logosEnLigne.length>0;
                   // Compteur de plateformes réellement en ligne : pilote le 3e état
                   // du bouton (4/4 = plus rien à publier).
-                  const nbEnLigne=publishedActive.length;
+                  const nbEnLigne=logosEnLigne.length;
                   const toutEnLigne=nbEnLigne>=RM_PLATFORMS.length;
                   // _table:'inventaire' — cible d'écriture explicite de la modale
                   // d'édition (les ids ventes/inventaire se chevauchent).
@@ -4005,7 +4018,12 @@ const StockTab = memo(function StockTab({
           pour libre — le stepper la proposerait et on créerait une 2e annonce
           que la recréation viendrait doubler. Rien à voir avec l'affichage :
           la carte continue de dire, à raison, que l'annonce n'est pas en ligne
-          pendant ces quelques minutes. */}
+          pendant ces quelques minutes.
+          À l'inverse, `plateformesLiberees` RETIRE Vinted du verrou quand
+          l'article est disparu : l'annonce n'existe plus, publier n'est donc
+          pas un doublon mais son seul retour en ligne. Cohérent avec la carte,
+          qui n'affiche ni logo ni « En ligne » et ne le compte plus dans
+          nbEnLigne. */}
       {publishItem&&(
         <ListingPreviewScreen
           inventaireId={publishItem.id}
@@ -4014,6 +4032,7 @@ const StockTab = memo(function StockTab({
             ...computeRemovalInfo(jobsByInventaire[publishItem.id]||[]).publishedActive,
             ...plateformesReserveesParRepublication(jobsByInventaire[publishItem.id]||[]),
           ])]}
+          plateformesLiberees={publishItem.disparu_le?['vinted']:[]}
           initialPhotos={(Array.isArray(publishItem.photos)?publishItem.photos:[])
             // Deux formats coexistent en base : objets {type,url} (flux photos
             // retouchées) et STRINGS nues (URLs CDN Vinted écrites par la sync

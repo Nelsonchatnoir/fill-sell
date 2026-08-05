@@ -2796,6 +2796,15 @@ export default function ListingPreviewScreen({
   // relancer une plateforme déjà "published" créait un SECOND job pour la même
   // annonce, donc un doublon en ligne. Elles sont donc décochées ET verrouillées.
   alreadyPublished = [],
+  // Plateformes à LIBÉRER malgré un job publish resté 'published' (2026-08-05).
+  // Cas unique aujourd'hui : `inventaire.disparu_le` posé — la sync du dressing
+  // n'a pas retrouvé l'annonce sur Vinted, elle n'existe donc plus et publier
+  // n'est pas un doublon mais le SEUL retour en ligne (la republication est
+  // fermée aux articles disparus). Sans cette soustraction, le verrou
+  // survivrait à la prop : le stepper relit lui-même les jobs et recalculerait
+  // 'vinted' comme publiée. Ne vaut que parce que disparu_le est fiable
+  // (marquage sauté sur run repris ou relevé incomplet, cf. syncDressing).
+  plateformesLiberees = [],
   // Appelé après l'insert réussi des jobs (invId, [plateformes]) : permet au
   // Stock de patcher jobsByInventaire immédiatement (« En cours… » sans
   // attendre le poll de 20 s) — même principe que le retrait par logo et le
@@ -3089,9 +3098,12 @@ export default function ListingPreviewScreen({
   // et de la relecture autonome. Recalculées à chaque rendu côté Stock (nouvelle
   // identité de tableau) : on dépend du contenu trié, pas de la référence, sinon
   // les effets ci-dessous tourneraient en boucle.
-  const alreadyPublishedKey = [...alreadyPublished, ...(fetchedPublished ?? [])].sort().join(",");
+  // La soustraction s'applique APRÈS l'union : elle doit l'emporter sur la prop
+  // ET sur la relecture autonome, sinon le verrou revient par le second chemin.
+  const libereesKey = (plateformesLiberees ?? []).slice().sort().join(",");
+  const alreadyPublishedKey = [...alreadyPublished, ...(fetchedPublished ?? [])].sort().join(",") + "|" + libereesKey;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const publishedSet = useMemo(() => new Set([...alreadyPublished, ...(fetchedPublished ?? [])]), [alreadyPublishedKey]);
+  const publishedSet = useMemo(() => new Set([...alreadyPublished, ...(fetchedPublished ?? [])].filter(p => !(plateformesLiberees ?? []).includes(p))), [alreadyPublishedKey]);
   // En file (pending/processing) : set SÉPARÉ de publishedSet — même verrou,
   // mais le libellé du chip dit « en cours », pas « en ligne » : tant que
   // l'extension n'a pas traité le job, l'annonce n'existe pas encore.
