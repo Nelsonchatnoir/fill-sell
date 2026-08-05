@@ -3332,7 +3332,22 @@ const StockTab = memo(function StockTab({
                   // Prix DEMANDÉ sur l'annonce Vinted (dernier relevé) — jamais
                   // confondu avec prix_vente, qui reste ce que l'utilisateur
                   // déclare avoir reçu.
-                  const prixAnnonce=item.vinted_item_id?prixAnnonces[item.vinted_item_id]:null;
+                  // Prix de l'annonce EN LIGNE — donc RIEN dès que `disparu_le`
+                  // est posé (2026-08-05) : la sync ne retrouve plus l'annonce
+                  // sur Vinted, et le dernier prix relevé affirmerait un prix
+                  // en ligne sur une annonce qui n'existe plus. Constaté sur
+                  // « Hoodie Nike – Kaki » : disparu_le au 04/08, et l'id
+                  // Vinted 8428496729 rend bien 404 à la vérification. Depuis
+                  // que la pastille est à l'encre, c'est l'information la plus
+                  // lue de la rangée — donc le mensonge le plus visible.
+                  // Filtré ICI et non au rendu : `prixAnnonce` veut dire « prix
+                  // de l'annonce en ligne », et tout ce qui le lit (y compris
+                  // la condition d'affichage de la rangée) hérite du bon sens.
+                  // ⚠️ Ne concerne QUE la carte Stock : dans la liste des
+                  // articles VENDUS, l'annonce a disparu parce qu'elle s'est
+                  // vendue, et son dernier prix demandé y est un contexte
+                  // légitime de la vente — cette pastille-là n'est pas touchée.
+                  const prixAnnonce=item.vinted_item_id&&!item.disparu_le?prixAnnonces[item.vinted_item_id]:null;
                   const jobsAll=jobsByInventaire[item.id]||[];
                   // Les jobs de retrait ciblé (action='delete') vivent à part :
                   // mélangés aux publish, un delete pending affichait « En
