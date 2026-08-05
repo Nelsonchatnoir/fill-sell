@@ -3434,6 +3434,29 @@ const StockTab = memo(function StockTab({
                   // répète pas. Il ne reste affiché que quand il apporte autre
                   // chose (refus, échec de relance).
                   const repubNote=repubEligible&&repubMsgs[item.id]&&!repubEtape?repubMsgs[item.id]:null;
+                  // ── UN SEUL badge dans ce slot (2026-08-05, décision Nico) ──
+                  // La pastille de republication et la pastille de statut
+                  // plateforme s'affichaient ENSEMBLE et, à l'arrivée, disaient
+                  // le même mot : etapeRepublication rend « En ligne » sur
+                  // l'étape 'recreated', collé au « ● En ligne » de
+                  // publishedActive. Deux fois la même information, dont une
+                  // avec un chevron qui promet un détail sans intérêt.
+                  // Règle : tant que la republication n'est pas conclue, c'est
+                  // ELLE qui occupe le slot — l'avancement prime sur un statut
+                  // qui, pendant la fenêtre suppression→recréation, est de
+                  // toute façon faux (publishedActive tombe à [], cf.
+                  // plateformesReserveesParRepublication). Dès qu'elle aboutit,
+                  // elle s'efface et « ● En ligne » reprend sa place, seul.
+                  // Ancrage sur cle==='recreated', PAS sur status : c'est la clé
+                  // qui désigne exactement la pastille en doublon, et elle
+                  // couvre les DEUX chemins qui la produisent (status
+                  // 'published' et step 'recreated'). Tous les autres états —
+                  // file, lecture, prête, recréation, à relancer, arrêtée, test
+                  // à blanc — gardent le slot : aucun ne dit « En ligne ».
+                  // ⚠️ Ne concerne QUE ces deux pastilles. Les logos de
+                  // plateforme et le tag « Annonce Vinted · X € » sont rendus
+                  // ailleurs dans la rangée et ne bougent pas.
+                  const repubOccupeSlot=repubEligible&&!!repubEtape&&repubEtape.cle!=='recreated';
                   // "processing" = publication en cours côté extension : même
                   // affichage « En cours… » que pending (pour le vendeur, c'est
                   // le même moment ; la nuance est purement interne).
@@ -3605,12 +3628,16 @@ const StockTab = memo(function StockTab({
                           {/* `item.plateforme` a quitté cette condition avec le
                               repli textuel qu'il servait à afficher : le champ
                               libre ne déclenche plus une rangée à lui seul. */}
-                          {(enLigne||disparuDeVinted||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.emplacement||prixAnnonce!=null||repubEtape)&&(
+                          {(enLigne||disparuDeVinted||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.emplacement||prixAnnonce!=null||repubOccupeSlot)&&(
                             <div className="icons">
                               {/* Statut explicite : les pastilles de plateformes disaient OÙ,
                                   jamais QUE l'article est en ligne — d'où la confusion avec
                                   un article jamais publié. */}
-                              {enLigne&&<div className="micon ic-online"><span className="dot"/>{lang==="en"?"Live":"En ligne"}</div>}
+                              {/* !repubOccupeSlot : pendant une republication, la
+                                  pastille de republication PREND CETTE PLACE
+                                  (cf. repubOccupeSlot plus haut) — jamais les
+                                  deux à la fois. */}
+                              {enLigne&&!repubOccupeSlot&&<div className="micon ic-online"><span className="dot"/>{lang==="en"?"Live":"En ligne"}</div>}
                               {/* Annonce Vinted introuvable à la dernière sync.
                                   Elle REMPLACE le prix (masqué au même titre) :
                                   la place libérée dit maintenant la seule chose
@@ -3724,7 +3751,7 @@ const StockTab = memo(function StockTab({
                                   phrase entière y prend une largeur
                                   irréductible et ressort de la colonne. Le
                                   détail vit dans la feuille, au tap. */}
-                              {repubEligible&&repubEtape&&(
+                              {repubOccupeSlot&&(
                                 <div className="micon" role="button" tabIndex={0}
                                   title={lang==='fr'?'Voir où en est la republication':'See repost progress'}
                                   onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}
