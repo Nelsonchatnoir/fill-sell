@@ -532,7 +532,7 @@ const COIN_KIND_LABELS={
   admin:{fr:'Ajustement',en:'Adjustment'},
 };
 
-function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner', onOpenModal=null, label=null }){
+function PremiumBanner({ userEmail, compact=false, source='banner', onOpenModal=null, label=null }){
   const [loading, setLoading] = useState(false);
   const lang = localStorage.getItem('fs_lang') || 'fr';
   const { t: tb } = useTranslation(lang);
@@ -566,18 +566,24 @@ function PremiumBanner({ userEmail, compact=false, onDark=false, source='banner'
   }
 
   if(compact){
-    const bg=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#2F9E90");
-    const bgHover=onDark?"rgba(255,255,255,0.3)":"#1B6E62";
-    const bgLeave=onDark?(loading?"rgba(255,255,255,0.1)":"rgba(255,255,255,0.2)"):(loading?"#E5E7EB":"#2F9E90");
-    const col=onDark?"#fff":"#fff";
-    const brd=onDark?"1px solid rgba(255,255,255,0.4)":"none";
+    // « Passer Pro » (2026-08-05) : seul mot anglais de l'interface remplacé,
+    // et le bouton fait désormais face au pill « Pro » des abonnés — même
+    // gabarit visuel (SIZES.sm de PlanBadge : padding 7px 12px, rayon 999,
+    // texte 12.5/700). La zone tactile de 44 px est portée par le <button>
+    // transparent qui entoure le pill — le visuel, lui, garde la hauteur du
+    // pill Pro. Un seul libellé, jamais coupé (nowrap) : plus de variantes
+    // premium-short/premium-full.
+    const bg=loading?"#E5E7EB":"linear-gradient(120deg,#2F9E90,#1B6E62)";
     return(
       <button onClick={onOpenModal??handleCheckout} disabled={loading}
-        style={{padding:"6px 12px",background:bg,color:col,border:brd,borderRadius:99,fontSize:11,fontWeight:700,cursor:loading?"not-allowed":"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}
-        onMouseEnter={e=>{if(!loading)e.currentTarget.style.background=bgHover;}}
-        onMouseLeave={e=>{e.currentTarget.style.background=bgLeave;}}
+        style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:loading?"not-allowed":"pointer",flexShrink:0,fontFamily:"inherit"}}
       >
-        {loading ? "..." : <><span className="premium-short">✨ Upgrade</span><span className="premium-full">{lang==='fr'?'✨ Upgrade →':'✨ Upgrade →'}</span></>}
+        <span style={{display:"inline-flex",alignItems:"center",padding:"7px 12px",borderRadius:999,background:bg,color:"#fff",fontSize:12.5,fontWeight:700,letterSpacing:"0.01em",whiteSpace:"nowrap",transition:"filter 0.15s"}}
+          onMouseEnter={e=>{if(!loading)e.currentTarget.style.filter="brightness(0.92)";}}
+          onMouseLeave={e=>{e.currentTarget.style.filter="none";}}
+        >
+          {loading ? "..." : (lang==='en'?'Go Pro':'Passer Pro')}
+        </span>
       </button>
     );
   }
@@ -4757,9 +4763,13 @@ export default function App({ loginOnly = false }){
         </div>
         <div className="tb-right">
           {!isPremium&&!isNative?(
-            <PremiumBanner userEmail={user?.email} compact onDark={false} source="topbar" onOpenModal={()=>openUpgradeModal()}/>
+            <PremiumBanner userEmail={user?.email} compact source="topbar" onOpenModal={()=>openUpgradeModal()}/>
           ):!isPremium&&isNative?(
-            <button onClick={()=>openUpgradeModal()} style={{padding:"6px 12px",background:`linear-gradient(120deg,${UI.teal},${UI.amber})`,color:"#fff",border:"none",borderRadius:99,fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap",flexShrink:0}}>✨ Upgrade</button>
+            // Même silhouette que le PremiumBanner compact ci-dessus : pill au
+            // gabarit du badge Pro, zone tactile 44 px sur le bouton transparent.
+            <button onClick={()=>openUpgradeModal()} style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
+              <span style={{display:"inline-flex",alignItems:"center",padding:"7px 12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,letterSpacing:"0.01em",whiteSpace:"nowrap"}}>{lang==='en'?'Go Pro':'Passer Pro'}</span>
+            </button>
           ):isPremium?(
             // Pro passe devant Premium : isPro vient de profiles.is_pro, isPremium
             // de l'expression complète (cf. CLAUDE.md). Aucune logique nouvelle ici.

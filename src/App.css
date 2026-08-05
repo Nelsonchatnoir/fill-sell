@@ -150,8 +150,6 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .header-brand-text { display: inline; }
 .logo-desktop { display: block; }
 .logo-mobile { display: none; }
-.premium-full { display: inline; }
-.premium-short { display: none; }
 
 /* ─── Content ─── */
 .tab-pane { animation: fadeIn 0.15s var(--ease); }
@@ -595,8 +593,6 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   .header-brand-text { display: none !important; }
   .logo-desktop { display: none !important; }
   .logo-mobile { display: block !important; }
-  .premium-full { display: none !important; }
-  .premium-short { display: inline !important; }
   .page-pad { padding-bottom: var(--nav-content-clearance) !important; }
 }
 @media (max-width: 480px) {

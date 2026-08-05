@@ -897,6 +897,9 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // dans CE navigateur — l'écran gère lui-même mobile (mailto/copie du lien)
   // vs desktop (lien /extension).
   const [showPitch, setShowPitch] = useState(false);
+  // La carte vit en tête de liste (2026-08-05) : le contrat complet est replié
+  // derrière « En savoir plus » pour ne pas pousser la liste hors écran.
+  const [infosDepliees, setInfosDepliees] = useState(false);
   // Capacité du COMPTE, ≠ du navigateur courant (2026-08-05). C'est elle qui
   // autorise le clic depuis un téléphone, où la sonde locale est
   // structurellement négative. null = pas encore lu ; {inconnu:true} = colonne
@@ -1432,22 +1435,34 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         />
       )}
 
-      {/* Le contrat, en toutes lettres. La 2e ligne n'est pas un détail : sans
-          elle, un vendeur qui a 400 ventes derrière lui et n'en voit revenir
-          qu'une poignée conclut à une sync ratée et perd confiance — alors que
-          c'est Vinted qui n'expose pas l'historique complet. */}
+      {/* Le contrat, en toutes lettres — mais REPLIÉ (2026-08-05) : la carte
+          vit en tête de la liste de stock, une seule ligne de contexte reste
+          visible. Les deux autres ne sont pas des détails pour autant — sans
+          la ligne « historique partiel », un vendeur qui a 400 ventes derrière
+          lui et n'en voit revenir qu'une poignée conclut à une sync ratée et
+          perd confiance — d'où le dépliable, pas la suppression. */}
       <div style={{fontSize:11.5,lineHeight:1.55,color:"#8A8578"}}>
         {fr
           ? "On lit tes annonces en ligne (titre, prix, photos, vues, favoris). Rien n'est publié, modifié ni supprimé sur Vinted."
           : "We read your online listings (title, price, photos, views, favourites). Nothing is published, edited or deleted on Vinted."}
-        <br/>
-        {fr
-          ? "Vinted n'expose pas tout l'historique de ventes : on récupère les annonces en ligne et les ventes récentes, pas l'intégralité de ton passé."
-          : "Vinted doesn't expose the full sales history: we get your online listings and recent sales, not everything you've ever sold."}
-        <br/>
-        {fr
-          ? "Les articles importés arrivent avec un prix d'achat à compléter — sans lui, aucune marge ne peut être calculée."
-          : "Imported items arrive with a purchase price to fill in — without it, no margin can be computed."}
+        {" "}
+        <button
+          onClick={()=>setInfosDepliees(v=>!v)}
+          style={{background:"none",border:"none",padding:"2px 0",margin:0,fontSize:11.5,fontWeight:700,color:"#1B6E62",textDecoration:"underline",cursor:"pointer",fontFamily:"inherit"}}
+        >
+          {infosDepliees ? (fr?"Réduire":"Show less") : (fr?"En savoir plus":"Learn more")}
+        </button>
+        {infosDepliees&&(
+          <div style={{marginTop:6}}>
+            {fr
+              ? "Vinted n'expose pas tout l'historique de ventes : on récupère les annonces en ligne et les ventes récentes, pas l'intégralité de ton passé."
+              : "Vinted doesn't expose the full sales history: we get your online listings and recent sales, not everything you've ever sold."}
+            <br/>
+            {fr
+              ? "Les articles importés arrivent avec un prix d'achat à compléter — sans lui, aucune marge ne peut être calculée."
+              : "Imported items arrive with a purchase price to fill in — without it, no margin can be computed."}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2906,6 +2921,40 @@ const StockTab = memo(function StockTab({
         <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
           <style>{STOCK_CSS}</style>
 
+          {/* ── Import du dressing Vinted — EN TÊTE de la liste (2026-08-05) :
+              c'est le premier geste d'un nouvel utilisateur, il ne doit pas
+              scroller pour le trouver. Monté UNE seule fois, HORS du ternaire
+              vide/rempli d'EN STOCK : le composant porte l'état du run (sonde
+              extension, poll de progression) — une instance par branche serait
+              démontée/remontée au premier article importé, état perdu en plein
+              suivi. Inventaire vide : le séparateur « OU » le présente comme
+              une alternative à la saisie manuelle juste au-dessus, pas comme
+              le chemin principal. */}
+          {/* ⛔ MASQUAGE TEMPORAIRE (03/08) — retirer la condition
+              syncDressingVisiblePour quand la 0.5.0 sera servie par le CWS
+              (procédure dans vintedSync.js). Le séparateur « OU » fait
+              partie du bloc : sans ça, l'état vide montrerait un « OU »
+              suivi de rien. */}
+          {syncDressingVisiblePour(user?.email)&&(
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {stock.length===0&&(
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                  <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
+                    {lang==='fr'?'OU':'OR'}
+                  </span>
+                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                </div>
+              )}
+              <VintedDressingSync
+                lang={lang} user={user} isNative={isNative}
+                extensionStatus={extensionStatus}
+                source={stock.length===0?'stock_empty':'stock_liste'}
+                onDone={rafraichirApresSync}
+              />
+            </div>
+          )}
+
           {/* ── Barre Import / Export ── */}
           {isPremium?(
             <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
@@ -2922,11 +2971,14 @@ const StockTab = memo(function StockTab({
               {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
             </div>
           ):(
+            // Pas de second bouton Upgrade ici (2026-08-05) : le header porte
+            // déjà « Passer Pro » quand ce bloc s'affiche. Le bloc ENTIER est
+            // cliquable vers la même destination (web ; sur natif l'upsell
+            // cliquable reste hors du bloc, comme avant).
             <div onClick={()=>{if(!isNative){track('premium_click',{source:'import_export'});openUpgradeModal();}}}
               style={{background:"linear-gradient(135deg,#1B6E6208,#E8956D08)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:10,textAlign:"center",border:"1px solid rgba(232,149,109,0.22)",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",cursor:!isNative?"pointer":"default"}}>
               <div style={{fontSize:14,fontWeight:700,color:"#111827"}}>{t('importExcel')}</div>
               <div style={{fontSize:11,color:"#6B7A75",opacity:0.8,lineHeight:1.5}}>{t('importDesc')}</div>
-              {!isNative&&<PremiumBanner userEmail={user?.email} compact/>}
             </div>
           )}
 
@@ -3888,42 +3940,13 @@ const StockTab = memo(function StockTab({
               </div>
             )}
 
-            {/* Import du dressing Vinted — monté UNE seule fois, HORS du
-                ternaire vide/rempli : le composant porte l'état du run (sonde
-                extension, poll de progression) ; une instance par branche
-                serait démontée/remontée au premier article importé, état
-                perdu en plein suivi. Inventaire vide : sous les CTA de saisie,
-                précédé du séparateur « OU » (une alternative, pas le chemin
-                principal). Inventaire rempli : sous la liste, accès discret
-                pour actualiser le dressing. */}
-            {/* ⛔ MASQUAGE TEMPORAIRE (03/08) — retirer la condition
-                syncDressingVisiblePour quand la 0.5.0 sera servie par le CWS
-                (procédure dans vintedSync.js). Le séparateur « OU » fait
-                partie du bloc : sans ça, l'état vide montrerait un « OU »
-                suivi de rien. */}
-            {syncDressingVisiblePour(user?.email)&&(
-              <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:stock.length===0?12:0}}>
-                {stock.length===0&&(
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                    <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
-                      {lang==='fr'?'OU':'OR'}
-                    </span>
-                    <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                  </div>
-                )}
-                <VintedDressingSync
-                  lang={lang} user={user} isNative={isNative}
-                  extensionStatus={extensionStatus}
-                  source={stock.length===0?'stock_empty':'stock_liste'}
-                  onDone={rafraichirApresSync}
-                />
-                {/* É6 : automatisation de la republication — avantage Pro,
-                    réglable, arrêt propre affiché. Même masquage bêta que le
-                    bouton Republier. */}
-                {republishActif&&(
-                  <RepublishAutoBlock lang={lang} user={user} isPro={isPro} openUpgradeModal={openUpgradeModal}/>
-                )}
+            {/* É6 : automatisation de la republication — avantage Pro,
+                réglable, arrêt propre affiché. Même masquage bêta que le
+                bouton Republier. La carte de sync du dressing, elle, vit
+                désormais EN TÊTE de la liste (2026-08-05). */}
+            {syncDressingVisiblePour(user?.email)&&republishActif&&(
+              <div style={{marginTop:12}}>
+                <RepublishAutoBlock lang={lang} user={user} isPro={isPro} openUpgradeModal={openUpgradeModal}/>
               </div>
             )}
           </div>
