@@ -10,7 +10,7 @@ import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from '../utils/stockLi
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
-import { computeRemovalInfo } from '../utils/publicationState';
+import { computeRemovalInfo, plateformesReserveesParRepublication } from '../utils/publicationState';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
@@ -3909,12 +3909,22 @@ const StockTab = memo(function StockTab({
           les exclut de la sélection et les verrouille — on ne repasse jamais sur
           une annonce publiée. Recalculé à chaque rendu (et non figé à l'ouverture)
           pour rester d'accord avec la carte si un job bascule pendant que le
-          stepper est ouvert ; même calcul que le bouton (computeRemovalInfo). */}
+          stepper est ouvert ; même calcul que le bouton (computeRemovalInfo).
+          ⚠️ On y AJOUTE les plateformes réservées par une republication en vol
+          (plateformesReserveesParRepublication) : entre la suppression et la
+          recréation, l'ancien job publish est 'cancelled' et Vinted repasserait
+          pour libre — le stepper la proposerait et on créerait une 2e annonce
+          que la recréation viendrait doubler. Rien à voir avec l'affichage :
+          la carte continue de dire, à raison, que l'annonce n'est pas en ligne
+          pendant ces quelques minutes. */}
       {publishItem&&(
         <ListingPreviewScreen
           inventaireId={publishItem.id}
           userId={user.id}
-          alreadyPublished={computeRemovalInfo(jobsByInventaire[publishItem.id]||[]).publishedActive}
+          alreadyPublished={[...new Set([
+            ...computeRemovalInfo(jobsByInventaire[publishItem.id]||[]).publishedActive,
+            ...plateformesReserveesParRepublication(jobsByInventaire[publishItem.id]||[]),
+          ])]}
           initialPhotos={(Array.isArray(publishItem.photos)?publishItem.photos:[])
             // Deux formats coexistent en base : objets {type,url} (flux photos
             // retouchées) et STRINGS nues (URLs CDN Vinted écrites par la sync

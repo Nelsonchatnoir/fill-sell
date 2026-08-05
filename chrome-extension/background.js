@@ -6161,14 +6161,25 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
 // true  = AUCUNE suppression réelle, AUCUNE création : le job vérifie ses
 //         prérequis puis se clôt en 'dry_run_completed' (Pépite remboursée
 //         par le trigger republish_refund_on_terminal — un dry run ne se
-//         paie pas). C'est la VALEUR PAR DÉFAUT.
+//         paie pas).
 // false = suppression puis recréation réelles.
 // LA BASCULE : éditer CETTE constante, rebuild (npm run build:extension),
 // recharger l'unpacked, et committer le changement — il n'existe AUCUN
 // autre chemin (pas de réglage UI, pas de chrome.storage, pas de valeur
 // par job) : rien d'activable par accident. Même doctrine que
 // DELETE_DRY_RUN en son temps (vinted.js, basculé le 12/07 sur décision).
-const REPUBLISH_DRY_RUN = true;
+//
+// ⚠️ BASCULÉ À false le 2026-08-05 (décision Nico). Motif consigné : le dry
+// run clôturait le job AVANT de toucher Vinted, donc il n'exerçait NI la
+// suppression NI la recréation — or la recréation (résolution id→libellé) est
+// le seul moment réellement à risque. Il ne restait qu'un test de facturation,
+// déjà validé. Risque accepté sur un article du compte bêta.
+// Ce qui protège désormais, et qui n'a pas bougé : capture verdict='valide'
+// RELUE avant la suppression (+ borne de fraîcheur 24 h), échec avant
+// suppression → terminal avec Pépite rendue et annonce intacte, échec après
+// suppression → JAMAIS un failed sec (needs_user qui repart à la recréation),
+// espacement 2 min entre gestes et 2-5 min entre suppression et recréation.
+const REPUBLISH_DRY_RUN = false;
 
 // Espacement humain entre deux GESTES de republication (suppression OU
 // recréation), toutes annonces confondues : un humain qui republie 50

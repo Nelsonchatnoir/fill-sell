@@ -51,3 +51,36 @@ export function computeRemovalInfo(jobsAll) {
   const queued = [...new Set(jobs.filter(j => j.status === "pending" || j.status === "processing").map(j => j.platform))];
   return { published, removalState, publishedActive, queued, latestPubByPlatform };
 }
+
+// ── Plateformes RÉSERVÉES par une republication en vol (2026-08-05) ──────────
+// Trou ouvert par la bascule REPUBLISH_DRY_RUN=false, et invisible tant que le
+// dry run ne supprimait rien : à la suppression, le job publish d'origine est
+// passé 'cancelled' par cancelPublishAfterDelete. Or la carte ne lit pas les
+// 'cancelled' — donc, entre la suppression et la recréation, plus AUCUN job
+// vinted n'est 'published' et computeRemovalInfo rend publishedActive = []
+// (vérifié sur les 5 phases). Vinted redevenait donc une plateforme « libre » :
+// le stepper la proposait, et la garde serveur already_published ne pouvait pas
+// rattraper (elle cherche un job 'published', il n'y en a plus). On publiait
+// une 2e annonce que la recréation venait doubler quelques minutes plus tard.
+//
+// On ne « rallume » PAS l'affichage « En ligne » pour autant : pendant cette
+// fenêtre l'annonce est réellement hors ligne, et le dire serait faux. C'est
+// l'OFFRE de publication qu'on ferme, pas l'état qu'on maquille.
+//
+// Fenêtre retenue = tant qu'une (re)création reste à venir :
+//   · pending / processing, quelle que soit l'étape ;
+//   · needs_user à l'étape 'deleted' — l'annonce est retirée et la relance
+//     repart à la recréation, donc publier maintenant ferait bien doublon.
+// Un needs_user AVANT la suppression ne réserve rien : l'annonce est toujours
+// en ligne, donc son job publish est toujours 'published' et la couvre déjà.
+export function plateformesReserveesParRepublication(jobsAll) {
+  const reservees = new Set();
+  for (const j of jobsAll ?? []) {
+    if (j.action !== "republish") continue;
+    const step = j.platform_fields?.republish_step ?? "a_capturer";
+    const enVol = j.status === "pending" || j.status === "processing"
+      || (j.status === "needs_user" && step === "deleted");
+    if (enVol && j.platform) reservees.add(j.platform);
+  }
+  return [...reservees];
+}
