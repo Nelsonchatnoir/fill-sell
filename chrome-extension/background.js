@@ -1069,6 +1069,12 @@ async function vintedUploadSucceededForTitle(tabId, title) {
     const c = captures[i];
     if (Number(c?.status) !== 200) continue;
     if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
+    // Marqueur pré-troncature : comparaison EXACTE de titre à titre, au lieu
+    // d'un « includes » sur un extrait de 250 caractères où le titre pouvait
+    // ne pas tenir. Cf. vintedUploadSucceeded pour le pourquoi.
+    if (c?.succesVinted?.id && norm(c.succesVinted.titre) === wanted) {
+      return `https://www.vinted.fr/items/${c.succesVinted.id}`;
+    }
     const body = String(c?.reponse ?? "");
     const id = body.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/);
     if (id && /"code"\s*:\s*0\b/.test(body) && norm(body).includes(wanted)) {
@@ -3221,6 +3227,30 @@ async function installNetworkProbe(tabId, platform) {
             s.match(/\/itm\/(\d{9,})/);
           return m ? m[1] : null;
         };
+        // ⚠️⚠️ SUCCÈS VINTED — CALCULÉ SUR LE CORPS COMPLET, comme annonceId, et
+        // pour la MÊME raison portée à sa conséquence (2026-08-05).
+        // La preuve de succès Vinted est « "item":{"id":N} ET "code":0 ». Or
+        // MESURÉ sur une réponse réelle : le corps fait 12 714 caractères et
+        // « "code":0 » est à la position 12 705 — le TOUT DERNIER champ. La
+        // capture n'en conserve que 250. Le marqueur était donc TOUJOURS coupé,
+        // et les deux prédicats (vintedUploadSucceeded / …ForTitle) rendaient
+        // null quoi qu'il arrive : le rattrapage « canal coupé = signature d'un
+        // succès » n'a JAMAIS pu fonctionner pour Vinted, ni à la publication
+        // normale (censée corrigée le 13/07) ni à la recréation. Deux annonces
+        // recréées et perdues le 05/08 par ce seul défaut.
+        // `annonceId` ne sauvait rien : son motif ne connaît pas la forme
+        // "item":{"id": de Vinted et vaut null ici.
+        // On extrait donc AVANT troncature, et on garde aussi le TITRE — il
+        // permet une comparaison exacte au lieu d'un « includes » sur un blob.
+        const succesVintedOf = (txt) => {
+          const s = String(txt ?? "");
+          const id = s.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/)?.[1] ?? null;
+          if (!id || !/"code"\s*:\s*0\b/.test(s)) return null;
+          const titre = s.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/)?.[1] ?? null;
+          let titreLisible = null;
+          if (titre != null) { try { titreLisible = JSON.parse(`"${titre}"`); } catch { titreLisible = titre; } }
+          return { id, titre: titreLisible };
+        };
         // ⚠️ RELAIS IMMÉDIAT (2026-07-13) : window.__fsCaptures vit dans la PAGE
         // et MEURT avec elle. Or Vinted REDIRIGE après une publication réussie —
         // au moment où on voudrait lire la preuve, la page (et la capture) n'existe
@@ -3308,6 +3338,7 @@ async function installNetworkProbe(tabId, platform) {
                 url, status: res.status,
                 prix: priceOf(init?.body),
                 annonceId: annonceIdOf(txt),
+                succesVinted: succesVintedOf(txt),
                 reponse: extraitSain(txt),
                 ...structuredExtras(url, res.status, txt),
               });
@@ -3330,6 +3361,7 @@ async function installNetworkProbe(tabId, platform) {
                   url: this.__u, status: this.status,
                   prix: priceOf(typeof body === "string" ? body : null),
                   annonceId: annonceIdOf(corps),
+                  succesVinted: succesVintedOf(corps),
                   reponse: extraitSain(corps),
                   ...structuredExtras(this.__u, this.status, corps),
                 });
@@ -3693,12 +3725,20 @@ function clearProbeCaptures(tabId) {
 // serveur : HTTP 200 + code:0 + item.id ⇒ oui, quoi qu'ait fait la page ensuite
 // (redirection qui tue le content script, modale de vérification, timeout…).
 // Retourne l'URL de l'annonce, ou null.
+// ⚠️ LIT `succesVinted`, calculé sur le corps COMPLET par la sonde — PAS
+// `reponse`, qui est tronqué à 250 caractères et où « "code":0 » (position
+// ~12 700 d'une réponse Vinted) ne figure JAMAIS. C'est ce détail qui rendait
+// ce prédicat toujours null et qui a laissé passer deux annonces recréées le
+// 05/08. Le repli sur l'extrait tronqué reste, pour les captures posées par une
+// sonde antérieure au correctif : il n'aboutira pas sur Vinted, mais il ne
+// coûte rien et ne ment pas.
 async function vintedUploadSucceeded(tabId) {
   const { captures } = await readProbeCaptures(tabId);
   for (let i = captures.length - 1; i >= 0; i--) {
     const c = captures[i];
     if (Number(c?.status) !== 200) continue;
     if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
+    if (c?.succesVinted?.id) return `https://www.vinted.fr/items/${c.succesVinted.id}`;
     const body = String(c?.reponse ?? "");
     const id = body.match(/"item"\s*:\s*\{\s*"id"\s*:\s*(\d+)/);
     if (id && /"code"\s*:\s*0\b/.test(body)) return `https://www.vinted.fr/items/${id[1]}`;
@@ -6905,6 +6945,44 @@ async function processRepublishJob(job, accessToken) {
             );
             return { status: "published", listingUrl: urlSonde };
           }
+        }
+
+        // ── CEINTURE : le dressing, TOUT DE SUITE ────────────────────────────
+        // Ne dépend d'AUCUNE sonde — donc rattrape même ce que la sonde rate.
+        // Le 05/08, la recherche du dressing n'existait qu'AVANT la recréation :
+        // elle protégeait la relance, pas la tentative en cours, et le job se
+        // clôturait en needs_user avant que quiconque puisse vérifier. Deux
+        // annonces recréées ont été perdues comme ça. On regarde donc
+        // maintenant, pendant qu'on tient encore l'onglet.
+        try {
+          const ident2 = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch(() => null);
+          if (ident2?.userId) {
+            const page2 = await sendMessageToTab(tabId, {
+              type: "SYNC_DRESSING_PAGE", page: 1, userId: ident2.userId,
+            }).catch(() => null);
+            if (page2?.success) {
+              const connus2 = await restRequest(
+                `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
+                accessToken,
+              ).catch(() => []);
+              const { item: trouve, raison: pourquoi } = reconnaitreAnnonceRecreee(page2.articles, {
+                titre: jobLike.title,
+                deletedAt: pf.deleted_at,
+                idsConnus: new Set((connus2 ?? []).map((r) => String(r.vinted_item_id))),
+              });
+              if (trouve) {
+                await cloreRepublishSurAnnonceExistante(
+                  accessToken, job, pf, trouve.vinted_item_id,
+                  trouve.url ?? `https://www.vinted.fr/items/${trouve.vinted_item_id}`,
+                  "recréation confirmée dans le dressing après coupure du canal",
+                );
+                return { status: "published", listingUrl: trouve.url ?? null };
+              }
+              console.log(`[republish] après coupure, rien de concluant dans le dressing (${pourquoi}) — échec assumé`);
+            }
+          }
+        } catch (e) {
+          console.warn("[republish] vérification du dressing après coupure impossible:", e?.message ?? e);
         }
       }
 
