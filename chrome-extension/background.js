@@ -6928,12 +6928,38 @@ async function processRepublishJob(job, accessToken) {
       // La vérification se fait donc sur l'onglet de travail TEL QU'IL EST —
       // aucune navigation, donc aucune page de dépôt à abîmer. Ce sont de purs
       // appels d'API : ils marchent depuis n'importe quelle page vinted.fr.
-      // Sans onglet de travail (premier job après un redémarrage de Chrome),
-      // on en ouvre un sur la HOME — jamais sur /items/new.
+      // ⚠️ L'onglet de travail rendu ici n'est PAS forcément scriptable : la
+      // règle de navigateWorkTab est de le DÉCHARGER (chrome.tabs.discard)
+      // quand il est inactif. Un onglet déchargé n'a plus de content script —
+      // sendMessageToTab répond « Receiving end does not exist » et RELANCE
+      // pendant 20 s (1 essai/seconde). C'est la rafale de « Content script
+      // pas encore prêt sur l'onglet … » relevée en console le 05/08 : vingt
+      // lignes, vingt secondes perdues à chaque passage, pour une
+      // vérification best-effort. On regarde donc l'état réel de l'onglet
+      // AVANT de lui parler, et on S'ABSTIENT s'il ne peut pas répondre —
+      // sans ouvrir ni naviguer quoi que ce soit pour lui : ce serait un
+      // chargement de page de plus à chaque recréation, pour un filet
+      // best-effort. Le filet d'APRÈS-remplissage (ceinture dressing, plus
+      // bas) couvre de toute façon le cas qui compte, celui du doublon.
       let tabVerif = await findExistingWorkTabId("vinted");
-      if (tabVerif == null) tabVerif = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+      if (tabVerif != null) {
+        const t = await chrome.tabs.get(tabVerif).catch(() => null);
+        const scriptable = t && !t.discarded && /^https:\/\/([^/]*\.)?vinted\./i.test(t.url || "");
+        if (!scriptable) {
+          console.log(
+            `[republish] onglet de travail ${tabVerif} non interrogeable ` +
+            `(${!t ? "disparu" : t.discarded ? "déchargé" : "hors vinted.fr"}) — ` +
+            "vérification du dressing sautée, on recrée",
+          );
+          tabVerif = null;
+        }
+      }
       try {
-        const ident = await sendMessageToTab(tabVerif, { type: "VINTED_CURRENT_USER" }).catch(() => null);
+        // tabVerif null = abstention décidée juste au-dessus : on ne parle à
+        // personne et on enchaîne sur la recréation.
+        const ident = tabVerif == null
+          ? null
+          : await sendMessageToTab(tabVerif, { type: "VINTED_CURRENT_USER" }).catch(() => null);
         if (ident?.userId) {
           const page = await sendMessageToTab(tabVerif, {
             type: "SYNC_DRESSING_PAGE", page: 1, userId: ident.userId,

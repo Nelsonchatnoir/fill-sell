@@ -2104,6 +2104,40 @@ function askBackground(msg) {
   }
 }
 
+// ── LE PANNEAU SE DÉDUIT DU DÉCLENCHEUR (2026-08-05, relevé en direct) ───────
+// Vinted nomme le popup d'un champ d'après le champ lui-même : c'est le
+// data-testid du déclencheur, « -input » remplacé par « -content ». Relevé sur
+// /items/new, SIX familles différentes, toutes vérifiées 0 fermé → 1 ouvert :
+//   catalog-select-dropdown-input        → catalog-select-dropdown-content
+//   brand-select-dropdown-input          → brand-select-dropdown-content
+//   color-select-dropdown-input          → color-select-dropdown-content
+//   category-size-single-grid-input      → category-size-single-grid-content
+//   category-condition-single-list-input → category-condition-single-list-content
+//   category-material-multi-list-input   → category-material-multi-list-content
+//
+// C'est CE motif qui manquait au correctif précédent (8e6cf8b) : il ne
+// couvrait que la famille « -dropdown- », d'où une catégorie qui passait et
+// une Taille/un État qui restaient vides — le formulaire partait incomplet et
+// Vinted les réclamait. Un sélecteur global ne peut pas marcher : « -content »
+// nu attrape aussi size-banner-info-banner--content ou condition-6--content.
+//
+// Dérivé À L'EXÉCUTION, donc valable pour tout champ conditionnel futur sans
+// une ligne de plus. Un data-testid ne dépend pas du hash de build : c'est ce
+// qui rend cette sonde durable là où une classe ne l'est pas.
+// Repli (déclencheur sans data-testid) : la chaîne du registre.
+function panneauDuDeclencheur(trigger) {
+  const tid = trigger?.getAttribute?.("data-testid") ?? "";
+  if (!/-input$/.test(tid)) return null;
+  const sel = `[data-testid="${tid.replace(/-input$/, "-content")}"]`;
+  return () => document.querySelector(sel);
+}
+
+// Sonde du DERNIER panneau ouvert par openDropdown. confirmDropdownIfNeeded et
+// closeAnyOpenDropdown s'en servent en priorité : sans elle, elles retombaient
+// sur la sonde générique du registre, aveugle aux familles grid/list — un
+// panneau Matière ou Taille resté ouvert recouvrait le bouton « Ajouter ».
+let dernierPanneauProbe = null;
+
 async function openDropdown(triggerSelector) {
   const S = await sel();
   // Filet de sécurité : si le panneau précédent (ex: Catégorie) n'a pas fini
@@ -2111,20 +2145,27 @@ async function openDropdown(triggerSelector) {
   // ou ouvrir/refermer le mauvais panneau. Ce cas est censé être déjà réglé
   // par l'attente dans confirmDropdownIfNeeded ; ceci est redondant mais
   // gratuit (no-op si le panneau est déjà absent).
-  await waitForElementGone(dropdownPanelProbe(S), 2000);
+  await waitForElementGone(dernierPanneauProbe ?? dropdownPanelProbe(S), 2000);
   // waitForStableElement : certains champs (ex: #brand, dont les suggestions
   // dépendent de la catégorie tout juste choisie — ids "suggested-brand-*" du
   // rapport DOM) peuvent être remontés par React juste après la fermeture de
   // Catégorie. Cliquer le tout premier nœud trouvé risque de cliquer un nœud
   // sur le point d'être détaché.
+  // ⏳ C'est AUSSI l'attente des champs CONDITIONNELS : Taille, État, Couleur
+  // et Matière n'existent dans le DOM qu'une fois la catégorie choisie
+  // (vérifié : sur formulaire vierge, seul catalog-select-dropdown-input est
+  // présent ; brand/color n'apparaissent qu'après la feuille de catégorie).
+  // waitForStableElement les attend au lieu de conclure « champ absent ».
   const trigger = await waitForStableElement(triggerSelector);
+  const probe = panneauDuDeclencheur(trigger) ?? dropdownPanelProbe(S);
+  dernierPanneauProbe = probe;
   // Certains composants (confirmé sur #brand) ne sont pas immédiatement
   // réactifs juste après la fermeture du popup précédent : le premier clic
   // (séquence bas niveau pointerdown/mousedown/pointerup/mouseup/click) peut
   // ne rien ouvrir alors même que le nœud est stable et sans exception. Plutôt
   // qu'un délai fixe deviné avant le clic, on attend le résultat qui compte
   // réellement — le panneau ouvert — et on réessaie tant qu'il ne l'est pas.
-  const opened = await clickUntilPanelOpens(trigger);
+  const opened = await clickUntilPanelOpens(trigger, { probe });
   if (!opened) {
     // PREUVE DOM DANS LE MESSAGE (2026-08-05). Ce message a coûté deux heures
     // et deux annonces : il nommait le sélecteur ABSENT et rien d'autre, alors
@@ -2149,9 +2190,14 @@ async function openDropdown(triggerSelector) {
   return trigger;
 }
 
-async function clickUntilPanelOpens(trigger, { attempts = 6, perAttemptMs = 300 } = {}) {
+// `probe` = sonde du panneau de CE champ (panneauDuDeclencheur). Sans elle on
+// retombe sur la sonde générique du registre — ce qui a produit l'échec du
+// 05/08 : chaque clic ouvrait puis refermait un panneau que la sonde ne voyait
+// pas, six fois de suite, et l'erreur disait « n'a pas ouvert de panneau »
+// alors qu'il s'ouvrait parfaitement.
+async function clickUntilPanelOpens(trigger, { attempts = 6, perAttemptMs = 300, probe = null } = {}) {
   const S = await sel();
-  const panneau = dropdownPanelProbe(S);
+  const panneau = probe ?? dropdownPanelProbe(S);
   for (let i = 0; i < attempts; i++) {
     simulateFullClick(trigger);
     const opened = await waitForElement(panneau, perAttemptMs, "vinted/publish.dropdown_panel").catch(() => null);
@@ -2199,7 +2245,7 @@ async function confirmDropdownIfNeeded() {
   // fixe : hypothèse confirmée par test réel — le clic sur #brand juste
   // après "Fait" (250 ms fixes) tombait sur la modale Catégorie encore en
   // train de se démonter, #brand-search-input n'apparaissait jamais.
-  if (!(await waitForElementGone(dropdownPanelProbe(await sel()), 3000))) {
+  if (!(await waitForElementGone(dernierPanneauProbe ?? dropdownPanelProbe(await sel()), 3000))) {
     await closeAnyOpenDropdown(); // "Fait" cliqué mais panneau récalcitrant
   }
   await humanPause();
@@ -2367,8 +2413,11 @@ async function waitForOptionCascade(optionSelector, text, timeoutMs = 5000, opts
 //     panneau → FERME. C'est la seule voie qui marche.
 async function closeAnyOpenDropdown() {
   const S = await sel();
-  const panneau = dropdownPanelProbe(S);
-  if (!panneau()) return;
+  // Sonde du dernier panneau ouvert d'abord : la générique du registre ne voit
+  // que la famille « -dropdown- » et laissait donc un panneau Taille, État ou
+  // Matière ouvert par-dessus le formulaire (mesuré le 05/08).
+  const panneau = dernierPanneauProbe ?? dropdownPanelProbe(S);
+  if (!panneau()) { dernierPanneauProbe = null; return; }
 
   const done = await findDoneButton();
   if (done) {
@@ -2387,6 +2436,10 @@ async function closeAnyOpenDropdown() {
     .find((el) => el.offsetParent !== null && !panel?.contains(el)) ?? document.body;
   simulateFullClick(outside);
   await waitForElementGone(panneau, 2000);
+  // La sonde vise UN champ précis : la garder après fermeture ferait échouer
+  // le filet d'entrée d'openDropdown sur le champ suivant (il attendrait la
+  // disparition d'un panneau qui n'est déjà plus le sien).
+  dernierPanneauProbe = null;
   await humanPause();
 }
 
@@ -2815,15 +2868,30 @@ async function selectColors(colorNames, warnings = []) {
   // Capture de la palette pendant que le panneau est ouvert. Le sélecteur
   // attrape aussi le trigger (data-testid="color-select-dropdown-input",
   // même préfixe) : écarté par le filtre dropdown-input.
+  // ⚠️ dropdown-CONTENT autant que dropdown-INPUT (2026-08-05) : depuis que
+  // Vinted nomme le panneau d'après son champ, le popup lui-même porte
+  // data-testid="color-select-dropdown-content" — donc il commence par
+  // « color- » et entrait dans la liste des options. Son textContent est la
+  // CONCATÉNATION de toute la palette (« NoirGrisBlancCrèmeBeige… ») : la
+  // cascade `includes` pouvait le retenir comme correspondance et cliquer le
+  // panneau au lieu d'une couleur. Le même filtre protège le relevé de palette
+  // envoyé au catalogue, qui aurait sinon appris une fausse valeur.
   const options = Array.from(document.querySelectorAll('[data-testid^="color-"]'))
-    .filter((el) => !/dropdown-input/.test(el.getAttribute("data-testid") ?? ""))
+    .filter((el) => !/dropdown-(input|content)/.test(el.getAttribute("data-testid") ?? ""))
     .map((el) => el.textContent.trim())
     .filter(Boolean)
     .slice(0, 40);
   if (options.length) paletteCouleursRelevee = options;
   let posees = 0;
   for (const name of colorNames.slice(0, 2)) {
-    const match = findOptionCascade(document, '[data-testid^="color-"]', name);
+    // :not(...) — même exclusion que le relevé de palette ci-dessus, sinon la
+    // cascade peut retenir le PANNEAU (color-select-dropdown-content) dont le
+    // texte contient toutes les couleurs, et le cliquer à la place.
+    const match = findOptionCascade(
+      document,
+      '[data-testid^="color-"]:not([data-testid$="-dropdown-content"]):not([data-testid$="-dropdown-input"])',
+      name,
+    );
     if (match) {
       await humanPause();
       match.el.click();

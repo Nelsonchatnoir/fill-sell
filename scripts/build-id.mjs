@@ -47,10 +47,11 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-05T19:31:00Z = sonde du panneau de dropdown Vinted reparee (Vinted
-// a migre InputDropdown vers des CSS Modules a classe hachee ; la sonde passe
-// sur le data-testid, non hache). Cassait publication ET republication.
-export const EXTENSION_LAST_COMMIT = '2026-08-05T19:31:00Z';
+// 2026-08-05T20:05:00Z = formulaire Vinted repare EN ENTIER : le panneau de
+// chaque champ se deduit du data-testid de son declencheur (-input -> -content),
+// ce qui couvre les six familles (dropdown, grid, list, multi-list) et plus
+// seulement « -dropdown- » comme le correctif partiel de 19:31.
+export const EXTENSION_LAST_COMMIT = '2026-08-05T20:05:00Z';
 // 2026-07-27T17:50:06Z = build du commit de release 0faa5e5 « extension 0.4.5,
 // Android 2.3.3 » — la version que servait le CWS ce soir-là (4 des 6 installs
 // actives remontaient exactement ce build via profiles.extension_build).
