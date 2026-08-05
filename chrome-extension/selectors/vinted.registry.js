@@ -56,9 +56,42 @@ export const VINTED_SELECTORS = {
     criticality: "orange",
     optional: true,
     workflows: ["publish"],
-    chain: [{ type: "css", value: ".input-dropdown__content" }],
+    // ⚠️ CASSÉ PAR VINTED LE 05/08/2026, RELEVÉ EN DIRECT SUR /items/new ⚠️
+    // Vinted a migré son composant InputDropdown vers des CSS Modules à
+    // classe HACHÉE. Mesures faites sur la page réelle ce soir-là :
+    //   .input-dropdown__content                      → 0 élément
+    //   InputDropdown-module-scss-module__m4PZBq__input-dropdown__content
+    //                                                 → le conteneur
+    // Conséquence : la sonde ne voyait plus JAMAIS de panneau, et
+    // clickUntilPanelOpens re-basculait 6 fois un panneau qui s'ouvrait
+    // pourtant très bien. Toute publication ET toute republication Vinted
+    // échouaient sur « n'a pas ouvert de panneau ».
+    //
+    // ⛔ NE PAS « corriger » en mettant [class*="input-dropdown__content"] :
+    // ce conteneur-là est TOUJOURS dans le DOM (mesuré : présent et vide
+    // page neuve, rempli des options une fois ouvert). Il rendrait la sonde
+    // toujours vraie — pire que cassée, car muette.
+    //
+    // Le VRAI panneau est le popup, et il porte un data-testid NON haché :
+    //   <div data-testid="catalog-select-dropdown-content"
+    //        class="InputDropdown-module-scss-module__m4PZBq__dropdown">
+    // Le suffixe « -dropdown-content » est le pendant exact du
+    // « -dropdown-input » déjà utilisé par les déclencheurs (catalog-, brand-,
+    // color-…) : une seule clé couvre tous les champs. Mesuré 0 panneau page
+    // neuve → 1 panneau après le clic, et la cascade complète
+    // Hommes>Vêtements>Sweats et pulls>Sweats est passée avec.
+    // Un data-testid ne dépend pas du hash de build : c'est ce qui rend cette
+    // sonde durable là où une classe ne l'est pas.
+    chain: [
+      { type: "css", value: '[data-testid$="-dropdown-content"]' },
+      {
+        type: "css",
+        value: ".input-dropdown__content",
+        note: "littéral historique, gardé en repli si Vinted revient aux classes plates — ne matche RIEN depuis le 05/08",
+      },
+    ],
     source: "vinted.js:143, 1620, 1634 (DROPDOWN_PANEL_SELECTOR)",
-    note: "closeAnyOpenDropdown — l'ABSENCE du panneau est un état normal (vérif post = relecture d'absence) ; un échec de résolution n'est pas une anomalie pour cette clé",
+    note: "closeAnyOpenDropdown — l'ABSENCE du panneau est un état normal (vérif post = relecture d'absence) ; un échec de résolution n'est pas une anomalie pour cette clé. ⚠️ MAIS clickUntilPanelOpens s'en sert comme PREUVE D'OUVERTURE : là, l'absence est une vraie panne — c'est pourquoi openDropdown joint désormais les testid/classes réellement présents à son message d'erreur.",
   },
 
   "publish.catalog_option": {

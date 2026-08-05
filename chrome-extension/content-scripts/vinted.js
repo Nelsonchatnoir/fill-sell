@@ -2126,9 +2126,23 @@ async function openDropdown(triggerSelector) {
   // réellement — le panneau ouvert — et on réessaie tant qu'il ne l'est pas.
   const opened = await clickUntilPanelOpens(trigger);
   if (!opened) {
+    // PREUVE DOM DANS LE MESSAGE (2026-08-05). Ce message a coûté deux heures
+    // et deux annonces : il nommait le sélecteur ABSENT et rien d'autre, alors
+    // que la cause était que Vinted venait de renommer la classe du panneau
+    // (migration CSS Modules d'InputDropdown, classe hachée par build). Le
+    // panneau s'ouvrait à chaque clic et se refermait au suivant, invisible.
+    // On dit maintenant ce qui EST là, pas seulement ce qui manque : le
+    // renommage suivant se lira directement dans cross_post_jobs.error.
+    const testids = [...document.querySelectorAll('[data-testid*="dropdown" i]')]
+      .map((e) => e.getAttribute("data-testid")).slice(0, 8);
+    const classes = [...new Set(
+      [...document.querySelectorAll('[class*="dropdown" i]')]
+        .flatMap((e) => [...e.classList]).filter((c) => /dropdown/i.test(c))
+    )].slice(0, 6);
     throw new Error(
       `Le clic sur ${triggerSelector} n'a pas ouvert de panneau (${S.selectorFor("vinted", "publish.dropdown_panel")}) ` +
-      `après plusieurs tentatives.`
+      `après plusieurs tentatives. data-testid « dropdown » présents : ${JSON.stringify(testids)} ; ` +
+      `classes « dropdown » présentes : ${JSON.stringify(classes)}.`
     );
   }
   await humanPause();
