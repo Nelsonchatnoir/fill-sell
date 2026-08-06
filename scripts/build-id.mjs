@@ -54,7 +54,10 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // quand le code cliquait ; course, pas un cas particulier — 3 recréations sur
 // 5 passaient selon le timing). Erreurs openDropdown/Marque passées à la
 // convention error court / last_diagnostic.
-export const EXTENSION_LAST_COMMIT = '2026-08-06T16:05:00Z';
+// (recalée 16:05 → 16:15 : le commit 2794630 est tombé à 16:11:58Z, après la
+// valeur visée — même mésaventure que 4c7d444, la garde de vite.config.js
+// aurait bloqué le prochain build web local.)
+export const EXTENSION_LAST_COMMIT = '2026-08-06T16:15:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.
