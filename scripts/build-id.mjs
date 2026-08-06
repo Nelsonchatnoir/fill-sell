@@ -52,10 +52,10 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ce qui couvre les six familles (dropdown, grid, list, multi-list) et plus
 // seulement « -dropdown- » comme le correctif partiel de 19:31.
 export const EXTENSION_LAST_COMMIT = '2026-08-05T20:05:00Z';
-// 2026-07-27T17:50:06Z = build du commit de release 0faa5e5 « extension 0.4.5,
-// Android 2.3.3 » — la version que servait le CWS ce soir-là (4 des 6 installs
-// actives remontaient exactement ce build via profiles.extension_build).
-export const EXTENSION_MIN_BUILD = '2026-07-27T17:50:06Z';
+// 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
+// et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
+// une version réellement installable.
+export const EXTENSION_MIN_BUILD = '2026-08-05T20:05:00Z';
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
 // postérieur à EXTENSION_LAST_COMMIT (constante pas bumpée → le paquet publié

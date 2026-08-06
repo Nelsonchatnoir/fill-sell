@@ -27,7 +27,7 @@ import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilit
 import { SecondaryButton, Loader } from '../components/ui';
 import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS, SYNC_DEMARRAGE_MAX_MS,
-  ecouterPresenceExtension, demanderSyncDressing, syncDressingVisiblePour,
+  ecouterPresenceExtension, demanderSyncDressing,
   lireCapaciteSyncCompte, demanderSyncDressingServeur,
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS, SYNC_FILE_TTL_MS,
   SYNC_MAJ_DISPONIBLE, SYNC_RECLAMATION_MAX_MS,
@@ -2100,7 +2100,7 @@ const StockTab = memo(function StockTab({
   // vendus et sync compris.
   const quotaFree = compteArticlesQuota(items);
 
-  // ── É5 Republication Vinted (2026-08-05, masquée hors bêta) ───────────────
+  // ── É5 Republication Vinted (2026-08-05 ; démasquée pour tous le 06/08) ───
   // Prix lu en config (jamais en dur) ; libellé sans prix tant que la config
   // n'a pas répondu — jamais un montant faux.
   // Capacité EXTENSION DU COMPTE (2026-08-05) — plus « y a-t-il une extension
@@ -2935,30 +2935,26 @@ const StockTab = memo(function StockTab({
               suivi. Inventaire vide : le séparateur « OU » le présente comme
               une alternative à la saisie manuelle juste au-dessus, pas comme
               le chemin principal. */}
-          {/* ⛔ MASQUAGE TEMPORAIRE (03/08) — retirer la condition
-              syncDressingVisiblePour quand la 0.5.0 sera servie par le CWS
-              (procédure dans vintedSync.js). Le séparateur « OU » fait
-              partie du bloc : sans ça, l'état vide montrerait un « OU »
-              suivi de rien. */}
-          {syncDressingVisiblePour(user?.email)&&(
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              {stock.length===0&&(
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                  <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
-                    {lang==='fr'?'OU':'OR'}
-                  </span>
-                  <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                </div>
-              )}
-              <VintedDressingSync
-                lang={lang} user={user} isNative={isNative}
-                extensionStatus={extensionStatus}
-                source={stock.length===0?'stock_empty':'stock_liste'}
-                onDone={rafraichirApresSync}
-              />
-            </div>
-          )}
+          {/* (Masquage bêta du 03/08 retiré le 06/08 : la 0.5.0 est servie
+              par le CWS — le bloc est rendu pour tout le monde, la garde de
+              capacité vit dans VintedDressingSync / SYNC_VERSION_MIN.) */}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {stock.length===0&&(
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+                <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
+                  {lang==='fr'?'OU':'OR'}
+                </span>
+                <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
+              </div>
+            )}
+            <VintedDressingSync
+              lang={lang} user={user} isNative={isNative}
+              extensionStatus={extensionStatus}
+              source={stock.length===0?'stock_empty':'stock_liste'}
+              onDone={rafraichirApresSync}
+            />
+          </div>
 
           {/* ── Barre Import / Export ── */}
           {isPremium?(
@@ -3946,10 +3942,11 @@ const StockTab = memo(function StockTab({
             )}
 
             {/* É6 : automatisation de la republication — avantage Pro,
-                réglable, arrêt propre affiché. Même masquage bêta que le
-                bouton Republier. La carte de sync du dressing, elle, vit
-                désormais EN TÊTE de la liste (2026-08-05). */}
-            {syncDressingVisiblePour(user?.email)&&republishActif&&(
+                réglable, arrêt propre affiché. Même gate que le bouton
+                Republier (republishActif = capacité réelle de l'extension).
+                La carte de sync du dressing, elle, vit désormais EN TÊTE de
+                la liste (2026-08-05). */}
+            {republishActif&&(
               <div style={{marginTop:12}}>
                 <RepublishAutoBlock lang={lang} user={user} isPro={isPro} openUpgradeModal={openUpgradeModal}/>
               </div>

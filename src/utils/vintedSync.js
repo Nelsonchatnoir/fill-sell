@@ -47,58 +47,30 @@ export const SYNC_FILE_TTL_MS = 6 * 60 * 60 * 1000;
 export const SYNC_RECLAMATION_MAX_MS = 3 * 60 * 1000;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ⛔ BASCULE DU MESSAGE « extension trop ancienne » — false AUJOURD'HUI
+// BASCULE DU MESSAGE « extension trop ancienne » — true depuis le 06/08
 // ═══════════════════════════════════════════════════════════════════════════
 // false → « cette fonction arrive dans une prochaine mise à jour » (C1).
 // true  → « ouvre Chrome, l'extension se met à jour toute seule » (C2).
 //
-// C2 est FAUX tant que la 0.5.x n'est pas servie par le Chrome Web Store :
-// personne ne recevrait rien, et on renverrait l'utilisateur vérifier une mise
-// à jour qui n'existe pas. C'est exactement la promesse retirée le 05/08
-// (commit 835b981) — ne pas la réintroduire à l'aveugle.
-//
-// À PASSER À true DANS LE MÊME GESTE que le bump d'EXTENSION_MIN_BUILD
-// (scripts/build-id.mjs), qui n'est lui-même bumpé qu'après une publication
-// ACCEPTÉE par le CWS. Un seul rituel, deux constantes.
-export const SYNC_MAJ_DISPONIBLE = false;
+// Passée à true le 2026-08-06 : la 0.5.0 est acceptée et SERVIE par le Chrome
+// Web Store, la promesse C2 est donc vraie. À REPASSER à false si une version
+// exigée par SYNC_VERSION_MIN est committée sans être encore servie par le
+// CWS — même rituel qu'EXTENSION_MIN_BUILD (scripts/build-id.mjs) : les deux
+// constantes se basculent dans le même geste, après review ACCEPTÉE seulement.
+export const SYNC_MAJ_DISPONIBLE = true;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ⛔ MASQUAGE TEMPORAIRE — À RETIRER DÈS QUE LA 0.5.0 EST EN LIGNE SUR LE CWS
-// ═══════════════════════════════════════════════════════════════════════════
-// Posé le 2026-08-03 en urgence : le front est parti sur Vercel avec le bouton,
-// alors que l'extension 0.5.0 (la seule qui sait synchroniser) n'était pas
-// publiée. Les comptes équipés tournaient en 0.4.x — détectée par le heartbeat
-// serveur, donc bouton ACTIF, mais sourde à la commande de sync : un clic dans
-// le vide, exactement le piège des jobs 'pending' qu'on venait de fermer.
-//
-// POUR RETIRER (3 gestes, dans cet ordre) :
-//   1. vérifier que la 0.5.0 est bien SERVIE par le Chrome Web Store ;
-//   2. supprimer BETA_COMPTES et syncDressingVisiblePour ci-dessous ;
-//   3. supprimer l'appel `syncDressingVisiblePour(...)` dans StockTab.jsx.
-// La garde de VERSION (SYNC_VERSION_MIN, plus bas) reste, elle : c'est elle qui
-// évitera que le problème revienne au prochain décalage front / Web Store.
-const BETA_COMPTES = ['nicolas.svobodny@gmail.com', 'hoosslocal@gmail.com', 'ornellaracano@icloud.com'];
+// (Le masquage bêta BETA_COMPTES / syncDressingVisiblePour, posé en urgence le
+// 03/08, a été retiré le 06/08 quand la 0.5.0 a été servie par le CWS. La
+// protection permanente contre un décalage front / Web Store, c'est la garde
+// de VERSION ci-dessous — SYNC_VERSION_MIN — pas une liste de comptes.)
 
-/** Le bouton de sync doit-il être rendu du tout ? (masquage temporaire) */
-export function syncDressingVisiblePour(email) {
-  const e = String(email ?? '').trim().toLowerCase();
-  if (!e) return false;
-  // Alias « + » retirés : nicolas.svobodny+test2@gmail.com est le même compte.
-  const arobase = e.lastIndexOf('@');
-  if (arobase < 1) return false;
-  const canonique = `${e.slice(0, arobase).split('+')[0]}@${e.slice(arobase + 1)}`;
-  return BETA_COMPTES.includes(canonique);
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// ⛔ MASQUAGE BÊTA DE LA REPUBLICATION (É5, 2026-08-05) — À RETIRER D'UN GESTE
-// quand Nico valide : faire retourner `true` à cette fonction (ou supprimer
-// ses appels dans StockTab.jsx). Fonction SÉPARÉE de syncDressingVisiblePour
-// exprès : les deux features se dévoilent indépendamment, même si la liste
-// bêta est aujourd'hui la même.
-// ═════════════════════════════════════════════════════════════════════════════
-export function republishVisiblePour(email) {
-  return syncDressingVisiblePour(email);
+// ── Republication Vinted (É5) : visible pour TOUS depuis le 2026-08-06 ──────
+// Le masquage bêta est levé (0.5.0 servie par le CWS). La fonction reste le
+// point de bascule si la republication doit être re-masquée indépendamment de
+// la sync ; les appels dans StockTab.jsx composent déjà avec la capacité
+// réelle de l'extension (capaciteExt / SYNC_VERSION_MIN).
+export function republishVisiblePour() {
+  return true;
 }
 
 // ── Garde de VERSION (permanente) ───────────────────────────────────────────

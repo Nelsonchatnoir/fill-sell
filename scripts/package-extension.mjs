@@ -52,7 +52,10 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // remontent son build (profiles.extension_build = 2026-07-29T22:15:21Z+fcffcfe,
 // handler_build « … · v0.4.6 »). Sans cette ligne, rien n'empêchait de
 // re-packager une 0.4.6 que le Web Store aurait rejetée.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6'];
+// 0.4.7, 0.4.8 et 0.5.0 ajoutées le 06/08 : les zips 0.4.7/0.4.8 existaient
+// sans avoir jamais été inscrits ici (la liste ne protégeait plus contre un
+// re-téléversement) ; la 0.5.0 est acceptée et servie par le CWS ce jour.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
