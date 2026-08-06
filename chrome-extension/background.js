@@ -1430,6 +1430,22 @@ async function processJob(rawJob, accessToken) {
       result = await retryInTempTab(job, handler, result);
     }
 
+    // Annexe technique séparée du message utilisateur (2026-08-06) : un dump
+    // DOM ou une liste d'options n'a plus JAMAIS sa place dans
+    // cross_post_jobs.error — l'app l'affiche tel quel (modale « En attente
+    // de toi », vécu sur le job 68420b37). Le détail vit dans
+    // platform_fields.last_diagnostic. Mutation de la COPIE MÉMOIRE (même
+    // règle que processing_since) : toutes les écritures terminales —
+    // rearmBounded, markNeedsUser, failed sec, completionExtras — repartent
+    // de job.platform_fields, la valeur part donc en base avec le verdict.
+    // Placée APRÈS retryInTempTab : c'est le résultat FINAL qui fait foi.
+    if (result?.diagnostic) {
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        last_diagnostic: String(result.diagnostic).slice(0, 2000),
+      };
+    }
+
     // Découverte réactive (chantier champs obligatoires, 2026-07-16) : les
     // requis observés pendant CE remplissage partent au catalogue cumulatif,
     // quel que soit le verdict du job — fire-and-forget, jamais bloquant.
@@ -1523,7 +1539,15 @@ async function processJob(rawJob, accessToken) {
       if (job.platform === "ebay") {
         const verdict = await verifyEbaySubmission(tabId, 20_000, job, accessToken);
         if (verdict.error) {
-          console.warn(`[background] Job ${job.id} : ${verdict.error}`);
+          console.warn(`[background] Job ${job.id} : ${verdict.error}${verdict.diagnostic ?? ""}`);
+          // Annexe sonde/popup → last_diagnostic (rearmBounded repart de
+          // job.platform_fields), le message utilisateur reste court.
+          if (verdict.diagnostic) {
+            job.platform_fields = {
+              ...(job.platform_fields ?? {}),
+              last_diagnostic: String(verdict.diagnostic).slice(0, 2000),
+            };
+          }
           await rearmBounded(accessToken, job, verdict.error);
           return { status: "needsUser", error: verdict.error };
         }
@@ -3034,13 +3058,16 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     }
   }
 
+  // Sonde + markup de popup en annexe `diagnostic`, plus dans `error`
+  // (2026-08-06) : cross_post_jobs.error est affiché tel quel à l'utilisateur —
+  // le caller range l'annexe dans platform_fields.last_diagnostic.
   return {
     error:
       `Publication eBay non confirmée : l'onglet est resté sur le formulaire (/lstng) ` +
       `${Math.round(timeoutMs / 1000)} s après le clic, sans redirection, sans bandeau de succès ` +
       "ni d'erreur, sans réponse serveur portant un numéro d'annonce, ET absente des annonces " +
-      "actives du vendeur — job NON marqué publié, il repartira au prochain passage." +
-      (await readEbayFailureDiagnostics(tabId)),
+      "actives du vendeur — job NON marqué publié, il repartira au prochain passage.",
+    diagnostic: await readEbayFailureDiagnostics(tabId),
     listingUrl: null,
   };
 }
@@ -7126,6 +7153,11 @@ async function processRepublishJob(job, accessToken) {
       // rembourserait et abandonnerait un article dont l'annonce n'existe
       // plus). needs_user honnête : tout est au chaud, la relance depuis
       // l'app repart directement à la recréation (l'étape en base le dit).
+      // L'annexe technique du content script (dump DOM, options relevées)
+      // part dans last_diagnostic — le message affiché reste court (le dump
+      // brut dans la modale « En attente de toi », vécu le 06/08, job
+      // 68420b37, n'arrive plus).
+      if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
       await updateJobStatus(accessToken, job.id, "needs_user", {
         platform_fields: pf,
         error: `L'annonce d'origine a été supprimée sur Vinted et la recréation n'a pas encore abouti (${result?.error ?? "raison inconnue"}). Rien n'est perdu : photos et fiche sont au chaud, relance depuis l'app — la reprise repart directement à la recréation.`,

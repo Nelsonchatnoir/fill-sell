@@ -90,7 +90,14 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
     fillListingForm(msg.job)
       .then((result) => sendResponse(result))
-      .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      // err.diagnostic (2026-08-06) : annexe technique séparée du message
+      // utilisateur — le background la range dans platform_fields.last_diagnostic,
+      // jamais dans cross_post_jobs.error (affiché tel quel par l'app).
+      .catch((err) => sendResponse({
+        success: false,
+        error: String(err?.message ?? err),
+        ...(err?.diagnostic ? { diagnostic: String(err.diagnostic) } : {}),
+      }));
 
     return true; // réponse asynchrone
   });
@@ -1961,7 +1968,18 @@ async function selectCategory(path) {
         `enfants=${el.children.length} visible=${estVisibleSansLayout(el)}>`
       );
     const parent2 = trigger.parentElement?.parentElement ?? trigger.parentElement;
-    throw new Error(
+    // Message court côté utilisateur, diagnostic COMPLET sur err.diagnostic
+    // (2026-08-06) : cross_post_jobs.error est affiché tel quel dans l'app —
+    // les dumps outerHTML n'y ont plus leur place ; ils partent dans
+    // platform_fields.last_diagnostic via le relais du handler de messages.
+    // Le fond du diagnostic reste celui du 25-26/07 : rapporter ce qui est
+    // CONSTATÉ, pas une interprétation (« le panneau ne s'est pas ouvert »
+    // était un fait faux qui a coûté deux jours).
+    const err = new Error(
+      "La catégorie Beebs n'a pas pu être ouverte (aucune option lue après 3 tentatives). " +
+      "Aucun problème de catalogue. Le job repartira au prochain passage."
+    );
+    err.diagnostic =
       "Catégorie: aucune option lue après 3 tentatives (clic seulement si constaté fermé — aria-expanded PUIS panneau). Diagnostic — " +
       `aria-expanded final: ${JSON.stringify(trigger.getAttribute("aria-expanded") ?? "(absent)")} ; ` +
       "lecture du discriminateur: aria passé à \"true\" avec 0 panneau = LECTURE à revoir (portail/classe) ; aria inchangé = clic non pris (hydratation ?) ; " +
@@ -1977,9 +1995,8 @@ async function selectCategory(path) {
       // dump Cyrillus était un artefact de dump, pas un état du DOM).
       `trigger: ${trigger.outerHTML.slice(0, 400)} ; ` +
       `parent (2 niveaux): ${parent2?.outerHTML?.slice(0, 700) ?? "(absent)"} ; ` +
-      `observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}. ` +
-      "Aucun problème de catalogue. Le job repartira au prochain passage."
-    );
+      `observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}.`;
+    throw err;
   }
 
   for (let i = 0; i < path.length; i++) {

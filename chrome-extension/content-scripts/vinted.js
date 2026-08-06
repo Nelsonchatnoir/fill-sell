@@ -266,7 +266,14 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 
     fillListingForm(msg.job)
       .then((result) => sendResponse(result))
-      .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      // err.diagnostic (2026-08-06) : annexe technique séparée du message
+      // utilisateur — le background la range dans platform_fields.last_diagnostic,
+      // jamais dans cross_post_jobs.error (affiché tel quel par l'app).
+      .catch((err) => sendResponse({
+        success: false,
+        error: String(err?.message ?? err),
+        ...(err?.diagnostic ? { diagnostic: String(err.diagnostic) } : {}),
+      }));
 
     return true; // réponse asynchrone
   });
@@ -2255,21 +2262,34 @@ async function confirmDropdownIfNeeded() {
 // type "M / 38 / 10"), includes() en repli seulement. Sans ça, "Bon état"
 // sélectionne "Très bon état" (premier dans la liste) et la taille "S"
 // matche "XS / 34 / 6" — textes d'options confirmés par inspection DOM.
-function findOptionMatch(root, optionSelector, text, { exactOnly = false } = {}) {
-  const options = Array.from(root.querySelectorAll(optionSelector));
+// TOUS les candidats d'un libellé, exacts d'abord (2026-08-06) : un libellé
+// peut exister en PLUSIEURS exemplaires dans le panneau (job 68420b37 :
+// « Femmes » à la fois en suggestion catalog-suggestion-1904 ET en racine
+// d'arbre) — ne rendre que le premier interdisait au caller de préférer le
+// bon. `exclude` écarte des nœuds AVANT le matching (les suggestions, pour la
+// cascade catégorie). Les deux options sont inertes pour les callers
+// historiques : sans exclude ni lecture au-delà de [0], comportement inchangé.
+function findOptionMatches(root, optionSelector, text, { exactOnly = false, exclude = null } = {}) {
+  const options = Array.from(root.querySelectorAll(optionSelector))
+    .filter((o) => !exclude || !exclude(o));
   // \s+ → " " : mêmes espaces insécables que dans la cascade (cf.
   // normalizeFuzzy — « 128 Go » du DOM porte U+00A0, prouvé job 7b67d67f).
   const normalize = (s) => s.replace(/\s+/g, " ").trim().toLowerCase();
   const target = normalize(text);
-  const exact = options.find(
+  const exacts = options.filter(
     (o) =>
       normalize(o.textContent) === target ||
       o.textContent.split("/").some((part) => normalize(part) === target)
   );
-  if (exact) return { el: exact, stage: "exact" };
-  if (exactOnly) return null;
-  const partial = options.find((o) => normalize(o.textContent).includes(target));
-  return partial ? { el: partial, stage: "includes" } : null;
+  if (exacts.length) return exacts.map((el) => ({ el, stage: "exact" }));
+  if (exactOnly) return [];
+  return options
+    .filter((o) => normalize(o.textContent).includes(target))
+    .map((el) => ({ el, stage: "includes" }));
+}
+
+function findOptionMatch(root, optionSelector, text, opts = {}) {
+  return findOptionMatches(root, optionSelector, text, opts)[0] ?? null;
 }
 
 function findOptionByText(root, optionSelector, text) {
@@ -2743,11 +2763,11 @@ function isChevronOption(option) {
 // de rendu partiel. exactOnly : au niveau racine les libellés sont connus et
 // courts (« Femmes »…), le repli includes() peut capturer une cellule de
 // suggestion/fil d'Ariane qui CONTIENT le mot — refusé là où il est demandé.
-async function waitForStableCatalogOption(optionSelector, text, { timeoutMs = 5000, settleMs = 250, exactOnly = false } = {}) {
+async function waitForStableCatalogOption(optionSelector, text, { timeoutMs = 5000, settleMs = 250, exactOnly = false, exclude = null } = {}) {
   const start = Date.now();
   let prev = null;
   while (Date.now() - start < timeoutMs) {
-    const match = findOptionMatch(document, optionSelector, text, { exactOnly });
+    const match = findOptionMatch(document, optionSelector, text, { exactOnly, exclude });
     if (match && prev && match.el === prev.el && match.el.isConnected) return match;
     prev = match;
     await sleep(match ? settleMs : 80);
@@ -2768,6 +2788,36 @@ function describeMatchedOption(match) {
   return `nœud matché (${match.stage}) id="${el.id || "?"}" : ${html}`;
 }
 
+// SUGGESTIONS vs nœuds d'arbre (2026-08-06, job 68420b37 « Pantalon flare
+// FB Sister ») : le panneau Catégorie ouvre sur un bloc de SUGGESTIONS issues
+// du titre/photos — id="catalog-suggestion-NNNN", cellule à RADIO (sélection
+// finale directe), jamais de chevron, textContent qui concatène libellé + fil
+// d'Ariane (« Pantalons à jambes largesFemmes > Vêtements > … ») — AVANT les
+// racines de l'arbre (id="catalog-NNN"). Un libellé peut donc exister en
+// DOUBLE (« Femmes » suggestion ET racine), et la suggestion arrive PREMIÈRE
+// dans le DOM : le match exact tombait dessus, le test de chevron concluait
+// « sans sous-niveaux » et la cascade abandonnait. Les suggestions sont
+// EXCLUES de la navigation d'arbre — on ne descend que par les vrais nœuds.
+function estSuggestionCatalogue(el) {
+  return /^catalog-suggestion-/.test(el?.id ?? "")
+    || Boolean(el?.closest?.('[id^="catalog-suggestion-"]'));
+}
+
+// Erreur de catégorie à DEUX étages (2026-08-06) : cross_post_jobs.error est
+// AFFICHÉ TEL QUEL à l'utilisateur final (modale « En attente de toi ») — un
+// dump DOM ou une liste d'options n'y a plus JAMAIS sa place. Le message
+// court dit quoi faire ; l'annexe technique complète voyage sur
+// err.diagnostic, relayée par le handler de messages puis rangée par le
+// background dans platform_fields.last_diagnostic (requêtable en SQL).
+function erreurCategorie(messageCourt, annexeTechnique) {
+  const err = new Error(
+    `La catégorie Vinted n'a pas pu être sélectionnée (${messageCourt}). ` +
+    "Relance la publication depuis l'app ; si ça se reproduit, signale-le au support."
+  );
+  err.diagnostic = `Catégorie: ${annexeTechnique}`;
+  return err;
+}
+
 async function selectCategory(path) {
   const catalogOptionSel = (await sel()).selectorFor("vinted", "publish.catalog_option");
   await openDropdown('#category, [data-testid="catalog-select-dropdown-input"]');
@@ -2777,18 +2827,33 @@ async function selectCategory(path) {
     // Niveau racine : match EXACT exigé (libellés courts et connus, repli
     // includes() dangereux — cf. waitForStableCatalogOption). Aux niveaux
     // suivants le repli reste permis (libellés composés type « Robes midi »).
-    const matchOpts = { exactOnly: i === 0 };
+    // Les suggestions sont exclues à TOUS les niveaux (cf. estSuggestionCatalogue).
+    const matchOpts = { exactOnly: i === 0, exclude: estSuggestionCatalogue };
 
     let match;
     try {
       match = await waitForStableCatalogOption(catalogOptionSel, levelLabel, matchOpts);
     } catch {
-      throw new Error(
-        `Catégorie: niveau "${levelLabel}" introuvable (chemin ${JSON.stringify(path)}). ` +
+      throw erreurCategorie(
+        `niveau « ${levelLabel} » introuvable`,
+        `niveau "${levelLabel}" introuvable (chemin ${JSON.stringify(path)}). ` +
         `Options affichées par Vinted à ce niveau: ${JSON.stringify(await visibleCatalogLabels())}. ` +
         `Corriger le chemin dans vintedCategories.js avec un de ces libellés.`
       );
     }
+
+    // Parmi TOUS les candidats du libellé (doublons possibles même hors
+    // suggestions), préférer celui dont la NATURE colle à l'attendu : chevron
+    // (navigable) quand le chemin continue, feuille (radio) au dernier niveau.
+    // C'est le « réessayer sur le candidat suivant » : un nœud matché qui
+    // n'ouvre pas de sous-niveau ne condamne plus le job tant qu'un autre
+    // candidat du même libellé, lui, en ouvre un.
+    const meilleurCandidat = () => {
+      const cands = findOptionMatches(document, catalogOptionSel, levelLabel, matchOpts);
+      if (!cands.length) return null;
+      return cands.find((c) => isChevronOption(c.el) === !isLast) ?? cands[0];
+    };
+    match = meilleurCandidat() ?? match;
     let option = match.el;
 
     // Chevron absent → JAMAIS terminal sur une seule lecture (même famille de
@@ -2798,7 +2863,7 @@ async function selectCategory(path) {
     let hasChevron = isChevronOption(option);
     for (let retry = 0; !hasChevron && !isLast && retry < 3; retry++) {
       await sleep(400);
-      const again = findOptionMatch(document, catalogOptionSel, levelLabel, matchOpts);
+      const again = meilleurCandidat();
       if (again) {
         match = again;
         option = again.el;
@@ -2806,13 +2871,14 @@ async function selectCategory(path) {
       }
     }
 
-    // Le chemin continue mais l'option est restée sans chevron après retries.
-    // Deux causes possibles, indécidables sans les annexes ci-dessous : mapping
-    // trop profond (rare : le même chemin peut réussir par ailleurs), ou état
-    // du panneau inattendu (suggestions, pré-sélection, rendu partiel).
+    // Le chemin continue mais AUCUN candidat n'a de chevron après retries.
+    // Deux causes possibles, indécidables sans les annexes du diagnostic :
+    // mapping trop profond (rare : le même chemin peut réussir par ailleurs),
+    // ou état du panneau inattendu (pré-sélection, rendu partiel).
     if (!isLast && !hasChevron) {
-      throw new Error(
-        `Catégorie: "${levelLabel}" affiché sans sous-niveaux (pas de chevron, vérifié 4×) alors que ` +
+      throw erreurCategorie(
+        `le niveau « ${levelLabel} » ne propose pas les sous-niveaux attendus`,
+        `"${levelLabel}" affiché sans sous-niveaux (pas de chevron, vérifié 4×, suggestions exclues) alors que ` +
         `le chemin continue avec ${JSON.stringify(path.slice(i + 1))}. ` +
         `${describeMatchedOption(match)}. ` +
         `Options affichées par Vinted à ce niveau: ${JSON.stringify(await visibleCatalogLabels())}.`
@@ -2821,12 +2887,13 @@ async function selectCategory(path) {
 
     // Dernier niveau du chemin mais encore un chevron : profondeur
     // supplémentaire dans le catalogue réel. On clique quand même pour révéler
-    // les sous-niveaux et les remonter dans l'erreur du job.
+    // les sous-niveaux et les remonter dans le diagnostic du job.
     if (isLast && hasChevron) {
       option.click();
       await sleep(400);
-      throw new Error(
-        `Catégorie: le chemin ${JSON.stringify(path)} s'arrête sur un niveau intermédiaire. ` +
+      throw erreurCategorie(
+        `le chemin s'arrête sur un niveau intermédiaire (« ${levelLabel} »)`,
+        `le chemin ${JSON.stringify(path)} s'arrête sur un niveau intermédiaire. ` +
         `Sous-niveaux proposés par Vinted: ${JSON.stringify(await visibleCatalogLabels())}. ` +
         `Ajouter le niveau terminal manquant dans vintedCategories.js.`
       );
