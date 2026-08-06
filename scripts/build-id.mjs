@@ -54,7 +54,10 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // diagnostic : message court dans cross_post_jobs.error, annexe technique
 // (dumps DOM, sonde) dans platform_fields.last_diagnostic — Vinted, Beebs et
 // la vérification eBay du background.
-export const EXTENSION_LAST_COMMIT = '2026-08-06T15:45:00Z';
+// (recalée 15:45 → 15:50 : le commit 4c7d444 est tombé à 15:48:27Z, après la
+// valeur visée — la garde assertExtensionMinBuildCurrent aurait bloqué tout
+// build local.)
+export const EXTENSION_LAST_COMMIT = '2026-08-06T15:50:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.
