@@ -2881,11 +2881,14 @@ const REAUTH_HOSTS = {
   ebay: /(^|\.)signin\.ebay\.(fr|com)$/i,
   vinted: /(^|\.)vinted\.(fr|com)$/i, // sous-chemin /auth uniquement, cf. ci-dessous
   leboncoin: /(^|\.)auth\.leboncoin\.fr$/i,
-  beebs: /(^|\.)beebs\.app$/i,        // sous-chemin /login uniquement
+  beebs: /(^|\.)beebs\.app$/i,        // sous-chemins d'auth uniquement, cf. REAUTH_PATHS
 };
 const REAUTH_PATHS = {
   vinted: /\/(auth|login|member\/signup_login)/i,
-  beebs: /\/(login|signin|connexion)/i,
+  // /auth borné (2026-08-06) : la VRAIE page de connexion Beebs est
+  // /fr/auth?from=…&step=sign-in (relevée en prod dans les échecs delete des
+  // 03 et 05/08) — les trois libellés historiques ne matchaient rien de réel.
+  beebs: /\/(login|signin|connexion)|\/auth(\/|$)/i,
 };
 
 // Polling court : la redirection de ré-authentification peut arriver une
@@ -4760,7 +4763,12 @@ async function probePlatformSessions() {
         credentials: "include", redirect: "follow",
       });
       const u = new URL(r.url);
-      return { etat: /login|signin|connexion/i.test(u.pathname) ? false : null, http: r.status };
+      // /auth ajouté le 2026-08-06 : la vraie page de connexion Beebs est
+      // /fr/auth?step=sign-in (relevé prod) — les trois libellés historiques
+      // ne matchaient aucune URL réelle. En pratique la SPA sert un 200 sur
+      // /fr/listing et redirige CÔTÉ CLIENT : ce fetch ne verra donc
+      // quasiment jamais false (null = indéterminé, par conception).
+      return { etat: /\/(login|signin|connexion)|\/auth(\/|$)/i.test(u.pathname) ? false : null, http: r.status };
     }),
   ]);
   return {

@@ -156,7 +156,12 @@ async function deleteListing(job) {
   const trace = [];
   const t = (line) => { trace.push(line); console.log(`[beebs][delete] ${line}`); };
 
-  if (!/my-adverts/.test(location.pathname)) {
+  // Même stabilisation que la garde de session du dépôt (2026-08-06) : la SPA
+  // peut transiter par /fr/auth pendant l'hydratation de l'auth — les échecs
+  // « Page inattendue … /fr/auth?from=%2Faccount%2Fmy-adverts&step=sign-in »
+  // des 03 et 05/08 en sont la trace. On laisse 15 s à la page de revenir sur
+  // Mes annonces avant de conclure.
+  if (!(await waitFor(() => /my-adverts/.test(location.pathname), 15_000))) {
     return { success: false, error: `Page inattendue pour une suppression Beebs : ${location.href}`, trace };
   }
   t(`page Mes annonces ok : ${location.pathname}`);
@@ -384,17 +389,35 @@ async function fillListingForm(job) {
     };
   }
 
-  // Session : si Beebs a redirigé vers une page de connexion ou affiche un
-  // formulaire d'authentification, on s'arrête AVANT tout remplissage :
-  // needsUser (ré-armement borné côté background), aucune interaction sur
-  // une page de connexion. Même règle que Vinted/LBC/eBay.
-  if (!location.pathname.startsWith("/fr/listing") || document.querySelector('input[type="password"]')) {
+  // Session : conclusion JAMAIS instantanée (2026-08-06). Beebs est une SPA
+  // dont l'état d'auth se résout APRÈS le « complete » de l'onglet (JWT en
+  // localStorage, hydratation puis éventuel refresh) : le temps que ça se
+  // joue, la page peut TRANSITER par /fr/auth — sa vraie page de connexion,
+  // relevée en prod : /fr/auth?from=…&step=sign-in — avant de servir le
+  // formulaire de dépôt à un utilisateur pourtant connecté. PREUVE prod
+  // (ornellaracano, 06/08) : garde passée à 16:33 (le job échoue plus loin,
+  // sur les photos), « Connexion requise » à 16:40 — même compte, même
+  // session Chrome, 7 minutes d'écart, aucun geste utilisateur entre les
+  // deux. L'ancienne garde one-shot transformait cette course en faux
+  // « Se connecter » dans la popup (CONN_RE matche « Connexion »).
+  // On OBSERVE donc jusqu'à 15 s : formulaire de dépôt présent (URL
+  // /fr/listing, pas de champ password, input photos hydraté) → connecté ;
+  // état d'auth PERSISTANT au bout du délai → needsUser (ré-armement borné
+  // côté background), aucune interaction sur une page de connexion, et l'URL
+  // réellement observée part dans le message — diagnosticable en SQL,
+  // contrairement à l'ancien message aveugle.
+  const surFormulaireDepot = () =>
+    location.pathname.startsWith("/fr/listing")
+    && !document.querySelector('input[type="password"]')
+    && !!document.querySelector('#input-pictures, input[type="file"]');
+  if (!(await waitFor(surFormulaireDepot, 15_000))) {
     return {
       success: false,
       needsUser: true,
       error:
         "Connexion Beebs requise : se connecter sur beebs.app dans Chrome " +
-        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+        `(page observée : ${location.href}) — l'onglet de travail est resté ouvert, ` +
+        "le job repartira au prochain passage.",
     };
   }
 
