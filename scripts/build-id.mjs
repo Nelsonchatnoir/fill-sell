@@ -47,13 +47,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-06T15:30:00Z = deux correctifs : (1) « Failed to fetch » — urlToFile
-// des 4 content scripts enveloppe le fetch photo (message FR actionnable,
-// garde res.ok), le re-hébergement des photos CDN Vinted vivant côté serveur
-// (generate-listing) ; (2) session Beebs — garde stabilisée 15 s (SPA qui
-// transite par /fr/auth pendant l'hydratation) et vrai chemin d'auth /fr/auth
-// appris à detectReauth et à la sonde de sessions.
-export const EXTENSION_LAST_COMMIT = '2026-08-06T15:30:00Z';
+// 2026-08-06T15:25:00Z = bump manifeste 0.5.1 (paquet CWS des deux correctifs
+// du jour) : (1) « Failed to fetch » — urlToFile des 4 content scripts
+// enveloppe le fetch photo (message FR actionnable, garde res.ok), le
+// re-hébergement des photos CDN Vinted vivant côté serveur (generate-listing) ;
+// (2) session Beebs — garde stabilisée 15 s (SPA qui transite par /fr/auth
+// pendant l'hydratation) et vrai chemin d'auth /fr/auth appris à detectReauth
+// et à la sonde de sessions.
+export const EXTENSION_LAST_COMMIT = '2026-08-06T15:25:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.
