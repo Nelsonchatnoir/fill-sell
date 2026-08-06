@@ -47,17 +47,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-06T15:45:00Z = catégorie Vinted à la recréation (job 68420b37) :
-// les SUGGESTIONS du panneau (catalog-suggestion-NNNN, rendues avant l'arbre,
-// libellés en double possibles) sont exclues de la navigation, et le candidat
-// à chevron est préféré quand le chemin continue. Plus la règle erreur/
-// diagnostic : message court dans cross_post_jobs.error, annexe technique
-// (dumps DOM, sonde) dans platform_fields.last_diagnostic — Vinted, Beebs et
-// la vérification eBay du background.
-// (recalée 15:45 → 15:50 : le commit 4c7d444 est tombé à 15:48:27Z, après la
-// valeur visée — la garde assertExtensionMinBuildCurrent aurait bloqué tout
-// build local.)
-export const EXTENSION_LAST_COMMIT = '2026-08-06T15:50:00Z';
+// 2026-08-06T16:05:00Z = dropdowns Vinted : attente de la fin du loader de
+// champ (<champ>--loader, dérivé du data-testid du trigger) dans openDropdown
+// — l'entonnoir de TOUS les champs du formulaire — avant tout clic, timeout
+// borné 15 s (job f9861e8a « Jean Zara » : brand/color encore en chargement
+// quand le code cliquait ; course, pas un cas particulier — 3 recréations sur
+// 5 passaient selon le timing). Erreurs openDropdown/Marque passées à la
+// convention error court / last_diagnostic.
+export const EXTENSION_LAST_COMMIT = '2026-08-06T16:05:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.

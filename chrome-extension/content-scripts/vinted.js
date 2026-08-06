@@ -2164,6 +2164,29 @@ async function openDropdown(triggerSelector) {
   // présent ; brand/color n'apparaissent qu'après la feuille de catégorie).
   // waitForStableElement les attend au lieu de conclure « champ absent ».
   const trigger = await waitForStableElement(triggerSelector);
+  // ⏳ LOADER DE CHAMP (2026-08-06, job f9861e8a « Jean Zara », recréation) :
+  // sur une page neuve, un dropdown peut être encore en CHARGEMENT — Vinted
+  // pose data-testid="<champ>--loader" à côté du trigger (relevés au moment
+  // de l'échec : brand-select-dropdown--loader ET color-select-dropdown--loader
+  // présents pendant que le code cliquait). Un dropdown en loader ne s'ouvre
+  // PAS : les 6 clics de clickUntilPanelOpens partaient dans le vide et
+  // l'erreur accusait le panneau. Même famille que la course de session Beebs
+  // du matin : agir avant la fin de l'hydratation. On attend donc LA FIN DU
+  // LOADER DE CE CHAMP (dérivé du data-testid du trigger, -input → --loader,
+  // même convention que panneauDuDeclencheur) avec un timeout borné — jamais
+  // un comptage de tentatives à l'aveugle. Timeout atteint : on tente le clic
+  // quand même (loader orphelin possible), clickUntilPanelOpens reste juge —
+  // et son diagnostic liste déjà les testids, loaders compris.
+  const tidTrigger = trigger?.getAttribute?.("data-testid") ?? "";
+  if (/-input$/.test(tidTrigger)) {
+    const loaderSel = `[data-testid="${tidTrigger.replace(/-input$/, "--loader")}"]`;
+    if (document.querySelector(loaderSel)) {
+      console.log(`[vinted] ${loaderSel} présent — attente de la fin du chargement du champ`);
+      if (!(await waitForElementGone(loaderSel, 15_000))) {
+        console.warn(`[vinted] ⚠️ ${loaderSel} toujours présent après 15 s — clic tenté quand même`);
+      }
+    }
+  }
   const probe = panneauDuDeclencheur(trigger) ?? dropdownPanelProbe(S);
   dernierPanneauProbe = probe;
   // Certains composants (confirmé sur #brand) ne sont pas immédiatement
@@ -2187,11 +2210,18 @@ async function openDropdown(triggerSelector) {
       [...document.querySelectorAll('[class*="dropdown" i]')]
         .flatMap((e) => [...e.classList]).filter((c) => /dropdown/i.test(c))
     )].slice(0, 6);
-    throw new Error(
-      `Le clic sur ${triggerSelector} n'a pas ouvert de panneau (${S.selectorFor("vinted", "publish.dropdown_panel")}) ` +
-      `après plusieurs tentatives. data-testid « dropdown » présents : ${JSON.stringify(testids)} ; ` +
-      `classes « dropdown » présentes : ${JSON.stringify(classes)}.`
+    // Message court + annexe sur err.diagnostic (2026-08-06, convention
+    // last_diagnostic — le job f9861e8a portait ces listes en entier dans
+    // cross_post_jobs.error). La PREUVE DOM ne disparaît pas : elle change de
+    // canal. Les catchers non bloquants (warnings) gardent un e.message lisible.
+    const err = new Error(
+      `Le clic sur ${triggerSelector} n'a pas ouvert de panneau après plusieurs tentatives.`
     );
+    err.diagnostic =
+      `openDropdown(${triggerSelector}): panneau attendu ${S.selectorFor("vinted", "publish.dropdown_panel")} jamais vu. ` +
+      `data-testid « dropdown » présents : ${JSON.stringify(testids)} ; ` +
+      `classes « dropdown » présentes : ${JSON.stringify(classes)}.`;
+    throw err;
   }
   await humanPause();
   return trigger;
@@ -2555,11 +2585,18 @@ async function selectVintedBrand(marque, warnings) {
     warnings.push(note);
   } catch (e) {
     await closeAnyOpenDropdown();
-    throw new Error(
-      `Le handler n'a pas pu renseigner le champ Marque avec "${marque}" : ` +
-      `introuvable au catalogue Vinted ET création via « Utiliser "${marque}" comme marque » impossible (${e.message}). ` +
-      `Publication interrompue AVANT le dépôt — ce n'est PAS un refus Vinted, l'annonce n'a pas été soumise.`
+    // Convention error court / last_diagnostic (2026-08-06, job f9861e8a) :
+    // le détail (cause exacte + annexe DOM d'openDropdown) part sur
+    // err.diagnostic, le message reste lisible dans la modale de l'app.
+    const err = new Error(
+      `Le champ Marque n'a pas pu être renseigné avec « ${marque} » ` +
+      "(introuvable au catalogue Vinted et création impossible). " +
+      "Publication interrompue AVANT le dépôt — ce n'est PAS un refus Vinted, l'annonce n'a pas été soumise."
     );
+    err.diagnostic =
+      `Marque "${marque}": introuvable au catalogue ET création via « Utiliser "${marque}" comme marque » ` +
+      `impossible (${e.message})${e.diagnostic ? ` — ${e.diagnostic}` : ""}`;
+    throw err;
   }
 }
 
