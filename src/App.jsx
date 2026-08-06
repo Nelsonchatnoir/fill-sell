@@ -2296,14 +2296,25 @@ export default function App({ loginOnly = false }){
     }
     if(!silencieux) setLoading(true);
     const [v,i,p]=await Promise.all([
-      supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(500),
+      // ⚠️ Tiebreaker `id` OBLIGATOIRE derrière created_at (06/08) : la sync
+      // du dressing insère par tranches de 8 → jusqu'à 8 lignes partagent le
+      // MÊME created_at à la milliseconde (mesuré en prod : groupes de 4 à 8).
+      // Sans tiebreaker, Postgres rend les ex æquo dans un ordre ARBITRAIRE
+      // qui change quand un UPDATE réécrit le tuple — or une republication
+      // Vinted en fait plusieurs (vinted_item_id, listed_at_guess, prix…) et
+      // la sonde jobs relance fetchAll à chaque changement de statut : la
+      // carte de l'article SAUTAIT dans la liste plusieurs fois pendant les
+      // ~10 min de l'opération, précisément quand l'utilisateur la suit.
+      // `id` n'est jamais réécrit → ordre total stable, ici ET côté ventes
+      // (même motif latent sur les insertions par lot).
+      supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(500),
       // ⚠️ Plafond relevé de 500 à 3000 (03/08). Il était DÉJÀ atteint (800
       // lignes sur le compte de test) : au-delà, l'inventaire était tronqué en
       // silence et tous les totaux — investi, valeur du stock, bénéfices —
       // portaient sur une partie des données sans que rien ne le signale. La
       // sync du dressing, qui importe des centaines d'annonces d'un coup, en
       // faisait un problème quotidien.
-      supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(3000),
+      supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(3000),
       supabase.from('profiles').select('is_premium,is_pro,is_comped,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build').eq('id',uid).maybeSingle(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
