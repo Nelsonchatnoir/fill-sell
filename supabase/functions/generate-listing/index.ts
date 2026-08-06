@@ -758,6 +758,101 @@ serve(async (req) => {
     const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY")!;
     const BUCKET = "listing-photos";
 
+    // ── Re-hébergement des photos EXTERNES (2026-08-06, « Failed to fetch ») ──
+    // Les articles importés du dressing (origine='vinted_sync') portent des
+    // URLs images1.vinted.net écrites telles quelles par la sync
+    // (background.js, frontière de propriété des photos). Le CDN Vinted ne
+    // sert AUCUN en-tête CORS : le fetch() des content scripts (urlToFile)
+    // échoue depuis les pages Leboncoin/Beebs/eBay en « Failed to fetch » —
+    // et un content script MV3 reste soumis au CORS de la page hôte quoi
+    // qu'autorise le manifeste. Le re-hébergement vit donc CÔTÉ SERVEUR (pas
+    // de CORS ici), AVANT la création du job : mêmes gardes que
+    // republish-capture-photos (hôtes Vinted FERMÉS — jamais un proxy
+    // ouvert —, taille plafonnée, timeout, séquentiel). Un échec par photo ne
+    // bloque pas la génération : l'URL d'origine est conservée, la
+    // publication échouera avec le message actionnable des content scripts.
+    // inventaire.photos est réaligné URL par URL (structure préservée —
+    // strings nues de la sync ET objets {type,url} coexistent en base) : le
+    // travail n'a lieu qu'UNE fois par article, et la frontière de propriété
+    // de la sync (photosANous) protège ensuite ces URLs de tout écrasement.
+    const estUrlCdnExterne = (u: unknown): u is string => {
+      if (typeof u !== "string") return false;
+      try {
+        const url = new URL(u);
+        return url.protocol === "https:" && /(^|\.)vinted\.(net|fr|com)$/i.test(url.hostname);
+      } catch { return false; }
+    };
+    let photosSource = photos as string[];
+    const externes = photosSource.filter(estUrlCdnExterne);
+    if (externes.length) {
+      const MAX_OCTETS_PAR_PHOTO = 10 * 1024 * 1024;
+      const REHOST_TIMEOUT_MS = 15_000;
+      const tsRehost = Date.now();
+      const remplacements = new Map<string, string>();
+      for (let i = 0; i < externes.length; i++) {
+        const src = externes[i];
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), REHOST_TIMEOUT_MS);
+        try {
+          const resp = await fetch(src, { signal: ctl.signal });
+          if (!resp.ok) { console.error(`[generate-listing] rehost photo ${i}: HTTP ${resp.status}`); continue; }
+          const bytes = new Uint8Array(await resp.arrayBuffer());
+          if (!bytes.byteLength || bytes.byteLength > MAX_OCTETS_PAR_PHOTO) {
+            console.error(`[generate-listing] rehost photo ${i}: taille hors bornes (${bytes.byteLength} octets)`);
+            continue;
+          }
+          const contentType = resp.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
+          if (!contentType.startsWith("image/")) {
+            console.error(`[generate-listing] rehost photo ${i}: pas une image (${contentType})`);
+            continue;
+          }
+          const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
+          // ts dans le chemin : une même URL re-tentée plus tard ne s'écrase pas.
+          const path = `${user.id}/rehosted/${inventaire_id ?? "adhoc"}/${tsRehost}_${i}.${ext}`;
+          const { error: upErr } = await adminClient.storage
+            .from(BUCKET)
+            .upload(path, bytes, { contentType, upsert: true });
+          if (upErr) { console.error(`[generate-listing] rehost photo ${i}: upload — ${upErr.message}`); continue; }
+          remplacements.set(src, adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl);
+        } catch (e) {
+          console.error(`[generate-listing] rehost photo ${i}:`, (e as Error)?.name === "AbortError" ? `timeout ${REHOST_TIMEOUT_MS / 1000}s` : e);
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+      if (remplacements.size) {
+        photosSource = photosSource.map((u) => remplacements.get(u) ?? u);
+        if (inventaire_id) {
+          const { data: ligne } = await adminClient
+            .from("inventaire")
+            .select("photos")
+            .eq("id", inventaire_id)
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (Array.isArray(ligne?.photos)) {
+            const majPhoto = (p: unknown) => {
+              if (typeof p === "string") return remplacements.get(p) ?? p;
+              if (p && typeof p === "object" && typeof (p as { url?: unknown }).url === "string") {
+                const nv = remplacements.get((p as { url: string }).url);
+                return nv ? { ...(p as object), url: nv } : p;
+              }
+              return p;
+            };
+            const nouvelles = (ligne.photos as unknown[]).map(majPhoto);
+            if (JSON.stringify(nouvelles) !== JSON.stringify(ligne.photos)) {
+              const { error: majErr } = await adminClient
+                .from("inventaire")
+                .update({ photos: nouvelles })
+                .eq("id", inventaire_id)
+                .eq("user_id", user.id);
+              if (majErr) console.error(`[generate-listing] rehost: inventaire ${inventaire_id} non réaligné — ${majErr.message}`);
+            }
+          }
+        }
+      }
+      console.log(`[generate-listing] rehost: ${remplacements.size}/${externes.length} photo(s) CDN re-hébergée(s) (inventaire ${inventaire_id ?? "absent"})`);
+    }
+
     // ── category_icon (chantier 2026-07-20) ────────────────────────────────
     // EN PLUS des titres/descriptions : une classification directe de l'objet
     // principal parmi la liste FERMÉE des icônes du système (ALL_OBJECT_ICONS,
@@ -828,7 +923,7 @@ serve(async (req) => {
     let processedPhotos: Array<{ type: string; url: string }>;
 
     if (photo_option === "original") {
-      processedPhotos = (photos as string[]).map((url, i) => ({
+      processedPhotos = photosSource.map((url, i) => ({
         type: i === 0 ? "original" : `photo_${i}`,
         url,
       }));
@@ -861,7 +956,7 @@ serve(async (req) => {
         console.log(`[gpt-image] famille de retouche: ${retouch.family} (icône ${retouch.icon})`);
       }
       const qualityToUse = isLight ? "low" : "medium";
-      const photosToProcess = photos as string[];
+      const photosToProcess = photosSource;
       // ── Photos verrouillées (2026-08-05, option A validée par Nico) ────────
       // Article DÉJÀ retouché auquel on ajoute de nouvelles photos : le client
       // envoie locked_photos = les URLs déjà retouchées (et déjà payées). Ces

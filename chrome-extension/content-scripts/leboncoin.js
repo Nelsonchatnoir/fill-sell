@@ -2056,7 +2056,28 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
 }
 
 async function urlToFile(url, index) {
-  const res = await fetch(url);
+  // fetch() SOUS LE CORS DE LA PAGE HÔTE (MV3) : une photo hébergée hors de
+  // notre storage (CDN Vinted d'un article importé du dressing, avant que
+  // generate-listing ne la rapatrie) jette TypeError « Failed to fetch ».
+  // Cette chaîne brute du navigateur ne doit plus JAMAIS finir dans
+  // cross_post_jobs.error (job du 06/08, espadrilles MOA) — message FR
+  // actionnable, et garde res.ok : un 404 fabriquait un File de page d'erreur.
+  let res;
+  try {
+    res = await fetch(url);
+  } catch {
+    throw new Error(
+      `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
+      "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
+      "Regénérer l'annonce depuis l'app rapatrie les photos, puis relancer la publication."
+    );
+  }
+  if (!res.ok) {
+    throw new Error(
+      `La photo ${index + 1} de l'annonce est indisponible (HTTP ${res.status}). ` +
+      "Regénérer l'annonce depuis l'app puis relancer la publication."
+    );
+  }
   const blob = await res.blob();
   const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
   return new File([blob], `photo_${index}.${ext}`, { type: blob.type });
