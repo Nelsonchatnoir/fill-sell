@@ -1,6 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- DÉDUP DES MAILS « PAIEMENT ÉCHOUÉ » — UN MAIL PAR FACTURE (2026-08-07)
--- ⛔ NON APPLIQUÉE — à montrer à Nico avant exécution.
+-- ✅ APPLIQUÉE en prod le 07/08 (validée par Nico). Vérifié : index présent
+-- (pg_indexes) et doublon refusé en 23505 (transaction annulée, zéro résidu).
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Le mode payment_failed d'email-tunnel journalise chaque notification sous
 -- email_type = 'payment_failed:<invoice_id Stripe>' : la facture EST l'échec.
