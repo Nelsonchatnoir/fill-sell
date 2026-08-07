@@ -47,17 +47,12 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-06T16:05:00Z = dropdowns Vinted : attente de la fin du loader de
-// champ (<champ>--loader, dérivé du data-testid du trigger) dans openDropdown
-// — l'entonnoir de TOUS les champs du formulaire — avant tout clic, timeout
-// borné 15 s (job f9861e8a « Jean Zara » : brand/color encore en chargement
-// quand le code cliquait ; course, pas un cas particulier — 3 recréations sur
-// 5 passaient selon le timing). Erreurs openDropdown/Marque passées à la
-// convention error court / last_diagnostic.
-// (recalée 16:05 → 16:15 : le commit 2794630 est tombé à 16:11:58Z, après la
-// valeur visée — même mésaventure que 4c7d444, la garde de vite.config.js
-// aurait bloqué le prochain build web local.)
-export const EXTENSION_LAST_COMMIT = '2026-08-06T16:15:00Z';
+// 2026-08-07T09:25:00Z = opt-in du cron de sync : une alarme 'cron' ne lance
+// plus JAMAIS la première sync d'un compte (refus si aucun run 'done') — le
+// premier run d'ornellaracano@icloud.com du 06/08 était parti tout seul à
+// +10 min de l'installation. Le trigger garde_cadence_sync_runs (migration
+// 20260807100000, à valider) porte la même règle côté base.
+export const EXTENSION_LAST_COMMIT = '2026-08-07T09:25:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.

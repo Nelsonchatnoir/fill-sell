@@ -5264,6 +5264,20 @@ async function syncDressingUnlocked(declencheur) {
           token, { headers: { Prefer: "return=representation" } },
         );
         const dernier = derniers?.[0] ?? null;
+        // ── Opt-in (2026-08-07) : le cron ENTRETIENT une sync existante, il
+        // n'en INAUGURE jamais une. Sans cette garde, l'alarme (premier tir à
+        // +10 min) lisait le dressing d'un compte qui n'a JAMAIS demandé de
+        // sync — vécu le 06/08 : premier run d'ornellaracano@icloud.com en
+        // declencheur='cron', 37 articles importés sans qu'elle ait appuyé
+        // sur quoi que ce soit. Une liste vide est un fait (la lecture a
+        // réussi), pas un aléa : on refuse — contrairement au catch
+        // ci-dessous, qui laisse passer parce qu'il ne SAIT pas. Le trigger
+        // garde_cadence_sync_cron (base) porte la même règle : une extension
+        // figée ou trafiquée ne peut pas la contourner.
+        if (!dernier) {
+          console.log("[sync-dressing][cron] refusée — aucune sync 'done' sur ce compte : la première sync est un geste explicite de l'utilisateur");
+          return { ok: false, reason: "cron_sans_premiere_sync" };
+        }
         const dernierFini = Date.parse(dernier?.finished_at ?? "");
         if (Number.isFinite(dernierFini) && Date.now() - dernierFini < SYNC_CRON_COOLDOWN_MS) {
           const dansMin = Math.max(1, Math.ceil((dernierFini + SYNC_CRON_COOLDOWN_MS - Date.now()) / 60000));
