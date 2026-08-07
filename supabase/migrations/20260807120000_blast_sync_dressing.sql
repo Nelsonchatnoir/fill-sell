@@ -1,7 +1,10 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- BLAST « SYNC DU DRESSING » — DÉDUP + CIBLE ORDONNÉE (2026-08-07)
--- ⛔ NON APPLIQUÉE — à montrer à Nico avant exécution. AUCUN envoi tant que
--- ce fichier n'est pas passé en prod (règle email_logs de CLAUDE.md).
+-- ✅ APPLIQUÉE en prod le 07/08 (validée par Nico), via db query --linked.
+-- Vérifié dans la foulée : index recréé avec 'blast_sync_dressing' dans le
+-- WHERE (pg_indexes), doublon d'insert refusé en 23505 (transaction annulée,
+-- zéro résidu), RPC présente en SECURITY DEFINER. Dry_run du jour : 592
+-- cibles (rangs 7/71/136/195/183), 12 internes exclus.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ── 1. Le type one-shot entre dans l'index AVANT le premier envoi ───────────
@@ -21,8 +24,9 @@ create unique index email_logs_one_shot_unique
 
 -- ── 2. Cible ORDONNÉE par engagement décroissant ────────────────────────────
 -- Le paramètre limit de la branche d'envoi ne doit pas piocher au hasard :
--- les premiers lots construisent la réputation du domaine (fillsell.app n'a
--- jamais envoyé en volume). Rang imposé par Nico (07/08) :
+-- les comptes engagés reçoivent en premier (le domaine a déjà envoyé en
+-- volume — blast_relaunch_aout : 323 destinataires le 01/08 en une journée —
+-- mais l'ordre reste une décision d'engagement). Rang imposé par Nico (07/08) :
 --   1 = extension_last_seen_at renseigné (les plus engagés)
 --   2 = actif sur 7 j   (dernier usage_logs < 7 j)
 --   3 = actif sur 30 j

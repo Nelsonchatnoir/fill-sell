@@ -47,12 +47,12 @@ const BLAST_BASES_INTERNES = [
 // de cible ordonnée. La branche s'appuie sur ce couplage : RPC absente = index
 // pas posé = refus TOTAL (dry_run compris).
 // La cible est ORDONNÉE PAR ENGAGEMENT DÉCROISSANT (RPC
-// blast_sync_dressing_cibles, rang 1-5, arbitrage Nico 07/08) : les premiers
-// lots construisent la réputation du domaine — fillsell.app n'a jamais envoyé
-// en volume, un lot d'ouverture fait de comptes à zéro usage maximiserait les
-// plaintes au pire moment. Le paramètre limit mange donc la liste DANS
-// L'ORDRE ; la dédup email_logs fait repartir chaque lot là où le précédent
-// s'est arrêté.
+// blast_sync_dressing_cibles, rang 1-5, arbitrage Nico 07/08). Le domaine a
+// déjà envoyé en volume (blast_relaunch_aout : 323 destinataires le 01/08 en
+// une journée, plus blast_founder 104 et founder_plan 295) — pas de montée
+// progressive nécessaire ; l'ordre reste : les engagés d'abord, les comptes à
+// zéro usage en dernier. Le paramètre limit mange la liste DANS L'ORDRE ; la
+// dédup email_logs fait repartir chaque lot là où le précédent s'est arrêté.
 const BLAST_SYNC_TYPE = "blast_sync_dressing";
 const BLAST_SYNC_SUBJECT = "Tes annonces Vinted dorment ? Republie-les en un clic";
 
@@ -1558,9 +1558,9 @@ serve(async (req) => {
   // Déclenché À LA MAIN, jamais par le cron :
   //   -d '{"blast_sync_dressing":true,"dry_run":true}' — cible + répartition
   //       par rang + audit Resend, ZÉRO envoi (ignore la fenêtre horaire) ;
-  //   -d '{"blast_sync_dressing":true,"limit":20}'     — un lot, dans l'ordre.
-  // Séquence actée (07/08) : dry_run → 20 → 50 → 150 → tranches de 150 sur
-  // plusieurs jours, arrêt net si bounces/plaintes montent entre deux lots.
+  //   -d '{"blast_sync_dressing":true,"limit":150}'    — un lot, dans l'ordre.
+  // Séquence actée (07/08, révisée le jour même) : dry_run → 150 → le reste,
+  // comme le blast du 01/08 (323 en une journée) — pas de montée progressive.
   // L'ordre vient de la RPC (engagement décroissant, tri stable) ; la reprise
   // vient de la dédup email_logs : chaque lot repart où le précédent s'est
   // arrêté, jamais de pioche au hasard.
