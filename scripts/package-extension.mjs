@@ -55,7 +55,10 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // 0.4.7, 0.4.8 et 0.5.0 ajoutées le 06/08 : les zips 0.4.7/0.4.8 existaient
 // sans avoir jamais été inscrits ici (la liste ne protégeait plus contre un
 // re-téléversement) ; la 0.5.0 est acceptée et servie par le CWS ce jour.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0'];
+// 0.5.1 ajoutée le 07/08 : acceptée et SERVIE par le CWS — preuve en base, un
+// utilisateur externe (inscrit 01/08, jamais en unpacked) remonte
+// extension_version='0.5.1' / build 2026-08-06T16:16:49Z+e35053b, vu le 07/08.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();

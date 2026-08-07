@@ -47,12 +47,12 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-07T09:25:00Z = opt-in du cron de sync : une alarme 'cron' ne lance
-// plus JAMAIS la première sync d'un compte (refus si aucun run 'done') — le
-// premier run d'ornellaracano@icloud.com du 06/08 était parti tout seul à
-// +10 min de l'installation. Le trigger garde_cadence_sync_runs (migration
-// 20260807100000, à valider) porte la même règle côté base.
-export const EXTENSION_LAST_COMMIT = '2026-08-07T09:25:00Z';
+// 2026-08-07T10:20:00Z = version 0.5.2 (paquet CWS du fix opt-in cron
+// c39f8ec) + harnais mock de pagination (unpacked seulement, double verrou
+// update_url + clé FILLSELL_SYNC_MOCK — INERTE dans un paquet CWS). Le
+// trigger garde_cadence_sync_runs (20260807100000) est appliqué en prod
+// depuis ce matin.
+export const EXTENSION_LAST_COMMIT = '2026-08-07T10:20:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.

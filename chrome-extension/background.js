@@ -4964,6 +4964,79 @@ function syncPauseMs() {
   return SYNC_PAUSE_MIN_MS + Math.floor(Math.random() * (SYNC_PAUSE_MAX_MS - SYNC_PAUSE_MIN_MS));
 }
 
+// ── Harnais de pagination (2026-08-07) — UNPACKED SEULEMENT ──────────────────
+// La boucle multi-pages (>96 articles), ses pauses 4-9 s et sa reprise n'ont
+// JAMAIS tourné en réel : tous les runs prod sont monopages (37 articles max).
+// Ce harnais substitue des pages FABRIQUÉES au seul point de contact Vinted de
+// la sync (le message SYNC_DRESSING_PAGE) pour exercer TOUTE la mécanique —
+// boucle, curseur page_suivante, écriture par tranches, gardes (a)/(b),
+// marquage des disparitions — contre la VRAIE base Supabase. En mode mock,
+// AUCUN octet ne part vers Vinted : ni onglet de travail, ni sonde de session,
+// ni page wardrobe.
+// DOUBLE VERROU, les deux obligatoires :
+//   1. manifest SANS update_url = extension chargée en « Load unpacked ». Un
+//      paquet CWS porte toujours un update_url → le harnais y est INERTE même
+//      si la clé de storage traînait ;
+//   2. clé posée À LA MAIN dans la console du service worker :
+//        chrome.storage.local.set({ FILLSELL_SYNC_MOCK: { actif: true, total_articles: 289 } })
+//      retrait : chrome.storage.local.remove("FILLSELL_SYNC_MOCK")
+// ⚠️ COMPTE QA UNIQUEMENT : les articles fictifs s'écrivent POUR DE VRAI dans
+// `inventaire` (ids en 9000000xxxxxx), et une sync complète marquerait
+// `disparu_le` sur les vrais articles vinted_sync du compte connecté.
+// Purge après test :
+//   DELETE FROM inventaire WHERE user_id='<QA>' AND origine='vinted_sync'
+//     AND vinted_item_id LIKE '9000000%';
+const SYNC_MOCK_STORAGE_KEY = "FILLSELL_SYNC_MOCK";
+async function lireSyncMockConfig() {
+  if (chrome.runtime.getManifest().update_url) return null; // CWS : jamais
+  try {
+    const st = await chrome.storage.local.get(SYNC_MOCK_STORAGE_KEY);
+    const cfg = st?.[SYNC_MOCK_STORAGE_KEY];
+    if (cfg?.actif !== true) return null;
+    const total = Number(cfg.total_articles);
+    return { totalArticles: Number.isFinite(total) && total > 0 ? Math.floor(total) : 289 };
+  } catch {
+    return null;
+  }
+}
+
+// Même contrat de retour que lirePageDressing (vinted.js) : c'est ce qui
+// permet à la boucle de ne pas savoir qu'elle est mockée. per_page=96 comme le
+// plafond serveur réel ; photos sur *.vinted.net pour rester du bon côté de la
+// frontière de propriété des photos (estCdnVinted).
+function pageDressingMock(mock, page) {
+  const PER_PAGE = 96;
+  const totalPages = Math.max(1, Math.ceil(mock.totalArticles / PER_PAGE));
+  const debut = (page - 1) * PER_PAGE;
+  const n = Math.max(0, Math.min(PER_PAGE, mock.totalArticles - debut));
+  const nowSec = Math.floor(Date.now() / 1000);
+  const articles = Array.from({ length: n }, (_, i) => {
+    const num = debut + i + 1;
+    const id = String(9000000000000 + num);
+    return {
+      vinted_item_id: id,
+      titre: `Article harnais ${num}`,
+      url: `https://www.vinted.fr/items/${id}`,
+      prix: Number((5 + (num % 40) + 0.5).toFixed(2)),
+      devise: "EUR",
+      marque: null,
+      taille: null,
+      etat: null,
+      vues: num % 50,
+      favoris: num % 7,
+      statut: "active",
+      photos: [{ url: `https://images1.vinted.net/mock/harnais-${num}.jpg`, principale: true, ts: nowSec - num * 3600 }],
+      photo_ts: nowSec - num * 3600,
+    };
+  });
+  return {
+    success: true,
+    articles,
+    pagination: { current_page: page, total_pages: totalPages, total_entries: mock.totalArticles, per_page: PER_PAGE },
+    page,
+  };
+}
+
 /** Date du jour en heure de PARIS (la base stocke en UTC, on regroupe par jour vécu). */
 function jourParis(d = new Date()) {
   const p = new Intl.DateTimeFormat("en-CA", {
@@ -5362,23 +5435,34 @@ async function syncDressingUnlocked(declencheur) {
   // donnent des motifs plus précis que le filet général.
   try {
 
-  // ── Onglet de travail Vinted (fenêtre dédiée, jamais chez l'utilisateur) ──
-  let tabId;
-  try {
-    tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
-  } catch (e) {
-    return await echec(`onglet de travail Vinted : ${e?.message ?? e}`);
-  }
+  // ── Harnais mock (unpacked seulement, cf. bandeau de lireSyncMockConfig) ──
+  // Lu APRÈS la création du run : le harnais éprouve la boucle et la reprise,
+  // pas les gardes de cadence ni le trigger, qui restent RÉELS et actifs.
+  const mock = await lireSyncMockConfig();
 
-  const ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch((e) => ({
-    success: false, error: `sonde injoignable : ${String(e?.message ?? e)}`,
-  }));
-  if (!ident?.success) {
-    // Le motif précis (session absente HTTP 401, accès refusé HTTP 403,
-    // erreur réseau, bot-shield) vient du content script, code HTTP réel
-    // inclus — on le recopie tel quel dans le run. Le front reconnaît le cas
-    // « session » sur ce texte pour afficher son message actionnable.
-    return await echec(`sonde de session Vinted : ${ident?.error ?? "échec inconnu"}`);
+  // ── Onglet de travail Vinted (fenêtre dédiée, jamais chez l'utilisateur) ──
+  // En mode mock : ni onglet, ni sonde — zéro contact Vinted, c'est le contrat.
+  let tabId = null;
+  let ident = { success: true, userId: "harnais-mock" };
+  if (mock) {
+    console.warn(`[sync-dressing] ⚠️ HARNAIS MOCK ACTIF — ${mock.totalArticles} articles fabriqués, aucun appel Vinted (compte QA uniquement)`);
+  } else {
+    try {
+      tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+    } catch (e) {
+      return await echec(`onglet de travail Vinted : ${e?.message ?? e}`);
+    }
+
+    ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch((e) => ({
+      success: false, error: `sonde injoignable : ${String(e?.message ?? e)}`,
+    }));
+    if (!ident?.success) {
+      // Le motif précis (session absente HTTP 401, accès refusé HTTP 403,
+      // erreur réseau, bot-shield) vient du content script, code HTTP réel
+      // inclus — on le recopie tel quel dans le run. Le front reconnaît le cas
+      // « session » sur ce texte pour afficher son message actionnable.
+      return await echec(`sonde de session Vinted : ${ident?.error ?? "échec inconnu"}`);
+    }
   }
 
   // ── Réservations de republication (volet c, 2026-08-05) ───────────────────
@@ -5426,9 +5510,13 @@ async function syncDressingUnlocked(declencheur) {
   let totalEntries = null;
 
   while (page <= SYNC_MAX_PAGES) {
-    const res = await sendMessageToTab(tabId, {
-      type: "SYNC_DRESSING_PAGE", page, userId: ident.userId,
-    }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+    // Point de coupe du harnais : la boucle, les pauses, le curseur et les
+    // gardes tournent À L'IDENTIQUE — seule la provenance de la page change.
+    const res = mock
+      ? pageDressingMock(mock, page)
+      : await sendMessageToTab(tabId, {
+          type: "SYNC_DRESSING_PAGE", page, userId: ident.userId,
+        }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
 
     if (!res?.success) {
       // Bot-shield ou session morte : on s'arrête PROPREMENT et on garde le
@@ -5586,6 +5674,9 @@ async function syncDressingUnlocked(declencheur) {
   // vrai le jour où l'un d'eux s'y intéressera.)
   const NOTE = "[note] ";
   const notes = [];
+  // Un run mocké doit se lire comme tel en base : personne ne doit prendre 289
+  // articles fabriqués pour un dressing réel en analysant vinted_sync_runs.
+  if (mock) notes.push(`${NOTE}HARNAIS MOCK pagination (unpacked) — ${mock.totalArticles} articles fabriqués, aucun appel Vinted`);
   if (echecsEcriture.length) {
     // Des échecs d'écriture isolés ne dégradent PAS le statut (la sync est
     // allée au bout) mais sont consignés : items_vus − créés − maj doit
