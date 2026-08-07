@@ -876,7 +876,7 @@ function formatDepuis(ts, lang) {
 //     à un changement d'onglet, et peut avoir été lancée ailleurs ;
 //  3. on annonce ce qu'on lit ET ce qu'on ne touche pas. Un import soupçonné de
 //     republier sur Vinted, c'est la confiance perdue en un écran.
-function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone }) {
+function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0 }) {
   const fr = lang !== 'en';
   // « Téléphone » = web mobile (Safari/Chrome) ET application native. Les deux
   // reçoivent le MÊME sens de message : l'installation se fait une fois sur un
@@ -892,6 +892,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const [dejaSync, setDejaSync] = useState(false);
   const [suivi, setSuivi] = useState(false);
   const [attente, setAttente] = useState(false);   // clic émis, run pas encore visible en base
+  // Extension OCCUPÉE par une republication (2026-08-07 soir) : la demande de
+  // sync attend le verrou de l'extension, elle n'a pas échoué. Déclaré ICI,
+  // AVANT l'effet de suivi qui l'écrit (règle TDZ du fichier).
+  const [attenteOccupee, setAttenteOccupee] = useState(false);
   const [message, setMessage] = useState(null);    // ce que la base ne dit pas (commande non prise, poll abandonné)
   // Accroche extension (2026-08-05) : ouverte quand AUCUNE extension ne répond
   // dans CE navigateur — l'écran gère lui-même mobile (mailto/copie du lien)
@@ -989,6 +993,25 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       } else if (attenduDepuis && Date.now() - attenduDepuis > SYNC_DEMARRAGE_MAX_MS) {
         setAttente(false);
         setSuivi(false);
+        // ── EXTENSION OCCUPÉE ≠ EXTENSION MUETTE (2026-08-07 soir) ────────
+        // Cas réel antavintage : 22 republications en vol, le verrou global
+        // de l'extension est pris en continu — la sync ATTEND son tour, elle
+        // n'est pas en panne. L'ancien message « extension muette » a
+        // provoqué 6 re-clics en 27 minutes chez un utilisateur qui croyait
+        // à une panne. Quand une republication est non terminale sur le
+        // compte, on dit la vérité : occupée, ça partira après —
+        // et la télémétrie sync_click dit 'attente' et non 'echec'.
+        if (repubEnVol > 0) {
+          if (user?.id) {
+            supabase.from('usage_logs').insert({
+              user_id: user.id, feature: 'sync_click',
+              metadata: { resultat: 'attente', raison: 'extension_occupee_republication', voie: 'directe', source, repub_en_vol: repubEnVol },
+            }).then(({ error }) => { if (error) console.warn('[sync_click] non journalisé:', error.message); });
+          }
+          setMessage(null);
+          setAttenteOccupee(true);
+          return;
+        }
         // Deuxième ligne du même clic (cf. logSyncClick) : « lancée » a été
         // écrit au clic, mais RIEN n'a démarré en 30 s — c'est l'échec le
         // plus silencieux du parcours, celui que le blast doit pouvoir voir.
@@ -1043,6 +1066,31 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // Passé le délai normal de réclamation, l'écran change de discours : ce
   // n'est plus « ça arrive », c'est « ton ordinateur n'a pas répondu ».
   const [reclamationTardive, setReclamationTardive] = useState(false);
+
+  // ── Résolution de l'attente « occupée » ───────────────────────────────────
+  // Poll LENT (30 s — le verrou peut rester pris de longues minutes, inutile
+  // de marteler la base) : dès que la sync en file dans l'extension démarre
+  // enfin (run 'running', ou démarré après le clic), le suivi normal reprend.
+  // Et si les republications se terminent sans qu'une sync parte (service
+  // worker mort, file perdue), repubEnVol tombe à 0 : on rend la main au
+  // bouton au lieu de bloquer pour toujours.
+  useEffect(() => {
+    if (!attenteOccupee || !user?.id) return;
+    if (repubEnVol === 0) { setAttenteOccupee(false); return; }
+    const id = setInterval(async () => {
+      let r = null;
+      try { r = await lireDernierRunDressing(user.id); }
+      catch { return; }
+      const t = clicAtRef.current;
+      if (r && (r.status === 'running'
+        || (t && Number.isFinite(Date.parse(r.started_at)) && Date.parse(r.started_at) >= t - 5000))) {
+        setAttenteOccupee(false);
+        setRun(r);
+        if (r.status === 'running') setSuivi(true);
+      }
+    }, 30000);
+    return () => clearInterval(id);
+  }, [attenteOccupee, user?.id, repubEnVol]);
 
   // ── Attente d'une réclamation (2026-08-04) ────────────────────────────────
   // Le cas FRÉQUENT est Chrome ouvert : la demande part en 2 min au plus. On
@@ -1379,17 +1427,42 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         </div>
       </div>
 
-      <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante} onClick={lancer}>
+      <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee} onClick={lancer}>
         {enCours
           ? (fr?"Synchronisation en cours…":"Syncing…")
           : envoi
             ? (fr?"Envoi de la demande…":"Sending request…")
-            : enAttenteDistante
-              ? (fr?"Demande en attente":"Request pending")
-              : dejaSync
-                ? (fr?"Actualiser mon dressing":"Refresh my closet")
-                : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
+            : attenteOccupee
+              ? (fr?"Sync en attente":"Sync waiting")
+              : enAttenteDistante
+                ? (fr?"Demande en attente":"Request pending")
+                : dejaSync
+                  ? (fr?"Actualiser mon dressing":"Refresh my closet")
+                  : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
       </SecondaryButton>
+
+      {/* Extension OCCUPÉE (2026-08-07 soir, cas antavintage : 22
+          republications en vol, 6 re-clics sur un « extension muette »
+          mensonger). La sync n'a pas échoué : elle attend le verrou de
+          l'extension. Estimation HONNÊTE : la même formule 5-7 min par
+          republication que la feuille de lot — jamais un chiffre inventé.
+          Le bouton est désactivé tant que ça dure : recliquer n'apporte
+          rien (la demande est déjà en file dans l'extension). */}
+      {attenteOccupee&&(
+        <div style={{display:"flex",alignItems:"center",gap:10,background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
+          <Loader size={18} thickness={2}/>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:12.5,fontWeight:700,color:"#5C6560"}}>
+              {fr?"L'extension est occupée — ta synchronisation attend son tour":"The extension is busy — your sync is waiting its turn"}
+            </div>
+            <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",marginTop:2}}>
+              {fr
+                ?`${repubEnVol} republication${repubEnVol>1?'s':''} en cours — la synchronisation partira automatiquement juste après${repubEnVol>0?` (compte ${repubEnVol*5>=60?`environ ${Math.ceil(repubEnVol*5/60)} h`:`~${repubEnVol*5}-${repubEnVol*7} min`})`:''}. Pas besoin de recliquer.`
+                :`${repubEnVol} repost${repubEnVol>1?'s':''} in progress — the sync will start automatically right after${repubEnVol>0?` (allow ${repubEnVol*5>=60?`about ${Math.ceil(repubEnVol*5/60)} h`:`~${repubEnVol*5}-${repubEnVol*7} min`})`:''}. No need to click again.`}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Attente d'une réclamation. DEUX discours, dans cet ordre :
           · le cas FRÉQUENT (Chrome ouvert) — un loader et le délai RÉEL,
@@ -3160,6 +3233,7 @@ const StockTab = memo(function StockTab({
               extensionStatus={extensionStatus}
               source={stock.length===0?'stock_empty':'stock_liste'}
               onDone={rafraichirApresSync}
+              repubEnVol={repubVivants}
             />
           </div>
 
