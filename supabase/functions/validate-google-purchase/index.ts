@@ -79,9 +79,16 @@ async function getGoogleAccessToken(): Promise<string> {
     { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false, ["sign"],
   );
+  // base64url OBLIGATOIRE (fix 2026-08-07) : un JWT s'encode en base64url,
+  // jamais en base64 standard. Avec btoa nu, la signature RSA contient
+  // quasi toujours des '+'/'/' et du padding '=' → assertion invalide →
+  // pas d'access_token → « Bearer undefined » → 401 Publisher sur TOUS les
+  // appels. Ce bug rendait la fonction incapable de marcher depuis sa
+  // création, masqué jusqu'au 07/08 par la clé tronquée qui explosait avant.
+  const b64url = (s: string) => btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const now = Math.floor(Date.now() / 1000);
-  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const payload = btoa(JSON.stringify({
+  const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = b64url(JSON.stringify({
     iss: email,
     scope: "https://www.googleapis.com/auth/androidpublisher",
     aud: "https://oauth2.googleapis.com/token",
@@ -89,14 +96,19 @@ async function getGoogleAccessToken(): Promise<string> {
   }));
   const signingInput = new TextEncoder().encode(`${header}.${payload}`);
   const sig = await crypto.subtle.sign({ name: "RSASSA-PKCS1-v1_5" }, privateKey, signingInput);
-  const jwt = `${header}.${payload}.${btoa(String.fromCharCode(...new Uint8Array(sig)))}`;
+  const jwt = `${header}.${payload}.${b64url(String.fromCharCode(...new Uint8Array(sig)))}`;
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
   });
-  const { access_token } = await res.json();
-  return access_token;
+  const tok = await res.json();
+  if (!res.ok || !tok.access_token) {
+    // Sans cette garde, un refus du token endpoint devient « Bearer
+    // undefined » et se déguise en 401 Publisher deux appels plus loin.
+    throw new Error(`Google OAuth token: HTTP ${res.status} — ${JSON.stringify(tok).slice(0, 200)}`);
+  }
+  return tok.access_token;
 }
 
 serve(async (req) => {
