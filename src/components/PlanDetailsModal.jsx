@@ -109,8 +109,10 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
     // automatisation réservée au Pro.
     fr ? 'Republication Vinted illimitée et gratuite (0 Pépite)' : 'Unlimited free Vinted reposting (0 Nuggets)',
     ...(isPro ? [
-      fr ? 'Republication gratuite + AUTOMATIQUE (tes annonces qui stagnent remontent toutes seules)'
-         : 'Free + AUTOMATIC Vinted reposting (stale listings bump themselves)',
+      // L'auto est un CHOIX (toggle + plafond/jour), jamais un comportement
+      // imposé — la ligne de base au-dessus dit déjà « gratuite ».
+      fr ? 'Republication automatisable, si tu l\'actives — tes annonces qui stagnent remontent toutes seules'
+         : 'Automatable reposting, if you turn it on — stale listings bump themselves',
       fr ? `De quoi publier bien plus d'annonces (retouche photos en option jusqu'à ${retouchMax} Pépites)`
          : `Room for many more listings (optional photo editing up to ${retouchMax} Nuggets)`,
     ] : []),

@@ -327,8 +327,17 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? `De quoi publier bien plus d'annonces (génération ${genPrice} Pépite, ${pubUnit} Pépites par plateforme, retouche photos en option jusqu'à ${retouchMax})`
              : `Room for many more listings (generation ${genPrice} Nugget, ${pubUnit} Nuggets per platform, optional photo editing up to ${retouchMax})`,
-          fr ? 'Republication GRATUITE et AUTOMATIQUE — tes annonces qui stagnent remontent toutes seules, 0 Pépite'
-             : 'FREE, AUTOMATIC Vinted reposting — stale listings bump themselves, 0 Nuggets',
+          // « AUTOMATIQUE » tout court était faux (07/08 soir) : l'auto est
+          // un CHOIX — toggle + plafond 1-50/jour (10 par défaut) + âge.
+          // Le texte promet une capacité (« automatisable si tu veux »),
+          // jamais un comportement imposé.
+          fr ? 'Republication gratuite (0 Pépite), automatisable si tu veux — tes annonces qui stagnent remontent toutes seules'
+             : 'Free reposting (0 Nuggets) — automate it if you want: stale listings bump themselves',
+          // Répété depuis Premium (comme l'Excel juste en dessous) : le
+          // « Tout Premium, et en plus » couvre l'héritage, mais qui compare
+          // ligne à ligne doit le VOIR. Droit réellement hérité :
+          // check_inventory_limit exempte premium/pro/comped à l'identique.
+          fr ? 'Stock illimité' : 'Unlimited stock',
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Support prioritaire' : 'Priority support',
         ]}
