@@ -2262,6 +2262,19 @@ const StockTab = memo(function StockTab({
   // coin_config.free_stock_limit). L'ancien items.length comptait TOUT —
   // vendus et sync compris.
   const quotaFree = compteArticlesQuota(items);
+  // Limite Free lue de coin_config (JAMAIS en dur — elle a déjà changé de 20
+  // à 200) ; le fallback ne sert qu'au premier rendu / réseau muet. Même
+  // pattern client que price_republish plus bas. L'assiette de quotaFree est
+  // mot pour mot celle du trigger serveur check_inventory_limit (statut !=
+  // vendu, origine != vinted_sync — cf. utils/stockLimit.js).
+  const [freeStockLimit, setFreeStockLimit] = useState(FREE_STOCK_LIMIT_FALLBACK);
+  useEffect(() => {
+    if (isPremium) return; // Premium/Pro/comped : illimité, rien à lire
+    let stale = false;
+    supabase.from('coin_config').select('value').eq('key', 'free_stock_limit').maybeSingle()
+      .then(({ data }) => { if (!stale && Number.isFinite(data?.value)) setFreeStockLimit(data.value); });
+    return () => { stale = true; };
+  }, [isPremium]);
 
   // ── É5 Republication Vinted (2026-08-05 ; démasquée pour tous le 06/08) ───
   // Prix lu en config (jamais en dur) ; libellé sans prix tant que la config
@@ -3455,6 +3468,43 @@ const StockTab = memo(function StockTab({
                 return <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{_fQty} {lang==='fr'?'art.':'items'} · {fmt(_fVal)}</div>;
               })()}
             </div>
+            {/* ── Quota du plan (07/08, validé Nico) — ligne DÉDIÉE sous le
+                header : le chip au-dessus reflète le FILTRE actif, le quota
+                est GLOBAL — les mélanger mettrait deux nombres différents
+                côte à côte sans explication. L'assiette affichée = celle que
+                le trigger applique réellement (vendus et vinted_sync exclus)
+                — la parenthèse est indispensable : sans elle, un compte à 30
+                importés lisant « 4 / 200 » croirait le compteur cassé.
+                Free à 0 article : RIEN (un nouvel inscrit ne doit pas
+                rencontrer un quota en premier). Ambre dès 80 %. Quota
+                ATTEINT : la ligne devient un geste (modale de conversion,
+                même patron que la RepublishSheet). Premium/Pro : « Stock
+                illimité », discret, même place. */}
+            {(()=>{
+              if(isPremium){
+                return <div style={{fontSize:11.5,color:"#8A8578",margin:"6px 2px 0"}}>{lang==='fr'?'Stock illimité':'Unlimited stock'}</div>;
+              }
+              if(quotaFree===0)return null;
+              const plein=quotaFree>=freeStockLimit;
+              const proche=!plein&&quotaFree>=freeStockLimit*0.8;
+              if(plein){
+                return(
+                  <button onClick={()=>{track('premium_click',{source:'quota_stock'});openUpgradeModal();}}
+                    style={{display:"block",width:"100%",textAlign:"left",margin:"6px 0 0",padding:"8px 10px",borderRadius:10,border:"1px dashed rgba(47,158,144,0.55)",background:"rgba(47,158,144,0.07)",color:"#1B6E62",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'
+                      ?`Quota gratuit atteint : ${quotaFree} / ${freeStockLimit} articles — 💡 Stock illimité avec Premium`
+                      :`Free quota reached: ${quotaFree} / ${freeStockLimit} items — 💡 Unlimited stock with Premium`}
+                  </button>
+                );
+              }
+              return(
+                <div style={{fontSize:11.5,lineHeight:1.5,color:proche?"#8A6100":"#8A8578",margin:"6px 2px 0"}}>
+                  {lang==='fr'
+                    ?`Quota gratuit : ${quotaFree} / ${freeStockLimit} articles — les vendus et le dressing Vinted importé ne comptent pas`
+                    :`Free quota: ${quotaFree} / ${freeStockLimit} items — sold items and your imported Vinted closet don't count`}
+                </div>
+              );
+            })()}
             {(()=>{
               const _sbAll=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
               const marquesStockFiltreesParType=["Toutes",..._sbAll.filter(b=>b.toLowerCase()!=="sans marque"),..._sbAll.filter(b=>b.toLowerCase()==="sans marque")];
