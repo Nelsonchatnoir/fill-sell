@@ -989,6 +989,13 @@ function blastSyncDressingHtml(): string {
   // hébergées comme les logos : public/email/ → https://fillsell.app/email/.
   // Elles vivent dans la colonne de texte de l'étape (offset 40 px), coins
   // arrondis + liseré, width:100% → se compressent proprement sur mobile.
+  // ⚠️ Suffixe -v2 OBLIGATOIRE (07/08) : le premier test est parti avant la
+  // fin du déploiement Vercel — le fallback SPA a répondu du text/html sur
+  // les URLs .png, et cette réponse est restée coincée dans les caches
+  // (Cache-Control immutable 1 an + Cloudflare + proxy images de Gmail).
+  // Un changement d'image = TOUJOURS un nouveau nom de fichier, jamais une
+  // réécriture sous le même nom ; et vérifier le Content-Type (image/png),
+  // pas le code HTTP — le fallback SPA rend 200 sur n'importe quel chemin.
   const capture = (fichier: string, alt: string) => `
 <img src="https://fillsell.app/email/${fichier}" width="456" alt="${alt}"
   style="width:100%; max-width:456px; height:auto; border-radius:12px; border:1px solid #E7E3D8; display:block; margin-top:14px;">`;
@@ -1043,9 +1050,9 @@ function blastSyncDressingHtml(): string {
 <td style="padding:36px 32px 0 32px;">
 <p style="margin:0 0 18px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1B6E62;">Comment ça marche</p>
 ${etape("01", "Tu importes ton dressing Vinted dans FillSell", "Un clic, gratuit, aucune Pépite. Titres, prix, photos, vues et favoris remontent tout seuls.", false,
-  capture("blast-sync-01-dressing.png", "La carte « Tu vends déjà sur Vinted ? » dans FillSell, avec le bouton Actualiser mon dressing"))}
+  capture("blast-sync-01-dressing-v2.png", "La carte « Tu vends déjà sur Vinted ? » dans FillSell, avec le bouton Actualiser mon dressing"))}
 ${etape("02", "Sur chaque annonce, un bouton «&nbsp;Republier&nbsp;»", "FillSell sauvegarde la fiche, retire l'ancienne annonce et la remet en ligne à l'identique. Tu peux même baisser le prix au passage.", true,
-  capture("blast-sync-02-republier.png", "Une annonce importée dans FillSell, avec son bouton Republier"))}
+  capture("blast-sync-02-republier-v2.png", "Une annonce importée dans FillSell, avec son bouton Republier"))}
 ${etape("03", "Plusieurs articles d'un coup", "Tu sélectionnes, tu republies en lot.", true)}
 <p style="margin:24px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">C'est gratuit, et automatisable avec l'abonnement Pro.</p>
 </td>
