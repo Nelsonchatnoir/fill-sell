@@ -258,8 +258,14 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit
              : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget, publishing ${pubUnit} Nuggets/platform)`,
           // Droits republication par plan (2026-08-05) : manuelle incluse dès
           // Premium (1 Pépite en Free), automatisation réservée au Pro.
-          fr ? 'Republication Vinted incluse (fais remonter tes annonces dans le fil)'
-             : 'Vinted reposting included (bump your listings in the feed)',
+          // « incluse » ne disait pas la valeur (07/08 : deux utilisateurs
+          // actifs ont payé 8 et 22 Pépites le soir même sans comprendre que
+          // Premium l'aurait rendue gratuite). Règle réelle vérifiée dans la
+          // RPC : premium/pro/comped → 0 Pépite, sans plafond de nombre —
+          // « illimitée » = en nombre d'annonces (la cadence reste 1
+          // republication aboutie par article et par 24 h, tous plans).
+          fr ? 'Republication Vinted illimitée et GRATUITE — 0 Pépite (1 Pépite par annonce en Free)'
+             : 'Unlimited FREE Vinted reposting — 0 Nuggets (1 Nugget per listing on Free)',
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
@@ -321,8 +327,8 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? `De quoi publier bien plus d'annonces (génération ${genPrice} Pépite, ${pubUnit} Pépites par plateforme, retouche photos en option jusqu'à ${retouchMax})`
              : `Room for many more listings (generation ${genPrice} Nugget, ${pubUnit} Nuggets per platform, optional photo editing up to ${retouchMax})`,
-          fr ? 'Republication Vinted AUTOMATIQUE : tes annonces qui stagnent remontent toutes seules'
-             : 'AUTOMATIC Vinted reposting: stale listings bump themselves',
+          fr ? 'Republication GRATUITE et AUTOMATIQUE — tes annonces qui stagnent remontent toutes seules, 0 Pépite'
+             : 'FREE, AUTOMATIC Vinted reposting — stale listings bump themselves, 0 Nuggets',
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Support prioritaire' : 'Priority support',
         ]}

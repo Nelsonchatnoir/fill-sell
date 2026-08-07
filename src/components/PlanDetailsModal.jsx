@@ -107,10 +107,10 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
        : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
     // Droits republication (2026-08-05) : manuelle incluse dès Premium,
     // automatisation réservée au Pro.
-    fr ? 'Republication Vinted incluse' : 'Vinted reposting included',
+    fr ? 'Republication Vinted illimitée et gratuite (0 Pépite)' : 'Unlimited free Vinted reposting (0 Nuggets)',
     ...(isPro ? [
-      fr ? 'Republication Vinted AUTOMATIQUE (tes annonces qui stagnent remontent toutes seules)'
-         : 'AUTOMATIC Vinted reposting (stale listings bump themselves)',
+      fr ? 'Republication gratuite + AUTOMATIQUE (tes annonces qui stagnent remontent toutes seules)'
+         : 'Free + AUTOMATIC Vinted reposting (stale listings bump themselves)',
       fr ? `De quoi publier bien plus d'annonces (retouche photos en option jusqu'à ${retouchMax} Pépites)`
          : `Room for many more listings (optional photo editing up to ${retouchMax} Nuggets)`,
     ] : []),

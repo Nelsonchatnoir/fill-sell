@@ -945,7 +945,13 @@ ${etape("01", "Tu importes ton dressing Vinted dans FillSell", "Un clic, gratuit
 ${etape("02", "Sur chaque annonce, un bouton «&nbsp;Republier&nbsp;»", "FillSell sauvegarde la fiche, retire l'ancienne annonce et la remet en ligne à l'identique. Tu peux même baisser le prix au passage.", true,
   capture("blast-sync-02-republier-v2.png", "Une annonce importée dans FillSell, avec son bouton Republier"))}
 ${etape("03", "Plusieurs articles d'un coup", "Tu sélectionnes, tu republies en lot.", true)}
-<p style="margin:24px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">C'est gratuit, et automatisable avec l'abonnement Pro.</p>
+<!-- Reformulée (07/08 soir) : « C'est gratuit, et automatisable avec
+     l'abonnement Pro », placée APRÈS les trois étapes, se lisait comme
+     « la republication est gratuite » tout court — les deux utilisateurs
+     facturés le soir du blast l'avaient reçue. Le « gratuit » porte sur
+     l'IMPORT ; la valeur republication se dit PAR PLAN, sans montant
+     (la grille vit dans l'app). Vaut pour tout envoi futur du template. -->
+<p style="margin:24px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">L'import de ton dressing est gratuit. La republication est gratuite et illimitée avec Premium, et automatisable avec Pro.</p>
 </td>
 </tr>
 

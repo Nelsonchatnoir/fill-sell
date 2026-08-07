@@ -208,7 +208,7 @@ const PLANS = {
 
 const FAQ = {
   fr: [
-    ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre ({FREE} en Free, {PREMIUM} en Premium, {PRO} en Pro) et tu les dépenses pour générer une annonce par IA (1 Pépite), la publier (3 Pépites par plateforme, plus 9 ou 32 si tu choisis la retouche photos IA) ou lancer une analyse Lens (6 Pépites). La republication d’annonces Vinted est incluse en Premium et Pro (automatique en Pro) ; 1 Pépite en Free. Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
+    ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre ({FREE} en Free, {PREMIUM} en Premium, {PRO} en Pro) et tu les dépenses pour générer une annonce par IA (1 Pépite), la publier (3 Pépites par plateforme, plus 9 ou 32 si tu choisis la retouche photos IA) ou lancer une analyse Lens (6 Pépites). La republication d’annonces Vinted est gratuite et illimitée en Premium et Pro (automatique en Pro) ; 1 Pépite par republication en Free. Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
     ['Sur quelles plateformes je publie ?', 'Vinted, Leboncoin, eBay et Beebs — les 4 places de marché qui comptent en France. Un seul ajout, publié sur les quatre en même temps.'],
     ['Comment marche la publication automatique ?', 'Tu ajoutes un article à ton inventaire, puis FillSell génère l’annonce et la publie sur les 4 plateformes en même temps. Rien à recopier ni à re-téléverser.'],
     ['Et si un article se vend ?', 'FillSell détecte la vente, retire l’annonce des 3 autres plateformes et met à jour tes marges, ton stock et tes stats — automatiquement. Zéro risque de double-vente.'],
@@ -216,7 +216,7 @@ const FAQ = {
     ['Je peux annuler quand je veux ?', 'Oui. Premium et Pro sont sans engagement : tu changes d’offre ou tu arrêtes en un clic depuis l’app.'],
   ],
   en: [
-    ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan ({FREE} on Free, {PREMIUM} on Premium, {PRO} on Pro) and spend them to generate a listing with AI (1 Pépite), publish it (3 Pépites per platform, plus 9 or 32 if you pick AI photo editing) or run a Lens analysis (6 Pépites). Vinted reposting is included in Premium and Pro (automatic on Pro); 1 Pépite on Free. Need more? Packs start at €4.99.'],
+    ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan ({FREE} on Free, {PREMIUM} on Premium, {PRO} on Pro) and spend them to generate a listing with AI (1 Pépite), publish it (3 Pépites per platform, plus 9 or 32 if you pick AI photo editing) or run a Lens analysis (6 Pépites). Vinted reposting is free and unlimited on Premium and Pro (automatic on Pro); 1 Pépite per repost on Free. Need more? Packs start at €4.99.'],
     ['Which marketplaces can I publish to?', 'Vinted, Leboncoin, eBay and Beebs — the 4 marketplaces that matter in France. One add, posted to all four at once.'],
     ['How does automatic publishing work?', 'You add an item to your inventory, then FillSell builds the listing and posts it to all 4 marketplaces at once. Nothing to copy or re-upload.'],
     ['What happens when an item sells?', 'FillSell detects the sale, pulls the listing from the other 3 marketplaces and updates your margins, stock and stats — automatically. Zero double-sale risk.'],

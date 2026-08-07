@@ -1946,7 +1946,7 @@ function RepublishProgressSheet({ lang, job, onClose }) {
   );
 }
 
-function RepublishSheet({ lang, items, gratuit, prixUnitaire, onClose, onConfirm }) {
+function RepublishSheet({ lang, items, gratuit, prixUnitaire, onClose, onConfirm, onUpgrade }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   const [pct, setPct] = useState(0);
@@ -2028,6 +2028,21 @@ function RepublishSheet({ lang, items, gratuit, prixUnitaire, onClose, onConfirm
             ? (fr ? `Republier${prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''} · ${cout}` : `Repost${prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''} · ${cout}`)
             : (fr ? `Republier les ${items.length}${pct > 0 ? ` à −${pct} %` : ''} · ${cout}` : `Repost ${items.length}${pct > 0 ? ` at −${pct}%` : ''} · ${cout}`)}
         </button>
+        {/* ── Le CTA le mieux ciblé de l'app (07/08, validé Nico) ──────────
+            L'utilisateur Free a l'INTENTION (il est dans la feuille) ET le
+            PRIX sous les yeux (le bouton au-dessus affiche « · N Pépites ») :
+            c'est l'instant exact où « gratuite AILLEURS » doit se dire —
+            l'inverse de l'ambiguïté du blast (« c'est gratuit » sans
+            qualificatif). Visible UNIQUEMENT quand !gratuit : un Premium/Pro
+            n'a rien à convertir. Tap → fermeture de la feuille + modale de
+            conversion (openUpgradeModal() sans argument, même navigation que
+            le bloc auto Pro — aucune logique de facturation). */}
+        {!gratuit && (
+          <button onClick={() => { onClose(); onUpgrade?.(); }}
+            style={{ width: '100%', marginTop: 8, padding: '10px 0', borderRadius: 12, border: '1px dashed rgba(47,158,144,0.55)', background: 'rgba(47,158,144,0.07)', color: '#1B6E62', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
+            💡 {fr ? 'Gratuite et illimitée avec Premium' : 'Free and unlimited with Premium'}
+          </button>
+        )}
         <button onClick={onClose} style={{ width: '100%', marginTop: 8, padding: 10, border: 'none', background: 'none', color: '#5C6560', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           {fr ? 'Annuler' : 'Cancel'}
         </button>
@@ -4388,6 +4403,7 @@ const StockTab = memo(function StockTab({
             if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix);
             else lancerRepublicationLot(cibles);
           }}
+          onUpgrade={()=>{track('premium_click',{source:'republish_sheet'});openUpgradeModal();}}
         />
       )}
       {/* Où en est ma republication — ouverte au tap sur la pastille de carte.
