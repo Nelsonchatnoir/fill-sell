@@ -152,6 +152,103 @@ serve(async (req) => {
 
   const jobs = (rows ?? []) as Job[];
 
+  // ── Annonces HORS LIGNE orphelines (2026-08-07, 3d-b validé Nico) ─────────
+  // Un job republish resté à l'étape 'deleted' plus de 30 min = une annonce
+  // RETIRÉE de Vinted que rien ne recrée (extension endormie, session
+  // perdue — cas réel du soir : job 97757a78, ~1 h hors ligne, zéro signal).
+  // Le mail doit permettre de DÉCIDER sans ouvrir Supabase : pseudo, titre,
+  // durée hors ligne, fraîcheur du heartbeat. needs_user/failed inclus :
+  // l'app les montre en rouge, mais rien ne garantit que l'utilisateur l'a
+  // vue. Dédup PAR JOB : orphan_alerted_at posé dans platform_fields après
+  // l'envoi — une alerte par job, jamais une toutes les 3 minutes.
+  // Best-effort INTÉGRAL : ce bloc n'a pas le droit de casser la veille
+  // handler, tout est avalé.
+  let orphelinsAlertes = 0;
+  try {
+    const seuilIso = new Date(now - 30 * 60_000).toISOString();
+    const { data: bruts } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, title, status, platform_fields")
+      .eq("action", "republish")
+      .in("status", ["pending", "processing", "needs_user", "failed"])
+      .filter("platform_fields->>republish_step", "eq", "deleted")
+      .filter("platform_fields->>orphan_alerted_at", "is", "null")
+      .lt("platform_fields->>deleted_at", seuilIso);
+    // deleted_at absent = pas de durée mesurable, on ne crie pas dessus.
+    // deno-lint-ignore no-explicit-any
+    const orphelins = ((bruts ?? []) as any[]).filter((j) => j.platform_fields?.deleted_at);
+    if (orphelins.length && resendKey) {
+      const userIds = [...new Set(orphelins.map((j) => j.user_id as string))];
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, username, email, extension_last_seen_at")
+        .in("id", userIds);
+      // deno-lint-ignore no-explicit-any
+      const profParId = new Map(((profs ?? []) as any[]).map((p) => [p.id, p]));
+      const minutes = (iso: string | null) => {
+        const t = Date.parse(iso ?? "");
+        return Number.isFinite(t) ? Math.round((now - t) / 60_000) : null;
+      };
+      const lignes = orphelins.map((j) => {
+        const p = profParId.get(j.user_id) ?? {};
+        const horsLigneMin = minutes(j.platform_fields.deleted_at);
+        const hbMin = minutes(p.extension_last_seen_at ?? null);
+        return `
+    <div style="margin:0 0 12px;padding:12px 14px;border:1px solid #FED7AA;border-radius:12px;background:#FFF7ED;font-family:sans-serif;">
+      <div style="font-size:14px;font-weight:700;color:#9A3412;">
+        ${esc(p.username ?? p.email ?? j.user_id)} — « ${esc(j.title ?? "(sans titre)")} »
+      </div>
+      <div style="font-size:13px;color:#374151;margin-top:4px;">
+        Hors ligne depuis <strong>${horsLigneMin != null ? `${horsLigneMin} min` : "durée inconnue"}</strong>
+        · job <code>${esc(j.id)}</code> en <strong>${esc(j.status)}</strong>
+      </div>
+      <div style="font-size:12px;color:#6B7280;margin-top:4px;">
+        ${esc(p.email ?? "email inconnu")} · extension vue il y a ${hbMin != null ? `${hbMin} min` : "jamais / inconnu"}
+      </div>
+    </div>`;
+      });
+      const orphHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:24px;background:#F2F2EE;">
+  <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;">
+    <h1 style="margin:0 0 4px;font-size:18px;font-family:sans-serif;color:#9A3412;">
+      ⚠️ ${orphelins.length} annonce(s) hors ligne sans recréation
+    </h1>
+    <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
+      Étape 'deleted' depuis plus de 30 min — l'extension du compte ne recrée pas
+      (endormie, session perdue…). L'annonce Vinted est retirée, la capture est en
+      base : rien n'est perdu, mais personne ne le voit. Une alerte par job.
+    </p>
+    ${lignes.join("")}
+  </div>
+</body></html>`;
+      const res = await fetch(RESEND_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({
+          from: FROM, to: [TO],
+          subject: `⚠️ ${orphelins.length} annonce(s) hors ligne sans recréation — republication orpheline`,
+          html: orphHtml,
+        }),
+      });
+      if (res.ok) {
+        orphelinsAlertes = orphelins.length;
+        // Marqueur de dédup posé APRÈS l'envoi réussi, par MERGE du
+        // platform_fields relu à l'instant (jamais un écrasement aveugle —
+        // l'extension peut se réveiller entre-temps et écrire ses étapes).
+        for (const j of orphelins) {
+          const { data: frais } = await supabase
+            .from("cross_post_jobs").select("platform_fields").eq("id", j.id).maybeSingle();
+          const pf = { ...(frais?.platform_fields ?? j.platform_fields), orphan_alerted_at: new Date(now).toISOString() };
+          await supabase.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", j.id);
+        }
+      } else {
+        console.error("[handler-watch] alerte orphelines Resend:", await res.text().catch(() => ""));
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] balayage orphelines:", (e as Error)?.message ?? e);
+  }
+
   // Regroupement par (plateforme, signature) en excluant les refus légitimes.
   type Cluster = {
     platform: string;
@@ -299,7 +396,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0 }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes }), {
     headers: { "Content-Type": "application/json" },
   });
 });

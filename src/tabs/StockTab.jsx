@@ -2514,6 +2514,14 @@ const StockTab = memo(function StockTab({
   const repubBandeau = useMemo(() => {
     if (!republishActif) return null;
     let total = 0, terminees = 0, enCours = 0, aRelancer = 0, arretees = 0, prochaine = null;
+    // Orpheline (3d-a) : une recréation en cours dont l'ordinateur ne répond
+    // plus — mêmes seuils que la pastille (deleted > 20 min + heartbeat muet
+    // > 10 min). Le memo se recalcule au rafraîchissement de
+    // jobsByInventaire (20 s) : les seuils sont franchis avec au plus 20 s
+    // de retard, largement assez.
+    let orpheline = false;
+    const hb = Date.parse(extensionStatus?.lastSeenAt ?? '');
+    const hbMuet = !Number.isFinite(hb) || Date.now() - hb > 10 * 60 * 1000;
     for (const last of Object.values(repubDernier)) {
       const st = last.status;
       const step = last.platform_fields?.republish_step;
@@ -2529,10 +2537,14 @@ const StockTab = memo(function StockTab({
       const naa = Date.parse(last.platform_fields?.next_action_after ?? '');
       if ((st === 'pending' || st === 'processing') && Number.isFinite(naa) && naa > Date.now()
         && (!prochaine || naa < prochaine)) prochaine = naa;
+      if ((st === 'pending' || st === 'processing') && step === 'deleted' && hbMuet) {
+        const d = Date.parse(last.platform_fields?.deleted_at ?? '');
+        if (Number.isFinite(d) && Date.now() - d > 20 * 60 * 1000) orpheline = true;
+      }
     }
     if (enCours + aRelancer === 0) return null;
-    return { total, terminees, enCours, aRelancer, arretees, prochaine };
-  }, [repubDernier, republishActif]);
+    return { total, terminees, enCours, aRelancer, arretees, prochaine, orpheline };
+  }, [repubDernier, republishActif, extensionStatus?.lastSeenAt]);
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
   const [repubFiltre, setRepubFiltre] = useState(null);
   useEffect(() => {
@@ -3219,13 +3231,22 @@ const StockTab = memo(function StockTab({
                   </button>
                 )}
               </div>
-              {repubBandeau.prochaine&&(
+              {/* Orpheline PRIME sur « prochaine recréation » : annoncer une
+                  heure pendant que l'ordinateur dort serait un mensonge. La
+                  phrase rassure ET donne le geste — jamais « en panne ». */}
+              {repubBandeau.orpheline?(
+                <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",marginTop:6,lineHeight:1.5,fontWeight:600}}>
+                  {lang==='fr'
+                    ?"⚠️ Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
+                    :"⚠️ Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
+                </div>
+              ):repubBandeau.prochaine?(
                 <div style={{fontSize:11.5,color:"#8A8578",marginTop:5,lineHeight:1.5}}>
                   {lang==='fr'
                     ?`Prochaine recréation vers ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell espace volontairement ses gestes de quelques minutes, comme une vraie personne.`
                     :`Next recreation around ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell deliberately spaces its actions by a few minutes, like a real person.`}
                 </div>
-              )}
+              ):null}
               {repubFiltre&&(
                 <div style={{fontSize:11.5,color:"#8A8578",marginTop:5}}>
                   {lang==='fr'?'Liste filtrée — re-touche le compteur pour tout réafficher.':'List filtered — tap the counter again to show everything.'}
@@ -3856,6 +3877,22 @@ const StockTab = memo(function StockTab({
                   // plateforme et le tag « Annonce Vinted · X € » sont rendus
                   // ailleurs dans la rangée et ne bougent pas.
                   const repubOccupeSlot=repubEligible&&!!repubEtape&&repubEtape.cle!=='recreated';
+                  // ── Recréation ORPHELINE (07/08, 3d-a validé Nico) ────────
+                  // Étape 'deleted' en cours (pending/processing) depuis plus
+                  // de 20 min ET heartbeat extension muet depuis plus de
+                  // 10 min : l'annonce est hors ligne et RIEN ne la recrée
+                  // (extension endormie, session perdue — cas 97757a78,
+                  // ~1 h hors ligne sans un signal). La pastille cesse de
+                  // « tourner » et dit le vrai geste — jamais « en panne » :
+                  // rien n'est cassé, l'ordinateur dort. needs_user/failed à
+                  // 'deleted' ont déjà leur rouge (aujourd'hui) — ici on
+                  // couvre le cas où l'app croyait que ça avançait.
+                  const repubOrpheline=repubEtape?.cle==='deleted'&&(()=>{
+                    const d=Date.parse(repubLatest?.platform_fields?.deleted_at??'');
+                    const hb=Date.parse(extensionStatus?.lastSeenAt??'');
+                    return Number.isFinite(d)&&Date.now()-d>20*60*1000
+                      &&(!Number.isFinite(hb)||Date.now()-hb>10*60*1000);
+                  })();
                   // "processing" = publication en cours côté extension : même
                   // affichage « En cours… » que pending (pour le vendeur, c'est
                   // le même moment ; la nuance est purement interne).
@@ -4259,11 +4296,15 @@ const StockTab = memo(function StockTab({
                               {repubOccupeSlot&&(
                                 <div style={{flex:"0 0 100%"}}>
                                   <div className="micon" role="button" tabIndex={0}
-                                    title={lang==='fr'?'Voir où en est la republication':'See repost progress'}
+                                    title={repubOrpheline
+                                      ?(lang==='fr'?"Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité.":"Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe.")
+                                      :(lang==='fr'?'Voir où en est la republication':'See repost progress')}
                                     onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}
                                     onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();setRepubProgress(repubLatest);}}}
-                                    style={{background:repubEtape.fond,border:`1px solid ${repubEtape.bord}`,color:repubEtape.encre,cursor:"pointer"}}>
-                                    🔁 {!repubEtape.fini&&<span className="pulse"/>} {repubEtape.court} ›
+                                    style={repubOrpheline
+                                      ?{background:"#FEF2F2",border:"1px solid #FECACA",color:"#B91C1C",cursor:"pointer"}
+                                      :{background:repubEtape.fond,border:`1px solid ${repubEtape.bord}`,color:repubEtape.encre,cursor:"pointer"}}>
+                                    🔁 {!repubEtape.fini&&!repubOrpheline&&<span className="pulse"/>} {repubOrpheline?(lang==='fr'?'Ordinateur ne répond plus — ouvre Chrome':'Computer not responding — open Chrome'):repubEtape.court} ›
                                   </div>
                                 </div>
                               )}
