@@ -3839,22 +3839,44 @@ const StockTab = memo(function StockTab({
                               stopPropagation obligatoire : la carte entière
                               ouvre l'édition au clic. Le « je ne sais plus »
                               éteint l'invitation sans jamais écrire 0. */}
-                          {paIncomplet(item)&&(
+                          {/* ⚠️ BUG FERMÉ (07/08 soir, iPhone 2.4.2) : cette
+                              ligne ne s'ouvrait QUE sur paIncomplet — la case
+                              de republication, née dedans (3b2c576), était
+                              donc INVISIBLE sur tout article AYANT un prix
+                              d'achat, alors que le compteur du bandeau
+                              (repubActionnables) comptait sur repubEtat seul.
+                              7 « articles possibles », zéro case. Le bug
+                              n'avait jamais paru : les comptes testeurs
+                              n'avaient que des articles importés (sans prix
+                              d'achat). La ligne s'ouvre désormais AUSSI pour
+                              la republication en lot ; les morceaux propres
+                              au prix d'achat restent gatés sur paIncomplet. */}
+                          {(paIncomplet(item)||(modeRepublish&&repubEtat(item)==="ok"))&&(
                             <div className="pa-line" onClick={e=>e.stopPropagation()}>
-                              {modePrixAchat&&(
+                              {modePrixAchat&&paIncomplet(item)&&(
                                 <input type="checkbox" className="pa-check" checked={paSel.has(item.id)}
                                   onChange={()=>setPaSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
                                   aria-label={lang==='fr'?"Sélectionner cet article":"Select this item"}/>
                               )}
                               {/* É5.2 : case de republication — seulement sur
                                   les articles ACTIONNABLES (bornes = pas de
-                                  case). */}
+                                  case). Libellé cliquable quand la case est
+                                  SEULE sur la ligne (article au prix déjà
+                                  renseigné) : une case nue de 17 px, sans un
+                                  mot, ne se comprend ni ne se vise à 390 px. */}
                               {modeRepublish&&repubEtat(item)==="ok"&&(
-                                <input type="checkbox" className="pa-check" checked={repubSel.has(item.id)}
-                                  onChange={()=>setRepubSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
-                                  aria-label={lang==='fr'?"Republier cet article":"Repost this item"}/>
+                                <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}} onClick={e=>e.stopPropagation()}>
+                                  <input type="checkbox" className="pa-check" checked={repubSel.has(item.id)}
+                                    onChange={()=>setRepubSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
+                                    aria-label={lang==='fr'?"Republier cet article":"Repost this item"}/>
+                                  {!paIncomplet(item)&&(
+                                    <span style={{fontSize:11.5,fontWeight:700,color:"#1B6E62"}}>
+                                      {lang==='fr'?"Republier":"Repost"}
+                                    </span>
+                                  )}
+                                </label>
                               )}
-                              {paOpenId===item.id?(
+                              {paIncomplet(item)&&(paOpenId===item.id?(
                                 <>
                                   <input className="pa-input" autoFocus inputMode="decimal" value={paDraft}
                                     placeholder={lang==='fr'?"12,50":"12.50"}
@@ -3873,7 +3895,7 @@ const StockTab = memo(function StockTab({
                                 <button className="pa-chip" onClick={()=>{setPaOpenId(item.id);setPaDraft("");setPaErr(null);}}>
                                   + {lang==='fr'?"prix d'achat":"purchase price"}
                                 </button>
-                              )}
+                              ))}
                               {paErr?.id===item.id&&<span className="pa-err">{paErr.message}</span>}
                             </div>
                           )}
