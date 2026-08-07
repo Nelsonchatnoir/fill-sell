@@ -1,6 +1,11 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- GARDE DE CADENCE DES RUNS DE SYNC — TENUE EN BASE (2026-08-07)
--- ⛔ NON APPLIQUÉE — à montrer à Nico avant exécution.
+-- ✅ APPLIQUÉE en prod le 07/08 (feu vert Nico), via db query --linked.
+-- Vérifié dans la foulée : trigger présent et actif (pg_trigger), et les
+-- TROIS branches éprouvées par insertions en transaction annulée :
+-- SYNC_CRON_SANS_PREMIERE_SYNC (cron sans 'done'), SYNC_CRON_CADENCE
+-- (cron < 20 h), SYNC_CADENCE (bouton < 15 min) — plus un contrôle positif
+-- ('bouton' sans 'done' récent : insert accepté). Zéro ligne résiduelle.
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Contexte : la cadence du cron de sync du dressing (une fois par 24 h) et la
 -- cadence manuelle (15 min) n'étaient tenues que dans le CODE de l'extension
