@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { notifierPaiement, alerterPaiementNonCredite } from "../_shared/payment-notify.ts";
+import { notifierPaiement, alerterPaiementNonCredite, signalerPaiementEchoue } from "../_shared/payment-notify.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2023-10-16",
@@ -319,6 +319,90 @@ serve(async (req) => {
         .update({ subscription_cancel_at_period_end: cancelAtPeriodEnd })
         .eq("stripe_customer_id", customerId);
     }
+  }
+
+  // ── Échec de paiement client (2026-08-07, cas Matt) ─────────────────────────
+  // Deux événements, deux nuances du même trou :
+  //   · invoice.payment_failed : la tentative a eu lieu et a échoué (carte
+  //     refusée, expirée, 3DS refusé par la banque) — souscription OU
+  //     renouvellement (billing_reason les distingue) ;
+  //   · invoice.payment_action_required : la banque attend une validation
+  //     3D Secure que le client n'a jamais faite (le cas Matt exactement).
+  // ⚠️ Ces événements doivent AUSSI être cochés sur l'endpoint dans le
+  // dashboard Stripe — sans ça, ce code ne reçoit rien. La ligne de log
+  // ci-dessous est le témoin de bout en bout : un « Send test event » depuis
+  // le dashboard doit la faire apparaître dans les logs de la fonction ET
+  // déclencher l'alerte ops (avec « compte introuvable », normal sur un
+  // event de test aux données factices).
+  // Le mail client, l'alerte Nico et la dédup par facture vivent dans
+  // email-tunnel (mode payment_failed) — ici on ne fait qu'établir les FAITS
+  // (qui, quelle cause, quel contexte) puis signaler. Toujours 200 à Stripe :
+  // un échec de notification ne doit jamais faire rejouer l'événement.
+  if (event.type === "invoice.payment_failed" || event.type === "invoice.payment_action_required") {
+    const invoice = event.data.object as Stripe.Invoice;
+    const customerId = (invoice.customer as string | null) ?? null;
+    console.log(
+      `[webhook] échec de paiement reçu: ${event.type} facture=${invoice.id} ` +
+      `customer=${customerId ?? "?"} billing_reason=${invoice.billing_reason ?? "?"} ` +
+      `amount_due=${invoice.amount_due ?? "?"}`
+    );
+
+    let userId: string | null = null;
+    let lang: string | null = null;
+    if (customerId) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("id, lang")
+        .eq("stripe_customer_id", customerId)
+        .maybeSingle();
+      userId = prof?.id ?? null;
+      lang = prof?.lang ?? null;
+    }
+
+    // Cause FINE via le PaymentIntent : authentication_required ≠ carte
+    // refusée — pour le client, ça change tout (l'un se règle en revalidant,
+    // l'autre en changeant de carte). Lecture best-effort : une cause
+    // illisible donne 'autre', jamais un blocage.
+    let cause: "3ds" | "carte_refusee" | "carte_expiree" | "autre" =
+      event.type === "invoice.payment_action_required" ? "3ds" : "autre";
+    let code: string | null = null;
+    try {
+      const piId = invoice.payment_intent as string | null;
+      if (piId) {
+        const pi = await stripe.paymentIntents.retrieve(piId);
+        const err = pi.last_payment_error;
+        if (pi.status === "requires_action" || err?.code === "authentication_required") {
+          cause = "3ds";
+        } else if (err?.code === "expired_card" || err?.decline_code === "expired_card") {
+          cause = "carte_expiree";
+        } else if (err?.code === "card_declined") {
+          cause = "carte_refusee";
+          code = err?.decline_code ?? null;
+        } else if (err) {
+          code = err.code ?? null;
+        }
+      }
+    } catch (e) {
+      console.warn("[webhook] PaymentIntent illisible (cause générique):", (e as Error)?.message);
+    }
+
+    const proPriceId = Deno.env.get("STRIPE_PRICE_PRO") ?? "";
+    const estPro = !!proPriceId && (invoice.lines?.data ?? []).some(
+      (l: Stripe.InvoiceLineItem) => l.price?.id === proPriceId
+    );
+    await signalerPaiementEchoue({
+      user_id: userId,
+      email: invoice.customer_email ?? null,
+      lang,
+      invoice_id: invoice.id,
+      cause,
+      code,
+      contexte: invoice.billing_reason === "subscription_create" ? "souscription" : "renouvellement",
+      montant: invoice.amount_due != null
+        ? `${(invoice.amount_due / 100).toFixed(2)} ${(invoice.currency ?? "eur").toUpperCase()}`
+        : null,
+      plan: estPro ? "Pro" : "Premium",
+    });
   }
 
   return new Response(JSON.stringify({ received: true }), {

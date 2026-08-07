@@ -998,6 +998,61 @@ ${etape("03", "Plusieurs articles d'un coup", "Tu sélectionnes, tu republies en
 </html>`;
 }
 
+// ── Paiement échoué : template client (2026-08-07) ───────────────────────────
+// AUCUN montant (règle CGV : la grille vit dans l'app), la CAUSE en clair —
+// « 3D Secure non validé » n'est pas « carte refusée », et pour le client ça
+// change tout. Le contexte pilote la gravité : une souscription échouée n'a
+// rien débité ni rien activé ; un renouvellement échoué laisse l'abonnement
+// ACTIF pendant que Stripe retente (dunning) — le mail le dit pour ne pas
+// affoler, et donne le geste utile. Transactionnel pur : pas d'en-tête
+// List-Unsubscribe, pas d'exclusion marketing_optout — un client qui a tenté
+// de payer doit être prévenu, opt-out marketing ou pas.
+function paymentFailedHtml(lang: string, cause: string, contexte: string): string {
+  const isFr = lang !== "en";
+  const causesFr: Record<string, string> = {
+    "3ds": "Ta banque attendait une validation 3D Secure (l'écran de confirmation de ta banque) qui n'est pas arrivée au bout. Rien n'a été débité.",
+    carte_refusee: "Ta banque a refusé le paiement. Rien n'a été débité — vérifie le plafond ou le solde de ta carte, ou essaie avec une autre carte.",
+    carte_expiree: "La carte enregistrée est expirée. Rien n'a été débité.",
+    autre: "Le paiement n'a pas pu aboutir. Rien n'a été débité.",
+  };
+  const causesEn: Record<string, string> = {
+    "3ds": "Your bank was waiting for a 3D Secure confirmation (your bank's approval screen) that never completed. Nothing was charged.",
+    carte_refusee: "Your bank declined the payment. Nothing was charged — check your card's limit or balance, or try another card.",
+    carte_expiree: "The card on file has expired. Nothing was charged.",
+    autre: "The payment couldn't be completed. Nothing was charged.",
+  };
+  const corpsCause = (isFr ? causesFr : causesEn)[cause] ?? (isFr ? causesFr.autre : causesEn.autre);
+  const corpsContexte = contexte === "renouvellement"
+    ? (isFr
+      ? "Ton abonnement reste actif pour l'instant : le paiement va être retenté automatiquement dans les prochains jours. Pour ne pas le voir s'interrompre, mets à jour ton moyen de paiement — ou réponds simplement à ce mail et on règle ça ensemble."
+      : "Your subscription stays active for now: the payment will be retried automatically over the next few days. To avoid an interruption, update your payment method — or simply reply to this email and we'll sort it out together.")
+    : (isFr
+      ? "Ton abonnement n'a pas démarré — tu peux réessayer quand tu veux depuis l'app, ça prend une minute. Si ça bloque encore, réponds à ce mail et on regarde ensemble."
+      : "Your subscription didn't start — you can try again anytime from the app, it takes a minute. If it still fails, reply to this email and we'll look into it together.");
+  const content = `
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
+      color:#111827;font-family:sans-serif;">
+      ${isFr ? "Ton paiement n'a pas abouti" : "Your payment didn't go through"}
+    </h1>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
+      font-family:sans-serif;">${isFr ? "Salut," : "Hi,"}</p>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
+      font-family:sans-serif;">
+      ${isFr ? "Tu as tenté de t'abonner à FillSell et le paiement s'est arrêté en route. Voilà ce qui s'est passé, et comment le refaire." : "You tried to subscribe to FillSell and the payment stopped along the way. Here's what happened, and how to redo it."}
+    </p>
+    <div style="background:#FEF3C7;border-radius:12px;padding:16px 18px;margin:0 0 16px;">
+      <p style="margin:0;color:#92400E;font-size:14px;line-height:1.65;font-family:sans-serif;">${corpsCause}</p>
+    </div>
+    <p style="color:#374151;font-size:14px;line-height:1.65;margin:0 0 24px;
+      font-family:sans-serif;">${corpsContexte}</p>
+    ${ctaButton(isFr ? "Réessayer depuis FillSell" : "Try again from FillSell")}
+    <p style="color:#111827;font-size:15px;line-height:1.5;margin:24px 0 0;
+      font-family:sans-serif;font-weight:700;">
+      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
+    </p>`;
+  return emailWrapper(content, lang);
+}
+
 // ── Main handler ───────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -1241,6 +1296,107 @@ serve(async (req) => {
     });
   }
 
+  // ── Paiement échoué (2026-08-07) — signalé par stripe-webhook ─────────────
+  // TROIS gestes, dans cet ordre :
+  //   1. RÉSERVATION par INSERT avant tout envoi : email_type =
+  //      'payment_failed:<invoice_id>' — la facture EST l'échec. 23505 =
+  //      cette facture a déjà été notifiée (retries Stripe) → on s'arrête.
+  //      Type RÉCURRENT par nature (un client peut échouer à des mois
+  //      d'écart = autre facture = autre type) → il ne va PAS dans
+  //      email_logs_one_shot_unique ; son unicité vit dans l'index partiel
+  //      dédié email_logs_payment_failed_unique (migration 20260807190000).
+  //   2. Mail CLIENT (cause en clair, sans montant). Resend en échec →
+  //      la réservation est SUPPRIMÉE : l'échec reste re-notifiable.
+  //   3. Alerte NICO, toujours — même quand le compte est introuvable
+  //      (c'est le cas des events de test Stripe : l'alerte qui arrive avec
+  //      « compte introuvable » est la preuve de bout en bout du câblage).
+  if (body?.payment_failed) {
+    const pf = body.payment_failed as {
+      user_id?: string | null; email?: string | null; lang?: string | null;
+      invoice_id: string; cause?: string; code?: string | null;
+      contexte?: string; montant?: string | null; plan?: string | null;
+    };
+    const cause = pf.cause ?? "autre";
+    const contexte = pf.contexte ?? "souscription";
+    const typeDedup = `payment_failed:${String(pf.invoice_id ?? "").slice(0, 80)}`;
+    let clientEnvoye = false;
+    let clientSaute: string | null = null;
+
+    if (pf.user_id && pf.email) {
+      const { error: resaErr } = await supabase
+        .from("email_logs")
+        .insert({ user_id: pf.user_id, email_type: typeDedup });
+      if (resaErr && (resaErr as { code?: string }).code === "23505") {
+        clientSaute = "deja_notifie";
+      } else if (resaErr) {
+        // Réservation illisible : on n'envoie PAS le mail client (impossible
+        // d'arbitrer un doublon) mais on le JOURNALISE — même canal que les
+        // échecs de dédup du tunnel, relu par l'ops-digest de 8h50.
+        clientSaute = `reservation: ${resaErr.message}`;
+        logEchecs.push(`${typeDedup}:${pf.user_id}:${resaErr.message}`);
+        await supabase.from("email_log_echecs").insert({
+          user_id: pf.user_id, email_type: typeDedup,
+          code: (resaErr as { code?: string }).code ?? null, erreur: resaErr.message,
+        }).then(({ error: jErr }) => { if (jErr) console.error("email_log_echecs_insert_echec", jErr.message); });
+      } else {
+        const lang = pf.lang === "en" ? "en" : "fr";
+        const subject = lang === "en" ? "Your payment didn't go through" : "Ton paiement n'a pas abouti";
+        clientEnvoye = await sendEmail(pf.email, subject, paymentFailedHtml(lang, cause, contexte));
+        if (!clientEnvoye) {
+          await supabase.from("email_logs").delete()
+            .eq("user_id", pf.user_id).eq("email_type", typeDedup);
+          clientSaute = "resend_echec (réservation rendue)";
+        }
+      }
+    } else {
+      clientSaute = "compte ou email introuvable";
+    }
+
+    const esc = (v: unknown) =>
+      String(v ?? "—").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const lignes: Array<[string, unknown]> = [
+      ["Contexte", contexte === "renouvellement" ? "Renouvellement (l'abonnement reste actif pendant le dunning Stripe)" : "Souscription (jamais activée)"],
+      ["Cause", `${cause}${pf.code ? ` (${pf.code})` : ""}`],
+      ["Plan", pf.plan],
+      ["Montant", pf.montant],
+      ["Email client", pf.email],
+      ["Compte", pf.user_id ?? "INTROUVABLE (event de test Stripe, ou customer sans profil)"],
+      ["Mail client", clientEnvoye ? "envoyé" : `non envoyé — ${clientSaute}`],
+      ["Facture", pf.invoice_id],
+    ];
+    const opsHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:24px;background:#F2F2EE;">
+  <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;">
+    <h1 style="margin:0 0 6px;font-size:18px;font-family:sans-serif;color:#B45309;">💳 Paiement échoué</h1>
+    <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
+      ${esc(new Date().toISOString())} — un prospect/abonné vient d'échouer au paiement. Le rattraper vaut de l'or.
+    </p>
+    <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;">
+      ${lignes.map(([k, v]) => `<tr>
+        <td style="padding:6px 10px 6px 0;color:#6B7280;white-space:nowrap;vertical-align:top;">${esc(k)}</td>
+        <td style="padding:6px 0;color:#111827;word-break:break-all;"><strong>${esc(v)}</strong></td>
+      </tr>`).join("")}
+    </table>
+    <p style="margin:14px 0 0;font-size:12.5px;font-family:sans-serif;">
+      <a href="https://dashboard.stripe.com/invoices/${esc(pf.invoice_id)}" style="color:#0F9488;font-weight:600;">Voir la facture dans Stripe</a>
+    </p>
+  </div>
+</body></html>`;
+    const opsOk = await sendEmail(
+      TO_OPS,
+      `💳 Paiement échoué — ${cause}${pf.email ? ` — ${pf.email}` : ""}`,
+      opsHtml,
+    );
+
+    return new Response(
+      JSON.stringify({
+        ok: true, client_envoye: clientEnvoye, client_saute: clientSaute,
+        alerte_ops: opsOk, dedup: typeDedup, log_echecs: logEchecs,
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   // ── Immediate welcome (fired from handle_new_user DB trigger) ───────────
   const welcomeNow: boolean = body?.welcome_now === true;
   const welcomeUserId: string | null = body?.user_id ?? null;
@@ -1309,6 +1465,20 @@ serve(async (req) => {
   // N'écrit PAS email_logs — sert aux previews (welcome + comment ça marche).
   // Avec test_template:"blast_relaunch_aout" ou "blast_sync_dressing", envoie
   // CE SEUL template (preview visuelle avant le blast de masse).
+  // Preview du mail de paiement échoué : cause/contexte passables en options
+  // pour éprouver chaque variante ({"test_cause":"carte_refusee",
+  // "test_contexte":"renouvellement"}). N'écrit PAS email_logs.
+  if (testEmail && body?.test_template === "payment_failed") {
+    const cause = typeof body?.test_cause === "string" ? body.test_cause : "3ds";
+    const contexte = typeof body?.test_contexte === "string" ? body.test_contexte : "souscription";
+    const ok = await sendEmail(testEmail, "Ton paiement n'a pas abouti", paymentFailedHtml("fr", cause, contexte));
+    if (ok) sent.push(`payment_failed:${testEmail}`);
+    else errors.push(`payment_failed:${testEmail}`);
+    return new Response(
+      JSON.stringify({ test: true, template: "payment_failed", cause, contexte, sent, errors, resend: resendTrace }),
+      { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
   if (testEmail && body?.test_template === BLAST_SYNC_TYPE) {
     const ok = await sendEmail(testEmail, BLAST_SYNC_SUBJECT, blastSyncDressingHtml());
     if (ok) sent.push(`${BLAST_SYNC_TYPE}:${testEmail}`);

@@ -67,3 +67,39 @@ export async function alerterPaiementNonCredite(a: Omit<AlertePaiement, "ok">): 
   console.error("[payment-notify] PAIEMENT NON CRÉDITÉ —", JSON.stringify(a));
   await envoyer({ ...a, ok: false });
 }
+
+// ── Paiement ÉCHOUÉ côté client (2026-08-07) ─────────────────────────────────
+// Cas Matt (05/08) : 3D Secure jamais validé à la souscription, facture
+// annulée par Stripe, personne n'a rien su — ni lui, ni Nico — avant une
+// découverte fortuite deux jours plus tard dans le dashboard. Ce signal part
+// vers email-tunnel (mode payment_failed) qui fait TROIS choses : mail au
+// client (cause en clair, sans montant), alerte immédiate à Nico, et dédup
+// PAR FACTURE (email_type 'payment_failed:<invoice_id>', réservation par
+// INSERT avant envoi). Mêmes règles que le reste du fichier : jamais
+// d'incidence sur le code HTTP rendu à Stripe, tout est avalé ici.
+export type EchecPaiement = {
+  user_id?: string | null;
+  email?: string | null;
+  lang?: string | null;
+  invoice_id: string;
+  cause: "3ds" | "carte_refusee" | "carte_expiree" | "autre";
+  code?: string | null;        // decline_code / code brut — pour l'alerte ops
+  contexte: "souscription" | "renouvellement";
+  montant?: string | null;     // alerte ops SEULEMENT, jamais le mail client
+  plan?: string | null;
+};
+
+export async function signalerPaiementEchoue(e: EchecPaiement): Promise<void> {
+  try {
+    const r = await fetch(TUNNEL_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-cron-secret": CRON_SECRET },
+      body: JSON.stringify({ payment_failed: e }),
+    });
+    if (!r.ok) {
+      console.error(`[payment-notify] payment_failed email-tunnel HTTP ${r.status} —`, JSON.stringify(e));
+    }
+  } catch (err) {
+    console.error("[payment-notify] payment_failed envoi impossible:", (err as Error)?.message, "—", JSON.stringify(e));
+  }
+}
