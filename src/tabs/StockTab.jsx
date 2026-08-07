@@ -989,6 +989,15 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       } else if (attenduDepuis && Date.now() - attenduDepuis > SYNC_DEMARRAGE_MAX_MS) {
         setAttente(false);
         setSuivi(false);
+        // Deuxième ligne du même clic (cf. logSyncClick) : « lancée » a été
+        // écrit au clic, mais RIEN n'a démarré en 30 s — c'est l'échec le
+        // plus silencieux du parcours, celui que le blast doit pouvoir voir.
+        if (user?.id) {
+          supabase.from('usage_logs').insert({
+            user_id: user.id, feature: 'sync_click',
+            metadata: { resultat: 'echec', raison: 'extension_muette_30s', voie: 'directe', source },
+          }).then(({ error }) => { if (error) console.warn('[sync_click] non journalisé:', error.message); });
+        }
         setMessage({ ton: 'orange', texte: fr
           ? "L'extension n'a pas démarré la synchronisation. Vérifie qu'elle est bien installée, activée et à jour dans Chrome, puis réessaie."
           : "The extension didn't start the sync. Check that it's installed, enabled and up to date in Chrome, then try again." });
@@ -1179,8 +1188,36 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     return fr ? `${vus} article${vus > 1 ? 's' : ''} lu${vus > 1 ? 's' : ''}` : `${vus} item${vus === 1 ? '' : 's'} read`;
   })();
 
+  // ── Instrumentation du CLIC (2026-08-07, jour du blast à 595 comptes) ────
+  // UNE ligne usage_logs par clic, RÉSULTAT compris — refus inclus. Sans
+  // elle, « personne ne clique » et « ça échoue au clic » sont
+  // indiscernables : un clic refusé avant l'insert vinted_sync_runs ne
+  // laissait AUCUNE trace (track() GTM ne loggait que les lancements
+  // réussis, et rien en base). Best-effort assumé : la télémétrie ne doit
+  // jamais bloquer ni ralentir la sync elle-même.
+  // resultats : lancée (voie directe) | mise_en_file (voie file) |
+  // refusée (+ raison : cadence_ui, double_clic, cadence, deja_en_attente,
+  // sync_en_cours, extension_trop_ancienne, extension_jamais_vue,
+  // rpc_absente) | erreur (+ message court). Le cas « lancée mais
+  // l'extension n'a rien démarré en 30 s » est journalisé À PART par le
+  // poll de suivi (echec / extension_muette_30s) : il se découvre après
+  // coup — l'analyse rapproche les deux lignes par user_id + horodatage.
+  const logSyncClick = (resultat, raison = null, voie = null) => {
+    if (!user?.id) return;
+    supabase.from('usage_logs').insert({
+      user_id: user.id,
+      feature: 'sync_click',
+      metadata: { resultat, ...(raison ? { raison } : {}), ...(voie ? { voie } : {}), source },
+    }).then(({ error }) => { if (error) console.warn('[sync_click] non journalisé:', error.message); });
+  };
+
   const lancer = async () => {
-    if (enCadence || envoi) return; // ceinture si l'état a un tour de retard
+    // Ceinture si l'état a un tour de retard — journalisée AUSSI : un clic
+    // avalé ici est exactement le genre d'échec invisible qu'on mesure.
+    if (enCadence || envoi) {
+      logSyncClick('refusée', envoi ? 'double_clic' : 'cadence_ui');
+      return;
+    }
     setMessage(null);
     clicAtRef.current = Date.now();
 
@@ -1194,8 +1231,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       catch (e) {
         setAttente(false); setSuivi(false);
         setMessage({ ton: 'rouge', texte: String(e?.message ?? e) });
+        logSyncClick('erreur', String(e?.message ?? e).slice(0, 120), 'directe');
         return;
       }
+      logSyncClick('lancée', null, 'directe');
       track('vinted_sync_dressing', { source, reprise: dejaSync, voie: 'directe' });
       return;
     }
@@ -1205,6 +1244,9 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     try { r = await demanderSyncDressingServeur(); }
     catch (e) { r = { ok: false, reason: 'erreur', message: String(e?.message ?? e) }; }
     setEnvoi(false);
+    if (r?.ok) logSyncClick('mise_en_file', null, 'file');
+    else if (r?.reason === 'erreur') logSyncClick('erreur', String(r?.message ?? '').slice(0, 120), 'file');
+    else logSyncClick('refusée', r?.reason ?? 'inconnue', 'file');
 
     if (r?.ok) {
       // PAS de message ici : le bloc d'attente ci-dessous EST le retour du
