@@ -95,30 +95,27 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
   const proFactor = grantPrem > 0 ? Math.round((grantPro / grantPrem) * 10) / 10 : null;
   const lensScansPro = lensCost > 0 ? Math.floor(grantPro / lensCost) : 0;
 
-  // Avantages RÉELS — mêmes libellés que les cartes de vente de ConversionModal
-  // (source unique de ce qui est promis) ; le Pro cumule tout le Premium.
+  // ── SQUELETTE COMMUN (07/08 soir, validé Nico) — mêmes rubriques, même
+  // ordre, mêmes tournures que les DEUX cartes de ConversionModal :
+  // stock · publication · republication · Lens · Excel · voix · support.
+  // Seule la VALEUR change selon le plan affiché. Toute retouche d'un
+  // libellé se répercute dans les trois endroits (+ FAQ landing).
   const features = [
     fr ? 'Stock illimité' : 'Unlimited stock',
-    // Grille lue en config (2026-08-05) — mêmes chiffres que la landing et
-    // ConversionModal : génération 1, publication 3/plateforme.
     fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${K.price_generate} Pépite, publication ${pubUnit} Pépites/plateforme)`
        : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget, publishing ${pubUnit} Nuggets/platform)`,
+    isPro
+      ? (fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free), et automatisable si tu l\'actives'
+            : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free), and automatable if you turn it on')
+      : (fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free)'
+            : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free)'),
     fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
        : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
-    // Droits republication (2026-08-05) : manuelle incluse dès Premium,
-    // automatisation réservée au Pro.
-    fr ? 'Republication Vinted illimitée et gratuite (0 Pépite)' : 'Unlimited free Vinted reposting (0 Nuggets)',
-    ...(isPro ? [
-      // L'auto est un CHOIX (toggle + plafond/jour), jamais un comportement
-      // imposé — la ligne de base au-dessus dit déjà « gratuite ».
-      fr ? 'Republication automatisable, si tu l\'actives — tes annonces qui stagnent remontent toutes seules'
-         : 'Automatable reposting, if you turn it on — stale listings bump themselves',
-      fr ? `De quoi publier bien plus d'annonces (retouche photos en option jusqu'à ${retouchMax} Pépites)`
-         : `Room for many more listings (optional photo editing up to ${retouchMax} Nuggets)`,
-    ] : []),
-    fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
     fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
-    ...(isPro ? [fr ? 'Support prioritaire' : 'Priority support'] : []),
+    fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+    isPro
+      ? (fr ? 'Support prioritaire' : 'Priority support')
+      : (fr ? 'Support par email' : 'Email support'),
   ];
 
   return (

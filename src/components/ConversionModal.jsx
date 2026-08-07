@@ -249,27 +249,31 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit
           {fr ? `${grantPrem} Pépites offertes chaque mois` : `${grantPrem} Nuggets included every month`}
         </span>
       </div>
+      {/* ── SQUELETTE COMMUN aux deux cartes (07/08 soir, validé Nico) ──────
+          MÊMES rubriques, MÊME ordre, MÊMES tournures que ProPlanCard :
+          stock · publication · republication · Lens · Excel · voix ·
+          support. Seule la VALEUR change — un utilisateur lit les deux
+          cartes ligne à ligne et voit immédiatement ce qui diffère. Toute
+          retouche d'un libellé se fait DANS LES DEUX cartes (et dans
+          PlanDetailsModal + la FAQ landing, mêmes mots).
+          Règles vérifiées en base : stock illimité = trigger
+          check_inventory_limit (premium/pro/comped exemptés pareil) ;
+          grille publication identique TOUS plans (le grant fait la
+          différence, affiché au-dessus) ; republication RPC → 0 Pépite
+          premium/pro/comped, sans plafond de nombre (cadence 1/article/24 h
+          pour tous — jamais promise au-delà) ; Lens = grant ÷ coût. */}
       <Features
         items={[
           fr ? 'Stock illimité' : 'Unlimited stock',
-          // Grille lue en config (2026-08-05) : génération 1, publication
-          // 3/plateforme — mêmes chiffres que la landing, jamais en dur.
           fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite, publication ${pubUnit} Pépites/plateforme)`
              : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget, publishing ${pubUnit} Nuggets/platform)`,
-          // Droits republication par plan (2026-08-05) : manuelle incluse dès
-          // Premium (1 Pépite en Free), automatisation réservée au Pro.
-          // « incluse » ne disait pas la valeur (07/08 : deux utilisateurs
-          // actifs ont payé 8 et 22 Pépites le soir même sans comprendre que
-          // Premium l'aurait rendue gratuite). Règle réelle vérifiée dans la
-          // RPC : premium/pro/comped → 0 Pépite, sans plafond de nombre —
-          // « illimitée » = en nombre d'annonces (la cadence reste 1
-          // republication aboutie par article et par 24 h, tous plans).
-          fr ? 'Republication Vinted illimitée et GRATUITE — 0 Pépite (1 Pépite par annonce en Free)'
-             : 'Unlimited FREE Vinted reposting — 0 Nuggets (1 Nugget per listing on Free)',
+          fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free)'
+             : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free)',
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+          fr ? 'Support par email' : 'Email support',
         ]}
       />
       <button
@@ -317,28 +321,26 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
           {showFactor && proFactor ? (fr ? ` — ${proFactor}× plus` : ` — ${proFactor}× more`) : ''}
         </span>
       </div>
-      <div style={{ fontSize: 10.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(246,245,241,0.5)', marginBottom: 10 }}>
-        {fr ? 'Tout Premium, et en plus' : 'Everything in Premium, plus'}
-      </div>
+      {/* ── SQUELETTE COMMUN — même contrat que PremiumPlanCard (cf. le
+          commentaire là-bas). Le bandeau « Tout Premium, et en plus » a été
+          RETIRÉ (07/08 soir, point 4 Nico) : soit on hérite, soit on répète —
+          ici tout est répété À L'IDENTIQUE, le bandeau devenait faux (« en
+          plus » au-dessus d'une liste qui contient la base). Les différences
+          Pro : le grant (au-dessus), Lens (~4×), la republication
+          AUTOMATISABLE (un choix — toggle + plafond/jour — jamais un
+          comportement imposé), le support prioritaire. */}
       <Features
         dark
         items={[
+          fr ? 'Stock illimité' : 'Unlimited stock',
+          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite, publication ${pubUnit} Pépites/plateforme)`
+             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget, publishing ${pubUnit} Nuggets/platform)`,
+          fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free), et automatisable si tu l\'actives'
+             : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free), and automatable if you turn it on',
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
-          fr ? `De quoi publier bien plus d'annonces (génération ${genPrice} Pépite, ${pubUnit} Pépites par plateforme, retouche photos en option jusqu'à ${retouchMax})`
-             : `Room for many more listings (generation ${genPrice} Nugget, ${pubUnit} Nuggets per platform, optional photo editing up to ${retouchMax})`,
-          // « AUTOMATIQUE » tout court était faux (07/08 soir) : l'auto est
-          // un CHOIX — toggle + plafond 1-50/jour (10 par défaut) + âge.
-          // Le texte promet une capacité (« automatisable si tu veux »),
-          // jamais un comportement imposé.
-          fr ? 'Republication gratuite (0 Pépite), automatisable si tu veux — tes annonces qui stagnent remontent toutes seules'
-             : 'Free reposting (0 Nuggets) — automate it if you want: stale listings bump themselves',
-          // Répété depuis Premium (comme l'Excel juste en dessous) : le
-          // « Tout Premium, et en plus » couvre l'héritage, mais qui compare
-          // ligne à ligne doit le VOIR. Droit réellement hérité :
-          // check_inventory_limit exempte premium/pro/comped à l'identique.
-          fr ? 'Stock illimité' : 'Unlimited stock',
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
+          fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
           fr ? 'Support prioritaire' : 'Priority support',
         ]}
       />
