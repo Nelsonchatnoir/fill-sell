@@ -1687,6 +1687,10 @@ function etapeRepublication(job, fr) {
   const bleu  = { fond: '#EFF3F8', bord: '#C7D6E5', encre: '#334155' };
   const vert  = { fond: '#F0FDFB', bord: 'rgba(13,148,136,0.25)', encre: '#1B6E62' };
   const ambre = { fond: '#FFF6E3', bord: '#EED9A6', encre: '#8A6100' };
+  // Rouge : RÉSERVÉ aux arrêts APRÈS suppression (2026-08-07) — l'annonce est
+  // HORS LIGNE, c'est le seul cas du produit qui exige un geste immédiat. Un
+  // arrêt AVANT suppression garde l'ambre/bleu : l'annonce est intacte.
+  const rouge = { fond: '#FEF2F2', bord: '#FECACA', encre: '#B91C1C' };
 
   // Terminal d'abord : un job fini ne doit jamais être lu comme « en cours ».
   if (st === 'published' || step === 'recreated') return {
@@ -1707,7 +1711,11 @@ function etapeRepublication(job, fr) {
   if (st === 'failed' || st === 'cancelled') {
     const apres = step === 'deleted';
     return {
-      cle: 'arret', court: T.arretee, ...(apres ? ambre : bleu), fini: true, apresSuppression: apres,
+      cle: 'arret',
+      // Deux gravités distinctes (2026-08-07) : après suppression, l'article
+      // est HORS LIGNE — le mot le dit, la couleur aussi.
+      court: apres ? (fr ? 'Hors ligne — arrêtée' : 'Offline — stopped') : T.arretee,
+      ...(apres ? rouge : bleu), fini: true, apresSuppression: apres,
       titre: apres ? (fr ? 'Interrompue après la suppression' : 'Stopped after deletion')
                    : (fr ? 'Interrompue — annonce intacte' : 'Stopped — listing untouched'),
       detail: apres
@@ -1720,7 +1728,9 @@ function etapeRepublication(job, fr) {
   if (st === 'needs_user') {
     const apres = step === 'deleted';
     return {
-      cle: 'needs_user', court: T.relancer, ...ambre, fini: true, apresSuppression: apres,
+      cle: 'needs_user',
+      court: apres ? (fr ? 'Hors ligne — relancer' : 'Offline — relaunch') : T.relancer,
+      ...(apres ? rouge : ambre), fini: true, apresSuppression: apres,
       titre: fr ? 'En attente de toi' : 'Waiting for you',
       detail: apres
         ? (fr ? "Rien n'est perdu : l'annonce a été sauvegardée avant d'être retirée. Relance — ça repart à la recréation."
@@ -1756,6 +1766,16 @@ function etapeRepublication(job, fr) {
     detail: fr ? "La republication part dès que ton ordinateur reprend la main — environ 2 minutes si Chrome est déjà ouvert. Rien n'est touché d'ici là."
                : 'The repost starts as soon as your computer picks it up — about 2 minutes if Chrome is already open. Nothing is touched until then.',
   };
+}
+
+// Jours entiers écoulés depuis un ISO, ou null si la date est illisible.
+// TOUJOURS en jours, jamais à l'heure près : listed_at_guess est une
+// estimation (timestamp de photo), le nom le dit — l'affichage ne doit pas
+// prétendre plus précis que la donnée.
+function joursDepuis(iso) {
+  const t = Date.parse(iso ?? '');
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.floor((Date.now() - t) / 86400000));
 }
 
 // Date courte en heure de Paris (« 4 août »), ou null. Même garde que
@@ -2352,6 +2372,94 @@ const StockTab = memo(function StockTab({
     return 'ok';
   };
   const repubActionnables = republishActif ? stockFiltre.filter(i => repubEtat(i) === 'ok') : [];
+
+  // ── Bandeau de lot + signalement hors-ligne (2026-08-07, validé Nico) ─────
+  // ⚠️ TOUT ce bloc lit jobsByInventaire : il vit APRÈS sa déclaration (règle
+  // TDZ, incident Safari iOS du 05/08) et AVANT le rendu qui le consomme.
+  // Dernier job republish PAR article — une seule vérité, réutilisée par le
+  // bandeau, la remontée en tête et le filtre.
+  const repubDernier = useMemo(() => {
+    const m = {};
+    for (const [invId, list] of Object.entries(jobsByInventaire)) {
+      let last = null;
+      for (const j of list) {
+        if (j.action !== 'republish') continue;
+        if (!last || Date.parse(j.created_at || 0) > Date.parse(last.created_at || 0)) last = j;
+      }
+      if (last) m[invId] = last;
+    }
+    return m;
+  }, [jobsByInventaire]);
+  // Articles HORS LIGNE : republication arrêtée (needs_user/failed/cancelled)
+  // À L'ÉTAPE 'deleted' — l'annonce a été retirée de Vinted et jamais recréée.
+  // Le pire cas du produit (Combishort d'ornellaracano, 07/08 : plus d'une
+  // heure hors ligne sans le savoir) : remontés EN TÊTE de liste tant que non
+  // résolus, pastille rouge dédiée (cf. etapeRepublication).
+  const horsLigneIds = useMemo(() => {
+    const s = new Set();
+    if (!republishActif) return s;
+    for (const [invId, last] of Object.entries(repubDernier)) {
+      const st = last.status;
+      if ((st === 'needs_user' || st === 'failed' || st === 'cancelled')
+        && last.platform_fields?.republish_step === 'deleted') s.add(Number(invId));
+    }
+    return s;
+  }, [repubDernier, republishActif]);
+  // Bandeau : lot = dernier job republish par article, créé depuis moins de
+  // 24 h OU encore non terminal. Visible tant qu'il reste du non-terminal
+  // (pending/processing/needs_user — un état INCONNU compte « en cours »,
+  // jamais ignoré ni planté). Durée : on n'affiche QUE next_action_after
+  // (heure réelle posée par l'extension) — jamais d'estimation inventée.
+  const repubBandeau = useMemo(() => {
+    if (!republishActif) return null;
+    let total = 0, terminees = 0, enCours = 0, aRelancer = 0, arretees = 0, prochaine = null;
+    for (const last of Object.values(repubDernier)) {
+      const st = last.status;
+      const step = last.platform_fields?.republish_step;
+      const nonTerminal = st === 'pending' || st === 'processing' || st === 'needs_user'
+        || !['published', 'failed', 'cancelled', 'dry_run_completed'].includes(st);
+      const recent = Date.now() - Date.parse(last.created_at || 0) < 24 * 3600 * 1000;
+      if (!recent && !nonTerminal) continue;
+      total++;
+      if (st === 'published' || step === 'recreated' || st === 'dry_run_completed') terminees++;
+      else if (st === 'needs_user') aRelancer++;
+      else if (st === 'failed' || st === 'cancelled') arretees++;
+      else enCours++;
+      const naa = Date.parse(last.platform_fields?.next_action_after ?? '');
+      if ((st === 'pending' || st === 'processing') && Number.isFinite(naa) && naa > Date.now()
+        && (!prochaine || naa < prochaine)) prochaine = naa;
+    }
+    if (enCours + aRelancer === 0) return null;
+    return { total, terminees, enCours, aRelancer, arretees, prochaine };
+  }, [repubDernier, republishActif]);
+  // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
+  const [repubFiltre, setRepubFiltre] = useState(null);
+  useEffect(() => {
+    // Le filtre se retire tout seul quand sa catégorie se vide (relances
+    // faites) : jamais une liste vide inexpliquée.
+    if (!repubFiltre) return;
+    if (repubFiltre === 'relancer' && (repubBandeau?.aRelancer ?? 0) === 0) setRepubFiltre(null);
+    if (repubFiltre === 'arretees' && (repubBandeau?.arretees ?? 0) === 0) setRepubFiltre(null);
+  }, [repubFiltre, repubBandeau]);
+  // Liste réellement AFFICHÉE : filtre du bandeau s'il est actif, sinon la
+  // liste visible avec les hors-ligne remontés en tête (même au-delà du
+  // slice de 10 : un article hors ligne ne peut pas être caché par « Voir
+  // plus »).
+  const listeStock = useMemo(() => {
+    if (repubFiltre) {
+      return stockFiltre.filter(i => {
+        const last = repubDernier[i.id];
+        if (!last) return false;
+        return repubFiltre === 'relancer'
+          ? last.status === 'needs_user'
+          : (last.status === 'failed' || last.status === 'cancelled');
+      });
+    }
+    if (!horsLigneIds.size) return stockVisible;
+    const tete = stockFiltre.filter(i => horsLigneIds.has(i.id));
+    return [...tete, ...stockVisible.filter(i => !horsLigneIds.has(i.id))];
+  }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier]);
+
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
   // à RIEN : le job reste needs_user, le badge reste affiché.
@@ -2981,6 +3089,50 @@ const StockTab = memo(function StockTab({
         <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
           <style>{STOCK_CSS}</style>
 
+          {/* ── Bandeau de lot de republications (2026-08-07, validé Nico) ──
+              Visible SEULEMENT s'il reste du non-terminal (repubBandeau null
+              sinon). Les chips « à relancer » / « arrêtées » filtrent la
+              liste ; re-tap = retire le filtre. Aucune barre de progression
+              inventée : la seule heure affichée est next_action_after, posée
+              par l'extension (pause volontaire réelle). */}
+          {repubBandeau&&(
+            <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer+repubBandeau.arretees>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"11px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                <span style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
+                  🔁 {repubBandeau.total} {lang==='fr'?`republication${repubBandeau.total>1?'s':''}`:`repost${repubBandeau.total>1?'s':''}`}
+                </span>
+                <span style={{fontSize:12,fontWeight:600,color:"#5C6560"}}>
+                  {repubBandeau.terminees} {lang==='fr'?'terminée'+(repubBandeau.terminees>1?'s':''):'done'}
+                  {" · "}{repubBandeau.enCours} {lang==='fr'?'en cours':'in progress'}
+                </span>
+                {repubBandeau.aRelancer>0&&(
+                  <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
+                    style={{border:`1px solid ${repubFiltre==='relancer'?"#B91C1C":"#FECACA"}`,background:repubFiltre==='relancer'?"#B91C1C":"#FEF2F2",color:repubFiltre==='relancer'?"#fff":"#B91C1C",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {repubBandeau.aRelancer} {lang==='fr'?'à relancer':'to relaunch'} ›
+                  </button>
+                )}
+                {repubBandeau.arretees>0&&(
+                  <button onClick={()=>setRepubFiltre(f=>f==='arretees'?null:'arretees')}
+                    style={{border:`1px solid ${repubFiltre==='arretees'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='arretees'?"#8A6100":"#FFF6E3",color:repubFiltre==='arretees'?"#fff":"#8A6100",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {repubBandeau.arretees} {lang==='fr'?'arrêtée'+(repubBandeau.arretees>1?'s':''):'stopped'} ›
+                  </button>
+                )}
+              </div>
+              {repubBandeau.prochaine&&(
+                <div style={{fontSize:11.5,color:"#8A8578",marginTop:5,lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?`Prochaine recréation vers ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell espace volontairement ses gestes de quelques minutes, comme une vraie personne.`
+                    :`Next recreation around ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell deliberately spaces its actions by a few minutes, like a real person.`}
+                </div>
+              )}
+              {repubFiltre&&(
+                <div style={{fontSize:11.5,color:"#8A8578",marginTop:5}}>
+                  {lang==='fr'?'Liste filtrée — re-touche le compteur pour tout réafficher.':'List filtered — tap the counter again to show everything.'}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Import du dressing Vinted — EN TÊTE de la liste (2026-08-05) :
               c'est le premier geste d'un nouvel utilisateur, il ne doit pas
               scroller pour le trouver. Monté UNE seule fois, HORS du ternaire
@@ -3473,7 +3625,7 @@ const StockTab = memo(function StockTab({
                       :`${repubVivants} reposts queued — expect about ${repubVivants*5>=60?`${Math.ceil(repubVivants*5/60)} h`:`${repubVivants*5}-${repubVivants*7} min`}, at a human pace. It resumes on its own if you close Chrome.`}
                   </div>
                 )}
-                {(modePrixAchat?stockFiltre.filter(paIncomplet):stockVisible).map(item=>{
+                {(modePrixAchat?stockFiltre.filter(paIncomplet):listeStock).map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
                   // prix d'achat absent et 0 € sur un null — la carte annonçait
@@ -3616,7 +3768,21 @@ const StockTab = memo(function StockTab({
                   // !disparu_le). Ne tient que parce que disparu_le est
                   // désormais fiable : marquage sauté sur un run repris ou un
                   // relevé incomplet (gardes de syncDressing, background.js).
-                  const logosEnLigne=disparuDeVinted?publishedActive.filter(p=>p!=="vinted"):publishedActive;
+                  // ── GEL DE CARTE pendant un cycle (2026-08-07, validé Nico) ─
+                  // La réservation de republication sort Vinted de
+                  // publishedActive pendant la fenêtre suppression→recréation :
+                  // avant, le logo DISPARAISSAIT, le compteur du bouton
+                  // changeait, la carte respirait — le « changement d'aspect
+                  // muet » remonté par ornellaracano. Désormais la carte ne
+                  // perd RIEN : le logo Vinted reste, GRISÉ (opacité + titre
+                  // dédié, clic → feuille d'avancement au lieu du modal de
+                  // retrait), le compteur reste stable, seule la pastille du
+                  // slot anime. Affichage pur : publishedActive lui-même ne
+                  // change pas, les gardes métier restent intactes.
+                  const vintedGeleParRepub=repubOccupeSlot&&!!item.vinted_item_id&&!publishedActive.includes("vinted");
+                  const logosEnLigne=disparuDeVinted
+                    ?publishedActive.filter(p=>p!=="vinted")
+                    :(vintedGeleParRepub?[...publishedActive,"vinted"]:publishedActive);
                   const enLigne=logosEnLigne.length>0;
                   // Compteur de plateformes réellement en ligne : pilote le 3e état
                   // du bouton (4/4 = plus rien à publier).
@@ -3736,7 +3902,7 @@ const StockTab = memo(function StockTab({
                           {/* `item.plateforme` a quitté cette condition avec le
                               repli textuel qu'il servait à afficher : le champ
                               libre ne déclenche plus une rangée à lui seul. */}
-                          {(enLigne||disparuDeVinted||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.emplacement||prixAnnonce!=null||repubOccupeSlot)&&(
+                          {(enLigne||disparuDeVinted||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.emplacement||prixAnnonce!=null||repubOccupeSlot||(item.vinted_item_id&&!disparuDeVinted))&&(
                             <div className="icons">
                               {/* Statut explicite : les pastilles de plateformes disaient OÙ,
                                   jamais QUE l'article est en ligne — d'où la confusion avec
@@ -3769,6 +3935,19 @@ const StockTab = memo(function StockTab({
                                   Estompé = retrait en cours. */}
                               {logosEnLigne.map(p=>{
                                 const removing=removalState[p]==="removing";
+                                // Logo GELÉ (republication en cours) : grisé,
+                                // jamais retiré ; le tap ouvre la feuille
+                                // d'avancement — surtout pas le modal de
+                                // retrait sur une annonce en plein cycle.
+                                const gele=vintedGeleParRepub&&p==="vinted";
+                                if(gele)return(
+                                  <span key={p} className="plogo"
+                                    title={lang==="en"?"Repost in progress — the listing comes back in a few minutes":"Republication en cours — l'annonce revient dans quelques minutes"}
+                                    style={{cursor:"pointer",opacity:.45}}
+                                    onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}>
+                                    <PlatformLogo platform={p} size={18}/>
+                                  </span>
+                                );
                                 return(
                                   <span key={p} className="plogo"
                                     title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`):(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
@@ -3847,6 +4026,39 @@ const StockTab = memo(function StockTab({
                                 </div>
                               )}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
+                              {/* ── Ancienneté (2026-08-07, validé Nico) ────
+                                  « en ligne depuis X j » (listed_at_guess,
+                                  tiret si NULL — le comblement des lignes
+                                  nées FillSell arrive avec le prochain
+                                  paquet extension) et « republié il y a
+                                  X j » (recreated_at du dernier republish
+                                  abouti). Toujours en JOURS. Présentes
+                                  AVANT, PENDANT et APRÈS un cycle : elles
+                                  ne participent jamais à la respiration de
+                                  la carte. */}
+                              {item.vinted_item_id&&!disparuDeVinted&&(()=>{
+                                const j=joursDepuis(item.listed_at_guess);
+                                return(
+                                  <div className="micon" style={{background:"#F6F5F1",border:"1px solid #E7E3D8",color:"#8A8578"}}>
+                                    🕒 {j==null
+                                      ?(lang==='fr'?'en ligne depuis —':'live since —')
+                                      :j===0
+                                      ?(lang==='fr'?"en ligne depuis aujourd'hui":'live since today')
+                                      :(lang==='fr'?`en ligne depuis ${j} j`:`live for ${j} d`)}
+                                  </div>
+                                );
+                              })()}
+                              {repubLatest?.status==='published'&&repubLatest?.platform_fields?.recreated_at&&(()=>{
+                                const j=joursDepuis(repubLatest.platform_fields.recreated_at);
+                                if(j==null)return null;
+                                return(
+                                  <div className="micon" style={{background:"#F6F5F1",border:"1px solid #E7E3D8",color:"#8A8578"}}>
+                                    🔁 {j===0
+                                      ?(lang==='fr'?"republié aujourd'hui":'reposted today')
+                                      :(lang==='fr'?`republié il y a ${j} j`:`reposted ${j} d ago`)}
+                                  </div>
+                                );
+                              })()}
                               {/* É5 : état de la republication — badge dédié,
                                   jamais confondu avec la publication. */}
                               {/* État de la republication — L'UNIQUE endroit qui

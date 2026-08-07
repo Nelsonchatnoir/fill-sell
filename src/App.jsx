@@ -2703,10 +2703,35 @@ export default function App({ loginOnly = false }){
     const q=query.toLowerCase().trim();
     return item.title?.toLowerCase().includes(q)||item.marque?.toLowerCase().includes(q)||item.description?.toLowerCase().includes(q)||item.type?.toLowerCase().includes(q);
   }
-  const stockFiltre=useMemo(()=>stock
-    .filter(i=>filterType==="Tous"||i.type===filterType)
-    .filter(i=>filterMarque==="Toutes"||(i.marque?.toLowerCase()===filterMarque.toLowerCase()))
-    .filter(i=>searchMatch(i,search)),[stock,filterType,filterMarque,search]);
+  // ── Tri du Stock en DEUX groupes (2026-08-07, validé Nico) ────────────────
+  // Groupe 1 : articles SANS annonce Vinted en ligne — ordre d'origine
+  // (créé récemment d'abord) : c'est le flux « je viens de l'ajouter, je
+  // publie », il ne bouge pas. Groupe 2 : articles EN LIGNE, du plus VIEUX
+  // listed_at_guess au plus récent — la pile à republier. Les dates
+  // inconnues (NULL) ferment le groupe 2 : on ne prétend pas vieux ce qu'on
+  // ne sait pas dater. Départage par position d'origine : deux dates égales
+  // ne permutent jamais (l'acquis anti-saut de 1544c38 tient).
+  // ⚠️ Le tri vit ICI (avant le slice de stockVisible) : trié après coupe,
+  // les 10 premiers seraient les 10 de l'ancien ordre.
+  const stockFiltre=useMemo(()=>{
+    const filtres=stock
+      .filter(i=>filterType==="Tous"||i.type===filterType)
+      .filter(i=>filterMarque==="Toutes"||(i.marque?.toLowerCase()===filterMarque.toLowerCase()))
+      .filter(i=>searchMatch(i,search));
+    const enLigneVinted=(i)=>!!i.vinted_item_id&&!i.disparu_le;
+    const g1=filtres.filter(i=>!enLigneVinted(i));
+    const g2=filtres.map((i,k)=>[i,k]).filter(([i])=>enLigneVinted(i))
+      .sort((a,b)=>{
+        const ta=Date.parse(a[0].listed_at_guess??'');
+        const tb=Date.parse(b[0].listed_at_guess??'');
+        const va=Number.isFinite(ta)?ta:Infinity;
+        const vb=Number.isFinite(tb)?tb:Infinity;
+        if(va!==vb)return va<vb?-1:1;
+        return a[1]-b[1];
+      })
+      .map(([i])=>i);
+    return [...g1,...g2];
+  },[stock,filterType,filterMarque,search]);
   const soldFiltre=useMemo(()=>sold
     .filter(i=>filterType==="Tous"||i.type===filterType)
     .filter(i=>filterMarqueSold==="Toutes"||(i.marque?.toLowerCase()===filterMarqueSold.toLowerCase()))
