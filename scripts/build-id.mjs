@@ -47,13 +47,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-07T13:58:00Z = chantier lisibilité republication, volet extension :
-// patchLeger écrit listed_at_guess sur les lignes nées FillSell (fait Vinted,
-// clé absente si photo_ts manque — converge avec l'écriture à la recréation) ;
-// popup : titre de l'annonce en cours de republication + « prochaine
-// recréation vers HH:MM » (next_action_after réel, pause volontaire dite).
-// Le zip 0.5.2 est re-packagé après CE commit.
-export const EXTENSION_LAST_COMMIT = '2026-08-07T13:58:00Z';
+// 2026-08-07T17:05:00Z = invariant « une seule annonce hors ligne à la
+// fois » (lot seandemet : 7 suppressions enchaînées avant la 1re recréation,
+// 18 min hors ligne pour la plus ancienne) : aucune suppression tant qu'un
+// job du compte est à l'étape 'deleted' non recréé (needs_user/failed
+// compris — échec fermé si invérifiable) ; le poll traite les recréations
+// dues EN PREMIER, plus ancienne suppression d'abord ; l'auto Pro ne met
+// plus rien en file tant qu'une republication est en vol. Le zip 0.5.2 est
+// re-packagé après CE commit.
+export const EXTENSION_LAST_COMMIT = '2026-08-07T17:05:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.

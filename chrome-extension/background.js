@@ -1220,6 +1220,31 @@ async function pollAndProcessJobsUnlocked() {
   // publishSelectedUnlocked, même consommateur côté popup — qui filtre par
   // jobId pour ne peindre que l'annonce affichée (les jobs d'une autre
   // annonce ou les jobs delete sont ignorés là-bas).
+  // ── Ordre de traitement des republications (2026-08-07, lot seandemet) ────
+  // Les recréations DUES passent AVANT tout autre job republish, la plus
+  // ANCIENNEMENT supprimée d'abord : c'est elle qui a le plus à perdre (une
+  // annonce hors ligne ne vend pas). Sans ce tri, les 8 jobs d'un lot ont le
+  // même created_at à la seconde près — l'ordre était arbitraire, et la
+  // première recréation aboutie du lot réel a été celle du job supprimé le
+  // plus RÉCEMMENT, pendant que le plus ancien attendait depuis 19 minutes.
+  // Tri STABLE (index d'origine en départage) : les jobs non-republish et les
+  // republish pas encore supprimés gardent leur ordre de file.
+  const prioriteRepub = (j) =>
+    j.action === "republish" && j.platform_fields?.republish_step === "deleted" ? 0 : 1;
+  jobs = jobs
+    .map((j, i) => [j, i])
+    .sort((a, b) => {
+      const pa = prioriteRepub(a[0]), pb = prioriteRepub(b[0]);
+      if (pa !== pb) return pa - pb;
+      if (pa === 0) {
+        const da = Date.parse(a[0].platform_fields?.deleted_at ?? "") || 0;
+        const db = Date.parse(b[0].platform_fields?.deleted_at ?? "") || 0;
+        if (da !== db) return da - db;
+      }
+      return a[1] - b[1];
+    })
+    .map(([j]) => j);
+
   for (const j of jobs) emitProgress({ jobId: j.id, platform: j.platform, phase: "queued" });
 
   // Séquentiel : un onglet de publication à la fois, avec une pause entre
@@ -6878,6 +6903,43 @@ async function processRepublishJob(job, accessToken) {
       await updateJobStatus(accessToken, job.id, "failed", { error: msg });
       return { status: "failed", error: msg };
     }
+
+    // ── INVARIANT « UNE SEULE ANNONCE HORS LIGNE À LA FOIS » (2026-08-07) ───
+    // Lot réel de 8 (seandemet, 18h23) : 7 suppressions enchaînées AVANT la
+    // première recréation — 7 annonces d'un coup hors ligne, la plus ancienne
+    // 18 minutes. Mécanique : l'espacement global est réarmé par CHAQUE
+    // geste, une recréation pas encore due est 'skipped', et une suppression
+    // n'a AUCUNE contrainte de temps propre — les suppressions gagnaient
+    // toujours, la machine vidait la file phase par phase au lieu d'article
+    // par article.
+    // La garde : tant qu'il existe pour CE compte un job republish à l'étape
+    // 'deleted' non recréé — pending/processing (recréation en route), mais
+    // aussi needs_user et failed (annonce hors ligne qui attend un geste) —
+    // AUCUNE nouvelle suppression ne part. Conséquence assumée : un job
+    // bloqué hors ligne GÈLE les suppressions du reste du lot jusqu'à sa
+    // relance — l'invariant prime, et la pastille rouge « Hors ligne » +
+    // la remontée en tête de liste poussent déjà l'utilisateur vers le bon
+    // geste. Échec FERMÉ : lecture impossible → on ne supprime PAS (mieux
+    // vaut un tour de poll perdu qu'une deuxième annonce hors ligne sans
+    // certitude). Avec le tri du poll (recréations dues d'abord, plus
+    // ancienne suppression en tête), le flux redevient : capture →
+    // suppression → attente → recréation d'UN article, puis le suivant.
+    try {
+      const horsLigne = await restRequest(
+        `cross_post_jobs?user_id=eq.${decodeJwtSub(accessToken)}&action=eq.republish` +
+        `&id=neq.${job.id}&status=in.(pending,processing,needs_user,failed)` +
+        `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
+        accessToken, { headers: { Prefer: "return=representation" } },
+      );
+      if (Array.isArray(horsLigne) && horsLigne.length) {
+        console.log(`[republish] job ${job.id} : suppression reportée — une annonce du compte est déjà hors ligne (job ${horsLigne[0].id}), sa recréation passe d'abord`);
+        return { status: "skipped", error: "une annonce est déjà hors ligne — sa recréation passe d'abord" };
+      }
+    } catch (e) {
+      console.warn(`[republish] job ${job.id} : invariant hors-ligne invérifiable (${e?.message ?? e}) — suppression reportée par prudence`);
+      return { status: "skipped", error: "invariant hors-ligne invérifiable — suppression reportée" };
+    }
+
     try {
       // ── Borne de fraîcheur À L'EXÉCUTION (point 3 validé, 2026-08-05) ────
       // C'est ICI que la péremption compte : un job qui a dormi (Chrome
@@ -7380,6 +7442,21 @@ async function maybeAutoRepublish(session) {
       console.log("[republish-auto] compte plus Pro — automatisation coupée proprement (motif visible dans l'app)");
       return;
     }
+
+    // ── Article par article aussi pour l'AUTO (2026-08-07) ──────────────────
+    // Le plafond « 1 mise en file par cycle » limite le DÉBIT D'ENTRÉE, pas
+    // l'empilement : le pré-filtre plus bas ne regarde que le MÊME article —
+    // un cycle pouvait mettre B en file pendant que A était encore en vol, et
+    // la file reconstituait exactement le lot qui a mis 7 annonces hors
+    // ligne. Tant qu'UNE republication du compte est non terminale (quel que
+    // soit l'article), on ne met RIEN de neuf en file : l'exécuteur porte
+    // l'invariant, l'auto n'a aucune raison de fabriquer une file d'attente.
+    const enVol = await restRequest(
+      `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
+      `&status=in.(pending,processing,needs_user)&select=id&limit=1`,
+      token, { headers: { Prefer: "return=representation" } },
+    ).catch(() => null);
+    if (enVol === null || enVol.length) return;
 
     const ageJours = Math.min(365, Math.max(7, Number(cfg.age_jours) || 30));
     const plafond = Math.min(50, Math.max(1, Number(cfg.plafond_jour) || 10));
