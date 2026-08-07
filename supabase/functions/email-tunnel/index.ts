@@ -1119,6 +1119,55 @@ serve(async (req) => {
     return new Response("ok");
   }
 
+  // ── Désabonnement marketing (2026-08-07) — AVANT le secret cron ───────────
+  // Cible des en-têtes List-Unsubscribe / List-Unsubscribe-Post (One-Click,
+  // RFC 8058) posés sur les blasts : Gmail POST ici sans aucun secret quand
+  // l'utilisateur clique « Se désabonner ». Le jeton est l'user_id (UUID non
+  // devinable) ; l'opt-out est journalisé dans email_logs sous le type
+  // RÉCURRENT 'marketing_optout' (plusieurs clics = plusieurs lignes,
+  // légitime → SURTOUT PAS dans l'index one-shot, cf. règle CLAUDE.md).
+  // Toute FUTURE branche de blast doit exclure ces user_id de sa cible —
+  // blast_sync_dressing le fait. Toujours 200, même sur jeton illisible :
+  // un désabonnement ne doit jamais « échouer » côté client mail.
+  {
+    const unsubToken = new URL(req.url).searchParams.get("unsub");
+    if (unsubToken) {
+      const uuidOk = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(unsubToken);
+      if (uuidOk) {
+        try {
+          const admin = createClient(
+            Deno.env.get("SUPABASE_URL")!,
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+          );
+          const { error } = await admin.from("email_logs")
+            .insert({ user_id: unsubToken, email_type: "marketing_optout" });
+          if (error) console.error("marketing_optout_insert_echec", unsubToken, error.message);
+          else console.log("marketing_optout", unsubToken);
+        } catch (e) {
+          console.error("marketing_optout_exception", unsubToken, String(e));
+        }
+      } else {
+        console.warn("marketing_optout_jeton_illisible", unsubToken.slice(0, 60));
+      }
+      // POST = One-Click silencieux ; GET = quelqu'un a ouvert le lien dans
+      // un navigateur → page lisible, en français, sans dépendance.
+      if (req.method === "GET") {
+        return new Response(
+          `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>FillSell</title></head>
+<body style="margin:0;padding:48px 24px;background:#EDEAE0;font-family:Helvetica,Arial,sans-serif;">
+<div style="max-width:480px;margin:0 auto;background:#F6F5F1;border-radius:16px;padding:32px;">
+<p style="margin:0;font-size:17px;font-weight:700;color:#10201B;">C'est noté.</p>
+<p style="margin:12px 0 0;font-size:15px;line-height:1.6;color:#10201B;">Tu ne recevras plus ce type d'email de FillSell. Les emails liés à ton compte (confirmations, alertes) continuent normalement.</p>
+</div></body></html>`,
+          { headers: { "Content-Type": "text/html; charset=utf-8" } },
+        );
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+
   const cronSecret = req.headers.get("x-cron-secret");
   const expectedSecret = Deno.env.get("CRON_SECRET");
   if (!expectedSecret || cronSecret !== expectedSecret) {
@@ -1154,7 +1203,7 @@ serve(async (req) => {
   // n'arrivait pas, et ni la réponse ni les logs ne disaient pourquoi.
   const resendTrace: Array<Record<string, unknown>> = [];
 
-  async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+  async function sendEmail(to: string, subject: string, html: string, mailHeaders?: Record<string, string>): Promise<boolean> {
     try {
       const res = await fetch(RESEND_API, {
         method: "POST",
@@ -1162,7 +1211,10 @@ serve(async (req) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${resendKey}`,
         },
-        body: JSON.stringify({ from: FROM, to: [to], subject, html }),
+        body: JSON.stringify({
+          from: FROM, to: [to], subject, html,
+          ...(mailHeaders ? { headers: mailHeaders } : {}),
+        }),
       });
       const brut = await res.text();
       let corps: unknown = brut;
@@ -1619,21 +1671,26 @@ serve(async (req) => {
       );
     }
 
-    // Dédup déjà-envoyés : pagination explicite, PostgREST tronque à 1000 et
-    // email_logs dépasse déjà le millier de lignes (règle CLAUDE.md).
+    // Dédup déjà-envoyés + opt-out marketing : pagination explicite, PostgREST
+    // tronque à 1000 et email_logs dépasse déjà le millier de lignes (règle
+    // CLAUDE.md). 'marketing_optout' = lignes posées par l'endpoint ?unsub=
+    // (One-Click Gmail) — un désabonné ne reçoit AUCUN blast futur.
     const dejaEnvoye = new Set<string>();
+    const optout = new Set<string>();
     try {
       const PAGE = 1000;
-      for (let debut = 0; ; debut += PAGE) {
-        const { data, error } = await supabase
-          .from("email_logs")
-          .select("user_id")
-          .eq("email_type", BLAST_SYNC_TYPE)
-          .order("user_id")
-          .range(debut, debut + PAGE - 1);
-        if (error) throw new Error(error.message);
-        for (const l of data ?? []) dejaEnvoye.add((l as { user_id: string }).user_id);
-        if (!data || data.length < PAGE) break;
+      for (const [type, cible] of [[BLAST_SYNC_TYPE, dejaEnvoye], ["marketing_optout", optout]] as const) {
+        for (let debut = 0; ; debut += PAGE) {
+          const { data, error } = await supabase
+            .from("email_logs")
+            .select("user_id")
+            .eq("email_type", type)
+            .order("user_id")
+            .range(debut, debut + PAGE - 1);
+          if (error) throw new Error(error.message);
+          for (const l of data ?? []) cible.add((l as { user_id: string }).user_id);
+          if (!data || data.length < PAGE) break;
+        }
       }
     } catch (e) {
       return new Response(
@@ -1667,6 +1724,7 @@ serve(async (req) => {
     for (const c of brutes as Array<{ user_id: string; user_email: string; rang: number }>) {
       if (!c.user_email || estInterne(c.user_email)) { exclusInternes++; continue; }
       if (exclusResendSet.has(c.user_email.trim().toLowerCase())) { exclusResend++; continue; }
+      if (optout.has(c.user_id)) continue;
       if (dejaEnvoye.has(c.user_id)) continue;
       if (vus.has(c.user_id)) continue;
       vus.add(c.user_id);
@@ -1693,12 +1751,22 @@ serve(async (req) => {
       );
     }
 
+    // En-têtes de désabonnement (RFC 8058, One-Click) — PAR destinataire :
+    // l'URL porte son user_id. Gmail affiche son bouton natif « Se
+    // désabonner » : un agacé clique là plutôt que sur « Spam ».
+    const unsubHeaders = (userId: string): Record<string, string> => ({
+      "List-Unsubscribe":
+        `<${Deno.env.get("SUPABASE_URL")}/functions/v1/email-tunnel?unsub=${userId}>, ` +
+        `<mailto:support@fillsell.app?subject=STOP>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+
     const html = blastSyncDressingHtml();
     const tranche = cibles.slice(0, limite);
     for (let i = 0; i < tranche.length; i += BLAST_LOT) {
       await Promise.all(
         tranche.slice(i, i + BLAST_LOT).map(async (c) => {
-          const ok = await sendEmail(c.user_email, BLAST_SYNC_SUBJECT, html);
+          const ok = await sendEmail(c.user_email, BLAST_SYNC_SUBJECT, html, unsubHeaders(c.user_id));
           // Resend en échec = AUCUNE ligne email_logs : la cible reste
           // éligible et repartira au prochain lot.
           if (!ok) {
