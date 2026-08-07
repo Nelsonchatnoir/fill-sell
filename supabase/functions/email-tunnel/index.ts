@@ -985,13 +985,21 @@ ${pastille(logo("logo-beebs.png", "Beebs"))}
 //   · la republication automatique Pro : UNE mention, jamais un argument
 //     central.
 function blastSyncDressingHtml(): string {
-  const etape = (num: string, titre: string, corps: string, marge: boolean) => `
+  // Captures RÉELLES de l'app (fournies par Nico le 07/08), recadrées et
+  // hébergées comme les logos : public/email/ → https://fillsell.app/email/.
+  // Elles vivent dans la colonne de texte de l'étape (offset 40 px), coins
+  // arrondis + liseré, width:100% → se compressent proprement sur mobile.
+  const capture = (fichier: string, alt: string) => `
+<img src="https://fillsell.app/email/${fichier}" width="456" alt="${alt}"
+  style="width:100%; max-width:456px; height:auto; border-radius:12px; border:1px solid #E7E3D8; display:block; margin-top:14px;">`;
+
+  const etape = (num: string, titre: string, corps: string, marge: boolean, image = "") => `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${marge ? ` style="margin-top:28px;"` : ""}>
 <tr>
 <td width="40" valign="top" style="font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:13px; font-weight:700; color:#2F9E90; padding-top:2px;">${num}</td>
 <td valign="top">
 <p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; line-height:1.4; color:#10201B;">${titre}</p>
-<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">${corps}</p>
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">${corps}</p>${image}
 </td>
 </tr>
 </table>`;
@@ -1034,8 +1042,10 @@ function blastSyncDressingHtml(): string {
 <tr>
 <td style="padding:36px 32px 0 32px;">
 <p style="margin:0 0 18px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1B6E62;">Comment ça marche</p>
-${etape("01", "Tu importes ton dressing Vinted dans FillSell", "Un clic, gratuit, aucune Pépite. Titres, prix, photos, vues et favoris remontent tout seuls.", false)}
-${etape("02", "Sur chaque annonce, un bouton «&nbsp;Republier&nbsp;»", "FillSell sauvegarde la fiche, retire l'ancienne annonce et la remet en ligne à l'identique. Tu peux même baisser le prix au passage.", true)}
+${etape("01", "Tu importes ton dressing Vinted dans FillSell", "Un clic, gratuit, aucune Pépite. Titres, prix, photos, vues et favoris remontent tout seuls.", false,
+  capture("blast-sync-01-dressing.png", "La carte « Tu vends déjà sur Vinted ? » dans FillSell, avec le bouton Actualiser mon dressing"))}
+${etape("02", "Sur chaque annonce, un bouton «&nbsp;Republier&nbsp;»", "FillSell sauvegarde la fiche, retire l'ancienne annonce et la remet en ligne à l'identique. Tu peux même baisser le prix au passage.", true,
+  capture("blast-sync-02-republier.png", "Une annonce importée dans FillSell, avec son bouton Republier"))}
 ${etape("03", "Plusieurs articles d'un coup", "Tu sélectionnes, tu republies en lot.", true)}
 <p style="margin:24px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">C'est gratuit, et automatisable avec l'abonnement Pro.</p>
 </td>
