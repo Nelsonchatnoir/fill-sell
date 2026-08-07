@@ -3911,7 +3911,25 @@ const StockTab = memo(function StockTab({
                                   pastille de republication PREND CETTE PLACE
                                   (cf. repubOccupeSlot plus haut) — jamais les
                                   deux à la fois. */}
-                              {enLigne&&!repubOccupeSlot&&<div className="micon ic-online"><span className="dot"/>{lang==="en"?"Live":"En ligne"}</div>}
+                              {/* Rangée DÉDIÉE pour le SLOT d'état (07/08),
+                                  dans ses deux incarnations (« En ligne »
+                                  ici, pastille de cycle plus bas). Sans ça,
+                                  l'échange « En ligne » (~62 px) ↔
+                                  « Recréation… › » (~115 px) faisait
+                                  re-wrapper la rangée à 390 px : ±1 rangée,
+                                  la respiration résiduelle que le gel
+                                  n'avait pas couverte. Le WRAPPER prend la
+                                  rangée (flex-basis:100%), la puce garde sa
+                                  largeur de contenu — un flex-basis posé
+                                  sur la puce elle-même en ferait un bandeau
+                                  pleine largeur, et clampé par max-width il
+                                  ne forcerait plus le retour à la ligne
+                                  (le wrap flex lit la taille APRÈS clamp). */}
+                              {enLigne&&!repubOccupeSlot&&(
+                                <div style={{flex:"0 0 100%"}}>
+                                  <div className="micon ic-online"><span className="dot"/>{lang==="en"?"Live":"En ligne"}</div>
+                                </div>
+                              )}
                               {/* Annonce Vinted introuvable à la dernière sync.
                                   Elle REMPLACE le prix (masqué au même titre) :
                                   la place libérée dit maintenant la seule chose
@@ -4020,42 +4038,43 @@ const StockTab = memo(function StockTab({
                               {/* Prix de l'ANNONCE (demandé, pas encaissé) —
                                   lu dans vinted_listing_snapshots, une seule
                                   requête pour toute la liste. */}
+                              {/* Libellé raccourci « Vinted · prix » (07/08) :
+                                  le mot reste — il distingue ce prix du
+                                  « X € investi » de droite (deux prix nus sur
+                                  une carte seraient illisibles) — mais
+                                  « Annonce » saute : à 390 px, un prix à 4
+                                  chiffres passait en coupe. L'explication
+                                  complète vit dans title=. */}
                               {prixAnnonce!=null&&(
                                 <div className="micon ic-price" title={lang==='fr'?"Prix affiché sur l'annonce Vinted — pas un prix de vente réalisé":"Asking price on the Vinted listing — not a realized sale price"}>
-                                  🏷️ {lang==='fr'?'Annonce Vinted':'Vinted listing'} · {fmt(prixAnnonce)}
+                                  🏷️ Vinted · {fmt(prixAnnonce)}
                                 </div>
                               )}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
-                              {/* ── Ancienneté (2026-08-07, validé Nico) ────
-                                  « en ligne depuis X j » (listed_at_guess,
-                                  tiret si NULL — le comblement des lignes
-                                  nées FillSell arrive avec le prochain
-                                  paquet extension) et « republié il y a
-                                  X j » (recreated_at du dernier republish
-                                  abouti). Toujours en JOURS. Présentes
-                                  AVANT, PENDANT et APRÈS un cycle : elles
-                                  ne participent jamais à la respiration de
-                                  la carte. */}
-                              {item.vinted_item_id&&!disparuDeVinted&&(()=>{
+                              {/* ── Ancienneté (2026-08-07, resserrée le soir même) ──
+                                  UNE seule puce : « en ligne depuis X j » —
+                                  l'information qui motive la republication.
+                                  La puce « republié il y a X j » a été
+                                  SUPPRIMÉE : redondante par construction, la
+                                  recréation écrit listed_at_guess (vérifié en
+                                  base par Nico : Robe TRF = l'heure exacte de
+                                  sa recréation) — après republication, « en
+                                  ligne depuis 0 j » dit déjà la même chose,
+                                  et le cooldown du bouton couvre les 24 h.
+                                  Masquée quand elle n'apporte rien ou MENT :
+                                  date NULL (plus de « depuis — », le
+                                  comblement patchLeger vide ce cas), et
+                                  arrêt APRÈS suppression (pastille rouge :
+                                  l'annonce est RETIRÉE, « en ligne depuis »
+                                  serait un mensonge). */}
+                              {item.vinted_item_id&&!disparuDeVinted&&!repubEtape?.apresSuppression&&(()=>{
                                 const j=joursDepuis(item.listed_at_guess);
-                                return(
-                                  <div className="micon" style={{background:"#F6F5F1",border:"1px solid #E7E3D8",color:"#8A8578"}}>
-                                    🕒 {j==null
-                                      ?(lang==='fr'?'en ligne depuis —':'live since —')
-                                      :j===0
-                                      ?(lang==='fr'?"en ligne depuis aujourd'hui":'live since today')
-                                      :(lang==='fr'?`en ligne depuis ${j} j`:`live for ${j} d`)}
-                                  </div>
-                                );
-                              })()}
-                              {repubLatest?.status==='published'&&repubLatest?.platform_fields?.recreated_at&&(()=>{
-                                const j=joursDepuis(repubLatest.platform_fields.recreated_at);
                                 if(j==null)return null;
                                 return(
                                   <div className="micon" style={{background:"#F6F5F1",border:"1px solid #E7E3D8",color:"#8A8578"}}>
-                                    🔁 {j===0
-                                      ?(lang==='fr'?"republié aujourd'hui":'reposted today')
-                                      :(lang==='fr'?`republié il y a ${j} j`:`reposted ${j} d ago`)}
+                                    🕒 {j===0
+                                      ?(lang==='fr'?"en ligne depuis aujourd'hui":'live since today')
+                                      :(lang==='fr'?`en ligne depuis ${j} j`:`live for ${j} d`)}
                                   </div>
                                 );
                               })()}
@@ -4071,13 +4090,20 @@ const StockTab = memo(function StockTab({
                                   phrase entière y prend une largeur
                                   irréductible et ressort de la colonne. Le
                                   détail vit dans la feuille, au tap. */}
+                              {/* Même rangée dédiée que « En ligne » (cf. le
+                                  wrapper du slot plus haut) : les deux
+                                  incarnations du slot occupent une rangée
+                                  entière, la hauteur ne bouge pas au
+                                  début/fin de cycle. */}
                               {repubOccupeSlot&&(
-                                <div className="micon" role="button" tabIndex={0}
-                                  title={lang==='fr'?'Voir où en est la republication':'See repost progress'}
-                                  onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}
-                                  onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();setRepubProgress(repubLatest);}}}
-                                  style={{background:repubEtape.fond,border:`1px solid ${repubEtape.bord}`,color:repubEtape.encre,cursor:"pointer"}}>
-                                  🔁 {!repubEtape.fini&&<span className="pulse"/>} {repubEtape.court} ›
+                                <div style={{flex:"0 0 100%"}}>
+                                  <div className="micon" role="button" tabIndex={0}
+                                    title={lang==='fr'?'Voir où en est la republication':'See repost progress'}
+                                    onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}
+                                    onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();setRepubProgress(repubLatest);}}}
+                                    style={{background:repubEtape.fond,border:`1px solid ${repubEtape.bord}`,color:repubEtape.encre,cursor:"pointer"}}>
+                                    🔁 {!repubEtape.fini&&<span className="pulse"/>} {repubEtape.court} ›
+                                  </div>
                                 </div>
                               )}
                             </div>

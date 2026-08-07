@@ -1050,11 +1050,21 @@ ${s} .icons{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:6p
    donc un libellé trop long prenait une largeur IRRÉDUCTIBLE et sortait de la
    carte par la droite, par-dessus les boutons. Une pastille reste courte par
    contrat (les phrases vont dans .cardnote ou dans une feuille) ; si l'une
-   déborde quand même, elle se coupe proprement au lieu de casser la carte. */
-${s} .micon{height:19px;padding:0 6px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;font-weight:700;gap:3px;flex:0 0 auto;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
+   déborde quand même, elle se coupe proprement au lieu de casser la carte.
+   ⚠️ AUDIT 07/08 : ce filet N'A JAMAIS FONCTIONNÉ tant que .micon était
+   display:flex — text-overflow:ellipsis est INOPÉRANT sur un conteneur flex,
+   et justify-content:center rognait le contenu PAR LES DEUX BOUTS, sans
+   ellipse (« nonce Vinted · 2 » constaté : ni le début du libellé, ni le
+   prix). Le correctif : .micon redevient un bloc à contenu INLINE
+   (inline-block + line-height) — l'ellipse s'applique, la coupe se fait en
+   FIN de texte (le libellé survit, « Annonce Vi… »). Dans la rangée .icons
+   (flex), le display est blockifié : le comportement de flex ITEM est
+   inchangé, seul le rendu INTERNE change. Les points (.dot/.pulse) passent
+   en inline-block alignés (le gap flex ne s'applique plus). */
+${s} .micon{height:19px;line-height:19px;padding:0 6px;border-radius:6px;display:inline-block;text-align:left;font-size:10px;color:#fff;font-weight:700;flex:0 0 auto;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
 /* Point qui respire : une republication en cours doit se VOIR vivante sur la
    carte, sans y installer un spinner (le détail animé vit dans la feuille). */
-${s} .micon .pulse{width:5px;height:5px;border-radius:50%;background:currentColor;flex:0 0 auto;animation:fs-pulse 1.4s ease-in-out infinite;}
+${s} .micon .pulse{display:inline-block;vertical-align:middle;margin:0 3px 2px 0;width:5px;height:5px;border-radius:50%;background:currentColor;animation:fs-pulse 1.4s ease-in-out infinite;}
 @keyframes fs-pulse{0%,100%{opacity:.25;}50%{opacity:1;}}
 @media (prefers-reduced-motion:reduce){${s} .micon .pulse{animation:none;opacity:.7;}}
 ${s} .ic-vinted{background:#09B584;}
@@ -1093,7 +1103,7 @@ ${s} .cardnote.is-warn{background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412
    ⚠️ white-space:nowrap est porté par .micon : sans lui, « En ligne » se cassait
    en « En » / « ligne » quand la place manquait (constaté sur la 1re carte). */
 ${s} .ic-online{background:rgba(47,158,144,.12);color:var(--teal-deep);box-shadow:inset 0 0 0 1px rgba(47,158,144,.40);}
-${s} .ic-online .dot{width:5px;height:5px;border-radius:50%;background:var(--teal);flex:0 0 auto;}
+${s} .ic-online .dot{display:inline-block;vertical-align:middle;margin:0 3px 2px 0;width:5px;height:5px;border-radius:50%;background:var(--teal);}
 /* Plateformes : LOGOS et non plus noms écrits. « Leboncoin » + « Beebs » en toutes
    lettres débordaient la carte en largeur mobile quel que soit le CSS — quatre
    logos de 18 px tiennent dans la place d'un seul nom. Aucun socle ni cadre ici :
