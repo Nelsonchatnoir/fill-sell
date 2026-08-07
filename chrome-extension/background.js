@@ -5084,18 +5084,48 @@ async function captureVintedItem(vintedItemId) {
 // C'est le cas de processRepublishJob, qui tourne dans le poll, lui-même sous
 // withJobFlowLock : réclamer le verrou ici serait un auto-blocage (le même
 // piège que la commande de sync distante, cf. traiterCommandeSyncDistante).
+//
+// DEUX TENTATIVES, navigation NEUVE entre les deux (2026-08-07, job 70cc68cd
+// d'ornellaracano, jour du blast) : « sonde injoignable : Receiving end does
+// not exist » est une condition TRANSITOIRE — onglet de travail dont la
+// navigation post-discard n'a pas abouti (chargement trop lent, page
+// d'erreur), content script jamais monté malgré les 20 s de relance de
+// sendMessageToTab. Preuve du caractère transitoire : 8 secondes après ce
+// même échec, la sync du dressing a re-navigué le MÊME onglet et sa sonde a
+// répondu. Un 'failed' sec au premier essai fait perdre son geste à
+// l'utilisateur (recliquer, re-débiter, re-rembourser) pour un aléa de
+// chargement. On ne rejoue QUE la classe « connexion impossible » — jamais
+// une vraie réponse du content script (même en échec), jamais le timeout de
+// 5 min (là, on ne sait pas ce qui a été fait). La capture est une LECTURE :
+// la rejouer ne peut rien dupliquer.
 async function captureVintedItemUnlocked(vintedItemId) {
   const id = String(vintedItemId ?? "").trim();
   if (!id) return { success: false, error: "id d'article Vinted manquant" };
-  let tabId;
-  try {
-    tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
-  } catch (e) {
-    return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
+  let derniereErreur = null;
+  for (let tentative = 1; tentative <= 2; tentative++) {
+    let tabId;
+    try {
+      // Rappelé À CHAQUE tentative : navigateWorkTab re-décharge et re-navigue
+      // l'onglet — c'est la navigation fraîche qui répare, pas l'attente.
+      tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+    } catch (e) {
+      return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}` };
+    }
+    let injoignable = false;
+    const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_CAPTURE", vintedItemId: id })
+      .catch((e) => {
+        const msg = String(e?.message ?? e);
+        injoignable = msg.includes("Receiving end does not exist") || msg.includes("Could not establish connection");
+        return { success: false, error: `sonde injoignable : ${msg}` };
+      });
+    if (!injoignable) return res ?? { success: false, error: "réponse vide du content script" };
+    derniereErreur = res;
+    if (tentative === 1) {
+      console.warn(`[capture] sonde injoignable (tentative 1) — navigation neuve puis 2e essai dans 5 s`);
+      await sleep(5000);
+    }
   }
-  const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_CAPTURE", vintedItemId: id })
-    .catch((e) => ({ success: false, error: `sonde injoignable : ${String(e?.message ?? e)}` }));
-  return res ?? { success: false, error: "réponse vide du content script" };
+  return derniereErreur;
 }
 
 // ── Capture + re-hébergement + persistance, CÔTÉ EXTENSION (2026-08-05) ──────

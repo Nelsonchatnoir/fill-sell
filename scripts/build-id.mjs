@@ -47,15 +47,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-07T10:20:00Z = version 0.5.2 (paquet CWS du fix opt-in cron
-// c39f8ec) + harnais mock de pagination (unpacked seulement, double verrou
-// update_url + clé FILLSELL_SYNC_MOCK — INERTE dans un paquet CWS). Le
-// trigger garde_cadence_sync_runs (20260807100000) est appliqué en prod
-// depuis ce matin.
-// (recalée 10:20 → 10:06 : le commit bac7a4c est tombé à 10:05, la valeur
-// visée était trop en avance et package:extension refusait tout build fait
-// avant 10:20 — l'inverse du piège habituel.)
-export const EXTENSION_LAST_COMMIT = '2026-08-07T10:06:00Z';
+// 2026-08-07T12:40:00Z = capture de republication en DEUX tentatives avec
+// navigation neuve entre les deux — « sonde injoignable : Receiving end does
+// not exist » est transitoire (job 70cc68cd, jour du blast : la sync a
+// re-navigué le même onglet 8 s après l'échec et sa sonde répondait). Un
+// failed sec au 1er essai faisait perdre son geste à l'utilisateur.
+// ⚠️ Le zip 0.5.2 produit à 10:06 n'inclut PAS ce fix — re-packager avant
+// téléversement si Nico ne l'a pas encore envoyé.
+export const EXTENSION_LAST_COMMIT = '2026-08-07T12:40:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.
