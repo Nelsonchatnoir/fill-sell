@@ -200,40 +200,17 @@ function ctaButton(label: string): string {
 
 function welcomeHtml(lang: string): string {
   const isFr = lang !== "en";
-  const content = isFr ? `
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      Bienvenue sur FillSell&nbsp;! 🎉
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
-      font-family:sans-serif;">
-      Votre compte est prêt. FillSell vous aide à gérer votre stock, analyser vos
-      marges et publier automatiquement sur Vinted, Leboncoin, eBay et Beebs — le tout en quelques secondes.
-    </p>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
-        font-family:sans-serif;">Pour démarrer :</p>
-      <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
-        line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Ajoutez vos articles par commande vocale</li>
-        <li>📸 Analysez les prix avec la photo IA (Lens)</li>
-        <li>📊 Suivez vos marges en temps réel</li>
-        <li>🚀 Publiez directement sur vos plateformes</li>
-        <li><img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Pépites" style="display:inline-block;vertical-align:-3px;"> Gagnez et dépensez des Pépites à chaque action</li>
-      </ul>
-    </div>
-    <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
-      <h2 style="margin:0 0 12px;font-size:18px;font-weight:800;letter-spacing:-0.01em;
-        color:#111827;font-family:sans-serif;">
-        🧩 L'extension Chrome : le cœur de FillSell
-      </h2>
-      <p style="color:#6B7280;font-size:14px;line-height:1.65;margin:0 0 18px;
-        font-family:sans-serif;">
-        C'est elle qui fait le travail à votre place : une fois installée, dès que vous
-        ajoutez un article, elle le publie automatiquement sur Vinted, Leboncoin, eBay et
-        Beebs — sans que vous ayez à remplir un seul formulaire. Elle tourne en
-        arrière-plan, sans jamais prendre le contrôle de votre navigateur.
-      </p>
+  // ── Refonte 2026-08-07 (texte Nico, mot pour mot) ──────────────────────────
+  // L'ancien mail promettait « publie automatiquement […] en quelques
+  // secondes » et « Gagnez et dépensez des Pépites à chaque action » — périmé
+  // et faux. Le nouveau parle sync du dressing, republication, et du contrat
+  // Pépites réel (coût affiché avant validation). AUCUN montant en dur (ni
+  // prix d'abonnement, ni coût d'action) — la grille vit dans l'app, comme
+  // dans les CGV. Seule exception, assumée par Nico : « 30 Pépites
+  // offertes », le grant d'inscription, affiché aussi sur la landing.
+  // Gabarit inchangé : blocs verts, rangée de logos, encart ambre
+  // « ordinateur », visuel Pépites, CTA — le design n'est pas refait.
+  const logosRow = `
       <table cellpadding="0" cellspacing="0" width="100%" role="presentation"
         style="background:#F0FDF9;border-radius:12px;margin:0 0 18px;">
         <tr><td align="center" style="padding:16px 0;">
@@ -244,23 +221,52 @@ function welcomeHtml(lang: string): string {
             <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-beebs.png" width="54" height="54" alt="Beebs" style="display:block;"></td>
           </tr></table>
         </td></tr>
-      </table>
+      </table>`;
+  const bloc = (titre: string, corps: string, marge = "0 0 16px") => `
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:${marge};">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">${titre}</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">${corps}</p>
+    </div>`;
+  const content = isFr ? `
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
+      color:#111827;font-family:sans-serif;">
+      Bienvenue sur FillSell&nbsp;! 🎉
+    </h1>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
+      font-family:sans-serif;">Salut,</p>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
+      font-family:sans-serif;">
+      FillSell te fait gagner du temps sur la revente&nbsp;: tu ajoutes un article une
+      fois, et il part sur Vinted, Leboncoin, eBay et Beebs sans que tu remplisses
+      quatre formulaires.
+    </p>
+    <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
+      letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Trois choses à connaître pour démarrer</p>
+    ${bloc("1. Récupère ton dressing Vinted en un clic",
+      "Si tu vends déjà sur Vinted, FillSell importe toutes tes annonces — titres, prix, photos, vues et favoris. C'est gratuit et ça ne coûte aucune Pépite. Tu retrouves tout ton stock au même endroit, sans ressaisie.")}
+    ${bloc("2. Republie les annonces qui dorment",
+      "Sur Vinted, une annonce ancienne ne se voit presque plus. D'un clic, FillSell sauvegarde la fiche, retire l'annonce et la remet en ligne à l'identique — tu peux même baisser le prix au passage. Gratuit avec Premium, et automatisable avec Pro.")}
+    ${bloc("3. Publie partout d'un seul geste",
+      "Ajoute un article à la voix ou par photo, FillSell rédige le titre, la description et suggère un prix, puis publie sur les plateformes que tu choisis.", "0 0 24px")}
+    <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
+      <h2 style="margin:0 0 12px;font-size:18px;font-weight:800;letter-spacing:-0.01em;
+        color:#111827;font-family:sans-serif;">
+        🧩 Ce qu'il te faut&nbsp;: l'extension Chrome
+      </h2>
+      <p style="color:#6B7280;font-size:14px;line-height:1.65;margin:0 0 18px;
+        font-family:sans-serif;">
+        Elle s'installe une seule fois sur un ordinateur, en une minute. C'est elle qui
+        publie à ta place, en utilisant les sessions de tes comptes déjà connectés dans
+        ton navigateur — elle ne se connecte jamais à ta place, tu gardes la main. Une
+        fois installée, tu pilotes tout depuis ton téléphone.
+      </p>
+      ${logosRow}
       <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 18px;">
         <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
-          ⚠️ Elle fonctionne uniquement sur ordinateur (pas sur mobile). Si vous lisez cet
-          email sur votre téléphone, gardez-le de côté et revenez-y depuis votre ordinateur.
-          Ensuite, plus rien à gérer : ajoutez vos articles depuis votre téléphone quand vous
-          voulez, ils partent dès que votre ordinateur est allumé avec Chrome ouvert.
+          ⚠️ L'extension s'installe sur ordinateur (pas sur mobile). Si tu lis cet email
+          sur ton téléphone, garde-le de côté et reviens-y depuis ton ordinateur.
         </p>
       </div>
-      <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
-        font-family:sans-serif;">Comment l'installer aujourd'hui :</p>
-      <ol style="margin:0 0 18px;padding:0 0 0 20px;color:#374151;font-size:14px;
-        line-height:1.8;font-family:sans-serif;">
-        <li>Depuis votre ordinateur, installez l'extension en un clic depuis le <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" style="color:#0F9488;font-weight:600;text-decoration:none;">Chrome Web Store</a> (« Ajouter à Chrome »)</li>
-        <li>Cliquez sur l'icône FillSell puis « Se connecter » — l'extension récupère votre session fillsell.app automatiquement</li>
-        <li>Connectez-vous à vos comptes Vinted, Leboncoin, eBay et Beebs directement dans votre navigateur, comme vous le faites d'habitude — l'extension utilise ces sessions actives pour publier à votre place. Elle ne se connecte jamais elle-même à votre place, vous gardez la main sur vos comptes.</li>
-      </ol>
       <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" class="cta"
          style="display:block;text-align:center;background:#2DD4BF;color:#fff;
            font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;
@@ -269,128 +275,68 @@ function welcomeHtml(lang: string): string {
       </a>
       <p style="margin:0;font-style:italic;font-size:12px;color:#9CA3AF;line-height:1.6;
         font-family:sans-serif;">
-        Disponible sur le Chrome Web Store : un clic pour l'installer, et elle se met à jour
-        automatiquement à chaque nouvelle version.
+        Disponible sur le Chrome Web Store&nbsp;: un clic pour l'installer, et elle se met à
+        jour automatiquement à chaque nouvelle version.
       </p>
     </div>
-    <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-      letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Exemples vocaux</p>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">🗣️ Ajouter un article</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "J'ai un jean Levi's taille M, acheté 8€"
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">
+        <img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Pépites" style="display:inline-block;vertical-align:-3px;"> Tes Pépites
       </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Marque, taille et prix d'achat détectés automatiquement</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
+        Tu démarres avec 30 Pépites offertes, et tu en reçois chaque mois. Elles servent
+        aux actions qui font travailler l'IA&nbsp;: retouche des photos, rédaction
+        d'annonce, publication. L'app t'affiche toujours le coût avant que tu valides —
+        rien n'est débité sans que tu le voies.
+      </p>
     </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📦 Ajouter un lot</p>
-      <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "10 robes Zara pour 100€ le lot"
-      </p>
-      <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "5 Nike, 10€ chacune"
-      </p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "Pour 30€ j'ai eu une robe Zara, un short Oakley rouge et des Adidas vertes taille 44"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Chaque article créé séparément, prix réparti automatiquement</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📍 Ranger un article</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "Le pull Zara rouge est dans le carton bleu sous le lit"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Emplacement enregistré dans ton stock</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💸 Enregistrer une vente</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "J'ai vendu les Nike Air Max 90 taille 43 pour 65€ sur Vinted"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Vente enregistrée, statut mis à jour automatiquement</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📊 Consulter tes stats</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "Combien j'ai gagné ce mois-ci ?"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Résumé de tes ventes et marges en temps réel</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💰 Estimer un prix de revente</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "J'ai une paire de New Balance 9060 taille 44 un peu usées, je peux les revendre combien ?"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Estimation du prix de revente par l'IA</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 24px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📊 Analyser ton business</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "Tu peux me parler de mon business ? Comment je peux améliorer mes ventes ?"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Analyse complète de ton activité par l'IA</p>
-    </div>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
+      font-family:sans-serif;">
+      Des questions&nbsp;? Réponds directement à ce mail, je lis tout.
+    </p>
+    <p style="color:#111827;font-size:15px;line-height:1.5;margin:0 0 24px;
+      font-family:sans-serif;font-weight:700;">
+      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
+    </p>
     ${ctaButton("Ouvrir FillSell")}` : `
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
       color:#111827;font-family:sans-serif;">
       Welcome to FillSell! 🎉
     </h1>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
+      font-family:sans-serif;">Hi,</p>
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
       font-family:sans-serif;">
-      Your account is ready. FillSell helps you manage inventory, analyze margins
-      and list automatically on Vinted, Leboncoin, eBay and Beebs — all in seconds.
+      FillSell saves you time on reselling: you add an item once, and it goes to Vinted,
+      Leboncoin, eBay and Beebs without you filling out four forms.
     </p>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
-        font-family:sans-serif;">Get started:</p>
-      <ul style="margin:0;padding:0 0 0 20px;color:#374151;font-size:14px;
-        line-height:1.9;font-family:sans-serif;">
-        <li>🎙️ Add items by voice command</li>
-        <li>📸 Analyze prices with AI photo (Lens)</li>
-        <li>📊 Track your margins in real time</li>
-        <li>🚀 List directly on your platforms</li>
-        <li><img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Pépites" style="display:inline-block;vertical-align:-3px;"> Earn and spend Pépites with every action</li>
-      </ul>
-    </div>
+    <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
+      letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Three things to know to get started</p>
+    ${bloc("1. Bring in your Vinted closet in one click",
+      "If you already sell on Vinted, FillSell imports all your listings — titles, prices, photos, views and favourites. It's free and costs no Nuggets. Your whole stock in one place, nothing to retype.")}
+    ${bloc("2. Repost the listings that sleep",
+      "On Vinted, an old listing barely gets seen. In one click, FillSell saves the listing, removes it and puts it back online identically — you can even lower the price along the way. Free with Premium, and automatable with Pro.")}
+    ${bloc("3. List everywhere in a single move",
+      "Add an item by voice or photo, FillSell writes the title and description and suggests a price, then lists on the platforms you choose.", "0 0 24px")}
     <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
       <h2 style="margin:0 0 12px;font-size:18px;font-weight:800;letter-spacing:-0.01em;
         color:#111827;font-family:sans-serif;">
-        🧩 The Chrome extension: the heart of FillSell
+        🧩 What you need: the Chrome extension
       </h2>
       <p style="color:#6B7280;font-size:14px;line-height:1.65;margin:0 0 18px;
         font-family:sans-serif;">
-        It does the work for you: once installed, as soon as you add an item, it
-        automatically lists it on Vinted, Leboncoin, eBay and Beebs — without you filling
-        in a single form. It runs in the background, without ever taking control of your
-        browser.
+        It installs once on a computer, in a minute. It does the listing for you, using
+        the sessions of your accounts already signed in in your browser — it never signs
+        in on your behalf, you stay in control. Once installed, you drive everything
+        from your phone.
       </p>
-      <table cellpadding="0" cellspacing="0" width="100%" role="presentation"
-        style="background:#F0FDF9;border-radius:12px;margin:0 0 18px;">
-        <tr><td align="center" style="padding:16px 0;">
-          <table cellpadding="0" cellspacing="0" role="presentation"><tr>
-            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-vinted.png" width="54" height="54" alt="Vinted" style="display:block;"></td>
-            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-leboncoin.png" width="54" height="54" alt="Leboncoin" style="display:block;"></td>
-            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-ebay.png" width="54" height="54" alt="eBay" style="display:block;"></td>
-            <td style="padding:0 7px;"><img src="https://fillsell.app/email/logo-beebs.png" width="54" height="54" alt="Beebs" style="display:block;"></td>
-          </tr></table>
-        </td></tr>
-      </table>
+      ${logosRow}
       <div style="background:#FEF3C7;border-radius:12px;padding:14px 16px;margin:0 0 18px;">
         <p style="margin:0;color:#92400E;font-size:13px;line-height:1.6;font-family:sans-serif;">
-          ⚠️ It only works on a computer (not on mobile). If you're reading this email on
-          your phone, keep it aside and come back to it from your computer. After that,
-          nothing to manage: add your items from your phone whenever you want, and they go
-          out as soon as your computer is on with Chrome open.
+          ⚠️ The extension installs on a computer (not on mobile). If you're reading this
+          email on your phone, set it aside and come back from your computer.
         </p>
       </div>
-      <p style="margin:0 0 10px;font-weight:700;font-size:14px;color:#065F46;
-        font-family:sans-serif;">How to install it today:</p>
-      <ol style="margin:0 0 18px;padding:0 0 0 20px;color:#374151;font-size:14px;
-        line-height:1.8;font-family:sans-serif;">
-        <li>From your computer, install the extension in one click from the <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" style="color:#0F9488;font-weight:600;text-decoration:none;">Chrome Web Store</a> (« Add to Chrome »)</li>
-        <li>Click the FillSell icon then « Sign in » — the extension picks up your fillsell.app session automatically</li>
-        <li>Log in to your Vinted, Leboncoin, eBay and Beebs accounts directly in your browser, as you usually do — the extension uses these active sessions to list on your behalf. It never logs in for you; you stay in control of your accounts.</li>
-      </ol>
       <a href="https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm" class="cta"
          style="display:block;text-align:center;background:#2DD4BF;color:#fff;
            font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;
@@ -399,161 +345,101 @@ function welcomeHtml(lang: string): string {
       </a>
       <p style="margin:0;font-style:italic;font-size:12px;color:#9CA3AF;line-height:1.6;
         font-family:sans-serif;">
-        Now on the Chrome Web Store: one click to install, and it updates automatically
-        with each new version.
+        Available on the Chrome Web Store: one click to install, and it updates itself
+        with every new version.
       </p>
     </div>
-    <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
-      letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Voice examples</p>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">🗣️ Add an item</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "I have a Levi's jeans size M, bought for €8"
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">
+        <img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Nuggets" style="display:inline-block;vertical-align:-3px;"> Your Nuggets
       </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Brand, size and purchase price detected automatically</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
+        You start with 30 free Nuggets, and you receive more every month. They power the
+        actions where the AI works for you: photo retouching, listing writing,
+        publishing. The app always shows you the cost before you confirm — nothing is
+        charged without you seeing it.
+      </p>
     </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📦 Add a batch</p>
-      <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "10 Zara dresses for €100 the lot"
-      </p>
-      <p style="margin:0 0 6px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "5 Nikes, €10 each"
-      </p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "For €30 I got a Zara dress, a red Oakley short and green Adidas size 44"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Each item created separately, price split automatically</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📍 Store an item</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "The red Zara jumper is in the blue box under the bed"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Location saved in your stock</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💸 Record a sale</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "I sold the Nike Air Max 90 size 43 for €65 on Vinted"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Sale recorded, status updated automatically</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📊 Check your stats</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "How much have I earned this month?"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Summary of your sales and margins in real time</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 10px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">💰 Estimate a resale price</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "I have a pair of New Balance 9060 size 44 slightly worn, how much can I resell them for?"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ AI-powered resale price estimate</p>
-    </div>
-    <div style="border:1px solid #E5E7EB;border-radius:12px;padding:16px;margin:0 0 24px;">
-      <p style="margin:0 0 8px;font-weight:700;font-size:14px;color:#111827;font-family:sans-serif;">📊 Analyse your business</p>
-      <p style="margin:0 0 8px;font-style:italic;font-size:13px;color:#374151;font-family:sans-serif;background:#F9FAFB;padding:8px 12px;border-radius:8px;border-left:3px solid #2DD4BF;">
-        "Can you talk to me about my business? How can I improve my sales?"
-      </p>
-      <p style="margin:0;font-size:12px;color:#059669;font-family:sans-serif;font-weight:600;">→ Complete AI analysis of your activity</p>
-    </div>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
+      font-family:sans-serif;">
+      Questions? Reply directly to this email, I read everything.
+    </p>
+    <p style="color:#111827;font-size:15px;line-height:1.5;margin:0 0 24px;
+      font-family:sans-serif;font-weight:700;">
+      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
+    </p>
     ${ctaButton("Open FillSell")}`;
   return emailWrapper(content, lang);
 }
 
-// Email J+1 « comment ça marche » — pédagogie post-première-publication.
-// Chiffres VÉRIFIÉS dans le code de l'extension (chrome-extension/config.js +
-// background.js, 2026-07-23) : publication en tâche de fond (quelques minutes/
-// plateforme), vérification de vente throttlée à 2 h par annonce
-// (SALE_CHECK_MIN_INTERVAL_MS), délai de grâce avant retrait UNIFORME 2 h sur
-// les 4 plateformes (PUBLISH_GRACE_MS, plus « selon la plateforme » depuis le
-// 2026-07-13). Ne pas réintroduire de chiffre non vérifié ici.
 function howItWorksHtml(lang: string): string {
   const isFr = lang !== "en";
+  // ── Refonte 2026-08-07 (texte Nico, valeurs VÉRIFIÉES dans le code) ────────
+  // poll 2 min (config.js POLL_INTERVAL_MINUTES) ; vérification de vente
+  // toutes les 2 h par annonce (SALE_CHECK_MIN_INTERVAL_MS, 8 annonces max
+  // par cycle) ; délai de grâce 2 h uniforme (PUBLISH_GRACE_MS) ; sync cron
+  // 1×/24 h (SYNC_DRESSING_ALARM) ; republication : pauses volontaires
+  // 2-5 min et une republication aboutie par article et par 24 h. Le texte
+  // n'affiche AUCUN chiffre technique — « régulièrement », « une fois par
+  // jour », « quelques minutes » : tous vrais au relevé du 07/08.
+  const bloc = (titre: string, corps: string, marge = "0 0 16px") => `
+    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:${marge};">
+      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">${titre}</p>
+      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">${corps}</p>
+    </div>`;
   const content = isFr ? `
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
       color:#111827;font-family:sans-serif;">
-      Comment FillSell travaille pour vous 🔍
+      Comment FillSell travaille pour toi 🔍
     </h1>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
+      font-family:sans-serif;">Salut,</p>
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
       font-family:sans-serif;">
-      Vous avez commencé à publier — voici ce qui se passe en coulisses, pour ne jamais
-      avoir à vous demander si ça fonctionne.
+      Voilà ce que FillSell fait en arrière-plan, sans que tu aies à y penser.
     </p>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 16px;">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">⏱️ La publication</p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        Une fois un article ajouté, l'extension le publie sur chaque plateforme sélectionnée
-        en arrière-plan — comptez quelques minutes par plateforme. Pas besoin de garder l'app
-        ouverte ni de surveiller : tant que votre ordinateur reste allumé avec Chrome ouvert,
-        ça avance tout seul.
-      </p>
-    </div>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 16px;">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">🔄 La vérification automatique</p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        FillSell vérifie régulièrement (toutes les 2 heures par annonce, en arrière-plan) que
-        vos annonces sont toujours en ligne et si l'une d'elles a été vendue. Vous n'avez
-        jamais besoin de vérifier vous-même.
-      </p>
-    </div>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">🗑️ La suppression automatique</p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        Dès qu'un article se vend sur une plateforme, FillSell retire automatiquement
-        l'annonce sur les autres — plus besoin de repasser partout pour éviter une double
-        vente. Par sécurité, un court délai de confirmation (environ 2 heures, identique sur
-        les 4 plateformes) est observé avant la suppression, pour être sûr que la vente est
-        bien réelle.
-      </p>
-    </div>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
+    ${bloc("⏱️ Il publie pour toi",
+      "Quand tu demandes une publication, l'extension s'en charge dans une fenêtre discrète, sans jamais te voler le focus. Elle espace volontairement ses gestes de quelques secondes à quelques minutes : on travaille au rythme d'un humain, jamais à celui d'un robot. Une publication prend donc quelques minutes par plateforme, c'est normal.")}
+    ${bloc("🔄 Il surveille tes ventes",
+      "FillSell repasse régulièrement sur tes annonces pour voir si elles sont toujours en ligne. Quand un article se vend quelque part, il te le signale et retire les annonces correspondantes sur les autres plateformes — pour que tu ne vendes jamais deux fois le même objet. Aucune vente n'est enregistrée sans que tu la confirmes.")}
+    ${bloc("🧥 Il garde ton dressing Vinted à jour",
+      "Une fois ta première synchronisation lancée, FillSell rafraîchit ton dressing une fois par jour : nouvelles annonces, prix, vues, favoris. Tu peux aussi la relancer à la main quand tu veux, depuis ton téléphone.")}
+    ${bloc("🔁 Et il republie",
+      "Les annonces qui dorment peuvent repartir en ligne d'un clic, avec les mêmes photos et la même fiche. Là aussi, FillSell prend son temps entre chaque geste — c'est ce qui protège ton compte.", "0 0 24px")}
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
       font-family:sans-serif;">
-      <strong>En résumé :</strong> une fois l'article ajouté, il n'y a plus rien à faire.
-      FillSell s'occupe de tout, même loin de votre ordinateur.
+      Une question&nbsp;? Réponds à ce mail.
+    </p>
+    <p style="color:#111827;font-size:15px;line-height:1.5;margin:0 0 24px;
+      font-family:sans-serif;font-weight:700;">
+      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
     </p>
     ${ctaButton("Voir mon stock")}` : `
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
       color:#111827;font-family:sans-serif;">
       How FillSell works for you 🔍
     </h1>
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
+      font-family:sans-serif;">Hi,</p>
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
       font-family:sans-serif;">
-      You've started listing — here's what happens behind the scenes, so you never have to
-      wonder whether it's working.
+      Here's what FillSell does in the background, without you having to think about it.
     </p>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 16px;">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">⏱️ Listing</p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        Once you add an item, the extension lists it on each selected platform in the
-        background — count a few minutes per platform. No need to keep the app open or watch
-        over it: as long as your computer stays on with Chrome open, it moves along on its own.
-      </p>
-    </div>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 16px;">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">🔄 Automatic checking</p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        FillSell regularly checks (every 2 hours per listing, in the background) that your
-        listings are still online and whether one of them has sold. You never need to check
-        yourself.
-      </p>
-    </div>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">🗑️ Automatic removal</p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        As soon as an item sells on one platform, FillSell automatically removes the listing
-        from the others — no more going everywhere to avoid a double sale. For safety, a short
-        confirmation delay (about 2 hours, the same across all 4 platforms) is observed before
-        removal, to be sure the sale is real.
-      </p>
-    </div>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 24px;
+    ${bloc("⏱️ It lists for you",
+      "When you request a listing, the extension handles it in a discreet window, without ever stealing your focus. It deliberately spaces its actions from a few seconds to a few minutes: we work at a human's pace, never a robot's. A listing therefore takes a few minutes per platform — that's normal.")}
+    ${bloc("🔄 It watches your sales",
+      "FillSell regularly revisits your listings to see whether they're still online. When an item sells somewhere, it lets you know and removes the matching listings on the other platforms — so you never sell the same object twice. No sale is recorded without your confirmation.")}
+    ${bloc("🧥 It keeps your Vinted closet up to date",
+      "Once your first sync has run, FillSell refreshes your closet once a day: new listings, prices, views, favourites. You can also run it manually whenever you want, from your phone.")}
+    ${bloc("🔁 And it reposts",
+      "Listings that sleep can go back online in one click, with the same photos and the same details. There too, FillSell takes its time between each action — that's what protects your account.", "0 0 24px")}
+    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
       font-family:sans-serif;">
-      <strong>In short:</strong> once the item is added, there's nothing left to do. FillSell
-      handles everything, even away from your computer.
+      A question? Reply to this email.
+    </p>
+    <p style="color:#111827;font-size:15px;line-height:1.5;margin:0 0 24px;
+      font-family:sans-serif;font-weight:700;">
+      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
     </p>
     ${ctaButton("View my stock")}`;
   return emailWrapper(content, lang);
@@ -1268,6 +1154,20 @@ serve(async (req) => {
     }
   }
 
+  // ── En-têtes de désabonnement (RFC 8058, One-Click) — PARTAGÉS ────────────
+  // Hissés au niveau du handler (2026-08-07 soir) : posés d'abord sur le
+  // blast sync, ils accompagnent désormais AUSSI le tunnel (welcome + comment
+  // ça marche), consigne Nico. L'URL porte le user_id du destinataire ;
+  // l'endpoint ?unsub= (plus haut, avant le secret cron) journalise l'opt-out
+  // en email_logs type récurrent 'marketing_optout' — que le tunnel comme les
+  // blasts EXCLUENT de leurs envois.
+  const unsubHeaders = (userId: string): Record<string, string> => ({
+    "List-Unsubscribe":
+      `<${Deno.env.get("SUPABASE_URL")}/functions/v1/email-tunnel?unsub=${userId}>, ` +
+      `<mailto:support@fillsell.app?subject=STOP>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  });
+
   // ── Diagnostic : statut d'un message chez Resend ──────────────────────────
   // {"resend_lookup":"<id>"} → GET /emails/{id}, rendu mot pour mot.
   // C'est la seule façon de distinguer « accepté par l'API » de « délivré » :
@@ -1370,8 +1270,24 @@ serve(async (req) => {
       .maybeSingle();
     const lang = profile?.lang ?? "fr";
 
+    // Opt-out marketing respecté ici aussi (cohérence avec l'en-tête
+    // List-Unsubscribe posé sur ce mail : « tu ne recevras plus ce type
+    // d'email » doit être vrai dès le welcome).
+    const { data: optedOut } = await supabase
+      .from("email_logs")
+      .select("id")
+      .eq("user_id", welcomeUserId)
+      .eq("email_type", "marketing_optout")
+      .limit(1)
+      .maybeSingle();
+    if (optedOut) {
+      return new Response(JSON.stringify({ skipped: true, reason: "marketing_optout" }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const subject = lang === "en" ? "Welcome to FillSell 🎉" : "Bienvenue sur FillSell 🎉";
-    const ok = await sendEmail(welcomeUserEmail, subject, welcomeHtml(lang));
+    const ok = await sendEmail(welcomeUserEmail, subject, welcomeHtml(lang), unsubHeaders(welcomeUserId));
     if (ok) {
       await logEmail(welcomeUserId, "welcome");
       return new Response(
@@ -1415,7 +1331,7 @@ serve(async (req) => {
   if (testEmail) {
     const r1 = await sendEmail(testEmail, "Bienvenue sur FillSell 🎉", welcomeHtml("fr"));
     if (r1) sent.push(`welcome:${testEmail}`); else errors.push(`welcome:${testEmail}`);
-    const r2 = await sendEmail(testEmail, "Comment FillSell travaille pour vous 🔍", howItWorksHtml("fr"));
+    const r2 = await sendEmail(testEmail, "Comment FillSell travaille pour toi 🔍", howItWorksHtml("fr"));
     if (r2) sent.push(`how_it_works:${testEmail}`); else errors.push(`how_it_works:${testEmail}`);
     return new Response(JSON.stringify({ test: true, sent, errors }), {
       headers: { "Content-Type": "application/json" },
@@ -1751,16 +1667,7 @@ serve(async (req) => {
       );
     }
 
-    // En-têtes de désabonnement (RFC 8058, One-Click) — PAR destinataire :
-    // l'URL porte son user_id. Gmail affiche son bouton natif « Se
-    // désabonner » : un agacé clique là plutôt que sur « Spam ».
-    const unsubHeaders = (userId: string): Record<string, string> => ({
-      "List-Unsubscribe":
-        `<${Deno.env.get("SUPABASE_URL")}/functions/v1/email-tunnel?unsub=${userId}>, ` +
-        `<mailto:support@fillsell.app?subject=STOP>`,
-      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-    });
-
+    // En-têtes de désabonnement : helper partagé du handler (unsubHeaders).
     const html = blastSyncDressingHtml();
     const tranche = cibles.slice(0, limite);
     for (let i = 0; i < tranche.length; i += BLAST_LOT) {
@@ -2043,11 +1950,15 @@ serve(async (req) => {
   const alreadySent = (uid: string, type: string) => sentSet.has(`${uid}:${type}`);
 
   // ── Trigger 1: J+1 welcome ────────────────────────────────────────────────
+  // sentSet contient TOUTES les lignes email_logs des cibles, marketing_optout
+  // compris : un désinscrit (One-Click sur un mail précédent) est sauté — la
+  // promesse de l'en-tête List-Unsubscribe vaut aussi pour le tunnel.
   for (const user of ciblesJ1) {
     if (alreadySent(user.user_id, "welcome")) continue;
+    if (alreadySent(user.user_id, "marketing_optout")) continue;
     const subject =
       user.lang === "en" ? "Welcome to FillSell 🎉" : "Bienvenue sur FillSell 🎉";
-    const ok = await sendEmail(user.user_email, subject, welcomeHtml(user.lang));
+    const ok = await sendEmail(user.user_email, subject, welcomeHtml(user.lang), unsubHeaders(user.user_id));
     if (ok) {
       await logEmail(user.user_id, "welcome");
       sent.push(`welcome:${user.user_email}`);
@@ -2061,11 +1972,12 @@ serve(async (req) => {
   // même jour sans conflit. Aucune condition premium/non-premium.
   for (const user of ciblesJ1) {
     if (alreadySent(user.user_id, "how_it_works")) continue;
+    if (alreadySent(user.user_id, "marketing_optout")) continue;
     const subject =
       user.lang === "en"
         ? "How FillSell works for you 🔍"
-        : "Comment FillSell travaille pour vous 🔍";
-    const ok = await sendEmail(user.user_email, subject, howItWorksHtml(user.lang));
+        : "Comment FillSell travaille pour toi 🔍";
+    const ok = await sendEmail(user.user_email, subject, howItWorksHtml(user.lang), unsubHeaders(user.user_id));
     if (ok) {
       await logEmail(user.user_id, "how_it_works");
       sent.push(`how_it_works:${user.user_email}`);
