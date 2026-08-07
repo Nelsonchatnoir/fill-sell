@@ -1300,6 +1300,19 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const bilan = (() => {
     if (enCours || !run || run.status === 'running' || run.status === 'queued') return null;
     if (run.status === 'done') {
+      // ── « done 0 » ≠ succès muet (2026-08-07, cas Sam, jour du blast) ────
+      // Un run propre à 0 article lu a DEUX lectures que l'utilisateur ne
+      // peut pas départager : dressing réellement vide (cas de Sam — il a
+      // créé ses annonces APRÈS son premier clic) ou dressing lu sur le
+      // MAUVAIS compte (autre compte Vinted connecté dans ce navigateur,
+      // autre profil Chrome). L'ancien bilan vert « 0 article importé, 0 mis
+      // à jour » se lisait comme « ça n'a pas marché » — la plupart ne
+      // recliqueront pas. On dit donc les deux cas, avec le geste à faire.
+      if ((run.items_vus ?? 0) === 0) {
+        return { ton: 'orange', texte: fr
+          ? "Synchronisation terminée : aucune annonce en ligne sur le compte Vinted connecté dans ce navigateur. Dressing vide ? Tout est normal — tes prochaines annonces remonteront ici au prochain clic. Sinon, ouvre vinted.fr dans ce navigateur, vérifie que tu es sur TON compte, puis relance."
+          : "Sync finished: no live listings on the Vinted account signed in to this browser. Empty closet? All good — your next listings will show up here on your next sync. Otherwise, open vinted.fr in this browser, make sure you're on YOUR account, then run it again." };
+      }
       return { ton: 'vert', texte: fr
         ? `Dressing synchronisé — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour.`
         : `Closet synced — ${run.items_crees ?? 0} item${(run.items_crees ?? 0) === 1 ? '' : 's'} imported, ${run.items_maj ?? 0} updated.` };

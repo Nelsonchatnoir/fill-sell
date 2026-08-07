@@ -320,6 +320,16 @@ async function vintedUtilisateurCourant() {
     const j = JSON.parse(brut);
     const u = j?.user;
     if (!u?.id) return { success: false, error: "id utilisateur Vinted absent de la réponse" };
+    // Session ANONYME (garde du 2026-08-07) : Vinted sait servir des sessions
+    // anonymes — si users/current répondait 200 avec un profil sans login,
+    // l'ancienne sonde le prenait pour un succès et la sync lisait le
+    // wardrobe d'un fantôme : run 'done' à 0 article, sans erreur, illisible
+    // pour l'utilisateur. Un VRAI compte Vinted a toujours un login (pseudo
+    // obligatoire à l'inscription). Le texte contient « session Vinted » :
+    // c'est ce que le front reconnaît pour afficher son message actionnable.
+    if (!u.login) {
+      return { success: false, sessionExpiree: true, error: "session Vinted anonyme — aucun compte connecté dans ce navigateur" };
+    }
     return {
       success: true,
       userId: String(u.id),

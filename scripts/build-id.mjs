@@ -47,14 +47,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-07T12:40:00Z = capture de republication en DEUX tentatives avec
-// navigation neuve entre les deux — « sonde injoignable : Receiving end does
-// not exist » est transitoire (job 70cc68cd, jour du blast : la sync a
-// re-navigué le même onglet 8 s après l'échec et sa sonde répondait). Un
-// failed sec au 1er essai faisait perdre son geste à l'utilisateur.
-// ⚠️ Le zip 0.5.2 produit à 10:06 n'inclut PAS ce fix — re-packager avant
-// téléversement si Nico ne l'a pas encore envoyé.
-export const EXTENSION_LAST_COMMIT = '2026-08-07T12:40:00Z';
+// 2026-08-07T13:05:00Z = « done 0 » désambiguïsé (cas Sam, jour du blast) :
+// sonde vintedUtilisateurCourant qui REFUSE un profil sans login (session
+// anonyme = « session Vinted » actionnable, plus jamais un wardrobe de
+// fantôme lu en silence) + note [note] sur tout run à 0 article avec ce que
+// le profil ANNONCE (login, item_count, total_items_count) pour départager
+// « vide » de « lu à côté » depuis la base. S'ajoute au retry de capture de
+// 12:40 (70cc68cd). Le zip 0.5.2 est re-packagé après CE commit.
+export const EXTENSION_LAST_COMMIT = '2026-08-07T13:05:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.

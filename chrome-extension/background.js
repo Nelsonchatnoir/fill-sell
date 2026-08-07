@@ -5707,6 +5707,16 @@ async function syncDressingUnlocked(declencheur) {
   // Un run mocké doit se lire comme tel en base : personne ne doit prendre 289
   // articles fabriqués pour un dressing réel en analysant vinted_sync_runs.
   if (mock) notes.push(`${NOTE}HARNAIS MOCK pagination (unpacked) — ${mock.totalArticles} articles fabriqués, aucun appel Vinted`);
+  // Diagnostic des runs à ZÉRO (2026-08-07, cas Sam) : un « done 0 » a deux
+  // lectures — dressing vraiment vide, ou wardrobe lu à côté (mauvais compte,
+  // session bancale). La sonde rend ce que le PROFIL annonce (item_count /
+  // total_items_count) : on le journalise pour départager depuis la base,
+  // sans jamais dégrader le run — item_count peut légitimement dépasser le
+  // wardrobe exposé (32 remontés vs 236 annoncés sur le compte de test), on
+  // ne fabrique pas un échec sur cette seule foi.
+  if (items_vus === 0 && !mock) {
+    notes.push(`${NOTE}dressing lu vide — le profil Vinted (${ident.login ?? "?"}) annonce item_count=${ident.itemCount ?? "?"}, total_items_count=${ident.totalItemsCount ?? "?"}`);
+  }
   if (echecsEcriture.length) {
     // Des échecs d'écriture isolés ne dégradent PAS le statut (la sync est
     // allée au bout) mais sont consignés : items_vus − créés − maj doit
