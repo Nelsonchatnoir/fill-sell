@@ -525,8 +525,14 @@ function renderNow() {
   }
   const pub = state.jobs.filter((j) => j.status === "processing").length;
   if (pub) morceaux.push(`Publication en cours sur ${pub} plateforme${pub > 1 ? "s" : ""}`);
-  const rep = state.repub.filter((j) => j.status === "processing").length;
-  if (rep) morceaux.push(`Republication en cours`);
+  // LAQUELLE est traitée (2026-08-07, chantier lisibilité) : le titre dit ce
+  // qui se passe — « Republication en cours » tout court laissait deviner.
+  const repEnCours = state.repub.find((j) => j.status === "processing");
+  if (repEnCours) {
+    const etape = REPUB_ETAPES[repEnCours.platform_fields?.republish_step ?? "a_capturer"] ?? "";
+    const titre = String(repEnCours.title ?? "").slice(0, 40);
+    morceaux.push(`Republication en cours${titre ? ` — « ${titre} »` : ""}${etape ? ` (${etape})` : ""}`);
+  }
   if (!morceaux.length) { els.now.classList.add("hidden"); return; }
   els.now.innerHTML =
     `<div class="bloc"><div class="bloc-t">En cours</div>` +
@@ -556,6 +562,19 @@ function renderQueueExtra() {
     }
     const detail = Object.entries(parEtape).map(([e, n]) => `${n} ${e}`).join(" · ");
     lignes.push(`🔁 <b>${rep.length} republication${rep.length > 1 ? "s" : ""}</b> — ${escapeHtml(detail)}`);
+  }
+  // Prochain geste PRÉVU, avec son heure (2026-08-07) : les pauses de 2-5 min
+  // entre suppression et recréation sont VOLONTAIRES — sans cette ligne,
+  // l'utilisateur qui regarde la popup pendant la fenêtre croit que c'est
+  // planté. next_action_after est la seule heure réelle : rien n'est inventé.
+  let prochaine = null;
+  for (const j of state.repub) {
+    const naa = Date.parse(j.platform_fields?.next_action_after ?? "");
+    if (Number.isFinite(naa) && naa > Date.now() && (!prochaine || naa < prochaine)) prochaine = naa;
+  }
+  if (prochaine) {
+    const h = new Date(prochaine).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    lignes.push(`⏱️ <b>Prochaine recréation vers ${escapeHtml(h)}</b> — j'espace volontairement mes gestes de quelques minutes, comme le ferait une vraie personne`);
   }
   if (state.sync?.status === "queued") {
     lignes.push(`🔄 <b>Synchronisation demandée</b> — elle part à mon prochain passage`);

@@ -5854,6 +5854,16 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       vinted_status: a.statut,
       last_synced_at: maintenant,
       disparu_le: null,
+      // listed_at_guess AUSSI sur les lignes nées FillSell (2026-08-07,
+      // validé Nico) : ce n'est PAS une donnée utilisateur, c'est un fait
+      // Vinted (timestamp de SES photos) — la frontière de propriété
+      // titre/prix/photos reste intacte. Sans lui, les articles publiés via
+      // FillSell n'avaient JAMAIS d'ancienneté (8/10 chez ornellaracano,
+      // les 2 datées venant de l'écriture à la recréation d'un republish —
+      // avec laquelle celle-ci CONVERGE : photos re-uploadées à la
+      // recréation ⇒ photo_ts ≈ date de recréation). Clé ABSENTE quand
+      // photo_ts manque : jamais un NULL par-dessus une valeur.
+      ...(a.photo_ts ? { listed_at_guess: new Date(a.photo_ts * 1000).toISOString() } : {}),
     }),
   });
 
