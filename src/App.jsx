@@ -7,6 +7,7 @@ import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, PRODUCT_IDS } from './lib/iap';
+import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
 import { trackTikTokEvent } from './lib/tiktok';
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -2119,6 +2120,15 @@ export default function App({ loginOnly = false }){
   async function handleIAPPurchase(tier){
     const isProPurchase=tier==='pro';
     console.log('[IAP] handleIAPPurchase started — platform:',platform,'tier:',isProPurchase?'pro':'premium');
+    // Coupe-circuit 07/08 : validate-google-purchase en 500 = débit sans
+    // crédit. Tant que coin_config.android_payments_enabled vaut 0, on ne
+    // lance PAS le flux Google — message honnête à la place. Web/iOS jamais
+    // concernés (cf. src/utils/androidPayments.js).
+    if(platform==='android'&&await paiementsAndroidCoupes(supabase)){
+      setToast({visible:true,message:messagePaiementAndroidCoupe(lang)});
+      setTimeout(()=>setToast({visible:false,message:''}),10000);
+      return;
+    }
     // ── Upgrade Premium→Pro Android (2026-07-27, remplace la garde du 23/07) ──
     // L'ancienne garde bloquait TOUT Premium Android — y compris les comped/
     // promus à la main qui n'ont AUCUN abonnement à doublonner. On regarde

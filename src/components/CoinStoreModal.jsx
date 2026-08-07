@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { purchaseCoins, consumeCoinPurchase } from "../lib/iap";
 import { supabaseUrl, supabaseAnonKey } from "../lib/supabase";
+import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from "../utils/androidPayments";
 import PepiteIcon from "./PepiteIcon";
 import { PACKS } from "./coinPacks";
 
@@ -27,6 +28,13 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
     setBusy(pack.id);
     setMsg(null);
     try {
+      // Coupe-circuit 07/08 : les packs Android passent par
+      // validate-google-purchase (chemin unique du 05/08), en 500 en prod —
+      // débit sans crédit. Bloqué tant que android_payments_enabled = 0.
+      if (platform === "android" && await paiementsAndroidCoupes(supabase)) {
+        setMsg({ ok: false, text: messagePaiementAndroidCoupe(lang) });
+        return;
+      }
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (isNative) {
