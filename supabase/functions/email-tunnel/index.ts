@@ -39,6 +39,23 @@ const BLAST_BASES_INTERNES = [
   "nicotest@mail.fr",
 ];
 
+// ── Blast « sync du dressing » (2026-08-07) ───────────────────────────────────
+// Type one-shot DISTINCT (un envoi par utilisateur, à vie). ⚠️ AUCUN envoi tant
+// que la migration 20260807120000 n'est pas appliquée : elle porte À LA FOIS
+// l'entrée du type dans l'index email_logs_one_shot_unique (sans quoi la dédup
+// lue-puis-écrite peut doublonner en silence, bug welcome du 03/08) ET la RPC
+// de cible ordonnée. La branche s'appuie sur ce couplage : RPC absente = index
+// pas posé = refus TOTAL (dry_run compris).
+// La cible est ORDONNÉE PAR ENGAGEMENT DÉCROISSANT (RPC
+// blast_sync_dressing_cibles, rang 1-5, arbitrage Nico 07/08) : les premiers
+// lots construisent la réputation du domaine — fillsell.app n'a jamais envoyé
+// en volume, un lot d'ouverture fait de comptes à zéro usage maximiserait les
+// plaintes au pire moment. Le paramètre limit mange donc la liste DANS
+// L'ORDRE ; la dédup email_logs fait repartir chaque lot là où le précédent
+// s'est arrêté.
+const BLAST_SYNC_TYPE = "blast_sync_dressing";
+const BLAST_SYNC_SUBJECT = "Tes annonces Vinted dorment ? Republie-les en un clic";
+
 // ── Relance « job en attente, extension absente » (2026-08-01) ────────────────
 // Un job publish resté 'pending' avec handler_build NULL = AUCUNE copie de
 // l'extension ne l'a jamais réclamé. Ce n'est pas un échec de publication,
@@ -959,6 +976,120 @@ ${pastille(logo("logo-beebs.png", "Beebs"))}
 </html>`;
 }
 
+// ── Blast sync dressing : template (texte de Nico, 07/08) ────────────────────
+// Mail VINTED : pas de rangée de logos des 4 plateformes (choix explicite).
+// INTERDITS vérifiés à l'écriture, à re-vérifier à toute retouche :
+//   · aucune promesse de publication eBay/Leboncoin/Beebs depuis un article
+//     importé (type et description NULL → refusé par les 4 plateformes) ;
+//   · aucun numéro de version d'extension ;
+//   · la republication automatique Pro : UNE mention, jamais un argument
+//     central.
+function blastSyncDressingHtml(): string {
+  const etape = (num: string, titre: string, corps: string, marge: boolean) => `
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${marge ? ` style="margin-top:28px;"` : ""}>
+<tr>
+<td width="40" valign="top" style="font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:13px; font-weight:700; color:#2F9E90; padding-top:2px;">${num}</td>
+<td valign="top">
+<p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; line-height:1.4; color:#10201B;">${titre}</p>
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">${corps}</p>
+</td>
+</tr>
+</table>`;
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FillSell</title>
+</head>
+<body style="margin:0; padding:0; background-color:#EDEAE0; -webkit-font-smoothing:antialiased;">
+
+<div style="display:none; max-height:0; overflow:hidden; opacity:0;">Supprimer et remettre en ligne, sans rien ressaisir — FillSell le fait pour toi.</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#EDEAE0;">
+<tr>
+<td align="center" style="padding:32px 16px;">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px; background-color:#F6F5F1; border-radius:16px; overflow:hidden;">
+
+<!-- Bandeau -->
+<tr>
+<td style="background-color:#10201B; padding:40px 32px 36px 32px;">
+<p style="margin:0 0 14px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#2F9E90;">FillSell</p>
+<h1 style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:29px; line-height:1.25; font-weight:700; color:#F6F5F1;">Tes annonces Vinted dorment&nbsp;? Republie-les en un clic</h1>
+</td>
+</tr>
+
+<!-- Intro -->
+<tr>
+<td style="padding:32px 32px 8px 32px;">
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:16px; line-height:1.65; color:#10201B;">Salut,</p>
+<p style="margin:16px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:16px; line-height:1.65; color:#10201B;">Sur Vinted, une annonce qui a plus de quelques jours ne se voit presque plus. La seule solution connue&nbsp;: la supprimer et la remettre en ligne. À la main, c'est 5&nbsp;minutes par article — photos à recharger, taille, état, couleurs, tout à ressaisir.</p>
+<p style="margin:16px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:16px; line-height:1.65; font-weight:700; color:#10201B;">FillSell le fait pour toi, en un clic, sans rien perdre.</p>
+</td>
+</tr>
+
+<!-- Comment ça marche -->
+<tr>
+<td style="padding:36px 32px 0 32px;">
+<p style="margin:0 0 18px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1B6E62;">Comment ça marche</p>
+${etape("01", "Tu importes ton dressing Vinted dans FillSell", "Un clic, gratuit, aucune Pépite. Titres, prix, photos, vues et favoris remontent tout seuls.", false)}
+${etape("02", "Sur chaque annonce, un bouton «&nbsp;Republier&nbsp;»", "FillSell sauvegarde la fiche, retire l'ancienne annonce et la remet en ligne à l'identique. Tu peux même baisser le prix au passage.", true)}
+${etape("03", "Plusieurs articles d'un coup", "Tu sélectionnes, tu republies en lot.", true)}
+<p style="margin:24px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">C'est gratuit, et automatisable avec l'abonnement Pro.</p>
+</td>
+</tr>
+
+<!-- Ce qu'il te faut -->
+<tr>
+<td style="padding:36px 32px 0 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#10201B; border-radius:12px;">
+<tr>
+<td style="padding:26px;">
+<p style="margin:0 0 10px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#E8956D;">Ce qu'il te faut</p>
+<p style="margin:0 0 14px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:18px; font-weight:700; line-height:1.4; color:#F6F5F1;">L'extension Chrome FillSell</p>
+<p style="margin:0 0 22px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#EDEAE0;">À installer une seule fois sur un ordinateur — une minute. Ensuite tout se pilote depuis ton téléphone.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td style="background-color:#2F9E90; border-radius:8px;">
+<a href="${CWS_URL}" style="display:inline-block; padding:14px 28px; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; font-weight:700; color:#10201B; text-decoration:none;">Installer l'extension</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+<!-- Signature -->
+<tr>
+<td style="padding:36px 32px 32px 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td style="border-top:1px solid #EDEAE0; padding-top:24px;">
+<p style="margin:0 0 4px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">À bientôt,</p>
+<p style="margin:14px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; font-weight:700; color:#10201B;">Nico</p>
+<p style="margin:2px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:14px; color:#1B6E62;">Fondateur de FillSell</p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+</table>
+
+<p style="margin:20px 0 0 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:12px; line-height:1.5; color:#1B6E62; max-width:560px;">Tu reçois ce mail parce que tu as créé un compte sur fillsell.app.</p>
+
+</td>
+</tr>
+</table>
+
+</body>
+</html>`;
+}
+
 // ── Main handler ───────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -1186,8 +1317,17 @@ serve(async (req) => {
 
   // ── Test mode: send the 2 tunnel templates to the specified email ─────────
   // N'écrit PAS email_logs — sert aux previews (welcome + comment ça marche).
-  // Avec test_template:"blast_relaunch_aout", envoie CE SEUL template à la
-  // place des deux mails du tunnel (preview visuelle avant le blast de masse).
+  // Avec test_template:"blast_relaunch_aout" ou "blast_sync_dressing", envoie
+  // CE SEUL template (preview visuelle avant le blast de masse).
+  if (testEmail && body?.test_template === BLAST_SYNC_TYPE) {
+    const ok = await sendEmail(testEmail, BLAST_SYNC_SUBJECT, blastSyncDressingHtml());
+    if (ok) sent.push(`${BLAST_SYNC_TYPE}:${testEmail}`);
+    else errors.push(`${BLAST_SYNC_TYPE}:${testEmail}`);
+    return new Response(
+      JSON.stringify({ test: true, template: BLAST_SYNC_TYPE, sent, errors, resend: resendTrace }),
+      { status: ok ? 200 : 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
   if (testEmail && body?.test_template === BLAST_TYPE) {
     const ok = await sendEmail(testEmail, BLAST_SUBJECT, blastRelaunchHtml());
     if (ok) sent.push(`${BLAST_TYPE}:${testEmail}`);
@@ -1345,6 +1485,226 @@ serve(async (req) => {
         errors,
         log_echecs: logEchecs,
         // Détail Resend des seuls échecs : borné, et c'est ce qu'on veut lire.
+        resend_echecs: resendTrace.filter((t) => (t.http as number) < 200 || (t.http as number) >= 300),
+      }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // ── Audit délivrabilité Resend (2026-08-07) ────────────────────────────────
+  // Parcourt l'historique d'envois (GET /emails, paginé, borné à 50 pages de
+  // 100) et relève les adresses dont un message porte un événement de rejet :
+  // hard bounce ou plainte. Conservateur : une adresse qui a bouncé UNE fois
+  // est exclue, même si un envoi ultérieur est passé.
+  // DÉFENSIF : la forme de l'API de liste n'est pas contractuelle chez nous —
+  // toute réponse inattendue rend { ok:false } et c'est l'APPELANT qui décide
+  // (le blast refuse alors d'envoyer, cf. sans_audit_resend).
+  async function auditResend(): Promise<{
+    ok: boolean; erreur?: string; bounces: string[]; plaintes: string[]; examines: number;
+  }> {
+    const bounces = new Set<string>();
+    const plaintes = new Set<string>();
+    let examines = 0;
+    let after: string | null = null;
+    for (let pageN = 0; pageN < 50; pageN++) {
+      const url = new URL(RESEND_API);
+      url.searchParams.set("limit", "100");
+      if (after) url.searchParams.set("after", after);
+      let r: Response;
+      try {
+        r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${resendKey}` } });
+      } catch (e) {
+        return { ok: false, erreur: `réseau : ${String(e)}`, bounces: [...bounces], plaintes: [...plaintes], examines };
+      }
+      if (!r.ok) {
+        return { ok: false, erreur: `GET /emails → HTTP ${r.status}`, bounces: [...bounces], plaintes: [...plaintes], examines };
+      }
+      let corps: unknown;
+      try { corps = await r.json(); } catch {
+        return { ok: false, erreur: "réponse non-JSON", bounces: [...bounces], plaintes: [...plaintes], examines };
+      }
+      const lignes = Array.isArray((corps as { data?: unknown })?.data)
+        ? (corps as { data: Array<Record<string, unknown>> }).data
+        : null;
+      if (!lignes) {
+        return { ok: false, erreur: "forme inattendue (pas de data[])", bounces: [...bounces], plaintes: [...plaintes], examines };
+      }
+      for (const m of lignes) {
+        examines++;
+        const dest = Array.isArray(m?.to) ? m.to as unknown[] : (m?.to ? [m.to] : []);
+        const evt = String(m?.last_event ?? "");
+        if (evt === "bounced") for (const d of dest) bounces.add(String(d).trim().toLowerCase());
+        if (evt === "complained") for (const d of dest) plaintes.add(String(d).trim().toLowerCase());
+      }
+      if (lignes.length < 100) break;
+      const dernierId = lignes[lignes.length - 1]?.id;
+      if (!dernierId) break;
+      after = String(dernierId);
+    }
+    return { ok: true, bounces: [...bounces], plaintes: [...plaintes], examines };
+  }
+
+  // Mode autonome : {"audit_resend":true} → le relevé, sans toucher à rien.
+  // C'est la réponse à « combien de bounces/plaintes historiques ? » avant le
+  // premier lot du blast.
+  if (body?.audit_resend === true) {
+    const a = await auditResend();
+    return new Response(JSON.stringify({ audit_resend: a }), {
+      status: a.ok ? 200 : 500, headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // ── Blast « sync du dressing » (2026-08-07) : envoi ORDONNÉ, par lots ──────
+  // Déclenché À LA MAIN, jamais par le cron :
+  //   -d '{"blast_sync_dressing":true,"dry_run":true}' — cible + répartition
+  //       par rang + audit Resend, ZÉRO envoi (ignore la fenêtre horaire) ;
+  //   -d '{"blast_sync_dressing":true,"limit":20}'     — un lot, dans l'ordre.
+  // Séquence actée (07/08) : dry_run → 20 → 50 → 150 → tranches de 150 sur
+  // plusieurs jours, arrêt net si bounces/plaintes montent entre deux lots.
+  // L'ordre vient de la RPC (engagement décroissant, tri stable) ; la reprise
+  // vient de la dédup email_logs : chaque lot repart où le précédent s'est
+  // arrêté, jamais de pioche au hasard.
+  if (body?.blast_sync_dressing === true) {
+    const dryRun = body?.dry_run === true;
+    const limite =
+      Number.isFinite(body?.limit) && body.limit > 0
+        ? Math.floor(body.limit)
+        : BLAST_LIMITE_DEFAUT;
+
+    // Fenêtre 8h-22h Paris — ceinture, échec fermé comme job_relaunch : une
+    // heure illisible n'autorise JAMAIS l'envoi. dry_run passe (lecture seule).
+    const h = heureParis();
+    if (!dryRun && (!Number.isFinite(h) || h < RELANCE_H_DEBUT || h >= RELANCE_H_FIN)) {
+      return new Response(
+        JSON.stringify({
+          blast: BLAST_SYNC_TYPE, envoyes: 0,
+          refus: `fenêtre d'envoi ${RELANCE_H_DEBUT}h-${RELANCE_H_FIN}h Paris (heure lue : ${h}h)`,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // RPC absente = migration 20260807120000 PAS appliquée = l'index de dédup
+    // n'est pas posé non plus (même fichier de migration) : refus TOTAL,
+    // dry_run compris — on ne raisonne jamais sur une cible sans sa dédup.
+    const { data: brutes, error: ciblesErr } = await supabase.rpc("blast_sync_dressing_cibles");
+    if (ciblesErr || !brutes) {
+      return new Response(
+        JSON.stringify({
+          error: `cible indisponible — migration 20260807120000 appliquée ? (${ciblesErr?.message ?? "réponse vide"})`,
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Dédup déjà-envoyés : pagination explicite, PostgREST tronque à 1000 et
+    // email_logs dépasse déjà le millier de lignes (règle CLAUDE.md).
+    const dejaEnvoye = new Set<string>();
+    try {
+      const PAGE = 1000;
+      for (let debut = 0; ; debut += PAGE) {
+        const { data, error } = await supabase
+          .from("email_logs")
+          .select("user_id")
+          .eq("email_type", BLAST_SYNC_TYPE)
+          .order("user_id")
+          .range(debut, debut + PAGE - 1);
+        if (error) throw new Error(error.message);
+        for (const l of data ?? []) dejaEnvoye.add((l as { user_id: string }).user_id);
+        if (!data || data.length < PAGE) break;
+      }
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ error: `email_logs: ${(e as Error).message}` }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Audit Resend : hard bounces et plaintes HISTORIQUES exclus de la cible
+    // (demande Nico 07/08 — le domaine n'a jamais envoyé en volume, chaque
+    // rejet évitable compte). Audit en échec → PAS d'envoi, sauf échappatoire
+    // explicite {"sans_audit_resend":true} : protéger la réputation prime.
+    const audit = await auditResend();
+    if (!audit.ok && !dryRun && body?.sans_audit_resend !== true) {
+      return new Response(
+        JSON.stringify({
+          error: `audit Resend indisponible (${audit.erreur}) — envoi refusé. ` +
+            `Vérifier le dashboard Resend à la main, puis forcer avec {"sans_audit_resend":true}.`,
+        }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    const exclusResendSet = new Set([...audit.bounces, ...audit.plaintes]);
+
+    // Filtrage DANS L'ORDRE de la RPC — l'ordre EST le contrat.
+    const vus = new Set<string>();
+    const cibles: Array<{ user_id: string; user_email: string; rang: number }> = [];
+    const parRang: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    let exclusInternes = 0;
+    let exclusResend = 0;
+    for (const c of brutes as Array<{ user_id: string; user_email: string; rang: number }>) {
+      if (!c.user_email || estInterne(c.user_email)) { exclusInternes++; continue; }
+      if (exclusResendSet.has(c.user_email.trim().toLowerCase())) { exclusResend++; continue; }
+      if (dejaEnvoye.has(c.user_id)) continue;
+      if (vus.has(c.user_id)) continue;
+      vus.add(c.user_id);
+      cibles.push(c);
+      parRang[c.rang] = (parRang[c.rang] ?? 0) + 1;
+    }
+
+    if (dryRun) {
+      return new Response(
+        JSON.stringify({
+          blast: BLAST_SYNC_TYPE,
+          dry_run: true,
+          cibles: cibles.length,
+          par_rang: parRang,
+          exclus_internes: exclusInternes,
+          exclus_resend: exclusResend,
+          audit_resend: {
+            ok: audit.ok, erreur: audit.erreur ?? null, examines: audit.examines,
+            bounces: audit.bounces.length, plaintes: audit.plaintes.length,
+          },
+          apercu: cibles.slice(0, 10).map((c) => `r${c.rang}:${c.user_email}`),
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const html = blastSyncDressingHtml();
+    const tranche = cibles.slice(0, limite);
+    for (let i = 0; i < tranche.length; i += BLAST_LOT) {
+      await Promise.all(
+        tranche.slice(i, i + BLAST_LOT).map(async (c) => {
+          const ok = await sendEmail(c.user_email, BLAST_SYNC_SUBJECT, html);
+          // Resend en échec = AUCUNE ligne email_logs : la cible reste
+          // éligible et repartira au prochain lot.
+          if (!ok) {
+            errors.push(`${BLAST_SYNC_TYPE}:${c.user_email}`);
+            return;
+          }
+          await logEmail(c.user_id, BLAST_SYNC_TYPE);
+          sent.push(`${BLAST_SYNC_TYPE}:${c.user_email}`);
+        })
+      );
+      if (i + BLAST_LOT < tranche.length) {
+        await new Promise((r) => setTimeout(r, BLAST_PAUSE_MS));
+      }
+    }
+
+    return new Response(
+      JSON.stringify({
+        blast: BLAST_SYNC_TYPE,
+        cibles: cibles.length,
+        envoyes: sent.length,
+        echecs: errors.length,
+        restant: cibles.length - sent.length,
+        par_rang: parRang,
+        exclus_internes: exclusInternes,
+        exclus_resend: exclusResend,
+        sent,
+        errors,
+        log_echecs: logEchecs,
         resend_echecs: resendTrace.filter((t) => (t.http as number) < 200 || (t.http as number) >= 300),
       }),
       { headers: { "Content-Type": "application/json" } }
