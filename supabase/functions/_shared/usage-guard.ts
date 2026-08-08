@@ -24,16 +24,64 @@
 //    n'invente pas un refus sur une panne de base), et si le log échoue, la
 //    fonction répond quand même.
 
-// Haiku 4.5 : 1 $/MTok en entrée, 5 $/MTok en sortie.
-const PRIX_IN_PAR_TOKEN = 1 / 1_000_000;
-const PRIX_OUT_PAR_TOKEN = 5 / 1_000_000;
+// ── Tarifs Anthropic (Haiku 4.5) — SOURCE UNIQUE (audit du 2026-08-08) ──────
+// Vérifiés sur la page pricing officielle le 08/08. Partagés avec la
+// télémétrie du scan complet de lens-analysis : deux tables de prix qui
+// divergent, c'est le prochain écart d'audit. À savoir : le cache d'écriture
+// coûte PLUS CHER que l'entrée normale (1,25×, TTL 5 min — 2 $/MTok en TTL
+// 1 h, non utilisé ici), la lecture 10× moins, et le web search est facturé
+// À PART des tokens (10 $/1000 requêtes).
+export const TARIF_HAIKU_USD = {
+  entreeParMTok: 1,
+  sortieParMTok: 5,
+  cacheEcritureParMTok: 1.25,
+  cacheLectureParMTok: 0.10,
+  webSearchParRequete: 0.01,
+} as const;
 
-export type UsageTokens = { in: number; out: number };
+export type UsageTokens = {
+  in: number;
+  out: number;
+  cacheW?: number;       // cache_creation_input_tokens
+  cacheR?: number;       // cache_read_input_tokens
+  webSearches?: number;  // server_tool_use.web_search_requests
+};
 
-/** Extrait les tokens d'une réponse Anthropic, quelle que soit sa forme. */
+/**
+ * Coût USD complet d'un appel Haiku : entrée + sortie + cache (écriture ET
+ * lecture) + web search. Les composantes absentes valent 0 : la formule reste
+ * juste pour les appelants sans cache ni recherche, et EST juste pour le
+ * premier qui en utilisera — l'ancienne version (in/out seulement) n'était
+ * correcte pour lens_identify que par accident.
+ */
+export function coutHaikuUsd(t: UsageTokens): number {
+  return (
+    t.in * TARIF_HAIKU_USD.entreeParMTok
+    + t.out * TARIF_HAIKU_USD.sortieParMTok
+    + (t.cacheW ?? 0) * TARIF_HAIKU_USD.cacheEcritureParMTok
+    + (t.cacheR ?? 0) * TARIF_HAIKU_USD.cacheLectureParMTok
+  ) / 1_000_000
+    + (t.webSearches ?? 0) * TARIF_HAIKU_USD.webSearchParRequete;
+}
+
+/** Extrait les tokens d'une réponse Anthropic, quelle que soit sa forme —
+ *  cache et web search compris, pour que le coût soit complet chez tous les
+ *  appelants sans qu'ils aient à y penser. */
 export function tokensDe(reponse: unknown): UsageTokens {
-  const u = (reponse as { usage?: { input_tokens?: number; output_tokens?: number } })?.usage;
-  return { in: u?.input_tokens ?? 0, out: u?.output_tokens ?? 0 };
+  const u = (reponse as {
+    usage?: {
+      input_tokens?: number; output_tokens?: number;
+      cache_creation_input_tokens?: number; cache_read_input_tokens?: number;
+      server_tool_use?: { web_search_requests?: number };
+    };
+  })?.usage;
+  return {
+    in: u?.input_tokens ?? 0,
+    out: u?.output_tokens ?? 0,
+    cacheW: u?.cache_creation_input_tokens ?? 0,
+    cacheR: u?.cache_read_input_tokens ?? 0,
+    webSearches: u?.server_tool_use?.web_search_requests ?? 0,
+  };
 }
 
 /**
@@ -92,7 +140,7 @@ export async function loggerAppelIA(
   extra: Record<string, unknown> = {},
 ): Promise<void> {
   if (!userId) return;
-  const cout = tokens.in * PRIX_IN_PAR_TOKEN + tokens.out * PRIX_OUT_PAR_TOKEN;
+  const cout = coutHaikuUsd(tokens);
   try {
     await admin.from("usage_logs").insert({
       user_id: userId,
@@ -101,6 +149,11 @@ export async function loggerAppelIA(
         ...extra,
         input_tokens: tokens.in,
         output_tokens: tokens.out,
+        // Champs cache/web posés seulement quand ils existent : les lignes
+        // des appelants qui n'en ont pas gardent leur forme historique.
+        ...(tokens.cacheW ? { cache_creation_input_tokens: tokens.cacheW } : {}),
+        ...(tokens.cacheR ? { cache_read_input_tokens: tokens.cacheR } : {}),
+        ...(tokens.webSearches ? { web_search_requests: tokens.webSearches } : {}),
         cost_usd: Number(cout.toFixed(6)),
       },
     });

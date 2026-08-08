@@ -461,7 +461,15 @@ serve(async (req) => {
   // appels Claude et la retouche GPT Image vivent tous dans ce handler, donc
   // aucune variable de module (qui serait partagée entre requêtes concurrentes
   // dans le même isolat Deno et mélangerait les compteurs).
-  const cost = { claude_in: 0, claude_out: 0, claude_calls: 0, images: 0, image_quality: "" };
+  const cost = {
+    claude_in: 0, claude_out: 0, claude_calls: 0, images: 0, image_quality: "",
+    // Usage OpenAI de la retouche (audit du 08/08) : le bloc `usage` de
+    // /images/edits porte les tokens EXACTS — les constantes 0,01/0,04 $ par
+    // image ignoraient l'entrée (image source + prompt). img_usage_n compte
+    // les réponses qui portaient le bloc : coût « mesuré » seulement quand
+    // TOUTES l'ont porté, sinon repli estimé et marqué comme tel.
+    img_usage_n: 0, img_text_in: 0, img_image_in: 0, img_out: 0,
+  };
   const trackClaude = (data: unknown) => {
     const u = (data as { usage?: { input_tokens?: number; output_tokens?: number } })?.usage;
     if (!u) return;
@@ -1030,6 +1038,24 @@ serve(async (req) => {
           const resData = await res.json();
           cost.images += 1;
           cost.image_quality = qualityToUse;
+          // Tokens exacts facturés par OpenAI pour CETTE image. Si le détail
+          // text/image manque, tout input_tokens part en "text" (tarif le
+          // plus bas : on sous-estime plutôt que d'inventer).
+          const imgUsage = (resData as {
+            usage?: {
+              input_tokens?: number; output_tokens?: number;
+              input_tokens_details?: { text_tokens?: number; image_tokens?: number };
+            };
+          }).usage;
+          if (imgUsage) {
+            const imageIn = imgUsage.input_tokens_details?.image_tokens ?? 0;
+            const textIn = imgUsage.input_tokens_details?.text_tokens
+              ?? Math.max(0, (imgUsage.input_tokens ?? 0) - imageIn);
+            cost.img_usage_n += 1;
+            cost.img_text_in += textIn;
+            cost.img_image_in += imageIn;
+            cost.img_out += imgUsage.output_tokens ?? 0;
+          }
           const b64 = resData.data?.[0]?.b64_json;
           if (!b64) {
             console.error(`[gpt-image] photo ${idx}: no b64_json in response`);
@@ -1074,7 +1100,19 @@ serve(async (req) => {
       // les locked_photos, déjà sous /enhanced/ d'un run passé, ne comptent
       // pas. Insert best-effort, comme les autres télémétries.
       const retoucheLivrees = processedPhotos.filter(p => p.url.includes(`/enhanced/${ts}_`)).length;
-      const retoucheUsd = cost.images * (qualityToUse === "low" ? 0.01 : 0.04);
+      // ── Coût RÉEL depuis le bloc usage d'OpenAI (audit du 08/08) ──────────
+      // Tarifs gpt-image-2 standard, page pricing OpenAI relevée le 08/08 :
+      // text input 5 $/MTok · image input 8 $/MTok · image output 30 $/MTok.
+      // cost_source distingue un coût MESURÉ (toutes les réponses portaient
+      // le bloc usage) d'un coût SUPPOSÉ (repli sur les constantes maison
+      // 0,01/0,04 $ par image, qui ignorent l'entrée).
+      const TARIF_GPT_IMAGE2 = { textInParMTok: 5, imageInParMTok: 8, outParMTok: 30 } as const;
+      const usageComplet = cost.images > 0 && cost.img_usage_n === cost.images;
+      const retoucheUsd = usageComplet
+        ? (cost.img_text_in * TARIF_GPT_IMAGE2.textInParMTok
+           + cost.img_image_in * TARIF_GPT_IMAGE2.imageInParMTok
+           + cost.img_out * TARIF_GPT_IMAGE2.outParMTok) / 1_000_000
+        : cost.images * (qualityToUse === "low" ? 0.01 : 0.04);
       adminClient.from("usage_logs").insert({
         user_id: user.id,
         feature: "photo_retouche",
@@ -1088,6 +1126,13 @@ serve(async (req) => {
           background: bgSuffix ? background : "original",
           delivered: retoucheLivrees > 0,
           duration_ms: Date.now() - retoucheDebutMs,
+          // Tokens bruts TOUJOURS journalisés, même en repli : ils permettent
+          // de recaler le coût a posteriori sur la facture OpenAI.
+          openai_text_input_tokens: cost.img_text_in,
+          openai_image_input_tokens: cost.img_image_in,
+          openai_output_tokens: cost.img_out,
+          openai_usage_manquants: cost.images - cost.img_usage_n,
+          cost_source: usageComplet ? "usage_api" : "estimation_constantes",
           cost_usd: Number(retoucheUsd.toFixed(4)),
         },
       }).then(({ error }) => {

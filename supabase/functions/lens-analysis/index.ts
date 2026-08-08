@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Même helper que les quatre autres fonctions IA non facturées (voice-parse,
 // normalize-title, stats-analysis, lot-distribute) : compte les appels sur 24 h
 // glissantes dans usage_logs et laisse passer si le comptage échoue.
-import { appelAutorise, loggerAppelIA } from "../_shared/usage-guard.ts";
+import { appelAutorise, loggerAppelIA, coutHaikuUsd } from "../_shared/usage-guard.ts";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
@@ -859,6 +859,20 @@ serve(async (req) => {
           cache_creation_input_tokens: stats.cache_w,
           cache_read_input_tokens: stats.cache_r,
           web_search_requests: stats.recherches,
+          // Coût réel de l'appel (audit du 08/08) — les CINQ composantes,
+          // tarifs partagés avec usage-guard (source unique) : entrée,
+          // sortie, cache écriture (1,25×), cache lecture (0,10×), web
+          // search (0,01 $/requête, facturé à part par Anthropic). Le poste
+          // le plus cher du produit (~10 $/semaine) était invisible de toute
+          // somme par cost_usd : les tokens étaient journalisés, jamais
+          // valorisés.
+          cost_usd: Number(coutHaikuUsd({
+            in: stats.in,
+            out: stats.out,
+            cacheW: stats.cache_w,
+            cacheR: stats.cache_r,
+            webSearches: stats.recherches,
+          }).toFixed(6)),
         },
       }).eq("id", logId);
     } catch (e) {
