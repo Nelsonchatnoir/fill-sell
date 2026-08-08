@@ -2784,7 +2784,7 @@ function readStepperDraft(invKey) {
 const FREE_STOCK_LIMIT = FREE_STOCK_LIMIT_FALLBACK;
 
 export default function ListingPreviewScreen({
-  inventaireId, userId, initialPhotos = [], initialListing = null, supabase, lang, onClose,
+  inventaireId, userId, initialPhotos: initialPhotosProp = [], initialListing: initialListingProp = null, supabase, lang, onClose,
   isPremium = false, isPro = false, onUpgrade = () => {},
   createStockItem = null, alreadyInStock = false,
   // Parcours identify (2026-07-28) : l'identification gratuite a échoué et le
@@ -2823,7 +2823,7 @@ export default function ListingPreviewScreen({
   // qu'aucune NOUVELLE photo n'est ajoutée, l'option retouche disparaît, les
   // images existantes sont réutilisées telles quelles et la part photos est
   // à 0 — dit clairement, jamais un 0 silencieux.
-  alreadyRetouched = false,
+  alreadyRetouched: alreadyRetouchedProp = false,
 }) {
   const { t, tpl } = useTranslation(lang);
   const stepLabels = [t("stepLabelUpload"), t("stepLabelPhotos"), t("stepLabelGeneration"), t("stepLabelPublish")];
@@ -2836,6 +2836,26 @@ export default function ListingPreviewScreen({
   if (draftRef.current === undefined) draftRef.current = readStepperDraft(inventaireId ?? null);
   const draft = draftRef.current;
   const invKeyRef = useRef(inventaireId ?? null);
+
+  // ── Anti-contamination entre articles (2026-08-08) ────────────────────────
+  // 3e occurrence de la même CLASSE de bug (listing_url les 13 et 19/07) : de
+  // l'état « par article » qui vit aussi longtemps que le COMPOSANT, pas que
+  // l'article. Ici : retour en arrière après un échec de publication, photos
+  // toutes remplacées → la génération repartait avec la FICHE de l'ancien
+  // article (inventaire_id conservé) et son analyse (initialListing /
+  // photoAnalysis prioritaires dans src) — la poupée ressortait sur des
+  // photos de vêtement, generate_listing tournant à images=0 (le texte ne
+  // regarde jamais les photos). Principe : les props de l'article d'origine
+  // sont neutralisées À LA SOURCE (articleSourceMorte) — tout le composant
+  // les lit sous leur nom historique et voit un article vierge, aucun point
+  // de lecture à patcher un par un.
+  const [articleSourceMorte, setArticleSourceMorte] = useState(draft?.articleSourceMorte ?? false);
+  const initialPhotos    = articleSourceMorte ? [] : initialPhotosProp;
+  const initialListing   = articleSourceMorte ? null : initialListingProp;
+  const alreadyRetouched = articleSourceMorte ? false : alreadyRetouchedProp;
+  // Photos qui ont nourri la DERNIÈRE analyse de la session : seconde source
+  // d'identité de l'article quand il n'est pas arrivé avec des photos.
+  const photosAnalyseesRef = useRef(draft?.photosAnalysees ?? null);
 
   const [step, setStep]         = useState(draft?.step ?? 0);
   const [initializing, setInit] = useState(true);
@@ -3049,6 +3069,33 @@ export default function ListingPreviewScreen({
   const [platformListings, setPlatformListings]       = useState(draft?.platformListings ?? null);
   const [processedPhotos, setProcessedPhotos]         = useState(draft?.processedPhotos ?? []);
   const [edited, setEdited]                           = useState(draft?.edited ?? {});
+
+  // ── Bascule d'identité d'article (2026-08-08) ─────────────────────────────
+  // Plus AUCUNE photo de l'article d'origine (ou de la dernière analyse) dans
+  // la sélection courante = l'utilisateur est reparti sur un AUTRE article
+  // dans la même instance du stepper (retour en arrière puis photos toutes
+  // remplacées). On repart PROPRE : plus d'identifiant d'inventaire (la fiche
+  // de l'ancien article ne doit plus être ni lue ni écrite), plus d'analyse,
+  // plus de texte généré, plus de prix hérités. Rejouable : si l'utilisateur
+  // change encore d'article après une nouvelle analyse, la bascule refire.
+  useEffect(() => {
+    const identite = (initialPhotos.length ? initialPhotos : photosAnalyseesRef.current) ?? [];
+    if (!identite.length || !photos.length) return;
+    if (identite.some(u => photos.includes(u))) return;
+    setArticleSourceMorte(true);
+    photosAnalyseesRef.current = null;
+    setInvId(null);
+    setPhotoAnalysis(null);
+    setPlatformListings(null);
+    setProcessedPhotos([]);
+    setEdited({});
+    setCustomPriced(new Set());
+    setModeleConfirme(null);
+    setPrice(null);
+    setPrixAchatSaisi("");
+    setNotes("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos]);
   // Champs partagés (Sujet 4) : source canonique unique + trace des copies
   // éditées à la main (sacrées : plus jamais resynchronisées).
   const [sharedFields, setSharedFields]     = useState(draft?.sharedFields ?? { taille:"", couleur:"", matiere:"", marque:"" });
@@ -3153,11 +3200,16 @@ export default function ListingPreviewScreen({
         sharedFields,
         sharedOverrides: Object.fromEntries(Object.entries(sharedOverrides).map(([k, v]) => [k, [...v]])),
         selected: [...selected],
+        // Anti-contamination (2026-08-08) : la neutralisation de l'article
+        // d'origine et l'identité de la dernière analyse survivent au reload —
+        // sinon un remount ressusciterait la fiche morte via les props.
+        articleSourceMorte,
+        photosAnalysees: photosAnalyseesRef.current,
       }));
     } catch { /* quota plein : le stepper continue, seul le brouillon saute */ }
   }, [initializing, done, step, invId, addToStock, prixAchatSaisi, notes, photos, price,
       customPriced, photoAnalysis, modeleConfirme, photoOption, background, platformListings,
-      processedPhotos, edited, sharedFields, sharedOverrides, selected]);
+      processedPhotos, edited, sharedFields, sharedOverrides, selected, articleSourceMorte]);
 
   // Compat catégorie × plateforme (source de vérité = les 4 mappings, cf.
   // platformCompat.js) : calculée dès que l'article est connu, elle GRISE les
@@ -3462,6 +3514,10 @@ export default function ListingPreviewScreen({
       }
       if (res?.error) throw new Error(res.error);
       setPhotoAnalysis(res);
+      // Identité de l'article = les photos qui ont nourri CETTE analyse. C'est
+      // ce relevé que la bascule anti-contamination et la garde de génération
+      // comparent à la sélection courante.
+      photosAnalyseesRef.current = [...photos];
       refreshWallet();
       // Prix par défaut : la valeur de marché estimée, jamais le prix d'achat.
       if (res?.prix_vente_suggere != null) {
@@ -3513,6 +3569,21 @@ export default function ListingPreviewScreen({
 
   // ── Génération plateformes ────────────────────────────────────────────────
   async function handleGeneratePlatforms() {
+    // Garde d'identité (2026-08-08, même doctrine que requireTitle posé après
+    // les contaminations de listing_url des 13 et 19/07) : générer avec le
+    // contexte d'un AUTRE article est pire qu'un refus. Normalement
+    // inatteignable — la bascule anti-contamination a déjà nettoyé — gardée en
+    // ceinture-bretelles : si un contexte d'article (fiche, analyse) est armé
+    // alors qu'aucune de ses photos n'est dans la sélection, on refuse.
+    const identiteArticle = (initialPhotos.length ? initialPhotos : photosAnalyseesRef.current) ?? [];
+    if ((invId || photoAnalysis || initialListing)
+        && identiteArticle.length && photos.length
+        && !identiteArticle.some(u => photos.includes(u))) {
+      setPlatformError(lang === "en"
+        ? "These photos don't match the analyzed item. Nothing was generated — go back to the first step and re-run the analysis for this new item."
+        : "Ces photos ne correspondent plus à l'article analysé. Rien n'a été généré — reviens à la première étape et relance l'analyse pour ce nouvel article.");
+      return;
+    }
     setGeneratingPlatforms(true);
     setPlatformError("");
     try {
