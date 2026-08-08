@@ -296,7 +296,7 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit
 // paliers. On annonce ce que le grant permet réellement (calculé).
 // Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
-export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, genPrice, onUpgrade }) {
+export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, onUpgrade }) {
   return (
     <div style={{
       position: 'relative',
@@ -333,11 +333,11 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
         dark
         items={[
           fr ? 'Stock illimité' : 'Unlimited stock',
-          // Publication OFFERTE en Pro (2026-08-08) — la gratuité est servie
-          // par spend_coins_and_publish (is_pro → 0/plateforme). pubUnit ne
-          // s'affiche plus ici : le prix Pro est 0, pas celui de coin_config.
-          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs — publication OFFERTE, 0 Pépite/plateforme (annonce générée par IA ${genPrice} Pépite)`
-             : `Publish on Vinted, Leboncoin, eBay & Beebs — publishing FREE, 0 Nuggets/platform (AI-generated listing ${genPrice} Nugget)`,
+          // Génération ET publication OFFERTES en Pro (2026-08-08) — servies
+          // par spend_coins_for_generate et spend_coins_and_publish (is_pro
+          // → 0). Aucun prix de coin_config ne s'affiche ici : c'est 0.
+          fr ? 'Publie sur Vinted, Leboncoin, eBay & Beebs — génération IA et publication OFFERTES, 0 Pépite'
+             : 'Publish on Vinted, Leboncoin, eBay & Beebs — AI generation and publishing FREE, 0 Nuggets',
           fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free), et automatisable si tu l\'actives'
              : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free), and automatable if you turn it on',
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
