@@ -1881,6 +1881,18 @@ export default function App({ loginOnly = false }){
     return ext!=null&&Number.isFinite(min)&&ext<min;
   })();
   const extBannerKey=`${extensionBuild}|${EXT_MIN_BUILD}`;
+  // ── Préavis « nouvelle grille Pépites » (2026-08-08) ──────────────────────
+  // Obligation CGV art. 2 : toute évolution de la grille exige « un préavis
+  // raisonnable porté à la connaissance des utilisateurs dans l'application ».
+  // Le bandeau vit jusqu'à GRILLE_2026_DATE_EFFET puis s'éteint TOUT SEUL
+  // (aucun second déploiement à prévoir) ; le dismiss est persistant. Pour
+  // décaler la bascule : changer la constante ET les deux libellés de date
+  // (FR/EN) — les trois lignes ci-dessous, rien d'autre.
+  const GRILLE_2026_DATE_EFFET=Date.parse('2026-08-13T07:00:00+02:00');
+  const GRILLE_2026_DATE_FR='jeudi 13 août';
+  const GRILLE_2026_DATE_EN='Thursday, August 13';
+  const [grilleNoticeDismissed,setGrilleNoticeDismissed]=useState(()=>{try{return localStorage.getItem('fs_grille_notice_2026_08')==='1';}catch{return false;}});
+  const [grilleNoticeOpen,setGrilleNoticeOpen]=useState(false);
   // ── Bundle périmé (2026-07-19, classe de bug c5fe1414) ────────────────────
   // Un onglet SPA longue vie garde son bundle en mémoire tant que personne ne
   // fait F5 : un job créé par cet onglet après un déploiement part avec les
@@ -4895,6 +4907,51 @@ export default function App({ loginOnly = false }){
           <button onClick={()=>{setExtBannerDismissedFor(extBannerKey);try{localStorage.setItem('fs_ext_banner_dismissed',extBannerKey);}catch{/* stockage indisponible : dismiss valable pour la session seulement */}}}
             aria-label={lang==='fr'?"Masquer":"Dismiss"} title={lang==='fr'?"Masquer":"Dismiss"}
             style={{background:"transparent",border:"none",color:UI.ink,fontSize:16,lineHeight:1,cursor:"pointer",padding:"4px 6px",opacity:0.7,flexShrink:0,fontFamily:"inherit"}}>✕</button>
+        </div>
+      )}
+
+      {/* Préavis « nouvelle grille Pépites » (2026-08-08) — voir les
+          constantes GRILLE_2026_* plus haut. Les chiffres ci-dessous sont la
+          grille CIBLE annoncée : ils décrivent le futur, pas coin_config
+          d'aujourd'hui — c'est voulu, ne pas les brancher sur la base. Le
+          texte dit franchement ce qui augmente (article mono-plateforme,
+          republication Premium/Pro) et ce qui baisse — consigne Nico 08/08. */}
+      {Date.now()<GRILLE_2026_DATE_EFFET&&!grilleNoticeDismissed&&(
+        <div style={{padding:"12px 16px 12px 14px",background:"#EFF6FF",borderBottom:"1px solid #BFDBFE",fontSize:13.5,color:"#1E3A5F"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <span aria-hidden="true" style={{fontSize:18,flexShrink:0}}>💎</span>
+            <span style={{flex:1,lineHeight:1.45,fontWeight:600}}>
+              {lang==='fr'
+                ?`Le prix des actions en Pépites change le ${GRILLE_2026_DATE_FR} — moins cher pour la plupart des usages, et les Pépites mensuelles augmentent.`
+                :`Nugget action prices change on ${GRILLE_2026_DATE_EN} — cheaper for most uses, with bigger monthly Nugget allowances.`}
+            </span>
+            <button onClick={()=>setGrilleNoticeOpen(o=>!o)}
+              style={{fontWeight:700,fontSize:12.5,color:"#fff",background:"#1E3A5F",borderRadius:99,padding:"7px 16px",border:"none",cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,fontFamily:"inherit"}}>
+              {grilleNoticeOpen?(lang==='fr'?"Réduire":"Less"):(lang==='fr'?"Voir le détail":"See details")}
+            </button>
+            <button onClick={()=>{setGrilleNoticeDismissed(true);try{localStorage.setItem('fs_grille_notice_2026_08','1');}catch{/* stockage indisponible : dismiss valable pour la session seulement */}}}
+              aria-label={lang==='fr'?"Masquer":"Dismiss"} title={lang==='fr'?"Masquer":"Dismiss"}
+              style={{background:"transparent",border:"none",color:"#1E3A5F",fontSize:16,lineHeight:1,cursor:"pointer",padding:"4px 6px",opacity:0.7,flexShrink:0,fontFamily:"inherit"}}>✕</button>
+          </div>
+          {grilleNoticeOpen&&(
+            <ul style={{margin:"10px 0 2px 30px",padding:0,lineHeight:1.65,fontWeight:500,listStyle:"disc"}}>
+              {lang==='fr'?(<>
+                <li>Annonce générée par IA : <strong>6 Pépites</strong> (au lieu de 1).</li>
+                <li>Publication : <strong>1 Pépite par plateforme</strong> (au lieu de 3). La publication offerte du plan Pro disparaît — le prix devient le même pour tous.</li>
+                <li>Republication : <strong>1 Pépite par annonce, pour tout le monde</strong> — elle devient payante en Premium et Pro, y compris l'auto-republication.</li>
+                <li>Analyse Lens (6 Pépites) et retouche photos (9 / 32 Pépites) : inchangées.</li>
+                <li>Pépites mensuelles : Free 30 → <strong>50</strong> · Premium 150 → <strong>400</strong> · Pro 600 → <strong>1200</strong>, dès ton prochain renouvellement. Ton solde actuel est conservé.</li>
+                <li>Concrètement : un article généré puis publié sur les 4 plateformes passe de 13 à <strong>10 Pépites</strong>. Ce qui augmente : l'article publié sur une seule plateforme (4 → 7 Pépites) et la republication en Premium/Pro, désormais payante.</li>
+              </>):(<>
+                <li>AI-generated listing: <strong>6 Nuggets</strong> (was 1).</li>
+                <li>Publishing: <strong>1 Nugget per platform</strong> (was 3). Free publishing on the Pro plan ends — the price becomes the same for everyone.</li>
+                <li>Reposting: <strong>1 Nugget per listing, for everyone</strong> — it becomes paid on Premium and Pro too, auto-repost included.</li>
+                <li>Lens analysis (6 Nuggets) and photo retouching (9 / 32 Nuggets): unchanged.</li>
+                <li>Monthly Nuggets: Free 30 → <strong>50</strong> · Premium 150 → <strong>400</strong> · Pro 600 → <strong>1200</strong>, from your next renewal. Your current balance is kept.</li>
+                <li>In practice: an item generated then published on all 4 platforms goes from 13 to <strong>10 Nuggets</strong>. What goes up: an item published on a single platform (4 → 7 Nuggets) and reposting on Premium/Pro, now paid.</li>
+              </>)}
+            </ul>
+          )}
         </div>
       )}
 
