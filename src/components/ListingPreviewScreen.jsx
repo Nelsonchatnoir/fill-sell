@@ -1913,12 +1913,15 @@ function StepGeneration({ generating, generateError, platformListings, processed
                         // référentiel enfant ne s'affichent que si le genre
                         // de CETTE copie est enfant (genre Vinted/eBay/Beebs,
                         // univers Leboncoin), et FILTRÉS PAR AXE selon ce
-                        // genre : Bébé → mois, Fille/Garçon/Enfant → ans,
-                        // pointures toujours (cf. childAxesForGenre — un axe
-                        // incohérent avec le genre finit hors des
-                        // allowedValues de la catégorie eBay, garde bloquée).
-                        const copyChildAxes = childAxesForGenre(e.platform_fields?.genre)
-                          ?? childAxesForGenre(e.platform_fields?.univers);
+                        // genre ET la plateforme de la copie (2026-08-08) :
+                        // Bébé → mois ; Fille/Garçon → ans + mois sur
+                        // Vinted/LBC/Beebs (grilles réelles, cf.
+                        // childAxesForGenre) mais ans SEULEMENT sur eBay
+                        // (un axe hors des allowedValues de la catégorie
+                        // eBay = garde bloquée, bug 51581 du 15/07) ;
+                        // pointures toujours.
+                        const copyChildAxes = childAxesForGenre(e.platform_fields?.genre, p)
+                          ?? childAxesForGenre(e.platform_fields?.univers, p);
                         const fieldGroups = field.childGroups && copyChildAxes
                           ? [...field.childGroups.filter(g => g.axis === "shoes" || copyChildAxes[g.axis]), ...field.groups]
                           : field.groups;
@@ -4007,17 +4010,21 @@ export default function ListingPreviewScreen({
 
   // Axes de tailles enfant du champ partagé Taille (encart inline de
   // StepPublish) : UNION des axes autorisés par les genres enfant des
-  // copies (childAxesForGenre — Bébé → mois, Fille/Garçon/Enfant → ans).
-  // null si aucune copie n'a de genre enfant → groupes adultes seuls.
-  // L'union (et non l'intersection) parce que les genres peuvent diverger
-  // entre copies (Vinted n'a pas de genre Bébé, sa copie dit Fille quand
-  // eBay/Beebs disent Bébé) — le filtrage strict par copie reste fait dans
-  // l'éditeur de chaque copie.
+  // copies, chaque copie jugée avec SA plateforme (childAxesForGenre —
+  // Bébé → mois ; Fille/Garçon → ans, + mois sur Vinted/LBC/Beebs depuis
+  // le 2026-08-08). null si aucune copie n'a de genre enfant → groupes
+  // adultes seuls. L'union (et non l'intersection) parce que les genres et
+  // les plateformes divergent entre copies — le filtrage strict par copie
+  // reste fait dans l'éditeur de chaque copie. ⚠️ Conséquence assumée de
+  // l'union : Fille + copies Vinted ET eBay → l'axe mois s'affiche ici, et
+  // une taille mois posée en partagé bloquera la copie eBay à sa garde des
+  // requis (visible, nominal) — l'éditeur de la copie Vinted permet de
+  // poser la taille mois sur Vinted seul.
   const sharedChildAxes = useMemo(() => {
     let axes = null;
-    for (const c of Object.values(edited ?? {})) {
-      const a = childAxesForGenre(c?.platform_fields?.genre)
-        ?? childAxesForGenre(c?.platform_fields?.univers);
+    for (const [p, c] of Object.entries(edited ?? {})) {
+      const a = childAxesForGenre(c?.platform_fields?.genre, p)
+        ?? childAxesForGenre(c?.platform_fields?.univers, p);
       if (!a) continue;
       axes = { months: (axes?.months ?? false) || a.months, years: (axes?.years ?? false) || a.years };
     }

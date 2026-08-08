@@ -92,20 +92,38 @@ export function isChildGenre(genre) {
 /**
  * Axes de taille enfant COHÉRENTS avec le genre (2026-07-15, bug réel :
  * cat eBay 51581 « Robes Fille 2-16 ans » requêtée avec une taille en mois
- * → garde pré-publication bloquée en boucle). Convention retail française,
- * qui est AUSSI le découpage des catégories eBay (le plus strict des 4) :
+ * → garde pré-publication bloquée en boucle). Convention retail française :
  *   Bébé                 → tailles en MOIS (rayons « Bébé : vêtements »)
  *   Fille/Garçon/Enfant  → tailles en ANS (rayons « 2-16 ans »)
  * Les pointures ne dépendent pas du genre (l'appelant les garde toujours).
- * Un article en « N mois » dont le genre est Fille/Garçon est un
- * DÉSALIGNEMENT : le bon geste est genre → Bébé, pas une taille ans forcée.
+ *
+ * OUVERTURE PAR PLATEFORME (2026-08-08, chantier « Bébé introuvable ») :
+ * la restriction mois=Bébé venait du seul découpage eBay — or les selects
+ * de genre Vinted/LBC n'offrent PAS « Bébé », donc les tailles 0-36 mois
+ * étaient inatteignables à la main sur ces plateformes (vécu Ornella).
+ * Prouvé le 08/08 : Vinted sert UNE grille (size-group-32, mois compris)
+ * sur toute la branche Enfants — un Fille/Garçon en mois y publie (job
+ * 57ad66e2) ; les grilles LBC bébé et le rayon Bébé Beebs couvrent aussi
+ * les mois (childSizes, relevés du 15/07). D'où : Fille/Garçon gagnent
+ * l'axe mois SUR CES PLATEFORMES-LÀ, nommément.
+ *
+ * ⚠️ SÛRETÉ : `platform` ABSENTE ou INCONNUE → comportement RESTRICTIF
+ * historique (mois réservés à Bébé). Un appelant qui oublie l'argument
+ * dégrade vers l'ancien comportement — il ne rouvre JAMAIS le bug eBay en
+ * silence. eBay reste ans-seulement pour Fille/Garçon, explicitement hors
+ * de MONTHS_OPEN_PLATFORMS.
+ * @param {string} genre
+ * @param {string} [platform] — "vinted" | "leboncoin" | "beebs" | "ebay"
  * @returns {{months: boolean, years: boolean}|null} null si genre non enfant
  */
-export function childAxesForGenre(genre) {
+const MONTHS_OPEN_PLATFORMS = new Set(["vinted", "leboncoin", "beebs"]);
+
+export function childAxesForGenre(genre, platform) {
   if (genre === "Bébé") return { months: true, years: false };
-  if (genre === "Fille" || genre === "Garçon" || genre === "Enfant") {
-    return { months: false, years: true };
+  if (genre === "Fille" || genre === "Garçon") {
+    return { months: MONTHS_OPEN_PLATFORMS.has(platform), years: true };
   }
+  if (genre === "Enfant") return { months: false, years: true };
   return null;
 }
 

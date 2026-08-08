@@ -268,8 +268,12 @@ export const translations = {
     sizeGroupGarmentLetter:"Vêtement (lettre)",
     sizeGroupGarmentNumeric:"Vêtement (numérique)",
     sizeGroupShoe:"Chaussures",
-    sizeGroupChildMonths:"Bébé (mois)",
-    sizeGroupChildYears:"Enfant (ans)",
+    // « Bébé » en toutes lettres + bornes (2026-08-08, chantier « Bébé
+    // introuvable ») : c'est le SEUL endroit du parcours où l'utilisatrice
+    // qui cherche « bébé » retrouve le mot — l'en-tête du groupe doit le
+    // porter, avec la plage couverte.
+    sizeGroupChildMonths:"Bébé — naissance à 3 ans (tailles en mois)",
+    sizeGroupChildYears:"Enfant — 2 à 18 ans",
     sizeGroupChildShoe:"Pointures enfant (EU)",
 
     conditionNewWithTag:"Neuf avec étiquette",
@@ -565,8 +569,8 @@ export const translations = {
     sizeGroupGarmentLetter:"Garment (letter)",
     sizeGroupGarmentNumeric:"Garment (numeric)",
     sizeGroupShoe:"Shoes",
-    sizeGroupChildMonths:"Baby (months)",
-    sizeGroupChildYears:"Kids (years)",
+    sizeGroupChildMonths:"Baby — newborn to 3 years (month sizes)",
+    sizeGroupChildYears:"Kids — 2 to 18 years",
     sizeGroupChildShoe:"Kids shoe sizes (EU)",
 
     conditionNewWithTag:"New with tag",
