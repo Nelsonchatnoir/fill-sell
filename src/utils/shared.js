@@ -416,6 +416,21 @@ const OBJECT_ICON_RULES = [
   [/\bsacs?\b(?!\s*(?:de.?couchage|de.?frappe|poubelle|congélation|aspirateur))|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
   [/portefeuille|porte.?monnaie|porte.?carte/i, '👛'],
   [/valise|bagage/i, '🧳'],
+  // ── Vêtement BÉBÉ à contexte OBLIGATOIRE (2026-08-08, chantier détection
+  // bébé — corpus réel : 145 titres enfant en prod, ensemble ×10,
+  // bodysuit/grenouillère/sarouel ×1 chacun, tous en 📦 ou dépendants de
+  // l'icône IA). Ces mots ne déclenchent QUE si le texte porte AUSSI un
+  // signal bébé explicite (bébé / N mois / naissance / nourrisson) : hors de
+  // ce contexte (« ensemble tailleur femme », « sarouel homme »,
+  // « grenouillère adulte »), RIEN ne change — l'adulte garde son
+  // comportement d'avant au caractère près (exigence du chantier, testée en
+  // batterie). Résidu assumé : « grenouillère fille 2 ans » sans mot
+  // bébé/mois reste en 📦. Placés AVANT les vêtements composants : un
+  // « Ensemble bébé manteau et pantalon 3 mois » est un ENSEMBLE, pas un
+  // manteau. Feuilles Vinted exactes : cf. VINTED_ENFANT_AFFINAGES.
+  [/^(?=[\s\S]*\b(?:ensembles?|bodysuits?)\b)(?=[\s\S]*(?:bébé|bebe|\b\d+\s?mois\b|naissance|nourrisson))/i, '👕'],
+  [/^(?=[\s\S]*grenouillères?)(?=[\s\S]*(?:bébé|bebe|\b\d+\s?mois\b|naissance|nourrisson))/i, '🩲'],
+  [/^(?=[\s\S]*\bsarouels?\b)(?=[\s\S]*(?:bébé|bebe|\b\d+\s?mois\b|naissance|nourrisson))/i, '👖'],
   // (?:^|[^-\w]) : exclut "garde-robe" (fréquent dans les descriptions IA) et
   // "wardrobe" — sinon un t-shirt dont la description dit "à avoir dans sa
   // garde-robe" devient une robe et le mapping Vinted part sur le mauvais rayon.

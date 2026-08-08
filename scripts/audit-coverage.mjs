@@ -185,6 +185,45 @@ for (const a of VINTED_ENFANT_AFFINAGES) {
   }
 }
 
+// Comportement de résolution : chaque règle d'affinage a son test (titre réel
+// → feuille attendue), et l'INVARIANCE ADULTE est prouvée — pour Femme/Homme,
+// le chemin avec titre est STRICTEMENT celui sans titre, sur tous les titres
+// bébé du chantier comme sur les homonymes adultes.
+const affinageChecks = [
+  ["👕", "Fille", "Lot 8 bodies bébé 3 mois", "Bodies"],
+  ["👕", "Garçon", "Bodysuit blanc 6 mois", "Bodies"],
+  ["👕", "Garçon", "Ensemble bébé Disney rayé Mickey 3 mois", "Ensembles"],
+  ["👕", "Fille", "Ensemble legging et t-shirt fille 8 ans", "T-shirts"], // sans signal bébé : chemin d'icône inchangé
+  ["🩲", "Fille", "Grenouillère bébé Disney Minnie Mouse", "Grenouillères"],
+  ["🧥", "Garçon", "Manteau réversible bébé 24 mois", "Parkas"],
+  ["🧥", "Fille", "Manteau doudoune fille 4 ans", "Doudounes"],
+  ["👖", "Fille", "Salopette en jean bébé 12 mois", "Salopettes"],
+  ["👖", "Garçon", "Legging gris 4 ans", "Leggings"],
+  ["👖", "Fille", "Sarouel 23 mois bleu", "Sarouels"],
+];
+for (const [ic, g, titre, feuille] of affinageChecks) {
+  const p = getVintedCategoryPath(ic, g, titre);
+  if (!p || p[p.length - 1] !== feuille) {
+    invalidCount++;
+    console.log(`  ✗ affinage ${ic}/${g} "${titre}" → ${JSON.stringify(p)} (feuille attendue "${feuille}")`);
+  }
+}
+const adultTitles = affinageChecks.map(([, , t]) => t)
+  .concat(["Ensemble tailleur femme 38 élégant", "Combi-short Naf Naf fleurie XS 34", "Salopette femme denim"]);
+for (const g of ["Femme", "Homme"]) {
+  for (const ic of ["👕", "🧥", "🩲", "👖", "🩳", "🥼"]) {
+    for (const t of adultTitles) {
+      const avec = JSON.stringify(getVintedCategoryPath(ic, g, t));
+      const sans = JSON.stringify(getVintedCategoryPath(ic, g));
+      if (avec !== sans) {
+        invalidCount++;
+        console.log(`  ✗ INVARIANCE ADULTE violée : ${ic}/${g} "${t}" → ${avec} ≠ ${sans}`);
+      }
+    }
+  }
+}
+console.log(`  ${affinageChecks.length} résolutions + invariance adulte (2 genres × 6 icônes × ${adultTitles.length} titres) vérifiées`);
+
 console.log("\n=== SYNTHÈSE ===");
 for (const p of Object.keys(PLATFORMS)) {
   const c = { OK: 0, NULL: 0, ABSENT: 0, INVALIDE: 0 };
@@ -311,6 +350,21 @@ const battery = [
   ["Service de verres en cristal x6", "🍽️"],
   ["Corde à sauter lestée", "Parfaite pour atteindre vos objectifs de remise en forme.", "📦"],
   ["Objectif Canon EF 50mm f/1.8", "📷"],
+  // ── Vêtement bébé à contexte obligatoire (2026-08-08) : chaque règle a son
+  // test, plus la NON-RÉGRESSION sur le titre adulte proche — hors contexte
+  // bébé, l'icône d'avant au caractère près.
+  ["Ensemble bébé Disney rayé Mickey 3 mois", "👕"],
+  ["Ensemble tailleur femme 38 élégant", "🥼"],
+  ["Grenouillère bébé Disney Minnie Mouse", "🩲"],
+  ["Grenouillère adulte licorne pyjama", "🩲"], // « pyjama » matchait déjà 🩲 avant le chantier
+  ["Bodysuit blanc 6 mois", "👕"],
+  ["Body manches longues bébé", "👕"],
+  ["Sarouel 23 mois bleu", "👖"],
+  ["Sarouel homme lin noir", "📦"], // sans contexte bébé : inchangé (aucune règle ne matchait avant)
+  ["Combi-short Naf Naf fleurie XS 34", "🩳"], // cas réel job 1786019504491004 — ne doit PAS bouger
+  ["Combinaison de ski enfant 8 ans", "🧥"],
+  ["Salopette en jean bébé 12 mois", "👖"],
+  ["Legging fille 6 ans noir", "👖"],
 ];
 console.log("\n=== BATTERIE DE DÉTECTION ===");
 let detectFails = 0;

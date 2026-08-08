@@ -709,14 +709,44 @@ export function vintedCategoryStatus(icon) {
 // autres défauts du fichier.
 // Exporté pour l'auditeur (scripts/audit-coverage.mjs) : ces chemins-là
 // aussi sont validés contre le crawl, comme tout chemin du fichier.
+// Champs d'une entrée : { icon, re, sauf?, aussi?, Fille, Garçon }.
+// `re` doit matcher le titre ; `sauf` l'exclut (mot plus spécifique) ;
+// `aussi` est un SECOND motif obligatoire (contexte bébé pour les mots qui
+// existent aussi en adulte — « ensemble », dont l'icône peut venir de l'IA
+// sans passer par la détection gated de shared.js).
+// L'ORDRE compte (première entrée gagnante) : « Ensemble 3 bodies bébé »
+// part en Bodies (le contenu prime sur le contenant, les acheteuses
+// cherchent « bodies »).
 export const VINTED_ENFANT_AFFINAGES = [
   {
     icon: "👕",
-    // « body », « bodys » ET « bodies » — le pluriel courant est « bodies »
-    // (titre réel du job prouvé : « Lot 8 bodies bébé 3 mois »).
-    re: /\bbod(?:ys?|ies)\b/i,
+    // « body », « bodys », « bodies » ET « bodysuit » — pluriel courant
+    // « bodies » (titre réel du job prouvé : « Lot 8 bodies bébé 3 mois »),
+    // « Bodysuit blanc 6 mois » attesté dans l'inventaire.
+    re: /\bbod(?:ys?|ies|ysuits?)\b/i,
     Fille: [...FI, "Bébé filles", "Bodies"],
     Garçon: [...GA, "Bébé garçons", "Bodies"],
+  },
+  {
+    // ×10 dans le corpus enfant — c'est comme ça qu'« Ensemble bébé Disney »
+    // (job 57ad66e2) partait en T-shirts. `aussi` OBLIGATOIRE : « ensemble »
+    // existe partout en adulte, seule la co-présence d'un signal bébé
+    // autorise la feuille Bébé > Ensembles. Résidu assumé : « ensemble
+    // fille 8 ans » sans mot bébé/mois reste sur le chemin de son icône.
+    icon: "👕",
+    re: /\bensembles?\b/i,
+    aussi: /bébé|bebe|\b\d+\s?mois\b|naissance|nourrisson/i,
+    Fille: [...FI, "Bébé filles", "Ensembles"],
+    Garçon: [...GA, "Bébé garçons", "Ensembles"],
+  },
+  {
+    // Intrinsèquement bébé (pas de gate `aussi` : la feuille reste juste
+    // même pour une grenouillère 2-3 ans) — la DÉTECTION, elle, est gated
+    // (une grenouillère adulte ne change pas d'icône).
+    icon: "🩲",
+    re: /grenouillères?/i,
+    Fille: [...FI, "Bébé filles", "Grenouillères"],
+    Garçon: [...GA, "Bébé garçons", "Grenouillères"],
   },
   {
     icon: "🧥",
@@ -724,6 +754,29 @@ export const VINTED_ENFANT_AFFINAGES = [
     sauf: /doudoune|porte.manteau/i,
     Fille: [...FI, "Vêtements d'extérieur", "Manteaux", "Parkas"],
     Garçon: [...GA, "Vêtements d'extérieur", "Manteaux", "Parkas"],
+  },
+  // 👖 : l'icône (regex salopette|legging|… de shared.js) tombait sur le bac
+  // « Pantalons et shorts > Autres » alors que des feuilles exactes existent
+  // des deux côtés (arbre L554-557/L669-672). Salopette ×9 et legging ×14
+  // dans le corpus enfant — mots non ambigus, feuilles homonymes : pas de
+  // gate `aussi`, le genre Fille/Garçon suffit (l'adulte ne passe jamais ici).
+  {
+    icon: "👖",
+    re: /\bsalopettes?\b/i,
+    Fille: [...FI, "Pantalons et shorts", "Salopettes"],
+    Garçon: [...GA, "Pantalons et shorts", "Salopettes"],
+  },
+  {
+    icon: "👖",
+    re: /\bleggings?\b/i,
+    Fille: [...FI, "Pantalons et shorts", "Leggings"],
+    Garçon: [...GA, "Pantalons et shorts", "Leggings"],
+  },
+  {
+    icon: "👖",
+    re: /\bsarouels?\b/i,
+    Fille: [...FI, "Pantalons et shorts", "Sarouels"],
+    Garçon: [...GA, "Pantalons et shorts", "Sarouels"],
   },
 ];
 
@@ -746,6 +799,7 @@ export function getVintedCategoryPath(icon, genre, titre = "") {
     for (const a of VINTED_ENFANT_AFFINAGES) {
       if (a.icon !== icon || !a[genre]) continue;
       if (a.sauf?.test(titre)) continue;
+      if (a.aussi && !a.aussi.test(titre)) continue;
       if (a.re.test(titre)) return a[genre];
     }
   }
