@@ -439,7 +439,9 @@ const OBJECT_ICON_RULES = [
   // plus bas), et « top qualité/état/prix » — tournure quasi systématique des
   // descriptions IA — matchait \btop\b (« JBL Flip 5, top qualité sonore »
   // → Hauts et t-shirts).
-  [/t.?shirt|tee.?shirt|débardeur|(?<!volkswagen\s)(?<!vw\s)polos?\b(?!\s*(?:\d|tdi|tsi|gti|gtd))|(?<!au\s)\btops?\b(?!\s*(?:qualité|état|etat|condition|niveau|prix))|tunique|\bbodys?\b/i, '👕'],
+  // \bbod(?:ys?|ies)\b (2026-08-08, B3b) : le pluriel courant de « body »
+  // est « bodies » — « Lot 8 bodies bébé » (job réel 46e7dfc9) tombait en 📦.
+  [/t.?shirt|tee.?shirt|débardeur|(?<!volkswagen\s)(?<!vw\s)polos?\b(?!\s*(?:\d|tdi|tsi|gti|gtd))|(?<!au\s)\btops?\b(?!\s*(?:qualité|état|etat|condition|niveau|prix))|tunique|\bbod(?:ys?|ies)\b/i, '👕'],
   // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
   // matcherait sinon en premier).
   [/\bshorts?\b|\bbermudas?\b/i, '🩳'],

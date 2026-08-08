@@ -689,7 +689,45 @@ export function vintedCategoryStatus(icon) {
   return entry.Femme || entry.Homme ? "supported" : "unavailable";
 }
 
-export function getVintedCategoryPath(icon, genre) {
+// ── Affinage par MOTS DU TITRE — arbre ENFANT seulement (2026-08-08, B3b) ───
+// L'icône agrège des types que Vinted sépare, et deux erreurs sont PROUVÉES
+// en prod le 08/08 (articles bébé d'Ornella) : un « Lot 8 bodies bébé »
+// rangé en T-shirts (👕, regex \bbodys?\b de detectObjectIcon) et un
+// « Manteau réversible bébé » en Doudounes (🧥, DÉFAUT ASSUMÉ). Les feuilles
+// réelles existent — relevé DOM du 08/08 confirmé par l'arbre archivé :
+// Bébé filles/garçons > Bodies (vinted-catalog-tree.txt L467/L591) et
+// Vêtements d'extérieur > Manteaux (L506-510/L627-631).
+// L'affinage se joue APRÈS l'icône, sur le TITRE, et UNIQUEMENT pour
+// Fille/Garçon : l'adulte ne change pas (aucun cas prouvé — hors périmètre),
+// et sans titre le comportement est STRICTEMENT l'ancien.
+// `sauf` : le mot le plus spécifique prime — un « manteau doudoune » reste
+// en Doudounes ; porte-manteau déjà exclu au niveau icône, regardé quand
+// même (le titre peut porter les deux mots).
+// ⚠️ « Manteaux » enfant n'a PAS de feuille générique (Duffle-coats /
+// Parkas / Cabans / Trenchs, rien d'autre — L507-510) : Parkas = DÉFAUT
+// ASSUMÉ, le manteau enfant dominant en revente, même doctrine que les
+// autres défauts du fichier.
+// Exporté pour l'auditeur (scripts/audit-coverage.mjs) : ces chemins-là
+// aussi sont validés contre le crawl, comme tout chemin du fichier.
+export const VINTED_ENFANT_AFFINAGES = [
+  {
+    icon: "👕",
+    // « body », « bodys » ET « bodies » — le pluriel courant est « bodies »
+    // (titre réel du job prouvé : « Lot 8 bodies bébé 3 mois »).
+    re: /\bbod(?:ys?|ies)\b/i,
+    Fille: [...FI, "Bébé filles", "Bodies"],
+    Garçon: [...GA, "Bébé garçons", "Bodies"],
+  },
+  {
+    icon: "🧥",
+    re: /manteaux?\b/i,
+    sauf: /doudoune|porte.manteau/i,
+    Fille: [...FI, "Vêtements d'extérieur", "Manteaux", "Parkas"],
+    Garçon: [...GA, "Vêtements d'extérieur", "Manteaux", "Parkas"],
+  },
+];
+
+export function getVintedCategoryPath(icon, genre, titre = "") {
   // HORS_MODE d'abord : ces catégories n'ont pas de niveau genre (racines
   // confirmées : Maison/Électronique/Divertissement/Loisirs et collections/
   // Sport), donc pas besoin d'attendre platform_fields.genre pour elles.
@@ -701,5 +739,15 @@ export function getVintedCategoryPath(icon, genre) {
   const adulte = MODE_ADULTE[icon];
   const enfant = MODE_ENFANT[icon];
   if ((!adulte && !enfant) || !genre) return null;
+  // Affinage enfant par mots du titre (2026-08-08) — ne peut RENVOYER que
+  // des chemins validés contre le crawl, et jamais transformer un résolu en
+  // null : à défaut de motif (ou sans titre), chemin par défaut inchangé.
+  if ((genre === "Fille" || genre === "Garçon") && titre) {
+    for (const a of VINTED_ENFANT_AFFINAGES) {
+      if (a.icon !== icon || !a[genre]) continue;
+      if (a.sauf?.test(titre)) continue;
+      if (a.re.test(titre)) return a[genre];
+    }
+  }
   return adulte?.[genre] ?? enfant?.[genre] ?? null;
 }

@@ -4377,7 +4377,7 @@ export default function ListingPreviewScreen({
       const pf = edited[platform].platform_fields ?? {};
       const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
       let path = null;
-      if (platform === "vinted") path = getVintedCategoryPath(icon, pf.genre);
+      if (platform === "vinted") path = getVintedCategoryPath(icon, pf.genre, edited[platform]?.title ?? "");
       if (platform === "leboncoin") path = getLbcCategoryPath(icon);
       if (platform === "beebs") path = getBeebsCategoryPath(icon, pf.genre);
       // MÊME clé que categoryKeyOf de l'extension (background.js) : chemin
@@ -5206,7 +5206,9 @@ export default function ListingPreviewScreen({
           // (cf. bloc autoGenre) : le job part avec un rayon réel au lieu
           // d'être condamné au fallback.
           if (autoGenre && vintedGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")) pf.genre = autoGenre;
-          const categoryPath = getVintedCategoryPath(icon, pf.genre);
+          // Titre de la copie joint (2026-08-08, B3b) : il affine la feuille
+          // enfant (body → Bodies, manteau → Manteaux) — même chemin sinon.
+          const categoryPath = getVintedCategoryPath(icon, pf.genre, edited[platform]?.title ?? "");
           if (categoryPath) pf.categoryPath = categoryPath;
           // Flag statique lu par l'extension : permet un message d'échec
           // précis ("genre requis") quand un job sans categoryPath vient d'un

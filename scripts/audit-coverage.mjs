@@ -20,7 +20,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const STRICT = process.argv.includes("--strict");
 
 const { detectObjectIcon } = await import(new URL("../src/utils/shared.js", import.meta.url));
-const { getVintedCategoryPath } = await import(new URL("../src/utils/vintedCategories.js", import.meta.url));
+const { getVintedCategoryPath, VINTED_ENFANT_AFFINAGES } = await import(new URL("../src/utils/vintedCategories.js", import.meta.url));
 const { getLbcCategoryPath } = await import(new URL("../src/utils/lbcCategories.js", import.meta.url));
 const { getBeebsCategoryPath } = await import(new URL("../src/utils/beebsCategories.js", import.meta.url));
 const { getEbayCategoryPath, getEbayCategoryId } = await import(new URL("../src/utils/ebayCategories.js", import.meta.url));
@@ -162,6 +162,28 @@ for (const row of rows) {
   }
 }
 if (!invalidCount) console.log("  (aucun)");
+
+// ── Affinages enfant Vinted par mots du titre (2026-08-08, B3b) ─────────────
+// Ces chemins ne passent pas par getVintedCategoryPath(icon, genre) nu (ils
+// exigent un titre porteur du motif) : on les valide ici un à un contre le
+// même crawl — même règle « zéro chemin invalide » que le reste.
+console.log("\n=== AFFINAGES ENFANT VINTED (par mots du titre) ===");
+for (const a of VINTED_ENFANT_AFFINAGES) {
+  for (const g of ["Fille", "Garçon"]) {
+    const path = a[g];
+    if (!path) continue;
+    const r = resolvePath(vintedTree, path);
+    if (!r.ok) {
+      invalidCount++;
+      console.log(`  ${a.icon} vinted — [affinage ${a.re}/${g}] segment introuvable "${r.failAt}" dans ${JSON.stringify(path)}`);
+    } else if (!r.isLeaf) {
+      invalidCount++;
+      console.log(`  ${a.icon} vinted — [affinage ${a.re}/${g}] chemin non terminal ${JSON.stringify(path)}`);
+    } else {
+      console.log(`  ${a.icon} ${g} ${a.re} → ${path.join(" > ")} — OK`);
+    }
+  }
+}
 
 console.log("\n=== SYNTHÈSE ===");
 for (const p of Object.keys(PLATFORMS)) {
