@@ -989,6 +989,11 @@ serve(async (req) => {
         return true;
       });
       const ts = Date.now();
+      // Télémétrie retouche (2026-08-08) : départ chrono et nombre de photos
+      // réellement envoyées à GPT Image — la ligne usage_logs dédiée est posée
+      // juste après processedPhotos.
+      const retoucheDebutMs = Date.now();
+      const photosEnvoyees = shouldRetouch.filter(Boolean).length;
       const results = await Promise.allSettled(
         photosToProcess.map(async (photoUrl, idx) => {
           if (!shouldRetouch[idx]) {
@@ -1055,6 +1060,39 @@ serve(async (req) => {
           ? r.value
           : { type: i === 0 ? "original" : `photo_${i}`, url: photosToProcess[i] }
       );
+
+      // ── Télémétrie retouche (2026-08-08) : ligne usage_logs DÉDIÉE ────────
+      // Dernier poste facturé dont le prix de revient n'était mesuré nulle
+      // part : le coût images était FONDU dans le cost_usd de la ligne
+      // 'generate_listing'. Désormais : une ligne 'photo_retouche' par
+      // retouche, même forme que 'lens' et 'generate_listing' (cost_usd dans
+      // metadata) — les trois postes se comparent dans une même requête.
+      // La ligne 'generate_listing' du même appel ne porte plus que le texte
+      // (cf. plus bas), sinon toute somme par feature compterait double.
+      // Livraison comptée sur l'URL /enhanced/<ts>_ de CE run : la photo 0
+      // retouchée garde type 'original' (l'URL fait foi — piège connu), et
+      // les locked_photos, déjà sous /enhanced/ d'un run passé, ne comptent
+      // pas. Insert best-effort, comme les autres télémétries.
+      const retoucheLivrees = processedPhotos.filter(p => p.url.includes(`/enhanced/${ts}_`)).length;
+      const retoucheUsd = cost.images * (qualityToUse === "low" ? 0.01 : 0.04);
+      adminClient.from("usage_logs").insert({
+        user_id: user.id,
+        feature: "photo_retouche",
+        metadata: {
+          level: photo_option,
+          image_quality: qualityToUse,
+          photos_total: photosToProcess.length,
+          photos_envoyees: photosEnvoyees,
+          photos_livrees: retoucheLivrees,
+          photos_verrouillees: lockedSet.size,
+          background: bgSuffix ? background : "original",
+          delivered: retoucheLivrees > 0,
+          duration_ms: Date.now() - retoucheDebutMs,
+          cost_usd: Number(retoucheUsd.toFixed(4)),
+        },
+      }).then(({ error }) => {
+        if (error) console.error("[generate-listing] usage_logs (photo_retouche):", error.message);
+      });
     }
 
     // ── Step 3: Claude Haiku — title + description per platform ──────────────
@@ -1268,7 +1306,12 @@ serve(async (req) => {
         claude_output_tokens: cost.claude_out,
         images: cost.images,
         image_quality: cost.image_quality || null,
-        cost_usd: Number(totalUsd.toFixed(4)),
+        // (2026-08-08) cost_usd = le TEXTE seulement. La part images vit dans
+        // la ligne 'photo_retouche' du même appel — avant cette date, cette
+        // ligne portait claude + images fondus (cost_scope absent = ancien
+        // périmètre, à savoir pour les requêtes historiques).
+        cost_usd: Number(claudeUsd.toFixed(4)),
+        cost_scope: "texte",
       },
     }).then(({ error }) => {
       if (error) console.error("[generate-listing] usage_logs:", error.message);
