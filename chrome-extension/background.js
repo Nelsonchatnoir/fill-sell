@@ -3228,7 +3228,15 @@ async function closeEbayPostPublishPopup(tabId) {
 // ne ment pas : on l'observe, et on en fait la 2e preuve de succès.
 const PROBE_ENDPOINTS = {
   // Vinted : endpoint connu et vérifié (réponse {"item":{"id":…},"code":0}).
-  vinted: String.raw`\/api\/v2\/(?:items|item_upload)`,
+  // `images` (2026-08-08, job 46e7dfc9 « 400 Ajoute au moins une photo » avec
+  // 5 photos fournies) : l'upload des photos du formulaire est un POST
+  // FormData sur /api/v2/images (relevé dans les bundles JS de /items/new —
+  // photo_type, réponse image_id). Ces captures sont la PREUVE serveur que
+  // chaque photo est réellement arrivée : la garde photos de vinted.js
+  // (ensurePhotosLanded) les compte AVANT de cliquer Publier. Aucun risque de
+  // faux succès de publication : succesVintedOf exige "item":{"id"} et
+  // readProbeSuccess filtre sur item_upload/items.
+  vinted: String.raw`\/api\/v2\/(?:items|item_upload|images)`,
   // eBay : l'endpoint de soumission n'a jamais été relevé (aucun run n'avait
   // publié jusqu'ici). On capture donc TOUTE requête non-GET du domaine et on
   // cherche un numéro d'annonce dans la réponse — c'est ce que fait

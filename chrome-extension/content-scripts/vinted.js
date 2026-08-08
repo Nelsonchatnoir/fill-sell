@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-08-05-capture-republication (É1 : capturerAnnonceVinted — payload natif complet + résolutions id→libellé + verdict, lecture seule)";
+const VINTED_BUILD = "2026-08-08-sans-marque-et-garde-photos (« Sans marque » natif #empty-brand + repli ultime marque + garde ensurePhotosLanded avant Publier sur captures /api/v2/images)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -1478,6 +1478,14 @@ async function fillListingForm(job) {
   // recouvre le bouton Publier et le clic part dans le vide, sans erreur.
   await closeAnyOpenDropdown();
 
+  // Garde photos (2026-08-08, job 46e7dfc9) : preuve serveur que les N photos
+  // sont ARRIVÉES avant de cliquer Publier — throw nommé sinon, jamais un 400
+  // « Ajoute au moins une photo » après coup.
+  if (photoResult) {
+    const photoGardeNote = await ensurePhotosLanded(photoResult, "vinted");
+    if (photoGardeNote) warnings.push(photoGardeNote);
+  }
+
   // RE-VÉRIFICATION DU PRIX À L'INSTANT DU CLIC (bug réel 2026-07-18) — la vérif
   // faite pendant fillPriceField ne protège pas d'un re-render survenu DEPUIS
   // (choix format de colis, refetch /attributes…) qui a pu vider la prop `value`
@@ -2531,7 +2539,8 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
   await confirmDropdownIfNeeded();
 }
 
-// ── Marque : catalogue d'abord, création en repli (2026-07-29) ────────────────
+// ── Marque : catalogue d'abord, création en repli (2026-07-29), « Sans
+// marque » natif (2026-08-08) ─────────────────────────────────────────────────
 // Cas réel (job du 29/07 23h18, « Mela & Adorna ») : marque absente du
 // catalogue → l'option aria-label ne matche jamais → champ vide → 400 code 99
 // au dépôt. Or Vinted PERMET de créer une marque. Séquence PROUVÉE en session
@@ -2547,10 +2556,65 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
 //      commite la valeur dans #brand — jamais le clic seul. Vérif post
 //      obligatoire sur #brand.value.
 // JAMAIS de repli générique ou « Autre » : la marque est créée telle que
-// détectée. Échec du repli = throw (le job échoue AVANT soumission) — un
-// dépôt sans marque finit en 400 déguisé en refus plateforme.
+// détectée.
+//
+// ⚠️ « Sans marque » (panne du 08/08, jobs cad96961/577b371d) : sur CE terme,
+// Vinted ne rend JAMAIS la ligne de création — il substitue sa ligne NATIVE
+// #empty-brand (clé publish.no_brand_option ; les deux lignes sont
+// EXCLUSIVES). L'attendre était un timeout garanti, et le job entier mourait
+// sur un champ que Vinted sait remplir nativement. D'où :
+//   · valeur ≈ « Sans marque » → chemin natif DIRECT (selectVintedNoBrand) ;
+//   · toute autre marque : catalogue → création → et en REPLI ULTIME le
+//     « Sans marque » natif, SIGNALÉ dans warnings — un sélecteur fragile ne
+//     coûte plus l'annonce entière (doctrine du 08/08). L'annonce part alors
+//     sans marque affichée : moins bien référencée, mais EN LIGNE, et le
+//     warning dit quoi corriger à la main.
+// Échec de TOUT (natif compris) = throw (le job échoue AVANT soumission) — un
+// dépôt au champ Marque vide finit en 400 déguisé en refus plateforme.
+const SANS_MARQUE_RE = /^\s*(?:sans\s+marque|no\s+brand|aucune(?:\s+marque)?|unbranded)\s*$/i;
+
+// Ligne native « Sans marque » du picker : frappe du terme dans la recherche
+// (c'est la recherche qui la fait apparaître), clic — COMMIT IMMÉDIAT prouvé
+// le 08/08 (panneau fermé + #brand.value posé sur le seul clic, pas de
+// « Fait »). confirmDropdownIfNeeded reste en filet : no-op panneau fermé.
+async function selectVintedNoBrand(trigger) {
+  await closeAnyOpenDropdown();
+  await openDropdown(trigger);
+  const search = await waitForElement("#brand-search-input", 5000);
+  await typeHuman(search, "Sans marque");
+  const opt = await waitForKey("publish.no_brand_option", { timeoutMs: 8000 });
+  await humanPause(); // temps de "lecture" avant le clic, comme partout
+  opt.click();
+  await humanPause();
+  await confirmDropdownIfNeeded();
+  const input = document.querySelector(trigger);
+  if (!(input?.value ?? "").trim()) {
+    throw new Error("la ligne native « Sans marque » a été cliquée mais #brand est resté vide");
+  }
+}
+
 async function selectVintedBrand(marque, warnings) {
   const trigger = '#brand, [data-testid="brand-select-dropdown-input"]';
+  // « Sans marque » demandé par l'app : chemin natif direct — inutile de
+  // chercher au catalogue (pas d'aria-label sur #empty-brand) et la création
+  // ne se rend jamais sur ce terme.
+  if (SANS_MARQUE_RE.test(marque)) {
+    try {
+      await selectVintedNoBrand(trigger);
+      return;
+    } catch (e) {
+      await closeAnyOpenDropdown();
+      const err = new Error(
+        "Le champ Marque n'a pas pu être posé sur « Sans marque » (option native du picker Vinted " +
+        "introuvable). Publication interrompue AVANT le dépôt — ce n'est PAS un refus Vinted, " +
+        "l'annonce n'a pas été soumise."
+      );
+      err.diagnostic =
+        `Marque "Sans marque" (native #empty-brand) : ${e.message}` +
+        `${e.diagnostic ? ` — ${e.diagnostic}` : ""}`;
+      throw err;
+    }
+  }
   // 1er essai — marque du catalogue (comportement historique inchangé) :
   // sections "Marques populaires" (id="brand-XXX") et "Suggestions"
   // (id="suggested-brand-XXX"), aria-label = nom exact dans les deux
@@ -2595,18 +2659,33 @@ async function selectVintedBrand(marque, warnings) {
     warnings.push(note);
   } catch (e) {
     await closeAnyOpenDropdown();
-    // Convention error court / last_diagnostic (2026-08-06, job f9861e8a) :
-    // le détail (cause exacte + annexe DOM d'openDropdown) part sur
-    // err.diagnostic, le message reste lisible dans la modale de l'app.
-    const err = new Error(
-      `Le champ Marque n'a pas pu être renseigné avec « ${marque} » ` +
-      "(introuvable au catalogue Vinted et création impossible). " +
-      "Publication interrompue AVANT le dépôt — ce n'est PAS un refus Vinted, l'annonce n'a pas été soumise."
-    );
-    err.diagnostic =
-      `Marque "${marque}": introuvable au catalogue ET création via « Utiliser "${marque}" comme marque » ` +
-      `impossible (${e.message})${e.diagnostic ? ` — ${e.diagnostic}` : ""}`;
-    throw err;
+    // REPLI ULTIME (doctrine du 08/08) : catalogue ET création ont échoué —
+    // plutôt que d'avorter la publication entière sur un sélecteur fragile,
+    // on pose le « Sans marque » NATIF et on le dit dans warnings. L'annonce
+    // part en ligne ; l'utilisateur peut corriger la marque à la main.
+    try {
+      await selectVintedNoBrand(trigger);
+      const note =
+        `marque: "${marque}" impossible à poser (introuvable au catalogue ET création en échec : ${e.message}) — ` +
+        "annonce publiée en « Sans marque » (natif Vinted), marque à corriger à la main si besoin";
+      console.warn(`[vinted] ${note}`);
+      warnings.push(note);
+      return;
+    } catch (e2) {
+      // Convention error court / last_diagnostic (2026-08-06, job f9861e8a) :
+      // le détail (cause exacte + annexe DOM d'openDropdown) part sur
+      // err.diagnostic, le message reste lisible dans la modale de l'app.
+      const err = new Error(
+        `Le champ Marque n'a pas pu être renseigné avec « ${marque} » ` +
+        "(introuvable au catalogue Vinted, création impossible, et même le repli « Sans marque » a échoué). " +
+        "Publication interrompue AVANT le dépôt — ce n'est PAS un refus Vinted, l'annonce n'a pas été soumise."
+      );
+      err.diagnostic =
+        `Marque "${marque}": introuvable au catalogue ET création via « Utiliser "${marque}" comme marque » ` +
+        `impossible (${e.message})${e.diagnostic ? ` — ${e.diagnostic}` : ""} ; ` +
+        `repli « Sans marque » natif également en échec (${e2.message})${e2.diagnostic ? ` — ${e2.diagnostic}` : ""}`;
+      throw err;
+    }
   }
 }
 
@@ -3126,15 +3205,89 @@ async function uploadPhotos(photos) {
   const input = await waitForKey("publish.photo_input");
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
+  // Doubles snapshots AVANT l'injection : prévisualisations DOM (blob:/data:)
+  // ET captures réseau /api/v2/images de la sonde — la garde ensurePhotosLanded
+  // (appelée juste avant le clic Publier) ne compte que ce qui apparaît APRÈS.
   const vignettesAvant = photoPreviewCount();
+  const capturesAvant = await countImageUploadCaptures();
   input.files = dataTransfer.files;
   await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
-  // TODO(observatory): succès non confirmé — cf. SELECTOR_AUDIT.md §7.1 : si le
-  // signal de prévisualisation n'est pas constaté, le budget historique
-  // (1500 ms × n) s'épuise puis le flux CONTINUE sans preuve d'upload.
+  // 1er étage (précoce, NON bloquant) : les prévisualisations disent que la
+  // sélection de fichiers a été TRAITÉE par le React de Vinted. Le blocage,
+  // lui, vit dans ensurePhotosLanded, sur la preuve serveur, avant Publier —
+  // les uploads ont tout le remplissage du formulaire pour se terminer.
   const signal = await waitPhotosUploaded(files.length, vignettesAvant, 1500 * files.length, "vinted");
-  return { count: files.length, duplicated, photoNote: signal.note };
+  return { count: files.length, duplicated, photoNote: signal.note, vignettesAvant, capturesAvant };
+}
+
+// Captures /api/v2/images 2xx de la sonde réseau (background, PROBE_ENDPOINTS
+// vinted élargi le 08/08) : une par photo réellement ARRIVÉE côté serveur
+// Vinted. 0 aussi quand le canal est indisponible (injection standalone hors
+// extension, sonde pas encore posée) — les appelants distinguent « canal
+// muet » (0 absolu) de « uploads manquants » (compte partiel).
+async function countImageUploadCaptures() {
+  try {
+    const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
+    const captures = Array.isArray(res?.captures) ? res.captures : [];
+    return captures.filter((c) => {
+      const st = Number(c?.status);
+      return st >= 200 && st < 300 && /\/api\/v2\/images(?:[/?#]|$)/i.test(String(c?.url ?? ""));
+    }).length;
+  } catch {
+    return 0;
+  }
+}
+
+// ── Garde photos AVANT le clic Publier (2026-08-08, job 46e7dfc9) ────────────
+// Constaté en prod : 5 photos fournies, formulaire soumis, 400 serveur
+// « Ajoute au moins une photo » (errors[].field="photos") — les uploads
+// n'étaient JAMAIS arrivés côté Vinted, et le flux a soumis quand même (le
+// signal de prévisualisation était NON BLOQUANT par contrat). Ce 400 tardif
+// maquillait la vraie cause. Désormais, AVANT de cliquer Publier :
+//   · preuve serveur (captures /api/v2/images 2xx ≥ N) → on publie ;
+//   · canal sonde MUET (0 capture absolue) mais N prévisualisations → on
+//     publie comme avant, avec un warning — une régression de la sonde ne
+//     doit pas bloquer toutes les publications ;
+//   · sinon → ÉCHEC nommé AVANT soumission, jamais un 400 Vinted.
+// Le budget attend le RELIQUAT d'uploads (le gros du temps s'est écoulé
+// pendant le remplissage du formulaire) et est dimensionné pour les 8 photos
+// du scan Business : 4 s/photo, plancher 15 s. La décision se prend sur l'ÉTAT
+// FINAL, pas sur l'horloge : en fenêtre minimisée les timers sont throttlés
+// (≥ 1 s, jusqu'à 1/min après 5 min cachée) — un réveil peut arriver APRÈS le
+// budget alors que tout est arrivé ; on relit avant de juger.
+async function ensurePhotosLanded(photoResult, tag) {
+  const { count, vignettesAvant, capturesAvant } = photoResult;
+  const budgetMs = Math.max(15_000, 4_000 * count);
+  const t0 = Date.now();
+  let serveur = (await countImageUploadCaptures()) - capturesAvant;
+  while (serveur < count && Date.now() - t0 < budgetMs) {
+    await sleep(1000);
+    serveur = (await countImageUploadCaptures()) - capturesAvant;
+  }
+  if (serveur >= count) {
+    console.log(`[${tag}] photos: ${serveur}/${count} upload(s) confirmé(s) par la sonde réseau — publication autorisée`);
+    return null;
+  }
+  const previews = photoPreviewCount() - vignettesAvant;
+  const totalCaptures = await countImageUploadCaptures();
+  if (totalCaptures === 0 && previews >= count) {
+    const note =
+      `photos: ${previews}/${count} prévisualisation(s) OK mais AUCUNE capture /api/v2/images ` +
+      "(sonde réseau muette — endpoint changé ou sonde absente ?) — publication poursuivie sur le signal historique";
+    console.warn(`[${tag}] ${note}`);
+    return note;
+  }
+  const err = new Error(
+    `Les photos ne sont pas arrivées sur Vinted : ${Math.max(0, serveur)}/${count} upload(s) confirmé(s) ` +
+    `après ${Math.round((Date.now() - t0) / 1000)} s. Publication interrompue AVANT le dépôt — ce n'est PAS ` +
+    "un refus Vinted, l'annonce n'a pas été soumise. Relancer la publication (les photos seront renvoyées)."
+  );
+  err.diagnostic =
+    `photos: ${count} injectée(s) dans l'input, ${Math.max(0, previews)} prévisualisation(s) blob:/data: apparue(s), ` +
+    `${Math.max(0, serveur)} POST /api/v2/images 2xx capturé(s) depuis l'injection (${totalCaptures} au total sur l'onglet), ` +
+    `budget ${budgetMs} ms épuisé — soumettre aurait produit le 400 « Ajoute au moins une photo » (cf. job 46e7dfc9)`;
+  throw err;
 }
 
 // ── Interstitiels (2026-07-26, porté de beebs.js — SELECTOR_AUDIT §9b) ───────
@@ -3214,22 +3367,21 @@ async function dismissInterstitials(contexte) {
   return { present: true, restants: (await findBlockingDialogsVinted()).length };
 }
 
-// ── Signal de fin d'upload photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────────
-// AVANT : dispatch(change) puis sleep(1500 ms × n) aveugle — un upload plus
-// lent que 1,5 s/photo enchaînait la suite du remplissage avec des photos
-// manquantes, sans trace, et l'annonce partait quand même. MAINTENANT : on
-// compte les PRÉVISUALISATIONS apparues depuis le snapshot pris avant
+// ── Signal de prévisualisation photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────
+// On compte les PRÉVISUALISATIONS apparues depuis le snapshot pris avant
 // l'injection des fichiers. Le signal est un mécanisme NAVIGATEUR, pas un
 // sélecteur plateforme : prévisualiser un fichier local passe par
 // URL.createObjectURL (img src="blob:…") ou un data-URI — haute précision
 // (une page n'ajoute pas n images blob: spontanément), rappel inconnu par
-// plateforme. D'où le contrat NON BLOQUANT :
-//   · signal constaté  → sortie anticipée (gain quand tout va bien) ;
-//   · signal absent    → on attend la durée HISTORIQUE (1500 × n, jamais
-//     moins) puis on CONTINUE COMME AVANT, en loggant et en remontant la
-//     note dans les warnings du job. Ce log est l'instrument : il dira sur
-//     données réelles si le cas arrive et où — rendre bloquant viendra
-//     après, sur ces données (décision explicite, pas ici).
+// plateforme. Ce 1er étage reste NON BLOQUANT : il dit seulement que la
+// sélection de fichiers a été traitée par le React de la page.
+// ⚠️ Une prévisualisation n'est PAS un upload : le blob: est local, créé à la
+// sélection — la preuve que la photo est ARRIVÉE côté serveur est portée par
+// le 2e étage, ensurePhotosLanded (captures /api/v2/images de la sonde),
+// BLOQUANT avant le clic Publier depuis le 2026-08-08 (job 46e7dfc9 : 5 photos
+// fournies, 0 arrivée, 400 « Ajoute au moins une photo » après soumission —
+// la décision « rendre bloquant » que ce commentaire annonçait est prise, sur
+// cette donnée réelle).
 // Lecture par attribut src uniquement — aucune mesure de layout.
 function photoPreviewCount() {
   return document.querySelectorAll('img[src^="blob:"], img[src^="data:"]').length;

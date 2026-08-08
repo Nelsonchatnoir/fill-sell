@@ -120,15 +120,47 @@ export const VINTED_SELECTORS = {
   "publish.custom_brand_option": {
     criticality: "orange",
     workflows: ["publish"],
-    chain: [{ type: "css", value: "#custom-select-brand" }],
+    chain: [
+      { type: "css", value: "#custom-select-brand" },
+      {
+        type: "text",
+        scope: '[data-testid$="-dropdown-content"] [role="button"]',
+        textMatches: "^Utiliser .{1,80} comme marque$",
+        note: "repli si l'id disparaît — texte relevé identique les 29/07 et 08/08",
+      },
+    ],
     assert: { visible: true },
     source: "vinted.js (selectVintedBrand, repli création de marque)",
     note:
-      "relevé EN DIRECT le 2026-07-29 sur /items/new (catégorie Robes d'été, marque « Mela & Adorna ») : " +
-      "role=button, classes web_ui__Cell__cell/clickable, SANS aria-label ni data-testid, texte « Utiliser \"X\" comme marque » ; " +
+      "relevé EN DIRECT le 2026-07-29 sur /items/new (catégorie Robes d'été, marque « Mela & Adorna »), re-vérifié le 2026-08-08 (Bodies, « Zorglub Fantaisie ») : " +
+      "role=button, classes web_ui__Cell__cell/clickable, SANS aria-label ni data-testid, texte « Utiliser \"X\" comme marque », radio #custom-select-brand-radio ; " +
       "n'apparaît qu'après frappe d'une marque HORS catalogue dans #brand-search-input ; " +
+      "⚠️ JAMAIS rendue quand la recherche ≈ « Sans marque » : Vinted substitue la ligne native #empty-brand (clé publish.no_brand_option) — les deux lignes sont EXCLUSIVES " +
+      "(panne du 08/08, jobs cad96961/577b371d : attendre custom_brand_option sur ce terme = timeout garanti) ; " +
       "le clic seul ne commite PAS #brand (la ligne disparaît, valeur vide) — c'est la fermeture du panneau par « Fait » qui commite ; " +
       "vérif post : relecture de #brand.value non vide, sinon throw (le job échoue avant soumission)",
+  },
+
+  "publish.no_brand_option": {
+    criticality: "orange",
+    workflows: ["publish"],
+    chain: [
+      { type: "css", value: "#empty-brand" },
+      {
+        type: "text",
+        scope: '[data-testid$="-dropdown-content"] [role="button"]',
+        textMatches: "^Sans marque$",
+        note: "repli si l'id disparaît — libellé exact relevé le 08/08",
+      },
+    ],
+    assert: { visible: true },
+    source: "vinted.js (selectVintedNoBrand — « Sans marque » natif + repli ultime de selectVintedBrand)",
+    note:
+      "relevé EN DIRECT le 2026-08-08 sur /items/new (catégorie Bodies) : ligne NATIVE du picker rendue quand la " +
+      "recherche ≈ « Sans marque » (div role=button #empty-brand, radio « 1-radio », SANS aria-label ni data-testid, texte « Sans marque ») ; " +
+      "EXCLUSIVE de custom_brand_option (jamais les deux à la fois) ; " +
+      "clic = COMMIT IMMÉDIAT prouvé (panneau fermé + #brand.value = « Sans marque » sur le seul clic, AUCUN « Fait ») — " +
+      "vérif post sur #brand.value conservée par prudence",
   },
 
   "publish.model_option": {

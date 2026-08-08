@@ -55,7 +55,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // dues EN PREMIER, plus ancienne suppression d'abord ; l'auto Pro ne met
 // plus rien en file tant qu'une republication est en vol. Le zip 0.5.2 est
 // re-packagé après CE commit.
-export const EXTENSION_LAST_COMMIT = '2026-08-07T17:05:00Z';
+export const EXTENSION_LAST_COMMIT = '2026-08-08T17:07:22Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.
