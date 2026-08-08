@@ -1583,8 +1583,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         <div style={{ marginTop:12, padding:"11px 14px", borderRadius:12, background:T.paper, border:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
           <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, lineHeight:1.45 }}>
             {lang === 'en'
-              ? <>Photos: {reuseRetouched ? 'already retouched ✓' : (coinPrices[photoOption] === 0 ? 'free' : coinPrices[photoOption])} · Publishing: {selected.size} × {coinPrices.per_platform}</>
-              : <>Photos : {reuseRetouched ? 'déjà retouchées ✓' : (coinPrices[photoOption] === 0 ? 'offertes' : coinPrices[photoOption])} · Publication : {selected.size} × {coinPrices.per_platform}</>}
+              ? <>Photos: {reuseRetouched ? 'already retouched ✓' : (coinPrices[photoOption] === 0 ? 'free' : coinPrices[photoOption])} · Publishing: {coinPrices.per_platform === 0 ? 'free (Pro)' : <>{selected.size} × {coinPrices.per_platform}</>}</>
+              : <>Photos : {reuseRetouched ? 'déjà retouchées ✓' : (coinPrices[photoOption] === 0 ? 'offertes' : coinPrices[photoOption])} · Publication : {coinPrices.per_platform === 0 ? 'offerte (Pro)' : <>{selected.size} × {coinPrices.per_platform}</>}</>}
           </span>
           <strong style={{ fontSize:13.5, fontWeight:700, color:T.ink, display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
             = <PepiteIcon size={14} /> {coinPrices[photoOption] + coinPrices.per_platform * selected.size}
@@ -3211,7 +3211,11 @@ export default function ListingPreviewScreen({
   // Le total est la seule somme qui engage l'utilisateur : c'est LUI que
   // lisent le pré-check du step 1, le CTA Publier et la ConversionModal, et il
   // se recalcule à chaque plateforme cochée/décochée.
-  const pubUnitPrice = coinPrices?.per_platform ?? null;
+  // Publication OFFERTE en Pro (2026-08-08) : 0 Pépite/plateforme. Le client
+  // ne fait qu'AFFICHER — la gratuité réelle est décidée par
+  // spend_coins_and_publish (is_pro lu en base, seule autorité de débit).
+  // Génération (price_generate) et retouche photos restent des postes payés.
+  const pubUnitPrice = isPro ? 0 : (coinPrices?.per_platform ?? null);
   // ── Retouche non livrée ⇒ jamais facturée (2026-08-05 soir) ───────────────
   // Le pipeline retombe photo par photo sur l'original en cas d'échec GPT
   // Image : une option ia_* peut donc livrer ZÉRO retouche. Même détection
@@ -5768,7 +5772,7 @@ export default function ListingPreviewScreen({
             setBackground={setBackground}
             selected={selected}
             setSelected={setSelected}
-            coinPrices={coinPrices}
+            coinPrices={isPro && coinPrices ? { ...coinPrices, per_platform: 0 } : coinPrices}
             coinBalance={coinBalance}
             reservedBalance={reservedBalance}
             reuseRetouched={reuseRetouched}

@@ -102,8 +102,13 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
   // libellé se répercute dans les trois endroits (+ FAQ landing).
   const features = [
     fr ? 'Stock illimité' : 'Unlimited stock',
-    fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${K.price_generate} Pépite, publication ${pubUnit} Pépites/plateforme)`
-       : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget, publishing ${pubUnit} Nuggets/platform)`,
+    // Publication OFFERTE en Pro (2026-08-08) — même valeur que la carte Pro
+    // de ConversionModal ; Premium garde le prix de coin_config.
+    isPro
+      ? (fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs — publication OFFERTE, 0 Pépite/plateforme (annonce générée par IA ${K.price_generate} Pépite)`
+            : `Publish on Vinted, Leboncoin, eBay & Beebs — publishing FREE, 0 Nuggets/platform (AI-generated listing ${K.price_generate} Nugget)`)
+      : (fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${K.price_generate} Pépite, publication ${pubUnit} Pépites/plateforme)`
+            : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget, publishing ${pubUnit} Nuggets/platform)`),
     isPro
       ? (fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free), et automatisable si tu l\'actives'
             : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free), and automatable if you turn it on')
