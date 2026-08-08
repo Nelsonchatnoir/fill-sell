@@ -718,6 +718,14 @@ serve(async (req) => {
         if (spend.reason === "insufficient_coins") {
           return json({ error: "insufficient_coins", price: spend.price, balance: spend.balance }, 402);
         }
+        // Plafond quotidien Pro (2026-08-08) : la génération offerte a retiré
+        // le frein économique — la RPC compte (usage_logs generate_pro_free)
+        // et refuse au-delà de coin_config.pro_generate_daily_cap. Le code
+        // 'generation_limit' est VOULU : le front affiche déjà ce message
+        // serveur tel quel (bandeau step 2), zéro changement client.
+        if (spend.reason === "pro_daily_cap_reached") {
+          return json({ error: "generation_limit", message: spend.message, cap: spend.cap, used: spend.used }, 429);
+        }
         console.error("[generate-listing] débit refusé:", spend?.reason);
         return json({ error: "Internal server error" }, 500);
       }
