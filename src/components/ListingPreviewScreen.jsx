@@ -5609,10 +5609,10 @@ export default function ListingPreviewScreen({
       if (photos.length < MIN_PHOTOS) return minPhotosLabel;
       // Génération payante (2026-08-05) : le prix s'affiche AVANT le clic —
       // config pas encore lue → libellé sans prix, jamais un montant faux.
-      // Génération offerte en Pro (2026-08-08) : prix effectif 0, CTA sans
-      // prix (le serveur ne débite plus, cf. spend_coins_for_generate).
-      const genPrice = isPro ? 0 : (coinPrices?.generate ?? null);
-      if (genPrice != null && genPrice > 0) return tpl("ctaGenerateListingsPriced", { price: genPrice });
+      // Génération payante pour TOUS les paliers (retour arrière du 08/08
+      // après-midi — la gratuité Pro du matin n'était bornée par rien).
+      const genPrice = coinPrices?.generate ?? null;
+      if (genPrice != null) return tpl("ctaGenerateListingsPriced", { price: genPrice });
       return t("ctaGenerateListings");
     }
     if (step === 2) {
@@ -5684,8 +5684,8 @@ export default function ListingPreviewScreen({
       // CTA Publier affichent le total de publication, chaque poste tranche à
       // son propre clic. Le serveur refuse de toute façon en 402 si le solde
       // a bougé entre-temps.
-      const genPrice = isPro ? 0 : (coinPrices?.generate ?? null);
-      if (genPrice != null && genPrice > 0 && coinBalance < genPrice) {
+      const genPrice = coinPrices?.generate ?? null;
+      if (genPrice != null && coinBalance < genPrice) {
         setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], coinPrice: genPrice });
         return;
       }
@@ -5883,7 +5883,7 @@ export default function ListingPreviewScreen({
             setEdited={setEdited}
             onPhotoClick={setLightboxUrl}
             onRetry={handleGeneratePlatforms}
-            generatePrice={isPro ? null : (coinPrices?.generate ?? null)}
+            generatePrice={coinPrices?.generate ?? null}
             noteOverride={noteSharedOverride}
             lang={lang}
             price={price}

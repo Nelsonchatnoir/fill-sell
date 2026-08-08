@@ -102,12 +102,12 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
   // libellé se répercute dans les trois endroits (+ FAQ landing).
   const features = [
     fr ? 'Stock illimité' : 'Unlimited stock',
-    // Génération ET publication OFFERTES en Pro (2026-08-08) — même valeur
-    // que la carte Pro de ConversionModal ; Premium garde les prix de
-    // coin_config.
+    // Publication OFFERTE en Pro ; génération payante pour TOUS les paliers
+    // (retour arrière du 08/08 après-midi) — même valeur que la carte Pro de
+    // ConversionModal ; Premium garde les prix de coin_config.
     isPro
-      ? (fr ? 'Publie sur Vinted, Leboncoin, eBay & Beebs — génération IA et publication OFFERTES, 0 Pépite'
-            : 'Publish on Vinted, Leboncoin, eBay & Beebs — AI generation and publishing FREE, 0 Nuggets')
+      ? (fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs — publication OFFERTE, 0 Pépite/plateforme (annonce générée par IA ${K.price_generate} Pépite)`
+            : `Publish on Vinted, Leboncoin, eBay & Beebs — publishing FREE, 0 Nuggets/platform (AI-generated listing ${K.price_generate} Nugget)`)
       : (fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${K.price_generate} Pépite, publication ${pubUnit} Pépites/plateforme)`
             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget, publishing ${pubUnit} Nuggets/platform)`),
     isPro
