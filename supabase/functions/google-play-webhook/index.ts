@@ -207,15 +207,22 @@ serve(async (req) => {
 
     // Types Google Play :
     // 1=RECOVERED 2=RENEWED 4=PURCHASED 7=RESTARTED → premium ON
-    // 3=CANCELED 5=ON_HOLD 6=IN_GRACE_PERIOD 12=EXPIRED 13=REVOKED → premium OFF
+    // 5=ON_HOLD 12=EXPIRED 13=REVOKED → premium OFF
+    // 3=CANCELED → traitement DÉDIÉ plus bas (2026-08-08) : chez Google,
+    // CANCELED signifie seulement « renouvellement auto désactivé » — l'abonné
+    // GARDE son accès jusqu'à expiryTime. La perte réelle arrive en 12 ou 13.
+    // Le rangement historique de 3 dans PREMIUM_OFF_TYPES coupait le droit à
+    // la seconde de l'annulation, sur un mois pourtant payé.
+    // 6=IN_GRACE_PERIOD reste volontairement non traité (accès conservé).
     const PREMIUM_ON_TYPES  = [1, 2, 4, 7];
-    const PREMIUM_OFF_TYPES = [3, 5, 12, 13];
+    const PREMIUM_OFF_TYPES = [5, 12, 13];
+    const CANCELED_TYPE = 3;
 
     let isPremium: boolean | null = null;
     if (PREMIUM_ON_TYPES.includes(notificationType))  isPremium = true;
     if (PREMIUM_OFF_TYPES.includes(notificationType)) isPremium = false;
 
-    if (isPremium === null) {
+    if (isPremium === null && notificationType !== CANCELED_TYPE) {
       console.log(`[google-play-webhook] Unhandled notificationType=${notificationType} — skipping`);
       return new Response(JSON.stringify({ ok: true, skipped: `type_${notificationType}` }), {
         status: 200, headers: { "Content-Type": "application/json" },
@@ -274,6 +281,38 @@ serve(async (req) => {
       });
     }
 
+    // ── Type 3 (CANCELED) : renouvellement coupé, accès CONSERVÉ ────────────
+    // (2026-08-08) On ne touche PAS à is_premium : l'abonné a payé jusqu'à
+    // expiryTime. On pose seulement l'intention d'annulation et la fin de
+    // période — la rétrogradation effective restera portée par EXPIRED (12)
+    // ou REVOKED (13). Même garde « token remplacé » que la branche OFF :
+    // un CANCELED posthume sur un token remplacé (upgrade) ne veut rien dire.
+    if (notificationType === CANCELED_TYPE) {
+      const { data: prof } = await supabaseAdmin
+        .from("profiles").select("google_purchase_token").eq("id", userId).single();
+      if (prof?.google_purchase_token && prof.google_purchase_token !== purchaseToken) {
+        console.log(`[google-play-webhook] CANCELED ignoré : token remplacé (product=${subscriptionId} userId=${userId})`);
+        return new Response(JSON.stringify({ ok: true, skipped: "stale_token_replaced" }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      const finPeriode = purchase?.lineItems?.[0]?.expiryTime as string | undefined;
+      const { error: cErr } = await supabaseAdmin.from("profiles").update({
+        subscription_cancel_at_period_end: true,
+        subscription_period_end: finPeriode ?? null,
+      }).eq("id", userId);
+      if (cErr) {
+        console.error("[google-play-webhook] DB error (canceled):", cErr.message);
+        return new Response(JSON.stringify({ error: cErr.message }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[google-play-webhook] type=3 CANCELED → userId=${userId} accès conservé jusqu'à ${finPeriode ?? "(expiryTime absent)"}`);
+      return new Response(JSON.stringify({ ok: true, cancel_at_period_end: true }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+
     // ── Garde upgrade en place (2026-07-27) ─────────────────────────────────
     // Quand un abonnement est REMPLACÉ (upgrade Premium→Pro via
     // SubscriptionUpdateParams), Google émet un événement OFF (EXPIRED…) sur
@@ -298,6 +337,13 @@ serve(async (req) => {
     if (isPremium) {
       update.google_purchase_token = purchaseToken;
       update.google_product_id = subscriptionId;
+      // (2026-08-08) Fin de période enfin visible côté DB pour les abonnés
+      // Google (jamais renseignée jusqu'ici), et annulation levée : un ON
+      // (achat, renouvellement, réactivation) repart sur un cycle actif —
+      // sans quoi le traitement du type 3 ci-dessus serait incohérent.
+      const finPeriode = purchase?.lineItems?.[0]?.expiryTime as string | undefined;
+      if (finPeriode) update.subscription_period_end = finPeriode;
+      update.subscription_cancel_at_period_end = false;
     }
     if (isPremium && subscriptionId === FOUNDER_PRODUCT_ID) update.is_founder = true;
     // Pro : le flag suit l'état de l'abonnement (ON → true, OFF → false)
