@@ -57,11 +57,16 @@ const SUB_PRICES: Record<string, number> = {
 };
 
 // États subscriptionsv2 valant « abonnement payé et en cours ».
-// SUBSCRIPTION_STATE_CANCELED est VOLONTAIREMENT absent : la règle produit du
-// 2026-07-25 (CLAUDE.md) est « résilié/expiré = plus premium, partout », et
-// google-play-webhook traite déjà le type 3 (CANCELED) en PREMIUM_OFF. Les
-// deux chemins doivent dire la même chose, sinon ils se combattent.
-const ETATS_ACTIFS = ["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD"];
+// SUBSCRIPTION_STATE_CANCELED en fait PARTIE (2026-08-08) : chez Google,
+// CANCELED = renouvellement auto désactivé, l'abonnement COURT toujours
+// jusqu'à expiryTime — une annulation ne retire pas l'accès déjà payé. La
+// rétrogradation reste portée par les états réellement terminaux, signalés
+// au webhook par EXPIRED (12) et REVOKED (13). L'ancien commentaire (« le
+// webhook traite le type 3 en PREMIUM_OFF, les deux chemins doivent dire la
+// même chose ») décrivait un bug partagé : depuis google-play-webhook v21,
+// le type 3 pose seulement subscription_cancel_at_period_end — et ce fichier
+// fait pareil, sinon un simple lancement d'app rétrograderait l'annulé.
+const ETATS_ACTIFS = ["SUBSCRIPTION_STATE_ACTIVE", "SUBSCRIPTION_STATE_IN_GRACE_PERIOD", "SUBSCRIPTION_STATE_CANCELED"];
 
 // Même mécanique de service account que google-play-webhook et
 // validate-coin-purchase (copiée à dessein : chaque edge function se déploie
@@ -256,11 +261,18 @@ serve(async (req) => {
     }
 
     const estPro = productId === PRO_PRODUCT_ID;
+    const expiryTime = ligne?.expiryTime as string | undefined;
     const update: Record<string, unknown> = {
       is_premium: true,
       google_purchase_token: purchaseToken,
       google_product_id: productId,
+      // Miroir de la branche ON de google-play-webhook v21. CANCELED = accès
+      // conservé mais intention d'annulation posée ; tout autre état actif la
+      // lève. subscription_period_end est une colonne TEXT : on écrit la
+      // chaîne ISO telle que Google la renvoie, sans cast.
+      subscription_cancel_at_period_end: etat === "SUBSCRIPTION_STATE_CANCELED",
     };
+    if (expiryTime) update.subscription_period_end = expiryTime;
     if (estPro) update.is_pro = true;
     if (productId === FOUNDER_PRODUCT_ID) update.is_founder = true;
 
@@ -281,7 +293,6 @@ serve(async (req) => {
     // coin_ledger) : le webhook peut rejouer le même événement, ou l'inverse,
     // sans jamais créditer deux fois. p_source 'payment' : cet appel EST
     // adossé à un achat vérifié auprès de Google.
-    const expiryTime = ligne?.expiryTime as string | undefined;
     const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
       p_user_id: userId,
       p_tier: estPro ? "pro" : "premium",
