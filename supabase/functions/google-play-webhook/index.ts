@@ -9,7 +9,11 @@ const supabaseAdmin = createClient(
 
 const FOUNDER_PRODUCT_ID = "app.fillsell.premium.sub";
 const PRO_PRODUCT_ID = "app.fillsell.pro.sub";
-const PREMIUM_PRODUCT_IDS = ["app.fillsell.premium.sub", "app.fillsell.premium.standard", PRO_PRODUCT_ID];
+// Business (2026-08-08) : flags CUMULATIFS — un Business porte is_premium +
+// is_pro + is_business. En rejoignant PREMIUM_PRODUCT_IDS, il suit les mêmes
+// PREMIUM_ON/OFF_TYPES et le même traitement CANCELED que les autres paliers.
+const BUSINESS_PRODUCT_ID = "app.fillsell.business.sub";
+const PREMIUM_PRODUCT_IDS = ["app.fillsell.premium.sub", "app.fillsell.premium.standard", PRO_PRODUCT_ID, BUSINESS_PRODUCT_ID];
 
 // Packs de Pépites (consumables) — montants crédités par product id. Doit
 // rester aligné avec validate-coin-purchase et src/components/coinPacks.js.
@@ -348,6 +352,11 @@ serve(async (req) => {
     if (isPremium && subscriptionId === FOUNDER_PRODUCT_ID) update.is_founder = true;
     // Pro : le flag suit l'état de l'abonnement (ON → true, OFF → false)
     if (subscriptionId === PRO_PRODUCT_ID) update.is_pro = isPremium;
+    // Business : cumulatif — pose/retire is_pro ET is_business ensemble.
+    if (subscriptionId === BUSINESS_PRODUCT_ID) {
+      update.is_pro = isPremium;
+      update.is_business = isPremium;
+    }
 
     const { error } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
     if (error) {
@@ -364,7 +373,8 @@ serve(async (req) => {
     // calcule jamais la date nous-mêmes. p_source "payment" : cet événement
     // EST la preuve de paiement (le sweep, lui, ne rattrape que 3 jours).
     if (isPremium) {
-      const grantTier = subscriptionId === PRO_PRODUCT_ID ? "pro" : "premium";
+      const grantTier = subscriptionId === BUSINESS_PRODUCT_ID ? "business"
+        : subscriptionId === PRO_PRODUCT_ID ? "pro" : "premium";
       const expiryTime = purchase?.lineItems?.[0]?.expiryTime as string | undefined;
       const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
         p_user_id: userId,

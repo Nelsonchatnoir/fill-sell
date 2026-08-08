@@ -15,10 +15,15 @@ const supabaseAdmin = createClient(
 // rien. Google Play garde app.fillsell.pro.sub — produit distinct, ce webhook
 // n'en voit jamais.
 const PRO_PRODUCT_IDS = ["app.fillsell.pro2.sub", "app.fillsell.pro.sub"];
+// Business (2026-08-08) : MÊME id que Google Play — l'accident pro2 était une
+// exception ASC, pas une convention. Flags CUMULATIFS : un Business porte
+// is_premium + is_pro + is_business.
+const BUSINESS_PRODUCT_IDS = ["app.fillsell.business.sub"];
 const PREMIUM_PRODUCT_IDS = [
   "app.fillsell.premium.sub",
   "app.fillsell.premium.standard",
   ...PRO_PRODUCT_IDS,
+  ...BUSINESS_PRODUCT_IDS,
 ];
 
 const PREMIUM_ON  = ["SUBSCRIBED", "DID_RENEW", "RESUBSCRIBE"];
@@ -188,6 +193,7 @@ serve(async (req) => {
         if (renewalOriginalTxId) upd.apple_original_transaction_id = renewalOriginalTxId;
         if (renewalProductId === "app.fillsell.premium.sub") upd.is_founder = true;
         if (PRO_PRODUCT_IDS.includes(renewalProductId)) upd.is_pro = true;
+        if (BUSINESS_PRODUCT_IDS.includes(renewalProductId)) { upd.is_pro = true; upd.is_business = true; }
         const { error } = await supabaseAdmin.from("profiles").update(upd).eq("id", renewalToken);
         if (error) {
           console.error("[apple-iap-webhook] DB error:", error.message);
@@ -356,6 +362,11 @@ serve(async (req) => {
     if (isPremium && productId === "app.fillsell.premium.sub") update.is_founder = true;
     // Pro : le flag suit l'état de l'abonnement (ON → true, OFF → false)
     if (PRO_PRODUCT_IDS.includes(productId)) update.is_pro = isPremium;
+    // Business : cumulatif — pose/retire is_pro ET is_business ensemble.
+    if (BUSINESS_PRODUCT_IDS.includes(productId)) {
+      update.is_pro = isPremium;
+      update.is_business = isPremium;
+    }
 
     const { error } = await supabaseAdmin
       .from("profiles")
@@ -377,7 +388,8 @@ serve(async (req) => {
     // calcule jamais la date nous-mêmes. p_source "payment" : cet événement
     // EST la preuve de paiement (le sweep, lui, ne rattrape que 3 jours).
     if (isPremium) {
-      const grantTier = PRO_PRODUCT_IDS.includes(productId) ? "pro" : "premium";
+      const grantTier = BUSINESS_PRODUCT_IDS.includes(productId) ? "business"
+        : PRO_PRODUCT_IDS.includes(productId) ? "pro" : "premium";
       const expiresDate = tx.expiresDate as number | undefined;
       const montantAbo = tx.price != null && tx.currency
         ? `${(Number(tx.price) / 1000).toFixed(2)} ${tx.currency}`

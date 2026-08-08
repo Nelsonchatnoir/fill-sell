@@ -238,7 +238,7 @@ serve(async (req) => {
     const customerId = invoice.customer as string;
     const { data: profs } = await supabase
       .from("profiles")
-      .select("id, is_pro")
+      .select("id, is_pro, is_business")
       .eq("stripe_customer_id", customerId)
       .limit(1);
     if (profs && profs.length > 0) {
@@ -246,7 +246,10 @@ serve(async (req) => {
       // (délégation si mois vierge) ; en cours de mois, la facture de proration
       // d'un upgrade sert de filet si le top-up synchrone de
       // create-checkout-session a raté (idempotent, no-op sinon).
-      const tier = profs[0].is_pro ? "pro" : "premium";
+      // is_business testé d'abord (2026-08-08) : Business n'existe pas côté
+      // Stripe, mais un Business mobile qui porterait AUSSI un abonnement
+      // Stripe résiduel ne doit pas voir son grant rétrogradé à 'pro'.
+      const tier = profs[0].is_business ? "business" : profs[0].is_pro ? "pro" : "premium";
       // Fin de la période facturée = échéance du prochain grant. C'est LE
       // signal de renouvellement : depuis le cycle par utilisateur, un compte
       // à canal de paiement n'est plus crédité que sur cet événement (le sweep

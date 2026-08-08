@@ -22,7 +22,10 @@ const STANDARD_PRODUCT_ID = "app.fillsell.premium.standard";
 // possibles). Fonction Apple-only : le produit Google Play homonyme n'arrive
 // jamais ici.
 const PRO_PRODUCT_IDS = ["app.fillsell.pro2.sub", "app.fillsell.pro.sub"];
-const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, ...PRO_PRODUCT_IDS];
+// Business (2026-08-08) : même id que Google Play. Flags CUMULATIFS
+// (is_premium + is_pro + is_business).
+const BUSINESS_PRODUCT_IDS = ["app.fillsell.business.sub"];
+const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, ...PRO_PRODUCT_IDS, ...BUSINESS_PRODUCT_IDS];
 
 // Prix TTC/mois par produit — Founder = tarif legacy grandfathered
 const PRODUCT_PRICES: Record<string, number> = {
@@ -30,6 +33,7 @@ const PRODUCT_PRICES: Record<string, number> = {
   [STANDARD_PRODUCT_ID]: 12.99,
   "app.fillsell.pro2.sub": 29.99,
   "app.fillsell.pro.sub": 29.99,
+  "app.fillsell.business.sub": 59.99,
 };
 
 async function verifyWithApple(receipt: string, url: string): Promise<any> {
@@ -127,12 +131,15 @@ serve(async (req) => {
 
     const isPremium = !!activeSub;
     const isFounderPurchase = isPremium && activeSub!.product_id === FOUNDER_PRODUCT_ID;
-    const isProPurchase = isPremium && PRO_PRODUCT_IDS.includes(activeSub!.product_id);
+    const isBusinessPurchase = isPremium && BUSINESS_PRODUCT_IDS.includes(activeSub!.product_id);
+    const isProPurchase = (isPremium && PRO_PRODUCT_IDS.includes(activeSub!.product_id)) || isBusinessPurchase;
 
     // Même logique que apple-iap-webhook : is_pro suit l'abonnement Pro actif,
     // et l'originalTransactionId est capturé dès qu'il est présent (tout produit).
+    // Business : cumulatif (is_pro + is_business posés ensemble).
     const update: Record<string, unknown> = { is_premium: isPremium };
     if (isProPurchase) update.is_pro = true;
+    if (isBusinessPurchase) update.is_business = true;
     if (activeSub?.original_transaction_id) {
       update.apple_original_transaction_id = activeSub.original_transaction_id;
     }
@@ -159,7 +166,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[validate-apple-receipt] userId=${userId} is_premium=${isPremium} is_founder=${isFounderPurchase} is_pro=${isProPurchase} product=${activeSub?.product_id ?? "none"}`);
+    console.log(`[validate-apple-receipt] userId=${userId} is_premium=${isPremium} is_founder=${isFounderPurchase} is_pro=${isProPurchase} is_business=${isBusinessPurchase} product=${activeSub?.product_id ?? "none"}`);
 
     return new Response(JSON.stringify({ success: true, is_premium: isPremium }), {
       headers: { ...CORS, "Content-Type": "application/json" },

@@ -36,7 +36,12 @@ const supabaseAdmin = createClient(
 const FOUNDER_PRODUCT_ID = "app.fillsell.premium.sub";
 const STANDARD_PRODUCT_ID = "app.fillsell.premium.standard";
 const PRO_PRODUCT_ID = "app.fillsell.pro.sub";
-const SUB_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, PRO_PRODUCT_ID];
+// Business (2026-08-08) : MÊME id sur les deux stores — l'accident pro2 était
+// une exception ASC, pas une convention. Flags CUMULATIFS : un Business porte
+// is_premium + is_pro + is_business (les gates « is_pro = palier max »
+// couvrent Business sans retouche).
+const BUSINESS_PRODUCT_ID = "app.fillsell.business.sub";
+const SUB_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, PRO_PRODUCT_ID, BUSINESS_PRODUCT_ID];
 
 // Packs de Pépites (consumables). Doit rester aligné avec
 // validate-coin-purchase, google-play-webhook et src/components/coinPacks.js.
@@ -54,6 +59,7 @@ const SUB_PRICES: Record<string, number> = {
   [FOUNDER_PRODUCT_ID]: 9.99,
   [STANDARD_PRODUCT_ID]: 12.99,
   [PRO_PRODUCT_ID]: 29.99,
+  [BUSINESS_PRODUCT_ID]: 59.99,
 };
 
 // États subscriptionsv2 valant « abonnement payé et en cours ».
@@ -253,14 +259,15 @@ serve(async (req) => {
         .from("profiles").select("google_purchase_token").eq("id", userId).maybeSingle();
       if (prof?.google_purchase_token === purchaseToken) {
         const { error: dErr } = await supabaseAdmin
-          .from("profiles").update({ is_premium: false, is_pro: false }).eq("id", userId);
+          .from("profiles").update({ is_premium: false, is_pro: false, is_business: false }).eq("id", userId);
         if (dErr) console.error("[validate-google-purchase] rétrogradation:", dErr.message);
       }
       console.log(`[validate-google-purchase] user=${userId} product=${productId} état=${etat} → non actif`);
       return json({ ok: true, type: "abonnement", is_premium: false, state: etat ?? "unknown" });
     }
 
-    const estPro = productId === PRO_PRODUCT_ID;
+    const estBusiness = productId === BUSINESS_PRODUCT_ID;
+    const estPro = productId === PRO_PRODUCT_ID || estBusiness; // cumulatif : Business ⊇ Pro
     const expiryTime = ligne?.expiryTime as string | undefined;
     const update: Record<string, unknown> = {
       is_premium: true,
@@ -274,6 +281,7 @@ serve(async (req) => {
     };
     if (expiryTime) update.subscription_period_end = expiryTime;
     if (estPro) update.is_pro = true;
+    if (estBusiness) update.is_business = true;
     if (productId === FOUNDER_PRODUCT_ID) update.is_founder = true;
 
     const { error: upErr } = await supabaseAdmin.from("profiles").update(update).eq("id", userId);
@@ -295,7 +303,7 @@ serve(async (req) => {
     // adossé à un achat vérifié auprès de Google.
     const { data: grantRes, error: grantErr } = await supabaseAdmin.rpc("upgrade_monthly_grant", {
       p_user_id: userId,
-      p_tier: estPro ? "pro" : "premium",
+      p_tier: estBusiness ? "business" : estPro ? "pro" : "premium",
       p_period_end: expiryTime ?? null,
       p_source: "payment",
     });
@@ -326,8 +334,8 @@ serve(async (req) => {
       }).catch((e) => console.error("[validate-google-purchase] tiktok-event:", e));
     }
 
-    console.log(`[validate-google-purchase] user=${userId} product=${productId} état=${etat} is_pro=${estPro} grant=`, JSON.stringify(grantRes));
-    return json({ ok: true, type: "abonnement", is_premium: true, is_pro: estPro, state: etat });
+    console.log(`[validate-google-purchase] user=${userId} product=${productId} état=${etat} is_pro=${estPro} is_business=${estBusiness} grant=`, JSON.stringify(grantRes));
+    return json({ ok: true, type: "abonnement", is_premium: true, is_pro: estPro, is_business: estBusiness, state: etat });
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
