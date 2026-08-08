@@ -2105,22 +2105,26 @@ export default function App({ loginOnly = false }){
   // dernière lecture tomberait à 18 s et on RÉDUIRAIT la fenêtre iOS de 2 s
   // sur un chemin qui, lui, marchait. 11 tours → lectures à 0,2,…,20 s : la
   // fenêtre iOS est conservée à l'identique, l'instantané Android aussi.
-  async function attendreConfirmationServeur(userId,{pro=false,essais=11,delaiMs=2000}={}){
+  async function attendreConfirmationServeur(userId,{pro=false,business=false,essais=11,delaiMs=2000}={}){
     for(let i=0;i<essais;i++){
       if(i>0) await new Promise(r=>setTimeout(r,delaiMs));
-      const{data,error}=await supabase.from('profiles').select('is_premium,is_pro').eq('id',userId).maybeSingle();
+      const{data,error}=await supabase.from('profiles').select('is_premium,is_pro,is_business').eq('id',userId).maybeSingle();
       if(error){console.warn('[IAP] relecture profil:',error.message);continue;}
-      if(data?.is_premium===true&&(!pro||data?.is_pro===true))return data;
+      if(data?.is_premium===true&&(!pro||data?.is_pro===true)&&(!business||data?.is_business===true))return data;
     }
     return null;
   }
 
   // tier : 'pro' → abonnement Pro (app.fillsell.pro2.sub sur iOS,
-  // app.fillsell.pro.sub sur Google Play — cf. PRODUCT_IDS) ; toute autre valeur
-  // (undefined, event de clic…) → Premium standard. Comparaison stricte voulue.
+  // app.fillsell.pro.sub sur Google Play — cf. PRODUCT_IDS) ; 'business' →
+  // Business (app.fillsell.business.sub, même id sur les deux stores) ; toute
+  // autre valeur (undefined, event de clic…) → Premium standard. Comparaison
+  // stricte voulue. Flags cumulatifs : un Business obtient aussi is_pro côté
+  // serveur — l'état client isPro suit.
   async function handleIAPPurchase(tier){
+    const isBusinessPurchase=tier==='business';
     const isProPurchase=tier==='pro';
-    console.log('[IAP] handleIAPPurchase started — platform:',platform,'tier:',isProPurchase?'pro':'premium');
+    console.log('[IAP] handleIAPPurchase started — platform:',platform,'tier:',isBusinessPurchase?'business':isProPurchase?'pro':'premium');
     // Coupe-circuit 07/08 : validate-google-purchase en 500 = débit sans
     // crédit. Tant que coin_config.android_payments_enabled vaut 0, on ne
     // lance PAS le flux Google — message honnête à la place. Web/iOS jamais
@@ -2142,14 +2146,22 @@ export default function App({ loginOnly = false }){
     //  - sinon (comped/manuel) → achat Pro normal, rien à doublonner.
     // Trou restant assumé : Premium Apple actif utilisé sur Android (rare).
     let upgradeOldToken=null;
-    if(isProPurchase&&platform==='android'&&isPremium&&!isPro){
+    // Business : upgrade en place depuis Premium OU Pro (paliers inférieurs) ;
+    // Pro : depuis Premium seulement, comme avant.
+    const besoinUpgrade=platform==='android'&&isPremium&&
+      ((isProPurchase&&!isPro)||isBusinessPurchase);
+    if(besoinUpgrade){
       setIapLoading(true);
-      try{upgradeOldToken=await findActivePlayPremiumSub();}
+      const lowerIds=isBusinessPurchase
+        ?[PRODUCT_IDS.sub,PRODUCT_IDS.standard,PRODUCT_IDS.pro]
+        :undefined; // défaut de findActivePlayPremiumSub = les Premium
+      try{upgradeOldToken=await findActivePlayPremiumSub(lowerIds);}
       catch(e){console.warn('[IAP] lecture abos Play:',e?.message);}
       if(!upgradeOldToken){
         let prof=null;
         try{const{data}=await supabase.from('profiles').select('stripe_customer_id,google_purchase_token,google_product_id').eq('id',user.id).single();prof=data;}catch{}
-        if(prof?.google_purchase_token&&prof?.google_product_id!==PRODUCT_IDS.pro){
+        const cibleId=isBusinessPurchase?PRODUCT_IDS.business:PRODUCT_IDS.pro;
+        if(prof?.google_purchase_token&&prof?.google_product_id!==cibleId){
           // Repli si getPurchases est muet (autre compte Google sur l'appareil…) :
           // on tente l'upgrade avec le token connu — si l'abo est mort, Google
           // refuse le flow proprement, jamais de double facturation.
@@ -2167,7 +2179,7 @@ export default function App({ loginOnly = false }){
     setIapLoading(true);
     // Programme Founder fermé aux nouveaux (2026-07) : jamais PRODUCT_IDS.sub ici.
     // Il reste référencé dans restorePurchases pour les Founders existants.
-    const productId=isProPurchase?PRODUCT_IDS.pro:PRODUCT_IDS.standard;
+    const productId=isBusinessPurchase?PRODUCT_IDS.business:isProPurchase?PRODUCT_IDS.pro:PRODUCT_IDS.standard;
     try{
       const {cancelled,purchaseToken}=await purchasePremium(productId,user.id,{oldPurchaseToken:upgradeOldToken});
       if(cancelled) return;
@@ -2189,10 +2201,10 @@ export default function App({ loginOnly = false }){
       }
       // iOS : le droit vient d'apple-iap-webhook. Android : de la fonction
       // ci-dessus. Dans les deux cas on ne croit que le serveur.
-      const confirme=await attendreConfirmationServeur(user.id,{pro:isProPurchase});
+      const confirme=await attendreConfirmationServeur(user.id,{pro:isProPurchase||isBusinessPurchase,business:isBusinessPurchase});
       if(!confirme) throw new Error('Premium not confirmed by server');
       setIsPremium(true);
-      if(isProPurchase) setIsPro(true);
+      if(isProPurchase||isBusinessPurchase) setIsPro(true); // cumulatif : Business ⊇ Pro
       setShowPremiumWelcome(true);
     }catch(e){
       console.error('[IAP] purchase failed:',e);
@@ -2204,14 +2216,15 @@ export default function App({ loginOnly = false }){
       // portant EXACTEMENT le droit qui vient d'être acheté.
       try{
         const{data,error}=await supabase.from('profiles')
-          .select('is_premium,is_pro,google_product_id').eq('id',user.id).maybeSingle();
+          .select('is_premium,is_pro,is_business,google_product_id').eq('id',user.id).maybeSingle();
         if(error)console.warn('[IAP] relecture après échec:',error.message);
         const droitAcquis=data?.is_premium===true
           &&(!isProPurchase||data?.is_pro===true)
+          &&(!isBusinessPurchase||data?.is_business===true)
           &&(platform!=='android'||data?.google_product_id===productId);
         if(droitAcquis){
           setIsPremium(true);
-          if(isProPurchase) setIsPro(true);
+          if(isProPurchase||isBusinessPurchase) setIsPro(true);
           setShowPremiumWelcome(true);
           return;
         }
@@ -2229,7 +2242,8 @@ export default function App({ loginOnly = false }){
       // composant à l'intérieur de tout le bloc.
       const {isPremium:restaure,receipt,purchaseToken,productId}=await restorePurchases('button');
       if(restaure){
-        const estPro=productId===PRODUCT_IDS.pro;
+        const estBusiness=productId===PRODUCT_IDS.business;
+        const estPro=productId===PRODUCT_IDS.pro||estBusiness; // cumulatif
         if(receipt&&platform==='ios'){
           const{data:fnData,error:fnErr}=await supabase.functions.invoke('validate-apple-receipt',{body:{receipt,userId:user.id}});
           if(fnErr||!fnData?.is_premium) throw new Error(fnErr?.message||'Receipt validation failed');
@@ -2245,7 +2259,7 @@ export default function App({ loginOnly = false }){
           });
           if(vgErr||!vg?.is_premium) throw new Error(vgErr?.message||vg?.error||'Google purchase not confirmed by server');
         }
-        const confirme=await attendreConfirmationServeur(user.id,{pro:estPro});
+        const confirme=await attendreConfirmationServeur(user.id,{pro:estPro,business:estBusiness});
         if(!confirme) throw new Error('Premium not confirmed by server');
         setIsPremium(true);
         if(estPro) setIsPro(true);
@@ -2274,12 +2288,19 @@ export default function App({ loginOnly = false }){
     }finally{setIapLoading(false);}
   }
 
-  // Checkout direct d'un tier ('premium'|'pro') : log + tracking + IAP/Stripe.
+  // Checkout direct d'un tier ('premium'|'pro'|'business') : log + tracking +
+  // IAP/Stripe. Business = IAP UNIQUEMENT (aucun price Stripe n'existe) : sur
+  // le web, on ne déclenche RIEN plutôt qu'un checkout au mauvais prix.
   function startTierCheckout(tier){
+    const business=tier==='business';
     const pro=tier==='pro';
-    if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:pro?'pro_cta_click':'premium_cta_click'}).then(()=>{});
-    trackTikTokEvent("InitiateCheckout",user?.email,pro?29.99:12.99);
-    if(pro){isNative?handleIAPPurchase('pro'):triggerCheckout('pro');}
+    if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:business?'business_cta_click':pro?'pro_cta_click':'premium_cta_click'}).then(()=>{});
+    trackTikTokEvent("InitiateCheckout",user?.email,business?59.99:pro?29.99:12.99);
+    if(business){
+      if(isNative)handleIAPPurchase('business');
+      else console.warn('[IAP] Business indisponible sur le web (IAP uniquement) — checkout non déclenché');
+    }
+    else if(pro){isNative?handleIAPPurchase('pro'):triggerCheckout('pro');}
     else{isNative?handleIAPPurchase():triggerCheckout();}
   }
   // Ex-UpgradeModal, fusionnée dans ConversionModal : un tier explicite part

@@ -10,6 +10,10 @@ export const PRODUCT_IDS = {
   // avec la 2.3. Google Play garde app.fillsell.pro.sub, produit distinct et
   // fonctionnel — ne JAMAIS aligner les deux.
   pro: Capacitor.getPlatform() === 'ios' ? 'app.fillsell.pro2.sub' : 'app.fillsell.pro.sub',
+  // Business 59,99 €/mois (2026-08-08) : MÊME id sur les deux stores —
+  // l'accident pro2 était une exception ASC, pas une convention. Produits
+  // créés le 08/08 (ASC : non soumis ; Play : base plan business-monthly).
+  business: 'app.fillsell.business.sub',
 };
 
 // Packs consumables — mêmes ids que CoinStoreModal et validate-coin-purchase.
@@ -160,13 +164,15 @@ export const recoverAndroidCoinPurchases = async (validate) => {
   return recovered;
 };
 
-// Abonnement Premium (non-Pro) actif sur le compte Google Play de l'appareil →
-// purchaseToken à passer en oldPurchaseToken pour l'upgrade Pro en place.
-export const findActivePlayPremiumSub = async () => {
+// Abonnement d'un palier INFÉRIEUR actif sur le compte Google Play de
+// l'appareil → purchaseToken à passer en oldPurchaseToken pour l'upgrade en
+// place. Par défaut : les Premium (upgrade → Pro, comportement historique) ;
+// l'appelant passe la liste élargie ([...premium, pro]) pour un upgrade →
+// Business (2026-08-08).
+export const findActivePlayPremiumSub = async (lowerIds = [PRODUCT_IDS.sub, PRODUCT_IDS.standard]) => {
   const { purchases } = await NativePurchases.getPurchases({ productType: 'subs' });
-  const premiumIds = [PRODUCT_IDS.sub, PRODUCT_IDS.standard];
   const tx = (purchases ?? []).find(p =>
-    premiumIds.includes(p?.productIdentifier) && p?.purchaseToken &&
+    lowerIds.includes(p?.productIdentifier) && p?.purchaseToken &&
     (p.isActive === true || (p.expirationDate && new Date(p.expirationDate) > new Date()) || p.purchaseState === '1')
   );
   return tx?.purchaseToken ?? null;
