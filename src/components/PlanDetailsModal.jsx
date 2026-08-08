@@ -184,10 +184,15 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
               }}>
                 {fr ? 'Passe au niveau supérieur' : 'Take it further'}
               </div>
+              {/* pubUnit/retouchMax/genPrice = la signature RÉELLE de
+                  ProPlanCard. L'appel passait pubMin/pubMax, variables
+                  inexistantes ici depuis la grille 2 axes → ReferenceError au
+                  rendu : la modale « mon plan » CRASHAIT pour tout Premium
+                  non-Pro (bug embarqué dans l'OTA 2.4.6, corrigé 08/08). */}
               <ProPlanCard
                 fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensScansPro}
                 proFactor={proFactor} showFactor
-                pubMin={pubMin} pubMax={pubMax}
+                pubUnit={pubUnit} retouchMax={retouchMax} genPrice={K.price_generate}
                 onUpgrade={() => onUpgradePro()}
               />
             </>

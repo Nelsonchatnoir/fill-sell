@@ -183,11 +183,19 @@ const FEATURES = {
   ],
 };
 
-/* La publication auto sur les 4 plateformes est le moteur commun aux 3 paliers :
-   le libellé est donc volontairement identique sur les 3 cartes. Ce qui distingue
-   les paliers, c'est le volume de Pépites, pas la fonctionnalité. Ces volumes
-   sont lus dans coin_config au chargement (cf. GRANTS_FALLBACK ci-dessous) :
-   la page ne peut donc plus promettre un volume qu'on ne sert pas. */
+/* Carte Free : la publication auto est le moteur commun, libellé court dédié.
+   Cartes Premium et Pro : SQUELETTE COMMUN de l'app (07-08/08, validé Nico) —
+   mêmes rubriques, même ordre, mêmes tournures que ConversionModal et
+   PlanDetailsModal : stock · publication · republication · Lens · Excel ·
+   voix · support. Seule la VALEUR change entre les deux cartes (grant dans la
+   puce au-dessus, ~25 vs ~100 analyses Lens, republication « automatisable »
+   côté Pro, support email vs prioritaire). « Tout le Premium, inclus » est
+   MORT ici comme dans l'app (tout est répété à l'identique, le bandeau était
+   faux). Toute retouche d'un libellé se répercute dans les QUATRE endroits
+   (deux cartes ConversionModal, PlanDetailsModal, ici — + la FAQ).
+   Les jetons {LENS_PREMIUM}/{LENS_PRO} sont calculés depuis les grants lus en
+   base (cf. fillGrants) : la page ne peut pas promettre un volume qu'on ne
+   sert pas. Les coûts (1 / 3 / 6 Pépites) sont en dur, comme dans la FAQ. */
 const PUBLISH_LINE = {
   fr: 'Publication auto sur Vinted, Leboncoin, eBay & Beebs',
   en: 'Auto-publishing to Vinted, Leboncoin, eBay & Beebs',
@@ -196,13 +204,45 @@ const PUBLISH_LINE = {
 const PLANS = {
   fr: {
     free: ["Ajout d'article à la voix", PUBLISH_LINE.fr, 'Calcul de marge instantané', 'Suivi de tes ventes'],
-    premium: ['Stock illimité', 'Stats avancées & historique complet', PUBLISH_LINE.fr, 'Import / export Excel', 'Commandes vocales illimitées'],
-    pro: ['Tout le Premium, inclus', PUBLISH_LINE.fr, 'Bien plus de marge pour tes analyses Lens', 'Import / export Excel avancé', 'Support prioritaire'],
+    premium: [
+      'Stock illimité',
+      'Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA 1 Pépite, publication 3 Pépites/plateforme)',
+      'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free)',
+      "Environ {LENS_PREMIUM} analyses Lens par mois (6 Pépites l'analyse)",
+      'Import & export Excel de ton stock',
+      'Commandes vocales illimitées',
+      'Support par email',
+    ],
+    pro: [
+      'Stock illimité',
+      'Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA 1 Pépite, publication 3 Pépites/plateforme)',
+      "Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free), et automatisable si tu l'actives",
+      "Environ {LENS_PRO} analyses Lens par mois (6 Pépites l'analyse)",
+      'Import & export Excel de ton stock',
+      'Commandes vocales illimitées',
+      'Support prioritaire',
+    ],
   },
   en: {
     free: ['Voice item adding', PUBLISH_LINE.en, 'Instant margin calculator', 'Track your sales'],
-    premium: ['Unlimited stock', 'Advanced stats & full history', PUBLISH_LINE.en, 'Excel import / export', 'Unlimited voice commands'],
-    pro: ['Everything in Premium', PUBLISH_LINE.en, 'Far more room for your Lens analyses', 'Advanced Excel import / export', 'Priority support'],
+    premium: [
+      'Unlimited stock',
+      'Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing 1 Nugget, publishing 3 Nuggets/platform)',
+      'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free)',
+      'About {LENS_PREMIUM} Lens scans a month (6 Nuggets each)',
+      'Excel import & export of your stock',
+      'Unlimited voice commands',
+      'Email support',
+    ],
+    pro: [
+      'Unlimited stock',
+      'Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing 1 Nugget, publishing 3 Nuggets/platform)',
+      'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free), and automatable if you turn it on',
+      'About {LENS_PRO} Lens scans a month (6 Nuggets each)',
+      'Excel import & export of your stock',
+      'Unlimited voice commands',
+      'Priority support',
+    ],
   },
 };
 
@@ -242,11 +282,16 @@ const GRANTS_FALLBACK = { FREE: 30, PREMIUM: 150, PRO: 600 };
 /* Remplace les jetons d'un texte par les grants courants. Appliqué aux libellés
    des cartes ET aux réponses de la FAQ, où les nombres sont noyés dans la
    phrase. Un texte sans jeton traverse la fonction inchangé. */
+/* 6 = coin_config.price_lens_overflow, en dur comme dans la FAQ et
+   translations.js — si ce coût change en base, ces textes sont à reprendre. */
+const LENS_COST = 6;
 const fillGrants = (texte, g) =>
   String(texte)
     .replace(/\{FREE\}/g, g.FREE)
     .replace(/\{PREMIUM\}/g, g.PREMIUM)
-    .replace(/\{PRO\}/g, g.PRO);
+    .replace(/\{PRO\}/g, g.PRO)
+    .replace(/\{LENS_PREMIUM\}/g, Math.floor(g.PREMIUM / LENS_COST))
+    .replace(/\{LENS_PRO\}/g, Math.floor(g.PRO / LENS_COST));
 
 /* ── Fragments SVG réutilisés ───────────────────────────────── */
 /* Le dégradé est inliné dans CHAQUE SVG (id unique via useId) : iOS/WebKit ne
@@ -990,7 +1035,7 @@ export default function LandingPage() {
               <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.pCoins, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].premium.map((f) => (
-                  <div className="lp-plan__feat" key={f}><Check /><span>{f}</span></div>
+                  <div className="lp-plan__feat" key={f}><Check /><span>{fillGrants(f, grants)}</span></div>
                 ))}
               </div>
               <button className="lp-plan__cta lp-plan__cta--premium" onClick={() => startSignup('premium')}>
@@ -1009,7 +1054,7 @@ export default function LandingPage() {
               <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.proCoins, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].pro.map((f) => (
-                  <div className="lp-plan__feat" key={f}><Check color="#F2C98A" /><span>{f}</span></div>
+                  <div className="lp-plan__feat" key={f}><Check color="#F2C98A" /><span>{fillGrants(f, grants)}</span></div>
                 ))}
               </div>
               <button className="lp-plan__cta lp-plan__cta--pro" onClick={() => startSignup('pro')}>
