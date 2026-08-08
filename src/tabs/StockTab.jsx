@@ -43,6 +43,17 @@ import {
 // enfermées dans un window.alert sans lien. On y accroche l'action directe.
 const CONN_ERR_RE = /connexion|se connecter|login|sign[- ]?in|identifi/i;
 const DRAFT_LBC_RE = /brouillon/i;
+
+// Warnings persistés d'un job (platform_fields.warnings, 2026-08-08) : posés
+// par l'extension sur les jobs ABOUTIS avec un repli dégradant (ex.
+// brand_fallback_no_brand — marque introuvable, annonce partie en « Sans
+// marque »). Entrées {code, message, at} ; les chaînes nues sont tolérées.
+function jobWarningsTexte(job) {
+  return (job?.platform_fields?.warnings ?? [])
+    .map((w) => (typeof w === 'string' ? w : String(w?.message ?? '')))
+    .filter(Boolean)
+    .join('\n');
+}
 function failJobAction(job, lang) {
   const err = job?.error || '';
   if (job?.platform === 'leboncoin' && DRAFT_LBC_RE.test(err)) {
@@ -3940,6 +3951,17 @@ const StockTab = memo(function StockTab({
                   // compte. Dès que le job repart en pending (valeur fournie)
                   // ou se conclut (published/failed), le badge s'éteint.
                   const needsUserJobs=Object.values(latestByPlatform).filter(j=>j.status==="needs_user");
+                  // « Publiée — à vérifier » (2026-08-08) : le job a ABOUTI
+                  // mais avec un repli dégradant signalé par l'extension
+                  // (platform_fields.warnings, ex. brand_fallback_no_brand :
+                  // marque introuvable → annonce partie en « Sans marque »).
+                  // Même règle que l'Échec : seul le job LE PLUS RÉCENT de la
+                  // plateforme compte — une republication propre éteint le
+                  // badge (le background efface warnings sur un run sans
+                  // réserve).
+                  const warnedJobs=Object.values(latestByPlatform).filter(j=>
+                    (j.status==="published"||j.status==="dry_run_completed")
+                    &&Array.isArray(j.platform_fields?.warnings)&&j.platform_fields.warnings.length>0);
                   // État de retrait par plateforme : calcul partagé avec le
                   // modal de retrait (computeRemovalInfo, en tête de fichier) —
                   // un seul calcul, jamais deux vérités carte/modal.
@@ -4245,6 +4267,23 @@ const StockTab = memo(function StockTab({
                                   style={{background:"#FBEDEC",border:"1px solid #EFC2BE",color:"#8C2F28",cursor:j.error?"pointer":"default"}}
                                 >
                                   ⚠️ {lang==="en"?"Failed":"Échec"} {PLATFORM_LABELS[j.platform]||j.platform}
+                                </div>
+                              ))}
+                              {/* Publiée AVEC RÉSERVE : même patron que l'Échec
+                                  (badge + title + tap → modale) mais AMBRE —
+                                  l'annonce est en ligne, quelque chose est à
+                                  vérifier, ce n'est pas un échec. La modale
+                                  (failJobModal) bascule d'elle-même en mode
+                                  réserve sur un job published à warnings. */}
+                              {warnedJobs.map(j=>(
+                                <div
+                                  key={"warn-"+j.platform}
+                                  className="micon"
+                                  title={jobWarningsTexte(j)||undefined}
+                                  onClick={e=>{e.stopPropagation();setFailJobModal(j);}}
+                                  style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}
+                                >
+                                  ⚠️ {lang==="en"?"Published — check it":"Publiée — à vérifier"} {PLATFORM_LABELS[j.platform]||j.platform}
                                 </div>
                               ))}
                               {/* ⛔ NE PAS réintroduire un repli « 🏪 <plateforme> »
@@ -4561,10 +4600,22 @@ const StockTab = memo(function StockTab({
       {failJobModal&&createPortal(
         <div onClick={()=>setFailJobModal(null)} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(16,32,27,0.45)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:"24px",width:"min(92vw,440px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",fontFamily:"inherit"}}>
+            {/* Mode RÉSERVE (2026-08-08) : la même modale sert le badge
+                « Publiée — à vérifier » — job ABOUTI porteur de warnings
+                persistés. L'en-tête ne doit alors jamais dire « non
+                publiée » et le corps affiche les warnings, pas
+                humanizeJobError (dont le repli parle d'échec). */}
+            {(()=>{
+              const estReserve=(failJobModal.status==="published"||failJobModal.status==="dry_run_completed")
+                &&(failJobModal.platform_fields?.warnings?.length>0);
+              return (
+                <>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
               <PlatformLogo platform={failJobModal.platform} size={24}/>
               <div style={{fontSize:16,fontWeight:700,color:"#10201B"}}>
-                {(PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform)} — {lang==="en"?"not published":"non publiée"}
+                {(PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform)} — {estReserve
+                  ?(lang==="en"?"published, check it":"publiée — à vérifier")
+                  :(lang==="en"?"not published":"non publiée")}
               </div>
             </div>
             {/* humanizeJobError (2026-07-30) : la colonne error garde le
@@ -4573,7 +4624,12 @@ const StockTab = memo(function StockTab({
                 dump JSON) s'affichait ici tel quel. failJobAction, lui,
                 continue de tester l'erreur BRUTE (motifs connexion/brouillon
                 posés côté extension). */}
-            <div style={{fontSize:14,color:"#3A443F",lineHeight:1.6,marginBottom:16,whiteSpace:"pre-wrap"}}>{humanizeJobError(failJobModal,lang)}</div>
+            <div style={{fontSize:14,color:"#3A443F",lineHeight:1.6,marginBottom:16,whiteSpace:"pre-wrap"}}>
+              {estReserve?jobWarningsTexte(failJobModal):humanizeJobError(failJobModal,lang)}
+            </div>
+                </>
+              );
+            })()}
             {(()=>{const a=failJobAction(failJobModal,lang);return a?(
               <a href={a.url} target="_blank" rel="noopener noreferrer"
                 style={{display:"block",textAlign:"center",padding:"12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:14,fontWeight:700,textDecoration:"none",marginBottom:8}}>

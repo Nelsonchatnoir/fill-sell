@@ -1389,7 +1389,7 @@ async function fillListingForm(job) {
       "\nChamps plateforme:", fields,
       "\nRequis catégorie:", requiredState.discovered.filter((d) => d.required).map((d) => d.label).join(", ") || "(aucun relevé)",
       requiredState.unfilled.length ? `\n⚠️ Requis NON remplis: ${requiredState.unfilled.join(", ")}` : "\nTous les requis relevés sont remplis.",
-      warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning."
+      warnings.length ? `\nWarnings (${warnings.length}): ${warnings.map((w) => (typeof w === "string" ? w : w?.message)).join(" | ")}` : "\nAucun warning."
     );
     return {
       success: true,
@@ -2665,11 +2665,15 @@ async function selectVintedBrand(marque, warnings) {
     // part en ligne ; l'utilisateur peut corriger la marque à la main.
     try {
       await selectVintedNoBrand(trigger);
-      const note =
+      const message =
         `marque: "${marque}" impossible à poser (introuvable au catalogue ET création en échec : ${e.message}) — ` +
         "annonce publiée en « Sans marque » (natif Vinted), marque à corriger à la main si besoin";
-      console.warn(`[vinted] ${note}`);
-      warnings.push(note);
+      console.warn(`[vinted] ${message}`);
+      // Warning STRUCTURÉ (persisté en platform_fields.warnings par le
+      // background, badge « Publiée — à vérifier » dans le Stock) : une
+      // annonce en ligne avec une marque dégradée ne doit JAMAIS être
+      // silencieuse — sur Vinted la marque est un filtre de recherche majeur.
+      warnings.push({ code: "brand_fallback_no_brand", marque, message });
       return;
     } catch (e2) {
       // Convention error court / last_diagnostic (2026-08-06, job f9861e8a) :

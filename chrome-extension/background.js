@@ -1471,6 +1471,30 @@ async function processJob(rawJob, accessToken) {
       };
     }
 
+    // Warnings PERSISTÉS (2026-08-08) : platform_fields.warnings =
+    // [{code, message, at}] — même mécanique de copie mémoire que
+    // last_diagnostic ci-dessus, donc portés par TOUTES les écritures
+    // terminales, jobs RÉUSSIS compris (via completionExtras). Sans ça, le
+    // repli « Sans marque » sur une vraie marque publiait une annonce
+    // dégradée en published propre, sans aucun signal en base ni dans
+    // l'app. Les handlers poussent des chaînes (historique) ou des objets
+    // {code, message, …} (structuré, ex. brand_fallback_no_brand) — tout
+    // est normalisé ici. Un run SANS warning efface ceux d'une tentative
+    // précédente : le verdict affiché est celui de la DERNIÈRE tentative.
+    {
+      const bruts = Array.isArray(result?.warnings) ? result.warnings : [];
+      const at = new Date().toISOString();
+      const pf = { ...(job.platform_fields ?? {}) };
+      if (bruts.length) {
+        pf.warnings = bruts.map((w) => (typeof w === "string"
+          ? { code: "generic", message: w.slice(0, 500), at }
+          : { ...w, code: String(w?.code ?? "generic"), message: String(w?.message ?? "").slice(0, 500), at }));
+      } else {
+        delete pf.warnings;
+      }
+      job.platform_fields = pf;
+    }
+
     // Découverte réactive (chantier champs obligatoires, 2026-07-16) : les
     // requis observés pendant CE remplissage partent au catalogue cumulatif,
     // quel que soit le verdict du job — fire-and-forget, jamais bloquant.
@@ -1725,23 +1749,29 @@ async function processJob(rawJob, accessToken) {
 // champ requis, le genre, est bloqué en amont par precheckJob.
 const UNFILLED_PREFIX = "COMPLÉTÉ AVEC CHAMPS MANQUANTS";
 
+// Un warning est une chaîne (historique) ou un objet {code, message, …}.
+const warningMessage = (w) => (typeof w === "string" ? w : String(w?.message ?? ""));
+
 function completionExtras(job, result) {
   const unfilled = result.unfilledRequired ?? [];
   const warnings = result.warnings ?? [];
   const parts = [];
   if (unfilled.length) parts.push(`${UNFILLED_PREFIX} : ${unfilled.join(", ")}`);
-  if (warnings.length) parts.push(`Warnings: ${warnings.join(" | ")}`);
+  if (warnings.length) parts.push(`Warnings: ${warnings.map(warningMessage).join(" | ")}`);
 
   const extras = { error: parts.length ? parts.join(". ") : null };
   if (unfilled.length) {
     console.warn(`[background] Job ${job.id} : ${UNFILLED_PREFIX} : ${unfilled.join(", ")}`);
-    // Fusion, jamais d'écrasement : platform_fields porte aussi le mapping
-    // catégorie et needsUserAttempts.
-    extras.platform_fields = {
-      ...(job.platform_fields ?? {}),
-      unfilled_required_fields: unfilled,
-    };
   }
+  // platform_fields TOUJOURS joint (2026-08-08 — il ne l'était qu'avec des
+  // unfilled) : la copie mémoire porte désormais warnings/last_diagnostic
+  // posés en amont, et un run propre doit aussi pouvoir EFFACER les warnings
+  // d'une tentative précédente. Fusion sur la copie mémoire, jamais
+  // d'écrasement des autres clés (mapping catégorie, needsUserAttempts…).
+  extras.platform_fields = {
+    ...(job.platform_fields ?? {}),
+    ...(unfilled.length ? { unfilled_required_fields: unfilled } : {}),
+  };
   return extras;
 }
 

@@ -19,8 +19,16 @@
 //   développement, pas produire du bruit en prod). Passer par
 //   tryResolveSelector, qui retourne null sans jamais lever sur une absence.
 //   Symétriquement, tryResolveSelector refuse une clé non-optional.
-// - Télémétrie (public.selector_health) : émise dès que via > 0 OU qu'un
-//   maillon a résolu avec assert en échec ; resolved_via = -1 sur échec total.
+// - Télémétrie (public.selector_health) : émise sur TOUT résultat — succès
+//   (resolved_via = rang du maillon qui a résolu, 0 COMPRIS) comme échec
+//   total (-1). ⚠️ Jusqu'au 2026-08-08 les succès au maillon 0 n'étaient
+//   jamais émis (« via > 0 OU assert en échec ») : selector_health n'avait
+//   aucun dénominateur, aucun taux de résolution n'était calculable, et
+//   custom_brand_option a été déclaré mort à tort (3 lignes -1, zéro ligne
+//   de vie — alors que le chemin avait réussi le jour même). L'anti-volume
+//   n'est PAS le silence : c'est la dédup mémoire de 10 min par
+//   (clé, via, assert) ci-dessous — au pire ~1 ligne/clé/10 min/install,
+//   boucles de polling comprises.
 //   tryResolveSelector n'émet JAMAIS de -1 (l'échec y est le cas nominal).
 //   Fire-and-forget : jamais bloquante, jamais de throw depuis la télémétrie.
 //   extension_version = version du manifest (chrome.runtime.getManifest).
@@ -383,9 +391,10 @@ export function resolveSelector(platform, key, opts = undefined, legacyParams = 
   const { root, params, reportFailure } = normalizeOpts(opts, legacyParams);
   const hit = resolveChain(entry, root, params, { platform, key }, false);
   if (hit) {
-    if (hit.via > 0 || hit.assertFailed) {
-      reportSelectorHealth(platform, key, hit.via, !hit.assertFailed);
-    }
+    // Succès TOUJOURS émis, maillon 0 compris (2026-08-08) : c'est le
+    // dénominateur des taux de résolution — dédup 10 min dans
+    // reportSelectorHealth, pas ici.
+    reportSelectorHealth(platform, key, hit.via, !hit.assertFailed);
     return { el: hit.kept[0], via: hit.via, key, platform };
   }
   if (reportFailure) reportSelectorHealth(platform, key, -1, false);
@@ -399,9 +408,8 @@ export function resolveSelector(platform, key, opts = undefined, legacyParams = 
 
 // tryResolveSelector(platform, key, opts?) → { el, via, key, platform } | null.
 // Réservé aux clés optional (l'absence y est le cas nominal) : ne lève jamais
-// sur une absence, n'émet JAMAIS de télémétrie resolved_via = -1. Émet en
-// revanche normalement la télémétrie si via > 0 ou si un maillon a résolu avec
-// assert en échec.
+// sur une absence, n'émet JAMAIS de télémétrie resolved_via = -1. Les succès
+// sont émis normalement (maillon 0 compris depuis le 2026-08-08).
 export function tryResolveSelector(platform, key, opts = undefined, legacyParams = undefined) {
   const entry = registryEntry(platform, key);
   if (entry.optional !== true) {
@@ -412,9 +420,7 @@ export function tryResolveSelector(platform, key, opts = undefined, legacyParams
   const { root, params } = normalizeOpts(opts, legacyParams);
   const hit = resolveChain(entry, root, params, { platform, key }, false);
   if (!hit) return null;
-  if (hit.via > 0 || hit.assertFailed) {
-    reportSelectorHealth(platform, key, hit.via, !hit.assertFailed);
-  }
+  reportSelectorHealth(platform, key, hit.via, !hit.assertFailed);
   return { el: hit.kept[0], via: hit.via, key, platform };
 }
 
@@ -432,9 +438,7 @@ export function resolveSelectorAll(platform, key, opts = undefined, legacyParams
   const { root, params, reportFailure } = normalizeOpts(opts, legacyParams);
   const hit = resolveChain(entry, root, params, { platform, key }, true);
   if (hit) {
-    if (hit.via > 0 || hit.assertFailed) {
-      reportSelectorHealth(platform, key, hit.via, !hit.assertFailed);
-    }
+    reportSelectorHealth(platform, key, hit.via, !hit.assertFailed);
     return { els: hit.kept, via: hit.via, key, platform };
   }
   if (reportFailure) reportSelectorHealth(platform, key, -1, false);
