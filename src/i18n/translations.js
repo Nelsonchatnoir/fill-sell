@@ -169,9 +169,6 @@ export const translations = {
     stepGenLoadingNoRetouchSubtitle:"Encore quelques secondes, tes annonces arrivent.",
     stepGenErrorTitle:"Erreur de génération",
     stepGenRetryButton:"Réessayer",
-    // Génération payante (2026-08-05) : la tentative échouée a été REMBOURSÉE
-    // automatiquement — réessayer est une nouvelle génération, au même prix.
-    stepGenRetryButtonPriced:"Réessayer ({price} Pépite{s})",
     stepGenNoListingsError:"Aucune annonce retournée",
     stepGenReviewTitle:"Vérifie tes annonces",
     stepGenReviewSubtitle:"Clique sur une carte pour voir et éditer le détail.",
@@ -233,15 +230,10 @@ export const translations = {
     ctaAddAtLeastOnePhoto:"Ajoute au moins 1 photo",
     ctaContinuePhotos:"Continuer · {n} photo{s}",
     ctaGenerateListings:"Générer les annonces",
-    // Le prix s'affiche AVANT le clic — personne ne découvre le débit après.
-    ctaGenerateListingsPriced:"Générer les annonces ({price} Pépite{s})",
     ctaGenerating:"Génération…",
     ctaContinueToPublish:"Continuer vers la publication",
     ctaPublishing:"Publication en cours…",
     ctaPublishOnPlatforms:"Publier sur {n} plateforme{s}",
-    // Grille 2 axes (2026-08-04) : le CTA porte le TOTAL (photos + 3/plateforme)
-    // et se met à jour quand une plateforme est cochée/décochée.
-    ctaPublishOnPlatformsPriced:"Publier sur {n} plateforme{s} · {price} Pépites",
 
     quotaModalTitle:"Limite Pro atteinte",
     quotaModalText:"Tu as atteint ta limite Pro. Des crédits supplémentaires arrivent bientôt.",
@@ -480,7 +472,6 @@ export const translations = {
     stepGenLoadingNoRetouchSubtitle:"Just a few seconds — your listings are on their way.",
     stepGenErrorTitle:"Generation error",
     stepGenRetryButton:"Retry",
-    stepGenRetryButtonPriced:"Retry ({price} Nugget{s})",
     stepGenNoListingsError:"No listings returned",
     stepGenReviewTitle:"Review your listings",
     stepGenReviewSubtitle:"Tap a card to view and edit details.",
@@ -538,12 +529,10 @@ export const translations = {
     ctaAddAtLeastOnePhoto:"Add at least 1 photo",
     ctaContinuePhotos:"Continue · {n} photo{s}",
     ctaGenerateListings:"Generate listings",
-    ctaGenerateListingsPriced:"Generate listings ({price} Nugget{s})",
     ctaGenerating:"Generating…",
     ctaContinueToPublish:"Continue to publish",
     ctaPublishing:"Publishing…",
     ctaPublishOnPlatforms:"Publish on {n} platform{s}",
-    ctaPublishOnPlatformsPriced:"Publish on {n} platform{s} · {price} Nuggets",
 
     quotaModalTitle:"Pro limit reached",
     quotaModalText:"You've reached your Pro limit. Additional credits are coming soon.",

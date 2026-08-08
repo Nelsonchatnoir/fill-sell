@@ -6,6 +6,7 @@ import ExtensionReminderModal, { shouldShowExtensionReminder } from '../componen
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteIcon from '../components/PepiteIcon';
+import PepiteAmount from '../components/PepiteAmount';
 import { getRotatingLensPlaceholders, getTypeStyle, typeLabel } from '../utils/shared';
 import AnalyseMarche, { analyseFiabilite } from '../components/AnalyseMarche';
 import { useTranslation } from '../i18n/useTranslation';
@@ -260,7 +261,7 @@ function LensScanHome({
           >
             {lensLoading
               ? t('lensAnalyzing')
-              : <>{lang === 'en' ? 'Analyse the deal' : 'Analyser le deal'} · <PepiteIcon size={12} /> 6</>}
+              : <>{lang === 'en' ? 'Analyse the deal' : 'Analyser le deal'} · <PepiteAmount value={6} size={12} /></>}
           </button>
 
           {/* Tarif affiché EN PERMANENCE, tous tiers (2026-07-22) — et depuis le

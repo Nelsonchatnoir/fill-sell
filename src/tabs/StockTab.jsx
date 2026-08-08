@@ -10,6 +10,7 @@ import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from '../utils/stockLi
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
+import PepiteAmount from '../components/PepiteAmount';
 import { computeRemovalInfo, plateformesReserveesParRepublication } from '../utils/publicationState';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
@@ -1982,7 +1983,7 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
     plafonne: pct > 0 && prixActuel != null && Math.floor(prixActuel * (1 - pct / 100)) < REPUB_PLANCHER_EUR,
   }));
   const plafonnes = lotApercu.filter(a => a.plafonne);
-  const cout = `${items.length * (prixUnitaire ?? 1)} ${fr ? 'Pépite' : 'Nugget'}${items.length * (prixUnitaire ?? 1) > 1 ? 's' : ''}`;
+  const cout = <PepiteAmount value={items.length * (prixUnitaire ?? 1)} />;
   const confirmer = () => {
     onConfirm(items.map(({ item, prixActuel }) => {
       let prix = null; // null = garder le prix de l'annonce
@@ -2042,8 +2043,8 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
         <button onClick={confirmer}
           style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: 'linear-gradient(120deg,#2F9E90,#1B6E62)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           {solo
-            ? (fr ? `Republier${prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''} · ${cout}` : `Repost${prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''} · ${cout}`)
-            : (fr ? `Republier les ${items.length}${pct > 0 ? ` à −${pct} %` : ''} · ${cout}` : `Repost ${items.length}${pct > 0 ? ` at −${pct}%` : ''} · ${cout}`)}
+            ? (fr ? <>Republier{prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''} · {cout}</> : <>Repost{prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''} · {cout}</>)
+            : (fr ? <>Republier les {items.length}{pct > 0 ? ` à −${pct} %` : ''} · {cout}</> : <>Repost {items.length}{pct > 0 ? ` at −${pct}%` : ''} · {cout}</>)}
         </button>
         {/* (Le CTA « Gratuite et illimitée avec Premium » du 07/08 est mort le
             08/08 avec la gratuité plan : la republication coûte le même prix
@@ -3638,8 +3639,8 @@ const StockTab = memo(function StockTab({
                   <>
                     <span className="lbl">
                       {lang==='fr'
-                        ?`${repubSel.size} sélectionné${repubSel.size>1?"s":""} · ${repubSel.size} Pépite${repubSel.size>1?"s":""} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`
-                        :`${repubSel.size} selected · ${repubSel.size} Nugget${repubSel.size>1?"s":""} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`}
+                        ?<>{repubSel.size} sélectionné{repubSel.size>1?"s":""} · <PepiteAmount value={repubSel.size}/> · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>
+                        :<>{repubSel.size} selected · <PepiteAmount value={repubSel.size}/> · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>}
                     </span>
                     <button className="apply" disabled={repubSel.size===0}
                       onClick={()=>ouvrirFeuilleRepublication(repubActionnables.filter(i=>repubSel.has(i.id)))}>
@@ -4423,8 +4424,17 @@ const StockTab = memo(function StockTab({
                                   title={lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed."}>
                                   {repubBusy===item.id
                                     ?(lang==='fr'?'Capture…':'Capturing…')
-                                    :(lang==='fr'?`🔁 Republier${republishPrice!=null?` (${republishPrice} Pépite${republishPrice>1?'s':''})`:''}`
-                                                 :`🔁 Repost${republishPrice!=null?` (${republishPrice} Nugget${republishPrice>1?'s':''})`:''}`)}
+                                    :(republishPrice!=null
+                                      /* Sans l'émoji 🔁 : « Republier (1 ‹icône›) » fait 80px et
+                                         tient sur la ligne des 82px utiles de .btn-stack (92px
+                                         − bordures − padding) ; avec lui, 98px → repli en deux
+                                         lignes, le débordement que ce libellé vient corriger.
+                                         Le groupe (prix) est insécable : si le prix passe à deux
+                                         chiffres, la coupure tombe entre le verbe et le prix. */
+                                      ?(lang==='fr'
+                                        ?<>Republier <span style={{whiteSpace:"nowrap"}}>(<PepiteAmount value={republishPrice}/>)</span></>
+                                        :<>Repost <span style={{whiteSpace:"nowrap"}}>(<PepiteAmount value={republishPrice}/>)</span></>)
+                                      :(lang==='fr'?'🔁 Republier':'🔁 Repost'))}
                                 </button>);
                             })()}
                           </div>

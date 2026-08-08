@@ -4,6 +4,7 @@ import { purchaseCoins, consumeCoinPurchase } from "../lib/iap";
 import { supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from "../utils/androidPayments";
 import PepiteIcon from "./PepiteIcon";
+import PepiteAmount from "./PepiteAmount";
 import { PACKS } from "./coinPacks";
 
 // Store de packs de pièces — grille validée 2026-07-06.
@@ -138,7 +139,7 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
               }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: "#10201B", display: "inline-flex", alignItems: "center", gap: 5 }}><PepiteIcon size={17} /> {p.coins}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "#10201B" }}><PepiteAmount value={p.coins} size={17} /></span>
                 {p.bonus && (
                   <span style={{ fontSize: 10.5, fontWeight: 700, color: TEAL_DEEP, background: "#E7F3F0", border: "1px solid #CBE5DF", padding: "2px 7px", borderRadius: 999 }}>
                     {p.bonus}

@@ -1133,9 +1133,10 @@ ${s} .btn-publier.is-complete{background:#F1F1EE;color:var(--mute);border:1px so
 ${s} .btn-vendre{font-size:11px;font-weight:600;color:var(--mute);text-align:center;background:transparent;border:1px solid var(--border);padding:5px 4px;border-radius:9px;cursor:pointer;font-family:inherit;}
 /* Pastille de cooldown de republication — « 🔁 Dans ~N h ». Classe DÉDIÉE,
    posée en plus de .btn-vendre : nowrap ne doit surtout PAS être global à
-   .btn-vendre, car « 🔁 Republier (1 Pépite) » (~123px, plan Free) s'y replie
-   volontairement sur deux lignes — l'y interdire le ferait DÉBORDER au lieu de
-   se replier.
+   .btn-vendre, car le libellé prixé « Republier (1 ‹icône Pépite›) » (80px,
+   sans émoji précisément pour tenir dans les 82px utiles) doit pouvoir se
+   replier entre le verbe et le groupe (prix) si le prix passe à deux
+   chiffres — l'y interdire le ferait DÉBORDER au lieu de se replier.
    · white-space:nowrap  → le libellé ne se coupe jamais ;
    · tabular-nums        → 1, 2, 0 occupent la même chasse. Mesuré : sans lui,
      les valeurs à deux chiffres vont de 73,1 à 77,0px (8,8px d'écart entre

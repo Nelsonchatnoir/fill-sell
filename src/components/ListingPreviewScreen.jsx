@@ -6,7 +6,7 @@ import { Camera as CapCamera } from "@capacitor/camera";
 import ConversionModal from "./ConversionModal";
 import CoinStoreModal from "./CoinStoreModal";
 import ExtensionPitchScreen from "./ExtensionPitchScreen";
-import PepiteIcon from "./PepiteIcon";
+import PepiteAmount from "./PepiteAmount";
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import AnalyseMarche from "./AnalyseMarche";
 import { useTranslation } from "../i18n/useTranslation";
@@ -1306,7 +1306,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                       padding:"3px 9px", borderRadius:999,
                       display:"inline-flex", alignItems:"center", gap:4,
                     }}>
-                      <PepiteIcon size={13} /> {price}
+                      <PepiteAmount value={price} size={13} />
                     </span>
                   )
                 )}
@@ -1476,7 +1476,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                   ? (lang === "en" ? "Analyzing…" : "Analyse en cours…")
                   : <>
                       {lang === "en" ? "Analyze my photos" : "Analyser mes photos"}
-                      {analysisCost != null && <> · <PepiteIcon size={13} /> {analysisCost}</>}
+                      {analysisCost != null && <> · <PepiteAmount value={analysisCost} size={13} /></>}
                     </>}
               </button>
             </>
@@ -1488,7 +1488,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, padding:"10px 14px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}` }}>
         <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, display:"inline-flex", alignItems:"center", gap:5, flexWrap:"wrap" }}>
           {lang === 'en' ? 'Your Nuggets:' : 'Tes Pépites :'}{' '}
-          <strong style={{ color:T.ink, display:"inline-flex", alignItems:"center", gap:4 }}><PepiteIcon size={15} /> {coinBalance}</strong>
+          <strong style={{ color:T.ink }}><PepiteAmount value={coinBalance} size={15} /></strong>
           {/* Réservation/capture (2026-08-05) : montant mis de côté pour des
               publications encore en file — rendu automatiquement si elles
               n'aboutissent pas. */}
@@ -1588,7 +1588,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
               : <>Photos : {reuseRetouched ? 'déjà retouchées ✓' : (coinPrices[photoOption] === 0 ? 'offertes' : coinPrices[photoOption])} · Publication : {coinPrices.per_platform === 0 ? 'offerte' : <>{selected.size} × {coinPrices.per_platform}</>}</>}
           </span>
           <strong style={{ fontSize:13.5, fontWeight:700, color:T.ink, display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
-            = <PepiteIcon size={14} /> {coinPrices[photoOption] + coinPrices.per_platform * selected.size}
+            = <PepiteAmount value={coinPrices[photoOption] + coinPrices.per_platform * selected.size} size={14} />
           </strong>
         </div>
       )}
@@ -1722,7 +1722,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
               serveur : réessayer est une NOUVELLE génération, au même prix —
               affiché avant le clic, comme sur le CTA du step 1. */}
           {generatePrice != null
-            ? tpl("stepGenRetryButtonPriced", { price: generatePrice })
+            ? <>{t("stepGenRetryButton")} (<PepiteAmount value={generatePrice} />)</>
             : t("stepGenRetryButton")}
         </button>
       </div>
@@ -1800,7 +1800,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
                 ? (lang === "en" ? "Checking the market…" : "Analyse du marché…")
                 : <>
                     {lang === "en" ? "Not sure? Estimate" : "Pas sûr du prix ? Estimer"}
-                    {estimateCost != null && <> · <PepiteIcon size={13} /> {estimateCost}</>}
+                    {estimateCost != null && <> · <PepiteAmount value={estimateCost} size={13} /></>}
                   </>}
             </button>
             <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
@@ -5613,7 +5613,7 @@ export default function ListingPreviewScreen({
       // Génération payante pour TOUS les paliers (retour arrière du 08/08
       // après-midi — la gratuité Pro du matin n'était bornée par rien).
       const genPrice = coinPrices?.generate ?? null;
-      if (genPrice != null) return tpl("ctaGenerateListingsPriced", { price: genPrice });
+      if (genPrice != null) return <>{t("ctaGenerateListings")} (<PepiteAmount value={genPrice} />)</>;
       return t("ctaGenerateListings");
     }
     if (step === 2) {
@@ -5631,7 +5631,7 @@ export default function ListingPreviewScreen({
       // chaque plateforme cochée/décochée. Config pas encore lue → libellé
       // sans prix (jamais un total faux).
       const total = publishTotalFor(photoOption, n);
-      if (total != null) return tpl("ctaPublishOnPlatformsPriced", { n, price: total });
+      if (total != null) return <>{tpl("ctaPublishOnPlatforms", { n })} · <PepiteAmount value={total} /></>;
       return tpl("ctaPublishOnPlatforms", { n });
     }
     return "";

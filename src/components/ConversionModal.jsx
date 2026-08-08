@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import PepiteIcon from './PepiteIcon';
+import PepiteAmount from './PepiteAmount';
 import PlanBadge, { PremiumBadge, ProBadge } from './PlanBadge';
 import { PACKS } from './coinPacks';
 import { supabase } from '../lib/supabase';
@@ -185,7 +186,7 @@ function PackList({ fr, onUseCoins }) {
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 15, fontWeight: 700, color: C.ink }}>
-                <PepiteIcon size={17} /> {p.coins}
+                <PepiteAmount value={p.coins} size={17} />
               </span>
               {p.bonus && (
                 <span style={{ fontSize: 10, fontWeight: 700, color: C.tealDeep, background: '#E7F3F0', border: '1px solid #CBE5DF', borderRadius: 999, padding: '2px 7px' }}>
@@ -636,7 +637,7 @@ export default function ConversionModal({
       }}>
         {fr ? 'Tu es en Free' : "You're on Free"}
         {stockFull && <> · {itemCount}/{stockLimit} {fr ? 'articles' : 'items'}</>}
-        {coinBalance != null && <> · <PepiteIcon size={12} /> {coinBalance} {fr ? 'Pépites' : 'Nuggets'}</>}
+        {coinBalance != null && <> · <PepiteAmount value={coinBalance} size={12} /></>}
       </div>
 
       <Title>

@@ -55,6 +55,7 @@ import DashboardTab from './tabs/DashboardTab';
 import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
 import CoinStoreModal from './components/CoinStoreModal';
 import PepiteIcon from './components/PepiteIcon';
+import PepiteAmount from './components/PepiteAmount';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
 import PlanDetailsModal from './components/PlanDetailsModal';
@@ -5502,7 +5503,7 @@ export default function App({ loginOnly = false }){
             <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
               <Eyebrow>{lang==='fr'?'Mes Pépites':'My Nuggets'}</Eyebrow>
               <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
-                <span style={{fontSize:22,fontWeight:700,color:UI.ink,display:"inline-flex",alignItems:"center",gap:7}}><PepiteIcon size={24} /> {(coinWallet?.included_balance??0)+(coinWallet?.purchased_balance??0)}</span>
+                <span style={{fontSize:22,fontWeight:700,color:UI.ink}}><PepiteAmount value={(coinWallet?.included_balance??0)+(coinWallet?.purchased_balance??0)} size={24} /></span>
                 <span style={{fontSize:11,color:UI.mute,fontWeight:600}}>
                   {lang==='fr'
                     ?`${coinWallet?.included_balance??0} incluses · ${coinWallet?.purchased_balance??0} achetées`
