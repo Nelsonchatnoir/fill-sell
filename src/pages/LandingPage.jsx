@@ -34,7 +34,7 @@ const COPY = {
     heroKicker: 'Revente automatisée · France',
     heroLead: 'Un ajout,', heroAccent: 'publié partout.',
     heroSub: "Ajoute un article une seule fois — FillSell le publie automatiquement sur Vinted, Leboncoin, eBay et Beebs en quelques secondes. Vendu quelque part ? Il disparaît des autres, tout seul.",
-    heroTrust: '30 Pépites offertes chaque mois · sans carte bancaire',
+    heroTrust: '50 Pépites offertes chaque mois · sans carte bancaire',
     storeApple: "Télécharger dans l'App Store", storePlay: 'Disponible sur Google Play',
     phS1: 'Ajout', phS2: 'Retouche IA', phS3: 'Publication',
     phItem: 'T-shirt Patagonia P-6', phAdded: 'Ajouté à ton stock', phPrice: '22 €',
@@ -81,13 +81,13 @@ const COPY = {
     popular: 'Le plus populaire', priceP: '12,99 €', pCoins: '{PREMIUM} Pépites / mois',
     pricePro: '29,99 €', proCoins: '{PRO} Pépites / mois',
     ctaFree: 'Commencer gratuitement', ctaPremium: 'Passer Premium', ctaPro: 'Passer Pro',
-    coinsTitle: 'Les Pépites, ta monnaie', coinsPublish: 'Publier : 3 Pépites / plateforme',
-    coinsGenerate: 'Annonce générée par IA : 1 Pépite',
+    coinsTitle: 'Les Pépites, ta monnaie', coinsPublish: 'Publier : 1 Pépite / plateforme',
+    coinsGenerate: 'Annonce générée par IA : 6 Pépites',
     coinsLens: 'Analyse Lens : 6 Pépites', coinsPacks: 'Packs dès 4,99 €',
 
     faqTitle: "Les questions qu'on nous pose.",
     ctaTitle: 'Prêt à publier partout, sans effort ?',
-    ctaBody: 'Commence gratuitement — 30 Pépites offertes chaque mois, sans carte bancaire.',
+    ctaBody: 'Commence gratuitement — 50 Pépites offertes chaque mois, sans carte bancaire.',
     ctaBtn: 'Commencer gratuitement',
     footTag: 'Revente automatisée', footLegal: 'Mentions légales',
     footPrivacy: 'Confidentialité', footContact: 'Contact',
@@ -99,7 +99,7 @@ const COPY = {
     heroKicker: 'Automated reselling · France',
     heroLead: 'One add,', heroAccent: 'listed everywhere.',
     heroSub: 'Add an item once — FillSell automatically lists it on Vinted, Leboncoin, eBay and Beebs in seconds. Sold somewhere? It vanishes from the others, all on its own.',
-    heroTrust: '30 Pépites free every month · no card required',
+    heroTrust: '50 Pépites free every month · no card required',
     storeApple: 'Download on the App Store', storePlay: 'Get it on Google Play',
     phS1: 'Add', phS2: 'AI edit', phS3: 'Publishing',
     phItem: 'Patagonia P-6 T-shirt', phAdded: 'Added to your stock', phPrice: '€22',
@@ -146,13 +146,13 @@ const COPY = {
     popular: 'Most popular', priceP: '€12.99', pCoins: '{PREMIUM} Pépites / mo',
     pricePro: '€29.99', proCoins: '{PRO} Pépites / mo',
     ctaFree: 'Start free', ctaPremium: 'Go Premium', ctaPro: 'Go Pro',
-    coinsTitle: 'Pépites, your currency', coinsPublish: 'Publish: 3 Pépites / platform',
-    coinsGenerate: 'AI-generated listing: 1 Pépite',
+    coinsTitle: 'Pépites, your currency', coinsPublish: 'Publish: 1 Pépite / platform',
+    coinsGenerate: 'AI-generated listing: 6 Pépites',
     coinsLens: 'Lens analysis: 6 Pépites', coinsPacks: 'Packs from €4.99',
 
     faqTitle: 'The questions we get asked.',
     ctaTitle: 'Ready to list everywhere, effortlessly?',
-    ctaBody: 'Start free — 30 Pépites every month, no credit card required.',
+    ctaBody: 'Start free — 50 Pépites every month, no credit card required.',
     ctaBtn: 'Start free',
     footTag: 'Automated reselling', footLegal: 'Legal notice',
     footPrivacy: 'Privacy', footContact: 'Contact',
@@ -195,7 +195,8 @@ const FEATURES = {
    (deux cartes ConversionModal, PlanDetailsModal, ici — + la FAQ).
    Les jetons {LENS_PREMIUM}/{LENS_PRO} sont calculés depuis les grants lus en
    base (cf. fillGrants) : la page ne peut pas promettre un volume qu'on ne
-   sert pas. Les coûts (1 / 3 / 6 Pépites) sont en dur, comme dans la FAQ. */
+   sert pas. Les coûts (6 / 1 / 6 Pépites — grille du 2026-08-08, MÊME PRIX
+   POUR TOUS LES PALIERS) sont en dur, comme dans la FAQ. */
 const PUBLISH_LINE = {
   fr: 'Publication auto sur Vinted, Leboncoin, eBay & Beebs',
   en: 'Auto-publishing to Vinted, Leboncoin, eBay & Beebs',
@@ -206,8 +207,8 @@ const PLANS = {
     free: ["Ajout d'article à la voix", PUBLISH_LINE.fr, 'Calcul de marge instantané', 'Suivi de tes ventes'],
     premium: [
       'Stock illimité',
-      'Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA 1 Pépite, publication 3 Pépites/plateforme)',
-      'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free)',
+      'Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA 6 Pépites, publication 1 Pépite/plateforme)',
+      'Republication Vinted en un clic — 1 Pépite par annonce',
       "Environ {LENS_PREMIUM} analyses Lens par mois (6 Pépites l'analyse)",
       'Import & export Excel de ton stock',
       'Commandes vocales illimitées',
@@ -215,8 +216,8 @@ const PLANS = {
     ],
     pro: [
       'Stock illimité',
-      'Publie sur Vinted, Leboncoin, eBay & Beebs — publication OFFERTE, 0 Pépite/plateforme (annonce générée par IA 1 Pépite)',
-      "Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free), et automatisable si tu l'actives",
+      'Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA 6 Pépites, publication 1 Pépite/plateforme)',
+      "Republication Vinted en un clic — 1 Pépite par annonce, automatisable si tu l'actives",
       "Environ {LENS_PRO} analyses Lens par mois (6 Pépites l'analyse)",
       'Import & export Excel de ton stock',
       'Commandes vocales illimitées',
@@ -227,8 +228,8 @@ const PLANS = {
     free: ['Voice item adding', PUBLISH_LINE.en, 'Instant margin calculator', 'Track your sales'],
     premium: [
       'Unlimited stock',
-      'Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing 1 Nugget, publishing 3 Nuggets/platform)',
-      'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free)',
+      'Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing 6 Nuggets, publishing 1 Nugget/platform)',
+      'One-tap Vinted reposting — 1 Nugget per listing',
       'About {LENS_PREMIUM} Lens scans a month (6 Nuggets each)',
       'Excel import & export of your stock',
       'Unlimited voice commands',
@@ -236,8 +237,8 @@ const PLANS = {
     ],
     pro: [
       'Unlimited stock',
-      'Publish on Vinted, Leboncoin, eBay & Beebs — publishing FREE, 0 Nuggets/platform (AI-generated listing 1 Nugget)',
-      'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free), and automatable if you turn it on',
+      'Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing 6 Nuggets, publishing 1 Nugget/platform)',
+      'One-tap Vinted reposting — 1 Nugget per listing, automatable if you turn it on',
       'About {LENS_PRO} Lens scans a month (6 Nuggets each)',
       'Excel import & export of your stock',
       'Unlimited voice commands',
@@ -248,7 +249,7 @@ const PLANS = {
 
 const FAQ = {
   fr: [
-    ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre ({FREE} en Free, {PREMIUM} en Premium, {PRO} en Pro) et tu les dépenses pour générer une annonce par IA (1 Pépite), la publier (3 Pépites par plateforme, plus 9 ou 32 si tu choisis la retouche photos IA) ou lancer une analyse Lens (6 Pépites). En Pro, la publication est offerte. La republication d’annonces Vinted est gratuite et illimitée en Premium et Pro (automatisable en Pro) ; 1 Pépite par republication en Free. Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
+    ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre ({FREE} en Free, {PREMIUM} en Premium, {PRO} en Pro) et tu les dépenses pour générer une annonce par IA (6 Pépites), la publier (1 Pépite par plateforme, plus 9 ou 32 si tu choisis la retouche photos IA), republier une annonce Vinted (1 Pépite) ou lancer une analyse Lens (6 Pépites). Les prix sont les mêmes sur tous les paliers — seul le nombre de Pépites reçues change. Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
     ['Sur quelles plateformes je publie ?', 'Vinted, Leboncoin, eBay et Beebs — les 4 places de marché qui comptent en France. Un seul ajout, publié sur les quatre en même temps.'],
     ['Comment marche la publication automatique ?', 'Tu ajoutes un article à ton inventaire, puis FillSell génère l’annonce et la publie sur les 4 plateformes en même temps. Rien à recopier ni à re-téléverser.'],
     ['Et si un article se vend ?', 'FillSell détecte la vente, retire l’annonce des 3 autres plateformes et met à jour tes marges, ton stock et tes stats — automatiquement. Zéro risque de double-vente.'],
@@ -256,7 +257,7 @@ const FAQ = {
     ['Je peux annuler quand je veux ?', 'Oui. Premium et Pro sont sans engagement : tu changes d’offre ou tu arrêtes en un clic depuis l’app.'],
   ],
   en: [
-    ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan ({FREE} on Free, {PREMIUM} on Premium, {PRO} on Pro) and spend them to generate a listing with AI (1 Pépite), publish it (3 Pépites per platform, plus 9 or 32 if you pick AI photo editing) or run a Lens analysis (6 Pépites). On Pro, publishing is free. Vinted reposting is free and unlimited on Premium and Pro (automatable on Pro); 1 Pépite per repost on Free. Need more? Packs start at €4.99.'],
+    ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan ({FREE} on Free, {PREMIUM} on Premium, {PRO} on Pro) and spend them to generate a listing with AI (6 Pépites), publish it (1 Pépite per platform, plus 9 or 32 if you pick AI photo editing), repost a Vinted listing (1 Pépite) or run a Lens analysis (6 Pépites). Prices are the same on every tier — only the monthly Pépite allowance changes. Need more? Packs start at €4.99.'],
     ['Which marketplaces can I publish to?', 'Vinted, Leboncoin, eBay and Beebs — the 4 marketplaces that matter in France. One add, posted to all four at once.'],
     ['How does automatic publishing work?', 'You add an item to your inventory, then FillSell builds the listing and posts it to all 4 marketplaces at once. Nothing to copy or re-upload.'],
     ['What happens when an item sells?', 'FillSell detects the sale, pulls the listing from the other 3 marketplaces and updates your margins, stock and stats — automatically. Zero double-sale risk.'],
@@ -277,7 +278,7 @@ const FAQ = {
    un zéro ou un squelette — une page tarifaire vide coûte plus cher qu'une
    page légèrement datée. À tenir à jour au fil des changements de grant, mais
    ce n'est JAMAIS ce qui s'affiche quand la base répond. */
-const GRANTS_FALLBACK = { FREE: 30, PREMIUM: 150, PRO: 600 };
+const GRANTS_FALLBACK = { FREE: 50, PREMIUM: 400, PRO: 1200 };
 
 /* Remplace les jetons d'un texte par les grants courants. Appliqué aux libellés
    des cartes ET aux réponses de la FAQ, où les nombres sont noyés dans la

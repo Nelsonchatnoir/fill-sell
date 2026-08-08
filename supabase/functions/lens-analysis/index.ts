@@ -49,7 +49,8 @@ function getPlatforms(countryCode: string | null, lang: string): string {
 // web_search — pour TOUS les tiers. Depuis le 2026-07-23 (levée du gate
 // économie v2), CHAQUE analyse coûte des Pépites (price_lens_overflow = 6),
 // tous tiers : la différenciation se fait uniquement sur le grant mensuel
-// de Pépites (free 30 / premium 150 / pro 600).
+// de Pépites (coin_config monthly_grant_* — 50/400/1200 depuis la grille du
+// 2026-08-08).
 // Deux modes (2026-07-28) :
 //   • "full"     — le scan complet historique, web_search attaché, 6 Pépites.
 //   • "identify" — la MÊME lecture de photos SANS recherche web, INCLUSE dans

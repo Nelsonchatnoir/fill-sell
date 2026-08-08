@@ -1612,9 +1612,14 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 // age_jours, plafond_jour} — plafond RÉGLABLE par l'utilisateur (1..50).
 // Écriture en lecture-fusion-écriture (platform_settings porte aussi
 // l'adresse Leboncoin). À l'activation : on dit CE QUI VA SE PASSER (combien
-// d'annonces éligibles aujourd'hui, à quel rythme) — pas de discours de coût,
-// c'est inclus en Pro. Non-Pro : présenté comme un AVANTAGE du plan (renvoi
-// vers la carte Pro), jamais un cadenas frustrant. Si le compte cesse d'être
+// d'annonces éligibles aujourd'hui, à quel rythme) ET CE QUE ÇA COÛTE —
+// depuis la grille du 2026-08-08 la republication est payante pour tous
+// (1 Pépite/annonce, auto comprise) : le coût et le volume mensuel maximum
+// s'affichent à côté du réglage, personne ne doit découvrir ce débit dans
+// son solde. Si l'auto échoue faute de Pépites, le RPC pose
+// republish_auto.derniere_erreur='pepites_insuffisantes' (effacée au succès
+// suivant) — ce bloc l'affiche en clair. L'automatisation reste un avantage
+// Pro (avantage de FONCTIONNALITÉ, pas de prix). Si le compte cesse d'être
 // Pro, le background coupe proprement (arret_motif='plan_non_pro') — ce bloc
 // AFFICHE ce motif.
 function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
@@ -1707,6 +1712,13 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
             : 'Automation switched itself off: your account is no longer Pro. Re-enable it in one click once you are Pro again.'}
         </div>
       )}
+      {cfg?.derniere_erreur === 'pepites_insuffisantes' && (
+        <div style={{ fontSize: 12, color: '#8C2F28', background: '#FBEDEC', border: '1px solid #EFC2BE', borderRadius: 10, padding: '8px 10px', lineHeight: 1.5 }}>
+          {fr
+            ? 'La republication automatique est en pause : plus assez de Pépites (1 Pépite par annonce). Elle reprendra toute seule dès que ton solde le permettra — recharge ou attends tes Pépites mensuelles.'
+            : 'Automatic reposting is paused: not enough Nuggets (1 Nugget per listing). It will resume on its own as soon as your balance allows — top up or wait for your monthly Nuggets.'}
+        </div>
+      )}
       {actif ? (
         <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.55 }}>
           {fr
@@ -1720,6 +1732,11 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
             : `On activation: ${eligibles != null ? `${eligibles} eligible listing${eligibles > 1 ? 's' : ''} today` : '…'} (live for over ${ageJours} d), reposted at up to ${plafond}/day — one per extension pass, with Chrome open. Turn it off anytime.`}
         </div>
       )}
+      <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.55, background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 10, padding: '8px 10px' }}>
+        {fr
+          ? <>💎 Chaque republication automatique coûte <strong>1 Pépite</strong>, comme une republication manuelle. Au plafond actuel de {plafond}/jour, cela représente au maximum <strong>~{plafond * 30} Pépites par mois</strong> — en pratique moins : seules les annonces éligibles partent.</>
+          : <>💎 Each automatic repost costs <strong>1 Nugget</strong>, same as a manual repost. At your current cap of {plafond}/day, that is at most <strong>~{plafond * 30} Nuggets per month</strong> — in practice fewer: only eligible listings go.</>}
+      </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#5C6560', fontWeight: 600 }}>
         {fr ? 'Plafond par jour :' : 'Daily cap:'}
         <input type="number" min={1} max={50} defaultValue={plafond} disabled={busy}
@@ -1946,7 +1963,9 @@ function RepublishProgressSheet({ lang, job, onClose }) {
   );
 }
 
-function RepublishSheet({ lang, items, gratuit, prixUnitaire, onClose, onConfirm, onUpgrade }) {
+// Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
+// MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   const [pct, setPct] = useState(0);
@@ -1963,9 +1982,7 @@ function RepublishSheet({ lang, items, gratuit, prixUnitaire, onClose, onConfirm
     plafonne: pct > 0 && prixActuel != null && Math.floor(prixActuel * (1 - pct / 100)) < REPUB_PLANCHER_EUR,
   }));
   const plafonnes = lotApercu.filter(a => a.plafonne);
-  const cout = gratuit
-    ? (fr ? 'inclus dans ton plan' : 'included in your plan')
-    : `${items.length * (prixUnitaire ?? 1)} ${fr ? 'Pépite' : 'Nugget'}${items.length * (prixUnitaire ?? 1) > 1 ? 's' : ''}`;
+  const cout = `${items.length * (prixUnitaire ?? 1)} ${fr ? 'Pépite' : 'Nugget'}${items.length * (prixUnitaire ?? 1) > 1 ? 's' : ''}`;
   const confirmer = () => {
     onConfirm(items.map(({ item, prixActuel }) => {
       let prix = null; // null = garder le prix de l'annonce
@@ -2028,21 +2045,9 @@ function RepublishSheet({ lang, items, gratuit, prixUnitaire, onClose, onConfirm
             ? (fr ? `Republier${prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''} · ${cout}` : `Repost${prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''} · ${cout}`)
             : (fr ? `Republier les ${items.length}${pct > 0 ? ` à −${pct} %` : ''} · ${cout}` : `Repost ${items.length}${pct > 0 ? ` at −${pct}%` : ''} · ${cout}`)}
         </button>
-        {/* ── Le CTA le mieux ciblé de l'app (07/08, validé Nico) ──────────
-            L'utilisateur Free a l'INTENTION (il est dans la feuille) ET le
-            PRIX sous les yeux (le bouton au-dessus affiche « · N Pépites ») :
-            c'est l'instant exact où « gratuite AILLEURS » doit se dire —
-            l'inverse de l'ambiguïté du blast (« c'est gratuit » sans
-            qualificatif). Visible UNIQUEMENT quand !gratuit : un Premium/Pro
-            n'a rien à convertir. Tap → fermeture de la feuille + modale de
-            conversion (openUpgradeModal() sans argument, même navigation que
-            le bloc auto Pro — aucune logique de facturation). */}
-        {!gratuit && (
-          <button onClick={() => { onClose(); onUpgrade?.(); }}
-            style={{ width: '100%', marginTop: 8, padding: '10px 0', borderRadius: 12, border: '1px dashed rgba(47,158,144,0.55)', background: 'rgba(47,158,144,0.07)', color: '#1B6E62', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
-            💡 {fr ? 'Gratuite et illimitée avec Premium' : 'Free and unlimited with Premium'}
-          </button>
-        )}
+        {/* (Le CTA « Gratuite et illimitée avec Premium » du 07/08 est mort le
+            08/08 avec la gratuité plan : la republication coûte le même prix
+            pour tous, il n'y a plus rien à convertir ici.) */}
         <button onClick={onClose} style={{ width: '100%', marginTop: 8, padding: 10, border: 'none', background: 'none', color: '#5C6560', fontSize: 13, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           {fr ? 'Annuler' : 'Cancel'}
         </button>
@@ -2375,7 +2380,8 @@ const StockTab = memo(function StockTab({
   // solo : minimum 1 € (la garde de publication existante).
   const [repubSheet, setRepubSheet] = useState(null); // {items:[{item, prixActuel}]}
   const [repubProgress, setRepubProgress] = useState(null); // job republish affiché en détail
-  const repubGratuit = isPremium || isPro;
+  // (repubGratuit est mort le 2026-08-08 : la republication coûte
+  // price_republish pour tous les paliers, plus aucun prix conditionné.)
   function ouvrirFeuilleRepublication(itemsCibles) {
     setRepubSheet({
       items: itemsCibles.map(it => ({
@@ -3632,8 +3638,8 @@ const StockTab = memo(function StockTab({
                   <>
                     <span className="lbl">
                       {lang==='fr'
-                        ?`${repubSel.size} sélectionné${repubSel.size>1?"s":""} · ${repubGratuit?'inclus dans ton plan':`${repubSel.size} Pépite${repubSel.size>1?"s":""}`} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`
-                        :`${repubSel.size} selected · ${repubGratuit?'included in your plan':`${repubSel.size} Nugget${repubSel.size>1?"s":""}`} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`}
+                        ?`${repubSel.size} sélectionné${repubSel.size>1?"s":""} · ${repubSel.size} Pépite${repubSel.size>1?"s":""} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`
+                        :`${repubSel.size} selected · ${repubSel.size} Nugget${repubSel.size>1?"s":""} · ~${repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}`}
                     </span>
                     <button className="apply" disabled={repubSel.size===0}
                       onClick={()=>ouvrirFeuilleRepublication(repubActionnables.filter(i=>repubSel.has(i.id)))}>
@@ -4414,13 +4420,9 @@ const StockTab = memo(function StockTab({
                                     ouvrirFeuilleRepublication([item]);
                                   }}
                                   style={{opacity:repubBusy===item.id?0.6:1}}
-                                  title={repubGratuit
-                                    ?(lang==='fr'?"Inclus dans ton plan. Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Included in your plan. Deletes then recreates the listing identically to bump it in the Vinted feed.")
-                                    :(lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed.")}>
+                                  title={lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed."}>
                                   {repubBusy===item.id
                                     ?(lang==='fr'?'Capture…':'Capturing…')
-                                    :repubGratuit
-                                    ?(lang==='fr'?'🔁 Republier':'🔁 Repost')
                                     :(lang==='fr'?`🔁 Republier${republishPrice!=null?` (${republishPrice} Pépite${republishPrice>1?'s':''})`:''}`
                                                  :`🔁 Repost${republishPrice!=null?` (${republishPrice} Nugget${republishPrice>1?'s':''})`:''}`)}
                                 </button>);
@@ -4504,7 +4506,6 @@ const StockTab = memo(function StockTab({
         <RepublishSheet
           lang={lang}
           items={repubSheet.items}
-          gratuit={repubGratuit}
           prixUnitaire={republishPrice}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles)=>{
@@ -4512,7 +4513,6 @@ const StockTab = memo(function StockTab({
             if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix);
             else lancerRepublicationLot(cibles);
           }}
-          onUpgrade={()=>{track('premium_click',{source:'republish_sheet'});openUpgradeModal();}}
         />
       )}
       {/* Où en est ma republication — ouverte au tap sur la pastille de carte.

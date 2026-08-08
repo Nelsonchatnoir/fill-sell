@@ -206,8 +206,9 @@ function welcomeHtml(lang: string): string {
   // et faux. Le nouveau parle sync du dressing, republication, et du contrat
   // Pépites réel (coût affiché avant validation). AUCUN montant en dur (ni
   // prix d'abonnement, ni coût d'action) — la grille vit dans l'app, comme
-  // dans les CGV. Seule exception, assumée par Nico : « 30 Pépites
-  // offertes », le grant d'inscription, affiché aussi sur la landing.
+  // dans les CGV. Seule exception, assumée par Nico : « 50 Pépites
+  // offertes » (grille 2026-08-08), le grant d'inscription, affiché aussi
+  // sur la landing.
   // Gabarit inchangé : blocs verts, rangée de logos, encart ambre
   // « ordinateur », visuel Pépites, CTA — le design n'est pas refait.
   const logosRow = `
@@ -245,7 +246,7 @@ function welcomeHtml(lang: string): string {
     ${bloc("1. Récupère ton dressing Vinted en un clic",
       "Si tu vends déjà sur Vinted, FillSell importe toutes tes annonces — titres, prix, photos, vues et favoris. C'est gratuit et ça ne coûte aucune Pépite. Tu retrouves tout ton stock au même endroit, sans ressaisie.")}
     ${bloc("2. Republie les annonces qui dorment",
-      "Sur Vinted, une annonce ancienne ne se voit presque plus. D'un clic, FillSell sauvegarde la fiche, retire l'annonce et la remet en ligne à l'identique — tu peux même baisser le prix au passage. Gratuit avec Premium, et automatisable avec Pro.")}
+      "Sur Vinted, une annonce ancienne ne se voit presque plus. D'un clic, FillSell sauvegarde la fiche, retire l'annonce et la remet en ligne à l'identique — tu peux même baisser le prix au passage. 1 Pépite par annonce, et automatisable avec Pro.")}
     ${bloc("3. Publie partout d'un seul geste",
       "Ajoute un article à la voix ou par photo, FillSell rédige le titre, la description et suggère un prix, puis publie sur les plateformes que tu choisis.", "0 0 24px")}
     <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
@@ -284,7 +285,7 @@ function welcomeHtml(lang: string): string {
         <img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Pépites" style="display:inline-block;vertical-align:-3px;"> Tes Pépites
       </p>
       <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        Tu démarres avec 30 Pépites offertes, et tu en reçois chaque mois. Elles servent
+        Tu démarres avec 50 Pépites offertes, et tu en reçois chaque mois. Elles servent
         aux actions qui font travailler l'IA&nbsp;: retouche des photos, rédaction
         d'annonce, publication. L'app t'affiche toujours le coût avant que tu valides —
         rien n'est débité sans que tu le voies.
@@ -315,7 +316,7 @@ function welcomeHtml(lang: string): string {
     ${bloc("1. Bring in your Vinted closet in one click",
       "If you already sell on Vinted, FillSell imports all your listings — titles, prices, photos, views and favourites. It's free and costs no Nuggets. Your whole stock in one place, nothing to retype.")}
     ${bloc("2. Repost the listings that sleep",
-      "On Vinted, an old listing barely gets seen. In one click, FillSell saves the listing, removes it and puts it back online identically — you can even lower the price along the way. Free with Premium, and automatable with Pro.")}
+      "On Vinted, an old listing barely gets seen. In one click, FillSell saves the listing, removes it and puts it back online identically — you can even lower the price along the way. 1 Nugget per listing, and automatable with Pro.")}
     ${bloc("3. List everywhere in a single move",
       "Add an item by voice or photo, FillSell writes the title and description and suggests a price, then lists on the platforms you choose.", "0 0 24px")}
     <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
@@ -354,7 +355,7 @@ function welcomeHtml(lang: string): string {
         <img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Nuggets" style="display:inline-block;vertical-align:-3px;"> Your Nuggets
       </p>
       <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        You start with 30 free Nuggets, and you receive more every month. They power the
+        You start with 50 free Nuggets, and you receive more every month. They power the
         actions where the AI works for you: photo retouching, listing writing,
         publishing. The app always shows you the cost before you confirm — nothing is
         charged without you seeing it.

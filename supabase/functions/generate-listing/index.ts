@@ -701,7 +701,8 @@ serve(async (req) => {
       return json({ error: "Missing required fields: inventaire_id or item_data, photos, platforms" }, 400);
     }
 
-    // ── Génération PAYANTE : 1 Pépite, débitée ICI, avant tout appel LLM ─────
+    // ── Génération PAYANTE : price_generate Pépites (6 depuis la grille du
+    // 2026-08-08), débitées ICI, avant tout appel LLM ────────────────────────
     // (2026-08-05, remplace le plafond 15/60 par 24 h ET l'ancien pré-check
     // « le solde couvre-t-il la future publication » — la génération est un
     // poste à part entière : quelqu'un qui n'a que de quoi générer a le droit

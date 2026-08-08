@@ -1575,7 +1575,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
       </div>
       {/* ── Récap du prix (grille 2 axes, 2026-08-04) ─────────────────────────
           LE point de compréhension : photos une fois (0/9/32 selon l'option) +
-          3 Pépites par plateforme. Recalculé à CHAQUE case cochée/décochée et
+          price_per_platform Pépites par plateforme (coin_config, même prix
+          pour tous depuis 2026-08-08). Recalculé à CHAQUE case cochée/décochée et
           à chaque changement d'option — c'est ce total que le CTA Publier
           débitera. Masqué tant que coin_config n'a pas répondu : jamais un
           total faux. */}
@@ -1583,8 +1584,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         <div style={{ marginTop:12, padding:"11px 14px", borderRadius:12, background:T.paper, border:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
           <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, lineHeight:1.45 }}>
             {lang === 'en'
-              ? <>Photos: {reuseRetouched ? 'already retouched ✓' : (coinPrices[photoOption] === 0 ? 'free' : coinPrices[photoOption])} · Publishing: {coinPrices.per_platform === 0 ? 'free (Pro)' : <>{selected.size} × {coinPrices.per_platform}</>}</>
-              : <>Photos : {reuseRetouched ? 'déjà retouchées ✓' : (coinPrices[photoOption] === 0 ? 'offertes' : coinPrices[photoOption])} · Publication : {coinPrices.per_platform === 0 ? 'offerte (Pro)' : <>{selected.size} × {coinPrices.per_platform}</>}</>}
+              ? <>Photos: {reuseRetouched ? 'already retouched ✓' : (coinPrices[photoOption] === 0 ? 'free' : coinPrices[photoOption])} · Publishing: {coinPrices.per_platform === 0 ? 'free' : <>{selected.size} × {coinPrices.per_platform}</>}</>
+              : <>Photos : {reuseRetouched ? 'déjà retouchées ✓' : (coinPrices[photoOption] === 0 ? 'offertes' : coinPrices[photoOption])} · Publication : {coinPrices.per_platform === 0 ? 'offerte' : <>{selected.size} × {coinPrices.per_platform}</>}</>}
           </span>
           <strong style={{ fontSize:13.5, fontWeight:700, color:T.ink, display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
             = <PepiteIcon size={14} /> {coinPrices[photoOption] + coinPrices.per_platform * selected.size}
@@ -3259,15 +3260,15 @@ export default function ListingPreviewScreen({
   const coinPriceFor = (opt) => coinPrices?.[opt] ?? null;
   // Grille à deux axes (2026-08-04) : coinPriceFor rend le prix PHOTOS de
   // l'option (0/9/32, une fois par article) ; la publication coûte EN PLUS
-  // 3 Pépites par plateforme (coin_config.price_per_platform — jamais en dur).
+  // price_per_platform Pépites par plateforme (coin_config — jamais en dur).
   // Le total est la seule somme qui engage l'utilisateur : c'est LUI que
   // lisent le pré-check du step 1, le CTA Publier et la ConversionModal, et il
   // se recalcule à chaque plateforme cochée/décochée.
-  // Publication OFFERTE en Pro (2026-08-08) : 0 Pépite/plateforme. Le client
-  // ne fait qu'AFFICHER — la gratuité réelle est décidée par
-  // spend_coins_and_publish (is_pro lu en base, seule autorité de débit).
-  // Génération (price_generate) et retouche photos restent des postes payés.
-  const pubUnitPrice = isPro ? 0 : (coinPrices?.per_platform ?? null);
+  // Grille 2026-08-08 : le prix par plateforme est LE MÊME pour tous les
+  // paliers — la gratuité Pro du matin est morte le soir même, plus aucun
+  // prix conditionné au plan. Le client ne fait qu'AFFICHER coin_config ;
+  // spend_coins_and_publish reste la seule autorité de débit.
+  const pubUnitPrice = coinPrices?.per_platform ?? null;
   // ── Retouche non livrée ⇒ jamais facturée (2026-08-05 soir) ───────────────
   // Le pipeline retombe photo par photo sur l'original en cas d'échec GPT
   // Image : une option ia_* peut donc livrer ZÉRO retouche. Même détection
@@ -5845,7 +5846,7 @@ export default function ListingPreviewScreen({
             setBackground={setBackground}
             selected={selected}
             setSelected={setSelected}
-            coinPrices={isPro && coinPrices ? { ...coinPrices, per_platform: 0 } : coinPrices}
+            coinPrices={coinPrices}
             coinBalance={coinBalance}
             reservedBalance={reservedBalance}
             reuseRetouched={reuseRetouched}

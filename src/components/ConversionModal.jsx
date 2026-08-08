@@ -54,16 +54,16 @@ const ANIM = `
 // Exporté pour PlanDetailsModal (modale « mon plan » du badge header), qui lit
 // coin_config avec le même repli.
 export const COIN_CONFIG_FALLBACK = {
-  // Grille 2 axes du 2026-08-04 (+ génération payante du 05/08) : photos (par
-  // article) + 3 Pépites/plateforme + 1 Pépite la génération d'annonce.
+  // Grille du 2026-08-08 — MÊME PRIX POUR TOUS LES PALIERS : photos (par
+  // article) + 1 Pépite/plateforme + 6 Pépites la génération d'annonce.
   price_original: 0,
   price_ia_light: 9,
   price_ia_advanced: 32,
-  price_per_platform: 3,
-  price_generate: 1,
+  price_per_platform: 1,
+  price_generate: 6,
   price_lens_overflow: 6,
-  monthly_grant_premium: 150,
-  monthly_grant_pro: 600,
+  monthly_grant_premium: 400,
+  monthly_grant_pro: 1200,
 };
 
 // L'ex-DISPLAY_GRANT_PRO (un grant Pro affiché en avance sur la base) est mort
@@ -258,17 +258,18 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit
           PlanDetailsModal + la FAQ landing, mêmes mots).
           Règles vérifiées en base : stock illimité = trigger
           check_inventory_limit (premium/pro/comped exemptés pareil) ;
-          grille publication identique TOUS plans (le grant fait la
-          différence, affiché au-dessus) ; republication RPC → 0 Pépite
-          premium/pro/comped, sans plafond de nombre (cadence 1/article/24 h
-          pour tous — jamais promise au-delà) ; Lens = grant ÷ coût. */}
+          grille TARIFAIRE identique TOUS plans depuis le 2026-08-08 —
+          publication, génération ET republication au même prix pour tout le
+          monde, le grant seul fait la différence (affiché au-dessus) ;
+          republication cadence 1/article/24 h pour tous — jamais promise
+          au-delà ; Lens = grant ÷ coût. */}
       <Features
         items={[
           fr ? 'Stock illimité' : 'Unlimited stock',
-          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite, publication ${pubUnit} Pépites/plateforme)`
-             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget, publishing ${pubUnit} Nuggets/platform)`,
-          fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free)'
-             : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free)',
+          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
+             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
+          fr ? 'Republication Vinted en un clic — 1 Pépite par annonce'
+             : 'One-tap Vinted reposting — 1 Nugget per listing',
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
@@ -296,7 +297,7 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit
 // paliers. On annonce ce que le grant permet réellement (calculé).
 // Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
-export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, genPrice, onUpgrade }) {
+export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, genPrice, pubUnit, onUpgrade }) {
   return (
     <div style={{
       position: 'relative',
@@ -333,14 +334,13 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
         dark
         items={[
           fr ? 'Stock illimité' : 'Unlimited stock',
-          // Publication OFFERTE en Pro (2026-08-08) ; la génération est
-          // redevenue payante le même jour (retour arrière chiffré, Nico) :
-          // 1 Pépite pour TOUS les paliers — passage obligé par article, le
-          // débit borne la dépense d'un Pro à son grant de 600.
-          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs — publication OFFERTE, 0 Pépite/plateforme (annonce générée par IA ${genPrice} Pépite)`
-             : `Publish on Vinted, Leboncoin, eBay & Beebs — publishing FREE, 0 Nuggets/platform (AI-generated listing ${genPrice} Nugget)`,
-          fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free), et automatisable si tu l\'actives'
-             : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free), and automatable if you turn it on',
+          // Grille 2026-08-08 : la publication OFFERTE en Pro (qui aura vécu
+          // une journée) est morte — MÊME ligne tarifaire que la carte
+          // Premium, seuls le grant et l'automatisation diffèrent.
+          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
+             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
+          fr ? 'Republication Vinted en un clic — 1 Pépite par annonce, automatisable si tu l\'actives'
+             : 'One-tap Vinted reposting — 1 Nugget per listing, automatable if you turn it on',
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
@@ -480,10 +480,10 @@ export default function ConversionModal({
 
   const K = cfg || COIN_CONFIG_FALLBACK;
   const lensCost  = K.price_lens_overflow;
-  const grantPrem = K.monthly_grant_premium;      // lu en base (150)
-  const grantPro  = K.monthly_grant_pro;          // lu en base (600)
+  const grantPrem = K.monthly_grant_premium;      // lu en base (400)
+  const grantPro  = K.monthly_grant_pro;          // lu en base (1200)
   // Estimation d'analyses Lens permises par le grant mensuel — CALCULÉE, jamais
-  // écrite en dur : à 600 Pépites et 6 par analyse, cela fait 100 analyses.
+  // écrite en dur : à 1200 Pépites et 6 par analyse, cela fait 200 analyses.
   const lensPerMonth = (grant) => (lensCost > 0 ? Math.floor(grant / lensCost) : 0);
   const proFactor = grantPrem > 0 ? Math.round((grantPro / grantPrem) * 10) / 10 : null;
 

@@ -114,9 +114,13 @@ export default function CoinStoreModal({ open, onClose, lang, supabase, onPurcha
           <PepiteIcon size={24} /> {lang === "en" ? "Stock up on Nuggets" : "Recharger des Pépites"}
         </div>
         <p style={{ fontSize: 12.5, color: "#6B6862", lineHeight: 1.5, margin: "0 0 16px" }}>
+          {/* Réécrit 2026-08-08 SANS chiffres en dur : l'ancien texte portait
+              la grille d'avant le 04/08 (3/12/35) et mentait depuis. La grille
+              vit dans coin_config et s'affiche avant chaque action — ce texte
+              n'a pas à la dupliquer. */}
           {lang === "en"
-            ? "Nuggets pay for publishing (3 original · 12 light · 35 advanced per listing). They never expire."
-            : "Les Pépites paient tes publications (3 original · 12 légère · 35 avancée par annonce). Elles n'expirent jamais."}
+            ? "Nuggets pay for AI listing generation, publishing, reposting, Lens analysis and photo retouching. The app always shows the cost before you confirm. They never expire."
+            : "Les Pépites paient la génération d'annonce par IA, la publication, la republication, l'analyse Lens et la retouche photo. L'app t'affiche toujours le coût avant de valider. Elles n'expirent jamais."}
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>

@@ -85,8 +85,9 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
   const lensCost = K.price_lens_overflow;
   const grant = isPro ? K.monthly_grant_pro : K.monthly_grant_premium;
   const lensScans = lensCost > 0 ? Math.floor(grant / lensCost) : 0;
-  // Grille 2 axes (2026-08-04) : publication 3 Pépites/plateforme, retouche
-  // photos en option (0/9/32, une fois par article).
+  // Grille 2 axes (2026-08-04, prix 2026-08-08) : publication
+  // price_per_platform Pépites/plateforme — MÊME PRIX POUR TOUS LES PALIERS —
+  // retouche photos en option (0/9/32, une fois par article).
   const pubUnit = K.price_per_platform;
   const retouchMax = K.price_ia_advanced;
   // Upsell Pro (Premium uniquement) — mêmes formules que ConversionModal.
@@ -102,19 +103,18 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
   // libellé se répercute dans les trois endroits (+ FAQ landing).
   const features = [
     fr ? 'Stock illimité' : 'Unlimited stock',
-    // Publication OFFERTE en Pro ; génération payante pour TOUS les paliers
-    // (retour arrière du 08/08 après-midi) — même valeur que la carte Pro de
-    // ConversionModal ; Premium garde les prix de coin_config.
+    // Grille 2026-08-08 : plus AUCUN prix conditionné au palier — la ligne
+    // tarifaire est UNIQUE (coin_config), la branche isPro « publication
+    // OFFERTE » est morte le jour même de sa naissance. Seule
+    // l'automatisation de la republication reste un avantage Pro
+    // (fonctionnalité, pas prix).
+    fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${K.price_generate} Pépite${K.price_generate > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
+       : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget${K.price_generate > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
     isPro
-      ? (fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs — publication OFFERTE, 0 Pépite/plateforme (annonce générée par IA ${K.price_generate} Pépite)`
-            : `Publish on Vinted, Leboncoin, eBay & Beebs — publishing FREE, 0 Nuggets/platform (AI-generated listing ${K.price_generate} Nugget)`)
-      : (fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${K.price_generate} Pépite, publication ${pubUnit} Pépites/plateforme)`
-            : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget, publishing ${pubUnit} Nuggets/platform)`),
-    isPro
-      ? (fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free), et automatisable si tu l\'actives'
-            : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free), and automatable if you turn it on')
-      : (fr ? 'Republication Vinted illimitée et gratuite — 0 Pépite (1 Pépite par annonce en Free)'
-            : 'Unlimited free Vinted reposting — 0 Nuggets (1 Nugget per listing on Free)'),
+      ? (fr ? 'Republication Vinted en un clic — 1 Pépite par annonce, automatisable si tu l\'actives'
+            : 'One-tap Vinted reposting — 1 Nugget per listing, automatable if you turn it on')
+      : (fr ? 'Republication Vinted en un clic — 1 Pépite par annonce'
+            : 'One-tap Vinted reposting — 1 Nugget per listing'),
     fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
        : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
     fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
