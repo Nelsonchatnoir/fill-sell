@@ -3785,7 +3785,22 @@ const StockTab = memo(function StockTab({
                       :`${repubVivants} reposts queued — expect about ${repubVivants*5>=60?`${Math.ceil(repubVivants*5/60)} h`:`${repubVivants*5}-${repubVivants*7} min`}, at a human pace. It resumes on its own if you close Chrome.`}
                   </div>
                 )}
-                {(modePrixAchat?stockFiltre.filter(paIncomplet):listeStock).map(item=>{
+                {/* ── Mode republication en lot (fix 2026-08-08) : la liste ne
+                    montre QUE les articles republiables, comme le fait déjà le
+                    mode prix d'achat juste à côté (stockFiltre.filter). Avant,
+                    la liste restait dans son ordre habituel et les articles
+                    cochables — souvent les plus anciens, donc tout en bas —
+                    n'apparaissaient qu'après un long scroll : écran de
+                    sélection « vide » en apparence. Les non-éligibles
+                    reviennent dès la sortie du mode. */}
+                {modeRepublish&&repubActionnables.length===0&&(
+                  <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:12,padding:"14px 16px",fontSize:12.5,color:"#5C6560",fontWeight:600,lineHeight:1.55,marginBottom:8}}>
+                    🔁 {lang==='fr'
+                      ?"Aucune annonce republiable pour le moment. Une annonce est republiable quand elle est encore en ligne sur Vinted, sans republication déjà en file, et pas déjà recréée depuis moins de 24 h. Reviens un peu plus tard — ou quitte le mode ci-dessus."
+                      :"No listings can be reposted right now. A listing is repostable when it's still live on Vinted, has no repost already queued, and wasn't recreated in the last 24 hours. Check back later — or exit the mode above."}
+                  </div>
+                )}
+                {(modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnables:listeStock).map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
                   // prix d'achat absent et 0 € sur un null — la carte annonçait
@@ -4427,7 +4442,10 @@ const StockTab = memo(function StockTab({
                       </div>
                     </SwipeRow>
                   );})}
-                {stockFiltre.length>10&&!showAllStock&&(
+                {/* En mode republication, la liste montre déjà TOUS les
+                    republiables (pas de slice) : un « Voir plus » compté sur
+                    stockFiltre serait un bouton sans effet. */}
+                {!modeRepublish&&stockFiltre.length>10&&!showAllStock&&(
                   <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F2F0E9",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7A75",cursor:"pointer",marginTop:4}}>
                     {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
                   </button>
