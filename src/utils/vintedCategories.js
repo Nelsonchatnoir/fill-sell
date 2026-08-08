@@ -748,12 +748,39 @@ export const VINTED_ENFANT_AFFINAGES = [
     Fille: [...FI, "Bébé filles", "Grenouillères"],
     Garçon: [...GA, "Bébé garçons", "Grenouillères"],
   },
+  // 🧥 (révisé le 08/08 soir, décision Nico) : l'affinage « manteau
+  // générique → Parkas » de baa17d6 est RETIRÉ. « Manteaux » n'a AUCUNE
+  // feuille générique chez Vinted (Duffle-coats/Parkas/Cabans/Trenchs
+  // seulement, arbre L507-510, et le formulaire exige une feuille radio
+  // terminale) — une parka est un vêtement identifiable, pas un générique :
+  // un manteau de laine bébé rangé en Parkas est vu par les mauvaises
+  // acheteuses. DÉFAUT ASSUMÉ : le « manteau » nu RETOMBE sur le défaut
+  // historique de l'icône (Vestes > Doudounes, MODE_ENFANT) — on préfère un
+  // défaut connu à une feuille inventée. Seuls les MOTS À FEUILLE EXACTE
+  // affinent : un mot, une feuille, zéro devinette.
   {
     icon: "🧥",
-    re: /manteaux?\b/i,
-    sauf: /doudoune|porte.manteau/i,
+    re: /\bparkas?\b/i,
     Fille: [...FI, "Vêtements d'extérieur", "Manteaux", "Parkas"],
     Garçon: [...GA, "Vêtements d'extérieur", "Manteaux", "Parkas"],
+  },
+  {
+    icon: "🧥",
+    re: /\bduff(?:le|el).?coats?\b/i,
+    Fille: [...FI, "Vêtements d'extérieur", "Manteaux", "Duffle-coats"],
+    Garçon: [...GA, "Vêtements d'extérieur", "Manteaux", "Duffle-coats"],
+  },
+  {
+    icon: "🧥",
+    re: /\bcabans?\b/i,
+    Fille: [...FI, "Vêtements d'extérieur", "Manteaux", "Cabans"],
+    Garçon: [...GA, "Vêtements d'extérieur", "Manteaux", "Cabans"],
+  },
+  {
+    icon: "🧥",
+    re: /\btrench(?:s|.?coats?)?\b/i,
+    Fille: [...FI, "Vêtements d'extérieur", "Manteaux", "Trenchs"],
+    Garçon: [...GA, "Vêtements d'extérieur", "Manteaux", "Trenchs"],
   },
   // 👖 : l'icône (regex salopette|legging|… de shared.js) tombait sur le bac
   // « Pantalons et shorts > Autres » alors que des feuilles exactes existent

@@ -195,7 +195,14 @@ const affinageChecks = [
   ["👕", "Garçon", "Ensemble bébé Disney rayé Mickey 3 mois", "Ensembles"],
   ["👕", "Fille", "Ensemble legging et t-shirt fille 8 ans", "T-shirts"], // sans signal bébé : chemin d'icône inchangé
   ["🩲", "Fille", "Grenouillère bébé Disney Minnie Mouse", "Grenouillères"],
-  ["🧥", "Garçon", "Manteau réversible bébé 24 mois", "Parkas"],
+  // 🧥 révisé 08/08 soir : un mot, une feuille — et le VERROU : un
+  // « manteau » nu ne part PAS en Parkas, il retombe sur le défaut assumé
+  // Doudounes (« Manteaux » n'a aucune feuille générique chez Vinted).
+  ["🧥", "Garçon", "Parka kaki bébé 18 mois", "Parkas"],
+  ["🧥", "Fille", "Duffle-coat marine fille 3 ans", "Duffle-coats"],
+  ["🧥", "Garçon", "Caban en laine garçon 6 ans", "Cabans"],
+  ["🧥", "Fille", "Trench beige fille 8 ans", "Trenchs"],
+  ["🧥", "Garçon", "Manteau réversible bébé 24 mois", "Doudounes"],
   ["🧥", "Fille", "Manteau doudoune fille 4 ans", "Doudounes"],
   ["👖", "Fille", "Salopette en jean bébé 12 mois", "Salopettes"],
   ["👖", "Garçon", "Legging gris 4 ans", "Leggings"],
