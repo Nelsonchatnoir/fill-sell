@@ -1194,17 +1194,54 @@ async function fillListingForm(job) {
   // dialogues légitimes qu'un dismiss en cours de flux pourrait fermer.
   await dismissInterstitials("arrivée sur le formulaire");
 
-  const photoResult = job.photos?.length ? await uploadPhotos(job.photos) : null;
-  if (job.title) await fillTextField('#title, [data-testid="title--input"]', job.title);
-  if (job.description) await fillTextField('#description, [data-testid="description--input"]', job.description);
-
-  await selectCategory(fields.categoryPath);
-
-  // Dégradation propre : seule la CATÉGORIE (ci-dessus) reste bloquante —
-  // sans elle rien n'est publiable. Tous les champs à choix fermé qui
-  // suivent sautent avec un warning en cas de libellé introuvable, plutôt
-  // que de faire échouer le job entier sur un détail.
+  // Dégradation propre : seule la CATÉGORIE reste bloquante — sans elle rien
+  // n'est publiable. Tous les champs à choix fermé qui suivent sautent avec un
+  // warning en cas de libellé introuvable, plutôt que de faire échouer le job
+  // entier sur un détail.
   const warnings = [];
+  const diagnosticsRecreation = [];
+
+  // ══ B.5 ÉTENDU À TOUT LE REMPLISSAGE (2026-08-09, 3 annonces d'Ornella) ═════
+  // B.5 ne couvrait QUE ensurePhotosLanded — la toute dernière garde, juste
+  // avant le clic Publier. Tout ce qui échoue AVANT (photos, titre, catégorie)
+  // partait en exception et sortait de fillForm : la recréation n'était même
+  // pas tentée, et le background rangeait le job en needs_user avec l'annonce
+  // d'origine DÉJÀ SUPPRIMÉE. C'est ce trou, et pas seulement le sélecteur,
+  // qui a coûté trois annonces.
+  // La règle est désormais SANS EXCEPTION : après une suppression, aucun échec
+  // de remplissage n'empêche de soumettre. Le raisonnement est le même que
+  // pour les photos — un refus de Vinted se retente sur un formulaire encore
+  // ouvert ; une annonce supprimée et jamais recréée ne se rattrape pas.
+  // Hors recréation (publication normale), RIEN NE CHANGE : l'exception passe.
+  const recreation = job.platform_fields?.republish_recreation === true;
+  const etape = async (libelle, fn) => {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!recreation) throw e;
+      const note =
+        `${libelle} : échec NON BLOQUANT en recréation (${e?.message ?? e}) — ` +
+        "soumission tentée quand même, l'annonce d'origine n'existe plus.";
+      console.warn(`[vinted] ⚠️ ${note}`);
+      warnings.push(note);
+      if (e?.diagnostic) diagnosticsRecreation.push(`${libelle} → ${e.diagnostic}`);
+      // Un panneau resté ouvert recouvrirait le bouton Publier.
+      await closeAnyOpenDropdown().catch(() => {});
+      return null;
+    }
+  };
+
+  const photoResult = job.photos?.length
+    ? await etape("Photos", () => uploadPhotos(job.photos))
+    : null;
+  if (job.title) {
+    await etape("Titre", () => fillTextField('#title, [data-testid="title--input"]', job.title));
+  }
+  if (job.description) {
+    await etape("Description", () => fillTextField('#description, [data-testid="description--input"]', job.description));
+  }
+
+  await etape("Catégorie", () => selectCategory(fields.categoryPath));
   if (photoResult?.duplicated) {
     warnings.push(
       `photos: ${job.photos.length} fournie(s), complétées à ${photoResult.count} par duplication ` +
@@ -1410,23 +1447,39 @@ async function fillListingForm(job) {
   // catégorie SANS aucun attribut serait bloquée à tort — cas rare sur les
   // rayons ciblés (mode/high-tech ont tous des attributs), et la relance est le
   // remède. On préfère ce faux-négatif à une publication fantôme.
+  // ⛔ EXCEPTION RECRÉATION (B.5 étendu) : refuser de soumettre ici laisserait
+  // l'utilisateur sans annonce. On soumet, le doute part en warning.
   if (!requiredState.hadConfig) {
-    return {
-      success: false,
-      needsUser: true,
-      error:
-        "Impossible de vérifier les champs obligatoires Vinted pour cette catégorie " +
-        "(configuration non captée). Relance la publication — le formulaire sera rechargé.",
-      warnings,
-      discoveredRequired: requiredState.discovered,
-    };
+    if (!recreation) {
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          "Impossible de vérifier les champs obligatoires Vinted pour cette catégorie " +
+          "(configuration non captée). Relance la publication — le formulaire sera rechargé.",
+        warnings,
+        discoveredRequired: requiredState.discovered,
+      };
+    }
+    warnings.push(
+      "Champs obligatoires NON VÉRIFIABLES (configuration de catégorie non captée) — " +
+      "RECRÉATION : soumission tentée quand même."
+    );
   }
 
   // ── Gate PRÉ-CLIC (règle produit du chantier) : un requis vide ne part
   // JAMAIS en silence. Le 400 serveur est certain (prouvé f69e319c) : cliquer
   // ne ferait qu'exposer un échec de plus à DataDome. needsUser explicite,
   // libellés humains exacts — l'app les présente en saisie manuelle.
-  if (requiredState.unfilled.length) {
+  // ⛔ EXCEPTION RECRÉATION (B.5 étendu) — même raison qu'au-dessus : un requis
+  // vide produira au pire un refus de Vinted, retentable sur un formulaire
+  // encore ouvert. L'alternative, c'est l'annonce perdue.
+  if (requiredState.unfilled.length && recreation) {
+    warnings.push(
+      `Requis Vinted encore vides (${requiredState.unfilled.join(", ")}) — ` +
+      "RECRÉATION : soumission tentée quand même."
+    );
+  } else if (requiredState.unfilled.length) {
     // Options ACCEPTÉES par la catégorie (config attributes) annexées à chaque
     // requis vide : sans elles, l'erreur était inactionnable (cas réel Medik8
     // 18/07 — « État » vide alors que la Beauté n'accepte QUE « Neuf avec
@@ -1486,7 +1539,7 @@ async function fillListingForm(job) {
   // strictement pire que soumettre — cf. le bandeau de ensurePhotosLanded.
   if (photoResult) {
     const photoGardeNote = await ensurePhotosLanded(photoResult, "vinted", {
-      bloquant: job.platform_fields?.republish_recreation !== true,
+      bloquant: !recreation,
     });
     if (photoGardeNote) warnings.push(photoGardeNote);
   }
@@ -1575,9 +1628,18 @@ async function fillListingForm(job) {
         discoveredRequired: requiredState.discovered,
       };
     }
-    return { success: false, error: proof.error, warnings, discoveredRequired: requiredState.discovered };
+    return { success: false, error: proof.error, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered };
   }
-  return { success: true, listingUrl: proof.listingUrl, warnings, discoveredRequired: requiredState.discovered };
+  return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered };
+
+  // La PREUVE DOM des étapes tolérées ne se perd pas parce qu'on a soumis
+  // quand même : elle voyage sur result.diagnostic, que le background range
+  // dans platform_fields.last_diagnostic (requêtable en SQL). Sans ça, une
+  // recréation « réussie » masquerait le sélecteur cassé qui l'a fait boiter.
+  function annexeRecreation() {
+    if (!diagnosticsRecreation.length) return {};
+    return { diagnostic: diagnosticsRecreation.join(" || ").slice(0, 2000) };
+  }
 }
 
 // Après le clic Publier, Vinted fait l'un des QUATRE (le 4e découvert en réel
@@ -2155,11 +2217,45 @@ function askBackground(msg) {
 // une ligne de plus. Un data-testid ne dépend pas du hash de build : c'est ce
 // qui rend cette sonde durable là où une classe ne l'est pas.
 // Repli (déclencheur sans data-testid) : la chaîne du registre.
+//
+// ── TROIS PREUVES D'OUVERTURE, PAS UNE (2026-08-09, 3 annonces d'Ornella) ────
+// Le « -content » seul a supprimé trois annonces sans les recréer. Relevé en
+// direct sur /items/new le 09/08, à tous les niveaux de l'arbre :
+//   fermé  → catalog-select-dropdown-input + catalog-select-dropdown-chevron-DOWN
+//   ouvert → catalog-select-dropdown-input + …-content + …-chevron-UP
+// Or les jobs morts montraient : input + chevron-UP + close-button +
+// save-button, et PAS de -content. Le panneau était donc GRAND OUVERT pendant
+// que la sonde jurait le contraire — exactement le scénario du 05/08, une
+// couche plus loin. Deux causes possibles, la même parade :
+//   · le -content n'est pas encore monté quand on regarde (fenêtre de travail
+//     MINIMISÉE ⇒ timers throttlés à ≥ 1 s : un budget de 300 ms ne pouvait
+//     rien voir) ;
+//   · variante « modale » du composant (close-button + save-button), où le
+//     contenu ne porte pas ce data-testid.
+// On croise donc trois témoins indépendants qui ne peuvent pas mourir
+// ensemble, tous DÉRIVÉS du déclencheur (aucune classe hachée par build) :
+//   1. -content      : le panneau lui-même ;
+//   2. -chevron-up   : l'état du déclencheur — convention vérifiée identique
+//                      sur catalog, brand ET color, donc universelle ;
+//   3. -close-button : la chrome de la variante modale.
+// N'importe lequel suffit à dire « ouvert ». C'est aussi ce qui sert à dire
+// « refermé » (dernierPanneauProbe) : les trois disparaissent à la fermeture.
 function panneauDuDeclencheur(trigger) {
   const tid = trigger?.getAttribute?.("data-testid") ?? "";
   if (!/-input$/.test(tid)) return null;
-  const sel = `[data-testid="${tid.replace(/-input$/, "-content")}"]`;
-  return () => document.querySelector(sel);
+  const prefixe = tid.replace(/-input$/, "");
+  const sels = [
+    `[data-testid="${prefixe}-content"]`,
+    `[data-testid="${prefixe}-chevron-up"]`,
+    `[data-testid="${prefixe}-close-button"]`,
+  ];
+  return () => {
+    for (const s of sels) {
+      const el = document.querySelector(s);
+      if (el) return el;
+    }
+    return null;
+  };
 }
 
 // Sonde du DERNIER panneau ouvert par openDropdown. confirmDropdownIfNeeded et
@@ -2255,15 +2351,40 @@ async function openDropdown(triggerSelector) {
 // 05/08 : chaque clic ouvrait puis refermait un panneau que la sonde ne voyait
 // pas, six fois de suite, et l'erreur disait « n'a pas ouvert de panneau »
 // alors qu'il s'ouvrait parfaitement.
-async function clickUntilPanelOpens(trigger, { attempts = 6, perAttemptMs = 300, probe = null } = {}) {
+// ⚠️⚠️ UN RETRY NE TOGGLE JAMAIS (leçon Beebs, re-vécue ici le 2026-08-09) ⚠️⚠️
+// Ce déclencheur est une BASCULE : chaque clic ouvre OU ferme. La version
+// précédente cliquait six fois de suite sans jamais regarder l'état AVANT de
+// cliquer. Deux conséquences, toutes deux constatées sur les jobs d'Ornella :
+//   · panneau déjà ouvert en entrant (reste d'une tentative précédente) → le
+//     1er clic le FERME, et on repart pour cinq allers-retours ;
+//   · panneau qui met plus longtemps que le budget à monter → il s'ouvre juste
+//     APRÈS l'expiration, le clic suivant le referme, et ainsi de suite : une
+//     résonance en anti-phase où le panneau clignote six fois pendant que le
+//     code conclut « jamais ouvert ». Le dump DOM final (chevron-UP) le prouve.
+// Deux gardes, dans cet ordre :
+//   1. on RELIT l'état au début de CHAQUE tour — un panneau ouvert, quelle
+//      qu'en soit la raison, sort immédiatement sans un clic de plus ;
+//   2. le budget d'attente CROÎT (1,2 s puis 2,4 s…). La fenêtre de travail est
+//      minimisée : Chrome y throttle les timers à ≥ 1 s, et jusqu'à 1/min après
+//      5 min cachée — les 300 ms d'origine ne pouvaient rien observer. Même
+//      leçon que le budget de ensurePhotosLanded : décider sur l'ÉTAT FINAL,
+//      jamais sur l'horloge.
+// `probe` = sonde d'ouverture de CE champ (panneauDuDeclencheur, trois
+// témoins). Sans elle on retombe sur la sonde générique du registre — ce qui a
+// produit l'échec du 05/08.
+async function clickUntilPanelOpens(trigger, { attempts = 6, perAttemptMs = 1200, probe = null } = {}) {
   const S = await sel();
   const panneau = probe ?? dropdownPanelProbe(S);
   for (let i = 0; i < attempts; i++) {
+    // Déjà ouvert ⇒ NE PAS CLIQUER (sinon on referme ce qu'on veut).
+    if (panneau()) return true;
     simulateFullClick(trigger);
-    const opened = await waitForElement(panneau, perAttemptMs, "vinted/publish.dropdown_panel").catch(() => null);
+    const budget = perAttemptMs * (i + 1);
+    const opened = await waitForElement(panneau, budget, "vinted/publish.dropdown_panel").catch(() => null);
     if (opened) return true;
   }
-  return false;
+  // Dernière relecture : le panneau a pu monter pendant le dernier battement.
+  return panneau() != null;
 }
 
 // Confirmé par test réel sur Catégorie : cliquer la feuille (rond radio) ne
