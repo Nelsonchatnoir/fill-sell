@@ -51,6 +51,10 @@ const EXTENSION_URL = 'https://fillsell.app/extension';
 
 export default function ExtensionPitchScreen({
   lang, onClose, onContinue = null, supabase = null, userId = null, onExtensionSeen = null,
+  // Textes surchargeables (lot 2, onboarding) : le MÉCANISME (lien /extension,
+  // mailto, copie, re-vérification) est unique — seul le discours change selon
+  // le contexte (publier vs importer le dressing). null = textes historiques.
+  eyebrow = null, body = null,
 }) {
   const fr = lang !== 'en';
   const isMobile = useIsMobile();
@@ -150,15 +154,15 @@ export default function ExtensionPitchScreen({
           </div>
 
           <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.mute, marginBottom: 6 }}>
-            {fr ? 'Pour publier tes annonces' : 'To post your listings'}
+            {eyebrow ?? (fr ? 'Pour publier tes annonces' : 'To post your listings')}
           </div>
           <div style={{ textAlign: 'center', fontSize: 19, fontWeight: 700, color: C.ink, letterSpacing: '-0.01em', marginBottom: 10 }}>
             {fr ? "Il te faut l'extension FillSell, sur ordinateur" : 'You need the FillSell extension, on a computer'}
           </div>
           <p style={{ margin: '0 0 12px', fontSize: 13.5, color: C.mute2, lineHeight: 1.55, textAlign: 'center' }}>
-            {fr
+            {body ?? (fr
               ? "C'est elle qui met tes annonces en ligne pour toi sur Vinted, Leboncoin, eBay et Beebs. Elle est gratuite — et dès son installation, tout ton dressing Vinted se synchronise dans FillSell en quelques secondes."
-              : 'It posts your listings for you on Vinted, Leboncoin, eBay and Beebs. It is free — and as soon as it is installed, your entire Vinted wardrobe syncs into FillSell within seconds.'}
+              : 'It posts your listings for you on Vinted, Leboncoin, eBay and Beebs. It is free — and as soon as it is installed, your entire Vinted wardrobe syncs into FillSell within seconds.')}
           </p>
 
           {onComputer ? (

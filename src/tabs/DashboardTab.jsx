@@ -299,8 +299,10 @@ const DashboardTab = memo(function DashboardTab({
   items, sales, stock, stockVal, stockQty,
   tm, salesForKpis, totalM,
   selectedRange, setSelectedRange,
-  fabTriggerRef, openUpgradeModal, setTab,
+  openUpgradeModal, setTab,
   EmptyStateDashboard,
+  // Lot 2 : ligne discrète « extension pas encore installée » de l'état vide.
+  extensionAbsente = false, onExtensionInfo = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
@@ -404,8 +406,10 @@ const DashboardTab = memo(function DashboardTab({
         <div style={{maxWidth:520,margin:"40px auto 0",animation:"fadeIn 0.4s ease",width:"100%"}}>
           <EmptyStateDashboard
             lang={lang}
-            onTryVoice={()=>fabTriggerRef.current?.()}
+            onImport={()=>{setTab(1); localStorage.setItem('tab',1);}}
             onOpenLens={()=>{setTab(2); localStorage.setItem('tab',2);}}
+            extensionAbsente={extensionAbsente}
+            onExtensionInfo={onExtensionInfo}
           />
         </div>
       ):(

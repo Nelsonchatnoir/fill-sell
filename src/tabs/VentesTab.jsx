@@ -98,7 +98,7 @@ const PREVIEW_STATS = [
   },
 ];
 
-function SalesTicker({ lang, fmt, setTab }) {
+function SalesTicker({ lang, fmt, setTab, extensionAbsente = false, onExtensionInfo = null }) {
   const [idx, setIdx]           = useState(0);
   const [visible, setVisible]   = useState(true);
   const [progress, setProgress] = useState(0);
@@ -186,17 +186,21 @@ function SalesTicker({ lang, fmt, setTab }) {
         </div>
       </div>
 
-      {/* Accroche */}
+      {/* Accroche (lot 2) : dire ce que CET écran fera — la vente arrive avec
+          sa marge, et FillSell propose de retirer les autres annonces (sur
+          confirmation, jamais tout seul). */}
       <div className="vt-anim" style={{textAlign:'center',animation:'vt-rise 0.5s ease 0.05s both'}}>
         <div style={{fontSize:21,fontWeight:700,letterSpacing:'-0.02em',color:UI.ink}}>
-          {fr?"Tes profits t'attendent":'Your profits are waiting'}
+          {fr?'Aucune vente pour l\'instant':'No sales yet'}
         </div>
-        <div style={{fontSize:13.5,fontWeight:500,lineHeight:1.5,color:UI.mute,maxWidth:250,margin:'8px auto 0'}}>
-          {fr?'Enregistre tes achats et ventes pour voir tes gains en temps réel.':'Log your buys and sells to track your profits in real time.'}
+        <div style={{fontSize:13.5,fontWeight:500,lineHeight:1.5,color:UI.mute,maxWidth:290,margin:'8px auto 0'}}>
+          {fr
+            ?'Quand un de tes articles part sur une plateforme, il apparaît ici avec ta marge — et FillSell te proposera de retirer les autres annonces.'
+            :'When one of your items sells on a marketplace, it shows up here with your margin — and FillSell will offer to remove the other listings.'}
         </div>
       </div>
 
-      {/* CTA principal — ouvre le Stock (ajout d'article) */}
+      {/* CTA principal — voir le Stock */}
       <button
         className="vt-anim"
         onClick={()=>{setTab(1);localStorage.setItem('tab',1);}}
@@ -205,9 +209,21 @@ function SalesTicker({ lang, fmt, setTab }) {
           background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,boxShadow:'0 12px 26px -10px rgba(47,158,144,0.5)',
           animation:'vt-rise 0.5s ease 0.1s both'}}
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        {fr?'Ajouter un article':'Add an item'}
+        {fr?'Voir mon stock':'See my stock'}
       </button>
+
+      {/* Ligne discrète, non bloquante (lot 2) : extension jamais vue sur ce
+          compte — même phrase que l'accueil vide, même accroche au clic. */}
+      {extensionAbsente&&(
+        <p className="vt-anim" style={{margin:'0 4px',fontSize:12,lineHeight:1.5,color:UI.mute,fontWeight:500,textAlign:'center',animation:'vt-rise 0.5s ease 0.12s both'}}>
+          {fr
+            ?"L'extension n'est pas encore installée sur ton ordinateur — c'est elle qui publie pour toi. "
+            :"The extension isn't installed on your computer yet — it's what publishes for you. "}
+          <button onClick={()=>onExtensionInfo?.()} style={{background:'none',border:'none',padding:0,fontSize:12,fontWeight:700,color:UI.tealDeep,textDecoration:'underline',cursor:'pointer',fontFamily:'inherit'}}>
+            {fr?'Installer':'Install'}
+          </button>
+        </p>
+      )}
 
       {/* Mini-stats d'EXEMPLE — jamais les données de l'utilisateur */}
       <div className="vt-anim" style={{animation:'vt-rise 0.5s ease 0.15s both'}}>
@@ -278,6 +294,8 @@ const VentesTab = memo(function VentesTab({
   searchHistory, setSearchHistory,
   showAllSales, setShowAllSales,
   iapProduct, iapLoading, handleIAPPurchase, handleIAPRestore,
+  // Lot 2 : ligne discrète « extension pas encore installée » de l'état vide.
+  extensionAbsente = false, onExtensionInfo = null,
   delSale, setTab, setEditItem,
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal,
@@ -872,7 +890,7 @@ const VentesTab = memo(function VentesTab({
         // flottant (56 px + marge) : sans lui, le CTA « stats avancées » et la
         // grille de mini-stats finissaient sous le bouton en fin de scroll.
         <div style={{display:'flex',flexDirection:'column',gap:16,paddingBottom:'var(--nav-content-clearance)'}}>
-          <SalesTicker lang={lang} fmt={fmt} setTab={setTab}/>
+          <SalesTicker lang={lang} fmt={fmt} setTab={setTab} extensionAbsente={extensionAbsente} onExtensionInfo={onExtensionInfo}/>
           {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email} label={lang==='fr'?'✨ Passer au niveau supérieur · 12,99 €/mois':undefined}/>)}
           {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} label={lang==='fr'?'✨ Passer au niveau supérieur →':undefined}/>)}
         </div>

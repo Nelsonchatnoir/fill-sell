@@ -58,6 +58,8 @@ import PepiteIcon from './components/PepiteIcon';
 import PepiteAmount from './components/PepiteAmount';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
+import OnboardingFlow, { ONBOARD_STATE_KEY, ONBOARD_DONE_KEY } from './components/OnboardingFlow';
+import ExtensionPitchScreen from './components/ExtensionPitchScreen';
 import PlanDetailsModal from './components/PlanDetailsModal';
 import { useIsMobile } from './hooks/useIsMobile';
 import BrandMark from './components/BrandMark';
@@ -1187,7 +1189,7 @@ function AvgDaysChart({filtered, items, lang}) {
 // Logos plateformes : PlatformLogo (vraies icônes d'app), pas les pastilles
 // lettrées de la maquette. Le bloc Lens navigue vers l'onglet Lens (tab 2)
 // via le même mécanisme que la nav bar (onOpenLens branché sur setTab).
-function EmptyStateDashboard({ lang, onTryVoice, onOpenLens }) {
+function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = false, onExtensionInfo = null }) {
   const fr = lang !== 'en';
   const MicSvg = ({ size=34, stroke="#fff" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
@@ -1210,8 +1212,11 @@ function EmptyStateDashboard({ lang, onTryVoice, onOpenLens }) {
     },
     {
       icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
-      titleFr:"Vendu quelque part, retiré partout", titleEn:"Sold somewhere, removed everywhere",
-      descFr:"Vendu sur Vinted ? Retiré de Leboncoin, eBay et Beebs aussitôt.", descEn:"Sold on Vinted? Removed from Leboncoin, eBay and Beebs right away.",
+      // Lot 2 : le retrait n'est jamais « tout seul » — détection automatique,
+      // retrait SUR CONFIRMATION (pending_removal + bandeau). Même discours
+      // que la landing depuis le lot 1.
+      titleFr:"Vendu quelque part ? Tu retires les autres en un tap", titleEn:"Sold somewhere? Remove the others in one tap",
+      descFr:"Vendu sur Vinted ? FillSell te prévient — tu retires Leboncoin, eBay et Beebs en un tap.", descEn:"Sold on Vinted? FillSell lets you know — you remove Leboncoin, eBay and Beebs in one tap.",
     },
   ];
   return (
@@ -1229,29 +1234,32 @@ function EmptyStateDashboard({ lang, onTryVoice, onOpenLens }) {
             <span style={{width:6,height:6,borderRadius:99,background:UI.amber}}/>
             <span style={{fontWeight:700,fontSize:10.5,letterSpacing:"0.1em",color:"#C46A3E",whiteSpace:"nowrap"}}>{fr?"STOCK VIDE · À TOI DE JOUER":"EMPTY STOCK · YOUR MOVE"}</span>
           </div>
+          {/* Lot 2 : le hero dit CE QUE FAIT le produit et propose les deux
+              premiers gestes (importer / ajouter par photo). Le vocal reste
+              accessible par le FAB micro et la carte plus bas — mais ce n'est
+              plus lui, l'entrée en matière. */}
           <div style={{position:"relative",width:80,height:80,margin:"0 auto 20px"}}>
             <span style={{position:"absolute",inset:0,borderRadius:24,background:"rgba(47,158,144,0.28)",animation:"fsPulse 2.6s ease-out infinite"}}/>
             <span style={{position:"absolute",inset:0,borderRadius:24,background:"rgba(47,158,144,0.28)",animation:"fsPulse 2.6s ease-out infinite",animationDelay:"1.3s"}}/>
             <div style={{position:"relative",width:80,height:80,borderRadius:24,background:`linear-gradient(150deg,${UI.teal},${UI.tealDeep})`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 10px 24px rgba(27,110,98,0.35)"}}>
-              <MicSvg/>
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
             </div>
           </div>
-          <h1 style={{margin:0,fontWeight:700,fontSize:27,lineHeight:1.15,letterSpacing:"-0.02em",color:UI.ink}}>{fr?"Parle, l'IA fait le reste.":"Talk, the AI does the rest."}</h1>
-          <p style={{margin:"12px auto 0",maxWidth:284,fontSize:15,lineHeight:1.5,color:UI.mute,fontWeight:400}}>
-            {fr
-              ? <>Dis « J'ai payé ce jean 8 € » — l'IA l'ajoute, le classe et le range. <span style={{color:UI.tealDeep,fontWeight:600}}>Zéro formulaire.</span></>
-              : <>Say “I paid €8 for these jeans” — the AI adds, sorts and stores it. <span style={{color:UI.tealDeep,fontWeight:600}}>Zero forms.</span></>
-            }
-          </p>
-          <div
-            onClick={onTryVoice}
-            role="button"
-            style={{display:"flex",alignItems:"center",gap:10,marginTop:20,background:UI.canvas,border:`1px solid ${UI.border}`,borderRadius:16,padding:"15px 14px",cursor:"pointer"}}
+          <h1 style={{margin:0,fontWeight:700,fontSize:25,lineHeight:1.2,letterSpacing:"-0.02em",color:UI.ink}}>
+            {fr?"Publie tes articles sur Vinted, Leboncoin, eBay et Beebs sans les saisir quatre fois.":"List your items on Vinted, Leboncoin, eBay and Beebs without typing them four times."}
+          </h1>
+          <button
+            onClick={onImport}
+            style={{marginTop:20,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9,padding:15,border:"none",borderRadius:16,background:`linear-gradient(135deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontWeight:700,fontSize:15,fontFamily:"inherit",boxShadow:"0 8px 20px rgba(27,110,98,0.3)",cursor:"pointer"}}
           >
-            <span style={{fontWeight:700,fontSize:22,color:UI.teal,lineHeight:0.6}}>«</span>
-            <span style={{flex:1,textAlign:"left",fontStyle:"italic",fontWeight:500,fontSize:15,color:"#6E6A5E"}}>{fr?"J'ai vendu mon…":"I sold my…"}</span>
-            <span style={{fontWeight:700,fontSize:10,letterSpacing:"0.08em",color:"#C46A3E",background:"rgba(232,149,109,0.18)",padding:"5px 9px",borderRadius:8}}>{fr?"VENDRE":"SELL"}</span>
-          </div>
+            {fr?"Importer mon dressing Vinted":"Import my Vinted wardrobe"}
+          </button>
+          <button
+            onClick={onOpenLens}
+            style={{marginTop:10,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9,padding:14,borderRadius:16,background:UI.canvas,border:`1px solid ${UI.border}`,color:UI.ink,fontWeight:700,fontSize:14,fontFamily:"inherit",cursor:"pointer"}}
+          >
+            {fr?"Ajouter mon premier article":"Add my first item"}
+          </button>
         </div>
       </section>
 
@@ -1266,7 +1274,7 @@ function EmptyStateDashboard({ lang, onTryVoice, onOpenLens }) {
           ))}
         </div>
         <p style={{margin:"12px auto 0",maxWidth:288,fontSize:12.5,lineHeight:1.45,color:UI.mute,fontWeight:400}}>
-          {fr?"Une annonce, publiée partout. Vendu ? Ton stock, tes ventes et tes marges se mettent à jour tout seuls.":"One listing, published everywhere. Sold? Your stock, sales and margins update on their own."}
+          {fr?"Une annonce, publiée partout. Dès que tu confirmes une vente, ton stock, tes ventes et tes marges se mettent à jour.":"One listing, published everywhere. As soon as you confirm a sale, your stock, sales and margins are updated."}
         </p>
       </div>
 
@@ -1297,8 +1305,10 @@ function EmptyStateDashboard({ lang, onTryVoice, onOpenLens }) {
           <h2 style={{margin:0,fontWeight:700,fontSize:20,letterSpacing:"-0.01em",color:UI.ink}}>{fr?"Bon deal ou pas ? Lens tranche.":"Good deal or not? Lens decides."}</h2>
           <p style={{margin:"10px 0 0",fontSize:14.5,lineHeight:1.55,color:UI.mute,fontWeight:400}}>
             {fr
-              ? <>Prends un article en photo : l'IA l'identifie, estime <span style={{color:UI.tealDeep,fontWeight:600}}>son prix de revente</span> et la meilleure plateforme, puis note le deal sur 10.</>
-              : <>Snap a photo of an item: the AI identifies it, estimates <span style={{color:UI.tealDeep,fontWeight:600}}>its resale price</span> and the best platform, then rates the deal out of 10.</>
+              // Lot 2 : plus de « note sur 10 » — le deal score a été retiré de
+              // Lens (AnalyseMarche.jsx), le verdict réel est prix + plateforme.
+              ? <>Prends un article en photo : l'IA l'identifie, estime <span style={{color:UI.tealDeep,fontWeight:600}}>son prix de revente</span> et la meilleure plateforme pour le revendre.</>
+              : <>Snap a photo of an item: the AI identifies it, estimates <span style={{color:UI.tealDeep,fontWeight:600}}>its resale price</span> and the best marketplace to sell it on.</>
             }
           </p>
           <button
@@ -1323,6 +1333,19 @@ function EmptyStateDashboard({ lang, onTryVoice, onOpenLens }) {
           </div>
         ))}
       </div>
+
+      {/* Ligne discrète, non bloquante (lot 2) : l'extension n'a jamais été vue
+          sur ce compte — on le dit sans en faire un mur, avec le lien qui va bien. */}
+      {extensionAbsente&&(
+        <p style={{margin:"2px 4px 0",fontSize:12,lineHeight:1.5,color:UI.mute,fontWeight:500,textAlign:"center"}}>
+          {fr
+            ?"L'extension n'est pas encore installée sur ton ordinateur — c'est elle qui publie pour toi. "
+            :"The extension isn't installed on your computer yet — it's what publishes for you. "}
+          <button onClick={onExtensionInfo} style={{background:"none",border:"none",padding:0,fontSize:12,fontWeight:700,color:UI.tealDeep,textDecoration:"underline",cursor:"pointer",fontFamily:"inherit"}}>
+            {fr?"Installer":"Install"}
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -1822,6 +1845,26 @@ export default function App({ loginOnly = false }){
   const [currency,setCurrency]=useState(()=>localStorage.getItem('fs_currency')||'EUR');
   const [showCurrencyOnboarding,setShowCurrencyOnboarding]=useState(false);
   const [showUsernameOnboarding,setShowUsernameOnboarding]=useState(false);
+  // Onboarding « Tu vends déjà sur Vinted ? » (lot 2) : ouvert à la fermeture
+  // de la modale devise+pseudo (comptes NEUFS uniquement), et REPRIS au
+  // chargement si l'utilisateur était resté sur l'écran d'attente de
+  // l'extension (état persisté par OnboardingFlow).
+  const [showOnboardingFlow,setShowOnboardingFlow]=useState(false);
+  // Accroche extension ouverte depuis les lignes discrètes des états vides
+  // (« L'extension n'est pas encore installée… ») — même écran que partout.
+  const [showExtensionInfo,setShowExtensionInfo]=useState(false);
+  // Reprise de l'attente d'extension : l'utilisateur a choisi « Oui, j'ai déjà
+  // des annonces », est parti installer (ou s'envoyer le lien), puis a fermé
+  // l'app. Au retour, l'écran d'attente revient tout seul — la détection puis
+  // la sync s'enchaînent sans qu'il ait à recliquer quoi que ce soit.
+  useEffect(()=>{
+    if(!user?.id)return;
+    try{
+      if(!localStorage.getItem(ONBOARD_DONE_KEY)&&localStorage.getItem(ONBOARD_STATE_KEY)==='attente_extension'){
+        setShowOnboardingFlow(true);
+      }
+    }catch{/* stockage local indisponible : pas de reprise */}
+  },[user?.id]);
   const [username,setUsername]=useState('');
   // Bandeau retrait cross-plateforme (Phase B, 2026-07-11) : jobs frères d'un
   // article VENDU encore en ligne ailleurs — flag platform_fields.
@@ -5096,10 +5139,11 @@ export default function App({ loginOnly = false }){
             stock={stock} stockVal={stockVal} stockQty={stockQty}
             tm={tm} salesForKpis={salesForKpis} totalM={totalM}
             selectedRange={selectedRange} setSelectedRange={setSelectedRange}
-            fabTriggerRef={fabTriggerRef}
             openUpgradeModal={openUpgradeModal}
             setTab={setTab}
             EmptyStateDashboard={EmptyStateDashboard}
+            extensionAbsente={extensionNeverSeen===true}
+            onExtensionInfo={()=>setShowExtensionInfo(true)}
           />
         )}
 
@@ -5174,6 +5218,7 @@ export default function App({ loginOnly = false }){
             IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={openUpgradeModal}
             onStepperOpenChange={setListingStepperOpen}
+            onAddByPhoto={()=>{setTab(2);localStorage.setItem('tab',2);}}
           />
         )}
 
@@ -5213,6 +5258,8 @@ export default function App({ loginOnly = false }){
             showAllSales={showAllSales} setShowAllSales={setShowAllSales}
             iapProduct={iapProduct} iapLoading={iapLoading}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
+            extensionAbsente={extensionNeverSeen===true}
+            onExtensionInfo={()=>setShowExtensionInfo(true)}
             delSale={delSale} setTab={setTab} setEditItem={setEditItem}
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={openUpgradeModal}
@@ -6153,7 +6200,30 @@ export default function App({ loginOnly = false }){
           if(uname){await supabase.rpc('set_profile_username',{p_username:uname});setUsername(uname);localStorage.setItem('fs_username_asked','1');}
           localStorage.setItem('fs_currency_confirmed','1');
           setShowCurrencyOnboarding(false);
+          // Compte NEUF (cette modale ne s'affiche que quand profiles.currency
+          // est vide) → écran de choix « Tu vends déjà sur Vinted ? » (lot 2).
+          try{if(!localStorage.getItem(ONBOARD_DONE_KEY))setShowOnboardingFlow(true);}catch{setShowOnboardingFlow(true);}
         }}/>
+      )}
+      {showOnboardingFlow&&user&&(
+        <OnboardingFlow
+          lang={lang}
+          user={user}
+          onDone={(dest)=>{
+            setShowOnboardingFlow(false);
+            if(dest==='lens'){setTab(2);localStorage.setItem('tab',2);}
+            else{setTab(1);localStorage.setItem('tab',1);}
+          }}
+        />
+      )}
+      {showExtensionInfo&&(
+        <ExtensionPitchScreen
+          lang={lang}
+          onClose={()=>setShowExtensionInfo(false)}
+          supabase={supabase}
+          userId={user?.id??null}
+          onExtensionSeen={()=>setShowExtensionInfo(false)}
+        />
       )}
       {showUsernameOnboarding&&(
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',boxSizing:'border-box'}}>

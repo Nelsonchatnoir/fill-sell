@@ -19,7 +19,7 @@ import { supabase } from '../lib/supabase';
 import {
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
   getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType,
-  getRotatingExamples, SKELETON_ITEMS, SKELETON_SOLD,
+  getRotatingExamples, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
   PLATFORM_LOGIN_URLS, LBC_DEPOSIT_URL, humanizeJobError,
@@ -2107,6 +2107,8 @@ const StockTab = memo(function StockTab({
   // Injected components (defined in App.jsx)
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal, onStepperOpenChange,
+  // Lot 2 : « Ajouter un article » de l'état vide → création par photo (Lens).
+  onAddByPhoto = null,
   // Optionnelle : point d'entrée explicite après un import de dressing réussi.
   // Non fournie, on retombe sur vaActions.fetchAll (déjà passé par App.jsx) —
   // les appelants existants n'ont donc rien à changer.
@@ -3684,27 +3686,28 @@ const StockTab = memo(function StockTab({
             {stock.length===0?(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
-                {/* 1. Bannière */}
-                <div style={{background:"#F0FDFB",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(13,148,136,0.15)"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-                    <div style={{minWidth:0}}>
-                      <div style={{fontSize:10,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:4}}>
-                        {lang==='fr'?'APERÇU DE TON FUTUR STOCK':'PREVIEW OF YOUR FUTURE STOCK'}
-                      </div>
-                      <div style={{fontSize:13,fontWeight:600,color:"#10201B",lineHeight:1.3,fontFamily:"inherit"}}>
-                        {lang==='fr'?"L'IA classe tout automatiquement":"AI classifies everything automatically"}
-                      </div>
-                    </div>
-                    <div style={{display:"flex",gap:8,flexShrink:0}}>
-                      <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
-                        <div style={{fontSize:17,fontWeight:700,color:"#10201B",lineHeight:1}}>{SKELETON_ITEMS.length}</div>
-                        <div style={{fontSize:9,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:3}}>{lang==='fr'?'articles':'items'}</div>
-                      </div>
-                      <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
-                        <div style={{fontSize:17,fontWeight:700,color:"#F9A26C",lineHeight:1}}>{fmt(SKELETON_ITEMS.reduce((a,s)=>a+s.buy,0))}</div>
-                        <div style={{fontSize:9,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.05em",marginTop:3}}>{lang==='fr'?'investi':'invested'}</div>
-                      </div>
-                    </div>
+                {/* 1. Bannière (lot 2) : dire ce qu'on PEUT faire, avec les deux
+                    gestes qui vont avec — importer (la carte de sync est juste
+                    au-dessus) ou photographier un premier article. */}
+                <div style={{background:"#F0FDFB",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(13,148,136,0.15)"}}>
+                  <div style={{fontSize:13.5,fontWeight:600,color:"#10201B",lineHeight:1.5,fontFamily:"inherit"}}>
+                    {lang==='fr'
+                      ?"Ton stock est vide. Importe tes annonces Vinted en un clic, ou ajoute ton premier article en le photographiant."
+                      :"Your stock is empty. Import your Vinted listings in one click, or add your first item by photographing it."}
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:12}}>
+                    <button
+                      onClick={()=>scrollRef.current?.scrollTo({top:0,behavior:"smooth"})}
+                      style={{width:"100%",padding:"13px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)"}}
+                    >
+                      {lang==='fr'?"Importer mon dressing Vinted":"Import my Vinted wardrobe"}
+                    </button>
+                    <button
+                      onClick={()=>onAddByPhoto?.()}
+                      style={{width:"100%",padding:"12px",background:"#fff",border:"1px solid #E7E3D8",borderRadius:999,fontSize:13.5,fontWeight:700,color:"#10201B",cursor:"pointer",fontFamily:"inherit"}}
+                    >
+                      {lang==='fr'?"Ajouter un article":"Add an item"}
+                    </button>
                   </div>
                 </div>
 
@@ -3768,24 +3771,10 @@ const StockTab = memo(function StockTab({
                   </div>
                 </div>
 
-                {/* 4. CTA */}
-                <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:4}}>
-                  <button
-                    onClick={()=>scrollRef.current?.scrollTo({top:0,behavior:"smooth"})}
-                    style={{width:"100%",padding:"14px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:14,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontFamily:"inherit",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)"}}
-                    onMouseDown={e=>e.currentTarget.style.transform="scale(0.97)"}
-                    onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
-                    onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
-                  >
-                    🎙️ {lang==='fr'?'Ajouter avec la voix':'Add with voice'}
-                  </button>
-                  <button
-                    onClick={()=>{setShowManualForm(true);scrollRef.current?.scrollTo({top:0,behavior:"smooth"});}}
-                    style={{background:"none",border:"none",cursor:"pointer",fontSize:13,fontWeight:700,color:"#6B7A75",padding:"4px",fontFamily:"inherit",textDecoration:"underline",textDecorationColor:"rgba(107,114,128,0.35)"}}
-                  >
-                    + {lang==='fr'?'Ajouter manuellement':'Add manually'}
-                  </button>
-                </div>
+                {/* Le CTA du bas a disparu (lot 2) : les deux gestes vivent dans
+                    la bannière en tête — un état vide, une idée, deux boutons.
+                    La saisie vocale et le formulaire manuel restent accessibles
+                    par la zone de saisie en haut de l'onglet et le FAB micro. */}
 
               </div>
             ):(
