@@ -6010,12 +6010,16 @@ export default function App({ loginOnly = false }){
               )}
             </div>
 
-            {/* Signaler un bug */}
+            {/* Signaler un bug — masqué sans compte : l'envoi exige un Bearer
+                utilisateur, un bouton visible hors session serait un bouton
+                qui ne fait rien. */}
+            {user&&(
             <button onClick={()=>{setShowBugReport(true);setBugMessage("");}}
               style={{display:"block",width:"100%",background:"none",border:"none",textAlign:"center",fontSize:12,color:UI.mute,marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3,fontFamily:"inherit",padding:0}}
             >
               🐛 {lang==='fr'?'Signaler un bug':'Report a bug'}
             </button>
+            )}
           </div>
           </div>
           <style>{`
@@ -6264,9 +6268,28 @@ export default function App({ loginOnly = false }){
                 if(!bugMessage.trim())return;
                 setBugSending(true);
                 try{
+                  // ⚠️ 2026-08-09 : cet appel partait avec le SEUL header
+                  // apikey. send-bug-report exige un Bearer utilisateur
+                  // (getUser) depuis le 15/05 22h54 — le contrôle a été ajouté
+                  // 66 minutes après la mise en ligne de la modale, sans
+                  // toucher l'appelant. Constaté en prod : POST avec apikey
+                  // seul → 401 {"error":"Unauthorized"}. AUCUN rapport de bug
+                  // n'est arrivé depuis. Même patron que
+                  // handleCancelSubscription / delete-account : session lue,
+                  // Bearer posé.
+                  const{data:{session}}=await supabase.auth.getSession();
+                  const jwt=session?.access_token;
+                  // Session morte (expirée, refresh raté) : on ne tente rien —
+                  // un 401 déguisé en « erreur d'envoi » n'apprend rien à
+                  // l'utilisateur, qui a une action concrète à faire.
+                  if(!jwt){
+                    setToast({visible:true,message:lang==='fr'?'Ta session a expiré — reconnecte-toi puis réessaie':'Your session expired — sign in again then retry'});
+                    setTimeout(()=>setToast({visible:false,message:""}),5000);
+                    return;
+                  }
                   const res=await fetch(`${supabaseUrl}/functions/v1/send-bug-report`,{
                     method:"POST",
-                    headers:{"Content-Type":"application/json","apikey":supabaseAnonKey},
+                    headers:{"Content-Type":"application/json","Authorization":`Bearer ${jwt}`,"apikey":supabaseAnonKey},
                     body:JSON.stringify({message:bugMessage.trim(),userEmail:user?.email,platform:platform,userId:user?.id}),
                   });
                   if(!res.ok)throw new Error("send error");
@@ -6274,8 +6297,11 @@ export default function App({ loginOnly = false }){
                   setToast({visible:true,message:lang==='fr'?'Merci ! On regarde ça rapidement 🙏':'Thanks! We\'ll look into it 🙏'});
                   setTimeout(()=>setToast({visible:false,message:""}),4000);
                 }catch{
-                  setToast({visible:true,message:lang==='fr'?'Erreur d\'envoi, réessaie':'Send error, try again'});
-                  setTimeout(()=>setToast({visible:false,message:""}),3000);
+                  // La modale reste ouverte et le texte saisi est conservé :
+                  // l'échec ne doit rien faire perdre. L'adresse de repli est
+                  // nommée — « réessaie » seul enferme quand ça retombe.
+                  setToast({visible:true,message:lang==='fr'?'Envoi impossible. Réessaie, ou écris à support@fillsell.app':'Couldn\'t send. Try again, or email support@fillsell.app'});
+                  setTimeout(()=>setToast({visible:false,message:""}),6000);
                 }finally{setBugSending(false);}
               }}
               disabled={bugSending||!bugMessage.trim()}
