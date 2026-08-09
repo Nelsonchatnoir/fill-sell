@@ -1,15 +1,15 @@
 ---
 title: "Cross-listing : vendre sur Vinted et Leboncoin en même temps"
-description: "Publier le même article sur Vinted, Leboncoin, eBay et Beebs sans double vente et sans bot de republication : ce qu'est vraiment le cross-listing, et comment choisir un outil sans mauvaise surprise."
+description: "Publier le même article sur Vinted, Leboncoin, eBay et Beebs sans double vente et sans cadence de robot : ce qu'est vraiment le cross-listing, en quoi il diffère de la republication, et comment choisir un outil sans mauvaise surprise."
 date: "2026-08-02"
 lang: "fr"
 og_image: "/og-image-fillsell.png"
-faq: [{"q":"Quelle est la différence entre cross-listing et republication automatique ?","a":"Le cross-listing publie un article une seule fois, sur plusieurs plateformes à la fois. La republication automatique supprime et recrée la même annonce en boucle sur un seul site pour la faire remonter dans les résultats. Ce sont deux usages différents : le premier élargit l'audience, le second manipule la visibilité — avec les risques que cela comporte pour le compte."},{"q":"Vendre le même article sur plusieurs plateformes est-il autorisé ?","a":"Publier un même article sur Vinted, Leboncoin, eBay et Beebs relève de votre liberté de vendeur : chaque annonce est déposée normalement, via le formulaire du site. Ce qui expose un compte, ce sont les manipulations de visibilité — suppression et republication en boucle, échanges de favoris artificiels — pas le fait de vendre au même moment sur plusieurs sites."},{"q":"Comment éviter de vendre deux fois le même article ?","a":"C'est le vrai risque du cross-listing. Il faut que l'outil détecte la vente sur une plateforme et retire l'annonce des autres. FillSell le fait automatiquement : l'article vendu quelque part est retiré des autres sites par l'extension, sans intervention de votre part."},{"q":"FillSell fonctionne-t-il ordinateur éteint ?","a":"Non, et nous préférons le dire clairement : les publications et retraits passent par l'extension Chrome, donc par votre navigateur, avec vos sessions. Ordinateur éteint, rien ne part — les annonces attendent en file et partent à la prochaine ouverture de Chrome."},{"q":"Sur combien de plateformes FillSell publie-t-il ?","a":"Quatre : Vinted, Leboncoin, eBay et Beebs. Vous choisissez lesquelles activer, article par article — de une à quatre."}]
+faq: [{"q":"Quelle est la différence entre cross-listing et republication automatique ?","a":"Le cross-listing publie un article une seule fois, sur plusieurs plateformes à la fois : il élargit l'audience. La republication redépose une annonce sur un seul site pour la faire remonter dans les résultats : elle relance la visibilité d'un article qui n'est plus vu. Les deux se complètent, et FillSell fait les deux — la republication au rythme d'une vraie personne, avec un plafond que vous réglez et une coupure à tout moment. Ce qui expose un compte, c'est la cadence de robot, pas le geste."},{"q":"Vendre le même article sur plusieurs plateformes est-il autorisé ?","a":"Publier un même article sur Vinted, Leboncoin, eBay et Beebs relève de votre liberté de vendeur : chaque annonce est déposée normalement, via le formulaire du site. Ce qui expose un compte, ce sont les cadences de robot — une annonce recyclée toutes les heures, des échanges de favoris artificiels — pas le fait de vendre au même moment sur plusieurs sites."},{"q":"Comment éviter de vendre deux fois le même article ?","a":"C'est le vrai risque du cross-listing. Il faut que l'outil détecte la vente sur une plateforme et retire l'annonce des autres. FillSell détecte la vente et vous prévient : vous confirmez, et il retire les annonces des autres plateformes en un tap. Le retrait n'est jamais déclenché sans vous — une disparition d'annonce n'est pas toujours une vente."},{"q":"FillSell fonctionne-t-il ordinateur éteint ?","a":"Non, et nous préférons le dire clairement : les publications et retraits passent par l'extension Chrome, donc par votre navigateur, avec vos sessions. Ordinateur éteint, rien ne part — les annonces attendent en file et partent à la prochaine ouverture de Chrome."},{"q":"Sur combien de plateformes FillSell publie-t-il ?","a":"Quatre : Vinted, Leboncoin, eBay et Beebs. Vous choisissez lesquelles activer, article par article — de une à quatre."}]
 ---
 
 « Cross-listing », « cross-posting », « multiposting » : trois mots pour la même idée — proposer le même article sur plusieurs sites de vente à la fois, au lieu de le laisser attendre sur un seul. C'est l'un des rares leviers de vente qui ne demande ni de baisser son prix, ni de refaire ses photos : l'article est le même, il est simplement visible par plus d'acheteurs.
 
-Cet article explique ce qu'est le cross-listing, ce qu'il n'est pas — la confusion avec les bots de republication coûte des comptes —, le piège de la double vente, et ce qu'il faut vérifier avant de confier ses annonces à un outil.
+Cet article explique ce qu'est le cross-listing, en quoi il diffère de la republication — les deux sont utiles, on les confond souvent —, le piège de la double vente, et ce qu'il faut vérifier avant de confier ses annonces à un outil.
 
 ![Un même article proposé sur plusieurs plateformes de seconde main à la fois](/og-image-fillsell.png)
 
@@ -19,23 +19,25 @@ Le principe tient en une phrase : une annonce rédigée une fois, déposée sur 
 
 En pratique, presque personne ne le fait à la main, et pour une raison simple : chaque site a son formulaire, ses catégories, ses libellés d'état, ses champs obligatoires. Déposer proprement le même article sur quatre sites, c'est quatre saisies complètes. C'est ce travail-là que les outils de cross-listing automatisent — nous avons détaillé le déroulé complet côté FillSell dans [Publier ses annonces sur plusieurs plateformes en une seule fois](/blog/publier-annonce-plusieurs-plateformes).
 
-## Cross-listing ≠ republication automatique
+## Cross-listing et republication : deux gestes différents
 
-C'est la confusion la plus répandue, et elle mérite d'être dissipée avant toute chose, parce que les deux familles d'outils se ressemblent de loin et ne font pas du tout le même métier.
+C'est la confusion la plus répandue, et elle mérite d'être dissipée avant toute chose : les deux se ressemblent de loin, mais ne résolvent pas le même problème.
 
 **Le cross-listing publie une fois.** Une annonce par plateforme, déposée par le formulaire normal du site, comme vous l'auriez fait au clavier. Elle vit ensuite sa vie d'annonce ordinaire.
 
-**La republication automatique publie en boucle.** Sur un seul site — presque toujours Vinted —, l'outil supprime l'annonce et la recrée à intervalles réguliers pour la faire remonter en tête des résultats de recherche. C'est une manipulation de l'algorithme du site, et les plateformes ne l'ignorent pas : leurs protections anti-robots se durcissent précisément contre ces allers-retours, et c'est votre compte de vendeur qui porte le risque, pas l'éditeur de l'outil.
+**La republication remet une annonce en haut.** Sur un seul site — presque toujours Vinted —, l'annonce est retirée puis redéposée pour repasser devant les acheteurs. C'est utile : passé trois semaines, une annonce Vinted n'est quasiment plus vue. Ce qui expose un compte, ce n'est pas le geste, c'est la cadence de robot — une annonce recyclée toutes les heures, jour et nuit, se repère.
 
-FillSell a choisi son camp : **publication une seule fois, jamais de republication, jamais de « remontée » artificielle**. L'extension dépose l'annonce, vérifie que le site a confirmé la mise en ligne, et s'arrête là. Entre chaque action, elle marque des délais variables et saisit les champs à un rythme de frappe naturel — parce qu'un dépôt d'annonce doit ressembler à un dépôt d'annonce.
+FillSell fait les deux, et pose des garde-fous sur le second : republication **au rythme d'une vraie personne**, avec **un plafond que vous réglez** et **une coupure possible à tout moment**. Manuelle sur tous les plans, automatisable avec le plan Pro — jamais activée dans votre dos. À la publication comme à la republication, l'extension marque des délais variables et saisit les champs à un rythme de frappe naturel, puis vérifie que le site a bien confirmé la mise en ligne.
 
 ## Le vrai risque du cross-listing : la double vente
 
 Multiplier les vitrines a une contrepartie arithmétique : si l'article part sur Leboncoin ce soir, l'annonce Vinted, elle, ne le sait pas. Un deuxième acheteur peut payer un article qui n'existe plus — et vous voilà à annuler une vente, rembourser, et encaisser l'avis négatif.
 
-Un outil de cross-listing sérieux doit donc gérer la sortie autant que l'entrée. Chez FillSell, c'est automatique : quand un article est vendu quelque part, il est retiré des autres plateformes par le même mécanisme que la publication — l'extension exécute les suppressions site par site, en arrière-plan. Vous pouvez aussi retirer une annonce d'un site précis, d'un clic sur son logo, sans toucher aux autres.
+Un outil de cross-listing sérieux doit donc gérer la sortie autant que l'entrée. Chez FillSell, la détection est automatique, le retrait est à vous : quand un article est vendu quelque part, l'application vous prévient et vous retirez les autres annonces en un tap — l'extension exécute alors les suppressions site par site, par le même mécanisme que la publication. Vous pouvez aussi retirer une annonce d'un site précis, d'un clic sur son logo, sans toucher aux autres.
 
-Un point d'honnêteté ici aussi : ce retrait passe par votre navigateur, comme le reste. Il est déclenché dès la détection de la vente, mais il n'est pas instantané à la seconde près — l'extension traite les retraits dans les minutes qui suivent, quand Chrome est ouvert. C'est le cas de tous les outils qui travaillent avec vos sessions ; ceux qui promettent l'instantané absolu passent par d'autres moyens, ce qui amène à la question suivante.
+Pourquoi une confirmation plutôt qu'un retrait d'office ? Parce qu'une annonce qui disparaît n'est pas toujours une vente : elle peut avoir expiré, être passée en révision, ou avoir été retirée par vous. Supprimer trois annonces vivantes sur une fausse détection coûte plus cher que le tap qu'on vous demande.
+
+Un point d'honnêteté ici aussi : ce retrait passe par votre navigateur, comme le reste. Une fois confirmé, il n'est pas instantané à la seconde près — l'extension traite les suppressions dans les minutes qui suivent, quand Chrome est ouvert. C'est le cas de tous les outils qui travaillent avec vos sessions ; ceux qui promettent l'instantané absolu passent par d'autres moyens, ce qui amène à la question suivante.
 
 ## Extension Chrome ou service distant : sachez ce que fait l'outil à votre place
 
@@ -52,8 +54,8 @@ Il n'y a pas de solution magique qui cumule « aucun accès à vos comptes » et
 Quatre questions suffisent à faire le tri, quel que soit l'outil.
 
 1. **Quelles plateformes, réellement ?** Beaucoup d'outils du marché français ne couvrent que Vinted — utiles pour gérer un dressing, mais ce n'est pas du cross-listing. Vérifiez que les sites qui comptent pour *vos* articles sont couverts en publication complète, pas seulement en « suivi ».
-2. **Publication unique ou republication en boucle ?** Vous savez maintenant pourquoi la distinction compte. Si la promesse principale d'un outil est de « faire remonter vos annonces », ce n'est pas un outil de cross-listing, et le risque est pour votre compte.
-3. **Que se passe-t-il à la vente ?** Sans retrait automatique sur les autres plateformes, le cross-listing crée plus de problèmes qu'il n'en résout. C'est la fonctionnalité à exiger, pas une option de confort.
+2. **Cross-listing, republication, ou les deux — et à quelle cadence ?** Les deux sont légitimes ; ce qui compte, c'est le rythme et la maîtrise. Un outil qui republie sans plafond réglable, sans bouton d'arrêt et à cadence de robot fait porter le risque à votre compte, pas au sien.
+3. **Que se passe-t-il à la vente ?** Sans retrait des autres plateformes, le cross-listing crée plus de problèmes qu'il n'en résout. C'est la fonctionnalité à exiger, pas une option de confort.
 4. **Où s'exécute la publication, et avec quels accès ?** Dans votre navigateur avec vos sessions, ou sur les serveurs de l'outil avec une connexion à vos comptes ? Les deux existent ; l'important est que l'outil le dise.
 
 ## Ce que fait FillSell, en clair
@@ -61,8 +63,8 @@ Quatre questions suffisent à faire le tri, quel que soit l'outil.
 Pour que la comparaison soit possible, voici nos réponses aux quatre questions, sans détour.
 
 - **Plateformes** : Vinted, Leboncoin, eBay et Beebs, en publication complète — formulaire rempli champ par champ, photos comprises. Vous activez de une à quatre plateformes, article par article.
-- **Publication** : une seule fois, en un clic. Pas de republication, pas de bump, des délais variables entre les actions.
-- **À la vente** : détection de la vente et retrait automatique de l'annonce sur les autres plateformes. Retrait ciblé possible, site par site.
+- **Publication** : une seule fois, en un clic, avec des délais variables entre les actions. La republication Vinted existe à côté, à votre main : rythme humain, plafond que vous réglez, coupure à tout moment — manuelle sur tous les plans, automatisable avec le plan Pro.
+- **À la vente** : FillSell détecte la vente et vous prévient. Vous confirmez, il retire les annonces des autres plateformes — en un tap, ou site par site si vous préférez choisir.
 - **Exécution** : dans votre navigateur, via [l'extension Chrome FillSell](https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm), avec vos sessions — jamais vos mots de passe. Il faut un ordinateur allumé avec Chrome ouvert pendant la publication ; PC éteint, vos annonces attendent en file.
 
 Et parce que vendre plus n'a d'intérêt que si l'on gagne de l'argent, chaque article publié rejoint votre stock avec son prix d'achat et son prix de vente — [vos marges se calculent toutes seules](/blog/comment-calculer-profits-vinted).
@@ -73,15 +75,15 @@ Envie de voir le parcours complet, de la photo à l'annonce en ligne ? [Créez v
 
 ### Quelle est la différence entre cross-listing et republication automatique ?
 
-Le cross-listing publie un article une seule fois, sur plusieurs plateformes à la fois. La republication automatique supprime et recrée la même annonce en boucle sur un seul site pour la faire remonter dans les résultats. Ce sont deux usages différents : le premier élargit l'audience, le second manipule la visibilité — avec les risques que cela comporte pour le compte.
+Le cross-listing publie un article une seule fois, sur plusieurs plateformes à la fois : il élargit l'audience. La republication redépose une annonce sur un seul site pour la faire remonter dans les résultats : elle relance la visibilité d'un article qui n'est plus vu. Les deux se complètent, et FillSell fait les deux — la republication au rythme d'une vraie personne, avec un plafond que vous réglez et une coupure à tout moment. Ce qui expose un compte, c'est la cadence de robot, pas le geste.
 
 ### Vendre le même article sur plusieurs plateformes est-il autorisé ?
 
-Publier un même article sur Vinted, Leboncoin, eBay et Beebs relève de votre liberté de vendeur : chaque annonce est déposée normalement, via le formulaire du site. Ce qui expose un compte, ce sont les manipulations de visibilité — suppression et republication en boucle, échanges de favoris artificiels — pas le fait de vendre au même moment sur plusieurs sites.
+Publier un même article sur Vinted, Leboncoin, eBay et Beebs relève de votre liberté de vendeur : chaque annonce est déposée normalement, via le formulaire du site. Ce qui expose un compte, ce sont les cadences de robot — une annonce recyclée toutes les heures, des échanges de favoris artificiels — pas le fait de vendre au même moment sur plusieurs sites.
 
 ### Comment éviter de vendre deux fois le même article ?
 
-C'est le vrai risque du cross-listing. Il faut que l'outil détecte la vente sur une plateforme et retire l'annonce des autres. FillSell le fait automatiquement : l'article vendu quelque part est retiré des autres sites par l'extension, sans intervention de votre part.
+C'est le vrai risque du cross-listing. Il faut que l'outil détecte la vente sur une plateforme et retire l'annonce des autres. FillSell détecte la vente et vous prévient : vous confirmez, et il retire les annonces des autres plateformes en un tap. Le retrait n'est jamais déclenché sans vous — une disparition d'annonce n'est pas toujours une vente.
 
 ### FillSell fonctionne-t-il ordinateur éteint ?
 

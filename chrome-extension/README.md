@@ -3,14 +3,19 @@
 Extension Manifest V3 qui publie automatiquement les annonces générées par
 FillSell (`generate-listing`) sur Vinted, Leboncoin, Beebs et eBay.
 
-## ⚠️ DRY_RUN
+## ⚠️ DRY_RUN — LIVE depuis le 2026-07-12
 
-`DRY_RUN = true` en haut de `content-scripts/vinted.js` : le formulaire est
-rempli mais le bouton publier n'est **jamais** cliqué (log console à la place),
-et le job est ré-armé en `pending`.
+**Les quatre plateformes publient et suppriment pour de vrai.** `DRY_RUN` et
+`DELETE_DRY_RUN` valent `false` en tête de `content-scripts/vinted.js`,
+`leboncoin.js`, `ebay.js` et `beebs.js` — passage décidé le 2026-07-12 après
+rodage supervisé.
 
-**DRY_RUN doit rester à `true` tant qu'au moins 3 publications réelles n'ont
-pas été validées manuellement.**
+Les interrupteurs existent toujours, un par fichier : à `true`, le formulaire
+est rempli mais le bouton publier n'est jamais cliqué (log console à la place)
+et le job repart en `pending` ; côté suppression, le contrôle est localisé sans
+être cliqué. C'est l'outil de rodage d'une plateforme ou d'un sélecteur refait
+— pas un état par défaut. **Vérifier la valeur réelle dans le fichier avant de
+tester : ce README ne la remplace pas.**
 
 ## Flow complet
 
@@ -33,13 +38,13 @@ background.js : dispatch par plateforme (routage sur job.action)
         │  ouvre l'onglet de dépôt, envoie le job au content script
         ▼
 content-scripts/<plateforme>.js : fillListingForm(job)
-        │  remplit le formulaire (DRY_RUN : ne publie pas)
+        │  remplit le formulaire, puis publie (DRY_RUN=true : ne publie pas)
         ▼
 background.js : captureListingUrl + detectReauth
         │  URL de l'annonce créée ; ré-authentification plateforme → needsUser
         ▼
 update-job-status (edge function, JWT + RLS)
-        │  published (+ listing_url) / failed (+ error) / pending (dry-run)
+        │  published (+ listing_url) / failed (+ error) / pending (si DRY_RUN)
 
 ── puis, à chaque cycle de poll (30 min) ──────────────────────────────
 background.js : checkPublishedListings
@@ -54,7 +59,7 @@ app : bandeau « Vendu — retirer des N autres plateformes ? »
         │  le clic utilisateur insère des jobs action='delete'
         ▼
 content-scripts/<plateforme>.js : deleteListing(job)
-           DELETE_DRY_RUN : localise le contrôle sans cliquer
+           supprime pour de vrai (DELETE_DRY_RUN=true : localise sans cliquer)
 ```
 
 Statuts `cross_post_jobs` : `pending → processing → published / failed /
@@ -112,10 +117,11 @@ ne pas ajouter ces deux fonctions à cette liste.
    - logs du service worker : `chrome://extensions` → carte FillSell →
      « service worker » (lien inspecter)
    - un onglet Vinted s'ouvre, logs du content script dans sa console
-   - en DRY_RUN le job repasse en `pending` et l'onglet reste ouvert pour
-     inspection visuelle du formulaire
+   - si l'on a repassé `DRY_RUN` à `true` pour roder, le job revient en
+     `pending` et l'onglet reste ouvert pour inspection visuelle du formulaire
 5. **Vérifier en base** : le status du job doit suivre
-   `pending → processing → pending` (dry-run) ou `→ published / failed`.
+   `pending → processing → published / failed` — ou revenir à `pending` si
+   `DRY_RUN` a été remis à `true`.
 
 ## Structure
 
@@ -125,19 +131,26 @@ chrome-extension/
 ├── config.js                      # URL Supabase, clé publishable, intervalles
 ├── background.js                  # alarme 30 min, session/refresh, dispatch jobs
 ├── popup.html / popup.js          # état connecté/déconnecté, login, poll manuel
-└── content-scripts/
-    ├── fillsell-auth.js           # capture la session Supabase sur fillsell.app
-    └── vinted.js                  # remplissage formulaire Vinted (sélecteurs TODO)
+├── content-scripts/
+│   ├── fillsell-auth.js           # capture la session Supabase sur fillsell.app
+│   ├── vinted.js                  # remplissage + suppression Vinted
+│   ├── leboncoin.js               # idem Leboncoin (wizard multi-étapes)
+│   ├── ebay.js                    # idem eBay (prelist + aspects)
+│   └── beebs.js                   # idem Beebs
+└── selectors/
+    ├── resolve.js                 # résolution des sélecteurs + télémétrie
+    ├── installId.js
+    └── <plateforme>.registry.js   # registre de sélecteurs par plateforme
 ```
 
-## Reste à faire
+## État
 
-- [x] Sélecteurs DOM réels dans `content-scripts/vinted.js` (audit DOM réel, chemin testé : Femmes > Vêtements > Robes > Midi)
-- [x] Upload des photos (fetch → File → DataTransfer sur l'input file)
-- [ ] Mapping catégorie FillSell (`platform_fields.categorie`, libellé plat type "Mode") → chemin catalogue
-      Vinted (`platform_fields.categoryPath`, tableau ordonné) — n'existe pas encore, la sélection de
-      catégorie dans `vinted.js` est câblée mais toujours no-op tant que ce mapping n'est pas construit
-- [ ] Content scripts Leboncoin, Beebs, eBay (+ `implemented: true` dans `background.js`)
-- [x] Déployer les 2 edge functions (verify_jwt: true, défaut)
-- [ ] Test auth réel + premier dry-run
-- [ ] Après 3 publications réelles validées manuellement seulement : envisager `DRY_RUN = false`
+Les quatre handlers sont écrits, `implemented: true` dans `background.js`, et
+publient en réel. Le mapping catégorie (libellé FillSell → chemin catalogue de
+la plateforme) est construit et vit côté app, dans `src/utils/*Categories.js`.
+
+Ce que ce README ne dit PAS, et qu'il ne faut pas déduire d'ici : quelle
+version est réellement chargée dans un navigateur donné. Un push sur `main` ne
+déploie pas l'extension — il faut `npm run package:extension`, téléverser le
+zip sur le Chrome Web Store et cliquer « Envoyer pour examen ». Les colonnes
+`profiles.extension_build` et `cross_post_jobs.handler_build` disent la vérité.
