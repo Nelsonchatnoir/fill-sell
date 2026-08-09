@@ -36,7 +36,8 @@ import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from './utils/stockLimit';
 import Toast from './components/Toast';
-import ConversionModal from './components/ConversionModal';
+import ConversionModal, { COIN_CONFIG_FALLBACK } from './components/ConversionModal';
+import { BUSINESS_OFFER_ENABLED } from './config/businessOffer';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -58,7 +59,7 @@ import PepiteIcon from './components/PepiteIcon';
 import PepiteAmount from './components/PepiteAmount';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
-import OnboardingFlow, { ONBOARD_STATE_KEY, ONBOARD_DONE_KEY } from './components/OnboardingFlow';
+import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
 import ExtensionPitchScreen from './components/ExtensionPitchScreen';
 import PlanDetailsModal from './components/PlanDetailsModal';
 import { useIsMobile } from './hooks/useIsMobile';
@@ -1831,6 +1832,11 @@ export default function App({ loginOnly = false }){
   const [forgotMsg,setForgotMsg]=useState("");
   const [isPremium,setIsPremium]=useState(false);
   const [isPro,setIsPro]=useState(false);
+  // Flags CUMULATIFS : un Business porte AUSSI is_pro et is_premium. isBusiness
+  // n'ouvre donc aucun droit de plus (les gates isPro le couvrent d'office) —
+  // il sert à NOMMER le palier, et doit être testé avant isPro partout où un
+  // libellé est choisi (badge, « ton plan actuel », modales). 2026-08-09.
+  const [isBusiness,setIsBusiness]=useState(false);
   const [lensInventaireId,setLensInventaireId]=useState(null);
   const [listingStepperOpen,setListingStepperOpen]=useState(false);
   const [aiCache,setAiCache]=useState({});
@@ -1850,21 +1856,16 @@ export default function App({ loginOnly = false }){
   // chargement si l'utilisateur était resté sur l'écran d'attente de
   // l'extension (état persisté par OnboardingFlow).
   const [showOnboardingFlow,setShowOnboardingFlow]=useState(false);
+  // Onboarding terminé dans CETTE session (cf. garde dans fetchAll).
+  const onboardingFiniRef=useRef(false);
   // Accroche extension ouverte depuis les lignes discrètes des états vides
   // (« L'extension n'est pas encore installée… ») — même écran que partout.
   const [showExtensionInfo,setShowExtensionInfo]=useState(false);
-  // Reprise de l'attente d'extension : l'utilisateur a choisi « Oui, j'ai déjà
-  // des annonces », est parti installer (ou s'envoyer le lien), puis a fermé
-  // l'app. Au retour, l'écran d'attente revient tout seul — la détection puis
-  // la sync s'enchaînent sans qu'il ait à recliquer quoi que ce soit.
-  useEffect(()=>{
-    if(!user?.id)return;
-    try{
-      if(!localStorage.getItem(ONBOARD_DONE_KEY)&&localStorage.getItem(ONBOARD_STATE_KEY)==='attente_extension'){
-        setShowOnboardingFlow(true);
-      }
-    }catch{/* stockage local indisponible : pas de reprise */}
-  },[user?.id]);
+  // (La reprise de l'attente d'extension n'a plus d'effet dédié : le
+  // déclencheur vit désormais dans fetchAll, sur profiles.onboarded_at. Si le
+  // compte n'est pas onboardé et que le cache local porte encore
+  // 'attente_extension', OnboardingFlow rouvre directement sur l'écran
+  // d'attente — la détection puis la sync s'enchaînent sans aucun clic.)
   const [username,setUsername]=useState('');
   // Bandeau retrait cross-plateforme (Phase B, 2026-07-11) : jobs frères d'un
   // article VENDU encore en ligne ailleurs — flag platform_fields.
@@ -2085,8 +2086,13 @@ export default function App({ loginOnly = false }){
     localStorage.setItem('fs_currency',code);
     if(user?.id) await supabase.rpc('set_profile_currency',{p_currency:code});
   }
-  // product : undefined → abonnement Premium standard ; 'pro' → abonnement Pro 29,99 €
+  // product : undefined → abonnement Premium standard ; 'pro' → Pro 29,99 € ;
+  // 'business' → Business 59,99 € (2026-08-09). Le serveur
+  // (create-checkout-session) résout le price ID depuis un secret par palier et
+  // bascule l'abonnement EXISTANT quand il y en a un (upgrade in situ, prorata
+  // facturé) — le client n'a donc à connaître ni prix ni price ID.
   async function triggerCheckout(product){
+    const prixAffiche=product==='business'?59.99:product==='pro'?29.99:12.99;
     try{
       let{data:{session}}=await supabase.auth.getSession();
       if(!session){
@@ -2248,6 +2254,7 @@ export default function App({ loginOnly = false }){
       if(!confirme) throw new Error('Premium not confirmed by server');
       setIsPremium(true);
       if(isProPurchase||isBusinessPurchase) setIsPro(true); // cumulatif : Business ⊇ Pro
+      if(isBusinessPurchase) setIsBusiness(true);
       setShowPremiumWelcome(true);
     }catch(e){
       console.error('[IAP] purchase failed:',e);
@@ -2268,6 +2275,7 @@ export default function App({ loginOnly = false }){
         if(droitAcquis){
           setIsPremium(true);
           if(isProPurchase||isBusinessPurchase) setIsPro(true);
+          if(isBusinessPurchase) setIsBusiness(true);
           setShowPremiumWelcome(true);
           return;
         }
@@ -2306,6 +2314,7 @@ export default function App({ loginOnly = false }){
         if(!confirme) throw new Error('Premium not confirmed by server');
         setIsPremium(true);
         if(estPro) setIsPro(true);
+        if(estBusiness) setIsBusiness(true);
         setShowPremiumWelcome(true);
       }else{
         setToast({visible:true,message:lang==='fr'?'Aucun achat actif trouvé':'No active purchase found'});
@@ -2317,11 +2326,12 @@ export default function App({ loginOnly = false }){
       // (comped, Stripe, Apple) ne vaut pas restauration réussie.
       try{
         const{data,error}=await supabase.from('profiles')
-          .select('is_premium,is_pro').eq('id',user.id).maybeSingle();
+          .select('is_premium,is_pro,is_business').eq('id',user.id).maybeSingle();
         if(error)console.warn('[IAP] relecture après échec restore:',error.message);
         if(data?.is_premium===true){
           setIsPremium(true);
           if(data?.is_pro===true) setIsPro(true);
+          if(data?.is_business===true) setIsBusiness(true);
           setShowPremiumWelcome(true);
           return;
         }
@@ -2390,7 +2400,7 @@ export default function App({ loginOnly = false }){
       // sync du dressing, qui importe des centaines d'annonces d'un coup, en
       // faisait un problème quotidien.
       supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(3000),
-      supabase.from('profiles').select('is_premium,is_pro,is_comped,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build').eq('id',uid).maybeSingle(),
+      supabase.from('profiles').select('is_premium,is_pro,is_business,is_comped,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build,onboarded_at').eq('id',uid).maybeSingle(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
@@ -2403,6 +2413,10 @@ export default function App({ loginOnly = false }){
     if(!p.error){
       setIsPremium(premiumValue);
       setIsPro(p.data?.is_pro===true);
+      // is_business n'entre PAS dans premiumValue : l'expression canonique du
+      // 2026-07-25 (CLAUDE.md) est identique partout et un Business porte de
+      // toute façon is_premium ET is_pro. Il ne sert qu'à nommer le palier.
+      setIsBusiness(p.data?.is_business===true);
       setUsername(p.data?.username||'');
       setSettingsLbcRue(p.data?.platform_settings?.leboncoin?.rue||'');
       setSettingsLbcCp(p.data?.platform_settings?.leboncoin?.code_postal||'');
@@ -2412,6 +2426,31 @@ export default function App({ loginOnly = false }){
       setExtensionBuild(p.data?.extension_build??null);
       setExtensionLastSeenAt(p.data?.extension_last_seen_at??null);
       setExtensionSeenLoaded(true);
+      // ── Onboarding : déclencheur PAR COMPTE (lot 2b, 2026-08-09) ───────────
+      // AVANT : l'écran de choix était branché sur la confirmation de la modale
+      // devise, elle-même gatée sur « profiles.currency est vide ». Or currency
+      // porte un DÉFAUT EN BASE 'EUR' : la colonne n'est jamais vide à la
+      // création d'un compte, la modale ne s'ouvrait donc JAMAIS et l'écran
+      // était inerte pour 100 % des nouveaux inscrits (constat prod du 09/08 :
+      // 6 derniers inscrits tous en currency='EUR', aucun n'a vu l'écran).
+      // MAINTENANT : profiles.onboarded_at NULL = onboarding à faire. C'est un
+      // fait de COMPTE et non d'appareil — un second téléphone ne refait pas
+      // l'onboarding, et un compte neuf sur un appareil déjà utilisé ne le
+      // saute pas. Le localStorage n'est plus qu'un cache anti-clignotement.
+      // Garde de session : fetchAll rejoue à chaque refocus (SIGNED_IN). Si
+      // l'écriture d'onboarded_at avait échoué, l'écran se rouvrirait à CHAQUE
+      // retour sur l'app. On ne le rouvre donc pas dans la session où il vient
+      // d'être terminé — un rechargement complet le remontrera, ce qui reste
+      // le signal voulu si la base n'a pas été écrite.
+      if(p.data?.onboarded_at==null&&!onboardingFiniRef.current){
+        setShowOnboardingFlow(true);
+        try{localStorage.removeItem(ONBOARD_DONE_KEY);}catch{/* cache seul */}
+      }else if(p.data?.onboarded_at!=null){
+        // La base fait autorité : un compte marqué onboardé ne doit pas voir
+        // l'écran, même si le cache local d'un ancien appareil dit l'inverse.
+        setShowOnboardingFlow(false);
+        try{localStorage.setItem(ONBOARD_DONE_KEY,'1');}catch{/* cache seul */}
+      }
       const confirmed=!!localStorage.getItem('fs_currency_confirmed');
       if(confirmed&&p.data?.currency){
         setCurrency(p.data.currency);
@@ -6200,9 +6239,10 @@ export default function App({ loginOnly = false }){
           if(uname){await supabase.rpc('set_profile_username',{p_username:uname});setUsername(uname);localStorage.setItem('fs_username_asked','1');}
           localStorage.setItem('fs_currency_confirmed','1');
           setShowCurrencyOnboarding(false);
-          // Compte NEUF (cette modale ne s'affiche que quand profiles.currency
-          // est vide) → écran de choix « Tu vends déjà sur Vinted ? » (lot 2).
-          try{if(!localStorage.getItem(ONBOARD_DONE_KEY))setShowOnboardingFlow(true);}catch{setShowOnboardingFlow(true);}
+          // ⛔ Ne PAS rebrancher l'onboarding ici (lot 2b) : cette modale est
+          // gatée sur « currency vide », or la colonne porte un défaut 'EUR' en
+          // base — elle ne s'ouvre jamais pour un compte neuf. Le déclencheur
+          // de l'écran de choix vit dans fetchAll, sur profiles.onboarded_at.
         }}/>
       )}
       {showOnboardingFlow&&user&&(
@@ -6210,6 +6250,7 @@ export default function App({ loginOnly = false }){
           lang={lang}
           user={user}
           onDone={(dest)=>{
+            onboardingFiniRef.current=true;
             setShowOnboardingFlow(false);
             if(dest==='lens'){setTab(2);localStorage.setItem('tab',2);}
             else{setTab(1);localStorage.setItem('tab',1);}

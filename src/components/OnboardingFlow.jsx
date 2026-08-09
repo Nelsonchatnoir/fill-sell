@@ -43,6 +43,15 @@ const C = {
   border: '#E7E3D8',
 };
 
+// ⚠️ Ces deux clés sont un CACHE D'AFFICHAGE, pas un état (lot 2b). La source
+// de vérité de « cet utilisateur a fait son onboarding » est
+// profiles.onboarded_at, en base, donc PAR COMPTE.
+//   · ONBOARD_DONE_KEY : miroir local d'onboarded_at, pour ne pas faire
+//     clignoter l'écran le temps que fetchAll réponde.
+//   · ONBOARD_STATE_KEY : position DANS le parcours (l'écran d'attente).
+//     Volontairement local : « cet appareil-ci attend l'extension » n'a de
+//     sens que sur cet appareil — sur un autre, l'écran de choix est le bon
+//     point de reprise.
 export const ONBOARD_STATE_KEY = 'fs_onboard_state';       // 'attente_extension' | absent
 export const ONBOARD_DONE_KEY  = 'fs_onboard_choice_done'; // '1' | absent
 
@@ -62,13 +71,30 @@ export default function OnboardingFlow({ lang, user, onDone }) {
   const [syncEnvoyee, setSyncEnvoyee] = useState(false);
   const finiRef = useRef(false);
 
-  const terminer = (dest) => {
+  // Fin de l'onboarding. La SOURCE DE VÉRITÉ est profiles.onboarded_at — un
+  // fait de compte, pas d'appareil (lot 2b) : sans ça, un second téléphone
+  // refaisait l'onboarding et un compte neuf sur un appareil déjà utilisé le
+  // sautait. Le localStorage n'est plus qu'un cache anti-clignotement, écrit
+  // APRÈS la base.
+  // Écriture best-effort mais JOURNALISÉE : si elle échoue, l'écran
+  // réapparaîtra au prochain chargement (fetchAll relit la base). C'est le
+  // bon échec — bruyant et réparable — plutôt qu'un cache local qui masque
+  // le problème en laissant la base fausse.
+  const terminer = async (dest) => {
     if (finiRef.current) return;
     finiRef.current = true;
+    if (user?.id) {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ onboarded_at: new Date().toISOString() })
+        .eq('id', user.id)
+        .select('onboarded_at');   // .select() obligatoire après un update client (RLS)
+      if (error) console.warn('[onboarding] onboarded_at non écrit :', error.message);
+    }
     try {
       localStorage.setItem(ONBOARD_DONE_KEY, '1');
       localStorage.removeItem(ONBOARD_STATE_KEY);
-    } catch { /* stockage local indisponible : l'écran ne reviendra pas cette session */ }
+    } catch { /* stockage local indisponible : la base fait foi de toute façon */ }
     onDone?.(dest);
   };
 
