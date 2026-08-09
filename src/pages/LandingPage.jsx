@@ -27,14 +27,21 @@ function getInitialLang() {
   return (navigator.language || 'fr').toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }
 
+/* Lot 1 (2026-08-09) — refonte compréhension. Règles tenues ici :
+   - le mot « Pépites » n'apparaît NULLE PART avant la section Tarifs ;
+   - aucune promesse de retrait « tout seul / instantané / zéro risque » :
+     le retrait après vente est SEMI-automatique (détection auto, confirmation
+     utilisateur — pending_removal + bandeau), le texte doit le dire ;
+   - la mécanique app-pilote / extension-PC-exécute est expliquée AVANT
+     l'inscription (section « Comment ça marche » + FAQ). */
 const COPY = {
   fr: {
-    navPublish: 'Publication', navVocal: 'Voix', navPricing: 'Tarifs',
+    navHow: 'Comment ça marche', navPublish: 'Publication', navPricing: 'Tarifs',
     ctaStart: 'Commencer', login: 'Se connecter',
     heroKicker: 'Revente automatisée · France',
-    heroLead: 'Un ajout,', heroAccent: 'publié partout.',
-    heroSub: "Ajoute un article une seule fois — FillSell le publie automatiquement sur Vinted, Leboncoin, eBay et Beebs en quelques secondes. Vendu quelque part ? Il disparaît des autres, tout seul.",
-    heroTrust: '50 Pépites offertes chaque mois · sans carte bancaire',
+    heroLead: 'Ton dressing Vinted,', heroAccent: 'publié aussi sur Leboncoin, eBay et Beebs.',
+    heroSub: "Importe tes annonces en un clic, elles partent sur les autres plateformes sans que tu refasses quoi que ce soit. Tu pilotes tout depuis ton téléphone.",
+    heroTrust: 'Gratuit pour commencer — sans carte bancaire',
     storeApple: "Télécharger dans l'App Store", storePlay: 'Disponible sur Google Play',
     phS1: 'Ajout', phS2: 'Retouche IA', phS3: 'Publication',
     phItem: 'T-shirt Patagonia P-6', phAdded: 'Ajouté à ton stock', phPrice: '22 €',
@@ -42,64 +49,69 @@ const COPY = {
     phDesc: 'Patagonia P-6 Logo, coton bio, taille L, très bon état — porté quelques fois.',
     phRetouch: "Photo retouchée par l'IA", phSending: 'Envoi…',
     phDone: 'Publié sur 4 plateformes', phSent: 'Publications envoyées',
+    vocTagCat: 'Mode', vocTagSize: 'Taille',
 
-    pubKicker: 'Publication automatique', pubTitle: 'Un geste, publié partout.',
-    pubBody: "Tu ajoutes un article, FillSell s'occupe du reste : il crée et publie l'annonce sur les 4 plateformes en même temps. Aucun copier-coller, aucune photo à re-téléverser.",
+    howTitle: 'Comment ça marche',
+    howPhoneT: 'Ton téléphone',
+    howPhoneB: "Tu ajoutes tes articles, tu choisis où publier, tu pilotes tout d'où tu veux.",
+    howPcT: 'Ton ordinateur',
+    howPcB: 'Une petite extension Chrome, installée une seule fois, publie à ta place avec tes propres comptes. Jamais tes mots de passe.',
+    howCloudT: 'FillSell',
+    howCloudB: 'Tes annonces, tes ventes et ton stock restent synchronisés partout.',
+    howNote: "Ton ordinateur est éteint ? Rien n'est perdu : tes actions attendent en file et partent à la prochaine ouverture de Chrome.",
+
+    vintedKicker: 'Import Vinted',
+    vintedTitle: 'Tu as déjà 200 annonces sur Vinted ? Tu ne les refais pas.',
+    vintedBody: "FillSell importe ton dressing en un clic : titres, prix, photos, tout arrive dans ton stock. On lit tes annonces, on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis lesquelles envoyer sur Leboncoin, eBay et Beebs.",
+    vintedFree: 'Import gratuit et illimité.',
+    vintedCta: 'Importer mon dressing',
+
+    pubKicker: 'Publication', pubTitle: 'Une annonce. Quatre plateformes.',
+    pubBody: 'Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay et Beebs avec tes comptes. Quatre fois plus d\'acheteurs devant le même article, sans quatre fois le travail.',
     pubOneItem: '1 seul ajout', pubAuto: 'Automatique', pubSold: 'Vendu sur',
-    pubB1t: '4 plateformes, 1 ajout',
-    pubB1b: 'Vinted, Leboncoin, eBay et Beebs reçoivent ton annonce en même temps, formatée pour chacune.',
-    pubB2t: 'Suppression auto cross-plateforme',
-    pubB2b: "Vendu sur une plateforme ? L'annonce est retirée des 3 autres instantanément. Zéro risque de double-vente.",
-    pubB3t: 'Vente détectée, marges à jour',
-    pubB3b: 'Un article vendu sur une plateforme ? FillSell le détecte et met à jour tes marges, ton stock et tes stats, automatiquement.',
 
-    vocKicker: 'Gestion vocale', vocTitle: 'Gère ton stock à la voix.',
-    vocBody: "Ajoute un article, marque-le vendu ou range-le — rien qu'à la voix. L'IA détecte la marque, la plateforme, la taille, l'état (« trou à la manche ») et même l'emplacement de rangement, puis remplit la fiche pour toi.",
-    vocLink: 'Ton inventaire toujours à jour, sans saisie',
-    vocQuote: '« Pull Zara, taille M, trou à la manche, bac 3 »',
-    vocTagCat: 'Mode', vocTagSize: 'Taille', vocTagState: 'Trou manche', vocTagLoc: 'Bac 3',
-    vocAdded: 'Ajouté à ton inventaire',
+    repubKicker: 'Republication',
+    repubTitle: 'Tes annonces qui dorment remontent toutes seules.',
+    repubBody: "Sur Vinted, une annonce de trois semaines n'est plus vue par personne. FillSell la republie pour la remettre en haut des résultats — au rythme d'une vraie personne, avec un plafond que tu règles, et tu peux couper à tout moment.",
+    repubMention: 'Republication manuelle sur tous les plans, automatique avec le plan Pro.',
 
-    lensKicker: 'FillSell Lens', lensTitle: "Photographie. L'IA chiffre.",
-    lensBody: "Prends un objet en photo : Lens l'identifie, estime son prix de revente et note l'affaire sur 10. Tu sais en 2 secondes si ça vaut le coup.",
-    lensScanning: 'Analyse en cours', lensIdentified: 'Article identifié',
-    lensItem: 'Nike Air Max 90', lensScore: '8,4', lensPriceLabel: 'Prix de revente estimé',
-    lensPrice: '≈ 68 €', lensVerdict: 'Bonne affaire', lensCost: '6 Pépites',
-    lensStep1: "Tu prends l'objet en photo",
-    lensStep2: "L'IA l'identifie et le chiffre",
-    lensStep3: 'Tu obtiens prix + note du deal',
+    soldKicker: 'Après la vente',
+    soldTitle: 'Vendu sur une plateforme ? Tu retires les autres en un tap.',
+    soldBody: "FillSell détecte la vente et te prévient. Tu confirmes, il retire les annonces des autres plateformes. Fini les acheteurs à qui tu dois expliquer que l'article est déjà parti.",
 
-    photoKicker: 'Retouche photo IA', photoTitle: 'Des photos qui font vendre.',
-    photoBody: "En un tap, l'IA détoure l'objet, nettoie l'arrière-plan et corrige la lumière. Tes annonces sortent du lot — sans studio ni appli tierce.",
-    photoBefore: 'Ta photo', photoAfter: 'Retouchée', photoBadge: 'Retouché',
+    gainsKicker: 'Stock & bénéfices',
+    gainsTitle: 'Ton stock et tes bénéfices, à jour tout seuls.',
+    gainsBody: "Ce que tu as acheté, ce que tu as vendu, ce qu'il te reste et ce que ça t'a rapporté. Rangé, chiffré, sans tableur à tenir.",
 
-    featKicker: 'Tout le reste', featTitle: 'Tout pour gérer ta revente.',
+    toolsKicker: 'La boîte à outils', toolsTitle: 'Quatre outils pour aller plus vite.',
 
     priceKicker: 'Tarifs', priceTitle: 'Un plan pour chaque volume.',
     priceSub: 'Commence gratuitement. Passe Premium ou Pro quand tu veux vendre plus, sans engagement.',
-    perMonth: '/ mois', freeTag: 'Pour se lancer', priceFree: '0 €', freeCoins: '{FREE} Pépites / mois',
-    popular: 'Le plus populaire', priceP: '12,99 €', pCoins: '{PREMIUM} Pépites / mois',
-    pricePro: '29,99 €', proCoins: '{PRO} Pépites / mois',
+    perMonth: '/ mois', freeTag: 'Pour se lancer', priceFree: '0 €',
+    freeAds: '≈ {ADS_FREE} annonces créées et publiées sur les 4 plateformes chaque mois',
+    popular: 'Le plus populaire', priceP: '12,99 €',
+    pAds: '≈ {ADS_PREMIUM} annonces créées et publiées sur les 4 plateformes chaque mois',
+    pricePro: '29,99 €',
+    proAds: '≈ {ADS_PRO} annonces créées et publiées sur les 4 plateformes chaque mois',
     ctaFree: 'Commencer gratuitement', ctaPremium: 'Passer Premium', ctaPro: 'Passer Pro',
-    coinsTitle: 'Les Pépites, ta monnaie', coinsPublish: 'Publier : 1 Pépite / plateforme',
-    coinsGenerate: 'Annonce générée par IA : 6 Pépites',
-    coinsLens: 'Analyse Lens : 6 Pépites', coinsPacks: 'Packs dès 4,99 €',
+    coinsTitle: 'Les Pépites, tes crédits d\'action',
+    coinsBody: "L'app t'affiche toujours le coût avant que tu valides, et elles n'expirent jamais.",
 
     faqTitle: "Les questions qu'on nous pose.",
     ctaTitle: 'Prêt à publier partout, sans effort ?',
-    ctaBody: 'Commence gratuitement — 50 Pépites offertes chaque mois, sans carte bancaire.',
+    ctaBody: 'Commence gratuitement — sans carte bancaire.',
     ctaBtn: 'Commencer gratuitement',
     footTag: 'Revente automatisée', footLegal: 'Mentions légales',
     footPrivacy: 'Confidentialité', footContact: 'Contact',
     footBlog: 'Guides & blog revente',
   },
   en: {
-    navPublish: 'Publishing', navVocal: 'Voice', navPricing: 'Pricing',
+    navHow: 'How it works', navPublish: 'Publishing', navPricing: 'Pricing',
     ctaStart: 'Get started', login: 'Log in',
     heroKicker: 'Automated reselling · France',
-    heroLead: 'One add,', heroAccent: 'listed everywhere.',
-    heroSub: 'Add an item once — FillSell automatically lists it on Vinted, Leboncoin, eBay and Beebs in seconds. Sold somewhere? It vanishes from the others, all on its own.',
-    heroTrust: '50 Pépites free every month · no card required',
+    heroLead: 'Your Vinted wardrobe,', heroAccent: 'also live on Leboncoin, eBay and Beebs.',
+    heroSub: 'Import your listings in one click — they go live on the other marketplaces without you redoing a thing. You run everything from your phone.',
+    heroTrust: 'Free to start — no credit card required',
     storeApple: 'Download on the App Store', storePlay: 'Get it on Google Play',
     phS1: 'Add', phS2: 'AI edit', phS3: 'Publishing',
     phItem: 'Patagonia P-6 T-shirt', phAdded: 'Added to your stock', phPrice: '€22',
@@ -107,52 +119,57 @@ const COPY = {
     phDesc: 'Patagonia P-6 Logo, organic cotton, size L, great condition — worn a few times.',
     phRetouch: 'Photo retouched by AI', phSending: 'Sending…',
     phDone: 'Listed on 4 marketplaces', phSent: 'Listings sent',
+    vocTagCat: 'Fashion', vocTagSize: 'Size',
 
-    pubKicker: 'Automatic publishing', pubTitle: 'One move, live everywhere.',
-    pubBody: 'You add an item, FillSell does the rest: it builds and posts the listing on all 4 marketplaces at once. No copy-paste, no re-uploading photos.',
+    howTitle: 'How it works',
+    howPhoneT: 'Your phone',
+    howPhoneB: 'You add your items, pick where to publish, and run everything from anywhere.',
+    howPcT: 'Your computer',
+    howPcB: 'A small Chrome extension, installed once, publishes for you with your own accounts. Never your passwords.',
+    howCloudT: 'FillSell',
+    howCloudB: 'Your listings, sales and stock stay in sync everywhere.',
+    howNote: 'Computer off? Nothing is lost: your actions wait in line and go out the next time Chrome opens.',
+
+    vintedKicker: 'Vinted import',
+    vintedTitle: "Already 200 listings on Vinted? You won't redo them.",
+    vintedBody: 'FillSell imports your wardrobe in one click: titles, prices, photos — everything lands in your stock. We read your listings; we never publish, edit or delete anything. Then you pick which ones to send to Leboncoin, eBay and Beebs.',
+    vintedFree: 'Free, unlimited import.',
+    vintedCta: 'Import my wardrobe',
+
+    pubKicker: 'Publishing', pubTitle: 'One listing. Four marketplaces.',
+    pubBody: 'You fill it in once. FillSell publishes on Vinted, Leboncoin, eBay and Beebs with your accounts. Four times more buyers on the same item — without four times the work.',
     pubOneItem: '1 single add', pubAuto: 'Automatic', pubSold: 'Sold on',
-    pubB1t: '4 marketplaces, 1 add',
-    pubB1b: 'Vinted, Leboncoin, eBay and Beebs get your listing at the same time, formatted for each one.',
-    pubB2t: 'Cross-platform auto-removal',
-    pubB2b: 'Sold on one marketplace? The listing is pulled from the other 3 instantly. Zero double-sale risk.',
-    pubB3t: 'Sale detected, margins updated',
-    pubB3b: 'An item sells on a marketplace? FillSell detects it and updates your margins, stock and stats, automatically.',
 
-    vocKicker: 'Voice management', vocTitle: 'Manage your stock by voice.',
-    vocBody: 'Add an item, mark it sold or file it away — just by voice. The AI catches the brand, marketplace, size, condition (“hole in the sleeve”) and even the storage spot, then fills the listing for you.',
-    vocLink: 'Your inventory always up to date, no typing',
-    vocQuote: '“Zara jumper, size M, hole in the sleeve, bin 3”',
-    vocTagCat: 'Fashion', vocTagSize: 'Size', vocTagState: 'Sleeve hole', vocTagLoc: 'Bin 3',
-    vocAdded: 'Added to your inventory',
+    repubKicker: 'Reposting',
+    repubTitle: 'Your sleeping listings climb back up on their own.',
+    repubBody: 'On Vinted, a three-week-old listing is seen by no one. FillSell reposts it to put it back on top of the results — at a human pace, with a daily cap you set, and you can switch it off anytime.',
+    repubMention: 'Manual reposting on every plan, automatic with the Pro plan.',
 
-    lensKicker: 'FillSell Lens', lensTitle: 'Snap it. The AI prices it.',
-    lensBody: "Photograph any object: Lens identifies it, estimates its resale price and rates the deal out of 10. You know in 2 seconds if it's worth it.",
-    lensScanning: 'Analyzing', lensIdentified: 'Item identified',
-    lensItem: 'Nike Air Max 90', lensScore: '8.4', lensPriceLabel: 'Estimated resale price',
-    lensPrice: '≈ €68', lensVerdict: 'Good deal', lensCost: '6 Pépites',
-    lensStep1: 'You snap the object',
-    lensStep2: 'The AI identifies & prices it',
-    lensStep3: 'You get price + deal score',
+    soldKicker: 'After the sale',
+    soldTitle: 'Sold on one marketplace? Remove the others in one tap.',
+    soldBody: 'FillSell detects the sale and lets you know. You confirm, it removes the listings from the other marketplaces. No more buyers you have to tell the item is already gone.',
 
-    photoKicker: 'AI photo touch-up', photoTitle: 'Photos that sell.',
-    photoBody: 'In one tap, the AI cuts out the object, cleans the background and fixes the lighting. Your listings stand out — no studio, no third-party app.',
-    photoBefore: 'Your photo', photoAfter: 'Touched up', photoBadge: 'Enhanced',
+    gainsKicker: 'Stock & profits',
+    gainsTitle: 'Your stock and profits, up to date on their own.',
+    gainsBody: "What you bought, what you sold, what's left and what it earned you. Sorted, priced, no spreadsheet to maintain.",
 
-    featKicker: 'Everything else', featTitle: 'Everything to run your reselling.',
+    toolsKicker: 'The toolbox', toolsTitle: 'Four tools to move faster.',
 
     priceKicker: 'Pricing', priceTitle: 'A plan for every volume.',
     priceSub: 'Start free. Move to Premium or Pro whenever you want to sell more — no commitment.',
-    perMonth: '/ mo', freeTag: 'To get started', priceFree: '€0', freeCoins: '{FREE} Pépites / mo',
-    popular: 'Most popular', priceP: '€12.99', pCoins: '{PREMIUM} Pépites / mo',
-    pricePro: '€29.99', proCoins: '{PRO} Pépites / mo',
+    perMonth: '/ mo', freeTag: 'To get started', priceFree: '€0',
+    freeAds: '≈ {ADS_FREE} listings created and published on all 4 marketplaces every month',
+    popular: 'Most popular', priceP: '€12.99',
+    pAds: '≈ {ADS_PREMIUM} listings created and published on all 4 marketplaces every month',
+    pricePro: '€29.99',
+    proAds: '≈ {ADS_PRO} listings created and published on all 4 marketplaces every month',
     ctaFree: 'Start free', ctaPremium: 'Go Premium', ctaPro: 'Go Pro',
-    coinsTitle: 'Pépites, your currency', coinsPublish: 'Publish: 1 Pépite / platform',
-    coinsGenerate: 'AI-generated listing: 6 Pépites',
-    coinsLens: 'Lens analysis: 6 Pépites', coinsPacks: 'Packs from €4.99',
+    coinsTitle: 'Pépites, your action credits',
+    coinsBody: 'The app always shows the cost before you confirm, and they never expire.',
 
     faqTitle: 'The questions we get asked.',
     ctaTitle: 'Ready to list everywhere, effortlessly?',
-    ctaBody: 'Start free — 50 Pépites every month, no credit card required.',
+    ctaBody: 'Start free — no credit card required.',
     ctaBtn: 'Start free',
     footTag: 'Automated reselling', footLegal: 'Legal notice',
     footPrivacy: 'Privacy', footContact: 'Contact',
@@ -160,43 +177,36 @@ const COPY = {
   },
 };
 
-const FEATURES = {
+/* Boîte à outils (lot 1) : 4 cartes, pas une de plus — l'ancienne grille
+   « Tout le reste » (8 cartes) diluait la page et sa carte « Stock illimité »
+   contredisait le plafond Free de 200 articles (coin_config.free_stock_limit).
+   Chaque libellé se comprend sans connaître le produit : « Lens » ne sort
+   jamais sans son sous-titre explicatif. Aucun coût en Pépites ici — la
+   monnaie n'apparaît qu'à partir de la section Tarifs. */
+const TOOLS = {
   fr: [
-    { emoji: '💬', t: 'Gestion vocale du stock', b: 'Ajoute, vends ou range un article à la voix — marque, taille, état et emplacement détectés.' },
-    { emoji: '📊', t: 'Stats avancées', b: 'Profit net, marge moyenne, meilleures ventes et évolution mois par mois.' },
-    { emoji: '📦', t: 'Stock illimité', b: "Gère tout ton inventaire sans limite, avec catégorisation automatique par l'IA." },
-    { emoji: '🔄', t: 'Sync cross-plateforme', b: 'Tes 4 places de marché restent alignées en permanence, sans intervention.' },
-    { emoji: '📋', t: 'Historique complet', b: 'Chaque achat et chaque vente conservés, filtrables par marque et catégorie.' },
-    { emoji: '📁', t: 'Import / export Excel', b: 'Fais entrer et sortir ton stock en un fichier, sans ressaisie.' },
-    { emoji: '🧮', t: 'Calcul de marge', b: "Achat, frais, prix de vente → ton bénéfice net et ta marge %, avant même d'acheter." },
-    { emoji: '🗂️', t: 'Emplacements de rangement', b: "Chaque article rangé à sa place — retrouve n'importe quel produit en un mot." },
+    { emoji: '🔍', t: "Lens — le prix avant d'acheter", b: 'En brocante, photographie un article : FillSell estime à combien il se revend.' },
+    { emoji: '✨', t: "L'IA écrit l'annonce", b: 'Photographie ton article : le titre, la description et la catégorie sont remplis.' },
+    { emoji: '📸', t: 'Retouche photo', b: 'Des photos nettes qui donnent envie de cliquer.' },
+    { emoji: '🎙️', t: 'Commande vocale', b: 'Décris ton article à voix haute, il entre dans ton stock.' },
   ],
   en: [
-    { emoji: '💬', t: 'Voice stock management', b: 'Add, sell or file an item by voice — brand, size, condition and location detected.' },
-    { emoji: '📊', t: 'Advanced stats', b: 'Net profit, average margin, best sales and month-by-month trends.' },
-    { emoji: '📦', t: 'Unlimited stock', b: 'Manage your whole inventory with no limit and automatic AI categories.' },
-    { emoji: '🔄', t: 'Cross-platform sync', b: 'Your 4 marketplaces stay aligned at all times, hands-free.' },
-    { emoji: '📋', t: 'Full history', b: 'Every buy and sale kept, filterable by brand and category.' },
-    { emoji: '📁', t: 'Excel import / export', b: 'Move your stock in and out with one file — no re-typing.' },
-    { emoji: '🧮', t: 'Margin calculator', b: 'Cost, fees, sale price → your net profit and margin %, before you even buy.' },
-    { emoji: '🗂️', t: 'Storage locations', b: 'Every item filed in its spot — find any product with a single word.' },
+    { emoji: '🔍', t: 'Lens — the price before you buy', b: 'At a flea market, photograph an item: FillSell estimates what it resells for.' },
+    { emoji: '✨', t: 'The AI writes the listing', b: 'Photograph your item: title, description and category are filled in.' },
+    { emoji: '📸', t: 'Photo touch-up', b: 'Clean photos that make people want to click.' },
+    { emoji: '🎙️', t: 'Voice commands', b: 'Describe your item out loud — it lands in your stock.' },
   ],
 };
 
-/* Carte Free : la publication auto est le moteur commun, libellé court dédié.
-   Cartes Premium et Pro : SQUELETTE COMMUN de l'app (07-08/08, validé Nico) —
-   mêmes rubriques, même ordre, mêmes tournures que ConversionModal et
-   PlanDetailsModal : stock · publication · republication · Lens · Excel ·
-   voix · support. Seule la VALEUR change entre les deux cartes (grant dans la
-   puce au-dessus, ~25 vs ~100 analyses Lens, republication « automatisable »
-   côté Pro, support email vs prioritaire). « Tout le Premium, inclus » est
-   MORT ici comme dans l'app (tout est répété à l'identique, le bandeau était
-   faux). Toute retouche d'un libellé se répercute dans les QUATRE endroits
-   (deux cartes ConversionModal, PlanDetailsModal, ici — + la FAQ).
-   Les jetons {LENS_PREMIUM}/{LENS_PRO} sont calculés depuis les grants lus en
-   base (cf. fillGrants) : la page ne peut pas promettre un volume qu'on ne
-   sert pas. Les coûts (6 / 1 / 6 Pépites — grille du 2026-08-08, MÊME PRIX
-   POUR TOUS LES PALIERS) sont en dur, comme dans la FAQ. */
+/* Cartes de plans — refonte lot 1 (2026-08-09) : chaque carte annonce d'abord
+   un RÉSULTAT (« ≈ N annonces créées et publiées sur les 4 plateformes / mois »,
+   jeton {ADS_*} calculé depuis les grants lus en base), les coûts unitaires
+   sont SORTIS des puces (ils restent dans la FAQ « C'est quoi les Pépites ? »).
+   La landing DIVERGE donc volontairement du squelette commun ConversionModal /
+   PlanDetailsModal de l'app (07-08/08) : l'app parle à un utilisateur qui
+   connaît déjà les Pépites, la landing à un visiteur qui ne les connaît pas.
+   Les jetons {FREE}/{PREMIUM}/{PRO}/{LENS_*}/{ADS_*} sont remplis par
+   fillGrants : la page ne peut pas promettre un volume qu'on ne sert pas. */
 const PUBLISH_LINE = {
   fr: 'Publication auto sur Vinted, Leboncoin, eBay & Beebs',
   en: 'Auto-publishing to Vinted, Leboncoin, eBay & Beebs',
@@ -204,42 +214,58 @@ const PUBLISH_LINE = {
 
 const PLANS = {
   fr: {
-    free: ["Ajout d'article à la voix", PUBLISH_LINE.fr, 'Calcul de marge instantané', 'Suivi de tes ventes'],
+    free: [
+      '{FREE} Pépites incluses chaque mois',
+      "Ajout d'article à la voix",
+      PUBLISH_LINE.fr,
+      'Calcul de marge instantané',
+      'Suivi de tes ventes',
+    ],
     premium: [
+      '{PREMIUM} Pépites incluses chaque mois',
       'Stock illimité',
-      'Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA 6 Pépites, publication 1 Pépite/plateforme)',
-      'Republication Vinted en un clic — 1 Pépite par annonce',
-      "Environ {LENS_PREMIUM} analyses Lens par mois (6 Pépites l'analyse)",
+      PUBLISH_LINE.fr,
+      'Republication Vinted en un clic',
+      'Environ {LENS_PREMIUM} analyses Lens par mois',
       'Import & export Excel de ton stock',
       'Commandes vocales illimitées',
       'Support par email',
     ],
     pro: [
+      '{PRO} Pépites incluses chaque mois',
       'Stock illimité',
-      'Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA 6 Pépites, publication 1 Pépite/plateforme)',
-      "Republication Vinted en un clic — 1 Pépite par annonce, automatisable si tu l'actives",
-      "Environ {LENS_PRO} analyses Lens par mois (6 Pépites l'analyse)",
+      PUBLISH_LINE.fr,
+      "Republication Vinted en un clic — automatisable si tu l'actives",
+      'Environ {LENS_PRO} analyses Lens par mois',
       'Import & export Excel de ton stock',
       'Commandes vocales illimitées',
       'Support prioritaire',
     ],
   },
   en: {
-    free: ['Voice item adding', PUBLISH_LINE.en, 'Instant margin calculator', 'Track your sales'],
+    free: [
+      '{FREE} Pépites included every month',
+      'Voice item adding',
+      PUBLISH_LINE.en,
+      'Instant margin calculator',
+      'Track your sales',
+    ],
     premium: [
+      '{PREMIUM} Pépites included every month',
       'Unlimited stock',
-      'Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing 6 Nuggets, publishing 1 Nugget/platform)',
-      'One-tap Vinted reposting — 1 Nugget per listing',
-      'About {LENS_PREMIUM} Lens scans a month (6 Nuggets each)',
+      PUBLISH_LINE.en,
+      'One-tap Vinted reposting',
+      'About {LENS_PREMIUM} Lens scans a month',
       'Excel import & export of your stock',
       'Unlimited voice commands',
       'Email support',
     ],
     pro: [
+      '{PRO} Pépites included every month',
       'Unlimited stock',
-      'Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing 6 Nuggets, publishing 1 Nugget/platform)',
-      'One-tap Vinted reposting — 1 Nugget per listing, automatable if you turn it on',
-      'About {LENS_PRO} Lens scans a month (6 Nuggets each)',
+      PUBLISH_LINE.en,
+      'One-tap Vinted reposting — automatable if you turn it on',
+      'About {LENS_PRO} Lens scans a month',
       'Excel import & export of your stock',
       'Unlimited voice commands',
       'Priority support',
@@ -247,20 +273,31 @@ const PLANS = {
   },
 };
 
+/* FAQ — lot 1 : trois questions de confiance ajoutées (mécanique extension,
+   PC allumé, risque de compte — les trois vraies objections d'avant-inscription)
+   et « Et si un article se vend ? » corrigée : le retrait exige une
+   confirmation (pending_removal + bandeau), plus jamais « automatiquement /
+   zéro risque ». « Comment marche la publication automatique ? » est remplacée
+   par « Comment FillSell publie-t-il mes annonces ? » qui dit la vérité
+   (extension Chrome), au lieu de la cacher. */
 const FAQ = {
   fr: [
     ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre ({FREE} en Free, {PREMIUM} en Premium, {PRO} en Pro) et tu les dépenses pour générer une annonce par IA (6 Pépites), la publier (1 Pépite par plateforme, plus 9 ou 32 si tu choisis la retouche photos IA), republier une annonce Vinted (1 Pépite) ou lancer une analyse Lens (6 Pépites). Les prix sont les mêmes sur tous les paliers — seul le nombre de Pépites reçues change. Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
     ['Sur quelles plateformes je publie ?', 'Vinted, Leboncoin, eBay et Beebs — les 4 places de marché qui comptent en France. Un seul ajout, publié sur les quatre en même temps.'],
-    ['Comment marche la publication automatique ?', 'Tu ajoutes un article à ton inventaire, puis FillSell génère l’annonce et la publie sur les 4 plateformes en même temps. Rien à recopier ni à re-téléverser.'],
-    ['Et si un article se vend ?', 'FillSell détecte la vente, retire l’annonce des 3 autres plateformes et met à jour tes marges, ton stock et tes stats — automatiquement. Zéro risque de double-vente.'],
+    ['Comment FillSell publie-t-il mes annonces ?', 'Par une extension Chrome installée une seule fois sur ton ordinateur. Elle remplit les formulaires avec tes comptes déjà connectés. FillSell ne connaît jamais tes mots de passe.'],
+    ['Faut-il laisser mon ordinateur allumé ?', 'Pour que les publications partent, oui, avec Chrome ouvert. Si ton ordinateur est éteint, tes actions attendent en file et partent à la prochaine ouverture.'],
+    ['Est-ce risqué pour mon compte Vinted ?', 'FillSell agit au rythme d’une personne : des gestes espacés, des plafonds que tu règles, et tu peux tout couper à tout moment. Aucun outil ne peut promettre zéro risque, et nous préférons la prudence aux promesses.'],
+    ['Et si un article se vend ?', 'FillSell détecte la vente et te prévient. Tu confirmes, il retire les annonces des autres plateformes et met à jour ton stock, tes marges et tes stats.'],
     ['Lens, c’est illimité ?', 'Non — chaque analyse Lens coûte 6 Pépites, quel que soit ton palier. Le Pro reçoit simplement bien plus de Pépites ({PRO}/mois) pour en faire davantage.'],
     ['Je peux annuler quand je veux ?', 'Oui. Premium et Pro sont sans engagement : tu changes d’offre ou tu arrêtes en un clic depuis l’app.'],
   ],
   en: [
     ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan ({FREE} on Free, {PREMIUM} on Premium, {PRO} on Pro) and spend them to generate a listing with AI (6 Pépites), publish it (1 Pépite per platform, plus 9 or 32 if you pick AI photo editing), repost a Vinted listing (1 Pépite) or run a Lens analysis (6 Pépites). Prices are the same on every tier — only the monthly Pépite allowance changes. Need more? Packs start at €4.99.'],
     ['Which marketplaces can I publish to?', 'Vinted, Leboncoin, eBay and Beebs — the 4 marketplaces that matter in France. One add, posted to all four at once.'],
-    ['How does automatic publishing work?', 'You add an item to your inventory, then FillSell builds the listing and posts it to all 4 marketplaces at once. Nothing to copy or re-upload.'],
-    ['What happens when an item sells?', 'FillSell detects the sale, pulls the listing from the other 3 marketplaces and updates your margins, stock and stats — automatically. Zero double-sale risk.'],
+    ['How does FillSell publish my listings?', 'Through a Chrome extension installed once on your computer. It fills in the forms with your already-signed-in accounts. FillSell never knows your passwords.'],
+    ['Do I need to leave my computer on?', 'For listings to go out, yes — with Chrome open. If your computer is off, your actions wait in line and go out the next time it opens.'],
+    ['Is it risky for my Vinted account?', 'FillSell acts at a human pace: spaced-out actions, caps you control, and you can switch everything off at any time. No tool can promise zero risk, and we prefer caution over promises.'],
+    ['What happens when an item sells?', 'FillSell detects the sale and lets you know. You confirm, it removes the listings from the other marketplaces and updates your stock, margins and stats.'],
     ['Is Lens unlimited?', 'No — each Lens analysis costs 6 Pépites, on every tier. Pro simply gets far more Pépites ({PRO}/mo) so you can run more of them.'],
     ['Can I cancel anytime?', 'Yes. Premium and Pro have no commitment — switch plans or stop in one tap from the app.'],
   ],
@@ -286,13 +323,21 @@ const GRANTS_FALLBACK = { FREE: 50, PREMIUM: 400, PRO: 1200 };
 /* 6 = coin_config.price_lens_overflow, en dur comme dans la FAQ et
    translations.js — si ce coût change en base, ces textes sont à reprendre. */
 const LENS_COST = 6;
+/* 10 = price_generate (6) + 4 × price_per_platform (1) — grille coin_config du
+   2026-08-08. C'est le coût d'UNE annonce créée par IA et publiée sur les 4
+   plateformes, sans retouche photo : la base des jetons {ADS_*} des cartes de
+   plans. En dur comme LENS_COST — à reprendre si la grille bouge. */
+const LISTING_COST = 10;
 const fillGrants = (texte, g) =>
   String(texte)
     .replace(/\{FREE\}/g, g.FREE)
     .replace(/\{PREMIUM\}/g, g.PREMIUM)
     .replace(/\{PRO\}/g, g.PRO)
     .replace(/\{LENS_PREMIUM\}/g, Math.floor(g.PREMIUM / LENS_COST))
-    .replace(/\{LENS_PRO\}/g, Math.floor(g.PRO / LENS_COST));
+    .replace(/\{LENS_PRO\}/g, Math.floor(g.PRO / LENS_COST))
+    .replace(/\{ADS_FREE\}/g, Math.floor(g.FREE / LISTING_COST))
+    .replace(/\{ADS_PREMIUM\}/g, Math.floor(g.PREMIUM / LISTING_COST))
+    .replace(/\{ADS_PRO\}/g, Math.floor(g.PRO / LISTING_COST));
 
 /* ── Fragments SVG réutilisés ───────────────────────────────── */
 /* Le dégradé est inliné dans CHAQUE SVG (id unique via useId) : iOS/WebKit ne
@@ -484,9 +529,8 @@ export default function LandingPage() {
   }, []);
 
   const navLinks = [
+    { id: 'comment', label: t.navHow },
     { id: 'publication', label: t.navPublish },
-    { id: 'vocal', label: t.navVocal },
-    { id: 'lens', label: 'Lens' },
     { id: 'tarifs', label: t.navPricing },
     { id: 'faq', label: 'FAQ' },
   ];
@@ -590,8 +634,10 @@ export default function LandingPage() {
               </div>
             )}
 
+            {/* Lot 1 : plus de gemme Pépite ici — la monnaie interne n'apparaît
+                qu'à partir de la section Tarifs. */}
             <div className="lp-hero__trust">
-              <Pepite />
+              <CheckDisc />
               <span>{t.heroTrust}</span>
             </div>
           </div>
@@ -699,7 +745,67 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════ PUBLICATION AUTO ══════════ */}
+      {/* ══════════ COMMENT ÇA MARCHE ══════════
+          Cœur du lot 1 : la mécanique app-pilote / extension-PC-exécute,
+          expliquée AVANT l'inscription. Jusqu'ici la landing ne mentionnait ni
+          extension, ni Chrome, ni ordinateur — le visiteur découvrait le
+          prérequis après signup, au premier clic « Publier ». */}
+      <section className="lp-section lp-section--tint" id="comment">
+        <div className="lp-shell">
+          <div className="lp-head lp-head--narrow lp-reveal">
+            <h2 className="lp-h2" style={{ margin: 0 }}>{t.howTitle}</h2>
+          </div>
+
+          <div className="lp-cards">
+            <div className="lp-card lp-reveal">
+              <div className="lp-how__emoji" aria-hidden="true">📱</div>
+              <div className="lp-card__title">{t.howPhoneT}</div>
+              <div className="lp-card__body">{t.howPhoneB}</div>
+            </div>
+
+            <div className="lp-card lp-reveal">
+              <div className="lp-how__emoji" aria-hidden="true">🧩</div>
+              <div className="lp-card__title">{t.howPcT}</div>
+              <div className="lp-card__body">{t.howPcB}</div>
+            </div>
+
+            <div className="lp-card lp-reveal">
+              <div className="lp-how__emoji" aria-hidden="true">☁️</div>
+              <div className="lp-card__title">{t.howCloudT}</div>
+              <div className="lp-card__body">{t.howCloudB}</div>
+            </div>
+          </div>
+
+          <div className="lp-hownote lp-reveal">{t.howNote}</div>
+        </div>
+      </section>
+
+      {/* ══════════ IMPORT VINTED ══════════
+          L'argument d'entrée de l'ICP principal : le dressing existant entre
+          en un clic, en lecture seule — même contrat que la carte de sync
+          in-app (« on lit, on ne publie/modifie/supprime rien »). */}
+      <section className="lp-section" id="vinted">
+        <div className="lp-shell">
+          <div className="lp-head lp-reveal">
+            <div className="lp-kicker">{t.vintedKicker}</div>
+            <h2 className="lp-h2">{t.vintedTitle}</h2>
+            <p className="lp-lead">{t.vintedBody}</p>
+          </div>
+
+          <div className="lp-import lp-reveal">
+            <span className="lp-import__badge"><CheckDisc />{t.vintedFree}</span>
+            <button className="lp-btn lp-btn--grad" onClick={() => startSignup('import')}>
+              {t.vintedCta} <CtaArrow size={17} />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════ UNE ANNONCE, QUATRE PLATEFORMES ══════════
+          Fusion lot 1 : l'ancienne section « Publication automatique — Un
+          geste, publié partout » doublonnait le hero. Une seule idée ici :
+          1 ajout → 4 plateformes. Le retrait après vente et les marges ont
+          chacun leur section dédiée plus bas. */}
       <section className="lp-section lp-section--tint" id="publication">
         <div className="lp-shell">
           <div className="lp-head lp-reveal">
@@ -732,262 +838,86 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div className="lp-cards">
-            <div className="lp-card lp-reveal">
-              <div className="lp-card__icon lp-card__icon--teal">
-                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff"
-                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 3v18h18" /><path d="M7 14l3-3 3 3 5-5" />
-                </svg>
-              </div>
-              <div className="lp-card__title">{t.pubB1t}</div>
-              <div className="lp-card__body">{t.pubB1b}</div>
-            </div>
+      {/* ══════════ REPUBLICATION ══════════
+          Nouvelle section lot 1 : la republication n'existait que dans les
+          cartes de prix, sans jamais dire POURQUOI republier. Discours
+          honnête : rythme humain, plafond réglable, coupable à tout moment. */}
+      <section className="lp-section" id="republication">
+        <div className="lp-shell">
+          <div className="lp-head lp-reveal">
+            <div className="lp-kicker">{t.repubKicker}</div>
+            <h2 className="lp-h2">{t.repubTitle}</h2>
+            <p className="lp-lead">{t.repubBody}</p>
+          </div>
 
-            <div className="lp-card lp-reveal">
-              <div className="lp-card__icon lp-card__icon--peach">
-                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff"
-                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 12a9 9 0 1 1-6.2-8.5" /><path d="M22 4 12 14.01l-3-3" />
-                </svg>
-              </div>
-              <div className="lp-card__title">{t.pubB2t}</div>
-              <div className="lp-card__body">{t.pubB2b}</div>
-              <div className="lp-card__sold">
-                <span className="lp-card__sold-on">
-                  {t.pubSold}
-                  <PlatformLogo platform="vinted" size={16} />
-                  Vinted
-                </span>
-                <span className="lp-card__sold-arr"><CtaArrow size={14} /></span>
-                {/* Les 3 autres, retirées : logos réels, désaturés et barrés. */}
-                <span className="lp-card__sold-off">
-                  {PLATFORMS.filter((p) => p.key !== 'vinted').map((p) => (
-                    <PlatformLogo key={p.key} platform={p.key} size={16} />
-                  ))}
-                </span>
-              </div>
-            </div>
+          <div className="lp-import lp-reveal">
+            <span className="lp-import__badge">🔁 {t.repubMention}</span>
+          </div>
+        </div>
+      </section>
 
-            <div className="lp-card lp-reveal">
-              <div className="lp-card__icon lp-card__icon--deep">
-                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff"
-                  strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 17l6-6 4 4 8-8" /><path d="M17 7h4v4" />
-                </svg>
-              </div>
-              <div className="lp-card__title">{t.pubB3t}</div>
-              <div className="lp-card__body">{t.pubB3b}</div>
+      {/* ══════════ VENDU QUELQUE PART ══════════
+          Formulation honnête (correction lot 1) : détection automatique,
+          retrait SUR CONFIRMATION (« en un tap ») — plus jamais « tout seul /
+          instantanément / zéro risque de double-vente », le code ne le fait
+          pas (pending_removal + bandeau de confirmation). */}
+      <section className="lp-section lp-section--tint" id="vendu">
+        <div className="lp-shell">
+          <div className="lp-head lp-reveal">
+            <div className="lp-kicker">{t.soldKicker}</div>
+            <h2 className="lp-h2">{t.soldTitle}</h2>
+            <p className="lp-lead">{t.soldBody}</p>
+          </div>
+
+          <div className="lp-panel lp-panel--sold lp-reveal">
+            <div className="lp-card__sold" style={{ marginTop: 0, justifyContent: 'center' }}>
+              <span className="lp-card__sold-on">
+                {t.pubSold}
+                <PlatformLogo platform="vinted" size={16} />
+                Vinted
+              </span>
+              <span className="lp-card__sold-arr"><CtaArrow size={14} /></span>
+              {/* Les 3 autres, retirées : logos réels, désaturés et barrés. */}
+              <span className="lp-card__sold-off">
+                {PLATFORMS.filter((p) => p.key !== 'vinted').map((p) => (
+                  <PlatformLogo key={p.key} platform={p.key} size={16} />
+                ))}
+              </span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ══════════ VOCAL ══════════ */}
-      <section className="lp-section" id="vocal">
-        <div className="lp-shell lp-split">
-          <div className="lp-split__copy lp-reveal">
-            <div className="lp-kicker">{t.vocKicker}</div>
-            <h2 className="lp-h2">{t.vocTitle}</h2>
-            <p className="lp-lead">{t.vocBody}</p>
-            <div className="lp-voc__link">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B6E62"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" /><path d="M12 19v3" />
-              </svg>
-              {t.vocLink}
-            </div>
-          </div>
-
-          <div className="lp-split__media lp-reveal">
-            <div className="lp-panel">
-              <div className="lp-voc__head">
-                <div className="lp-voc__mic">
-                  <i />
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff"
-                    strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="9" y="2" width="6" height="12" rx="3" />
-                    <path d="M5 10v2a7 7 0 0 0 14 0v-2" />
-                    <line x1="12" y1="19" x2="12" y2="22" />
-                  </svg>
-                </div>
-                <div className="lp-voc__wave">
-                  {[0, 0.15, 0.3, 0.45, 0.6, 0.75].map((d, i) => (
-                    <span key={i} style={{ animationDelay: `${d}s`, background: i === 3 ? '#E8956D' : undefined }} />
-                  ))}
-                </div>
-              </div>
-
-              <div className="lp-voc__quote">{t.vocQuote}</div>
-
-              <div className="lp-tags lp-voc__tags">
-                <span className="lp-tag lp-tag--cat">👗 {t.vocTagCat}</span>
-                <span className="lp-tag lp-tag--brand">Zara</span>
-                <span className="lp-tag">{t.vocTagSize} M</span>
-                <span className="lp-tag lp-tag--warn">⚠ {t.vocTagState}</span>
-                <span className="lp-tag lp-tag--loc">📍 {t.vocTagLoc}</span>
-              </div>
-
-              <div className="lp-voc__added"><Check color="#1B6E62" size={15} />{t.vocAdded}</div>
-            </div>
+      {/* ══════════ STOCK & BÉNÉFICES ══════════ */}
+      <section className="lp-section lp-section--rule" id="gains">
+        <div className="lp-shell">
+          <div className="lp-head lp-reveal" style={{ marginBottom: 0 }}>
+            <div className="lp-kicker">{t.gainsKicker}</div>
+            <h2 className="lp-h2">{t.gainsTitle}</h2>
+            <p className="lp-lead">{t.gainsBody}</p>
           </div>
         </div>
       </section>
 
-      {/* ══════════ LENS ══════════ */}
-      <section className="lp-section lp-section--tint" id="lens">
-        <div className="lp-shell lp-split lp-split--rev">
-          <div className="lp-split__media lp-reveal">
-            <div className="lp-lens">
-              <div className="lp-lens__body">
-                <div className="lp-lens__screen">
-                  <div className="lp-lens__view">
-                    <span style={{ fontSize: 120, filter: 'drop-shadow(0 20px 30px rgba(0,0,0,0.5))' }}>👟</span>
-                  </div>
-
-                  <div className="lp-lens__frame" aria-hidden="true">
-                    <i className="tl" /><i className="tr" /><i className="bl" /><i className="br" />
-                    <span className="lp-lens__beam" />
-                  </div>
-
-                  <div className="lp-lens__scanning"><span>{t.lensScanning}</span></div>
-
-                  <div className="lp-lens__sheet">
-                    <div className="lp-lens__grab" />
-                    <div className="lp-lens__row">
-                      <div>
-                        <div className="lp-lens__eyebrow">{t.lensIdentified}</div>
-                        <div className="lp-lens__item">{t.lensItem}</div>
-                      </div>
-                      <div className="lp-lens__score"><b>{t.lensScore}</b><span>/10</span></div>
-                    </div>
-                    <div className="lp-lens__price">
-                      <div className="lp-lens__eyebrow">{t.lensPriceLabel}</div>
-                      <b>{t.lensPrice}</b>
-                      <div className="lp-lens__gauge"><i /></div>
-                    </div>
-                    <div className="lp-lens__foot">
-                      <span className="lp-lens__verdict">
-                        <Check color="#1B6E62" size={14} />{t.lensVerdict} ·
-                        <PlatformLogo platform="vinted" size={14} />Vinted
-                      </span>
-                      <span className="lp-lens__cost"><Pepite size={12} />{t.lensCost}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="lp-split__copy lp-reveal">
-            <div className="lp-kicker lp-kicker--icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F9E90" strokeWidth="2">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="14.31" y1="8" x2="20.05" y2="17.94" />
-                <line x1="9.69" y1="8" x2="21.17" y2="8" />
-                <line x1="7.38" y1="12" x2="13.12" y2="2.06" />
-                <line x1="9.69" y1="16" x2="3.95" y2="6.06" />
-                <line x1="14.31" y1="16" x2="2.83" y2="16" />
-                <line x1="16.62" y1="12" x2="10.88" y2="21.94" />
-              </svg>
-              <span>{t.lensKicker}</span>
-            </div>
-            <h2 className="lp-h2">{t.lensTitle}</h2>
-            <p className="lp-lead">{t.lensBody}</p>
-
-            <div className="lp-lens__steps">
-              <div className="lp-lens__step">
-                <i>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1B6E62"
-                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                    <circle cx="12" cy="13" r="4" />
-                  </svg>
-                </i>
-                <span>{t.lensStep1}</span>
-              </div>
-              <div className="lp-lens__step">
-                <i>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1B6E62"
-                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 3v3" /><path d="M12 18v3" /><path d="M5 12H2" /><path d="M22 12h-3" />
-                    <circle cx="12" cy="12" r="4" />
-                  </svg>
-                </i>
-                <span>{t.lensStep2}</span>
-              </div>
-              <div className="lp-lens__step">
-                <i className="peach">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C2410C"
-                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2v20" />
-                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                  </svg>
-                </i>
-                <span>{t.lensStep3}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ══════════ RETOUCHE PHOTO IA ══════════ */}
-      <section className="lp-section lp-section--rule" id="photo">
-        <div className="lp-shell lp-split">
-          <div className="lp-split__copy lp-reveal">
-            <div className="lp-kicker lp-kicker--icon">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2F9E90"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m3 21 9-9" />
-                <path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8 19 13M17.8 6.2 19 5M12.2 6.2 11 5" />
-                <path d="M15 9h.01" />
-              </svg>
-              <span>{t.photoKicker}</span>
-            </div>
-            <h2 className="lp-h2">{t.photoTitle}</h2>
-            <p className="lp-lead">{t.photoBody}</p>
-          </div>
-
-          <div className="lp-split__media lp-reveal">
-            <div className="lp-panel">
-              <div className="lp-photo">
-                <div className="lp-photo__col">
-                  <div className="lp-photo__shot lp-photo__shot--raw">
-                    <img src={HERO_PHOTO} alt="" loading="lazy" />
-                  </div>
-                  <span className="lp-photo__caption">{t.photoBefore}</span>
-                </div>
-
-                <div className="lp-photo__arrow">
-                  <Arrow w={34} h={20} />
-                  <span>IA</span>
-                </div>
-
-                <div className="lp-photo__col">
-                  <div className="lp-photo__shot lp-photo__shot--clean">
-                    <img src={HERO_PHOTO} alt="" loading="lazy" />
-                    <span className="lp-photo__badge">✨ {t.photoBadge}</span>
-                  </div>
-                  <span className="lp-photo__caption lp-photo__caption--after">{t.photoAfter}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ══════════ FEATURES ══════════ */}
-      <section className="lp-section">
+      {/* ══════════ LA BOÎTE À OUTILS ══════════
+          Lot 1 : les grandes vitrines Vocal / Lens / Retouche photo et la
+          grille « Tout le reste » (8 cartes) sont condensées en UNE section de
+          4 cartes — une promesse par carte, compréhensible sans connaître le
+          produit. Au passage disparaissent la note deal « 8,4/10 » (feature
+          supprimée du produit, cf. AnalyseMarche.jsx) et la carte « Stock
+          illimité » qui contredisait le plafond Free de 200 articles. */}
+      <section className="lp-section" id="outils">
         <div className="lp-shell">
           <div className="lp-head lp-head--narrow lp-reveal">
-            <div className="lp-kicker">{t.featKicker}</div>
-            <h2 className="lp-h2" style={{ margin: 0 }}>{t.featTitle}</h2>
+            <div className="lp-kicker">{t.toolsKicker}</div>
+            <h2 className="lp-h2" style={{ margin: 0 }}>{t.toolsTitle}</h2>
           </div>
 
           <div className="lp-feats">
-            {FEATURES[lang].map((f) => (
+            {TOOLS[lang].map((f) => (
               <div className="lp-feat lp-reveal" key={f.t}>
                 <div className="lp-feat__icon">{f.emoji}</div>
                 <div className="lp-feat__title">{f.t}</div>
@@ -1013,7 +943,10 @@ export default function LandingPage() {
               <div className="lp-plan__name">Free</div>
               <div className="lp-plan__tag">{t.freeTag}</div>
               <div className="lp-plan__price"><b>{t.priceFree}</b></div>
-              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.freeCoins, grants)}</div>
+              {/* Lot 1 : la ligne sous le prix annonce un RÉSULTAT (≈ N annonces
+                  créées + publiées sur les 4 plateformes), pas un solde de
+                  crédits — le grant en Pépites est la 1re puce de la liste. */}
+              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.freeAds, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].free.map((f) => (
                   <div className="lp-plan__feat" key={f}><Check /><span>{f}</span></div>
@@ -1033,7 +966,7 @@ export default function LandingPage() {
                 <span className="lp-plan__chip-label">Premium</span>
               </div>
               <div className="lp-plan__price"><b>{t.priceP}</b><span>{t.perMonth}</span></div>
-              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.pCoins, grants)}</div>
+              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.pAds, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].premium.map((f) => (
                   <div className="lp-plan__feat" key={f}><Check /><span>{fillGrants(f, grants)}</span></div>
@@ -1052,7 +985,7 @@ export default function LandingPage() {
                 <span className="lp-plan__chip-label lp-plan__chip-label--gold">Pro</span>
               </div>
               <div className="lp-plan__price"><b>{t.pricePro}</b><span>{t.perMonth}</span></div>
-              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.proCoins, grants)}</div>
+              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.proAds, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].pro.map((f) => (
                   <div className="lp-plan__feat" key={f}><Check color="#F2C98A" /><span>{fillGrants(f, grants)}</span></div>
@@ -1064,16 +997,13 @@ export default function LandingPage() {
             </div>
           </div>
 
+          {/* Lot 1 : l'encadré explique ce que SONT les Pépites (première
+              apparition du mot sur la page) au lieu d'aligner la grille de
+              coûts unitaires — le détail chiffré vit dans la FAQ. */}
           <div className="lp-coins lp-reveal">
             <span className="lp-coins__title"><Pepite /><b>{t.coinsTitle}</b></span>
             <span className="lp-coins__sep" />
-            <span>{t.coinsPublish}</span>
-            <span className="lp-coins__sep" />
-            <span>{t.coinsGenerate}</span>
-            <span className="lp-coins__sep" />
-            <span>{t.coinsLens}</span>
-            <span className="lp-coins__sep" />
-            <span>{t.coinsPacks}</span>
+            <span>{t.coinsBody}</span>
           </div>
         </div>
       </section>
