@@ -53,7 +53,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // jamais recréée, job 9a8eaad8). Preuve croisée réseau + vignettes
 // image-wrapper, garde non bloquante après une suppression, et un job en
 // needs_user ne gèle plus la file de republication du compte.
-export const EXTENSION_LAST_COMMIT = '2026-08-09T12:20:00Z';
+export const EXTENSION_LAST_COMMIT = '2026-08-09T12:13:15Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
