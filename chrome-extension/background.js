@@ -3258,15 +3258,24 @@ async function closeEbayPostPublishPopup(tabId) {
 // ne ment pas : on l'observe, et on en fait la 2e preuve de succès.
 const PROBE_ENDPOINTS = {
   // Vinted : endpoint connu et vérifié (réponse {"item":{"id":…},"code":0}).
-  // `images` (2026-08-08, job 46e7dfc9 « 400 Ajoute au moins une photo » avec
-  // 5 photos fournies) : l'upload des photos du formulaire est un POST
-  // FormData sur /api/v2/images (relevé dans les bundles JS de /items/new —
-  // photo_type, réponse image_id). Ces captures sont la PREUVE serveur que
-  // chaque photo est réellement arrivée : la garde photos de vinted.js
-  // (ensurePhotosLanded) les compte AVANT de cliquer Publier. Aucun risque de
-  // faux succès de publication : succesVintedOf exige "item":{"id"} et
-  // readProbeSuccess filtre sur item_upload/items.
-  vinted: String.raw`\/api\/v2\/(?:items|item_upload|images)`,
+  // ⚠️⚠️ `photos` — L'ENDPOINT D'UPLOAD, RELEVÉ EN DIRECT LE 2026-08-09 ⚠️⚠️
+  // La 0.5.3 avait inscrit `images` sur la foi d'une lecture des bundles JS de
+  // /items/new. C'ÉTAIT FAUX, et ça a coûté l'annonce de Gabin (job 9a8eaad8) :
+  // l'upload réel est un POST XHR sur /api/v2/photos, mesuré sur la vraie page
+  // avec une sonde posée à la main — 3 fichiers injectés, 3 POST
+  // /api/v2/photos → 200, réponse {"id":…,"temp_uuid":…,"url":"https://
+  // images1.vinted.net/…"}. ZÉRO requête sur /api/v2/images, qui n'existe pas
+  // dans ce flux.
+  // Conséquence de l'erreur : countImageUploadCaptures() rendait 0 EN TOUTES
+  // CIRCONSTANCES, donc ensurePhotosLanded ne pouvait JAMAIS obtenir sa preuve
+  // et levait à tous les coups — sur la publication comme sur la recréation.
+  // Ce n'était pas une course : c'était déterministe, et invisible tant que
+  // personne ne publiait sur un build ≥ 0.5.3.
+  // `images` est CONSERVÉ : il ne coûte rien et couvre un renommage inverse.
+  // Aucun risque de faux succès de publication : succesVintedOf exige
+  // "item":{"id"} (la réponse photos porte un "id" NU, à la racine), et les
+  // deux prédicats de succès filtrent sur item_upload/items.
+  vinted: String.raw`\/api\/v2\/(?:items|item_upload|images|photos)`,
   // eBay : l'endpoint de soumission n'a jamais été relevé (aucun run n'avait
   // publié jusqu'ici). On capture donc TOUTE requête non-GET du domaine et on
   // cherche un numéro d'annonce dans la réponse — c'est ce que fait
@@ -3847,7 +3856,11 @@ async function readVintedProbe(tabId) {
       world: "MAIN",
       func: () => window.__fsCaptures ?? [],
     });
-    const caps = res?.result ?? [];
+    // Les uploads de photos (/api/v2/photos) sont dans la sonde depuis la
+    // 0.5.5 : ce sont des requêtes de la page, PAS des soumissions. Les
+    // compter ici ferait disparaître le verdict « rien n'est parti », qui est
+    // le plus utile des deux.
+    const caps = (res?.result ?? []).filter((c) => !/\/api\/v2\/(?:photos|images)\b/i.test(String(c?.url ?? "")));
     if (!caps.length) {
       return (
         " [sonde réseau : AUCUNE requête de publication n'est partie — Vinted a bloqué la " +
@@ -7114,21 +7127,30 @@ async function processRepublishJob(job, accessToken) {
     // toujours, la machine vidait la file phase par phase au lieu d'article
     // par article.
     // La garde : tant qu'il existe pour CE compte un job republish à l'étape
-    // 'deleted' non recréé — pending/processing (recréation en route), mais
-    // aussi needs_user et failed (annonce hors ligne qui attend un geste) —
-    // AUCUNE nouvelle suppression ne part. Conséquence assumée : un job
-    // bloqué hors ligne GÈLE les suppressions du reste du lot jusqu'à sa
-    // relance — l'invariant prime, et la pastille rouge « Hors ligne » +
-    // la remontée en tête de liste poussent déjà l'utilisateur vers le bon
-    // geste. Échec FERMÉ : lecture impossible → on ne supprime PAS (mieux
-    // vaut un tour de poll perdu qu'une deuxième annonce hors ligne sans
-    // certitude). Avec le tri du poll (recréations dues d'abord, plus
-    // ancienne suppression en tête), le flux redevient : capture →
-    // suppression → attente → recréation d'UN article, puis le suivant.
+    // 'deleted' dont la recréation est EN ROUTE (pending/processing), AUCUNE
+    // nouvelle suppression ne part. Échec FERMÉ : lecture impossible → on ne
+    // supprime PAS (mieux vaut un tour de poll perdu qu'une deuxième annonce
+    // hors ligne sans certitude). Avec le tri du poll (recréations dues
+    // d'abord, plus ancienne suppression en tête), le flux redevient :
+    // capture → suppression → attente → recréation d'UN article, puis le
+    // suivant.
+    //
+    // ⚠️ needs_user ET failed RETIRÉS DU FILTRE (2026-08-09, file d'Ornella).
+    // Ils y étaient au motif qu'une annonce hors ligne « attend un geste ».
+    // Le résultat réel : son job 146b0648 bloqué le 08/08 à 18:11 a GELÉ ses
+    // 15 republications suivantes pendant 21 heures — aucune n'a même été
+    // tentée (aucun processing_since), 5 Pépites débitées pour rien, et rien
+    // dans l'app ne disait que le compte entier était à l'arrêt.
+    // La raison de fond : l'invariant existe pour empêcher la file de se
+    // vider PHASE PAR PHASE (7 suppressions avant la 1re recréation, lot
+    // seandemet du 07/08). Un job en needs_user ne va PAS se recréer tout
+    // seul — il ne protège donc plus rien, il paralyse. Un job bloqué reste
+    // signalé par la pastille rouge « Hors ligne » et sa remontée en tête de
+    // liste ; il ne prend plus le compte en otage.
     try {
       const horsLigne = await restRequest(
         `cross_post_jobs?user_id=eq.${decodeJwtSub(accessToken)}&action=eq.republish` +
-        `&id=neq.${job.id}&status=in.(pending,processing,needs_user,failed)` +
+        `&id=neq.${job.id}&status=in.(pending,processing)` +
         `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
         accessToken, { headers: { Prefer: "return=representation" } },
       );
@@ -7343,6 +7365,14 @@ async function processRepublishJob(job, accessToken) {
           marque: cap.libelles?.marque ?? null,
           colors: cap.libelles?.couleurs ?? null,
           packageSize: cap.libelles?.colis ?? null,
+          // ⚠️ L'ANNONCE D'ORIGINE N'EXISTE PLUS (2026-08-09). Ce drapeau dit
+          // au handler qu'il remplit un formulaire de RECRÉATION : à partir
+          // d'ici, plus AUCUNE garde n'a le droit de refuser de soumettre.
+          // Un refus de soumettre laisse l'utilisateur sans annonce ET sans
+          // rien à récupérer ; un refus de Vinted, lui, se retente sur un
+          // formulaire encore ouvert. Entre les deux, le choix n'est pas
+          // discutable. Voir ensurePhotosLanded (vinted.js).
+          republish_recreation: true,
         },
       };
 

@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-08-08-sans-marque-et-garde-photos (« Sans marque » natif #empty-brand + repli ultime marque + garde ensurePhotosLanded avant Publier sur captures /api/v2/images)";
+const VINTED_BUILD = "2026-08-09-photos-endpoint-reel (upload = POST /api/v2/photos, PAS /api/v2/images ; preuve croisée réseau + vignettes image-wrapper ; garde non bloquante sur recréation)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -1481,8 +1481,13 @@ async function fillListingForm(job) {
   // Garde photos (2026-08-08, job 46e7dfc9) : preuve serveur que les N photos
   // sont ARRIVÉES avant de cliquer Publier — throw nommé sinon, jamais un 400
   // « Ajoute au moins une photo » après coup.
+  // ⛔ SAUF sur une RECRÉATION (job.platform_fields.republish_recreation) :
+  // l'annonce d'origine a déjà été supprimée, refuser de soumettre est alors
+  // strictement pire que soumettre — cf. le bandeau de ensurePhotosLanded.
   if (photoResult) {
-    const photoGardeNote = await ensurePhotosLanded(photoResult, "vinted");
+    const photoGardeNote = await ensurePhotosLanded(photoResult, "vinted", {
+      bloquant: job.platform_fields?.republish_recreation !== true,
+    });
     if (photoGardeNote) warnings.push(photoGardeNote);
   }
 
@@ -3209,10 +3214,11 @@ async function uploadPhotos(photos) {
   const input = await waitForKey("publish.photo_input");
   const dataTransfer = new DataTransfer();
   files.forEach((f) => dataTransfer.items.add(f));
-  // Doubles snapshots AVANT l'injection : prévisualisations DOM (blob:/data:)
-  // ET captures réseau /api/v2/images de la sonde — la garde ensurePhotosLanded
-  // (appelée juste avant le clic Publier) ne compte que ce qui apparaît APRÈS.
-  const vignettesAvant = photoPreviewCount();
+  // Doubles snapshots AVANT l'injection : vignettes posées dans la grille de
+  // dépôt ET captures réseau /api/v2/photos de la sonde — la garde
+  // ensurePhotosLanded (appelée juste avant le clic Publier) ne compte que ce
+  // qui apparaît APRÈS.
+  const vignettesAvant = photosDansLaGrille();
   const capturesAvant = await countImageUploadCaptures();
   input.files = dataTransfer.files;
   await humanPause(); // temps de "sélection des fichiers" avant le dépôt
@@ -3225,18 +3231,24 @@ async function uploadPhotos(photos) {
   return { count: files.length, duplicated, photoNote: signal.note, vignettesAvant, capturesAvant };
 }
 
-// Captures /api/v2/images 2xx de la sonde réseau (background, PROBE_ENDPOINTS
-// vinted élargi le 08/08) : une par photo réellement ARRIVÉE côté serveur
-// Vinted. 0 aussi quand le canal est indisponible (injection standalone hors
-// extension, sonde pas encore posée) — les appelants distinguent « canal
-// muet » (0 absolu) de « uploads manquants » (compte partiel).
+// ⚠️ /api/v2/PHOTOS — L'ENDPOINT RÉEL, MESURÉ LE 2026-08-09 SUR /items/new.
+// La 0.5.3 comptait /api/v2/images, endpoint qui n'existe PAS dans ce flux :
+// le compteur rendait donc 0 quoi qu'il arrive, et la garde photos levait à
+// tous les coups (cf. PROBE_ENDPOINTS dans background.js pour le relevé).
+// `images` est conservé en second motif, il ne coûte rien.
+// Une capture 2xx = une photo réellement ARRIVÉE côté serveur Vinted.
+// Rend 0 aussi quand le canal est indisponible (injection standalone hors
+// extension, sonde pas encore posée) : la preuve DOM ci-dessous prend alors
+// le relais.
+const VINTED_UPLOAD_PHOTO_RE = /\/api\/v2\/(?:photos|images)(?:[/?#]|$)/i;
+
 async function countImageUploadCaptures() {
   try {
     const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
     const captures = Array.isArray(res?.captures) ? res.captures : [];
     return captures.filter((c) => {
       const st = Number(c?.status);
-      return st >= 200 && st < 300 && /\/api\/v2\/images(?:[/?#]|$)/i.test(String(c?.url ?? ""));
+      return st >= 200 && st < 300 && VINTED_UPLOAD_PHOTO_RE.test(String(c?.url ?? ""));
     }).length;
   } catch {
     return 0;
@@ -3246,51 +3258,78 @@ async function countImageUploadCaptures() {
 // ── Garde photos AVANT le clic Publier (2026-08-08, job 46e7dfc9) ────────────
 // Constaté en prod : 5 photos fournies, formulaire soumis, 400 serveur
 // « Ajoute au moins une photo » (errors[].field="photos") — les uploads
-// n'étaient JAMAIS arrivés côté Vinted, et le flux a soumis quand même (le
-// signal de prévisualisation était NON BLOQUANT par contrat). Ce 400 tardif
-// maquillait la vraie cause. Désormais, AVANT de cliquer Publier :
-//   · preuve serveur (captures /api/v2/images 2xx ≥ N) → on publie ;
-//   · canal sonde MUET (0 capture absolue) mais N prévisualisations → on
-//     publie comme avant, avec un warning — une régression de la sonde ne
-//     doit pas bloquer toutes les publications ;
+// n'étaient JAMAIS arrivés côté Vinted, et le flux a soumis quand même. Ce 400
+// tardif maquillait la vraie cause. Désormais, AVANT de cliquer Publier :
+//   · preuve (réseau OU grille) ≥ N → on publie ;
 //   · sinon → ÉCHEC nommé AVANT soumission, jamais un 400 Vinted.
+//
+// ⚠️ DEUX PREUVES INDÉPENDANTES, ON GARDE LA MEILLEURE (2026-08-09) ⚠️
+// La 0.5.3 n'en avait qu'une (captures /api/v2/images) et elle était FAUSSE —
+// mauvais endpoint, compteur bloqué à 0, garde qui levait à tous les coups.
+// Son échappatoire (« sonde muette mais N prévisualisations ») ne pouvait pas
+// la sauver : mesuré en direct, Vinted ne crée AUCUNE prévisualisation
+// blob:/data:. Il affiche directement l'URL CDN renvoyée par l'upload. Le
+// signal historique était donc mort lui aussi — deux capteurs morts, aucun
+// témoin, une annonce perdue (job 9a8eaad8).
+// On croise maintenant deux capteurs qui ne peuvent pas mourir ensemble :
+//   1. RÉSEAU  — POST /api/v2/photos 2xx vus par la sonde du background ;
+//   2. DOM     — vignettes [data-testid^="image-wrapper-"] posées dans la
+//                grille, dont l'<img> porte l'URL images1.vinted.net.
+// La 2e est elle aussi une preuve SERVEUR (cette URL n'existe qu'en réponse
+// d'un upload réussi) et ne dépend d'aucune sonde. Un renommage d'endpoint ne
+// rend plus la garde aveugle ; une refonte du DOM non plus.
+//
 // Le budget attend le RELIQUAT d'uploads (le gros du temps s'est écoulé
 // pendant le remplissage du formulaire) et est dimensionné pour les 8 photos
 // du scan Business : 4 s/photo, plancher 15 s. La décision se prend sur l'ÉTAT
 // FINAL, pas sur l'horloge : en fenêtre minimisée les timers sont throttlés
 // (≥ 1 s, jusqu'à 1/min après 5 min cachée) — un réveil peut arriver APRÈS le
 // budget alors que tout est arrivé ; on relit avant de juger.
-async function ensurePhotosLanded(photoResult, tag) {
+//
+// ⛔ bloquant:false — LE CAS RECRÉATION (annonce d'origine DÉJÀ SUPPRIMÉE).
+// Là, refuser de soumettre est le PIRE des deux échecs possibles : il laisse
+// l'utilisateur sans annonce et sans rien à retenter, alors qu'un refus de
+// Vinted se retente sur un formulaire encore ouvert, photos déjà montées.
+// Après une suppression, on soumet TOUJOURS ; le doute part en warning.
+async function ensurePhotosLanded(photoResult, tag, { bloquant = true } = {}) {
   const { count, vignettesAvant, capturesAvant } = photoResult;
   const budgetMs = Math.max(15_000, 4_000 * count);
   const t0 = Date.now();
-  let serveur = (await countImageUploadCaptures()) - capturesAvant;
-  while (serveur < count && Date.now() - t0 < budgetMs) {
+  const reseauDepuisInjection = async () => (await countImageUploadCaptures()) - capturesAvant;
+  const grilleDepuisInjection = () => photosDansLaGrille() - vignettesAvant;
+
+  let reseau = await reseauDepuisInjection();
+  let grille = grilleDepuisInjection();
+  while (Math.max(reseau, grille) < count && Date.now() - t0 < budgetMs) {
     await sleep(1000);
-    serveur = (await countImageUploadCaptures()) - capturesAvant;
+    reseau = await reseauDepuisInjection();
+    grille = grilleDepuisInjection();
   }
-  if (serveur >= count) {
-    console.log(`[${tag}] photos: ${serveur}/${count} upload(s) confirmé(s) par la sonde réseau — publication autorisée`);
+  if (Math.max(reseau, grille) >= count) {
+    console.log(
+      `[${tag}] photos: ${count}/${count} arrivée(s) — ${Math.max(0, reseau)} POST /api/v2/photos 2xx, ` +
+      `${Math.max(0, grille)} vignette(s) dans la grille — publication autorisée`
+    );
     return null;
   }
-  const previews = photoPreviewCount() - vignettesAvant;
-  const totalCaptures = await countImageUploadCaptures();
-  if (totalCaptures === 0 && previews >= count) {
-    const note =
-      `photos: ${previews}/${count} prévisualisation(s) OK mais AUCUNE capture /api/v2/images ` +
-      "(sonde réseau muette — endpoint changé ou sonde absente ?) — publication poursuivie sur le signal historique";
+
+  const constat =
+    `photos: ${count} injectée(s) dans l'input, ${Math.max(0, grille)} vignette(s) posée(s) dans la grille, ` +
+    `${Math.max(0, reseau)} POST /api/v2/photos 2xx capturé(s) depuis l'injection ` +
+    `(${await countImageUploadCaptures()} au total sur l'onglet), budget ${budgetMs} ms épuisé`;
+
+  if (!bloquant) {
+    const note = `${constat} — RECRÉATION : soumission tentée quand même (l'annonce d'origine n'existe plus, un refus Vinted se retente, pas une annonce perdue)`;
     console.warn(`[${tag}] ${note}`);
     return note;
   }
+
   const err = new Error(
-    `Les photos ne sont pas arrivées sur Vinted : ${Math.max(0, serveur)}/${count} upload(s) confirmé(s) ` +
+    `Les photos ne sont pas arrivées sur Vinted : ${Math.max(0, Math.max(reseau, grille))}/${count} confirmée(s) ` +
     `après ${Math.round((Date.now() - t0) / 1000)} s. Publication interrompue AVANT le dépôt — ce n'est PAS ` +
     "un refus Vinted, l'annonce n'a pas été soumise. Relancer la publication (les photos seront renvoyées)."
   );
-  err.diagnostic =
-    `photos: ${count} injectée(s) dans l'input, ${Math.max(0, previews)} prévisualisation(s) blob:/data: apparue(s), ` +
-    `${Math.max(0, serveur)} POST /api/v2/images 2xx capturé(s) depuis l'injection (${totalCaptures} au total sur l'onglet), ` +
-    `budget ${budgetMs} ms épuisé — soumettre aurait produit le 400 « Ajoute au moins une photo » (cf. job 46e7dfc9)`;
+  err.diagnostic = `${constat} — soumettre aurait produit le 400 « Ajoute au moins une photo » (cf. job 46e7dfc9)`;
   throw err;
 }
 
@@ -3371,39 +3410,44 @@ async function dismissInterstitials(contexte) {
   return { present: true, restants: (await findBlockingDialogsVinted()).length };
 }
 
-// ── Signal de prévisualisation photos (2026-07-26, SELECTOR_AUDIT §7.1) ──────
-// On compte les PRÉVISUALISATIONS apparues depuis le snapshot pris avant
-// l'injection des fichiers. Le signal est un mécanisme NAVIGATEUR, pas un
-// sélecteur plateforme : prévisualiser un fichier local passe par
-// URL.createObjectURL (img src="blob:…") ou un data-URI — haute précision
-// (une page n'ajoute pas n images blob: spontanément), rappel inconnu par
-// plateforme. Ce 1er étage reste NON BLOQUANT : il dit seulement que la
-// sélection de fichiers a été traitée par le React de la page.
-// ⚠️ Une prévisualisation n'est PAS un upload : le blob: est local, créé à la
-// sélection — la preuve que la photo est ARRIVÉE côté serveur est portée par
-// le 2e étage, ensurePhotosLanded (captures /api/v2/images de la sonde),
-// BLOQUANT avant le clic Publier depuis le 2026-08-08 (job 46e7dfc9 : 5 photos
-// fournies, 0 arrivée, 400 « Ajoute au moins une photo » après soumission —
-// la décision « rendre bloquant » que ce commentaire annonçait est prise, sur
-// cette donnée réelle).
-// Lecture par attribut src uniquement — aucune mesure de layout.
-function photoPreviewCount() {
-  return document.querySelectorAll('img[src^="blob:"], img[src^="data:"]').length;
+// ── Vignettes RÉELLEMENT POSÉES dans la grille de dépôt (2026-08-09) ─────────
+// ⚠️ REMPLACE le comptage des prévisualisations blob:/data', qui était MORT.
+// Mesuré en direct sur /items/new : 3 fichiers injectés, 3 POST
+// /api/v2/photos → 200, et ZÉRO img[src^="blob:"] à aucun instant. Vinted ne
+// fabrique pas d'aperçu local : il attend la réponse de l'upload et affiche
+// l'URL CDN qu'elle contient. Le « signal historique » de la 0.5.3 ne pouvait
+// donc jamais se confirmer — il échouait en silence à chaque publication
+// (non bloquant par contrat), et c'est ce silence qui a rendu l'échappatoire
+// de ensurePhotosLanded inopérante le jour où le compteur réseau s'est
+// trompé d'endpoint.
+// Relevé DOM du 2026-08-09, à l'intérieur de [data-testid="media-upload-grid"],
+// une entrée par photo acceptée :
+//   image-wrapper-0 · media-select-grid-delete-button-0 · …-rotate-button-0
+//   image-wrapper-1 · …  (index croissant)
+// et l'<img> de chaque wrapper porte https://images1.vinted.net/…
+// C'est donc une preuve SERVEUR au même titre que la capture réseau : cette
+// URL n'existe qu'en réponse d'un upload réussi. Lecture par attribut
+// uniquement — aucune mesure de layout (fenêtre de travail jamais rendue).
+function photosDansLaGrille() {
+  return document.querySelectorAll('[data-testid^="image-wrapper-"]').length;
 }
+// 1er étage, NON BLOQUANT : les vignettes disent que les uploads aboutissent.
+// Le blocage vit dans ensurePhotosLanded, juste avant Publier — les uploads
+// ont tout le remplissage du formulaire pour se terminer.
 async function waitPhotosUploaded(attendues, avant, budgetMs, tag) {
   const t0 = Date.now();
   while (Date.now() - t0 < budgetMs) {
-    const vues = photoPreviewCount() - avant;
+    const vues = photosDansLaGrille() - avant;
     if (vues >= attendues) {
-      console.log(`[${tag}] photos: ${vues}/${attendues} prévisualisation(s) blob:/data: en ${Date.now() - t0} ms — signal confirmé`);
+      console.log(`[${tag}] photos: ${vues}/${attendues} vignette(s) dans la grille en ${Date.now() - t0} ms — signal confirmé`);
       return { confirmed: true, seen: vues, note: null };
     }
     await sleep(250);
   }
-  const vues = photoPreviewCount() - avant;
+  const vues = photosDansLaGrille() - avant;
   const note =
-    `photos: signal non confirmé, ${attendues} attendue(s), ${Math.max(0, vues)} détectée(s) ` +
-    `(budget historique ${budgetMs} ms épuisé — flux poursuivi comme avant)`;
+    `photos: signal non confirmé, ${attendues} attendue(s), ${Math.max(0, vues)} vignette(s) posée(s) ` +
+    `(budget ${budgetMs} ms épuisé — flux poursuivi, la garde d'avant-Publier tranchera)`;
   console.warn(`[${tag}] ${note}`);
   return { confirmed: false, seen: vues, note };
 }

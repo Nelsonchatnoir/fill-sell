@@ -47,6 +47,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
+// 2026-08-09T12:20:00Z = 0.5.5 : l'upload photo Vinted est POST /api/v2/photos,
+// pas /api/v2/images — la garde de la 0.5.3 attendait une preuve qui ne pouvait
+// pas exister et bloquait TOUTE publication (annonce de Gabin supprimée puis
+// jamais recréée, job 9a8eaad8). Preuve croisée réseau + vignettes
+// image-wrapper, garde non bloquante après une suppression, et un job en
+// needs_user ne gèle plus la file de republication du compte.
+export const EXTENSION_LAST_COMMIT = '2026-08-09T12:20:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
@@ -54,7 +61,6 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // via unavailable_pending_since) ; propagation sync→jobs des ventes Vinted
 // RÉTABLIE sur publish ET republish (l'affichage app des bandeaux republish
 // rouvrira par un commit séparé, sur GO, après acceptation de la 0.5.4).
-export const EXTENSION_LAST_COMMIT = '2026-08-09T08:40:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.
