@@ -58,7 +58,12 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // 0.5.1 ajoutée le 07/08 : acceptée et SERVIE par le CWS — preuve en base, un
 // utilisateur externe (inscrit 01/08, jamais en unpacked) remonte
 // extension_version='0.5.1' / build 2026-08-06T16:16:49Z+e35053b, vu le 07/08.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1'];
+// 0.5.2 et 0.5.3 ajoutées le 09/08 : la 0.5.3 est acceptée et SERVIE par le
+// CWS ce jour (elle porte les 2 fixes Vinted d'Ornella — « Sans marque »
+// natif + garde photos) ; la 0.5.2, empaquetée le 07/08, a été remplacée par
+// la 0.5.3 avant d'aller au bout — la re-packager ne servirait qu'à se faire
+// rejeter. La 0.5.4 les remplace.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();

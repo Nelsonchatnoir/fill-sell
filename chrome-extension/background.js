@@ -5914,21 +5914,20 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   // GARDE ANTI-RÉTROACTIVITÉ : uniquement les ventes NOUVELLES — un article
   // déjà statut='vendu' en base (vente déjà actée, ou héritée d'avant ce
   // commit) n'est jamais re-signalé : aucune dépublication rejouée après coup.
-  // ⚠️ action='publish' SEULEMENT (2026-08-09 après-midi) : le revert 6882e78
-  // a resserré les bandeaux de l'app sur action='publish' (5 faux « plus en
-  // ligne » sur des jobs republish périmés). Un drapeau posé sur un republish
-  // serait donc INVISIBLE : l'article ne serait ni bandeauté ni flippé — pire
-  // que l'ancien comportement. Tant que l'app n'a pas rouvert les republish,
-  // un article porté par un seul job republish retombe sur le flip direct
-  // (branche « aucun job vivant » ci-dessous). Ré-élargir ICI et dans App.jsx
-  // d'un même geste, une fois les jobs périmés assainis (superseded_listing).
+  // publish ET republish (rétabli pour la 0.5.4, décision Nico 09/08) : un
+  // republish est une annonce Vinted comme une autre — une vente dessus doit
+  // produire le même bandeau et la même dépublication des frères qu'un
+  // publish. Les jobs republish à id périmé qui ont motivé le revert 6882e78
+  // sont clos par le ré-appariement du poll (superseded_listing) dès cette
+  // version ; l'affichage app des bandeaux republish rouvrira par un commit
+  // séparé, sur GO explicite, après acceptation de la 0.5.4.
   const ventesSignaleesAuJob = new Set(); // vinted_item_id dont un job vivant porte le drapeau
   const soldFrais = articles.filter((a) =>
     a.statut === "sold" && parVintedId.get(a.vinted_item_id)?.statut !== "vendu");
   if (soldFrais.length) {
     try {
       const jobsVifs = await restRequest(
-        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=eq.publish` +
+        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=in.(publish,republish)` +
           `&status=eq.published&select=id,inventaire_id,platform_listing_id,listing_url,platform_fields` +
           `&order=created_at.desc&limit=1000`,
         token, { headers: { Prefer: "return=representation" } },
