@@ -2401,14 +2401,13 @@ export default function App({ loginOnly = false }){
       }
     }
     // Annonces à retirer (article vendu, frères encore live) — voir le bandeau.
-    // republish inclus (2026-08-09) : les jobs de republication sont des
-    // annonces en ligne à part entière — exclus, leurs drapeaux (pending_removal,
-    // unavailable_since posés par le poll ET par la sync du dressing) restaient
-    // invisibles et la vente Vinted d'un article republié n'était jamais
-    // confirmable ni ses frères dépubliés.
+    // ⚠️ REVERT 09/08 : l'élargissement à action='republish' (commit 7ace830)
+    // a affiché 5 FAUX bandeaux « plus en ligne » (jobs republish au
+    // platform_listing_id périmé, drapeautés à tort par le poll). Retour à
+    // publish seul tant que la cause racine n'est pas corrigée.
     const{data:pendingRem}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, inventaire_id, listing_url, platform_fields')
-      .eq('user_id',uid).eq('status','cancelled').in('action',['publish','republish'])
+      .eq('user_id',uid).eq('status','cancelled').eq('action','publish')
       .contains('platform_fields',{pending_removal:true});
     setPendingRemovals(pendingRem||[]);
 
@@ -2419,7 +2418,7 @@ export default function App({ loginOnly = false }){
     // tranche via le bandeau. Une disparition n'est jamais une vente.
     const{data:unavail}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, price, inventaire_id, listing_url, platform_fields')
-      .eq('user_id',uid).eq('status','published').in('action',['publish','republish'])
+      .eq('user_id',uid).eq('status','published').eq('action','publish')
       .not('platform_fields->>unavailable_since','is',null);
     setUnavailableListings(unavail||[]);
 
@@ -2431,7 +2430,7 @@ export default function App({ loginOnly = false }){
     // te donne le lien.
     const{data:unverif}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, listing_url, platform_fields')
-      .eq('user_id',uid).eq('status','published').in('action',['publish','republish'])
+      .eq('user_id',uid).eq('status','published').eq('action','publish')
       .not('platform_fields->>check_unresolved_since','is',null);
     const seuil=Date.now()-2*24*60*60*1000;
     setUnverifiableListings((unverif||[]).filter(j=>{
