@@ -158,3 +158,10 @@ verify_jwt = true
 
 [functions.send-bug-report]
 verify_jwt = true
+
+# Envoi du lien d'installation à SOI-MÊME (lot 2C-1, 2026-08-09) : le JWT
+# désigne le destinataire — l'adresse est lue sur le token, jamais dans le
+# corps. verify_jwt = true : sans porteur identifié, la fonction n'a aucun
+# destinataire légitime, le gateway doit refuser avant le code.
+[functions.send-extension-link]
+verify_jwt = true

@@ -8,11 +8,16 @@
 //   'choix'   → « Tu vends déjà sur Vinted ? » — deux réponses, pas de
 //               troisième option, pas de « passer » (décision Nico).
 //   'oui'     → l'extension expliquée AVEC sa raison (lire le dressing),
-//               jamais comme un préalable administratif. L'ACTION passe par
-//               ExtensionPitchScreen — le mécanisme existant (lien /extension
-//               sur ordinateur ; mailto pré-rempli + copie du lien sur
-//               téléphone), avec un texte adapté à l'import. Pas un second
-//               mécanisme.
+//               jamais comme un préalable administratif. L'ACTION dépend du
+//               support :
+//                 · ordinateur → ExtensionPitchScreen (lien /extension) ;
+//                 · téléphone  → le tap ENVOIE l'e-mail, point (lot 2C-1,
+//                   09/08). L'utilisateur est connecté, son adresse est
+//                   connue : plus de mailto pré-rempli à compléter dans son
+//                   client mail, plus de feuille intermédiaire. L'écran
+//                   d'attente NOMME ensuite l'adresse servie et propose un
+//                   « Renvoyer » verrouillé 60 s. La feuille ne reste qu'un
+//                   recours, affiché si l'envoi a échoué.
 //   'attente' → on attend que l'extension réponde. Poll de
 //               profiles.extension_last_seen_at + version (8 s, via
 //               lireCapaciteSyncCompte) ; dès qu'une extension CAPABLE est
@@ -36,6 +41,7 @@ import PlatformLogo from './platform-logos/PlatformLogo';
 import ExtensionPitchScreen from './ExtensionPitchScreen';
 import { supabase } from '../lib/supabase';
 import { lireCapaciteSyncCompte, demanderSyncDressingServeur } from '../utils/vintedSync';
+import { envoyerLienExtension } from '../utils/extensionLink';
 
 const C = {
   canvas: '#EDEAE0', paper: '#F6F5F1', ink: '#10201B',
@@ -55,9 +61,30 @@ const C = {
 export const ONBOARD_STATE_KEY = 'fs_onboard_state';       // 'attente_extension' | absent
 export const ONBOARD_DONE_KEY  = 'fs_onboard_choice_done'; // '1' | absent
 
+// Lot 2C-1 : trace du dernier envoi du lien ({email, bloqueJusqua}), même
+// nature que ONBOARD_STATE_KEY — un CACHE D'AFFICHAGE, local par appareil.
+// Sans lui, revenir sur l'écran d'attente après une fermeture d'app effacerait
+// « Lien envoyé à … » et laisserait croire que rien n'est parti. L'envoi
+// lui-même, lui, est un fait serveur (email_logs 'extension_link').
+const ONBOARD_LINK_KEY = 'fs_onboard_link_sent';
+// Verrou du « Renvoyer » — même fenêtre que le limiteur de la fonction.
+const RENVOI_LOCK_MS = 60_000;
+
 const lireEtatInitial = () => {
   try { return localStorage.getItem(ONBOARD_STATE_KEY) === 'attente_extension' ? 'attente' : 'choix'; }
   catch { return 'choix'; }
+};
+
+const ENVOI_VIDE = { etat: 'idle', email: null, bloqueJusqua: 0, raison: null };
+
+const lireEnvoiInitial = () => {
+  try {
+    const brut = localStorage.getItem(ONBOARD_LINK_KEY);
+    if (!brut) return ENVOI_VIDE;
+    const o = JSON.parse(brut);
+    if (!o?.email) return ENVOI_VIDE;
+    return { etat: 'envoye', email: o.email, bloqueJusqua: Number(o.bloqueJusqua) || 0, raison: null };
+  } catch { return ENVOI_VIDE; }
 };
 
 export default function OnboardingFlow({ lang, user, onDone }) {
@@ -69,7 +96,50 @@ export default function OnboardingFlow({ lang, user, onDone }) {
   const [step, setStep] = useState(lireEtatInitial);
   const [showPitch, setShowPitch] = useState(false);
   const [syncEnvoyee, setSyncEnvoyee] = useState(false);
+  // Envoi du lien d'installation (téléphone) : 'idle' | 'en_cours' | 'envoye' |
+  // 'echec'. L'écran ne dit JAMAIS « envoyé » sur autre chose qu'un aller-retour
+  // serveur réussi — et l'adresse affichée est celle que la fonction rapporte
+  // (lue sur le JWT), pas une valeur locale.
+  const [envoi, setEnvoi] = useState(lireEnvoiInitial);
+  const [maintenant, setMaintenant] = useState(() => Date.now());
   const finiRef = useRef(false);
+
+  const secondesRestantes = Math.max(0, Math.ceil((envoi.bloqueJusqua - maintenant) / 1000));
+
+  // Décompte du verrou « Renvoyer » : tourne uniquement tant qu'il reste du
+  // temps, et s'arrête de lui-même à échéance.
+  useEffect(() => {
+    if (!envoi.bloqueJusqua || envoi.bloqueJusqua <= Date.now()) return;
+    setMaintenant(Date.now());
+    const id = setInterval(() => {
+      const n = Date.now();
+      setMaintenant(n);
+      if (n >= envoi.bloqueJusqua) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [envoi.bloqueJusqua]);
+
+  // UN TAP = l'e-mail part à l'adresse du compte. Aucune saisie, aucune
+  // confirmation d'adresse : l'utilisateur est connecté, le serveur sait à qui
+  // écrire. 'throttle' n'est PAS un échec — le mail précédent est en route vers
+  // la même adresse, on affiche la confirmation et le décompte.
+  const envoyerLien = async () => {
+    if (envoi.etat === 'en_cours') return;
+    setEnvoi((v) => ({ ...v, etat: 'en_cours', raison: null }));
+    const r = await envoyerLienExtension(fr ? 'fr' : 'en');
+    if (r.ok || r.reason === 'throttle') {
+      const email = r.email || user?.email || null;
+      const bloqueJusqua = Date.now() + (r.ok ? RENVOI_LOCK_MS : Math.max(1, r.retryDans || 1) * 1000);
+      setEnvoi({ etat: 'envoye', email, bloqueJusqua, raison: null });
+      try { localStorage.setItem(ONBOARD_LINK_KEY, JSON.stringify({ email, bloqueJusqua })); }
+      catch { /* cache d'affichage seul */ }
+      return;
+    }
+    // Rien n'est parti : on le dit, et le bouton reste actif. On garde l'adresse
+    // d'un envoi précédent réussi pour distinguer « le renvoi a échoué » du
+    // premier envoi raté.
+    setEnvoi((v) => ({ etat: 'echec', email: v.email, bloqueJusqua: 0, raison: r.reason }));
+  };
 
   // Fin de l'onboarding. La SOURCE DE VÉRITÉ est profiles.onboarded_at — un
   // fait de compte, pas d'appareil (lot 2b) : sans ça, un second téléphone
@@ -94,6 +164,7 @@ export default function OnboardingFlow({ lang, user, onDone }) {
     try {
       localStorage.setItem(ONBOARD_DONE_KEY, '1');
       localStorage.removeItem(ONBOARD_STATE_KEY);
+      localStorage.removeItem(ONBOARD_LINK_KEY);
     } catch { /* stockage local indisponible : la base fait foi de toute façon */ }
     onDone?.(dest);
   };
@@ -195,11 +266,15 @@ export default function OnboardingFlow({ lang, user, onDone }) {
         <button
           onClick={() => {
             // On bascule tout de suite en attente : le poll tourne pendant que
-            // l'utilisateur suit le pitch (installation ou envoi du lien), et
-            // l'état survit à une fermeture de l'app.
+            // l'utilisateur va sur son ordinateur, et l'état survit à une
+            // fermeture de l'app.
             try { localStorage.setItem(ONBOARD_STATE_KEY, 'attente_extension'); } catch { /* non bloquant */ }
             setStep('attente');
-            setShowPitch(true);
+            // Téléphone : le tap EST l'envoi (lot 2C-1) — plus de feuille
+            // intermédiaire, plus de mailto à compléter à la main. Sur
+            // ordinateur, rien ne change : la feuille porte le lien /extension.
+            if (surTelephone) envoyerLien();
+            else setShowPitch(true);
           }}
           style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
         >
@@ -232,12 +307,21 @@ export default function OnboardingFlow({ lang, user, onDone }) {
       {!syncEnvoyee && (
         <p style={{ margin: '0 0 18px', fontSize: 14, lineHeight: 1.6, color: C.mute2, textAlign: 'center' }}>
           {surTelephone
-            ? (fr
+            // ⚠️ « le lien qu'on vient de t'envoyer » n'est écrit QUE si un
+            // envoi a réellement abouti (etat 'envoye'). Tant que ce n'est pas
+            // le cas — envoi en cours, échec, ou reprise d'une session où rien
+            // n'est parti — la consigne ne parle pas d'un e-mail qui n'existe
+            // peut-être pas.
+            ? (envoi.etat === 'envoye'
+              ? (fr
                 // « on te prévient » de la consigne remplacé par une promesse
                 // qu'on TIENT : aucun canal ne notifie aujourd'hui (pas de
                 // push) — le dressing attend dans le stock, c'est ça, la vérité.
                 ? "Ouvre le lien qu'on vient de t'envoyer par email, installe l'extension, et ton dressing arrivera ici tout seul. Tu peux fermer l'app : tu retrouveras tes annonces dans ton stock."
                 : 'Open the link we just emailed you, install the extension, and your wardrobe will arrive here on its own. You can close the app: your listings will be waiting in your stock.')
+              : (fr
+                ? "Installe l'extension sur ton ordinateur et ton dressing arrivera ici tout seul. Tu peux fermer l'app : tu retrouveras tes annonces dans ton stock."
+                : 'Install the extension on your computer and your wardrobe will arrive here on its own. You can close the app: your listings will be waiting in your stock.'))
             : (fr
                 ? "Installe l'extension dans Chrome, connecte-toi sur fillsell.app si ce n'est pas déjà fait, et ton dressing arrivera ici tout seul — environ deux minutes après l'installation."
                 : 'Install the extension in Chrome, sign in on fillsell.app if you haven\'t already, and your wardrobe will arrive here on its own — about two minutes after installing.')}
@@ -252,14 +336,78 @@ export default function OnboardingFlow({ lang, user, onDone }) {
               {fr ? "Détection automatique — rien à recliquer ici" : 'Automatic detection — nothing to click again here'}
             </span>
           </div>
-          <button
-            onClick={() => setShowPitch(true)}
-            style={{ display: 'block', width: '100%', background: 'none', border: `1px solid ${C.border}`, borderRadius: 12, color: C.tealDeep, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', padding: '10px 12px', marginBottom: 8 }}
-          >
-            {surTelephone
-              ? (fr ? 'Renvoyer le lien' : 'Resend the link')
-              : (fr ? "Revoir comment installer l'extension" : 'See how to install the extension')}
-          </button>
+          {/* ── Le lien d'installation, sur téléphone (lot 2C-1) ───────────────
+              Trois états, jamais ambigus : envoi en cours / envoyé À UNE
+              ADRESSE NOMMÉE (sans quoi l'utilisateur ne sait pas dans quelle
+              boîte regarder) / échec dit en toutes lettres, bouton toujours
+              actif. Sur ordinateur, rien ne change : la feuille d'installation. */}
+          {surTelephone ? (
+            <>
+              {envoi.etat === 'en_cours' && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: C.paper, border: `1px solid ${C.border}`, borderRadius: 12, padding: '11px 12px', marginBottom: 8, fontSize: 13, fontWeight: 700, color: C.mute2 }}>
+                  <span style={{ width: 13, height: 13, border: `2px solid ${C.teal}`, borderTopColor: 'transparent', borderRadius: 99, display: 'inline-block', animation: 'fsObSpin 1s linear infinite' }} />
+                  {fr ? 'Envoi du lien…' : 'Sending the link…'}
+                </div>
+              )}
+
+              {envoi.etat === 'envoye' && (
+                <>
+                  <div style={{ background: '#F0FDFB', border: '1px solid rgba(47,158,144,0.25)', borderRadius: 12, padding: '11px 13px', marginBottom: 6, fontSize: 13, lineHeight: 1.5, color: C.tealDeep, textAlign: 'center', wordBreak: 'break-word' }}>
+                    {fr ? 'Lien envoyé à ' : 'Link sent to '}
+                    <strong>{envoi.email}</strong>
+                  </div>
+                  <button
+                    onClick={envoyerLien}
+                    disabled={secondesRestantes > 0}
+                    style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: secondesRestantes > 0 ? C.mute : C.tealDeep, fontSize: 12.5, fontWeight: 600, cursor: secondesRestantes > 0 ? 'default' : 'pointer', fontFamily: 'inherit', padding: 6, marginBottom: 4, textDecoration: secondesRestantes > 0 ? 'none' : 'underline' }}
+                  >
+                    {secondesRestantes > 0
+                      ? (fr ? `Renvoyer dans ${secondesRestantes} s` : `Resend in ${secondesRestantes}s`)
+                      : (fr ? 'Renvoyer' : 'Resend')}
+                  </button>
+                </>
+              )}
+
+              {(envoi.etat === 'idle' || envoi.etat === 'echec') && (
+                <>
+                  {envoi.etat === 'echec' && (
+                    <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, lineHeight: 1.5, color: '#92400E' }}>
+                      {envoi.raison === 'no_email'
+                        ? (fr
+                            ? "Aucune adresse e-mail n'est rattachée à ton compte : on ne peut pas t'envoyer le lien. Ouvre fillsell.app/extension depuis ton ordinateur."
+                            : 'No email address is attached to your account, so we can\'t send the link. Open fillsell.app/extension from your computer.')
+                        : (fr
+                            ? `${envoi.email ? "Le renvoi n'a pas pu partir." : "L'e-mail n'a pas pu partir."} Rien n'a été envoyé — réessaie.`
+                            : `${envoi.email ? "The resend couldn't go out." : "The email couldn't be sent."} Nothing was sent — try again.`)}
+                    </div>
+                  )}
+                  {envoi.raison !== 'no_email' && (
+                    <button
+                      onClick={envoyerLien}
+                      style={{ display: 'block', width: '100%', background: 'none', border: `1px solid ${C.border}`, borderRadius: 12, color: C.tealDeep, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', padding: '10px 12px', marginBottom: 8 }}
+                    >
+                      {fr ? "M'envoyer le lien pour mon ordinateur" : 'Email me the link for my computer'}
+                    </button>
+                  )}
+                  {envoi.etat === 'echec' && (
+                    <button
+                      onClick={() => setShowPitch(true)}
+                      style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 6, textDecoration: 'underline', marginBottom: 4 }}
+                    >
+                      {fr ? 'Récupérer le lien autrement' : 'Get the link another way'}
+                    </button>
+                  )}
+                </>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={() => setShowPitch(true)}
+              style={{ display: 'block', width: '100%', background: 'none', border: `1px solid ${C.border}`, borderRadius: 12, color: C.tealDeep, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', padding: '10px 12px', marginBottom: 8 }}
+            >
+              {fr ? "Revoir comment installer l'extension" : 'See how to install the extension'}
+            </button>
+          )}
           <button
             onClick={() => terminer('stock')}
             style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 6 }}
