@@ -67,7 +67,14 @@ export async function orchestrateSale(
     .maybeSingle();
   if (jobErr) return { ...none, reason: jobErr.message };
   if (!job || job.user_id !== userId) return { ...none, reason: "Job introuvable" };
-  if (job.action !== "publish") return { ...none, reason: "Un job delete ne peut pas être vendu" };
+  // republish ACCEPTÉ (2026-08-09, constat Ornella) : une annonce republiée
+  // vit sur un job action='republish' status='published' — c'est une annonce
+  // en ligne au même titre qu'un publish (É4 du 05/08 l'a déjà admise dans le
+  // poll de détection). La refuser ici rendait sa vente inconfirmable : le
+  // drapeau sale_signal était posé, mais le clic du bandeau échouait en 409.
+  if (job.action !== "publish" && job.action !== "republish") {
+    return { ...none, reason: "Seul un job de publication (publish/republish) peut être vendu" };
+  }
   if (job.status === "sold") return { ...none, ok: true, reason: "already_sold" };
   if (job.status !== "published") {
     return { ...none, reason: `Transition ${job.status} → sold refusée (seul published → sold est valide)` };
@@ -204,7 +211,11 @@ export async function orchestrateSale(
       .select("id, status, listing_url, platform_fields")
       .eq("user_id", userId)
       .eq("inventaire_id", job.inventaire_id)
-      .eq("action", "publish")
+      // republish inclus (2026-08-09) : un frère republié encore en ligne est
+      // une annonce live comme une autre — l'exclure le laissait publié pour
+      // toujours après la vente (le cas exact des espadrilles d'Ornella : job
+      // vinted action='republish' resté 'published' après la vente LBC).
+      .in("action", ["publish", "republish"])
       .neq("id", job.id)
       .in("status", ["pending", "processing", "published"]);
 

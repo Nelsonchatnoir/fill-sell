@@ -5898,6 +5898,79 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       console.warn("[sync-dressing] lecture des jobs de publication:", e?.message ?? e);
     }
   }
+
+  // ── Vente détectée par la SYNC → MÊME chemin que le suivi d'annonce ────────
+  // (2026-08-09, constat Ornella : espadrilles MOA.) La sync voyait la vente et
+  // passait l'inventaire en vendu, mais cross_post_jobs n'en savait RIEN : pas
+  // de bandeau (l'app lit les jobs, jamais l'inventaire), pas de ligne dans
+  // `ventes`, pas de dépublication des frères (orchestrateSale n'est déclenchée
+  // que par le clic du bandeau, sur un job). Convergence : PROPAGER VERS LES
+  // JOBS — on pose sur le job Vinted vivant exactement le drapeau que poserait
+  // le poll de détection (unavailable_since + sale_signal='sold' +
+  // detected_price), et TOUTE la chaîne existante fait le reste : bandeau
+  // « Vendue sur Vinted 🎉 », clic, check-listing-status → orchestrateSale
+  // (vente, marges, frères annulés, pending_removal). La doctrine du 12/07
+  // reste intacte : la sync ne fait que POSER UN DRAPEAU, seul le clic écrit.
+  // GARDE ANTI-RÉTROACTIVITÉ : uniquement les ventes NOUVELLES — un article
+  // déjà statut='vendu' en base (vente déjà actée, ou héritée d'avant ce
+  // commit) n'est jamais re-signalé : aucune dépublication rejouée après coup.
+  const ventesSignaleesAuJob = new Set(); // vinted_item_id dont un job vivant porte le drapeau
+  const soldFrais = articles.filter((a) =>
+    a.statut === "sold" && parVintedId.get(a.vinted_item_id)?.statut !== "vendu");
+  if (soldFrais.length) {
+    try {
+      const jobsVifs = await restRequest(
+        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=in.(publish,republish)` +
+          `&status=eq.published&select=id,inventaire_id,platform_listing_id,listing_url,platform_fields` +
+          `&order=created_at.desc&limit=1000`,
+        token, { headers: { Prefer: "return=representation" } },
+      ) ?? [];
+      // Correspondance par ID VINTED d'abord (même règle que le rattrapage
+      // ci-dessus : jamais le titre), inventaire_id en repli — un job publié
+      // avant l'écriture de platform_listing_id peut n'avoir que ce lien-là.
+      const jobParIdVinted = new Map();
+      const jobParInventaire = new Map();
+      for (const j of jobsVifs) {
+        const idV = j.platform_listing_id ?? extractListingId(j.listing_url, "vinted");
+        if (idV != null && !jobParIdVinted.has(String(idV))) jobParIdVinted.set(String(idV), j);
+        if (j.inventaire_id != null && !jobParInventaire.has(String(j.inventaire_id))) jobParInventaire.set(String(j.inventaire_id), j);
+      }
+      for (const a of soldFrais) {
+        const invId = parVintedId.get(a.vinted_item_id)?.id ?? parJob.get(String(a.vinted_item_id)) ?? null;
+        const job = jobParIdVinted.get(String(a.vinted_item_id)) ??
+          (invId != null ? jobParInventaire.get(String(invId)) : null);
+        if (!job) continue; // aucun job Vinted vivant : import pur, flip direct comme avant
+        const pf = job.platform_fields ?? {};
+        if (pf.unavailable_since) { ventesSignaleesAuJob.add(a.vinted_item_id); continue; } // déjà signalé (poll ou run précédent) : ne pas écraser son horodatage
+        try {
+          await restRequest(`cross_post_jobs?id=eq.${job.id}`, token, {
+            method: "PATCH",
+            body: JSON.stringify({
+              platform_fields: {
+                ...pf,
+                unavailable_since: maintenant,
+                sale_signal: "sold", // preuve positive : is_closed + item_closing_action='sold' (wardrobe)
+                ...(Number.isFinite(a.prix) && a.prix > 0 ? { detected_price: a.prix } : {}),
+              },
+            }),
+          });
+          ventesSignaleesAuJob.add(a.vinted_item_id);
+          console.log(
+            `[sync-dressing] VENTE Vinted détectée sur ${a.vinted_item_id} → drapeau posé sur le job ${job.id} ` +
+            "(confirmation via le bandeau de l'app — aucune écriture de vente ici)"
+          );
+        } catch (e) {
+          // PATCH raté : l'article N'ENTRE PAS dans ventesSignaleesAuJob → il
+          // retombe sur l'ancien comportement (statut='vendu' direct) — jamais
+          // une vente perdue, au pire sans bandeau ce run-ci.
+          console.warn(`[sync-dressing] drapeau de vente refusé sur le job ${job.id}:`, e?.message ?? e);
+        }
+      }
+    } catch (e) {
+      // Lecture des jobs indisponible : repli complet sur l'ancien comportement.
+      console.warn("[sync-dressing] signalement des ventes aux jobs:", e?.message ?? e);
+    }
+  }
   // ── PATCH léger : la règle de propriété (2026-08-03, 2e revue) ────────────
   // La sync ne réécrit EN ENTIER que SES lignes (origine='vinted_sync').
   // Toute autre ligne — rattachée via un job ce run-ci, OU déjà identifiée
@@ -6004,7 +6077,15 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       // encore doit RESTER vendu — le rétrograder cassait la comptabilité et
       // relançait la détection de vente dessus. L'état brut de Vinted reste
       // lisible dans vinted_status, écrit à chaque run.
-      statut: dejaLa?.statut === "vendu" ? "vendu" : (a.statut === "sold" ? "vendu" : "stock"),
+      // ⚠️ SAUF si un job vivant vient d'être signalé (2026-08-09) : c'est
+      // alors le clic du bandeau (orchestrateSale) qui écrira vente + statut.
+      // Flipper ici ferait perdre le gate consume_one_unit à la confirmation
+      // → la vente ne serait JAMAIS comptabilisée (le trou exact du constat
+      // Ornella). Sans job vivant : flip direct, comportement du 03/08.
+      statut: dejaLa?.statut === "vendu" ? "vendu"
+        : a.statut !== "sold" ? "stock"
+        : ventesSignaleesAuJob.has(a.vinted_item_id) ? (dejaLa?.statut ?? "stock")
+        : "vendu",
       marque: a.marque ?? null,
       // PHOTOS : cf. frontière de propriété ci-dessus. Le lot d'upsert exige
       // les mêmes clés sur toutes les lignes — la colonne reste présente et

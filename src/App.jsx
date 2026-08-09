@@ -2401,9 +2401,14 @@ export default function App({ loginOnly = false }){
       }
     }
     // Annonces à retirer (article vendu, frères encore live) — voir le bandeau.
+    // republish inclus (2026-08-09) : les jobs de republication sont des
+    // annonces en ligne à part entière — exclus, leurs drapeaux (pending_removal,
+    // unavailable_since posés par le poll ET par la sync du dressing) restaient
+    // invisibles et la vente Vinted d'un article republié n'était jamais
+    // confirmable ni ses frères dépubliés.
     const{data:pendingRem}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, inventaire_id, listing_url, platform_fields')
-      .eq('user_id',uid).eq('status','cancelled').eq('action','publish')
+      .eq('user_id',uid).eq('status','cancelled').in('action',['publish','republish'])
       .contains('platform_fields',{pending_removal:true});
     setPendingRemovals(pendingRem||[]);
 
@@ -2414,7 +2419,7 @@ export default function App({ loginOnly = false }){
     // tranche via le bandeau. Une disparition n'est jamais une vente.
     const{data:unavail}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, price, inventaire_id, listing_url, platform_fields')
-      .eq('user_id',uid).eq('status','published').eq('action','publish')
+      .eq('user_id',uid).eq('status','published').in('action',['publish','republish'])
       .not('platform_fields->>unavailable_since','is',null);
     setUnavailableListings(unavail||[]);
 
@@ -2426,7 +2431,7 @@ export default function App({ loginOnly = false }){
     // te donne le lien.
     const{data:unverif}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, listing_url, platform_fields')
-      .eq('user_id',uid).eq('status','published').eq('action','publish')
+      .eq('user_id',uid).eq('status','published').in('action',['publish','republish'])
       .not('platform_fields->>check_unresolved_since','is',null);
     const seuil=Date.now()-2*24*60*60*1000;
     setUnverifiableListings((unverif||[]).filter(j=>{
