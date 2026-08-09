@@ -1220,17 +1220,42 @@ async function pollAndProcessJobsUnlocked() {
   // publishSelectedUnlocked, même consommateur côté popup — qui filtre par
   // jobId pour ne peindre que l'annonce affichée (les jobs d'une autre
   // annonce ou les jobs delete sont ignorés là-bas).
-  // ── Ordre de traitement des republications (2026-08-07, lot seandemet) ────
-  // Les recréations DUES passent AVANT tout autre job republish, la plus
-  // ANCIENNEMENT supprimée d'abord : c'est elle qui a le plus à perdre (une
-  // annonce hors ligne ne vend pas). Sans ce tri, les 8 jobs d'un lot ont le
-  // même created_at à la seconde près — l'ordre était arbitraire, et la
-  // première recréation aboutie du lot réel a été celle du job supprimé le
-  // plus RÉCEMMENT, pendant que le plus ancien attendait depuis 19 minutes.
-  // Tri STABLE (index d'origine en départage) : les jobs non-republish et les
-  // republish pas encore supprimés gardent leur ordre de file.
-  const prioriteRepub = (j) =>
-    j.action === "republish" && j.platform_fields?.republish_step === "deleted" ? 0 : 1;
+  // ── Ordre de traitement (2026-08-07, lot seandemet ; 3 rangs le 2026-08-09) ─
+  // RANG 0 — recréations DUES : elles passent AVANT tout, la plus ANCIENNEMENT
+  // supprimée d'abord, parce qu'elles ont le plus à perdre (l'annonce est déjà
+  // hors ligne sur Vinted, elle ne vend plus tant qu'on ne l'a pas recréée).
+  // Sans ce départage, les 8 jobs d'un lot ont le même created_at à la seconde
+  // près — l'ordre était arbitraire, et la première recréation aboutie du lot
+  // réel a été celle du job supprimé le plus RÉCEMMENT, pendant que le plus
+  // ancien attendait depuis 19 minutes.
+  //
+  // RANG 1 — publish et delete (2026-08-09). La file est un FIFO global sur
+  // created_at (get-pending-jobs) et ne connaissait que deux rangs : une
+  // publication lancée pendant une file de republications attendait derrière
+  // TOUTES celles qui la précédaient. Avec un lot de 100 republications à
+  // 8-20 s de pause chacune (JOB_DELAY_MS + jitter), plus 2 à 5 min entre
+  // suppression et recréation d'un même article, l'attente se comptait en
+  // heures pour un geste que l'utilisateur vient de faire et qu'il regarde.
+  // Un delete est logé au même rang : il retire une annonce VENDUE, et le
+  // laisser traîner, c'est risquer une double vente.
+  //
+  // RANG 2 — le reste, c'est-à-dire les republications pas encore supprimées.
+  // Les rétrograder est sans danger : l'annonce est toujours EN LIGNE, elle
+  // continue de vendre, et rien n'est perdu à la recréer plus tard. C'est
+  // précisément ce qui rend l'arbitrage évident — le rang 0 est urgent parce
+  // que l'annonce est hors ligne, le rang 2 ne l'est pas parce qu'elle ne
+  // l'est pas.
+  //
+  // Le rythme humain n'est PAS touché : JOB_DELAY_MS, REPUBLISH_ESPACEMENT_MS
+  // et next_action_after s'appliquent exactement comme avant. On change l'ORDRE
+  // de passage, jamais la cadence.
+  // Tri STABLE (index d'origine en départage) : à rang égal, l'ordre de la
+  // file est conservé, donc created_at ASC tel que rendu par le serveur.
+  const prioriteRepub = (j) => {
+    if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") return 0;
+    if (j.action === "publish" || j.action === "delete") return 1;
+    return 2;
+  };
   jobs = jobs
     .map((j, i) => [j, i])
     .sort((a, b) => {
