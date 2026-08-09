@@ -2927,7 +2927,7 @@ export default function ListingPreviewScreen({
   // Maintenant : le compte est relu à l'ENTRÉE de l'étape Publier (miroir de
   // check_inventory_limit : articles NON vendus, cf. FREE_STOCK_LIMIT), et si
   // le plafond est atteint, StepPublish affiche un écran de conversion et le
-  // CTA devient « Passer Premium » (ouvre la ConversionModal, trigger stock).
+  // CTA devient « Voir les offres » (ouvre la ConversionModal, trigger stock).
   // Seul le cas où la publication doit CRÉER la ligne est concerné
   // (canToggleStock) : republier un article DÉJÀ en stock n'insère rien, le
   // trigger serveur ne le bloque pas — on ne le bloque pas non plus.
@@ -3254,6 +3254,23 @@ export default function ListingPreviewScreen({
     open: false, trigger: "publish", targetTiers: ["premium","pro"],
   });
 
+  // ── Journal du tunnel (2026-08-09) ────────────────────────────────────────
+  // Le stepper ouvre SA propre ConversionModal — c'est ici que vit le cas que
+  // personne ne voyait : « plus assez de Pépites pour publier ». Il ne
+  // journalisait rien du tout, alors que c'est l'ouverture la plus fréquente
+  // de la modale et la moins volontaire. Même feature que l'app
+  // (premium_cta_click, inchangée) ; c'est metadata.declencheur qui dit si
+  // l'utilisateur a cliqué ou s'il a buté sur un plafond. Best-effort : jamais
+  // bloquer une publication pour une ligne de télémétrie.
+  const ouvrirQuotaModal = (origine, etat, declencheur = "automatique") => {
+    if (userId) {
+      supabase.from("usage_logs")
+        .insert({ user_id: userId, feature: "premium_cta_click", metadata: { origine, declencheur } })
+        .then(({ error }) => { if (error) console.warn("[tunnel] premium_cta_click non journalisé :", error.message); });
+    }
+    setQuotaModal({ open: true, ...etat });
+  };
+
   // ── Pièces : solde (coin_wallets) + grille de prix (coin_config) ──────────
   // Lecture seule côté client — tout débit passe par spend_coins_and_publish.
   const [wallet, setWallet]         = useState(null);
@@ -3511,8 +3528,8 @@ export default function ListingPreviewScreen({
         let err = null;
         try { err = await fnErr.context?.json(); } catch { /* body non-JSON */ }
         if (err?.error === "insufficient_coins") {
-          setQuotaModal({
-            open: true, trigger: "lens", targetTiers: ["premium","pro"],
+          ouvrirQuotaModal("plafond_pepites_lens", {
+            trigger: "lens", targetTiers: ["premium","pro"],
             coinPrice: err.price ?? coinPrices?.lens_overflow ?? null,
             coinBalance: err.balance ?? coinBalance,
           });
@@ -3669,7 +3686,7 @@ export default function ListingPreviewScreen({
           // coinPrice = le prix REFUSÉ par le serveur (1 Pépite de génération
           // depuis le 2026-08-05) : la modale dit combien il manque pour QUOI,
           // au lieu d'afficher le total de publication qui n'est pas en cause.
-          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], coinPrice: errBody.price ?? null });
+          ouvrirQuotaModal("plafond_pepites_publi", { trigger: "publish", targetTiers: ["premium","pro"], coinPrice: errBody.price ?? null });
           return;
         }
         // Plafond de générations (2026-08-04) : le serveur explique déjà tout
@@ -5530,7 +5547,7 @@ export default function ListingPreviewScreen({
       if (pubRes?.allowed === false) {
         setPublishing(false);
         if (pubRes.reason === "insufficient_coins") {
-          setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"] });
+          ouvrirQuotaModal("plafond_pepites_publi", { trigger: "publish", targetTiers: ["premium","pro"] });
           return;
         }
         // Garde serveur extension (2026-08-04) : la garde UI (handleNext /
@@ -5637,7 +5654,7 @@ export default function ListingPreviewScreen({
       // Inventaire plein (Free) : le CTA ne propose plus de publier — il ouvre
       // la modale de plans. Libellé NEUTRE quant au plan (la modale propose
       // Premium ET Pro, le CTA ne préjuge pas du choix).
-      if (inventoryFull) return lang === "en" ? "Move up a plan" : "Passer au niveau supérieur";
+      if (inventoryFull) return lang === "en" ? "See plans" : "Voir les offres";
       if (publishing) return t("ctaPublishing");
       const n = publishChips.length;
       // Grille 2 axes : le CTA affiche le TOTAL débité au clic, recalculé à
@@ -5700,7 +5717,7 @@ export default function ListingPreviewScreen({
       // a bougé entre-temps.
       const genPrice = coinPrices?.generate ?? null;
       if (genPrice != null && coinBalance < genPrice) {
-        setQuotaModal({ open: true, trigger: "publish", targetTiers: ["premium","pro"], coinPrice: genPrice });
+        ouvrirQuotaModal("plafond_pepites_publi", { trigger: "publish", targetTiers: ["premium","pro"], coinPrice: genPrice });
         return;
       }
       setStep(2);
@@ -5710,7 +5727,7 @@ export default function ListingPreviewScreen({
     if (step === 3) {
       // Inventaire plein : le CTA est un passage Premium, jamais un publish.
       if (inventoryFull) {
-        setQuotaModal({ open: true, trigger: "stock", targetTiers: ["premium", "pro"] });
+        ouvrirQuotaModal("stepper_publication", { trigger: "stock", targetTiers: ["premium", "pro"] }, "clic");
         return;
       }
       // Extension jamais vue : le CTA ouvre l'accroche (sync dressing, lien à

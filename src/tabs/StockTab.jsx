@@ -1625,9 +1625,12 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
             ? 'Tes annonces qui stagnent depuis plus de 30 jours sont republiées toutes seules, au rythme humain — un avantage du plan Pro.'
             : 'Listings sitting for 30+ days get reposted on their own, at a human pace — a Pro plan perk.'}
         </div>
-        <button onClick={() => openUpgradeModal?.()}
+        <button onClick={() => openUpgradeModal?.(null,'stock_republication_auto')}
           style={{ alignSelf: 'flex-start', padding: '9px 14px', borderRadius: 999, border: 'none', background: 'linear-gradient(120deg,#E8956D,#F2B48C)', color: '#10201B', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
-          {fr ? 'Découvrir Pro' : 'Discover Pro'}
+          {/* Le bloc porte déjà le badge PRO et dit « un avantage du plan
+              Pro » : le bouton, lui, ouvre le choix des paliers — il ne
+              nomme donc plus Pro (2026-08-09). */}
+          {fr ? 'Voir les offres' : 'See plans'}
         </button>
       </div>
     );
@@ -2028,7 +2031,10 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, isBusiness, items, user, voiceUsedToday,
-  iapProduct, iapLoading, extensionStatus = null, extensionNeverSeen = null,
+  // (iapProduct retiré le 2026-08-09 : son seul lecteur était le sous-titre
+  // d'IAPUpgradeBlock, qui annonçait le prix Premium sous un bouton menant à
+  // trois tarifs.)
+  iapLoading, extensionStatus = null, extensionNeverSeen = null,
   // Computed lists
   stock, sold, stockFiltre, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
   // Voice/AI state
@@ -3122,7 +3128,7 @@ const StockTab = memo(function StockTab({
             </div>
           )}
           {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&!isNative
-            ? <PremiumBanner userEmail={user?.email} onOpenModal={openUpgradeModal}/>
+            ? <PremiumBanner userEmail={user?.email} origine="banniere_stock"/>
             : !isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&isNative
             ? null
             : <button className="btn-pill-primary" onClick={addItem} disabled={!iTitle||!iBuy||(iAlreadySold&&!iSell)} style={{opacity:(!iTitle||!iBuy||(iAlreadySold&&!iSell))?0.5:1}}>
@@ -3130,7 +3136,7 @@ const StockTab = memo(function StockTab({
               </button>
           }
           {isNative&&!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&(
-            <IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore}/>
+            <IAPUpgradeBlock lang={lang} iapLoading={iapLoading} onPurchase={()=>openUpgradeModal(null,'banniere_stock')} onRestore={handleIAPRestore}/>
           )}
           {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
             <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>
@@ -3294,32 +3300,39 @@ const StockTab = memo(function StockTab({
             />
           </div>
 
-          {/* ── Barre Import / Export ── */}
-          {isPremium?(
-            <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-              <div style={{flex:1,fontSize:13,fontWeight:700,color:C.text}}>{t('outilsPremium')}</div>
-              <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
-              <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#E7F3F0",color:"#1B6E62",border:"1px solid #2F9E9044",borderRadius:99,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#DCEEEA"}
-                onMouseLeave={e=>e.currentTarget.style.background="#E7F3F0"}
-              >📥 {t('importer')}</button>
-              <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#F2F0E9",color:"#6B7A75",border:"1px solid #E7E3D8",borderRadius:99,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#EAE7DD"}
-                onMouseLeave={e=>e.currentTarget.style.background="#F2F0E9"}
-              >📤 {t('exporter')}</button>
-              {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
+          {/* ── Import / Export Excel — OUVERT À TOUS (2026-08-09) ──────────
+              La barre d'outils était gatée sur isPremium ; les comptes
+              gratuits recevaient à la place une carte d'upsell intitulée
+              « 📊 Import & Export Excel — Premium », cliquable vers la modale
+              de plans. La fonction n'a pourtant AUCUN verrou serveur :
+              handleImportFile et handleExport sont 100 % client (XLSX lu et
+              écrit dans le navigateur, aucune Edge Function, aucune RPC). Ce
+              ternaire ÉTAIT le verrou, et le suffixe « — Premium » du titre
+              le dernier endroit qui prétendait le contraire.
+              Un seul bloc désormais, identique pour tout le monde : le titre
+              et le sous-titre de l'ancienne carte, les boutons de l'ancienne
+              barre. */}
+          <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+            <div style={{flex:1,minWidth:170}}>
+              <div style={{fontSize:13,fontWeight:700,color:C.text}}>{t('importExcel')}</div>
+              <div style={{fontSize:11,color:"#6B7A75",opacity:0.8,lineHeight:1.5,marginTop:3}}>{t('importDesc')}</div>
             </div>
-          ):(
-            // Pas de second bouton Upgrade ici (2026-08-05) : le header porte
-            // déjà « Passer Pro » quand ce bloc s'affiche. Le bloc ENTIER est
-            // cliquable vers la même destination (web ; sur natif l'upsell
-            // cliquable reste hors du bloc, comme avant).
-            <div onClick={()=>{if(!isNative){track('premium_click',{source:'import_export'});openUpgradeModal();}}}
-              style={{background:"linear-gradient(135deg,#1B6E6208,#E8956D08)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",alignItems:"center",gap:10,textAlign:"center",border:"1px solid rgba(232,149,109,0.22)",boxShadow:"0 2px 10px rgba(0,0,0,0.05)",cursor:!isNative?"pointer":"default"}}>
-              <div style={{fontSize:14,fontWeight:700,color:"#111827"}}>{t('importExcel')}</div>
-              <div style={{fontSize:11,color:"#6B7A75",opacity:0.8,lineHeight:1.5}}>{t('importDesc')}</div>
+            <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
+            {/* Les deux boutons forment UN groupe : sans lui, en 390 px, « Importer »
+                restait à côté du titre et « Exporter » tombait seul à la ligne (vu au
+                harnais le 2026-08-09). Ils passent maintenant à la ligne ensemble. */}
+            <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#E7F3F0",color:"#1B6E62",border:"1px solid #2F9E9044",borderRadius:99,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#DCEEEA"}
+              onMouseLeave={e=>e.currentTarget.style.background="#E7F3F0"}
+            >📥 {t('importer')}</button>
+            <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#F2F0E9",color:"#6B7A75",border:"1px solid #E7E3D8",borderRadius:99,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#EAE7DD"}
+              onMouseLeave={e=>e.currentTarget.style.background="#F2F0E9"}
+            >📤 {t('exporter')}</button>
             </div>
-          )}
+            {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
+          </div>
 
           {/* ── Barre de recherche + Filtres type ── */}
           <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:12,padding:"10px 16px"}}>
@@ -3518,11 +3531,11 @@ const StockTab = memo(function StockTab({
               const proche=!plein&&quotaFree>=freeStockLimit*0.8;
               if(plein){
                 return(
-                  <button onClick={()=>{track('premium_click',{source:'quota_stock'});openUpgradeModal();}}
+                  <button onClick={()=>{track('premium_click',{source:'quota_stock'});openUpgradeModal(null,'stock_quota_atteint');}}
                     style={{display:"block",width:"100%",textAlign:"left",margin:"6px 0 0",padding:"8px 10px",borderRadius:10,border:"1px dashed rgba(47,158,144,0.55)",background:"rgba(47,158,144,0.07)",color:"#1B6E62",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                     {lang==='fr'
-                      ?`Quota gratuit atteint : ${quotaFree} / ${freeStockLimit} articles — 💡 Stock illimité avec Premium`
-                      :`Free quota reached: ${quotaFree} / ${freeStockLimit} items — 💡 Unlimited stock with Premium`}
+                      ?`Quota gratuit atteint : ${quotaFree} / ${freeStockLimit} articles — 💡 Stock illimité : voir les offres`
+                      :`Free quota reached: ${quotaFree} / ${freeStockLimit} items — 💡 Unlimited stock: see plans`}
                   </button>
                 );
               }
@@ -3698,70 +3711,79 @@ const StockTab = memo(function StockTab({
                   </div>
                 </div>
 
-                {/* 2. Séparateur */}
+                {/* ── 2. CE QUE FILLSELL FAIT (2026-08-09) ───────────────────
+                    Remplace les cinq FAUX articles (« Veste Zara », « Lot
+                    Pokémon »…) qui occupaient tout l'écran d'un compte vide.
+                    Ils dataient d'un produit qui ne savait que compter des
+                    marges : ils montraient « Publier / Vendre » et ne disaient
+                    RIEN de la synchro du dressing, du cross-posting ni de la
+                    republication — c'est-à-dire de tout ce pour quoi on
+                    s'inscrit aujourd'hui. Un stock vide décoré de faux stock
+                    n'apprend rien ; le parcours réel, si.
+                    Aucun bouton ici, volontairement : les deux seuls gestes de
+                    l'écran vivent au-dessus (synchroniser dans la carte
+                    Vinted, ajouter dans la bannière). Ce bloc explique, il
+                    n'agit pas.
+                    ⚠️ Chaque ligne décrit une capacité RÉELLE et ouverte à
+                    tous. L'étape 3 parle de la republication à la demande (1
+                    Pépite), pas de l'automatique, qui est un avantage Pro : ne
+                    pas y glisser une promesse d'automatisation. L'étape 4 dit
+                    « te prévient / tu retires » — le retrait est TOUJOURS sur
+                    confirmation, jamais automatique. */}
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
                   <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",whiteSpace:"nowrap",flexShrink:0}}>
-                    {lang==='fr'?"EXEMPLES D'ARTICLES EN STOCK":"EXAMPLE STOCK ITEMS"}
+                    {lang==='fr'?"CE QUE FILLSELL FAIT":"WHAT FILLSELL DOES"}
                   </span>
                   <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
                 </div>
 
-                {/* 3. Liste enrichie — badge EXEMPLE conservé */}
-                <div style={{position:"relative"}}>
-                  <span style={{position:"absolute",top:-6,right:0,background:"#F2F0E9",color:"#8A8578",fontSize:9,fontWeight:700,borderRadius:99,padding:"2px 8px",letterSpacing:"0.06em",textTransform:"uppercase",zIndex:2,border:"1px solid #E7E3D8"}}>
-                    {lang==='en'?'Preview':'Exemple'}
-                  </span>
-                  <div style={{display:"flex",flexDirection:"column",gap:8,opacity:0.72,pointerEvents:"none",userSelect:"none"}}>
-                    {[
-                      {nom:"Veste Zara oversize",  marque:"Zara",    categorie:"Mode",       buy:12,  quantite:1,  description:"Taille M, noir, très bon état, acheté à Vide-grenier",                       emplacement:"Étagère salon"},
-                      {nom:"Lot Pokémon",          marque:"Pokémon", categorie:"Collection", buy:8,   quantite:20, description:"Cartes communes + 2 rares, sous pochette, acheté à Brocante",                emplacement:"Boîte à cartes"},
-                      {nom:"iPhone 12 64Go",       marque:"Apple",   categorie:"High-Tech",  buy:180, quantite:1,  description:"Écran fissuré, fonctionne parfaitement, acheté à Leboncoin",                  emplacement:"Portant 1"},
-                      {nom:"Sac Kelly Hermès",     marque:"Hermès",  categorie:"Mode",       buy:125, quantite:1,  description:"Authentique, sangles légèrement usées, acheté à Dépôt-vente",                emplacement:"Vitrine luxe"},
-                      {nom:"Jean Levis 501",       marque:"Levis",   categorie:"Mode",       buy:15,  quantite:1,  description:"Taille 32, bleu délavé, vintage 90s, acheté à Facebook Marketplace",          emplacement:"Étagère bureau"},
-                    ].map((it,i)=>{
-                      const {loc:_loc,rest:_desc}=parseLocDesc(it.description);
-                      return(
-                        <div key={i} className="row">
-                          <div className={`cat-tile ${catClass(it.categorie)}`}>{detectObjectIcon(it.nom,it.description,it.categorie)}</div>
-                          <div className="left">
-                            <div className="title-line">
-                              <span className="title">{it.nom}</span>
-                              {it.quantite>1&&<span className="qty-badge">×{it.quantite}</span>}
-                            </div>
-                            {/* Même règle que les vraies cartes : marque toujours
-                                visible, en tête de la ligne meta. */}
-                            <div className="meta">
-                              {it.marque&&(<><span className="hl">{it.marque}</span>{" · "}</>)}
-                              {(_desc||_loc)&&(<>{_desc||_loc}{" · "}</>)}
-                              {typeLabel(it.categorie,lang)}
-                            </div>
-                            {it.emplacement&&(
-                              <div className="icons">
-                                <div className="micon ic-loc">📦 {it.emplacement}</div>
-                              </div>
-                            )}
-                          </div>
-                          <div className="right">
-                            {/* Aperçu à données figées, mais même garde que la vraie
-                                carte : nulle part un prix d'achat inconnu ne doit
-                                pouvoir sortir en « 0 € ». */}
-                            <div className="price">{prixAchatConnu(it)?fmt(prixAchatNum(it)*(it.quantite||1)):'—'}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
-                            <div className="btn-stack">
-                              <div className="btn-publier">{lang==='fr'?'Publier':'Publish'}</div>
-                              <div className="btn-vendre">{lang==='fr'?'Vendre':'Sell'}</div>
-                            </div>
-                          </div>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {[
+                    {
+                      fr:["Synchronise ton dressing Vinted","Titres, prix, photos, vues et favoris remontent tout seuls dans ton stock."],
+                      en:["Sync your Vinted closet","Titles, prices, photos, views and favourites come across on their own."],
+                      logos:["vinted"],
+                    },
+                    {
+                      fr:["Publie sur 4 plateformes","Une annonce préparée une fois, envoyée sur Vinted, Leboncoin, eBay et Beebs."],
+                      en:["Publish on 4 marketplaces","One listing prepared once, sent to Vinted, Leboncoin, eBay and Beebs."],
+                      logos:["vinted","leboncoin","ebay","beebs"],
+                    },
+                    {
+                      fr:["Republie ce qui stagne","Une annonce qui dort est recréée pour remonter en tête, au rythme d'une vraie personne."],
+                      en:["Repost what stalls","A listing that sits gets recreated to climb back to the top, at a human pace."],
+                      logos:[],
+                    },
+                    {
+                      fr:["Vendu quelque part ?","FillSell le détecte et te prévient — tu retires l'article des autres plateformes en un tap."],
+                      en:["Sold somewhere?","FillSell spots it and tells you — you remove the item from the others in one tap."],
+                      logos:[],
+                    },
+                  ].map((et,i)=>{
+                    const [titre,texte]=lang==='fr'?et.fr:et.en;
+                    return(
+                      <div key={i} style={{display:"flex",gap:11,alignItems:"flex-start",background:"#fff",border:"1px solid #E7E3D8",borderRadius:12,padding:"12px 14px"}}>
+                        <div style={{flexShrink:0,width:24,height:24,borderRadius:99,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+                          {i+1}
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div style={{minWidth:0,flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#10201B",lineHeight:1.35}}>{titre}</div>
+                          <div style={{fontSize:11.5,lineHeight:1.5,color:"#6B7A75",marginTop:3}}>{texte}</div>
+                          {et.logos.length>0&&(
+                            <div style={{display:"flex",gap:6,marginTop:8}}>
+                              {et.logos.map(p=>(
+                                <span key={p} style={{display:"inline-flex",borderRadius:6,overflow:"hidden"}}>
+                                  <PlatformLogo platform={p} size={20}/>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-
-                {/* Le CTA du bas a disparu (lot 2) : les deux gestes vivent dans
-                    la bannière en tête — un état vide, une idée, deux boutons.
-                    La saisie vocale et le formulaire manuel restent accessibles
-                    par la zone de saisie en haut de l'onglet et le FAB micro. */}
 
               </div>
             ):(
@@ -4750,7 +4772,7 @@ const StockTab = memo(function StockTab({
           isPremium={isPremium}
           isPro={isPro}
           isBusiness={isBusiness}
-          onUpgrade={openUpgradeModal}
+          onUpgrade={(tier)=>openUpgradeModal(tier,'stepper_publication')}
           extensionNeverSeen={extensionNeverSeen}
           // Photos déjà retouchées PAR NOUS (2026-08-05) : détection par la
           // source UNIQUE isRetouchedPhotoEntry — la première version de ce

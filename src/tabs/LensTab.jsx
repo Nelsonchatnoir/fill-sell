@@ -654,7 +654,7 @@ const LensTab = memo(function LensTab({
           isPremium={isPremium}
           isPro={isPro}
           isBusiness={isBusiness}
-          onUpgrade={openUpgradeModal}
+          onUpgrade={(tier)=>openUpgradeModal(tier,'stepper_publication')}
           // Le parcours identify n'alimente pas le lensResult de App : on lui
           // passe explicitement la source de CETTE session de publication.
           createStockItem={(prixAchat)=>saveLensItemForListing(prixAchat,listingSource)}
@@ -857,6 +857,10 @@ const LensTab = memo(function LensTab({
         {/* Résultat */}
         {lensResult&&(
           <div style={{marginTop:14}}>
+            {/* (prop openUpgradeModal retirée le 2026-08-09 : LensAnalysisResult
+                ne la destructure pas — elle n'a jamais rien ouvert. La lui
+                passer avec une origine aurait inventé un point d'entrée qui
+                n'existe pas, et fait mentir le relevé.) */}
             <LensAnalysisResult
               result={lensResult}
               lensBuy={lensBuy}
@@ -867,7 +871,6 @@ const LensTab = memo(function LensTab({
               addLensItem={addLensItem}
               openLensEditModal={openLensEditModal}
               onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
-              openUpgradeModal={openUpgradeModal}
             />
             {/* ⚠️ PAS DE GATE DE TIER (2026-07-21) : la condition était
                 `isPro && !lensResult.error`, et isPro = profiles.is_pro SEUL

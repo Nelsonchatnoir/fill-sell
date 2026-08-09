@@ -387,13 +387,13 @@ const DashboardTab = memo(function DashboardTab({
         </div>
       )}
       {!isNative&&!isPremium&&!loading&&freeActive>=FREE_STOCK_LIMIT_FALLBACK-2&&(
-        <div onClick={()=>openUpgradeModal()} style={{background:UI.card,border:`1px solid ${UI.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
+        <div onClick={()=>openUpgradeModal(null,'dashboard_stock_presque')} style={{background:UI.card,border:`1px solid ${UI.border}`,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
           <div style={{fontSize:13,fontWeight:600,color:UI.ink}}>
             {freeLeft===0
               ?(lang==='en'?`⚠️ Free plan limit reached (${FREE_STOCK_LIMIT_FALLBACK} active items)`:`⚠️ Limite du plan gratuit atteinte (${FREE_STOCK_LIMIT_FALLBACK} articles actifs)`)
               :(lang==='en'?`⚠️ Only ${freeLeft} item${freeLeft>1?"s":""} left on your free plan`:`⚠️ Plus que ${freeLeft} article${freeLeft>1?"s":""} disponible${freeLeft>1?"s":""}`)}
           </div>
-          <button onClick={e=>{e.stopPropagation();openUpgradeModal();}} style={{background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",border:"none",borderRadius:99,padding:"7px 14px",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
+          <button onClick={e=>{e.stopPropagation();openUpgradeModal(null,'dashboard_stock_presque');}} style={{background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",border:"none",borderRadius:99,padding:"7px 14px",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>{t('debloquer')}</button>
         </div>
       )}
 

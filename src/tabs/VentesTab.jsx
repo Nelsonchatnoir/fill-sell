@@ -293,7 +293,8 @@ const VentesTab = memo(function VentesTab({
   sales, visibleSales, groupedSales,
   searchHistory, setSearchHistory,
   showAllSales, setShowAllSales,
-  iapProduct, iapLoading, handleIAPPurchase, handleIAPRestore,
+  // (iapProduct retiré le 2026-08-09, cf. IAPUpgradeBlock.)
+  iapLoading, handleIAPPurchase, handleIAPRestore,
   // Lot 2 : ligne discrète « extension pas encore installée » de l'état vide.
   extensionAbsente = false, onExtensionInfo = null,
   delSale, setTab, setEditItem,
@@ -930,8 +931,8 @@ const VentesTab = memo(function VentesTab({
         // grille de mini-stats finissaient sous le bouton en fin de scroll.
         <div style={{display:'flex',flexDirection:'column',gap:16,paddingBottom:'var(--nav-content-clearance)'}}>
           <SalesTicker lang={lang} fmt={fmt} setTab={setTab} extensionAbsente={extensionAbsente} onExtensionInfo={onExtensionInfo}/>
-          {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email} label={lang==='fr'?'✨ Passer au niveau supérieur · 12,99 €/mois':undefined}/>)}
-          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} label={lang==='fr'?'✨ Passer au niveau supérieur →':undefined}/>)}
+          {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email} origine="banniere_ventes"/>)}
+          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapLoading={iapLoading} onPurchase={()=>openUpgradeModal(null,'banniere_ventes')} onRestore={handleIAPRestore}/>)}
         </div>
       ):(
         <>
@@ -1021,8 +1022,8 @@ const VentesTab = memo(function VentesTab({
               {lang==='fr'?`Voir plus (${groupedSales.length-10} autres)`:`Show more (${groupedSales.length-10} more)`}
             </button>
           )}
-          {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email} label={lang==='fr'?'✨ Passer au niveau supérieur · 12,99 €/mois':undefined}/>)}
-          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapProduct={iapProduct} iapLoading={iapLoading} onPurchase={openUpgradeModal} onRestore={handleIAPRestore} label={lang==='fr'?'✨ Passer au niveau supérieur →':undefined}/>)}
+          {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email} origine="banniere_ventes"/>)}
+          {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapLoading={iapLoading} onPurchase={()=>openUpgradeModal(null,'banniere_ventes')} onRestore={handleIAPRestore}/>)}
         </>
       )}
 

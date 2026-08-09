@@ -13,6 +13,10 @@ export default function Success(){
   useEffect(() => {
     const sessionId = new URLSearchParams(window.location.search).get('session_id') || '';
     track('purchase', { currency: 'EUR', value: 12.99, transaction_id: sessionId });
+    // Le contexte déposé par triggerCheckout a rempli son office : l'achat est
+    // passé. Sans ce nettoyage, un passage ultérieur par /cancel (retour
+    // arrière, onglet rouvert) journaliserait un abandon pour un achat réussi.
+    try { localStorage.removeItem('fs_checkout_ctx'); } catch { /* mode privé */ }
   }, []);
 
   return(

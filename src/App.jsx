@@ -459,6 +459,18 @@ const COIN_KIND_LABELS={
   admin:{fr:'Ajustement',en:'Adjustment'},
 };
 
+// ── Libellé UNIQUE des points d'entrée vers la modale de plans (2026-08-09) ──
+// « Passer Pro » nommait un palier alors que le bouton ouvre le CHOIX des
+// paliers : on cliquait « Passer Pro » et la feuille Apple annonçait
+// « FillSell Premium — 12,99 € ». Même piège avec « Passer Premium », et avec
+// les sous-titres qui affichaient 12,99 €/mois sous un bouton menant à trois
+// prix. Une seule formulation dans toute l'app, neutre, et assez courte pour
+// tenir dans l'en-tête sur mobile (nowrap, 12,5 px / 700).
+// ⚠️ Les CTA situés À L'INTÉRIEUR de la modale gardent, eux, le nom du palier
+// (« Passer Pro » sur la carte Pro) : là, l'utilisateur choisit vraiment un
+// produit, et le nommer est la seule chose honnête à faire.
+const CTA_OFFRES = (lang) => (lang === 'en' ? 'See plans' : 'Voir les offres');
+
 function PremiumBanner({ userEmail, compact=false, source='banner', onOpenModal=null, label=null }){
   const [loading, setLoading] = useState(false);
   const lang = localStorage.getItem('fs_lang') || 'fr';
@@ -509,7 +521,7 @@ function PremiumBanner({ userEmail, compact=false, source='banner', onOpenModal=
           onMouseEnter={e=>{if(!loading)e.currentTarget.style.filter="brightness(0.92)";}}
           onMouseLeave={e=>{e.currentTarget.style.filter="none";}}
         >
-          {loading ? "..." : (lang==='en'?'Go Pro':'Passer Pro')}
+          {loading ? "..." : CTA_OFFRES(lang)}
         </span>
       </button>
     );
@@ -519,7 +531,7 @@ function PremiumBanner({ userEmail, compact=false, source='banner', onOpenModal=
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       <CtaPremium
         onClick={onOpenModal??handleCheckout}
-        label={loading ? tb('redirection') : (label ?? (lang==='fr'?'✨ Passer Premium · 12,99 €/mois':'✨ Upgrade to Premium · €12.99/mo'))}
+        label={loading ? tb('redirection') : (label ?? CTA_OFFRES(lang))}
         disabled={loading}
         sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
       />
@@ -527,7 +539,10 @@ function PremiumBanner({ userEmail, compact=false, source='banner', onOpenModal=
   );
 }
 
-function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, label=null }) {
+// iapProduct retiré de la signature le 2026-08-09 : le sous-titre était son
+// seul lecteur, et il y affichait le prix du produit Premium sous un bouton
+// qui ouvre trois tarifs.
+function IAPUpgradeBlock({ lang, iapLoading, onPurchase, onRestore, label=null }) {
   return (
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
       <div style={{fontSize:11,fontWeight:700,background:"rgba(47,158,144,0.08)",color:"#1B6E62",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(47,158,144,0.18)"}}>
@@ -535,11 +550,14 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, 
       </div>
       <CtaPremium
         onClick={onPurchase}
-        label={iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(label ?? (lang==='fr'?'✨ Passer Premium →':'✨ Go Premium →'))}
+        label={iapLoading?(lang==='fr'?'Chargement...':'Loading...'):(label ?? CTA_OFFRES(lang))}
         disabled={iapLoading}
-        sub={iapProduct
-          ?(lang==='fr'?`${iapProduct.priceString}/mois · Sans engagement.`:`${iapProduct.priceString}/month · No commitment.`)
-          :(lang==='fr'?'12,99 €/mois · Sans engagement.':'€12.99/month · No commitment.')}
+        // Le prix a disparu d'ici (2026-08-09) : ce bloc ouvre la modale de
+        // CHOIX (onPurchase = openUpgradeModal), pas un achat Premium. Il
+        // annonçait iapProduct.priceString — le prix du produit Premium — sous
+        // un bouton qui mène à trois tarifs. Le prix se lit désormais là où on
+        // choisit, sur la carte du palier.
+        sub={lang==='fr'?'Sans engagement · Résiliable en 1 clic':'No commitment · Cancel anytime in 1 click'}
       />
       <button
         onClick={onRestore}
@@ -552,7 +570,10 @@ function IAPUpgradeBlock({ lang, iapProduct, iapLoading, onPurchase, onRestore, 
   );
 }
 
-function CtaPremium({ onClick, label = "✨ Passer Premium →", disabled, sub }) {
+// Défaut NEUTRE (2026-08-09) : les deux appelants passent toujours un label,
+// mais un défaut nommant un palier n'attend qu'un troisième appelant distrait
+// pour réintroduire « Passer Premium » devant un choix de trois plans.
+function CtaPremium({ onClick, label = "Voir les offres", disabled, sub }) {
   return (
     <>
       <PremiumButton onClick={onClick} disabled={disabled}>
@@ -1415,7 +1436,7 @@ const CAT_COLORS_MAP={
 };
 
 
-function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef,isPremium=false,user=null,voiceUsedToday=0,setVoiceUsedToday,setConversionModal,hideFab=false}){
+function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaStep,setVaStep,vaResults,setVaResults,vaError,setVaError,markSold,deleteItem,triggerRef,isPremium=false,user=null,voiceUsedToday=0,setVoiceUsedToday,ouvrirModalePlafondVoix,hideFab=false}){
   const vaMediaRef=useRef(null);
   const vaChunksRef=useRef([]);
   const vaStreamRef=useRef(null);
@@ -1503,7 +1524,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
       // Gate check before Whisper — use in-memory state, no Supabase read
       if(!isPremium&&user?.id){
         if(voiceUsedToday>=VOICE_FREE_LIMIT){
-          setConversionModal({open:true,trigger:'voice'});
+          ouvrirModalePlafondVoix();
           setVaStep("");
           return;
         }
@@ -1523,7 +1544,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           const ext=mimeType.includes("mp4")?"mp4":mimeType.includes("aac")?"aac":"webm";
           fd.append("audio",blob,`audio.${ext}`);fd.append("lang",lang);
           const tRes=await fetch(`${SURL}/functions/v1/voice-transcribe`,{method:"POST",headers:{"Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:fd});
-          if(!tRes.ok){const tErrJson=await tRes.json().catch(()=>({}));if(tErrJson?.error==='ai_unavailable'||tRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(tRes.status===429||tErrJson?.error==='quota_exceeded'){setConversionModal({open:true,trigger:'voice'});setVaStep("");return;}throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");}
+          if(!tRes.ok){const tErrJson=await tRes.json().catch(()=>({}));if(tErrJson?.error==='ai_unavailable'||tRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(tRes.status===429||tErrJson?.error==='quota_exceeded'){ouvrirModalePlafondVoix();setVaStep("");return;}throw new Error(lang==="en"?"Transcription failed":"Transcription échouée");}
           let tJson;try{tJson=await tRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{text,error:tErr}=tJson;
           if(tErr)throw new Error(tErr);
@@ -1545,7 +1566,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
           // Snapshot du stock (articles non vendus) transmis à la edge function pour le matching IA
           const stockSnap=items.filter(i=>i.statut!=="vendu").map(i=>({id:i.id,nom:i.title||i.nom||"",marque:i.marque||null,type:i.type||null,description:i.description||null,emplacement:i.emplacement||null,quantite:i.quantite||1,prix_achat:i.buy??i.prix_achat??null}));
           const iRes=await fetch(`${SURL}/functions/v1/voice-intent`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${vaToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({text,lang,currency,items:stockSnap})});
-          if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(iRes.status===429||iErrJson?.error==='quota_exceeded'){/* 50/j Free (2026-07-23), Premium/Pro illimités : un 429 ne peut venir que d'un Free au plafond journalier */setConversionModal({open:true,trigger:'voice'});setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
+          if(!iRes.ok){const iErrJson=await iRes.json().catch(()=>({}));if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setVoiceToast(lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.');setTimeout(()=>setVoiceToast(''),5000);setVaStep("");return;}if(iRes.status===429||iErrJson?.error==='quota_exceeded'){/* 50/j Free (2026-07-23), Premium/Pro illimités : un 429 ne peut venir que d'un Free au plafond journalier */ouvrirModalePlafondVoix();setVaStep("");return;}throw new Error(lang==="en"?"Intent failed":"Erreur intention");}
           let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
           const{tasks,error:iErr}=iJson;
           if(iErr)throw new Error(iErr);
@@ -1777,7 +1798,14 @@ export default function App({ loginOnly = false }){
   const [lensInventaireId,setLensInventaireId]=useState(null);
   const [listingStepperOpen,setListingStepperOpen]=useState(false);
   const [aiCache,setAiCache]=useState({});
-  const [iapProduct,setIapProduct]=useState(null);
+  // iapProduct : renseigné par initIAP (prix affiché par le store). Depuis le
+  // 2026-08-09 plus aucun écran ne l'affiche — le prix se lit sur la carte du
+  // palier, dans la modale. L'état RESTE : c'est la seule preuve que la
+  // connexion au store a abouti, et le retirer toucherait le chemin IAP pour
+  // une raison cosmétique. Il n'est simplement plus descendu aux onglets.
+  // Underscore volontaire : la config eslint du projet tolère les non-lus en
+  // /^[A-Z_]/ — c'est la façon idiomatique ici de dire « posé exprès, non lu ».
+  const [_iapProduct,setIapProduct]=useState(null);
   const [iapLoading,setIapLoading]=useState(false);
   const [lang,setLang]=useState(()=>{
     const saved=localStorage.getItem('fs_lang');
@@ -2069,8 +2097,9 @@ export default function App({ loginOnly = false }){
   // (create-checkout-session) résout le price ID depuis un secret par palier et
   // bascule l'abonnement EXISTANT quand il y en a un (upgrade in situ, prorata
   // facturé) — le client n'a donc à connaître ni prix ni price ID.
-  async function triggerCheckout(product){
+  async function triggerCheckout(product,origine='non_precisee'){
     const prixAffiche=product==='business'?59.99:product==='pro'?29.99:12.99;
+    const tierLog=product??'premium';
     try{
       let{data:{session}}=await supabase.auth.getSession();
       if(!session){
@@ -2109,6 +2138,16 @@ export default function App({ loginOnly = false }){
         return;
       }
       track('begin_checkout', { currency: 'EUR', value: prixAffiche });
+      // ── checkout_open (2026-08-09) ─────────────────────────────────────
+      // La feuille de paiement s'ouvre POUR DE BON : Stripe a rendu une URL
+      // de session et on y part. AWAIT volontaire — la redirection tue
+      // l'onglet et emporterait la requête en vol ; c'est la seule ligne du
+      // tunnel qu'on attend, elle vaut le quart de seconde.
+      // Le contexte est aussi déposé en localStorage : après la redirection
+      // il n'existe plus aucun état React, et /cancel (page hors de l'app,
+      // sans user ni props) n'aurait sinon rien à journaliser.
+      try{localStorage.setItem('fs_checkout_ctx',JSON.stringify({canal:'stripe',tier:tierLog,origine,at:Date.now()}));}catch{/* mode privé : on perdra l'abandon, pas l'achat */}
+      await logTunnel('checkout_open',{canal:'stripe',tier:tierLog,origine});
       console.log('[checkout] redirecting to:', url);
       window.location.href=url;
     }catch(e){
@@ -2156,9 +2195,11 @@ export default function App({ loginOnly = false }){
   // autre valeur (undefined, event de clic…) → Premium standard. Comparaison
   // stricte voulue. Flags cumulatifs : un Business obtient aussi is_pro côté
   // serveur — l'état client isPro suit.
-  async function handleIAPPurchase(tier){
+  async function handleIAPPurchase(tier,origine='non_precisee'){
     const isBusinessPurchase=tier==='business';
     const isProPurchase=tier==='pro';
+    const tierLog=isBusinessPurchase?'business':isProPurchase?'pro':'premium';
+    const canal=platform==='ios'?'apple':platform==='android'?'google':platform;
     console.log('[IAP] handleIAPPurchase started — platform:',platform,'tier:',isBusinessPurchase?'business':isProPurchase?'pro':'premium');
     // Coupe-circuit 07/08 : validate-google-purchase en 500 = débit sans
     // crédit. Tant que coin_config.android_payments_enabled vaut 0, on ne
@@ -2216,8 +2257,17 @@ export default function App({ loginOnly = false }){
     // Il reste référencé dans restorePurchases pour les Founders existants.
     const productId=isBusinessPurchase?PRODUCT_IDS.business:isProPurchase?PRODUCT_IDS.pro:PRODUCT_IDS.standard;
     try{
+      // ── checkout_open / checkout_abandon (2026-08-09) ──────────────────
+      // On journalise juste AVANT de demander la feuille au store : c'est le
+      // dernier instant que le code observe. purchasePremium ne rend la main
+      // qu'une fois la feuille fermée — impossible de savoir plus finement
+      // si elle s'est affichée, et prétendre le contraire serait faux.
+      // `cancelled` est le retour explicite du plugin quand l'utilisateur
+      // ferme la feuille ou touche « Annuler » : c'est l'abandon, le trou
+      // exact entre le clic et l'achat qu'on ne voyait pas.
+      logTunnel('checkout_open',{canal,tier:tierLog,origine});
       const {cancelled,purchaseToken}=await purchasePremium(productId,user.id,{oldPurchaseToken:upgradeOldToken});
-      if(cancelled) return;
+      if(cancelled){logTunnel('checkout_abandon',{canal,tier:tierLog,origine,motif:'annule'});return;}
       if(platform==='android'){
         // ⛔ NE JAMAIS réintroduire ici un supabase.from('profiles').update(...).
         // Ce bloc a contenu, du lancement au 2026-08-05, une écriture directe
@@ -2336,25 +2386,74 @@ export default function App({ loginOnly = false }){
   // un appel resté branché quelque part ferait un CTA mort sur iOS (produit en
   // review = « produit introuvable ») ou vendrait sur le web un palier que
   // l'app mobile ne sait pas encore vendre.
-  function startTierCheckout(tier){
+  // ══ TUNNEL D'ABONNEMENT : journal (2026-08-09) ═══════════════════════════
+  // Avant, `premium_cta_click` partait NU. Deux gestes très différents
+  // tombaient donc dans le même compteur — « il a cliqué sur le bouton
+  // d'en-tête pour s'abonner » et « l'app lui a ouvert la modale parce qu'il
+  // n'avait plus de Pépites » — et les ouvertures automatiques (plafonds voix
+  // / stock / Pépites) ne laissaient, elles, AUCUNE trace. Le nom de la
+  // feature ne change pas (les relevés existants restent lisibles) ; tout le
+  // détail vit dans `metadata` :
+  //   · origine     — le point d'entrée EXACT (liste ORIGINES ci-dessous) ;
+  //   · declencheur — 'clic' (geste de l'utilisateur) ou 'automatique'
+  //                   (l'app a ouvert la modale sur un plafond atteint).
+  //                   C'est CE champ qui sépare les deux populations en une
+  //                   seule clause, sans avoir à connaître la liste des
+  //                   origines par cœur.
+  // Best-effort assumé : la télémétrie ne doit jamais bloquer ni ralentir un
+  // paiement. Seule exception, `checkout_open` sur le web, qui est ATTENDU —
+  // la redirection Stripe tue l'onglet et donc la requête en vol.
+  //
+  // ORIGINES (une valeur par point d'entrée, jamais deux points pour une) :
+  //   entete                    bouton d'en-tête (web et natif)
+  //   banniere_stock            bannière/bloc d'abonnement de l'onglet Stock
+  //   banniere_ventes           bloc d'abonnement de l'onglet Ventes
+  //   dashboard_stock_presque   carte « limite du plan gratuit » du dashboard
+  //   stock_quota_atteint       bouton sous le compteur d'articles
+  //   stock_republication_auto  bloc « Republication automatique » (Pro)
+  //   stepper_publication       CTA « inventaire plein » du stepper (Stock/Lens)
+  //   plafond_voix              50 analyses vocales/jour atteintes  (auto)
+  //   plafond_stock             limite d'articles du plan gratuit   (auto)
+  //   plafond_pepites_lens      Pépites insuffisantes — scan Lens    (auto)
+  //   plafond_pepites_publi     Pépites insuffisantes — publication  (auto)
+  //   modale_plan               carte de plan CHOISIE dans la modale
+  const logTunnel=(feature,metadata={})=>{
+    if(!user?.id) return Promise.resolve();
+    return supabase.from('usage_logs').insert({user_id:user.id,feature,metadata})
+      .then(({error})=>{if(error)console.warn(`[tunnel] ${feature} non journalisé :`,error.message);})
+      .catch((e)=>{console.warn(`[tunnel] ${feature} non journalisé :`,e?.message??e);});
+  };
+
+  // Ouverture AUTOMATIQUE de la modale : l'utilisateur n'a rien demandé, il a
+  // buté sur un plafond. Passe par ici pour que la ligne soit journalisée —
+  // un setConversionModal nu ne laisse aucune trace.
+  function ouvrirModalePlafond(origine,etat={}){
+    logTunnel('premium_cta_click',{origine,declencheur:'automatique'});
+    setConversionModal({open:true,origine,...etat});
+  }
+
+  function startTierCheckout(tier,origine='modale_plan'){
     const business=tier==='business';
     const pro=tier==='pro';
     if(business&&!businessOfferVisible(user?.id)){
       console.warn('[checkout] offre Business masquée (drapeau faux, compte hors liste blanche) — checkout non déclenché');
       return;
     }
-    if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:business?'business_cta_click':pro?'pro_cta_click':'premium_cta_click'}).then(()=>{});
+    logTunnel(business?'business_cta_click':pro?'pro_cta_click':'premium_cta_click',{origine,declencheur:'clic',tier:business?'business':pro?'pro':'premium'});
     trackTikTokEvent("InitiateCheckout",user?.email,business?59.99:pro?29.99:12.99);
-    if(business){isNative?handleIAPPurchase('business'):triggerCheckout('business');}
-    else if(pro){isNative?handleIAPPurchase('pro'):triggerCheckout('pro');}
-    else{isNative?handleIAPPurchase():triggerCheckout();}
+    if(business){isNative?handleIAPPurchase('business',origine):triggerCheckout('business',origine);}
+    else if(pro){isNative?handleIAPPurchase('pro',origine):triggerCheckout('pro',origine);}
+    else{isNative?handleIAPPurchase(undefined,origine):triggerCheckout(undefined,origine);}
   }
   // Ex-UpgradeModal, fusionnée dans ConversionModal : un tier explicite part
   // directement en checkout, sans tier on ouvre la modale de conversion.
-  function openUpgradeModal(tier,trigger='generic'){
-    if(tier==='pro'||tier==='premium'||tier==='business'){startTierCheckout(tier);return;}
-    if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});
-    setConversionModal({open:true,trigger});
+  // `origine` : d'OÙ vient le geste — obligatoire en pratique, un appel qui
+  // l'oublie se voit en base ('non_precisee') au lieu de se fondre dans la
+  // masse.
+  function openUpgradeModal(tier,origine='non_precisee',trigger='generic'){
+    if(tier==='pro'||tier==='premium'||tier==='business'){startTierCheckout(tier,origine);return;}
+    logTunnel('premium_cta_click',{origine,declencheur:'clic'});
+    setConversionModal({open:true,trigger,origine});
   }
 
   // silencieux (2026-07-13) : les rafraîchissements d'ARRIÈRE-PLAN (retour de
@@ -2809,7 +2908,9 @@ export default function App({ loginOnly = false }){
   const vendusAEnregistrer=useMemo(
     ()=>sold.filter(i=>i.origine==='vinted_sync'&&!ventesInvIds.has(String(i.id))),
     [sold,ventesInvIds]);
-  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} onOpenModal={()=>openUpgradeModal()}/>;return C;},[user]);
+  // origine : chaque écran qui monte la bannière dit d'où vient le clic.
+  // Sans elle, StockTab et VentesTab seraient indiscernables en base.
+  const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} onOpenModal={()=>openUpgradeModal(null,props.origine??'banniere')}/>;return C;},[user]);
   function searchMatch(item,query){
     if(!query.trim())return true;
     const q=query.toLowerCase().trim();
@@ -2882,7 +2983,7 @@ export default function App({ loginOnly = false }){
     if(!isPremium){
       const count=await checkAndResetDaily(supabase,user.id,'voice_count_today','voice_count_date');
       if(count>=VOICE_FREE_LIMIT){
-        setConversionModal({open:true,trigger:'voice'});
+        ouvrirModalePlafond('plafond_voix',{trigger:'voice'});
         setVoiceStep("");return;
       }
       {const{error:qErr}=await supabase.from('profiles').update({voice_count_today:count+1,voice_count_date:new Date().toISOString().split('T')[0]}).eq('id',user.id).select('voice_count_today');
@@ -2901,7 +3002,7 @@ export default function App({ loginOnly = false }){
       if(!iRes.ok){
         const iErrJson=await iRes.json().catch(()=>({}));
         if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
-        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){/* 50/j Free (2026-07-23), Premium/Pro illimités */setConversionModal({open:true,trigger:'voice'});setVoiceStep("");setVoiceLoading(false);return;}
+        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){/* 50/j Free (2026-07-23), Premium/Pro illimités */ouvrirModalePlafond('plafond_voix',{trigger:'voice'});setVoiceStep("");setVoiceLoading(false);return;}
         throw new Error(lang==="en"?"Intent failed":"Erreur intention");
       }
       let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
@@ -2934,7 +3035,7 @@ export default function App({ loginOnly = false }){
     const{data:{session:avSess}}=await supabase.auth.getSession();
     const avToken=avSess?.access_token;
     for(const item of voiceParsed.items){
-      if(!isPremium&&insertedCount>=FREE_STOCK_LIMIT_FALLBACK){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
+      if(!isPremium&&insertedCount>=FREE_STOCK_LIMIT_FALLBACK){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const qty=Math.max(1,item.quantite||1);
       const isVente=voiceParsed.action==='vente';
       const bRaw=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty:(parseFloat(item.prix_achat)||0);
@@ -3001,7 +3102,7 @@ export default function App({ loginOnly = false }){
     const{data:{session:ntSess}}=await supabase.auth.getSession();
     const ntToken=ntSess?.access_token;
     for(const item of lotDistributed.items){
-      if(!isPremium&&insertedCount>=FREE_STOCK_LIMIT_FALLBACK){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
+      if(!isPremium&&insertedCount>=FREE_STOCK_LIMIT_FALLBACK){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=(item.categorie&&item.categorie!=='Luxe')?item.categorie:_td2;
@@ -3022,7 +3123,7 @@ export default function App({ loginOnly = false }){
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
-    if(!isPremium&&compteArticlesQuota(items)>=FREE_STOCK_LIMIT_FALLBACK){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
+    if(!isPremium&&compteArticlesQuota(items)>=FREE_STOCK_LIMIT_FALLBACK){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
     const b=parseFloat(iBuy)||0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
     const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
@@ -4332,7 +4433,7 @@ export default function App({ loginOnly = false }){
       // ⚠️ Les libellés jetés (« Limite gratuite atteinte » / « Free plan limit
       // reached ») sont des MARQUEURS lus par saveLensItemForListing — ne pas
       // les reformuler.
-      if(!isPremium&&compteArticlesQuota(items)>=FREE_STOCK_LIMIT_FALLBACK){try{setConversionModal({open:true,trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
+      if(!isPremium&&compteArticlesQuota(items)>=FREE_STOCK_LIMIT_FALLBACK){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
       // prix_achat explicitement null (et aucune estimation de lot) = prix réellement inconnu,
       // à ne jamais confondre avec 0€ (payé gratuitement) ni combler par une estimation IA.
       const b=(data.prix_achat===null&&data.prix_estime_lot==null)?null:(parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0);
@@ -4751,7 +4852,7 @@ export default function App({ loginOnly = false }){
         const errBody=await r.json().catch(()=>({}));
         // Pas assez de Pépites pour l'analyse : prix et solde réels du serveur
         if(errBody.error==='insufficient_coins'){
-          setConversionModal({open:true,trigger:'lens',coinPrice:errBody.price??6,coinBalance:errBody.balance??0});
+          ouvrirModalePlafond('plafond_pepites_lens',{trigger:'lens',coinPrice:errBody.price??6,coinBalance:errBody.balance??0});
           return;
         }
         throw new Error(errBody.error||`HTTP ${r.status}`);
@@ -4911,12 +5012,12 @@ export default function App({ loginOnly = false }){
         </div>
         <div className="tb-right">
           {!isPremium&&!isNative?(
-            <PremiumBanner userEmail={user?.email} compact source="topbar" onOpenModal={()=>openUpgradeModal()}/>
+            <PremiumBanner userEmail={user?.email} compact source="topbar" onOpenModal={()=>openUpgradeModal(null,'entete')}/>
           ):!isPremium&&isNative?(
             // Même silhouette que le PremiumBanner compact ci-dessus : pill au
             // gabarit du badge Pro, zone tactile 44 px sur le bouton transparent.
-            <button onClick={()=>openUpgradeModal()} style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
-              <span style={{display:"inline-flex",alignItems:"center",padding:"7px 12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,letterSpacing:"0.01em",whiteSpace:"nowrap"}}>{lang==='en'?'Go Pro':'Passer Pro'}</span>
+            <button onClick={()=>openUpgradeModal(null,'entete')} style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
+              <span style={{display:"inline-flex",alignItems:"center",padding:"7px 12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,letterSpacing:"0.01em",whiteSpace:"nowrap"}}>{CTA_OFFRES(lang)}</span>
             </button>
           ):isPremium?(
             // Business devant Pro devant Premium (PlanBadge tranche dans cet
@@ -5208,7 +5309,7 @@ export default function App({ loginOnly = false }){
             items={items} user={user} voiceUsedToday={voiceUsedToday}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
-            iapProduct={iapProduct} iapLoading={iapLoading}
+            iapLoading={iapLoading}
             stock={stock} sold={sold}
             stockFiltre={stockFiltre} soldFiltre={soldFiltre}
             stockVisible={stockVisible} soldVisible={soldVisible}
@@ -5281,7 +5382,7 @@ export default function App({ loginOnly = false }){
           <LensTab
             lang={lang} currency={currency} userCountry={userCountry}
             isPremium={isPremium} isNative={isNative} user={user}
-            iapProduct={iapProduct} iapLoading={iapLoading}
+            iapLoading={iapLoading}
             lensPhotos={lensPhotos} setLensPhotos={setLensPhotos}
             lensResult={lensResult} setLensResult={setLensResult}
             lensAdded={lensAdded} setLensAdded={setLensAdded}
@@ -5312,7 +5413,7 @@ export default function App({ loginOnly = false }){
             salesForKpis={salesForKpis} totalM={totalM}
             searchHistory={searchHistory} setSearchHistory={setSearchHistory}
             showAllSales={showAllSales} setShowAllSales={setShowAllSales}
-            iapProduct={iapProduct} iapLoading={iapLoading}
+            iapLoading={iapLoading}
             handleIAPPurchase={handleIAPPurchase} handleIAPRestore={handleIAPRestore}
             extensionAbsente={extensionNeverSeen===true}
             onExtensionInfo={()=>setShowExtensionInfo(true)}
@@ -6000,7 +6101,7 @@ export default function App({ loginOnly = false }){
       <ConversionModal
         isOpen={conversionModal.open}
         onClose={()=>setConversionModal(m=>({...m,open:false}))}
-        onUpgrade={(tier)=>{setConversionModal(m=>({...m,open:false}));startTierCheckout(tier);}}
+        onUpgrade={(tier)=>{setConversionModal(m=>({...m,open:false}));startTierCheckout(tier,conversionModal.origine??'modale_plan');}}
         trigger={conversionModal.trigger}
         lang={lang}
         isPremium={isPremium}
@@ -6212,7 +6313,7 @@ export default function App({ loginOnly = false }){
         user={user}
         voiceUsedToday={voiceUsedToday}
         setVoiceUsedToday={setVoiceUsedToday}
-        setConversionModal={setConversionModal}
+        ouvrirModalePlafondVoix={()=>ouvrirModalePlafond('plafond_voix',{trigger:'voice'})}
         hideFab={listingStepperOpen || tab===1}
       />
 
