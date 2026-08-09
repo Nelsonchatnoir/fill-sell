@@ -66,20 +66,15 @@ const soldWord=(title,lang)=>lang==='en'?'Sold':(FEM_RE.test(title||'')?'Vendue'
 // clé canonique (ex. Vestiaire, sans logo) garde le badge texte d'origine.
 const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'leboncoin',lbc:'leboncoin',ebay:'ebay',beebs:'beebs'};
 
-// ── État vide — design « Ventes Empty State » (Claude Design, projet e47b36df,
-// intégré le 2026-07-14). ⚠️ TOUTES les valeurs de cet écran sont des EXEMPLES
-// EN DUR : l'utilisateur n'a rien vendu, aucun de ces chiffres ne doit jamais
-// être branché sur ses vraies données. Les libellés « Aperçu » et « Avec
-// FillSell » sont là pour lever toute ambiguïté — ne pas les retirer.
-// (« Fill & Sell », orthographe fantôme : dernier endroit de l'app qui
-// écrivait la marque en trois mots — corrigé le 2026-08-09.)
-const TICKER_SALES = [
-  { title:'Veste Zara oversize',  marque:'Zara',    type:'Mode',       icon:'🧥', sell:42,   margin:27,  date:'14 juil', dateEn:'Jul 14' },
-  { title:'iPhone 12 Pro 128Go',  marque:'Apple',   type:'High-Tech',  icon:'📱', sell:380,  margin:100, date:'12 juil', dateEn:'Jul 12' },
-  { title:'Sac Kelly Hermès',     marque:'Hermès',  type:'Mode',       icon:'👜', sell:1240, margin:420, date:'9 juil',  dateEn:'Jul 9' },
-  { title:'Lot Pokémon x20',      marque:'Pokémon', type:'Collection', icon:'🎴', sell:95,   margin:90,  date:'6 juil',  dateEn:'Jul 6' },
-  { title:'Guitare Yamaha F310',  marque:'Yamaha',  type:'Musique',    icon:'🎸', sell:120,  margin:55,  date:'2 juil',  dateEn:'Jul 2' },
-];
+// ── État vide des Ventes ────────────────────────────────────────────────────
+// PLUS AUCUNE DONNÉE INVENTÉE ICI depuis le 2026-08-09. L'écran ouvrait sur un
+// carrousel « Aperçu — à quoi ça ressemble » qui faisait défiler cinq ventes
+// fictives (Sac Kelly Hermès +420 €, iPhone 12 Pro +100 €…) en boucle, barre de
+// progression comprise, au-dessus d'un « Aucune vente pour l'instant ». Le
+// libellé « Aperçu » levait l'ambiguïté sur le papier ; à l'écran, un compte
+// neuf voyait d'abord des montants qui n'étaient pas les siens.
+// Ce qui reste se vérifie : le titre, ce que FillSell fait à chaque vente, et
+// les deux boutons. Ne pas réintroduire de chiffre d'exemple, même étiqueté.
 
 // ── Le parcours RÉEL d'une vente (2026-08-09) ────────────────────────────────
 // Remplace les trois mini-stats inventées (« Marge moy. ~45 % », « Délai vente
@@ -114,45 +109,12 @@ const PARCOURS_VENTE = [
   },
 ];
 
-function SalesTicker({ lang, fmt, setTab, extensionAbsente = false, onExtensionInfo = null }) {
-  const [idx, setIdx]           = useState(0);
-  const [visible, setVisible]   = useState(true);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    let raf;
-    let timeout = null;
-    let startTs = null;
-    let cancelled = false;
-    const DURATION = 3200;
-
-    function tick(ts) {
-      if (cancelled) return;
-      if (!startTs) startTs = ts;
-      const p = Math.min((ts - startTs) / DURATION, 1);
-      setProgress(p);
-      if (p < 1) {
-        raf = requestAnimationFrame(tick);
-      } else {
-        setVisible(false);
-        timeout = setTimeout(() => {
-          if (cancelled) return;
-          setIdx(i => (i + 1) % TICKER_SALES.length);
-          setProgress(0);
-          setVisible(true);
-        }, 450);
-      }
-    }
-
-    raf = requestAnimationFrame(tick);
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(raf);
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [idx]);
-
-  const s  = TICKER_SALES[idx];
+// fmt retiré de la signature le 2026-08-09 : son seul lecteur était le
+// carrousel de ventes fictives, qui formatait des montants inventés.
+function SalesTicker({ lang, setTab, extensionAbsente = false, onExtensionInfo = null }) {
+  // (État et boucle d'animation du carrousel retirés le 2026-08-09 avec lui :
+  //  idx / visible / progress + une requestAnimationFrame qui tournait en
+  //  permanence sur un écran vide, pour faire défiler cinq ventes inventées.)
   const fr = lang !== 'en';
 
   return (
@@ -160,47 +122,6 @@ function SalesTicker({ lang, fmt, setTab, extensionAbsente = false, onExtensionI
       <style>{`@keyframes vt-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
         @media (prefers-reduced-motion:reduce){.vt-anim{animation:none !important}}`}</style>
 
-      {/* Aperçu — carrousel d'une vente d'exemple */}
-      <div className="vt-anim" style={{display:'flex',flexDirection:'column',gap:12,animation:'vt-rise 0.5s ease both'}}>
-        <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.12em',color:'#A39D8E',textAlign:'center'}}>
-          {fr?'Aperçu — à quoi ça ressemble':'Preview — what it looks like'}
-        </div>
-
-        <div style={{position:'relative',background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:16,boxShadow:'0 6px 18px -12px rgba(16,32,27,0.16)',overflow:'hidden'}}>
-          {/* Pas de crayon ici non plus : l'aperçu doit ressembler aux vraies
-              cartes, qui n'en ont plus depuis le 2026-07-14. */}
-          <div style={{padding:'14px 15px',opacity:visible?1:0,transform:visible?'translateY(0)':'translateY(6px)',transition:'opacity 0.45s ease, transform 0.45s ease'}}>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
-              <div style={{width:44,height:44,borderRadius:13,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:21,background:UI.canvas,border:'1px solid #E3DFD3'}}>
-                {s.icon}
-              </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>
-                  <span style={{fontSize:14.5,fontWeight:700,color:UI.ink}}>{s.title}</span>
-                  <span style={{fontSize:13,fontWeight:500,color:'#B7B2A4'}}> · </span>
-                  <span style={{fontSize:13,fontWeight:500,color:UI.mute}}>{marqueLabel(s.marque,lang)}</span>
-                </div>
-                <div style={{fontSize:12,fontWeight:500,color:UI.mute,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                  {soldWord(s.title,lang)} <span style={{fontWeight:600,color:'#5C6560'}}>{fmt(s.sell)}</span> · {typeLabel(s.type,lang)}
-                </div>
-              </div>
-              <div style={{textAlign:'right',flexShrink:0}}>
-                <div style={{fontSize:15,fontWeight:700,color:UI.tealDeep}}>+{fmt(s.margin)}</div>
-                <div style={{fontSize:10,fontWeight:500,color:'#A6A192',marginTop:3}}>{fr?s.date:s.dateEn}</div>
-              </div>
-            </div>
-          </div>
-          <div style={{height:2,background:UI.canvas,overflow:'hidden'}}>
-            <div style={{height:'100%',background:UI.teal,width:`${(progress*100).toFixed(1)}%`}}/>
-          </div>
-        </div>
-
-        <div style={{display:'flex',justifyContent:'center',gap:6}}>
-          {TICKER_SALES.map((_,i)=>(
-            <div key={i} style={{width:6,height:6,borderRadius:'50%',background:i===idx?UI.teal:'#D8D2C4',transition:'background 0.3s ease'}}/>
-          ))}
-        </div>
-      </div>
 
       {/* Accroche — remise à jour le 2026-08-09. Elle ne parlait que de la
           détection de vente, comme si les articles arrivaient là par magie :
@@ -952,7 +873,7 @@ const VentesTab = memo(function VentesTab({
         // flottant (56 px + marge) : sans lui, le CTA « stats avancées » et la
         // grille de mini-stats finissaient sous le bouton en fin de scroll.
         <div style={{display:'flex',flexDirection:'column',gap:16,paddingBottom:'var(--nav-content-clearance)'}}>
-          <SalesTicker lang={lang} fmt={fmt} setTab={setTab} extensionAbsente={extensionAbsente} onExtensionInfo={onExtensionInfo}/>
+          <SalesTicker lang={lang} setTab={setTab} extensionAbsente={extensionAbsente} onExtensionInfo={onExtensionInfo}/>
           {!isPremium&&!isNative&&(<PremiumBanner userEmail={user?.email} origine="banniere_ventes"/>)}
           {isNative&&!isPremium&&(<IAPUpgradeBlock lang={lang} iapLoading={iapLoading} onPurchase={()=>openUpgradeModal(null,'banniere_ventes')} onRestore={handleIAPRestore}/>)}
         </div>
