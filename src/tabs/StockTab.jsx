@@ -1621,7 +1621,11 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 // — l'édition par article à 30 annonces serait inutilisable.
 // ── É6 : republication automatique (PRO uniquement — 2026-08-05) ─────────────
 // Réglage : profiles.platform_settings.vinted.republish_auto {actif,
-// age_jours, plafond_jour} — plafond RÉGLABLE par l'utilisateur (1..50).
+// age_jours, plafond_jour} — plafond (1..50) ET seuil d'ancienneté (1..365)
+// RÉGLABLES par l'utilisateur. Les DEUX bornes d'age_jours doivent rester
+// identiques à celles de maybeAutoRepublish (chrome-extension/background.js) :
+// si elles divergent, cette carte annonce « N éligibles » sur un seuil que
+// l'extension n'applique pas — un compteur qui ment.
 // Écriture en lecture-fusion-écriture (platform_settings porte aussi
 // l'adresse Leboncoin). À l'activation : on dit CE QUI VA SE PASSER (combien
 // d'annonces éligibles aujourd'hui, à quel rythme) ET CE QUE ÇA COÛTE —
@@ -1640,9 +1644,15 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
   const [eligibles, setEligibles] = useState(null);
   const [moisCount, setMoisCount] = useState(null);
   const [busy, setBusy] = useState(false);
-  const ageJours = Math.min(365, Math.max(7, Number(cfg?.age_jours) || 30));
-  const plafond = Math.min(50, Math.max(1, Number(cfg?.plafond_jour) || 10));
+  // Bornes UNIQUES, réutilisées par le clamp et par les deux champs de saisie.
+  const bornerAge = (v) => Math.min(365, Math.max(1, Number(v) || 30));
+  const bornerPlafond = (v) => Math.min(50, Math.max(1, Number(v) || 10));
+  const ageJours = bornerAge(cfg?.age_jours);
+  const plafond = bornerPlafond(cfg?.plafond_jour);
 
+  // Chargement du réglage + compteur du mois. Le décompte des éligibles, lui,
+  // vit dans l'effet suivant : il dépend d'ageJours, qui change au gré de
+  // l'utilisateur.
   useEffect(() => {
     if (!user?.id) return;
     let stale = false;
@@ -1650,13 +1660,6 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
       const { data } = await supabase.from('profiles').select('platform_settings').eq('id', user.id).maybeSingle();
       if (stale) return;
       setCfg(data?.platform_settings?.vinted?.republish_auto ?? {});
-      const seuil = new Date(Date.now() - (Math.min(365, Math.max(7, Number(data?.platform_settings?.vinted?.republish_auto?.age_jours) || 30)) * 86_400_000)).toISOString();
-      const { count } = await supabase.from('inventaire')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id).eq('statut', 'stock')
-        .not('vinted_item_id', 'is', null).is('disparu_le', null)
-        .lt('listed_at_guess', seuil);
-      if (!stale && typeof count === 'number') setEligibles(count);
       const debutMois = new Date(); debutMois.setDate(1); debutMois.setHours(0, 0, 0, 0);
       const { count: nMois } = await supabase.from('cross_post_jobs')
         .select('id', { count: 'exact', head: true })
@@ -1667,6 +1670,26 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
     })();
     return () => { stale = true; };
   }, [user?.id]);
+
+  // Recompte À LA VOLÉE dès qu'ageJours bouge : changer le seuil sans voir le
+  // nombre d'annonces concernées bouger, c'est régler à l'aveugle. Gardé sur
+  // `cfgCharge` pour ne pas compter d'abord avec le défaut 30 puis recompter
+  // une seconde plus tard avec la vraie valeur — un chiffre qui saute.
+  const cfgCharge = cfg !== null;
+  useEffect(() => {
+    if (!user?.id || !cfgCharge) return;
+    let stale = false;
+    (async () => {
+      const seuil = new Date(Date.now() - ageJours * 86_400_000).toISOString();
+      const { count } = await supabase.from('inventaire')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id).eq('statut', 'stock')
+        .not('vinted_item_id', 'is', null).is('disparu_le', null)
+        .lt('listed_at_guess', seuil);
+      if (!stale && typeof count === 'number') setEligibles(count);
+    })();
+    return () => { stale = true; };
+  }, [user?.id, cfgCharge, ageJours]);
 
   async function ecrire(patch) {
     if (busy) return;
@@ -1749,12 +1772,31 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
           ? <>💎 Chaque republication automatique coûte <strong>1 Pépite</strong>, comme une republication manuelle. Au plafond actuel de {plafond}/jour, cela représente au maximum <strong>~{plafond * 30} Pépites par mois</strong> — en pratique moins : seules les annonces éligibles partent.</>
           : <>💎 Each automatic repost costs <strong>1 Nugget</strong>, same as a manual repost. At your current cap of {plafond}/day, that is at most <strong>~{plafond * 30} Nuggets per month</strong> — in practice fewer: only eligible listings go.</>}
       </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#5C6560', fontWeight: 600 }}>
-        {fr ? 'Plafond par jour :' : 'Daily cap:'}
-        <input type="number" min={1} max={50} defaultValue={plafond} disabled={busy}
-          onBlur={e => { const v = Math.min(50, Math.max(1, Number(e.target.value) || 10)); e.target.value = String(v); ecrire({ plafond_jour: v }); }}
-          style={{ width: 64, padding: '7px 9px', borderRadius: 9, border: '1px solid #E7E3D8', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }} />
-      </label>
+      {/* ⚠️ `key` sur les deux champs : ce sont des inputs NON CONTRÔLÉS
+          (defaultValue), et React n'écrit defaultValue dans le DOM qu'au
+          MONTAGE. Sans clé, le champ se peint à la valeur par défaut pendant
+          que le profil charge (cfg=null → 30 / 10) et n'affiche JAMAIS la
+          valeur réellement enregistrée : un compte réglé à 25/jour lisait
+          « 10 ». La clé force le remontage quand la valeur effective change —
+          au chargement du profil, puis après chaque écriture. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#5C6560', fontWeight: 600 }}>
+          {fr ? 'Plafond par jour :' : 'Daily cap:'}
+          <input key={`plafond-${plafond}`} type="number" min={1} max={50} defaultValue={plafond} disabled={busy}
+            onBlur={e => { const v = bornerPlafond(e.target.value); e.target.value = String(v); if (v !== plafond) ecrire({ plafond_jour: v }); }}
+            style={{ width: 64, padding: '7px 9px', borderRadius: 9, border: '1px solid #E7E3D8', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }} />
+        </label>
+        {/* Saisie LIBRE en jours (1..365), pas une liste de choix : 23 doit
+            être atteignable. Le recompte des éligibles suit la valeur (effet
+            ci-dessus), donc le texte de la carte dit ce que ce seuil change. */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#5C6560', fontWeight: 600 }}>
+          {fr ? 'En ligne depuis plus de :' : 'Live for more than:'}
+          <input key={`age-${ageJours}`} type="number" min={1} max={365} defaultValue={ageJours} disabled={busy}
+            onBlur={e => { const v = bornerAge(e.target.value); e.target.value = String(v); if (v !== ageJours) ecrire({ age_jours: v }); }}
+            style={{ width: 64, padding: '7px 9px', borderRadius: 9, border: '1px solid #E7E3D8', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }} />
+          {fr ? 'jours' : 'days'}
+        </label>
+      </div>
     </div>
   );
 }

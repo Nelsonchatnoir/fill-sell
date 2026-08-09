@@ -514,7 +514,10 @@ const VentesTab = memo(function VentesTab({
   const [impBusy,setImpBusy]=useState(false);
   const [paLotImp,setPaLotImp]=useState("");
   const [dateLotImp,setDateLotImp]=useState("");
-  const [dateLotInconnue,setDateLotInconnue]=useState(false);
+  // (dateLotInconnue retiré le 2026-08-09 : c'était un repli DIFFÉRÉ, appliqué
+  // seulement à l'enregistrement et invisible d'ici là. Remplacé par l'action
+  // de lot marquerLotInconnu, qui marque les lignes tout de suite et se défait
+  // ligne par ligne — même comportement que son homologue « achat ».)
   // Proposition de prix de vente = dernier prix AFFICHÉ sur Vinted (relevés
   // vinted_listing_snapshots). PROPOSÉ, jamais imposé : pré-rempli dans un
   // champ éditable, à corriger si la vente a été négociée.
@@ -591,6 +594,31 @@ const VentesTab = memo(function VentesTab({
   // Lot : les valeurs de la barre servent de REPLI aux lignes sélectionnées qui
   // n'ont pas leur propre saisie. Le prix de vente reste par ligne (pré-rempli
   // au prix affiché, VISIBLE dans chaque champ avant le clic).
+  // ── « Je ne sais plus » en lot (2026-08-09) ────────────────────────────────
+  // 50 articles à confirmer, c'était 100 taps : un « je ne sais plus » achat +
+  // un date, ligne par ligne. Ces deux actions écrivent dans les BROUILLONS des
+  // lignes sélectionnées, pas au moment de l'enregistrement — l'utilisateur
+  // voit « inconnu ✓ » apparaître sur chaque ligne, peut en défaire UNE sans
+  // défaire les autres, et rien n'est écrit en base tant qu'il n'a pas cliqué
+  // « Enregistrer les N ».
+  // Elles ne remplissent QUE le vide : une ligne où un prix (ou une date) a
+  // déjà été saisi est laissée intacte. Idempotentes.
+  const marquerLotInconnu=(champSaisi,champInconnu)=>{
+    setImpDrafts(prev=>{
+      const n={...prev};
+      for(const item of lignesImpSel){
+        const d=n[item.id]??{};
+        if(String(d[champSaisi]??'').trim()!=='') continue; // valeur saisie : intouchée
+        n[item.id]={...d,[champInconnu]:true};
+      }
+      return n;
+    });
+  };
+  // Nombre de lignes que l'action toucherait — sert à griser le bouton quand
+  // il n'aurait plus rien à faire (tout est déjà rempli ou déjà marqué).
+  const nbSansAchat=lignesImpSel.filter(i=>{const d=impDrafts[i.id]??{};return String(d.pa??'').trim()===''&&d.paInconnu!==true;}).length;
+  const nbSansDate=lignesImpSel.filter(i=>{const d=impDrafts[i.id]??{};return String(d.date??'').trim()===''&&d.dateInconnue!==true;}).length;
+
   async function enregistrerLotImportes(){
     if(!lignesImpSel.length) return;
     setImpBusy(true);
@@ -600,12 +628,12 @@ const VentesTab = memo(function VentesTab({
       const ok=await enregistrerVenteImportee(item,{
         pvBrut:d.pv??propositions[item.vinted_item_id]??'',
         paBrut:d.pa??paLotImp,paInconnu:d.paInconnu===true,
-        dateStr:d.date??dateLotImp,dateInconnue:d.dateInconnue===true||(!d.date&&dateLotInconnue),
+        dateStr:d.date??dateLotImp,dateInconnue:d.dateInconnue===true,
       });
       if(!ok) ko++;
     }
     setImpBusy(false);
-    if(!ko){setImpSel(new Set());setPaLotImp("");setDateLotImp("");setDateLotInconnue(false);}
+    if(!ko){setImpSel(new Set());setPaLotImp("");setDateLotImp("");}
   }
 
   // KPI mois courant — même formule que tm (App.jsx)
@@ -790,20 +818,31 @@ const VentesTab = memo(function VentesTab({
               <span className="lbl">{fr?`${lignesImpSel.length} sélectionnée${lignesImpSel.length>1?"s":""}`:`${lignesImpSel.length} selected`}</span>
               <input className="pa-input" inputMode="decimal" value={paLotImp} onChange={e=>setPaLotImp(e.target.value)}
                 placeholder={fr?"achat 2,50":"buy 2.50"} aria-label={fr?"Prix d'achat commun":"Common purchase price"}/>
-              <input type="date" className="pa-input pa-date" value={dateLotImp} disabled={dateLotInconnue}
+              <input type="date" className="pa-input pa-date" value={dateLotImp}
                 max={new Date().toISOString().slice(0,10)}
                 onChange={e=>setDateLotImp(e.target.value)} aria-label={fr?"Date commune":"Common date"}/>
-              <button className={`imp-ghost${dateLotInconnue?" on":""}`} onClick={()=>setDateLotInconnue(v=>!v)}>
-                {fr?"date : je ne sais plus":"date: I don't remember"}
+              {/* Les deux « je ne sais plus » de lot. Ils marquent les lignes
+                  TOUT DE SUITE (visible ligne par ligne), et ne touchent que
+                  celles restées vides — d'où le compteur dans le libellé et le
+                  grisage quand il n'y a plus rien à marquer. */}
+              <button className="imp-ghost" disabled={nbSansAchat===0}
+                style={nbSansAchat===0?{opacity:0.45}:undefined}
+                onClick={()=>marquerLotInconnu('pa','paInconnu')}>
+                {fr?`achat : je ne sais plus${nbSansAchat?` (${nbSansAchat})`:""}`:`buy: I don't remember${nbSansAchat?` (${nbSansAchat})`:""}`}
+              </button>
+              <button className="imp-ghost" disabled={nbSansDate===0}
+                style={nbSansDate===0?{opacity:0.45}:undefined}
+                onClick={()=>marquerLotInconnu('date','dateInconnue')}>
+                {fr?`date : je ne sais plus${nbSansDate?` (${nbSansDate})`:""}`:`date: I don't remember${nbSansDate?` (${nbSansDate})`:""}`}
               </button>
               <button className="apply" disabled={impBusy} onClick={enregistrerLotImportes}>
                 {impBusy?"…":(fr?`Enregistrer les ${lignesImpSel.length}`:`Record ${lignesImpSel.length}`)}
               </button>
-              <button className="ghost" onClick={()=>{setImpSel(new Set());setPaLotImp("");setDateLotImp("");setDateLotInconnue(false);}}>✕</button>
+              <button className="ghost" onClick={()=>{setImpSel(new Set());setPaLotImp("");setDateLotImp("");}}>✕</button>
               <div style={{flexBasis:"100%",display:"flex",flexDirection:"column",gap:2}}>
                 <span className="pa-hint">
-                  {fr?"Chaque ligne part avec SON prix de vente affiché dans son champ — la barre ne fournit que l'achat et la date manquants."
-                     :"Each line is recorded with ITS sale price shown in its field — the bar only fills missing buy price and date."}
+                  {fr?"Chaque ligne part avec SON prix de vente affiché dans son champ — la barre ne fournit que l'achat et la date manquants, sans jamais écraser ce que tu as déjà saisi."
+                     :"Each line is recorded with ITS sale price shown in its field — the bar only fills missing buy price and date, never overwriting what you already typed."}
                 </span>
                 {impErr?.id===null&&<span className="pa-err">{impErr.message}</span>}
               </div>

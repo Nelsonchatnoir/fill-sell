@@ -7662,8 +7662,12 @@ async function processRepublishJob(job, accessToken) {
 // UN article par cycle de poll maximum — le rythme humain vient de là, plus
 // la machine à étapes elle-même (espacement 2 min, attente 2-5 min).
 // Réglage : profiles.platform_settings.vinted.republish_auto
-//   { actif, age_jours (7..365, déf. 30), plafond_jour (1..50, déf. 10) } —
-// le plafond quotidien est RÉGLABLE PAR L'UTILISATEUR (demande explicite).
+//   { actif, age_jours (1..365, déf. 30), plafond_jour (1..50, déf. 10) } —
+// le plafond quotidien ET le seuil d'ancienneté sont RÉGLABLES PAR
+// L'UTILISATEUR (demande explicite). ⚠️ Le plancher d'age_jours est passé de 7
+// à 1 le 2026-08-09 : il DOIT rester identique à celui de RepublishAutoBlock
+// (src/tabs/StockTab.jsx). S'ils divergent, l'app annonce « N éligibles » sur
+// un seuil que l'extension n'applique pas — un compteur qui ment.
 // Compte plus Pro ⇒ l'automatisation se COUPE PROPREMENT (actif:false +
 // arret_motif:'plan_non_pro', lu par l'UI) — jamais une série d'échecs muets.
 let autoRepublishBusy = false;
@@ -7714,7 +7718,7 @@ async function maybeAutoRepublish(session) {
     ).catch(() => null);
     if (enVol === null || enVol.length) return;
 
-    const ageJours = Math.min(365, Math.max(7, Number(cfg.age_jours) || 30));
+    const ageJours = Math.min(365, Math.max(1, Number(cfg.age_jours) || 30));
     const plafond = Math.min(50, Math.max(1, Number(cfg.plafond_jour) || 10));
     const debutJour = new Date(); debutJour.setHours(0, 0, 0, 0);
     const faits = await restRequest(
