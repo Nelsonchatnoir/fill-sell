@@ -41,7 +41,7 @@ import PlatformLogo from './platform-logos/PlatformLogo';
 import ExtensionPitchScreen from './ExtensionPitchScreen';
 import { supabase } from '../lib/supabase';
 import { lireCapaciteSyncCompte, demanderSyncDressingServeur } from '../utils/vintedSync';
-import { envoyerLienExtension } from '../utils/extensionLink';
+import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
 
 const C = {
   canvas: '#EDEAE0', paper: '#F6F5F1', ink: '#10201B',
@@ -61,30 +61,13 @@ const C = {
 export const ONBOARD_STATE_KEY = 'fs_onboard_state';       // 'attente_extension' | absent
 export const ONBOARD_DONE_KEY  = 'fs_onboard_choice_done'; // '1' | absent
 
-// Lot 2C-1 : trace du dernier envoi du lien ({email, bloqueJusqua}), même
-// nature que ONBOARD_STATE_KEY — un CACHE D'AFFICHAGE, local par appareil.
-// Sans lui, revenir sur l'écran d'attente après une fermeture d'app effacerait
-// « Lien envoyé à … » et laisserait croire que rien n'est parti. L'envoi
-// lui-même, lui, est un fait serveur (email_logs 'extension_link').
-const ONBOARD_LINK_KEY = 'fs_onboard_link_sent';
-// Verrou du « Renvoyer » — même fenêtre que le limiteur de la fonction.
-const RENVOI_LOCK_MS = 60_000;
+// L'état de l'envoi du lien (adresse servie, verrou de renvoi, persistance) ne
+// vit PLUS ici depuis le lot 3 : il est dans useEnvoiLienExtension, partagé
+// avec ExtensionPitchScreen — un seul comportement, une seule mémoire.
 
 const lireEtatInitial = () => {
   try { return localStorage.getItem(ONBOARD_STATE_KEY) === 'attente_extension' ? 'attente' : 'choix'; }
   catch { return 'choix'; }
-};
-
-const ENVOI_VIDE = { etat: 'idle', email: null, bloqueJusqua: 0, raison: null };
-
-const lireEnvoiInitial = () => {
-  try {
-    const brut = localStorage.getItem(ONBOARD_LINK_KEY);
-    if (!brut) return ENVOI_VIDE;
-    const o = JSON.parse(brut);
-    if (!o?.email) return ENVOI_VIDE;
-    return { etat: 'envoye', email: o.email, bloqueJusqua: Number(o.bloqueJusqua) || 0, raison: null };
-  } catch { return ENVOI_VIDE; }
 };
 
 export default function OnboardingFlow({ lang, user, onDone }) {
@@ -96,50 +79,12 @@ export default function OnboardingFlow({ lang, user, onDone }) {
   const [step, setStep] = useState(lireEtatInitial);
   const [showPitch, setShowPitch] = useState(false);
   const [syncEnvoyee, setSyncEnvoyee] = useState(false);
-  // Envoi du lien d'installation (téléphone) : 'idle' | 'en_cours' | 'envoye' |
-  // 'echec'. L'écran ne dit JAMAIS « envoyé » sur autre chose qu'un aller-retour
-  // serveur réussi — et l'adresse affichée est celle que la fonction rapporte
-  // (lue sur le JWT), pas une valeur locale.
-  const [envoi, setEnvoi] = useState(lireEnvoiInitial);
-  const [maintenant, setMaintenant] = useState(() => Date.now());
+  // Envoi du lien d'installation (téléphone) : mécanisme PARTAGÉ avec la
+  // feuille d'installation (même hook) — l'écran ne dit jamais « envoyé » sur
+  // autre chose qu'un aller-retour serveur réussi, et l'adresse affichée est
+  // celle que la fonction rapporte (lue sur le JWT), pas une valeur locale.
+  const { envoi, secondesRestantes, envoyer: envoyerLien } = useEnvoiLienExtension(lang, user?.email ?? null);
   const finiRef = useRef(false);
-
-  const secondesRestantes = Math.max(0, Math.ceil((envoi.bloqueJusqua - maintenant) / 1000));
-
-  // Décompte du verrou « Renvoyer » : tourne uniquement tant qu'il reste du
-  // temps, et s'arrête de lui-même à échéance.
-  useEffect(() => {
-    if (!envoi.bloqueJusqua || envoi.bloqueJusqua <= Date.now()) return;
-    setMaintenant(Date.now());
-    const id = setInterval(() => {
-      const n = Date.now();
-      setMaintenant(n);
-      if (n >= envoi.bloqueJusqua) clearInterval(id);
-    }, 1000);
-    return () => clearInterval(id);
-  }, [envoi.bloqueJusqua]);
-
-  // UN TAP = l'e-mail part à l'adresse du compte. Aucune saisie, aucune
-  // confirmation d'adresse : l'utilisateur est connecté, le serveur sait à qui
-  // écrire. 'throttle' n'est PAS un échec — le mail précédent est en route vers
-  // la même adresse, on affiche la confirmation et le décompte.
-  const envoyerLien = async () => {
-    if (envoi.etat === 'en_cours') return;
-    setEnvoi((v) => ({ ...v, etat: 'en_cours', raison: null }));
-    const r = await envoyerLienExtension(fr ? 'fr' : 'en');
-    if (r.ok || r.reason === 'throttle') {
-      const email = r.email || user?.email || null;
-      const bloqueJusqua = Date.now() + (r.ok ? RENVOI_LOCK_MS : Math.max(1, r.retryDans || 1) * 1000);
-      setEnvoi({ etat: 'envoye', email, bloqueJusqua, raison: null });
-      try { localStorage.setItem(ONBOARD_LINK_KEY, JSON.stringify({ email, bloqueJusqua })); }
-      catch { /* cache d'affichage seul */ }
-      return;
-    }
-    // Rien n'est parti : on le dit, et le bouton reste actif. On garde l'adresse
-    // d'un envoi précédent réussi pour distinguer « le renvoi a échoué » du
-    // premier envoi raté.
-    setEnvoi((v) => ({ etat: 'echec', email: v.email, bloqueJusqua: 0, raison: r.reason }));
-  };
 
   // Fin de l'onboarding. La SOURCE DE VÉRITÉ est profiles.onboarded_at — un
   // fait de compte, pas d'appareil (lot 2b) : sans ça, un second téléphone
@@ -164,7 +109,9 @@ export default function OnboardingFlow({ lang, user, onDone }) {
     try {
       localStorage.setItem(ONBOARD_DONE_KEY, '1');
       localStorage.removeItem(ONBOARD_STATE_KEY);
-      localStorage.removeItem(ONBOARD_LINK_KEY);
+      // La mémoire de l'envoi (fs_extension_link_sent) N'EST PAS effacée : elle
+      // appartient au mécanisme partagé, pas à l'onboarding — la feuille du
+      // Stock doit continuer à savoir qu'un lien vient de partir, et à qui.
     } catch { /* stockage local indisponible : la base fait foi de toute façon */ }
     onDone?.(dest);
   };
@@ -372,13 +319,7 @@ export default function OnboardingFlow({ lang, user, onDone }) {
                 <>
                   {envoi.etat === 'echec' && (
                     <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, lineHeight: 1.5, color: '#92400E' }}>
-                      {envoi.raison === 'no_email'
-                        ? (fr
-                            ? "Aucune adresse e-mail n'est rattachée à ton compte : on ne peut pas t'envoyer le lien. Ouvre fillsell.app/extension depuis ton ordinateur."
-                            : 'No email address is attached to your account, so we can\'t send the link. Open fillsell.app/extension from your computer.')
-                        : (fr
-                            ? `${envoi.email ? "Le renvoi n'a pas pu partir." : "L'e-mail n'a pas pu partir."} Rien n'a été envoyé — réessaie.`
-                            : `${envoi.email ? "The resend couldn't go out." : "The email couldn't be sent."} Nothing was sent — try again.`)}
+                      {messageEchecLien(envoi.raison, fr, !!envoi.email)}
                     </div>
                   )}
                   {envoi.raison !== 'no_email' && (
@@ -423,6 +364,9 @@ export default function OnboardingFlow({ lang, user, onDone }) {
           onClose={() => setShowPitch(false)}
           supabase={supabase}
           userId={user?.id ?? null}
+          // Ouverte depuis « Récupérer le lien autrement » : ne pas reproposer
+          // le bouton d'envoi qui vient d'échouer, seulement les recours.
+          recoursSeulement={surTelephone && envoi.etat === 'echec'}
           onExtensionSeen={() => setShowPitch(false)}
           eyebrow={fr ? 'Pour importer ton dressing' : 'To import your wardrobe'}
           body={fr

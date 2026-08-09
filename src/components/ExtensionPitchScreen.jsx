@@ -20,15 +20,21 @@
 // (ExtensionReminderModal, conservé pour les comptes dont l'extension est
 // connue), cet écran correspond à un état bloquant réel.
 //
-// Récupération du lien sur ordinateur (utilisateur mobile) : mailto: pré-rempli
-// (s'envoyer le lien à soi-même, zéro backend, marche dans les WebViews natives
-// comme en mobile web) + copie dans le presse-papiers. Sur desktop : lien
-// direct /extension, comme le rappel existant.
+// Récupération du lien sur ordinateur (utilisateur mobile) : UN TAP, l'e-mail
+// part à l'adresse du compte (send-extension-link, déployée le 09/08). Le
+// `mailto:` pré-rempli qui tenait ce rôle depuis l'origine — l'utilisateur
+// devait saisir sa propre adresse et envoyer lui-même — n'est plus qu'un
+// RECOURS, montré si l'envoi échoue. Sur desktop : lien direct /extension.
+//
+// Cette feuille est montée depuis SIX endroits (App, StockTab ×2, LensTab ×2,
+// ListingPreviewScreen) plus l'onboarding : c'est ici, et nulle part ailleurs,
+// que « m'envoyer le lien » doit se comporter — d'où le hook partagé.
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Puzzle, ExternalLink, Mail, Copy, Check, RefreshCw } from 'lucide-react';
+import { Puzzle, ExternalLink, Mail, Copy, Check, RefreshCw, Send } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
 
 const C = {
   canvas: '#EDEAE0',
@@ -55,10 +61,14 @@ export default function ExtensionPitchScreen({
   // mailto, copie, re-vérification) est unique — seul le discours change selon
   // le contexte (publier vs importer le dressing). null = textes historiques.
   eyebrow = null, body = null,
+  // Ouverte APRÈS un échec d'envoi (« Récupérer le lien autrement ») : on ne
+  // repropose pas le bouton qui vient de tomber, seulement les recours.
+  recoursSeulement = false,
 }) {
   const fr = lang !== 'en';
   const isMobile = useIsMobile();
   const onComputer = !Capacitor.isNativePlatform() && !isMobile;
+  const { envoi, secondesRestantes, envoyer } = useEnvoiLienExtension(lang);
   const [copied, setCopied]     = useState(false);
   const [checking, setChecking] = useState(false);
   // null = pas encore vérifié ; false = vérifié, toujours rien
@@ -172,17 +182,65 @@ export default function ExtensionPitchScreen({
             </a>
           ) : (
             <>
-              <div style={{ textAlign: 'center', fontSize: 12.5, fontWeight: 600, color: C.mute, marginBottom: 10 }}>
-                {fr ? 'Récupère le lien sur ton ordinateur :' : 'Get the link onto your computer:'}
-              </div>
-              <a href={mailtoHref} style={{ ...btnBase, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', border: 'none', marginBottom: 8, boxShadow: '0 10px 22px -8px rgba(47,158,144,0.5)' }}>
-                <Mail size={15} strokeWidth={2.4} />
-                {fr ? "M'envoyer le lien par e-mail" : 'Email me the link'}
-              </a>
-              <button onClick={copyLink} style={{ ...btnBase, background: C.paper, border: `1px solid ${C.border}`, color: copied ? C.tealDeep : C.ink, marginBottom: 10 }}>
-                {copied ? <Check size={15} strokeWidth={2.4} /> : <Copy size={15} strokeWidth={2.4} />}
-                {copied ? (fr ? 'Lien copié !' : 'Link copied!') : (fr ? 'Copier le lien' : 'Copy the link')}
-              </button>
+              {/* Chemin principal : UN TAP = l'e-mail part à l'adresse du
+                  compte, et la confirmation la NOMME (sinon l'utilisateur ne
+                  sait pas dans quelle boîte regarder). */}
+              {!recoursSeulement && envoi.etat === 'envoye' && (
+                <>
+                  <div style={{ background: '#F0FDFB', border: '1px solid rgba(47,158,144,0.25)', borderRadius: 14, padding: '12px 14px', marginBottom: 6, fontSize: 13.5, lineHeight: 1.5, color: C.tealDeep, textAlign: 'center', wordBreak: 'break-word' }}>
+                    {fr ? 'Lien envoyé à ' : 'Link sent to '}
+                    <strong>{envoi.email}</strong>
+                  </div>
+                  <button
+                    onClick={envoyer}
+                    disabled={secondesRestantes > 0}
+                    style={{ ...btnBase, background: 'none', border: 'none', padding: '8px 12px', color: secondesRestantes > 0 ? C.mute : C.tealDeep, fontSize: 12.5, fontWeight: 600, cursor: secondesRestantes > 0 ? 'default' : 'pointer', textDecoration: secondesRestantes > 0 ? 'none' : 'underline', marginBottom: 4 }}
+                  >
+                    {secondesRestantes > 0
+                      ? (fr ? `Renvoyer dans ${secondesRestantes} s` : `Resend in ${secondesRestantes}s`)
+                      : (fr ? 'Renvoyer' : 'Resend')}
+                  </button>
+                </>
+              )}
+
+              {!recoursSeulement && envoi.etat !== 'envoye' && (
+                <>
+                  {envoi.etat === 'echec' && (
+                    <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 14, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, lineHeight: 1.5, color: '#92400E' }}>
+                      {messageEchecLien(envoi.raison, fr, !!envoi.email)}
+                    </div>
+                  )}
+                  {envoi.raison !== 'no_email' && (
+                    <button
+                      onClick={envoyer}
+                      disabled={envoi.etat === 'en_cours'}
+                      style={{ ...btnBase, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', border: 'none', marginBottom: 8, boxShadow: '0 10px 22px -8px rgba(47,158,144,0.5)', opacity: envoi.etat === 'en_cours' ? 0.7 : 1 }}
+                    >
+                      {envoi.etat === 'en_cours'
+                        ? <RefreshCw size={15} strokeWidth={2.4} style={{ animation: 'fsSpin 1s linear infinite' }} />
+                        : <Send size={15} strokeWidth={2.4} />}
+                      {envoi.etat === 'en_cours'
+                        ? (fr ? 'Envoi du lien…' : 'Sending the link…')
+                        : (fr ? "M'envoyer le lien pour mon ordinateur" : 'Email me the link for my computer')}
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* RECOURS seulement — jamais le chemin principal : le mailto
+                  oblige à saisir sa propre adresse et à envoyer soi-même. */}
+              {(recoursSeulement || envoi.etat === 'echec') && (
+                <>
+                  <a href={mailtoHref} style={{ ...btnBase, background: C.paper, border: `1px solid ${C.border}`, color: C.ink, marginBottom: 8 }}>
+                    <Mail size={15} strokeWidth={2.4} />
+                    {fr ? "Écrire le mail moi-même" : 'Write the email myself'}
+                  </a>
+                  <button onClick={copyLink} style={{ ...btnBase, background: C.paper, border: `1px solid ${C.border}`, color: copied ? C.tealDeep : C.ink, marginBottom: 10 }}>
+                    {copied ? <Check size={15} strokeWidth={2.4} /> : <Copy size={15} strokeWidth={2.4} />}
+                    {copied ? (fr ? 'Lien copié !' : 'Link copied!') : (fr ? 'Copier le lien' : 'Copy the link')}
+                  </button>
+                </>
+              )}
             </>
           )}
 
