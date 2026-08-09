@@ -387,13 +387,18 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
 // Carte Business (CAS 5 du design « Conversion Modals ») — fond noir, matière
 // platine, badge BusinessBadge. Le palier ultime.
 // ⚠️ MÊME SQUELETTE que les deux autres cartes (stock · publication ·
-// republication · Lens · Excel · voix · support) : l'utilisateur lit les trois
-// cartes ligne à ligne. Ce qui CHANGE réellement en Business, et rien d'autre :
+// republication · Lens · Excel · voix) : l'utilisateur lit les trois cartes
+// ligne à ligne. Ce qui CHANGE réellement en Business, et rien d'autre :
 //   · le grant (3000, affiché au-dessus, ≈ 300 articles publiés partout) ;
 //   · la republication Vinted AUTOMATIQUE — livrée, pas une promesse : c'est
-//     le même moteur É6 que Pro (background.js), déjà en production ;
-//   · la file de publication prioritaire ;
-//   · le support dédié.
+//     le même moteur É6 que Pro (background.js), déjà en production.
+// ⚠️ RETIRÉ le 2026-08-09 (décision Nico : on ne vend pas ce que l'app ne fait
+// pas) — ne PAS réécrire tant que ce n'est pas codé ET en prod :
+//   · « File de publication prioritaire » : les jobs sortent FIFO, aucun tri
+//     par palier nulle part (cross_post_jobs, background.js) ;
+//   · « Support dédié — un interlocuteur » : aucun canal dédié n'existe.
+// Conséquence assumée : la carte Business n'affiche AUCUNE ligne support — pas
+// même celle de Pro, qui serait la même promesse un cran en dessous.
 // ⚠️ AUCUNE mention de « 8 photos par scan » : l'idée est abandonnée depuis le
 // 2026-08-09, tous les paliers sont identiques sur ce point.
 // Exportée pour PlanDetailsModal (upsell des Pro), comme ProPlanCard.
@@ -437,10 +442,8 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
              : 'Automatic Vinted reposting — your listings climb back up on their own',
           fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
-          fr ? 'File de publication prioritaire — tes annonces passent avant' : 'Priority publishing queue — your listings go first',
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
-          fr ? 'Support dédié — un interlocuteur, pas un formulaire' : 'Dedicated support — a person, not a form',
         ]}
       />
       <button
