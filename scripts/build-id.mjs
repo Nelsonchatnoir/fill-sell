@@ -93,7 +93,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // EXTENSION_MIN_BUILD reste sur la 0.5.6 : la 0.5.7 n'est pas encore soumise
 // au Chrome Web Store, et on ne réclame jamais au parc une version que
 // personne ne peut installer (bug du 29/07).
-export const EXTENSION_LAST_COMMIT = '2026-08-09T19:20:20Z';
+// 2026-08-09T19:32:11Z = 045b5e6 (0.5.8) : le plancher d'age_jours passe de 7 à
+// 1 dans maybeAutoRepublish, pour que le seuil d'ancienneté réglable côté app
+// soit RÉELLEMENT appliqué par l'extension. Les deux bornes sont dupliquées
+// (aucune RPC ne calcule l'éligibilité) et doivent rester identiques.
+// EXTENSION_MIN_BUILD reste sur la 0.5.6 : ni la 0.5.7 ni la 0.5.8 ne sont
+// encore acceptées par le Chrome Web Store.
+export const EXTENSION_LAST_COMMIT = '2026-08-09T19:32:11Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
