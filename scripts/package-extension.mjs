@@ -63,7 +63,7 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // natif + garde photos) ; la 0.5.2, empaquetée le 07/08, a été remplacée par
 // la 0.5.3 avant d'aller au bout — la re-packager ne servirait qu'à se faire
 // rejeter. La 0.5.4 les remplace.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();

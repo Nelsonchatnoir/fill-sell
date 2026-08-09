@@ -61,10 +61,18 @@ export const EXTENSION_LAST_COMMIT = '2026-08-09T12:13:15Z';
 // via unavailable_pending_since) ; propagation sync→jobs des ventes Vinted
 // RÉTABLIE sur publish ET republish (l'affichage app des bandeaux republish
 // rouvrira par un commit séparé, sur GO, après acceptation de la 0.5.4).
-// 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
-// et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
-// une version réellement installable.
-export const EXTENSION_MIN_BUILD = '2026-08-05T20:05:00Z';
+// 2026-08-09T12:13:15Z = build de la 0.5.5 (= EXTENSION_LAST_COMMIT), PUBLIÉE
+// et acceptée par le Chrome Web Store le 09/08.
+// ⚠️ CETTE PROMOTION RATTRAPE DEUX OUBLIS : ni la 0.5.3 ni la 0.5.4 n'ont
+// jamais été recopiées ici, donc le parc n'a JAMAIS été prévenu depuis la
+// 0.5.0 — et les installs 0.5.3/0.5.4 portent le bug qui supprimait une
+// annonce Vinted sans la recréer (mauvais endpoint d'upload, cf. ba5e90e).
+// La séquence est celle du bandeau plus haut : elle n'est faite qu'APRÈS
+// acceptation CWS, jamais avant (sinon on réclame une version que personne ne
+// peut installer — le bug du 29/07). Chrome propage en quelques heures ; le
+// bandeau donne la marche à suivre pour forcer tout de suite.
+// Ancienne valeur : 2026-08-05T20:05:00Z (0.5.0, servie le 06/08).
+export const EXTENSION_MIN_BUILD = '2026-08-09T12:13:15Z';
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
 // postérieur à EXTENSION_LAST_COMMIT (constante pas bumpée → le paquet publié

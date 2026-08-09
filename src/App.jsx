@@ -5020,11 +5020,31 @@ export default function App({ loginOnly = false }){
       {extensionOutdated&&extBannerDismissedFor!==extBannerKey&&(
         <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px 12px 14px",background:UI.amber,borderBottom:"1px solid rgba(16,32,27,0.15)",fontSize:13.5,color:UI.ink,boxShadow:"0 2px 8px rgba(232,149,109,0.35)"}}>
           <span aria-hidden="true" style={{fontSize:18,flexShrink:0}}>🧩</span>
-          <span style={{flex:1,lineHeight:1.45,fontWeight:600}}>
-            {lang==='fr'
-              ?"Ton extension Chrome FillSell n'est plus à jour — certaines publications peuvent échouer."
-              :"Your FillSell Chrome extension is out of date — some listings may fail to publish."}
-          </span>
+          {/* Deux lignes (2026-08-09) : QUOI, puis COMMENT. L'ancienne version
+              disait « certaines publications peuvent échouer » et s'arrêtait là
+              — un utilisateur qui cliquait « Mettre à jour » atterrissait sur la
+              fiche du Store, y lisait « Ajouter à Chrome » grisé (l'extension
+              est déjà installée) et repartait sans rien avoir changé, à attendre
+              un cycle de mise à jour Chrome de plusieurs heures.
+              ⚠️ chrome://extensions n'est PAS linkable : Chrome refuse toute
+              navigation vers un schéma chrome:// depuis une page web. L'adresse
+              est donc donnée à recopier, jamais posée dans un <a href>.
+              La 1re ligne dit ce que la mise à jour CORRIGE, sans affirmer que
+              l'extension de CE lecteur est cassée : le bandeau vise aussi les
+              installs 0.5.0→0.5.2, qui n'ont pas le bug de la 0.5.3/0.5.4
+              (promotion de MIN_BUILD jamais faite pour ces deux versions). */}
+          <div style={{flex:1,lineHeight:1.45,minWidth:0}}>
+            <div style={{fontWeight:600}}>
+              {lang==='fr'
+                ?"Ton extension Chrome FillSell n'est plus à jour. La dernière version corrige un problème qui bloquait la publication et la republication sur Vinted."
+                :"Your FillSell Chrome extension is out of date. The latest version fixes an issue that blocked publishing and re-listing on Vinted."}
+            </div>
+            <div style={{marginTop:4,fontWeight:500,opacity:0.85,fontSize:12.5}}>
+              {lang==='fr'
+                ?<>Pour l'avoir tout de suite : ouvre <code style={{fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace",fontSize:12,background:"rgba(16,32,27,0.10)",borderRadius:4,padding:"1px 5px"}}>chrome://extensions</code>, active <strong>Mode développeur</strong> (en haut à droite) puis clique <strong>Actualiser les extensions</strong>. Sinon Chrome la met à jour tout seul dans les heures qui viennent.</>
+                :<>To get it now: open <code style={{fontFamily:"ui-monospace,SFMono-Regular,Menlo,monospace",fontSize:12,background:"rgba(16,32,27,0.10)",borderRadius:4,padding:"1px 5px"}}>chrome://extensions</code>, turn on <strong>Developer mode</strong> (top right) then click <strong>Update</strong>. Otherwise Chrome will update it on its own within a few hours.</>}
+            </div>
+          </div>
           <a href="/extension" style={{fontWeight:700,fontSize:12.5,color:"#fff",background:UI.ink,borderRadius:99,padding:"7px 16px",textDecoration:"none",whiteSpace:"nowrap",flexShrink:0}}>
             {lang==='fr'?"Mettre à jour":"Update"}
           </a>
