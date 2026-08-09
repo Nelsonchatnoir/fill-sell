@@ -1621,11 +1621,16 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 // — l'édition par article à 30 annonces serait inutilisable.
 // ── É6 : republication automatique (PRO uniquement — 2026-08-05) ─────────────
 // Réglage : profiles.platform_settings.vinted.republish_auto {actif,
-// age_jours, plafond_jour} — plafond (1..50) ET seuil d'ancienneté (1..365)
+// age_jours, plafond_jour} — plafond (1..50) ET seuil d'ancienneté (7..365)
 // RÉGLABLES par l'utilisateur. Les DEUX bornes d'age_jours doivent rester
 // identiques à celles de maybeAutoRepublish (chrome-extension/background.js) :
 // si elles divergent, cette carte annonce « N éligibles » sur un seuil que
 // l'extension n'applique pas — un compteur qui ment.
+// ⚠️ PLANCHER À 7 JOURS, et ce n'est pas un chiffre rond arbitraire : une
+// annonce republiée 1 ou 2 jours après sa mise en ligne est un motif que
+// Vinted sait repérer — c'est le compte de l'utilisateur qui prend le risque,
+// pas nous. Descendu à 1 le 2026-08-09, remonté à 7 le jour même. Ne pas le
+// rebaisser sans arbitrage explicite.
 // Écriture en lecture-fusion-écriture (platform_settings porte aussi
 // l'adresse Leboncoin). À l'activation : on dit CE QUI VA SE PASSER (combien
 // d'annonces éligibles aujourd'hui, à quel rythme) ET CE QUE ÇA COÛTE —
@@ -1645,7 +1650,7 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
   const [moisCount, setMoisCount] = useState(null);
   const [busy, setBusy] = useState(false);
   // Bornes UNIQUES, réutilisées par le clamp et par les deux champs de saisie.
-  const bornerAge = (v) => Math.min(365, Math.max(1, Number(v) || 30));
+  const bornerAge = (v) => Math.min(365, Math.max(7, Number(v) || 30));
   const bornerPlafond = (v) => Math.min(50, Math.max(1, Number(v) || 10));
   const ageJours = bornerAge(cfg?.age_jours);
   const plafond = bornerPlafond(cfg?.plafond_jour);
@@ -1786,16 +1791,23 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
             onBlur={e => { const v = bornerPlafond(e.target.value); e.target.value = String(v); if (v !== plafond) ecrire({ plafond_jour: v }); }}
             style={{ width: 64, padding: '7px 9px', borderRadius: 9, border: '1px solid #E7E3D8', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }} />
         </label>
-        {/* Saisie LIBRE en jours (1..365), pas une liste de choix : 23 doit
+        {/* Saisie LIBRE en jours (7..365), pas une liste de choix : 23 doit
             être atteignable. Le recompte des éligibles suit la valeur (effet
             ci-dessus), donc le texte de la carte dit ce que ce seuil change. */}
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#5C6560', fontWeight: 600 }}>
           {fr ? 'En ligne depuis plus de :' : 'Live for more than:'}
-          <input key={`age-${ageJours}`} type="number" min={1} max={365} defaultValue={ageJours} disabled={busy}
+          <input key={`age-${ageJours}`} type="number" min={7} max={365} defaultValue={ageJours} disabled={busy}
             onBlur={e => { const v = bornerAge(e.target.value); e.target.value = String(v); if (v !== ageJours) ecrire({ age_jours: v }); }}
             style={{ width: 64, padding: '7px 9px', borderRadius: 9, border: '1px solid #E7E3D8', fontSize: 13, fontWeight: 700, fontFamily: 'inherit' }} />
           {fr ? 'jours' : 'days'}
         </label>
+      </div>
+      {/* Le plancher se JUSTIFIE, il ne s'impose pas : sans cette phrase, un
+          utilisateur qui tape 2 et voit 7 s'inscrire croit à un bug. */}
+      <div style={{ fontSize: 11.5, color: '#8A8578', lineHeight: 1.5, marginTop: -4 }}>
+        {fr
+          ? 'Minimum 7 jours : republier une annonce mise en ligne il y a un ou deux jours est un motif que Vinted sait repérer — c’est ton compte qui prendrait le risque.'
+          : 'Minimum 7 days: reposting a listing published only a day or two ago is a pattern Vinted can spot — your account would carry the risk.'}
       </div>
     </div>
   );
