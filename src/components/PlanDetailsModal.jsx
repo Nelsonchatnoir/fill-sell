@@ -21,7 +21,7 @@ import { useEffect, useState } from 'react';
 import { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
 import PepiteIcon from './PepiteIcon';
 import { COIN_CONFIG_FALLBACK, ProPlanCard, BusinessPlanCard } from './ConversionModal';
-import { BUSINESS_OFFER_ENABLED } from '../config/businessOffer';
+import { businessOfferVisible } from '../config/businessOffer';
 
 const C = {
   canvas: '#EDEAE0',
@@ -64,7 +64,10 @@ function Features({ items, dark }) {
 // abonné Business porte aussi is_pro. L'ordre inverse lui affichait « Pro », le
 // grant Pro et les avantages Pro, sur l'écran même censé récapituler SON plan
 // (2026-08-09). onUpgradeBusiness = upsell des Pro, sous drapeau d'offre.
-export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, supabase, onUpgradePro, onUpgradeBusiness }) {
+// userId : id du compte courant, uniquement pour la liste blanche de l'offre
+// Business (businessOfferVisible). App le tient déjà (`user`) — rien de neuf
+// n'est câblé ; absent, l'offre reste masquée.
+export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, supabase, userId = null, onUpgradePro, onUpgradeBusiness }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
 
@@ -219,7 +222,7 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
 
           {/* Upsell Business (2026-08-09) — pour un Pro non-Business, et
               seulement si l'offre est ouverte (Apple doit avoir approuvé). */}
-          {isPro && !isBusiness && BUSINESS_OFFER_ENABLED && onUpgradeBusiness && (
+          {isPro && !isBusiness && businessOfferVisible(userId) && onUpgradeBusiness && (
             <>
               <div style={{
                 textAlign: 'center', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',

@@ -5991,6 +5991,7 @@ export default function ListingPreviewScreen({
           isPremium={isPremium}
           isPro={isPro}
           isBusiness={isBusiness}
+          userId={userId}
           coinBalance={quotaModal.coinBalance ?? coinBalance}
           // ⚠️ coinPrice non-null = la modale bascule en CAS « Pépites
           // insuffisantes » (isCoinCase) et n'affiche PAS les cartes de plans.

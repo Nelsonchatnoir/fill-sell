@@ -37,7 +37,7 @@ import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from './utils/stockLimit';
 import Toast from './components/Toast';
 import ConversionModal, { COIN_CONFIG_FALLBACK } from './components/ConversionModal';
-import { BUSINESS_OFFER_ENABLED } from './config/businessOffer';
+import { businessOfferVisible } from './config/businessOffer';
 import StatsPage from './pages/StatsPage';
 import { useTranslation } from './i18n/useTranslation';
 import * as XLSX from 'xlsx';
@@ -2363,8 +2363,8 @@ export default function App({ loginOnly = false }){
   // Checkout direct d'un tier ('premium'|'pro'|'business') : log + tracking +
   // IAP/Stripe. Business part désormais en Stripe sur le web (2026-08-09) :
   // le canal web évite la commission des stores (~3 €/mois/abonné à 59,99 €).
-  // ⚠️ GARDE DE MASQUAGE : tant que BUSINESS_OFFER_ENABLED est faux, aucun
-  // checkout Business ne part — d'où qu'il soit demandé. C'est le filet du
+  // ⚠️ GARDE DE MASQUAGE : hors liste blanche et drapeau faux, aucun checkout
+  // Business ne part — d'où qu'il soit demandé. C'est le filet du
   // filet : l'UI ne propose déjà rien (ConversionModal, PlanDetailsModal), mais
   // un appel resté branché quelque part ferait un CTA mort sur iOS (produit en
   // review = « produit introuvable ») ou vendrait sur le web un palier que
@@ -2372,8 +2372,8 @@ export default function App({ loginOnly = false }){
   function startTierCheckout(tier){
     const business=tier==='business';
     const pro=tier==='pro';
-    if(business&&!BUSINESS_OFFER_ENABLED){
-      console.warn('[checkout] offre Business masquée (BUSINESS_OFFER_ENABLED=false) — checkout non déclenché');
+    if(business&&!businessOfferVisible(user?.id)){
+      console.warn('[checkout] offre Business masquée (drapeau faux, compte hors liste blanche) — checkout non déclenché');
       return;
     }
     if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:business?'business_cta_click':pro?'pro_cta_click':'premium_cta_click'}).then(()=>{});
@@ -6034,6 +6034,7 @@ export default function App({ loginOnly = false }){
         isPremium={isPremium}
         isPro={isPro}
         isBusiness={isBusiness}
+        userId={user?.id}
         itemCount={items.filter(i=>i.statut!=='vendu').length}
         coinBalance={conversionModal.coinBalance??(coinWallet?(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0):null)}
         coinPrice={conversionModal.coinPrice??null}
@@ -6068,6 +6069,7 @@ export default function App({ loginOnly = false }){
           lang={lang}
           onClose={()=>setShowPremiumModal(false)}
           supabase={supabase}
+          userId={user?.id}
           onUpgradePro={()=>{setShowPremiumModal(false);startTierCheckout('pro');}}
           onUpgradeBusiness={()=>{setShowPremiumModal(false);startTierCheckout('business');}}
         />

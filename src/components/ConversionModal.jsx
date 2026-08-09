@@ -4,7 +4,7 @@ import PepiteAmount from './PepiteAmount';
 import PlanBadge, { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
 import { PACKS } from './coinPacks';
 import { supabase } from '../lib/supabase';
-import { BUSINESS_OFFER_ENABLED } from '../config/businessOffer';
+import { businessOfferVisible } from '../config/businessOffer';
 
 // ConversionModal — modale de conversion unique (upsell Pépites / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
@@ -552,6 +552,11 @@ export default function ConversionModal({
   isPremium    = false,
   isPro        = false,
   isBusiness   = false,
+  // Id du compte courant — SEUL usage : la liste blanche de l'offre Business
+  // (businessOfferVisible). Les deux hôtes le tiennent déjà (App : `user`,
+  // ListingPreviewScreen : prop `userId`), aucun nouveau chemin de données.
+  // Absent → l'offre reste masquée, cf. src/config/businessOffer.js.
+  userId       = null,
   itemCount    = null,
   // Repli seulement — l'hôte passe la valeur lue dans coin_config
   // (free_stock_limit, source unique de la limite Free depuis le 05/08).
@@ -624,7 +629,7 @@ export default function ConversionModal({
   // antérieurs au palier) : on l'ajoute ICI, sous drapeau, plutôt que de
   // toucher les 6 sites d'appel de ListingPreviewScreen — et le drapeau baissé
   // le retire, d'où qu'il vienne. Cf. src/config/businessOffer.js.
-  const proposables = BUSINESS_OFFER_ENABLED
+  const proposables = businessOfferVisible(userId)
     ? [...new Set([...targetTiers, 'business'])]
     : targetTiers.filter(t => t !== 'business');
   const sellable = proposables
