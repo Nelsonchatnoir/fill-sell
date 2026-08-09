@@ -70,7 +70,9 @@ const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'lebonco
 // intégré le 2026-07-14). ⚠️ TOUTES les valeurs de cet écran sont des EXEMPLES
 // EN DUR : l'utilisateur n'a rien vendu, aucun de ces chiffres ne doit jamais
 // être branché sur ses vraies données. Les libellés « Aperçu » et « Avec
-// Fill & Sell » sont là pour lever toute ambiguïté — ne pas les retirer.
+// FillSell » sont là pour lever toute ambiguïté — ne pas les retirer.
+// (« Fill & Sell », orthographe fantôme : dernier endroit de l'app qui
+// écrivait la marque en trois mots — corrigé le 2026-08-09.)
 const TICKER_SALES = [
   { title:'Veste Zara oversize',  marque:'Zara',    type:'Mode',       icon:'🧥', sell:42,   margin:27,  date:'14 juil', dateEn:'Jul 14' },
   { title:'iPhone 12 Pro 128Go',  marque:'Apple',   type:'High-Tech',  icon:'📱', sell:380,  margin:100, date:'12 juil', dateEn:'Jul 12' },
@@ -186,17 +188,21 @@ function SalesTicker({ lang, fmt, setTab, extensionAbsente = false, onExtensionI
         </div>
       </div>
 
-      {/* Accroche (lot 2) : dire ce que CET écran fera — la vente arrive avec
-          sa marge, et FillSell propose de retirer les autres annonces (sur
-          confirmation, jamais tout seul). */}
+      {/* Accroche — remise à jour le 2026-08-09. Elle ne parlait que de la
+          détection de vente, comme si les articles arrivaient là par magie :
+          rien sur les quatre plateformes surveillées, rien sur la synchro du
+          dressing Vinted qui remonte AUSSI les ventes récentes. Les deux sont
+          désormais nommées.
+          ⚠️ Le retrait reste « te proposera » : il se fait sur confirmation,
+          jamais tout seul — ne pas en faire une promesse d'automatisme. */}
       <div className="vt-anim" style={{textAlign:'center',animation:'vt-rise 0.5s ease 0.05s both'}}>
         <div style={{fontSize:21,fontWeight:700,letterSpacing:'-0.02em',color:UI.ink}}>
           {fr?'Aucune vente pour l\'instant':'No sales yet'}
         </div>
         <div style={{fontSize:13.5,fontWeight:500,lineHeight:1.5,color:UI.mute,maxWidth:290,margin:'8px auto 0'}}>
           {fr
-            ?'Quand un de tes articles part sur une plateforme, il apparaît ici avec ta marge — et FillSell te proposera de retirer les autres annonces.'
-            :'When one of your items sells on a marketplace, it shows up here with your margin — and FillSell will offer to remove the other listings.'}
+            ?"Dès qu'un article part sur Vinted, Leboncoin, eBay ou Beebs, il apparaît ici avec ta marge — et FillSell te proposera de retirer les autres annonces. Tes ventes Vinted récentes remontent aussi quand tu synchronises ton dressing."
+            :'As soon as an item sells on Vinted, Leboncoin, eBay or Beebs, it shows up here with your margin — and FillSell will offer to remove the other listings. Your recent Vinted sales also come across when you sync your closet.'}
         </div>
       </div>
 
@@ -228,7 +234,7 @@ function SalesTicker({ lang, fmt, setTab, extensionAbsente = false, onExtensionI
       {/* Mini-stats d'EXEMPLE — jamais les données de l'utilisateur */}
       <div className="vt-anim" style={{animation:'vt-rise 0.5s ease 0.15s both'}}>
         <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.12em',color:'#A39D8E',textAlign:'center',marginBottom:8}}>
-          {fr?'Avec Fill & Sell':'With Fill & Sell'}
+          {fr?'Avec FillSell':'With FillSell'}
         </div>
         <div style={{fontSize:13.5,fontWeight:700,color:UI.ink,textAlign:'center',marginBottom:12}}>
           {fr?'Ce que tu vas pouvoir suivre':"What you'll be able to track"}

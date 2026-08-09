@@ -1189,8 +1189,18 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
               <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
             </div>
           </div>
+          {/* Titre remis à jour le 2026-08-09. L'ancien (« Publie tes articles
+              sur Vinted, Leboncoin, eBay et Beebs sans les saisir quatre
+              fois. ») disait mot pour mot ce que le bandeau « PUBLIÉ
+              AUTOMATIQUEMENT SUR » + les quatre logos disent déjà, à deux
+              centimètres en dessous : le premier écran vendait donc une seule
+              chose, deux fois. Il vend maintenant les deux promesses qui
+              n'étaient nulle part — la synchro du dressing Vinted (le premier
+              geste, celui du bouton juste dessous) et la marge (la raison pour
+              laquelle on tient un stock). Le cross-posting reste vendu par le
+              bandeau, avec ses logos. */}
           <h1 style={{margin:0,fontWeight:700,fontSize:25,lineHeight:1.2,letterSpacing:"-0.02em",color:UI.ink}}>
-            {fr?"Publie tes articles sur Vinted, Leboncoin, eBay et Beebs sans les saisir quatre fois.":"List your items on Vinted, Leboncoin, eBay and Beebs without typing them four times."}
+            {fr?"Ton dressing Vinted arrive ici en un clic — et tu sais enfin ce que chaque vente te rapporte.":"Your Vinted closet lands here in one click — and you finally know what each sale earns you."}
           </h1>
           <button
             onClick={onImport}
@@ -2065,7 +2075,13 @@ export default function App({ loginOnly = false }){
   const [voiceParsed,setVoiceParsed]=useState(null);
   const [voiceError,setVoiceError]=useState(null);
   const [voiceZoneResults,setVoiceZoneResults]=useState([]);
-  const [voiceZoneOpen,setVoiceZoneOpen]=useState(true);
+  // REPLIÉE PAR DÉFAUT depuis le 2026-08-09. Le drapeau existait depuis
+  // toujours mais valait `true` sans qu'aucun bouton ne le bascule : la zone de
+  // saisie IA (onglets Écrire/Parler + zone de texte + Analyser + exemples +
+  // ajout manuel) occupait tout le premier écran de l'onglet Stock, et
+  // repoussait sous la ligne de flottaison la carte de synchro Vinted comme la
+  // liste des articles. Une ligne suffit à la rouvrir.
+  const [voiceZoneOpen,setVoiceZoneOpen]=useState(false);
   useEffect(()=>{if(!voiceError)return;const t=setTimeout(()=>{setVoiceError(null);setVoiceStep("");},4000);return()=>clearTimeout(t);},[voiceError]);
   const [showManualForm,setShowManualForm]=useState(false);
   useEffect(()=>{

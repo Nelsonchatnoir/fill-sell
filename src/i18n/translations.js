@@ -29,7 +29,7 @@ export const translations = {
     // Sans suffixe de palier depuis le 2026-08-09 : la fonction est ouverte à
     // TOUS les comptes, gratuits compris. Le « — Premium » était le dernier
     // endroit de l'app qui prétendait le contraire.
-    importExcel:"📊 Import & Export Excel",
+    importExcel:"Import & Export Excel",
     importDesc:"Importe ton stock et exporte tes données en un tap",
     enStockLabel:"En stock",
     vendus:"Vendus",
@@ -338,7 +338,7 @@ export const translations = {
     // Sans suffixe de palier depuis le 2026-08-09 : la fonction est ouverte à
     // TOUS les comptes, gratuits compris. Le « — Premium » était le dernier
     // endroit de l'app qui prétendait le contraire.
-    importExcel:"📊 Import & Export Excel",
+    importExcel:"Import & Export Excel",
     importDesc:"Import your stock and export your data in one tap",
     enStockLabel:"In stock",
     vendus:"Sold",

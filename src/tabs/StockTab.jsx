@@ -2893,8 +2893,40 @@ const StockTab = memo(function StockTab({
       })()}
       <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
         <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-          {/* ── Voice Capture (collapsible) ── */}
-          {voiceZoneOpen&&(<>
+          {/* ── Zone de saisie IA — REPLIÉE PAR DÉFAUT (2026-08-09) ──────────
+              Le drapeau voiceZoneOpen existait depuis toujours, mais valait
+              `true` et AUCUN bouton ne le basculait (setVoiceZoneOpen était
+              déstructuré sans être appelé : eslint le signalait). Résultat :
+              onglets Écrire/Parler + zone de texte + Analyser + exemples +
+              ajout manuel occupaient tout le premier écran, et repoussaient
+              sous la ligne de flottaison la carte de synchro Vinted ET la
+              liste des articles. Une ligne rouvre le tout.
+              ⚠️ Le repli ne doit JAMAIS masquer du contenu vivant : une
+              analyse en cours, un résultat, une erreur ou le formulaire manuel
+              ouvert forcent l'affichage, quoi que dise le drapeau — sinon un
+              « Analyser » lancé rendrait un écran vide. Tant qu'il y a du
+              contenu vivant, la barre de repli disparaît : l'écran propose
+              alors « Recommencer » / « Réessayer », qui ramènent à l'état
+              replié. */}
+          {(()=>{
+            const contenuVivant=(voiceStep==="done"&&voiceZoneResults.length>0)||voiceStep==="error"||voiceStep==="parsing"||voiceLoading;
+            if(contenuVivant) return null;
+            return (
+              <button type="button" onClick={()=>setVoiceZoneOpen(v=>!v)}
+                style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:voiceZoneOpen?"2px 0 6px":"2px 0",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                <span style={{flexShrink:0,width:30,height:30,borderRadius:9,background:"rgba(47,158,144,0.10)",display:"flex",alignItems:"center",justifyContent:"center",color:"#1B6E62"}}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                </span>
+                <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:C.text}}>
+                  {lang==='fr'?"Ajouter un article — écris ou parle":"Add an item — write or speak"}
+                </span>
+                <span style={{flexShrink:0,display:"inline-flex",color:"#8A8578",transition:"transform 0.15s",transform:voiceZoneOpen?"rotate(180deg)":"none"}}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </span>
+              </button>
+            );
+          })()}
+          {(voiceZoneOpen||showManualForm||(voiceStep==="done"&&voiceZoneResults.length>0)||voiceStep==="error"||voiceStep==="parsing"||voiceLoading)&&(<>
           {voiceStep==="done"&&voiceZoneResults.length>0?(
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {/* ⚠️ Ces cartes étaient dupliquées ici (~570 lignes) avec des styles
@@ -3309,32 +3341,57 @@ const StockTab = memo(function StockTab({
               écrit dans le navigateur, aucune Edge Function, aucune RPC). Ce
               ternaire ÉTAIT le verrou, et le suffixe « — Premium » du titre
               le dernier endroit qui prétendait le contraire.
-              Un seul bloc désormais, identique pour tout le monde : le titre
-              et le sous-titre de l'ancienne carte, les boutons de l'ancienne
-              barre. */}
-          <div style={{background:"#fff",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-            <div style={{flex:1,minWidth:170}}>
-              <div style={{fontSize:13,fontWeight:700,color:C.text}}>{t('importExcel')}</div>
-              <div style={{fontSize:11,color:"#6B7A75",opacity:0.8,lineHeight:1.5,marginTop:3}}>{t('importDesc')}</div>
+              Un seul bloc désormais, identique pour tout le monde.
+              ── Resserré et rhabillé le 2026-08-09 (2ᵉ passe) ────────────────
+              La carte faisait ~110 px de haut pour deux boutons : titre 13 px,
+              sous-titre, puis une rangée de pastilles à 📥/📤. Les émojis, que
+              chaque OS rend à sa façon (gros blocs colorés sur iOS), la
+              dataient à eux seuls. Désormais : une tuile d'icône SVG comme les
+              autres cartes, textes resserrés, pastilles compactes — ~62 px,
+              soit presque deux fois moins, sans rien retirer. Le sous-titre
+              reste, à la demande de Nico. */}
+          <div style={{background:"#fff",borderRadius:12,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+            <div style={{flexShrink:0,width:30,height:30,borderRadius:9,background:"rgba(47,158,144,0.10)",display:"flex",alignItems:"center",justifyContent:"center",color:"#1B6E62"}}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3v7"/><path d="m6 7.5 3 3 3-3"/><path d="M18 13V6"/><path d="m15 8.5 3-3 3 3"/><path d="M3 17v1a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-1"/></svg>
+            </div>
+            <div style={{flex:1,minWidth:200}}>
+              <div style={{fontSize:12.5,fontWeight:700,color:C.text,lineHeight:1.3}}>{t('importExcel')}</div>
+              <div style={{fontSize:10.5,color:"#8A8578",lineHeight:1.4,marginTop:1}}>{t('importDesc')}</div>
             </div>
             <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
-            {/* Les deux boutons forment UN groupe : sans lui, en 390 px, « Importer »
-                restait à côté du titre et « Exporter » tombait seul à la ligne (vu au
-                harnais le 2026-08-09). Ils passent maintenant à la ligne ensemble. */}
-            <div style={{display:"flex",gap:8,flexShrink:0}}>
-            <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#E7F3F0",color:"#1B6E62",border:"1px solid #2F9E9044",borderRadius:99,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
-              onMouseEnter={e=>e.currentTarget.style.background="#DCEEEA"}
-              onMouseLeave={e=>e.currentTarget.style.background="#E7F3F0"}
-            >📥 {t('importer')}</button>
-            <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 16px",background:"#F2F0E9",color:"#6B7A75",border:"1px solid #E7E3D8",borderRadius:99,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}
-              onMouseEnter={e=>e.currentTarget.style.background="#EAE7DD"}
-              onMouseLeave={e=>e.currentTarget.style.background="#F2F0E9"}
-            >📤 {t('exporter')}</button>
+            {/* Les deux boutons forment UN groupe : sans lui, en 390 px,
+                « Importer » restait collé au titre et « Exporter » tombait seul
+                à la ligne (vu au harnais). Ils passent à la ligne ensemble. */}
+            <div style={{display:"flex",gap:6,flexShrink:0}}>
+              <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 11px",background:"#E7F3F0",color:"#1B6E62",border:"1px solid #2F9E9033",borderRadius:99,fontSize:11.5,fontWeight:700,cursor:"pointer",transition:"background 0.15s",whiteSpace:"nowrap",fontFamily:"inherit"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#DCEEEA"}
+                onMouseLeave={e=>e.currentTarget.style.background="#E7F3F0"}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M4 19h16"/></svg>
+                {t('importer')}
+              </button>
+              <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 11px",background:"#F2F0E9",color:"#6B7A75",border:"1px solid #E7E3D8",borderRadius:99,fontSize:11.5,fontWeight:700,cursor:"pointer",transition:"background 0.15s",whiteSpace:"nowrap",fontFamily:"inherit"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#EAE7DD"}
+                onMouseLeave={e=>e.currentTarget.style.background="#F2F0E9"}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 14V3"/><path d="m7.5 7 4.5-4 4.5 4"/><path d="M4 19h16"/></svg>
+                {t('exporter')}
+              </button>
             </div>
-            {importMsg&&<div style={{width:"100%",fontSize:12,color:C.green,fontWeight:600,marginTop:2}}>{importMsg}</div>}
+            {importMsg&&<div style={{width:"100%",fontSize:11.5,color:C.green,fontWeight:600,marginTop:1}}>{importMsg}</div>}
           </div>
 
-          {/* ── Barre de recherche + Filtres type ── */}
+          {/* ── Barre de recherche + Filtres type ──
+              Masquée tant qu'il n'y a RIEN à chercher (2026-08-09) : sur un
+              compte vide elle occupait une ligne pleine largeur au-dessus d'un
+              « 0 art. », et un tap y ouvrait le clavier pour fouiller le vide.
+              `stock` est la liste BRUTE (la filtrée, c'est stockFiltre) : la
+              barre ne peut donc pas se cacher elle-même en ne trouvant rien.
+              La clause `|| search` est la ceinture du cas limite — dernier
+              article vendu pendant qu'une recherche est saisie : sans elle, la
+              barre disparaîtrait avec un filtre actif et plus aucun moyen de
+              l'effacer. */}
+          {(stock.length>0||search)&&(
           <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:12,padding:"10px 16px"}}>
             <span style={{fontSize:14,flexShrink:0}}>🔍</span>
             <input value={search} onChange={e=>setSearch(e.target.value)}
@@ -3342,6 +3399,7 @@ const StockTab = memo(function StockTab({
               style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#10201B"}}/>
             {search&&<button onClick={()=>setSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#A3A9A6",flexShrink:0,padding:0,lineHeight:1}}>✕</button>}
           </div>
+          )}
           {(()=>{
             // Basé uniquement sur stock (pas sold) : les pills de catégorie filtrent la
             // section EN STOCK ci-dessous (VENDUS est masqué dans Stock IA) — une catégorie
