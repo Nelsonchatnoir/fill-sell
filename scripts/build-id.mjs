@@ -85,7 +85,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // reste exact, et EXTENSION_MIN_BUILD n'a donc pas à suivre. Recalage seul, du
 // même geste que db9faba et f84326e — sans lui, `npm run build` échoue sur la
 // garde ci-dessous.
-export const EXTENSION_LAST_COMMIT = '2026-08-09T14:53:38Z';
+// 2026-08-09T19:20:20Z = e78783e (0.5.7) : la file de jobs passe à TROIS rangs
+// de priorité — une publication ne fait plus la queue derrière les
+// republications pas encore supprimées (rang 2), tandis que les recréations
+// dues (rang 0, annonce déjà hors ligne) gardent la priorité absolue. Le
+// rythme humain est inchangé : seul l'ORDRE de passage bouge.
+// EXTENSION_MIN_BUILD reste sur la 0.5.6 : la 0.5.7 n'est pas encore soumise
+// au Chrome Web Store, et on ne réclame jamais au parc une version que
+// personne ne peut installer (bug du 29/07).
+export const EXTENSION_LAST_COMMIT = '2026-08-09T19:20:20Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
