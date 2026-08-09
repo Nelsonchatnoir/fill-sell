@@ -31,7 +31,7 @@ import {
   ecouterPresenceExtension, demanderSyncDressing,
   lireCapaciteSyncCompte, demanderSyncDressingServeur,
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS, SYNC_FILE_TTL_MS,
-  SYNC_MAJ_DISPONIBLE, SYNC_RECLAMATION_MAX_MS,
+  SYNC_RECLAMATION_MAX_MS,
   lireDernierRunDressing, aDejaSynchroniseDressing,
   DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
   republishVisiblePour, republierArticleVinted, relancerRepublishVinted,
@@ -890,12 +890,9 @@ function formatDepuis(ts, lang) {
 //     republier sur Vinted, c'est la confiance perdue en un écran.
 function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0 }) {
   const fr = lang !== 'en';
-  // « Téléphone » = web mobile (Safari/Chrome) ET application native. Les deux
-  // reçoivent le MÊME sens de message : l'installation se fait une fois sur un
-  // ordinateur. Seule l'action de repli diffère à la marge (fermer cette page
-  // vs fermer l'application).
-  const isMobile = useIsMobile();
-  const surTelephone = isNative || isMobile;
+  // (Le couple isMobile/surTelephone a disparu le 2026-08-09 : il ne servait
+  // qu'à décliner le message de blocage par support. Il n'y en a plus qu'un,
+  // valable sur les deux — cf. MESSAGE_BLOCAGE.)
   const [extVue, setExtVue] = useState(false);
   // Version annoncée par l'extension (null tant qu'elle ne s'est pas annoncée).
   const [extVersion, setExtVersion] = useState(null);
@@ -909,10 +906,6 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // AVANT l'effet de suivi qui l'écrit (règle TDZ du fichier).
   const [attenteOccupee, setAttenteOccupee] = useState(false);
   const [message, setMessage] = useState(null);    // ce que la base ne dit pas (commande non prise, poll abandonné)
-  // Accroche extension (2026-08-05) : ouverte quand AUCUNE extension ne répond
-  // dans CE navigateur — l'écran gère lui-même mobile (mailto/copie du lien)
-  // vs desktop (lien /extension).
-  const [showPitch, setShowPitch] = useState(false);
   // La carte vit en tête de liste (2026-08-05) : le contrat complet est replié
   // derrière « En savoir plus » pour ne pas pousser la liste hors écran.
   const [infosDepliees, setInfosDepliees] = useState(false);
@@ -1169,77 +1162,28 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       : `Closet synced ${depuisMin} min ago — you can refresh in ~${dansMin} min.`;
   })();
 
-  // ── États bloquants (refonte 2026-08-05, bug Safari iOS) ──────────────────
-  // Deux vérités à ne plus jamais confondre :
-  //  · le heartbeat serveur prouve qu'une extension tourne QUELQUE PART (y
-  //    compris sur un autre ordinateur) — il ne dit RIEN de ce navigateur.
-  //    Sur l'iPhone de Nico il fabriquait un « ton extension est trop
-  //    ancienne » alors qu'aucune extension n'existe sur iOS ;
-  //  · le canal postMessage (__fillsellExt) n'existe que depuis la 0.5.0 :
-  //    « présente mais muette (0.4.x) » et « absente » sont INDISCERNABLES
-  //    dans ce navigateur. Règle : pas de réponse au ping → accroche
-  //    d'installation (ExtensionPitchScreen, qui sait parler mobile ET
-  //    desktop) — JAMAIS un mot sur la version. Réponse reçue avec version
-  //    insuffisante → là seulement, le message de version, SANS la promesse
-  //    « elle se met à jour toute seule depuis le Chrome Web Store » (la
-  //    0.5.x n'y a jamais été soumise : personne n'aurait rien reçu).
-  // TROIS états EXCLUSIFS (resserrés le 05/08 soir — avant, le repli natif
-  // 'natif_indispo' disait « pas disponible dans l'application mobile » sans
-  // un mot sur l'installation : un visiteur mobile sans extension — le cas le
-  // plus fréquent — repartait sans savoir quoi faire). Ce qui décide, c'est
-  // la DÉTECTION : ce que le compte et ce navigateur prouvent — jamais une
-  // supposition.
-  //   · null               → extension à jour : bouton actif, aucun message (c)
-  //   · 'version_ici'      → l'extension a répondu ICI, mais trop ancienne (b)
-  //   · 'maj'              → le compte a une extension, aucune ne sait lire (b)
-  //   · 'tel_sans_ext'     → téléphone, AUCUNE extension détectée (a)
-  //   · 'desktop_sans_ext' → ordinateur, AUCUNE extension détectée (a)
-  // Capacité illisible (migration pas appliquée) = rien de détecté = cas (a),
-  // application native comprise : l'accroche d'installation sait parler
-  // mobile ET desktop, et ne promet rien qui exige un ordinateur sans le dire.
-  const casCarte = (() => {
-    if (peutLancer) return null;
-    // Tant qu'on ne sait rien (sonde en cours ET capacité pas lue), on ne
-    // conclut RIEN : sinon le message clignote au montage.
-    if (!sondeFinie && !capaciteConnue) return null;
-    if (extVue) return 'version_ici';
-    // Le compte a une extension quelque part (heartbeat) : c'est une mise à
-    // jour qu'il lui faut, jamais une installation.
-    if (capaciteConnue && !capacite.jamaisVue) return 'maj';
-    // Rien de détecté — ni ici, ni sur le compte (ou capacité illisible) :
-    // l'accroche d'installation, déclinée par support.
-    return surTelephone ? 'tel_sans_ext' : 'desktop_sans_ext';
-  })();
-
-  // Ligne grise sous le bouton : les cas qui n'appellent AUCUNE action ici.
-  const raisonGrisee = (() => {
-    if (casCarte === 'version_ici') {
-      // L'extension a répondu ICI : la version est un fait, pas une déduction.
-      return fr
-        ? `Ton extension FillSell${extVersion ? ` (${extVersion})` : ''} ne sait pas encore lire ton dressing — il lui faut la version ${SYNC_VERSION_MIN} ou plus récente.`
-        : `Your FillSell extension${extVersion ? ` (${extVersion})` : ''} can't read your closet yet — it needs version ${SYNC_VERSION_MIN} or newer.`;
-    }
-    if (casCarte === 'maj') {
-      // CAS C. Le compte A une extension : c'est une mise à jour, pas une
-      // installation — ne jamais renvoyer installer ce qui est déjà là.
-      // ⚠️ SYNC_MAJ_DISPONIBLE garde la promesse « elle se met à jour toute
-      // seule » sous clé tant que la 0.5.x n'est pas servie par le CWS :
-      // avant ça, personne ne recevrait rien (promesse retirée le 05/08).
-      if (!SYNC_MAJ_DISPONIBLE) {
-        return fr
-          ? "FillSell est bien installé sur ton ordinateur, mais il ne sait pas encore lire ton dressing. Cette fonction arrive dans une prochaine mise à jour de l'extension."
-          : "FillSell is installed on your computer, but it can't read your closet yet. This is coming in an upcoming extension update.";
-      }
-      return fr
-        ? "FillSell est bien installé sur ton ordinateur, mais dans une version trop ancienne pour lire ton dressing. Ouvre Chrome sur ton ordinateur : l'extension se met à jour toute seule, puis reviens ici."
-        : "FillSell is installed on your computer, but it's too old to read your closet. Open Chrome on your computer: the extension updates itself, then come back here.";
-    }
-    return null;
-  })();
-  // Un état bloquant PRÉSENT prime sur le résultat d'un run PASSÉ : les deux
-  // ensemble se contredisent (« synchronisé ✓ » + « impossible de lire ton
-  // dressing »). Le bilan et la cadence ne s'affichent que débloqué.
-  const blocage = casCarte != null;
+  // ── Synchro impossible : UN SEUL message (refonte 2026-08-09) ─────────────
+  // Avant, cinq états de détection (version_ici / maj / tel_sans_ext /
+  // desktop_sans_ext / null) produisaient quatre textes différents sous le
+  // bouton, dont « FillSell est bien installé sur ton ordinateur, mais dans une
+  // version trop ancienne pour lire ton dressing » — qui s'affichait jusque sur
+  // un iPhone, où l'utilisateur ne peut RIEN en faire. Ces états décrivaient
+  // notre plomberie, pas la situation de l'utilisateur : « pas d'extension »,
+  // « extension muette (0.4.x) » et « extension trop ancienne » appellent tous
+  // le MÊME geste — installer FillSell sur un ordinateur. On le dit une fois,
+  // pour tout le monde, et JAMAIS un mot sur un numéro de version : personne
+  // n'a jamais su quoi faire d'un numéro de version.
+  // La détection, elle, reste : c'est elle qui décide si le bouton est
+  // cliquable (peutLancer) et si l'on a le droit de conclure quoi que ce soit
+  // (tant que la sonde tourne ET que la capacité du compte n'est pas lue, on
+  // ne dit RIEN — sinon le message clignote au montage).
+  // Un blocage PRÉSENT prime aussi sur le résultat d'un run PASSÉ : les deux
+  // ensemble se contredisent (« synchronisé ✓ » + « installe l'extension »).
+  // Le bilan et la cadence ne s'affichent que débloqué.
+  const blocage = !peutLancer && (sondeFinie || capaciteConnue);
+  const MESSAGE_BLOCAGE = fr
+    ? "Installe l'extension FillSell sur ton ordinateur pour synchroniser ton dressing."
+    : 'Install the FillSell extension on your computer to sync your closet.';
 
   const progression = (() => {
     if (attente) return fr ? 'Démarrage…' : 'Starting…';
@@ -1338,15 +1282,12 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           ? "Une synchronisation est déjà en cours sur ton ordinateur. Laisse-la finir, le résultat s'affichera ici."
           : 'A sync is already running on your computer. Let it finish — the result will show up here.';
       }
-      if (r?.reason === 'extension_trop_ancienne') {
-        return fr
-          ? `L'extension de ton ordinateur doit passer en version ${SYNC_VERSION_MIN} ou plus récente pour lire ton dressing.`
-          : `The extension on your computer needs version ${SYNC_VERSION_MIN} or newer to read your closet.`;
-      }
-      if (r?.reason === 'extension_jamais_vue') {
-        return fr
-          ? "Aucune extension FillSell n'est encore associée à ton compte. Installe-la sur Chrome, sur un ordinateur."
-          : 'No FillSell extension is linked to your account yet. Install it on Chrome, on a computer.';
+      // Les deux refus « pas d'extension capable » (jamais vue / trop
+      // ancienne) rendent LE MÊME message que le blocage affiché sous le
+      // bouton : du point de vue de l'utilisateur c'est la même situation et
+      // le même geste. Aucun numéro de version à l'écran (2026-08-09).
+      if (r?.reason === 'extension_trop_ancienne' || r?.reason === 'extension_jamais_vue') {
+        return MESSAGE_BLOCAGE;
       }
       return fr
         ? "La demande n'a pas pu être envoyée. Réessaie dans un instant."
@@ -1534,50 +1475,11 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         );
       })()}
 
-      {raisonGrisee&&(
-        <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{raisonGrisee}</div>
-      )}
-
-      {/* Cas (a) : AUCUNE extension détectée — le cas le plus fréquent, et le
-          message qui doit CONVERTIR : le bénéfice d'abord (récupérer ses
-          annonces en un clic, sans rien toucher sur Vinted), le comment
-          ensuite. Deux formulations, une par support : sur un ordinateur
-          l'installation est faisable ici et maintenant ; sur un téléphone
-          elle ne l'est pas — on le dit en toutes lettres (jamais une promesse
-          qui exige un ordinateur sans le nommer). L'écran de pitch gère
-          l'action de chaque support (lien direct sur ordinateur ; mailto
-          pré-rempli + copie sur téléphone, y compris en WebView native). */}
-      {(casCarte==='desktop_sans_ext'||casCarte==='tel_sans_ext')&&(
-        <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
-          <div style={{fontSize:12,lineHeight:1.5,color:"#10201B",fontWeight:700}}>
-            {fr
-              ? "Récupère toutes tes annonces Vinted ici en un clic — titre, prix, photos, vues, favoris — sans rien republier ni modifier."
-              : "Bring all your Vinted listings in here in one click — title, price, photos, views, favourites — without republishing or changing anything."}
-          </div>
-          <div style={{fontSize:12,lineHeight:1.5,color:"#5C6560",fontWeight:600,marginTop:6}}>
-            {casCarte==='tel_sans_ext'
-              ? (fr
-                  ? "Ça passe par l'extension Chrome FillSell, qui s'installe une seule fois sur un ordinateur. Ensuite, tu lanceras la synchronisation d'ici, depuis ton téléphone."
-                  : "It works through the FillSell Chrome extension, installed once on a computer. After that, you'll start the sync right here, from your phone.")
-              : (fr
-                  ? "Ça passe par l'extension Chrome FillSell — installe-la dans ce navigateur, c'est fait en une minute."
-                  : "It works through the FillSell Chrome extension — install it in this browser, it takes a minute.")}
-          </div>
-          <button
-            onClick={()=>setShowPitch(true)}
-            style={{marginTop:8,width:"100%",padding:"10px 12px",borderRadius:10,border:"none",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,fontFamily:"inherit",cursor:"pointer"}}
-          >
-            {casCarte==='tel_sans_ext'
-              ? (fr ? "M'envoyer le lien pour mon ordinateur" : 'Email me the link for my computer')
-              : (fr ? "Installer l'extension" : 'Install the extension')}
-          </button>
-        </div>
-      )}
-      {showPitch&&(
-        <ExtensionPitchScreen
-          lang={lang}
-          onClose={()=>setShowPitch(false)}
-        />
+      {/* Synchro impossible : LA phrase, la même partout — ordinateur,
+          téléphone web, application native. Un seul geste à comprendre, et
+          rien qui exige de savoir ce qu'est un numéro de version. */}
+      {blocage&&(
+        <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{MESSAGE_BLOCAGE}</div>
       )}
 
       {/* Le contrat, en toutes lettres — mais REPLIÉ (2026-08-05) : la carte
@@ -2157,7 +2059,9 @@ const StockTab = memo(function StockTab({
   handleImportFile, handleExport, handleIAPPurchase, handleIAPRestore,
   triggerCheckout,
   // Refs
-  importRef, listRef, scrollRef, fabTriggerRef,
+  // (scrollRef retiré du destructuring le 2026-08-09 : son seul lecteur était
+  // le bouton « Importer mon dressing Vinted » de l'état vide, supprimé.)
+  importRef, listRef, fabTriggerRef,
   // Injected components (defined in App.jsx)
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal, onStepperOpenChange,
@@ -3770,25 +3674,24 @@ const StockTab = memo(function StockTab({
             {stock.length===0?(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
-                {/* 1. Bannière (lot 2) : dire ce qu'on PEUT faire, avec les deux
-                    gestes qui vont avec — importer (la carte de sync est juste
-                    au-dessus) ou photographier un premier article. */}
+                {/* 1. Bannière — UN SEUL geste (2026-08-09). Le bouton
+                    « Importer mon dressing Vinted » qui vivait ici a été
+                    supprimé : il ne faisait que remonter la page jusqu'à la
+                    carte de sync, affichée à quelques centimètres au-dessus,
+                    et donnait à la MÊME action un troisième libellé (importer
+                    / synchroniser / actualiser). Un compte vide voit
+                    désormais un seul bouton par geste : synchroniser, dans la
+                    carte Vinted ; ajouter, ici. */}
                 <div style={{background:"#F0FDFB",borderRadius:12,padding:"14px 16px",border:"1px solid rgba(13,148,136,0.15)"}}>
                   <div style={{fontSize:13.5,fontWeight:600,color:"#10201B",lineHeight:1.5,fontFamily:"inherit"}}>
                     {lang==='fr'
-                      ?"Ton stock est vide. Importe tes annonces Vinted en un clic, ou ajoute ton premier article en le photographiant."
-                      :"Your stock is empty. Import your Vinted listings in one click, or add your first item by photographing it."}
+                      ?"Ton stock est vide. Ajoute ton premier article en le photographiant."
+                      :"Your stock is empty. Add your first item by photographing it."}
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:12}}>
                     <button
-                      onClick={()=>scrollRef.current?.scrollTo({top:0,behavior:"smooth"})}
-                      style={{width:"100%",padding:"13px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)"}}
-                    >
-                      {lang==='fr'?"Importer mon dressing Vinted":"Import my Vinted wardrobe"}
-                    </button>
-                    <button
                       onClick={()=>onAddByPhoto?.()}
-                      style={{width:"100%",padding:"12px",background:"#fff",border:"1px solid #E7E3D8",borderRadius:999,fontSize:13.5,fontWeight:700,color:"#10201B",cursor:"pointer",fontFamily:"inherit"}}
+                      style={{width:"100%",padding:"13px",background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",border:"none",borderRadius:999,fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 10px 24px -8px rgba(47,158,144,0.28)"}}
                     >
                       {lang==='fr'?"Ajouter un article":"Add an item"}
                     </button>

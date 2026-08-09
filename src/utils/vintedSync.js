@@ -46,18 +46,14 @@ export const SYNC_FILE_TTL_MS = 6 * 60 * 60 * 1000;
 // interrogerait la base toutes les 2 s pendant des heures pour rien.
 export const SYNC_RECLAMATION_MAX_MS = 3 * 60 * 1000;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// BASCULE DU MESSAGE « extension trop ancienne » — true depuis le 06/08
-// ═══════════════════════════════════════════════════════════════════════════
-// false → « cette fonction arrive dans une prochaine mise à jour » (C1).
-// true  → « ouvre Chrome, l'extension se met à jour toute seule » (C2).
-//
-// Passée à true le 2026-08-06 : la 0.5.0 est acceptée et SERVIE par le Chrome
-// Web Store, la promesse C2 est donc vraie. À REPASSER à false si une version
-// exigée par SYNC_VERSION_MIN est committée sans être encore servie par le
-// CWS — même rituel qu'EXTENSION_MIN_BUILD (scripts/build-id.mjs) : les deux
-// constantes se basculent dans le même geste, après review ACCEPTÉE seulement.
-export const SYNC_MAJ_DISPONIBLE = true;
+// (SYNC_MAJ_DISPONIBLE supprimée le 2026-08-09. Elle arbitrait entre deux
+// formulations du message « extension trop ancienne » — message qui n'existe
+// plus : la carte de sync n'a plus qu'UNE phrase quand la synchro est
+// impossible (« Installe l'extension FillSell sur ton ordinateur… ») et ne
+// parle plus jamais de version. Une bascule que plus personne ne lit est un
+// piège : la basculer n'aurait rien changé à l'écran. Si un jour un message
+// doit redistinguer « à installer » de « à mettre à jour », c'est une
+// décision de discours à reprendre à zéro, pas cette constante à ressusciter.)
 
 // (Le masquage bêta BETA_COMPTES / syncDressingVisiblePour, posé en urgence le
 // 03/08, a été retiré le 06/08 quand la 0.5.0 a été servie par le CWS. La

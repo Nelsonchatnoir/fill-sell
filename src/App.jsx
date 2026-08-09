@@ -1175,7 +1175,11 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
             onClick={onImport}
             style={{marginTop:20,width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:9,padding:15,border:"none",borderRadius:16,background:`linear-gradient(135deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontWeight:700,fontSize:15,fontFamily:"inherit",boxShadow:"0 8px 20px rgba(27,110,98,0.3)",cursor:"pointer"}}
           >
-            {fr?"Importer mon dressing Vinted":"Import my Vinted wardrobe"}
+            {/* Le MÊME libellé que la carte de la page Stock, où ce bouton
+                envoie (2026-08-09) : trois mots différents pour une seule
+                action — importer / synchroniser / actualiser — faisaient
+                croire à trois fonctions. Partout : « synchroniser ». */}
+            {fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet"}
           </button>
           <button
             onClick={onOpenLens}

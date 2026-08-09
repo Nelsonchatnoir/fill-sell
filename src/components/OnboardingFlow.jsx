@@ -429,7 +429,9 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
           // le bouton d'envoi qui vient d'échouer, seulement les recours.
           recoursSeulement={surTelephone && envoi.etat === 'echec'}
           onExtensionSeen={() => setShowPitch(false)}
-          eyebrow={fr ? 'Pour importer ton dressing' : 'To import your wardrobe'}
+          // « synchroniser » partout depuis le 2026-08-09 : c'est le mot du
+          // bouton de la carte Vinted, celui du dashboard, et celui-ci.
+          eyebrow={fr ? 'Pour synchroniser ton dressing' : 'To sync your closet'}
           body={fr
             ? "Elle lit ton dressing Vinted avec ton compte déjà connecté dans ton navigateur — jamais ton mot de passe — puis publie tes annonces quand tu le décides. Gratuite, installée une seule fois."
             : 'It reads your Vinted wardrobe with the account already signed in to your browser — never your password — then publishes your listings when you decide. Free, installed once.'}
