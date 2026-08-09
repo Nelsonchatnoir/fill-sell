@@ -43,10 +43,27 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 //   une publication ACCEPTÉE par le CWS — sinon on demande aux utilisateurs
 //   d'installer quelque chose qui n'existe pas encore.
 //
+// ⚠️ MIN_BUILD SE LIT DANS LE PAQUET PUBLIÉ, JAMAIS DANS LAST_COMMIT.
+// Cette consigne disait « recopier LAST_COMMIT dans MIN_BUILD ». C'était vrai
+// tant que LAST_COMMIT désignait le commit de code qui a PRODUIT le zip — et
+// faux dès qu'un commit postérieur touche chrome-extension/ sans produire de
+// paquet. Un README suffit : le 09/08, 6e08f44 (README seul) a poussé
+// LAST_COMMIT à 14:53:38Z alors que le paquet 0.5.6 réellement publié porte
+// 2026-08-09T14:16:20Z — 37 min PLUS TÔT. Recopier LAST_COMMIT aurait flaggé
+// « obsolète » TOUTES les installs 0.5.6, sans rien de plus récent à
+// installer : très exactement le bug du 29/07 que ces constantes existent pour
+// empêcher. La garde ci-dessous ne voit pas ce cas (elle ne vérifie que
+// MIN_BUILD <= LAST_COMMIT, pas MIN_BUILD <= build du paquet publié).
+//
 // Séquence de publication : bumper LAST_COMMIT au fil des commits extension →
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
-// review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
-// prévenu au bon moment, avec une version à aller chercher).
+// review ACCEPTÉE, LIRE le BUILD_ID dans le zip publié et le recopier dans
+// MIN_BUILD (le parc est alors prévenu au bon moment, avec une version à aller
+// chercher — et qui existe vraiment). Le BUILD_ID est injecté dans les
+// fichiers du paquet ; pour le relire :
+//   Add-Type -AssemblyName System.IO.Compression.FileSystem
+//   # ouvrir build/fillsell-extension-<version>-cws.zip, chercher dans
+//   # background.js le motif 20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ\+[0-9a-f]{7}
 // 2026-08-09T12:20:00Z = 0.5.5 : l'upload photo Vinted est POST /api/v2/photos,
 // pas /api/v2/images — la garde de la 0.5.3 attendait une preuve qui ne pouvait
 // pas exister et bloquait TOUTE publication (annonce de Gabin supprimée puis
@@ -86,8 +103,18 @@ export const EXTENSION_LAST_COMMIT = '2026-08-09T14:53:38Z';
 // acceptation CWS, jamais avant (sinon on réclame une version que personne ne
 // peut installer — le bug du 29/07). Chrome propage en quelques heures ; le
 // bandeau donne la marche à suivre pour forcer tout de suite.
-// Ancienne valeur : 2026-08-05T20:05:00Z (0.5.0, servie le 06/08).
-export const EXTENSION_MIN_BUILD = '2026-08-09T12:13:15Z';
+// 2026-08-09T14:16:20Z = BUILD_ID du paquet 0.5.6, VÉRIFIÉ EN LIGNE au Chrome
+// Web Store (endpoint CRX clients2.google.com/service/update2/crx :
+// version="0.5.6") et RELU DANS LE ZIP publié — '2026-08-09T14:16:20Z+349d45a',
+// identique dans les 5 fichiers de build/fillsell-extension-0.5.6-cws.zip.
+// Ce n'est PAS EXTENSION_LAST_COMMIT (14:53:38Z, commit README) : cf. le
+// bandeau ⚠️ plus haut, l'écart de 37 min aurait flaggé tout le parc à tort.
+// Ce que cette promotion débloque : la 0.5.6 corrige la suppression d'annonce
+// Vinted sans recréation (panneau catégorie déjà ouvert que la sonde niait,
+// 7ca4440) — au moment du bump, 12 des 13 installs du parc étaient SOUS ce
+// build, et le bug avait encore frappé le 09/08 (2 comptes, needs_user).
+// Ancienne valeur : 2026-08-09T12:13:15Z (0.5.5, servie le 09/08).
+export const EXTENSION_MIN_BUILD = '2026-08-09T14:16:20Z';
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
 // postérieur à EXTENSION_LAST_COMMIT (constante pas bumpée → le paquet publié
