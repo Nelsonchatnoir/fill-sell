@@ -47,14 +47,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package:extension → téléverser + « Envoyer pour examen » → une fois la
 // review ACCEPTÉE, recopier LAST_COMMIT dans MIN_BUILD (le parc est alors
 // prévenu au bon moment, avec une version à aller chercher).
-// 2026-08-09T08:00:00Z = vente détectée par la sync du dressing propagée aux
-// jobs (constat Ornella) : la sync pose sur le job Vinted vivant le drapeau du
-// poll (unavailable_since + sale_signal='sold' + detected_price) au lieu de
-// flipper l'inventaire en silence — bandeau, vente, dépublication des frères
-// passent par la chaîne existante (clic → orchestrateSale). Garde
-// anti-rétroactivité : les articles déjà statut='vendu' ne sont jamais
-// re-signalés.
-export const EXTENSION_LAST_COMMIT = '2026-08-09T08:00:00Z';
+// 2026-08-09T08:25:00Z = fin des faux « plus en ligne » Vinted (5 chez
+// Ornella) : cancelPublishAfterDelete clôt AUSSI les republish de l'ancienne
+// annonce ; le poll confronte l'id de listing_url à inventaire.vinted_item_id
+// avant tout drapeau (divergence → job clos superseded_listing, jamais un
+// bandeau) et exige DEUX lectures 404 espacées d'un cycle (unavailable_
+// pending_since) avant de poser unavailable_since ; la propagation sync→jobs
+// du matin est resserrée sur action='publish' (cohérence avec le revert
+// 6882e78 des bandeaux).
+export const EXTENSION_LAST_COMMIT = '2026-08-09T08:25:00Z';
 // 2026-08-05T20:05:00Z = build de la 0.5.0 (= EXTENSION_LAST_COMMIT), acceptée
 // et SERVIE par le Chrome Web Store le 06/08 : le parc 0.4.x est prévenu avec
 // une version réellement installable.

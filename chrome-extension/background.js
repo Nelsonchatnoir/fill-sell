@@ -5914,13 +5914,21 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   // GARDE ANTI-RÉTROACTIVITÉ : uniquement les ventes NOUVELLES — un article
   // déjà statut='vendu' en base (vente déjà actée, ou héritée d'avant ce
   // commit) n'est jamais re-signalé : aucune dépublication rejouée après coup.
+  // ⚠️ action='publish' SEULEMENT (2026-08-09 après-midi) : le revert 6882e78
+  // a resserré les bandeaux de l'app sur action='publish' (5 faux « plus en
+  // ligne » sur des jobs republish périmés). Un drapeau posé sur un republish
+  // serait donc INVISIBLE : l'article ne serait ni bandeauté ni flippé — pire
+  // que l'ancien comportement. Tant que l'app n'a pas rouvert les republish,
+  // un article porté par un seul job republish retombe sur le flip direct
+  // (branche « aucun job vivant » ci-dessous). Ré-élargir ICI et dans App.jsx
+  // d'un même geste, une fois les jobs périmés assainis (superseded_listing).
   const ventesSignaleesAuJob = new Set(); // vinted_item_id dont un job vivant porte le drapeau
   const soldFrais = articles.filter((a) =>
     a.statut === "sold" && parVintedId.get(a.vinted_item_id)?.statut !== "vendu");
   if (soldFrais.length) {
     try {
       const jobsVifs = await restRequest(
-        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=in.(publish,republish)` +
+        `cross_post_jobs?user_id=eq.${userId}&platform=eq.vinted&action=eq.publish` +
           `&status=eq.published&select=id,inventaire_id,platform_listing_id,listing_url,platform_fields` +
           `&order=created_at.desc&limit=1000`,
         token, { headers: { Prefer: "return=representation" } },
@@ -6265,7 +6273,7 @@ async function checkPublishedListings(session) {
   try {
     jobs = await restRequest(
       "cross_post_jobs" +
-        "?select=id,platform,listing_url,last_checked_at,published_at,created_at,platform_fields" +
+        "?select=id,platform,inventaire_id,listing_url,last_checked_at,published_at,created_at,platform_fields" +
         // É4 (2026-08-05) : un job republish 'published' EST une annonce en
         // ligne — sans lui, un article republié sortait de la détection de
         // vente (le publish d'origine est clos 'cancelled' à la suppression).
@@ -6414,11 +6422,12 @@ async function checkPublishedListings(session) {
       // ⚠️ On repart de patch.platform_fields s'il existe déjà (remise à zéro des
       // compteurs d'indétermination juste au-dessus) — sinon on l'écraserait.
       const pf = patch.platform_fields ?? job.platform_fields ?? {};
-      if (pf.unavailable_since) {
+      if (pf.unavailable_since || pf.unavailable_pending_since) {
         const cleaned = { ...pf };
         delete cleaned.unavailable_since;
         delete cleaned.sale_signal;
         delete cleaned.detected_price;
+        delete cleaned.unavailable_pending_since;
         patch.platform_fields = cleaned;
         console.log(`[background] ${job.platform} ${job.id} : de nouveau EN LIGNE → drapeau levé, bandeau retiré (fausse alerte)`);
       }
@@ -6426,7 +6435,71 @@ async function checkPublishedListings(session) {
 
     if (state === "sold" || state === "unavailable") {
       const pf = patch.platform_fields ?? job.platform_fields ?? {}; // idem : ne pas écraser la remise à zéro
-      if (!pf.unavailable_since) {
+
+      // ── VINTED : un 404 n'est PAS une preuve de disparition (2026-08-09) ────
+      // 5 faux bandeaux « plus en ligne » le même jour, deux mensonges distincts :
+      //   1. JOB PÉRIMÉ. La republication supprime l'annonce X et en recrée une
+      //      (id Y). Le job de publication PRÉCÉDENT du même article restait
+      //      'published' sur X (cancelPublishAfterDelete ne fermait que les
+      //      publish — corrigé) : X 404 pour toujours, mais c'est le JOB qui
+      //      est obsolète, pas l'article. Avant tout drapeau, on confronte
+      //      l'id de listing_url à inventaire.vinted_item_id (maintenu par la
+      //      sync ET par le rattachement de republication) : s'ils divergent,
+      //      le job est CLOS (cancelled, marqueur superseded_listing) — jamais
+      //      de bandeau, jamais une vente.
+      //   2. 404 TRANSITOIRE. Le jogging Disney : 404 le 07/08 au soir, absent
+      //      du wardrobe le 08/08 15 h (disparu_le posé par la sync), puis de
+      //      retour actif — annonce masquée ou incident Vinted. Un SEUL 404
+      //      posait le drapeau. Désormais deux lectures « unavailable »
+      //      CONSÉCUTIVES espacées d'un cycle (≥ 2 h) sont exigées : la 1re
+      //      pose unavailable_pending_since (aucun bandeau), la 2e pose le
+      //      drapeau ; un « active » entre les deux efface tout (bloc
+      //      ci-dessus). "sold" reste immédiat : c'est une preuve POSITIVE lue
+      //      sur une page vivante, pas une absence. (Leboncoin garde sa
+      //      logique inverse — là-bas c'est le 200 qui ment, cf. LBC_CHECK_TIRS.)
+      if (state === "unavailable" && job.platform === "vinted") {
+        let idArticle = null;
+        if (job.inventaire_id != null) {
+          try {
+            const rows = await restRequest(
+              `inventaire?id=eq.${job.inventaire_id}&select=vinted_item_id`,
+              session.access_token,
+            );
+            idArticle = rows?.[0]?.vinted_item_id != null ? String(rows[0].vinted_item_id) : null;
+          } catch (e) {
+            console.warn(`[background] vinted ${job.id} : lecture inventaire impossible (${e?.message ?? e}) — prudence, on traite comme id concordant`);
+          }
+        }
+        const idJob = extractListingId(job.listing_url, "vinted");
+        if (idArticle && idJob != null && idArticle !== String(idJob)) {
+          const remis = { ...pf };
+          delete remis.unavailable_since;
+          delete remis.sale_signal;
+          delete remis.detected_price;
+          delete remis.unavailable_pending_since;
+          remis.superseded_listing = true;
+          patch.status = "cancelled";
+          patch.platform_fields = remis;
+          patch.error =
+            `Annonce ${idJob} remplacée par une republication (l'article vit désormais sur l'annonce ${idArticle}) — ` +
+            "job obsolète clos automatiquement, pas une vente.";
+          console.log(`[background] vinted ${job.id} : listing_url pointe ${idJob} mais l'article est sur ${idArticle} → job périmé CLOS (aucun bandeau)`);
+        } else if (!pf.unavailable_since) {
+          if (!pf.unavailable_pending_since) {
+            patch.platform_fields = { ...pf, unavailable_pending_since: new Date().toISOString() };
+            console.log(`[background] vinted ${job.id} : 404/hors ligne (1re lecture) — AUCUN bandeau, confirmation exigée au prochain cycle`);
+          } else {
+            const confirme = { ...pf };
+            delete confirme.unavailable_pending_since;
+            patch.platform_fields = {
+              ...confirme,
+              unavailable_since: new Date().toISOString(),
+              sale_signal: "unavailable",
+            };
+            console.log(`[background] vinted ${job.id} : hors ligne CONFIRMÉ (2e lecture espacée d'un cycle) → confirmation utilisateur`);
+          }
+        }
+      } else if (!pf.unavailable_since) {
         patch.platform_fields = {
           ...pf,
           unavailable_since: new Date().toISOString(),
@@ -6723,9 +6796,17 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
       // morte, et aurait posé un faux « plus en ligne — vendue ? ».
       // On matche donc sur l'ID d'annonce, seule partie stable de l'URL.
       const idAnnonce = String(deleteJob.listing_url).match(/\/items\/(\d+)/)?.[1] ?? null;
+      // ⚠️ republish INCLUS (2026-08-09, les 4 faux bandeaux d'Ornella). Une
+      // annonce déjà republiée une fois vit sur un job action='republish'
+      // 'published' ; quand la republication SUIVANTE (l'auto É6 dès le
+      // lendemain) supprime cette annonce, le filtre action=eq.publish le
+      // laissait passer : il restait 'published' sur un id mort, le poll le
+      // 404ait et posait un faux « plus en ligne ». id=neq : ne jamais
+      // matcher le job qui est en train d'orchestrer la suppression.
       pubs = await restRequest(
         "cross_post_jobs?select=id,platform_fields" +
-          `&action=eq.publish&status=eq.published&platform=eq.${deleteJob.platform}` +
+          `&action=in.(publish,republish)&status=eq.published&platform=eq.${deleteJob.platform}` +
+          `&id=neq.${deleteJob.id}` +
           (idAnnonce
             // like=*\/items\/<id>* : couvre les deux formes, et l'ancrage sur
             // « /items/<id> » évite qu'un id soit préfixe d'un autre.
@@ -6749,7 +6830,8 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
       // sont identiques à la normalisation près.
       const rows = await restRequest(
         "cross_post_jobs?select=id,platform_fields,title" +
-          `&action=eq.publish&status=eq.published&platform=eq.${deleteJob.platform}` +
+          `&action=in.(publish,republish)&status=eq.published&platform=eq.${deleteJob.platform}` +
+          `&id=neq.${deleteJob.id}` +
           `&inventaire_id=eq.${deleteJob.inventaire_id}`,
         accessToken
       );
@@ -6767,6 +6849,7 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
       delete pf.unavailable_since;
       delete pf.sale_signal;
       delete pf.detected_price;
+      delete pf.unavailable_pending_since;
       if (opts.marqueur) pf[opts.marqueur] = true;
       else pf.removed_by_user = true;
       await restRequest(`cross_post_jobs?id=eq.${pub.id}`, accessToken, {
