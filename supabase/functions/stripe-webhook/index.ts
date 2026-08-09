@@ -25,21 +25,37 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
 // incomplete_expired (issues de dunning épuisé → subscription.updated), qui
 // déclenchent tous ce recalcul et n'y comptent pas comme vivants.
 // deno-lint-ignore no-explicit-any
+// Un abonnement vivant porte-t-il CE palier ? metadata.plan_type d'abord
+// (posé par create-checkout-session), price ID en repli (abonnements créés
+// avant la pose de metadata, ou édités à la main dans le dashboard).
+function portePlan(s: Stripe.Subscription, planType: string, envKey: string): boolean {
+  if (s.metadata?.plan_type === planType) return true;
+  const priceId = Deno.env.get(envKey) ?? "";
+  return !!priceId && !!s.items?.data?.some((it: Stripe.SubscriptionItem) => it.price?.id === priceId);
+}
+
 async function recomputeStripeFlags(supabase: any, customerId: string) {
   const { data: subs } = await stripe.subscriptions.list({ customer: customerId, limit: 20 });
   const live = (subs ?? []).filter(
     (s: Stripe.Subscription) =>
       s.status === "active" || s.status === "trialing" || s.status === "past_due"
   );
-  const proPriceId = Deno.env.get("STRIPE_PRICE_PRO") ?? "";
-  const hasPro = live.some(
-    (s: Stripe.Subscription) =>
-      s.metadata?.plan_type === "pro" ||
-      (proPriceId && s.items?.data?.some((it: Stripe.SubscriptionItem) => it.price?.id === proPriceId))
-  );
+  const hasBusiness = live.some((s: Stripe.Subscription) => portePlan(s, "business", "STRIPE_PRICE_BUSINESS"));
+  const hasPro = live.some((s: Stripe.Subscription) => portePlan(s, "pro", "STRIPE_PRICE_PRO"));
+  // ⚠️ is_business RECALCULÉ ICI, et pas seulement posé à l'achat (2026-08-09).
+  // Sans cette ligne, la résiliation d'un Business Stripe faisait tomber
+  // is_premium et is_pro mais laissait is_business à TRUE — pour toujours, et
+  // en silence : un ex-abonné gardait le nom du palier, son grant de 3000 au
+  // renouvellement (invoice.paid lit is_business en premier) et les avantages
+  // qui s'y brancheront. C'est exactement la classe du « premium fantôme »
+  // corrigée le 25/07, une couche plus haut.
+  // Flags CUMULATIFS : un Business vaut aussi Pro — d'où le `|| hasBusiness`,
+  // sans quoi un abonnement Business seul laisserait is_pro à false et
+  // fermerait toutes les gates écrites en isPro.
   const update = {
     is_premium: live.length > 0,
-    is_pro: hasPro,
+    is_pro: hasPro || hasBusiness,
+    is_business: hasBusiness,
     subscription_cancel_at_period_end:
       live.length > 0 && live.every((s: Stripe.Subscription) => s.cancel_at_period_end),
   };
@@ -159,8 +175,15 @@ serve(async (req) => {
       if (planType === "founder") {
         profileUpdate.is_founder = true;
       }
-      if (planType === "pro") {
+      // Flags CUMULATIFS (migration 20260808213000) : Business ⊇ Pro ⊇ Premium.
+      // Un Business reçoit donc AUSSI is_pro — sinon toutes les gates écrites
+      // en isPro (republication auto, outils Excel avancés…) se fermeraient
+      // pour le palier le plus cher.
+      if (planType === "pro" || planType === "business") {
         profileUpdate.is_pro = true;
+      }
+      if (planType === "business") {
+        profileUpdate.is_business = true;
       }
 
       await supabase
@@ -191,7 +214,11 @@ serve(async (req) => {
       } catch (e) {
         console.error("[webhook] current_period_end illisible:", (e as Error)?.message);
       }
-      const grantTier = planType === "pro" ? "pro" : "premium";
+      // 'business' TESTÉ EN PREMIER : upgrade_monthly_grant n'accepte que
+      // 'free'|'premium'|'pro'|'business' (migration 20260808214000) et le
+      // grant Business vaut 3000 (coin_config.monthly_grant_business). Sans ce
+      // cran, un abonné Business payé 59,99 € recevait le grant Premium.
+      const grantTier = planType === "business" ? "business" : planType === "pro" ? "pro" : "premium";
       const { data: grantRes, error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
         p_user_id: users[0].id,
         p_tier: grantTier,
@@ -389,10 +416,18 @@ serve(async (req) => {
       console.warn("[webhook] PaymentIntent illisible (cause générique):", (e as Error)?.message);
     }
 
-    const proPriceId = Deno.env.get("STRIPE_PRICE_PRO") ?? "";
-    const estPro = !!proPriceId && (invoice.lines?.data ?? []).some(
-      (l: Stripe.InvoiceLineItem) => l.price?.id === proPriceId
-    );
+    // Libellé du plan dans le mail d'échec — purement informatif, mais il doit
+    // nommer le bon palier : Business d'abord (le plus cher, celui dont l'échec
+    // coûte le plus à laisser filer).
+    const portePrix = (envKey: string) => {
+      const priceId = Deno.env.get(envKey) ?? "";
+      return !!priceId && (invoice.lines?.data ?? []).some(
+        (l: Stripe.InvoiceLineItem) => l.price?.id === priceId
+      );
+    };
+    const nomPlan = portePrix("STRIPE_PRICE_BUSINESS") ? "Business"
+      : portePrix("STRIPE_PRICE_PRO") ? "Pro"
+      : "Premium";
     await signalerPaiementEchoue({
       user_id: userId,
       email: invoice.customer_email ?? null,
@@ -404,7 +439,7 @@ serve(async (req) => {
       montant: invoice.amount_due != null
         ? `${(invoice.amount_due / 100).toFixed(2)} ${(invoice.currency ?? "eur").toUpperCase()}`
         : null,
-      plan: estPro ? "Pro" : "Premium",
+      plan: nomPlan,
     });
   }
 

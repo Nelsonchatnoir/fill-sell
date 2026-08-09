@@ -2789,7 +2789,11 @@ const FREE_STOCK_LIMIT = FREE_STOCK_LIMIT_FALLBACK;
 
 export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos: initialPhotosProp = [], initialListing: initialListingProp = null, supabase, lang, onClose,
-  isPremium = false, isPro = false, onUpgrade = () => {},
+  // isBusiness ne pilote AUCUNE gate ici (les flags sont cumulatifs : un
+  // Business porte is_pro, toutes les gates isPro/isPremium le couvrent déjà).
+  // Il n'est propagé que pour que la modale de conversion NOMME le bon palier
+  // et ne propose pas à un Business un upgrade qu'il a déjà (2026-08-09).
+  isPremium = false, isPro = false, isBusiness = false, onUpgrade = () => {},
   createStockItem = null, alreadyInStock = false,
   // Parcours identify (2026-07-28) : l'identification gratuite a échoué et le
   // stepper s'ouvre avec des champs vides. On le DIT, discrètement, plutôt que
@@ -5986,6 +5990,7 @@ export default function ListingPreviewScreen({
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
+          isBusiness={isBusiness}
           coinBalance={quotaModal.coinBalance ?? coinBalance}
           // ⚠️ coinPrice non-null = la modale bascule en CAS « Pépites
           // insuffisantes » (isCoinCase) et n'affiche PAS les cartes de plans.

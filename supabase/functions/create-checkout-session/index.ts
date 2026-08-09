@@ -29,6 +29,44 @@ const COIN_PACKS: Record<string, { envKey: string; coins: number }> = {
   coins_1150: { envKey: "STRIPE_PRICE_COINS_1150", coins: 1300 },
 };
 
+// ── Abonnements : UN SEUL mapping (2026-08-09) ───────────────────────────────
+// Remplace les ternaires `isProPlan ? … : …` qui codaient « il n'existe que
+// deux plans » à quatre endroits du fichier. Même patron que COIN_PACKS.
+//
+//   envKey    : secret Supabase portant le price ID Stripe du palier.
+//   planType  : valeur écrite dans metadata.plan_type — c'est LE signal lu par
+//               stripe-webhook (recomputeStripeFlags + checkout.session
+//               .completed). Historique : le Premium standard s'appelle
+//               "standard" côté Stripe et "premium" côté grants, d'où grantTier.
+//   grantTier : palier passé à upgrade_monthly_grant, qui n'accepte que
+//               'free'|'premium'|'pro'|'business' (migration 20260808214000).
+//   rang      : ÉCHELLE. C'est elle qui rend l'upgrade in situ correct pour
+//               plus de deux paliers — cf. le bloc d'upgrade plus bas.
+const SUB_PLANS: Record<string, { envKey: string; planType: string; grantTier: string; rang: number }> = {
+  standard: { envKey: "STRIPE_PRICE_STANDARD", planType: "standard", grantTier: "premium",  rang: 1 },
+  pro:      { envKey: "STRIPE_PRICE_PRO",      planType: "pro",      grantTier: "pro",      rang: 2 },
+  business: { envKey: "STRIPE_PRICE_BUSINESS", planType: "business", grantTier: "business", rang: 3 },
+};
+
+// Rang d'un abonnement Stripe VIVANT, lu dans l'ordre décroissant des paliers :
+// metadata.plan_type d'abord (posé par nous), price ID en second (les
+// abonnements antérieurs à la pose de metadata, et les éditions manuelles du
+// dashboard). 0 = abonnement d'un palier non reconnu (Founder legacy compris,
+// qui vaut Premium : rang 1 par son price ? non — il n'a pas de price connu ici,
+// il ressort donc à 0 et sera traité comme « à faire monter », ce qui est le
+// comportement voulu : un Founder 9,99 qui achète Pro doit basculer en place).
+function rangAbonnement(s: Stripe.Subscription): number {
+  const parMeta = Object.values(SUB_PLANS).find((p) => p.planType === s.metadata?.plan_type);
+  if (parMeta) return parMeta.rang;
+  for (const plan of Object.values(SUB_PLANS)) {
+    const priceId = Deno.env.get(plan.envKey);
+    if (priceId && s.items?.data?.some((it: Stripe.SubscriptionItem) => it.price?.id === priceId)) {
+      return plan.rang;
+    }
+  }
+  return 0;
+}
+
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -114,7 +152,7 @@ serve(async (req) => {
 
   try {
     // product : undefined → abonnement Premium standard (comportement historique) ;
-    // "pro" → abonnement Pro 29,99 €/mois ;
+    // "pro" → Pro 29,99 €/mois ; "business" → Business 59,99 €/mois (2026-08-09) ;
     // "coins_100"|"coins_220"|"coins_460"|"coins_1150" → pack de pièces one-shot.
     const { email, product } = await req.json();
 
@@ -173,22 +211,26 @@ serve(async (req) => {
       });
     }
 
-    // ── Abonnements : standard 12,99 € ou Pro 29,99 € ──
+    // ── Abonnements : standard 12,99 €, Pro 29,99 € ou Business 59,99 € ──
     // Plus AUCUN essai gratuit (2026-07-22) : l'essai 7 jours Premium est
     // supprimé (il ne restait posé qu'ici, jamais sur le Price Stripe). Pro
     // n'en a jamais eu (les 600 pièces mensuelles seraient arbitrables :
     // s'abonner, brûler les pièces, annuler).
-    const isProPlan = product === "pro";
-    const priceSecret = isProPlan ? "STRIPE_PRICE_PRO" : "STRIPE_PRICE_STANDARD";
+    // Palier demandé. Toute valeur inconnue retombe sur `standard` — c'est le
+    // comportement historique (product absent = Premium), conservé tel quel.
+    const plan = SUB_PLANS[String(product ?? "")] ?? SUB_PLANS.standard;
     // Vérifié actif AVANT toute session ou upgrade in situ (le chemin upgrade
     // ci-dessous pousse le même priceId dans subscriptions.update).
-    const priceId = await activePriceOrNull(Deno.env.get(priceSecret), priceSecret);
+    // Business tant que STRIPE_PRICE_BUSINESS n'est pas posé : erreur PROPRE
+    // (payment_unavailable → message FR/EN côté client), jamais un checkout au
+    // prix d'un autre palier.
+    const priceId = await activePriceOrNull(Deno.env.get(plan.envKey), plan.envKey);
     if (!priceId) {
       return new Response(JSON.stringify({ error: "payment_unavailable" }), {
         status: 503, headers: { "Content-Type": "application/json", ...CORS },
       });
     }
-    const planType = isProPlan ? "pro" : "standard";
+    const planType = plan.planType;
 
     // Réutilise le customer Stripe existant (historique de facturation unifié —
     // et à l'époque de l'essai 7 jours, c'était aussi la garde anti-2ème trial).
@@ -213,7 +255,14 @@ serve(async (req) => {
     // error_if_incomplete = si la carte refuse, Stripe annule l'update et on
     // ressort en erreur SANS toucher aux flags). Aucun customer.subscription
     // .created — le webhook ne voit qu'un updated (actif) + invoice.paid.
-    if (isProPlan && existingCustomerId) {
+    //
+    // ⚠️ RANG, PAS BOOLÉEN (2026-08-09, à l'ajout de Business). La version
+    // d'origine ne connaissait que « est-ce l'abonnement Pro ? » : appliquée
+    // telle quelle à trois paliers, elle aurait répondu `already_pro: true` à
+    // un Pro qui achète Business — Business n'aurait JAMAIS pu se vendre par
+    // le web. On compare donc des rangs : on ne bascule que vers le HAUT, et
+    // « déjà au moins ce palier » sort proprement sans rien facturer.
+    if (plan.rang > 1 && existingCustomerId) {
       const { data: existingSubs } = await stripe.subscriptions.list({
         customer: existingCustomerId,
         limit: 20, // par défaut Stripe exclut les canceled ; on refiltre quand même
@@ -221,18 +270,19 @@ serve(async (req) => {
       const live = (existingSubs ?? []).filter(
         (s: Stripe.Subscription) => s.status === "active" || s.status === "trialing"
       );
-      const isProSub = (s: Stripe.Subscription) =>
-        s.metadata?.plan_type === "pro" ||
-        s.items?.data?.some((it: Stripe.SubscriptionItem) => it.price?.id === priceId);
 
-      if (live.some(isProSub)) {
-        // Déjà Pro (double clic, ou flag client désynchronisé) : rien à vendre.
-        return new Response(JSON.stringify({ already_pro: true }), {
+      if (live.some((s: Stripe.Subscription) => rangAbonnement(s) >= plan.rang)) {
+        // Déjà à ce palier ou au-dessus (double clic, flag client désynchronisé,
+        // ou tentative de « downgrade » qui n'existe pas ici) : rien à vendre.
+        // already_pro conservé pour les clients déjà déployés qui ne lisent que
+        // cette clé ; `tier` dit lequel, pour ceux d'après.
+        return new Response(JSON.stringify({ already_pro: true, tier: planType }), {
           headers: { "Content-Type": "application/json", ...CORS },
         });
       }
 
-      const target = live.find((s: Stripe.Subscription) => !isProSub(s));
+      // Cible = un abonnement vivant STRICTEMENT en dessous du palier visé.
+      const target = live.find((s: Stripe.Subscription) => rangAbonnement(s) < plan.rang);
       if (target) {
         const item = target.items.data[0];
         const upgraded = await stripe.subscriptions.update(target.id, {
@@ -241,16 +291,25 @@ serve(async (req) => {
           payment_behavior: "error_if_incomplete",
           // Un Premium en cours d'annulation qui upgrade veut manifestement rester :
           cancel_at_period_end: false,
-          metadata: { ...(target.metadata ?? {}), plan_type: "pro" },
+          metadata: { ...(target.metadata ?? {}), plan_type: planType },
         });
         // Miroir de checkout.session.completed (qui ne firera PAS ici — pas de
         // session Checkout) : flags + Pépites du mois. upgrade_monthly_grant
         // (2026-07-23) complète la différence premium→pro si le grant du mois
         // est déjà passé (l'ancien grant_monthly_coins répondait already_granted
         // et l'upgradé restait au grant Premium jusqu'au 1er).
+        // Flags CUMULATIFS (cf. migration 20260808213000) : Business ⊇ Pro ⊇
+        // Premium. On pose donc TOUS les flags jusqu'au palier atteint — un
+        // is_business sans is_pro laisserait passer à côté toutes les gates
+        // écrites en isPro.
         await supabase
           .from("profiles")
-          .update({ is_premium: true, is_pro: true, stripe_customer_id: existingCustomerId })
+          .update({
+            is_premium: true,
+            is_pro: true,
+            ...(plan.rang >= 3 ? { is_business: true } : {}),
+            stripe_customer_id: existingCustomerId,
+          })
           .eq("id", authUser.id);
         // L'upgrade en place ouvre une période neuve : current_period_end de
         // l'abonnement modifié réaligne l'échéance du grant sur la nouvelle
@@ -260,15 +319,15 @@ serve(async (req) => {
         // dépendre de l'activation de cet événement côté dashboard Stripe.
         const { data: grantRes, error: grantErr } = await supabase.rpc("upgrade_monthly_grant", {
           p_user_id: authUser.id,
-          p_tier: "pro",
+          p_tier: plan.grantTier,
           p_period_end: upgraded?.current_period_end
             ? new Date(upgraded.current_period_end * 1000).toISOString()
             : null,
           p_source: "payment",
         });
         if (grantErr) console.error("[checkout] upgrade grant failed:", grantErr.message);
-        else console.log("[checkout] upgraded sub", target.id, "to pro — grant:", JSON.stringify(grantRes));
-        return new Response(JSON.stringify({ upgraded: true }), {
+        else console.log(`[checkout] upgraded sub ${target.id} to ${planType} — grant:`, JSON.stringify(grantRes));
+        return new Response(JSON.stringify({ upgraded: true, tier: planType }), {
           headers: { "Content-Type": "application/json", ...CORS },
         });
       }

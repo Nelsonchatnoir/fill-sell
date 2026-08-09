@@ -1351,17 +1351,25 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
   );
 }
 
-// pro : la MÊME modale sert aux deux tiers (setShowPremiumWelcome est appelé
-// pour Premium comme pour Pro). Tant qu'elle n'affichait aucun chiffre, la
-// confusion était sans conséquence ; depuis qu'elle annonce un nombre de
-// Pépites, elle DOIT savoir lequel des deux a été acheté.
-function PremiumWelcomeModal({ lang, onClose, pro = false }) {
-  // Montants alignés sur coin_config (monthly_grant_premium = 150,
-  // monthly_grant_pro = 600, price_lens_overflow = 6 — relevés en prod le
-  // 2026-08-05). ⚠️ coin_config est la SOURCE : si ces valeurs y changent,
-  // ce libellé ment jusqu'à ce qu'on le suive. Ne pas y écrire un chiffre
-  // qu'on n'a pas lu dans la table.
-  const pepites = pro ? 600 : 150;
+// tier : la MÊME modale sert aux TROIS paliers (setShowPremiumWelcome est
+// appelé pour Premium, Pro et Business). Tant qu'elle n'affichait aucun
+// chiffre, la confusion était sans conséquence ; depuis qu'elle annonce un
+// nombre de Pépites, elle DOIT savoir lequel a été acheté.
+function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
+  const pro = tier === 'pro';
+  const business = tier === 'business';
+  // Montants pris dans COIN_CONFIG_FALLBACK, la MÊME constante de repli que les
+  // cartes de plan (ConversionModal) — et non plus deux nombres écrits à la
+  // main ici. Ils y étaient restés à 150/600 alors que coin_config vaut
+  // 400/1200 depuis la grille du 2026-08-08 : cette modale annonçait donc, à
+  // chaque achat, moins de Pépites que ce qui était réellement crédité.
+  // ⚠️ coin_config reste la SOURCE. Ce composant s'affiche dans la seconde qui
+  // suit l'achat, sans requête — d'où la constante partagée plutôt qu'une
+  // lecture réseau ; toute divergence se corrige DANS COIN_CONFIG_FALLBACK,
+  // jamais ici.
+  const pepites = business
+    ? COIN_CONFIG_FALLBACK.monthly_grant_business
+    : pro ? COIN_CONFIG_FALLBACK.monthly_grant_pro : COIN_CONFIG_FALLBACK.monthly_grant_premium;
   const PERKS = lang === 'en'
     ? [
         { icon: '🎙️', label: 'AI Voice — Unlimited' },
@@ -1379,9 +1387,12 @@ function PremiumWelcomeModal({ lang, onClose, pro = false }) {
         { icon: '📊', label: 'Stats avancées analysées par IA' },
         { icon: '📤', label: 'Import / Export Excel' },
       ];
+  // ⚠️ Business testé AVANT Pro (flags cumulatifs) — sinon un achat Business
+  // affiche « Bienvenue dans FillSell Pro » juste après le paiement.
+  const nomPalier = business ? 'Business' : pro ? 'Pro' : 'Premium';
   const title = lang === 'en'
-    ? (pro ? 'Welcome to FillSell Pro' : 'Welcome to FillSell Premium')
-    : (pro ? 'Bienvenue dans FillSell Pro' : 'Bienvenue dans FillSell Premium');
+    ? `Welcome to FillSell ${nomPalier}`
+    : `Bienvenue dans FillSell ${nomPalier}`;
   const subtitle = lang === 'en'
     ? 'Your benefits are active right now'
     : 'Tes avantages sont actifs dès maintenant';
@@ -2105,24 +2116,32 @@ export default function App({ loginOnly = false }){
         return;
       }
       const token=session.access_token;
-      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,...(product==='pro'?{product:'pro'}:{})})});
+      // ...(product?{product}:{}) et non plus le seul cas 'pro' : sans ça,
+      // triggerCheckout('business') serait parti en checkout PREMIUM (12,99 €)
+      // — le produit était simplement omis du corps.
+      const res=await fetch(`${supabaseUrl}/functions/v1/create-checkout-session`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`,'apikey':supabaseAnonKey},body:JSON.stringify({email:user.email,...(product?{product}:{})})});
       const body=await res.json();
-      const{url,error,upgraded,already_pro}=body;
+      const{url,error,upgraded,already_pro,tier}=body;
       if(error)throw new Error(error);
-      // Upgrade Premium→Pro in situ (2026-07-23) : l'abonnement Stripe existant
-      // a été basculé sur le price Pro côté serveur (proration facturée) — pas
-      // de session Checkout, donc pas de redirection. already_pro = défensif
-      // (double clic / flag client désynchronisé), on aligne juste l'état.
+      // Upgrade in situ (2026-07-23, généralisé aux paliers le 2026-08-09) :
+      // l'abonnement Stripe existant a été basculé sur le price du palier visé
+      // côté serveur (proration facturée) — pas de session Checkout, donc pas
+      // de redirection. already_pro = défensif (double clic / flag client
+      // désynchronisé), on aligne juste l'état. `tier` est rendu par le serveur
+      // et fait foi : l'état local ne doit jamais se déduire du paramètre
+      // d'appel, qui ne dit pas ce que le serveur a réellement fait.
       if(upgraded||already_pro){
+        const cible=tier??product??'standard';
         setIsPremium(true);setIsPro(true);
+        if(cible==='business') setIsBusiness(true);
         if(upgraded){
-          track('purchase',{currency:'EUR',value:29.99});
+          track('purchase',{currency:'EUR',value:prixAffiche});
           setShowPremiumWelcome(true);
         }
         if(user?.id)fetchAll(user.id,{silencieux:true});
         return;
       }
-      track('begin_checkout', { currency: 'EUR', value: product==='pro'?29.99:12.99 });
+      track('begin_checkout', { currency: 'EUR', value: prixAffiche });
       console.log('[checkout] redirecting to:', url);
       window.location.href=url;
     }catch(e){
@@ -2342,24 +2361,31 @@ export default function App({ loginOnly = false }){
   }
 
   // Checkout direct d'un tier ('premium'|'pro'|'business') : log + tracking +
-  // IAP/Stripe. Business = IAP UNIQUEMENT (aucun price Stripe n'existe) : sur
-  // le web, on ne déclenche RIEN plutôt qu'un checkout au mauvais prix.
+  // IAP/Stripe. Business part désormais en Stripe sur le web (2026-08-09) :
+  // le canal web évite la commission des stores (~3 €/mois/abonné à 59,99 €).
+  // ⚠️ GARDE DE MASQUAGE : tant que BUSINESS_OFFER_ENABLED est faux, aucun
+  // checkout Business ne part — d'où qu'il soit demandé. C'est le filet du
+  // filet : l'UI ne propose déjà rien (ConversionModal, PlanDetailsModal), mais
+  // un appel resté branché quelque part ferait un CTA mort sur iOS (produit en
+  // review = « produit introuvable ») ou vendrait sur le web un palier que
+  // l'app mobile ne sait pas encore vendre.
   function startTierCheckout(tier){
     const business=tier==='business';
     const pro=tier==='pro';
+    if(business&&!BUSINESS_OFFER_ENABLED){
+      console.warn('[checkout] offre Business masquée (BUSINESS_OFFER_ENABLED=false) — checkout non déclenché');
+      return;
+    }
     if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:business?'business_cta_click':pro?'pro_cta_click':'premium_cta_click'}).then(()=>{});
     trackTikTokEvent("InitiateCheckout",user?.email,business?59.99:pro?29.99:12.99);
-    if(business){
-      if(isNative)handleIAPPurchase('business');
-      else console.warn('[IAP] Business indisponible sur le web (IAP uniquement) — checkout non déclenché');
-    }
+    if(business){isNative?handleIAPPurchase('business'):triggerCheckout('business');}
     else if(pro){isNative?handleIAPPurchase('pro'):triggerCheckout('pro');}
     else{isNative?handleIAPPurchase():triggerCheckout();}
   }
   // Ex-UpgradeModal, fusionnée dans ConversionModal : un tier explicite part
   // directement en checkout, sans tier on ouvre la modale de conversion.
   function openUpgradeModal(tier,trigger='generic'){
-    if(tier==='pro'||tier==='premium'){startTierCheckout(tier);return;}
+    if(tier==='pro'||tier==='premium'||tier==='business'){startTierCheckout(tier);return;}
     if(user)supabase.from('usage_logs').insert({user_id:user.id,feature:'premium_cta_click'}).then(()=>{});
     setConversionModal({open:true,trigger});
   }
@@ -4925,9 +4951,11 @@ export default function App({ loginOnly = false }){
               <span style={{display:"inline-flex",alignItems:"center",padding:"7px 12px",borderRadius:999,background:"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,letterSpacing:"0.01em",whiteSpace:"nowrap"}}>{lang==='en'?'Go Pro':'Passer Pro'}</span>
             </button>
           ):isPremium?(
-            // Pro passe devant Premium : isPro vient de profiles.is_pro, isPremium
-            // de l'expression complète (cf. CLAUDE.md). Aucune logique nouvelle ici.
-            <PlanBadge isPremium={isPremium} isPro={isPro} onClick={()=>setShowPremiumModal(true)} />
+            // Business devant Pro devant Premium (PlanBadge tranche dans cet
+            // ordre) : les flags sont cumulatifs, isPro vient de profiles.is_pro,
+            // isBusiness de profiles.is_business, isPremium de l'expression
+            // complète (cf. CLAUDE.md). Aucune logique nouvelle ici.
+            <PlanBadge isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} onClick={()=>setShowPremiumModal(true)} />
           ):null}
           <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");setSettingsPseudoInput(username);}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
         </div>
@@ -5188,7 +5216,7 @@ export default function App({ loginOnly = false }){
 
         {tab===1&&(
           <StockTab
-            lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
+            lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro} isBusiness={isBusiness}
             items={items} user={user} voiceUsedToday={voiceUsedToday}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
@@ -5279,6 +5307,7 @@ export default function App({ loginOnly = false }){
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={openUpgradeModal}
             isPro={isPro}
+            isBusiness={isBusiness}
             supabase={supabase}
             saveLensItemForListing={saveLensItemForListing}
             lensInventaireId={lensInventaireId}
@@ -5605,7 +5634,7 @@ export default function App({ loginOnly = false }){
               <div style={{fontSize:13,fontWeight:600,color:UI.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
               {isPremium&&(
                 <div style={{marginTop:8}}>
-                  <PlanBadge isPremium={isPremium} isPro={isPro} />
+                  <PlanBadge isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} />
                 </div>
               )}
             </div>
@@ -5984,6 +6013,7 @@ export default function App({ loginOnly = false }){
         lang={lang}
         isPremium={isPremium}
         isPro={isPro}
+        isBusiness={isBusiness}
         itemCount={items.filter(i=>i.statut!=='vendu').length}
         coinBalance={conversionModal.coinBalance??(coinWallet?(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0):null)}
         coinPrice={conversionModal.coinPrice??null}
@@ -5999,22 +6029,27 @@ export default function App({ loginOnly = false }){
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}
       {showPremiumWelcome&&(
-        <PremiumWelcomeModal lang={lang} pro={isPro} onClose={()=>setShowPremiumWelcome(false)}/>
+        <PremiumWelcomeModal lang={lang} tier={isBusiness?'business':isPro?'pro':'premium'} onClose={()=>setShowPremiumWelcome(false)}/>
       )}
 
-      {/* ── MODALE « MON PLAN » (badge Premium/Pro du header) ──
-          Contenu par plan RÉEL (isPro devant, comme PlanBadge) — l'ancienne
-          version listait des avantages Premium périmés quel que soit le plan.
-          onUpgradePro (2026-07-24) : upsell Pro pour les Premium — passe par
-          startTierCheckout, qui porte déjà la garde Android anti-double-abo
-          et l'upgrade Stripe in situ. */}
+      {/* ── MODALE « MON PLAN » (badge du header) ──
+          Contenu par plan RÉEL (isBusiness devant isPro devant isPremium, même
+          ordre que PlanBadge — flags cumulatifs) : l'ancienne version listait
+          des avantages Premium périmés quel que soit le plan.
+          onUpgradePro (2026-07-24) : upsell Pro pour les Premium.
+          onUpgradeBusiness (2026-08-09) : upsell Business pour les Pro, affiché
+          seulement si l'offre est ouverte (drapeau côté modale). Les deux
+          passent par startTierCheckout, qui porte déjà la garde Android
+          anti-double-abo, l'upgrade Stripe in situ et la garde de masquage. */}
       {showPremiumModal&&(
         <PlanDetailsModal
           isPro={isPro}
+          isBusiness={isBusiness}
           lang={lang}
           onClose={()=>setShowPremiumModal(false)}
           supabase={supabase}
           onUpgradePro={()=>{setShowPremiumModal(false);startTierCheckout('pro');}}
+          onUpgradeBusiness={()=>{setShowPremiumModal(false);startTierCheckout('business');}}
         />
       )}
 

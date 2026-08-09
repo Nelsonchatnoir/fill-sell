@@ -18,9 +18,10 @@
 // 2026-07-28 PUIS le retour à 150/600 le soir même se sont faits sans toucher
 // ce fichier — seule coin_config a bougé.
 import { useEffect, useState } from 'react';
-import { PremiumBadge, ProBadge } from './PlanBadge';
+import { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
 import PepiteIcon from './PepiteIcon';
-import { COIN_CONFIG_FALLBACK, ProPlanCard } from './ConversionModal';
+import { COIN_CONFIG_FALLBACK, ProPlanCard, BusinessPlanCard } from './ConversionModal';
+import { BUSINESS_OFFER_ENABLED } from '../config/businessOffer';
 
 const C = {
   canvas: '#EDEAE0',
@@ -59,7 +60,11 @@ function Features({ items, dark }) {
   );
 }
 
-export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpgradePro }) {
+// ⚠️ isBusiness AVANT isPro partout dans ce fichier — flags cumulatifs : un
+// abonné Business porte aussi is_pro. L'ordre inverse lui affichait « Pro », le
+// grant Pro et les avantages Pro, sur l'écran même censé récapituler SON plan
+// (2026-08-09). onUpgradeBusiness = upsell des Pro, sous drapeau d'offre.
+export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, supabase, onUpgradePro, onUpgradeBusiness }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
 
@@ -83,8 +88,12 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
 
   const K = cfg || COIN_CONFIG_FALLBACK;
   const lensCost = K.price_lens_overflow;
-  const grant = isPro ? K.monthly_grant_pro : K.monthly_grant_premium;
+  const grant = isBusiness ? K.monthly_grant_business : isPro ? K.monthly_grant_pro : K.monthly_grant_premium;
   const lensScans = lensCost > 0 ? Math.floor(grant / lensCost) : 0;
+  // Carte sombre pour les deux paliers hauts (Pro or, Business platine) ; la
+  // carte Premium reste claire. Une seule variable pour toutes les bascules de
+  // style, au lieu de répéter `isPro || isBusiness` à chaque propriété.
+  const sombre = isPro || isBusiness;
   // Grille 2 axes (2026-08-04, prix 2026-08-08) : publication
   // price_per_platform Pépites/plateforme — MÊME PRIX POUR TOUS LES PALIERS —
   // retouche photos en option (0/9/32, une fois par article).
@@ -110,18 +119,26 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
     // (fonctionnalité, pas prix).
     fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${K.price_generate} Pépite${K.price_generate > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
        : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget${K.price_generate > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-    isPro
-      ? (fr ? 'Republication Vinted en un clic — 1 Pépite par annonce, automatisable si tu l\'actives'
-            : 'One-tap Vinted reposting — 1 Nugget per listing, automatable if you turn it on')
-      : (fr ? 'Republication Vinted en un clic — 1 Pépite par annonce'
-            : 'One-tap Vinted reposting — 1 Nugget per listing'),
+    isBusiness
+      ? (fr ? 'Republication Vinted automatique — tes annonces remontent seules dans le fil'
+            : 'Automatic Vinted reposting — your listings climb back up on their own')
+      : isPro
+        ? (fr ? 'Republication Vinted en un clic — 1 Pépite par annonce, automatisable si tu l\'actives'
+              : 'One-tap Vinted reposting — 1 Nugget per listing, automatable if you turn it on')
+        : (fr ? 'Republication Vinted en un clic — 1 Pépite par annonce'
+              : 'One-tap Vinted reposting — 1 Nugget per listing'),
     fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
        : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
+    ...(isBusiness
+      ? [fr ? 'File de publication prioritaire — tes annonces passent avant' : 'Priority publishing queue — your listings go first']
+      : []),
     fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
     fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
-    isPro
-      ? (fr ? 'Support prioritaire' : 'Priority support')
-      : (fr ? 'Support par email' : 'Email support'),
+    isBusiness
+      ? (fr ? 'Support dédié — un interlocuteur, pas un formulaire' : 'Dedicated support — a person, not a form')
+      : isPro
+        ? (fr ? 'Support prioritaire' : 'Priority support')
+        : (fr ? 'Support par email' : 'Email support'),
   ];
 
   return (
@@ -154,12 +171,17 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
             {fr ? 'Ton plan actuel' : 'Your current plan'}
           </div>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-            {isPro ? <ProBadge size="md" /> : <PremiumBadge size="md" />}
+            {isBusiness ? <BusinessBadge size="md" /> : isPro ? <ProBadge size="md" /> : <PremiumBadge size="md" />}
           </div>
 
-          {/* Carte des avantages — Premium = paper/teal, Pro = dark/gold (même
-              rendu que la carte Pro de ConversionModal). */}
-          <div style={isPro ? {
+          {/* Carte des avantages — Premium = paper/teal, Pro = dark/gold,
+              Business = noir/platine (mêmes matières que les cartes de
+              ConversionModal). */}
+          <div style={isBusiness ? {
+            background: `radial-gradient(140% 110% at 0% 0%, rgba(155,232,220,0.16), transparent 55%), radial-gradient(130% 120% at 100% 100%, rgba(242,201,138,0.14), transparent 55%), #060B09`,
+            border: '1.5px solid rgba(174,233,223,0.5)', borderRadius: 22,
+            padding: '18px 18px 20px', boxShadow: '0 16px 40px -14px rgba(0,0,0,0.65), 0 0 30px -8px rgba(174,233,223,0.35)',
+          } : isPro ? {
             background: `radial-gradient(130% 120% at 100% 0%, rgba(232,149,109,0.28), transparent 58%), ${C.ink}`,
             border: '1.5px solid rgba(214,178,96,0.55)', borderRadius: 22,
             padding: '18px 18px 20px', boxShadow: '0 14px 34px -14px rgba(16,32,27,0.5)',
@@ -167,7 +189,10 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
             background: C.paper, border: `1.5px solid ${C.teal}`, borderRadius: 22,
             padding: '18px 18px 20px', boxShadow: '0 12px 30px -16px rgba(27,110,98,0.4)',
           }}>
-            <div style={isPro ? {
+            <div style={isBusiness ? {
+              display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(155,232,220,0.10)',
+              border: '1px solid rgba(174,233,223,0.28)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
+            } : isPro ? {
               display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(232,149,109,0.14)',
               border: '1px solid rgba(214,178,96,0.3)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
             } : {
@@ -175,12 +200,36 @@ export default function PlanDetailsModal({ isPro, lang, onClose, supabase, onUpg
               border: '1px solid rgba(47,158,144,0.22)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
             }}>
               <PepiteIcon size={18} />
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: isPro ? '#F2C98A' : C.tealDeep }}>
+              <span style={isBusiness ? {
+                fontSize: 12.5, fontWeight: 700,
+                background: 'linear-gradient(120deg,#F4FFFD,#9BE8DC 55%,#F2C98A)',
+                WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+              } : { fontSize: 12.5, fontWeight: 700, color: isPro ? '#F2C98A' : C.tealDeep }}>
                 {fr ? `${grant} Pépites offertes chaque mois` : `${grant} Nuggets included every month`}
               </span>
             </div>
-            <Features dark={isPro} items={features} />
+            <Features dark={sombre} items={features} />
           </div>
+
+          {/* Upsell Business (2026-08-09) — pour un Pro non-Business, et
+              seulement si l'offre est ouverte (Apple doit avoir approuvé). */}
+          {isPro && !isBusiness && BUSINESS_OFFER_ENABLED && onUpgradeBusiness && (
+            <>
+              <div style={{
+                textAlign: 'center', fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+                letterSpacing: '0.08em', color: C.mute, margin: '20px 0 12px',
+              }}>
+                {fr ? 'Le palier ultime' : 'The ultimate tier'}
+              </div>
+              <BusinessPlanCard
+                fr={fr} grantBusiness={K.monthly_grant_business} lensCost={lensCost}
+                lensScans={lensCost > 0 ? Math.floor(K.monthly_grant_business / lensCost) : 0}
+                articles={Math.floor(K.monthly_grant_business / (K.price_generate + 4 * pubUnit))}
+                pubUnit={pubUnit} genPrice={K.price_generate}
+                onUpgrade={() => onUpgradeBusiness()}
+              />
+            </>
+          )}
 
           {!isPro && onUpgradePro && (
             <>

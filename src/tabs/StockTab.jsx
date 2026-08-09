@@ -2071,7 +2071,7 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
 
 const StockTab = memo(function StockTab({
   // Config
-  lang, currency, isPremium, isNative, isPro, items, user, voiceUsedToday,
+  lang, currency, isPremium, isNative, isPro, isBusiness, items, user, voiceUsedToday,
   iapProduct, iapLoading, extensionStatus = null, extensionNeverSeen = null,
   // Computed lists
   stock, sold, stockFiltre, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
@@ -4762,6 +4762,7 @@ const StockTab = memo(function StockTab({
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
+          isBusiness={isBusiness}
           onUpgrade={openUpgradeModal}
           extensionNeverSeen={extensionNeverSeen}
           // Photos déjà retouchées PAR NOUS (2026-08-05) : détection par la

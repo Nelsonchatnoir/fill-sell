@@ -462,7 +462,7 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
 }
 
 const LensTab = memo(function LensTab({
-  lang, currency, userCountry, isPremium, isPro, isNative, user,
+  lang, currency, userCountry, isPremium, isPro, isBusiness, isNative, user,
   lensPhotos, setLensPhotos, lensResult, setLensResult,
   lensAdded, setLensAdded, lensDesc, setLensDesc,
   lensBuy, setLensBuy, lensLoading, lensMicActive, lensMicLoading,
@@ -653,6 +653,7 @@ const LensTab = memo(function LensTab({
           lang={lang}
           isPremium={isPremium}
           isPro={isPro}
+          isBusiness={isBusiness}
           onUpgrade={openUpgradeModal}
           // Le parcours identify n'alimente pas le lensResult de App : on lui
           // passe explicitement la source de CETTE session de publication.

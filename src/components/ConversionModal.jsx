@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import PepiteIcon from './PepiteIcon';
 import PepiteAmount from './PepiteAmount';
-import PlanBadge, { PremiumBadge, ProBadge } from './PlanBadge';
+import PlanBadge, { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
 import { PACKS } from './coinPacks';
 import { supabase } from '../lib/supabase';
+import { BUSINESS_OFFER_ENABLED } from '../config/businessOffer';
 
 // ConversionModal — modale de conversion unique (upsell Pépites / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
@@ -65,6 +66,10 @@ export const COIN_CONFIG_FALLBACK = {
   price_lens_overflow: 6,
   monthly_grant_premium: 400,
   monthly_grant_pro: 1200,
+  // Business (2026-08-08, migration 20260808213500) — même statut de REPLI que
+  // les deux autres : coin_config fait autorité, cette valeur ne sert qu'en cas
+  // d'échec réseau de la lecture.
+  monthly_grant_business: 3000,
 };
 
 // L'ex-DISPLAY_GRANT_PRO (un grant Pro affiché en avance sur la base) est mort
@@ -87,9 +92,24 @@ export const COIN_CONFIG_FALLBACK = {
 // Mensuel » 2999 c. Plus AUCUN essai gratuit (2026-07-22) : trial_period_days
 // retiré de create-checkout-session ; les offres d'introduction Apple / Google
 // éventuelles se désactivent à la main dans ASC / Play Console, pas par code.
+// Business 59,99 €/mois : prix identique sur les trois canaux (Stripe web,
+// app.fillsell.business.sub côté Apple et Google — base plan business-monthly
+// aligné à 59,99 € TTC sur toute la zone euro le 2026-08-09, TVA absorbée).
 const PLAN_PRICES = {
-  premium: { price: '12,99 €' },
-  pro:     { price: '29,99 €' },
+  premium:  { price: '12,99 €' },
+  pro:      { price: '29,99 €' },
+  business: { price: '59,99 €' },
+};
+
+// Coût Pépites d'UN article publié partout : génération d'annonce + 4
+// plateformes (Vinted, Leboncoin, eBay, Beebs). CALCULÉ depuis coin_config,
+// jamais écrit en dur — c'est ce qui permet d'annoncer « ≈ N articles » sans
+// que la promesse mente le jour où un prix bouge.
+const PLATEFORMES = 4;
+const coutArticleComplet = (K) => K.price_generate + PLATEFORMES * K.price_per_platform;
+const articlesParMois = (grant, K) => {
+  const unit = coutArticleComplet(K);
+  return unit > 0 ? Math.floor(grant / unit) : 0;
 };
 
 // ── Blocs (au niveau module : jamais recréés à chaque rendu) ─────────────────
@@ -364,6 +384,80 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
   );
 }
 
+// Carte Business (CAS 5 du design « Conversion Modals ») — fond noir, matière
+// platine, badge BusinessBadge. Le palier ultime.
+// ⚠️ MÊME SQUELETTE que les deux autres cartes (stock · publication ·
+// republication · Lens · Excel · voix · support) : l'utilisateur lit les trois
+// cartes ligne à ligne. Ce qui CHANGE réellement en Business, et rien d'autre :
+//   · le grant (3000, affiché au-dessus, ≈ 300 articles publiés partout) ;
+//   · la republication Vinted AUTOMATIQUE — livrée, pas une promesse : c'est
+//     le même moteur É6 que Pro (background.js), déjà en production ;
+//   · la file de publication prioritaire ;
+//   · le support dédié.
+// ⚠️ AUCUNE mention de « 8 photos par scan » : l'idée est abandonnée depuis le
+// 2026-08-09, tous les paliers sont identiques sur ce point.
+// Exportée pour PlanDetailsModal (upsell des Pro), comme ProPlanCard.
+export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, articles, genPrice, pubUnit, onUpgrade }) {
+  return (
+    <div style={{
+      position: 'relative', overflow: 'hidden',
+      background: `radial-gradient(140% 110% at 0% 0%, rgba(155,232,220,0.16), transparent 55%), radial-gradient(130% 120% at 100% 100%, rgba(242,201,138,0.14), transparent 55%), #060B09`,
+      border: '1.5px solid rgba(174,233,223,0.5)', borderRadius: 22,
+      padding: '20px 18px 18px',
+      boxShadow: '0 16px 40px -14px rgba(0,0,0,0.65), 0 0 30px -8px rgba(174,233,223,0.35)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <BusinessBadge />
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-0.02em', color: C.paper, lineHeight: 1 }}>{PLAN_PRICES.business.price}</div>
+          <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(246,245,241,0.6)', marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
+        </div>
+      </div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(155,232,220,0.10)',
+        border: '1px solid rgba(174,233,223,0.28)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
+      }}>
+        <PepiteIcon size={18} />
+        <span style={{
+          fontSize: 12.5, fontWeight: 700,
+          background: 'linear-gradient(120deg,#F4FFFD,#9BE8DC 55%,#F2C98A)',
+          WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+        }}>
+          {fr ? `${grantBusiness} Pépites/mois — environ ${articles} articles publiés partout`
+              : `${grantBusiness} Nuggets/mo — about ${articles} items listed everywhere`}
+        </span>
+      </div>
+      <Features
+        dark
+        items={[
+          fr ? 'Stock illimité' : 'Unlimited stock',
+          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
+             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
+          fr ? 'Republication Vinted automatique — tes annonces remontent seules dans le fil'
+             : 'Automatic Vinted reposting — your listings climb back up on their own',
+          fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
+             : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
+          fr ? 'File de publication prioritaire — tes annonces passent avant' : 'Priority publishing queue — your listings go first',
+          fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
+          fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+          fr ? 'Support dédié — un interlocuteur, pas un formulaire' : 'Dedicated support — a person, not a form',
+        ]}
+      />
+      <button
+        onClick={() => onUpgrade('business')}
+        style={{
+          width: '100%', padding: 15, border: 'none', borderRadius: 14,
+          background: 'linear-gradient(120deg,#F4FFFD,#9BE8DC 55%,#F2C98A)', color: '#060B09',
+          fontSize: 14.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+          boxShadow: '0 10px 26px -8px rgba(174,233,223,0.55)',
+        }}
+      >
+        {fr ? 'Passer Business' : 'Go Business'}
+      </button>
+    </div>
+  );
+}
+
 // Vue comparative (2026-07-22) — les cartes des plans achetables, EMPILÉES
 // (la Sheet fait maxWidth 480, mobile-first : pas de côte-à-côte). Un Free voit
 // Premium PUIS Pro ; un Premium n'y voit que Pro (sa propre carte ne vend
@@ -371,9 +465,13 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
 // parce que le détail complet du plan est affiché au-dessus du bouton — l'ancien
 // lien « Découvre Pro → » qui partait en checkout sans présentation est mort
 // avec cette vue.
-function PlansStack({ fr, isPremium, targetTiers, grantPrem, grantPro, lensCost, lensPerMonth, proFactor, K, onUpgrade }) {
-  const showPremium = !isPremium && targetTiers.includes('premium');
-  const showPro = targetTiers.includes('pro');
+// `tiers` = les paliers RÉELLEMENT vendables à CET utilisateur, déjà filtrés
+// par la modale (cf. `sellable`) : plus aucun recoupement isPremium/isPro ici,
+// c'était la porte ouverte à deux vérités divergentes sur « qui voit quoi ».
+function PlansStack({ fr, tiers, grantPrem, grantPro, grantBusiness, lensCost, lensPerMonth, proFactor, K, onUpgrade }) {
+  const showPremium = tiers.includes('premium');
+  const showPro = tiers.includes('pro');
+  const showBusiness = tiers.includes('business');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {showPremium && (
@@ -388,6 +486,14 @@ function PlansStack({ fr, isPremium, targetTiers, grantPrem, grantPro, lensCost,
           fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensPerMonth(grantPro)}
           proFactor={proFactor} showFactor
           pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced} genPrice={K.price_generate}
+          onUpgrade={onUpgrade}
+        />
+      )}
+      {showBusiness && (
+        <BusinessPlanCard
+          fr={fr} grantBusiness={grantBusiness} lensCost={lensCost} lensScans={lensPerMonth(grantBusiness)}
+          articles={articlesParMois(grantBusiness, K)}
+          pubUnit={K.price_per_platform} genPrice={K.price_generate}
           onUpgrade={onUpgrade}
         />
       )}
@@ -439,6 +545,7 @@ export default function ConversionModal({
   lang         = 'fr',
   isPremium    = false,
   isPro        = false,
+  isBusiness   = false,
   itemCount    = null,
   // Repli seulement — l'hôte passe la valeur lue dans coin_config
   // (free_stock_limit, source unique de la limite Free depuis le 05/08).
@@ -483,6 +590,7 @@ export default function ConversionModal({
   const lensCost  = K.price_lens_overflow;
   const grantPrem = K.monthly_grant_premium;      // lu en base (400)
   const grantPro  = K.monthly_grant_pro;          // lu en base (1200)
+  const grantBusiness = K.monthly_grant_business; // lu en base (3000)
   // Estimation d'analyses Lens permises par le grant mensuel — CALCULÉE, jamais
   // écrite en dur : à 1200 Pépites et 6 par analyse, cela fait 200 analyses.
   const lensPerMonth = (grant) => (lensCost > 0 ? Math.floor(grant / lensCost) : 0);
@@ -496,7 +604,26 @@ export default function ConversionModal({
 
   const isCoinCase = coinPrice != null;                    // CAS 1 et CAS 2
   const missing = isCoinCase && coinBalance != null ? Math.max(0, coinPrice - coinBalance) : null;
-  const sellable = isPro ? [] : isPremium ? ['pro'] : targetTiers.filter(t => t === 'premium' || t === 'pro');
+
+  // ── Échelle des paliers (2026-08-09) ──────────────────────────────────────
+  // Remplace l'ancien `isPro ? [] : isPremium ? ['pro'] : …`, qui codait en dur
+  // « Pro = sommet » : un Pro s'y voyait dire « tu es déjà au maximum » et
+  // Business n'était vendable NULLE PART dans l'UI.
+  // Les flags étant CUMULATIFS (un Business porte aussi is_pro et is_premium),
+  // le rang courant se lit du HAUT vers le bas, et n'est vendable que ce qui
+  // est STRICTEMENT au-dessus.
+  const RANG = { premium: 1, pro: 2, business: 3 };
+  const rangCourant = isBusiness ? 3 : isPro ? 2 : isPremium ? 1 : 0;
+  // 'business' n'est dans les targetTiers d'aucun appelant (ils sont tous
+  // antérieurs au palier) : on l'ajoute ICI, sous drapeau, plutôt que de
+  // toucher les 6 sites d'appel de ListingPreviewScreen — et le drapeau baissé
+  // le retire, d'où qu'il vienne. Cf. src/config/businessOffer.js.
+  const proposables = BUSINESS_OFFER_ENABLED
+    ? [...new Set([...targetTiers, 'business'])]
+    : targetTiers.filter(t => t !== 'business');
+  const sellable = proposables
+    .filter(t => RANG[t] > rangCourant)
+    .sort((a, b) => RANG[a] - RANG[b]);
   const canBuyCoins = typeof onUseCoins === 'function';
 
   // ══ Vue comparative demandée depuis les CAS 1/2 (bouton d'upsell) ═══════════
@@ -512,8 +639,8 @@ export default function ConversionModal({
         </div>
         <Title>{fr ? 'Compare les plans.' : 'Compare the plans.'}</Title>
         <PlansStack
-          fr={fr} isPremium={isPremium} targetTiers={targetTiers}
-          grantPrem={grantPrem} grantPro={grantPro} lensCost={lensCost}
+          fr={fr} tiers={sellable}
+          grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
           lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
           onUpgrade={onUpgrade}
         />
@@ -525,9 +652,10 @@ export default function ConversionModal({
   // ══ CAS 1 & 2 — Pépites insuffisantes (publier / Lens) ══════════════════════
   if (isCoinCase) {
     const isLens = trigger === 'lens';
-    // Palier poussé en second rideau : un Free voit Premium, un Premium voit Pro,
-    // un Pro n'a plus rien à acheter (packs seuls).
-    const upTier = !isPremium ? 'premium' : (!isPro ? 'pro' : null);
+    // Palier poussé en second rideau : le PROCHAIN cran au-dessus du sien (un
+    // Free voit Premium, un Premium voit Pro, un Pro voit Business). Au sommet,
+    // ou offre Business masquée : plus rien à pousser, packs seuls.
+    const upTier = sellable[0] ?? null;
 
     return (
       <Sheet onClose={onClose}>
@@ -575,11 +703,14 @@ export default function ConversionModal({
                 fontFamily: 'inherit', cursor: 'pointer',
               }}
             >
-              {upTier === 'pro'
-                ? (fr ? `Passe Pro — ${grantPro} Pépites/mois (≈ ${lensPerMonth(grantPro)} analyses Lens)`
-                      : `Go Pro — ${grantPro} Nuggets/mo (≈ ${lensPerMonth(grantPro)} Lens scans)`)
-                : (fr ? `Passe Premium — ${grantPrem} Pépites/mois incluses`
-                      : `Go Premium — ${grantPrem} Nuggets/mo included`)}
+              {upTier === 'business'
+                ? (fr ? `Passe Business — ${grantBusiness} Pépites/mois (≈ ${articlesParMois(grantBusiness, K)} articles publiés partout)`
+                      : `Go Business — ${grantBusiness} Nuggets/mo (≈ ${articlesParMois(grantBusiness, K)} items listed everywhere)`)
+                : upTier === 'pro'
+                  ? (fr ? `Passe Pro — ${grantPro} Pépites/mois (≈ ${lensPerMonth(grantPro)} analyses Lens)`
+                        : `Go Pro — ${grantPro} Nuggets/mo (≈ ${lensPerMonth(grantPro)} Lens scans)`)
+                  : (fr ? `Passe Premium — ${grantPrem} Pépites/mois incluses`
+                        : `Go Premium — ${grantPrem} Nuggets/mo included`)}
             </button>
           </>
         )}
@@ -589,8 +720,11 @@ export default function ConversionModal({
     );
   }
 
-  // ══ CAS 4 — Premium → Pro (garde stricte : Premium réel et non-Pro) ════════
-  if (isPremium && !isPro) {
+  // ══ CAS 5 — Pro → Business (2026-08-09) ════════════════════════════════════
+  // Placé AVANT le CAS 4 : un Pro porte aussi is_premium (flags cumulatifs), il
+  // faut donc trancher du haut vers le bas. La garde `sellable.includes` porte
+  // le drapeau de masquage — offre coupée, un Pro retombe sur « au maximum ».
+  if (isPro && sellable.includes('business')) {
     return (
       <Sheet onClose={onClose}>
         <div style={{
@@ -598,16 +732,45 @@ export default function ConversionModal({
           background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
           padding: '5px 10px 5px 5px',
         }}>
-          <PlanBadge isPremium isPro={false} />
+          <PlanBadge isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: C.mute }}>
+            {fr ? 'ton plan actuel' : 'your current plan'}
+          </span>
+        </div>
+        <Title>{fr ? 'Le sommet. Zéro limite.' : 'The top. No limits.'}</Title>
+        <BusinessPlanCard
+          fr={fr} grantBusiness={grantBusiness} lensCost={lensCost} lensScans={lensPerMonth(grantBusiness)}
+          articles={articlesParMois(grantBusiness, K)}
+          pubUnit={K.price_per_platform} genPrice={K.price_generate}
+          onUpgrade={onUpgrade}
+        />
+        <Dismiss onClose={onClose} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
+      </Sheet>
+    );
+  }
+
+  // ══ CAS 4 — Premium → Pro (garde stricte : Premium réel et non-Pro) ════════
+  // PlansStack et non plus la carte Pro seule : quand l'offre Business est
+  // ouverte, un Premium voit Pro PUIS Business — le palier ultime ne doit pas
+  // être invisible à qui a le plus de chances de le prendre.
+  if (isPremium && !isPro && sellable.length > 0) {
+    return (
+      <Sheet onClose={onClose}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12,
+          background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
+          padding: '5px 10px 5px 5px',
+        }}>
+          <PlanBadge isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} />
           <span style={{ fontSize: 11, fontWeight: 600, color: C.mute }}>
             {fr ? 'ton plan actuel' : 'your current plan'}
           </span>
         </div>
         <Title>{fr ? 'Passe au volume supérieur.' : 'Move up a gear.'}</Title>
-        <ProPlanCard
-          fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensPerMonth(grantPro)}
-          proFactor={proFactor} showFactor
-          pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced} genPrice={K.price_generate}
+        <PlansStack
+          fr={fr} tiers={sellable}
+          grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
+          lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
           onUpgrade={onUpgrade}
         />
         <Dismiss onClose={onClose} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
@@ -615,8 +778,10 @@ export default function ConversionModal({
     );
   }
 
-  // ══ Pro : plus rien à vendre (packs seuls) ═════════════════════════════════
-  if (isPro || sellable.length === 0) {
+  // ══ Plus rien à vendre : packs seuls ═══════════════════════════════════════
+  // Ne se dit QUE d'un utilisateur sans palier au-dessus — c'est-à-dire un
+  // Business, ou un Pro tant que l'offre Business est masquée.
+  if (sellable.length === 0) {
     return (
       <Sheet onClose={onClose}>
         <Title>{fr ? 'Tu es déjà au maximum.' : "You're already on the top plan."}</Title>
@@ -652,8 +817,8 @@ export default function ConversionModal({
           Remplace l'ancienne carte Premium seule + lien « Découvre Pro → » qui
           partait DIRECT en checkout Stripe sans présentation de l'offre Pro. */}
       <PlansStack
-        fr={fr} isPremium={false} targetTiers={targetTiers}
-        grantPrem={grantPrem} grantPro={grantPro} lensCost={lensCost}
+        fr={fr} tiers={sellable}
+        grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
         lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
         onUpgrade={onUpgrade}
       />
