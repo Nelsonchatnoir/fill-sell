@@ -44,6 +44,14 @@ _tmp_*.mjs
 # Le générateur, lui, est versionné (marketing/).
 assets/
 
+# Rapports d'audit rédigés en local (docs/audit/audit-comprehension.md se
+# déclare lui-même « Fichier local, NON commité ») : ils photographient un HEAD
+# donné et périment vite. Ignorés — et pas seulement par hygiène : un dossier
+# non suivi rendait le répertoire SALE, et package:extension refuse alors de
+# produire un paquet (BUILD_ID en -dirty = zip non rattachable à un commit).
+# Le 09/08, ça a bloqué l'empaquetage de la 0.5.6 en pleine urgence.
+docs/audit/
+
 # Sauvegardes de base — DONNÉES PERSONNELLES de ~497 utilisateurs (soldes de
 # Pépites, coin_ledger, inventaire, comptes auth). Elles vivent hors du dépôt,
 # dans C:\Users\nicol\fillsell-backups\. Ce filet n'existe que pour rattraper une
