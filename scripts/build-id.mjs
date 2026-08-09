@@ -61,7 +61,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (fenêtre minimisée = timers throttlés à ≥ 1 s), et B.5 étendu à TOUT le
 // remplissage : après une suppression, aucun échec ne bloque plus la
 // soumission.
-export const EXTENSION_LAST_COMMIT = '2026-08-09T14:14:47Z';
+// 2026-08-09T14:53:38Z = 6e08f44, qui ne touche que chrome-extension/README.md
+// (DRY_RUN décrit comme « doit rester à true » alors que les quatre plateformes
+// publient en réel depuis le 12/07, et une section « Reste à faire » périmée).
+// AUCUNE ligne de code d'extension ne bouge : le paquet 0.5.6 déjà construit
+// reste exact, et EXTENSION_MIN_BUILD n'a donc pas à suivre. Recalage seul, du
+// même geste que db9faba et f84326e — sans lui, `npm run build` échoue sur la
+// garde ci-dessous.
+export const EXTENSION_LAST_COMMIT = '2026-08-09T14:53:38Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
