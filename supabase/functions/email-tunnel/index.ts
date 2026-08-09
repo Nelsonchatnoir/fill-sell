@@ -770,8 +770,8 @@ ${pastille(logo("logo-beebs.png", "Beebs"))}
 <tr>
 <td width="40" valign="top" style="font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:13px; font-weight:700; color:#2F9E90; padding-top:2px;">03</td>
 <td valign="top">
-<p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; line-height:1.4; color:#10201B;">Vendu quelque part, retiré partout</p>
-<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Ton article part sur Vinted ? FillSell le détecte et retire l'annonce des trois autres plateformes. Plus de double vente, plus d'annonces fantômes à nettoyer.</p>
+<p style="margin:0 0 6px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:17px; font-weight:700; line-height:1.4; color:#10201B;">Vendu quelque part ? Tu retires les autres en un tap</p>
+<p style="margin:0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:15px; line-height:1.6; color:#10201B;">Ton article part sur Vinted ? FillSell le détecte et te prévient. Tu confirmes, il retire les annonces des trois autres plateformes. Plus de double vente, plus d'annonces fantômes à nettoyer.</p>
 </td>
 </tr>
 </table>
