@@ -81,22 +81,36 @@ const TICKER_SALES = [
   { title:'Guitare Yamaha F310',  marque:'Yamaha',  type:'Musique',    icon:'🎸', sell:120,  margin:55,  date:'2 juil',  dateEn:'Jul 2' },
 ];
 
-// Les 3 mini-stats de l'aperçu : ordres de grandeur TYPES, jamais les siens.
-const PREVIEW_STATS = [
+// ── Le parcours RÉEL d'une vente (2026-08-09) ────────────────────────────────
+// Remplace les trois mini-stats inventées (« Marge moy. ~45 % », « Délai vente
+// ~4 jours », « Meilleure vente +420 € ») qui occupaient ce bloc. Elles étaient
+// des ordres de grandeur sortis de nulle part, affichés en gros et en vert
+// juste sous « Ce que tu vas pouvoir suivre » : impossible pour un nouveau de
+// les lire autrement que comme une promesse de résultat. On montre désormais ce
+// que FillSell FAIT — vérifiable, et vrai pour tout le monde.
+// ⚠️ Étape 2 : le retrait se fait TOUJOURS sur confirmation. Ne jamais
+// reformuler en « retire automatiquement ».
+const PARCOURS_VENTE = [
   {
     tile: UI.teal,
-    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>,
-    labelFr:'Marge moy.', labelEn:'Avg margin', valueFr:'~45 %', valueEn:'~45%',
+    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>,
+    labelFr:'On repère la vente', labelEn:'We spot the sale',
+    textFr:'Vinted, Leboncoin, eBay et Beebs sont surveillés.',
+    textEn:'Vinted, Leboncoin, eBay and Beebs are watched.',
   },
   {
     tile: UI.amber,
-    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>,
-    labelFr:'Délai vente', labelEn:'Sale time', valueFr:'~4 jours', valueEn:'~4 days',
+    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6v14a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6"/></svg>,
+    labelFr:'Tu retires les autres', labelEn:'You remove the rest',
+    textFr:'En un tap, et seulement si tu confirmes.',
+    textEn:'One tap, and only if you confirm.',
   },
   {
     tile: UI.tealDeep,
-    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
-    labelFr:'Meilleure vente', labelEn:'Best sale', valueFr:'+420 €', valueEn:'+€420',
+    icon: <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>,
+    labelFr:'Ta marge se calcule', labelEn:'Your margin computes',
+    textFr:"Prix de vente moins prix d'achat et frais.",
+    textEn:'Sale price minus purchase price and fees.',
   },
 ];
 
@@ -231,27 +245,29 @@ function SalesTicker({ lang, fmt, setTab, extensionAbsente = false, onExtensionI
         </p>
       )}
 
-      {/* Mini-stats d'EXEMPLE — jamais les données de l'utilisateur */}
+      {/* Le parcours d'une vente — vrai pour tout le monde, aucun chiffre
+          inventé (2026-08-09). Même parti pris que l'état vide du Stock : on
+          montre ce que FillSell FAIT, pas des ordres de grandeur qui se lisent
+          comme une promesse de résultat. */}
       <div className="vt-anim" style={{animation:'vt-rise 0.5s ease 0.15s both'}}>
         <div style={{fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.12em',color:'#A39D8E',textAlign:'center',marginBottom:8}}>
           {fr?'Avec FillSell':'With FillSell'}
         </div>
         <div style={{fontSize:13.5,fontWeight:700,color:UI.ink,textAlign:'center',marginBottom:12}}>
-          {fr?'Ce que tu vas pouvoir suivre':"What you'll be able to track"}
+          {fr?'Ce qui se passe à chaque vente':'What happens on every sale'}
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
-          {PREVIEW_STATS.map((c,i)=>(
+          {PARCOURS_VENTE.map((c,i)=>(
             <div key={i} style={{background:'rgba(47,158,144,0.07)',border:'1px solid rgba(47,158,144,0.18)',borderRadius:16,padding:'14px 8px',textAlign:'center'}}>
               <div style={{width:34,height:34,borderRadius:11,background:c.tile,display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 9px'}}>
                 {c.icon}
               </div>
-              <div style={{fontSize:9.5,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.04em',color:UI.mute2,lineHeight:1.2,marginBottom:6}}>
+              <div style={{fontSize:11,fontWeight:700,color:UI.tealDeep,lineHeight:1.3,marginBottom:5}}>
                 {fr?c.labelFr:c.labelEn}
               </div>
-              <div style={{fontSize:17,fontWeight:700,letterSpacing:'-0.02em',color:UI.tealDeep,marginBottom:3}}>
-                {fr?c.valueFr:c.valueEn}
+              <div style={{fontSize:9.5,fontWeight:500,lineHeight:1.4,color:'#8A8578'}}>
+                {fr?c.textFr:c.textEn}
               </div>
-              <div style={{fontSize:9,fontWeight:500,color:'#A6A192'}}>{fr?'sur tes ventes':'on your sales'}</div>
             </div>
           ))}
         </div>
