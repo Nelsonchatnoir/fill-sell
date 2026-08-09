@@ -281,14 +281,6 @@ const CURRENCY_LOCALES=Object.fromEntries(CURRENCY_DATA.map(c=>[c.code,c.loc]));
 const CURRENCY_SYMBOLS=Object.fromEntries(CURRENCY_DATA.map(c=>[c.code,c.sym]));
 const CURRENCY_DECIMALS=Object.fromEntries(CURRENCY_DATA.map(c=>[c.code,c.dec]));
 const CURRENCIES_LIST=CURRENCY_DATA.map(c=>({...c,label:`${c.code} ${c.sym}`}));
-function suggestCurrency(){
-  const nl=(navigator.language||'fr').toLowerCase();
-  const exact={'en-gb':'GBP','en-us':'USD','en-ca':'CAD','en-au':'AUD','en-nz':'NZD','en-sg':'SGD','en-za':'ZAR','en-ng':'NGN','en-ke':'KES','en-gh':'GHS','en-ph':'PHP','en-in':'INR','en-pk':'PKR','pt-br':'BRL','pt-pt':'EUR','pt-mz':'MZN','es-mx':'MXN','es-ar':'ARS','es-cl':'CLP','es-co':'COP','es-pe':'PEN','es-uy':'UYU','es-py':'PYG','es-bo':'BOB','es-cr':'CRC','es-gt':'GTQ','es-hn':'HNL','es-ni':'NIO','es-pa':'PAB','es-do':'DOP','es-ve':'VES','fr-ch':'CHF','de-ch':'CHF','it-ch':'CHF','zh-cn':'CNY','zh-tw':'TWD','zh-hk':'HKD','ar-sa':'SAR','ar-ae':'AED','ar-kw':'KWD','ar-bh':'BHD','ar-om':'OMR','ar-qa':'QAR','ar-jo':'JOD','ar-iq':'IQD','ar-eg':'EGP','ar-ma':'MAD','ar-tn':'TND','ar-dz':'DZD','ar-ly':'LYD','ar-sd':'SDG','ar-lb':'LBP','ar-sy':'SYP','ar-ye':'YER'};
-  if(exact[nl]) return exact[nl];
-  const prefix=nl.split('-')[0];
-  const byPrefix={'ja':'JPY','ko':'KRW','zh':'CNY','th':'THB','vi':'VND','id':'IDR','ms':'MYR','hi':'INR','ur':'PKR','bn':'BDT','si':'LKR','ne':'NPR','my':'MMK','km':'KHR','lo':'LAK','mn':'MNT','kk':'KZT','uz':'UZS','ky':'KGS','tg':'TJS','tk':'TMT','tr':'TRY','ru':'RUB','uk':'UAH','be':'BYN','az':'AZN','ka':'GEL','hy':'AMD','he':'ILS','fa':'IRR','pl':'PLN','cs':'CZK','hu':'HUF','ro':'RON','hr':'HRK','bg':'BGN','sr':'RSD','is':'ISK','sq':'ALL','mk':'MKD','bs':'BAM','sv':'SEK','no':'NOK','nb':'NOK','nn':'NOK','da':'DKK','sw':'KES','am':'ETB','af':'ZAR','so':'SOS'};
-  return byPrefix[prefix]||'EUR';
-}
 function getCountryFallback(){
   const nl=(navigator.language||'').toLowerCase();
   const m=nl.match(/^[a-z]{2}-([a-z]{2})$/);
@@ -305,76 +297,6 @@ function formatCurrency(amount,currency='EUR',decimals=null){
     const sym=CURRENCY_SYMBOLS[currency]||currency;
     return sym+' '+n.toFixed(dec);
   }
-}
-function CurrencyOnboardingModal({lang,onConfirm}){
-  const [selected,setSelected]=useState(suggestCurrency());
-  const [search,setSearch]=useState('');
-  const [usernameInput,setUsernameInput]=useState('');
-  const REGION_LABELS={Europe:'Europe',America:lang==='en'?'Americas':'Amériques',Africa:lang==='en'?'Africa':'Afrique','Asia/Pacific':lang==='en'?'Asia & Pacific':'Asie & Pacifique'};
-  const q=search.trim().toLowerCase();
-  const filtered=q?CURRENCIES_LIST.filter(c=>c.code.toLowerCase().includes(q)||c.name.toLowerCase().includes(q)||c.sym.toLowerCase().includes(q)):CURRENCIES_LIST;
-  const grouped=filtered.reduce((acc,c)=>{(acc[c.reg]||(acc[c.reg]=[])).push(c);return acc;},{});
-  return(
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',boxSizing:'border-box'}}>
-      <div style={{background:'#fff',borderRadius:24,padding:'20px',maxWidth:400,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.22)',boxSizing:'border-box',maxHeight:'88vh',display:'flex',flexDirection:'column'}}>
-        <div style={{fontSize:24,textAlign:'center',marginBottom:4}}>💱</div>
-        <div style={{fontSize:18,fontWeight:700,textAlign:'center',marginBottom:3,color:UI.ink,letterSpacing:'-0.02em'}}>
-          {lang==='en'?'Choose your currency':'Choisissez votre devise'}
-        </div>
-        <div style={{fontSize:11,color:UI.mute2,textAlign:'center',marginBottom:12}}>
-          {lang==='en'?'Display only — no conversion.':'Affichage uniquement, aucune conversion.'}
-        </div>
-        <input placeholder={lang==='en'?'Search: USD, Dollar…':'Rechercher : EUR, Euro…'} value={search} onChange={e=>setSearch(e.target.value)}
-          style={{width:'100%',boxSizing:'border-box',padding:'9px 12px',borderRadius:10,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:10}}/>
-        <div style={{overflowY:'auto',flex:1}}>
-          {['Europe','America','Africa','Asia/Pacific'].map(reg=>{
-            const items=grouped[reg];
-            if(!items||items.length===0) return null;
-            return(
-              <div key={reg}>
-                <div style={{fontSize:9,fontWeight:700,color:UI.mute,textTransform:'uppercase',letterSpacing:'0.1em',padding:'8px 2px 4px'}}>{REGION_LABELS[reg]}</div>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:5,marginBottom:4}}>
-                  {items.map(c=>(
-                    <button key={c.code} onClick={()=>setSelected(c.code)}
-                      style={{padding:'7px 4px',borderRadius:11,border:selected===c.code?`1.5px solid ${UI.teal}`:`1px solid ${UI.border}`,background:selected===c.code?'#E7F3F0':UI.chip,cursor:'pointer',transition:'all 0.1s',fontFamily:'inherit',textAlign:'center',lineHeight:1.25}}>
-                      <div style={{fontSize:11,fontWeight:700,color:selected===c.code?UI.tealDeep:UI.ink}}>{c.code}</div>
-                      <div style={{fontSize:10,color:selected===c.code?UI.tealDeep:UI.mute2}}>{c.sym}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div style={{marginTop:12,flexShrink:0}}>
-          <div style={{fontSize:11,fontWeight:700,color:UI.mute2,marginBottom:6}}>{lang==='en'?"What's your name? (optional)":"Comment tu t'appelles ? (optionnel)"}</div>
-          <input
-            value={usernameInput}
-            onChange={e=>setUsernameInput(e.target.value.slice(0,30))}
-            placeholder={lang==='en'?'First name or nickname…':'Prénom ou pseudo…'}
-            maxLength={30}
-            style={{width:'100%',boxSizing:'border-box',padding:'9px 12px',borderRadius:10,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:10}}
-          />
-        </div>
-        <PrimaryButton onClick={()=>onConfirm(selected,usernameInput.trim())} style={{flexShrink:0}}>
-          {selected} {CURRENCY_SYMBOLS[selected]} — {lang==='en'?'Confirm':'Confirmer'}
-        </PrimaryButton>
-      </div>
-    </div>
-  );
-}
-function UsernameOnboardingInput({lang,onConfirm}){
-  const [val,setVal]=useState('');
-  return(
-    <>
-      <input value={val} onChange={e=>setVal(e.target.value.slice(0,30))} maxLength={30}
-        placeholder={lang==='en'?'First name or nickname…':'Prénom ou pseudo…'}
-        style={{width:'100%',boxSizing:'border-box',padding:'12px 14px',borderRadius:12,border:'1.5px solid rgba(0,0,0,0.14)',fontSize:16,fontFamily:'inherit',outline:'none',marginBottom:16,textAlign:'center'}}/>
-      <PrimaryButton onClick={()=>onConfirm(val.trim())}>
-        {lang==='en'?"Let's go !":"C'est parti !"}
-      </PrimaryButton>
-    </>
-  );
 }
 // Capitalize after spaces and apostrophes to handle "L'Oréal", "Louis Vuitton", etc.
 const fmtp = n=>(Math.round(n*10)/10).toFixed(1)+"%";
@@ -1860,8 +1782,10 @@ export default function App({ loginOnly = false }){
     return bl==='fr'?'fr':'en';
   });
   const [currency,setCurrency]=useState(()=>localStorage.getItem('fs_currency')||'EUR');
-  const [showCurrencyOnboarding,setShowCurrencyOnboarding]=useState(false);
-  const [showUsernameOnboarding,setShowUsernameOnboarding]=useState(false);
+  // Pseudo à demander : uniquement quand ni profiles.username ni le provider
+  // OAuth ne donnent de nom. Consommé par OnboardingFlow, qui le demande en
+  // fin de parcours — jamais dans une modale avant l'écran de choix (lot 5).
+  const [demanderPseudo,setDemanderPseudo]=useState(false);
   // Onboarding « Tu vends déjà sur Vinted ? » (lot 2) : ouvert à la fermeture
   // de la modale devise+pseudo (comptes NEUFS uniquement), et REPRIS au
   // chargement si l'utilisateur était resté sur l'écran d'attente de
@@ -2477,34 +2401,35 @@ export default function App({ loginOnly = false }){
         setShowOnboardingFlow(false);
         try{localStorage.setItem(ONBOARD_DONE_KEY,'1');}catch{/* cache seul */}
       }
-      const confirmed=!!localStorage.getItem('fs_currency_confirmed');
-      if(confirmed&&p.data?.currency){
+      // ── Devise : lue du profil, jamais demandée (lot 5, décision Nico) ─────
+      // La modale de choix à l'inscription est SUPPRIMÉE : le défaut 'EUR' en
+      // base est le bon pour le marché, et demander la devise avant d'avoir
+      // rendu le moindre service est une question administrative. Le réglage
+      // reste dans les Paramètres (liste complète, section « Devise »), seule
+      // porte d'entrée désormais. Elle était de toute façon INERTE — gatée sur
+      // « currency vide », impossible avec un défaut en base.
+      if(p.data?.currency){
         setCurrency(p.data.currency);
-        localStorage.setItem('fs_currency',p.data.currency);
-      } else if(!confirmed){
-        if(p.data?.currency){
-          // Compte existant sur nouvel appareil — pas d'onboarding
-          setCurrency(p.data.currency);
-          localStorage.setItem('fs_currency',p.data.currency);
-          localStorage.setItem('fs_currency_confirmed','1');
-        } else {
-          setShowCurrencyOnboarding(true);
-        }
+        try{localStorage.setItem('fs_currency',p.data.currency);}catch{/* cache seul */}
       }
       if(!p.data?.username){
         // Nom fourni par le provider OAuth (Google le renvoie à chaque connexion,
         // Apple seulement à la toute première) : Supabase le garde dans
         // user_metadata — on le PERSISTE dans profiles à la première entrée pour
-        // ne plus jamais dépendre de la réponse du provider, et la modale pseudo
-        // ne s'affiche alors pas. getSession = lecture locale, pas d'appel réseau.
+        // ne plus jamais dépendre de la réponse du provider, et on ne demande
+        // alors RIEN. getSession = lecture locale, pas d'appel réseau.
         const{data:{session:authSession}}=await supabase.auth.getSession();
         const meta=authSession?.user?.user_metadata||{};
         const providerName=String(meta.full_name||meta.name||'').trim().slice(0,30);
         if(providerName){
           const{error:unErr}=await supabase.rpc('set_profile_username',{p_username:providerName});
-          if(!unErr){setUsername(providerName);localStorage.setItem('fs_username_asked','1');}
-        } else if(!localStorage.getItem('fs_username_asked')&&confirmed){
-          setShowUsernameOnboarding(true);
+          if(!unErr)setUsername(providerName);
+        } else {
+          // Aucun nom nulle part (inscription e-mail) : la question est posée
+          // DANS l'onboarding, à la fin. Plus de modale séparée qui s'ouvrait
+          // au deuxième chargement — elle attendait fs_currency_confirmed,
+          // posé au chargement précédent : personne ne la voyait au bon moment.
+          setDemanderPseudo(true);
         }
       }
     }
@@ -6316,22 +6241,12 @@ export default function App({ loginOnly = false }){
         </div>
       )}
 
-      {showCurrencyOnboarding&&(
-        <CurrencyOnboardingModal lang={lang} onConfirm={async(code,uname)=>{
-          await saveCurrency(code);
-          if(uname){await supabase.rpc('set_profile_username',{p_username:uname});setUsername(uname);localStorage.setItem('fs_username_asked','1');}
-          localStorage.setItem('fs_currency_confirmed','1');
-          setShowCurrencyOnboarding(false);
-          // ⛔ Ne PAS rebrancher l'onboarding ici (lot 2b) : cette modale est
-          // gatée sur « currency vide », or la colonne porte un défaut 'EUR' en
-          // base — elle ne s'ouvre jamais pour un compte neuf. Le déclencheur
-          // de l'écran de choix vit dans fetchAll, sur profiles.onboarded_at.
-        }}/>
-      )}
       {showOnboardingFlow&&user&&(
         <OnboardingFlow
           lang={lang}
           user={user}
+          demanderPseudo={demanderPseudo}
+          onUsername={(nom)=>setUsername(nom)}
           onDone={(dest)=>{
             onboardingFiniRef.current=true;
             setShowOnboardingFlow(false);
@@ -6348,24 +6263,6 @@ export default function App({ loginOnly = false }){
           userId={user?.id??null}
           onExtensionSeen={()=>setShowExtensionInfo(false)}
         />
-      )}
-      {showUsernameOnboarding&&(
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px',boxSizing:'border-box'}}>
-          <div style={{background:'#fff',borderRadius:24,padding:'32px 28px',maxWidth:360,width:'100%',boxShadow:'0 24px 64px rgba(0,0,0,0.22)',boxSizing:'border-box',textAlign:'center'}}>
-            <div style={{fontSize:36,marginBottom:12}}>👋</div>
-            <div style={{fontSize:20,fontWeight:700,color:'#0D0D0D',letterSpacing:'-0.02em',marginBottom:6}}>
-              {lang==='en'?"What's your name?":"Comment tu t'appelles ?"}
-            </div>
-            <div style={{fontSize:13,color:'#6B7280',marginBottom:20}}>
-              {lang==='en'?'Optional — first name or nickname.':'Optionnel — prénom ou pseudo.'}
-            </div>
-            <UsernameOnboardingInput lang={lang} onConfirm={async(uname)=>{
-              if(uname){await supabase.rpc('set_profile_username',{p_username:uname});setUsername(uname);}
-              localStorage.setItem('fs_username_asked','1');
-              setShowUsernameOnboarding(false);
-            }}/>
-          </div>
-        </div>
       )}
     </div>
   );

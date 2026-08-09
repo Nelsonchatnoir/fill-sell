@@ -1,10 +1,11 @@
 // ── Onboarding post-inscription (lot 2, 2026-08-09) ─────────────────────────
-// Monté par App juste après la modale devise+pseudo — laquelle ne s'affiche
-// que pour un compte NEUF (profiles.currency vide) : le stock est donc
-// forcément vide, pas besoin de le vérifier. Un écran = une idée = une action,
-// aucune mention de Pépites (règle du lot).
+// PREMIER écran de l'app pour un compte neuf : depuis le lot 5, PLUS RIEN ne
+// s'affiche avant lui. La modale devise qui le précédait est supprimée (le
+// défaut 'EUR' en base est le bon, le réglage vit dans les Paramètres), et la
+// modale pseudo aussi — la question du nom est devenue la dernière marche
+// d'ici. Un écran = une idée = une action, aucune mention de Pépites.
 //
-// Trois étapes :
+// Étapes :
 //   'choix'   → « Tu vends déjà sur Vinted ? » — deux réponses, pas de
 //               troisième option, pas de « passer » (décision Nico).
 //   'oui'     → l'extension expliquée AVEC sa raison (lire le dressing),
@@ -27,6 +28,12 @@
 //               sync existante montre la progression puis « Dressing
 //               synchronisé — N articles importés » : c'est la ligne de
 //               valeur, rien d'autre par-dessus.
+//
+//   'pseudo'  → dernière marche, et SEULEMENT si ni profiles.username ni le
+//               provider OAuth n'ont donné de nom (prop demanderPseudo).
+//               Toutes les sorties y passent, donc la question arrive après
+//               la valeur. Champ vide accepté : il ne sert qu'au bonjour du
+//               tableau de bord.
 //
 // L'étape 'attente' est PERSISTÉE (localStorage fs_onboard_state) : fermer
 // l'app et revenir reprend l'attente sans re-cliquer — c'est App.jsx qui
@@ -70,7 +77,7 @@ const lireEtatInitial = () => {
   catch { return 'choix'; }
 };
 
-export default function OnboardingFlow({ lang, user, onDone }) {
+export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = false, onUsername = null }) {
   const fr = lang !== 'en';
   // « Téléphone » = natif OU petit écran web : même règle que StockTab
   // (surTelephone) — sur un téléphone, installer ici est impossible, on envoie
@@ -85,6 +92,13 @@ export default function OnboardingFlow({ lang, user, onDone }) {
   // celle que la fonction rapporte (lue sur le JWT), pas une valeur locale.
   const { envoi, secondesRestantes, envoyer: envoyerLien } = useEnvoiLienExtension(lang, user?.email ?? null);
   const finiRef = useRef(false);
+  // Pseudo (lot 5) : demandé UNIQUEMENT si ni profiles.username ni le provider
+  // OAuth n'ont donné de nom — et à la FIN du parcours, jamais avant l'écran de
+  // choix. Il ne sert qu'au bonjour du tableau de bord : le laisser vide est
+  // une réponse valable, « Continuer » n'attend rien.
+  const [pseudo, setPseudo] = useState('');
+  const [destApresPseudo, setDestApresPseudo] = useState(null);
+  const pseudoFaitRef = useRef(false);
 
   // Fin de l'onboarding. La SOURCE DE VÉRITÉ est profiles.onboarded_at — un
   // fait de compte, pas d'appareil (lot 2b) : sans ça, un second téléphone
@@ -97,6 +111,14 @@ export default function OnboardingFlow({ lang, user, onDone }) {
   // le problème en laissant la base fausse.
   const terminer = async (dest) => {
     if (finiRef.current) return;
+    // Dernière marche s'il reste un nom à demander : TOUTES les sorties y
+    // passent (« Non je commence », « Plus tard », sync partie), donc la
+    // question arrive après la valeur, jamais avant.
+    if (demanderPseudo && !pseudoFaitRef.current) {
+      setDestApresPseudo(dest);
+      setStep('pseudo');
+      return;
+    }
     finiRef.current = true;
     if (user?.id) {
       const { error } = await supabase
@@ -142,6 +164,19 @@ export default function OnboardingFlow({ lang, user, onDone }) {
     return () => { vivant = false; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, user?.id]);
+
+  // Écrit le pseudo puis reprend la sortie qu'on avait mise en attente. Un
+  // champ vide est une réponse : on ne bloque pas, on ne redemande pas.
+  const validerPseudo = async () => {
+    const nom = pseudo.trim().slice(0, 30);
+    pseudoFaitRef.current = true;
+    if (nom && user?.id) {
+      const { error } = await supabase.rpc('set_profile_username', { p_username: nom });
+      if (error) console.warn('[onboarding] pseudo non écrit :', error.message);
+      else onUsername?.(nom);
+    }
+    terminer(destApresPseudo || 'stock');
+  };
 
   const btn = {
     width: '100%', padding: '16px 18px', borderRadius: 16, border: 'none',
@@ -236,6 +271,40 @@ export default function OnboardingFlow({ lang, user, onDone }) {
         >
           {fr ? '← Retour' : '← Back'}
         </button>
+      </>
+    );
+  }
+
+  // ── Dernière marche : le pseudo (lot 5) ───────────────────────────────────
+  // Ne s'affiche que si personne n'a de nom à nous donner, et TOUJOURS après
+  // le parcours — la modale qu'il remplace s'ouvrait au deuxième chargement de
+  // l'app, avant toute valeur rendue, et attendait un drapeau posé au
+  // chargement précédent. Un champ, un bouton, vide accepté.
+  if (step === 'pseudo') {
+    return ecran(
+      <>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+          <div style={{ fontSize: 32 }}>👋</div>
+        </div>
+        <h1 style={{ margin: '0 0 16px', fontSize: 23, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, textAlign: 'center', lineHeight: 1.25 }}>
+          {fr ? "Comment on t'appelle ?" : 'What should we call you?'}
+        </h1>
+        <input
+          value={pseudo}
+          onChange={(e) => setPseudo(e.target.value.slice(0, 30))}
+          maxLength={30}
+          placeholder={fr ? 'Prénom ou pseudo' : 'First name or nickname'}
+          style={{ width: '100%', boxSizing: 'border-box', padding: '14px 16px', borderRadius: 14, border: `1.5px solid ${C.border}`, background: C.paper, fontSize: 16, fontFamily: 'inherit', color: C.ink, outline: 'none', textAlign: 'center', marginBottom: 12 }}
+        />
+        <button
+          onClick={validerPseudo}
+          style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
+        >
+          {fr ? 'Continuer' : 'Continue'}
+        </button>
+        <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.55, color: C.mute2, textAlign: 'center' }}>
+          {fr ? "Juste pour te dire bonjour. Tu peux laisser vide." : 'Just to say hello. You can leave it empty.'}
+        </p>
       </>
     );
   }
