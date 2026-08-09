@@ -108,8 +108,8 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
   // ── SQUELETTE COMMUN (07/08 soir, validé Nico) — mêmes rubriques, même
   // ordre, mêmes tournures que les DEUX cartes de ConversionModal :
   // stock · publication · republication · Lens · Excel · voix · support
-  // (support : plus AUCUNE ligne en Business depuis le 2026-08-09, cf. le
-  // commentaire en bas de liste).
+  // (support : Business dit « Support par email » comme Premium depuis le
+  // 2026-08-09, cf. le commentaire en bas de liste).
   // Seule la VALEUR change selon le plan affiché. Toute retouche d'un
   // libellé se répercute dans les trois endroits (+ FAQ landing).
   const features = [
@@ -133,18 +133,18 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
        : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
     fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
     fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
-    // Support — RETIRÉ pour Business le 2026-08-09 (décision Nico : on ne vend
-    // pas ce que l'app ne fait pas). La « file de publication prioritaire » a
-    // disparu de la liste pour la même raison : les jobs sortent FIFO, aucun
-    // tri par palier. Business n'affiche donc AUCUNE ligne support — pas même
-    // « Support prioritaire », qui serait la même promesse un cran en dessous.
-    // Même retrait dans BusinessPlanCard (ConversionModal) : les deux endroits
-    // disent exactement la même chose.
-    ...(isBusiness
-      ? []
-      : [isPro
-          ? (fr ? 'Support prioritaire' : 'Priority support')
-          : (fr ? 'Support par email' : 'Email support')]),
+    // Support — « Support dédié » RETIRÉ pour Business le 2026-08-09 (décision
+    // Nico : on ne vend pas ce que l'app ne fait pas), comme la « file de
+    // publication prioritaire » plus haut : les jobs sortent FIFO, aucun tri
+    // par palier. Business retombe sur « Support par email », mot pour mot
+    // celui de Premium — et surtout PAS sur le « Support prioritaire » de Pro,
+    // qui serait la même promesse un cran en dessous. D'où le test isBusiness
+    // AVANT isPro : flags cumulatifs, un Business porte aussi is_pro.
+    isBusiness
+      ? (fr ? 'Support par email' : 'Email support')
+      : isPro
+        ? (fr ? 'Support prioritaire' : 'Priority support')
+        : (fr ? 'Support par email' : 'Email support'),
   ];
 
   return (

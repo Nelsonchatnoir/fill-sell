@@ -397,8 +397,10 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
 //   · « File de publication prioritaire » : les jobs sortent FIFO, aucun tri
 //     par palier nulle part (cross_post_jobs, background.js) ;
 //   · « Support dédié — un interlocuteur » : aucun canal dédié n'existe.
-// Conséquence assumée : la carte Business n'affiche AUCUNE ligne support — pas
-// même celle de Pro, qui serait la même promesse un cran en dessous.
+// La ligne support du squelette reste, au niveau VRAI : « Support par email »,
+// mot pour mot celui de la carte Premium (décision Nico 2026-08-09, option b).
+// Business n'hérite PAS du « Support prioritaire » de Pro : ce serait la même
+// promesse non tenue un cran en dessous.
 // ⚠️ AUCUNE mention de « 8 photos par scan » : l'idée est abandonnée depuis le
 // 2026-08-09, tous les paliers sont identiques sur ce point.
 // Exportée pour PlanDetailsModal (upsell des Pro), comme ProPlanCard.
@@ -444,6 +446,7 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
              : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+          fr ? 'Support par email' : 'Email support',
         ]}
       />
       <button
