@@ -155,25 +155,29 @@ export default function ExtensionPitchScreen({
         >
           <div style={{ width: 40, height: 4, borderRadius: 99, background: C.border, margin: '0 auto 18px' }} />
 
+          {/* ── Ordre imposé (lot 4, 09/08) ────────────────────────────────────
+              titre court → LE bouton, visible sans scroll → deux lignes au
+              plus → tout le reste après. L'argumentaire de quatre lignes qui
+              vivait ICI, avant le bouton, poussait l'action sous la ligne de
+              flottaison : il est passé sous l'action, en secondaire. Rien
+              d'indispensable pour décider de cliquer ne se lit après le clic —
+              et réciproquement. */}
           <div style={{
-            width: 52, height: 52, borderRadius: 16, margin: '0 auto 14px',
+            width: 44, height: 44, borderRadius: 14, margin: '0 auto 10px',
             background: 'rgba(47,158,144,0.12)', border: '1px solid rgba(47,158,144,0.25)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <Puzzle size={26} color={C.tealDeep} />
+            <Puzzle size={22} color={C.tealDeep} />
           </div>
 
-          <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.mute, marginBottom: 6 }}>
+          <div style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.mute, marginBottom: 5 }}>
             {eyebrow ?? (fr ? 'Pour publier tes annonces' : 'To post your listings')}
           </div>
-          <div style={{ textAlign: 'center', fontSize: 19, fontWeight: 700, color: C.ink, letterSpacing: '-0.01em', marginBottom: 10 }}>
-            {fr ? "Il te faut l'extension FillSell, sur ordinateur" : 'You need the FillSell extension, on a computer'}
+          <div style={{ textAlign: 'center', fontSize: 20, fontWeight: 700, color: C.ink, letterSpacing: '-0.01em', marginBottom: 14, lineHeight: 1.25 }}>
+            {onComputer
+              ? (fr ? "L'extension FillSell, dans Chrome" : 'The FillSell extension, in Chrome')
+              : (fr ? "L'extension s'installe sur ordinateur" : 'The extension installs on a computer')}
           </div>
-          <p style={{ margin: '0 0 12px', fontSize: 13.5, color: C.mute2, lineHeight: 1.55, textAlign: 'center' }}>
-            {body ?? (fr
-              ? "C'est elle qui met tes annonces en ligne pour toi sur Vinted, Leboncoin, eBay et Beebs. Elle est gratuite — et dès son installation, tout ton dressing Vinted se synchronise dans FillSell en quelques secondes."
-              : 'It posts your listings for you on Vinted, Leboncoin, eBay and Beebs. It is free — and as soon as it is installed, your entire Vinted wardrobe syncs into FillSell within seconds.')}
-          </p>
 
           {onComputer ? (
             <a href="/extension" style={{ ...btnBase, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', border: 'none', marginBottom: 10, boxShadow: '0 10px 22px -8px rgba(47,158,144,0.5)' }}>
@@ -243,6 +247,25 @@ export default function ExtensionPitchScreen({
               )}
             </>
           )}
+
+          {/* Deux lignes AU PLUS sous le bouton — ce qui aide à comprendre ce
+              qu'on vient de déclencher, rien de plus. */}
+          <p style={{ margin: '2px 0 14px', fontSize: 12.5, color: C.mute, lineHeight: 1.5, textAlign: 'center' }}>
+            {onComputer
+              ? (fr
+                  ? "Gratuite, installée en une minute."
+                  : 'Free, installed in a minute.')
+              : (envoi.etat === 'envoye'
+                  ? (fr ? "Ouvre-le sur ton ordinateur, dans Chrome." : 'Open it on your computer, in Chrome.')
+                  : (fr ? "Le lien part à l'adresse de ton compte." : 'The link goes to your account address.'))}
+          </p>
+
+          {/* ── Secondaire : après l'action, pour qui veut savoir ───────────── */}
+          <p style={{ margin: '0 0 12px', fontSize: 13, color: C.mute2, lineHeight: 1.55, textAlign: 'center' }}>
+            {body ?? (fr
+              ? "C'est elle qui met tes annonces en ligne pour toi sur Vinted, Leboncoin, eBay et Beebs. Elle est gratuite — et dès son installation, tout ton dressing Vinted se synchronise dans FillSell en quelques secondes."
+              : 'It posts your listings for you on Vinted, Leboncoin, eBay and Beebs. It is free — and as soon as it is installed, your entire Vinted wardrobe syncs into FillSell within seconds.')}
+          </p>
 
           {supabase && userId && (
             <button onClick={recheck} disabled={checking} style={{ ...btnBase, background: 'transparent', border: `1px dashed ${C.border}`, color: C.mute2, marginBottom: onContinue ? 10 : 0, opacity: checking ? 0.6 : 1 }}>

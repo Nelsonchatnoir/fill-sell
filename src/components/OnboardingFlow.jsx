@@ -243,112 +243,104 @@ export default function OnboardingFlow({ lang, user, onDone }) {
   // ── Étape 3 : attente de l'extension, puis sync automatique ───────────────
   return ecran(
     <>
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-        <div style={{ fontSize: 40 }}>{syncEnvoyee ? '✅' : '🖥️'}</div>
+      {/* ── Ordre imposé (lot 4, 09/08) ────────────────────────────────────────
+          Cet écran n'était pas lu — pas même par son auteur. Défaut de FORME :
+          trois lignes de texte et un bandeau de détection passaient AVANT
+          l'action, qui tombait sous la ligne de flottaison sur un téléphone.
+          Désormais : titre court → LE bouton → deux lignes au plus → tout le
+          reste (détection auto, « tu peux fermer l'app », plus tard) en
+          dessous, en secondaire. */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 32 }}>{syncEnvoyee ? '✅' : '🖥️'}</div>
       </div>
-      <h1 style={{ margin: '0 0 12px', fontSize: 23, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, textAlign: 'center', lineHeight: 1.25 }}>
+      <h1 style={{ margin: '0 0 16px', fontSize: 23, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, textAlign: 'center', lineHeight: 1.25 }}>
         {syncEnvoyee
-          ? (fr ? "C'est parti — ton dressing arrive" : 'Here we go — your wardrobe is coming')
-          : (fr ? "On t'attend sur ton ordinateur" : "We're waiting for you on your computer")}
-      </h1>
-      {!syncEnvoyee && (
-        <p style={{ margin: '0 0 18px', fontSize: 14, lineHeight: 1.6, color: C.mute2, textAlign: 'center' }}>
-          {surTelephone
-            // ⚠️ « le lien qu'on vient de t'envoyer » n'est écrit QUE si un
-            // envoi a réellement abouti (etat 'envoye'). Tant que ce n'est pas
-            // le cas — envoi en cours, échec, ou reprise d'une session où rien
-            // n'est parti — la consigne ne parle pas d'un e-mail qui n'existe
-            // peut-être pas.
+          ? (fr ? 'Ton dressing arrive' : 'Your wardrobe is coming')
+          : surTelephone
+            // Le titre dit l'ÉTAT, jamais un envoi qui n'a pas eu lieu.
             ? (envoi.etat === 'envoye'
-              ? (fr
-                // « on te prévient » de la consigne remplacé par une promesse
-                // qu'on TIENT : aucun canal ne notifie aujourd'hui (pas de
-                // push) — le dressing attend dans le stock, c'est ça, la vérité.
-                ? "Ouvre le lien qu'on vient de t'envoyer par email, installe l'extension, et ton dressing arrivera ici tout seul. Tu peux fermer l'app : tu retrouveras tes annonces dans ton stock."
-                : 'Open the link we just emailed you, install the extension, and your wardrobe will arrive here on its own. You can close the app: your listings will be waiting in your stock.')
-              : (fr
-                ? "Installe l'extension sur ton ordinateur et ton dressing arrivera ici tout seul. Tu peux fermer l'app : tu retrouveras tes annonces dans ton stock."
-                : 'Install the extension on your computer and your wardrobe will arrive here on its own. You can close the app: your listings will be waiting in your stock.'))
-            : (fr
-                ? "Installe l'extension dans Chrome, connecte-toi sur fillsell.app si ce n'est pas déjà fait, et ton dressing arrivera ici tout seul — environ deux minutes après l'installation."
-                : 'Install the extension in Chrome, sign in on fillsell.app if you haven\'t already, and your wardrobe will arrive here on its own — about two minutes after installing.')}
-        </p>
-      )}
+                ? (fr ? 'Lien envoyé' : 'Link sent')
+                : (fr ? "L'extension s'installe sur ordinateur" : 'The extension installs on a computer'))
+            : (fr ? "Installe l'extension dans Chrome" : 'Install the extension in Chrome')}
+      </h1>
+
       {!syncEnvoyee && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: '12px 14px', marginBottom: 14 }}>
-            <span style={{ width: 14, height: 14, border: `2px solid ${C.teal}`, borderTopColor: 'transparent', borderRadius: 99, display: 'inline-block', animation: 'fsObSpin 1s linear infinite' }} />
-            <style>{'@keyframes fsObSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}'}</style>
-            <span style={{ fontSize: 12.5, fontWeight: 600, color: C.mute2 }}>
-              {fr ? "Détection automatique — rien à recliquer ici" : 'Automatic detection — nothing to click again here'}
-            </span>
-          </div>
-          {/* ── Le lien d'installation, sur téléphone (lot 2C-1) ───────────────
-              Trois états, jamais ambigus : envoi en cours / envoyé À UNE
-              ADRESSE NOMMÉE (sans quoi l'utilisateur ne sait pas dans quelle
-              boîte regarder) / échec dit en toutes lettres, bouton toujours
-              actif. Sur ordinateur, rien ne change : la feuille d'installation. */}
+          {/* ── L'ACTION, immédiatement sous le titre ─────────────────────── */}
           {surTelephone ? (
             <>
-              {envoi.etat === 'en_cours' && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: C.paper, border: `1px solid ${C.border}`, borderRadius: 12, padding: '11px 12px', marginBottom: 8, fontSize: 13, fontWeight: 700, color: C.mute2 }}>
-                  <span style={{ width: 13, height: 13, border: `2px solid ${C.teal}`, borderTopColor: 'transparent', borderRadius: 99, display: 'inline-block', animation: 'fsObSpin 1s linear infinite' }} />
-                  {fr ? 'Envoi du lien…' : 'Sending the link…'}
+              {envoi.etat === 'echec' && (
+                <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, lineHeight: 1.5, color: '#92400E' }}>
+                  {messageEchecLien(envoi.raison, fr, !!envoi.email)}
                 </div>
               )}
-
-              {envoi.etat === 'envoye' && (
-                <>
-                  <div style={{ background: '#F0FDFB', border: '1px solid rgba(47,158,144,0.25)', borderRadius: 12, padding: '11px 13px', marginBottom: 6, fontSize: 13, lineHeight: 1.5, color: C.tealDeep, textAlign: 'center', wordBreak: 'break-word' }}>
-                    {fr ? 'Lien envoyé à ' : 'Link sent to '}
-                    <strong>{envoi.email}</strong>
-                  </div>
-                  <button
-                    onClick={envoyerLien}
-                    disabled={secondesRestantes > 0}
-                    style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: secondesRestantes > 0 ? C.mute : C.tealDeep, fontSize: 12.5, fontWeight: 600, cursor: secondesRestantes > 0 ? 'default' : 'pointer', fontFamily: 'inherit', padding: 6, marginBottom: 4, textDecoration: secondesRestantes > 0 ? 'none' : 'underline' }}
-                  >
-                    {secondesRestantes > 0
-                      ? (fr ? `Renvoyer dans ${secondesRestantes} s` : `Resend in ${secondesRestantes}s`)
-                      : (fr ? 'Renvoyer' : 'Resend')}
-                  </button>
-                </>
-              )}
-
-              {(envoi.etat === 'idle' || envoi.etat === 'echec') && (
-                <>
-                  {envoi.etat === 'echec' && (
-                    <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, lineHeight: 1.5, color: '#92400E' }}>
-                      {messageEchecLien(envoi.raison, fr, !!envoi.email)}
-                    </div>
-                  )}
-                  {envoi.raison !== 'no_email' && (
-                    <button
-                      onClick={envoyerLien}
-                      style={{ display: 'block', width: '100%', background: 'none', border: `1px solid ${C.border}`, borderRadius: 12, color: C.tealDeep, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', padding: '10px 12px', marginBottom: 8 }}
-                    >
-                      {fr ? "M'envoyer le lien pour mon ordinateur" : 'Email me the link for my computer'}
-                    </button>
-                  )}
-                  {envoi.etat === 'echec' && (
-                    <button
-                      onClick={() => setShowPitch(true)}
-                      style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 6, textDecoration: 'underline', marginBottom: 4 }}
-                    >
-                      {fr ? 'Récupérer le lien autrement' : 'Get the link another way'}
-                    </button>
-                  )}
-                </>
-              )}
+              {envoi.etat === 'envoye' ? (
+                <div style={{ background: '#F0FDFB', border: '1px solid rgba(47,158,144,0.25)', borderRadius: 14, padding: '14px 16px', fontSize: 14, lineHeight: 1.45, color: C.tealDeep, textAlign: 'center', wordBreak: 'break-word' }}>
+                  <strong>{envoi.email}</strong>
+                </div>
+              ) : envoi.raison !== 'no_email' ? (
+                <button
+                  onClick={envoyerLien}
+                  disabled={envoi.etat === 'en_cours'}
+                  style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)', opacity: envoi.etat === 'en_cours' ? 0.75 : 1 }}
+                >
+                  {envoi.etat === 'en_cours'
+                    ? (fr ? 'Envoi du lien…' : 'Sending the link…')
+                    : (fr ? "M'envoyer le lien" : 'Email me the link')}
+                </button>
+              ) : null}
             </>
           ) : (
             <button
               onClick={() => setShowPitch(true)}
-              style={{ display: 'block', width: '100%', background: 'none', border: `1px solid ${C.border}`, borderRadius: 12, color: C.tealDeep, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', padding: '10px 12px', marginBottom: 8 }}
+              style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
             >
-              {fr ? "Revoir comment installer l'extension" : 'See how to install the extension'}
+              {fr ? "Installer l'extension" : 'Install the extension'}
             </button>
           )}
+
+          {/* ── Deux lignes AU PLUS sous l'action ─────────────────────────── */}
+          <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.55, color: C.mute2, textAlign: 'center' }}>
+            {surTelephone
+              ? (envoi.etat === 'envoye'
+                  ? (fr ? "Ouvre-le sur ton ordinateur et installe l'extension." : 'Open it on your computer and install the extension.')
+                  : (fr ? "Il part à l'adresse de ton compte." : 'It goes to your account address.'))
+              : (fr ? 'Ton dressing arrivera ici tout seul, deux minutes après.' : 'Your wardrobe will arrive here on its own, two minutes later.')}
+          </p>
+
+          {/* ── Secondaire ─────────────────────────────────────────────────── */}
+          {surTelephone && envoi.etat === 'envoye' && (
+            <button
+              onClick={envoyerLien}
+              disabled={secondesRestantes > 0}
+              style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: secondesRestantes > 0 ? C.mute : C.tealDeep, fontSize: 12.5, fontWeight: 600, cursor: secondesRestantes > 0 ? 'default' : 'pointer', fontFamily: 'inherit', padding: 8, textDecoration: secondesRestantes > 0 ? 'none' : 'underline' }}
+            >
+              {secondesRestantes > 0
+                ? (fr ? `Renvoyer dans ${secondesRestantes} s` : `Resend in ${secondesRestantes}s`)
+                : (fr ? 'Renvoyer' : 'Resend')}
+            </button>
+          )}
+          {surTelephone && envoi.etat === 'echec' && (
+            <button
+              onClick={() => setShowPitch(true)}
+              style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 8, textDecoration: 'underline' }}
+            >
+              {fr ? 'Récupérer le lien autrement' : 'Get the link another way'}
+            </button>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: '10px 12px', margin: '18px 0 10px' }}>
+            <span style={{ width: 13, height: 13, border: `2px solid ${C.teal}`, borderTopColor: 'transparent', borderRadius: 99, display: 'inline-block', animation: 'fsObSpin 1s linear infinite' }} />
+            <style>{'@keyframes fsObSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}'}</style>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.mute2 }}>
+              {fr ? 'Détection automatique — rien à recliquer ici' : 'Automatic detection — nothing to click again here'}
+            </span>
+          </div>
+          <p style={{ margin: '0 0 6px', fontSize: 11.5, lineHeight: 1.5, color: C.mute, textAlign: 'center' }}>
+            {fr
+              ? "Tu peux fermer l'app : tes annonces t'attendront dans ton stock."
+              : 'You can close the app: your listings will be waiting in your stock.'}
+          </p>
           <button
             onClick={() => terminer('stock')}
             style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 6 }}
