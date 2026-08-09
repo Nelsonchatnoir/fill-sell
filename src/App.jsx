@@ -1861,6 +1861,45 @@ export default function App({ loginOnly = false }){
     return ext!=null&&Number.isFinite(min)&&ext<min;
   })();
   const extBannerKey=`${extensionBuild}|${EXT_MIN_BUILD}`;
+  // Source UNIQUE de « la bannière est à l'écran » : lue par le rendu ET par
+  // le rafraîchissement ci-dessous, pour qu'ils ne puissent pas diverger.
+  const extBannerVisible=extensionOutdated&&extBannerDismissedFor!==extBannerKey;
+  // ── Rafraîchissement pendant que la bannière est affichée (2026-08-09) ──────
+  // extensionBuild n'était écrit QUE par fetchAll. Or la sonde des jobs
+  // (plus bas) ne rappelle fetchAll que si l'empreinte des jobs a CHANGÉ, et
+  // le listener visibilitychange exige de quitter l'onglet puis d'y revenir.
+  // Un utilisateur qui met son extension à jour et RESTE sur la page gardait
+  // donc la bannière indéfiniment, alors que la base portait déjà le bon
+  // build (3 comptes dans ce cas le 09/08, tous en 0.5.6).
+  // Ce timer ne tourne QUE tant que la bannière est affichée : un compte à
+  // jour (extensionOutdated=false) n'en démarre AUCUN, et il s'arrête de
+  // lui-même dès que la bannière s'éteint — l'effet se re-exécute alors avec
+  // extBannerVisible=false et le cleanup a déjà tout démonté.
+  // SELECT ciblé sur les deux seules colonnes qui pilotent la bannière : un
+  // fetchAll complet relirait ventes + inventaire toutes les 30 s pour rien.
+  useEffect(()=>{
+    if(!extBannerVisible||!user?.id) return;
+    let arret=false,timer=null;
+    const relire=async()=>{
+      const {data,error}=await supabase.from('profiles')
+        .select('extension_build,extension_last_seen_at').eq('id',user.id).maybeSingle();
+      if(arret||error||!data) return;
+      setExtensionBuild(data.extension_build??null);
+      setExtensionLastSeenAt(data.extension_last_seen_at??null);
+    };
+    const demarrer=()=>{ if(timer===null) timer=setInterval(relire,30_000); };
+    const arreter=()=>{ if(timer!==null){ clearInterval(timer); timer=null; } };
+    // Onglet caché : on ARRÊTE l'intervalle (pas seulement une lecture sautée)
+    // — rien à rafraîchir pour un écran que personne ne regarde. Au retour, une
+    // lecture immédiate, puis la cadence reprend.
+    const onVisibilite=()=>{
+      if(document.visibilityState==='visible'){ relire(); demarrer(); }
+      else arreter();
+    };
+    if(document.visibilityState==='visible') demarrer();
+    document.addEventListener('visibilitychange',onVisibilite);
+    return()=>{arret=true;arreter();document.removeEventListener('visibilitychange',onVisibilite);};
+  },[extBannerVisible,user?.id]);
   // ── Bundle périmé (2026-07-19, classe de bug c5fe1414) ────────────────────
   // Un onglet SPA longue vie garde son bundle en mémoire tant que personne ne
   // fait F5 : un job créé par cet onglet après un déploiement part avec les
@@ -4942,7 +4981,7 @@ export default function App({ loginOnly = false }){
           nécessaire aux users que CE bandeau cible (installs unpacked).
           Dismissible : clé (build installé | build minimal requis) en
           localStorage, cf. extBannerDismissedFor. */}
-      {extensionOutdated&&extBannerDismissedFor!==extBannerKey&&(
+      {extBannerVisible&&(
         <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px 12px 14px",background:UI.amber,borderBottom:"1px solid rgba(16,32,27,0.15)",fontSize:13.5,color:UI.ink,boxShadow:"0 2px 8px rgba(232,149,109,0.35)"}}>
           <span aria-hidden="true" style={{fontSize:18,flexShrink:0}}>🧩</span>
           {/* Deux lignes (2026-08-09) : QUOI, puis COMMENT. L'ancienne version

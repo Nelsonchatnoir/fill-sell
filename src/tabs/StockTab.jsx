@@ -2526,13 +2526,39 @@ const StockTab = memo(function StockTab({
     }
     return s;
   }, [repubDernier, republishActif]);
-  // Bandeau : lot = dernier job republish par article, créé depuis moins de
-  // 24 h OU encore non terminal. Visible tant qu'il reste du non-terminal
-  // (pending/processing/needs_user — un état INCONNU compte « en cours »,
-  // jamais ignoré ni planté). Durée : on n'affiche QUE next_action_after
-  // (heure réelle posée par l'extension) — jamais d'estimation inventée.
+  // Bandeau : périmètre = LE LOT EN COURS, jamais la journée écoulée.
+  // ── Correctif 2026-08-09 : deux périmètres dans le même encadré ────────────
+  // Il comptait tout dernier job republish créé depuis moins de 24 h (`recent`)
+  // OU non terminal. Un lot de 6 s'affichait donc « 9 republications ·
+  // 4 terminées · 5 en cours » : les 3 en trop étaient des republications
+  // terminées le matin même, sans aucun rapport avec le lot lancé. La ligne
+  // « prochaine recréation » juste en dessous, elle, ne portait QUE sur la
+  // file — deux périmètres différents dans la même carte.
+  // ⚠️ bulk_batch_id N'EST PAS exploitable : vérifié en prod le 09/08, il est
+  // NULL sur 100 % des jobs republish (0 sur 70 lignes en 3 jours) — ni
+  // l'insert client (solo et lot, plus bas) ni le RPC ne le renseignent. Le
+  // seul marqueur de lot réellement disponible est la RAFALE DE CRÉATION : un
+  // lot part en un seul burst (mesuré en base : 5 jobs en 242 ms). Le
+  // périmètre est donc « ce qui est encore en file + les terminaux créés dans
+  // la même rafale » — c'est ce qui donne le dénominateur de « 1 sur 6 ».
+  // Rien en file ⇒ null : le bandeau disparaît, il ne raconte plus la journée.
+  // Durée : on n'affiche QUE next_action_after (heure réelle posée par
+  // l'extension) — jamais d'estimation inventée.
   const repubBandeau = useMemo(() => {
     if (!republishActif) return null;
+    // Un statut INCONNU compte « en file », jamais ignoré ni planté — même
+    // prudence qu'avant, elle décide désormais AUSSI de l'affichage du bandeau.
+    const enFile = (st) => st === 'pending' || st === 'processing'
+      || !['published', 'failed', 'cancelled', 'dry_run_completed', 'needs_user'].includes(st);
+    const derniers = Object.values(repubDernier);
+    const enVol = derniers.filter((j) => enFile(j.status));
+    if (!enVol.length) return null;
+    // Début de la rafale = le plus ancien job encore en file, moins une marge.
+    // La marge absorbe un insert de lot étalé (une ligne par article) sans
+    // jamais aller chercher le lot précédent : 2 min contre plusieurs heures
+    // d'écart réel entre deux lots.
+    const debuts = enVol.map((j) => Date.parse(j.created_at ?? '')).filter(Number.isFinite);
+    const seuilLot = debuts.length ? Math.min(...debuts) - 2 * 60 * 1000 : Number.NEGATIVE_INFINITY;
     let total = 0, terminees = 0, enCours = 0, aRelancer = 0, arretees = 0, prochaine = null;
     // Orpheline (3d-a) : une recréation en cours dont l'ordinateur ne répond
     // plus — mêmes seuils que la pastille (deleted > 20 min + heartbeat muet
@@ -2542,13 +2568,13 @@ const StockTab = memo(function StockTab({
     let orpheline = false;
     const hb = Date.parse(extensionStatus?.lastSeenAt ?? '');
     const hbMuet = !Number.isFinite(hb) || Date.now() - hb > 10 * 60 * 1000;
-    for (const last of Object.values(repubDernier)) {
+    for (const last of derniers) {
       const st = last.status;
       const step = last.platform_fields?.republish_step;
-      const nonTerminal = st === 'pending' || st === 'processing' || st === 'needs_user'
-        || !['published', 'failed', 'cancelled', 'dry_run_completed'].includes(st);
-      const recent = Date.now() - Date.parse(last.created_at || 0) < 24 * 3600 * 1000;
-      if (!recent && !nonTerminal) continue;
+      const cree = Date.parse(last.created_at ?? '');
+      // Un job en file appartient TOUJOURS au lot (même created_at illisible) ;
+      // un job terminal n'y entre que s'il vient de la même rafale.
+      if (!enFile(st) && !(Number.isFinite(cree) && cree >= seuilLot)) continue;
       total++;
       if (st === 'published' || step === 'recreated' || st === 'dry_run_completed') terminees++;
       else if (st === 'needs_user') aRelancer++;
@@ -2562,7 +2588,6 @@ const StockTab = memo(function StockTab({
         if (Number.isFinite(d) && Date.now() - d > 20 * 60 * 1000) orpheline = true;
       }
     }
-    if (enCours + aRelancer === 0) return null;
     return { total, terminees, enCours, aRelancer, arretees, prochaine, orpheline };
   }, [repubDernier, republishActif, extensionStatus?.lastSeenAt]);
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
@@ -3231,12 +3256,17 @@ const StockTab = memo(function StockTab({
           {repubBandeau&&(
             <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer+repubBandeau.arretees>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"11px 14px"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                {/* Progression, pas inventaire : « 1 sur 6 » se lit dans le
+                    même périmètre que « prochaine recréation » juste en
+                    dessous. L'ancien libellé additionnait un total de la
+                    journée (9) à une file (5) dans la même phrase. */}
                 <span style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
-                  🔁 {repubBandeau.total} {lang==='fr'?`republication${repubBandeau.total>1?'s':''}`:`repost${repubBandeau.total>1?'s':''}`}
+                  🔁 {lang==='fr'
+                    ?`Republication${repubBandeau.total>1?'s':''} — ${repubBandeau.terminees} sur ${repubBandeau.total}`
+                    :`Repost${repubBandeau.total>1?'s':''} — ${repubBandeau.terminees} of ${repubBandeau.total}`}
                 </span>
                 <span style={{fontSize:12,fontWeight:600,color:"#5C6560"}}>
-                  {repubBandeau.terminees} {lang==='fr'?'terminée'+(repubBandeau.terminees>1?'s':''):'done'}
-                  {" · "}{repubBandeau.enCours} {lang==='fr'?'en cours':'in progress'}
+                  {repubBandeau.enCours} {lang==='fr'?'en cours':'in progress'}
                 </span>
                 {repubBandeau.aRelancer>0&&(
                   <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
