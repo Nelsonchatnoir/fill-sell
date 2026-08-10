@@ -92,9 +92,13 @@ export const COIN_CONFIG_FALLBACK = {
 // Mensuel » 2999 c. Plus AUCUN essai gratuit (2026-07-22) : trial_period_days
 // retiré de create-checkout-session ; les offres d'introduction Apple / Google
 // éventuelles se désactivent à la main dans ASC / Play Console, pas par code.
-// Business 59,99 €/mois : prix identique sur les trois canaux (Stripe web,
-// app.fillsell.business.sub côté Apple et Google — base plan business-monthly
-// aligné à 59,99 € TTC sur toute la zone euro le 2026-08-09, TVA absorbée).
+// Business 59,99 €/mois. ⚠️ Ce montant est EN DUR et vu par tout le monde : il
+// n'est vrai que si les trois canaux facturent bien 59,99 €. Stripe : oui
+// (price_1U2Wh0QZRA77vrWJyWLOy6iB, vérifié le 10/08). Apple : oui. Google :
+// PAS ENCORE — relevé du 10/08 sur le base plan business-monthly, Irlande et
+// Italie sont à 74,99 EUR (France re-corrigée à 59,99 € le soir même). Tant
+// que ces deux lignes ne sont pas alignées, l'offre reste masquée — cf.
+// src/config/businessOffer.js, qui porte le relevé complet et les conditions.
 const PLAN_PRICES = {
   premium:  { price: '12,99 €' },
   pro:      { price: '29,99 €' },

@@ -18,9 +18,39 @@
 // actifs en permanence. Un compte promu à la main aujourd'hui se voit donc
 // correctement comme Business, sans que l'offre soit vendable.
 //
-// À passer à `true` — et rien d'autre à toucher — le jour où Apple approuve
-// l'abonnement. Le produit Google (business-monthly) est déjà activé, le prix
-// aligné à 59,99 € sur toute la zone euro.
+// ⛔ NE PAS passer à `true` EN L'ÉTAT — RELEVÉ RÉEL DU 2026-08-10 AU SOIR ────
+// La version d'origine de ce bloc disait « Le produit Google (business-monthly)
+// est déjà activé, le prix aligné à 59,99 € sur toute la zone euro ». La
+// première moitié est vraie, la seconde est FAUSSE, et c'est celle qui compte.
+// Relevé dans Play Console (forfait de base business-monthly, Actif, 174
+// pays/régions) :
+//     France    69,99 EUR → CORRIGÉE À 59,99 € le 10/08 au soir (GO de Nico),
+//               commit vérifié après rechargement de la page
+//     Irlande   74,99 EUR   ← TOUJOURS FAUX
+//     Italie    74,99 EUR   ← TOUJOURS FAUX
+//     Allemagne, Autriche, Belgique, Espagne, Estonie, Finlande, Grèce,
+//     Croatie, Luxembourg, Pays-Bas, Portugal, Slovaquie, Slovénie : 59,99 EUR
+// Or l'app affiche « 59,99 € » EN DUR pour tout le monde (ConversionModal).
+// Un Irlandais ou un Italien sur Android paierait donc 74,99 € après avoir lu
+// 59,99 €. C'est le piège documenté du « Set prices » global, qui regonfle
+// chaque pays de sa TVA locale : France avait été re-éditée à la main le 08/08,
+// un passage global l'avait re-gonflée depuis — d'où la re-correction du 10/08.
+//
+// Conditions pour lever ce drapeau, dans cet ordre :
+//   1. Play : ré-aligner Irlande et Italie à 59,99 € (édition PAYS PAR PAYS,
+//      icône crayon sur la ligne, « Enregistrer » de la modale = STAGING, puis
+//      « Enregistrer les modifications » en bas de page = commit réel). Après
+//      chaque passage global « Set prices », TOUT est à revérifier ;
+//   2. Apple : RIEN à faire — confirmé OK par Nico le 10/08. Son test iOS de
+//      23:12 (usage_logs checkout_open tier=business canal=apple) a ouvert la
+//      feuille de paiement à 59,99 €, ce qu'un produit encore en review ne fait
+//      pas (purchaseProduct répondrait « produit introuvable »). Non revérifié
+//      dans ASC : la console exige une connexion, jamais faite en automatisation ;
+//   3. Stripe : RIEN à faire — vérifié le 10/08 sur le dashboard live
+//      (prod_V2buKBNOudO9nk actif, price_1U2Wh0QZRA77vrWJyWLOy6iB « FillSell
+//      Business Mensuel », 59,99 € EUR mensuel récurrent, tarif par défaut,
+//      0 abonnement). Le secret STRIPE_PRICE_BUSINESS porte bien CE price id
+//      (sha256 du secret == sha256 de l'id, comparé le 10/08).
 export const BUSINESS_OFFER_ENABLED = false;
 
 // ── Liste blanche (2026-08-09) ───────────────────────────────────────────────
