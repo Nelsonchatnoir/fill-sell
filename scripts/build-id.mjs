@@ -142,7 +142,17 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Observation pure sur ce dernier point : aucune décision ne change.
 // Toujours la 0.5.8 — non soumise au Chrome Web Store, donc
 // EXTENSION_MIN_BUILD reste sur la 0.5.6.
-export const EXTENSION_LAST_COMMIT = '2026-08-10T14:15:00Z';
+// 2026-08-10T15:10:46Z = 2bd222e : manifest bumpé en 0.5.9 pour la soumission
+// au Chrome Web Store (le manifest était resté en 0.5.8, la version que le parc
+// exécute déjà — le CWS rejette un renvoi de version identique). Du même geste,
+// ALREADY_PUBLISHED (package-extension.mjs) est rattrapée de trois versions :
+// elle s'arrêtait à 0.5.5, donc la garde « version jamais publiée » laissait
+// passer un paquet 0.5.8. La 0.5.9 embarque 8b07130 + 1f5f23d (sonde
+// d'avant-suppression Vinted, endpoint /api/v2/items/{id} mort retiré) et
+// 973972f (eBay : « formulaire quitté » terminal + publish_proof).
+// EXTENSION_MIN_BUILD reste sur la 0.5.6 tant que la review n'est pas ACCEPTÉE
+// — on ne réclame jamais au parc une version que personne ne peut installer.
+export const EXTENSION_LAST_COMMIT = '2026-08-10T15:10:46Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
