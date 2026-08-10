@@ -39,6 +39,12 @@ export const PLATFORM_LISTINGS_URLS = {
 // requise, brouillon LBC…) passe tel quel — on ne réécrit pas ce qui est déjà
 // une consigne claire.
 const HUMANIZE_PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
+// Statuts d'où un job ne repart JAMAIS tout seul. Miroir du trigger
+// cross_post_job_settle_reservation (migration 20260805000000), qui rend la
+// Pépite réservée sur exactement ces statuts-là. 'sold' en est volontairement
+// absent : la réservation y est bien soldée, mais un job vendu n'est l'échec de
+// rien et ne passe pas par ce chemin de message.
+const JOB_STATUS_TERMINAL = new Set(['failed', 'cancelled']);
 const TECH_ERR_MARKERS_RE = new RegExp([
   '\\.js\\b',                    // nom de fichier du code (vintedCategories.js…)
   'https?://',                   // URL d'API sondée
@@ -55,10 +61,45 @@ export function humanizeJobError(job, lang = 'fr') {
   const en = lang === 'en';
   const name = HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (en ? 'the platform' : 'la plateforme');
 
-  // Challenge anti-robot : le libellé stocké commence par « CHALLENGE <nom> : »
-  // (motif SQL) suivi de la consigne — on ne montre que la consigne.
+  // ── Challenge anti-robot (message RÉÉCRIT ICI depuis le 2026-08-10) ────────
+  // Le libellé stocké commence par « CHALLENGE <nom> : » (motif SQL) suivi
+  // d'une consigne rédigée côté extension. Cette consigne était affichée telle
+  // quelle, et elle PROMET une reprise qui n'arrive pas : « le job repartira au
+  // prochain passage ».
+  // Ce qui se passe réellement (chrome-extension/background.js, rearmBounded) :
+  // un needsUser est ré-armé au plus MAX_NEEDS_USER_RETRIES = 2 fois, à
+  // quelques MINUTES d'intervalle — jamais le temps de résoudre une
+  // vérification à la main. La 2ᵉ occurrence passe le job en `failed`, ce qui
+  // déclenche settle_publish_reservation('release') : la Pépite engagée
+  // revient (coin_ledger kind='release_publish', reason='job_terminal').
+  // Relevé prod du 2026-08-10 : 6 jobs `error LIKE 'CHALLENGE %'`, les 6 en
+  // `failed`, 0 repris — la reprise promise n'a jamais eu lieu pour personne.
+  // Le texte source vit dans chrome-extension/, hors de portée d'un OTA : la
+  // correction se fait donc à l'affichage, et elle dépend du statut RÉEL.
   const challenge = raw.match(/^CHALLENGE\s+[A-ZÀ-Ÿ0-9 -]+?\s*:\s*(.+)$/is);
-  if (challenge) return challenge[1].trim();
+  if (challenge) {
+    const termine = JOB_STATUS_TERMINAL.has(job?.status);
+    if (!termine) {
+      // Job encore vivant : une tentative automatique reste possible. On la dit
+      // pour ce qu'elle est — quelques minutes, pas un rattrapage — sans
+      // promettre qu'elle aboutira.
+      return en
+        ? `${name} is showing an anti-robot check instead of the listing form. One automatic retry is left and it happens within minutes — pass the check on ${name} in Chrome right now, otherwise the job will stop.`
+        : `${name} affiche une vérification anti-robot à la place du formulaire. Il reste une tentative automatique, et elle a lieu dans les minutes qui viennent — passe la vérification sur ${name} dans Chrome tout de suite, sinon le job s'arrêtera.`;
+    }
+    // Terminé : c'est fini, personne ne reprendra. La Pépite n'est annoncée
+    // rendue que pour une publication : seuls ces jobs portent une réservation
+    // (reservation_id), les republications et les retraits n'en ont pas.
+    const rendue = (job?.action ?? 'publish') === 'publish';
+    const acte = job?.action === 'republish' ? 'republication' : 'publication';
+    return en
+      ? `${name} showed an anti-robot check instead of the listing form: nothing was published and the job has stopped.`
+        + (rendue ? ' The Nugget held for it has been refunded.' : '')
+        + ` Open ${name} in Chrome, pass the check, then start the ${acte} again yourself from the item.`
+      : `${name} a affiché une vérification anti-robot à la place du formulaire : rien n'a été publié et le job est arrêté.`
+        + (rendue ? ' La Pépite engagée a été rendue.' : '')
+        + ` Ouvre ${name} dans Chrome, passe la vérification, puis relance la ${acte} toi-même depuis la fiche de l'article.`;
+  }
 
   // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :
   // le détail embarque la palette relevée — l'utilisateur doit juste
