@@ -4079,8 +4079,28 @@ const StockTab = memo(function StockTab({
                   // réserve).
                   // warningsAffichables (2026-08-10) : le bruit photo ne fait
                   // plus basculer une publication réussie en « à vérifier ».
+                  // ⛔ UN SUCCÈS CONFIRMÉ N'ALERTE PLUS (2026-08-10, 3e passe).
+                  // `published` + `listing_url` renseignée = l'annonce EXISTE,
+                  // on a son adresse, elle est en ligne. C'est un succès, quels
+                  // que soient les warnings du run. Vécu sur le job leboncoin
+                  // c2c4a35a : annonce 3248104608 validée et en ligne, mail de
+                  // confirmation Leboncoin reçu, et la carte affichait quand
+                  // même un badge ambre pour « marque: champ sauté — option
+                  // "Tommy Jeans" sans correspondance. Options: [] ». Une liste
+                  // d'options VIDE : il n'y avait rien à corriger, ni dans
+                  // l'app ni sur Leboncoin. Une alerte sans geste possible
+                  // n'est pas une alerte, c'est du bruit — et le bruit finit
+                  // par faire ignorer les vraies.
+                  // Ce qui NE change pas : un `published` SANS lien porteur de
+                  // warnings garde son badge ambre (on ne sait pas où est
+                  // l'annonce), les `dry_run_completed` aussi (aucune annonce
+                  // réelle), et les warnings restent écrits en base + rendus
+                  // par la modale (mode réserve, plus bas) — on rétrograde
+                  // l'alerte, on ne perd pas l'information.
+                  const succesConfirme=j=>j.status==="published"&&!!j.listing_url;
                   const warnedJobs=Object.values(latestByPlatform).filter(j=>
                     (j.status==="published"||j.status==="dry_run_completed")
+                    &&!succesConfirme(j)
                     &&warningsAffichables(j).length>0);
                   // ── Lien pas encore capturé (2026-08-10) ──────────────────
                   // Deux états DISTINCTS, et c'est tout l'objet du correctif :
