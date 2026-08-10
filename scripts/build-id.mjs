@@ -162,7 +162,19 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // chemin de publication ne bougent. ⚠️ POSTÉRIEUR au paquet
 // fillsell-extension-0.5.9-cws.zip construit à 15:11:47Z : ce zip ne contient
 // PAS ce correctif.
-export const EXTENSION_LAST_COMMIT = '2026-08-10T16:48:13Z';
+// 2026-08-10T17:20:40Z = 902cf7a : eBay ne remplit plus, et ne clique plus, sur
+// un onglet figé. Job 71942bc2 — brouillon créé, formulaire rempli, et le clic
+// n'a produit AUCUNE requête (9 captures, toutes de la télémétrie) : renderer
+// muet, dialogue beforeunload natif resté ouvert sur /lstng. Trois gestes :
+// tabRepond() teste que l'onglet répond AVANT le dépôt ; ebaySubmitRequestSeen()
+// distingue `submit_never_sent` de `timeout_unconfirmed` (preuve positive
+// d'absence de POST /lstng/api/listing_draft/{id}/publish) ; et une reprise sur
+// onglet neuf ne consomme plus needsUserAttempts (compteur séparé
+// frozenTabRetries, borné à 2). Les deux reprises exigent la preuve qu'aucune
+// soumission n'est partie — aucun risque de second dépôt.
+// ⚠️ POSTÉRIEUR au paquet fillsell-extension-0.5.9-cws.zip (BUILD_ID
+// 2026-08-10T16:53:45Z) : ce zip ne contient PAS ce correctif.
+export const EXTENSION_LAST_COMMIT = '2026-08-10T17:20:40Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
