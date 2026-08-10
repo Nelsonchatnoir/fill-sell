@@ -174,7 +174,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // soumission n'est partie — aucun risque de second dépôt.
 // ⚠️ POSTÉRIEUR au paquet fillsell-extension-0.5.9-cws.zip (BUILD_ID
 // 2026-08-10T16:53:45Z) : ce zip ne contient PAS ce correctif.
-export const EXTENSION_LAST_COMMIT = '2026-08-10T17:20:40Z';
+// 2026-08-10T17:46:03Z = 5e17d0a : beforeunload neutralisé DÈS L'ARRIVÉE sur
+// /lstng (page encore saine, aucun dialogue possible) au lieu de l'être avant
+// une navigation, quand il est déjà trop tard. Le remplacement d'onglet reste
+// décidé par tabRepond seul — une neutralisation ratée sur un onglet vivant ne
+// jette rien. Et publish_proof gagne path_au_clic : final_path était relevé
+// après notre propre navigation vers le Hub, il disait /sh/lst/active.
+// ⚠️ POSTÉRIEUR au paquet 0.5.9 construit à 16:53:45Z — à re-packager.
+export const EXTENSION_LAST_COMMIT = '2026-08-10T17:46:03Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
