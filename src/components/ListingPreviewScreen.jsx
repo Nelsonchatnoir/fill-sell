@@ -78,6 +78,15 @@ const MIN_PHOTOS = 3;
 const MAX_PHOTOS = 10;
 const MAX_RETOUCHED = 5;   // doit rester aligné sur generate-listing.MAX_RETOUCHED
 
+// ── Plateformes qui exigent l'adresse de remise des Réglages (2026-08-10) ────
+// Leboncoin la demande à chaque dépôt (jamais pré-remplie depuis le compte),
+// et Beebs réutilise LA MÊME valeur — il n'a pas de réglage dédié dans l'app
+// (cf. chrome-extension/content-scripts/beebs.js, en-tête : « on réutilise
+// platform_settings.leboncoin.adresse, même adresse d'expédition »).
+// Sans elle, les deux handlers rendent { ok:false } et le job meurt APRÈS le
+// débit, dans le content script — 3 clients touchés (01/08, 10/08 ×2).
+const PLATEFORMES_ADRESSE_LBC = ["leboncoin", "beebs"];
+
 // ── Multi-select photos sur ANDROID uniquement (2026-07-27) ──────────────────
 // L'<input type="file" multiple> de la WebView part en ACTION_GET_CONTENT vers
 // la galerie du constructeur, dont le multi-select exige un appui long — un tap
@@ -2186,7 +2195,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null, lbcPhotoCap = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null, lbcPhotoCap = null, lbcAdresseManquante = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -2331,6 +2340,25 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           son chemin gratuit — la publication échouait alors sans explication.
           On envoie les N premières et on le dit AVANT le clic. Informatif :
           ça ne bloque jamais la publication. */}
+      {/* Adresse de remise absente (2026-08-10) : Leboncoin et Beebs la
+          réclament à chaque dépôt et échouaient APRÈS le débit, dans le content
+          script. On le dit ici, AVANT le clic, et ces plateformes sortent du
+          lot publié (handlePublish) — les autres partent normalement.
+          Affiché uniquement sur une lecture ABOUTIE : tant qu'on ne sait pas,
+          la prop vaut null et rien ne change. */}
+      {lbcAdresseManquante && (
+        <div style={{ padding:"11px 14px", background:"#FDF6E3", border:"1px solid #EBD9A8", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#8A6100" }}>
+          <div style={{ fontWeight:700, marginBottom:4 }}>
+            {lang === "en"
+              ? `Pickup address missing — ${lbcAdresseManquante.plateformes.map(p => PLATFORM_LABELS[p] ?? p).join(" and ")} won't be published`
+              : `Adresse de remise manquante — ${lbcAdresseManquante.plateformes.map(p => PLATFORM_LABELS[p] ?? p).join(" et ")} ne partira pas`}
+          </div>
+          {lang === "en"
+            ? <>These marketplaces ask for a pickup address on every listing, and it isn't filled in yet. Open <strong>Settings ⚙️ → “Leboncoin pickup address”</strong>, enter your street, postal code and city, save, then come back. Nothing is charged for them in the meantime — the other selected marketplaces publish as usual.</>
+            : <>Ces plateformes réclament une adresse de remise à chaque annonce, et elle n'est pas encore renseignée. Va dans <strong>Réglages ⚙️ → « Adresse de remise Leboncoin »</strong>, saisis ta rue, ton code postal et ta ville, enregistre, puis reviens. Rien ne t'est débité pour elles en attendant — les autres plateformes cochées partent normalement.</>}
+        </div>
+      )}
+
       {lbcPhotoCap && (
         <div style={{ padding:"11px 14px", background:"#FDF6E3", border:"1px solid #EBD9A8", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#8A6100" }}>
           <div style={{ fontWeight:700, marginBottom:4 }}>
@@ -3929,6 +3957,50 @@ export default function ListingPreviewScreen({
     return { quota, total, categorie: path.join(" > ") };
   }, [selected, articleIcon, processedPhotos]);
 
+  // ── Adresse de remise manquante : on le dit AVANT le débit (2026-08-10) ────
+  // UNE seule lecture, UNE seule clé — la même que celle qui alimente
+  // platform_fields.adresse à l'insert (voir handlePublish). Surtout pas une
+  // seconde source : un faux positif ici bloquerait des gens qui ont bien
+  // renseigné leur adresse.
+  //
+  // ⚠️ TROIS ÉTATS, PAS DEUX. `chargee:false` = on ne SAIT pas encore, et on
+  // n'affirme donc RIEN : ni encart, ni blocage. Seule une lecture ABOUTIE
+  // rendant une valeur vide autorise à conclure. Une lecture en erreur
+  // (réseau) laisse le comportement d'avant : le job part, le handler
+  // tranchera — mieux vaut l'échec d'hier qu'un blocage injuste.
+  const [adresseLbc, setAdresseLbc] = useState({ chargee: false, valeur: null });
+
+  // Lecteur UNIQUE. Rend { lue } pour distinguer « lu, c'est vide » de
+  // « pas réussi à lire » — cette distinction EST la garde anti-faux-positif.
+  async function lireAdresseRemiseLbc() {
+    const { data: prof, error } = await supabase.from("profiles")
+      .select("platform_settings").eq("id", userId).maybeSingle();
+    if (error) return { lue: false, valeur: null };
+    return { lue: true, valeur: prof?.platform_settings?.leboncoin?.adresse || null };
+  }
+
+  // Chargement à l'arrivée sur l'écran Publier, et seulement si une plateforme
+  // concernée est cochée : personne d'autre ne paie cette requête.
+  useEffect(() => {
+    if (step !== 3) return;
+    if (![...selected].some(p => PLATEFORMES_ADRESSE_LBC.includes(p))) return;
+    let vivant = true;
+    lireAdresseRemiseLbc().then(r => {
+      if (!vivant || !r.lue) return;
+      setAdresseLbc({ chargee: true, valeur: r.valeur });
+    });
+    return () => { vivant = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, selected, userId]);
+
+  // null tant qu'on ne sait pas, ou dès qu'une adresse existe → aucun encart,
+  // aucun retrait de plateforme, comportement RIGOUREUSEMENT identique à avant.
+  const lbcAdresseManquante = useMemo(() => {
+    if (!adresseLbc.chargee || adresseLbc.valeur) return null;
+    const plateformes = [...selected].filter(p => PLATEFORMES_ADRESSE_LBC.includes(p));
+    return plateformes.length ? { plateformes } : null;
+  }, [adresseLbc, selected]);
+
   // Référentiels par catégorie, déclarés ICI (avant la garde qui les lit) —
   // leurs effets de chargement restent plus bas, à côté des encarts bleus
   // qu'ils nourrissaient déjà : ebayRequiredPreview = requis eBay COMPLETS de
@@ -5017,11 +5089,29 @@ export default function ListingPreviewScreen({
       // dédié dans l'app — on réutilise la même adresse d'expédition que
       // Leboncoin plutôt que dupliquer un champ Settings pour une seule
       // valeur physique identique.
+      //
+      // ── ET SI ELLE MANQUE, ON NE PUBLIE PAS CES PLATEFORMES (2026-08-10) ──
+      // Avant : le job partait, était DÉBITÉ, et n'échouait que dans le content
+      // script (« Adresse requise pour Leboncoin… »). precheckJob ne regardait
+      // que la catégorie. 3 clients l'ont vécu (01/08, 10/08 ×2).
+      // Lecture FRAÎCHE au clic — l'état du step 3 peut dater d'avant un
+      // aller-retour dans les Réglages, et quelqu'un qui vient de saisir son
+      // adresse ne doit surtout pas être bloqué par un état périmé.
+      // Lecture en ERREUR ⇒ on ne conclut rien et on repart sur le comportement
+      // d'avant (job envoyé, handler juge) : un faux positif coûterait plus cher
+      // à tout le monde que l'échec qu'on corrige ici.
       let lbcAddress = null;
-      if (selected.has("leboncoin") || selected.has("beebs")) {
-        const { data: prof } = await supabase.from("profiles")
-          .select("platform_settings").eq("id", userId).maybeSingle();
-        lbcAddress = prof?.platform_settings?.leboncoin?.adresse || null;
+      let plateformesSansAdresse = [];
+      const besoinAdresse = [...selected].filter(p => PLATEFORMES_ADRESSE_LBC.includes(p));
+      if (besoinAdresse.length) {
+        const lu = await lireAdresseRemiseLbc();
+        if (lu.lue) {
+          setAdresseLbc({ chargee: true, valeur: lu.valeur });
+          lbcAddress = lu.valeur;
+          if (!lbcAddress) plateformesSansAdresse = besoinAdresse;
+        } else if (adresseLbc.chargee) {
+          lbcAddress = adresseLbc.valeur;
+        }
       }
 
       // ── Auto-résolution du genre (2026-07-09) — remplace le blocage dur ──
@@ -5186,7 +5276,20 @@ export default function ListingPreviewScreen({
         if (aspects) pf[aspectsKey] = aspects;
       };
 
-      const rows = [...selected].map(platform => {
+      // Les plateformes sans adresse sortent AVANT la construction des jobs :
+      // spend_coins_and_publish calcule le débit sur `p_jobs`, donc ce qui ne
+      // rentre pas ici n'est ni inséré, ni facturé. Les autres partent
+      // normalement — on ne bloque que ce qui ne peut pas aboutir.
+      const plateformesAPublier = [...selected].filter(p => !plateformesSansAdresse.includes(p));
+      if (!plateformesAPublier.length) {
+        // Seules des plateformes sans adresse étaient cochées : rien à publier.
+        // Le CTA est déjà gris dans ce cas (publishChips), ce re-check attrape
+        // un état périmé ou une course. Aucune Pépite engagée.
+        throw new Error(lang === "en"
+          ? "Add your pickup address in Settings → “Leboncoin pickup address” before publishing on Leboncoin or Beebs."
+          : "Renseigne ton adresse dans Réglages → « Adresse de remise Leboncoin » avant de publier sur Leboncoin ou Beebs.");
+      }
+      const rows = plateformesAPublier.map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
         // Photos du JOB, par plateforme. Identiques à processedPhotos partout —
         // SAUF plafonnement Leboncoin (quota gratuit par feuille, cf. bloc LBC
@@ -5692,7 +5795,13 @@ export default function ListingPreviewScreen({
   const photoCount      = displayPreviews.length;
   const isLocked        = uploading || publishing || generatingPlatforms;
 
-  const publishChips = [...selected].filter(p => platformListings?.platforms?.[p]);
+  // Adresse de remise absente (2026-08-10) : ces plateformes ne partiront pas,
+  // elles ne doivent donc ni être comptées dans « Publier sur N » ni gonfler le
+  // total de Pépites affiché — « jamais un total faux ». lbcAdresseManquante
+  // vaut null tant qu'on ne sait pas : le compte reste alors celui d'avant.
+  const publishChips = [...selected]
+    .filter(p => platformListings?.platforms?.[p])
+    .filter(p => !(lbcAdresseManquante?.plateformes ?? []).includes(p));
 
   function ctaLabel() {
     if (step === 0) {
@@ -6032,6 +6141,7 @@ export default function ListingPreviewScreen({
             onPlatformDedicatedChange={setPlatformDedicatedField}
             pausedPlatforms={pausedPlatforms}
             lbcPhotoCap={lbcPhotoCap}
+            lbcAdresseManquante={lbcAdresseManquante}
           />
         )}
       </div>
