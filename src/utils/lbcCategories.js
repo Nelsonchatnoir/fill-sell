@@ -165,6 +165,42 @@ export function lbcCategoryStatus(icon) {
   return LBC_CATEGORIES[icon] ? "supported" : "unavailable";
 }
 
+// ── Quota de photos GRATUITES par feuille (relevé LIVE 2026-08-10) ──────────
+// Leboncoin n'offre PAS le même nombre de photos selon la catégorie. Au-delà du
+// quota, le dépôt bascule en COMMANDE PAYANTE (« Pack photos supplémentaires »,
+// 4 € relevé) et l'écran /deposer-une-annonce/options RETIRE le bouton
+// « Déposer sans booster mon annonce » : il ne reste que « Valider et payer ».
+// L'extension n'a alors plus AUCUNE sortie gratuite et échoue — correctement,
+// elle ne clique jamais un CTA qui mentionne un paiement.
+//
+// MESURÉ en direct, même compte, même écran, à la photo près :
+//   · Divers > Autres  → 3 emplacements (« Photo n° 1/2/3 »).
+//       4 photos ⇒ « 4 € · Voir détail · Valider et payer », aucun bouton
+//                  gratuit, pas même un « Retour » sur cette page ;
+//       3 photos ⇒ « Déposer sans booster mon annonce ». Rien d'autre ne change.
+//   · Mode > Vêtements → 20 emplacements (« Ajouter 20 photos »), AUCUN pack
+//       déclenché à 4 photos.
+// Corroboré en base : les 2 seuls échecs en Divers > Autres portaient 4 photos ;
+// côté Mode/Famille/Loisirs, 11 publications à 4 photos, 8 à 5, une à 7, une à 9
+// — toutes abouties.
+//
+// ⚠️ UNE SEULE FEUILLE EST PLAFONNÉE ICI, ET C'EST DÉLIBÉRÉ. Le quota des autres
+// catégories n'a PAS été mesuré. Ne rien généraliser sans relevé : un plafond
+// posé au jugé amputerait des annonces qui passent très bien aujourd'hui.
+const LBC_FREE_PHOTO_QUOTA = {
+  "Divers|Autres": 3,
+};
+
+/**
+ * @param {string[]|null|undefined} categoryPath — [racine, feuille] Leboncoin
+ * @returns {number|null} nombre de photos gratuites de la feuille, ou null si
+ *   le quota de cette catégorie n'a pas été relevé (⇒ aucun plafonnement)
+ */
+export function getLbcFreePhotoQuota(categoryPath) {
+  if (!Array.isArray(categoryPath) || categoryPath.length < 2) return null;
+  return LBC_FREE_PHOTO_QUOTA[`${categoryPath[0]}|${categoryPath[1]}`] ?? null;
+}
+
 // ── Critères obligatoires de Famille > Équipement bébé ──────────────────────
 // (relevé campagne dry-run 2026-07-08) La feuille exige DEUX critères
 // FONCTIONNELS bloquants à l'aperçu, indéductibles du genre :

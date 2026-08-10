@@ -14,7 +14,7 @@ import { Loader } from "./ui";
 import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { normalizeVintedColors } from "../utils/vintedColors";
-import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct } from "../utils/lbcCategories";
+import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 import { getPlatformSupport } from "../utils/platformCompat";
@@ -2186,7 +2186,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null, lbcPhotoCap = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -2326,6 +2326,24 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           seulement — on ne bloque jamais la publication. On n'affiche que ce
           qu'on SAIT : true → vert, false → rouge avec lien de connexion,
           null/périmé → rien (jamais de fausse assurance, cas Beebs SPA). */}
+      {/* Plafond photos Leboncoin (2026-08-10) : au-delà du quota gratuit de la
+          catégorie, Leboncoin facture un pack photos et son dernier écran perd
+          son chemin gratuit — la publication échouait alors sans explication.
+          On envoie les N premières et on le dit AVANT le clic. Informatif :
+          ça ne bloque jamais la publication. */}
+      {lbcPhotoCap && (
+        <div style={{ padding:"11px 14px", background:"#FDF6E3", border:"1px solid #EBD9A8", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#8A6100" }}>
+          <div style={{ fontWeight:700, marginBottom:4 }}>
+            {lang === "en"
+              ? `Leboncoin: only ${lbcPhotoCap.quota} free photos in this category`
+              : `Leboncoin : ${lbcPhotoCap.quota} photos gratuites seulement dans cette catégorie`}
+          </div>
+          {lang === "en"
+            ? `Your item is filed under “${lbcPhotoCap.categorie}”, where Leboncoin includes ${lbcPhotoCap.quota} photos and charges for the rest. Only the first ${lbcPhotoCap.quota} of your ${lbcPhotoCap.total} photos will be sent — the other platforms get all ${lbcPhotoCap.total}. Reorder them at the photos step if you want different ones.`
+            : `Ton article est rangé en « ${lbcPhotoCap.categorie} », où Leboncoin n'inclut que ${lbcPhotoCap.quota} photos et fait payer les suivantes. Seules les ${lbcPhotoCap.quota} premières de tes ${lbcPhotoCap.total} photos partiront — les autres plateformes reçoivent bien les ${lbcPhotoCap.total}. Remets-les dans l'ordre à l'étape photos si tu préfères en envoyer d'autres.`}
+        </div>
+      )}
+
       {platformSessions && chips.some(p => platformSessions[p] === false) && (
         <div style={{ padding:"11px 14px", background:"#FBEDEC", border:"1px solid #EFC2BE", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#8C2F28" }}>
           <div style={{ fontWeight:700, marginBottom:4 }}>
@@ -3895,6 +3913,22 @@ export default function ListingPreviewScreen({
     });
   }, [edited, initialListing, activeAiIcon]);
 
+  // ── Plafond photos Leboncoin : on le DIT avant de publier (2026-08-10) ─────
+  // handlePublish plafonne le job à l'insert ; sans cet encart, l'utilisateur
+  // verrait 6 photos à l'écran et 3 en ligne, sans jamais savoir pourquoi.
+  // Même résolution d'icône que les mappings catalogue, et même quota relevé
+  // (getLbcFreePhotoQuota — une seule feuille aujourd'hui, cf. son commentaire).
+  // La route « Vêtements bébé » ne peut pas invalider ce calcul : elle ne se
+  // déclenche que depuis lbcPath[0] === "Mode", jamais depuis Divers > Autres.
+  const lbcPhotoCap = useMemo(() => {
+    if (!selected.has("leboncoin")) return null;
+    const path = getLbcCategoryPath(articleIcon);
+    const quota = getLbcFreePhotoQuota(path);
+    const total = Array.isArray(processedPhotos) ? processedPhotos.length : 0;
+    if (quota == null || total <= quota) return null;
+    return { quota, total, categorie: path.join(" > ") };
+  }, [selected, articleIcon, processedPhotos]);
+
   // Référentiels par catégorie, déclarés ICI (avant la garde qui les lit) —
   // leurs effets de chargement restent plus bas, à côté des encarts bleus
   // qu'ils nourrissaient déjà : ebayRequiredPreview = requis eBay COMPLETS de
@@ -5154,6 +5188,10 @@ export default function ListingPreviewScreen({
 
       const rows = [...selected].map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
+        // Photos du JOB, par plateforme. Identiques à processedPhotos partout —
+        // SAUF plafonnement Leboncoin (quota gratuit par feuille, cf. bloc LBC
+        // plus bas). Aucune autre plateforme n'y touche.
+        let rowPhotos = processedPhotos;
         // Dernier filet avant l'insert du job : un état vidé à la main (ou un
         // `edited` venant d'un chemin qui n'est pas passé par
         // mergeFieldsWithLens) ne part JAMAIS vide vers l'extension.
@@ -5216,6 +5254,32 @@ export default function ListingPreviewScreen({
           // Mixte → filet sans friction quand l'IA n'a pas tranché.
           if (!pf.univers && lbcPath?.[0] === "Mode" &&
               pf.lbcCategoryPath?.[1] !== "Vêtements bébé") pf.univers = "Mixte";
+          // ── Quota de photos GRATUITES (2026-08-10, cause de l'échec du job
+          // ad915ed5) ───────────────────────────────────────────────────────
+          // Relevé LIVE : en Divers > Autres, Leboncoin n'offre que 3 photos.
+          // Dès la 4e, le dépôt devient une commande payante (« Pack photos
+          // supplémentaires », 4 €) et son écran /options RETIRE le bouton
+          // « Déposer sans booster mon annonce » — il ne reste que « Valider et
+          // payer », que l'extension refuse de cliquer (à raison). Résultat :
+          // « écran post-aperçu non reconnu », publication perdue.
+          // On envoie donc au JOB les 3 premières photos seulement, et
+          // uniquement pour CETTE feuille : getLbcFreePhotoQuota ne connaît que
+          // les quotas RELEVÉS (cf. son commentaire — Mode publie jusqu'à 9
+          // photos, mesuré en base, il n'est pas question de l'amputer).
+          // Placé en FIN de bloc : lbcCategoryPath peut avoir été réécrit
+          // au-dessus (route « Vêtements bébé »), c'est la valeur FINALE qui
+          // décide. Les autres plateformes gardent processedPhotos intact.
+          const quotaPhotosLbc = getLbcFreePhotoQuota(pf.lbcCategoryPath);
+          if (quotaPhotosLbc != null && Array.isArray(processedPhotos) &&
+              processedPhotos.length > quotaPhotosLbc) {
+            pf.lbcPhotosOriginales = processedPhotos.length;
+            pf.lbcPhotosCapped = true;
+            rowPhotos = processedPhotos.slice(0, quotaPhotosLbc);
+            console.log(
+              `[publish] Leboncoin ${pf.lbcCategoryPath.join(" > ")} : ` +
+              `${processedPhotos.length} photos → ${quotaPhotosLbc} (quota gratuit de la catégorie)`
+            );
+          }
         }
         if (platform === "vinted") {
           // Chemin catalogue Vinted calculé à l'insert : icône objet (mêmes
@@ -5346,7 +5410,7 @@ export default function ListingPreviewScreen({
           title:           edited[platform]?.title           ?? "",
           description:     edited[platform]?.description     ?? "",
           price:           edited[platform]?.price           ?? price,
-          photos:          processedPhotos,
+          photos:          rowPhotos,
           platform_fields: pf,
         };
       });
@@ -5967,6 +6031,7 @@ export default function ListingPreviewScreen({
             onPlatformAspectChange={setPlatformAspect}
             onPlatformDedicatedChange={setPlatformDedicatedField}
             pausedPlatforms={pausedPlatforms}
+            lbcPhotoCap={lbcPhotoCap}
           />
         )}
       </div>
