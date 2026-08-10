@@ -1623,6 +1623,61 @@ async function processJob(rawJob, accessToken) {
       // à la redirection (succès) comme à l'absence de redirection (refus).
       if (job.platform === "ebay") {
         const verdict = await verifyEbaySubmission(tabId, 20_000, job, accessToken);
+        // ── PREUVE DE SORTIE PERSISTÉE (2026-08-10) ───────────────────────────
+        // Jusqu'ici, `published` s'écrivait sans que rien ne dise LAQUELLE des
+        // sorties de verifyEbaySubmission avait servi. Sur le job 56c15a53 il a
+        // fallu un dépôt eBay réel pour éliminer les hypothèses, et on n'a
+        // toujours pas pu trancher. Clés purement OBSERVATIONNELLES : elles ne
+        // changent aucune décision, elles rendent la prochaine enquête lisible
+        // en une requête. Mutation de la COPIE MÉMOIRE (même règle que
+        // processing_since / last_diagnostic) : toutes les écritures terminales
+        // repartent de job.platform_fields, la valeur part donc en base avec le
+        // verdict, y compris sur les jobs RÉUSSIS.
+        //   publish_proof.exit : 'notice_url' | 'notice_no_url' |
+        //     'server_response' | 'hub_title' | 'tab_gone' | 'path_left_lstng' |
+        //     'form_refused' | 'timeout_unconfirmed'
+        if (verdict.proof) {
+          job.platform_fields = {
+            ...(job.platform_fields ?? {}),
+            publish_proof: {
+              exit: verdict.proof,
+              at: new Date().toISOString(),
+              final_path: verdict.state?.path ?? null,
+              overlay_present: verdict.state?.overlay_present ?? null,
+              bot_shield_after_submit: verdict.state?.bot_shield_after_submit ?? null,
+              listing_url_capturee: Boolean(verdict.listingUrl),
+            },
+          };
+        }
+        // ── Sortie « formulaire quitté » : TERMINALE, jamais ré-armée ─────────
+        // MESURÉ : un succès eBay ne quitte pas /lstng (cf. verifyEbaySubmission).
+        // Quitter /lstng signe donc un captcha, une page de connexion ou une
+        // page d'erreur — pas une annonce. On ferme le job en `failed` :
+        //   · PAS `published` — c'était le mensonge, aucune annonce n'existe ;
+        //   · PAS `pending` — get-pending-jobs ne distribue que pending/
+        //     processing/needs_user : ré-armer, c'est re-déposer, donc risquer
+        //     le second dépôt payant. Vérifié : aucun chemin de relance
+        //     automatique ne lit `failed` (get-pending-jobs, recoverStale…
+        //     `status=eq.processing`, recoverMissingListingUrls et
+        //     checkPublishedListings `status=eq.published`, handler-watch lit
+        //     `failed` pour ALERTER seulement, email-tunnel `status=eq.pending`).
+        // La Pépite est rendue par le release sur job terminal en échec : aucun
+        // code de remboursement ici.
+        if (verdict.fatal) {
+          const msgFatal =
+            "Publication eBay NON aboutie : l'onglet a quitté le formulaire " +
+            `(${verdict.state?.path ?? "page inconnue"}) sans que l'annonce soit confirmée` +
+            (verdict.state?.bot_shield_after_submit ? " — eBay a servi une vérification anti-robot" : "") +
+            ". Aucune annonce n'a été créée. Vérifier « Vendre > Annonces actives » sur eBay " +
+            "AVANT de relancer, pour ne pas déposer deux fois.";
+          console.warn(`[background] Job ${job.id} : ${msgFatal}`);
+          await updateJobStatus(accessToken, job.id, "failed", {
+            error: msgFatal,
+            platform_fields: job.platform_fields,
+          });
+          await recordRecentResult(job, "failed", msgFatal).catch(() => {});
+          return { status: "failed", error: msgFatal };
+        }
         if (verdict.error) {
           console.warn(`[background] Job ${job.id} : ${verdict.error}${verdict.diagnostic ?? ""}`);
           // Annexe sonde/popup → last_diagnostic (rearmBounded repart de
@@ -3067,12 +3122,31 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     // Onglet disparu : impossible d'observer quoi que ce soit — on n'invente
     // pas un refus (captureListingUrl rendra listing_url null, c'est tout).
-    if (!tab) return { error: null, listingUrl: null };
+    if (!tab) return { error: null, listingUrl: null, proof: "tab_gone", state: null };
     let path = "";
     try {
       path = new URL(tab.url || "").pathname;
     } catch { /* URL interne (chrome://) : on continue d'attendre */ }
-    if (path && !/\/lstng/.test(path)) return { error: null, listingUrl: null }; // formulaire quitté : soumission partie
+    // ⚠️ « FORMULAIRE QUITTÉ » N'EST PLUS UNE PREUVE DE SUCCÈS (2026-08-10).
+    // MESURÉ sur un dépôt réel (annonce 800486036114, cat. 21205) : quand eBay
+    // publie, il NE NAVIGUE PAS — il reste sur /lstng et ouvre
+    // div.diy--sidepane.success-overlay, qui porte le lien /itm/. Quitter
+    // /lstng ne peut donc signer qu'autre chose : captcha /splashui/, page de
+    // connexion, page d'erreur. Ce chemin rendait `published` sans URL et sans
+    // annonce (job 56c15a53, 10/08).
+    // Verdict TERMINAL, jamais un ré-armement : `fatal` court-circuite
+    // rearmBounded côté appelant — un job re-mis en pending re-déposerait, et
+    // un second dépôt payant est précisément ce qu'on refuse. La Pépite est
+    // rendue par le release sur job terminal en échec, rien à écrire ici.
+    if (path && !/\/lstng/.test(path)) {
+      return {
+        error: null,
+        listingUrl: null,
+        proof: "path_left_lstng",
+        fatal: true,
+        state: await readEbayPostSubmitState(tabId),
+      };
+    }
 
     // ⚠️⚠️ LE SUCCÈS SE LIT AVANT L'ERREUR (2026-07-12) — bug le plus dangereux
     // trouvé jusqu'ici. readVisibleEbayErrors ratisse tout .page-notice /
@@ -3100,7 +3174,16 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
       let successUrl = success.listingUrl;
       const sm = String(successUrl ?? "").match(/\/itm\/(\d{9,})/);
       if (sm && await ebayIdAlreadyKnown(accessToken, sm[1])) successUrl = null;
-      return { error: null, listingUrl: successUrl };
+      return {
+        error: null,
+        listingUrl: successUrl,
+        // Distinguer les deux est le nerf de l'enquête : `notice_no_url` = la
+        // modale a bien été lue mais aucun /itm/ n'en est sorti (markup changé,
+        // ou id écarté par la garde anti-croisement) — c'est ce cas-là qui
+        // fabrique un published sans URL alors que l'annonce EXISTE.
+        proof: successUrl ? "notice_url" : "notice_no_url",
+        state: await readEbayPostSubmitState(tabId),
+      };
     }
 
     // 2e PREUVE (2026-07-13) : la RÉPONSE SERVEUR. eBay publie en affichant une
@@ -3112,7 +3195,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     if (served) {
       console.log(`[background] eBay : publication CONFIRMÉE par la réponse serveur (${served})`);
       await closeEbayPostPublishPopup(tabId);
-      return { error: null, listingUrl: served };
+      return { error: null, listingUrl: served, proof: "server_response", state: await readEbayPostSubmitState(tabId) };
     }
 
     const errors = await readVisibleEbayErrors(tabId);
@@ -3123,6 +3206,8 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
           `« ${errors.join(" | ")} » — l'onglet de travail est resté sur le formulaire, ` +
           "le job repartira au prochain passage.",
         listingUrl: null,
+        proof: "form_refused",
+        state: await readEbayPostSubmitState(tabId),
       };
     }
     await sleep(1000);
@@ -3145,7 +3230,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     const viaListings = await ebayConfirmViaActiveListings(tabId, job.title).catch(() => null);
     if (viaListings) {
       console.log(`[background] eBay : publication CONFIRMÉE par les annonces actives (${viaListings})`);
-      return { error: null, listingUrl: viaListings };
+      return { error: null, listingUrl: viaListings, proof: "hub_title", state: await readEbayPostSubmitState(tabId) };
     }
   }
 
@@ -3160,6 +3245,8 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
       "actives du vendeur — job NON marqué publié, il repartira au prochain passage.",
     diagnostic: await readEbayFailureDiagnostics(tabId),
     listingUrl: null,
+    proof: "timeout_unconfirmed",
+    state: await readEbayPostSubmitState(tabId),
   };
 }
 
@@ -3240,6 +3327,48 @@ async function readEbayFailureDiagnostics(tabId) {
   } catch { /* pur logging : jamais bloquant */ }
 
   return ` [sonde réseau : ${sonde}${popup}]`;
+}
+
+// ── État de l'onglet AU MOMENT DU VERDICT (2026-08-10) ──────────────────────
+// Trois relevés, en UNE injection, purement observationnels : ils ne décident
+// de RIEN, ils expliquent après coup.
+//   · path    : le chemin réel — c'est lui qui distingue « resté sur /lstng »
+//               de « parti ailleurs », et il manquait à chaque enquête ;
+//   · overlay : la modale de succès est-elle présente dans le DOM ? MESURÉ le
+//               2026-08-10 sur un dépôt réel (annonce 800486036114) : le succès
+//               eBay est un div.diy--sidepane.success-overlay qui contient le
+//               lien /itm/, et l'onglet NE QUITTE JAMAIS /lstng ;
+//   · botShield : copie EXACTE des deux marqueurs décisifs de
+//               estPageBotShieldEbay (ebay.js) — path /splashui/ et formulaire
+//               captcha maison. Duplication par copie assumée (ADR-03) : le
+//               prédicat vit dans le content script, qui est mort ou hors sujet
+//               une fois la page changée. Jusqu'ici il n'était évalué QU'À
+//               L'ENTRÉE de fillListingForm : si eBay servait un challenge
+//               APRÈS le clic, plus personne ne regardait.
+// Best-effort INTÉGRAL : toute erreur rend des nulls, jamais d'exception — ce
+// lecteur ne doit pouvoir casser aucune publication.
+async function readEbayPostSubmitState(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    let path = null;
+    if (tab?.url) { try { path = new URL(tab.url).pathname; } catch { /* URL interne */ } }
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => ({
+        overlay: Boolean(document.querySelector('[class*="success-overlay" i], [class*="sidepane" i]')),
+        botShield:
+          location.pathname.includes("/splashui/") ||
+          Boolean(document.querySelector('#captcha_form, form[action*="captcha_submit"], .target-icaptcha-slot')),
+      }),
+    });
+    return {
+      path,
+      overlay_present: res?.result?.overlay ?? null,
+      bot_shield_after_submit: res?.result?.botShield ?? null,
+    };
+  } catch {
+    return { path: null, overlay_present: null, bot_shield_after_submit: null };
+  }
 }
 
 // Popup post-publication eBay (« Votre annonce est désormais publiée sur le
