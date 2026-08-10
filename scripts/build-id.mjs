@@ -152,7 +152,17 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // 973972f (eBay : « formulaire quitté » terminal + publish_proof).
 // EXTENSION_MIN_BUILD reste sur la 0.5.6 tant que la review n'est pas ACCEPTÉE
 // — on ne réclame jamais au parc une version que personne ne peut installer.
-export const EXTENSION_LAST_COMMIT = '2026-08-10T15:10:46Z';
+// 2026-08-10T16:48:13Z = 7ce3a3f : un refus SERVEUR nommé de Vinted (HTTP 400
+// sur /api/v2/item_upload/items, errors[{field}]) devient un needs_user au lieu
+// d'un échec sec. Mesuré : les 4 seuls jobs ayant porté server_required_fields
+// sont tous en `failed` — le champ était nommé sur la ligne et personne ne
+// pouvait y répondre. Vinted SEUL, champs non résolubles exclus
+// (title/description/price/photos/catalog_id/package_size_id restent failed et
+// remboursés), plafond needsUserAttempts inchangé. Ni la modale de l'app ni le
+// chemin de publication ne bougent. ⚠️ POSTÉRIEUR au paquet
+// fillsell-extension-0.5.9-cws.zip construit à 15:11:47Z : ce zip ne contient
+// PAS ce correctif.
+export const EXTENSION_LAST_COMMIT = '2026-08-10T16:48:13Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
