@@ -127,7 +127,22 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // suppressions Vinted depuis le 05/08 ont toutes pris le vrai chemin (csrf ok,
 // HTTP 200), aucune donnée à réparer. Toujours la 0.5.8 — non soumise au Chrome
 // Web Store, donc EXTENSION_MIN_BUILD reste sur la 0.5.6.
-export const EXTENSION_LAST_COMMIT = '2026-08-10T11:45:00Z';
+// 2026-08-10T14:15:00Z = 973972f : « formulaire quitté » n'est plus une preuve
+// de publication eBay. MESURÉ sur un dépôt réel (annonce 800486036114) : quand
+// eBay publie, il NE NAVIGUE PAS — il reste sur /lstng et ouvre
+// div.diy--sidepane.success-overlay, qui porte le lien /itm/. La sortie
+// « path != /lstng » de verifyEbaySubmission ne pouvait donc signer qu'un
+// captcha, une connexion ou une erreur ; elle rendait pourtant `published` sans
+// URL et sans annonce (job 56c15a53). Elle devient TERMINALE (`failed`), jamais
+// ré-armée — re-mettre en pending, c'est re-déposer, et un second dépôt payant
+// est exactement ce qu'on refuse. S'y ajoute platform_fields.publish_proof
+// (laquelle des sorties a servi, chemin final, présence de l'overlay, et
+// bot_shield_after_submit — le prédicat anti-robot n'était évalué qu'à l'ENTRÉE
+// de fillListingForm, donc plus personne ne regardait après le clic).
+// Observation pure sur ce dernier point : aucune décision ne change.
+// Toujours la 0.5.8 — non soumise au Chrome Web Store, donc
+// EXTENSION_MIN_BUILD reste sur la 0.5.6.
+export const EXTENSION_LAST_COMMIT = '2026-08-10T14:15:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
