@@ -1751,12 +1751,61 @@ async function processJob(rawJob, accessToken) {
       // ce que l'app lit pour proposer la saisie manuelle avec le libellé
       // EXACT au lieu d'un échec opaque (chantier champs obligatoires).
       if (result?.serverRequired?.length) {
+        // Le relevé reste posé quoi qu'il arrive : c'est lui qui alimente le
+        // catalogue (source server_400) et qui documente le refus en base.
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          server_required_fields: result.serverRequired,
+        };
+        // ── UN REFUS SERVEUR NOMMÉ DEVIENT UN needs_user (2026-08-10) ────────
+        // Mesuré en base : 4 jobs ont porté server_required_fields, TOUS en
+        // `failed` — le refus 400 de Vinted n'alimentait donc jamais le
+        // mini-éditeur, alors qu'il nomme le champ exact (job db33a92f :
+        // field="color", « Le champ Couleur doit être renseigné », après un
+        // premier needs_user déjà résolu sur la taille).
+        // Trois gardes, dans cet ordre :
+        //   1. VINTED SEUL. serverRequired est aussi produit par leboncoin.js ;
+        //      son chemin reste EXACTEMENT celui d'aujourd'hui.
+        //   2. CHAMP RÉELLEMENT RÉSOLUBLE. Un 400 sur title/description/price/
+        //      photos/catalog_id/package_size_id ne se corrige pas en
+        //      choisissant une valeur dans une modale — l'y envoyer bloquerait
+        //      la Pépite sur un champ sans issue. Ceux-là restent `failed`,
+        //      remboursés comme aujourd'hui. Tout le reste est un code
+        //      d'attribut : soit ponté vers un champ dédié (_bridge de
+        //      vinted.js : brand, model, condition, material, size, sim_lock,
+        //      internal_memory_capacity), soit `color` (ponté vers fields.colors),
+        //      soit consommé par la boucle générique vintedAspects — c'est
+        //      précisément ce que le 400 sert à DÉCOUVRIR, on ne ferme donc pas
+        //      la porte aux codes inconnus.
+        //   3. PLAFOND EXISTANT, inchangé : needsUserAttempts < 2. Atteint →
+        //      `failed`, donc réservation soldée et Pépite rendue, comme avant.
+        // Aucun risque de second dépôt : ce chemin n'est atteint QUE sur un 400
+        // de validation lu dans la réponse de /api/v2/item_upload/items
+        // (readServerValidationErrors n'accepte que status >= 400) — Vinted dit
+        // lui-même que l'annonce n'a pas été créée.
+        const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id"]);
+        const champ = job.platform === "vinted"
+          ? result.serverRequired.find((f) => f?.key && !NON_RESOLUBLES.has(String(f.key)))
+          : null;
+        const tentatives = Number(job.platform_fields?.needsUserAttempts ?? 0);
+        if (champ && tentatives < MAX_NEEDS_USER_RETRIES) {
+          job.platform_fields = { ...job.platform_fields, needsUserAttempts: tentatives + 1 };
+          await markNeedsUser(accessToken, job, {
+            error: base + probe,
+            needsUserField: {
+              field_key: champ.key,
+              field_label: champ.label || champ.key,
+              // Cible d'écriture du mini-éditeur : vintedAspects.<code serveur>.
+              // C'est le canal que vinted.js relit (pont dédié, cas `color`, ou
+              // boucle générique) — la modale de l'app n'a rien à apprendre.
+              target: { root: "vintedAspects", key: champ.key },
+            },
+          });
+          return { status: "needsUser", error: base };
+        }
         await updateJobStatus(accessToken, job.id, "failed", {
           error: base + probe,
-          platform_fields: {
-            ...(job.platform_fields ?? {}),
-            server_required_fields: result.serverRequired,
-          },
+          platform_fields: job.platform_fields,
         });
         return { status: "failed", error: base };
       }
