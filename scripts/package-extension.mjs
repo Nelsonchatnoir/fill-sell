@@ -63,7 +63,19 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // natif + garde photos) ; la 0.5.2, empaquetée le 07/08, a été remplacée par
 // la 0.5.3 avant d'aller au bout — la re-packager ne servirait qu'à se faire
 // rejeter. La 0.5.4 les remplace.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5'];
+// 0.5.6, 0.5.7 et 0.5.8 ajoutées le 10/08 — RATTRAPAGE, même nature que celui
+// de la 0.4.6 : la liste était en retard de TROIS versions et ne protégeait
+// donc plus de rien. Preuve en base, relevé sur 7 jours de heartbeats
+// (profiles.extension_version / extension_build) :
+//   0.5.8 → 5 comptes, build 2026-08-09T19:39:31Z+f6a00c5 (dont un utilisateur
+//           externe installé depuis le CWS 4 min après son inscription) ;
+//   0.5.6 → 1 compte, build 2026-08-09T14:16:20Z+349d45a.
+// La 0.5.7 n'a pas d'install au compteur : empaquetée puis remplacée par la
+// 0.5.8 avant d'aller au bout — inscrite ici par prudence, la re-packager ne
+// servirait qu'à se faire rejeter.
+// Sans ces trois lignes, la garde « version jamais publiée » laissait passer un
+// paquet 0.5.8 et c'est le Chrome Web Store qui refusait, APRÈS coup.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
