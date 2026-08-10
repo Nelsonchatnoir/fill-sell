@@ -676,6 +676,14 @@ async function capturerAnnonceVinted(vintedItemId) {
   // il porte un libellé, et cet appel n'est plus tenté que si un libellé
   // manque encore. Un endpoint mort ne coûte plus une requête par capture, et
   // s'il revient un jour on en profite sans rien changer.
+  // ⚠️ SON 404 NE DIT RIEN DE L'ARTICLE (marqueur posé le 2026-08-10). Second
+  // et dernier appelant de cet endpoint mort dans tout le dépôt. Il ne tire
+  // aucune conclusion fausse — un dto absent laisse simplement le libellé dans
+  // `champs_manquants`, ce qui est exact — mais sa ligne de `diagnostics`
+  // affiche un « 404 » qui se lit trop facilement comme « l'annonce n'existe
+  // plus ». Elle est donc explicitement étiquetée : c'est cette confusion-là
+  // qui a coûté une heure d'enquête sur le cas Sam (10/08). Aucune sonde
+  // d'existence ne doit JAMAIS être rebâtie sur cette réponse.
   let dtoPublic = null;
   let dtoTente = false;
   const lireDtoPublic = async () => {
@@ -688,6 +696,13 @@ async function capturerAnnonceVinted(vintedItemId) {
       diagnostics,
       { memoiser: false },
     );
+    if (!dtoPublic) {
+      diagnostics.push({
+        cle: `dto_public_${vintedItemId}`,
+        note: "repli de LIBELLÉS non concluant — endpoint GET /api/v2/items/{id} mort depuis le 05/08 " +
+          "(404 + corps HTML pour tout article, vivant ou non). Ne dit RIEN de l'existence de l'annonce.",
+      });
+    }
     return dtoPublic;
   };
 
@@ -859,25 +874,30 @@ function getVintedCookie(name) {
 // vérifié en direct). La requête partait alors SANS en-tête X-CSRF-Token, Vinted
 // répondait 403, et on annonçait « session invalide, se reconnecter » sur une
 // session parfaitement valide — pour une suppression qui avait en fait RÉUSSI.
-// On ne devine plus : on demande à l'API.
-async function vintedItemPresent(itemId, t) {
-  try {
-    const r = await fetch(`/api/v2/items/${itemId}`, {
-      headers: { Accept: "application/json" },
-      credentials: "include",
-    });
-    t(`sonde article /api/v2/items/${itemId} → HTTP ${r.status}`);
-    if (r.status === 404) return "absent";
-    if (r.ok) return "present";
-    return "inconnu";
-  } catch (e) {
-    t(`sonde article impossible : ${String(e?.message ?? e)}`);
-    return "inconnu";
-  }
-}
-
+//
+// ⛔ SONDE D'EXISTENCE SUPPRIMÉE LE 2026-08-10 — NE PAS LA RÉÉCRIRE ICI.
+// `vintedItemPresent` interrogeait GET /api/v2/items/{id} et lisait « 404 =
+// absent ». Cet endpoint est MORT depuis le 05/08 : il rend 404 avec un corps
+// HTML pour TOUT article, vivant ou non (mesuré ; cf. le bandeau de
+// lireDtoPublic). La sonde répondait donc « absent » pour la terre entière, et
+// faisait conclure « déjà supprimé » sur des annonces bel et bien en ligne.
+// Elle est retirée plutôt que neutralisée : un stub qui rend « indéterminé »
+// laisserait dans ce fichier une fonction nommée `vintedItemPresent`, c'est-à-
+// dire une capacité APPARENTE que le prochain lecteur rebrancherait de bonne
+// foi. Mieux vaut une absence visible qu'une sonde décorative.
+//
+// Il n'y a PAS de remplaçante ici, et c'est délibéré : /api/v2/item_upload/
+// items/{id} est vivant (lireDetailArticle s'en sert), mais son comportement
+// sur un article SUPPRIMÉ n'a jamais été mesuré — remplacer une sonde morte par
+// une sonde supposée, c'est refaire exactement le bug qu'on corrige.
+// Le besoin est couvert ailleurs, et mieux : le background lit l'état réel de
+// l'annonce (checkListingState sur listing_url, le lecteur du poll de détection
+// de vente) pour TOUT résultat non-success, et lui seul conclut à une
+// suppression — cf. processDeleteJob, delete_confirmed_by='etat_annonce'.
+//
 // « Se reconnecter » ne doit être conseillé QUE si la session est réellement
-// morte — c'est /users/current qui tranche, pas le code d'erreur du delete.
+// morte — c'est /users/current qui tranche (endpoint VIVANT, celui de la sonde
+// de session), pas le code d'erreur du delete.
 async function vintedSessionEtat(t) {
   try {
     const r = await fetch("/api/v2/users/current", {
@@ -929,21 +949,40 @@ async function deleteListing(job) {
     return { success: true, dryRun: true, found: true, trace };
   }
 
-  // Jeton absent = on n'envoie RIEN. Envoyer quand même produisait un 403 qu'on
-  // interprétait à contresens. Deux cas seulement, et on les distingue :
-  //   · l'article n'existe plus  → la suppression est acquise (idempotent) ;
-  //   · l'article existe encore  → page non hydratée, on le dit tel quel.
+  // Jeton absent = on n'envoie RIEN, et surtout ON NE CONCLUT RIEN.
+  //
+  // ⚠️ CORRIGÉ LE 2026-08-10 — ce bloc a été destructif jusqu'à cette date.
+  // Il déduisait « suppression acquise » d'une sonde GET /api/v2/items/{id},
+  // endpoint MORT depuis le 05/08 : il rend 404 avec un corps HTML pour TOUT
+  // article, vivant ou non (mesuré, cf. le bandeau de lireDtoPublic plus haut).
+  // La sonde répondait donc « absent » pour la terre entière. Or l'autre cause
+  // d'un CSRF manquant — celle que ce code existait PRÉCISÉMENT pour distinguer
+  // — est une page NON HYDRATÉE sur une annonce toujours en ligne. Résultat :
+  // FillSell annonçait une suppression réussie, l'article sortait du stock du
+  // vendeur, et l'annonce restait en ligne sur Vinted. En silence — le vendeur
+  // ne l'aurait découvert qu'en recevant une commande.
+  //
+  // RÈGLE GÉNÉRALE, à ne plus enfreindre : une suppression n'est ACQUISE que
+  // sur une preuve POSITIVE — un HTTP 200 sur /api/v2/items/{id}/delete (cet
+  // endpoint-LÀ est bien vivant), ou une lecture fiable montrant l'annonce
+  // absente. Une sonde qui échoue n'est pas une preuve.
+  //
+  // Ce qui prend le relais existait déjà, et vaut mieux que ce qu'on retire :
+  // le background rappelle checkListingState sur listing_url pour TOUT résultat
+  // non-success, needsUser compris (processDeleteJob) ; il conclut 'deleted'
+  // (delete_confirmed_by='etat_annonce') sur unavailable/sold, et ré-arme
+  // sinon (rearmBounded : reprise au cycle suivant, puis 'failed' au plafond).
+  // Le cas « annonce déjà supprimée » reste donc traité — par un lecteur
+  // éprouvé en production, au lieu d'un endpoint mort.
   if (!csrf) {
-    if ((await vintedItemPresent(itemId, t)) === "absent") {
-      t("article absent de l'API : il était DÉJÀ supprimé → suppression acquise");
-      return { success: true, alreadyGone: true, trace };
-    }
+    t("jeton CSRF absent — état de l'annonce NON DÉTERMINÉ ici (aucune sonde fiable disponible) ; requête de suppression NON envoyée");
     return {
       success: false,
       needsUser: true,
       error:
         "Jeton CSRF Vinted introuvable sur la page (page 404 ou non hydratée) — " +
-        "requête de suppression NON envoyée. L'annonce n'a pas été touchée.",
+        "requête de suppression NON envoyée. L'annonce n'a pas été touchée, et son état " +
+        "n'a PAS été déterminé ici : le background le vérifie sur la page de l'annonce.",
       trace,
     };
   }
@@ -966,16 +1005,17 @@ async function deleteListing(job) {
     }
     // 401/403 : refus. On ne conclut plus « session invalide » par réflexe — on
     // journalise le corps (c'est lui qui distingue un refus CSRF d'un blocage
-    // anti-bot), puis on demande à l'API si l'article est encore là, et enfin si
-    // la session est vraiment morte.
+    // anti-bot), puis on demande si la session est vraiment morte.
+    // ⚠️ 2026-08-10 : la sonde d'existence qui s'intercalait ici a été RETIRÉE,
+    // pour la même raison que dans la branche sans CSRF — elle interrogeait un
+    // endpoint mort, rendait « absent » pour tout le monde, et transformait un
+    // refus CSRF ou anti-bot en « suppression déjà effective ». Un REFUS n'est
+    // pas une preuve de suppression. L'état réel est lu par le background, sur
+    // la page de l'annonce.
     if (resp.status === 401 || resp.status === 403) {
       const corps = (await resp.text().catch(() => "")).slice(0, 300);
       t(`corps du refus : ${corps || "(vide)"}`);
-
-      if ((await vintedItemPresent(itemId, t)) === "absent") {
-        t("article absent de l'API malgré le refus : suppression déjà effective");
-        return { success: true, alreadyGone: true, trace };
-      }
+      t("refus reçu — état de l'annonce NON DÉTERMINÉ ici ; aucune suppression conclue");
 
       const session = await vintedSessionEtat(t);
       return {

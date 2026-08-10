@@ -115,7 +115,19 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // qu'une disparition était en cours de confirmation, et elle partait en silence.
 // Toujours la 0.5.8 — aucune de ces versions n'est soumise au Chrome Web Store,
 // donc EXTENSION_MIN_BUILD reste sur la 0.5.6.
-export const EXTENSION_LAST_COMMIT = '2026-08-10T11:30:00Z';
+// 2026-08-10T11:45:00Z : la sonde d'existence Vinted est SUPPRIMÉE. Elle lisait
+// GET /api/v2/items/{id} — mort depuis le 05/08 (404 + corps HTML pour TOUT
+// article, vivant ou non) — et rendait donc « absent » pour la terre entière.
+// Sur le chemin destructif, un jeton CSRF manquant (l'autre cause étant une page
+// NON HYDRATÉE sur une annonce toujours en ligne) faisait conclure « suppression
+// acquise » : l'article sortait du stock et l'annonce restait en ligne, en
+// silence. Désormais un CSRF absent, comme un refus 401/403, ne conclut RIEN —
+// c'est le background qui lit l'état réel (checkListingState, déjà en place) et
+// qui seul peut poser 'deleted'. Bug LATENT au moment du correctif : les 8
+// suppressions Vinted depuis le 05/08 ont toutes pris le vrai chemin (csrf ok,
+// HTTP 200), aucune donnée à réparer. Toujours la 0.5.8 — non soumise au Chrome
+// Web Store, donc EXTENSION_MIN_BUILD reste sur la 0.5.6.
+export const EXTENSION_LAST_COMMIT = '2026-08-10T11:45:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
