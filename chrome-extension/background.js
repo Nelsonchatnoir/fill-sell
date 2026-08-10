@@ -1480,12 +1480,39 @@ async function processJob(rawJob, accessToken) {
     // n'est encore rempli à ce stade : une reprise ici ne peut pas doubler quoi
     // que ce soit. eBay seul — c'est son formulaire /lstng qui pose le
     // beforeunload bloquant, et on ne touche pas aux 3 autres.
-    if (job.platform === "ebay" && !(await tabRepond(tabId))) {
-      if (release) await release().catch(() => {});
-      return await reprendreSurOngletNeuf(
-        accessToken, job, tabId,
-        "Onglet de travail eBay figé AVANT le dépôt (renderer muet — dialogue beforeunload resté ouvert ?) : rien n'a été rempli ni soumis",
-      );
+    if (job.platform === "ebay") {
+      // ── beforeunload neutralisé À LA SOURCE (2026-08-10) ──────────────────
+      // eBay installe son dialogue « modifications non enregistrées » sur
+      // /lstng dès que le formulaire devient SALE. Jusqu'ici on ne le
+      // neutralisait qu'avant une navigation — trop tard : à ce moment le
+      // dialogue peut déjà être ouvert, le renderer figé, et l'injection qui
+      // devrait le désamorcer ne s'exécute plus (poule/œuf constaté sur le job
+      // 71942bc2). Ici, navigateHomeToForm vient de rendre la main sur la vraie
+      // page de dépôt et FILL_LISTING n'est pas encore parti : la page est
+      // ENCORE SAINE, aucun dialogue n'est possible, l'injection passe.
+      // eBay SEUL. Les 8 appels existants de neutralizeBeforeUnload ne sont pas
+      // touchés — celui-ci s'ajoute, il n'en remplace aucun.
+      const neutralise = await neutralizeBeforeUnload(tabId);
+      // ⚠️ CE N'EST PAS `neutralise` QUI DÉCIDE DE JETER L'ONGLET, et c'est
+      // volontaire : neutralizeBeforeUnload rend false sur un simple timeout de
+      // 3 s, ce qu'une page saine mais momentanément lente peut produire. Le
+      // seul juge est tabRepond — une preuve POSITIVE de vie (jeton injecté,
+      // jeton relu). Neutralisation ratée + onglet vivant → on continue, on ne
+      // jette rien.
+      const vivant = await tabRepond(tabId);
+      if (!vivant) {
+        if (release) await release().catch(() => {});
+        return await reprendreSurOngletNeuf(
+          accessToken, job, tabId,
+          "Onglet de travail eBay figé AVANT le dépôt (renderer muet — dialogue beforeunload resté ouvert ?) : rien n'a été rempli ni soumis",
+        );
+      }
+      if (!neutralise) {
+        console.warn(
+          `[background] Job ${job.id} : beforeunload NON neutralisé à l'arrivée sur le formulaire, ` +
+          "mais l'onglet répond — on continue (aucun onglet valide n'est jeté sur ce seul signal).",
+        );
+      }
     }
 
     clearProbeCaptures(tabId);
@@ -1660,6 +1687,12 @@ async function processJob(rawJob, accessToken) {
             publish_proof: {
               exit: verdict.proof,
               at: new Date().toISOString(),
+              // path_au_clic : où l'onglet était AU CLIC — la seule valeur qui
+              // dise quelque chose du dépôt. final_path reste le chemin au
+              // VERDICT (utile, mais pollué par nos propres navigations : sur
+              // la branche timeout il vaut /sh/lst/active, le Hub où l'on vient
+              // d'aller chercher la confirmation).
+              path_au_clic: verdict.state?.path_au_clic ?? null,
               final_path: verdict.state?.path ?? null,
               overlay_present: verdict.state?.overlay_present ?? null,
               bot_shield_after_submit: verdict.state?.bot_shield_after_submit ?? null,
@@ -3248,6 +3281,22 @@ async function detectReauth(tabId, platform, timeoutMs = 6000) {
 // réponse serveur), à prendre comme listing_url sans repasser par la capture.
 async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, accessToken = null) {
   const deadline = Date.now() + timeoutMs;
+  // ── Chemin AU MOMENT DU CLIC (2026-08-10) ─────────────────────────────────
+  // On entre ici juste après le retour du content script, donc à quelques
+  // secondes du clic et AVANT toute navigation de notre fait. C'est le seul
+  // instant où l'on observe où l'onglet était vraiment quand la soumission a
+  // (ou n'a pas) eu lieu.
+  // `final_path`, lui, est relevé au VERDICT — et dans la branche timeout il
+  // arrive APRÈS que ebayConfirmViaActiveListings a navigué vers le Hub : il
+  // disait donc /sh/lst/active, ce qui n'a jamais été le lieu du clic (job
+  // 71942bc2). Les deux clés coexistent désormais ; les lignes ANTÉRIEURES au
+  // 10/08 n'ont que final_path, avec la sémantique « au verdict ».
+  let pathAuClic = null;
+  try {
+    const t0 = await chrome.tabs.get(tabId).catch(() => null);
+    if (t0?.url) pathAuClic = new URL(t0.url).pathname;
+  } catch { /* URL interne : on laisse null */ }
+  const etatAvec = async () => ({ ...(await readEbayPostSubmitState(tabId)), path_au_clic: pathAuClic });
   while (Date.now() < deadline) {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     // Onglet disparu : impossible d'observer quoi que ce soit — on n'invente
@@ -3274,7 +3323,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
         listingUrl: null,
         proof: "path_left_lstng",
         fatal: true,
-        state: await readEbayPostSubmitState(tabId),
+        state: await etatAvec(),
       };
     }
 
@@ -3312,7 +3361,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
         // ou id écarté par la garde anti-croisement) — c'est ce cas-là qui
         // fabrique un published sans URL alors que l'annonce EXISTE.
         proof: successUrl ? "notice_url" : "notice_no_url",
-        state: await readEbayPostSubmitState(tabId),
+        state: await etatAvec(),
       };
     }
 
@@ -3325,7 +3374,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     if (served) {
       console.log(`[background] eBay : publication CONFIRMÉE par la réponse serveur (${served})`);
       await closeEbayPostPublishPopup(tabId);
-      return { error: null, listingUrl: served, proof: "server_response", state: await readEbayPostSubmitState(tabId) };
+      return { error: null, listingUrl: served, proof: "server_response", state: await etatAvec() };
     }
 
     const errors = await readVisibleEbayErrors(tabId);
@@ -3337,7 +3386,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
           "le job repartira au prochain passage.",
         listingUrl: null,
         proof: "form_refused",
-        state: await readEbayPostSubmitState(tabId),
+        state: await etatAvec(),
       };
     }
     await sleep(1000);
@@ -3360,7 +3409,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     const viaListings = await ebayConfirmViaActiveListings(tabId, job.title).catch(() => null);
     if (viaListings) {
       console.log(`[background] eBay : publication CONFIRMÉE par les annonces actives (${viaListings})`);
-      return { error: null, listingUrl: viaListings, proof: "hub_title", state: await readEbayPostSubmitState(tabId) };
+      return { error: null, listingUrl: viaListings, proof: "hub_title", state: await etatAvec() };
     }
   }
 
@@ -3382,7 +3431,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     // la seule chose à faire. Si elle est partie sans qu'on sache ce qu'elle a
     // donné, reprendre risque le doublon.
     proof: (await ebaySubmitRequestSeen(tabId)) ? "timeout_unconfirmed" : "submit_never_sent",
-    state: await readEbayPostSubmitState(tabId),
+    state: await etatAvec(),
   };
 }
 
