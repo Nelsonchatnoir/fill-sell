@@ -337,6 +337,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     );
     return true; // réponse asynchrone
   }
+  // Sonde d'état d'UNE annonce Vinted (2026-08-10), demandée par le site quand
+  // l'utilisateur ouvre la modale de suppression d'un article encore en ligne.
+  // LECTURE SEULE, à l'unité, sur action humaine — aucun drapeau, aucune vente,
+  // aucune écriture. Cf. probeVintedListing pour le cadre complet.
+  if (msg?.type === "PROBE_VINTED_LISTING") {
+    probeVintedListing(msg.listingUrl).then(
+      (r) => sendResponse(r),
+      (e) => sendResponse({ success: false, error: String(e?.message ?? e) })
+    );
+    return true; // réponse asynchrone
+  }
 });
 
 // Événement de progression poussé vers le popup (ignoré s'il est fermé).
@@ -5168,6 +5179,64 @@ async function fetchVintedItemDetail(vintedItemId) {
   });
 }
 
+// ── Sonde d'état d'UNE annonce Vinted (2026-08-10) ───────────────────────────
+// Demandée par le SITE à l'instant où l'utilisateur s'apprête à supprimer un
+// article dont une annonce Vinted est réputée en ligne. Son SEUL rôle : décider
+// si l'app a le droit de POSER UNE QUESTION (« plus en ligne — vendue ? »).
+//
+// ⚠️ ELLE N'ÉCRIT RIEN, NULLE PART. Aucun drapeau sur le job, aucun
+// unavailable_since, aucun bandeau. C'est la leçon du 09/08 (5 faux bandeaux
+// chez Ornella, 7ace830 → 6882e78) : une lecture ne conclut jamais à la place
+// de l'utilisateur. Ici, toute écriture part d'un clic explicite, sur un écran
+// qu'il vient lui-même d'ouvrir.
+//
+// Lecteur RÉUTILISÉ tel quel : checkListingState(url, "vinted"), exactement
+// celui du poll de détection de vente — pas de second détecteur à valider, et
+// les quatre verdicts sont déjà éprouvés en prod :
+//   "sold"        → is_closed + item_closing_action='sold' : preuve POSITIVE
+//   "unavailable" → 404/410, ou fermée sans preuve de vente
+//   "active"      → toujours en ligne : l'app ne demande RIEN
+//   "unknown"     → bot-shield, page inattendue, lecture ratée : on ne demande
+//                   RIEN non plus. Une lecture ratée ne vaut pas une absence.
+//
+// ⛔ SURTOUT PAS /api/v2/items/{id} : cet endpoint est MORT depuis le 05/08 (il
+// rend 404 avec un corps HTML pour TOUT article, vivant ou non — cf. le
+// bandeau de lireDtoPublic dans content-scripts/vinted.js). Une sonde bâtie
+// dessus répondrait « absent » pour la terre entière.
+//
+// URL VALIDÉE STRICTEMENT : ce message est relayé par fillsell-auth.js, donc
+// atteignable par n'importe quel JS s'exécutant sur fillsell.app. Sans ce
+// filtre, l'extension deviendrait un proxy de fetch AUTHENTIFIÉ vers l'URL de
+// son choix (cookies de session inclus). Seules les pages d'annonce Vinted
+// passent, et l'id doit être numérique.
+function urlAnnonceVintedValide(brut) {
+  let u;
+  try { u = new URL(String(brut ?? "")); } catch { return null; }
+  if (u.protocol !== "https:") return null;
+  const host = u.hostname.toLowerCase();
+  if (host !== "vinted.fr" && host !== "www.vinted.fr") return null;
+  if (!/^\/items\/\d+(?:-[^/]*)?\/?$/.test(u.pathname)) return null;
+  return `${u.origin}${u.pathname}`; // query et fragment jetés
+}
+
+async function probeVintedListing(listingUrl) {
+  const url = urlAnnonceVintedValide(listingUrl);
+  if (!url) return { success: false, error: "URL d'annonce Vinted invalide" };
+  // withJobFlowLock : la lecture passe par l'onglet de travail Vinted
+  // (fetchListingHtml → workTabForFetch), le même que les publications et la
+  // sync. On ne se le dispute jamais — incident du 12/07. Le site, lui, borne
+  // son attente : si le verrou tarde, il ne pose simplement pas la question.
+  return await withJobFlowLock("probe-vinted-listing", async () => {
+    try {
+      const { state, price } = await checkListingState(url, "vinted");
+      console.log(`[background] sonde suppression : ${url} → ${state}${price ? ` (prix page : ${price} €)` : ""}`);
+      return { success: true, state, price: price ?? null };
+    } catch (e) {
+      return { success: false, error: String(e?.message ?? e) };
+    }
+  });
+}
+
 // ── É1 republication : capture complète (2026-08-05) ─────────────────────────
 // Même architecture que fetchVintedItemDetail : verrou de flux (on ne se
 // dispute jamais l'onglet de travail avec une publication ou une sync), onglet
@@ -6883,6 +6952,24 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
     if (!pubs?.length) return;
     for (const pub of pubs) {
       const pf = { ...(pub.platform_fields ?? {}) };
+      // ── ARCHIVER, PAS DÉTRUIRE (2026-08-10, cas Sam) ────────────────────────
+      // `unavailable_pending_since` n'est pas un drapeau comme les trois autres :
+      // c'est la SEULE trace que le poll avait DÉJÀ vu l'annonce hors ligne (1re
+      // lecture 404 ; la 2e, un cycle plus tard, aurait posé unavailable_since et
+      // donc le bandeau — cf. checkPublishedListings). L'effacer avec le reste
+      // détruisait la preuve en silence : article 9598454286 disparu de Vinted
+      // entre deux syncs, supprimé par l'utilisateur avant que la confirmation
+      // n'arrive, et plus rien nulle part ne disait que le système était en
+      // train de le voir partir. Aucune vente, aucun CA, aucune trace.
+      // On le DÉPLACE donc sous une clé d'archive, horodatée du retrait.
+      // ⚠️ CETTE CLÉ N'EST LUE PAR RIEN et ne doit jamais l'être par un chemin
+      // qui produit un bandeau ou une écriture : c'est de la médecine légale,
+      // pas un signal. Les trois autres clés continuent d'être effacées — elles,
+      // ce sont bien des drapeaux, et un retrait volontaire n'est pas une vente.
+      if (pf.unavailable_pending_since) {
+        pf.unavailable_pending_at_delete = pf.unavailable_pending_since;
+        pf.unavailable_pending_archived_at = new Date().toISOString();
+      }
       delete pf.unavailable_since;
       delete pf.sale_signal;
       delete pf.detected_price;

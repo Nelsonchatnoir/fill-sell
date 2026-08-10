@@ -35,6 +35,8 @@ const buildIdTimestamp = (id) => {
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from './utils/stockLimit';
+import { sonderAnnonceVinted } from './utils/vintedSync';
+import { plateformesReserveesParRepublication } from './utils/publicationState';
 import Toast from './components/Toast';
 import ConversionModal, { COIN_CONFIG_FALLBACK } from './components/ConversionModal';
 import { businessOfferVisible } from './config/businessOffer';
@@ -2016,6 +2018,15 @@ export default function App({ loginOnly = false }){
   const [editItem,setEditItem]=useState(null);
   const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',sellingFees:'',rememberFees:false}
   const [deleteConfirm,setDeleteConfirm]=useState(null); // {type:'soldItem'|'sale', item?, sale?}
+  // Sonde d'avant-suppression (2026-08-10) : état de l'annonce Vinted du plan de
+  // suppression. {jobId, statut:'encours'|'hors_ligne'|'muette', signal, prix}
+  // 'muette' = active, indéterminée, sans extension, ou hors délai — dans TOUS
+  // ces cas la modale reste exactement celle d'avant.
+  const [sondeSuppression,setSondeSuppression]=useState(null);
+  // prix/achat à NULL et non '' : `??` laisse alors l'utilisateur VIDER le champ
+  // (une chaîne vide est une saisie, pas une absence de saisie) — même contrat
+  // que salePriceDraft/buyPriceDraft côté bandeau.
+  const [venteSuppr,setVenteSuppr]=useState({prix:null,achat:null,busy:false,err:null});
   const [dealIADesc,setDealIADesc]=useState("");
   const [dealIAResult,setDealIAResult]=useState(null);
   const [dealIALoading,setDealIALoading]=useState(false);
@@ -3358,8 +3369,11 @@ export default function App({ loginOnly = false }){
   const CANCELLABLE_JOB_STATUSES=['pending','processing','needs_user'];
   // Lit l'état cross-post d'un article. N'écrit RIEN.
   async function buildDeletePlan(id){
+    // `price` ajouté le 2026-08-10 : c'est le prix de mise en ligne, valeur par
+    // défaut du champ « prix de vente » quand la sonde révèle une annonce hors
+    // ligne (même repli que le bandeau, cf. confirmSaleFromBanner).
     const{data,error}=await supabase.from('cross_post_jobs')
-      .select('id, platform, action, status, listing_url, title, created_at')
+      .select('id, platform, action, status, listing_url, title, price, created_at, platform_fields')
       .eq('user_id',user.id).eq('inventaire_id',id);
     if(error)throw new Error(error.message);
     const jobs=data??[];
@@ -3380,7 +3394,15 @@ export default function App({ loginOnly = false }){
     // actifs restent épargnés (cf. ci-dessus : les annuler laisserait l'annonce
     // en ligne).
     const aAnnuler=jobs.filter(j=>j.action==='publish'&&CANCELLABLE_JOB_STATUSES.includes(j.status));
-    return{online:Object.values(parPlateforme),aAnnuler,retraitsEnCours:[...retraitsEnCours]};
+    // republishEnVol (2026-08-10) : entre la suppression et la recréation d'une
+    // republication, l'annonce est LÉGITIMEMENT hors ligne. La sonde d'avant-
+    // suppression doit se taire dans cette fenêtre — sinon on demanderait
+    // « vendue ? » sur une annonce qu'on est en train de republier, exactement
+    // le faux signal que la garde É4 de la sync évite déjà (background.js).
+    // Calculé ici parce que `jobs` porte déjà les republish : aucune requête de
+    // plus, et un seul calcul partagé avec le Stock (publicationState.js).
+    const republishEnVol=plateformesReserveesParRepublication(jobs);
+    return{online:Object.values(parPlateforme),aAnnuler,retraitsEnCours:[...retraitsEnCours],republishEnVol};
   }
   // Exécute le plan PUIS supprime. Unique point d'écriture — les 4 chemins de
   // suppression passent tous par ici, aucune logique dupliquée.
@@ -3440,6 +3462,125 @@ export default function App({ loginOnly = false }){
     if(iErr)throw new Error(iErr.message);
     await fetchAll(user.id);
   }
+
+  // ── SONDE D'AVANT-SUPPRESSION (2026-08-10) ─────────────────────────────────
+  // POURQUOI. Cas Sam, 10/08 : annonce Vinted disparue entre deux syncs, article
+  // supprimé dans FillSell 2 h 39 plus tard. Le poll de l'extension exige DEUX
+  // lectures « hors ligne » espacées d'un cycle (≥ 2 h) avant de poser le
+  // bandeau — durcissement du 09/08 contre les 404 transitoires. La suppression
+  // est arrivée AVANT la 2e lecture : aucun bandeau, aucune ligne `ventes`,
+  // CA perdu sans trace. C'est le geste de l'utilisateur qui va plus vite que la
+  // machine ; on lui pose donc la question à CE moment-là, pendant qu'il est
+  // devant l'écran et qu'il se souvient du prix.
+  //
+  // CE QUE ÇA N'EST PAS. Aucun bandeau n'est créé, aucun drapeau posé, aucune
+  // vente écrite automatiquement. La sonde ne fait qu'AUTORISER une question.
+  // Garde-fou du 09/08 (5 faux bandeaux chez Ornella) : ici, la seule chose
+  // qu'une lecture puisse produire, c'est du texte à l'écran.
+  //
+  // QUATRE VERROUS avant de demander quoi que ce soit — chacun ferme une classe
+  // de faux positif déjà vécue :
+  //   1. une annonce Vinted du plan, avec SON PROPRE listing_url (jamais un
+  //      repli — leçon listing_url croisée) ;
+  //   2. aucune republication en vol sur Vinted : entre suppression et
+  //      recréation l'annonce est hors ligne À DESSEIN (garde É4 de la sync) ;
+  //   3. l'id de listing_url doit CONCORDER avec inventaire.vinted_item_id
+  //      quand l'article en porte un — c'est le mensonge n°1 du 09/08 (job
+  //      périmé pointant l'annonce d'avant une republication : 404 éternel sur
+  //      un article bel et bien en ligne). Article sans id Vinted (publié via
+  //      FillSell, jamais synchronisé) : rien à confronter, on laisse passer —
+  //      le job est alors la seule source, la même que celle du bandeau ;
+  //   4. la sonde doit répondre « sold » ou « unavailable ». 'active',
+  //      'unknown', pas d'extension, hors délai → on ne demande RIEN.
+  useEffect(()=>{
+    if(deleteConfirm?.type!=='itemListings'){setSondeSuppression(null);return;}
+    const item=deleteConfirm.item,plan=deleteConfirm.plan;
+    const job=(plan?.online??[]).find(j=>j.platform==='vinted'&&j.listing_url);
+    if(!job){setSondeSuppression(null);return;}
+    if((plan?.republishEnVol??[]).includes('vinted')){setSondeSuppression(null);return;}
+    const idJob=String(job.listing_url).match(/\/items\/(\d+)/)?.[1]??null;
+    const idArticle=item?.vinted_item_id!=null?String(item.vinted_item_id):null;
+    if(idArticle&&idJob&&idArticle!==idJob){
+      console.log(`[sonde-suppression] job ${job.id} pointe l'annonce ${idJob} alors que l'article vit sur ${idArticle} — job périmé, aucune question`);
+      setSondeSuppression(null);return;
+    }
+    let vivant=true;
+    setSondeSuppression({jobId:job.id,statut:'encours',signal:null,prix:null});
+    setVenteSuppr({prix:null,achat:null,busy:false,err:null});
+    sonderAnnonceVinted(job.listing_url).then(rep=>{
+      if(!vivant)return;
+      const etat=rep?.success?rep.state:null;
+      if(etat!=='sold'&&etat!=='unavailable'){
+        // 'active' = toujours en ligne. 'unknown'/échec = on n'a rien lu. Dans
+        // les deux cas la modale reste celle d'avant, à l'identique.
+        console.log(`[sonde-suppression] ${job.listing_url} → ${etat??rep?.error??'sans réponse'} : aucune question posée`);
+        setSondeSuppression({jobId:job.id,statut:'muette',signal:null,prix:null});
+        return;
+      }
+      setSondeSuppression({jobId:job.id,statut:'hors_ligne',signal:etat,prix:rep?.price??null});
+    });
+    return()=>{vivant=false;};
+  },[deleteConfirm]);
+
+  // « Vendue » depuis la modale de suppression : MÊME CHEMIN que le bandeau
+  // (check-listing-status → orchestrateSale). Aucune écriture de vente locale —
+  // c'est la fonction serveur qui pose la vente, l'inventaire, les marges,
+  // annule les frères et propose leur retrait. Un seul chemin d'écriture de
+  // vente dans toute l'app, c'est la doctrine du 12/07 et elle ne bouge pas.
+  //
+  // ORDRE IMPOSÉ : la vente AVANT la suppression. orchestrateSale lit
+  // `inventaire` (prix d'achat, marges) via job.inventaire_id — or la FK
+  // cross_post_jobs_inventaire_id_fkey est en ON DELETE SET NULL : supprimer
+  // d'abord, ce serait orchestrer une vente sur un article qui n'existe plus.
+  async function confirmerVenteAvantSuppression(item,job){
+    if(venteSuppr.busy)return;
+    const saisi=parseFloat(String(venteSuppr.prix??'').replace(',','.'));
+    const defaut=Number(sondeSuppression?.prix??job.price)||0;
+    const prix=Number.isFinite(saisi)&&saisi>0?saisi:defaut;
+    if(!prix){
+      setVenteSuppr(v=>({...v,err:lang==='fr'?'Prix de vente requis':'Sale price required'}));
+      return;
+    }
+    setVenteSuppr(v=>({...v,busy:true,err:null}));
+    try{
+      // PRIX D'ACHAT : même règle qu'au bandeau (App.jsx, confirmSaleFromBanner).
+      // Écrit AVANT l'orchestration, qui le lit pour calculer le bénéfice. Une
+      // saisie vide ne devient JAMAIS 0 — VIDE ≠ ZÉRO.
+      const achat=parseFloat(String(venteSuppr.achat??'').replace(',','.'));
+      if(Number.isFinite(achat)&&achat>=0){
+        await supabase.from('inventaire')
+          .update({prix_achat:achat,prix_achat_inconnu:false})
+          .eq('id',item.id).eq('user_id',user.id);
+      }
+      const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:job.id,price:prix}});
+      if(error)throw error;
+      track('confirm_sale_delete_modal',{platform:'vinted',signal:sondeSuppression?.signal??null});
+      // PLAN RECONSTRUIT : après l'orchestration, le job Vinted est 'sold' et les
+      // frères encore live sont 'cancelled' + pending_removal. Les uns et les
+      // autres sortent donc de `online` — on n'arme plus de retrait sur une
+      // annonce déjà vendue, et le retrait des frères repasse par le bandeau
+      // dédié (clic utilisateur), comme pour toute autre vente.
+      let plan2=null;
+      try{plan2=await buildDeletePlan(item.id);}
+      catch(e){console.warn('[confirmerVenteAvantSuppression] replan:',e.message);}
+      // alsoDeleteSale reste FAUX : la vente qu'on vient d'enregistrer doit
+      // survivre à la suppression de l'article (ventes.inventaire_id détaché,
+      // montants conservés) — c'est tout l'objet de la manœuvre.
+      await performItemDeletion(item,plan2);
+      setDeleteConfirm(null);
+      setToast({visible:true,message:lang==='fr'?'✅ Vente enregistrée':'✅ Sale recorded'});
+      setTimeout(()=>setToast({visible:false,message:''}),3000);
+    }catch(e){
+      console.error('[confirmerVenteAvantSuppression]',e?.message??e);
+      // RIEN n'est supprimé si l'enregistrement échoue : l'utilisateur retente,
+      // ou choisit « Retirée ». Perdre l'article ET la vente serait le pire des
+      // deux mondes.
+      setVenteSuppr(v=>({...v,busy:false,err:t('genericError')}));
+      return;
+    }
+    setVenteSuppr({prix:null,achat:null,busy:false,err:null});
+  }
+
   // Encart « ce qui va se passer », partagé par les deux modales de suppression
   // — la liste exacte des plateformes retirées et le nombre de jobs annulés.
   const PLATEFORME_LABELS={vinted:'Vinted',leboncoin:'Leboncoin',ebay:'eBay',beebs:'Beebs'};
@@ -6208,31 +6349,147 @@ export default function App({ loginOnly = false }){
                 </div>
               </>
             )}
-            {deleteConfirm.type==='itemListings'&&(
+            {deleteConfirm.type==='itemListings'&&(()=>{
+              const item=deleteConfirm.item,plan=deleteConfirm.plan;
+              const jobV=(plan?.online??[]).find(j=>j.platform==='vinted'&&j.listing_url);
+              // La sonde ne vaut que pour LE job qu'elle a lu : une modale
+              // rouverte sur un autre article ne doit jamais hériter du verdict
+              // précédent (même précaution que l'écho d'URL côté pont).
+              const sonde=jobV&&sondeSuppression?.jobId===jobV.id?sondeSuppression:null;
+              const horsLigne=sonde?.statut==='hors_ligne';
+              const vendu=sonde?.signal==='sold';
+              const busy=venteSuppr.busy;
+              // Comportement d'avant, inchangé — sert à « Retirée », « Je ne sais
+              // pas », et à tous les cas où la sonde ne dit rien.
+              const supprimerCommeAvant=async()=>{
+                await performItemDeletion(item,plan);
+                setDeleteConfirm(null);
+              };
+              return (
               <>
                 <div style={{fontSize:13,color:"#6B7280",marginBottom:16,lineHeight:1.5}}>
-                  {lang==='fr'
-                    ?`Cet article est encore présent sur des plateformes.`
-                    :`This item is still live on marketplaces.`}
-                  <div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{deleteConfirm.item?.title}</div>
+                  {horsLigne
+                    ?(vendu
+                      ?(lang==='fr'?`Cette annonce Vinted est marquée VENDUE.`:`This Vinted listing is marked SOLD.`)
+                      :(lang==='fr'?`Cette annonce Vinted n'est plus en ligne.`:`This Vinted listing is no longer online.`))
+                    :(lang==='fr'?`Cet article est encore présent sur des plateformes.`:`This item is still live on marketplaces.`)}
+                  <div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{item?.title}</div>
                 </div>
-                {renderCrossPostConsequences(deleteConfirm.plan)}
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <button onClick={async()=>{
-                    await performItemDeletion(deleteConfirm.item,deleteConfirm.plan);
-                    setDeleteConfirm(null);
-                  }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                    {lang==='fr'?'🗑️ Retirer les annonces et supprimer':'🗑️ Remove listings and delete'}
-                    <div style={{fontSize:11,fontWeight:400,color:UI.negative,opacity:0.8,marginTop:2}}>
-                      {lang==='fr'?'Le retrait part en tâche de fond, puis l\'article est supprimé':'Removal runs in the background, then the item is deleted'}
+                {/* Vinted retiré de l'encart quand la sonde vient de le voir hors
+                    ligne : annoncer « annonce Vinted qui sera retirée » juste
+                    au-dessus de « cette annonce n'est plus en ligne » serait se
+                    contredire d'une ligne à l'autre. Les AUTRES plateformes, elles,
+                    restent annoncées — et le plan RÉEL, lui, n'est pas touché :
+                    « Je l'ai retirée » supprime exactement comme avant. */}
+                {renderCrossPostConsequences(horsLigne?{...plan,online:(plan?.online??[]).filter(j=>j.platform!=='vinted')}:plan)}
+                {horsLigne?(
+                  /* ── Question posée AVANT la suppression (2026-08-10) ──────────
+                     On ne conclut rien : ni vente, ni retrait. « Vendue » part
+                     par le MÊME chemin que le bandeau (check-listing-status →
+                     orchestrateSale) ; les deux autres réponses suppriment
+                     exactement comme avant. Le prix reste éditable même quand
+                     Vinted dit « vendue » : il n'expose jamais le montant d'une
+                     offre acceptée (seulement le prix demandé). */
+                  <div style={{background:"#F0FDF9",border:"1px solid #99E2D0",borderRadius:14,padding:"13px 14px",marginBottom:16,display:"flex",flexDirection:"column",gap:10}}>
+                    <div style={{fontSize:12.5,lineHeight:1.5,color:"#134E4A"}}>
+                      {lang==='fr'
+                        ?<>Avant de supprimer : <strong>tu l'as vendue ?</strong> Sans réponse, ce chiffre d'affaires ne sera compté nulle part.</>
+                        :<>Before deleting: <strong>did you sell it?</strong> Without an answer, this revenue won't be counted anywhere.</>}
                     </div>
-                  </button>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <label style={{fontSize:12.5,color:"#134E4A",fontWeight:600}}>
+                        {lang==='fr'?'Prix de vente':'Sale price'}
+                      </label>
+                      <input type="text" inputMode="decimal" disabled={busy}
+                        value={venteSuppr.prix??(()=>{const d=sonde?.prix??jobV?.price;return d!=null?String(d):'';})()}
+                        onChange={e=>setVenteSuppr(v=>({...v,prix:e.target.value,err:null}))}
+                        style={{width:90,padding:"7px 10px",borderRadius:10,border:"1px solid #99E2D0",background:"#fff",color:UI.ink,fontSize:14,fontWeight:700,fontFamily:"inherit"}}/>
+                      <span style={{fontSize:12.5,color:"#134E4A"}}>{currency==='EUR'?'€':currency}</span>
+                    </div>
+                    {/* PRIX D'ACHAT — même règle et même porte de sortie qu'au
+                        bandeau : sans « je ne sais plus », les gens inventent un
+                        chiffre et toutes les marges deviennent du bruit. */}
+                    {/* Item RELU dans `items` : `deleteConfirm.item` est un
+                        instantané figé à l'ouverture — après « Je ne sais plus »
+                        il porterait encore l'ancien état et la question
+                        resterait affichée. */}
+                    {(()=>{const live=items.find(i=>String(i.id)===String(item.id))??item;
+                      return !prixAchatConnu(live)&&!live?.prix_achat_inconnu;})()&&(
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <label style={{fontSize:12.5,color:"#134E4A",fontWeight:600}}>
+                          {lang==='fr'?"Tu l'avais payé combien ?":'What did you pay for it?'}
+                        </label>
+                        <input type="text" inputMode="decimal" disabled={busy}
+                          value={venteSuppr.achat??''}
+                          onChange={e=>setVenteSuppr(v=>({...v,achat:e.target.value}))}
+                          style={{width:90,padding:"7px 10px",borderRadius:10,border:"1px solid #99E2D0",background:"#fff",color:UI.ink,fontSize:14,fontWeight:700,fontFamily:"inherit"}}/>
+                        <span style={{fontSize:12.5,color:"#134E4A"}}>{currency==='EUR'?'€':currency}</span>
+                        <button type="button" disabled={busy} onClick={async()=>{
+                          setVenteSuppr(v=>({...v,achat:''}));
+                          await supabase.from('inventaire').update({prix_achat_inconnu:true})
+                            .eq('id',item.id).eq('user_id',user.id);
+                          setItems(prev=>prev.map(i=>String(i.id)===String(item.id)?{...i,prix_achat_inconnu:true}:i));
+                        }} style={{padding:"6px 12px",borderRadius:999,border:`1px solid ${UI.border}`,background:"transparent",color:UI.mute2,fontSize:12,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                          {lang==='fr'?'Je ne sais plus':"I don't remember"}
+                        </button>
+                      </div>
+                    )}
+                    {venteSuppr.err&&(
+                      <div style={{fontSize:12,color:UI.negative,fontWeight:600}}>{venteSuppr.err}</div>
+                    )}
+                  </div>
+                ):sonde?.statut==='encours'?(
+                  /* Non bloquant : les boutons ci-dessous restent utilisables.
+                     Si l'utilisateur supprime avant la réponse, il obtient
+                     exactement le comportement d'avant. */
+                  <div style={{fontSize:11.5,color:UI.mute2,marginBottom:12,display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{width:5,height:5,borderRadius:"50%",background:UI.mute2,flex:"0 0 auto"}}/>
+                    {lang==='fr'?"Vérification de l'annonce Vinted…":'Checking the Vinted listing…'}
+                  </div>
+                ):null}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {horsLigne?(
+                    <>
+                      <button disabled={busy} onClick={()=>confirmerVenteAvantSuppression(item,jobV)}
+                        style={{width:"100%",padding:"12px",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,border:"none",borderRadius:14,fontSize:13,fontWeight:700,color:"#fff",cursor:busy?"default":"pointer",opacity:busy?.6:1,fontFamily:"inherit",textAlign:"left"}}>
+                        {busy?(lang==='fr'?'Enregistrement…':'Recording…'):(lang==='fr'?'🎉 Vendue — enregistrer et supprimer':'🎉 Sold — record and delete')}
+                        <div style={{fontSize:11,fontWeight:400,opacity:0.9,marginTop:2}}>
+                          {lang==='fr'?'La vente reste dans le tableau de bord':'The sale stays in the dashboard'}
+                        </div>
+                      </button>
+                      {/* « Retirée » et « Je ne sais pas » mènent au MÊME code :
+                          le comportement d'avant, à l'identique. Deux libellés
+                          quand même — ce sont deux affirmations différentes, et
+                          forcer quelqu'un à dire « je l'ai retirée » quand il ne
+                          sait pas, c'est fabriquer une réponse fausse. Aucune des
+                          deux n'écrit quoi que ce soit de plus. */}
+                      <button disabled={busy} onClick={supprimerCommeAvant}
+                        style={{width:"100%",padding:"12px",background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.ink,cursor:busy?"default":"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                        {lang==='fr'?"Je l'ai retirée":'I removed it'}
+                      </button>
+                      <button disabled={busy} onClick={supprimerCommeAvant}
+                        style={{width:"100%",padding:"12px",background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.mute2,cursor:busy?"default":"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                        {lang==='fr'?'Je ne sais pas':"I don't know"}
+                        <div style={{fontSize:11,fontWeight:400,color:UI.mute2,opacity:0.85,marginTop:2}}>
+                          {lang==='fr'?'Aucune vente enregistrée':'No sale recorded'}
+                        </div>
+                      </button>
+                    </>
+                  ):(
+                    <button onClick={supprimerCommeAvant} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                      {lang==='fr'?'🗑️ Retirer les annonces et supprimer':'🗑️ Remove listings and delete'}
+                      <div style={{fontSize:11,fontWeight:400,color:UI.negative,opacity:0.8,marginTop:2}}>
+                        {lang==='fr'?'Le retrait part en tâche de fond, puis l\'article est supprimé':'Removal runs in the background, then the item is deleted'}
+                      </div>
+                    </button>
+                  )}
                   <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{padding:10}}>
                     {lang==='fr'?'Annuler':'Cancel'}
                   </SecondaryButton>
                 </div>
               </>
-            )}
+              );
+            })()}
             {deleteConfirm.type==='planError'&&(
               <>
                 <div style={{fontSize:13,color:"#6B7280",marginBottom:20,lineHeight:1.5}}>

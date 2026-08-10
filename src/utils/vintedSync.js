@@ -214,6 +214,62 @@ export function ecouterDetailArticleVinted(onDetail) {
   return () => window.removeEventListener('message', onMessage);
 }
 
+// ── Sonde d'état d'une annonce Vinted avant suppression (2026-08-10) ────────
+// Posée quand l'utilisateur ouvre la modale de suppression d'un article dont
+// une annonce Vinted est réputée en ligne. Elle sert UNIQUEMENT à décider si
+// l'app a le droit de poser la question « plus en ligne — vendue ? ». Elle
+// n'écrit rien : c'est le clic qui écrit, jamais la lecture (leçon du 09/08).
+//
+// NON BLOQUANTE PAR CONSTRUCTION. La modale s'affiche tout de suite avec ses
+// boutons habituels ; la question n'apparaît que si la réponse arrive ET dit
+// « hors ligne ». Conséquences voulues :
+//   · sur mobile (aucune extension) rien ne répond → rien ne change à l'écran ;
+//   · sur une extension antérieure à ce build, la commande n'est pas dans sa
+//     liste FERMÉE (fillsell-auth.js) : personne ne répond, même issue. Pas de
+//     garde de version à maintenir — l'absence de réponse EST la garde.
+// Le délai est généreux : la sonde peut faire la queue derrière une
+// publication en cours (verrou d'onglet de travail côté extension). Elle
+// n'immobilise rien pendant ce temps.
+export const SONDE_ANNONCE_TIMEOUT_MS = 12000;
+
+/**
+ * Rend { success:true, state:'active'|'sold'|'unavailable'|'unknown', price } ou
+ * { success:false, error }. Ne rejette JAMAIS : une sonde qui échoue est un
+ * résultat normal (et signifie « ne pose pas la question »).
+ */
+export function sonderAnnonceVinted(listingUrl, { timeoutMs = SONDE_ANNONCE_TIMEOUT_MS } = {}) {
+  const cible = String(listingUrl ?? '');
+  return new Promise((resolve) => {
+    if (!cible) { resolve({ success: false, error: 'listing_url manquante' }); return; }
+    let fini = false;
+    let timer = null;
+    const terminer = (r) => {
+      if (fini) return;
+      fini = true;
+      window.removeEventListener('message', onMessage);
+      if (timer) clearTimeout(timer);
+      resolve(r);
+    };
+    const onMessage = (e) => {
+      // e.source !== window : une iframe tierce ne se fait pas passer pour le
+      // content script (même garde que ecouterPresenceExtension).
+      if (e.source !== window) return;
+      const rep = e.data?.__fillsellListingProbe;
+      // L'URL est REPÉTÉE par le relais : deux sondes peuvent être en vol si la
+      // modale a été refermée puis rouverte sur un autre article.
+      if (!rep || String(rep.listingUrl ?? '') !== cible) return;
+      terminer(rep);
+    };
+    window.addEventListener('message', onMessage);
+    timer = setTimeout(() => terminer({ success: false, error: 'timeout' }), timeoutMs);
+    try {
+      window.postMessage({ __fillsellCmd: 'PROBE_VINTED_LISTING', listingUrl: cible }, window.location.origin);
+    } catch {
+      terminer({ success: false, error: 'postMessage refusé' });
+    }
+  });
+}
+
 // ── É1 republication : capture complète (2026-08-05) ────────────────────────
 // Même contrat aller-retour que le détail, en plus riche : payload natif
 // complet + résolutions id→libellé + verdict 'valide'|'incomplet' avec

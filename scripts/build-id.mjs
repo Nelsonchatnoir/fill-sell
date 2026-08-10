@@ -103,7 +103,19 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // reconstruit sur place — d'où un manifest inchangé et un BUILD_ID nouveau.
 // EXTENSION_MIN_BUILD reste sur la 0.5.6 : ni la 0.5.7 ni la 0.5.8 ne sont
 // encore acceptées par le Chrome Web Store.
-export const EXTENSION_LAST_COMMIT = '2026-08-09T19:39:05Z';
+// 2026-08-10T11:30:00Z : sonde d'avant-suppression + archivage de
+// `unavailable_pending_since`. Nouvelle commande PROBE_VINTED_LISTING (liste
+// FERMÉE de fillsell-auth.js, URL revalidée côté background : hôte vinted.fr +
+// /items/<id>, sinon l'extension deviendrait un proxy de fetch AUTHENTIFIÉ vers
+// n'importe quelle URL pour tout JS tournant sur fillsell.app). LECTURE SEULE :
+// elle réutilise checkListingState — le lecteur du poll — et n'écrit rien nulle
+// part ; c'est le site qui décide d'afficher une question, et l'utilisateur qui
+// écrit en cliquant. cancelPublishAfterDelete ARCHIVE désormais
+// `unavailable_pending_since` (au lieu de l'effacer) : c'était la seule preuve
+// qu'une disparition était en cours de confirmation, et elle partait en silence.
+// Toujours la 0.5.8 — aucune de ces versions n'est soumise au Chrome Web Store,
+// donc EXTENSION_MIN_BUILD reste sur la 0.5.6.
+export const EXTENSION_LAST_COMMIT = '2026-08-10T11:30:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

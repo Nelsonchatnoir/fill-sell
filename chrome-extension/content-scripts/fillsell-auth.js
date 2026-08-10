@@ -61,12 +61,32 @@
   // Garde-fous : origine vérifiée (e.source === window ET même origine que la
   // page), et liste FERMÉE de commandes. Ajouter une commande ici, c'est
   // l'exposer à toute personne capable d'exécuter du JS sur fillsell.app.
-  const COMMANDES = new Set(["SYNC_DRESSING", "FETCH_VINTED_ITEM", "CAPTURE_VINTED_ITEM"]);
+  const COMMANDES = new Set([
+    "SYNC_DRESSING", "FETCH_VINTED_ITEM", "CAPTURE_VINTED_ITEM", "PROBE_VINTED_LISTING",
+  ]);
   window.addEventListener("message", (e) => {
     if (e.source !== window) return;
     const cmd = e.data?.__fillsellCmd;
     if (!cmd || !COMMANDES.has(cmd)) return;
     try {
+      // PROBE_VINTED_LISTING (2026-08-10) : aller-retour aussi, mais son argument
+      // est une URL, pas un id — d'où sa branche à part. Le background REVALIDE
+      // l'URL (hôte vinted.fr + /items/<id>) : ce relais ne fait confiance à
+      // rien de ce qui arrive par postMessage, et surtout pas à une URL.
+      // La réponse RÉPÈTE l'URL demandée : le site en a plusieurs en vol
+      // possibles (modale rouverte sur un autre article) et doit pouvoir
+      // reconnaître la sienne.
+      if (cmd === "PROBE_VINTED_LISTING") {
+        const listingUrl = String(e.data?.listingUrl ?? "");
+        chrome.runtime.sendMessage({ type: cmd, listingUrl }, (rep) => {
+          void chrome.runtime.lastError;
+          window.postMessage({
+            __fillsellListingProbe: { listingUrl, ...(rep ?? { success: false, error: "extension muette" }) },
+          }, window.location.origin);
+        });
+        console.log(`[fillsell-auth] commande relayée : ${cmd} (${listingUrl})`);
+        return;
+      }
       // FETCH_VINTED_ITEM et CAPTURE_VINTED_ITEM sont des ALLERS-RETOURS : la
       // réponse du background repart vers la page — contrairement à
       // SYNC_DRESSING, qui rend compte par la base. CAPTURE (É1 republication,
