@@ -2284,6 +2284,15 @@ const StockTab = memo(function StockTab({
       });
     return () => { annule = true; };
   }, [items, user?.id, prixAnnonces]);
+  // Prix RÉELLEMENT demandé sur l'annonce Vinted d'un article, ou null. Numérique
+  // garanti (PostgREST peut rendre un `numeric` en chaîne) et strictement > 0 —
+  // un 0 n'est pas un prix d'annonce, c'est une absence. Lecteur : le
+  // pré-remplissage du stepper de publication, qui doit proposer un prix de
+  // VENTE constaté et jamais autre chose.
+  const prixAnnonceVinted = (item) => {
+    const v = item?.vinted_item_id != null ? Number(prixAnnonces[item.vinted_item_id]) : NaN;
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
 
   // Article en attente derrière le rappel extension : le clic « Publier » passe
   // d'abord par le modal, l'ouverture du stepper n'a lieu qu'au « Continuer ».
@@ -4891,7 +4900,29 @@ const StockTab = memo(function StockTab({
             // stepper existe mais arrive en async, et surtout il ne couvre
             // pas ce que la ligne sait déjà. prix_vente est désormais tenu à
             // jour à chaque publication (fix bd9a516).
-            prix_vente_suggere: publishItem.sell ?? publishItem.prix_vente ?? publishItem.prix_achat ?? null,
+            // ⚠️ LE REPLI `?? prix_achat` A ÉTÉ RETIRÉ LE 2026-08-10. Il avait
+            // déjà été condamné le 2026-07-14 sur le chemin DB (cf. l'effet
+            // d'init de ListingPreviewScreen : « Plus AUCUN repli sur
+            // prix_achat »), mais il survivait ICI — et ce chemin-ci PRIME sur
+            // l'autre. Conséquence vécue le 10/08 (job leboncoin 5229736d) :
+            // un article importé du dressing, prix_vente NULL et prix_achat 12,
+            // est parti sur Leboncoin à 12 € — son prix d'ACHAT — alors que son
+            // annonce Vinted est en ligne à 7 €. Et comme la publication
+            // PERSISTE ensuite le prix dans inventaire.prix_vente (fin de
+            // handlePublish), le prix d'achat devient la vérité de la fiche et
+            // se re-propose à chaque publication suivante : l'erreur se fige.
+            // Sources, de la plus vraie à la moins :
+            //   1. le prix DEMANDÉ sur l'annonce Vinted (dernier relevé de
+            //      vinted_listing_snapshots) — du réel constaté, et déjà l'ordre
+            //      retenu par ouvrirFeuilleRepublication ;
+            //   2. le prix de vente déclaré sur la fiche ;
+            //   3. RIEN. Champ vide plutôt que faux : la garde de publication
+            //      (≥ 1 €) interdit de toute façon toute annonce sans prix, donc
+            //      personne ne part en ligne par accident — alors qu'un prix
+            //      pré-rempli faux, lui, part sans que personne ne le voie.
+            prix_vente_suggere:
+              prixAnnonceVinted(publishItem)
+              ?? publishItem.sell ?? publishItem.prix_vente ?? null,
           }}
           onClose={()=>{clearStepperPersistence();setPublishItem(null);onStepperOpenChange?.(false);}}
           onJobsQueued={(invId,platforms)=>{
