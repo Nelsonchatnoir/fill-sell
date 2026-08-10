@@ -1470,6 +1470,24 @@ async function processJob(rawJob, accessToken) {
     // captures du job PRÉCÉDENT sont purgées d'abord : l'onglet de travail est
     // le même d'un job à l'autre, et une vieille preuve de succès ferait passer
     // le job courant pour publié (doublon garanti).
+    // ── eBay : ne JAMAIS remplir puis cliquer sur un onglet figé (2026-08-10)
+    // Job 71942bc2 : le brouillon 5214269358621 a bien été créé, le formulaire
+    // rempli, et le clic « Mettre en vente » n'a produit AUCUNE requête — la
+    // sonde n'a capté que de la télémétrie. Juste avant, la console montrait
+    // « neutralizeBeforeUnload : injection sans réponse après 3 s — renderer
+    // figé, dialogue beforeunload natif probablement DÉJÀ ouvert ».
+    // On teste donc que l'onglet RÉPOND avant de lui confier le dépôt. Rien
+    // n'est encore rempli à ce stade : une reprise ici ne peut pas doubler quoi
+    // que ce soit. eBay seul — c'est son formulaire /lstng qui pose le
+    // beforeunload bloquant, et on ne touche pas aux 3 autres.
+    if (job.platform === "ebay" && !(await tabRepond(tabId))) {
+      if (release) await release().catch(() => {});
+      return await reprendreSurOngletNeuf(
+        accessToken, job, tabId,
+        "Onglet de travail eBay figé AVANT le dépôt (renderer muet — dialogue beforeunload resté ouvert ?) : rien n'a été rempli ni soumis",
+      );
+    }
+
     clearProbeCaptures(tabId);
     await installNetworkProbe(tabId, job.platform);
 
@@ -1677,6 +1695,24 @@ async function processJob(rawJob, accessToken) {
           });
           await recordRecentResult(job, "failed", msgFatal).catch(() => {});
           return { status: "failed", error: msgFatal };
+        }
+        // ── La soumission n'a jamais quitté le navigateur (2026-08-10) ───────
+        // Aucune requête vers /lstng/api/listing_draft/{id}/publish dans les
+        // captures : le clic n'a rien produit. C'est une PREUVE POSITIVE
+        // d'absence de dépôt — donc la seule situation où reprendre est à la
+        // fois sûr et utile. On repart sur un onglet neuf SANS consommer de
+        // tentative : la cause est notre onglet, pas eBay.
+        if (verdict.proof === "submit_never_sent") {
+          if (verdict.diagnostic) {
+            job.platform_fields = {
+              ...(job.platform_fields ?? {}),
+              last_diagnostic: String(verdict.diagnostic).slice(0, 2000),
+            };
+          }
+          return await reprendreSurOngletNeuf(
+            accessToken, job, tabId,
+            "Le clic « Mettre en vente » n'a produit AUCUNE requête de publication (soumission jamais partie) : aucune annonce n'a été créée",
+          );
         }
         if (verdict.error) {
           console.warn(`[background] Job ${job.id} : ${verdict.error}${verdict.diagnostic ?? ""}`);
@@ -1920,6 +1956,51 @@ function completionExtras(job, result) {
 // remplissant le formulaire à chaque cron) si la cause ne disparaît jamais —
 // même risque DataDome que le dry-run en boucle. Compteur porté par
 // platform_fields.needsUserAttempts (partagé needsUser / erreurs transitoires).
+// ── Reprise sur onglet neuf, SANS consommer de tentative (2026-08-10) ───────
+// Un onglet de travail figé n'est pas un refus de la plateforme : c'est notre
+// outil qui est cassé, pas le dépôt qui est mauvais. Le faire décompter sur
+// needsUserAttempts, c'est brûler le budget d'un job parfaitement valide — le
+// 71942bc2 est mort comme ça (needsUserAttempts=2, alors que la soumission
+// n'avait jamais quitté le navigateur).
+// Compteur SÉPARÉ et borné : `frozenTabRetries`. Sans borne, un onglet qui gèle
+// systématiquement bouclerait à l'infini ; needsUserAttempts, lui, n'est pas
+// touché.
+// ⚠️ À N'APPELER QUE SUR PREUVE POSITIVE qu'AUCUNE soumission n'est partie
+// (onglet muet AVANT le remplissage, ou aucune requête publish captée). C'est
+// cette preuve, et elle seule, qui écarte le risque de second dépôt payant.
+const MAX_FROZEN_TAB_RETRIES = 2;
+async function reprendreSurOngletNeuf(accessToken, job, tabId, motif) {
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(`[background] Job ${job.id} : statut devenu "${actuel}" — reprise onglet ABANDONNÉE.`);
+    return { status: "needsUser", error: motif };
+  }
+  const reprises = Number(job.platform_fields?.frozenTabRetries ?? 0) + 1;
+  const pf = { ...(job.platform_fields ?? {}), frozenTabRetries: reprises };
+  // L'onglet mort part quoi qu'il arrive : le laisser, c'est le retrouver au
+  // job suivant. replaceWorkTab neutralise puis ferme, et mémorise le neuf.
+  if (tabId != null) {
+    try {
+      const cible = (PLATFORM_HANDLERS[job.platform]?.entryUrl ?? "https://www.ebay.fr/") + WORK_TAB_FRAGMENT;
+      const neuf = await replaceWorkTab(tabId, cible);
+      await chrome.storage.session.set({ [workTabKey(job.platform)]: neuf });
+      console.log(`[background] Job ${job.id} : onglet ${tabId} remplacé par ${neuf} (${motif})`);
+    } catch (e) {
+      console.warn(`[background] Job ${job.id} : remplacement d'onglet impossible — ${String(e?.message ?? e)}`);
+    }
+  }
+  if (reprises > MAX_FROZEN_TAB_RETRIES) {
+    const msg = `${motif} — ${reprises - 1} reprises sur onglet neuf n'ont rien changé, job arrêté. Aucune annonce n'a été créée.`;
+    console.warn(`[background] Job ${job.id} : ${msg}`);
+    await updateJobStatus(accessToken, job.id, "failed", { error: msg, platform_fields: pf });
+    await recordRecentResult(job, "failed", msg).catch(() => {});
+    return { status: "failed", error: msg };
+  }
+  console.warn(`[background] Job ${job.id} : reprise ${reprises}/${MAX_FROZEN_TAB_RETRIES} sur onglet neuf — ${motif}`);
+  await updateJobStatus(accessToken, job.id, "pending", { error: motif, platform_fields: pf });
+  return { status: "retry", error: motif };
+}
+
 async function rearmBounded(accessToken, job, errorMsg) {
   // ⚠️ NE JAMAIS RESSUSCITER UN JOB ANNULÉ (2026-07-13, vécu). Un job de
   // suppression Beebs annulé À LA MAIN (il visait la mauvaise annonce !) avait
@@ -3294,7 +3375,13 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
       "actives du vendeur — job NON marqué publié, il repartira au prochain passage.",
     diagnostic: await readEbayFailureDiagnostics(tabId),
     listingUrl: null,
-    proof: "timeout_unconfirmed",
+    // ── submit_never_sent vs timeout_unconfirmed (2026-08-10) ────────────────
+    // Les deux étaient confondus, alors qu'ils appellent des conduites
+    // OPPOSÉES. Si aucune requête de publication n'a quitté le navigateur, le
+    // clic n'a rien produit du tout : reprendre est sans danger, et c'est même
+    // la seule chose à faire. Si elle est partie sans qu'on sache ce qu'elle a
+    // donné, reprendre risque le doublon.
+    proof: (await ebaySubmitRequestSeen(tabId)) ? "timeout_unconfirmed" : "submit_never_sent",
     state: await readEbayPostSubmitState(tabId),
   };
 }
@@ -3396,6 +3483,55 @@ async function readEbayFailureDiagnostics(tabId) {
 //               APRÈS le clic, plus personne ne regardait.
 // Best-effort INTÉGRAL : toute erreur rend des nulls, jamais d'exception — ce
 // lecteur ne doit pouvoir casser aucune publication.
+// ── L'onglet RÉPOND-IL ? (2026-08-10, job 71942bc2) ─────────────────────────
+// Un renderer figé — typiquement un dialogue beforeunload natif resté ouvert sur
+// /lstng — accepte encore chrome.tabs.get (l'onglet EXISTE) mais n'exécute plus
+// rien. Le formulaire se remplit alors dans le vide et le clic « Mettre en
+// vente » ne part jamais : mesuré sur 71942bc2, où la sonde n'a capté que de la
+// télémétrie (9 non-GET, aucun POST de publication) alors que le brouillon
+// 5214269358621 avait bien été créé.
+// Test minimal : une injection triviale dont on ATTEND la réponse, bornée. On ne
+// se contente pas de « pas d'exception » — un renderer figé ne rejette pas, il
+// ne répond simplement jamais.
+async function tabRepond(tabId, timeoutMs = 3000) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab || tab.discarded) return false;
+  try {
+    const jeton = `fs-${Date.now()}`;
+    const inject = chrome.scripting.executeScript({
+      target: { tabId },
+      args: [jeton],
+      func: (j) => j,
+    });
+    let timer;
+    const guard = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("timeout")), timeoutMs); });
+    let res;
+    try { [res] = await Promise.race([inject, guard]); } finally { clearTimeout(timer); }
+    return res?.result === jeton;
+  } catch (e) {
+    console.warn(`[background] tabRepond(${tabId}) : onglet muet — ${String(e?.message ?? e)}`);
+    return false;
+  }
+}
+
+// ── La soumission a-t-elle SEULEMENT quitté le navigateur ? (2026-08-10) ─────
+// eBay soumet par POST /lstng/api/listing_draft/{draftId}/publish (relevé en
+// direct sur un dépôt réel, annonce 800486036114). Si la sonde n'a capté AUCUNE
+// requête vers cet endpoint, aucune annonce n'a pu être créée — c'est une
+// certitude, pas une présomption, et c'est ce qui autorise une reprise sans
+// risque de doublon. À distinguer d'un « non confirmé » où la soumission est
+// peut-être partie et où reprendre serait dangereux.
+async function ebaySubmitRequestSeen(tabId) {
+  try {
+    const { captures } = await readProbeCaptures(tabId);
+    return captures.some((c) => /\/lstng\/api\/listing_draft\/[^/]+\/publish/i.test(String(c?.url ?? "")));
+  } catch {
+    // Sonde illisible : on ne PRÉTEND pas que rien n'est parti. Dans le doute,
+    // on répond « vue » — le job restera sur le chemin prudent (pas de reprise).
+    return true;
+  }
+}
+
 async function readEbayPostSubmitState(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
