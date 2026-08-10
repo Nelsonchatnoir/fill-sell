@@ -98,11 +98,11 @@ function etatLienJob(job) {
 }
 function failJobAction(job, lang) {
   const err = job?.error || '';
-  // Publiée sans lien, fenêtre de re-capture close (2026-08-10) : la seule
-  // action utile est d'aller voir soi-même sur la plateforme. Placé en tête —
-  // un job `published` ne matche de toute façon aucun des motifs d'erreur
-  // ci-dessous, qui visent les échecs.
-  if (etatLienJob(job) === 'introuvable' && PLATFORM_LISTINGS_URLS[job?.platform]) {
+  // Échec posé par le cron « publication sans lien » (2026-08-10) : son message
+  // ORDONNE d'aller vérifier ses annonces avant de republier, sinon doublon. On
+  // rend cet ordre cliquable — un bouton vaut mieux qu'une phrase. Reconnu par
+  // le marqueur que le cron pose lui-même, jamais par une heuristique.
+  if (job?.platform_fields?.listing_url_abandon && PLATFORM_LISTINGS_URLS[job?.platform]) {
     const name = PLATFORM_LABELS[job.platform] || job.platform;
     return {
       url: PLATFORM_LISTINGS_URLS[job.platform],
@@ -4080,11 +4080,15 @@ const StockTab = memo(function StockTab({
                   // porteur d'un vrai warning garde son badge « à vérifier » et
                   // ne prend pas de second badge — une seule chose dite à la
                   // fois sur une carte.
+                  // ⛔ PLUS DE BADGE « à vérifier » POUR UN LIEN MANQUANT
+                  // (2026-08-10) : le cron publish-sans-lien-echec-daily bascule
+                  // désormais ces jobs en `failed` au bout de la fenêtre, avec
+                  // remboursement. Le badge « Échec » existant dit donc la
+                  // vérité tout seul — en ajouter un second ici, c'était deux
+                  // affichages concurrents pour le même état.
                   const sansWarn=j=>!warnedJobs.includes(j);
                   const lienEnCoursJobs=Object.values(latestByPlatform)
                     .filter(j=>etatLienJob(j)==="en_cours"&&sansWarn(j));
-                  const lienIntrouvableJobs=Object.values(latestByPlatform)
-                    .filter(j=>etatLienJob(j)==="introuvable"&&sansWarn(j));
                   // État de retrait par plateforme : calcul partagé avec le
                   // modal de retrait (computeRemovalInfo, en tête de fichier) —
                   // un seul calcul, jamais deux vérités carte/modal.
@@ -4428,22 +4432,6 @@ const StockTab = memo(function StockTab({
                                   {lang==="en"?"Published — fetching the link":"Publiée — récupération du lien en cours"} {PLATFORM_LABELS[j.platform]||j.platform}
                                 </div>
                               ))}
-                              {/* Fenêtre close sans lien : LÀ seulement on
-                                  alerte, et la modale donne la consigne utile
-                                  (aller voir l'annonce sur la plateforme). */}
-                              {lienIntrouvableJobs.map(j=>(
-                                <div
-                                  key={"lien-ko-"+j.platform}
-                                  className="micon"
-                                  role="button"
-                                  tabIndex={0}
-                                  onClick={e=>{e.stopPropagation();setFailJobModal(j);}}
-                                  onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.stopPropagation();setFailJobModal(j);}}}
-                                  style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}
-                                >
-                                  ⚠️ {lang==="en"?"Published — check it":"Publiée — à vérifier"} {PLATFORM_LABELS[j.platform]||j.platform}
-                                </div>
-                              ))}
                               {/* ⛔ NE PAS réintroduire un repli « 🏪 <plateforme> »
                                   quand !enLigne (retiré le 2026-08-05, décision
                                   de Nico). Il affichait le champ LIBRE
@@ -4766,16 +4754,12 @@ const StockTab = memo(function StockTab({
             {(()=>{
               const estReserve=(failJobModal.status==="published"||failJobModal.status==="dry_run_completed")
                 &&warningsAffichables(failJobModal).length>0;
-              // Lien jamais récupéré, fenêtre de re-capture close : l'annonce
-              // est publiée, ce n'est pas un échec — l'en-tête ne doit donc
-              // jamais dire « non publiée », et le corps explique quoi faire.
-              const estLienIntrouvable=!estReserve&&etatLienJob(failJobModal)==="introuvable";
               return (
                 <>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
               <PlatformLogo platform={failJobModal.platform} size={24}/>
               <div style={{fontSize:16,fontWeight:700,color:"#10201B"}}>
-                {(PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform)} — {(estReserve||estLienIntrouvable)
+                {(PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform)} — {estReserve
                   ?(lang==="en"?"published, check it":"publiée — à vérifier")
                   :(lang==="en"?"not published":"non publiée")}
               </div>
@@ -4787,13 +4771,7 @@ const StockTab = memo(function StockTab({
                 continue de tester l'erreur BRUTE (motifs connexion/brouillon
                 posés côté extension). */}
             <div style={{fontSize:14,color:"#3A443F",lineHeight:1.6,marginBottom:16,whiteSpace:"pre-wrap"}}>
-              {estReserve
-                ?jobWarningsTexte(failJobModal)
-                :estLienIntrouvable
-                  ?(lang==="en"
-                    ? `Your listing went online on ${PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform}, but we never managed to fetch its link — so we can't watch it for a sale, and we can't take it down for you. Open your listings on the marketplace and check it's there. If it isn't, publish it again from here.`
-                    : `Ton annonce est bien partie sur ${PLATFORM_LABELS[failJobModal.platform]||failJobModal.platform}, mais on n'a jamais réussi à récupérer son lien — du coup on ne peut ni surveiller sa vente, ni la retirer pour toi. Ouvre tes annonces sur la plateforme et vérifie qu'elle y est. Si elle n'y est pas, republie-la depuis ici.`)
-                  :humanizeJobError(failJobModal,lang)}
+              {estReserve?jobWarningsTexte(failJobModal):humanizeJobError(failJobModal,lang)}
             </div>
                 </>
               );
