@@ -2796,6 +2796,82 @@ export function clearStepperPersistence() {
   } catch { /* stockage indisponible : rien à nettoyer */ }
 }
 
+// ── Générations déjà PAYÉES (2026-08-10) ─────────────────────────────────────
+// Le 10/08 au soir : spend_generate -6 à 21:47:08 PUIS -6 à 21:48:18, pour UNE
+// seule publication à 21:48:37. 12 Pépites pour une annonce.
+// Mécanique : rouvrir « Publier » sur le même article appelle
+// clearStepperPersistence() (StockTab), qui efface le brouillon — donc les
+// annonces déjà générées. Le stepper repart vierge et l'effet d'arrivée au
+// step 2 relance handleGeneratePlatforms() TOUT SEUL, sans bouton et sans
+// confirmation : la deuxième facture part avant que qui que ce soit ait rien
+// demandé.
+// Réponse : une génération payée est CONSERVÉE à part, hors du brouillon, et
+// re-servie si l'on redemande EXACTEMENT la même chose. La signature est
+// l'intégralité de la requête (corps envoyé à generate-listing + contenu de la
+// fiche article + utilisateur), sérialisée clés triées :
+//   · elle est comparée à l'IDENTIQUE, jamais hachée — un hash pourrait
+//     collisionner et servir la génération d'un AUTRE article, exactement le
+//     genre de contamination que ce code passe son temps à fermer ;
+//   · tout champ ajouté un jour au corps entre AUTOMATIQUEMENT dans la
+//     signature (parcours générique, pas une liste à tenir à jour) : un oubli
+//     futur produit un cache manqué — donc une génération de trop, jamais une
+//     génération périmée servie à la place d'une neuve.
+// Conséquence directe : modifier l'article, ses photos, ses plateformes, son
+// option de retouche, son prix ou ses notes change la signature et REGÉNÈRE.
+// Une génération légitime n'est jamais bloquée.
+const GENERATION_CACHE_KEY = "fs_stepper_generations";
+const GENERATION_CACHE_MAX = 3;             // 3 articles récents suffisent au va-et-vient
+const GENERATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function stableStringify(v) {
+  if (v === null || v === undefined || typeof v !== "object") return JSON.stringify(v ?? null);
+  if (Array.isArray(v)) return "[" + v.map(stableStringify).join(",") + "]";
+  return "{" + Object.keys(v).sort()
+    .map(k => JSON.stringify(k) + ":" + stableStringify(v[k]))
+    .join(",") + "}";
+}
+
+// L'ordre des plateformes vient d'un Set : cocher/décocher les mêmes cases dans
+// un autre ordre ne doit pas facturer une seconde génération. Trié ici, et ICI
+// SEULEMENT — le corps réellement envoyé n'est pas touché.
+function signatureGeneration({ userId, body, src }) {
+  try {
+    return stableStringify({
+      u: userId ?? null,
+      body: { ...body, platforms: [...(body?.platforms ?? [])].sort() },
+      src: src ?? null,
+    });
+  } catch { return null; }
+}
+
+function lireGenerationCache(signature) {
+  if (!signature) return null;
+  try {
+    const entrees = JSON.parse(sessionStorage.getItem(GENERATION_CACHE_KEY) || "[]");
+    if (!Array.isArray(entrees)) return null;
+    const e = entrees.find(x => x?.sig === signature);
+    if (!e) return null;
+    const age = Date.now() - Date.parse(e.at ?? "");
+    if (!Number.isFinite(age) || age > GENERATION_CACHE_TTL_MS) return null;
+    return e.data ?? null;
+  } catch { return null; }
+}
+
+function ecrireGenerationCache(signature, data) {
+  if (!signature || !data) return;
+  try {
+    const anciennes = JSON.parse(sessionStorage.getItem(GENERATION_CACHE_KEY) || "[]");
+    const reste = (Array.isArray(anciennes) ? anciennes : []).filter(x => x?.sig !== signature);
+    const entrees = [{ sig: signature, data, at: new Date().toISOString() }, ...reste]
+      .slice(0, GENERATION_CACHE_MAX);
+    sessionStorage.setItem(GENERATION_CACHE_KEY, JSON.stringify(entrees));
+  } catch {
+    // Quota dépassé ou stockage indisponible : on ne casse RIEN. La génération
+    // vient d'aboutir et s'affiche ; seul le rattrapage d'une réouverture est
+    // perdu — on retombe sur le comportement d'avant ce cache.
+  }
+}
+
 export function readStepperHost(source) {
   try {
     const raw = sessionStorage.getItem(STEPPER_HOST_KEY);
@@ -3688,8 +3764,7 @@ export default function ListingPreviewScreen({
         statut:      "stock",
         prix_vente:  src.prixVente,
       };
-      const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
-        body: {
+      const corps = {
           ...(invId ? { inventaire_id: invId } : { item_data: itemData }),
           // Champs canoniques déjà connus du client (Lens taille_estimee,
           // article) : le serveur les injecte comme contraintes dans les 4
@@ -3717,7 +3792,21 @@ export default function ListingPreviewScreen({
             ? { locked_photos: photos.filter(u => initialPhotos.includes(u)) }
             : {}),
           ...(notes ? { notes } : {}),
-        },
+      };
+      // Génération déjà payée pour EXACTEMENT cette demande : on la re-sert au
+      // lieu de la refacturer. `src` entre dans la signature en plus du corps :
+      // quand invId est présent, le corps ne porte que l'identifiant et c'est
+      // le SERVEUR qui relit la fiche (titre, marque, description, type,
+      // prix_vente) — modifier l'article puis rouvrir « Publier » doit
+      // regénérer, pas ressortir le texte de l'ancienne version.
+      const signature = signatureGeneration({ userId, body: corps, src });
+      const dejaPayee = lireGenerationCache(signature);
+      if (dejaPayee) {
+        appliquerGeneration(dejaPayee, platforms);
+        return; // aucun appel, aucun débit — le `finally` rend la main
+      }
+      const { data, error: fnErr } = await supabase.functions.invoke("generate-listing", {
+        body: corps,
       });
       if (fnErr) {
         // 402 insufficient_coins (course : solde consommé entre le pré-check
@@ -3749,6 +3838,23 @@ export default function ListingPreviewScreen({
       // vient d'avoir lieu côté serveur (et un éventuel remboursement d'une
       // tentative précédente).
       refreshWallet();
+      // Rangée AVANT d'être appliquée : si l'utilisateur referme le stepper
+      // dans la seconde qui suit, la génération est déjà payée et déjà sauvée.
+      ecrireGenerationCache(signature, data);
+      appliquerGeneration(data, platforms);
+    } catch (e) {
+      setPlatformError(e.message);
+    } finally {
+      setGeneratingPlatforms(false);
+    }
+  }
+
+  // Application des résultats d'une génération à l'état du stepper. SÉPARÉE de
+  // l'appel réseau (2026-08-10) pour qu'une génération re-servie depuis le
+  // cache produise EXACTEMENT le même état qu'une génération fraîche — un
+  // second chemin recopié divergerait au premier correctif appliqué d'un seul
+  // côté.
+  function appliquerGeneration(data, platforms) {
       setProcessedPhotos(data.photos ?? []);
       setPrice(prev => data.price ?? prev);
 
@@ -3817,11 +3923,6 @@ export default function ListingPreviewScreen({
 
       setEdited(initialEdited);
       setPlatformListings(data);
-    } catch (e) {
-      setPlatformError(e.message);
-    } finally {
-      setGeneratingPlatforms(false);
-    }
   }
 
   // ── Champs partagés : setter propagateur + garde générique (Sujet 4) ──────
