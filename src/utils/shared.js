@@ -16,6 +16,19 @@ export const PLATFORM_LOGIN_URLS = {
 };
 export const LBC_DEPOSIT_URL = 'https://www.leboncoin.fr/deposer-une-annonce';
 
+// Pages « Mes annonces » de chaque plateforme (2026-08-10). Mêmes URL que
+// MY_LISTINGS_URL côté extension — celles-là sont RELEVÉES en réel, c'est là
+// que la re-capture différée va chercher les liens manquants. Servent ici à
+// envoyer l'utilisateur vérifier lui-même une annonce dont on n'a pas réussi à
+// récupérer le lien. Vinted absent volontairement : son URL de profil dépend de
+// l'id du vendeur, qu'on ne connaît pas côté app — mieux vaut pas de lien
+// qu'un lien qui tombe à côté.
+export const PLATFORM_LISTINGS_URLS = {
+  leboncoin: 'https://www.leboncoin.fr/compte/part/mes-annonces',
+  ebay: 'https://www.ebay.fr/sh/lst/active',
+  beebs: 'https://www.beebs.app/fr/account/my-adverts',
+};
+
 // ── Erreur de job : message utilisateur vs diagnostic (2026-07-30) ────────────
 // Le 30/07, la modale « non publiée » du Stock a affiché tel quel un message
 // technique (nom de fichier du code, options DOM relevées, dump de réponse
