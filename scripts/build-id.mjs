@@ -215,7 +215,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // l'upsert écrase la promotion. Le garde-fou durable est la migration
 // 20260811130000_aspects_refus_serveur_prime.sql, NON APPLIQUÉE à ce jour.
 // ⚠️ POSTÉRIEUR au paquet 0.5.9 ; EXTENSION_MIN_BUILD reste sur la 0.5.6.
-export const EXTENSION_LAST_COMMIT = '2026-08-11T12:11:00Z';
+export const EXTENSION_LAST_COMMIT = '2026-08-11T12:07:27Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
