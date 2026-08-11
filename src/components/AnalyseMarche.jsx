@@ -110,6 +110,11 @@ export default function AnalyseMarche({
   lang = "fr",
   currency = "EUR",
   variant = "verdict",
+  // `notes` est aussi rendue par LensIdentite (11/08), en encart « une photo de
+  // plus affinerait l'analyse » — c'est là qu'elle est exploitable. Ce drapeau
+  // évite de l'écrire deux fois sur le même écran. Défaut `false` : tous les
+  // autres appelants, stepper compris, gardent le comportement d'origine.
+  masquerNotes = false,
 }) {
   const [ouvert, setOuvert] = useState(false);
   if (!result || result.prix_vente_suggere == null) return null;
@@ -205,10 +210,10 @@ export default function AnalyseMarche({
         </div>
       )}
 
-      {(result.description || result.notes) && (
+      {(result.description || (result.notes && !masquerNotes)) && (
         <div style={{ borderTop: `1px solid ${C.rule}`, paddingTop: 9, display: "flex", flexDirection: "column", gap: 6 }}>
           {result.description && <div style={{ fontSize: 12.5, color: "#374151", lineHeight: 1.55 }}>{result.description}</div>}
-          {result.notes && <div style={{ fontSize: 11.5, color: C.mute2, fontStyle: "italic", lineHeight: 1.45 }}>{result.notes}</div>}
+          {result.notes && !masquerNotes && <div style={{ fontSize: 11.5, color: C.mute2, fontStyle: "italic", lineHeight: 1.45 }}>{result.notes}</div>}
         </div>
       )}
     </div>

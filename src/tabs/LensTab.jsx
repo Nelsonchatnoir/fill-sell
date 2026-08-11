@@ -7,8 +7,11 @@ import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteIcon from '../components/PepiteIcon';
 import PepiteAmount from '../components/PepiteAmount';
-import { getRotatingLensPlaceholders, getTypeStyle, typeLabel } from '../utils/shared';
+// getTypeStyle / typeLabel sont partis avec les pastilles d'identification :
+// ils vivent désormais dans LensIdentite.
+import { getRotatingLensPlaceholders } from '../utils/shared';
 import AnalyseMarche, { analyseFiabilite } from '../components/AnalyseMarche';
+import LensIdentite from '../components/LensIdentite';
 import { useTranslation } from '../i18n/useTranslation';
 import { UI, Loader, PrimaryButton, PremiumButton } from '../components/ui';
 
@@ -400,30 +403,15 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
     <div style={{animation:'vrFadeSlide 0.35s cubic-bezier(0.22,1,0.36,1) both'}}>
       <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.08)',marginBottom:10,boxShadow:'0 2px 8px rgba(0,0,0,0.04)'}}>
 
-        {/* Titre. Le badge verdict qui vivait ici est parti dans AnalyseMarche,
-            où il porte la MARGE en clair : un verdict nu, détaché du chiffre
-            qui le justifie, ne décidait rien. */}
-        <div style={{display:'flex',marginBottom:12}}>
-          <div style={{fontWeight:700,fontSize:16,color:'#10201B',flex:1,lineHeight:1.3}}>{result.titre||'Article'}</div>
-        </div>
-
-        {/* 🏷️ Identification pills */}
-        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
-          {result.marque&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:'#F0FDF4',color:'#1B6E62',border:'1px solid #BFE0D9'}}>{result.marque}</span>}
-          {result.modele&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:'#F8FAFC',color:'#475569',border:'1px solid #E2E8F0'}}>{result.modele}</span>}
-          {result.etat_estime&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:'#F5F3FF',color:'#7C3AED',border:'1px solid #DDD6FE'}}>{result.etat_estime}</span>}
-          {result.matiere&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:'#FFF7ED',color:'#C2410C',border:'1px solid #FED7AA'}}>{result.matiere}</span>}
-          {result.categorie&&(()=>{const s=getTypeStyle(result.categorie);return(
-            <span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,background:s.bg,color:s.color,border:`1px solid ${s.border}`}}>{s.emoji} {typeLabel(result.categorie,lang)}</span>
-          );})()}
-          {result.confiance&&(
-            <span style={{padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:700,
-              background:result.confiance==='haute'?'#F0FDF4':result.confiance==='moyenne'?'#FFFBEB':'#FFF5F5',
-              color:result.confiance==='haute'?'#1B6E62':result.confiance==='moyenne'?'#D97706':'#DC2626'}}>
-              {result.confiance==='haute'?(lang==='en'?'High confidence':'Confiance haute'):result.confiance==='moyenne'?(lang==='en'?'Medium confidence':'Confiance moyenne'):(lang==='en'?'Low confidence':'Confiance basse')}
-            </span>
-          )}
-        </div>
+        {/* ── Identification (11/08/2026) ────────────────────────────────
+            Le titre et six pastilles de même poids ont laissé place à
+            LensIdentite : tuile de catégorie, marque mise en avant OU
+            « aucune marque lisible » assumée, jauge de confiance, et surtout
+            la fiche de ce qui a été LU sur l'objet — tension, capacité,
+            dimensions, référence. Ces attributs existaient déjà en base et
+            partaient directement dans les aspects eBay sans jamais passer
+            devant l'utilisateur. */}
+        <LensIdentite result={result} lang={lang} />
 
         {/* ── Analyse de marché — composant UNIQUE, partagé avec le stepper ──
             Prix conseillé, verdict avec la marge, fiabilité, puis tout le
@@ -436,6 +424,9 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
           lang={lang}
           currency={currency}
           variant="verdict"
+          // La note est déjà rendue plus haut, en encart « une photo de plus
+          // affinerait l'analyse » — là où elle sert à quelque chose.
+          masquerNotes
         />
 
 
