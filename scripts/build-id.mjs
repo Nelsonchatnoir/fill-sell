@@ -205,7 +205,17 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // DRAFT_LBC_RE pour afficher le bouton « Ouvrir le brouillon Leboncoin ».
 // Texte seul, aucun changement de comportement.
 // ⚠️ POSTÉRIEUR au paquet 0.5.9 ; EXTENSION_MIN_BUILD reste sur la 0.5.6.
-export const EXTENSION_LAST_COMMIT = '2026-08-11T10:42:25Z';
+// 2026-08-11T11:43:46Z = 1454b12 : persistDiscoveredAspects applique une
+// PRÉCÉDENCE de sources (server_400 > manual > dom). Sa déduplication
+// « premier arrivé gagne », combinée à l'ordre du site d'appel, jetait
+// silencieusement les refus serveur dès que le champ existait aussi au
+// formulaire — d'où 4 lignes 'server_400' seulement dans tout le catalogue,
+// toutes sur des clés que le DOM n'énumère pas (photos, title).
+// ⚠️ Ne suffit PAS seul : au job suivant, la passe DOM repose required=false et
+// l'upsert écrase la promotion. Le garde-fou durable est la migration
+// 20260811130000_aspects_refus_serveur_prime.sql, NON APPLIQUÉE à ce jour.
+// ⚠️ POSTÉRIEUR au paquet 0.5.9 ; EXTENSION_MIN_BUILD reste sur la 0.5.6.
+export const EXTENSION_LAST_COMMIT = '2026-08-11T11:43:46Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
