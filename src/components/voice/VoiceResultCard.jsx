@@ -14,6 +14,7 @@
 // setEdits est un setState de la forme { [idx]: {...} } — identique à vaEdits
 // dans App.jsx et à zoneEdits dans StockTab.
 
+import { supabase } from '../../lib/supabase';
 import { V } from './tokens';
 import {
   VoiceCard, EntityPills, Pill, TextField, PriceField, SelectField,
@@ -28,8 +29,37 @@ import {
 const CATS = ["Mode","High-Tech","Maison","Électroménager","Luxe","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"];
 
 export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
-  const { lang = 'fr', currency = 'EUR', items = [], actions, replaceResult, edits = {}, setEdits } = ctx || {};
+  const { lang = 'fr', currency = 'EUR', items = [], actions, replaceResult: _replaceResult, edits = {}, setEdits } = ctx || {};
   const { intent, status, data, message, taskData } = result || {};
+
+  // ── JOURNAL DES DÉCISIONS HUMAINES (2026-08-11) ────────────────────────────
+  // usage_logs 'voice_intent_result' est écrit UNE FOIS, avant toute
+  // confirmation : les « en attente de confirmation » étaient donc indécidables
+  // (confirmés ? annulés ? abandonnés ?). On journalise ici les deux issues.
+  // Fire & forget, catch silencieux, aucun contenu de phrase — même esprit que
+  // le log de voiceEngine.js (fetch REST là-bas, client supabase ici, comme
+  // l'insert 'voice' déjà en place dans App.jsx : on n'a pas le token dans la
+  // carte). Ne conditionne RIEN : aucune valeur de retour n'est lue.
+  const journaliserDecision = (decision) => {
+    try {
+      supabase.auth.getSession().then(({ data: _s }) => {
+        const _uid = _s?.session?.user?.id;
+        if (!_uid) return;
+        supabase.from('usage_logs')
+          .insert({ user_id: _uid, feature: 'voice_decision', metadata: { decision, intent: intent || null } })
+          .then(() => {}, () => {});
+      }, () => {});
+    } catch { /* jamais bloquant */ }
+  };
+  // Enveloppe de replaceResult : capte TOUTES les confirmations sans toucher un
+  // seul appelant (et sans réordonner quoi que ce soit). Seul un patch qui pose
+  // status:'success' est une confirmation aboutie ; les transitions
+  // intermédiaires (choix d'un candidat, ventilation d'un lot) n'ont pas de
+  // status et ne sont donc pas journalisées.
+  const replaceResult = (i, patch) => {
+    if (patch?.status === 'success') journaliserDecision('confirme');
+    if (typeof _replaceResult === 'function') _replaceResult(i, patch);
+  };
 
   const fmt = (amount, dec = null) => formatCurrency(amount, currency, dec);
   const sym = CURRENCY_SYMBOLS[currency] || currency;
@@ -37,7 +67,10 @@ export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
   const catEmoji = (c) => (c && c !== 'Autre' ? getTypeStyle(c).emoji : null);
   const catPill = (c) => (c && c !== 'Autre' ? typeLabel(c, lang) : null);
   const icoFor = (titre, desc, type) => detectObjectIcon(titre, desc, type);
-  const cancel = () => replaceResult(idx, { ...result, status: 'error', message: en ? 'Cancelled' : 'Annulé' });
+  const cancel = () => {
+    journaliserDecision('annule');
+    replaceResult(idx, { ...result, status: 'error', message: en ? 'Cancelled' : 'Annulé' });
+  };
 
   // ═════ deal_score sans prix de vente : rien à montrer (comportement d'origine)
   if (intent === 'deal_score' && !taskData?.prix_vente) return null;
@@ -58,7 +91,10 @@ export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
     return (
       <QuietNote>
         <span>🤔</span>
-        <span>{message || (en ? "Didn't understand, try again" : "Je n'ai pas compris, réessaie")}</span>
+        {/* Repli tenu à l'identique avec voiceEngine.js (branche unknown/default) */}
+        <span>{message || (en
+          ? "I didn't quite catch that — try saying it another way, in a short sentence."
+          : "Je n'ai pas bien saisi — redis-le autrement, en une phrase courte.")}</span>
       </QuietNote>
     );
   }
@@ -1059,12 +1095,19 @@ export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
   }
 
   // ═════ Mise à jour d'un champ (informatif — comportement d'origine conservé)
+  // Aucun bouton ajouté : cette carte n'exécute rien, elle N'A JAMAIS rien
+  // exécuté. Elle disait seulement « mise à jour manuelle requise » sans dire
+  // OÙ — un utilisateur a dicté « comment faire la mise à jour manuelle
+  // concernant les ventes » juste après l'avoir lue (11/08, 10:54). Le sub
+  // nomme désormais l'endroit exact et le geste.
   if (status === 'pending_confirmation' && intent === 'inventory_update') {
     return (
       <VoiceCard tone="info"
         eyebrow={en ? 'Update' : 'Mise à jour'}
         title={`${taskData?.nom} · ${taskData?.field} → ${taskData?.value}`}
-        sub={en ? 'Manual update required' : 'Mise à jour manuelle requise'} />
+        sub={en
+          ? 'To do by hand — Sales tab: tap the row to fix it, swipe it left to delete it. For a stock item: AI Stock tab, open the item, Edit.'
+          : "À faire à la main — onglet Ventes : tape la ligne pour la corriger, glisse-la vers la gauche pour la supprimer. Pour un article en stock : onglet Stock IA, ouvre l'article, Modifier."} />
     );
   }
 

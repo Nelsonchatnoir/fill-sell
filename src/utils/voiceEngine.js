@@ -913,6 +913,77 @@ export async function executeVoiceTasks(tasks, context) {
   const executedResultsMap = {};
   let hadMutation = false;
 
+  // ── FILTRE D'AMONT (2026-08-11) — PLUS AUCUNE ÉCRITURE SILENCIEUSE ─────────
+  // POURQUOI. Le 11/08 à 17:35, une transcription inintelligible (« Terre avec
+  // Sécurité, Olfa, SQ4 ») a produit QUATRE tâches : 3 inventory_add en
+  // requiresConfirmation:false + 1 unknown. Les 3 ajouts se sont écrits SANS
+  // question — « Produit / Sécurité », « Produit / I », « Cutter / Olfa » —
+  // pendant que la carte de la 4e affichait « je n'ai pas compris ». Ces 3
+  // fiches fantômes sont restées le stock ENTIER de cet utilisateur.
+  //
+  // CE QUE CE FILTRE FAIT, ET RIEN D'AUTRE : il repositionne
+  // requiresConfirmation AVANT le dispatch. Le case "inventory_add" n'est pas
+  // touché d'une ligne — il lit déjà ce drapeau (« Confirmer l'ajout ? ») et la
+  // carte de confirmation existe déjà (VoiceResultCard, branche
+  // pending_confirmation + inventory_add, avec nom et prix éditables). Aucune
+  // tâche n'est supprimée, aucun intent réécrit, aucun autre intent visé :
+  // inventory_add est le SEUL qui écrivait sans confirmation. La pire issue
+  // possible de ce filtre est une question de trop.
+  //
+  // ⚠️ ON NE JUGE JAMAIS UNE MARQUE SUR SA PLAUSIBILITÉ. « Olfa », « Medik8 »,
+  // « San Marina » sont de vraies marques, et chaque tentative passée de
+  // « corriger » une marque inconnue l'a abîmée. Le seul critère retenu est la
+  // LONGUEUR DE 1 CARACTÈRE : une marque d'une seule lettre n'existe pas, c'est
+  // un résidu de STT (cf. « I » du 11/08).
+  const NOMS_DE_REMPLISSAGE = new Set(["produit", "article", "objet", "item"]);
+  const _lotAUnknown = tasks.some(t => t?.intent === "unknown");
+  const _signauxDuLot = new Set();
+  let _nbForcees = 0;
+  for (const t of tasks) {
+    if (t?.intent !== "inventory_add") continue;
+    const _brut = t.data?.nom ?? t.data?.titre ?? t.data?.article;
+    const _nom = (_brut && typeof _brut === "object") ? (_brut.nom ?? "") : String(_brut ?? "");
+    const _sig = [];
+    // Nom EXACTEMENT égal à un générique de remplissage — « Produit ménager »,
+    // « Article de pêche » ne sont PAS visés (comparaison d'égalité, pas includes).
+    if (NOMS_DE_REMPLISSAGE.has(norm(_nom))) _sig.push("nom_de_remplissage");
+    if (String(t.data?.marque ?? "").trim().length === 1) _sig.push("marque_une_lettre");
+    // Le signal le plus fort : si le modèle avoue n'avoir pas compris une partie
+    // de la phrase, RIEN du lot ne s'écrit sans accord explicite.
+    if (_lotAUnknown) _sig.push("lot_avec_unknown");
+    if (_sig.length === 0) continue;
+    if (t.requiresConfirmation !== true) _nbForcees++;
+    t.requiresConfirmation = true;
+    _sig.forEach(s => _signauxDuLot.add(s));
+  }
+  // Journal du déclenchement — fire & forget, catch silencieux, JAMAIS le
+  // contenu de la phrase (seuls les signaux et les compteurs).
+  if (_nbForcees > 0) {
+    try {
+      const _uidG = context.userId;
+      if (_uidG && context.supabaseUrl && context.token) {
+        fetch(`${context.supabaseUrl}/rest/v1/usage_logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${context.token}`,
+            "apikey": supabaseAnonKey,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            user_id: _uidG,
+            feature: "voice_add_guard",
+            metadata: {
+              signaux: [..._signauxDuLot],
+              taches_forcees: _nbForcees,
+              taches_du_lot: tasks.length,
+            },
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
+  }
+
   for (const task of tasks) {
     if (!task.data) task.data = {};
     let result;
@@ -1583,10 +1654,13 @@ export async function executeVoiceTasks(tasks, context) {
             taskData: task.data,
             status: "error",
             data: {},
+            // Libellé tenu à l'identique dans VoiceResultCard.jsx (repli de la même
+            // note) — changer l'un sans l'autre donnerait deux textes pour un
+            // seul état.
             message:
               context.lang === "en"
-                ? "I didn't understand, try again"
-                : "Je n'ai pas compris, réessaie",
+                ? "I didn't quite catch that — try saying it another way, in a short sentence."
+                : "Je n'ai pas bien saisi — redis-le autrement, en une phrase courte.",
           };
       }
     } catch (e) {
@@ -1599,6 +1673,26 @@ export async function executeVoiceTasks(tasks, context) {
       };
     }
     results.push(result);
+  }
+
+  // ── LOT MIXTE (2026-08-11) — dire ce qui A ÉTÉ FAIT avant ce qui a échoué ──
+  // Cas tromy.amz du 11/08 : 3 tâches réussies + 1 unknown, et le seul message
+  // lu par l'utilisateur était « je n'ai pas compris ». Version DÉLIBÉRÉMENT
+  // CONSERVATRICE : on ne reformule que si au moins une tâche a réussi ET que
+  // TOUTES les tâches en erreur le sont pour un intent 'unknown'. Toute autre
+  // cause d'erreur (échec d'écriture, session expirée, article introuvable…)
+  // garde son message d'origine — on ne masque jamais un vrai échec.
+  {
+    const _ok = results.filter(r => r?.status === "success");
+    const _ko = results.filter(r => r?.status === "error");
+    if (_ok.length > 0 && _ko.length > 0 && _ko.every(r => r?.intent === "unknown")) {
+      const _n = _ok.length;
+      for (const r of _ko) {
+        r.message = context.lang === "en"
+          ? `The rest is done (${_n} action${_n > 1 ? "s" : ""}). I just didn't catch this part — say it again on its own?`
+          : `Le reste est fait (${_n} action${_n > 1 ? "s" : ""}). C'est juste cette partie que je n'ai pas saisie — redis-la seule ?`;
+      }
+    }
   }
 
   if (hadMutation) {

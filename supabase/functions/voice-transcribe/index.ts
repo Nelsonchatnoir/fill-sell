@@ -88,7 +88,7 @@ serve(async (req) => {
     profileData?.is_pro ||
     profileData?.is_comped
   );
-  const { data: quotaData } = await adminClient.rpc("check_and_log_usage", {
+  const { data: quotaData, error: quotaError } = await adminClient.rpc("check_and_log_usage", {
     p_user_id: user.id,
     p_feature: "voice",
     p_is_premium: isPremiumUser,
@@ -101,6 +101,7 @@ serve(async (req) => {
     p_daily_limit_premium: null,
     p_monthly_limit_premium: null,
   });
+  if (quotaError) console.error("[voice-transcribe] check_and_log_usage error:", quotaError.message);
   if (quotaData?.allowed === false) {
     return new Response(
       JSON.stringify({ error: "quota_exceeded", reason: quotaData.reason, limit: quotaData.limit }),
@@ -108,12 +109,38 @@ serve(async (req) => {
     );
   }
 
+  // ── ISSUE DE LA TRANSCRIPTION (2026-08-11) ─────────────────────────────────
+  // POURQUOI. La ligne usage_logs 'voice' est écrite par check_and_log_usage
+  // AVANT même qu'on lise l'audio, et sa metadata restait vide : « une requête
+  // authentifiée a passé le quota », rien de plus. Résultat, un `voice` sans
+  // `voice_intent` était indécidable — panne de format, Whisper muet,
+  // hallucination, abandon, ou simple dictée du micro Lens (qui n'appelle
+  // JAMAIS voice-intent, par conception) se ressemblaient tous. Sur 48 h,
+  // 15 lignes orphelines sur 44 sans un seul moyen de les trancher.
+  //
+  // CE QUE ÇA NE FAIT PAS : ni quota, ni statut HTTP, ni texte rendu ne
+  // changent. L'écriture n'est JAMAIS attendue dans le chemin de réponse
+  // (waitUntil quand la plateforme l'expose, sinon promesse abandonnée) et ne
+  // peut pas lever. Aucun contenu de phrase n'est enregistré.
+  const quotaLogId: string | null = (quotaData as any)?.log_id ?? null;
+  const marquerIssue = (issue: string, detail: Record<string, unknown> = {}) => {
+    if (!quotaLogId) return;
+    try {
+      const p = adminClient.from("usage_logs")
+        .update({ metadata: { issue, ...detail } })
+        .eq("id", quotaLogId)
+        .then(() => {}, () => {});
+      (globalThis as any).EdgeRuntime?.waitUntil?.(p);
+    } catch { /* jamais bloquant */ }
+  };
+
   try {
     const formData = await req.formData();
     const audioFile = formData.get("audio") as File | null;
     const lang = (formData.get("lang") as string | null) ?? "fr";
 
     if (!audioFile) {
+      marquerIssue("format", { detail: "audio_absent" });
       return new Response(JSON.stringify({ error: "Missing audio field" }), {
         status: 400,
         headers: { "Content-Type": "application/json", ...CORS },
@@ -121,6 +148,7 @@ serve(async (req) => {
     }
 
     if (audioFile.size > MAX_SIZE) {
+      marquerIssue("format", { detail: "trop_gros", octets: audioFile.size });
       return new Response(JSON.stringify({ error: "File too large" }), {
         status: 413,
         headers: { "Content-Type": "application/json", ...CORS },
@@ -139,6 +167,9 @@ serve(async (req) => {
 
     const ext = ALLOWED_TYPES[mimeType];
     if (!ext) {
+      // Le mime est la donnée qui manquait pour expliquer les 415 muets côté
+      // appareil (WebView Android/iOS qui rend un conteneur non listé).
+      marquerIssue("format", { detail: "mime_non_supporte", mime: mimeType || null });
       return new Response(JSON.stringify({ error: "Unsupported format" }), {
         status: 415,
         headers: { "Content-Type": "application/json", ...CORS },
@@ -167,6 +198,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
+      marquerIssue("whisper_ko", { detail: "http", statut: response.status, mime: mimeType || null });
       return new Response(
         JSON.stringify({ error: errData?.error?.message ?? "OpenAI API error" }),
         { status: 500, headers: { "Content-Type": "application/json", ...CORS } }
@@ -188,6 +220,7 @@ serve(async (req) => {
       console.warn("[voice-transcribe] hallucination_filtree", JSON.stringify({
         raison: filtre, texte: texte.slice(0, 120),
       }));
+      marquerIssue("hallucine", { raison: filtre, mime: mimeType || null });
       return new Response(JSON.stringify({
         text: "",
         filtered: filtre,
@@ -197,15 +230,21 @@ serve(async (req) => {
       }), { headers: { "Content-Type": "application/json", ...CORS } });
     }
 
+    // Whisper a répondu 200 avec un texte vide : c'est ce que le front affiche
+    // en « Aucune parole détectée ». Distinguer 'vide' de 'ok' est tout l'objet
+    // de cette instrumentation — la réponse rendue ne change pas d'un octet.
+    marquerIssue(texte ? "ok" : "vide", { mime: mimeType || null });
     return new Response(JSON.stringify({ text: texte }), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
   } catch (err: any) {
     if (err?.isAiUnavailable) {
+      marquerIssue("whisper_ko", { detail: "ai_unavailable" });
       return new Response(JSON.stringify({ error: "ai_unavailable", retry_after: 30 }), {
         status: 503, headers: { "Content-Type": "application/json", ...CORS },
       });
     }
+    marquerIssue("whisper_ko", { detail: "exception" });
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { "Content-Type": "application/json", ...CORS },
