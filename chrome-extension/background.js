@@ -7088,12 +7088,171 @@ const LISTING_URL_RECOVERY_PAGES = {
 };
 const LISTING_URL_RECOVERY_MAX_AGE_MS = 48 * 60 * 60 * 1000;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SONDE DE MODÉRATION LEBONCOIN (2026-08-11) — LEBONCOIN UNIQUEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+// Leboncoin interdit la vente des cosmétiques : l'annonce est acceptée au dépôt
+// puis refusée par leur modération quelques minutes plus tard. Le job reste
+// 'published' sans listing_url, l'app affiche « récupération du lien en cours »,
+// et le cron de nuit ne le rattrape qu'à 48 h (~3 jours de délai réel mesuré).
+//
+// CE QUE LA SONDE PEUT OBSERVER — relevé LIVE le 11/08 sur un vrai compte :
+// « Mes annonces » n'a que DEUX onglets, « En ligne (N) » et « Expirées (N) ».
+// Aucun onglet ni badge « refusée ». Une annonce refusée n'y figure NULLE PART.
+// La seule observation possible est donc une ABSENCE — exactement le type de
+// preuve qui a déjà piégé ce projet (sonde Vinted, « path ≠ /lstng » eBay).
+// Ce qui la rend défendable ICI : sur Leboncoin l'URL est captée à la
+// redirection du dépôt, immédiatement. 55 jobs LBC aboutis, 55 URL. « Pas
+// d'URL » n'y a JAMAIS voulu dire « indexation lente ».
+//
+// ⚠️ TROIS ISSUES, PAS DEUX. Un échec de chargement n'est pas une preuve
+// d'absence : c'est tout l'enjeu, et c'est pour ça que la sonde exige une
+// PREUVE POSITIVE que la page a bien été vue.
+const LBC_MODERATION_MISSES_SEUIL = 3;
+const LBC_MODERATION_DELAI_MIN_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Preuve POSITIVE que « Mes annonces » Leboncoin a bien été rendue, et qu'on y
+ * voit la LISTE COMPLÈTE des annonces en ligne.
+ *
+ * @returns {Promise<{vue: boolean, motif: string, enLigne: number|null, visibles: number}>}
+ *   vue:true ⇒ et seulement alors ⇒ une absence de titre vaut observation.
+ */
+async function lbcMesAnnoncesEtat(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (patternSource) => {
+        // 1. On est bien SUR la page. Un DataDome, une redirection vers
+        //    auth.leboncoin.fr ou une session expirée changent le chemin :
+        //    le test d'URL les élimine sans rien deviner.
+        const u = new URL(location.href);
+        if (!/(^|\.)leboncoin\.fr$/.test(u.hostname)) return { vue: false, motif: `hote_${u.hostname}`, enLigne: null, visibles: 0 };
+        if (!/^\/compte\/part\/mes-annonces\/?$/.test(u.pathname)) return { vue: false, motif: `chemin_${u.pathname}`, enLigne: null, visibles: 0 };
+        // 2. La page a VRAIMENT rendu sa liste. Marqueur = l'onglet « En
+        //    ligne (N) », présent même à 0 annonce (relevé live : « En ligne (4)
+        //    · Expirées (0) »). Un squelette de chargement, une page d'erreur ou
+        //    un challenge n'ont pas ce compteur.
+        const texte = document.body?.innerText ?? "";
+        const m = texte.match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
+        if (!m) return { vue: false, motif: "compteur_en_ligne_absent", enLigne: null, visibles: 0 };
+        const enLigne = parseInt(m[1], 10);
+        // 3. Annonces DISTINCTES réellement visibles sur cette page.
+        const re = new RegExp(patternSource, "i");
+        const visibles = new Set(
+          Array.from(document.querySelectorAll("a[href]"))
+            .map((a) => (a.href.match(re) || [])[0])
+            .filter(Boolean)
+        ).size;
+        // 4. ⚠️ GARDE PAGINATION. Si le compte a plus d'annonces que la page
+        //    n'en montre, l'annonce cherchée peut être en page 2 : son absence
+        //    ICI ne prouve rien. On ne conclut que si toute la liste est sous
+        //    les yeux. (Sur les comptes observés, 4 annonces sur une page.)
+        if (visibles < enLigne) return { vue: false, motif: `liste_partielle_${visibles}_sur_${enLigne}`, enLigne, visibles };
+        return { vue: true, motif: "ok", enLigne, visibles };
+      },
+      args: [LISTING_URL_PATTERNS.leboncoin.source],
+    });
+    return res?.result ?? { vue: false, motif: "script_sans_resultat", enLigne: null, visibles: 0 };
+  } catch (e) {
+    // Onglet mort, page non injectable : surtout PAS une absence.
+    return { vue: false, motif: `script_ko_${String(e?.message ?? e).slice(0, 40)}`, enLigne: null, visibles: 0 };
+  }
+}
+
+// Fusion + écriture du compteur. Read-modify-write sur platform_fields lu au
+// début du balayage (quelques secondes) : personne d'autre n'écrit ce champ sur
+// un job déjà publié, et un écrasement coûterait au pire un compteur remis à
+// zéro — jamais un remboursement de trop (le serveur revérifie tout).
+async function lbcPatchSonde(session, job, sonde) {
+  const pf = { ...(job.platform_fields ?? {}), moderation_probe: sonde };
+  await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+    method: "PATCH",
+    body: JSON.stringify({ platform_fields: pf }),
+  }).catch((e) => console.warn("[background] PATCH moderation_probe:", String(e?.message ?? e)));
+  job.platform_fields = pf; // le job en mémoire reste cohérent pour la suite
+}
+
+/**
+ * Le titre n'a pas été trouvé sur la page. Décide entre les deux issues qui
+ * restent, et déclenche le remboursement anticipé au seuil.
+ *
+ * ISSUE 2/3 — page VUE + titre ABSENT      → compteur +1
+ * ISSUE 3/3 — page non concluante          → compteur INCHANGÉ (ni +1 ni reset)
+ *
+ * Un chargement raté, un DataDome, une session expirée, une liste paginée : rien
+ * de tout cela ne dit que l'annonce n'existe pas. Le compteur ne bouge pas, on
+ * réessaiera au prochain cycle. C'est LE point de la sonde.
+ */
+async function lbcSondeModeration(session, job, etatPage) {
+  const precedent = job.platform_fields?.moderation_probe ?? {};
+  if (!etatPage.vue) {
+    // On note quand même la dernière observation NON concluante : sans elle, un
+    // compteur figé à 2 pendant trois jours serait indéchiffrable en debug.
+    await lbcPatchSonde(session, job, {
+      ...precedent,
+      misses: precedent.misses ?? 0,
+      last_inconclusive_at: new Date().toISOString(),
+      last_inconclusive: etatPage.motif,
+    });
+    return;
+  }
+
+  const misses = (precedent.misses ?? 0) + 1;
+  const repere = Date.parse(job.published_at ?? job.created_at ?? "");
+  const ageMs = Number.isFinite(repere) ? Date.now() - repere : 0;
+  // LES DEUX CONDITIONS, JAMAIS L'UNE OU L'AUTRE. Le compteur seul ne suffit pas
+  // (trois cycles rapprochés ne font pas 2 h) ; la durée seule ne suffit pas
+  // (un navigateur fermé 3 h n'a rien observé du tout).
+  const atteint = misses >= LBC_MODERATION_MISSES_SEUIL && ageMs >= LBC_MODERATION_DELAI_MIN_MS;
+  const dejaRembourse = Boolean(job.platform_fields?.refund_unconfirmed);
+
+  await lbcPatchSonde(session, job, {
+    ...precedent,
+    misses,
+    last_miss_at: new Date().toISOString(),
+    en_ligne: etatPage.enLigne,
+    visibles: etatPage.visibles,
+  });
+
+  console.log(
+    `[background] sonde LBC job ${job.id} : ${misses}/${LBC_MODERATION_MISSES_SEUIL} passage(s) bredouille(s), ` +
+    `${Math.round(ageMs / 60000)} min depuis la publication` +
+    (dejaRembourse ? " — déjà remboursé, surveillance poursuivie" : atteint ? " — SEUIL ATTEINT" : "")
+  );
+  if (!atteint || dejaRembourse) return;
+
+  // Remboursement ANTICIPÉ. Le job RESTE 'published' : c'est ce qui le maintient
+  // dans le filtre de cette même fonction (status=eq.published & listing_url is
+  // null) jusqu'à l'échéance 48 h. On rend la Pépite tôt sans cesser de
+  // chercher — si l'annonce finit par apparaître, l'issue 1/3 la rattrape.
+  // Le serveur revérifie TOUTES les conditions (cf. update-job-status) et la
+  // RPC est idempotente : ni le cron de 48 h ni un second passage ne peuvent
+  // rendre une deuxième Pépite.
+  try {
+    const res = await callEdgeFunction("update-job-status", session.access_token, {
+      job_id: job.id,
+      refund_unconfirmed: true,
+    });
+    console.log(`[background] sonde LBC job ${job.id} : remboursement anticipé — ${JSON.stringify(res)}`);
+    // Marqueur local pour ne pas rappeler l'edge function au cycle suivant (le
+    // serveur refuserait proprement, mais autant ne pas l'appeler pour rien).
+    job.platform_fields = { ...(job.platform_fields ?? {}), refund_unconfirmed: { at: new Date().toISOString() } };
+  } catch (e) {
+    console.warn(`[background] sonde LBC job ${job.id} : remboursement anticipé impossible — ${String(e?.message ?? e)}`);
+  }
+}
+
 async function recoverMissingListingUrls(session) {
   let jobs;
   try {
     jobs = await restRequest(
       "cross_post_jobs" +
-        "?select=id,platform,title,created_at" +
+        // published_at / platform_fields / reservation_id ajoutés le 2026-08-11
+        // pour la sonde de modération Leboncoin (compteur de passages
+        // bredouilles + repère des 2 h). Les autres plateformes ne les lisent
+        // pas : leur comportement est strictement inchangé.
+        "?select=id,platform,title,created_at,published_at,platform_fields,reservation_id" +
         "&status=eq.published&action=eq.publish&listing_url=is.null" +
         // eBay ajouté le 2026-07-20. Le filtre datait de d4a0c32 (2026-07-12),
         // quand SEULS leboncoin et beebs avaient une page de récupération. eBay
@@ -7148,6 +7307,15 @@ async function recoverMissingListingUrls(session) {
         break;
       }
       await sleep(randInt(1500, 3000)); // rendu de la liste
+      // Sonde de modération : état de la page relevé UNE FOIS par visite, avant
+      // de chercher les titres. Leboncoin uniquement (cf. bloc au-dessus).
+      const etatPage = platform === "leboncoin" ? await lbcMesAnnoncesEtat(tabId) : null;
+      if (etatPage) {
+        console.log(
+          `[background] sonde LBC « Mes annonces » : ${etatPage.vue ? "PAGE VUE" : "page non concluante"} ` +
+          `(${etatPage.motif}) — en ligne ${etatPage.enLigne ?? "?"}, visibles ${etatPage.visibles}`
+        );
+      }
       const stillMissing = [];
       let diagPage = null;
       for (const job of remaining) {
@@ -7162,13 +7330,26 @@ async function recoverMissingListingUrls(session) {
           // n'a jamais été observé, un id extrait au hasard serait pire que
           // NULL.
           const listingId = platform === "beebs" ? null : extractListingId(url, platform);
+          // ISSUE 1/3 — TITRE TROUVÉ. Le compteur de la sonde est remis à zéro
+          // et l'épisode horodaté. L'annonce EXISTE : si un remboursement
+          // anticipé avait eu lieu, elle redevient suivie pour la vente et le
+          // retrait, et AUCUNE Pépite n'est redébitée — le job garde juste la
+          // trace qu'il a été rendu gratuit. Le message de l'app disparaît tout
+          // seul, il est conditionné à l'absence de listing_url.
+          const sondeResolue = job.platform_fields?.moderation_probe
+            ? { ...job.platform_fields.moderation_probe, misses: 0, resolved_at: new Date().toISOString() }
+            : null;
+          const pfResolu = sondeResolue
+            ? { platform_fields: { ...(job.platform_fields ?? {}), moderation_probe: sondeResolue } }
+            : {};
           await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
             method: "PATCH",
-            body: JSON.stringify({ listing_url: url, ...(listingId ? { platform_listing_id: listingId } : {}) }),
+            body: JSON.stringify({ listing_url: url, ...(listingId ? { platform_listing_id: listingId } : {}), ...pfResolu }),
           }).catch((e) => console.warn("[background] PATCH listing_url:", String(e?.message ?? e)));
         } else {
           stillMissing.push(job);
           diagPage = diag;
+          if (etatPage) await lbcSondeModeration(session, job, etatPage);
         }
       }
       // Échec sur cette page : le diagnostic NOMME la cause au lieu de laisser

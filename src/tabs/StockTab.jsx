@@ -91,6 +91,16 @@ const RECUP_LIEN_FENETRE_MS = 48 * 60 * 60 * 1000;
 function etatLienJob(job) {
   if (job?.status !== 'published' || job?.action !== 'publish') return null;
   if (job?.listing_url) return null;
+  // Sonde de modération Leboncoin (2026-08-11) : la Pépite a déjà été rendue,
+  // 2 h après la publication, parce que l'annonce est restée introuvable dans
+  // « Mes annonces » sur 3 passages CONCLUANTS. La surveillance, elle,
+  // continue jusqu'à 48 h — d'où un job toujours 'published'. Ce test passe
+  // AVANT la fenêtre de récupération : dire « on cherche encore le lien »
+  // serait vrai mais tairait le remboursement, qui est l'information utile.
+  // Aucune condition de date ici : le marqueur n'est posé QUE par le serveur,
+  // et il disparaît de l'écran tout seul dès qu'un listing_url arrive (garde
+  // ci-dessus) — exactement le cas « l'annonce a finalement été publiée ».
+  if (job?.platform_fields?.refund_unconfirmed) return 'rembourse';
   if (!PLATEFORMES_RECUP_LIEN.has(job?.platform)) return 'introuvable';
   const t = Date.parse(job?.created_at ?? '');
   if (!Number.isFinite(t)) return 'introuvable';
@@ -4118,6 +4128,13 @@ const StockTab = memo(function StockTab({
                   const sansWarn=j=>!warnedJobs.includes(j);
                   const lienEnCoursJobs=Object.values(latestByPlatform)
                     .filter(j=>etatLienJob(j)==="en_cours"&&sansWarn(j));
+                  // Sonde de modération Leboncoin (2026-08-11) : Pépite déjà
+                  // rendue, annonce toujours cherchée. Badge DISTINCT du gris
+                  // « récupération en cours » — ici il y a quelque chose à
+                  // faire (aller vérifier avant de republier), donc il est
+                  // cliquable et de la couleur d'un avertissement.
+                  const lienRembourseJobs=Object.values(latestByPlatform)
+                    .filter(j=>etatLienJob(j)==="rembourse"&&sansWarn(j));
                   // État de retrait par plateforme : calcul partagé avec le
                   // modal de retrait (computeRemovalInfo, en tête de fichier) —
                   // un seul calcul, jamais deux vérités carte/modal.
@@ -4461,6 +4478,31 @@ const StockTab = memo(function StockTab({
                                   {lang==="en"?"Published — fetching the link":"Publiée — récupération du lien en cours"} {PLATFORM_LABELS[j.platform]||j.platform}
                                 </div>
                               ))}
+                              {/* Sonde de modération Leboncoin : Pépites déjà
+                                  rendues. Le texte ne dit JAMAIS « refusée » —
+                                  la sonde conclut sur une ABSENCE, pas sur un
+                                  refus observé. Il nomme la cause la plus
+                                  probable, et impose la vérification avant
+                                  republication : sans elle, un utilisateur qui
+                                  republie sur une annonce finalement acceptée
+                                  crée un doublon. */}
+                              {lienRembourseJobs.map(j=>{
+                                const nom=PLATFORM_LABELS[j.platform]||j.platform;
+                                const url=PLATFORM_LISTINGS_URLS[j.platform];
+                                return (
+                                  <div
+                                    key={"rembourse-"+j.platform}
+                                    className="micon"
+                                    onClick={url?()=>window.open(url,'_blank','noopener'):undefined}
+                                    title={lang==="en"
+                                      ?`We can't find your listing on ${nom}. The platform bans the sale of cosmetics and fragrances, which is the most likely cause. Your Nuggets have been refunded. Check your ${nom} listings before reposting, to avoid a duplicate.`
+                                      :`On ne retrouve pas ton annonce sur ${nom}. La plateforme interdit la vente de cosmétiques et parfums, c'est la cause la plus probable. Tes Pépites t'ont été rendues. Vérifie tes annonces ${nom} avant de republier, pour éviter un doublon.`}
+                                    style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:url?"pointer":"default"}}
+                                  >
+                                    ⚠️ {lang==="en"?`Listing not found — Nuggets refunded`:`Annonce introuvable — Pépites rendues`} {nom}
+                                  </div>
+                                );
+                              })}
                               {/* ⛔ NE PAS réintroduire un repli « 🏪 <plateforme> »
                                   quand !enLigne (retiré le 2026-08-05, décision
                                   de Nico). Il affichait le champ LIBRE

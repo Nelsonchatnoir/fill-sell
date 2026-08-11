@@ -111,6 +111,108 @@ serve(async (req) => {
     const jobId = body.job_id as string | undefined;
     const status = body.status as string | undefined;
 
+    // ══════════════════════════════════════════════════════════════════════
+    // SONDE DE MODÉRATION LEBONCOIN — remboursement ANTICIPÉ (2026-08-11)
+    // ══════════════════════════════════════════════════════════════════════
+    // Leboncoin interdit la vente des cosmétiques : l'annonce est déposée, puis
+    // refusée par leur modération quelques minutes plus tard. Le job reste
+    // 'published' sans listing_url et le cron de nuit ne le rattrape qu'à 48 h
+    // (mesuré : ~3 jours de délai réel pour le parfum du 11/08).
+    //
+    // ⚠️ BRANCHE SÉPARÉE, ET C'EST INDISPENSABLE. Elle rend la main avant le
+    // patch générique plus bas, qui fait `if (status === "published")
+    // patch.published_at = now()`. Repasser par là re-estamperait published_at,
+    // donc DÉCALERAIT le repère des 48 h du cron à chaque sonde : le filet
+    // ultime reculerait indéfiniment. Le statut du job n'est pas touché ici.
+    //
+    // ⚠️ POURQUOI PAS UN APPEL DIRECT DEPUIS L'EXTENSION : refund_publish_
+    // unconfirmed est SECURITY DEFINER et n'est exécutable que par
+    // service_role — vérifié en prod (proacl : postgres, service_role). La
+    // grantée à `authenticated` serait un trou : la fonction prend un job_id et
+    // ne contrôle AUCUNE appartenance, n'importe qui pourrait rembourser le job
+    // d'un autre. On garde donc le schéma habituel : appartenance vérifiée par
+    // le client USER (RLS), action privilégiée par le client service.
+    //
+    // ⚠️ AUCUN SEUIL N'EST CRU SUR PAROLE. L'extension décide quand appeler,
+    // mais les conditions sont TOUTES revérifiées ici, sur l'horloge du
+    // serveur : plateforme, action, statut, absence de lien, réservation, et
+    // les 2 h écoulées. Une extension modifiée ne peut pas déclencher un
+    // remboursement anticipé.
+    if (body.refund_unconfirmed === true) {
+      if (!jobId) return json({ error: "job_id requis" }, 400);
+
+      const { data: j } = await userClient
+        .from("cross_post_jobs")
+        .select("id, platform, action, status, listing_url, published_at, created_at, reservation_id, platform_fields")
+        .eq("id", jobId)
+        .maybeSingle();
+      if (!j) return json({ error: "Job introuvable" }, 404);
+
+      // Refus NON fatals : la sonde a pu partir sur un état déjà périmé (URL
+      // rattachée entre-temps, job annulé). On répond 200 avec le motif —
+      // l'extension log et passe, elle n'a rien à réparer.
+      const refuse = (raison: string) => json({ success: true, rembourse: 0, raison });
+      // Périmètre STRICT (consigne du 11/08) : Leboncoin seulement. Beebs a une
+      // vraie file de modération — une annonce absente de « Mes annonces » y est
+      // normale — et eBay/Vinted ne passent pas par cette sonde du tout.
+      if (j.platform !== "leboncoin") return refuse("plateforme_hors_perimetre");
+      if (j.action !== "publish") return refuse("action_hors_perimetre");
+      if (j.status !== "published") return refuse(`statut_${j.status}`);
+      if (j.listing_url) return refuse("lien_deja_capture");
+      if (!j.reservation_id) return refuse("sans_reservation");
+
+      // Même repère que fail_publish_without_listing_url : COALESCE(published_at,
+      // created_at). Un job créé le matin et publié le soir ne doit pas consommer
+      // sa fenêtre avant d'exister en ligne.
+      const repere = Date.parse(j.published_at ?? j.created_at ?? "");
+      if (!Number.isFinite(repere)) return refuse("repere_illisible");
+      const DELAI_MIN_MS = 2 * 60 * 60 * 1000;
+      if (Date.now() - repere < DELAI_MIN_MS) return refuse("moins_de_2h");
+
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (!serviceKey) {
+        console.error("[update-job-status] SUPABASE_SERVICE_ROLE_KEY absent — remboursement anticipé impossible");
+        return json({ error: "Configuration serveur incomplète" }, 500);
+      }
+      const serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+
+      // Idempotent par construction : refund_publish_unconfirmed refuse si un
+      // coin_ledger porte déjà ref='refund_publish_unconfirmed:<job_id>'
+      // (+ index unique coin_ledger_ref_unique). Le cron de 48 h appelle la
+      // MÊME fonction : s'il repasse sur ce job, il rendra 0.
+      const { data: refund, error: refundErr } = await serviceClient
+        .rpc("refund_publish_unconfirmed", { p_job: jobId });
+      if (refundErr) {
+        console.error(`[update-job-status] refund_publish_unconfirmed job=${jobId}:`, refundErr.message);
+        return json({ error: refundErr.message }, 500);
+      }
+
+      // Marqueur qui pilote l'affichage côté app. Le job RESTE 'published' :
+      // c'est ce qui le maintient dans le périmètre de recoverMissingListingUrls
+      // (`status=eq.published&listing_url=is.null`), donc sous surveillance
+      // jusqu'à l'échéance 48 h habituelle. Le passer en 'failed' l'en sortirait
+      // et casserait tout le principe : rembourser tôt SANS cesser de chercher.
+      const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+      const { error: pfErr } = await userClient
+        .from("cross_post_jobs")
+        .update({
+          platform_fields: {
+            ...pf,
+            refund_unconfirmed: {
+              at: new Date().toISOString(),
+              repere: new Date(repere).toISOString(),
+              refund,
+              source: "moderation_probe_lbc",
+            },
+          },
+        })
+        .eq("id", jobId);
+      if (pfErr) return json({ error: pfErr.message }, 500);
+
+      console.log(`[update-job-status] userId=${user.id} job=${jobId} remboursement anticipé LBC : ${JSON.stringify(refund)}`);
+      return json({ success: true, rembourse: (refund as Record<string, unknown>)?.rembourse ?? 0, refund });
+    }
+
     if (!jobId || !status) return json({ error: "job_id et status requis" }, 400);
     if (!ALLOWED_STATUSES.includes(status)) {
       return json({ error: `status invalide, valeurs acceptées : ${ALLOWED_STATUSES.join(", ")}` }, 400);
