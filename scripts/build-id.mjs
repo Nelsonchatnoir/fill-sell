@@ -181,7 +181,16 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // jette rien. Et publish_proof gagne path_au_clic : final_path était relevé
 // après notre propre navigation vers le Hub, il disait /sh/lst/active.
 // ⚠️ POSTÉRIEUR au paquet 0.5.9 construit à 16:53:45Z — à re-packager.
-export const EXTENSION_LAST_COMMIT = '2026-08-10T17:46:03Z';
+// 2026-08-11T09:58:31Z = 5803a1a : precheckJob refuse les cosmétiques
+// consommables sur Leboncoin (la plateforme en INTERDIT la vente : les 4 seuls
+// jobs LBC partis en Divers > Autres, tous cosmétiques, ont tous échoué).
+// Filet uniquement — la vraie garde est côté app, AVANT le débit. Le miroir de
+// l'extension est volontairement plus étroit (ni icône ni type dans le payload
+// de get-pending-jobs, et « crème » nu écarté : sans icône c'est une couleur).
+// ⚠️ POSTÉRIEUR au paquet fillsell-extension-0.5.9-cws.zip : ce zip ne contient
+// PAS cette garde, et EXTENSION_MIN_BUILD reste sur la 0.5.6 (la 0.5.9 n'est
+// toujours pas acceptée). À embarquer au prochain packaging.
+export const EXTENSION_LAST_COMMIT = '2026-08-11T09:58:31Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
