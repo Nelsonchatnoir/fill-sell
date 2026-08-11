@@ -52,6 +52,16 @@ const VENTES_CSS = buildCardCss('ventes-v2') + `
 .ventes-v2 .imp-lbl{font-size:9.5px;font-weight:700;color:var(--mute);text-transform:uppercase;letter-spacing:.04em;}
 .ventes-v2 .imp-ghost{border:1px solid var(--border);background:#fff;color:var(--mute);border-radius:999px;padding:4px 9px;font-size:10.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;}
 .ventes-v2 .imp-ghost.on{border-color:var(--teal);color:var(--teal-deep);background:rgba(47,158,144,.08);}
+/* ── Sélection globale + fenêtre de rendu (2026-08-11) ── */
+.ventes-v2 .imp-all{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--border);border-radius:12px;padding:9px 13px;}
+.ventes-v2 .imp-all .txt{font-size:12.5px;font-weight:700;color:var(--ink);flex:1;min-width:0;}
+.ventes-v2 .imp-all .sub{display:block;font-size:10.5px;font-weight:600;color:var(--mute);margin-top:1px;}
+.ventes-v2 .imp-all button{border:1px solid var(--teal);background:rgba(47,158,144,.08);color:var(--teal-deep);border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.ventes-v2 .imp-more{width:100%;border:1px dashed var(--border);background:#fff;color:var(--mute);border-radius:12px;padding:11px 0;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;}
+.ventes-v2 .imp-prog{flex-basis:100%;height:5px;border-radius:99px;background:rgba(47,158,144,.15);overflow:hidden;}
+.ventes-v2 .imp-prog i{display:block;height:100%;background:linear-gradient(120deg,var(--teal),var(--teal-deep));transition:width .18s linear;}
+.ventes-v2 .imp-modal{position:fixed;inset:0;z-index:10001;background:rgba(16,32,27,.55);display:flex;align-items:center;justify-content:center;padding:20px;}
+.ventes-v2 .imp-modal .box{background:#fff;border-radius:18px;padding:20px;max-width:340px;width:100%;box-shadow:0 24px 60px -20px rgba(16,32,27,.6);}
 `;
 
 // Accord du participe "Vendu(e)" : noms féminins courants détectés dans le
@@ -65,6 +75,18 @@ const soldWord=(title,lang)=>lang==='en'?'Sold':(FEM_RE.test(title||'')?'Vendue'
 // s.plateforme est du texte libre (saisie manuelle possible) : une valeur sans
 // clé canonique (ex. Vestiaire, sans logo) garde le badge texte d'origine.
 const PLATFORM_KEY={vinted:'vinted',leboncoin:'leboncoin','le bon coin':'leboncoin',lbc:'leboncoin',ebay:'ebay',beebs:'beebs'};
+
+// ── Constantes de volume (2026-08-11) ───────────────────────────────────────
+// Fenêtre de RENDU des ventes importées. N'a aucun effet sur la sélection ni sur
+// l'enregistrement, qui portent tous deux sur la liste filtrée complète.
+const RENDU_PAS=50;
+// Taille des paquets d'insertion. 500 lignes par requête : au-delà, le corps de
+// la requête PostgREST devient assez gros pour que l'échec d'un paquet coûte
+// cher à rejouer, et l'avancement affiché devient trop grossier pour rassurer.
+const LOT_INSERT=500;
+// Au-delà de ce nombre, on annonce le chiffre exact avant d'écrire. Écrire
+// 1 982 ventes est difficile à défaire : ça se confirme.
+const SEUIL_CONFIRMATION=100;
 
 // ── État vide des Ventes ────────────────────────────────────────────────────
 // PLUS AUCUNE DONNÉE INVENTÉE ICI depuis le 2026-08-09. L'écran ouvrait sur un
@@ -458,6 +480,24 @@ const VentesTab = memo(function VentesTab({
   const [impBusy,setImpBusy]=useState(false);
   const [paLotImp,setPaLotImp]=useState("");
   const [dateLotImp,setDateLotImp]=useState("");
+  // ── Volume (2026-08-11) ───────────────────────────────────────────────────
+  // Un compte réel est arrivé avec 3 434 articles dont 1 982 vendus sur Vinted,
+  // donc 1 982 lignes à confirmer. Trois choses cassaient à cette échelle :
+  //   · aucun moyen de tout sélectionner — 1 982 taps ;
+  //   · la liste rendait TOUTES les lignes d'un coup, chacune avec 3 champs
+  //     contrôlés et 3 boutons : ~14 000 nœuds DOM, l'écran se fige ;
+  //   · l'enregistrement groupé bouclait vente par vente, 1 insert + 1 update
+  //     chacune, soit ~4 000 allers-retours réseau.
+  // `impRenduMax` ne borne QUE le rendu. Toute la sélection et tout
+  // l'enregistrement travaillent sur les identifiants filtrés, jamais sur ce qui
+  // est monté à l'écran — c'est la distinction qui fait que « Tout sélectionner »
+  // veut dire quelque chose.
+  const [impRenduMax,setImpRenduMax]=useState(RENDU_PAS);
+  // {fait,total,ko} pendant l'écriture par paquets — l'avancement RÉEL, mesuré
+  // sur les paquets confirmés par la base, jamais une estimation.
+  const [impProgress,setImpProgress]=useState(null);
+  // Nombre de lignes en attente de confirmation au-dessus du seuil, ou null.
+  const [impConfirm,setImpConfirm]=useState(null);
   // (dateLotInconnue retiré le 2026-08-09 : c'était un repli DIFFÉRÉ, appliqué
   // seulement à l'enregistrement et invisible d'ici là. Remplacé par l'action
   // de lot marquerLotInconnu, qui marque les lignes tout de suite et se défait
@@ -469,28 +509,101 @@ const VentesTab = memo(function VentesTab({
 
   const vendusRestants=useMemo(()=>vendusAEnregistrer.filter(i=>!impDone[i.id]),[vendusAEnregistrer,impDone]);
   const nbImportes=vendusRestants.length;
-  const lignesImpSel=useMemo(()=>vendusRestants.filter(i=>impSel.has(i.id)),[vendusRestants,impSel]);
 
+  // ── PORTÉE DE LA SÉLECTION (2026-08-11) ───────────────────────────────────
+  // `vendusFiltres` est la liste filtrée COMPLÈTE — pas la fenêtre rendue.
+  // C'est elle, et elle seule, que « Tout sélectionner » parcourt et que
+  // l'enregistrement groupé traite.
+  //
+  // Le filtre catégorie ne s'appliquait PAS à cette liste jusqu'ici : les
+  // pastilles étaient construites sur `sales` (les ventes déjà enregistrées) et
+  // n'étaient même pas rendues quand `sales` était vide — le cas exact d'un
+  // compte qui vient d'importer son dressing. Sans ce filtre, « Tout
+  // sélectionner par catégorie » n'aurait rien voulu dire.
+  const vendusFiltres=useMemo(
+    ()=>filterType==="Tous"?vendusRestants:vendusRestants.filter(i=>i.type===filterType),
+    [vendusRestants,filterType]);
+  const nbFiltres=vendusFiltres.length;
+
+  // La sélection est TOUJOURS relue à travers le filtre courant : même si un id
+  // survivait à un changement de filtre, il ne pourrait pas entrer dans une
+  // écriture. Le vidage ci-dessous est la garantie visible, ceci est la garantie
+  // structurelle — aucune écriture ne peut porter sur une ligne hors du filtre.
+  const lignesImpSel=useMemo(()=>vendusFiltres.filter(i=>impSel.has(i.id)),[vendusFiltres,impSel]);
+  const nbImpSel=lignesImpSel.length;
+  const tousSelectionnes=nbFiltres>0&&nbImpSel===nbFiltres;
+  const selectionPartielle=nbImpSel>0&&!tousSelectionnes;
+
+  // Changer de filtre VIDE la sélection. « Recalculer » aurait voulu dire garder
+  // des lignes invisibles dans le compteur d'une autre catégorie : un
+  // « Enregistrer les 1 982 » affiché sous un filtre « Mode » qui n'en montre
+  // que 300 est exactement l'incohérence qu'on veut interdire.
+  const changerFiltre=useCallback((tp)=>{
+    if(tp===filterType) return;   // re-clic sur la pastille active : rien à vider
+    setFilterType(tp);
+    setImpSel(new Set());
+    setImpRenduMax(RENDU_PAS);
+    setSelection(new Set());
+  },[filterType]);
+
+  // Fenêtre de rendu seulement. `vendusVisibles` n'est JAMAIS une source de
+  // vérité pour la sélection ou l'écriture.
+  const vendusVisibles=useMemo(()=>vendusFiltres.slice(0,impRenduMax),[vendusFiltres,impRenduMax]);
+
+  const basculerToutSelectionner=useCallback(()=>{
+    setImpSel(prev=>{
+      // Tout est déjà coché dans CETTE vue : on décoche cette vue, sans toucher
+      // à ce qui aurait été coché sous un autre filtre.
+      if(nbFiltres>0&&vendusFiltres.every(i=>prev.has(i.id))){
+        const n=new Set(prev);for(const i of vendusFiltres)n.delete(i.id);return n;
+      }
+      const n=new Set(prev);for(const i of vendusFiltres)n.add(i.id);return n;
+    });
+  },[vendusFiltres,nbFiltres]);
+
+  // ⚠️ PAGINÉ ET DÉCOUPÉ PAR LOTS D'IDS (2026-08-11). L'ancienne version tenait
+  // en une requête `.in(1982 ids).limit(1000)` : PostgREST rendait 1 000 lignes,
+  // les 982 autres articles n'avaient AUCUN prix pré-rempli, et comme le prix de
+  // vente est le seul champ obligatoire, l'enregistrement groupé les aurait
+  // silencieusement écartés. Sur le compte à 1 982 ventes, « Enregistrer les
+  // 1 982 » en aurait écrit environ mille sans jamais dire pourquoi.
+  // Un `.in()` trop long finit aussi par dépasser la longueur d'URL : d'où le
+  // découpage par lots d'ids, et la pagination par `.range()` à l'intérieur de
+  // chaque lot (un article peut avoir plusieurs relevés).
   useEffect(()=>{
     if(!modeImportes) return;
     const ids=vendusAEnregistrer.map(i=>i.vinted_item_id).filter(Boolean).filter(id=>!(id in propositions));
     if(!ids.length) return;
     let annule=false;
-    supabase.from('vinted_listing_snapshots')
-      .select('vinted_item_id,price')
-      .eq('user_id',user?.id).in('vinted_item_id',ids)
-      .order('captured_at',{ascending:false}).limit(1000)
-      .then(({data,error})=>{
-        if(annule) return;
-        // Ids sans relevé notés null : sans ça l'effet re-requêterait à chaque
-        // rendu. error → tous null, le champ reste simplement vide.
-        setPropositions(prev=>{
-          const n={...prev};
-          for(const id of ids) if(!(id in n)) n[id]=null;
-          if(!error) for(const r of (data||[])) if(n[r.vinted_item_id]==null) n[r.vinted_item_id]=r.price;
-          return n;
-        });
+    (async()=>{
+      const LOT_IDS=400,PAGE=1000;
+      const trouves={};
+      let echec=false;
+      for(let i=0;i<ids.length&&!annule;i+=LOT_IDS){
+        const lot=ids.slice(i,i+LOT_IDS);
+        for(let from=0;!annule;from+=PAGE){
+          const {data,error}=await supabase.from('vinted_listing_snapshots')
+            .select('vinted_item_id,price')
+            .eq('user_id',user?.id).in('vinted_item_id',lot)
+            .order('captured_at',{ascending:false}).range(from,from+PAGE-1);
+          if(error){echec=true;break;}
+          // Trié par relevé le plus récent : le PREMIER vu pour un article est
+          // le bon, les suivants sont d'anciens prix.
+          for(const r of (data||[])) if(trouves[r.vinted_item_id]==null) trouves[r.vinted_item_id]=r.price;
+          if(!data||data.length<PAGE) break;
+        }
+        if(echec) break;
+      }
+      if(annule) return;
+      // Ids sans relevé notés null : sans ça l'effet re-requêterait à chaque
+      // rendu. Échec → tous null, le champ reste simplement vide.
+      setPropositions(prev=>{
+        const n={...prev};
+        for(const id of ids) if(!(id in n)) n[id]=null;
+        for(const [id,prix] of Object.entries(trouves)) if(n[id]==null) n[id]=prix;
+        return n;
       });
+    })();
     return ()=>{annule=true;};
   },[modeImportes,vendusAEnregistrer,propositions,user?.id]);
 
@@ -563,21 +676,110 @@ const VentesTab = memo(function VentesTab({
   const nbSansAchat=lignesImpSel.filter(i=>{const d=impDrafts[i.id]??{};return String(d.pa??'').trim()===''&&d.paInconnu!==true;}).length;
   const nbSansDate=lignesImpSel.filter(i=>{const d=impDrafts[i.id]??{};return String(d.date??'').trim()===''&&d.dateInconnue!==true;}).length;
 
-  async function enregistrerLotImportes(){
-    if(!lignesImpSel.length) return;
-    setImpBusy(true);
-    let ko=0;
-    for(const item of lignesImpSel){
-      const d=impDrafts[item.id]??{};
-      const ok=await enregistrerVenteImportee(item,{
-        pvBrut:d.pv??propositions[item.vinted_item_id]??'',
-        paBrut:d.pa??paLotImp,paInconnu:d.paInconnu===true,
-        dateStr:d.date??dateLotImp,dateInconnue:d.dateInconnue===true,
-      });
-      if(!ok) ko++;
+  // ── Enregistrement groupé par PAQUETS (2026-08-11) ────────────────────────
+  // L'ancienne boucle appelait enregistrerVenteImportee ligne par ligne : un
+  // insert + un update par vente, soit ~4 000 allers-retours pour 1 982 ventes.
+  // Elle reste en place pour le bouton « Enregistrer » d'UNE ligne, qui est un
+  // geste unitaire et doit garder son message d'erreur sur sa propre ligne.
+  //
+  // Préparation pure, sans écriture : toutes les lignes sont validées AVANT le
+  // premier insert, pour qu'une ligne sans prix reçu ne fasse pas échouer un
+  // paquet entier. Les règles de repli sont celles de la barre, à l'identique —
+  // la barre ne fournit que ce qui manque, elle n'écrase jamais une saisie.
+  function prepareLigneImportee(item){
+    const d=impDrafts[item.id]??{};
+    const pv=parsePrix(d.pv??propositions[item.vinted_item_id]??'');
+    if(pv===null||Number.isNaN(pv)) return {item,invalide:true};
+    const paInconnu=d.paInconnu===true;
+    const pa=paInconnu?null:parsePrix(d.pa??paLotImp);
+    if(Number.isNaN(pa)) return {item,invalide:true};
+    const dateVente=d.dateInconnue===true?null:((d.date??dateLotImp)||null);
+    const {margin}=margeUnitaire({prixVente:pv,prixAchat:pa});
+    return {item,pa,paInconnu,ligne:{
+      user_id:user?.id,titre:item.title,prix_achat:pa,prix_vente:pv,benefice:margin,
+      date:dateVente,plateforme:'vinted',marque:item.marque||null,type:item.type||null,
+      description:item.description||null,quantite:item.quantite||1,inventaire_id:item.id,statut:'vendu'}};
+  }
+
+  // REPRISE PLUTÔT QUE TRANSACTION (choix assumé) : un insert PostgREST est
+  // atomique par requête, donc chaque paquet passe ou ne passe pas — jamais à
+  // moitié. On marque `impDone` paquet par paquet, sur les seules lignes que la
+  // base a RENVOYÉES, et on retire ces lignes-là de la sélection. Une erreur au
+  // paquet 3 laisse donc : 2 paquets écrits, le reste toujours sélectionné, et
+  // un message qui donne le compte exact. Relancer reprend où ça s'est arrêté.
+  // Aucune ligne ne peut rester dans un état indéterminé.
+  async function executerLotImportes(cibles){
+    setImpConfirm(null);
+    if(!cibles.length) return;
+    setImpBusy(true);setImpErr(null);
+
+    const prepares=cibles.map(prepareLigneImportee);
+    const valides=prepares.filter(p=>!p.invalide);
+    const invalides=prepares.length-valides.length;
+    if(!valides.length){
+      setImpBusy(false);
+      setImpErr({id:null,message:fr
+        ?"Aucune de ces ventes n'a de prix reçu — renseigne-le avant d'enregistrer."
+        :"None of these sales has a received price — fill it in before recording."});
+      return;
     }
-    setImpBusy(false);
-    if(!ko){setImpSel(new Set());setPaLotImp("");setDateLotImp("");}
+
+    setImpProgress({fait:0,total:valides.length});
+    let fait=0,arret=null;
+    for(let i=0;i<valides.length;i+=LOT_INSERT){
+      const paquet=valides.slice(i,i+LOT_INSERT);
+      const {data,error}=await supabase.from('ventes')
+        .insert(paquet.map(p=>p.ligne)).select('inventaire_id');
+      if(error){arret=error.message;break;}
+      // Ce que la base a réellement accepté — pas ce qu'on lui a demandé.
+      const inseres=new Set((data||[]).map(r=>String(r.inventaire_id)));
+      const retenus=paquet.filter(p=>inseres.has(String(p.item.id)));
+
+      // Report sur l'inventaire, GROUPÉ : un update par valeur d'achat distincte
+      // (en pratique une seule, celle de la barre) + un pour les « je ne sais
+      // plus ». Deux requêtes par paquet au lieu de 500.
+      const parPa=new Map();const idsInconnu=[];
+      for(const p of retenus){
+        if(p.pa!=null){const k=String(p.pa);if(!parPa.has(k))parPa.set(k,[]);parPa.get(k).push(p.item.id);}
+        else if(p.paInconnu) idsInconnu.push(p.item.id);
+      }
+      for(const [k,ids] of parPa){
+        await supabase.from('inventaire').update({prix_achat:Number(k),prix_achat_inconnu:false})
+          .in('id',ids).eq('user_id',user?.id);
+      }
+      if(idsInconnu.length){
+        await supabase.from('inventaire').update({prix_achat_inconnu:true})
+          .in('id',idsInconnu).eq('user_id',user?.id);
+      }
+
+      setImpDone(prev=>{const n={...prev};for(const p of retenus)n[p.item.id]=true;return n;});
+      setImpSel(prev=>{const n=new Set(prev);for(const p of retenus)n.delete(p.item.id);return n;});
+      fait+=retenus.length;
+      setImpProgress({fait,total:valides.length});
+    }
+
+    setImpBusy(false);setImpProgress(null);
+    onSaleUpdated();
+    if(arret){
+      setImpErr({id:null,message:fr
+        ?`Interrompu après ${fait} vente${fait>1?'s':''} enregistrée${fait>1?'s':''} sur ${valides.length}. Les autres sont toujours sélectionnées — relance pour reprendre. (${arret})`
+        :`Stopped after ${fait} of ${valides.length} recorded. The rest are still selected — run it again to resume. (${arret})`});
+      return;
+    }
+    if(invalides>0){
+      setImpErr({id:null,message:fr
+        ?`${fait} enregistrée${fait>1?'s':''}. ${invalides} sans prix reçu, laissée${invalides>1?'s':''} de côté.`
+        :`${fait} recorded. ${invalides} without a received price were skipped.`});
+      return;
+    }
+    setPaLotImp("");setDateLotImp("");
+  }
+
+  function enregistrerLotImportes(){
+    if(!nbImpSel) return;
+    // Au-delà du seuil, on annonce le chiffre exact avant d'écrire.
+    if(nbImpSel>SEUIL_CONFIRMATION){setImpConfirm(nbImpSel);return;}
+    executerLotImportes(lignesImpSel);
   }
 
   // KPI mois courant — même formule que tm (App.jsx)
@@ -728,15 +930,21 @@ const VentesTab = memo(function VentesTab({
         </div>
       )}
 
-      {/* ── Filtres catégorie — mêmes pills à pastille que StockTab ── */}
-      {sales.length>0&&(()=>{
-        const presentTypes=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||sales.some(s=>s.type===tp));
+      {/* ── Filtres catégorie — mêmes pills à pastille que StockTab ──
+          En mode « ventes importées », les pastilles se construisent sur les
+          lignes EN ATTENTE, pas sur les ventes déjà enregistrées : sinon un
+          compte qui vient d'importer son dressing (0 vente enregistrée, 1 982 à
+          confirmer) n'avait aucun filtre du tout — et « tout sélectionner par
+          catégorie » n'aurait eu aucun sens. */}
+      {(modeImportes?vendusRestants.length>0:sales.length>0)&&(()=>{
+        const base=modeImportes?vendusRestants:sales;
+        const presentTypes=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||base.some(s=>s.type===tp));
         return presentTypes.length>1&&(
           <div className="cat-filters">
             {presentTypes.map(tp=>{
               const isActive=filterType===tp;
               return(
-                <button key={tp} className={`fpill${isActive?" active":""}`} onClick={()=>setFilterType(tp)}>
+                <button key={tp} className={`fpill${isActive?" active":""}`} onClick={()=>changerFiltre(tp)}>
                   <span className="fdot" style={{background:tp==="Tous"?"linear-gradient(155deg,#2F9E90,#1B6E62)":getCatTileColor(tp)}}/>
                   {tp==="Tous"?(lang==='en'?'All':'Tous'):typeLabel(tp,lang)}
                 </button>
@@ -755,11 +963,44 @@ const VentesTab = memo(function VentesTab({
               :<>These items are <b>sold on Vinted</b>, but Vinted shares neither the sale date nor the price actually paid after an offer — only you know them. The price is <b>prefilled with the listing price</b>: adjust it if the sale was negotiated. Once recorded, the sale counts in your numbers like any other.<br/>Your listings still online are tracked automatically: when they sell, FillSell will offer to record the real price and date.</>}
           </div>
 
+          {/* ── Sélection globale ────────────────────────────────────────────
+              Porte sur `vendusFiltres` — TOUTES les lignes en attente du filtre
+              courant, y compris celles qui ne sont pas rendues. C'est le point
+              de la fonctionnalité : à 1 982 lignes, ce qui est monté à l'écran
+              n'est jamais ce qu'on veut sélectionner. */}
+          {nbFiltres>0&&(
+            <div className="imp-all">
+              <input type="checkbox" className="pa-check"
+                checked={tousSelectionnes}
+                ref={el=>{if(el)el.indeterminate=selectionPartielle;}}
+                onChange={basculerToutSelectionner}
+                aria-label={fr?"Tout sélectionner":"Select all"}/>
+              <span className="txt">
+                {nbImpSel>0
+                  ?(fr?`${nbImpSel} sélectionnée${nbImpSel>1?"s":""} sur ${nbFiltres}`
+                      :`${nbImpSel} of ${nbFiltres} selected`)
+                  :(fr?`${nbFiltres} vente${nbFiltres>1?"s":""} à enregistrer`
+                      :`${nbFiltres} sale${nbFiltres>1?"s":""} to record`)}
+                {filterType!=="Tous"&&(
+                  <span className="sub">
+                    {fr?`filtre : ${typeLabel(filterType,lang)} — la sélection ne sort pas de cette catégorie`
+                       :`filter: ${typeLabel(filterType,lang)} — selection stays within this category`}
+                  </span>
+                )}
+              </span>
+              <button onClick={basculerToutSelectionner}>
+                {tousSelectionnes
+                  ?(fr?"Tout désélectionner":"Deselect all")
+                  :(fr?`Tout sélectionner (${nbFiltres})`:`Select all (${nbFiltres})`)}
+              </button>
+            </div>
+          )}
+
           {/* Barre de lot : repli commun pour prix d'achat et date. Le prix de
               vente reste PAR LIGNE, visible dans chaque champ avant le clic. */}
-          {lignesImpSel.length>0&&(
+          {nbImpSel>0&&(
             <div className="pa-bar">
-              <span className="lbl">{fr?`${lignesImpSel.length} sélectionnée${lignesImpSel.length>1?"s":""}`:`${lignesImpSel.length} selected`}</span>
+              <span className="lbl">{fr?`${nbImpSel} sélectionnée${nbImpSel>1?"s":""}`:`${nbImpSel} selected`}</span>
               <input className="pa-input" inputMode="decimal" value={paLotImp} onChange={e=>setPaLotImp(e.target.value)}
                 placeholder={fr?"achat 2,50":"buy 2.50"} aria-label={fr?"Prix d'achat commun":"Common purchase price"}/>
               <input type="date" className="pa-input pa-date" value={dateLotImp}
@@ -780,9 +1021,19 @@ const VentesTab = memo(function VentesTab({
                 {fr?`date : je ne sais plus${nbSansDate?` (${nbSansDate})`:""}`:`date: I don't remember${nbSansDate?` (${nbSansDate})`:""}`}
               </button>
               <button className="apply" disabled={impBusy} onClick={enregistrerLotImportes}>
-                {impBusy?"…":(fr?`Enregistrer les ${lignesImpSel.length}`:`Record ${lignesImpSel.length}`)}
+                {impBusy?"…":(fr?`Enregistrer les ${nbImpSel}`:`Record ${nbImpSel}`)}
               </button>
-              <button className="ghost" onClick={()=>{setImpSel(new Set());setPaLotImp("");setDateLotImp("");}}>✕</button>
+              <button className="ghost" disabled={impBusy} onClick={()=>{setImpSel(new Set());setPaLotImp("");setDateLotImp("");}}>✕</button>
+              {/* Avancement RÉEL : le compteur ne bouge qu'une fois le paquet
+                  confirmé par la base, jamais par anticipation. */}
+              {impProgress&&(
+                <>
+                  <div className="imp-prog"><i style={{width:`${Math.round(100*impProgress.fait/Math.max(1,impProgress.total))}%`}}/></div>
+                  <span className="pa-hint" style={{flexBasis:"100%"}}>
+                    {fr?`${impProgress.fait} / ${impProgress.total} enregistrées…`:`${impProgress.fait} / ${impProgress.total} recorded…`}
+                  </span>
+                </>
+              )}
               <div style={{flexBasis:"100%",display:"flex",flexDirection:"column",gap:2}}>
                 <span className="pa-hint">
                   {fr?"Chaque ligne part avec SON prix de vente affiché dans son champ — la barre ne fournit que l'achat et la date manquants, sans jamais écraser ce que tu as déjà saisi."
@@ -796,8 +1047,15 @@ const VentesTab = memo(function VentesTab({
           {vendusRestants.length===0&&(
             <div className="imp-info" style={{textAlign:'center'}}>{fr?"Tout est enregistré 🎉":"All recorded 🎉"}</div>
           )}
+          {vendusRestants.length>0&&nbFiltres===0&&(
+            <div className="imp-info" style={{textAlign:'center'}}>
+              {fr?"Aucune vente à enregistrer dans cette catégorie.":"No sale to record in this category."}
+            </div>
+          )}
 
-          {vendusRestants.map(item=>{
+          {/* ⚠️ On rend `vendusVisibles`, une FENÊTRE. La sélection et
+              l'enregistrement, eux, portent sur `vendusFiltres` en entier. */}
+          {vendusVisibles.map(item=>{
             const d=impDrafts[item.id]??{};
             const pvAffiche=d.pv??(propositions[item.vinted_item_id]??"");
             return(
@@ -866,6 +1124,20 @@ const VentesTab = memo(function VentesTab({
               </div>
             );
           })}
+
+          {/* Fenêtre de rendu — n'a AUCUN effet sur ce que « Tout sélectionner »
+              et « Enregistrer les N » traitent. Le dire ici, parce que voir
+              50 lignes et un bouton « Enregistrer les 1 982 » doit s'expliquer. */}
+          {nbFiltres>vendusVisibles.length&&(
+            <button className="imp-more" onClick={()=>setImpRenduMax(n=>n+RENDU_PAS)}>
+              {fr?`Afficher plus (${vendusVisibles.length} sur ${nbFiltres})`
+                 :`Show more (${vendusVisibles.length} of ${nbFiltres})`}
+              <span style={{display:'block',fontSize:10.5,fontWeight:600,marginTop:2,opacity:.8}}>
+                {fr?"la sélection et l'enregistrement portent sur les "+nbFiltres+", pas seulement sur ce qui est affiché"
+                   :"selection and recording cover all "+nbFiltres+", not just what's shown"}
+              </span>
+            </button>
+          )}
         </>
       ):sales.length===0?(
         // Condition d'affichage inchangée : cet écran ne sort QUE si l'utilisateur
@@ -981,6 +1253,34 @@ const VentesTab = memo(function VentesTab({
           onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
           onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
         >{t('statsAvancees')}</button>
+      )}
+
+      {/* ── Confirmation au-dessus du seuil (2026-08-11) ────────────────────
+          Écrire N lignes de ventes n'est pas une action triviale et se défait
+          mal : au-delà de SEUIL_CONFIRMATION, on annonce le chiffre EXACT et ce
+          qui va être écrit avant de toucher la base. En dessous, aucun
+          frottement ajouté — le geste reste immédiat. */}
+      {impConfirm!=null&&(
+        <div className="imp-modal" onClick={()=>setImpConfirm(null)}>
+          <div className="box" onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:16,fontWeight:700,color:"var(--ink)",marginBottom:8}}>
+              {fr?`Enregistrer ${impConfirm} ventes ?`:`Record ${impConfirm} sales?`}
+            </div>
+            <div style={{fontSize:12.5,lineHeight:1.55,color:"var(--mute)",marginBottom:16}}>
+              {fr
+                ?<>Chaque ligne part avec <b>son</b> prix de vente. {filterType!=="Tous"&&<>Filtre actif : <b>{typeLabel(filterType,lang)}</b>. </>}Elles compteront dans tes chiffres immédiatement, et il n'y a pas d'annulation groupée — il faudrait les supprimer une par une.</>
+                :<>Each line is recorded with <b>its own</b> sale price. {filterType!=="Tous"&&<>Active filter: <b>{typeLabel(filterType,lang)}</b>. </>}They will count in your numbers straight away, and there is no bulk undo — you would have to delete them one by one.</>}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button className="ghost" style={{flex:1,padding:"11px 0"}} onClick={()=>setImpConfirm(null)}>
+                {fr?"Annuler":"Cancel"}
+              </button>
+              <button className="apply" style={{flex:2,padding:"11px 0"}} onClick={()=>executerLotImportes(lignesImpSel)}>
+                {fr?`Enregistrer les ${impConfirm}`:`Record the ${impConfirm}`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

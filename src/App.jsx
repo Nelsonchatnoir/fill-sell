@@ -2519,7 +2519,16 @@ export default function App({ loginOnly = false }){
       // ~10 min de l'opération, précisément quand l'utilisateur la suit.
       // `id` n'est jamais réécrit → ordre total stable, ici ET côté ventes
       // (même motif latent sur les insertions par lot).
-      supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(500),
+      // ⚠️ Plafond relevé de 500 à 3000 (11/08), aligné sur `inventaire`.
+      // Il était sur le point de casser : l'enregistrement groupé des ventes
+      // Vinted importées (VentesTab) permet désormais d'écrire ~2 000 lignes
+      // `ventes` d'un coup. Avec un plafond à 500, le fetchAll suivant n'en
+      // relisait que 500 → `ventesInvIds` (App.jsx) en ignorait ~1 500 → les
+      // articles correspondants RÉAPPARAISSAIENT dans « ventes Vinted à
+      // enregistrer », déjà enregistrés. La bannière aurait redemandé un travail
+      // déjà fait, et un second enregistrement aurait créé des doublons
+      // (`ventes` n'a aucune contrainte d'unicité sur inventaire_id).
+      supabase.from('ventes').select('*').eq('user_id',uid).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(3000),
       // ⚠️ Plafond relevé de 500 à 3000 (03/08). Il était DÉJÀ atteint (800
       // lignes sur le compte de test) : au-delà, l'inventaire était tronqué en
       // silence et tous les totaux — investi, valeur du stock, bénéfices —
