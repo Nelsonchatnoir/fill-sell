@@ -1418,6 +1418,24 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
   );
 }
 
+// ── FAB vocal flottant : RETIRÉ DE L'INTERFACE (2026-08-11, décision Nico) ───
+// Doublon du micro de l'onglet Stock IA, qui fait déjà tout le travail, et gêne
+// visuellement. Vérifié avant de le masquer :
+//   · même chaîne pour les deux entrées — voice-intent → executeVoiceTasks →
+//     VoiceResultCard, avec les MÊMES vaActions ;
+//   · le Stock IA couvre TOUS les intents (aucun filtre dans callVoiceParse) —
+//     rien n'était joignable par le FAB seul.
+//
+// ⚠️ ON MASQUE LE BOUTON, ON NE DÉMONTE RIEN. Le mode « Parler » du Stock IA
+// appelle fabTriggerRef.current(), qui EST le handler du FAB (assigné hors du
+// rendu conditionnel, cf. `if(triggerRef)triggerRef.current=handleFabClick`).
+// Démonter VoiceAssistant — ou supprimer FabVocal — tuerait le micro du Stock
+// IA et le drawer de résultats. Tout le socle reste en place et fonctionnel :
+// voiceEngine, VoiceResultCard, les intents, le filtre voice_add_guard (2.4.41).
+//
+// POUR LE REMETTRE : repasser cette constante à false. Une ligne, rien d'autre.
+const FAB_VOCAL_MASQUE = true;
+
 function FabVocal({ onClick, isRec, isThink, isRes, lang }) {
   if (isRes) return null;
   return (
@@ -6680,7 +6698,10 @@ export default function App({ loginOnly = false }){
         voiceUsedToday={voiceUsedToday}
         setVoiceUsedToday={setVoiceUsedToday}
         ouvrirModalePlafondVoix={()=>ouvrirModalePlafond('plafond_voix',{trigger:'voice'})}
-        hideFab={listingStepperOpen || tab===1}
+        // FAB_VOCAL_MASQUE (2026-08-11) : le FAB est retiré de l'interface.
+        // L'expression d'origine est conservée intacte derrière — repasser la
+        // constante à false (déclarée au-dessus de FabVocal) suffit à le rendre.
+        hideFab={FAB_VOCAL_MASQUE || listingStepperOpen || tab===1}
       />
 
 

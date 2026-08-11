@@ -18,7 +18,21 @@
 // actifs en permanence. Un compte promu à la main aujourd'hui se voit donc
 // correctement comme Business, sans que l'offre soit vendable.
 //
-// ⛔ NE PAS passer à `true` EN L'ÉTAT — RELEVÉ RÉEL DU 2026-08-10 AU SOIR ────
+// ── OUVERTE LE 2026-08-11 (GO explicite de Nico) ────────────────────────────
+// Le drapeau passe à `true`. L'écart Play ci-dessous a été signalé AVANT le
+// changement et assumé : Nico a répondu « ouvre partout quand même », en
+// connaissant le risque, le temps de corriger Play.
+//
+// ⚠️ RISQUE OUVERT, NON REFERMÉ — Irlande et Italie sont à 74,99 € sur Play
+// (relevé du 10/08 au soir, non revérifié depuis) alors que ConversionModal
+// affiche « 59,99 € » EN DUR. Un Irlandais ou un Italien qui achète sur
+// Android paie donc 25 € de plus que ce qu'on vient de lui écrire. Ça se
+// referme en éditant les deux pays dans Play Console (gestes plus bas), pas
+// en touchant ce fichier.
+//
+// POUR REFERMER L'OFFRE : repasser ce drapeau à `false`. Une ligne.
+//
+// ── RELEVÉ RÉEL DU 2026-08-10 AU SOIR (conservé — c'est la source du risque) ─
 // La version d'origine de ce bloc disait « Le produit Google (business-monthly)
 // est déjà activé, le prix aligné à 59,99 € sur toute la zone euro ». La
 // première moitié est vraie, la seconde est FAUSSE, et c'est celle qui compte.
@@ -36,8 +50,10 @@
 // chaque pays de sa TVA locale : France avait été re-éditée à la main le 08/08,
 // un passage global l'avait re-gonflée depuis — d'où la re-correction du 10/08.
 //
-// Conditions pour lever ce drapeau, dans cet ordre :
-//   1. Play : ré-aligner Irlande et Italie à 59,99 € (édition PAYS PAR PAYS,
+// Ce qui restait à faire — 1 seul point encore OUVERT (l'offre est ouverte
+// sans lui, cf. GO du 11/08) :
+//   1. ⚠️ TOUJOURS À FAIRE — Play : ré-aligner Irlande et Italie à 59,99 €
+//      (édition PAYS PAR PAYS,
 //      icône crayon sur la ligne, « Enregistrer » de la modale = STAGING, puis
 //      « Enregistrer les modifications » en bas de page = commit réel). Après
 //      chaque passage global « Set prices », TOUT est à revérifier ;
@@ -51,27 +67,16 @@
 //      Business Mensuel », 59,99 € EUR mensuel récurrent, tarif par défaut,
 //      0 abonnement). Le secret STRIPE_PRICE_BUSINESS porte bien CE price id
 //      (sha256 du secret == sha256 de l'id, comparé le 10/08).
-export const BUSINESS_OFFER_ENABLED = false;
+export const BUSINESS_OFFER_ENABLED = true;
 
-// ── Liste blanche (2026-08-09) ───────────────────────────────────────────────
-// Deux comptes voient l'offre AVANT tout le monde, pour éprouver le parcours de
-// paiement RÉEL (produit Stripe FillSell Business créé le même jour). Le
-// drapeau ci-dessus reste à `false` : c'est bien le parc entier qui est masqué,
-// et ces deux id qui font exception — pas l'inverse.
-// ⚠️ Ce sont des id de PROD : un achat depuis ces comptes est un vrai débit,
-// pas un test. Sur iOS, l'IAP Business étant encore en review, ces comptes
-// verront quand même un CTA mort — l'exception est utile sur le WEB (Stripe) et
-// sur Android (produit déjà activé).
-// À supprimer le jour où BUSINESS_OFFER_ENABLED passe à `true` : la liste
-// devient alors sans effet, mais elle resterait un piège pour la lecture.
-export const BUSINESS_OFFER_ALLOWLIST = [
-  'f44b5917-bccc-4431-ba41-f40571a2ed18', // Nico
-  'f8aa02a5-23cb-4325-bba8-127f61a75741', // Ornella
-];
+// La liste blanche des deux comptes témoins (Nico, Ornella) est SUPPRIMÉE le
+// 2026-08-11, comme prévu à l'ouverture : le drapeau étant à `true`, elle
+// n'avait plus aucun effet et ne serait plus qu'un piège de lecture.
+// Elle n'était exportée nulle part ailleurs (vérifié) — rien à recâbler.
 
 // LE point de décision — plus aucune lecture directe du drapeau côté UI.
-// userId absent (modale montée avant que la session soit lue, appelant sans
-// contexte) → on retombe sur le drapeau, donc masqué : l'absence d'id ne doit
-// JAMAIS ouvrir l'offre.
-export const businessOfferVisible = (userId) =>
-  BUSINESS_OFFER_ENABLED || BUSINESS_OFFER_ALLOWLIST.includes(userId);
+// La signature garde son paramètre `userId` : les 3 appelants (App,
+// ConversionModal, PlanDetailsModal) le passent déjà, et c'est ce qui
+// permettra de refermer l'offre sur une exception sans les retoucher.
+// eslint-disable-next-line no-unused-vars
+export const businessOfferVisible = (userId) => BUSINESS_OFFER_ENABLED;
