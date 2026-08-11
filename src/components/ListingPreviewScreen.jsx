@@ -727,6 +727,58 @@ const EBAY_ASPECT_DEFAULTS = {
   "Numéro de pièce fabricant": "Ne s'applique pas",
 };
 
+// ── « Modèle » sur un objet SANS MARQUE (2026-08-11, bouilloire générique) ──
+// Impasse relevée à l'écran : « Marque : Sans marque » passe au vert (eBay
+// fournit « - Sans marque/Générique - » dans ses valeurs), puis « Modèle » est
+// exigé et sa liste ne propose que des modèles DE MARQUES (Aarke 126-AA01,
+// Aicok AMR516-1, Bestron ARC800…). Aucune valeur de la liste n'est vraie pour
+// un objet générique.
+//
+// CE QUE DIT LE RÉFÉRENTIEL, vérifié avant d'écrire cette règle
+// (ebay_item_aspects, 234 catégories status='ok') :
+//   · « Modèle » est REQUIS sur 16 catégories ;
+//   · les 16 sont en mode FREE_TEXT — ZÉRO en SELECTION_ONLY.
+// La liste affichée est donc une liste de SUGGESTIONS : le champ accepte une
+// saisie libre, et la porte n'est pas murée — elle n'a simplement pas de
+// poignée quand l'objet n'a pas de modèle. On en pose une.
+// (Cat. 133705 « Bouilloires », celle du cas réel : Marque FREE_TEXT requise
+// avec entrée générique, Modèle FREE_TEXT requis sans entrée générique.)
+//
+// ⚠️ Le cas « SELECTION_ONLY sans valeur générique » — qui justifierait de
+// traiter eBay en `prohibited` comme les cosmétiques sur Leboncoin — n'existe
+// sur AUCUNE catégorie du référentiel actuel. Le coder aujourd'hui, c'est
+// écrire une branche que rien n'exécute et que rien ne teste. À poser le jour
+// où un crawl en fait apparaître une, pas avant.
+//
+// « Ne s'applique pas » est la formule eBay déjà utilisée pour le MPN (même
+// mécanisme, même canal pf.ebayAspects, valeur restant éditable) : sur un
+// objet sans marque, elle est VRAIE — il n'y a pas de modèle — là où une
+// valeur de la liste serait fausse.
+const EBAY_MODELE_SANS_MARQUE = "Ne s'applique pas";
+const MARQUE_GENERIQUE_RE = /(sans\s*marque|g[ée]n[ée]rique|unbranded|no\s*brand)/i;
+
+/**
+ * Défaut déterministe d'un aspect obligatoire eBay, éventuellement conditionné
+ * au contexte de l'article. Une seule fonction, lue par la pose automatique ET
+ * par le filtre de resolve_aspects — sinon « Modèle » partirait quand même à
+ * l'IA, qui ne peut rien en dire de plus.
+ * @param {{name:string, mode?:string}} aspect
+ * @param {{marque?:string}} ctx — marque telle qu'elle partira sur eBay
+ */
+function defautAspectEbay(aspect, ctx = {}) {
+  const fixe = EBAY_ASPECT_DEFAULTS[aspect?.name];
+  if (fixe) return fixe;
+  if (aspect?.name !== "Modèle") return undefined;
+  // Liste FERMÉE : on ne peut rien y écrire qui n'y figure pas. On laisse la
+  // ligne « manquante » plutôt que d'envoyer une valeur qu'eBay refusera.
+  if (aspect.mode === "SELECTION_ONLY") return undefined;
+  const marque = String(ctx.marque ?? "").trim();
+  // Marque RENSEIGNÉE et réelle : le modèle existe peut-être, il n'appartient
+  // pas au serveur de décider qu'il n'y en a pas. Saisie manuelle ou IA.
+  if (marque && !MARQUE_GENERIQUE_RE.test(marque)) return undefined;
+  return EBAY_MODELE_SANS_MARQUE;
+}
+
 // Département eBay depuis le genre de la copie (2026-07-19, montre Casio
 // 31387 : genre="Homme" présent sur le job, Département requis resté VIDE —
 // dernier aspect encore « supposé pré-rempli »). Les LIBELLÉS varient par
@@ -4172,6 +4224,31 @@ export default function ListingPreviewScreen({
     return plateformes.length ? { plateformes } : null;
   }, [adresseLbc, selected]);
 
+  // ── LES PLATEFORMES QUI VONT RÉELLEMENT PARTIR — SOURCE UNIQUE (2026-08-11) ─
+  // Quatre gardes lisaient quatre listes différentes, et c'est ce qui permet
+  // qu'une plateforme retienne les autres :
+  //   · publishChips (le compteur du CTA et le total de Pépites) filtrait déjà
+  //     sur sélectionnée + générée + adresse + non interdite ;
+  //   · missingSharedFieldsDetailed ne regardait QUE `selected` — une
+  //     plateforme interdite (cosmétique LBC) ou privée d'adresse de remise,
+  //     donc exclue de la publication, continuait d'exiger sa taille et sa
+  //     couleur et grisait le bouton pour les autres ;
+  //   · ebayRequiredStatus ne regardait même pas `selected` — eBay généré
+  //     puis DÉCOCHÉ à l'étape Publier continuait d'imposer ses obligatoires ;
+  //   · genericRequiredStatus regardait `selected` + généré, mais ni l'adresse
+  //     ni l'interdiction.
+  // Une seule liste désormais, et tout le monde la lit. Règle : ce qui ne
+  // part pas ne bloque pas, et ne se facture pas.
+  // ⚠️ Ce n'est PAS un quatrième mécanisme : `prohibited` (platformSupport) et
+  // `lbcAdresseManquante` existaient déjà et étaient déjà appliqués au
+  // compteur — on cesse simplement de les oublier dans les gardes.
+  const plateformesPubliables = useMemo(() => new Set(
+    [...selected]
+      .filter(p => platformListings?.platforms?.[p])
+      .filter(p => !(lbcAdresseManquante?.plateformes ?? []).includes(p))
+      .filter(p => platformSupport?.[p] !== "prohibited")
+  ), [selected, platformListings, lbcAdresseManquante, platformSupport]);
+
   // Référentiels par catégorie, déclarés ICI (avant la garde qui les lit) —
   // leurs effets de chargement restent plus bas, à côté des encarts bleus
   // qu'ils nourrissaient déjà : ebayRequiredPreview = requis eBay COMPLETS de
@@ -4330,7 +4407,9 @@ export default function ListingPreviewScreen({
       return "";
     };
     return SHARED_FIELD_KEYS.map(key => {
-      const guarded = guardPlatforms(key).filter(p => selected.has(p));
+      // `plateformesPubliables` et non `selected` (2026-08-11) : une plateforme
+      // qui ne partira pas n'a aucun champ à exiger.
+      const guarded = guardPlatforms(key).filter(p => plateformesPubliables.has(p));
       if (!guarded.length) return null;
       const manquantes = guarded.filter(p => !valeurPourPlateforme(p, key));
       if (!manquantes.length) return null;
@@ -4339,7 +4418,7 @@ export default function ListingPreviewScreen({
       // remplie.
       return { key, platforms: manquantes };
     }).filter(Boolean);
-  }, [selected, edited, initialListing, ebayRequiredPreview, genericAspectsCatalog, activeAiIcon]);
+  }, [plateformesPubliables, edited, initialListing, ebayRequiredPreview, genericAspectsCatalog, activeAiIcon]);
 
   const missingSharedFields = useMemo(
     () => missingSharedFieldsDetailed.map(f => f.key),
@@ -4457,7 +4536,11 @@ export default function ListingPreviewScreen({
     return () => { alive = false; };
   }, [ebayPreviewCategoryId]);
   const ebayRequiredStatus = useMemo(() => {
-    if (!ebayRequiredPreview || !edited.ebay) return null;
+    // `plateformesPubliables` (2026-08-11) : cette garde ne regardait même pas
+    // si eBay était coché. Généré puis décoché — ou interdit, ou sans adresse —
+    // il imposait quand même ses obligatoires et grisait le CTA pour Vinted et
+    // Leboncoin, prêts tous les deux.
+    if (!ebayRequiredPreview || !edited.ebay || !plateformesPubliables.has("ebay")) return null;
     const pf = edited.ebay.platform_fields ?? {};
     // Mêmes correspondances que la garde du publish + Modèle/Capacité de
     // stockage (remplis par ebay.js depuis les champs High-Tech). `key` =
@@ -4541,7 +4624,7 @@ export default function ListingPreviewScreen({
       // deux valeurs divergentes possibles au publish).
       return { name, state: "missing", value: "", sharedKey: src?.key, allowedValues, mode };
     });
-  }, [ebayRequiredPreview, edited]);
+  }, [ebayRequiredPreview, edited, plateformesPubliables]);
 
   // Défauts DÉTERMINISTES (Phase 1, 2026-07-16) : dès que les obligatoires de
   // la catégorie sont connus, on pose les valeurs standard eBay SÛRES
@@ -4562,12 +4645,27 @@ export default function ListingPreviewScreen({
     // posera ce genre sur le job.
     const genrePropre = String(edited.ebay?.platform_fields?.genre ?? "").trim();
     const genreCle = genrePropre && genrePropre !== "Mixte" ? genrePropre : String(ebayGenreFallback() ?? "").trim();
-    const passeCle = `${ebayPreviewCategoryId}|${genreCle}`;
-    if (aspectDefaultsFor.current === passeCle) return;
     const pfAspects = edited.ebay?.platform_fields?.ebayAspects ?? {};
+    // Marque telle qu'elle partira sur eBay : le champ dédié d'abord, l'aspect
+    // ensuite (l'encart bleu écrit dans pf.ebayAspects). C'est elle qui décide
+    // si « Modèle » a un défaut — cf. defautAspectEbay.
+    const marqueEbay = String(
+      edited.ebay?.platform_fields?.marque ?? pfAspects["Marque"] ?? ""
+    ).trim();
+    // La marque entre dans la CLÉ DE PASSE (2026-08-11), au même titre que le
+    // genre et pour la même raison : « Modèle » n'a de défaut que sur un objet
+    // sans marque, et l'utilisateur choisit « Sans marque » APRÈS la première
+    // passe — c'est même l'ordre normal, la marque est le premier champ de
+    // l'encart. Sans ce terme, le défaut ne serait jamais posé sur le seul cas
+    // qui en a besoin. Trois états seulement (absente / générique / réelle) :
+    // la valeur exacte ne change rien au défaut, elle ne doit donc pas rejouer
+    // la passe à chaque frappe.
+    const marqueCle = !marqueEbay ? "sans" : MARQUE_GENERIQUE_RE.test(marqueEbay) ? "generique" : "marque";
+    const passeCle = `${ebayPreviewCategoryId}|${genreCle}|${marqueCle}`;
+    if (aspectDefaultsFor.current === passeCle) return;
     const toSet = {};
     for (const a of ebayRequiredStatus) {
-      const def = EBAY_ASPECT_DEFAULTS[a.name];
+      const def = defautAspectEbay(a, { marque: marqueEbay });
       if (def && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()) toSet[a.name] = def;
       // Département ← genre de la copie eBay (2026-07-19, montre Casio) :
       // déterministe comme les défauts ci-dessus, mais dérivé d'une DONNÉE du
@@ -4642,8 +4740,16 @@ export default function ListingPreviewScreen({
   // EXCLUS : ils sont déjà posés par l'effet ci-dessus, pas de tokens gâchés.
   const aspectsResolvedFor = useRef(null);
   useEffect(() => {
+    // MÊME fonction que la pose ci-dessus (2026-08-11) : sans ça « Modèle »
+    // partirait quand même à l'IA sur un objet sans marque, pour qu'elle
+    // réponde null — un appel payé pour rien, et une ligne qui reste rouge le
+    // temps de l'aller-retour.
+    const marqueEbay = String(
+      edited.ebay?.platform_fields?.marque
+      ?? edited.ebay?.platform_fields?.ebayAspects?.["Marque"] ?? ""
+    ).trim();
     const missing = (ebayRequiredStatus ?? [])
-      .filter(a => a.state === "missing" && !EBAY_ASPECT_DEFAULTS[a.name])
+      .filter(a => a.state === "missing" && !defautAspectEbay(a, { marque: marqueEbay }))
       .map(a => a.name);
     if (!missing.length || !ebayPreviewCategoryId) return;
     if (aspectsResolvedFor.current === ebayPreviewCategoryId) return;
@@ -4948,7 +5054,9 @@ export default function ListingPreviewScreen({
   const genericRequiredStatus = useMemo(() => {
     const out = {};
     for (const [platform, rows] of Object.entries(genericAspectsCatalog)) {
-      if (!selected.has(platform) || !edited[platform]) continue;
+      // `plateformesPubliables` couvre déjà « sélectionnée ET générée », plus
+      // l'adresse de remise et l'interdiction produit qui manquaient ici.
+      if (!plateformesPubliables.has(platform) || !edited[platform]) continue;
       const pf = edited[platform].platform_fields ?? {};
       const aspects = pf[GENERIC_ASPECTS_PF_KEY[platform]] ?? {};
       const status = rows.map((r) => {
@@ -5016,7 +5124,7 @@ export default function ListingPreviewScreen({
       if (status.length) out[platform] = status;
     }
     return Object.keys(out).length ? out : null;
-  }, [genericAspectsCatalog, selected, edited]);
+  }, [genericAspectsCatalog, plateformesPubliables, edited]);
 
   // ── Unicité d'affichage des requis (2026-07-30, « Taille demandée 2 fois ») ─
   // Capture du jour : « ✗ Taille — sans source » dans l'encart BLEU eBay ET
@@ -5506,8 +5614,18 @@ export default function ListingPreviewScreen({
       // ICI — c'est donc ici que la garde doit être dure. Recalculé à frais sur
       // platformSupport, jamais sur une décision prise plus tôt.
       const plateformesInterdites = [...selected].filter(p => platformSupport?.[p] === "prohibited");
+      // Troisième terme (2026-08-11) : SANS ANNONCE GÉNÉRÉE. Il manquait, alors
+      // que `publishChips` — qui compte les plateformes et calcule le total de
+      // Pépites affiché sur le bouton — le filtre depuis toujours. Une
+      // plateforme cochée dont la génération n'a pas rendu de copie partait
+      // donc quand même : une ligne de job avec des platform_fields VIDES, et
+      // un débit de plus que ce que le CTA annonçait. « Jamais un total faux »
+      // vaut dans les deux sens.
+      const plateformesSansAnnonce = [...selected].filter(p => !platformListings?.platforms?.[p]);
       const plateformesAPublier = [...selected].filter(
-        p => !plateformesSansAdresse.includes(p) && !plateformesInterdites.includes(p)
+        p => !plateformesSansAdresse.includes(p)
+          && !plateformesInterdites.includes(p)
+          && !plateformesSansAnnonce.includes(p)
       );
       if (!plateformesAPublier.length) {
         // Rien de publiable ne restait. Le CTA est déjà gris dans ce cas
@@ -5515,6 +5633,13 @@ export default function ListingPreviewScreen({
         // Aucune Pépite engagée.
         if (plateformesInterdites.length) {
           throw new Error(supportMessage(t, "prohibited", plateformesInterdites.map(p => PLATFORM_LABELS[p]).join(", ")));
+        }
+        // Aucune annonce générée : dire ÇA, et pas le message d'adresse — un
+        // motif faux coûte plus cher qu'un motif générique.
+        if (plateformesSansAnnonce.length && !plateformesSansAdresse.length) {
+          throw new Error(lang === "en"
+            ? "No listing was generated for the selected platforms. Go back to the previous step and generate them again."
+            : "Aucune annonce n'a été générée pour les plateformes cochées. Reviens à l'étape précédente et relance la génération.");
         }
         // Seules des plateformes sans adresse étaient cochées.
         throw new Error(lang === "en"
@@ -6033,10 +6158,10 @@ export default function ListingPreviewScreen({
   // vaut null tant qu'on ne sait pas : le compte reste alors celui d'avant.
   // Même raison pour un produit INTERDIT par la plateforme (2026-08-11) : ce
   // qui ne peut pas partir ne se compte pas et ne se facture pas.
-  const publishChips = [...selected]
-    .filter(p => platformListings?.platforms?.[p])
-    .filter(p => !(lbcAdresseManquante?.plateformes ?? []).includes(p))
-    .filter(p => platformSupport?.[p] !== "prohibited");
+  // Depuis le 11/08 la liste est calculée UNE fois (plateformesPubliables) et
+  // lue par toutes les gardes — le compteur du CTA n'en est plus qu'un des
+  // consommateurs, il ne peut plus diverger de ce qui bloque.
+  const publishChips = [...plateformesPubliables];
 
   function ctaLabel() {
     if (step === 0) {

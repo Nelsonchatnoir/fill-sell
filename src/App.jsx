@@ -5118,7 +5118,14 @@ export default function App({ loginOnly = false }){
     const src=source??lensResult;
     if(!src?.titre||src.est_vendu)return null;
     try{
-      const saisi=prixAchatSaisi!=null&&prixAchatSaisi!==""?parseFloat(String(prixAchatSaisi).replace(",","."))||null:null;
+      // `parseFloat(...)||null` renvoyait null sur une saisie « 0 » — le
+      // symétrique du bug ci-dessus : l'utilisateur DIT que c'était gratuit et
+      // on enregistre « je ne sais pas », donc l'article sort des calculs de
+      // marge au lieu d'y entrer à 100 %. Zéro est une valeur, pas une absence.
+      const saisiNum=prixAchatSaisi!=null&&String(prixAchatSaisi).trim()!==""
+        ?Number(String(prixAchatSaisi).replace(",","."))
+        :NaN;
+      const saisi=Number.isFinite(saisiNum)?saisiNum:null;
       const mapped=await vaActions.addItem({
         nom:src.titre||"Article",
         marque:src.marque||null,
@@ -5183,11 +5190,25 @@ export default function App({ loginOnly = false }){
       }catch{}
       if(lensResult.est_vendu===true){
         const pv=lensResult.prix_vente_reel||lensResult.prix_vente_suggere||0;
-        const pa=lensResult.prix_achat_reel||0;
+        // ── VIDE ≠ ZÉRO, y compris ici (2026-08-11) ─────────────────────────
+        // `prix_achat_reel || 0` écrivait 0 dans ventes.prix_achat dès que
+        // l'utilisateur n'avait pas dit ce qu'il avait payé — et benefice
+        // valait alors le prix de vente ENTIER, soit 100 % de marge sur du
+        // vent. C'est exactement le bug corrigé en 2.4.35 côté inventaire, resté
+        // ouvert sur ce chemin-ci ; et c'est `ventes` qui alimente la marge
+        // moyenne (mapSale → margin → avgMargin), donc celui des deux qui
+        // fausse les chiffres affichés.
+        // null = « je ne sais pas » → benefice null → la vente sort du calcul
+        // de marge (mapSale met marginPct à null) mais reste comptée au chiffre
+        // d'affaires, qui ne se filtre jamais.
+        // 0 reste possible et signifie « c'était gratuit » : il vient alors
+        // d'une valeur réellement lue, jamais d'un défaut.
+        const paBrut=lensResult.prix_achat_reel;
+        const pa=paBrut!=null&&Number.isFinite(Number(paBrut))?Number(paBrut):null;
         const marqueNorm=normalizeMarque(lensResult.marque);
         const _td=detectType(nom,marqueNorm);
         const typeAuto=(lensResult.categorie&&lensResult.categorie!=='Luxe')?lensResult.categorie:_td;
-        const srow={user_id:user.id,titre:stripMarque(nom,marqueNorm),prix_achat:pa,prix_vente:pv,benefice:pv-pa,marque:marqueNorm||null,type:typeAuto||null,description:lensResult.description||(lensDesc.trim()||null),emplacement:null,date:new Date().toISOString().split('T')[0]};
+        const srow={user_id:user.id,titre:stripMarque(nom,marqueNorm),prix_achat:pa,prix_vente:pv,benefice:pa==null?null:pv-pa,marque:marqueNorm||null,type:typeAuto||null,description:lensResult.description||(lensDesc.trim()||null),emplacement:null,date:new Date().toISOString().split('T')[0]};
         const{data:sd,error:se}=await supabase.from('ventes').insert([srow]).select().single();
         if(se)throw new Error(se.message);
         if(sd)setSales(prev=>[mapSale(sd),...prev]);

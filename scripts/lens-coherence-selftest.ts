@@ -33,6 +33,7 @@ import {
   retirerJustificationMarqueLue,
   retirerMarqueDuTitre,
   retirerPhrasesDePrix,
+  retirerPrixDivergents,
   buildSystemPrompt,
 } from "../supabase/functions/lens-analysis/index.ts";
 
@@ -568,6 +569,57 @@ titre("8ter. Retrait des phrases de prix / marge / verdict");
     retirerPhrasesDePrix("").texte,
     retirerPhrasesDePrix(42).texte,
   ], [null, "", 42]);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// 8quinquies. DEUX PRIX D'ACHAT SUR LE MÊME ÉCRAN (pince Facom, 15:08)
+// ══════════════════════════════════════════════════════════════════════════
+// « marge estimée à 50 % si prix d'achat autour de 9 € » dans la note, pendant
+// que le bouton disait « ACHÈTE EN DESSOUS DE 12,00 € ». Le champ était plein
+// et valide : le filtre de 8ter ne s'arme pas, il ne couvre que le champ VIDÉ.
+titre("8quinquies. Le prix cité dans le texte est celui du champ");
+{
+  const PRIX = { achat: 12, vente: 18 };
+
+  const facom = retirerPrixDivergents(
+    "Pince plate en acier. Marge estimée à 50 % si prix d'achat autour de 9 €. Une photo du manche préciserait la marque.",
+    PRIX,
+  );
+  verifier("la phrase au prix divergent part", facom.retirees, 1);
+  verifier(
+    "le reste est conservé mot pour mot",
+    facom.texte,
+    "Pince plate en acier. Une photo du manche préciserait la marque.",
+  );
+
+  // Le MÊME chiffre que le champ : cohérent, on ne touche à rien.
+  const coherent = "Pince plate en acier. Achète en dessous de 12 € pour garder de la marge.";
+  verifier("prix identique au champ → conservé", retirerPrixDivergents(coherent, PRIX).texte, coherent);
+  // Le prix de VENTE est l'autre valeur affichée : la citer est légitime.
+  const vente = "Prix d'achat conseillé 12 € pour une revente autour de 18 €.";
+  verifier("achat ET vente du champ → conservé", retirerPrixDivergents(vente, PRIX).texte, vente);
+  // Tolérance de forme : « 12,00 € » est le même chiffre que 12.
+  const forme = "Achète en dessous de 12,00 €.";
+  verifier("12,00 € == 12 → conservé", retirerPrixDivergents(forme, PRIX).texte, forme);
+
+  // ⚠️ Un pourcentage n'est pas un montant : « marge estimée à 50 % » seul ne
+  // contredit aucun chiffre affiché, il le commente.
+  const pct = "Marge estimée à 50 % à ce prix.";
+  verifier("pourcentage seul → conservé", retirerPrixDivergents(pct, PRIX).texte, pct);
+
+  // Phrase sans marqueur de prix d'achat : intacte, même avec un montant.
+  const port = "Compte 6 € de frais de port en colissimo.";
+  verifier("montant hors conseil d'achat → conservé", retirerPrixDivergents(port, PRIX).texte, port);
+
+  // Aucun champ connu (les deux null) : tout montant diverge — on retire, c'est
+  // le cas « le texte conseille un achat que l'écran n'affiche nulle part ».
+  const sansChamp = retirerPrixDivergents("Achète en dessous de 9 €.", { achat: null, vente: null });
+  verifier("aucun prix au champ → la phrase qui en cite un part", sansChamp.retirees, 1);
+
+  verifier("null / vide traversent sans bruit", [
+    retirerPrixDivergents(null, PRIX).texte,
+    retirerPrixDivergents("", PRIX).texte,
+  ], [null, ""]);
 }
 
 // ══════════════════════════════════════════════════════════════════════════

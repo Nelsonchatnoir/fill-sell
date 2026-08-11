@@ -193,7 +193,13 @@ export const translations = {
     stepPublishEbayAspectInvalid:"valeur hors liste eBay, choisis ci-dessous",
     stepPublishEbayRequiredTitle:"Champs obligatoires eBay pour cette catégorie :",
     stepPublishEbayAspectPrefilled:"pré-rempli par eBay",
-    stepPublishEbayAspectMissing:"sans source — à compléter sur le formulaire eBay",
+    // ⚠️ 2026-08-11 : disait « sans source — à compléter sur le formulaire
+    // eBay », donc REPORTABLE, alors que l'état "missing" grise le bouton
+    // Publier (estBloquant). Deux consignes opposées dans le même écran :
+    // la ligne invitait à continuer, le CTA refusait. Une seule sémantique
+    // retenue — "missing" BLOQUE — et le texte s'aligne dessus, comme le
+    // libellé générique juste en dessous.
+    stepPublishEbayAspectMissing:"obligatoire — à renseigner ici",
     stepPublishGenericRequiredTitle:"Champs obligatoires {platform} pour cette catégorie :",
     stepPublishGenericAspectMissing:"à compléter ci-dessous",
     stepPublishGenericAspectInvalid:"valeur hors liste, choisis ci-dessous",
@@ -503,7 +509,7 @@ export const translations = {
     stepPublishEbayAspectInvalid:"value not in eBay's list, pick below",
     stepPublishEbayRequiredTitle:"eBay required fields for this category:",
     stepPublishEbayAspectPrefilled:"pre-filled by eBay",
-    stepPublishEbayAspectMissing:"no source — fill it on the eBay form",
+    stepPublishEbayAspectMissing:"required — fill it in here",
     stepPublishGenericRequiredTitle:"{platform} required fields for this category:",
     stepPublishGenericAspectMissing:"fill it in below",
     stepPublishGenericAspectInvalid:"value not in the list, pick below",

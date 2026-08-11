@@ -1028,6 +1028,60 @@ export function retirerPhrasesDePrix(v: unknown): { texte: unknown; retirees: nu
   return { texte: gardees.join(" ").replace(/\s{2,}/g, " ").trim(), retirees };
 }
 
+// ── DEUX PRIX D'ACHAT SUR LE MÊME ÉCRAN (2026-08-11, pince Facom 15:08) ────
+// La note disait « marge estimée à 50 % si prix d'achat autour de 9 € » pendant
+// que le bouton disait « ACHÈTE EN DESSOUS DE 12,00 € ». Deux conseils d'achat
+// différents, dans la même vue, sans que rien ne signale lequel fait foi.
+// Le filtre précédent (`retirerPhrasesDePrix`) ne couvre PAS ce cas : il ne
+// s'arme que lorsque le champ a été VIDÉ. Ici le champ est plein et valide —
+// c'est le TEXTE qui raconte autre chose.
+// Règle : la valeur citée dans le texte est celle du champ, ou elle n'est pas
+// citée. On ne réécrit jamais le chiffre du texte pour le faire coller (ce
+// serait fabriquer une phrase que le modèle n'a pas écrite) — on retire la
+// phrase qui diverge, et le champ reste seul à parler.
+const MONTANTS_RE = /(?:(\d+(?:[.,]\d+)?)\s*(?:€|eur\b|euros?\b))|(?:(?:€|\$|£)\s*(\d+(?:[.,]\d+)?))/gi;
+
+/** Tous les montants MONÉTAIRES d'une phrase (les pourcentages n'en sont pas). */
+function montantsDe(phrase: string): number[] {
+  const out: number[] = [];
+  for (const m of phrase.matchAll(MONTANTS_RE)) {
+    const brut = m[1] ?? m[2];
+    if (!brut) continue;
+    const n = Number(brut.replace(",", "."));
+    if (Number.isFinite(n)) out.push(n);
+  }
+  return out;
+}
+
+/**
+ * Retire les phrases qui citent un prix d'ACHAT différent de celui du champ.
+ * Une phrase est écartée si elle porte un marqueur de prix d'achat/marge ET au
+ * moins un montant qui ne correspond ni à `achat` ni à `vente` — les deux
+ * seules valeurs que l'écran affiche par ailleurs.
+ * ⚠️ Sans montant monétaire, on ne touche à rien : « marge estimée à 50 % » ne
+ * contredit aucun chiffre affiché, elle ne fait que le commenter.
+ */
+export function retirerPrixDivergents(
+  v: unknown,
+  prix: { achat: number | null; vente: number | null },
+): { texte: unknown; retirees: number } {
+  if (typeof v !== "string" || !v.trim()) return { texte: v, retirees: 0 };
+  const connus = [prix.achat, prix.vente].filter((n): n is number => n != null && Number.isFinite(n));
+  const correspond = (n: number) => connus.some((k) => Math.abs(k - n) < 0.01);
+  const phrases = v.split(/(?<=[.!?;])\s+|\n+/).filter((p) => p.trim());
+  let retirees = 0;
+  const gardees = phrases.filter((p) => {
+    if (!MARQUEURS_PRIX_MARGE.test(p)) return true;
+    const montants = montantsDe(p);
+    if (!montants.length) return true;
+    const diverge = montants.some((n) => !correspond(n));
+    if (diverge) retirees++;
+    return !diverge;
+  });
+  if (!retirees) return { texte: v, retirees: 0 };
+  return { texte: gardees.join(" ").replace(/\s{2,}/g, " ").trim(), retirees };
+}
+
 /** Retire la marque du titre — elle ne peut pas y survivre à un `marque=null`. */
 export function retirerMarqueDuTitre(titre: string, marque: string): string {
   const echappe = marque.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -2247,6 +2301,41 @@ serve(async (req) => {
       if (phrasesRetirees) {
         console.warn(`[lens-analysis] ${phrasesRetirees} phrase(s) de prix/marge/verdict retirée(s) du texte client`);
         logMeta = { ...logMeta, phrases_prix_retirees: phrasesRetirees };
+      }
+    } else if (!estIdentify && !identificationContredite) {
+      // ── LE CONSEIL EST GARDÉ : IL DOIT ÊTRE LE MÊME PARTOUT (2026-08-11) ──
+      // Pince Facom 15:08 : la note disait « prix d'achat autour de 9 € »
+      // pendant que le bouton disait « ACHÈTE EN DESSOUS DE 12,00 € ». Le
+      // filtre ci-dessus ne voyait rien — il ne s'arme que quand le champ est
+      // vidé, et ici il était plein et valide. Deux conseils d'achat dans la
+      // même vue, sans que rien ne dise lequel fait foi.
+      // Le champ reste la référence ; c'est la phrase qui diverge qui part.
+      const prix = {
+        achat: typeof itemData.prix_achat_suggere === "number" ? itemData.prix_achat_suggere : null,
+        vente: typeof itemData.prix_vente_suggere === "number" ? itemData.prix_vente_suggere : null,
+      };
+      let prixDivergents = 0;
+      for (const champ of ["notes", "description", "vitesse_vente_explication"]) {
+        const r = retirerPrixDivergents(itemData[champ], prix);
+        prixDivergents += r.retirees;
+        if (r.retirees) itemData[champ] = (typeof r.texte === "string" && r.texte) ? r.texte : null;
+      }
+      if (Array.isArray(itemData.conseils)) {
+        const gardes: unknown[] = [];
+        for (const c of itemData.conseils) {
+          const r = retirerPrixDivergents(c, prix);
+          prixDivergents += r.retirees;
+          if (typeof r.texte === "string" && r.texte.trim()) gardes.push(r.texte);
+          else if (!r.retirees) gardes.push(c);
+        }
+        itemData.conseils = gardes.length ? gardes : null;
+      }
+      if (prixDivergents) {
+        console.warn(
+          `[lens-analysis] ${prixDivergents} phrase(s) citant un prix différent des champs`
+          + ` (achat=${prix.achat ?? "-"} vente=${prix.vente ?? "-"}) retirée(s)`,
+        );
+        logMeta = { ...logMeta, prix_texte_divergent: prixDivergents };
       }
     }
 
