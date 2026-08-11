@@ -243,6 +243,38 @@ function genericFieldToSharedKey(platform, key) {
   return null;
 }
 
+// ── Le canal générique est-il RÉELLEMENT posé sur la plateforme ? ────────────
+// (2026-08-11) MIROIR EXACT des listes de saut des content scripts. Un aspect
+// écrit dans pf.lbcAspects / pf.beebsAspects sous une clé que le handler SAUTE
+// n'est jamais posé : la valeur est perdue en silence. La garde du CTA
+// (missingSharedFieldsDetailed) doit donc compter le canal générique ici, et
+// seulement ici — sinon elle laisse publier un champ que la plateforme ne
+// recevra pas, ou bloque sur une valeur pourtant acquise.
+//   · vinted    → TOUJOURS posé : la boucle générique traite les codes libres,
+//                 et les codes à mapping dédié passent par le pont `_bridge`
+//                 (vinted.js : vintedAspects.size → fields.taille, brand,
+//                 material, condition, color → colors…). Rien ne se perd.
+//   · leboncoin → handledForKeys (leboncoin.js) : ces clés sont SAUTÉES.
+//                 ⚠️ `_colou?r$` n'y est PAS — et c'est heureux, car
+//                 leboncoin.js ne lit NULLE PART fields.couleur (vérifié :
+//                 aucune occurrence). Sur LBC, la couleur ne peut voyager QUE
+//                 par le canal générique ; lui donner un dedicatedTarget
+//                 écrirait dans un champ que personne ne lit.
+//   · beebs     → handledLabels (beebs.js) : mêmes libellés, même règle.
+// ⚠️ Si une de ces listes change côté extension, elle doit changer ICI aussi :
+// les deux copies ne se lisent pas l'une l'autre.
+const LBC_GENERIQUE_SAUTE =
+  /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$)/;
+const BEEBS_GENERIQUE_SAUTE = new Set(
+  ["Couleur", "Marque", "Pointure", "Taille", "État", "Matière", "Âge", "Format du colis"]
+);
+function canalGeneriquePose(platform, key) {
+  if (platform === "vinted") return true;
+  if (platform === "leboncoin") return !LBC_GENERIQUE_SAUTE.test(key);
+  if (platform === "beebs") return !BEEBS_GENERIQUE_SAUTE.has(key);
+  return false;
+}
+
 // ── Icône objet : UNE résolution, stable, pour TOUTES les plateformes ─────────
 // (2026-07-12, run du soir) Les mappings catalogue (Vinted/eBay/Beebs/LBC) sont
 // tous indexés par l'icône objet, et l'icône était calculée depuis le titre de
@@ -4266,14 +4298,11 @@ export default function ListingPreviewScreen({
     // sur AUCUNE plateforme, seules les copies voyagent — c'est donc les copies,
     // et elles seules, qu'il faut exiger.
     //
-    // Le canal GÉNÉRIQUE compte pour VINTED SEULEMENT, et c'est mesuré, pas
-    // supposé : vinted.js porte un pont explicite `_bridge`
-    // (vintedAspects.size → fields.taille, brand → marque, material → matiere,
-    // color → colors) qui recopie la valeur vers le champ dédié avant de
-    // remplir. Leboncoin et Beebs, eux, SAUTENT ces clés dans leur canal
-    // générique (handledForKeys / handledLabels) : y compter une valeur serait
-    // laisser publier un champ que la plateforme ne recevra jamais.
-    const VINTED_BRIDGE = { taille: "size", marque: "brand", matiere: "material", couleur: "color" };
+    // Le canal GÉNÉRIQUE compte EXACTEMENT là où le content script le pose
+    // vraiment — ni plus (ce serait laisser publier un champ que la plateforme
+    // ne recevra jamais), ni moins (ce serait bloquer sur une valeur déjà
+    // acquise). La règle n'est pas devinée, elle est RECOPIÉE des handlers :
+    // cf. CANAL_GENERIQUE_POSE.
     const valeurPourPlateforme = (p, key) => {
       const pf = edited[p]?.platform_fields ?? {};
       const direct = String(pf[key] ?? "").trim();
@@ -4283,9 +4312,12 @@ export default function ListingPreviewScreen({
         const c = String(pf.colors?.[0] ?? "").trim();
         if (c) return c;
       }
-      if (p === "vinted" && VINTED_BRIDGE[key]) {
-        const v = String(pf.vintedAspects?.[VINTED_BRIDGE[key]] ?? "").trim();
-        if (v) return v;
+      const aspects = pf[GENERIC_ASPECTS_PF_KEY[p]] ?? {};
+      for (const [code, v] of Object.entries(aspects)) {
+        if (genericFieldToSharedKey(p, code) !== key) continue;
+        if (!canalGeneriquePose(p, code)) continue;
+        const s = String(v ?? "").trim();
+        if (s) return s;
       }
       // eBay : ses aspects sont posés tels quels par ebay.js (aucun saut), et
       // EBAY_ASPECT_LABELS dit quels noms d'aspect portent ce champ partagé.
