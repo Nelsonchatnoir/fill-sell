@@ -189,6 +189,16 @@ export default function LensIdentite({ result, lang }) {
   //   · contredite — la réponse se contredisait : le prix a été retiré.
   const incertaine = result.identification_incertaine === true;
   const contredite = result.identification_contredite === true;
+  // ── Objet DÉDUIT (2026-08-11) — le cran intermédiaire ────────────────────
+  // Une réponse peut être parfaitement cohérente et parfaitement fausse : une
+  // pince plate rendue en cisailles, avec 4 recherches web venues confirmer les
+  // cisailles. Aucun des deux niveaux ci-dessus ne la voit — c'est `objet_source`
+  // qui la voit, parce qu'il ne demande pas au modèle d'être d'accord avec
+  // lui-même mais d'où vient ce qu'il affirme.
+  // Le serveur a déjà retiré le conseil d'achat et le verdict ; il reste à le
+  // DIRE, sinon leur absence se lit comme un oubli. Jamais en même temps que le
+  // bandeau « incertaine », qui est plus grave et couvre déjà le cas.
+  const objetDeduit = result.objet_source === 'deduit';
   const note = result.notes && String(result.notes).trim();
   // La note ne devient une invitation que si elle apporte quelque chose : sur une
   // identification sûre, le modèle n'a rien à réclamer et l'encart serait du bruit.
@@ -259,6 +269,29 @@ export default function LensIdentite({ result, lang }) {
                   : `Aucun prix n’a été établi : une estimation fondée sur un objet mal reconnu est pire que pas d’estimation.${result.pepites_rendues ? ' Tes Pépites ont été rendues.' : ''}`}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Objet déduit : plus léger que le bandeau ci-dessus, et exclusif de
+          lui. Le prix et les annonces comparables restent affichés — ce sont
+          des faits de marché, l'utilisateur doit pouvoir juger sur pièces. Ce
+          qui a été retiré côté serveur, c'est ce qui l'engagerait à sortir de
+          l'argent : le « Achète en dessous de X » et le verdict. */}
+      {!incertaine && objetDeduit && (
+        <div
+          className="lens-note"
+          style={{
+            background:'#F5F7F6', border:'1px solid #DCE3E0', borderRadius:12,
+            padding:'10px 12px', marginBottom:14,
+            display:'flex', gap:9, alignItems:'flex-start',
+          }}
+        >
+          <span style={{ fontSize:15, lineHeight:1.2, flexShrink:0 }}>🔎</span>
+          <div style={{ minWidth:0, fontSize:11.5, color:'#4A5B55', lineHeight:1.5 }}>
+            {lang === 'en'
+              ? <>I <strong>worked this object out</strong> from the photos — I did not read it on the item. The market price and the comparable listings below are real, but they describe the object as I named it: check that name first. No purchase advice on a guess.</>
+              : <>J’ai <strong>déduit</strong> cet objet des photos — je ne l’ai pas lu sur l’article. Le prix de marché et les annonces comparables ci-dessous sont réels, mais ils portent sur l’objet tel que je l’ai nommé : vérifie ce nom d’abord. Pas de conseil d’achat sur une supposition.</>}
           </div>
         </div>
       )}

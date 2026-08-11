@@ -66,6 +66,8 @@ const FR3 = { photos: 3, lang: "fr" as const };
 titre("1. Incident du 11/08 10:18 — pince Facom rendue en fourche à bêcher");
 {
   const item: Record<string, unknown> = {
+    objet: "fourche à bêcher",
+    objet_source: "lu",
     titre: "Fourche à bêcher Spear & Jackson 4 dents",
     famille: "jardin",
     marque: "Spear & Jackson",
@@ -127,6 +129,13 @@ titre("1. Incident du 11/08 10:18 — pince Facom rendue en fourche à bêcher")
     true,
   );
   verifier("drapeau fuite_variable levé", r.fuiteVariable, true);
+  verifier(
+    "… et il dit DÉSORMAIS lesquels",
+    r.fuiteIdentifiants,
+    ["prix_achat_suggere", "prix_vente_suggere"],
+  );
+  verifier("un « lu » ne survit pas à une identification non établie", item.objet_source, "deduit");
+  verifier("drapeau objetDeduit levé", r.objetDeduit, true);
   verifier("empreinte : identification_incertaine remontée", empreinteSortie(item).identification_incertaine, true);
 }
 
@@ -209,6 +218,8 @@ titre("3. Non-régression — hors textile correctement identifié (niveau Milwa
   // Le cas cité dans l'audit du 11/08 comme la PREUVE que le modèle en est
   // capable : hors textile, marque lue, note honnête. Il doit rester tel quel.
   const item: Record<string, unknown> = {
+    objet: "niveau à bulle",
+    objet_source: "lu",
     titre: "Niveau à bulle Milwaukee 60 cm",
     famille: "bricolage",
     marque: "Milwaukee",
@@ -228,6 +239,8 @@ titre("3. Non-régression — hors textile correctement identifié (niveau Milwa
   verifier("Milwaukee : la mesure lue « 60 cm » survit", (item.attributs_visibles as Record<string, string>).longueur, "60 cm");
   verifier("Milwaukee : catégorie Bricolage atteinte", item.categorie, "Bricolage");
   verifier("Milwaukee : identification tenue", r.identificationIncertaine, false);
+  verifier("Milwaukee : objet lu conservé", [item.objet, item.objet_source], ["niveau à bulle", "lu"]);
+  verifier("Milwaukee : autorité de prix conservée", r.objetDeduit, false);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -355,6 +368,88 @@ titre("8. Retrait de la marque du titre");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// 8bis. L'OBJET ET SA PROVENANCE (2026-08-11, incident 14:10)
+// ══════════════════════════════════════════════════════════════════════════
+// Le cas que rien ne voyait : une réponse COHÉRENTE et FAUSSE. La pince plate
+// rendue en « Cisailles de jardin à main poignée rouge » ne se contredisait
+// nulle part (marque null assumée, famille valide, 2 photos) — donc
+// identification_contredite = false ET identification_incertaine = false, et
+// « Achète en dessous de 8 € » est sorti avec 6 Pépites débitées.
+// `objet_source` est le seul signal qui la voit : il ne demande pas au modèle
+// d'être d'accord avec lui-même, il lui demande d'où vient ce qu'il affirme.
+titre("8bis. objet / objet_source — l'erreur cohérente");
+{
+  const cisailles = () => ({
+    objet: "cisailles de jardin à main",
+    objet_source: "deduit",
+    titre: "Cisailles de jardin à main poignée rouge",
+    famille: "jardin",
+    marque: null,
+    description: "Cisailles de jardin à main, poignée rouge, lames en acier.",
+    confiance: "moyenne",
+    notes: "Une photo des lames ouvertes trancherait.",
+    attributs_visibles: null,
+    prix_vente_suggere: 15,
+    prix_achat_suggere: 8,
+    verdict: "bon",
+    score: 6,
+  }) as Record<string, unknown>;
+
+  const c = cisailles();
+  const r = assainirSortie(c, FR3);   // 2+ photos : le plafond ne joue PAS
+  verifier("le scan de 14:10 n'est toujours PAS contredit", r.identificationContredite, false);
+  verifier("… ni incertain (2 photos, c'est la règle et elle est juste)", r.identificationIncertaine, false);
+  verifier("… mais l'objet est signalé DÉDUIT", r.objetDeduit, true);
+  verifier("objet_source exposé au client", c.objet_source, "deduit");
+  verifier("empreinte : objet remonté", empreinteSortie(c).objet, "cisailles de jardin à main");
+  verifier("empreinte : objet_source remonté", empreinteSortie(c).objet_source, "deduit");
+
+  // Provenance absente / hors liste → "deduit", JAMAIS "lu". Un silence n'est
+  // pas une lecture : c'est le piège du plafond de confiance du matin même.
+  const sansSource = cisailles();
+  delete sansSource.objet_source;
+  const rs = assainirSortie(sansSource, FR3);
+  verifier("provenance absente → deduit", sansSource.objet_source, "deduit");
+  verifier("… et tracée comme rejetée", rs.objetSourceRejetee, true);
+
+  for (const brut of ["lue", "vu", "read", "LU!", ""]) {
+    const x = cisailles();
+    x.objet_source = brut;
+    assainirSortie(x, FR3);
+    verifier(`provenance « ${brut} » hors liste → deduit`, x.objet_source, "deduit");
+  }
+
+  // Casse et espaces tolérés : c'est une valeur d'énumération, pas un secret.
+  const casse = cisailles();
+  casse.objet_source = "  LU  ";
+  const rc = assainirSortie(casse, FR3);
+  verifier("« LU » toléré et normalisé", casse.objet_source, "lu");
+  verifier("… sans être compté comme rejet", rc.objetSourceRejetee, false);
+  verifier("… et l'autorité de prix est conservée", rc.objetDeduit, false);
+
+  // Aucun objet nommé du tout (réponse d'un modèle qui a sauté l'étape 0) :
+  // rien à garantir, donc pas de provenance et pas d'autorité de prix.
+  const sansObjet = cisailles();
+  delete sansObjet.objet;
+  const ro = assainirSortie(sansObjet, FR3);
+  verifier("objet absent → null", sansObjet.objet, null);
+  verifier("objet absent → provenance null", sansObjet.objet_source, null);
+  verifier("objet absent → pas d'autorité de prix", ro.objetDeduit, true);
+  verifier("objet absent → pas compté comme provenance rejetée", ro.objetSourceRejetee, false);
+
+  // Bornage : guillemets rognés, longueur plafonnée.
+  const sale = cisailles();
+  sale.objet = '  « pince plate »  ';
+  assainirSortie(sale, FR3);
+  verifier("guillemets et espaces rognés", sale.objet, "pince plate");
+
+  const long = cisailles();
+  long.objet = "x".repeat(300);
+  assainirSortie(long, FR3);
+  verifier("longueur bornée à 120", String(long.objet).length, 120);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // 9. LE PROMPT PORTE BIEN LES RÈGLES (les deux langues, les deux modes)
 // ══════════════════════════════════════════════════════════════════════════
 titre("9. Contenu du prompt");
@@ -368,6 +463,54 @@ titre("9. Contenu du prompt");
     const p = buildSystemPrompt(lang, "Vinted, eBay", "France", 3, mode);
     for (const a of attendus) verifier(`${lang}/${mode} : « ${a} »`, p.includes(a), true);
   }
+
+  // ── L'ordre du 11/08 après-midi : l'objet AVANT la famille ──────────────
+  // Le schéma commande l'ordre d'émission, donc l'ordre dans lequel les faits
+  // sont décidés : ces assertions-là sont le cœur du chantier, pas du décor.
+  for (const [lang, mode, etape0, etape0bis] of [
+    ["fr", "full", "0. NOMMER L'OBJET", "0bis. LA FAMILLE"],
+    ["fr", "identify", "0. NOMMER L'OBJET", "0bis. LA FAMILLE"],
+    ["en", "full", "0. NAME THE OBJECT", "0bis. FAMILY"],
+    ["en", "identify", "0. NAME THE OBJECT", "0bis. FAMILY"],
+  ] as Array<[string, "full" | "identify", string, string]>) {
+    const p = buildSystemPrompt(lang, "Vinted, eBay", "France", 3, mode);
+    verifier(`${lang}/${mode} : l'étape 0 nomme l'objet`, p.includes(etape0), true);
+    verifier(`${lang}/${mode} : la famille est passée en 0bis`, p.includes(etape0bis), true);
+    verifier(`${lang}/${mode} : « la famille d'abord » a disparu`, /LA FAMILLE D'ABORD|FAMILY FIRST/.test(p), false);
+    verifier(`${lang}/${mode} : objet avant famille dans le schéma`, p.indexOf('"objet"') < p.indexOf('"famille"'), true);
+    verifier(`${lang}/${mode} : objet avant titre dans le schéma`, p.indexOf('"objet"') < p.indexOf('"titre"'), true);
+    verifier(`${lang}/${mode} : objet_source dans le schéma`, p.includes('"objet_source":"lu"|"deduit"'), true);
+  }
+
+  // La recherche peut contredire l'objet — mode complet SEULEMENT (identify
+  // n'a aucun outil : lui dire de recouper avec le web serait un mensonge).
+  verifier(
+    "fr/full : la recherche est autorisée à contredire l'objet",
+    buildSystemPrompt("fr", "Vinted", null, 3, "full").includes("LA RECHERCHE PEUT — ET DOIT — CONTREDIRE L'OBJET"),
+    true,
+  );
+  verifier(
+    "fr/identify : la règle est absente (aucun outil attaché)",
+    buildSystemPrompt("fr", "Vinted", null, 3, "identify").includes("CONTREDIRE L'OBJET"),
+    false,
+  );
+  verifier(
+    "en/full : idem côté anglais",
+    buildSystemPrompt("en", "Vinted", null, 3, "full").includes("THE SEARCH MAY — AND MUST — CONTRADICT THE OBJECT"),
+    true,
+  );
+  verifier(
+    "en/identify : absente",
+    buildSystemPrompt("en", "Vinted", null, 3, "identify").includes("CONTRADICT THE OBJECT"),
+    false,
+  );
+  // L'interdiction sur la MARQUE, elle, reste : c'est la règle du matin, elle
+  // n'est pas remplacée mais bornée à ce qu'elle protégeait vraiment.
+  verifier(
+    "fr/full : le verrou sur la marque est conservé",
+    buildSystemPrompt("fr", "Vinted", null, 3, "full").includes("une recherche ne REMPLACE jamais ce que tu as lu"),
+    true,
+  );
   // La consigne « une seule photo » n'apparaît QUE quand il n'y en a qu'une.
   verifier("1 photo : la consigne apparaît", buildSystemPrompt("fr", "Vinted", null, 1, "full").includes("QU'UNE SEULE photo"), true);
   verifier("3 photos : elle disparaît", buildSystemPrompt("fr", "Vinted", null, 3, "full").includes("QU'UNE SEULE photo"), false);

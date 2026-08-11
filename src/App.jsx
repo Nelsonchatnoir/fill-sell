@@ -5035,9 +5035,13 @@ export default function App({ loginOnly = false }){
     setLensLoading(true);setLensResult(null);setLensAdded(false);setLensInventaireId(null);
     const allSalesValid=sales.filter(s=>s.sell>0&&s.margin!=null);
     const avgMargin=allSalesValid.length?Math.round(allSalesValid.reduce((a,s)=>a+s.marginPct,0)/allSalesValid.length):null;
-    const catProfit={};
-    for(const s of sales){const c=s.type||s.categorie||"Autre";catProfit[c]=(catProfit[c]||0)+(s.margin??0);}
-    const topCats=Object.entries(catProfit).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c])=>c);
+    // topCategories SUPPRIMÉ (2026-08-11) : les 3 catégories les plus rentables
+    // du vendeur partaient dans le MÊME message que les photos, donc avant toute
+    // lecture, et nommaient des catégories à un modèle dont la première décision
+    // était de catégoriser. Un a priori de rangement sur une tâche de
+    // reconnaissance. Le serveur ignore désormais le champ (lens-analysis
+    // index.ts) — on cesse aussi de le calculer ici. avgMargin reste : il sert
+    // au conseil de marge, pas à l'identification.
     const uploadedPaths=[];
     try{
       // Upload photos to lens-temp (converts data: URLs to blobs — works on iOS WKWebView)
@@ -5063,7 +5067,7 @@ export default function App({ loginOnly = false }){
           prixAchat:parseFloat(lensBuy)||null,
           lang,
           userCountry,
-          userStats:{avgMargin,topCategories:topCats},
+          userStats:{avgMargin},
         }),
       });
       if(!r.ok){
