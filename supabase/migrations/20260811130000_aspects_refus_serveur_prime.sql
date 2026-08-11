@@ -1,4 +1,12 @@
--- ⏸️ NON APPLIQUÉE — en attente du feu vert de Nico la nommant explicitement.
+-- ✅ APPLIQUÉE EN PROD le 2026-08-11 (feu vert de Nico la nommant).
+-- Trigger vérifié présent et actif (tgenabled='O'), et son comportement PROUVÉ
+-- sur une ligne jetable (category_key='__test_trigger__', supprimée depuis) :
+--   · upsert dom {required:false} sur une ligne server_400 → ressort
+--     required=true / source=server_400 (dégradation neutralisée), et les
+--     options fraîches du DOM sont bien acceptées au passage ;
+--   · upsert server_400 {allowed_values:null} → les 4 options sont CONSERVÉES ;
+--   · upsert dom {required:true} sur une ligne dom {required:false} → PASSE
+--     (la promotion par le DOM reste possible, seule la dégradation est bloquée).
 --
 -- Un refus SERVEUR ne doit pas pouvoir être dégradé par une relecture du DOM.
 --

@@ -1,4 +1,10 @@
--- ⏸️ NON APPLIQUÉE — en attente du feu vert de Nico la nommant explicitement.
+-- ✅ APPLIQUÉE EN PROD le 2026-08-11 (feu vert de Nico la nommant).
+-- Vérifié après application : la branche 48 h est dans le corps de la fonction,
+-- le filet 30 jours est intact, le message porte bien « au moins 48 heures », et
+-- le cron jobid 8 est inchangé (« 20 3 * * * », actif).
+-- Deux jobs entreront dans la branche au prochain passage utile :
+--   beebs  2715ce35 (Medik8 Sérum, repère 10/08 19:04)
+--   vinted 69014fb8 (Pot à moutarde, repère 10/08 20:39)
 --
 -- Dénouement des réservations bloquées sur un job needs_user : 48 h au lieu de
 -- 30 jours. Délai arbitré par Nico le 2026-08-11.
