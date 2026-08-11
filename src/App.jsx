@@ -1437,6 +1437,14 @@ function normalizeCat(raw){
   if(v==='automoto'||v==='auto') return 'Auto-Moto';
   if(v==='electromenager'||v==='electro') return 'Électroménager';
   if(v==='jouets'||v==='toys') return 'Jouets';
+  // Bricolage / Jardin / Multimédia : trois types que le sélecteur d'article
+  // propose et que detectType() sait produire, mais qui retombaient ici en
+  // « Autre » — le délai de vente moyen par catégorie les fondait donc tous
+  // dans le même sac. Ajoutés le 11/08 en même temps que l'ouverture du Lens
+  // à Bricolage et Jardin, qui va enfin en produire.
+  if(v==='bricolage'||v==='diy') return 'Bricolage';
+  if(v==='jardin'||v==='garden') return 'Jardin';
+  if(v==='multimedia') return 'Multimédia';
   return 'Autre';
 }
 
