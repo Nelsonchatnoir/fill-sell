@@ -2635,7 +2635,22 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                       value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
                       allowedValues={a.allowedValues}
                       strict={false}
-                      onChange={v => (a.state === "invalid" && a.dedicatedTarget && onPlatformDedicatedChange)
+                      // ⚠️ dedicatedTarget PRIME TOUJOURS (2026-08-11), pas
+                      // seulement sur "invalid". Le canal générique est IGNORÉ
+                      // par les handlers pour les clés déjà servies par un
+                      // mapping dédié — c'est écrit noir sur blanc dans
+                      // handledForKeys (leboncoin.js) et handledLabels
+                      // (beebs.js), qui sautent _size$/_brand$/_material$/
+                      // Taille/Marque/Matière… La saisie partait donc dans un
+                      // TROU : valeur enregistrée dans lbcAspects/beebsAspects,
+                      // pastille au vert, et rien de posé sur la plateforme.
+                      // Vinted s'en sortait par son pont `_bridge`
+                      // (vintedAspects.size → fields.taille), les deux autres
+                      // non. Écrire le champ dédié sert les trois, ET remplit la
+                      // copie que lit la garde du CTA (missingSharedFields) —
+                      // c'est ce décalage qui laissait « ✓ Taille » au vert avec
+                      // un bouton Publier mort (cas RoCotCot du 11/08).
+                      onChange={v => (a.dedicatedTarget && onPlatformDedicatedChange)
                         ? onPlatformDedicatedChange(gp, a.dedicatedTarget, v)
                         : onPlatformAspectChange(gp, a.key, v)}
                       T={T}
@@ -4233,20 +4248,66 @@ export default function ListingPreviewScreen({
           : fallback.includes(p);
       });
     };
-    // Manquant si la canonique est vide OU si la copie d'une plateforme
-    // gardée sélectionnée est vide : les jobs partent depuis
-    // edited[p].platform_fields (handlePublish), pas depuis sharedFields —
-    // une canonique remplie ne prouve pas que chaque copie l'est (divergence
-    // possible : copie vidée à la main, plateforme re-cochée sans copie…).
+    // Manquant si la copie d'une plateforme gardée sélectionnée est vide : les
+    // jobs partent depuis edited[p].platform_fields (handlePublish), pas depuis
+    // sharedFields — une canonique remplie ne prouve pas que chaque copie l'est
+    // (divergence possible : copie vidée à la main, plateforme re-cochée sans
+    // copie…).
+    //
+    // ⚠️ LA CANONIQUE N'EST PLUS EXIGÉE EN ELLE-MÊME (2026-08-11). Elle l'était,
+    // EN PLUS des copies — et c'est ce terme qui a tué le bouton Publier de
+    // RoCotCot le 11/08 : `sharedFields` démarre TOUJOURS vide
+    // ({taille:"", couleur:"", matiere:"", marque:""}) et n'est écrit QUE par
+    // l'input de l'encart rouge. Or cet encart MASQUE le champ dès que l'encart
+    // bleu le porte (règle d'unicité du 30/07). Résultat, pour un champ requis
+    // par le catalogue : le seul input à l'écran écrivait la copie, jamais la
+    // canonique, la pastille passait au vert et le CTA restait gris À VIE, sans
+    // aucun moyen de s'en sortir. Rien n'est désarmé : `sharedFields` ne part
+    // sur AUCUNE plateforme, seules les copies voyagent — c'est donc les copies,
+    // et elles seules, qu'il faut exiger.
+    //
+    // Le canal GÉNÉRIQUE compte pour VINTED SEULEMENT, et c'est mesuré, pas
+    // supposé : vinted.js porte un pont explicite `_bridge`
+    // (vintedAspects.size → fields.taille, brand → marque, material → matiere,
+    // color → colors) qui recopie la valeur vers le champ dédié avant de
+    // remplir. Leboncoin et Beebs, eux, SAUTENT ces clés dans leur canal
+    // générique (handledForKeys / handledLabels) : y compter une valeur serait
+    // laisser publier un champ que la plateforme ne recevra jamais.
+    const VINTED_BRIDGE = { taille: "size", marque: "brand", matiere: "material", couleur: "color" };
+    const valeurPourPlateforme = (p, key) => {
+      const pf = edited[p]?.platform_fields ?? {};
+      const direct = String(pf[key] ?? "").trim();
+      if (direct) return direct;
+      // Couleur : les handlers lisent colors[0] AVANT couleur.
+      if (key === "couleur") {
+        const c = String(pf.colors?.[0] ?? "").trim();
+        if (c) return c;
+      }
+      if (p === "vinted" && VINTED_BRIDGE[key]) {
+        const v = String(pf.vintedAspects?.[VINTED_BRIDGE[key]] ?? "").trim();
+        if (v) return v;
+      }
+      // eBay : ses aspects sont posés tels quels par ebay.js (aucun saut), et
+      // EBAY_ASPECT_LABELS dit quels noms d'aspect portent ce champ partagé.
+      if (p === "ebay") {
+        for (const nom of EBAY_ASPECT_LABELS[key] ?? []) {
+          const v = String(pf.ebayAspects?.[nom] ?? "").trim();
+          if (v) return v;
+        }
+      }
+      return "";
+    };
     return SHARED_FIELD_KEYS.map(key => {
       const guarded = guardPlatforms(key).filter(p => selected.has(p));
       if (!guarded.length) return null;
-      const canonicalEmpty = !String(sharedFields[key] ?? "").trim();
-      const copyEmpty = guarded.some(p => !String(edited[p]?.platform_fields?.[key] ?? "").trim());
-      if (!canonicalEmpty && !copyEmpty) return null;
-      return { key, platforms: guarded };
+      const manquantes = guarded.filter(p => !valeurPourPlateforme(p, key));
+      if (!manquantes.length) return null;
+      // On ne nomme QUE les plateformes réellement dépourvues : l'encart rouge
+      // annonçait « Taille · Vinted, eBay » alors que la copie eBay était
+      // remplie.
+      return { key, platforms: manquantes };
     }).filter(Boolean);
-  }, [sharedFields, selected, edited, initialListing, ebayRequiredPreview, genericAspectsCatalog, activeAiIcon]);
+  }, [selected, edited, initialListing, ebayRequiredPreview, genericAspectsCatalog, activeAiIcon]);
 
   const missingSharedFields = useMemo(
     () => missingSharedFieldsDetailed.map(f => f.key),
@@ -6009,6 +6070,53 @@ export default function ListingPreviewScreen({
     prixAchatManquant ||
     vintedGenreBlocked;
 
+  // SOURCE UNIQUE de « le bouton Publier est gris pour une raison que
+  // l'utilisateur doit lire » : ctaDisabled ET motifsCtaGris en dérivent tous
+  // les deux, aucun risque qu'ils divergent. `publishing` en est exclu — c'est
+  // un état transitoire, pas une condition à corriger.
+  const ctaBlockingActive =
+    step === 3 && !inventoryFull && !publishing &&
+    (publishChips.length === 0 || requiredBlocking || !publishedStateLoaded);
+
+  // ── POURQUOI LE BOUTON EST GRIS (2026-08-11) ──────────────────────────────
+  // Un CTA désactivé SANS motif lisible est un cul-de-sac : l'utilisateur voit
+  // des pastilles vertes et un bouton mort, et il écrit au support (cas
+  // RoCotCot du 11/08). Règle posée : toute condition qui grise le bouton à
+  // l'étape Publier se NOMME ici, en clair, sous le bouton. La liste est
+  // dérivée des MÊMES expressions que `requiredBlocking` — pas une seconde
+  // énumération à tenir à jour : si une garde s'ajoute sans entrer ici, le
+  // filet générique en fin de fonction le dit quand même.
+  const nomPlateforme = p => PLATFORM_LABELS[p] ?? p;
+  const motifsCtaGris = (() => {
+    if (step !== 3 || inventoryFull || !ctaBlockingActive) return [];
+    const m = [];
+    for (const f of missingSharedFieldsDetailed) {
+      const label = { taille: t("fieldSizeLabel"), couleur: t("fieldColorLabel"),
+                      matiere: t("fieldMaterialLabel"), marque: t("fieldBrandLabel") }[f.key] ?? f.key;
+      m.push(`${label} — ${f.platforms.map(nomPlateforme).join(", ")}`);
+    }
+    for (const a of (ebayRequiredStatus ?? []).filter(estBloquant)) m.push(`${a.label ?? a.name} — eBay`);
+    for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
+      for (const a of list.filter(estBloquant)) m.push(`${a.label ?? a.key} — ${nomPlateforme(gp)}`);
+    }
+    if (prixAchatManquant) m.push(lang === "en" ? "Purchase price to fill in" : "Prix d'achat à renseigner");
+    if (vintedGenreBlocked) m.push(lang === "en" ? "Vinted section to choose" : "Rayon Vinted à choisir");
+    if (publishChips.length === 0) {
+      m.push(lang === "en" ? "No platform ready to publish" : "Aucune plateforme prête à publier");
+    }
+    if (!publishedStateLoaded) {
+      m.push(lang === "en" ? "Checking your existing listings…" : "Vérification de tes annonces en cours…");
+    }
+    // Filet : gris sans motif identifié = anomalie. On le DIT plutôt que de
+    // laisser un bouton mort et muet — c'est tout l'objet de ce bloc.
+    if (!m.length) {
+      m.push(lang === "en"
+        ? "A required field is still missing. Try reopening this step."
+        : "Un champ obligatoire manque encore. Rouvre cette étape pour le voir.");
+    }
+    return m;
+  })();
+
   const ctaDisabled =
     (step === 0 && (photoCount < MIN_PHOTOS || uploading)) ||
     (step === 1 && (photos.length < MIN_PHOTOS || selected.size === 0)) ||
@@ -6018,7 +6126,7 @@ export default function ListingPreviewScreen({
     // quelques centaines de ms permettait de lancer une republication.
     // inventoryFull court-circuite ces gardes : le CTA ne publie plus, il
     // ouvre le passage Premium — il doit rester cliquable.
-    (step === 3 && !inventoryFull && (publishChips.length === 0 || publishing || requiredBlocking || !publishedStateLoaded));
+    (step === 3 && !inventoryFull && (publishing || ctaBlockingActive));
 
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
@@ -6301,6 +6409,17 @@ export default function ListingPreviewScreen({
             {lang === "en"
               ? "Photo retouching didn't come through — you won't be charged for it. Your original photos will be posted as they are."
               : "La retouche photos n'a pas abouti — elle ne te sera pas facturée. Tes photos d'origine partent telles quelles."}
+          </div>
+        )}
+        {/* Motif du bouton gris (2026-08-11) — JAMAIS de CTA désactivé muet.
+            Placé AU-DESSUS du bouton : c'est ce qu'on lit avant de cliquer, et
+            le bas de l'écran est déjà mangé par la safe-area. */}
+        {motifsCtaGris.length > 0 && (
+          <div style={{ marginBottom:8, padding:"9px 12px", borderRadius:10, background:"#FEF2F2", border:"1px solid #FECACA", fontSize:12, lineHeight:1.5, color:"#B91C1C", fontWeight:600 }}>
+            {lang === "en" ? "Can't publish yet — still missing:" : "Publication impossible — il manque encore :"}
+            <ul style={{ margin:"4px 0 0", paddingLeft:18, fontWeight:600 }}>
+              {motifsCtaGris.map((m, i) => <li key={i}>{m}</li>)}
+            </ul>
           </div>
         )}
         <PrimaryButton

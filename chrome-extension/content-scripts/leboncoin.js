@@ -672,17 +672,32 @@ async function fillListingForm(job) {
           `[leboncoin] Brouillon ≠ job : titre restauré « ${titreBrouillon || "(illisible)"} » vs job « ${job.title} » — jamais touché → needsUser.`
         );
       }
+      // ── Message ACTIONNABLE (2026-08-11) ──────────────────────────────────
+      // L'ancien texte (« le wizard ne repart pas de zéro… Le publier ou le
+      // supprimer, puis relancer ») décrivait notre mécanique interne et
+      // laissait l'utilisateur chercher OÙ et QUOI faire. Cas réel du 10/08
+      // (Wesley M.) : premier échec « adresse requise » — qui CONSERVE
+      // délibérément le brouillon — puis, une fois l'adresse renseignée, un
+      // second mur sur ce message-ci, pour un AUTRE article. Il avait corrigé
+      // la cause d'origine et se reprenait une erreur sur laquelle il ne
+      // pouvait rien.
+      // Le mot « brouillon » doit RESTER dans le texte : StockTab le repère par
+      // DRAFT_LBC_RE (/brouillon/i) pour afficher le bouton « Ouvrir le
+      // brouillon Leboncoin ». Le retirer casserait ce bouton en silence.
       return {
         success: false,
         needsUser: true,
         draftBlocked: true,
         error:
-          "Un brouillon Leboncoin est déjà en cours sur ce compte (le wizard ne repart pas " +
-          "de zéro)" +
-          (titreBrouillon && !correspond
-            ? ` — son titre « ${titreBrouillon} » ne correspond pas à ce job`
-            : "") +
-          ". Le publier ou le supprimer sur leboncoin.fr, puis relancer.",
+          "Leboncoin garde un brouillon d'annonce non terminé sur ton compte" +
+          (titreBrouillon && !correspond ? ` (« ${titreBrouillon} »)` : "") +
+          ", et il n'accepte pas d'en commencer un autre tant que celui-là est là. " +
+          "Ce n'est pas ton annonce du jour qui pose problème. " +
+          "À faire, dans l'ordre : 1) ouvre leboncoin.fr/deposer-une-annonce ; " +
+          "2) termine ce brouillon, ou supprime-le ; 3) reviens ici et relance la " +
+          "publication. On n'y touche pas nous-mêmes : ce brouillon peut être une " +
+          "annonce que tu as commencée à la main, et on ne supprime jamais rien sur " +
+          "ton compte sans toi.",
       };
     }
   }
