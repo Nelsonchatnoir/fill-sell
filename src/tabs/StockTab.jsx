@@ -31,8 +31,8 @@ import {
   ecouterPresenceExtension, demanderSyncDressing,
   lireCapaciteSyncCompte, demanderSyncDressingServeur,
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS, SYNC_FILE_TTL_MS,
-  SYNC_RECLAMATION_MAX_MS,
-  lireDernierRunDressing, aDejaSynchroniseDressing,
+  SYNC_RECLAMATION_MAX_MS, EXT_SILENCE_MAX_MS,
+  lireDernierRunDressing, lireDerniereSyncReussie,
   DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
   republishVisiblePour, republierArticleVinted, relancerRepublishVinted,
 } from '../utils/vintedSync';
@@ -962,6 +962,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const [sondeFinie, setSondeFinie] = useState(false);
   const [run, setRun] = useState(null);
   const [dejaSync, setDejaSync] = useState(false);
+  // Dernier run 'done' — celui qui porte l'HEURE RÉELLE de la dernière synchro,
+  // cron comprise. Distinct de `run` (dernier run TOUT COURT : un 'failed' ou
+  // un 'expired' n'a rien synchronisé et ne doit pas dater la ligne).
+  const [derniereReussie, setDerniereReussie] = useState(null);
   const [suivi, setSuivi] = useState(false);
   const [attente, setAttente] = useState(false);   // clic émis, run pas encore visible en base
   // Extension OCCUPÉE par une republication (2026-08-07 soir) : la demande de
@@ -978,8 +982,27 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // extension_version absente (migration pas encore appliquée) → on retombe
   // sur le comportement d'avant, gaté sur la seule sonde locale.
   const [capacite, setCapacite] = useState(null);
+  // Instant de LECTURE de la capacité (2026-08-11). `vueIlYaMs` est un silence
+  // mesuré au moment du select : sans cette borne, on ne saurait pas de combien
+  // il a vieilli depuis, et le silence estimé ne peut que grandir — d'où les
+  // relectures ciblées (au clic, et à la bascule « pas encore réclamé »).
+  const [capaciteLueA, setCapaciteLueA] = useState(0);
   const [envoi, setEnvoi] = useState(false);   // mise en file en cours
   const clicAtRef = useRef(0);
+
+  // Relecture de la capacité du compte : renvoie la valeur FRAÎCHE (l'état
+  // React n'est pas encore à jour dans le même tour) ou null si illisible.
+  const relireCapacite = async () => {
+    if (!user?.id) return null;
+    try {
+      const c = await lireCapaciteSyncCompte(user.id);
+      setCapacite(c);
+      setCapaciteLueA(Date.now());
+      return c;
+    } catch {
+      return null;
+    }
+  };
 
   // Signal immédiat de présence. Le heartbeat serveur ne se rafraîchit qu'au
   // poll de l'extension (2 min) : bien trop lent pour un bouton qu'on regarde.
@@ -997,8 +1020,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     if (!user?.id) return;
     let annule = false;
     lireCapaciteSyncCompte(user.id)
-      .then((c) => { if (!annule) setCapacite(c); })
-      .catch(() => { if (!annule) setCapacite({ inconnu: true }); });
+      .then((c) => { if (!annule) { setCapacite(c); setCapaciteLueA(Date.now()); } })
+      .catch(() => { if (!annule) { setCapacite({ inconnu: true }); setCapaciteLueA(Date.now()); } });
     return () => { annule = true; };
   }, [user?.id]);
 
@@ -1009,13 +1032,16 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     let annule = false;
     (async () => {
       try {
-        const [dernier, deja] = await Promise.all([
+        const [dernier, reussie] = await Promise.all([
           lireDernierRunDressing(user.id),
-          aDejaSynchroniseDressing(user.id),
+          lireDerniereSyncReussie(user.id),
         ]);
         if (annule) return;
         setRun(dernier);
-        setDejaSync(deja);
+        // Même requête qu'avant (dernier run 'done'), une colonne de plus :
+        // `dejaSync` en sort toujours, et l'heure réelle avec.
+        setDerniereReussie(reussie);
+        setDejaSync(reussie != null);
         if (dernier?.status === 'running') setSuivi(true);
       } catch (e) {
         if (!annule) console.warn('[sync-dressing] lecture du dernier run :', e?.message ?? e);
@@ -1055,7 +1081,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         setAttente(false);
         if (r.status !== 'running') {
           setSuivi(false);
-          if (r.status === 'done') { setDejaSync(true); onDone?.(); }
+          // La synchro qui vient de finir DEVIENT la dernière réussie : sans
+          // ça, l'heure affichée resterait celle d'avant jusqu'au prochain
+          // montage de la carte.
+          if (r.status === 'done') { setDejaSync(true); setDerniereReussie(r); onDone?.(); }
           return;
         }
       } else if (attenduDepuis && Date.now() - attenduDepuis > SYNC_DEMARRAGE_MAX_MS) {
@@ -1122,6 +1151,19 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const capaciteConnue = capacite != null && capacite.inconnu === false;
   const compteCapable = capaciteConnue && capacite.capable === true;
   const peutLancer = extCapable || compteCapable;
+  // ── Ordinateur SILENCIEUX ≠ ordinateur SANS EXTENSION (2026-08-11) ────────
+  // Silence estimé = silence mesuré à la lecture + temps écoulé depuis. Il ne
+  // peut que grandir entre deux lectures : c'est volontairement le sens
+  // PRUDENT pour l'affichage d'attente (on n'annonce pas une réclamation
+  // imminente quand on n'en sait plus rien), et c'est pour ça que le clic, lui,
+  // relit la capacité au lieu de se fier à cette estimation.
+  // Jamais vrai dans CE navigateur si l'extension vient de répondre au ping :
+  // extCapable prouve une extension vivante ici même, aucune supposition à faire.
+  const silenceEstimeMs = capaciteConnue && capacite.vueIlYaMs != null
+    ? capacite.vueIlYaMs + Math.max(0, Date.now() - capaciteLueA)
+    : null;
+  const horsLigne = !extCapable && compteCapable
+    && silenceEstimeMs != null && silenceEstimeMs >= EXT_SILENCE_MAX_MS;
   // Attente RÉELLE : une demande 'queued' de plus de 6 h ne sera jamais
   // exécutée (get-pending-jobs ne la sert plus). Elle n'est marquée 'expired'
   // qu'au prochain poll d'une extension — donc jamais si Chrome n'est pas
@@ -1193,6 +1235,18 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // l'objet relancerait l'effet en boucle.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enAttenteDistante, user?.id, run?.id]);
+
+  // Une demande non réclamée au bout de 3 min : c'est LE moment où le discours
+  // change, donc le seul où il vaut une requête de plus. Relire ici évite de
+  // trancher « ton ordinateur ne répond pas » sur un heartbeat lu au montage,
+  // qui aurait pu vieillir de plusieurs minutes entre-temps. UNE relecture, pas
+  // un poll : la bascule ne se produit qu'une fois par attente.
+  useEffect(() => {
+    if (!reclamationTardive || !user?.id) return;
+    relireCapacite();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reclamationTardive, user?.id]);
+
   const enCours = attente || (suivi && run?.status === 'running');
 
   // ── Cadence des syncs manuelles ───────────────────────────────────────────
@@ -1247,6 +1301,70 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   const MESSAGE_BLOCAGE = fr
     ? "Installe l'extension FillSell sur ton ordinateur pour synchroniser ton dressing."
     : 'Install the FillSell extension on your computer to sync your closet.';
+  // Distinct de MESSAGE_BLOCAGE, et ça compte : l'extension EST installée, le
+  // geste n'est pas de l'installer mais d'ouvrir Chrome. Dit AVANT l'action —
+  // une demande mise en file que personne ne réclamera est le pire des retours.
+  const MESSAGE_HORS_LIGNE = fr
+    ? "Ton ordinateur ne répond pas. Ouvre Chrome avec l'extension FillSell pour lancer la synchro."
+    : "Your computer isn't responding. Open Chrome with the FillSell extension to start the sync.";
+
+  // ── « C'est automatique » (2026-08-11) ────────────────────────────────────
+  // Rien ne le disait : le bouton laissait croire que la synchro est un geste
+  // manuel à répéter indéfiniment. La cadence RÉELLE est celle de l'alarme de
+  // l'extension — chrome-extension/background.js, SYNC_DRESSING_ALARM avec
+  // periodInMinutes: 24 * 60, une fois par jour. Le « 20 h » qu'on lit dans les
+  // motifs de refus (« cadence cron … fenêtre de 20 h ») n'est PAS la cadence :
+  // c'est le plancher anti-dérive (SYNC_CRON_COOLDOWN_MS, miroir du trigger
+  // garde_cadence_sync_runs), là pour qu'une alarme retombée quelques minutes
+  // trop tôt ne fasse pas sauter une journée entière.
+  // TROIS conditions, sinon la phrase est fausse :
+  //   · dejaSync — le cron n'INAUGURE jamais une sync, il en exige une
+  //     antérieure en 'done' (SYNC_CRON_SANS_PREMIERE_SYNC). Avant la première
+  //     synchro manuelle, il n'y a pas d'automatique à annoncer ;
+  //   · pas de blocage — promettre de l'automatique sans extension serait le
+  //     même mensonge que « tu pourras actualiser dans ~12 min » ;
+  //   · rien en cours / en attente — la carte n'a qu'un état à la fois.
+  // « quand Chrome est ouvert » n'est pas un détail : sans lui on réinstalle
+  // exactement le malentendu que la garde hors-ligne ci-dessus vient corriger.
+  //
+  // ── HEURE RÉELLE de la dernière synchro (Nico, 2026-08-11) ────────────────
+  // Affichée À CHAQUE FOIS qu'une synchro a abouti, automatique ou non : c'est
+  // un fait vrai, il ne dépend d'aucun état de la carte. Source =
+  // derniereReussie (dernier run 'done'), jamais `run` — un 'failed' ou un
+  // 'expired' n'a rien synchronisé et daterait la ligne à tort.
+  // ⚠️ HEURE LOCALE DE L'UTILISATEUR, JAMAIS UTC. finished_at est un
+  // timestamptz stocké en UTC ; Date.parse + toLocaleTimeString le rendent
+  // dans le fuseau de l'APPAREIL — c'est-à-dire l'heure qu'il a sous les yeux,
+  // à Paris comme ailleurs. Ne jamais formater à la main depuis l'ISO (on
+  // afficherait du GMT), ni forcer un timeZone en dur.
+  const heureLocale = (ms) => new Date(ms).toLocaleTimeString(fr ? 'fr-FR' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+  const jourLocal = (ms) => new Date(ms).toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { day: '2-digit', month: '2-digit' });
+  const derniereSyncTexte = (() => {
+    const fini = derniereReussie?.finished_at ? Date.parse(derniereReussie.finished_at) : NaN;
+    if (!Number.isFinite(fini)) return null;
+    const jours = Math.round(
+      (new Date().setHours(0, 0, 0, 0) - new Date(fini).setHours(0, 0, 0, 0)) / 86400000
+    );
+    const quand = jours <= 0
+      ? (fr ? `à ${heureLocale(fini)}` : `at ${heureLocale(fini)}`)
+      : jours === 1
+        ? (fr ? `hier à ${heureLocale(fini)}` : `yesterday at ${heureLocale(fini)}`)
+        : (fr ? `le ${jourLocal(fini)} à ${heureLocale(fini)}` : `on ${jourLocal(fini)} at ${heureLocale(fini)}`);
+    return fr ? `Dernière synchro ${quand}` : `Last sync ${quand}`;
+  })();
+  // Le rappel « c'est automatique », lui, garde ses conditions : il PROMET
+  // quelque chose, contrairement à l'heure ci-dessus qui ne fait que constater.
+  const autoTexte = (() => {
+    if (!dejaSync || blocage || enCours || enAttenteDistante || attenteOccupee) return null;
+    return fr
+      ? 'automatique toutes les 24 h quand Chrome est ouvert'
+      : 'automatic every 24 h while Chrome is open';
+  })();
+  const ligneSync = derniereSyncTexte && autoTexte
+    ? `${derniereSyncTexte} · ${autoTexte}`
+    : derniereSyncTexte
+      || (autoTexte && (fr ? 'Synchro automatique toutes les 24 h quand Chrome est ouvert.' : 'Automatic sync every 24 h while Chrome is open.'))
+      || null;
 
   const progression = (() => {
     if (attente) return fr ? 'Démarrage…' : 'Starting…';
@@ -1307,6 +1425,26 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     }
 
     setEnvoi(true);
+
+    // ── Ordinateur silencieux : on NE MET RIEN EN FILE (2026-08-11) ─────────
+    // Cas laure-4785 : demande posée 'queued' alors que la dernière trace
+    // d'extension datait de 7 min — claimed_at NULL, extension_build NULL, et
+    // aucun retour. L'état se dit AVANT l'action, jamais après une attente
+    // muette. Relecture FRAÎCHE plutôt que l'estimation d'affichage : refuser
+    // un clic sur une valeur vieille de plusieurs minutes serait le faux
+    // positif qu'on veut éviter avant tout.
+    // Ne concerne QUE la voie file : le chemin direct (extension capable dans
+    // ce navigateur, declencheur 'bouton') est sorti plus haut et ne change pas.
+    const capaciteFraiche = await relireCapacite();
+    if (capaciteFraiche?.inconnu === false
+        && capaciteFraiche.capable === true
+        && capaciteFraiche.enLigne === false) {
+      setEnvoi(false);
+      logSyncClick('refusée', 'extension_hors_ligne', 'file');
+      setMessage({ ton: 'orange', texte: MESSAGE_HORS_LIGNE });
+      return;
+    }
+
     let r;
     try { r = await demanderSyncDressingServeur(); }
     catch (e) { r = { ok: false, reason: 'erreur', message: String(e?.message ?? e) }; }
@@ -1457,6 +1595,14 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
                   : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
       </SecondaryButton>
 
+      {/* Une ligne grise, pas un encart. Deux choses, dans cet ordre : l'HEURE
+          RÉELLE de la dernière synchro (un fait, affiché à chaque fois qu'il
+          existe) et le rappel que c'est automatique (une promesse, donc
+          conditionnée). */}
+      {ligneSync&&(
+        <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{ligneSync}</div>
+      )}
+
       {/* Extension OCCUPÉE (2026-08-07 soir, cas antavintage : 22
           republications en vol, 6 re-clics sur un « extension muette »
           mensonger). La sync n'a pas échoué : elle attend le verrou de
@@ -1486,25 +1632,37 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           · le cas du PC éteint, seulement APRÈS 3 min sans réponse. Le
             présenter d'emblée, comme avant, c'était inquiéter pour rien.
           Le poll qui fait basculer l'un vers l'autre est borné à 3 min. */}
+      {/* TROISIÈME cas depuis le 2026-08-11 : le silence AVÉRÉ. Une demande
+          'queued' est par construction non réclamée (claimed_at ne se pose
+          qu'en passant 'running') ; tant que le heartbeat est frais, « ça
+          arrive » reste vrai. Passé EXT_SILENCE_MAX_MS sans un seul poll, ce
+          n'est plus une attente, c'est un ordinateur éteint — et l'écran le
+          dit au lieu d'afficher une progression qui n'avancera pas. */}
       {enAttenteDistante&&(
         <div style={{display:"flex",alignItems:"center",gap:10,background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
-          {reclamationTardive
+          {(reclamationTardive||horsLigne)
             ? <div style={{fontSize:18,lineHeight:1}}>🕓</div>
             : <Loader size={18} thickness={2}/>}
           <div style={{minWidth:0}}>
             <div style={{fontSize:12.5,fontWeight:700,color:"#5C6560"}}>
-              {reclamationTardive
-                ? (fr?"Ton ordinateur n'a pas encore répondu":"Your computer hasn't answered yet")
-                : (fr?"Demande envoyée":"Request sent")}
+              {horsLigne
+                ? (fr?"Ton ordinateur ne répond pas":"Your computer isn't responding")
+                : reclamationTardive
+                  ? (fr?"Ton ordinateur n'a pas encore répondu":"Your computer hasn't answered yet")
+                  : (fr?"Demande envoyée":"Request sent")}
             </div>
             <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",marginTop:2}}>
-              {reclamationTardive
+              {horsLigne
                 ? (fr
-                    ? `Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur. Tu peux fermer ${isNative ? "l'application" : 'cette page'}.`
-                    : `Your sync will start the next time you open Chrome on your computer. You can close ${isNative ? 'this app' : 'this page'}.`)
-                : (fr
-                    ? "Elle part au prochain passage de ton extension — 2 minutes au plus."
-                    : 'It starts at your extension’s next check — 2 minutes at most.')}
+                    ? "Ouvre Chrome avec l'extension FillSell sur ton ordinateur : ta demande partira dans la foulée."
+                    : 'Open Chrome with the FillSell extension on your computer: your request will go out right after.')
+                : reclamationTardive
+                  ? (fr
+                      ? `Ta synchronisation partira à la prochaine ouverture de Chrome sur ton ordinateur. Tu peux fermer ${isNative ? "l'application" : 'cette page'}.`
+                      : `Your sync will start the next time you open Chrome on your computer. You can close ${isNative ? 'this app' : 'this page'}.`)
+                  : (fr
+                      ? "Elle part au prochain passage de ton extension — 2 minutes au plus."
+                      : 'It starts at your extension’s next check — 2 minutes at most.')}
             </div>
           </div>
         </div>

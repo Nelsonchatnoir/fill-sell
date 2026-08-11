@@ -215,7 +215,23 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // l'upsert écrase la promotion. Le garde-fou durable est la migration
 // 20260811130000_aspects_refus_serveur_prime.sql, NON APPLIQUÉE à ce jour.
 // ⚠️ POSTÉRIEUR au paquet 0.5.9 ; EXTENSION_MIN_BUILD reste sur la 0.5.6.
-export const EXTENSION_LAST_COMMIT = '2026-08-11T12:07:27Z';
+// 2026-08-11T17:48:04Z = c2591b7 : la garde de session eBay ne conclut plus
+// seule. « Connexion eBay requise » partait sur deux signaux de page lus par le
+// content script (hôte signin.ebay.fr, ou N'IMPORTE QUEL input[type=password]
+// du document) et ne consignait RIEN — ni l'URL, ni lequel des deux avait
+// parlé : 6 échecs muets depuis le 27/07 chez 4 utilisateurs. Prouvé faux le
+// 11/08 (voirememe) : la sonde HTTP de session répondait ebay.fr/200 neuf
+// minutes après, l'utilisateur était connecté dans la même fenêtre, et Vinted +
+// Leboncoin ont publié le même article dans la minute. Le verdict revient donc
+// à la sonde (arbitrerSessionEbay), le diagnostic { url, signal, sonde, http }
+// part en base dans les TROIS issues, et un verdict non arbitré n'écrase plus
+// extension_sessions (c'est ce faux qui allumait le bandeau « non connecté »).
+// ⚠️ POSTÉRIEUR au paquet fillsell-extension-0.5.9-cws.zip ; le manifest est en
+// 0.6.0, version JAMAIS téléversée (absente d'ALREADY_PUBLISHED) : un paquet
+// 0.6.0 régénéré embarquera ce correctif sans bump de version.
+// EXTENSION_MIN_BUILD reste sur la 0.5.6 (rien de plus récent n'est accepté par
+// le Chrome Web Store).
+export const EXTENSION_LAST_COMMIT = '2026-08-11T17:48:04Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

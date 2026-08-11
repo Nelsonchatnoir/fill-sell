@@ -46,6 +46,31 @@ export const SYNC_FILE_TTL_MS = 6 * 60 * 60 * 1000;
 // interrogerait la base toutes les 2 s pendant des heures pour rien.
 export const SYNC_RECLAMATION_MAX_MS = 3 * 60 * 1000;
 
+// ── Silence de l'extension : seuil MESURÉ, jamais estimé (2026-08-11) ───────
+// Cas réel laure-4785 : sync commandée du mobile à 19:05:02, dernière trace
+// d'extension (profiles.extension_last_seen_at) à 18:58:20 — 7 min avant. Le
+// run est resté 'queued', claimed_at NULL, sans que RIEN ne le lui dise.
+//
+// Ce que le heartbeat vaut vraiment :
+//   · cadence NOMINALE : extension_last_seen_at est stampé à chaque poll de
+//     get-pending-jobs, soit POLL_INTERVAL_MINUTES = 2 min
+//     (chrome-extension/config.js) ;
+//   · cadence RÉELLE, relevée en prod sur les 12 runs 'bouton_distant'
+//     effectivement réclamés (queued_at → claimed_at, c.-à-d. le délai jusqu'au
+//     PREMIER poll suivant) : min 17 s, médiane 1 min 41, p90 4 min 38,
+//     MAXIMUM 14 min 35. Les alarmes MV3 s'étirent — machine en veille,
+//     économiseur de batterie, service worker rendormi.
+// D'où 30 min : le double du pire cas observé. Un seuil serré rendrait « ton
+// ordinateur ne répond pas » à quelqu'un dont le PC est allumé — un faux
+// positif coûte plus cher que le bug qu'on corrige, et il absorbe aussi une
+// horloge de téléphone mal réglée (la comparaison est client vs serveur).
+// ⚠️ CE QUE ÇA N'ATTRAPE PAS, et c'est assumé : au moment du clic de Laure le
+// silence n'était que de 6 min 42 — sous le seuil. Sa demande serait donc
+// encore partie en file. Ce qui la protège, c'est le SECOND usage du seuil :
+// dès que le silence le dépasse, la carte cesse d'annoncer une réclamation
+// imminente et dit que l'ordinateur ne répond pas.
+export const EXT_SILENCE_MAX_MS = 30 * 60 * 1000;
+
 // (SYNC_MAJ_DISPONIBLE supprimée le 2026-08-09. Elle arbitrait entre deux
 // formulations du message « extension trop ancienne » — message qui n'existe
 // plus : la carte de sync n'a plus qu'UNE phrase quand la synchro est
@@ -155,12 +180,24 @@ export async function lireCapaciteSyncCompte(userId) {
     .eq('id', userId)
     .maybeSingle();
   if (error) return { inconnu: true };
+  // `vueIlYaMs` / `enLigne` (2026-08-11) s'AJOUTENT, ils ne remplacent rien :
+  // `capable` continue de dire « ce compte a une extension qui sait
+  // synchroniser » et pilote seul le bouton et le message d'installation. Une
+  // extension installée mais silencieuse n'est pas une extension absente — les
+  // deux appellent des gestes différents (« installe-la » vs « ouvre Chrome »),
+  // les confondre ramènerait le message d'installation sur l'écran de
+  // quelqu'un qui l'a déjà installée.
+  const vu = data?.extension_last_seen_at ? Date.parse(data.extension_last_seen_at) : NaN;
   return {
     inconnu: false,
     jamaisVue: data?.extension_last_seen_at == null,
     version: data?.extension_version ?? null,
     capable: data?.extension_last_seen_at != null
       && versionAuMoins(data?.extension_version, SYNC_VERSION_MIN),
+    vueIlYaMs: Number.isFinite(vu) ? Math.max(0, Date.now() - vu) : null,
+    // false = silence AVÉRÉ au-delà du seuil (ou extension jamais vue) ;
+    // true = un poll récent prouve que l'ordinateur tourne.
+    enLigne: Number.isFinite(vu) ? (Date.now() - vu) < EXT_SILENCE_MAX_MS : false,
   };
 }
 
@@ -373,4 +410,28 @@ export async function aDejaSynchroniseDressing(userId) {
     .limit(1);
   if (error) return false;
   return (data?.length ?? 0) > 0;
+}
+
+// ── Dernière synchro RÉUSSIE (2026-08-11) ───────────────────────────────────
+// L'heure affichée sous le bouton doit être celle de la dernière synchro qui a
+// VRAIMENT lu le dressing, cron comprise — donc le dernier run 'done', pas le
+// dernier run tout court (lireDernierRunDressing rend aussi les 'failed', les
+// 'queued' et les 'expired', qui n'ont rien synchronisé).
+// Remplace aDejaSynchroniseDressing dans la carte : MÊME requête, mêmes
+// filtres, une colonne de plus — l'heure ne coûte donc aucun aller-retour
+// supplémentaire. `declencheur` est lu pour pouvoir dire un jour « automatique »
+// à côté de l'heure ; l'affichage actuel n'en dépend pas.
+// Rend null si rien n'a jamais abouti : l'appelant en déduit `dejaSync`.
+export async function lireDerniereSyncReussie(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('vinted_sync_runs')
+    .select('id,finished_at,declencheur')
+    .eq('user_id', userId)
+    .eq('kind', 'dressing')
+    .eq('status', 'done')
+    .order('finished_at', { ascending: false })
+    .limit(1);
+  if (error) return null;
+  return data?.[0] ?? null;
 }
