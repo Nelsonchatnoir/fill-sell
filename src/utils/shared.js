@@ -38,7 +38,13 @@ export const PLATFORM_LISTINGS_URLS = {
 // Un message sans marqueur technique (déjà humanisé côté extension : connexion
 // requise, brouillon LBC…) passe tel quel — on ne réécrit pas ce qui est déjà
 // une consigne claire.
-const HUMANIZE_PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
+// Libellés lisibles des 4 plateformes. Exportés (2026-08-11) parce que
+// l'avertissement « encore en ligne » des deux chemins de vente en a besoin et
+// qu'il ne monte pas l'écran de publication : sans ça, une 5e copie de cette
+// table naissait. ListingPreviewScreen en exporte une copie historique
+// identique — celle-ci est la source des modules qui n'en dépendent pas.
+export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
+const HUMANIZE_PLATFORM_LABELS = PLATFORM_LABELS;
 // Statuts d'où un job ne repart JAMAIS tout seul. Miroir du trigger
 // cross_post_job_settle_reservation (migration 20260805000000), qui rend la
 // Pépite réservée sur exactement ces statuts-là. 'sold' en est volontairement

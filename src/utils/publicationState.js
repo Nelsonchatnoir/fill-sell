@@ -84,3 +84,46 @@ export function plateformesReserveesParRepublication(jobsAll) {
   }
   return [...reservees];
 }
+
+// ── « Encore en ligne » AVANT d'enregistrer une vente (2026-08-11) ───────────
+// Enregistrer une vente ne retire RIEN : ni confirmSell (modale « Marquer comme
+// vendu ») ni confirmSellDirect (intent vocal inventory_sell) n'arment de job
+// delete — seul le flux serveur déclenché par la SONDE le fait
+// (check-listing-status → orchestrateSale). L'annonce reste donc achetable
+// après coup. Cette fonction dit où, pour un article donné ; le texte, lui, vit
+// dans components/AvertissementAnnoncesEnLigne.jsx et nulle part ailleurs.
+//
+// Elle répond à « qu'est-ce qu'un acheteur voit encore ? », pas à « que
+// peut-on retirer sans risque ? » — c'est pourquoi elle n'est PAS
+// buildDeletePlan (App.jsx), qui écarte à raison les plateformes sans
+// listing_url (aucun delete à l'aveugle) et celles dont le retrait est déjà
+// armé. Ces deux-là restent visibles par un acheteur : les taire ici serait
+// mentir. Le socle de calcul reste computeRemovalInfo, comme partout.
+const ORDRE_PLATEFORMES = ["vinted", "leboncoin", "beebs", "ebay"];
+const rangPlateforme = (p) => {
+  const i = ORDRE_PLATEFORMES.indexOf(p);
+  return i === -1 ? ORDRE_PLATEFORMES.length : i;
+};
+
+export function annoncesEncoreEnLigne(item, jobsAll) {
+  const { publishedActive, latestPubByPlatform } = computeRemovalInfo(jobsAll ?? []);
+  const enLigne = [];
+  for (const p of publishedActive) {
+    const pub = latestPubByPlatform[p];
+    // La sonde a DÉJÀ constaté que l'annonce n'est plus atteignable
+    // (platform_fields.unavailable_since) : ce cas appartient au bandeau
+    // « Vendue ? », et dire « encore en ligne » ici serait faux.
+    if (pub?.platform_fields?.unavailable_since) continue;
+    // url absente = listing_url jamais capté par l'extension. La plateforme est
+    // quand même nommée : le lien manque, pas l'annonce.
+    enLigne.push({ platform: p, url: pub?.listing_url || null });
+  }
+  // Vinted importé du dressing : AUCUN job publish n'existe (l'annonce a été
+  // créée sur Vinted, pas par nous) — computeRemovalInfo ne peut rien en dire.
+  // La vérité est portée par l'article, avec la MÊME expression que le tri du
+  // Stock et la carte : vinted_item_id posé, disparu_le vide.
+  if (item?.vinted_item_id && !item?.disparu_le && !enLigne.some(a => a.platform === "vinted")) {
+    enLigne.push({ platform: "vinted", url: `https://www.vinted.fr/items/${item.vinted_item_id}` });
+  }
+  return enLigne.sort((a, b) => rangPlateforme(a.platform) - rangPlateforme(b.platform));
+}

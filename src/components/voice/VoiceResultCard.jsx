@@ -25,6 +25,12 @@ import {
   formatCurrency, fmtp, CURRENCY_SYMBOLS,
   getTypeStyle, typeLabel, normalizeMarque, parseLocDesc, detectType, detectObjectIcon,
 } from '../../utils/shared';
+// « Encore en ligne » : MÊME composant que la modale « Marquer comme vendu »
+// d'App.jsx — un seul texte, un seul calcul pour les deux chemins de vente.
+// C'est un COMPOSANT et pas un hook appelé ici : cette carte sort par une
+// vingtaine de `return` avant d'arriver à la vente, un hook local en tête de
+// fichier changerait d'ordre d'appel d'un rendu à l'autre.
+import AvertissementAnnoncesEnLigne from '../AvertissementAnnoncesEnLigne';
 
 const CATS = ["Mode","High-Tech","Maison","Électroménager","Luxe","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"];
 
@@ -672,6 +678,9 @@ export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
                 meta={`${en ? 'Bought' : 'Achat'} ${fmt(cfItem.buy + (cfItem.purchaseCosts || 0))}`} />
             </ListRows>
           )}
+          {/* « Oui, c'est ça » vend cfItem : l'avertissement le concerne, et il
+              se lit AVANT le bouton. */}
+          <AvertissementAnnoncesEnLigne item={cfItem} lang={lang} />
           <ConfirmBar>
             <Btn kind="primary" onClick={() => {
               if (!cfItem) { replaceResult(idx, { ...result, status:'error', message: en ? 'Item not found' : 'Article non trouvé' }); return; }
@@ -712,6 +721,8 @@ export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
                 right={{ label: en ? 'Just said' : 'Prix dicté', value: fmt(pcPa) }} />
             </>
           )}
+          {/* Même porte que ci-dessus : « Oui, c'est ça » vend pcItem. */}
+          <AvertissementAnnoncesEnLigne item={pcItem} lang={lang} />
           <ConfirmBar>
             <Btn kind="primary" onClick={() => {
               if (!pcItem) { replaceResult(idx, { ...result, status:'error', message: en ? 'Item not found' : 'Article non trouvé' }); return; }
@@ -801,6 +812,10 @@ export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
         <VoiceCard tone="confirm"
           eyebrow={en ? `${qva}× ${artLabel} — total or each?` : `${qva}× ${artLabel} — total ou pièce ?`}
           sub={en ? `You mentioned ${fmt(pm)}. How should it be recorded?` : `Tu as mentionné ${fmt(pm)}. Comment enregistrer ?`}>
+          {/* Les deux boutons de prix ENREGISTRENT la vente de foundAmb (resolve) :
+              ce sont les boutons de confirmation de cette branche, l'avertissement
+              passe donc devant. foundAmb null (vente directe) : rien ne s'affiche. */}
+          <AvertissementAnnoncesEnLigne item={foundAmb} lang={lang} />
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             <Btn kind="primary" align="left" onClick={() => resolve(unitIfTotal)}>
               {en ? `${fmt(pm)} total → ${fmt(unitIfTotal)}/item` : `${fmt(pm)} au total → ${fmt(unitIfTotal)}/pièce`}
@@ -857,6 +872,10 @@ export default function VoiceResultCard({ result, idx, allResults = [], ctx }) {
             placeholder={en ? 'Sell price' : 'Prix de vente'}
             onChange={e => setEdits(prev => ({ ...prev, [idx]: { ...prev[idx], prix_vente: parseFloat(e.target.value) || 0 } }))} />
         )}
+        {/* Cas normal — « Oui, confirmer la vente de X » vend `found`. L'encart
+            est ici, au-dessus du bouton, jamais dans un repli. Sans article de
+            stock (vente directe), le composant ne rend rien. */}
+        <AvertissementAnnoncesEnLigne item={found} lang={lang} />
         {found ? (
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
             <div style={{ fontSize:12.5, color:V.mute, fontWeight:600 }}>{en ? 'Is this the right item?' : "C'est bien cet article ?"}</div>

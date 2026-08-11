@@ -69,6 +69,9 @@ import BrandMark from './components/BrandMark';
 import { VoiceSheet, VoiceThinking, FloatingBubble } from './components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from './components/voice/tokens';
 import VoiceResultCard from './components/voice/VoiceResultCard';
+// Avertissement « encore en ligne » — MÊME composant que la carte vocale
+// inventory_sell. Les deux chemins de vente disent la même chose, une seule fois.
+import AvertissementAnnoncesEnLigne from './components/AvertissementAnnoncesEnLigne';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -5818,6 +5821,10 @@ export default function App({ loginOnly = false }){
                 <span style={{fontSize:12,fontWeight:600,color:C.sub}}>{t('memoriserFrais')}</span>
               </label>
             </div>
+            {/* Encore en ligne ? AVANT le bouton, jamais après : confirmer ici
+                n'arme aucun retrait (cf. confirmSell). Même composant, même
+                texte que la carte vocale inventory_sell. */}
+            <AvertissementAnnoncesEnLigne item={sellModal.item} lang={lang} style={{marginTop:16}}/>
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <PrimaryButton onClick={confirmSell} disabled={!sellModal.sellPrice||parseFloat(sellModal.sellPrice)<=0} style={{flex:1,width:"auto"}}>
                 {t('confirmer')} ✓
