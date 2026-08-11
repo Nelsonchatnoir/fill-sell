@@ -1591,6 +1591,14 @@ async function processJob(rawJob, accessToken) {
       result = await retryInTempTab(job, handler, result);
     }
 
+    // Garde de session eBay : le content script a SIGNALÉ, la sonde tranche
+    // (voir arbitrerSessionEbay). Placé AVANT le bloc diagnostic ci-dessous —
+    // c'est lui qui fait partir { url, signal, sonde, http } en base, quelle
+    // que soit l'issue.
+    if (result?.sessionSuspecte && job.platform === "ebay") {
+      result = await arbitrerSessionEbay(result);
+    }
+
     // Annexe technique séparée du message utilisateur (2026-08-06) : un dump
     // DOM ou une liste d'options n'a plus JAMAIS sa place dans
     // cross_post_jobs.error — l'app l'affiche tel quel (modale « En attente
@@ -1600,10 +1608,16 @@ async function processJob(rawJob, accessToken) {
     // rearmBounded, markNeedsUser, failed sec, completionExtras — repartent
     // de job.platform_fields, la valeur part donc en base avec le verdict.
     // Placée APRÈS retryInTempTab : c'est le résultat FINAL qui fait foi.
+    // Depuis le 2026-08-11 le canal accepte AUSSI un objet (arbitrerSessionEbay
+    // y range { url, signal, sonde, http }) : String() en aurait fait un
+    // « [object Object] », c.-à-d. exactement le silence qu'on corrige. La
+    // colonne est jsonb ; ->>'last_diagnostic' reste lisible dans les deux cas.
     if (result?.diagnostic) {
       job.platform_fields = {
         ...(job.platform_fields ?? {}),
-        last_diagnostic: String(result.diagnostic).slice(0, 2000),
+        last_diagnostic: typeof result.diagnostic === "object" && result.diagnostic !== null
+          ? result.diagnostic
+          : String(result.diagnostic).slice(0, 2000),
       };
     }
 
@@ -1693,7 +1707,20 @@ async function processJob(rawJob, accessToken) {
       // navigation réelle : signal sûr, répercuté dans extension_sessions
       // (noterSessionDeconnectee) — c'est désormais la SEULE source d'un
       // false pour Vinted (le 401 de la sonde est ambigu, cf. sonde).
-      if (/^Connexion\s+\S+\s+requise/i.test(String(result.error ?? ""))) {
+      // ⚠️ eBay : PLUS JAMAIS sur le seul verdict du handler (2026-08-11).
+      // C'est cette ligne qui faisait le vrai dégât : un soupçon de page
+      // écrasait le relevé de la sonde (ebay:false + http
+      // 'login_redirect_observee', hors throttle), et le bandeau de l'app
+      // annonçait « non connecté » à quelqu'un qui l'était — pendant que la
+      // sonde, elle, disait 200 neuf minutes plus tard. Seul un arbitrage
+      // CONFIRMÉ par la sonde (sessionConfirmee) écrit désormais pour eBay.
+      // Les autres plateformes sont inchangées : leur garde d'entrée reste le
+      // signal sûr, et Beebs est un chantier séparé (7 échecs du même message,
+      // mais sa sonde rend null par conception — aucun arbitre disponible).
+      const verdictSessionEcrivable = job.platform === "ebay"
+        ? result?.sessionConfirmee === true
+        : true;
+      if (verdictSessionEcrivable && /^Connexion\s+\S+\s+requise/i.test(String(result.error ?? ""))) {
         noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
           console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
       }
@@ -3265,6 +3292,12 @@ function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
 // La détection doit vivre ICI : la redirection détruit le contexte du content
 // script, qui a déjà répondu success sans savoir que l'annonce n'a pas été
 // créée. Sans cette garde, le job partait en "published" fantôme.
+// ⚠️ NOTÉ POUR PLUS TARD, PAS TRAITÉ ICI (2026-08-11) : ces motifs couvrent
+// .fr ET .com, mais content-scripts/ebay.js n'est DÉCLARÉ que sur
+// https://*.ebay.fr/* (manifest.json) alors que host_permissions couvre
+// ebay.com. Un onglet de travail qui finirait sur ebay.com n'exécuterait aucune
+// garde — le symptôme serait « Receiving end does not exist » (transitoire),
+// pas « Connexion eBay requise ». Autre bug, autre lot.
 const REAUTH_HOSTS = {
   ebay: /(^|\.)signin\.ebay\.(fr|com)$/i,
   vinted: /(^|\.)vinted\.(fr|com)$/i, // sous-chemin /auth uniquement, cf. ci-dessous
@@ -5281,6 +5314,85 @@ function decodeJwtSub(token) {
   } catch { return null; }
 }
 
+// ── Sonde de session eBay — SOURCE UNIQUE (2026-08-11) ──────────────────────
+// Extraite de probePlatformSessions pour être appelable HORS du relevé
+// périodique : c'est elle qui arbitre désormais la garde de publication
+// (arbitrerSessionEbay). Une seule définition, sinon les deux détections
+// re-divergent — c'est exactement le bug qu'on corrige.
+// Ce qu'elle prouve : une requête HTTP réelle, avec les cookies de
+// l'utilisateur, sur la PAGE D'ENTRÉE DE VENTE, redirections suivies.
+//   · atterrissage sur signin.ebay.* → false (déconnecté, signal sûr) ;
+//   · atterrissage sur ebay.fr ...... → true  (session valide côté vente) ;
+//   · tout le reste / réseau KO ..... → null  (indéterminé, jamais un faux
+//     « connecté » ni un faux « déconnecté »).
+async function sonderSessionEbay() {
+  const r = await fetch("https://www.ebay.fr/sl/prelist/suggest", {
+    credentials: "include", redirect: "follow",
+  });
+  const u = new URL(r.url);
+  if (/(^|\.)signin\.ebay\./.test(u.hostname)) return { etat: false, http: r.status };
+  return { etat: /(^|\.)ebay\.fr$/.test(u.hostname) ? true : null, http: r.status };
+}
+
+// Le SEUL endroit où ce libellé s'écrit — c'est lui que teste le déclencheur de
+// noterSessionDeconnectee, il ne doit jamais partir sans arbitrage.
+const MSG_CONNEXION_EBAY =
+  "Connexion eBay requise : se connecter sur ebay.fr dans Chrome " +
+  "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.";
+
+// ── Arbitrage de la garde de session eBay (2026-08-11) ──────────────────────
+// ebay.js ne rend plus qu'un SOUPÇON (sessionSuspecte + signal + url) ; le
+// verdict se prend ici, avec la sonde HTTP — la seule des deux détections qui
+// ait dit vrai le 11/08. Trois issues, jamais deux :
+//   · sonde false → le soupçon est CONFIRMÉ : message historique, et lui seul
+//     autorise noterSessionDeconnectee à écrire ebay:false ;
+//   · sonde true  → CONTRADICTION : on ne dit pas à quelqu'un de se connecter
+//     alors qu'il l'est (c'est ce qui a envoyé Romain chercher un problème de
+//     compte inexistant). On dit ce qu'on a VU, et on ré-arme ;
+//   · sonde null  → indéterminé : ni accusation, ni écriture de session.
+// Dans les TROIS cas, le diagnostic part en base : les 6 échecs de ce message
+// depuis le 27/07 sont muets, c'est ce qui a rendu la cause introuvable.
+async function arbitrerSessionEbay(result) {
+  let sonde = { etat: null, http: null };
+  try { sonde = await sonderSessionEbay(); }
+  catch (e) { console.warn("[background] sonde de session eBay injoignable —", String(e?.message ?? e)); }
+
+  const url = String(result.sessionUrl ?? "");
+  let chemin = url;
+  try { chemin = new URL(url).pathname; } catch { /* URL illisible : on garde le brut */ }
+
+  const diagnostic = {
+    quoi: "garde_session_ebay",
+    url: url.slice(0, 300),
+    signal: result.sessionSignal ?? null,
+    sonde: sonde.etat,
+    http: sonde.http,
+    at: new Date().toISOString(),
+  };
+  console.warn(
+    `[background] garde de session eBay : signal=${diagnostic.signal} page=${chemin} ` +
+    `→ sonde=${String(sonde.etat)} (HTTP ${String(sonde.http)})`
+  );
+
+  if (sonde.etat === false) {
+    return { ...result, sessionConfirmee: true, diagnostic, error: MSG_CONNEXION_EBAY };
+  }
+  if (sonde.etat === true) {
+    return {
+      ...result, sessionConfirmee: false, diagnostic,
+      error:
+        `eBay a servi une page inattendue (${chemin}) alors que ta session eBay est valide — ` +
+        "rien n'a été publié. Le job repartira automatiquement au prochain passage.",
+    };
+  }
+  return {
+    ...result, sessionConfirmee: false, diagnostic,
+    error:
+      `eBay n'a pas ouvert le formulaire de mise en vente (${chemin}) et l'état de la ` +
+      "session n'a pas pu être vérifié. Le job repartira automatiquement au prochain passage.",
+  };
+}
+
 async function probePlatformSessions() {
   const probe = async (fn) => { try { return await fn(); } catch { return { etat: null, http: null }; } };
   const [vinted, leboncoin, ebay, beebs] = await Promise.all([
@@ -5307,14 +5419,7 @@ async function probePlatformSessions() {
       if (/(^|\.)auth\.leboncoin\.fr$/.test(u.hostname) || u.pathname.startsWith("/connexion")) return { etat: false, http: r.status };
       return { etat: u.pathname.startsWith("/deposer-une-annonce") ? true : null, http: r.status };
     }),
-    probe(async () => {
-      const r = await fetch("https://www.ebay.fr/sl/prelist/suggest", {
-        credentials: "include", redirect: "follow",
-      });
-      const u = new URL(r.url);
-      if (/(^|\.)signin\.ebay\./.test(u.hostname)) return { etat: false, http: r.status };
-      return { etat: /(^|\.)ebay\.fr$/.test(u.hostname) ? true : null, http: r.status };
-    }),
+    probe(sonderSessionEbay),
     probe(async () => {
       const r = await fetch("https://www.beebs.app/fr/listing", {
         credentials: "include", redirect: "follow",

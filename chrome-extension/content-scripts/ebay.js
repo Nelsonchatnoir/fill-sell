@@ -404,16 +404,42 @@ async function fillListingForm(job) {
     };
   }
 
-  // Session : signin.ebay.fr intercepte la navigation quand le compte n'est
-  // pas connecté. Même règle que Vinted/LBC : needsUser (ré-armement borné
-  // côté background), aucune interaction sur une page de connexion.
-  if (/(^|\.)signin\.ebay\.fr$/.test(location.hostname) || document.querySelector('input[type="password"]')) {
+  // ── Session : cette garde SIGNALE, elle ne CONCLUT PLUS (2026-08-11) ────────
+  // Elle rendait « Connexion eBay requise » toute seule, sur deux signaux de
+  // page. Prouvé faux en prod le 11/08 (voirememe, jobs 18:30 et 19:00) : la
+  // sonde HTTP de session — une VRAIE requête sur la page d'entrée de vente,
+  // mêmes cookies — répondait ebay.fr/200 neuf minutes plus tard, l'utilisateur
+  // était connecté dans la même fenêtre Chrome, et Vinted + Leboncoin ont
+  // publié le même article dans la même minute. 6 échecs de ce message depuis
+  // le 27/07 chez 4 utilisateurs, dont le cas pstephanie1005 qui a justement
+  // fait écrire la sonde (background.js, probePlatformSessions).
+  // Le verdict appartient donc à la SONDE, pas à cette lecture de DOM : on
+  // remonte ce qu'on a vu, arbitrerSessionEbay (background.js) tranche.
+  //
+  // Les deux signaux sont RESSERRÉS du même geste :
+  //   · hôte → (fr|com), comme REAUTH_HOSTS (background.js) — signin.ebay.com
+  //     passait au travers ;
+  //   · champ mot de passe → il doit être VISIBLE, et on ne le lit pas sur
+  //     /lstng. Mesuré le 11/08 sur une session saine : ZÉRO champ de ce type,
+  //     ni dans le DOM chargé ni dans le HTML servi, sur les trois pages du
+  //     trajet (home, /sl/prelist/suggest, /lstng d'une vraie catégorie). Un
+  //     champ caché quelque part dans un bundle ne prouve donc rien.
+  // ⚠️ error ne commence PAS par « Connexion eBay requise » ici : ce libellé
+  // est le déclencheur de noterSessionDeconnectee côté background, et il ne
+  // doit être écrit qu'APRÈS arbitrage.
+  const surSigninEbay = /(^|\.)signin\.ebay\.(fr|com)$/i.test(location.hostname);
+  const champSecretVisible = !/\/lstng\b/.test(location.pathname)
+    && Array.from(document.querySelectorAll('input[type="password"]')).some(estVisibleSansLayout);
+  if (surSigninEbay || champSecretVisible) {
     return {
       success: false,
       needsUser: true,
+      sessionSuspecte: true,
+      sessionSignal: surSigninEbay ? "hote" : "champ_secret",
+      sessionUrl: location.href,
       error:
-        "Connexion eBay requise : se connecter sur ebay.fr dans Chrome " +
-        "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+        "Session eBay à vérifier : la page ouverte n'est pas le formulaire de mise en vente " +
+        `(${location.pathname}). Le job repartira au prochain passage.`,
     };
   }
 
