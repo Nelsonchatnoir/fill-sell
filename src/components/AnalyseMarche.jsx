@@ -225,7 +225,10 @@ export default function AnalyseMarche({
   // a déjà un), aucun grand chiffre (le champ prix est juste au-dessus).
   if (variant === "publication") {
     const alerte = niveau === "aucune" || niveau === "fragile";
-    const vs = verdict ? VERDICT_STYLE[verdict] : null;
+    // Même règle que la variante verdict : un objet déduit ne porte pas de
+    // badge de deal. La pastille est plus discrète ici, mais elle dit la même
+    // chose et se lit comme une validation.
+    const vs = result.objet_source === "deduit" || !verdict ? null : VERDICT_STYLE[verdict];
     return (
       <div style={{
         border: `1px solid ${alerte ? C.warnBd : C.border}`,
@@ -268,9 +271,34 @@ export default function AnalyseMarche({
   // quand aucune annonce ne le soutient.
   const taillePrix = niveau === "solide" ? 46 : niveau === "fragile" ? 30 : 25;
   const couleurPrix = niveau === "solide" ? C.teal : niveau === "fragile" ? C.ink : "#4A5B55";
-  const vs = verdict ? VERDICT_STYLE[verdict] : null;
-  const plafond = !aAchat && Number.isFinite(Number(result.prix_achat_suggere))
-    ? Number(result.prix_achat_suggere) : null;
+  // ── « ACHÈTE EN DESSOUS DE 0,00 € » (bouilloire, 11/08 15:32) ────────────
+  // Le serveur mettait bien prix_achat_suggere à null (objet déduit), et la
+  // garde ci-dessous était censée masquer l'encart. Elle ne l'a pas fait :
+  //     Number(null) === 0   →   Number.isFinite(0) === true
+  // `Number()` ne rend NaN que sur une chaîne non numérique ; sur null, sur ""
+  // et sur false il rend 0. Un plafond d'achat à 0 € est le pire conseil
+  // possible — il dit « n'achète jamais » avec l'autorité d'un chiffre calculé.
+  // C'est la même famille de piège que `isNaN(null) === false` (CLAUDE.md) :
+  // le test de finitude ne remplace pas le test de PRÉSENCE.
+  // On teste donc la présence D'ABORD, sans conversion, et sans repli.
+  // ── Objet DÉDUIT : ni plafond d'achat, ni verdict (11/08) ────────────────
+  // Le serveur met déjà prix_achat_suggere, verdict et score à null — mais ce
+  // composant n'a JAMAIS lu result.verdict (cf. plus haut : il le RECALCULE
+  // depuis le prix d'achat réellement saisi, pour qu'il ne puisse pas
+  // contredire la marge affichée). Nuller le champ côté serveur était donc
+  // sans effet ici : un « Excellent » continuait de sortir sur un objet
+  // deviné, dès que l'utilisateur avait saisi son prix d'achat. Le verdict
+  // porte sur un prix de vente qui porte lui-même sur un objet non établi :
+  // il tombe avec lui.
+  // Le drapeau entre AUSSI dans la garde du plafond, en plus du null serveur :
+  // une réponse resservie du cache identify 24 h, ou produite par une version
+  // antérieure de la fonction, ne doit pas pouvoir rouvrir l'encart.
+  const objetDeduit = result.objet_source === "deduit";
+  const vs = objetDeduit || !verdict ? null : VERDICT_STYLE[verdict];
+  const achatSuggere = result.prix_achat_suggere;
+  const plafond = !aAchat && !objetDeduit
+    && achatSuggere != null && Number.isFinite(Number(achatSuggere)) && Number(achatSuggere) > 0
+    ? Number(achatSuggere) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>

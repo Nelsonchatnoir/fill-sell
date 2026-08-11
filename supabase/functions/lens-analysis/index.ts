@@ -415,7 +415,8 @@ ${tableauFamilles()}
    CRITICAL: if prix_achat_reel is known and margin is negative or zero → verdict MUST be "eviter". Strong brand and high demand are secondary factors — they NEVER override a negative real margin.
    SCORE (0–10, reflects real profitability): negative margin → 0–3; margin 0–20% → 4–5; margin 20–40% → 6–7; margin >40% → 8–10. Adjust ±1 for demand/ease, but NEVER above 4 if real margin is negative.
    Confidence follows step 2bis; on top of that, if no usable market data was found, confiance="basse".
-   prix_achat_suggere: your independent market estimate — set to null if prix_achat_reel is not null. notes: price source + one actionable tip.`;
+   prix_achat_suggere: your independent market estimate — set to null if prix_achat_reel is not null. notes: price source + one actionable tip.
+   A GUESSED OBJECT EARNS NO BUYING ADVICE, ANYWHERE. If you set objet_source="deduit" at step 0, then you write NO purchase price, NO margin, NO profit figure, NO verdict and NO buy/skip recommendation — not in the fields meant for them (leave prix_achat_suggere, verdict and score at null), and above all NOT in "notes", "description" or "conseils". The server empties those fields; it cannot know that a sentence repeats them. "Estimated margin 75% if sold at €14 (estimated purchase price €8)" written in a note IS the advice that was just withdrawn, put back on screen in another shape — and it is worse there, because nothing marks it as unsupported. What you may still write: the sale price, the range, the comparable listings, and what would settle the identification. Those are market facts about the object as you named it; the rest is a commitment you are asking someone to make on a guess.`;
     return `You are an expert in secondhand resale (${platforms}).${multiNote}
 Analyze the item and return ONLY valid JSON (no markdown, no explanation):
 
@@ -458,7 +459,8 @@ ${etape8}`;
    CRITIQUE : si prix_achat_reel est connu et que la marge est négative ou nulle → verdict DOIT être "eviter". La marque forte et la demande sont des facteurs secondaires — ils ne peuvent JAMAIS contredire une marge réelle négative.
    SCORE (0 à 10, reflète la rentabilité réelle) : marge négative → 0-3 ; marge 0-20% → 4-5 ; marge 20-40% → 6-7 ; marge >40% → 8-10. Ajuster ±1 selon demande/facilité, jamais au-dessus de 4 si marge réelle négative.
    La confiance suit l'étape 2bis ; en plus de cela, si aucune donnée de marché exploitable n'a été trouvée, confiance="basse".
-   prix_achat_suggere : estimation marché indépendante — mettre à null si prix_achat_reel n'est pas null. notes : source de l'estimation prix + un conseil concret pour vendre plus vite.`;
+   prix_achat_suggere : estimation marché indépendante — mettre à null si prix_achat_reel n'est pas null. notes : source de l'estimation prix + un conseil concret pour vendre plus vite.
+   UN OBJET DÉDUIT NE DONNE DROIT À AUCUN CONSEIL D'ACHAT, NULLE PART. Si tu as mis objet_source="deduit" à l'étape 0, alors tu n'écris AUCUN prix d'achat, AUCUNE marge, AUCUN bénéfice, AUCUN verdict et AUCUNE recommandation d'acheter ou de passer — ni dans les champs prévus pour ça (laisse prix_achat_suggere, verdict et score à null), ni SURTOUT dans "notes", "description" ou "conseils". Le serveur vide ces champs ; il ne peut pas savoir qu'une phrase les répète. « Marge estimée à 75 % si vendue 14 € (prix d'achat estimé 8 €) » écrit dans une note, c'EST le conseil qu'on vient de retirer, remis à l'écran sous une autre forme — et il y est pire, puisque rien ne signale qu'il ne repose sur rien. Ce que tu peux encore écrire : le prix de vente, la fourchette, les annonces comparables, et ce qui trancherait l'identification. Ce sont des faits de marché sur l'objet tel que tu l'as nommé ; le reste est un engagement que tu demandes à quelqu'un de prendre sur une supposition.`;
   return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
 Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
 
@@ -967,6 +969,61 @@ export function nettoyerFuites(v: unknown, lang: "fr" | "en"): { texte: unknown;
     return m;
   });
   return { texte, fuite, inconnu, fuites };
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// LE CONSEIL D'ACHAT NE SURVIT PAS DANS LE TEXTE LIBRE (2026-08-11, 15:32)
+// ══════════════════════════════════════════════════════════════════════════
+// Premier scan réel en objet_source="deduit" (une bouilloire) : les champs
+// prix_achat_suggere / verdict / score étaient bien à null, et la note
+// affichait « Marge estimée à 75% si vendue 14€ (prix d'achat estimé 8€) ».
+// Le conseil retiré du champ était revenu par la phrase — et il y est PIRE,
+// parce qu'aucun encart ne le signale comme non fondé.
+// Vider un champ ne suffit jamais quand une autre partie de la réponse peut le
+// répéter en toutes lettres. C'est le pendant exact de `retirerMarqueDuTitre`
+// (une marque forcée à null qui restait dans le titre).
+//
+// DEUX GROUPES, avec des exigences différentes — c'est ce qui évite de
+// massacrer des phrases légitimes :
+//   · PRIX / MARGE : le marqueur ne suffit PAS, il faut AUSSI un montant ou un
+//     pourcentage dans la phrase. Sinon « Acheté il y a deux ans » (une
+//     information de description parfaitement valable, et fréquente) partirait
+//     avec le reste — « acheté » + un chiffre nu ne fait pas un conseil.
+//   · VERDICT : le marqueur suffit. « C'est une bonne affaire » ne porte aucun
+//     chiffre et reste exactement ce qu'on retire.
+const MARQUEURS_PRIX_MARGE =
+  /(prix d['’]achat|prix dachat|prix de revient|\bmarges?\b|\bb[ée]n[ée]fices?\b|\bprofits?\b|rentabilit[ée]|\bachet[ée]e?s?\b|\bach[èe]tes?\b|\bpay[ée]e?s?\b|purchase price|resale margin|\bmargins?\b|\bbuy (?:it )?(?:below|under|for|at)\b|\bpaid\b)/i;
+const MARQUEURS_VERDICT =
+  /(bonne affaire|mauvaise affaire|bon deal|excellent deal|\b[àa] [ée]viter\b|vaut le coup|ne vaut pas|good deal|great deal|bad deal|worth buying|not worth|\bavoid\b)/i;
+// Un montant OU un pourcentage : « 14€ », « 8 EUR », « 75 % », « $12 ».
+const MONTANT_OU_POURCENT =
+  /(\d[\d\s.,]*\s*(?:€|%|eur\b|euros?\b|\$|£|chf\b)|(?:€|\$|£)\s*\d)/i;
+
+/**
+ * Découpe en phrases et retire celles qui portent un prix d'achat, une marge
+ * ou un verdict. Utilisé UNIQUEMENT quand l'autorité de prix a été retirée
+ * (objet déduit) : sur un objet établi, ces phrases sont légitimes.
+ *
+ * ⚠️ Une chaîne entièrement composée de telles phrases devient VIDE, et c'est
+ * volontaire : mieux vaut une note absente qu'une note qui n'est plus que le
+ * conseil qu'on vient de retirer. L'appelant décide quoi faire du vide (les
+ * notes et les conseils sont facultatifs ; la description l'est aussi, le
+ * stepper se rabat alors sur titre/marque/famille/attributs).
+ */
+export function retirerPhrasesDePrix(v: unknown): { texte: unknown; retirees: number } {
+  if (typeof v !== "string" || !v.trim()) return { texte: v, retirees: 0 };
+  // Coupe après . ! ? ; et sur les retours à la ligne. Le lookbehind garde le
+  // signe de ponctuation avec la phrase qu'il termine.
+  const phrases = v.split(/(?<=[.!?;])\s+|\n+/).filter((p) => p.trim());
+  let retirees = 0;
+  const gardees = phrases.filter((p) => {
+    const suspecte = (MARQUEURS_PRIX_MARGE.test(p) && MONTANT_OU_POURCENT.test(p))
+      || MARQUEURS_VERDICT.test(p);
+    if (suspecte) retirees++;
+    return !suspecte;
+  });
+  if (!retirees) return { texte: v, retirees: 0 };
+  return { texte: gardees.join(" ").replace(/\s{2,}/g, " ").trim(), retirees };
 }
 
 /** Retire la marque du titre — elle ne peut pas y survivre à un `marque=null`. */
@@ -2105,6 +2162,35 @@ serve(async (req) => {
       );
       for (const champ of CHAMPS_AUTORITE_PRIX) itemData[champ] = null;
       logMeta = { ...logMeta, autorite_prix_retiree: true };
+
+      // ── … ET DANS LE TEXTE LIBRE (2026-08-11, bouilloire de 15:32) ───────
+      // Le champ vidé ne suffit pas si la phrase le répète : la note disait
+      // « Marge estimée à 75% si vendue 14€ (prix d'achat estimé 8€) » alors
+      // que les trois champs étaient déjà à null. La consigne de prompt est
+      // posée (étape 8), mais une consigne n'est pas une contrainte — c'est
+      // toute l'histoire de ce fichier.
+      // Les conseils vidés sont RETIRÉS du tableau plutôt que laissés vides :
+      // une puce blanche à l'écran est un bug d'affichage, pas une retenue.
+      let phrasesRetirees = 0;
+      for (const champ of ["notes", "description", "vitesse_vente_explication"]) {
+        const r = retirerPhrasesDePrix(itemData[champ]);
+        phrasesRetirees += r.retirees;
+        if (r.retirees) itemData[champ] = (typeof r.texte === "string" && r.texte) ? r.texte : null;
+      }
+      if (Array.isArray(itemData.conseils)) {
+        const gardes: unknown[] = [];
+        for (const c of itemData.conseils) {
+          const r = retirerPhrasesDePrix(c);
+          phrasesRetirees += r.retirees;
+          if (typeof r.texte === "string" && r.texte.trim()) gardes.push(r.texte);
+          else if (!r.retirees) gardes.push(c);
+        }
+        itemData.conseils = gardes.length ? gardes : null;
+      }
+      if (phrasesRetirees) {
+        console.warn(`[lens-analysis] objet déduit — ${phrasesRetirees} phrase(s) de prix/marge/verdict retirée(s) du texte client`);
+        logMeta = { ...logMeta, phrases_prix_retirees: phrasesRetirees };
+      }
     }
 
     // ── Identify : champs de marché forcés à null DANS LE CODE ──────────────

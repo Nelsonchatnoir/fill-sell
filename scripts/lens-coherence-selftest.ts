@@ -32,6 +32,7 @@ import {
   nettoyerFuites,
   retirerJustificationMarqueLue,
   retirerMarqueDuTitre,
+  retirerPhrasesDePrix,
   buildSystemPrompt,
 } from "../supabase/functions/lens-analysis/index.ts";
 
@@ -450,6 +451,66 @@ titre("8bis. objet / objet_source — l'erreur cohérente");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// 8ter. LE CONSEIL D'ACHAT NE SURVIT PAS DANS LE TEXTE (bouilloire, 15:32)
+// ══════════════════════════════════════════════════════════════════════════
+// Premier scan réel en objet_source="deduit" : les trois champs d'autorité
+// étaient bien à null, et la note affichait quand même le conseil en toutes
+// lettres. Vider un champ ne suffit pas quand une phrase le répète.
+titre("8ter. Retrait des phrases de prix / marge / verdict");
+{
+  // LE cas de l'incident, mot pour mot (post-scrub : « prix_achat_suggere »
+  // est déjà devenu « prix d'achat estimé » à ce stade).
+  const incident = retirerPhrasesDePrix(
+    "Bouilloire électrique sans marque visible. Marge estimée à 75% si vendue 14€ (prix d'achat estimé 8€). Une photo du dessous trancherait.",
+  );
+  verifier("la phrase de marge est retirée", incident.retirees, 1);
+  verifier(
+    "le reste est conservé mot pour mot",
+    incident.texte,
+    "Bouilloire électrique sans marque visible. Une photo du dessous trancherait.",
+  );
+
+  // Un verdict sans le moindre chiffre part quand même.
+  const verdictNu = retirerPhrasesDePrix("Objet courant. C'est une bonne affaire. Photo nette.");
+  verifier("verdict sans chiffre retiré", verdictNu.texte, "Objet courant. Photo nette.");
+
+  // ⚠️ LE FAUX POSITIF À NE PAS FAIRE : « acheté » + un chiffre nu, c'est une
+  // information de description parfaitement légitime.
+  for (const legitime of [
+    "Acheté il y a deux ans, très peu servi.",
+    "Bouilloire 1,7 L en inox brossé, socle rotatif 360°.",
+    "Capacité 1,7 litre, puissance 2200 W.",
+    "La marque est visible au dos, gravée dans le plastique.",
+    "Vendue avec sa boîte d'origine et sa notice.",
+  ]) {
+    const r = retirerPhrasesDePrix(legitime);
+    verifier(`intacte : « ${legitime.slice(0, 42)}… »`, r.texte, legitime);
+  }
+
+  // Mesures et pourcentages techniques : un % ne suffit pas, il faut le marqueur.
+  const compo = retirerPhrasesDePrix("Composition 80% coton 20% polyester.");
+  verifier("un pourcentage de composition n'est pas une marge", compo.retirees, 0);
+
+  // Anglais.
+  const en = retirerPhrasesDePrix("Stainless steel kettle. Estimated margin of 75% if sold at €14. Add a photo of the base.");
+  verifier("anglais : la marge part", en.texte, "Stainless steel kettle. Add a photo of the base.");
+
+  // Une chaîne entièrement composée de conseil devient VIDE — volontaire.
+  const toutConseil = retirerPhrasesDePrix("Marge estimée à 75% si vendue 14€.");
+  verifier("texte entièrement conseil → vide", toutConseil.texte, "");
+  verifier("… et compté", toutConseil.retirees, 1);
+
+  // Rien à faire = la chaîne d'origine, à l'identité (pas de recomposition).
+  const intact = "Bouilloire inox 1,7 L, socle rotatif. Une photo du dessous préciserait la marque.";
+  verifier("aucune phrase suspecte → chaîne inchangée", retirerPhrasesDePrix(intact).texte, intact);
+  verifier("null / vide traversent sans bruit", [
+    retirerPhrasesDePrix(null).texte,
+    retirerPhrasesDePrix("").texte,
+    retirerPhrasesDePrix(42).texte,
+  ], [null, "", 42]);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // 9. LE PROMPT PORTE BIEN LES RÈGLES (les deux langues, les deux modes)
 // ══════════════════════════════════════════════════════════════════════════
 titre("9. Contenu du prompt");
@@ -509,6 +570,24 @@ titre("9. Contenu du prompt");
   verifier(
     "fr/full : le verrou sur la marque est conservé",
     buildSystemPrompt("fr", "Vinted", null, 3, "full").includes("une recherche ne REMPLACE jamais ce que tu as lu"),
+    true,
+  );
+
+  // Objet déduit → aucun conseil d'achat, y compris dans le texte libre.
+  // Mode complet seulement : identify n'a AUCUN prix à interdire deux fois.
+  verifier(
+    "fr/full : interdiction du conseil d'achat dans le texte libre",
+    buildSystemPrompt("fr", "Vinted", null, 3, "full").includes("UN OBJET DÉDUIT NE DONNE DROIT À AUCUN CONSEIL D'ACHAT, NULLE PART"),
+    true,
+  );
+  verifier(
+    "en/full : idem",
+    buildSystemPrompt("en", "Vinted", null, 3, "full").includes("A GUESSED OBJECT EARNS NO BUYING ADVICE, ANYWHERE"),
+    true,
+  );
+  verifier(
+    "fr/identify : l'interdiction générale de prix suffit",
+    buildSystemPrompt("fr", "Vinted", null, 3, "identify").includes("AUCUN PRIX, AUCUN VERDICT"),
     true,
   );
   // La consigne « une seule photo » n'apparaît QUE quand il n'y en a qu'une.
