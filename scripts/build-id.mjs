@@ -190,7 +190,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ⚠️ POSTÉRIEUR au paquet fillsell-extension-0.5.9-cws.zip : ce zip ne contient
 // PAS cette garde, et EXTENSION_MIN_BUILD reste sur la 0.5.6 (la 0.5.9 n'est
 // toujours pas acceptée). À embarquer au prochain packaging.
-export const EXTENSION_LAST_COMMIT = '2026-08-11T09:58:31Z';
+// 2026-08-11T10:25:23Z = 0efc0f4 : sonde de modération Leboncoin dans
+// recoverMissingListingUrls — 3 passages bredouilles CONCLUANTS + 2 h depuis
+// published_at ⇒ remboursement anticipé, SANS sortir le job du balayage (il
+// reste 'published' jusqu'à l'échéance 48 h). Leboncoin seul ; Vinted, eBay et
+// Beebs inchangés. La preuve « page vue » est positive (hôte + chemin +
+// compteur « En ligne (N) » + garde pagination), jamais déduite.
+// ⚠️ POSTÉRIEUR au paquet fillsell-extension-0.5.9-cws.zip, et EXTENSION_MIN_BUILD
+// reste sur la 0.5.6 (la 0.5.9 n'est toujours pas acceptée).
+export const EXTENSION_LAST_COMMIT = '2026-08-11T10:25:23Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
