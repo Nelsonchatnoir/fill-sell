@@ -6751,13 +6751,51 @@ function categoryKeyOf(job) {
   return "(catégorie inconnue)";
 }
 
+// PRÉCÉDENCE DES SOURCES (2026-08-11) — un refus SERVEUR prime sur le DOM.
+// Bug mesuré : la déduplication « premier arrivé gagne » combinée à l'ordre du
+// site d'appel (discoveredRequired en tête, serverRequired ensuite) jetait
+// SILENCIEUSEMENT la découverte la plus forte dès que le champ existait aussi
+// dans le formulaire. Preuve en base : les 4 seules lignes source='server_400'
+// portent `photos` et `title` et `internal_memory_capacity` — précisément les
+// clés que la passe DOM n'énumère PAS. Les refus serveur sur `color` (Peluches
+// 10/08, Robes Midi 30/07) et `brand` (Robes Midi 29/07) ont tous été perdus :
+// le champ EXISTE au formulaire sans astérisque, donc le DOM le posait d'abord
+// en required=false et le refus serveur était ignoré.
+// Conséquence pour l'utilisateur : Vinted refuse, on ne l'apprend jamais, et on
+// le renvoie au même mur à chaque tentative.
+// Une valeur haute gagne. À poids égal, `required: true` gagne.
+const ASPECT_SOURCE_POIDS = { server_400: 3, manual: 2, dom: 1 };
+
 async function persistDiscoveredAspects(accessToken, job, discovered) {
   const rows = [];
-  const seen = new Set();
+  const seen = new Map(); // key → index dans rows
   for (const d of discovered ?? []) {
     const key = String(d?.key ?? d?.field ?? "").trim();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
+    if (!key) continue;
+    if (seen.has(key)) {
+      // Doublon : on ne garde QUE si la nouvelle observation est plus forte.
+      const i = seen.get(key);
+      const src = d.source === "server_400" || d.source === "manual" ? d.source : "dom";
+      const ancien = rows[i];
+      const plusFort = (ASPECT_SOURCE_POIDS[src] ?? 1) > (ASPECT_SOURCE_POIDS[ancien.source] ?? 1) ||
+        ((ASPECT_SOURCE_POIDS[src] ?? 1) === (ASPECT_SOURCE_POIDS[ancien.source] ?? 1) &&
+          d.required !== false && ancien.required === false);
+      if (!plusFort) continue;
+      // On écrase la ligne, en CONSERVANT les options déjà relevées : un refus
+      // 400 ne nomme que le champ, il ne connaît aucune valeur autorisée — les
+      // perdre ferait retomber l'app en saisie de texte libre.
+      rows[i] = {
+        ...ancien,
+        required: d.required !== false,
+        source: src,
+        field_label: d.label ? String(d.label).slice(0, 200) : ancien.field_label,
+        allowed_values: Array.isArray(d.options) && d.options.length
+          ? d.options.slice(0, 200).map((v) => String(v).trim()).filter(Boolean)
+          : ancien.allowed_values,
+      };
+      continue;
+    }
+    seen.set(key, rows.length);
     rows.push({
       platform: job.platform,
       category_key: categoryKeyOf(job).slice(0, 300),

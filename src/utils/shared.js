@@ -607,7 +607,9 @@ const OBJECT_ICON_RULES = [
   [/banc.?(?:de.?)?(?:muscu|gym|fitness|abdo|développé)|banc.?à.?charge|presse.?(?:à.?)?cuisse/i, '🏋️'],  // banc de muscu = sport, pas une chaise, avant 🪑
   [/chaise|tabouret|\bbanc\b/i, '🪑'],
   [/\blit\b|matelas|sommier|couette|\bdrap\b|parure/i, '🛏️'],
-  [/lampe|luminaire|applique|suspension|lampadaire|ampoule|\bled\b|guirlande(?!.{0,14}(?:de.?)?(?:sapin|noël|noel))/i, '💡'],
+  // `ampoule` BORNÉ À GAUCHE (2026-08-11) : sans borne il matche « Têtampoule »
+  // (nom de Pokémon) — même famille de bug que « mascara » dans « Mascarade ».
+  [/lampe|luminaire|applique|suspension|lampadaire|(?<![\p{L}\p{N}])ampoules?|\bled\b|guirlande(?!.{0,14}(?:de.?)?(?:sapin|noël|noel))/iu, '💡'],
   [/miroir/i, '🪞'],
   [/bougie(?!s?\s*(?:d['’]allumage|de\s*préchauffage))|photophore/i, '🕯️'],  // bougie d'allumage = pièce auto (audit 2026-07-19)
   [/cadres?\b(?!\s*(?:de\s*)?(?:vélo|vtt|route\b|carbone|alu\b|lit\b))|tableau(?!.?électrique)|poster|affiche/i, '🖼️'],  // cadre de vélo/lit ≠ cadre déco (audit 2026-07-19)
@@ -690,7 +692,13 @@ const OBJECT_ICON_RULES = [
   [/parfum|eau.?de.?(?:toilette|parfum)|cologne/i, '🌸'],
   // « palette de couleurs » = prose IA omniprésente (vêtements, déco…), pas
   // une palette de fards (audit 2026-07-19).
-  [/rouge.?à.?lèvre|gloss|lipstick|mascara|palettes?\b(?!\s*(?:de\s*)?couleurs?\b)|fard|eyeliner|fond.?de.?teint|blush|maquillage/i, '💄'],
+  // ⚠️ `mascara` BORNÉ (2026-08-11). Sans borne il matchait « MASCARADE » :
+  // 165 lignes / 108 titres de cartes Pokémon de l'extension « Mascarade
+  // Crépusculaire » partaient en 💄 Maquillage, donc en Divers > Autres sur
+  // Leboncoin et dans les rayons beauté des trois autres plateformes. Borne
+  // UNICODE et pas \b : \b est ASCII-only, il ne ferme rien après une lettre
+  // accentuée (même piège que « parfum » dans « parfumée »).
+  [/rouge.?à.?lèvre|gloss|lipstick|mascaras?(?![\p{L}\p{N}])|palettes?\b(?!\s*(?:de\s*)?couleurs?\b)|fard|eyeliner|fond.?de.?teint|blush|maquillage/iu, '💄'],
   [/vernis|manucure/i, '💅'],
   // ⚠️ \bsoin\b nu SUPPRIMÉ (2026-07-19, bug Dyson Airwrap) : « pour un soin
   // optimal des cheveux/du linge/de vos sols » est une tournure IA générique
@@ -722,7 +730,9 @@ const OBJECT_ICON_RULES = [
   [/harmonica/i, '🎼'],
   [/micro(?:phone)?\b(?![\s-]*(?:sd\b|usb|hdmi|ondes?))/i, '🎤'],  // micro SD/USB/-ondes ≠ microphone (audit 2026-07-19)
   // Jouets
-  [/lego|duplo|kapla|jeu.?de.?construction/i, '🧱'],
+  // `lego` BORNÉ (2026-08-11) : sans borne il matche « GaLEGOn » (nom de
+  // Pokémon) — troisième cas de la même famille que « mascara »/« ampoule ».
+  [/(?<![\p{L}\p{N}])legos?(?![\p{L}\p{N}])|duplo|kapla|jeu.?de.?construction/iu, '🧱'],
   // (peluche/doudou : remontée en tête des désambiguïsations — cf. « peluche
   // souris » qui partait en 🖱️ Souris d'ordinateur.)
   [/poupée|barbie|poupon/i, '🪆'],
@@ -735,6 +745,25 @@ const OBJECT_ICON_RULES = [
   [/livre|romans?(?![\p{L}\p{N}])|encyclopédie|dictionnaire/iu, '📚'],  // « romantique » contenait roman (audit 2026-07-19)
   [/magazine|revue\b/i, '📰'],
   // Collection
+  // ── Cartes à collectionner (2026-08-11) ───────────────────────────────────
+  // INDISSOCIABLE de la borne posée sur `mascara` juste au-dessus : sans cette
+  // règle, les 108 titres « Mascarade Crépusculaire » libérés de 💄 tombent sur
+  // 📦 (leur `type` est null, donc aucun défaut de catégorie ne les rattrape) —
+  // et 📦 vaut null sur les QUATRE plateformes. Ils passeraient de « mal
+  // classés mais publiables partout » à « publiables nulle part ».
+  // 🃏 est déjà mappé partout, et c'est le bon rayon : Vinted « Cartes à
+  // collectionner à l'unité », LBC « Loisirs > Collection », eBay « JCC :
+  // cartes à l'unité » (183454), Beebs « Cartes Pokémon à l'unité ».
+  // ⚠️ PLACÉE APRÈS Jouets/Livres à dessein : « peluche Pokémon » doit rester
+  // 🧸 et « figurine Pokémon » 🦸 — leurs règles matchent avant celle-ci.
+  // ⚠️ La règle 🃏 existante (bloc désambiguïsation, plus haut) exige le MOT
+  // « carte » ou « booster » — ces titres-là n'ont ni l'un ni l'autre :
+  // « Stalgamin 051/167 - Mascarade Crépusculaire EV06 - TWM FR ». Ce qui les
+  // identifie, c'est le NUMÉRO DE CARTE (051/167) accompagné d'un marqueur de
+  // collection (Reverse, Holo, Promo, ou un code d'extension type EV06).
+  // Les DEUX sont exigés : seul, « 128/256 » est une capacité de stockage,
+  // « 205/55 » une taille de pneu, « 16/9 » un format d'image.
+  [/cartes?\s+(?:à\s+)?collectionner|\bjcc\b|trading\s+cards?|\btcg\b|yu.?gi.?oh|magic.{0,15}gathering|\bmtg\b|(?=[\s\S]*\b\d{1,3}\s*\/\s*\d{2,3}\b)(?=[\s\S]*(?:holo(?:graphique)?|reverse|promo|booster|psa\s*\d|pok[ée]mon|\b(?:ev|sv|xy|sm|swsh|bw|dp)\d{1,2}\b))/iu, '🃏'],
   [/timbre/i, '📮'],
   [/monnaie|numismat|pièce.?de.?monnaie/i, '🪙'],
   // Puériculture — scindée en 4 icônes (juillet 2026) : l'ancienne 👶 unique
@@ -747,6 +776,16 @@ const OBJECT_ICON_RULES = [
   [/siège.?auto/i, '💺'],
   [/biberon/i, '🍼'],
   [/babyphone|baby.?phone|écoute.?bébé/i, '📟'],
+  // ── DERNIER RECOURS : numéro de carte seul (2026-08-11) ───────────────────
+  // Placée en TOUTE FIN de liste, donc atteinte UNIQUEMENT si aucune autre
+  // règle n'a reconnu l'objet. Un « 205/55 » de pneu, un « 128/256 » de
+  // stockage, un « 16/9 » d'écran sont déjà captés plus haut par leur propre
+  // mot-clé ; ce qui arrive ici avec un numéro de la forme NN/NNN et rien
+  // d'autre de reconnaissable est, en pratique, une carte à collectionner.
+  // Cas qui l'exige : « Galegon 53/123 Diamant & Perle : Trésors Mystérieux »
+  // — aucun marqueur (ni Reverse, ni Holo, ni code d'extension), et sans cette
+  // règle il tombe sur 📦, injouable sur les quatre plateformes.
+  [/(?<![\p{L}\p{N}/.,])\d{1,3}\s*\/\s*\d{2,3}(?![\p{L}\p{N}/.,])/u, '🃏'],
 ];
 // Icône par défaut si aucun mot-clé ne matche : celle de la catégorie.
 const CAT_DEFAULT_ICONS = {
