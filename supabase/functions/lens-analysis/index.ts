@@ -453,6 +453,52 @@ function assainirAnnoncesMarche(item: Record<string, unknown>): void {
   item.annonces_marche = propres.length ? propres : null;
 }
 
+// ── Empreinte de la SORTIE dans usage_logs (2026-08-11) ────────────────────
+// Le scan payant ne stockait AUCUNE trace de ce qu'il avait produit : usage_logs
+// ne portait que coût, tokens et nombre de recherches web. Une plainte
+// utilisateur (« le Lens dit n'importe quoi sur mes objets maison ») n'était
+// donc PAS diagnosticable : le seul endroit où une sortie survivait était
+// lens_identify_cache, purgé à 24 h, et uniquement pour le mode identify.
+//
+// Ce qui entre : de quoi requêter la QUALITÉ par famille d'objet.
+// Ce qui n'entre PAS, et n'entrera jamais : photos, URLs de photos,
+// description complète, notes, note utilisateur — aucune donnée personnelle.
+// `titre_genere` est tronqué à 120 caractères : c'est un libellé d'article, pas
+// un contenu utilisateur, et il sert à retrouver le cas dans l'inventaire.
+//
+// Aucune migration : usage_logs.metadata est déjà en jsonb, on ajoute des clés
+// dans un objet existant. Rien à GRANTer.
+//
+// ⚠️ `famille` sort null tant que la Tâche 2 n'est pas déployée — c'est VOULU :
+// ces lignes-là sont la mesure de référence « avant fix ».
+const TITRE_MAX_TELEMETRIE = 120;
+
+function texteNonVide(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s && s.toLowerCase() !== "null" ? s : null;
+}
+
+function empreinteSortie(item: Record<string, unknown>): Record<string, unknown> {
+  const attrs = item.attributs_visibles;
+  const nbAttributs = attrs && typeof attrs === "object" && !Array.isArray(attrs)
+    ? Object.keys(attrs as Record<string, unknown>).length
+    : 0;
+  const titre = texteNonVide(item.titre);
+  return {
+    famille: texteNonVide(item.famille),
+    categorie: texteNonVide(item.categorie),
+    // TOUJOURS présent, true comme false — contrairement à `marque_absente`,
+    // qui n'est écrit que quand il vaut true et dont l'ABSENCE est donc
+    // ambiguë (marque présente ? ou ligne d'avant l'instrumentation ?).
+    // Les deux coexistent : `marque_absente` porte la série des 7 derniers
+    // jours, on ne la casse pas en cours de mesure.
+    marque_nulle: texteNonVide(item.marque) == null,
+    confiance: texteNonVide(item.confiance),
+    nb_attributs: nbAttributs,
+    titre_genere: titre ? titre.slice(0, TITRE_MAX_TELEMETRIE) : null,
+  };
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // GARDE-FOUS DU MODE IDENTIFY (2026-07-28)
 // ══════════════════════════════════════════════════════════════════════════
@@ -846,12 +892,15 @@ serve(async (req) => {
   // son metadata (coins, model) plutôt qu'en l'écrasant. Appelée aussi bien
   // sur succès que sur échec : un scan raté consomme de l'API, son coût doit
   // se voir. Best-effort de bout en bout.
-  async function enregistrerTelemetrie(issue: string) {
+  // `sortie` : empreinte de ce que le modèle a RÉELLEMENT produit (2026-08-11),
+  // absente sur un échec — il n'y a alors rien à décrire.
+  async function enregistrerTelemetrie(issue: string, sortie?: Record<string, unknown>) {
     if (logId == null) return;
     try {
       await adminClient.from("usage_logs").update({
         metadata: {
           ...logMeta,
+          ...(sortie ?? {}),
           issue,
           photos: stats.photos,
           tours: stats.tours,
@@ -1114,17 +1163,22 @@ serve(async (req) => {
       // Mémorisation 24 h (best-effort). Écrit APRÈS le forçage à null : ce qui
       // est resservi est exactement ce qui a été renvoyé.
       if (cacheCle) await ecrireCache(adminClient, cacheCle, userId, itemData);
+      // L'empreinte de sortie part aussi sur 'lens_identify' : c'est le mode
+      // INCLUS dans la publication, donc celui qui alimente le plus d'articles
+      // d'inventaire — mesurer la qualité sur le seul scan payant laisserait
+      // aveugle sur la majorité des identifications réellement livrées.
       await loggerAppelIA(adminClient, userId, "lens_identify", { in: stats.in, out: stats.out }, {
         mode, cache_hit: false, photos: stats.photos, tours: stats.tours,
         duree_ms: Date.now() - debutMs,
         modele_source: itemData.modele_source ?? null,
+        ...empreinteSortie(itemData),
         ...(mpnRejete ? { mpn_rejete: true } : {}),
         ...(mpnAbsente ? { mpn_absente: true } : {}),
         ...(etatRejete ? { etat_rejete: true } : {}),
         ...(marqueAbsente ? { marque_absente: true } : {}),
       });
     } else {
-      await enregistrerTelemetrie("ok");
+      await enregistrerTelemetrie("ok", empreinteSortie(itemData));
     }
     console.log(
       `[lens-analysis][usage] mode=${mode} user=${user.id} photos=${stats.photos} tours=${stats.tours}`
