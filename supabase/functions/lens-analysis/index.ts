@@ -416,6 +416,7 @@ ${tableauFamilles()}
    SCORE (0–10, reflects real profitability): negative margin → 0–3; margin 0–20% → 4–5; margin 20–40% → 6–7; margin >40% → 8–10. Adjust ±1 for demand/ease, but NEVER above 4 if real margin is negative.
    Confidence follows step 2bis; on top of that, if no usable market data was found, confiance="basse".
    prix_achat_suggere: your independent market estimate — set to null if prix_achat_reel is not null. notes: price source + one actionable tip.
+   A SUGGESTED BUYING PRICE IS ALWAYS STRICTLY BELOW THE SELLING PRICE. If your buying estimate is not clearly below your selling price, the two are not resting on the same data: set prix_achat_suggere=null and say so in one sentence in notes. DO NOT lower it to make the margin work — a figure adjusted after the fact to be consistent is no longer an estimate, it is a justification. A missing buying advice costs nothing; "buy below €15" under a €8 selling price costs the seller money.
    A GUESSED OBJECT EARNS NO BUYING ADVICE, ANYWHERE. If you set objet_source="deduit" at step 0, then you write NO purchase price, NO margin, NO profit figure, NO verdict and NO buy/skip recommendation — not in the fields meant for them (leave prix_achat_suggere, verdict and score at null), and above all NOT in "notes", "description" or "conseils". The server empties those fields; it cannot know that a sentence repeats them. "Estimated margin 75% if sold at €14 (estimated purchase price €8)" written in a note IS the advice that was just withdrawn, put back on screen in another shape — and it is worse there, because nothing marks it as unsupported. What you may still write: the sale price, the range, the comparable listings, and what would settle the identification. Those are market facts about the object as you named it; the rest is a commitment you are asking someone to make on a guess.`;
     return `You are an expert in secondhand resale (${platforms}).${multiNote}
 Analyze the item and return ONLY valid JSON (no markdown, no explanation):
@@ -460,6 +461,7 @@ ${etape8}`;
    SCORE (0 à 10, reflète la rentabilité réelle) : marge négative → 0-3 ; marge 0-20% → 4-5 ; marge 20-40% → 6-7 ; marge >40% → 8-10. Ajuster ±1 selon demande/facilité, jamais au-dessus de 4 si marge réelle négative.
    La confiance suit l'étape 2bis ; en plus de cela, si aucune donnée de marché exploitable n'a été trouvée, confiance="basse".
    prix_achat_suggere : estimation marché indépendante — mettre à null si prix_achat_reel n'est pas null. notes : source de l'estimation prix + un conseil concret pour vendre plus vite.
+   UN PRIX D'ACHAT CONSEILLÉ EST TOUJOURS STRICTEMENT INFÉRIEUR AU PRIX DE VENTE. Si ton estimation d'achat n'est pas nettement en dessous de ton prix de vente, c'est que les deux ne reposent pas sur les mêmes données : mets prix_achat_suggere=null et dis-le en une phrase dans notes. NE LE RABAISSE PAS pour faire tenir la marge — un chiffre corrigé après coup pour être cohérent n'est plus une estimation, c'est une justification. Un conseil d'achat absent ne coûte rien ; « achète en dessous de 15 € » sous un prix de vente de 8 € coûte l'argent du vendeur.
    UN OBJET DÉDUIT NE DONNE DROIT À AUCUN CONSEIL D'ACHAT, NULLE PART. Si tu as mis objet_source="deduit" à l'étape 0, alors tu n'écris AUCUN prix d'achat, AUCUNE marge, AUCUN bénéfice, AUCUN verdict et AUCUNE recommandation d'acheter ou de passer — ni dans les champs prévus pour ça (laisse prix_achat_suggere, verdict et score à null), ni SURTOUT dans "notes", "description" ou "conseils". Le serveur vide ces champs ; il ne peut pas savoir qu'une phrase les répète. « Marge estimée à 75 % si vendue 14 € (prix d'achat estimé 8 €) » écrit dans une note, c'EST le conseil qu'on vient de retirer, remis à l'écran sous une autre forme — et il y est pire, puisque rien ne signale qu'il ne repose sur rien. Ce que tu peux encore écrire : le prix de vente, la fourchette, les annonces comparables, et ce qui trancherait l'identification. Ce sont des faits de marché sur l'objet tel que tu l'as nommé ; le reste est un engagement que tu demandes à quelqu'un de prendre sur une supposition.`;
   return `Tu es expert en achat-revente occasion (${platforms}).${multiNote}
 Analyse l'article et réponds UNIQUEMENT avec du JSON valide (sans markdown, sans explication) :
@@ -1059,6 +1061,7 @@ export function assainirSortie(
   identificationContredite: boolean;
   objetDeduit: boolean;
   objetSourceRejetee: boolean;
+  margeNegativeRetiree: boolean;
   attributsFonctionnementNeutralises: number;
   attributsMesureEcartes: number;
   fuiteVariable: boolean;
@@ -1240,6 +1243,42 @@ export function assainirSortie(
   }
   const objetDeduit = item.objet_source !== "lu";
 
+  // ── INVARIANT DE MARGE (2026-08-11, bouilloire Grifema 15:39) ────────────
+  // « prix indicatif 8,00 € » ET « ACHÈTE EN DESSOUS DE 15,00 € » sur le même
+  // écran : acheter 15 pour revendre 8, soit −7 €, présenté comme un conseil
+  // et sans le moindre signal. objet_source valait "lu" — l'identification
+  // était bonne, ce sont les DEUX PRIX qui se contredisent.
+  // C'est le « Marge négative : prix_vente_suggere (22€) < prix_achat_suggere
+  // (25€) » du matin, mais SILENCIEUX : ce jour-là, seule la fuite de nom de
+  // variable l'avait rendu visible. Rien ne garantissait l'invariant lui-même.
+  //
+  // ⚠️ ON NE RECALCULE RIEN. Recaler prix_achat_suggere sous le prix de vente
+  // produirait un conseil inventé par le serveur, et ferait disparaître la
+  // seule information vraie de la réponse : ces deux prix ne s'accordent pas,
+  // donc l'estimation n'est pas fiable. On retire le conseil, on garde le prix
+  // de vente et les comparables — l'utilisateur juge sur pièces.
+  //
+  // Le test de PRÉSENCE passe avant toute conversion : `Number(null) === 0`,
+  // et un `0 >= 0` déclencherait l'invariant sur deux champs simplement
+  // absents (mode identify, où ces clés n'existent pas dans le schéma).
+  const venteBrute = item.prix_vente_suggere;
+  const achatBrut = item.prix_achat_suggere;
+  const deuxPrixPresents = venteBrute != null && achatBrut != null
+    && Number.isFinite(Number(venteBrute)) && Number.isFinite(Number(achatBrut));
+  const margeNegativeRetiree = deuxPrixPresents && Number(achatBrut) >= Number(venteBrute);
+  if (margeNegativeRetiree) {
+    console.warn(
+      `[lens-analysis] marge négative ou nulle — conseil retiré :`
+      + ` achat conseillé ${Number(achatBrut)} >= vente conseillée ${Number(venteBrute)}`,
+    );
+    // Les MÊMES trois champs que CHAMPS_AUTORITE_PRIX : le conseil d'achat et
+    // le jugement de deal tombent ensemble, jamais l'un sans l'autre — un
+    // « Bon deal » sans plafond d'achat serait aussi faux, et plus discret.
+    item.prix_achat_suggere = null;
+    item.verdict = null;
+    item.score = null;
+  }
+
   // ── ATTRIBUTS : ce qu'une photo ne peut pas établir ─────────────────────
   // « FONCTIONNE = Oui » et « ACCESSOIRES MANQUANTS = Non » sont des valeurs
   // par défaut déguisées en constats. Le bloc s'appelle « Lu sur l'objet » :
@@ -1308,7 +1347,7 @@ export function assainirSortie(
     mpnRejete, mpnAbsente, etatRejete: etat.rejete, familleInconnue,
     marqueForceeNull, noteContradiction,
     identificationIncertaine, identificationContredite,
-    objetDeduit, objetSourceRejetee,
+    objetDeduit, objetSourceRejetee, margeNegativeRetiree,
     attributsFonctionnementNeutralises, attributsMesureEcartes,
     fuiteVariable, fuiteIdentifiants, snakeInconnu,
   };
@@ -2072,7 +2111,7 @@ serve(async (req) => {
       mpnRejete, mpnAbsente, etatRejete, familleInconnue,
       marqueForceeNull, noteContradiction,
       identificationIncertaine, identificationContredite,
-      objetDeduit, objetSourceRejetee,
+      objetDeduit, objetSourceRejetee, margeNegativeRetiree,
       attributsFonctionnementNeutralises, attributsMesureEcartes,
       fuiteVariable, fuiteIdentifiants, snakeInconnu,
     } = assainirSortie(itemData, { photos: photoUrls.length, lang: _lang });
@@ -2096,6 +2135,7 @@ serve(async (req) => {
     if (attributsFonctionnementNeutralises) logMeta = { ...logMeta, attributs_etat_neutralises: attributsFonctionnementNeutralises };
     if (attributsMesureEcartes) logMeta = { ...logMeta, attributs_mesure_ecartes: attributsMesureEcartes };
     if (objetSourceRejetee) logMeta = { ...logMeta, objet_source_rejetee: true };
+    if (margeNegativeRetiree) logMeta = { ...logMeta, marge_negative_retiree: true };
     if (fuiteVariable) logMeta = { ...logMeta, fuite_variable: true, fuite_identifiants: fuiteIdentifiants };
     if (snakeInconnu) logMeta = { ...logMeta, snake_inconnu: snakeInconnu };
     // Sources de la fourchette : entrées incomplètes écartées, jamais complétées
@@ -2155,13 +2195,30 @@ serve(async (req) => {
     // conseil d'engagement, qui n'a jamais été ce qu'on facture. Le
     // remboursement reste réservé à `identification_contredite`, où le prix
     // lui-même disparaît.
-    if (!estIdentify && !identificationContredite && objetDeduit) {
+    //
+    // DEUX DÉCLENCHEURS, un seul traitement (2026-08-11 après-midi) :
+    //   · `objetDeduit` — on ne sait pas SUR QUOI porte le prix ;
+    //   · `margeNegativeRetiree` — on sait sur quoi il porte, mais les deux
+    //     prix se contredisent (bouilloire Grifema 15:39 : « prix indicatif
+    //     8 € » sous un « ACHÈTE EN DESSOUS DE 15 € »). Les champs sont déjà
+    //     nullés par l'invariant d'assainirSortie ; ce qui reste à faire ici,
+    //     c'est le texte libre, exactement pour la même raison.
+    // Deux causes distinctes, journalisées séparément, mais la conclusion est
+    // la même : pas de conseil d'engagement, et il ne doit pas non plus
+    // survivre dans une phrase.
+    const retraitConseil = !estIdentify && !identificationContredite
+      && (objetDeduit || margeNegativeRetiree);
+    if (retraitConseil) {
       console.warn(
-        `[lens-analysis] objet déduit ("${String(itemData.objet ?? "?").slice(0, 40)}")`
-        + ` — conseil d'achat et verdict retirés, prix et comparables conservés`,
+        `[lens-analysis] conseil retiré (${objetDeduit ? "objet déduit" : ""}`
+        + `${objetDeduit && margeNegativeRetiree ? " + " : ""}`
+        + `${margeNegativeRetiree ? "marge négative" : ""})`
+        + ` sur "${String(itemData.objet ?? "?").slice(0, 40)}"`
+        + ` — prix et comparables conservés`,
       );
+      // Idempotent : l'invariant de marge a déjà pu nuller ces trois-là.
       for (const champ of CHAMPS_AUTORITE_PRIX) itemData[champ] = null;
-      logMeta = { ...logMeta, autorite_prix_retiree: true };
+      if (objetDeduit) logMeta = { ...logMeta, autorite_prix_retiree: true };
 
       // ── … ET DANS LE TEXTE LIBRE (2026-08-11, bouilloire de 15:32) ───────
       // Le champ vidé ne suffit pas si la phrase le répète : la note disait
@@ -2188,7 +2245,7 @@ serve(async (req) => {
         itemData.conseils = gardes.length ? gardes : null;
       }
       if (phrasesRetirees) {
-        console.warn(`[lens-analysis] objet déduit — ${phrasesRetirees} phrase(s) de prix/marge/verdict retirée(s) du texte client`);
+        console.warn(`[lens-analysis] ${phrasesRetirees} phrase(s) de prix/marge/verdict retirée(s) du texte client`);
         logMeta = { ...logMeta, phrases_prix_retirees: phrasesRetirees };
       }
     }
@@ -2227,6 +2284,7 @@ serve(async (req) => {
         ...(attributsFonctionnementNeutralises ? { attributs_etat_neutralises: attributsFonctionnementNeutralises } : {}),
         ...(attributsMesureEcartes ? { attributs_mesure_ecartes: attributsMesureEcartes } : {}),
         ...(objetSourceRejetee ? { objet_source_rejetee: true } : {}),
+        ...(margeNegativeRetiree ? { marge_negative_retiree: true } : {}),
         ...(fuiteVariable ? { fuite_variable: true, fuite_identifiants: fuiteIdentifiants } : {}),
         ...(snakeInconnu ? { snake_inconnu: snakeInconnu } : {}),
       });

@@ -451,6 +451,66 @@ titre("8bis. objet / objet_source — l'erreur cohérente");
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// 8quater. INVARIANT DE MARGE (bouilloire Grifema, 11/08 15:39)
+// ══════════════════════════════════════════════════════════════════════════
+// « prix indicatif 8,00 € » ET « ACHÈTE EN DESSOUS DE 15,00 € » sur le même
+// écran. objet_source valait "lu" — l'identification était bonne, ce sont les
+// DEUX PRIX qui se contredisent, et aucun garde-fou ne regardait ça.
+titre("8quater. Invariant de marge — achat conseillé >= prix de vente");
+{
+  const grifema = (achat: number | null, vente: number | null) => ({
+    objet: "bouilloire électrique",
+    objet_source: "lu",
+    titre: "Bouilloire électrique Grifema 1,7 L inox",
+    famille: "electromenager",
+    marque: "Grifema",
+    description: "Bouilloire électrique Grifema, cuve inox, capacité 1,7 L.",
+    confiance: "haute",
+    notes: "Marque lue sur le socle.",
+    attributs_visibles: { capacite: "1,7 L" },
+    prix_vente_suggere: vente,
+    prix_achat_suggere: achat,
+    verdict: "bon",
+    score: 7,
+  }) as Record<string, unknown>;
+
+  // LE cas : acheter 15 pour revendre 8 = −7 €, présenté comme un conseil.
+  const cas = grifema(15, 8);
+  const r = assainirSortie(cas, FR3);
+  verifier("marge négative détectée", r.margeNegativeRetiree, true);
+  verifier("le conseil d'achat est retiré", cas.prix_achat_suggere, null);
+  verifier("le verdict tombe avec lui", cas.verdict, null);
+  verifier("le score aussi", cas.score, null);
+  verifier("⚠️ le prix de vente est CONSERVÉ, jamais recalculé", cas.prix_vente_suggere, 8);
+  verifier("l'identification n'est pas mise en cause", cas.objet_source, "lu");
+  verifier("… ni signalée contredite", r.identificationContredite, false);
+
+  // Égalité : marge nulle, aucun conseil à donner non plus.
+  const egal = grifema(12, 12);
+  verifier("achat == vente → retiré aussi", assainirSortie(egal, FR3).margeNegativeRetiree, true);
+
+  // Le cas NORMAL ne bouge pas d'un pouce.
+  const sain = grifema(8, 15);
+  const rs = assainirSortie(sain, FR3);
+  verifier("marge positive : rien retiré", rs.margeNegativeRetiree, false);
+  verifier("marge positive : conseil conservé", sain.prix_achat_suggere, 8);
+  verifier("marge positive : verdict conservé", sain.verdict, "bon");
+
+  // ⚠️ PRÉSENCE AVANT CONVERSION : `Number(null) === 0`, donc un test bâclé
+  // ferait 0 >= 0 = true et déclencherait l'invariant sur deux champs
+  // simplement ABSENTS — c'est-à-dire sur TOUT le mode identify.
+  const identify = grifema(null, null);
+  const ri = assainirSortie(identify, FR3);
+  verifier("deux prix absents → invariant NON déclenché", ri.margeNegativeRetiree, false);
+  verifier("… et le verdict n'est pas effacé au passage", identify.verdict, "bon");
+
+  const venteSeule = grifema(null, 15);
+  verifier("achat absent seul → non déclenché", assainirSortie(venteSeule, FR3).margeNegativeRetiree, false);
+  const achatSeul = grifema(8, null);
+  verifier("vente absente seule → non déclenché", assainirSortie(achatSeul, FR3).margeNegativeRetiree, false);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // 8ter. LE CONSEIL D'ACHAT NE SURVIT PAS DANS LE TEXTE (bouilloire, 15:32)
 // ══════════════════════════════════════════════════════════════════════════
 // Premier scan réel en objet_source="deduit" : les trois champs d'autorité
@@ -588,6 +648,24 @@ titre("9. Contenu du prompt");
   verifier(
     "fr/identify : l'interdiction générale de prix suffit",
     buildSystemPrompt("fr", "Vinted", null, 3, "identify").includes("AUCUN PRIX, AUCUN VERDICT"),
+    true,
+  );
+
+  // Invariant de marge : dit AU MODÈLE aussi, avec l'interdiction de rabaisser
+  // le chiffre pour faire tenir la marge (sinon on déplace l'invention).
+  verifier(
+    "fr/full : le prix d'achat conseillé doit être sous le prix de vente",
+    buildSystemPrompt("fr", "Vinted", null, 3, "full").includes("UN PRIX D'ACHAT CONSEILLÉ EST TOUJOURS STRICTEMENT INFÉRIEUR AU PRIX DE VENTE"),
+    true,
+  );
+  verifier(
+    "fr/full : … et il est interdit de le rabaisser",
+    buildSystemPrompt("fr", "Vinted", null, 3, "full").includes("NE LE RABAISSE PAS pour faire tenir la marge"),
+    true,
+  );
+  verifier(
+    "en/full : idem",
+    buildSystemPrompt("en", "Vinted", null, 3, "full").includes("A SUGGESTED BUYING PRICE IS ALWAYS STRICTLY BELOW THE SELLING PRICE"),
     true,
   );
   // La consigne « une seule photo » n'apparaît QUE quand il n'y en a qu'une.
