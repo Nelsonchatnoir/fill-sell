@@ -632,6 +632,10 @@ résultat sûr, quelle que soit la jauge posée dessous.
 
 ## 11. Non-régression
 
+Déployé : **`lens-analysis` v73** (numéro lu dans `npx supabase functions list`,
+`verify_jwt: true` inchangé — cette fonction n'est pas dans la liste
+`--no-verify-jwt`). Commit `b1a1258`.
+
 `deno run --allow-net --allow-env scripts/lens-coherence-selftest.ts` — **92
 assertions, 92 vertes.**
 
