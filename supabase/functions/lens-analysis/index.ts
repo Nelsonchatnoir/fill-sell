@@ -110,7 +110,7 @@ type Famille = typeof FAMILLES[number];
 //     correct : l'app n'a pas de type « Chaussures ».
 // « Multimédia » reste hors d'atteinte du Lens : il chevauche High-Tech et
 // Livres sans frontière nette. Il demeure accessible à la main.
-const FAMILLE_VERS_CATEGORIE: Record<Famille, string> = {
+export const FAMILLE_VERS_CATEGORIE: Record<Famille, string> = {
   mode:           "Mode",
   chaussures:     "Mode",
   bricolage:      "Bricolage",
@@ -142,7 +142,11 @@ const FAMILLE_VERS_CATEGORIE: Record<Famille, string> = {
 const ATTRIBUTS_PAR_FAMILLE: Record<Famille, string> = {
   mode:           "taille, coupe, composition, saison",
   chaussures:     "pointure, semelle, boite_origine",
-  bricolage:      "filaire_ou_sans_fil, tension_batterie, nb_batteries, chargeur_inclus, coffret, fonctionne, accessoires_manquants",
+  // Outillage À MAIN d'abord (pince, tournevis, clé, scie, marteau) : c'est le
+  // cas le plus courant en brocante et vide-grenier, et la liste ne portait que
+  // des clés d'électroportatif — tension de batterie, chargeur, coffret. Un
+  // modèle à qui on ne suggère que des clés de perceuse cherche une perceuse.
+  bricolage:      "type_outil, longueur, materiau, filaire_ou_sans_fil, tension_batterie, nb_batteries, chargeur_inclus, coffret, fonctionne, accessoires_manquants",
   electromenager: "puissance, capacite, accessoires_inclus, fonctionne",
   high_tech:      "capacite, taille_ecran, generation_annee, cables_inclus, boite, etat_ecran, verrouillage_compte",
   mobilier:       "hauteur, largeur, longueur, materiau, demontable, notice_visserie",
@@ -164,7 +168,7 @@ function tableauFamilles(): string {
   return FAMILLES.map((f) => `  ${f} : ${ATTRIBUTS_PAR_FAMILLE[f]}`).join("\n");
 }
 
-function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number, mode: LensMode = "full"): string {
+export function buildSystemPrompt(lang: string, platforms: string, countryName: string | null, photoCount: number, mode: LensMode = "full"): string {
   const estIdentify = mode === "identify";
   // Multi-photos (2026-07-17) : neutralise le biais d'ORDRE (les modèles vision
   // sur-pondèrent souvent la 1re image) et force une lecture SYSTÉMATIQUE de
@@ -210,8 +214,10 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
   // (aucune photo ne lui est envoyée) : une description anglaise ressort en
   // titre d'annonce anglais sur un article français.
   const langueDirective = lang === "en"
-    ? `OUTPUT LANGUAGE: every free-text string you produce — titre, description, matiere, notes, vitesse_vente_explication, conseils, and the VALUES inside attributs_visibles — MUST be written IN ENGLISH, whatever the language printed on the item, on its labels, or used in the user note. Enumerated values (famille, etat_estime, vitesse_vente, confiance, verdict, modele_source) and the KEYS of attributs_visibles are identifiers: they keep the exact spelling of the schema and stay in French even here, exactly like etat_estime. The one exception is text you TRANSCRIBE from the item itself — an inscription, a model name, a reference code — which is copied as it appears, never translated.`
-    : `LANGUE DE SORTIE : toutes les chaînes en texte libre que tu produis — titre, description, matiere, notes, vitesse_vente_explication, conseils, ainsi que les VALEURS de attributs_visibles — DOIVENT être rédigées EN FRANÇAIS, quelle que soit la langue imprimée sur l'article, sur ses étiquettes, ou employée dans la note de l'utilisateur. Les valeurs énumérées (famille, etat_estime, vitesse_vente, confiance, verdict, modele_source) et les CLÉS de attributs_visibles sont des identifiants : elles gardent l'orthographe exacte du schéma. Seule exception : un texte que tu TRANSCRIS depuis l'objet — une inscription, un nom de modèle, un code de référence — se recopie tel qu'il apparaît, jamais traduit.`;
+    ? `OUTPUT LANGUAGE: every free-text string you produce — titre, description, matiere, notes, vitesse_vente_explication, conseils, and the VALUES inside attributs_visibles — MUST be written IN ENGLISH, whatever the language printed on the item, on its labels, or used in the user note. Enumerated values (famille, etat_estime, vitesse_vente, confiance, verdict, modele_source) and the KEYS of attributs_visibles are identifiers: they keep the exact spelling of the schema and stay in French even here, exactly like etat_estime. The one exception is text you TRANSCRIBE from the item itself — an inscription, a model name, a reference code — which is copied as it appears, never translated.
+NEVER NAME AN INTERNAL FIELD IN A TEXT THE SELLER READS. titre, description, notes, conseils and vitesse_vente_explication are read by a person, not by a program: they must never contain a schema field name (prix_vente_suggere, prix_achat_suggere, fourchette_min, etat_estime, attributs_visibles, reference_fabricant…) nor any snake_case identifier. Write it in plain words — "the suggested price is below what you paid", not "prix_vente_suggere < prix_achat_reel". The server rewrites what it recognises, but a sentence built around a variable name stays a clumsy sentence.`
+    : `LANGUE DE SORTIE : toutes les chaînes en texte libre que tu produis — titre, description, matiere, notes, vitesse_vente_explication, conseils, ainsi que les VALEURS de attributs_visibles — DOIVENT être rédigées EN FRANÇAIS, quelle que soit la langue imprimée sur l'article, sur ses étiquettes, ou employée dans la note de l'utilisateur. Les valeurs énumérées (famille, etat_estime, vitesse_vente, confiance, verdict, modele_source) et les CLÉS de attributs_visibles sont des identifiants : elles gardent l'orthographe exacte du schéma. Seule exception : un texte que tu TRANSCRIS depuis l'objet — une inscription, un nom de modèle, un code de référence — se recopie tel qu'il apparaît, jamais traduit.
+NE JAMAIS NOMMER UN CHAMP INTERNE DANS UN TEXTE LU PAR LE VENDEUR. titre, description, notes, conseils et vitesse_vente_explication sont lus par une personne, pas par un programme : ils ne doivent JAMAIS contenir un nom de champ du schéma (prix_vente_suggere, prix_achat_suggere, fourchette_min, etat_estime, attributs_visibles, reference_fabricant…) ni aucun identifiant en snake_case. Écris-le en français courant — « le prix conseillé est inférieur à ce que tu as payé », pas « prix_vente_suggere < prix_achat_reel ». Le serveur réécrit ce qu'il reconnaît, mais une phrase construite autour d'un nom de variable reste une phrase bancale.`;
 
   // ── Provenance du modèle (2026-07-28) ───────────────────────────────────
   // Le champ `modele` mélangeait jusqu'ici trois choses indiscernables : une
@@ -261,12 +267,14 @@ function buildSystemPrompt(lang: string, platforms: string, countryName: string 
     ? `0. FAMILY FIRST — it determines everything else. Pick exactly ONE "famille" from the schema, then fill "attributs_visibles" with the attributes that actually set the price for THAT family:
 ${tableauFamilles()}
    reference_fabricant (the manufacturer code/reference printed on the item) applies to EVERY family — read it whenever it is legible.
+   "bricolage" covers HAND TOOLS (pliers, screwdrivers, spanners, hammers, saws, chisels, spirit levels, tape measures) exactly as much as power tools. On a hand tool the electrical keys simply do not apply: omit filaire_ou_sans_fil, tension_batterie, nb_batteries and chargeur_inclus, and describe it with type_outil, longueur, materiau. A hand tool is NOT "autre" and NOT a garden tool — pliers do not become a digging fork because a fork is easier to price.
    A key you cannot READ does not exist: omit it. NEVER write "non renseigné", "inconnu", "N/A", "unknown", "?" or an empty string as a value — an absent key and a null are the only ways to say "I don't know". Values are short and factual ("18 V", "128 Go", "80 cm", "oui", "non", "non testé"), never a sentence. Nothing legible → attributs_visibles=null.
    A resale item you cannot place → famille="autre", and put in attributs_visibles the dimensions plus whatever measurable, legible characteristic distinguishes this object from a neighbouring one. "autre" is a correct answer, not a failure — a wrong family is worse, because it sends the item to the wrong category and the wrong buyers.
    "taille_estimee" concerns ONLY what is WORN (mode, chaussures, sport, puericulture). For every other family it is null — a drill has no size; its measurements go into attributs_visibles as hauteur/largeur/longueur.`
     : `0. LA FAMILLE D'ABORD — elle commande tout le reste. Choisis exactement UNE "famille" du schéma, puis renseigne "attributs_visibles" avec les attributs qui font réellement le prix DANS CETTE famille :
 ${tableauFamilles()}
    reference_fabricant (le code / la référence du fabricant imprimé sur l'objet) vaut pour TOUTES les familles — lis-la dès qu'elle est déchiffrable.
+   « bricolage » couvre l'OUTILLAGE À MAIN (pinces, tournevis, clés, marteaux, scies, ciseaux à bois, niveaux, mètres) tout autant que l'électroportatif. Sur un outil à main, les clés électriques ne s'appliquent tout simplement pas : omets filaire_ou_sans_fil, tension_batterie, nb_batteries et chargeur_inclus, et décris-le avec type_outil, longueur, materiau. Un outil à main n'est PAS « autre » et n'est PAS un outil de jardin — une pince ne devient pas une fourche à bêcher parce qu'une fourche est plus facile à estimer.
    Une clé que tu ne peux pas LIRE n'existe pas : omets-la. N'écris JAMAIS « non renseigné », « inconnu », « N/A », « ? » ni une chaîne vide comme valeur — une clé absente ou null sont les deux seules façons de dire « je ne sais pas ». Les valeurs sont courtes et factuelles (« 18 V », « 128 Go », « 80 cm », « oui », « non », « non testé »), jamais une phrase. Rien de lisible → attributs_visibles=null.
    Un objet revendable que tu n'arrives pas à placer → famille="autre", et mets dans attributs_visibles les dimensions ainsi que toute caractéristique mesurable et lisible qui le distingue d'un objet voisin. « autre » est une réponse correcte, pas un échec — une famille fausse est pire, elle range l'article dans la mauvaise catégorie et devant les mauvais acheteurs.
    "taille_estimee" ne concerne QUE ce qui se PORTE (mode, chaussures, sport, puericulture). Pour toutes les autres familles elle vaut null — une perceuse n'a pas de taille ; ses mesures vont dans attributs_visibles en hauteur/largeur/longueur.`;
@@ -290,7 +298,8 @@ ${tableauFamilles()}
      · the name of a product SOLD INSIDE the container — "Grey-Poupon" on an old mustard pot names the mustard, not the potter;
      · a deduction from style, era, shape or country of origin. "Looks like X" is not "is X".
    If a text is legible on the item but you are not certain it is the brand, it goes into "notes" — 'text legible on the item: "…"' — and marque stays null. That sentence is useful to the seller; a wrong brand is not.
-   CONSISTENCY, MANDATORY: "marque" must be the brand your own "description" names. If the description mentions a visible brand, marque cannot contain a different one — and cannot be null either. Re-read your description before closing the JSON.`
+   CONSISTENCY, MANDATORY: "marque" must be the brand your own "description" names. If the description mentions a visible brand, marque cannot contain a different one — and cannot be null either. Re-read your description before closing the JSON.
+   NEVER ASSERT AND DENY IN THE SAME REPLY. If anywhere in "notes" or "description" you write that no brand is visible / legible / identifiable, then marque MUST be null and the brand MUST NOT appear in "titre" either. And never justify your confidence by "brand read" in a reply that says the brand is not visible — the server detects this contradiction, forces marque to null and drops the justification, so writing it only produces a poorer result. Pick ONE reading and hold it across every field.`
     : `2. MARQUE — LUE, JAMAIS DEVINÉE. marque vaut null tant qu'aucune marque de FABRICANT n'est lisible sur l'objet, son étiquette, son poinçon ou son emballage. Renvoyer null est un résultat CORRECT et attendu, jamais un échec : un objet sans marque est le cas NORMAL pour du mobilier, de l'outillage, de la vaisselle, de la brocante et la plupart des objets anciens.
    NE JAMAIS mettre dans "marque" :
      · un distributeur ou une marketplace — Amazon, Cdiscount, Temu, Shein, Wish, Action, Gifi, Lidl (hors ses marques propres), une enseigne de supermarché : ils vendent l'objet, ils ne le fabriquent pas ;
@@ -299,16 +308,31 @@ ${tableauFamilles()}
      · le nom d'un produit VENDU DANS le contenant — « Grey-Poupon » sur un ancien pot à moutarde nomme la moutarde, pas le potier ;
      · une déduction à partir du style, de l'époque, de la forme ou du pays d'origine. « Ça ressemble à du X » n'est pas « c'est du X ».
    Si un texte est lisible sur l'objet sans que tu sois certain qu'il s'agisse de la marque, il va dans "notes" — « texte lisible sur l'objet : "…" » — et marque reste null. Cette phrase-là sert au vendeur ; une marque fausse, non.
-   COHÉRENCE, OBLIGATOIRE : "marque" doit être celle que ta propre "description" cite. Si la description mentionne une marque visible, marque ne peut pas en contenir une autre — ni rester null. Relis ta description avant de fermer le JSON.`;
+   COHÉRENCE, OBLIGATOIRE : "marque" doit être celle que ta propre "description" cite. Si la description mentionne une marque visible, marque ne peut pas en contenir une autre — ni rester null. Relis ta description avant de fermer le JSON.
+   JAMAIS AFFIRMER ET NIER DANS LA MÊME RÉPONSE. Si tu écris quelque part dans "notes" ou "description" qu'aucune marque n'est visible / lisible / identifiable, alors marque DOIT valoir null, et la marque ne doit PAS non plus apparaître dans "titre". Et ne justifie jamais ta confiance par « marque lue » dans une réponse qui dit que la marque n'est pas visible — le serveur détecte cette contradiction, force marque à null et retire la justification : l'écrire ne produit qu'un résultat plus pauvre. Choisis UNE lecture et tiens-la dans tous les champs.`;
 
   // ── Confiance (2026-08-11) ──────────────────────────────────────────────
   // Le modèle sait déjà bien dire ce qui lui manque sur du textile (« une photo
   // de l'étiquette trancherait »). On étend ce réflexe à tout, et on interdit la
   // confiance haute quand la marque est nulle : sinon « meuble sans marque » et
   // « iPhone 13 128 Go lu au dos » sortent avec le même niveau de certitude.
+  // ── Honnêteté des attributs (2026-08-11, incident 10:18) ────────────────
+  // « FONCTIONNE=Oui · ACCESSOIRES MANQUANTS=Non · NB DENTS=4 » sur UNE photo
+  // d'une pince : trois valeurs qui ne sont lues nulle part. Les deux premières
+  // sont des défauts déguisés en constats, la troisième découle de l'objet
+  // inventé. Le serveur les neutralise, mais la règle doit aussi être dite —
+  // un modèle qui ne les produit pas coûte moins cher et répond mieux.
+  const attributsHonnetesRule = lang === "en"
+    ? ` WHAT A PHOTO CANNOT ESTABLISH. Two kinds of value are never assertions:
+   · STATE AND COMPLETENESS (fonctionne, teste, complet, accessoires_manquants, pieces_manquantes). A still photo never shows a tool running or a set being complete. fonctionne takes "non testé" and nothing else unless a photo actually shows the item powered on and working; complet and accessoires_manquants are simply OMITTED unless the packaging itself lists the contents and you can check every item against it. "oui"/"non" on these keys is a default dressed up as an observation — the server replaces or removes it.
+   · COUNTS AND MEASUREMENTS (nb_… , puissance, capacite, tension_batterie, hauteur, largeur, longueur, poids, annee). They are returned ONLY when physically read — printed on the item, on its rating plate, on its label, on its box — or counted on elements actually VISIBLE in the photo. A number deduced from what the object is SUPPOSED to be is an invention: omit the key.`
+    : ` CE QU'UNE PHOTO NE PEUT PAS ÉTABLIR. Deux familles de valeurs ne sont jamais des affirmations :
+   · ÉTAT ET COMPLÉTUDE (fonctionne, teste, complet, accessoires_manquants, pieces_manquantes). Une photo fixe ne montre jamais un outil en marche ni un ensemble complet. fonctionne prend « non testé » et rien d'autre, sauf si une photo montre réellement l'appareil allumé et en fonctionnement ; complet et accessoires_manquants sont simplement OMIS, sauf si l'emballage énumère lui-même le contenu et que tu peux pointer chaque élément. Un « oui »/« non » sur ces clés est une valeur par défaut déguisée en constat — le serveur la remplace ou la retire.
+   · COMPTAGES ET MESURES (nb_…, puissance, capacite, tension_batterie, hauteur, largeur, longueur, poids, annee). Ils ne se renvoient QUE s'ils sont physiquement lus — imprimés sur l'objet, sur sa plaque signalétique, sur son étiquette, sur sa boîte — ou comptés sur des éléments réellement VISIBLES en photo. Un nombre déduit de ce que l'objet est SUPPOSÉ être est une invention : omets la clé.`;
+
   const confianceRule = lang === "en"
-    ? `2bis. CONFIDENCE, AND WHAT WOULD SETTLE IT. "haute" ONLY if a brand OR a manufacturer reference is read directly on the item AND the family is certain. If marque is null, confiance cannot exceed "moyenne", whatever else you managed to read. If the family itself is uncertain, confiance="basse". Whenever confiance is not "haute", "notes" must name the ONE extra photo that would settle it, as concretely as possible: the rating plate, the sewn label, the underside of the object, the back of the case, the serial number, the box. Not "a clearer photo" — WHICH photo, and of WHAT.`
-    : `2bis. CONFIANCE, ET CE QUI LA TRANCHERAIT. « haute » UNIQUEMENT si une marque OU une référence fabricant est lue directement sur l'objet ET que la famille est certaine. Si marque est null, confiance ne peut pas dépasser « moyenne », quoi que tu aies réussi à lire par ailleurs. Si la famille elle-même est incertaine, confiance="basse". Dès que confiance n'est pas « haute », "notes" doit nommer LA photo supplémentaire qui trancherait, le plus concrètement possible : la plaque signalétique, l'étiquette cousue, le dessous de l'objet, le dos du boîtier, le numéro de série, la boîte. Pas « une photo plus nette » — QUELLE photo, et de QUOI.`;
+    ? `2bis. CONFIDENCE, AND WHAT WOULD SETTLE IT. "haute" ONLY if a brand OR a manufacturer reference is read directly on the item AND the family is certain. If marque is null, confiance cannot exceed "moyenne", whatever else you managed to read. If the family itself is uncertain, confiance="basse". ${photoCount <= 1 ? `You were given ONE photo and one only: if you read neither a brand nor a manufacturer reference on it, there is nothing left to found an identification on — confiance="basse", and say in "notes" which second photo would settle it. ` : ""} Whenever confiance is not "haute", "notes" must name the ONE extra photo that would settle it, as concretely as possible: the rating plate, the sewn label, the underside of the object, the back of the case, the serial number, the box. Not "a clearer photo" — WHICH photo, and of WHAT.`
+    : `2bis. CONFIANCE, ET CE QUI LA TRANCHERAIT. « haute » UNIQUEMENT si une marque OU une référence fabricant est lue directement sur l'objet ET que la famille est certaine. Si marque est null, confiance ne peut pas dépasser « moyenne », quoi que tu aies réussi à lire par ailleurs. Si la famille elle-même est incertaine, confiance="basse". ${photoCount <= 1 ? `Tu n'as reçu QU'UNE SEULE photo : si tu n'y lis ni marque ni référence fabricant, il ne reste rien sur quoi fonder une identification — confiance="basse", et dis dans "notes" quelle deuxième photo trancherait. ` : ""} Dès que confiance n'est pas « haute », "notes" doit nommer LA photo supplémentaire qui trancherait, le plus concrètement possible : la plaque signalétique, l'étiquette cousue, le dessous de l'objet, le dos du boîtier, le numéro de série, la boîte. Pas « une photo plus nette » — QUELLE photo, et de QUOI.`;
 
   // ── Lecture du texte porté par l'objet (2026-08-11) ─────────────────────
   // Relevé : « ÉTIGER LA CAPSULE » sur un pot à moutarde, pour « EXIGER LA
@@ -372,7 +396,7 @@ ${countryName ? `Region: ${countryName}.` : ""} Platforms from: ${platforms}
 MANDATORY PROCESS — follow in order:
 ${familleRule}
 1. IDENTIFICATION: Identify marque, modele, matiere, etat_estime from visual cues and labels. Fill "etat_estime" with EXACTLY one of the five schema values, never free text. "Neuf avec étiquette" as soon as an ORIGINAL HANGING TAG is visible on a photo (cardboard swing tag, price tag still attached to the garment). "Neuf sans étiquette" when the user note states the item is new and never worn, with no hanging tag visible. ⚠️ A SEWN-IN label (brand, size, composition) is NOT an original tag: it stays in place on a worn item and proves nothing. FOR EVERYTHING ELSE, "Très bon état" is your DEFAULT answer and must be the outcome in the vast majority of cases — it is what resellers actually use. These all stay "Très bon état": pilling, folds, storage creases, slight fading, a dim photo, a lightly scuffed sole. Only go down to "Bon état" when a defect is SHARP and VISIBLE on the photo: a clear stain, marked wear, a missing button. "Satisfaisant" is reserved for a DAMAGED item: hole, tear, rip, broken part. When hesitating between two levels, ALWAYS pick the higher one. etat_estime=null only if the photos do not show the item itself. For taille_estimee (size), prioritize the "User note:" field first: if the user writes a size in free text (e.g. "size M", "taille 42", "pointure 42", "US 9", "UK 8"), use that. Infer from context whether the item is a garment (letter sizes XS-XXL or EU numeric 34-52) or a shoe (EU/US/UK shoe size). For garments, keep the exact system the user wrote in (e.g. "M", "42") — never convert speculatively. For shoes, always format the value as "EU {n}" (e.g. "EU 42", "EU 38.5") regardless of language, even if the user wrote a bare number or a US/UK size you can reliably convert to EU — this avoids confusion with garment numeric sizes. Only if no size appears in the user note, try to read it visually from a tag/label in the photos. If still nothing found, set taille_estimee=null — never invent a value. Since the app is in English, append the US shoe-size equivalent in parentheses only when a reliable EU→US conversion exists (e.g. "EU 42 (US 9)") — omit it if you're not confident in the conversion.${couleurRule}${typeRule}${lectureTexteRule}
-1bis. VISIBLE ATTRIBUTES: fill attributs_visibles ONLY with values READ on the item, its label or its packaging — NEVER estimated, deduced or speculatively converted. Which keys to look for is decided by the family you picked at step 0. Required confidence: include a key ONLY if the reading is CLEAR — blurry photo, partial text or deduction = key ABSENT. Nothing legible → attributs_visibles=null. Format conventions that matter downstream: volume "50 ml" (with a space), capacite "128 Go", taille_ecran "6,7 pouces", hauteur/largeur/longueur ONLY if numeric measurements are printed on the item or visible on a measuring tape in a photo, with the unit ("80 cm"). Yes/no attributes (fonctionne, complet, boite, chargeur_inclus, demontable…) take exactly "oui", "non" or "non testé" — and "non testé" is the honest answer for anything electrical you cannot see running in a photo. reference_fabricant is a CODE (letters/digits, e.g. "GA-2100A-1AER"), never a sentence: if you cannot read a code, omit the key — a description of what you see ("quality control hallmarks visible on the back…") is a violation of this rule and is rejected by the server.
+1bis. VISIBLE ATTRIBUTES: fill attributs_visibles ONLY with values READ on the item, its label or its packaging — NEVER estimated, deduced or speculatively converted. Which keys to look for is decided by the family you picked at step 0. Required confidence: include a key ONLY if the reading is CLEAR — blurry photo, partial text or deduction = key ABSENT. Nothing legible → attributs_visibles=null. Format conventions that matter downstream: volume "50 ml" (with a space), capacite "128 Go", taille_ecran "6,7 pouces", hauteur/largeur/longueur ONLY if numeric measurements are printed on the item or visible on a measuring tape in a photo, with the unit ("80 cm"). Yes/no attributes (fonctionne, complet, boite, chargeur_inclus, demontable…) take exactly "oui", "non" or "non testé" — and "non testé" is the honest answer for anything electrical you cannot see running in a photo. reference_fabricant is a CODE (letters/digits, e.g. "GA-2100A-1AER"), never a sentence: if you cannot read a code, omit the key — a description of what you see ("quality control hallmarks visible on the back…") is a violation of this rule and is rejected by the server.${attributsHonnetesRule}
 ${modeleRule}
 ${etape2}
 ${confianceRule}
@@ -414,7 +438,7 @@ ${countryName ? `Région : ${countryName}.` : ""} Plateformes parmi : ${platform
 PROCESSUS OBLIGATOIRE — suivre dans l'ordre :
 ${familleRule}
 1. IDENTIFICATION : Identifie marque, modele, matiere, etat_estime à partir des indices visuels et étiquettes. Renseigne "etat_estime" avec EXACTEMENT une des cinq valeurs du schéma, jamais du texte libre. « Neuf avec étiquette » dès qu'une ÉTIQUETTE D'ORIGINE PENDANTE est visible sur une photo (étiquette cartonnée, étiquette de prix encore attachée au vêtement). « Neuf sans étiquette » si la note utilisateur affirme que l'article est neuf et jamais porté, sans étiquette pendante visible. ⚠️ Une étiquette COUSUE (marque, taille, composition) n'est PAS une étiquette d'origine : elle reste en place sur un article porté et ne prouve rien. POUR TOUT LE RESTE, « Très bon état » est ta réponse PAR DÉFAUT, et elle doit sortir dans la très grande majorité des cas — c'est la valeur que mettent les revendeurs. Restent en « Très bon état » : bouloches, plis, faux plis de rangement, légère décoloration, photo sombre, semelle un peu marquée. Ne descends à « Bon état » QUE si un défaut est NET et VISIBLE sur la photo : tache franche, usure marquée, bouton manquant. « Satisfaisant » est réservé à un article ABÎMÉ : trou, accroc, déchirure, pièce cassée. En cas d'hésitation entre deux niveaux, choisis TOUJOURS le plus haut. etat_estime=null uniquement si les photos ne montrent pas l'article lui-même. Pour taille_estimee, priorise d'abord le champ "Note de l'utilisateur :" : si l'utilisateur écrit une taille en texte libre (ex : "taille M", "taille 42", "pointure 42", "US 9", "UK 8"), utilise-la. Déduis du contexte s'il s'agit d'un vêtement (tailles lettres XS-XXL ou numériques FR/EU 34-52) ou d'une chaussure (pointure EU/US/UK). Pour un vêtement, garde le système exact utilisé par l'utilisateur (ex : "M", "42") — ne convertis jamais de façon spéculative. Pour une chaussure, formate toujours la valeur en "EU {n}" (ex : "EU 42", "EU 38.5"), même si l'utilisateur a écrit un nombre seul ou une pointure US/UK que tu peux convertir de façon fiable en EU — ça évite la confusion avec les tailles vêtement numériques. Seulement si aucune taille n'apparaît dans la note utilisateur, essaie de la lire visuellement sur une étiquette en photo. Si toujours rien trouvé, mets taille_estimee=null — n'invente jamais de valeur.${couleurRule}${typeRule}${lectureTexteRule}
-1bis. ATTRIBUTS VISIBLES : renseigne attributs_visibles UNIQUEMENT avec des valeurs LUES sur l'article, son étiquette ou son packaging — JAMAIS estimées, déduites ni converties spéculativement. Quelles clés chercher est décidé par la famille choisie à l'étape 0. Niveau de confiance exigé : n'inclus une clé QUE si la lecture est NETTE — photo floue, texte partiel ou déduction = clé ABSENTE. Aucune clé lisible → attributs_visibles=null. Conventions de format qui comptent en aval : volume « 50 ml » (avec espace), capacite « 128 Go », taille_ecran « 6,7 pouces », hauteur/largeur/longueur UNIQUEMENT si des mesures chiffrées sont imprimées sur l'objet ou visibles sur un mètre en photo, avec l'unité (« 80 cm »). Les attributs oui/non (fonctionne, complet, boite, chargeur_inclus, demontable…) prennent exactement « oui », « non » ou « non testé » — et « non testé » est la réponse honnête pour tout ce qui est électrique et qu'aucune photo ne montre en marche. reference_fabricant est un CODE (lettres/chiffres, ex : « GA-2100A-1AER »), jamais une phrase : si tu ne lis pas de code, omets la clé — décrire ce que tu vois (« Poinçons de contrôle qualité visibles au dos… ») viole cette règle et est rejeté par le serveur.
+1bis. ATTRIBUTS VISIBLES : renseigne attributs_visibles UNIQUEMENT avec des valeurs LUES sur l'article, son étiquette ou son packaging — JAMAIS estimées, déduites ni converties spéculativement. Quelles clés chercher est décidé par la famille choisie à l'étape 0. Niveau de confiance exigé : n'inclus une clé QUE si la lecture est NETTE — photo floue, texte partiel ou déduction = clé ABSENTE. Aucune clé lisible → attributs_visibles=null. Conventions de format qui comptent en aval : volume « 50 ml » (avec espace), capacite « 128 Go », taille_ecran « 6,7 pouces », hauteur/largeur/longueur UNIQUEMENT si des mesures chiffrées sont imprimées sur l'objet ou visibles sur un mètre en photo, avec l'unité (« 80 cm »). Les attributs oui/non (fonctionne, complet, boite, chargeur_inclus, demontable…) prennent exactement « oui », « non » ou « non testé » — et « non testé » est la réponse honnête pour tout ce qui est électrique et qu'aucune photo ne montre en marche. reference_fabricant est un CODE (lettres/chiffres, ex : « GA-2100A-1AER »), jamais une phrase : si tu ne lis pas de code, omets la clé — décrire ce que tu vois (« Poinçons de contrôle qualité visibles au dos… ») viole cette règle et est rejeté par le serveur.${attributsHonnetesRule}
 ${modeleRule}
 ${etape2Fr}
 ${confianceRule}
@@ -654,6 +678,248 @@ function etatEstimeNormalise(v: unknown): { valeur: string | null; rejete: boole
   return { valeur: null, rejete: true };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// COHÉRENCE DE LA SORTIE — GARDE-FOUS SERVEUR (2026-08-11, incident de 10:18)
+// ══════════════════════════════════════════════════════════════════════════
+// UNE pince plate Facom, une photo. Rendu : « Fourche à bêcher Spear & Jackson
+// 4 dents », famille jardin, FONCTIONNE=Oui, ACCESSOIRES MANQUANTS=Non,
+// NB DENTS=4, confiance « moyenne », 22 € « basé sur 6 annonces Leboncoin de
+// fourches à bêcher » — 3 recherches web lancées SUR L'OBJET INVENTÉ.
+// Et dans la même note : « Objet sans marque visible sur les photos fournie »
+// PUIS « Confiance moyenne car marque LUE ». Le modèle nie et affirme la marque
+// dans le même paragraphe.
+//
+// La règle de cohérence marque ↔ description existait déjà — UNIQUEMENT dans le
+// prompt (bloc `marqueRule`, « COHÉRENCE, OBLIGATOIRE »). Elle a été violée le
+// lendemain de sa pose. C'est la deuxième fois que ce fichier mesure la même
+// chose (l'étape 1bis interdisait les valeurs déduites depuis le 16/07, violée
+// en prod le 28/07) : une consigne de prompt n'est pas une contrainte. Ce qui
+// suit vit donc DANS LE CODE, appliqué à la sortie, quoi que le modèle réponde.
+
+/** Le texte, aplati, contient-il l'une des phrases (bornes de mots) ? */
+function contientPhrase(plat: string, phrases: readonly string[]): string | null {
+  const p = ` ${plat} `;
+  for (const ph of phrases) if (p.includes(` ${ph} `)) return ph;
+  return null;
+}
+
+// Phrases qui NIENT la lisibilité d'une marque. Écrites APLATIES (minuscules,
+// sans accents ni ponctuation) et cherchées entre bornes de mots : « sans
+// marque » ne matche donc pas « sans marquer ».
+// Volontairement courtes : « sans marque » couvre « sans marque visible »,
+// « sans marque apparente », « sans marque lisible ». Volontairement littérales
+// aussi : un motif à fenêtre glissante autour du mot « marque » attraperait
+// « marque bien lisible ». Le faux positif ici coûte une marque perdue sur un
+// article qui en avait une — le faux négatif coûte l'incident du 11/08.
+const NEGATIONS_MARQUE = [
+  // ── FR
+  "sans marque", "aucune marque", "pas de marque", "nulle marque",
+  "marque non visible", "marque non lisible", "marque non identifiable",
+  "marque non identifiee", "marque non determinee", "marque non apparente",
+  "marque non confirmee", "marque non dechiffrable", "marque non renseignee",
+  "marque illisible", "marque invisible", "marque inconnue", "marque absente",
+  "marque indeterminee", "marque indechiffrable",
+  // Mêmes énoncés avec le verbe : « la marque EST illisible », « la marque
+  // N'EST PAS visible ». aplatir() rend l'apostrophe comme une espace, d'où
+  // « n est pas ». Sans ces variantes, la formulation la plus naturelle du
+  // français passait à travers — relevé par l'auto-test.
+  "marque est illisible", "marque est invisible", "marque est inconnue",
+  "marque est absente", "marque est indechiffrable",
+  "marque n est pas visible", "marque n est pas lisible",
+  "marque n est pas identifiable", "marque n est pas dechiffrable",
+  "marque n est pas renseignee", "aucune marque n est",
+  "logo est illisible", "logo n est pas visible", "logo n est pas lisible",
+  "aucun logo", "pas de logo", "sans logo",
+  "aucune inscription de marque", "aucun nom de fabricant",
+  "pas de nom de fabricant", "sans nom de fabricant",
+  "aucune marque de fabricant", "objet non marque", "article non marque",
+  // ── EN
+  "no brand visible", "no visible brand", "no brand legible", "no legible brand",
+  "no brand name", "no brand marking", "no brand identifiable",
+  "brand not visible", "brand not legible", "brand not identifiable",
+  "brand is not visible", "brand is not legible", "brand could not be",
+  "brand illegible", "unbranded", "no visible logo", "no logo visible",
+  "no logo", "no manufacturer name", "without a brand", "without any brand",
+] as const;
+
+// Justifications qui AFFIRMENT une marque lue. Servent uniquement à trancher la
+// contradiction interne : quand une note nie ET justifie par une marque lue, on
+// retire la justification et on garde la négation (le plus prudent des deux).
+const JUSTIFICATIONS_MARQUE_LUE = [
+  "marque lue", "marque bien lue", "marque clairement lue", "marque lisible",
+  "marque bien lisible", "marque visible", "marque bien visible",
+  "marque identifiee", "marque confirmee", "marque relevee", "marque dechiffree",
+  "logo lisible", "logo visible", "logo identifie",
+  "brand read", "brand is read", "brand legible", "brand is legible",
+  "brand visible", "brand is visible", "brand identified", "brand confirmed",
+  "logo legible", "logo visible", "logo identified",
+] as const;
+
+/**
+ * La sortie NIE-t-elle une marque lisible ? Cherche dans les DEUX textes libres
+ * que le modèle produit sur l'identification : `notes` et `description`.
+ * Retourne la phrase trouvée (pour la journaliser), ou null.
+ */
+export function negationDeMarque(...textes: unknown[]): string | null {
+  for (const t of textes) {
+    if (typeof t !== "string" || !t.trim()) continue;
+    const trouve = contientPhrase(aplatir(t), NEGATIONS_MARQUE);
+    if (trouve) return trouve;
+  }
+  return null;
+}
+
+/**
+ * Retire des notes les phrases qui justifient par une marque LUE, quand la même
+ * note nie par ailleurs toute marque visible. On ne réécrit rien : on supprime
+ * la proposition contradictoire, phrase par phrase, et on garde le reste tel
+ * quel. Une phrase qui porte À LA FOIS la négation et la justification est
+ * conservée (la négation y est l'information utile).
+ */
+export function retirerJustificationMarqueLue(notes: string): { texte: string; retire: boolean } {
+  const phrases = notes.split(/(?<=[.;!?])\s+|\n+/);
+  let retire = false;
+  const gardees = phrases.filter((p) => {
+    if (!p.trim()) return false;
+    const plat = aplatir(p);
+    if (!contientPhrase(plat, JUSTIFICATIONS_MARQUE_LUE)) return true;
+    if (contientPhrase(plat, NEGATIONS_MARQUE)) return true;
+    retire = true;
+    return false;
+  });
+  const texte = gardees.join(" ").replace(/\s+/g, " ").trim();
+  // Ne jamais renvoyer une note VIDE : une note vide fait disparaître l'encart
+  // « une photo de plus trancherait », qui est justement ce qui reste d'utile.
+  return texte ? { texte, retire } : { texte: notes, retire: false };
+}
+
+// ── Attributs qu'une PHOTO ne peut pas établir (2026-08-11) ────────────────
+// « FONCTIONNE = Oui » sur une photo unique est une valeur par défaut déguisée
+// en constat : aucune image fixe ne montre un outil en marche. Idem pour la
+// complétude — savoir que rien ne manque suppose de connaître l'ensemble
+// complet, ce qu'une photo ne donne jamais.
+// Deux traitements distincts, parce que le vocabulaire honnête diffère :
+//   · fonctionnement → « non testé » (valeur DÉJÀ dans le vocabulaire du
+//     prompt, déjà rendue en ambre avec un « ? » par LensIdentite) ;
+//   · complétude → clé SUPPRIMÉE (« complet : non testé » ne veut rien dire).
+const ATTRIBUTS_FONCTIONNEMENT = new Set([
+  "fonctionne", "fonctionnel", "fonctionnement", "en_etat_de_marche",
+  "teste", "testee", "working", "tested",
+]);
+const ATTRIBUTS_COMPLETUDE = new Set([
+  "complet", "complete", "accessoires_manquants", "pieces_manquantes",
+  "accessoires_inclus", "complete_set",
+]);
+const AFFIRMATIONS = new Set([
+  "oui", "non", "yes", "no", "true", "false", "vrai", "faux", "1", "0",
+]);
+const NON_TESTE = { fr: "non testé", en: "not tested" };
+
+// ── Attributs de COMPTAGE ou de MESURE ─────────────────────────────────────
+// « NB DENTS = 4 » ne se lit nulle part : il découle de l'objet supposé. Un
+// nombre attaché à une identification non établie documente une supposition.
+// Ces clés-là ne sont donc écartées QUE lorsque l'identification est incertaine
+// — sur une identification tenue, une tension lue reste une tension lue.
+const ATTRIBUTS_MESURE = new Set([
+  "puissance", "capacite", "volume", "contenance", "hauteur", "largeur",
+  "longueur", "profondeur", "diametre", "poids", "tension_batterie",
+  "taille_ecran", "largeur_coupe", "tirage", "annee", "generation_annee",
+  "vitesse", "debit", "autonomie", "amperage", "voltage", "watts",
+  "dimensions", "surface", "epaisseur",
+]);
+const estAttributMesure = (cle: string) => cle.startsWith("nb_") || ATTRIBUTS_MESURE.has(cle);
+
+// ── Fuite de noms de variables internes dans le texte utilisateur ──────────
+// Relevé dans les notes du 11/08 : « Marge négative : prix_vente_suggere (22€)
+// < prix_achat_suggere (25€) ». Le modèle raisonne dans le vocabulaire du
+// schéma et le recopie tel quel.
+// ⚠️ La table ne contient QUE des identifiants à underscore. Les champs d'un
+// seul mot (marque, titre, notes, score, verdict, confiance, categorie…) sont
+// aussi des mots français ordinaires : les remplacer massacrerait des phrases
+// légitimes (« la marque est visible au dos »). C'est la présence de
+// l'underscore qui distingue le jargon de la langue.
+const IDENTIFIANTS_INTERNES: Record<string, { fr: string; en: string }> = {
+  prix_vente_suggere:        { fr: "prix de vente conseillé", en: "suggested sale price" },
+  prix_achat_suggere:        { fr: "prix d'achat estimé",     en: "estimated purchase price" },
+  prix_achat_reel:           { fr: "prix d'achat",            en: "purchase price" },
+  prix_vente_reel:           { fr: "prix de vente",           en: "sale price" },
+  fourchette_min:            { fr: "bas de la fourchette",    en: "low end of the range" },
+  fourchette_max:            { fr: "haut de la fourchette",   en: "high end of the range" },
+  fourchette_marche:         { fr: "fourchette de marché",    en: "market range" },
+  annonces_marche:           { fr: "annonces comparables",    en: "comparable listings" },
+  vitesse_vente_explication: { fr: "vitesse de vente",        en: "sale speed" },
+  vitesse_vente:             { fr: "vitesse de vente",        en: "sale speed" },
+  etat_estime:               { fr: "état",                    en: "condition" },
+  taille_estimee:            { fr: "taille",                  en: "size" },
+  attributs_visibles:        { fr: "caractéristiques lues",   en: "features read" },
+  reference_fabricant:       { fr: "référence fabricant",     en: "manufacturer reference" },
+  modele_source:             { fr: "origine du modèle",       en: "model provenance" },
+  est_vendu:                 { fr: "déjà vendu",              en: "already sold" },
+  marque_nulle:              { fr: "marque absente",          en: "brand missing" },
+  taille_ecran:              { fr: "taille d'écran",          en: "screen size" },
+  tension_batterie:          { fr: "tension de batterie",     en: "battery voltage" },
+  accessoires_manquants:     { fr: "accessoires manquants",   en: "missing accessories" },
+  accessoires_inclus:        { fr: "accessoires inclus",      en: "accessories included" },
+  chargeur_inclus:           { fr: "chargeur inclus",         en: "charger included" },
+  cables_inclus:             { fr: "câbles inclus",           en: "cables included" },
+  boite_origine:             { fr: "boîte d'origine",         en: "original box" },
+  nb_batteries:              { fr: "nombre de batteries",     en: "number of batteries" },
+  nb_pieces:                 { fr: "nombre de pièces",        en: "number of pieces" },
+  filaire_ou_sans_fil:       { fr: "alimentation",            en: "power source" },
+  verrouillage_compte:       { fr: "verrouillage de compte",  en: "account lock" },
+  vehicules_compatibles:     { fr: "véhicules compatibles",   en: "compatible vehicles" },
+  oem_ou_adaptable:          { fr: "origine ou adaptable",    en: "OEM or aftermarket" },
+  norme_certification:       { fr: "norme",                   en: "standard" },
+  tranche_age:               { fr: "tranche d'âge",           en: "age range" },
+  annee_periode:             { fr: "époque",                  en: "period" },
+  type_instrument:           { fr: "type d'instrument",       en: "instrument type" },
+  etat_disque:               { fr: "état du disque",          en: "disc condition" },
+  etat_pochette:             { fr: "état de la pochette",     en: "sleeve condition" },
+  etat_ecran:                { fr: "état de l'écran",         en: "screen condition" },
+  notice_visserie:           { fr: "notice et visserie",      en: "manual and screws" },
+  nom_parfum:                { fr: "nom du parfum",           en: "fragrance name" },
+  isbn_ean:                  { fr: "ISBN / EAN",              en: "ISBN / EAN" },
+  type_outil:                { fr: "type d'outil",            en: "tool type" },
+  identification_incertaine: { fr: "identification incertaine", en: "uncertain identification" },
+  high_tech:                 { fr: "high-tech",               en: "tech" },
+  livres_medias:             { fr: "livres et médias",        en: "books and media" },
+  auto_moto:                 { fr: "auto-moto",               en: "vehicles" },
+  maison_deco:               { fr: "maison et déco",          en: "home and decor" },
+};
+
+const MOTIF_SNAKE_CASE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/gi;
+
+/**
+ * Remplace les noms de champs internes par leur libellé humain dans un texte
+ * destiné à l'utilisateur. Un identifiant snake_case INCONNU est laissé tel
+ * quel (ce peut être une référence produit légitime) mais compté : c'est ainsi
+ * qu'on saura quoi ajouter à la table, plutôt qu'en détruisant à l'aveugle.
+ */
+export function nettoyerFuites(v: unknown, lang: "fr" | "en"): { texte: unknown; fuite: boolean; inconnu: string | null } {
+  if (typeof v !== "string" || !v) return { texte: v, fuite: false, inconnu: null };
+  let fuite = false;
+  let inconnu: string | null = null;
+  const texte = v.replace(MOTIF_SNAKE_CASE, (m) => {
+    const label = IDENTIFIANTS_INTERNES[m.toLowerCase()];
+    if (label) { fuite = true; return label[lang]; }
+    if (!inconnu) inconnu = m;
+    return m;
+  });
+  return { texte, fuite, inconnu };
+}
+
+/** Retire la marque du titre — elle ne peut pas y survivre à un `marque=null`. */
+export function retirerMarqueDuTitre(titre: string, marque: string): string {
+  const echappe = marque.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const sansMarque = titre
+    .replace(new RegExp(echappe, "gi"), " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,.;:])/g, "$1")
+    .trim();
+  // Un titre vidé par le retrait est pire que le titre d'origine : on garde.
+  return sansMarque.length >= 3 ? sansMarque : titre;
+}
+
 /**
  * Normalise la sortie du modèle : MPN validé, `modele` / `modele_source`
  * cohérents. Retourne ce qui a été rejeté, pour la télémétrie.
@@ -661,11 +927,22 @@ function etatEstimeNormalise(v: unknown): { valeur: string | null; rejete: boole
  * null, et le client traite « pas "lue" » comme « à confirmer ». Une source
  * absente ne peut donc pas servir de passe-droit vers un aspect eBay.
  */
-function assainirSortie(item: Record<string, unknown>): {
+export function assainirSortie(
+  item: Record<string, unknown>,
+  ctx: { photos: number; lang: "fr" | "en" },
+): {
   mpnRejete: boolean;
   mpnAbsente: boolean;
   etatRejete: boolean;
   familleInconnue: boolean;
+  marqueForceeNull: boolean;
+  noteContradiction: boolean;
+  identificationIncertaine: boolean;
+  identificationContredite: boolean;
+  attributsFonctionnementNeutralises: number;
+  attributsMesureEcartes: number;
+  fuiteVariable: boolean;
+  snakeInconnu: string | null;
 } {
   let mpnRejete = false;
   let mpnAbsente = false;
@@ -732,11 +1009,57 @@ function assainirSortie(item: Record<string, unknown>): {
   }
   item.etat_estime = etat.valeur;
 
+  // ── COHÉRENCE MARQUE ↔ TEXTE (2026-08-11, incident 10:18) ───────────────
+  // « Objet sans marque visible sur les photos fournie » + marque
+  // « Spear & Jackson ». Le modèle ne peut pas affirmer et nier dans la même
+  // réponse : on tranche du côté de la NÉGATION, toujours — c'est le seul des
+  // deux énoncés qui ne coûte rien s'il est faux. La marque part à null, et
+  // elle quitte aussi le TITRE : « Fourche à bêcher Spear & Jackson 4 dents »
+  // porterait sinon une marque que la réponse dit elle-même ne pas avoir lue.
+  const marqueBrute = typeof item.marque === "string" ? item.marque.trim() : "";
+  const marqueRenseignee = !!marqueBrute && marqueBrute.toLowerCase() !== "null";
+  const negation = negationDeMarque(item.notes, item.description);
+  let marqueForceeNull = false;
+  if (negation && marqueRenseignee) {
+    console.warn(
+      `[lens-analysis] marque forcée à null — la réponse nie toute marque lisible ("${negation}") ` +
+      `tout en renvoyant "${marqueBrute.slice(0, 40)}"`,
+    );
+    if (typeof item.titre === "string" && item.titre.trim()) {
+      item.titre = retirerMarqueDuTitre(item.titre, marqueBrute);
+    }
+    item.marque = null;
+    marqueForceeNull = true;
+  }
+
+  // ── CONTRADICTION INTERNE DE LA NOTE ────────────────────────────────────
+  // « Objet sans marque visible […] Confiance moyenne car marque LUE » : deux
+  // phrases, deux affirmations opposées sur le même fait. On retire la
+  // justification par la marque lue et on garde la négation.
+  let noteContradiction = false;
+  if (negation && typeof item.notes === "string" && item.notes.trim()) {
+    const { texte, retire } = retirerJustificationMarqueLue(item.notes);
+    if (retire) {
+      console.warn("[lens-analysis] note auto-contradictoire : justification « marque lue » retirée");
+      item.notes = texte;
+      noteContradiction = true;
+    }
+  }
+
   // ── Plafond de confiance (2026-08-11) ───────────────────────────────────
   // Posé DANS LE CODE, pas seulement par consigne : « marque nulle » est
   // précisément le cas où le modèle a le moins de prise, donc celui où une
   // confiance haute trompe le plus. Sans marque ni référence lue, le plafond
   // est « moyenne » ; une famille non reconnue force « basse ».
+  //
+  // AJOUT DU 11/08 — LE NOMBRE DE PHOTOS ENTRE ENFIN DANS LE CALCUL. Il n'y
+  // entrait pas du tout : `photos` n'était que de la télémétrie. Une seule
+  // photo, aucune marque lue, aucune référence lue : il ne reste RIEN sur quoi
+  // fonder une identification, la confiance tombe à « basse ».
+  // Le seuil est à 1 photo et pas 2, mesuré : sur 14 jours, 140 scans complets
+  // sur 350 (40 %) n'ont qu'UNE photo — plafonner à 2 dégraderait 40 % du
+  // parc, dont des articles parfaitement identifiés par leur marque lue (qui,
+  // eux, ne sont pas concernés : la règle exige les trois conditions).
   const CONFIANCES = ["basse", "moyenne", "haute"];
   const confianceBrute = typeof item.confiance === "string" ? item.confiance.trim().toLowerCase() : "";
   let rang = CONFIANCES.indexOf(confianceBrute);
@@ -744,10 +1067,91 @@ function assainirSortie(item: Record<string, unknown>): {
   const marqueLue = !!(typeof item.marque === "string" && item.marque.trim() && item.marque.trim().toLowerCase() !== "null");
   const referenceLue = !!item.reference;
   if (!marqueLue && !referenceLue) rang = Math.min(rang, 1);
-  if (familleInconnue) rang = 0;
-  item.confiance = CONFIANCES[rang];
 
-  return { mpnRejete, mpnAbsente, etatRejete: etat.rejete, familleInconnue };
+  // ── Deux niveaux, jamais confondus ──────────────────────────────────────
+  // `identificationContredite` — la réponse se contredit, ou range l'objet dans
+  //   une famille inexistante. Ce n'est pas « peu sûr », c'est « non fiable
+  //   dans son principe » : tout ce qui en dérive (le prix, les annonces
+  //   comparables, le verdict) porte sur un objet supposé. Rare et grave.
+  // `identificationIncertaine` — la précédente, OU rien à quoi se raccrocher
+  //   (1 photo, aucune marque, aucune référence). L'objet peut être correct,
+  //   il n'est simplement pas établi. Fréquent et bénin.
+  // ⚠️ Ne PAS fusionner les deux : « confiance basse » signifie déjà, dans le
+  // prompt du mode complet, « aucune donnée de marché exploitable ». Supprimer
+  // le prix sur toute confiance basse effacerait le prix d'un vase de brocante
+  // correctement identifié mais sans comparable — une régression, pas un fix.
+  const identificationContredite = marqueForceeNull || familleInconnue;
+  const identificationIncertaine =
+    identificationContredite || (ctx.photos <= 1 && !marqueLue && !referenceLue);
+  if (identificationIncertaine) rang = 0;
+  item.confiance = CONFIANCES[rang];
+  item.identification_incertaine = identificationIncertaine;
+  item.identification_contredite = identificationContredite;
+
+  // ── ATTRIBUTS : ce qu'une photo ne peut pas établir ─────────────────────
+  // « FONCTIONNE = Oui » et « ACCESSOIRES MANQUANTS = Non » sont des valeurs
+  // par défaut déguisées en constats. Le bloc s'appelle « Lu sur l'objet » :
+  // il ne doit contenir que ce qui est effectivement lisible.
+  let attributsFonctionnementNeutralises = 0;
+  let attributsMesureEcartes = 0;
+  const attrs = item.attributs_visibles as Record<string, string> | null;
+  if (attrs) {
+    for (const [cle, valeur] of Object.entries(attrs)) {
+      const plate = aplatir(String(valeur));
+      if (ATTRIBUTS_FONCTIONNEMENT.has(cle) && AFFIRMATIONS.has(plate)) {
+        // « non testé » plutôt qu'une clé supprimée : la valeur existe déjà
+        // dans le vocabulaire du prompt, LensIdentite la rend en ambre avec un
+        // « ? », et elle dit au vendeur exactement quoi vérifier.
+        attrs[cle] = NON_TESTE[ctx.lang];
+        attributsFonctionnementNeutralises++;
+      } else if (ATTRIBUTS_COMPLETUDE.has(cle) && AFFIRMATIONS.has(plate)) {
+        // Pas d'équivalent honnête de « non testé » pour la complétude :
+        // affirmer que rien ne manque suppose de connaître l'ensemble complet.
+        delete attrs[cle];
+        attributsFonctionnementNeutralises++;
+      } else if (identificationIncertaine && estAttributMesure(cle)) {
+        // « NB DENTS = 4 » : un nombre attaché à un objet non établi documente
+        // une supposition. Écarté SEULEMENT dans ce cas — sur une
+        // identification tenue, une tension lue reste une tension lue.
+        delete attrs[cle];
+        attributsMesureEcartes++;
+      }
+    }
+    item.attributs_visibles = Object.keys(attrs).length ? attrs : null;
+    // La référence miroir suit le sac : aucune des règles ci-dessus ne touche
+    // `reference_fabricant`, mais le recalcul garde les deux alignés par
+    // construction plutôt que par raisonnement.
+    item.reference = (item.attributs_visibles as Record<string, string> | null)?.reference_fabricant ?? null;
+  }
+
+  // ── AUCUN NOM DE VARIABLE INTERNE DANS LE TEXTE UTILISATEUR ─────────────
+  // « Marge négative : prix_vente_suggere (22€) < prix_achat_suggere (25€) »
+  // s'affichait tel quel au client. Balayage de TOUTES les chaînes libres
+  // rendues à l'écran, y compris les valeurs d'attributs et les conseils.
+  let fuiteVariable = false;
+  let snakeInconnu: string | null = null;
+  const scrub = (v: unknown) => {
+    const r = nettoyerFuites(v, ctx.lang);
+    if (r.fuite) fuiteVariable = true;
+    if (r.inconnu && !snakeInconnu) snakeInconnu = r.inconnu;
+    return r.texte;
+  };
+  for (const champ of ["titre", "description", "notes", "matiere", "vitesse_vente_explication", "couleur", "taille_estimee", "modele"]) {
+    item[champ] = scrub(item[champ]);
+  }
+  if (Array.isArray(item.conseils)) item.conseils = item.conseils.map(scrub);
+  const attrsFinal = item.attributs_visibles as Record<string, string> | null;
+  if (attrsFinal) for (const cle of Object.keys(attrsFinal)) attrsFinal[cle] = String(scrub(attrsFinal[cle]));
+  if (fuiteVariable) console.warn("[lens-analysis] nom de champ interne fuité dans un texte utilisateur — remplacé");
+  if (snakeInconnu) console.log(`[lens-analysis] identifiant snake_case non répertorié, laissé tel quel : ${snakeInconnu}`);
+
+  return {
+    mpnRejete, mpnAbsente, etatRejete: etat.rejete, familleInconnue,
+    marqueForceeNull, noteContradiction,
+    identificationIncertaine, identificationContredite,
+    attributsFonctionnementNeutralises, attributsMesureEcartes,
+    fuiteVariable, snakeInconnu,
+  };
 }
 
 // ── annonces_marche (2026-07-30, chantier « sources de l'estimation ») ───────
@@ -760,7 +1164,7 @@ function assainirSortie(item: Record<string, unknown>): {
 //   · plateforme conservée seulement si c'est une chaîne non vide ;
 //   · 10 entrées max (le prompt en demande 8) ;
 //   · rien d'exploitable → null : le front n'affiche alors AUCUN bloc source.
-function assainirAnnoncesMarche(item: Record<string, unknown>): void {
+export function assainirAnnoncesMarche(item: Record<string, unknown>): void {
   const brut = item.annonces_marche;
   if (!Array.isArray(brut)) { item.annonces_marche = null; return; }
   const propres = brut
@@ -805,7 +1209,7 @@ function texteNonVide(v: unknown): string | null {
   return s && s.toLowerCase() !== "null" ? s : null;
 }
 
-function empreinteSortie(item: Record<string, unknown>): Record<string, unknown> {
+export function empreinteSortie(item: Record<string, unknown>): Record<string, unknown> {
   const attrs = item.attributs_visibles;
   const nbAttributs = attrs && typeof attrs === "object" && !Array.isArray(attrs)
     ? Object.keys(attrs as Record<string, unknown>).length
@@ -823,6 +1227,11 @@ function empreinteSortie(item: Record<string, unknown>): Record<string, unknown>
     confiance: texteNonVide(item.confiance),
     nb_attributs: nbAttributs,
     titre_genere: titre ? titre.slice(0, TITRE_MAX_TELEMETRIE) : null,
+    // TOUJOURS présents, true comme false (2026-08-11) : c'est la mesure du
+    // correctif de cohérence. Une clé écrite seulement quand elle vaut true ne
+    // permet pas de distinguer « pas concerné » de « ligne d'avant le fix ».
+    identification_incertaine: item.identification_incertaine === true,
+    identification_contredite: item.identification_contredite === true,
   };
 }
 
@@ -845,7 +1254,7 @@ const PLAFOND_IDENTIFY_GLOBAL = 3000;
 // Version du prompt : elle entre dans la clé du cache d'idempotence. À BUMPER
 // à chaque modification des prompts ou du schéma, sinon on continue de servir
 // un résultat produit par l'ancienne version.
-const VERSION_PROMPT = "2026-08-11-familles";
+const VERSION_PROMPT = "2026-08-11-coherence";
 
 // Champs de marché forcés à null en identify — dans le CODE, pas seulement par
 // consigne de prompt (ils ne figurent déjà plus dans le schéma identify).
@@ -1458,7 +1867,13 @@ serve(async (req) => {
     // modele_source normalisée, etat_estime ramené dans sa liste fermée
     // (2026-07-29). APRÈS le parsing et la passe de réparation : tout chemin
     // qui produit un JSON passe par ici.
-    const { mpnRejete, mpnAbsente, etatRejete, familleInconnue } = assainirSortie(itemData);
+    const {
+      mpnRejete, mpnAbsente, etatRejete, familleInconnue,
+      marqueForceeNull, noteContradiction,
+      identificationIncertaine, identificationContredite,
+      attributsFonctionnementNeutralises, attributsMesureEcartes,
+      fuiteVariable, snakeInconnu,
+    } = assainirSortie(itemData, { photos: photoUrls.length, lang: _lang });
     // Depuis le 03/08, mpn_rejete ne compte QUE les vraies valeurs invalides
     // (celles pour lesquelles le garde-fou a été écrit). mpn_absente = le
     // modèle a posé la clé à null : article sans référence imprimée, réponse
@@ -1472,9 +1887,54 @@ serve(async (req) => {
     if (etatRejete) logMeta = { ...logMeta, etat_rejete: true };
     if (marqueAbsente) logMeta = { ...logMeta, marque_absente: true };
     if (familleInconnue) logMeta = { ...logMeta, famille_inconnue: true };
+    // Garde-fous de cohérence du 11/08 — chacun compté séparément : c'est ce
+    // qui dira lequel porte réellement le fix, et lequel ne se déclenche jamais.
+    if (marqueForceeNull) logMeta = { ...logMeta, marque_forcee_null: true };
+    if (noteContradiction) logMeta = { ...logMeta, note_contradiction: true };
+    if (attributsFonctionnementNeutralises) logMeta = { ...logMeta, attributs_etat_neutralises: attributsFonctionnementNeutralises };
+    if (attributsMesureEcartes) logMeta = { ...logMeta, attributs_mesure_ecartes: attributsMesureEcartes };
+    if (fuiteVariable) logMeta = { ...logMeta, fuite_variable: true };
+    if (snakeInconnu) logMeta = { ...logMeta, snake_inconnu: snakeInconnu };
     // Sources de la fourchette : entrées incomplètes écartées, jamais complétées
     // (sans objet en identify — le champ y est reforcé à null juste dessous).
     assainirAnnoncesMarche(itemData);
+
+    // ── RECHERCHE WEB CONDITIONNÉE À L'IDENTIFICATION (2026-08-11) ──────────
+    // Le 11/08 à 10:18, 3 recherches web sont parties SUR UN OBJET INVENTÉ, et
+    // en sont revenues avec « 22 € basé sur 6 annonces Leboncoin de fourches à
+    // bêcher ». Une hallucination habillée en estimation sourcée : fausse,
+    // détaillée, crédible. C'est le pire mode de défaillance du produit.
+    //
+    // L'outil `web_search` est un outil SERVEUR : les recherches s'exécutent
+    // pendant le tour du modèle, avant que la moindre ligne de ce fichier ait
+    // vu la sortie. Il est donc IMPOSSIBLE de ne pas les lancer sans casser le
+    // scan en deux appels (identification, puis prix), ce qui doublerait le
+    // coût et la latence de TOUS les scans pour le cas rare. On agit donc en
+    // aval, là où c'est possible et suffisant : ce qui a été cherché sur un
+    // objet contredit ne SORT PAS.
+    //
+    // Déclenché sur `identificationContredite` seulement, jamais sur la simple
+    // confiance basse (cf. les deux niveaux dans assainirSortie).
+    if (!estIdentify && identificationContredite) {
+      console.warn(
+        `[lens-analysis] identification contredite — marché supprimé et Pépites rendues`
+        + ` (recherches déjà exécutées : ${stats.recherches})`,
+      );
+      for (const champ of CHAMPS_MARCHE) itemData[champ] = null;
+      logMeta = { ...logMeta, marche_supprime: true, recherches_perdues: stats.recherches };
+      // Le livrable payant du mode complet, c'est le PRIX. On vient de le
+      // retirer : la même règle que sur un scan en échec s'applique, on rend
+      // les 6 Pépites. L'identification, elle, reste affichée (gratuitement),
+      // et l'écran demande une photo de plus.
+      // ⚠️ Décision de facturation — volontairement conservatrice et signalée
+      // dans le rapport. Volume attendu : quelques scans par semaine.
+      await releaseAttempt("identification_contredite");
+      // Dit au client, pour qu'il puisse l'écrire à l'écran. Champ posé ICI et
+      // pas dans assainirSortie : le remboursement n'existe qu'en mode complet
+      // (identify ne débite rien), l'écran ne doit donc pas le promettre
+      // ailleurs.
+      itemData.pepites_rendues = paidWithCoins > 0;
+    }
 
     // ── Identify : champs de marché forcés à null DANS LE CODE ──────────────
     // Pas seulement par consigne de prompt. Un prix produit sans donnée marché
@@ -1505,6 +1965,12 @@ serve(async (req) => {
         ...(etatRejete ? { etat_rejete: true } : {}),
         ...(marqueAbsente ? { marque_absente: true } : {}),
         ...(familleInconnue ? { famille_inconnue: true } : {}),
+        ...(marqueForceeNull ? { marque_forcee_null: true } : {}),
+        ...(noteContradiction ? { note_contradiction: true } : {}),
+        ...(attributsFonctionnementNeutralises ? { attributs_etat_neutralises: attributsFonctionnementNeutralises } : {}),
+        ...(attributsMesureEcartes ? { attributs_mesure_ecartes: attributsMesureEcartes } : {}),
+        ...(fuiteVariable ? { fuite_variable: true } : {}),
+        ...(snakeInconnu ? { snake_inconnu: snakeInconnu } : {}),
       });
     } else {
       await enregistrerTelemetrie("ok", empreinteSortie(itemData));

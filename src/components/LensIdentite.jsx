@@ -50,6 +50,7 @@ const LABELS_FR = {
   entame:'Entamé', dluo:'DLUO', type_instrument:'Instrument', format:'Format',
   etat_disque:'Disque', etat_pochette:'Pochette', motorisation:'Motorisation',
   largeur_coupe:'Largeur de coupe', reference_fabricant:'Référence',
+  type_outil:'Type d’outil',
 };
 
 const LABELS_EN = {
@@ -71,6 +72,7 @@ const LABELS_EN = {
   entame:'Opened', dluo:'Best before', type_instrument:'Instrument', format:'Format',
   etat_disque:'Disc', etat_pochette:'Sleeve', motorisation:'Engine',
   largeur_coupe:'Cutting width', reference_fabricant:'Reference',
+  type_outil:'Tool type',
 };
 
 /** `tension_batterie` → `Tension batterie`. Filet pour toute clé non prévue. */
@@ -175,9 +177,23 @@ export default function LensIdentite({ result, lang }) {
     : [];
 
   const marqueLue = result.marque && String(result.marque).trim();
+
+  // ── Identification non établie (11/08/2026, incident 10:18) ──────────────
+  // Une pince Facom rendue en « Fourche à bêcher Spear & Jackson 4 dents », à
+  // 22 € « basé sur 6 annonces ». Faux, détaillé, crédible : le pire des trois
+  // ensemble. Quand le serveur n'a pas pu tenir l'identification, l'écran doit
+  // le DIRE en premier — avant le titre, avant la tuile — et demander la photo
+  // qui trancherait, plutôt que de présenter une fiche complète.
+  // Deux niveaux, posés par le serveur, jamais recalculés ici :
+  //   · incertaine — rien à quoi se raccrocher (1 photo, ni marque ni référence) ;
+  //   · contredite — la réponse se contredisait : le prix a été retiré.
+  const incertaine = result.identification_incertaine === true;
+  const contredite = result.identification_contredite === true;
+  const note = result.notes && String(result.notes).trim();
   // La note ne devient une invitation que si elle apporte quelque chose : sur une
   // identification sûre, le modèle n'a rien à réclamer et l'encart serait du bruit.
-  const noteUtile = result.confiance !== 'haute' && result.notes && String(result.notes).trim();
+  // Quand le bandeau ci-dessous s'affiche, il l'absorbe — jamais deux fois.
+  const noteUtile = !incertaine && result.confiance !== 'haute' && note;
 
   return (
     <>
@@ -203,6 +219,49 @@ export default function LensIdentite({ result, lang }) {
           .lens-tuile, .lens-chip, .lens-seg, .lens-note { animation:none !important; }
         }
       `}</style>
+
+      {/* ── Identification non établie : dit AVANT tout le reste ──
+          Placé au-dessus de l'en-tête à dessein. Une fiche détaillée qui
+          commence par un titre affirmatif se lit comme un résultat sûr, quelle
+          que soit la jauge posée dessous. */}
+      {incertaine && (
+        <div
+          className="lens-note"
+          style={{
+            background:'#FFFBEB', border:'1px solid #FDE68A', borderRadius:12,
+            padding:'11px 13px', marginBottom:14,
+            display:'flex', gap:10, alignItems:'flex-start',
+          }}
+        >
+          <span style={{ fontSize:16, lineHeight:1.2, flexShrink:0 }}>📸</span>
+          <div style={{ minWidth:0 }}>
+            <div style={{ fontSize:12.5, fontWeight:800, color:'#92400E', marginBottom:3 }}>
+              {lang === 'en'
+                ? "I don't recognise this item with certainty"
+                : 'Je ne reconnais pas cet objet avec certitude'}
+            </div>
+            <div style={{ fontSize:11.5, color:'#92400E', lineHeight:1.5, opacity:0.9 }}>
+              {lang === 'en'
+                ? 'Add one more photo — the label, the rating plate, the underside, the back — then run the analysis again. What follows is a reading, not a confirmed identification.'
+                : 'Ajoute une photo — l’étiquette, la plaque signalétique, le dessous de l’objet, le dos — puis relance l’analyse. Ce qui suit est une lecture, pas une identification confirmée.'}
+            </div>
+            {/* La note du modèle nomme LA photo qui trancherait : elle est plus
+                précise que la phrase générique ci-dessus, on la garde dessous. */}
+            {note && (
+              <div style={{ fontSize:11.5, color:'#92400E', lineHeight:1.45, marginTop:5, fontStyle:'italic', opacity:0.8 }}>
+                {note}
+              </div>
+            )}
+            {contredite && (
+              <div style={{ fontSize:11.5, color:'#92400E', lineHeight:1.5, marginTop:6, fontWeight:600 }}>
+                {lang === 'en'
+                  ? `No price was established: an estimate built on a misread object is worse than no estimate at all.${result.pepites_rendues ? ' Your Nuggets have been refunded.' : ''}`
+                  : `Aucun prix n’a été établi : une estimation fondée sur un objet mal reconnu est pire que pas d’estimation.${result.pepites_rendues ? ' Tes Pépites ont été rendues.' : ''}`}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── En-tête : la tuile porte l'objet, le titre le nomme ── */}
       <div style={{ display:'flex', gap:12, alignItems:'flex-start', marginBottom:14 }}>

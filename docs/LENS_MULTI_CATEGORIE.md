@@ -410,3 +410,295 @@ Ce qu'on attend : `pct_marque_nulle` **en hausse** sur `mobilier`, `maison_deco`
 `bricolage`, `collection` — une marque nulle est le résultat correct sur ces
 familles-là. Et `familles_non_reconnues` à 0 ; sinon, le slug émis est à ajouter
 aux alias.
+
+---
+
+# PARTIE II — Incident du 11/08 10:18 : la pince devenue fourche
+
+Le lendemain matin de la livraison ci-dessus, **une pince plate Facom, une
+photo**, est rendue à l'utilisateur ainsi :
+
+| champ | valeur rendue |
+|---|---|
+| `titre` | Fourche à bêcher Spear & Jackson 4 dents |
+| `marque` | Spear & Jackson |
+| `famille` / `categorie` | jardin / Jardin |
+| `attributs_visibles` | FONCTIONNE=Oui · ACCESSOIRES MANQUANTS=Non · NB DENTS=4 |
+| `confiance` | moyenne |
+| prix | 22,00 € « basé sur 6 annonces Leboncoin de fourches à bêcher » |
+
+`usage_logs` : `photos: 1 · marque_nulle: FALSE · mpn_absente: true ·
+web_search_requests: 3 · nb_attributs: 3 · cost_usd: 0.079786 · tours: 1`.
+
+Rien n'est vrai. Et **3 recherches web sont parties sur l'objet inventé**, d'où
+un prix « sourcé ». Faux, détaillé, crédible : les trois ensemble.
+
+Le §6.5 ci-dessus disait, la veille : *« La règle de cohérence marque ↔
+description est une consigne de prompt, pas une vérification serveur […] à
+réévaluer sur les données post-fix. »* Les données sont arrivées en douze
+heures.
+
+---
+
+## 8. Investigation — les six questions, répondues par la lecture du code
+
+### a) Où est appliquée la règle de cohérence marque ↔ description ?
+
+**Dans le prompt SEUL.** Chaîne `marqueRule`, bloc « COHÉRENCE, OBLIGATOIRE :
+"marque" doit être celle que ta propre "description" cite ». Aucune trace dans
+`assainirSortie()`, qui ne traitait que le MPN, la famille, `modele` /
+`modele_source`, `etat_estime` et le plafond de confiance.
+
+C'est **la** réponse. Le prompt avait été renforcé le 11/08 au matin ; la règle
+a été violée dans la journée. C'est la **deuxième** fois que ce fichier mesure
+exactement ça : l'étape 1bis interdit les valeurs déduites depuis le 16/07 et a
+été violée en prod le 28/07 (« Poinçons de contrôle qualité visibles au dos »
+dans `reference_fabricant`). La doctrine était déjà écrite dans le fichier —
+« un modèle qui ignore la consigne une fois l'ignorera encore » — elle n'avait
+simplement pas été appliquée à `marque`.
+
+### b) Comment `marque_nulle` est-il calculé ?
+
+`empreinteSortie()` : `marque_nulle: texteNonVide(item.marque) == null`.
+**C'est un test de chaîne non vide, rien d'autre.** Il ne dit pas si une marque
+a été LUE — seulement si le champ contient quelque chose. Sur l'incident il vaut
+`FALSE` alors que la note du modèle dit qu'aucune marque n'est visible : le
+drapeau est exact sur ce qu'il mesure, et cette mesure ne dit rien de la
+réalité de la lecture.
+
+Le drapeau reste tel quel (il est la série de mesure en cours). Ce qui manquait
+est ajouté à côté : `marque_forcee_null`, qui compte les cas où le serveur a dû
+trancher la contradiction.
+
+### c) Pourquoi « moyenne » et non « basse » ?
+
+Le plafond du 11/08 est : `if (!marqueLue && !referenceLue) rang = min(rang, 1)`.
+Ici `marque = "Spear & Jackson"` — une chaîne non vide —, donc `marqueLue` vaut
+`true` et **le plafond ne s'est pas appliqué du tout**. La famille `jardin` étant
+valide, `familleInconnue` ne forçait rien non plus. Le « moyenne » du modèle est
+passé intact.
+
+Autrement dit : le plafond de confiance était **conditionné à la marque nulle**,
+et la marque hallucinée est précisément ce qui l'empêchait de se déclencher. Le
+garde-fou s'annulait sur le cas pour lequel il avait été écrit.
+
+### d) Le nombre de photos entre-t-il dans le calcul de confiance ?
+
+**Non. Pas du tout.** `photoCount` n'entrait dans `buildSystemPrompt()` que pour
+la note multi-photos (biais d'ordre), et `stats.photos` n'était que de la
+télémétrie. C'était un manque : une photo d'un objet technique sans marque ni
+référence lisible ne permet aucune identification fiable.
+
+Mesure faite avant de choisir un seuil, sur 14 jours :
+
+| photos | scans `lens` | scans `lens_identify` |
+|---|---|---|
+| 1 | **140** (40 %) | 26 |
+| 2 | 51 | 9 |
+| 3 | 65 | 36 |
+| 4 | 35 | 20 |
+| 5 | 45 | 31 |
+| 8 | 1 | — |
+
+**40 % des scans complets n'ont qu'une photo.** Un plafond « 1 photo → basse »
+appliqué seul dégraderait donc 40 % du parc, dont des articles parfaitement
+identifiés par leur marque lue. La règle retenue exige les **trois** conditions :
+1 photo **et** aucune marque lue **et** aucune référence lue.
+
+### e) Quand les `web_search` partent-elles par rapport à l'identification ?
+
+**Après l'identification, et avant toute validation serveur.** `web_search` est
+un outil **serveur** : les recherches s'exécutent pendant le tour du modèle,
+dans le même appel API (`tours: 1` sur la ligne de l'incident). `assainirSortie()`
+ne voit la sortie qu'une fois tout terminé.
+
+Elles n'ont donc fait que **documenter l'erreur** — c'est exactement ce qui
+s'est passé : requête « fourche à bêcher Spear & Jackson », 6 annonces
+réellement trouvées, prix réellement moyenné. Chaque étape après
+l'identification était correcte. C'est ce qui rend la sortie crédible.
+
+Conséquence d'architecture : on ne peut pas *empêcher* la recherche sans couper
+le scan en deux appels (identification, puis prix), ce qui doublerait coût et
+latence pour **tous** les scans afin de traiter un cas rare. Le correctif agit
+donc en aval — cf. §9.
+
+### f) Un attribut est-il rattaché à quelque chose de réellement lu ?
+
+**Non.** `assainirAttributs()` vérifiait la FORME (clé normalisable, valeur
+scalaire non vide, ≤ 120 caractères, ≤ 20 clés, 28 formulations de « je ne sais
+pas » écartées) et **jamais le FOND**. Le sac étant ouvert depuis le matin, le
+modèle pouvait poser n'importe quelle clé avec n'importe quelle valeur : `NB
+DENTS = 4` a traversé sans rien rencontrer.
+
+### Incertitudes assumées
+
+- **Pourquoi le modèle a vu une fourche là où il y a une pince** n'est pas
+  élucidé, et ne l'est pas par la lecture du code. La photo de l'incident n'a
+  pas été conservée (rien dans `lens-temp` après 09:27, alors que le scan est de
+  10:18) et il n'y a pas de clé Anthropic en local : **la moitié vision n'est
+  pas rejouable**. Les hypothèses raisonnables — objet métallique allongé à
+  manche, une seule vue, cadrage serré — restent des hypothèses.
+- **Le seuil « 1 photo »** est calibré sur la distribution ci-dessus, pas sur
+  une mesure de qualité par nombre de photos : `confiance` n'est journalisée que
+  depuis le 11/08 (commit `23e5a4c`), la série ne comptait que 4 lignes au
+  moment de l'analyse. À réévaluer sur 7 jours de données post-fix.
+- **La détection de négation est lexicale**, pas sémantique : une formulation
+  hors liste passera. Elle est mesurable (`marque_forcee_null`) et extensible.
+
+---
+
+## 9. Les garde-fous, et où chacun est posé
+
+Six garde-fous. Chacun existe **dans le code** ; chacun est aussi **dit au
+modèle**, pour qu'il produise moins souvent le cas — mais aucun ne dépend du
+prompt pour tenir.
+
+| # | Garde-fou | Prompt | Code | Vérifié par |
+|---|---|---|---|---|
+| 1 | Cohérence marque ↔ notes/description | `marqueRule`, « JAMAIS AFFIRMER ET NIER » | `assainirSortie` → `negationDeMarque()` : marque forcée à `null`, **et retirée du titre** | auto-test §1, 14 cas §5 |
+| 2 | Contradiction interne de la note | idem | `retirerJustificationMarqueLue()` : la justification « car marque lue » saute, la négation reste | auto-test §6 |
+| 3 | Plafond par nombre de photos | `confianceRule`, variante 1 photo | `ctx.photos <= 1 && !marqueLue && !referenceLue` → `basse` | auto-test §4 |
+| 4 | Attributs non justifiés | `attributsHonnetesRule` (étape 1bis) | état/complétude → « non testé » ou clé supprimée ; comptages/mesures écartés si identification incertaine | auto-test §1, §3 |
+| 5 | Recherche web conditionnée | étape 3 (inchangée) | identification **contredite** → tous les `CHAMPS_MARCHE` à `null` + Pépites rendues | code, §9.2 |
+| 6 | Aucun nom de variable interne | `langueDirective` | `nettoyerFuites()` sur 8 champs libres + `conseils[]` + valeurs d'attributs | auto-test §7 |
+
+### 9.1 Deux niveaux, jamais confondus
+
+C'est le point de conception qui a demandé le plus d'attention.
+
+- **`identification_contredite`** — la réponse se contredit (garde-fou 1), ou
+  range l'objet dans une famille inexistante. Pas « peu sûre » : **non fiable
+  dans son principe**. Tout ce qui en dérive porte sur un objet supposé.
+- **`identification_incertaine`** — la précédente, **ou** rien à quoi se
+  raccrocher (1 photo, ni marque ni référence). L'objet peut être correct, il
+  n'est simplement pas établi.
+
+Pourquoi ne pas fusionner : dans le prompt du mode complet, `confiance="basse"`
+signifie **déjà** « aucune donnée de marché exploitable ». Supprimer le prix sur
+toute confiance basse effacerait le prix d'un vase de brocante correctement
+identifié mais sans comparable — une régression, pas un correctif. Seul le
+niveau `contredite` supprime le marché.
+
+### 9.2 Facturation — décision à valider
+
+Quand l'identification est **contredite** en mode complet, le prix est retiré.
+Le livrable payant du scan à 6 Pépites, c'est le prix : **les Pépites sont donc
+rendues** (`refund_coins`, même chemin que sur un scan en échec), et l'écran le
+dit. L'identification, elle, reste affichée gratuitement.
+
+Volume attendu : le garde-fou 1 ne s'était déclenché qu'une fois en 14 jours de
+relevé. **Décision de facturation, réversible, à valider par Nico** — la
+supprimer, c'est retirer le `releaseAttempt("identification_contredite")`.
+
+### 9.3 Ce que l'écran dit
+
+`LensIdentite` affiche un bandeau **au-dessus du titre et de la tuile** — pas en
+bas de page : une fiche qui commence par un titre affirmatif se lit comme un
+résultat sûr, quelle que soit la jauge posée dessous.
+
+> 📸 **Je ne reconnais pas cet objet avec certitude**
+> Ajoute une photo — l'étiquette, la plaque signalétique, le dessous de l'objet,
+> le dos — puis relance l'analyse. Ce qui suit est une lecture, pas une
+> identification confirmée.
+> *[la note du modèle, qui nomme LA photo qui trancherait]*
+> **Aucun prix n'a été établi** *(si contredite)* — une estimation fondée sur un
+> objet mal reconnu est pire que pas d'estimation. Tes Pépites ont été rendues.
+
+---
+
+## 10. Reconnaître tout objet — outillage
+
+- **Familles atteignables : vérifié une par une.** Les 14 `categorie` produites
+  par `FAMILLE_VERS_CATEGORIE` existent toutes dans `getTypeStyle()`,
+  `CAT_TILE_COLORS`, `TYPE_LABELS_EN` (`src/utils/shared.js`), dans
+  `normalizeCat()` et dans le sélecteur de type (`src/App.jsx:5679` pour
+  `Bricolage`). Aucune ne reste inaccessible comme l'étaient `Bricolage` et
+  `Jardin` avant le 11/08.
+- **Outillage à main** — le trou réel restant. La liste d'attributs de
+  `bricolage` ne portait que des clés d'électroportatif (`tension_batterie`,
+  `chargeur_inclus`, `coffret`, `nb_batteries`) : un modèle à qui l'on ne
+  suggère que des clés de perceuse cherche une perceuse. Ajouté en TÊTE de
+  liste : `type_outil`, `longueur`, `materiau`, plus une consigne explicite —
+  *« bricolage couvre l'outillage à main (pinces, tournevis, clés, marteaux,
+  scies, niveaux) tout autant que l'électroportatif […] une pince ne devient pas
+  une fourche à bêcher parce qu'une fourche est plus facile à estimer »*.
+- **Aucune liste blanche de marques.** Facom, Stanley, Bosch, Makita, Milwaukee,
+  DeWalt, Leatherman ne sont nommées nulle part dans le code : c'est le
+  mécanisme de lecture qui doit tenir. Le niveau à bulle Milwaukee — cité au §2
+  comme la preuve que le modèle en est capable — sert de cas de non-régression
+  dans l'auto-test.
+
+---
+
+## 11. Non-régression
+
+`deno run --allow-net --allow-env scripts/lens-coherence-selftest.ts` — **92
+assertions, 92 vertes.**
+
+Le test rejoue la **sortie** du modèle à travers `assainirSortie()`, pas la
+vision. C'est volontaire et c'est le bon niveau : tout l'objet du chantier est
+que le serveur rattrape l'erreur **quoi que** le modèle réponde. Ce que ça
+couvre :
+
+1. **Le cas de l'incident**, reconstitué depuis ce qui a été rendu et depuis
+   `usage_logs` : 17 assertions. Sortie après correctif → `marque: null`,
+   `titre: "Fourche à bêcher 4 dents"`, `confiance: "basse"`, `nb_dents` écarté,
+   `fonctionne: "non testé"`, `accessoires_manquants` supprimé, aucun nom de
+   variable dans la note, marché supprimé, Pépites rendues.
+2. **Polo Tommy Hilfiger, Pantalon Adidas, Cardigan Tampy** — inchangés :
+   marque conservée (Tampy compris : la règle interdit de deviner, pas de lire),
+   confiance conservée, attributs conservés, aucun drapeau levé.
+3. **Niveau à bulle Milwaukee**, sur **1 seule photo** — confiance `haute`
+   conservée, mesure « 60 cm » conservée, `Bricolage` atteinte. Le plafond photo
+   ne le touche pas : une marque est lue.
+4. **Plafond photo** dans ses trois branches (1 photo nue → `basse` ; 3 photos →
+   `moyenne` ; 1 photo + référence lue → `moyenne`).
+5. **14 phrases de négation** reconnues et **5 phrases positives** épargnées,
+   dont « Marque Milwaukee bien lisible » et « Brand new, never worn ».
+6. **Scrub des variables** : remplacement FR/EN, mot français ordinaire jamais
+   touché (« la marque est visible, le verdict est bon »), identifiant inconnu
+   laissé tel quel mais compté.
+7. **Contenu du prompt** dans les 2 langues × 2 modes, plus la présence des
+   étapes explicitement gelées (1, 1bis, 1ter, 6, 7).
+
+Autres points vérifiés hors test :
+
+- **Consommateurs** : `LensTab`, `App.jsx` (5096-5198), `ListingPreviewScreen`
+  (`photoAnalysis`, `assainirAttributsVisibles`, `lensVal`), `generate-listing`
+  (`resolve_aspects`), aspects eBay. **Aucun champ retiré** : les trois nouveaux
+  (`identification_incertaine`, `identification_contredite`, `pepites_rendues`)
+  sont additifs, et tous les consommateurs lisent champ par champ — aucun
+  n'itère sur les clés du résultat.
+- **Résultats en cache à l'ancien schéma** : `VERSION_PROMPT` passe à
+  `2026-08-11-coherence`, la clé de `lens_identify_cache` inclut la version, les
+  entrées antérieures ne sont plus relues. Les brouillons persistés lisent en
+  `??` / `||` : les trois nouveaux champs y sont `undefined`, donc faux, donc le
+  bandeau ne s'affiche pas — comportement d'avant, à l'identique.
+- **Étapes gelées** : 1, 1bis (corps d'origine), 1ter, 2 (corps de `marqueRule`),
+  3, 4, 5, 6, 7, 8 — inchangées mot pour mot. Les ajouts sont des **suffixes**
+  concaténés, jamais des réécritures.
+- `npm run lint` et `npm run build` passent.
+
+---
+
+## 12. Ce qui reste ouvert après cette livraison
+
+Les 5 points du §6 restent, **sauf le §6.5** (cohérence marque ↔ description),
+qui est ce que la Partie II traite. S'y ajoutent :
+
+6. **La vision n'est pas corrigée, et ne peut pas l'être ici.** Les garde-fous
+   empêchent une hallucination de sortir *habillée en certitude* ; ils
+   n'empêchent pas le modèle de voir une fourche. Un cas où le modèle
+   hallucine **sans se contredire**, avec ≥ 2 photos, passe encore : il sortira
+   en `moyenne`, sans bandeau. C'est la limite connue de cette livraison.
+7. **`tool_choice` (§6.1) est maintenant lié à ce chantier.** Une recherche web
+   lancée sur un objet non validé est un coût ET un mensonge. L'option la plus
+   propre à terme est le scan en deux temps (identifier, valider, puis chercher)
+   — elle double le coût, c'est un arbitrage produit.
+8. **Le seuil « 1 photo »** est à réévaluer sur 7 jours de `confiance`
+   post-fix (cf. requête §7, désormais complétée par
+   `identification_incertaine` / `identification_contredite` /
+   `marque_forcee_null` / `attributs_mesure_ecartes` / `fuite_variable`).
+9. **`snake_inconnu`** dans `usage_logs` liste les identifiants snake_case
+   laissés tels quels par le scrub : c'est la liste de ce qu'il faut ajouter à
+   `IDENTIFIANTS_INTERNES`. Aucune destruction à l'aveugle.
