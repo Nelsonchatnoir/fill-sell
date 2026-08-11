@@ -87,6 +87,20 @@ const MAX_RETOUCHED = 5;   // doit rester aligné sur generate-listing.MAX_RETOU
 // débit, dans le content script — 3 clients touchés (01/08, 10/08 ×2).
 const PLATEFORMES_ADRESSE_LBC = ["leboncoin", "beebs"];
 
+// Motif affiché quand une plateforme est grisée, par statut de compat (cf.
+// src/utils/platformCompat.js). "prohibited" (2026-08-11) a SON message : dire
+// « catégorie non disponible » d'un parfum sur Leboncoin serait faux et
+// pousserait l'utilisateur à chercher une autre catégorie — il n'y en a pas,
+// c'est le PRODUIT qui est interdit. Une case grise muette, elle, se lit comme
+// un bug.
+const SUPPORT_MESSAGE_KEY = {
+  prohibited: "platformProhibited",
+  unavailable: "platformUnavailable",
+  unmapped: "platformUnmapped",
+};
+const supportMessage = (t, support, platformLabel) =>
+  t(SUPPORT_MESSAGE_KEY[support] ?? "platformUnmapped").replace("{platform}", platformLabel);
+
 // ── Multi-select photos sur ANDROID uniquement (2026-07-27) ──────────────────
 // L'<input type="file" multiple> de la WebView part en ACTION_GET_CONTENT vers
 // la galerie du constructeur, dont le multi-select exige un appui long — un tap
@@ -1546,7 +1560,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                 : enCours
                 ? (lang === 'en' ? `Already being published on ${PLATFORM_LABELS[p]}` : `Publication déjà en cours sur ${PLATFORM_LABELS[p]}`)
                 : disabled
-                ? t(support === "unavailable" ? "platformUnavailable" : "platformUnmapped").replace("{platform}", PLATFORM_LABELS[p])
+                ? supportMessage(t, support, PLATFORM_LABELS[p])
                 : undefined}
               onClick={() => !disabled && setSelected(prev => {
                 const s = new Set(prev);
@@ -1610,7 +1624,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
       )}
       {PLATFORMS_DEFAULT.filter(p => (platformSupport?.[p] ?? "supported") !== "supported").map(p => (
         <p key={p} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
-          {t(platformSupport[p] === "unavailable" ? "platformUnavailable" : "platformUnmapped").replace("{platform}", PLATFORM_LABELS[p])}
+          {supportMessage(t, platformSupport[p], PLATFORM_LABELS[p])}
         </p>
       ))}
       {selected.size === 0 && (
@@ -3352,7 +3366,16 @@ export default function ListingPreviewScreen({
       initialListing?.description,
       initialListing?.categorie
     );
-    return getPlatformSupport(icon);
+    // L'article est passé en plus de l'icône depuis le 2026-08-11 : Leboncoin
+    // INTERDIT les cosmétiques consommables (parfums, maquillage, crèmes,
+    // soins), et cette interdiction ne se déduit pas de l'icône seule — 81 %
+    // des lignes à icône cosmétique de la base n'en sont pas (cartes Pokémon
+    // « Mascarade », couleur « crème »). Cf. estCosmetiqueInterditeLbc.
+    return getPlatformSupport(icon, {
+      titre: initialListing?.titre,
+      description: initialListing?.description,
+      type: initialListing?.categorie,
+    });
   }, [initialListing]);
   useEffect(() => {
     setSelected(prev => {
@@ -5381,11 +5404,26 @@ export default function ListingPreviewScreen({
       // spend_coins_and_publish calcule le débit sur `p_jobs`, donc ce qui ne
       // rentre pas ici n'est ni inséré, ni facturé. Les autres partent
       // normalement — on ne bloque que ce qui ne peut pas aboutir.
-      const plateformesAPublier = [...selected].filter(p => !plateformesSansAdresse.includes(p));
+      //
+      // ⚠️ MÊME POINT DE SORTIE pour les produits INTERDITS par la plateforme
+      // (cosmétiques consommables sur Leboncoin, 2026-08-11) : le grisage de la
+      // case et le filtre de `selected` s'en chargent déjà, mais tous deux
+      // vivent dans un state React qui peut être périmé (article ré-analysé
+      // après la coche, retour arrière dans le stepper). Le débit, lui, se joue
+      // ICI — c'est donc ici que la garde doit être dure. Recalculé à frais sur
+      // platformSupport, jamais sur une décision prise plus tôt.
+      const plateformesInterdites = [...selected].filter(p => platformSupport?.[p] === "prohibited");
+      const plateformesAPublier = [...selected].filter(
+        p => !plateformesSansAdresse.includes(p) && !plateformesInterdites.includes(p)
+      );
       if (!plateformesAPublier.length) {
-        // Seules des plateformes sans adresse étaient cochées : rien à publier.
-        // Le CTA est déjà gris dans ce cas (publishChips), ce re-check attrape
-        // un état périmé ou une course. Aucune Pépite engagée.
+        // Rien de publiable ne restait. Le CTA est déjà gris dans ce cas
+        // (publishChips), ce re-check attrape un état périmé ou une course.
+        // Aucune Pépite engagée.
+        if (plateformesInterdites.length) {
+          throw new Error(supportMessage(t, "prohibited", plateformesInterdites.map(p => PLATFORM_LABELS[p]).join(", ")));
+        }
+        // Seules des plateformes sans adresse étaient cochées.
         throw new Error(lang === "en"
           ? "Add your pickup address in Settings → “Leboncoin pickup address” before publishing on Leboncoin or Beebs."
           : "Renseigne ton adresse dans Réglages → « Adresse de remise Leboncoin » avant de publier sur Leboncoin ou Beebs.");
@@ -5900,9 +5938,12 @@ export default function ListingPreviewScreen({
   // elles ne doivent donc ni être comptées dans « Publier sur N » ni gonfler le
   // total de Pépites affiché — « jamais un total faux ». lbcAdresseManquante
   // vaut null tant qu'on ne sait pas : le compte reste alors celui d'avant.
+  // Même raison pour un produit INTERDIT par la plateforme (2026-08-11) : ce
+  // qui ne peut pas partir ne se compte pas et ne se facture pas.
   const publishChips = [...selected]
     .filter(p => platformListings?.platforms?.[p])
-    .filter(p => !(lbcAdresseManquante?.plateformes ?? []).includes(p));
+    .filter(p => !(lbcAdresseManquante?.plateformes ?? []).includes(p))
+    .filter(p => platformSupport?.[p] !== "prohibited");
 
   function ctaLabel() {
     if (step === 0) {

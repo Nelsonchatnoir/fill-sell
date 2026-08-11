@@ -157,6 +157,10 @@ export const translations = {
     stepPhotosSelectPlatformError:"Sélectionne au moins une plateforme.",
     platformUnavailable:"Non vendable sur {platform} : catégorie non disponible sur cette plateforme.",
     platformUnmapped:"{platform} indisponible pour cet article : catégorie pas encore prise en charge par FillSell (bientôt).",
+    // Interdiction de PRODUIT, pas de catégorie (2026-08-11). Le message doit
+    // dire pourquoi ET où publier : sans le motif, l'utilisateur croit à un bug
+    // ou cherche une catégorie de contournement — il n'y en a aucune.
+    platformProhibited:"{platform} interdit la vente de cosmétiques et parfums (crèmes, soins, maquillage) : l'annonce serait refusée à la modération. Publie cet article sur Vinted, eBay ou Beebs.",
     retouchIaMultiLabel:"Retouche IA avancée",
     retouchIaMultiDesc:"Lumière, netteté, plusieurs angles valorisés",
     retouchIaSimpleLabel:"Retouche IA légère",
@@ -466,6 +470,7 @@ export const translations = {
     stepPhotosSelectPlatformError:"Select at least one platform.",
     platformUnavailable:"Not sellable on {platform}: this category doesn't exist on that platform.",
     platformUnmapped:"{platform} unavailable for this item: category not yet supported by FillSell (coming soon).",
+    platformProhibited:"{platform} bans the sale of cosmetics and fragrances (creams, skincare, make-up): the listing would be rejected by moderation. Post this item on Vinted, eBay or Beebs instead.",
     retouchIaMultiLabel:"Advanced AI retouch",
     retouchIaMultiDesc:"Lighting, clarity, multiple angles enhanced",
     retouchIaSimpleLabel:"Light AI retouch",

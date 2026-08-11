@@ -136,7 +136,62 @@ const CATEGORY_FIELD = {
   ebay: "ebayCategoryId",
 };
 
+// ── Produits INTERDITS par Leboncoin — cosmétiques consommables (2026-08-11) ──
+// MIROIR de estCosmetiqueInterditeLbc (src/utils/lbcCategories.js), qui porte la
+// démonstration complète : Leboncoin interdit la VENTE des parfums, maquillages,
+// crèmes et soins ; ce n'est pas un problème de catégorie, et les 4 seuls jobs
+// LBC jamais partis en Divers > Autres (tous cosmétiques) ont tous échoué.
+//
+// ⚠️ CE MIROIR EST VOLONTAIREMENT PLUS ÉTROIT QUE L'APP, sur deux points :
+//  1. il ne voit ni l'icône ni le TYPE de l'article — get-pending-jobs ne
+//     transmet que title/description (cf. son .select()). La 3e branche de la
+//     règle (« typé Beauté ») est donc INAPPLICABLE ici : un « Anti-Cernes »
+//     sans mot-clé passera cette garde. C'est assumé — la garde de l'app, elle,
+//     l'attrape AVANT le débit, et le doute doit toujours profiter au dépôt.
+//  2. le veto (trousse, flacon vide, pinceau, Airwrap…) est repris À
+//     L'IDENTIQUE : c'est lui qui empêche de bloquer à tort, jamais l'inverse.
+//  3. « crème » NU est absent de cette liste alors qu'il est présent côté app.
+//     Là-bas l'icône objet fait barrage (une « Casquette beige/crème » part sur
+//     🧢, une « Robe crème » sur 👗) ; ici il n'y a pas d'icône, et « crème »
+//     est d'abord une COULEUR. Sans cette restriction, la casquette Volcom
+//     beige/crème — RÉELLEMENT publiée sur Leboncoin le 21/07, URL à l'appui —
+//     serait refusée. Seules les formes contextualisées sont retenues.
+// La vraie garde est côté app (aucune Pépite engagée). Celle-ci est le filet
+// des jobs DÉJÀ en file au moment de la mise à jour, et des versions d'app
+// antérieures — dans ces cas le job part en 'failed' et le trigger
+// cross_post_job_settle_reservation rend la Pépite (release).
+const LBC_COSMETIQUE_CONSOMMABLE =
+  /(?<![\p{L}\p{N}])parfums?(?![\p{L}\p{N}])|eaux?.?de.?(?:toilette|parfum|cologne)|(?<![\p{L}\p{N}])colognes?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])maquillages?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])mascaras?(?![\p{L}\p{N}])|rouges?.?[àa].?l[èe]vres?|(?<![\p{L}\p{N}])lipsticks?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])fards?(?![\p{L}\p{N}])|fonds?.?de.?teint|anti.?cernes?|vernis.?(?:[àa].?)?(?:ongles?|semi.?permanents?|gels?)|(?<![\p{L}\p{N}])manucures?(?![\p{L}\p{N}])|cr[èe]mes?.?(?:hydratantes?|nourrissantes?|solaires?|de.?jour|de.?nuit|visages?|corps|mains?|anti.?[âa]ges?|anti.?rides?|teintées?)|(?<![\p{L}\p{N}])s[ée]rums?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])lotions?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])shampo(?:o)?ings?(?![\p{L}\p{N}])|gels?.?douche|(?<![\p{L}\p{N}])d[ée]odorants?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])gommages?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])d[ée]maquillants?(?![\p{L}\p{N}])|masques?.?(?:pour.?)?(?:les?.?)?(?:visages?|corps|cheveux|capillaires?|hydratants?|de.?nuit|en.?tissu|en.?feuilles?|l[èe]vres?)|huiles?.?(?:pour.?)?(?:les?.?)?(?:visages?|corps|cheveux|barbe|d[ée]maquillante)|soins?.?(?:de.?)?(?:la.?)?(?:peau|visage|corps|anti.?[âa]ges?|anti.?rides?|anti.?rougeurs?)|(?<![\p{L}\p{N}])skincare(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])sunscreens?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])moisturi[sz]ers?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])cleansers?(?![\p{L}\p{N}])|lips?.?(?:balms?|masks?|oils?|glosses?|sticks?)/iu;
+const LBC_NON_CONSOMMABLE =
+  /(?<![\p{L}\p{N}])trousses?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])vanity|beauty.?case|(?:coffrets?|bo[îi]tes?|caisses?).?de.?rangement|(?<![\p{L}\p{N}])rangements?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])organi[sz]e(?:u)?rs?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])pr[ée]sentoirs?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])distributeurs?(?![\p{L}\p{N}])|porte.?(?:pinceaux?|maquillage|parfums?|savons?)|(?<![\p{L}\p{N}])[ée]tuis?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])pochettes?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])sacoches?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])mallettes?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])valises?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])vides?(?![\p{L}\p{N}])|de.?collection|(?<![\p{L}\p{N}])collector(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])factices?(?![\p{L}\p{N}])|sans.?produit|(?<![\p{L}\p{N}])pinceaux?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])brosses?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])peignes?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])[ée]ponges?(?![\p{L}\p{N}])|beauty.?blender|(?<![\p{L}\p{N}])houppettes?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])applicateurs?(?![\p{L}\p{N}])|limes?.?[àa].?ongles?|coupe.?ongles?|(?<![\p{L}\p{N}])ciseaux(?![\p{L}\p{N}])|pinces?.?[àa].?[ée]piler|recourbe.?cils|(?<![\p{L}\p{N}])miroirs?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])bigoudis(?![\p{L}\p{N}])|serre.?t[êe]tes?|gants?.?de.?toilette|(?<![\p{L}\p{N}])appareils?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])lisseurs?(?![\p{L}\p{N}])|s[èe]che.?cheveux|(?<![\p{L}\p{N}])tondeuses?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])rasoirs?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])[ée]pilateurs?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])airwrap(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])dyson(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])babyliss(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])ghd(?![\p{L}\p{N}])|masques?.?led|luminoth[ée]rapie|(?<![\p{L}\p{N}])st[ée]rilisateurs?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])diffuseurs?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])brumisateurs?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])vaporisateurs?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])nettoyeurs?(?![\p{L}\p{N}])|tire.?laits?|breast.?pumps?|pompes?.?mammaires?|parfums?.?d.?(?:ambiance|int[ée]rieur)|parfums?.?(?:de|pour).?(?:la.?)?(?:maison|linge|voiture)|(?<![\p{L}\p{N}])d[ée]sodorisants?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])encens(?![\p{L}\p{N}])|br[ûu]le.?parfums?|(?<![\p{L}\p{N}])bougies?(?![\p{L}\p{N}])|masques?.?(?:chirurgi|ffp\d|de.?ski|de.?plong[ée]e|de.?carnaval|de.?d[ée]guisement|[àa].?gaz|de.?soudure|de.?protection|anti.?poussi[èe]re)|savons?.?(?:de.?marseille|noirs?|vaisselle|m[ée]nagers?|d[ée]tachants?)/iu;
+
+// Le TITRE seul, jamais la description : celle d'un vêtement dit « crème » pour
+// une couleur, celle d'un parfum dit « boîte d'origine » — la lire produit des
+// faux verdicts dans les deux sens (mesuré sur les 4 881 lignes de la base).
+function lbcProduitInterdit(job) {
+  if (job.platform !== "leboncoin") return false;
+  const titre = String(job.title ?? "");
+  if (LBC_NON_CONSOMMABLE.test(titre)) return false;
+  return LBC_COSMETIQUE_CONSOMMABLE.test(titre);
+}
+
 function precheckJob(job) {
+  // AVANT la catégorie : une catégorie parfaitement résolue ne sauve pas un
+  // produit que la plateforme refuse de vendre. Divers > Autres se remplit
+  // sans erreur, l'annonce part, et c'est la MODÉRATION qui la refuse ensuite
+  // — hors de portée de l'extension.
+  // Le test sur `action` est REDONDANT aujourd'hui (processJob route les delete
+  // vers processDeleteJob avant d'arriver ici) : il est là pour qu'un retrait
+  // d'annonce déjà en ligne ne puisse jamais être bloqué par cette garde, même
+  // si l'ordre des branches changeait.
+  if (job.action !== "delete" && lbcProduitInterdit(job)) {
+    return (
+      "Leboncoin interdit la vente de cosmétiques et parfums (crèmes, soins, " +
+      "maquillage) : l'annonce serait refusée par leur modération, quelle que " +
+      "soit la catégorie choisie. Publier cet article sur Vinted, eBay ou " +
+      "Beebs. Aucun onglet n'a été ouvert."
+    );
+  }
   const key = CATEGORY_FIELD[job.platform];
   if (!key) return null;
   const fields = job.platform_fields ?? {};

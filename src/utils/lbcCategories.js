@@ -155,12 +155,188 @@ export function getLbcCategoryPath(icon) {
   return LBC_CATEGORIES[icon] ?? null;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUITS INTERDITS PAR LEBONCOIN — cosmétiques consommables (2026-08-11)
+// ═══════════════════════════════════════════════════════════════════════════
+// Leboncoin INTERDIT la vente des produits cosmétiques (parfums, maquillage,
+// crèmes, soins). Ce n'est PAS un problème de catégorie : aucune feuille de
+// l'arbre ne les fait passer. Le mapping Beauté → Divers > Autres du 19/07
+// (juste au-dessus) reposait sur une prémisse fausse — « LBC n'a pas de rayon
+// beauté » — alors que le vrai obstacle est une interdiction de PRODUIT. Le
+// message de refus (« le bien ou service que vous souhaitez proposer n'est pas
+// adapté à la catégorie que vous avez sélectionnée ») est le texte générique de
+// leur modération automatisée, pas un diagnostic.
+//
+// PREUVE EN BASE (relevé 2026-08-11) — les 4 SEULS jobs LBC jamais partis en
+// Divers > Autres depuis le début du produit sont des cosmétiques, et AUCUN
+// n'a abouti : parfum Karl Lagerfeld (11/08, published SANS URL), sérum Medik8
+// (10/08, published SANS URL), masques Mixsoon ×2 (10/08, failed). Les deux qui
+// ont traversé le tunnel ont reçu un mail de refus. Tous les autres dépôts LBC
+// aboutis vivent dans d'autres feuilles.
+//
+// ⚠️ LA LIMITE EST LE CONSOMMABLE, PAS « LA BEAUTÉ ». Restent vendables, donc
+// NON bloqués : flacons vides ou de collection, trousses/vanity/rangements,
+// pinceaux, brosses, miroirs, et tous les APPAREILS (sèche-cheveux, lisseur,
+// tondeuse, épilateur, Dyson Airwrap).
+//
+// ⚠️⚠️ L'ICÔNE NE SUFFIT PAS, ET C'EST MESURÉ. Sur les 4 881 lignes
+// d'inventaire réelles, 205 tombent sur une icône cosmétique (🌸💄💅🧴), mais
+// 166 d'entre elles (81 %) ne sont PAS des cosmétiques :
+//   · 165 lignes / 108 titres = des cartes Pokémon de l'extension « MASCARADE
+//     Crépusculaire ». La règle 💄 d'OBJECT_ICON_RULES contient `mascara` SANS
+//     borne de mot : « Mascarade » matche. Griser LBC sur l'icône seule
+//     retirerait la plateforme à 108 articles de collection parfaitement
+//     vendables.
+//   · 1 ligne = un « Ensemble » de Mode dont la description dit « Crème et
+//     blanc, fille » — la COULEUR crème, pas un produit.
+// D'où la règle en trois temps ci-dessous, avec des bornes de mot Unicode
+// (`(?![\p{L}\p{N}])`, l'idiome déjà retenu dans shared.js contre le piège du
+// \b ASCII-only : sans lui, `\bparfum\b` matche « parfumée »).
+//
+// DOCTRINE : en cas de doute, ON NE BLOQUE PAS. Griser à tort un article qui
+// passerait est un dégât immédiat et visible ; ne pas bloquer laisse le
+// comportement d'aujourd'hui (refus à la modération), qui est mauvais mais
+// connu. Toute classe d'objets non tranchable reste donc publiable.
+
+// Périmètre : les 4 seules icônes qui portent un produit cosmétique. Elles ne
+// DÉCIDENT rien (cf. Mascarade) — elles bornent, pour que le vocabulaire
+// ci-dessous ne puisse pas se déclencher sur un article d'une autre famille.
+const ICONES_COSMETIQUES = new Set(["🌸", "💄", "💅", "🧴"]);
+
+// Bornes de mot Unicode — « parfum » ne doit pas matcher dans « parfumée »,
+// « mascara » pas dans « Mascarade », « fard » pas dans « fardeau ».
+const D = "(?<![\\p{L}\\p{N}])";  // début de mot
+const F = "(?![\\p{L}\\p{N}])";   // fin de mot
+
+// ── 1. Le TITRE NOMME un consommable cosmétique ────────────────────────────
+// Vocabulaire volontairement restreint aux termes qui désignent le PRODUIT
+// lui-même. Les termes trop polysémiques en sont ABSENTS par décision :
+//   · `savon` seul (savon de Marseille / noir / ménager = entretien),
+//   · `vernis` seul (vernis à bois),
+//   · `palette` seule (palette de bois, et « Mascarade » a déjà servi de leçon),
+//   · `solaire` seul (panneau solaire, lunettes de soleil).
+// Ces produits-là restent attrapés par la règle 3 quand l'article est typé
+// Beauté — c'est-à-dire quand l'utilisateur a lui-même dit que c'en était un.
+const CONSOMMABLE_TITRE = new RegExp([
+  // Parfums
+  `${D}parfums?${F}`, `eaux?.?de.?(?:toilette|parfum|cologne)`, `${D}colognes?${F}`,
+  `${D}ed[tp]${F}`, `extraits?.?de.?parfum`,
+  // Maquillage
+  `${D}maquillages?${F}`, `${D}make.?up${F}`, `${D}mascaras?${F}`,
+  `rouges?.?[àa].?l[èe]vres?`, `${D}lipsticks?${F}`, `${D}gloss(?:es)?${F}`,
+  `${D}fards?${F}`, `${D}eye.?liners?${F}`, `fonds?.?de.?teint`, `${D}blush(?:es)?${F}`,
+  `anti.?cernes?`, `poudres?.?(?:libres?|compactes?|bronzantes?)`,
+  `${D}highlighters?${F}`, `${D}enlumineurs?${F}`, `${D}bronzers?${F}`,
+  `crayons?.?(?:[àa].?)?(?:l[èe]vres?|yeux|sourcils)`, `${D}kh[ôo]l${F}`,
+  `palettes?.?(?:de.?)?(?:fards?|maquillage|ombres?|yeux|teints?|contouring)`,
+  // Ongles
+  `vernis.?(?:[àa].?)?(?:ongles?|semi.?permanents?|gels?)`, `${D}manucures?${F}`,
+  `faux.?ongles?`, `${D}dissolvants?${F}`,
+  // Soins
+  `${D}cr[èe]mes?${F}`, `${D}s[ée]rums?${F}`, `${D}lotions?${F}`,
+  `${D}shampo(?:o)?ings?${F}`, `apr[èe]s.?shampo`, `gels?.?douche`,
+  `${D}d[ée]odorants?${F}`, `${D}gommages?${F}`, `${D}exfoliants?${F}`,
+  `${D}d[ée]maquillants?${F}`, `${D}dentifrices?${F}`,
+  `baumes?.?(?:[àa].?)?(?:l[èe]vres?|corps|visage|cheveux)`,
+  // « en feuille » : libellé du job LBC réellement refusé le 10/08 (« Mixsoon
+  // Soybean Milk Pad - 10 packs masques en feuille »).
+  `masques?.?(?:pour.?)?(?:les?.?)?(?:visages?|corps|cheveux|capillaires?|hydratants?|purifiants?|exfoliants?|de.?nuit|en.?tissu|en.?feuilles?|l[èe]vres?)`,
+  `huiles?.?(?:pour.?)?(?:les?.?)?(?:visages?|corps|cheveux|barbe|s[èe]che|d[ée]maquillante|de.?massage)`,
+  `soins?.?(?:de.?)?(?:la.?)?(?:peau|visage|corps|mains?|anti.?[âa]ges?|anti.?rides?|hydratants?|anti.?rougeurs?)`,
+  `cr[èe]mes?.?solaires?`, `(?:lotion|protection|[ée]cran).?solaire`,
+  `apr[èe]s.?(?:rasage|soleil)`, `contour.?des.?yeux`,
+  // Anglais (titres importés : « Lip Sleeping Mask », « Unseen Sunscreen »)
+  `${D}skincare${F}`, `${D}sunscreens?${F}`, `${D}spf.?\\d`,
+  `${D}moisturi[sz]ers?${F}`, `${D}cleansers?${F}`, `${D}toners?${F}`,
+  `lips?.?(?:balms?|masks?|oils?|glosses?|sticks?|scrubs?)`,
+  `body.?(?:lotions?|butters?|scrubs?|oils?)`, `after.?shaves?`,
+].join("|"), "iu");
+
+// ── 2. Le TITRE nomme au contraire un NON-consommable ──────────────────────
+// Veto ABSOLU : il prime sur tout le reste, y compris sur le type Beauté. Un
+// « coffret » n'y est PAS (un coffret de parfums en est un) — seul le coffret
+// DE RANGEMENT l'est. Vérifié sur le TITRE seul : la description d'un vrai
+// parfum dit régulièrement « dans sa boîte d'origine », ce qui suffirait à
+// laisser passer le produit interdit.
+const NON_CONSOMMABLE_TITRE = new RegExp([
+  // Contenants et rangement
+  `${D}trousses?${F}`, `${D}vanity${F}`, `${D}vanity.?case`, `${D}beauty.?case`,
+  `(?:coffrets?|bo[îi]tes?|caisses?).?de.?rangement`, `${D}rangements?${F}`,
+  `${D}organi[sz]e(?:u)?rs?${F}`, `${D}pr[ée]sentoirs?${F}`, `${D}distributeurs?${F}`,
+  `porte.?(?:pinceaux?|maquillage|parfums?|savons?)`, `${D}[ée]tuis?${F}`,
+  `${D}pochettes?${F}`, `${D}sacoches?${F}`, `${D}mallettes?${F}`, `${D}valises?${F}`,
+  // Vide, factice, collection
+  `${D}vides?${F}`, `de.?collection`, `${D}collector${F}`, `${D}factices?${F}`,
+  `${D}dummy${F}`, `sans.?produit`,
+  // Outils et accessoires
+  `${D}pinceaux?${F}`, `${D}brosses?${F}`, `${D}peignes?${F}`, `${D}[ée]ponges?${F}`,
+  `beauty.?blender`, `${D}houppettes?${F}`, `${D}applicateurs?${F}`,
+  `limes?.?[àa].?ongles?`, `coupe.?ongles?`, `${D}ciseaux${F}`, `pinces?.?[àa].?[ée]piler`,
+  `recourbe.?cils`, `${D}miroirs?${F}`, `${D}bigoudis${F}`, `serre.?t[êe]tes?`,
+  `${D}headbands?${F}`, `gants?.?de.?toilette`,
+  // Appareils (déjà hors périmètre par l'icône 💇/🪒/⚡ — filet de sécurité)
+  `${D}appareils?${F}`, `${D}lisseurs?${F}`, `s[èe]che.?cheveux`, `${D}tondeuses?${F}`,
+  `${D}rasoirs?${F}`, `${D}[ée]pilateurs?${F}`, `${D}airwrap${F}`, `${D}dyson${F}`,
+  `${D}babyliss${F}`, `${D}ghd${F}`, `masques?.?led`, `luminoth[ée]rapie`,
+  `${D}st[ée]rilisateurs?${F}`, `${D}diffuseurs?${F}`, `${D}brumisateurs?${F}`,
+  `${D}vaporisateurs?${F}`, `${D}nettoyeurs?${F}`,
+  // Puériculture typée « Beauté » par erreur — relevé réel : « M5 Wearable
+  // Breast Pump - Double Set » est en base sous type=Beauté. Sans mot-clé
+  // français, il tombe sur le défaut 🧴 et la règle 3 le bloquerait.
+  `tire.?laits?`, `breast.?pumps?`, `pompes?.?mammaires?`,
+  // Parfum NON corporel : ce n'est pas un cosmétique, LBC ne l'interdit pas
+  `parfums?.?d.?(?:ambiance|int[ée]rieur)`, `parfums?.?(?:de|pour).?(?:la.?)?(?:maison|linge|voiture)`,
+  `${D}d[ée]sodorisants?${F}`, `${D}encens${F}`, `br[ûu]le.?parfums?`, `${D}bougies?${F}`,
+  `senteurs?.?d.?int[ée]rieur`,
+  // Masques qui n'ont rien de cosmétique
+  `masques?.?(?:chirurgi|ffp\\d|de.?ski|de.?plong[ée]e|de.?carnaval|de.?d[ée]guisement|[àa].?gaz|de.?soudure|de.?protection|anti.?poussi[èe]re)`,
+  // Savons d'entretien
+  `savons?.?(?:de.?marseille|noirs?|vaisselle|m[ée]nagers?|d[ée]tachants?)`,
+].join("|"), "iu");
+
+/**
+ * Cet article est-il un cosmétique CONSOMMABLE, donc interdit de vente sur
+ * Leboncoin ? Règle en trois temps, dans cet ordre :
+ *   1. l'icône objet est cosmétique (borne du périmètre — ne décide rien) ;
+ *   2. le titre nomme un NON-consommable → NON, jamais (veto absolu) ;
+ *   3. le titre nomme un consommable, OU l'article est typé « Beauté ».
+ *
+ * @param {string} icon — emoji retourné par detectObjectIcon
+ * @param {{titre?: string, description?: string, type?: string}} article
+ * @returns {boolean} true = à bloquer sur Leboncoin
+ */
+export function estCosmetiqueInterditeLbc(icon, article) {
+  if (!ICONES_COSMETIQUES.has(icon)) return false;
+  // Le TITRE, et lui seul : c'est lui qui NOMME l'objet (même doctrine que la
+  // passe 1 de detectObjectIconKeyword). La description d'un vêtement dit
+  // « crème » pour une couleur, celle d'un parfum dit « boîte d'origine » —
+  // la lire dans un sens comme dans l'autre produit des faux verdicts.
+  const titre = String(article?.titre ?? "");
+  if (NON_CONSOMMABLE_TITRE.test(titre)) return false;
+  if (CONSOMMABLE_TITRE.test(titre)) return true;
+  // Le type ne suffit PAS seul (un Dyson Airwrap typé Beauté reste un
+  // appareil) — mais ici l'icône est déjà cosmétique ET le veto est passé :
+  // « Anti-Cernes », « Lip Sleeping Mask », « Soybean Milk Pads » n'ont aucun
+  // mot-clé français et ne seraient sinon jamais vus.
+  return String(article?.type ?? "").trim().toLowerCase() === "beauté";
+}
+
 /**
  * Statut de support Leboncoin — dérivé de LBC_CATEGORIES (même contrat que
  * vintedCategoryStatus) : "supported" | "unavailable" (null explicite —
- * véhicules immatriculés, Beauté) | "unmapped".
+ * véhicules immatriculés) | "unmapped", plus un état PROPRE à Leboncoin :
+ *   "prohibited" — la catégorie existe, l'article y entrerait, mais Leboncoin
+ *   INTERDIT ce produit (cosmétique consommable). Distinct d'"unavailable" :
+ *   ce n'est pas un trou de catalogue, c'est un refus de vente, et le message
+ *   affiché doit le dire — sinon l'utilisateur cherche à contourner.
+ *
+ * @param {string} icon — emoji retourné par detectObjectIcon
+ * @param {{titre?: string, description?: string, type?: string}|null} article —
+ *   OPTIONNEL. Absent = comportement d'avant 2026-08-11 à l'identique : aucun
+ *   appelant qui ne connaît pas l'article ne peut déclencher un blocage.
  */
-export function lbcCategoryStatus(icon) {
+export function lbcCategoryStatus(icon, article = null) {
+  if (article && estCosmetiqueInterditeLbc(icon, article)) return "prohibited";
   if (!Object.prototype.hasOwnProperty.call(LBC_CATEGORIES, icon)) return "unmapped";
   return LBC_CATEGORIES[icon] ? "supported" : "unavailable";
 }
