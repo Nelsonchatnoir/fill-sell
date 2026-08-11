@@ -75,7 +75,7 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // servirait qu'à se faire rejeter.
 // Sans ces trois lignes, la garde « version jamais publiée » laissait passer un
 // paquet 0.5.8 et c'est le Chrome Web Store qui refusait, APRÈS coup.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
