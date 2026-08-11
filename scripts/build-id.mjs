@@ -198,7 +198,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // compteur « En ligne (N) » + garde pagination), jamais déduite.
 // ⚠️ POSTÉRIEUR au paquet fillsell-extension-0.5.9-cws.zip, et EXTENSION_MIN_BUILD
 // reste sur la 0.5.6 (la 0.5.9 n'est toujours pas acceptée).
-export const EXTENSION_LAST_COMMIT = '2026-08-11T10:25:23Z';
+// 2026-08-11T10:42:25Z = 083c80c : message « brouillon Leboncoin déjà en
+// cours » réécrit — il décrivait notre mécanique interne, il dit maintenant où
+// aller, quoi faire, dans quel ordre, et pourquoi on ne supprime rien
+// nous-mêmes. Le mot « brouillon » y reste : StockTab le repère par
+// DRAFT_LBC_RE pour afficher le bouton « Ouvrir le brouillon Leboncoin ».
+// Texte seul, aucun changement de comportement.
+// ⚠️ POSTÉRIEUR au paquet 0.5.9 ; EXTENSION_MIN_BUILD reste sur la 0.5.6.
+export const EXTENSION_LAST_COMMIT = '2026-08-11T10:42:25Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
