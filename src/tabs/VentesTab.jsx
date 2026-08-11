@@ -87,6 +87,19 @@ const LOT_INSERT=500;
 // Au-delà de ce nombre, on annonce le chiffre exact avant d'écrire. Écrire
 // 1 982 ventes est difficile à défaire : ça se confirme.
 const SEUIL_CONFIRMATION=100;
+// Nombre d'ids par requête `.in(...)`. Un `.in()` de 2 000 identifiants part en
+// query string : au-delà de quelques centaines, l'URL dépasse ce que PostgREST
+// et les proxies acceptent, et la réponse est de toute façon tronquée à 1 000
+// lignes. Trois plafonds nous ont déjà mordus (ventes 500, snapshots 1 000,
+// inventaire 3 000) : celui-là est de la même famille, on le découpe.
+const LOT_IDS=300;
+
+/** Découpe un tableau en tranches de `taille`. */
+function tranches(liste,taille){
+  const out=[];
+  for(let i=0;i<liste.length;i+=taille) out.push(liste.slice(i,i+taille));
+  return out;
+}
 
 // ── État vide des Ventes ────────────────────────────────────────────────────
 // PLUS AUCUNE DONNÉE INVENTÉE ICI depuis le 2026-08-09. L'écran ouvrait sur un
@@ -295,7 +308,12 @@ const VentesTab = memo(function VentesTab({
   const [selection,setSelection]=useState(()=>new Set());
   const [prixLot,setPrixLot]=useState("");
   const [busy,setBusy]=useState(false);
-  const [liensInv,setLiensInv]=useState({});    // id de vente -> inventaire_id (ou null)
+  // Volume, vue B — mêmes bornes que la vue A : fenêtre de RENDU, avancement
+  // réel, confirmation au-delà du seuil. La sélection, elle, ne connaît pas la
+  // fenêtre (cf. lignesACompleter).
+  const [venteRenduMax,setVenteRenduMax]=useState(RENDU_PAS);
+  const [progressLot,setProgressLot]=useState(null);   // {fait,total}
+  const [confirmLot,setConfirmLot]=useState(null);     // {mode,n}
   // Entrée/Échap changent openId : le champ est démonté, et le blur qui suit
   // re-sauverait (ou sauverait une valeur annulée). Ce drapeau neutralise ce
   // blur-là, et lui seul.
@@ -338,29 +356,34 @@ const VentesTab = memo(function VentesTab({
   // Une ligne cochée puis complétée à la main sort d'elle-même de la sélection :
   // sa case n'est plus rendue, elle ne pourrait donc plus être décochée, et la
   // barre compterait des ventes qu'elle ne peut plus toucher.
-  const lignesSelectionnees=useMemo(()=>groupedSales.filter(s=>selection.has(s.id)&&!patchs[s.id]),[groupedSales,selection,patchs]);
+  // ⚠️ Relue à travers le filtre ET la recherche courants (2026-08-11), comme en
+  // vue A : le vidage au changement de filtre est la garantie VISIBLE, ceci est
+  // la garantie STRUCTURELLE. Aucune écriture de lot ne peut porter sur une
+  // ligne que l'utilisateur ne voit pas dans sa vue du moment.
+  const lignesSelectionnees=useMemo(
+    ()=>groupedSales.filter(s=>selection.has(s.id)&&!patchs[s.id]
+      &&(filterType==="Tous"||s.type===filterType)
+      &&matchRecherche(s,searchHistory)),
+    [groupedSales,selection,patchs,filterType,searchHistory]);
   const nbSel=lignesSelectionnees.length;
   const idsSelection=useMemo(()=>lignesSelectionnees.flatMap(idsCibles),[lignesSelectionnees,idsCibles]);
 
-  // `inventaire_id` n'est pas exposé par mapSale (App.jsx) : on va le chercher
-  // pour les seules ventes sélectionnées, et seulement une fois par id — c'est ce
-  // qui décide si « Je ne sais plus » a une cible à marquer.
-  useEffect(()=>{
-    const manquants=idsSelection.filter(id=>!(id in liensInv));
-    if(!manquants.length) return;
-    let annule=false;
-    supabase.from('ventes').select('id,inventaire_id').in('id',manquants).then(({data,error})=>{
-      if(annule||error) return;
-      // Les ids que la requête ne rend PAS (RLS, ligne disparue) sont notés
-      // « sans article lié » : sinon liensCharges reste faux pour toujours et le
-      // bouton « Je ne sais plus » ne sortirait jamais de son état grisé.
-      setLiensInv(prev=>{const n={...prev};for(const id of manquants)n[id]=null;for(const r of(data||[]))n[r.id]=r.inventaire_id??null;return n;});
-    });
-    return()=>{annule=true;};
-  },[idsSelection,liensInv]);
-
-  const liensCharges=idsSelection.every(id=>id in liensInv);
-  const invIdsSelection=useMemo(()=>[...new Set(idsSelection.map(id=>liensInv[id]).filter(v=>v!=null))],[idsSelection,liensInv]);
+  // ── inventaire_id : lu EN LOCAL (2026-08-11) ──────────────────────────────
+  // Le commentaire d'origine disait « inventaire_id n'est pas exposé par
+  // mapSale » et justifiait un aller-retour réseau pour le retrouver. C'est
+  // faux depuis un moment : mapSale rend bien `inventaire_id`. Cette requête
+  // aurait porté un `.in()` de ~2 000 identifiants dès qu'on sélectionne tout —
+  // URL démesurée, et réponse tronquée à 1 000 lignes par PostgREST, donc un
+  // « Je ne sais plus » silencieusement partiel. Supprimée : la correspondance
+  // se fait sur `sales`, sans requête et sans plafond.
+  const invParVente=useMemo(()=>{
+    const m=new Map();
+    for(const s of sales) m.set(s.id,s.inventaire_id??null);
+    return m;
+  },[sales]);
+  const invIdsSelection=useMemo(
+    ()=>[...new Set(idsSelection.map(id=>invParVente.get(id)).filter(v=>v!=null))],
+    [idsSelection,invParVente]);
 
   // Écriture d'un prix d'achat sur UNE ligne affichée (1..n lignes en base).
   // Rend true/false — la barre de lot s'en sert pour savoir quoi vider.
@@ -431,40 +454,136 @@ const VentesTab = memo(function VentesTab({
     setSelection(prev=>{const n=new Set(prev);if(n.has(id))n.delete(id);else n.add(id);return n;});
   }
 
-  async function appliquerLot(){
-    const pa=parsePrix(prixLot);
-    if(pa===null||Number.isNaN(pa)){setErreur({id:null,message:fr?'Entre un prix unitaire':'Enter a unit price'});return;}
-    setBusy(true);
-    let ko=0;
-    // Séquentiel : chaque vente a son prix de vente, donc son bénéfice — il n'y a
-    // pas d'update unique possible.
-    for(const l of lignesSelectionnees){ const ok=await enregistrerPrix(l,pa); if(!ok) ko++; }
-    setBusy(false);
-    if(!ko){setSelection(new Set());setPrixLot("");}
+  // ══════════════════════════════════════════════════════════════════════════
+  // ÉCRITURE DE LOT SUR LES VENTES À COMPLÉTER (2026-08-11)
+  // ══════════════════════════════════════════════════════════════════════════
+  // L'ancienne boucle appelait enregistrerPrix() ligne par ligne : une requête
+  // par vente affichée. Sur 1 982 lignes, ~2 000 allers-retours.
+  //
+  // Pourquoi PAS un seul UPDATE : PostgREST n'applique qu'un patch UNIFORME par
+  // requête, et `benefice` dépend du prix de VENTE de chaque ligne. On regroupe
+  // donc par valeur de bénéfice — c'est-à-dire, à prix d'achat commun, par prix
+  // de vente. Les prix se répètent massivement : relevé en base, 1 982 ventes du
+  // gros compte portent 58 prix distincts, 197 ventes en portent 38. Le
+  // regroupement ramène donc ~2 000 écritures à ~58, sans jamais fabriquer un
+  // bénéfice faux.
+  // (Un upsert partiel aurait donné 4 requêtes, mais l'INSERT sous-jacent peut
+  //  créer des lignes fantômes si un id a disparu, et `ventes` n'a aucune
+  //  contrainte d'unicité pour l'en empêcher. Écarté : le gain ne vaut pas ce
+  //  risque-là sur la table qui porte le chiffre d'affaires.)
+  //
+  // « Je ne sais plus » est le cas dégénéré : bénéfice NULL pour tout le monde,
+  // prix_achat jamais touché → un seul groupe, une requête par tranche de 500.
+  function grouperParEcriture(lignes,pa){
+    const groupes=new Map();   // clé = bénéfice (ou 'null') -> {patch, ids[]}
+    for(const l of lignes){
+      const ids=idsCibles(l);
+      if(!ids.length) continue;
+      const {margin}=margeUnitaire({prixVente:l.sell,prixAchat:pa});
+      const cle=margin==null?'null':String(margin);
+      if(!groupes.has(cle)) groupes.set(cle,{patch:{prix_achat:pa,benefice:margin},ids:[],lignes:[]});
+      const g=groupes.get(cle);
+      g.ids.push(...ids);
+      g.lignes.push({ligne:l,ids,margin});
+    }
+    return [...groupes.values()];
   }
 
-  async function marquerInconnu(){
-    if(!invIdsSelection.length) return;
+  // REPRISE PLUTÔT QUE TRANSACTION (même choix qu'en vue A) : chaque requête
+  // PostgREST est atomique. On applique groupe par groupe, tranche par tranche ;
+  // ce qui est écrit est marqué et sort de la sélection, le reste y demeure. Une
+  // panne en cours laisse un état lisible et relançable, jamais indéterminé.
+  async function ecrireLotACompleter(lignes,pa,{marquerInventaire=false}={}){
     setBusy(true);setErreur(null);
-    let req=supabase.from('inventaire').update({prix_achat_inconnu:true}).in('id',invIdsSelection);
-    if(user?.id) req=req.eq('user_id',user.id);
-    const {error}=await req;
-    setBusy(false);
-    if(error){setErreur({id:null,message:error.message});return;}
-    // ⚠️ SCHÉMA VÉRIFIÉ LE 03/08 : `ventes` n'a PAS de colonne
-    // prix_achat_inconnu — le drapeau ne vit que sur l'ARTICLE d'inventaire lié
-    // (colonne ventes.inventaire_id). Conséquence assumée : côté ventes, la
-    // marque « je ne sais plus » ne tient que le temps de l'écran ; au prochain
-    // fetchAll ces ventes reviennent dans le compteur. `prix_achat` reste NULL
-    // dans tous les cas — jamais 0.
-    // On ne marque QUE les ventes dont l'article lié a réellement été drapeauté.
-    // Griser aussi les autres reviendrait à afficher une décision que rien, nulle
-    // part, n'a enregistrée.
-    const idsMarques=idsSelection.filter(id=>liensInv[id]!=null);
-    setPatchs(p=>{const n={...p};idsMarques.forEach(id=>{n[id]={inconnu:true};});return n;});
-    setSelection(new Set());
+    const groupes=grouperParEcriture(lignes,pa);
+    const total=groupes.reduce((a,g)=>a+g.lignes.length,0);
+    setProgressLot({fait:0,total});
+    let fait=0,arret=null;
+
+    // ⚠️ On avance par TRANCHE, pas par groupe. Découper les ids du groupe puis
+    // ne marquer qu'à la fin du groupe donnait un rapport faux : « je ne sais
+    // plus » ne fait qu'UN groupe (bénéfice null pour tout le monde), donc une
+    // panne à la 3e tranche annonçait « interrompu après 0 vente » alors que
+    // 1 000 lignes étaient déjà écrites. Le compte rendu doit refléter la base,
+    // pas la structure de la boucle.
+    for(const g of groupes){
+      for(const lot of tranches(g.lignes,LOT_INSERT)){
+        const ids=lot.flatMap(l=>l.ids);
+        let req=supabase.from('ventes').update(g.patch).in('id',ids);
+        if(user?.id) req=req.eq('user_id',user.id);
+        const {error}=await req;
+        if(error){arret=error.message;break;}
+
+        // Le drapeau « je ne sais plus » vit sur l'ARTICLE d'inventaire lié
+        // (`ventes` n'a pas cette colonne, schéma vérifié le 03/08). Il est posé
+        // DANS la tranche, juste après l'écriture des ventes : le poser à la fin
+        // de l'opération ferait perdre le marquage des tranches déjà écrites en
+        // cas de panne, et ces ventes-là reviendraient dans « à compléter » au
+        // rechargement alors qu'elles ont bien été traitées.
+        // Depuis le 11/08, App.jsx recolle ce drapeau sur les ventes au
+        // chargement (salesAvecInconnu) : la décision TIENT désormais.
+        if(marquerInventaire){
+          const invIds=[...new Set(lot.flatMap(l=>l.ids).map(id=>invParVente.get(id)).filter(v=>v!=null))];
+          for(const lotInv of tranches(invIds,LOT_IDS)){
+            let reqInv=supabase.from('inventaire').update({prix_achat_inconnu:true}).in('id',lotInv);
+            if(user?.id) reqInv=reqInv.eq('user_id',user.id);
+            const {error:errInv}=await reqInv;
+            if(errInv){arret=errInv.message;break;}
+          }
+          if(arret) break;
+        }
+
+        setPatchs(p=>{
+          const n={...p};
+          for(const {ids:idsL,margin} of lot) for(const id of idsL) n[id]=pa==null?{inconnu:true}:{buy:pa,margin};
+          return n;
+        });
+        setSelection(prev=>{const n=new Set(prev);for(const {ligne} of lot)n.delete(ligne.id);return n;});
+        fait+=lot.length;
+        setProgressLot({fait,total});
+      }
+      if(arret) break;
+    }
+
+    setBusy(false);setProgressLot(null);setConfirmLot(null);
     onSaleUpdated();
+    if(arret){
+      setErreur({id:null,message:fr
+        ?`Interrompu après ${fait} vente${fait>1?'s':''} sur ${total}. Les autres sont toujours sélectionnées — relance pour reprendre. (${arret})`
+        :`Stopped after ${fait} of ${total}. The rest are still selected — run it again to resume. (${arret})`});
+      return;
+    }
+    setPrixLot("");
   }
+
+  // Les trois gestes de la barre. Ils ne diffèrent que par le prix d'achat écrit,
+  // et cette différence est TOUT le sujet :
+  //   · un prix commun   → prix_achat = ce prix
+  //   · « c'était gratuit » → prix_achat = 0, marge = prix de vente. 100 % de
+  //     marge est alors la VÉRITÉ.
+  //   · « je ne sais plus » → prix_achat reste NULL, marge non calculable.
+  // Écrire 0 pour dire « je ne sais pas » produirait une marge de 100 % sur du
+  // vent : c'est exactement ce que ce dédoublement rend impossible.
+  function demanderLot(mode){
+    const n=nbSel;
+    if(!n) return;
+    if(mode==='prix'){
+      const pa=parsePrix(prixLot);
+      if(pa===null||Number.isNaN(pa)){setErreur({id:null,message:fr?'Entre un prix unitaire':'Enter a unit price'});return;}
+    }
+    if(n>SEUIL_CONFIRMATION){setConfirmLot({mode,n});return;}
+    executerLot(mode);
+  }
+
+  function executerLot(mode){
+    if(mode==='inconnu') return ecrireLotACompleter(lignesSelectionnees,null,{marquerInventaire:true});
+    if(mode==='gratuit') return ecrireLotACompleter(lignesSelectionnees,0);
+    return ecrireLotACompleter(lignesSelectionnees,parsePrix(prixLot));
+  }
+
+  const appliquerLot=()=>demanderLot('prix');
+  const marquerInconnu=()=>demanderLot('inconnu');
+  const marquerGratuit=()=>demanderLot('gratuit');
 
   // ── Ventes importées du dressing : enregistrement (03/08 soir) ─────────────
   // Une vente ne s'écrit que par un geste humain : ces lignes d'inventaire
@@ -543,7 +662,9 @@ const VentesTab = memo(function VentesTab({
     setFilterType(tp);
     setImpSel(new Set());
     setImpRenduMax(RENDU_PAS);
+    // Vue B : même règle, la sélection ne survit pas à un changement de filtre.
     setSelection(new Set());
+    setVenteRenduMax(RENDU_PAS);
   },[filterType]);
 
   // Fenêtre de rendu seulement. `vendusVisibles` n'est JAMAIS une source de
@@ -667,6 +788,20 @@ const VentesTab = memo(function VentesTab({
         const d=n[item.id]??{};
         if(String(d[champSaisi]??'').trim()!=='') continue; // valeur saisie : intouchée
         n[item.id]={...d,[champInconnu]:true};
+      }
+      return n;
+    });
+  };
+  // Pendant de marquerLotInconnu : « c'était gratuit » écrit 0 dans le brouillon
+  // du prix d'achat. Même contrat — ne remplit QUE le vide, ne touche pas une
+  // ligne déjà saisie ni une ligne déjà marquée « je ne sais plus ».
+  const remplirLotAchatGratuit=()=>{
+    setImpDrafts(prev=>{
+      const n={...prev};
+      for(const item of lignesImpSel){
+        const d=n[item.id]??{};
+        if(String(d.pa??'').trim()!==''||d.paInconnu===true) continue;
+        n[item.id]={...d,pa:'0'};
       }
       return n;
     });
@@ -807,6 +942,30 @@ const VentesTab = memo(function VentesTab({
   const filteredSales=(filterType==="Tous"?baseListe:baseListe.filter(s=>s.type===filterType))
     .map(s=>patchLigne(s,s.quantite!=null?1:(s._qty||1)));
 
+  // ── Vue B : portée de la sélection globale (2026-08-11) ───────────────────
+  // `lignesACompleter` = TOUTES les lignes à compléter du filtre courant. C'est
+  // sur elle que portent « Tout sélectionner » et les écritures de lot — jamais
+  // sur `ventesVisibles`, qui n'est qu'une fenêtre de rendu.
+  // Une ligne déjà traitée pendant la session (patch posé) en sort : on ne la
+  // reproposerait que pour la réécrire à l'identique.
+  const lignesACompleter=useMemo(
+    ()=>modeACompleter?filteredSales.filter(s=>!patchs[s.id]):[],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modeACompleter,filteredSales,patchs]);
+  const nbACompleterFiltre=lignesACompleter.length;
+  const tousVentesSel=nbACompleterFiltre>0&&nbSel===nbACompleterFiltre;
+  const ventesSelPartielle=nbSel>0&&!tousVentesSel;
+  const ventesVisibles=modeACompleter?filteredSales.slice(0,venteRenduMax):filteredSales;
+
+  const basculerToutSelectionnerVentes=useCallback(()=>{
+    setSelection(prev=>{
+      if(nbACompleterFiltre>0&&lignesACompleter.every(s=>prev.has(s.id))){
+        const n=new Set(prev);for(const s of lignesACompleter)n.delete(s.id);return n;
+      }
+      const n=new Set(prev);for(const s of lignesACompleter)n.add(s.id);return n;
+    });
+  },[lignesACompleter,nbACompleterFiltre]);
+
   return (
     <div className="ventes-v2" style={{display:"flex",flexDirection:"column",gap:12}}>
       <style>{VENTES_CSS}</style>
@@ -900,16 +1059,36 @@ const VentesTab = memo(function VentesTab({
           <button className="apply" disabled={busy} onClick={appliquerLot}>
             {busy?"…":(fr?`Appliquer aux ${nbSel} vente${nbSel>1?"s":""}`:`Apply to ${nbSel} sale${nbSel>1?"s":""}`)}
           </button>
-          {/* « Je ne sais plus » n'a de cible que si la vente vient d'un article
-              du stock : le drapeau prix_achat_inconnu vit sur `inventaire`, pas
-              sur `ventes`. Sans article lié, le bouton est inerte et le dit. */}
-          <button className="ghost" disabled={busy||!liensCharges||invIdsSelection.length===0} onClick={marquerInconnu}>
+          {/* ── DEUX gestes, pas un (2026-08-11) ──────────────────────────────
+              « Je ne sais plus » et « c'était gratuit » sont deux informations
+              DIFFÉRENTES. La première laisse prix_achat à NULL et la marge non
+              calculable ; la seconde écrit 0, et 100 % de marge devient alors la
+              vérité. Un seul bouton pour les deux, c'était fabriquer des marges
+              de 100 % sur du vent.
+              « Je ne sais plus » n'a de cible d'inventaire que si la vente vient
+              du stock — sans article lié le drapeau ne peut pas être POSÉ, mais
+              la vente reste correctement à NULL de toute façon. */}
+          <button className="ghost" disabled={busy} onClick={marquerGratuit}>
+            {fr?"C'était gratuit (0 €)":"It was free (0)"}
+          </button>
+          <button className="ghost" disabled={busy||invIdsSelection.length===0} onClick={marquerInconnu}>
             {fr?"Je ne sais plus":"I don't remember"}
           </button>
-          <button className="ghost" onClick={()=>{setSelection(new Set());setPrixLot("");}}>✕</button>
+          <button className="ghost" disabled={busy} onClick={()=>{setSelection(new Set());setPrixLot("");}}>✕</button>
+          {progressLot&&(
+            <>
+              <div className="imp-prog"><i style={{width:`${Math.round(100*progressLot.fait/Math.max(1,progressLot.total))}%`}}/></div>
+              <span className="pa-hint" style={{flexBasis:"100%"}}>
+                {fr?`${progressLot.fait} / ${progressLot.total} mises à jour…`:`${progressLot.fait} / ${progressLot.total} updated…`}
+              </span>
+            </>
+          )}
           <div style={{flexBasis:"100%",display:"flex",flexDirection:"column",gap:2}}>
-            <span className="pa-hint">{fr?"Prix d'achat UNITAIRE — le bénéfice se recalcule vente par vente.":"UNIT purchase price — profit is recomputed sale by sale."}</span>
-            {liensCharges&&invIdsSelection.length===0&&(
+            <span className="pa-hint">
+              {fr?"Prix d'achat UNITAIRE — le bénéfice se recalcule vente par vente. « Gratuit » écrit 0 € ; « je ne sais plus » laisse le prix vide et la marge non calculable."
+                 :"UNIT purchase price — profit is recomputed sale by sale. “Free” writes 0; “I don't remember” leaves the price empty and the margin uncomputable."}
+            </span>
+            {invIdsSelection.length===0&&(
               <span className="pa-hint">
                 {fr?"« Je ne sais plus » indisponible : aucune de ces ventes n'est liée à un article du stock, il n'y a rien à marquer."
                    :"“I don't remember” unavailable: none of these sales is linked to a stock item, nothing to flag."}
@@ -1010,10 +1189,18 @@ const VentesTab = memo(function VentesTab({
                   TOUT DE SUITE (visible ligne par ligne), et ne touchent que
                   celles restées vides — d'où le compteur dans le libellé et le
                   grisage quand il n'y a plus rien à marquer. */}
+              {/* Les deux réponses distinctes, ici aussi (11/08) : « je ne sais
+                  plus » laisse le prix vide, « gratuit » écrit 0 €. Elles ne
+                  touchent que les lignes restées vides. */}
               <button className="imp-ghost" disabled={nbSansAchat===0}
                 style={nbSansAchat===0?{opacity:0.45}:undefined}
                 onClick={()=>marquerLotInconnu('pa','paInconnu')}>
                 {fr?`achat : je ne sais plus${nbSansAchat?` (${nbSansAchat})`:""}`:`buy: I don't remember${nbSansAchat?` (${nbSansAchat})`:""}`}
+              </button>
+              <button className="imp-ghost" disabled={nbSansAchat===0}
+                style={nbSansAchat===0?{opacity:0.45}:undefined}
+                onClick={()=>remplirLotAchatGratuit()}>
+                {fr?`achat : gratuit${nbSansAchat?` (${nbSansAchat})`:""}`:`buy: free${nbSansAchat?` (${nbSansAchat})`:""}`}
               </button>
               <button className="imp-ghost" disabled={nbSansDate===0}
                 style={nbSansDate===0?{opacity:0.45}:undefined}
@@ -1151,7 +1338,40 @@ const VentesTab = memo(function VentesTab({
         </div>
       ):(
         <>
-          {filteredSales.map(s=>{
+          {/* ── Vue B : sélection globale (2026-08-11) ────────────────────────
+              Même dispositif qu'en vue A, et pour la même raison : le compte qui
+              vient d'enregistrer ses ventes Vinted en aura ~1 982 à compléter.
+              Porte sur `lignesACompleter` — toutes les lignes du filtre courant,
+              pas les 50 rendues. */}
+          {modeACompleter&&nbACompleterFiltre>0&&(
+            <div className="imp-all">
+              <input type="checkbox" className="pa-check"
+                checked={tousVentesSel}
+                ref={el=>{if(el)el.indeterminate=ventesSelPartielle;}}
+                onChange={basculerToutSelectionnerVentes}
+                aria-label={fr?"Tout sélectionner":"Select all"}/>
+              <span className="txt">
+                {nbSel>0
+                  ?(fr?`${nbSel} sélectionnée${nbSel>1?"s":""} sur ${nbACompleterFiltre}`
+                      :`${nbSel} of ${nbACompleterFiltre} selected`)
+                  :(fr?`${nbACompleterFiltre} vente${nbACompleterFiltre>1?"s":""} à compléter`
+                      :`${nbACompleterFiltre} sale${nbACompleterFiltre>1?"s":""} to complete`)}
+                {(filterType!=="Tous"||searchHistory.trim())&&(
+                  <span className="sub">
+                    {fr?`vue filtrée — la sélection ne sort pas de ce qui est listé ici`
+                       :`filtered view — selection stays within what is listed here`}
+                  </span>
+                )}
+              </span>
+              <button onClick={basculerToutSelectionnerVentes}>
+                {tousVentesSel
+                  ?(fr?"Tout désélectionner":"Deselect all")
+                  :(fr?`Tout sélectionner (${nbACompleterFiltre})`:`Select all (${nbACompleterFiltre})`)}
+              </button>
+            </div>
+          )}
+
+          {ventesVisibles.map(s=>{
             // date NULL = vente enregistrée « je ne sais plus » (import
             // dressing) : elle vit dans la liste et les totaux, hors des
             // périodes — et surtout pas un « NaN undefined » à l'écran.
@@ -1222,15 +1442,34 @@ const VentesTab = memo(function VentesTab({
                     )}
                   </div>
                   <div className="right">
-                    <div className={`profit${margeConnue&&s.margin<0?" neg":""}`} style={margeConnue?undefined:{color:"var(--mute)"}}>{margeConnue?`${s.margin>=0?"+":""}${fmt(s.margin)}`:"—"}</div>
+                    {/* « — » ne disait rien : ni que la marge est inconnue, ni
+                        pourquoi, ni que c'est réparable. Un tiret muet se lit
+                        comme « zéro » ou comme un bug. On le dit (11/08). */}
+                    <div className={`profit${margeConnue&&s.margin<0?" neg":""}`} style={margeConnue?undefined:{color:"var(--mute)",fontSize:11,fontWeight:600,lineHeight:1.25,textAlign:"right"}}>
+                      {margeConnue
+                        ?`${s.margin>=0?"+":""}${fmt(s.margin)}`
+                        :(fr?"marge non calculable":"margin not computable")}
+                    </div>
                     <div className="sold-date">{d?<>{d.getDate()} {(lang==='en'?MONTHS_EN:MONTHS_FR)[d.getMonth()]}{sameYear?"":` ${d.getFullYear()}`}</>:(fr?"date inconnue":"unknown date")}</div>
                   </div>
                 </div>
               </SwipeRow>
             );
           })}
-          {/* En mode « à compléter », la liste est déjà complète (elle ne passe
-              pas par le plafond de 10 de visibleSales) : le bouton mentirait. */}
+          {/* Mode « à compléter » : la liste n'est plus rendue en entier depuis
+              le 11/08 (1 982 SwipeRow figeaient l'écran). Fenêtre de rendu, et
+              on dit explicitement que la sélection, elle, ne s'y limite pas. */}
+          {modeACompleter&&filteredSales.length>ventesVisibles.length&&(
+            <button className="imp-more" onClick={()=>setVenteRenduMax(n=>n+RENDU_PAS)}>
+              {fr?`Afficher plus (${ventesVisibles.length} sur ${filteredSales.length})`
+                 :`Show more (${ventesVisibles.length} of ${filteredSales.length})`}
+              <span style={{display:'block',fontSize:10.5,fontWeight:600,marginTop:2,opacity:.8}}>
+                {fr?`la sélection porte sur les ${nbACompleterFiltre}, pas seulement sur ce qui est affiché`
+                   :`selection covers all ${nbACompleterFiltre}, not just what's shown`}
+              </span>
+            </button>
+          )}
+          {/* Hors mode « à compléter », le plafond de 10 de visibleSales reste. */}
           {!modeACompleter&&!showAllSales&&groupedSales.length>10&&(
             <button onClick={()=>setShowAllSales(true)}
               style={{width:"100%",padding:"12px",background:"none",border:"1px solid #2F9E90",borderRadius:999,color:"#2F9E90",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
@@ -1254,6 +1493,46 @@ const VentesTab = memo(function VentesTab({
           onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
         >{t('statsAvancees')}</button>
       )}
+
+      {/* ── Vue B : confirmation au-dessus du seuil ─────────────────────────
+          Le libellé nomme le geste EXACT, parce que les trois n'écrivent pas la
+          même chose : un prix, un 0 assumé, ou rien du tout. */}
+      {confirmLot!=null&&(()=>{
+        const n=confirmLot.n,mode=confirmLot.mode;
+        const pa=mode==='prix'?parsePrix(prixLot):null;
+        const titre=mode==='inconnu'
+          ?(fr?`Marquer ${n} ventes « je ne sais plus » ?`:`Flag ${n} sales as “I don't remember”?`)
+          :mode==='gratuit'
+            ?(fr?`Déclarer ${n} ventes gratuites (0 €) ?`:`Declare ${n} sales free (0)?`)
+            :(fr?`Appliquer ${fmt(pa??0)} à ${n} ventes ?`:`Apply ${fmt(pa??0)} to ${n} sales?`);
+        const corps=mode==='inconnu'
+          ?(fr?<>Leur prix d'achat restera <b>vide</b> — ni 0 €, ni deviné. Ces ventes compteront dans ton chiffre d'affaires et dans le nombre de ventes, mais <b>pas</b> dans le bénéfice ni la marge moyenne. Tu pourras renseigner le prix plus tard, elles rentreront alors dans les calculs.</>
+              :<>Their purchase price stays <b>empty</b> — not 0, not guessed. These sales will count in revenue and in the sale count, but <b>not</b> in profit or average margin. You can fill the price in later and they will join the calculations.</>)
+          :mode==='gratuit'
+            ?(fr?<>Prix d'achat écrit à <b>0 €</b> : ces ventes seront comptées à <b>100 % de marge</b>. À ne faire que si elles étaient réellement gratuites (don, lot offert) — sinon utilise « je ne sais plus ».</>
+                :<>Purchase price written as <b>0</b>: these sales will count at <b>100 % margin</b>. Only do this if they really were free (gift, donated lot) — otherwise use “I don't remember”.</>)
+            :(fr?<>Ce prix est <b>unitaire</b> ; le bénéfice se recalcule vente par vente. Les lignes où tu as déjà saisi un prix ne sont pas touchées.</>
+                :<>This price is <b>per unit</b>; profit is recomputed sale by sale. Lines where you already typed a price are untouched.</>);
+        return(
+          <div className="imp-modal" onClick={()=>setConfirmLot(null)}>
+            <div className="box" onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:16,fontWeight:700,color:"var(--ink)",marginBottom:8}}>{titre}</div>
+              <div style={{fontSize:12.5,lineHeight:1.55,color:"var(--mute)",marginBottom:16}}>
+                {corps}
+                {filterType!=="Tous"&&(fr?<><br/>Filtre actif : <b>{typeLabel(filterType,lang)}</b>.</>:<><br/>Active filter: <b>{typeLabel(filterType,lang)}</b>.</>)}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button className="ghost" style={{flex:1,padding:"11px 0"}} onClick={()=>setConfirmLot(null)}>
+                  {fr?"Annuler":"Cancel"}
+                </button>
+                <button className="apply" style={{flex:2,padding:"11px 0"}} onClick={()=>executerLot(mode)}>
+                  {fr?`Confirmer les ${n}`:`Confirm the ${n}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Confirmation au-dessus du seuil (2026-08-11) ────────────────────
           Écrire N lignes de ventes n'est pas une action triviale et se défait

@@ -814,7 +814,13 @@ const SKELETON_SOLD=[
   {title:'Paquet Pokémon ×5',    type:'Collection', marque:'Pokémon', buy:2,  sell:15, margin:13, marginPct:87},
 ];
 const TEXTAREA_PLACEHOLDERS=VOICE_EXAMPLES.map(e=>e.text);
-function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,ship:0,margin:v.benefice,marginPct:v.prix_vente>0?(v.benefice/v.prix_vente)*100:0,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,quantite:v.quantite||null};}
+// ⚠️ marginPct : `(v.benefice/v.prix_vente)*100` avec un benefice NULL rendait
+// **0**, pas null — en JS `null/250` vaut 0. Une vente au prix d'achat inconnu
+// sortait donc avec « 0 % de marge », un chiffre que rien n'a jamais calculé, et
+// qui tirait vers le bas toutes les moyennes qui lisent marginPct (les quatre
+// agrégations de graphe plus bas le faisaient). `margin` était déjà correct
+// (null tel quel), c'est le pourcentage qui mentait. Corrigé le 11/08.
+function mapSale(v){return{id:v.id,title:v.titre,prix_vente:v.prix_vente,buy:v.prix_achat,sell:v.prix_vente,inventaire_id:v.inventaire_id??null,ship:0,margin:v.benefice,marginPct:(v.benefice==null||!(v.prix_vente>0))?null:(v.benefice/v.prix_vente)*100,date:v.date,date_vente:v.date||v.created_at,marque:v.marque||"",type:v.type||"",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,description:v.description||null,emplacement:v.emplacement||null,plateforme:v.plateforme||null,quantite:v.quantite||null};}
 
 // Groups consecutive rows with same title+date+sell price into one display row
 function groupSales(arr){
@@ -846,12 +852,32 @@ function getFilteredData_unused(range, salesData){
   const hasSales=salesData.length>0;
 
   // ── helpers réels ──
+  // Agrégat d'un seau de ventes (2026-08-11). Les quatre fonctions ci-dessous
+  // faisaient toutes `ds.reduce((a,s)=>a+s.margin,0)` et
+  // `ds.reduce((a,s)=>a+s.marginPct,0)/ds.length` sur TOUTES les ventes du seau.
+  // Deux erreurs distinctes :
+  //   · `a + null` vaut a en JS : une marge inconnue passait pour 0 € ;
+  //   · le dénominateur restait `ds.length`, donc les ventes sans prix d'achat
+  //     comptaient au diviseur sans rien apporter au numérateur — la marge
+  //     moyenne du jour tombait mécaniquement à chaque vente non complétée.
+  // On agrège désormais sur les seules ventes comptabilisables. `count` reste
+  // le nombre TOTAL de ventes du seau : une vente sans prix d'achat est bien
+  // une vente, elle compte au volume, pas à la marge.
+  function agregeSeau(liste,nom){
+    const retenues=comptabilisables(liste);
+    return{
+      name:nom,
+      profit:retenues.reduce((a,s)=>a+(s.margin||0),0),
+      'Marge %':retenues.length?retenues.reduce((a,s)=>a+(s.marginPct||0),0)/retenues.length:null,
+      count:liste.length,
+    };
+  }
   function dayBucket(days){
     return Array.from({length:days},(_,i)=>{
       const d=new Date(now); d.setDate(now.getDate()-days+1+i);
       const dayStr=d.toISOString().split('T')[0];
       const ds=salesData.filter(s=>(s.date||'').startsWith(dayStr));
-      return{name:`${d.getDate()}/${d.getMonth()+1}`,profit:ds.reduce((a,s)=>a+s.margin,0),'Marge %':ds.length?ds.reduce((a,s)=>a+s.marginPct,0)/ds.length:null,count:ds.length};
+      return agregeSeau(ds,`${d.getDate()}/${d.getMonth()+1}`);
     });
   }
   function weekBucket(totalDays,numWeeks){
@@ -861,7 +887,7 @@ function getFilteredData_unused(range, salesData){
       const start=new Date(cutoff); start.setDate(cutoff.getDate()+i*7);
       const end=new Date(start); end.setDate(start.getDate()+6);
       const ws=filtered.filter(s=>{const sd=new Date(s.date);return sd>=start&&sd<=end;});
-      return{name:`S${i+1}`,profit:ws.reduce((a,s)=>a+s.margin,0),'Marge %':ws.length?ws.reduce((a,s)=>a+s.marginPct,0)/ws.length:null,count:ws.length};
+      return agregeSeau(ws,`S${i+1}`);
     });
   }
   function monthBucket(pts){
@@ -869,14 +895,14 @@ function getFilteredData_unused(range, salesData){
       const d=new Date(now.getFullYear(),now.getMonth()-(pts-1-i),1);
       const m=d.getMonth(); const y=d.getFullYear();
       const ms=salesData.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===m&&sd.getFullYear()===y;});
-      return{name:MONTHS_FR[m],profit:ms.reduce((a,s)=>a+s.margin,0),'Marge %':ms.length?ms.reduce((a,s)=>a+s.marginPct,0)/ms.length:null,count:ms.length};
+      return agregeSeau(ms,MONTHS_FR[m]);
     });
   }
   function ytdBucket(){
     const n=now.getMonth()+1;
     return Array.from({length:n},(_,i)=>{
       const ms=salesData.filter(s=>{const sd=new Date(s.date);return sd.getMonth()===i&&sd.getFullYear()===now.getFullYear();});
-      return{name:MONTHS_FR[i],profit:ms.reduce((a,s)=>a+s.margin,0),'Marge %':ms.length?ms.reduce((a,s)=>a+s.marginPct,0)/ms.length:null,count:ms.length};
+      return agregeSeau(ms,MONTHS_FR[i]);
     });
   }
 
@@ -3004,7 +3030,25 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);setFilterMarque("Toutes");setFilterMarqueSold("Toutes");},[filterType]);
   const soldVisible=useMemo(()=>soldShowAll?soldFiltre:soldFiltre.slice(0,10),[soldFiltre,soldShowAll]);
   const stockVisible=useMemo(()=>showAllStock?stockFiltre:stockFiltre.slice(0,10),[stockFiltre,showAllStock]);
-  const groupedSales=useMemo(()=>groupSales(sales),[sales]);
+  // ── « Je ne sais plus » qui TIENT au rechargement (2026-08-11) ────────────
+  // Le drapeau prix_achat_inconnu vit sur `inventaire`, jamais sur `ventes`
+  // (schéma vérifié le 03/08). Conséquence assumée jusqu'ici : la décision ne
+  // tenait « que le temps de l'écran », et au prochain fetchAll les ventes
+  // marquées revenaient dans « à compléter ». Tolérable sur 3 lignes ; pas sur
+  // 1 982 — l'utilisateur referait le geste à chaque ouverture, indéfiniment.
+  // On recolle donc le drapeau côté client par ventes.inventaire_id, sans
+  // migration ni colonne nouvelle. comptabilisable() lit déjà
+  // `prix_achat_inconnu` sur l'objet vente : il suffit qu'il y soit.
+  const invPrixInconnu=useMemo(
+    ()=>new Set(items.filter(i=>i.prix_achat_inconnu===true).map(i=>String(i.id))),
+    [items]);
+  const salesAvecInconnu=useMemo(()=>{
+    if(!invPrixInconnu.size) return sales;
+    return sales.map(s=>(s.inventaire_id!=null&&invPrixInconnu.has(String(s.inventaire_id))&&s.buy==null)
+      ?{...s,prix_achat_inconnu:true}
+      :s);
+  },[sales,invPrixInconnu]);
+  const groupedSales=useMemo(()=>groupSales(salesAvecInconnu),[salesAvecInconnu]);
   const visibleSales=useMemo(()=>(showAllSales?groupedSales:groupedSales.slice(0,10)).filter(s=>searchMatch(s,searchHistory)),[groupedSales,showAllSales,searchHistory]);
   // Total investi / valeur du stock : les articles sans prix d'achat sont
   // ÉCARTÉS. L'ancien reduce n'avait même pas de `||0` — un buy null comptait 0
@@ -5583,7 +5627,7 @@ export default function App({ loginOnly = false }){
         {tab===3&&(
           <VentesTab
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} user={user}
-            sales={sales} visibleSales={visibleSales} groupedSales={groupedSales}
+            sales={salesAvecInconnu} visibleSales={visibleSales} groupedSales={groupedSales}
             salesForKpis={salesForKpis} totalM={totalM}
             searchHistory={searchHistory} setSearchHistory={setSearchHistory}
             showAllSales={showAllSales} setShowAllSales={setShowAllSales}

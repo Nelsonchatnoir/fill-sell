@@ -517,6 +517,17 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
           {/* Idem : sans une seule vente au prix d'achat connu, la marge moyenne
               n'existe pas — « 0,0 % » serait un chiffre inventé. */}
           <div style={{fontSize:20,fontWeight:600,color:UI.ink,letterSpacing:'-0.02em'}}>{ventesComptables.length===0?'--':fmtp2(avgMargin)}</div>
+          {/* Sur quoi cette moyenne est calculée (2026-08-11). Une marge moyenne
+              affichée nue laisse croire qu'elle porte sur TOUTES les ventes ;
+              quand une partie n'a pas de prix d'achat, elle n'en couvre qu'une
+              fraction. Affiché seulement quand il y a un écart à signaler. */}
+          {ventesComptables.length>0&&ventesComptables.length<filtered.length&&(
+            <div style={{fontSize:9.5,color:UI.mute,marginTop:2,lineHeight:1.3}}>
+              {lang==='en'
+                ? `on ${ventesComptables.length} of ${filtered.length} sales`
+                : `calculée sur ${ventesComptables.length} ventes sur ${filtered.length}`}
+            </div>
+          )}
           {filtered.length>0&&<Sparkline data={chartData.map(d=>d.profit)} color={UI.amber}/>}
         </Card>
       </div>
