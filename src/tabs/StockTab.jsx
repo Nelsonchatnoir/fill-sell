@@ -2075,12 +2075,13 @@ function etapeRepublication(job, fr) {
     const apres = step === 'deleted';
     return {
       cle: 'needs_user',
-      court: apres ? (fr ? 'Hors ligne — relancer' : 'Offline — relaunch') : T.relancer,
+      court: apres ? (fr ? 'Hors ligne — republier' : 'Offline — republish') : T.relancer,
       ...(apres ? rouge : ambre), fini: true, apresSuppression: apres,
-      titre: fr ? 'En attente de toi' : 'Waiting for you',
+      titre: apres ? (fr ? 'Annonce retirée, pas encore recréée' : 'Listing removed, not recreated yet')
+                   : (fr ? 'En attente de toi' : 'Waiting for you'),
       detail: apres
-        ? (fr ? "Rien n'est perdu : l'annonce a été sauvegardée avant d'être retirée. Relance — ça repart à la recréation."
-              : 'Nothing is lost: the listing was saved before removal. Relaunch — it resumes at recreation.')
+        ? (fr ? "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement. Rien n'est perdu : toutes ses données (photos comprises) sont sauvegardées. Clique « Republier maintenant » — si un champ manque, il te sera demandé."
+              : 'Your listing was removed from Vinted and could not be recreated automatically. Nothing is lost: all its data (photos included) is saved. Tap "Republish now" — if a field is missing, you will be asked for it.')
         : (fr ? "Ton annonce est intacte, rien n'a été retiré. Tu peux relancer."
               : 'Your listing is untouched, nothing was removed. You can relaunch.'),
     };
@@ -4869,12 +4870,20 @@ const StockTab = memo(function StockTab({
                             {repubEligible&&(()=>{
                               const st=repubLatest?.status;
                               const vivant=st==="pending"||st==="processing"||st==="needs_user";
-                              if(st==="needs_user")return(
+                              if(st==="needs_user"){
+                                // Après suppression (étape 'deleted'), le geste n'est pas une
+                                // « relance » abstraite : c'est REMETTRE L'ANNONCE EN LIGNE
+                                // depuis le snapshot sauvegardé — le bouton le dit (2026-08-12).
+                                const apresSuppr=repubLatest?.platform_fields?.republish_step==='deleted';
+                                return(
                                 <button className="btn-vendre" disabled={repubBusy===item.id}
                                   onClick={e=>{e.stopPropagation();relancerRepublication(item,repubLatest);}}
                                   style={{opacity:repubBusy===item.id?0.6:1}}>
-                                  {repubBusy===item.id?(lang==='fr'?'Relance…':'Relaunching…'):(lang==='fr'?'🔁 Relancer':'🔁 Relaunch')}
+                                  {repubBusy===item.id?(lang==='fr'?'Relance…':'Relaunching…')
+                                    :apresSuppr?(lang==='fr'?'🔁 Republier maintenant':'🔁 Republish now')
+                                    :(lang==='fr'?'🔁 Relancer':'🔁 Relaunch')}
                                 </button>);
+                              }
                               // Republication vivante : AUCUN bouton ici. L'état
                               // est porté par la seule pastille de gauche
                               // (cliquable → feuille d'avancement) ; ce bouton

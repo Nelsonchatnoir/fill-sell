@@ -341,6 +341,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     pollAndProcessJobs();
     sendResponse({ ok: true });
   }
+  // Une-passe de republication (2026-08-12) : le content script vient de
+  // SUPPRIMER l'annonce d'origine par l'API et va soumettre le formulaire —
+  // il nous demande d'acter l'étape 'deleted' en base AVANT la soumission
+  // (la redirection de succès peut couper le canal juste après).
+  if (msg?.type === "REPUBLISH_MARK_DELETED" && typeof msg.jobId === "string") {
+    marquerRepublishSupprime(msg.jobId).then(
+      (r) => sendResponse(r),
+      (e) => sendResponse({ ok: false, error: String(e?.message ?? e) }),
+    );
+    return true; // réponse asynchrone
+  }
   // Source de vérité UNIQUE du "suis-je connecté" pour le popup (fix
   // 2026-07-11) : session VALIDÉE (refresh si expiration proche, storage
   // purgé si le refresh est mort) au lieu d'une relecture brute du storage
@@ -5710,14 +5721,17 @@ async function reprendreSyncApresRetry403(userIdAlarme) {
   }
   let rouverte = null;
   try {
+    // erreur PAS remise à null (consigne Nico 12/08) : la note « [note] reprise
+    // auto 403 : tentative N après M échec(s) » remplace le marqueur [retry403]
+    // et RESTE jusqu'au 'done' — c'est la seule mesure du phénomène disponible
+    // en base. Préfixe [note] : conforme à la convention du champ (une ligne
+    // 'done' ne porte jamais de texte nu).
+    const noteReprise = `[note] reprise auto 403 : tentative ${etat.tentative} après ${etat.tentative} échec(s)`;
     rouverte = await restRequest(`vinted_sync_runs?id=eq.${etat.runId}&status=eq.failed`, token, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
-      // erreur remise à NULL : sinon un run repris qui aboutit en 'done' sans
-      // note garderait le marqueur [retry403] — une ligne 'done' dont l'erreur
-      // n'est pas préfixée « [note] », en violation de la convention du champ.
       body: JSON.stringify({
-        status: "running", finished_at: null, erreur: null,
+        status: "running", finished_at: null, erreur: noteReprise,
         updated_at: new Date().toISOString(), extension_build: FILLSELL_BUILD_ID,
       }),
     });
@@ -6332,6 +6346,10 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   // onglet disparu…) doit CLORE la ligne avec son motif au lieu de laisser un
   // 'running' orphelin. Les gardes ponctuelles ci-dessous restent : elles
   // donnent des motifs plus précis que le filet général.
+  // Note « reprise auto 403 » : posée au ré-ouvrement du run, captée après la
+  // sonde, re-écrite par la clôture 'done' — déclarée ici pour être en portée
+  // des deux.
+  let noteReprise403 = null;
   try {
 
   // ── Harnais mock (unpacked seulement, cf. bandeau de lireSyncMockConfig) ──
@@ -6402,9 +6420,18 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
 
     // La sonde a parlé (succès, ou échec franc non-403) : le cycle de reprise
     // 403 de ce run est terminé — état effacé (l'alarme qui nous a réveillés a
-    // déjà tiré, il n'en reste pas d'armée). Best-effort : un raté ne laisse
-    // qu'un état mort, balayé au prochain déclenchement.
-    if (repriseRetry403) annulerRetry403(userId, "cycle de reprise terminé").catch(() => {});
+    // déjà tiré, il n'en reste pas d'armée). La note « reprise auto 403 » est
+    // captée AVANT l'effacement : la clôture 'done' la re-écrira avec ses
+    // propres notes, pour qu'elle survive jusqu'au bout (consigne 12/08 — la
+    // seule mesure du phénomène disponible en base). Best-effort : un raté ne
+    // laisse qu'un état mort, balayé au prochain déclenchement.
+    if (repriseRetry403) {
+      const etatR = await lireEtatRetry403(userId);
+      if (etatR?.tentative) {
+        noteReprise403 = `[note] reprise auto 403 : tentative ${etatR.tentative} après ${etatR.tentative} échec(s)`;
+      }
+      annulerRetry403(userId, "cycle de reprise terminé").catch(() => {});
+    }
 
     if (!ident?.success) {
       // Le motif précis (session absente HTTP 401, session anonyme, erreur
@@ -6644,6 +6671,9 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   // vrai le jour où l'un d'eux s'y intéressera.)
   const NOTE = "[note] ";
   const notes = [];
+  // La note de reprise 403 survit à la clôture 'done' : sans cette ré-écriture,
+  // les notes ci-dessous l'écraseraient (consigne Nico 12/08).
+  if (noteReprise403) notes.push(noteReprise403);
   // Un run mocké doit se lire comme tel en base : personne ne doit prendre 289
   // articles fabriqués pour un dressing réel en analysant vinted_sync_runs.
   if (mock) notes.push(`${NOTE}HARNAIS MOCK pagination (unpacked) — ${mock.totalArticles} articles fabriqués, aucun appel Vinted`);
@@ -7984,12 +8014,23 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// É2 REPUBLICATION VINTED (2026-08-05) — machine à étapes PERSISTÉE EN BASE.
-// platform_fields.republish_step :
+// É2 REPUBLICATION VINTED (2026-08-05, refondue 2026-08-12) — machine à étapes
+// PERSISTÉE EN BASE. platform_fields.republish_step :
 //   'a_capturer' → 'captured' → 'deleted' → 'recreated'
 // ('a_capturer' est devenu la première étape avec la capture différée,
 //  migration 20260805100000 : le clic pose le job, l'extension capture juste
 //  avant d'agir.)
+// ⚠️ DEPUIS LE 12/08, l'étape 'captured' fait le chemin critique EN UNE PASSE :
+//   snapshot confirmé en base → formulaire /items/new REMPLI ET VÉRIFIÉ (gates
+//   strictes, annonce d'origine encore en ligne) → suppression par l'API depuis
+//   la page du formulaire → étape 'deleted' actée → soumission du MÊME
+//   formulaire. Le pré-vol EST le formulaire soumis : plus aucun moyen de
+//   supprimer sur des données que le formulaire refuse (2 annonces perdues le
+//   12/08, taille absente découverte APRÈS suppression — cas lowvaucher), et la
+//   fenêtre hors-ligne passe de 2-5 min à quelques secondes.
+// L'étape 'deleted' ne sert plus qu'aux REPRISES (échec après suppression,
+// retentatives automatiques, relance app) — gates relâchées (B.5), mêmes
+// filets, même conclusion partagée (conclureRecreationApresSoumission).
 // Chaque transition est écrite AVANT le geste suivant : une interruption
 // (réseau, Chrome quitté, service worker tué) reprend exactement où elle
 // s'est arrêtée au prochain poll. Le job n'existe que si le RPC
@@ -8105,6 +8146,7 @@ async function cloreRepublishSurAnnonceExistante(accessToken, job, pf, nouvelId,
   pf.reconciliation = motif; // trace : ce succès n'a PAS été observé en direct
   delete pf.next_action_after;
   delete pf.recaptures_perimees;
+  delete pf.recreation_retries;
   if (job.inventaire_id != null) {
     await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
       method: "PATCH",
@@ -8120,6 +8162,276 @@ async function cloreRepublishSurAnnonceExistante(accessToken, job, pf, nouvelId,
   });
   await recordRecentResult(job, "published").catch(() => {});
   console.log(`[republish] job ${job.id} clos en succès par réconciliation (${motif}) → ${url}`);
+}
+
+// ── SNAPSHOT DE REPUBLICATION (2026-08-12, incident lowvaucher) ──────────────
+// Copie AUTONOME de tout ce qu'il faut pour recréer l'annonce, écrite dans
+// cross_post_jobs.platform_fields.republish_snapshot et CONFIRMÉE avant toute
+// suppression. La table vinted_republish_captures reste la source première
+// (payload natif complet) — le snapshot est la ceinture : il vit SUR le job,
+// survit à une purge de capture, et l'app peut l'afficher sans jointure.
+// Essentiels seulement, jamais le natif entier (platform_fields voyage à
+// chaque poll). Les IDS accompagnent les libellés : un libellé absent se
+// re-résout depuis son id — les 3 captures du 12/08 (Polo Kaporal, Pull M,
+// Tee shirt M) n'avaient la taille QUE sous forme d'id dans item_attributes.
+function construireSnapshotRepublish(pf, cap) {
+  const natif = cap?.payload?.natif ?? {};
+  const attrs = Array.isArray(natif.item_attributes) ? natif.item_attributes : [];
+  const idsAttr = (code) => {
+    const e = attrs.find((a) => String(a?.code ?? "").trim().toLowerCase() === code);
+    return Array.isArray(e?.ids) && e.ids.length ? e.ids : null;
+  };
+  const lib = cap?.libelles ?? {};
+  return {
+    version: 1,
+    capture_id: pf.capture_id ?? null,
+    captured_at: cap?.captured_at ?? null,
+    vinted_item_id: pf.vinted_item_id ?? null,
+    titre: cap?.payload?.titre ?? null,
+    description: cap?.payload?.description ?? null,
+    prix: cap?.payload?.prix ?? null,
+    devise: natif.currency ?? "EUR",
+    marque: lib.marque ?? null,
+    brand_id: natif.brand_id ?? null,
+    taille: lib.taille ?? null,
+    size_id: natif.size_id ?? idsAttr("size")?.[0] ?? null,
+    etat: lib.etat ?? null,
+    status_id: natif.status_id ?? idsAttr("condition")?.[0] ?? null,
+    couleurs: lib.couleurs ?? null,
+    color1_id: natif.color1_id ?? null,
+    color2_id: natif.color2_id ?? null,
+    categoryPath: lib.categoryPath ?? null,
+    catalog_id: natif.catalog_id ?? null,
+    colis: lib.colis ?? null,
+    package_size_id: natif.package_size_id ?? null,
+    ...(idsAttr("material") ? { material_ids: idsAttr("material") } : {}),
+    photos: cap?.photos_urls ?? [],
+  };
+}
+
+// UNE seule fabrique du job de recréation, pour les DEUX chemins (une-passe à
+// l'étape 'captured', reprise à l'étape 'deleted') : ils ne peuvent pas
+// diverger. Passe par sanitizeJob comme la publication normale (les emoji du
+// titre capturé feraient un 400 « trop de symboles », cf. Casio du 19/07).
+// `vintedAspects` est PROPAGÉ : c'est le canal des réponses du mini-éditeur
+// needs_user (pont _bridge de vinted.js) — sans lui, la valeur saisie par
+// l'utilisateur n'atteignait JAMAIS le formulaire de recréation (trou vécu :
+// impossible de répondre « M » au « Le champ Taille doit être renseigné »).
+function construireJobRecreation(job, pf, cap, prix) {
+  return sanitizeJob({
+    id: job.id,
+    platform: "vinted",
+    action: "publish",
+    title: cap.payload?.titre ?? job.title ?? "",
+    description: cap.payload?.description ?? "",
+    price: prix,
+    photo_option: "original",
+    photos: (cap.photos_urls ?? []).map((url, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url })),
+    inventaire_id: job.inventaire_id ?? null,
+    platform_fields: {
+      categoryPath: cap.libelles?.categoryPath ?? null,
+      etat: cap.libelles?.etat ?? null,
+      taille: cap.libelles?.taille ?? null,
+      marque: cap.libelles?.marque ?? null,
+      colors: cap.libelles?.couleurs ?? null,
+      packageSize: cap.libelles?.colis ?? null,
+      ...(pf.vintedAspects && typeof pf.vintedAspects === "object" ? { vintedAspects: pf.vintedAspects } : {}),
+    },
+  });
+}
+
+// ── Suppression actée par le content script EN UNE PASSE (2026-08-12) ────────
+// Le flux « pré-vol → suppression → soumission » (fillListingForm, drapeau
+// republish_delete_then_submit) nous prévient JUSTE APRÈS la suppression et
+// AVANT de soumettre : l'étape 'deleted' est en base même si la redirection de
+// succès coupe le canal une seconde plus tard. Trace mémoire EN PLUS de la
+// base : le même service worker attend la réponse de FILL_LISTING — si
+// l'écriture base échoue, la map suffit à conclure ce cycle-ci, et une mort du
+// worker emporte les deux témoins ensemble (la reprise re-sonde l'état réel).
+const republishSupprimes = new Map(); // jobId → deleted_at ISO
+async function marquerRepublishSupprime(jobId) {
+  const deletedAt = new Date().toISOString();
+  republishSupprimes.set(jobId, deletedAt);
+  const session = await getValidSession();
+  if (!session?.access_token) return { ok: false, error: "session FillSell absente", deleted_at: deletedAt };
+  const token = session.access_token;
+  try {
+    // platform_fields est écrasé EN ENTIER par update-job-status : relire, fusionner.
+    const rows = await restRequest(`cross_post_jobs?id=eq.${jobId}&select=platform_fields`, token);
+    const pfBase = rows?.[0]?.platform_fields ?? {};
+    await updateJobStatus(token, jobId, "processing", {
+      platform_fields: { ...pfBase, republish_step: "deleted", deleted_at: deletedAt },
+    });
+    return { ok: true, deleted_at: deletedAt };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e), deleted_at: deletedAt };
+  }
+}
+
+// ── APRÈS SUPPRESSION : jamais un arrêt sec (2026-08-12) ─────────────────────
+// Une recréation qui échoue se RETENTE automatiquement deux fois, espacées
+// (5 puis 10 min) — par la machinerie déjà cadencée par chrome.alarms : le job
+// repart 'pending' avec next_action_after, et le poll (alarme ~2 min) le
+// reprend à l'échéance, rang 0 de la file (étape 'deleted'). JAMAIS de
+// setTimeout : le service worker MV3 meurt avant. Épuisées → needs_user,
+// snapshot et capture RESTENT en base ; l'app propose « Republier maintenant »
+// (relancer_republish) et la saisie du champ manquant quand le refus serveur
+// l'a nommé (needs_user_field, même contrat que le chemin publish).
+async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
+  if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+  if (result?.serverRequired?.length) pf.server_required_fields = result.serverRequired;
+  const retries = Number(pf.recreation_retries) || 0;
+  if (retries < 2) {
+    pf.recreation_retries = retries + 1;
+    const delaiMin = retries === 0 ? 5 : 10;
+    pf.next_action_after = new Date(Date.now() + delaiMin * 60000).toISOString();
+    await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+    console.warn(`[republish] job ${job.id} : recréation échouée (${result?.error ?? "?"}) — retentative auto ${retries + 1}/2 dans ${delaiMin} min`);
+    return { status: "retry", error: `recréation échouée — retentative automatique ${retries + 1}/2 dans ${delaiMin} min` };
+  }
+  const motif = String(result?.error ?? "raison inconnue").slice(0, 200);
+  const messageFinal =
+    "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement " +
+    `(${motif}). Rien n'est perdu : toutes ses données sont sauvegardées. ` +
+    "Clique « Republier maintenant » — si un champ manque, il te sera demandé.";
+  // Refus serveur NOMMÉ sur un champ résoluble → le mini-éditeur de l'app peut
+  // le trancher. Même liste d'exclusions que le chemin publish : un 400 sur
+  // title/description/price/photos/catalog_id/package_size_id ne se corrige
+  // pas dans une modale.
+  const NON_RESOLUBLES = new Set(["title", "description", "price", "photos", "catalog_id", "package_size_id"]);
+  const champ = (result?.serverRequired ?? []).find((f) => f?.key && !NON_RESOLUBLES.has(String(f.key)));
+  if (champ) {
+    job.platform_fields = pf;
+    await markNeedsUser(accessToken, job, {
+      error: messageFinal,
+      needsUserField: {
+        field_key: champ.key,
+        field_label: champ.label || champ.key,
+        target: { root: "vintedAspects", key: champ.key },
+      },
+    });
+    return { status: "needsUser", error: motif };
+  }
+  await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: messageFinal });
+  return { status: "needsUser", error: motif };
+}
+
+// ── Conclusion COMMUNE après soumission d'une recréation (2026-08-12) ────────
+// Appelée par les DEUX chemins — l'une-passe de l'étape 'captured' (après que
+// la suppression a été actée) et la reprise de l'étape 'deleted'. Ils ne
+// peuvent pas diverger : mêmes filets (sonde réseau, ceinture dressing), même
+// rattachement, mêmes retentatives.
+async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result) {
+  // ── VOLET (a) : le canal coupé peut être la SIGNATURE D'UN SUCCÈS ─────────
+  // Vinted REDIRIGE vers la nouvelle annonce dès qu'elle est créée : la
+  // redirection détruit le content script AVANT sa réponse. La publication
+  // normale interroge la sonde dans ce cas depuis le 13/07 (job ba84ebb0) ;
+  // la recréation, elle, concluait à l'échec — c'est exactement ce qui a
+  // laissé l'annonce de Nico en ligne avec un job en needs_user le 05/08.
+  // Les captures de la sonde SURVIVENT à la mort de la page.
+  if (!result?.success) {
+    const urlSonde = await vintedUploadSucceededForTitle(tabId, jobRecreation.title).catch(() => null);
+    if (urlSonde) {
+      const idSonde = urlSonde.match(/\/items\/(\d+)/)?.[1] ?? null;
+      if (idSonde) {
+        await cloreRepublishSurAnnonceExistante(
+          accessToken, job, pf, idSonde, urlSonde,
+          "canal coupé par la redirection de succès — création confirmée par la réponse serveur",
+        );
+        return { status: "published", listingUrl: urlSonde };
+      }
+    }
+
+    // ── CEINTURE : le dressing, TOUT DE SUITE ─────────────────────────────
+    // Ne dépend d'AUCUNE sonde — donc rattrape même ce que la sonde rate.
+    // Le 05/08, la recherche du dressing n'existait qu'AVANT la recréation :
+    // elle protégeait la relance, pas la tentative en cours, et le job se
+    // clôturait en needs_user avant que quiconque puisse vérifier. Deux
+    // annonces recréées ont été perdues comme ça. On regarde donc
+    // maintenant, pendant qu'on tient encore l'onglet.
+    try {
+      const ident2 = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch(() => null);
+      if (ident2?.userId) {
+        const page2 = await sendMessageToTab(tabId, {
+          type: "SYNC_DRESSING_PAGE", page: 1, userId: ident2.userId,
+        }).catch(() => null);
+        if (page2?.success) {
+          const connus2 = await restRequest(
+            `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
+            accessToken,
+          ).catch(() => []);
+          const { item: trouve, raison: pourquoi } = reconnaitreAnnonceRecreee(page2.articles, {
+            titre: jobRecreation.title,
+            deletedAt: pf.deleted_at,
+            idsConnus: new Set((connus2 ?? []).map((r) => String(r.vinted_item_id))),
+          });
+          if (trouve) {
+            await cloreRepublishSurAnnonceExistante(
+              accessToken, job, pf, trouve.vinted_item_id,
+              trouve.url ?? `https://www.vinted.fr/items/${trouve.vinted_item_id}`,
+              "recréation confirmée dans le dressing après coupure du canal",
+            );
+            return { status: "published", listingUrl: trouve.url ?? null };
+          }
+          console.log(`[republish] après coupure, rien de concluant dans le dressing (${pourquoi}) — échec assumé`);
+        }
+      }
+    } catch (e) {
+      console.warn("[republish] vérification du dressing après coupure impossible:", e?.message ?? e);
+    }
+  }
+
+  if (result?.success && result.listingUrl) {
+    // ── É4 : RATTACHEMENT du nouvel id (2026-08-05) ───────────────────────
+    // L'annonce recréée a un NOUVEL id Vinted. Sans propagation, la
+    // prochaine sync ne matcherait plus la ligne inventaire (→ elle
+    // croirait l'ancien article disparu ET créerait un doublon du
+    // nouveau). Propagé AVANT la clôture du job : si le PATCH inventaire
+    // échoue, le job part quand même en published (l'annonce EST en
+    // ligne) mais l'échec est journalisé — la sync du lendemain le
+    // rattraperait en doublon visible plutôt qu'en perte silencieuse.
+    const ancienId = pf.vinted_item_id ?? null;
+    const nouvelId = result.listingUrl.match(/\/items\/(\d+)/)?.[1] ?? null;
+    pf.republish_step = "recreated";
+    pf.recreated_at = new Date().toISOString();
+    if (ancienId) pf.old_vinted_item_id = ancienId;
+    if (nouvelId) pf.new_vinted_item_id = nouvelId;
+    delete pf.next_action_after;
+    // Republication aboutie : les diagnostics repartent de zéro.
+    delete pf.recaptures_perimees;
+    delete pf.recreation_retries;
+    if (nouvelId && job.inventaire_id != null) {
+      await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
+        method: "PATCH",
+        body: JSON.stringify({
+          vinted_item_id: nouvelId,
+          disparu_le: null,
+          // La republication EST une remise en ligne : c'est la nouvelle
+          // date de mise en ligne la plus plausible.
+          listed_at_guess: new Date().toISOString(),
+          // « Le dernier prix publié fait foi » (doctrine bd9a516) : le
+          // prix du job = celui de la capture, éventuellement AJUSTÉ à la
+          // republication (feuille de prix) — la carte et le prochain
+          // « Publier » doivent le refléter.
+          ...(job.price != null ? { prix_vente: Number(job.price) } : {}),
+        }),
+      }).catch((e) => console.error(
+        `[background] Republish ${job.id} : rattachement inventaire ${job.inventaire_id} → ${nouvelId} NON écrit —`,
+        String(e?.message ?? e),
+      ));
+    }
+    await updateJobStatus(accessToken, job.id, "published", {
+      listing_url: result.listingUrl, platform_fields: pf, error: null,
+    });
+    console.log(`[background] Republish ${job.id} : recréée → ${result.listingUrl} (id ${ancienId ?? "?"} → ${nouvelId ?? "?"})`);
+    return { status: "published", listingUrl: result.listingUrl };
+  }
+
+  // Échec APRÈS suppression : JAMAIS un failed sec (le trigger rembourserait
+  // et abandonnerait un article dont l'annonce n'existe plus), et plus JAMAIS
+  // un arrêt à la première tentative : retentatives automatiques espacées,
+  // puis needs_user avec le snapshot au chaud (replanifierOuArreterRecreation).
+  return await replanifierOuArreterRecreation(accessToken, job, pf, result);
 }
 
 async function processRepublishJob(job, accessToken) {
@@ -8272,14 +8584,13 @@ async function processRepublishJob(job, accessToken) {
       // moment d'AGIR → needs_user AVANT toute suppression, avec la vraie
       // cause et la vraie solution (Chrome ouvert peu après le clic), pas un
       // « relance » sec.
-      // `prix` et `titre` sont tirés du payload DÈS ICI : ce sont les deux
-      // champs que la recréation EXIGE et que le verdict ne prouve pas (lui ne
-      // couvre que les libellés, la description et les photos). Sélection
-      // ciblée en JSON plutôt que le payload entier : celui-ci embarque le
-      // natif complet et les URLs de photos, inutiles à cette vérification.
+      // La capture ENTIÈRE est relue (payload, libellés, photos re-hébergées) :
+      // elle sert désormais à TROIS choses avant tout geste — la vérification
+      // prix/titre ci-dessous, le SNAPSHOT écrit sur le job, et le formulaire
+      // de pré-vol (une-passe) rempli pendant que l'annonce est encore en ligne.
       const capRows = await restRequest(
         `vinted_republish_captures?id=eq.${Number(pf.capture_id)}` +
-        `&select=verdict,captured_at,prix:payload->prix,titre:payload->titre`,
+        `&select=verdict,captured_at,payload,libelles,photos_urls`,
         accessToken,
       );
       const capMeta = capRows?.[0];
@@ -8304,8 +8615,8 @@ async function processRepublishJob(job, accessToken) {
       // l'annonce est encore en ligne et qu'un refus ne coûte rien.
       // ⛔ Tout nouveau champ exigé par la recréation doit être ajouté à cette
       // vérification, pas seulement lu plus bas.
-      const prixPrevu = resoudrePrixRepublication(pf, { prix: capMeta.prix });
-      const titrePrevu = String(capMeta.titre ?? job.title ?? "").trim();
+      const prixPrevu = resoudrePrixRepublication(pf, { prix: capMeta.payload?.prix });
+      const titrePrevu = String(capMeta.payload?.titre ?? job.title ?? "").trim();
       if (prixPrevu === null || !titrePrevu) {
         const manque = [prixPrevu === null ? "le prix" : null, !titrePrevu ? "le titre" : null].filter(Boolean).join(" et ");
         await updateJobStatus(accessToken, job.id, "needs_user", {
@@ -8340,47 +8651,120 @@ async function processRepublishJob(job, accessToken) {
         return { status: "needsUser", error: `capture périmée (>24 h) à l'exécution — occurrence ${peremptions}` };
       }
 
+      // ── SNAPSHOT OBLIGATOIRE, ÉCRIT ET CONFIRMÉ AVANT TOUT GESTE ──────────
+      // (2026-08-12, incident lowvaucher.) La règle d'or devient vérifiable
+      // depuis le job lui-même : AUCUNE suppression tant que la copie complète
+      // n'est pas SUR la ligne cross_post_jobs, écriture confirmée — pas un
+      // fire-and-forget. Échec d'écriture → failed AVANT la suppression,
+      // annonce intacte, Pépite rendue par le trigger.
+      pf.republish_snapshot = construireSnapshotRepublish(pf, capMeta);
       pf.processing_since = new Date().toISOString();
-      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
-      const tabId = await getOrCreateWorkTab("vinted", job.listing_url);
-      const restore = await paintTab(tabId);
+      try {
+        await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
+      } catch (e) {
+        delete pf.republish_snapshot;
+        const msg = "Republication annulée : impossible de sécuriser les données de ton annonce en base — " +
+          "rien n'a été touché, ton annonce est intacte et la Pépite est rendue. Réessaie dans un instant.";
+        await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg }).catch(() => {});
+        return { status: "failed", error: `snapshot non écrit : ${String(e?.message ?? e)}` };
+      }
+
+      // ── UNE-PASSE « pré-vol → suppression → soumission » (2026-08-12) ─────
+      // Le pré-vol EST le formulaire qui sera soumis, pas une répétition :
+      // /items/new est rempli avec la capture PENDANT que l'annonce d'origine
+      // est encore en ligne, TOUTES les gates strictes actives (requis de la
+      // catégorie relevés dans le DOM, photos prouvées arrivées — le drapeau
+      // republish_recreation n'est PAS posé). Un requis vide s'arrête ICI,
+      // annonce intacte. Requis vérifiés → le content script supprime par
+      // l'API DEPUIS la page du formulaire (le CSRF y est, aucune navigation),
+      // fait acter l'étape 'deleted' en base (REPUBLISH_MARK_DELETED), puis
+      // soumet CE formulaire après une courte pause humaine. La fenêtre
+      // hors-ligne passe de 2-5 min à quelques secondes, et il n'y a plus
+      // AUCUN moyen de supprimer sur des données que le formulaire refuse.
+      // (Décision d'architecture du 12/08 au soir — l'ancien ordre « supprimer
+      // puis découvrir le refus à la recréation » est exactement ce qui a
+      // perdu les annonces de lowvaucher.)
+      const jobRecreation = construireJobRecreation(job, pf, capMeta, prixPrevu);
+      jobRecreation.platform_fields.republish_delete_then_submit = { item_id: String(pf.vinted_item_id ?? "") };
+
+      const handlerV = PLATFORM_HANDLERS.vinted;
+      const urlDepot = typeof handlerV.newListingUrl === "function" ? handlerV.newListingUrl(jobRecreation) : handlerV.newListingUrl;
+      const tabId = await getOrCreateWorkTab("vinted", urlDepot);
+      clearProbeCaptures(tabId);
+      await installNetworkProbe(tabId, "vinted");
       let result;
       try {
-        result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
-      } finally {
-        await restore();
+        result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job: jobRecreation });
+      } catch (e) {
+        result = { success: false, error: `canal coupé pendant la republication : ${String(e?.message ?? e)}` };
       }
       dernierGesteRepublishAt = Date.now();
-      if (!result?.success) {
-        // « Introuvable » peut vouloir dire « déjà supprimée » (leçon delete) :
-        // l'état réel de l'annonce tranche avant toute conclusion.
-        const { state } = await checkListingState(job.listing_url, "vinted").catch(() => ({ state: "unknown" }));
-        if (state !== "unavailable" && state !== "sold") {
-          // RIEN n'a été supprimé (deleteListing ne conclut jamais sans preuve) :
-          // needs_user honnête, l'annonce d'origine est intacte.
+
+      // La suppression a-t-elle eu lieu ? Deux témoins concordants : le
+      // résultat du content script (deleted:true) et la trace mémoire du
+      // message REPUBLISH_MARK_DELETED — qui, elle, survit à un canal coupé
+      // par la redirection de succès.
+      const marqueDeletedAt = republishSupprimes.get(job.id) ?? null;
+      republishSupprimes.delete(job.id);
+      const aSupprime = result?.deleted === true || marqueDeletedAt != null;
+
+      if (!aSupprime) {
+        // ── RIEN n'a été supprimé : l'annonce d'origine est intacte ─────────
+        if (result?.deleteFailed) {
+          // Pré-vol OK mais l'API de suppression a refusé. L'état réel tranche
+          // (leçon delete) : une annonce réellement absente = suppression déjà
+          // effective ailleurs → on passe à la recréation ; sinon needs_user
+          // honnête, rien n'a été soumis (pas de doublon possible).
+          const { state } = await checkListingState(job.listing_url, "vinted").catch(() => ({ state: "unknown" }));
+          if (state === "unavailable" || state === "sold") {
+            pf.republish_step = "deleted";
+            pf.deleted_at = new Date().toISOString();
+            pf.next_action_after = new Date(Date.now() + 120_000).toISOString();
+            await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+            return { status: "retry", error: "annonce déjà absente — recréation à la prochaine passe" };
+          }
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
             error: `Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : ${result?.error ?? "inconnu"}. Corrige puis relance depuis l'app.`,
           });
           return { status: "needsUser", error: result?.error };
         }
+        if (result?.unfilledRequired?.length || result?.needsUserField) {
+          // ── PRÉ-VOL NÉGATIF : un champ obligatoire est resté vide ─────────
+          // LE cas des deux annonces perdues du 12/08 — il s'arrête désormais
+          // ICI : annonce intacte, Pépite rendue, champ NOMMÉ. Et il rend le
+          // trou de categorieExigeTaille (liste statique de rayons) sans
+          // conséquence : un rayon inconnu qui exige une taille se voit au
+          // pré-vol, plus jamais après la suppression.
+          const champs = (result.unfilledRequired ?? []).join(", ")
+            || result?.needsUserField?.field_label || "un champ obligatoire";
+          const msg = `Republication annulée AVANT toute suppression : Vinted exige « ${champs} » et l'annonce d'origine ne porte pas cette information. ` +
+            `Ton annonce est intacte et la Pépite est rendue. Ajoute « ${champs} » à ton annonce sur Vinted, puis relance la republication.`;
+          await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
+          return { status: "failed", error: `pré-vol négatif : ${champs}` };
+        }
+        // Transitoire (challenge DataDome, session, photos pas arrivées, canal
+        // coupé avant la suppression) : needs_user honnête, annonce intacte —
+        // l'étape reste 'captured', la relance rejouera le pré-vol en entier.
+        if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          platform_fields: pf,
+          error: `Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : ${result?.error ?? "inconnu"}. Corrige puis relance depuis l'app.`,
+        });
+        return { status: "needsUser", error: result?.error };
       }
-      // Supprimée (par nous, ou déjà absente). ÉTAPE ÉCRITE EN BASE avant tout
-      // autre geste + attente humanisée avant la recréation (2 à 5 min).
+
+      // ── SUPPRIMÉE : étape actée, puis MÊME conclusion que la reprise ───────
       pf.republish_step = "deleted";
-      pf.deleted_at = new Date().toISOString();
-      pf.next_action_after = new Date(Date.now() + 120_000 + Math.floor(Math.random() * 180_000)).toISOString();
-      await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
-      // É4 : les publish de l'ANCIENNE annonce sont clos MAINTENANT — pas à la
-      // recréation. Entre suppression et recréation, le veilleur quotidien
-      // scannerait sinon l'ancienne URL, la trouverait morte, et poserait le
-      // faux « plus en ligne — vendue ? » (classe de bug fermée par
-      // cancelPublishAfterDelete). Best-effort, comme pour le retrait ciblé.
+      pf.deleted_at = pf.deleted_at ?? marqueDeletedAt ?? new Date().toISOString();
+      // É4 : les publish de l'ANCIENNE annonce sont clos MAINTENANT — le
+      // veilleur quotidien scannerait sinon l'ancienne URL, la trouverait
+      // morte, et poserait le faux « plus en ligne — vendue ? ».
       await cancelPublishAfterDelete(accessToken, job, {
         marqueur: "republished_pending",
         erreur: "Annonce en cours de republication (supprimée puis recréée pour remonter dans le fil) — pas une vente",
       });
-      return { status: "retry", error: "annonce supprimée — recréation à la prochaine passe" };
+      return await conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result);
     } catch (e) {
       // Doute (canal coupé pendant la suppression ?) → needs_user, jamais un
       // silence : l'étape en base dit encore 'captured', la reprise re-sondera
@@ -8447,45 +8831,20 @@ async function processRepublishJob(job, accessToken) {
       pf.processing_since = new Date().toISOString();
       await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
 
-      // Job « comme un publish » : le handler éprouvé fait TOUT le travail —
-      // photos = NOS URLs re-hébergées, champs = libellés résolus à la capture.
-      const jobLike = {
-        id: job.id,
-        platform: "vinted",
-        action: "publish",
-        title: cap.payload?.titre ?? job.title ?? "",
-        description: cap.payload?.description ?? "",
-        price: prixRecreation,
-        photo_option: "original",
-        photos: (cap.photos_urls ?? []).map((url, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url })),
-        inventaire_id: job.inventaire_id ?? null,
-        platform_fields: {
-          categoryPath: cap.libelles?.categoryPath ?? null,
-          etat: cap.libelles?.etat ?? null,
-          taille: cap.libelles?.taille ?? null,
-          marque: cap.libelles?.marque ?? null,
-          colors: cap.libelles?.couleurs ?? null,
-          packageSize: cap.libelles?.colis ?? null,
-          // ⚠️ L'ANNONCE D'ORIGINE N'EXISTE PLUS (2026-08-09). Ce drapeau dit
-          // au handler qu'il remplit un formulaire de RECRÉATION : à partir
-          // d'ici, plus AUCUNE garde n'a le droit de refuser de soumettre.
-          // Un refus de soumettre laisse l'utilisateur sans annonce ET sans
-          // rien à récupérer ; un refus de Vinted, lui, se retente sur un
-          // formulaire encore ouvert. Entre les deux, le choix n'est pas
-          // discutable. Voir ensurePhotosLanded (vinted.js).
-          republish_recreation: true,
-        },
-      };
-
-      // Même PRÉPARATION que la publication normale, pas seulement le même
-      // remplisseur : processJob fait passer TOUT job par sanitizeJob avant de
-      // l'envoyer (sa 1re ligne). Les emoji sortent du titre, sinon Vinted
-      // répond 400 « le titre contient trop de symboles d'affilée » —
-      // déclenché par UN SEUL symbole (⌚ du Casio, 19/07). Le titre de la
-      // recréation vient de la CAPTURE (cap.payload.titre), qui n'a jamais vu
-      // ce nettoyage : il partait brut. Une SEULE variable en aval, pour
-      // qu'aucun rapprochement ne compare deux titres différents.
-      const jobRecreation = sanitizeJob(jobLike);
+      // Job « comme un publish » : même fabrique que l'une-passe de l'étape
+      // 'captured' (construireJobRecreation — photos = NOS URLs re-hébergées,
+      // champs = libellés capturés, vintedAspects propagé, sanitizeJob inclus).
+      const jobRecreation = construireJobRecreation(job, pf, cap, prixRecreation);
+      // ⚠️ L'ANNONCE D'ORIGINE N'EXISTE PLUS (2026-08-09). Ce drapeau dit
+      // au handler qu'il remplit un formulaire de RECRÉATION : à partir
+      // d'ici, plus AUCUNE garde n'a le droit de refuser de soumettre.
+      // Un refus de soumettre laisse l'utilisateur sans annonce ET sans
+      // rien à récupérer ; un refus de Vinted, lui, se retente sur un
+      // formulaire encore ouvert. Entre les deux, le choix n'est pas
+      // discutable. Voir ensurePhotosLanded (vinted.js).
+      // (L'une-passe, elle, ne pose PAS ce drapeau : son annonce d'origine est
+      // encore en ligne, ses gates restent strictes — c'est tout le pré-vol.)
+      jobRecreation.platform_fields.republish_recreation = true;
 
       const handler = PLATFORM_HANDLERS.vinted;
       const listingUrl = typeof handler.newListingUrl === "function" ? handler.newListingUrl(jobRecreation) : handler.newListingUrl;
@@ -8594,124 +8953,7 @@ async function processRepublishJob(job, accessToken) {
       }
       dernierGesteRepublishAt = Date.now();
 
-      // ── VOLET (a) : le canal coupé peut être la SIGNATURE D'UN SUCCÈS ─────
-      // Vinted REDIRIGE vers la nouvelle annonce dès qu'elle est créée : la
-      // redirection détruit le content script AVANT sa réponse. La publication
-      // normale interroge la sonde dans ce cas depuis le 13/07 (job ba84ebb0) ;
-      // la recréation, elle, concluait à l'échec — c'est exactement ce qui a
-      // laissé l'annonce de Nico en ligne avec un job en needs_user le 05/08.
-      // Les captures de la sonde SURVIVENT à la mort de la page.
-      if (!result?.success) {
-        const urlSonde = await vintedUploadSucceededForTitle(tabId, jobRecreation.title).catch(() => null);
-        if (urlSonde) {
-          const idSonde = urlSonde.match(/\/items\/(\d+)/)?.[1] ?? null;
-          if (idSonde) {
-            await cloreRepublishSurAnnonceExistante(
-              accessToken, job, pf, idSonde, urlSonde,
-              "canal coupé par la redirection de succès — création confirmée par la réponse serveur",
-            );
-            return { status: "published", listingUrl: urlSonde };
-          }
-        }
-
-        // ── CEINTURE : le dressing, TOUT DE SUITE ────────────────────────────
-        // Ne dépend d'AUCUNE sonde — donc rattrape même ce que la sonde rate.
-        // Le 05/08, la recherche du dressing n'existait qu'AVANT la recréation :
-        // elle protégeait la relance, pas la tentative en cours, et le job se
-        // clôturait en needs_user avant que quiconque puisse vérifier. Deux
-        // annonces recréées ont été perdues comme ça. On regarde donc
-        // maintenant, pendant qu'on tient encore l'onglet.
-        try {
-          const ident2 = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch(() => null);
-          if (ident2?.userId) {
-            const page2 = await sendMessageToTab(tabId, {
-              type: "SYNC_DRESSING_PAGE", page: 1, userId: ident2.userId,
-            }).catch(() => null);
-            if (page2?.success) {
-              const connus2 = await restRequest(
-                `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
-                accessToken,
-              ).catch(() => []);
-              const { item: trouve, raison: pourquoi } = reconnaitreAnnonceRecreee(page2.articles, {
-                titre: jobRecreation.title,
-                deletedAt: pf.deleted_at,
-                idsConnus: new Set((connus2 ?? []).map((r) => String(r.vinted_item_id))),
-              });
-              if (trouve) {
-                await cloreRepublishSurAnnonceExistante(
-                  accessToken, job, pf, trouve.vinted_item_id,
-                  trouve.url ?? `https://www.vinted.fr/items/${trouve.vinted_item_id}`,
-                  "recréation confirmée dans le dressing après coupure du canal",
-                );
-                return { status: "published", listingUrl: trouve.url ?? null };
-              }
-              console.log(`[republish] après coupure, rien de concluant dans le dressing (${pourquoi}) — échec assumé`);
-            }
-          }
-        } catch (e) {
-          console.warn("[republish] vérification du dressing après coupure impossible:", e?.message ?? e);
-        }
-      }
-
-      if (result?.success && result.listingUrl) {
-        // ── É4 : RATTACHEMENT du nouvel id (2026-08-05) ─────────────────────
-        // L'annonce recréée a un NOUVEL id Vinted. Sans propagation, la
-        // prochaine sync ne matcherait plus la ligne inventaire (→ elle
-        // croirait l'ancien article disparu ET créerait un doublon du
-        // nouveau). Propagé AVANT la clôture du job : si le PATCH inventaire
-        // échoue, le job part quand même en published (l'annonce EST en
-        // ligne) mais l'échec est journalisé — la sync du lendemain le
-        // rattraperait en doublon visible plutôt qu'en perte silencieuse.
-        const ancienId = pf.vinted_item_id ?? null;
-        const nouvelId = result.listingUrl.match(/\/items\/(\d+)/)?.[1] ?? null;
-        pf.republish_step = "recreated";
-        pf.recreated_at = new Date().toISOString();
-        if (ancienId) pf.old_vinted_item_id = ancienId;
-        if (nouvelId) pf.new_vinted_item_id = nouvelId;
-        delete pf.next_action_after;
-        // Republication aboutie : le diagnostic de péremption repart de zéro.
-        delete pf.recaptures_perimees;
-        if (nouvelId && job.inventaire_id != null) {
-          await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
-            method: "PATCH",
-            body: JSON.stringify({
-              vinted_item_id: nouvelId,
-              disparu_le: null,
-              // La republication EST une remise en ligne : c'est la nouvelle
-              // date de mise en ligne la plus plausible.
-              listed_at_guess: new Date().toISOString(),
-              // « Le dernier prix publié fait foi » (doctrine bd9a516) : le
-              // prix du job = celui de la capture, éventuellement AJUSTÉ à la
-              // republication (feuille de prix) — la carte et le prochain
-              // « Publier » doivent le refléter.
-              ...(job.price != null ? { prix_vente: Number(job.price) } : {}),
-            }),
-          }).catch((e) => console.error(
-            `[background] Republish ${job.id} : rattachement inventaire ${job.inventaire_id} → ${nouvelId} NON écrit —`,
-            String(e?.message ?? e),
-          ));
-        }
-        await updateJobStatus(accessToken, job.id, "published", {
-          listing_url: result.listingUrl, platform_fields: pf, error: null,
-        });
-        console.log(`[background] Republish ${job.id} : recréée → ${result.listingUrl} (id ${ancienId ?? "?"} → ${nouvelId ?? "?"})`);
-        return { status: "published", listingUrl: result.listingUrl };
-      }
-
-      // Échec APRÈS suppression : JAMAIS un failed sec (le trigger
-      // rembourserait et abandonnerait un article dont l'annonce n'existe
-      // plus). needs_user honnête : tout est au chaud, la relance depuis
-      // l'app repart directement à la recréation (l'étape en base le dit).
-      // L'annexe technique du content script (dump DOM, options relevées)
-      // part dans last_diagnostic — le message affiché reste court (le dump
-      // brut dans la modale « En attente de toi », vécu le 06/08, job
-      // 68420b37, n'arrive plus).
-      if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
-      await updateJobStatus(accessToken, job.id, "needs_user", {
-        platform_fields: pf,
-        error: `L'annonce d'origine a été supprimée sur Vinted et la recréation n'a pas encore abouti (${result?.error ?? "raison inconnue"}). Rien n'est perdu : photos et fiche sont au chaud, relance depuis l'app — la reprise repart directement à la recréation.`,
-      });
-      return { status: "needsUser", error: result?.error };
+      return await conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result);
     } catch (e) {
       await updateJobStatus(accessToken, job.id, "needs_user", {
         platform_fields: pf,

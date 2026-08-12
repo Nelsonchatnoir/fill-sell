@@ -1089,14 +1089,24 @@ async function deleteListing(job) {
   }
   t(`page annonce ok : item ${itemId}`);
 
-  const csrf = await extractVintedCsrfToken();
-  const anonId = getVintedCookie("anon_id");
-  t(`tokens : csrf=${csrf ? "ok" : "ABSENT"}, anon_id=${anonId ? "ok" : "ABSENT"}`);
-
   if (DELETE_DRY_RUN) {
     t("🧪 DELETE_DRY_RUN actif — endpoint prêt, AUCUN appel de suppression.");
     return { success: true, dryRun: true, found: true, trace };
   }
+
+  return await deleteVintedItemViaApi(itemId, t, trace);
+}
+
+// ── Appel API de suppression, FACTORISÉ (2026-08-12) ─────────────────────────
+// Deux appelants : deleteListing ci-dessus (depuis la page de l'annonce,
+// chemin historique) et l'une-passe de republication (depuis /items/new — le
+// jeton CSRF vit dans un script inline présent sur TOUTES les pages vinted.fr,
+// et la suppression par API ne navigue rien). Mêmes en-têtes, mêmes
+// conclusions, même prudence : un refus n'est JAMAIS une preuve de suppression.
+async function deleteVintedItemViaApi(itemId, t, trace) {
+  const csrf = await extractVintedCsrfToken();
+  const anonId = getVintedCookie("anon_id");
+  t(`tokens : csrf=${csrf ? "ok" : "ABSENT"}, anon_id=${anonId ? "ok" : "ABSENT"}`);
 
   // Jeton absent = on n'envoie RIEN, et surtout ON NE CONCLUT RIEN.
   //
@@ -1403,6 +1413,16 @@ async function fillListingForm(job) {
   // ouvert ; une annonce supprimée et jamais recréée ne se rattrape pas.
   // Hors recréation (publication normale), RIEN NE CHANGE : l'exception passe.
   const recreation = job.platform_fields?.republish_recreation === true;
+  // ── Republication UNE-PASSE (2026-08-12) : le pré-vol EST ce formulaire ────
+  // Le job porte platform_fields.republish_delete_then_submit = { item_id } :
+  // l'annonce d'ORIGINE est ENCORE en ligne pendant tout le remplissage, donc
+  // TOUTES les gates strictes s'appliquent (recreation est false — un refus ne
+  // coûte rien). Requis vérifiés et photos arrivées : la suppression part par
+  // l'API depuis CETTE page, l'étape 'deleted' est actée en base par le
+  // background (REPUBLISH_MARK_DELETED), et LE MÊME formulaire est soumis
+  // après une courte pause. Cf. processRepublishJob, étape 'captured'.
+  const onePass = job.platform_fields?.republish_delete_then_submit ?? null;
+  let onePassDeleted = false;
   const etape = async (libelle, fn) => {
     try {
       return await fn();
@@ -1741,6 +1761,43 @@ async function fillListingForm(job) {
   // throw → job failed honnête, AUCUN clic avec price: null.
   if (job.price != null) await ensurePriceCommitted(job.price);
 
+  // ── UNE-PASSE : suppression de l'annonce d'origine JUSTE avant le clic ────
+  // On n'arrive ici qu'avec toutes les gates strictes franchies : requis de la
+  // catégorie remplis dans le DOM, photos prouvées arrivées, prix commité.
+  // C'est LE point où supprimer devient sûr — tout ce qui pouvait refuser a
+  // déjà eu sa chance de refuser pendant que l'annonce était en ligne.
+  if (onePass?.item_id) {
+    const traceDel = [];
+    const tDel = (line) => { traceDel.push(line); console.log(`[vinted][republish-onepass] ${line}`); };
+    const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel);
+    if (!del?.success) {
+      // AUCUNE soumission sans suppression acquise : soumettre créerait un
+      // DOUBLON à côté de l'annonce d'origine toujours en ligne. Le background
+      // revérifie l'état réel de l'annonce (checkListingState) et décide.
+      return {
+        success: false,
+        deleteFailed: true,
+        needsUser: del?.needsUser === true,
+        error: `pré-vol OK mais suppression refusée — rien n'a été soumis. ${del?.error ?? ""}`.trim(),
+        warnings,
+        diagnostic: traceDel.join(" | ").slice(0, 2000),
+      };
+    }
+    onePassDeleted = true;
+    // Étape 'deleted' actée en base AVANT la soumission — la redirection de
+    // succès peut couper le canal juste après le clic. Si l'écriture échoue,
+    // on soumet QUAND MÊME : l'annonce d'origine n'existe plus, une annonce
+    // en ligne vaut mieux que la cohérence de la base (la sonde réseau et la
+    // ceinture dressing réconcilieront le job).
+    const marque = await askBackground({ type: "REPUBLISH_MARK_DELETED", jobId: job.id })
+      .catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+    if (!marque?.ok) console.warn("[vinted][republish-onepass] étape 'deleted' non écrite:", marque?.error);
+    // Pause humaine courte entre la suppression et le dépôt : un vendeur qui
+    // « remonte » son annonce enchaîne les deux gestes, mais pas dans la même
+    // seconde.
+    await sleep(5000 + Math.floor(Math.random() * 15000));
+  }
+
   // publish.submit (migré au registre — criticité red, clé SANS fallback, §8
   // de l'audit ; l'assert du registre — visible au sens getComputedStyle +
   // enabled — s'applique désormais avant le clic).
@@ -1771,6 +1828,7 @@ async function fillListingForm(job) {
         "Vinted refuse la publication : « Ajoute des photos à cette annonce » (minimum imposé sur " +
         "les marques premium). Ajouter des photos à l'annonce dans l'app, puis régénérer le job.",
       warnings,
+      ...(onePassDeleted ? { deleted: true } : {}),
     };
   }
 
@@ -1815,11 +1873,12 @@ async function fillListingForm(job) {
         warnings,
         serverRequired,
         discoveredRequired: requiredState.discovered,
+        ...(onePassDeleted ? { deleted: true } : {}),
       };
     }
-    return { success: false, error: proof.error, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered };
+    return { success: false, error: proof.error, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
   }
-  return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered };
+  return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
 
   // La PREUVE DOM des étapes tolérées ne se perd pas parce qu'on a soumis
   // quand même : elle voyage sur result.diagnostic, que le background range
