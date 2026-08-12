@@ -888,6 +888,18 @@ async function capturerAnnonceVinted(vintedItemId) {
   libelles.couleurs = couleurs.libelles;
   manquants.push(...couleurs.manquants);
 
+  // ── Matière (2026-08-13) — OPTIONNELLE, jamais bloquante ──────────────────
+  // Le payload ne la porte que par ses IDS (item_attributes code "material") :
+  // aucun libellé en clair, et aucun référentiel matière RELEVÉ à ce jour
+  // (seuls size_groups et colors ont répondu au relevé du 05/08 ; la config
+  // /attributes captée par la sonde jette les ids de ses options). Les ids
+  // sont donc capturés TELS QUELS et résolus AU FORMULAIRE, sur le menu ouvert
+  // (selectMaterialByIds). ⛔ JAMAIS dans champs_manquants, JAMAIS un verdict
+  // 'incomplet' : 21/21 relevés prod la disent required=false — un article
+  // sans matière (ou dont la pose échoue) republie exactement comme avant.
+  const matiereIds = attributVintedIds(natif, "material").map(Number).filter(Number.isFinite);
+  if (matiereIds.length) libelles.matiere_ids = matiereIds;
+
   // Colis — requis au dépôt ; selectPackageSize (handler publish) attend le
   // libellé. Aucun référentiel distant n'existe (tous 404, relevé du 05/08) :
   // la table partagée VINTED_PACKAGE_SIZES_PAR_ID fait foi, et un id inconnu
@@ -1571,6 +1583,14 @@ async function fillListingForm(job) {
       fields.matiere,
       warnings
     );
+  } else if (Array.isArray(fields.matiere_ids) && fields.matiere_ids.length) {
+    // ── Matière par IDS (2026-08-13, republication) ──────────────────────────
+    // La capture d'une annonce ne connaît la matière que par ses ids
+    // (item_attributes code "material" — le payload natif ne porte AUCUN
+    // libellé, et la config /attributes captée par la sonde jette les ids des
+    // options). Le référentiel id→libellé est relevé SUR LE MENU OUVERT,
+    // seule source fiable — cf. selectMaterialByIds et son garde-fou.
+    await selectMaterialByIds(fields.matiere_ids, warnings);
   }
   // ── Canal GÉNÉRIQUE (chantier champs obligatoires, 1.A/1.B) ────────────────
   // platform_fields.vintedAspects = { "<code serveur>": "valeur" } — posé par
@@ -3228,6 +3248,60 @@ async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector
     console.warn(`[vinted] ⚠️ ${note}`);
     warnings.push(note);
     await closeAnyOpenDropdown();
+    return false;
+  }
+}
+
+// ── Matière posée par IDS (2026-08-13, republication) ────────────────────────
+// La capture ne porte que les ids (item_attributes code "material") : le
+// référentiel id→libellé n'existe NULLE PART ailleurs que sur le menu du
+// formulaire — chaque option y porte data-testid="material-<id>" et son
+// libellé en texte. On le relève ICI, menu ouvert, et on clique directement
+// les nœuds correspondants (pas de correspondance codée en dur, pas de
+// devinette : un id absent du relevé n'est PAS posé).
+// ⛔ GARDE-FOU ABSOLU : la matière est OPTIONNELLE (21/21 required=false au
+// catalogue prod). TOUT échec — champ absent de la catégorie, menu qui ne
+// s'ouvre pas, testids sans id numérique, id inconnu — se solde par un
+// warning et on continue SANS matière, exactement comme avant ce commit.
+// Jamais de throw, jamais champs_manquants, jamais un blocage du pré-vol.
+async function selectMaterialByIds(ids, warnings) {
+  const TRIGGER = '#material, [data-testid="category-material-multi-list-input"]';
+  try {
+    if (!document.querySelector(TRIGGER)) return false; // pas de Matière ici : rien à faire
+    await openDropdown(TRIGGER);
+    await sleep(400);
+    const parId = new Map();
+    for (const el of document.querySelectorAll('[data-testid^="material-"]')) {
+      // Suffixes tolérés (material-44, material-44-label…) : l'ID est le
+      // premier segment numérique. Premier nœud gardé par id — un doublon
+      // (variante -label du même id) re-cliquerait et DÉSÉLECTIONNERAIT.
+      const m = String(el.getAttribute("data-testid") ?? "").match(/^material-(\d+)(?:-|$)/);
+      const libelle = (el.textContent ?? "").trim();
+      if (m && libelle && !parId.has(Number(m[1]))) parId.set(Number(m[1]), { el, libelle });
+    }
+    if (!parId.size) {
+      warnings.push("matière: référentiel id→libellé illisible sur le menu (aucun data-testid material-<id> numérique) — champ laissé vide (optionnel)");
+      await closeAnyOpenDropdown();
+      return false;
+    }
+    let posees = 0;
+    for (const id of [...new Set(ids.map(Number).filter(Number.isFinite))]) {
+      const cible = parId.get(id);
+      if (!cible) {
+        warnings.push(`matière: id ${id} absent du menu de cette catégorie — non posé (optionnel)`);
+        continue;
+      }
+      await humanPause();
+      cible.el.click();
+      console.log(`[vinted] matière posée par id : ${id} → « ${cible.libelle} »`);
+      posees++;
+    }
+    await humanPause();
+    await confirmDropdownIfNeeded();
+    return posees > 0;
+  } catch (e) {
+    warnings.push(`matière: pose par ids échouée (${String(e?.message ?? e)}) — champ laissé vide (optionnel)`);
+    try { await closeAnyOpenDropdown(); } catch { /* rien : optionnel */ }
     return false;
   }
 }
