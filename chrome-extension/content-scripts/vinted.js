@@ -849,11 +849,39 @@ async function capturerAnnonceVinted(vintedItemId) {
     manquants.push("taille (absente des deux emplacements)");
   }
 
-  // Marque — brand_id null/vide = « Sans marque », valide.
-  const marque = String(natif?.brand_dto?.title ?? natif?.brand ?? "").trim()
-    || String((natif?.brand_id != null ? await lireDtoPublic() : null)?.brand ?? "").trim();
-  if (marque) libelles.marque = marque;
-  else if (natif?.brand_id != null) manquants.push("marque (brand_id présent sans libellé)");
+  // ── Marque — « Sans marque » est un ÉTAT, pas une absence (2026-08-12) ─────
+  // Vinted encode l'absence de marque par un SENTINEL : brand_id = 1 avec
+  // brand_dto.title = "" (chaîne VIDE, jamais null) — relevé en base sur les
+  // payloads réels. L'ancien test lisait ce vide comme « brand_id présent sans
+  // libellé » : champs_manquants, verdict 'incomplet', republication bloquée
+  // sur des articles parfaitement valides (cartes à collectionner et tout ce
+  // qui se vend sans marque).
+  //
+  // ⚠️ SECOND TROU, MÊME FAMILLE, refermé du même geste : un brand_id ABSENT
+  // sortait déjà en 'valide' — mais SANS écrire libelles.marque. À la
+  // recréation, platform_fields.marque valait alors null et fillListingForm
+  // SAUTE le champ (`if (fields.marque)`, l. ~1420) : le formulaire partait
+  // avec #brand VIDE, donc un 400 Vinted après la suppression de l'annonce
+  // d'origine. Les deux cas écrivent désormais le libellé canonique, ce qui
+  // fait POSER le champ explicitement par le chemin natif #empty-brand.
+  //
+  // Un libellé RÉEL prime toujours (première branche) : le sentinel ne peut
+  // pas écraser une marque lisible. Et un brand_id réel (≠ 1) dont le libellé
+  // reste introuvable garde son entrée dans champs_manquants — écrire
+  // « Sans marque » là, ce serait republier un article de marque en article
+  // sans marque, une dégradation SILENCIEUSE. C'est exactement ce que le repli
+  // brand_fallback_no_brand du remplissage, lui, signale dans warnings.
+  const brandId = natif?.brand_id ?? null;
+  const libelleMarque = String(natif?.brand_dto?.title ?? natif?.brand ?? "").trim();
+  if (libelleMarque) {
+    libelles.marque = libelleMarque;
+  } else if (brandId == null || Number(brandId) === VINTED_BRAND_ID_SANS_MARQUE) {
+    libelles.marque = VINTED_SANS_MARQUE;
+  } else {
+    const replis = String((await lireDtoPublic())?.brand ?? "").trim();
+    if (replis) libelles.marque = replis;
+    else manquants.push(`marque (brand_id=${brandId} présent sans libellé)`);
+  }
 
   // Couleurs — libellés en clair dans natif, référentiel en repli.
   const couleurs = await resoudreCouleurs(natif, diagnostics);
@@ -2860,6 +2888,20 @@ async function selectSimpleOption(triggerSelector, optionSelector, optionText, {
 // dépôt au champ Marque vide finit en 400 déguisé en refus plateforme.
 const SANS_MARQUE_RE = /^\s*(?:sans\s+marque|no\s+brand|aucune(?:\s+marque)?|unbranded)\s*$/i;
 
+// Valeur CANONIQUE de l'absence de marque — source unique, partagée par les
+// deux bouts du chemin de republication (2026-08-12) :
+//   · la CAPTURE l'écrit dans libelles.marque (capturerAnnonceVinted) ;
+//   · le REMPLISSAGE la frappe dans la recherche du picker (selectVintedNoBrand).
+// Identique à normalizeMarque côté app (src/utils/shared.js), et elle DOIT
+// satisfaire SANS_MARQUE_RE ci-dessus : sinon la capture écrirait un libellé
+// que selectVintedBrand n'aiguillerait pas vers le chemin natif #empty-brand,
+// et la recréation partirait chercher une marque « Sans marque » au catalogue.
+const VINTED_SANS_MARQUE = "Sans marque";
+// Sentinel natif de Vinted pour « pas de marque » : brand_id = 1, avec
+// brand_dto.title = "" (chaîne VIDE, jamais null). Relevé en base sur les
+// payloads réels d'item_upload/items/{id}.
+const VINTED_BRAND_ID_SANS_MARQUE = 1;
+
 // Ligne native « Sans marque » du picker : frappe du terme dans la recherche
 // (c'est la recherche qui la fait apparaître), clic — COMMIT IMMÉDIAT prouvé
 // le 08/08 (panneau fermé + #brand.value posé sur le seul clic, pas de
@@ -2868,7 +2910,7 @@ async function selectVintedNoBrand(trigger) {
   await closeAnyOpenDropdown();
   await openDropdown(trigger);
   const search = await waitForElement("#brand-search-input", 5000);
-  await typeHuman(search, "Sans marque");
+  await typeHuman(search, VINTED_SANS_MARQUE);
   const opt = await waitForKey("publish.no_brand_option", { timeoutMs: 8000 });
   await humanPause(); // temps de "lecture" avant le clic, comme partout
   opt.click();
