@@ -283,7 +283,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // needs_user avec snapshot conservé, vintedAspects propagé à la recréation.
 // Manifest bumpé en 0.6.2 (la 0.6.1 est publiée et tourne chez 23 comptes).
 // EXTENSION_MIN_BUILD reste sur la 0.5.6 — la 0.6.2 n'est pas encore soumise.
-export const EXTENSION_LAST_COMMIT = '2026-08-12T21:09:29Z';
+// 2026-08-12T21:53:39Z = 4fbf20b (0.6.3) : la matière n'est plus perdue à la
+// republication — ids capturés depuis item_attributes (libelles.matiere_ids),
+// référentiel id→libellé relevé sur le MENU OUVERT du formulaire
+// (data-testid="material-<id>"), pose directe des nœuds. Optionnelle partout
+// (21/21 required=false) : tout échec est un warning, jamais un blocage.
+// Manifest 0.6.3 ; le paquet attend l'ACCEPTATION de la 0.6.2 en examen CWS.
+// EXTENSION_MIN_BUILD reste sur la 0.5.6.
+export const EXTENSION_LAST_COMMIT = '2026-08-12T21:53:39Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
