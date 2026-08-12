@@ -278,6 +278,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     syncDressingVinted({ declencheur: "cron" }).catch((e) =>
       console.error("[sync-dressing][cron]", e?.message ?? e));
   }
+  // Reprise de sync après un 403 anti-robot (une alarme PAR user — le suffixe
+  // est l'userId). Cf. reprendreSyncApresRetry403 et son bandeau.
+  if (alarm.name.startsWith(SYNC_RETRY403_ALARM_PREFIX)) {
+    reprendreSyncApresRetry403(alarm.name.slice(SYNC_RETRY403_ALARM_PREFIX.length)).catch((e) =>
+      console.error("[sync-dressing][retry403]", e?.message ?? e));
+  }
 });
 
 // ── Messages (auth content script + popup) ────────────────────────────────────
@@ -5566,15 +5572,167 @@ const SYNC_CHUNK = 8;
 // src/utils/vintedSync.js — même valeur, à faire évoluer ENSEMBLE.
 const SYNC_MANUAL_COOLDOWN_MS = 15 * 60 * 1000;
 // ── Verdict d'identité Vinted inconnu (403 anti-robot, 2026-08-12) ───────────
-// Un 403 est souvent momentané (rafale, challenge en cours de résolution par la
-// page). UN seul retry, après une pause franche : deux requêtes espacées,
-// jamais une rafale — c'est ce qui aggrave un challenge.
+// Un 403 se lève TOUT SEUL en quelques minutes. Relevé prod du 12/08 au soir,
+// sur TOUTE la table vinted_sync_runs : 21 échecs 403, dont 11 résolus par un
+// simple re-clic (1 à 39 min après, médiane ~9 min) — et les 10 « jamais
+// résolus » sont tous des utilisateurs qui n'ont retenté qu'à ≤ 3 min, ou
+// jamais. Aucun cas d'un réessai espacé resté bloqué, sur toute la base.
+// L'ancien retry unique de 4 s tombait donc systématiquement DANS la fenêtre
+// de blocage (vécu ferreira.vrtz : 4 runs échoués, retry 4 s compris, succès à
+// la 5e tentative 39 min plus tard). Remplacé par une REPRISE EN ARRIÈRE-PLAN :
+// jusqu'à 3 tentatives espacées (5, 10 puis 20 min), puis échec définitif avec
+// le message anti-robot inchangé. Chaque reprise refait exactement ce que
+// ferait l'utilisateur en recliquant — aucun contournement, juste attendre.
+//   · chrome.alarms UNIQUEMENT (le service worker MV3 meurt bien avant 20 min,
+//     un setTimeout ne se réveillerait jamais), un nom d'alarme PAR USER, et
+//     jamais de create() sur un nom déjà armé (create REMPLACE l'alarme et
+//     remet son délai à zéro — le bug cron du 05/08) ;
+//   · 403 SEULEMENT : un 401 est une session réellement expirée, la retenter
+//     ne sert à rien et spammerait Vinted. L'échec de pagination, lui, part
+//     déjà en 'interrupted' avec curseur — il ne passe pas par ici ;
+//   · MÊME run vinted_sync_runs à chaque reprise (ré-ouvert par PATCH, jamais
+//     un INSERT) : pas de lignes en plus, et la garde de cadence — trigger
+//     BEFORE INSERT — n'est pas concernée ;
+//   · tout NOUVEAU déclenchement (clic, commande distante, cron) DÉSARME la
+//     reprise : sinon l'alarme ré-ouvrirait le vieux run pendant que le
+//     nouveau tourne — deux syncs concurrentes sur le même compte.
 // ⛔ PAS DE REPLI SUR UNE IDENTITÉ MÉMORISÉE (tranché par Nico le 12/08, avant
 // départ). Un repli sur le dernier id Vinted connu ferait lire le dressing de
 // l'ANCIEN compte si l'utilisateur en a changé dans son navigateur, et cette
 // donnée fausse repartirait ensuite en publication, sans personne pour la voir.
-// Si le second relevé échoue, la sync ÉCHOUE — avec le vrai motif.
-const VINTED_IDENT_RETRY_MS = 4000;
+// Si le relevé échoue encore à la dernière reprise, la sync ÉCHOUE — avec le
+// vrai motif.
+const SYNC_RETRY403_DELAIS_MIN = [5, 10, 20];
+const SYNC_RETRY403_ALARM_PREFIX = "fillsell-sync-retry403:"; // + userId — un nom PAR user
+// { [userId]: { runId, tentative, prochaineA, declencheur } } — l'état qui dit
+// à l'alarme quel run ré-ouvrir et à quelle tentative on en est.
+const SYNC_RETRY403_STORAGE_KEY = "FILLSELL_SYNC_RETRY403";
+
+function alarmeRetry403(userId) {
+  return `${SYNC_RETRY403_ALARM_PREFIX}${userId}`;
+}
+
+async function lireEtatsRetry403() {
+  try {
+    const st = await chrome.storage.local.get(SYNC_RETRY403_STORAGE_KEY);
+    const v = st?.[SYNC_RETRY403_STORAGE_KEY];
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+async function lireEtatRetry403(userId) {
+  const etats = await lireEtatsRetry403();
+  return etats[userId] ?? null;
+}
+
+// Désarme la reprise (alarme + état). Sans effet, et sans bruit, si rien n'est
+// armé — les appelants n'ont pas à le savoir avant d'appeler.
+async function annulerRetry403(userId, motif) {
+  try {
+    const alarmeEffacee = await chrome.alarms.clear(alarmeRetry403(userId));
+    const etats = await lireEtatsRetry403();
+    if (etats[userId]) {
+      delete etats[userId];
+      await chrome.storage.local.set({ [SYNC_RETRY403_STORAGE_KEY]: etats });
+      console.log(`[sync-dressing][retry403] reprise désarmée — ${motif}`);
+    } else if (alarmeEffacee) {
+      console.log(`[sync-dressing][retry403] alarme orpheline effacée — ${motif}`);
+    }
+  } catch (e) {
+    console.warn("[sync-dressing][retry403] désarmement impossible:", e?.message ?? e);
+  }
+}
+
+// Arme la tentative N (1-indexée). Rend l'échéance ISO, ou null si une alarme
+// est déjà armée pour ce user — on ne remplace JAMAIS une alarme existante
+// (create() remettrait son délai à zéro, cf. bandeau ci-dessus).
+async function programmerRetry403(userId, { runId, tentative, declencheur }) {
+  const nom = alarmeRetry403(userId);
+  const delaiMin = SYNC_RETRY403_DELAIS_MIN[tentative - 1];
+  if (!Number.isFinite(delaiMin)) return null;
+  try {
+    const existante = await chrome.alarms.get(nom);
+    if (existante) {
+      console.warn(`[sync-dressing][retry403] alarme déjà armée pour ce compte — pas de remplacement`);
+      return null;
+    }
+  } catch { /* API muette : on tente la création, mieux vaut une reprise que rien */ }
+  const prochaineA = new Date(Date.now() + delaiMin * 60000).toISOString();
+  await poserEtatRetry403(userId, { runId, tentative, prochaineA, declencheur });
+  chrome.alarms.create(nom, { delayInMinutes: delaiMin });
+  console.log(`[sync-dressing][retry403] tentative ${tentative}/${SYNC_RETRY403_DELAIS_MIN.length} armée dans ${delaiMin} min (run ${runId})`);
+  return prochaineA;
+}
+
+async function poserEtatRetry403(userId, etat) {
+  const etats = await lireEtatsRetry403();
+  etats[userId] = etat;
+  await chrome.storage.local.set({ [SYNC_RETRY403_STORAGE_KEY]: etats });
+}
+
+// Marqueur écrit dans `erreur` pendant qu'une reprise est armée. PARSÉ par
+// StockTab (RETRY403_RE) pour afficher « nouvelle tentative automatique dans
+// ~X min » : préfixe, compteur et échéance ISO sont un CONTRAT d'affichage —
+// à faire évoluer ENSEMBLE.
+function marqueurRetry403(tentative, prochaineA) {
+  return `[retry403] tentative ${tentative}/${SYNC_RETRY403_DELAIS_MIN.length} prevue ${prochaineA} — ` +
+    "accès refusé par Vinted (HTTP 403, protection anti-robot) ; reprise automatique programmée, " +
+    "la connexion Vinted n'est pas en cause";
+}
+
+// ── Reprise programmée après un 403 (tir d'alarme) ───────────────────────────
+// Refaire exactement ce que ferait l'utilisateur en recliquant : ré-ouvrir LE
+// MÊME run (PATCH atomique filtré status=eq.failed — l'index un_seul_actif
+// refuse en 409 si un autre run est déjà actif), puis relancer la sync, dont
+// la branche REPRISE ramasse la ligne 'running' au lieu d'en créer une.
+async function reprendreSyncApresRetry403(userIdAlarme) {
+  const etat = await lireEtatRetry403(userIdAlarme);
+  if (!etat?.runId) {
+    console.log("[sync-dressing][retry403] alarme sans état (désarmée entre-temps ?) — reprise abandonnée");
+    return;
+  }
+  const session = await getValidSession();
+  const token = session?.access_token ?? null;
+  const userId = token ? decodeJwtSub(token) : null;
+  if (!userId || userId !== userIdAlarme) {
+    // Session FillSell absente ou compte changé : cette reprise ne peut plus
+    // s'exécuter — on la désarme pour ne pas laisser un état mort.
+    await annulerRetry403(userIdAlarme, userId ? "compte FillSell changé" : "session FillSell absente");
+    return;
+  }
+  if (syncDressingEnCours) {
+    // Quasi impossible (tout nouveau déclenchement désarme l'alarme), mais on
+    // ne ré-ouvre jamais un run pendant qu'une sync tourne déjà.
+    await annulerRetry403(userIdAlarme, "une sync est déjà en cours");
+    return;
+  }
+  let rouverte = null;
+  try {
+    rouverte = await restRequest(`vinted_sync_runs?id=eq.${etat.runId}&status=eq.failed`, token, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      // erreur remise à NULL : sinon un run repris qui aboutit en 'done' sans
+      // note garderait le marqueur [retry403] — une ligne 'done' dont l'erreur
+      // n'est pas préfixée « [note] », en violation de la convention du champ.
+      body: JSON.stringify({
+        status: "running", finished_at: null, erreur: null,
+        updated_at: new Date().toISOString(), extension_build: FILLSELL_BUILD_ID,
+      }),
+    });
+  } catch (e) {
+    // 409 = un autre run est 'running' (index un_seul_actif) : supplantés.
+    await annulerRetry403(userIdAlarme, `ré-ouverture refusée (${String(e?.message ?? e).slice(0, 80)})`);
+    return;
+  }
+  if (!Array.isArray(rouverte) || !rouverte.length) {
+    await annulerRetry403(userIdAlarme, "run introuvable ou plus en 'failed' — supplanté");
+    return;
+  }
+  console.log(`[sync-dressing][retry403] run ${etat.runId} ré-ouvert — tentative ${etat.tentative}/${SYNC_RETRY403_DELAIS_MIN.length}`);
+  await syncDressingVinted({ declencheur: etat.declencheur ?? "bouton", repriseRetry403: true });
+}
 // Cadence CRON : 20 h et non 24 h — cf. la garde dans syncDressingVinted.
 const SYNC_CRON_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 
@@ -5994,7 +6152,7 @@ async function traiterCommandeSyncDistante(cmd) {
   await syncDressingVinted({ declencheur: "bouton_distant" });
 }
 
-async function syncDressingVinted({ declencheur = "bouton" } = {}) {
+async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = false } = {}) {
   // Garde mémoire : deux déclenchements rapprochés (double-clic, alarme qui
   // tombe pendant un clic) ne doivent pas lire le dressing deux fois. La base
   // porte la même garantie (index unique WHERE status='running'), celle-ci
@@ -6008,13 +6166,13 @@ async function syncDressingVinted({ declencheur = "bouton" } = {}) {
   // le même que celui d'une publication en cours. Sans ce verrou on rejouerait
   // l'incident du 2026-07-12 (deux flux se disputant le même onglet).
   try {
-    return await withJobFlowLock("sync-dressing", () => syncDressingUnlocked(declencheur));
+    return await withJobFlowLock("sync-dressing", () => syncDressingUnlocked(declencheur, repriseRetry403));
   } finally {
     syncDressingEnCours = false;
   }
 }
 
-async function syncDressingUnlocked(declencheur) {
+async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   const session = await getValidSession();
   if (!session?.access_token) {
     console.log("[sync-dressing] pas de session FillSell — abandon silencieux");
@@ -6126,6 +6284,14 @@ async function syncDressingUnlocked(declencheur) {
     if (!run) return { ok: false, reason: "run_non_cree" };
   }
 
+  // Tout déclenchement qui n'est PAS la reprise programmée elle-même désarme
+  // une reprise 403 en attente : sans ça, l'alarme ré-ouvrirait l'ancien run
+  // pendant que celui-ci tourne — deux syncs concurrentes sur le même compte.
+  // Un clic manuel repart donc toujours à zéro (compteur de tentatives
+  // compris). Placé APRÈS les gardes de cadence : un cron refusé par la
+  // cadence ne doit pas désarmer une reprise promise à l'utilisateur.
+  if (!repriseRetry403) await annulerRetry403(userId, "supplanté par un nouveau déclenchement");
+
   // Progression : best-effort, un raté se rattrape à la page suivante.
   const majRun = (champs) => restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
     method: "PATCH",
@@ -6191,17 +6357,30 @@ async function syncDressingUnlocked(declencheur) {
     }));
     ident = await sonder();
 
-    // ── Verdict INCONNU (403 anti-robot) : on ne conclut pas à une ────────────
-    // déconnexion pour autant. Un seul retry espacé ; si Vinted refuse encore,
-    // la sync échoue — l'id du dressing ne peut venir que de cet appel, et
-    // travailler sur une identité non confirmée écrirait potentiellement le
-    // dressing d'un AUTRE compte dans le stock (cf. bandeau ci-dessus).
-    if (ident?.verdictInconnu) {
-      console.warn(`[sync-dressing] sonde d'identité : verdict INCONNU (HTTP ${ident.httpStatus ?? "?"}) — un retry dans ${VINTED_IDENT_RETRY_MS} ms`);
-      await sleep(VINTED_IDENT_RETRY_MS);
-      ident = await sonder();
-    }
-    if (!ident?.success && ident?.verdictInconnu) {
+    // ── Verdict INCONNU sur 403 anti-robot : reprise en arrière-plan ─────────
+    // On ne conclut pas à une déconnexion (le 403 est rendu par la couche
+    // anti-robot AVANT que le cookie de session soit regardé), et on ne
+    // travaille JAMAIS sur une identité non confirmée — l'id du dressing ne
+    // peut venir que de cet appel (cf. bandeau SYNC_RETRY403_DELAIS_MIN).
+    // Le run est clos 'failed' avec le marqueur [retry403] et sera RÉ-OUVERT
+    // par l'alarme (même ligne, tentative suivante) ; à la 3e reprise encore
+    // en 403, échec définitif avec le message anti-robot inchangé.
+    if (!ident?.success && ident?.verdictInconnu && ident?.httpStatus === 403) {
+      const etat = await lireEtatRetry403(userId);
+      const tentativesFaites = etat?.runId === run.id ? (Number(etat.tentative) || 0) : 0;
+      if (tentativesFaites < SYNC_RETRY403_DELAIS_MIN.length) {
+        const prochaineA = await programmerRetry403(userId, {
+          runId: run.id, tentative: tentativesFaites + 1, declencheur,
+        });
+        if (prochaineA) {
+          console.warn(`[sync-dressing] 403 anti-robot — reprise ${tentativesFaites + 1}/${SYNC_RETRY403_DELAIS_MIN.length} armée pour ${prochaineA}`);
+          await clore({ status: "failed", erreur: marqueurRetry403(tentativesFaites + 1, prochaineA).slice(0, 500) });
+          return { ok: false, reason: "retry403_programme", tentative: tentativesFaites + 1 };
+        }
+        // Armement impossible (alarme déjà présente, API muette…) : on retombe
+        // sur l'échec définitif plutôt que de promettre une reprise sans alarme.
+      }
+      await annulerRetry403(userId, "reprises épuisées ou inarmables — échec définitif");
       // Message qui dit le vrai motif et ne contient ni « session Vinted » ni
       // « HTTP 401 » — les deux motifs que StockTab reconnaît pour afficher
       // « reconnecte-toi », qui serait faux ici.
@@ -6211,6 +6390,21 @@ async function syncDressingUnlocked(declencheur) {
         "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause.",
       );
     }
+    if (!ident?.success && ident?.verdictInconnu) {
+      // Verdict inconnu NON-403 (théorique — la sonde ne le pose aujourd'hui
+      // que sur 403) : échec direct, même message, JAMAIS de reprise armée.
+      return await echec(
+        `Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) — ` +
+        "la connexion Vinted n'a donc pas pu être vérifiée. " +
+        "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause.",
+      );
+    }
+
+    // La sonde a parlé (succès, ou échec franc non-403) : le cycle de reprise
+    // 403 de ce run est terminé — état effacé (l'alarme qui nous a réveillés a
+    // déjà tiré, il n'en reste pas d'armée). Best-effort : un raté ne laisse
+    // qu'un état mort, balayé au prochain déclenchement.
+    if (repriseRetry403) annulerRetry403(userId, "cycle de reprise terminé").catch(() => {});
 
     if (!ident?.success) {
       // Le motif précis (session absente HTTP 401, session anonyme, erreur
@@ -6425,6 +6619,13 @@ async function syncDressingUnlocked(declencheur) {
   // STATUT de la ligne dit laquelle, et le préfixe le confirme :
   //   · 'failed' / 'interrupted' → un run réellement en ÉCHEC. Message NU.
   //     C'est CE cas, et lui seul, qu'un filtre d'alerte doit compter.
+  //     EXCEPTION (2026-08-12) : un 'failed' préfixé « [retry403] » est un
+  //     échec PROVISOIRE — une reprise automatique est armée (marqueurRetry403,
+  //     parsé par StockTab), et la ligne sera ré-ouverte 'running' par
+  //     l'alarme. À l'échec définitif (3 reprises épuisées), le message
+  //     anti-robot NU remplace le marqueur. Si Chrome ne se réveille jamais,
+  //     le marqueur RESTE — c'est pour ça qu'il porte son échéance : passé
+  //     elle (+ marge), lecteurs et filtres le traitent comme un échec normal.
   //   · 'cancelled' / 'expired'  → une commande distante non exécutée (cadence
   //     de 15 min, ou 6 h sans extension). Message NU AUSSI : il est RENDU TEL
   //     QUEL à l'utilisateur par StockTab, un « [note] » lui apparaîtrait à

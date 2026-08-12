@@ -951,6 +951,21 @@ function formatDepuis(ts, lang) {
 //     à un changement d'onglet, et peut avoir été lancée ailleurs ;
 //  3. on annonce ce qu'on lit ET ce qu'on ne touche pas. Un import soupçonné de
 //     republier sur Vinted, c'est la confiance perdue en un écran.
+
+// ── Reprise automatique après un 403 anti-robot (2026-08-12) ─────────────────
+// Quand la sonde de session prend un 403, l'extension clôt le run 'failed'
+// avec un marqueur parseable et arme une alarme de reprise (5/10/20 min) —
+// même run, ré-ouvert par l'alarme. Le marqueur est un CONTRAT avec
+// marqueurRetry403 (chrome-extension/background.js) : préfixe, compteur
+// « tentative N/M » et échéance ISO — à faire évoluer ENSEMBLE.
+const RETRY403_RE = /^\[retry403\] tentative (\d+)\/(\d+) prevue (\S+) — /;
+// Marge au-delà de l'échéance avant de conclure que la reprise n'aura pas
+// lieu (Chrome fermé, alarme perdue). Les alarmes MV3 s'étirent — relevé réel
+// jusqu'à ~14 min 35 sur le poll de 2 min (cf. EXT_SILENCE_MAX_MS) — mais une
+// reprise armée tire en général à l'heure : 5 min absorbent l'ordinaire sans
+// laisser l'écran promettre une tentative fantôme pendant des heures.
+const RETRY403_GRACE_MS = 5 * 60 * 1000;
+
 function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0 }) {
   const fr = lang !== 'en';
   // (Le couple isMobile/surTelephone a disparu le 2026-08-09 : il ne servait
@@ -1263,6 +1278,35 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     const id = setInterval(() => forcerRendu((t) => t + 1), 30_000);
     return () => clearInterval(id);
   }, [cadenceFinA]);
+
+  // ── Reprise auto 403 : suivi pendant l'attente (2026-08-12) ───────────────
+  // Tant qu'une reprise est armée (marqueur [retry403] à échéance future), on
+  // re-rend toutes les 30 s (le « dans ~X min » vieillit) et on RELIT le run :
+  // dès que l'alarme de l'extension le ré-ouvre ('running'), le suivi de
+  // progression reprend, et un 'done' met la carte et la liste à jour comme
+  // une sync normale. Borné par construction : l'échéance + marge passe en
+  // ~25 min au pire, et l'effet se démonte dès que le run change d'état.
+  const retryProchaineA = (() => {
+    if (run?.status !== 'failed') return 0;
+    const m = String(run.erreur ?? '').match(RETRY403_RE);
+    const t = m ? Date.parse(m[3]) : NaN;
+    return Number.isFinite(t) && Date.now() < t + RETRY403_GRACE_MS ? t : 0;
+  })();
+  useEffect(() => {
+    if (!retryProchaineA || !user?.id) return;
+    const id = setInterval(async () => {
+      forcerRendu((t) => t + 1);
+      let r = null;
+      try { r = await lireDernierRunDressing(user.id); }
+      catch { return; } // un 5xx passager ne doit pas tuer l'attente
+      if (!r) return;
+      setRun(r);
+      if (r.status === 'running') setSuivi(true);
+      else if (r.status === 'done') { setDejaSync(true); setDerniereReussie(r); onDone?.(); }
+    }, 30_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryProchaineA, user?.id]);
   const enCadence = !enCours && cadenceFinA > Date.now();
   const cadenceTexte = (() => {
     if (!enCadence) return null;
@@ -1532,6 +1576,26 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // sync. Les messages posés par l'extension sont déjà lisibles ; on ne
       // masque que les pavés techniques (URL, JSON, traces).
       const brut = String(run.erreur ?? '').trim();
+      // ── Reprise automatique armée après un 403 (2026-08-12) ────────────────
+      // Tant que l'échéance (+ marge) n'est pas passée, ce n'est PAS un échec :
+      // on dit la reprise et le délai — c'est le silence qui faisait marteler
+      // le bouton (3 comptes le 12/08 au soir, re-clics à moins de 3 min), et
+      // le martèlement est probablement ce qui arme le bouclier. Échéance
+      // dépassée sans reprise (Chrome fermé, alarme perdue) → échec anti-robot
+      // définitif, sans montrer le marqueur brut.
+      const retry = brut.match(RETRY403_RE);
+      if (retry) {
+        const prochaine = Date.parse(retry[3]);
+        if (Number.isFinite(prochaine) && Date.now() < prochaine + RETRY403_GRACE_MS) {
+          const min = Math.max(1, Math.ceil((prochaine - Date.now()) / 60000));
+          return { ton: 'orange', texte: fr
+            ? `Vinted a momentanément bloqué la lecture (protection anti-robot). Nouvelle tentative automatique dans ~${min} min (tentative ${retry[1]}/${retry[2]}) — laisse Chrome ouvert sur ton ordinateur, rien d'autre à faire.`
+            : `Vinted temporarily blocked reading (anti-bot protection). Retrying automatically in ~${min} min (attempt ${retry[1]}/${retry[2]}) — keep Chrome open on your computer, nothing else to do.` };
+        }
+        return { ton: 'rouge', texte: fr
+          ? "Synchronisation échouée : Vinted a refusé l'accès (protection anti-robot) et la reprise automatique n'a pas pu s'exécuter — Chrome était sans doute fermé. Réessaie en le laissant ouvert ; ta connexion Vinted n'est pas en cause."
+          : "Sync failed: Vinted refused access (anti-bot protection) and the automatic retry couldn't run — Chrome was probably closed. Try again and keep it open; your Vinted login is not the issue." };
+      }
       // Session Vinted absente/expirée : le seul échec que l'utilisateur peut
       // résoudre seul — message dédié, actionnable, sans code HTTP à l'écran.
       // Reconnu sur le texte posé par la sonde (vinted.js), qui inclut
