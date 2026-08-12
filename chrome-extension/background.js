@@ -8204,6 +8204,9 @@ function construireSnapshotRepublish(pf, cap) {
     catalog_id: natif.catalog_id ?? null,
     colis: lib.colis ?? null,
     package_size_id: natif.package_size_id ?? null,
+    // Matière : libellé si la capture en a un, et TOUJOURS les ids quand ils
+    // existent (résolus au formulaire — optionnelle, jamais bloquante).
+    matiere: lib.matiere ?? null,
     ...(idsAttr("material") ? { material_ids: idsAttr("material") } : {}),
     photos: cap?.photos_urls ?? [],
   };
@@ -8235,6 +8238,12 @@ function construireJobRecreation(job, pf, cap, prix) {
       marque: cap.libelles?.marque ?? null,
       colors: cap.libelles?.couleurs ?? null,
       packageSize: cap.libelles?.colis ?? null,
+      // Matière (2026-08-13) — OPTIONNELLE, jamais bloquante : libellé si un
+      // jour la capture en produit un, sinon les IDS (item_attributes),
+      // résolus au formulaire sur le menu ouvert (selectMaterialByIds).
+      ...(cap.libelles?.matiere ? { matiere: cap.libelles.matiere } : {}),
+      ...(Array.isArray(cap.libelles?.matiere_ids) && cap.libelles.matiere_ids.length
+        ? { matiere_ids: cap.libelles.matiere_ids } : {}),
       ...(pf.vintedAspects && typeof pf.vintedAspects === "object" ? { vintedAspects: pf.vintedAspects } : {}),
     },
   });
