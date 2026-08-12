@@ -297,13 +297,18 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 // qui ne le porte pas se distingue du trafic normal et se fait servir un 403
 // par la couche anti-robot. Le flux de suppression l'envoie déjà
 // (deleteListing) — précisément après un 403 de ce genre, documenté plus bas.
-// Best-effort : cookie absent = en-tête absent, jamais d'exception ici.
+// ⛔ CHEMIN SAIN À NE PAS ABÎMER (2026-08-12) : ces GET marchent aujourd'hui
+// pour la majorité des comptes (dont un dressing de 3 434 articles). Règle
+// STRICTE : cookie anon_id absent, vide, illisible ou littéralement
+// "undefined"/"null" ⇒ AUCUN en-tête ajouté, et la requête est alors
+// exactement celle d'avant ce chantier ({ Accept: "application/json" }).
+// Jamais d'en-tête à valeur vide, jamais d'"undefined" envoyé.
 function entetesApiVinted(extra) {
   const h = { Accept: "application/json", ...(extra ?? {}) };
-  try {
-    const anon = getVintedCookie("anon_id");
-    if (anon) h["X-Anon-Id"] = anon;
-  } catch { /* document.cookie inaccessible : on part sans */ }
+  let anon = null;
+  try { anon = getVintedCookie("anon_id"); } catch { anon = null; }
+  const v = typeof anon === "string" ? anon.trim() : "";
+  if (v && v !== "undefined" && v !== "null") h["X-Anon-Id"] = v;
   return h;
 }
 
