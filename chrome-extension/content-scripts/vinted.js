@@ -666,6 +666,60 @@ async function resoudreTaille(sizeId, diag) {
   return libelle ? libelle : null;
 }
 
+// ── item_attributes : le SECOND emplacement de la taille (2026-08-12) ────────
+// Vinted encode la taille de DEUX façons selon l'annonce, et une même annonce
+// n'en porte qu'UNE :
+//   · champ racine `size_id` — ex. 8034167197 (Tee shirt FSBN), size_id=208 ;
+//   · entrée { code: "size", ids: [208] } du tableau `item_attributes` —
+//     ex. 8033895919 (Polo Kaporal), 8034147677 (Pull), 8096813139 (Tee shirt
+//     Jack&Jones), 8689763154 (Jogging Champion).
+// RELEVÉ EN BASE sur les payloads réels, pas déduit. Le second emplacement
+// n'était lu NULLE PART : `libelles.taille` restait absente, la capture sortait
+// en verdict 'valide' avec champs_manquants=[], et Vinted refusait la
+// recréation (« Le champ Taille doit être renseigné ») APRÈS la suppression de
+// l'annonce d'origine — un article perdu (Polo Kaporal, compte Low11).
+//
+// ⚠️ `libelles.etat` était bien résolu sur ces mêmes captures, mais PAS par ce
+// chemin : il vient de `natif.status`, en clair. Avant ce correctif, RIEN dans
+// le dépôt ne lisait `item_attributes` — c'est le premier lecteur, d'où la
+// forme générique (les autres codes relevés, `condition` en tête, s'y
+// brancheront sans le réécrire).
+function attributVintedIds(natif, code) {
+  const attrs = Array.isArray(natif?.item_attributes) ? natif.item_attributes : [];
+  const cible = String(code).trim().toLowerCase();
+  const entree = attrs.find((a) => String(a?.code ?? "").trim().toLowerCase() === cible);
+  return Array.isArray(entree?.ids) ? entree.ids : [];
+}
+
+// ── Catégories qui EXIGENT une taille sur Vinted (2026-08-12) ────────────────
+// Sert au SEUL cas résiduel : taille absente des DEUX emplacements ci-dessus.
+// Le rayon est le 2e segment du chemin résolu (["Femmes","Vêtements","Robes",
+// "Midi"]), relevé sur l'arbre COMPLET dumpé dans docs/vinted-catalog-tree.txt :
+//   Femmes  > Vêtements | Chaussures
+//   Hommes  > Vêtements | Chaussures
+//   Enfants > Vêtements pour filles | Vêtements pour garçons
+// Chez Femmes et Hommes, « Sacs », « Accessoires », « Beauté » et « Soins »
+// sont des rayons SÉPARÉS de niveau 2 : les exclure est exact, sans arbitrage.
+// ⚠️ Chez Enfants, les sacs vivent SOUS le rayon vêtements (« Vêtements pour
+// filles > Sacs et sacs à dos ») — seul ce sous-rayon-là est retiré.
+// « Accessoires » enfant est GARDÉ délibérément (un bonnet peut porter une
+// taille) : l'asymétrie des coûts tranche tous les cas douteux. Un 'incomplet'
+// à tort ne coûte qu'une republication bloquée — réversible, rien n'est
+// supprimé. Un 'valide' à tort coûte l'annonce, définitivement : c'est
+// exactement le bug que ce garde-fou existe pour empêcher.
+// (normalizeFuzzy est défini plus bas dans ce fichier : il n'est LU qu'à
+// l'appel, jamais à l'évaluation du module.)
+const VINTED_RAYONS_AVEC_TAILLE = new Set([
+  "vetements", "chaussures", "vetements pour filles", "vetements pour garcons",
+]);
+const VINTED_SOUS_RAYONS_SANS_TAILLE = new Set(["sacs et sacs a dos"]);
+function categorieExigeTaille(chemin) {
+  if (!Array.isArray(chemin) || chemin.length < 2) return false;
+  const cle = (s) => normalizeFuzzy(String(s ?? ""));
+  if (!VINTED_RAYONS_AVEC_TAILLE.has(cle(chemin[1]))) return false;
+  return !(chemin.length > 2 && VINTED_SOUS_RAYONS_SANS_TAILLE.has(cle(chemin[2])));
+}
+
 // Couleurs. Vinted ne porte PAS de `color_ids` : le payload d'édition expose
 // deux emplacements nommés (color1/color2 + color1_id/color2_id), et il porte
 // les libellés EN CLAIR. Le code du 05/08 au matin lisait `natif.color_ids`,
@@ -767,13 +821,32 @@ async function capturerAnnonceVinted(vintedItemId) {
   if (etat) libelles.etat = etat;
   else manquants.push("etat (libellé d'état absent du payload)");
 
-  // Taille — size_id null est VALIDE (catégories sans taille) ; sinon un
-  // libellé est requis, résolu par le référentiel des groupes de tailles.
-  const sizeId = natif?.size_id ?? null;
+  // Taille — DEUX emplacements possibles côté Vinted (cf. attributVintedIds).
+  // Racine D'ABORD, à l'identique : ce chemin fonctionne pour les annonces qui
+  // portent `size_id`, il ne bouge pas. `item_attributes` n'est consulté que
+  // s'il est absent. Un même id est résolu par le MÊME référentiel des groupes
+  // de tailles dans les deux cas — pas de second mapping à tenir.
+  const sizeIdRacine = natif?.size_id ?? null;
+  const sizeIdAttribut = sizeIdRacine == null ? (attributVintedIds(natif, "size")[0] ?? null) : null;
+  const sizeId = sizeIdRacine ?? sizeIdAttribut;
   if (sizeId != null) {
     const taille = await resoudreTaille(sizeId, diagnostics);
     if (taille) libelles.taille = taille;
-    else manquants.push(`taille (size_id=${sizeId} → libellé)`);
+    // La SOURCE est nommée dans le motif : sans elle, un futur échec de
+    // résolution ne dirait pas lequel des deux emplacements a parlé.
+    else manquants.push(`taille (${sizeIdRacine != null ? "size_id" : "item_attributes"}=${sizeId} → libellé)`);
+  } else if (categorieExigeTaille(chemin)) {
+    // Cas résiduel : la catégorie exige une taille et AUCUN des deux
+    // emplacements ne la porte. On refuse le verdict 'valide' — même modèle que
+    // la marque (`brand_id présent sans libellé`). C'est ce refus qui doit
+    // arrêter la republication AVANT la suppression de l'annonce, au lieu de la
+    // laisser casser à la recréation, quand il est trop tard.
+    // Une taille absente sur une catégorie SANS taille (sacs, beauté, maison)
+    // reste valide : c'est categorieExigeTaille qui tranche, jamais un défaut.
+    // Et si le chemin n'a pas pu être résolu, `chemin` est null : on ne juge
+    // rien ici, mais "categorie (catalog_id → chemin de libellés)" est déjà dans
+    // `manquants` plus haut — le verdict est incomplet de toute façon.
+    manquants.push("taille (absente des deux emplacements)");
   }
 
   // Marque — brand_id null/vide = « Sans marque », valide.
