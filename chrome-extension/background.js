@@ -5565,6 +5565,44 @@ const SYNC_CHUNK = 8;
 // (declencheur='cron'). Miroir front : SYNC_CADENCE_MANUELLE_MS dans
 // src/utils/vintedSync.js — même valeur, à faire évoluer ENSEMBLE.
 const SYNC_MANUAL_COOLDOWN_MS = 15 * 60 * 1000;
+// ── Identité Vinted retenue (2026-08-12) ─────────────────────────────────────
+// L'id du dressing vient normalement de /api/v2/users/current. Quand la couche
+// anti-robot répond 403, cet appel ne rend RIEN — ni verdict de session, ni id
+// — et sans id il n'y a pas d'URL de wardrobe à lire : la sync ne pouvait donc
+// même pas essayer. On retient l'id du dernier relevé RÉUSSI (200 + login) pour
+// pouvoir démarrer sur un verdict inconnu.
+// Clé PORTÉE PAR LE COMPTE FILLSELL (`sub` du JWT) : deux comptes FillSell sur
+// le même Chrome ne se prêtent pas leur dressing. Reste le cas d'un même compte
+// FillSell qui change de compte VINTED dans le navigateur : l'id retenu serait
+// périmé — d'où la péremption ci-dessous, et la note écrite dans le run pour
+// que ça se voie en base.
+const VINTED_IDENT_CACHE_KEY = "fs_vinted_ident";
+const VINTED_IDENT_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Un 403 anti-robot est souvent momentané (rafale, challenge en cours de
+// résolution par la page). UN seul retry, après une pause franche : deux
+// requêtes espacées, jamais une rafale — c'est ce qui aggrave un challenge.
+const VINTED_IDENT_RETRY_MS = 4000;
+
+async function lireIdentVintedRetenue(userId) {
+  try {
+    const tout = (await chrome.storage.local.get(VINTED_IDENT_CACHE_KEY))?.[VINTED_IDENT_CACHE_KEY];
+    const e = tout?.[userId];
+    if (!e?.vintedUserId) return null;
+    if (!Number.isFinite(e.at) || Date.now() - e.at > VINTED_IDENT_TTL_MS) return null;
+    return e;
+  } catch { return null; }
+}
+
+async function retenirIdentVinted(userId, ident) {
+  if (!ident?.userId) return;
+  try {
+    const tout = (await chrome.storage.local.get(VINTED_IDENT_CACHE_KEY))?.[VINTED_IDENT_CACHE_KEY] ?? {};
+    tout[userId] = { vintedUserId: String(ident.userId), login: ident.login ?? null, at: Date.now() };
+    await chrome.storage.local.set({ [VINTED_IDENT_CACHE_KEY]: tout });
+  } catch (e) {
+    console.warn("[sync-dressing] identité Vinted non retenue:", e?.message ?? e);
+  }
+}
 // Cadence CRON : 20 h et non 24 h — cf. la garde dans syncDressingVinted.
 const SYNC_CRON_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 
@@ -6167,6 +6205,7 @@ async function syncDressingUnlocked(declencheur) {
   // En mode mock : ni onglet, ni sonde — zéro contact Vinted, c'est le contrat.
   let tabId = null;
   let ident = { success: true, userId: "harnais-mock" };
+  let motifIdentiteRepli = null; // renseigné si la sonde n'a pas pu confirmer l'identité
   if (mock) {
     console.warn(`[sync-dressing] ⚠️ HARNAIS MOCK ACTIF — ${mock.totalArticles} articles fabriqués, aucun appel Vinted (compte QA uniquement)`);
   } else {
@@ -6176,16 +6215,64 @@ async function syncDressingUnlocked(declencheur) {
       return await echec(`onglet de travail Vinted : ${e?.message ?? e}`);
     }
 
-    ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch((e) => ({
+    const sonder = () => sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch((e) => ({
       success: false, error: `sonde injoignable : ${String(e?.message ?? e)}`,
     }));
-    if (!ident?.success) {
-      // Le motif précis (session absente HTTP 401, accès refusé HTTP 403,
-      // erreur réseau, bot-shield) vient du content script, code HTTP réel
-      // inclus — on le recopie tel quel dans le run. Le front reconnaît le cas
-      // « session » sur ce texte pour afficher son message actionnable.
-      return await echec(`sonde de session Vinted : ${ident?.error ?? "échec inconnu"}`);
+    ident = await sonder();
+
+    // ── Verdict INCONNU (403 anti-robot) : on ne conclut pas à une ────────────
+    // déconnexion, et surtout on ne s'arrête pas là. Un seul retry espacé, puis
+    // repli sur l'identité Vinted retenue au dernier relevé réussi. La sync
+    // part alors normalement : si Vinted refuse VRAIMENT (session morte, 403
+    // sur le wardrobe aussi), l'échec viendra de la lecture du dressing, avec
+    // son propre motif — un vrai, pas un procès d'intention fait à la session.
+    if (ident?.verdictInconnu) {
+      console.warn(`[sync-dressing] sonde d'identité : verdict INCONNU (HTTP ${ident.httpStatus ?? "?"}) — un retry dans ${VINTED_IDENT_RETRY_MS} ms`);
+      await sleep(VINTED_IDENT_RETRY_MS);
+      ident = await sonder();
     }
+    if (!ident?.success && ident?.verdictInconnu) {
+      const retenue = await lireIdentVintedRetenue(userId);
+      if (retenue?.vintedUserId) {
+        console.warn(
+          `[sync-dressing] Vinted n'a pas voulu confirmer l'identité (HTTP ${ident.httpStatus ?? "?"}) — ` +
+          `on repart sur l'identité retenue (${retenue.login ?? retenue.vintedUserId})`,
+        );
+        // Journalisé DÈS MAINTENANT sur la ligne du run : si la suite casse
+        // brutalement, on saura quand même en base que ce run est parti sans
+        // confirmation d'identité. Repris à la clôture 'done' (les clôtures
+        // écrasent `erreur`), d'où motifIdentiteRepli.
+        motifIdentiteRepli = `identité Vinted non confirmée (HTTP ${ident.httpStatus ?? "?"}, anti-robot) — ` +
+          `reprise sur l'identité retenue ${retenue.vintedUserId}`;
+        await majRun({ erreur: `[note] ${motifIdentiteRepli}`.slice(0, 500) });
+        ident = { success: true, userId: retenue.vintedUserId, login: retenue.login ?? null, repliIdentite: true };
+      } else {
+        // Aucune identité retenue : il n'existe AUCUNE URL de wardrobe à lire,
+        // la sync ne peut pas démarrer. Message qui dit le vrai motif et ne
+        // contient ni « session Vinted » ni « HTTP 401 » — les deux motifs que
+        // StockTab reconnaît pour afficher « reconnecte-toi », qui serait faux.
+        return await echec(
+          `Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) et ` +
+          "aucune synchronisation précédente n'a laissé d'identité utilisable. " +
+          "Réessaie dans quelques minutes — ta connexion Vinted n'est pas en cause.",
+        );
+      }
+    }
+
+    if (!ident?.success) {
+      // Le motif précis (session absente HTTP 401, session anonyme, erreur
+      // réseau, bot-shield) vient du content script, code HTTP réel inclus —
+      // on le recopie tel quel dans le run. Le front reconnaît le cas
+      // « session » sur ce texte pour afficher son message actionnable.
+      // Le code HTTP est ré-annexé quand il existe : c'est lui qui permet de
+      // distinguer 401 et 403 en base, sans dépendre du texte.
+      const codeHttp = Number.isFinite(ident?.httpStatus) ? ` [HTTP ${ident.httpStatus}]` : "";
+      return await echec(`sonde de session Vinted : ${ident?.error ?? "échec inconnu"}${codeHttp}`);
+    }
+    // Relevé RÉUSSI (200 + login) : c'est lui, et lui seul, qui alimente le
+    // repli ci-dessus. Jamais une identité de repli (elle se re-retiendrait
+    // elle-même et ne périmerait plus jamais).
+    if (!ident.repliIdentite) await retenirIdentVinted(userId, ident);
   }
 
   // ── Réservations de republication (volet c, 2026-08-05) ───────────────────
@@ -6245,10 +6332,20 @@ async function syncDressingUnlocked(declencheur) {
       // Bot-shield ou session morte : on s'arrête PROPREMENT et on garde le
       // curseur. Le run reste repérable et la prochaine sync reprendra ici —
       // surtout pas de retry en rafale, c'est ce qui aggrave un challenge.
-      if (res?.botShield || res?.sessionExpiree) {
+      // accesRefuse (403) rejoint le lot depuis le 2026-08-12 : c'est de
+      // l'anti-robot, pas une session morte — même conduite (pause, curseur
+      // gardé), mais un motif qui n'accuse pas la connexion de l'utilisateur.
+      if (res?.botShield || res?.sessionExpiree || res?.accesRefuse) {
+        // Code HTTP ré-annexé : c'est lui qui distingue 401 et 403 en base,
+        // indépendamment du texte du motif.
+        const codeHttp = Number.isFinite(res?.httpStatus) ? ` [HTTP ${res.httpStatus}]` : "";
         await clore({ status: "interrupted", page_suivante: page, items_vus, items_crees, items_maj,
-          erreur: String(res?.error ?? "").slice(0, 500) });
-        return { ok: false, reason: res.botShield ? "bot_shield" : "session_vinted", page };
+          erreur: `${String(res?.error ?? "")}${codeHttp}`.slice(0, 500) });
+        return {
+          ok: false,
+          reason: res.botShield ? "bot_shield" : res.accesRefuse ? "acces_refuse" : "session_vinted",
+          page,
+        };
       }
       return await echec(`page ${page} : ${res?.error ?? "erreur inconnue"}`);
     }
@@ -6419,6 +6516,10 @@ async function syncDressingUnlocked(declencheur) {
       echecsEcriture.map((f) => `${f.vinted_item_id} (${f.erreur})`).join(" ; "));
   }
   if (motifSautDisparitions) notes.push(`${NOTE}disparitions non marquées — ${motifSautDisparitions}`);
+  // Run parti sans confirmation d'identité (403 anti-robot) : il a beau être
+  // allé au bout, il faut pouvoir le repérer en base — c'est le seul cas où le
+  // dressing lu n'a pas été prouvé appartenir au compte Vinted courant.
+  if (motifIdentiteRepli) notes.push(`${NOTE}${motifIdentiteRepli}`);
   await clore({
     status: "done", items_vus, items_crees, items_maj,
     total_entries: totalEntries,

@@ -292,6 +292,21 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   });
 }
 
+// En-têtes des GET d'API Vinted (2026-08-12). X-Anon-Id (cookie anon_id) est
+// envoyé par le navigateur sur TOUTES les requêtes d'API du site : une requête
+// qui ne le porte pas se distingue du trafic normal et se fait servir un 403
+// par la couche anti-robot. Le flux de suppression l'envoie déjà
+// (deleteListing) — précisément après un 403 de ce genre, documenté plus bas.
+// Best-effort : cookie absent = en-tête absent, jamais d'exception ici.
+function entetesApiVinted(extra) {
+  const h = { Accept: "application/json", ...(extra ?? {}) };
+  try {
+    const anon = getVintedCookie("anon_id");
+    if (anon) h["X-Anon-Id"] = anon;
+  } catch { /* document.cookie inaccessible : on part sans */ }
+  return h;
+}
+
 // Identité Vinted du compte connecté DANS CE NAVIGATEUR. L'id du dressing ne
 // peut pas venir de FillSell : c'est la session Vinted de l'utilisateur qui
 // fait foi, et lui seul sait sur quel compte il est connecté.
@@ -301,7 +316,7 @@ async function vintedUtilisateurCourant() {
   }
   try {
     const r = await fetch("/api/v2/users/current", {
-      headers: { Accept: "application/json" }, credentials: "include",
+      headers: entetesApiVinted(), credentials: "include",
     });
     // Motifs DISTINCTS, code HTTP réel inclus : ils finissent mot pour mot
     // dans vinted_sync_runs.erreur (clôture du run côté background) et le
@@ -310,16 +325,33 @@ async function vintedUtilisateurCourant() {
     // vient d'être chargée et a rafraîchi son token : un 401 est un vrai
     // signal de session absente/expirée.
     if (r.status === 401) {
-      return { success: false, sessionExpiree: true, error: "session Vinted absente ou expirée (HTTP 401)" };
+      return { success: false, sessionExpiree: true, httpStatus: 401, error: "session Vinted absente ou expirée (HTTP 401)" };
     }
+    // ⛔ 403 ≠ DÉCONNEXION (2026-08-12). Vécu : 4 comptes, 3 builds
+    // différents (0.5.8, 0.5.9, 0.6.0), sync morte en 4-6 s à items_vus=0
+    // avec « accès refusé par Vinted (HTTP 403) » — donc rien qui vienne
+    // d'une régression de build, et rien qui vienne de leurs sessions :
+    // elles publiaient normalement à côté. Un 403 est rendu par la couche
+    // anti-robot AVANT que Vinted regarde le cookie de session : il ne dit
+    // RIEN de la connexion. Le verdict reste donc INCONNU (verdictInconnu),
+    // le background enchaîne, et la sync n'échoue que si la LECTURE du
+    // dressing échoue vraiment — avec, à ce moment-là, le vrai motif.
+    // Même doctrine que Leboncoin, où le 403 DataDome n'a jamais valu
+    // déconnexion (background.js, sonde LBC : verdict sur l'URL finale).
+    // Le texte ne contient volontairement PAS « session Vinted » : c'est ce
+    // motif que StockTab reconnaît pour dire « reconnecte-toi », et ce
+    // serait un contresens ici.
     if (r.status === 403) {
-      return { success: false, accesRefuse: true, error: "accès refusé par Vinted (HTTP 403)" };
+      return {
+        success: false, verdictInconnu: true, accesRefuse: true, httpStatus: 403,
+        error: "accès refusé par Vinted (HTTP 403) — protection anti-robot, connexion NON vérifiée",
+      };
     }
     const brut = await r.text();
-    if (!brut.trim().startsWith("{")) return { success: false, error: `réponse non-JSON (HTTP ${r.status})` };
+    if (!brut.trim().startsWith("{")) return { success: false, httpStatus: r.status, error: `réponse non-JSON (HTTP ${r.status})` };
     const j = JSON.parse(brut);
     const u = j?.user;
-    if (!u?.id) return { success: false, error: "id utilisateur Vinted absent de la réponse" };
+    if (!u?.id) return { success: false, httpStatus: r.status, error: "id utilisateur Vinted absent de la réponse" };
     // Session ANONYME (garde du 2026-08-07) : Vinted sait servir des sessions
     // anonymes — si users/current répondait 200 avec un profil sans login,
     // l'ancienne sonde le prenait pour un succès et la sync lisait le
@@ -328,10 +360,11 @@ async function vintedUtilisateurCourant() {
     // obligatoire à l'inscription). Le texte contient « session Vinted » :
     // c'est ce que le front reconnaît pour afficher son message actionnable.
     if (!u.login) {
-      return { success: false, sessionExpiree: true, error: "session Vinted anonyme — aucun compte connecté dans ce navigateur" };
+      return { success: false, sessionExpiree: true, httpStatus: r.status, error: "session Vinted anonyme — aucun compte connecté dans ce navigateur" };
     }
     return {
       success: true,
+      httpStatus: r.status,
       userId: String(u.id),
       login: u.login ?? null,
       // Ce que Vinted annonce sur le profil : sert à DIRE dans l'app que le
@@ -381,13 +414,23 @@ async function lirePageDressing(page, userId) {
   const url = `/api/v2/wardrobe/${encodeURIComponent(userId)}/items?page=${page}&per_page=96`;
   let resp;
   try {
-    resp = await fetch(url, { headers: { Accept: "application/json" }, credentials: "include" });
+    resp = await fetch(url, { headers: entetesApiVinted(), credentials: "include" });
   } catch (e) {
     return { success: false, error: `réseau : ${String(e?.message ?? e)}` };
   }
   t(`page ${page} → HTTP ${resp.status}`);
-  if (resp.status === 401 || resp.status === 403) {
-    return { success: false, sessionExpiree: true, error: `session Vinted refusée (HTTP ${resp.status})` };
+  if (resp.status === 401) {
+    return { success: false, sessionExpiree: true, httpStatus: 401, error: "session Vinted refusée (HTTP 401)" };
+  }
+  // 403 : anti-robot, pas déconnexion (même lecture qu'à la sonde d'identité).
+  // Le run s'ARRÊTE quand même — on ne martèle pas une plateforme qui vient de
+  // nous refuser — mais en 'interrupted' avec le curseur gardé, et sans
+  // accuser la session de l'utilisateur.
+  if (resp.status === 403) {
+    return {
+      success: false, accesRefuse: true, httpStatus: 403,
+      error: "lecture du dressing refusée par Vinted (HTTP 403) — protection anti-robot",
+    };
   }
   const brut = await resp.text();
   if (!brut.trim().startsWith("{")) {
