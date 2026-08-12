@@ -252,7 +252,19 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (absentes d'ALREADY_PUBLISHED), un paquet régénéré embarquera ces correctifs
 // sans bump de version. EXTENSION_MIN_BUILD reste sur la 0.5.6 — rien de plus
 // récent n'est accepté par le Chrome Web Store.
-export const EXTENSION_LAST_COMMIT = '2026-08-12T18:41:22Z';
+// 2026-08-12T18:48:27Z = eb9d899 : « Sans marque » est un ÉTAT, plus une marque
+// manquante. Vinted encode l'absence de marque par un sentinel (brand_id = 1,
+// brand_dto.title = "" — chaîne vide, jamais null) que la capture lisait comme
+// « brand_id présent sans libellé » : verdict 'incomplet' et republication
+// bloquée sur des articles valides. Referme du même geste un second trou de la
+// même famille : brand_id ABSENT sortait 'valide' sans écrire libelles.marque,
+// et fillListingForm SAUTE le champ quand il est null (`if (fields.marque)`) —
+// le formulaire de recréation partait avec #brand vide, donc un 400 APRÈS la
+// suppression de l'annonce. Un libellé réel prime toujours, et un brand_id réel
+// non résolu reste bloquant (écrire « Sans marque » là serait une dégradation
+// silencieuse). Le chemin de recréation n'a pas bougé : il ne recevait
+// simplement jamais la valeur.
+export const EXTENSION_LAST_COMMIT = '2026-08-12T18:48:27Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
