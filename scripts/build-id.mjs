@@ -264,7 +264,18 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // non résolu reste bloquant (écrire « Sans marque » là serait une dégradation
 // silencieuse). Le chemin de recréation n'a pas bougé : il ne recevait
 // simplement jamais la valeur.
-export const EXTENSION_LAST_COMMIT = '2026-08-12T18:48:27Z';
+// 2026-08-12T20:32:12Z = a918167 : un 403 anti-robot sur la sonde de session
+// de la sync du dressing n'est plus un échec sec après un retry de 4 s — le
+// run est clos 'failed' avec le marqueur [retry403] et RÉ-OUVERT par une
+// alarme chrome.alarms (5, 10 puis 20 min, un nom par user), même ligne
+// vinted_sync_runs à chaque reprise. Relevé prod : 11 échecs 403 sur 21
+// résolus par un simple re-clic (médiane ~9 min, max 39), zéro réessai espacé
+// resté bloqué — le retry de 4 s tombait toujours dans la fenêtre de blocage.
+// StockTab affiche « nouvelle tentative automatique dans ~X min ». Manifest
+// toujours en 0.6.1, jamais téléversée : un paquet régénéré embarquera ce
+// correctif sans bump de version. EXTENSION_MIN_BUILD reste sur la 0.5.6 —
+// rien de plus récent n'est accepté par le Chrome Web Store.
+export const EXTENSION_LAST_COMMIT = '2026-08-12T20:32:12Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
