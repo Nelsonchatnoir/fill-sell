@@ -231,7 +231,28 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // 0.6.0 régénéré embarquera ce correctif sans bump de version.
 // EXTENSION_MIN_BUILD reste sur la 0.5.6 (rien de plus récent n'est accepté par
 // le Chrome Web Store).
-export const EXTENSION_LAST_COMMIT = '2026-08-11T17:48:04Z';
+// 2026-08-12T06:24:26Z = 3db8465 et 2026-08-12T06:36:37Z = 58f8c54 (0.6.1) :
+// un 403 Vinted n'est plus lu comme une déconnexion (il est rendu par la couche
+// anti-robot AVANT que le cookie de session soit regardé), et un verdict
+// d'identité resté inconnu après un retry fait ÉCHOUER la sync au lieu de se
+// replier sur un id de dressing mémorisé. ⚠️ Ces deux commits ont touché
+// chrome-extension/ SANS bumper cette constante : `npm run build` local
+// échouait sur la garde ci-dessous depuis ce matin. Rattrapé par la valeur
+// ci-dessous, qui les couvre tous les deux.
+// 2026-08-12T18:41:22Z = f73add4 : la taille d'une annonce Vinted est lue AUSSI
+// dans `item_attributes` ({ code:"size", ids:[…] }), le second des deux
+// emplacements que Vinted utilise selon l'annonce — relevé en base sur 5
+// payloads réels. Il n'était lu nulle part : la capture sortait 'valide' sans
+// taille et Vinted refusait la recréation APRÈS la suppression (article perdu,
+// Polo Kaporal / Low11). S'y ajoute le garde-fou du cas résiduel : taille
+// absente des DEUX emplacements sur une catégorie qui en exige une ⇒ verdict
+// 'incomplet', donc republication bloquée AVANT la suppression. Le chemin
+// `size_id` racine est inchangé.
+// Manifest toujours en 0.6.1 : ni la 0.6.0 ni la 0.6.1 n'ont été téléversées
+// (absentes d'ALREADY_PUBLISHED), un paquet régénéré embarquera ces correctifs
+// sans bump de version. EXTENSION_MIN_BUILD reste sur la 0.5.6 — rien de plus
+// récent n'est accepté par le Chrome Web Store.
+export const EXTENSION_LAST_COMMIT = '2026-08-12T18:41:22Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
