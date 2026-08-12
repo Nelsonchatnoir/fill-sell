@@ -275,7 +275,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // toujours en 0.6.1, jamais téléversée : un paquet régénéré embarquera ce
 // correctif sans bump de version. EXTENSION_MIN_BUILD reste sur la 0.5.6 —
 // rien de plus récent n'est accepté par le Chrome Web Store.
-export const EXTENSION_LAST_COMMIT = '2026-08-12T20:32:12Z';
+// 2026-08-12T21:09:29Z = 4b845b3 (0.6.2) : la republication ne supprime plus
+// jamais sans filet — snapshot confirmé sur le job avant tout geste, pré-vol
+// en UNE PASSE (formulaire /items/new rempli et vérifié gates strictes AVANT
+// la suppression, qui part par l'API depuis la page du formulaire, puis
+// soumission du même formulaire), retentatives auto 2× après suppression puis
+// needs_user avec snapshot conservé, vintedAspects propagé à la recréation.
+// Manifest bumpé en 0.6.2 (la 0.6.1 est publiée et tourne chez 23 comptes).
+// EXTENSION_MIN_BUILD reste sur la 0.5.6 — la 0.6.2 n'est pas encore soumise.
+export const EXTENSION_LAST_COMMIT = '2026-08-12T21:09:29Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
