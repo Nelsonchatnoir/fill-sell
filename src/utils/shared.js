@@ -439,7 +439,11 @@ const OBJECT_ICON_RULES = [
   // « peluche souris » partait en 🖱️ Souris d'ordinateur (la règle souris
   // vient plus haut que 🧸 dans la section Jouets). L'objet « peluche » prime
   // sur ce qu'elle représente — même logique que les figurines.
-  [/peluche|doudou/i, '🧸'],
+  // ⚠️ `doudou` BORNÉ (2026-08-12) : sans borne il matchait DANS « DOUDOUne »
+  // — placé avant les règles vêtement, il envoyait toutes les doudounes en
+  // 🧸 Peluches (le « doudoune » de la règle 🧥 n'était JAMAIS atteint).
+  // Même famille que mascara/Mascarade, lego/GaLEGOn, ampoule/Têtampoule.
+  [/peluche|doudous?(?![\p{L}\p{N}])/iu, '🧸'],
   // ── Désambiguïsations ajoutées le 2026-07-09 (mission mapping complet) —
   // chacune doit gagner sur une règle générique plus bas (indiquée) ─────────
   [/télécommandé|voiture.?rc\b/i, '🚁'],                                        // avant 🚗 voiture
@@ -501,6 +505,15 @@ const OBJECT_ICON_RULES = [
   // T4 "Pantalon de costume → Chemises" venait de "costume" logé dans 👔.
   [/blazer|tailleur\b/i, '🥼'],
   [/(?<!porte.)manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono|polaire\b/i, '🧥'],  // porte-manteau = mobilier, pas un manteau (audit 2026-07-19)
+  // ── Vestes techniques sans le mot « veste » (2026-08-12) ────────────────────
+  // Cas réel : 384 articles importés d'un dressing Vinted, tous type=NULL en
+  // base — le TITRE est le seul signal, et les titres Vinted SEO ne nomment
+  // pas la famille (« Coupe vent Nike vintage 90's y2k oversize » ne contient
+  // aucun mot de la liste, alors que « Veste coupe vent k-way Nike » passait
+  // par « veste »). Même icône 🧥 que veste — donc mêmes plateformes.
+  // k-way SANS \b : le tiret est un caractère non-word, et \b est ASCII —
+  // frontières Unicode explicites, même piège que gant/mascara/ampoule.
+  [/coupe.?vents?\b|(?<![\p{L}\p{N}])k.?ways?(?![\p{L}\p{N}])|\bbombers?\b|softshell/iu, '🧥'],
   [/cravate|n[œo]e?ud.?papillon/i, '🎀'],
   [/costume|smoking\b/i, '🤵'],
   [/chemise|blouse\b/i, '👔'],
@@ -517,10 +530,18 @@ const OBJECT_ICON_RULES = [
   // \bbod(?:ys?|ies)\b (2026-08-08, B3b) : le pluriel courant de « body »
   // est « bodies » — « Lot 8 bodies bébé » (job réel 46e7dfc9) tombait en 📦.
   [/t.?shirt|tee.?shirt|débardeur|(?<!volkswagen\s)(?<!vw\s)polos?\b(?!\s*(?:\d|tdi|tsi|gti|gtd))|(?<!au\s)\btops?\b(?!\s*(?:qualité|état|etat|condition|niveau|prix))|tunique|\bbod(?:ys?|ies)\b/i, '👕'],
+  // « maillot » NU (2026-08-12, dressing importés) : la règle sport (plus
+  // haut) exige un qualificatif (foot/rugby/basket/…) et « maillot de bain »
+  // part en 👙 avant — un « Maillot Adidas » seul ne matchait RIEN et tombait
+  // en 📦. Placée APRÈS ces deux règles : elles gardent la priorité.
+  [/(?<![\p{L}\p{N}])maillots?(?![\p{L}\p{N}])/iu, '👕'],
   // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
   // matcherait sinon en premier).
   [/\bshorts?\b|\bbermudas?\b/i, '🩳'],
   [/jean(?!\W(?:paul|patou|jacques|claude|charles|louis|pierre|michel|marie|baptiste))|pantalon|jogging|legging|\bchino\b|salopette|survêtement/i, '👖'],
+  // « survet » nu (2026-08-12, dressing importés) : « survêtement » (règle
+  // au-dessus) ne le couvre pas — le ê coupe le préfixe ASCII.
+  [/\bsurvets?\b/i, '👖'],
   // Lingerie/nuit (2026-07-09) : branche Vinted dédiée des deux côtés
   // (Lingerie et pyjamas / Sous-vêtements et chaussettes) — backlog T3.
   [/lingerie|soutien.?gorge|nuisette|pyjama|peignoir|tenue.?de.?nuit|caleçon|\bboxers?\b|\bslips?\b|culotte(?!.{0,10}cheval)/i, '🩲'],
