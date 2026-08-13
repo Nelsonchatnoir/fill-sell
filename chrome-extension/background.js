@@ -2257,6 +2257,13 @@ async function markNeedsUser(accessToken, job, result) {
         field_label: String(f.field_label).slice(0, 200),
         ...(f.target && f.target.key ? { target: { root: f.target.root ?? null, key: String(f.target.key).slice(0, 200) } } : {}),
         ...(allowed ? { allowed_values: allowed.slice(0, 200).map((v) => String(v)) } : {}),
+        // input_type ENFIN transmis (2026-08-13) : les handlers le posent
+        // depuis le 22/07 (beebs.js « dropdown », leboncoin.js depuis ce
+        // soir) mais il était PERDU ici — la garde « champ fermé » de l'app
+        // (CLOSED_INPUT_TYPES, StockTab) n'a donc jamais pu se déclencher :
+        // un champ fermé sans options s'affichait en saisie libre, dont la
+        // valeur ne pouvait que re-bloquer.
+        ...(f.input_type ? { input_type: String(f.input_type).slice(0, 40) } : {}),
       },
     },
   });
