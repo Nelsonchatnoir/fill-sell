@@ -2589,6 +2589,23 @@ const StockTab = memo(function StockTab({
       .then(({ data }) => { if (!stale && Number.isFinite(data?.value)) setRepublishPrice(data.value); });
     return () => { stale = true; };
   }, [republishActif]);
+  // ── Maintenance republication (2026-08-13) ────────────────────────────────
+  // coin_config.republish_maintenance = 1 ⇒ un trigger BEFORE INSERT en base
+  // rejette tout job 'republish' (message préfixé REPUBLISH_MAINTENANCE).
+  // L'app doit le dire AVANT le clic : bandeau en tête d'onglet + boutons
+  // Republier grisés. Clé ABSENTE, à 0, ou lecture en échec = comportement
+  // normal, strictement rien de grisé — seul un 1 lu en base arme le mode.
+  const [repubMaintenance, setRepubMaintenance] = useState(false);
+  useEffect(() => {
+    let stale = false;
+    supabase.from('coin_config').select('value').eq('key', 'republish_maintenance').maybeSingle()
+      .then(({ data }) => { if (!stale) setRepubMaintenance(Number(data?.value) === 1); });
+    return () => { stale = true; };
+  }, []);
+  // FILET : si un insert part quand même (clé passée à 1 entre le chargement
+  // de l'écran et le clic), le rejet du trigger revient dans error/message —
+  // on le reconnaît au préfixe et on montre le bandeau, jamais l'erreur brute.
+  const rejetMaintenance = (x) => /REPUBLISH_MAINTENANCE/.test(`${x?.error ?? ''} ${x?.message ?? ''}`);
   // ⚠️ repubVivants / repubEtat / repubActionnables sont déclarés PLUS BAS,
   // APRÈS le state jobsByInventaire qu'ils lisent AU RENDU — les poser ici
   // levait une TDZ (« Cannot access 'jobsByInventaire' before
@@ -2598,7 +2615,7 @@ const StockTab = memo(function StockTab({
   // s'exécutent qu'au clic, bien après l'initialisation.
 
   async function lancerRepublication(item, prixRepublication = null) {
-    if (repubBusy) return;
+    if (repubBusy || repubMaintenance) return;
     if (extensionNeverSeen === true) { setExtPitchItem(item); return; }
     setRepubBusy(item.id);
     setRepubMsgs(m => ({ ...m, [item.id]: null }));
@@ -2607,6 +2624,7 @@ const StockTab = memo(function StockTab({
         inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication,
       });
       if (!res.success) {
+        if (rejetMaintenance(res)) { setRepubMaintenance(true); return; }
         const raisons = {
           // capture_* ont disparu du RPC : la capture ne se fait plus au clic.
           // Un échec de capture se produit désormais à l'exécution et clôt le
@@ -2675,6 +2693,7 @@ const StockTab = memo(function StockTab({
   // — cf. le commentaire TDZ au-dessus de lancerRepublication.)
 
   async function lancerRepublicationLot(cibles /* [{item, prix}] */) {
+    if (repubMaintenance) return;
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) return;
     setRepubLot({ fait: 0, total: cibles.length, refus: [] });
     const refus = [];
@@ -2699,9 +2718,14 @@ const StockTab = memo(function StockTab({
             }],
           }));
         } else {
+          // FILET maintenance : le trigger refusera pareil tous les suivants —
+          // on s'arrête là, le bandeau (armé ici) dit pourquoi, pas de liste
+          // de refus techniques.
+          if (rejetMaintenance(res)) { setRepubMaintenance(true); setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] }); break; }
           refus.push({ titre: item.title, raison: res.reason ?? res.error ?? 'refus' });
         }
       } catch (e) {
+        if (rejetMaintenance({ error: e?.message ?? e })) { setRepubMaintenance(true); setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] }); break; }
         refus.push({ titre: item.title, raison: String(e?.message ?? e) });
       }
       setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] });
@@ -2716,6 +2740,7 @@ const StockTab = memo(function StockTab({
     try {
       const res = await relancerRepublishVinted(supabase, { job });
       if (!res.success) {
+        if (rejetMaintenance(res)) { setRepubMaintenance(true); return; }
         setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: res.error ?? (lang === 'fr' ? 'Relance impossible.' : 'Relaunch failed.') } }));
         return;
       }
@@ -3186,6 +3211,28 @@ const StockTab = memo(function StockTab({
           </div>
         );
       })()}
+      {/* ── Bandeau maintenance republication (2026-08-13) ──────────────────
+          coin_config.republish_maintenance = 1 : les boutons Republier (carte
+          et lot) sont grisés plus bas, ce bandeau dit pourquoi. Il s'arme
+          aussi via le FILET si un insert est rejeté REPUBLISH_MAINTENANCE
+          malgré tout (clé passée à 1 après le chargement de l'écran). */}
+      {repubMaintenance&&(
+        <div style={{
+          display:"flex", gap:10, alignItems:"flex-start",
+          background:"#FFF7ED", border:"1px solid #FED7AA", borderLeft:"4px solid #EA580C",
+          borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
+        }}>
+          <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>🛠️</span>
+          <div style={{fontSize:13, lineHeight:1.5, color:"#3f3a2e"}}>
+            <div style={{fontWeight:700, marginBottom:2, color:"#9A3412"}}>
+              {lang==='fr'?"Republication en maintenance":"Reposting under maintenance"}
+            </div>
+            {lang==='fr'
+              ?"On corrige un problème qui pouvait empêcher la remise en ligne de certaines annonces. Vos annonces sont protégées et aucune Pépite n'est débitée. On vous prévient dès que c'est rétabli."
+              :"We're fixing an issue that could prevent some listings from going back online. Your listings are safe and no Nuggets are charged. We'll let you know as soon as it's back."}
+          </div>
+        </div>
+      )}
       <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
         <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* ── Zone de saisie IA — REPLIÉE PAR DÉFAUT (2026-08-09) ──────────
@@ -3977,7 +4024,12 @@ const StockTab = memo(function StockTab({
                 échec post-clic). */}
             {republishActif&&!modePrixAchat&&(repubActionnables.length>0||modeRepublish)&&(
               <button className={`pa-call${modeRepublish?" on":""}`}
-                onClick={()=>{setModeRepublish(v=>!v);setRepubSel(new Set());setRepubLot(null);}}>
+                /* Maintenance : on ne peut plus ENTRER en mode lot (grisé),
+                   mais on peut toujours en SORTIR — sinon un utilisateur déjà
+                   en mode au moment où la clé passe à 1 y resterait coincé. */
+                disabled={repubMaintenance&&!modeRepublish}
+                style={repubMaintenance&&!modeRepublish?{opacity:0.45,cursor:"default"}:undefined}
+                onClick={()=>{if(repubMaintenance&&!modeRepublish)return;setModeRepublish(v=>!v);setRepubSel(new Set());setRepubLot(null);}}>
                 <span style={{fontSize:17,flexShrink:0}}>{modeRepublish?"↩":"🔁"}</span>
                 <span style={{flex:1,minWidth:0}}>
                   <span className="n">
@@ -4009,8 +4061,9 @@ const StockTab = memo(function StockTab({
                         ?<>{repubSel.size} sélectionné{repubSel.size>1?"s":""} · <PepiteAmount value={repubSel.size}/> · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>
                         :<>{repubSel.size} selected · <PepiteAmount value={repubSel.size}/> · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>}
                     </span>
-                    <button className="apply" disabled={repubSel.size===0}
-                      onClick={()=>ouvrirFeuilleRepublication(repubActionnables.filter(i=>repubSel.has(i.id)))}>
+                    <button className="apply" disabled={repubMaintenance||repubSel.size===0}
+                      style={repubMaintenance?{opacity:0.45,cursor:"default"}:undefined}
+                      onClick={()=>{if(repubMaintenance)return;ouvrirFeuilleRepublication(repubActionnables.filter(i=>repubSel.has(i.id)));}}>
                       {lang==='fr'?`Republier les ${repubSel.size}`:`Repost ${repubSel.size}`}
                     </button>
                     <button className="pa-ghost" onClick={()=>{setRepubSel(new Set(repubActionnables.map(i=>i.id)));}}>
@@ -4901,14 +4954,17 @@ const StockTab = memo(function StockTab({
                                   </button>);
                               }
                               return(
-                                <button className="btn-vendre" disabled={repubBusy===item.id}
+                                <button className="btn-vendre" disabled={repubMaintenance||repubBusy===item.id}
                                   onClick={e=>{
                                     e.stopPropagation();
+                                    if(repubMaintenance)return;
                                     if(extensionNeverSeen===true){setExtPitchItem(item);return;}
                                     ouvrirFeuilleRepublication([item]);
                                   }}
-                                  style={{opacity:repubBusy===item.id?0.6:1}}
-                                  title={lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed."}>
+                                  style={{opacity:repubMaintenance?0.45:repubBusy===item.id?0.6:1,cursor:repubMaintenance?"default":undefined}}
+                                  title={repubMaintenance
+                                    ?(lang==='fr'?"Republication en maintenance — de retour très vite.":"Reposting under maintenance — back very soon.")
+                                    :(lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed.")}>
                                   {repubBusy===item.id
                                     ?(lang==='fr'?'Capture…':'Capturing…')
                                     :(republishPrice!=null
