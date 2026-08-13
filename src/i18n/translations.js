@@ -275,6 +275,7 @@ export const translations = {
     genderBoy:"Garçon",
     genderBaby:"Bébé",
     vintedGenreRequired:"Vinted n'a pas de rayon pour le genre choisi : ses rayons sont Femme, Homme, Fille et Garçon (ni Enfant unisexe, ni Mixte). Pour un article enfant, choisis Fille ou Garçon dans les champs Vinted — sinon le job Vinted échouera.",
+    beebsGenreRequired:"Beebs n'a pas de rayon pour ce genre sur cet article : ses rayons sont Femme, Homme, Fille, Garçon et Bébé (ni Enfant unisexe, ni Mixte), et certains types d'articles n'existent que dans une partie de ces rayons. Choisis un genre qui correspond dans les champs Beebs, ou décoche Beebs — sinon le job Beebs échouera.",
     fieldPackageFormatLabel:"Format colis",
 
     sizeGroupGarmentLetter:"Vêtement (lettre)",
@@ -579,6 +580,7 @@ export const translations = {
     genderBoy:"Boy",
     genderBaby:"Baby",
     vintedGenreRequired:"Vinted has no section for the selected gender: its sections are Women, Men, Girls and Boys (no unisex Kids, no Unisex). For a kids item, pick Fille or Garçon in the Vinted fields — otherwise the Vinted job will fail.",
+    beebsGenreRequired:"Beebs has no section for this gender on this item: its sections are Women, Men, Girls, Boys and Baby (no unisex Kids, no Unisex), and some item types only exist in part of these sections. Pick a matching gender in the Beebs fields, or unselect Beebs — otherwise the Beebs job will fail.",
     fieldPackageFormatLabel:"Package format",
 
     sizeGroupGarmentLetter:"Garment (letter)",

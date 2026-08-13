@@ -2293,7 +2293,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null, lbcPhotoCap = null, lbcAdresseManquante = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null, lbcPhotoCap = null, lbcAdresseManquante = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -2552,6 +2552,16 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
       {vintedGenreBlocked && (
         <div style={{ padding:"12px 14px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:14, marginBottom:12, fontSize:13, color:"#92400E" }}>
           {t("vintedGenreRequired")}
+        </div>
+      )}
+
+      {/* Même bandeau pour Beebs (2026-08-13) : genre explicite sans rayon
+          Beebs (« Enfant », ou une feuille absente pour ce genre). Sans lui,
+          le job partait et échouait côté extension APRÈS débit, avec un
+          message qui accusait le genre à tort. */}
+      {beebsGenreBlocked && (
+        <div style={{ padding:"12px 14px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:14, marginBottom:12, fontSize:13, color:"#92400E" }}>
+          {t("beebsGenreRequired")}
         </div>
       )}
 
@@ -4472,6 +4482,26 @@ export default function ListingPreviewScreen({
     return !getVintedCategoryPath(icon, g);
   }, [selected, edited, initialListing, activeAiIcon]);
 
+  // ── Même garde pour Beebs (2026-08-13, item 4 du chantier LBC+Beebs) ──────
+  // Cas réels en base : genre="Enfant" (26/07) — choix explicite respecté par
+  // l'auto-résolution, mais Beebs n'a NI rayon Enfant NI Mixte — et
+  // genre="Femme" (30/07) sur un article dont la feuille Beebs n'existe pas
+  // pour ce genre. Les deux partaient en job et échouaient côté extension avec
+  // le message accusatoire « genre ne correspondant à aucun rayon réel »,
+  // APRÈS débit. Miroir exact de vintedGenreBlocked : un genre EXPLICITE qui
+  // ne résout aucun chemin Beebs bloque AVANT le clic, avec bandeau lisible ;
+  // vide/Mixte restent hors du signal (l'auto-résolution du publish s'en
+  // charge, et elle ne produit jamais Enfant/Mixte).
+  const beebsGenreBlocked = useMemo(() => {
+    if (!selected.has("beebs") || !edited.beebs) return false;
+    const pf = edited.beebs.platform_fields ?? {};
+    const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+    if (!beebsGenreRequired(icon)) return false;
+    const g = pf.genre;
+    if (!g || g === "Mixte") return false;
+    return !getBeebsCategoryPath(icon, g);
+  }, [selected, edited, initialListing, activeAiIcon]);
+
   // ── Aspects obligatoires eBay AVANT publication (B1, 2026-07-16) ──────────
   // Cas réel déclencheur : « Longueur de la robe » (obligatoire sur Robes,
   // AUCUNE source app) n'apparaissait qu'APRÈS le clic Publier, via l'échec
@@ -6225,7 +6255,8 @@ export default function ListingPreviewScreen({
     Object.values(genericRequiredStatus ?? {}).some(list => list.some(estBloquant)) ||
     missingSharedFields.length > 0 ||
     prixAchatManquant ||
-    vintedGenreBlocked;
+    vintedGenreBlocked ||
+    beebsGenreBlocked;
 
   // SOURCE UNIQUE de « le bouton Publier est gris pour une raison que
   // l'utilisateur doit lire » : ctaDisabled ET motifsCtaGris en dérivent tous
@@ -6258,6 +6289,7 @@ export default function ListingPreviewScreen({
     }
     if (prixAchatManquant) m.push(lang === "en" ? "Purchase price to fill in" : "Prix d'achat à renseigner");
     if (vintedGenreBlocked) m.push(lang === "en" ? "Vinted section to choose" : "Rayon Vinted à choisir");
+    if (beebsGenreBlocked) m.push(lang === "en" ? "Beebs section to choose" : "Rayon Beebs à choisir");
     if (publishChips.length === 0) {
       m.push(lang === "en" ? "No platform ready to publish" : "Aucune plateforme prête à publier");
     }
@@ -6540,6 +6572,7 @@ export default function ListingPreviewScreen({
             onSharedFieldChange={setSharedField}
             sharedChildAxes={sharedChildAxes}
             vintedGenreBlocked={vintedGenreBlocked}
+            beebsGenreBlocked={beebsGenreBlocked}
             ebayRequiredStatus={ebayRequiredStatus}
             onEbayAspectChange={setEbayAspect}
             onEbaySharedFieldChange={setEbaySharedField}
