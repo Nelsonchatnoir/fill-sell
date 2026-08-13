@@ -77,7 +77,11 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // paquet 0.5.8 et c'est le Chrome Web Store qui refusait, APRÈS coup.
 // 0.6.1 : publiée et acceptée par le CWS le 12/08 (23 comptes dessus le soir
 // même, vérifié en base par Nico) — le manifest passe en 0.6.2 du même geste.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1'];
+// 0.6.2 : publiée et acceptée par le CWS (confirmé par Nico le 13/08) — le
+// manifest passe en 0.6.3 du même geste (branche ext-0.6.3-cause403, basée
+// sur 7971dc4 = la 0.6.2 publiée, SANS les commits matière/selectSizeByIds
+// de main : seul le prouvé part en circulation, consigne du 13/08).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();

@@ -5686,11 +5686,49 @@ async function poserEtatRetry403(userId, etat) {
 // Marqueur écrit dans `erreur` pendant qu'une reprise est armée. PARSÉ par
 // StockTab (RETRY403_RE) pour afficher « nouvelle tentative automatique dans
 // ~X min » : préfixe, compteur et échéance ISO sont un CONTRAT d'affichage —
-// à faire évoluer ENSEMBLE.
+// à faire évoluer ENSEMBLE. (RETRY403_RE est ancrée en DÉBUT de chaîne : le
+// segment « | [cause403] … » s'ajoute toujours APRÈS, jamais devant.)
 function marqueurRetry403(tentative, prochaineA) {
   return `[retry403] tentative ${tentative}/${SYNC_RETRY403_DELAIS_MIN.length} prevue ${prochaineA} — ` +
     "accès refusé par Vinted (HTTP 403, protection anti-robot) ; reprise automatique programmée, " +
     "la connexion Vinted n'est pas en cause";
+}
+
+// ── Cause du 403 : y a-t-il une session Vinted dans ce navigateur ? ──────────
+// (2026-08-13.) Relevé en base : les 9 comptes ayant pris un 403 ce jour sont
+// TOUS inscrits d'hier ou d'aujourd'hui, 6/9 sans AUCUNE sync réussie, et
+// aucun utilisateur établi n'a jamais pris de 403 — un problème de PREMIÈRE
+// CONNEXION (pas connecté à Vinted dans ce navigateur), pas un bot-shield
+// aléatoire. Or le 403 anti-robot tombe AVANT que Vinted regarde le cookie de
+// session : la sonde API ne peut rien en dire. On lit donc le NAVIGATEUR, via
+// chrome.cookies (permission ajoutée au manifest du même geste).
+// COOKIE RETENU : `v_uid` — l'id utilisateur Vinted, posé PAR le login,
+// absent des sessions anonymes. ⚠️ Les autres cookies (_vinted_fr_session,
+// access_token_web, anon_id, datadome…) existent dès la première navigation —
+// l'onglet de travail vient précisément de charger vinted.fr — et ne prouvent
+// donc RIEN : seul un marqueur posé par la connexion discrimine.
+// Verdicts → marqueur [cause403] écrit dans vinted_sync_runs.erreur, lisible
+// en SQL (erreur LIKE '%[cause403] session_absente%') :
+//   session_absente  → aucun v_uid : pas de session Vinted ici ;
+//   session_presente → v_uid présent : connecté, le 403 est bien anti-robot ;
+//   indetermine      → lecture impossible ou store VIDE (API en erreur,
+//                      cookies bloqués par le profil) : on ne conclut pas.
+// Si Vinted renommait/supprimait v_uid un jour, les comptes ÉTABLIS se
+// mettraient à sortir en session_absente — dérive VISIBLE en base par ce même
+// marqueur, et le message utilisateur garde le repli « si tu es déjà
+// connecté, réessaie ».
+const VINTED_LOGIN_COOKIE = "v_uid";
+async function classifierCause403() {
+  try {
+    const cookies = await chrome.cookies.getAll({ domain: "vinted.fr" });
+    if (!Array.isArray(cookies) || !cookies.length) return "indetermine";
+    return cookies.some((c) => c?.name === VINTED_LOGIN_COOKIE && String(c?.value ?? "").trim())
+      ? "session_presente"
+      : "session_absente";
+  } catch (e) {
+    console.warn("[sync-dressing][cause403] lecture cookies impossible:", e?.message ?? e);
+    return "indetermine";
+  }
 }
 
 // ── Reprise programmée après un 403 (tir d'alarme) ───────────────────────────
@@ -6373,6 +6411,10 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     const sonder = () => sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch((e) => ({
       success: false, error: `sonde injoignable : ${String(e?.message ?? e)}`,
     }));
+    // Cause d'un éventuel 403, lue AVANT la sonde : le 403 tombe avant que
+    // Vinted regarde la session, c'est donc au navigateur qu'on la demande
+    // (classifierCause403 — cookie v_uid). Lecture pure, quelques ms.
+    const cause403 = await classifierCause403();
     ident = await sonder();
 
     // ── Verdict INCONNU sur 403 anti-robot : reprise en arrière-plan ─────────
@@ -6383,7 +6425,23 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     // Le run est clos 'failed' avec le marqueur [retry403] et sera RÉ-OUVERT
     // par l'alarme (même ligne, tentative suivante) ; à la 3e reprise encore
     // en 403, échec définitif avec le message anti-robot inchangé.
+    // Le marqueur [cause403] accompagne CHAQUE écriture d'erreur de ce chemin
+    // — clôtures avec reprise armée ET échec définitif — pour rester lisible
+    // en SQL quoi qu'il arrive au run (seule mesure disponible en base).
     if (!ident?.success && ident?.verdictInconnu && ident?.httpStatus === 403) {
+      // session_absente : pas de session Vinted dans ce navigateur — le cycle
+      // 5/10/20 ne ferait qu'imposer 35 min d'attente pour un problème que
+      // l'utilisateur règle en dix secondes en se connectant. Échec immédiat,
+      // message qui nomme le geste. « session Vinted » DANS le texte, à
+      // dessein : StockTab ≤ 2.4.44 reconnaît ce motif (regex) et affiche déjà
+      // « connecte-toi sur vinted.fr » ; la 2.4.45 affiche son encart 403.
+      if (cause403 === "session_absente") {
+        await annulerRetry403(userId, "403 sans session Vinted — rien à retenter avant connexion");
+        return await echec(
+          "[cause403] session_absente — aucune session Vinted dans ce navigateur (HTTP 403 sur la sonde) : " +
+          "connecte-toi sur vinted.fr dans ce navigateur, puis relance la synchronisation.",
+        );
+      }
       const etat = await lireEtatRetry403(userId);
       const tentativesFaites = etat?.runId === run.id ? (Number(etat.tentative) || 0) : 0;
       if (tentativesFaites < SYNC_RETRY403_DELAIS_MIN.length) {
@@ -6391,8 +6449,8 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
           runId: run.id, tentative: tentativesFaites + 1, declencheur,
         });
         if (prochaineA) {
-          console.warn(`[sync-dressing] 403 anti-robot — reprise ${tentativesFaites + 1}/${SYNC_RETRY403_DELAIS_MIN.length} armée pour ${prochaineA}`);
-          await clore({ status: "failed", erreur: marqueurRetry403(tentativesFaites + 1, prochaineA).slice(0, 500) });
+          console.warn(`[sync-dressing] 403 anti-robot (${cause403}) — reprise ${tentativesFaites + 1}/${SYNC_RETRY403_DELAIS_MIN.length} armée pour ${prochaineA}`);
+          await clore({ status: "failed", erreur: `${marqueurRetry403(tentativesFaites + 1, prochaineA)} | [cause403] ${cause403}`.slice(0, 500) });
           return { ok: false, reason: "retry403_programme", tentative: tentativesFaites + 1 };
         }
         // Armement impossible (alarme déjà présente, API muette…) : on retombe
@@ -6401,11 +6459,14 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       await annulerRetry403(userId, "reprises épuisées ou inarmables — échec définitif");
       // Message qui dit le vrai motif et ne contient ni « session Vinted » ni
       // « HTTP 401 » — les deux motifs que StockTab reconnaît pour afficher
-      // « reconnecte-toi », qui serait faux ici.
+      // « reconnecte-toi », qui serait faux ici (session_presente/indetermine).
+      // Le segment [cause403] SURVIT à l'échec définitif : c'est lui la mesure
+      // en base — l'ancien code écrasait toute trace au moment de l'échec.
       return await echec(
         `Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) — ` +
         "la connexion Vinted n'a donc pas pu être vérifiée. " +
-        "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause.",
+        "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause. " +
+        `| [cause403] ${cause403}`,
       );
     }
     if (!ident?.success && ident?.verdictInconnu) {
