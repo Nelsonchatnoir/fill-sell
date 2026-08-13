@@ -2051,6 +2051,13 @@ export default function App({ loginOnly = false }){
   const [settingsLbcCp,setSettingsLbcCp]=useState('');
   const [settingsLbcVille,setSettingsLbcVille]=useState('');
   const [settingsLbcAddressSaving,setSettingsLbcAddressSaving]=useState(false);
+  // Vérification BAN de l'adresse (2026-08-13, item 3 du chantier LBC) :
+  // null = rien à afficher ; {kind:'proposition', rue,cp,ville,label} = la BAN
+  // propose une forme normalisée différente de la saisie ; {kind:'introuvable'}
+  // = aucune correspondance BAN (rue neuve, lieu-dit, outre-mer…) — on N'EMPÊCHE
+  // JAMAIS l'enregistrement (décision Nico 13/08), on avertit et on laisse
+  // forcer. Remis à null dès que la saisie change.
+  const [settingsLbcBan,setSettingsLbcBan]=useState(null);
   const [settingsPseudoSaving,setSettingsPseudoSaving]=useState(false);
   const [showBugReport,setShowBugReport]=useState(false);
   const [bugMessage,setBugMessage]=useState("");
@@ -6082,27 +6089,92 @@ export default function App({ loginOnly = false }){
               const cpTouched=settingsLbcCp.trim().length>0;
               const cpError=cpTouched&&!cpValid;
               const inputStyle=(err)=>({width:"100%",boxSizing:"border-box",padding:"8px 12px",borderRadius:10,border:`1px solid ${err?UI.negative:UI.border}`,fontSize:13,fontWeight:600,color:UI.ink,background:UI.card,outline:"none",fontFamily:"inherit",minWidth:0});
+              // Écriture effective (lecture-fusion-écriture : platform_settings est
+              // partagé entre plateformes, ne jamais écraser les clés des autres).
+              // String unique attendue par le handler (content-scripts/leboncoin.js) :
+              // jointure par espaces, sans virgule — l'autocomplete LBC (type Google
+              // Places) matche mieux "12 rue de la paix 69001 lyon" que la même
+              // chaîne ponctuée (cf. commentaire fillAddress).
+              const enregistrerAdresseLbc=async(rue,cp,ville)=>{
+                const adresse=[rue,cp,ville].filter(Boolean).join(' ');
+                const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
+                const next={...(cur?.platform_settings||{}),leboncoin:{...(cur?.platform_settings?.leboncoin||{}),rue,code_postal:cp,ville,adresse}};
+                // .select() : sans lui, un update filtré par RLS (0 ligne) ne
+                // renvoie PAS d'erreur → faux "✅" (cas vécu : policy UPDATE absente).
+                const{data:upd,error}=await supabase.from('profiles').update({platform_settings:next}).eq('id',user.id).select('platform_settings');
+                const failed=error||!upd?.length;
+                if(!failed){setSettingsLbcRue(rue);setSettingsLbcCp(cp);setSettingsLbcVille(ville);setSettingsLbcBan(null);}
+                setToast({visible:true,message:failed?(lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'):(lang==='fr'?'✅ Adresse enregistrée !':'✅ Address saved!')});
+                setTimeout(()=>setToast({visible:false,message:''}),3000);
+              };
+              // Vérification BAN au clic Enregistrer (2026-08-13, échec réel du jour :
+              // « saint antoines du rochers » tapé pour Saint-Antoine-du-Rocher — deux
+              // dépôts LBC échoués « sans suggestion dans l'autocomplete », que 10 s de
+              // normalisation ICI auraient évités). La BAN (api-adresse.data.gouv.fr)
+              // est publique, gratuite, CORS ouvert. TROIS issues, aucune ne bloque :
+              //   · trouvée ≈ identique à la saisie → enregistrement direct ;
+              //   · trouvée mais différente → proposition en premier choix, la saisie
+              //     manuelle reste forçable ;
+              //   · introuvable → avertissement clair + « Enregistrer quand même »
+              //     (rues neuves, lieux-dits, outre-mer : décision Nico 13/08, on ne
+              //     bloque JAMAIS l'enregistrement) ;
+              //   · service en panne → enregistrement direct, pas d'alarme à tort.
+              const normBan=(s)=>String(s??'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+              const verifierPuisEnregistrer=async()=>{
+                setSettingsLbcAddressSaving(true);
+                const rue=settingsLbcRue.trim();
+                const cp=settingsLbcCp.trim();
+                const ville=settingsLbcVille.trim();
+                const saisie=[rue,cp,ville].filter(Boolean).join(' ');
+                let feature=null,banIndisponible=false;
+                try{
+                  const rep=await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(saisie)}&limit=1&autocomplete=0`);
+                  if(!rep.ok)throw new Error(`HTTP ${rep.status}`);
+                  feature=(await rep.json())?.features?.[0]??null;
+                }catch{banIndisponible=true;}
+                if(banIndisponible){await enregistrerAdresseLbc(rue,cp,ville);setSettingsLbcAddressSaving(false);return;}
+                // Score plancher : sous 0.4 la BAN « trouve » n'importe quoi (elle rend
+                // toujours son moins mauvais candidat) — on traite comme introuvable.
+                if(!feature||Number(feature.properties?.score??0)<0.4){
+                  setSettingsLbcBan({kind:'introuvable'});
+                  setSettingsLbcAddressSaving(false);
+                  return;
+                }
+                const p=feature.properties??{};
+                // Recomposition dans NOS 3 champs : rue = numéro + voie (p.name porte
+                // déjà « 3 Allée des Guisniers » ; les lieux-dits y vivent aussi).
+                const banRue=String(p.name??'').trim();
+                const banCp=String(p.postcode??cp).trim();
+                const banVille=String(p.city??ville).trim();
+                const banAdresse=[banRue,banCp,banVille].filter(Boolean).join(' ');
+                if(normBan(banAdresse)===normBan(saisie)){
+                  await enregistrerAdresseLbc(rue,cp,ville); // identique modulo accents/casse : zéro friction
+                }else{
+                  setSettingsLbcBan({kind:'proposition',rue:banRue,cp:banCp,ville:banVille,label:String(p.label??banAdresse)});
+                }
+                setSettingsLbcAddressSaving(false);
+              };
               return (
             <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
               <Eyebrow style={{marginBottom:8}}>{lang==='fr'?'Adresse de remise Leboncoin':'Leboncoin pickup address'}</Eyebrow>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <input
                   value={settingsLbcRue}
-                  onChange={e=>setSettingsLbcRue(e.target.value.slice(0,120))}
+                  onChange={e=>{setSettingsLbcRue(e.target.value.slice(0,120));setSettingsLbcBan(null);}}
                   placeholder={lang==='fr'?'Rue — ex : 12 rue de la Paix':'Street — e.g. 12 rue de la Paix'}
                   style={inputStyle(false)}
                 />
                 <div style={{display:"flex",gap:8}}>
                   <input
                     value={settingsLbcCp}
-                    onChange={e=>setSettingsLbcCp(e.target.value.replace(/\D/g,'').slice(0,5))}
+                    onChange={e=>{setSettingsLbcCp(e.target.value.replace(/\D/g,'').slice(0,5));setSettingsLbcBan(null);}}
                     inputMode="numeric"
                     placeholder={lang==='fr'?'Code postal':'Postal code'}
                     style={{...inputStyle(cpError),flex:"0 0 110px"}}
                   />
                   <input
                     value={settingsLbcVille}
-                    onChange={e=>setSettingsLbcVille(e.target.value.slice(0,80))}
+                    onChange={e=>{setSettingsLbcVille(e.target.value.slice(0,80));setSettingsLbcBan(null);}}
                     placeholder={lang==='fr'?'Ville':'City'}
                     style={{...inputStyle(false),flex:1}}
                   />
@@ -6112,34 +6184,54 @@ export default function App({ loginOnly = false }){
                     {lang==='fr'?'Le code postal doit contenir 5 chiffres.':'Postal code must be 5 digits.'}
                   </div>
                 )}
+                {settingsLbcBan?.kind==='proposition'&&(
+                  <div style={{background:"#F0FDFB",border:"1px solid rgba(13,148,136,0.25)",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+                    <div style={{fontSize:12,color:"#1B6E62",lineHeight:1.5}}>
+                      {lang==='fr'?<>Adresse reconnue : <b>{settingsLbcBan.label}</b></>:<>Address found: <b>{settingsLbcBan.label}</b></>}
+                    </div>
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                      <button
+                        onClick={async()=>{setSettingsLbcAddressSaving(true);await enregistrerAdresseLbc(settingsLbcBan.rue,settingsLbcBan.cp,settingsLbcBan.ville);setSettingsLbcAddressSaving(false);}}
+                        disabled={settingsLbcAddressSaving}
+                        style={{padding:"7px 12px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
+                      >
+                        {lang==='fr'?'Utiliser cette adresse':'Use this address'}
+                      </button>
+                      <button
+                        onClick={async()=>{setSettingsLbcAddressSaving(true);await enregistrerAdresseLbc(settingsLbcRue.trim(),settingsLbcCp.trim(),settingsLbcVille.trim());setSettingsLbcAddressSaving(false);}}
+                        disabled={settingsLbcAddressSaving}
+                        style={{padding:"7px 12px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
+                      >
+                        {lang==='fr'?'Garder ma saisie':'Keep my entry'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {settingsLbcBan?.kind==='introuvable'&&(
+                  <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+                    <div style={{fontSize:12,color:"#9A3412",lineHeight:1.5}}>
+                      {lang==='fr'
+                        ?'⚠️ Adresse non reconnue (Base Adresse Nationale) — vérifie l\'orthographe de la rue et de la ville. Tu peux quand même l\'enregistrer, mais la publication Leboncoin risque d\'échouer sur cette adresse.'
+                        :'⚠️ Address not recognized (French national address base) — check the street and city spelling. You can still save it, but Leboncoin publishing may fail with this address.'}
+                    </div>
+                    <button
+                      onClick={async()=>{setSettingsLbcAddressSaving(true);await enregistrerAdresseLbc(settingsLbcRue.trim(),settingsLbcCp.trim(),settingsLbcVille.trim());setSettingsLbcAddressSaving(false);}}
+                      disabled={settingsLbcAddressSaving}
+                      style={{alignSelf:"flex-start",padding:"7px 12px",borderRadius:999,border:"1px solid #FED7AA",background:UI.card,color:"#9A3412",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
+                    >
+                      {lang==='fr'?'Enregistrer quand même':'Save anyway'}
+                    </button>
+                  </div>
+                )}
+                {!settingsLbcBan&&(
                 <button
-                  onClick={async()=>{
-                    setSettingsLbcAddressSaving(true);
-                    const rue=settingsLbcRue.trim();
-                    const cp=settingsLbcCp.trim();
-                    const ville=settingsLbcVille.trim();
-                    // String unique attendue par le handler (content-scripts/leboncoin.js) :
-                    // jointure par espaces, sans virgule — l'autocomplete LBC (type
-                    // Google Places) matche mieux "12 rue de la paix 69001 lyon" que la
-                    // même chaîne ponctuée (cf. commentaire fillAddress).
-                    const adresse=[rue,cp,ville].filter(Boolean).join(' ');
-                    // Lecture-fusion-écriture : platform_settings est partagé entre
-                    // plateformes, ne jamais écraser les clés des autres.
-                    const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
-                    const next={...(cur?.platform_settings||{}),leboncoin:{...(cur?.platform_settings?.leboncoin||{}),rue,code_postal:cp,ville,adresse}};
-                    // .select() : sans lui, un update filtré par RLS (0 ligne) ne
-                    // renvoie PAS d'erreur → faux "✅" (cas vécu : policy UPDATE absente).
-                    const{data:upd,error}=await supabase.from('profiles').update({platform_settings:next}).eq('id',user.id).select('platform_settings');
-                    setSettingsLbcAddressSaving(false);
-                    const failed=error||!upd?.length;
-                    setToast({visible:true,message:failed?(lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'):(lang==='fr'?'✅ Adresse enregistrée !':'✅ Address saved!')});
-                    setTimeout(()=>setToast({visible:false,message:''}),3000);
-                  }}
+                  onClick={verifierPuisEnregistrer}
                   disabled={settingsLbcAddressSaving||cpError}
                   style={{alignSelf:"flex-start",padding:"8px 14px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13,fontWeight:600,cursor:(settingsLbcAddressSaving||cpError)?"not-allowed":"pointer",opacity:(settingsLbcAddressSaving||cpError)?0.6:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
                 >
                   {settingsLbcAddressSaving?"…":(lang==='fr'?'Enregistrer':'Save')}
                 </button>
+                )}
               </div>
               <div style={{fontSize:11,color:UI.mute,marginTop:8,lineHeight:1.4}}>
                 {lang==='fr'?'Utilisée pour le champ « adresse du bien » lors de la publication automatique sur Leboncoin. Jamais affichée sur l\'annonce.':'Used for the "item address" field when auto-publishing on Leboncoin. Never shown on the listing.'}
