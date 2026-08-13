@@ -1079,7 +1079,10 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     );
   }
   if (hasCriteria && fields.marque) {
-    await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings, { skipIfPrefilled: true });
+    // Repli « Autre »/« Sans marque » (2026-08-13) : les marques de faïencerie
+    // (Longwy, Gien, Badonviller, Sovirel…) sont hors liste LBC — sans repli,
+    // les annonces partaient SANS marque quand LBC n'avait rien pré-rempli.
+    await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings, { skipIfPrefilled: true, fallbackValues: ["Autre", "Sans marque"] });
   }
   if (hasCriteria && fields.matiere) {
     await fillCriterionSafe("matière", 'label[for$="_material"]', fields.matiere, warnings, { skipIfPrefilled: true });
@@ -1449,25 +1452,36 @@ function prefilledMatchesTarget(prefilled, rawValue) {
 // n'est conservé que s'il matche la valeur du job ; sinon la donnée produit fait
 // foi et la sélection normale l'écrase. Conservé OU remplacé : warning persisté
 // dans les deux cas — ce comportement ne doit plus jamais être silencieux.
-async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false } = {}) {
+// ── RÈGLE DU PRÉ-REMPLI (2026-08-13, posée par Nico) ─────────────────────────
+// Sur un champ FERMÉ (combobox à options), un pré-rempli Leboncoin est une
+// valeur VALIDE de la liste. On ne le remplace QUE si notre propre valeur est
+// elle-même une option de la liste — jamais par un titre d'annonce, jamais
+// par une valeur devinée. AVANT : le pré-rempli était écrasé dès qu'il ne
+// matchait pas la valeur du job, PUIS la cascade échouait (« champ sauté »)
+// quand cette valeur n'était pas une option — relevés jocaille du 13/08 :
+// « pré-rempli "Assiette" remplacé par "Lot de 5 assiettes Badonviller FB
+// vintage années 60" », « pré-rempli "Plat de service" remplacé par "Plat
+// creux Badonviller Phebus 28 cm" → champ sauté ». Le pré-rempli LBC (déduit
+// du titre) était JUSTE, notre remplacement le sabotait.
+// L'annonce du remplacement n'est donc plus journalisée AVANT la sélection :
+// elle ne l'est qu'une fois le remplacement RÉUSSI.
+// `fallbackValues` (marque) : notre valeur hors liste ET aucun pré-rempli →
+// on tente ces options génériques (« Autre », « Sans marque ») plutôt que de
+// laisser le champ vide (annonces jocaille parties sans marque : Longwy,
+// Gien, Badonviller, Sovirel — toutes hors liste LBC).
+async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false, fallbackValues = [] } = {}) {
   try {
     const input = findCriterionInput(labelSelector);
     if (!input) {
       // Critère absent pour cette catégorie : normal (champs dynamiques), silencieux.
       return false;
     }
-    if (skipIfPrefilled && input.value.trim()) {
-      const prefilled = input.value.trim();
-      if (prefilledMatchesTarget(prefilled, rawValue)) {
-        const note = `${fieldName}: pré-rempli LBC "${prefilled}" conservé (matche "${rawValue}")`;
-        console.log(`[leboncoin] ${note}`);
-        warnings.push(note);
-        return true;
-      }
-      const note = `${fieldName}: pré-rempli LBC "${prefilled}" remplacé par "${rawValue}"`;
-      console.warn(`[leboncoin] ⚠️ ${note}`);
+    const prefilled = skipIfPrefilled && input.value.trim() ? input.value.trim() : null;
+    if (prefilled && prefilledMatchesTarget(prefilled, rawValue)) {
+      const note = `${fieldName}: pré-rempli LBC "${prefilled}" conservé (matche "${rawValue}")`;
+      console.log(`[leboncoin] ${note}`);
       warnings.push(note);
-      // Pas de return : la sélection normale ci-dessous écrase la déduction LBC.
+      return true;
     }
     await humanPause();
     input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -1475,17 +1489,47 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     const menu = document.getElementById(input.getAttribute("aria-controls"));
     const optionSelector = 'li, [role="option"], button';
     const scope = menu || document;
-    const match = findOptionCascade(scope, optionSelector, rawValue, { sizeField });
+    let match = findOptionCascade(scope, optionSelector, rawValue, { sizeField });
+    let valeurPosee = rawValue;
+    if (!match && !prefilled) {
+      // Pas d'option pour notre valeur et rien à préserver : replis génériques
+      // éventuels (marque → « Autre »/« Sans marque ») avant d'abandonner.
+      for (const fb of fallbackValues) {
+        match = findOptionCascade(scope, optionSelector, fb, { sizeField });
+        if (match) {
+          valeurPosee = fb;
+          const note = `${fieldName}: "${rawValue}" hors liste LBC → repli sur l'option générique "${match.label}"`;
+          console.warn(`[leboncoin] ≈ ${note}`);
+          warnings.push(note);
+          break;
+        }
+      }
+    }
     if (!match) {
       const available = [...scope.querySelectorAll(optionSelector)]
         .map((o) => o.textContent.trim()).filter(Boolean).slice(0, 30);
+      if (prefilled) {
+        // Pré-rempli VALIDE conservé : on referme sans toucher au champ. Ce
+        // n'est PAS un « champ sauté » — le champ est rempli, par LBC.
+        document.body.click();
+        await humanPause();
+        const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" est hors liste. Options: ${JSON.stringify(available)}`;
+        console.log(`[leboncoin] ${note}`);
+        warnings.push(note);
+        return true;
+      }
       throw new Error(`option "${rawValue}" sans correspondance. Options: ${JSON.stringify(available)}`);
     }
     await humanPause(); // temps de "lecture" de la liste avant le clic
     match.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await humanPause();
+    if (prefilled) {
+      const note = `${fieldName}: pré-rempli LBC "${prefilled}" remplacé par l'option "${match.label}"`;
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+    }
     if (match.stage !== "exact") {
-      const note = `${fieldName}: "${rawValue}" → option LBC "${match.label}" (match ${match.stage})`;
+      const note = `${fieldName}: "${valeurPosee}" → option LBC "${match.label}" (match ${match.stage})`;
       console.warn(`[leboncoin] ≈ ${note}`);
       warnings.push(note);
     }
@@ -2276,7 +2320,15 @@ async function dismissInterstitials(contexte) {
 // comportement est exactement celui d'avant. Lecture par attribut src
 // uniquement — aucune mesure de layout.
 function photoPreviewCount() {
-  return document.querySelectorAll('img[src^="blob:"], img[src^="data:"]').length;
+  // blob:/data: (mécanisme navigateur, conservé) + vignettes CDN (2026-08-13,
+  // relevé LIVE sur le dépôt réel) : le formulaire actuel uploade côté serveur
+  // dès la sélection et re-sert les vignettes depuis img.leboncoin.fr/api/ —
+  // AUCUN blob: n'apparaît jamais. D'où « 0 détectée » sur 100 % des jobs de
+  // la soirée (30/30 chez jocaille) alors que les annonces publiées portaient
+  // toutes leurs photos (vérifié sur 3 annonces : 10/10, 14/14, 17/18).
+  // Pas de périmètre DOM à borner : waitPhotosUploaded travaille en DELTA
+  // (vues - avant), les images fixes de la page s'annulent d'elles-mêmes.
+  return document.querySelectorAll('img[src^="blob:"], img[src^="data:"], img[src^="https://img.leboncoin.fr/api/"]').length;
 }
 async function waitPhotosUploaded(attendues, avant, budgetMs, tag) {
   const t0 = Date.now();
