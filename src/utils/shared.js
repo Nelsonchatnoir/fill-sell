@@ -673,7 +673,14 @@ const OBJECT_ICON_RULES = [
   [/lampe|luminaire|applique|suspension|lampadaire|(?<![\p{L}\p{N}])ampoules?|\bled\b|guirlande(?!.{0,14}(?:de.?)?(?:sapin|noël|noel))/iu, '💡'],
   [/miroir/i, '🪞'],
   [/bougie(?!s?\s*(?:d['’]allumage|de\s*préchauffage))|photophore/i, '🕯️'],  // bougie d'allumage = pièce auto (audit 2026-07-19)
-  [/cadres?\b(?!\s*(?:de\s*)?(?:vélo|vtt|route\b|carbone|alu\b|lit\b))|tableau(?!.?électrique)|poster|affiche/i, '🖼️'],  // cadre de vélo/lit ≠ cadre déco (audit 2026-07-19)
+  // ŒUVRES (2026-08-13, jobs jocaille) : « Peinture à l'huile ancienne »,
+  // « Toile huile vintage 1959 », « Gravure couleur Hebbelinck » partaient en
+  // 🖌️ (règle `peinture` plus bas) → LBC Bricolage (outils, Produit quasi
+  // sans option) au lieu de Décoration. L'œuvre d'art se reconnaît AVANT
+  // l'outil — cette règle précède 🖌️ dans la liste (premier match gagne).
+  // « toile » seul reste hors règle (toile de tente, toile cirée) : borné aux
+  // formes « toile huile/peinte », « huile sur toile/panneau/carton ».
+  [/cadres?\b(?!\s*(?:de\s*)?(?:vélo|vtt|route\b|carbone|alu\b|lit\b))|tableau(?!.?électrique)|poster|affiche|gravures?\b|lithographies?\b|estampes?\b|aquarelles?\b|toiles?\s+(?:huile|peinte)|huile\s+sur\s+(?:toile|panneau|carton)|peintures?\s+à\s+l['’]huile/i, '🖼️'],  // cadre de vélo/lit ≠ cadre déco (audit 2026-07-19)
   [/plante|cache.?pot|jardinière/i, '🪴'],
   [/vase\b/i, '🏺'],
   [/assiette|\bbol\b|tasse|\bmug\b|verres?\b(?!\s*tremp)|carafe|vaisselle/i, '🍽️'],  // verre trempé = protection d'écran (audit 2026-07-19)
@@ -1033,7 +1040,7 @@ export const ICON_LEGEND = {
   "💡": "lampe, luminaire, ampoule, guirlande lumineuse",
   "🪞": "miroir",
   "🕯️": "bougie, photophore",
-  "🖼️": "cadre, tableau, poster, affiche",
+  "🖼️": "cadre, tableau, poster, affiche, gravure, huile sur toile",
   "🪴": "plante, cache-pot, jardinière",
   "🏺": "vase",
   "🍽️": "vaisselle : assiette, bol, tasse, verre, mug",

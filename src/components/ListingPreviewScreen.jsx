@@ -5260,7 +5260,25 @@ export default function ListingPreviewScreen({
         if (known) setPlatformDedicatedField(gp, a.dedicatedTarget, known);
         else missing.push(a);
       }
-      if (!missing.length) continue;
+      // ── Champ FERMÉ sans liste connue : on NE DEMANDE PLUS à l'IA (13/08) ──
+      // Cas réel jocaille : « Produit » (combobox LBC, catalogue à 0 option)
+      // partait en resolve_aspects avec allowedValues:[] — vocabulaire ouvert
+      // sur un champ FERMÉ : l'IA « extrayait du contexte » des valeurs
+      // impossibles (« Maison », « Décoration », le TITRE de l'article),
+      // l'extension les refusait (« champ sauté — sans correspondance ») et
+      // Leboncoin bloquait sur « Ce champ est requis ». La doctrine du 29/07
+      // (liste relevée = suggestion, vocabulaire ouvert) ne vaut que pour les
+      // champs LIBRES (marque/modele/matiere hors Vinted) : sur un combobox,
+      // une valeur hors liste ne peut RIEN produire de bon. Sans liste, on
+      // laisse le champ VIDE — le pré-rempli Leboncoin (souvent juste, règle
+      // du 13/08 côté extension) ou le mini-éditeur needs_user (options
+      // relevées au blocage) font foi.
+      const askable = missing.filter(a =>
+        (a.dedicatedTarget === "marque" || a.dedicatedTarget === "modele" ||
+          (a.dedicatedTarget === "matiere" && gp !== "vinted")) ||
+        (a.allowedValues?.length ?? 0) > 0
+      );
+      if (!askable.length) continue;
       (async () => {
         try {
           // 2. Vocabulaire OUVERT : transmettre une liste relevée (partielle)
@@ -5277,7 +5295,7 @@ export default function ListingPreviewScreen({
           const openVocab = (target) =>
             target === "marque" || target === "modele" ||
             (target === "matiere" && gp !== "vinted");
-          const details = missing.map(a => ({
+          const details = askable.map(a => ({
             name: a.label,
             allowedValues: openVocab(a.dedicatedTarget)
               ? []
@@ -5303,7 +5321,7 @@ export default function ListingPreviewScreen({
           // resolve_aspects répond par LIBELLÉ ; le canal générique écrit par
           // CLÉ plateforme (code serveur / for= / libellé Beebs) — mappage
           // retour label → key.
-          const keyOfLabel = Object.fromEntries(missing.map(a => [a.label, a.key]));
+          const keyOfLabel = Object.fromEntries(askable.map(a => [a.label, a.key]));
           for (const [label, v] of Object.entries(values)) {
             const key = keyOfLabel[label];
             const s = typeof v === "string" ? v.trim() : "";
