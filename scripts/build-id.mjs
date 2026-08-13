@@ -283,7 +283,17 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // needs_user avec snapshot conservé, vintedAspects propagé à la recréation.
 // Manifest bumpé en 0.6.2 (la 0.6.1 est publiée et tourne chez 23 comptes).
 // EXTENSION_MIN_BUILD reste sur la 0.5.6 — la 0.6.2 n'est pas encore soumise.
-export const EXTENSION_LAST_COMMIT = '2026-08-12T21:09:29Z';
+// 2026-08-13T14:14:47Z = 96eb059 (0.6.3, BRANCHE ext-0.6.3-cause403 basée sur
+// 7971dc4 = la 0.6.2 publiée/acceptée au CWS — SANS les commits matière ni
+// selectSizeByIds de main, consigne Nico 13/08) : la cause d'un 403 de la
+// sync est lue dans le NAVIGATEUR via chrome.cookies (cookie v_uid, posé par
+// le login Vinted) et écrite en base ([cause403] session_absente /
+// session_presente / indetermine, survit à l'échec définitif).
+// session_absente court-circuite le cycle 5/10/20 : échec immédiat
+// « connecte-toi sur vinted.fr ». Permission "cookies" ajoutée au manifest.
+// EXTENSION_MIN_BUILD reste sur la 0.5.6 — la promotion vers le build 0.6.2
+// publié est un geste web (main), hors de cette branche.
+export const EXTENSION_LAST_COMMIT = '2026-08-13T14:14:47Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
