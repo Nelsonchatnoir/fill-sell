@@ -293,7 +293,16 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // « connecte-toi sur vinted.fr ». Permission "cookies" ajoutée au manifest.
 // EXTENSION_MIN_BUILD reste sur la 0.5.6 — la promotion vers le build 0.6.2
 // publié est un geste web (main), hors de cette branche.
-export const EXTENSION_LAST_COMMIT = '2026-08-13T14:14:47Z';
+// 2026-08-13T18:35:36Z = d6b88a4 (0.6.4, même branche) : sonde de dépôt Beebs
+// (product_id capté, listing_url posé à la mise en ligne seulement), message
+// REAUTH VENTE eBay (step-up signin.ebay.fr/eBayISAPI.dll), options du champ
+// « Produit » LBC relevées SUR PLACE au blocage (needsUserField dropdown),
+// markNeedsUser transmet input_type, détecteur photos LBC réparé (vignettes
+// CDN img.leboncoin.fr, plus jamais « 0 détectée » à tort), règle du
+// pré-rempli (jamais écrasé par une valeur hors liste, repli marque
+// Autre/Sans marque), matière par ids (cherry-pick 4fbf20b).
+// EXCLU (consigne Nico 13/08) : a426979 selectSizeByIds.
+export const EXTENSION_LAST_COMMIT = '2026-08-13T18:35:36Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
