@@ -23,6 +23,7 @@ import {
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
   PLATFORM_LOGIN_URLS, PLATFORM_LISTINGS_URLS, LBC_DEPOSIT_URL, humanizeJobError,
+  fraicheurExtension,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
 import { SecondaryButton, Loader } from '../components/ui';
@@ -3002,6 +3003,39 @@ const StockTab = memo(function StockTab({
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
   // à RIEN : le job reste needs_user, le badge reste affiché.
   const [needsUserJob, setNeedsUserJob] = useState(null);
+
+  // ── Fraîcheur extension : relecture ciblée anti-faux-positif (2026-08-13) ──
+  // extensionStatus.lastSeenAt vient de fetchAll (chargement / refocus) et
+  // peut RETARDER : conclure « ordinateur éteint » sur une valeur locale
+  // périmée serait un faux positif chez quelqu'un dont l'extension tourne —
+  // exactement ce que le bandeau ne doit jamais faire. Tant que la valeur
+  // connue est hors fraîcheur, on relit la colonne toutes les 60 s (SELECT
+  // ciblé, même patron que le rafraîchissement de la bannière de version dans
+  // App.jsx) ; une extension vivante éteint donc le bandeau en ≤ 1 min.
+  // La valeur la plus RÉCENTE des deux (prop, relecture) fait foi.
+  const [extSeenRelu, setExtSeenRelu] = useState(null);
+  const extLastSeenBest = (() => {
+    const a = Date.parse(extensionStatus?.lastSeenAt ?? "");
+    const b = Date.parse(extSeenRelu ?? "");
+    if (!Number.isFinite(a)) return extSeenRelu ?? extensionStatus?.lastSeenAt ?? null;
+    if (!Number.isFinite(b)) return extensionStatus?.lastSeenAt;
+    return a >= b ? extensionStatus.lastSeenAt : extSeenRelu;
+  })();
+  const extFraicheur = fraicheurExtension(extLastSeenBest);
+  useEffect(() => {
+    if (!user?.id) return;
+    if (extFraicheur.etat === "vivante" || extFraicheur.etat === "inconnue") return;
+    let arret = false;
+    const relire = async () => {
+      const { data, error } = await supabase.from("profiles")
+        .select("extension_last_seen_at").eq("id", user.id).maybeSingle();
+      if (arret || error || !data) return;
+      setExtSeenRelu(data.extension_last_seen_at ?? null);
+    };
+    relire();
+    const timer = setInterval(relire, 60_000);
+    return () => { arret = true; clearInterval(timer); };
+  }, [user?.id, extFraicheur.etat]);
   // Job échoué dont on montre l'erreur complète + action directe (remplace le
   // window.alert du 19/07 — chantier onboarding 2026-07-27).
   const [failJobModal, setFailJobModal] = useState(null);
@@ -3285,24 +3319,71 @@ const StockTab = memo(function StockTab({
           recharger. Mobile seulement — sur desktop l'utilisateur voit l'extension
           directement (« desktop c'est ok »). « Jamais vue » n'affiche rien : ce
           serait du bruit pour qui n'a pas encore installé l'extension. */}
+      {/* ── Gradation fraîcheur (2026-08-13, cas Carla) ─────────────────────
+          Trois états au lieu du rouge unique à 15 min :
+          · vivante (< 1 h, cf. fraicheurExtension) → RIEN ;
+          · éteinte (1 h → 7 j) → AMBRE, une ligne, informatif : rien n'est
+            cassé, le job partira — jamais les mots « erreur/échec/problème »,
+            sinon l'utilisateur annule et relance, et recrée un job fantôme ;
+          · inactive (> 7 j) → le rouge ⚠️ d'avant, désormais justifié.
+          Stock VIDE → rien : le bandeau alerterait avant qu'il y ait quoi que
+          ce soit à publier. La bannière « à mettre à jour » garde son
+          comportement d'origine, après les états de fraîcheur. */}
       {isMobile && (() => {
-        const seen = Date.parse(extensionStatus?.lastSeenAt ?? "");
-        const dead = Number.isFinite(seen) && Date.now() - seen > EXT_MORT_MS;
-        if (!dead && !extensionStatus?.outdated) return null;
-        const diag = diagnostiquerExtension(extensionStatus, lang);
-        const rouge = diag.ton === "rouge";
+        const stockVide = (stock?.length ?? 0) === 0;
+        if (!stockVide && extFraicheur.etat === "inactive") {
+          return (
+            <div style={{
+              display:"flex", gap:10, alignItems:"flex-start",
+              background:"#FEF2F2", border:"1px solid #FECACA", borderLeft:"4px solid #DC2626",
+              borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
+            }}>
+              <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>⚠️</span>
+              <div style={{fontSize:13, lineHeight:1.5, color:"#3f3a2e"}}>
+                <div style={{fontWeight:700, marginBottom:2, color:"#B91C1C"}}>
+                  {lang==="en" ? `Extension inactive for ${extFraicheur.jours} d` : `Extension inactive depuis ${extFraicheur.jours} j`}
+                </div>
+                {lang==="en"
+                  ? "Open Chrome, and sign in again on fillsell.app if it doesn't resume."
+                  : "Ouvre Chrome, et reconnecte-toi sur fillsell.app si ça ne repart pas."}
+              </div>
+            </div>
+          );
+        }
+        if (!stockVide && extFraicheur.etat === "eteinte") {
+          return (
+            <div style={{
+              display:"flex", gap:8, alignItems:"center",
+              background:"#FFFBEB", border:"1px solid #FDE68A", borderLeft:"4px solid #F59E0B",
+              borderRadius:12, padding:"8px 12px", marginBottom:14, width:"100%", boxSizing:"border-box",
+            }}>
+              <span style={{fontSize:14, lineHeight:1, flexShrink:0}}>💻</span>
+              <div style={{fontSize:12.5, lineHeight:1.4, color:"#78350F"}}>
+                {lang==="en"
+                  ? "Your computer is off — your listings will go out next time Chrome opens."
+                  : "Ton ordinateur est éteint — tes publications partiront à la prochaine ouverture de Chrome."}
+              </div>
+            </div>
+          );
+        }
+        if (!extensionStatus?.outdated) return null;
+        // Contenu « à mettre à jour » posé EN DUR (pas via diagnostiquerExtension,
+        // dont la branche « morte > 15 min » primerait et ressusciterait le
+        // rouge sur un stock vide). Même wording que la branche outdated.
         return (
           <div style={{
             display:"flex", gap:10, alignItems:"flex-start",
-            background: rouge ? "#FEF2F2" : "#FFF7ED",
-            border:`1px solid ${rouge ? "#FECACA" : "#FED7AA"}`,
-            borderLeft:`4px solid ${rouge ? "#DC2626" : "#EA580C"}`,
+            background:"#FFF7ED", border:"1px solid #FED7AA", borderLeft:"4px solid #EA580C",
             borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
           }}>
             <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>⚠️</span>
             <div style={{fontSize:13, lineHeight:1.5, color:"#3f3a2e"}}>
-              <div style={{fontWeight:700, marginBottom:2, color: rouge ? "#B91C1C" : "#9A3412"}}>{diag.titre}</div>
-              {diag.detail}
+              <div style={{fontWeight:700, marginBottom:2, color:"#9A3412"}}>
+                {lang==="en" ? "Extension needs updating" : "Extension à mettre à jour"}
+              </div>
+              {lang==="en"
+                ? "A newer version exists. Install the latest version from the Chrome Web Store (Extension page in settings)."
+                : "Une version plus récente existe. Installe la dernière version depuis le Chrome Web Store (page Extension dans les réglages)."}
             </div>
           </div>
         );
@@ -4762,19 +4843,47 @@ const StockTab = memo(function StockTab({
                                   </span>
                                 );
                               })}
-                              {hasPending&&!hasPausedPending&&(
-                                <div
-                                  className="micon ic-pending"
-                                  role="button"
-                                  tabIndex={0}
-                                  title={lang==="en"?"See status":"Voir le statut"}
-                                  onClick={e=>{e.stopPropagation();setJobStatusItem(item);}}
-                                  onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.stopPropagation();setJobStatusItem(item);}}}
-                                  style={{cursor:"pointer"}}
-                                >
-                                  ⏳ {lang==="en"?"Posting…":"En cours…"}
-                                </div>
-                              )}
+                              {hasPending&&!hasPausedPending&&(()=>{
+                                // « Un job en attente doit dire pourquoi » (2026-08-13) :
+                                // extension hors fraîcheur → le badge cesse de suggérer
+                                // qu'un travail est en cours et nomme le vrai état.
+                                // AFFICHAGE SEULEMENT — aucun job modifié, le tap ouvre
+                                // toujours le panneau de statut.
+                                const horsFraicheur=extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive";
+                                const plusVieux=Math.min(...jobs
+                                  .filter(j=>j.status==="pending"||j.status==="processing")
+                                  .map(j=>Date.parse(j.created_at))
+                                  .filter(Number.isFinite));
+                                const joursAttente=Number.isFinite(plusVieux)?Math.floor((Date.now()-plusVieux)/86400000):0;
+                                const attenteLongue=horsFraicheur&&joursAttente>=1;
+                                const label=!horsFraicheur
+                                  ?(lang==="en"?"Posting…":"En cours…")
+                                  :attenteLongue
+                                    ?(lang==="en"?`Waiting for ${joursAttente} d`:`En attente depuis ${joursAttente} j`)
+                                    :(lang==="en"?"Waiting for your computer":"En attente de ton ordinateur");
+                                const titre=!horsFraicheur
+                                  ?(lang==="en"?"See status":"Voir le statut")
+                                  :attenteLongue
+                                    ?(lang==="en"
+                                      ?`Waiting for ${joursAttente} day${joursAttente>1?"s":""}. Open Chrome on the computer where you installed the extension.`
+                                      :`En attente depuis ${joursAttente} jour${joursAttente>1?"s":""}. Ouvre Chrome sur l'ordinateur où tu as installé l'extension.`)
+                                    :(lang==="en"
+                                      ?"Waiting for your computer — it starts next time Chrome opens."
+                                      :"En attente de ton ordinateur — démarrage à la prochaine ouverture de Chrome.");
+                                return (
+                                  <div
+                                    className="micon ic-pending"
+                                    role="button"
+                                    tabIndex={0}
+                                    title={titre}
+                                    onClick={e=>{e.stopPropagation();setJobStatusItem(item);}}
+                                    onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.stopPropagation();setJobStatusItem(item);}}}
+                                    style={{cursor:"pointer"}}
+                                  >
+                                    {horsFraicheur?"💻":"⏳"} {label}
+                                  </div>
+                                );
+                              })()}
                               {/* Maintenance (Phase B) : plateforme en pause,
                                   ton neutre, rassurant, aucune action requise. */}
                               {hasPausedPending&&<div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>⏸ {t("stockJobPausedBadge")}</div>}
@@ -5437,6 +5546,7 @@ const StockTab = memo(function StockTab({
           isBusiness={isBusiness}
           onUpgrade={(tier)=>openUpgradeModal(tier,'stepper_publication')}
           extensionNeverSeen={extensionNeverSeen}
+          extensionLastSeenAt={extLastSeenBest}
           // Photos déjà retouchées PAR NOUS (2026-08-05) : détection par la
           // source UNIQUE isRetouchedPhotoEntry — la première version de ce
           // calcul (enhanced/bg_removed seuls) ne matchait que le schéma

@@ -5674,6 +5674,7 @@ export default function App({ loginOnly = false }){
             resetLensParcours={resetLensParcours}
             onStepperOpenChange={setListingStepperOpen}
             extensionNeverSeen={extensionNeverSeen}
+            extensionLastSeenAt={extensionLastSeenAt}
           />
         )}
 

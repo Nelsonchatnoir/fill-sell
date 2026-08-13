@@ -463,6 +463,9 @@ const LensTab = memo(function LensTab({
   supabase, saveLensItemForListing, lensInventaireId, onStepperOpenChange,
   resetLensParcours,
   extensionNeverSeen = null,
+  // Battement serveur de l'extension — relayé au stepper pour la ligne
+  // « ordinateur éteint » au-dessus du CTA Publier (2026-08-13).
+  extensionLastSeenAt = null,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
   const [lensListingPhotos,setLensListingPhotos]=useState([]);
@@ -651,6 +654,7 @@ const LensTab = memo(function LensTab({
           createStockItem={(prixAchat)=>saveLensItemForListing(prixAchat,listingSource)}
           alreadyInStock={!!effectiveInvId}
           extensionNeverSeen={extensionNeverSeen}
+          extensionLastSeenAt={extensionLastSeenAt}
         />
       </div>
     );

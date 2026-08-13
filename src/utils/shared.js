@@ -1466,3 +1466,35 @@ export function groupSales(arr){
   }
   return groups;
 }
+
+// ── Fraîcheur de l'extension — « ordinateur éteint » (2026-08-13) ────────────
+// profiles.extension_last_seen_at est un battement SERVEUR, stampé par
+// get-pending-jobs à chaque poll réussi (background toutes les 2 min, popup à
+// l'ouverture). Le seuil « éteinte » doit être assez large pour qu'une
+// extension VIVANTE ne le franchisse JAMAIS — un faux positif chez quelqu'un
+// qui publie normalement est pire qu'un silence de quelques minutes.
+// Pire silence LÉGITIME calculé sur le code réel : le poll tourne sous le
+// verrou de flux (withJobFlowLock, background.js) — pendant qu'un cycle
+// traite ses jobs, les alarmes suivantes ATTENDENT, et le stamp n'arrive
+// qu'au cycle suivant. get-pending-jobs distribue TOUS les pending d'un coup
+// (aucune limite) : un lot mobile de 12 jobs (3 articles × 4 plateformes) à
+// ~3 min/job (eBay le plus lent : fieldSettle ~5 s/champ, relectures 8 s,
+// pauses humaines) + 8-20 s entre jobs ≈ 40-45 min sans battement. Une sync
+// dressing tient le même verrou (~8 min mesurées pour 123 articles).
+// 60 min = ce pire cas (~45 min) + un tiers de marge. En dessous : RIEN.
+// Au-delà de 7 jours : l'état rouge « inactive » (là, ouvrir Chrome ne
+// suffira peut-être plus — reconnexion fillsell.app à proposer).
+export const EXT_ETEINT_MS = 60 * 60 * 1000;
+export const EXT_INACTIF_MS = 7 * 24 * 60 * 60 * 1000;
+
+// États : 'inconnue' (jamais vue — les gardes « jamais installée » s'en
+// chargent ailleurs, rien à afficher ici), 'vivante', 'eteinte' (ambre,
+// informatif : rien n'est cassé, le job partira), 'inactive' (rouge).
+export function fraicheurExtension(lastSeenAt) {
+  const seen = Date.parse(lastSeenAt ?? "");
+  if (!Number.isFinite(seen)) return { etat: "inconnue", jours: null };
+  const age = Date.now() - seen;
+  if (age <= EXT_ETEINT_MS) return { etat: "vivante", jours: 0 };
+  const jours = Math.max(1, Math.floor(age / 86400000));
+  return { etat: age > EXT_INACTIF_MS ? "inactive" : "eteinte", jours };
+}

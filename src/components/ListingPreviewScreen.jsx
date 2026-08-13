@@ -11,7 +11,7 @@ import PlatformLogo from "./platform-logos/PlatformLogo";
 import AnalyseMarche from "./AnalyseMarche";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
-import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS } from "../utils/shared";
+import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
@@ -3070,6 +3070,11 @@ export default function ListingPreviewScreen({
   // null/undefined = profil pas encore chargé → on ne bloque PAS côté client
   // (le RPC porte la même garde, reason 'extension_required').
   extensionNeverSeen = null,
+  // Fraîcheur extension (2026-08-13, bandeau « ordinateur éteint ») : dernier
+  // battement serveur connu de l'hôte. Sert UNIQUEMENT à la ligne informative
+  // au-dessus du CTA Publier — jamais à bloquer : le bouton reste actif,
+  // libellé inchangé, le job part normalement.
+  extensionLastSeenAt = null,
   // Photos déjà retouchées PAR NOUS (2026-08-05) : l'article porte au moins
   // une entrée objet du pipeline (enhanced/bg_removed — frontière de propriété
   // a88bded). Un travail déjà payé ne se repaie pas et ne se refait pas : tant
@@ -3429,6 +3434,33 @@ export default function ListingPreviewScreen({
   const [showExtGate, setShowExtGate]       = useState(false);
   const [extSeenOverride, setExtSeenOverride] = useState(false);
   const extensionBlocked = extensionNeverSeen === true && !extSeenOverride;
+  // ── Fraîcheur au moment de publier (2026-08-13, cas Carla) ────────────────
+  // La prop extensionLastSeenAt vient du dernier fetchAll de l'hôte et peut
+  // retarder — conclure « ordinateur éteint » sur une valeur périmée serait
+  // un faux positif chez quelqu'un dont l'extension tourne. On relit donc la
+  // colonne AU MONTAGE (SELECT ciblé, une fois), et la valeur la plus récente
+  // des deux fait foi. Informatif seulement : rien n'est jamais bloqué ici.
+  const [extSeenRelu, setExtSeenRelu] = useState(null);
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await supabase.from("profiles")
+          .select("extension_last_seen_at").eq("id", userId).maybeSingle();
+        if (alive && data) setExtSeenRelu(data.extension_last_seen_at ?? null);
+      } catch { /* best-effort : la prop reste la source */ }
+    })();
+    return () => { alive = false; };
+  }, [userId]);
+  const extFraicheurPublier = (() => {
+    const a = Date.parse(extensionLastSeenAt ?? "");
+    const b = Date.parse(extSeenRelu ?? "");
+    const best = !Number.isFinite(a) ? (extSeenRelu ?? extensionLastSeenAt)
+      : !Number.isFinite(b) ? extensionLastSeenAt
+      : a >= b ? extensionLastSeenAt : extSeenRelu;
+    return fraicheurExtension(best);
+  })();
   // La ligne inventaire a été créée PAR CETTE publication (et non préexistante) :
   // l'écran de fin le dit positivement — l'article est au stock, avec ses
   // photos (retouchées si option IA). Jamais formulé en avertissement.
@@ -6628,6 +6660,23 @@ export default function ListingPreviewScreen({
             <ul style={{ margin:"4px 0 0", paddingLeft:18, fontWeight:600 }}>
               {motifsCtaGris.map((m, i) => <li key={i}>{m}</li>)}
             </ul>
+          </div>
+        )}
+        {/* « Ordinateur éteint » au moment de publier (2026-08-13) : le SEUL
+            instant qui compte. Une ligne discrète, informative — le bouton
+            reste ACTIF, libellé inchangé, le job part normalement. Jamais les
+            mots « erreur/échec/problème » : rien n'est cassé. Ne s'affiche pas
+            derrière l'écran d'accroche « jamais installée » (extensionBlocked),
+            qui a son propre parcours. */}
+        {step === 3 && !extensionBlocked
+          && (extFraicheurPublier.etat === "eteinte" || extFraicheurPublier.etat === "inactive") && (
+          <div style={{ marginBottom:8, display:"flex", gap:8, alignItems:"center", padding:"8px 12px", borderRadius:10, background:"#FFFBEB", border:"1px solid #FDE68A", fontSize:12, lineHeight:1.45, color:"#78350F" }}>
+            <span style={{ flexShrink:0 }}>💻</span>
+            <span>
+              {lang === "en"
+                ? "Your computer is off — publishing will start next time Chrome opens."
+                : "Ton ordinateur est éteint — la publication démarrera à la prochaine ouverture de Chrome."}
+            </span>
           </div>
         )}
         <PrimaryButton
