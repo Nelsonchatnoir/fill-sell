@@ -1576,6 +1576,24 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // sync. Les messages posés par l'extension sont déjà lisibles ; on ne
       // masque que les pavés techniques (URL, JSON, traces).
       const brut = String(run.erreur ?? '').trim();
+      // ── 403 = encart actionnable (2026-08-13, relevé en base) ──────────────
+      // Les 9 comptes ayant pris un 403 ce jour sont TOUS inscrits d'hier ou
+      // d'aujourd'hui ; 6/9 n'ont jamais réussi une seule sync, les 3 autres
+      // ont réussi juste APRÈS leur 403. Problème de PREMIÈRE CONNEXION, pas
+      // un bot-shield aléatoire. L'ancien message affirmait « ta connexion
+      // Vinted n'est pas en cause » — précisément ce que la sonde ne sait pas,
+      // puisque le 403 tombe AVANT la vérification de session. On affiche donc
+      // le geste qui règle 9 cas sur 10 (se connecter à Vinted), sans rien
+      // affirmer, et ce POUR TOUT texte d'échec contenant « 403 » — reprise
+      // armée comprise. Le texte d'origine reste inchangé en base : affichage
+      // seul. (Les branches [retry403] ci-dessous deviennent inertes pour les
+      // textes 403 — conservées pour le contrat RETRY403_RE et l'effet de
+      // suivi pendant l'attente, qui continue de relire le run.)
+      if (brut.includes('403')) {
+        return { ton: 'orange', texte: fr
+          ? "Vinted n'a pas répondu à FillSell. Dans 9 cas sur 10, c'est que tu n'es pas connecté à Vinted dans ce navigateur.\n1. Ouvre vinted.fr dans un onglet du MÊME Chrome\n2. Connecte-toi\n3. Reviens ici et relance la synchronisation\nSi tu es déjà connecté, réessaie dans quelques minutes."
+          : "Vinted didn't answer FillSell. 9 times out of 10, it means you're not signed in to Vinted in this browser.\n1. Open vinted.fr in a tab of the SAME Chrome\n2. Sign in\n3. Come back here and run the sync again\nIf you're already signed in, try again in a few minutes." };
+      }
       // ── Reprise automatique armée après un 403 (2026-08-12) ────────────────
       // Tant que l'échéance (+ marge) n'est pas passée, ce n'est PAS un échec :
       // on dit la reprise et le délai — c'est le silence qui faisait marteler
@@ -1753,8 +1771,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 
       {avis&&(()=>{
         const c=AVIS_COULEURS[avis.ton]||AVIS_COULEURS.orange;
+        // whiteSpace pre-line : l'encart 403 est le seul texte à retours à la
+        // ligne (étapes numérotées) — sans effet sur les autres avis.
         return (
-          <div style={{background:c.bg,border:`1px solid ${c.bord}`,borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:c.texte}}>
+          <div style={{background:c.bg,border:`1px solid ${c.bord}`,borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:c.texte,whiteSpace:'pre-line'}}>
             {avis.texte}
           </div>
         );
