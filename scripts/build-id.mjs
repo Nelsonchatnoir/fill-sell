@@ -290,7 +290,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (21/21 required=false) : tout échec est un warning, jamais un blocage.
 // Manifest 0.6.3 ; le paquet attend l'ACCEPTATION de la 0.6.2 en examen CWS.
 // EXTENSION_MIN_BUILD reste sur la 0.5.6.
-export const EXTENSION_LAST_COMMIT = '2026-08-12T21:53:39Z';
+// 2026-08-13T13:03:47Z = a426979 (0.6.4) : la taille des captures 0.6.1 est
+// résolue par IDS sur le menu « Taille » ouvert du formulaire de recréation
+// (selectSizeByIds, auto-validation du référentiel — un même id sous deux
+// libellés = illisible, garde-fou mini-éditeur). Rattrapage : le commit a
+// touché chrome-extension/ sans bumper cette constante (le build local
+// échouait sur la garde ci-dessous). EXTENSION_MIN_BUILD reste sur la 0.5.6 —
+// ni la 0.6.2 ni les suivantes ne sont acceptées au Chrome Web Store.
+export const EXTENSION_LAST_COMMIT = '2026-08-13T13:03:47Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
