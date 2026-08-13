@@ -1535,6 +1535,13 @@ async function fillListingForm(job) {
       // 98 cm » par contenance, ni « 36 mois » l'option adulte « 36 ».
       { sizeField: true }
     );
+  } else if (Array.isArray(fields.taille_ids) && fields.taille_ids.length) {
+    // ── Taille par IDS (2026-08-13, recréation sur capture 0.6.1) ────────────
+    // La capture ne connaît la taille que par ses ids (item_attributes code
+    // "size") : résolution sur le menu « Taille » OUVERT du formulaire — cf.
+    // selectSizeByIds, son auto-validation du référentiel et son garde-fou
+    // (échec = champ vide + warning, le mini-éditeur prend le relais).
+    await selectSizeByIds(fields.taille_ids, warnings);
   }
   if (fields.etat) {
     await selectClosedOptionSafe(
@@ -3302,6 +3309,79 @@ async function selectMaterialByIds(ids, warnings) {
   } catch (e) {
     warnings.push(`matière: pose par ids échouée (${String(e?.message ?? e)}) — champ laissé vide (optionnel)`);
     try { await closeAnyOpenDropdown(); } catch { /* rien : optionnel */ }
+    return false;
+  }
+}
+
+// ── Taille posée par IDS (2026-08-13, recréation sur capture 0.6.1) ──────────
+// Les captures antérieures à la 0.6.2 peuvent porter la taille UNIQUEMENT par
+// id (item_attributes code "size" — libelles.taille NULL, natif.size_id NULL,
+// cas réels des captures 166/174), et à la recréation l'annonce d'origine est
+// déjà supprimée : impossible de re-capturer. Le référentiel id→libellé est
+// relevé sur le menu « Taille » OUVERT du formulaire, même mécanisme que
+// selectMaterialByIds — rien en dur, aucun mapping figé dans le code.
+// ⚠️ AUTO-VALIDATION obligatoire : aucun relevé DOM ne documente le suffixe
+// numérique des options (`size-group-<n>`) — si <n> était l'id du GROUPE de
+// tailles et non de la taille (cf. « size-group-32 » = grille enfant entière,
+// childSizes.js:104), toutes les options porteraient le même n avec des
+// libellés différents, et un clic « par id » poserait une taille FAUSSE. On
+// exige donc qu'un id identifie UN libellé : un même id revu sous un libellé
+// différent rend le référentiel ILLISIBLE (les doublons légitimes type
+// variante -label du même nœud portent le même texte, eux).
+// GARDE-FOU : tout échec — champ absent, menu qui ne s'ouvre pas, référentiel
+// illisible/ambigu, id inconnu du menu — se solde par un warning et un champ
+// laissé VIDE : le constat des requis (computeVintedRequiredState) le remonte
+// en needs_user (mini-éditeur), comportement strictement identique à avant ce
+// commit. Jamais de throw, et JAMAIS de suppression sur ce chemin (la
+// recréation ne supprime rien : l'annonce d'origine n'existe plus).
+async function selectSizeByIds(ids, warnings) {
+  const TRIGGER = '#size, [data-testid="category-size-single-grid-input"]';
+  try {
+    if (!document.querySelector(TRIGGER)) {
+      warnings.push("taille: champ absent du formulaire de cette catégorie — ids de capture non posés");
+      return false;
+    }
+    await openDropdown(TRIGGER);
+    await sleep(400);
+    const parId = new Map();
+    let ambigu = false;
+    for (const el of document.querySelectorAll('[data-testid^="size-group-"]')) {
+      // Suffixes tolérés (size-group-5, size-group-5--content…) : l'id est le
+      // premier segment numérique. Premier nœud gardé par id.
+      const m = String(el.getAttribute("data-testid") ?? "").match(/^size-group-(\d+)(?:-|$)/);
+      const libelle = (el.textContent ?? "").trim();
+      if (!m || !libelle) continue;
+      const id = Number(m[1]);
+      const deja = parId.get(id);
+      if (!deja) parId.set(id, { el, libelle });
+      else if (deja.libelle !== libelle) ambigu = true; // même id, libellés ≠ : le suffixe n'identifie PAS la taille
+    }
+    if (!parId.size || ambigu) {
+      warnings.push(
+        ambigu
+          ? "taille: référentiel du menu AMBIGU (un même id numérique porte plusieurs libellés — suffixe de groupe, pas de taille) — champ laissé vide, le mini-éditeur prend le relais"
+          : "taille: référentiel id→libellé illisible sur le menu (aucun data-testid size-group-<id> numérique) — champ laissé vide, le mini-éditeur prend le relais"
+      );
+      await closeAnyOpenDropdown();
+      return false;
+    }
+    // Taille = choix UNIQUE (grille single) : premier id résoluble, puis stop.
+    for (const id of [...new Set(ids.map(Number).filter(Number.isFinite))]) {
+      const cible = parId.get(id);
+      if (!cible) continue;
+      await humanPause();
+      cible.el.click();
+      await humanPause();
+      await confirmDropdownIfNeeded();
+      console.log(`[vinted] taille posée par id : ${id} → « ${cible.libelle} »`);
+      return true;
+    }
+    warnings.push(`taille: aucun des ids ${JSON.stringify(ids)} n'existe sur le menu de cette catégorie — champ laissé vide, le mini-éditeur prend le relais`);
+    await closeAnyOpenDropdown();
+    return false;
+  } catch (e) {
+    warnings.push(`taille: pose par ids échouée (${String(e?.message ?? e)}) — champ laissé vide, le mini-éditeur prend le relais`);
+    try { await closeAnyOpenDropdown(); } catch { /* le mini-éditeur prend le relais */ }
     return false;
   }
 }

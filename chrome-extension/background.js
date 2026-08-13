@@ -8221,6 +8221,22 @@ function construireSnapshotRepublish(pf, cap) {
 // l'utilisateur n'atteignait JAMAIS le formulaire de recréation (trou vécu :
 // impossible de répondre « M » au « Le champ Taille doit être renseigné »).
 function construireJobRecreation(job, pf, cap, prix) {
+  // ── Taille par IDS (2026-08-13, captures 0.6.1 périmées) ───────────────────
+  // Les captures 0.6.1 (cas réels : 166 « Veste grain de malice », 174 « Pull
+  // de grossesse ») n'ont la taille QUE dans item_attributes code "size" —
+  // libelles.taille NULL, natif.size_id NULL — et l'annonce d'origine étant
+  // déjà supprimée, aucune re-capture n'est possible. Sans libellé, on passe
+  // donc les ids au formulaire, qui les résout sur son menu « Taille » ouvert
+  // (selectSizeByIds, vinted.js) — même mécanisme que la matière, rien en dur.
+  // Un libellé présent prime toujours (jamais les deux champs à la fois).
+  // ⚠️ Number(null) === 0 : size_id est testé != null AVANT toute conversion.
+  const natifCap = cap?.payload?.natif ?? {};
+  const attrTaille = (Array.isArray(natifCap.item_attributes) ? natifCap.item_attributes : [])
+    .find((a) => String(a?.code ?? "").trim().toLowerCase() === "size");
+  const tailleIds = [...new Set([
+    ...(natifCap.size_id != null && Number.isFinite(Number(natifCap.size_id)) ? [Number(natifCap.size_id)] : []),
+    ...(Array.isArray(attrTaille?.ids) ? attrTaille.ids.map(Number).filter(Number.isFinite) : []),
+  ])];
   return sanitizeJob({
     id: job.id,
     platform: "vinted",
@@ -8235,6 +8251,7 @@ function construireJobRecreation(job, pf, cap, prix) {
       categoryPath: cap.libelles?.categoryPath ?? null,
       etat: cap.libelles?.etat ?? null,
       taille: cap.libelles?.taille ?? null,
+      ...(!cap.libelles?.taille && tailleIds.length ? { taille_ids: tailleIds } : {}),
       marque: cap.libelles?.marque ?? null,
       colors: cap.libelles?.couleurs ?? null,
       packageSize: cap.libelles?.colis ?? null,
