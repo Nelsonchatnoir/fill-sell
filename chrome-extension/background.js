@@ -1883,6 +1883,21 @@ async function processJob(rawJob, accessToken) {
       if (!listingUrl && job.platform === "vinted") listingUrl = await vintedUploadSucceeded(tabId).catch(() => null);
       if (!listingUrl && job.platform === "ebay") listingUrl = await ebayUploadSucceeded(tabId, accessToken).catch(() => null);
 
+      // Beebs (2026-08-13, item 9) : la sonde a pu capter l'id produit dans la
+      // réponse de la Server Action. On n'écrira QUE platform_listing_id — PAS
+      // listing_url : chez Beebs, une URL en base signifie « annonce EN
+      // LIGNE » (veilleur de vente, cron 48 h « pas d'URL = échec + Pépite »,
+      // modale de retrait). Or à cet instant l'annonce part en modération —
+      // poser l'URL maintenant sortirait le job du filet 48 h et ferait
+      // prendre la 404 de modération pour une disparition. C'est la re-capture
+      // (recoverMissingListingUrls) qui posera l'URL à la première lecture 200
+      // de /fr/p/<id> (vérifié le 13/08 : /fr/p/<id> sans slug redirige vers
+      // l'URL canonique ; id inexistant → page « Oups, page perdue ! »).
+      let beebsProductId = null;
+      if (job.platform === "beebs") {
+        beebsProductId = await beebsCapturedProductId(tabId, accessToken, job).catch(() => null);
+      }
+
       // Beebs : dépôt CONFIRMÉ mais annonce en MODÉRATION (« il sera mis en
       // ligne dès qu'il aura été vérifié par notre équipe ») — elle n'est PAS
       // dans « Mes annonces » à cet instant. L'aller-retour ne pouvait donc que
@@ -1899,6 +1914,19 @@ async function processJob(rawJob, accessToken) {
         );
       }
       console.log(`[background] Job ${job.id} publié : ${listingUrl ?? "(URL non récupérée)"}`);
+      // platform_listing_id Beebs : PATCH direct (RLS user, même canal que
+      // recoverMissingListingUrls) — update-job-status ne dérive l'id que d'un
+      // listing_url, qu'on ne pose volontairement pas ici (cf. bloc au-dessus).
+      // Best-effort AVANT l'écriture du statut : un échec de ce PATCH ne
+      // change rien au published, et l'id se re-capte à la re-tentative de la
+      // re-capture (fetch /fr/p/<id> impossible sans id → le balayage de
+      // pages reste le filet).
+      if (beebsProductId) {
+        await restRequest(`cross_post_jobs?id=eq.${job.id}`, accessToken, {
+          method: "PATCH",
+          body: JSON.stringify({ platform_listing_id: beebsProductId }),
+        }).catch((e) => console.warn(`[background] PATCH platform_listing_id beebs :`, String(e?.message ?? e)));
+      }
       await updateJobStatus(accessToken, job.id, "published", {
         ...completionExtras(job, result),
         listing_url: listingUrl ?? undefined,
@@ -3785,7 +3813,21 @@ const PROBE_ENDPOINTS = {
   // cherche un numéro d'annonce dans la réponse — c'est ce que fait
   // ebayUploadSucceeded, qui exige aussi un HTTP 2xx. Le jour où l'endpoint
   // exact apparaît dans les logs, on resserrera ce motif.
+  // (Dépôt réel du 2026-08-13 : la soumission est
+  // POST /lstng/api/listing_draft/{draftId}/publish, réponse 200 porteuse de
+  // "itemId":"<12 chiffres>" au succès — et 200 AUSSI au refus de validation,
+  // sans itemId. Le motif large reste : il couvre ce endpoint et ses replis.)
   ebay: String.raw`ebay\.(?:fr|com)`,
+  // Beebs (2026-08-13, dépôt réel observé — chantier item 9) : la création est
+  // une Server Action Next.js, POST sur /fr/listing (le même chemin que la
+  // page du formulaire). La réponse est un flux RSC, pas un JSON propre ;
+  // l'id produit y revient au client (prouvé : l'événement analytics
+  // listing_done tiré juste après la réponse porte product_id), sous une forme
+  // exacte encore non observée dans le flux — annonceIdOf tente les motifs
+  // connus, et à défaut un échantillon borné part en last_diagnostic (mode
+  // APPRENTISSAGE : on relève la vraie forme au premier dépôt de prod, on ne
+  // grave aucune supposition — règle du chantier Beebs).
+  beebs: String.raw`beebs\.app\/fr\/listing(?:[?#]|$)|^\/fr\/listing(?:[?#]|$)`,
 };
 
 // ⚠️ ANGLES MORTS ASSUMÉS de la sonde (2026-07-13, relevés lors du job
@@ -3805,8 +3847,8 @@ async function installNetworkProbe(tabId, platform) {
     await chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
-      args: [endpointSource],
-      func: (endpointSrc) => {
+      args: [endpointSource, platform],
+      func: (endpointSrc, platform) => {
         if (window.__fsProbeInstalled) return;
         window.__fsProbeInstalled = true;
         window.__fsCaptures = [];
@@ -3828,9 +3870,16 @@ async function installNetworkProbe(tabId, platform) {
         // dans la capture (annonceId), à côté de l'extrait tronqué des logs.
         const annonceIdOf = (txt) => {
           const s = String(txt ?? "");
+          // Motifs Beebs CONDITIONNÉS à la plateforme (2026-08-13) : product_id
+          // et /p/<id>- n'existent que chez Beebs, et les ouvrir sur eBay
+          // serait dangereux — /p/<epid> est une page PRODUIT eBay, un epid à
+          // 9+ chiffres passerait le test de ebayUploadSucceeded et
+          // fabriquerait un /itm/ inventé.
           const m =
             s.match(/"(?:listingId|itemId|item_id|listing_id)"\s*:\s*"?(\d{9,})/i) ??
-            s.match(/\/itm\/(\d{9,})/);
+            (platform === "beebs" ? s.match(/"product_id"\s*:\s*"?(\d{6,})/i) : null) ??
+            s.match(/\/itm\/(\d{9,})/) ??
+            (platform === "beebs" ? s.match(/\/p\/(\d{6,})(?:-|["'\\])/) : null);
           return m ? m[1] : null;
         };
         // ⚠️⚠️ SUCCÈS VINTED — CALCULÉ SUR LE CORPS COMPLET, comme annonceId, et
@@ -4051,6 +4100,44 @@ async function ebayUploadSucceeded(tabId, accessToken) {
       if (await ebayIdAlreadyKnown(accessToken, m[1])) continue;
       return `https://www.ebay.fr/itm/${m[1]}`;
     }
+  }
+  return null;
+}
+
+// ── Id produit Beebs capté au DÉPÔT (2026-08-13, chantier item 9) ────────────
+// La sonde réseau observe la réponse de la Server Action POST /fr/listing ;
+// annonceIdOf y cherche product_id (et les replis /p/<id>). Garde
+// anti-croisement IDENTIQUE à eBay (ebayIdAlreadyKnown est générique : elle
+// teste listing_url like *id*) : un id déjà porté par une annonce en base est
+// l'écho d'une annonce existante, jamais la création.
+// Si AUCUN id n'est extrait : un échantillon BORNÉ des captures part en
+// last_diagnostic (sur la copie mémoire du job — le caller la persiste avec le
+// verdict published) : on APPREND la forme réelle du flux RSC au premier dépôt
+// de prod au lieu de graver une supposition. Jamais bloquant : le dépôt reste
+// un succès, l'id est un enrichissement.
+async function beebsCapturedProductId(tabId, accessToken, job) {
+  const { captures } = await readProbeCaptures(tabId);
+  for (let i = captures.length - 1; i >= 0; i--) {
+    const c = captures[i];
+    const status = Number(c?.status);
+    if (!(status >= 200 && status < 300)) continue;
+    const id = String(c?.annonceId ?? "");
+    if (!/^\d{6,}$/.test(id)) continue;
+    if (await ebayIdAlreadyKnown(accessToken, id)) continue;
+    console.log(`[background] Beebs : id produit capté par la sonde — ${id}`);
+    return id;
+  }
+  if (captures.length) {
+    const echantillon = captures.slice(-4).map((c) =>
+      `${String(c?.url ?? "?").slice(0, 120)} → HTTP ${c?.status ?? "?"} · ${String(c?.reponse ?? "").slice(0, 200)}`
+    ).join(" ; ");
+    job.platform_fields = {
+      ...(job.platform_fields ?? {}),
+      last_diagnostic: `[sonde beebs : aucun id produit extrait de ${captures.length} capture(s) — ${echantillon}]`.slice(0, 2000),
+    };
+    console.log(`[background] Beebs : sonde sans id produit (${captures.length} capture(s)) — échantillon → last_diagnostic`);
+  } else {
+    console.log("[background] Beebs : sonde réseau sans aucune capture — rien à apprendre sur ce dépôt");
   }
   return null;
 }
@@ -7724,6 +7811,48 @@ async function lbcSondeModeration(session, job, etatPage) {
   }
 }
 
+// ── Lecture directe de la page produit Beebs (2026-08-13, item 9) ────────────
+// Service worker, page PUBLIQUE (aucun cookie requis). Trois issues, jamais
+// deux à la fois :
+//   · page produit rendue → annonce EN LIGNE : listing_url = URL CANONIQUE
+//     (r.url — /fr/p/<id> redirige vers /fr/p/<id>-<slug>, observé le 13/08)
+//     et le job sort du périmètre du cron 48 h ;
+//   · « Oups, page perdue ! » (ou 404) → pas (encore) en ligne : modération en
+//     cours ou refus, indistinguables de l'extérieur — RIEN n'est écrit, on
+//     relit au prochain cycle, le cron 48 h tranche en échec + Pépite ;
+//   · bot-shield / réseau KO / redirection hors /p/<id> → AUCUNE conclusion.
+// @returns {Promise<boolean>} true si l'URL a été posée (le job est réglé).
+async function beebsProductPageOnline(session, job) {
+  const id = String(job.platform_listing_id);
+  const r = await fetch(`https://www.beebs.app/fr/p/${id}`, { redirect: "follow" });
+  const html = await r.text();
+  if (estPageBotShield(html)) {
+    console.log(`[background] recover(beebs) : /fr/p/${id} — page anti-bot, aucune conclusion`);
+    return false;
+  }
+  const perdue = /Oups[^<]{0,60}page perdue/i.test(html);
+  if (!r.ok || perdue) {
+    console.log(
+      `[background] recover(beebs) : /fr/p/${id} pas (encore) en ligne ` +
+      `(HTTP ${r.status}${perdue ? ", « page perdue »" : ""}) — modération en cours ? Le cron 48 h reste le juge.`
+    );
+    return false;
+  }
+  // L'URL finale doit rester la page produit du BON id (garde anti-croisement :
+  // une redirection vers l'accueil ou une autre annonce ne prouve rien).
+  if (!new RegExp(`\\/p\\/${id}(?:-|$)`).test(r.url)) {
+    console.log(`[background] recover(beebs) : /fr/p/${id} → redirection inattendue (${r.url.slice(0, 120)}) — aucune conclusion`);
+    return false;
+  }
+  const url = r.url.replace(/[#?].*$/, "");
+  console.log(`[background] recover(beebs) : annonce EN LIGNE — ${url}`);
+  await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+    method: "PATCH",
+    body: JSON.stringify({ listing_url: url }),
+  });
+  return true;
+}
+
 async function recoverMissingListingUrls(session) {
   let jobs;
   try {
@@ -7733,7 +7862,10 @@ async function recoverMissingListingUrls(session) {
         // pour la sonde de modération Leboncoin (compteur de passages
         // bredouilles + repère des 2 h). Les autres plateformes ne les lisent
         // pas : leur comportement est strictement inchangé.
-        "?select=id,platform,title,created_at,published_at,platform_fields,reservation_id" +
+        // platform_listing_id ajouté le 2026-08-13 (item 9 Beebs) : quand l'id
+        // produit a été capté au dépôt, la re-capture Beebs devient une simple
+        // lecture HTTP de /fr/p/<id> — plus aucune navigation d'onglet.
+        "?select=id,platform,title,created_at,published_at,platform_fields,reservation_id,platform_listing_id" +
         "&status=eq.published&action=eq.publish&listing_url=is.null" +
         // eBay ajouté le 2026-07-20. Le filtre datait de d4a0c32 (2026-07-12),
         // quand SEULS leboncoin et beebs avaient une page de récupération. eBay
@@ -7775,6 +7907,24 @@ async function recoverMissingListingUrls(session) {
       `[background] listing_url manquant : ${platformJobs.length} job(s) ${platform} — passage par "Mes annonces"`
     );
     let remaining = [...platformJobs];
+    // ── Beebs AVEC id produit (2026-08-13, item 9) : lecture DIRECTE ─────────
+    // L'id capté au dépôt rend le balayage de pages inutile pour ces jobs —
+    // et il ne pouvait de toute façon RIEN donner pendant la modération :
+    // vérifié le 13/08, l'onglet Beebs « En cours de vérification » n'expose
+    // AUCUN lien /p/ (findListingLinkInPage ne peut pas voir une annonce en
+    // modération). Un fetch de /fr/p/<id> tranche : page produit → EN LIGNE,
+    // URL canonique posée ; « Oups, page perdue ! » → encore en modération
+    // (ou refusée — indistinguable de l'extérieur), rien d'écrit, le cron
+    // 48 h reste le juge. Les jobs SANS id gardent le balayage (filet).
+    if (platform === "beebs") {
+      const sansId = [];
+      for (const job of remaining) {
+        if (!job.platform_listing_id) { sansId.push(job); continue; }
+        await beebsProductPageOnline(session, job).catch((e) =>
+          console.warn(`[background] recover(beebs) lecture /fr/p/${job.platform_listing_id} :`, String(e?.message ?? e)));
+      }
+      remaining = sansId;
+    }
     for (const pageUrl of LISTING_URL_RECOVERY_PAGES[platform] ?? []) {
       if (!remaining.length) break;
       let tabId;
