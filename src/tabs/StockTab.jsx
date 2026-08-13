@@ -460,11 +460,20 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   // rebloque : boucle sans issue (6 jobs de jocaille le 13/08 au soir, valeurs
   // devinées « Maison », « Décoration », voire le titre de l'article).
   // Synchrone (les warnings sont déjà dans le job), aucune requête.
+  // ⚠️ Préfixe des warnings ≠ field_key (relevé prod 2026-08-13 au soir) : le
+  // handler LBC journalise sous son nom INTERNE de critère — « produit: … »
+  // pour le champ dont le needsUserField dit field_key=decoration_type /
+  // field_label=Produit. On accepte donc field_key OU field_label (insensible
+  // à la casse) comme préfixe, sinon la liste relevée n'est jamais retrouvée.
+  const nuPrefixes = useMemo(() => {
+    const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return [f?.field_key, f?.field_label].filter(Boolean).map(esc).join("|");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
   const warningsAllowed = useMemo(() => {
-    if (!f?.field_key) return null;
+    if (!nuPrefixes) return null;
     try {
-      const cle = String(f.field_key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const rx = new RegExp(`^${cle}\\s*: champ sauté — option .* sans correspondance\\. Options: (\\[[\\s\\S]*\\])`);
+      const rx = new RegExp(`^(?:${nuPrefixes})\\s*: champ sauté — option .* sans correspondance\\. Options: (\\[[\\s\\S]*\\])`, "i");
       const ws = job.platform_fields?.warnings ?? [];
       for (let i = ws.length - 1; i >= 0; i--) {
         const msg = typeof ws[i] === "string" ? ws[i] : String(ws[i]?.message ?? "");
@@ -478,11 +487,39 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
 
+  // ── Pré-rempli LBC relevé par le handler (2026-08-13, coupe décorative
+  // jocaille, extension 0.6.2) : quand Leboncoin a lui-même pré-rempli le
+  // champ (« produit: pré-rempli LBC "Objet décoratif" remplacé par … »),
+  // cette valeur est une option VALIDE, déduite par LBC pour CET article — la
+  // meilleure suggestion disponible quand aucune liste n'a été relevée. La
+  // proposer fait converger la 0.6.2 sans toucher au DOM : si la valeur du
+  // job matche le pré-rempli, le handler le CONSERVE (prefilledMatchesTarget,
+  // leboncoin.js) au lieu de le remplacer par une sélection au commit fragile.
+  const prefillAllowed = useMemo(() => {
+    if (!nuPrefixes) return null;
+    try {
+      const rx = new RegExp(`^(?:${nuPrefixes})\\s*: pré-rempli LBC "([^"]+)" (?:remplacé|conservé)`, "i");
+      const ws = job.platform_fields?.warnings ?? [];
+      for (let i = ws.length - 1; i >= 0; i--) {
+        const msg = typeof ws[i] === "string" ? ws[i] : String(ws[i]?.message ?? "");
+        const m = msg.match(rx);
+        if (m) return [m[1]];
+      }
+    } catch { /* best-effort */ }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+
   if (!f) return null;
 
-  const allowed = Array.isArray(f.allowed_values) && f.allowed_values.length
+  const listeRelevee = Array.isArray(f.allowed_values) && f.allowed_values.length
     ? f.allowed_values
     : (ebayAllowed ?? warningsAllowed ?? catalogueAllowed);
+  // Le pré-rempli LBC passe en TÊTE des suggestions (c'est la déduction de la
+  // plateforme pour cet article précis), la liste relevée suit, dédupliquée.
+  const allowed = prefillAllowed
+    ? [...prefillAllowed, ...(listeRelevee ?? []).filter(v => !prefillAllowed.includes(v))]
+    : listeRelevee;
   const platformLabel = PLATFORM_LABELS[job.platform] || job.platform;
 
   // ── RÈGLE DU 19/07 RENDUE INCONTOURNABLE (2026-07-22) ──────────────────────

@@ -685,6 +685,23 @@ const OBJECT_ICON_RULES = [
   [/vase\b/i, '🏺'],
   [/assiette|\bbol\b|tasse|\bmug\b|verres?\b(?!\s*tremp)|carafe|vaisselle/i, '🍽️'],  // verre trempé = protection d'écran (audit 2026-07-19)
   [/casserole|poêle(?!s?\s*à\s*(?:bois|granulés?|pétrole))|cocotte|marmite|ustensile/i, '🍳'],  // poêle à bois/granulés = chauffage (audit 2026-07-19)
+  // SCULPTURES (2026-08-13, jobs jocaille — « Ancien buste de cardinal en
+  // plâtre polychrome signé E. Mélange », 2 échecs lbcCategoryPath absent) :
+  // aucun mot de la statuaire n'était couvert. Même famille que les ŒUVRES
+  // (règle 🖼️ plus haut) : l'objet d'art se reconnaît AVANT l'outil 🖌️
+  // (plus bas). Placée APRÈS 🪴/🏺/🍽️/🍳 : les matières nues (bronze, terre
+  // cuite) ne volent pas leurs objets aux règles voisines — « vase en terre
+  // cuite » reste un vase, « cocotte en terre cuite » une cocotte.
+  // « plâtre » nu volontairement ABSENT (sac de plâtre = matériau bricolage,
+  // et « Sac de plâtre » matcherait 👜 avant nous de toute façon) : la phrase
+  // « plâtre polychrome » suffit, les bustes/statues portent leur propre mot.
+  // « buste de couture » exclu (mannequin de couturière ≠ sculpture) et
+  // usage ANATOMIQUE gardé (diff base 2026-08-13 : « coupe ajustée au
+  // buste », « tour de buste », « buste smocké » — prose vêtement courante,
+  // une combinaison partait en 🖼️) : pas de « au/du/de » devant, pas de
+  // smocké/ajusté/cintré/élastiqué derrière.
+  // « bronze » borné Unicode (ne matche ni « bronzer » ni « bronzage »).
+  [/(?<!\b(?:au|du|de)\s)bustes?\b(?!\s*de\s*couture)(?!\s+(?:smock|ajust|cintr|élastiqu))|statues?\b|statuettes?\b|sculptures?\b|pl[âa]tres?\s+polychromes?\b|(?<![\p{L}\p{N}])bronzes?(?![\p{L}\p{N}])|terres?\s+cuites?\b|santons?\b/iu, '🖼️'],
   // Maison — textiles/déco/papeterie/animaux/fêtes (2026-07-09, backlog T3) :
   // toutes ces branches existent réellement (Maison > Textiles/Décoration/
   // Fournitures de bureau/Animaux/Célébrations et fêtes — arbre archivé).
@@ -1040,7 +1057,7 @@ export const ICON_LEGEND = {
   "💡": "lampe, luminaire, ampoule, guirlande lumineuse",
   "🪞": "miroir",
   "🕯️": "bougie, photophore",
-  "🖼️": "cadre, tableau, poster, affiche, gravure, huile sur toile",
+  "🖼️": "cadre, tableau, poster, affiche, gravure, huile sur toile, buste, statue, sculpture, santon",
   "🪴": "plante, cache-pot, jardinière",
   "🏺": "vase",
   "🍽️": "vaisselle : assiette, bol, tasse, verre, mug",
