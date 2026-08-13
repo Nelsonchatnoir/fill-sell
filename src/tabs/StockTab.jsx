@@ -797,8 +797,16 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                     {online && armed && <span style={{ color:"#8C2F28", fontWeight:600 }}>{fr ? `Retirer de ${label} ?` : `Remove from ${label}?`}</span>}
                     {state === "removing" && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {fr ? "Retrait en cours…" : "Removing…"}</span>}
                     {state === "removed" && <span>{fr ? "Retirée" : "Removed"}</span>}
-                    {noUrl && urlRecovering && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {fr ? "Récupération du lien en cours…" : "Recovering listing link…"}</span>}
-                    {noUrl && !urlRecovering && <span>{fr ? `Lien d'annonce introuvable — retire-la sur ${label}` : `Listing link missing — remove it on ${label}`}</span>}
+                    {/* Beebs (2026-08-13) : sans lien, l'annonce n'est PAS en
+                        ligne — elle est en vérification côté Beebs. Il n'y a
+                        rien à retirer, et rien à récupérer tant que Beebs ne
+                        l'a pas mise en ligne. */}
+                    {noUrl && urlRecovering && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {p === "beebs"
+                      ? (fr ? "En vérification Beebs — pas encore en ligne" : "Beebs is reviewing it — not online yet")
+                      : (fr ? "Récupération du lien en cours…" : "Recovering listing link…")}</span>}
+                    {noUrl && !urlRecovering && <span>{p === "beebs"
+                      ? (fr ? "Jamais mise en ligne par Beebs — vérifie ton dressing Beebs" : "Never went live on Beebs — check your Beebs wardrobe")
+                      : (fr ? `Lien d'annonce introuvable — retire-la sur ${label}` : `Listing link missing — remove it on ${label}`)}</span>}
                     {!isPublished && <span>{fr ? "Pas publiée ici" : "Not listed here"}</span>}
                   </div>
                 </div>
@@ -4744,36 +4752,75 @@ const StockTab = memo(function StockTab({
                                   vérifier, ce n'est pas un échec. La modale
                                   (failJobModal) bascule d'elle-même en mode
                                   réserve sur un job published à warnings. */}
-                              {warnedJobs.map(j=>(
-                                <div
-                                  key={"warn-"+j.platform}
-                                  className="micon"
-                                  title={jobWarningsTexte(j)||undefined}
-                                  onClick={e=>{e.stopPropagation();setFailJobModal(j);}}
-                                  style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}
-                                >
-                                  ⚠️ {lang==="en"?"Published — check it":"Publiée — à vérifier"} {PLATFORM_LABELS[j.platform]||j.platform}
-                                </div>
-                              ))}
+                              {warnedJobs.map(j=>{
+                                // Beebs sans lien (2026-08-13, vérifié en réel) :
+                                // « Publiée » serait un mensonge — pas de lien =
+                                // pas en ligne, l'annonce est en VÉRIFICATION
+                                // côté Beebs (l'onglet « En cours de
+                                // vérification » de Beebs n'expose aucun lien,
+                                // la re-capture ne peut rien voir tant que la
+                                // modération n'a pas relâché l'annonce). Le
+                                // badge reste ambre et cliquable : les réserves
+                                // du dépôt restent à lire.
+                                const beebsEnVerif=j.platform==="beebs"&&!j.listing_url;
+                                const label=beebsEnVerif
+                                  ?(lang==="en"?"Submitted — Beebs is reviewing it":"Déposée — vérification Beebs en cours")
+                                  :(lang==="en"?`Published — check it ${PLATFORM_LABELS[j.platform]||j.platform}`:`Publiée — à vérifier ${PLATFORM_LABELS[j.platform]||j.platform}`);
+                                const titre=beebsEnVerif
+                                  ?((lang==="en"
+                                      ?"The listing was submitted to Beebs, which reviews it before putting it online. The link will appear once it goes live; if it never does, the job will fail and the Nugget will be refunded.\n\n"
+                                      :"L'annonce a bien été déposée sur Beebs, qui la vérifie avant sa mise en ligne. Le lien apparaîtra dès qu'elle sera en ligne ; si elle ne l'est jamais, le job passera en échec et la Pépite sera rendue.\n\n")
+                                    +(jobWarningsTexte(j)||""))
+                                  :(jobWarningsTexte(j)||undefined);
+                                return (
+                                  <div
+                                    key={"warn-"+j.platform}
+                                    className="micon"
+                                    title={titre}
+                                    onClick={e=>{e.stopPropagation();setFailJobModal(j);}}
+                                    style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}
+                                  >
+                                    ⚠️ {label}
+                                  </div>
+                                );
+                              })}
                               {/* Lien en cours de récupération : INFORMATIF,
-                                  jamais un avertissement. L'annonce est en
-                                  ligne, il ne manque que son lien, et
-                                  l'extension le cherche encore. Pas de clic :
-                                  il n'y a rien à faire, et ouvrir une modale
-                                  pour dire « patiente » serait une fausse
-                                  action. */}
-                              {lienEnCoursJobs.map(j=>(
-                                <div
-                                  key={"lien-"+j.platform}
-                                  className="micon"
-                                  title={lang==="en"
-                                    ?"The listing is online. We're still fetching its link from the marketplace."
-                                    :"L'annonce est en ligne. On récupère encore son lien sur la plateforme."}
-                                  style={{background:"#F1F5F4",border:"1px solid #DCE4E2",color:"#5A6B66"}}
-                                >
-                                  {lang==="en"?"Published — fetching the link":"Publiée — récupération du lien en cours"} {PLATFORM_LABELS[j.platform]||j.platform}
-                                </div>
-                              ))}
+                                  jamais un avertissement. LBC/eBay : l'annonce
+                                  est en ligne, il ne manque que son lien, et
+                                  l'extension le cherche encore. Beebs : le
+                                  dépôt est confirmé mais l'annonce est en
+                                  VÉRIFICATION (pas en ligne) — texte dédié
+                                  dans le map. Pas de clic : il n'y a rien à
+                                  faire, et ouvrir une modale pour dire
+                                  « patiente » serait une fausse action. */}
+                              {lienEnCoursJobs.map(j=>{
+                                // Beebs (2026-08-13, vérifié en réel) : pas de
+                                // lien = pas en ligne. Le dépôt est confirmé
+                                // mais l'annonce est en VÉRIFICATION côté
+                                // Beebs — dire « en ligne » ici était faux.
+                                // Les autres plateformes gardent leur texte :
+                                // chez elles l'annonce est bien en ligne, seul
+                                // le lien manque encore.
+                                const beebs=j.platform==="beebs";
+                                return (
+                                  <div
+                                    key={"lien-"+j.platform}
+                                    className="micon"
+                                    title={beebs
+                                      ?(lang==="en"
+                                        ?"The listing was submitted to Beebs, which reviews it before putting it online. The link will appear once it goes live; if it never does, the job will fail and the Nugget will be refunded."
+                                        :"L'annonce a bien été déposée sur Beebs, qui la vérifie avant sa mise en ligne. Le lien apparaîtra dès qu'elle sera en ligne ; si elle ne l'est jamais, le job passera en échec et la Pépite sera rendue.")
+                                      :(lang==="en"
+                                        ?"The listing is online. We're still fetching its link from the marketplace."
+                                        :"L'annonce est en ligne. On récupère encore son lien sur la plateforme.")}
+                                    style={{background:"#F1F5F4",border:"1px solid #DCE4E2",color:"#5A6B66"}}
+                                  >
+                                    {beebs
+                                      ?(lang==="en"?"Submitted — Beebs is reviewing it":"Déposée — vérification Beebs en cours")
+                                      :(lang==="en"?`Published — fetching the link ${PLATFORM_LABELS[j.platform]||j.platform}`:`Publiée — récupération du lien en cours ${PLATFORM_LABELS[j.platform]||j.platform}`)}
+                                  </div>
+                                );
+                              })}
                               {/* Sonde de modération Leboncoin : Pépites déjà
                                   rendues. Le texte ne dit JAMAIS « refusée » —
                                   la sonde conclut sur une ABSENCE, pas sur un

@@ -51,6 +51,12 @@ const HUMANIZE_PLATFORM_LABELS = PLATFORM_LABELS;
 // absent : la réservation y est bien soldée, mais un job vendu n'est l'échec de
 // rien et ne passe pas par ce chemin de message.
 const JOB_STATUS_TERMINAL = new Set(['failed', 'cancelled']);
+// « le job repartira… » / « il repartira au prochain passage » — la promesse
+// de reprise, sous toutes ses formes relevées dans chrome-extension/ (grep du
+// 13/08 : background.js, vinted.js, leboncoin.js, beebs.js, ebay.js). Sans /g
+// ici : .test() sur une regex /g/ avance lastIndex et raterait un appel sur
+// deux — le /g/ n'est ajouté qu'au moment du replace.
+const PROMESSE_REPRISE_RE = /(?:\s*[—–-])?\s*(?:le job|il)\s+repartira[^.]*\.?/i;
 const TECH_ERR_MARKERS_RE = new RegExp([
   '\\.js\\b',                    // nom de fichier du code (vintedCategories.js…)
   'https?://',                   // URL d'API sondée
@@ -122,6 +128,34 @@ export function humanizeJobError(job, lang = 'fr') {
     return en
       ? `The listing category could not be set automatically on ${name}. Retry publishing from the item; the technical detail has been recorded.`
       : `La catégorie de l'annonce n'a pas pu être posée automatiquement sur ${name}. Relancer la publication depuis la fiche de l'article ; le détail technique est enregistré.`;
+  }
+
+  // ── Promesse de reprise automatique (RÉÉCRITE ICI depuis le 2026-08-13) ────
+  // Beaucoup de messages d'échec rédigés côté extension se terminent par « le
+  // job repartira (automatiquement) au prochain passage ». C'est FAUX dès que
+  // le job est terminal : le poller ne reprend que 'pending' (et 'needs_user'
+  // via la boucle de complétion) — un 'failed' n'est JAMAIS repris (constat du
+  // 13/08 : jobs remis en 'pending' à la main). Le texte source vit dans
+  // chrome-extension/, hors de portée d'un OTA : correction à l'affichage,
+  // comme le CHALLENGE ci-dessus, selon le statut RÉEL. Sur un job encore
+  // vivant (pending/processing/needs_user), la phrase est vraie : on la garde.
+  // La demi-promesse « Relancer la publication » des messages needs_user n'est
+  // pas concernée : elle demande un geste, elle n'en promet pas.
+  if (PROMESSE_REPRISE_RE.test(raw) && JOB_STATUS_TERMINAL.has(job?.status)) {
+    // Pépite : seuls les jobs de publication portent une réservation — même
+    // règle que la branche CHALLENGE ci-dessus (settle sur statut terminal).
+    const rendue = (job?.action ?? 'publish') === 'publish';
+    const verite = en
+      ? ` The job has stopped — it will not restart on its own.${rendue ? ' The Nugget held for it has been refunded.' : ''} Relaunch it yourself from the item.`
+      : ` Le job est arrêté — il ne repartira pas tout seul.${rendue ? ' La Pépite engagée a été rendue.' : ''} Relance-le toi-même depuis la fiche de l'article.`;
+    const corps = raw.replace(new RegExp(PROMESSE_REPRISE_RE.source, 'gi'), '').replace(/\s{2,}/g, ' ').trim();
+    const msg = (corps + verite).trim();
+    // Corps resté technique (dump, URL…) : générique VÉRIDIQUE plutôt que le
+    // diagnostic brut — même arbitrage que le repli tout en bas.
+    if (!TECH_ERR_MARKERS_RE.test(msg) && msg.length <= 600) return msg;
+    return en
+      ? `Publishing on ${name} was interrupted by a technical issue. The job has stopped${rendue ? ' and the Nugget was refunded' : ''} — retry from the item; the full detail has been recorded for support.`
+      : `La publication sur ${name} a été interrompue par un imprévu technique. Le job est arrêté${rendue ? ' et la Pépite engagée a été rendue' : ''} — relance depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;
   }
 
   // Message déjà humain (court, sans marqueur technique) : tel quel.
