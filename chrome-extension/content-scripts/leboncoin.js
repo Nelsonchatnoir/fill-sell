@@ -1174,6 +1174,20 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       if (idx >= 0) enumerated[idx] = { ...enumerated[idx], required: true };
     }
 
+    // ── Options des champs bloquants, relevées SUR PLACE (2026-08-13) ────────
+    // Le formulaire est encore là : c'est LE moment de lire les listes (borné
+    // à 3 champs — le premier porte le needsUserField, les autres enrichissent
+    // le catalogue pour les passages suivants). Un relevé raté n'est jamais
+    // bloquant : le needsUserField part alors sans options et l'app affiche
+    // « valeurs indisponibles — relance », qui re-passera ici.
+    for (const f of blockedFields.slice(0, 3)) {
+      const opts = await releverOptionsCritere(`label[for="${CSS.escape(f.key)}"]`);
+      if (!opts) continue;
+      f.options = opts;
+      const idx = enumerated.findIndex((e) => e.key === f.key);
+      if (idx >= 0) enumerated[idx] = { ...enumerated[idx], options: opts };
+    }
+
     const details = blockedFields.length
       ? `Leboncoin exige : ${blockedFields.map((f) => `${f.label} (« ${f.message} »)`).join(", ")}. ` +
         "Compléter ces champs dans l'app (copie Leboncoin), puis relancer la publication."
@@ -1211,6 +1225,13 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
           field_key: blockedFields[0].key,
           field_label: blockedFields[0].label,
           target: lbcTargetFor(blockedFields[0].key),
+          // Champ FERMÉ déclaré + liste relevée (2026-08-13) : même contrat
+          // que Beebs (26/07). Tous les critères énumérés sont des combobox
+          // (findCriterionInput ne matche que input[role=combobox]) — sans
+          // input_type, le mini-éditeur retombait en saisie libre et la
+          // valeur hors liste rebouclait (6 jobs jocaille le 13/08).
+          input_type: "dropdown",
+          ...(blockedFields[0].options ? { allowed_values: blockedFields[0].options } : {}),
         }
       : LBC_PSEUDO_FIELDS[unfilledRequired[0]] ?? null;
 
@@ -1373,6 +1394,42 @@ function findCriterionInput(labelSelector) {
     wrap = wrap.parentElement;
   }
   return null;
+}
+
+// ── Relevé des options d'un combobox SANS rien sélectionner (2026-08-13) ─────
+// L'équivalent LBC du « relevé de secours » Beebs (openPanelOptions) : au
+// moment où un requis bloque le passage à l'aperçu, son combobox est encore à
+// l'écran — on OUVRE son menu, on lit les options, on referme. RIEN EN DUR :
+// c'est la liste que Leboncoin sert à cet instant, pour cette catégorie.
+// Ce relevé nourrit needsUserField.allowed_values (le mini-éditeur de l'app
+// propose un choix fermé au lieu d'une saisie libre — une valeur hors liste ne
+// peut que re-bloquer : cas réel jocaille 13/08, « Maison », « Décoration »,
+// voire le titre de l'article, tapés puis refusés en boucle sur « Produit »)
+// et le catalogue platform_category_aspects via enumerated.options
+// (persistDiscoveredAspects les stocke déjà — les lignes table_art_product /
+// diy_product / leisure_collection_product étaient à 0 option, précisément
+// faute de ce relevé).
+async function releverOptionsCritere(labelSelector) {
+  try {
+    const input = findCriterionInput(labelSelector);
+    if (!input) return null;
+    input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await sleep(700);
+    // Même périmètre que fillCriterionSafe (aria-controls, repli document) :
+    // c'est ce périmètre qui a produit les listes correctes des warnings prod.
+    const menu = document.getElementById(input.getAttribute("aria-controls"));
+    const scope = menu || document;
+    const options = [...scope.querySelectorAll('li, [role="option"], button')]
+      .map((o) => o.textContent.trim())
+      .filter(Boolean)
+      .slice(0, 60);
+    document.body.click(); // referme le menu — jamais laissé ouvert (état non testé au submit)
+    await humanPause();
+    return options.length ? options : null;
+  } catch {
+    document.body.click();
+    return null;
+  }
 }
 
 // Le pré-rempli LBC matche-t-il la valeur du job ? Mêmes rapprochements que la
