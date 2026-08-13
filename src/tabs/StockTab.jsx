@@ -447,11 +447,42 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
 
+  // ── Options relevées par le DERNIER passage (2026-08-13, bug « Produit » LBC)
+  // Quand la valeur fournie ne matche aucune option d'un combobox, l'extension
+  // (fillCriterionSafe, leboncoin.js) journalise dans platform_fields.warnings :
+  //   « <clé>: champ sauté — option "…" sans correspondance. Options: [...] »
+  // C'est NOTRE format, et pour les combobox Leboncoin c'est souvent la SEULE
+  // liste disponible : le needsUserField LBC n'a ni allowed_values ni
+  // input_type, et le catalogue platform_category_aspects porte la ligne mais
+  // 0 option (relevé du 13/08 : table_art_product/diy_product/
+  // leisure_collection_product, tous à vide). Sans cette source, la modale
+  // retombait en saisie libre → valeur hors liste → « champ sauté » → LBC
+  // rebloque : boucle sans issue (6 jobs de jocaille le 13/08 au soir, valeurs
+  // devinées « Maison », « Décoration », voire le titre de l'article).
+  // Synchrone (les warnings sont déjà dans le job), aucune requête.
+  const warningsAllowed = useMemo(() => {
+    if (!f?.field_key) return null;
+    try {
+      const cle = String(f.field_key).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rx = new RegExp(`^${cle}\\s*: champ sauté — option .* sans correspondance\\. Options: (\\[[\\s\\S]*\\])`);
+      const ws = job.platform_fields?.warnings ?? [];
+      for (let i = ws.length - 1; i >= 0; i--) {
+        const msg = typeof ws[i] === "string" ? ws[i] : String(ws[i]?.message ?? "");
+        const m = msg.match(rx);
+        if (!m) continue;
+        const arr = JSON.parse(m[1]);
+        if (Array.isArray(arr) && arr.length) return arr.filter(Boolean).map(String);
+      }
+    } catch { /* format inattendu : les autres sources restent */ }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+
   if (!f) return null;
 
   const allowed = Array.isArray(f.allowed_values) && f.allowed_values.length
     ? f.allowed_values
-    : (ebayAllowed ?? catalogueAllowed);
+    : (ebayAllowed ?? warningsAllowed ?? catalogueAllowed);
   const platformLabel = PLATFORM_LABELS[job.platform] || job.platform;
 
   // ── RÈGLE DU 19/07 RENDUE INCONTOURNABLE (2026-07-22) ──────────────────────

@@ -265,13 +265,18 @@ const MODE_ENFANT = {
   "🎀": { Fille: null, Garçon: [...GA, "Accessoires", "Nœuds papillon et cravattes"] },
 };
 
-// Catégories SANS niveau genre. Racines réelles du FORMULAIRE (juillet
-// 2026) : Femmes, Hommes, Enfants, Maison, Électronique, Divertissement,
-// Loisirs et collections, Sport. ⚠️ La navbar affiche "Livres et médias"
-// mais le formulaire de vente dit bien "Divertissement" (deux arbres
-// distincts, cf. header) — revalider contre docs/vinted-catalog-tree.json
-// (arbre du formulaire) en cas d'échec en série. Chemin unique par icône,
-// valable quel que soit platform_fields.genre.
+// Catégories SANS niveau genre. Racines réelles du FORMULAIRE, RE-RELEVÉES
+// EN DIRECT le 2026-08-13 : Femmes, Hommes, Enfants, Maison, Électronique,
+// Livres et médias, Loisirs et collections, Sport.
+// ⚠️ « Divertissement » N'EXISTE PLUS : Vinted a renommé la racine du
+// formulaire en « Livres et médias » (les deux arbres, navbar et formulaire,
+// sont désormais alignés — la distinction documentée en juillet est CADUQUE).
+// Prouvé en prod le 13/08 : 2 jobs mangas (a.dujardin) morts sur « niveau
+// "Divertissement" introuvable » pendant que le sélecteur affichait bien
+// Livres et médias > Livres > Bandes dessinées… (niveaux 2-3 INCHANGÉS).
+// En cas de nouvel échec en série : re-relever le formulaire réel, jamais
+// docs/vinted-catalog-tree.json seul (l'arbre archivé date de juillet).
+// Chemin unique par icône, valable quel que soit platform_fields.genre.
 //
 // null explicite = vérifié dans l'arbre COMPLET, pas de feuille exploitable
 // (à distinguer d'un simple oubli). RE-VÉRIFICATION du 2026-07-09 (mission
@@ -499,16 +504,17 @@ const HORS_MODE = {
   // sont des Bois, flûte = plus gros volume écoles) ; une trompette atterrira
   // dans la mauvaise sous-branche.
   "🎺": ["Loisirs et collections", "Instruments de musique et équipement", "Instruments à vent", "Bois", "Flûtes"],
-  // DÉFAUT ASSUMÉ : "vinyle" (disque, Divertissement) vs "platine" (lecteur,
+  // DÉFAUT ASSUMÉ : "vinyle" (disque, Livres et médias) vs "platine" (lecteur,
   // Électronique > Systèmes audio domestiques > Platines vinyle) — deux
   // racines différentes pour le même mot-clé. Disque pris comme cas
   // dominant (33/45 tours confirment l'intention "disque").
-  "💿": ["Divertissement", "Musique", "Vinyles"],
-  // Médias physiques (2026-07-09, T3) : Divertissement > Vidéo et > Musique.
+  "💿": ["Livres et médias", "Musique", "Vinyles"],
+  // Médias physiques (2026-07-09, T3 ; racine renommée « Livres et médias »,
+  // relevé en direct du 13/08) : Livres et médias > Vidéo et > Musique.
   // DÉFAUT ASSUMÉ 📀 : DVD dominant (Blu-ray/Blu-ray 4K/VHS/LaserDisc =
   // feuilles sœurs). 💽 : CD dominant (Cassettes audio/MiniDiscs = sœurs).
-  "📀": ["Divertissement", "Vidéo", "DVD"],
-  "💽": ["Divertissement", "Musique", "CD"],
+  "📀": ["Livres et médias", "Vidéo", "DVD"],
+  "💽": ["Livres et médias", "Musique", "CD"],
   "🎼": ["Loisirs et collections", "Instruments de musique et équipement", "Instruments à vent", "Harmonicas"],
   // Machine à coudre (T3) : vit sous Loisirs créatifs, pas Électroménager.
   "🧵": ["Loisirs et collections", "Loisirs créatifs", "Couture, tricot et travaux d'aiguille", "Machines à coudre"],
@@ -521,12 +527,12 @@ const HORS_MODE = {
   // (dominant), synthé→Synthétiseurs, clavier maître→Contrôleurs MIDI
   // (feuilles sœurs).
   "🎹": ["Loisirs et collections", "Instruments de musique et équipement", "Claviers et synthétiseurs", "Claviers électroniques"],
-  "📖": ["Divertissement", "Livres", "Bandes dessinées, mangas et romans graphiques"],
+  "📖": ["Livres et médias", "Livres", "Bandes dessinées, mangas et romans graphiques"],
   // DÉFAUT ASSUMÉ : roman (Fiction) vs encyclopédie/dictionnaire (Non-fiction
   // serait plus juste) — feuilles sœurs confirmées, roman pris comme
   // dominant.
-  "📚": ["Divertissement", "Livres", "Fiction"],
-  "📰": ["Divertissement", "Magazines"],
+  "📚": ["Livres et médias", "Livres", "Fiction"],
+  "📰": ["Livres et médias", "Magazines"],
   "📮": ["Loisirs et collections", "Timbres", "Timbres à l'unité"],
   "🪙": ["Loisirs et collections", "Pièces de monnaie et billets", "Pièces de monnaie"],
 
