@@ -5482,6 +5482,30 @@ async function arbitrerSessionEbay(result) {
     return { ...result, sessionConfirmee: true, diagnostic, error: MSG_CONNEXION_EBAY };
   }
   if (sonde.etat === true) {
+    // ── STEP-UP D'AUTHENTIFICATION DU FLUX DE VENTE (2026-08-13) ─────────────
+    // 5 cas des 12-13/08 (4 comptes, v0.6.1 ET v0.6.2), diagnostic en base :
+    // la page relevée est signin.ebay.fr/ws/eBayISAPI.dll?SignIn&ru=<le
+    // formulaire /sl/list>. eBay maintient la session de NAVIGATION (la sonde
+    // HTTP dit true — elle a raison) mais exige une reconnexion INTERACTIVE
+    // pour ouvrir le flux de VENTE — même racine que le passkey qui bloque les
+    // suppressions. Vérifié en direct sur une session fraîchement utilisée :
+    // pas de rebond — ça ne frappe que les sessions dont l'auth « vente » est
+    // ancienne. L'ancien message affirmait « ta session est valide » puis
+    // promettait une reprise : double contre-vérité (l'utilisateur partait
+    // chercher un problème de compte inexistant, et un job failed n'est
+    // JAMAIS repris). Motif SQL-able : error LIKE 'REAUTH VENTE eBay%'.
+    let hote = "";
+    try { hote = new URL(url).hostname; } catch { /* URL illisible */ }
+    const stepUp = /(^|\.)signin\.ebay\./i.test(hote) || /eBayISAPI\.dll/i.test(url) || /[?&]SignIn\b/i.test(url);
+    if (stepUp) {
+      return {
+        ...result, sessionConfirmee: false, diagnostic,
+        error:
+          "REAUTH VENTE eBay : eBay demande une reconnexion de sécurité pour vendre, alors que ta " +
+          "session de navigation reste active. Ouvre ebay.fr dans Chrome, clique « Vendre », " +
+          "reconnecte-toi, puis relance la publication depuis la fiche de l'article.",
+      };
+    }
     return {
       ...result, sessionConfirmee: false, diagnostic,
       error:
