@@ -56,13 +56,18 @@ const ALLOWED_STATUSES = ["pending", "processing", "published", "failed", "cance
 // pouvait pas rapprocher un article importé de son jumeau publié via FillSell
 // → 32 doublons. Dériver côté serveur couvre TOUS les appelants, y compris
 // les extensions déjà installées.
-// beebs volontairement ABSENT : son format d'URL produit n'a jamais été
-// observé (cf. extractListingId côté extension) — mieux vaut NULL qu'un id
-// extrait au hasard d'un nombre quelconque de l'URL.
+// beebs ajouté le 2026-08-13 : son format d'URL produit, longtemps « jamais
+// observé », est désormais RELEVÉ EN BASE sur les 20 listing_url Beebs
+// existants — tous en https://www.beebs.app/fr/p/<id numérique>-<slug>.
+// L'ancrage /p/ borne l'extraction au segment produit : aucun autre nombre de
+// l'URL (id de compte, tracking) ne peut être pris pour l'id d'annonce.
+// Le backfill des lignes déjà publiées vit dans la migration
+// 20260813200000_backfill_beebs_platform_listing_id.sql (même motif).
 const LISTING_ID_PATTERNS: Record<string, RegExp> = {
   vinted: /\/items\/(\d+)/,
   leboncoin: /\/ad\/[^/]+\/(\d+)/,
   ebay: /\/itm\/[^?#]*?(\d{9,})/,
+  beebs: /\/p\/(\d+)/,
 };
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
