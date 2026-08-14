@@ -45,6 +45,12 @@ export const PLATFORM_LISTINGS_URLS = {
 // identique — celle-ci est la source des modules qui n'en dépendent pas.
 export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
 const HUMANIZE_PLATFORM_LABELS = PLATFORM_LABELS;
+// Noms de site « en clair » pour les textes réécrits (chantier messages
+// masqués, 2026-08-14). Jamais l'URL relevée du message stocké : c'est un
+// diagnostic (page d'auth, query, fragment), pas une destination. La
+// navigation reste portée par le bouton contextuel de StockTab, qui lit
+// l'erreur BRUTE — inchangée en base.
+const HUMANIZE_PLATFORM_SITES = { vinted: 'vinted.fr', leboncoin: 'leboncoin.fr', beebs: 'beebs.app', ebay: 'ebay.fr' };
 // Statuts d'où un job ne repart JAMAIS tout seul. Miroir du trigger
 // cross_post_job_settle_reservation (migration 20260805000000), qui rend la
 // Pépite réservée sur exactement ces statuts-là. 'sold' en est volontairement
@@ -170,6 +176,64 @@ export function humanizeJobError(job, lang = 'fr') {
         ? `The "List item" click never left the browser on eBay: nothing was published${termine ? ' and the job has stopped' : ''}.${rendue ? ' The Nugget held for it has been refunded.' : ''} Your listing is not lost though: eBay kept it as a DRAFT (no. ${draftId}). Find it on ebay.fr under My eBay > Selling > Drafts to finish listing it yourself.`
         : `Le clic « Mettre en vente » n'est jamais parti chez eBay : rien n'a été publié${termine ? ' et le job est arrêté' : ''}.${rendue ? ' La Pépite engagée a été rendue.' : ''} Ton annonce n'est pas perdue pour autant : eBay l'a conservée en BROUILLON (n° ${draftId}). Retrouve-la sur ebay.fr dans Mon eBay > Vendre > Brouillons pour terminer la mise en vente toi-même.`;
     }
+  }
+
+  // ── Familles rédigées pour l'utilisateur, masquées par le filtre (2026-08-14) ──
+  // Inventaire 30 j (chantier messages masqués) : le plafond de 300 c. et les
+  // marqueurs techniques masquaient précisément les messages les plus
+  // travaillés — 74 jobs / 14 users remplacés par le générique. Correction par
+  // FAMILLE NOMMÉE, même doctrine que CHALLENGE et les branches eBay : le
+  // texte affiché est rédigé ICI, le brut ne passe jamais, et toute variante
+  // hors des sous-cas listés retombe dans le circuit normal (générique par
+  // défaut). Périmètre validé le 14/08 : republication stoppée avant
+  // suppression + connexion requise « page observée ». Les autres familles
+  // (refus Vinted, brouillon LBC, annulations support…) attendent validation.
+
+  // Republication stoppée AVANT toute suppression : la phrase qui compte —
+  // « ton annonce est intacte » — disparaissait à cause du détail technique
+  // (HTTP 403/404/400). Gate sur TECH_ERR_MARKERS_RE : les variantes sans
+  // marqueur (sonde injoignable, motif connexion) passent déjà telles quelles
+  // aujourd'hui et gardent leur circuit. « La Pépite est rendue » n'est
+  // affirmé que là où le message source l'affirme (variantes « annulée »).
+  if (/^Republication (annulée|en pause) avant toute suppression/i.test(raw)
+      && TECH_ERR_MARKERS_RE.test(raw)) {
+    const site = HUMANIZE_PLATFORM_SITES[job?.platform] || name;
+    if (/^Republication annulée/i.test(raw) && /session/i.test(raw) && /refusée/i.test(raw)) {
+      return en
+        ? `The relisting was cancelled before anything was deleted: your ${name} session was refused. Your listing is untouched and the Nugget has been refunded. Sign in to ${site} again in Chrome, then restart the relisting from the item.`
+        : `Republication annulée avant toute suppression : ta session ${name} a été refusée. Ton annonce est intacte et la Pépite est rendue. Reconnecte-toi sur ${site} dans Chrome, puis relance la republication depuis la fiche de l'article.`;
+    }
+    if (/^Republication annulée/i.test(raw) && /introuvable/i.test(raw)) {
+      return en
+        ? `The relisting was cancelled before anything was deleted: the listing could not be found on ${name} (it may have been removed or sold in the meantime). FillSell deleted nothing and the Nugget has been refunded. Check the listing on ${name}, then relaunch from the item if needed.`
+        : `Republication annulée avant toute suppression : l'annonce n'a pas été retrouvée en ligne sur ${name} (elle a peut-être été supprimée ou vendue entre-temps). FillSell n'a rien supprimé et la Pépite est rendue. Vérifie l'annonce sur ${name}, puis relance depuis la fiche de l'article si besoin.`;
+    }
+    if (/^Republication en pause/i.test(raw)) {
+      return en
+        ? `Relisting paused before anything was deleted — your listing is untouched on ${name}. A technical exchange with ${name} failed; fix what's needed then relaunch the relisting from the item.`
+        : `Republication mise en pause avant toute suppression — ton annonce est intacte sur ${name}. Un échange technique avec ${name} a échoué ; corrige si besoin puis relance la republication depuis la fiche de l'article.`;
+    }
+    // Variante non répertoriée : circuit normal (générique par défaut).
+  }
+
+  // Connexion requise, variante « page observée » : l'URL relevée déclenchait
+  // le masque technique et la consigne disparaissait (cas Carla, 14/08). Le
+  // site est nommé en clair, l'URL brute n'est jamais affichée. La variante
+  // courte sans « page observée » garde son circuit actuel (promesse retirée
+  // ou tel quel).
+  if (/^Connexion (Vinted|Leboncoin|Beebs|eBay) requise/i.test(raw) && /page observée/i.test(raw)) {
+    const site = HUMANIZE_PLATFORM_SITES[job?.platform] || name;
+    const termine = JOB_STATUS_TERMINAL.has(job?.status);
+    const rendue = termine && (job?.action ?? 'publish') === 'publish';
+    const acte = job?.action === 'republish' ? (en ? 'relisting' : 'republication') : 'publication';
+    if (termine) {
+      return en
+        ? `${name} showed its sign-in page instead of the listing form: nothing was published and the job has stopped.${rendue ? ' The Nugget held for it has been refunded.' : ''} Sign in to ${site} in Chrome, then restart the ${acte} from the item.`
+        : `${name} a affiché sa page de connexion à la place du formulaire de vente : rien n'a été publié et le job est arrêté.${rendue ? ' La Pépite engagée a été rendue.' : ''} Connecte-toi sur ${site} dans Chrome, puis relance la ${acte} depuis la fiche de l'article.`;
+    }
+    return en
+      ? `${name} is showing its sign-in page instead of the listing form. Sign in to ${site} in Chrome now — an automatic retry happens within minutes, otherwise relaunch the ${acte} from the item.`
+      : `${name} affiche sa page de connexion à la place du formulaire de vente. Connecte-toi sur ${site} dans Chrome maintenant — une tentative automatique a lieu dans les minutes qui viennent, sinon relance la ${acte} depuis la fiche de l'article.`;
   }
 
   // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :
