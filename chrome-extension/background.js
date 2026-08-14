@@ -1841,6 +1841,17 @@ async function processJob(rawJob, accessToken) {
               last_diagnostic: String(verdict.diagnostic).slice(0, 2000),
             };
           }
+          // draftId relevé dans la télémétrie captée : un brouillon existe côté
+          // eBay — consigné pour que l'app le dise à l'affichage (2026-08-14).
+          // Porté par la copie mémoire : reprendreSurOngletNeuf repart de
+          // job.platform_fields, la valeur part en base avec le verdict.
+          const draftId = await ebayDraftIdFromCaptures(tabId);
+          if (draftId) {
+            job.platform_fields = {
+              ...(job.platform_fields ?? {}),
+              ebay_draft_id: draftId,
+            };
+          }
           return await reprendreSurOngletNeuf(
             accessToken, job, tabId,
             "Le clic « Mettre en vente » n'a produit AUCUNE requête de publication (soumission jamais partie) : aucune annonce n'a été créée",
@@ -3721,6 +3732,26 @@ async function ebaySubmitRequestSeen(tabId) {
   }
 }
 
+// ── Le brouillon existe même quand la soumission n'est jamais partie ─────────
+// (2026-08-14, 5 jobs des 12-14/08 dont 8d1e0060/15bfa00a.) La télémétrie eBay
+// captée pendant le clic (collectsysteminfo / collectbehaviorinfo, HTTP 204)
+// porte le draftId en query string — preuve qu'un BROUILLON existe côté eBay,
+// récupérable depuis l'espace vendeur, alors que le message disait « aucune
+// annonce n'a été créée » et que l'utilisateur croyait repartir de zéro.
+// Consigné dans platform_fields.ebay_draft_id ; c'est l'APP qui adapte le
+// message à l'affichage (humanizeJobError, même doctrine que 2.4.52). Pur
+// relevé : ne change aucune décision, jamais bloquant.
+async function ebayDraftIdFromCaptures(tabId) {
+  try {
+    const { captures } = await readProbeCaptures(tabId);
+    for (const c of captures) {
+      const m = /[?&]draftId=(\d+)/i.exec(String(c?.url ?? ""));
+      if (m) return m[1];
+    }
+  } catch { /* pur relevé : jamais bloquant */ }
+  return null;
+}
+
 async function readEbayPostSubmitState(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -5513,11 +5544,19 @@ async function arbitrerSessionEbay(result) {
           "reconnecte-toi, puis relance la publication depuis la fiche de l'article.",
       };
     }
+    // ⚠️ Formulation (2026-08-14) : ne JAMAIS affirmer « ta session eBay est
+    // valide » — la sonde ne prouve que la page d'ENTRÉE de vente (prelist),
+    // pas le droit de déposer (le step-up ci-dessus l'a montré : session de
+    // navigation vivante ET mur d'authentification sur le flux de vente).
+    // On dit ce que la sonde a VU, rien de plus, et plus aucune promesse de
+    // reprise (un job failed n'est jamais repris — doctrine 13/08).
     return {
       ...result, sessionConfirmee: false, diagnostic,
       error:
-        `eBay a servi une page inattendue (${chemin}) alors que ta session eBay est valide — ` +
-        "rien n'a été publié. Le job repartira automatiquement au prochain passage.",
+        `eBay a servi une page inattendue (${chemin}) à la place du formulaire de mise en vente — ` +
+        "rien n'a été publié. La sonde de session répondait normalement au même moment, mais cela " +
+        "ne garantit pas le dépôt : ouvre ebay.fr dans Chrome et vérifie que tout va bien, puis " +
+        "relance la publication depuis la fiche de l'article si le job s'est arrêté.",
     };
   }
   return {
