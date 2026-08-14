@@ -322,7 +322,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // multi-comptes) + « Connexion Vinted requise » arbitré par la sonde HTTP
 // (a9f005d, doctrine c2591b7). selectSizeByIds toujours EXCLU (cf. entrée
 // a426979). EXTENSION_MIN_BUILD inchangé — ni 0.6.4 ni 0.6.5 acceptées.
-export const EXTENSION_LAST_COMMIT = '2026-08-14T08:51:31Z';
+// 2026-08-14T12:58:51Z = 530d993 (BRANCHE ext-0.6.5-sans-f1, base fe901f4) :
+// paquet 0.6.5 re-packagé — AUCUNE 0.6.5 n'ayant jamais été téléversée au
+// CWS (correction Nico 14/08), le numéro est réutilisable. Contenu = zip
+// d'origine + no-op Marque absente (401c649) + brouillon eBay consigné
+// (ebay_draft_id) + message de session eBay sans surpromesse. SANS le
+// multi-comptes F1 (1fc9beb, main) : code non éprouvé qui touche le marquage
+// disparu_le — seul le prouvé part en circulation (doctrine
+// ext-0.6.3-cause403). EXTENSION_MIN_BUILD inchangé.
+export const EXTENSION_LAST_COMMIT = '2026-08-14T12:58:51Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
