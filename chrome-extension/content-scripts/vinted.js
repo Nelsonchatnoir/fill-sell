@@ -1305,10 +1305,54 @@ async function fillListingForm(job) {
   // retry immédiat), aucune interaction sur une page de connexion.
   // auth.password_guard : clé OPTIONAL du registre, sémantique inversée —
   // la PRÉSENCE du champ mot de passe signifie « page de connexion » ⇒ needsUser.
+  //
+  // ⚠️ Depuis le 2026-08-14, le signal de page ne conclut plus SEUL (doctrine
+  // c2591b7 portée d'eBay à Vinted — cas Manon 14/08 : 5 republications
+  // « Connexion Vinted requise » à 00h31/00h55 pendant que la sync du même
+  // compte réussissait à 00h26 et 01h00). La sonde HTTP — vintedUtilisateur-
+  // Courant(), mêmes cookies, même page — arbitre :
+  //   · sonde VIVANTE → contradiction : le message dit la page vue sans
+  //     accuser la connexion ; mêmes mécaniques qu'avant (needsUser borné,
+  //     le job repart au prochain passage), seul le TEXTE change.
+  //   · sonde MORTE (401 / session anonyme) → verdict confirmé : message
+  //     historique, mot pour mot.
+  //   · sonde MUETTE ou INDÉTERMINÉE (timeout 4 s, 403 anti-robot, erreur)
+  //     → comportement HISTORIQUE conservé (consigne 14/08 : jamais un job
+  //     bloqué par une sonde lente — le timeout court est le filet).
+  // Le diagnostic { url, signal, sonde, http } part dans TOUS les cas en
+  // platform_fields.last_diagnostic (canal objet, cf. arbitrerSessionEbay) —
+  // c'est l'absence d'URL relevée qui a rendu le cas Manon muet.
   if (!location.pathname.startsWith("/items/new") || (await sel()).tryResolveSelector("vinted", "auth.password_guard")) {
+    const signal = !location.pathname.startsWith("/items/new")
+      ? `pathname inattendu (${location.pathname})`
+      : "champ mot de passe présent";
+    let sonde = null;
+    try {
+      sonde = await Promise.race([vintedUtilisateurCourant(), sleep(4000).then(() => null)]);
+    } catch { sonde = null; }
+    const diagnostic = {
+      url: String(location.href).slice(0, 300),
+      signal,
+      sonde: sonde?.success ? "vivante"
+        : sonde?.sessionExpiree ? "morte"
+        : sonde ? "indéterminée"
+        : "muette",
+      http: Number.isFinite(sonde?.httpStatus) ? sonde.httpStatus : null,
+    };
+    if (sonde?.success) {
+      return {
+        success: false,
+        needsUser: true,
+        diagnostic,
+        error:
+          `Page de dépôt Vinted non atteinte (${signal}) alors que le compte ` +
+          `(@${sonde.login}) répond — nouvelle tentative au prochain passage, rien à faire.`,
+      };
+    }
     return {
       success: false,
       needsUser: true,
+      diagnostic,
       error:
         "Connexion Vinted requise : se connecter sur vinted.fr dans Chrome " +
         "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
