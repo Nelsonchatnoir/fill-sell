@@ -346,10 +346,22 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // d'arbitrerSessionEbay n'affirme plus « ta session eBay est valide » (la
 // sonde ne prouve que la page d'entrée prelist, pas le droit de déposer).
 // 2026-08-14T12:56:59Z = bd594a6 : manifest REMIS en 0.6.5.
+// 2026-08-14T13:34:22Z = c419489 : famille B eBay, CAUSE ÉTABLIE par
+// observation directe (clic synthétique realClick sur /lstng, brouillon
+// 5217561021321) — le bouton apparaît dans le DOM bien avant que la
+// délégation Marko soit branchée (aucun <form>, onclick null ; hydratation
+// différée en onglet caché, markoInitComponents absent à 88 s), le clic est
+// alors avalé SANS requête ; et un bandeau de validation peut apparaître ~4 s
+// après un clic mort SANS POST — le détecteur DOM « notice apparue » validait
+// des clics morts et étouffait le re-clic. Le re-clic est désormais gouverné
+// par la sonde réseau (EBAY_SUBMIT_SEEN → ebaySubmitRequestSeen, même lecteur
+// que le verdict) : 3 clics max, budgets 8/12/16 s, re-clic uniquement si
+// AUCUN POST capté. Hypothèses doublon de bouton / disabled pré-clic
+// RÉFUTÉES sur pièces.
 // ⚠️ LE PAQUET 0.6.5 SE CONSTRUIT SUR LA BRANCHE ext-0.6.5-sans-f1 (base
 // fe901f4 + fix Marque + fixes eBay), PAS sur main : main porte F1 (1fc9beb),
 // exclu de la circulation. Un paquet construit ICI embarquerait F1.
-export const EXTENSION_LAST_COMMIT = '2026-08-14T12:56:59Z';
+export const EXTENSION_LAST_COMMIT = '2026-08-14T13:34:22Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
