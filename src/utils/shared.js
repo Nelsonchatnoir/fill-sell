@@ -1620,6 +1620,39 @@ export function groupSales(arr){
   return groups;
 }
 
+// ── Horloge machine en retard (2026-08-15, cas Carla) ────────────────────────
+// L'extension écrit platform_fields.processing_since avec l'horloge LOCALE de
+// l'ordinateur (background.js, au passage en 'processing') ; created_at est
+// posé par le serveur. Un job ne peut pas être traité avant d'exister :
+// processing_since très ANTÉRIEUR à created_at prouve une horloge en retard —
+// la cause probable des pages de dépôt qui n'aboutissent jamais (certificats
+// TLS et cookies jugés à l'heure locale). Règles (15/08) :
+//   · seule la ligne DATÉE la plus récemment créée (fenêtre 7 j) fait foi :
+//     un job suffit — le faux positif est structurellement impossible avec la
+//     marge de 24 h — et l'horloge corrigée efface le bandeau dès le job
+//     traité suivant, sans autre geste ni expiration à attendre ;
+//   · processing_since absent ou illisible → ligne ignorée ; aucune ligne
+//     datée (compte sans extension, jobs jamais traités) → jamais de bandeau ;
+//   · horloge en AVANCE (processing_since > created_at) → hors périmètre,
+//     jamais de bandeau ;
+//   · AVERTIR seulement : aucun code ne doit lire ce signal pour bloquer.
+export const HORLOGE_RETARD_SEUIL_MS = 24 * 3600 * 1000;
+export const HORLOGE_RETARD_FENETRE_MS = 7 * 24 * 3600 * 1000;
+export function detecterRetardHorloge(jobs, nowMs = Date.now()) {
+  let dernier = null;
+  for (const j of jobs ?? []) {
+    const ps = Date.parse(j?.platform_fields?.processing_since ?? "");
+    const cree = Date.parse(j?.created_at ?? "");
+    if (!Number.isFinite(ps) || !Number.isFinite(cree)) continue;
+    if (nowMs - cree > HORLOGE_RETARD_FENETRE_MS) continue;
+    if (!dernier || cree > dernier.cree) dernier = { cree, ps };
+  }
+  if (!dernier) return { enRetard: false, jours: 0 };
+  const retardMs = dernier.cree - dernier.ps;
+  if (retardMs < HORLOGE_RETARD_SEUIL_MS) return { enRetard: false, jours: 0 };
+  return { enRetard: true, jours: Math.max(1, Math.round(retardMs / 86400000)) };
+}
+
 // ── Fraîcheur de l'extension — « ordinateur éteint » (2026-08-13) ────────────
 // profiles.extension_last_seen_at est un battement SERVEUR, stampé par
 // get-pending-jobs à chaque poll réussi (background toutes les 2 min, popup à

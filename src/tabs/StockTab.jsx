@@ -23,7 +23,7 @@ import {
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
   PLATFORM_LOGIN_URLS, PLATFORM_LISTINGS_URLS, LBC_DEPOSIT_URL, humanizeJobError,
-  fraicheurExtension,
+  fraicheurExtension, detecterRetardHorloge,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
 import { SecondaryButton, Loader } from '../components/ui';
@@ -3472,6 +3472,37 @@ const StockTab = memo(function StockTab({
           </div>
         </div>
       )}
+      {/* ── Bandeau horloge machine en retard (2026-08-15, cas Carla) ────────
+          Détection detecterRetardHorloge (shared.js) sur les jobs déjà
+          chargés (jobsByInventaire, poll 20 s) : processing_since (horloge
+          machine) vs created_at (serveur), seule la ligne datée la plus
+          récente fait foi — le bandeau s'éteint tout seul au job suivant une
+          fois l'horloge corrigée. Même famille visuelle que « ordinateur
+          éteint ». INFORMATIF SEULEMENT : rien n'est grisé, rien n'est
+          bloqué, aucune garde ne lit ce signal. */}
+      {(()=>{
+        const retard=detecterRetardHorloge(Object.values(jobsByInventaire).flat());
+        if(!retard.enRetard) return null;
+        return (
+          <div style={{
+            display:"flex", gap:10, alignItems:"flex-start",
+            background:"#FFFBEB", border:"1px solid #FDE68A", borderLeft:"4px solid #D97706",
+            borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
+          }}>
+            <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>🕰️</span>
+            <div style={{fontSize:13, lineHeight:1.5, color:"#78350F"}}>
+              <div style={{fontWeight:700, marginBottom:2}}>
+                {lang==='fr'
+                  ?`L'horloge de ton ordinateur retarde d'environ ${retard.jours} jour${retard.jours>1?"s":""}`
+                  :`Your computer's clock is about ${retard.jours} day${retard.jours>1?"s":""} behind`}
+              </div>
+              {lang==='fr'
+                ?"Les sites de vente refusent des connexions quand l'heure est fausse — c'est souvent ce qui fait échouer les publications. Active la date et l'heure automatiques dans les réglages de Windows sur l'ordinateur où tourne l'extension, puis relance tes publications."
+                :"Selling sites refuse connections when the clock is wrong — this is often what makes publications fail. Turn on automatic date & time in Windows settings on the computer running the extension, then relaunch your publications."}
+            </div>
+          </div>
+        );
+      })()}
       <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
         <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* ── Zone de saisie IA — REPLIÉE PAR DÉFAUT (2026-08-09) ──────────
