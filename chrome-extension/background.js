@@ -6559,8 +6559,9 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   // Uniquement si la sync est allée au bout : interrompue à la page 2, on ne
   // sait rien des pages suivantes et tout marquer « disparu » serait faux.
   //
-  // ⛔ DEUX GARDES AVANT TOUT MARQUAGE (2026-08-05). Échec FERMÉ dans les deux
-  // cas — donnée manquante ou incohérente ⇒ on ne marque RIEN. Le coût est nul :
+  // ⛔ GARDES AVANT TOUT MARQUAGE — (a)(b)(c) 2026-08-05, (d)(e) 2026-08-14
+  // plus bas, après le calcul des disparus. Échec FERMÉ dans tous les cas —
+  // donnée manquante ou incohérente ⇒ on ne marque RIEN. Le coût est nul :
   // le run suivant marquera. Le coût inverse ne l'est pas — un marquage de masse
   // à tort éteint « Republier » et allume « Plus en ligne » sur des articles
   // bel et bien en ligne, jusqu'au run qui les revoit.
@@ -6630,12 +6631,46 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       }
       const disparus = republishActifs === null ? [] : (connus ?? []).filter((r) =>
         r.vinted_item_id && !vusCetteSync.has(r.vinted_item_id) && !republishActifs.has(r.vinted_item_id));
-      for (const d of disparus) {
-        await restRequest(`inventaire?id=eq.${d.id}`, token, {
-          method: "PATCH", body: JSON.stringify({ disparu_le: new Date().toISOString() }),
-        }).catch(() => {});
+
+      // ── Gardes (d)/(e) : anti-effondrement (2026-08-14, dossier Manon) ────
+      // Le 12/08, un run a lu le dressing d'un AUTRE compte Vinted (session
+      // Chrome sur un autre profil : 384 créations, items_maj=0, zéro
+      // recoupement). Le run suivant, COMPLET et cohérent avec sa propre
+      // pagination (28 vus / 28 annoncés / 1 page), a passé (a)(b)(c) et daté
+      // disparu_le sur les 384 d'un coup : ces gardes comparent le run à
+      // lui-même, jamais à l'inventaire. Deux ceintures de plus, même doctrine
+      // d'échec FERMÉ : on ne marque RIEN, le motif part en [note], un run
+      // sain suivant marquera. Ce bloc n'EMPÊCHE que des écritures, il n'en
+      // déclenche aucune.
+      // (d) RECOUPEMENT NUL : des vus, des connus, pas UNE intersection ⇒ ce
+      //     dressing n'est probablement pas celui dont vient l'inventaire
+      //     (signature du mauvais compte). Un run normal revoit l'écrasante
+      //     majorité de ses connus.
+      // (e) EFFONDREMENT : plus de max(20, 40 % des connus) à marquer d'une
+      //     passe. Les ventes/retraits ordinaires passent largement dessous ;
+      //     éteindre la majorité du stock exige un run qu'on croirait sur
+      //     parole. Résidu ASSUMÉ : un vrai retrait massif au-delà du plafond
+      //     ne sera plus daté automatiquement — constatable par la [note],
+      //     le run suivant un retour à la normale marquera.
+      if (disparus.length) {
+        const recoupement = (connus ?? []).some((r) => r.vinted_item_id && vusCetteSync.has(r.vinted_item_id));
+        const plafond = Math.max(20, Math.ceil((connus?.length ?? 0) * 0.4));
+        if (!recoupement) {
+          motifSautDisparitions = `dressing sans recoupement avec l'inventaire (${connus.length} connu(s), ${vusCetteSync.size} vu(s)) — mauvais compte Vinted possible, aucun marquage`;
+        } else if (disparus.length > plafond) {
+          motifSautDisparitions = `effondrement suspect : ${disparus.length} disparition(s) à marquer sur ${connus.length} connu(s), plafond ${plafond} — aucun marquage`;
+        }
+        if (motifSautDisparitions) console.warn(`[sync-dressing] disparitions NON marquées — ${motifSautDisparitions}`);
       }
-      if (disparus.length) console.log(`[sync-dressing] ${disparus.length} annonce(s) disparue(s), datées (aucune suppression)`);
+
+      if (!motifSautDisparitions) {
+        for (const d of disparus) {
+          await restRequest(`inventaire?id=eq.${d.id}`, token, {
+            method: "PATCH", body: JSON.stringify({ disparu_le: new Date().toISOString() }),
+          }).catch(() => {});
+        }
+        if (disparus.length) console.log(`[sync-dressing] ${disparus.length} annonce(s) disparue(s), datées (aucune suppression)`);
+      }
     } catch (e) {
       console.warn("[sync-dressing] marquage des disparus:", e?.message ?? e);
     }
