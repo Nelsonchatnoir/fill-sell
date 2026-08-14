@@ -330,7 +330,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // multi-comptes F1 (1fc9beb, main) : code non éprouvé qui touche le marquage
 // disparu_le — seul le prouvé part en circulation (doctrine
 // ext-0.6.3-cause403). EXTENSION_MIN_BUILD inchangé.
-export const EXTENSION_LAST_COMMIT = '2026-08-14T12:58:51Z';
+// 2026-08-14T13:35:14Z = 33fddeb (même branche) : re-clic « Mettre en vente »
+// gouverné par la PREUVE RÉSEAU (EBAY_SUBMIT_SEEN → ebaySubmitRequestSeen) au
+// lieu des signaux DOM — miroir de c419489 (main), où l'observation directe
+// établit la cause de la famille B : hydratation Marko différée (bouton dans
+// le DOM sans handler, clic avalé sans requête) + bandeau menteur rendu sans
+// POST qui étouffait le re-clic. 3 clics max, budgets 8/12/16 s, re-clic
+// uniquement si AUCUN POST capté.
+export const EXTENSION_LAST_COMMIT = '2026-08-14T13:35:14Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
