@@ -892,42 +892,56 @@ async function fillListingForm(job) {
   // menus, avec le helper déjà utilisé avant chaque pose de specific.
   await dismissLightboxes();
 
-  // État de référence AVANT le clic : notices/dialogues déjà visibles. Après le
-  // clic, seule l'APPARITION d'un élément nouveau (ou un changement d'état du
-  // bouton/de l'URL) prouve que le clic a produit quelque chose.
-  const surveilleNotices = () =>
-    [...document.querySelectorAll('.page-notice, [role="alert"], [role="dialog"], [class*="lightbox" i]')].filter(visibleSansLayout);
-  const noticesAvantClic = new Set(surveilleNotices());
-
   console.log(`[ebay] 🚀 LIVE — clic « ${listBtn.textContent.trim()} » (engagement de frais)`);
   await humanPause(1200, 2400);
   realClick(listBtn);
 
-  // ── Re-clic si le clic a été AVALÉ (2026-07-19, job 5253e104 — republication
-  // Medik8, cat. 21205). Preuves : bouton unique, actif et visible (autopsie du
-  // brouillon), gate requis passé (Marque/Type posés), et la sonde réseau n'a
-  // capté AUCUNE requête de soumission après le clic (seulement la télémétrie
-  // de chargement) — le clic n'a produit strictement AUCUN effet. C'est le
-  // mode d'échec déjà vécu sur les menus de specifics dans l'onglet caché (« la
-  // réaction au clic est différée/avalée par le throttling — on re-clique UNE
-  // fois », cf. fillSpecific) : le clic de soumission n'avait, lui, aucun
-  // re-clic. Signaux « le clic a pris » (tous lisibles sans layout) : URL
-  // quittée, bouton détaché/désactivé/en cours, notice ou dialogue APPARU.
-  // Si le 1er clic a réellement fonctionné, un de ces signaux apparaît bien
-  // avant 8 s (la soumission désactive le bouton / affiche la popup) — le
-  // re-clic ne part alors jamais, aucun risque de double dépôt.
-  // ⚠️ « formulaire re-rendu » N'EST PLUS un effet du clic (2026-07-19, job
-  // casquette 47917f97 — 2 tentatives « non confirmée », sonde réseau : AUCUNE
-  // requête de soumission, seulement les heartbeats backstory ~20 s). L'ancien
-  // détecteur comptait `!listBtn.isConnected` comme preuve que le clic avait
-  // pris — or un re-render React ROUTINIER d'eBay détache le nœud sans aucune
-  // soumission : faux positif → re-clic jamais tenté. Et dans le chemin
-  // timeout, le re-clic visait le nœud DÉTACHÉ (realClick sur un élément hors
-  // document = clic dans le vide, échec garanti). Le détecteur SUIT désormais
-  // le bouton à travers les re-renders : la détection d'état (disabled/busy)
-  // et le re-clic portent toujours sur le nœud VIVANT. Les vrais effets d'une
-  // soumission restent : navigation hors /lstng, bouton en traitement,
-  // notice/dialogue apparu, ou bouton définitivement disparu du formulaire.
+  // ── Le POST de publication est LA SEULE preuve qu'un clic a pris ──────────
+  // (2026-08-14 — mesuré EN DIRECT sur /lstng, brouillon 5217561021321, avec
+  // la séquence realClick exacte ; famille B : jobs 8d1e0060, 15bfa00a,
+  // deb6ec33, 3e16aa00, b0885fb8.)
+  //   · Page hydratée → POST /lstng/api/listing_draft/{id}/publish à CHAQUE
+  //     clic, même formulaire incomplet (la validation est SERVEUR) — et il
+  //     part aussi d'un onglet caché, une fois la page hydratée.
+  //   · Bouton présent mais module de soumission pas prêt (page fraîche ~3 s,
+  //     ou page CHARGÉE en onglet caché : hydratation Marko différée —
+  //     markoInitComponents encore absent à 88 s) → clic AVALÉ : aucune
+  //     requête. La page n'a AUCUN <form> et le bouton n'a pas d'onclick :
+  //     tout passe par la délégation Marko, branchée bien APRÈS l'apparition
+  //     du bouton dans le DOM.
+  //   · Signal MENTEUR mesuré : un bandeau de validation peut apparaître ~4 s
+  //     après un clic avalé SANS aucun POST (rendu différé de l'hydratation).
+  //     L'ancien détecteur DOM (« notice/dialogue apparu », « bouton en
+  //     traitement ») classait alors un clic mort en « suivi d'effet » et
+  //     étouffait l'unique re-clic — exactement la famille B.
+  // La décision de re-cliquer ne lit donc PLUS le DOM : elle interroge la
+  // sonde réseau du background — le MÊME lecteur que le verdict final
+  // (ebaySubmitRequestSeen), une seule définition de la preuve, les deux
+  // décisions ne peuvent pas diverger. Re-cliquer est sans danger PAR
+  // CONSTRUCTION : on ne re-clique que si AUCUNE requête de publication n'est
+  // partie. Trois clics au total, budgets croissants (8/12/16 s — doctrine du
+  // budget croissant, timers throttlés en fenêtre cachée). Seule sortie
+  // non-réseau conservée : la navigation hors /lstng (plus rien à re-cliquer ;
+  // verifyEbaySubmission tranche, comme avant).
+  const preuveDeSoumission = async (budgetMs) => {
+    const fin = Date.now() + budgetMs;
+    while (Date.now() < fin) {
+      if (!/\/lstng/.test(location.pathname)) return "navigation hors /lstng";
+      const r = await new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage({ type: "EBAY_SUBMIT_SEEN" }, (rep) => {
+            void chrome.runtime.lastError; // canal fermé = réponse nulle, jamais un throw
+            resolve(rep ?? null);
+          });
+        } catch { resolve(null); }
+      });
+      if (r?.seen) return "requête de publication captée par la sonde réseau";
+      await sleep(500);
+    }
+    return null;
+  };
+  // Re-render Marko possible entre deux clics : on re-cherche toujours le
+  // nœud VIVANT (un realClick sur un nœud détaché est un clic dans le vide).
   const retrouveListBtn = () =>
     Array.from(document.querySelectorAll("button")).find((b) =>
       /mettre en vente avec les frais/i.test(b.textContent)
@@ -935,33 +949,22 @@ async function fillListingForm(job) {
     Array.from(document.querySelectorAll("button")).find((b) =>
       /^mettre en vente/i.test(b.textContent.trim())
     );
-  let btnCourant = listBtn;
-  const effetDuClic = () => {
-    if (!/\/lstng/.test(location.pathname)) return "navigation";
-    if (surveilleNotices().some((el) => !noticesAvantClic.has(el))) return "notice/dialogue apparu";
-    if (!btnCourant.isConnected) {
-      const frais = retrouveListBtn();
-      if (!frais) return "bouton de mise en vente disparu du formulaire";
-      btnCourant = frais; // re-render : on suit le nouveau nœud, ce n'est PAS un effet
-    }
-    if (btnCourant.disabled || btnCourant.getAttribute("aria-disabled") === "true" || /loading|busy|progress/i.test(btnCourant.className)) return "bouton en traitement";
-    return null;
-  };
-  let effetClic = await waitFor(effetDuClic, 8000);
-  if (!effetClic) {
-    const note = "mise en vente: 1er clic sans aucun effet observable après 8 s (clic avalé, onglet caché) — re-clic unique effectué";
+  let effetClic = await preuveDeSoumission(8000);
+  for (let reclic = 1; !effetClic && reclic <= 2; reclic++) {
+    const note = `mise en vente: toujours AUCUNE requête de publication captée après le clic ${reclic} — re-clic ${reclic}/2`;
     console.warn(`[ebay] ⚠️ ${note}`);
     warnings.push(note);
     await humanPause(600, 1200);
-    realClick(btnCourant);
-    effetClic = await waitFor(effetDuClic, 8000);
-    if (!effetClic) {
-      // Toujours rien : on le DIT (le verdict final reste au background —
-      // verifyEbaySubmission + Hub vendeur par titre, jamais de re-dépôt
-      // aveugle) mais le diagnostic « aucun effet même après re-clic » ne
-      // reste plus enfoui dans la console.
-      warnings.push("mise en vente: re-clic également sans effet observable après 8 s — verdict délégué au background (réponse serveur + Hub vendeur)");
-    }
+    const btn = retrouveListBtn();
+    if (!btn) break; // bouton disparu sans navigation ni POST : verdict au background
+    realClick(btn);
+    effetClic = await preuveDeSoumission(reclic === 1 ? 12000 : 16000);
+  }
+  if (!effetClic) {
+    // Toujours rien : on le DIT (le verdict final reste au background —
+    // verifyEbaySubmission + Hub vendeur par titre, jamais de re-dépôt
+    // aveugle, et submit_never_sent reprend sur onglet neuf sans risque).
+    warnings.push("mise en vente: 3 clics sans aucune requête de publication captée — verdict délégué au background (réponse serveur + Hub vendeur)");
   }
   if (effetClic) console.log(`[ebay] clic « Mettre en vente » suivi d'effet : ${effetClic}`);
 

@@ -323,6 +323,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
+  // Preuve réseau de la soumission eBay (2026-08-14, famille B) : le content
+  // script ne décide plus de re-cliquer « Mettre en vente » sur des signaux
+  // DOM (bandeau menteur mesuré en direct : notice de validation rendue ~4 s
+  // après un clic avalé, SANS aucun POST) — il demande si le POST
+  // /lstng/api/listing_draft/{id}/publish a été capté par la sonde. MÊME
+  // lecteur que le verdict final (ebaySubmitRequestSeen) : une seule
+  // définition de la preuve, les deux décisions ne peuvent pas diverger.
+  if (msg?.type === "EBAY_SUBMIT_SEEN" && senderTabId != null) {
+    ebaySubmitRequestSeen(senderTabId).then(
+      (seen) => sendResponse({ ok: true, seen }),
+      // Lecteur en échec : « vue » par prudence, comme son propre catch — le
+      // content script s'arrête de re-cliquer, le chemin prudent du verdict
+      // final (pas de reprise aveugle) fait foi.
+      () => sendResponse({ ok: true, seen: true }),
+    );
+    return true; // réponse asynchrone
+  }
   // ⚠️ POINT CRITIQUE (2026-07-20, révisé 2026-08-01) : une fois que
   // l'extension a SA session VALIDE, celle-ci reste maîtresse — le token de
   // l'app ne doit jamais la remplacer, sinon l'extension refait tourner la
