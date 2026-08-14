@@ -113,6 +113,37 @@ export function humanizeJobError(job, lang = 'fr') {
         + ` Ouvre ${name} dans Chrome, passe la vérification, puis relance la ${acte} toi-même depuis la fiche de l'article.`;
   }
 
+  // ── Step-up de reconnexion vente eBay (RÉÉCRIT ICI depuis le 2026-08-14) ──
+  // Message du parc 0.6.1/0.6.2 : « eBay a servi une page inattendue
+  // (/ws/eBayISAPI.dll) alors que ta session eBay est valide — … Le job
+  // repartira automatiquement au prochain passage. » Les DEUX moitiés sont
+  // contredites par la base (relevé Nico 14/08, 7 cas / 5 comptes) : les 7
+  // URL sont signin.ebay.fr/ws/eBayISAPI.dll?SignIn&…&ru=<formulaire de
+  // dépôt> (vrai mur d'authentification, même pageType=2379018), AUCUN job
+  // n'est jamais reparti (rejeux 00h41→01h08 Manon, 18h15→18h22 Dujardin :
+  // même résultat), zéro publication eBay réussie depuis sur les 5 comptes.
+  // eBay maintient la session de NAVIGATION (la sonde a raison) mais exige
+  // une reconnexion INTERACTIVE pour le flux de VENTE — elle ne se lève pas
+  // toute seule. Le texte source vit dans chrome-extension/ (corrigé en
+  // 0.6.5, libellé « REAUTH VENTE eBay », qui n'est PAS réécrit ici) : pour
+  // le parc, correction à l'affichage, même doctrine que CHALLENGE et que la
+  // règle 2.4.47 — plus jamais de fausse promesse de reprise.
+  // Rythme inexpliqué (5 cas/16 j avant le 12/08, 7/3 j après) : question
+  // OUVERTE, à reprendre avec plus de volume — rien ici n'en dépend.
+  if (job?.platform === 'ebay' && /page inattendue.*session eBay est valide/is.test(raw)) {
+    const termine = JOB_STATUS_TERMINAL.has(job?.status);
+    const rendue = termine && (job?.action ?? 'publish') === 'publish';
+    const etatFr = termine
+      ? `Rien n'a été publié et le job est arrêté.${rendue ? ' La Pépite engagée a été rendue.' : ''}`
+      : "Rien n'a été publié, et les tentatives automatiques restantes échoueront aussi tant que la reconnexion n'est pas faite.";
+    const etatEn = termine
+      ? `Nothing was published and the job has stopped.${rendue ? ' The Nugget held for it has been refunded.' : ''}`
+      : 'Nothing was published, and the remaining automatic retries will fail too until you sign in again.';
+    return en
+      ? `eBay requires you to sign in again before it lets you list an item, even though your eBay session is still valid elsewhere. ${etatEn} In order: open ebay.fr in Chrome, click "Sell", sign in again, then restart the publication from the item in the app.`
+      : `eBay demande une reconnexion avant de laisser déposer une annonce, même si ta session eBay est encore valide ailleurs. ${etatFr} Dans l'ordre : ouvre ebay.fr dans Chrome, clique « Vendre », reconnecte-toi, puis relance la publication depuis la fiche de l'article.`;
+  }
+
   // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :
   // le détail embarque la palette relevée — l'utilisateur doit juste
   // corriger la couleur de l'article.
