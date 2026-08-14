@@ -81,7 +81,11 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // manifest passe en 0.6.3 du même geste (branche ext-0.6.3-cause403, basée
 // sur 7971dc4 = la 0.6.2 publiée, SANS les commits matière/selectSizeByIds
 // de main : seul le prouvé part en circulation, consigne du 13/08).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2'];
+// 0.6.3, 0.6.4 et 0.6.5 ajoutées le 14/08 (rattrapage, même nature que 0.5.2/
+// 0.5.7) : paquets construits sur la branche ext-0.6.3-cause403 puis le merge
+// (zip livré 0.6.5 = fillsell-extension-0.6.5-fe901f4.zip, téléversé au CWS).
+// La 0.6.6 les remplace — les re-packager ne servirait qu'à se faire rejeter.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();

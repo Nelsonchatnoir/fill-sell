@@ -3063,6 +3063,23 @@ async function selectVintedBrand(marque, warnings) {
       return;
     } catch (e) {
       await closeAnyOpenDropdown();
+      // ── Catégories SANS champ Marque (2026-08-14, Livres — jobs needs_user
+      // d359b972/e5b0e6fd de Lau Brzl) : le formulaire Vinted de certaines
+      // catégories n'expose AUCUN picker Marque. Quand la cible est le
+      // sentinel « Sans marque » (brand_id 1), il n'y a littéralement rien à
+      // poser : NO-OP, la publication continue. L'absence n'est conclue
+      // qu'ICI, après l'échec de selectVintedNoBrand — donc après l'attente
+      // standard des champs conditionnels (openDropdown →
+      // waitForStableElement), jamais sur un querySelector à froid qui
+      // prendrait un champ pas encore rendu pour un champ absent. Une VRAIE
+      // marque (≠ sentinel) sur picker absent ne passe pas par ici : elle
+      // suit la branche catalogue ci-dessous, dont le throw final est
+      // conservé — une marque réelle impossible à poser reste une anomalie,
+      // à ne pas avaler.
+      if (!document.querySelector(trigger)) {
+        console.log("[vinted] pas de champ Marque dans cette catégorie et valeur cible « Sans marque » — rien à poser, on continue");
+        return;
+      }
       const err = new Error(
         "Le champ Marque n'a pas pu être posé sur « Sans marque » (option native du picker Vinted " +
         "introuvable). Publication interrompue AVANT le dépôt — ce n'est PAS un refus Vinted, " +
