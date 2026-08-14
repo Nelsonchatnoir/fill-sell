@@ -325,17 +325,31 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Le zip livré 0.6.5 = fillsell-extension-0.6.5-fe901f4.zip, packagé à
 // fe901f4 — AVANT le commit suivant.
 // 2026-08-14T08:57:21Z = 1fc9beb (F1 multi-comptes : trace identité,
-// attribution vinted_account_id, épinglage) : code extension destiné au
-// PROCHAIN paquet. ⚠️ NE PAS re-packager sans bumper le manifest en 0.6.6 :
-// un « 0.6.5 » re-packagé ici contiendrait F1 et divergerait du zip livré.
-// 2026-08-14T12:16:01Z = 401c649 (0.6.6) : catégorie sans champ Marque
-// (Livres) + cible « Sans marque » (brand_id 1) = NO-OP silencieux au lieu
-// d'un needs_user (jobs d359b972/e5b0e6fd de Lau Brzl). Absence conclue
-// APRÈS l'attente standard des champs conditionnels ; une VRAIE marque sur
-// picker absent garde son throw. Manifest bumpé en 0.6.6 du même commit
-// (consigne 1fc9beb). EXTENSION_MIN_BUILD inchangé — ni 0.6.4, ni 0.6.5,
-// ni 0.6.6 acceptées par le Chrome Web Store à ce jour.
-export const EXTENSION_LAST_COMMIT = '2026-08-14T12:16:01Z';
+// attribution vinted_account_id, épinglage) : code NON ÉPROUVÉ, il touche le
+// marquage disparu_le de la sync — le chemin qui a éteint 384 articles dans
+// la nuit du 13 au 14. ⚠️ EXCLU du paquet 0.6.5 (décision Nico 14/08 :
+// « seul le prouvé part en circulation », doctrine ext-0.6.3-cause403) — il
+// attendra un paquet ultérieur, avec un bump de version à ce moment-là.
+// 2026-08-14T12:16:01Z = 401c649 : catégorie sans champ Marque (Livres) +
+// cible « Sans marque » (brand_id 1) = NO-OP silencieux au lieu d'un
+// needs_user (jobs d359b972/e5b0e6fd de Lau Brzl). Absence conclue APRÈS
+// l'attente standard des champs conditionnels ; une VRAIE marque sur picker
+// absent garde son throw. (Le bump de manifest fait dans ce commit a été
+// ANNULÉ le jour même : aucune 0.6.5 n'ayant jamais été téléversée au CWS,
+// le paquet reste une 0.6.5 — correction Nico 14/08 après-midi.)
+// 2026-08-14T12:56:30Z = 9d14b9d (2.4.54 côté app) : eBay famille B — quand
+// le clic « Mettre en vente » ne produit AUCUNE requête de publication, le
+// draftId relevé dans la télémétrie captée est consigné
+// (platform_fields.ebay_draft_id) : un brouillon existe côté eBay, l'app le
+// dit à l'affichage (humanizeJobError). Cause du clic sans effet NON établie
+// — aucun correctif spéculatif. Famille A : la branche générique
+// d'arbitrerSessionEbay n'affirme plus « ta session eBay est valide » (la
+// sonde ne prouve que la page d'entrée prelist, pas le droit de déposer).
+// 2026-08-14T12:56:59Z = bd594a6 : manifest REMIS en 0.6.5.
+// ⚠️ LE PAQUET 0.6.5 SE CONSTRUIT SUR LA BRANCHE ext-0.6.5-sans-f1 (base
+// fe901f4 + fix Marque + fixes eBay), PAS sur main : main porte F1 (1fc9beb),
+// exclu de la circulation. Un paquet construit ICI embarquerait F1.
+export const EXTENSION_LAST_COMMIT = '2026-08-14T12:56:59Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
