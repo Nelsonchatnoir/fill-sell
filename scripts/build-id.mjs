@@ -290,14 +290,36 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (21/21 required=false) : tout échec est un warning, jamais un blocage.
 // Manifest 0.6.3 ; le paquet attend l'ACCEPTATION de la 0.6.2 en examen CWS.
 // EXTENSION_MIN_BUILD reste sur la 0.5.6.
-// 2026-08-13T13:03:47Z = a426979 (0.6.4) : la taille des captures 0.6.1 est
-// résolue par IDS sur le menu « Taille » ouvert du formulaire de recréation
-// (selectSizeByIds, auto-validation du référentiel — un même id sous deux
-// libellés = illisible, garde-fou mini-éditeur). Rattrapage : le commit a
-// touché chrome-extension/ sans bumper cette constante (le build local
-// échouait sur la garde ci-dessous). EXTENSION_MIN_BUILD reste sur la 0.5.6 —
-// ni la 0.6.2 ni les suivantes ne sont acceptées au Chrome Web Store.
-export const EXTENSION_LAST_COMMIT = '2026-08-13T13:03:47Z';
+// 2026-08-13T13:03:47Z = a426979 (0.6.4, main) : la taille des captures 0.6.1
+// résolue par IDS sur le menu « Taille » ouvert (selectSizeByIds,
+// auto-validation du référentiel). ⚠️ RETIRÉ AU MERGE DU 14/08 (consigne du
+// 13/08 maintenue) : le suffixe numérique de size-group-<n> n'est pas prouvé
+// être l'id de la TAILLE (et non du groupe) — le résolveur vinted.js et son
+// site d'appel ne sont dans AUCUN paquet ; la capture des ids
+// (construireJobRecreation → platform_fields.taille_ids) reste, données
+// conservées pour une réintroduction sur preuve.
+// 2026-08-13T14:14:47Z = 96eb059 (0.6.3, BRANCHE ext-0.6.3-cause403 basée sur
+// 7971dc4 = la 0.6.2 publiée/acceptée au CWS — SANS les commits matière ni
+// selectSizeByIds de main, consigne Nico 13/08) : la cause d'un 403 de la
+// sync est lue dans le NAVIGATEUR via chrome.cookies (cookie v_uid, posé par
+// le login Vinted) et écrite en base ([cause403] session_absente /
+// session_presente / indetermine, survit à l'échec définitif).
+// session_absente court-circuite le cycle 5/10/20 : échec immédiat
+// « connecte-toi sur vinted.fr ». Permission "cookies" ajoutée au manifest.
+// EXTENSION_MIN_BUILD reste sur la 0.5.6 — la promotion vers le build 0.6.2
+// publié est un geste web (main), hors de cette branche.
+// 2026-08-13T18:35:36Z = d6b88a4 (0.6.4, même branche) : sonde de dépôt Beebs
+// (product_id capté, listing_url posé à la mise en ligne seulement), message
+// REAUTH VENTE eBay (step-up signin.ebay.fr/eBayISAPI.dll), options du champ
+// « Produit » LBC relevées SUR PLACE au blocage (needsUserField dropdown),
+// markNeedsUser transmet input_type, détecteur photos LBC réparé (vignettes
+// CDN img.leboncoin.fr, plus jamais « 0 détectée » à tort), règle du
+// pré-rempli (jamais écrasé par une valeur hors liste, repli marque
+// Autre/Sans marque), matière par ids (cherry-pick 4fbf20b).
+// La branche a été fusionnée dans main le 14/08 (paquet unique 0.6.5 :
+// contenu 0.6.4 + gardes anti-effondrement cb10c36 + arbitrage sonde
+// a9f005d) — la constante ci-dessous est re-bumpée par le chore qui suit.
+export const EXTENSION_LAST_COMMIT = '2026-08-13T18:35:36Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

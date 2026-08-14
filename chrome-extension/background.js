@@ -1883,6 +1883,21 @@ async function processJob(rawJob, accessToken) {
       if (!listingUrl && job.platform === "vinted") listingUrl = await vintedUploadSucceeded(tabId).catch(() => null);
       if (!listingUrl && job.platform === "ebay") listingUrl = await ebayUploadSucceeded(tabId, accessToken).catch(() => null);
 
+      // Beebs (2026-08-13, item 9) : la sonde a pu capter l'id produit dans la
+      // réponse de la Server Action. On n'écrira QUE platform_listing_id — PAS
+      // listing_url : chez Beebs, une URL en base signifie « annonce EN
+      // LIGNE » (veilleur de vente, cron 48 h « pas d'URL = échec + Pépite »,
+      // modale de retrait). Or à cet instant l'annonce part en modération —
+      // poser l'URL maintenant sortirait le job du filet 48 h et ferait
+      // prendre la 404 de modération pour une disparition. C'est la re-capture
+      // (recoverMissingListingUrls) qui posera l'URL à la première lecture 200
+      // de /fr/p/<id> (vérifié le 13/08 : /fr/p/<id> sans slug redirige vers
+      // l'URL canonique ; id inexistant → page « Oups, page perdue ! »).
+      let beebsProductId = null;
+      if (job.platform === "beebs") {
+        beebsProductId = await beebsCapturedProductId(tabId, accessToken, job).catch(() => null);
+      }
+
       // Beebs : dépôt CONFIRMÉ mais annonce en MODÉRATION (« il sera mis en
       // ligne dès qu'il aura été vérifié par notre équipe ») — elle n'est PAS
       // dans « Mes annonces » à cet instant. L'aller-retour ne pouvait donc que
@@ -1899,6 +1914,19 @@ async function processJob(rawJob, accessToken) {
         );
       }
       console.log(`[background] Job ${job.id} publié : ${listingUrl ?? "(URL non récupérée)"}`);
+      // platform_listing_id Beebs : PATCH direct (RLS user, même canal que
+      // recoverMissingListingUrls) — update-job-status ne dérive l'id que d'un
+      // listing_url, qu'on ne pose volontairement pas ici (cf. bloc au-dessus).
+      // Best-effort AVANT l'écriture du statut : un échec de ce PATCH ne
+      // change rien au published, et l'id se re-capte à la re-tentative de la
+      // re-capture (fetch /fr/p/<id> impossible sans id → le balayage de
+      // pages reste le filet).
+      if (beebsProductId) {
+        await restRequest(`cross_post_jobs?id=eq.${job.id}`, accessToken, {
+          method: "PATCH",
+          body: JSON.stringify({ platform_listing_id: beebsProductId }),
+        }).catch((e) => console.warn(`[background] PATCH platform_listing_id beebs :`, String(e?.message ?? e)));
+      }
       await updateJobStatus(accessToken, job.id, "published", {
         ...completionExtras(job, result),
         listing_url: listingUrl ?? undefined,
@@ -2229,6 +2257,13 @@ async function markNeedsUser(accessToken, job, result) {
         field_label: String(f.field_label).slice(0, 200),
         ...(f.target && f.target.key ? { target: { root: f.target.root ?? null, key: String(f.target.key).slice(0, 200) } } : {}),
         ...(allowed ? { allowed_values: allowed.slice(0, 200).map((v) => String(v)) } : {}),
+        // input_type ENFIN transmis (2026-08-13) : les handlers le posent
+        // depuis le 22/07 (beebs.js « dropdown », leboncoin.js depuis ce
+        // soir) mais il était PERDU ici — la garde « champ fermé » de l'app
+        // (CLOSED_INPUT_TYPES, StockTab) n'a donc jamais pu se déclencher :
+        // un champ fermé sans options s'affichait en saisie libre, dont la
+        // valeur ne pouvait que re-bloquer.
+        ...(f.input_type ? { input_type: String(f.input_type).slice(0, 40) } : {}),
       },
     },
   });
@@ -3785,7 +3820,21 @@ const PROBE_ENDPOINTS = {
   // cherche un numéro d'annonce dans la réponse — c'est ce que fait
   // ebayUploadSucceeded, qui exige aussi un HTTP 2xx. Le jour où l'endpoint
   // exact apparaît dans les logs, on resserrera ce motif.
+  // (Dépôt réel du 2026-08-13 : la soumission est
+  // POST /lstng/api/listing_draft/{draftId}/publish, réponse 200 porteuse de
+  // "itemId":"<12 chiffres>" au succès — et 200 AUSSI au refus de validation,
+  // sans itemId. Le motif large reste : il couvre ce endpoint et ses replis.)
   ebay: String.raw`ebay\.(?:fr|com)`,
+  // Beebs (2026-08-13, dépôt réel observé — chantier item 9) : la création est
+  // une Server Action Next.js, POST sur /fr/listing (le même chemin que la
+  // page du formulaire). La réponse est un flux RSC, pas un JSON propre ;
+  // l'id produit y revient au client (prouvé : l'événement analytics
+  // listing_done tiré juste après la réponse porte product_id), sous une forme
+  // exacte encore non observée dans le flux — annonceIdOf tente les motifs
+  // connus, et à défaut un échantillon borné part en last_diagnostic (mode
+  // APPRENTISSAGE : on relève la vraie forme au premier dépôt de prod, on ne
+  // grave aucune supposition — règle du chantier Beebs).
+  beebs: String.raw`beebs\.app\/fr\/listing(?:[?#]|$)|^\/fr\/listing(?:[?#]|$)`,
 };
 
 // ⚠️ ANGLES MORTS ASSUMÉS de la sonde (2026-07-13, relevés lors du job
@@ -3805,8 +3854,8 @@ async function installNetworkProbe(tabId, platform) {
     await chrome.scripting.executeScript({
       target: { tabId },
       world: "MAIN",
-      args: [endpointSource],
-      func: (endpointSrc) => {
+      args: [endpointSource, platform],
+      func: (endpointSrc, platform) => {
         if (window.__fsProbeInstalled) return;
         window.__fsProbeInstalled = true;
         window.__fsCaptures = [];
@@ -3828,9 +3877,16 @@ async function installNetworkProbe(tabId, platform) {
         // dans la capture (annonceId), à côté de l'extrait tronqué des logs.
         const annonceIdOf = (txt) => {
           const s = String(txt ?? "");
+          // Motifs Beebs CONDITIONNÉS à la plateforme (2026-08-13) : product_id
+          // et /p/<id>- n'existent que chez Beebs, et les ouvrir sur eBay
+          // serait dangereux — /p/<epid> est une page PRODUIT eBay, un epid à
+          // 9+ chiffres passerait le test de ebayUploadSucceeded et
+          // fabriquerait un /itm/ inventé.
           const m =
             s.match(/"(?:listingId|itemId|item_id|listing_id)"\s*:\s*"?(\d{9,})/i) ??
-            s.match(/\/itm\/(\d{9,})/);
+            (platform === "beebs" ? s.match(/"product_id"\s*:\s*"?(\d{6,})/i) : null) ??
+            s.match(/\/itm\/(\d{9,})/) ??
+            (platform === "beebs" ? s.match(/\/p\/(\d{6,})(?:-|["'\\])/) : null);
           return m ? m[1] : null;
         };
         // ⚠️⚠️ SUCCÈS VINTED — CALCULÉ SUR LE CORPS COMPLET, comme annonceId, et
@@ -4051,6 +4107,44 @@ async function ebayUploadSucceeded(tabId, accessToken) {
       if (await ebayIdAlreadyKnown(accessToken, m[1])) continue;
       return `https://www.ebay.fr/itm/${m[1]}`;
     }
+  }
+  return null;
+}
+
+// ── Id produit Beebs capté au DÉPÔT (2026-08-13, chantier item 9) ────────────
+// La sonde réseau observe la réponse de la Server Action POST /fr/listing ;
+// annonceIdOf y cherche product_id (et les replis /p/<id>). Garde
+// anti-croisement IDENTIQUE à eBay (ebayIdAlreadyKnown est générique : elle
+// teste listing_url like *id*) : un id déjà porté par une annonce en base est
+// l'écho d'une annonce existante, jamais la création.
+// Si AUCUN id n'est extrait : un échantillon BORNÉ des captures part en
+// last_diagnostic (sur la copie mémoire du job — le caller la persiste avec le
+// verdict published) : on APPREND la forme réelle du flux RSC au premier dépôt
+// de prod au lieu de graver une supposition. Jamais bloquant : le dépôt reste
+// un succès, l'id est un enrichissement.
+async function beebsCapturedProductId(tabId, accessToken, job) {
+  const { captures } = await readProbeCaptures(tabId);
+  for (let i = captures.length - 1; i >= 0; i--) {
+    const c = captures[i];
+    const status = Number(c?.status);
+    if (!(status >= 200 && status < 300)) continue;
+    const id = String(c?.annonceId ?? "");
+    if (!/^\d{6,}$/.test(id)) continue;
+    if (await ebayIdAlreadyKnown(accessToken, id)) continue;
+    console.log(`[background] Beebs : id produit capté par la sonde — ${id}`);
+    return id;
+  }
+  if (captures.length) {
+    const echantillon = captures.slice(-4).map((c) =>
+      `${String(c?.url ?? "?").slice(0, 120)} → HTTP ${c?.status ?? "?"} · ${String(c?.reponse ?? "").slice(0, 200)}`
+    ).join(" ; ");
+    job.platform_fields = {
+      ...(job.platform_fields ?? {}),
+      last_diagnostic: `[sonde beebs : aucun id produit extrait de ${captures.length} capture(s) — ${echantillon}]`.slice(0, 2000),
+    };
+    console.log(`[background] Beebs : sonde sans id produit (${captures.length} capture(s)) — échantillon → last_diagnostic`);
+  } else {
+    console.log("[background] Beebs : sonde réseau sans aucune capture — rien à apprendre sur ce dépôt");
   }
   return null;
 }
@@ -5395,6 +5489,30 @@ async function arbitrerSessionEbay(result) {
     return { ...result, sessionConfirmee: true, diagnostic, error: MSG_CONNEXION_EBAY };
   }
   if (sonde.etat === true) {
+    // ── STEP-UP D'AUTHENTIFICATION DU FLUX DE VENTE (2026-08-13) ─────────────
+    // 5 cas des 12-13/08 (4 comptes, v0.6.1 ET v0.6.2), diagnostic en base :
+    // la page relevée est signin.ebay.fr/ws/eBayISAPI.dll?SignIn&ru=<le
+    // formulaire /sl/list>. eBay maintient la session de NAVIGATION (la sonde
+    // HTTP dit true — elle a raison) mais exige une reconnexion INTERACTIVE
+    // pour ouvrir le flux de VENTE — même racine que le passkey qui bloque les
+    // suppressions. Vérifié en direct sur une session fraîchement utilisée :
+    // pas de rebond — ça ne frappe que les sessions dont l'auth « vente » est
+    // ancienne. L'ancien message affirmait « ta session est valide » puis
+    // promettait une reprise : double contre-vérité (l'utilisateur partait
+    // chercher un problème de compte inexistant, et un job failed n'est
+    // JAMAIS repris). Motif SQL-able : error LIKE 'REAUTH VENTE eBay%'.
+    let hote = "";
+    try { hote = new URL(url).hostname; } catch { /* URL illisible */ }
+    const stepUp = /(^|\.)signin\.ebay\./i.test(hote) || /eBayISAPI\.dll/i.test(url) || /[?&]SignIn\b/i.test(url);
+    if (stepUp) {
+      return {
+        ...result, sessionConfirmee: false, diagnostic,
+        error:
+          "REAUTH VENTE eBay : eBay demande une reconnexion de sécurité pour vendre, alors que ta " +
+          "session de navigation reste active. Ouvre ebay.fr dans Chrome, clique « Vendre », " +
+          "reconnecte-toi, puis relance la publication depuis la fiche de l'article.",
+      };
+    }
     return {
       ...result, sessionConfirmee: false, diagnostic,
       error:
@@ -5686,11 +5804,49 @@ async function poserEtatRetry403(userId, etat) {
 // Marqueur écrit dans `erreur` pendant qu'une reprise est armée. PARSÉ par
 // StockTab (RETRY403_RE) pour afficher « nouvelle tentative automatique dans
 // ~X min » : préfixe, compteur et échéance ISO sont un CONTRAT d'affichage —
-// à faire évoluer ENSEMBLE.
+// à faire évoluer ENSEMBLE. (RETRY403_RE est ancrée en DÉBUT de chaîne : le
+// segment « | [cause403] … » s'ajoute toujours APRÈS, jamais devant.)
 function marqueurRetry403(tentative, prochaineA) {
   return `[retry403] tentative ${tentative}/${SYNC_RETRY403_DELAIS_MIN.length} prevue ${prochaineA} — ` +
     "accès refusé par Vinted (HTTP 403, protection anti-robot) ; reprise automatique programmée, " +
     "la connexion Vinted n'est pas en cause";
+}
+
+// ── Cause du 403 : y a-t-il une session Vinted dans ce navigateur ? ──────────
+// (2026-08-13.) Relevé en base : les 9 comptes ayant pris un 403 ce jour sont
+// TOUS inscrits d'hier ou d'aujourd'hui, 6/9 sans AUCUNE sync réussie, et
+// aucun utilisateur établi n'a jamais pris de 403 — un problème de PREMIÈRE
+// CONNEXION (pas connecté à Vinted dans ce navigateur), pas un bot-shield
+// aléatoire. Or le 403 anti-robot tombe AVANT que Vinted regarde le cookie de
+// session : la sonde API ne peut rien en dire. On lit donc le NAVIGATEUR, via
+// chrome.cookies (permission ajoutée au manifest du même geste).
+// COOKIE RETENU : `v_uid` — l'id utilisateur Vinted, posé PAR le login,
+// absent des sessions anonymes. ⚠️ Les autres cookies (_vinted_fr_session,
+// access_token_web, anon_id, datadome…) existent dès la première navigation —
+// l'onglet de travail vient précisément de charger vinted.fr — et ne prouvent
+// donc RIEN : seul un marqueur posé par la connexion discrimine.
+// Verdicts → marqueur [cause403] écrit dans vinted_sync_runs.erreur, lisible
+// en SQL (erreur LIKE '%[cause403] session_absente%') :
+//   session_absente  → aucun v_uid : pas de session Vinted ici ;
+//   session_presente → v_uid présent : connecté, le 403 est bien anti-robot ;
+//   indetermine      → lecture impossible ou store VIDE (API en erreur,
+//                      cookies bloqués par le profil) : on ne conclut pas.
+// Si Vinted renommait/supprimait v_uid un jour, les comptes ÉTABLIS se
+// mettraient à sortir en session_absente — dérive VISIBLE en base par ce même
+// marqueur, et le message utilisateur garde le repli « si tu es déjà
+// connecté, réessaie ».
+const VINTED_LOGIN_COOKIE = "v_uid";
+async function classifierCause403() {
+  try {
+    const cookies = await chrome.cookies.getAll({ domain: "vinted.fr" });
+    if (!Array.isArray(cookies) || !cookies.length) return "indetermine";
+    return cookies.some((c) => c?.name === VINTED_LOGIN_COOKIE && String(c?.value ?? "").trim())
+      ? "session_presente"
+      : "session_absente";
+  } catch (e) {
+    console.warn("[sync-dressing][cause403] lecture cookies impossible:", e?.message ?? e);
+    return "indetermine";
+  }
 }
 
 // ── Reprise programmée après un 403 (tir d'alarme) ───────────────────────────
@@ -6373,6 +6529,10 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     const sonder = () => sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch((e) => ({
       success: false, error: `sonde injoignable : ${String(e?.message ?? e)}`,
     }));
+    // Cause d'un éventuel 403, lue AVANT la sonde : le 403 tombe avant que
+    // Vinted regarde la session, c'est donc au navigateur qu'on la demande
+    // (classifierCause403 — cookie v_uid). Lecture pure, quelques ms.
+    const cause403 = await classifierCause403();
     ident = await sonder();
 
     // ── Verdict INCONNU sur 403 anti-robot : reprise en arrière-plan ─────────
@@ -6383,7 +6543,23 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     // Le run est clos 'failed' avec le marqueur [retry403] et sera RÉ-OUVERT
     // par l'alarme (même ligne, tentative suivante) ; à la 3e reprise encore
     // en 403, échec définitif avec le message anti-robot inchangé.
+    // Le marqueur [cause403] accompagne CHAQUE écriture d'erreur de ce chemin
+    // — clôtures avec reprise armée ET échec définitif — pour rester lisible
+    // en SQL quoi qu'il arrive au run (seule mesure disponible en base).
     if (!ident?.success && ident?.verdictInconnu && ident?.httpStatus === 403) {
+      // session_absente : pas de session Vinted dans ce navigateur — le cycle
+      // 5/10/20 ne ferait qu'imposer 35 min d'attente pour un problème que
+      // l'utilisateur règle en dix secondes en se connectant. Échec immédiat,
+      // message qui nomme le geste. « session Vinted » DANS le texte, à
+      // dessein : StockTab ≤ 2.4.44 reconnaît ce motif (regex) et affiche déjà
+      // « connecte-toi sur vinted.fr » ; la 2.4.45 affiche son encart 403.
+      if (cause403 === "session_absente") {
+        await annulerRetry403(userId, "403 sans session Vinted — rien à retenter avant connexion");
+        return await echec(
+          "[cause403] session_absente — aucune session Vinted dans ce navigateur (HTTP 403 sur la sonde) : " +
+          "connecte-toi sur vinted.fr dans ce navigateur, puis relance la synchronisation.",
+        );
+      }
       const etat = await lireEtatRetry403(userId);
       const tentativesFaites = etat?.runId === run.id ? (Number(etat.tentative) || 0) : 0;
       if (tentativesFaites < SYNC_RETRY403_DELAIS_MIN.length) {
@@ -6391,8 +6567,8 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
           runId: run.id, tentative: tentativesFaites + 1, declencheur,
         });
         if (prochaineA) {
-          console.warn(`[sync-dressing] 403 anti-robot — reprise ${tentativesFaites + 1}/${SYNC_RETRY403_DELAIS_MIN.length} armée pour ${prochaineA}`);
-          await clore({ status: "failed", erreur: marqueurRetry403(tentativesFaites + 1, prochaineA).slice(0, 500) });
+          console.warn(`[sync-dressing] 403 anti-robot (${cause403}) — reprise ${tentativesFaites + 1}/${SYNC_RETRY403_DELAIS_MIN.length} armée pour ${prochaineA}`);
+          await clore({ status: "failed", erreur: `${marqueurRetry403(tentativesFaites + 1, prochaineA)} | [cause403] ${cause403}`.slice(0, 500) });
           return { ok: false, reason: "retry403_programme", tentative: tentativesFaites + 1 };
         }
         // Armement impossible (alarme déjà présente, API muette…) : on retombe
@@ -6401,11 +6577,14 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       await annulerRetry403(userId, "reprises épuisées ou inarmables — échec définitif");
       // Message qui dit le vrai motif et ne contient ni « session Vinted » ni
       // « HTTP 401 » — les deux motifs que StockTab reconnaît pour afficher
-      // « reconnecte-toi », qui serait faux ici.
+      // « reconnecte-toi », qui serait faux ici (session_presente/indetermine).
+      // Le segment [cause403] SURVIT à l'échec définitif : c'est lui la mesure
+      // en base — l'ancien code écrasait toute trace au moment de l'échec.
       return await echec(
         `Vinted a refusé l'accès à son API (HTTP ${ident.httpStatus ?? "?"}, protection anti-robot) — ` +
         "la connexion Vinted n'a donc pas pu être vérifiée. " +
-        "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause.",
+        "Réessaie dans quelques minutes : ta connexion Vinted n'est pas en cause. " +
+        `| [cause403] ${cause403}`,
       );
     }
     if (!ident?.success && ident?.verdictInconnu) {
@@ -7698,6 +7877,48 @@ async function lbcSondeModeration(session, job, etatPage) {
   }
 }
 
+// ── Lecture directe de la page produit Beebs (2026-08-13, item 9) ────────────
+// Service worker, page PUBLIQUE (aucun cookie requis). Trois issues, jamais
+// deux à la fois :
+//   · page produit rendue → annonce EN LIGNE : listing_url = URL CANONIQUE
+//     (r.url — /fr/p/<id> redirige vers /fr/p/<id>-<slug>, observé le 13/08)
+//     et le job sort du périmètre du cron 48 h ;
+//   · « Oups, page perdue ! » (ou 404) → pas (encore) en ligne : modération en
+//     cours ou refus, indistinguables de l'extérieur — RIEN n'est écrit, on
+//     relit au prochain cycle, le cron 48 h tranche en échec + Pépite ;
+//   · bot-shield / réseau KO / redirection hors /p/<id> → AUCUNE conclusion.
+// @returns {Promise<boolean>} true si l'URL a été posée (le job est réglé).
+async function beebsProductPageOnline(session, job) {
+  const id = String(job.platform_listing_id);
+  const r = await fetch(`https://www.beebs.app/fr/p/${id}`, { redirect: "follow" });
+  const html = await r.text();
+  if (estPageBotShield(html)) {
+    console.log(`[background] recover(beebs) : /fr/p/${id} — page anti-bot, aucune conclusion`);
+    return false;
+  }
+  const perdue = /Oups[^<]{0,60}page perdue/i.test(html);
+  if (!r.ok || perdue) {
+    console.log(
+      `[background] recover(beebs) : /fr/p/${id} pas (encore) en ligne ` +
+      `(HTTP ${r.status}${perdue ? ", « page perdue »" : ""}) — modération en cours ? Le cron 48 h reste le juge.`
+    );
+    return false;
+  }
+  // L'URL finale doit rester la page produit du BON id (garde anti-croisement :
+  // une redirection vers l'accueil ou une autre annonce ne prouve rien).
+  if (!new RegExp(`\\/p\\/${id}(?:-|$)`).test(r.url)) {
+    console.log(`[background] recover(beebs) : /fr/p/${id} → redirection inattendue (${r.url.slice(0, 120)}) — aucune conclusion`);
+    return false;
+  }
+  const url = r.url.replace(/[#?].*$/, "");
+  console.log(`[background] recover(beebs) : annonce EN LIGNE — ${url}`);
+  await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+    method: "PATCH",
+    body: JSON.stringify({ listing_url: url }),
+  });
+  return true;
+}
+
 async function recoverMissingListingUrls(session) {
   let jobs;
   try {
@@ -7707,7 +7928,10 @@ async function recoverMissingListingUrls(session) {
         // pour la sonde de modération Leboncoin (compteur de passages
         // bredouilles + repère des 2 h). Les autres plateformes ne les lisent
         // pas : leur comportement est strictement inchangé.
-        "?select=id,platform,title,created_at,published_at,platform_fields,reservation_id" +
+        // platform_listing_id ajouté le 2026-08-13 (item 9 Beebs) : quand l'id
+        // produit a été capté au dépôt, la re-capture Beebs devient une simple
+        // lecture HTTP de /fr/p/<id> — plus aucune navigation d'onglet.
+        "?select=id,platform,title,created_at,published_at,platform_fields,reservation_id,platform_listing_id" +
         "&status=eq.published&action=eq.publish&listing_url=is.null" +
         // eBay ajouté le 2026-07-20. Le filtre datait de d4a0c32 (2026-07-12),
         // quand SEULS leboncoin et beebs avaient une page de récupération. eBay
@@ -7749,6 +7973,24 @@ async function recoverMissingListingUrls(session) {
       `[background] listing_url manquant : ${platformJobs.length} job(s) ${platform} — passage par "Mes annonces"`
     );
     let remaining = [...platformJobs];
+    // ── Beebs AVEC id produit (2026-08-13, item 9) : lecture DIRECTE ─────────
+    // L'id capté au dépôt rend le balayage de pages inutile pour ces jobs —
+    // et il ne pouvait de toute façon RIEN donner pendant la modération :
+    // vérifié le 13/08, l'onglet Beebs « En cours de vérification » n'expose
+    // AUCUN lien /p/ (findListingLinkInPage ne peut pas voir une annonce en
+    // modération). Un fetch de /fr/p/<id> tranche : page produit → EN LIGNE,
+    // URL canonique posée ; « Oups, page perdue ! » → encore en modération
+    // (ou refusée — indistinguable de l'extérieur), rien d'écrit, le cron
+    // 48 h reste le juge. Les jobs SANS id gardent le balayage (filet).
+    if (platform === "beebs") {
+      const sansId = [];
+      for (const job of remaining) {
+        if (!job.platform_listing_id) { sansId.push(job); continue; }
+        await beebsProductPageOnline(session, job).catch((e) =>
+          console.warn(`[background] recover(beebs) lecture /fr/p/${job.platform_listing_id} :`, String(e?.message ?? e)));
+      }
+      remaining = sansId;
+    }
     for (const pageUrl of LISTING_URL_RECOVERY_PAGES[platform] ?? []) {
       if (!remaining.length) break;
       let tabId;
