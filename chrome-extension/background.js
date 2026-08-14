@@ -6624,6 +6624,67 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     }
   }
 
+  // ── Identité du run : trace, attribution, épinglage (F1, 2026-08-14) ───────
+  // Dossier Manon (multi-comptes Vinted assumés) : l'identité lue par la sonde
+  // n'était écrite nulle part, la sync supposait UN dressing par compte
+  // FillSell, et le marquage des disparitions comparait TOUT l'inventaire au
+  // dressing que Chrome avait sous la main. Désormais :
+  //   · TRACE : vinted_user_id + vinted_login sur la ligne du run — PATCH
+  //     SÉPARÉ de majRun/clore : tant que la migration (colonnes de trace,
+  //     vinted_sync_pin, vinted_account_id) n'est pas appliquée, le 400
+  //     PostgREST (colonne inconnue = tout ou rien) ne doit jamais pouvoir
+  //     toucher la clôture du run.
+  //   · ATTRIBUTION : capacité sondée une fois par run (la colonne
+  //     inventaire.vinted_account_id répond-elle ?). Disponible → chaque
+  //     article VU est estampillé de son compte d'origine (upsert), et le
+  //     marquage des disparitions est SCOPÉ au compte lu — les lignes d'un
+  //     autre compte ou sans compte (héritage pré-migration) ne sont JAMAIS
+  //     marquées. Indisponible → comportement d'avant, gardes (d)/(e) en
+  //     ceinture.
+  //   · ÉPINGLAGE : premier run avec identité = épinglage au 'done', SANS
+  //     blocage (tout le parc actuel synchronise comme avant). Identité ≠
+  //     pin → run clos 'failed' AVANT toute lecture, marqueur [pin_mismatch]
+  //     (contrat avec PIN_MISMATCH_RE, StockTab) : le compte inconnu n'est
+  //     jamais lu ni importé sans un geste explicite — c'est la confirmation
+  //     « première vue d'un compte inconnu » (consigne 14/08), la bascule se
+  //     fait par le bouton de la carte de synchronisation.
+  //   · JAMAIS de blocage sur donnée manquante : pin illisible (migration
+  //     absente, erreur), pin vide, ident.userId absent ⇒ on laisse passer
+  //     et on journalise.
+  let pinIdentite = null;
+  let pinLisible = false;
+  let compteColonneOk = false;
+  if (!mock && ident?.userId) {
+    restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
+      method: "PATCH",
+      body: JSON.stringify({
+        vinted_user_id: String(ident.userId).slice(0, 60),
+        vinted_login: ident.login ? String(ident.login).slice(0, 120) : null,
+      }),
+    }).catch((e) => console.warn("[sync-dressing] trace identité non écrite (migration absente ?):", e?.message ?? e));
+    try {
+      const rows = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, token);
+      pinIdentite = rows?.[0]?.vinted_sync_pin ?? null;
+      pinLisible = true;
+    } catch (e) {
+      console.warn("[sync-dressing] pin illisible — épinglage neutralisé ce run:", e?.message ?? e);
+    }
+    try {
+      await restRequest(`inventaire?user_id=eq.${userId}&select=vinted_account_id&limit=1`, token);
+      compteColonneOk = true;
+    } catch {
+      console.warn("[sync-dressing] inventaire.vinted_account_id indisponible — attribution et marquage scopé neutralisés ce run");
+    }
+    if (pinLisible && pinIdentite?.user_id && String(pinIdentite.user_id) !== String(ident.userId)) {
+      const ancien = pinIdentite.login ? `@${pinIdentite.login}` : `le compte ${pinIdentite.user_id}`;
+      const nouveau = ident.login ? `@${ident.login}` : `le compte ${ident.userId}`;
+      return await echec(
+        `[pin_mismatch] Chrome est connecté à ${nouveau} — ce compte FillSell synchronise ${ancien}. ` +
+        `Veux-tu basculer sur ${nouveau} ? Confirme depuis la carte de synchronisation, ou reconnecte Chrome à ${ancien}.`,
+      );
+    }
+  }
+
   // ── Réservations de republication (volet c, 2026-08-05) ───────────────────
   // Les republications ARRÊTÉES À L'ÉTAPE 'deleted' : leur annonce a été
   // retirée et sa remplaçante peut déjà être en ligne. On charge leur titre
@@ -6717,7 +6778,13 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       // `connus` (qui exige vinted_item_id), et un `undefined` dans le Set
       // fausserait la comparaison vu/annoncé de la garde (b).
       for (const a of tranche) if (a.vinted_item_id) vusCetteSync.add(a.vinted_item_id);
-      const bilan = await enregistrerArticlesDressing(tranche, { token, userId, reservesRepublish });
+      const bilan = await enregistrerArticlesDressing(tranche, {
+        token, userId, reservesRepublish,
+        // Attribution par compte (F1) : constant sur tout le run, null tant
+        // que la colonne n'existe pas en base (le lot d'upsert exige les
+        // mêmes clés sur toutes les lignes — un booléen par run le garantit).
+        vintedAccountId: !mock && compteColonneOk && ident?.userId ? String(ident.userId) : null,
+      });
       if (bilan.echecs?.length) echecsEcriture.push(...bilan.echecs);
       items_vus += tranche.length;
       items_crees += bilan.crees;
@@ -6778,10 +6845,26 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   }
   if (vusCetteSync.size > 0 && !motifSautDisparitions) {
     try {
-      const connus = await restRequest(
-        `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null&select=id,vinted_item_id`,
+      // Marquage SCOPÉ par compte (F1, 2026-08-14) : quand la colonne
+      // d'attribution répond, seuls les articles DU compte lu ce run sont
+      // candidats au marquage. Les lignes sans compte (héritage pré-migration,
+      // dont les 384 de Manon) et celles d'un autre compte sont hors
+      // périmètre : structurellement immarquables par ce run — c'est ce qui
+      // rend la bascule multi-comptes sûre. Elles réintègrent le périmètre
+      // quand un run de LEUR compte les revoit (l'upsert les estampille).
+      // Colonne indisponible → périmètre d'avant, gardes (d)/(e) en ceinture.
+      const selectConnus = compteColonneOk ? "id,vinted_item_id,vinted_account_id" : "id,vinted_item_id";
+      let connus = await restRequest(
+        `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null&select=${selectConnus}`,
         token, { headers: { Prefer: "return=representation" } },
       );
+      if (compteColonneOk && !mock && ident?.userId) {
+        const horsPerimetre = (connus ?? []).length;
+        connus = (connus ?? []).filter((r) => r.vinted_account_id === String(ident.userId));
+        if (horsPerimetre !== connus.length) {
+          console.log(`[sync-dressing] marquage scopé @${ident.login ?? ident.userId} : ${connus.length}/${horsPerimetre} article(s) dans le périmètre`);
+        }
+      }
       // ── É4 (2026-08-05) : un article en cours de REPUBLICATION n'est pas
       // « disparu » — entre suppression et recréation, son absence du
       // dressing est VOULUE. Sans cette garde, une sync qui passe dans la
@@ -6915,6 +6998,25 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     total_entries: totalEntries,
     ...(notes.length ? { erreur: notes.join(" | ").slice(0, 500) } : {}),
   });
+  // ── Épinglage au 'done' (F1) : premier run avec identité réelle = pin posé,
+  // sans confirmation (le parc actuel continue de synchroniser normalement —
+  // la confirmation ne vaut que pour un CHANGEMENT de compte, bloqué en amont
+  // par [pin_mismatch]). Même user_id → seul le login est rafraîchi si le
+  // pseudo a changé. Best-effort : un raté n'affecte pas le run, le prochain
+  // 'done' réessaie. Jamais en mock (ident "harnais-mock" n'est pas un compte).
+  if (!mock && ident?.userId && pinLisible) {
+    const doitEcrire = !pinIdentite?.user_id ||
+      (String(pinIdentite.user_id) === String(ident.userId) && (pinIdentite.login ?? null) !== (ident.login ?? null));
+    if (doitEcrire) {
+      await restRequest(`profiles?id=eq.${userId}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({
+          vinted_sync_pin: { user_id: String(ident.userId), login: ident.login ?? null, pinned_at: new Date().toISOString() },
+        }),
+      }).catch((e) => console.warn("[sync-dressing] épinglage non écrit:", e?.message ?? e));
+      if (!pinIdentite?.user_id) console.log(`[sync-dressing] compte Vinted épinglé : @${ident.login ?? ident.userId}`);
+    }
+  }
   if (echecsEcriture.length) console.error(`[sync-dressing] ${echecsEcriture.length} article(s) non écrit(s) — détail dans vinted_sync_runs.erreur`);
   console.log(`[sync-dressing] terminée : ${items_vus} articles (${items_crees} créés, ${items_maj} mis à jour)`);
   return { ok: true, items_vus, items_crees, items_maj, echecs: echecsEcriture.length };
@@ -6931,7 +7033,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
  * Écrit une page d'articles : upsert inventaire + relevé du jour + entrée dans
  * le cycle de détection de vente. Rend le nombre de créations/mises à jour.
  */
-async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [] }) {
+async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [], vintedAccountId = null }) {
   if (!articles.length) return { crees: 0, majs: 0 };
 
   // Ce qui existe déjà, pour distinguer création et mise à jour (l'upsert seul
@@ -7238,6 +7340,12 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       first_seen_at: dejaLa?.first_seen_at ?? maintenant,
       last_synced_at: maintenant,
       disparu_le: null, // réapparu : on efface la date de disparition
+      // Attribution à l'observation (F1) : l'article VU porte le compte qui
+      // l'a servi — y compris les lignes héritées (compte NULL), qui
+      // réintègrent ainsi le périmètre du marquage scopé. Clé ABSENTE tant
+      // que la migration n'est pas appliquée (vintedAccountId null : un 400
+      // « colonne inconnue » ferait perdre le lot entier).
+      ...(vintedAccountId ? { vinted_account_id: vintedAccountId } : {}),
     };
   });
 

@@ -1042,6 +1042,12 @@ const RETRY403_RE = /^\[retry403\] tentative (\d+)\/(\d+) prevue (\S+) — /;
 // reprise armée tire en général à l'heure : 5 min absorbent l'ordinaire sans
 // laisser l'écran promettre une tentative fantôme pendant des heures.
 const RETRY403_GRACE_MS = 5 * 60 * 1000;
+// Contrat avec le marqueur [pin_mismatch] (background.js, F1 multi-comptes du
+// 2026-08-14) : Chrome est connecté à un autre compte Vinted que celui épinglé
+// pour ce compte FillSell — la sync s'est arrêtée AVANT toute lecture. Seul
+// échec de sync qui offre un GESTE dans l'app (bouton de bascule) ; le
+// marqueur n'est jamais montré brut. À faire évoluer ENSEMBLE.
+const PIN_MISMATCH_RE = /^\[pin_mismatch\]\s*/;
 
 function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0 }) {
   const fr = lang !== 'en';
@@ -1653,6 +1659,14 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // sync. Les messages posés par l'extension sont déjà lisibles ; on ne
       // masque que les pavés techniques (URL, JSON, traces).
       const brut = String(run.erreur ?? '').trim();
+      // ── Mauvais compte Vinted connecté (F1 multi-comptes, 2026-08-14) ──────
+      // AVANT la branche 403 : un pseudo Vinted peut contenir « 403 » et le
+      // message d'épinglage ne doit jamais être avalé par l'encart anti-robot.
+      // Le texte vient de l'extension (français, logins inclus) — affiché tel
+      // quel, avec le bouton de bascule en dessous (action 'bascule').
+      if (PIN_MISMATCH_RE.test(brut)) {
+        return { ton: 'orange', action: 'bascule', texte: brut.replace(PIN_MISMATCH_RE, '') };
+      }
       // ── 403 = encart actionnable (2026-08-13, relevé en base) ──────────────
       // Les 9 comptes ayant pris un 403 ce jour sont TOUS inscrits d'hier ou
       // d'aujourd'hui ; 6/9 n'ont jamais réussi une seule sync, les 3 autres
@@ -1721,6 +1735,33 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     }
     return null;
   })();
+
+  // ── Bascule de compte Vinted (F1 multi-comptes, 2026-08-14) ───────────────
+  // Le bouton remet profiles.vinted_sync_pin à NULL : la PROCHAINE sync
+  // épingle le compte alors connecté dans Chrome. On n'écrit jamais le
+  // nouveau compte depuis ici (l'app ne connaît son pseudo que par le texte
+  // du run) : effacer puis ré-épingler À LA SOURCE est le seul chemin qui ne
+  // peut pas se tromper de compte. Les articles de l'ancien compte ne sont
+  // jamais marqués disparus par la bascule : le marquage est scopé par
+  // compte côté extension (vinted_account_id).
+  const [basculeEtat, setBasculeEtat] = useState('repos'); // repos | envoi | fait | erreur
+  const basculerComptePin = async () => {
+    if (basculeEtat === 'envoi') return;
+    setBasculeEtat('envoi');
+    try {
+      // .select() OBLIGATOIRE (règle profiles RLS) : un update silencieusement
+      // refusé passerait pour un succès.
+      const { data, error } = await supabase.from('profiles')
+        .update({ vinted_sync_pin: null })
+        .eq('id', user.id)
+        .select('id');
+      if (error || !data?.length) throw error ?? new Error('update refusé');
+      setBasculeEtat('fait');
+    } catch (e) {
+      console.warn('bascule du compte Vinted impossible:', e?.message ?? e);
+      setBasculeEtat('erreur');
+    }
+  };
 
   // Blocage présent ⇒ le bilan du run passé se tait (contradiction sinon) ;
   // `message` reste : c'est le retour d'un clic de CETTE session.
@@ -1853,6 +1894,27 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         return (
           <div style={{background:c.bg,border:`1px solid ${c.bord}`,borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:c.texte,whiteSpace:'pre-line'}}>
             {avis.texte}
+            {avis.action==='bascule'&&(
+              <div style={{marginTop:8}}>
+                {basculeEtat==='fait'
+                  ? <div style={{fontWeight:700}}>
+                      {fr
+                        ? "C'est noté — relance la synchronisation : le compte connecté dans Chrome devient le compte synchronisé."
+                        : "Done — run the sync again: the account signed in to Chrome becomes the synced one."}
+                    </div>
+                  : <button
+                      onClick={basculerComptePin}
+                      disabled={basculeEtat==='envoi'}
+                      style={{padding:"8px 12px",borderRadius:10,border:"none",background:basculeEtat==='envoi'?"#B9C4C0":"#1B6E62",color:"#fff",fontSize:12,fontWeight:700,cursor:basculeEtat==='envoi'?'wait':'pointer',fontFamily:'inherit'}}
+                    >
+                      {basculeEtat==='envoi'
+                        ? (fr?'Un instant…':'One moment…')
+                        : basculeEtat==='erreur'
+                          ? (fr?'Réessayer la bascule':'Retry the switch')
+                          : (fr?'Basculer sur le compte connecté dans Chrome':'Switch to the account signed in to Chrome')}
+                    </button>}
+              </div>
+            )}
           </div>
         );
       })()}
