@@ -236,6 +236,30 @@ export function humanizeJobError(job, lang = 'fr') {
       : `${name} affiche sa page de connexion à la place du formulaire de vente. Connecte-toi sur ${site} dans Chrome maintenant — une tentative automatique a lieu dans les minutes qui viennent, sinon relance la ${acte} depuis la fiche de l'article.`;
   }
 
+  // Annulations posées à la main par le support (« Annulé par le support /
+  // Annulé manuellement / Annulé le … ») : rédigées pour l'historique, elles
+  // nommaient des personnes et des mécanismes internes — et les variantes
+  // courtes (≤300 c.) s'affichaient TELLES QUELLES (fuite constatée le
+  // 14/08). Branche UNIQUE, sans tri des variantes : tout message de ce
+  // préfixe est réécrit en texte anonyme, le brut ne passe JAMAIS — une
+  // variante imprévue tombe ici, pas dans le brut. « Annonce intacte » et
+  // « Pépite rendue » ne sont affirmés que si le message source les affirme
+  // (même règle que la famille republication ci-dessus).
+  if (/^Annulé (par le support|manuellement|le )/i.test(raw)) {
+    const termine = JOB_STATUS_TERMINAL.has(job?.status);
+    const intacte = /intacte|non touchée|pas été supprimé/i.test(raw);
+    const pepite = /Pépite/i.test(raw) && /rendue/i.test(raw);
+    const acte = job?.action === 'republish' ? (en ? 'relisting' : 'republication') : 'publication';
+    if (termine) {
+      return en
+        ? `Our team cancelled this job as a precaution.${intacte ? ` Your listing is untouched on ${name}.` : ''}${pepite ? ' The Nugget held for it has been refunded.' : ''} If needed, relaunch the ${acte} from the item.`
+        : `Ce job a été annulé par notre équipe, par précaution.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''}${pepite ? ' La Pépite engagée a été rendue.' : ''} Si besoin, relance la ${acte} depuis la fiche de l'article.`;
+    }
+    return en
+      ? `Our team paused this job as a precaution.${intacte ? ` Your listing is untouched on ${name}.` : ''}${pepite ? ' The Nugget held for it has been refunded.' : ''} It can be relaunched from the item.`
+      : `Ce job a été mis en pause par notre équipe, par précaution.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''}${pepite ? ' La Pépite engagée a été rendue.' : ''} Il pourra être relancé depuis la fiche de l'article.`;
+  }
+
   // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :
   // le détail embarque la palette relevée — l'utilisateur doit juste
   // corriger la couleur de l'article.
