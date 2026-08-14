@@ -144,6 +144,34 @@ export function humanizeJobError(job, lang = 'fr') {
       : `eBay demande une reconnexion avant de laisser déposer une annonce, même si ta session eBay est encore valide ailleurs. ${etatFr} Dans l'ordre : ouvre ebay.fr dans Chrome, clique « Vendre », reconnecte-toi, puis relance la publication depuis la fiche de l'article.`;
   }
 
+  // ── Soumission eBay jamais partie, brouillon conservé (2026-08-14) ─────────
+  // Message du parc : « Le clic « Mettre en vente » n'a produit AUCUNE requête
+  // de publication (soumission jamais partie) : aucune annonce n'a été créée »
+  // — plus la variante finale « … reprises sur onglet neuf n'ont rien changé,
+  // job arrêté ». Exact sur la publication, faux sur le « rien » : sur les 5
+  // jobs des 12-14/08 (8d1e0060, 15bfa00a, deb6ec33, 3e16aa00, b0885fb8), la
+  // sonde réseau a capté la télémétrie eBay porteuse d'un draftId
+  // (collectsysteminfo?draftId=…) — un BROUILLON existe côté eBay, récupérable
+  // depuis l'espace vendeur, et l'utilisateur croyait repartir de zéro.
+  // draftId lu depuis platform_fields.ebay_draft_id (consigné par l'extension
+  // depuis le 14/08) ou, en repli pour le parc, extrait de last_diagnostic
+  // (les URLs de télémétrie y sont). SANS draftId prouvé, on ne promet pas de
+  // brouillon (rien que les données ne portent) : message d'origine conservé.
+  // Réécriture à l'affichage (doctrine 2.4.52) ; aucune promesse de reprise.
+  if (job?.platform === 'ebay' && /n'a produit AUCUNE requête de publication/i.test(raw)) {
+    const diag = job?.platform_fields?.last_diagnostic;
+    const draftId =
+      String(job?.platform_fields?.ebay_draft_id ?? '').trim() ||
+      (/[?&]draftId=(\d+)/i.exec(typeof diag === 'string' ? diag : JSON.stringify(diag ?? ''))?.[1] ?? '');
+    if (draftId) {
+      const termine = JOB_STATUS_TERMINAL.has(job?.status);
+      const rendue = termine && (job?.action ?? 'publish') === 'publish';
+      return en
+        ? `The "List item" click never left the browser on eBay: nothing was published${termine ? ' and the job has stopped' : ''}.${rendue ? ' The Nugget held for it has been refunded.' : ''} Your listing is not lost though: eBay kept it as a DRAFT (no. ${draftId}). Find it on ebay.fr under My eBay > Selling > Drafts to finish listing it yourself.`
+        : `Le clic « Mettre en vente » n'est jamais parti chez eBay : rien n'a été publié${termine ? ' et le job est arrêté' : ''}.${rendue ? ' La Pépite engagée a été rendue.' : ''} Ton annonce n'est pas perdue pour autant : eBay l'a conservée en BROUILLON (n° ${draftId}). Retrouve-la sur ebay.fr dans Mon eBay > Vendre > Brouillons pour terminer la mise en vente toi-même.`;
+    }
+  }
+
   // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :
   // le détail embarque la palette relevée — l'utilisateur doit juste
   // corriger la couleur de l'article.
