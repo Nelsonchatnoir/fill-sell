@@ -1388,7 +1388,11 @@ const VentesTab = memo(function VentesTab({
                 {/* _table:'ventes' — cette carte est une ligne de la table `ventes`,
                     PAS un article d'inventaire : leurs ids se chevauchent, et la
                     modale d'édition refuse d'écrire sans cible explicite. */}
-                <div className="row in-swipe" onClick={()=>setEditItem({...s,_table:'ventes',frais:0,sell:s.sell??""})}>
+                {/* frais pré-remplis depuis la vente (2026-08-14, option B) :
+                    le 0 en dur évaporait les frais à chaque ré-édition —
+                    benefice recalculé sans eux. `sellingFees` = nom mappé
+                    (mapSale) de ventes.selling_fees. */}
+                <div className="row in-swipe" onClick={()=>setEditItem({...s,_table:'ventes',frais:s.sellingFees??0,sell:s.sell??""})}>
                   {/* Icône crayon retirée le 2026-07-14 (comme sur le Stock) :
                       la carte entière est déjà cliquable pour éditer. */}
                   <div className={`cat-tile ${catClass(s.type)}`}>{detectObjectIcon(s.title,s.description,s.type)}</div>

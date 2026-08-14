@@ -3813,6 +3813,13 @@ export default function App({ loginOnly = false }){
         prix_achat:b,
         prix_vente:hasS?s:null,
         benefice:benef,
+        // Frais PERSISTÉS (2026-08-14, option B — cas RoCotCot) : ils entraient
+        // dans le calcul de `benefice` sans être écrits nulle part, et
+        // l'ouvreur reposait 0 en dur — une ré-édition sans les retaper les
+        // évaporait du bénéfice. Colonne posée par la migration 20260814130000
+        // (la même qui crée la policy UPDATE sans laquelle CE bloc entier n'a
+        // jamais écrit une seule ligne depuis le 03/08).
+        selling_fees:f,
         description:editItem.description||null,
         // Convention des lignes `ventes` : quantite NULL sauf lot (cf. srow).
         quantite:qty>1?qty:null,
@@ -3821,7 +3828,7 @@ export default function App({ loginOnly = false }){
         // `ventes` (schéma vérifié le 03/08), le drapeau vit sur l'article lié.
       }).eq('id',editItem.id).eq('user_id',user.id).select('id');
       if(!error&&updRows?.length){
-        setSales(prev=>prev.map(v=>v.id===editItem.id?{...v,title:editItem.title,marque:marqueNorm||"",type:typeAuto,buy:b,prix_achat:b,sell:hasS?s:null,prix_vente:hasS?s:null,margin:benef,marginPct:benef!=null&&hasS&&s>0?(benef/s)*100:null,description:editItem.description||null,quantite:qty>1?qty:null,emplacement:editItem.emplacement?.trim()||null}:v));
+        setSales(prev=>prev.map(v=>v.id===editItem.id?{...v,title:editItem.title,marque:marqueNorm||"",type:typeAuto,buy:b,prix_achat:b,sell:hasS?s:null,prix_vente:hasS?s:null,margin:benef,marginPct:benef!=null&&hasS&&s>0?(benef/s)*100:null,sellingFees:f,description:editItem.description||null,quantite:qty>1?qty:null,emplacement:editItem.emplacement?.trim()||null}:v));
         setEditItem(null);
         setToast({visible:true,message:lang==='fr'?'✓ Vente modifiée':'✓ Sale updated'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
