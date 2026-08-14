@@ -322,7 +322,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // multi-comptes) + « Connexion Vinted requise » arbitré par la sonde HTTP
 // (a9f005d, doctrine c2591b7). selectSizeByIds toujours EXCLU (cf. entrée
 // a426979). EXTENSION_MIN_BUILD inchangé — ni 0.6.4 ni 0.6.5 acceptées.
-export const EXTENSION_LAST_COMMIT = '2026-08-14T08:51:31Z';
+// Le zip livré 0.6.5 = fillsell-extension-0.6.5-fe901f4.zip, packagé à
+// fe901f4 — AVANT le commit suivant.
+// 2026-08-14T08:57:21Z = 1fc9beb (F1 multi-comptes : trace identité,
+// attribution vinted_account_id, épinglage) : code extension destiné au
+// PROCHAIN paquet. ⚠️ NE PAS re-packager sans bumper le manifest en 0.6.6 :
+// un « 0.6.5 » re-packagé ici contiendrait F1 et divergerait du zip livré.
+export const EXTENSION_LAST_COMMIT = '2026-08-14T08:57:21Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
