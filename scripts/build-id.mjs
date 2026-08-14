@@ -316,10 +316,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // CDN img.leboncoin.fr, plus jamais « 0 détectée » à tort), règle du
 // pré-rempli (jamais écrasé par une valeur hors liste, repli marque
 // Autre/Sans marque), matière par ids (cherry-pick 4fbf20b).
-// La branche a été fusionnée dans main le 14/08 (paquet unique 0.6.5 :
-// contenu 0.6.4 + gardes anti-effondrement cb10c36 + arbitrage sonde
-// a9f005d) — la constante ci-dessous est re-bumpée par le chore qui suit.
-export const EXTENSION_LAST_COMMIT = '2026-08-13T18:35:36Z';
+// 2026-08-14T08:51:31Z = cb5585b (0.6.5) : PAQUET UNIQUE après merge de la
+// branche ext-0.6.3-cause403 dans main (5690539) — contenu 0.6.4 en review
+// + gardes anti-effondrement du marquage disparu_le (cb10c36, dossier Manon
+// multi-comptes) + « Connexion Vinted requise » arbitré par la sonde HTTP
+// (a9f005d, doctrine c2591b7). selectSizeByIds toujours EXCLU (cf. entrée
+// a426979). EXTENSION_MIN_BUILD inchangé — ni 0.6.4 ni 0.6.5 acceptées.
+export const EXTENSION_LAST_COMMIT = '2026-08-14T08:51:31Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
