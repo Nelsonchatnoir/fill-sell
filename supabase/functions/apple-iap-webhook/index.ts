@@ -177,19 +177,41 @@ serve(async (req) => {
         const renewalProductId    = (renewal.productId || renewal.autoRenewProductId) as string | undefined;
         const renewalOriginalTxId = renewal.originalTransactionId as string | undefined;
 
-        if (autoRenewStatus !== 1) {
-          console.log("[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS autoRenewStatus=0 — skipping (still active)");
-          return new Response(JSON.stringify({ ok: true, skipped: "DID_CHANGE_RENEWAL_STATUS_cancelled" }), {
-            status: 200, headers: { "Content-Type": "application/json" },
-          });
-        }
         if (!renewalToken || !renewalProductId || !PREMIUM_PRODUCT_IDS.includes(renewalProductId)) {
           console.warn("[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS: missing token or non-premium product");
           return new Response(JSON.stringify({ ok: true, skipped: "missing_token_or_product" }), {
             status: 200, headers: { "Content-Type": "application/json" },
           });
         }
-        const upd: Record<string, unknown> = { is_premium: true };
+        if (autoRenewStatus !== 1) {
+          // Résiliation — miroir du type 3 CANCELED de google-play-webhook :
+          // on note l'annulation SANS toucher aux flags d'accès (is_premium,
+          // is_pro, is_founder, is_business) — l'abonné a payé jusqu'à la fin
+          // de sa période. La rétrogradation reste portée exclusivement par
+          // EXPIRED / REFUND / REVOKE / DID_FAIL_TO_RENEW.
+          // renewalDate = fin de la période en cours (ms epoch), seul champ de
+          // fin de période du signedRenewalInfo vérifié — même format ISO que
+          // l'expiryTime Google dans subscription_period_end (colonne TEXT).
+          const renewalDate = renewal.renewalDate as number | undefined;
+          if (renewalDate == null) {
+            console.warn("[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS cancel: renewalDate absent — subscription_period_end=null");
+          }
+          const { error: cancelErr } = await supabaseAdmin.from("profiles").update({
+            subscription_cancel_at_period_end: true,
+            subscription_period_end: renewalDate != null ? new Date(renewalDate).toISOString() : null,
+          }).eq("id", renewalToken);
+          if (cancelErr) {
+            console.error("[apple-iap-webhook] DB error (cancel):", cancelErr.message);
+            return new Response(JSON.stringify({ error: cancelErr.message }), {
+              status: 500, headers: { "Content-Type": "application/json" },
+            });
+          }
+          console.log(`[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS cancelled → userId=${renewalToken} accès conservé jusqu'à ${renewalDate != null ? new Date(renewalDate).toISOString() : "(renewalDate absent)"}`);
+          return new Response(JSON.stringify({ ok: true, cancel_at_period_end: true }), {
+            status: 200, headers: { "Content-Type": "application/json" },
+          });
+        }
+        const upd: Record<string, unknown> = { is_premium: true, subscription_cancel_at_period_end: false };
         if (renewalOriginalTxId) upd.apple_original_transaction_id = renewalOriginalTxId;
         if (renewalProductId === "app.fillsell.premium.sub") upd.is_founder = true;
         if (PRO_PRODUCT_IDS.includes(renewalProductId)) upd.is_pro = true;
@@ -339,14 +361,43 @@ serve(async (req) => {
     if (PREMIUM_OFF.includes(notificationType)) isPremium = false;
 
     // DID_CHANGE_RENEWAL_STATUS avec signedTransactionInfo : lire autoRenewStatus
+    let cancelAtPeriodEnd = false;
     if (isPremium === null && notificationType === "DID_CHANGE_RENEWAL_STATUS" && signedRenewalInfo) {
       try {
         const renewal = await verifyAndDecodeJWS(signedRenewalInfo);
         if (renewal.autoRenewStatus === 1) isPremium = true;
-        // autoRenewStatus=0 → résilié, encore actif jusqu'à expiry → skip
+        else cancelAtPeriodEnd = true; // résilié, encore actif jusqu'à expiry
       } catch {
         console.warn("[apple-iap-webhook] Could not decode signedRenewalInfo for DID_CHANGE_RENEWAL_STATUS");
       }
+    }
+
+    if (cancelAtPeriodEnd) {
+      // Résiliation — miroir du type 3 CANCELED de google-play-webhook : on
+      // note l'annulation SANS toucher aux flags d'accès (is_premium, is_pro,
+      // is_founder, is_business) — l'abonné a payé jusqu'à la fin de sa
+      // période. La rétrogradation reste portée exclusivement par
+      // EXPIRED / REFUND / REVOKE / DID_FAIL_TO_RENEW.
+      // expiresDate (ms epoch) vient du signedTransactionInfo déjà vérifié —
+      // même format ISO que l'expiryTime Google (colonne TEXT).
+      const expiresDate = tx.expiresDate as number | undefined;
+      if (expiresDate == null) {
+        console.warn("[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS cancel: expiresDate absent — subscription_period_end=null");
+      }
+      const { error: cancelErr } = await supabaseAdmin.from("profiles").update({
+        subscription_cancel_at_period_end: true,
+        subscription_period_end: expiresDate != null ? new Date(expiresDate).toISOString() : null,
+      }).eq("id", appAccountToken);
+      if (cancelErr) {
+        console.error("[apple-iap-webhook] DB error (cancel):", cancelErr.message);
+        return new Response(JSON.stringify({ error: cancelErr.message }), {
+          status: 500, headers: { "Content-Type": "application/json" },
+        });
+      }
+      console.log(`[apple-iap-webhook] DID_CHANGE_RENEWAL_STATUS cancelled → userId=${appAccountToken} accès conservé jusqu'à ${expiresDate != null ? new Date(expiresDate).toISOString() : "(expiresDate absent)"}`);
+      return new Response(JSON.stringify({ ok: true, cancel_at_period_end: true }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
     }
 
     if (isPremium === null) {
@@ -358,6 +409,9 @@ serve(async (req) => {
     }
 
     const update: Record<string, unknown> = { is_premium: isPremium };
+    // ON (achat, renouvellement, réactivation) → annulation levée, sans quoi
+    // un compte réactivé resterait marqué annulé pour toujours (miroir Google).
+    if (isPremium) update.subscription_cancel_at_period_end = false;
     if (originalTransactionId) update.apple_original_transaction_id = originalTransactionId;
     if (isPremium && productId === "app.fillsell.premium.sub") update.is_founder = true;
     // Pro : le flag suit l'état de l'abonnement (ON → true, OFF → false)
