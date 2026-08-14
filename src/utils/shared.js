@@ -249,15 +249,21 @@ export function humanizeJobError(job, lang = 'fr') {
     const termine = JOB_STATUS_TERMINAL.has(job?.status);
     const intacte = /intacte|non touchée|pas été supprimé/i.test(raw);
     const pepite = /Pépite/i.test(raw) && /rendue/i.test(raw);
-    const acte = job?.action === 'republish' ? (en ? 'relisting' : 'republication') : 'publication';
+    const republish = job?.action === 'republish';
     if (termine) {
+      const relanceFr = republish
+        ? "Si besoin, relance la republication depuis la fiche de l'article."
+        : "Tu peux relancer la publication depuis l'app.";
+      const relanceEn = republish
+        ? 'If needed, relaunch the relisting from the item.'
+        : 'You can relaunch the publication from the app.';
       return en
-        ? `Our team cancelled this job as a precaution.${intacte ? ` Your listing is untouched on ${name}.` : ''}${pepite ? ' The Nugget held for it has been refunded.' : ''} If needed, relaunch the ${acte} from the item.`
-        : `Ce job a été annulé par notre équipe, par précaution.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''}${pepite ? ' La Pépite engagée a été rendue.' : ''} Si besoin, relance la ${acte} depuis la fiche de l'article.`;
+        ? `Our team cancelled this job.${intacte ? ` Your listing is untouched on ${name}.` : ''}${pepite ? ' The Nugget held for it has been refunded.' : ''} ${relanceEn}`
+        : `Ce job a été annulé par notre équipe.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''}${pepite ? ' La Pépite engagée a été rendue.' : ''} ${relanceFr}`;
     }
     return en
-      ? `Our team paused this job as a precaution.${intacte ? ` Your listing is untouched on ${name}.` : ''}${pepite ? ' The Nugget held for it has been refunded.' : ''} It can be relaunched from the item.`
-      : `Ce job a été mis en pause par notre équipe, par précaution.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''}${pepite ? ' La Pépite engagée a été rendue.' : ''} Il pourra être relancé depuis la fiche de l'article.`;
+      ? `Our team paused this job.${intacte ? ` Your listing is untouched on ${name}.` : ''}${pepite ? ' The Nugget held for it has been refunded.' : ''} It can be relaunched from ${republish ? 'the item' : 'the app'}.`
+      : `Ce job a été mis en pause par notre équipe.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''}${pepite ? ' La Pépite engagée a été rendue.' : ''} Il pourra être relancé depuis ${republish ? "la fiche de l'article" : "l'app"}.`;
   }
 
   // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :
