@@ -1498,6 +1498,9 @@ async function fillListingForm(job) {
   // entier sur un détail.
   const warnings = [];
   const diagnosticsRecreation = [];
+  // Relevés d'options du run PRÉCÉDENT purgés : chaque remplissage repart
+  // d'une page (et souvent d'une catégorie) différente.
+  optionsRelevees.clear();
 
   // ══ B.5 ÉTENDU À TOUT LE REMPLISSAGE (2026-08-09, 3 annonces d'Ornella) ═════
   // B.5 ne couvrait QUE ensurePhotosLanded — la toute dernière garde, juste
@@ -1626,7 +1629,7 @@ async function fillListingForm(job) {
   if (fields.taille) {
     // La grille Vinted affiche "42", pas "EU 42" (préfixe côté FillSell) —
     // on retire le préfixe, le match exact-par-segment fait le reste.
-    await selectClosedOptionSafe(
+    const taillePosee = await selectClosedOptionSafe(
       "taille",
       '#size, [data-testid="category-size-single-grid-input"]',
       '[data-testid^="size-group-"]',
@@ -1636,6 +1639,35 @@ async function fillListingForm(job) {
       // 98 cm » par contenance, ni « 36 mois » l'option adulte « 36 ».
       { sizeField: true }
     );
+    // ── Grille de tailles SANS AUCUNE correspondance = catégorie suspecte
+    // (point 8, 2026-08-15 — robe Shein « col drapé » de Carla) ──────────────
+    // Le job portait categoryPath « Maison > Textiles > Linge de lit » (icône
+    // faussée côté app) : la grille affichait Simple/Double/Queen/King Size,
+    // la taille « S / 36 / 8 » ne matchait rien, le champ était SAUTÉ en
+    // silence, et le gate des requis rendait un message qui accusait la
+    // TAILLE avec la liste du catalogue — 5 essais, 42 Pépites brûlées.
+    // Désormais : taille fournie + options réellement affichées + ZÉRO
+    // correspondance → on ARRÊTE AVANT publication en nommant la CATÉGORIE,
+    // et le message cite les options du formulaire RÉEL. Jamais un dépôt dans
+    // une catégorie dont le formulaire ne correspond pas à l'article.
+    // Hors périmètre, comportement inchangé : options illisibles (panneau pas
+    // ouvert → rien à juger, le gate des requis reste le filet) et RECRÉATION
+    // (l'annonce d'origine n'existe plus, B.5 : on soumet quand même — et son
+    // categoryPath vient de la capture de l'annonce, pas du mapping icône).
+    const optionsTaille = optionsRelevees.get("taille") ?? [];
+    if (!taillePosee && optionsTaille.length && !recreation) {
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          `La catégorie Vinted posée sur cette annonce (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}) ` +
+          `ne correspond pas à l'article : le formulaire de dépôt propose comme tailles ` +
+          `${optionsTaille.slice(0, 6).map((o) => `« ${o} »`).join(", ")} — rien qui corresponde à « ${fields.taille} ». ` +
+          "Regénère l'annonce depuis l'app pour corriger sa catégorie, puis relance la publication.",
+        warnings,
+        discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
+      };
+    }
   }
   // taille_ids (captures 0.6.1 sans libellé) : le résolveur selectSizeByIds
   // (a426979) est HORS PAQUET — consigne du 13/08 maintenue au merge du 14/08,
@@ -1823,9 +1855,17 @@ async function fillListingForm(job) {
     // étiquette » : la valeur « Très bon état » de l'app ne pouvait JAMAIS
     // matcher, et personne ne pouvait le savoir depuis le message).
     const labelWithOptions = (label) => {
+      // Les options RELEVÉES SUR LE FORMULAIRE priment sur celles de la config
+      // catalogue (point 8, 2026-08-15) : la config listait les tailles
+      // vêtement pendant que le DOM affichait des dimensions de literie — le
+      // message envoyait corriger une taille déjà bonne (5 essais de Carla).
+      // Un « accepte : … » ne cite plus jamais une liste que le formulaire
+      // n'affiche pas.
       const d = requiredState.discovered.find((x) => x.label === label);
-      const names = (d?.options ?? [])
-        .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
+      const reelles = optionsRelevees.get(String(label).toLowerCase()) ?? [];
+      const names = (reelles.length
+        ? reelles
+        : (d?.options ?? []).map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? "")))
         .filter(Boolean)
         .slice(0, 8);
       return names.length ? `${label} (accepte : ${names.join(" · ")})` : label;
@@ -3346,6 +3386,16 @@ async function selectVintedModel(wanted, warnings) {
 // matching en cascade ET jamais bloquante — un libellé IA sans équivalent
 // Vinted saute le champ avec un warning au lieu de faire échouer le job
 // entier (le champ restera vide, corrigeable à la main avant publication).
+// Options RÉELLEMENT affichées lors du dernier échec de cascade, par champ —
+// relevées MENU OUVERT (une fois le panneau fermé, les nœuds sont démontés et
+// plus rien n'est lisible). Deux lecteurs (point 8, robe Shein 15/08) :
+//   - le bloc Taille de fillListingForm, pour arrêter AVANT publication quand
+//     le formulaire ne propose AUCUNE option compatible (catégorie fausse) ;
+//   - labelWithOptions (gate des requis), pour que « accepte : … » cite le
+//     formulaire réel et plus jamais la config catalogue (qui listait les
+//     tailles vêtement pendant que le DOM affichait des dimensions de literie).
+const optionsRelevees = new Map(); // fieldName (minuscule) → string[]
+
 async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector, rawText, warnings, opts = {}) {
   try {
     await openDropdown(triggerSelector);
@@ -3368,6 +3418,10 @@ async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector
       .map((el) => el.textContent.trim())
       .filter(Boolean)
       .slice(0, 12);
+    // set OU delete : une entrée périmée d'un échec précédent ne doit jamais
+    // parler à la place d'un échec courant sans relevé.
+    if (visible.length) optionsRelevees.set(String(fieldName).toLowerCase(), visible);
+    else optionsRelevees.delete(String(fieldName).toLowerCase());
     const note = `${fieldName}: champ sauté — ${e.message}` +
       (visible.length ? ` — options affichées: ${JSON.stringify(visible)}` : "");
     console.warn(`[vinted] ⚠️ ${note}`);
