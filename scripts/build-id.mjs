@@ -350,7 +350,19 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Manifest bumpé 0.6.5 → 0.6.6 : un zip 0.6.5 (dff6cdd) a déjà été LIVRÉ le
 // 14/08 (jamais téléversé) — produire un second 0.6.5 au contenu différent
 // est exactement l'ambiguïté à éviter. TOUJOURS SANS F1 (1fc9beb).
-export const EXTENSION_LAST_COMMIT = '2026-08-15T09:50:00Z';
+// 2026-08-15T20:23:32Z = 1be6b19 (même branche, soirée 15/08 — le zip 0.6.6
+// d235bc3 du matin est PÉRIMÉ, ne pas le téléverser) :
+// - ISBN Livres Vinted : capturé (natif.isbn → libelles.isbn) et RÉINJECTÉ à
+//   la recréation (#isbn / isbn--input) — annonce de Rose perdue le 15/08 ;
+//   clé isbn illisible → blocage AVANT suppression ; isbn null → republie
+//   telle quelle (jamais bloquer la catégorie) ;
+// - package_size_id hors table (8, 11 relevés) → repli « Grand » + trace,
+//   la republication POURSUIT au lieu de bloquer ;
+// - brouillon LBC bloquant : SUPPRIMÉ (retrait des clés de storage portant le
+//   titre restauré) puis retentative unique en onglet neuf — décision Nico
+//   15/08, ancienne politique abandonnée ; messages en une ligne, sans nom de
+//   champ interne. TOUJOURS SANS F1 (1fc9beb).
+export const EXTENSION_LAST_COMMIT = '2026-08-15T20:23:32Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
