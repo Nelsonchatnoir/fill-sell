@@ -81,7 +81,15 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // manifest passe en 0.6.3 du même geste (branche ext-0.6.3-cause403, basée
 // sur 7971dc4 = la 0.6.2 publiée, SANS les commits matière/selectSizeByIds
 // de main : seul le prouvé part en circulation, consigne du 13/08).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2'];
+// 0.6.3 et 0.6.4 ajoutées le 15/08 (alignement sur main) : paquets construits
+// sur ext-0.6.3-cause403 — la 0.6.4 est EN REVIEW au CWS, la 0.6.3 remplacée
+// avant d'aller au bout.
+// 0.6.5 ajoutée le 15/08 SANS avoir été téléversée : le zip
+// fillsell-extension-0.6.5-dff6cdd.zip a été LIVRÉ le 14/08 et reste le seul
+// 0.6.5 légitime — un second zip 0.6.5 au contenu différent serait
+// indiscernable de lui. Le paquet courant est la 0.6.6 (même branche, mêmes
+// fixes + vérification Vinted réparée + stampVintedItemId).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();

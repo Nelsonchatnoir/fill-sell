@@ -224,6 +224,9 @@ const extensionPermissions = [
   { key: 'scripting', scope: 'permissions',
     fr: "Injecte le script d'automatisation sur les pages de la plateforme concernée : remplissage du formulaire à la publication, lecture du statut de l'annonce, retrait après confirmation d'une vente.",
     en: "Injects the automation script onto the marketplace's pages: form filling at publish time, listing status reading, withdrawal after a confirmed sale." },
+  { key: 'cookies', scope: 'permissions',
+    fr: "Vérifie la présence du cookie de session Vinted (v_uid), uniquement sur les domaines listés ci-dessous, pour distinguer « vous n'êtes pas connecté à Vinted » d'un blocage anti-robot lors de la synchronisation du dressing. Aucun cookie n'est lu en dehors de ce test, ni transmis, ni stocké.",
+    en: "Checks for the Vinted session cookie (v_uid), only on the domains listed below, to tell \"you are not signed in to Vinted\" apart from an anti-bot block during closet sync. No cookie is read beyond this check, transmitted, or stored." },
   // host_permissions (accès par domaine)
   { key: 'https://*.vinted.fr/*', scope: 'host_permissions',
     fr: "Remplir le formulaire de dépôt, vérifier le statut des annonces publiées et exécuter leur retrait après confirmation d'une vente, sur Vinted (domaine français).",
@@ -630,8 +633,8 @@ export default function Legal() {
           </div>
           <p className="legal-p" style={{ fontStyle: 'italic', color: C.label, fontSize: 12.5, marginTop: 8 }}>
             {en
-              ? 'The extension declares no other permission (no « tabs », « cookies », « history » or « <all_urls> » access).'
-              : "L'extension ne déclare aucune autre permission (pas d'accès « tabs », « cookies », « history » ni « <all_urls> »)."}
+              ? 'The extension declares no other permission (no « tabs », « history » or « <all_urls> » access).'
+              : "L'extension ne déclare aucune autre permission (pas d'accès « tabs », « history » ni « <all_urls> »)."}
           </p>
 
           <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{en ? '8.4 Automated listing withdrawal' : '8.4 Retrait automatisé des annonces'}</span></p>

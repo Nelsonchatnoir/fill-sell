@@ -337,7 +337,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // le DOM sans handler, clic avalé sans requête) + bandeau menteur rendu sans
 // POST qui étouffait le re-clic. 3 clics max, budgets 8/12/16 s, re-clic
 // uniquement si AUCUN POST capté.
-export const EXTENSION_LAST_COMMIT = '2026-08-14T13:35:14Z';
+// 2026-08-15T09:50:00Z = paquet 0.6.6 (même branche, date de commit épinglée) :
+// - VÉRIFICATION VINTED RÉPARÉE (panne 12-15/08, par machine) : réveil de
+//   l'onglet de travail déchargé dans workTabForFetch (Vinted seul) + repli
+//   wardrobe via content script dans checkPublishedListings (preuve positive
+//   uniquement) — miroir de 88dbc97 (main) ;
+// - stampVintedItemId : l'id de l'annonce créée rattaché à
+//   inventaire.vinted_item_id à la publication (miroir de bde2b4a, main) ;
+// - Legal.jsx : la ligne « cookies » du tableau /legal reprise seule depuis
+//   1fc9beb (c'était sa SEULE modification de Legal) — répare le build Vercel
+//   de la branche, en ERROR depuis le 14/08 sur check:legal-permissions.
+// Manifest bumpé 0.6.5 → 0.6.6 : un zip 0.6.5 (dff6cdd) a déjà été LIVRÉ le
+// 14/08 (jamais téléversé) — produire un second 0.6.5 au contenu différent
+// est exactement l'ambiguïté à éviter. TOUJOURS SANS F1 (1fc9beb).
+export const EXTENSION_LAST_COMMIT = '2026-08-15T09:50:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
