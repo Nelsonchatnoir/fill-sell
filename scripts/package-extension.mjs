@@ -84,13 +84,15 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // 0.6.3 et 0.6.4 ajoutées le 14/08 (rattrapage, même nature que 0.5.2/0.5.7) :
 // paquets construits sur la branche ext-0.6.3-cause403, remplacés avant
 // d'aller au bout — les re-packager ne servirait qu'à se faire rejeter.
-// ⚠️ La 0.6.5 n'y figure PAS et ne doit PAS y entrer avant sa publication :
-// contrairement à ce qu'une note du 14/08 matin laissait croire, AUCUNE 0.6.5
-// n'a jamais été téléversée au CWS (correction Nico 14/08 après-midi — le zip
-// était resté sur le disque). C'est ELLE qui part au CWS maintenant,
-// re-packagée depuis la branche ext-0.6.5-sans-f1 (fixes Marque + eBay,
-// SANS le multi-comptes F1 de main).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4'];
+// 0.6.5 ajoutée le 15/08 SANS avoir été téléversée : le zip
+// fillsell-extension-0.6.5-dff6cdd.zip (livré le 14/08, écarté en
+// anciens-zips) reste le seul 0.6.5 légitime — un second zip 0.6.5 serait
+// indiscernable de lui, et un zip pris sur MAIN embarquerait F1 (1fc9beb).
+// Le paquet courant est la 0.6.6 (branche ext-0.6.5-sans-f1, d235bc3 :
+// vérification Vinted réparée + stampVintedItemId + fixes Marque/eBay, sans
+// F1). Tout paquet DEPUIS MAIN exige un bump de version ET une décision
+// explicite sur F1.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
