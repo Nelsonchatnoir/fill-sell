@@ -1,4 +1,4 @@
-// Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
+﻿// Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
 const VINTED_BUILD = "2026-08-09-photos-endpoint-reel (upload = POST /api/v2/photos, PAS /api/v2/images ; preuve croisée réseau + vignettes image-wrapper ; garde non bloquante sur recréation)";
@@ -116,7 +116,12 @@ async function computeVintedRequiredState() {
   for (const a of attrs) {
     if (a?.code) byCode.set(a.code, a);
   }
-  if (document.querySelector("#model") && !byCode.has("model")) {
+  // Présence testée par le SÉLECTEUR COMPLET du champ (2026-08-15 soir) : le
+  // test `#model` nu laissait la gate AVEUGLE sur un formulaire qui ne porte
+  // que le testid (model-select-input) — le job de Samdo est parti au serveur
+  // avec un Modèle vide et s'est pris le 400 que cette gate existe pour
+  // empêcher.
+  if (document.querySelector(vintedFieldSelector("model")) && !byCode.has("model")) {
     byCode.set("model", { code: "model", title: "Modèle", required: true, display: "list", options: null });
   }
   const discovered = [];
@@ -1592,7 +1597,39 @@ async function fillListingForm(job) {
   // MARQUE (constaté : il apparaît à la sélection de Xiaomi) — ce bloc doit
   // rester APRÈS le bloc marque ci-dessus. Ses options n'ont PAS d'aria-label
   // (contrairement aux marques) : on matche par texte sur les fils --title.
-  if (fields.modele) await selectVintedModel(fields.modele, warnings);
+  if (fields.modele) {
+    const modeleStatut = await selectVintedModel(fields.modele, warnings);
+    // ── Modèle fourni mais HORS catalogue = arrêt AVANT l'envoi (point 9,
+    // 2026-08-15 soir — AirPods de Samdo, 3 essais, 3 refus serveur 400
+    // « Sélectionne le modèle de ton article » APRÈS soumission) ─────────────
+    // Même doctrine que la gate pré-clic (un champ Modèle présent est traité
+    // requis) et que la garde catégorie/taille (bb131b8) : on ne soumet pas
+    // un formulaire dont un champ à choix fermé est resté vide en silence, et
+    // le message cite les options RÉELLES du menu (relevées ouvertes), jamais
+    // la phrase brute de Vinted. "inaccessible" ne bloque PAS : le champ d'une
+    // catégorie sans Modèle n'existe pas, et on ne peut rien conclure — le
+    // refus serveur éventuel garde son circuit (message enrichi plus bas).
+    // En recréation : B.5, jamais bloquant (l'annonce d'origine n'existe plus).
+    if (modeleStatut === "introuvable" && !recreation) {
+      const opts = optionsRelevees.get("modèle") ?? [];
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          `Vinted exige un modèle de son catalogue pour cette catégorie, et « ${fields.modele} » n'y figure pas` +
+          (opts.length ? ` — modèles proposés par le formulaire : ${opts.slice(0, 8).join(" · ")}` : "") +
+          ". Choisis le modèle exact dans le champ « Modèle » de la copie Vinted (app), puis relance la publication. " +
+          "Rien n'a été envoyé à Vinted.",
+        warnings,
+        needsUserField: {
+          field_key: "model",
+          field_label: "Modèle",
+          target: { root: "vintedAspects", key: "model" },
+        },
+        discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
+      };
+    }
+  }
   // Espace de stockage : liste fermée (20 options relevées, 256 Mo → 4 To),
   // mêmes testids que état/matière → cascade standard.
   if (fields.stockage) {
@@ -2035,9 +2072,19 @@ async function fillListingForm(job) {
         message: e.value,
       }));
       const details = serverRequired.map((f) => `${f.label} (${f.key})`).join(", ");
+      // Conseil ACTIONNABLE (point 9, 2026-08-15 soir) : la phrase brute de
+      // Vinted (« Sélectionne le modèle de ton article ») ne dit ni QUOI ni
+      // OÙ — 3 essais de Samdo dessus. On nomme le champ côté app, et on cite
+      // les options RELEVÉES SUR LE FORMULAIRE quand la pose les a vues
+      // (même règle que la garde catégorie : le DOM prime sur le catalogue).
+      const conseils = serverRequired.map((f) => {
+        const reelles = optionsRelevees.get(String(f.label).toLowerCase()) ?? [];
+        return `renseigne « ${f.label} » dans la copie Vinted de l'app` +
+          (reelles.length ? ` (options du formulaire : ${reelles.slice(0, 8).join(" · ")})` : "");
+      }).join(" ; ");
       return {
         success: false,
-        error: `${proof.error} — Champs exigés par le serveur Vinted : ${details}.`,
+        error: `${proof.error} — Champs exigés par le serveur Vinted : ${details}. À faire : ${conseils}, puis relance la publication.`,
         warnings,
         serverRequired,
         discoveredRequired: requiredState.discovered,
@@ -3281,11 +3328,25 @@ async function selectVintedBrand(marque, warnings) {
 // Parade : on essaie la valeur complète, puis on retire les tokens de queue
 // (5G/4G/Dual…) jusqu'à retomber sur un modèle catalogué. Match = exact sur la
 // valeur, ou option qui est un PRÉFIXE mot-à-mot de la valeur (base du variant).
+// Normalisation de comparaison (2026-08-15 soir, AirPods de Samdo) : la valeur
+// utilisateur « AirPods 3ème génération » et l'option catalogue
+// « AirPods (3e génération) » sont LE MÊME modèle — parenthèses, accents et
+// ordinaux FR (3ème/3eme → 3e, 1ère → 1re) sont unifiés AVANT comparaison,
+// des DEUX côtés (jamais côté clic : on clique toujours l'option réelle).
+const normModel = (s) => String(s ?? "")
+  .toLowerCase()
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/[()]/g, " ")
+  .replace(/(\d+)\s*eme\b/g, "$1e")
+  .replace(/(\d+)\s*ere\b/g, "$1re")
+  .replace(/\s+/g, " ")
+  .trim();
+// Passées par normModel comme les options qu'elles filtrent — sinon la
+// dé-accentuation ci-dessus les ferait rater (« modèle » ≠ « modele »).
 const MODEL_FALLBACK_LABELS = new Set([
   "mon modèle ne figure pas dans la liste",
   "je ne connais pas le nom du modèle",
-]);
-const normModel = (s) => String(s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+].map(normModel));
 
 function findVintedModelOption(optionSelector, rawWanted) {
   const wanted = normModel(rawWanted);
@@ -3320,9 +3381,21 @@ async function clickModelOption(titleEl) {
   row.click();
 }
 
+// Retour à TROIS états (2026-08-15 soir, AirPods de Samdo — 3 essais, 400
+// serveur « Sélectionne le modèle de ton article » après coup) :
+//   "pose"         → une option du catalogue a été cliquée ;
+//   "introuvable"  → le menu s'est ouvert, des options existent, AUCUNE ne
+//                    correspond — les options affichées sont relevées dans
+//                    optionsRelevees("modèle") pour le message ;
+//   "inaccessible" → le champ n'a pas pu être ouvert (absent de cette
+//                    catégorie, ou markup inattendu) — on ne peut RIEN
+//                    conclure sur l'exigence du serveur, on ne bloque pas.
+// Le caller (fillListingForm) bloque AVANT l'envoi sur "introuvable" hors
+// recréation : c'était le trou du 15/08 — champ sauté en silence, gate
+// aveugle (elle ne testait que #model nu), refus serveur APRÈS soumission.
 async function selectVintedModel(wanted, warnings) {
   const raw = String(wanted ?? "").trim();
-  if (!raw) return false;
+  if (!raw) return "inaccessible";
   const trigger = '#model, [data-testid="model-select-input"]';
   const optionSel = '[data-testid^="model-"][data-testid$="--title"]';
 
@@ -3342,7 +3415,8 @@ async function selectVintedModel(wanted, warnings) {
     const note = `modèle: ouverture du champ impossible — ${e.message}`;
     console.warn(`[vinted] ⚠️ ${note}`);
     warnings.push(note);
-    return false;
+    optionsRelevees.delete("modèle");
+    return "inaccessible";
   }
   const search = await waitForElement("#model-search-input", 5000).catch(() => null);
 
@@ -3367,19 +3441,28 @@ async function selectVintedModel(wanted, warnings) {
         console.warn(`[vinted] ≈ ${note}`);
         warnings.push(note);
       }
-      return true;
+      return "pose";
     }
   }
 
-  // Aucun modèle catalogué ne correspond, même en retirant les qualificatifs :
-  // champ laissé vide → la gate pré-clic (computeVintedRequiredState) le remonte
-  // en needsUser "Modèle" au lieu d'un 400 muet. (On ne clique PAS le repli
-  // Vinted "Mon modèle ne figure pas dans la liste" : commit non fiabilisé.)
+  // Aucun modèle catalogué ne correspond, même en retirant les qualificatifs.
+  // Les options AFFICHÉES sont relevées MENU OUVERT (dernière requête tapée =
+  // la plus courte, donc la liste la plus large) : c'est elles que le message
+  // de blocage citera — jamais la config catalogue, qui ne connaît pas ce
+  // champ. (On ne clique PAS le repli Vinted "Mon modèle ne figure pas dans
+  // la liste" : commit non fiabilisé.)
+  const affichees = Array.from(document.querySelectorAll(optionSel))
+    .map((el) => el.textContent.trim())
+    .filter((t) => t && !MODEL_FALLBACK_LABELS.has(normModel(t)))
+    .slice(0, 12);
+  if (affichees.length) optionsRelevees.set("modèle", affichees);
+  else optionsRelevees.delete("modèle");
   await closeAnyOpenDropdown();
-  const note = `modèle: "${raw}" introuvable dans le catalogue Vinted (aucune correspondance) — champ laissé vide`;
+  const note = `modèle: "${raw}" introuvable dans le catalogue Vinted (aucune correspondance)` +
+    (affichees.length ? ` — options affichées: ${JSON.stringify(affichees)}` : "");
   console.warn(`[vinted] ⚠️ ${note}`);
   warnings.push(note);
-  return false;
+  return "introuvable";
 }
 
 // Variante robuste pour les champs à choix fermé (taille, état, matière) :
