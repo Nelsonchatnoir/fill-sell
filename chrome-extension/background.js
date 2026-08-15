@@ -836,6 +836,31 @@ function updateJobStatus(accessToken, jobId, status, extra = {}) {
   });
 }
 
+// ── Capture de l'id Vinted à la publication (2026-08-15, dossier RoCotCot) ────
+// Un compte qui publie via FillSell mais ne fait JAMAIS de sync dressing
+// gardait inventaire.vinted_item_id à NULL à vie (77/77 lignes chez RoCotCot) :
+// seule la sync le rattrapait. On rattache donc l'id de l'annonce créée
+// (extrait de listing_url) à la ligne d'origine, dès la publication.
+// STRICTEMENT non bloquant : appelé APRÈS l'écriture du 'published', en
+// fire-and-forget — un échec ici ne change JAMAIS l'issue de la publication,
+// et si l'id n'est pas extractible on ne fait rien du tout.
+// N'écrit QUE si vinted_item_id est encore NULL (filtre PostgREST) : une sync
+// dressing ou un republish font autorité et ne sont jamais écrasés. L'index
+// unique (user_id, vinted_item_id) fait échouer proprement tout rattachement
+// qui créerait un doublon (409 avalé par le catch). Vinted uniquement.
+function stampVintedItemId(accessToken, job, listingUrl) {
+  if (job?.platform !== "vinted" || job.inventaire_id == null) return;
+  const id = extractListingId(listingUrl, "vinted");
+  if (!id) return;
+  restRequest(`inventaire?id=eq.${job.inventaire_id}&vinted_item_id=is.null`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify({ vinted_item_id: String(id) }),
+  }).then(
+    () => console.log(`[background] Job ${job.id} : vinted_item_id ${id} rattaché à l'inventaire ${job.inventaire_id} (si encore NULL)`),
+    (e) => console.warn(`[background] Job ${job.id} : rattachement vinted_item_id non abouti (non bloquant) —`, String(e?.message ?? e)),
+  );
+}
+
 // Statut RÉEL du job en base, ici et maintenant. Le job qu'on manipule en
 // mémoire a été lu au début du cycle : entre-temps, l'utilisateur (ou nous) a pu
 // l'annuler, et une écriture aveugle le ferait revenir d'entre les morts.
@@ -1019,6 +1044,7 @@ async function recoverStaleProcessingJobs(session) {
           listing_url: existing,
           platform_fields: done,
         }).catch((e) => console.error("[background] published anti-doublon:", String(e?.message ?? e)));
+        stampVintedItemId(session.access_token, job, existing);
         await recordRecentResult(job, "published").catch(() => {});
         continue;
       }
@@ -1959,6 +1985,8 @@ async function processJob(rawJob, accessToken) {
         ...completionExtras(job, result),
         listing_url: listingUrl ?? undefined,
       });
+      // Après le 'published', jamais avant : la publication est déjà acquise.
+      stampVintedItemId(accessToken, job, listingUrl);
       await recordRecentResult(job, "published");
       // L'onglet n'est PAS fermé : il sert au job suivant, comme un humain
       // qui garde son onglet Vinted ouvert entre deux dépôts.
@@ -2076,6 +2104,7 @@ async function processJob(rawJob, accessToken) {
           error: null,
           listing_url: publishedUrl,
         });
+        stampVintedItemId(accessToken, job, publishedUrl);
         await recordRecentResult(job, "published");
         return { status: "published", listingUrl: publishedUrl };
       }

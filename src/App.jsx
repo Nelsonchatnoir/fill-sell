@@ -1918,6 +1918,10 @@ export default function App({ loginOnly = false }){
   // que personne ne le sache. C'est le trou que ce bandeau ferme : l'extension
   // continue de retenter une fois par jour, et si ça dure, on te le DIT.
   const [unverifiableListings,setUnverifiableListings]=useState([]);
+  // Détail du bandeau « vérification impossible » replié par défaut (2026-08-15,
+  // dossier RoCotCot : une carte PAR article empilait une dizaine de pavés en
+  // tête de page — désormais UN bandeau compact, le détail derrière un clic).
+  const [unverifDetailOpen,setUnverifDetailOpen]=useState(false);
   // Prix de vente confirmé par l'utilisateur, par job (pré-rempli avec le prix
   // de mise en ligne, MODIFIABLE : la vente a pu être négociée).
   const [salePriceDraft,setSalePriceDraft]=useState({});
@@ -2702,7 +2706,7 @@ export default function App({ loginOnly = false }){
     // ligne et plus personne ne la surveille. On ne conclut RIEN à ta place, on
     // te donne le lien.
     const{data:unverif}=await supabase.from('cross_post_jobs')
-      .select('id, platform, title, listing_url, platform_fields')
+      .select('id, platform, title, listing_url, platform_fields, inventaire_id')
       .eq('user_id',uid).eq('status','published').eq('action','publish')
       .not('platform_fields->>check_unresolved_since','is',null);
     const seuil=Date.now()-2*24*60*60*1000;
@@ -5535,36 +5539,67 @@ export default function App({ loginOnly = false }){
           );
         })}
 
-        {/* Annonce INVÉRIFIABLE depuis > 2 jours : la surveillance automatique
-            n'aboutit plus (page anti-bot, format inattendu). ⚠️ Bandeau PUREMENT
-            INFORMATIF — aucun bouton destructif, aucune écriture : l'annonce est
-            peut-être parfaitement en ligne. L'extension continue de retenter une
-            fois par jour et le bandeau disparaîtra tout seul dès qu'une lecture
-            aboutira. Le lien permet de vérifier à la main en attendant. */}
-        {unverifiableListings.map(job=>{
+        {/* Annonces INVÉRIFIABLES depuis > 2 jours : la surveillance automatique
+            n'aboutit plus (page anti-bot, format inattendu). ⚠️ PUREMENT
+            INFORMATIF — aucun bouton destructif, aucune écriture : les annonces
+            sont peut-être parfaitement en ligne. L'extension continue de
+            retenter une fois par jour et le bandeau disparaîtra tout seul dès
+            qu'une lecture aboutira.
+            Refonte 2026-08-15 (dossier RoCotCot : 11 annonces = 11 cartes
+            empilées en tête de page) :
+            - UN SEUL bandeau compact, détail replié derrière un clic ;
+            - cantonné à l'onglet Ventes (le bloc se rendait au-dessus du
+              contenu de TOUS les onglets — constaté par l'utilisateur) ;
+            - une annonce Vinted sans listing_url ET dont la ligne d'inventaire
+              n'a pas de vinted_item_id est MASQUÉE : rien n'est vérifiable,
+              il n'y a donc rien à signaler. Correctif d'AFFICHAGE seul —
+              aucune écriture, aucun statut modifié, les jobs restent en base
+              tels quels. */}
+        {tab===3&&(()=>{
           const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
-          const plat=PLAT[job.platform]||job.platform;
-          const depuis=Math.floor((Date.now()-Date.parse(job.platform_fields?.check_unresolved_since))/86400000);
+          const visibles=unverifiableListings.filter(job=>{
+            if(job.platform!=='vinted')return true;
+            if(job.listing_url)return true;
+            const art=items.find(i=>String(i.id)===String(job.inventaire_id));
+            return Boolean(art?.vinted_item_id);
+          });
+          if(!visibles.length)return null;
+          const plats=[...new Set(visibles.map(j=>PLAT[j.platform]||j.platform))].join(', ');
+          const depuis=Math.max(...visibles.map(j=>Math.floor((Date.now()-Date.parse(j.platform_fields?.check_unresolved_since))/86400000)));
+          const n=visibles.length;
           return (
-            <div key={job.id} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.mute2}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
-              <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
-                <strong>{lang==='fr'?'Vérification impossible':'Cannot verify listing'}</strong>
-                <br/>
-                {lang==='fr'
-                  ?<>Impossible de vérifier l'état de « {job.title||'Article'} » sur <strong>{plat}</strong> depuis {depuis} jour{depuis>1?'s':''}. L'annonce est peut-être toujours en ligne — <strong>rien n'a été modifié</strong>. On réessaie chaque jour ; en attendant, tu peux vérifier toi-même.</>
-                  :<>Could not check “{job.title||'Item'}” on <strong>{plat}</strong> for {depuis} day{depuis>1?'s':''}. The listing may well still be online — <strong>nothing was changed</strong>. We keep retrying daily; meanwhile you can check yourself.</>}
+            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.mute2}`,borderRadius:16,padding:"12px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:200,fontSize:13.5,color:UI.ink,lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?<><strong>Impossible de vérifier {n} annonce{n>1?'s':''} sur {plats} depuis {depuis} jour{depuis>1?'s':''}.</strong> {n>1?'Elles sont':'Elle est'} peut-être toujours en ligne — <strong>rien n'a été modifié</strong>. On réessaie chaque jour.</>
+                    :<><strong>Could not check {n} listing{n>1?'s':''} on {plats} for {depuis} day{depuis>1?'s':''}.</strong> {n>1?'They':'It'} may well still be online — <strong>nothing was changed</strong>. We keep retrying daily.</>}
+                </div>
+                <button onClick={()=>setUnverifDetailOpen(v=>!v)}
+                  style={{padding:"7px 14px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                  {unverifDetailOpen?(lang==='fr'?'Masquer le détail':'Hide details'):(lang==='fr'?'Voir le détail':'Show details')}
+                </button>
               </div>
-              {job.listing_url&&(
-                <div>
-                  <a href={job.listing_url} target="_blank" rel="noopener noreferrer"
-                    style={{display:"inline-block",padding:"9px 18px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:13.5,fontWeight:600,textDecoration:"none",fontFamily:"inherit"}}>
-                    {lang==='fr'?`Ouvrir l'annonce ${plat}`:`Open the ${plat} listing`}
-                  </a>
+              {unverifDetailOpen&&(
+                <div style={{display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${UI.border}`,paddingTop:8}}>
+                  {visibles.map(job=>(
+                    <div key={job.id} style={{display:"flex",alignItems:"center",gap:10,fontSize:13,color:UI.ink}}>
+                      <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        « {job.title||(lang==='fr'?'Article':'Item')} » — {PLAT[job.platform]||job.platform}
+                      </span>
+                      {job.listing_url&&(
+                        <a href={job.listing_url} target="_blank" rel="noopener noreferrer"
+                          style={{flexShrink:0,fontSize:12.5,fontWeight:600,color:UI.tealDeep,textDecoration:"none"}}>
+                          {lang==='fr'?"Ouvrir l'annonce":'Open listing'}
+                        </a>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           );
-        })}
+        })()}
 
         {tab===0&&(
           <DashboardTab
