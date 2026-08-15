@@ -596,12 +596,21 @@ async function fillListingForm(job) {
   }
 
   if (!fields.lbcCategoryPath?.length) {
+    // Message HUMAIN (2026-08-15, Sandrine Jocaille ×3) : l'ancien texte
+    // affichait un nom de champ interne (platform_fields.lbcCategoryPath) à
+    // l'utilisatrice. Le détail technique reste en console pour le diagnostic.
+    // Depuis l'app 2.4.60, les jobs neufs portent TOUJOURS une catégorie
+    // (📦 → Divers > Autres) : ce cas ne reste possible que sur un job créé
+    // avant le correctif — la regénération le résout.
+    console.warn(
+      `[leboncoin] job ${job.id} sans platform_fields.lbcCategoryPath — job antérieur au ` +
+      "mapping ou icône hors périmètre (véhicule immatriculé…). L'app pose la catégorie à la génération."
+    );
     return {
       success: false,
       error:
-        "platform_fields.lbcCategoryPath absent — article non mappé vers une catégorie " +
-        "Leboncoin (icône hors périmètre : véhicule immatriculé, Beauté... ou job antérieur " +
-        "au mapping). Régénérer l'annonce depuis l'app, ou compléter src/utils/lbcCategories.js.",
+        "Cet article n'a pas encore de catégorie Leboncoin : regénère son annonce " +
+        "depuis l'app, puis relance la publication.",
     };
   }
 
@@ -617,10 +626,11 @@ async function fillListingForm(job) {
   // plus loin sur "Catégorie: ni suggestion ni sélecteur manuel trouvés"
   // (cas réel du 2026-07-06). Les marqueurs d'un stade avancé — #body,
   // #price_cents, critère condition — sont absents de l'étape titre : leur
-  // présence signe un brouillon repris. On ne détruit JAMAIS un brouillon
-  // (ce peut être un brouillon manuel de l'utilisateur) — needsUser, SAUF
-  // quand le brouillon est celui de CE job (comparaison de titre ci-dessous,
-  // 2026-07-30) : il est alors repris pour que le job aboutisse.
+  // présence signe un brouillon repris. Brouillon de CE job à un stade
+  // reprenable → repris à l'aperçu (2026-07-30) ; TOUT AUTRE brouillon
+  // bloquant → SUPPRIMÉ et le dépôt poursuit (décision Nico 2026-08-15,
+  // cf. bloc de suppression plus bas — l'ancien « on ne détruit JAMAIS un
+  // brouillon » est abandonné).
   const draftMarker = () =>
     document.querySelector('textarea#body, #body, #price_cents, label[for="condition"]');
   let entryState = await waitFor(() => {
@@ -643,11 +653,9 @@ async function fillListingForm(job) {
     // (incident du 2026-07-29 23:11). Quand le titre restauré est celui du
     // job, ce brouillon est une tentative précédente de CE MÊME job : on le
     // REPREND à l'aperçu (étape 4 : description, prix, adresse, dépôt) sans
-    // intervention utilisateur. Un brouillon qui ne correspond PAS (annonce
-    // saisie à la main ?) n'est JAMAIS touché ni détruit → comportement
-    // historique inchangé (draftBlocked : le background tente UNE fois ce job
-    // dans un onglet temporaire — si le brouillon vit dans sessionStorage,
-    // l'onglet neuf repart de zéro ; brouillon de compte → needsUser).
+    // intervention utilisateur. Tout autre cas (brouillon d'un autre article,
+    // ou stade non reprenable) → suppression du brouillon puis retentative
+    // unique en onglet neuf — cf. bloc « SUPPRESSION AUTOMATIQUE » plus bas.
     const titreBrouillon = String(
       document.querySelector('input[name="subject"], input#subject')?.value ?? ""
     ).trim();
@@ -665,39 +673,65 @@ async function fillListingForm(job) {
     } else {
       if (correspond) {
         console.log(
-          "[leboncoin] Brouillon = CE job, mais restauré à un stade non reprenable (ni #body ni #price_cents) — needsUser inchangé."
+          "[leboncoin] Brouillon = CE job, mais restauré à un stade non reprenable (ni #body ni #price_cents) — suppression tentée."
         );
       } else {
         console.log(
-          `[leboncoin] Brouillon ≠ job : titre restauré « ${titreBrouillon || "(illisible)"} » vs job « ${job.title} » — jamais touché → needsUser.`
+          `[leboncoin] Brouillon ≠ job : titre restauré « ${titreBrouillon || "(illisible)"} » vs job « ${job.title} » — suppression tentée (décision 15/08).`
         );
       }
-      // ── Message ACTIONNABLE (2026-08-11) ──────────────────────────────────
-      // L'ancien texte (« le wizard ne repart pas de zéro… Le publier ou le
-      // supprimer, puis relancer ») décrivait notre mécanique interne et
-      // laissait l'utilisateur chercher OÙ et QUOI faire. Cas réel du 10/08
-      // (Wesley M.) : premier échec « adresse requise » — qui CONSERVE
-      // délibérément le brouillon — puis, une fois l'adresse renseignée, un
-      // second mur sur ce message-ci, pour un AUTRE article. Il avait corrigé
-      // la cause d'origine et se reprenait une erreur sur laquelle il ne
-      // pouvait rien.
+      // ── SUPPRESSION AUTOMATIQUE du brouillon bloquant (décision Nico,
+      // 2026-08-15 — 16 occurrences / 12 comptes depuis le 27/07) ────────────
+      // L'ancienne politique (« on ne supprime jamais rien sur ton compte sans
+      // toi », 2026-08-11) est ABANDONNÉE : un brouillon non terminé qui
+      // bloque le dépôt est retiré, et le job poursuit. Périmètre STRICT :
+      //   - seul le brouillon du wizard /deposer-une-annonce est visé — il vit
+      //     dans le web storage du domaine ; les annonces PUBLIÉES sont côté
+      //     serveur, ce chemin ne peut pas les atteindre ;
+      //   - une clé de storage n'est retirée QUE si sa valeur contient le
+      //     titre restauré dans #subject (c'est le brouillon qui bloque —
+      //     jamais un jeton d'auth ni une préférence du site) ; titre
+      //     illisible → aucune suppression tentée, comportement d'avant ;
+      //   - UNE tentative, jamais de boucle : on rend draftBlocked comme
+      //     avant, le background relance CE job une seule fois dans un onglet
+      //     temporaire (retryInTempTab) — storage nettoyé, le wizard neuf
+      //     repart de zéro. Si le brouillon revit malgré tout (copie côté
+      //     serveur ?), le second draftBlocked rend le message final, en UNE
+      //     ligne (fini le paragraphe d'instructions du 11/08).
       // Le mot « brouillon » doit RESTER dans le texte : StockTab le repère par
       // DRAFT_LBC_RE (/brouillon/i) pour afficher le bouton « Ouvrir le
       // brouillon Leboncoin ». Le retirer casserait ce bouton en silence.
+      let clesRetirees = 0;
+      if (titreBrouillon) {
+        for (const storage of [window.localStorage, window.sessionStorage]) {
+          try {
+            const aRetirer = [];
+            for (let i = 0; i < storage.length; i++) {
+              const cle = storage.key(i);
+              const valeur = cle != null ? storage.getItem(cle) : null;
+              if (typeof valeur === "string" && valeur.includes(titreBrouillon)) aRetirer.push(cle);
+            }
+            for (const cle of aRetirer) {
+              storage.removeItem(cle);
+              clesRetirees++;
+              console.log(`[leboncoin] brouillon bloquant : clé de storage retirée « ${cle} »`);
+            }
+          } catch (e) {
+            console.warn("[leboncoin] suppression du brouillon : storage illisible —", e?.message ?? e);
+          }
+        }
+      }
+      console.log(
+        `[leboncoin] brouillon bloquant (« ${titreBrouillon || "(titre illisible)"} ») : ` +
+        `${clesRetirees} clé(s) de storage retirée(s) — retentative unique en onglet neuf (draftBlocked).`
+      );
       return {
         success: false,
         needsUser: true,
         draftBlocked: true,
         error:
-          "Leboncoin garde un brouillon d'annonce non terminé sur ton compte" +
-          (titreBrouillon && !correspond ? ` (« ${titreBrouillon} »)` : "") +
-          ", et il n'accepte pas d'en commencer un autre tant que celui-là est là. " +
-          "Ce n'est pas ton annonce du jour qui pose problème. " +
-          "À faire, dans l'ordre : 1) ouvre leboncoin.fr/deposer-une-annonce ; " +
-          "2) termine ce brouillon, ou supprime-le ; 3) reviens ici et relance la " +
-          "publication. On n'y touche pas nous-mêmes : ce brouillon peut être une " +
-          "annonce que tu as commencée à la main, et on ne supprime jamais rien sur " +
-          "ton compte sans toi.",
+          "Un brouillon Leboncoin non terminé bloque le dépôt : supprime-le sur " +
+          "leboncoin.fr/deposer-une-annonce, puis relance la publication.",
       };
     }
   }

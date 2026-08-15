@@ -55,9 +55,21 @@ const VINTED_SERVER_FIELD_LABELS = {
 // /api/v2/item_upload/shipping_options rendent tous 404 (relevé du 05/08).
 // C'est donc cette table qui fait foi, dans les DEUX sens : selectPackageSize
 // la lit pour cliquer, la capture la lit pour nommer. Une seule table = les
-// deux ne peuvent pas diverger. Un id hors 1..3 n'est JAMAIS approché : le
-// champ part dans champs_manquants.
+// deux ne peuvent pas diverger.
+// ── Ids HORS TABLE (décision Nico 2026-08-15) ────────────────────────────────
+// Relevé RÉEL en base (vinted_republish_captures, payloads natifs) : 1 ×349,
+// 2 ×39, 3 ×22 — et DEUX valeurs hors table : 8 (« Bouilloire électrique »,
+// « Lot verre ») et 11 (« Nacelle »), des formats volumineux propres aux
+// catégories Maison/Électro. Leur libellé n'a jamais été relevé sur un
+// formulaire (aucun référentiel distant, cf. ci-dessus) : ils ne sont PAS
+// ajoutés à la table — inventer la correspondance poserait un rang de radio
+// faux. À la place, un id inconnu retombe sur « Grand » (le plus grand format
+// STANDARD, le moins faux pour ces objets volumineux) et la republication
+// POURSUIT — l'ancien blocage en champs_manquants laissait l'article en rade
+// (Carla, 14-15/08). Les frais de port peuvent être sous-estimés : assumé et
+// tracé dans diagnostics.
 const VINTED_PACKAGE_SIZES_PAR_ID = { 1: "Petit", 2: "Moyen", 3: "Grand" };
+const VINTED_PACKAGE_SIZE_REPLI = "Grand";
 
 // Sélecteur d'input pour un code d'attribut Vinted. Les champs « historiques »
 // ont des testids spécifiques (relevés en réel) ; tout nouveau champ dynamique
@@ -902,16 +914,47 @@ async function capturerAnnonceVinted(vintedItemId) {
 
   // Colis — requis au dépôt ; selectPackageSize (handler publish) attend le
   // libellé. Aucun référentiel distant n'existe (tous 404, relevé du 05/08) :
-  // la table partagée VINTED_PACKAGE_SIZES_PAR_ID fait foi, et un id inconnu
-  // est nommé plutôt qu'approché — un mauvais format de colis ne se voit qu'à
-  // la première vente, en frais de port faux.
+  // la table partagée VINTED_PACKAGE_SIZES_PAR_ID fait foi. Un id HORS table
+  // (8, 11 relevés — formats volumineux Maison/Électro) ne bloque PLUS : repli
+  // « Grand » et on poursuit (décision Nico 15/08, cf. bloc de la table). Le
+  // repli est tracé — frais de port possiblement sous-estimés, assumé.
   const packageId = natif?.package_size_id ?? null;
   if (packageId != null) {
     const libelle = VINTED_PACKAGE_SIZES_PAR_ID[Number(packageId)];
-    if (libelle) libelles.colis = libelle;
-    else manquants.push(`colis (package_size_id=${packageId} hors table connue 1..3)`);
+    if (libelle) {
+      libelles.colis = libelle;
+    } else {
+      libelles.colis = VINTED_PACKAGE_SIZE_REPLI;
+      libelles.colis_repli_depuis_id = Number(packageId);
+      diagnostics.push({
+        cle: "package_size",
+        note: `package_size_id=${packageId} hors table 1..3 → repli "${VINTED_PACKAGE_SIZE_REPLI}" (décision 15/08 : poursuivre, jamais bloquer)`,
+      });
+    }
   } else {
     manquants.push("colis (package_size_id absent du payload)");
+  }
+
+  // ── ISBN — Livres et médias (2026-08-15, Rose « Juris'Pénal », annonce
+  // PERDUE) ──────────────────────────────────────────────────────────────────
+  // Vinted refuse CERTAINES recréations de livres sans ISBN (« Merci d'entrer
+  // un numéro ISBN valide ») — pas toutes : 4 des 6 livres de Rose passent
+  // sans. Le payload d'édition porte l'ISBN en clair (natif.isbn, vérifié sur
+  // la capture 377) : on le capture ici et fillListingForm le réinjecte.
+  //   - isbn présent  → libelles.isbn, réinjecté à la recréation ;
+  //   - isbn null     → l'annonce d'origine VIT sans ISBN : on republie telle
+  //     quelle, mêmes chances qu'à l'origine (ne pas bloquer la catégorie) ;
+  //   - clé ABSENTE du natif (payload illisible/forme changée) → on ne sait
+  //     pas ce qu'on perdrait : champs_manquants, la garde arrête AVANT la
+  //     suppression — le pire cas doit rester « rien ne se passe ».
+  const estLivre = String(chemin?.[0] ?? "") === "Livres et médias" ||
+    Number(natif?.catalog_id) === 2320;
+  if (estLivre) {
+    const isbn = String(natif?.isbn ?? "").trim();
+    if (isbn) libelles.isbn = isbn;
+    else if (natif && typeof natif === "object" && !("isbn" in natif)) {
+      manquants.push("isbn (clé absente du payload d'édition — illisible, on ne supprime pas sans savoir)");
+    }
   }
 
   // Description — obligatoire au dépôt.
@@ -1514,6 +1557,20 @@ async function fillListingForm(job) {
     );
   }
   if (photoResult?.photoNote) warnings.push(photoResult.photoNote);
+
+  // ── ISBN — Livres (2026-08-15, Rose « Juris'Pénal ») ───────────────────────
+  // fields.isbn n'est posé QUE par la republication (capture → snapshot →
+  // construireJobRecreation) : l'ISBN de l'annonce d'origine se réinjecte, ou
+  // Vinted refuse la recréation en 400 (« Merci d'entrer un numéro ISBN
+  // valide ») ALORS QUE l'annonce d'origine est déjà supprimée. Le champ
+  // n'existe que sur les catégories Livres — d'où sa place APRÈS la pose de
+  // la catégorie. Sélecteur : convention des inputs texte du dépôt
+  // (#title / title--input, relevée), déclinée sur le code serveur `isbn`
+  // (VINTED_SERVER_FIELD_LABELS). En une-passe l'échec est BLOQUANT — il
+  // arrive AVANT la suppression ; en recréation, non bloquant comme le reste.
+  if (fields.isbn) {
+    await etape("ISBN", () => fillTextField('#isbn, [data-testid="isbn--input"]', fields.isbn));
+  }
 
   // Marque : catalogue d'abord, CRÉATION de la marque en repli — et plus
   // jamais de champ sauté (2026-07-29, job « Mela & Adorna » : marque hors

@@ -2378,12 +2378,15 @@ async function retryInTempTab(job, handler, originalResult) {
     await waitForTabComplete(tab.id, tempUrl + TEMP_TAB_FRAGMENT);
     const result = await sendMessageToTab(tab.id, { type: "FILL_LISTING", job });
     if (result?.draftBlocked) {
+      // Le content script a déjà tenté de retirer le brouillon (storage) et
+      // l'onglet NEUF le restaure quand même : message final en UNE ligne
+      // (décision 15/08), le mot « brouillon » conservé pour DRAFT_LBC_RE.
       return {
         ...result,
         error:
-          (result.error || "") +
-          " Le brouillon persiste même dans un onglet neuf : c'est un brouillon " +
-          "de compte, le publier ou le supprimer sur leboncoin.fr.",
+          "Un brouillon Leboncoin non terminé bloque le dépôt et n'a pas pu être " +
+          "retiré automatiquement : supprime-le sur leboncoin.fr/deposer-une-annonce, " +
+          "puis relance la publication.",
       };
     }
     return result;
@@ -8645,6 +8648,10 @@ function construireSnapshotRepublish(pf, cap) {
     catalog_id: natif.catalog_id ?? null,
     colis: lib.colis ?? null,
     package_size_id: natif.package_size_id ?? null,
+    // ISBN (2026-08-15, Rose) : capturé sur les Livres — libellé de capture
+    // d'abord, natif en second (couvre les captures ANTÉRIEURES au correctif,
+    // qui portent déjà natif.isbn sans libelles.isbn).
+    isbn: lib.isbn ?? (typeof natif.isbn === "string" && natif.isbn.trim() ? natif.isbn.trim() : null),
     // Matière : libellé si la capture en a un, et TOUJOURS les ids quand ils
     // existent (résolus au formulaire — optionnelle, jamais bloquante).
     matiere: lib.matiere ?? null,
@@ -8696,6 +8703,14 @@ function construireJobRecreation(job, pf, cap, prix) {
       marque: cap.libelles?.marque ?? null,
       colors: cap.libelles?.couleurs ?? null,
       packageSize: cap.libelles?.colis ?? null,
+      // ISBN (2026-08-15, Rose « Juris'Pénal ») : réinjecté sur les Livres —
+      // libellé de capture d'abord, natif.isbn en repli pour les captures
+      // ANTÉRIEURES au correctif (l'annonce d'origine est parfois déjà
+      // supprimée : le natif conservé est alors la seule source).
+      ...(() => {
+        const isbn = String(cap.libelles?.isbn ?? natifCap.isbn ?? "").trim();
+        return isbn ? { isbn } : {};
+      })(),
       // Matière (2026-08-13) — OPTIONNELLE, jamais bloquante : libellé si un
       // jour la capture en produit un, sinon les IDS (item_attributes),
       // résolus au formulaire sur le menu ouvert (selectMaterialByIds).
