@@ -371,7 +371,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // paquet SUIVANT — tout re-package depuis cette branche les inclura de fait
 // (la garde n°4 l'exigera). La cause racine (« drapé » → 🛌) est corrigée
 // côté app (db37b1e, main). TOUJOURS SANS F1 (1fc9beb).
-export const EXTENSION_LAST_COMMIT = '2026-08-15T21:42:16Z';
+// 2026-08-15T22:16:54Z = 79e029c (point 9, Modèle Vinted — AirPods de Samdo) :
+// normModel unifie ordinaux/parenthèses/accents (« 3ème génération » matche
+// « (3e génération) »), selectVintedModel à 3 états + relevé des options du
+// menu, blocage AVANT envoi quand le modèle fourni n'est pas au catalogue
+// (message = options réelles, needsUserField model), gate pré-clic élargie au
+// sélecteur complet du champ, message 400 actionnable. Comme bb131b8 : HORS du
+// zip 1d20b3d déjà téléversé — paquet SUIVANT. TOUJOURS SANS F1 (1fc9beb).
+export const EXTENSION_LAST_COMMIT = '2026-08-15T22:16:54Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
