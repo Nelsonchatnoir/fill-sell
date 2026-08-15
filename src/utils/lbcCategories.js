@@ -103,7 +103,19 @@ const LBC_CATEGORIES = {
   // parfaitement vendables. Appareils (💇🪒) déjà en Électroménager, inchangés.
   "🌸": ["Divers", "Autres"], "💄": ["Divers", "Autres"],
   "💅": ["Divers", "Autres"], "🧴": ["Divers", "Autres"],
-  "📦": null, // filet générique (gourde, veilleuse, objets sans feuille dédiée)
+  // 📦 (filet générique : gourde, veilleuse, objets sans feuille dédiée) :
+  // null → Divers > Autres le 2026-08-15 (Sandrine Jocaille, « Cendrier
+  // vintage Noilly Prat » — 3 cas, jobs partis SANS lbcCategoryPath et morts
+  // côté extension avec un nom de champ interne). Divers > Autres est le
+  // fourre-tout OFFICIEL du dépôt : mieux qu'un échec sec, et le quota de
+  // 3 photos gratuites de cette feuille est déjà plafonné par
+  // getLbcFreePhotoQuota au moment de l'insert. Les cosmétiques, eux, sont
+  // arrêtés AVANT par estCosmetiqueInterditeLbc (interdiction de PRODUIT).
+  "📦": ["Divers", "Autres"],
+  // 💎 : icône VALIDE (ALL_OBJECT_ICONS) que generate-listing peut renvoyer,
+  // mais qui n'avait AUCUNE entrée ici — même trou silencieux que 📦. Un
+  // bijou vit avec les montres (même feuille que ⌚/💍).
+  "💎": ["Mode", "Montres & Bijoux"],
   // ── Icônes DÉFAUT de type (audit 2026-07-19) : un article d'un type sans
   // mot-clé objet reconnu tombait sur une icône jamais mappée → 4 plateformes
   // grisées. Les feuilles LBC sont larges (2 niveaux) : parfaites en défaut.

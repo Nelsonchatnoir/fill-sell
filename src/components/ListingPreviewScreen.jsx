@@ -15,6 +15,7 @@ import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_L
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
+import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 import { getPlatformSupport } from "../utils/platformCompat";
@@ -325,7 +326,13 @@ function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
   if (keywordIcon) return keywordIcon;
   // Aucun mot-objet reconnu → on fait confiance à l'IA (si valide), exactement
   // là où detectObjectIcon retomberait sur un simple défaut de catégorie.
-  if (aiIcon && VALID_OBJECT_ICONS.has(aiIcon)) return aiIcon;
+  // ⚠️ SAUF 📦 (2026-08-15, « Cendrier vintage Noilly Prat », type Maison) :
+  // 📦 est une icône VALIDE, donc une IA qui répond « objet générique »
+  // court-circuitait le défaut de TYPE (🏠 pour Maison…), strictement plus
+  // informatif — et l'article partait sans catégorie LBC. Un 📦 de l'IA ne
+  // porte aucune information : on laisse detectObjectIcon jouer le défaut de
+  // type, et 📦 ne revient qu'en tout dernier ressort (type Autre).
+  if (aiIcon && aiIcon !== "📦" && VALID_OBJECT_ICONS.has(aiIcon)) return aiIcon;
 
   const icon = detectObjectIcon(frTitle, `${frDesc} ${marque}`, categorie);
   if (icon !== "📦") return icon; // 📦 = CAT_DEFAULT_ICONS['Autre'] (shared.js)
@@ -5947,7 +5954,12 @@ export default function ListingPreviewScreen({
           platform,
           status:          "pending",
           photo_option:    photoOption,
-          title:           edited[platform]?.title           ?? "",
+          // Vinted refuse un titre trop capitalisé (400 serveur, champ title,
+          // 2026-08-15) : normalisation à l'ENVOI — elle rattrape l'IA comme
+          // la saisie manuelle. Les autres plateformes partent telles quelles.
+          title:           platform === "vinted"
+            ? normalizeVintedTitle(edited[platform]?.title ?? "")
+            : (edited[platform]?.title ?? ""),
           description:     edited[platform]?.description     ?? "",
           price:           edited[platform]?.price           ?? price,
           photos:          rowPhotos,
