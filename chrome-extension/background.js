@@ -5323,7 +5323,24 @@ async function workTabForFetch(platform) {
     // sans ça, chaque vérification renaviguait l'onglet vers la home (2026-07-23).
     const hosts = platform === "ebay" ? [host, "ebay.com"] : [host];
     const hn = new URL(tab?.url || "https://x.invalid").hostname;
-    if (tab && hosts.some((h) => hn === h || hn.endsWith(`.${h}`))) return tab.id;
+    if (tab && hosts.some((h) => hn === h || hn.endsWith(`.${h}`))) {
+      // ── RÉVEIL VINTED (2026-08-15, panne de vérification du 12-15/08) ────
+      // Un onglet DÉCHARGÉ (chrome.tabs.discard, règle de navigateWorkTab)
+      // était rendu tel quel : executeScript y échoue, et la lecture retombait
+      // sur le fetch du service worker — que DataDome refuse en 403 depuis le
+      // 12/08 (doctrine 3db8465 : 403 = anti-robot). Chez les vendeurs peu
+      // actifs, l'onglet est déchargé en permanence → 100 % des vérifications
+      // en « unknown » (Maalia 180/180, Lucille 16/16, RoCotCot 11/11…),
+      // pendant que la MÊME page se lit parfaitement depuis un onglet vivant
+      // (vérifié en réel le 15/08 sur machine touchée). On le RÉVEILLE donc
+      // par le chemin de navigation existant (discard→navigate→complete,
+      // beforeunload neutralisé). Vinted UNIQUEMENT : les vérifications
+      // eBay/LBC/Beebs gardent leur comportement d'avant, à l'octet près.
+      if (platform === "vinted" && tab.discarded) {
+        return getOrCreateWorkTab(platform, `https://www.${host}/`);
+      }
+      return tab.id;
+    }
   }
   // Pas d'onglet exploitable : on en ouvre un sur la HOME de la plateforme (page
   // anodine, aucun formulaire touché), qui servira aussi aux vérifications
@@ -7619,6 +7636,49 @@ async function persistDiscoveredAspects(accessToken, job, discovered) {
   }
 }
 
+// ── Repli wardrobe pour la vérification Vinted (2026-08-15) ──────────────────
+// Quand la lecture de la PAGE d'annonce est indéterminée (bot-shield, onglet
+// inutilisable), on interroge le canal qui MARCHE encore sur les machines
+// touchées par la panne du 12-15/08 : l'API wardrobe appelée depuis le content
+// script d'un onglet vinted.fr — exactement le chemin de la sync dressing,
+// dont les runs 'done' des 13-15/08 sur TOUS les comptes touchés (Maalia 848
+// items lus pendant que 180/180 lectures de page échouaient) prouvent qu'il
+// passe là où la page ne passe plus. PREUVE POSITIVE UNIQUEMENT : un article
+// ABSENT du wardrobe ne conclut RIEN (dressing paginé à 96, compte Vinted
+// multiple — dossier Manon) — le job garde alors son « unknown » et sa
+// temporisation existante. Une page wardrobe au plus par CYCLE de
+// vérification, jamais par job.
+async function lireWardrobeConnecte() {
+  try {
+    const tabId = await workTabForFetch("vinted");
+    if (tabId == null) return null;
+    const t = await chrome.tabs.get(tabId).catch(() => null);
+    if (!t || t.discarded) return null;
+    // Timeout court et explicite : ces deux appels répondent en secondes ; le
+    // défaut de 300 s bloquerait tout le cycle de vérification sur un pépin.
+    const ident = await sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }, 30_000);
+    if (!ident?.userId) return null;
+    const page = await sendMessageToTab(tabId, { type: "SYNC_DRESSING_PAGE", page: 1, userId: ident.userId }, 30_000);
+    if (!page?.success || !Array.isArray(page.articles)) return null;
+    console.log(`[background] repli wardrobe : ${page.articles.length} article(s) lus (page 1)`);
+    return new Map(page.articles.filter((a) => a?.vinted_item_id).map((a) => [String(a.vinted_item_id), a]));
+  } catch (e) {
+    console.warn("[background] repli wardrobe illisible (aucune conclusion) :", String(e?.message ?? e));
+    return null;
+  }
+}
+
+// Statuts du wardrobe → états du poll, mêmes seuils que detectVintedState :
+// sold = vendu ; closed = fermée sans vente (retrait) ; active/reserved/
+// hidden/draft = l'annonce existe toujours chez lui, rien à signaler.
+function verdictWardrobe(article) {
+  if (!article) return null;
+  const prix = Number.isFinite(article.prix) && article.prix > 0 ? article.prix : null;
+  if (article.statut === "sold") return { state: "sold", price: prix };
+  if (article.statut === "closed") return { state: "unavailable", price: null };
+  return { state: "active", price: prix };
+}
+
 async function checkPublishedListings(session) {
   let jobs;
   try {
@@ -7676,10 +7736,29 @@ async function checkPublishedListings(session) {
   if (!due.length) return;
 
   console.log(`[background] Détection : ${due.length} annonce(s) à vérifier`);
+  // Wardrobe du cycle : lu au plus UNE fois, et seulement si un job Vinted en a
+  // besoin (première lecture de page indéterminée). undefined = jamais tenté.
+  let wardrobeCycle;
+  const wardrobeDuCycle = () => {
+    if (wardrobeCycle === undefined) wardrobeCycle = lireWardrobeConnecte();
+    return wardrobeCycle;
+  };
   for (let i = 0; i < due.length; i++) {
     const job = due[i];
-    const { state, price } = await checkListingState(job.listing_url, job.platform);
+    let { state, price } = await checkListingState(job.listing_url, job.platform);
     console.log(`[background] ${job.platform} ${job.id} → ${state}${price ? ` (prix page : ${price} €)` : ""}`);
+
+    // ── Repli wardrobe (Vinted seulement, cf. lireWardrobeConnecte) ─────────
+    if (state === "unknown" && job.platform === "vinted") {
+      const parId = await wardrobeDuCycle();
+      const id = extractListingId(job.listing_url, "vinted");
+      const verdict = verdictWardrobe(id != null ? parId?.get(String(id)) : null);
+      if (verdict) {
+        state = verdict.state;
+        if (verdict.price != null) price = verdict.price;
+        console.log(`[background] vinted ${job.id} → ${state} via wardrobe (page illisible)`);
+      }
+    }
 
     // État AMBIGU (bot-shield, page inattendue, champs absents) : on ne conclut
     // RIEN et on ne pose AUCUN drapeau — conclure sur une lecture ratée, c'est

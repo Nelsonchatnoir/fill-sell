@@ -361,7 +361,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ⚠️ LE PAQUET 0.6.5 SE CONSTRUIT SUR LA BRANCHE ext-0.6.5-sans-f1 (base
 // fe901f4 + fix Marque + fixes eBay), PAS sur main : main porte F1 (1fc9beb),
 // exclu de la circulation. Un paquet construit ICI embarquerait F1.
-export const EXTENSION_LAST_COMMIT = '2026-08-14T13:34:22Z';
+// 2026-08-15T09:35:00Z = réparation de la VÉRIFICATION Vinted (panne du
+// 12-15/08 : onglet de travail déchargé rendu tel quel par workTabForFetch +
+// repli service worker désormais 403 DataDome → 100 % d'« unknown » chez les
+// vendeurs peu actifs). Deux couches : réveil de l'onglet déchargé (Vinted
+// seulement) + repli wardrobe via content script (preuve positive uniquement).
+// Committé avec GIT_COMMITTER_DATE épinglée sur cette constante (garde
+// ci-dessous : ni futur, ni antérieur).
+export const EXTENSION_LAST_COMMIT = '2026-08-15T09:35:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

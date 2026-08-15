@@ -3497,8 +3497,8 @@ const StockTab = memo(function StockTab({
                   :`Your computer's clock is about ${retard.jours} day${retard.jours>1?"s":""} behind`}
               </div>
               {lang==='fr'
-                ?"Les sites de vente refusent des connexions quand l'heure est fausse — c'est souvent ce qui fait échouer les publications. Active la date et l'heure automatiques dans les réglages de Windows sur l'ordinateur où tourne l'extension, puis relance tes publications."
-                :"Selling sites refuse connections when the clock is wrong — this is often what makes publications fail. Turn on automatic date & time in Windows settings on the computer running the extension, then relaunch your publications."}
+                ?"Les sites de vente refusent des connexions quand l'heure est fausse — c'est souvent ce qui fait échouer les publications. Active la date et l'heure automatiques dans les réglages de date et d'heure de ton ordinateur (celui où tourne l'extension), puis relance tes publications."
+                :"Selling sites refuse connections when the clock is wrong — this is often what makes publications fail. Turn on automatic date & time in your computer's date & time settings (the one running the extension), then relaunch your publications."}
             </div>
           </div>
         );

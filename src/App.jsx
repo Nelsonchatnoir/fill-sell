@@ -1911,17 +1911,11 @@ export default function App({ loginOnly = false }){
   // le doute n'est jamais écrit en base — l'utilisateur confirme ou infirme.
   const [unavailableListings,setUnavailableListings]=useState([]);
   const [confirmingSale,setConfirmingSale]=useState(null);
-  // Annonces que l'extension n'ARRIVE PLUS À VÉRIFIER (2026-07-13) : après 4
-  // lectures indéterminées d'affilée (page anti-bot, format inattendu), elle
-  // cesse d'insister et pose platform_fields.check_unresolved. RIEN de destructif
-  // n'en découle — mais sans ce bandeau, l'annonce cessait d'être surveillée SANS
-  // que personne ne le sache. C'est le trou que ce bandeau ferme : l'extension
-  // continue de retenter une fois par jour, et si ça dure, on te le DIT.
-  const [unverifiableListings,setUnverifiableListings]=useState([]);
-  // Détail du bandeau « vérification impossible » replié par défaut (2026-08-15,
-  // dossier RoCotCot : une carte PAR article empilait une dizaine de pavés en
-  // tête de page — désormais UN bandeau compact, le détail derrière un clic).
-  const [unverifDetailOpen,setUnverifDetailOpen]=useState(false);
+  // (Bandeau « vérification impossible » SUPPRIMÉ le 2026-08-15 — décision
+  // produit : seul un bandeau de VENTE détectée parle à l'utilisateur. Le
+  // mécanisme extension — check_unresolved, retentative quotidienne — continue
+  // de tourner et se répare tout seul ; cette suppression est purement de
+  // l'affichage, rien n'est écrit ni modifié en base.)
   // Prix de vente confirmé par l'utilisateur, par job (pré-rempli avec le prix
   // de mise en ligne, MODIFIABLE : la vente a pu être négociée).
   const [salePriceDraft,setSalePriceDraft]=useState({});
@@ -2699,22 +2693,8 @@ export default function App({ loginOnly = false }){
       .not('platform_fields->>unavailable_since','is',null);
     setUnavailableListings(unavail||[]);
 
-    // Annonces INVÉRIFIABLES depuis plus de 2 jours (2026-07-13). L'extension
-    // retente une fois par jour et se répare toute seule si la cause disparaît
-    // (bot-shield levé, onglet rouvert) — on n'alerte donc pas au premier jour.
-    // Mais au-delà, c'est à toi de trancher : l'annonce est peut-être toujours en
-    // ligne et plus personne ne la surveille. On ne conclut RIEN à ta place, on
-    // te donne le lien.
-    const{data:unverif}=await supabase.from('cross_post_jobs')
-      .select('id, platform, title, listing_url, platform_fields, inventaire_id')
-      .eq('user_id',uid).eq('status','published').eq('action','publish')
-      .not('platform_fields->>check_unresolved_since','is',null);
-    const seuil=Date.now()-2*24*60*60*1000;
-    setUnverifiableListings((unverif||[]).filter(j=>{
-      const t=Date.parse(j.platform_fields?.check_unresolved_since??'');
-      return Number.isFinite(t)&&t<seuil;
-    }));
-
+    // (Les annonces invérifiables — platform_fields.check_unresolved — ne sont
+    // plus lues ni affichées : bandeau supprimé le 2026-08-15, cf. plus haut.)
     setLoading(false);
     setAppLoading(false);
     const voiceCount=await checkAndResetDaily(supabase,uid,'voice_count_today','voice_count_date');
@@ -5539,67 +5519,11 @@ export default function App({ loginOnly = false }){
           );
         })}
 
-        {/* Annonces INVÉRIFIABLES depuis > 2 jours : la surveillance automatique
-            n'aboutit plus (page anti-bot, format inattendu). ⚠️ PUREMENT
-            INFORMATIF — aucun bouton destructif, aucune écriture : les annonces
-            sont peut-être parfaitement en ligne. L'extension continue de
-            retenter une fois par jour et le bandeau disparaîtra tout seul dès
-            qu'une lecture aboutira.
-            Refonte 2026-08-15 (dossier RoCotCot : 11 annonces = 11 cartes
-            empilées en tête de page) :
-            - UN SEUL bandeau compact, détail replié derrière un clic ;
-            - cantonné à l'onglet Ventes (le bloc se rendait au-dessus du
-              contenu de TOUS les onglets — constaté par l'utilisateur) ;
-            - une annonce Vinted sans listing_url ET dont la ligne d'inventaire
-              n'a pas de vinted_item_id est MASQUÉE : rien n'est vérifiable,
-              il n'y a donc rien à signaler. Correctif d'AFFICHAGE seul —
-              aucune écriture, aucun statut modifié, les jobs restent en base
-              tels quels. */}
-        {tab===3&&(()=>{
-          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
-          const visibles=unverifiableListings.filter(job=>{
-            if(job.platform!=='vinted')return true;
-            if(job.listing_url)return true;
-            const art=items.find(i=>String(i.id)===String(job.inventaire_id));
-            return Boolean(art?.vinted_item_id);
-          });
-          if(!visibles.length)return null;
-          const plats=[...new Set(visibles.map(j=>PLAT[j.platform]||j.platform))].join(', ');
-          const depuis=Math.max(...visibles.map(j=>Math.floor((Date.now()-Date.parse(j.platform_fields?.check_unresolved_since))/86400000)));
-          const n=visibles.length;
-          return (
-            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.mute2}`,borderRadius:16,padding:"12px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:8}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                <div style={{flex:1,minWidth:200,fontSize:13.5,color:UI.ink,lineHeight:1.5}}>
-                  {lang==='fr'
-                    ?<><strong>Impossible de vérifier {n} annonce{n>1?'s':''} sur {plats} depuis {depuis} jour{depuis>1?'s':''}.</strong> {n>1?'Elles sont':'Elle est'} peut-être toujours en ligne — <strong>rien n'a été modifié</strong>. On réessaie chaque jour.</>
-                    :<><strong>Could not check {n} listing{n>1?'s':''} on {plats} for {depuis} day{depuis>1?'s':''}.</strong> {n>1?'They':'It'} may well still be online — <strong>nothing was changed</strong>. We keep retrying daily.</>}
-                </div>
-                <button onClick={()=>setUnverifDetailOpen(v=>!v)}
-                  style={{padding:"7px 14px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-                  {unverifDetailOpen?(lang==='fr'?'Masquer le détail':'Hide details'):(lang==='fr'?'Voir le détail':'Show details')}
-                </button>
-              </div>
-              {unverifDetailOpen&&(
-                <div style={{display:"flex",flexDirection:"column",gap:6,borderTop:`1px solid ${UI.border}`,paddingTop:8}}>
-                  {visibles.map(job=>(
-                    <div key={job.id} style={{display:"flex",alignItems:"center",gap:10,fontSize:13,color:UI.ink}}>
-                      <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        « {job.title||(lang==='fr'?'Article':'Item')} » — {PLAT[job.platform]||job.platform}
-                      </span>
-                      {job.listing_url&&(
-                        <a href={job.listing_url} target="_blank" rel="noopener noreferrer"
-                          style={{flexShrink:0,fontSize:12.5,fontWeight:600,color:UI.tealDeep,textDecoration:"none"}}>
-                          {lang==='fr'?"Ouvrir l'annonce":'Open listing'}
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {/* (Bandeau « vérification impossible » SUPPRIMÉ ici le 2026-08-15 —
+            décision produit : seule une VENTE détectée produit un bandeau.
+            Les échecs de vérification restent visibles en base
+            (platform_fields.check_unresolved) et l'extension retente chaque
+            jour, mais l'utilisateur n'en voit plus rien.) */}
 
         {tab===0&&(
           <DashboardTab

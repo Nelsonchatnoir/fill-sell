@@ -249,6 +249,71 @@ serve(async (req) => {
     console.error("[handler-watch] balayage orphelines:", (e as Error)?.message ?? e);
   }
 
+  // ── Règlement des 'processing' ABANDONNÉS (2026-08-15, dossiers Zen Pulse /
+  // Lucas) ──────────────────────────────────────────────────────────────────
+  // recoverStaleProcessingJobs (extension) repêche les jobs bloqués et borne
+  // les reprises (MAX_STALE_RECOVERIES=2 → failed)… mais il tourne DANS
+  // l'extension : si elle ne revient jamais (PC rangé, Chrome désinstallé),
+  // le job reste 'processing' pour toujours et la Pépite reste réservée
+  // (dossier Lucas 0ca21e6b : dernier heartbeat à la seconde du passage en
+  // processing, plus rien depuis 19 h).
+  // Règle SERVEUR, volontairement étroite :
+  //   - processing depuis ≥ 24 h (processing_since, sinon created_at) ;
+  //   - ET extension muette depuis ≥ 24 h (profiles.extension_last_seen_at,
+  //     heartbeat stampé par get-pending-jobs toutes les ~2 min quand elle
+  //     vit). Une extension vue il y a < 24 h = « simplement hors ligne »
+  //     (veille, nuit — cas Carla 284ebb84, revenue le matin et le job s'est
+  //     soldé tout seul) : on ne touche à RIEN, l'extension garde la main.
+  // Le passage en 'failed' déclenche les triggers de solde EXACTEMENT UNE
+  // FOIS (cross_post_jobs_settle_reservation : release de la réservation
+  // publish, garde reservation_settled_at ; republish_refund_on_terminal :
+  // refund_coins, gardes pepite_remboursee + jamais sur un job abouti).
+  // Écriture en compare-and-swap (.eq status processing) : si le statut a
+  // bougé entre-temps, on n'écrase rien. Best-effort intégral.
+  let processingSoldes = 0;
+  try {
+    const SEUIL_ABANDON_MS = 24 * 3600_000;
+    const { data: bloques } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform, action, created_at, platform_fields")
+      .eq("status", "processing")
+      .in("action", ["publish", "republish"]);
+    // deno-lint-ignore no-explicit-any
+    const candidats = ((bloques ?? []) as any[]).filter((j) => {
+      const since = Date.parse(j.platform_fields?.processing_since ?? j.created_at ?? "");
+      return Number.isFinite(since) && now - since >= SEUIL_ABANDON_MS;
+    });
+    if (candidats.length) {
+      const userIds = [...new Set(candidats.map((j) => j.user_id as string))];
+      const { data: profs } = await supabase
+        .from("profiles").select("id, extension_last_seen_at").in("id", userIds);
+      // deno-lint-ignore no-explicit-any
+      const lastSeen = new Map(((profs ?? []) as any[]).map((p) => [p.id, Date.parse(p.extension_last_seen_at ?? "")]));
+      for (const j of candidats) {
+        const seen = lastSeen.get(j.user_id);
+        if (Number.isFinite(seen as number) && now - (seen as number) < SEUIL_ABANDON_MS) continue;
+        const pf = { ...(j.platform_fields ?? {}) };
+        delete pf.processing_since;
+        const msg =
+          "Traitement interrompu : l'ordinateur qui portait cette publication ne s'est plus manifesté " +
+          "depuis plus de 24 h — le job est abandonné et la Pépite rendue. Avant de relancer, vérifie sur " +
+          "la plateforme qu'aucune annonce n'a été créée entre-temps (une interruption peut survenir juste " +
+          "après le dépôt).";
+        const { error: uErr } = await supabase
+          .from("cross_post_jobs")
+          .update({ status: "failed", error: msg, platform_fields: pf })
+          .eq("id", j.id)
+          .eq("status", "processing");
+        if (!uErr) {
+          processingSoldes++;
+          console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) processing abandonné → failed, Pépite rendue par trigger`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] règlement des processing abandonnés:", (e as Error)?.message ?? e);
+  }
+
   // Regroupement par (plateforme, signature) en excluant les refus légitimes.
   type Cluster = {
     platform: string;
@@ -287,7 +352,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -396,7 +461,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes }), {
     headers: { "Content-Type": "application/json" },
   });
 });
