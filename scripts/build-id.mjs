@@ -368,7 +368,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // seulement) + repli wardrobe via content script (preuve positive uniquement).
 // Committé avec GIT_COMMITTER_DATE épinglée sur cette constante (garde
 // ci-dessous : ni futur, ni antérieur).
-export const EXTENSION_LAST_COMMIT = '2026-08-15T09:35:00Z';
+// 2026-08-16T16:52:07Z = cherry-picks des points 1 et 3 du chantier 16/08
+// depuis la branche ext-0.6.5-sans-f1 (1cc8d36 = recapture auto d'une capture
+// de republication périmée, 32b156e d'origine ; e955c59 = table des colis
+// 8..14 relevée en réel + sélection PAR ID + fin du repli « Grand », 6be32d5
+// d'origine, SANS le bloc ISBN de 1be6b19 que main ne porte pas). Le paquet
+// CWS continue de se construire sur la BRANCHE, pas ici — main porte F1.
+export const EXTENSION_LAST_COMMIT = '2026-08-16T16:52:07Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
