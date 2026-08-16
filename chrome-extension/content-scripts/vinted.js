@@ -56,20 +56,28 @@ const VINTED_SERVER_FIELD_LABELS = {
 // C'est donc cette table qui fait foi, dans les DEUX sens : selectPackageSize
 // la lit pour cliquer, la capture la lit pour nommer. Une seule table = les
 // deux ne peuvent pas diverger.
-// ── Ids HORS TABLE (décision Nico 2026-08-15) ────────────────────────────────
-// Relevé RÉEL en base (vinted_republish_captures, payloads natifs) : 1 ×349,
-// 2 ×39, 3 ×22 — et DEUX valeurs hors table : 8 (« Bouilloire électrique »,
-// « Lot verre ») et 11 (« Nacelle »), des formats volumineux propres aux
-// catégories Maison/Électro. Leur libellé n'a jamais été relevé sur un
-// formulaire (aucun référentiel distant, cf. ci-dessus) : ils ne sont PAS
-// ajoutés à la table — inventer la correspondance poserait un rang de radio
-// faux. À la place, un id inconnu retombe sur « Grand » (le plus grand format
-// STANDARD, le moins faux pour ces objets volumineux) et la republication
-// POURSUIT — l'ancien blocage en champs_manquants laissait l'article en rade
-// (Carla, 14-15/08). Les frais de port peuvent être sous-estimés : assumé et
-// tracé dans diagnostics.
-const VINTED_PACKAGE_SIZES_PAR_ID = { 1: "Petit", 2: "Moyen", 3: "Grand" };
-const VINTED_PACKAGE_SIZE_REPLI = "Grand";
+// ── Ids 8..14 RELEVÉS SUR LE FORMULAIRE RÉEL (2026-08-16, point 3) ───────────
+// Relevé DOM sur /items/new (session réelle, radios data-testid
+// package_type_selector_{id}, libellé dans #package-size-{id}) :
+//   - catégorie « Vases » (catalog 1940, les 4 vases d'Elodie PIRES) :
+//     8 = « 5 kg » (pré-coché/Recommandé), 9 = « 10 kg », 10 = « 20 kg » ;
+//   - catégorie « Nacelles, cosys et adaptateurs » (catalog 3376, la
+//     « Nacelle » capturée le 15/08) : 11 = « 5 kg », 12 = « 10 kg »,
+//     13 = « 20 kg », 14 = « 30 kg ».
+// ⚠️ Le MÊME libellé existe sous PLUSIEURS ids selon le groupe de catégories
+// (« 5 kg » = 8 côté Maison, 11 côté puériculture) : une résolution
+// libellé→id est donc AMBIGUË hors branche Mode — la recréation sélectionne
+// PAR ID (packageSizeId du payload capturé), le libellé ne sert qu'à
+// l'affichage et aux cas historiques 1..3, uniques dans la table.
+// Un id ABSENT de cette table reste inconnu et BLOQUE AVANT toute
+// suppression (doctrine 16/08 : on ne poste JAMAIS une taille de colis
+// inventée — le repli « Grand » du 15/08 est retiré, remplacé par cette
+// table relevée en réel).
+const VINTED_PACKAGE_SIZES_PAR_ID = {
+  1: "Petit", 2: "Moyen", 3: "Grand",
+  8: "5 kg", 9: "10 kg", 10: "20 kg",
+  11: "5 kg", 12: "10 kg", 13: "20 kg", 14: "30 kg",
+};
 
 // Sélecteur d'input pour un code d'attribut Vinted. Les champs « historiques »
 // ont des testids spécifiques (relevés en réel) ; tout nouveau champ dynamique
@@ -917,24 +925,19 @@ async function capturerAnnonceVinted(vintedItemId) {
   const matiereIds = attributVintedIds(natif, "material").map(Number).filter(Number.isFinite);
   if (matiereIds.length) libelles.matiere_ids = matiereIds;
 
-  // Colis — requis au dépôt ; selectPackageSize (handler publish) attend le
-  // libellé. Aucun référentiel distant n'existe (tous 404, relevé du 05/08) :
-  // la table partagée VINTED_PACKAGE_SIZES_PAR_ID fait foi. Un id HORS table
-  // (8, 11 relevés — formats volumineux Maison/Électro) ne bloque PLUS : repli
-  // « Grand » et on poursuit (décision Nico 15/08, cf. bloc de la table). Le
-  // repli est tracé — frais de port possiblement sous-estimés, assumé.
+  // Colis — requis au dépôt. Aucun référentiel distant n'existe (tous 404,
+  // relevé du 05/08) : la table partagée VINTED_PACKAGE_SIZES_PAR_ID fait
+  // foi (relevée sur le formulaire réel, ids 1..3 et 8..14, cf. son bandeau).
+  // Un id HORS table BLOQUE avant toute suppression (doctrine 16/08 : jamais
+  // de taille de colis inventée) — le champ est nommé avec l'id relevé pour
+  // que le prochain relevé DOM complète la table.
   const packageId = natif?.package_size_id ?? null;
   if (packageId != null) {
     const libelle = VINTED_PACKAGE_SIZES_PAR_ID[Number(packageId)];
     if (libelle) {
       libelles.colis = libelle;
     } else {
-      libelles.colis = VINTED_PACKAGE_SIZE_REPLI;
-      libelles.colis_repli_depuis_id = Number(packageId);
-      diagnostics.push({
-        cle: "package_size",
-        note: `package_size_id=${packageId} hors table 1..3 → repli "${VINTED_PACKAGE_SIZE_REPLI}" (décision 15/08 : poursuivre, jamais bloquer)`,
-      });
+      manquants.push(`colis (package_size_id=${packageId} hors table connue 1..3/8..14)`);
     }
   } else {
     manquants.push("colis (package_size_id absent du payload)");
@@ -1807,7 +1810,13 @@ async function fillListingForm(job) {
     /^(femmes?|hommes?|enfants?|filles?|gar[çc]ons?)$/i.test(String(fields.categoryPath?.[0] ?? "")) ||
     Boolean(String(job.platform_fields?.taille ?? "").trim());
   const wantedPackage = fields.packageSize ?? (isFashionJob ? "Petit" : null);
-  if (wantedPackage) await selectPackageSize(wantedPackage);
+  // packageSizeId : posé par la recréation de republication (id RELEVÉ sur
+  // l'annonce d'origine) — prime sur le libellé, qui est ambigu hors Mode
+  // (« 5 kg » = id 8 ou 11 selon le groupe de catégories, cf. la table).
+  const wantedPackageId = Number(fields.packageSizeId);
+  if (wantedPackage || (Number.isFinite(wantedPackageId) && wantedPackageId > 0)) {
+    await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
+  }
 
   // ── Constat des REQUIS avant tout verdict (chantier 2026-07-16, 1.C) ───────
   // Fini le `unfilledRequired: []` de constat : la config attributes capturée
@@ -3844,12 +3853,20 @@ async function selectColors(colorNames, warnings = []) {
 // Décision produit Nico (2026-07-12) : sur TOUTE la branche Mode (vêtements ET
 // chaussures), c'est TOUJOURS « Petit », sans exception. On CLIQUE désormais le
 // format, on ne le suppose plus.
-async function selectPackageSize(size = "Petit") {
+async function selectPackageSize(size = "Petit", packageSizeId = null) {
   // Table partagée avec la capture republication (VINTED_PACKAGE_SIZES_PAR_ID,
   // en tête de fichier) : le rang du radio EST le package_size_id. Une seule
   // table dans les deux sens — capturer « Petit » puis recliquer « Petit » ne
   // peut pas dériver.
-  const n = Number(Object.entries(VINTED_PACKAGE_SIZES_PAR_ID).find(([, l]) => l === size)?.[0]) || 1;
+  // ID D'ABORD (2026-08-16) : « 5 kg »/« 10 kg »/« 20 kg » existent sous
+  // PLUSIEURS ids selon le groupe de catégories (8 vs 11…) — quand l'appelant
+  // connaît l'id capturé (republication), c'est LUI qui fait foi ; la
+  // résolution libellé→id ne sert qu'aux appels historiques (« Petit » de la
+  // branche Mode), dont les libellés sont uniques dans la table.
+  const idCapture = Number(packageSizeId);
+  const n = (Number.isFinite(idCapture) && idCapture > 0 && VINTED_PACKAGE_SIZES_PAR_ID[idCapture])
+    ? idCapture
+    : Number(Object.entries(VINTED_PACKAGE_SIZES_PAR_ID).find(([, l]) => l === size)?.[0]) || 1;
   // publish.package_type (migré au registre) : maillon template {n}, n = 1..3.
   const radio = await waitForKey("publish.package_type", { params: { n } });
   if (!radio.checked) {
