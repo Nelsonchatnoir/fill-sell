@@ -23,6 +23,7 @@ import {
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
   PLATFORM_LOGIN_URLS, PLATFORM_LISTINGS_URLS, LBC_DEPOSIT_URL, humanizeJobError,
+  jobErrorSansFaussePromesse,
   fraicheurExtension, detecterRetardHorloge,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
@@ -2361,7 +2362,10 @@ function RepublishProgressSheet({ lang, job, onClose }) {
         )}
         {job.error && (
           <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#9A3412', lineHeight: 1.5, marginBottom: 12 }}>
-            {job.error}
+            {/* Brut tant que le job est vivant (la promesse de reprise y est
+                vraie) ; sur un job terminal, la fausse promesse est remplacée
+                par la consigne de relance manuelle (consigne 16/08). */}
+            {jobErrorSansFaussePromesse(job, fr ? 'fr' : 'en')}
           </div>
         )}
         {et.cle === 'recreated' && job.listing_url && (

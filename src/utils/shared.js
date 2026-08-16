@@ -58,11 +58,18 @@ const HUMANIZE_PLATFORM_SITES = { vinted: 'vinted.fr', leboncoin: 'leboncoin.fr'
 // rien et ne passe pas par ce chemin de message.
 const JOB_STATUS_TERMINAL = new Set(['failed', 'cancelled']);
 // « le job repartira… » / « il repartira au prochain passage » — la promesse
-// de reprise, sous toutes ses formes relevées dans chrome-extension/ (grep du
-// 13/08 : background.js, vinted.js, leboncoin.js, beebs.js, ebay.js). Sans /g
-// ici : .test() sur une regex /g/ avance lastIndex et raterait un appel sur
-// deux — le /g/ n'est ajouté qu'au moment du replace.
-const PROMESSE_REPRISE_RE = /(?:\s*[—–-])?\s*(?:le job|il)\s+repartira[^.]*\.?/i;
+// de reprise, sous toutes ses formes relevées EN BASE (relevé du 16/08 sur les
+// 52 jobs failed porteurs de la promesse : DataDome, connexion Vinted/eBay/
+// Beebs, suppression eBay « Nouvelle tentative au prochain passage », eBay
+// « il repartira »). Sans /g ici : .test() sur une regex /g/ avance lastIndex
+// et raterait un appel sur deux — le /g/ n'est ajouté qu'au moment du replace.
+const PROMESSE_REPRISE_RE = /(?:\s*[—–-])?\s*(?:(?:le job|la publication|la republication|il|elle|on)\s+(?:repartira|reprendra|réessaiera)|nouvelle tentative(?:\s+automatique)?\s+au prochain passage)[^.]*\.?/i;
+// Marqueur LARGE de la même promesse, indépendant de la tournure exacte
+// (consigne du 16/08 : le déclenchement se fait sur le STATUT, pas sur la
+// formulation — une variante non répertoriée doit quand même être traitée).
+// Sert de test d'entrée ET de contrôle de sortie : si le corps nettoyé porte
+// encore un marqueur, on n'affiche pas ce reliquat, on prend le générique.
+const PROMESSE_MARQUEUR_RE = /au prochain passage|repartira|reprendra|réessaiera|sera\s+retenté/i;
 const TECH_ERR_MARKERS_RE = new RegExp([
   '\\.js\\b',                    // nom de fichier du code (vintedCategories.js…)
   'https?://',                   // URL d'API sondée
@@ -294,18 +301,38 @@ export function humanizeJobError(job, lang = 'fr') {
   // vivant (pending/processing/needs_user), la phrase est vraie : on la garde.
   // La demi-promesse « Relancer la publication » des messages needs_user n'est
   // pas concernée : elle demande un geste, elle n'en promet pas.
-  if (PROMESSE_REPRISE_RE.test(raw) && JOB_STATUS_TERMINAL.has(job?.status)) {
+  // Entrée sur le MARQUEUR large + le STATUT (consigne 16/08) : toute variante
+  // de la promesse est traitée dès que le job est terminal, même une tournure
+  // jamais vue — au pire elle tombe sur le générique véridique ci-dessous.
+  if (PROMESSE_MARQUEUR_RE.test(raw) && JOB_STATUS_TERMINAL.has(job?.status)) {
     // Pépite : seuls les jobs de publication portent une réservation — même
     // règle que la branche CHALLENGE ci-dessus (settle sur statut terminal).
     const rendue = (job?.action ?? 'publish') === 'publish';
-    const verite = en
-      ? ` The job has stopped — it will not restart on its own.${rendue ? ' The Nugget held for it has been refunded.' : ''} Relaunch it yourself from the item.`
-      : ` Le job est arrêté — il ne repartira pas tout seul.${rendue ? ' La Pépite engagée a été rendue.' : ''} Relance-le toi-même depuis la fiche de l'article.`;
-    const corps = raw.replace(new RegExp(PROMESSE_REPRISE_RE.source, 'gi'), '').replace(/\s{2,}/g, ' ').trim();
-    const msg = (corps + verite).trim();
-    // Corps resté technique (dump, URL…) : générique VÉRIDIQUE plutôt que le
-    // diagnostic brut — même arbitrage que le repli tout en bas.
-    if (!TECH_ERR_MARKERS_RE.test(msg) && msg.length <= 600) return msg;
+    // Un retrait (delete) ne se « relance » pas depuis la fiche : le geste
+    // manuel est de retirer l'annonce sur la plateforme elle-même.
+    const verite = job?.action === 'delete'
+      ? (en
+        ? ` The job has stopped — it will not restart on its own. If the listing is still live, remove it yourself on ${name}.`
+        : ` Le job est arrêté — il ne repartira pas tout seul. Si l'annonce est encore en ligne, retire-la toi-même sur ${name}.`)
+      : (en
+        ? ` The job has stopped — it will not restart on its own.${rendue ? ' The Nugget held for it has been refunded.' : ''} Relaunch it yourself from the item.`
+        : ` Le job est arrêté — il ne repartira pas tout seul.${rendue ? ' La Pépite engagée a été rendue.' : ''} Relance-le toi-même depuis la fiche de l'article.`);
+    const corps = raw.replace(new RegExp(PROMESSE_REPRISE_RE.source, 'gi'), '')
+      .replace(/\s{2,}/g, ' ').trim()
+      // Ponctuation orpheline laissée par le retrait (« …resté ouvert), » ) :
+      // on clôt la phrase proprement avant d'ajouter la vérité.
+      .replace(/[\s,;:—–-]+$/, '');
+    const msg = (corps && !/[.!?…]$/.test(corps) ? corps + '.' : corps) + verite;
+    // Corps resté technique (dump, URL…) OU portant ENCORE un marqueur de
+    // promesse (tournure que le retrait ancré n'a pas su localiser) :
+    // générique VÉRIDIQUE plutôt que le diagnostic brut ou le mensonge —
+    // même arbitrage que le repli tout en bas.
+    if (!TECH_ERR_MARKERS_RE.test(msg) && !PROMESSE_MARQUEUR_RE.test(corps) && msg.length <= 600) return msg;
+    if (job?.action === 'delete') {
+      return en
+        ? `Removing the listing on ${name} was interrupted by a technical issue. The job has stopped — if the listing is still live, remove it yourself on ${name}; the full detail has been recorded for support.`
+        : `Le retrait de l'annonce sur ${name} a été interrompu par un imprévu technique. Le job est arrêté — si l'annonce est encore en ligne, retire-la toi-même sur ${name} ; le détail complet est enregistré pour le support.`;
+    }
     return en
       ? `Publishing on ${name} was interrupted by a technical issue. The job has stopped${rendue ? ' and the Nugget was refunded' : ''} — retry from the item; the full detail has been recorded for support.`
       : `La publication sur ${name} a été interrompue par un imprévu technique. Le job est arrêté${rendue ? ' et la Pépite engagée a été rendue' : ''} — relance depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;
@@ -317,6 +344,20 @@ export function humanizeJobError(job, lang = 'fr') {
   return en
     ? `Publishing on ${name} was interrupted by a technical issue. Retry from the item; the full detail has been recorded for support.`
     : `La publication sur ${name} a été interrompue par un imprévu technique. Relancer depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;
+}
+
+// ── Erreur affichée BRUTE, mais jamais menteuse (2026-08-16) ─────────────────
+// Pour les écrans qui montrent cross_post_jobs.error tel quel (modale de
+// progression de republication) : tant que le job est vivant (pending,
+// processing, needs_user), le texte passe inchangé — la promesse de reprise y
+// est vraie. Sur un job TERMINAL porteur d'une promesse de reprise, on délègue
+// à humanizeJobError, qui la retire et la remplace par la consigne de relance
+// manuelle. La colonne en base reste intacte : filtrage à l'affichage seul.
+export function jobErrorSansFaussePromesse(job, lang = 'fr') {
+  const raw = String(job?.error ?? '').trim();
+  if (!raw) return '';
+  if (!JOB_STATUS_TERMINAL.has(job?.status) || !PROMESSE_MARQUEUR_RE.test(raw)) return raw;
+  return humanizeJobError(job, lang);
 }
 
 export const C = {
