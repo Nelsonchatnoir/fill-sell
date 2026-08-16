@@ -89,7 +89,12 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // 0.6.5 légitime — un second zip 0.6.5 au contenu différent serait
 // indiscernable de lui. Le paquet courant est la 0.6.6 (même branche, mêmes
 // fixes + vérification Vinted réparée + stampVintedItemId).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5'];
+// 0.6.6 ajoutée le 16/08 : zip 1d20b3d TÉLÉVERSÉ le 15/08 au soir, EN REVIEW
+// au CWS — pas encore acceptée, mais un second 0.6.6 au contenu différent
+// serait indiscernable du zip en review (même logique que la 0.6.5). Le
+// paquet courant est la 0.6.7 (recapture auto 32b156e + colis 8..14 6be32d5
+// + points 8/9 du 15-16/08, TOUJOURS SANS F1).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();

@@ -394,7 +394,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // du 15/08 : un id hors table re-bloque AVANT toute suppression (doctrine
 // 16/08 — jamais de taille inventée). HORS du zip 1d20b3d — paquet SUIVANT.
 // TOUJOURS SANS F1 (1fc9beb).
-export const EXTENSION_LAST_COMMIT = '2026-08-16T14:41:52Z';
+// 2026-08-16T17:05:00Z = bump manifest 0.6.6 → 0.6.7 (le zip 0.6.6-1d20b3d
+// est TÉLÉVERSÉ et en review au CWS : la version est brûlée, cf.
+// ALREADY_PUBLISHED). La 0.6.7 embarque TOUT le delta de la branche depuis le
+// zip 1d20b3d : bb131b8 (garde catégorie-vs-grille de tailles), 79e029c
+// (Modèle Vinted normalisé + blocage avant envoi), 32b156e (recapture auto
+// d'une capture périmée), 6be32d5 (colis 8..14 relevés + sélection par id +
+// fin du repli « Grand »). Committé avec GIT_COMMITTER_DATE épinglée sur
+// cette constante (ni futur, ni antérieur). TOUJOURS SANS F1 (1fc9beb).
+export const EXTENSION_LAST_COMMIT = '2026-08-16T17:05:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
