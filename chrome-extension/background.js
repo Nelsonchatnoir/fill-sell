@@ -9063,9 +9063,10 @@ async function processRepublishJob(job, accessToken) {
       // C'est ICI que la péremption compte : un job qui a dormi (Chrome
       // fermé) supprimerait sur une photo périmée de l'annonce — prix ou
       // description modifiés entre-temps chez Vinted. Capture > 24 h au
-      // moment d'AGIR → needs_user AVANT toute suppression, avec la vraie
-      // cause et la vraie solution (Chrome ouvert peu après le clic), pas un
-      // « relance » sec.
+      // moment d'AGIR → RECAPTURE AUTOMATIQUE (2026-08-16, 22 jobs de Carla
+      // gelés en needs_user pour une simple photo trop vieille) : la règle de
+      // fraîcheur ne bouge pas, c'est la RÉACTION qui change — on refait la
+      // photo au lieu de s'arrêter. Voir le bloc plus bas.
       // La capture ENTIÈRE est relue (payload, libellés, photos re-hébergées) :
       // elle sert désormais à TROIS choses avant tout geste — la vérification
       // prix/titre ci-dessous, le SNAPSHOT écrit sur le job, et le formulaire
@@ -9113,24 +9114,73 @@ async function processRepublishJob(job, accessToken) {
       pf.prix_recreation = prixPrevu;
 
       if (Date.parse(capMeta.captured_at) < Date.now() - 24 * 3600 * 1000) {
+        // ── RECAPTURE AUTOMATIQUE (2026-08-16, cas Carla : 22 jobs gelés) ──
+        // L'annonce est ENCORE EN LIGNE (rien n'a été supprimé) et on sait la
+        // re-photographier : une capture périmée ne justifie donc pas de
+        // s'arrêter, on refait la capture depuis vinted_item_id et le job
+        // repart. Ordre strict inchangé : capture fraîche RÉUSSIE d'abord,
+        // suppression ensuite — une recapture en échec laisse le job bloqué
+        // SANS suppression, exactement comme avant. Pas de re-débit : la
+        // Pépite du job est déjà posée (pepites_debitees), la capture est une
+        // lecture.
         // Compteur de péremption (validé par Nico) : détecte le cycle
-        // « dort → périmée → relance → dort ». Il survit aux relances (la
+        // « dort → périmée → recapture → dort ». Il survit aux relances (la
         // relance d'É5 CONSERVE platform_fields) et n'est remis à zéro qu'à
-        // une republication ABOUTIE — sinon l'utilisateur traînerait son
-        // diagnostic pour toujours.
+        // une republication ABOUTIE. PLAFOND À 2 recaptures automatiques :
+        // au-delà, needs_user — un Chrome qui laisse expirer trois captures
+        // de suite ne sera pas sauvé par une quatrième.
         const peremptions = (Number(pf.recaptures_perimees) || 0) + 1;
         pf.recaptures_perimees = peremptions;
-        const message = peremptions >= 2
-          ? "Deux tentatives ont expiré : ton Chrome s'ouvre trop longtemps après tes clics. " +
-            "Republie cet article quand tu es DEVANT ton ordinateur — le clic, puis Chrome ouvert une dizaine de minutes, et c'est réglé. " +
-            "Rien n'a été touché, ton annonce est intacte."
-          : "Republication en attente : ta capture date de plus de 24 h et l'annonce a pu changer sur Vinted entre-temps — rien n'a été touché, ton annonce est intacte. " +
-            "La republication a besoin que Chrome reste ouvert peu après ton clic : relance-la depuis l'app à un moment où ton ordinateur reste allumé la dizaine de minutes qui suit.";
-        await updateJobStatus(accessToken, job.id, "needs_user", {
-          platform_fields: pf,
-          error: message,
-        });
-        return { status: "needsUser", error: `capture périmée (>24 h) à l'exécution — occurrence ${peremptions}` };
+        if (peremptions > 2) {
+          await updateJobStatus(accessToken, job.id, "needs_user", {
+            platform_fields: pf,
+            error: "Deux captures refaites automatiquement ont encore expiré : ton Chrome s'ouvre trop longtemps après. " +
+              "Republie cet article quand tu es DEVANT ton ordinateur — le clic, puis Chrome ouvert une dizaine de minutes, et c'est réglé. " +
+              "Rien n'a été touché, ton annonce est intacte.",
+          });
+          return { status: "needsUser", error: `capture périmée (>24 h) — plafond de recaptures atteint (occurrence ${peremptions})` };
+        }
+        const userId = decodeJwtSub(accessToken);
+        const recap = userId
+          ? await capturerEtPersisterDepuisExtension({
+              vintedItemId: pf.vinted_item_id,
+              inventaireId: job.inventaire_id ?? null,
+              prixRepublication: pf.prix_republication ?? null,
+              userId, accessToken,
+            })
+          : { success: false, error: "session illisible (jeton sans identifiant)" };
+        if (!recap.success) {
+          // « annonce introuvable sur Vinted (HTTP 404) » vient de
+          // lireDetailArticle : l'endpoint d'ÉDITION du propriétaire — son 404
+          // dit bien que l'annonce n'existe plus (rien à voir avec le 404
+          // systématique de /api/v2/items/{id}, endpoint mort). Vendue ou
+          // supprimée entre-temps : recapturer n'a pas de sens, on le DIT.
+          const absente = /introuvable sur Vinted/i.test(String(recap.error ?? ""));
+          const msg = absente
+            ? "Republication impossible : cette annonce n'est plus en ligne sur Vinted (vendue ou supprimée entre-temps). " +
+              "FillSell n'a rien supprimé. Si l'article est vendu, marque-le vendu dans l'app ; sinon, republie-le depuis Vinted puis relance."
+            : `Republication en pause AVANT toute suppression : ta capture datait de plus de 24 h et la nouvelle capture a échoué (${recap.error}). ` +
+              "Rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app, Chrome ouvert.";
+          await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+          return { status: "needsUser", error: `recapture en échec : ${recap.error}` };
+        }
+        if (recap.verdict !== "valide") {
+          const detail = (recap.champs_manquants ?? []).slice(0, 3).join(" ; ") || "champs manquants";
+          await updateJobStatus(accessToken, job.id, "needs_user", {
+            platform_fields: pf,
+            error: `Republication en pause AVANT toute suppression : la nouvelle capture de ton annonce est incomplète (${detail}). ` +
+              "Ton annonce est intacte sur Vinted. Complète-la sur Vinted, puis relance la republication depuis l'app.",
+          });
+          return { status: "needsUser", error: `recapture incomplète : ${detail}` };
+        }
+        // Capture fraîche en base : le job repasse pending, étape 'captured'
+        // inchangée — le prochain passage relira CETTE capture (2 min d'âge),
+        // la borne de fraîcheur passera, et la suppression suivra. Même
+        // logique « un geste par passage » que l'étape a_capturer.
+        pf.capture_id = recap.capture_id;
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+        console.log(`[background] Job ${job.id} → capture périmée recapturée (${recap.capture_id}, occurrence ${peremptions}) — suppression au prochain passage`);
+        return { status: "skipped", error: "capture périmée refaite — suppression au prochain passage" };
       }
 
       // ── SNAPSHOT OBLIGATOIRE, ÉCRIT ET CONFIRMÉ AVANT TOUT GESTE ──────────
