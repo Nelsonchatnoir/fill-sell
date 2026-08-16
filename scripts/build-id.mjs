@@ -378,7 +378,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (message = options réelles, needsUserField model), gate pré-clic élargie au
 // sélecteur complet du champ, message 400 actionnable. Comme bb131b8 : HORS du
 // zip 1d20b3d déjà téléversé — paquet SUIVANT. TOUJOURS SANS F1 (1fc9beb).
-export const EXTENSION_LAST_COMMIT = '2026-08-15T22:16:54Z';
+// 2026-08-16T14:25:09Z = 32b156e (point 1 du chantier 16/08, recapture auto) :
+// capture de republication périmée (>24 h) → RECAPTURE AUTOMATIQUE depuis
+// vinted_item_id au lieu d'un needs_user sec (22 jobs de Carla gelés le
+// 15/08). Ordre strict conservé (capture fraîche réussie AVANT toute
+// suppression), annonce absente → needs_user « plus en ligne », plafond de
+// 2 recaptures auto (recaptures_perimees), aucun re-débit. Comme bb131b8 et
+// 79e029c : HORS du zip 1d20b3d déjà téléversé — paquet SUIVANT. TOUJOURS
+// SANS F1 (1fc9beb).
+export const EXTENSION_LAST_COMMIT = '2026-08-16T14:25:09Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
