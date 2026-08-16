@@ -195,7 +195,7 @@ export const VINTED_SELECTORS = {
         type: "template",
         value: '[data-testid="package_type_selector_{n}--input"]',
         params: ["n"],
-        note: "n = 1..3",
+        note: "n = package_size_id (1..3 Mode ; 8..10 relevés sur Vases, 11..14 sur Nacelles — relevé DOM 16/08)",
       },
     ],
     source: "vinted.js:1955",

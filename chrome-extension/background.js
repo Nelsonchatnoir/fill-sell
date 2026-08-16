@@ -8804,6 +8804,16 @@ function construireJobRecreation(job, pf, cap, prix) {
       marque: cap.libelles?.marque ?? null,
       colors: cap.libelles?.couleurs ?? null,
       packageSize: cap.libelles?.colis ?? null,
+      // Id de colis CAPTURÉ (2026-08-16, point 3) : il fait foi au formulaire
+      // de recréation — le libellé seul est ambigu hors Mode (« 5 kg » existe
+      // sous les ids 8 ET 11 selon le groupe de catégories, relevé DOM du
+      // 16/08). selectPackageSize clique package_type_selector_{id}.
+      // (Le bloc ISBN de la branche extension — 1be6b19 — n'est PAS repris
+      // ici : main ne porte pas ce correctif, on ne cherry-picke que le colis.)
+      ...(() => {
+        const pkgId = Number(natifCap.package_size_id);
+        return Number.isFinite(pkgId) && pkgId > 0 ? { packageSizeId: pkgId } : {};
+      })(),
       // Matière (2026-08-13) — OPTIONNELLE, jamais bloquante : libellé si un
       // jour la capture en produit un, sinon les IDS (item_attributes),
       // résolus au formulaire sur le menu ouvert (selectMaterialByIds).
