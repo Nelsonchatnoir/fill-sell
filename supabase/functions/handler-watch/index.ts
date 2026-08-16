@@ -314,6 +314,85 @@ serve(async (req) => {
     console.error("[handler-watch] règlement des processing abandonnés:", (e as Error)?.message ?? e);
   }
 
+  // ── needs_user À ÉCHÉANCE : 72 h sans geste → failed (point 5, GO Nico
+  // 16/08) ──────────────────────────────────────────────────────────────────
+  // needs_user n'est pas terminal : aucun trigger ne rend jamais la Pépite —
+  // l'utilisateur a payé un service jamais rendu (art. 5 des CGV ; relevé du
+  // 16/08 : 46 républish 'captured' débités + 11 réservations publish non
+  // soldées). Mécanisme validé : AUCUN chemin d'argent neuf. Le cron passe le
+  // job en 'failed' et ce sont les triggers EXISTANTS qui remboursent,
+  // idempotents par ligne (cross_post_jobs_settle_reservation, garde
+  // reservation_settled_at ; republish_refund_on_terminal, gardes
+  // pepite_remboursee + jamais sur un job abouti). Pas de double crédit
+  // possible, pas de service gratuit : le remboursement n'existe QUE sur le
+  // statut terminal — une relance AVANT l'échéance repart débitée, une
+  // relance APRÈS est un nouveau job, débité normalement.
+  //   - Borne : cross_post_jobs n'a NI updated_at NI horodatage de passage en
+  //     needs_user → le cron pose platform_fields.needs_user_vu_le à sa
+  //     PREMIÈRE observation et solde 72 h après. Les jobs existants gagnent
+  //     donc le délai de grâce (validé).
+  //   - Épisodes : une relance CONSERVE platform_fields (É5), le tampon
+  //     survivrait à un aller-retour needs_user→pending→needs_user. On stampe
+  //     donc AUSSI l'erreur observée (needs_user_vu_erreur) : si l'erreur a
+  //     changé au retour, c'est un nouvel épisode → re-tampon, jamais un
+  //     failed immédiat sur un tampon périmé.
+  //   - EXCLUSION (décision Nico) : republish étape 'deleted' — l'annonce
+  //     d'origine n'existe plus, on détient sa seule copie ; un failed
+  //     rembourserait mais ABANDONNERAIT la recréation. Traités à part.
+  //   - Écritures en compare-and-swap (.eq status needs_user) : un job relancé
+  //     entre-temps n'est jamais écrasé. Best-effort intégral.
+  let needsUserVus = 0;
+  let needsUserSoldes = 0;
+  try {
+    const ECHEANCE_NEEDS_USER_MS = 72 * 3600_000;
+    const { data: attente } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform, action, error, created_at, platform_fields")
+      .eq("status", "needs_user");
+    // deno-lint-ignore no-explicit-any
+    for (const j of ((attente ?? []) as any[])) {
+      if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") continue;
+      const pf = { ...(j.platform_fields ?? {}) };
+      const erreurCourante = String(j.error ?? "").slice(0, 200);
+      const vuLe = Date.parse(pf.needs_user_vu_le ?? "");
+      const nouvelEpisode = !Number.isFinite(vuLe) || String(pf.needs_user_vu_erreur ?? "") !== erreurCourante;
+      if (nouvelEpisode) {
+        pf.needs_user_vu_le = new Date(now).toISOString();
+        pf.needs_user_vu_erreur = erreurCourante;
+        const { error: sErr } = await supabase
+          .from("cross_post_jobs")
+          .update({ platform_fields: pf })
+          .eq("id", j.id)
+          .eq("status", "needs_user");
+        if (!sErr) needsUserVus++;
+        continue;
+      }
+      if (now - vuLe < ECHEANCE_NEEDS_USER_MS) continue;
+      // La formulation par acte suit celle des triggers : la Pépite n'est
+      // annoncée que là où un solde existe réellement (réservation publish /
+      // débit republish) — un retrait n'en porte pas.
+      const msg = j.action === "republish"
+        ? "Resté en attente de ton geste plus de 3 jours : le job est arrêté, ton annonce est intacte " +
+          "sur Vinted et la Pépite est rendue. Relance la republication depuis la fiche de l'article quand tu veux."
+        : j.action === "delete"
+          ? "Resté en attente de ton geste plus de 3 jours : le job est arrêté. Si l'annonce est encore " +
+            "en ligne, retire-la toi-même sur la plateforme."
+          : "Resté en attente de ton geste plus de 3 jours : le job est arrêté et la Pépite engagée a été " +
+            "rendue. Relance la publication depuis la fiche de l'article quand tu veux.";
+      const { error: fErr } = await supabase
+        .from("cross_post_jobs")
+        .update({ status: "failed", error: msg, platform_fields: pf })
+        .eq("id", j.id)
+        .eq("status", "needs_user");
+      if (!fErr) {
+        needsUserSoldes++;
+        console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) needs_user > 72 h → failed, solde par triggers`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] règlement des needs_user à échéance:", (e as Error)?.message ?? e);
+  }
+
   // Regroupement par (plateforme, signature) en excluant les refus légitimes.
   type Cluster = {
     platform: string;
@@ -352,7 +431,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -407,7 +486,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown" }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -461,7 +540,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
     headers: { "Content-Type": "application/json" },
   });
 });
