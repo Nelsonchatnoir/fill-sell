@@ -386,7 +386,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // 2 recaptures auto (recaptures_perimees), aucun re-débit. Comme bb131b8 et
 // 79e029c : HORS du zip 1d20b3d déjà téléversé — paquet SUIVANT. TOUJOURS
 // SANS F1 (1fc9beb).
-export const EXTENSION_LAST_COMMIT = '2026-08-16T14:25:09Z';
+// 2026-08-16T14:41:52Z = 6be32d5 (point 3 du chantier 16/08, colis Vinted) :
+// table des formats de colis complétée par RELEVÉ DOM sur /items/new
+// (8=« 5 kg »/9=« 10 kg »/10=« 20 kg » sur Vases, 11..14 idem+« 30 kg » sur
+// Nacelles), sélection PAR ID à la recréation (le même libellé couvre
+// plusieurs ids selon le groupe de catégories), et RETRAIT du repli « Grand »
+// du 15/08 : un id hors table re-bloque AVANT toute suppression (doctrine
+// 16/08 — jamais de taille inventée). HORS du zip 1d20b3d — paquet SUIVANT.
+// TOUJOURS SANS F1 (1fc9beb).
+export const EXTENSION_LAST_COMMIT = '2026-08-16T14:41:52Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
