@@ -249,28 +249,33 @@ serve(async (req) => {
     console.error("[handler-watch] balayage orphelines:", (e as Error)?.message ?? e);
   }
 
-  // ── Règlement des 'processing' ABANDONNÉS (2026-08-15, dossiers Zen Pulse /
-  // Lucas) ──────────────────────────────────────────────────────────────────
-  // recoverStaleProcessingJobs (extension) repêche les jobs bloqués et borne
-  // les reprises (MAX_STALE_RECOVERIES=2 → failed)… mais il tourne DANS
-  // l'extension : si elle ne revient jamais (PC rangé, Chrome désinstallé),
-  // le job reste 'processing' pour toujours et la Pépite reste réservée
-  // (dossier Lucas 0ca21e6b : dernier heartbeat à la seconde du passage en
-  // processing, plus rien depuis 19 h).
-  // Règle SERVEUR, volontairement étroite :
+  // ── Reprise des 'processing' ABANDONNÉS (2026-08-17 — remplace le passage en
+  // failed du 15/08) ────────────────────────────────────────────────────────
+  // PC fermé ≠ échec : 'failed' est réservé au REFUS d'une plateforme. Un job
+  // dont l'ordinateur ne revient pas est simplement en attente d'une extension
+  // vivante — on le RÉ-ARME en 'pending', quelle que soit l'étape ('deleted'
+  // compris : la recréation n'a AUCUNE limite d'âge, on détient la capture).
+  // La Pépite n'est PAS rendue : le job va aboutir. Aucun trigger de solde ne
+  // tire sur pending/needs_user (ils ne tirent que sur un statut terminal).
+  // Conditions du balayage, inchangées :
   //   - processing depuis ≥ 24 h (processing_since, sinon created_at) ;
-  //   - ET extension muette depuis ≥ 24 h (profiles.extension_last_seen_at,
-  //     heartbeat stampé par get-pending-jobs toutes les ~2 min quand elle
-  //     vit). Une extension vue il y a < 24 h = « simplement hors ligne »
-  //     (veille, nuit — cas Carla 284ebb84, revenue le matin et le job s'est
-  //     soldé tout seul) : on ne touche à RIEN, l'extension garde la main.
-  // Le passage en 'failed' déclenche les triggers de solde EXACTEMENT UNE
-  // FOIS (cross_post_jobs_settle_reservation : release de la réservation
-  // publish, garde reservation_settled_at ; republish_refund_on_terminal :
-  // refund_coins, gardes pepite_remboursee + jamais sur un job abouti).
-  // Écriture en compare-and-swap (.eq status processing) : si le statut a
+  //   - ET extension muette depuis ≥ 24 h (profiles.extension_last_seen_at).
+  //     Une extension vue il y a < 24 h = « simplement hors ligne » (veille,
+  //     nuit — cas Carla 284ebb84) : on ne touche à RIEN, l'extension garde la
+  //     main (son recoverStaleProcessingJobs fait la même reprise en local).
+  // Nettoyage de la réservation pour que n'importe quelle extension reprenne
+  // le job à neuf : processing_since (l'horodatage de prise) ET
+  // stale_recoveries (le compteur de reprises de l'extension — sans ce reset,
+  // un job re-bloqué au retour partirait en failed au plafond MAX_STALE_
+  // RECOVERIES pour des interruptions qui n'étaient pas des refus).
+  // SEULE EXCEPTION : republish à l'étape 'captured' dont la capture a plus
+  // de 24 h → needs_user. L'annonce d'origine est ENCORE EN LIGNE et la
+  // photographie est périmée : on rend la main à l'utilisateur (sa relance
+  // conserve platform_fields, l'extension re-capturera avant de supprimer).
+  // Écritures en compare-and-swap (.eq status processing) : si le statut a
   // bougé entre-temps, on n'écrase rien. Best-effort intégral.
-  let processingSoldes = 0;
+  let processingRearmes = 0;
+  let processingNeedsUser = 0;
   try {
     const SEUIL_ABANDON_MS = 24 * 3600_000;
     const { data: bloques } = await supabase
@@ -294,24 +299,59 @@ serve(async (req) => {
         if (Number.isFinite(seen as number) && now - (seen as number) < SEUIL_ABANDON_MS) continue;
         const pf = { ...(j.platform_fields ?? {}) };
         delete pf.processing_since;
+        delete pf.stale_recoveries;
+
+        if (j.action === "republish" && pf.republish_step === "captured") {
+          // Capture à vérifier EN BASE (platform_fields ne porte que capture_id).
+          // Extension muette ≥ 24 h = aucune recapture possible entre-temps :
+          // une capture illisible ou sans horodatage est traitée comme périmée.
+          let capturePerimee = true;
+          const capId = Number(pf.capture_id);
+          if (Number.isFinite(capId)) {
+            const { data: cap } = await supabase
+              .from("vinted_republish_captures")
+              .select("captured_at")
+              .eq("id", capId)
+              .maybeSingle();
+            const capAt = Date.parse(cap?.captured_at ?? "");
+            if (Number.isFinite(capAt) && now - capAt < 24 * 3600_000) capturePerimee = false;
+          }
+          if (capturePerimee) {
+            const msg =
+              "Republication interrompue : l'ordinateur qui la portait ne s'est plus manifesté depuis " +
+              "plus de 24 h et la photographie de ton annonce est périmée. Ton annonce est toujours en " +
+              "ligne sur Vinted, rien n'a été supprimé. Relance la republication depuis la fiche de " +
+              "l'article : une nouvelle capture sera prise avant tout retrait.";
+            const { error: nErr } = await supabase
+              .from("cross_post_jobs")
+              .update({ status: "needs_user", error: msg, platform_fields: pf })
+              .eq("id", j.id)
+              .eq("status", "processing");
+            if (!nErr) {
+              processingNeedsUser++;
+              console.log(`[handler-watch] job ${j.id} (${j.platform}/republish) processing abandonné, capture périmée → needs_user (annonce encore en ligne)`);
+            }
+            continue;
+          }
+        }
+
         const msg =
-          "Traitement interrompu : l'ordinateur qui portait cette publication ne s'est plus manifesté " +
-          "depuis plus de 24 h — le job est abandonné et la Pépite rendue. Avant de relancer, vérifie sur " +
-          "la plateforme qu'aucune annonce n'a été créée entre-temps (une interruption peut survenir juste " +
-          "après le dépôt).";
+          "Reprise après interruption : l'ordinateur qui portait ce traitement ne s'est plus manifesté " +
+          "depuis plus de 24 h. Le job est remis en file et repartira automatiquement dès qu'une " +
+          "extension connectée se réveille — rien à faire de ton côté.";
         const { error: uErr } = await supabase
           .from("cross_post_jobs")
-          .update({ status: "failed", error: msg, platform_fields: pf })
+          .update({ status: "pending", error: msg, platform_fields: pf })
           .eq("id", j.id)
           .eq("status", "processing");
         if (!uErr) {
-          processingSoldes++;
-          console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) processing abandonné → failed, Pépite rendue par trigger`);
+          processingRearmes++;
+          console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) processing abandonné → pending (reprenable, Pépite conservée)`);
         }
       }
     }
   } catch (e) {
-    console.error("[handler-watch] règlement des processing abandonnés:", (e as Error)?.message ?? e);
+    console.error("[handler-watch] reprise des processing abandonnés:", (e as Error)?.message ?? e);
   }
 
   // ── needs_user À ÉCHÉANCE : 72 h sans geste → failed (point 5, GO Nico
@@ -431,7 +471,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -486,7 +526,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -540,7 +580,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_soldes: processingSoldes, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
     headers: { "Content-Type": "application/json" },
   });
 });
