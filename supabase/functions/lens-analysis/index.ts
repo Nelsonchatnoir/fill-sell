@@ -1511,6 +1511,19 @@ const PLAFOND_IDENTIFY_PAR_USER = 60;
 // introduit par ce mode. 3 000 appels/jour ≈ 30 € (0,0101 €/appel mesuré).
 const PLAFOND_IDENTIFY_GLOBAL = 3000;
 
+// Plafond des remboursements « identification contredite » : 2 par utilisateur
+// et par 24 h GLISSANTES (2026-08-20). Le 20/08 à 00h09, un utilisateur en a
+// obtenu 3 en moins de 2 minutes sur 3 scans consécutifs — chaque scan étant
+// déjà payé côté API (14 remboursements / 84 Pépites depuis le 11/08). Au-delà
+// du plafond, RIEN ne change côté produit : le marché est retiré comme avant
+// et la correction de l'identification reste possible ; seul le remboursement
+// des 6 Pépites n'est plus accordé. Le décompte porte UNIQUEMENT sur les
+// lignes coin_ledger kind='refund' + metadata->>'source' =
+// 'identification_contredite' — les autres motifs (lens_analysis_failed,
+// refund_publish, refund_republish, release_publish…) ne comptent pas et ne
+// sont pas plafonnés.
+const PLAFOND_REFUND_CONTREDITE_24H = 2;
+
 // Version du prompt : elle entre dans la clé du cache d'idempotence. À BUMPER
 // à chaque modification des prompts ou du schéma, sinon on continue de servir
 // un résultat produit par l'ancienne version.
@@ -2214,7 +2227,7 @@ serve(async (req) => {
     // confiance basse (cf. les deux niveaux dans assainirSortie).
     if (!estIdentify && identificationContredite) {
       console.warn(
-        `[lens-analysis] identification contredite — marché supprimé et Pépites rendues`
+        `[lens-analysis] identification contredite — marché supprimé`
         + ` (recherches déjà exécutées : ${stats.recherches})`,
       );
       for (const champ of CHAMPS_MARCHE) itemData[champ] = null;
@@ -2225,12 +2238,48 @@ serve(async (req) => {
       // et l'écran demande une photo de plus.
       // ⚠️ Décision de facturation — volontairement conservatrice et signalée
       // dans le rapport. Volume attendu : quelques scans par semaine.
-      await releaseAttempt("identification_contredite");
+      //
+      // ── PLAFONNÉ à PLAFOND_REFUND_CONTREDITE_24H (2026-08-20) ─────────────
+      // Lecture puis remboursement, non atomique : deux scans strictement
+      // simultanés du même utilisateur pourraient passer tous les deux —
+      // acceptable pour une garde anti-abus (le pire cas est UN remboursement
+      // de trop, pas une boucle). Erreur de lecture = remboursement accordé
+      // quand même (fail-open) : la garde ne doit jamais priver un utilisateur
+      // légitime sur un pépin de requête.
+      let refundAutorise = paidWithCoins > 0;
+      if (refundAutorise) {
+        const depuis = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { count, error: errPlafond } = await adminClient
+          .from("coin_ledger")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("kind", "refund")
+          .eq("metadata->>source", "identification_contredite")
+          .gte("created_at", depuis);
+        if (errPlafond) {
+          console.error(
+            `[lens-analysis] plafond contredite illisible (${errPlafond.message})`
+            + ` — remboursement accordé par défaut`,
+          );
+        } else if ((count ?? 0) >= PLAFOND_REFUND_CONTREDITE_24H) {
+          refundAutorise = false;
+          // Rien n'est écrit dans coin_ledger dans ce cas : la trace, c'est
+          // cette ligne de log + le flag refund_contredite_plafonne dans
+          // logMeta, requêtable en base comme les autres compteurs du scan.
+          console.warn(
+            `[lens-analysis][PLAFOND] remboursement contredite REFUSÉ pour ${userId} :`
+            + ` ${count} déjà accordés sur 24 h (plafond ${PLAFOND_REFUND_CONTREDITE_24H})`,
+          );
+          logMeta = { ...logMeta, refund_contredite_plafonne: true };
+        }
+      }
+      if (refundAutorise) await releaseAttempt("identification_contredite");
       // Dit au client, pour qu'il puisse l'écrire à l'écran. Champ posé ICI et
       // pas dans assainirSortie : le remboursement n'existe qu'en mode complet
       // (identify ne débite rien), l'écran ne doit donc pas le promettre
-      // ailleurs.
-      itemData.pepites_rendues = paidWithCoins > 0;
+      // ailleurs. Plafonné → false : l'écran ne promet jamais des Pépites qui
+      // n'ont pas été rendues.
+      itemData.pepites_rendues = refundAutorise;
     }
 
     // ── AUTORITÉ DE PRIX CONDITIONNÉE À `objet_source` (2026-08-11) ─────────
