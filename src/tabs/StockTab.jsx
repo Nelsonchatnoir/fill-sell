@@ -2301,13 +2301,43 @@ function heureParis(iso) {
   return new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
 }
 
+// Champs d'une capture incomplète que l'app sait faire SAISIR (2026-08-21) —
+// miroir exact de la whitelist de fusion côté extension
+// (capturerEtPersisterDepuisExtension, republish_user_fields) : taille, marque,
+// état, ISBN. Le colis n'y est PAS (sélection PAR ID à la recréation, libellé
+// ambigu hors Mode — relevé du 16/08) ; catégorie/couleurs/description non
+// plus (échecs de lecture, une relance suffit). Les libellés d'état sont ceux
+// du menu Vinted : la recréation sélectionne PAR LIBELLÉ sur le menu ouvert —
+// un libellé hors catégorie (ex. Beauté sans « Bon état ») redonnera un
+// needs_user propre au pré-vol, jamais une suppression.
+const REPUB_SAISISSABLES = {
+  taille: { fr: 'Taille', en: 'Size', ph: 'M, 38, Taille unique…' },
+  marque: { fr: 'Marque', en: 'Brand', ph: 'Nike… ou « Sans marque »' },
+  etat: { fr: 'État', en: 'Condition', options: ['Neuf avec étiquette', 'Neuf sans étiquette', 'Très bon état', 'Bon état', 'Satisfaisant'] },
+  isbn: { fr: 'ISBN', en: 'ISBN', ph: '9782…' },
+};
+// « État »/« Taille » (pré-vol, libellés humains) et « etat »/« taille »
+// (capture, clés nues) doivent tomber sur la même entrée.
+const repubCleSaisie = (c) => String(c ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
 // Feuille « où ça en est » — même patron que RepublishSheet (portail, feuille
 // basse, canvas). Ouverte au tap sur la pastille de la carte.
-function RepublishProgressSheet({ lang, job, onClose }) {
+function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance }) {
   const fr = lang !== 'en';
+  // ⚠️ Hooks AVANT le retour anticipé (règle des hooks) : la feuille peut
+  // rendre null quand l'étape est illisible, la saisie n'existe alors pas.
+  const [saisie, setSaisie] = useState({});
+  const [saisieBusy, setSaisieBusy] = useState(false);
+  const [saisieMsg, setSaisieMsg] = useState(null);
   const et = etapeRepublication(job, fr);
   if (!et) return null;
   const pf = job.platform_fields ?? {};
+  // Saisie proposée UNIQUEMENT sur un needs_user de capture incomplète / pré-vol
+  // (champs_a_completer posé par l'extension ou par update-job-status), et
+  // seulement pour les champs que la relance sait réinjecter.
+  const aCompleter = job.status === 'needs_user' && Array.isArray(pf.champs_a_completer)
+    ? [...new Set(pf.champs_a_completer.map(repubCleSaisie).filter((c) => c in REPUB_SAISISSABLES))]
+    : [];
   const courant = et.cle === 'arret' || et.cle === 'needs_user'
     ? (pf.republish_step ?? 'a_capturer')
     : (et.cle === 'file' || et.cle === 'lecture' ? 'a_capturer' : et.cle);
@@ -2366,6 +2396,58 @@ function RepublishProgressSheet({ lang, job, onClose }) {
                 vraie) ; sur un job terminal, la fausse promesse est remplacée
                 par la consigne de relance manuelle (consigne 16/08). */}
             {jobErrorSansFaussePromesse(job, fr ? 'fr' : 'en')}
+          </div>
+        )}
+        {/* Saisie du champ manquant (capture incomplète, 2026-08-21) : la
+            valeur part dans platform_fields.republish_user_fields puis la
+            relance repart — l'extension la fusionne dans la capture suivante.
+            Un needs_user SANS champ saisissable (colis hors table, lecture
+            transitoire) garde le simple bouton Relancer de la carte. */}
+        {aCompleter.length > 0 && onSaisieRelance && (
+          <div style={{ background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 14, padding: '12px 14px', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#10201B', marginBottom: 8 }}>
+              {fr ? 'Renseigne ce qui manque, on repart' : 'Fill in what is missing and we relaunch'}
+            </div>
+            {aCompleter.map((cle) => {
+              const def = REPUB_SAISISSABLES[cle];
+              return (
+                <div key={cle} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#5C6560', marginBottom: 4 }}>{fr ? def.fr : def.en}</div>
+                  {def.options ? (
+                    <select value={saisie[cle] ?? ''} onChange={(e) => setSaisie((s) => ({ ...s, [cle]: e.target.value }))}
+                      style={{ width: '100%', padding: '10px 10px', borderRadius: 10, border: '1px solid #E7E3D8', fontSize: 13.5, fontFamily: 'inherit', background: '#fff' }}>
+                      <option value="" disabled>{fr ? 'Choisir…' : 'Choose…'}</option>
+                      {def.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input value={saisie[cle] ?? ''} onChange={(e) => setSaisie((s) => ({ ...s, [cle]: e.target.value }))}
+                      placeholder={def.ph}
+                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 10px', borderRadius: 10, border: '1px solid #E7E3D8', fontSize: 13.5, fontFamily: 'inherit', background: '#fff' }} />
+                  )}
+                </div>
+              );
+            })}
+            {saisieMsg && (
+              <div style={{ fontSize: 12, color: '#B91C1C', lineHeight: 1.45, marginBottom: 8 }}>{saisieMsg}</div>
+            )}
+            <button
+              disabled={saisieBusy || aCompleter.some((c) => !String(saisie[c] ?? '').trim())}
+              onClick={async () => {
+                if (saisieBusy) return;
+                setSaisieBusy(true); setSaisieMsg(null);
+                const fournis = {};
+                for (const c of aCompleter) fournis[c] = String(saisie[c] ?? '').trim();
+                const res = await onSaisieRelance(job, fournis);
+                setSaisieBusy(false);
+                if (res?.success) onClose();
+                else setSaisieMsg(res?.error ?? (fr ? 'Relance impossible — réessaie dans un instant.' : 'Relaunch failed — try again shortly.'));
+              }}
+              style={{ width: '100%', padding: '11px 0', borderRadius: 12, border: 'none',
+                background: (saisieBusy || aCompleter.some((c) => !String(saisie[c] ?? '').trim())) ? '#9CB8B2' : 'linear-gradient(120deg,#2F9E90,#1B6E62)',
+                color: '#fff', fontSize: 13.5, fontWeight: 700, fontFamily: 'inherit',
+                cursor: (saisieBusy || aCompleter.some((c) => !String(saisie[c] ?? '').trim())) ? 'default' : 'pointer' }}>
+              {saisieBusy ? (fr ? 'Relance…' : 'Relaunching…') : (fr ? 'Valider et relancer' : 'Save and relaunch')}
+            </button>
           </div>
         )}
         {et.cle === 'recreated' && job.listing_url && (
@@ -2917,6 +2999,41 @@ const StockTab = memo(function StockTab({
     } finally {
       setRepubBusy(null);
     }
+  }
+
+  // ── Capture incomplète : valeur saisie + relance en un geste (2026-08-21) ──
+  // La feuille de progression propose la saisie des champs que la capture n'a
+  // pas su lire (champs_a_completer). La valeur part dans
+  // platform_fields.republish_user_fields — relancer_republish CONSERVE
+  // platform_fields, et l'extension fusionne ces valeurs dans la capture
+  // suivante (elles priment sur les libellés capturés). Update CONDITIONNEL
+  // .eq(status,'needs_user') + .select() : même triple garde que le
+  // mini-éditeur needs_user (double-clic, job reparti entre-temps, RLS
+  // silencieuse).
+  async function validerSaisieRelance(job, fournis) {
+    const pfNext = {
+      ...(job.platform_fields ?? {}),
+      republish_user_fields: { ...(job.platform_fields?.republish_user_fields ?? {}), ...fournis },
+    };
+    const { data, error } = await supabase
+      .from('cross_post_jobs')
+      .update({ platform_fields: pfNext })
+      .eq('id', job.id)
+      .eq('status', 'needs_user')
+      .select('id');
+    if (error) return { success: false, error: error.message };
+    if (!data?.length) return { success: false, error: lang === 'fr' ? 'Ce job a déjà été repris — referme et regarde où il en est.' : 'This job was already picked up — close and check its progress.' };
+    const res = await relancerRepublishVinted(supabase, { job });
+    if (!res.success) {
+      if (rejetMaintenance(res)) { setRepubMaintenance(true); return { success: false, error: lang === 'fr' ? 'Republication en maintenance.' : 'Repost under maintenance.' }; }
+      return res;
+    }
+    setJobsByInventaire(prev => ({
+      ...prev,
+      [job.inventaire_id]: (prev[job.inventaire_id] ?? []).map(j =>
+        j.id === job.id ? { ...j, status: 'pending', error: null, platform_fields: pfNext } : j),
+    }));
+    return { success: true };
   }
   const [jobsByInventaire, setJobsByInventaire] = useState({});
   // ── É5 : dérivations de RENDU qui lisent jobsByInventaire ────────────────
@@ -5269,6 +5386,20 @@ const StockTab = memo(function StockTab({
                                 // « relance » abstraite : c'est REMETTRE L'ANNONCE EN LIGNE
                                 // depuis le snapshot sauvegardé — le bouton le dit (2026-08-12).
                                 const apresSuppr=repubLatest?.platform_fields?.republish_step==='deleted';
+                                // Capture incomplète avec champ saisissable (2026-08-21) : une
+                                // relance à vide re-échouerait en boucle — le bouton ouvre la
+                                // feuille de saisie (la même que la pastille), qui valide ET
+                                // relance en un geste.
+                                const aSaisir=(repubLatest?.platform_fields?.champs_a_completer??[])
+                                  .some(c=>repubCleSaisie(c) in REPUB_SAISISSABLES);
+                                if(aSaisir&&!apresSuppr){
+                                  return(
+                                  <button className="btn-vendre" disabled={repubBusy===item.id}
+                                    onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}
+                                    style={{opacity:repubBusy===item.id?0.6:1}}>
+                                    {lang==='fr'?'✋ Compléter':'✋ Fill in'}
+                                  </button>);
+                                }
                                 return(
                                 <button className="btn-vendre" disabled={repubBusy===item.id}
                                   onClick={e=>{e.stopPropagation();relancerRepublication(item,repubLatest);}}
@@ -5417,7 +5548,7 @@ const StockTab = memo(function StockTab({
         const frais=(jobsByInventaire[repubProgress.inventaire_id]??[])
           .find(j=>j.id===repubProgress.id)??repubProgress;
         return(
-          <RepublishProgressSheet lang={lang} job={frais} onClose={()=>setRepubProgress(null)}/>
+          <RepublishProgressSheet lang={lang} job={frais} onClose={()=>setRepubProgress(null)} onSaisieRelance={validerSaisieRelance}/>
         );
       })()}
       {/* Mini-éditeur « À compléter » (socle needs_user, 2026-07-19).
