@@ -236,7 +236,89 @@ serve(async (req) => {
       }
     }
 
-    const patch: Record<string, unknown> = { status };
+    // ══════════════════════════════════════════════════════════════════════
+    // PALLIATIF « capture incomplète » REPUBLISH (2026-08-21) — SERVEUR SEUL
+    // ══════════════════════════════════════════════════════════════════════
+    // L'extension déployée pose encore 'failed' (terminal — l'utilisateur n'a
+    // AUCUN moyen de reprendre le job) quand la capture de republication est
+    // incomplète, ou quand le pré-vol nomme un champ que l'annonce d'origine
+    // ne porte pas. Tant que le correctif extension (needs_user natif) n'est
+    // pas adopté par le parc, ce point de passage unique requalifie CES
+    // failed-là en needs_user actionnable : l'utilisateur complète son annonce
+    // SUR VINTED puis relance depuis l'app — la relance rejoue la capture, qui
+    // relit Vinted (l'étape reste 'a_capturer' : rien d'autre à faire).
+    // Périmètre STRICT : action='republish' seulement, motifs de capture
+    // seulement. JAMAIS les échecs techniques photo (re-hébergement Bad
+    // Request : rien que l'utilisateur puisse faire) ni les vrais terminaux
+    // (annonce 404/vendue), qui ne portent pas ces motifs.
+    // ⚠️ Pépite : needs_user n'est pas terminal → pas de remboursement ici.
+    // Le balayage 72 h (handler-watch) soldera en failed si l'utilisateur ne
+    // relance pas, et le trigger republish_refund_on_terminal rendra la
+    // Pépite à CE moment-là — le message l'annonce.
+    // Devient un no-op naturel le jour où l'extension pose needs_user
+    // elle-même : plus aucun failed ne portera ces motifs.
+    let statutEffectif = status;
+    let messageEffectif: string | null = null;
+    let champsACompleter: string[] | null = null;
+    let pfDuJob: Record<string, unknown> | null = null;
+    if (status === "failed" && typeof body.error === "string") {
+      const mCapture = body.error.match(/^Capture incomplète \((.+?)\) — republication/s);
+      const mPrevol = body.error.match(/^Republication annulée AVANT toute suppression : Vinted exige « (.+?) »/s);
+      if (mCapture || mPrevol) {
+        const { data: jrow } = await userClient
+          .from("cross_post_jobs")
+          .select("action, platform_fields")
+          .eq("id", jobId)
+          .maybeSingle();
+        if (jrow?.action === "republish") {
+          pfDuJob = (jrow.platform_fields ?? {}) as Record<string, unknown>;
+          // Clés = premiers mots des motifs de champs_manquants (posés par
+          // capturerAnnonceVinted, forme "taille (size_id=… → libellé)").
+          const LIBELLES: Record<string, string> = {
+            taille: "Taille", marque: "Marque", colis: "Format de colis",
+            categorie: "Catégorie", etat: "État", couleur: "Couleur",
+            isbn: "ISBN", description: "Description",
+          };
+          const PEPITE_72H =
+            "Ta Pépite reste réservée : elle te sera rendue automatiquement sous 72 h si la republication ne repart pas.";
+          if (mCapture) {
+            const motifs = mCapture[1].split(" ; ").map((m) => m.trim()).filter(Boolean);
+            // photo* = échec technique (re-hébergement, URLs illisibles) : pas
+            // un champ à compléter, le job reste failed si rien d'autre.
+            const actionnables = motifs.filter((m) => !/^photo/i.test(m));
+            if (actionnables.length) {
+              const cles = [...new Set(
+                actionnables
+                  .map((m) => (m.split(/[\s(]/)[0] || "").toLowerCase())
+                  .filter((c) => c in LIBELLES),
+              )];
+              statutEffectif = "needs_user";
+              champsACompleter = cles;
+              // Colis hors table = défaut de NOTRE table de formats, corrigé
+              // dans le paquet extension suivant : rien à corriger sur Vinted,
+              // le message ne doit pas envoyer l'utilisateur chercher un champ.
+              messageEffectif = cles.length && cles.every((c) => c === "colis")
+                ? "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
+                  "Le blocage vient d'un défaut de l'extension (format de colis non reconnu), corrigé dans la prochaine mise à jour : " +
+                  "rien à corriger de ton côté, relance la republication depuis l'app d'ici quelques jours. " + PEPITE_72H
+                : "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
+                  `Il manque : ${cles.length ? cles.map((c) => LIBELLES[c]).join(", ") : "des informations"} — ` +
+                  "complète ton annonce sur Vinted, puis relance la republication depuis l'app. " + PEPITE_72H;
+            }
+          } else if (mPrevol) {
+            const champ = mPrevol[1].slice(0, 120);
+            statutEffectif = "needs_user";
+            champsACompleter = [champ];
+            messageEffectif =
+              "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
+              `Vinted exige « ${champ} » et ton annonce ne porte pas cette information : ajoute-la sur ton annonce Vinted, ` +
+              "puis relance la republication depuis l'app. " + PEPITE_72H;
+          }
+        }
+      }
+    }
+
+    const patch: Record<string, unknown> = { status: statutEffectif };
 
     // platform_fields optionnel : l'extension envoie l'objet DÉJÀ fusionné
     // (ex: compteur needsUserAttempts pour borner les ré-armements). On écrase
@@ -245,13 +327,23 @@ serve(async (req) => {
       patch.platform_fields = body.platform_fields;
     }
 
+    // Détail structuré du palliatif : l'app lit champs_a_completer pour
+    // afficher quoi compléter, sans re-parser le message humain.
+    if (champsACompleter) {
+      patch.platform_fields = {
+        ...((patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>),
+        champs_a_completer: champsACompleter,
+        needs_user_source: "capture_incomplete",
+      };
+    }
+
     // Estampille de version du build extension (handler-watch, 2026-07-16) :
     // colonne dédiée, purement diagnostique, jamais bloquante.
     if (typeof body.handler_build === "string" && body.handler_build) {
       patch.handler_build = body.handler_build.slice(0, 120);
     }
 
-    if (status === "published") {
+    if (statutEffectif === "published") {
       patch.published_at = new Date().toISOString();
       patch.error = null;
       if (typeof body.listing_url === "string" && body.listing_url) {
@@ -268,23 +360,27 @@ serve(async (req) => {
         const m = re ? body.listing_url.match(re) : null;
         if (m) patch.platform_listing_id = m[1];
       }
-    } else if (status === "failed") {
+    } else if (statutEffectif === "failed") {
       patch.error = typeof body.error === "string" ? body.error.slice(0, 2000) : "Erreur inconnue";
-    } else if (status === "pending") {
+    } else if (statutEffectif === "pending") {
       // Ré-armement (ex: needsUser, l'utilisateur doit compléter une info) :
       // on garde l'error explicative si fournie, sinon on nettoie.
       patch.error = typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null;
-    } else if (status === "needs_user") {
+    } else if (statutEffectif === "needs_user") {
       // Champ précis à trancher côté app : error porte le message humain
       // (affiché au survol/tap du badge « À compléter »), le détail structuré
       // vit dans platform_fields.needsUserField (déjà dans le patch ci-dessus).
-      patch.error = typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null;
-    } else if (status === "dry_run_completed") {
+      // messageEffectif (palliatif capture incomplète) prime sur body.error,
+      // qui porte encore l'ancien message failed « la Pépite est rendue » —
+      // faux en needs_user.
+      patch.error = messageEffectif
+        ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null);
+    } else if (statutEffectif === "dry_run_completed") {
       // Terminal : dry-run réussi, ne repart pas dans la queue. L'éventuel
       // détail (champs manquants, trace du dry-run delete) vit dans
       // platform_fields, pas dans error.
       patch.error = null;
-    } else if (status === "deleted") {
+    } else if (statutEffectif === "deleted") {
       // Terminal : annonce réellement supprimée de la plateforme.
       patch.error = null;
     }
@@ -299,7 +395,7 @@ serve(async (req) => {
     if (updateErr) return json({ error: updateErr.message }, 500);
     if (!updated) return json({ error: "Job introuvable" }, 404);
 
-    console.log(`[update-job-status] userId=${user.id} job=${jobId} → ${status}`);
+    console.log(`[update-job-status] userId=${user.id} job=${jobId} → ${statutEffectif}${statutEffectif !== status ? ` (requalifié depuis ${status} : capture incomplète)` : ""}`);
 
     return json({ success: true, job: updated });
   } catch (err: unknown) {
