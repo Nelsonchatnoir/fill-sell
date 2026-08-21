@@ -1,4 +1,4 @@
-// BUILD_ID partagé — source UNIQUE pour les trois consommateurs :
+﻿// BUILD_ID partagé — source UNIQUE pour les trois consommateurs :
 //   1. build local minifié (scripts/build-extension.mjs, « Load unpacked ») ;
 //   2. zip public fillsell.app (scripts/vite-plugin-zip-extension.mjs) ;
 //   3. app web elle-même (define __FILLSELL_APP_BUILD__ dans vite.config.js),
@@ -402,7 +402,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // d'une capture périmée), 6be32d5 (colis 8..14 relevés + sélection par id +
 // fin du repli « Grand »). Committé avec GIT_COMMITTER_DATE épinglée sur
 // cette constante (ni futur, ni antérieur). TOUJOURS SANS F1 (1fc9beb).
-export const EXTENSION_LAST_COMMIT = '2026-08-16T17:05:53Z';
+// 2026-08-21T09:36:16Z = 7b662cf (même branche) : capture incomplète de
+// republication → needs_user actionnable. a_capturer et pré-vol négatif
+// posent needs_user (champs nommés, Pépite réservée, balayage 72 h) au lieu
+// de failed ; fusion republish_user_fields (saisie app : taille/marque/état/
+// ISBN) dans la capture AVANT verdict ; motif « taille (absente des deux
+// emplacements) » RETIRÉ du verdict (faux positif prouvé : catalog 1441
+// Lunettes vit sous le rayon Vêtements SANS champ Taille — relevé DOM du
+// 21/08 ; le pré-vol tranche sur le formulaire réel). ⚠️ HORS zip 0.6.7
+// (9ae7302, figé en attente d'acceptation de la 0.6.6) : paquet SUIVANT —
+// tout re-package depuis cette branche l'inclura de fait. En attendant,
+// update-job-status (main) requalifie côté serveur les failed « Capture
+// incomplète » du parc en needs_user. EXTENSION_MIN_BUILD inchangé.
+// TOUJOURS SANS F1 (1fc9beb).
+export const EXTENSION_LAST_COMMIT = '2026-08-21T09:36:16Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
