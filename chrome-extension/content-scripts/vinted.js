@@ -716,34 +716,19 @@ function attributVintedIds(natif, code) {
   return Array.isArray(entree?.ids) ? entree.ids : [];
 }
 
-// ── Catégories qui EXIGENT une taille sur Vinted (2026-08-12) ────────────────
-// Sert au SEUL cas résiduel : taille absente des DEUX emplacements ci-dessus.
-// Le rayon est le 2e segment du chemin résolu (["Femmes","Vêtements","Robes",
-// "Midi"]), relevé sur l'arbre COMPLET dumpé dans docs/vinted-catalog-tree.txt :
-//   Femmes  > Vêtements | Chaussures
-//   Hommes  > Vêtements | Chaussures
-//   Enfants > Vêtements pour filles | Vêtements pour garçons
-// Chez Femmes et Hommes, « Sacs », « Accessoires », « Beauté » et « Soins »
-// sont des rayons SÉPARÉS de niveau 2 : les exclure est exact, sans arbitrage.
-// ⚠️ Chez Enfants, les sacs vivent SOUS le rayon vêtements (« Vêtements pour
-// filles > Sacs et sacs à dos ») — seul ce sous-rayon-là est retiré.
-// « Accessoires » enfant est GARDÉ délibérément (un bonnet peut porter une
-// taille) : l'asymétrie des coûts tranche tous les cas douteux. Un 'incomplet'
-// à tort ne coûte qu'une republication bloquée — réversible, rien n'est
-// supprimé. Un 'valide' à tort coûte l'annonce, définitivement : c'est
-// exactement le bug que ce garde-fou existe pour empêcher.
-// (normalizeFuzzy est défini plus bas dans ce fichier : il n'est LU qu'à
-// l'appel, jamais à l'évaluation du module.)
-const VINTED_RAYONS_AVEC_TAILLE = new Set([
-  "vetements", "chaussures", "vetements pour filles", "vetements pour garcons",
-]);
-const VINTED_SOUS_RAYONS_SANS_TAILLE = new Set(["sacs et sacs a dos"]);
-function categorieExigeTaille(chemin) {
-  if (!Array.isArray(chemin) || chemin.length < 2) return false;
-  const cle = (s) => normalizeFuzzy(String(s ?? ""));
-  if (!VINTED_RAYONS_AVEC_TAILLE.has(cle(chemin[1]))) return false;
-  return !(chemin.length > 2 && VINTED_SOUS_RAYONS_SANS_TAILLE.has(cle(chemin[2])));
-}
+// ── « Taille absente des deux emplacements » : NE BLOQUE PLUS (2026-08-21) ───
+// La garde par rayon (categorieExigeTaille, liste statique de rayons de
+// niveau 2 posée le 12/08) est SUPPRIMÉE : elle était trop grossière à la
+// feuille. Cas prouvé sur le formulaire réel (relevé DOM du 21/08) : catalog
+// 1441 « Femmes > Vêtements > Vêtements de sport > Accessoires de sports >
+// Lunettes » vit sous le rayon « Vêtements » mais n'a AUCUN champ Taille —
+// la capture de la paire de lunettes Gucci (job e240c043) était valide et la
+// garde l'a tuée. L'autorité, c'est le formulaire : depuis la une-passe du
+// 12/08, le pré-vol relève les requis sur /items/new AVANT toute suppression
+// — une taille réellement exigée et introuvable s'arrête LÀ, annonce intacte.
+// Ne revient jamais ici : « taille (size_id présent sans libellé) » reste, lui,
+// bloquant — l'annonce PORTE une taille qu'on n'a pas su résoudre, republier
+// sans serait une dégradation silencieuse.
 
 // Couleurs. Vinted ne porte PAS de `color_ids` : le payload d'édition expose
 // deux emplacements nommés (color1/color2 + color1_id/color2_id), et il porte
@@ -860,18 +845,13 @@ async function capturerAnnonceVinted(vintedItemId) {
     // La SOURCE est nommée dans le motif : sans elle, un futur échec de
     // résolution ne dirait pas lequel des deux emplacements a parlé.
     else manquants.push(`taille (${sizeIdRacine != null ? "size_id" : "item_attributes"}=${sizeId} → libellé)`);
-  } else if (categorieExigeTaille(chemin)) {
-    // Cas résiduel : la catégorie exige une taille et AUCUN des deux
-    // emplacements ne la porte. On refuse le verdict 'valide' — même modèle que
-    // la marque (`brand_id présent sans libellé`). C'est ce refus qui doit
-    // arrêter la republication AVANT la suppression de l'annonce, au lieu de la
-    // laisser casser à la recréation, quand il est trop tard.
-    // Une taille absente sur une catégorie SANS taille (sacs, beauté, maison)
-    // reste valide : c'est categorieExigeTaille qui tranche, jamais un défaut.
-    // Et si le chemin n'a pas pu être résolu, `chemin` est null : on ne juge
-    // rien ici, mais "categorie (catalog_id → chemin de libellés)" est déjà dans
-    // `manquants` plus haut — le verdict est incomplet de toute façon.
-    manquants.push("taille (absente des deux emplacements)");
+  } else {
+    // Aucune taille sur l'annonce d'origine : cas VALIDE (2026-08-21, fin du
+    // faux positif lunettes — cf. bandeau « taille absente… ne bloque plus »). Si
+    // la catégorie exige réellement une taille, le PRÉ-VOL l'arrête sur le
+    // formulaire, avant toute suppression. Trace en diagnostics, jamais un
+    // verdict.
+    diagnostics.push({ cle: "taille", note: "aucune taille sur l'annonce d'origine (les deux emplacements vides) — le pré-vol tranche sur le formulaire réel" });
   }
 
   // ── Marque — « Sans marque » est un ÉTAT, pas une absence (2026-08-12) ─────
