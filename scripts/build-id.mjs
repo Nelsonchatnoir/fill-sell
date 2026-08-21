@@ -374,7 +374,18 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // 8..14 relevée en réel + sélection PAR ID + fin du repli « Grand », 6be32d5
 // d'origine, SANS le bloc ISBN de 1be6b19 que main ne porte pas). Le paquet
 // CWS continue de se construire sur la BRANCHE, pas ici — main porte F1.
-export const EXTENSION_LAST_COMMIT = '2026-08-16T16:52:07Z';
+// 2026-08-21T09:36:16Z = capture incomplète de republication → needs_user
+// actionnable (7b662cf sur la branche ext-0.6.5-sans-f1, cherry-pick main
+// c1a086f) : a_capturer et pré-vol négatif posent needs_user (champs nommés,
+// Pépite réservée, balayage 72 h) au lieu de failed ; fusion
+// republish_user_fields (saisie app) dans la capture ; motif « taille
+// (absente des deux emplacements) » RETIRÉ du verdict (faux positif prouvé,
+// catalog 1441 Lunettes sous le rayon Vêtements sans champ Taille — relevé
+// DOM du 21/08). ⚠️ HORS zip 0.6.7 (9ae7302, figé en attente d'acceptation
+// de la 0.6.6) : ces correctifs partent dans le paquet SUIVANT. En attendant,
+// update-job-status requalifie côté serveur les failed « Capture
+// incomplète » du parc en needs_user. EXTENSION_MIN_BUILD inchangé.
+export const EXTENSION_LAST_COMMIT = '2026-08-21T09:36:16Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
