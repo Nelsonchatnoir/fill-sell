@@ -6267,7 +6267,7 @@ async function captureVintedItemUnlocked(vintedItemId) {
 // payload.prix et la conservation de payload.prix_origine. Le déplacement est
 // TOUT l'objet du chantier : capturer ici, c'est capturer quelques secondes
 // avant de supprimer — au lieu de plusieurs heures avant, au clic.
-async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, prixRepublication, userId, accessToken }) {
+async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, prixRepublication, userId, accessToken, userFields = null }) {
   const id = String(vintedItemId ?? "").trim();
   const capture = await captureVintedItemUnlocked(id);
   if (!capture?.success) {
@@ -6278,7 +6278,30 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
   // par la capture par le résultat RÉEL, échec par échec. Un échec photo ne
   // fait pas tomber la capture — il rejoint champs_manquants et le verdict
   // devient 'incomplet', ce qui interdit toute suppression plus loin.
-  const manquants = (capture.champs_manquants ?? []).filter((c) => !String(c).startsWith("photos_rehebergees"));
+  let manquants = (capture.champs_manquants ?? []).filter((c) => !String(c).startsWith("photos_rehebergees"));
+
+  // ── Valeurs fournies PAR L'UTILISATEUR (needs_user → app, 2026-08-21) ──────
+  // Quand une capture incomplète a mis le job en needs_user, l'app propose la
+  // saisie du champ manquant et écrit platform_fields.republish_user_fields
+  // avant de relancer. Ces valeurs PRIMENT sur les libellés capturés et
+  // retirent le motif correspondant de champs_manquants : c'est ce qui rend le
+  // needs_user actionnable SANS obliger à modifier l'annonce sur Vinted.
+  // Whitelist STRICTE (jamais un objet arbitraire recopié dans la capture) :
+  // les champs que le formulaire de recréation sait poser depuis un libellé.
+  // Le colis n'y est PAS : sa sélection est PAR ID (libellé ambigu hors Mode,
+  // relevé du 16/08) — un id hors table reste un needs_user non saisissable,
+  // résolu par l'extension au relevé suivant de la table.
+  const fournis = {};
+  if (userFields && typeof userFields === "object") {
+    for (const cle of ["taille", "marque", "etat", "isbn"]) {
+      const v = String(userFields[cle] ?? "").trim();
+      if (v) fournis[cle] = v.slice(0, 200);
+    }
+  }
+  if (Object.keys(fournis).length) {
+    capture.libelles = { ...(capture.libelles ?? {}), ...fournis };
+    manquants = manquants.filter((m) => !Object.keys(fournis).some((k) => String(m).startsWith(k)));
+  }
   let photosUrls = [];
   if (capture.photos_cdn?.length) {
     try {
@@ -6320,6 +6343,9 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
           // dit pas POURQUOI il manque — le premier test réel du 05/08 a coûté
           // un aller-retour de diagnostic pour ça.
           diagnostics: capture.diagnostics ?? null,
+          // Valeurs saisies par l'utilisateur (déjà fusionnées dans libelles) :
+          // la capture DIT quand un libellé ne vient pas de Vinted.
+          ...(Object.keys(fournis).length ? { champs_utilisateur: fournis } : {}),
         },
         libelles: capture.libelles ?? null,
         photos_urls: photosUrls,
@@ -9068,23 +9094,46 @@ async function processRepublishJob(job, accessToken) {
       inventaireId: job.inventaire_id ?? null,
       prixRepublication: pf.prix_republication ?? null,
       userId, accessToken,
+      userFields: pf.republish_user_fields ?? null,
     });
 
-    // ⚠️ 'failed' et NON 'needs_user' (arbitrage Nico) : rien n'a été touché,
-    // l'annonce est intacte, il n'y a RIEN à reprendre — et seul un statut
-    // terminal déclenche republish_refund_on_terminal. Un job laissé en
-    // needs_user garderait la Pépite d'un service jamais rendu, ce que
-    // l'article 5 des CGV interdit.
+    // Échec de capture (session, réseau, annonce introuvable) : 'failed' —
+    // rien n'a été touché, l'annonce est intacte, et un statut terminal
+    // déclenche republish_refund_on_terminal (la Pépite est rendue).
     if (!cap.success) {
       const msg = `Republication annulée avant toute suppression : ${cap.error}. Ton annonce est intacte, la Pépite est rendue.`;
       await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
       return { status: "failed", error: msg };
     }
+    // ── Capture incomplète (2026-08-21, révision de l'arbitrage du 05/08) ────
+    // 'needs_user' et NON plus 'failed' : le job est désormais REPRENABLE —
+    // l'utilisateur complète le champ dans l'app (republish_user_fields, fusion
+    // ci-dessus) ou sur son annonce Vinted, puis relance ; la relance rejoue
+    // cette étape en entier. La Pépite reste réservée pour ce service encore
+    // livrable ; si rien ne repart, le balayage 72 h (handler-watch) solde en
+    // failed et le trigger existant la rend — le message l'annonce.
+    // EXCEPTION photo (re-hébergement en échec, URLs illisibles) : échec
+    // TECHNIQUE, l'utilisateur n'y peut rien → failed immédiat, Pépite rendue,
+    // comme avant. Un mélange photo+champ reste needs_user : le champ, lui,
+    // est actionnable, et la relance retente le re-hébergement au passage.
     if (cap.verdict !== "valide") {
-      const detail = (cap.champs_manquants ?? []).slice(0, 3).join(" ; ") || "champs manquants";
-      const msg = `Capture incomplète (${detail}) — republication annulée AVANT toute suppression. Ton annonce est intacte, la Pépite est rendue.`;
-      await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
-      return { status: "failed", error: msg };
+      const tous = cap.champs_manquants ?? [];
+      const actionnables = tous.filter((m) => !/^photo/i.test(String(m)));
+      const detail = tous.slice(0, 3).join(" ; ") || "champs manquants";
+      if (!actionnables.length) {
+        const msg = `Capture incomplète (${detail}) — republication annulée AVANT toute suppression. Ton annonce est intacte, la Pépite est rendue.`;
+        await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
+        return { status: "failed", error: msg };
+      }
+      // Clé = premier mot du motif ("taille (…)" → "taille") : c'est ce que
+      // l'app lit pour proposer la bonne saisie (champs_a_completer).
+      pf.champs_a_completer = [...new Set(actionnables.map((m) => (String(m).split(/[\s(]/)[0] || "").toLowerCase()).filter(Boolean))];
+      pf.needs_user_source = "capture_incomplete";
+      const msg = `Republication en pause AVANT toute suppression : la capture de ton annonce est incomplète (${detail}). ` +
+        "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication. " +
+        "Ta Pépite reste réservée : elle te sera rendue automatiquement sous 72 h si la republication ne repart pas.";
+      await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+      return { status: "needsUser", error: `capture incomplète : ${detail}` };
     }
 
     pf.capture_id = cap.capture_id;
@@ -9250,6 +9299,7 @@ async function processRepublishJob(job, accessToken) {
               inventaireId: job.inventaire_id ?? null,
               prixRepublication: pf.prix_republication ?? null,
               userId, accessToken,
+              userFields: pf.republish_user_fields ?? null,
             })
           : { success: false, error: "session illisible (jeton sans identifiant)" };
         if (!recap.success) {
@@ -9269,10 +9319,17 @@ async function processRepublishJob(job, accessToken) {
         }
         if (recap.verdict !== "valide") {
           const detail = (recap.champs_manquants ?? []).slice(0, 3).join(" ; ") || "champs manquants";
+          // Mêmes marqueurs structurés que l'étape a_capturer : l'app propose
+          // la saisie du champ, la relance fusionne republish_user_fields.
+          pf.champs_a_completer = [...new Set((recap.champs_manquants ?? [])
+            .filter((m) => !/^photo/i.test(String(m)))
+            .map((m) => (String(m).split(/[\s(]/)[0] || "").toLowerCase()).filter(Boolean))];
+          pf.needs_user_source = "capture_incomplete";
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
             error: `Republication en pause AVANT toute suppression : la nouvelle capture de ton annonce est incomplète (${detail}). ` +
-              "Ton annonce est intacte sur Vinted. Complète-la sur Vinted, puis relance la republication depuis l'app.",
+              "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication. " +
+              "Ta Pépite reste réservée : elle te sera rendue automatiquement sous 72 h si la republication ne repart pas.",
           });
           return { status: "needsUser", error: `recapture incomplète : ${detail}` };
         }
@@ -9366,17 +9423,26 @@ async function processRepublishJob(job, accessToken) {
         }
         if (result?.unfilledRequired?.length || result?.needsUserField) {
           // ── PRÉ-VOL NÉGATIF : un champ obligatoire est resté vide ─────────
-          // LE cas des deux annonces perdues du 12/08 — il s'arrête désormais
-          // ICI : annonce intacte, Pépite rendue, champ NOMMÉ. Et il rend le
-          // trou de categorieExigeTaille (liste statique de rayons) sans
-          // conséquence : un rayon inconnu qui exige une taille se voit au
-          // pré-vol, plus jamais après la suppression.
+          // LE cas des deux annonces perdues du 12/08 — il s'arrête ICI :
+          // annonce intacte, champ NOMMÉ. C'est aussi LE filet de « taille
+          // absente » depuis que la capture ne bloque plus ce motif (21/08,
+          // faux positif lunettes) : une taille réellement exigée par le
+          // formulaire et introuvable se voit au pré-vol, jamais après la
+          // suppression.
+          // 'needs_user' et NON plus 'failed' (2026-08-21) : reprenable —
+          // l'utilisateur complète dans l'app ou sur Vinted puis relance.
+          // Pépite réservée, soldée par le balayage 72 h si rien ne repart.
           const champs = (result.unfilledRequired ?? []).join(", ")
             || result?.needsUserField?.field_label || "un champ obligatoire";
-          const msg = `Republication annulée AVANT toute suppression : Vinted exige « ${champs} » et l'annonce d'origine ne porte pas cette information. ` +
-            `Ton annonce est intacte et la Pépite est rendue. Ajoute « ${champs} » à ton annonce sur Vinted, puis relance la republication.`;
-          await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
-          return { status: "failed", error: `pré-vol négatif : ${champs}` };
+          pf.champs_a_completer = (result.unfilledRequired ?? []).length
+            ? result.unfilledRequired.map((c) => String(c))
+            : [String(result?.needsUserField?.field_label ?? "champ obligatoire")];
+          pf.needs_user_source = "prevol_negatif";
+          const msg = `Republication en pause AVANT toute suppression : Vinted exige « ${champs} » et l'annonce d'origine ne porte pas cette information. ` +
+            `Ton annonce est intacte sur Vinted. Renseigne « ${champs} » depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication. ` +
+            "Ta Pépite reste réservée : elle te sera rendue automatiquement sous 72 h si la republication ne repart pas.";
+          await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+          return { status: "needsUser", error: `pré-vol négatif : ${champs}` };
         }
         // Transitoire (challenge DataDome, session, photos pas arrivées, canal
         // coupé avant la suppression) : needs_user honnête, annonce intacte —
