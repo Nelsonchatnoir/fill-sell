@@ -261,6 +261,7 @@ serve(async (req) => {
     let messageEffectif: string | null = null;
     let champsACompleter: string[] | null = null;
     let pfDuJob: Record<string, unknown> | null = null;
+    let raisonRequalif: string | null = null;
     if (status === "failed" && typeof body.error === "string") {
       const mCapture = body.error.match(/^Capture incomplète \((.+?)\) — republication/s);
       const mPrevol = body.error.match(/^Republication annulée AVANT toute suppression : Vinted exige « (.+?) »/s);
@@ -316,6 +317,64 @@ serve(async (req) => {
           }
         }
       }
+      if (statutEffectif !== status) raisonRequalif = "capture incomplète";
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // PALLIATIF « back/forward cache » (2026-08-21) — SERVEUR SEUL
+    // ══════════════════════════════════════════════════════════════════════
+    // Chrome peut suspendre la page qui tient le canal de l'extension (bfcache :
+    // navigation arrière/avant, onglet gelé) : le canal est coupé avec le
+    // message « The page keeping the extension port is moved into back/forward
+    // cache, so the message channel is closed. » — la page n'est pas cassée,
+    // elle est SUSPENDUE : échec transitoire, pas un verdict sur le job.
+    // Côté extension, TRANSIENT_JOB_ERROR_RE (background.js) ré-arme bien les
+    // canaux coupés… mais matche « message channel closed » SANS le « is » de
+    // cette formulation-là : elle passe au travers et arrive ici en failed sec
+    // (4 jobs eBay du parc 0.6.6, 20-21/08 — zéro cas en 0.6.4, la fenêtre
+    // post-clic tenue par le canal étant passée de ~8 s à ~40 s avec le re-clic
+    // gouverné par la preuve réseau). Correctif extension dans un paquet
+    // ultérieur ; en attendant, CE point de passage unique requalifie en
+    // 'pending' → le job repart au poll suivant.
+    // Signature PROPRE À CHROME, pas à une plateforme : appliquée quelle que
+    // soit la plateforme ou l'action. Les autres signatures d'échec (REAUTH
+    // VENTE, clic sans effet…) ne matchent pas et ne sont PAS touchées.
+    // ⚠️ Pépite : requalifier AVANT l'écriture évite le passage par 'failed',
+    // donc le trigger cross_post_jobs_settle_reservation ne relâche rien — la
+    // réservation reste posée et la reprise ne re-débite JAMAIS (le débit est
+    // porté par la réservation créée à la création du job, pas par tentative).
+    // Borné : au-delà de MAX_BFCACHE_REARMS reprises, failed avec un message
+    // clair (et là seulement, le trigger rend la Pépite — une fois).
+    const BFCACHE_RE = /back\/forward cache/i;
+    const MAX_BFCACHE_REARMS = 3;
+    let bfcacheRearms: number | null = null;
+    if (statutEffectif === "failed" && typeof body.error === "string" && BFCACHE_RE.test(body.error)) {
+      const { data: jrow } = await userClient
+        .from("cross_post_jobs")
+        .select("platform_fields")
+        .eq("id", jobId)
+        .maybeSingle();
+      pfDuJob = (jrow?.platform_fields ?? {}) as Record<string, unknown>;
+      const pfBody = (body.platform_fields && typeof body.platform_fields === "object"
+        ? body.platform_fields : {}) as Record<string, unknown>;
+      // max(base, body) : le body de l'extension vient de la lecture du poll,
+      // qui peut être antérieure au dernier incrément écrit ici.
+      const deja = Math.max(Number(pfDuJob.bfcache_rearms ?? 0) || 0, Number(pfBody.bfcache_rearms ?? 0) || 0);
+      if (deja < MAX_BFCACHE_REARMS) {
+        bfcacheRearms = deja + 1;
+        statutEffectif = "pending";
+        raisonRequalif = `bfcache, reprise ${bfcacheRearms}/${MAX_BFCACHE_REARMS}`;
+        messageEffectif =
+          "Onglet suspendu par Chrome (back/forward cache) pendant l'opération — " +
+          `reprise automatique au prochain passage de l'extension (tentative ${bfcacheRearms}/${MAX_BFCACHE_REARMS}).`;
+      } else {
+        // Limite atteinte : failed assumé, mais avec un message clair — le brut
+        // de Chrome ne dit rien d'actionnable. « back/forward cache » reste
+        // dans le texte, cherchable en base.
+        messageEffectif =
+          "Publication interrompue par Chrome (onglet suspendu en back/forward cache) à chaque tentative — " +
+          `${MAX_BFCACHE_REARMS} reprises automatiques épuisées. Relance depuis l'app.`;
+      }
     }
 
     const patch: Record<string, unknown> = { status: statutEffectif };
@@ -334,6 +393,15 @@ serve(async (req) => {
         ...((patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>),
         champs_a_completer: champsACompleter,
         needs_user_source: "capture_incomplete",
+      };
+    }
+
+    // Compteur de reprises bfcache : porté par platform_fields, donc relu par
+    // le poll suivant et renvoyé par l'extension — la borne tient sans colonne.
+    if (bfcacheRearms != null) {
+      patch.platform_fields = {
+        ...((patch.platform_fields ?? pfDuJob ?? {}) as Record<string, unknown>),
+        bfcache_rearms: bfcacheRearms,
       };
     }
 
@@ -361,11 +429,16 @@ serve(async (req) => {
         if (m) patch.platform_listing_id = m[1];
       }
     } else if (statutEffectif === "failed") {
-      patch.error = typeof body.error === "string" ? body.error.slice(0, 2000) : "Erreur inconnue";
+      // messageEffectif (bfcache, reprises épuisées) prime sur le brut Chrome,
+      // qui ne dit rien d'actionnable à l'utilisateur.
+      patch.error = messageEffectif
+        ?? (typeof body.error === "string" ? body.error.slice(0, 2000) : "Erreur inconnue");
     } else if (statutEffectif === "pending") {
       // Ré-armement (ex: needsUser, l'utilisateur doit compléter une info) :
       // on garde l'error explicative si fournie, sinon on nettoie.
-      patch.error = typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null;
+      // messageEffectif (requalification bfcache) prime sur le brut Chrome.
+      patch.error = messageEffectif
+        ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null);
     } else if (statutEffectif === "needs_user") {
       // Champ précis à trancher côté app : error porte le message humain
       // (affiché au survol/tap du badge « À compléter »), le détail structuré
@@ -395,7 +468,7 @@ serve(async (req) => {
     if (updateErr) return json({ error: updateErr.message }, 500);
     if (!updated) return json({ error: "Job introuvable" }, 404);
 
-    console.log(`[update-job-status] userId=${user.id} job=${jobId} → ${statutEffectif}${statutEffectif !== status ? ` (requalifié depuis ${status} : capture incomplète)` : ""}`);
+    console.log(`[update-job-status] userId=${user.id} job=${jobId} → ${statutEffectif}${raisonRequalif ? ` (requalifié depuis ${status} : ${raisonRequalif})` : ""}`);
 
     return json({ success: true, job: updated });
   } catch (err: unknown) {
