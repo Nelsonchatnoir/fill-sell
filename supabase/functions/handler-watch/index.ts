@@ -379,8 +379,18 @@ serve(async (req) => {
   //   - EXCLUSION (décision Nico) : republish étape 'deleted' — l'annonce
   //     d'origine n'existe plus, on détient sa seule copie ; un failed
   //     rembourserait mais ABANDONNERAIT la recréation. Traités à part.
+  //   - EXCLUSION garde Livres/ISBN (2026-08-22) : ces jobs n'attendent PAS un
+  //     geste de l'utilisateur — ils attendent NOTRE fix (« On te préviendra
+  //     dès que c'est réglé »), la Pépite est déjà rendue à la mise en pause
+  //     (update-job-status), et le solde 72 h écraserait le message par un
+  //     « relance quand tu veux » qui ferait payer une nouvelle Pépite pour un
+  //     job qui re-bloquerait. Reconnus par le marqueur needs_user_source OU
+  //     par le préfixe du message : les 6 jobs pausés À LA MAIN par Nico le
+  //     22/08 (même formulation) sont ainsi couverts SANS être réécrits.
   //   - Écritures en compare-and-swap (.eq status needs_user) : un job relancé
   //     entre-temps n'est jamais écrasé. Best-effort intégral.
+  const PREFIXE_GARDE_LIVRES =
+    "Republication mise en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : blocage connu sur la catégorie Livres";
   let needsUserVus = 0;
   let needsUserSoldes = 0;
   try {
@@ -392,6 +402,8 @@ serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     for (const j of ((attente ?? []) as any[])) {
       if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") continue;
+      if (j.platform_fields?.needs_user_source === "livres_isbn_garde" ||
+          String(j.error ?? "").startsWith(PREFIXE_GARDE_LIVRES)) continue;
       const pf = { ...(j.platform_fields ?? {}) };
       const erreurCourante = String(j.error ?? "").slice(0, 200);
       const vuLe = Date.parse(pf.needs_user_vu_le ?? "");

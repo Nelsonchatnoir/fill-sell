@@ -70,6 +70,75 @@ const LISTING_ID_PATTERNS: Record<string, RegExp> = {
   beebs: /\/p\/(\d+)/,
 };
 
+// ══════════════════════════════════════════════════════════════════════════
+// COUPE-CIRCUIT LIVRES / ISBN — republication Vinted (2026-08-22)
+// ══════════════════════════════════════════════════════════════════════════
+// 8 annonces DÉTRUITES du 15 au 22/08 : suppression Vinted actée, recréation
+// refusée par « Merci d'entrer un numéro ISBN valide » (bug de pose ISBN,
+// chantier séparé côté extension). Les 8 snapshots portaient catalog_id : le
+// serveur SAVAIT que c'était un livre AVANT la suppression.
+//
+// POURQUOI ICI : l'extension écrit le snapshot de republication par CETTE
+// fonction (status='processing' + platform_fields.republish_snapshot,
+// background.js ~9260) et ATTEND la réponse ; sur une réponse non-2xx, elle
+// renonce AVANT toute suppression (son catch écrit un failed de repli —
+// intercepté plus bas). C'est le seul point de passage serveur entre
+// « je sais que c'est un livre » et « je supprime » : le coupe-circuit y est
+// donc 100 % serveur, sans release CWS.
+//
+// CRITÈRE (large exprès, faux positif accepté DANS la famille Livres/médias,
+// jamais au-delà — peluches 1764, figurines 3312, vêtements : intouchés) :
+//   · catalog_id observé de la famille (ids relevés en base sur les snapshots
+//     réels — l'arbre docs/ ne porte pas les ids, on ne devine JAMAIS un id) ;
+//   · OU clé isbn non vide dans le snapshot ;
+//   · OU categoryPath de la famille — racine « Livres et médias » /
+//     « Books & Media » (compte de dew en ANGLAIS : le test du seul libellé
+//     français rate ces comptes), ou un segment exactement « Livres »/« Books »
+//     (ancien arbre « Divertissement > Livres »). Comparaison sans accents.
+//
+// RÉVERSIBLE :
+//   · kill switch : coin_config key 'republish_livres_garde' — garde ACTIVE
+//     par défaut (clé absente = active) ; poser value=0 pour la désarmer ;
+//   · jobs bloqués : marqueur platform_fields.needs_user_source =
+//     'livres_isbn_garde' → remise en pending EN UNE REQUÊTE quand le fix
+//     ISBN sera livré (l'étape reste 'captured', l'extension re-capture et
+//     repart toute seule).
+//
+// PÉPITE (consigne du 22/08) : rendue IMMÉDIATEMENT, une seule fois — ordre
+// « needs_user d'abord (CAS sur le statut = mutex), refund ensuite, marqueur
+// pepite_remboursee en dernier » : un crash au pire double-rembourse 1 Pépite,
+// jamais l'inverse (marqueur posé sans refund = utilisateur jamais remboursé,
+// même au terminal — inacceptable). Le trigger republish_refund_on_terminal
+// lit le même marqueur : aucun double crédit au solde éventuel.
+const LIVRES_CATALOG_IDS = new Set([
+  2319, // Livres > Fiction
+  2320, // Livres > Non-fiction
+  2321, // relevé par Nico le 22/08 (famille Livres)
+  2363, // Livres > Enfants et jeunes adultes > Jeunes adultes
+  2364, // Livres > Enfants et jeunes adultes > Enfants
+  5424, // Magazines
+  5425, // Livres > Bandes dessinées, mangas et romans graphiques
+  5426, // Livres > Manuels scolaires et ressources pédagogiques
+  5427, // Livres > Livres de coloriage et d'activités et revues de jeux
+  3039, // Musique > CD (même famille « Livres et médias »)
+  3045, // Vidéo > DVD (même famille)
+]);
+const sansAccents = (s: unknown) =>
+  String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+function snapshotEstLivresMedias(snap: Record<string, unknown>): boolean {
+  const cid = Number(snap.catalog_id);
+  if (Number.isFinite(cid) && LIVRES_CATALOG_IDS.has(cid)) return true;
+  if (typeof snap.isbn === "string" && snap.isbn.trim()) return true;
+  const path = Array.isArray(snap.categoryPath) ? snap.categoryPath : [];
+  if (path.length && ["livres et medias", "books & media"].includes(sansAccents(path[0]))) return true;
+  return path.some((e) => /^(livres?|books?)$/.test(sansAccents(e)));
+}
+// Message utilisateur — formulation validée par Nico le 22/08, tel quel.
+const MSG_GARDE_LIVRES =
+  "Republication mise en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
+  "Motif : blocage connu sur la catégorie Livres (numéro ISBN exigé par Vinted). " +
+  "On te préviendra dès que c'est réglé.";
+
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
 // equal to the supplied origin »). Vécu le 2026-07-13 sur check-listing-status — le
@@ -233,6 +302,119 @@ serve(async (req) => {
       if (!cur) return json({ error: "Job introuvable" }, 404);
       if (cur.action !== "delete") {
         return json({ error: "'deleted' est réservé aux jobs action='delete'" }, 400);
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // COUPE-CIRCUIT LIVRES / ISBN (2026-08-22) — voir le bloc de tête.
+    // ══════════════════════════════════════════════════════════════════════
+    // Point d'interception EXACT : l'écriture du snapshot de republication —
+    // status='processing' + republish_snapshot + republish_step='captured'
+    // (background.js ~9260, SEULE écriture processing d'un republish à cette
+    // étape, vérifié le 22/08 : le claim générique ~1539 ne concerne pas les
+    // republish, aiguillés avant vers processRepublishJob).
+    // ⚠️ JAMAIS sur l'étape 'deleted' (annonce déjà hors ligne : bloquer la
+    // recréation aggraverait — d'où les gardes step='captured' ET !deleted_at).
+    const pfIn = (body.platform_fields && typeof body.platform_fields === "object"
+      ? body.platform_fields : null) as Record<string, unknown> | null;
+    const snapIn = pfIn?.republish_snapshot as Record<string, unknown> | undefined;
+    if (
+      status === "processing" && snapIn && typeof snapIn === "object" &&
+      pfIn?.republish_step === "captured" && !pfIn?.deleted_at &&
+      snapshotEstLivresMedias(snapIn)
+    ) {
+      const { data: jLivre } = await userClient
+        .from("cross_post_jobs")
+        .select("id, action, platform, status, platform_fields")
+        .eq("id", jobId)
+        .maybeSingle();
+      if (jLivre?.action === "republish" && jLivre.platform === "vinted") {
+        // Kill switch : coin_config 'republish_livres_garde' — clé ABSENTE ou
+        // illisible = garde ACTIVE (fail-closed sur les livres) ; value=0 = off.
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        let gardeActive = true;
+        let serviceClient: ReturnType<typeof createClient> | null = null;
+        if (serviceKey) {
+          serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+          try {
+            const { data: cfg } = await serviceClient
+              .from("coin_config").select("value").eq("key", "republish_livres_garde").maybeSingle();
+            if (cfg && Number((cfg as Record<string, unknown>).value) === 0) gardeActive = false;
+          } catch { /* défaut : active */ }
+        }
+        if (gardeActive) {
+          const pfGarde: Record<string, unknown> = {
+            ...pfIn,
+            needs_user_source: "livres_isbn_garde",
+            republish_livres_bloque_le: new Date().toISOString(),
+          };
+          delete pfGarde.processing_since; // le job n'est PAS en traitement
+          // CAS sur le statut = mutex : une seule écriture gagnante par blocage
+          // (deux instances d'extension → la seconde matche 0 ligne, pas de
+          // double refund). Le snapshot RESTE dans platform_fields : c'est lui
+          // qui rend la relance auto possible au dé-blocage.
+          const { data: bloque } = await userClient
+            .from("cross_post_jobs")
+            .update({ status: "needs_user", error: MSG_GARDE_LIVRES, platform_fields: pfGarde })
+            .eq("id", jobId)
+            .in("status", ["pending", "processing"])
+            .select("id")
+            .maybeSingle();
+          if (bloque) {
+            // Pépite rendue tout de suite (consigne 22/08), une seule fois :
+            // marqueur pepite_remboursee posé APRÈS le refund réussi (un crash
+            // entre les deux double-rembourse au pire 1 Pépite ; l'ordre
+            // inverse pouvait laisser un utilisateur jamais remboursé). Le
+            // trigger republish_refund_on_terminal lit le même marqueur.
+            const pfCur = (jLivre.platform_fields ?? {}) as Record<string, unknown>;
+            const montant = Number(pfCur.pepites_debitees ?? pfIn?.pepites_debitees ?? 0) || 0;
+            const dejaRendue = String(pfCur.pepite_remboursee ?? pfIn?.pepite_remboursee ?? "") === "true";
+            if (montant > 0 && !dejaRendue && serviceClient) {
+              const { error: rErr } = await serviceClient.rpc("refund_coins", {
+                p_user_id: user.id,
+                p_amount: montant,
+                p_metadata: { source: "republish_livres_garde", job_id: jobId },
+                p_kind: "refund_republish",
+              });
+              if (rErr) {
+                console.error(`[update-job-status] garde Livres job=${jobId} : refund_coins EN ÉCHEC (${rErr.message}) — Pépite NON rendue, à réparer à la main`);
+              } else {
+                await userClient
+                  .from("cross_post_jobs")
+                  .update({ platform_fields: { ...pfGarde, pepite_remboursee: true } })
+                  .eq("id", jobId)
+                  .eq("status", "needs_user");
+              }
+            }
+          }
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — garde Livres/ISBN : écriture processing REFUSÉE, job en needs_user, annonce intacte (catalog_id=${snapIn.catalog_id ?? "?"})`);
+          // Réponse non-2xx OBLIGATOIRE : c'est elle qui fait renoncer
+          // l'extension avant toute suppression (catch de background.js ~9261).
+          return json({
+            error: "Garde Livres : republication bloquée AVANT toute suppression (blocage ISBN connu) — job mis en pause, annonce intacte.",
+          }, 409);
+        }
+      }
+    }
+
+    // Le catch de l'extension (background.js ~9261-9266) répond au 409
+    // ci-dessus par un failed de repli « impossible de sécuriser les données ».
+    // Le laisser passer écraserait le needs_user (et son platform_fields SANS
+    // le marqueur ferait re-tirer le trigger de refund → double crédit). On
+    // l'ignore, UNIQUEMENT quand le job porte bien notre garde.
+    if (
+      status === "failed" && typeof body.error === "string" &&
+      body.error.startsWith("Republication annulée : impossible de sécuriser")
+    ) {
+      const { data: jf } = await userClient
+        .from("cross_post_jobs")
+        .select("status, platform_fields")
+        .eq("id", jobId)
+        .maybeSingle();
+      const pfj = (jf?.platform_fields ?? {}) as Record<string, unknown>;
+      if (jf?.status === "needs_user" && pfj.needs_user_source === "livres_isbn_garde") {
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — garde Livres/ISBN : failed de repli IGNORÉ, needs_user conservé`);
+        return json({ error: "Garde Livres : job maintenu en needs_user (failed de repli ignoré)." }, 409);
       }
     }
 
