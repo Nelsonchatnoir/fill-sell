@@ -497,6 +497,21 @@ async function fillListingForm(job) {
     20000
   );
   if (!formReady) {
+    // ── /fpa/* = mur de VÉRIFICATION DU COMPTE VENDEUR eBay (2026-08-23,
+    // emilie.rigal03 ×2 : /fpa/upgrade servi à la place de /lstng). Ce n'est
+    // ni un categoryId refusé ni un bug FillSell : eBay exige une action sur
+    // le compte avant d'autoriser le dépôt — le message doit le dire à
+    // l'utilisateur, pas lui parler de mapping interne.
+    if (/^\/fpa(\/|$)/.test(location.pathname)) {
+      return {
+        success: false,
+        error:
+          "eBay demande une vérification de ton compte vendeur avant d'autoriser la mise en vente " +
+          "(page de vérification affichée à la place du formulaire). Ouvre ebay.fr dans Chrome, " +
+          "clique « Vendre » et suis les étapes demandées par eBay, puis relance la publication " +
+          "depuis la fiche de l'article. Rien n'a été publié.",
+      };
+    }
     return {
       success: false,
       error:
