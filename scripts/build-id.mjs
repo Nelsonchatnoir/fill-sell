@@ -434,7 +434,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (historique probant) ; sinon listed_at_guess fait foi seul — donnée
 // manquante toujours bloquante, plancher 7 jours intact. Se ré-arme seule
 // quand l'historique mûrit. Dans le zip 0.6.7 à venir.
-export const EXTENSION_LAST_COMMIT = '2026-08-23T13:48:15Z';
+// 2026-08-23T13:49:29Z (même branche) : garde des requis LIÉE à la catégorie
+// sélectionnée (cas grisette11, 23/08 : « Taille » nourrisson exigée sur une
+// miniature de camion en Jouets > Voitures — needs_user irrésoluble, le
+// formulaire n'a pas ce champ). La sonde extrait catalog_id du CORPS du POST
+// /item_upload/attributes (attrsCatalogId, fetch + XHR) ; côté formulaire,
+// readLatestAttrsConfig ne juge plus qu'avec la capture portant l'id lu dans
+// #category — config VIDE après sélection = « aucun requis », jamais
+// « reprends la précédente » (l'ancien saut des configs vides ressuscitait
+// celle de la catégorie auto-suggérée par le titre). Id lisible sans capture
+// → « non vérifiable » (gate n°0, relance re-capte) ; id illisible → repli
+// d'avant, dernière capture, vide comprise. Même racine que le motif literie
+// du point 8 (15/08), corrigé cette fois au JUGEMENT et plus seulement au
+// message. Dans le zip 0.6.7 à venir.
+export const EXTENSION_LAST_COMMIT = '2026-08-23T13:49:29Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

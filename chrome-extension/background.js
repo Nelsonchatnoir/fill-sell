@@ -3950,6 +3950,18 @@ async function installNetworkProbe(tabId, platform) {
           const m = body.match(/"price"\s*:\s*("[^"]*"|[\d.]+|null)/i);
           return m ? m[1] : null;
         };
+        // catalog_id du POST /item_upload/attributes, lu dans le CORPS de la
+        // requête (2026-08-23, garde des requis aveugle — cas grisette11) : il
+        // LIE la config des requis à SA catégorie. Sans lui, la config de la
+        // catégorie auto-suggérée par Vinted d'après le titre jugeait le
+        // formulaire d'une autre (« Taille » nourrisson exigée sur une
+        // miniature de camion). Best-effort, corps string uniquement.
+        const attrsCatalogIdOf = (url, body) => {
+          if (!/item_upload\/attributes/i.test(String(url)) || /suggestions/i.test(String(url))) return null;
+          if (typeof body !== "string") return null;
+          const m = body.match(/"catalog_id"\s*:\s*"?(\d+)/i);
+          return m ? m[1] : null;
+        };
         // ⚠️ Numéro d'annonce cherché sur le corps COMPLET, AVANT troncature
         // (2026-07-13, job 5e3ee1e2) : la réponse de publication peut être un
         // gros JSON où l'id apparaît bien au-delà des 250 chars conservés —
@@ -4079,6 +4091,7 @@ async function installNetworkProbe(tabId, platform) {
               relay({
                 url, status: res.status,
                 prix: priceOf(init?.body),
+                attrsCatalogId: attrsCatalogIdOf(url, init?.body),
                 annonceId: annonceIdOf(txt),
                 succesVinted: succesVintedOf(txt),
                 reponse: extraitSain(txt),
@@ -4102,6 +4115,7 @@ async function installNetworkProbe(tabId, platform) {
                 relay({
                   url: this.__u, status: this.status,
                   prix: priceOf(typeof body === "string" ? body : null),
+                  attrsCatalogId: attrsCatalogIdOf(this.__u, typeof body === "string" ? body : null),
                   annonceId: annonceIdOf(corps),
                   succesVinted: succesVintedOf(corps),
                   reponse: extraitSain(corps),

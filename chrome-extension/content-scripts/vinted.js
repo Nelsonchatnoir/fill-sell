@@ -96,18 +96,43 @@ function vintedFieldSelector(code) {
   return `#${c}, [data-testid="category-${c}-single-list-input"], [data-testid^="category-${c}-"]`;
 }
 
-// Dernière config attributes capturée par la sonde (celle de la catégorie
-// réellement posée sur le formulaire — la sonde relaie chaque POST attributes,
-// la plus récente gagne). [] si la sonde n'a rien vu (page pré-sonde, CSP…).
+// Config attributes de la catégorie SÉLECTIONNÉE (2026-08-23, « garde des
+// requis aveugle » — cas grisette11). L'ancienne lecture prenait la dernière
+// config NON VIDE, sans lien avec la catégorie : quand la feuille choisie a
+// une config vide (Jouets > Voitures), elle ressuscitait la config de la
+// catégorie auto-suggérée par Vinted d'après le titre (vêtements bébé) et la
+// garde pré-clic exigeait une « Taille » nourrisson sur une miniature de
+// camion — needs_user impossible à résoudre (le formulaire n'a pas ce champ).
+// Règles, dans l'ordre :
+//   1. l'id sélectionné se lit sur le formulaire (#category, valeur numérique
+//      posée par le dropdown) : la capture la plus récente portant CET id
+//      (attrsCatalogId, extrait du corps du POST par la sonde) fait foi —
+//      config VIDE comprise : vide après sélection = « aucun requis »,
+//      JAMAIS « reprends la précédente » ;
+//   2. id sélectionné lisible mais AUCUNE capture pour lui : on ne juge PAS
+//      avec la config d'une autre catégorie → null (le caller traite comme
+//      « non vérifiable », gate n°0 : needs_user + relance qui re-capte) ;
+//   3. id illisible (#category absent ou non numérique — on ne casse pas
+//      mieux qu'avant) : la capture attributes la plus récente, VIDE
+//      comprise ; null si la sonde n'a rien vu (page pré-sonde, CSP…).
 async function readLatestAttrsConfig() {
   const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
   const captures = Array.isArray(res?.captures) ? res.captures : [];
-  for (let i = captures.length - 1; i >= 0; i--) {
-    if (Array.isArray(captures[i]?.attrsConfig) && captures[i].attrsConfig.length) {
-      return captures[i].attrsConfig;
+  const brut = String(document.querySelector("#category")?.value ?? "").trim();
+  const selectedId = /^\d+$/.test(brut) ? brut : "";
+  if (selectedId) {
+    for (let i = captures.length - 1; i >= 0; i--) {
+      const c = captures[i];
+      if (Array.isArray(c?.attrsConfig) && String(c?.attrsCatalogId ?? "") === selectedId) {
+        return c.attrsConfig;
+      }
     }
+    return null;
   }
-  return [];
+  for (let i = captures.length - 1; i >= 0; i--) {
+    if (Array.isArray(captures[i]?.attrsConfig)) return captures[i].attrsConfig;
+  }
+  return null;
 }
 
 // État RÉEL des requis de la catégorie courante : croise la config attributes
@@ -119,9 +144,9 @@ async function readLatestAttrsConfig() {
 // le 2026-07-16 : aucun nouvel appel attributes à la pose de la marque) mais
 // son 400 est prouvé — règle : #model PRÉSENT dans le DOM ⇒ requis.
 async function computeVintedRequiredState() {
-  const attrs = await readLatestAttrsConfig();
+  const attrs = await readLatestAttrsConfig(); // null = rien d'attribuable à la catégorie
   const byCode = new Map();
-  for (const a of attrs) {
+  for (const a of attrs ?? []) {
     if (a?.code) byCode.set(a.code, a);
   }
   // Présence testée par le SÉLECTEUR COMPLET du champ (2026-08-15 soir) : le
@@ -174,11 +199,14 @@ async function computeVintedRequiredState() {
       });
     }
   }
-  // hadConfig : avait-on une BASE pour juger les requis ? byCode vide = la sonde
-  // n'a capté AUCUNE config /attributes pour cette catégorie (page pré-sonde,
-  // timing, CSP) → on ne peut PAS affirmer « tous les requis OK » (bug réel
-  // 2026-07-18 : « Espace de stockage » jamais vu requis → publié à blanc).
-  return { discovered, unfilled, hadConfig: byCode.size > 0 };
+  // hadConfig : avait-on une BASE pour juger les requis ? attrs null = la sonde
+  // n'a capté AUCUNE config /attributes attribuable à cette catégorie (page
+  // pré-sonde, timing, CSP, ou aucune capture portant l'id sélectionné) → on
+  // ne peut PAS affirmer « tous les requis OK » (bug réel 2026-07-18 :
+  // « Espace de stockage » jamais vu requis → publié à blanc). Une config
+  // VIDE ([]), elle, EST une base : « aucun requis » — le juger « non
+  // vérifiable » remettait la catégorie en needs_user à l'infini (23/08).
+  return { discovered, unfilled, hadConfig: attrs !== null || byCode.size > 0 };
 }
 
 // Erreurs de validation STRUCTURÉES du refus serveur (parsées par la sonde sur
