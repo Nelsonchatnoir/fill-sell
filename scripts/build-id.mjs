@@ -476,7 +476,23 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // en 8 ET 11 selon le groupe) puis conserve le pré-coché « Recommandé » de
 // Vinted en dernier repli — jamais de format inventé, échec visible si rien
 // n'est offert ni pré-coché. Dans le zip 0.6.7 à venir.
-export const EXTENSION_LAST_COMMIT = '2026-08-23T18:26:09Z';
+// 2026-08-23T18:27:07Z (même branche) : Livres Vinted, les deux jambes du
+// point 8 du chantier 23/08 (13 annonces perdues, 9 utilisateurs — LE bug
+// destructeur). RELEVÉ DOM LIVE du jour sur /items/new (Livres > Fiction) :
+// #isbn / isbn--input EXISTE après pose de la catégorie et la frappe façon
+// typeHuman COMMITE bien dans l'état React (vérifié aux fibers) — la
+// mécanique de pose est saine. Les deux vraies causes : (1) estLivre jugeait
+// sur le libellé FRANÇAIS « Livres et médias » (faux compte anglais → ISBN
+// jamais capturé → 400 Vinted après suppression) → désormais par ID DE
+// RACINE (2309) via racineDuCatalogue, anciens signaux en repli ; (2) les
+// formulaires Livres n'ont AUCUN champ Marque (relevé DOM) et une marque
+// réelle (« J'ai lu », « Disney », 5 échecs/7 j) mourait en cascade →
+// no-op + warning structuré brand_field_absent quand le champ est absent
+// (conclu après l'attente standard, comme le no-op « Sans marque »).
+// La garde Livres SERVEUR (update-job-status v21) reste active jusqu'au
+// déploiement — elle bloque proprement, rien à retirer avant. Dans le zip
+// 0.6.7 à venir.
+export const EXTENSION_LAST_COMMIT = '2026-08-23T18:27:07Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

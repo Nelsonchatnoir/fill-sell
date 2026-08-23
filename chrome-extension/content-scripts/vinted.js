@@ -700,6 +700,23 @@ async function resoudreCheminCatalogue(catalogId, diag) {
   return descendre(racines) && chemin.every(Boolean) ? chemin.slice() : null;
 }
 
+// catalog_id → id de la RACINE de l'arbre du formulaire. Indépendant de la
+// LANGUE du compte (2026-08-23) : estLivre comparait chemin[0] au libellé
+// FRANÇAIS « Livres et médias » — faux sur un compte Vinted en anglais, donc
+// ISBN jamais capturé, donc recréation refusée par Vinted APRÈS la
+// suppression (le seul bug qui détruit des annonces : 13 perdues, 9
+// utilisateurs). L'id de racine, lui, ne se traduit pas (2309 = Livres et
+// médias, relevé live du 23/08 sur /api/v2/item_upload/catalogs).
+async function racineDuCatalogue(catalogId, diag) {
+  const id = Number(catalogId);
+  if (!Number.isFinite(id)) return null;
+  const racines = await lireReferentielVinted("catalogs", "/api/v2/item_upload/catalogs", (d) =>
+    Array.isArray(d?.catalogs) && d.catalogs.length ? d.catalogs : null, diag);
+  const contient = (n) => Number(n?.id) === id || (n?.catalogs ?? []).some(contient);
+  for (const r of racines ?? []) if (contient(r)) return Number(r.id);
+  return null;
+}
+
 // size_id → libellé ("M"). MESURÉ le 2026-08-05 : /api/v2/sizes rend 404, le
 // référentiel vit sous /api/v2/size_groups (200, 74 groupes, chaque groupe
 // portant ses `sizes: [{id,title}]`). Table PLATE assumée : les 709 ids relevés
@@ -963,7 +980,13 @@ async function capturerAnnonceVinted(vintedItemId) {
   //   - clé ABSENTE du natif (payload illisible/forme changée) → on ne sait
   //     pas ce qu'on perdrait : champs_manquants, la garde arrête AVANT la
   //     suppression — le pire cas doit rester « rien ne se passe ».
-  const estLivre = String(chemin?.[0] ?? "") === "Livres et médias" ||
+  // Par ID DE RACINE d'abord (2026-08-23, indépendant de la langue du compte —
+  // cf. bandeau de racineDuCatalogue) ; les deux anciens signaux restent en
+  // repli si le référentiel est illisible à cet instant.
+  const RACINE_LIVRES_ET_MEDIAS = 2309;
+  const estLivre =
+    (await racineDuCatalogue(natif?.catalog_id, diagnostics)) === RACINE_LIVRES_ET_MEDIAS ||
+    String(chemin?.[0] ?? "") === "Livres et médias" ||
     Number(natif?.catalog_id) === 2320;
   if (estLivre) {
     const isbn = String(natif?.isbn ?? "").trim();
@@ -3265,6 +3288,22 @@ async function selectVintedBrand(marque, warnings) {
     );
     return;
   } catch (e) {
+    // ── Catégorie SANS champ Marque, valeur RÉELLE (2026-08-23) : relevé DOM
+    // du jour — les formulaires Livres et médias n'ont AUCUN champ #brand.
+    // « J'ai lu », « Disney », « Dolby »… échouaient toute la cascade
+    // (catalogue → création → repli Sans marque) et le job mourait sur un
+    // champ que le formulaire ne PROPOSE pas (5 échecs sur 7 jours). Même
+    // règle et même prudence que le no-op « Sans marque » plus haut :
+    // l'absence n'est conclue qu'APRÈS l'échec de l'ouverture standard
+    // (attente des champs conditionnels comprise), jamais à froid.
+    if (!document.querySelector(trigger)) {
+      const message =
+        `marque: "${marque}" non posée — cette catégorie Vinted n'a pas de champ Marque ` +
+        "(Livres et médias notamment) ; le formulaire n'en veut pas, rien à corriger";
+      console.log(`[vinted] ${message}`);
+      warnings.push({ code: "brand_field_absent", marque, message });
+      return;
+    }
     console.warn(`[vinted] marque "${marque}" absente du catalogue (${e.message}) — repli : création de la marque`);
   }
   try {
