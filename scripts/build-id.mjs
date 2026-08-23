@@ -415,7 +415,17 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // update-job-status (main) requalifie côté serveur les failed « Capture
 // incomplète » du parc en needs_user. EXTENSION_MIN_BUILD inchangé.
 // TOUJOURS SANS F1 (1fc9beb).
-export const EXTENSION_LAST_COMMIT = '2026-08-21T09:36:16Z';
+// 2026-08-23T13:47:21Z (même branche) : DEADLOCK de la republication
+// automatique — autoCaptureEtRepublier appelait captureVintedItem (version
+// VERROUILLÉE) depuis l'intérieur du poll, qui détient déjà withJobFlowLock ;
+// le verrou étant une chaîne de promesses non réentrante, la capture attendait
+// la fin du poll et le poll attendait la capture. Auto-blocage silencieux à
+// chaque cycle : É6 n'a JAMAIS créé un seul job (0 republish_source='auto'
+// sur tout le parc depuis le 05/08, constat du 23/08 — cas josephinecerni,
+// Pro payé pour cette fonction). Passage à captureVintedItemUnlocked, la
+// même version sans verrou que processRepublishJob utilise déjà — c'est le
+// piège que son bandeau documentait mot pour mot. Dans le zip 0.6.7 à venir.
+export const EXTENSION_LAST_COMMIT = '2026-08-23T13:47:21Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

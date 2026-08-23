@@ -9699,8 +9699,13 @@ async function maybeAutoRepublish(session) {
 // Capture → photos re-hébergées → persistance → RPC (p_source='auto').
 // Miroir volontaire de capturerEtPersisterArticleVinted (site) : l'auto n'a
 // pas d'onglet fillsell.app ouvert, tout passe par le background.
+// ⚠️ Version SANS VERROU impérative : l'appelant (maybeAutoRepublish) tourne
+// déjà sous withJobFlowLock, via le poll. La version verrouillée se mettait en
+// file DERRIÈRE le poll lui-même — blocage mutuel silencieux, et AUCUN job
+// auto jamais créé sur tout le parc (constat du 23/08). Même contrainte que
+// processRepublishJob (cf. bandeau de captureVintedItemUnlocked).
 async function autoCaptureEtRepublier(cand, token, userId) {
-  const cap = await captureVintedItem(cand.vinted_item_id);
+  const cap = await captureVintedItemUnlocked(cand.vinted_item_id);
   if (!cap?.success) return false;
   const manquants = (cap.champs_manquants ?? []).filter((m) => !m.startsWith("photos_rehebergees"));
   let photos = [];
