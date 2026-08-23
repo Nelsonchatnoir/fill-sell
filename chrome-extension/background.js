@@ -9581,7 +9581,9 @@ async function processRepublishJob(job, accessToken) {
 //     la plus ancienne ≈ date de mise en ligne, au jour près, et É4 la
 //     rafraîchit à chaque republication) ;
 //   · aucun republish FillSell vivant ni abouti < 24 h sur l'article ;
-//   · quand des snapshots existent : observé par la sync depuis ≥ age_jours ;
+//   · quand l'HISTORIQUE DE SYNC DU COMPTE est probant (premier relevé du
+//     compte ≥ age_jours — sinon la garde était insatisfiable, cf. 23/08) :
+//     article observé par la sync depuis ≥ age_jours ;
 //   · donnée manquante = PAS de republication auto. Jamais.
 // UN article par cycle de poll maximum — le rythme humain vient de là, plus
 // la machine à étapes elle-même (espacement 2 min, attente 2-5 min).
@@ -9664,6 +9666,28 @@ async function maybeAutoRepublish(session) {
       token, { headers: { Prefer: "return=representation" } },
     );
 
+    // ── Garde snapshot rendue SATISFAISABLE (2026-08-23, option a) ──────────
+    // Les relevés (vinted_listing_snapshots) n'existent que depuis le 03/08 :
+    // exiger, article par article, un premier relevé vieux de ≥ age_jours
+    // était IMPOSSIBLE à satisfaire pendant les age_jours premiers jours
+    // d'historique — chaque candidat était sauté, sans un log. Décision : si
+    // le premier relevé du COMPTE (tous articles) est plus jeune que
+    // age_jours, l'historique de sync n'est pas PROBANT → la garde par
+    // article est muette et listed_at_guess (date d'upload de la photo la
+    // plus ancienne) fait foi seul — c'est déjà lui qui filtre les candidats
+    // ci-dessus, donnée manquante toujours bloquante. Dès que l'historique du
+    // compte atteint age_jours, la garde par article se ré-arme telle quelle.
+    // Le plancher de 7 jours d'age_jours, lui, ne bouge pas (anti-ban).
+    const premierReleveCompte = await restRequest(
+      `vinted_listing_snapshots?user_id=eq.${userId}` +
+      `&select=captured_on&order=captured_on.asc&limit=1`,
+      token, { headers: { Prefer: "return=representation" } },
+    ).catch(() => null);
+    const historiqueProbant = Boolean(
+      premierReleveCompte?.length &&
+      Date.parse(premierReleveCompte[0].captured_on) <= Date.now() - ageJours * 86_400_000,
+    );
+
     for (const c of cands ?? []) {
       // Republish vivant, ou abouti < 24 h ? Le RPC re-garde de toute façon —
       // ce pré-filtre évite juste de griller le tour du cycle sur un refus.
@@ -9679,13 +9703,16 @@ async function maybeAutoRepublish(session) {
         || (j.published_at && Date.now() - Date.parse(j.published_at) < 24 * 3_600_000))) continue;
 
       // Second signal : observé par la sync depuis ≥ age_jours quand des
-      // snapshots existent (le premier relevé fait foi).
-      const snap = await restRequest(
-        `vinted_listing_snapshots?user_id=eq.${userId}&vinted_item_id=eq.${c.vinted_item_id}` +
-        `&select=captured_on&order=captured_on.asc&limit=1`,
-        token, { headers: { Prefer: "return=representation" } },
-      );
-      if (snap?.length && Date.parse(snap[0].captured_on) > Date.now() - ageJours * 86_400_000) continue;
+      // snapshots existent (le premier relevé fait foi) — appliqué SEULEMENT
+      // quand l'historique du compte est probant (cf. bandeau ci-dessus).
+      if (historiqueProbant) {
+        const snap = await restRequest(
+          `vinted_listing_snapshots?user_id=eq.${userId}&vinted_item_id=eq.${c.vinted_item_id}` +
+          `&select=captured_on&order=captured_on.asc&limit=1`,
+          token, { headers: { Prefer: "return=representation" } },
+        );
+        if (snap?.length && Date.parse(snap[0].captured_on) > Date.now() - ageJours * 86_400_000) continue;
+      }
 
       const ok = await autoCaptureEtRepublier(c, token, userId);
       console.log(`[republish-auto] article ${c.vinted_item_id} : ${ok ? "mis en file" : "capture/RPC refusés — retentera un autre cycle"}`);

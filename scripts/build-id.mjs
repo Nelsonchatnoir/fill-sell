@@ -425,7 +425,16 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Pro payé pour cette fonction). Passage à captureVintedItemUnlocked, la
 // même version sans verrou que processRepublishJob utilise déjà — c'est le
 // piège que son bandeau documentait mot pour mot. Dans le zip 0.6.7 à venir.
-export const EXTENSION_LAST_COMMIT = '2026-08-23T13:47:21Z';
+// 2026-08-23T13:48:15Z (même branche) : garde snapshot de É6 rendue
+// SATISFAISABLE (option a, GO Nico 23/08). Elle exigeait, par article, un
+// premier relevé vieux de ≥ age_jours alors que la table des relevés n'existe
+// que depuis le 03/08 : 100 % des candidats sautés, pour tout le monde, sans
+// un log (2e verrou du « 0 job auto » avec le deadlock ci-dessus). Désormais
+// la garde ne s'applique que si le premier relevé du COMPTE a ≥ age_jours
+// (historique probant) ; sinon listed_at_guess fait foi seul — donnée
+// manquante toujours bloquante, plancher 7 jours intact. Se ré-arme seule
+// quand l'historique mûrit. Dans le zip 0.6.7 à venir.
+export const EXTENSION_LAST_COMMIT = '2026-08-23T13:48:15Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
