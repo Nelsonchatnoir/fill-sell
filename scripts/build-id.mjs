@@ -454,7 +454,18 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // demande une vérification du compte et quoi faire sur ebay.fr. Restriction
 // côté eBay, rien à corriger chez nous — 2 occurrences sur 91 tentatives
 // 7 jours. Dans le zip 0.6.7 à venir.
-export const EXTENSION_LAST_COMMIT = '2026-08-23T18:23:45Z';
+// 2026-08-23T18:24:53Z (même branche) : Univers Leboncoin, correctif CIBLÉ
+// (1 cas sur 103 publications LBC en 7 jours — maillot adidas Junior de
+// Bilel, job b2a1870f). Le contrôle « Univers » de Mode > Vêtements (clé
+// clothing_type, options premier niveau Femme/Maternité/Homme/Enfant
+// relevées en base sur le needsUserField du job) ne connaît ni « Garçon »
+// ni « Fille » : fillUnivers tente désormais l'équivalent « Enfant » après
+// la valeur du job. Warnings VÉRIDIQUES (« remplacé » seulement après un
+// clic réussi ; sinon « pré-rempli laissé en place ») et needsUserField
+// routé par LIBELLÉ (« Univers » → platform_fields.univers) au lieu de la
+// règle par suffixe _type$ qui envoyait la saisie vers lbcProduit, jamais
+// relu par fillUnivers. Dans le zip 0.6.7 à venir.
+export const EXTENSION_LAST_COMMIT = '2026-08-23T18:24:53Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

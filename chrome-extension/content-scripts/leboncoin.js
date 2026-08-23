@@ -1257,11 +1257,21 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       produit: { field_key: "produit", field_label: "Produit", target: { root: null, key: "lbcProduit" } },
       quantite: { field_key: "quantite", field_label: "Quantité", target: { root: null, key: "quantite" } },
     };
+    // ── Routage par LIBELLÉ d'abord (2026-08-23, job b2a1870f de Bilel) : le
+    // critère « Univers » de Mode > Vêtements porte la clé sémantique
+    // clothing_type — la règle par suffixe (_type$) routait la saisie vers
+    // lbcProduit, un champ que fillUnivers ne relit jamais : l'utilisateur
+    // répondait, le job rebouclait. Le libellé affiché par LBC est la vérité
+    // de CE que le champ demande ; la clé n'est qu'un identifiant technique.
+    const cibleBloquee = (f) =>
+      normalizeFuzzy(f.label ?? "") === "univers"
+        ? { root: null, key: "univers" }
+        : lbcTargetFor(f.key);
     const needsUserField = blockedFields.length
       ? {
           field_key: blockedFields[0].key,
           field_label: blockedFields[0].label,
-          target: lbcTargetFor(blockedFields[0].key),
+          target: cibleBloquee(blockedFields[0]),
           // Champ FERMÉ déclaré + liste relevée (2026-08-13) : même contrat
           // que Beebs (26/07). Tous les critères énumérés sont des combobox
           // (findCriterionInput ne matche que input[role=combobox]) — sans
@@ -1607,45 +1617,69 @@ async function fillUnivers(rawValue, warnings) {
     .find((el) => normalizeFuzzy(el.textContent) === "univers"
       || /^univers( de |[\s:*])/.test(normalizeFuzzy(el.textContent)));
   if (title) {
+    // ── Équivalence ENFANT (2026-08-23, maillot Junior de Bilel) : le contrôle
+    // « Univers » du rayon Mode > Vêtements (clé sémantique clothing_type,
+    // relevée en base sur le needsUserField du job b2a1870f) n'offre au
+    // premier niveau QUE [Femme, Maternité, Homme, Enfant]. Un job vêtement
+    // enfant porte « Garçon »/« Fille » (ou « Bébé ») : aucune option ne
+    // matchait, rien n'était cliqué, et LBC bloquait sur « Veuillez choisir
+    // un univers de vêtement ». On tente la valeur du job D'ABORD (les
+    // catégories qui offrent Garçon/Fille restent servies telles quelles),
+    // puis son équivalent « Enfant ».
+    const equivalent = /^(gar[cç]on|fille|b[eé]b[eé]|junior)/i.test(String(rawValue ?? "").trim())
+      ? "Enfant" : null;
     let scope = title.parentElement;
-    let prefilledNoted = false;
+    let prefilled = null;
     for (let i = 0; i < 4 && scope; i++, scope = scope.parentElement) {
-      // Pré-sélectionné par LBC (déduction IA) → même règle que skipIfPrefilled
-      // sur le combobox : conservé seulement si ça matche la valeur du job,
-      // sinon on écrase via la cascade ci-dessous. Warning dans les deux cas.
-      // (Noté une seule fois : les scopes parents recontiennent le même coché.)
+      // Pré-sélectionné par LBC (déduction IA) : conservé si ça matche la
+      // valeur du job. (Noté une seule fois : les scopes parents
+      // recontiennent le même coché.)
       const checked = scope.querySelector('input:checked, [aria-checked="true"], [aria-selected="true"]');
-      if (checked && !prefilledNoted) {
-        prefilledNoted = true;
+      if (checked && prefilled === null) {
         const checkedText = ((checked.closest("label") || checked).textContent
           || checked.getAttribute("aria-label") || "").trim();
+        prefilled = checkedText || "(coché sans libellé)";
         if (prefilledMatchesTarget(checkedText, rawValue)) {
           const note = `univers: pré-rempli LBC "${checkedText}" conservé (matche "${rawValue}")`;
           console.log(`[leboncoin] ${note}`);
           warnings.push(note);
           return true;
         }
-        const note = `univers: pré-rempli LBC "${checkedText}" remplacé par "${rawValue}"`;
-        console.warn(`[leboncoin] ⚠️ ${note}`);
-        warnings.push(note);
-        // Pas de return : la cascade ci-dessous pose la valeur du job.
+        // ⚠️ Le warning « remplacé » ne part QU'APRÈS un clic réussi (le
+        // 23/08, il annonçait un remplacement que la cascade n'avait jamais
+        // fait — un warning qui ment est pire qu'aucun warning).
       }
-      const match = findOptionCascade(
-        scope,
-        'input[type="radio"], [role="radio"], [role="option"], button, label, li',
-        rawValue
-      );
-      if (match) {
-        await humanPause(); // temps de "lecture" des options avant le clic
-        realClick(match.el);
-        await humanPause();
-        if (match.stage !== "exact") {
-          const note = `univers: "${rawValue}" → option LBC "${match.label}" (match ${match.stage})`;
-          console.warn(`[leboncoin] ≈ ${note}`);
-          warnings.push(note);
+      for (const cible of [rawValue, equivalent].filter(Boolean)) {
+        const match = findOptionCascade(
+          scope,
+          'input[type="radio"], [role="radio"], [role="option"], button, label, li',
+          cible
+        );
+        if (match) {
+          await humanPause(); // temps de "lecture" des options avant le clic
+          realClick(match.el);
+          await humanPause();
+          if (prefilled) {
+            const note = `univers: pré-rempli LBC "${prefilled}" remplacé par "${match.label}"`;
+            console.warn(`[leboncoin] ⚠️ ${note}`);
+            warnings.push(note);
+          }
+          if (cible !== rawValue || match.stage !== "exact") {
+            const note = `univers: "${rawValue}" → option LBC "${match.label}"` +
+              `${cible !== rawValue ? " (équivalence enfant)" : ` (match ${match.stage})`}`;
+            console.warn(`[leboncoin] ≈ ${note}`);
+            warnings.push(note);
+          }
+          return true;
         }
-        return true;
       }
+    }
+    if (prefilled !== null) {
+      const note = `univers: aucune option ne correspond à "${rawValue}"` +
+        `${equivalent ? ` ni à "${equivalent}"` : ""} — pré-rempli LBC "${prefilled}" laissé en place`;
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+      return false;
     }
   }
 
