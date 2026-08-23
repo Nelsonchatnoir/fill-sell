@@ -197,6 +197,18 @@ export const VINTED_SELECTORS = {
         params: ["n"],
         note: "n = package_size_id (1..3 Mode ; 8..10 relevés sur Vases, 11..14 sur Nacelles — relevé DOM 16/08)",
       },
+      {
+        type: "template",
+        value: "#package_type_selector_{n}",
+        params: ["n"],
+        note: "id du MÊME radio — relevé DOM 23/08 (Livres 1..3, Aspirateurs 11..14 : les deux attributs coexistent)",
+      },
+      {
+        type: "template",
+        value: '[data-testid="{n}-package-size--cell"] input[type="radio"]',
+        params: ["n"],
+        note: "radio DANS la cellule — testid de cellule relevé DOM 23/08, survivrait à un renommage du testid du radio",
+      },
     ],
     source: "vinted.js:1955",
   },

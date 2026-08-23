@@ -3875,12 +3875,51 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
   const n = (Number.isFinite(idCapture) && idCapture > 0 && VINTED_PACKAGE_SIZES_PAR_ID[idCapture])
     ? idCapture
     : Number(Object.entries(VINTED_PACKAGE_SIZES_PAR_ID).find(([, l]) => l === size)?.[0]) || 1;
-  // publish.package_type (migré au registre) : maillon template {n}, n = 1..3.
-  const radio = await waitForKey("publish.package_type", { params: { n } });
+  // publish.package_type (migré au registre) : maillon template {n}.
+  let radio;
+  try {
+    radio = await waitForKey("publish.package_type", { params: { n } });
+  } catch (e) {
+    // ── L'id demandé n'est PAS OFFERT par cette catégorie (2026-08-23,
+    // aspirateur robot de lohanobert : publish « Petit » → n=1 alors que la
+    // grille du formulaire est au POIDS, ids 11..14). Ce n'était pas un
+    // sélecteur mort — relevé DOM du jour : les radios présents portent bien
+    // package_type_selector_<id> — c'est le {n} qui n'existe pas dans CE
+    // groupe de catégories. On lit alors ce que le formulaire OFFRE :
+    //   1. même LIBELLÉ sous un autre id (« 5 kg » vit en 8 ET en 11 selon
+    //      le groupe) → on clique cet id : même format, jamais inventé ;
+    //   2. sinon, le choix « Recommandé » PRÉ-COCHÉ par Vinted est conservé
+    //      tel quel (warning) — c'est le défaut de la plateforme, pas une
+    //      invention de notre part ;
+    //   3. ni offert, ni pré-coché → l'échec d'origine reste (visible).
+    const offerts = [...document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]')];
+    if (!offerts.length) throw e;
+    const libelleVoulu = VINTED_PACKAGE_SIZES_PAR_ID[n] ?? String(size);
+    const titreDe = (r) => (r.closest('[id^="package-size-"]')
+      ?.querySelector('[data-testid$="--cell--title"]')?.textContent ?? "")
+      .replace(/Recommandé/gi, "").trim();
+    const parLibelle = offerts.find((r) => titreDe(r) === libelleVoulu);
+    if (parLibelle) {
+      radio = parLibelle;
+      console.warn(
+        `[vinted] ≈ format de colis: id ${n} absent de cette catégorie — « ${libelleVoulu} » posé via ` +
+        `l'id ${radio.id.replace("package_type_selector_", "")} offert par le formulaire`
+      );
+    } else {
+      const precoche = offerts.find((r) => r.checked);
+      if (!precoche) throw e;
+      console.warn(
+        `[vinted] ⚠️ format de colis: ni l'id ${n} ni le libellé « ${libelleVoulu} » ne sont offerts ici — ` +
+        `choix Vinted pré-coché « ${titreDe(precoche) || "recommandé"} » conservé`
+      );
+      return;
+    }
+  }
   if (!radio.checked) {
     simulateFullClick(radio);
     await humanPause();
   }
+  const nEffectif = Number(String(radio.id ?? "").replace("package_type_selector_", "")) || n;
   // Vérification : le format retenu doit être celui demandé (sinon on publierait
   // avec des frais de port faux, invisible jusqu'à la première vente).
   // Relecture DÉLIBÉRÉE du DOM (le nœud peut avoir été remonté par React) — un
@@ -3889,7 +3928,7 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
   const S = await sel();
   let after = null;
   try {
-    after = S.resolveSelector("vinted", "publish.package_type", { params: { n }, reportFailure: false }).el;
+    after = S.resolveSelector("vinted", "publish.package_type", { params: { n: nEffectif }, reportFailure: false }).el;
   } catch (e) {
     if (e?.name !== "SelectorResolutionError") throw e;
   }

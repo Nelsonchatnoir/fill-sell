@@ -465,7 +465,18 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // routé par LIBELLÉ (« Univers » → platform_fields.univers) au lieu de la
 // règle par suffixe _type$ qui envoyait la saisie vers lbcProduit, jamais
 // relu par fillUnivers. Dans le zip 0.6.7 à venir.
-export const EXTENSION_LAST_COMMIT = '2026-08-23T18:24:53Z';
+// 2026-08-23T18:26:09Z (même branche) : format de colis Vinted — le
+// sélecteur n'était pas mort, c'est le {n} demandé qui n'existe pas sur les
+// grilles AU POIDS (relevé DOM 23/08 : Aspirateurs = ids 11..14 avec les
+// testids attendus ; aspirateur robot de lohanobert = publish « Petit » →
+// n=1 introuvable → « aucun des 1 maillon(s) n'a résolu »). Deux gestes :
+// maillons de repli au registre (#package_type_selector_{n}, radio dans la
+// cellule {n}-package-size--cell), et selectPackageSize qui, à id non
+// offert, matche par LIBELLÉ exact parmi les radios présents (« 5 kg » vit
+// en 8 ET 11 selon le groupe) puis conserve le pré-coché « Recommandé » de
+// Vinted en dernier repli — jamais de format inventé, échec visible si rien
+// n'est offert ni pré-coché. Dans le zip 0.6.7 à venir.
+export const EXTENSION_LAST_COMMIT = '2026-08-23T18:26:09Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
