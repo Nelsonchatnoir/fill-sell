@@ -492,7 +492,25 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // La garde Livres SERVEUR (update-job-status v21) reste active jusqu'au
 // déploiement — elle bloque proprement, rien à retirer avant. Dans le zip
 // 0.6.7 à venir.
-export const EXTENSION_LAST_COMMIT = '2026-08-23T18:27:07Z';
+// 2026-08-23T18:47:58Z (même branche, GO 9b) : PAGINATION de « Mes
+// annonces » Leboncoin dans le recovery + la sonde de modération. La page
+// n'affiche que ~30 annonces : sur les comptes au-dessus (jocaille 66,
+// bilel 41 — les DEUX seuls touchés, corrélation parfaite), les annonces
+// des pages suivantes étaient invisibles → URL jamais récupérée → cron 48 h
+// requalifiait en échec + remboursait des annonces EN LIGNE (3 jobs bilel
+// 20/08, moderation_probe « liste_partielle_30_sur_41 »). Désormais :
+// marche de ?page=N (borné 6) tant que le cumul de liens DISTINCTS ne
+// couvre pas « En ligne (N) » et que la page apporte du neuf ; les titres
+// sont cherchés sur CHAQUE page ; le verdict de sonde est rendu APRÈS la
+// dernière page sur la couverture cumulée — « absent » exige la liste
+// entière réellement vue, tout le reste (pagination interrompue, schéma
+// ?page inopérant, DataDome, session) reste NON CONCLUANT, compteur
+// inchangé. Échec fermé : si ?page n'est pas le bon schéma, la page 2 ne
+// rapporte rien de neuf → arrêt → comportement d'avant (aucune
+// conclusion), jamais un « absent » sur du partiel. DataDome non touché.
+// Le cas Romain (voirememe, 6 annonces, 1 non confirmée) N'EST PAS couvert
+// par ce correctif : autre cause, dossier séparé. Dans le zip 0.6.7.
+export const EXTENSION_LAST_COMMIT = '2026-08-23T18:47:58Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

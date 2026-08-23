@@ -7978,19 +7978,23 @@ async function lbcMesAnnoncesEtat(tabId) {
         const m = texte.match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
         if (!m) return { vue: false, motif: "compteur_en_ligne_absent", enLigne: null, visibles: 0 };
         const enLigne = parseInt(m[1], 10);
-        // 3. Annonces DISTINCTES réellement visibles sur cette page.
+        // 3. Annonces DISTINCTES réellement visibles sur cette page. Les LIENS
+        //    eux-mêmes remontent au caller (2026-08-23, GO 9b) : c'est lui qui
+        //    cumule les pages et juge la couverture — dédupliqué ici, borné.
         const re = new RegExp(patternSource, "i");
-        const visibles = new Set(
+        const liens = [...new Set(
           Array.from(document.querySelectorAll("a[href]"))
             .map((a) => (a.href.match(re) || [])[0])
             .filter(Boolean)
-        ).size;
+        )].slice(0, 200);
+        const visibles = liens.length;
         // 4. ⚠️ GARDE PAGINATION. Si le compte a plus d'annonces que la page
         //    n'en montre, l'annonce cherchée peut être en page 2 : son absence
-        //    ICI ne prouve rien. On ne conclut que si toute la liste est sous
-        //    les yeux. (Sur les comptes observés, 4 annonces sur une page.)
-        if (visibles < enLigne) return { vue: false, motif: `liste_partielle_${visibles}_sur_${enLigne}`, enLigne, visibles };
-        return { vue: true, motif: "ok", enLigne, visibles };
+        //    ICI ne prouve rien. Le caller (recoverMissingListingUrls) marche
+        //    les pages ?page=N et ne conclut que sur la COUVERTURE CUMULÉE —
+        //    cette page-ci, seule, reste non concluante.
+        if (visibles < enLigne) return { vue: false, motif: `liste_partielle_${visibles}_sur_${enLigne}`, enLigne, visibles, liens };
+        return { vue: true, motif: "ok", enLigne, visibles, liens };
       },
       args: [LISTING_URL_PATTERNS.leboncoin.source],
     });
@@ -8198,7 +8202,28 @@ async function recoverMissingListingUrls(session) {
       }
       remaining = sansId;
     }
-    for (const pageUrl of LISTING_URL_RECOVERY_PAGES[platform] ?? []) {
+    // ── Pagination « Mes annonces » Leboncoin (2026-08-23, GO 9b) ────────────
+    // « Mes annonces » n'affiche que ~30 annonces par page : sur les comptes
+    // au-dessus (jocaille 66, bilel 41), les annonces des pages suivantes
+    // étaient INVISIBLES — le recovery ne retrouvait jamais leur URL, la sonde
+    // restait « liste_partielle » à chaque passage, et le cron 48 h finissait
+    // par requalifier en échec + rembourser des annonces EN LIGNE (3 jobs de
+    // bilel le 20/08, preuve moderation_probe « liste_partielle_30_sur_41 »).
+    // La liste des pages devient une FILE : tant que le cumul de liens
+    // distincts ne couvre pas le compteur « En ligne (N) » ET que la dernière
+    // page a apporté du NEUF, on empile ?page=N+1 (borné). Si ?page=N n'est
+    // pas le schéma réel de pagination, la page suivante ne rapporte rien de
+    // neuf → arrêt → couverture incomplète → NON CONCLUANT, comme avant : le
+    // pire cas reste « on ne conclut rien », jamais « absent » sur du partiel.
+    const estLbc = platform === "leboncoin";
+    const LBC_PAGINATION_MAX_PAGES = 6;
+    const pagesAVisiter = [...(LISTING_URL_RECOVERY_PAGES[platform] ?? [])];
+    const liensLbcVus = new Set();
+    let lbcEnLigne = null;
+    let lbcDernierMotif = null;
+    let lbcPagesRendues = 0;
+    for (let pi = 0; pi < pagesAVisiter.length; pi++) {
+      const pageUrl = pagesAVisiter[pi];
       if (!remaining.length) break;
       let tabId;
       try {
@@ -8213,12 +8238,25 @@ async function recoverMissingListingUrls(session) {
       await sleep(randInt(1500, 3000)); // rendu de la liste
       // Sonde de modération : état de la page relevé UNE FOIS par visite, avant
       // de chercher les titres. Leboncoin uniquement (cf. bloc au-dessus).
-      const etatPage = platform === "leboncoin" ? await lbcMesAnnoncesEtat(tabId) : null;
+      // ⚠️ Le verdict de la sonde ne part PLUS ici : il est rendu APRÈS la
+      // dernière page LBC, sur la couverture CUMULÉE (cf. bloc post-boucle).
+      const etatPage = estLbc ? await lbcMesAnnoncesEtat(tabId) : null;
       if (etatPage) {
+        lbcDernierMotif = etatPage.motif;
+        if (Number.isFinite(etatPage.enLigne)) lbcEnLigne = etatPage.enLigne;
+        const avant = liensLbcVus.size;
+        for (const lien of etatPage.liens ?? []) liensLbcVus.add(lien);
+        const nouveaux = liensLbcVus.size - avant;
+        if (etatPage.enLigne != null || etatPage.visibles > 0) lbcPagesRendues++;
         console.log(
-          `[background] sonde LBC « Mes annonces » : ${etatPage.vue ? "PAGE VUE" : "page non concluante"} ` +
-          `(${etatPage.motif}) — en ligne ${etatPage.enLigne ?? "?"}, visibles ${etatPage.visibles}`
+          `[background] sonde LBC « Mes annonces » p.${pi + 1} : ${etatPage.motif} — ` +
+          `en ligne ${etatPage.enLigne ?? "?"}, visibles ${etatPage.visibles}, ` +
+          `cumul ${liensLbcVus.size} (+${nouveaux})`
         );
+        if (lbcEnLigne != null && liensLbcVus.size < lbcEnLigne && nouveaux > 0
+            && pagesAVisiter.length < LBC_PAGINATION_MAX_PAGES) {
+          pagesAVisiter.push(`${LISTING_URL_RECOVERY_PAGES.leboncoin[0]}?page=${pagesAVisiter.length + 1}`);
+        }
       }
       const stillMissing = [];
       let diagPage = null;
@@ -8253,7 +8291,8 @@ async function recoverMissingListingUrls(session) {
         } else {
           stillMissing.push(job);
           diagPage = diag;
-          if (etatPage) await lbcSondeModeration(session, job, etatPage);
+          // LBC : plus de verdict de sonde par PAGE — il est rendu après la
+          // dernière page, sur la couverture cumulée (GO 9b, 2026-08-23).
         }
       }
       // Échec sur cette page : le diagnostic NOMME la cause au lieu de laisser
@@ -8268,6 +8307,31 @@ async function recoverMissingListingUrls(session) {
         );
       }
       remaining = stillMissing;
+    }
+    // ── Verdict de sonde LBC sur la COUVERTURE CUMULÉE (GO 9b, 2026-08-23) ──
+    // « Absent » ne se conclut qu'après avoir RÉELLEMENT vu toute la liste :
+    // cumul de liens distincts ≥ compteur « En ligne (N) », au moins une page
+    // rendue. Tout le reste (pagination interrompue, schéma ?page inopérant,
+    // DataDome, session) = NON CONCLUANT — compteur de misses inchangé,
+    // jamais une requalification en échec sur du partiel.
+    if (estLbc && remaining.length) {
+      const cumul = liensLbcVus.size;
+      const couverte = lbcPagesRendues > 0 && lbcEnLigne != null && cumul >= lbcEnLigne;
+      const etatCumul = couverte
+        ? { vue: true, motif: lbcPagesRendues > 1 ? `ok_${lbcPagesRendues}_pages` : "ok", enLigne: lbcEnLigne, visibles: cumul }
+        : {
+            vue: false,
+            motif: `couverture_incomplete_${cumul}_sur_${lbcEnLigne ?? "?"}` +
+              (lbcDernierMotif && lbcDernierMotif !== "ok" ? `_(${lbcDernierMotif})` : ""),
+            enLigne: lbcEnLigne, visibles: cumul,
+          };
+      console.log(
+        `[background] sonde LBC : verdict cumulé ${etatCumul.vue ? "LISTE COUVERTE" : "non concluant"} ` +
+        `(${etatCumul.motif}) pour ${remaining.length} job(s) sans URL`
+      );
+      for (const job of remaining) {
+        await lbcSondeModeration(session, job, etatCumul);
+      }
     }
     if (remaining.length) {
       console.log(
