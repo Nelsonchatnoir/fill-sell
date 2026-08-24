@@ -72,6 +72,7 @@ const LISTING_ID_PATTERNS: Record<string, RegExp> = {
 
 // ══════════════════════════════════════════════════════════════════════════
 // COUPE-CIRCUIT LIVRES / ISBN — republication Vinted (2026-08-22)
+// RESSERRÉ LE 2026-08-24 : LIVRES SEULEMENT, PLUS LA FAMILLE « médias ».
 // ══════════════════════════════════════════════════════════════════════════
 // 8 annonces DÉTRUITES du 15 au 22/08 : suppression Vinted actée, recréation
 // refusée par « Merci d'entrer un numéro ISBN valide » (bug de pose ISBN,
@@ -86,15 +87,23 @@ const LISTING_ID_PATTERNS: Record<string, RegExp> = {
 // « je sais que c'est un livre » et « je supprime » : le coupe-circuit y est
 // donc 100 % serveur, sans release CWS.
 //
-// CRITÈRE (large exprès, faux positif accepté DANS la famille Livres/médias,
-// jamais au-delà — peluches 1764, figurines 3312, vêtements : intouchés) :
-//   · catalog_id observé de la famille (ids relevés en base sur les snapshots
-//     réels — l'arbre docs/ ne porte pas les ids, on ne devine JAMAIS un id) ;
-//   · OU clé isbn non vide dans le snapshot ;
-//   · OU categoryPath de la famille — racine « Livres et médias » /
-//     « Books & Media » (compte de dew en ANGLAIS : le test du seul libellé
-//     français rate ces comptes), ou un segment exactement « Livres »/« Books »
-//     (ancien arbre « Divertissement > Livres »). Comparaison sans accents.
+// ⚠️ RESSERRAGE DU 24/08 (constat Prudence Fresnel, 13 republications bloquées
+// dont 12 DVD) : le critère d'origine était « large exprès » et couvrait TOUTE
+// la famille « Livres et médias » — CD (3039) et DVD (3045) inclus, plus la
+// racine de famille seule. Or **UN DVD N'A PAS D'ISBN** : Vinted ne le réclame
+// jamais sur ces catégories, la recréation n'a aucune raison d'échouer, et le
+// blocage n'empêchait donc RIEN tout en paralysant des stocks entiers de DVD.
+// Le critère vise désormais ce que le bug touche réellement : les LIVRES.
+//
+// CRITÈRE (2026-08-24) — bloque si, et seulement si :
+//   · clé isbn non vide dans le snapshot (preuve directe, prime sur tout) ;
+//   · OU catalog_id d'une catégorie LIVRES (ids relevés en base sur les
+//     snapshots réels — on ne devine JAMAIS un id) ;
+//   · OU chemin de catégorie de la famille Livres (racine « Livres et médias » /
+//     « Books & Media » — comptes en anglais — ou segment exactement
+//     « Livres »/« Books »), ET AUCUN segment de média non-livre.
+// Un chemin portant DVD, Blu-ray, CD, vinyle, musique, film, série, jeu vidéo
+// ou console N'EST PAS un livre : il passe (sauf ISBN explicite, qui prime).
 //
 // RÉVERSIBLE :
 //   · kill switch : coin_config key 'republish_livres_garde' — garde ACTIVE
@@ -120,17 +129,26 @@ const LIVRES_CATALOG_IDS = new Set([
   5425, // Livres > Bandes dessinées, mangas et romans graphiques
   5426, // Livres > Manuels scolaires et ressources pédagogiques
   5427, // Livres > Livres de coloriage et d'activités et revues de jeux
-  3039, // Musique > CD (même famille « Livres et médias »)
-  3045, // Vidéo > DVD (même famille)
+  // ⚠️ 3039 (Musique > CD) et 3045 (Vidéo > DVD) RETIRÉS le 24/08 : même
+  // famille « Livres et médias » chez Vinted, mais AUCUN ISBN réclamé — les
+  // bloquer n'évitait aucune perte et paralysait des stocks entiers de DVD.
 ]);
+// Segments de chemin qui disqualifient l'hypothèse « livre » (sans accents).
+const MEDIA_NON_LIVRE_RE =
+  /\b(dvd|blu[- ]?ray|cd|vinyle|vinyl|musique|music|film|films|movie|movies|serie|series|jeux? video|video ?game|console|k7|cassette|vhs)\b/;
 const sansAccents = (s: unknown) =>
   String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 function snapshotEstLivresMedias(snap: Record<string, unknown>): boolean {
+  // 1. ISBN explicite : preuve directe, prime sur tout le reste.
+  if (typeof snap.isbn === "string" && snap.isbn.trim()) return true;
+  // 2. Catégorie LIVRES relevée (CD et DVD volontairement absents, cf. ci-dessus).
   const cid = Number(snap.catalog_id);
   if (Number.isFinite(cid) && LIVRES_CATALOG_IDS.has(cid)) return true;
-  if (typeof snap.isbn === "string" && snap.isbn.trim()) return true;
+  // 3. Chemin de catégorie : famille Livres, MAIS jamais un média non-livre.
   const path = Array.isArray(snap.categoryPath) ? snap.categoryPath : [];
-  if (path.length && ["livres et medias", "books & media"].includes(sansAccents(path[0]))) return true;
+  if (!path.length) return false;
+  if (path.some((e) => MEDIA_NON_LIVRE_RE.test(sansAccents(e)))) return false;
+  if (["livres et medias", "books & media"].includes(sansAccents(path[0]))) return true;
   return path.some((e) => /^(livres?|books?)$/.test(sansAccents(e)));
 }
 // Message utilisateur — formulation validée par Nico le 22/08, tel quel.
@@ -138,6 +156,38 @@ const MSG_GARDE_LIVRES =
   "Republication mise en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
   "Motif : blocage connu sur la catégorie Livres (numéro ISBN exigé par Vinted). " +
   "On te préviendra dès que c'est réglé.";
+
+// ═══════════════════════════════════════════════════════════════════════
+// COUPE-CIRCUIT COULEUR — republication Vinted (2026-08-24)
+// ═══════════════════════════════════════════════════════════════════════
+// « Flipper » (Prudence Fresnel, catalog 3358) détruit le 24/08 au soir :
+// l'annonce d'origine vivait SANS couleur (color1/color2 null — accepté à sa
+// création), la suppression a été actée, puis la recréation a été refusée
+// « Le champ Couleur doit être renseigné » — refus serveur capté par la sonde
+// réseau (errors[{field:"color"}], persisté en server_required_fields sur le
+// job). Même signature sur « VTech Bébé Volant des Découvertes » (Cynthia
+// Buterne, catalog 1766). Vinted exige donc la couleur À LA CRÉATION sur des
+// catégories où d'anciennes annonces vivent sans — la classe « exigence par
+// annonce » déjà vue sur l'ISBN. La recréation ne peut pas gagner : on bloque
+// AVANT la suppression, au même point d'interception que la garde Livres.
+// CONTRAIREMENT à la garde Livres, l'utilisateur se débloque SEUL : ajouter
+// une couleur à son annonce sur Vinted puis relancer — la recapture relit la
+// couleur et la garde laisse passer. Le message le dit.
+// Kill switch : coin_config 'republish_couleur_garde' (clé absente = active ;
+// value=0 = off). Pépite rendue immédiatement (consigne Nico 24/08), même
+// mécanique et mêmes marqueurs que la garde Livres. PAS d'exemption
+// handler-watch : le job attend un geste utilisateur — le solde 72 h
+// s'applique normalement, sans double crédit (le trigger lit pepite_remboursee).
+function snapshotSansCouleur(snap: Record<string, unknown>): boolean {
+  const libelles = Array.isArray(snap.couleurs) ? snap.couleurs : [];
+  const aLibelle = libelles.some((c) => String(c ?? "").trim());
+  return !aLibelle && snap.color1_id == null && snap.color2_id == null;
+}
+const MSG_GARDE_COULEUR =
+  "Republication mise en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
+  "Motif : Vinted exige désormais une couleur à la création d'une annonce, et la tienne n'en porte pas " +
+  "(c'était accepté quand tu l'avais créée). Ajoute une couleur à ton annonce sur Vinted, " +
+  "puis relance la republication depuis l'app — ta Pépite est déjà rendue.";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -306,7 +356,8 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    // COUPE-CIRCUIT LIVRES / ISBN (2026-08-22) — voir le bloc de tête.
+    // COUPE-CIRCUITS REPUBLICATION — Livres/ISBN (2026-08-22, resserré 24/08)
+    // + Couleur (2026-08-24). Voir les deux blocs de tête.
     // ══════════════════════════════════════════════════════════════════════
     // Point d'interception EXACT : l'écriture du snapshot de republication —
     // status='processing' + republish_snapshot + republish_step='captured'
@@ -318,19 +369,43 @@ serve(async (req) => {
     const pfIn = (body.platform_fields && typeof body.platform_fields === "object"
       ? body.platform_fields : null) as Record<string, unknown> | null;
     const snapIn = pfIn?.republish_snapshot as Record<string, unknown> | undefined;
-    if (
+    // UNE garde à la fois — Livres d'abord (un livre sans couleur relève du
+    // blocage ISBN : c'est lui qui détruit, et son message est le bon).
+    const gardeRepublish =
       status === "processing" && snapIn && typeof snapIn === "object" &&
-      pfIn?.republish_step === "captured" && !pfIn?.deleted_at &&
-      snapshotEstLivresMedias(snapIn)
-    ) {
-      const { data: jLivre } = await userClient
+      pfIn?.republish_step === "captured" && !pfIn?.deleted_at
+        ? (snapshotEstLivresMedias(snapIn)
+          ? {
+              configKey: "republish_livres_garde",
+              source: "livres_isbn_garde",
+              stampKey: "republish_livres_bloque_le",
+              refundSource: "republish_livres_garde",
+              message: MSG_GARDE_LIVRES,
+              log: "garde Livres/ISBN",
+              reponse: "Garde Livres : republication bloquée AVANT toute suppression (blocage ISBN connu) — job mis en pause, annonce intacte.",
+            }
+          : snapshotSansCouleur(snapIn)
+          ? {
+              configKey: "republish_couleur_garde",
+              source: "republish_couleur_garde",
+              stampKey: "republish_couleur_bloque_le",
+              refundSource: "republish_couleur_garde",
+              message: MSG_GARDE_COULEUR,
+              log: "garde Couleur",
+              reponse: "Garde Couleur : republication bloquée AVANT toute suppression (Vinted exige une couleur à la création) — job mis en pause, annonce intacte.",
+            }
+          : null)
+        : null;
+    if (gardeRepublish) {
+      const garde = gardeRepublish;
+      const { data: jRep } = await userClient
         .from("cross_post_jobs")
         .select("id, action, platform, status, platform_fields")
         .eq("id", jobId)
         .maybeSingle();
-      if (jLivre?.action === "republish" && jLivre.platform === "vinted") {
-        // Kill switch : coin_config 'republish_livres_garde' — clé ABSENTE ou
-        // illisible = garde ACTIVE (fail-closed sur les livres) ; value=0 = off.
+      if (jRep?.action === "republish" && jRep.platform === "vinted") {
+        // Kill switch : coin_config (clé propre à chaque garde) — clé ABSENTE
+        // ou illisible = garde ACTIVE (fail-closed) ; value=0 = off.
         const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
         let gardeActive = true;
         let serviceClient: ReturnType<typeof createClient> | null = null;
@@ -338,15 +413,15 @@ serve(async (req) => {
           serviceClient = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
           try {
             const { data: cfg } = await serviceClient
-              .from("coin_config").select("value").eq("key", "republish_livres_garde").maybeSingle();
+              .from("coin_config").select("value").eq("key", garde.configKey).maybeSingle();
             if (cfg && Number((cfg as Record<string, unknown>).value) === 0) gardeActive = false;
           } catch { /* défaut : active */ }
         }
         if (gardeActive) {
           const pfGarde: Record<string, unknown> = {
             ...pfIn,
-            needs_user_source: "livres_isbn_garde",
-            republish_livres_bloque_le: new Date().toISOString(),
+            needs_user_source: garde.source,
+            [garde.stampKey]: new Date().toISOString(),
           };
           delete pfGarde.processing_since; // le job n'est PAS en traitement
           // CAS sur le statut = mutex : une seule écriture gagnante par blocage
@@ -355,7 +430,7 @@ serve(async (req) => {
           // qui rend la relance auto possible au dé-blocage.
           const { data: bloque } = await userClient
             .from("cross_post_jobs")
-            .update({ status: "needs_user", error: MSG_GARDE_LIVRES, platform_fields: pfGarde })
+            .update({ status: "needs_user", error: garde.message, platform_fields: pfGarde })
             .eq("id", jobId)
             .in("status", ["pending", "processing"])
             .select("id")
@@ -366,18 +441,18 @@ serve(async (req) => {
             // entre les deux double-rembourse au pire 1 Pépite ; l'ordre
             // inverse pouvait laisser un utilisateur jamais remboursé). Le
             // trigger republish_refund_on_terminal lit le même marqueur.
-            const pfCur = (jLivre.platform_fields ?? {}) as Record<string, unknown>;
+            const pfCur = (jRep.platform_fields ?? {}) as Record<string, unknown>;
             const montant = Number(pfCur.pepites_debitees ?? pfIn?.pepites_debitees ?? 0) || 0;
             const dejaRendue = String(pfCur.pepite_remboursee ?? pfIn?.pepite_remboursee ?? "") === "true";
             if (montant > 0 && !dejaRendue && serviceClient) {
               const { error: rErr } = await serviceClient.rpc("refund_coins", {
                 p_user_id: user.id,
                 p_amount: montant,
-                p_metadata: { source: "republish_livres_garde", job_id: jobId },
+                p_metadata: { source: garde.refundSource, job_id: jobId },
                 p_kind: "refund_republish",
               });
               if (rErr) {
-                console.error(`[update-job-status] garde Livres job=${jobId} : refund_coins EN ÉCHEC (${rErr.message}) — Pépite NON rendue, à réparer à la main`);
+                console.error(`[update-job-status] ${garde.log} job=${jobId} : refund_coins EN ÉCHEC (${rErr.message}) — Pépite NON rendue, à réparer à la main`);
               } else {
                 await userClient
                   .from("cross_post_jobs")
@@ -387,12 +462,10 @@ serve(async (req) => {
               }
             }
           }
-          console.log(`[update-job-status] userId=${user.id} job=${jobId} — garde Livres/ISBN : écriture processing REFUSÉE, job en needs_user, annonce intacte (catalog_id=${snapIn.catalog_id ?? "?"})`);
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${garde.log} : écriture processing REFUSÉE, job en needs_user, annonce intacte (catalog_id=${snapIn.catalog_id ?? "?"})`);
           // Réponse non-2xx OBLIGATOIRE : c'est elle qui fait renoncer
           // l'extension avant toute suppression (catch de background.js ~9261).
-          return json({
-            error: "Garde Livres : republication bloquée AVANT toute suppression (blocage ISBN connu) — job mis en pause, annonce intacte.",
-          }, 409);
+          return json({ error: garde.reponse }, 409);
         }
       }
     }
@@ -412,9 +485,10 @@ serve(async (req) => {
         .eq("id", jobId)
         .maybeSingle();
       const pfj = (jf?.platform_fields ?? {}) as Record<string, unknown>;
-      if (jf?.status === "needs_user" && pfj.needs_user_source === "livres_isbn_garde") {
-        console.log(`[update-job-status] userId=${user.id} job=${jobId} — garde Livres/ISBN : failed de repli IGNORÉ, needs_user conservé`);
-        return json({ error: "Garde Livres : job maintenu en needs_user (failed de repli ignoré)." }, 409);
+      if (jf?.status === "needs_user" &&
+          ["livres_isbn_garde", "republish_couleur_garde"].includes(String(pfj.needs_user_source ?? ""))) {
+        console.log(`[update-job-status] userId=${user.id} job=${jobId} — garde republication (${pfj.needs_user_source}) : failed de repli IGNORÉ, needs_user conservé`);
+        return json({ error: "Garde republication : job maintenu en needs_user (failed de repli ignoré)." }, 409);
       }
     }
 
