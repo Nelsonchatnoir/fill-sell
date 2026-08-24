@@ -549,7 +549,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // base parce que les deux cas portaient le même texte). serverRequired reste
 // réseau-seulement. La protection des annonces sans couleur, elle, est
 // SERVEUR (garde update-job-status du 24/08) — rien à embarquer ici.
-export const EXTENSION_LAST_COMMIT = '2026-08-24T18:40:00Z';
+export const EXTENSION_LAST_COMMIT = '2026-08-24T18:36:07Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
