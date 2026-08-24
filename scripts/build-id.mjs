@@ -510,7 +510,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // conclusion), jamais un « absent » sur du partiel. DataDome non touché.
 // Le cas Romain (voirememe, 6 annonces, 1 non confirmée) N'EST PAS couvert
 // par ce correctif : autre cause, dossier séparé. Dans le zip 0.6.7.
-export const EXTENSION_LAST_COMMIT = '2026-08-23T18:47:58Z';
+// 2026-08-24T06:41:00Z (même branche, point F du chantier détection des
+// ventes) : COUVERTURE de la surveillance des annonces published. Constat en
+// base : sur 20 178 annonces publiées actives, 7 004 jamais vérifiées
+// (last_checked_at NULL) et 3 284 de plus de 7 jours. Trois gestes, AUCUN ne
+// touche les détecteurs ni le marquage disparu_le de la sync :
+//   1. un échec de get-pending-jobs (5xx/réseau, hors 401) ne saute plus le
+//      cycle de détection entier — checkPublishedListings tourne quand même ;
+//   2. cadence 8 → 12 annonces par cycle de 30 min, mais pause inter-lectures
+//      ÉLARGIE 1,5-4 s → 2,5-6 s : plus de couverture, rythme instantané en
+//      BAISSE (étalement, jamais de rafale) ;
+//   3. fenêtre de lecture 30 → 60 lignes (une seule requête REST) : les jobs
+//      en délai de grâce ou en temporisation ne masquent plus les dus.
+// Dans le zip 0.6.7 à venir. TOUJOURS SANS F1 (1fc9beb).
+export const EXTENSION_LAST_COMMIT = '2026-08-24T06:41:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

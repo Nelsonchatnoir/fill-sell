@@ -1329,7 +1329,19 @@ async function pollAndProcessJobsUnlocked() {
     commandeSyncEnAttente = rep.sync_command ?? null;
   } catch (e) {
     console.error("[background] get-pending-jobs:", e);
-    if (e?.status === 401) await invalidateRejectedSession(session).catch(() => {});
+    if (e?.status === 401) {
+      await invalidateRejectedSession(session).catch(() => {});
+      return;
+    }
+    // get-pending-jobs indisponible (5xx, réseau) : la file d'actions attendra
+    // le prochain cycle — mais la DÉTECTION DE VENTE n'en dépend pas (elle lit
+    // cross_post_jobs en direct). La sauter ici perdait un cycle de
+    // surveillance entier à chaque incident serveur : une des sources du
+    // « jamais vérifié » constaté le 23/08 (7 004 annonces published sans
+    // last_checked_at). On vérifie quand même une tranche, puis on rend la main.
+    await checkPublishedListings(session).catch((err) =>
+      console.error("[background] checkPublishedListings (cycle sans file):", err)
+    );
     return;
   }
 
@@ -5020,7 +5032,18 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 // pause jitter entre deux fetches — un humain qui re-regarde ses annonces,
 // pas une rafale.
 const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h entre deux vérifs
-const SALE_CHECK_MAX_PER_CYCLE = 8;
+// 8 → 12 (2026-08-24, point F du chantier détection des ventes) : à 8 par
+// cycle de 30 min, un parc de plusieurs centaines d'annonces published par
+// compte ne pouvait mathématiquement jamais être couvert (constat en base :
+// 7 004 annonces jamais vérifiées, 3 284 de plus de 7 jours). Le débit monte
+// d'un tiers mais s'ÉTALE : la pause entre deux lectures passe de 1,5-4 s à
+// 2,5-6 s (cf. SALE_CHECK_PAUSE_*), donc le cycle de vérification dure plus
+// longtemps qu'avant au lieu de rafaler — le rythme instantané vu par les
+// plateformes BAISSE. Les never-checked passent déjà en premier
+// (order=last_checked_at.asc.nullsfirst).
+const SALE_CHECK_MAX_PER_CYCLE = 12;
+const SALE_CHECK_PAUSE_MIN_MS = 2500;
+const SALE_CHECK_PAUSE_MAX_MS = 6000;
 // Lectures indéterminées consécutives au-delà desquelles on cesse d'insister :
 // le job est marqué non vérifiable (message explicite en base) et n'est plus
 // retenté qu'une fois par jour. Aucune conclusion n'est jamais inventée.
@@ -7624,7 +7647,13 @@ async function checkPublishedListings(session) {
         // ligne — sans lui, un article republié sortait de la détection de
         // vente (le publish d'origine est clos 'cancelled' à la suppression).
         "&status=eq.published&action=in.(publish,republish)&listing_url=not.is.null" +
-        "&order=last_checked_at.asc.nullsfirst&limit=30",
+        // limit 30 → 60 (2026-08-24, point F) : la fenêtre de 30 pouvait être
+        // entièrement occupée par des jobs en délai de grâce ou en
+        // temporisation « unknown » un jour de gros lot — les annonces dues
+        // au-delà de la 30e ligne devenaient invisibles du cycle. 60 lignes
+        // lues pour en vérifier au plus SALE_CHECK_MAX_PER_CYCLE : la lecture
+        // est une requête REST unique, le rythme des vérifications ne change pas.
+        "&order=last_checked_at.asc.nullsfirst&limit=60",
       session.access_token
     );
   } catch (e) {
@@ -7740,7 +7769,7 @@ async function checkPublishedListings(session) {
         body: JSON.stringify(patchUnknown),
       }).catch((e) => console.warn("[background] PATCH unknown:", String(e?.message ?? e)));
 
-      if (i < due.length - 1) await sleep(randInt(1500, 4000));
+      if (i < due.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
       continue;
     }
 
@@ -7884,7 +7913,7 @@ async function checkPublishedListings(session) {
       body: JSON.stringify(patch),
     }).catch((e) => console.warn("[background] PATCH job:", String(e?.message ?? e)));
 
-    if (i < due.length - 1) await sleep(randInt(1500, 4000));
+    if (i < due.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
   }
 }
 
