@@ -702,7 +702,7 @@ function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.p
   // différence entre « non classé » et « classé Autre par l'utilisateur » —
   // or 27 articles importés du dressing ont type=NULL en base. `typeConnu`
   // conserve cette distinction pour l'AFFICHAGE, sans toucher au reste.
-  typeConnu:v.type!=null&&String(v.type).trim()!=="",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null,origine:v.origine||null,photos:Array.isArray(v.photos)?v.photos:null,vinted_item_id:v.vinted_item_id||null,vinted_catalog_id:v.vinted_catalog_id??null,disparu_le:v.disparu_le||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
+  typeConnu:v.type!=null&&String(v.type).trim()!=="",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null,origine:v.origine||null,photos:Array.isArray(v.photos)?v.photos:null,vinted_item_id:v.vinted_item_id||null,vinted_catalog_id:v.vinted_catalog_id??null,disparu_le:v.disparu_le||null,vinted_status:v.vinted_status||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;
@@ -1921,6 +1921,27 @@ export default function App({ loginOnly = false }){
   const [salePriceDraft,setSalePriceDraft]=useState({});
   // Prix d'ACHAT saisi dans le bandeau de vente détectée (par job).
   const [buyPriceDraft,setBuyPriceDraft]=useState({});
+  // ── Disparus du dressing : revue GROUPÉE (2026-08-24, chantier détection
+  // des ventes). La sync Vinted date `inventaire.disparu_le` en bloc au moment
+  // où un run complet passe (174 articles marqués à la même minute constatés
+  // en base) : un bandeau PAR article aurait déversé 174 bandeaux le même
+  // matin. UN bandeau de synthèse ouvre une modale de revue ; chaque article
+  // y est tranché par l'utilisateur (vendu à tel prix / pas vendu), jamais
+  // automatiquement, et AUCUN ne sort de la file sans décision — la file ne
+  // se vide que par les choix, pas par l'ancienneté.
+  const [disparusModal,setDisparusModal]=useState(false);
+  const [disparusPrix,setDisparusPrix]=useState({});         // item.id -> prix de vente saisi
+  const [disparusAchat,setDisparusAchat]=useState({});       // item.id -> prix d'achat saisi
+  const [disparusSel,setDisparusSel]=useState(()=>new Set());// sélection pour « pas vendues » en lot
+  const [disparusBusy,setDisparusBusy]=useState(null);       // item.id | 'lot' pendant une écriture
+  const [disparusPropositions,setDisparusPropositions]=useState({}); // vinted_item_id -> dernier prix affiché (relevés)
+  const [disparusRendu,setDisparusRendu]=useState(40);       // fenêtre de rendu (volume : jusqu'à ~174/compte)
+  // Articles avec une republication VIVANTE (pending/processing/needs_user) :
+  // entre suppression et recréation, l'absence de l'annonce est VOULUE — le
+  // bandeau « Vendue ? » ne doit JAMAIS s'afficher dessus (garde-fou A du
+  // chantier 24/08 ; le critère job existant est le message « Annonce en cours
+  // de republication — pas une vente », posé par cancelPublishAfterDelete).
+  const [republishActifsInv,setRepublishActifsInv]=useState(()=>new Set());
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [coinWallet,setCoinWallet]=useState(null);
@@ -2687,11 +2708,30 @@ export default function App({ loginOnly = false }){
     // de vente n'a été trouvée (supprimée ? expirée ? vendue sans validation sur
     // la plateforme ?). Rien n'a été écrit en compta : c'est l'utilisateur qui
     // tranche via le bandeau. Une disparition n'est jamais une vente.
+    // ── republish RÉOUVERT (2026-08-24, chantier détection des ventes) ──────
+    // Le revert du 09/08 (publish seul) répondait à 5 faux bandeaux posés par
+    // des jobs republish au platform_listing_id périmé. La cause racine est
+    // corrigée depuis la 0.5.4 : le poll confronte l'id de listing_url à
+    // inventaire.vinted_item_id et CLOT les jobs périmés (superseded_listing)
+    // avant tout drapeau — et tout le parc est ≥ 0.6.1 (CWS). Laisser publish
+    // seul rendait INVISIBLE toute vente d'une annonce republiée : le drapeau
+    // était posé, personne ne le montrait. Ceinture supplémentaire ci-dessous :
+    // un article dont une republication est VIVANTE n'affiche jamais ce bandeau.
     const{data:unavail}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, price, inventaire_id, listing_url, platform_fields')
-      .eq('user_id',uid).eq('status','published').eq('action','publish')
+      .eq('user_id',uid).eq('status','published').in('action',['publish','republish'])
       .not('platform_fields->>unavailable_since','is',null);
     setUnavailableListings(unavail||[]);
+
+    // Republications VIVANTES (pending/processing/needs_user) : leurs articles
+    // sont EXCLUS de tout bandeau « Vendue ? » et de la revue des disparus —
+    // c'est notre suppression (recréation en cours), pas une vente (garde A).
+    const{data:repubActifs}=await supabase.from('cross_post_jobs')
+      .select('inventaire_id')
+      .eq('user_id',uid).eq('action','republish')
+      .in('status',['pending','processing','needs_user'])
+      .not('inventaire_id','is',null);
+    setRepublishActifsInv(new Set((repubActifs||[]).map(r=>String(r.inventaire_id))));
 
     // (Les annonces invérifiables — platform_fields.check_unresolved — ne sont
     // plus lues ni affichées : bandeau supprimé le 2026-08-15, cf. plus haut.)
@@ -3359,6 +3399,179 @@ export default function App({ loginOnly = false }){
     track('dismiss_unavailable',{platform:job.platform});
   }
 
+  // ── Revue des DISPARUS du dressing (2026-08-24, chantier détection des ventes) ──
+  // Articles marqués `disparu_le` par la sync Vinted et restés en stock : la
+  // carte du Stock affichait « ⚠️ Plus en ligne » mais RIEN ne posait jamais la
+  // question « Vendue ? » (673 articles bloqués constatés en base, le plus
+  // ancien depuis le 09/08). Le bandeau job (unavailable_since) ne couvre que
+  // les annonces publiées via FillSell avec un job encore 'published' — les
+  // imports du dressing n'en ont pas.
+  // File = disparu_le non nul + statut 'stock' + identité Vinted connue,
+  // MOINS : « pas vendue » déjà tranché (vinted_status='closed', témoignage
+  // utilisateur aligné sur le statut wardrobe « fermée sans vente »), articles
+  // en republication VIVANTE (garde A : notre suppression n'est pas une vente),
+  // et articles dont un bandeau job « Vendue sur Vinted 🎉 » (preuve positive)
+  // est déjà affiché — il est plus riche, on ne demande pas deux fois.
+  const disparusATrancher=useMemo(()=>{
+    const soldFlags=new Set(unavailableListings
+      .filter(j=>j.platform==='vinted'&&(j.platform_fields||{}).sale_signal==='sold'&&j.inventaire_id!=null)
+      .map(j=>String(j.inventaire_id)));
+    return items.filter(i=>i.statut==='stock'&&i.disparu_le&&i.vinted_item_id
+      &&i.vinted_status!=='closed'
+      &&!republishActifsInv.has(String(i.id))
+      &&!soldFlags.has(String(i.id)));
+  },[items,unavailableListings,republishActifsInv]);
+
+  // Prix pré-rempli de la revue = dernier prix AFFICHÉ sur Vinted (relevés
+  // vinted_listing_snapshots), comme dans VentesTab. PROPOSÉ dans un champ
+  // éditable, jamais écrit sans le clic « Vendue » de la ligne.
+  useEffect(()=>{
+    if(!disparusModal||!user?.id)return;
+    const ids=disparusATrancher.map(i=>i.vinted_item_id).filter(Boolean).filter(id=>!(id in disparusPropositions));
+    if(!ids.length)return;
+    let annule=false;
+    (async()=>{
+      const LOT=400,PAGE=1000;
+      const trouves={};
+      for(let i=0;i<ids.length&&!annule;i+=LOT){
+        const lot=ids.slice(i,i+LOT);
+        for(let from=0;!annule;from+=PAGE){
+          const{data,error}=await supabase.from('vinted_listing_snapshots')
+            .select('vinted_item_id,price')
+            .eq('user_id',user.id).in('vinted_item_id',lot)
+            .order('captured_at',{ascending:false}).range(from,from+PAGE-1);
+          if(error)break;
+          for(const r of (data||[])) if(trouves[r.vinted_item_id]==null) trouves[r.vinted_item_id]=r.price;
+          if(!data||data.length<PAGE)break;
+        }
+      }
+      if(annule)return;
+      setDisparusPropositions(prev=>{
+        const n={...prev};
+        for(const id of ids) if(!(id in n)) n[id]=null;
+        for(const[id,prix]of Object.entries(trouves)) if(n[id]==null) n[id]=prix;
+        return n;
+      });
+    })();
+    return()=>{annule=true;};
+  },[disparusModal,disparusATrancher,disparusPropositions,user?.id]);
+
+  // « Vendue » sur UNE ligne de la revue. Deux chemins, jamais d'écriture sans
+  // ce clic :
+  //   · un job Vinted encore 'published' existe → MÊME chemin que le bandeau
+  //     (check-listing-status → orchestrateSale : vente, inventaire, marges,
+  //     frères annulés, email) — le prix saisi part en priceOverride ;
+  //   · aucun job (import pur du dressing) → mêmes écritures que confirmSell :
+  //     marge recalculée depuis le prix RÉELLEMENT saisi (margeUnitaire, règle
+  //     VIDE ≠ ZÉRO), frais 0 (éditables ensuite), date = date de vente.
+  async function confirmerVenteDisparue(item){
+    const saisi=parseFloat(String(disparusPrix[item.id]??'').replace(',','.'));
+    const defaut=Number(disparusPropositions[item.vinted_item_id]??item.sell)||0;
+    const prix=Number.isFinite(saisi)&&saisi>0?saisi:defaut;
+    if(!prix){
+      setToast({visible:true,message:lang==='fr'?'Prix de vente requis':'Sale price required'});
+      setTimeout(()=>setToast({visible:false,message:""}),3000);
+      return;
+    }
+    setDisparusBusy(item.id);
+    try{
+      // Prix d'achat saisi sur la ligne : écrit AVANT la vente (l'orchestration
+      // serveur lit inventaire.prix_achat pour le bénéfice). Vide → rien.
+      const achatSaisi=parseFloat(String(disparusAchat[item.id]??'').replace(',','.'));
+      let art=item;
+      if(Number.isFinite(achatSaisi)&&achatSaisi>=0){
+        await supabase.from('inventaire').update({prix_achat:achatSaisi,prix_achat_inconnu:false})
+          .eq('id',item.id).eq('user_id',user.id);
+        art={...item,buy:achatSaisi,prix_achat:achatSaisi,prix_achat_inconnu:false};
+      }
+      const{data:jobsVifs}=await supabase.from('cross_post_jobs')
+        .select('id').eq('user_id',user.id).eq('platform','vinted')
+        .in('action',['publish','republish']).eq('status','published')
+        .eq('inventaire_id',item.id).limit(1);
+      if(jobsVifs&&jobsVifs.length){
+        const{error}=await supabase.functions.invoke('check-listing-status',{body:{job_id:jobsVifs[0].id,price:prix}});
+        if(error)throw error;
+      }else{
+        const{margin:mg,marginPct:mgp}=margeUnitaire({
+          prixVente:prix,
+          prixAchat:prixAchatConnu(art)?art.buy:null,
+          purchaseCosts:art.purchaseCosts||0,
+          sellingFees:0,
+        });
+        const qTotal=art.quantite||1;
+        if(qTotal>1){
+          // Convention lots de confirmSell : l'article reste en stock amputé
+          // d'une unité + une ligne d'historique vendue.
+          await supabase.from('inventaire').update({quantite:qTotal-1}).eq('id',art.id).eq('user_id',user.id);
+          const soldRow={id:Date.now()+Math.floor(Math.random()*10000),user_id:user.id,titre:art.title,
+            prix_achat:prixAchatConnu(art)?art.buy:null,prix_vente:prix,margin:mg,margin_pct:mgp,
+            statut:"vendu",selling_fees:0,purchase_costs:0,quantite:1,marque:art.marque||null,
+            type:art.type||null,description:art.description||null,date:new Date().toISOString(),plateforme:'vinted'};
+          await supabase.from('inventaire').insert([soldRow]);
+        }else{
+          await supabase.from('inventaire')
+            .update({prix_vente:prix,margin:mg,margin_pct:mgp,selling_fees:0,statut:'vendu',date:new Date().toISOString()})
+            .eq('id',art.id).eq('user_id',user.id);
+        }
+        await supabase.from('ventes').insert([{user_id:user.id,titre:art.title,
+          prix_achat:prixAchatConnu(art)?art.buy:null,prix_vente:prix,benefice:mg,
+          marque:art.marque||null,type:art.type||null,description:art.description||null,
+          emplacement:art.emplacement||null,date:new Date().toISOString().split('T')[0],
+          plateforme:'vinted',quantite:1,inventaire_id:art.id,statut:'vendu'}]);
+      }
+      track('confirm_sale_disparue',{via_job:!!(jobsVifs&&jobsVifs.length)});
+      await fetchAll(user.id,{silencieux:true});
+    }catch(e){
+      console.error('[confirmerVenteDisparue]',e?.message??e);
+      setToast({visible:true,message:t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:""}),3000);
+    }finally{
+      setDisparusBusy(null);
+    }
+  }
+
+  // « Pas vendue(s) » — une ligne ou la sélection. L'article RESTE en stock,
+  // la décision est mémorisée par vinted_status='closed' (fermée sans vente,
+  // le vocabulaire du wardrobe Vinted) : la file ne reposera plus la question,
+  // et si l'annonce RÉAPPARAÎT au dressing, la sync réécrit vinted_status et
+  // efface disparu_le — la vérité de la plateforme reprend la main. Les jobs
+  // Vinted encore 'published' sur ces articles sont clos comme le fait
+  // dismissUnavailable (l'annonce n'existe plus, confirmé par l'utilisateur).
+  async function marquerDisparusNonVendus(cibles){
+    if(!cibles.length)return;
+    setDisparusBusy('lot');
+    try{
+      const ids=cibles.map(i=>i.id);
+      const{error}=await supabase.from('inventaire')
+        .update({vinted_status:'closed'}).in('id',ids).eq('user_id',user.id);
+      if(error)throw error;
+      const{data:jobsVifs}=await supabase.from('cross_post_jobs')
+        .select('id,platform_fields').eq('user_id',user.id).eq('platform','vinted')
+        .in('action',['publish','republish']).eq('status','published').in('inventaire_id',ids);
+      for(const j of jobsVifs||[]){
+        const pf={...(j.platform_fields||{})};
+        delete pf.unavailable_since;
+        delete pf.sale_signal;
+        delete pf.detected_price;
+        delete pf.unavailable_pending_since;
+        await supabase.from('cross_post_jobs')
+          .update({status:'cancelled',platform_fields:pf,
+                   error:'Annonce retirée par le vendeur (confirmé dans l\'app) — pas une vente'})
+          .eq('id',j.id);
+      }
+      setItems(prev=>prev.map(i=>ids.includes(i.id)?{...i,vinted_status:'closed'}:i));
+      setDisparusSel(new Set());
+      track('dismiss_disparus',{count:ids.length});
+      await fetchAll(user.id,{silencieux:true});
+    }catch(e){
+      console.error('[marquerDisparusNonVendus]',e?.message??e);
+      setToast({visible:true,message:t('genericError')});
+      setTimeout(()=>setToast({visible:false,message:""}),3000);
+    }finally{
+      setDisparusBusy(null);
+    }
+  }
+
   function markSold(item){
     const saved=localStorage.getItem('savedFees')||'';
     setSellModal({item,sellPrice:'',sellingFees:saved,rememberFees:!!saved,sellQty:1,prixMode:'total',feesMode:'total',plateforme:item.plateforme||''});
@@ -3395,7 +3608,12 @@ export default function App({ loginOnly = false }){
       if(siErr)console.error("[confirmSell] soldRow insert failed:",siErr.message);
       if(si)setItems(prev=>[mapItem(si),...prev]);
     }else{
-      await supabase.from('inventaire').update({prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit}).eq('id',item.id);
+      // `date` AUSSI (2026-08-24, point C du chantier détection des ventes) :
+      // cette branche laissait la date de l'article inchangée (souvent NULL
+      // pour un import du dressing) — une vente confirmée sans date, illisible
+      // dans les stats et indistinguable d'un marquage automatique. Convention
+      // des lignes vendues (soldRow, consume_one_unit) : date = date de vente.
+      await supabase.from('inventaire').update({prix_vente:svUnit,margin:mgUnit,margin_pct:mgpUnit,statut:"vendu",selling_fees:sfUnit,date:new Date().toISOString()}).eq('id',item.id);
       setItems(prev=>prev.map(i=>i.id===item.id?{...i,sell:svUnit,margin:mgUnit,marginPct:mgpUnit,statut:"vendu"}:i));
     }
     for(let q=0;q<qVendue;q++){
@@ -4714,8 +4932,10 @@ export default function App({ loginOnly = false }){
       }else{
         // Vente complète : marquer l'article comme vendu dans inventaire
         // .select('id') permet de vérifier que la ligne a bien été mise à jour
+        // `date` AUSSI (2026-08-24, point C — même trou que confirmSell) :
+        // date = date de vente sur toute ligne qui passe en vendu.
         const{data:updRows,error:updErr}=await supabase.from('inventaire')
-          .update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf})
+          .update({prix_vente:sv,margin:mg,margin_pct:mgp,statut:"vendu",selling_fees:sf,date:new Date().toISOString()})
           .eq('id',item.id)
           .select('id');
         // Lever une erreur si la mise à jour a échoué — on n'insère pas dans ventes si inventaire non modifié
@@ -5433,6 +5653,16 @@ export default function App({ loginOnly = false }){
           const plat=PLAT[job.platform]||job.platform;
           const busy=confirmingSale===job.id;
           const pf=job.platform_fields||{};
+          // GARDE A (2026-08-24) : article en REPUBLICATION vivante → l'absence
+          // de son annonce Vinted est la nôtre (suppression avant recréation),
+          // jamais une vente. Aucun bandeau, la republication suit son cours.
+          if(job.platform==='vinted'&&job.inventaire_id!=null&&republishActifsInv.has(String(job.inventaire_id)))return null;
+          // Dédup avec la REVUE des disparus : un « plus en ligne » Vinted sans
+          // preuve de vente dont l'article est déjà dans la file de revue y est
+          // traité là-bas (groupé) — deux questions simultanées sur le même
+          // article seraient une invitation à la double confirmation.
+          if(job.platform==='vinted'&&pf.sale_signal!=='sold'&&job.inventaire_id!=null
+            &&disparusATrancher.some(i=>String(i.id)===String(job.inventaire_id)))return null;
           // Preuve positive de vente (Vinted : is_closed + item_closing_action)
           const vendu=pf.sale_signal==='sold';
           // Prix pré-rempli : celui lu sur la page si la plateforme l'expose,
@@ -5518,6 +5748,133 @@ export default function App({ loginOnly = false }){
             </div>
           );
         })}
+
+        {/* ── Disparus du dressing : UN bandeau de synthèse (2026-08-24) ──
+            Jamais un bandeau par article : la sync marque disparu_le en bloc
+            (jusqu'à 174 articles à la même minute), la revue se fait dans une
+            modale groupée. La file ne se vide QUE par les décisions de
+            l'utilisateur — aucun article n'en sort par ancienneté. */}
+        {disparusATrancher.length>0&&(
+          <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
+              <strong>⚠️ {lang==='fr'
+                ?`${disparusATrancher.length} annonce${disparusATrancher.length>1?'s':''} Vinted ${disparusATrancher.length>1?'ne sont plus':'n’est plus'} en ligne`
+                :`${disparusATrancher.length} Vinted listing${disparusATrancher.length>1?'s are':' is'} no longer online`}</strong>
+              <br/>
+              {lang==='fr'
+                ?<>Vendues, ou retirées ? Passe-les en revue — rien n'est enregistré sans ton choix, article par article.</>
+                :<>Sold, or removed? Review them — nothing is recorded without your choice, item by item.</>}
+            </div>
+            <div>
+              <button onClick={()=>setDisparusModal(true)}
+                style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                {lang==='fr'?`Passer en revue (${disparusATrancher.length})`:`Review (${disparusATrancher.length})`}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Modale de revue des disparus ── */}
+        {disparusModal&&(
+          <>
+            <div onClick={()=>disparusBusy==null&&setDisparusModal(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
+            <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"22px",width:"min(94vw,620px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"84vh",overflowY:"auto"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <div style={{fontSize:16,fontWeight:700,color:UI.ink}}>
+                  {lang==='fr'?`Annonces plus en ligne (${disparusATrancher.length})`:`Listings no longer online (${disparusATrancher.length})`}
+                </div>
+                <button onClick={()=>disparusBusy==null&&setDisparusModal(false)} aria-label={lang==='fr'?'Fermer':'Close'}
+                  style={{border:"none",background:"transparent",fontSize:20,color:UI.mute2,cursor:"pointer",lineHeight:1}}>✕</button>
+              </div>
+              <div style={{fontSize:12.5,color:UI.mute2,lineHeight:1.5,marginBottom:12}}>
+                {lang==='fr'
+                  ?<>Ces annonces ont disparu de ton dressing Vinted sans que Vinted les marque « vendues ». Pour chacune : <strong>Vendue</strong> (confirme le prix réellement reçu) ou <strong>Pas vendue</strong> (retirée, expirée…). Un article en cours de republication n'apparaît jamais ici.</>
+                  :<>These listings disappeared from your Vinted wardrobe without Vinted marking them “sold”. For each one: <strong>Sold</strong> (confirm the amount you actually received) or <strong>Not sold</strong> (removed, expired…). An item being republished never shows up here.</>}
+              </div>
+              {/* Barre de lot : la sélection ne sert qu'au « Pas vendues » —
+                  une vente exige un prix confirmé LIGNE PAR LIGNE. */}
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+                <label style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:12.5,fontWeight:600,color:UI.mute2,cursor:"pointer"}}>
+                  <input type="checkbox"
+                    checked={disparusATrancher.length>0&&disparusATrancher.every(i=>disparusSel.has(i.id))}
+                    onChange={()=>setDisparusSel(prev=>{
+                      if(disparusATrancher.every(i=>prev.has(i.id)))return new Set();
+                      return new Set(disparusATrancher.map(i=>i.id));
+                    })}
+                    style={{width:15,height:15,accentColor:UI.teal}}/>
+                  {lang==='fr'?'Tout sélectionner':'Select all'}
+                </label>
+                <button disabled={disparusBusy!=null||![...disparusSel].length}
+                  onClick={()=>marquerDisparusNonVendus(disparusATrancher.filter(i=>disparusSel.has(i.id)))}
+                  style={{padding:"7px 14px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:12.5,fontWeight:700,cursor:disparusBusy!=null?"default":"pointer",opacity:(disparusBusy!=null||![...disparusSel].length)?.55:1,fontFamily:"inherit"}}>
+                  {disparusBusy==='lot'
+                    ?(lang==='fr'?'Enregistrement…':'Saving…')
+                    :(lang==='fr'?`Pas vendues (${[...disparusSel].filter(id=>disparusATrancher.some(i=>i.id===id)).length})`:`Not sold (${[...disparusSel].filter(id=>disparusATrancher.some(i=>i.id===id)).length})`)}
+                </button>
+              </div>
+              {disparusATrancher.slice(0,disparusRendu).map(item=>{
+                const busy=disparusBusy===item.id||disparusBusy==='lot';
+                const defaut=disparusPropositions[item.vinted_item_id]??item.sell;
+                const dateDisp=item.disparu_le?new Date(item.disparu_le).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB'):null;
+                return(
+                  <div key={item.id} style={{border:`1px solid ${UI.border}`,borderRadius:12,padding:"10px 12px",marginBottom:8,display:"flex",flexDirection:"column",gap:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <input type="checkbox" checked={disparusSel.has(item.id)} disabled={busy}
+                        onChange={()=>setDisparusSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
+                        style={{width:15,height:15,accentColor:UI.teal,flexShrink:0}}
+                        aria-label={lang==='fr'?'Sélectionner':'Select'}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13.5,fontWeight:700,color:UI.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                        {dateDisp&&<div style={{fontSize:11.5,color:UI.mute2}}>{lang==='fr'?`Plus en ligne depuis le ${dateDisp}`:`Offline since ${dateDisp}`}</div>}
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <input type="text" inputMode="decimal" disabled={busy}
+                        value={disparusPrix[item.id]??(defaut!=null?String(defaut):'')}
+                        onChange={e=>setDisparusPrix(p=>({...p,[item.id]:e.target.value}))}
+                        placeholder={lang==='fr'?'Prix reçu':'Amount received'}
+                        style={{width:92,padding:"7px 10px",borderRadius:10,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:13.5,fontWeight:700,fontFamily:"inherit"}}
+                        aria-label={lang==='fr'?'Prix de vente':'Sale price'}/>
+                      <span style={{fontSize:12.5,color:UI.mute2}}>{currency==='EUR'?'€':currency}</span>
+                      <button disabled={busy} onClick={()=>confirmerVenteDisparue(item)}
+                        style={{padding:"7px 14px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:12.5,fontWeight:700,cursor:busy?"default":"pointer",opacity:busy?.6:1,fontFamily:"inherit"}}>
+                        {disparusBusy===item.id?'…':(lang==='fr'?'Vendue ✓':'Sold ✓')}
+                      </button>
+                      <button disabled={busy} onClick={()=>marquerDisparusNonVendus([item])}
+                        style={{padding:"7px 12px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:12.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                        {lang==='fr'?'Pas vendue':'Not sold'}
+                      </button>
+                    </div>
+                    {/* Prix d'achat : demandé ICI seulement s'il est inconnu —
+                        même contrat que le bandeau (jamais 0 par défaut,
+                        « je ne sais plus » disponible sur la carte du Stock). */}
+                    {!prixAchatConnu(item)&&!item.prix_achat_inconnu&&(
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <label style={{fontSize:12,color:UI.mute2,fontWeight:600}}>
+                          {lang==='fr'?"Payé combien ? (optionnel)":'Paid how much? (optional)'}
+                        </label>
+                        <input type="text" inputMode="decimal" disabled={busy}
+                          value={disparusAchat[item.id]??''}
+                          onChange={e=>setDisparusAchat(p=>({...p,[item.id]:e.target.value}))}
+                          style={{width:80,padding:"6px 9px",borderRadius:10,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:13,fontWeight:700,fontFamily:"inherit"}}
+                          aria-label={lang==='fr'?"Prix d'achat":'Purchase price'}/>
+                        <span style={{fontSize:12.5,color:UI.mute2}}>{currency==='EUR'?'€':currency}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {disparusATrancher.length>disparusRendu&&(
+                <button onClick={()=>setDisparusRendu(n=>n+40)}
+                  style={{width:"100%",padding:"9px 0",borderRadius:10,border:`1px dashed ${UI.border}`,background:"transparent",color:UI.mute2,fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {lang==='fr'
+                    ?`Voir plus (${disparusATrancher.length-disparusRendu} restantes)`
+                    :`Show more (${disparusATrancher.length-disparusRendu} left)`}
+                </button>
+              )}
+            </div>
+          </>
+        )}
 
         {/* (Bandeau « vérification impossible » SUPPRIMÉ ici le 2026-08-15 —
             décision produit : seule une VENTE détectée produit un bandeau.
