@@ -541,7 +541,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 //      l'échec de get-pending-jobs, fenêtre 60 lignes), la pause élargie
 //      2,5-6 s reste, et les commentaires « 30 min » sont corrigés.
 // Dans le zip 0.6.7. TOUJOURS SANS F1 (1fc9beb).
-export const EXTENSION_LAST_COMMIT = '2026-08-24T07:49:00Z';
+// 2026-08-24T18:40:00Z = 0.6.8 : verdicts de recréation Vinted HONNÊTES —
+// « Vinted a REFUSÉ » ne se dit plus que preuve réseau à l'appui (HTTP +
+// errors[] capturés par la sonde) ; sans requête observée, le message dit
+// « la validation du formulaire a bloqué l'envoi, Vinted n'a pas été
+// interrogé » (Flipper de Prudence, 24/08 : diagnostic impossible depuis la
+// base parce que les deux cas portaient le même texte). serverRequired reste
+// réseau-seulement. La protection des annonces sans couleur, elle, est
+// SERVEUR (garde update-job-status du 24/08) — rien à embarquer ici.
+export const EXTENSION_LAST_COMMIT = '2026-08-24T18:40:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

@@ -213,16 +213,32 @@ async function computeVintedRequiredState() {
 // tout status >= 400 de l'endpoint items). Donne les requis INVISIBLES côté
 // DOM avec leur nom serveur exact — traduits en libellés humains via la config
 // attributes puis la table de correspondance.
-async function readServerValidationErrors() {
+// État RÉSEAU du dépôt, depuis les captures de la sonde (2026-08-24, Flipper
+// de Prudence — remplace readServerValidationErrors) :
+//   · refus : dernière réponse ≥ 400 d'item_upload/items* porteuse d'un
+//     errors[{field,value}] parsé — LA preuve d'un refus serveur ;
+//   · last : dernière requête item_upload/items* vue, quel que soit son
+//     statut — sa simple existence prouve qu'une soumission a ATTEINT Vinted.
+// { last: null } = AUCUNE requête de création observée : le front de Vinted a
+// bloqué l'envoi (validation de formulaire), le serveur n'a jamais été
+// interrogé. Les verdicts d'échec s'appuient sur cette distinction — plus
+// jamais un « Vinted a REFUSÉ » sans preuve réseau.
+async function readItemsProbeOutcome() {
   const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
   const captures = Array.isArray(res?.captures) ? res.captures : [];
+  let last = null;
+  let refus = null;
   for (let i = captures.length - 1; i >= 0; i--) {
     const c = captures[i];
-    if (Number(c?.status) < 400) continue;
     if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
-    if (Array.isArray(c?.validationErrors) && c.validationErrors.length) return c.validationErrors;
+    if (!last) last = { status: Number(c?.status), url: String(c?.url ?? "") };
+    if (!refus && Number(c?.status) >= 400 &&
+        Array.isArray(c?.validationErrors) && c.validationErrors.length) {
+      refus = { status: Number(c?.status), url: String(c?.url ?? ""), validationErrors: c.validationErrors };
+    }
+    if (last && refus) break;
   }
-  return null;
+  return { last, refus };
 }
 
 // Panneau réutilisé par les dropdowns du formulaire (confirmé pour Catégorie ;
@@ -2089,17 +2105,40 @@ async function fillListingForm(job) {
   // vers la page de l'annonce (/items/<id>) — et on remonte le message de
   // validation exact quand Vinted refuse.
   const proof = await waitForPublishOutcome();
-  if (proof.error) {
-    // La sonde réseau dit ce que Vinted a REÇU (et répondu) — c'est elle qui
-    // tranchera si le prix part à 0/null malgré un champ correctement affiché.
-    //
+  if (!proof.listingUrl) {
+    // ── VERDICT D'ÉCHEC : LA SONDE RÉSEAU TRANCHE (2026-08-24, Flipper de
+    // Prudence, catalog 3358) ────────────────────────────────────────────────
+    // L'ancien message disait « Vinted a REFUSÉ la publication » dès qu'une
+    // validation DE FORMULAIRE s'affichait — y compris quand AUCUNE requête
+    // n'était partie (le front de Vinted bloque l'envoi avant tout POST).
+    // Trois constats désormais DISCERNABLES, chacun avec sa preuve dans le
+    // message (donc en base, requêtable) :
+    //   1. refus serveur prouvé (HTTP ≥ 400 + errors[] capturés) → « Vinted a
+    //      REFUSÉ (réponse serveur HTTP N) » ;
+    //   2. requête partie mais réponse sans détail → dit le statut HTTP vu ;
+    //   3. AUCUNE requête item_upload/items observée → la validation du
+    //      formulaire a bloqué l'envoi, Vinted n'a PAS été interrogé — et on
+    //      l'écrit, au lieu d'accuser Vinted.
+    const sonde = await readItemsProbeOutcome().catch(() => ({ last: null, refus: null }));
+    const messageEchec = proof.error ??
+      (sonde.refus
+        ? `Vinted a REFUSÉ la publication (réponse serveur HTTP ${sonde.refus.status}) : ` +
+          `${proof.validation ?? sonde.refus.validationErrors.map((e) => e?.value).filter(Boolean).join(" · ")} — ` +
+          "l'annonce n'a PAS été créée. (Le formulaire est resté sur /items/new.)"
+        : sonde.last
+          ? `Publication Vinted non aboutie après soumission (dernière réponse serveur HTTP ${sonde.last.status}, sans détail exploitable)` +
+            `${proof.validation ? ` : ${proof.validation}` : ""} — l'annonce n'a PAS été créée. (Le formulaire est resté sur /items/new.)`
+          : `La validation du formulaire Vinted a bloqué l'envoi : ${proof.validation ?? "(message non lu)"} — ` +
+            "AUCUNE requête de création n'a été observée par la sonde réseau, Vinted n'a PAS été interrogé. " +
+            "L'annonce n'a PAS été créée. (Le formulaire est resté sur /items/new.)");
     // Refus 400 : les errors[{field,value}] parsées par la sonde sont les
     // requis que NI le DOM NI la config attributes n'avaient révélés (cas
     // fondateur : model). Traduits en libellés humains et remontés
     // STRUCTURÉS (serverRequired) : le background les persiste au catalogue
     // (source server_400) et les pose sur platform_fields du job pour la
-    // saisie manuelle côté app.
-    const serverErrors = await readServerValidationErrors().catch(() => null);
+    // saisie manuelle côté app. ⚠️ UNIQUEMENT preuve réseau à l'appui — une
+    // validation de formulaire ne fabrique plus jamais un serverRequired.
+    const serverErrors = sonde.refus?.validationErrors ?? null;
     if (serverErrors?.length) {
       const attrs = await readLatestAttrsConfig().catch(() => []);
       const titleOf = (field) =>
@@ -2124,14 +2163,14 @@ async function fillListingForm(job) {
       }).join(" ; ");
       return {
         success: false,
-        error: `${proof.error} — Champs exigés par le serveur Vinted : ${details}. À faire : ${conseils}, puis relance la publication.`,
+        error: `${messageEchec} — Champs exigés par le serveur Vinted : ${details}. À faire : ${conseils}, puis relance la publication.`,
         warnings,
         serverRequired,
         discoveredRequired: requiredState.discovered,
         ...(onePassDeleted ? { deleted: true } : {}),
       };
     }
-    return { success: false, error: proof.error, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
+    return { success: false, error: messageEchec, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
   }
   return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
 
@@ -2180,11 +2219,14 @@ async function waitForPublishOutcome(timeoutMs = 30_000) {
   }
 
   if (lastValidation) {
-    return {
-      error:
-        `Vinted a REFUSÉ la publication : ${lastValidation} — l'annonce n'a PAS été créée. ` +
-        "(Le formulaire est resté sur /items/new.)",
-    };
+    // Le VERDICT n'est plus composé ici (2026-08-24, Flipper de Prudence) :
+    // ce texte est celui de la VALIDATION DU FORMULAIRE — il peut exister
+    // sans qu'aucune requête ne soit partie vers Vinted. « Vinted a REFUSÉ »
+    // sans preuve réseau était un mensonge de diagnostic : l'appelant
+    // confronte cette validation aux captures de la sonde et nomme le vrai
+    // constat (refus serveur prouvé / soumission sans réponse exploitable /
+    // envoi bloqué par le front, Vinted jamais interrogé).
+    return { validation: lastValidation };
   }
   return {
     error:
