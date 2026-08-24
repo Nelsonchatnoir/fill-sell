@@ -172,6 +172,25 @@ export async function orchestrateSale(
     wonSaleGate = consumed?.won === true;
     inventaireUpdated = wonSaleGate;
     unitesRestantes = typeof consumed?.restant === "number" ? consumed.restant : null;
+    // `date` = date de VENTE sur la ligne qui vient de passer en vendu
+    // (2026-08-24, point C du chantier détection des ventes). consume_one_unit
+    // ne pose `date` que sur la ligne d'historique des lots — la branche
+    // « dernière unité » laissait la date telle quelle (NULL pour tout import
+    // du dressing) : une vente confirmée au bandeau était alors indistinguable
+    // d'un marquage automatique (les « 36 lignes » du constat du 23/08).
+    // Best-effort HORS transaction, à dessein : modifier la RPC exigerait une
+    // migration (interdite sans GO), et une date manquante ne doit jamais
+    // faire échouer la vente elle-même. Convention partagée avec confirmSell
+    // (App.jsx) et les soldRow : ligne vendue ⇒ date = date de vente.
+    if (wonSaleGate && (unitesRestantes ?? 0) === 0) {
+      const { error: dateErr } = await admin
+        .from("inventaire")
+        .update({ date: nowIso })
+        .eq("id", job.inventaire_id)
+        .eq("user_id", userId)
+        .eq("statut", "vendu");
+      if (dateErr) console.error(`[sale] date de vente ${inv.id}:`, dateErr.message);
+    }
     if (wonSaleGate && (unitesRestantes ?? 0) > 0) {
       console.log(
         `[sale] Article ${inv.id} : 1 unité vendue, ${unitesRestantes} restante(s) en stock — ` +
