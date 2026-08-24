@@ -149,6 +149,33 @@ if (Date.parse(iso) < Date.parse(EXTENSION_LAST_COMMIT)) {
 
 // 5. version jamais publiée
 const manifest = JSON.parse(fs.readFileSync(path.join(OUT_DIR, 'manifest.json'), 'utf8'));
+
+// 5bis. intégrité du manifest — NOM vérifié AUX OCTETS (2026-08-24).
+// Le 16/08, la réécriture « sans BOM » du manifest (9d640bd) a double-encodé
+// le tiret cadratin du nom (« FillSell â€” Cross-post », octets C3 A2 E2 82
+// AC E2 80 9D au lieu de E2 80 94) et RIEN ne le contrôlait : huit jours et
+// quatre zips plus tard, c'est l'audit pré-téléversement du 24/08 qui l'a
+// attrapé à l'œil. Le nom est ce que les installs affichent dans Chrome et
+// ce que porte la fiche CWS — il se vérifie ici à chaque paquet, contre la
+// valeur exacte (JSON.parse décode les octets UTF-8 réels : toute
+// double-encodage rend un name différent et fait échouer l'égalité).
+const manifestBytes = fs.readFileSync(path.join(OUT_DIR, 'manifest.json'));
+if (manifestBytes[0] === 0xEF && manifestBytes[1] === 0xBB && manifestBytes[2] === 0xBF) {
+  die('manifest.json du paquet commence par un BOM UTF-8 — à retirer avant tout téléversement');
+}
+// Tiret cadratin en ÉCHAPPÉ (—), pas en littéral : la garde survivrait
+// elle-même à une réécriture du fichier qui casserait l'encodage (le bug
+// exact qu'elle attrape).
+const EXPECTED_NAME = 'FillSell \u2014 Cross-post';
+if (manifest.name !== EXPECTED_NAME) {
+  die(`nom du manifest inattendu : « ${manifest.name} »
+  (utf8: ${Buffer.from(String(manifest.name), 'utf8').toString('hex')})
+  attendu : « ${EXPECTED_NAME} » (utf8: ${Buffer.from(EXPECTED_NAME, 'utf8').toString('hex')})
+  Encodage probablement cassé par une réécriture du fichier (vécu le 16/08,
+  commit 9d640bd : tiret cadratin double-encodé, invisible à l'œil dans un
+  éditeur mal réglé). Corriger chrome-extension/manifest.json puis relancer.`);
+}
+
 if (ALREADY_PUBLISHED.includes(manifest.version)) {
   die(`manifest en ${manifest.version}, déjà téléversée : le Chrome Web Store rejettera
   le paquet. Bumpe "version" dans chrome-extension/manifest.json (et

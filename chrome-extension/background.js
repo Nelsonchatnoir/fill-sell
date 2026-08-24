@@ -5028,20 +5028,25 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 // part du navigateur du vendeur — cookies de session, IP résidentielle et
 // User-Agent réels (le SW ne peut pas forger l'UA, tant mieux).
 // Cadence : au plus SALE_CHECK_MAX_PER_CYCLE annonces par cycle de poll
-// (30 min), chacune au plus toutes les SALE_CHECK_MIN_INTERVAL_MS, avec une
-// pause jitter entre deux fetches — un humain qui re-regarde ses annonces,
-// pas une rafale.
+// (⚠️ 2 MINUTES — POLL_INTERVAL_MINUTES, config.js, depuis 78cf410 ; les
+// commentaires disaient « 30 min », une valeur périmée qui a faussé un
+// chiffrage le 24/08), chacune au plus toutes les SALE_CHECK_MIN_INTERVAL_MS,
+// avec une pause jitter entre deux fetches — un humain qui re-regarde ses
+// annonces, pas une rafale.
 const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h entre deux vérifs
-// 8 → 12 (2026-08-24, point F du chantier détection des ventes) : à 8 par
-// cycle de 30 min, un parc de plusieurs centaines d'annonces published par
-// compte ne pouvait mathématiquement jamais être couvert (constat en base :
-// 7 004 annonces jamais vérifiées, 3 284 de plus de 7 jours). Le débit monte
-// d'un tiers mais s'ÉTALE : la pause entre deux lectures passe de 1,5-4 s à
-// 2,5-6 s (cf. SALE_CHECK_PAUSE_*), donc le cycle de vérification dure plus
-// longtemps qu'avant au lieu de rafaler — le rythme instantané vu par les
-// plateformes BAISSE. Les never-checked passent déjà en premier
-// (order=last_checked_at.asc.nullsfirst).
-const SALE_CHECK_MAX_PER_CYCLE = 12;
+// Plafond par cycle : MAINTENU À 8 (audit du 24/08). Le poll étant à 2 min,
+// ce plafond vaut jusqu'à 240 lectures/h en phase de RATTRAPAGE (backlog de
+// never-checked, navigateur ouvert) — un passage à 12 (tenté le 24/08 au
+// matin) aurait porté la pointe à 360/h pour tous les comptes à la fois :
+// ramené à 8 avant tout téléversement, décision Nico. En régime établi le
+// plafond ne mord presque jamais : c'est l'intervalle de 2 h par annonce qui
+// gouverne (~N/2 lectures/h pour N annonces publiées). La couverture du
+// point F repose sur les deux autres gestes : détection maintenue quand
+// get-pending-jobs échoue, et fenêtre de lecture à 60 lignes. Les
+// never-checked passent déjà en premier (order=last_checked_at.asc.nullsfirst).
+const SALE_CHECK_MAX_PER_CYCLE = 8;
+// Pause inter-lectures ÉLARGIE 1,5-4 s → 2,5-6 s (24/08, conservée à
+// l'audit) : le rythme instantané vu par les plateformes baisse.
 const SALE_CHECK_PAUSE_MIN_MS = 2500;
 const SALE_CHECK_PAUSE_MAX_MS = 6000;
 // Lectures indéterminées consécutives au-delà desquelles on cesse d'insister :

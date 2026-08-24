@@ -523,7 +523,25 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 //   3. fenêtre de lecture 30 → 60 lignes (une seule requête REST) : les jobs
 //      en délai de grâce ou en temporisation ne masquent plus les dus.
 // Dans le zip 0.6.7 à venir. TOUJOURS SANS F1 (1fc9beb).
-export const EXTENSION_LAST_COMMIT = '2026-08-24T06:41:00Z';
+// 2026-08-24T07:49:00Z (même branche, audit pré-téléversement — GO Nico) :
+// DEUX corrections avant le zip qui part réellement au CWS, RIEN d'autre :
+//   1. NOM DU MANIFEST RÉPARÉ : « FillSell â€” Cross-post » → « FillSell —
+//      Cross-post » (tiret cadratin U+2014, octets E2 80 94, sans BOM —
+//      vérifié aux octets). Le tiret avait été DOUBLE-ENCODÉ par la
+//      réécriture « sans BOM » du 16/08 (9d640bd) et rien ne le contrôlait :
+//      tous les zips 0.6.7 du 16 au 24/08 portaient un nom cassé, attrapé à
+//      l'audit du 24/08. package-extension.mjs porte désormais une garde
+//      5bis : nom du manifest vérifié à CHAQUE paquet (BOM interdit, égalité
+//      stricte avec la valeur attendue en échappé —) ;
+//   2. SALE_CHECK_MAX_PER_CYCLE ramené 12 → 8 (décision Nico à l'audit) :
+//      le poll est à 2 MINUTES (POLL_INTERVAL_MINUTES, 78cf410) et non aux
+//      « 30 min » que les commentaires répétaient — à 12/cycle la pointe de
+//      rattrapage serait passée de 240 à 360 lectures/h pour tout le parc à
+//      la fois. Les deux autres gestes du point F restent (résilience à
+//      l'échec de get-pending-jobs, fenêtre 60 lignes), la pause élargie
+//      2,5-6 s reste, et les commentaires « 30 min » sont corrigés.
+// Dans le zip 0.6.7. TOUJOURS SANS F1 (1fc9beb).
+export const EXTENSION_LAST_COMMIT = '2026-08-24T07:49:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

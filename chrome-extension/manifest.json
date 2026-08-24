@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "FillSell â€” Cross-post",
+  "name": "FillSell — Cross-post",
   "version": "0.6.7",
   "description": "Publie automatiquement vos annonces FillSell sur Vinted, Leboncoin, Beebs et eBay.",
   "permissions": ["storage", "alarms", "scripting", "cookies"],
