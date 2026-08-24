@@ -549,7 +549,36 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // base parce que les deux cas portaient le même texte). serverRequired reste
 // réseau-seulement. La protection des annonces sans couleur, elle, est
 // SERVEUR (garde update-job-status du 24/08) — rien à embarquer ici.
-export const EXTENSION_LAST_COMMIT = '2026-08-24T18:36:07Z';
+// 2026-08-24T21:35:00Z = 0.6.9 (chantier de nuit ISBN + eBay, observations en
+// session réelle du 24/08 au soir — compte test nelsonchatnoir/nicsvob_0) :
+// VINTED (annonce-témoin 9769001747 créée avec ISBN accepté et résolu par le
+// serveur — natif.isbn = 9782749933276, book_title auto) :
+//   - normalizeIsbn : tirets/espaces retirés, ISBN-10 → ISBN-13 (clé
+//     RECALCULÉE), clés de contrôle vérifiées — un ISBN invalide ne se pose
+//     plus, le message le cite (un des cas détruits portait un ISBN-10) ;
+//   - pose ISBN par insertText EN UN COUP (famille du piège prix) +
+//     RELECTURE EXACTE de l'état React (readCommittedValue) — relecture ≠
+//     écrit → retentative puis REFUS de soumettre, ISBN dans le message ;
+//   - fillTextField (titre/description) : relecture systématique de l'état
+//     commité après typeHuman, retentative insertText sur écart, erreur
+//     franche si l'état reste mutilé (tolérances : espaces de bord,
+//     troncature maxLength).
+// EBAY (draft 5257871060520 → annonce 800557746918 créée par API PURE puis
+// terminée — la recette du repli est MESURÉE de bout en bout) :
+//   - pré-vol step-up (sonderStepUpVente) : GET /sl/list redirigé vers
+//     signin.ebay.* → « REAUTH VENTE » AVANT d'ouvrir le formulaire ;
+//   - clic mort (20 échecs/14 j, fenêtre minimisée, hydratation Marko morte) :
+//     sur preuve submit_never_sent, retour sur le brouillon et PUBLICATION
+//     DIRECTE par l'API (POST /lstng/api/listing_draft/{id}/publish?mode=…,
+//     jeton srt lu dans div#csrf-data — rendu SERVEUR, vérifié dans le HTML
+//     brut) ; succès = itemId dans la réponse (published), refus = champs
+//     manquants NOMMÉS (needs_user honnête, brouillon conservé) ;
+//   - description : le textarea miroir ne synchronise PLUS (mesuré, même en
+//     frappe réelle) → pose par PUT delta du brouillon (fillDescription →
+//     putDescriptionViaDraftApi), fin de la famille « jamais synchronisée » ;
+//   - /fpa/* : message honnête (mise à niveau du COMPTE exigée par eBay,
+//     page nommée — /fpa/upgrade = 404 sur compte sain, relevé 24/08).
+export const EXTENSION_LAST_COMMIT = '2026-08-24T21:35:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

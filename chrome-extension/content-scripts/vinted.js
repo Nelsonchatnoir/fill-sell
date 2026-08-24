@@ -1627,7 +1627,46 @@ async function fillListingForm(job) {
   // (VINTED_SERVER_FIELD_LABELS). En une-passe l'échec est BLOQUANT — il
   // arrive AVANT la suppression ; en recréation, non bloquant comme le reste.
   if (fields.isbn) {
-    await etape("ISBN", () => fillTextField('#isbn, [data-testid="isbn--input"]', fields.isbn));
+    // Pose DURCIE (2026-08-25, 5 annonces détruites 15-22/08 sur « Merci
+    // d'entrer un numéro ISBN valide ») : normalisation/validation AVANT la
+    // pose, insertText en un coup (famille du piège prix : l'état commité,
+    // pas l'affichage), et RELECTURE exacte de l'état React après frappe.
+    // Relevé LIVE du 24/08 (session réelle, compte test) : la pose commitée
+    // déclenche le lookup livre de Vinted (Auteur/Titre auto-remplis côté
+    // serveur) et le POST /item_upload porte {"code":"isbn","ids":["<isbn>"]}
+    // — accepté, annonce 9769001747 créée avec l'ISBN attaché. Si la
+    // relecture ne rend pas EXACTEMENT l'ISBN écrit : on ne soumet pas, et le
+    // message porte l'ISBN (en une-passe, le blocage arrive AVANT toute
+    // suppression ; en recréation, etape() consigne et B.5 s'applique).
+    await etape("ISBN", async () => {
+      const norme = normalizeIsbn(fields.isbn);
+      if (!norme.ok) {
+        throw new Error(
+          `ISBN de l'annonce d'origine inutilisable — ${norme.raison}. ` +
+          "Corrige l'ISBN depuis l'app (carte de l'article), puis relance. Rien n'a été envoyé à Vinted."
+        );
+      }
+      const el = await waitForElement('#isbn, [data-testid="isbn--input"]');
+      insertTextOneShot(el, norme.isbn13);
+      el.blur();
+      await humanPause();
+      let lu = readCommittedValue(el).replace(/[\s-]/g, "");
+      if (lu !== norme.isbn13) {
+        console.warn(`[vinted] ⚠️ ISBN : relecture « ${lu} » ≠ « ${norme.isbn13} » — retentative typeHuman`);
+        await typeHuman(el, norme.isbn13);
+        el.blur();
+        await humanPause();
+        lu = readCommittedValue(el).replace(/[\s-]/g, "");
+      }
+      if (lu !== norme.isbn13) {
+        throw new Error(
+          `ISBN ${norme.isbn13} : le formulaire n'a pas retenu la valeur posée (état relu : « ${lu || "vide"} »). ` +
+          "Soumission refusée pour ne pas perdre l'annonce — relance la republication, ou pose l'ISBN à la main."
+        );
+      }
+      // Laisse le lookup livre de Vinted partir (Auteur/Titre côté serveur).
+      await sleep(1200);
+    });
   }
 
   // Marque : catalogue d'abord, CRÉATION de la marque en repli — et plus
@@ -2546,11 +2585,98 @@ function simulateFullClick(element) {
   element.dispatchEvent(new MouseEvent("click", base));
 }
 
+// ── Relecture de la valeur COMMITÉE après une pose (2026-08-25, chantier de
+// nuit ISBN) ─────────────────────────────────────────────────────────────────
+// La valeur qui compte n'est pas ce que le champ AFFICHE mais ce que l'état
+// React a retenu : le piège prix du 11/07 (affiché "200,00 €", état vide,
+// refus serveur) est une FAMILLE de bugs, pas un cas isolé. On lit donc les
+// props React du nœud (__reactProps$*.value) quand elles existent, el.value
+// en repli — et on ne déclare plus jamais une pose réussie sans l'avoir relue.
+function readCommittedValue(el) {
+  try {
+    const fk = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
+    const props = fk ? el[fk] : null;
+    if (props && typeof props.value === "string") return props.value;
+  } catch { /* fibers illisibles : el.value fait foi */ }
+  return String(el.value ?? "");
+}
+
+// Pose "en un coup" via execCommand("insertText") — la voie qui produit un
+// vrai InputEvent (inputType/data), même recette que fillPriceField. Utilisée
+// en PREMIER pour les champs courts à validation serveur (ISBN), et en
+// RETENTATIVE quand la relecture d'un typeHuman ne rend pas la valeur écrite.
+function insertTextOneShot(el, value) {
+  el.focus();
+  let ok = false;
+  try {
+    el.setSelectionRange?.(0, el.value.length);
+    document.execCommand("delete", false, null);
+    el.setSelectionRange?.(0, el.value.length);
+    dispatchKey(el, "keydown", String(value)[0] ?? "");
+    ok = document.execCommand("insertText", false, String(value));
+    dispatchKey(el, "keyup", String(value).slice(-1));
+  } catch { /* execCommand indisponible : repli ci-dessous */ }
+  if (!ok) setNativeValue(el, String(value));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 async function fillTextField(selector, value) {
   const el = await waitForElement(selector);
-  await typeHuman(el, value);
+  const attendu = String(value);
+  await typeHuman(el, attendu);
   el.blur();
   await humanPause();
+  // Relecture systématique. Tolérances assumées : espaces de bord, et une
+  // TRONCATURE par maxLength (préfixe exact) — bloquer là-dessus casserait des
+  // publications légitimes. Tout le reste (état vide, valeur mutilée) vaut
+  // pose NON commitée : une retentative insertText, puis erreur franche —
+  // plus jamais de soumission à l'aveugle sur un champ texte.
+  const commite = (lu) => {
+    const a = lu.trim(), b = attendu.trim();
+    return a === b || (a.length > 0 && b.startsWith(a) && a.length >= Math.min(b.length, el.maxLength > 0 ? el.maxLength : b.length));
+  };
+  let lu = readCommittedValue(el);
+  if (commite(lu)) return;
+  console.warn(`[vinted] ⚠️ ${selector} : relecture ≠ valeur écrite (lu ${lu.length} car.) — retentative insertText en un coup`);
+  insertTextOneShot(el, attendu);
+  el.blur();
+  await humanPause();
+  lu = readCommittedValue(el);
+  if (commite(lu)) return;
+  throw new Error(
+    `Champ ${selector} : la valeur écrite n'a pas été retenue par le formulaire ` +
+    `(attendu ${attendu.length} car., relu « ${lu.slice(0, 60)}${lu.length > 60 ? "…" : ""} ») — soumission refusée, rien n'a été envoyé à Vinted pour ce champ.`
+  );
+}
+
+// ── ISBN : normalisation + validation AVANT toute pose (2026-08-25) ──────────
+// Un des cas détruits (15-22/08) portait un ISBN-10 (2724278445) ; d'autres
+// peuvent porter tirets/espaces (le placeholder Vinted les affiche AVEC
+// tirets, mais le refus serveur « Merci d'entrer un numéro ISBN valide » ne
+// dit jamais pourquoi). Règles : tirets/espaces retirés ; ISBN-10 converti en
+// ISBN-13 (préfixe 978 + clé RECALCULÉE) ; clé de contrôle vérifiée dans les
+// deux formats ; invalide → on ne pose RIEN et on le dit avec l'ISBN dans le
+// message (en une-passe le blocage arrive AVANT toute suppression).
+function normalizeIsbn(brut) {
+  const s = String(brut ?? "").replace(/[\s -]/g, "").toUpperCase();
+  const cle13 = (douze) => {
+    let somme = 0;
+    for (let i = 0; i < 12; i++) somme += (i % 2 ? 3 : 1) * Number(douze[i]);
+    return String((10 - (somme % 10)) % 10);
+  };
+  if (/^\d{13}$/.test(s)) {
+    if (cle13(s) !== s[12]) return { ok: false, raison: `clé de contrôle ISBN-13 invalide (${s})` };
+    return { ok: true, isbn13: s };
+  }
+  if (/^\d{9}[\dX]$/.test(s)) {
+    let somme = 0;
+    for (let i = 0; i < 10; i++) somme += (10 - i) * (s[i] === "X" ? 10 : Number(s[i]));
+    if (somme % 11 !== 0) return { ok: false, raison: `clé de contrôle ISBN-10 invalide (${s})` };
+    const douze = "978" + s.slice(0, 9);
+    return { ok: true, isbn13: douze + cle13(douze) };
+  }
+  if (!s) return { ok: false, raison: "ISBN vide" };
+  return { ok: false, raison: `format inattendu (« ${s} », ${s.length} caractères)` };
 }
 
 async function fillPriceField(value) {

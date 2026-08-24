@@ -1576,6 +1576,38 @@ async function processJob(rawJob, accessToken) {
         .catch((e) => console.warn(`[background] Job ${job.id} : relevé fenêtre non persisté —`, String(e?.message ?? e)));
     }
 
+    // ── Pré-vol step-up eBay (2026-08-25, chantier de nuit — 25 échecs
+    // « REAUTH VENTE » en 14 jours, 15 comptes) : le mur signin du flux de
+    // VENTE (pageType=2379018, ru=/sl/list) se détecte par un simple GET :
+    // /sl/list redirige vers signin.ebay.fr pour les comptes touchés, vers le
+    // flux de dépôt pour les autres (vérifié en session réelle le 24/08 :
+    // compte sain → 200 sans rebond signin). On le détecte AVANT d'ouvrir le
+    // formulaire : plus d'onglet consommé, plus de remplissage pour rien, le
+    // message part tout de suite. Sonde JAMAIS bloquante : erreur réseau ou
+    // verdict incertain → on tente le dépôt comme avant.
+    if (job.platform === "ebay") {
+      let stepUp = null;
+      try { stepUp = await sonderStepUpVente(); }
+      catch (e) { console.warn("[background] pré-vol step-up eBay injoignable —", String(e?.message ?? e)); }
+      if (stepUp === "step_up") {
+        const msg =
+          "REAUTH VENTE eBay : eBay demande une reconnexion de sécurité pour vendre, alors que ta " +
+          "session de navigation reste active. Ouvre ebay.fr dans Chrome, clique « Vendre », " +
+          "reconnecte-toi, puis relance la publication depuis la fiche de l'article.";
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          last_diagnostic: JSON.stringify({
+            quoi: "prevol_stepup_vente",
+            detail: "GET /sl/list redirigé vers signin.ebay.fr AVANT toute tentative de dépôt",
+            at: new Date().toISOString(),
+          }),
+        };
+        console.warn(`[background] Job ${job.id} : mur REAUTH VENTE détecté au pré-vol — aucun formulaire ouvert.`);
+        await rearmBounded(accessToken, job, msg);
+        return { status: "needsUser", error: msg };
+      }
+    }
+
     if (handler.entryUrl) await navigateHomeToForm(tabId, listingUrl);
 
     // ⚠️ eBay : onglet PEINT pendant le remplissage (2026-07-12, non encore
@@ -1907,10 +1939,70 @@ async function processJob(rawJob, accessToken) {
               ebay_draft_id: draftId,
             };
           }
-          return await reprendreSurOngletNeuf(
-            accessToken, job, tabId,
-            "Le clic « Mettre en vente » n'a produit AUCUNE requête de publication (soumission jamais partie) : aucune annonce n'a été créée",
-          );
+          // ── REPLI : publication DIRECTE du brouillon (2026-08-25) ──────────
+          // La preuve dit qu'AUCUN POST de publication n'est parti (clic avalé,
+          // hydratation Marko morte en fenêtre minimisée — cause établie) : le
+          // seul cas où soumettre nous-mêmes le brouillon est sûr PAR
+          // CONSTRUCTION. Recette mesurée en réel le 24/08 (cf. bandeau
+          // d'ebayDirectPublish) ; les 3 reprises sur onglet neuf, elles, n'ont
+          // JAMAIS rien changé (8 jobs relevés, frozenTabRetries=3 partout).
+          // ⚠️ verifyEbaySubmission vient de naviguer l'onglet vers le Hub
+          // vendeur (3e preuve) : on REVIENT d'abord sur le brouillon —
+          // /lstng?draftId=… sert #csrf-data dans le HTML serveur, aucune
+          // hydratation requise pour lire le jeton et poster.
+          let direct = { unavailable: "draftId inconnu (aucune capture n'en portait)" };
+          if (draftId) {
+            try {
+              await neutralizeBeforeUnload(tabId);
+              const draftUrl = `https://www.ebay.fr/lstng?draftId=${draftId}&mode=AddItem`;
+              await chrome.tabs.update(tabId, { url: draftUrl + WORK_TAB_FRAGMENT });
+              await waitForTabComplete(tabId, draftUrl + WORK_TAB_FRAGMENT, 45_000).catch(() => {});
+              await installNetworkProbe(tabId, "ebay").catch(() => {});
+              direct = await ebayDirectPublish(tabId, job);
+            } catch (e) {
+              direct = { unavailable: `retour sur le brouillon impossible (${String(e?.message ?? e).slice(0, 120)})` };
+            }
+          }
+          console.log(`[background] Job ${job.id} : publication directe du brouillon →`, JSON.stringify(direct).slice(0, 300));
+          job.platform_fields = {
+            ...(job.platform_fields ?? {}),
+            ebay_api_publish: {
+              at: new Date().toISOString(),
+              http: direct.http ?? null,
+              itemId: direct.itemId ?? null,
+              manquants: direct.manquants ?? null,
+              indisponible: direct.unavailable ?? null,
+            },
+          };
+          if (direct.itemId) {
+            // Annonce créée (itemId lu dans la RÉPONSE serveur). On neutralise
+            // le verdict d'échec et on laisse le chemin de succès NORMAL
+            // dérouler (published + listing_url) — la réponse est de plus
+            // captée par la sonde réinstallée, preuve consultable en annexe.
+            verdict.error = null;
+            verdict.proof = "api_publish";
+            result.listingUrl = result.listingUrl ?? `https://www.ebay.fr/itm/${direct.itemId}`;
+          } else if (direct.fired) {
+            // eBay a RÉPONDU et a refusé : verdict serveur honnête, champs
+            // nommés. Le brouillon n'a pas retenu ce que le formulaire
+            // affichait (fenêtre jamais rendue) — needs_user borné, avec le
+            // brouillon consigné (ebay_draft_id) pour finir à la main.
+            const champs = (direct.manquants ?? []).filter((m) => m.length < 60);
+            const msg =
+              "Publication eBay bloquée : le clic « Mettre en vente » n'a produit aucune requête, " +
+              "et la soumission directe du brouillon a été REFUSÉE par eBay" +
+              (champs.length ? ` — éléments manquants dans le brouillon : ${champs.join(", ")}` : "") +
+              ". Aucune annonce n'a été créée. Le brouillon est conservé dans « Vendre > Brouillons » " +
+              "sur ebay.fr : tu peux le compléter et le publier à la main, puis marquer l'article publié dans l'app.";
+            await rearmBounded(accessToken, job, msg);
+            return { status: "needsUser", error: msg };
+          } else {
+            return await reprendreSurOngletNeuf(
+              accessToken, job, tabId,
+              "Le clic « Mettre en vente » n'a produit AUCUNE requête de publication (soumission jamais partie) : aucune annonce n'a été créée" +
+              (direct.unavailable ? ` — repli de publication directe indisponible (${direct.unavailable})` : ""),
+            );
+          }
         }
         if (verdict.error) {
           console.warn(`[background] Job ${job.id} : ${verdict.error}${verdict.diagnostic ?? ""}`);
@@ -3837,6 +3929,108 @@ async function readEbayPostSubmitState(tabId) {
   }
 }
 
+// ── Publication eBay DIRECTE par l'API du brouillon (2026-08-25, chantier de
+// nuit — famille B « clic mort », 20 échecs / 8 comptes en 14 jours) ─────────
+// Cause établie (14/08 + relevés fenêtre 20-23/08) : dans la fenêtre de
+// travail minimisée, l'hydratation Marko de /lstng peut ne JAMAIS s'attacher
+// (markoInitComponents absent à 88 s) — le bouton existe, le clic est avalé,
+// aucune requête ne part, et 3 reprises sur onglet neuf n'ont jamais rien
+// changé (frozenTabRetries=3 sur les 8 jobs relevés). Or la soumission réelle
+// est un POST minuscule, ENTIÈREMENT vérifié côté serveur — mesuré en session
+// réelle le 24/08 (draft 5257871060520, annonce 800557746918 créée PUIS
+// terminée) :
+//   POST /lstng/api/listing_draft/{draftId}/publish?mode=AddItem
+//   headers : Content-Type json + srt (jeton lu dans le DOM, div#csrf-data,
+//             clé '/lstng/api/listing_draft/:draftId(\d+)/publish')
+//   corps   : {"requestId":"<uuid>","removedFields":[]}
+//   succès  → réponse ~8 Ko avec "itemId":"<12 chiffres>" (le motif exact
+//             qu'annonceIdOf/ebayUploadSucceeded savent déjà lire) ;
+//   refus   → réponse 2,5 Mo de modules, GLOBAL_MESSAGE nomme les champs
+//             manquants (« Description », « Photos », « Caractéristiques de
+//             l'objet ») — validation serveur, AUCUNE annonce créée.
+// La description est (re)posée d'abord par le MÊME canal (PUT delta du
+// brouillon, champ `description`) : mesuré le 24/08, la synchro RTE→brouillon
+// ne se fait plus par le textarea miroir (vide même après frappe réelle +
+// blur) et le PUT est accepté — c'est aussi le correctif de la famille
+// « description posée dans le RTE mais jamais synchronisée » (18/08).
+// Le fetch part du monde MAIN : il traverse le window.fetch HOOKÉ par la
+// sonde → la preuve réseau est vue par LE MÊME lecteur que le clic
+// (ebaySubmitRequestSeen/ebayUploadSucceeded), aucun verdict ne diverge.
+// GARDE-FOU : appelée UNIQUEMENT quand la sonde prouve qu'AUCUNE requête de
+// publication n'est partie (submit_never_sent) — un double dépôt est
+// impossible par construction.
+async function ebayDirectPublish(tabId, job) {
+  const descriptionHtml = job?.description
+    ? "<p>" + String(job.description)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/\r?\n/g, "<br>") + "</p>"
+    : null;
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      args: [descriptionHtml],
+      func: async (description) => {
+        try {
+          // #csrf-data est rendu côté serveur dans le HTML de /lstng — un
+          // court poll couvre le cas d'un document encore en cours de parse.
+          let el = document.getElementById("csrf-data");
+          for (let i = 0; !el && i < 12; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            el = document.getElementById("csrf-data");
+          }
+          if (!el) return { unavailable: `div#csrf-data absent (page ${location.pathname})` };
+          let map;
+          try { map = JSON.parse(el.getAttribute("data-value")); }
+          catch { return { unavailable: "csrf-data illisible" }; }
+          const srtPut = map["/lstng/api/listing_draft/:draftId(\\d+)"];
+          const srtPub = map["/lstng/api/listing_draft/:draftId(\\d+)/publish"];
+          const params = new URLSearchParams(location.search);
+          const draftId = params.get("draftId");
+          const mode = params.get("mode") || "AddItem";
+          if (!draftId) return { unavailable: "draftId absent de l'URL" };
+          if (!srtPub) return { unavailable: "jeton srt publish absent de csrf-data" };
+          const uuid = () =>
+            (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+          if (description && srtPut) {
+            try {
+              await fetch(`/lstng/api/listing_draft/${draftId}?mode=${encodeURIComponent(mode)}`, {
+                method: "PUT", credentials: "same-origin",
+                headers: { "Content-Type": "application/json", srt: srtPut, Accept: "application/json" },
+                body: JSON.stringify({ requestId: uuid(), removedFields: [], description }),
+              });
+            } catch { /* pose best-effort : le publish tranchera */ }
+          }
+          const r = await fetch(`/lstng/api/listing_draft/${draftId}/publish?mode=${encodeURIComponent(mode)}`, {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json", srt: srtPub, Accept: "application/json" },
+            body: JSON.stringify({ requestId: uuid(), removedFields: [] }),
+          });
+          const txt = await r.text();
+          const itemId = (txt.match(/"(?:listingId|itemId|item_id|listing_id)"\s*:\s*"?(\d{9,})/i) ?? [])[1] ?? null;
+          let manquants = [];
+          try {
+            const j = JSON.parse(txt);
+            const gm = JSON.stringify(j.GLOBAL_MESSAGE ?? {});
+            manquants = (gm.match(/"text":"((?:[^"\\]|\\.){2,60})","action"/g) ?? [])
+              .map((s) => {
+                try { return JSON.parse(`"${s.match(/"text":"((?:[^"\\]|\\.)+)"/)[1]}"`); }
+                catch { return null; }
+              })
+              .filter(Boolean);
+          } catch { /* réponse non-JSON : itemId (regex) fait foi */ }
+          return { fired: true, http: r.status, len: txt.length, itemId, manquants: manquants.slice(0, 8) };
+        } catch (e) {
+          return { unavailable: String((e && e.message) || e).slice(0, 200) };
+        }
+      },
+    });
+    return res?.result ?? { unavailable: "executeScript sans résultat" };
+  } catch (e) {
+    return { unavailable: String(e?.message ?? e).slice(0, 200) };
+  }
+}
+
 // Popup post-publication eBay (« Votre annonce est désormais publiée sur le
 // site ») : fermée en best-effort pour laisser l'onglet de travail propre — le
 // succès est déjà acquis, il n'est conditionné à rien de visuel.
@@ -5575,6 +5769,24 @@ function decodeJwtSub(token) {
 //   · atterrissage sur ebay.fr ...... → true  (session valide côté vente) ;
 //   · tout le reste / réseau KO ..... → null  (indéterminé, jamais un faux
 //     « connecté » ni un faux « déconnecté »).
+// Pré-vol du mur « REAUTH VENTE » (2026-08-25). /sl/list est l'entrée du flux
+// de vente : les comptes frappés par le step-up y sont REDIRIGÉS vers
+// signin.ebay.fr (…eBayISAPI.dll?SignIn&pageType=2379018&ru=/sl/list — les 25
+// last_diagnostic du parc portent tous cette URL) quand la session de
+// NAVIGATION, elle, répond normalement (sonderSessionEbay dit true). Un GET
+// suivi de redirections suffit à discriminer : hôte final signin.ebay.* =
+// mur ; ebay.fr = voie libre (vérifié le 24/08 sur session saine : aucun
+// rebond signin). Ne conclut "step_up" QUE sur la signature exacte —
+// tout le reste rend "ok"/null et laisse le dépôt se tenter comme avant.
+async function sonderStepUpVente() {
+  const r = await fetch("https://www.ebay.fr/sl/list?mode=AddItem", {
+    credentials: "include", redirect: "follow",
+  });
+  const u = new URL(r.url);
+  if (/(^|\.)signin\.ebay\./i.test(u.hostname)) return "step_up";
+  return "ok";
+}
+
 async function sonderSessionEbay() {
   const r = await fetch("https://www.ebay.fr/sl/prelist/suggest", {
     credentials: "include", redirect: "follow",

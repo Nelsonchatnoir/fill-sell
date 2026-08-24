@@ -94,7 +94,14 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // serait indiscernable du zip en review (même logique que la 0.6.5). Le
 // paquet courant est la 0.6.7 (recapture auto 32b156e + colis 8..14 6be32d5
 // + points 8/9 du 15-16/08, TOUJOURS SANS F1).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6'];
+// 0.6.7 ajoutée le 24/08 au soir : zip bd8e95e TÉLÉVERSÉ, EN REVIEW au CWS
+// (seul fichier de build/A-TELEVERSER-CWS) — un second 0.6.7 au contenu
+// différent serait indiscernable du zip en review (même logique que 0.6.6).
+// 0.6.8 ajoutée du même geste : le zip fillsell-extension-0.6.8-4253102.zip
+// (verdicts de recréation honnêtes) a été LIVRÉ dans build/ le 24/08 — jamais
+// téléversé, mais un second 0.6.8 différent créerait l'ambiguïté 0.6.5. Le
+// paquet courant est la 0.6.9 (chantier de nuit ISBN + eBay).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
