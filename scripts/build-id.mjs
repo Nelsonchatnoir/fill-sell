@@ -578,7 +578,26 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 //     putDescriptionViaDraftApi), fin de la famille « jamais synchronisée » ;
 //   - /fpa/* : message honnête (mise à niveau du COMPTE exigée par eBay,
 //     page nommée — /fpa/upgrade = 404 sur compte sain, relevé 24/08).
-export const EXTENSION_LAST_COMMIT = '2026-08-24T21:35:00Z';
+// 2026-08-25T21:56:00Z = 0.6.8 UNIQUE pour le CWS (décision Nico 26/08 : la
+// 0.6.7 est publiée/acceptée, le numéro 0.6.8 n'a jamais été soumis — les
+// étiquettes internes « 0.6.8-4253102 » et « 0.6.9 » sont regroupées ici).
+// Contenu = tout le delta de la branche (eBay publish API + PUT description +
+// pré-vol REAUTH + /fpa honnête ; verdicts de recréation honnêtes ; pose ISBN
+// normalisée insertText + relecture) PLUS, dans ce commit :
+//   - fix COULEUR de republication, périmètre STRICT : ne s'active QUE si la
+//     capture n'a AUCUNE couleur (les annonces avec couleur suivent le chemin
+//     d'avant à l'identique). Sources : vintedAspects.color + colors du
+//     publish d'origine (couleursDePublicationOrigine, background) → mot de
+//     la palette réelle lue dans le TITRE → sinon needs_user AVANT toute
+//     suppression (circuit prevol_negatif, champ nommé, palette proposée) ;
+//     champ Couleur ABSENT du formulaire (cartes 4875, mesuré 25/08) → no-op.
+//     Relecture de l'état commité après pose (périmètre ISBN + Couleur).
+//   - RETRAIT du durcissement fillTextField sur titre/description (décision
+//     Nico 26/08) : la relecture est LIMITÉE à l'ISBN et à la Couleur — les
+//     milliers de publications qui passent ne changent pas de chemin.
+// Téléversement SANS test unpacked (décision Nico) : vérification de
+// démarrage en profil Chrome isolé + relecture d'assemblage avant livraison.
+export const EXTENSION_LAST_COMMIT = '2026-08-25T21:56:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

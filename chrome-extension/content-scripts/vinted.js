@@ -1836,6 +1836,40 @@ async function fillListingForm(job) {
         discoveredRequired: requiredState.discovered,
       };
     }
+  } else if (onePass || recreation) {
+    // ── REPUBLICATION d'une annonce SANS couleur (2026-08-26) ────────────────
+    // Le seul cas où la garde Couleur serveur bloquait : la capture n'a AUCUNE
+    // couleur. On la repose depuis l'app puis le titre (cf. bandeau de
+    // reposerCouleurRepublication) ; introuvable → en une-passe, needs_user
+    // AVANT toute suppression (circuit prevol_negatif existant, champ nommé,
+    // palette proposée) ; en recréation post-suppression, B.5 (l'annonce
+    // d'origine n'existe plus, on soumet — les verdicts honnêtes disent la
+    // suite). Les annonces AVEC couleur ne passent JAMAIS ici.
+    const couleur = await reposerCouleurRepublication(fields, job.title, warnings);
+    if (couleur.statut === "introuvable" && !recreation) {
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          "Vinted exige une couleur à la création et ton annonce d'origine n'en porte pas — " +
+          "aucune couleur n'a pu être déduite (app, titre). Renseigne la couleur depuis l'app " +
+          "(carte de l'article), puis relance la republication. Rien n'a été supprimé, ton annonce est intacte.",
+        warnings,
+        needsUserField: {
+          field_key: "color",
+          field_label: "Couleur",
+          ...(couleur.palette?.length ? { allowed_values: couleur.palette } : {}),
+          target: { root: "vintedAspects", key: "color" },
+        },
+        discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
+      };
+    }
+    if (couleur.statut === "introuvable" && recreation) {
+      warnings.push("couleur: introuvable (app, titre) — soumission quand même, l'annonce d'origine n'existe plus (B.5)");
+    }
+    if (couleur.statut === "posee") {
+      console.log(`[vinted] couleur de republication posée : ${couleur.valeur}`);
+    }
   }
 
   if (fields.matiere) {
@@ -2620,33 +2654,16 @@ function insertTextOneShot(el, value) {
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+// ⚠️ PAS de relecture ici (décision Nico 26/08, périmètre 0.6.8) : le
+// durcissement « relecture de l'état commité » est LIMITÉ à l'ISBN et à la
+// Couleur — les deux champs qui ont réellement détruit des annonces. Titre et
+// description ne bloquent personne aujourd'hui : les durcir mettrait en risque
+// les milliers de publications qui passent, pour ne rien corriger.
 async function fillTextField(selector, value) {
   const el = await waitForElement(selector);
-  const attendu = String(value);
-  await typeHuman(el, attendu);
+  await typeHuman(el, value);
   el.blur();
   await humanPause();
-  // Relecture systématique. Tolérances assumées : espaces de bord, et une
-  // TRONCATURE par maxLength (préfixe exact) — bloquer là-dessus casserait des
-  // publications légitimes. Tout le reste (état vide, valeur mutilée) vaut
-  // pose NON commitée : une retentative insertText, puis erreur franche —
-  // plus jamais de soumission à l'aveugle sur un champ texte.
-  const commite = (lu) => {
-    const a = lu.trim(), b = attendu.trim();
-    return a === b || (a.length > 0 && b.startsWith(a) && a.length >= Math.min(b.length, el.maxLength > 0 ? el.maxLength : b.length));
-  };
-  let lu = readCommittedValue(el);
-  if (commite(lu)) return;
-  console.warn(`[vinted] ⚠️ ${selector} : relecture ≠ valeur écrite (lu ${lu.length} car.) — retentative insertText en un coup`);
-  insertTextOneShot(el, attendu);
-  el.blur();
-  await humanPause();
-  lu = readCommittedValue(el);
-  if (commite(lu)) return;
-  throw new Error(
-    `Champ ${selector} : la valeur écrite n'a pas été retenue par le formulaire ` +
-    `(attendu ${attendu.length} car., relu « ${lu.slice(0, 60)}${lu.length > 60 ? "…" : ""} ») — soumission refusée, rien n'a été envoyé à Vinted pour ce champ.`
-  );
 }
 
 // ── ISBN : normalisation + validation AVANT toute pose (2026-08-25) ──────────
@@ -4058,6 +4075,85 @@ async function selectColors(colorNames, warnings = []) {
   // passe par le clic extérieur complet de closeAnyOpenDropdown.
   await closeAnyOpenDropdown();
   return posees > 0 || !colorNames.length;
+}
+
+// ── COULEUR de REPUBLICATION — annonce SANS couleur UNIQUEMENT (2026-08-26) ──
+// Vinted refuse la CRÉATION sans couleur sur certaines catégories (Flipper
+// 3358, VTech 1766 — refus serveur errors[color] captés) alors que l'annonce
+// d'ORIGINE vivait sans. On ne bloque plus : on REPOSE une couleur.
+// ⚠️ PÉRIMÈTRE STRICT (décision Nico 26/08) : cette fonction n'est appelée
+// QUE lorsque la capture ne porte AUCUNE couleur (fields.colors vide). Une
+// annonce qui a déjà sa couleur suit le chemin d'AVANT à l'identique
+// (selectColors, bloc historique) — aucune relecture, aucune repose : on ne
+// touche que ce qui est cassé. Sources, dans l'ordre :
+//   1. l'app : vintedAspects.color (saisie needs_user comprise) +
+//      colorsFallback (couleurs du job de PUBLICATION d'origine du même
+//      article, relues en base par le background — l'app les avait normalisées
+//      vers la palette) ;
+//   2. un mot de la palette RÉELLE du picker lu dans le TITRE de l'annonce
+//      (bornes de mots, normalizeFuzzy + containsAsWords — une lecture, pas
+//      une invention) ;
+//   3. sinon : introuvable — en une-passe, needs_user AVANT toute suppression
+//      (champ nommé, palette proposée) ; en recréation post-suppression, B.5
+//      (warning, on soumet quand même : l'annonce d'origine n'existe plus).
+// Champ ABSENT du formulaire (mesuré le 25/08 : cartes 4875 n'ont PAS de
+// champ Couleur) → rien à poser, rien à bloquer.
+// RELECTURE (périmètre 0.6.8 : ISBN + Couleur seulement) : l'état COMMITÉ du
+// champ est relu après la pose — vide malgré les clics = pose non retenue,
+// on ne soumet pas et on ne supprime pas (famille du piège prix).
+async function reposerCouleurRepublication(fields, titre, warnings) {
+  const SEL = '#color, [data-testid="color-select-dropdown-input"]';
+  const trigger = await waitForElement(SEL, 8000).catch(() => null);
+  if (!trigger) {
+    warnings.push("couleur: champ absent du formulaire de cette catégorie — rien à poser");
+    return { statut: "champ_absent" };
+  }
+  const candidats = [];
+  const aspectColor = String(fields.vintedAspects?.color ?? "").trim();
+  if (aspectColor) candidats.push(...aspectColor.split(/\s*(?:,|\/| et )\s*/i).map((s) => s.trim()).filter(Boolean));
+  for (const c of (Array.isArray(fields.colorsFallback) ? fields.colorsFallback : [])) {
+    const s = String(c ?? "").trim();
+    if (s) candidats.push(s);
+  }
+  let clique = false;
+  if (candidats.length) {
+    clique = await selectColors([...new Set(candidats)].slice(0, 2), warnings);
+  }
+  // Source 3 : le TITRE, contre la palette réellement affichée par le picker.
+  if (!clique) {
+    try {
+      await openDropdown(SEL);
+      const options = Array.from(document.querySelectorAll('[data-testid^="color-"]'))
+        .filter((el) => !/dropdown-(input|content)/.test(el.getAttribute("data-testid") ?? ""));
+      if (options.length) paletteCouleursRelevee = options.map((el) => el.textContent.trim()).filter(Boolean).slice(0, 40);
+      const titrePlat = normalizeFuzzy(String(titre ?? ""));
+      const trouvees = options
+        .map((el) => ({ el, label: el.textContent.trim() }))
+        .filter(({ label }) => label && containsAsWords(titrePlat, normalizeFuzzy(label)))
+        // le libellé le plus LONG d'abord (« Bleu clair » avant « Bleu ») ;
+        .sort((a, b) => b.label.length - a.label.length)
+        .slice(0, 2);
+      for (const { el, label } of trouvees) {
+        await humanPause();
+        el.click();
+        await humanPause();
+        warnings.push(`couleur: « ${label} » lue dans le titre de l'annonce`);
+        clique = true;
+      }
+      await closeAnyOpenDropdown();
+    } catch (e) {
+      console.warn("[vinted] ⚠️ couleur: lecture du titre contre la palette impossible —", String(e?.message ?? e));
+      await closeAnyOpenDropdown().catch(() => {});
+    }
+  }
+  // RELECTURE de l'état commité — le champ trigger porte les libellés choisis.
+  await humanPause();
+  const lu = readCommittedValue(trigger).trim();
+  if (lu) return { statut: "posee", valeur: lu };
+  if (clique) {
+    warnings.push("couleur: option(s) cliquée(s) mais état relu VIDE — pose non retenue par le formulaire");
+  }
+  return { statut: "introuvable", palette: paletteCouleursRelevee ?? [] };
 }
 
 // ⚠️ 2026-07-12 : « Petit » n'est PAS toujours pré-coché — Vinted choisit le

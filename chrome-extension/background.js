@@ -9018,6 +9018,31 @@ function construireSnapshotRepublish(pf, cap) {
 // needs_user (pont _bridge de vinted.js) — sans lui, la valeur saisie par
 // l'utilisateur n'atteignait JAMAIS le formulaire de recréation (trou vécu :
 // impossible de répondre « M » au « Le champ Taille doit être renseigné »).
+// ── Couleurs du job de PUBLICATION d'origine (2026-08-26, fix Couleur) ───────
+// Quand la capture n'a AUCUNE couleur (le cas que la garde serveur bloquait),
+// l'app en avait peut-être une : platform_fields.colors du publish d'origine
+// du même article (posé normalisé palette par l'app à l'insert). Lecture REST
+// best-effort, jamais bloquante — les jobs de sync (handler sync-dressing)
+// n'ont pas ce champ et sont sautés naturellement. Consommé par
+// reposerCouleurRepublication (vinted.js), UNIQUEMENT sur capture sans couleur.
+async function couleursDePublicationOrigine(accessToken, job) {
+  try {
+    if (job.inventaire_id == null) return null;
+    const rows = await restRequest(
+      `cross_post_jobs?inventaire_id=eq.${job.inventaire_id}&platform=eq.vinted&action=eq.publish` +
+      `&select=platform_fields&order=created_at.desc&limit=5`,
+      accessToken, { headers: { Prefer: "return=representation" } },
+    );
+    for (const r of rows ?? []) {
+      const cols = r?.platform_fields?.colors;
+      if (Array.isArray(cols) && cols.length) return cols.slice(0, 2).map(String);
+    }
+  } catch (e) {
+    console.warn("[republish] couleurs du publish d'origine illisibles (non bloquant) —", String(e?.message ?? e));
+  }
+  return null;
+}
+
 function construireJobRecreation(job, pf, cap, prix) {
   // ── Taille par IDS (2026-08-13, captures 0.6.1 périmées) ───────────────────
   // Les captures 0.6.1 (cas réels : 166 « Veste grain de malice », 174 « Pull
@@ -9607,6 +9632,12 @@ async function processRepublishJob(job, accessToken) {
       // perdu les annonces de lowvaucher.)
       const jobRecreation = construireJobRecreation(job, pf, capMeta, prixPrevu);
       jobRecreation.platform_fields.republish_delete_then_submit = { item_id: String(pf.vinted_item_id ?? "") };
+      // Fix Couleur (2026-08-26) : capture SANS couleur seulement — cf. bandeau
+      // de couleursDePublicationOrigine. Une capture avec couleur n'est pas touchée.
+      if (!jobRecreation.platform_fields.colors?.length) {
+        const repli = await couleursDePublicationOrigine(accessToken, job);
+        if (repli) jobRecreation.platform_fields.colorsFallback = repli;
+      }
 
       const handlerV = PLATFORM_HANDLERS.vinted;
       const urlDepot = typeof handlerV.newListingUrl === "function" ? handlerV.newListingUrl(jobRecreation) : handlerV.newListingUrl;
@@ -9775,6 +9806,13 @@ async function processRepublishJob(job, accessToken) {
       // (L'une-passe, elle, ne pose PAS ce drapeau : son annonce d'origine est
       // encore en ligne, ses gates restent strictes — c'est tout le pré-vol.)
       jobRecreation.platform_fields.republish_recreation = true;
+      // Fix Couleur (2026-08-26) : capture SANS couleur seulement — même repli
+      // que l'une-passe. En recréation il ne BLOQUE jamais (B.5) : il donne
+      // juste une couleur à poser au lieu d'un champ vide voué au 400.
+      if (!jobRecreation.platform_fields.colors?.length) {
+        const repli = await couleursDePublicationOrigine(accessToken, job);
+        if (repli) jobRecreation.platform_fields.colorsFallback = repli;
+      }
 
       const handler = PLATFORM_HANDLERS.vinted;
       const listingUrl = typeof handler.newListingUrl === "function" ? handler.newListingUrl(jobRecreation) : handler.newListingUrl;
