@@ -293,7 +293,6 @@ titre("5. Détection de négation de marque");
     "La marque est illisible sur cette photo.",
     "La marque n'est pas visible sur les photos fournies.",
     "Marque non identifiable.",
-    "Aucun logo n'est visible.",
     "No brand visible on the item.",
     "The brand is not legible.",
     "Unbranded ceramic vase.",
@@ -306,6 +305,11 @@ titre("5. Détection de négation de marque");
     "Étiquette cousue sans marquer d'usure particulière.",
     "Brand new, never worn, tag still attached.",
     "Le logo brodé est net sur la poitrine.",
+    // 2026-08-25 : l'absence de LOGO n'est plus l'absence de MARQUE — une
+    // marque lue sur étiquette cousue/plaque/référence gravée coexiste avec
+    // « aucun logo visible ». Ces phrases ne déclenchent plus la garde.
+    "Aucun logo n'est visible.",
+    "No visible logo on the front panel.",
   ];
   for (const t of negatifs) verifier(`ne nie PAS : « ${t.slice(0, 44)}… »`, negationDeMarque(t), null);
 }

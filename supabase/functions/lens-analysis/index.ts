@@ -400,7 +400,7 @@ ${tableauFamilles()}
       ? ` In this mode you have NO web access and NO tool: there is nothing to "confirm", and marque=null must never mean "I could not confirm it".`
       : ` USING WEB SEARCH ON THE BRAND: search is allowed ONLY to check the exact spelling and the existence of a brand you have ALREADY READ on the item ("pict pure clothing" → "Picture Organic Clothing"). It is FORBIDDEN to use it to go looking for a brand you did not read: a search cannot see the object. And a search never REPLACES what you read with something that merely resembles it — if what you read is not confirmed, keep the reading as it is or set marque=null, never the nearest real-sounding brand.
 2ter. THE SEARCH MAY — AND MUST — CONTRADICT THE OBJECT. The lock above covers the BRAND only, because a brand is READ and a search cannot read. The object is a different matter: it was NAMED at step 0, possibly assumed, and the search is the only outside check it will ever get. So if the results are incompatible with the name you wrote in "objet" — the listings that come back describe something else, the prices or dimensions match nothing you can see, the reference points to an entirely different product — then it is YOUR "objet" that is wrong. Go back to it, correct it, set "objet_source" to "deduit", and redo the estimate on the corrected object, saying so in notes. NEVER bend the rest of the reply to agree with an object the search contradicts, and never keep an object simply because comparable listings for it were easy to find: finding listings for shears proves that shears exist, never that the item in the photo is a pair of shears.`);
-    const etapesMarche = estIdentify ? "" : `3. PRICE ESTIMATION: Always base prices on a real web search. BUILD THE QUERY FROM WHAT YOU ACTUALLY READ, in this order of preference: (a) the manufacturer reference when you have one — it is the most discriminating term there is; (b) brand + commercial model; (c) failing both, the name you wrote in "objet" plus its price-setting attributes ("cordless drill 18V 2 batteries", "solid oak chest of drawers 4 drawers") — that name and no other, never a nearby object that would be easier to price. NEVER build a query on a brand you did not read on the item: a price estimate sourced from a hallucinated brand is the worst possible outcome — it is wrong AND it looks sourced. When marque is null, that is not a reason to skip the search: search the object type, and say so in notes ("unbranded item, price based on comparable X").
+    const etapesMarche = estIdentify ? "" : `3. PRICE ESTIMATION: Always base prices on a real web search. BUILD THE QUERY FROM WHAT YOU ACTUALLY READ, in this order of preference: (a) the manufacturer reference when you have one — it is the most discriminating term there is; (b) brand + commercial model; (c) failing both, the name you wrote in "objet" plus its price-setting attributes ("cordless drill 18V 2 batteries", "solid oak chest of drawers 4 drawers") — that name and no other, never a nearby object that would be easier to price. NEVER build a query on a brand you did not read on the item: a price estimate sourced from a hallucinated brand is the worst possible outcome — it is wrong AND it looks sourced. When marque is null, that is not a reason to skip the search: search the object type, and say so in notes ("price based on comparable listings for this type of X").
    Query: "[brand] [item type] Vinted price" or site:vinted.com. Fallback: eBay. Set fourchette_min/fourchette_max AND fourchette_marche.bas/moyen/haut from actual listings. Cite source in notes (e.g. "Based on 5 Vinted listings"). Also fill "annonces_marche": the INDIVIDUAL listings you actually based the range on — those only, never every raw result — each with titre (the title as it appears in the search results), prix (number, in euros) and plateforme ("Vinted", "eBay", "Leboncoin"…), 8 at most. INVENTING or completing a listing is FORBIDDEN: a listing whose title or price does not appear in the search results is LEFT OUT — omit rather than guess. No usable individual listing → annonces_marche=null, and the range stays set exactly as described above. If no data: confiance="basse".
 4. SPEED & PLATFORMS: Estimate vitesse_vente (rapide/moyen/lent) with vitesse_vente_explication. Order plateformes by best fit for this item. Provide exactly 2–3 concrete conseils to maximise the sale.
 5. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
@@ -445,7 +445,7 @@ ${etape8}`;
     ? ` Dans ce mode tu n'as AUCUN accès web et AUCUN outil : il n'y a rien à « confirmer », et marque=null ne doit jamais vouloir dire « je n'ai pas pu confirmer ».`
     : ` USAGE DE LA RECHERCHE WEB SUR LA MARQUE : la recherche sert UNIQUEMENT à vérifier l'orthographe exacte et l'existence d'une marque que tu as DÉJÀ LUE sur l'objet (« pict pure clothing » → « Picture Organic Clothing »). Il est INTERDIT de s'en servir pour aller chercher une marque que tu n'as pas lue : une recherche ne voit pas l'objet. Et une recherche ne REMPLACE jamais ce que tu as lu par quelque chose qui y ressemble — si ta lecture n'est pas confirmée, garde-la telle quelle ou mets marque=null, jamais la marque réelle la plus proche.
 2ter. LA RECHERCHE PEUT — ET DOIT — CONTREDIRE L'OBJET. Le verrou ci-dessus vaut pour la MARQUE seule, parce qu'une marque se LIT et qu'une recherche ne sait pas lire. L'objet, c'est autre chose : il a été NOMMÉ à l'étape 0, peut-être supposé, et la recherche est le seul regard extérieur qu'il recevra jamais. Donc si les résultats sont incompatibles avec le nom que tu as écrit dans "objet" — les annonces qui reviennent décrivent autre chose, les prix ou les dimensions ne correspondent à rien de ce que tu vois, la référence renvoie à un tout autre produit — alors c'est TON "objet" qui est faux. Reviens dessus, corrige-le, remets "objet_source" à "deduit", refais l'estimation sur l'objet corrigé et dis-le dans notes. Ne plie JAMAIS le reste de la réponse pour qu'il s'accorde avec un objet que la recherche dément, et ne garde jamais un objet au motif qu'on lui a trouvé des annonces comparables facilement : trouver des annonces de cisailles prouve que les cisailles existent, jamais que l'objet en photo en est une.`);
-  const etapesMarcheFr = estIdentify ? "" : `3. ESTIMATION PRIX : Toujours baser les prix sur une web search réelle. CONSTRUIS LA REQUÊTE À PARTIR DE CE QUE TU AS RÉELLEMENT LU, dans cet ordre de préférence : (a) la référence fabricant quand tu en as une — c'est le terme le plus discriminant qui existe ; (b) marque + modèle commercial ; (c) à défaut des deux, le nom que tu as écrit dans "objet" accompagné de ses attributs qui font le prix (« perceuse sans fil 18V 2 batteries », « commode chêne massif 4 tiroirs ») — ce nom-là et aucun autre, jamais un objet voisin qui serait plus facile à coter. NE JAMAIS construire une requête sur une marque que tu n'as pas lue sur l'objet : une estimation de prix fondée sur une marque hallucinée est le pire cas possible — elle est fausse ET elle a l'air sourcée. Une marque null n'est pas une raison de sauter la recherche : cherche le type d'objet, et dis-le dans notes (« objet sans marque, prix basé sur des X comparables »).
+  const etapesMarcheFr = estIdentify ? "" : `3. ESTIMATION PRIX : Toujours baser les prix sur une web search réelle. CONSTRUIS LA REQUÊTE À PARTIR DE CE QUE TU AS RÉELLEMENT LU, dans cet ordre de préférence : (a) la référence fabricant quand tu en as une — c'est le terme le plus discriminant qui existe ; (b) marque + modèle commercial ; (c) à défaut des deux, le nom que tu as écrit dans "objet" accompagné de ses attributs qui font le prix (« perceuse sans fil 18V 2 batteries », « commode chêne massif 4 tiroirs ») — ce nom-là et aucun autre, jamais un objet voisin qui serait plus facile à coter. NE JAMAIS construire une requête sur une marque que tu n'as pas lue sur l'objet : une estimation de prix fondée sur une marque hallucinée est le pire cas possible — elle est fausse ET elle a l'air sourcée. Une marque null n'est pas une raison de sauter la recherche : cherche le type d'objet, et dis-le dans notes (« prix établi à partir d'annonces comparables de X du même type »).
    Requête : "[marque] [type] Vinted prix" ou site:vinted.fr. Fallback : eBay.fr ou Leboncoin. Fixer fourchette_min/fourchette_max ET fourchette_marche.bas/moyen/haut à partir des annonces trouvées. Citer la source dans notes (ex : "Prix basé sur 5 annonces Vinted"). Remplis aussi "annonces_marche" : les annonces INDIVIDUELLES sur lesquelles tu as réellement fondé la fourchette — celles-là seulement, jamais tous les résultats bruts — chacune avec titre (le titre tel qu'il apparaît dans les résultats de recherche), prix (nombre, en euros) et plateforme (« Vinted », « eBay », « Leboncoin »…), 8 au maximum. INTERDIT d'inventer ou de compléter une annonce : une annonce dont le titre ou le prix n'apparaît pas dans les résultats de recherche est ÉCARTÉE — omets plutôt que deviner. Aucune annonce individuelle exploitable → annonces_marche=null, et la fourchette reste fixée exactement comme décrit ci-dessus. Si aucune donnée : confiance="basse".
 4. VITESSE ET PLATEFORMES : Estimer vitesse_vente (rapide/moyen/lent) avec vitesse_vente_explication. Ordonner les plateformes par pertinence pour cet article. Fournir exactement 2 à 3 conseils concrets dans le champ conseils pour maximiser la vente.
 5. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
@@ -778,8 +778,17 @@ const NEGATIONS_MARQUE = [
   "marque n est pas visible", "marque n est pas lisible",
   "marque n est pas identifiable", "marque n est pas dechiffrable",
   "marque n est pas renseignee", "aucune marque n est",
-  "logo est illisible", "logo n est pas visible", "logo n est pas lisible",
-  "aucun logo", "pas de logo", "sans logo",
+  // ── « logo » RETIRÉ de cette liste (2026-08-25) ─────────────────────────
+  // L'absence de LOGO n'est pas l'absence de MARQUE : une marque lue sur une
+  // étiquette cousue, une plaque signalétique ou une référence gravée coexiste
+  // très bien avec « aucun logo visible sur la face avant » — et cette phrase
+  // suffisait à détruire une identification correcte (25 des 26 déclenchements
+  // sur 15 jours étaient marqueForceeNull, 0 en identify : la garde tirait sur
+  // nos propres formulations, pas sur des contradictions). Retirées :
+  // "aucun logo", "pas de logo", "sans logo", "logo est illisible",
+  // "logo n est pas visible", "logo n est pas lisible", "no visible logo",
+  // "no logo visible", "no logo". Les entrées MARQUE/BRAND/fabricant restent
+  // toutes — la garde de l'incident Spear & Jackson (11/08) tire comme avant.
   "aucune inscription de marque", "aucun nom de fabricant",
   "pas de nom de fabricant", "sans nom de fabricant",
   "aucune marque de fabricant", "objet non marque", "article non marque",
@@ -788,8 +797,8 @@ const NEGATIONS_MARQUE = [
   "no brand name", "no brand marking", "no brand identifiable",
   "brand not visible", "brand not legible", "brand not identifiable",
   "brand is not visible", "brand is not legible", "brand could not be",
-  "brand illegible", "unbranded", "no visible logo", "no logo visible",
-  "no logo", "no manufacturer name", "without a brand", "without any brand",
+  "brand illegible", "unbranded",
+  "no manufacturer name", "without a brand", "without any brand",
 ] as const;
 
 // Justifications qui AFFIRMENT une marque lue. Servent uniquement à trancher la
@@ -1110,6 +1119,15 @@ export function assainirSortie(
   etatRejete: boolean;
   familleInconnue: boolean;
   marqueForceeNull: boolean;
+  // Traçabilité du déclencheur (2026-08-25) : l'expression de NEGATIONS_MARQUE
+  // qui a matché et le champ où elle vivait — jamais le texte lui-même. Posés
+  // UNIQUEMENT quand marqueForceeNull est vrai, null sinon.
+  marqueNegationExpr: string | null;
+  marqueNegationChamp: "notes" | "description" | null;
+  // La marque retirée (valeur d'avant le forçage à null), pour que l'appelant
+  // puisse juger si elle a nourri le prix (découplage marque/marché). Posée
+  // UNIQUEMENT quand marqueForceeNull est vrai.
+  marqueContestee: string | null;
   noteContradiction: boolean;
   identificationIncertaine: boolean;
   identificationContredite: boolean;
@@ -1216,7 +1234,17 @@ export function assainirSortie(
   // porterait sinon une marque que la réponse dit elle-même ne pas avoir lue.
   const marqueBrute = typeof item.marque === "string" ? item.marque.trim() : "";
   const marqueRenseignee = !!marqueBrute && marqueBrute.toLowerCase() !== "null";
-  const negation = negationDeMarque(item.notes, item.description);
+  // Champ par champ (2026-08-25) pour savoir D'OÙ vient la négation — même
+  // ordre de priorité que l'appel groupé d'avant (notes d'abord), même
+  // fonction, mêmes phrases : seul le relevé du champ d'origine s'ajoute.
+  let negationChamp: "notes" | "description" | null = null;
+  let negation = negationDeMarque(item.notes);
+  if (negation) {
+    negationChamp = "notes";
+  } else {
+    negation = negationDeMarque(item.description);
+    if (negation) negationChamp = "description";
+  }
   let marqueForceeNull = false;
   if (negation && marqueRenseignee) {
     console.warn(
@@ -1399,7 +1427,11 @@ export function assainirSortie(
 
   return {
     mpnRejete, mpnAbsente, etatRejete: etat.rejete, familleInconnue,
-    marqueForceeNull, noteContradiction,
+    marqueForceeNull,
+    marqueNegationExpr: marqueForceeNull ? negation : null,
+    marqueNegationChamp: marqueForceeNull ? negationChamp : null,
+    marqueContestee: marqueForceeNull ? marqueBrute : null,
+    noteContradiction,
     identificationIncertaine, identificationContredite,
     objetDeduit, objetSourceRejetee, margeNegativeRetiree,
     attributsFonctionnementNeutralises, attributsMesureEcartes,
@@ -2176,7 +2208,8 @@ serve(async (req) => {
     // qui produit un JSON passe par ici.
     const {
       mpnRejete, mpnAbsente, etatRejete, familleInconnue,
-      marqueForceeNull, noteContradiction,
+      marqueForceeNull, marqueNegationExpr, marqueNegationChamp, marqueContestee,
+      noteContradiction,
       identificationIncertaine, identificationContredite,
       objetDeduit, objetSourceRejetee, margeNegativeRetiree,
       attributsFonctionnementNeutralises, attributsMesureEcartes,
@@ -2197,7 +2230,18 @@ serve(async (req) => {
     if (familleInconnue) logMeta = { ...logMeta, famille_inconnue: true };
     // Garde-fous de cohérence du 11/08 — chacun compté séparément : c'est ce
     // qui dira lequel porte réellement le fix, et lequel ne se déclenche jamais.
-    if (marqueForceeNull) logMeta = { ...logMeta, marque_forcee_null: true };
+    if (marqueForceeNull) {
+      // Traçabilité (2026-08-25) : l'expression de la LISTE qui a matché et le
+      // nom du champ — jamais le texte de l'utilisateur ni la note entière.
+      // Sans ces deux clés, impossible de distinguer un déclenchement venu de
+      // notre propre exemple de prompt, d'un « logo », ou d'une vraie
+      // contradiction — donc impossible de mesurer l'effet des correctifs.
+      logMeta = {
+        ...logMeta, marque_forcee_null: true,
+        ...(marqueNegationExpr ? { marque_negation_expr: marqueNegationExpr } : {}),
+        ...(marqueNegationChamp ? { marque_negation_champ: marqueNegationChamp } : {}),
+      };
+    }
     if (noteContradiction) logMeta = { ...logMeta, note_contradiction: true };
     if (attributsFonctionnementNeutralises) logMeta = { ...logMeta, attributs_etat_neutralises: attributsFonctionnementNeutralises };
     if (attributsMesureEcartes) logMeta = { ...logMeta, attributs_mesure_ecartes: attributsMesureEcartes };
@@ -2225,7 +2269,59 @@ serve(async (req) => {
     //
     // Déclenché sur `identificationContredite` seulement, jamais sur la simple
     // confiance basse (cf. les deux niveaux dans assainirSortie).
+    // `marcheReellementSupprime` : vrai UNIQUEMENT quand le bloc ci-dessous a
+    // effectivement nullé CHAMPS_MARCHE — depuis le découplage du 25/08, une
+    // identification contredite peut CONSERVER son marché (marque retirée
+    // seule). Les gardes d'aval qui s'excluaient sur « contredite » au motif
+    // que le marché était de toute façon vide se règlent sur CE drapeau.
+    let marcheReellementSupprime = false;
     if (!estIdentify && identificationContredite) {
+      // ── DÉCOUPLAGE MARQUE / MARCHÉ (2026-08-25) ───────────────────────────
+      // Mesuré sur 15 jours : 26 déclenchements sur 546 scans payants, 25 par
+      // marqueForceeNull — et le prix n'a pas forcément été construit sur la
+      // marque contestée (le prompt bâtit la requête sur la référence
+      // fabricant en priorité, ou sur le nom de l'objet). Effacer le prix d'un
+      // objet coté sur son TYPE est une régression, pas une sécurité.
+      // Discriminant, sur les données déjà présentes dans la réponse : la
+      // marque contestée apparaît dans au moins un titre d'annonces_marche
+      // (comparaison aplatie, sous-chaîne), OU modele_source === "web" (le
+      // modèle est allé chercher — la marque a pu nourrir la requête).
+      // Si oui → comportement d'avant, marché supprimé. Si non → la marque
+      // part (champ + titre, inchangé), le marché RESTE.
+      // Doute prudent : annonces_marche null/vide/inexploitable → on ne peut
+      // pas trancher → marché supprimé, comme avant.
+      // familleInconnue n'est PAS concernée : famille inconnue → marché
+      // supprimé en toutes circonstances, branche intacte.
+      // Le remboursement suit le marché retiré, comme avant (c'est le retrait
+      // du livrable payant qui le justifie — cf. bandeau ci-dessous) : marché
+      // conservé = livrable rendu = aucun remboursement, plafond intact.
+      let marcheASupprimer = true;
+      if (marqueForceeNull && !familleInconnue) {
+        const annonces = Array.isArray(itemData.annonces_marche)
+          ? (itemData.annonces_marche as Record<string, unknown>[])
+          : null;
+        const marquePlate = aplatir(String(marqueContestee ?? "")).trim();
+        if (annonces && annonces.length && marquePlate) {
+          let titresPlats: string[] | null = [];
+          for (const a of annonces) {
+            const titre = a && typeof a === "object" && typeof a.titre === "string" && a.titre.trim() ? a.titre : null;
+            if (!titre) { titresPlats = null; break; } // inexploitable → prudent
+            titresPlats.push(aplatir(titre));
+          }
+          if (titresPlats) {
+            const marqueDansAnnonces = titresPlats.some((t) => t.includes(marquePlate));
+            marcheASupprimer = marqueDansAnnonces || itemData.modele_source === "web";
+          }
+        }
+      }
+      if (!marcheASupprimer) {
+        console.warn(
+          `[lens-analysis] marque contestée retirée mais marché CONSERVÉ — la marque`
+          + ` n'apparaît dans aucun titre d'annonces_marche et modele_source ≠ "web"`,
+        );
+        logMeta = { ...logMeta, marche_conserve_marque_retiree: true };
+      } else {
+      marcheReellementSupprime = true;
       console.warn(
         `[lens-analysis] identification contredite — marché supprimé`
         + ` (recherches déjà exécutées : ${stats.recherches})`,
@@ -2280,6 +2376,7 @@ serve(async (req) => {
       // ailleurs. Plafonné → false : l'écran ne promet jamais des Pépites qui
       // n'ont pas été rendues.
       itemData.pepites_rendues = refundAutorise;
+      }
     }
 
     // ── AUTORITÉ DE PRIX CONDITIONNÉE À `objet_source` (2026-08-11) ─────────
@@ -2309,7 +2406,15 @@ serve(async (req) => {
     // Deux causes distinctes, journalisées séparément, mais la conclusion est
     // la même : pas de conseil d'engagement, et il ne doit pas non plus
     // survivre dans une phrase.
-    const retraitConseil = !estIdentify && !identificationContredite
+    // 2026-08-25 : l'exclusion se règle sur `marcheReellementSupprime`, plus
+    // sur `identificationContredite` — elle existait parce que le marché était
+    // de toute façon vide dans ce cas. Depuis le découplage, une contredite
+    // peut GARDER son marché : objet_source y a été rétrogradé à "deduit"
+    // (identification non établie), donc l'invariant « objet déduit ⇒ aucun
+    // conseil d'engagement » doit s'appliquer à elle comme à n'importe quel
+    // objet déduit — prix et comparables conservés, verdict/score/plafond
+    // d'achat retirés, phrases de prix nettoyées.
+    const retraitConseil = !estIdentify && !marcheReellementSupprime
       && (objetDeduit || margeNegativeRetiree);
     if (retraitConseil) {
       console.warn(
@@ -2418,6 +2523,10 @@ serve(async (req) => {
         ...(marqueAbsente ? { marque_absente: true } : {}),
         ...(familleInconnue ? { famille_inconnue: true } : {}),
         ...(marqueForceeNull ? { marque_forcee_null: true } : {}),
+        // Traçabilité 25/08 : l'expression de la liste qui a matché + le champ
+        // d'origine — jamais le texte de l'utilisateur.
+        ...(marqueForceeNull && marqueNegationExpr ? { marque_negation_expr: marqueNegationExpr } : {}),
+        ...(marqueForceeNull && marqueNegationChamp ? { marque_negation_champ: marqueNegationChamp } : {}),
         ...(noteContradiction ? { note_contradiction: true } : {}),
         ...(attributsFonctionnementNeutralises ? { attributs_etat_neutralises: attributsFonctionnementNeutralises } : {}),
         ...(attributsMesureEcartes ? { attributs_mesure_ecartes: attributsMesureEcartes } : {}),
