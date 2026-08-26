@@ -3465,9 +3465,13 @@ async function selectVintedBrand(marque, warnings) {
   // (id="suggested-brand-XXX"), aria-label = nom exact dans les deux
   // (flag "i" : insensible à la casse).
   try {
+    // 26/08 : Vinted a passé les lignes du picker Marque (brand-XXX et
+    // suggested-brand-XXX) de role="button" à role="radio" — aria-label
+    // intact (relevé live 26/08 au soir : brand-12 "Zara" en role=radio). Union des
+    // deux formes, la forme button reste si Vinted revient en arrière.
     await selectSimpleOption(
       trigger,
-      `[role="button"][aria-label="${CSS.escape(marque)}" i]`,
+      `[role="button"][aria-label="${CSS.escape(marque)}" i], [role="radio"][aria-label="${CSS.escape(marque)}" i]`,
       marque,
       { searchInputSelector: "#brand-search-input" }
     );

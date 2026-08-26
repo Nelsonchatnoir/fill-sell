@@ -102,7 +102,12 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // vers CWS-PERIMES pour lever toute ambiguïté. Le paquet courant est LA 0.6.8
 // unique (eBay API + verdicts honnêtes + pose ISBN + fix Couleur), à
 // téléverser SANS test unpacked (décision Nico 26/08).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7'];
+// 0.6.8 ajoutée le 26/08 au soir : zip daae23d téléversé le 26/08 au matin,
+// PUBLIÉE par le CWS le jour même (confirmé Nico). Le paquet courant est la
+// 0.6.9 — DÉBLOCAGE SEUL du sélecteur de catégorie Vinted (bascule
+// role=button → role=radio des feuilles du picker, panne totale de
+// publication depuis le 26/08 ~11:30, cf. vinted.registry.js).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8'];
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();

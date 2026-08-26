@@ -597,7 +597,28 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 //     milliers de publications qui passent ne changent pas de chemin.
 // Téléversement SANS test unpacked (décision Nico) : vérification de
 // démarrage en profil Chrome isolé + relecture d'assemblage avant livraison.
-export const EXTENSION_LAST_COMMIT = '2026-08-25T21:56:00Z';
+// 2026-08-26T19:46:00Z = 0.6.9 (PANNE TOTALE de publication Vinted depuis le
+// 26/08 ~11:30 Paris — bascule mesurée en prod entre la dernière sélection de
+// catégorie réussie à 11:29 et le premier « niveau introuvable, options [] »
+// à 11:31, toutes versions 0.6.7/0.6.8 confondues) : Vinted a passé les
+// cellules FEUILLE de ses pickers de role="button" à role="radio" (cellules
+// navigables et ids inchangés — relevé live compte test le 26/08 au soir,
+// Parfums=catalog-152, brand-12 "Zara", #custom-select-brand, #empty-brand
+// tous en role=radio). DÉBLOCAGE SEUL, rien d'autre dans ce paquet :
+//   - publish.catalog_option : union button|radio dans le maillon 0 (seul lu
+//     par selectorFor) ;
+//   - publish.model_option : [role="radio"] ajouté au closest ;
+//   - publish.custom_brand_option / no_brand_option : maillon radio EN PLUS
+//     (leurs ids primaires tiennent toujours) ;
+//   - selectVintedBrand (vinted.js:3470) : aria-label matché en button ET
+//     radio.
+// selectCategory, isChevronOption, gardes Livres/Couleur, cycle Pépites :
+// INTACTS. Les champs état/taille/matière/stockage sont en data-testid, non
+// touchés par la bascule. Manifest bumpé 0.6.9 (la 0.6.8 daae23d est publiée
+// par le CWS depuis le 26/08 au matin, cf. ALREADY_PUBLISHED).
+// EXTENSION_MIN_BUILD inchangé tant que la 0.6.9 n'est pas ACCEPTÉE.
+// Committé avec GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-26T19:46:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

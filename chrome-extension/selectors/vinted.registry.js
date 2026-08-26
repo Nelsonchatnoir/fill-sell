@@ -97,7 +97,20 @@ export const VINTED_SELECTORS = {
   "publish.catalog_option": {
     criticality: "orange",
     workflows: ["publish"],
-    chain: [{ type: "css", value: 'li.web_ui__Item__item [role="button"][id^="catalog-"]' }],
+    // ⚠️ CASSÉ PAR VINTED LE 26/08/2026 ~11:30 Paris (panne totale de
+    // publication, bascule mesurée en prod entre 11:29 et 11:31) : les
+    // cellules FEUILLE du picker sont passées de role="button" à
+    // role="radio" (aria-checked + input radio interne "{id}-catalog-radio") ;
+    // les cellules NAVIGABLES gardent role="button" + with-chevron, et les
+    // ids catalog-NNN n'ont PAS bougé (relevé live compte test 26/08 au soir,
+    // Parfums=catalog-152). Le sélecteur button-seul ne voyait plus que les
+    // chevrons → « niveau introuvable » avec options=[] aux niveaux de
+    // feuilles pures, ou seule la branche à chevron listée (cas Parfums).
+    // UNION dans le maillon 0 (et non un 2e maillon) : cette clé est
+    // consommée par selectorFor, qui ne lit QUE le maillon d'index 0 —
+    // un maillon supplémentaire serait du code mort pour selectCategory.
+    // Les deux formes restent actives si Vinted revient en arrière.
+    chain: [{ type: "css", value: 'li.web_ui__Item__item [role="button"][id^="catalog-"], li.web_ui__Item__item [role="radio"][id^="catalog-"]' }],
     assert: { visible: true },
     source: "vinted.js:1828, 1831 (CATALOG_OPTION_SELECTOR)",
     note: "visibleCatalogLabels, cascade catégorie — match exact-d'abord (findOptionMatch), stabilité 2 lectures + exact-only au niveau racine (waitForStableCatalogOption), chevron testé via .web_ui__Cell__with-chevron avec retry borné. ⚠️ Le sélecteur attrape AUSSI les SUGGESTIONS du panneau (id catalog-suggestion-NNNN, radio, sans chevron, textContent = libellé+fil d'Ariane concaténés) rendues AVANT l'arbre : la navigation les EXCLUT (estSuggestionCatalogue, vinted.js) et préfère le candidat à chevron quand le chemin continue — job 68420b37 du 06/08 : « Femmes » en double, la suggestion matchait la première.",
@@ -128,6 +141,12 @@ export const VINTED_SELECTORS = {
         textMatches: "^Utiliser .{1,80} comme marque$",
         note: "repli si l'id disparaît — texte relevé identique les 29/07 et 08/08",
       },
+      {
+        type: "text",
+        scope: '[data-testid$="-dropdown-content"] [role="radio"]',
+        textMatches: "^Utiliser .{1,80} comme marque$",
+        note: "repli 26/08 : Vinted a passé les lignes du picker en role=radio (relevé live 26/08 au soir, #custom-select-brand role=radio, id intact) — maillon EN PLUS, le scope button reste si Vinted revient en arrière",
+      },
     ],
     assert: { visible: true },
     source: "vinted.js (selectVintedBrand, repli création de marque)",
@@ -152,6 +171,12 @@ export const VINTED_SELECTORS = {
         textMatches: "^Sans marque$",
         note: "repli si l'id disparaît — libellé exact relevé le 08/08",
       },
+      {
+        type: "text",
+        scope: '[data-testid$="-dropdown-content"] [role="radio"]',
+        textMatches: "^Sans marque$",
+        note: "repli 26/08 : lignes du picker passées en role=radio (relevé live 26/08 au soir, #empty-brand role=radio, id intact) — maillon EN PLUS, le scope button reste si Vinted revient en arrière",
+      },
     ],
     assert: { visible: true },
     source: "vinted.js (selectVintedNoBrand — « Sans marque » natif + repli ultime de selectVintedBrand)",
@@ -169,8 +194,8 @@ export const VINTED_SELECTORS = {
     chain: [
       {
         type: "css",
-        value: '[role="button"], [data-testid^="model-"]:not([data-testid$="--title"])',
-        note: "utilisé via closest() depuis le nœud cliqué — 2 formes dans le closest",
+        value: '[role="button"], [role="radio"], [data-testid^="model-"]:not([data-testid$="--title"])',
+        note: "utilisé via closest() depuis le nœud cliqué — 3 formes dans le closest ; [role=\"radio\"] ajouté le 26/08 au soir (bascule Vinted du 26/08 ~11:30 : lignes de picker en role=radio) — union dans le maillon 0, seul lu par selectorFor",
       },
     ],
     source: "vinted.js:1717 (clickModelOption)",
