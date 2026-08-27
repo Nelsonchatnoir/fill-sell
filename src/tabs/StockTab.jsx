@@ -187,27 +187,38 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:18px 8px 7px;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
 .stock-v2 .gqty{position:absolute;bottom:7px;right:8px;background:rgba(255,255,255,0.93);color:var(--ink);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;z-index:2;}
 .stock-v2 .gbody{padding:9px 10px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;}
-/* Prix + vues/favoris — l'info n°3. Vues/favoris ABSENTS quand null (≈5 % des
-   articles + tout le hors-Vinted) : rien plutôt qu'un faux zéro. */
-.stock-v2 .gpricerow{display:flex;align-items:baseline;gap:5px;flex-wrap:wrap;min-width:0;}
-.stock-v2 .gprice{font-size:14.5px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;}
-.stock-v2 .gpricelbl{font-size:9.5px;font-weight:600;color:var(--mute);}
-.stock-v2 .ginvline{font-size:10px;font-weight:600;color:var(--mute);font-variant-numeric:tabular-nums;margin-top:1px;}
-.stock-v2 .gstats{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:600;color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums;}
-/* Titre — l'info n°4, 2 lignes max puis coupe. */
-.stock-v2 .gtitle{font-size:12px;font-weight:600;color:var(--ink);line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;}
-.stock-v2 .gbrand{font-size:10.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-/* Bloc bas ANCRÉ (2026-08-27, uniformisation des cartes) : dans une rangée de
-   grille les cartes s'étirent à la même hauteur — l'espace excédentaire doit
-   tomber au MÊME endroit sur toutes (entre le texte et le bloc bas), jamais
-   entre les badges et les boutons (vécu : Casquette beige avec un trou entre
-   « en ligne depuis » et Publier, à côté d'une Bouilloire en échec pleine).
-   Les badges n'occupent AUCUNE place quand il n'y en a pas (bloc .icons
-   conditionnel) ; quand ils existent, ils rejoignent le bloc bas : badge/chip
-   toujours collés aux boutons, à distance constante sur toutes les cartes.
+/* ── ZONES FIXES (2026-08-27 soir) : toutes les rangées du corps de carte ont
+   une hauteur FIXE et sont TOUJOURS rendues (vides au besoin) — deux cartes
+   côte à côte se superposent ligne par ligne quel que soit leur contenu, sur
+   les 3 largeurs de grille. Le vide vit DANS les zones réservées, plus jamais
+   en trou flottant au milieu de la carte. */
+/* Prix — l'info n°3. Une ligne fixe : prix + libellé (« Vinted » / « en
+   vente » / « investi » en repli), sans retour à la ligne. */
+.stock-v2 .gpricerow{display:flex;align-items:baseline;gap:5px;flex-wrap:nowrap;min-width:0;height:20px;overflow:hidden;}
+.stock-v2 .gprice{font-size:14.5px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.stock-v2 .gpricelbl{font-size:9.5px;font-weight:600;color:var(--mute);white-space:nowrap;}
+/* Investi — ligne réservée même sans prix d'achat (VIDE ≠ ZÉRO : vide, jamais 0). */
+.stock-v2 .ginvline{height:13px;line-height:13px;font-size:10px;font-weight:600;color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;}
+/* Vues/favoris — ligne réservée même quand absents (≈5 % des articles + tout
+   le hors-Vinted) : invisible mais la place reste, rien plutôt qu'un faux zéro. */
+.stock-v2 .gstatsrow{height:15px;display:flex;justify-content:flex-end;align-items:center;gap:7px;font-size:10.5px;font-weight:600;color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums;overflow:hidden;}
+/* Titre — l'info n°4 : 2 lignes TOUJOURS réservées (min-height = 2 × 1.35em),
+   coupe au-delà — un titre court garde la place du long. */
+.stock-v2 .gtitle{font-size:12px;font-weight:600;color:var(--ink);line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;min-height:calc(2*1.35em);}
+/* Marque — 1 ligne toujours réservée, vide si sans marque. */
+.stock-v2 .gbrand{height:14px;line-height:14px;font-size:10.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* Rangée de badges/pastilles — hauteur FIXE, TOUJOURS rendue (2e passe du
+   27/08 : les zones fixes remplacent l'ancrage seul, qui déplaçait le vide
+   sans le supprimer). UNE ligne, défilement horizontal discret si plusieurs
+   chips débordent (chaque chip garde son ellipsis et son tap : rien n'est
+   perdu). margin-top:auto : c'est ICI que tombe l'excédent résiduel d'une
+   rangée de grille (extras rares : saisie prix d'achat, avertissement lot) —
+   badges et boutons restent collés, au même niveau sur toutes les cartes.
    Un seul margin-top:auto actif à la fois — deux auto se PARTAGERAIENT le
    vide et recréeraient le trou au milieu. */
-.stock-v2 .gbody>.icons{margin-top:auto;}
+.stock-v2 .gbody>.icons{margin-top:auto;height:21px;flex-wrap:nowrap;align-items:center;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
+.stock-v2 .gbody>.icons::-webkit-scrollbar{display:none;}
+.stock-v2 .gbody>.icons .micon{flex:0 0 auto;}
 .stock-v2 .gbody>.icons~.gactions{margin-top:0;}
 .stock-v2 .gactions{margin-top:auto;display:flex;flex-direction:column;gap:4px;padding-top:2px;}
 .stock-v2 .gactions .btn-publier{padding:7px 0;font-size:12px;}
@@ -814,6 +825,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose 
     pending:    fr ? "En attente"        : "Queued",
     processing: fr ? "Publication…"      : "Publishing…",
     needs_user: fr ? "À compléter"       : "Needs input",
+    failed:     fr ? "Échec"             : "Failed",
   };
   // Un seul job par plateforme : le plus récent — même règle que les badges.
   const parPlateforme = {};
@@ -821,8 +833,13 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose 
     const cur = parPlateforme[j.platform];
     if (!cur || Date.parse(j.created_at || 0) > Date.parse(cur.created_at || 0)) parPlateforme[j.platform] = j;
   }
+  // `failed` inclus (2026-08-27) : la pastille de la carte galerie route ici
+  // dès que PLUSIEURS plateformes sont en échec / à compléter — cette modale
+  // est alors le seul accès au détail par plateforme (les badges du corps de
+  // carte, doublons de la pastille, ont été retirés). L'erreur humanisée est
+  // déjà rendue ligne par ligne ci-dessous.
   const lignes = Object.values(parPlateforme)
-    .filter(j => ["pending", "processing", "needs_user"].includes(j.status));
+    .filter(j => ["pending", "processing", "needs_user", "failed"].includes(j.status));
 
   return (
     <div
@@ -5023,14 +5040,40 @@ const StockTab = memo(function StockTab({
                                 :(fr?"En attente de ton ordinateur — démarrage à la prochaine ouverture de Chrome.":"Waiting for your computer — it starts next time Chrome opens.");
                             onTap=()=>setJobStatusItem(item);
                           }else if(failedJobs.length>0){
-                            dot="#B91C1C";fg="#B91C1C";txt=fr?'Échec':'Failed';
+                            // La plateforme MONTE dans la pastille (2026-08-27) :
+                            // l'ancien badge « ⚠️ Échec <plateforme> » du corps
+                            // de carte disait la même chose deux fois — retiré.
+                            // Plusieurs plateformes concernées (échecs + à
+                            // compléter) → compte lisible, et le tap ouvre la
+                            // modale de statut (détail + erreur humanisée PAR
+                            // plateforme, failed inclus depuis ce jour) : aucun
+                            // accès perdu. Une seule → même modale d'échec
+                            // qu'avant, à l'identique.
+                            dot="#B91C1C";fg="#B91C1C";
                             const j=failedJobs[0];
-                            titre=j.error?humanizeJobError(j,lang):undefined;
-                            if(j.error)onTap=()=>setFailJobModal(j);
+                            const actionables=failedJobs.length+needsUserJobs.length;
+                            txt=actionables>1
+                              ?(fr?`Échec · ${actionables} plateformes`:`Failed · ${actionables} platforms`)
+                              :(fr?`Échec ${PLATFORM_LABELS[j.platform]||j.platform}`:`Failed ${PLATFORM_LABELS[j.platform]||j.platform}`);
+                            titre=actionables>1
+                              ?(fr?'Voir le détail par plateforme':'See details per platform')
+                              :(j.error?humanizeJobError(j,lang):undefined);
+                            onTap=actionables>1
+                              ?()=>setJobStatusItem(item)
+                              :(j.error?()=>setFailJobModal(j):null);
                           }else if(needsUserJobs.length>0){
-                            dot="#E8956D";fg="#8A6100";txt=fr?'✋ À compléter':'✋ Action needed';
+                            // Même traitement que l'échec : plateforme nommée,
+                            // badge du bas (doublon) retiré, multi → modale de
+                            // statut.
+                            dot="#E8956D";fg="#8A6100";
                             const j=needsUserJobs[0];
-                            onTap=()=>{if(j.platform_fields?.needsUserField)setNeedsUserJob(j);else if(j.error)setFailJobModal(j);};
+                            txt=needsUserJobs.length>1
+                              ?(fr?`✋ À compléter · ${needsUserJobs.length}`:`✋ Needed · ${needsUserJobs.length}`)
+                              :(fr?`✋ À compléter ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ ${PLATFORM_LABELS[j.platform]||j.platform}`);
+                            titre=j.error?humanizeJobError(j,lang):undefined;
+                            onTap=needsUserJobs.length>1
+                              ?()=>setJobStatusItem(item)
+                              :()=>{if(j.platform_fields?.needsUserField)setNeedsUserJob(j);else if(j.error)setFailJobModal(j);};
                           }else if(disparuDeVinted){
                             dot="#8A8578";fg="#8A6100";
                             txt=(fr?'Plus en ligne':'Gone')+(dateCourteParis(item.disparu_le)?` · ${dateCourteParis(item.disparu_le)}`:'');
@@ -5095,6 +5138,12 @@ const StockTab = memo(function StockTab({
                             prix de vente seul, pas de tiret. Vues/favoris
                             Vinted inchangés (affichés quand ils EXISTENT,
                             jamais un faux zéro). */}
+                        {/* ZONES FIXES (2026-08-27 soir) : chaque rangée est
+                            TOUJOURS rendue, à hauteur fixe (CSS) — vide quand
+                            l'info manque, jamais absente. Deux cartes côte à
+                            côte se superposent ligne par ligne quel que soit
+                            leur contenu. VIDE ≠ ZÉRO inchangé : une zone
+                            réservée vide ne montre jamais un 0. */}
                         {(()=>{
                           const sellNum=Number(item.sell);
                           const prixVente=prixAnnonce!=null?prixAnnonce:(Number.isFinite(sellNum)&&sellNum>0?sellNum:null);
@@ -5114,27 +5163,27 @@ const StockTab = memo(function StockTab({
                                     <span className="gpricelbl">{lang==='fr'?'investi':'invested'}</span>
                                   </>
                                 )}
-                                {(vues!=null||favs!=null)&&(
-                                  <span className="gstats" title={lang==='fr'?'Vues et favoris sur Vinted':'Views and favourites on Vinted'}>
-                                    {vues!=null&&<span>👁️ {vues}</span>}
-                                    {favs!=null&&<span>❤️ {favs}</span>}
-                                  </span>
-                                )}
                               </div>
-                              {prixVente!=null&&invested!==null&&(
-                                <div className="ginvline" title={lang==='fr'?"Prix d'achat de l'article (frais inclus)":"Purchase cost of the item (fees included)"}>
-                                  {lang==='fr'?'investi':'invested'} {fmt(invested)}
-                                </div>
-                              )}
+                              <div className="ginvline"
+                                title={prixVente!=null&&invested!==null?(lang==='fr'?"Prix d'achat de l'article (frais inclus)":"Purchase cost of the item (fees included)"):undefined}>
+                                {prixVente!=null&&invested!==null?`${lang==='fr'?'investi':'invested'} ${fmt(invested)}`:' '}
+                              </div>
+                              <div className="gstatsrow"
+                                title={(vues!=null||favs!=null)?(lang==='fr'?'Vues et favoris sur Vinted':'Views and favourites on Vinted'):undefined}>
+                                {vues!=null&&<span>👁️ {vues}</span>}
+                                {favs!=null&&<span>❤️ {favs}</span>}
+                              </div>
                             </>
                           );
                         })()}
                         {/* 4. TITRE — 2 lignes max (CSS), puis la marque
                             (toujours visible, décision Nico 2026-08-05). */}
                         <div className="gtitle">{item.title}</div>
+                        {/* Marque : ligne TOUJOURS réservée (zones fixes) —
+                            vide sans marque, jamais absente. */}
                         {(()=>{
                           const mq=marqueLabel(item.marque,lang);
-                          return mq?<div className="gbrand">{mq}</div>:null;
+                          return <div className="gbrand">{mq||' '}</div>;
                         })()}
                           {/* ── Prix d'achat manquant : saisie DANS la ligne ──
                               stopPropagation obligatoire : la carte entière
@@ -5228,45 +5277,21 @@ const StockTab = memo(function StockTab({
                               la photo, les logos de plateformes sur la photo
                               aussi, et le prix d'annonce dans la rangée de
                               prix. Restent ici les états qui portent un détail
-                              ou un geste PAR PLATEFORME. */}
-                          {(failedJobs.length>0||needsUserJobs.length>0||warnedJobs.length>0||lienEnCoursJobs.length>0||lienRembourseJobs.length>0||item.emplacement||(item.vinted_item_id&&!disparuDeVinted))&&(
+                              ou un geste PAR PLATEFORME.
+                              ⚠️ Les badges « Échec <pf> » et « À compléter
+                              <pf> » ont été RETIRÉS (2026-08-27 soir) : ils
+                              répétaient la pastille de la photo, qui nomme
+                              désormais la plateforme et route vers les mêmes
+                              modales (multi-plateformes → JobStatusModal,
+                              failed inclus). Ne pas les réintroduire ici.
+                              Rangée TOUJOURS rendue, hauteur FIXE (une ligne,
+                              défilement horizontal si ça déborde) : les cartes
+                              d'une rangée se superposent ligne par ligne. */}
                             <div className="icons">
-                              {/* Échec explicite par plateforme (2026-07-19) : le message
-                                  d'erreur complet (déjà humanisé côté extension) est porté
-                                  par title= (survol desktop / lecteur d'écran) et par un
-                                  tap → alert (mobile n'a pas de survol). stopPropagation :
-                                  le tap sur le badge ne doit pas ouvrir l'édition. */}
-                              {/* « ✋ À compléter » (socle needs_user, 2026-07-19) :
-                                  un champ précis attend la décision de l'utilisateur.
-                                  Ambre (action attendue), PAS rouge (ce n'est pas un
-                                  échec définitif). Tap → mini-éditeur DANS l'app :
-                                  jamais de renvoi vers la plateforme externe. */}
-                              {needsUserJobs.map(j=>(
-                                <div
-                                  key={"nu-"+j.platform}
-                                  className="micon"
-                                  title={j.error?humanizeJobError(j,lang):undefined}
-                                  onClick={e=>{
-                                    e.stopPropagation();
-                                    if(j.platform_fields?.needsUserField){setNeedsUserJob(j);}
-                                    else if(j.error){setFailJobModal(j);}
-                                  }}
-                                  style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:"pointer"}}
-                                >
-                                  ✋ {lang==="en"?"Action needed":"À compléter"} {PLATFORM_LABELS[j.platform]||j.platform}
-                                </div>
-                              ))}
-                              {failedJobs.map(j=>(
-                                <div
-                                  key={"fail-"+j.platform}
-                                  className="micon"
-                                  title={j.error?humanizeJobError(j,lang):undefined}
-                                  onClick={e=>{e.stopPropagation();if(j.error)setFailJobModal(j);}}
-                                  style={{background:"#FBEDEC",border:"1px solid #EFC2BE",color:"#8C2F28",cursor:j.error?"pointer":"default"}}
-                                >
-                                  ⚠️ {lang==="en"?"Failed":"Échec"} {PLATFORM_LABELS[j.platform]||j.platform}
-                                </div>
-                              ))}
+                              {/* Publiée avec réserve / lien en cours / Pépites
+                                  rendues : PAS des doublons — la pastille dit
+                                  « En ligne » (ou rien), le détail n'existe
+                                  qu'ici. Conservés. */}
                               {/* Publiée AVEC RÉSERVE : même patron que l'Échec
                                   (badge + title + tap → modale) mais AMBRE —
                                   l'annonce est en ligne, quelque chose est à
@@ -5411,7 +5436,6 @@ const StockTab = memo(function StockTab({
                                   STATUT sur la photo qui porte le cycle —
                                   toujours cliquable → feuille d'avancement.) */}
                             </div>
-                          )}
                         {/* Actions — mêmes gestes, mêmes gardes que la liste
                             d'avant la galerie. margin-top:auto : les boutons
                             s'alignent en bas de carte quelle que soit la
