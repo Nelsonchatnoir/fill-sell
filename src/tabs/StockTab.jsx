@@ -154,7 +154,72 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .pa-bar .lbl{font-size:12px;font-weight:700;color:#10201B;}
 .stock-v2 .pa-bar .apply{border:none;background:linear-gradient(120deg,#2F9E90,#1B6E62);color:#fff;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
 .stock-v2 .pa-bar button:disabled{opacity:.45;cursor:default;}
+/* ── Galerie de cartes (2026-08-27, refonte Stock IA) ─────────────────────────
+   2 colonnes sur mobile, 3-4 au-delà. La carte porte la PREMIÈRE photo de
+   l'article ; sans photo (1 705 articles sur 36 903 en base) ou image cassée,
+   la tuile d'icône de catégorie reprend sa place — jamais une carte vide.
+   Hiérarchie validée : 1. statut (pastille), 2. plateformes (logos sur la
+   photo), 3. prix + vues/favoris, 4. titre (2 lignes max). */
+.stock-v2 .ggrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+@media(min-width:560px){.stock-v2 .ggrid{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(min-width:880px){.stock-v2 .ggrid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+.stock-v2 .gcard{background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;position:relative;min-width:0;box-shadow:0 1px 3px rgba(16,32,27,0.04);}
+.stock-v2 .gphoto{position:relative;aspect-ratio:1/1;background:var(--paper);overflow:hidden;flex-shrink:0;}
+.stock-v2 .gphoto img{width:100%;height:100%;object-fit:cover;display:block;}
+.stock-v2 .gph-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+.stock-v2 .gph-fallback .cat-tile{width:56px;height:56px;font-size:27px;border-radius:16px;}
+/* Pastille de STATUT — l'info n°1, lisible sans lire : chip blanc (contraste
+   garanti sur n'importe quelle photo) + point de couleur. Le point PULSE quand
+   un travail est en cours. */
+.stock-v2 .gstatus{position:absolute;top:8px;left:8px;max-width:calc(100% - 44px);display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;background:rgba(255,255,255,0.93);font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 5px rgba(16,32,27,0.22);z-index:2;}
+.stock-v2 .gstatus .gdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.stock-v2 .gstatus .gdot.pulsing{animation:fs-pulse 1.4s ease-in-out infinite;}
+@media (prefers-reduced-motion:reduce){.stock-v2 .gstatus .gdot.pulsing{animation:none;}}
+.stock-v2 .gdel{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(16,32,27,0.40);color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2;font-family:inherit;}
+/* Plateformes — l'info n°2 : logos posés sur un dégradé bas de photo. */
+.stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:18px 8px 7px;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
+.stock-v2 .gqty{position:absolute;bottom:7px;right:8px;background:rgba(255,255,255,0.93);color:var(--ink);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;z-index:2;}
+.stock-v2 .gbody{padding:9px 10px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;}
+/* Prix + vues/favoris — l'info n°3. Vues/favoris ABSENTS quand null (≈5 % des
+   articles + tout le hors-Vinted) : rien plutôt qu'un faux zéro. */
+.stock-v2 .gpricerow{display:flex;align-items:baseline;gap:5px;flex-wrap:wrap;min-width:0;}
+.stock-v2 .gprice{font-size:14.5px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;}
+.stock-v2 .gpricelbl{font-size:9.5px;font-weight:600;color:var(--mute);}
+.stock-v2 .gstats{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:600;color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums;}
+/* Titre — l'info n°4, 2 lignes max puis coupe. */
+.stock-v2 .gtitle{font-size:12px;font-weight:600;color:var(--ink);line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;}
+.stock-v2 .gbrand{font-size:10.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stock-v2 .gactions{margin-top:auto;display:flex;flex-direction:column;gap:4px;padding-top:2px;}
+.stock-v2 .gactions .btn-publier{padding:7px 0;font-size:12px;}
+.stock-v2 .gactions .btn-vendre{padding:6px 4px;}
+/* Barre de progression des republications (remplace la ligne verte 2.4.66) :
+   progression au niveau des JOBS (X faits sur N), jamais interne au job. */
+.stock-v2 .repub-track{height:6px;border-radius:999px;background:var(--canvas);overflow:hidden;margin-top:8px;}
+.stock-v2 .repub-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#2F9E90,#1B6E62);transition:width 0.6s ease;min-width:0;}
 `;
+
+// ── Photo de carte galerie (2026-08-27) ─────────────────────────────────────
+// Deux formats coexistent dans inventaire.photos : objets {type,url} (flux
+// photos retouchées) et STRINGS nues (URLs CDN Vinted écrites par la sync du
+// dressing) — même normalisation que initialPhotos du stepper, plus bas.
+// 1 705 articles sur 36 903 n'ont AUCUNE photo : la tuile d'icône de catégorie
+// reprend sa place, et une image qui casse au chargement (CDN Vinted expiré)
+// retombe dessus aussi — jamais une carte vide ni une image cassée.
+// loading="lazy" : le navigateur ne charge que les photos proches du viewport,
+// les gros comptes (3 000+ articles) ne téléchargent pas tout d'un coup.
+function premierePhoto(photos){
+  if(!Array.isArray(photos))return null;
+  for(const p of photos){
+    const u=typeof p==='string'?p:(p?.url||p?.original||p?.enhanced||p?.bg_removed);
+    if(u)return u;
+  }
+  return null;
+}
+function GalleryPhoto({url,alt,fallback}){
+  const [err,setErr]=useState(false);
+  if(!url||err)return <div className="gph-fallback">{fallback}</div>;
+  return <img src={url} alt={alt||''} loading="lazy" decoding="async" onError={()=>setErr(true)}/>;
+}
 
 // ── Redesign zone de saisie IA (haut StockTab) — eyebrow + toggle Écrire/Parler ──
 const STOCK_TOP_CSS = `
@@ -3124,6 +3189,10 @@ const StockTab = memo(function StockTab({
     const debuts = enVol.map((j) => Date.parse(j.created_at ?? '')).filter(Number.isFinite);
     const seuilLot = debuts.length ? Math.min(...debuts) - 2 * 60 * 1000 : Number.NEGATIVE_INFINITY;
     let total = 0, terminees = 0, enCours = 0, aRelancer = 0, arretees = 0, prochaine = null;
+    // Article EN COURS DE TRAITEMENT — pour la ligne « ⏳ <titre> » de la
+    // barre de progression (2026-08-27). 'processing' d'abord (l'extension y
+    // travaille vraiment) ; à défaut, le prochain en file. Jamais inventé.
+    let enCoursJob = null, enAttenteJob = null;
     // Orpheline (3d-a) : une recréation en cours dont l'ordinateur ne répond
     // plus — mêmes seuils que la pastille (deleted > 20 min + heartbeat muet
     // > 10 min). Le memo se recalcule au rafraîchissement de
@@ -3143,7 +3212,11 @@ const StockTab = memo(function StockTab({
       if (st === 'published' || step === 'recreated' || st === 'dry_run_completed') terminees++;
       else if (st === 'needs_user') aRelancer++;
       else if (st === 'failed' || st === 'cancelled') arretees++;
-      else enCours++;
+      else {
+        enCours++;
+        if (st === 'processing' && !enCoursJob) enCoursJob = last;
+        else if (!enAttenteJob) enAttenteJob = last;
+      }
       const naa = Date.parse(last.platform_fields?.next_action_after ?? '');
       if ((st === 'pending' || st === 'processing') && Number.isFinite(naa) && naa > Date.now()
         && (!prochaine || naa < prochaine)) prochaine = naa;
@@ -3152,7 +3225,8 @@ const StockTab = memo(function StockTab({
         if (Number.isFinite(d) && Date.now() - d > 20 * 60 * 1000) orpheline = true;
       }
     }
-    return { total, terminees, enCours, aRelancer, arretees, prochaine, orpheline };
+    return { total, terminees, enCours, aRelancer, arretees, prochaine, orpheline,
+      enCoursJob: enCoursJob ?? enAttenteJob };
   }, [repubDernier, republishActif, extensionStatus?.lastSeenAt]);
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
   const [repubFiltre, setRepubFiltre] = useState(null);
@@ -3338,32 +3412,9 @@ const StockTab = memo(function StockTab({
   }, [user?.id]);
   const pausedSet = new Set(pausedPlatforms);
 
-  // ── Compteur « republications réussies » (2026-08-27, cas Joséphine) ──────
-  // 62 republications parfaites en 4 jours et l'app n'en montrait aucune :
-  // seul l'échec parlait, vécu comme « ça bug pas mal ». On rend le travail
-  // silencieux VISIBLE : count EXACT en base (action='republish',
-  // status='published', published_at sur 7 jours glissants) — jamais de
-  // chiffre dérivé ni arrondi, les échecs ne sont pas comptés ici (couverts
-  // ailleurs). 0 ou lecture en échec = rien d'affiché : un nouvel inscrit ne
-  // voit pas de compteur à zéro.
-  const [repubReussies7j, setRepubReussies7j] = useState(0);
-  useEffect(() => {
-    if (!user?.id) return;
-    let alive = true;
-    const compter = async () => {
-      try {
-        const depuis = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
-        const { count, error } = await supabase.from("cross_post_jobs")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", user.id).eq("action", "republish").eq("status", "published")
-          .gte("published_at", depuis);
-        if (alive && !error && typeof count === "number") setRepubReussies7j(count);
-      } catch { /* jamais bloquant */ }
-    };
-    compter();
-    const timer = setInterval(() => { if (document.visibilityState === "visible") compter(); }, 60000);
-    return () => { alive = false; clearInterval(timer); };
-  }, [user?.id]);
+  // (Le compteur « N republications réussies ces 7 derniers jours » livré en
+  // 2.4.66 a été RETIRÉ le 2026-08-27, décision Nico : remplacé par la barre
+  // de progression du bandeau de lot — cf. repubBandeau plus bas.)
 
   // action !== "delete" : un retrait ciblé en attente n'est pas un dépôt.
   const pendingTotal = Object.values(jobsByInventaire).flat()
@@ -3651,31 +3702,9 @@ const StockTab = memo(function StockTab({
           </div>
         </div>
       ))}
-      {/* ── Ligne « republications réussies » (2026-08-27) ───────────────────
-          Le travail silencieux rendu visible (cas Joséphine : 62 réussites
-          en 4 jours, vécues comme « ça bug pas mal »). Count EXACT en base,
-          7 jours glissants, échecs exclus (couverts ailleurs), rien à zéro.
-          Même géométrie que les autres bandeaux, palette verte de l'app. */}
-      {repubReussies7j>0&&(
-        <div style={{
-          display:"flex", gap:10, alignItems:"flex-start",
-          background:"#E7F3F0", border:"1px solid #BFDCD5", borderLeft:"4px solid #2F9E90",
-          borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
-        }}>
-          <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>✅</span>
-          <div style={{fontSize:13, lineHeight:1.5, color:"#1B6E62"}}>
-            {lang==='fr'
-              ?<>
-                <span style={{fontWeight:700}}>{repubReussies7j===1?"1 republication réussie":`${repubReussies7j} republications réussies`}</span>
-                {" ces 7 derniers jours — tout s'est déroulé sans accroc."}
-              </>
-              :<>
-                <span style={{fontWeight:700}}>{repubReussies7j===1?"1 successful reposting":`${repubReussies7j} successful repostings`}</span>
-                {" in the last 7 days — everything went smoothly."}
-              </>}
-          </div>
-        </div>
-      )}
+      {/* (La ligne verte « N republications réussies ces 7 derniers jours »
+          vivait ici — retirée le 2026-08-27 au profit de la barre de
+          progression du bandeau de lot, dans la liste plus bas.) */}
       {/* ── Bandeau horloge machine en retard (2026-08-15, cas Carla) ────────
           Détection detecterRetardHorloge (shared.js) sur les jobs déjà
           chargés (jobsByInventaire, poll 20 s) : processing_since (horloge
@@ -4092,6 +4121,25 @@ const StockTab = memo(function StockTab({
                     {repubBandeau.arretees} {lang==='fr'?'arrêtée'+(repubBandeau.arretees>1?'s':''):'stopped'} ›
                   </button>
                 )}
+              </div>
+              {/* ── Barre de progression (2026-08-27, remplace la ligne verte
+                  2.4.66) : progression au niveau des JOBS — terminés sur
+                  total du lot — jamais une progression interne au job en
+                  cours (un cycle prend ~4 min, elle serait inventée). Le
+                  bandeau entier n'existe que s'il reste du non-terminal :
+                  jamais de barre à zéro sans travail en cours. */}
+              {(()=>{
+                const j=repubBandeau.enCoursJob;
+                const titre=j?(stock.find(i=>i.id===j.inventaire_id)?.title??j.title??null):null;
+                if(!titre)return null;
+                return(
+                  <div style={{fontSize:11.5,color:"#5C6560",marginTop:6,lineHeight:1.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                    ⏳ {lang==='fr'?'En cours :':'Working on:'} <span style={{fontWeight:700,color:"#10201B"}}>{titre}</span>
+                  </div>
+                );
+              })()}
+              <div className="repub-track">
+                <div className="repub-fill" style={{width:`${repubBandeau.total>0?Math.round(repubBandeau.terminees/repubBandeau.total*100):0}%`}}/>
               </div>
               {/* Orpheline PRIME sur « prochaine recréation » : annoncer une
                   heure pendant que l'ordinateur dort serait un mensonge. La
@@ -4696,6 +4744,11 @@ const StockTab = memo(function StockTab({
                       :"No listings can be reposted right now. A listing is repostable when it's still live on Vinted, has no repost already queued, and wasn't recreated in the last 24 hours. Check back later — or exit the mode above."}
                   </div>
                 )}
+                {/* ── GALERIE (2026-08-27) : grille de cartes photo, 2 colonnes
+                    sur mobile. Pagination inchangée (slice de 10 + « Voir
+                    plus ») et photos en loading="lazy" : les gros comptes
+                    (3 000+ articles) ne chargent jamais tout d'un coup. */}
+                <div className="ggrid">
                 {(modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnables:listeStock).map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
@@ -4934,50 +4987,157 @@ const StockTab = memo(function StockTab({
                   // _table:'inventaire' — cible d'écriture explicite de la modale
                   // d'édition (les ids ventes/inventaire se chevauchent).
                   const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:0,sell:item.sell??""});
+                  const photoUrl=premierePhoto(item.photos);
+                  const vues=item.vinted_view_count;
+                  const favs=item.vinted_favourite_count;
                   return(
-                    // Swipe gauche = supprimer (conservé) ; tap sur la carte = éditer.
-                    <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} style={{borderRadius:16,border:"1px solid #E7E3D8",boxShadow:"none"}}>
-                      {/* Tap sur la carte = éditer (l'icône crayon a été retirée le
-                          2026-07-14 : toute la ligne est cliquable, l'affordance
-                          était redondante et venait coller le prix). */}
-                      <div className="row in-swipe" onClick={openEdit}>
-                        <div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>
-                        <div className="left">
-                          {/* Titre sur DEUX lignes (CSS) : c'est la fin du titre
-                              qui distingue deux articles de la même marque. */}
-                          <div className="title-line">
-                            <span className="title">{item.title}</span>
-                            {(item.quantite||1)>1&&<span className="qty-badge">×{item.quantite}</span>}
+                    // ── Carte GALERIE (2026-08-27, refonte validée Nico) ─────
+                    // Hiérarchie : 1. statut (pastille sur la photo), 2. logos
+                    // de plateformes (sur la photo), 3. prix + vues/favoris,
+                    // 4. titre (2 lignes max). Tap sur la carte = éditer — Y
+                    // COMPRIS pendant un job : la carte reste consultable, la
+                    // pastille (cliquable) porte l'avancement. Le
+                    // swipe-supprimer de l'ancienne liste devient le « ✕ » du
+                    // coin photo — même chemin delItem (plan + confirmation),
+                    // jamais une suppression sèche.
+                    <div key={item.id} className="gcard" role="button" tabIndex={0} onClick={openEdit}
+                      onKeyDown={e=>{if(e.key==='Enter'){openEdit();}}}>
+                      <div className="gphoto">
+                        <GalleryPhoto url={photoUrl} alt={item.title}
+                          fallback={<div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>}/>
+                        {/* 1. STATUT — UNE pastille, la plus urgente d'abord :
+                            republication en cours > en pause > dépôt en cours >
+                            échec > à compléter > plus en ligne > en ligne. Les
+                            détails par plateforme restent dans les badges du
+                            corps de carte ; ici, le coup d'œil. */}
+                        {(()=>{
+                          const fr=lang==='fr';
+                          let dot=null,pulse=false,txt=null,onTap=null,fg="#10201B",titre=null;
+                          if(repubOccupeSlot){
+                            pulse=!repubEtape.fini&&!repubOrpheline;
+                            dot=repubOrpheline?"#B91C1C":(repubEtape.encre||"#E8956D");
+                            fg=repubOrpheline?"#B91C1C":(repubEtape.encre||"#10201B");
+                            txt=repubOrpheline?(fr?'Ouvre Chrome':'Open Chrome'):repubEtape.court;
+                            titre=repubOrpheline
+                              ?(fr?"Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité.":"Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe.")
+                              :(fr?'Voir où en est la republication':'See repost progress');
+                            onTap=()=>setRepubProgress(repubLatest);
+                          }else if(hasPausedPending){
+                            dot="#64748B";txt=fr?'En pause':'Paused';titre=t("stockJobPausedBadge");
+                          }else if(hasPending){
+                            // Mêmes règles que l'ancien badge « En cours… »
+                            // (2026-08-13) : extension hors fraîcheur → on
+                            // nomme le vrai état, jamais un travail inventé.
+                            const horsFraicheur=extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive";
+                            const plusVieux=Math.min(...jobs
+                              .filter(j=>j.status==="pending"||j.status==="processing")
+                              .map(j=>Date.parse(j.created_at))
+                              .filter(Number.isFinite));
+                            const joursAttente=Number.isFinite(plusVieux)?Math.floor((Date.now()-plusVieux)/86400000):0;
+                            const attenteLongue=horsFraicheur&&joursAttente>=1;
+                            pulse=!horsFraicheur;dot="#E8956D";
+                            txt=!horsFraicheur
+                              ?(fr?'En cours…':'Posting…')
+                              :attenteLongue?(fr?`En attente ${joursAttente} j`:`Waiting ${joursAttente} d`)
+                              :(fr?'En attente':'Waiting');
+                            titre=!horsFraicheur
+                              ?(fr?'Voir le statut':'See status')
+                              :attenteLongue
+                                ?(fr?`En attente depuis ${joursAttente} jour${joursAttente>1?"s":""}. Ouvre Chrome sur l'ordinateur où tu as installé l'extension.`:`Waiting for ${joursAttente} day${joursAttente>1?"s":""}. Open Chrome on the computer where you installed the extension.`)
+                                :(fr?"En attente de ton ordinateur — démarrage à la prochaine ouverture de Chrome.":"Waiting for your computer — it starts next time Chrome opens.");
+                            onTap=()=>setJobStatusItem(item);
+                          }else if(failedJobs.length>0){
+                            dot="#B91C1C";fg="#B91C1C";txt=fr?'Échec':'Failed';
+                            const j=failedJobs[0];
+                            titre=j.error?humanizeJobError(j,lang):undefined;
+                            if(j.error)onTap=()=>setFailJobModal(j);
+                          }else if(needsUserJobs.length>0){
+                            dot="#E8956D";fg="#8A6100";txt=fr?'✋ À compléter':'✋ Action needed';
+                            const j=needsUserJobs[0];
+                            onTap=()=>{if(j.platform_fields?.needsUserField)setNeedsUserJob(j);else if(j.error)setFailJobModal(j);};
+                          }else if(disparuDeVinted){
+                            dot="#8A8578";fg="#8A6100";
+                            txt=(fr?'Plus en ligne':'Gone')+(dateCourteParis(item.disparu_le)?` · ${dateCourteParis(item.disparu_le)}`:'');
+                            titre=fr?"L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing.":'This Vinted listing was not found during the last wardrobe sync.';
+                          }else if(enLigne){
+                            dot="#2F9E90";fg="#1B6E62";txt=fr?'En ligne':'Live';
+                          }
+                          if(!txt)return null;
+                          return(
+                            <div className="gstatus" style={{color:fg,cursor:onTap?"pointer":"default"}} title={titre}
+                              role={onTap?"button":undefined} tabIndex={onTap?0:undefined}
+                              onClick={e=>{e.stopPropagation();if(onTap)onTap();}}
+                              onKeyDown={onTap?e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();onTap();}}:undefined}>
+                              <span className={`gdot${pulse?' pulsing':''}`} style={{background:dot}}/>
+                              {txt}
+                            </div>
+                          );
+                        })()}
+                        <button className="gdel"
+                          title={lang==='fr'?'Supprimer cet article':'Delete this item'}
+                          aria-label={lang==='fr'?'Supprimer cet article':'Delete this item'}
+                          onClick={e=>{e.stopPropagation();delItem(item.id);}}>✕</button>
+                        {/* 2. PLATEFORMES en ligne — mêmes gestes que la liste :
+                            tap logo → modal de retrait ; logo gelé pendant une
+                            republication → feuille d'avancement. */}
+                        {logosEnLigne.length>0&&(
+                          <div className="glogos">
+                            {logosEnLigne.map(p=>{
+                              const removing=removalState[p]==="removing";
+                              const gele=vintedGeleParRepub&&p==="vinted";
+                              if(gele)return(
+                                <span key={p} className="plogo"
+                                  title={lang==="en"?"Repost in progress — the listing comes back in a few minutes":"Republication en cours — l'annonce revient dans quelques minutes"}
+                                  style={{cursor:"pointer",opacity:.45}}
+                                  onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}>
+                                  <PlatformLogo platform={p} size={16}/>
+                                </span>
+                              );
+                              return(
+                                <span key={p} className="plogo"
+                                  title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`):(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
+                                  style={{cursor:"pointer",...(removing?{opacity:.35}:{})}}
+                                  onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
+                                  <PlatformLogo platform={p} size={16}/>
+                                </span>
+                              );
+                            })}
                           </div>
-                          {/* Ligne meta = MARQUE (toujours visible, décision Nico
-                              du 2026-08-05 : la règle « on la masque quand le
-                              titre la porte » est retirée, la répétition est un
-                              moindre mal que l'absence) puis ce qui EXISTE
-                              réellement.
-                              ⛔ Aucun remplissage : pas de « Autre » par défaut,
-                              pas de « catégorie à venir ». Un type détecté depuis
-                              le titre a été mesuré sur les 30 articles réels —
-                              29 « Mode » et une montre classée « Mode » : ça
-                              n'apprend rien et c'est parfois faux. Rien n'occupe
-                              donc la place tant que le vrai catalog_id Vinted
-                              n'est pas là. Les morceaux sont JOINTS, jamais
-                              suffixés : sinon un point médian restait orphelin
-                              quand la suite était vide. */}
-                          {(()=>{
-                            const mq=marqueLabel(item.marque,lang);
-                            const suite=[
-                              _itemDesc||_itemLoc||null,
-                              item.typeConnu?typeLabel(item.type,lang):null,
-                            ].filter(Boolean);
-                            if(!mq&&!suite.length)return null;
-                            return(
-                              <div className="meta">
-                                {mq&&<span className="hl">{mq}</span>}
-                                {mq&&suite.length?" · ":null}
-                                {suite.join(" · ")}
-                              </div>
-                            );
-                          })()}
+                        )}
+                        {(item.quantite||1)>1&&<div className="gqty">×{item.quantite}</div>}
+                      </div>
+                      <div className="gbody">
+                        {/* 3. PRIX (annonce Vinted si en ligne, sinon investi —
+                            VIDE ≠ ZÉRO : prix d'achat inconnu → tiret) + vues
+                            et favoris Vinted quand ils EXISTENT (null ≈ 5 %
+                            des articles + tout le hors-Vinted → rien affiché,
+                            jamais un faux zéro). */}
+                        <div className="gpricerow">
+                          {prixAnnonce!=null?(
+                            <>
+                              <span className="gprice" title={lang==='fr'?"Prix affiché sur l'annonce Vinted — pas un prix de vente réalisé":"Asking price on the Vinted listing — not a realized sale price"}>{fmt(prixAnnonce)}</span>
+                              <span className="gpricelbl">Vinted</span>
+                            </>
+                          ):(
+                            <>
+                              <span className="gprice">{invested!==null?fmt(invested):'—'}</span>
+                              <span className="gpricelbl">{lang==='fr'?'investi':'invested'}</span>
+                            </>
+                          )}
+                          {(vues!=null||favs!=null)&&(
+                            <span className="gstats" title={lang==='fr'?'Vues et favoris sur Vinted':'Views and favourites on Vinted'}>
+                              {vues!=null&&<span>👁️ {vues}</span>}
+                              {favs!=null&&<span>❤️ {favs}</span>}
+                            </span>
+                          )}
+                        </div>
+                        {/* 4. TITRE — 2 lignes max (CSS), puis la marque
+                            (toujours visible, décision Nico 2026-08-05). */}
+                        <div className="gtitle">{item.title}</div>
+                        {(()=>{
+                          const mq=marqueLabel(item.marque,lang);
+                          return mq?<div className="gbrand">{mq}</div>:null;
+                        })()}
                           {/* ── Prix d'achat manquant : saisie DANS la ligne ──
                               stopPropagation obligatoire : la carte entière
                               ouvre l'édition au clic. Le « je ne sais plus »
@@ -5064,126 +5224,15 @@ const StockTab = memo(function StockTab({
                                 : `Publishing lists 1 unit · ${(item.quantite||1)-1} stay in stock`}
                             </div>
                           )}
-                          {/* `item.plateforme` a quitté cette condition avec le
-                              repli textuel qu'il servait à afficher : le champ
-                              libre ne déclenche plus une rangée à lui seul. */}
-                          {(enLigne||disparuDeVinted||hasPending||failedJobs.length>0||needsUserJobs.length>0||item.emplacement||prixAnnonce!=null||repubOccupeSlot||(item.vinted_item_id&&!disparuDeVinted))&&(
+                          {/* Badges SECONDAIRES seulement (2026-08-27, galerie) :
+                              le statut principal (En ligne / En cours / Échec /
+                              Plus en ligne / republication) vit en PASTILLE sur
+                              la photo, les logos de plateformes sur la photo
+                              aussi, et le prix d'annonce dans la rangée de
+                              prix. Restent ici les états qui portent un détail
+                              ou un geste PAR PLATEFORME. */}
+                          {(failedJobs.length>0||needsUserJobs.length>0||warnedJobs.length>0||lienEnCoursJobs.length>0||lienRembourseJobs.length>0||item.emplacement||(item.vinted_item_id&&!disparuDeVinted))&&(
                             <div className="icons">
-                              {/* Statut explicite : les pastilles de plateformes disaient OÙ,
-                                  jamais QUE l'article est en ligne — d'où la confusion avec
-                                  un article jamais publié. */}
-                              {/* !repubOccupeSlot : pendant une republication, la
-                                  pastille de republication PREND CETTE PLACE
-                                  (cf. repubOccupeSlot plus haut) — jamais les
-                                  deux à la fois. */}
-                              {/* Rangée DÉDIÉE pour le SLOT d'état (07/08),
-                                  dans ses deux incarnations (« En ligne »
-                                  ici, pastille de cycle plus bas). Sans ça,
-                                  l'échange « En ligne » (~62 px) ↔
-                                  « Recréation… › » (~115 px) faisait
-                                  re-wrapper la rangée à 390 px : ±1 rangée,
-                                  la respiration résiduelle que le gel
-                                  n'avait pas couverte. Le WRAPPER prend la
-                                  rangée (flex-basis:100%), la puce garde sa
-                                  largeur de contenu — un flex-basis posé
-                                  sur la puce elle-même en ferait un bandeau
-                                  pleine largeur, et clampé par max-width il
-                                  ne forcerait plus le retour à la ligne
-                                  (le wrap flex lit la taille APRÈS clamp). */}
-                              {enLigne&&!repubOccupeSlot&&(
-                                <div style={{flex:"0 0 100%"}}>
-                                  <div className="micon ic-online"><span className="dot"/>{lang==="en"?"Live":"En ligne"}</div>
-                                </div>
-                              )}
-                              {/* Annonce Vinted introuvable à la dernière sync.
-                                  Elle REMPLACE le prix (masqué au même titre) :
-                                  la place libérée dit maintenant la seule chose
-                                  vraie de cette carte. Ambre du design system,
-                                  aucune teinte nouvelle. */}
-                              {disparuDeVinted&&(
-                                <div className="micon ic-gone"
-                                  title={lang==='fr'?"L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing.":'This Vinted listing was not found during the last wardrobe sync.'}>
-                                  ⚠️ {lang==='fr'?'Plus en ligne':'Gone'}{dateCourteParis(item.disparu_le)?` · ${dateCourteParis(item.disparu_le)}`:''}
-                                </div>
-                              )}
-                              {/* LOGOS, pas les noms écrits : « Leboncoin » + « Beebs » en
-                                  toutes lettres débordaient la carte en largeur mobile, quel
-                                  que soit le CSS. Un logo carré de 18 px règle le problème à
-                                  la racine. title= garde le nom accessible au survol/lecteur
-                                  d'écran. */}
-                              {/* Cliquables (retrait ciblé, 2026-07-19) : tap sur UN
-                                  logo → RemovePlatformsModal (toutes les plateformes,
-                                  action de retrait par ligne, confirmation inline).
-                                  stopPropagation : ne pas ouvrir l'édition.
-                                  Estompé = retrait en cours. */}
-                              {logosEnLigne.map(p=>{
-                                const removing=removalState[p]==="removing";
-                                // Logo GELÉ (republication en cours) : grisé,
-                                // jamais retiré ; le tap ouvre la feuille
-                                // d'avancement — surtout pas le modal de
-                                // retrait sur une annonce en plein cycle.
-                                const gele=vintedGeleParRepub&&p==="vinted";
-                                if(gele)return(
-                                  <span key={p} className="plogo"
-                                    title={lang==="en"?"Repost in progress — the listing comes back in a few minutes":"Republication en cours — l'annonce revient dans quelques minutes"}
-                                    style={{cursor:"pointer",opacity:.45}}
-                                    onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}>
-                                    <PlatformLogo platform={p} size={18}/>
-                                  </span>
-                                );
-                                return(
-                                  <span key={p} className="plogo"
-                                    title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`):(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
-                                    style={{cursor:"pointer",...(removing?{opacity:.35}:{})}}
-                                    onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
-                                    <PlatformLogo platform={p} size={18}/>
-                                  </span>
-                                );
-                              })}
-                              {hasPending&&!hasPausedPending&&(()=>{
-                                // « Un job en attente doit dire pourquoi » (2026-08-13) :
-                                // extension hors fraîcheur → le badge cesse de suggérer
-                                // qu'un travail est en cours et nomme le vrai état.
-                                // AFFICHAGE SEULEMENT — aucun job modifié, le tap ouvre
-                                // toujours le panneau de statut.
-                                const horsFraicheur=extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive";
-                                const plusVieux=Math.min(...jobs
-                                  .filter(j=>j.status==="pending"||j.status==="processing")
-                                  .map(j=>Date.parse(j.created_at))
-                                  .filter(Number.isFinite));
-                                const joursAttente=Number.isFinite(plusVieux)?Math.floor((Date.now()-plusVieux)/86400000):0;
-                                const attenteLongue=horsFraicheur&&joursAttente>=1;
-                                const label=!horsFraicheur
-                                  ?(lang==="en"?"Posting…":"En cours…")
-                                  :attenteLongue
-                                    ?(lang==="en"?`Waiting for ${joursAttente} d`:`En attente depuis ${joursAttente} j`)
-                                    :(lang==="en"?"Waiting for your computer":"En attente de ton ordinateur");
-                                const titre=!horsFraicheur
-                                  ?(lang==="en"?"See status":"Voir le statut")
-                                  :attenteLongue
-                                    ?(lang==="en"
-                                      ?`Waiting for ${joursAttente} day${joursAttente>1?"s":""}. Open Chrome on the computer where you installed the extension.`
-                                      :`En attente depuis ${joursAttente} jour${joursAttente>1?"s":""}. Ouvre Chrome sur l'ordinateur où tu as installé l'extension.`)
-                                    :(lang==="en"
-                                      ?"Waiting for your computer — it starts next time Chrome opens."
-                                      :"En attente de ton ordinateur — démarrage à la prochaine ouverture de Chrome.");
-                                return (
-                                  <div
-                                    className="micon ic-pending"
-                                    role="button"
-                                    tabIndex={0}
-                                    title={titre}
-                                    onClick={e=>{e.stopPropagation();setJobStatusItem(item);}}
-                                    onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.stopPropagation();setJobStatusItem(item);}}}
-                                    style={{cursor:"pointer"}}
-                                  >
-                                    {horsFraicheur?"💻":"⏳"} {label}
-                                  </div>
-                                );
-                              })()}
-                              {/* Maintenance (Phase B) : plateforme en pause,
-                                  ton neutre, rassurant, aucune action requise. */}
-                              {hasPausedPending&&<div className="micon" style={{background:"#EFF3F8",border:"1px solid #C7D6E5",color:"#334155"}}>⏸ {t("stockJobPausedBadge")}</div>}
                               {/* Échec explicite par plateforme (2026-07-19) : le message
                                   d'erreur complet (déjà humanisé côté extension) est porté
                                   par title= (survol desktop / lecteur d'écran) et par un
@@ -5328,21 +5377,9 @@ const StockTab = memo(function StockTab({
                                   alors que, justement, aucune annonce n'y est en
                                   ligne. Pas d'annonce en ligne = pas de logo, et
                                   rien à la place. */}
-                              {/* Prix de l'ANNONCE (demandé, pas encaissé) —
-                                  lu dans vinted_listing_snapshots, une seule
-                                  requête pour toute la liste. */}
-                              {/* Libellé raccourci « Vinted · prix » (07/08) :
-                                  le mot reste — il distingue ce prix du
-                                  « X € investi » de droite (deux prix nus sur
-                                  une carte seraient illisibles) — mais
-                                  « Annonce » saute : à 390 px, un prix à 4
-                                  chiffres passait en coupe. L'explication
-                                  complète vit dans title=. */}
-                              {prixAnnonce!=null&&(
-                                <div className="micon ic-price" title={lang==='fr'?"Prix affiché sur l'annonce Vinted — pas un prix de vente réalisé":"Asking price on the Vinted listing — not a realized sale price"}>
-                                  🏷️ Vinted · {fmt(prixAnnonce)}
-                                </div>
-                              )}
+                              {/* (Le prix de l'annonce Vinted a quitté cette
+                                  rangée le 2026-08-27 : il vit dans la rangée
+                                  de prix de la carte, en tête de corps.) */}
                               {item.emplacement&&<div className="micon ic-loc">📦 {item.emplacement}</div>}
                               {/* ── Ancienneté (2026-08-07, resserrée le soir même) ──
                                   UNE seule puce : « en ligne depuis X j » —
@@ -5371,44 +5408,17 @@ const StockTab = memo(function StockTab({
                                   </div>
                                 );
                               })()}
-                              {/* É5 : état de la republication — badge dédié,
-                                  jamais confondu avec la publication. */}
-                              {/* État de la republication — L'UNIQUE endroit qui
-                                  le porte (2026-08-05). Il y en avait TROIS qui
-                                  se marchaient dessus : cette pastille, un
-                                  bouton fantôme « 🔁 En cours » à droite, et une
-                                  bannière qui débordait la carte. Ne rien
-                                  rajouter ici sans en retirer un.
-                                  Mot COURT obligatoire : .micon est nowrap, une
-                                  phrase entière y prend une largeur
-                                  irréductible et ressort de la colonne. Le
-                                  détail vit dans la feuille, au tap. */}
-                              {/* Même rangée dédiée que « En ligne » (cf. le
-                                  wrapper du slot plus haut) : les deux
-                                  incarnations du slot occupent une rangée
-                                  entière, la hauteur ne bouge pas au
-                                  début/fin de cycle. */}
-                              {repubOccupeSlot&&(
-                                <div style={{flex:"0 0 100%"}}>
-                                  <div className="micon" role="button" tabIndex={0}
-                                    title={repubOrpheline
-                                      ?(lang==='fr'?"Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité.":"Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe.")
-                                      :(lang==='fr'?'Voir où en est la republication':'See repost progress')}
-                                    onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}
-                                    onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();setRepubProgress(repubLatest);}}}
-                                    style={repubOrpheline
-                                      ?{background:"#FEF2F2",border:"1px solid #FECACA",color:"#B91C1C",cursor:"pointer"}
-                                      :{background:repubEtape.fond,border:`1px solid ${repubEtape.bord}`,color:repubEtape.encre,cursor:"pointer"}}>
-                                    🔁 {!repubEtape.fini&&!repubOrpheline&&<span className="pulse"/>} {repubOrpheline?(lang==='fr'?'Ordinateur ne répond plus — ouvre Chrome':'Computer not responding — open Chrome'):repubEtape.court} ›
-                                  </div>
-                                </div>
-                              )}
+                              {/* (La pastille de republication a quitté cette
+                                  rangée le 2026-08-27 : c'est la pastille de
+                                  STATUT sur la photo qui porte le cycle —
+                                  toujours cliquable → feuille d'avancement.) */}
                             </div>
                           )}
-                        </div>
-                        <div className="right">
-                          <div className="price">{invested!==null?fmt(invested):'—'}<span className="lbl">{lang==='fr'?'investi':'invested'}</span></div>
-                          <div className="btn-stack">
+                        {/* Actions — mêmes gestes, mêmes gardes que la liste
+                            d'avant la galerie. margin-top:auto : les boutons
+                            s'alignent en bas de carte quelle que soit la
+                            hauteur du contenu au-dessus. */}
+                        <div className="gactions">
                             {/* 3 états, une seule source de vérité : publishedActive
                                 (le même calcul que la pastille « En ligne » et les
                                 logos ci-dessus — une plateforme retirée/échouée/
@@ -5535,13 +5545,9 @@ const StockTab = memo(function StockTab({
                                       :(lang==='fr'?'🔁 Republier':'🔁 Repost'))}
                                 </button>);
                             })()}
-                          </div>
                         </div>
-                        {/* Message transitoire — SA PROPRE LIGNE, en pleine
-                            largeur de carte, sous les deux colonnes. Il vivait
-                            dans .icons (colonne de gauche) où .micon impose
-                            nowrap : la phrase sortait de la carte par la droite
-                            et passait par-dessus les boutons. */}
+                        {/* Message transitoire — pleine largeur de carte,
+                            sous les actions. */}
                         {repubNote&&(
                           <div className={`cardnote ${repubNote.ton==='vert'?'is-info':'is-warn'}`}
                             onClick={e=>{e.stopPropagation();setRepubMsgs(m=>({...m,[item.id]:null}));}}
@@ -5550,8 +5556,9 @@ const StockTab = memo(function StockTab({
                           </div>
                         )}
                       </div>
-                    </SwipeRow>
+                    </div>
                   );})}
+                </div>
                 {/* En mode republication, la liste montre déjà TOUS les
                     republiables (pas de slice) : un « Voir plus » compté sur
                     stockFiltre serait un bouton sans effet. */}
