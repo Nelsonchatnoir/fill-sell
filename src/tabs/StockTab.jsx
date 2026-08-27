@@ -197,6 +197,18 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 /* Titre — l'info n°4, 2 lignes max puis coupe. */
 .stock-v2 .gtitle{font-size:12px;font-weight:600;color:var(--ink);line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;}
 .stock-v2 .gbrand{font-size:10.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+/* Bloc bas ANCRÉ (2026-08-27, uniformisation des cartes) : dans une rangée de
+   grille les cartes s'étirent à la même hauteur — l'espace excédentaire doit
+   tomber au MÊME endroit sur toutes (entre le texte et le bloc bas), jamais
+   entre les badges et les boutons (vécu : Casquette beige avec un trou entre
+   « en ligne depuis » et Publier, à côté d'une Bouilloire en échec pleine).
+   Les badges n'occupent AUCUNE place quand il n'y en a pas (bloc .icons
+   conditionnel) ; quand ils existent, ils rejoignent le bloc bas : badge/chip
+   toujours collés aux boutons, à distance constante sur toutes les cartes.
+   Un seul margin-top:auto actif à la fois — deux auto se PARTAGERAIENT le
+   vide et recréeraient le trou au milieu. */
+.stock-v2 .gbody>.icons{margin-top:auto;}
+.stock-v2 .gbody>.icons~.gactions{margin-top:0;}
 .stock-v2 .gactions{margin-top:auto;display:flex;flex-direction:column;gap:4px;padding-top:2px;}
 .stock-v2 .gactions .btn-publier{padding:7px 0;font-size:12px;}
 .stock-v2 .gactions .btn-vendre{padding:6px 4px;}

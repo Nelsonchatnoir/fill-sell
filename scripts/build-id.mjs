@@ -393,7 +393,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // que le balayage handler-watch matche (.ilike) — ne pas le reformuler.
 // Texte seul, aucun changement de comportement. ⚠️ HORS zip 0.6.9 courant :
 // part dans le paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
-export const EXTENSION_LAST_COMMIT = '2026-08-27T14:30:00Z';
+// 2026-08-27T14:50:00Z : la sync dressing COMBLE inventaire.prix_vente avec le
+// prix de l'annonce Vinted quand il est NULL (création + mise à jour, upsert
+// plein ET patchLeger quand la ligne relue le prouve). JAMAIS d'écrasement
+// (renseigné = intouchable, articles vendus exclus, VIDE ≠ ZÉRO) — révise la
+// règle « jamais le prix d'annonce dans prix_vente » du chantier 4 : 98,4 %
+// des articles synchronisés actifs étaient à NULL, la carte n'avait rien.
+// Commit épinglé GIT_COMMITTER_DATE sur cette constante (garde : ni futur, ni
+// antérieur). ⚠️ HORS zip 0.6.9 : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
+export const EXTENSION_LAST_COMMIT = '2026-08-27T14:50:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

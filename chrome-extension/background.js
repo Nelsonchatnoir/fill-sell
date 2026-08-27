@@ -7338,7 +7338,7 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
   // réécrirait même son id, cf. le 409 du run d10ab149 : merge-duplicates
   // pose TOUTES les colonnes du payload dans le DO UPDATE, id compris — la
   // FK cross_post_jobs_inventaire_id_fkey a heureusement tout annulé).
-  const patchLeger = (invId, a) => restRequest(`inventaire?id=eq.${invId}&user_id=eq.${userId}`, token, {
+  const patchLeger = (invId, a, comblePrixVente = false) => restRequest(`inventaire?id=eq.${invId}&user_id=eq.${userId}`, token, {
     method: "PATCH",
     headers: { Prefer: "return=representation" },
     body: JSON.stringify({
@@ -7348,6 +7348,12 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       vinted_status: a.statut,
       last_synced_at: maintenant,
       disparu_le: null,
+      // COMBLEMENT du prix de vente (2026-08-27) : uniquement quand l'appelant
+      // a VU prix_vente NULL en base sur un article non vendu (frontière de
+      // propriété intacte : rien de renseigné n'est jamais réécrit — on ne
+      // fait qu'ajouter une information manquante). Clé ABSENTE sinon.
+      // VIDE ≠ ZÉRO : prix absent ou ≤ 0 → pas de clé.
+      ...(comblePrixVente && Number.isFinite(a.prix) && a.prix > 0 ? { prix_vente: a.prix } : {}),
       // listed_at_guess AUSSI sur les lignes nées FillSell (2026-08-07,
       // validé Nico) : ce n'est PAS une donnée utilisateur, c'est un fait
       // Vinted (timestamp de SES photos) — la frontière de propriété
@@ -7370,7 +7376,12 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
     else if (!dejaLa) { const viaJob = parJob.get(String(a.vinted_item_id)); if (viaJob != null) invId = viaJob; }
     if (invId == null) continue;
     try {
-      const patched = await patchLeger(invId, a);
+      // Comblement du prix de vente SEULEMENT si la ligne a été relue ce
+      // run-ci (dejaLa) avec prix_vente NULL et statut non vendu. Une ligne
+      // atteinte via parJob (jamais relue) ne se comble pas : on ne PATCH un
+      // prix qu'en sachant qu'il n'écrase rien.
+      const patched = await patchLeger(invId, a,
+        !!dejaLa && dejaLa.prix_vente == null && dejaLa.statut !== "vendu" && a.statut !== "sold");
       if (Array.isArray(patched) && patched.length) {
         patchesLegers.add(a.vinted_item_id);
       }
@@ -7424,11 +7435,20 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       // PRIX D'ACHAT VOLONTAIREMENT ABSENT : Vinted ne le connaît pas. Ne
       // JAMAIS mettre 0 ici (cf. règle de comptabilisation du 03/08).
       //
-      // PRIX_VENTE : jamais le prix d'annonce Vinted ici (il vit dans
-      // vinted_listing_snapshots, règle du chantier 4) — mais on ne REMPLACE
-      // plus par NULL une valeur déjà en base (posée par la publication,
-      // bd9a516, ou par l'utilisateur). Renseigné = intouchable ; vide = vide.
-      prix_vente: dejaLa?.prix_vente ?? null,
+      // PRIX_VENTE (règle RÉVISÉE le 2026-08-27 — 98,4 % des articles
+      // synchronisés actifs étaient à NULL et la carte n'avait rien à
+      // afficher) : le prix de l'annonce Vinted COMBLE prix_vente quand il
+      // est VIDE, à la création comme à la mise à jour. JAMAIS d'écrasement :
+      // une valeur en base (saisie utilisateur, publication bd9a516, vente)
+      // est intouchable — le comblement seul rend inutile tout marqueur
+      // d'origine. Pas de comblement sur un article vendu (prix_vente y est
+      // le prix ENCAISSÉ, pas un prix demandé — il nourrit CA et marges).
+      // VIDE ≠ ZÉRO : prix absent ou ≤ 0 → on n'écrit rien (null reste null).
+      // Le relevé QUOTIDIEN du prix continue de vivre dans
+      // vinted_listing_snapshots (écrit plus bas, inchangé) : c'est lui que
+      // la carte préfère quand il existe, prix_vente est son repli.
+      prix_vente: dejaLa?.prix_vente
+        ?? (dejaLa?.statut !== "vendu" && a.statut !== "sold" && Number.isFinite(a.prix) && a.prix > 0 ? a.prix : null),
       // STATUT : règle ASYMÉTRIQUE (2026-08-03 soir). La sync peut faire
       // stock → vendu (Vinted dit sold), JAMAIS vendu → stock : un article
       // vendu hors Vinted (vide-grenier, LBC) dont l'annonce Vinted vit
