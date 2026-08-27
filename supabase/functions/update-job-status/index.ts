@@ -151,6 +151,52 @@ function snapshotEstLivresMedias(snap: Record<string, unknown>): boolean {
   if (["livres et medias", "books & media"].includes(sansAccents(path[0]))) return true;
   return path.some((e) => /^(livres?|books?)$/.test(sansAccents(e)));
 }
+// ── EXEMPTION 0.6.9 de la garde Livres (2026-08-27 soir, décision Nico) ────
+// La garde repausait TOUT livre, y compris ceux qu'un build ≥ 0.6.9 sait
+// republier (pose ISBN durcie : normalisation + insertText + relecture de
+// l'état React + refus de soumettre sur écart — cycle complet prouvé le
+// 25/08, annonce 9769356327). Un job Livres N'EST PLUS bloqué si, ET
+// SEULEMENT SI :
+//   · le build QUI ÉCRIT (body.handler_build — l'estampille de CET appel,
+//     jamais le profil) est ≥ 0.6.9, comparé sur le PRÉFIXE HORODATÉ du
+//     BUILD_ID (ISO 8601, donc triable en timestamp) — JAMAIS sur la chaîne
+//     de version : « 0.6.10 » ou un build rebasé se comparerait mal en
+//     alphabétique ; estampille absente ou illisible = PAS d'exemption ;
+//   · ET le snapshot porte un ISBN valide après normalisation (port fidèle
+//     de normalizeIsbn du build 7a88eb6 : tirets/espaces retirés, clé de
+//     contrôle vérifiée, ISBN-10 accepté car converti en 13 à la pose).
+//     Un livre SANS ISBN capturé reste bloqué QUEL QUE SOIT le build :
+//     c'est le cas qui supprime puis prend le 400 à la soumission (mur
+//     mesuré le 26/08), la pose n'ayant rien à poser.
+// L'une des deux conditions manque → garde inchangée. Le kill switch
+// coin_config 'republish_livres_garde' est INTACT et toujours fail-closed :
+// l'exemption ne vit QUE dans le choix « est-ce un cas garde ? » — garde
+// désarmée (value=0) = comportement strictement inchangé.
+// Étape 'deleted' : hors périmètre par construction (la garde entière ne
+// s'applique qu'à republish_step='captured' + !deleted_at).
+const EXEMPTION_LIVRES_MIN_BUILD_MS = Date.parse("2026-08-26T19:48:07Z"); // BUILD_ID 0.6.9 (7a88eb6)
+const buildMsOf = (hb: unknown): number => {
+  const m = String(hb ?? "").match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/);
+  return m ? Date.parse(m[1]) : NaN;
+};
+function isbnValide(brut: unknown): boolean {
+  const s = String(brut ?? "").replace(/[\s-]/g, "").toUpperCase();
+  if (/^\d{13}$/.test(s)) {
+    let somme = 0;
+    for (let i = 0; i < 12; i++) somme += (i % 2 ? 3 : 1) * Number(s[i]);
+    return String((10 - (somme % 10)) % 10) === s[12];
+  }
+  if (/^\d{9}[\dX]$/.test(s)) {
+    let somme = 0;
+    for (let i = 0; i < 10; i++) somme += (10 - i) * (s[i] === "X" ? 10 : Number(s[i]));
+    return somme % 11 === 0;
+  }
+  return false;
+}
+const exemptionLivres069 = (snap: Record<string, unknown>, handlerBuild: unknown): boolean => {
+  const ms = buildMsOf(handlerBuild);
+  return Number.isFinite(ms) && ms >= EXEMPTION_LIVRES_MIN_BUILD_MS && isbnValide(snap.isbn);
+};
 // Message utilisateur — formulation validée par Nico le 22/08, tel quel.
 const MSG_GARDE_LIVRES =
   "Republication mise en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
@@ -374,7 +420,11 @@ serve(async (req) => {
     const gardeRepublish =
       status === "processing" && snapIn && typeof snapIn === "object" &&
       pfIn?.republish_step === "captured" && !pfIn?.deleted_at
-        ? (snapshotEstLivresMedias(snapIn)
+        // Exemption 0.6.9 (cf. bloc de tête) : build écrivain ≥ 0.6.9 ET ISBN
+        // valide au snapshot → ce livre n'est plus un cas garde Livres ; il
+        // reste soumis à la garde Couleur comme n'importe quel snapshot (une
+        // couleur absente détruirait pareil).
+        ? (snapshotEstLivresMedias(snapIn) && !exemptionLivres069(snapIn, body.handler_build)
           ? {
               configKey: "republish_livres_garde",
               source: "livres_isbn_garde",

@@ -514,6 +514,98 @@ serve(async (req) => {
     console.error("[handler-watch] règlement des needs_user à échéance:", (e as Error)?.message ?? e);
   }
 
+  // ── Déblocage AUTO de la garde Livres (2026-08-27 soir, décision Nico) ────
+  // Les jobs pausés par la garde Livres/ISBN (needs_user_source=
+  // 'livres_isbn_garde') repassent en 'pending' TOUT SEULS dès que leur
+  // compte remplit les DEUX conditions de l'exemption 0.6.9 posée dans
+  // update-job-status :
+  //   · profiles.extension_build ≥ 0.6.9 — comparé sur le PRÉFIXE HORODATÉ
+  //     du BUILD_ID (ISO triable), jamais sur la chaîne de version. Ici
+  //     c'est bien le PROFIL qui est lu : le handler_build du job bloqué est
+  //     celui du VIEUX build qui s'est fait pauser — la question est « ce
+  //     compte est-il passé en 0.6.9 ? » ;
+  //   · ET le snapshot CONSERVÉ sur le job porte un ISBN valide (même
+  //     validation que l'exemption — un livre sans ISBN reste bloqué, quel
+  //     que soit le build : les 2 jobs pausés à la main du 22/08, sans
+  //     snapshot, ne sont jamais repris).
+  // POURQUOI LE CRON (et pas un trigger ni la distribution) : ce balayage
+  // 3 min vit déjà ici (orphelines, processing abandonnés, 72 h, photos) —
+  // zéro migration, zéro CWS, observable dans la réponse. Un trigger sur
+  // profiles tirerait à CHAQUE heartbeat d'extension (toutes les quelques
+  // minutes par compte) et logerait la validation ISBN en PL/pgSQL — une
+  // migration de plus sur un historique déjà divergent ; et get-pending-jobs
+  // ne distribue que 'pending' : les needs_user ne passent jamais par lui.
+  // Étape 'deleted' EXCLUE (garde-fou : ce chantier n'y touche pas). Aucune
+  // Pépite re-débitée : le job repart tel quel, pepite_remboursee en poche
+  // (aucun débit n'existe sur pending, le débit vit à la création du job).
+  // Le passage en pending EFFACE l'erreur et retire needs_user_source ; au
+  // tour suivant l'extension 0.6.9 recapture/ré-écrit le snapshot, et c'est
+  // l'EXEMPTION côté update-job-status qui la laisse passer — si le compte
+  // rétrograde ou si le nouveau snapshot perd l'ISBN, la garde re-pause :
+  // rien n'est contourné, le kill switch reste hors sujet ici.
+  // Écritures en compare-and-swap (.eq status needs_user). Best-effort.
+  const LIVRES_EXEMPTION_MIN_BUILD_MS = Date.parse("2026-08-26T19:48:07Z"); // BUILD_ID 0.6.9 (7a88eb6)
+  const buildMsOf = (hb: unknown): number => {
+    const m = String(hb ?? "").match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/);
+    return m ? Date.parse(m[1]) : NaN;
+  };
+  const isbnValide = (brut: unknown): boolean => {
+    const s = String(brut ?? "").replace(/[\s-]/g, "").toUpperCase();
+    if (/^\d{13}$/.test(s)) {
+      let somme = 0;
+      for (let i = 0; i < 12; i++) somme += (i % 2 ? 3 : 1) * Number(s[i]);
+      return String((10 - (somme % 10)) % 10) === s[12];
+    }
+    if (/^\d{9}[\dX]$/.test(s)) {
+      let somme = 0;
+      for (let i = 0; i < 10; i++) somme += (10 - i) * (s[i] === "X" ? 10 : Number(s[i]));
+      return somme % 11 === 0;
+    }
+    return false;
+  };
+  let livresDebloques = 0;
+  try {
+    const { data: bloques } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform_fields")
+      .eq("status", "needs_user")
+      .eq("action", "republish")
+      .eq("platform", "vinted")
+      .filter("platform_fields->>needs_user_source", "eq", "livres_isbn_garde");
+    // deno-lint-ignore no-explicit-any
+    const candidats = ((bloques ?? []) as any[]).filter((j) =>
+      j.platform_fields?.republish_step === "captured" &&
+      !j.platform_fields?.deleted_at &&
+      isbnValide(j.platform_fields?.republish_snapshot?.isbn));
+    if (candidats.length) {
+      const userIds = [...new Set(candidats.map((j) => j.user_id as string))];
+      const { data: profs } = await supabase
+        .from("profiles").select("id, extension_build").in("id", userIds);
+      // deno-lint-ignore no-explicit-any
+      const buildOk = new Map(((profs ?? []) as any[]).map((p) => {
+        const ms = buildMsOf(p.extension_build);
+        return [p.id, Number.isFinite(ms) && ms >= LIVRES_EXEMPTION_MIN_BUILD_MS];
+      }));
+      for (const j of candidats) {
+        if (!buildOk.get(j.user_id)) continue;
+        const pf = { ...(j.platform_fields ?? {}) };
+        delete pf.needs_user_source; // le job n'attend plus personne
+        const { data: maj } = await supabase
+          .from("cross_post_jobs")
+          .update({ status: "pending", error: null, platform_fields: pf })
+          .eq("id", j.id)
+          .eq("status", "needs_user")
+          .select("id");
+        if (maj?.length) {
+          livresDebloques++;
+          console.log(`[handler-watch] job ${j.id} : garde Livres levée pour ce compte (build ≥ 0.6.9 + ISBN valide) → pending`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] déblocage garde Livres:", (e as Error)?.message ?? e);
+  }
+
   // ── Photos encore HORS FillSell au moment de publier (2026-08-27) ─────────
   // Cas réel : job leboncoin 94cbe6d9 (« Plateau vintage », Sandrine) —
   // generate-listing avait rapatrié 7 photos sur 8 (HTTP 520 Storage
@@ -669,7 +761,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -724,7 +816,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -778,7 +870,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
     headers: { "Content-Type": "application/json" },
   });
 });
