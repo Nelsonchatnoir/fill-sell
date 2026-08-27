@@ -192,6 +192,7 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .gpricerow{display:flex;align-items:baseline;gap:5px;flex-wrap:wrap;min-width:0;}
 .stock-v2 .gprice{font-size:14.5px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;}
 .stock-v2 .gpricelbl{font-size:9.5px;font-weight:600;color:var(--mute);}
+.stock-v2 .ginvline{font-size:10px;font-weight:600;color:var(--mute);font-variant-numeric:tabular-nums;margin-top:1px;}
 .stock-v2 .gstats{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:600;color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums;}
 /* Titre — l'info n°4, 2 lignes max puis coupe. */
 .stock-v2 .gtitle{font-size:12px;font-weight:600;color:var(--ink);line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;}
@@ -5070,30 +5071,52 @@ const StockTab = memo(function StockTab({
                         {(item.quantite||1)>1&&<div className="gqty">×{item.quantite}</div>}
                       </div>
                       <div className="gbody">
-                        {/* 3. PRIX (annonce Vinted si en ligne, sinon investi —
-                            VIDE ≠ ZÉRO : prix d'achat inconnu → tiret) + vues
-                            et favoris Vinted quand ils EXISTENT (null ≈ 5 %
-                            des articles + tout le hors-Vinted → rien affiché,
+                        {/* 3. PRIX DE VENTE en évidence (ajout 2026-08-27) —
+                            le chiffre que le revendeur cherche en premier :
+                            prix de l'annonce Vinted EN LIGNE si relevé, sinon
+                            inventaire.prix_vente (item.sell, strictement > 0 :
+                            un 0 n'est pas un prix demandé, c'est une absence).
+                            L'investi passe SOUS le prix, plus discret, avec
+                            son libellé — jamais deux nombres nus côte à côte.
+                            VIDE ≠ ZÉRO partout : prix de vente absent →
+                            investi seul comme avant ; prix d'achat inconnu →
+                            prix de vente seul, pas de tiret. Vues/favoris
+                            Vinted inchangés (affichés quand ils EXISTENT,
                             jamais un faux zéro). */}
-                        <div className="gpricerow">
-                          {prixAnnonce!=null?(
+                        {(()=>{
+                          const sellNum=Number(item.sell);
+                          const prixVente=prixAnnonce!=null?prixAnnonce:(Number.isFinite(sellNum)&&sellNum>0?sellNum:null);
+                          return(
                             <>
-                              <span className="gprice" title={lang==='fr'?"Prix affiché sur l'annonce Vinted — pas un prix de vente réalisé":"Asking price on the Vinted listing — not a realized sale price"}>{fmt(prixAnnonce)}</span>
-                              <span className="gpricelbl">Vinted</span>
+                              <div className="gpricerow">
+                                {prixVente!=null?(
+                                  <>
+                                    <span className="gprice" title={prixAnnonce!=null
+                                      ?(lang==='fr'?"Prix affiché sur l'annonce Vinted — pas un prix de vente réalisé":"Asking price on the Vinted listing — not a realized sale price")
+                                      :(lang==='fr'?"Prix de vente renseigné sur la fiche de l'article — pas un prix de vente réalisé":"Asking price set on the item — not a realized sale price")}>{fmt(prixVente)}</span>
+                                    <span className="gpricelbl">{prixAnnonce!=null?'Vinted':(lang==='fr'?'en vente':'asking')}</span>
+                                  </>
+                                ):(
+                                  <>
+                                    <span className="gprice">{invested!==null?fmt(invested):'—'}</span>
+                                    <span className="gpricelbl">{lang==='fr'?'investi':'invested'}</span>
+                                  </>
+                                )}
+                                {(vues!=null||favs!=null)&&(
+                                  <span className="gstats" title={lang==='fr'?'Vues et favoris sur Vinted':'Views and favourites on Vinted'}>
+                                    {vues!=null&&<span>👁️ {vues}</span>}
+                                    {favs!=null&&<span>❤️ {favs}</span>}
+                                  </span>
+                                )}
+                              </div>
+                              {prixVente!=null&&invested!==null&&(
+                                <div className="ginvline" title={lang==='fr'?"Prix d'achat de l'article (frais inclus)":"Purchase cost of the item (fees included)"}>
+                                  {lang==='fr'?'investi':'invested'} {fmt(invested)}
+                                </div>
+                              )}
                             </>
-                          ):(
-                            <>
-                              <span className="gprice">{invested!==null?fmt(invested):'—'}</span>
-                              <span className="gpricelbl">{lang==='fr'?'investi':'invested'}</span>
-                            </>
-                          )}
-                          {(vues!=null||favs!=null)&&(
-                            <span className="gstats" title={lang==='fr'?'Vues et favoris sur Vinted':'Views and favourites on Vinted'}>
-                              {vues!=null&&<span>👁️ {vues}</span>}
-                              {favs!=null&&<span>❤️ {favs}</span>}
-                            </span>
-                          )}
-                        </div>
+                          );
+                        })()}
                         {/* 4. TITRE — 2 lignes max (CSS), puis la marque
                             (toujours visible, décision Nico 2026-08-05). */}
                         <div className="gtitle">{item.title}</div>

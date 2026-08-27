@@ -385,7 +385,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // de la 0.6.6) : ces correctifs partent dans le paquet SUIVANT. En attendant,
 // update-job-status requalifie côté serveur les failed « Capture
 // incomplète » du parc en needs_user. EXTENSION_MIN_BUILD inchangé.
-export const EXTENSION_LAST_COMMIT = '2026-08-21T09:36:16Z';
+// 2026-08-27T14:30:00Z = 133a874 : messages urlToFile des 4 content scripts —
+// l'échec « photo hébergée hors FillSell » ne demande plus de REGÉNÉRER
+// l'annonce (6 Pépites pour notre bug) : il annonce la reprise automatique
+// (rapatriement serveur + ré-armement par handler-watch v13, déjà LIVE côté
+// serveur). Le marqueur « hors FillSell » est CONSERVÉ : c'est la signature
+// que le balayage handler-watch matche (.ilike) — ne pas le reformuler.
+// Texte seul, aucun changement de comportement. ⚠️ HORS zip 0.6.9 courant :
+// part dans le paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
+export const EXTENSION_LAST_COMMIT = '2026-08-27T14:30:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
