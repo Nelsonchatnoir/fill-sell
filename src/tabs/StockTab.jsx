@@ -168,7 +168,10 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .gphoto{position:relative;aspect-ratio:1/1;background:var(--paper);overflow:hidden;flex-shrink:0;}
 .stock-v2 .gphoto img{width:100%;height:100%;object-fit:cover;display:block;}
 .stock-v2 .gph-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
-.stock-v2 .gph-fallback .cat-tile{width:56px;height:56px;font-size:27px;border-radius:16px;}
+/* Icône de repli PLEIN CADRE (27/08) : la tuile remplit la même surface
+   carrée que la photo qu'elle remplace — même allure de carte avec ou sans
+   photo. Le fond coloré de .cat-tile devient le fond du carré entier. */
+.stock-v2 .gph-fallback .cat-tile{width:100%;height:100%;font-size:64px;border-radius:0;}
 /* Pastille de STATUT — l'info n°1, lisible sans lire : chip blanc (contraste
    garanti sur n'importe quelle photo) + point de couleur. Le point PULSE quand
    un travail est en cours. */
@@ -187,39 +190,39 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:18px 8px 7px;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
 .stock-v2 .gqty{position:absolute;bottom:7px;right:8px;background:rgba(255,255,255,0.93);color:var(--ink);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;z-index:2;}
 .stock-v2 .gbody{padding:9px 10px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;}
-/* ── ZONES FIXES (2026-08-27 soir) : toutes les rangées du corps de carte ont
-   une hauteur FIXE et sont TOUJOURS rendues (vides au besoin) — deux cartes
-   côte à côte se superposent ligne par ligne quel que soit leur contenu, sur
-   les 3 largeurs de grille. Le vide vit DANS les zones réservées, plus jamais
-   en trou flottant au milieu de la carte. */
-/* Prix — l'info n°3. Une ligne fixe : prix + libellé (« Vinted » / « en
-   vente » / « investi » en repli), sans retour à la ligne. */
+/* ── RANGÉES CONDITIONNELLES (3e passe du 27/08) : une rangée absente ne
+   réserve AUCUNE place — les zones toujours-rendues de la 2e passe
+   s'empilaient en trou massif sur une carte dépouillée (cas « Jean »). La
+   hauteur commune d'une rangée vient de la GRILLE (étirement à la plus
+   haute) ; le vide résiduel tombe à UN seul endroit, toujours le même :
+   juste au-dessus des boutons (margin-top:auto de .gactions). Chaque rangée
+   présente garde une hauteur fixe pour des alignements nets entre cartes
+   pleines. */
+/* Prix — l'info n°3. Une ligne : prix + libellé (« Vinted » / « en vente » /
+   « investi » en repli), sans retour à la ligne. */
 .stock-v2 .gpricerow{display:flex;align-items:baseline;gap:5px;flex-wrap:nowrap;min-width:0;height:20px;overflow:hidden;}
 .stock-v2 .gprice{font-size:14.5px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap;}
 .stock-v2 .gpricelbl{font-size:9.5px;font-weight:600;color:var(--mute);white-space:nowrap;}
-/* Investi — ligne réservée même sans prix d'achat (VIDE ≠ ZÉRO : vide, jamais 0). */
+/* Investi sous le prix — rendu seulement quand prix de vente ET prix d'achat
+   existent (VIDE ≠ ZÉRO : jamais un 0 fabriqué). */
 .stock-v2 .ginvline{height:13px;line-height:13px;font-size:10px;font-weight:600;color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;}
-/* Vues/favoris — ligne réservée même quand absents (≈5 % des articles + tout
-   le hors-Vinted) : invisible mais la place reste, rien plutôt qu'un faux zéro. */
+/* Vues/favoris — rendus seulement quand ils EXISTENT (≈5 % des articles +
+   tout le hors-Vinted sans) : rien plutôt qu'un faux zéro. */
 .stock-v2 .gstatsrow{height:15px;display:flex;justify-content:flex-end;align-items:center;gap:7px;font-size:10.5px;font-weight:600;color:var(--mute);white-space:nowrap;font-variant-numeric:tabular-nums;overflow:hidden;}
-/* Titre — l'info n°4 : 2 lignes TOUJOURS réservées (min-height = 2 × 1.35em),
-   coupe au-delà — un titre court garde la place du long. */
-.stock-v2 .gtitle{font-size:12px;font-weight:600;color:var(--ink);line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;min-height:calc(2*1.35em);}
-/* Marque — 1 ligne toujours réservée, vide si sans marque. */
+/* Titre — l'info n°4, 2 lignes max puis coupe (pas de réservation : un titre
+   d'une ligne ne traîne pas un blanc sous lui). */
+.stock-v2 .gtitle{font-size:12px;font-weight:600;color:var(--ink);line-height:1.35;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;}
+/* Marque — rendue seulement quand elle existe. */
 .stock-v2 .gbrand{height:14px;line-height:14px;font-size:10.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-/* Rangée de badges/pastilles — hauteur FIXE, TOUJOURS rendue (2e passe du
-   27/08 : les zones fixes remplacent l'ancrage seul, qui déplaçait le vide
-   sans le supprimer). UNE ligne, défilement horizontal discret si plusieurs
-   chips débordent (chaque chip garde son ellipsis et son tap : rien n'est
-   perdu). margin-top:auto : c'est ICI que tombe l'excédent résiduel d'une
-   rangée de grille (extras rares : saisie prix d'achat, avertissement lot) —
-   badges et boutons restent collés, au même niveau sur toutes les cartes.
-   Un seul margin-top:auto actif à la fois — deux auto se PARTAGERAIENT le
-   vide et recréeraient le trou au milieu. */
-.stock-v2 .gbody>.icons{margin-top:auto;height:21px;flex-wrap:nowrap;align-items:center;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
+/* Rangée de badges/pastilles — rendue seulement quand elle a du contenu.
+   UNE ligne fixe, défilement horizontal discret si plusieurs chips débordent
+   (chaque chip garde son ellipsis et son tap : rien n'est perdu).
+   PAS de margin-top:auto ici (3e passe 27/08) : le vide résiduel vit sur
+   .gactions seul — un seul auto, un seul endroit, juste au-dessus des
+   boutons. */
+.stock-v2 .gbody>.icons{height:21px;flex-wrap:nowrap;align-items:center;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
 .stock-v2 .gbody>.icons::-webkit-scrollbar{display:none;}
 .stock-v2 .gbody>.icons .micon{flex:0 0 auto;}
-.stock-v2 .gbody>.icons~.gactions{margin-top:0;}
 .stock-v2 .gactions{margin-top:auto;display:flex;flex-direction:column;gap:4px;padding-top:2px;}
 .stock-v2 .gactions .btn-publier{padding:7px 0;font-size:12px;}
 .stock-v2 .gactions .btn-vendre{padding:6px 4px;}
@@ -5138,17 +5141,24 @@ const StockTab = memo(function StockTab({
                             prix de vente seul, pas de tiret. Vues/favoris
                             Vinted inchangés (affichés quand ils EXISTENT,
                             jamais un faux zéro). */}
-                        {/* ZONES FIXES (2026-08-27 soir) : chaque rangée est
-                            TOUJOURS rendue, à hauteur fixe (CSS) — vide quand
-                            l'info manque, jamais absente. Deux cartes côte à
-                            côte se superposent ligne par ligne quel que soit
-                            leur contenu. VIDE ≠ ZÉRO inchangé : une zone
-                            réservée vide ne montre jamais un 0. */}
+                        {/* RANGÉES CONDITIONNELLES (3e passe du 27/08) : une
+                            rangée absente ne réserve AUCUNE place — les zones
+                            fixes de la 2e passe s'empilaient en trou massif
+                            sur une carte dépouillée (cas « Jean » : ni prix
+                            de vente, ni vues, ni pastille → 4 rangées de vide
+                            entre la marque et les boutons). La hauteur
+                            commune vient de la GRILLE (étirement à la plus
+                            haute) et le vide résiduel tombe à UN seul
+                            endroit : juste au-dessus des boutons
+                            (margin-top:auto de .gactions). VIDE ≠ ZÉRO
+                            inchangé : jamais un 0 à la place d'un prix
+                            absent. */}
                         {(()=>{
                           const sellNum=Number(item.sell);
                           const prixVente=prixAnnonce!=null?prixAnnonce:(Number.isFinite(sellNum)&&sellNum>0?sellNum:null);
                           return(
                             <>
+                              {(prixVente!=null||invested!==null)&&(
                               <div className="gpricerow">
                                 {prixVente!=null?(
                                   <>
@@ -5159,31 +5169,34 @@ const StockTab = memo(function StockTab({
                                   </>
                                 ):(
                                   <>
-                                    <span className="gprice">{invested!==null?fmt(invested):'—'}</span>
+                                    <span className="gprice">{fmt(invested)}</span>
                                     <span className="gpricelbl">{lang==='fr'?'investi':'invested'}</span>
                                   </>
                                 )}
                               </div>
-                              <div className="ginvline"
-                                title={prixVente!=null&&invested!==null?(lang==='fr'?"Prix d'achat de l'article (frais inclus)":"Purchase cost of the item (fees included)"):undefined}>
-                                {prixVente!=null&&invested!==null?`${lang==='fr'?'investi':'invested'} ${fmt(invested)}`:' '}
-                              </div>
-                              <div className="gstatsrow"
-                                title={(vues!=null||favs!=null)?(lang==='fr'?'Vues et favoris sur Vinted':'Views and favourites on Vinted'):undefined}>
-                                {vues!=null&&<span>👁️ {vues}</span>}
-                                {favs!=null&&<span>❤️ {favs}</span>}
-                              </div>
+                              )}
+                              {prixVente!=null&&invested!==null&&(
+                                <div className="ginvline"
+                                  title={lang==='fr'?"Prix d'achat de l'article (frais inclus)":"Purchase cost of the item (fees included)"}>
+                                  {lang==='fr'?'investi':'invested'} {fmt(invested)}
+                                </div>
+                              )}
+                              {(vues!=null||favs!=null)&&(
+                                <div className="gstatsrow"
+                                  title={lang==='fr'?'Vues et favoris sur Vinted':'Views and favourites on Vinted'}>
+                                  {vues!=null&&<span>👁️ {vues}</span>}
+                                  {favs!=null&&<span>❤️ {favs}</span>}
+                                </div>
+                              )}
                             </>
                           );
                         })()}
                         {/* 4. TITRE — 2 lignes max (CSS), puis la marque
                             (toujours visible, décision Nico 2026-08-05). */}
                         <div className="gtitle">{item.title}</div>
-                        {/* Marque : ligne TOUJOURS réservée (zones fixes) —
-                            vide sans marque, jamais absente. */}
                         {(()=>{
                           const mq=marqueLabel(item.marque,lang);
-                          return <div className="gbrand">{mq||' '}</div>;
+                          return mq?<div className="gbrand">{mq}</div>:null;
                         })()}
                           {/* ── Prix d'achat manquant : saisie DANS la ligne ──
                               stopPropagation obligatoire : la carte entière
@@ -5284,9 +5297,10 @@ const StockTab = memo(function StockTab({
                               désormais la plateforme et route vers les mêmes
                               modales (multi-plateformes → JobStatusModal,
                               failed inclus). Ne pas les réintroduire ici.
-                              Rangée TOUJOURS rendue, hauteur FIXE (une ligne,
-                              défilement horizontal si ça déborde) : les cartes
-                              d'une rangée se superposent ligne par ligne. */}
+                              Rangée rendue SEULEMENT quand elle a du contenu
+                              (3e passe 27/08 : plus aucun bloc fantôme) ; une
+                              ligne fixe, défilement horizontal si ça déborde. */}
+                          {(warnedJobs.length>0||lienEnCoursJobs.length>0||lienRembourseJobs.length>0||item.emplacement||(item.vinted_item_id&&!disparuDeVinted))&&(
                             <div className="icons">
                               {/* Publiée avec réserve / lien en cours / Pépites
                                   rendues : PAS des doublons — la pastille dit
@@ -5436,6 +5450,7 @@ const StockTab = memo(function StockTab({
                                   STATUT sur la photo qui porte le cycle —
                                   toujours cliquable → feuille d'avancement.) */}
                             </div>
+                          )}
                         {/* Actions — mêmes gestes, mêmes gardes que la liste
                             d'avant la galerie. margin-top:auto : les boutons
                             s'alignent en bas de carte quelle que soit la
