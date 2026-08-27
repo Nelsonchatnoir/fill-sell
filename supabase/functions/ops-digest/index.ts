@@ -31,9 +31,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 //      App Store Connect (les clés d'équipe ne signent pas pour cette API).
 //      Google n'a pas d'équivalent relisible : couvert par google-play-webhook
 //      (crédit server-side) + filet client au lancement.
-// S'y ajoutent la 7e (plafond global identify, commentée à sa section) et la
+// S'y ajoutent la 7e (plafond global identify, commentée à sa section), la
 // 8e (03/08) : échecs d'écriture email_logs via le journal email_log_echecs —
-// 23505 (doublon d'envoi tenté, grave) distingué des écritures perdues.
+// 23505 (doublon d'envoi tenté, grave) distingué des écritures perdues — et la
+// 10e (27/08, lot 0b inventaire multi-plateformes) : refus des garde-fous de
+// la sync dressing (disparitions non marquées), balayés depuis les [note] de
+// vinted_sync_runs.erreur et journalisés dans sync_gardes_declenchees.
 
 const RESEND_API = "https://api.resend.com/emails";
 const FROM = "FillSell <support@fillsell.app>";
@@ -312,6 +315,102 @@ serve(async (req) => {
     );
   }
 
+  // 10. Garde-fous de la sync dressing (lot 0b, 27/08). Les refus de marquage
+  // des disparitions ne laissaient qu'une « [note] » dans
+  // vinted_sync_runs.erreur, qu'aucune alerte ne lisait : 862 disparitions
+  // refusées chez fripe2base le 27/08 sans aucun signal nulle part. Balayage
+  // des notes des 7 derniers jours (fenêtre large : un digest raté ne perd
+  // rien), journal structuré best-effort dans sync_gardes_declenchees
+  // (idempotent sur (run_id, garde)), remontée des cas des 24 h :
+  //   'grave'    (effondrement, sans recoupement) — avec récidive 7 j : c'est
+  //              elle qui dit l'urgence (effondrement QUOTIDIEN constaté sur
+  //              un compte les 26 et 27/08), pas l'événement isolé ;
+  //   'anomalie' (relevé incomplet, total_entries absent, republications
+  //              illisibles) — rare, une ligne suffit ;
+  //   'info'     (run repris) — routinier : journalisé, JAMAIS remonté, le
+  //              silence du digest doit rester sain.
+  const gardeGraves: string[] = [];
+  const gardeAnomalies: string[] = [];
+  try {
+    const { data: runsNotes, error: e10 } = await supabase
+      .from("vinted_sync_runs")
+      .select("id, user_id, started_at, items_vus, items_crees, items_maj, vinted_login, erreur")
+      .eq("status", "done")
+      .gte("started_at", iso7d)
+      .like("erreur", "%disparitions non marquées%")
+      .order("started_at", { ascending: false })
+      .range(0, 499);
+    if (e10) throw new Error(e10.message);
+
+    const rows = ((runsNotes ?? []) as Array<Record<string, unknown>>).map((r) => {
+      // La note est « [note] disparitions non marquées — <motif> », jointe aux
+      // autres notes par « | » et tronquée à 500 caractères (clore(), même
+      // format sur main et sur la branche 0.6.9 — vérifié le 27/08). Un motif
+      // coupé par la troncature retombe en 'autre'/'anomalie' : visible quand
+      // même, jamais silencieux.
+      const m = /disparitions non marquées — (.*?)(?: \| |$)/.exec(String(r.erreur ?? ""));
+      const motif = (m?.[1] ?? "").trim();
+      let garde = "autre", gravite = "anomalie";
+      let disparus: number | null = null, connus: number | null = null, plafond: number | null = null;
+      if (motif.startsWith("effondrement suspect")) {
+        garde = "effondrement"; gravite = "grave";
+        const n = /(\d+) disparition\(s\) à marquer sur (\d+) connu\(s\), plafond (\d+)/.exec(motif);
+        if (n) { disparus = Number(n[1]); connus = Number(n[2]); plafond = Number(n[3]); }
+      } else if (motif.startsWith("dressing sans recoupement")) {
+        garde = "sans_recoupement"; gravite = "grave";
+      } else if (motif.includes("relevé incomplet")) {
+        garde = "releve_incomplet";
+      } else if (motif.startsWith("total_entries absent")) {
+        garde = "total_entries_absent";
+      } else if (motif.startsWith("republications actives illisibles")) {
+        garde = "republications_illisibles";
+      } else if (motif.startsWith("run repris")) {
+        garde = "run_repris"; gravite = "info";
+      }
+      return {
+        run_id: String(r.id), user_id: String(r.user_id), platform: "vinted",
+        garde, gravite, motif, disparus, connus, plafond,
+        run_started_at: String(r.started_at), source: "digest_scan",
+      };
+    });
+
+    // Journal structuré, best-effort : un échec d'écriture ne prive pas le
+    // digest de sa section (le balayage relira les mêmes runs demain).
+    if (rows.length > 0) {
+      const { error: eIns } = await supabase
+        .from("sync_gardes_declenchees")
+        .upsert(rows, { onConflict: "run_id,garde", ignoreDuplicates: true });
+      if (eIns) {
+        gardeAnomalies.push(
+          `journal sync_gardes_declenchees inécrivable (${eIns.message}) — la section reste fondée sur le balayage du jour`,
+        );
+      }
+    }
+
+    const recidive = new Map<string, number>();
+    for (const x of rows) {
+      recidive.set(`${x.user_id}|${x.garde}`, (recidive.get(`${x.user_id}|${x.garde}`) ?? 0) + 1);
+    }
+    const runById = new Map(
+      ((runsNotes ?? []) as Array<Record<string, unknown>>).map((r) => [String(r.id), r]),
+    );
+    for (const x of rows) {
+      if (x.gravite === "info") continue;
+      if (Date.parse(x.run_started_at) < Date.parse(iso24h)) continue;
+      const run = runById.get(x.run_id);
+      const qui = `${run?.vinted_login ? `@${run.vinted_login} ` : ""}(user ${x.user_id})`;
+      const contexte = `run du ${x.run_started_at.slice(0, 16)} — vus ${run?.items_vus ?? "?"}, créés ${run?.items_crees ?? "?"}, maj ${run?.items_maj ?? "?"}`;
+      const rec = recidive.get(`${x.user_id}|${x.garde}`) ?? 1;
+      const ligne = `${qui} — ${x.motif} — ${contexte}${rec > 1 ? ` — RÉCIDIVE : ${rec}× en 7 j` : ""}`;
+      if (x.gravite === "grave") gardeGraves.push(ligne);
+      else gardeAnomalies.push(ligne);
+    }
+  } catch (e) {
+    gardeAnomalies.push(
+      `Balayage des gardes sync indisponible (${String((e as Error)?.message ?? e)}) — refus de marquage non vérifiables aujourd'hui.`,
+    );
+  }
+
   const queryErrors = [e1, e2, e3, e4].filter(Boolean).map((e) => e!.message);
   if (queryErrors.length > 0) {
     return new Response(JSON.stringify({ error: queryErrors }), {
@@ -331,6 +430,8 @@ serve(async (req) => {
     email_log_doublons: emailLogDoublons.length,
     email_log_echecs: emailLogAutres.length,
     reservations_expirees: reservationRows.length,
+    sync_gardes_graves: gardeGraves.length,
+    sync_gardes_anomalies: gardeAnomalies.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -429,6 +530,34 @@ serve(async (req) => {
     </ul>`
   }
     ${
+    gardeGraves.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      🔴 Sync dressing — marquages de masse REFUSÉS par les garde-fous (${gardeGraves.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Le garde-fou a empêché de marquer ces disparitions (effondrement suspect ou dressing
+      sans recoupement) : rien n'a été écrit, les articles restent « en ligne » côté FillSell.
+      Mauvais compte Vinted, session bancale ou vrai retrait massif — à regarder le jour même,
+      surtout en récidive.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${gardeGraves.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
+    gardeAnomalies.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      ⚠️ Sync dressing — relevés anormaux (${gardeAnomalies.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Relevé incomplet, pagination sans total ou republications illisibles : le run n'a rien
+      marqué, le suivant rattrapera — mais un motif qui revient mérite un œil.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${gardeAnomalies.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#92400E;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
     identifyRows.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
       🔴 Lens identify — plafond global journalier (${identifyRows.length})
@@ -453,7 +582,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies})`,
       html,
     }),
   });
