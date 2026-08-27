@@ -3338,6 +3338,33 @@ const StockTab = memo(function StockTab({
   }, [user?.id]);
   const pausedSet = new Set(pausedPlatforms);
 
+  // ── Compteur « republications réussies » (2026-08-27, cas Joséphine) ──────
+  // 62 republications parfaites en 4 jours et l'app n'en montrait aucune :
+  // seul l'échec parlait, vécu comme « ça bug pas mal ». On rend le travail
+  // silencieux VISIBLE : count EXACT en base (action='republish',
+  // status='published', published_at sur 7 jours glissants) — jamais de
+  // chiffre dérivé ni arrondi, les échecs ne sont pas comptés ici (couverts
+  // ailleurs). 0 ou lecture en échec = rien d'affiché : un nouvel inscrit ne
+  // voit pas de compteur à zéro.
+  const [repubReussies7j, setRepubReussies7j] = useState(0);
+  useEffect(() => {
+    if (!user?.id) return;
+    let alive = true;
+    const compter = async () => {
+      try {
+        const depuis = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+        const { count, error } = await supabase.from("cross_post_jobs")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id).eq("action", "republish").eq("status", "published")
+          .gte("published_at", depuis);
+        if (alive && !error && typeof count === "number") setRepubReussies7j(count);
+      } catch { /* jamais bloquant */ }
+    };
+    compter();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") compter(); }, 60000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [user?.id]);
+
   // action !== "delete" : un retrait ciblé en attente n'est pas un dépôt.
   const pendingTotal = Object.values(jobsByInventaire).flat()
     .filter(j => j.status === "pending" && j.action !== "delete").length;
@@ -3624,6 +3651,31 @@ const StockTab = memo(function StockTab({
           </div>
         </div>
       ))}
+      {/* ── Ligne « republications réussies » (2026-08-27) ───────────────────
+          Le travail silencieux rendu visible (cas Joséphine : 62 réussites
+          en 4 jours, vécues comme « ça bug pas mal »). Count EXACT en base,
+          7 jours glissants, échecs exclus (couverts ailleurs), rien à zéro.
+          Même géométrie que les autres bandeaux, palette verte de l'app. */}
+      {repubReussies7j>0&&(
+        <div style={{
+          display:"flex", gap:10, alignItems:"flex-start",
+          background:"#E7F3F0", border:"1px solid #BFDCD5", borderLeft:"4px solid #2F9E90",
+          borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
+        }}>
+          <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>✅</span>
+          <div style={{fontSize:13, lineHeight:1.5, color:"#1B6E62"}}>
+            {lang==='fr'
+              ?<>
+                <span style={{fontWeight:700}}>{repubReussies7j===1?"1 republication réussie":`${repubReussies7j} republications réussies`}</span>
+                {" ces 7 derniers jours — tout s'est déroulé sans accroc."}
+              </>
+              :<>
+                <span style={{fontWeight:700}}>{repubReussies7j===1?"1 successful reposting":`${repubReussies7j} successful repostings`}</span>
+                {" in the last 7 days — everything went smoothly."}
+              </>}
+          </div>
+        </div>
+      )}
       {/* ── Bandeau horloge machine en retard (2026-08-15, cas Carla) ────────
           Détection detecterRetardHorloge (shared.js) sur les jobs déjà
           chargés (jobsByInventaire, poll 20 s) : processing_since (horloge
