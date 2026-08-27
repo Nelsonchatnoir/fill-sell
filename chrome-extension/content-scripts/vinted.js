@@ -1,4 +1,4 @@
-// Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
+﻿// Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
 const VINTED_BUILD = "2026-08-09-photos-endpoint-reel (upload = POST /api/v2/photos, PAS /api/v2/images ; preuve croisée réseau + vignettes image-wrapper ; garde non bloquante sur recréation)";
@@ -96,18 +96,43 @@ function vintedFieldSelector(code) {
   return `#${c}, [data-testid="category-${c}-single-list-input"], [data-testid^="category-${c}-"]`;
 }
 
-// Dernière config attributes capturée par la sonde (celle de la catégorie
-// réellement posée sur le formulaire — la sonde relaie chaque POST attributes,
-// la plus récente gagne). [] si la sonde n'a rien vu (page pré-sonde, CSP…).
+// Config attributes de la catégorie SÉLECTIONNÉE (2026-08-23, « garde des
+// requis aveugle » — cas grisette11). L'ancienne lecture prenait la dernière
+// config NON VIDE, sans lien avec la catégorie : quand la feuille choisie a
+// une config vide (Jouets > Voitures), elle ressuscitait la config de la
+// catégorie auto-suggérée par Vinted d'après le titre (vêtements bébé) et la
+// garde pré-clic exigeait une « Taille » nourrisson sur une miniature de
+// camion — needs_user impossible à résoudre (le formulaire n'a pas ce champ).
+// Règles, dans l'ordre :
+//   1. l'id sélectionné se lit sur le formulaire (#category, valeur numérique
+//      posée par le dropdown) : la capture la plus récente portant CET id
+//      (attrsCatalogId, extrait du corps du POST par la sonde) fait foi —
+//      config VIDE comprise : vide après sélection = « aucun requis »,
+//      JAMAIS « reprends la précédente » ;
+//   2. id sélectionné lisible mais AUCUNE capture pour lui : on ne juge PAS
+//      avec la config d'une autre catégorie → null (le caller traite comme
+//      « non vérifiable », gate n°0 : needs_user + relance qui re-capte) ;
+//   3. id illisible (#category absent ou non numérique — on ne casse pas
+//      mieux qu'avant) : la capture attributes la plus récente, VIDE
+//      comprise ; null si la sonde n'a rien vu (page pré-sonde, CSP…).
 async function readLatestAttrsConfig() {
   const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
   const captures = Array.isArray(res?.captures) ? res.captures : [];
-  for (let i = captures.length - 1; i >= 0; i--) {
-    if (Array.isArray(captures[i]?.attrsConfig) && captures[i].attrsConfig.length) {
-      return captures[i].attrsConfig;
+  const brut = String(document.querySelector("#category")?.value ?? "").trim();
+  const selectedId = /^\d+$/.test(brut) ? brut : "";
+  if (selectedId) {
+    for (let i = captures.length - 1; i >= 0; i--) {
+      const c = captures[i];
+      if (Array.isArray(c?.attrsConfig) && String(c?.attrsCatalogId ?? "") === selectedId) {
+        return c.attrsConfig;
+      }
     }
+    return null;
   }
-  return [];
+  for (let i = captures.length - 1; i >= 0; i--) {
+    if (Array.isArray(captures[i]?.attrsConfig)) return captures[i].attrsConfig;
+  }
+  return null;
 }
 
 // État RÉEL des requis de la catégorie courante : croise la config attributes
@@ -119,12 +144,17 @@ async function readLatestAttrsConfig() {
 // le 2026-07-16 : aucun nouvel appel attributes à la pose de la marque) mais
 // son 400 est prouvé — règle : #model PRÉSENT dans le DOM ⇒ requis.
 async function computeVintedRequiredState() {
-  const attrs = await readLatestAttrsConfig();
+  const attrs = await readLatestAttrsConfig(); // null = rien d'attribuable à la catégorie
   const byCode = new Map();
-  for (const a of attrs) {
+  for (const a of attrs ?? []) {
     if (a?.code) byCode.set(a.code, a);
   }
-  if (document.querySelector("#model") && !byCode.has("model")) {
+  // Présence testée par le SÉLECTEUR COMPLET du champ (2026-08-15 soir) : le
+  // test `#model` nu laissait la gate AVEUGLE sur un formulaire qui ne porte
+  // que le testid (model-select-input) — le job de Samdo est parti au serveur
+  // avec un Modèle vide et s'est pris le 400 que cette gate existe pour
+  // empêcher.
+  if (document.querySelector(vintedFieldSelector("model")) && !byCode.has("model")) {
     byCode.set("model", { code: "model", title: "Modèle", required: true, display: "list", options: null });
   }
   const discovered = [];
@@ -169,27 +199,46 @@ async function computeVintedRequiredState() {
       });
     }
   }
-  // hadConfig : avait-on une BASE pour juger les requis ? byCode vide = la sonde
-  // n'a capté AUCUNE config /attributes pour cette catégorie (page pré-sonde,
-  // timing, CSP) → on ne peut PAS affirmer « tous les requis OK » (bug réel
-  // 2026-07-18 : « Espace de stockage » jamais vu requis → publié à blanc).
-  return { discovered, unfilled, hadConfig: byCode.size > 0 };
+  // hadConfig : avait-on une BASE pour juger les requis ? attrs null = la sonde
+  // n'a capté AUCUNE config /attributes attribuable à cette catégorie (page
+  // pré-sonde, timing, CSP, ou aucune capture portant l'id sélectionné) → on
+  // ne peut PAS affirmer « tous les requis OK » (bug réel 2026-07-18 :
+  // « Espace de stockage » jamais vu requis → publié à blanc). Une config
+  // VIDE ([]), elle, EST une base : « aucun requis » — le juger « non
+  // vérifiable » remettait la catégorie en needs_user à l'infini (23/08).
+  return { discovered, unfilled, hadConfig: attrs !== null || byCode.size > 0 };
 }
 
 // Erreurs de validation STRUCTURÉES du refus serveur (parsées par la sonde sur
 // tout status >= 400 de l'endpoint items). Donne les requis INVISIBLES côté
 // DOM avec leur nom serveur exact — traduits en libellés humains via la config
 // attributes puis la table de correspondance.
-async function readServerValidationErrors() {
+// État RÉSEAU du dépôt, depuis les captures de la sonde (2026-08-24, Flipper
+// de Prudence — remplace readServerValidationErrors) :
+//   · refus : dernière réponse ≥ 400 d'item_upload/items* porteuse d'un
+//     errors[{field,value}] parsé — LA preuve d'un refus serveur ;
+//   · last : dernière requête item_upload/items* vue, quel que soit son
+//     statut — sa simple existence prouve qu'une soumission a ATTEINT Vinted.
+// { last: null } = AUCUNE requête de création observée : le front de Vinted a
+// bloqué l'envoi (validation de formulaire), le serveur n'a jamais été
+// interrogé. Les verdicts d'échec s'appuient sur cette distinction — plus
+// jamais un « Vinted a REFUSÉ » sans preuve réseau.
+async function readItemsProbeOutcome() {
   const res = await askBackground({ type: "VINTED_PROBE_CAPTURES" });
   const captures = Array.isArray(res?.captures) ? res.captures : [];
+  let last = null;
+  let refus = null;
   for (let i = captures.length - 1; i >= 0; i--) {
     const c = captures[i];
-    if (Number(c?.status) < 400) continue;
     if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
-    if (Array.isArray(c?.validationErrors) && c.validationErrors.length) return c.validationErrors;
+    if (!last) last = { status: Number(c?.status), url: String(c?.url ?? "") };
+    if (!refus && Number(c?.status) >= 400 &&
+        Array.isArray(c?.validationErrors) && c.validationErrors.length) {
+      refus = { status: Number(c?.status), url: String(c?.url ?? ""), validationErrors: c.validationErrors };
+    }
+    if (last && refus) break;
   }
-  return null;
+  return { last, refus };
 }
 
 // Panneau réutilisé par les dropdowns du formulaire (confirmé pour Catégorie ;
@@ -667,6 +716,23 @@ async function resoudreCheminCatalogue(catalogId, diag) {
   return descendre(racines) && chemin.every(Boolean) ? chemin.slice() : null;
 }
 
+// catalog_id → id de la RACINE de l'arbre du formulaire. Indépendant de la
+// LANGUE du compte (2026-08-23) : estLivre comparait chemin[0] au libellé
+// FRANÇAIS « Livres et médias » — faux sur un compte Vinted en anglais, donc
+// ISBN jamais capturé, donc recréation refusée par Vinted APRÈS la
+// suppression (le seul bug qui détruit des annonces : 13 perdues, 9
+// utilisateurs). L'id de racine, lui, ne se traduit pas (2309 = Livres et
+// médias, relevé live du 23/08 sur /api/v2/item_upload/catalogs).
+async function racineDuCatalogue(catalogId, diag) {
+  const id = Number(catalogId);
+  if (!Number.isFinite(id)) return null;
+  const racines = await lireReferentielVinted("catalogs", "/api/v2/item_upload/catalogs", (d) =>
+    Array.isArray(d?.catalogs) && d.catalogs.length ? d.catalogs : null, diag);
+  const contient = (n) => Number(n?.id) === id || (n?.catalogs ?? []).some(contient);
+  for (const r of racines ?? []) if (contient(r)) return Number(r.id);
+  return null;
+}
+
 // size_id → libellé ("M"). MESURÉ le 2026-08-05 : /api/v2/sizes rend 404, le
 // référentiel vit sous /api/v2/size_groups (200, 74 groupes, chaque groupe
 // portant ses `sizes: [{id,title}]`). Table PLATE assumée : les 709 ids relevés
@@ -916,6 +982,34 @@ async function capturerAnnonceVinted(vintedItemId) {
     }
   } else {
     manquants.push("colis (package_size_id absent du payload)");
+  }
+
+  // ── ISBN — Livres et médias (2026-08-15, Rose « Juris'Pénal », annonce
+  // PERDUE) ──────────────────────────────────────────────────────────────────
+  // Vinted refuse CERTAINES recréations de livres sans ISBN (« Merci d'entrer
+  // un numéro ISBN valide ») — pas toutes : 4 des 6 livres de Rose passent
+  // sans. Le payload d'édition porte l'ISBN en clair (natif.isbn, vérifié sur
+  // la capture 377) : on le capture ici et fillListingForm le réinjecte.
+  //   - isbn présent  → libelles.isbn, réinjecté à la recréation ;
+  //   - isbn null     → l'annonce d'origine VIT sans ISBN : on republie telle
+  //     quelle, mêmes chances qu'à l'origine (ne pas bloquer la catégorie) ;
+  //   - clé ABSENTE du natif (payload illisible/forme changée) → on ne sait
+  //     pas ce qu'on perdrait : champs_manquants, la garde arrête AVANT la
+  //     suppression — le pire cas doit rester « rien ne se passe ».
+  // Par ID DE RACINE d'abord (2026-08-23, indépendant de la langue du compte —
+  // cf. bandeau de racineDuCatalogue) ; les deux anciens signaux restent en
+  // repli si le référentiel est illisible à cet instant.
+  const RACINE_LIVRES_ET_MEDIAS = 2309;
+  const estLivre =
+    (await racineDuCatalogue(natif?.catalog_id, diagnostics)) === RACINE_LIVRES_ET_MEDIAS ||
+    String(chemin?.[0] ?? "") === "Livres et médias" ||
+    Number(natif?.catalog_id) === 2320;
+  if (estLivre) {
+    const isbn = String(natif?.isbn ?? "").trim();
+    if (isbn) libelles.isbn = isbn;
+    else if (natif && typeof natif === "object" && !("isbn" in natif)) {
+      manquants.push("isbn (clé absente du payload d'édition — illisible, on ne supprime pas sans savoir)");
+    }
   }
 
   // Description — obligatoire au dépôt.
@@ -1459,6 +1553,9 @@ async function fillListingForm(job) {
   // entier sur un détail.
   const warnings = [];
   const diagnosticsRecreation = [];
+  // Relevés d'options du run PRÉCÉDENT purgés : chaque remplissage repart
+  // d'une page (et souvent d'une catégorie) différente.
+  optionsRelevees.clear();
 
   // ══ B.5 ÉTENDU À TOUT LE REMPLISSAGE (2026-08-09, 3 annonces d'Ornella) ═════
   // B.5 ne couvrait QUE ensurePhotosLanded — la toute dernière garde, juste
@@ -1519,6 +1616,59 @@ async function fillListingForm(job) {
   }
   if (photoResult?.photoNote) warnings.push(photoResult.photoNote);
 
+  // ── ISBN — Livres (2026-08-15, Rose « Juris'Pénal ») ───────────────────────
+  // fields.isbn n'est posé QUE par la republication (capture → snapshot →
+  // construireJobRecreation) : l'ISBN de l'annonce d'origine se réinjecte, ou
+  // Vinted refuse la recréation en 400 (« Merci d'entrer un numéro ISBN
+  // valide ») ALORS QUE l'annonce d'origine est déjà supprimée. Le champ
+  // n'existe que sur les catégories Livres — d'où sa place APRÈS la pose de
+  // la catégorie. Sélecteur : convention des inputs texte du dépôt
+  // (#title / title--input, relevée), déclinée sur le code serveur `isbn`
+  // (VINTED_SERVER_FIELD_LABELS). En une-passe l'échec est BLOQUANT — il
+  // arrive AVANT la suppression ; en recréation, non bloquant comme le reste.
+  if (fields.isbn) {
+    // Pose DURCIE (2026-08-25, 5 annonces détruites 15-22/08 sur « Merci
+    // d'entrer un numéro ISBN valide ») : normalisation/validation AVANT la
+    // pose, insertText en un coup (famille du piège prix : l'état commité,
+    // pas l'affichage), et RELECTURE exacte de l'état React après frappe.
+    // Relevé LIVE du 24/08 (session réelle, compte test) : la pose commitée
+    // déclenche le lookup livre de Vinted (Auteur/Titre auto-remplis côté
+    // serveur) et le POST /item_upload porte {"code":"isbn","ids":["<isbn>"]}
+    // — accepté, annonce 9769001747 créée avec l'ISBN attaché. Si la
+    // relecture ne rend pas EXACTEMENT l'ISBN écrit : on ne soumet pas, et le
+    // message porte l'ISBN (en une-passe, le blocage arrive AVANT toute
+    // suppression ; en recréation, etape() consigne et B.5 s'applique).
+    await etape("ISBN", async () => {
+      const norme = normalizeIsbn(fields.isbn);
+      if (!norme.ok) {
+        throw new Error(
+          `ISBN de l'annonce d'origine inutilisable — ${norme.raison}. ` +
+          "Corrige l'ISBN depuis l'app (carte de l'article), puis relance. Rien n'a été envoyé à Vinted."
+        );
+      }
+      const el = await waitForElement('#isbn, [data-testid="isbn--input"]');
+      insertTextOneShot(el, norme.isbn13);
+      el.blur();
+      await humanPause();
+      let lu = readCommittedValue(el).replace(/[\s-]/g, "");
+      if (lu !== norme.isbn13) {
+        console.warn(`[vinted] ⚠️ ISBN : relecture « ${lu} » ≠ « ${norme.isbn13} » — retentative typeHuman`);
+        await typeHuman(el, norme.isbn13);
+        el.blur();
+        await humanPause();
+        lu = readCommittedValue(el).replace(/[\s-]/g, "");
+      }
+      if (lu !== norme.isbn13) {
+        throw new Error(
+          `ISBN ${norme.isbn13} : le formulaire n'a pas retenu la valeur posée (état relu : « ${lu || "vide"} »). ` +
+          "Soumission refusée pour ne pas perdre l'annonce — relance la republication, ou pose l'ISBN à la main."
+        );
+      }
+      // Laisse le lookup livre de Vinted partir (Auteur/Titre côté serveur).
+      await sleep(1200);
+    });
+  }
+
   // Marque : catalogue d'abord, CRÉATION de la marque en repli — et plus
   // jamais de champ sauté (2026-07-29, job « Mela & Adorna » : marque hors
   // catalogue → champ laissé vide → 400 code 99 au dépôt, maquillé en refus
@@ -1536,7 +1686,39 @@ async function fillListingForm(job) {
   // MARQUE (constaté : il apparaît à la sélection de Xiaomi) — ce bloc doit
   // rester APRÈS le bloc marque ci-dessus. Ses options n'ont PAS d'aria-label
   // (contrairement aux marques) : on matche par texte sur les fils --title.
-  if (fields.modele) await selectVintedModel(fields.modele, warnings);
+  if (fields.modele) {
+    const modeleStatut = await selectVintedModel(fields.modele, warnings);
+    // ── Modèle fourni mais HORS catalogue = arrêt AVANT l'envoi (point 9,
+    // 2026-08-15 soir — AirPods de Samdo, 3 essais, 3 refus serveur 400
+    // « Sélectionne le modèle de ton article » APRÈS soumission) ─────────────
+    // Même doctrine que la gate pré-clic (un champ Modèle présent est traité
+    // requis) et que la garde catégorie/taille (bb131b8) : on ne soumet pas
+    // un formulaire dont un champ à choix fermé est resté vide en silence, et
+    // le message cite les options RÉELLES du menu (relevées ouvertes), jamais
+    // la phrase brute de Vinted. "inaccessible" ne bloque PAS : le champ d'une
+    // catégorie sans Modèle n'existe pas, et on ne peut rien conclure — le
+    // refus serveur éventuel garde son circuit (message enrichi plus bas).
+    // En recréation : B.5, jamais bloquant (l'annonce d'origine n'existe plus).
+    if (modeleStatut === "introuvable" && !recreation) {
+      const opts = optionsRelevees.get("modèle") ?? [];
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          `Vinted exige un modèle de son catalogue pour cette catégorie, et « ${fields.modele} » n'y figure pas` +
+          (opts.length ? ` — modèles proposés par le formulaire : ${opts.slice(0, 8).join(" · ")}` : "") +
+          ". Choisis le modèle exact dans le champ « Modèle » de la copie Vinted (app), puis relance la publication. " +
+          "Rien n'a été envoyé à Vinted.",
+        warnings,
+        needsUserField: {
+          field_key: "model",
+          field_label: "Modèle",
+          target: { root: "vintedAspects", key: "model" },
+        },
+        discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
+      };
+    }
+  }
   // Espace de stockage : liste fermée (20 options relevées, 256 Mo → 4 To),
   // mêmes testids que état/matière → cascade standard.
   if (fields.stockage) {
@@ -1573,7 +1755,7 @@ async function fillListingForm(job) {
   if (fields.taille) {
     // La grille Vinted affiche "42", pas "EU 42" (préfixe côté FillSell) —
     // on retire le préfixe, le match exact-par-segment fait le reste.
-    await selectClosedOptionSafe(
+    const taillePosee = await selectClosedOptionSafe(
       "taille",
       '#size, [data-testid="category-size-single-grid-input"]',
       '[data-testid^="size-group-"]',
@@ -1583,6 +1765,35 @@ async function fillListingForm(job) {
       // 98 cm » par contenance, ni « 36 mois » l'option adulte « 36 ».
       { sizeField: true }
     );
+    // ── Grille de tailles SANS AUCUNE correspondance = catégorie suspecte
+    // (point 8, 2026-08-15 — robe Shein « col drapé » de Carla) ──────────────
+    // Le job portait categoryPath « Maison > Textiles > Linge de lit » (icône
+    // faussée côté app) : la grille affichait Simple/Double/Queen/King Size,
+    // la taille « S / 36 / 8 » ne matchait rien, le champ était SAUTÉ en
+    // silence, et le gate des requis rendait un message qui accusait la
+    // TAILLE avec la liste du catalogue — 5 essais, 42 Pépites brûlées.
+    // Désormais : taille fournie + options réellement affichées + ZÉRO
+    // correspondance → on ARRÊTE AVANT publication en nommant la CATÉGORIE,
+    // et le message cite les options du formulaire RÉEL. Jamais un dépôt dans
+    // une catégorie dont le formulaire ne correspond pas à l'article.
+    // Hors périmètre, comportement inchangé : options illisibles (panneau pas
+    // ouvert → rien à juger, le gate des requis reste le filet) et RECRÉATION
+    // (l'annonce d'origine n'existe plus, B.5 : on soumet quand même — et son
+    // categoryPath vient de la capture de l'annonce, pas du mapping icône).
+    const optionsTaille = optionsRelevees.get("taille") ?? [];
+    if (!taillePosee && optionsTaille.length && !recreation) {
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          `La catégorie Vinted posée sur cette annonce (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}) ` +
+          `ne correspond pas à l'article : le formulaire de dépôt propose comme tailles ` +
+          `${optionsTaille.slice(0, 6).map((o) => `« ${o} »`).join(", ")} — rien qui corresponde à « ${fields.taille} ». ` +
+          "Regénère l'annonce depuis l'app pour corriger sa catégorie, puis relance la publication.",
+        warnings,
+        discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
+      };
+    }
   }
   // taille_ids (captures 0.6.1 sans libellé) : le résolveur selectSizeByIds
   // (a426979) est HORS PAQUET — consigne du 13/08 maintenue au merge du 14/08,
@@ -1624,6 +1835,40 @@ async function fillListingForm(job) {
         warnings,
         discoveredRequired: requiredState.discovered,
       };
+    }
+  } else if (onePass || recreation) {
+    // ── REPUBLICATION d'une annonce SANS couleur (2026-08-26) ────────────────
+    // Le seul cas où la garde Couleur serveur bloquait : la capture n'a AUCUNE
+    // couleur. On la repose depuis l'app puis le titre (cf. bandeau de
+    // reposerCouleurRepublication) ; introuvable → en une-passe, needs_user
+    // AVANT toute suppression (circuit prevol_negatif existant, champ nommé,
+    // palette proposée) ; en recréation post-suppression, B.5 (l'annonce
+    // d'origine n'existe plus, on soumet — les verdicts honnêtes disent la
+    // suite). Les annonces AVEC couleur ne passent JAMAIS ici.
+    const couleur = await reposerCouleurRepublication(fields, job.title, warnings);
+    if (couleur.statut === "introuvable" && !recreation) {
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          "Vinted exige une couleur à la création et ton annonce d'origine n'en porte pas — " +
+          "aucune couleur n'a pu être déduite (app, titre). Renseigne la couleur depuis l'app " +
+          "(carte de l'article), puis relance la republication. Rien n'a été supprimé, ton annonce est intacte.",
+        warnings,
+        needsUserField: {
+          field_key: "color",
+          field_label: "Couleur",
+          ...(couleur.palette?.length ? { allowed_values: couleur.palette } : {}),
+          target: { root: "vintedAspects", key: "color" },
+        },
+        discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
+      };
+    }
+    if (couleur.statut === "introuvable" && recreation) {
+      warnings.push("couleur: introuvable (app, titre) — soumission quand même, l'annonce d'origine n'existe plus (B.5)");
+    }
+    if (couleur.statut === "posee") {
+      console.log(`[vinted] couleur de republication posée : ${couleur.valeur}`);
     }
   }
 
@@ -1776,9 +2021,17 @@ async function fillListingForm(job) {
     // étiquette » : la valeur « Très bon état » de l'app ne pouvait JAMAIS
     // matcher, et personne ne pouvait le savoir depuis le message).
     const labelWithOptions = (label) => {
+      // Les options RELEVÉES SUR LE FORMULAIRE priment sur celles de la config
+      // catalogue (point 8, 2026-08-15) : la config listait les tailles
+      // vêtement pendant que le DOM affichait des dimensions de literie — le
+      // message envoyait corriger une taille déjà bonne (5 essais de Carla).
+      // Un « accepte : … » ne cite plus jamais une liste que le formulaire
+      // n'affiche pas.
       const d = requiredState.discovered.find((x) => x.label === label);
-      const names = (d?.options ?? [])
-        .map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? ""))
+      const reelles = optionsRelevees.get(String(label).toLowerCase()) ?? [];
+      const names = (reelles.length
+        ? reelles
+        : (d?.options ?? []).map((o) => (typeof o === "string" ? o : o?.title ?? o?.value ?? "")))
         .filter(Boolean)
         .slice(0, 8);
       return names.length ? `${label} (accepte : ${names.join(" · ")})` : label;
@@ -1925,17 +2178,40 @@ async function fillListingForm(job) {
   // vers la page de l'annonce (/items/<id>) — et on remonte le message de
   // validation exact quand Vinted refuse.
   const proof = await waitForPublishOutcome();
-  if (proof.error) {
-    // La sonde réseau dit ce que Vinted a REÇU (et répondu) — c'est elle qui
-    // tranchera si le prix part à 0/null malgré un champ correctement affiché.
-    //
+  if (!proof.listingUrl) {
+    // ── VERDICT D'ÉCHEC : LA SONDE RÉSEAU TRANCHE (2026-08-24, Flipper de
+    // Prudence, catalog 3358) ────────────────────────────────────────────────
+    // L'ancien message disait « Vinted a REFUSÉ la publication » dès qu'une
+    // validation DE FORMULAIRE s'affichait — y compris quand AUCUNE requête
+    // n'était partie (le front de Vinted bloque l'envoi avant tout POST).
+    // Trois constats désormais DISCERNABLES, chacun avec sa preuve dans le
+    // message (donc en base, requêtable) :
+    //   1. refus serveur prouvé (HTTP ≥ 400 + errors[] capturés) → « Vinted a
+    //      REFUSÉ (réponse serveur HTTP N) » ;
+    //   2. requête partie mais réponse sans détail → dit le statut HTTP vu ;
+    //   3. AUCUNE requête item_upload/items observée → la validation du
+    //      formulaire a bloqué l'envoi, Vinted n'a PAS été interrogé — et on
+    //      l'écrit, au lieu d'accuser Vinted.
+    const sonde = await readItemsProbeOutcome().catch(() => ({ last: null, refus: null }));
+    const messageEchec = proof.error ??
+      (sonde.refus
+        ? `Vinted a REFUSÉ la publication (réponse serveur HTTP ${sonde.refus.status}) : ` +
+          `${proof.validation ?? sonde.refus.validationErrors.map((e) => e?.value).filter(Boolean).join(" · ")} — ` +
+          "l'annonce n'a PAS été créée. (Le formulaire est resté sur /items/new.)"
+        : sonde.last
+          ? `Publication Vinted non aboutie après soumission (dernière réponse serveur HTTP ${sonde.last.status}, sans détail exploitable)` +
+            `${proof.validation ? ` : ${proof.validation}` : ""} — l'annonce n'a PAS été créée. (Le formulaire est resté sur /items/new.)`
+          : `La validation du formulaire Vinted a bloqué l'envoi : ${proof.validation ?? "(message non lu)"} — ` +
+            "AUCUNE requête de création n'a été observée par la sonde réseau, Vinted n'a PAS été interrogé. " +
+            "L'annonce n'a PAS été créée. (Le formulaire est resté sur /items/new.)");
     // Refus 400 : les errors[{field,value}] parsées par la sonde sont les
     // requis que NI le DOM NI la config attributes n'avaient révélés (cas
     // fondateur : model). Traduits en libellés humains et remontés
     // STRUCTURÉS (serverRequired) : le background les persiste au catalogue
     // (source server_400) et les pose sur platform_fields du job pour la
-    // saisie manuelle côté app.
-    const serverErrors = await readServerValidationErrors().catch(() => null);
+    // saisie manuelle côté app. ⚠️ UNIQUEMENT preuve réseau à l'appui — une
+    // validation de formulaire ne fabrique plus jamais un serverRequired.
+    const serverErrors = sonde.refus?.validationErrors ?? null;
     if (serverErrors?.length) {
       const attrs = await readLatestAttrsConfig().catch(() => []);
       const titleOf = (field) =>
@@ -1948,16 +2224,26 @@ async function fillListingForm(job) {
         message: e.value,
       }));
       const details = serverRequired.map((f) => `${f.label} (${f.key})`).join(", ");
+      // Conseil ACTIONNABLE (point 9, 2026-08-15 soir) : la phrase brute de
+      // Vinted (« Sélectionne le modèle de ton article ») ne dit ni QUOI ni
+      // OÙ — 3 essais de Samdo dessus. On nomme le champ côté app, et on cite
+      // les options RELEVÉES SUR LE FORMULAIRE quand la pose les a vues
+      // (même règle que la garde catégorie : le DOM prime sur le catalogue).
+      const conseils = serverRequired.map((f) => {
+        const reelles = optionsRelevees.get(String(f.label).toLowerCase()) ?? [];
+        return `renseigne « ${f.label} » dans la copie Vinted de l'app` +
+          (reelles.length ? ` (options du formulaire : ${reelles.slice(0, 8).join(" · ")})` : "");
+      }).join(" ; ");
       return {
         success: false,
-        error: `${proof.error} — Champs exigés par le serveur Vinted : ${details}.`,
+        error: `${messageEchec} — Champs exigés par le serveur Vinted : ${details}. À faire : ${conseils}, puis relance la publication.`,
         warnings,
         serverRequired,
         discoveredRequired: requiredState.discovered,
         ...(onePassDeleted ? { deleted: true } : {}),
       };
     }
-    return { success: false, error: proof.error, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
+    return { success: false, error: messageEchec, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
   }
   return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
 
@@ -2006,11 +2292,14 @@ async function waitForPublishOutcome(timeoutMs = 30_000) {
   }
 
   if (lastValidation) {
-    return {
-      error:
-        `Vinted a REFUSÉ la publication : ${lastValidation} — l'annonce n'a PAS été créée. ` +
-        "(Le formulaire est resté sur /items/new.)",
-    };
+    // Le VERDICT n'est plus composé ici (2026-08-24, Flipper de Prudence) :
+    // ce texte est celui de la VALIDATION DU FORMULAIRE — il peut exister
+    // sans qu'aucune requête ne soit partie vers Vinted. « Vinted a REFUSÉ »
+    // sans preuve réseau était un mensonge de diagnostic : l'appelant
+    // confronte cette validation aux captures de la sonde et nomme le vrai
+    // constat (refus serveur prouvé / soumission sans réponse exploitable /
+    // envoi bloqué par le front, Vinted jamais interrogé).
+    return { validation: lastValidation };
   }
   return {
     error:
@@ -2330,11 +2619,81 @@ function simulateFullClick(element) {
   element.dispatchEvent(new MouseEvent("click", base));
 }
 
+// ── Relecture de la valeur COMMITÉE après une pose (2026-08-25, chantier de
+// nuit ISBN) ─────────────────────────────────────────────────────────────────
+// La valeur qui compte n'est pas ce que le champ AFFICHE mais ce que l'état
+// React a retenu : le piège prix du 11/07 (affiché "200,00 €", état vide,
+// refus serveur) est une FAMILLE de bugs, pas un cas isolé. On lit donc les
+// props React du nœud (__reactProps$*.value) quand elles existent, el.value
+// en repli — et on ne déclare plus jamais une pose réussie sans l'avoir relue.
+function readCommittedValue(el) {
+  try {
+    const fk = Object.keys(el).find((k) => k.startsWith("__reactProps$"));
+    const props = fk ? el[fk] : null;
+    if (props && typeof props.value === "string") return props.value;
+  } catch { /* fibers illisibles : el.value fait foi */ }
+  return String(el.value ?? "");
+}
+
+// Pose "en un coup" via execCommand("insertText") — la voie qui produit un
+// vrai InputEvent (inputType/data), même recette que fillPriceField. Utilisée
+// en PREMIER pour les champs courts à validation serveur (ISBN), et en
+// RETENTATIVE quand la relecture d'un typeHuman ne rend pas la valeur écrite.
+function insertTextOneShot(el, value) {
+  el.focus();
+  let ok = false;
+  try {
+    el.setSelectionRange?.(0, el.value.length);
+    document.execCommand("delete", false, null);
+    el.setSelectionRange?.(0, el.value.length);
+    dispatchKey(el, "keydown", String(value)[0] ?? "");
+    ok = document.execCommand("insertText", false, String(value));
+    dispatchKey(el, "keyup", String(value).slice(-1));
+  } catch { /* execCommand indisponible : repli ci-dessous */ }
+  if (!ok) setNativeValue(el, String(value));
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+// ⚠️ PAS de relecture ici (décision Nico 26/08, périmètre 0.6.8) : le
+// durcissement « relecture de l'état commité » est LIMITÉ à l'ISBN et à la
+// Couleur — les deux champs qui ont réellement détruit des annonces. Titre et
+// description ne bloquent personne aujourd'hui : les durcir mettrait en risque
+// les milliers de publications qui passent, pour ne rien corriger.
 async function fillTextField(selector, value) {
   const el = await waitForElement(selector);
   await typeHuman(el, value);
   el.blur();
   await humanPause();
+}
+
+// ── ISBN : normalisation + validation AVANT toute pose (2026-08-25) ──────────
+// Un des cas détruits (15-22/08) portait un ISBN-10 (2724278445) ; d'autres
+// peuvent porter tirets/espaces (le placeholder Vinted les affiche AVEC
+// tirets, mais le refus serveur « Merci d'entrer un numéro ISBN valide » ne
+// dit jamais pourquoi). Règles : tirets/espaces retirés ; ISBN-10 converti en
+// ISBN-13 (préfixe 978 + clé RECALCULÉE) ; clé de contrôle vérifiée dans les
+// deux formats ; invalide → on ne pose RIEN et on le dit avec l'ISBN dans le
+// message (en une-passe le blocage arrive AVANT toute suppression).
+function normalizeIsbn(brut) {
+  const s = String(brut ?? "").replace(/[\s -]/g, "").toUpperCase();
+  const cle13 = (douze) => {
+    let somme = 0;
+    for (let i = 0; i < 12; i++) somme += (i % 2 ? 3 : 1) * Number(douze[i]);
+    return String((10 - (somme % 10)) % 10);
+  };
+  if (/^\d{13}$/.test(s)) {
+    if (cle13(s) !== s[12]) return { ok: false, raison: `clé de contrôle ISBN-13 invalide (${s})` };
+    return { ok: true, isbn13: s };
+  }
+  if (/^\d{9}[\dX]$/.test(s)) {
+    let somme = 0;
+    for (let i = 0; i < 10; i++) somme += (10 - i) * (s[i] === "X" ? 10 : Number(s[i]));
+    if (somme % 11 !== 0) return { ok: false, raison: `clé de contrôle ISBN-10 invalide (${s})` };
+    const douze = "978" + s.slice(0, 9);
+    return { ok: true, isbn13: douze + cle13(douze) };
+  }
+  if (!s) return { ok: false, raison: "ISBN vide" };
+  return { ok: false, raison: `format inattendu (« ${s} », ${s.length} caractères)` };
 }
 
 async function fillPriceField(value) {
@@ -3106,14 +3465,34 @@ async function selectVintedBrand(marque, warnings) {
   // (id="suggested-brand-XXX"), aria-label = nom exact dans les deux
   // (flag "i" : insensible à la casse).
   try {
+    // 26/08 : Vinted a passé les lignes du picker Marque (brand-XXX et
+    // suggested-brand-XXX) de role="button" à role="radio" — aria-label
+    // intact (relevé live 26/08 au soir : brand-12 "Zara" en role=radio). Union des
+    // deux formes, la forme button reste si Vinted revient en arrière.
     await selectSimpleOption(
       trigger,
-      `[role="button"][aria-label="${CSS.escape(marque)}" i]`,
+      `[role="button"][aria-label="${CSS.escape(marque)}" i], [role="radio"][aria-label="${CSS.escape(marque)}" i]`,
       marque,
       { searchInputSelector: "#brand-search-input" }
     );
     return;
   } catch (e) {
+    // ── Catégorie SANS champ Marque, valeur RÉELLE (2026-08-23) : relevé DOM
+    // du jour — les formulaires Livres et médias n'ont AUCUN champ #brand.
+    // « J'ai lu », « Disney », « Dolby »… échouaient toute la cascade
+    // (catalogue → création → repli Sans marque) et le job mourait sur un
+    // champ que le formulaire ne PROPOSE pas (5 échecs sur 7 jours). Même
+    // règle et même prudence que le no-op « Sans marque » plus haut :
+    // l'absence n'est conclue qu'APRÈS l'échec de l'ouverture standard
+    // (attente des champs conditionnels comprise), jamais à froid.
+    if (!document.querySelector(trigger)) {
+      const message =
+        `marque: "${marque}" non posée — cette catégorie Vinted n'a pas de champ Marque ` +
+        "(Livres et médias notamment) ; le formulaire n'en veut pas, rien à corriger";
+      console.log(`[vinted] ${message}`);
+      warnings.push({ code: "brand_field_absent", marque, message });
+      return;
+    }
     console.warn(`[vinted] marque "${marque}" absente du catalogue (${e.message}) — repli : création de la marque`);
   }
   try {
@@ -3194,11 +3573,25 @@ async function selectVintedBrand(marque, warnings) {
 // Parade : on essaie la valeur complète, puis on retire les tokens de queue
 // (5G/4G/Dual…) jusqu'à retomber sur un modèle catalogué. Match = exact sur la
 // valeur, ou option qui est un PRÉFIXE mot-à-mot de la valeur (base du variant).
+// Normalisation de comparaison (2026-08-15 soir, AirPods de Samdo) : la valeur
+// utilisateur « AirPods 3ème génération » et l'option catalogue
+// « AirPods (3e génération) » sont LE MÊME modèle — parenthèses, accents et
+// ordinaux FR (3ème/3eme → 3e, 1ère → 1re) sont unifiés AVANT comparaison,
+// des DEUX côtés (jamais côté clic : on clique toujours l'option réelle).
+const normModel = (s) => String(s ?? "")
+  .toLowerCase()
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/[()]/g, " ")
+  .replace(/(\d+)\s*eme\b/g, "$1e")
+  .replace(/(\d+)\s*ere\b/g, "$1re")
+  .replace(/\s+/g, " ")
+  .trim();
+// Passées par normModel comme les options qu'elles filtrent — sinon la
+// dé-accentuation ci-dessus les ferait rater (« modèle » ≠ « modele »).
 const MODEL_FALLBACK_LABELS = new Set([
   "mon modèle ne figure pas dans la liste",
   "je ne connais pas le nom du modèle",
-]);
-const normModel = (s) => String(s ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+].map(normModel));
 
 function findVintedModelOption(optionSelector, rawWanted) {
   const wanted = normModel(rawWanted);
@@ -3233,9 +3626,21 @@ async function clickModelOption(titleEl) {
   row.click();
 }
 
+// Retour à TROIS états (2026-08-15 soir, AirPods de Samdo — 3 essais, 400
+// serveur « Sélectionne le modèle de ton article » après coup) :
+//   "pose"         → une option du catalogue a été cliquée ;
+//   "introuvable"  → le menu s'est ouvert, des options existent, AUCUNE ne
+//                    correspond — les options affichées sont relevées dans
+//                    optionsRelevees("modèle") pour le message ;
+//   "inaccessible" → le champ n'a pas pu être ouvert (absent de cette
+//                    catégorie, ou markup inattendu) — on ne peut RIEN
+//                    conclure sur l'exigence du serveur, on ne bloque pas.
+// Le caller (fillListingForm) bloque AVANT l'envoi sur "introuvable" hors
+// recréation : c'était le trou du 15/08 — champ sauté en silence, gate
+// aveugle (elle ne testait que #model nu), refus serveur APRÈS soumission.
 async function selectVintedModel(wanted, warnings) {
   const raw = String(wanted ?? "").trim();
-  if (!raw) return false;
+  if (!raw) return "inaccessible";
   const trigger = '#model, [data-testid="model-select-input"]';
   const optionSel = '[data-testid^="model-"][data-testid$="--title"]';
 
@@ -3255,7 +3660,8 @@ async function selectVintedModel(wanted, warnings) {
     const note = `modèle: ouverture du champ impossible — ${e.message}`;
     console.warn(`[vinted] ⚠️ ${note}`);
     warnings.push(note);
-    return false;
+    optionsRelevees.delete("modèle");
+    return "inaccessible";
   }
   const search = await waitForElement("#model-search-input", 5000).catch(() => null);
 
@@ -3280,25 +3686,44 @@ async function selectVintedModel(wanted, warnings) {
         console.warn(`[vinted] ≈ ${note}`);
         warnings.push(note);
       }
-      return true;
+      return "pose";
     }
   }
 
-  // Aucun modèle catalogué ne correspond, même en retirant les qualificatifs :
-  // champ laissé vide → la gate pré-clic (computeVintedRequiredState) le remonte
-  // en needsUser "Modèle" au lieu d'un 400 muet. (On ne clique PAS le repli
-  // Vinted "Mon modèle ne figure pas dans la liste" : commit non fiabilisé.)
+  // Aucun modèle catalogué ne correspond, même en retirant les qualificatifs.
+  // Les options AFFICHÉES sont relevées MENU OUVERT (dernière requête tapée =
+  // la plus courte, donc la liste la plus large) : c'est elles que le message
+  // de blocage citera — jamais la config catalogue, qui ne connaît pas ce
+  // champ. (On ne clique PAS le repli Vinted "Mon modèle ne figure pas dans
+  // la liste" : commit non fiabilisé.)
+  const affichees = Array.from(document.querySelectorAll(optionSel))
+    .map((el) => el.textContent.trim())
+    .filter((t) => t && !MODEL_FALLBACK_LABELS.has(normModel(t)))
+    .slice(0, 12);
+  if (affichees.length) optionsRelevees.set("modèle", affichees);
+  else optionsRelevees.delete("modèle");
   await closeAnyOpenDropdown();
-  const note = `modèle: "${raw}" introuvable dans le catalogue Vinted (aucune correspondance) — champ laissé vide`;
+  const note = `modèle: "${raw}" introuvable dans le catalogue Vinted (aucune correspondance)` +
+    (affichees.length ? ` — options affichées: ${JSON.stringify(affichees)}` : "");
   console.warn(`[vinted] ⚠️ ${note}`);
   warnings.push(note);
-  return false;
+  return "introuvable";
 }
 
 // Variante robuste pour les champs à choix fermé (taille, état, matière) :
 // matching en cascade ET jamais bloquante — un libellé IA sans équivalent
 // Vinted saute le champ avec un warning au lieu de faire échouer le job
 // entier (le champ restera vide, corrigeable à la main avant publication).
+// Options RÉELLEMENT affichées lors du dernier échec de cascade, par champ —
+// relevées MENU OUVERT (une fois le panneau fermé, les nœuds sont démontés et
+// plus rien n'est lisible). Deux lecteurs (point 8, robe Shein 15/08) :
+//   - le bloc Taille de fillListingForm, pour arrêter AVANT publication quand
+//     le formulaire ne propose AUCUNE option compatible (catégorie fausse) ;
+//   - labelWithOptions (gate des requis), pour que « accepte : … » cite le
+//     formulaire réel et plus jamais la config catalogue (qui listait les
+//     tailles vêtement pendant que le DOM affichait des dimensions de literie).
+const optionsRelevees = new Map(); // fieldName (minuscule) → string[]
+
 async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector, rawText, warnings, opts = {}) {
   try {
     await openDropdown(triggerSelector);
@@ -3321,6 +3746,10 @@ async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector
       .map((el) => el.textContent.trim())
       .filter(Boolean)
       .slice(0, 12);
+    // set OU delete : une entrée périmée d'un échec précédent ne doit jamais
+    // parler à la place d'un échec courant sans relevé.
+    if (visible.length) optionsRelevees.set(String(fieldName).toLowerCase(), visible);
+    else optionsRelevees.delete(String(fieldName).toLowerCase());
     const note = `${fieldName}: champ sauté — ${e.message}` +
       (visible.length ? ` — options affichées: ${JSON.stringify(visible)}` : "");
     console.warn(`[vinted] ⚠️ ${note}`);
@@ -3652,6 +4081,85 @@ async function selectColors(colorNames, warnings = []) {
   return posees > 0 || !colorNames.length;
 }
 
+// ── COULEUR de REPUBLICATION — annonce SANS couleur UNIQUEMENT (2026-08-26) ──
+// Vinted refuse la CRÉATION sans couleur sur certaines catégories (Flipper
+// 3358, VTech 1766 — refus serveur errors[color] captés) alors que l'annonce
+// d'ORIGINE vivait sans. On ne bloque plus : on REPOSE une couleur.
+// ⚠️ PÉRIMÈTRE STRICT (décision Nico 26/08) : cette fonction n'est appelée
+// QUE lorsque la capture ne porte AUCUNE couleur (fields.colors vide). Une
+// annonce qui a déjà sa couleur suit le chemin d'AVANT à l'identique
+// (selectColors, bloc historique) — aucune relecture, aucune repose : on ne
+// touche que ce qui est cassé. Sources, dans l'ordre :
+//   1. l'app : vintedAspects.color (saisie needs_user comprise) +
+//      colorsFallback (couleurs du job de PUBLICATION d'origine du même
+//      article, relues en base par le background — l'app les avait normalisées
+//      vers la palette) ;
+//   2. un mot de la palette RÉELLE du picker lu dans le TITRE de l'annonce
+//      (bornes de mots, normalizeFuzzy + containsAsWords — une lecture, pas
+//      une invention) ;
+//   3. sinon : introuvable — en une-passe, needs_user AVANT toute suppression
+//      (champ nommé, palette proposée) ; en recréation post-suppression, B.5
+//      (warning, on soumet quand même : l'annonce d'origine n'existe plus).
+// Champ ABSENT du formulaire (mesuré le 25/08 : cartes 4875 n'ont PAS de
+// champ Couleur) → rien à poser, rien à bloquer.
+// RELECTURE (périmètre 0.6.8 : ISBN + Couleur seulement) : l'état COMMITÉ du
+// champ est relu après la pose — vide malgré les clics = pose non retenue,
+// on ne soumet pas et on ne supprime pas (famille du piège prix).
+async function reposerCouleurRepublication(fields, titre, warnings) {
+  const SEL = '#color, [data-testid="color-select-dropdown-input"]';
+  const trigger = await waitForElement(SEL, 8000).catch(() => null);
+  if (!trigger) {
+    warnings.push("couleur: champ absent du formulaire de cette catégorie — rien à poser");
+    return { statut: "champ_absent" };
+  }
+  const candidats = [];
+  const aspectColor = String(fields.vintedAspects?.color ?? "").trim();
+  if (aspectColor) candidats.push(...aspectColor.split(/\s*(?:,|\/| et )\s*/i).map((s) => s.trim()).filter(Boolean));
+  for (const c of (Array.isArray(fields.colorsFallback) ? fields.colorsFallback : [])) {
+    const s = String(c ?? "").trim();
+    if (s) candidats.push(s);
+  }
+  let clique = false;
+  if (candidats.length) {
+    clique = await selectColors([...new Set(candidats)].slice(0, 2), warnings);
+  }
+  // Source 3 : le TITRE, contre la palette réellement affichée par le picker.
+  if (!clique) {
+    try {
+      await openDropdown(SEL);
+      const options = Array.from(document.querySelectorAll('[data-testid^="color-"]'))
+        .filter((el) => !/dropdown-(input|content)/.test(el.getAttribute("data-testid") ?? ""));
+      if (options.length) paletteCouleursRelevee = options.map((el) => el.textContent.trim()).filter(Boolean).slice(0, 40);
+      const titrePlat = normalizeFuzzy(String(titre ?? ""));
+      const trouvees = options
+        .map((el) => ({ el, label: el.textContent.trim() }))
+        .filter(({ label }) => label && containsAsWords(titrePlat, normalizeFuzzy(label)))
+        // le libellé le plus LONG d'abord (« Bleu clair » avant « Bleu ») ;
+        .sort((a, b) => b.label.length - a.label.length)
+        .slice(0, 2);
+      for (const { el, label } of trouvees) {
+        await humanPause();
+        el.click();
+        await humanPause();
+        warnings.push(`couleur: « ${label} » lue dans le titre de l'annonce`);
+        clique = true;
+      }
+      await closeAnyOpenDropdown();
+    } catch (e) {
+      console.warn("[vinted] ⚠️ couleur: lecture du titre contre la palette impossible —", String(e?.message ?? e));
+      await closeAnyOpenDropdown().catch(() => {});
+    }
+  }
+  // RELECTURE de l'état commité — le champ trigger porte les libellés choisis.
+  await humanPause();
+  const lu = readCommittedValue(trigger).trim();
+  if (lu) return { statut: "posee", valeur: lu };
+  if (clique) {
+    warnings.push("couleur: option(s) cliquée(s) mais état relu VIDE — pose non retenue par le formulaire");
+  }
+  return { statut: "introuvable", palette: paletteCouleursRelevee ?? [] };
+}
+
 // ⚠️ 2026-07-12 : « Petit » n'est PAS toujours pré-coché — Vinted choisit le
 // format par défaut selon la CATÉGORIE, et sur les chaussures il pré-coche
 // « Moyen » (constaté sur l'annonce New Balance de ce soir). L'ancien
@@ -3674,12 +4182,51 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
   const n = (Number.isFinite(idCapture) && idCapture > 0 && VINTED_PACKAGE_SIZES_PAR_ID[idCapture])
     ? idCapture
     : Number(Object.entries(VINTED_PACKAGE_SIZES_PAR_ID).find(([, l]) => l === size)?.[0]) || 1;
-  // publish.package_type (migré au registre) : maillon template {n}, n = 1..3.
-  const radio = await waitForKey("publish.package_type", { params: { n } });
+  // publish.package_type (migré au registre) : maillon template {n}.
+  let radio;
+  try {
+    radio = await waitForKey("publish.package_type", { params: { n } });
+  } catch (e) {
+    // ── L'id demandé n'est PAS OFFERT par cette catégorie (2026-08-23,
+    // aspirateur robot de lohanobert : publish « Petit » → n=1 alors que la
+    // grille du formulaire est au POIDS, ids 11..14). Ce n'était pas un
+    // sélecteur mort — relevé DOM du jour : les radios présents portent bien
+    // package_type_selector_<id> — c'est le {n} qui n'existe pas dans CE
+    // groupe de catégories. On lit alors ce que le formulaire OFFRE :
+    //   1. même LIBELLÉ sous un autre id (« 5 kg » vit en 8 ET en 11 selon
+    //      le groupe) → on clique cet id : même format, jamais inventé ;
+    //   2. sinon, le choix « Recommandé » PRÉ-COCHÉ par Vinted est conservé
+    //      tel quel (warning) — c'est le défaut de la plateforme, pas une
+    //      invention de notre part ;
+    //   3. ni offert, ni pré-coché → l'échec d'origine reste (visible).
+    const offerts = [...document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]')];
+    if (!offerts.length) throw e;
+    const libelleVoulu = VINTED_PACKAGE_SIZES_PAR_ID[n] ?? String(size);
+    const titreDe = (r) => (r.closest('[id^="package-size-"]')
+      ?.querySelector('[data-testid$="--cell--title"]')?.textContent ?? "")
+      .replace(/Recommandé/gi, "").trim();
+    const parLibelle = offerts.find((r) => titreDe(r) === libelleVoulu);
+    if (parLibelle) {
+      radio = parLibelle;
+      console.warn(
+        `[vinted] ≈ format de colis: id ${n} absent de cette catégorie — « ${libelleVoulu} » posé via ` +
+        `l'id ${radio.id.replace("package_type_selector_", "")} offert par le formulaire`
+      );
+    } else {
+      const precoche = offerts.find((r) => r.checked);
+      if (!precoche) throw e;
+      console.warn(
+        `[vinted] ⚠️ format de colis: ni l'id ${n} ni le libellé « ${libelleVoulu} » ne sont offerts ici — ` +
+        `choix Vinted pré-coché « ${titreDe(precoche) || "recommandé"} » conservé`
+      );
+      return;
+    }
+  }
   if (!radio.checked) {
     simulateFullClick(radio);
     await humanPause();
   }
+  const nEffectif = Number(String(radio.id ?? "").replace("package_type_selector_", "")) || n;
   // Vérification : le format retenu doit être celui demandé (sinon on publierait
   // avec des frais de port faux, invisible jusqu'à la première vente).
   // Relecture DÉLIBÉRÉE du DOM (le nœud peut avoir été remonté par React) — un
@@ -3688,7 +4235,7 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
   const S = await sel();
   let after = null;
   try {
-    after = S.resolveSelector("vinted", "publish.package_type", { params: { n }, reportFailure: false }).el;
+    after = S.resolveSelector("vinted", "publish.package_type", { params: { n: nEffectif }, reportFailure: false }).el;
   } catch (e) {
     if (e?.name !== "SelectorResolutionError") throw e;
   }

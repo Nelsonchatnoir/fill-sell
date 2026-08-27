@@ -1,4 +1,4 @@
-// BUILD_ID partagé — source UNIQUE pour les trois consommateurs :
+﻿// BUILD_ID partagé — source UNIQUE pour les trois consommateurs :
 //   1. build local minifié (scripts/build-extension.mjs, « Load unpacked ») ;
 //   2. zip public fillsell.app (scripts/vite-plugin-zip-extension.mjs) ;
 //   3. app web elle-même (define __FILLSELL_APP_BUILD__ dans vite.config.js),
@@ -401,7 +401,321 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des articles synchronisés actifs étaient à NULL, la carte n'avait rien.
 // Commit épinglé GIT_COMMITTER_DATE sur cette constante (garde : ni futur, ni
 // antérieur). ⚠️ HORS zip 0.6.9 : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
-export const EXTENSION_LAST_COMMIT = '2026-08-27T14:50:00Z';
+// ── Journal de la BRANCHE ext-0.6.5-sans-f1 (fork fe901f4, paquets 0.6.5 → 0.6.9) —
+// réintégré tel quel par le merge de réconciliation du 27/08 (entrée en fin de journal) :
+// 2026-08-14T12:58:51Z = 530d993 (BRANCHE ext-0.6.5-sans-f1, base fe901f4) :
+// paquet 0.6.5 re-packagé — AUCUNE 0.6.5 n'ayant jamais été téléversée au
+// CWS (correction Nico 14/08), le numéro est réutilisable. Contenu = zip
+// d'origine + no-op Marque absente (401c649) + brouillon eBay consigné
+// (ebay_draft_id) + message de session eBay sans surpromesse. SANS le
+// multi-comptes F1 (1fc9beb, main) : code non éprouvé qui touche le marquage
+// disparu_le — seul le prouvé part en circulation (doctrine
+// ext-0.6.3-cause403). EXTENSION_MIN_BUILD inchangé.
+// 2026-08-14T13:35:14Z = 33fddeb (même branche) : re-clic « Mettre en vente »
+// gouverné par la PREUVE RÉSEAU (EBAY_SUBMIT_SEEN → ebaySubmitRequestSeen) au
+// lieu des signaux DOM — miroir de c419489 (main), où l'observation directe
+// établit la cause de la famille B : hydratation Marko différée (bouton dans
+// le DOM sans handler, clic avalé sans requête) + bandeau menteur rendu sans
+// POST qui étouffait le re-clic. 3 clics max, budgets 8/12/16 s, re-clic
+// uniquement si AUCUN POST capté.
+// 2026-08-15T09:50:00Z = paquet 0.6.6 (même branche, date de commit épinglée) :
+// - VÉRIFICATION VINTED RÉPARÉE (panne 12-15/08, par machine) : réveil de
+//   l'onglet de travail déchargé dans workTabForFetch (Vinted seul) + repli
+//   wardrobe via content script dans checkPublishedListings (preuve positive
+//   uniquement) — miroir de 88dbc97 (main) ;
+// - stampVintedItemId : l'id de l'annonce créée rattaché à
+//   inventaire.vinted_item_id à la publication (miroir de bde2b4a, main) ;
+// - Legal.jsx : la ligne « cookies » du tableau /legal reprise seule depuis
+//   1fc9beb (c'était sa SEULE modification de Legal) — répare le build Vercel
+//   de la branche, en ERROR depuis le 14/08 sur check:legal-permissions.
+// Manifest bumpé 0.6.5 → 0.6.6 : un zip 0.6.5 (dff6cdd) a déjà été LIVRÉ le
+// 14/08 (jamais téléversé) — produire un second 0.6.5 au contenu différent
+// est exactement l'ambiguïté à éviter. TOUJOURS SANS F1 (1fc9beb).
+// 2026-08-15T20:23:32Z = 1be6b19 (même branche, soirée 15/08 — le zip 0.6.6
+// d235bc3 du matin est PÉRIMÉ, ne pas le téléverser) :
+// - ISBN Livres Vinted : capturé (natif.isbn → libelles.isbn) et RÉINJECTÉ à
+//   la recréation (#isbn / isbn--input) — annonce de Rose perdue le 15/08 ;
+//   clé isbn illisible → blocage AVANT suppression ; isbn null → republie
+//   telle quelle (jamais bloquer la catégorie) ;
+// - package_size_id hors table (8, 11 relevés) → repli « Grand » + trace,
+//   la republication POURSUIT au lieu de bloquer ;
+// - brouillon LBC bloquant : SUPPRIMÉ (retrait des clés de storage portant le
+//   titre restauré) puis retentative unique en onglet neuf — décision Nico
+//   15/08, ancienne politique abandonnée ; messages en une ligne, sans nom de
+//   champ interne. TOUJOURS SANS F1 (1fc9beb).
+// 2026-08-15T21:42:16Z = bb131b8 (point 8, APRÈS le paquet 0.6.6-1d20b3d) :
+// garde catégorie-vs-grille de tailles (arrêt avant publication quand la
+// grille n'offre AUCUNE correspondance, message qui nomme la catégorie avec
+// les options réelles du DOM) + « accepte : » cite le formulaire relevé et
+// plus la config catalogue. ⚠️ DÉLIBÉRÉMENT HORS du zip 1d20b3d, qui part au
+// CWS tel quel (consigne du 15/08 soir) : ces gardes embarqueront dans le
+// paquet SUIVANT — tout re-package depuis cette branche les inclura de fait
+// (la garde n°4 l'exigera). La cause racine (« drapé » → 🛌) est corrigée
+// côté app (db37b1e, main). TOUJOURS SANS F1 (1fc9beb).
+// 2026-08-15T22:16:54Z = 79e029c (point 9, Modèle Vinted — AirPods de Samdo) :
+// normModel unifie ordinaux/parenthèses/accents (« 3ème génération » matche
+// « (3e génération) »), selectVintedModel à 3 états + relevé des options du
+// menu, blocage AVANT envoi quand le modèle fourni n'est pas au catalogue
+// (message = options réelles, needsUserField model), gate pré-clic élargie au
+// sélecteur complet du champ, message 400 actionnable. Comme bb131b8 : HORS du
+// zip 1d20b3d déjà téléversé — paquet SUIVANT. TOUJOURS SANS F1 (1fc9beb).
+// 2026-08-16T14:25:09Z = 32b156e (point 1 du chantier 16/08, recapture auto) :
+// capture de republication périmée (>24 h) → RECAPTURE AUTOMATIQUE depuis
+// vinted_item_id au lieu d'un needs_user sec (22 jobs de Carla gelés le
+// 15/08). Ordre strict conservé (capture fraîche réussie AVANT toute
+// suppression), annonce absente → needs_user « plus en ligne », plafond de
+// 2 recaptures auto (recaptures_perimees), aucun re-débit. Comme bb131b8 et
+// 79e029c : HORS du zip 1d20b3d déjà téléversé — paquet SUIVANT. TOUJOURS
+// SANS F1 (1fc9beb).
+// 2026-08-16T14:41:52Z = 6be32d5 (point 3 du chantier 16/08, colis Vinted) :
+// table des formats de colis complétée par RELEVÉ DOM sur /items/new
+// (8=« 5 kg »/9=« 10 kg »/10=« 20 kg » sur Vases, 11..14 idem+« 30 kg » sur
+// Nacelles), sélection PAR ID à la recréation (le même libellé couvre
+// plusieurs ids selon le groupe de catégories), et RETRAIT du repli « Grand »
+// du 15/08 : un id hors table re-bloque AVANT toute suppression (doctrine
+// 16/08 — jamais de taille inventée). HORS du zip 1d20b3d — paquet SUIVANT.
+// TOUJOURS SANS F1 (1fc9beb).
+// 2026-08-16T17:05:53Z = bump manifest 0.6.6 → 0.6.7 (le zip 0.6.6-1d20b3d
+// est TÉLÉVERSÉ et en review au CWS : la version est brûlée, cf.
+// ALREADY_PUBLISHED). La 0.6.7 embarque TOUT le delta de la branche depuis le
+// zip 1d20b3d : bb131b8 (garde catégorie-vs-grille de tailles), 79e029c
+// (Modèle Vinted normalisé + blocage avant envoi), 32b156e (recapture auto
+// d'une capture périmée), 6be32d5 (colis 8..14 relevés + sélection par id +
+// fin du repli « Grand »). Committé avec GIT_COMMITTER_DATE épinglée sur
+// cette constante (ni futur, ni antérieur). TOUJOURS SANS F1 (1fc9beb).
+// 2026-08-21T09:36:16Z = 7b662cf (même branche) : capture incomplète de
+// republication → needs_user actionnable. a_capturer et pré-vol négatif
+// posent needs_user (champs nommés, Pépite réservée, balayage 72 h) au lieu
+// de failed ; fusion republish_user_fields (saisie app : taille/marque/état/
+// ISBN) dans la capture AVANT verdict ; motif « taille (absente des deux
+// emplacements) » RETIRÉ du verdict (faux positif prouvé : catalog 1441
+// Lunettes vit sous le rayon Vêtements SANS champ Taille — relevé DOM du
+// 21/08 ; le pré-vol tranche sur le formulaire réel). ⚠️ HORS zip 0.6.7
+// (9ae7302, figé en attente d'acceptation de la 0.6.6) : paquet SUIVANT —
+// tout re-package depuis cette branche l'inclura de fait. En attendant,
+// update-job-status (main) requalifie côté serveur les failed « Capture
+// incomplète » du parc en needs_user. EXTENSION_MIN_BUILD inchangé.
+// TOUJOURS SANS F1 (1fc9beb).
+// 2026-08-23T13:47:21Z (même branche) : DEADLOCK de la republication
+// automatique — autoCaptureEtRepublier appelait captureVintedItem (version
+// VERROUILLÉE) depuis l'intérieur du poll, qui détient déjà withJobFlowLock ;
+// le verrou étant une chaîne de promesses non réentrante, la capture attendait
+// la fin du poll et le poll attendait la capture. Auto-blocage silencieux à
+// chaque cycle : É6 n'a JAMAIS créé un seul job (0 republish_source='auto'
+// sur tout le parc depuis le 05/08, constat du 23/08 — cas josephinecerni,
+// Pro payé pour cette fonction). Passage à captureVintedItemUnlocked, la
+// même version sans verrou que processRepublishJob utilise déjà — c'est le
+// piège que son bandeau documentait mot pour mot. Dans le zip 0.6.7 à venir.
+// 2026-08-23T13:48:15Z (même branche) : garde snapshot de É6 rendue
+// SATISFAISABLE (option a, GO Nico 23/08). Elle exigeait, par article, un
+// premier relevé vieux de ≥ age_jours alors que la table des relevés n'existe
+// que depuis le 03/08 : 100 % des candidats sautés, pour tout le monde, sans
+// un log (2e verrou du « 0 job auto » avec le deadlock ci-dessus). Désormais
+// la garde ne s'applique que si le premier relevé du COMPTE a ≥ age_jours
+// (historique probant) ; sinon listed_at_guess fait foi seul — donnée
+// manquante toujours bloquante, plancher 7 jours intact. Se ré-arme seule
+// quand l'historique mûrit. Dans le zip 0.6.7 à venir.
+// 2026-08-23T13:49:29Z (même branche) : garde des requis LIÉE à la catégorie
+// sélectionnée (cas grisette11, 23/08 : « Taille » nourrisson exigée sur une
+// miniature de camion en Jouets > Voitures — needs_user irrésoluble, le
+// formulaire n'a pas ce champ). La sonde extrait catalog_id du CORPS du POST
+// /item_upload/attributes (attrsCatalogId, fetch + XHR) ; côté formulaire,
+// readLatestAttrsConfig ne juge plus qu'avec la capture portant l'id lu dans
+// #category — config VIDE après sélection = « aucun requis », jamais
+// « reprends la précédente » (l'ancien saut des configs vides ressuscitait
+// celle de la catégorie auto-suggérée par le titre). Id lisible sans capture
+// → « non vérifiable » (gate n°0, relance re-capte) ; id illisible → repli
+// d'avant, dernière capture, vide comprise. Même racine que le motif literie
+// du point 8 (15/08), corrigé cette fois au JUGEMENT et plus seulement au
+// message. Dans le zip 0.6.7 à venir.
+// 2026-08-23T18:23:45Z (même branche) : /fpa/* reconnu comme mur de
+// vérification du COMPTE VENDEUR eBay (emilie.rigal03 ×2 le 23/08 :
+// /fpa/upgrade servi à la place de /lstng). Le message disait « categoryId
+// probablement refusé » + jargon de mapping ; il dit désormais qu'eBay
+// demande une vérification du compte et quoi faire sur ebay.fr. Restriction
+// côté eBay, rien à corriger chez nous — 2 occurrences sur 91 tentatives
+// 7 jours. Dans le zip 0.6.7 à venir.
+// 2026-08-23T18:24:53Z (même branche) : Univers Leboncoin, correctif CIBLÉ
+// (1 cas sur 103 publications LBC en 7 jours — maillot adidas Junior de
+// Bilel, job b2a1870f). Le contrôle « Univers » de Mode > Vêtements (clé
+// clothing_type, options premier niveau Femme/Maternité/Homme/Enfant
+// relevées en base sur le needsUserField du job) ne connaît ni « Garçon »
+// ni « Fille » : fillUnivers tente désormais l'équivalent « Enfant » après
+// la valeur du job. Warnings VÉRIDIQUES (« remplacé » seulement après un
+// clic réussi ; sinon « pré-rempli laissé en place ») et needsUserField
+// routé par LIBELLÉ (« Univers » → platform_fields.univers) au lieu de la
+// règle par suffixe _type$ qui envoyait la saisie vers lbcProduit, jamais
+// relu par fillUnivers. Dans le zip 0.6.7 à venir.
+// 2026-08-23T18:26:09Z (même branche) : format de colis Vinted — le
+// sélecteur n'était pas mort, c'est le {n} demandé qui n'existe pas sur les
+// grilles AU POIDS (relevé DOM 23/08 : Aspirateurs = ids 11..14 avec les
+// testids attendus ; aspirateur robot de lohanobert = publish « Petit » →
+// n=1 introuvable → « aucun des 1 maillon(s) n'a résolu »). Deux gestes :
+// maillons de repli au registre (#package_type_selector_{n}, radio dans la
+// cellule {n}-package-size--cell), et selectPackageSize qui, à id non
+// offert, matche par LIBELLÉ exact parmi les radios présents (« 5 kg » vit
+// en 8 ET 11 selon le groupe) puis conserve le pré-coché « Recommandé » de
+// Vinted en dernier repli — jamais de format inventé, échec visible si rien
+// n'est offert ni pré-coché. Dans le zip 0.6.7 à venir.
+// 2026-08-23T18:27:07Z (même branche) : Livres Vinted, les deux jambes du
+// point 8 du chantier 23/08 (13 annonces perdues, 9 utilisateurs — LE bug
+// destructeur). RELEVÉ DOM LIVE du jour sur /items/new (Livres > Fiction) :
+// #isbn / isbn--input EXISTE après pose de la catégorie et la frappe façon
+// typeHuman COMMITE bien dans l'état React (vérifié aux fibers) — la
+// mécanique de pose est saine. Les deux vraies causes : (1) estLivre jugeait
+// sur le libellé FRANÇAIS « Livres et médias » (faux compte anglais → ISBN
+// jamais capturé → 400 Vinted après suppression) → désormais par ID DE
+// RACINE (2309) via racineDuCatalogue, anciens signaux en repli ; (2) les
+// formulaires Livres n'ont AUCUN champ Marque (relevé DOM) et une marque
+// réelle (« J'ai lu », « Disney », 5 échecs/7 j) mourait en cascade →
+// no-op + warning structuré brand_field_absent quand le champ est absent
+// (conclu après l'attente standard, comme le no-op « Sans marque »).
+// La garde Livres SERVEUR (update-job-status v21) reste active jusqu'au
+// déploiement — elle bloque proprement, rien à retirer avant. Dans le zip
+// 0.6.7 à venir.
+// 2026-08-23T18:47:58Z (même branche, GO 9b) : PAGINATION de « Mes
+// annonces » Leboncoin dans le recovery + la sonde de modération. La page
+// n'affiche que ~30 annonces : sur les comptes au-dessus (jocaille 66,
+// bilel 41 — les DEUX seuls touchés, corrélation parfaite), les annonces
+// des pages suivantes étaient invisibles → URL jamais récupérée → cron 48 h
+// requalifiait en échec + remboursait des annonces EN LIGNE (3 jobs bilel
+// 20/08, moderation_probe « liste_partielle_30_sur_41 »). Désormais :
+// marche de ?page=N (borné 6) tant que le cumul de liens DISTINCTS ne
+// couvre pas « En ligne (N) » et que la page apporte du neuf ; les titres
+// sont cherchés sur CHAQUE page ; le verdict de sonde est rendu APRÈS la
+// dernière page sur la couverture cumulée — « absent » exige la liste
+// entière réellement vue, tout le reste (pagination interrompue, schéma
+// ?page inopérant, DataDome, session) reste NON CONCLUANT, compteur
+// inchangé. Échec fermé : si ?page n'est pas le bon schéma, la page 2 ne
+// rapporte rien de neuf → arrêt → comportement d'avant (aucune
+// conclusion), jamais un « absent » sur du partiel. DataDome non touché.
+// Le cas Romain (voirememe, 6 annonces, 1 non confirmée) N'EST PAS couvert
+// par ce correctif : autre cause, dossier séparé. Dans le zip 0.6.7.
+// 2026-08-24T06:41:00Z (même branche, point F du chantier détection des
+// ventes) : COUVERTURE de la surveillance des annonces published. Constat en
+// base : sur 20 178 annonces publiées actives, 7 004 jamais vérifiées
+// (last_checked_at NULL) et 3 284 de plus de 7 jours. Trois gestes, AUCUN ne
+// touche les détecteurs ni le marquage disparu_le de la sync :
+//   1. un échec de get-pending-jobs (5xx/réseau, hors 401) ne saute plus le
+//      cycle de détection entier — checkPublishedListings tourne quand même ;
+//   2. cadence 8 → 12 annonces par cycle de 30 min, mais pause inter-lectures
+//      ÉLARGIE 1,5-4 s → 2,5-6 s : plus de couverture, rythme instantané en
+//      BAISSE (étalement, jamais de rafale) ;
+//   3. fenêtre de lecture 30 → 60 lignes (une seule requête REST) : les jobs
+//      en délai de grâce ou en temporisation ne masquent plus les dus.
+// Dans le zip 0.6.7 à venir. TOUJOURS SANS F1 (1fc9beb).
+// 2026-08-24T07:49:00Z (même branche, audit pré-téléversement — GO Nico) :
+// DEUX corrections avant le zip qui part réellement au CWS, RIEN d'autre :
+//   1. NOM DU MANIFEST RÉPARÉ : « FillSell â€” Cross-post » → « FillSell —
+//      Cross-post » (tiret cadratin U+2014, octets E2 80 94, sans BOM —
+//      vérifié aux octets). Le tiret avait été DOUBLE-ENCODÉ par la
+//      réécriture « sans BOM » du 16/08 (9d640bd) et rien ne le contrôlait :
+//      tous les zips 0.6.7 du 16 au 24/08 portaient un nom cassé, attrapé à
+//      l'audit du 24/08. package-extension.mjs porte désormais une garde
+//      5bis : nom du manifest vérifié à CHAQUE paquet (BOM interdit, égalité
+//      stricte avec la valeur attendue en échappé —) ;
+//   2. SALE_CHECK_MAX_PER_CYCLE ramené 12 → 8 (décision Nico à l'audit) :
+//      le poll est à 2 MINUTES (POLL_INTERVAL_MINUTES, 78cf410) et non aux
+//      « 30 min » que les commentaires répétaient — à 12/cycle la pointe de
+//      rattrapage serait passée de 240 à 360 lectures/h pour tout le parc à
+//      la fois. Les deux autres gestes du point F restent (résilience à
+//      l'échec de get-pending-jobs, fenêtre 60 lignes), la pause élargie
+//      2,5-6 s reste, et les commentaires « 30 min » sont corrigés.
+// Dans le zip 0.6.7. TOUJOURS SANS F1 (1fc9beb).
+// 2026-08-24T18:40:00Z = 0.6.8 : verdicts de recréation Vinted HONNÊTES —
+// « Vinted a REFUSÉ » ne se dit plus que preuve réseau à l'appui (HTTP +
+// errors[] capturés par la sonde) ; sans requête observée, le message dit
+// « la validation du formulaire a bloqué l'envoi, Vinted n'a pas été
+// interrogé » (Flipper de Prudence, 24/08 : diagnostic impossible depuis la
+// base parce que les deux cas portaient le même texte). serverRequired reste
+// réseau-seulement. La protection des annonces sans couleur, elle, est
+// SERVEUR (garde update-job-status du 24/08) — rien à embarquer ici.
+// 2026-08-24T21:35:00Z = 0.6.9 (chantier de nuit ISBN + eBay, observations en
+// session réelle du 24/08 au soir — compte test nelsonchatnoir/nicsvob_0) :
+// VINTED (annonce-témoin 9769001747 créée avec ISBN accepté et résolu par le
+// serveur — natif.isbn = 9782749933276, book_title auto) :
+//   - normalizeIsbn : tirets/espaces retirés, ISBN-10 → ISBN-13 (clé
+//     RECALCULÉE), clés de contrôle vérifiées — un ISBN invalide ne se pose
+//     plus, le message le cite (un des cas détruits portait un ISBN-10) ;
+//   - pose ISBN par insertText EN UN COUP (famille du piège prix) +
+//     RELECTURE EXACTE de l'état React (readCommittedValue) — relecture ≠
+//     écrit → retentative puis REFUS de soumettre, ISBN dans le message ;
+//   - fillTextField (titre/description) : relecture systématique de l'état
+//     commité après typeHuman, retentative insertText sur écart, erreur
+//     franche si l'état reste mutilé (tolérances : espaces de bord,
+//     troncature maxLength).
+// EBAY (draft 5257871060520 → annonce 800557746918 créée par API PURE puis
+// terminée — la recette du repli est MESURÉE de bout en bout) :
+//   - pré-vol step-up (sonderStepUpVente) : GET /sl/list redirigé vers
+//     signin.ebay.* → « REAUTH VENTE » AVANT d'ouvrir le formulaire ;
+//   - clic mort (20 échecs/14 j, fenêtre minimisée, hydratation Marko morte) :
+//     sur preuve submit_never_sent, retour sur le brouillon et PUBLICATION
+//     DIRECTE par l'API (POST /lstng/api/listing_draft/{id}/publish?mode=…,
+//     jeton srt lu dans div#csrf-data — rendu SERVEUR, vérifié dans le HTML
+//     brut) ; succès = itemId dans la réponse (published), refus = champs
+//     manquants NOMMÉS (needs_user honnête, brouillon conservé) ;
+//   - description : le textarea miroir ne synchronise PLUS (mesuré, même en
+//     frappe réelle) → pose par PUT delta du brouillon (fillDescription →
+//     putDescriptionViaDraftApi), fin de la famille « jamais synchronisée » ;
+//   - /fpa/* : message honnête (mise à niveau du COMPTE exigée par eBay,
+//     page nommée — /fpa/upgrade = 404 sur compte sain, relevé 24/08).
+// 2026-08-25T21:56:00Z = 0.6.8 UNIQUE pour le CWS (décision Nico 26/08 : la
+// 0.6.7 est publiée/acceptée, le numéro 0.6.8 n'a jamais été soumis — les
+// étiquettes internes « 0.6.8-4253102 » et « 0.6.9 » sont regroupées ici).
+// Contenu = tout le delta de la branche (eBay publish API + PUT description +
+// pré-vol REAUTH + /fpa honnête ; verdicts de recréation honnêtes ; pose ISBN
+// normalisée insertText + relecture) PLUS, dans ce commit :
+//   - fix COULEUR de republication, périmètre STRICT : ne s'active QUE si la
+//     capture n'a AUCUNE couleur (les annonces avec couleur suivent le chemin
+//     d'avant à l'identique). Sources : vintedAspects.color + colors du
+//     publish d'origine (couleursDePublicationOrigine, background) → mot de
+//     la palette réelle lue dans le TITRE → sinon needs_user AVANT toute
+//     suppression (circuit prevol_negatif, champ nommé, palette proposée) ;
+//     champ Couleur ABSENT du formulaire (cartes 4875, mesuré 25/08) → no-op.
+//     Relecture de l'état commité après pose (périmètre ISBN + Couleur).
+//   - RETRAIT du durcissement fillTextField sur titre/description (décision
+//     Nico 26/08) : la relecture est LIMITÉE à l'ISBN et à la Couleur — les
+//     milliers de publications qui passent ne changent pas de chemin.
+// Téléversement SANS test unpacked (décision Nico) : vérification de
+// démarrage en profil Chrome isolé + relecture d'assemblage avant livraison.
+// 2026-08-26T19:46:00Z = 0.6.9 (PANNE TOTALE de publication Vinted depuis le
+// 26/08 ~11:30 Paris — bascule mesurée en prod entre la dernière sélection de
+// catégorie réussie à 11:29 et le premier « niveau introuvable, options [] »
+// à 11:31, toutes versions 0.6.7/0.6.8 confondues) : Vinted a passé les
+// cellules FEUILLE de ses pickers de role="button" à role="radio" (cellules
+// navigables et ids inchangés — relevé live compte test le 26/08 au soir,
+// Parfums=catalog-152, brand-12 "Zara", #custom-select-brand, #empty-brand
+// tous en role=radio). DÉBLOCAGE SEUL, rien d'autre dans ce paquet :
+//   - publish.catalog_option : union button|radio dans le maillon 0 (seul lu
+//     par selectorFor) ;
+//   - publish.model_option : [role="radio"] ajouté au closest ;
+//   - publish.custom_brand_option / no_brand_option : maillon radio EN PLUS
+//     (leurs ids primaires tiennent toujours) ;
+//   - selectVintedBrand (vinted.js:3470) : aria-label matché en button ET
+//     radio.
+// selectCategory, isChevronOption, gardes Livres/Couleur, cycle Pépites :
+// INTACTS. Les champs état/taille/matière/stockage sont en data-testid, non
+// touchés par la bascule. Manifest bumpé 0.6.9 (la 0.6.8 daae23d est publiée
+// par le CWS depuis le 26/08 au matin, cf. ALREADY_PUBLISHED).
+// EXTENSION_MIN_BUILD inchangé tant que la 0.6.9 n'est pas ACCEPTÉE.
+// Committé avec GIT_COMMITTER_DATE épinglée sur cette constante.
+// 2026-08-27T21:30:00Z = MERGE de réconciliation main ↔ ext-0.6.5-sans-f1
+// (GO Nico 27/08 soir). La branche (code du parc, 0.6.9 servie par le CWS)
+// est la BASE ; main y réapporte F1 RÉDUIT — décision Nico 27/08 :
+//   · CONSERVÉ : trace d identité (vinted_user_id + vinted_login PATCHés
+//     sur chaque run, écriture séparée de la clôture) ;
+//   · ABANDONNÉ : l attribution par compte (étiquetage vinted_account_id
+//     des articles, sonde compteColonneOk, scoping du marquage par
+//     colonne) et l épinglage (vinted_sync_pin, [pin_mismatch], pose au
+//     done) — FillSell ne gère pas de comptes, il reflète celui connecté
+//     dans Chrome. Le scoping du marquage passe par l identité DU RUN
+//     (commit suivant, sync mono-compte).
+// Les avertissements « un paquet construit sur main embarquerait F1 »
+// ci-dessus sont CLOS : main redevient l UNIQUE ligne de l extension.
+// Vérifié avant commit : rebuild depuis main fusionné diffé contre
+// l arbre 0.6.9 exact servi par le CWS — delta = F1 réduit seul.
+// Committé avec GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-27T21:30:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

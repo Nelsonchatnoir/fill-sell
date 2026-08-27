@@ -81,18 +81,40 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // manifest passe en 0.6.3 du même geste (branche ext-0.6.3-cause403, basée
 // sur 7971dc4 = la 0.6.2 publiée, SANS les commits matière/selectSizeByIds
 // de main : seul le prouvé part en circulation, consigne du 13/08).
-// 0.6.3 et 0.6.4 ajoutées le 14/08 (rattrapage, même nature que 0.5.2/0.5.7) :
-// paquets construits sur la branche ext-0.6.3-cause403, remplacés avant
-// d'aller au bout — les re-packager ne servirait qu'à se faire rejeter.
+// 0.6.3 et 0.6.4 ajoutées le 15/08 (alignement sur main) : paquets construits
+// sur ext-0.6.3-cause403 — la 0.6.4 est EN REVIEW au CWS, la 0.6.3 remplacée
+// avant d'aller au bout.
 // 0.6.5 ajoutée le 15/08 SANS avoir été téléversée : le zip
-// fillsell-extension-0.6.5-dff6cdd.zip (livré le 14/08, écarté en
-// anciens-zips) reste le seul 0.6.5 légitime — un second zip 0.6.5 serait
-// indiscernable de lui, et un zip pris sur MAIN embarquerait F1 (1fc9beb).
-// Le paquet courant est la 0.6.6 (branche ext-0.6.5-sans-f1, d235bc3 :
-// vérification Vinted réparée + stampVintedItemId + fixes Marque/eBay, sans
-// F1). Tout paquet DEPUIS MAIN exige un bump de version ET une décision
-// explicite sur F1.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5'];
+// fillsell-extension-0.6.5-dff6cdd.zip a été LIVRÉ le 14/08 et reste le seul
+// 0.6.5 légitime — un second zip 0.6.5 au contenu différent serait
+// indiscernable de lui. Le paquet courant est la 0.6.6 (même branche, mêmes
+// fixes + vérification Vinted réparée + stampVintedItemId).
+// 0.6.6 ajoutée le 16/08 : zip 1d20b3d TÉLÉVERSÉ le 15/08 au soir, EN REVIEW
+// au CWS — pas encore acceptée, mais un second 0.6.6 au contenu différent
+// serait indiscernable du zip en review (même logique que la 0.6.5). Le
+// paquet courant est la 0.6.7 (recapture auto 32b156e + colis 8..14 6be32d5
+// + points 8/9 du 15-16/08, TOUJOURS SANS F1).
+// 0.6.7 ajoutée le 24/08 au soir : zip bd8e95e TÉLÉVERSÉ — PUBLIÉE et
+// ACCEPTÉE par le CWS le 26/08 au matin (40 comptes dessus le jour même).
+// 0.6.8 RETIRÉE de la liste le 26/08 (décision Nico) : le numéro n'a JAMAIS
+// été soumis au CWS — les zips internes « 0.6.8-4253102 » (verdicts honnêtes)
+// et « 0.6.9 » (chantier de nuit) étaient des étiquettes de travail, écartées
+// vers CWS-PERIMES pour lever toute ambiguïté. Le paquet courant est LA 0.6.8
+// unique (eBay API + verdicts honnêtes + pose ISBN + fix Couleur), à
+// téléverser SANS test unpacked (décision Nico 26/08).
+// 0.6.8 ajoutée le 26/08 au soir : zip daae23d téléversé le 26/08 au matin,
+// PUBLIÉE par le CWS le jour même (confirmé Nico). Le paquet courant est la
+// 0.6.9 — DÉBLOCAGE SEUL du sélecteur de catégorie Vinted (bascule
+// role=button → role=radio des feuilles du picker, panne totale de
+// publication depuis le 26/08 ~11:30, cf. vinted.registry.js).
+// 0.6.9 ajoutée le 27/08 : zip 7a88eb6 PUBLIÉ par le CWS le 27/08 vers midi
+// (BUILD_ID 2026-08-26T19:48:07Z+7a88eb6, relu dans le zip). Promotion vers
+// EXTENSION_MIN_BUILD faite le même jour SUR MAIN (le web de prod se déploie
+// depuis main, pas depuis cette branche) — cf. build-id.mjs côté main.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9'];
+// (Merge 27/08 : la mise en garde côté main « un zip pris sur MAIN
+// embarquerait F1 » est CLOSE — la branche est réintégrée, main est
+// redevenue l'unique ligne ; F1 réduit à la trace d'identité.)
 
 const allowDirty = process.argv.includes('--allow-dirty');
 const git = cmd => execSync(`git ${cmd}`, { cwd: ROOT }).toString().trim();
@@ -147,6 +169,33 @@ if (Date.parse(iso) < Date.parse(EXTENSION_LAST_COMMIT)) {
 
 // 5. version jamais publiée
 const manifest = JSON.parse(fs.readFileSync(path.join(OUT_DIR, 'manifest.json'), 'utf8'));
+
+// 5bis. intégrité du manifest — NOM vérifié AUX OCTETS (2026-08-24).
+// Le 16/08, la réécriture « sans BOM » du manifest (9d640bd) a double-encodé
+// le tiret cadratin du nom (« FillSell â€” Cross-post », octets C3 A2 E2 82
+// AC E2 80 9D au lieu de E2 80 94) et RIEN ne le contrôlait : huit jours et
+// quatre zips plus tard, c'est l'audit pré-téléversement du 24/08 qui l'a
+// attrapé à l'œil. Le nom est ce que les installs affichent dans Chrome et
+// ce que porte la fiche CWS — il se vérifie ici à chaque paquet, contre la
+// valeur exacte (JSON.parse décode les octets UTF-8 réels : toute
+// double-encodage rend un name différent et fait échouer l'égalité).
+const manifestBytes = fs.readFileSync(path.join(OUT_DIR, 'manifest.json'));
+if (manifestBytes[0] === 0xEF && manifestBytes[1] === 0xBB && manifestBytes[2] === 0xBF) {
+  die('manifest.json du paquet commence par un BOM UTF-8 — à retirer avant tout téléversement');
+}
+// Tiret cadratin en ÉCHAPPÉ (—), pas en littéral : la garde survivrait
+// elle-même à une réécriture du fichier qui casserait l'encodage (le bug
+// exact qu'elle attrape).
+const EXPECTED_NAME = 'FillSell \u2014 Cross-post';
+if (manifest.name !== EXPECTED_NAME) {
+  die(`nom du manifest inattendu : « ${manifest.name} »
+  (utf8: ${Buffer.from(String(manifest.name), 'utf8').toString('hex')})
+  attendu : « ${EXPECTED_NAME} » (utf8: ${Buffer.from(EXPECTED_NAME, 'utf8').toString('hex')})
+  Encodage probablement cassé par une réécriture du fichier (vécu le 16/08,
+  commit 9d640bd : tiret cadratin double-encodé, invisible à l'œil dans un
+  éditeur mal réglé). Corriger chrome-extension/manifest.json puis relancer.`);
+}
+
 if (ALREADY_PUBLISHED.includes(manifest.version)) {
   die(`manifest en ${manifest.version}, déjà téléversée : le Chrome Web Store rejettera
   le paquet. Bumpe "version" dans chrome-extension/manifest.json (et

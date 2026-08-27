@@ -1329,7 +1329,19 @@ async function pollAndProcessJobsUnlocked() {
     commandeSyncEnAttente = rep.sync_command ?? null;
   } catch (e) {
     console.error("[background] get-pending-jobs:", e);
-    if (e?.status === 401) await invalidateRejectedSession(session).catch(() => {});
+    if (e?.status === 401) {
+      await invalidateRejectedSession(session).catch(() => {});
+      return;
+    }
+    // get-pending-jobs indisponible (5xx, réseau) : la file d'actions attendra
+    // le prochain cycle — mais la DÉTECTION DE VENTE n'en dépend pas (elle lit
+    // cross_post_jobs en direct). La sauter ici perdait un cycle de
+    // surveillance entier à chaque incident serveur : une des sources du
+    // « jamais vérifié » constaté le 23/08 (7 004 annonces published sans
+    // last_checked_at). On vérifie quand même une tranche, puis on rend la main.
+    await checkPublishedListings(session).catch((err) =>
+      console.error("[background] checkPublishedListings (cycle sans file):", err)
+    );
     return;
   }
 
@@ -1562,6 +1574,38 @@ async function processJob(rawJob, accessToken) {
     if (job.platform_fields?.work_window_state) {
       await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields })
         .catch((e) => console.warn(`[background] Job ${job.id} : relevé fenêtre non persisté —`, String(e?.message ?? e)));
+    }
+
+    // ── Pré-vol step-up eBay (2026-08-25, chantier de nuit — 25 échecs
+    // « REAUTH VENTE » en 14 jours, 15 comptes) : le mur signin du flux de
+    // VENTE (pageType=2379018, ru=/sl/list) se détecte par un simple GET :
+    // /sl/list redirige vers signin.ebay.fr pour les comptes touchés, vers le
+    // flux de dépôt pour les autres (vérifié en session réelle le 24/08 :
+    // compte sain → 200 sans rebond signin). On le détecte AVANT d'ouvrir le
+    // formulaire : plus d'onglet consommé, plus de remplissage pour rien, le
+    // message part tout de suite. Sonde JAMAIS bloquante : erreur réseau ou
+    // verdict incertain → on tente le dépôt comme avant.
+    if (job.platform === "ebay") {
+      let stepUp = null;
+      try { stepUp = await sonderStepUpVente(); }
+      catch (e) { console.warn("[background] pré-vol step-up eBay injoignable —", String(e?.message ?? e)); }
+      if (stepUp === "step_up") {
+        const msg =
+          "REAUTH VENTE eBay : eBay demande une reconnexion de sécurité pour vendre, alors que ta " +
+          "session de navigation reste active. Ouvre ebay.fr dans Chrome, clique « Vendre », " +
+          "reconnecte-toi, puis relance la publication depuis la fiche de l'article.";
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          last_diagnostic: JSON.stringify({
+            quoi: "prevol_stepup_vente",
+            detail: "GET /sl/list redirigé vers signin.ebay.fr AVANT toute tentative de dépôt",
+            at: new Date().toISOString(),
+          }),
+        };
+        console.warn(`[background] Job ${job.id} : mur REAUTH VENTE détecté au pré-vol — aucun formulaire ouvert.`);
+        await rearmBounded(accessToken, job, msg);
+        return { status: "needsUser", error: msg };
+      }
     }
 
     if (handler.entryUrl) await navigateHomeToForm(tabId, listingUrl);
@@ -1895,10 +1939,70 @@ async function processJob(rawJob, accessToken) {
               ebay_draft_id: draftId,
             };
           }
-          return await reprendreSurOngletNeuf(
-            accessToken, job, tabId,
-            "Le clic « Mettre en vente » n'a produit AUCUNE requête de publication (soumission jamais partie) : aucune annonce n'a été créée",
-          );
+          // ── REPLI : publication DIRECTE du brouillon (2026-08-25) ──────────
+          // La preuve dit qu'AUCUN POST de publication n'est parti (clic avalé,
+          // hydratation Marko morte en fenêtre minimisée — cause établie) : le
+          // seul cas où soumettre nous-mêmes le brouillon est sûr PAR
+          // CONSTRUCTION. Recette mesurée en réel le 24/08 (cf. bandeau
+          // d'ebayDirectPublish) ; les 3 reprises sur onglet neuf, elles, n'ont
+          // JAMAIS rien changé (8 jobs relevés, frozenTabRetries=3 partout).
+          // ⚠️ verifyEbaySubmission vient de naviguer l'onglet vers le Hub
+          // vendeur (3e preuve) : on REVIENT d'abord sur le brouillon —
+          // /lstng?draftId=… sert #csrf-data dans le HTML serveur, aucune
+          // hydratation requise pour lire le jeton et poster.
+          let direct = { unavailable: "draftId inconnu (aucune capture n'en portait)" };
+          if (draftId) {
+            try {
+              await neutralizeBeforeUnload(tabId);
+              const draftUrl = `https://www.ebay.fr/lstng?draftId=${draftId}&mode=AddItem`;
+              await chrome.tabs.update(tabId, { url: draftUrl + WORK_TAB_FRAGMENT });
+              await waitForTabComplete(tabId, draftUrl + WORK_TAB_FRAGMENT, 45_000).catch(() => {});
+              await installNetworkProbe(tabId, "ebay").catch(() => {});
+              direct = await ebayDirectPublish(tabId, job);
+            } catch (e) {
+              direct = { unavailable: `retour sur le brouillon impossible (${String(e?.message ?? e).slice(0, 120)})` };
+            }
+          }
+          console.log(`[background] Job ${job.id} : publication directe du brouillon →`, JSON.stringify(direct).slice(0, 300));
+          job.platform_fields = {
+            ...(job.platform_fields ?? {}),
+            ebay_api_publish: {
+              at: new Date().toISOString(),
+              http: direct.http ?? null,
+              itemId: direct.itemId ?? null,
+              manquants: direct.manquants ?? null,
+              indisponible: direct.unavailable ?? null,
+            },
+          };
+          if (direct.itemId) {
+            // Annonce créée (itemId lu dans la RÉPONSE serveur). On neutralise
+            // le verdict d'échec et on laisse le chemin de succès NORMAL
+            // dérouler (published + listing_url) — la réponse est de plus
+            // captée par la sonde réinstallée, preuve consultable en annexe.
+            verdict.error = null;
+            verdict.proof = "api_publish";
+            result.listingUrl = result.listingUrl ?? `https://www.ebay.fr/itm/${direct.itemId}`;
+          } else if (direct.fired) {
+            // eBay a RÉPONDU et a refusé : verdict serveur honnête, champs
+            // nommés. Le brouillon n'a pas retenu ce que le formulaire
+            // affichait (fenêtre jamais rendue) — needs_user borné, avec le
+            // brouillon consigné (ebay_draft_id) pour finir à la main.
+            const champs = (direct.manquants ?? []).filter((m) => m.length < 60);
+            const msg =
+              "Publication eBay bloquée : le clic « Mettre en vente » n'a produit aucune requête, " +
+              "et la soumission directe du brouillon a été REFUSÉE par eBay" +
+              (champs.length ? ` — éléments manquants dans le brouillon : ${champs.join(", ")}` : "") +
+              ". Aucune annonce n'a été créée. Le brouillon est conservé dans « Vendre > Brouillons » " +
+              "sur ebay.fr : tu peux le compléter et le publier à la main, puis marquer l'article publié dans l'app.";
+            await rearmBounded(accessToken, job, msg);
+            return { status: "needsUser", error: msg };
+          } else {
+            return await reprendreSurOngletNeuf(
+              accessToken, job, tabId,
+              "Le clic « Mettre en vente » n'a produit AUCUNE requête de publication (soumission jamais partie) : aucune annonce n'a été créée" +
+              (direct.unavailable ? ` — repli de publication directe indisponible (${direct.unavailable})` : ""),
+            );
+          }
         }
         if (verdict.error) {
           console.warn(`[background] Job ${job.id} : ${verdict.error}${verdict.diagnostic ?? ""}`);
@@ -2378,12 +2482,15 @@ async function retryInTempTab(job, handler, originalResult) {
     await waitForTabComplete(tab.id, tempUrl + TEMP_TAB_FRAGMENT);
     const result = await sendMessageToTab(tab.id, { type: "FILL_LISTING", job });
     if (result?.draftBlocked) {
+      // Le content script a déjà tenté de retirer le brouillon (storage) et
+      // l'onglet NEUF le restaure quand même : message final en UNE ligne
+      // (décision 15/08), le mot « brouillon » conservé pour DRAFT_LBC_RE.
       return {
         ...result,
         error:
-          (result.error || "") +
-          " Le brouillon persiste même dans un onglet neuf : c'est un brouillon " +
-          "de compte, le publier ou le supprimer sur leboncoin.fr.",
+          "Un brouillon Leboncoin non terminé bloque le dépôt et n'a pas pu être " +
+          "retiré automatiquement : supprime-le sur leboncoin.fr/deposer-une-annonce, " +
+          "puis relance la publication.",
       };
     }
     return result;
@@ -3822,6 +3929,108 @@ async function readEbayPostSubmitState(tabId) {
   }
 }
 
+// ── Publication eBay DIRECTE par l'API du brouillon (2026-08-25, chantier de
+// nuit — famille B « clic mort », 20 échecs / 8 comptes en 14 jours) ─────────
+// Cause établie (14/08 + relevés fenêtre 20-23/08) : dans la fenêtre de
+// travail minimisée, l'hydratation Marko de /lstng peut ne JAMAIS s'attacher
+// (markoInitComponents absent à 88 s) — le bouton existe, le clic est avalé,
+// aucune requête ne part, et 3 reprises sur onglet neuf n'ont jamais rien
+// changé (frozenTabRetries=3 sur les 8 jobs relevés). Or la soumission réelle
+// est un POST minuscule, ENTIÈREMENT vérifié côté serveur — mesuré en session
+// réelle le 24/08 (draft 5257871060520, annonce 800557746918 créée PUIS
+// terminée) :
+//   POST /lstng/api/listing_draft/{draftId}/publish?mode=AddItem
+//   headers : Content-Type json + srt (jeton lu dans le DOM, div#csrf-data,
+//             clé '/lstng/api/listing_draft/:draftId(\d+)/publish')
+//   corps   : {"requestId":"<uuid>","removedFields":[]}
+//   succès  → réponse ~8 Ko avec "itemId":"<12 chiffres>" (le motif exact
+//             qu'annonceIdOf/ebayUploadSucceeded savent déjà lire) ;
+//   refus   → réponse 2,5 Mo de modules, GLOBAL_MESSAGE nomme les champs
+//             manquants (« Description », « Photos », « Caractéristiques de
+//             l'objet ») — validation serveur, AUCUNE annonce créée.
+// La description est (re)posée d'abord par le MÊME canal (PUT delta du
+// brouillon, champ `description`) : mesuré le 24/08, la synchro RTE→brouillon
+// ne se fait plus par le textarea miroir (vide même après frappe réelle +
+// blur) et le PUT est accepté — c'est aussi le correctif de la famille
+// « description posée dans le RTE mais jamais synchronisée » (18/08).
+// Le fetch part du monde MAIN : il traverse le window.fetch HOOKÉ par la
+// sonde → la preuve réseau est vue par LE MÊME lecteur que le clic
+// (ebaySubmitRequestSeen/ebayUploadSucceeded), aucun verdict ne diverge.
+// GARDE-FOU : appelée UNIQUEMENT quand la sonde prouve qu'AUCUNE requête de
+// publication n'est partie (submit_never_sent) — un double dépôt est
+// impossible par construction.
+async function ebayDirectPublish(tabId, job) {
+  const descriptionHtml = job?.description
+    ? "<p>" + String(job.description)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/\r?\n/g, "<br>") + "</p>"
+    : null;
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      args: [descriptionHtml],
+      func: async (description) => {
+        try {
+          // #csrf-data est rendu côté serveur dans le HTML de /lstng — un
+          // court poll couvre le cas d'un document encore en cours de parse.
+          let el = document.getElementById("csrf-data");
+          for (let i = 0; !el && i < 12; i++) {
+            await new Promise((r) => setTimeout(r, 500));
+            el = document.getElementById("csrf-data");
+          }
+          if (!el) return { unavailable: `div#csrf-data absent (page ${location.pathname})` };
+          let map;
+          try { map = JSON.parse(el.getAttribute("data-value")); }
+          catch { return { unavailable: "csrf-data illisible" }; }
+          const srtPut = map["/lstng/api/listing_draft/:draftId(\\d+)"];
+          const srtPub = map["/lstng/api/listing_draft/:draftId(\\d+)/publish"];
+          const params = new URLSearchParams(location.search);
+          const draftId = params.get("draftId");
+          const mode = params.get("mode") || "AddItem";
+          if (!draftId) return { unavailable: "draftId absent de l'URL" };
+          if (!srtPub) return { unavailable: "jeton srt publish absent de csrf-data" };
+          const uuid = () =>
+            (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+          if (description && srtPut) {
+            try {
+              await fetch(`/lstng/api/listing_draft/${draftId}?mode=${encodeURIComponent(mode)}`, {
+                method: "PUT", credentials: "same-origin",
+                headers: { "Content-Type": "application/json", srt: srtPut, Accept: "application/json" },
+                body: JSON.stringify({ requestId: uuid(), removedFields: [], description }),
+              });
+            } catch { /* pose best-effort : le publish tranchera */ }
+          }
+          const r = await fetch(`/lstng/api/listing_draft/${draftId}/publish?mode=${encodeURIComponent(mode)}`, {
+            method: "POST", credentials: "same-origin",
+            headers: { "Content-Type": "application/json", srt: srtPub, Accept: "application/json" },
+            body: JSON.stringify({ requestId: uuid(), removedFields: [] }),
+          });
+          const txt = await r.text();
+          const itemId = (txt.match(/"(?:listingId|itemId|item_id|listing_id)"\s*:\s*"?(\d{9,})/i) ?? [])[1] ?? null;
+          let manquants = [];
+          try {
+            const j = JSON.parse(txt);
+            const gm = JSON.stringify(j.GLOBAL_MESSAGE ?? {});
+            manquants = (gm.match(/"text":"((?:[^"\\]|\\.){2,60})","action"/g) ?? [])
+              .map((s) => {
+                try { return JSON.parse(`"${s.match(/"text":"((?:[^"\\]|\\.)+)"/)[1]}"`); }
+                catch { return null; }
+              })
+              .filter(Boolean);
+          } catch { /* réponse non-JSON : itemId (regex) fait foi */ }
+          return { fired: true, http: r.status, len: txt.length, itemId, manquants: manquants.slice(0, 8) };
+        } catch (e) {
+          return { unavailable: String((e && e.message) || e).slice(0, 200) };
+        }
+      },
+    });
+    return res?.result ?? { unavailable: "executeScript sans résultat" };
+  } catch (e) {
+    return { unavailable: String(e?.message ?? e).slice(0, 200) };
+  }
+}
+
 // Popup post-publication eBay (« Votre annonce est désormais publiée sur le
 // site ») : fermée en best-effort pour laisser l'onglet de travail propre — le
 // succès est déjà acquis, il n'est conditionné à rien de visuel.
@@ -3945,6 +4154,18 @@ async function installNetworkProbe(tabId, platform) {
             if (item && Object.prototype.hasOwnProperty.call(item, "price")) return JSON.stringify(item.price);
           } catch { /* pas du JSON */ }
           const m = body.match(/"price"\s*:\s*("[^"]*"|[\d.]+|null)/i);
+          return m ? m[1] : null;
+        };
+        // catalog_id du POST /item_upload/attributes, lu dans le CORPS de la
+        // requête (2026-08-23, garde des requis aveugle — cas grisette11) : il
+        // LIE la config des requis à SA catégorie. Sans lui, la config de la
+        // catégorie auto-suggérée par Vinted d'après le titre jugeait le
+        // formulaire d'une autre (« Taille » nourrisson exigée sur une
+        // miniature de camion). Best-effort, corps string uniquement.
+        const attrsCatalogIdOf = (url, body) => {
+          if (!/item_upload\/attributes/i.test(String(url)) || /suggestions/i.test(String(url))) return null;
+          if (typeof body !== "string") return null;
+          const m = body.match(/"catalog_id"\s*:\s*"?(\d+)/i);
           return m ? m[1] : null;
         };
         // ⚠️ Numéro d'annonce cherché sur le corps COMPLET, AVANT troncature
@@ -4076,6 +4297,7 @@ async function installNetworkProbe(tabId, platform) {
               relay({
                 url, status: res.status,
                 prix: priceOf(init?.body),
+                attrsCatalogId: attrsCatalogIdOf(url, init?.body),
                 annonceId: annonceIdOf(txt),
                 succesVinted: succesVintedOf(txt),
                 reponse: extraitSain(txt),
@@ -4099,6 +4321,7 @@ async function installNetworkProbe(tabId, platform) {
                 relay({
                   url: this.__u, status: this.status,
                   prix: priceOf(typeof body === "string" ? body : null),
+                  attrsCatalogId: attrsCatalogIdOf(this.__u, typeof body === "string" ? body : null),
                   annonceId: annonceIdOf(corps),
                   succesVinted: succesVintedOf(corps),
                   reponse: extraitSain(corps),
@@ -4999,11 +5222,27 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
 // part du navigateur du vendeur — cookies de session, IP résidentielle et
 // User-Agent réels (le SW ne peut pas forger l'UA, tant mieux).
 // Cadence : au plus SALE_CHECK_MAX_PER_CYCLE annonces par cycle de poll
-// (30 min), chacune au plus toutes les SALE_CHECK_MIN_INTERVAL_MS, avec une
-// pause jitter entre deux fetches — un humain qui re-regarde ses annonces,
-// pas une rafale.
+// (⚠️ 2 MINUTES — POLL_INTERVAL_MINUTES, config.js, depuis 78cf410 ; les
+// commentaires disaient « 30 min », une valeur périmée qui a faussé un
+// chiffrage le 24/08), chacune au plus toutes les SALE_CHECK_MIN_INTERVAL_MS,
+// avec une pause jitter entre deux fetches — un humain qui re-regarde ses
+// annonces, pas une rafale.
 const SALE_CHECK_MIN_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 h entre deux vérifs
+// Plafond par cycle : MAINTENU À 8 (audit du 24/08). Le poll étant à 2 min,
+// ce plafond vaut jusqu'à 240 lectures/h en phase de RATTRAPAGE (backlog de
+// never-checked, navigateur ouvert) — un passage à 12 (tenté le 24/08 au
+// matin) aurait porté la pointe à 360/h pour tous les comptes à la fois :
+// ramené à 8 avant tout téléversement, décision Nico. En régime établi le
+// plafond ne mord presque jamais : c'est l'intervalle de 2 h par annonce qui
+// gouverne (~N/2 lectures/h pour N annonces publiées). La couverture du
+// point F repose sur les deux autres gestes : détection maintenue quand
+// get-pending-jobs échoue, et fenêtre de lecture à 60 lignes. Les
+// never-checked passent déjà en premier (order=last_checked_at.asc.nullsfirst).
 const SALE_CHECK_MAX_PER_CYCLE = 8;
+// Pause inter-lectures ÉLARGIE 1,5-4 s → 2,5-6 s (24/08, conservée à
+// l'audit) : le rythme instantané vu par les plateformes baisse.
+const SALE_CHECK_PAUSE_MIN_MS = 2500;
+const SALE_CHECK_PAUSE_MAX_MS = 6000;
 // Lectures indéterminées consécutives au-delà desquelles on cesse d'insister :
 // le job est marqué non vérifiable (message explicite en base) et n'est plus
 // retenté qu'une fois par jour. Aucune conclusion n'est jamais inventée.
@@ -5530,6 +5769,24 @@ function decodeJwtSub(token) {
 //   · atterrissage sur ebay.fr ...... → true  (session valide côté vente) ;
 //   · tout le reste / réseau KO ..... → null  (indéterminé, jamais un faux
 //     « connecté » ni un faux « déconnecté »).
+// Pré-vol du mur « REAUTH VENTE » (2026-08-25). /sl/list est l'entrée du flux
+// de vente : les comptes frappés par le step-up y sont REDIRIGÉS vers
+// signin.ebay.fr (…eBayISAPI.dll?SignIn&pageType=2379018&ru=/sl/list — les 25
+// last_diagnostic du parc portent tous cette URL) quand la session de
+// NAVIGATION, elle, répond normalement (sonderSessionEbay dit true). Un GET
+// suivi de redirections suffit à discriminer : hôte final signin.ebay.* =
+// mur ; ebay.fr = voie libre (vérifié le 24/08 sur session saine : aucun
+// rebond signin). Ne conclut "step_up" QUE sur la signature exacte —
+// tout le reste rend "ok"/null et laisse le dépôt se tenter comme avant.
+async function sonderStepUpVente() {
+  const r = await fetch("https://www.ebay.fr/sl/list?mode=AddItem", {
+    credentials: "include", redirect: "follow",
+  });
+  const u = new URL(r.url);
+  if (/(^|\.)signin\.ebay\./i.test(u.hostname)) return "step_up";
+  return "ok";
+}
+
 async function sonderSessionEbay() {
   const r = await fetch("https://www.ebay.fr/sl/prelist/suggest", {
     credentials: "include", redirect: "follow",
@@ -6752,36 +7009,18 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     }
   }
 
-  // ── Identité du run : trace, attribution, épinglage (F1, 2026-08-14) ───────
+  // ── Identité du run : TRACE SEULE (F1 réduit — décision Nico 27/08) ────────
   // Dossier Manon (multi-comptes Vinted assumés) : l'identité lue par la sonde
-  // n'était écrite nulle part, la sync supposait UN dressing par compte
-  // FillSell, et le marquage des disparitions comparait TOUT l'inventaire au
-  // dressing que Chrome avait sous la main. Désormais :
-  //   · TRACE : vinted_user_id + vinted_login sur la ligne du run — PATCH
-  //     SÉPARÉ de majRun/clore : tant que la migration (colonnes de trace,
-  //     vinted_sync_pin, vinted_account_id) n'est pas appliquée, le 400
-  //     PostgREST (colonne inconnue = tout ou rien) ne doit jamais pouvoir
-  //     toucher la clôture du run.
-  //   · ATTRIBUTION : capacité sondée une fois par run (la colonne
-  //     inventaire.vinted_account_id répond-elle ?). Disponible → chaque
-  //     article VU est estampillé de son compte d'origine (upsert), et le
-  //     marquage des disparitions est SCOPÉ au compte lu — les lignes d'un
-  //     autre compte ou sans compte (héritage pré-migration) ne sont JAMAIS
-  //     marquées. Indisponible → comportement d'avant, gardes (d)/(e) en
-  //     ceinture.
-  //   · ÉPINGLAGE : premier run avec identité = épinglage au 'done', SANS
-  //     blocage (tout le parc actuel synchronise comme avant). Identité ≠
-  //     pin → run clos 'failed' AVANT toute lecture, marqueur [pin_mismatch]
-  //     (contrat avec PIN_MISMATCH_RE, StockTab) : le compte inconnu n'est
-  //     jamais lu ni importé sans un geste explicite — c'est la confirmation
-  //     « première vue d'un compte inconnu » (consigne 14/08), la bascule se
-  //     fait par le bouton de la carte de synchronisation.
-  //   · JAMAIS de blocage sur donnée manquante : pin illisible (migration
-  //     absente, erreur), pin vide, ident.userId absent ⇒ on laisse passer
-  //     et on journalise.
-  let pinIdentite = null;
-  let pinLisible = false;
-  let compteColonneOk = false;
+  // n'était écrite nulle part. On écrit vinted_user_id + vinted_login sur la
+  // ligne du run — PATCH SÉPARÉ de majRun/clore : si les colonnes manquaient,
+  // le 400 PostgREST (colonne inconnue = tout ou rien) ne doit jamais pouvoir
+  // toucher la clôture du run. Écriture seule, best-effort.
+  // L'ATTRIBUTION par compte (vinted_account_id sur chaque article) et
+  // l'ÉPINGLAGE (vinted_sync_pin, [pin_mismatch]) du F1 d'origine sont
+  // ABANDONNÉS : FillSell ne gère pas de comptes, il reflète celui connecté
+  // dans Chrome — le « switch », c'est Chrome. La protection du marquage des
+  // disparitions passe par l'identité DU RUN (sync mono-compte, plus bas),
+  // plus jamais par un étiquetage des articles.
   if (!mock && ident?.userId) {
     restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
       method: "PATCH",
@@ -6790,27 +7029,6 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
         vinted_login: ident.login ? String(ident.login).slice(0, 120) : null,
       }),
     }).catch((e) => console.warn("[sync-dressing] trace identité non écrite (migration absente ?):", e?.message ?? e));
-    try {
-      const rows = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, token);
-      pinIdentite = rows?.[0]?.vinted_sync_pin ?? null;
-      pinLisible = true;
-    } catch (e) {
-      console.warn("[sync-dressing] pin illisible — épinglage neutralisé ce run:", e?.message ?? e);
-    }
-    try {
-      await restRequest(`inventaire?user_id=eq.${userId}&select=vinted_account_id&limit=1`, token);
-      compteColonneOk = true;
-    } catch {
-      console.warn("[sync-dressing] inventaire.vinted_account_id indisponible — attribution et marquage scopé neutralisés ce run");
-    }
-    if (pinLisible && pinIdentite?.user_id && String(pinIdentite.user_id) !== String(ident.userId)) {
-      const ancien = pinIdentite.login ? `@${pinIdentite.login}` : `le compte ${pinIdentite.user_id}`;
-      const nouveau = ident.login ? `@${ident.login}` : `le compte ${ident.userId}`;
-      return await echec(
-        `[pin_mismatch] Chrome est connecté à ${nouveau} — ce compte FillSell synchronise ${ancien}. ` +
-        `Veux-tu basculer sur ${nouveau} ? Confirme depuis la carte de synchronisation, ou reconnecte Chrome à ${ancien}.`,
-      );
-    }
   }
 
   // ── Réservations de republication (volet c, 2026-08-05) ───────────────────
@@ -6906,13 +7124,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       // `connus` (qui exige vinted_item_id), et un `undefined` dans le Set
       // fausserait la comparaison vu/annoncé de la garde (b).
       for (const a of tranche) if (a.vinted_item_id) vusCetteSync.add(a.vinted_item_id);
-      const bilan = await enregistrerArticlesDressing(tranche, {
-        token, userId, reservesRepublish,
-        // Attribution par compte (F1) : constant sur tout le run, null tant
-        // que la colonne n'existe pas en base (le lot d'upsert exige les
-        // mêmes clés sur toutes les lignes — un booléen par run le garantit).
-        vintedAccountId: !mock && compteColonneOk && ident?.userId ? String(ident.userId) : null,
-      });
+      const bilan = await enregistrerArticlesDressing(tranche, { token, userId, reservesRepublish });
       if (bilan.echecs?.length) echecsEcriture.push(...bilan.echecs);
       items_vus += tranche.length;
       items_crees += bilan.crees;
@@ -6973,26 +7185,10 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   }
   if (vusCetteSync.size > 0 && !motifSautDisparitions) {
     try {
-      // Marquage SCOPÉ par compte (F1, 2026-08-14) : quand la colonne
-      // d'attribution répond, seuls les articles DU compte lu ce run sont
-      // candidats au marquage. Les lignes sans compte (héritage pré-migration,
-      // dont les 384 de Manon) et celles d'un autre compte sont hors
-      // périmètre : structurellement immarquables par ce run — c'est ce qui
-      // rend la bascule multi-comptes sûre. Elles réintègrent le périmètre
-      // quand un run de LEUR compte les revoit (l'upsert les estampille).
-      // Colonne indisponible → périmètre d'avant, gardes (d)/(e) en ceinture.
-      const selectConnus = compteColonneOk ? "id,vinted_item_id,vinted_account_id" : "id,vinted_item_id";
-      let connus = await restRequest(
-        `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null&select=${selectConnus}`,
+      const connus = await restRequest(
+        `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null&select=id,vinted_item_id`,
         token, { headers: { Prefer: "return=representation" } },
       );
-      if (compteColonneOk && !mock && ident?.userId) {
-        const horsPerimetre = (connus ?? []).length;
-        connus = (connus ?? []).filter((r) => r.vinted_account_id === String(ident.userId));
-        if (horsPerimetre !== connus.length) {
-          console.log(`[sync-dressing] marquage scopé @${ident.login ?? ident.userId} : ${connus.length}/${horsPerimetre} article(s) dans le périmètre`);
-        }
-      }
       // ── É4 (2026-08-05) : un article en cours de REPUBLICATION n'est pas
       // « disparu » — entre suppression et recréation, son absence du
       // dressing est VOULUE. Sans cette garde, une sync qui passe dans la
@@ -7126,25 +7322,6 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     total_entries: totalEntries,
     ...(notes.length ? { erreur: notes.join(" | ").slice(0, 500) } : {}),
   });
-  // ── Épinglage au 'done' (F1) : premier run avec identité réelle = pin posé,
-  // sans confirmation (le parc actuel continue de synchroniser normalement —
-  // la confirmation ne vaut que pour un CHANGEMENT de compte, bloqué en amont
-  // par [pin_mismatch]). Même user_id → seul le login est rafraîchi si le
-  // pseudo a changé. Best-effort : un raté n'affecte pas le run, le prochain
-  // 'done' réessaie. Jamais en mock (ident "harnais-mock" n'est pas un compte).
-  if (!mock && ident?.userId && pinLisible) {
-    const doitEcrire = !pinIdentite?.user_id ||
-      (String(pinIdentite.user_id) === String(ident.userId) && (pinIdentite.login ?? null) !== (ident.login ?? null));
-    if (doitEcrire) {
-      await restRequest(`profiles?id=eq.${userId}`, token, {
-        method: "PATCH",
-        body: JSON.stringify({
-          vinted_sync_pin: { user_id: String(ident.userId), login: ident.login ?? null, pinned_at: new Date().toISOString() },
-        }),
-      }).catch((e) => console.warn("[sync-dressing] épinglage non écrit:", e?.message ?? e));
-      if (!pinIdentite?.user_id) console.log(`[sync-dressing] compte Vinted épinglé : @${ident.login ?? ident.userId}`);
-    }
-  }
   if (echecsEcriture.length) console.error(`[sync-dressing] ${echecsEcriture.length} article(s) non écrit(s) — détail dans vinted_sync_runs.erreur`);
   console.log(`[sync-dressing] terminée : ${items_vus} articles (${items_crees} créés, ${items_maj} mis à jour)`);
   return { ok: true, items_vus, items_crees, items_maj, echecs: echecsEcriture.length };
@@ -7161,7 +7338,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
  * Écrit une page d'articles : upsert inventaire + relevé du jour + entrée dans
  * le cycle de détection de vente. Rend le nombre de créations/mises à jour.
  */
-async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [], vintedAccountId = null }) {
+async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [] }) {
   if (!articles.length) return { crees: 0, majs: 0 };
 
   // Ce qui existe déjà, pour distinguer création et mise à jour (l'upsert seul
@@ -7488,12 +7665,6 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       first_seen_at: dejaLa?.first_seen_at ?? maintenant,
       last_synced_at: maintenant,
       disparu_le: null, // réapparu : on efface la date de disparition
-      // Attribution à l'observation (F1) : l'article VU porte le compte qui
-      // l'a servi — y compris les lignes héritées (compte NULL), qui
-      // réintègrent ainsi le périmètre du marquage scopé. Clé ABSENTE tant
-      // que la migration n'est pas appliquée (vintedAccountId null : un 400
-      // « colonne inconnue » ferait perdre le lot entier).
-      ...(vintedAccountId ? { vinted_account_id: vintedAccountId } : {}),
     };
   });
 
@@ -7735,7 +7906,13 @@ async function checkPublishedListings(session) {
         // ligne — sans lui, un article republié sortait de la détection de
         // vente (le publish d'origine est clos 'cancelled' à la suppression).
         "&status=eq.published&action=in.(publish,republish)&listing_url=not.is.null" +
-        "&order=last_checked_at.asc.nullsfirst&limit=30",
+        // limit 30 → 60 (2026-08-24, point F) : la fenêtre de 30 pouvait être
+        // entièrement occupée par des jobs en délai de grâce ou en
+        // temporisation « unknown » un jour de gros lot — les annonces dues
+        // au-delà de la 30e ligne devenaient invisibles du cycle. 60 lignes
+        // lues pour en vérifier au plus SALE_CHECK_MAX_PER_CYCLE : la lecture
+        // est une requête REST unique, le rythme des vérifications ne change pas.
+        "&order=last_checked_at.asc.nullsfirst&limit=60",
       session.access_token
     );
   } catch (e) {
@@ -7851,7 +8028,7 @@ async function checkPublishedListings(session) {
         body: JSON.stringify(patchUnknown),
       }).catch((e) => console.warn("[background] PATCH unknown:", String(e?.message ?? e)));
 
-      if (i < due.length - 1) await sleep(randInt(1500, 4000));
+      if (i < due.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
       continue;
     }
 
@@ -7995,7 +8172,7 @@ async function checkPublishedListings(session) {
       body: JSON.stringify(patch),
     }).catch((e) => console.warn("[background] PATCH job:", String(e?.message ?? e)));
 
-    if (i < due.length - 1) await sleep(randInt(1500, 4000));
+    if (i < due.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
   }
 }
 
@@ -8089,19 +8266,23 @@ async function lbcMesAnnoncesEtat(tabId) {
         const m = texte.match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
         if (!m) return { vue: false, motif: "compteur_en_ligne_absent", enLigne: null, visibles: 0 };
         const enLigne = parseInt(m[1], 10);
-        // 3. Annonces DISTINCTES réellement visibles sur cette page.
+        // 3. Annonces DISTINCTES réellement visibles sur cette page. Les LIENS
+        //    eux-mêmes remontent au caller (2026-08-23, GO 9b) : c'est lui qui
+        //    cumule les pages et juge la couverture — dédupliqué ici, borné.
         const re = new RegExp(patternSource, "i");
-        const visibles = new Set(
+        const liens = [...new Set(
           Array.from(document.querySelectorAll("a[href]"))
             .map((a) => (a.href.match(re) || [])[0])
             .filter(Boolean)
-        ).size;
+        )].slice(0, 200);
+        const visibles = liens.length;
         // 4. ⚠️ GARDE PAGINATION. Si le compte a plus d'annonces que la page
         //    n'en montre, l'annonce cherchée peut être en page 2 : son absence
-        //    ICI ne prouve rien. On ne conclut que si toute la liste est sous
-        //    les yeux. (Sur les comptes observés, 4 annonces sur une page.)
-        if (visibles < enLigne) return { vue: false, motif: `liste_partielle_${visibles}_sur_${enLigne}`, enLigne, visibles };
-        return { vue: true, motif: "ok", enLigne, visibles };
+        //    ICI ne prouve rien. Le caller (recoverMissingListingUrls) marche
+        //    les pages ?page=N et ne conclut que sur la COUVERTURE CUMULÉE —
+        //    cette page-ci, seule, reste non concluante.
+        if (visibles < enLigne) return { vue: false, motif: `liste_partielle_${visibles}_sur_${enLigne}`, enLigne, visibles, liens };
+        return { vue: true, motif: "ok", enLigne, visibles, liens };
       },
       args: [LISTING_URL_PATTERNS.leboncoin.source],
     });
@@ -8309,7 +8490,28 @@ async function recoverMissingListingUrls(session) {
       }
       remaining = sansId;
     }
-    for (const pageUrl of LISTING_URL_RECOVERY_PAGES[platform] ?? []) {
+    // ── Pagination « Mes annonces » Leboncoin (2026-08-23, GO 9b) ────────────
+    // « Mes annonces » n'affiche que ~30 annonces par page : sur les comptes
+    // au-dessus (jocaille 66, bilel 41), les annonces des pages suivantes
+    // étaient INVISIBLES — le recovery ne retrouvait jamais leur URL, la sonde
+    // restait « liste_partielle » à chaque passage, et le cron 48 h finissait
+    // par requalifier en échec + rembourser des annonces EN LIGNE (3 jobs de
+    // bilel le 20/08, preuve moderation_probe « liste_partielle_30_sur_41 »).
+    // La liste des pages devient une FILE : tant que le cumul de liens
+    // distincts ne couvre pas le compteur « En ligne (N) » ET que la dernière
+    // page a apporté du NEUF, on empile ?page=N+1 (borné). Si ?page=N n'est
+    // pas le schéma réel de pagination, la page suivante ne rapporte rien de
+    // neuf → arrêt → couverture incomplète → NON CONCLUANT, comme avant : le
+    // pire cas reste « on ne conclut rien », jamais « absent » sur du partiel.
+    const estLbc = platform === "leboncoin";
+    const LBC_PAGINATION_MAX_PAGES = 6;
+    const pagesAVisiter = [...(LISTING_URL_RECOVERY_PAGES[platform] ?? [])];
+    const liensLbcVus = new Set();
+    let lbcEnLigne = null;
+    let lbcDernierMotif = null;
+    let lbcPagesRendues = 0;
+    for (let pi = 0; pi < pagesAVisiter.length; pi++) {
+      const pageUrl = pagesAVisiter[pi];
       if (!remaining.length) break;
       let tabId;
       try {
@@ -8324,12 +8526,25 @@ async function recoverMissingListingUrls(session) {
       await sleep(randInt(1500, 3000)); // rendu de la liste
       // Sonde de modération : état de la page relevé UNE FOIS par visite, avant
       // de chercher les titres. Leboncoin uniquement (cf. bloc au-dessus).
-      const etatPage = platform === "leboncoin" ? await lbcMesAnnoncesEtat(tabId) : null;
+      // ⚠️ Le verdict de la sonde ne part PLUS ici : il est rendu APRÈS la
+      // dernière page LBC, sur la couverture CUMULÉE (cf. bloc post-boucle).
+      const etatPage = estLbc ? await lbcMesAnnoncesEtat(tabId) : null;
       if (etatPage) {
+        lbcDernierMotif = etatPage.motif;
+        if (Number.isFinite(etatPage.enLigne)) lbcEnLigne = etatPage.enLigne;
+        const avant = liensLbcVus.size;
+        for (const lien of etatPage.liens ?? []) liensLbcVus.add(lien);
+        const nouveaux = liensLbcVus.size - avant;
+        if (etatPage.enLigne != null || etatPage.visibles > 0) lbcPagesRendues++;
         console.log(
-          `[background] sonde LBC « Mes annonces » : ${etatPage.vue ? "PAGE VUE" : "page non concluante"} ` +
-          `(${etatPage.motif}) — en ligne ${etatPage.enLigne ?? "?"}, visibles ${etatPage.visibles}`
+          `[background] sonde LBC « Mes annonces » p.${pi + 1} : ${etatPage.motif} — ` +
+          `en ligne ${etatPage.enLigne ?? "?"}, visibles ${etatPage.visibles}, ` +
+          `cumul ${liensLbcVus.size} (+${nouveaux})`
         );
+        if (lbcEnLigne != null && liensLbcVus.size < lbcEnLigne && nouveaux > 0
+            && pagesAVisiter.length < LBC_PAGINATION_MAX_PAGES) {
+          pagesAVisiter.push(`${LISTING_URL_RECOVERY_PAGES.leboncoin[0]}?page=${pagesAVisiter.length + 1}`);
+        }
       }
       const stillMissing = [];
       let diagPage = null;
@@ -8364,7 +8579,8 @@ async function recoverMissingListingUrls(session) {
         } else {
           stillMissing.push(job);
           diagPage = diag;
-          if (etatPage) await lbcSondeModeration(session, job, etatPage);
+          // LBC : plus de verdict de sonde par PAGE — il est rendu après la
+          // dernière page, sur la couverture cumulée (GO 9b, 2026-08-23).
         }
       }
       // Échec sur cette page : le diagnostic NOMME la cause au lieu de laisser
@@ -8379,6 +8595,31 @@ async function recoverMissingListingUrls(session) {
         );
       }
       remaining = stillMissing;
+    }
+    // ── Verdict de sonde LBC sur la COUVERTURE CUMULÉE (GO 9b, 2026-08-23) ──
+    // « Absent » ne se conclut qu'après avoir RÉELLEMENT vu toute la liste :
+    // cumul de liens distincts ≥ compteur « En ligne (N) », au moins une page
+    // rendue. Tout le reste (pagination interrompue, schéma ?page inopérant,
+    // DataDome, session) = NON CONCLUANT — compteur de misses inchangé,
+    // jamais une requalification en échec sur du partiel.
+    if (estLbc && remaining.length) {
+      const cumul = liensLbcVus.size;
+      const couverte = lbcPagesRendues > 0 && lbcEnLigne != null && cumul >= lbcEnLigne;
+      const etatCumul = couverte
+        ? { vue: true, motif: lbcPagesRendues > 1 ? `ok_${lbcPagesRendues}_pages` : "ok", enLigne: lbcEnLigne, visibles: cumul }
+        : {
+            vue: false,
+            motif: `couverture_incomplete_${cumul}_sur_${lbcEnLigne ?? "?"}` +
+              (lbcDernierMotif && lbcDernierMotif !== "ok" ? `_(${lbcDernierMotif})` : ""),
+            enLigne: lbcEnLigne, visibles: cumul,
+          };
+      console.log(
+        `[background] sonde LBC : verdict cumulé ${etatCumul.vue ? "LISTE COUVERTE" : "non concluant"} ` +
+        `(${etatCumul.motif}) pour ${remaining.length} job(s) sans URL`
+      );
+      for (const job of remaining) {
+        await lbcSondeModeration(session, job, etatCumul);
+      }
     }
     if (remaining.length) {
       console.log(
@@ -8799,6 +9040,10 @@ function construireSnapshotRepublish(pf, cap) {
     catalog_id: natif.catalog_id ?? null,
     colis: lib.colis ?? null,
     package_size_id: natif.package_size_id ?? null,
+    // ISBN (2026-08-15, Rose) : capturé sur les Livres — libellé de capture
+    // d'abord, natif en second (couvre les captures ANTÉRIEURES au correctif,
+    // qui portent déjà natif.isbn sans libelles.isbn).
+    isbn: lib.isbn ?? (typeof natif.isbn === "string" && natif.isbn.trim() ? natif.isbn.trim() : null),
     // Matière : libellé si la capture en a un, et TOUJOURS les ids quand ils
     // existent (résolus au formulaire — optionnelle, jamais bloquante).
     matiere: lib.matiere ?? null,
@@ -8815,6 +9060,31 @@ function construireSnapshotRepublish(pf, cap) {
 // needs_user (pont _bridge de vinted.js) — sans lui, la valeur saisie par
 // l'utilisateur n'atteignait JAMAIS le formulaire de recréation (trou vécu :
 // impossible de répondre « M » au « Le champ Taille doit être renseigné »).
+// ── Couleurs du job de PUBLICATION d'origine (2026-08-26, fix Couleur) ───────
+// Quand la capture n'a AUCUNE couleur (le cas que la garde serveur bloquait),
+// l'app en avait peut-être une : platform_fields.colors du publish d'origine
+// du même article (posé normalisé palette par l'app à l'insert). Lecture REST
+// best-effort, jamais bloquante — les jobs de sync (handler sync-dressing)
+// n'ont pas ce champ et sont sautés naturellement. Consommé par
+// reposerCouleurRepublication (vinted.js), UNIQUEMENT sur capture sans couleur.
+async function couleursDePublicationOrigine(accessToken, job) {
+  try {
+    if (job.inventaire_id == null) return null;
+    const rows = await restRequest(
+      `cross_post_jobs?inventaire_id=eq.${job.inventaire_id}&platform=eq.vinted&action=eq.publish` +
+      `&select=platform_fields&order=created_at.desc&limit=5`,
+      accessToken, { headers: { Prefer: "return=representation" } },
+    );
+    for (const r of rows ?? []) {
+      const cols = r?.platform_fields?.colors;
+      if (Array.isArray(cols) && cols.length) return cols.slice(0, 2).map(String);
+    }
+  } catch (e) {
+    console.warn("[republish] couleurs du publish d'origine illisibles (non bloquant) —", String(e?.message ?? e));
+  }
+  return null;
+}
+
 function construireJobRecreation(job, pf, cap, prix) {
   // ── Taille par IDS (2026-08-13, captures 0.6.1 périmées) ───────────────────
   // Les captures 0.6.1 (cas réels : 166 « Veste grain de malice », 174 « Pull
@@ -8854,11 +9124,17 @@ function construireJobRecreation(job, pf, cap, prix) {
       // de recréation — le libellé seul est ambigu hors Mode (« 5 kg » existe
       // sous les ids 8 ET 11 selon le groupe de catégories, relevé DOM du
       // 16/08). selectPackageSize clique package_type_selector_{id}.
-      // (Le bloc ISBN de la branche extension — 1be6b19 — n'est PAS repris
-      // ici : main ne porte pas ce correctif, on ne cherry-picke que le colis.)
       ...(() => {
         const pkgId = Number(natifCap.package_size_id);
         return Number.isFinite(pkgId) && pkgId > 0 ? { packageSizeId: pkgId } : {};
+      })(),
+      // ISBN (2026-08-15, Rose « Juris'Pénal ») : réinjecté sur les Livres —
+      // libellé de capture d'abord, natif.isbn en repli pour les captures
+      // ANTÉRIEURES au correctif (l'annonce d'origine est parfois déjà
+      // supprimée : le natif conservé est alors la seule source).
+      ...(() => {
+        const isbn = String(cap.libelles?.isbn ?? natifCap.isbn ?? "").trim();
+        return isbn ? { isbn } : {};
       })(),
       // Matière (2026-08-13) — OPTIONNELLE, jamais bloquante : libellé si un
       // jour la capture en produit un, sinon les IDS (item_attributes),
@@ -9398,6 +9674,12 @@ async function processRepublishJob(job, accessToken) {
       // perdu les annonces de lowvaucher.)
       const jobRecreation = construireJobRecreation(job, pf, capMeta, prixPrevu);
       jobRecreation.platform_fields.republish_delete_then_submit = { item_id: String(pf.vinted_item_id ?? "") };
+      // Fix Couleur (2026-08-26) : capture SANS couleur seulement — cf. bandeau
+      // de couleursDePublicationOrigine. Une capture avec couleur n'est pas touchée.
+      if (!jobRecreation.platform_fields.colors?.length) {
+        const repli = await couleursDePublicationOrigine(accessToken, job);
+        if (repli) jobRecreation.platform_fields.colorsFallback = repli;
+      }
 
       const handlerV = PLATFORM_HANDLERS.vinted;
       const urlDepot = typeof handlerV.newListingUrl === "function" ? handlerV.newListingUrl(jobRecreation) : handlerV.newListingUrl;
@@ -9566,6 +9848,13 @@ async function processRepublishJob(job, accessToken) {
       // (L'une-passe, elle, ne pose PAS ce drapeau : son annonce d'origine est
       // encore en ligne, ses gates restent strictes — c'est tout le pré-vol.)
       jobRecreation.platform_fields.republish_recreation = true;
+      // Fix Couleur (2026-08-26) : capture SANS couleur seulement — même repli
+      // que l'une-passe. En recréation il ne BLOQUE jamais (B.5) : il donne
+      // juste une couleur à poser au lieu d'un champ vide voué au 400.
+      if (!jobRecreation.platform_fields.colors?.length) {
+        const repli = await couleursDePublicationOrigine(accessToken, job);
+        if (repli) jobRecreation.platform_fields.colorsFallback = repli;
+      }
 
       const handler = PLATFORM_HANDLERS.vinted;
       const listingUrl = typeof handler.newListingUrl === "function" ? handler.newListingUrl(jobRecreation) : handler.newListingUrl;
@@ -9696,7 +9985,9 @@ async function processRepublishJob(job, accessToken) {
 //     la plus ancienne ≈ date de mise en ligne, au jour près, et É4 la
 //     rafraîchit à chaque republication) ;
 //   · aucun republish FillSell vivant ni abouti < 24 h sur l'article ;
-//   · quand des snapshots existent : observé par la sync depuis ≥ age_jours ;
+//   · quand l'HISTORIQUE DE SYNC DU COMPTE est probant (premier relevé du
+//     compte ≥ age_jours — sinon la garde était insatisfiable, cf. 23/08) :
+//     article observé par la sync depuis ≥ age_jours ;
 //   · donnée manquante = PAS de republication auto. Jamais.
 // UN article par cycle de poll maximum — le rythme humain vient de là, plus
 // la machine à étapes elle-même (espacement 2 min, attente 2-5 min).
@@ -9779,6 +10070,28 @@ async function maybeAutoRepublish(session) {
       token, { headers: { Prefer: "return=representation" } },
     );
 
+    // ── Garde snapshot rendue SATISFAISABLE (2026-08-23, option a) ──────────
+    // Les relevés (vinted_listing_snapshots) n'existent que depuis le 03/08 :
+    // exiger, article par article, un premier relevé vieux de ≥ age_jours
+    // était IMPOSSIBLE à satisfaire pendant les age_jours premiers jours
+    // d'historique — chaque candidat était sauté, sans un log. Décision : si
+    // le premier relevé du COMPTE (tous articles) est plus jeune que
+    // age_jours, l'historique de sync n'est pas PROBANT → la garde par
+    // article est muette et listed_at_guess (date d'upload de la photo la
+    // plus ancienne) fait foi seul — c'est déjà lui qui filtre les candidats
+    // ci-dessus, donnée manquante toujours bloquante. Dès que l'historique du
+    // compte atteint age_jours, la garde par article se ré-arme telle quelle.
+    // Le plancher de 7 jours d'age_jours, lui, ne bouge pas (anti-ban).
+    const premierReleveCompte = await restRequest(
+      `vinted_listing_snapshots?user_id=eq.${userId}` +
+      `&select=captured_on&order=captured_on.asc&limit=1`,
+      token, { headers: { Prefer: "return=representation" } },
+    ).catch(() => null);
+    const historiqueProbant = Boolean(
+      premierReleveCompte?.length &&
+      Date.parse(premierReleveCompte[0].captured_on) <= Date.now() - ageJours * 86_400_000,
+    );
+
     for (const c of cands ?? []) {
       // Republish vivant, ou abouti < 24 h ? Le RPC re-garde de toute façon —
       // ce pré-filtre évite juste de griller le tour du cycle sur un refus.
@@ -9794,13 +10107,16 @@ async function maybeAutoRepublish(session) {
         || (j.published_at && Date.now() - Date.parse(j.published_at) < 24 * 3_600_000))) continue;
 
       // Second signal : observé par la sync depuis ≥ age_jours quand des
-      // snapshots existent (le premier relevé fait foi).
-      const snap = await restRequest(
-        `vinted_listing_snapshots?user_id=eq.${userId}&vinted_item_id=eq.${c.vinted_item_id}` +
-        `&select=captured_on&order=captured_on.asc&limit=1`,
-        token, { headers: { Prefer: "return=representation" } },
-      );
-      if (snap?.length && Date.parse(snap[0].captured_on) > Date.now() - ageJours * 86_400_000) continue;
+      // snapshots existent (le premier relevé fait foi) — appliqué SEULEMENT
+      // quand l'historique du compte est probant (cf. bandeau ci-dessus).
+      if (historiqueProbant) {
+        const snap = await restRequest(
+          `vinted_listing_snapshots?user_id=eq.${userId}&vinted_item_id=eq.${c.vinted_item_id}` +
+          `&select=captured_on&order=captured_on.asc&limit=1`,
+          token, { headers: { Prefer: "return=representation" } },
+        );
+        if (snap?.length && Date.parse(snap[0].captured_on) > Date.now() - ageJours * 86_400_000) continue;
+      }
 
       const ok = await autoCaptureEtRepublier(c, token, userId);
       console.log(`[republish-auto] article ${c.vinted_item_id} : ${ok ? "mis en file" : "capture/RPC refusés — retentera un autre cycle"}`);
@@ -9814,8 +10130,13 @@ async function maybeAutoRepublish(session) {
 // Capture → photos re-hébergées → persistance → RPC (p_source='auto').
 // Miroir volontaire de capturerEtPersisterArticleVinted (site) : l'auto n'a
 // pas d'onglet fillsell.app ouvert, tout passe par le background.
+// ⚠️ Version SANS VERROU impérative : l'appelant (maybeAutoRepublish) tourne
+// déjà sous withJobFlowLock, via le poll. La version verrouillée se mettait en
+// file DERRIÈRE le poll lui-même — blocage mutuel silencieux, et AUCUN job
+// auto jamais créé sur tout le parc (constat du 23/08). Même contrainte que
+// processRepublishJob (cf. bandeau de captureVintedItemUnlocked).
 async function autoCaptureEtRepublier(cand, token, userId) {
-  const cap = await captureVintedItem(cand.vinted_item_id);
+  const cap = await captureVintedItemUnlocked(cand.vinted_item_id);
   if (!cap?.success) return false;
   const manquants = (cap.champs_manquants ?? []).filter((m) => !m.startsWith("photos_rehebergees"));
   let photos = [];

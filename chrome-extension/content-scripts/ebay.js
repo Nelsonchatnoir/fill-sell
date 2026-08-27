@@ -497,6 +497,28 @@ async function fillListingForm(job) {
     20000
   );
   if (!formReady) {
+    // ── /fpa/* = mur de VÉRIFICATION DU COMPTE VENDEUR eBay (2026-08-23,
+    // emilie.rigal03 ×2 : /fpa/upgrade servi à la place de /lstng). Ce n'est
+    // ni un categoryId refusé ni un bug FillSell : eBay exige une action sur
+    // le compte avant d'autoriser le dépôt — le message doit le dire à
+    // l'utilisateur, pas lui parler de mapping interne.
+    if (/^\/fpa(\/|$)/.test(location.pathname)) {
+      // Relevé 24/08 (session réelle, compte vendeur sain) : /fpa/upgrade
+      // n'existe pas pour un compte en règle (404) — la page est
+      // CONDITIONNELLE à l'état du compte, servie après le step-up signin
+      // (les 2 diagnostics du parc portent la séquence signin → /fpa/upgrade).
+      // C'est une mise à niveau/vérification de COMPTE exigée par eBay, pas un
+      // problème de catégorie ni de session : on nomme la page, on dit le
+      // geste, et on ne promet rien qu'on n'a pas vérifié.
+      return {
+        success: false,
+        error:
+          `eBay exige une mise à niveau ou une vérification de ton compte vendeur avant d'autoriser ` +
+          `la mise en vente (page ${location.pathname} affichée à la place du formulaire). ` +
+          "Connecte-toi sur ebay.fr dans Chrome, clique « Vendre » et suis les étapes demandées par " +
+          "eBay sur ton compte, puis relance la publication depuis la fiche de l'article. Rien n'a été publié.",
+      };
+    }
     return {
       success: false,
       error:
@@ -1552,7 +1574,11 @@ async function fillDescription(text, warnings) {
   const oracle = () => document.querySelector('textarea[name="description"]');
   const marker = String(text).split("\n")[0].slice(0, 30);
   try {
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    // 1 seule pose-miroir depuis le 25/08 (le repli API prend la suite — le
+    // miroir ne synchronise plus, mesuré le 24/08 ; 2×8 s d'attente seraient
+    // du temps perdu à chaque job). La 2e pose historique couvrait les
+    // commits lents d'onglet caché ; le PUT API n'en a pas besoin.
+    for (let attempt = 1; attempt <= 1; attempt++) {
       target.focus?.();
       target.innerHTML = html;
       target.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1583,11 +1609,54 @@ async function fillDescription(text, warnings) {
       await sleep(1500);
     }
   } catch (e) {
-    warnings.push(`description: RTE inaccessible (${e.message}) — description non remplie`);
+    warnings.push(`description: RTE inaccessible (${e.message}) — repli API tenté`);
+    return await putDescriptionViaDraftApi(text, warnings);
+  }
+  // ── Repli API (2026-08-25, chantier de nuit — famille « jamais
+  // synchronisée » du 18/08) ─────────────────────────────────────────────────
+  // MESURÉ en session réelle le 24/08 : le textarea miroir ne se remplit PLUS,
+  // même après une frappe RÉELLE au clavier + blur + minutes d'attente — eBay
+  // a changé la mécanique (le textarea est l'éditeur du mode source HTML,
+  // caché). La sauvegarde réelle est un PUT delta sur le brouillon
+  // (/lstng/api/listing_draft/{draftId}, champ `description`, jeton srt lu
+  // dans div#csrf-data — rendu côté SERVEUR, lisible sans hydratation), et ce
+  // PUT accepté a suffi à publier l'annonce-témoin 800557746918. L'oracle
+  // n'est donc plus le miroir : c'est la réponse HTTP du PUT.
+  warnings.push("description: textarea miroir jamais synchronisé (mécanique eBay changée, mesuré 24/08) — pose par l'API du brouillon");
+  return await putDescriptionViaDraftApi(text, warnings);
+}
+
+// Pose la description DIRECTEMENT dans le brouillon eBay par le PUT delta —
+// recette relevée en session réelle le 24/08 (cf. fillDescription). Rend true
+// si eBay a répondu 200 : c'est la validation SERVEUR du publish qui tranche
+// en dernier (une description absente y serait nommée, jamais silencieuse).
+async function putDescriptionViaDraftApi(text, warnings) {
+  try {
+    const csrf = document.getElementById("csrf-data");
+    if (!csrf) { warnings.push("description: repli API impossible (csrf-data absent)"); return false; }
+    const map = JSON.parse(csrf.getAttribute("data-value"));
+    const srt = map["/lstng/api/listing_draft/:draftId(\\d+)"];
+    const params = new URLSearchParams(location.search);
+    const draftId = params.get("draftId");
+    const mode = params.get("mode") || "AddItem";
+    if (!srt || !draftId) { warnings.push("description: repli API impossible (srt ou draftId absent)"); return false; }
+    const html = String(text)
+      .split("\n")
+      .map((line) => line.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])))
+      .join("<br>");
+    const uuid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const r = await fetch(`/lstng/api/listing_draft/${draftId}?mode=${encodeURIComponent(mode)}`, {
+      method: "PUT", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", srt, Accept: "application/json" },
+      body: JSON.stringify({ requestId: uuid, removedFields: [], description: `<p>${html}</p>` }),
+    });
+    if (!r.ok) { warnings.push(`description: PUT brouillon refusé (HTTP ${r.status}) — description non prise`); return false; }
+    console.log(`[ebay] description posée par l'API du brouillon (PUT ${draftId} → ${r.status})`);
+    return true;
+  } catch (e) {
+    warnings.push(`description: repli API en échec (${String(e?.message ?? e).slice(0, 120)}) — description non prise`);
     return false;
   }
-  warnings.push("description: posée dans le RTE mais JAMAIS synchronisée dans l'état eBay (textarea miroir vide après 2 poses + blur) — description non prise");
-  return false;
 }
 
 // ── Popups parasites ─────────────────────────────────────────────────────────
