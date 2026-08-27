@@ -430,7 +430,22 @@ export const EXTENSION_LAST_COMMIT = '2026-08-27T14:50:00Z';
 // 7ca4440) — au moment du bump, 12 des 13 installs du parc étaient SOUS ce
 // build, et le bug avait encore frappé le 09/08 (2 comptes, needs_user).
 // Ancienne valeur : 2026-08-09T12:13:15Z (0.5.5, servie le 09/08).
-export const EXTENSION_MIN_BUILD = '2026-08-09T14:16:20Z';
+// 2026-08-26T19:48:07Z = BUILD_ID du paquet 0.6.9 (branche ext-0.6.5-sans-f1,
+// commit 7a88eb6), PUBLIÉ par le Chrome Web Store le 27/08 vers midi et RELU
+// DANS LE ZIP build/fillsell-extension-0.6.9-cws.zip le jour de la promotion
+// ('2026-08-26T19:48:07Z+7a88eb6' dans background.js). Seul le PRÉFIXE ISO est
+// stocké ici : App.jsx fait Date.parse() dessus, un '+hash' rendrait le seuil
+// NaN et la bannière muette. Même seuil que l'exemption de la garde Livres
+// serveur (update-job-status, 1e9a3d3 : handler_build ≥ ce build = exempt).
+// Ce que cette promotion débloque : la 0.6.9 répare la panne TOTALE de
+// publication Vinted du 26/08 (picker passé role=button → role=radio) — au
+// moment du bump, ~120 comptes vus sous 30 jours étaient SOUS ce build.
+// La bannière INFORME seulement : aucun chemin (publication, republication,
+// sync) ne lit extensionOutdated pour refuser du travail — vérifié sur pièces
+// le 27/08 (App.jsx : bandeau + dismiss ; StockTab : deux messages d'état).
+// Ancienne valeur : 2026-08-09T14:16:20Z (0.5.6) — les promotions 0.6.x
+// intermédiaires n'ont jamais été faites, le parc n'était plus prévenu.
+export const EXTENSION_MIN_BUILD = '2026-08-26T19:48:07Z';
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
 // postérieur à EXTENSION_LAST_COMMIT (constante pas bumpée → le paquet publié
