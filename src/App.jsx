@@ -3030,6 +3030,15 @@ export default function App({ loginOnly = false }){
   const vendusAEnregistrer=useMemo(
     ()=>sold.filter(i=>i.origine==='vinted_sync'&&!ventesInvIds.has(String(i.id))),
     [sold,ventesInvIds]);
+  // Photos par ligne d'inventaire (2026-08-27, vignettes de l'onglet Ventes) :
+  // la table `ventes` ne porte AUCUNE photo, mais chaque vente pointe son
+  // article via ventes.inventaire_id — la vignette se lit donc ici, dans les
+  // lignes inventaire déjà chargées. Lookup pur, aucune requête ajoutée.
+  const photosParInventaire=useMemo(()=>{
+    const m={};
+    for(const i of items){ if(Array.isArray(i.photos)&&i.photos.length) m[i.id]=i.photos; }
+    return m;
+  },[items]);
   // origine : chaque écran qui monte la bannière dit d'où vient le clic.
   // Sans elle, StockTab et VentesTab seraient indiscernables en base.
   const BoundPremiumBanner=useMemo(()=>{const C=(props)=><PremiumBanner {...props} onOpenModal={()=>openUpgradeModal(null,props.origine??'banniere')}/>;return C;},[user]);
@@ -6016,6 +6025,7 @@ export default function App({ loginOnly = false }){
             PremiumBanner={BoundPremiumBanner} IAPUpgradeBlock={IAPUpgradeBlock}
             openUpgradeModal={openUpgradeModal}
             vendusAEnregistrer={vendusAEnregistrer}
+            photosParInventaire={photosParInventaire}
             onSaleUpdated={()=>{if(user?.id)fetchAll(user.id,{silencieux:true});}}
           />
         )}
@@ -6026,85 +6036,192 @@ export default function App({ loginOnly = false }){
       </div>
 
       {/* ── EDIT MODAL ── */}
-      {editItem&&(
+      {/* ── Modale « Modifier l'article » — REFONTE VISUELLE (2026-08-27) ────
+          Alignée sur le thème de la galerie Stock IA (palette canvas/paper/
+          ink/teal, SVG au lieu des émojis 🏷️📦🛒💰📬, champs groupés par
+          sens : Identité / Argent / Logistique / Description).
+          ⛔ REFONTE VISUELLE SEULEMENT : aucun champ ajouté ni retiré, mêmes
+          setters (title, marque, type, buy, priceMode, sell, frais, quantite,
+          emplacement, description), même handleEditSave, mêmes libellés
+          métier (« Vide = en stock » conservé mot pour mot).
+          Le NOM passe d'un input mono-ligne (titre long illisible) à un
+          textarea de 2 lignes : un titre long se lit et s'édite en entier —
+          même valeur écrite, aucun changement de sauvegarde. */}
+      {editItem&&(()=>{
+        const S={
+          eyebrow:{display:"flex",alignItems:"center",gap:7,fontSize:10.5,fontWeight:700,color:"#8A8578",textTransform:"uppercase",letterSpacing:"0.07em"},
+          tile:{flexShrink:0,width:22,height:22,borderRadius:7,background:"rgba(47,158,144,0.10)",display:"flex",alignItems:"center",justifyContent:"center",color:"#1B6E62"},
+          group:{display:"flex",flexDirection:"column",gap:9,background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:14,padding:"11px 12px"},
+          label:{fontSize:11,fontWeight:600,color:"#8A8578",marginBottom:4},
+          input:{width:"100%",boxSizing:"border-box",padding:"10px 12px",borderRadius:10,border:"1px solid #E7E3D8",background:"#fff",fontSize:14,fontWeight:600,color:"#10201B",fontFamily:"inherit",outline:"none",transition:"border-color 0.15s"},
+        };
+        const focusTeal=e=>{e.currentTarget.style.borderColor="#2F9E90";};
+        const blurBorder=e=>{e.currentTarget.style.borderColor="#E7E3D8";};
+        const money={display:"flex",alignItems:"center",gap:6};
+        const suffix=<span style={{fontSize:12,fontWeight:600,color:"#8A8578",flexShrink:0}}>{CURRENCY_SYMBOLS[currency]||'€'}</span>;
+        return(
         <>
-          <div onClick={()=>setEditItem(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(4px)",zIndex:200}}/>
-          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"28px",width:"min(92vw,480px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"88vh",overflowY:"auto"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:700,color:C.text}}>{editItem._isNew?(lang==='fr'?"➕ Ajouter au stock":"➕ Add to stock"):`✏️ ${lang==='fr'?"Modifier l'article":"Edit item"}`}</div>
+          <div onClick={()=>setEditItem(null)} style={{position:"fixed",inset:0,background:"rgba(16,32,27,0.45)",backdropFilter:"blur(4px)",zIndex:200}}/>
+          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:18,padding:"20px",width:"min(92vw,480px)",boxShadow:"0 24px 80px rgba(16,32,27,0.25)",maxHeight:"88vh",overflowY:"auto",border:"1px solid #E7E3D8"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+              <div style={{fontSize:15.5,fontWeight:700,color:"#10201B"}}>{editItem._isNew?(lang==='fr'?"Ajouter au stock":"Add to stock"):(lang==='fr'?"Modifier l'article":"Edit item")}</div>
               <IconButton onClick={()=>setEditItem(null)} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <Field label={lang==='fr'?"Nom":"Name"} value={editItem.title} set={v=>setEditItem(p=>({...p,title:v}))} placeholder="Ex: Air Max 90..." icon="🏷️"/>
-              <Field label={lang==='fr'?"Marque (optionnel)":"Brand (optional)"} value={editItem.marque||""} set={v=>setEditItem(p=>({...p,marque:v}))} placeholder="Ex: Nike, Zara..." icon="✏️"/>
-              <select value={editItem.type||""} onChange={e=>setEditItem(p=>({...p,type:e.target.value}))}
-                style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:"0 16px",height:58,fontSize:15,fontWeight:600,color:editItem.type?"#0D0D0D":"#A3A9A6",width:"100%",cursor:"pointer",fontFamily:"inherit",outline:"none",appearance:"auto"}}>
-                <option value="">{(editItem.title||editItem.marque)?(lang==='fr'?`🤖 Détecté : ${detectType(editItem.title,editItem.marque)}`:`🤖 Detected: ${typeLabel(detectType(editItem.title,editItem.marque),lang)}`):(lang==='fr'?'🤖 Détection automatique':'🤖 Auto-detection')}</option>
-                <option value="Mode">👗 {typeLabel('Mode',lang)}</option>
-                <option value="High-Tech">📱 High-Tech</option>
-                <option value="Maison">🏠 {typeLabel('Maison',lang)}</option>
-                <option value="Électroménager">⚡ {typeLabel('Électroménager',lang)}</option>
-                <option value="Jouets">🧸 {typeLabel('Jouets',lang)}</option>
-                <option value="Livres">📚 {typeLabel('Livres',lang)}</option>
-                <option value="Sport">⚽ Sport</option>
-                <option value="Auto-Moto">🚗 {typeLabel('Auto-Moto',lang)}</option>
-                <option value="Beauté">💄 {typeLabel('Beauté',lang)}</option>
-                <option value="Musique">🎵 Musique</option>
-                <option value="Collection">🏆 Collection</option>
-                <option value="Multimédia">📺 {typeLabel('Multimédia',lang)}</option>
-                <option value="Jardin">🌿 {typeLabel('Jardin',lang)}</option>
-                <option value="Bricolage">🔧 {typeLabel('Bricolage',lang)}</option>
-                <option value="Autre">📦 {typeLabel('Autre',lang)}</option>
-              </select>
-              <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={String(editItem.buy??"")}set={v=>setEditItem(p=>({...p,buy:v}))} placeholder="0,00" type="number" icon="🛒" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
-              {(parseInt(editItem.quantite)||1)>1&&(
-                <div style={{display:"flex",gap:4,background:"#F1F5F9",borderRadius:10,padding:4}}>
-                  {["unit","total"].map(mode=>(
-                    <button key={mode} type="button"
-                      onClick={()=>setEditItem(p=>({...p,priceMode:mode}))}
-                      style={{flex:1,padding:"8px 0",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",touchAction:"manipulation",
-                        background:(editItem.priceMode??"unit")===mode?"#fff":"transparent",
-                        color:(editItem.priceMode??"unit")===mode?C.teal:"#6B7280",
-                        boxShadow:(editItem.priceMode??"unit")===mode?"0 1px 4px rgba(0,0,0,0.1)":"none",
-                        transition:"all 0.15s"}}>
-                      {mode==="unit"?(lang==='fr'?"Par article":"Per item"):(lang==='fr'?"Prix total lot":"Total lot price")}
-                    </button>
-                  ))}
+
+              {/* ── Identité : nom, marque, catégorie ── */}
+              <div style={S.group}>
+                <div style={S.eyebrow}>
+                  <span style={S.tile}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg></span>
+                  {lang==='fr'?"Identité":"Identity"}
                 </div>
-              )}
-              <Field label={lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"} value={String(editItem.sell??"")} set={v=>setEditItem(p=>({...p,sell:v}))} placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} type="number" icon="💰" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
-              <Field label={lang==='fr'?"Frais (optionnel)":"Fees (optional)"} value={String(editItem.frais??"")} set={v=>setEditItem(p=>({...p,frais:v}))} placeholder="0,00" type="number" icon="📬" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
-              <div>
-                <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>🔢 {lang==='fr'?"Quantité":"Quantity"}</div>
-                <div style={{display:"flex",alignItems:"center",gap:0,border:"1.5px solid rgba(0,0,0,0.12)",borderRadius:14,overflow:"hidden",background:"#fff",height:58}}>
-                  <button type="button" onClick={()=>setEditItem(p=>({...p,quantite:Math.max(1,(parseInt(p.quantite)||1)-1)}))} style={{width:52,height:"100%",border:"none",background:"transparent",fontSize:22,fontWeight:300,color:"#6B7280",cursor:"pointer",touchAction:"manipulation",flexShrink:0}}>−</button>
-                  <input type="number" min="1" value={editItem.quantite??1}
-                    onChange={e=>setEditItem(p=>({...p,quantite:Math.max(1,parseInt(e.target.value)||1)}))}
-                    onFocus={e=>e.target.select()}
-                    style={{flex:1,border:"none",outline:"none",textAlign:"center",fontSize:18,fontWeight:700,color:"#0D0D0D",background:"transparent",width:0,MozAppearance:"textfield"}}
+                <div>
+                  <div style={S.label}>{lang==='fr'?"Nom":"Name"}</div>
+                  {/* Textarea 2 lignes : les titres longs (dressing importé)
+                      étaient tronqués dans l'input mono-ligne — désormais
+                      lisibles et éditables en entier. Même valeur écrite. */}
+                  <textarea value={editItem.title??""} onChange={e=>setEditItem(p=>({...p,title:e.target.value}))}
+                    placeholder="Ex: Air Max 90..." rows={2}
+                    style={{...S.input,resize:"none",lineHeight:1.4}}
+                    onFocus={focusTeal} onBlur={blurBorder}/>
+                </div>
+                <div>
+                  <div style={S.label}>{lang==='fr'?"Marque (optionnel)":"Brand (optional)"}</div>
+                  <input value={editItem.marque||""} onChange={e=>setEditItem(p=>({...p,marque:e.target.value}))}
+                    placeholder="Ex: Nike, Zara..." style={S.input}
+                    onFocus={focusTeal} onBlur={blurBorder}/>
+                </div>
+                <div>
+                  <div style={S.label}>{lang==='fr'?"Catégorie":"Category"}</div>
+                  <select value={editItem.type||""} onChange={e=>setEditItem(p=>({...p,type:e.target.value}))}
+                    style={{...S.input,height:42,padding:"0 12px",cursor:"pointer",appearance:"auto",color:editItem.type?"#10201B":"#8A8578"}}>
+                    <option value="">{(editItem.title||editItem.marque)?(lang==='fr'?`Détecté : ${detectType(editItem.title,editItem.marque)}`:`Detected: ${typeLabel(detectType(editItem.title,editItem.marque),lang)}`):(lang==='fr'?'Détection automatique':'Auto-detection')}</option>
+                    <option value="Mode">{typeLabel('Mode',lang)}</option>
+                    <option value="High-Tech">High-Tech</option>
+                    <option value="Maison">{typeLabel('Maison',lang)}</option>
+                    <option value="Électroménager">{typeLabel('Électroménager',lang)}</option>
+                    <option value="Jouets">{typeLabel('Jouets',lang)}</option>
+                    <option value="Livres">{typeLabel('Livres',lang)}</option>
+                    <option value="Sport">Sport</option>
+                    <option value="Auto-Moto">{typeLabel('Auto-Moto',lang)}</option>
+                    <option value="Beauté">{typeLabel('Beauté',lang)}</option>
+                    <option value="Musique">Musique</option>
+                    <option value="Collection">Collection</option>
+                    <option value="Multimédia">{typeLabel('Multimédia',lang)}</option>
+                    <option value="Jardin">{typeLabel('Jardin',lang)}</option>
+                    <option value="Bricolage">{typeLabel('Bricolage',lang)}</option>
+                    <option value="Autre">{typeLabel('Autre',lang)}</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* ── Argent : prix d'achat, prix de vente, frais ── */}
+              <div style={S.group}>
+                <div style={S.eyebrow}>
+                  <span style={S.tile}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg></span>
+                  {lang==='fr'?"Argent":"Money"}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
+                  <div>
+                    <div style={S.label}>{lang==='fr'?"Prix d'achat":"Purchase price"}</div>
+                    <div style={money}>
+                      <input type="number" inputMode="decimal" value={String(editItem.buy??"")}
+                        onChange={e=>setEditItem(p=>({...p,buy:e.target.value}))}
+                        placeholder="0,00" style={S.input}
+                        onFocus={focusTeal} onBlur={blurBorder}/>
+                      {suffix}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={S.label}>{lang==='fr'?"Prix de vente (optionnel)":"Sell price (optional)"}</div>
+                    <div style={money}>
+                      {/* ⛔ Placeholder MÉTIER conservé mot pour mot : un prix
+                          de vente vide = l'article reste en stock. */}
+                      <input type="number" inputMode="decimal" value={String(editItem.sell??"")}
+                        onChange={e=>setEditItem(p=>({...p,sell:e.target.value}))}
+                        placeholder={lang==='fr'?"Vide = en stock":"Empty = in stock"} style={S.input}
+                        onFocus={focusTeal} onBlur={blurBorder}/>
+                      {suffix}
+                    </div>
+                  </div>
+                </div>
+                {(parseInt(editItem.quantite)||1)>1&&(
+                  <div style={{display:"flex",gap:4,background:"#EDEAE0",borderRadius:10,padding:3}}>
+                    {["unit","total"].map(mode=>(
+                      <button key={mode} type="button"
+                        onClick={()=>setEditItem(p=>({...p,priceMode:mode}))}
+                        style={{flex:1,padding:"7px 0",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",touchAction:"manipulation",fontFamily:"inherit",
+                          background:(editItem.priceMode??"unit")===mode?"#fff":"transparent",
+                          color:(editItem.priceMode??"unit")===mode?"#1B6E62":"#8A8578",
+                          boxShadow:(editItem.priceMode??"unit")===mode?"0 1px 4px rgba(16,32,27,0.10)":"none",
+                          transition:"all 0.15s"}}>
+                        {mode==="unit"?(lang==='fr'?"Par article":"Per item"):(lang==='fr'?"Prix total lot":"Total lot price")}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div>
+                  <div style={S.label}>{lang==='fr'?"Frais (optionnel)":"Fees (optional)"}</div>
+                  <div style={money}>
+                    <input type="number" inputMode="decimal" value={String(editItem.frais??"")}
+                      onChange={e=>setEditItem(p=>({...p,frais:e.target.value}))}
+                      placeholder="0,00" style={S.input}
+                      onFocus={focusTeal} onBlur={blurBorder}/>
+                    {suffix}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Logistique : quantité, emplacement ── */}
+              <div style={S.group}>
+                <div style={S.eyebrow}>
+                  <span style={S.tile}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
+                  {lang==='fr'?"Logistique":"Logistics"}
+                </div>
+                <div>
+                  <div style={S.label}>{lang==='fr'?"Quantité":"Quantity"}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:0,border:"1px solid #E7E3D8",borderRadius:10,overflow:"hidden",background:"#fff",height:42}}>
+                    <button type="button" onClick={()=>setEditItem(p=>({...p,quantite:Math.max(1,(parseInt(p.quantite)||1)-1)}))} style={{width:46,height:"100%",border:"none",background:"transparent",fontSize:20,fontWeight:300,color:"#8A8578",cursor:"pointer",touchAction:"manipulation",flexShrink:0,fontFamily:"inherit"}}>−</button>
+                    <input type="number" min="1" value={editItem.quantite??1}
+                      onChange={e=>setEditItem(p=>({...p,quantite:Math.max(1,parseInt(e.target.value)||1)}))}
+                      onFocus={e=>e.target.select()}
+                      style={{flex:1,border:"none",outline:"none",textAlign:"center",fontSize:16,fontWeight:700,color:"#10201B",background:"transparent",width:0,MozAppearance:"textfield",fontFamily:"inherit"}}
+                    />
+                    <button type="button" onClick={()=>setEditItem(p=>({...p,quantite:(parseInt(p.quantite)||1)+1}))} style={{width:46,height:"100%",border:"none",background:"transparent",fontSize:20,fontWeight:300,color:"#8A8578",cursor:"pointer",touchAction:"manipulation",flexShrink:0,fontFamily:"inherit"}}>+</button>
+                  </div>
+                </div>
+                {/* Emplacement — MÊME donnée que le badge 📦 des cartes de stock et
+                    que l'intention vocale inventory_move : colonne inventaire.emplacement
+                    (cf. vaActions.moveToLocation). Aucun champ parallèle créé. */}
+                <div>
+                  <div style={S.label}>{lang==='fr'?"Emplacement (optionnel)":"Location (optional)"}</div>
+                  <input value={editItem.emplacement||""} onChange={e=>setEditItem(p=>({...p,emplacement:e.target.value}))}
+                    placeholder={lang==='fr'?"Ex: Étagère salon, Carton 3...":"Ex: Living room shelf, Box 3..."} style={S.input}
+                    onFocus={focusTeal} onBlur={blurBorder}/>
+                </div>
+              </div>
+
+              {/* ── Description ── */}
+              <div style={S.group}>
+                <div style={S.eyebrow}>
+                  <span style={S.tile}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M17 6.1H3"/><path d="M21 12.1H3"/><path d="M15.1 18H3"/></svg></span>
+                  {lang==='fr'?"Description (optionnel)":"Description (optional)"}
+                </div>
+                <div>
+                  <textarea value={editItem.description||""} onChange={e=>setEditItem(p=>({...p,description:e.target.value.slice(0,200)}))}
+                    placeholder={lang==='fr'?"Ex: Taille M, noir, neuf...":"Ex: Size M, black, new..."}
+                    maxLength={200} rows={2}
+                    style={{...S.input,resize:"none",lineHeight:1.5,fontWeight:500,fontSize:13}}
+                    onFocus={focusTeal} onBlur={blurBorder}
                   />
-                  <button type="button" onClick={()=>setEditItem(p=>({...p,quantite:(parseInt(p.quantite)||1)+1}))} style={{width:52,height:"100%",border:"none",background:"transparent",fontSize:22,fontWeight:300,color:"#6B7280",cursor:"pointer",touchAction:"manipulation",flexShrink:0}}>+</button>
+                  <div style={{fontSize:10,color:"#8A8578",textAlign:"right",marginTop:2}}>{(editItem.description||"").length}/200</div>
                 </div>
               </div>
-              {/* Emplacement — MÊME donnée que le badge 📦 des cartes de stock et
-                  que l'intention vocale inventory_move : colonne inventaire.emplacement
-                  (cf. vaActions.moveToLocation). Aucun champ parallèle créé. */}
-              <Field label={lang==='fr'?"Emplacement (optionnel)":"Location (optional)"} value={editItem.emplacement||""} set={v=>setEditItem(p=>({...p,emplacement:v}))} placeholder={lang==='fr'?"Ex: Étagère salon, Carton 3...":"Ex: Living room shelf, Box 3..."} icon="📦"/>
-              <div>
-                <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
-                <textarea value={editItem.description||""} onChange={e=>setEditItem(p=>({...p,description:e.target.value.slice(0,200)}))}
-                  placeholder={lang==='fr'?"Ex: Taille M, noir, neuf...":"Ex: Size M, black, new..."}
-                  maxLength={200} rows={2}
-                  style={{width:"100%",padding:"10px 14px",borderRadius:14,border:`1.5px solid ${editItem.description?C.teal:"rgba(0,0,0,0.12)"}`,fontSize:13,color:C.text,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5}}
-                  onFocus={e=>e.currentTarget.style.borderColor=C.teal}
-                  onBlur={e=>e.currentTarget.style.borderColor=editItem.description?C.teal:"rgba(0,0,0,0.12)"}
-                />
-                <div style={{fontSize:10,color:C.label,textAlign:"right",marginTop:2}}>{(editItem.description||"").length}/200</div>
-              </div>
+
             </div>
-            <div style={{display:"flex",gap:10,marginTop:20}}>
+            <div style={{display:"flex",gap:10,marginTop:16}}>
               <PrimaryButton onClick={handleEditSave} style={{flex:1,width:"auto"}}>
-                {lang==='fr'?"💾 Enregistrer":"💾 Save"}
+                {lang==='fr'?"Enregistrer":"Save"}
               </PrimaryButton>
               <SecondaryButton onClick={()=>setEditItem(null)} style={{width:"auto",padding:"13px 20px"}}>
                 {t('annuler')}
@@ -6112,7 +6229,8 @@ export default function App({ loginOnly = false }){
             </div>
           </div>
         </>
-      )}
+        );
+      })()}
 
       {/* ── SELL MODAL ── */}
       {sellModal&&(

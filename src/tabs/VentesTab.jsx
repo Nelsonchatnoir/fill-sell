@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from '../i18n/useTranslation';
 import SwipeRow from '../components/SwipeRow';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
+import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 import { UI } from '../components/ui';
 import { supabase } from '../lib/supabase';
 import {
@@ -22,6 +23,14 @@ const VENTES_CSS = buildCardCss('ventes-v2') + `
 .ventes-v2 .profit{font-weight:700;font-size:15px;color:var(--teal-deep);}
 .ventes-v2 .profit.neg{color:#B0645A;}
 .ventes-v2 .sold-date{font-size:10px;color:var(--mute);margin-top:3px;}
+/* ── Vignette photo (2026-08-27) : première photo de l'article à gauche de
+   chaque ligne — même source et même repli que la galerie du Stock IA
+   (GalleryPhoto : photos[0], deux formats, onError → icône de catégorie).
+   La liste reste HORIZONTALE : rien d'autre ne change sur cet écran. */
+.ventes-v2 .vphoto{width:42px;height:42px;border-radius:11px;overflow:hidden;flex-shrink:0;background:var(--paper);}
+.ventes-v2 .vphoto img{width:100%;height:100%;object-fit:cover;display:block;}
+.ventes-v2 .vphoto .gph-fallback{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+.ventes-v2 .vphoto .cat-tile{width:100%;height:100%;border-radius:11px;}
 
 /* ── Prix d'achat manquant (03/08) ──
    Ton INVITATION, jamais alerte : ces ventes ne sont pas des erreurs, il manque
@@ -282,6 +291,10 @@ const VentesTab = memo(function VentesTab({
   // App.jsx sur ventes.inventaire_id) : chacun attend prix de vente réel,
   // prix d'achat et date — Vinted ne communique aucun des trois.
   vendusAEnregistrer=[],
+  // Photos par ligne d'inventaire (App.jsx) : la table `ventes` n'a pas de
+  // photos, la vignette se lit via ventes.inventaire_id. {} par défaut :
+  // aucun appelant à casser, la tuile d'icône reprend sa place.
+  photosParInventaire={},
   // Rafraîchissement du parent APRÈS écriture. App.jsx ne la passe pas
   // aujourd'hui (d'où la valeur par défaut : aucun appelant à casser) — c'est
   // la couche optimiste `patchs` ci-dessous qui tient l'affichage en attendant
@@ -1247,7 +1260,12 @@ const VentesTab = memo(function VentesTab({
             const pvAffiche=d.pv??(propositions[item.vinted_item_id]??"");
             return(
               <div key={item.id} className="row" style={{cursor:"default"}}>
-                <div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>
+                {/* Vignette photo (27/08) : `item` est une ligne inventaire
+                    (mapItem), ses photos sont déjà là. Repli = tuile d'icône. */}
+                <div className="vphoto">
+                  <GalleryPhoto url={premierePhoto(item.photos)} alt={item.title}
+                    fallback={<div className={`cat-tile ${catClass(item.type)}`}>{detectObjectIcon(item.title,item.description,item.type)}</div>}/>
+                </div>
                 <div className="left">
                   <div className="title-line">
                     <span className="title">{item.title}</span>
@@ -1395,7 +1413,13 @@ const VentesTab = memo(function VentesTab({
                 <div className="row in-swipe" onClick={()=>setEditItem({...s,_table:'ventes',frais:s.sellingFees??0,sell:s.sell??""})}>
                   {/* Icône crayon retirée le 2026-07-14 (comme sur le Stock) :
                       la carte entière est déjà cliquable pour éditer. */}
-                  <div className={`cat-tile ${catClass(s.type)}`}>{detectObjectIcon(s.title,s.description,s.type)}</div>
+                  {/* Vignette photo (27/08) : la vente ne porte pas de photos,
+                      on les lit sur l'article via ventes.inventaire_id
+                      (photosParInventaire, App.jsx). Repli = tuile d'icône. */}
+                  <div className="vphoto">
+                    <GalleryPhoto url={premierePhoto(photosParInventaire[s.inventaire_id])} alt={s.title}
+                      fallback={<div className={`cat-tile ${catClass(s.type)}`}>{detectObjectIcon(s.title,s.description,s.type)}</div>}/>
+                  </div>
                   <div className="left">
                     <div className="title-line">
                       <span className="title">{s.title}</span>

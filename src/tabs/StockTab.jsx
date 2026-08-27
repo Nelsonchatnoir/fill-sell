@@ -11,6 +11,7 @@ import ExtensionReminderModal, { shouldShowExtensionReminder } from '../componen
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteAmount from '../components/PepiteAmount';
+import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 import { computeRemovalInfo, plateformesReserveesParRepublication } from '../utils/publicationState';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
@@ -171,11 +172,17 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 /* Pastille de STATUT — l'info n°1, lisible sans lire : chip blanc (contraste
    garanti sur n'importe quelle photo) + point de couleur. Le point PULSE quand
    un travail est en cours. */
-.stock-v2 .gstatus{position:absolute;top:8px;left:8px;max-width:calc(100% - 44px);display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;background:rgba(255,255,255,0.93);font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 5px rgba(16,32,27,0.22);z-index:2;}
+.stock-v2 .gstatus{position:absolute;top:8px;left:8px;max-width:calc(100% - 34px);display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;background:rgba(255,255,255,0.93);font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 5px rgba(16,32,27,0.22);z-index:2;}
 .stock-v2 .gstatus .gdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 .stock-v2 .gstatus .gdot.pulsing{animation:fs-pulse 1.4s ease-in-out infinite;}
 @media (prefers-reduced-motion:reduce){.stock-v2 .gstatus .gdot.pulsing{animation:none;}}
-.stock-v2 .gdel{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(16,32,27,0.40);color:#fff;font-size:11px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2;font-family:inherit;}
+/* ✕ de suppression — RÉDUIT et discret (2026-08-27, 2e passe) : 16 px visuels
+   (pas de grosse cible sous le pouce en plein défilement), teinte estompée,
+   collé au coin pour rester loin de la pastille de statut (qui se réserve
+   l'espace à gauche via max-width). Le chemin delItem est inchangé : plan de
+   suppression + confirmation, jamais une suppression sèche. */
+.stock-v2 .gdel{position:absolute;top:6px;right:6px;width:16px;height:16px;border-radius:50%;border:none;background:rgba(16,32,27,0.28);color:rgba(255,255,255,0.9);font-size:8.5px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2;font-family:inherit;}
+.stock-v2 .gdel:hover{background:rgba(16,32,27,0.55);color:#fff;}
 /* Plateformes — l'info n°2 : logos posés sur un dégradé bas de photo. */
 .stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:18px 8px 7px;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
 .stock-v2 .gqty{position:absolute;bottom:7px;right:8px;background:rgba(255,255,255,0.93);color:var(--ink);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;z-index:2;}
@@ -198,28 +205,8 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .repub-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#2F9E90,#1B6E62);transition:width 0.6s ease;min-width:0;}
 `;
 
-// ── Photo de carte galerie (2026-08-27) ─────────────────────────────────────
-// Deux formats coexistent dans inventaire.photos : objets {type,url} (flux
-// photos retouchées) et STRINGS nues (URLs CDN Vinted écrites par la sync du
-// dressing) — même normalisation que initialPhotos du stepper, plus bas.
-// 1 705 articles sur 36 903 n'ont AUCUNE photo : la tuile d'icône de catégorie
-// reprend sa place, et une image qui casse au chargement (CDN Vinted expiré)
-// retombe dessus aussi — jamais une carte vide ni une image cassée.
-// loading="lazy" : le navigateur ne charge que les photos proches du viewport,
-// les gros comptes (3 000+ articles) ne téléchargent pas tout d'un coup.
-function premierePhoto(photos){
-  if(!Array.isArray(photos))return null;
-  for(const p of photos){
-    const u=typeof p==='string'?p:(p?.url||p?.original||p?.enhanced||p?.bg_removed);
-    if(u)return u;
-  }
-  return null;
-}
-function GalleryPhoto({url,alt,fallback}){
-  const [err,setErr]=useState(false);
-  if(!url||err)return <div className="gph-fallback">{fallback}</div>;
-  return <img src={url} alt={alt||''} loading="lazy" decoding="async" onError={()=>setErr(true)}/>;
-}
+// (GalleryPhoto / premierePhoto vivent dans components/GalleryPhoto.jsx depuis
+// le 2026-08-27 : partagés avec les vignettes de l'onglet Ventes.)
 
 // ── Redesign zone de saisie IA (haut StockTab) — eyebrow + toggle Écrire/Parler ──
 const STOCK_TOP_CSS = `
@@ -1839,7 +1826,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   };
 
   return (
-    <div style={{background:"#fff",borderRadius:12,border:"1px solid #E7E3D8",padding:"14px",display:"flex",flexDirection:"column",gap:10}}>
+    <div style={{background:"#fff",borderRadius:12,border:"1px solid #E7E3D8",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <PlatformLogo platform="vinted" size={20}/>
         <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
@@ -1992,25 +1979,20 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{MESSAGE_BLOCAGE}</div>
       )}
 
-      {/* Le contrat, en toutes lettres — mais REPLIÉ (2026-08-05) : la carte
-          vit en tête de la liste de stock, une seule ligne de contexte reste
-          visible. Les deux autres ne sont pas des détails pour autant — sans
-          la ligne « historique partiel », un vendeur qui a 400 ventes derrière
-          lui et n'en voit revenir qu'une poignée conclut à une sync ratée et
-          perd confiance — d'où le dépliable, pas la suppression. */}
+      {/* Le contrat, en toutes lettres — ENTIÈREMENT replié (2026-08-27,
+          compaction de la carte remontée en tête d'écran) : par défaut ne
+          reste que le lien « En savoir plus » ; la phrase de contexte (« On
+          lit tes annonces en ligne… ») et les deux lignes de détail ne
+          s'affichent qu'au dépliage. Rien n'est supprimé — la ligne
+          « historique partiel » reste indispensable (un vendeur à 400 ventes
+          qui n'en voit revenir qu'une poignée conclut à une sync ratée). */}
       <div style={{fontSize:11.5,lineHeight:1.55,color:"#8A8578"}}>
-        {fr
-          ? "On lit tes annonces en ligne (titre, prix, photos, vues, favoris). Rien n'est publié, modifié ni supprimé sur Vinted."
-          : "We read your online listings (title, price, photos, views, favourites). Nothing is published, edited or deleted on Vinted."}
-        {" "}
-        <button
-          onClick={()=>setInfosDepliees(v=>!v)}
-          style={{background:"none",border:"none",padding:"2px 0",margin:0,fontSize:11.5,fontWeight:700,color:"#1B6E62",textDecoration:"underline",cursor:"pointer",fontFamily:"inherit"}}
-        >
-          {infosDepliees ? (fr?"Réduire":"Show less") : (fr?"En savoir plus":"Learn more")}
-        </button>
         {infosDepliees&&(
-          <div style={{marginTop:6}}>
+          <div style={{marginBottom:4}}>
+            {fr
+              ? "On lit tes annonces en ligne (titre, prix, photos, vues, favoris). Rien n'est publié, modifié ni supprimé sur Vinted."
+              : "We read your online listings (title, price, photos, views, favourites). Nothing is published, edited or deleted on Vinted."}
+            <br/>
             {fr
               ? "Vinted n'expose pas tout l'historique de ventes : on récupère les annonces en ligne et les ventes récentes, pas l'intégralité de ton passé."
               : "Vinted doesn't expose the full sales history: we get your online listings and recent sales, not everything you've ever sold."}
@@ -2020,6 +2002,12 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
               : "Imported items arrive with a purchase price to fill in — without it, no margin can be computed."}
           </div>
         )}
+        <button
+          onClick={()=>setInfosDepliees(v=>!v)}
+          style={{background:"none",border:"none",padding:"2px 0",margin:0,fontSize:11.5,fontWeight:700,color:"#1B6E62",textDecoration:"underline",cursor:"pointer",fontFamily:"inherit"}}
+        >
+          {infosDepliees ? (fr?"Réduire":"Show less") : (fr?"En savoir plus":"Learn more")}
+        </button>
       </div>
     </div>
   );
@@ -3736,6 +3724,100 @@ const StockTab = memo(function StockTab({
           </div>
         );
       })()}
+      {/* ── Hiérarchie d'écran (2026-08-27, décision Nico) ───────────────────
+          1. incident (platform_health, conditionnel) → 2. barre de
+          progression des republications (conditionnelle) → 3. Actualiser mon
+          dressing → 4. Ajouter un article → 5. galerie. Les blocs 2 et 3
+          vivent ICI, au-dessus de la grille desktop : quand les bandeaux
+          conditionnels n'existent pas, la carte dressing est le premier
+          élément du contenu, sans espace vide au-dessus. Le CSS .stock-v2
+          est monté par le <style> de la liste plus bas — les classes portent,
+          l'ordre DOM d'un <style> est sans effet. */}
+      <div className="stock-v2" style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+        {/* ── Bandeau de lot de republications (2026-08-07, validé Nico ;
+            remonté en tête le 27/08). Visible SEULEMENT s'il reste du
+            non-terminal (repubBandeau null sinon). Les chips « à relancer » /
+            « arrêtées » filtrent la liste ; re-tap = retire le filtre. */}
+        {repubBandeau&&(
+          <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer+repubBandeau.arretees>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"11px 14px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              {/* Progression, pas inventaire : « 1 sur 6 » se lit dans le
+                  même périmètre que « prochaine recréation » juste en
+                  dessous. */}
+              <span style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
+                🔁 {lang==='fr'
+                  ?`Republication${repubBandeau.total>1?'s':''} — ${repubBandeau.terminees} sur ${repubBandeau.total}`
+                  :`Repost${repubBandeau.total>1?'s':''} — ${repubBandeau.terminees} of ${repubBandeau.total}`}
+              </span>
+              <span style={{fontSize:12,fontWeight:600,color:"#5C6560"}}>
+                {repubBandeau.enCours} {lang==='fr'?'en cours':'in progress'}
+              </span>
+              {repubBandeau.aRelancer>0&&(
+                <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
+                  style={{border:`1px solid ${repubFiltre==='relancer'?"#B91C1C":"#FECACA"}`,background:repubFiltre==='relancer'?"#B91C1C":"#FEF2F2",color:repubFiltre==='relancer'?"#fff":"#B91C1C",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {repubBandeau.aRelancer} {lang==='fr'?'à relancer':'to relaunch'} ›
+                </button>
+              )}
+              {repubBandeau.arretees>0&&(
+                <button onClick={()=>setRepubFiltre(f=>f==='arretees'?null:'arretees')}
+                  style={{border:`1px solid ${repubFiltre==='arretees'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='arretees'?"#8A6100":"#FFF6E3",color:repubFiltre==='arretees'?"#fff":"#8A6100",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  {repubBandeau.arretees} {lang==='fr'?'arrêtée'+(repubBandeau.arretees>1?'s':''):'stopped'} ›
+                </button>
+              )}
+            </div>
+            {/* Barre de progression au niveau des JOBS (terminés / total du
+                lot) — jamais une progression interne au job en cours (un
+                cycle prend ~4 min, elle serait inventée). Le bandeau entier
+                n'existe que s'il reste du non-terminal : jamais de barre à
+                zéro sans travail en cours. */}
+            {(()=>{
+              const j=repubBandeau.enCoursJob;
+              const titre=j?(stock.find(i=>i.id===j.inventaire_id)?.title??j.title??null):null;
+              if(!titre)return null;
+              return(
+                <div style={{fontSize:11.5,color:"#5C6560",marginTop:6,lineHeight:1.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                  ⏳ {lang==='fr'?'En cours :':'Working on:'} <span style={{fontWeight:700,color:"#10201B"}}>{titre}</span>
+                </div>
+              );
+            })()}
+            <div className="repub-track">
+              <div className="repub-fill" style={{width:`${repubBandeau.total>0?Math.round(repubBandeau.terminees/repubBandeau.total*100):0}%`}}/>
+            </div>
+            {/* Orpheline PRIME sur « prochaine recréation » : annoncer une
+                heure pendant que l'ordinateur dort serait un mensonge. */}
+            {repubBandeau.orpheline?(
+              <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",marginTop:6,lineHeight:1.5,fontWeight:600}}>
+                {lang==='fr'
+                  ?"⚠️ Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
+                  :"⚠️ Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
+              </div>
+            ):repubBandeau.prochaine?(
+              <div style={{fontSize:11.5,color:"#8A8578",marginTop:5,lineHeight:1.5}}>
+                {lang==='fr'
+                  ?`Prochaine recréation vers ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell espace volontairement ses gestes de quelques minutes, comme une vraie personne.`
+                  :`Next recreation around ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell deliberately spaces its actions by a few minutes, like a real person.`}
+              </div>
+            ):null}
+            {repubFiltre&&(
+              <div style={{fontSize:11.5,color:"#8A8578",marginTop:5}}>
+                {lang==='fr'?'Liste filtrée — re-touche le compteur pour tout réafficher.':'List filtered — tap the counter again to show everything.'}
+              </div>
+            )}
+          </div>
+        )}
+        {/* ── Actualiser mon dressing — TOUT EN HAUT du contenu (27/08).
+            Monté UNE seule fois, hors de tout ternaire vide/rempli : le
+            composant porte l'état du run (sonde extension, poll de
+            progression) — une instance par branche serait démontée/remontée
+            au premier article importé, état perdu en plein suivi. */}
+        <VintedDressingSync
+          lang={lang} user={user} isNative={isNative}
+          extensionStatus={extensionStatus}
+          source={stock.length===0?'stock_empty':'stock_liste'}
+          onDone={rafraichirApresSync}
+          repubEnVol={repubVivants}
+        />
+      </div>
       <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
         <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
           {/* ── Zone de saisie IA — REPLIÉE PAR DÉFAUT (2026-08-09) ──────────
@@ -4083,167 +4165,48 @@ const StockTab = memo(function StockTab({
             </div>
           )}
           </>)}
-        </div>
-
-        <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
-          <style>{STOCK_CSS}</style>
-
-          {/* ── Bandeau de lot de republications (2026-08-07, validé Nico) ──
-              Visible SEULEMENT s'il reste du non-terminal (repubBandeau null
-              sinon). Les chips « à relancer » / « arrêtées » filtrent la
-              liste ; re-tap = retire le filtre. Aucune barre de progression
-              inventée : la seule heure affichée est next_action_after, posée
-              par l'extension (pause volontaire réelle). */}
-          {repubBandeau&&(
-            <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer+repubBandeau.arretees>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"11px 14px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                {/* Progression, pas inventaire : « 1 sur 6 » se lit dans le
-                    même périmètre que « prochaine recréation » juste en
-                    dessous. L'ancien libellé additionnait un total de la
-                    journée (9) à une file (5) dans la même phrase. */}
-                <span style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
-                  🔁 {lang==='fr'
-                    ?`Republication${repubBandeau.total>1?'s':''} — ${repubBandeau.terminees} sur ${repubBandeau.total}`
-                    :`Repost${repubBandeau.total>1?'s':''} — ${repubBandeau.terminees} of ${repubBandeau.total}`}
-                </span>
-                <span style={{fontSize:12,fontWeight:600,color:"#5C6560"}}>
-                  {repubBandeau.enCours} {lang==='fr'?'en cours':'in progress'}
-                </span>
-                {repubBandeau.aRelancer>0&&(
-                  <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
-                    style={{border:`1px solid ${repubFiltre==='relancer'?"#B91C1C":"#FECACA"}`,background:repubFiltre==='relancer'?"#B91C1C":"#FEF2F2",color:repubFiltre==='relancer'?"#fff":"#B91C1C",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                    {repubBandeau.aRelancer} {lang==='fr'?'à relancer':'to relaunch'} ›
-                  </button>
-                )}
-                {repubBandeau.arretees>0&&(
-                  <button onClick={()=>setRepubFiltre(f=>f==='arretees'?null:'arretees')}
-                    style={{border:`1px solid ${repubFiltre==='arretees'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='arretees'?"#8A6100":"#FFF6E3",color:repubFiltre==='arretees'?"#fff":"#8A6100",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                    {repubBandeau.arretees} {lang==='fr'?'arrêtée'+(repubBandeau.arretees>1?'s':''):'stopped'} ›
-                  </button>
-                )}
-              </div>
-              {/* ── Barre de progression (2026-08-27, remplace la ligne verte
-                  2.4.66) : progression au niveau des JOBS — terminés sur
-                  total du lot — jamais une progression interne au job en
-                  cours (un cycle prend ~4 min, elle serait inventée). Le
-                  bandeau entier n'existe que s'il reste du non-terminal :
-                  jamais de barre à zéro sans travail en cours. */}
-              {(()=>{
-                const j=repubBandeau.enCoursJob;
-                const titre=j?(stock.find(i=>i.id===j.inventaire_id)?.title??j.title??null):null;
-                if(!titre)return null;
-                return(
-                  <div style={{fontSize:11.5,color:"#5C6560",marginTop:6,lineHeight:1.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                    ⏳ {lang==='fr'?'En cours :':'Working on:'} <span style={{fontWeight:700,color:"#10201B"}}>{titre}</span>
-                  </div>
-                );
-              })()}
-              <div className="repub-track">
-                <div className="repub-fill" style={{width:`${repubBandeau.total>0?Math.round(repubBandeau.terminees/repubBandeau.total*100):0}%`}}/>
-              </div>
-              {/* Orpheline PRIME sur « prochaine recréation » : annoncer une
-                  heure pendant que l'ordinateur dort serait un mensonge. La
-                  phrase rassure ET donne le geste — jamais « en panne ». */}
-              {repubBandeau.orpheline?(
-                <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",marginTop:6,lineHeight:1.5,fontWeight:600}}>
-                  {lang==='fr'
-                    ?"⚠️ Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
-                    :"⚠️ Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
-                </div>
-              ):repubBandeau.prochaine?(
-                <div style={{fontSize:11.5,color:"#8A8578",marginTop:5,lineHeight:1.5}}>
-                  {lang==='fr'
-                    ?`Prochaine recréation vers ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell espace volontairement ses gestes de quelques minutes, comme une vraie personne.`
-                    :`Next recreation around ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell deliberately spaces its actions by a few minutes, like a real person.`}
-                </div>
-              ):null}
-              {repubFiltre&&(
-                <div style={{fontSize:11.5,color:"#8A8578",marginTop:5}}>
-                  {lang==='fr'?'Liste filtrée — re-touche le compteur pour tout réafficher.':'List filtered — tap the counter again to show everything.'}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Import du dressing Vinted — EN TÊTE de la liste (2026-08-05) :
-              c'est le premier geste d'un nouvel utilisateur, il ne doit pas
-              scroller pour le trouver. Monté UNE seule fois, HORS du ternaire
-              vide/rempli d'EN STOCK : le composant porte l'état du run (sonde
-              extension, poll de progression) — une instance par branche serait
-              démontée/remontée au premier article importé, état perdu en plein
-              suivi. Inventaire vide : le séparateur « OU » le présente comme
-              une alternative à la saisie manuelle juste au-dessus, pas comme
-              le chemin principal. */}
-          {/* (Masquage bêta du 03/08 retiré le 06/08 : la 0.5.0 est servie
-              par le CWS — le bloc est rendu pour tout le monde, la garde de
-              capacité vit dans VintedDressingSync / SYNC_VERSION_MIN.) */}
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            {stock.length===0&&(
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-                <span style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.07em",flexShrink:0}}>
-                  {lang==='fr'?'OU':'OR'}
-                </span>
-                <div style={{flex:1,height:1,background:"rgba(0,0,0,0.08)"}}/>
-              </div>
-            )}
-            <VintedDressingSync
-              lang={lang} user={user} isNative={isNative}
-              extensionStatus={extensionStatus}
-              source={stock.length===0?'stock_empty':'stock_liste'}
-              onDone={rafraichirApresSync}
-              repubEnVol={repubVivants}
-            />
-          </div>
-
-          {/* ── Import / Export Excel — OUVERT À TOUS (2026-08-09) ──────────
-              La barre d'outils était gatée sur isPremium ; les comptes
-              gratuits recevaient à la place une carte d'upsell intitulée
-              « 📊 Import & Export Excel — Premium », cliquable vers la modale
-              de plans. La fonction n'a pourtant AUCUN verrou serveur :
-              handleImportFile et handleExport sont 100 % client (XLSX lu et
-              écrit dans le navigateur, aucune Edge Function, aucune RPC). Ce
-              ternaire ÉTAIT le verrou, et le suffixe « — Premium » du titre
-              le dernier endroit qui prétendait le contraire.
-              Un seul bloc désormais, identique pour tout le monde.
-              ── Resserré et rhabillé le 2026-08-09 (2ᵉ passe) ────────────────
-              La carte faisait ~110 px de haut pour deux boutons : titre 13 px,
-              sous-titre, puis une rangée de pastilles à 📥/📤. Les émojis, que
-              chaque OS rend à sa façon (gros blocs colorés sur iOS), la
-              dataient à eux seuls. Désormais : une tuile d'icône SVG comme les
-              autres cartes, textes resserrés, pastilles compactes — ~62 px,
-              soit presque deux fois moins, sans rien retirer. Le sous-titre
-              reste, à la demande de Nico. */}
-          <div style={{background:"#fff",borderRadius:12,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-            <div style={{flexShrink:0,width:30,height:30,borderRadius:9,background:"rgba(47,158,144,0.10)",display:"flex",alignItems:"center",justifyContent:"center",color:"#1B6E62"}}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3v7"/><path d="m6 7.5 3 3 3-3"/><path d="M18 13V6"/><path d="m15 8.5 3-3 3 3"/><path d="M3 17v1a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-1"/></svg>
-            </div>
-            <div style={{flex:1,minWidth:200}}>
-              <div style={{fontSize:12.5,fontWeight:700,color:C.text,lineHeight:1.3}}>{t('importExcel')}</div>
-              <div style={{fontSize:10.5,color:"#8A8578",lineHeight:1.4,marginTop:1}}>{t('importDesc')}</div>
-            </div>
+          {/* ── Import / Export Excel — replié DANS « Ajouter un article »
+              (2026-08-27) : le bloc autonome en bas d'écran est SUPPRIMÉ,
+              remplacé par cette rangée discrète sous « Ajouter manuellement ».
+              Mêmes gestes, mêmes gardes qu'avant (note du 2026-08-09 :
+              handleImportFile / handleExport sont 100 % client, aucun verrou
+              serveur, ouvert à tous) — déplacé et réduit, logique intacte. */}
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",paddingTop:2,borderTop:"1px solid rgba(0,0,0,0.05)"}}>
+            <span style={{flex:1,minWidth:0,fontSize:11.5,fontWeight:600,color:"#8A8578",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={t('importDesc')}>
+              {t('importExcel')}
+            </span>
             <input ref={importRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={handleImportFile}/>
-            {/* Les deux boutons forment UN groupe : sans lui, en 390 px,
-                « Importer » restait collé au titre et « Exporter » tombait seul
-                à la ligne (vu au harnais). Ils passent à la ligne ensemble. */}
+            {/* Les deux boutons forment UN groupe : ils passent à la ligne
+                ensemble (leçon du harnais 390 px). */}
             <div style={{display:"flex",gap:6,flexShrink:0}}>
-              <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 11px",background:"#E7F3F0",color:"#1B6E62",border:"1px solid #2F9E9033",borderRadius:99,fontSize:11.5,fontWeight:700,cursor:"pointer",transition:"background 0.15s",whiteSpace:"nowrap",fontFamily:"inherit"}}
+              <button onClick={()=>importRef.current?.click()} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",background:"#E7F3F0",color:"#1B6E62",border:"1px solid #2F9E9033",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",transition:"background 0.15s",whiteSpace:"nowrap",fontFamily:"inherit"}}
                 onMouseEnter={e=>e.currentTarget.style.background="#DCEEEA"}
                 onMouseLeave={e=>e.currentTarget.style.background="#E7F3F0"}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M4 19h16"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v11"/><path d="m7.5 10 4.5 4 4.5-4"/><path d="M4 19h16"/></svg>
                 {t('importer')}
               </button>
-              <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:5,padding:"6px 11px",background:"#F2F0E9",color:"#6B7A75",border:"1px solid #E7E3D8",borderRadius:99,fontSize:11.5,fontWeight:700,cursor:"pointer",transition:"background 0.15s",whiteSpace:"nowrap",fontFamily:"inherit"}}
+              <button onClick={handleExport} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",background:"#F2F0E9",color:"#6B7A75",border:"1px solid #E7E3D8",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",transition:"background 0.15s",whiteSpace:"nowrap",fontFamily:"inherit"}}
                 onMouseEnter={e=>e.currentTarget.style.background="#EAE7DD"}
                 onMouseLeave={e=>e.currentTarget.style.background="#F2F0E9"}
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 14V3"/><path d="m7.5 7 4.5-4 4.5 4"/><path d="M4 19h16"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 14V3"/><path d="m7.5 7 4.5-4 4.5 4"/><path d="M4 19h16"/></svg>
                 {t('exporter')}
               </button>
             </div>
             {importMsg&&<div style={{width:"100%",fontSize:11.5,color:C.green,fontWeight:600,marginTop:1}}>{importMsg}</div>}
           </div>
+        </div>
+
+        <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
+          <style>{STOCK_CSS}</style>
+
+          {/* ── Réordonnancement du 2026-08-27 (hiérarchie Nico) ─────────────
+              Le bandeau de lot de republications et la carte « Actualiser mon
+              dressing » vivaient ICI, en tête de liste — remontés TOUT EN
+              HAUT de l'écran, au-dessus de la grille (avant même la carte
+              « Ajouter un article »). L'Import/Export Excel, lui, est replié
+              DANS la carte « Ajouter un article ». Rien d'autre n'a bougé. */}
 
           {/* ── Barre de recherche + Filtres type ──
               Masquée tant qu'il n'y a RIEN à chercher (2026-08-09) : sur un
