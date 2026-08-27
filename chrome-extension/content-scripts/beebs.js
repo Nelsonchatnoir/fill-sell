@@ -2133,13 +2133,14 @@ async function urlToFile(url, index) {
     throw new Error(
       `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
       "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
-      "Regénérer l'annonce depuis l'app rapatrie les photos, puis relancer la publication."
+      "FillSell la rapatrie automatiquement et relance la publication sous quelques minutes — rien à payer, rien à refaire. " +
+      "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
     );
   }
   if (!res.ok) {
     throw new Error(
       `La photo ${index + 1} de l'annonce est indisponible (HTTP ${res.status}). ` +
-      "Regénérer l'annonce depuis l'app puis relancer la publication."
+      "Réessaie dans quelques minutes ; si ça persiste, remplace cette photo depuis la fiche de l'article dans l'app."
     );
   }
   const blob = await res.blob();

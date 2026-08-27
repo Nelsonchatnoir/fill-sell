@@ -804,37 +804,56 @@ serve(async (req) => {
     if (externes.length) {
       const MAX_OCTETS_PAR_PHOTO = 10 * 1024 * 1024;
       const REHOST_TIMEOUT_MS = 15_000;
+      // Retentatives (bug 27/08, job 94cbe6d9 « Plateau vintage ») : un HTTP 520
+      // transitoire du Storage à l'UPLOAD laissait la photo sur le CDN en une
+      // seule tentative silencieuse — la publication échouait 10 min plus tard
+      // sur la page de dépôt. On ne retente que les échecs TRANSITOIRES
+      // (réseau, timeout, 5xx/429/408, upload Storage) ; les refus permanents
+      // (pas une image, taille hors bornes, 404…) sortent au premier tour.
+      const REHOST_TENTATIVES = 3;
       const tsRehost = Date.now();
       const remplacements = new Map<string, string>();
       for (let i = 0; i < externes.length; i++) {
         const src = externes[i];
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), REHOST_TIMEOUT_MS);
-        try {
-          const resp = await fetch(src, { signal: ctl.signal });
-          if (!resp.ok) { console.error(`[generate-listing] rehost photo ${i}: HTTP ${resp.status}`); continue; }
-          const bytes = new Uint8Array(await resp.arrayBuffer());
-          if (!bytes.byteLength || bytes.byteLength > MAX_OCTETS_PAR_PHOTO) {
-            console.error(`[generate-listing] rehost photo ${i}: taille hors bornes (${bytes.byteLength} octets)`);
-            continue;
+        for (let tentative = 1; tentative <= REHOST_TENTATIVES; tentative++) {
+          const ctl = new AbortController();
+          const timer = setTimeout(() => ctl.abort(), REHOST_TIMEOUT_MS);
+          let transitoire = false;
+          try {
+            const resp = await fetch(src, { signal: ctl.signal });
+            if (!resp.ok) {
+              transitoire = resp.status >= 500 || resp.status === 429 || resp.status === 408;
+              console.error(`[generate-listing] rehost photo ${i} (${tentative}/${REHOST_TENTATIVES}): HTTP ${resp.status}`);
+            } else {
+              const bytes = new Uint8Array(await resp.arrayBuffer());
+              const contentType = resp.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
+              if (!bytes.byteLength || bytes.byteLength > MAX_OCTETS_PAR_PHOTO) {
+                console.error(`[generate-listing] rehost photo ${i}: taille hors bornes (${bytes.byteLength} octets)`);
+              } else if (!contentType.startsWith("image/")) {
+                console.error(`[generate-listing] rehost photo ${i}: pas une image (${contentType})`);
+              } else {
+                const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
+                // ts dans le chemin : une même URL re-tentée plus tard ne s'écrase pas.
+                const path = `${user.id}/rehosted/${inventaire_id ?? "adhoc"}/${tsRehost}_${i}.${ext}`;
+                const { error: upErr } = await adminClient.storage
+                  .from(BUCKET)
+                  .upload(path, bytes, { contentType, upsert: true });
+                if (upErr) {
+                  transitoire = true; // le cas réel du 27/08 : 520 Cloudflare côté Storage
+                  console.error(`[generate-listing] rehost photo ${i} (${tentative}/${REHOST_TENTATIVES}): upload — ${upErr.message}`);
+                } else {
+                  remplacements.set(src, adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl);
+                }
+              }
+            }
+          } catch (e) {
+            transitoire = true;
+            console.error(`[generate-listing] rehost photo ${i} (${tentative}/${REHOST_TENTATIVES}):`, (e as Error)?.name === "AbortError" ? `timeout ${REHOST_TIMEOUT_MS / 1000}s` : e);
+          } finally {
+            clearTimeout(timer);
           }
-          const contentType = resp.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
-          if (!contentType.startsWith("image/")) {
-            console.error(`[generate-listing] rehost photo ${i}: pas une image (${contentType})`);
-            continue;
-          }
-          const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
-          // ts dans le chemin : une même URL re-tentée plus tard ne s'écrase pas.
-          const path = `${user.id}/rehosted/${inventaire_id ?? "adhoc"}/${tsRehost}_${i}.${ext}`;
-          const { error: upErr } = await adminClient.storage
-            .from(BUCKET)
-            .upload(path, bytes, { contentType, upsert: true });
-          if (upErr) { console.error(`[generate-listing] rehost photo ${i}: upload — ${upErr.message}`); continue; }
-          remplacements.set(src, adminClient.storage.from(BUCKET).getPublicUrl(path).data.publicUrl);
-        } catch (e) {
-          console.error(`[generate-listing] rehost photo ${i}:`, (e as Error)?.name === "AbortError" ? `timeout ${REHOST_TIMEOUT_MS / 1000}s` : e);
-        } finally {
-          clearTimeout(timer);
+          if (remplacements.has(src) || !transitoire) break;
+          if (tentative < REHOST_TENTATIVES) await new Promise((r) => setTimeout(r, 400 * tentative));
         }
       }
       if (remplacements.size) {
@@ -866,6 +885,12 @@ serve(async (req) => {
             }
           }
         }
+      }
+      if (remplacements.size < externes.length) {
+        // Rapatriement INCOMPLET malgré les retentatives : trace en error (les
+        // console.log se noient) — le balayage handler-watch rapatriera les
+        // restantes avant/à la publication (filet du 27/08).
+        console.error(`[generate-listing] rehost INCOMPLET: ${externes.length - remplacements.size}/${externes.length} photo(s) encore sur le CDN (inventaire ${inventaire_id ?? "absent"})`);
       }
       console.log(`[generate-listing] rehost: ${remplacements.size}/${externes.length} photo(s) CDN re-hébergée(s) (inventaire ${inventaire_id ?? "absent"})`);
     }

@@ -110,6 +110,75 @@ const fileFor = (platform: string) =>
 const esc = (s: unknown) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
+// ── Rapatriement des photos CDN (filet publication, 2026-08-27) ─────────────
+// Mêmes gardes que generate-listing/republish-capture-photos : hôtes Vinted
+// FERMÉS (jamais un proxy ouvert), taille plafonnée, timeout, séquentiel.
+const PHOTO_BUCKET = "listing-photos";
+const PHOTO_MAX_OCTETS = 10 * 1024 * 1024;
+const PHOTO_TIMEOUT_MS = 15_000;
+
+function estCdnVinted(u: unknown): u is string {
+  if (typeof u !== "string") return false;
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:" && /(^|\.)vinted\.(net|fr|com)$/i.test(url.hostname);
+  } catch { return false; }
+}
+
+// Les photos d'un job coexistent en deux formes : strings nues et objets
+// {type, url} — même frontière que le réalignement de generate-listing.
+// deno-lint-ignore no-explicit-any
+const urlDePhoto = (p: any): string | null =>
+  typeof p === "string" ? p : (p && typeof p === "object" && typeof p.url === "string" ? p.url : null);
+
+// Télécharge une photo CDN et l'upload dans notre bucket. Deux tentatives sur
+// échec TRANSITOIRE (réseau, timeout, 5xx/429/408, upload Storage — le HTTP
+// 520 du 27/08) ; un refus permanent (404, pas une image…) sort au premier
+// tour. Retourne l'URL publique, ou null.
+// deno-lint-ignore no-explicit-any
+async function rapatriePhoto(supabase: any, src: string, dest: string): Promise<string | null> {
+  for (let tentative = 1; tentative <= 2; tentative++) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), PHOTO_TIMEOUT_MS);
+    let transitoire = false;
+    try {
+      const resp = await fetch(src, { signal: ctl.signal });
+      if (!resp.ok) {
+        transitoire = resp.status >= 500 || resp.status === 429 || resp.status === 408;
+        console.error(`[handler-watch] rapatriement photo: HTTP ${resp.status} (${src.slice(0, 90)})`);
+      } else {
+        const bytes = new Uint8Array(await resp.arrayBuffer());
+        const contentType = resp.headers.get("content-type")?.split(";")[0]?.trim() || "image/jpeg";
+        if (!bytes.byteLength || bytes.byteLength > PHOTO_MAX_OCTETS) {
+          console.error(`[handler-watch] rapatriement photo: taille hors bornes (${bytes.byteLength} octets)`);
+        } else if (!contentType.startsWith("image/")) {
+          console.error(`[handler-watch] rapatriement photo: pas une image (${contentType})`);
+        } else {
+          const ext = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
+          const path = `${dest}.${ext}`;
+          const { error: upErr } = await supabase.storage
+            .from(PHOTO_BUCKET)
+            .upload(path, bytes, { contentType, upsert: true });
+          if (upErr) {
+            transitoire = true;
+            console.error(`[handler-watch] rapatriement photo: upload — ${upErr.message}`);
+          } else {
+            return supabase.storage.from(PHOTO_BUCKET).getPublicUrl(path).data.publicUrl as string;
+          }
+        }
+      }
+    } catch (e) {
+      transitoire = true;
+      console.error("[handler-watch] rapatriement photo:", (e as Error)?.name === "AbortError" ? `timeout ${PHOTO_TIMEOUT_MS / 1000}s` : e);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!transitoire) return null;
+    if (tentative === 1) await new Promise((r) => setTimeout(r, 400));
+  }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok");
 
@@ -445,6 +514,123 @@ serve(async (req) => {
     console.error("[handler-watch] règlement des needs_user à échéance:", (e as Error)?.message ?? e);
   }
 
+  // ── Photos encore HORS FillSell au moment de publier (2026-08-27) ─────────
+  // Cas réel : job leboncoin 94cbe6d9 (« Plateau vintage », Sandrine) —
+  // generate-listing avait rapatrié 7 photos sur 8 (HTTP 520 Storage
+  // transitoire, une seule tentative, `continue` silencieux), la restante sur
+  // images1.vinted.net a fait échouer la publication sur la page de dépôt
+  // (CORS de la page hôte, urlToFile). Filet SERVEUR, deux mailles :
+  //   - jobs publish 'pending' : rapatrier AVANT que l'extension ne les prenne
+  //     (utile surtout quand elle est hors ligne au moment du clic) ;
+  //   - jobs publish 'failed' < 7 j portant la signature « hors FillSell »
+  //     (message urlToFile des content scripts) : rapatrier PUIS ré-armer en
+  //     'pending' quand TOUTES les photos sont à nous — JAMAIS de regénération
+  //     demandée à l'utilisateur (6 Pépites pour notre bug). Les triggers de
+  //     solde sont idempotents par reservation_settled_at : un ré-armement ne
+  //     re-débite ni ne re-rembourse rien.
+  // BORNÉ à 2 balayages par job (platform_fields.photo_rehost_sweeps) : une
+  // URL CDN morte (annonce Vinted supprimée) ne boucle pas. inventaire.photos
+  // est réaligné URL par URL (strings nues ET objets {type,url}, structure
+  // préservée) — on ne touche à AUCUNE autre annonce, jamais aux publiées.
+  // Écritures en compare-and-swap sur le statut lu + .select() : si
+  // l'extension a pris le job entre-temps, on n'écrase rien (le job refera
+  // surface en 'failed' au tour suivant). Best-effort intégral.
+  let photosJobsRapatries = 0;
+  let photosJobsRearmes = 0;
+  try {
+    const seuil7jIso = new Date(now - 7 * 24 * 3600_000).toISOString();
+    const [{ data: enAttente }, { data: rates }] = await Promise.all([
+      supabase
+        .from("cross_post_jobs")
+        .select("id, user_id, inventaire_id, status, photos, platform_fields")
+        .eq("action", "publish")
+        .eq("status", "pending"),
+      supabase
+        .from("cross_post_jobs")
+        .select("id, user_id, inventaire_id, status, photos, platform_fields")
+        .eq("action", "publish")
+        .eq("status", "failed")
+        .gte("created_at", seuil7jIso)
+        .ilike("error", "%hors FillSell%"),
+    ]);
+    // deno-lint-ignore no-explicit-any
+    const candidats = ([...(enAttente ?? []), ...(rates ?? [])] as any[])
+      .filter((j) => Array.isArray(j.photos) && (j.photos as unknown[]).some((p) => estCdnVinted(urlDePhoto(p))));
+    for (const j of candidats) {
+      const pf = { ...(j.platform_fields ?? {}) };
+      const balayages = Number(pf.photo_rehost_sweeps ?? 0);
+      if (!Number.isFinite(balayages) || balayages >= 2) continue;
+      pf.photo_rehost_sweeps = balayages + 1;
+      const externes = [...new Set((j.photos as unknown[]).map(urlDePhoto).filter(estCdnVinted))] as string[];
+      const remplacements = new Map<string, string>();
+      for (let i = 0; i < externes.length; i++) {
+        const nv = await rapatriePhoto(
+          supabase,
+          externes[i],
+          `${j.user_id}/rehosted/${j.inventaire_id ?? "job"}/${now}_watch_${i}`,
+        );
+        if (nv) remplacements.set(externes[i], nv);
+      }
+      // deno-lint-ignore no-explicit-any
+      const maj = (p: any) => {
+        const u = urlDePhoto(p);
+        const nv = u ? remplacements.get(u) : undefined;
+        if (!nv) return p;
+        return typeof p === "string" ? nv : { ...p, url: nv };
+      };
+      const complet = externes.length > 0 && remplacements.size === externes.length;
+      // deno-lint-ignore no-explicit-any
+      const patch: any = { photos: (j.photos as unknown[]).map(maj), platform_fields: pf };
+      if (j.status === "failed" && complet) {
+        patch.status = "pending";
+        patch.error =
+          "Reprise automatique : une photo de l'annonce était restée hébergée hors FillSell " +
+          "(article importé du dressing). Elle a été rapatriée et la publication repart toute seule — rien à faire.";
+      }
+      const { data: majJob, error: upJobErr } = await supabase
+        .from("cross_post_jobs")
+        .update(patch)
+        .eq("id", j.id)
+        .eq("status", j.status)
+        .select("id");
+      if (upJobErr) {
+        console.error(`[handler-watch] job ${j.id}: photos rapatriées mais update refusé — ${upJobErr.message}`);
+      } else if (!majJob?.length) {
+        console.log(`[handler-watch] job ${j.id}: statut changé entre-temps, rien écrit (tour suivant)`);
+      } else {
+        photosJobsRapatries++;
+        if (patch.status === "pending") {
+          photosJobsRearmes++;
+          console.log(`[handler-watch] job ${j.id}: photo(s) CDN rapatriée(s), failed → pending (sans regénération)`);
+        }
+      }
+      // Réalignement inventaire.photos, URL par URL (mêmes règles que
+      // generate-listing) — même si le job n'a pas pu être écrit : la copie
+      // est faite, autant que la fiche pointe chez nous.
+      if (remplacements.size && j.inventaire_id) {
+        const { data: ligne } = await supabase
+          .from("inventaire")
+          .select("photos")
+          .eq("id", j.inventaire_id)
+          .eq("user_id", j.user_id)
+          .maybeSingle();
+        if (Array.isArray(ligne?.photos)) {
+          const nouvelles = (ligne.photos as unknown[]).map(maj);
+          if (JSON.stringify(nouvelles) !== JSON.stringify(ligne.photos)) {
+            const { error: invErr } = await supabase
+              .from("inventaire")
+              .update({ photos: nouvelles })
+              .eq("id", j.inventaire_id)
+              .eq("user_id", j.user_id);
+            if (invErr) console.error(`[handler-watch] inventaire ${j.inventaire_id} non réaligné — ${invErr.message}`);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] rapatriement photos hors FillSell:", (e as Error)?.message ?? e);
+  }
+
   // Regroupement par (plateforme, signature) en excluant les refus légitimes.
   type Cluster = {
     platform: string;
@@ -483,7 +669,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -538,7 +724,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -592,7 +778,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
     headers: { "Content-Type": "application/json" },
   });
 });
