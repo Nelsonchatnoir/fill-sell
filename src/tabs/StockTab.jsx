@@ -216,13 +216,25 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .gbrand{height:14px;line-height:14px;font-size:10.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 /* Rangée de badges/pastilles — rendue seulement quand elle a du contenu.
    UNE ligne fixe, défilement horizontal discret si plusieurs chips débordent
-   (chaque chip garde son ellipsis et son tap : rien n'est perdu).
-   PAS de margin-top:auto ici (3e passe 27/08) : le vide résiduel vit sur
-   .gactions seul — un seul auto, un seul endroit, juste au-dessus des
-   boutons. */
+   (chaque chip garde son ellipsis et son tap : rien n'est perdu). */
 .stock-v2 .gbody>.icons{height:21px;flex-wrap:nowrap;align-items:center;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
 .stock-v2 .gbody>.icons::-webkit-scrollbar{display:none;}
 .stock-v2 .gbody>.icons .micon{flex:0 0 auto;}
+/* ── BLOC BAS ANCRÉ (4e passe 27/08, retour d'écran mobile) : la pastille
+   « en ligne depuis » doit être au MÊME endroit sur toutes les cartes, quel
+   que soit le nombre de lignes du titre — donc tout le bloc bas (saisie
+   « + prix d'achat », avertissement de lot, pastilles, boutons) est ancré en
+   bas de carte, et le vide résiduel tombe en UN seul endroit : entre le
+   texte (titre/marque) et ce bloc. Mécanique : chaque premier membre présent
+   du bloc porte margin-top:auto, et tout membre PRÉCÉDÉ d'un autre revient à
+   la marge normale — jamais deux auto actifs (ils se partageraient le vide
+   et recréeraient un trou au milieu). */
+.stock-v2 .gbody>.pa-line{margin-top:auto;}
+.stock-v2 .gbody>.meta{margin-top:auto;}
+.stock-v2 .gbody>.pa-line~.meta{margin-top:0;}
+.stock-v2 .gbody>.pa-line~.icons,.stock-v2 .gbody>.meta~.icons{margin-top:0;}
+.stock-v2 .gbody>.pa-line~.gactions,.stock-v2 .gbody>.meta~.gactions,.stock-v2 .gbody>.icons~.gactions{margin-top:0;}
+.stock-v2 .gbody>.icons{margin-top:auto;}
 .stock-v2 .gactions{margin-top:auto;display:flex;flex-direction:column;gap:4px;padding-top:2px;}
 .stock-v2 .gactions .btn-publier{padding:7px 0;font-size:12px;}
 .stock-v2 .gactions .btn-vendre{padding:6px 4px;}
