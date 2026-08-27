@@ -380,7 +380,12 @@ export async function relancerRepublishVinted(supabase, { job }) {
   return { success: true, recapture: (data?.republish_step ?? 'a_capturer') !== 'deleted' };
 }
 
-const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at';
+// vinted_login : trace d'identité du run (migration 20260814110000, appliquée
+// en prod — colonne sûre à sélectionner ; PostgREST = tout ou rien). Sert à
+// afficher « Dressing synchronisé : @pseudo » sur la carte de sync. NULL sur
+// les runs d'avant la trace : la carte n'affiche alors rien (jamais de libellé
+// vide, jamais « inconnu »).
+const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at,vinted_login';
 
 // RLS filtre déjà sur auth.uid() ; le `.eq('user_id')` explicite reste pour que
 // la requête dise ce qu'elle veut, et pour ne pas dépendre d'une policy.
@@ -426,7 +431,7 @@ export async function lireDerniereSyncReussie(userId) {
   if (!userId) return null;
   const { data, error } = await supabase
     .from('vinted_sync_runs')
-    .select('id,finished_at,declencheur')
+    .select('id,finished_at,declencheur,vinted_login')
     .eq('user_id', userId)
     .eq('kind', 'dressing')
     .eq('status', 'done')

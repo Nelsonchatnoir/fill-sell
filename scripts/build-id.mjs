@@ -715,7 +715,22 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Vérifié avant commit : rebuild depuis main fusionné diffé contre
 // l arbre 0.6.9 exact servi par le CWS — delta = F1 réduit seul.
 // Committé avec GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-08-27T21:30:00Z';
+// 2026-08-27T22:20:00Z = SYNC MONO-COMPTE Vinted (décision Nico 27/08 soir) :
+// le marquage des disparitions ne travaille que sur LE compte connecté dans
+// Chrome, établi par la trace d'identité des runs. Référent = dernier run
+// 'done' ; identité inconnue/différente ou run étranger intercalé ⇒ sync
+// normale mais AUCUN marquage (motif en [note]) ; candidats bornés aux
+// articles re-vus depuis le référent (last_synced_at) — les inventaires
+// multi-comptes déjà empilés restent faux mais FIGÉS (décision 25/08).
+// Corrige au passage la lecture des candidats : PAGINÉE (PostgREST tronquait
+// à 1000 — fripe2base affichait connus=1000 PILE le 27/08, plafond de la
+// garde (e) calculé sur un compte tronqué). Côté app (2.4.71, OTA) : la carte
+// affiche « Dressing synchronisé : @pseudo » (rien si trace absente), bilan
+// sobre au changement de compte, retrait de l'UI d'épinglage morte.
+// ⚠️ HORS zip 0.6.9 : part dans le paquet SUIVANT (aucun paquet dans cette
+// passe, validation de la base d'abord). EXTENSION_MIN_BUILD inchangé.
+// Committé avec GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-27T22:20:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

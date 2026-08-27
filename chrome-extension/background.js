@@ -7185,10 +7185,86 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   }
   if (vusCetteSync.size > 0 && !motifSautDisparitions) {
     try {
-      const connus = await restRequest(
-        `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null&select=id,vinted_item_id`,
-        token, { headers: { Prefer: "return=representation" } },
-      );
+      // ── SYNC MONO-COMPTE (2026-08-27, décision Nico — remplace le scoping
+      // par attribution du F1 d'origine) : le marquage des disparitions ne
+      // travaille que sur LE compte connecté dans Chrome, établi par la trace
+      // d'identité des runs (vinted_user_id, écrite plus haut). Règle non
+      // négociable, qui prime sur tout : un article vu sous un compte n'est
+      // JAMAIS marqué disparu par le relevé d'un autre compte — et quand on
+      // ne peut pas le GARANTIR, on ne marque pas (échec FERMÉ, doctrine des
+      // gardes (a)-(e) : c'est ce mécanisme qui a produit les 862 fausses
+      // disparitions refusées chez fripe2base et les 99 de Sean Demet,
+      // 7 nuits d'affilée). On ne marque que si, cumulativement :
+      //   1. le dernier run 'done' (le RÉFÉRENT) portait la MÊME identité.
+      //      Identité inconnue (run d'avant la trace, PATCH raté) ou
+      //      différente (compte changé dans Chrome) ⇒ la sync elle-même
+      //      continue NORMALEMENT (multi-boutiques : import et mises à jour
+      //      comme d'habitude), seul le marquage est sauté, motif en [note] ;
+      //   2. AUCUN run d'un autre compte (ou non identifié) ayant écrit des
+      //      articles (items_vus > 0) ne s'est produit depuis le référent —
+      //      fenêtre élargie de 30 min avant son départ (horloges client/
+      //      serveur) : ses écritures rendraient le périmètre invérifiable ;
+      //   3. seuls les articles RE-VUS depuis le départ du référent
+      //      (last_synced_at ≥ référent − 5 min) sont candidats. Les lignes
+      //      plus anciennes — dont les inventaires multi-comptes déjà empilés
+      //      (décision du 25/08 : on ne répare rien) — sont STRUCTURELLEMENT
+      //      immarquables : faux mais figé, jamais éteint par un autre compte.
+      // Coût assumé : un run de rodage par compte (premier run tracé = pas de
+      // référent identifié = pas de marquage ce run-là), et les vendeurs qui
+      // alternent leurs boutiques ne sont plus marqués automatiquement — la
+      // revue des disparus reste leur chemin.
+      let fenetreConnusIso = null;
+      try {
+        const recents = await restRequest(
+          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&id=neq.${run.id}` +
+          `&order=started_at.desc&limit=15&select=id,status,vinted_user_id,vinted_login,started_at,items_vus`,
+          token, { headers: { Prefer: "return=representation" } },
+        );
+        const referent = (recents ?? []).find((r) => r.status === "done");
+        const idActuel = ident?.userId ? String(ident.userId) : null;
+        if (!idActuel) {
+          motifSautDisparitions = "identité du compte Vinted inconnue ce run : marquage impossible à scoper";
+        } else if (!referent) {
+          motifSautDisparitions = "aucun run terminé en référence (première sync) : rien à marquer ce run";
+        } else if (!referent.vinted_user_id) {
+          motifSautDisparitions = "compte du dernier run inconnu (run antérieur à la trace d'identité) : rodage, marquage au prochain run";
+        } else if (String(referent.vinted_user_id) !== idActuel) {
+          const ancien = referent.vinted_login ? `@${referent.vinted_login}` : `le compte ${referent.vinted_user_id}`;
+          const nouveau = ident.login ? `@${ident.login}` : `le compte ${idActuel}`;
+          motifSautDisparitions = `changement de compte Vinted (${ancien} → ${nouveau}) : sync normale, aucune disparition marquée`;
+        } else {
+          const bordure = Date.parse(referent.started_at) - 30 * 60_000;
+          const intercale = (recents ?? []).find((r) =>
+            r.id !== referent.id && Date.parse(r.started_at) >= bordure &&
+            (Number(r.items_vus) || 0) > 0 &&
+            (!r.vinted_user_id || String(r.vinted_user_id) !== idActuel));
+          if (intercale) {
+            motifSautDisparitions = "run d'un autre compte (ou non identifié) depuis le dernier relevé : périmètre invérifiable, aucun marquage";
+          } else {
+            fenetreConnusIso = new Date(Date.parse(referent.started_at) - 5 * 60_000).toISOString();
+          }
+        }
+      } catch (e) {
+        motifSautDisparitions = `historique des runs illisible (${String(e?.message ?? e).slice(0, 120)}) : aucun marquage`;
+      }
+      // Lecture PAGINÉE des candidats (PostgREST tronque à 1000 sans prévenir —
+      // fripe2base affichait connus = 1000 PILE le 27/08 : le plafond de la
+      // garde (e) était calculé sur un compte tronqué), bornée par la fenêtre
+      // mono-compte (règle 3 ci-dessus).
+      const connus = [];
+      if (!motifSautDisparitions && fenetreConnusIso) {
+        const PAGE_CONNUS = 1000;
+        for (let offset = 0; ; offset += PAGE_CONNUS) {
+          const page = await restRequest(
+            `inventaire?user_id=eq.${userId}&origine=eq.vinted_sync&disparu_le=is.null` +
+            `&last_synced_at=gte.${encodeURIComponent(fenetreConnusIso)}` +
+            `&select=id,vinted_item_id&order=id.asc&limit=${PAGE_CONNUS}&offset=${offset}`,
+            token, { headers: { Prefer: "return=representation" } },
+          );
+          connus.push(...(page ?? []));
+          if (!page || page.length < PAGE_CONNUS) break;
+        }
+      }
       // ── É4 (2026-08-05) : un article en cours de REPUBLICATION n'est pas
       // « disparu » — entre suppression et recréation, son absence du
       // dressing est VOULUE. Sans cette garde, une sync qui passe dans la
@@ -7197,23 +7273,25 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       // signal le plus dangereux du chantier. needs_user compris (étape
       // 'deleted' interrompue = toujours une republication vivante).
       let republishActifs = new Set();
-      try {
-        const jobsRepub = await restRequest(
-          `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
-          `&status=in.(pending,processing,needs_user)&select=platform_fields`,
-          token, { headers: { Prefer: "return=representation" } },
-        );
-        republishActifs = new Set(
-          (jobsRepub ?? []).map((j) => j.platform_fields?.vinted_item_id).filter(Boolean),
-        );
-      } catch (e) {
-        // Lecture impossible → on ne marque AUCUN disparu ce run : mieux vaut
-        // un marquage retardé qu'un faux « vendue ? » sur une republication.
-        console.warn("[sync-dressing] republish actifs illisibles — marquage des disparus sauté ce run:", e?.message ?? e);
-        republishActifs = null;
-        // Journalisé au même titre que les deux autres gardes : un run qui
-        // renonce à marquer doit être constatable en base, avec son motif.
-        motifSautDisparitions = `republications actives illisibles (${String(e?.message ?? e).slice(0, 120)})`;
+      if (!motifSautDisparitions) {
+        try {
+          const jobsRepub = await restRequest(
+            `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
+            `&status=in.(pending,processing,needs_user)&select=platform_fields`,
+            token, { headers: { Prefer: "return=representation" } },
+          );
+          republishActifs = new Set(
+            (jobsRepub ?? []).map((j) => j.platform_fields?.vinted_item_id).filter(Boolean),
+          );
+        } catch (e) {
+          // Lecture impossible → on ne marque AUCUN disparu ce run : mieux vaut
+          // un marquage retardé qu'un faux « vendue ? » sur une republication.
+          console.warn("[sync-dressing] republish actifs illisibles — marquage des disparus sauté ce run:", e?.message ?? e);
+          republishActifs = null;
+          // Journalisé au même titre que les autres gardes : un run qui
+          // renonce à marquer doit être constatable en base, avec son motif.
+          motifSautDisparitions = `republications actives illisibles (${String(e?.message ?? e).slice(0, 120)})`;
+        }
       }
       const disparus = republishActifs === null ? [] : (connus ?? []).filter((r) =>
         r.vinted_item_id && !vusCetteSync.has(r.vinted_item_id) && !republishActifs.has(r.vinted_item_id));
