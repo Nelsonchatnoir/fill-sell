@@ -283,7 +283,11 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, articles, genPric
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <PepiteIcon size={18} />
           <span style={{ fontSize: 12.5, fontWeight: 700, color: C.tealDeep }}>
-            {fr ? `${grantPrem} Pépites offertes chaque mois` : `${grantPrem} Nuggets included every month`}
+            {/* Même formulation que Pro/Business (uniformisation 27/08 soir,
+                décision Nico : « N Pépites/mois » partout — plus jamais
+                « offertes chaque mois » sur une carte et « /mois » sur
+                l'autre). */}
+            {fr ? `${grantPrem} Pépites/mois` : `${grantPrem} Nuggets/mo`}
           </span>
         </div>
         <div style={{ fontSize: 10.5, fontWeight: 600, color: C.tealDeep, opacity: 0.85, marginTop: 4, lineHeight: 1.45 }}>
@@ -390,8 +394,12 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, articles, proFa
           // Premium, seuls le grant et l'automatisation diffèrent.
           fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
              : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-          fr ? `Republication Vinted en un clic — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce, automatisable si tu l'actives`
-             : `One-tap Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing, automatable if you turn it on`,
+          // Squelette UNIFORME (27/08 soir) : « Republication Vinted <mode> —
+          // N Pépite(s) par annonce » sur les trois cartes ; seul le MODE
+          // change car c'est la vraie différence (Premium un clic, Pro
+          // automatique sur activation, Business automatique).
+          fr ? `Republication Vinted automatique si tu l'actives — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
+             : `Automatic Vinted reposting if you turn it on — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`,
           fr ? `Analyses Lens — ${lensCost} Pépites l'analyse`
              : `Lens scans — ${lensCost} Nuggets each`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
@@ -483,8 +491,11 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
           fr ? 'Stock illimité' : 'Unlimited stock',
           fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
              : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-          fr ? `Republication Vinted automatique — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce, tes annonces remontent seules dans le fil`
-             : `Automatic Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing, your listings climb back up on their own`,
+          // Squelette UNIFORME (27/08 soir) — la queue « tes annonces
+          // remontent seules dans le fil » est retirée : même phrase que les
+          // deux autres cartes, seul le mode diffère.
+          fr ? `Republication Vinted automatique — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
+             : `Automatic Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`,
           fr ? `Analyses Lens — ${lensCost} Pépites l'analyse`
              : `Lens scans — ${lensCost} Nuggets each`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
@@ -768,8 +779,8 @@ export default function ConversionModal({
                      équivalence, jamais deux quotas dans la même phrase. */
                   ? (fr ? `Passe Pro — ${grantPro} Pépites/mois (≈ ${articlesParMois(grantPro, K)} articles publiés partout)`
                         : `Go Pro — ${grantPro} Nuggets/mo (≈ ${articlesParMois(grantPro, K)} items listed everywhere)`)
-                  : (fr ? `Passe Premium — ${grantPrem} Pépites/mois incluses`
-                        : `Go Premium — ${grantPrem} Nuggets/mo included`)}
+                  : (fr ? `Passe Premium — ${grantPrem} Pépites/mois (≈ ${articlesParMois(grantPrem, K)} articles publiés partout)`
+                        : `Go Premium — ${grantPrem} Nuggets/mo (≈ ${articlesParMois(grantPrem, K)} items listed everywhere)`)}
             </button>
           </>
         )}

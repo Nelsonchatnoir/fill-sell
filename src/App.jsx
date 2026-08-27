@@ -1361,7 +1361,7 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
   const PERKS = lang === 'en'
     ? [
         { icon: '🎙️', label: 'AI Voice — Unlimited' },
-        { icon: '🪙', label: `${pepites} Nuggets included every month` },
+        { icon: '🪙', label: `${pepites} Nuggets/mo` },
         { icon: '📸', label: 'AI Lens — 6 Nuggets per scan · live market price' },
         { icon: '📦', label: 'Unlimited stock' },
         { icon: '📊', label: 'Advanced AI-powered stats' },
@@ -1369,7 +1369,7 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
       ]
     : [
         { icon: '🎙️', label: 'IA vocale — Illimité' },
-        { icon: '🪙', label: `${pepites} Pépites offertes chaque mois` },
+        { icon: '🪙', label: `${pepites} Pépites/mois` },
         { icon: '📸', label: 'Lens IA — 6 Pépites par scan · prix marché en direct' },
         { icon: '📦', label: 'Stock illimité' },
         { icon: '📊', label: 'Stats avancées analysées par IA' },

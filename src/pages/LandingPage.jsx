@@ -214,15 +214,18 @@ const PUBLISH_LINE = {
 
 const PLANS = {
   fr: {
+    // « N Pépites/mois » + republication au squelette UNIFORME — mêmes
+    // formulations que les modales de l'app (uniformisation 27/08 soir,
+    // décision Nico). Business n'a pas de carte ici (hors landing).
     free: [
-      '{FREE} Pépites incluses chaque mois',
+      '{FREE} Pépites/mois',
       "Ajout d'article à la voix",
       PUBLISH_LINE.fr,
       'Calcul de marge instantané',
       'Suivi de tes ventes',
     ],
     premium: [
-      '{PREMIUM} Pépites incluses chaque mois',
+      '{PREMIUM} Pépites/mois',
       'Stock illimité',
       PUBLISH_LINE.fr,
       'Republication Vinted en un clic',
@@ -232,10 +235,10 @@ const PLANS = {
       'Support par email',
     ],
     pro: [
-      '{PRO} Pépites incluses chaque mois',
+      '{PRO} Pépites/mois',
       'Stock illimité',
       PUBLISH_LINE.fr,
-      "Republication Vinted en un clic — automatisable si tu l'actives",
+      "Republication Vinted automatique si tu l'actives",
       'Environ {LENS_PRO} analyses Lens par mois',
       'Import & export Excel de ton stock',
       'Commandes vocales illimitées',
@@ -244,14 +247,14 @@ const PLANS = {
   },
   en: {
     free: [
-      '{FREE} Pépites included every month',
+      '{FREE} Pépites/month',
       'Voice item adding',
       PUBLISH_LINE.en,
       'Instant margin calculator',
       'Track your sales',
     ],
     premium: [
-      '{PREMIUM} Pépites included every month',
+      '{PREMIUM} Pépites/month',
       'Unlimited stock',
       PUBLISH_LINE.en,
       'One-tap Vinted reposting',
@@ -261,10 +264,10 @@ const PLANS = {
       'Email support',
     ],
     pro: [
-      '{PRO} Pépites included every month',
+      '{PRO} Pépites/month',
       'Unlimited stock',
       PUBLISH_LINE.en,
-      'One-tap Vinted reposting — automatable if you turn it on',
+      'Automatic Vinted reposting if you turn it on',
       'About {LENS_PRO} Lens scans a month',
       'Excel import & export of your stock',
       'Unlimited voice commands',

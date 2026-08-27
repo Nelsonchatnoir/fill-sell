@@ -136,12 +136,15 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
     // laissait croire à une republication gratuite ou illimitée. Seule
     // l'AUTOMATISATION distingue les paliers (Pro : opt-in ; Business :
     // automatique — même moteur É6, réel en prod), jamais le prix.
+    // Squelette UNIFORME (27/08 soir, décision Nico) : « Republication Vinted
+    // <mode> — N Pépite(s) par annonce » sur les trois paliers, queues
+    // supprimées — seul le MODE change, car c'est la vraie différence.
     isBusiness
-      ? (fr ? `Republication Vinted automatique — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce, tes annonces remontent seules dans le fil`
-            : `Automatic Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing, your listings climb back up on their own`)
+      ? (fr ? `Republication Vinted automatique — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
+            : `Automatic Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`)
       : isPro
-        ? (fr ? `Republication Vinted en un clic — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce, automatisable si tu l'actives`
-              : `One-tap Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing, automatable if you turn it on`)
+        ? (fr ? `Republication Vinted automatique si tu l'actives — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
+              : `Automatic Vinted reposting if you turn it on — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`)
         : (fr ? `Republication Vinted en un clic — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
               : `One-tap Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`),
     // Prix unitaire SEUL (2026-08-27) : « Environ N analyses par mois » ici,
@@ -232,7 +235,9 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
                   background: 'linear-gradient(120deg,#F4FFFD,#9BE8DC 55%,#F2C98A)',
                   WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
                 } : { fontSize: 12.5, fontWeight: 700, color: isPro ? '#F2C98A' : C.tealDeep }}>
-                  {fr ? `${grant} Pépites offertes chaque mois` : `${grant} Nuggets included every month`}
+                  {/* « N Pépites/mois » — même formulation que les cartes de
+                      ConversionModal (uniformisation 27/08 soir). */}
+                  {fr ? `${grant} Pépites/mois` : `${grant} Nuggets/mo`}
                 </span>
               </div>
               {/* Équivalences ALTERNATIVES d'une réserve unique (27/08) —
