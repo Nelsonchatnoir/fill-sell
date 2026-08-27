@@ -3313,15 +3313,23 @@ const StockTab = memo(function StockTab({
   }, [user?.id]);
 
   // Mode dégradé (Phase B) : plateformes en pause → badge « En pause » sur les
-  // jobs en attente concernés. Lecture TOLÉRANTE, jamais bloquante.
+  // jobs en attente concernés + bandeau en tête d'onglet (2026-08-27) dont le
+  // texte est platform_health.reason affiché TEL QUEL : il s'écrit en base,
+  // incident par incident, sans redéploiement. Lecture TOLÉRANTE, jamais
+  // bloquante — et jamais bloquante pour l'utilisateur non plus : le bandeau
+  // informe, il ne grise rien, les autres plateformes continuent.
   const [pausedPlatforms, setPausedPlatforms] = useState([]);
+  const [pausedReasons, setPausedReasons] = useState({});
   useEffect(() => {
     if (!user?.id) return;
     let alive = true;
     const lire = async () => {
       try {
-        const { data } = await supabase.from("platform_health").select("platform").eq("paused", true);
-        if (alive) setPausedPlatforms((data ?? []).map(h => h.platform));
+        const { data } = await supabase.from("platform_health").select("platform, reason").eq("paused", true);
+        if (alive) {
+          setPausedPlatforms((data ?? []).map(h => h.platform));
+          setPausedReasons(Object.fromEntries((data ?? []).map(h => [h.platform, h.reason])));
+        }
       } catch { /* jamais bloquant */ }
     };
     lire();
@@ -3593,6 +3601,29 @@ const StockTab = memo(function StockTab({
           </div>
         </div>
       )}
+      {/* ── Bandeau plateforme en pause (2026-08-27) ─────────────────────────
+          platform_health.paused = true : un bandeau PAR plateforme en pause,
+          en tête d'onglet, dont le texte est platform_health.reason affiché
+          TEL QUEL (il s'écrit en base, incident par incident, sans
+          redéploiement). Purement informatif : rien n'est grisé, rien n'est
+          bloqué — les jobs se mettent en file et repartent à la reprise. */}
+      {pausedPlatforms.map(p=>(
+        <div key={p} style={{
+          display:"flex", gap:10, alignItems:"flex-start",
+          background:"#EFF3F8", border:"1px solid #C7D6E5", borderLeft:"4px solid #64748B",
+          borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
+        }}>
+          <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>⏸️</span>
+          <div style={{fontSize:13, lineHeight:1.5, color:"#334155"}}>
+            <div style={{fontWeight:700, marginBottom:2, color:"#1E293B"}}>
+              {lang==='fr'?`${PLATFORM_LABELS[p]||p} en pause`:`${PLATFORM_LABELS[p]||p} paused`}
+            </div>
+            {pausedReasons[p]||(lang==='fr'
+              ?`Les publications ${PLATFORM_LABELS[p]||p} sont momentanément en pause. Reprise automatique dès rétablissement — rien à faire de votre côté.`
+              :`${PLATFORM_LABELS[p]||p} posting is temporarily paused. It will resume automatically — nothing you need to do.`)}
+          </div>
+        </div>
+      ))}
       {/* ── Bandeau horloge machine en retard (2026-08-15, cas Carla) ────────
           Détection detecterRetardHorloge (shared.js) sur les jobs déjà
           chargés (jobsByInventaire, poll 20 s) : processing_since (horloge

@@ -2300,7 +2300,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], redOwnedSharedKeys = null, lbcPhotoCap = null, lbcAdresseManquante = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, redOwnedSharedKeys = null, lbcPhotoCap = null, lbcAdresseManquante = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -2516,7 +2516,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
       {pausedChips.map(p => (
         <div key={p} style={{ padding:"11px 14px", background:"#EFF3F8", border:"1px solid #C7D6E5", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.5, color:"#334155", display:"flex", gap:9, alignItems:"flex-start" }}>
           <Clock size={16} color="#64748B" style={{ flexShrink:0, marginTop:1 }} />
-          <span>{tpl("stepPublishMaintenanceBanner", { platform: PLATFORM_LABELS[p] ?? p })}</span>
+          <span>{pausedReasons[p] || tpl("stepPublishMaintenanceBanner", { platform: PLATFORM_LABELS[p] ?? p })}</span>
         </div>
       ))}
 
@@ -3221,17 +3221,23 @@ export default function ListingPreviewScreen({
     !isPremium && !isPro && canToggleStock && stockCount != null && stockCount >= stockLimitCfg;
 
   // Mode dégradé (Phase B) : plateformes en pause (platform_health) → bandeau
-  // de maintenance dans StepPublish. Lecture TOLÉRANTE (rafraîchie à
-  // l'affichage puis toutes les 60 s) : un échec de lecture ne bloque jamais
-  // rien, il masque juste le bandeau.
+  // de maintenance dans StepPublish. Le texte est platform_health.reason
+  // affiché TEL QUEL quand il existe (écrit en base, incident par incident,
+  // sans redéploiement) ; sinon repli sur le texte générique i18n. Lecture
+  // TOLÉRANTE (rafraîchie à l'affichage puis toutes les 60 s) : un échec de
+  // lecture ne bloque jamais rien, il masque juste le bandeau.
   const [pausedPlatforms, setPausedPlatforms] = useState([]);
+  const [pausedReasons, setPausedReasons] = useState({});
   useEffect(() => {
     let alive = true;
     const lire = async () => {
       if (document.visibilityState !== "visible") return;
       try {
-        const { data } = await supabase.from("platform_health").select("platform").eq("paused", true);
-        if (alive) setPausedPlatforms((data ?? []).map(h => h.platform));
+        const { data } = await supabase.from("platform_health").select("platform, reason").eq("paused", true);
+        if (alive) {
+          setPausedPlatforms((data ?? []).map(h => h.platform));
+          setPausedReasons(Object.fromEntries((data ?? []).map(h => [h.platform, h.reason])));
+        }
       } catch { /* mode dégradé indisponible : pas de bandeau, jamais bloquant */ }
     };
     lire();
@@ -6642,6 +6648,7 @@ export default function ListingPreviewScreen({
             onPlatformAspectChange={setPlatformAspect}
             onPlatformDedicatedChange={setPlatformDedicatedField}
             pausedPlatforms={pausedPlatforms}
+            pausedReasons={pausedReasons}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
           />
