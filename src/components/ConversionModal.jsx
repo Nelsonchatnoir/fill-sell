@@ -63,6 +63,10 @@ export const COIN_CONFIG_FALLBACK = {
   price_ia_advanced: 32,
   price_per_platform: 1,
   price_generate: 6,
+  // Repli d'AFFICHAGE (2026-08-27) : coin_config.price_republish fait
+  // autorité (vérifié en base = 1, identique pour tous les paliers) — cette
+  // valeur ne sert qu'en cas d'échec réseau, comme les autres.
+  price_republish: 1,
   price_lens_overflow: 6,
   monthly_grant_premium: 400,
   monthly_grant_pro: 1200,
@@ -252,7 +256,14 @@ function Dismiss({ onClose, label }) {
 }
 
 // Carte Premium (CAS 3) — badge repris de PlanBadge, jamais recréé.
-function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit, onUpgrade }) {
+// ── Équivalences Pépites (2026-08-27, correction de cohérence Nico) ──────────
+// Le grant est UNE réserve unique : « ≈ N articles » et « ≈ M analyses » sont
+// des EXEMPLES ALTERNATIFS de la même réserve (3000 = 300 articles OU 500
+// analyses, PAS les deux). Les deux chiffres vivaient l'un dans le bandeau de
+// grant, l'autre dans la liste — lus comme deux quotas cumulables. Désormais :
+// une sous-ligne UNIQUE sous le grant les donne ensemble, reliés par « OU »,
+// et la ligne Lens de la liste ne porte plus que le prix unitaire.
+function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, articles, genPrice, pubUnit, repubPrice, onUpgrade }) {
   return (
     <div style={{
       background: C.paper, border: `1.5px solid ${C.teal}`, borderRadius: 22,
@@ -266,13 +277,19 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit
         </div>
       </div>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(47,158,144,0.10)',
+        background: 'rgba(47,158,144,0.10)',
         border: '1px solid rgba(47,158,144,0.22)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
       }}>
-        <PepiteIcon size={18} />
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: C.tealDeep }}>
-          {fr ? `${grantPrem} Pépites offertes chaque mois` : `${grantPrem} Nuggets included every month`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <PepiteIcon size={18} />
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: C.tealDeep }}>
+            {fr ? `${grantPrem} Pépites offertes chaque mois` : `${grantPrem} Nuggets included every month`}
+          </span>
+        </div>
+        <div style={{ fontSize: 10.5, fontWeight: 600, color: C.tealDeep, opacity: 0.85, marginTop: 4, lineHeight: 1.45 }}>
+          {fr ? `Une seule réserve pour tout — par exemple ≈ ${articles} articles publiés partout OU ≈ ${lensScans} analyses Lens.`
+              : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
+        </div>
       </div>
       {/* ── SQUELETTE COMMUN aux deux cartes (07/08 soir, validé Nico) ──────
           MÊMES rubriques, MÊME ordre, MÊMES tournures que ProPlanCard :
@@ -293,10 +310,10 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit
           fr ? 'Stock illimité' : 'Unlimited stock',
           fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
              : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-          fr ? 'Republication Vinted en un clic — 1 Pépite par annonce'
-             : 'One-tap Vinted reposting — 1 Nugget per listing',
-          fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
-             : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
+          fr ? `Republication Vinted en un clic — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
+             : `One-tap Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`,
+          fr ? `Analyses Lens — ${lensCost} Pépites l'analyse`
+             : `Lens scans — ${lensCost} Nuggets each`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
           fr ? 'Support par email' : 'Email support',
@@ -322,7 +339,7 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, genPrice, pubUnit
 // paliers. On annonce ce que le grant permet réellement (calculé).
 // Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
-export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, showFactor, genPrice, pubUnit, onUpgrade }) {
+export function ProPlanCard({ fr, grantPro, lensCost, lensScans, articles, proFactor, showFactor, genPrice, pubUnit, repubPrice, onUpgrade }) {
   return (
     <div style={{
       position: 'relative',
@@ -338,14 +355,23 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
         </div>
       </div>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(232,149,109,0.14)',
+        background: 'rgba(232,149,109,0.14)',
         border: '1px solid rgba(214,178,96,0.3)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
       }}>
-        <PepiteIcon size={18} />
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#F2C98A' }}>
-          {fr ? `${grantPro} Pépites/mois` : `${grantPro} Nuggets/mo`}
-          {showFactor && proFactor ? (fr ? ` — ${proFactor}× plus` : ` — ${proFactor}× more`) : ''}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <PepiteIcon size={18} />
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#F2C98A' }}>
+            {fr ? `${grantPro} Pépites/mois` : `${grantPro} Nuggets/mo`}
+            {showFactor && proFactor ? (fr ? ` — ${proFactor}× plus` : ` — ${proFactor}× more`) : ''}
+          </span>
+        </div>
+        {/* Traduction concrète du grant (2026-08-27, point 4 Nico) — même
+            phrase-équivalence que les autres cartes : une réserve UNIQUE,
+            exemples alternatifs reliés par OU, jamais deux quotas. */}
+        <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(242,201,138,0.85)', marginTop: 4, lineHeight: 1.45 }}>
+          {fr ? `Une seule réserve pour tout — par exemple ≈ ${articles} articles publiés partout OU ≈ ${lensScans} analyses Lens.`
+              : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
+        </div>
       </div>
       {/* ── SQUELETTE COMMUN — même contrat que PremiumPlanCard (cf. le
           commentaire là-bas). Le bandeau « Tout Premium, et en plus » a été
@@ -364,10 +390,10 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
           // Premium, seuls le grant et l'automatisation diffèrent.
           fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
              : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-          fr ? 'Republication Vinted en un clic — 1 Pépite par annonce, automatisable si tu l\'actives'
-             : 'One-tap Vinted reposting — 1 Nugget per listing, automatable if you turn it on',
-          fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
-             : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
+          fr ? `Republication Vinted en un clic — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce, automatisable si tu l'actives`
+             : `One-tap Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing, automatable if you turn it on`,
+          fr ? `Analyses Lens — ${lensCost} Pépites l'analyse`
+             : `Lens scans — ${lensCost} Nuggets each`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
           fr ? 'Support prioritaire' : 'Priority support',
@@ -393,22 +419,27 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, proFactor, show
 // ⚠️ MÊME SQUELETTE que les deux autres cartes (stock · publication ·
 // republication · Lens · Excel · voix) : l'utilisateur lit les trois cartes
 // ligne à ligne. Ce qui CHANGE réellement en Business, et rien d'autre :
-//   · le grant (3000, affiché au-dessus, ≈ 300 articles publiés partout) ;
+//   · le grant (3000, affiché au-dessus, avec ses équivalences ALTERNATIVES :
+//     ≈ 300 articles publiés partout OU ≈ 500 analyses Lens — jamais les deux,
+//     cf. le commentaire d'équivalences sur PremiumPlanCard) ;
 //   · la republication Vinted AUTOMATIQUE — livrée, pas une promesse : c'est
-//     le même moteur É6 que Pro (background.js), déjà en production.
+//     le même moteur É6 que Pro (background.js), déjà en production. Son COÛT
+//     est affiché comme partout (2026-08-27) : price_republish est identique
+//     pour tous les paliers, le taire ici laissait croire à de l'illimité.
 // ⚠️ RETIRÉ le 2026-08-09 (décision Nico : on ne vend pas ce que l'app ne fait
 // pas) — ne PAS réécrire tant que ce n'est pas codé ET en prod :
 //   · « File de publication prioritaire » : les jobs sortent FIFO, aucun tri
 //     par palier nulle part (cross_post_jobs, background.js) ;
 //   · « Support dédié — un interlocuteur » : aucun canal dédié n'existe.
-// La ligne support du squelette reste, au niveau VRAI : « Support par email »,
-// mot pour mot celui de la carte Premium (décision Nico 2026-08-09, option b).
-// Business n'hérite PAS du « Support prioritaire » de Pro : ce serait la même
-// promesse non tenue un cran en dessous.
+// Support (RÉVISÉ 2026-08-27, décision Nico) : Business à 59,99 € ne peut pas
+// afficher MOINS que le Pro à 29,99 € — il porte « Support prioritaire — tes
+// demandes passent en premier ». Promesse de PRIORITÉ seulement, tenable par
+// simple tri de la boîte mail : JAMAIS de délai chiffré, de canal dédié, de
+// téléphone ni d'interlocuteur nommé (le garde-fou du 09/08 reste vrai).
 // ⚠️ AUCUNE mention de « 8 photos par scan » : l'idée est abandonnée depuis le
 // 2026-08-09, tous les paliers sont identiques sur ce point.
 // Exportée pour PlanDetailsModal (upsell des Pro), comme ProPlanCard.
-export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, articles, genPrice, pubUnit, onUpgrade }) {
+export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, articles, genPrice, pubUnit, repubPrice, onUpgrade }) {
   return (
     <div style={{
       position: 'relative', overflow: 'hidden',
@@ -425,18 +456,26 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
         </div>
       </div>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(155,232,220,0.10)',
+        background: 'rgba(155,232,220,0.10)',
         border: '1px solid rgba(174,233,223,0.28)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
       }}>
-        <PepiteIcon size={18} />
-        <span style={{
-          fontSize: 12.5, fontWeight: 700,
-          background: 'linear-gradient(120deg,#F4FFFD,#9BE8DC 55%,#F2C98A)',
-          WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
-        }}>
-          {fr ? `${grantBusiness} Pépites/mois — environ ${articles} articles publiés partout`
-              : `${grantBusiness} Nuggets/mo — about ${articles} items listed everywhere`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <PepiteIcon size={18} />
+          <span style={{
+            fontSize: 12.5, fontWeight: 700,
+            background: 'linear-gradient(120deg,#F4FFFD,#9BE8DC 55%,#F2C98A)',
+            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
+          }}>
+            {fr ? `${grantBusiness} Pépites/mois` : `${grantBusiness} Nuggets/mo`}
+          </span>
+        </div>
+        {/* Équivalences ALTERNATIVES d'une réserve unique (27/08) — plus
+            jamais « 300 articles » ici ET « 500 analyses » dans la liste,
+            lus comme deux quotas cumulables. */}
+        <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(246,245,241,0.75)', marginTop: 4, lineHeight: 1.45 }}>
+          {fr ? `Une seule réserve pour tout — par exemple ≈ ${articles} articles publiés partout OU ≈ ${lensScans} analyses Lens.`
+              : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
+        </div>
       </div>
       <Features
         dark
@@ -444,13 +483,13 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
           fr ? 'Stock illimité' : 'Unlimited stock',
           fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
              : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-          fr ? 'Republication Vinted automatique — tes annonces remontent seules dans le fil'
-             : 'Automatic Vinted reposting — your listings climb back up on their own',
-          fr ? `Environ ${lensScans} analyses Lens par mois (${lensCost} Pépites l'analyse)`
-             : `About ${lensScans} Lens scans a month (${lensCost} Nuggets each)`,
+          fr ? `Republication Vinted automatique — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce, tes annonces remontent seules dans le fil`
+             : `Automatic Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing, your listings climb back up on their own`,
+          fr ? `Analyses Lens — ${lensCost} Pépites l'analyse`
+             : `Lens scans — ${lensCost} Nuggets each`,
           fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
           fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
-          fr ? 'Support par email' : 'Email support',
+          fr ? 'Support prioritaire — tes demandes passent en premier' : 'Priority support — your requests come first',
         ]}
       />
       <button
@@ -487,6 +526,7 @@ function PlansStack({ fr, tiers, grantPrem, grantPro, grantBusiness, lensCost, l
       {showPremium && (
         <PremiumPlanCard
           fr={fr} grantPrem={grantPrem} lensCost={lensCost} lensScans={lensPerMonth(grantPrem)}
+          articles={articlesParMois(grantPrem, K)} repubPrice={K.price_republish}
           genPrice={K.price_generate} pubUnit={K.price_per_platform}
           onUpgrade={onUpgrade}
         />
@@ -494,6 +534,7 @@ function PlansStack({ fr, tiers, grantPrem, grantPro, grantBusiness, lensCost, l
       {showPro && (
         <ProPlanCard
           fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensPerMonth(grantPro)}
+          articles={articlesParMois(grantPro, K)} repubPrice={K.price_republish}
           proFactor={proFactor} showFactor
           pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced} genPrice={K.price_generate}
           onUpgrade={onUpgrade}
@@ -502,7 +543,7 @@ function PlansStack({ fr, tiers, grantPrem, grantPro, grantBusiness, lensCost, l
       {showBusiness && (
         <BusinessPlanCard
           fr={fr} grantBusiness={grantBusiness} lensCost={lensCost} lensScans={lensPerMonth(grantBusiness)}
-          articles={articlesParMois(grantBusiness, K)}
+          articles={articlesParMois(grantBusiness, K)} repubPrice={K.price_republish}
           pubUnit={K.price_per_platform} genPrice={K.price_generate}
           onUpgrade={onUpgrade}
         />
@@ -722,8 +763,11 @@ export default function ConversionModal({
                 ? (fr ? `Passe Business — ${grantBusiness} Pépites/mois (≈ ${articlesParMois(grantBusiness, K)} articles publiés partout)`
                       : `Go Business — ${grantBusiness} Nuggets/mo (≈ ${articlesParMois(grantBusiness, K)} items listed everywhere)`)
                 : upTier === 'pro'
-                  ? (fr ? `Passe Pro — ${grantPro} Pépites/mois (≈ ${lensPerMonth(grantPro)} analyses Lens)`
-                        : `Go Pro — ${grantPro} Nuggets/mo (≈ ${lensPerMonth(grantPro)} Lens scans)`)
+                  /* Même traduction concrète que Business (27/08, point 4) :
+                     le grant se dit en articles publiés partout — UNE
+                     équivalence, jamais deux quotas dans la même phrase. */
+                  ? (fr ? `Passe Pro — ${grantPro} Pépites/mois (≈ ${articlesParMois(grantPro, K)} articles publiés partout)`
+                        : `Go Pro — ${grantPro} Nuggets/mo (≈ ${articlesParMois(grantPro, K)} items listed everywhere)`)
                   : (fr ? `Passe Premium — ${grantPrem} Pépites/mois incluses`
                         : `Go Premium — ${grantPrem} Nuggets/mo included`)}
             </button>
@@ -755,7 +799,7 @@ export default function ConversionModal({
         <Title>{fr ? 'Le sommet. Zéro limite.' : 'The top. No limits.'}</Title>
         <BusinessPlanCard
           fr={fr} grantBusiness={grantBusiness} lensCost={lensCost} lensScans={lensPerMonth(grantBusiness)}
-          articles={articlesParMois(grantBusiness, K)}
+          articles={articlesParMois(grantBusiness, K)} repubPrice={K.price_republish}
           pubUnit={K.price_per_platform} genPrice={K.price_generate}
           onUpgrade={onUpgrade}
         />
