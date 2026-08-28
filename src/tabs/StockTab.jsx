@@ -2253,21 +2253,123 @@ const REPUB_PLANCHER_EUR = 2;
 // réponse doit être dans la phrase, pas déduite.
 const REPUB_ORDRE = ['a_capturer', 'captured', 'deleted', 'recreated'];
 
-// ── Pondération temps réel du lot (écran de progression, 2026-08-28) ──────────
-// Durées RÉELLES mesurées en prod le 28/08/2026 (137 captures + 12
-// republications observées). Jamais affichées : elles documentent les poids
-// juste en dessous — retoucher les deux ensemble.
-const REPUB_DUREE_CAPTURE_S = 17;      // capture d'une annonce
-const REPUB_DUREE_RECREATION_S = 175;  // suppression + recréation
-const REPUB_DUREE_CYCLE_S = 192;       // cycle complet d'une annonce
-// Poids d'une étape = part du cycle déjà écoulée (captured ≈ 17/192). Les 4
-// valeurs ci-dessous sont les SEULES qui existent ; une étape absente (jobs
-// 0.6.4/0.6.6) ou inconnue vaut a_capturer (poids 0), le job reste compté.
-const REPUB_POIDS = { a_capturer: 0, captured: 0.09, deleted: 0.55, recreated: 1 };
-// Un statut résolu pèse 1 : plus rien ne se passera sur ce job, il ne doit
-// pas retenir la barre sous 100 %. needs_user n'y est PAS : il sort du calcul
-// ET du dénominateur (ligne « action requise » dédiée).
+// ── Ancres et durées par étape (écran de progression v2, 2026-08-28 soir) ─────
+// UNE BARRE PAR JOB : l'étape ne pose que des ANCRES, c'est le TEMPS ÉCOULÉ
+// qui fait avancer la barre vers l'ancre suivante via f(x) = 1 - exp(-x) —
+// elle avance à chaque seconde, rampe de plus en plus lentement si l'étape
+// traîne, et n'atteint jamais l'ancre suivante par interpolation (donc jamais
+// de recul au changement d'étape). Le pourcentage global unique de 2.4.73
+// restait figé 175 s par republication : exact et inutilisable (69 % des lots
+// font ≤ 5 articles, 30 % un seul — mesure du 28/08 sur 124 lots).
+// Les 4 étapes ci-dessous sont les SEULES qui existent ; step absent (jobs
+// 0.6.4/0.6.6) ou inconnu = a_capturer, le job reste affiché.
+const REPUB_ANCRES = { a_capturer: 0, captured: 9, deleted: 55, recreated: 100 };
+// Durées ATTENDUES de chaque étape, en secondes (mesures prod du 28/08 : 137
+// captures + 30 republications). Ancres et durées se retouchent ICI, ensemble.
+const REPUB_DUREES = { a_capturer: 17, captured: 20, deleted: 155 };
+// Statuts terminaux : barre FIGÉE à 100 %, le tick ne les regarde plus.
+// needs_user n'y est PAS : il sort des lignes ET du compteur (ligne « action
+// requise » dédiée). ⚠️ Piège de nommage : il existe un STATUS 'deleted'
+// (jobs action publish) DISTINCT de l'ÉTAPE republish_step 'deleted' — ne
+// jamais tester l'un pour l'autre.
 const REPUB_STATUS_RESOLUS = ['published', 'sold', 'failed', 'cancelled', 'dry_run_completed'];
+// Étape normalisée d'un job republish : absente/inconnue = a_capturer.
+const repubStepDe = (j) => {
+  const s = j.platform_fields?.republish_step;
+  return REPUB_ANCRES[s] !== undefined ? s : 'a_capturer';
+};
+// Fini = statut terminal OU étape recreated : barre figée à 100 %. processing
+// n'y est pas : il compte EXACTEMENT comme pending (chaque republication le
+// traverse — il avait été oublié en 2.4.73).
+const repubJobFini = (j) => REPUB_STATUS_RESOLUS.includes(j.status) || repubStepDe(j) === 'recreated';
+
+// État court d'une ligne de job. L'étape 'deleted' n'est JAMAIS « en
+// attente » : c'est le seul moment où l'annonce n'est plus visible sur Vinted.
+function repubLigneEtat(job, fr) {
+  const st = job.status;
+  const step = repubStepDe(job);
+  if (st === 'published' || st === 'sold' || step === 'recreated')
+    return { ic: '✅', lib: fr ? 'en ligne' : 'live', couleur: '#1B6E62' };
+  if (st === 'dry_run_completed')
+    return { ic: '🧪', lib: fr ? 'test à blanc' : 'dry run', couleur: '#334155' };
+  if (st === 'failed' || st === 'cancelled')
+    return step === 'deleted'
+      ? { ic: '⚠️', lib: fr ? 'hors ligne — arrêtée' : 'offline — stopped', couleur: '#B91C1C' }
+      : { ic: '⏸️', lib: fr ? 'arrêtée' : 'stopped', couleur: '#5C6560' };
+  // En cours (pending, processing — traités pareil — ou statut inconnu,
+  // prudence) : le libellé suit l'ÉTAPE.
+  if (step === 'deleted') return { ic: '🔁', lib: fr ? 'republication' : 'reposting', couleur: '#334155' };
+  if (step === 'captured') return { ic: '💾', lib: fr ? 'préparation' : 'preparing', couleur: '#334155' };
+  return { ic: '⏳', lib: fr ? 'en attente' : 'queued', couleur: '#5C6560' };
+}
+
+// Lignes du lot — composant SÉPARÉ : le tick d'1 s ne re-rend que lui,
+// jamais tout l'onglet Stock (galerie comprise).
+function RepubLotLignes({ lang, jobs, total, stock }) {
+  const fr = lang !== 'en';
+  // Tick ~1 s tant qu'au moins un job est en cours — s'arrête tout seul
+  // sinon : rien ne tourne en fond pour un lot fini.
+  const actif = jobs.some((j) => !repubJobFini(j));
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!actif) return;
+    const t = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [actif]);
+  // Mémoire locale de session : rien en base n'horodate l'entrée dans une
+  // étape (et poser un horodatage sortirait du périmètre affichage), donc on
+  // mémorise la première OBSERVATION de chaque étape et on interpole depuis.
+  // App rouverte = origines réinitialisées : la barre repart de l'ancre de
+  // l'étape courante, jamais plus bas. maxPct = cliquet anti-recul par job
+  // (l'interpolation seule ne recule jamais ; le cliquet couvre une étape qui
+  // régresserait en base). Mutations idempotentes : sûres en StrictMode.
+  const suiviRef = useRef(new Map());
+  const pctJob = (job) => {
+    if (repubJobFini(job)) return 100;
+    const step = repubStepDe(job);
+    const m = suiviRef.current;
+    let s = m.get(job.id);
+    if (!s || s.step !== step) {
+      s = { step, depuis: Date.now(), maxPct: s ? s.maxPct : 0 };
+      m.set(job.id, s);
+    }
+    const ancre = REPUB_ANCRES[step];
+    const suivante = REPUB_ANCRES[REPUB_ORDRE[REPUB_ORDRE.indexOf(step) + 1]];
+    const tSec = (Date.now() - s.depuis) / 1000;
+    const pct = ancre + (suivante - ancre) * (1 - Math.exp(-tSec / REPUB_DUREES[step]));
+    s.maxPct = Math.max(s.maxPct, pct);
+    return s.maxPct;
+  };
+  const titres = useMemo(() => new Map((stock ?? []).map((i) => [i.id, i.title])), [stock]);
+  // Au-delà de 20 jobs : seuls les non-terminés restent détaillés, les
+  // terminés se replient sous un compteur.
+  const grand = total > 20;
+  const lignes = grand ? jobs.filter((j) => !repubJobFini(j)) : jobs;
+  const replies = jobs.length - lignes.length;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:9,marginTop:12}}>
+      {grand&&replies>0&&(
+        <div style={{fontSize:12,fontWeight:600,color:"#5C6560"}}>
+          ✓ {replies} {fr?`terminée${replies>1?'s':''}`:'finished'}
+        </div>
+      )}
+      {lignes.map((j)=>{
+        const e=repubLigneEtat(j,fr);
+        const titre=titres.get(j.inventaire_id)??j.title??(fr?'Annonce':'Listing');
+        return (
+          <div key={j.id}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:12,flexShrink:0}}>{e.ic}</span>
+              <span style={{flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontSize:12.5,fontWeight:600,color:"#10201B"}}>{titre}</span>
+              <span style={{fontSize:11.5,fontWeight:700,color:e.couleur,flexShrink:0}}>{e.lib}</span>
+            </div>
+            <div className="repub-track mince"><div className="repub-fill" style={{width:`${pctJob(j).toFixed(2)}%`}}/></div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function etapeRepublication(job, fr) {
   if (!job) return null;
@@ -3200,7 +3302,7 @@ const StockTab = memo(function StockTab({
   // 242 ms) : les jobs en file + les terminaux créés dans la même rafale.
   // « Vivant » = pending/processing/statut inconnu (prudence : jamais ignoré
   // ni planté) OU needs_user — un job qui attend l'utilisateur n'est pas
-  // terminé, il maintient l'écran (à 100 %, ligne « action requise »).
+  // terminé, il maintient l'écran (ligne « action requise »).
   // Rien de vivant ⇒ null : l'écran disparaît, il ne raconte pas la journée.
   const repubBandeau = useMemo(() => {
     if (!republishActif) return null;
@@ -3229,10 +3331,12 @@ const StockTab = memo(function StockTab({
       lot = derniers.filter((j) => enFile(j.status) || j.status === 'needs_user'
         || (Number.isFinite(Date.parse(j.created_at ?? '')) && Date.parse(j.created_at) >= seuilLot));
     }
-    // total/somme EXCLUENT les needs_user (ni numérateur ni dénominateur) :
-    // la barre peut être à 100 % avec la ligne « action requise » présente.
-    let total = 0, somme = 0, enFileCount = 0, prep = 0, repub = 0,
-      aRelancer = 0, arretees = 0;
+    // jobs/total EXCLUENT les needs_user (ligne « action requise » dédiée) :
+    // le lot peut être fini avec cette ligne encore présente, c'est voulu.
+    // La progression PAR JOB, elle, vit dans RepubLotLignes (tick 1 s) — ici
+    // on ne fait que délimiter le lot et compter.
+    let republiees = 0, enCoursCount = 0, aRelancer = 0, arretees = 0;
+    const jobs = [];
     // Orpheline (3d-a) : une recréation en cours dont l'ordinateur ne répond
     // plus — mêmes seuils que la pastille (deleted > 20 min + heartbeat muet
     // > 10 min). Le memo se recalcule au rafraîchissement de
@@ -3243,47 +3347,25 @@ const StockTab = memo(function StockTab({
     const hbMuet = !Number.isFinite(hb) || Date.now() - hb > 10 * 60 * 1000;
     for (const j of lot) {
       const st = j.status;
-      const stepBrut = j.platform_fields?.republish_step;
-      const step = REPUB_POIDS[stepBrut] !== undefined ? stepBrut : 'a_capturer';
+      // ⚠️ st peut valoir 'deleted' (statut du flux publish/delete, 133
+      // lignes en prod) : RIEN à voir avec l'étape republish_step 'deleted'.
+      // Ici un tel statut, inconnu du flux republish, compte simplement
+      // « en cours » (ni résolu ni needs_user) — jamais confondu.
       if (st === 'needs_user') { aRelancer++; continue; }
-      total++;
+      jobs.push(j);
+      const step = repubStepDe(j);
       if (st === 'failed' || st === 'cancelled') arretees++;
-      if (resolu(st)) somme += 1;
-      else { somme += REPUB_POIDS[step]; enFileCount++; }
-      // Phases : un job résolu en succès (published/sold) a forcément
-      // traversé les deux, quel que soit le step enregistré.
-      const succes = st === 'published' || st === 'sold';
-      if (succes || step !== 'a_capturer') prep++;
-      if (succes || step === 'recreated') repub++;
+      if (st === 'published' || st === 'sold' || step === 'recreated') republiees++;
+      if (!repubJobFini(j)) enCoursCount++;
       if (enFile(st) && step === 'deleted' && hbMuet) {
         const d = Date.parse(j.platform_fields?.deleted_at ?? '');
         if (Number.isFinite(d) && Date.now() - d > 20 * 60 * 1000) orpheline = true;
       }
     }
-    // RÈGLE ABSOLUE : 100 % = terminé. Plancher (floor) + cap à 99 tant qu'il
-    // reste du pending ; 100 EXACT dès qu'il n'en reste plus — jamais par
-    // arrondi. total === 0 (que du needs_user) ⇒ branche 100, pas de division.
-    const pct = enFileCount === 0 ? 100
-      : Math.min(99, Math.floor((somme / total) * 100));
-    // Clé de lot pour le cliquet anti-recul : batch, sinon début de rafale
-    // (le job le plus ancien du lot y reste jusqu'au bout — clé stable).
-    const crees = lot.map((j) => Date.parse(j.created_at ?? '')).filter(Number.isFinite);
-    const lotCle = batchId ? `batch:${batchId}` : `rafale:${crees.length ? Math.min(...crees) : 0}`;
-    return { total, pct, prep, repub, enFileCount, aRelancer, arretees, orpheline, lotCle };
+    // Ordre stable : celui de la création du lot.
+    jobs.sort((a, b) => Date.parse(a.created_at ?? 0) - Date.parse(b.created_at ?? 0));
+    return { jobs, total: jobs.length, republiees, enCoursCount, aRelancer, arretees, orpheline };
   }, [repubDernier, republishActif, extensionStatus?.lastSeenAt]);
-  // Cliquet anti-recul (garde-fou) : le pourcentage global d'un MÊME lot ne
-  // redescend jamais entre deux rafraîchissements (job repris plus tôt,
-  // dénominateur qui bouge). Ré-armé quand le lot change (lotCle). Le
-  // min(99, …) empêche le cliquet de resservir un 100 mémorisé tant qu'il
-  // reste du pending. Mutation idempotente : sûre en double rendu StrictMode.
-  const repubPctRef = useRef({ cle: null, pct: 0 });
-  let repubPct = null;
-  if (repubBandeau) {
-    const r = repubPctRef.current;
-    if (r.cle !== repubBandeau.lotCle) { r.cle = repubBandeau.lotCle; r.pct = 0; }
-    r.pct = Math.max(r.pct, repubBandeau.pct);
-    repubPct = repubBandeau.enFileCount === 0 ? 100 : Math.min(99, r.pct);
-  }
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
   const [repubFiltre, setRepubFiltre] = useState(null);
   useEffect(() => {
@@ -3804,62 +3886,37 @@ const StockTab = memo(function StockTab({
           est monté par le <style> de la liste plus bas — les classes portent,
           l'ordre DOM d'un <style> est sans effet. */}
       <div className="stock-v2" style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
-        {/* ── Écran de progression des republications (2026-08-28) : barre
-            globale pondérée temps réel, une barre par phase, ligne « action
-            requise », pied de page. Visible tant que le lot garde du vivant
+        {/* ── Écran de progression des republications (v2 du 28/08 soir) :
+            UNE BARRE PAR JOB, avancée au temps écoulé (cf. RepubLotLignes) —
+            le pourcentage global unique de 2.4.73 restait figé 175 s par
+            republication. Visible tant que le lot garde du vivant
             (pending/processing/needs_user) — repubBandeau null sinon. Les
             lignes « action requise » / « arrêtées » filtrent la liste ;
             re-tap = retire le filtre. */}
         {repubBandeau&&(
           <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"12px 14px"}}>
-            {/* Niveau 1 — barre globale. repubPct sort du cliquet : 100 %
-                garanti « terminé », jamais atteint par arrondi. */}
+            {/* En-tête du lot : « N sur M republiées », SANS pourcentage. */}
             <div style={{display:"flex",alignItems:"baseline",gap:8}}>
               <span style={{fontSize:13.5,fontWeight:700,color:"#10201B"}}>
                 🔁 {lang==='fr'?`Republication${repubBandeau.total>1?'s':''}`:`Repost${repubBandeau.total>1?'s':''}`}
               </span>
-              <span style={{marginLeft:"auto",fontSize:24,fontWeight:800,color:"#1B6E62",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
-                {repubPct}<span style={{fontSize:14,fontWeight:700}}> %</span>
+              <span style={{marginLeft:"auto",fontSize:12.5,fontWeight:700,color:"#1B6E62",fontVariantNumeric:"tabular-nums"}}>
+                {lang==='fr'
+                  ?`${repubBandeau.republiees} sur ${repubBandeau.total} republiée${repubBandeau.total>1?'s':''}`
+                  :`${repubBandeau.republiees} of ${repubBandeau.total} reposted`}
               </span>
             </div>
-            <div className="repub-track"><div className="repub-fill" style={{width:`${repubPct}%`}}/></div>
-            {/* Niveau 2 — une barre par phase, compteurs sur le total retenu
-                (needs_user exclus). « Préparation » avance d'un cran toutes
-                les ~17 s : c'est le vrai feedback visuel. Masquées quand
-                total === 0 (il ne reste que du needs_user). L'étape
-                'deleted' n'est jamais dite « en attente » : elle compte
-                préparée, en route vers la republication. */}
+            {/* Une ligne par job — composant séparé : son tick d'1 s ne
+                re-rend jamais l'onglet entier. Masqué quand total === 0
+                (il ne reste que du needs_user). */}
             {repubBandeau.total>0&&(
-              <div style={{display:"flex",flexDirection:"column",gap:11,marginTop:13}}>
-                {[
-                  {ic:"💾",lib:lang==='fr'?"Préparation":"Preparation",fait:repubBandeau.prep,
-                   phrase:lang==='fr'
-                     ?"Chaque annonce est d'abord lue et sauvegardée en entier, photos comprises."
-                     :"Each listing is first read and fully saved, photos included."},
-                  {ic:"📤",lib:lang==='fr'?"Republication":"Reposting",fait:repubBandeau.repub,
-                   phrase:lang==='fr'
-                     ?"Chaque annonce sauvegardée est retirée puis aussitôt recréée sur Vinted."
-                     :"Each saved listing is removed then immediately recreated on Vinted."},
-                ].map((p)=>(
-                  <div key={p.lib}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{fontSize:13}}>{p.ic}</span>
-                      <span style={{fontSize:12.5,fontWeight:700,color:"#10201B"}}>{p.lib}</span>
-                      <span style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:"#5C6560",fontVariantNumeric:"tabular-nums"}}>
-                        {p.fait} / {repubBandeau.total}
-                      </span>
-                    </div>
-                    <div className="repub-track mince"><div className="repub-fill" style={{width:`${Math.round(p.fait/repubBandeau.total*100)}%`}}/></div>
-                    <div style={{fontSize:11.5,color:"#8A8578",marginTop:3,lineHeight:1.45}}>{p.phrase}</div>
-                  </div>
-                ))}
-              </div>
+              <RepubLotLignes lang={lang} jobs={repubBandeau.jobs} total={repubBandeau.total} stock={stock}/>
             )}
-            {/* Ligne « action requise » — les needs_user ne comptent ni au
-                numérateur ni au dénominateur : la barre peut être à 100 %
-                avec cette ligne encore là, et c'est voulu (l'automatique est
-                fini, le reste dépend de l'utilisateur). Tap → filtre la
-                liste sur ces jobs. */}
+            {/* Ligne « action requise » — les needs_user n'ont ni ligne ni
+                barre : le lot peut afficher « M sur M republiées » avec cette
+                ligne encore là, et c'est voulu (l'automatique est fini, le
+                reste dépend de l'utilisateur). Tap → filtre la liste sur ces
+                jobs. */}
             {repubBandeau.aRelancer>0&&(
               <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
                 style={{display:"block",width:"100%",textAlign:"left",marginTop:11,border:`1px solid ${repubFiltre==='relancer'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='relancer'?"#8A6100":"#FFF6E3",color:repubFiltre==='relancer'?"#fff":"#8A6100",borderRadius:10,padding:"8px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
