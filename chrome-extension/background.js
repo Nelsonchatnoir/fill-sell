@@ -10141,8 +10141,16 @@ async function maybeAutoRepublish(session) {
     if ((faits?.length ?? 0) >= plafond) return;
 
     const seuil = new Date(Date.now() - ageJours * 86_400_000).toISOString();
+    // Coquilles vides EXCLUES en amont (2026-08-28, cas Joe0410) : un dépôt
+    // Vinted commencé puis abandonné, importé par la sync dressing, n'a AUCUNE
+    // photo — sa republication ne peut pas aboutir (capture « photos (aucune
+    // URL lisible) ») et le refus serveur article_sans_photo, lui, grillerait
+    // le tour du cycle à chaque passage. `photos->0` non nul couvre photos
+    // NULL et []. ⚠️ Le critère est l'absence de photos, JAMAIS vinted_status :
+    // 1 458 des 1 462 hidden du parc ont leurs photos et restent republiables.
     const cands = await restRequest(
       `inventaire?user_id=eq.${userId}&statut=eq.stock&vinted_item_id=not.is.null` +
+      `&photos->0=not.is.null` +
       `&disparu_le=is.null&listed_at_guess=lt.${encodeURIComponent(seuil)}` +
       `&select=id,vinted_item_id&order=listed_at_guess.asc&limit=10`,
       token, { headers: { Prefer: "return=representation" } },
