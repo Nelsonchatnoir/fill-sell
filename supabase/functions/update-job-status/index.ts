@@ -234,6 +234,31 @@ const MSG_GARDE_COULEUR =
   "Motif : Vinted exige désormais une couleur à la création d'une annonce, et la tienne n'en porte pas " +
   "(c'était accepté quand tu l'avais créée). Ajoute une couleur à ton annonce sur Vinted, " +
   "puis relance la republication depuis l'app — ta Pépite est déjà rendue.";
+// ── EXEMPTION famille MÉDIAS de la garde Couleur (2026-08-28, cas Joséphine,
+// job a25d171b « Fairy tail de 1 à 11 », catalog 2364) ──────────────────────
+// L'exemption Livres 0.6.9 du 27/08 sort les livres de la garde ISBN… qui
+// tombaient alors dans la garde Couleur — laquelle ne filtrait AUCUNE
+// catégorie. Or le formulaire Livres de Vinted n'OFFRE pas de champ Couleur :
+// le message demandait un geste impossible, et Joséphine relançait en boucle.
+// PREUVE (relevé de tous les server_required_fields du parc, 28/08) : les
+// refus 'color' de Vinted ne viennent QUE de jouets (catalog 3358 Flipper,
+// 1766 VTech) et de vêtements — jamais de « Livres et médias », où Vinted ne
+// réclame que l'ISBN ; et 3 recréations de cette famille SANS couleur ont
+// abouti. On n'exempte QUE cette famille : Loisirs et collections (5 jobs
+// Toto Vilaseque) et Maison (1 job Anaïs) restent couverts — aucune preuve
+// dans un sens ou dans l'autre, on ne prend pas le risque. Le kill switch
+// republish_couleur_garde et MSG_GARDE_COULEUR restent tels quels pour les
+// catégories où la garde s'applique encore (c'est elle qui a évité de
+// détruire le VTech de Cynthia Buterne).
+const MEDIA_CATALOG_IDS = new Set([3039, 3045]); // CD, DVD
+function couleurNonExigee(snap: Record<string, unknown>): boolean {
+  if (typeof snap.isbn === "string" && snap.isbn.trim()) return true;
+  const cid = Number(snap.catalog_id);
+  if (Number.isFinite(cid) && (LIVRES_CATALOG_IDS.has(cid) || MEDIA_CATALOG_IDS.has(cid))) return true;
+  const path = Array.isArray(snap.categoryPath) ? snap.categoryPath : [];
+  if (!path.length) return false;
+  return ["livres et medias", "books & media"].includes(sansAccents(path[0]));
+}
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -434,7 +459,7 @@ serve(async (req) => {
               log: "garde Livres/ISBN",
               reponse: "Garde Livres : republication bloquée AVANT toute suppression (blocage ISBN connu) — job mis en pause, annonce intacte.",
             }
-          : snapshotSansCouleur(snapIn)
+          : (snapshotSansCouleur(snapIn) && !couleurNonExigee(snapIn))
           ? {
               configKey: "republish_couleur_garde",
               source: "republish_couleur_garde",
