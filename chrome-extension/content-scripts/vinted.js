@@ -234,7 +234,14 @@ async function readItemsProbeOutcome() {
     if (!last) last = { status: Number(c?.status), url: String(c?.url ?? "") };
     if (!refus && Number(c?.status) >= 400 &&
         Array.isArray(c?.validationErrors) && c.validationErrors.length) {
-      refus = { status: Number(c?.status), url: String(c?.url ?? ""), validationErrors: c.validationErrors };
+      // isbnEnvoye + reponse (2026-08-28, mur « Fairy tail ») : la capture du
+      // refus EST celle du POST — l'ISBN vu dans son CORPS par la sonde et
+      // l'extrait de la réponse partent dans le diagnostic persisté, seule
+      // façon de trancher « champ perdu avant le POST » vs « valeur refusée ».
+      refus = {
+        status: Number(c?.status), url: String(c?.url ?? ""), validationErrors: c.validationErrors,
+        isbnEnvoye: c?.isbnEnvoye ?? null, reponse: c?.reponse ?? null,
+      };
     }
     if (last && refus) break;
   }
@@ -2234,11 +2241,24 @@ async function fillListingForm(job) {
         return `renseigne « ${f.label} » dans la copie Vinted de l'app` +
           (reelles.length ? ` (options du formulaire : ${reelles.slice(0, 8).join(" · ")})` : "");
       }).join(" ; ");
+      // Diagnostic PERSISTÉ (2026-08-28, mur ISBN « Fairy tail » : sur un
+      // refus serveur, last_diagnostic restait VIDE — impossible de trancher
+      // après coup). URL + statut du refus, ISBN vu dans le CORPS du POST par
+      // la sonde, extrait de la réponse, et les étapes tolérées de recréation.
+      // Le background le range dans platform_fields.last_diagnostic
+      // (replanifierOuArreterRecreation) — requêtable en SQL.
+      const diagRefus = [
+        `refus serveur HTTP ${sonde.refus?.status ?? "?"} (${sonde.refus?.url ?? "?"})`,
+        sonde.refus?.isbnEnvoye != null ? `isbn dans le corps du POST : ${sonde.refus.isbnEnvoye}` : null,
+        sonde.refus?.reponse ? `réponse : ${sonde.refus.reponse}` : null,
+        ...(diagnosticsRecreation.length ? [diagnosticsRecreation.join(" || ")] : []),
+      ].filter(Boolean).join(" || ").slice(0, 2000);
       return {
         success: false,
         error: `${messageEchec} — Champs exigés par le serveur Vinted : ${details}. À faire : ${conseils}, puis relance la publication.`,
         warnings,
         serverRequired,
+        diagnostic: diagRefus,
         discoveredRequired: requiredState.discovered,
         ...(onePassDeleted ? { deleted: true } : {}),
       };

@@ -440,16 +440,48 @@ serve(async (req) => {
     const pfIn = (body.platform_fields && typeof body.platform_fields === "object"
       ? body.platform_fields : null) as Record<string, unknown> | null;
     const snapIn = pfIn?.republish_snapshot as Record<string, unknown> | undefined;
+    // ── INTERRUPTEUR de l'exemption Livres 0.6.9 (2026-08-28, GO Nico) ──────
+    // Cas Joe0410 (job a25d171b, « Fairy tail de 1 à 11 ») : premier cas réel
+    // du mur que la garde empêchait — une-passe, gate ISBN STRICTE passée
+    // (état React vérifié AVANT suppression), et Vinted refuse quand même la
+    // soumission en 400 « Merci d'entrer un numéro ISBN valide ». La prémisse
+    // de l'exemption (« pose commitée ⇒ Vinted accepte ») est donc FAUSSE
+    // pour une classe d'annonces indétectable en pré-vol (course du lookup
+    // livre, ou valeur refusée par leur base à la création — l'annonce
+    // d'origine portait ce même ISBN, accepté à son époque).
+    // Clé coin_config 'republish_livres_exemption' : value=1 → exemption
+    // active ; clé ABSENTE, illisible ou toute autre valeur → exemption
+    // DÉSARMÉE (fail-SAFE : une clé effacée par accident retombe du côté qui
+    // ne détruit rien — l'inverse du kill switch des GARDES, et c'est
+    // voulu). Lue SEULEMENT quand le cas se présente (livre + conditions
+    // d'exemption remplies), pas à chaque écriture de statut. La même clé
+    // est lue par le déblocage auto de handler-watch (livresDebloques) :
+    // désarmer ici sans là-bas ferait boucler le cron re-pend → re-pause.
+    let exemptionLivresAccordee = false;
+    if (status === "processing" && snapIn && typeof snapIn === "object" &&
+        pfIn?.republish_step === "captured" && !pfIn?.deleted_at &&
+        snapshotEstLivresMedias(snapIn) && exemptionLivres069(snapIn, body.handler_build)) {
+      const serviceKeyExo = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      if (serviceKeyExo) {
+        try {
+          const scExo = createClient(Deno.env.get("SUPABASE_URL")!, serviceKeyExo);
+          const { data: cfgExo } = await scExo
+            .from("coin_config").select("value").eq("key", "republish_livres_exemption").maybeSingle();
+          exemptionLivresAccordee = Number((cfgExo as Record<string, unknown> | null)?.value) === 1;
+        } catch { /* fail-safe : exemption désarmée */ }
+      }
+    }
     // UNE garde à la fois — Livres d'abord (un livre sans couleur relève du
     // blocage ISBN : c'est lui qui détruit, et son message est le bon).
     const gardeRepublish =
       status === "processing" && snapIn && typeof snapIn === "object" &&
       pfIn?.republish_step === "captured" && !pfIn?.deleted_at
         // Exemption 0.6.9 (cf. bloc de tête) : build écrivain ≥ 0.6.9 ET ISBN
-        // valide au snapshot → ce livre n'est plus un cas garde Livres ; il
-        // reste soumis à la garde Couleur comme n'importe quel snapshot (une
-        // couleur absente détruirait pareil).
-        ? (snapshotEstLivresMedias(snapIn) && !exemptionLivres069(snapIn, body.handler_build)
+        // valide au snapshot ET interrupteur armé (ci-dessus) → ce livre
+        // n'est plus un cas garde Livres ; il reste soumis à la garde Couleur
+        // comme n'importe quel snapshot (une couleur absente détruirait
+        // pareil — l'exemption médias de couleurNonExigee s'applique).
+        ? (snapshotEstLivresMedias(snapIn) && !exemptionLivresAccordee
           ? {
               configKey: "republish_livres_garde",
               source: "livres_isbn_garde",

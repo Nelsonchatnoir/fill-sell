@@ -4168,6 +4168,23 @@ async function installNetworkProbe(tabId, platform) {
           const m = body.match(/"catalog_id"\s*:\s*"?(\d+)/i);
           return m ? m[1] : null;
         };
+        // ISBN dans le CORPS de la requête de dépôt (2026-08-28, mur « Fairy
+        // tail » — job a25d171b : gate ISBN stricte passée, 400 « Merci
+        // d'entrer un numéro ISBN valide » quand même, et last_diagnostic
+        // vide : impossible de trancher « champ perdu avant le POST » vs
+        // « valeur refusée par Vinted »). Extraction CIBLÉE, jamais le corps
+        // entier (pièges binaires/PII du bandeau ci-dessus). Deux formes
+        // relevées : {"code":"isbn","ids":["…"]} (24/08, annonce 9769001747)
+        // et "isbn":"…". « (absent du corps) » est une INFORMATION : le POST
+        // de dépôt est parti sans ISBN.
+        const isbnEnvoyeOf = (url, body) => {
+          if (!/item_upload\/items/i.test(String(url))) return null;
+          if (typeof body !== "string") return null;
+          const m = body.match(/"code"\s*:\s*"isbn"\s*,\s*"ids"\s*:\s*\[\s*"?([0-9Xx-]{9,17})/) ??
+                    body.match(/"isbn"\s*:\s*"([0-9Xx-]{9,17})"/);
+          if (m) return m[1];
+          return /isbn/i.test(body) ? "(motif isbn présent, forme non reconnue)" : "(absent du corps)";
+        };
         // ⚠️ Numéro d'annonce cherché sur le corps COMPLET, AVANT troncature
         // (2026-07-13, job 5e3ee1e2) : la réponse de publication peut être un
         // gros JSON où l'id apparaît bien au-delà des 250 chars conservés —
@@ -4298,6 +4315,7 @@ async function installNetworkProbe(tabId, platform) {
                 url, status: res.status,
                 prix: priceOf(init?.body),
                 attrsCatalogId: attrsCatalogIdOf(url, init?.body),
+                isbnEnvoye: isbnEnvoyeOf(url, init?.body),
                 annonceId: annonceIdOf(txt),
                 succesVinted: succesVintedOf(txt),
                 reponse: extraitSain(txt),
@@ -4322,6 +4340,7 @@ async function installNetworkProbe(tabId, platform) {
                   url: this.__u, status: this.status,
                   prix: priceOf(typeof body === "string" ? body : null),
                   attrsCatalogId: attrsCatalogIdOf(this.__u, typeof body === "string" ? body : null),
+                  isbnEnvoye: isbnEnvoyeOf(this.__u, typeof body === "string" ? body : null),
                   annonceId: annonceIdOf(corps),
                   succesVinted: succesVintedOf(corps),
                   reponse: extraitSain(corps),

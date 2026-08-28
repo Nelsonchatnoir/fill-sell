@@ -633,7 +633,19 @@ serve(async (req) => {
   };
   let livresDebloques = 0;
   try {
-    const { data: bloques } = await supabase
+    // ── INTERRUPTEUR de l'exemption Livres (2026-08-28, GO Nico — même clé
+    // que update-job-status) : coin_config 'republish_livres_exemption',
+    // value=1 = exemption active ; clé ABSENTE, illisible ou autre valeur =
+    // DÉSARMÉE → ce déblocage ne re-libère RIEN (fail-safe : re-pendre un
+    // livre l'enverrait vers le mur « suppression puis 400 ISBN » — cas
+    // Joe0410 a25d171b du 28/08, gate stricte passée et Vinted refuse quand
+    // même à la soumission). Sans cette lecture ici, désarmer côté
+    // update-job-status ferait boucler le cron : re-pend → claim → garde
+    // re-pause, toutes les 3 minutes.
+    const { data: cfgExo } = await supabase
+      .from("coin_config").select("value").eq("key", "republish_livres_exemption").maybeSingle();
+    const exemptionArmee = Number((cfgExo as Record<string, unknown> | null)?.value) === 1;
+    const { data: bloques } = !exemptionArmee ? { data: [] } : await supabase
       .from("cross_post_jobs")
       .select("id, user_id, platform_fields")
       .eq("status", "needs_user")

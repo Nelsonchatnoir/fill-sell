@@ -743,7 +743,21 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // bandeau d'É6 : s'ils divergent, il ment. ⚠️ HORS zip 0.6.9 : paquet
 // SUIVANT. EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE
 // épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-08-28T07:55:00Z';
+// 2026-08-28T10:10:00Z = diagnostic du mur ISBN persisté (cas « Fairy tail »
+// a25d171b : gate ISBN stricte passée AVANT suppression, Vinted 400 « Merci
+// d'entrer un numéro ISBN valide » à la soumission, last_diagnostic VIDE —
+// impossible de trancher « champ perdu avant le POST » vs « valeur
+// refusée »). La sonde réseau extrait désormais l'ISBN du CORPS du POST de
+// dépôt (isbnEnvoye — extraction ciblée, jamais le corps entier) et le
+// chemin « refus serveur » de fillListingForm rend un `diagnostic`
+// (URL + statut + isbn envoyé + extrait de réponse + étapes tolérées) que
+// replanifierOuArreterRecreation persiste dans last_diagnostic. Côté
+// serveur (déployé, hors paquet) : exemption Livres 0.6.9 DÉSARMÉE par
+// interrupteur coin_config republish_livres_exemption (absente = OFF),
+// update-job-status v27 + handler-watch v16. ⚠️ HORS zip 0.6.9 : paquet
+// SUIVANT. EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE
+// épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-28T10:10:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
