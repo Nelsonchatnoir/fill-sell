@@ -2721,7 +2721,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
             {tpl("stepPublishGenericRequiredTitle", { platform: PLATFORM_LABELS[gp] ?? gp })}
           </div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {list.map(({ key, label, state, blocking, value }) => {
+            {list.map(({ key, label, state, blocking, value, prefilledByPlatform }) => {
               // Vinted/LBC/Beebs : blocking est TOUJOURS false ici (aucune de
               // leurs listes ne fait foi) — donc toujours l'avertissement jaune.
               const avert = state === "invalid" && blocking !== true;
@@ -2739,7 +2739,11 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               }}>
                 {state === "ok" ? "✓ " : avert ? "⚠ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{label}
                 {avecValeur ? ` : ${String(value).trim()}` : ""}
-                {state === "prefilled" ? ` — ${t("stepPublishGenericAspectPrefilled")}` : ""}
+                {state === "prefilled"
+                  ? ` — ${prefilledByPlatform
+                      ? tpl("stepPublishAspectPrefilledByPlatform", { platform: PLATFORM_LABELS[gp] ?? gp })
+                      : t("stepPublishGenericAspectPrefilled")}`
+                  : ""}
                 {state === "missing" ? ` — ${t("stepPublishGenericAspectMissing")}` : ""}
                 {state === "invalid" ? ` — ${t(avert ? "stepPublishAspectOffListWarn" : "stepPublishGenericAspectInvalid")}` : ""}
               </span>
@@ -5184,10 +5188,28 @@ export default function ListingPreviewScreen({
   // règle produit « aucun obligatoire en texte libre ». Une valeur posée
   // (format_colis de la copie, ou choix utilisateur) reste prioritaire :
   // genericKnownSource est lu AVANT ce filet.
+  // « estimated_parcel_weight » AJOUTÉ le 2026-08-28 au soir (plainte n°1
+  // d'une utilisatrice) : le « Poids du colis » LBC bloquait le CTA pour une
+  // valeur que l'extension ne pose JAMAIS — combobox fermé à liste jamais
+  // relevée (cf. bandeau LBC_POIDS_PAR_FORMAT en tête de fichier, f68fac8),
+  // fillCriterionSafe ne clique qu'une option matchée et conserve sinon le
+  // pré-rempli Leboncoin. Recoupé en base : 60 publications LBC SANS saisie
+  // de poids contre 55 avec, et ZÉRO échec/needs_user lié au poids sur toute
+  // l'histoire de la table (revérifié ce soir : error ILIKE poids/parcel/
+  // weight + field_key → 0 ligne). C'est donc un « pré-rempli plateforme »
+  // au sens exact de cette liste. ⚠️ CE CHAMP SEULEMENT — les autres aspects
+  // LBC obligatoires bloquent comme avant, on ne généralise pas à « tout
+  // combobox non relevé ».
   const GENERIC_PREFILLED = {
     vinted: ["sim_lock", "package_size_id"],
-    leboncoin: ["quantity"],
+    leboncoin: ["quantity", "estimated_parcel_weight"],
     beebs: ["Format du colis"],
+  };
+  // Sous-ensemble rempli par la PLATEFORME elle-même (les autres entrées sont
+  // des défauts posés par l'extension) : le chip du bloc bleu le dit tel quel
+  // (« rempli par Leboncoin ») au lieu du générique « rempli automatiquement ».
+  const GENERIC_PREFILLED_BY_PLATFORM = {
+    leboncoin: ["estimated_parcel_weight"],
   };
 
   // Champ platform_fields DÉDIÉ visé par le sélecteur d'un state "invalid" —
@@ -5274,7 +5296,12 @@ export default function ListingPreviewScreen({
         }
         const generic = String(aspects[key] ?? "").trim();
         if (generic) return { key, label, state: "ok", source: "generic", value: generic, allowedValues };
-        if (GENERIC_PREFILLED[platform]?.includes(key)) return { key, label, state: "prefilled", allowedValues };
+        if (GENERIC_PREFILLED[platform]?.includes(key)) {
+          return {
+            key, label, state: "prefilled", allowedValues,
+            prefilledByPlatform: GENERIC_PREFILLED_BY_PLATFORM[platform]?.includes(key) ?? false,
+          };
+        }
         // dedicatedTarget aussi sur les "missing" (2026-07-19) : la
         // confirmation valeur-unique doit écrire le champ DÉDIÉ (etat…) que
         // lit l'extension — le canal générique est ignoré pour les clés déjà

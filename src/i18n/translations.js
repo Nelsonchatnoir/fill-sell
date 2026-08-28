@@ -215,6 +215,10 @@ export const translations = {
     // le comportement (envoi de la valeur libre) est inchangé.
     stepPublishAspectOffListWarn:"envoyée telle quelle",
     stepPublishGenericAspectPrefilled:"rempli automatiquement",
+    // 2026-08-28 : variante pour les champs que la PLATEFORME pré-remplit
+    // elle-même (Poids du colis LBC) — dire « rempli par Leboncoin » rassure
+    // là où « rempli automatiquement » laissait croire à un geste de l'app.
+    stepPublishAspectPrefilledByPlatform:"rempli par {platform}",
     stepPublishGenericRequiredMissing:"{platform} exige pour cette catégorie : {fields}. Complète ce(s) champ(s) dans l'encart, puis relance la publication.",
     stepPublishSingleValueMsg:"cette catégorie n'accepte que « {value} » côté {platform}.",
     stepPublishEbayReferentialMissing:"Impossible de vérifier les champs obligatoires eBay de cette catégorie ({id}) — référentiel indisponible pour le moment. Réessaie dans un instant, ou décoche eBay pour publier sur les autres plateformes.",
@@ -522,6 +526,7 @@ export const translations = {
     stepPublishGenericAspectInvalid:"value not in the list, pick below",
     stepPublishAspectOffListWarn:"sent as is",
     stepPublishGenericAspectPrefilled:"filled automatically",
+    stepPublishAspectPrefilledByPlatform:"filled in by {platform}",
     stepPublishGenericRequiredMissing:"{platform} requires the following for this category: {fields}. Fill in the field(s) in the box, then publish again.",
     stepPublishSingleValueMsg:"this category only accepts “{value}” on {platform}.",
     stepPublishEbayReferentialMissing:"Can't verify the eBay required fields for this category ({id}) — the reference data is unavailable right now. Try again in a moment, or deselect eBay to publish on the other platforms.",
