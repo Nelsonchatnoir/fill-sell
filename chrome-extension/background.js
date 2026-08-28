@@ -10148,9 +10148,17 @@ async function maybeAutoRepublish(session) {
     // le tour du cycle à chaque passage. `photos->0` non nul couvre photos
     // NULL et []. ⚠️ Le critère est l'absence de photos, JAMAIS vinted_status :
     // 1 458 des 1 462 hidden du parc ont leurs photos et restent republiables.
+    // hidden/draft exclus AUSSI (2026-08-28, décision Nico — pastillage
+    // « Masquée »/« Brouillon ») : une annonce masquée ou brouillon n'est pas
+    // en ligne, et la republier automatiquement la republierait VISIBLE — à
+    // l'inverse du geste de l'utilisateur (mode vacances, stock saisonnier).
+    // NULL passe (article né FillSell jamais relu par la sync), d'où le
+    // or=() ; le compteur « N éligibles » de RepublishAutoBlock applique
+    // EXACTEMENT les mêmes filtres — s'ils divergent, il ment (cf. bandeau).
     const cands = await restRequest(
       `inventaire?user_id=eq.${userId}&statut=eq.stock&vinted_item_id=not.is.null` +
       `&photos->0=not.is.null` +
+      `&or=(vinted_status.is.null,vinted_status.not.in.(hidden,draft))` +
       `&disparu_le=is.null&listed_at_guess=lt.${encodeURIComponent(seuil)}` +
       `&select=id,vinted_item_id&order=listed_at_guess.asc&limit=10`,
       token, { headers: { Prefer: "return=representation" } },

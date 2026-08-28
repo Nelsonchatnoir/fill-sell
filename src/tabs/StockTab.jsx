@@ -2094,10 +2094,19 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
     let stale = false;
     (async () => {
       const seuil = new Date(Date.now() - ageJours * 86_400_000).toISOString();
+      // Aligné sur la SÉLECTION RÉELLE de l'extension (maybeAutoRepublish,
+      // background.js) — doctrine du bandeau d'É6 : s'ils divergent, ce
+      // compteur ment. Depuis le 2026-08-28 : sans-photo exclus (photos->0
+      // nul = NULL ou [], même filtre que l'extension et que le refus serveur
+      // article_sans_photo) et hidden/draft exclus (décision Nico : jamais
+      // présentés comme en ligne — NULL passe, c'est un article né FillSell
+      // jamais relu par la sync).
       const { count } = await supabase.from('inventaire')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', user.id).eq('statut', 'stock')
         .not('vinted_item_id', 'is', null).is('disparu_le', null)
+        .not('photos->0', 'is', null)
+        .or('vinted_status.is.null,vinted_status.not.in.(hidden,draft)')
         .lt('listed_at_guess', seuil);
       if (!stale && typeof count === 'number') setEligibles(count);
     })();
@@ -3108,7 +3117,13 @@ const StockTab = memo(function StockTab({
     ? Object.values(jobsByInventaire).flat().filter(j => j.action === 'republish' && (j.status === 'pending' || j.status === 'processing')).length
     : 0;
   const repubEtat = (item) => {
-    if (!(item.vinted_item_id && !item.disparu_le && item.statut !== 'vendu')) return 'ineligible';
+    // hidden/draft inéligibles (2026-08-28, décision Nico) : une annonce
+    // masquée ou brouillon n'est pas « en ligne » — la republier la
+    // republierait VISIBLE, à l'inverse du geste de l'utilisateur (et la
+    // capture d'un brouillon est incomplète par construction). Le chemin de
+    // retour existe : démasquer sur Vinted puis resynchroniser le dressing.
+    if (!(item.vinted_item_id && !item.disparu_le && item.statut !== 'vendu'
+      && item.vinted_status !== 'hidden' && item.vinted_status !== 'draft')) return 'ineligible';
     const rjobs = (jobsByInventaire[item.id] || []).filter(j => j.action === 'republish');
     let last = null;
     for (const j of rjobs) { if (!last || Date.parse(j.created_at || 0) > Date.parse(last.created_at || 0)) last = j; }
@@ -4776,7 +4791,10 @@ const StockTab = memo(function StockTab({
                     }
                     return r;
                   })();
-                  const repubEligible=republishActif&&item.vinted_item_id&&!item.disparu_le&&item.statut!=="vendu";
+                  // hidden/draft exclus (2026-08-28) : même règle que repubEtat
+                  // ci-dessus — les deux expressions doivent rester jumelles.
+                  const repubEligible=republishActif&&item.vinted_item_id&&!item.disparu_le&&item.statut!=="vendu"
+                    &&item.vinted_status!=="hidden"&&item.vinted_status!=="draft";
                   // Vocabulaire d'étape partagé pastille ↔ feuille (une seule
                   // source : etapeRepublication). null = rien à afficher.
                   // ⚠️ Volontairement décorrélé de repubEligible (2026-08-05) :
@@ -5410,6 +5428,30 @@ const StockTab = memo(function StockTab({
                                   l'annonce est RETIRÉE, « en ligne depuis »
                                   serait un mensonge). */}
                               {item.vinted_item_id&&!disparuDeVinted&&!repubEtape?.apresSuppression&&(()=>{
+                                // ── Masquée / Brouillon (2026-08-28, décision Nico) ──
+                                // vinted_status 'hidden'/'draft' → l'article n'est
+                                // JAMAIS présenté comme en ligne : cette pastille
+                                // remplace « en ligne depuis X j ». Elle porte la
+                                // DATE DU RELEVÉ (last_synced_at, dernier run de
+                                // sync qui a vu l'article) : le statut peut avoir
+                                // changé depuis, on n'affirme pas un état actuel.
+                                // Affichage seul — la donnée n'est jamais touchée,
+                                // les masquées avec photos ne sont JAMAIS supprimées.
+                                if(item.vinted_status==='hidden'||item.vinted_status==='draft'){
+                                  const vuLe=dateCourteParis(item.last_synced_at);
+                                  const masquee=item.vinted_status==='hidden';
+                                  const lbl=masquee
+                                    ?(lang==='fr'?'Masquée':'Hidden')
+                                    :(lang==='fr'?'Brouillon':'Draft');
+                                  return(
+                                    <div className="micon" style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100"}}
+                                      title={lang==='fr'
+                                        ?"Statut relevé sur Vinted lors de la dernière synchronisation du dressing — resynchronise si ce n'est plus le cas."
+                                        :"Status read from Vinted at the last wardrobe sync — sync again if this has changed."}>
+                                      {masquee?'🙈':'📝'} {lbl}{vuLe?` — ${lang==='fr'?'vu le':'seen'} ${vuLe}`:''}
+                                    </div>
+                                  );
+                                }
                                 const j=joursDepuis(item.listed_at_guess);
                                 if(j==null)return null;
                                 return(

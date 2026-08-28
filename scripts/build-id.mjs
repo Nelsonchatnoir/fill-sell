@@ -730,7 +730,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ⚠️ HORS zip 0.6.9 : part dans le paquet SUIVANT (aucun paquet dans cette
 // passe, validation de la base d'abord). EXTENSION_MIN_BUILD inchangé.
 // Committé avec GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-08-27T22:20:00Z';
+// 2026-08-28T07:55:00Z = sélection de la republication auto ASSAINIE (deux
+// commits du 28/08, dont 94ce682 du matin parti SANS bump — rattrapé ici,
+// même chantier) : les candidats excluent les articles SANS PHOTO
+// (photos->0 nul — coquilles vides de la sync, cas Joe0410 ; le refus
+// serveur article_sans_photo reste le filet) ET les vinted_status
+// hidden/draft (décision Nico 28/08 : jamais présentés comme en ligne, et
+// l'auto ne doit pas republier VISIBLE un article que l'utilisateur a
+// masqué — mode vacances, stock saisonnier ; NULL passe, article né
+// FillSell jamais relu par la sync). Le compteur « N éligibles » de
+// RepublishAutoBlock (StockTab) applique les MÊMES filtres — doctrine du
+// bandeau d'É6 : s'ils divergent, il ment. ⚠️ HORS zip 0.6.9 : paquet
+// SUIVANT. EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE
+// épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-28T07:55:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

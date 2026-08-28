@@ -702,7 +702,7 @@ function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.p
   // différence entre « non classé » et « classé Autre par l'utilisateur » —
   // or 27 articles importés du dressing ont type=NULL en base. `typeConnu`
   // conserve cette distinction pour l'AFFICHAGE, sans toucher au reste.
-  typeConnu:v.type!=null&&String(v.type).trim()!=="",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null,origine:v.origine||null,photos:Array.isArray(v.photos)?v.photos:null,vinted_item_id:v.vinted_item_id||null,vinted_catalog_id:v.vinted_catalog_id??null,disparu_le:v.disparu_le||null,vinted_status:v.vinted_status||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
+  typeConnu:v.type!=null&&String(v.type).trim()!=="",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null,origine:v.origine||null,photos:Array.isArray(v.photos)?v.photos:null,vinted_item_id:v.vinted_item_id||null,vinted_catalog_id:v.vinted_catalog_id??null,disparu_le:v.disparu_le||null,vinted_status:v.vinted_status||null,last_synced_at:v.last_synced_at||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;

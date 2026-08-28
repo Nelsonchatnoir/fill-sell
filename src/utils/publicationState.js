@@ -122,7 +122,13 @@ export function annoncesEncoreEnLigne(item, jobsAll) {
   // créée sur Vinted, pas par nous) — computeRemovalInfo ne peut rien en dire.
   // La vérité est portée par l'article, avec la MÊME expression que le tri du
   // Stock et la carte : vinted_item_id posé, disparu_le vide.
-  if (item?.vinted_item_id && !item?.disparu_le && !enLigne.some(a => a.platform === "vinted")) {
+  // SAUF hidden/draft (2026-08-28, décision Nico) : une annonce masquée ou à
+  // l'état de brouillon sur Vinted n'est PAS visible d'un acheteur — la dire
+  // « encore en ligne » ici serait faux. Le statut vient du dernier relevé de
+  // sync (payload Vinted, vérifié fiable le 28/08) ; la carte porte la date.
+  if (item?.vinted_item_id && !item?.disparu_le
+    && item?.vinted_status !== "hidden" && item?.vinted_status !== "draft"
+    && !enLigne.some(a => a.platform === "vinted")) {
     enLigne.push({ platform: "vinted", url: `https://www.vinted.fr/items/${item.vinted_item_id}` });
   }
   return enLigne.sort((a, b) => rangPlateforme(a.platform) - rangPlateforme(b.platform));
