@@ -779,7 +779,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // du commit précédent sont remplacées par les sélecteurs prouvés. ⚠️ HORS
 // zip 0.6.9 : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé. Committé
 // GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-08-28T12:05:00Z';
+// 2026-08-28T16:22:21Z = b58bd09 (appariement de taille NUMÉRIQUE ANCRÉ +
+// message needs_user taille honnête — cardigan Laurence). ⚠️ Ce commit a
+// touché chrome-extension/ SANS bumper cette constante : `npm run build`
+// local échouait sur la garde ci-dessous (même rattrapage que 3db8465 le
+// 12/08). Valeur = horodatage UTC exact du commit. ⚠️ HORS zip 0.6.9 :
+// paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
+export const EXTENSION_LAST_COMMIT = '2026-08-28T16:22:21Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
