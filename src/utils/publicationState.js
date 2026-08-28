@@ -105,10 +105,37 @@ const rangPlateforme = (p) => {
   return i === -1 ? ORDRE_PLATEFORMES.length : i;
 };
 
+// ── vinted_status PRIME sur les jobs (2026-08-28, complément Nico) ───────────
+// 44 articles du parc portaient un job FillSell 'published' ET un
+// vinted_status masqué/brouillon : la pastille verte (jobs seuls) les disait
+// « En ligne » alors qu'aucun acheteur ne les voit. Règle : hidden/draft ⇒
+// jamais présenté comme en ligne. GARDE-FOU DE FRAÎCHEUR : le statut date du
+// dernier run de sync qui a VU l'article (998 des 1 457 hidden ont 7-14 j) —
+// un job vinted 'published' POSTÉRIEUR à last_synced_at l'emporte, sinon une
+// publication d'aujourd'hui serait masquée par un relevé vieux de dix jours.
+// Comparaison d'horodatages, jamais le statut seul. disparu_le prime déjà
+// partout (l'annonce n'existe plus : autre pastille, autre règle).
+// SOURCE UNIQUE : pastille verte + logos (carte Stock), puce Masquée/
+// Brouillon, repubEtat/repubEligible et annoncesEncoreEnLigne lisent tous ce
+// helper — deux expressions divergentes referaient deux vérités.
+export function vintedMasqueeMalgreJobs(item, jobsAll) {
+  if (item?.vinted_status !== "hidden" && item?.vinted_status !== "draft") return false;
+  if (item?.disparu_le) return false;
+  const releve = Date.parse(item?.last_synced_at ?? "");
+  if (!Number.isFinite(releve)) return true; // relevé non daté : le statut fait foi
+  return !(jobsAll ?? []).some((j) => j.platform === "vinted"
+    && j.action !== "delete" && j.status === "published"
+    && Date.parse(j.published_at ?? j.created_at ?? 0) > releve);
+}
+
 export function annoncesEncoreEnLigne(item, jobsAll) {
   const { publishedActive, latestPubByPlatform } = computeRemovalInfo(jobsAll ?? []);
+  const masquee = vintedMasqueeMalgreJobs(item, jobsAll);
   const enLigne = [];
   for (const p of publishedActive) {
+    // Masquée/brouillon malgré un job 'published' (relevé plus récent que le
+    // job) : invisible d'un acheteur, on ne la dit pas « encore en ligne ».
+    if (p === "vinted" && masquee) continue;
     const pub = latestPubByPlatform[p];
     // La sonde a DÉJÀ constaté que l'annonce n'est plus atteignable
     // (platform_fields.unavailable_since) : ce cas appartient au bandeau
@@ -122,12 +149,11 @@ export function annoncesEncoreEnLigne(item, jobsAll) {
   // créée sur Vinted, pas par nous) — computeRemovalInfo ne peut rien en dire.
   // La vérité est portée par l'article, avec la MÊME expression que le tri du
   // Stock et la carte : vinted_item_id posé, disparu_le vide.
-  // SAUF hidden/draft (2026-08-28, décision Nico) : une annonce masquée ou à
-  // l'état de brouillon sur Vinted n'est PAS visible d'un acheteur — la dire
-  // « encore en ligne » ici serait faux. Le statut vient du dernier relevé de
-  // sync (payload Vinted, vérifié fiable le 28/08) ; la carte porte la date.
-  if (item?.vinted_item_id && !item?.disparu_le
-    && item?.vinted_status !== "hidden" && item?.vinted_status !== "draft"
+  // SAUF masquée/brouillon (2026-08-28, décision Nico) : une annonce masquée
+  // ou à l'état de brouillon sur Vinted n'est PAS visible d'un acheteur — la
+  // dire « encore en ligne » serait faux. Même règle de fraîcheur que
+  // partout : vintedMasqueeMalgreJobs (helper ci-dessus).
+  if (item?.vinted_item_id && !item?.disparu_le && !masquee
     && !enLigne.some(a => a.platform === "vinted")) {
     enLigne.push({ platform: "vinted", url: `https://www.vinted.fr/items/${item.vinted_item_id}` });
   }

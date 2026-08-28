@@ -12,7 +12,7 @@ import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteAmount from '../components/PepiteAmount';
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
-import { computeRemovalInfo, plateformesReserveesParRepublication } from '../utils/publicationState';
+import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs } from '../utils/publicationState';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
@@ -949,6 +949,11 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
             // deviendra retirable ici même dès que l'URL est récupérée.
             const urlRecovering = noUrl && isListingUrlRecoverable(p, latestPubByPlatform[p]);
             const online = isPublished && !state && !noUrl;
+            // vinted_status prime sur les jobs (2026-08-28) : masquée/brouillon
+            // ⇒ le libellé ne dit plus « En ligne ». Le RETRAIT reste offert —
+            // supprimer une annonce masquée fonctionne, et c'est un geste
+            // légitime sur un article qu'on ne veut plus voir nulle part.
+            const masquee = p === "vinted" && online && vintedMasqueeMalgreJobs(item, jobsAll);
             const busy = busyPlatform === p;
             const armed = confirming === p;
             const dimmed = !isPublished || state === "removed";
@@ -960,7 +965,9 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, fontWeight:600, color:dimmed ? NU_T.mute : NU_T.ink }}>{label}</div>
                   <div style={{ fontSize:11.5, lineHeight:1.35, color:NU_T.mute, display:"flex", alignItems:"center", gap:5 }}>
-                    {online && !armed && (<><span style={{ width:5, height:5, borderRadius:"50%", background:"#2F9E90", flex:"0 0 auto" }}/><span style={{ color:"#1B6E62", fontWeight:600 }}>{fr ? "En ligne" : "Live"}</span></>)}
+                    {online && !armed && (masquee
+                      ? (<><span style={{ width:5, height:5, borderRadius:"50%", background:"#E8B54D", flex:"0 0 auto" }}/><span style={{ color:"#8A6100", fontWeight:600 }}>{item.vinted_status === "draft" ? (fr ? "Brouillon sur Vinted" : "Draft on Vinted") : (fr ? "Masquée sur Vinted" : "Hidden on Vinted")}</span></>)
+                      : (<><span style={{ width:5, height:5, borderRadius:"50%", background:"#2F9E90", flex:"0 0 auto" }}/><span style={{ color:"#1B6E62", fontWeight:600 }}>{fr ? "En ligne" : "Live"}</span></>))}
                     {online && armed && <span style={{ color:"#8C2F28", fontWeight:600 }}>{fr ? `Retirer de ${label} ?` : `Remove from ${label}?`}</span>}
                     {state === "removing" && <span style={{ color:"#8A6100", fontWeight:600 }}>⏳ {fr ? "Retrait en cours…" : "Removing…"}</span>}
                     {state === "removed" && <span>{fr ? "Retirée" : "Removed"}</span>}
@@ -3117,13 +3124,15 @@ const StockTab = memo(function StockTab({
     ? Object.values(jobsByInventaire).flat().filter(j => j.action === 'republish' && (j.status === 'pending' || j.status === 'processing')).length
     : 0;
   const repubEtat = (item) => {
-    // hidden/draft inéligibles (2026-08-28, décision Nico) : une annonce
+    // Masquée/brouillon inéligibles (2026-08-28, décision Nico) : une annonce
     // masquée ou brouillon n'est pas « en ligne » — la republier la
     // republierait VISIBLE, à l'inverse du geste de l'utilisateur (et la
     // capture d'un brouillon est incomplète par construction). Le chemin de
     // retour existe : démasquer sur Vinted puis resynchroniser le dressing.
+    // Même garde de fraîcheur que la pastille (vintedMasqueeMalgreJobs) : un
+    // job 'published' plus récent que le relevé rend l'article republiable.
     if (!(item.vinted_item_id && !item.disparu_le && item.statut !== 'vendu'
-      && item.vinted_status !== 'hidden' && item.vinted_status !== 'draft')) return 'ineligible';
+      && !vintedMasqueeMalgreJobs(item, jobsByInventaire[item.id] || []))) return 'ineligible';
     const rjobs = (jobsByInventaire[item.id] || []).filter(j => j.action === 'republish');
     let last = null;
     for (const j of rjobs) { if (!last || Date.parse(j.created_at || 0) > Date.parse(last.created_at || 0)) last = j; }
@@ -4762,6 +4771,10 @@ const StockTab = memo(function StockTab({
                   // légitime de la vente — cette pastille-là n'est pas touchée.
                   const prixAnnonce=item.vinted_item_id&&!item.disparu_le?prixAnnonces[item.vinted_item_id]:null;
                   const jobsAll=jobsByInventaire[item.id]||[];
+                  // Défini ICI (avant repubEligible qui le lit — TDZ) ; la
+                  // règle et ses raisons vivent sur le bloc logosEnLigne/
+                  // enLigne plus bas, et la source unique dans le helper.
+                  const vintedMasquee=vintedMasqueeMalgreJobs(item,jobsAll);
                   // Les jobs de retrait ciblé (action='delete') vivent à part :
                   // mélangés aux publish, un delete pending affichait « En
                   // cours… » (dépôt) et un delete failed un badge « Échec » de
@@ -4791,10 +4804,11 @@ const StockTab = memo(function StockTab({
                     }
                     return r;
                   })();
-                  // hidden/draft exclus (2026-08-28) : même règle que repubEtat
-                  // ci-dessus — les deux expressions doivent rester jumelles.
+                  // Masquée/brouillon exclus (2026-08-28) : même règle que
+                  // repubEtat ci-dessus — les deux expressions doivent rester
+                  // jumelles (même helper, même garde de fraîcheur).
                   const repubEligible=republishActif&&item.vinted_item_id&&!item.disparu_le&&item.statut!=="vendu"
-                    &&item.vinted_status!=="hidden"&&item.vinted_status!=="draft";
+                    &&!vintedMasquee;
                   // Vocabulaire d'étape partagé pastille ↔ feuille (une seule
                   // source : etapeRepublication). null = rien à afficher.
                   // ⚠️ Volontairement décorrélé de repubEligible (2026-08-05) :
@@ -4968,7 +4982,17 @@ const StockTab = memo(function StockTab({
                   const logosEnLigne=disparuDeVinted
                     ?publishedActive.filter(p=>p!=="vinted")
                     :(vintedGeleParRepub?[...publishedActive,"vinted"]:publishedActive);
-                  const enLigne=logosEnLigne.length>0;
+                  // ── vinted_status PRIME sur les jobs (2026-08-28, complément
+                  // Nico) : masquée/brouillon malgré un job 'published' (44 cas
+                  // au relevé) ⇒ la pastille verte ne compte plus Vinted, le
+                  // LOGO reste mais GRISÉ (l'annonce EXISTE — masquée n'est pas
+                  // disparue — et le tap → modal de retrait doit rester
+                  // possible). Garde-fou de fraîcheur dans le helper : un job
+                  // 'published' postérieur au relevé l'emporte. nbEnLigne et le
+                  // bouton « En ligne (N/4) » restent sur logosEnLigne : la
+                  // plateforme est occupée par une annonce EXISTANTE — la
+                  // rouvrir à « Publier » créerait un doublon.
+                  const enLigne=logosEnLigne.some(p=>!(p==="vinted"&&vintedMasquee));
                   // Compteur de plateformes réellement en ligne : pilote le 3e état
                   // du bouton (4/4 = plus rien à publier).
                   const nbEnLigne=logosEnLigne.length;
@@ -5074,6 +5098,19 @@ const StockTab = memo(function StockTab({
                             dot="#8A8578";fg="#8A6100";
                             txt=(fr?'Plus en ligne':'Gone')+(dateCourteParis(item.disparu_le)?` · ${dateCourteParis(item.disparu_le)}`:'');
                             titre=fr?"L'annonce Vinted n'a pas été retrouvée lors de la dernière synchronisation de ton dressing.":'This Vinted listing was not found during the last wardrobe sync.';
+                          }else if(vintedMasquee&&!enLigne){
+                            // vinted_status prime sur les jobs (28/08) : jamais
+                            // « En ligne » sur une masquée/brouillon. La date =
+                            // celle du RELEVÉ (last_synced_at), pas un état
+                            // affirmé aujourd'hui.
+                            dot="#E8B54D";fg="#8A6100";
+                            const vuLe=dateCourteParis(item.last_synced_at);
+                            txt=(item.vinted_status==='draft'
+                              ?(fr?'Brouillon':'Draft')
+                              :(fr?'Masquée':'Hidden'))+(vuLe?` · ${vuLe}`:'');
+                            titre=fr
+                              ?"Statut relevé sur Vinted lors de la dernière synchronisation du dressing — resynchronise si ce n'est plus le cas."
+                              :"Status read from Vinted at the last wardrobe sync — sync again if this has changed.";
                           }else if(enLigne){
                             dot="#2F9E90";fg="#1B6E62";txt=fr?'En ligne':'Live';
                           }
@@ -5108,10 +5145,18 @@ const StockTab = memo(function StockTab({
                                   <PlatformLogo platform={p} size={16}/>
                                 </span>
                               );
+                              // Masquée/brouillon : logo CONSERVÉ mais grisé —
+                              // l'annonce existe (masquée ≠ disparue) et le tap
+                              // vers le modal de retrait reste le bon geste.
+                              const masque=vintedMasquee&&p==="vinted";
                               return(
                                 <span key={p} className="plogo"
-                                  title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`):(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
-                                  style={{cursor:"pointer",...(removing?{opacity:.35}:{})}}
+                                  title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`)
+                                    :masque?(lang==="en"
+                                      ?`${item.vinted_status==='draft'?'Draft':'Hidden'} on Vinted — the listing exists but buyers can't see it. Tap to manage.`
+                                      :`${item.vinted_status==='draft'?'Brouillon':'Masquée'} sur Vinted — l'annonce existe mais les acheteurs ne la voient pas. Toucher pour gérer.`)
+                                    :(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
+                                  style={{cursor:"pointer",...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
                                   onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
                                   <PlatformLogo platform={p} size={16}/>
                                 </span>
@@ -5437,7 +5482,15 @@ const StockTab = memo(function StockTab({
                                 // changé depuis, on n'affirme pas un état actuel.
                                 // Affichage seul — la donnée n'est jamais touchée,
                                 // les masquées avec photos ne sont JAMAIS supprimées.
-                                if(item.vinted_status==='hidden'||item.vinted_status==='draft'){
+                                if(vintedMasquee){
+                                  // Même règle de fraîcheur que la pastille et
+                                  // les logos (vintedMasqueeMalgreJobs) : un
+                                  // job 'published' plus récent que le relevé
+                                  // rend la puce « en ligne depuis » ci-dessous.
+                                  // Pas de doublon : quand la pastille de
+                                  // STATUT dit déjà « Masquée · date » (aucune
+                                  // autre plateforme en ligne), la puce se tait.
+                                  if(!enLigne)return null;
                                   const vuLe=dateCourteParis(item.last_synced_at);
                                   const masquee=item.vinted_status==='hidden';
                                   const lbl=masquee
