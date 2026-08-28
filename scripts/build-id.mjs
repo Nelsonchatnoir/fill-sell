@@ -757,7 +757,17 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // update-job-status v27 + handler-watch v16. ⚠️ HORS zip 0.6.9 : paquet
 // SUIVANT. EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE
 // épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-08-28T10:10:00Z';
+// 2026-08-28T10:35:00Z = attente SUR LE RETOUR du lookup livre après la pose
+// ISBN (GO Nico — piste « valeur refusée » écartée : 9782811600174 = Fairy
+// Tail t.5, Pika 2009, référencé partout ⇒ course avec le lookup). Le
+// sleep(1200) fixe est remplacé : poll d'une PREUVE de retour (champ
+// Auteur/Titre auto-rempli, conventions du dépôt en best-effort), plafond
+// 8 s valant repli ≥ plancher 3 s demandé. Uniquement dans l'étape ISBN —
+// les catégories sans ISBN ne paient rien. Le diagnostic isbnEnvoye/
+// last_diagnostic (même jour) tranchera au premier cas réel. ⚠️ HORS zip
+// 0.6.9 : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé. Committé
+// GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-28T10:35:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

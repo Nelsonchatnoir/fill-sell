@@ -1671,8 +1671,45 @@ async function fillListingForm(job) {
           "Soumission refusée pour ne pas perdre l'annonce — relance la republication, ou pose l'ISBN à la main."
         );
       }
-      // Laisse le lookup livre de Vinted partir (Auteur/Titre côté serveur).
-      await sleep(1200);
+      // ── Attente SUR LE RETOUR du lookup livre (2026-08-28, GO Nico — mur
+      // « Fairy tail », job a25d171b) : le sleep FIXE de 1,2 s perdait la
+      // course — le POST partait avant que le lookup ait rattaché le livre,
+      // et Vinted répondait « Merci d'entrer un numéro ISBN valide » sur un
+      // champ correctement rempli (gate stricte passée). Piste « valeur
+      // refusée » ÉCARTÉE : 9782811600174 = Fairy Tail t.5, Pika 2009,
+      // référencé partout. On attend donc une PREUVE du retour : un champ
+      // Auteur/Titre du livre auto-rempli — sélecteurs déclinés des deux
+      // conventions du dépôt (#isbn / isbn--input), best-effort car JAMAIS
+      // relevés formellement. Plafond 8 s ; preuve inobservable (sélecteurs
+      // faux, livre sans fiche, auto-remplissage purement serveur) → le
+      // plafond vaut repli, jamais moins que le plancher de 3 s demandé.
+      // Ne tourne QUE dans l'étape ISBN : les catégories sans ISBN ne
+      // paient rien. Le diagnostic isbnEnvoye/last_diagnostic (même jour)
+      // confirmera ou infirmera au premier cas post-déploiement.
+      const preuveLookup = () => {
+        for (const conv of [
+          '#book_author, [data-testid="book_author--input"]',
+          '#author, [data-testid="author--input"]',
+          '#book_title, [data-testid="book_title--input"]',
+        ]) {
+          for (const champ of document.querySelectorAll(conv)) {
+            try { if (readCommittedValue(champ).trim()) return true; } catch { /* champ exotique : ignoré */ }
+          }
+        }
+        return false;
+      };
+      const debutLookup = Date.now();
+      let lookupVu = false;
+      while (Date.now() - debutLookup < 8000) {
+        if (preuveLookup()) { lookupVu = true; break; }
+        await sleep(250);
+      }
+      if (lookupVu) {
+        console.log(`[vinted] ISBN : lookup livre retombé en ${Date.now() - debutLookup} ms (Auteur/Titre auto-remplis)`);
+        await sleep(400); // marge de commit après le retour
+      } else {
+        console.warn("[vinted] ISBN : retour du lookup livre non observé en 8 s — on soumet (plancher 3 s largement couvert)");
+      }
     });
   }
 
