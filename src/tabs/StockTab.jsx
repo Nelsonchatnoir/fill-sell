@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { RefreshCw, Check, ChevronDown, ChevronUp, ChevronRight, Hand, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -238,10 +239,11 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .gactions{margin-top:auto;display:flex;flex-direction:column;gap:4px;padding-top:2px;}
 .stock-v2 .gactions .btn-publier{padding:7px 0;font-size:12px;}
 .stock-v2 .gactions .btn-vendre{padding:6px 4px;}
-/* Écran de progression des republications (2026-08-28) : surfaces plates —
-   pas de dégradé ni d'ombre. Barre globale 6px, barres de phase fines 4px. */
+/* Écran de progression des republications (v3 2026-08-28 soir) : surfaces
+   plates — pas de dégradé ni d'ombre. UNE SEULE barre sur l'écran, celle du
+   bloc actif (6px) ; .sur-teinte = piste lisible sur le fond teinté accent. */
 .stock-v2 .repub-track{height:6px;border-radius:999px;background:var(--canvas);overflow:hidden;margin-top:8px;}
-.stock-v2 .repub-track.mince{height:4px;margin-top:5px;}
+.stock-v2 .repub-track.sur-teinte{background:rgba(13,148,136,0.14);}
 .stock-v2 .repub-fill{height:100%;border-radius:999px;background:#1B6E62;transition:width 0.6s ease;min-width:0;}
 `;
 
@@ -2283,90 +2285,83 @@ const repubStepDe = (j) => {
 // traverse — il avait été oublié en 2.4.73).
 const repubJobFini = (j) => REPUB_STATUS_RESOLUS.includes(j.status) || repubStepDe(j) === 'recreated';
 
-// État court d'une ligne de job. L'étape 'deleted' n'est JAMAIS « en
-// attente » : c'est le seul moment où l'annonce n'est plus visible sur Vinted.
-function repubLigneEtat(job, fr) {
-  const st = job.status;
-  const step = repubStepDe(job);
-  if (st === 'published' || st === 'sold' || step === 'recreated')
-    return { ic: '✅', lib: fr ? 'en ligne' : 'live', couleur: '#1B6E62' };
-  if (st === 'dry_run_completed')
-    return { ic: '🧪', lib: fr ? 'test à blanc' : 'dry run', couleur: '#334155' };
-  if (st === 'failed' || st === 'cancelled')
-    return step === 'deleted'
-      ? { ic: '⚠️', lib: fr ? 'hors ligne — arrêtée' : 'offline — stopped', couleur: '#B91C1C' }
-      : { ic: '⏸️', lib: fr ? 'arrêtée' : 'stopped', couleur: '#5C6560' };
-  // En cours (pending, processing — traités pareil — ou statut inconnu,
-  // prudence) : le libellé suit l'ÉTAPE.
-  if (step === 'deleted') return { ic: '🔁', lib: fr ? 'republication' : 'reposting', couleur: '#334155' };
-  if (step === 'captured') return { ic: '💾', lib: fr ? 'préparation' : 'preparing', couleur: '#334155' };
-  return { ic: '⏳', lib: fr ? 'en attente' : 'queued', couleur: '#5C6560' };
-}
+// Phrase du bloc actif : ce que la machine FAIT, pas l'état interne.
+// a_capturer et captured partagent la phrase de relevé (avant l'étape deleted,
+// le travail visible est la lecture/sauvegarde de l'annonce). L'étape
+// 'deleted' est le seul moment où l'annonce n'est plus en ligne : « On
+// recrée » est exact sans inquiéter — ne pas mentir, ne pas alarmer.
+const repubPhraseActive = (step, fr) => step === 'deleted'
+  ? (fr ? 'On recrée ton annonce sur Vinted' : 'We are recreating your listing on Vinted')
+  : (fr ? 'On relève ton annonce sur Vinted' : 'We are reading your listing on Vinted');
 
-// Lignes du lot — composant SÉPARÉ : le tick d'1 s ne re-rend que lui,
-// jamais tout l'onglet Stock (galerie comprise).
-function RepubLotLignes({ lang, jobs, total, stock }) {
+// Bloc « EN COURS » — LA seule barre de l'écran, UN job à la fois : le
+// traitement réel est séquentiel (une republication toutes les ~3 min en
+// prod), la barre par job de 2.4.74 faisait avancer 6 barres jumelles
+// ensemble — illisible, et faux. Composant SÉPARÉ : le tick d'1 s ne re-rend
+// que lui, jamais l'onglet ; il s'arrête au démontage (plus d'actif).
+function RepubBlocActif({ lang, job, titre }) {
   const fr = lang !== 'en';
-  // Tick ~1 s tant qu'au moins un job est en cours — s'arrête tout seul
-  // sinon : rien ne tourne en fond pour un lot fini.
-  const actif = jobs.some((j) => !repubJobFini(j));
   const [, setTick] = useState(0);
   useEffect(() => {
-    if (!actif) return;
     const t = setInterval(() => setTick((x) => x + 1), 1000);
     return () => clearInterval(t);
-  }, [actif]);
+  }, []);
   // Mémoire locale de session : rien en base n'horodate l'entrée dans une
   // étape (et poser un horodatage sortirait du périmètre affichage), donc on
   // mémorise la première OBSERVATION de chaque étape et on interpole depuis.
-  // App rouverte = origines réinitialisées : la barre repart de l'ancre de
-  // l'étape courante, jamais plus bas. maxPct = cliquet anti-recul par job
+  // Map par job.id : survit au passage au job suivant tant que le bloc reste
+  // monté. App rouverte = origines réinitialisées, la barre repart de l'ancre
+  // de l'étape courante, jamais plus bas. maxPct = cliquet anti-recul
   // (l'interpolation seule ne recule jamais ; le cliquet couvre une étape qui
   // régresserait en base). Mutations idempotentes : sûres en StrictMode.
   const suiviRef = useRef(new Map());
-  const pctJob = (job) => {
-    if (repubJobFini(job)) return 100;
-    const step = repubStepDe(job);
-    const m = suiviRef.current;
-    let s = m.get(job.id);
-    if (!s || s.step !== step) {
-      s = { step, depuis: Date.now(), maxPct: s ? s.maxPct : 0 };
-      m.set(job.id, s);
-    }
-    const ancre = REPUB_ANCRES[step];
-    const suivante = REPUB_ANCRES[REPUB_ORDRE[REPUB_ORDRE.indexOf(step) + 1]];
-    const tSec = (Date.now() - s.depuis) / 1000;
-    const pct = ancre + (suivante - ancre) * (1 - Math.exp(-tSec / REPUB_DUREES[step]));
-    s.maxPct = Math.max(s.maxPct, pct);
-    return s.maxPct;
-  };
-  const titres = useMemo(() => new Map((stock ?? []).map((i) => [i.id, i.title])), [stock]);
-  // Au-delà de 20 jobs : seuls les non-terminés restent détaillés, les
-  // terminés se replient sous un compteur.
-  const grand = total > 20;
-  const lignes = grand ? jobs.filter((j) => !repubJobFini(j)) : jobs;
-  const replies = jobs.length - lignes.length;
+  const step = repubStepDe(job);
+  const m = suiviRef.current;
+  let s = m.get(job.id);
+  if (!s || s.step !== step) {
+    s = { step, depuis: Date.now(), maxPct: s ? s.maxPct : 0 };
+    m.set(job.id, s);
+  }
+  const ancre = REPUB_ANCRES[step];
+  const suivante = REPUB_ANCRES[REPUB_ORDRE[REPUB_ORDRE.indexOf(step) + 1]];
+  const tSec = (Date.now() - s.depuis) / 1000;
+  s.maxPct = Math.max(s.maxPct, ancre + (suivante - ancre) * (1 - Math.exp(-tSec / REPUB_DUREES[step])));
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:9,marginTop:12}}>
-      {grand&&replies>0&&(
-        <div style={{fontSize:12,fontWeight:600,color:"#5C6560"}}>
-          ✓ {replies} {fr?`terminée${replies>1?'s':''}`:'finished'}
+    <div style={{ background: '#F0FDFB', border: '1px solid rgba(13,148,136,0.25)', borderRadius: 10, padding: '11px 12px', marginTop: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+        <RefreshCw size={13} color="#1B6E62" strokeWidth={2.5} style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', color: '#1B6E62' }}>{fr ? 'EN COURS' : 'IN PROGRESS'}</span>
+      </div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#10201B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titre}</div>
+      <div className="repub-track sur-teinte"><div className="repub-fill" style={{ width: `${s.maxPct.toFixed(2)}%` }} /></div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#1B6E62', marginTop: 8 }}>{repubPhraseActive(step, fr)}</div>
+    </div>
+  );
+}
+
+// Terminées : repliées sous UNE ligne dépliable — sur un lot de 280 (cas
+// nadegemarcelin78, 28/08), la liste complète noierait la file.
+function RepubTerminees({ lang, jobs, titreDe }) {
+  const fr = lang !== 'en';
+  const [ouvert, setOuvert] = useState(false);
+  const n = jobs.length;
+  return (
+    <div style={{ borderTop: '1px solid #EFECE3', marginTop: 12, paddingTop: 10 }}>
+      <button onClick={() => setOuvert((o) => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+        <Check size={14} color="#1B6E62" strokeWidth={2.5} style={{ flexShrink: 0 }} />
+        <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#5C6560' }}>
+          {fr ? `${n} republiée${n > 1 ? 's' : ''}, de nouveau en ligne` : `${n} reposted, live again`}
+        </span>
+        {ouvert ? <ChevronUp size={15} color="#8A8578" style={{ flexShrink: 0 }} /> : <ChevronDown size={15} color="#8A8578" style={{ flexShrink: 0 }} />}
+      </button>
+      {ouvert && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {jobs.map((j) => (
+            <div key={j.id} style={{ paddingLeft: 22, fontSize: 12.5, color: '#8A8578', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titreDe(j)}</div>
+          ))}
         </div>
       )}
-      {lignes.map((j)=>{
-        const e=repubLigneEtat(j,fr);
-        const titre=titres.get(j.inventaire_id)??j.title??(fr?'Annonce':'Listing');
-        return (
-          <div key={j.id}>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <span style={{fontSize:12,flexShrink:0}}>{e.ic}</span>
-              <span style={{flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontSize:12.5,fontWeight:600,color:"#10201B"}}>{titre}</span>
-              <span style={{fontSize:11.5,fontWeight:700,color:e.couleur,flexShrink:0}}>{e.lib}</span>
-            </div>
-            <div className="repub-track mince"><div className="repub-fill" style={{width:`${pctJob(j).toFixed(2)}%`}}/></div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -3333,9 +3328,9 @@ const StockTab = memo(function StockTab({
     }
     // jobs/total EXCLUENT les needs_user (ligne « action requise » dédiée) :
     // le lot peut être fini avec cette ligne encore présente, c'est voulu.
-    // La progression PAR JOB, elle, vit dans RepubLotLignes (tick 1 s) — ici
-    // on ne fait que délimiter le lot et compter.
-    let republiees = 0, enCoursCount = 0, aRelancer = 0, arretees = 0;
+    // La progression du bloc actif, elle, vit dans RepubBlocActif (tick 1 s)
+    // — ici on ne fait que délimiter le lot et compter.
+    let aRelancer = 0, arretees = 0, dryRuns = 0;
     const jobs = [];
     // Orpheline (3d-a) : une recréation en cours dont l'ordinateur ne répond
     // plus — mêmes seuils que la pastille (deleted > 20 min + heartbeat muet
@@ -3355,8 +3350,7 @@ const StockTab = memo(function StockTab({
       jobs.push(j);
       const step = repubStepDe(j);
       if (st === 'failed' || st === 'cancelled') arretees++;
-      if (st === 'published' || st === 'sold' || step === 'recreated') republiees++;
-      if (!repubJobFini(j)) enCoursCount++;
+      if (st === 'dry_run_completed') dryRuns++;
       if (enFile(st) && step === 'deleted' && hbMuet) {
         const d = Date.parse(j.platform_fields?.deleted_at ?? '');
         if (Number.isFinite(d) && Date.now() - d > 20 * 60 * 1000) orpheline = true;
@@ -3364,8 +3358,22 @@ const StockTab = memo(function StockTab({
     }
     // Ordre stable : celui de la création du lot.
     jobs.sort((a, b) => Date.parse(a.created_at ?? 0) - Date.parse(b.created_at ?? 0));
-    return { jobs, total: jobs.length, republiees, enCoursCount, aRelancer, arretees, orpheline };
+    // Découpage séquentiel (v3 du 28/08 soir) : les republications sortent
+    // UNE PAR UNE en prod (relevé 19:29 / 19:32 / 19:35 / 19:39) — l'écran
+    // montre UN actif, une file, des terminées repliées. Actif = le
+    // processing s'il existe (c'est lui que l'extension traite), sinon le
+    // premier non-fini dans l'ordre de création du lot. Un statut inconnu
+    // reste dans la file (prudence : jamais ignoré).
+    const nonFinis = jobs.filter((j) => !repubJobFini(j));
+    const actif = nonFinis.find((j) => j.status === 'processing') ?? nonFinis[0] ?? null;
+    const file = nonFinis.filter((j) => j !== actif);
+    const terminees = jobs.filter((j) => j.status === 'published' || j.status === 'sold' || repubStepDe(j) === 'recreated');
+    return { jobs, total: jobs.length, aRelancer, arretees, dryRuns, orpheline, actif, file, terminees };
   }, [repubDernier, republishActif, extensionStatus?.lastSeenAt]);
+  // Titres des lignes du lot : le job ne porte pas toujours son title, la
+  // fiche d'inventaire fait foi.
+  const repubTitres = useMemo(() => new Map((stock ?? []).map((i) => [i.id, i.title])), [stock]);
+  const repubTitre = (j) => repubTitres.get(j.inventaire_id) ?? j.title ?? (lang === 'fr' ? 'Annonce' : 'Listing');
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
   const [repubFiltre, setRepubFiltre] = useState(null);
   useEffect(() => {
@@ -3556,9 +3564,9 @@ const StockTab = memo(function StockTab({
   // 2.4.66 a été RETIRÉ le 2026-08-27, décision Nico : remplacé par la barre
   // de progression du bandeau de lot — cf. repubBandeau plus bas.)
 
-  // action !== "delete" : un retrait ciblé en attente n'est pas un dépôt.
-  const pendingTotal = Object.values(jobsByInventaire).flat()
-    .filter(j => j.status === "pending" && j.action !== "delete").length;
+  // (Le compteur d'en-tête « N en cours de dépôt » a été RETIRÉ le
+  // 2026-08-28 soir, décision Nico : il se contredisait avec le « N sur M »
+  // de l'écran de republications — UN SEUL compteur par écran.)
 
   // ── Retrait ciblé par plateforme (2026-07-19) ──────────────────────────────
   // Tap sur un logo de plateforme → RemovePlatformsModal (les 4 plateformes,
@@ -3713,12 +3721,6 @@ const StockTab = memo(function StockTab({
       <div className="stock-top-v2">
         <div className="eyebrow-row">
           <div className="eyebrow">{lang==='en'?'AI Stock':'Stock IA'}</div>
-          {pendingTotal>0&&(
-            <div className="eyebrow-status">
-              <span className="status-dot"/>
-              {lang==='en'?`${pendingTotal} being posted`:`${pendingTotal} en cours de dépôt`}
-            </div>
-          )}
         </div>
       </div>
       {/* Bannière déconnexion extension (2026-07-21) — avant, l'app était aveugle
@@ -3886,53 +3888,96 @@ const StockTab = memo(function StockTab({
           est monté par le <style> de la liste plus bas — les classes portent,
           l'ordre DOM d'un <style> est sans effet. */}
       <div className="stock-v2" style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
-        {/* ── Écran de progression des republications (v2 du 28/08 soir) :
-            UNE BARRE PAR JOB, avancée au temps écoulé (cf. RepubLotLignes) —
-            le pourcentage global unique de 2.4.73 restait figé 175 s par
-            republication. Visible tant que le lot garde du vivant
-            (pending/processing/needs_user) — repubBandeau null sinon. Les
-            lignes « action requise » / « arrêtées » filtrent la liste ;
-            re-tap = retire le filtre. */}
+        {/* ── Écran de progression des republications (v3 du 28/08 soir) :
+            UN actif, une file, un repli — le traitement réel est SÉQUENTIEL
+            (une republication toutes les ~3 min) ; les barres par job de
+            2.4.74 avançaient toutes ensemble, illisible et faux (capture
+            19:35 : 6 barres jumelles pour 1 seul job traité). LA seule barre
+            de l'écran vit dans RepubBlocActif (tick 1 s isolé). Visible tant
+            que le lot garde du vivant (pending/processing/needs_user) —
+            repubBandeau null sinon. Les lignes « action requise » /
+            « arrêtées » filtrent la liste ; re-tap = retire le filtre. */}
         {repubBandeau&&(
           <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"12px 14px"}}>
-            {/* En-tête du lot : « N sur M republiées », SANS pourcentage. */}
+            {/* En-tête : UN SEUL compteur (« N sur M ») — le « N en cours de
+                dépôt » de l'eyebrow a été supprimé, ils se contredisaient. */}
             <div style={{display:"flex",alignItems:"baseline",gap:8}}>
               <span style={{fontSize:13.5,fontWeight:700,color:"#10201B"}}>
-                🔁 {lang==='fr'?`Republication${repubBandeau.total>1?'s':''}`:`Repost${repubBandeau.total>1?'s':''}`}
+                {lang==='fr'?`Republication${repubBandeau.total>1?'s':''}`:`Repost${repubBandeau.total>1?'s':''}`}
               </span>
-              <span style={{marginLeft:"auto",fontSize:12.5,fontWeight:700,color:"#1B6E62",fontVariantNumeric:"tabular-nums"}}>
-                {lang==='fr'
-                  ?`${repubBandeau.republiees} sur ${repubBandeau.total} republiée${repubBandeau.total>1?'s':''}`
-                  :`${repubBandeau.republiees} of ${repubBandeau.total} reposted`}
-              </span>
+              {repubBandeau.total>0&&(
+                <span style={{marginLeft:"auto",fontSize:12.5,fontWeight:600,color:"#5C6560",fontVariantNumeric:"tabular-nums"}}>
+                  {lang==='fr'
+                    ?`${repubBandeau.terminees.length} sur ${repubBandeau.total}`
+                    :`${repubBandeau.terminees.length} of ${repubBandeau.total}`}
+                </span>
+              )}
             </div>
-            {/* Une ligne par job — composant séparé : son tick d'1 s ne
-                re-rend jamais l'onglet entier. Masqué quand total === 0
-                (il ne reste que du needs_user). */}
-            {repubBandeau.total>0&&(
-              <RepubLotLignes lang={lang} jobs={repubBandeau.jobs} total={repubBandeau.total} stock={stock}/>
+            {repubBandeau.actif&&(
+              <RepubBlocActif lang={lang} job={repubBandeau.actif} titre={repubTitre(repubBandeau.actif)}/>
             )}
-            {/* Ligne « action requise » — les needs_user n'ont ni ligne ni
-                barre : le lot peut afficher « M sur M republiées » avec cette
-                ligne encore là, et c'est voulu (l'automatique est fini, le
-                reste dépend de l'utilisateur). Tap → filtre la liste sur ces
-                jobs. */}
-            {repubBandeau.aRelancer>0&&(
-              <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
-                style={{display:"block",width:"100%",textAlign:"left",marginTop:11,border:`1px solid ${repubFiltre==='relancer'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='relancer'?"#8A6100":"#FFF6E3",color:repubFiltre==='relancer'?"#fff":"#8A6100",borderRadius:10,padding:"8px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
-                ✋ {lang==='fr'
-                  ?`${repubBandeau.aRelancer} annonce${repubBandeau.aRelancer>1?'s attendent':' attend'} une action de ta part ›`
-                  :`${repubBandeau.aRelancer} listing${repubBandeau.aRelancer>1?'s are':' is'} waiting for your action ›`}
-              </button>
+            {/* File « ENSUITE » : numérotée à partir de 2, AUCUNE barre —
+                c'est elle qui dit que le traitement est séquentiel : chacun
+                voit sa position, personne ne se croit bloqué. Plafonnée à
+                5 lignes puis « + N en attente » (une file de 280 — cas
+                nadegemarcelin78 — ne s'affiche jamais en entier). */}
+            {repubBandeau.file.length>0&&(
+              <div style={{marginTop:12}}>
+                <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.07em",color:"#8A8578",marginBottom:2}}>{lang==='fr'?'ENSUITE':'UP NEXT'}</div>
+                {repubBandeau.file.slice(0,5).map((j,i)=>(
+                  <div key={j.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0"}}>
+                    <span style={{width:16,flexShrink:0,fontSize:12,fontWeight:600,color:"#8A8578",fontVariantNumeric:"tabular-nums"}}>{i+2}</span>
+                    <span style={{flex:1,minWidth:0,fontSize:12.5,color:"#5C6560",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{repubTitre(j)}</span>
+                  </div>
+                ))}
+                {repubBandeau.file.length>5&&(
+                  <div style={{fontSize:12,color:"#8A8578",padding:"6px 0 0 26px"}}>
+                    {lang==='fr'?`+ ${repubBandeau.file.length-5} en attente`:`+ ${repubBandeau.file.length-5} waiting`}
+                  </div>
+                )}
+              </div>
             )}
-            {/* Arrêtées : ligne CONSERVÉE — elles pèsent 1 dans la barre
-                (résolues), sans cette ligne un échec serait invisible ici. */}
+            {repubBandeau.terminees.length>0&&(
+              <RepubTerminees lang={lang} jobs={repubBandeau.terminees} titreDe={repubTitre}/>
+            )}
+            {/* Un dry run n'est ni une republiée ni une arrêtée : sans cette
+                ligne il disparaîtrait de l'écran (recette REPUBLISH_DRY_RUN). */}
+            {repubBandeau.dryRuns>0&&(
+              <div style={{fontSize:11.5,color:"#8A8578",marginTop:8}}>
+                {lang==='fr'
+                  ?`${repubBandeau.dryRuns} test${repubBandeau.dryRuns>1?'s':''} à blanc terminé${repubBandeau.dryRuns>1?'s':''}`
+                  :`${repubBandeau.dryRuns} dry run${repubBandeau.dryRuns>1?'s':''} finished`}
+              </div>
+            )}
+            {/* Arrêtées : ligne CONSERVÉE — elles ne comptent ni dans « N sur
+                M » côté N ni dans la file ; sans cette ligne un échec serait
+                invisible ici. Tap → filtre la liste. */}
             {repubBandeau.arretees>0&&(
               <button onClick={()=>setRepubFiltre(f=>f==='arretees'?null:'arretees')}
-                style={{display:"block",width:"100%",textAlign:"left",marginTop:8,border:`1px solid ${repubFiltre==='arretees'?"#5C6560":"#E7E3D8"}`,background:repubFiltre==='arretees'?"#5C6560":"#F7F5EF",color:repubFiltre==='arretees'?"#fff":"#5C6560",borderRadius:10,padding:"8px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
-                {repubBandeau.arretees} {lang==='fr'
-                  ?`republication${repubBandeau.arretees>1?'s':''} arrêtée${repubBandeau.arretees>1?'s':''} ›`
-                  :`stopped repost${repubBandeau.arretees>1?'s':''} ›`}
+                style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginTop:12,border:`1px solid ${repubFiltre==='arretees'?"#5C6560":"#E7E3D8"}`,background:repubFiltre==='arretees'?"#5C6560":"#F7F5EF",color:repubFiltre==='arretees'?"#fff":"#5C6560",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
+                <span style={{flex:1,minWidth:0}}>
+                  {repubBandeau.arretees} {lang==='fr'
+                    ?`republication${repubBandeau.arretees>1?'s':''} arrêtée${repubBandeau.arretees>1?'s':''}`
+                    :`stopped repost${repubBandeau.arretees>1?'s':''}`}
+                </span>
+                <ChevronRight size={15} style={{flexShrink:0}}/>
+              </button>
+            )}
+            {/* Ligne « action requise » — les needs_user n'ont ni ligne ni
+                barre ni compteur : le lot peut afficher « M sur M » avec
+                cette ligne encore là, et c'est voulu (l'automatique est fini,
+                le reste dépend de l'utilisateur). Tap → filtre la liste sur
+                ces jobs. */}
+            {repubBandeau.aRelancer>0&&(
+              <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
+                style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginTop:12,border:`1px solid ${repubFiltre==='relancer'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='relancer'?"#8A6100":"#FFF6E3",color:repubFiltre==='relancer'?"#fff":"#8A6100",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
+                <Hand size={14} style={{flexShrink:0}}/>
+                <span style={{flex:1,minWidth:0}}>
+                  {lang==='fr'
+                    ?`${repubBandeau.aRelancer} annonce${repubBandeau.aRelancer>1?'s attendent':' attend'} une action`
+                    :`${repubBandeau.aRelancer} listing${repubBandeau.aRelancer>1?'s await':' awaits'} your action`}
+                </span>
+                <ChevronRight size={15} style={{flexShrink:0}}/>
               </button>
             )}
             {repubFiltre&&(
@@ -3945,10 +3990,13 @@ const StockTab = memo(function StockTab({
                 plus. Aucune durée ni estimation, nulle part. */}
             <div style={{borderTop:"1px solid #EFECE3",marginTop:12,paddingTop:9}}>
               {repubBandeau.orpheline?(
-                <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",lineHeight:1.5,fontWeight:600}}>
-                  {lang==='fr'
-                    ?"⚠️ Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
-                    :"⚠️ Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
+                <div style={{display:"flex",alignItems:"flex-start",gap:8,background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",lineHeight:1.5,fontWeight:600}}>
+                  <AlertTriangle size={14} style={{flexShrink:0,marginTop:2}}/>
+                  <span>
+                    {lang==='fr'
+                      ?"Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
+                      :"Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
+                  </span>
                 </div>
               ):(
                 <div style={{fontSize:11.5,color:"#8A8578",lineHeight:1.5}}>
