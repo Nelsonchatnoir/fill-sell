@@ -785,7 +785,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // local échouait sur la garde ci-dessous (même rattrapage que 3db8465 le
 // 12/08). Valeur = horodatage UTC exact du commit. ⚠️ HORS zip 0.6.9 :
 // paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
-export const EXTENSION_LAST_COMMIT = '2026-08-28T16:22:21Z';
+// 2026-08-28T19:22:00Z = bump manifest 0.6.9 → 0.6.10 (la 0.6.9 est PUBLIÉE
+// par le CWS le 27/08, cf. ALREADY_PUBLISHED : la version est brûlée). La
+// 0.6.10 est le PREMIER paquet CWS construit sur MAIN depuis le merge de
+// réconciliation a9388e0 du 27/08. Elle embarque tout ce qui dormait « paquet
+// SUIVANT » : taille numérique ancrée (b58bd09), attente sur le RETOUR du
+// lookup ISBN au lieu du sleep fixe (c7e3f82 + d31f1b9), sonde isbnEnvoye +
+// diagRefus persisté (5e89af5), trace d'identité + sync mono-compte
+// (ddda643), comblement prix_vente (68291c9), filtres de sélection auto
+// sans-photo (94ce682) + hidden/draft (9f1e665), textes urlToFile (133a874),
+// pagination des ids connus de la sync (fix troncature 1000, lot 0b).
+// Committé GIT_COMMITTER_DATE épinglée sur cette constante (ni futur, ni
+// antérieur). EXTENSION_MIN_BUILD inchangé — la promotion n'a lieu qu'après
+// acceptation CWS, en lisant le BUILD_ID dans le zip publié.
+export const EXTENSION_LAST_COMMIT = '2026-08-28T19:22:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
