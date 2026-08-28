@@ -1533,6 +1533,14 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     const menu = document.getElementById(input.getAttribute("aria-controls"));
     const optionSelector = 'li, [role="option"], button';
     const scope = menu || document;
+    // Liste parfois PAS ENCORE RENDUE à 700 ms (relevés 28/08 : 3 jobs avec
+    // « Options: [] » — un maillot enfant, un gilet M, une djellaba Unique :
+    // des listes qui existent pour ces catégories). Attente BORNÉE 2,5 s
+    // qu'au moins une option apparaisse dans le menu ; liste réellement vide
+    // ou menu introuvable → comportement inchangé (aucun match, champ sauté).
+    for (let i = 0; i < 25 && menu && !menu.querySelector(optionSelector)?.textContent?.trim(); i++) {
+      await sleep(100);
+    }
     let match = findOptionCascade(scope, optionSelector, rawValue, { sizeField });
     let valeurPosee = rawValue;
     if (!match && !prefilled) {
@@ -2192,6 +2200,24 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
     (o) => o.norm === target || o.label.split("/").some((p) => normalizeFuzzy(p) === target)
   );
   if (exact) return { ...exact, stage: "exact" };
+
+  // ── 1bis. taille NUMÉRIQUE ANCRÉE (2026-08-28, aligné sur vinted.js) ──────
+  // La grille vêtements LBC écrit « 38 - M », « 44 - XXL » : l'exact ne voit
+  // pas ces libellés composés et la contenance est interdite aux nombres nus
+  // — 4 annonces parties SANS taille alors que l'option était dans la liste.
+  // Un nombre nu ne matche que par ÉGALITÉ DU NOMBRE ENTIER (« 3 » ne matche
+  // jamais « 13 ans » ni « 3-6 mois ») : « N - X » (tiret ESPACÉ), « N ans »,
+  // « N cm », ou décimal à séparateur près (« 38.5 » ≡ « 38,5 »). Une SEULE
+  // candidate, sinon on ne pose rien — le champ sauté reste le défaut.
+  if (sizeField && PURE_NUMBER_RE.test(target)) {
+    const num = target.replace(",", ".");
+    const candidats = options.filter((o) => {
+      if (PURE_NUMBER_RE.test(o.norm)) return o.norm.replace(",", ".") === num;
+      const m = o.norm.match(/^(\d+(?:[.,]\d+)?)(?:\s*(?:ans|cm)(?![a-z0-9])|\s+-\s)/);
+      return !!m && m[1].replace(",", ".") === num;
+    });
+    if (candidats.length === 1) return { ...candidats[0], stage: "taille-num" };
+  }
 
   const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
 

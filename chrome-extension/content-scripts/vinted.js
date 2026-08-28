@@ -1834,14 +1834,23 @@ async function fillListingForm(job) {
     // categoryPath vient de la capture de l'annonce, pas du mapping icône).
     const optionsTaille = optionsRelevees.get("taille") ?? [];
     if (!taillePosee && optionsTaille.length && !recreation) {
+      // Message HONNÊTE (2026-08-28, cardigan de Laurence) : l'ancien texte
+      // AFFIRMAIT « la catégorie ne correspond pas » et tronquait la liste à
+      // 6 options — sur son job, « 3 ans / 98 cm » (la bonne option, 11e de
+      // la liste) était invisible et le diagnostic accusait à tort la
+      // catégorie. On constate le non-appariement sans trancher sa cause, on
+      // montre jusqu'à 12 options + le compte des restantes, et on donne les
+      // DEUX sorties (taille OU catégorie).
       return {
         success: false,
         needsUser: true,
         error:
-          `La catégorie Vinted posée sur cette annonce (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}) ` +
-          `ne correspond pas à l'article : le formulaire de dépôt propose comme tailles ` +
-          `${optionsTaille.slice(0, 6).map((o) => `« ${o} »`).join(", ")} — rien qui corresponde à « ${fields.taille} ». ` +
-          "Regénère l'annonce depuis l'app pour corriger sa catégorie, puis relance la publication.",
+          `La taille « ${fields.taille} » ne correspond à aucune option du formulaire Vinted pour la ` +
+          `catégorie posée (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}). Tailles proposées : ` +
+          `${optionsTaille.slice(0, 12).map((o) => `« ${o} »`).join(", ")}` +
+          (optionsTaille.length > 12 ? ` … (+${optionsTaille.length - 12} autres)` : "") +
+          `. Si la catégorie est la bonne, corrige la taille de l'article depuis l'app ; sinon regénère ` +
+          `l'annonce pour corriger sa catégorie. Puis relance la publication.`,
         warnings,
         discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
       };
@@ -3287,6 +3296,29 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
     (o) => o.norm === target || o.label.split("/").some((p) => normalizeFuzzy(p) === target)
   );
   if (exact) return { ...exact, stage: "exact" };
+
+  // ── 1bis. taille NUMÉRIQUE ANCRÉE (2026-08-28, cardigan « 3 » de Laurence,
+  // 1re heure sur le produit : l'option « 3 ans / 98 cm » était DANS la liste
+  // et le champ a été sauté quand même — l'exact ne voit pas les libellés
+  // composés, la contenance est interdite aux nombres nus). Un nombre nu ne
+  // matche que par ÉGALITÉ DU NOMBRE ENTIER, sur des formes relevées en prod :
+  //   « 40.5 » ≡ « 40,5 »   (séparateur décimal — 2 jobs New Balance)
+  //   « 3 »    ≡ « 3 ans / 98 cm »  (grille enfant)
+  //   « 41 »   ≡ « 41 cm »  (tour de cou chemise — job vendu SANS taille)
+  //   « 38 »   ≡ « 38 - M » (grille LBC, même cascade copiée là-bas)
+  // Ancres garanties : le nombre est comparé EN ENTIER (« 3 » ne matche
+  // jamais « 13 ans ») ; « ans »/« cm » collés au nombre ou « - » ESPACÉ
+  // exigés (« 3 » ne matche jamais « 3-6 mois ») ; une SEULE candidate,
+  // sinon on ne pose rien (le champ sauté reste la conduite par défaut).
+  if (sizeField && PURE_NUMBER_RE.test(target)) {
+    const num = target.replace(",", ".");
+    const candidats = options.filter((o) => {
+      if (PURE_NUMBER_RE.test(o.norm)) return o.norm.replace(",", ".") === num;
+      const m = o.norm.match(/^(\d+(?:[.,]\d+)?)(?:\s*(?:ans|cm)(?![a-z0-9])|\s+-\s)/);
+      return !!m && m[1].replace(",", ".") === num;
+    });
+    if (candidats.length === 1) return { ...candidats[0], stage: "taille-num" };
+  }
 
   const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
 

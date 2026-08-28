@@ -1148,6 +1148,19 @@ function findOptionCascade(els, text, { sizeField = false } = {}) {
       if (exactStripped) return { ...exactStripped, stage: "exact-pointure" };
     }
   }
+  // ── 1bis. taille NUMÉRIQUE ANCRÉE (2026-08-28, aligné sur vinted.js) ──────
+  // Grille enfant Beebs « 3 ans (94-102 cm) » : un nombre nu matche l'option
+  // dont le libellé COMMENCE par ce nombre ENTIER suivi de « ans » — jamais
+  // « 13 ans » pour « 3 », jamais « 3-6 mois » (« ans » exigé collé au
+  // nombre). Une SEULE candidate, sinon rien. (Les décimales sont déjà
+  // unifiées ici : normalizeFuzzy retire les [.,].)
+  if (sizeField && PURE_NUMBER_RE.test(target)) {
+    const candidats = options.filter((o) => {
+      const m = o.norm.match(/^(\d+)\s*ans(?![a-z0-9])/);
+      return !!m && m[1] === target;
+    });
+    if (candidats.length === 1) return { ...candidats[0], stage: "taille-num" };
+  }
   const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
 
   const optionInTarget = (t) =>

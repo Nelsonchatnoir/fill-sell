@@ -1896,6 +1896,21 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
   const exact = options.find((o) => o.norm === target);
   if (exact) return { ...exact, stage: "exact" };
 
+  // ── 1bis. taille NUMÉRIQUE ANCRÉE (2026-08-28, aligné sur vinted.js) ──────
+  // Un nombre nu ne matche que par ÉGALITÉ DU NOMBRE ENTIER : « N ans »,
+  // « N cm », « N - X » (tiret espacé), ou décimal à séparateur près
+  // (« 38.5 » ≡ « 38,5 »). Jamais « 13 ans » pour « 3 », jamais « 3-6 mois ».
+  // Une SEULE candidate, sinon rien — le champ sauté reste le défaut.
+  if (sizeField && PURE_NUMBER_RE.test(target)) {
+    const num = target.replace(",", ".");
+    const candidats = options.filter((o) => {
+      if (PURE_NUMBER_RE.test(o.norm)) return o.norm.replace(",", ".") === num;
+      const m = o.norm.match(/^(\d+(?:[.,]\d+)?)(?:\s*(?:ans|cm)(?![a-z0-9])|\s+-\s)/);
+      return !!m && m[1].replace(",", ".") === num;
+    });
+    if (candidats.length === 1) return { ...candidats[0], stage: "taille-num" };
+  }
+
   const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
 
   const optionInTarget = (t) =>
