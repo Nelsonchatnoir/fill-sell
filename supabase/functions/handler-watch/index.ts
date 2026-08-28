@@ -423,6 +423,74 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des processing abandonnés:", (e as Error)?.message ?? e);
   }
 
+  // ── Reprise RAPIDE des 'processing' coupés APRÈS la suppression (2026-08-28,
+  // cas Joe0410 : job 32761461, Chrome fermé à 01:46 juste après deleted_at,
+  // annonce hors ligne 7 h — la reprise 24 h ci-dessus était la SEULE issue) ─
+  // À l'étape 'deleted', chaque heure d'attente est une heure d'annonce HORS
+  // LIGNE : le seuil général de 24 h (pensé pour des annonces encore en ligne,
+  // cas Carla) est inadapté ici. Un job 'processing' à l'étape 'deleted', sans
+  // new_vinted_item_id, dont la prise date de plus de REPRISE_DELETED_MIN,
+  // repasse SEUL en 'pending' — la recréation repartira au premier poll d'une
+  // extension vivante (la reprise de l'étape 'deleted' re-sonde l'état réel
+  // avant de recréer, cf. processRepublishJob). Aucune Pépite re-débitée :
+  // le débit vit à la création du job, et aucun trigger de solde ne tire sur
+  // processing→pending (ils ne tirent que sur un statut terminal).
+  // ⛔ GARDE-FOU (Nico, 28/08) : ne JAMAIS ré-armer un job de cette étape dont
+  // la capture est incomplète ou absente — ce serait relancer une recréation
+  // sans matière. Vérifiée EN BASE (vinted_republish_captures, verdict
+  // 'valide') : capture_id absent, ligne introuvable ou verdict autre ⇒ on ne
+  // touche à RIEN (le job reste visible de l'alerte orpheline et du balayage
+  // 24 h). Pas de condition d'extension muette : ré-armer tôt est sans danger
+  // (compare-and-swap sur 'processing' — une extension qui vient de reprendre
+  // le job a déjà changé son statut ou le re-réclamera en pending), et c'est
+  // la seule façon de raccourcir le trou quand Chrome revient vite.
+  // stale_recoveries remis à zéro comme dans la reprise 24 h : les coupures ne
+  // sont pas des refus, elles ne doivent pas consommer le plafond de reprises.
+  const REPRISE_DELETED_MIN = 30;
+  let deletedRearmes = 0;
+  try {
+    const { data: coupes } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, created_at, platform_fields")
+      .eq("status", "processing")
+      .eq("action", "republish")
+      .filter("platform_fields->>republish_step", "eq", "deleted")
+      .filter("platform_fields->>new_vinted_item_id", "is", "null");
+    // deno-lint-ignore no-explicit-any
+    for (const j of ((coupes ?? []) as any[])) {
+      const pf0 = j.platform_fields ?? {};
+      const since = Date.parse(pf0.processing_since ?? pf0.deleted_at ?? j.created_at ?? "");
+      if (!Number.isFinite(since) || now - since < REPRISE_DELETED_MIN * 60_000) continue;
+      const capId = Number(pf0.capture_id);
+      if (!Number.isFinite(capId)) continue; // capture absente : garde-fou, on ne touche pas
+      const { data: cap } = await supabase
+        .from("vinted_republish_captures")
+        .select("verdict")
+        .eq("id", capId)
+        .maybeSingle();
+      if (cap?.verdict !== "valide") continue; // incomplète ou introuvable : idem
+      const pf = { ...pf0 };
+      delete pf.processing_since;
+      delete pf.stale_recoveries;
+      const msg =
+        "Reprise après interruption : l'ordinateur a été coupé juste après le retrait de l'annonce, " +
+        "avant sa recréation. Le job est remis en file et la recréation repartira toute seule dès " +
+        "qu'une extension connectée se réveille — rien à faire de ton côté, la Pépite reste engagée.";
+      const { data: maj } = await supabase
+        .from("cross_post_jobs")
+        .update({ status: "pending", error: msg, platform_fields: pf })
+        .eq("id", j.id)
+        .eq("status", "processing")
+        .select("id");
+      if (maj?.length) {
+        deletedRearmes++;
+        console.log(`[handler-watch] job ${j.id} : processing coupé à l'étape 'deleted' (capture valide) → pending (annonce hors ligne, recréation relancée)`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] reprise des 'deleted' coupés:", (e as Error)?.message ?? e);
+  }
+
   // ── needs_user À ÉCHÉANCE : 72 h sans geste → failed (point 5, GO Nico
   // 16/08) ──────────────────────────────────────────────────────────────────
   // needs_user n'est pas terminal : aucun trigger ne rend jamais la Pépite —
@@ -761,7 +829,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -816,7 +884,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -870,7 +938,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
     headers: { "Content-Type": "application/json" },
   });
 });
