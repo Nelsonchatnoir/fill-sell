@@ -284,18 +284,28 @@ function canalGeneriquePose(platform, key) {
 // relevé partiel n'est qu'un avertissement.
 const aspectBloquant = (a) => a.state === "missing" || (a.state === "invalid" && a.blocking === true);
 
-// ── Poids du colis Leboncoin dérivé de format_colis (2026-08-28) ─────────────
-// LBC exige `estimated_parcel_weight` (lbcAspects, en GRAMMES) sur certaines
-// catégories — il était demandé en saisie manuelle alors que format_colis est
-// calculé et présent sur 35/35 des jobs LBC des 7 derniers jours (cas
-// Ornella). Table EN DUR, jamais devinée : la borne HAUTE de chaque format
-// canonique, alignée sur les paliers d'expédition Leboncoin (Colissimo /
-// Mondial Relay : 500 g, 1 kg, 2 kg, 5 kg, 10 kg) et sur la sémantique déjà
-// posée par BEEBS_PACKAGE_BY_FORMAT (beebs.js : Lettre ≤ 500 g, Petit ≤ 1 kg,
-// Moyen ≤ 2 kg, Grand ≤ 5 kg, Très grand ≤ 10 kg). Borne haute et jamais
-// basse : sous-déclarer un poids ferait payer le complément au vendeur.
-// « Non défini » ABSENT à dessein : aucune correspondance certaine → le champ
-// reste en saisie manuelle (comportement d'avant), on n'invente pas un poids.
+// ── Poids du colis Leboncoin : table format → grammes, NON POSÉE (28/08) ─────
+// ⚠️ PRÉ-REMPLISSAGE RETIRÉ le 2026-08-28 au soir, sur relevé du CODE de
+// l'extension — le format réel du champ interdit de poser une valeur déduite :
+//   · « Poids du colis » (estimated_parcel_weight) est un COMBOBOX FERMÉ :
+//     relevé DOM enregistré au catalogue platform_category_aspects
+//     (leboncoin / Mode > Vêtements / input_type "combobox" / required=true),
+//     et findCriterionInput (leboncoin.js) ne matche QUE input[role=combobox] ;
+//   · l'extension ne TAPE jamais dans un combobox : fillCriterionSafe ouvre le
+//     menu et CLIQUE une option matchée (findOptionCascade) — sinon champ
+//     sauté, pré-rempli LBC conservé (skipIfPrefilled du canal générique) ;
+//   · la LISTE des paliers n'a jamais été relevée (allowed_values NULL,
+//     0 option au catalogue) : impossible de garantir qu'une valeur dérivée
+//     (« 1000 ») est une option — et un match flou pourrait cliquer un FAUX
+//     palier. Les 89 saisies libres qui « publient » (« 500g », « 200qg »…)
+//     ne prouvent rien : elles passent par le même clic-d'option et ne
+//     doivent leur survie qu'au pré-rempli LBC conservé.
+// Règle : liste fermée jamais relevée → AUCUN pré-remplissage, saisie
+// manuelle (comportement historique). La table ci-dessous est CONSERVÉE
+// (bornes hautes cohérentes avec les paliers LBC et
+// BEEBS_PACKAGE_BY_FORMAT de beebs.js) pour le jour où les options du
+// combobox seront relevées en réel — elle n'est branchée sur RIEN tant que
+// cette liste n'est pas connue.
 const LBC_POIDS_PAR_FORMAT = {
   "Lettre": 500,
   "Petit colis": 1000,
@@ -5330,35 +5340,11 @@ export default function ListingPreviewScreen({
     }
   }, [step, genericRequiredStatus]);
 
-  // ── Poids du colis Leboncoin PRÉ-REMPLI depuis format_colis (2026-08-28) ───
-  // `estimated_parcel_weight` était demandé en grammes, à la main, alors que
-  // format_colis est calculé et présent (35/35 des jobs LBC sur 7 jours, cas
-  // Ornella « Petit colis »). Dérivation par la table EN DUR
-  // LBC_POIDS_PAR_FORMAT (bornes hautes des paliers d'expédition LBC) —
-  // format absent ou hors table → on ne pose RIEN, la saisie manuelle de
-  // l'encart rouge reste le chemin (jamais de valeur inventée).
-  // La valeur est posée dans le canal générique (lbcAspects), donc VISIBLE et
-  // ÉDITABLE dans l'encart rouge : le champ y est capturé « manquant » au
-  // premier rendu (sticky), puis cet effet le remplit — il reste affiché,
-  // pré-rempli, modifiable. Jamais un poids envoyé en silence.
-  // Une seule pose par champ (ref) : si l'utilisateur vide ou corrige la
-  // valeur ensuite, on ne la lui réécrit pas sous les doigts.
-  const poidsColisPose = useRef(new Set());
-  useEffect(() => {
-    if (step !== 3) return;
-    const list = genericRequiredStatus?.leboncoin;
-    if (!list) return;
-    const format = String(edited.leboncoin?.platform_fields?.format_colis ?? "").trim();
-    const grammes = LBC_POIDS_PAR_FORMAT[format];
-    if (!Number.isFinite(grammes)) return;
-    for (const a of list) {
-      if (a.key !== "estimated_parcel_weight" || a.state !== "missing") continue;
-      if (poidsColisPose.current.has(a.key)) continue;
-      poidsColisPose.current.add(a.key);
-      setPlatformAspect("leboncoin", a.key, String(grammes));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, genericRequiredStatus]);
+  // (Le pré-remplissage du « Poids du colis » LBC depuis format_colis a vécu
+  // ici quelques heures le 28/08 puis a été RETIRÉ le soir même : le champ
+  // est un combobox FERMÉ dont la liste d'options n'a jamais été relevée —
+  // cf. le bandeau de LBC_POIDS_PAR_FORMAT en tête de fichier. Le champ se
+  // complète à la main dans l'encart rouge, comme avant.)
 
   // Résolution IA ciblée des requis génériques SANS source (chantier 1.A) —
   // même micro-appel resolve_aspects que le bloc eBay : extraction depuis le
