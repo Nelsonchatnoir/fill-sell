@@ -1,3 +1,9 @@
+-- ✅ APPLIQUÉE EN PROD le 28/08/2026 (par Nico, reconstruction par
+-- substitution sur pg_get_functiondef, ancre « -- Titre : il venait de la
+-- capture, »). Vérifié après application : les six refus d'origine intacts,
+-- article_sans_photo sort avant UPDATE coin_wallets et avant INSERT
+-- cross_post_jobs.
+--
 -- Republication : refus 'article_sans_photo' AVANT tout débit et toute
 -- création de job (2026-08-28, cas Joe0410).
 -- Des coquilles vides importées par la sync dressing (dépôts Vinted commencés
