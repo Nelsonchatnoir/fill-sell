@@ -1677,20 +1677,28 @@ async function fillListingForm(job) {
       // et Vinted répondait « Merci d'entrer un numéro ISBN valide » sur un
       // champ correctement rempli (gate stricte passée). Piste « valeur
       // refusée » ÉCARTÉE : 9782811600174 = Fairy Tail t.5, Pika 2009,
-      // référencé partout. On attend donc une PREUVE du retour : un champ
-      // Auteur/Titre du livre auto-rempli — sélecteurs déclinés des deux
-      // conventions du dépôt (#isbn / isbn--input), best-effort car JAMAIS
-      // relevés formellement. Plafond 8 s ; preuve inobservable (sélecteurs
-      // faux, livre sans fiche, auto-remplissage purement serveur) → le
-      // plafond vaut repli, jamais moins que le plancher de 3 s demandé.
-      // Ne tourne QUE dans l'étape ISBN : les catégories sans ISBN ne
-      // paient rien. Le diagnostic isbnEnvoye/last_diagnostic (même jour)
-      // confirmera ou infirmera au premier cas post-déploiement.
+      // référencé partout. On attend donc une PREUVE du retour, RELEVÉE EN
+      // LIVE le 28/08 (session réelle, /items/new, catalog 5425, 3 ISBN
+      // testés dont 9782811600174 lui-même — le lookup le CONNAÎT et rend
+      // « Fairy Tail T05 » / « HIRO MASHIMA » : la base Vinted référence CE
+      // livre, confirmation de plus que le 400 n'était pas un rejet de la
+      // valeur) : les champs N'EXISTENT PAS avant le lookup et APPARAISSENT
+      // auto-remplis — #author et #book_title SANS data-testid, et
+      // #language_book (testid isbn-language_book-single-list_search-input,
+      // « Français »). Déclencheur observé : la FRAPPE du 13e chiffre, pas
+      // le blur. L'endpoint réseau du lookup est INVISIBLE aux fetch/XHR de
+      // la page (2 cycles, réseau purgé avant — vraisemblablement service
+      // worker Vinted) : la preuve DOM est donc le SEUL observable fiable,
+      // aucun maillon réseau possible. Plafond 8 s ; preuve non vue (livre
+      // hors base, champ redessiné) → le plafond vaut repli, jamais moins
+      // que le plancher de 3 s demandé. Ne tourne QUE dans l'étape ISBN :
+      // les catégories sans ISBN ne paient rien. Le diagnostic
+      // isbnEnvoye/last_diagnostic (même jour) tranchera au premier cas.
       const preuveLookup = () => {
         for (const conv of [
-          '#book_author, [data-testid="book_author--input"]',
-          '#author, [data-testid="author--input"]',
-          '#book_title, [data-testid="book_title--input"]',
+          '#author',
+          '#book_title',
+          '#language_book, [data-testid="isbn-language_book-single-list_search-input"]',
         ]) {
           for (const champ of document.querySelectorAll(conv)) {
             try { if (readCommittedValue(champ).trim()) return true; } catch { /* champ exotique : ignoré */ }

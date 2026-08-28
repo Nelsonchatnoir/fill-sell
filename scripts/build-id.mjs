@@ -767,7 +767,19 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // last_diagnostic (même jour) tranchera au premier cas réel. ⚠️ HORS zip
 // 0.6.9 : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé. Committé
 // GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-08-28T10:35:00Z';
+// 2026-08-28T12:05:00Z = sélecteurs du lookup livre RELEVÉS EN LIVE (session
+// réelle, /items/new catalog 5425, 3 ISBN — dont 9782811600174 : le lookup
+// le CONNAÎT, « Fairy Tail T05 » / « HIRO MASHIMA », la piste « valeur
+// inconnue de leur base » est morte). Les champs preuve N'EXISTENT PAS avant
+// le lookup et apparaissent auto-remplis : #author et #book_title SANS
+// data-testid, #language_book (testid isbn-language_book-single-list_
+// search-input). Déclencheur = frappe du 13e chiffre, pas le blur. Endpoint
+// réseau INVISIBLE aux fetch/XHR de la page (service worker Vinted
+// probable) → preuve DOM = seul observable, les 3 conventions best-effort
+// du commit précédent sont remplacées par les sélecteurs prouvés. ⚠️ HORS
+// zip 0.6.9 : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé. Committé
+// GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-28T12:05:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
