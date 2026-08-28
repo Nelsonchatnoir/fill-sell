@@ -2389,6 +2389,28 @@ function etapeRepublication(job, fr) {
   // arrêt AVANT suppression garde l'ambre/bleu : l'annonce est intacte.
   const rouge = { fond: '#FEF2F2', bord: '#FECACA', encre: '#B91C1C' };
 
+  // ── Gel Livres (2026-08-28 soir) : détection par platform_fields.gel_livres_le
+  // SEUL — jamais le statut (les jobs gelés sont 'cancelled', le seul statut
+  // que l'extension ne reprend jamais, vérifié en base), jamais la catégorie.
+  // Badge NEUTRE (bleu), avant toutes les branches : jamais rouge, jamais le
+  // rendu « Arrêtée » des autres cancelled, aucun détail technique, aucun
+  // délai promis. Le champ `error` (posé au gel) reste le message détaillé de
+  // la feuille d'avancement — on ne le répète pas ici. Les 4 jobs gelés à
+  // l'étape 'deleted' (annonce réellement retirée) n'ont PAS droit au
+  // « intacte » : leur détail dit seulement que tout est sauvegardé.
+  if (pf.gel_livres_le) {
+    const intacte = step !== 'deleted';
+    return {
+      cle: 'gel_livres', court: fr ? 'En pause' : 'On hold', ...bleu, fini: true,
+      titre: fr ? "En pause — on s'en occupe" : "On hold — we're taking care of it",
+      detail: intacte
+        ? (fr ? "Ton annonce est intacte sur Vinted, rien n'a été retiré. Cette republication est en pause chez nous : tu n'as rien à faire, on la relancera nous-mêmes."
+              : 'Your listing is untouched on Vinted, nothing was removed. This repost is paused on our side: nothing to do — we will relaunch it ourselves.')
+        : (fr ? "Cette republication est en pause chez nous. Toutes les données de ton annonce (photos comprises) sont sauvegardées : tu n'as rien à faire, on la reprend nous-mêmes."
+              : 'This repost is paused on our side. All your listing data (photos included) is saved: nothing to do — we will resume it ourselves.'),
+    };
+  }
+
   // Terminal d'abord : un job fini ne doit jamais être lu comme « en cours ».
   if (st === 'published' || step === 'recreated') return {
     cle: 'recreated', court: T.enligne, ...vert, fini: true,
@@ -3279,6 +3301,12 @@ const StockTab = memo(function StockTab({
     const rjobs = (jobsByInventaire[item.id] || []).filter(j => j.action === 'republish');
     let last = null;
     for (const j of rjobs) { if (!last || Date.parse(j.created_at || 0) > Date.parse(last.created_at || 0)) last = j; }
+    // Gel Livres (2026-08-28 soir) : détection par le marqueur gel_livres_le
+    // SEUL. Un article dont la dernière republication est gelée n'est ni
+    // sélectionnable en lot ni relançable — une nouvelle republication
+    // percerait le gel (job neuf, hors marqueur). La pastille « En pause »
+    // (etapeRepublication) dit l'état ; ici on ferme juste la porte.
+    if (last?.platform_fields?.gel_livres_le) return 'gelee';
     if (last && (last.status === 'pending' || last.status === 'processing' || last.status === 'needs_user')) return 'vivant';
     if (last && last.status === 'published' && last.platform_fields?.recreated_at
       && Date.now() - Date.parse(last.platform_fields.recreated_at) < 24 * 3600 * 1000) return 'cadence';
@@ -3308,11 +3336,15 @@ const StockTab = memo(function StockTab({
   // Le pire cas du produit (Combishort d'ornellaracano, 07/08 : plus d'une
   // heure hors ligne sans le savoir) : remontés EN TÊTE de liste tant que non
   // résolus, pastille rouge dédiée (cf. etapeRepublication).
+  // Jobs GELÉS (gel_livres_le, 2026-08-28) exclus : leur pastille est le
+  // badge neutre « En pause » et aucun geste utilisateur n'est attendu — les
+  // remonter en tête crierait une urgence que le badge dément.
   const horsLigneIds = useMemo(() => {
     const s = new Set();
     if (!republishActif) return s;
     for (const [invId, last] of Object.entries(repubDernier)) {
       const st = last.status;
+      if (last.platform_fields?.gel_livres_le) continue;
       if ((st === 'needs_user' || st === 'failed' || st === 'cancelled')
         && last.platform_fields?.republish_step === 'deleted') s.add(Number(invId));
     }
@@ -5785,6 +5817,13 @@ const StockTab = memo(function StockTab({
                                 connue (cadence 24 h, republish vivant). */}
                             {repubEligible&&(()=>{
                               const st=repubLatest?.status;
+                              // Gel Livres (2026-08-28 soir) : AUCUN bouton tant
+                              // que le job porte gel_livres_le — la pastille
+                              // « En pause » dit tout, et un Relancer/Republier
+                              // créerait un job NEUF hors gel (c'est le trou
+                              // que le passage en 'cancelled' vient de fermer).
+                              // Détection par le marqueur seul, jamais le statut.
+                              if(repubLatest?.platform_fields?.gel_livres_le)return null;
                               const vivant=st==="pending"||st==="processing"||st==="needs_user";
                               if(st==="needs_user"){
                                 // Après suppression (étape 'deleted'), le geste n'est pas une
