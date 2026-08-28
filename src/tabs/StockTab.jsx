@@ -3133,6 +3133,20 @@ const StockTab = memo(function StockTab({
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) return;
     setRepubLot({ fait: 0, total: cibles.length, refus: [] });
     const refus = [];
+    // ── Identité du LOT en base (2026-08-28) ─────────────────────────────────
+    // Constat prouvé (lot d'Ornella, 33 jobs de 16h52) : bulk_batch_id était
+    // NULL sur 100 % des jobs — le lot n'avait aucune identité, la progression
+    // ne pouvait être qu'un compteur local perdu au premier refresh, sur un
+    // lot qui dure des heures. UN uuid par lot, écrit sur CHAQUE job créé
+    // (UPDATE post-RPC : spend_coins_and_republish ne prend pas le paramètre,
+    // et la colonne existe déjà — uuid, vérifiée en prod le 28/08). L'écran de
+    // progression (repubBandeau) lit ce lot en base et survit donc au refresh ;
+    // un échec d'estampillage n'est jamais bloquant, le job retombe simplement
+    // dans le repli « rafale de création » d'avant.
+    // crypto.randomUUID : partout où l'app tourne (Chrome/Safari/WebView
+    // récents) ; à défaut on n'estampille pas — la colonne est un uuid strict,
+    // pas question d'y forcer une chaîne bricolée.
+    const batchId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : null;
     // SÉQUENTIEL : chaque capture passe par l'onglet de travail de l'extension
     // (verrou de flux) — un Promise.all se battrait pour lui. L'onglet
     // FillSell doit rester ouvert pendant la mise en file ; la file, elle,
@@ -3144,12 +3158,27 @@ const StockTab = memo(function StockTab({
           inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prix,
         });
         if (res.success) {
+          if (batchId && res.job_id) {
+            // .select() obligatoire après un update client (règle RLS du
+            // 30/07) : sans lui, une policy silencieuse ressemble à un succès.
+            const { data: stamped, error: stampErr } = await supabase
+              .from('cross_post_jobs')
+              .update({ bulk_batch_id: batchId })
+              .eq('id', res.job_id)
+              .select('id');
+            if (stampErr || !stamped?.length) {
+              console.warn(`[repub lot] bulk_batch_id non posé sur ${res.job_id} — ` +
+                (stampErr?.message ?? 'update silencieusement bloqué (RLS ?)') +
+                ' — la progression retombera sur le repli « rafale de création ».');
+            }
+          }
           const now = new Date().toISOString();
           setJobsByInventaire(prev => ({
             ...prev,
             [item.id]: [...(prev[item.id] ?? []), {
               id: `optimistic-repub-${item.id}-${now}`, inventaire_id: item.id, platform: 'vinted',
               action: 'republish', status: 'pending', error: null, created_at: now, listing_url: null, title: item.title,
+              bulk_batch_id: batchId,
               platform_fields: { republish_step: 'a_capturer', vinted_item_id: String(item.vinted_item_id) },
             }],
           }));
@@ -3291,10 +3320,15 @@ const StockTab = memo(function StockTab({
   }, [repubDernier, republishActif]);
   // ── Écran de progression du lot (2026-08-28, remplace le bandeau du 07/08) ──
   // AFFICHAGE PUR : rien ici n'écrit un job, un platform_fields ou un step.
-  // Périmètre du LOT : bulk_batch_id quand il est renseigné ; sinon repli sur
-  // la RAFALE DE CRÉATION (bulk_batch_id vérifié NULL sur 100 % des jobs
-  // republish en prod le 09/08 — un lot part en un seul burst, 5 jobs en
-  // 242 ms) : les jobs en file + les terminaux créés dans la même rafale.
+  // Périmètre du LOT : bulk_batch_id quand il est renseigné — depuis le
+  // 2026-08-28, lancerRepublicationLot l'écrit sur CHAQUE job du lot (uuid
+  // généré au clic), donc la progression se reconstruit depuis la BASE et
+  // survit au refresh (total = jobs du lot, faits = statuts terminaux, aucun
+  // compteur mémoire comme source de vérité). Repli sur la RAFALE DE CRÉATION
+  // pour tous les jobs d'avant ce correctif (bulk_batch_id NULL — un lot
+  // partait en un seul burst, 5 jobs en 242 ms le 09/08) et pour un
+  // estampillage qui aurait échoué : les jobs en file + les terminaux créés
+  // dans la même rafale.
   // « Vivant » = pending/processing/statut inconnu (prudence : jamais ignoré
   // ni planté) OU needs_user — un job qui attend l'utilisateur n'est pas
   // terminé, il maintient l'écran (ligne « action requise »).

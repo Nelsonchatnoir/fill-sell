@@ -276,6 +276,34 @@ function canalGeneriquePose(platform, key) {
   return false;
 }
 
+// ── Un aspect BLOQUE-t-il la publication ? ───────────────────────────────────
+// Règle unique (2026-07-29) partagée par la garde du CTA, la liste des motifs
+// du bouton gris et l'encart rouge : "missing" bloque toujours (absence de
+// valeur), "invalid" ne bloque que contre une liste qui FAIT FOI
+// (a.blocking === true, cf. listeFaitFoi) — un « hors liste » jugé contre un
+// relevé partiel n'est qu'un avertissement.
+const aspectBloquant = (a) => a.state === "missing" || (a.state === "invalid" && a.blocking === true);
+
+// ── Poids du colis Leboncoin dérivé de format_colis (2026-08-28) ─────────────
+// LBC exige `estimated_parcel_weight` (lbcAspects, en GRAMMES) sur certaines
+// catégories — il était demandé en saisie manuelle alors que format_colis est
+// calculé et présent sur 35/35 des jobs LBC des 7 derniers jours (cas
+// Ornella). Table EN DUR, jamais devinée : la borne HAUTE de chaque format
+// canonique, alignée sur les paliers d'expédition Leboncoin (Colissimo /
+// Mondial Relay : 500 g, 1 kg, 2 kg, 5 kg, 10 kg) et sur la sémantique déjà
+// posée par BEEBS_PACKAGE_BY_FORMAT (beebs.js : Lettre ≤ 500 g, Petit ≤ 1 kg,
+// Moyen ≤ 2 kg, Grand ≤ 5 kg, Très grand ≤ 10 kg). Borne haute et jamais
+// basse : sous-déclarer un poids ferait payer le complément au vendeur.
+// « Non défini » ABSENT à dessein : aucune correspondance certaine → le champ
+// reste en saisie manuelle (comportement d'avant), on n'invente pas un poids.
+const LBC_POIDS_PAR_FORMAT = {
+  "Lettre": 500,
+  "Petit colis": 1000,
+  "Moyen colis": 2000,
+  "Grand colis": 5000,
+  "Très grand colis": 10000,
+};
+
 // ── Icône objet : UNE résolution, stable, pour TOUTES les plateformes ─────────
 // (2026-07-12, run du soir) Les mappings catalogue (Vinted/eBay/Beebs/LBC) sont
 // tous indexés par l'icône objet, et l'icône était calculée depuis le titre de
@@ -2300,7 +2328,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, redOwnedSharedKeys = null, lbcPhotoCap = null, lbcAdresseManquante = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
@@ -2342,6 +2370,10 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
   const sharedFieldsToRender = [...new Set([...stickyShared, ...missingSharedFields])]
     .filter(k => sharedFieldCfg[k]);
 
+  // ⚠️ Depuis le 2026-08-28 (un seul endroit de saisie), le sticky ne capture
+  // plus que les aspects BLOQUANTS : ce sont eux — et eux seuls — qui entrent
+  // dans l'encart rouge. Un aspect rempli (source "generic" comprise) reste un
+  // simple chip ✓/⚠ des encarts bleus, désormais purement informatifs.
   const [stickyGeneric, setStickyGeneric] = useState(() => ({}));
   useEffect(() => {
     if (!genericRequiredStatus) return;
@@ -2350,8 +2382,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
       const next = { ...prev };
       for (const [gp, list] of Object.entries(genericRequiredStatus)) {
         const cur = prev[gp] ?? new Set();
-        const add = list.filter(a =>
-          (a.state === "missing" || a.state === "invalid" || a.source === "generic") && !cur.has(a.key));
+        const add = list.filter(a => aspectBloquant(a) && !cur.has(a.key));
         if (add.length) {
           next[gp] = new Set([...cur, ...add.map(a => a.key)]);
           changed = true;
@@ -2360,24 +2391,77 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
       return changed ? next : prev;
     });
   }, [genericRequiredStatus]);
-  const genericEditable = (gp, a) =>
-    a.state === "missing" || a.state === "invalid" || a.source === "generic" ||
-    Boolean(stickyGeneric[gp]?.has(a.key));
+  // Un aspect appartient à l'encart ROUGE s'il bloque, ou s'il y est déjà
+  // apparu (sticky : l'input ne se démonte jamais sous les doigts, fix
+  // « une seule lettre » du 2026-07-30).
+  const genericDansRouge = (gp, a) => aspectBloquant(a) || Boolean(stickyGeneric[gp]?.has(a.key));
 
-  // Même motif, même parade pour l'encart eBay : la voie sharedKey
+  // Même motif, même parade pour les aspects eBay : la voie sharedKey
   // (onEbaySharedFieldChange — Marque, Taille, Couleur, Matière) écrit le
   // champ DÉDIÉ, l'aspect passe à "ok" SANS source:"generic", et la ligne
   // sortait du filtre → input démonté à la première frappe.
   const [stickyEbay, setStickyEbay] = useState(() => new Set());
   useEffect(() => {
     if (!ebayRequiredStatus) return;
-    const add = ebayRequiredStatus.filter(a =>
-      (a.state === "missing" || a.state === "invalid" || a.source === "generic") && !stickyEbay.has(a.name));
+    const add = ebayRequiredStatus.filter(a => aspectBloquant(a) && !stickyEbay.has(a.name));
     if (add.length) setStickyEbay(prev => new Set([...prev, ...add.map(a => a.name)]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ebayRequiredStatus]);
-  const ebayEditable = (a) =>
-    a.state === "missing" || a.state === "invalid" || a.source === "generic" || stickyEbay.has(a.name);
+  const ebayDansRouge = (a) => aspectBloquant(a) || stickyEbay.has(a.name);
+
+  // ── Encart ROUGE unique (2026-08-28) : TOUT champ bloquant se saisit ici ──
+  // Trois sources, un seul endroit de saisie :
+  //   · champs partagés manquants (sharedFieldsToRender, cumulatif) ;
+  //   · aspects Vinted/LBC/Beebs bloquants (ou sticky) dont le champ partagé
+  //     n'est PAS déjà saisi ici — une saisie partagée sert tout le monde,
+  //     on ne montre jamais deux inputs pour le même champ logique ;
+  //   · aspects eBay bloquants (ou sticky), même règle de déduplication.
+  // Les encarts bleus par plateforme restent AFFICHÉS mais purement
+  // informatifs (récapitulatif requis + état, aucun input). ⚠️ Leçon RoCotCot
+  // (2026-08-11) : chaque input d'ici écrit LES COPIES que lit la garde du
+  // CTA (onSharedFieldChange propage, dedicatedTarget prime sur le canal
+  // générique) — jamais une valeur qui laisse le bouton gris.
+  const sharedRendered = new Set(sharedFieldsToRender);
+  const redEbayAspects = onEbayAspectChange
+    ? (ebayRequiredStatus ?? []).filter(a =>
+        ebayDansRouge(a) && !(a.sharedKey && sharedRendered.has(a.sharedKey)))
+    : [];
+  const redGenericAspects = onPlatformAspectChange
+    ? Object.entries(genericRequiredStatus ?? {}).flatMap(([gp, list]) =>
+        list.filter(a => {
+          const sk = genericFieldToSharedKey(gp, a.key);
+          // Déduplication SEULEMENT si l'input partagé atteint cette
+          // plateforme (SHARED_PROPAGATION) : Couleur ne se propage pas à
+          // Leboncoin — masquer l'aspect LBC derrière un input qui n'écrit
+          // pas sa copie laisserait le CTA gris à vie (classe RoCotCot).
+          if (sk && sharedRendered.has(sk) && (SHARED_PROPAGATION[sk] ?? []).includes(gp)) return false;
+          return genericDansRouge(gp, a);
+        }).map(a => ({ gp, a })))
+    : [];
+  const redTotal = sharedFieldsToRender.length + redGenericAspects.length + redEbayAspects.length;
+  // Restants = ce qui BLOQUE encore (les champs déjà complétés restent
+  // affichés par le sticky mais ne comptent plus).
+  const redRestants = missingSharedFields.filter(k => sharedFieldCfg[k]).length
+    + redGenericAspects.filter(({ a }) => aspectBloquant(a)).length
+    + redEbayAspects.filter(aspectBloquant).length;
+  // Mise en page : grille 2 colonnes, la DERNIÈRE demi-carte s'étire quand le
+  // compte est impair (jamais un trou en bas de l'encart). Les confirmations
+  // « valeur unique » sont pleine largeur et sortent du décompte.
+  const genSeule = ({ a }) => aspectBloquant(a)
+    && Array.isArray(a.allowedValues) && a.allowedValues.length === 1 && Boolean(setSelected);
+  const genNonSeule = redGenericAspects.filter(e => !genSeule(e));
+  const redDemiIndex = new Map();
+  sharedFieldsToRender.forEach((k, i) => redDemiIndex.set(`s:${k}`, i));
+  genNonSeule.forEach((e, i) => redDemiIndex.set(`g:${e.gp}:${e.a.key}`, sharedFieldsToRender.length + i));
+  redEbayAspects.forEach((a, i) => redDemiIndex.set(`e:${a.name}`, sharedFieldsToRender.length + genNonSeule.length + i));
+  const redStretch = (id) =>
+    redDemiIndex.get(id) === redDemiIndex.size - 1 && redDemiIndex.size % 2 !== 0
+      ? { gridColumn: "1 / -1" } : {};
+  // Libellé d'origine uniforme (« · Vinted, Beebs ») pour TOUTES les lignes de
+  // l'encart — champs partagés comme aspects propres à une plateforme.
+  const redOrigine = (texte) => texte
+    ? <span style={{ color:"#B91C1C", fontWeight:600 }}> · {texte}</span>
+    : null;
 
   // ── Inventaire plein (Free) : écran de CONVERSION, pas une erreur ──────────
   // Le CTA du footer devient « Passer au niveau supérieur » (cf. ctaLabel/
@@ -2575,30 +2659,34 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
       {/* B1 (2026-07-16) : la liste COMPLÈTE des obligatoires eBay de la
           catégorie résolue, AVANT le clic Publier — plus de « Longueur de
           la robe » découverte via l'échec du job. Présence seule (la
-          validation allowedValues reste à la garde du publish). */}
-      {ebayRequiredStatus && (() => {
-        // Règle d'unicité (2026-07-30) : une ligne dont le champ partagé est
-        // PORTÉ par l'encart rouge (redOwnedSharedKeys) ne s'affiche pas ici —
-        // ni chip ni input. Un champ = un seul endroit de saisie.
-        const ebayVisibles = ebayRequiredStatus.filter(a => !(a.sharedKey && redOwnedSharedKeys?.has(a.sharedKey)));
-        if (!ebayVisibles.length) return null;
-        return (
+          validation allowedValues reste à la garde du publish).
+          ⚠️ INFORMATIF SEULEMENT depuis le 2026-08-28 : plus aucun input ici.
+          Tout champ bloquant se saisit dans l'encart ROUGE unique (plus bas) ;
+          ce bloc récapitule ce qui est requis par eBay et son état — il montre
+          donc TOUTES les lignes, y compris celles que le rouge porte (le chip
+          passe ✓ au fil de la saisie faite là-bas). */}
+      {ebayRequiredStatus && ebayRequiredStatus.length > 0 && (
         <div style={{ padding:"12px 14px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:14, marginBottom:12, fontSize:13, color:T.ink }}>
           <div style={{ fontWeight:600, marginBottom:6, color:"#1D4ED8" }}>{t("stepPublishEbayRequiredTitle")}</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {ebayVisibles.map(({ name, state, blocking }) => {
+            {ebayRequiredStatus.map(({ name, state, blocking, value }) => {
               // « hors liste » NON bloquant (2026-07-29) : jaune d'avertissement,
               // pas rouge d'erreur — rien n'est cassé, la publication part.
               const avert = state === "invalid" && blocking !== true;
               const bg  = state === "ok" ? "#ECFDF5" : state === "prefilled" ? "#F5F3FF" : avert ? "#FFFBEB" : "#FEF2F2";
               const bd  = state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : avert ? "#FDE68A" : "#FECACA";
               const fg  = state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : avert ? "#92400E" : "#B91C1C";
+              // Avertissement « hors liste » : on MONTRE la valeur qui part
+              // (« Marque : Alphalette — envoyée telle quelle ») — le jargon
+              // « absente de la liste qu'on connaît » inquiétait (2026-08-28).
+              const avecValeur = avert && String(value ?? "").trim();
               return (
               <span key={name} style={{
                 padding:"3px 9px", borderRadius:10, fontSize:12,
                 background: bg, border: `1px solid ${bd}`, color: fg,
               }}>
                 {state === "ok" ? "✓ " : avert ? "⚠ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{name}
+                {avecValeur ? ` : ${String(value).trim()}` : ""}
                 {state === "prefilled" ? ` — ${t("stepPublishEbayAspectPrefilled")}` : ""}
                 {state === "missing" ? ` — ${t("stepPublishEbayAspectMissing")}` : ""}
                 {state === "invalid" ? ` — ${t(avert ? "stepPublishAspectOffListWarn" : "stepPublishEbayAspectInvalid")}` : ""}
@@ -2606,76 +2694,41 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               );
             })}
           </div>
-          {/* Fallback UI générique (Phase 3) : saisie inline des obligatoires
-              sans source — select pour toute liste FERMÉE au sens de la garde
-              (≤ EBAY_CLOSED_LIST_MAX ou SELECTION_ONLY : une valeur hors liste
-              serait refusée au publish, autant imposer le choix ici), datalist
-              au-delà. Les valeurs venues de resolve_aspects (source "generic")
-              restent éditables ici. state "invalid" (2026-07-18) : un champ
-              DÉDIÉ (taille/couleur/matière…) rempli avec une valeur hors liste
-              fermée s'édite désormais ICI en vrai sélecteur — fini le message
-              d'erreur avec exemples inutiles sans moyen de choisir. */}
-          {/* ebayEditable (sticky) et non le filtre direct : sans lui, l'input
-              d'un aspect à sharedKey se démontait à la première frappe (fix
-              « une seule lettre », 2026-07-30). */}
-          {onEbayAspectChange && ebayVisibles.some(a => ebayEditable(a)) && (
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-              {ebayVisibles.filter(a => ebayEditable(a)).map(a => (
-                <div key={a.name}>
-                  <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.name}</div>
-                  {/* Sans rapprochement, on montre la VALEUR RÉELLE du job
-                      (2026-07-29) : afficher "" laissait croire à un champ vide
-                      alors que la valeur part bien à la publication. */}
-                  <AspectValueInput
-                    value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
-                    allowedValues={a.allowedValues}
-                    strict={a.mode === "SELECTION_ONLY"}
-                    closedMax={EBAY_CLOSED_LIST_MAX}
-                    onChange={v => (a.sharedKey && onEbaySharedFieldChange)
-                      ? onEbaySharedFieldChange(a.sharedKey, v)
-                      : onEbayAspectChange(a.name, v)}
-                    T={T}
-                    idBase={`ebay-${aspectSlug(a.name)}`}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
         </div>
-        );
-      })()}
+      )}
 
       {/* Encart générique Vinted/LBC/Beebs (chantier 1.A, 2026-07-16) : les
           requis appris par le catalogue platform_category_aspects, AVANT le
-          clic Publier — miroir exact du bloc eBay ci-dessus. Un requis sans
-          source se complète ICI (select si liste d'options relevée, texte
-          libre sinon) ; tant qu'un ✗ reste, le CTA Publier est désactivé.
-          Règle d'unicité (2026-07-30) : les lignes dont le champ partagé est
-          porté par l'encart rouge sont masquées ici, comme côté eBay. */}
-      {genericRequiredStatus && Object.entries(genericRequiredStatus).map(([gp, listBrute]) => {
-        const list = listBrute.filter(a => {
-          const sk = genericFieldToSharedKey(gp, a.key);
-          return !(sk && redOwnedSharedKeys?.has(sk));
-        });
+          clic Publier — miroir exact du bloc eBay ci-dessus.
+          ⚠️ INFORMATIF SEULEMENT depuis le 2026-08-28 : plus aucun input ici.
+          Tout champ bloquant se saisit dans l'encart ROUGE unique (plus bas) ;
+          ce bloc récapitule ce que la plateforme exige et son état, TOUTES
+          lignes affichées (les chips passent ✓ au fil de la saisie du rouge). */}
+      {genericRequiredStatus && Object.entries(genericRequiredStatus).map(([gp, list]) => {
         return list.length > 0 && (
         <div key={gp} style={{ padding:"12px 14px", background:"#EFF6FF", border:"1px solid #BFDBFE", borderRadius:14, marginBottom:12, fontSize:13, color:T.ink }}>
           <div style={{ fontWeight:600, marginBottom:6, color:"#1D4ED8" }}>
             {tpl("stepPublishGenericRequiredTitle", { platform: PLATFORM_LABELS[gp] ?? gp })}
           </div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {list.map(({ key, label, state, blocking }) => {
+            {list.map(({ key, label, state, blocking, value }) => {
               // Vinted/LBC/Beebs : blocking est TOUJOURS false ici (aucune de
               // leurs listes ne fait foi) — donc toujours l'avertissement jaune.
               const avert = state === "invalid" && blocking !== true;
               const bg  = state === "ok" ? "#ECFDF5" : state === "prefilled" ? "#F5F3FF" : avert ? "#FFFBEB" : "#FEF2F2";
               const bd  = state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : avert ? "#FDE68A" : "#FECACA";
               const fg  = state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : avert ? "#92400E" : "#B91C1C";
+              // Même règle que le bloc eBay : la valeur « hors liste » qui
+              // part est MONTRÉE (« Marque : Alphalette — envoyée telle
+              // quelle ») au lieu du jargon d'implémentation (2026-08-28).
+              const avecValeur = avert && String(value ?? "").trim();
               return (
               <span key={key} style={{
                 padding:"3px 9px", borderRadius:10, fontSize:12,
                 background: bg, border: `1px solid ${bd}`, color: fg,
               }}>
                 {state === "ok" ? "✓ " : avert ? "⚠ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{label}
+                {avecValeur ? ` : ${String(value).trim()}` : ""}
                 {state === "prefilled" ? ` — ${t("stepPublishGenericAspectPrefilled")}` : ""}
                 {state === "missing" ? ` — ${t("stepPublishGenericAspectMissing")}` : ""}
                 {state === "invalid" ? ` — ${t(avert ? "stepPublishAspectOffListWarn" : "stepPublishGenericAspectInvalid")}` : ""}
@@ -2683,103 +2736,47 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               );
             })}
           </div>
-          {/* state "invalid" (2026-07-19, cas réel Medik8) : un champ DÉDIÉ
-              rempli avec une valeur hors de la liste fermée du catalogue
-              (Vinted Beauté : État = « Neuf avec étiquette » SEULEMENT)
-              s'édite ici en vrai sélecteur — l'écriture va au champ dédié de
-              la copie plateforme (onPlatformDedicatedChange), jamais au canal
-              générique, sinon la gate extension relirait l'ancienne valeur. */}
-          {/* genericEditable et non le filtre direct missing/invalid/generic :
-              une fois qu'un aspect a été éditable ici, il le RESTE (sticky) —
-              sinon l'input se démonte à la première frappe quand l'état passe
-              à "ok" (fix « une seule lettre », 2026-07-30). */}
-          {onPlatformAspectChange && list.some(a => genericEditable(gp, a)) && (
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-              {list.filter(a => genericEditable(gp, a)).map(a => {
-                // Valeur catalogue UNIQUE (2026-07-19, cas réel Medik8 :
-                // Vinted Beauté n'accepte qu'un État « Neuf avec étiquette ») :
-                // ni sélecteur à une seule option, ni pose silencieuse —
-                // confirmation explicite. « Oui » pose la valeur (champ dédié
-                // si connu, sinon canal générique) ; « Non » décoche la
-                // plateforme, le job n'est jamais créé. Les listes
-                // multi-options (Beebs État beauté : « Neuf, avec étiquette »
-                // / « Neuf, sans étiquette », relevé live) gardent le
-                // sélecteur : un choix ambigu ne se devine pas.
-                const seule = (a.state === "missing" || a.state === "invalid") &&
-                  Array.isArray(a.allowedValues) && a.allowedValues.length === 1
-                  ? a.allowedValues[0] : null;
-                if (seule && setSelected) return (
-                  <div key={a.key} style={{ gridColumn:"1 / -1", padding:"10px 12px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:12 }}>
-                    <div style={{ fontSize:12.5, color:"#92400E", marginBottom:8 }}>
-                      <strong>{a.label}</strong> — {tpl("stepPublishSingleValueMsg", { value: seule, platform: PLATFORM_LABELS[gp] ?? gp })}
-                    </div>
-                    <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                      <button
-                        onClick={() => (a.dedicatedTarget && onPlatformDedicatedChange)
-                          ? onPlatformDedicatedChange(gp, a.dedicatedTarget, seule)
-                          : onPlatformAspectChange(gp, a.key, seule)}
-                        style={{ padding:"7px 14px", borderRadius:10, border:"none", background:"#059669", color:"#fff", fontSize:12.5, fontWeight:600, cursor:"pointer" }}>
-                        {t("stepPublishSingleValueYes")}
-                      </button>
-                      <button
-                        onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(gp); return s; })}
-                        style={{ padding:"7px 14px", borderRadius:10, border:`1px solid ${T.border}`, background:T.chip, color:T.ink, fontSize:12.5, fontWeight:600, cursor:"pointer" }}>
-                        {t("stepPublishSingleValueNo")}
-                      </button>
-                    </div>
-                  </div>
-                );
-                return (
-                  <div key={a.key}>
-                    <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>{a.label}</div>
-                    <AspectValueInput
-                      value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
-                      allowedValues={a.allowedValues}
-                      strict={false}
-                      // ⚠️ dedicatedTarget PRIME TOUJOURS (2026-08-11), pas
-                      // seulement sur "invalid". Le canal générique est IGNORÉ
-                      // par les handlers pour les clés déjà servies par un
-                      // mapping dédié — c'est écrit noir sur blanc dans
-                      // handledForKeys (leboncoin.js) et handledLabels
-                      // (beebs.js), qui sautent _size$/_brand$/_material$/
-                      // Taille/Marque/Matière… La saisie partait donc dans un
-                      // TROU : valeur enregistrée dans lbcAspects/beebsAspects,
-                      // pastille au vert, et rien de posé sur la plateforme.
-                      // Vinted s'en sortait par son pont `_bridge`
-                      // (vintedAspects.size → fields.taille), les deux autres
-                      // non. Écrire le champ dédié sert les trois, ET remplit la
-                      // copie que lit la garde du CTA (missingSharedFields) —
-                      // c'est ce décalage qui laissait « ✓ Taille » au vert avec
-                      // un bouton Publier mort (cas RoCotCot du 11/08).
-                      onChange={v => (a.dedicatedTarget && onPlatformDedicatedChange)
-                        ? onPlatformDedicatedChange(gp, a.dedicatedTarget, v)
-                        : onPlatformAspectChange(gp, a.key, v)}
-                      T={T}
-                      idBase={`gen-${gp}-${aspectSlug(a.key)}`}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
         );
       })}
 
-      {sharedFieldsToRender.length > 0 && (
-        // Encart inline (Sujet 4) : les champs partagés manquants se
-        // complètent ICI, sans quitter le step — l'écriture passe par
-        // onSharedFieldChange qui met à jour la SOURCE canonique (donc
-        // toutes les copies plateformes non éditées à la main d'un coup).
-        // Rendu depuis sharedFieldsToRender (cumulatif) et PAS
-        // missingSharedFields : un champ en cours de saisie ne doit jamais
-        // être démonté à la première frappe (fix « une seule lettre »).
-        <div style={{ padding:"12px 14px", background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, marginBottom:12 }}>
-          <div style={{ fontSize:13, color:"#B91C1C", fontWeight:600, marginBottom:10 }}>
-            {t("stepPublishSharedMissingTitle")}
+      {redTotal > 0 && (
+        // ── ENCART ROUGE UNIQUE (refonte 2026-08-28) ─────────────────────────
+        // UN SEUL endroit de saisie pour TOUT champ bloquant : champs partagés
+        // (canonique propagée à toutes les copies via onSharedFieldChange) ET
+        // aspects propres à une plateforme (générique Vinted/LBC/Beebs, eBay).
+        // Avant, la taille se saisissait ici et le poids du colis dans le bloc
+        // bleu Leboncoin — deux zones pour la même action (cas Ornella).
+        // Rendu depuis les listes CUMULATIVES (sticky) et PAS les listes
+        // manquantes : un champ en cours de saisie ne doit jamais être
+        // démonté à la première frappe (fix « une seule lettre », 30/07).
+        // L'encart disparaît quand plus rien ne manque ET que rien n'y a été
+        // saisi pendant ce passage (les listes sticky repartent vides au
+        // montage du step).
+        <div style={{ padding:14, background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, marginBottom:12 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+            <span style={{ fontSize:13, color:"#B91C1C", fontWeight:700 }}>
+              {t("stepPublishSharedMissingTitle")}
+            </span>
+            {redRestants > 0 ? (
+              <span style={{ flexShrink:0, fontSize:11.5, fontWeight:700, color:"#B91C1C", background:"#FEE2E2", border:"1px solid #FECACA", borderRadius:999, padding:"2px 9px", whiteSpace:"nowrap" }}>
+                {lang === "en"
+                  ? `${redRestants} to fill in`
+                  : `${redRestants} à compléter`}
+              </span>
+            ) : (
+              <span style={{ flexShrink:0, fontSize:11.5, fontWeight:700, color:"#047857", background:"#ECFDF5", border:"1px solid #A7F3D0", borderRadius:999, padding:"2px 9px", whiteSpace:"nowrap" }}>
+                {lang === "en" ? "✓ all set" : "✓ tout est complété"}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize:12, color:"#991B1B", lineHeight:1.45, margin:"4px 0 12px" }}>
+            {lang === "en"
+              ? "Everything is filled in here — the platform cards above only recap what each one will receive."
+              : "Tout se complète ici — les encarts par plateforme au-dessus récapitulent seulement ce que chacune recevra."}
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-            {sharedFieldsToRender.map((key, fi) => {
+            {sharedFieldsToRender.map((key) => {
               const field = sharedFieldCfg[key];
               const val = sharedFields[key] ?? "";
               // Tailles enfant (2026-07-15) : le référentiel enfant
@@ -2790,16 +2787,15 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               const fieldGroups = field.childGroups && sharedChildAxes
                 ? [...field.childGroups.filter(g => g.axis === "shoes" || sharedChildAxes[g.axis]), ...field.groups]
                 : field.groups;
-              const isLastOdd = fi === sharedFieldsToRender.length - 1 && sharedFieldsToRender.length % 2 !== 0;
               // Origine : la/les plateforme(s) sélectionnée(s) qui exigent ce
               // champ (ex. « Vinted, Beebs ») — pour que l'utilisateur sache
-              // pourquoi « Taille » est demandé, comme l'encart bleu au-dessus.
+              // pourquoi « Taille » est demandé.
               const originLabel = missingSharedFieldPlatforms[key];
               return (
-                <div key={key} style={isLastOdd ? { gridColumn:"1 / -1" } : {}}>
+                <div key={key} style={redStretch(`s:${key}`)}>
                   <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>
                     {field.label}
-                    {originLabel && <span style={{ color:"#B91C1C", fontWeight:600 }}> · {originLabel}</span>}
+                    {redOrigine(originLabel)}
                   </div>
                   {field.type === "select" ? (
                     <select
@@ -2850,6 +2846,86 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                 </div>
               );
             })}
+            {/* Aspects Vinted/LBC/Beebs bloquants — saisie déplacée ici depuis
+                les encarts bleus (2026-08-28). Valeur catalogue UNIQUE
+                (2026-07-19, cas Medik8) : ni sélecteur à une option, ni pose
+                silencieuse — confirmation explicite ; « Non » décoche la
+                plateforme, le job n'est jamais créé. */}
+            {redGenericAspects.map(({ gp, a }) => {
+              const seule = genSeule({ a }) ? a.allowedValues[0] : null;
+              if (seule) return (
+                <div key={`g:${gp}:${a.key}`} style={{ gridColumn:"1 / -1", padding:"10px 12px", background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:12 }}>
+                  <div style={{ fontSize:12.5, color:"#92400E", marginBottom:8 }}>
+                    <strong>{a.label}</strong> — {tpl("stepPublishSingleValueMsg", { value: seule, platform: PLATFORM_LABELS[gp] ?? gp })}
+                  </div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    <button
+                      onClick={() => (a.dedicatedTarget && onPlatformDedicatedChange)
+                        ? onPlatformDedicatedChange(gp, a.dedicatedTarget, seule)
+                        : onPlatformAspectChange(gp, a.key, seule)}
+                      style={{ padding:"7px 14px", borderRadius:10, border:"none", background:"#059669", color:"#fff", fontSize:12.5, fontWeight:600, cursor:"pointer" }}>
+                      {t("stepPublishSingleValueYes")}
+                    </button>
+                    <button
+                      onClick={() => setSelected(prev => { const s = new Set(prev); s.delete(gp); return s; })}
+                      style={{ padding:"7px 14px", borderRadius:10, border:`1px solid ${T.border}`, background:T.chip, color:T.ink, fontSize:12.5, fontWeight:600, cursor:"pointer" }}>
+                      {t("stepPublishSingleValueNo")}
+                    </button>
+                  </div>
+                </div>
+              );
+              return (
+                <div key={`g:${gp}:${a.key}`} style={redStretch(`g:${gp}:${a.key}`)}>
+                  <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>
+                    {a.label}
+                    {redOrigine(PLATFORM_LABELS[gp] ?? gp)}
+                  </div>
+                  <AspectValueInput
+                    value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
+                    allowedValues={a.allowedValues}
+                    strict={false}
+                    // ⚠️ dedicatedTarget PRIME TOUJOURS (2026-08-11) : le canal
+                    // générique est IGNORÉ par les handlers pour les clés déjà
+                    // servies par un mapping dédié (handledForKeys leboncoin.js,
+                    // handledLabels beebs.js). Écrire le champ dédié sert les
+                    // trois plateformes ET remplit la copie que lit la garde du
+                    // CTA — c'est ce décalage qui laissait « ✓ Taille » au vert
+                    // avec un bouton Publier mort (cas RoCotCot du 11/08).
+                    onChange={v => (a.dedicatedTarget && onPlatformDedicatedChange)
+                      ? onPlatformDedicatedChange(gp, a.dedicatedTarget, v)
+                      : onPlatformAspectChange(gp, a.key, v)}
+                    T={T}
+                    idBase={`gen-${gp}-${aspectSlug(a.key)}`}
+                  />
+                </div>
+              );
+            })}
+            {/* Aspects eBay bloquants — même déménagement. La voie sharedKey
+                écrit le champ DÉDIÉ (et la canonique si elle était vide, cf.
+                setEbaySharedField) ; select imposé pour toute liste FERMÉE au
+                sens de la garde (SELECTION_ONLY / ≤ EBAY_CLOSED_LIST_MAX). */}
+            {redEbayAspects.map(a => (
+              <div key={`e:${a.name}`} style={redStretch(`e:${a.name}`)}>
+                <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>
+                  {a.label ?? a.name}
+                  {redOrigine("eBay")}
+                </div>
+                {/* Sans rapprochement, on montre la VALEUR RÉELLE du job
+                    (2026-07-29) : afficher "" laisserait croire à un champ
+                    vide alors que la valeur part bien à la publication. */}
+                <AspectValueInput
+                  value={a.state === "invalid" ? (a.suggested ?? a.value ?? "") : a.value}
+                  allowedValues={a.allowedValues}
+                  strict={a.mode === "SELECTION_ONLY"}
+                  closedMax={EBAY_CLOSED_LIST_MAX}
+                  onChange={v => (a.sharedKey && onEbaySharedFieldChange)
+                    ? onEbaySharedFieldChange(a.sharedKey, v)
+                    : onEbayAspectChange(a.name, v)}
+                  T={T}
+                  idBase={`ebay-${aspectSlug(a.name)}`}
+                />
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -4481,10 +4557,9 @@ export default function ListingPreviewScreen({
   );
 
   // (La table clé → « Vinted, Beebs » de l'encart rouge est calculée par
-  // redSharedFieldPlatforms, plus bas : depuis la règle d'unicité du
-  // 2026-07-30, l'encart ne rend qu'un SOUS-ENSEMBLE des champs manquants —
-  // dériver ses libellés de la liste complète laissait une entrée par champ
-  // masqué, jamais lue.)
+  // redSharedFieldPlatforms, plus bas — depuis le 2026-08-28, l'encart rouge
+  // porte TOUS les champs partagés manquants, la table couvre donc la liste
+  // complète.)
 
   // Axes de tailles enfant du champ partagé Taille (encart inline de
   // StepPublish) : UNION des axes autorisés par les genres enfant des
@@ -5201,40 +5276,32 @@ export default function ListingPreviewScreen({
     return Object.keys(out).length ? out : null;
   }, [genericAspectsCatalog, plateformesPubliables, edited]);
 
-  // ── Unicité d'affichage des requis (2026-07-30, « Taille demandée 2 fois ») ─
-  // Capture du jour : « ✗ Taille — sans source » dans l'encart BLEU eBay ET
-  // « Taille · eBay » dans l'encart ROUGE — même champ, deux blocs, deux
-  // endroits où saisir. RÈGLE UNIQUE : un champ manquant n'apparaît qu'à UN
-  // endroit, le plus large qui le réclame.
-  //   · ≥ 2 plateformes sélectionnées le réclament → encart ROUGE (une saisie
-  //     sert tout le monde) ; les encarts bleus MASQUENT leur ligne tant que
-  //     le rouge la porte.
-  //   · UNE seule plateforme le réclame ET son encart bleu affiche la ligne
-  //     (référentiel chargé) → encart BLEU seul, le rouge s'efface — la
-  //     saisie bleue écrit de toute façon la canonique (onEbaySharedFieldChange
-  //     / champ dédié), le rouge n'apporte rien de plus.
-  //   · une seule plateforme SANS ligne bleue (référentiel pas chargé, garde
-  //     statique en fallback) → encart ROUGE : seul endroit qui existe.
-  // AFFICHAGE SEULEMENT : la garde du CTA (requiredBlocking) et le re-check du
-  // publish continuent de lire les listes COMPLÈTES — aucun champ ne devient
-  // publiable par ce tri.
-  const redSharedDetailed = useMemo(() => {
-    const couvertParEncartBleu = (key, p) =>
-      p === "ebay"
-        ? (ebayRequiredStatus ?? []).some(a => a.sharedKey === key)
-        : (genericRequiredStatus?.[p] ?? []).some(a => genericFieldToSharedKey(p, a.key) === key);
-    return missingSharedFieldsDetailed.filter(f =>
-      f.platforms.length >= 2 || !couvertParEncartBleu(f.key, f.platforms[0]));
-  }, [missingSharedFieldsDetailed, ebayRequiredStatus, genericRequiredStatus]);
+  // ── UN SEUL endroit de saisie (2026-08-28, remplace l'unicité du 30/07) ────
+  // L'ancienne règle répartissait la saisie entre le rouge et les bleus selon
+  // le nombre de plateformes — résultat vécu (cas Ornella) : la taille se
+  // saisissait dans le bloc rouge et le poids du colis dans le bloc bleu
+  // Leboncoin, deux zones pour la même action. Désormais l'encart ROUGE porte
+  // TOUS les champs bloquants (partagés ici, aspects plateforme calculés dans
+  // StepPublish) ; les encarts bleus sont purement informatifs, chips sans
+  // input. AFFICHAGE SEULEMENT : la garde du CTA (requiredBlocking) et le
+  // re-check du publish lisent toujours les listes complètes.
+  // ⚠️ Un champ partagé n'entre ici que si sa saisie ATTEINT au moins une des
+  // plateformes dépourvues (SHARED_PROPAGATION) : Couleur ne se propage pas à
+  // Leboncoin (leboncoin.js ne lit pas fields.couleur, canal générique seul) —
+  // un input partagé qui n'écrirait aucune copie exigée laisserait le CTA
+  // gris à vie, la classe de bug RoCotCot (11/08). Dans ce cas, c'est
+  // l'aspect PLATEFORME qui porte l'input dans l'encart rouge (StepPublish
+  // applique le même test de propagation à sa déduplication).
+  const redSharedDetailed = useMemo(() =>
+    missingSharedFieldsDetailed.filter(f =>
+      f.platforms.some(p => (SHARED_PROPAGATION[f.key] ?? []).includes(p))),
+    [missingSharedFieldsDetailed]);
   const redSharedFields = useMemo(() => redSharedDetailed.map(f => f.key), [redSharedDetailed]);
   const redSharedFieldPlatforms = useMemo(() => {
     const m = {};
     for (const f of redSharedDetailed) m[f.key] = f.platforms.map(p => PLATFORM_LABELS[p] ?? p).join(", ");
     return m;
   }, [redSharedDetailed]);
-  // Clés que le rouge PORTE : les encarts bleus n'affichent ni chip ni input
-  // pour elles (l'inverse du filtre ci-dessus).
-  const redOwnedSharedKeys = useMemo(() => new Set(redSharedDetailed.map(f => f.key)), [redSharedDetailed]);
 
   // Pré-sélection auto générique — miroir exact de l'effet eBay (plus haut) :
   // au step Publier, une valeur dédiée hors liste avec un rapprochement sûr
@@ -5261,6 +5328,36 @@ export default function ListingPreviewScreen({
         }
       }
     }
+  }, [step, genericRequiredStatus]);
+
+  // ── Poids du colis Leboncoin PRÉ-REMPLI depuis format_colis (2026-08-28) ───
+  // `estimated_parcel_weight` était demandé en grammes, à la main, alors que
+  // format_colis est calculé et présent (35/35 des jobs LBC sur 7 jours, cas
+  // Ornella « Petit colis »). Dérivation par la table EN DUR
+  // LBC_POIDS_PAR_FORMAT (bornes hautes des paliers d'expédition LBC) —
+  // format absent ou hors table → on ne pose RIEN, la saisie manuelle de
+  // l'encart rouge reste le chemin (jamais de valeur inventée).
+  // La valeur est posée dans le canal générique (lbcAspects), donc VISIBLE et
+  // ÉDITABLE dans l'encart rouge : le champ y est capturé « manquant » au
+  // premier rendu (sticky), puis cet effet le remplit — il reste affiché,
+  // pré-rempli, modifiable. Jamais un poids envoyé en silence.
+  // Une seule pose par champ (ref) : si l'utilisateur vide ou corrige la
+  // valeur ensuite, on ne la lui réécrit pas sous les doigts.
+  const poidsColisPose = useRef(new Set());
+  useEffect(() => {
+    if (step !== 3) return;
+    const list = genericRequiredStatus?.leboncoin;
+    if (!list) return;
+    const format = String(edited.leboncoin?.platform_fields?.format_colis ?? "").trim();
+    const grammes = LBC_POIDS_PAR_FORMAT[format];
+    if (!Number.isFinite(grammes)) return;
+    for (const a of list) {
+      if (a.key !== "estimated_parcel_weight" || a.state !== "missing") continue;
+      if (poidsColisPose.current.has(a.key)) continue;
+      poidsColisPose.current.add(a.key);
+      setPlatformAspect("leboncoin", a.key, String(grammes));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, genericRequiredStatus]);
 
   // Résolution IA ciblée des requis génériques SANS source (chantier 1.A) —
@@ -6317,10 +6414,11 @@ export default function ListingPreviewScreen({
   // doctrine posée après le blocage prod Beebs/Marque. "missing" (champ VIDE
   // exigé par la plateforme) reste bloquant : c'est une absence de valeur, pas
   // un désaccord avec une liste.
-  const estBloquant = a => a.state === "missing" || (a.state === "invalid" && a.blocking === true);
+  // (aspectBloquant : helper module, partagé avec l'encart rouge de StepPublish
+  // et la liste des motifs ci-dessous — une seule définition de « bloquant ».)
   const requiredBlocking =
-    (ebayRequiredStatus ?? []).some(estBloquant) ||
-    Object.values(genericRequiredStatus ?? {}).some(list => list.some(estBloquant)) ||
+    (ebayRequiredStatus ?? []).some(aspectBloquant) ||
+    Object.values(genericRequiredStatus ?? {}).some(list => list.some(aspectBloquant)) ||
     missingSharedFields.length > 0 ||
     prixAchatManquant ||
     vintedGenreBlocked ||
@@ -6346,14 +6444,37 @@ export default function ListingPreviewScreen({
   const motifsCtaGris = (() => {
     if (step !== 3 || inventoryFull || !ctaBlockingActive) return [];
     const m = [];
+    // ── UNE ligne par CHAMP logique (2026-08-28, cas Ornella) ────────────────
+    // L'encart rouge et les référentiels par plateforme émettaient chacun
+    // leur ligne pour le même champ : « Taille — Vinted, Beebs », « Taille —
+    // Vinted » et « Taille — Beebs » pour UN seul manque. Déduplication sur
+    // la CLÉ DE CHAMP (partagée quand elle existe — un seul input alimente
+    // toutes les plateformes — sinon la clé propre à la plateforme, qui reste
+    // une ligne à part : deux champs distincts font toujours deux lignes),
+    // jamais sur le libellé affiché. Sortie : « Taille (Vinted, Beebs) ».
+    const libellePartage = { taille: t("fieldSizeLabel"), couleur: t("fieldColorLabel"),
+                             matiere: t("fieldMaterialLabel"), marque: t("fieldBrandLabel") };
+    const parChamp = new Map(); // clé logique → { label, platforms: [] }
+    const ajoute = (cle, label, plateforme) => {
+      const e = parChamp.get(cle) ?? { label, platforms: [] };
+      if (plateforme && !e.platforms.includes(plateforme)) e.platforms.push(plateforme);
+      parChamp.set(cle, e);
+    };
     for (const f of missingSharedFieldsDetailed) {
-      const label = { taille: t("fieldSizeLabel"), couleur: t("fieldColorLabel"),
-                      matiere: t("fieldMaterialLabel"), marque: t("fieldBrandLabel") }[f.key] ?? f.key;
-      m.push(`${label} — ${f.platforms.map(nomPlateforme).join(", ")}`);
+      for (const p of f.platforms) ajoute(f.key, libellePartage[f.key] ?? f.key, nomPlateforme(p));
     }
-    for (const a of (ebayRequiredStatus ?? []).filter(estBloquant)) m.push(`${a.label ?? a.name} — eBay`);
+    for (const a of (ebayRequiredStatus ?? []).filter(aspectBloquant)) {
+      const sk = a.sharedKey && libellePartage[a.sharedKey] ? a.sharedKey : null;
+      ajoute(sk ?? `ebay:${a.name}`, sk ? libellePartage[sk] : (a.label ?? a.name), "eBay");
+    }
     for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
-      for (const a of list.filter(estBloquant)) m.push(`${a.label ?? a.key} — ${nomPlateforme(gp)}`);
+      for (const a of list.filter(aspectBloquant)) {
+        const sk = genericFieldToSharedKey(gp, a.key);
+        ajoute(sk ?? `${gp}:${a.key}`, sk ? (libellePartage[sk] ?? a.label ?? a.key) : (a.label ?? a.key), nomPlateforme(gp));
+      }
+    }
+    for (const e of parChamp.values()) {
+      m.push(e.platforms.length ? `${e.label} (${e.platforms.join(", ")})` : e.label);
     }
     if (prixAchatManquant) m.push(lang === "en" ? "Purchase price to fill in" : "Prix d'achat à renseigner");
     if (vintedGenreBlocked) m.push(lang === "en" ? "Vinted section to choose" : "Rayon Vinted à choisir");
@@ -6631,11 +6752,11 @@ export default function ListingPreviewScreen({
             stockLimit={stockLimitCfg}
             prixAchatSaisi={prixAchatSaisi}
             setPrixAchatSaisi={setPrixAchatSaisi}
-            // Listes FILTRÉES par la règle d'unicité (un champ = un encart) —
-            // la garde du CTA, elle, lit toujours les listes complètes.
+            // Depuis le 2026-08-28, le bloc rouge porte TOUS les champs
+            // partagés manquants (un seul endroit de saisie) — la garde du
+            // CTA, elle, lit toujours les listes complètes.
             missingSharedFields={redSharedFields}
             missingSharedFieldPlatforms={redSharedFieldPlatforms}
-            redOwnedSharedKeys={redOwnedSharedKeys}
             sharedFields={sharedFields}
             onSharedFieldChange={setSharedField}
             sharedChildAxes={sharedChildAxes}

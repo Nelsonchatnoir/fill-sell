@@ -199,7 +199,9 @@ export const translations = {
     // la ligne invitait à continuer, le CTA refusait. Une seule sémantique
     // retenue — "missing" BLOQUE — et le texte s'aligne dessus, comme le
     // libellé générique juste en dessous.
-    stepPublishEbayAspectMissing:"obligatoire — à renseigner ici",
+    // « à renseigner ici » → « ci-dessous » (2026-08-28) : la saisie vit
+    // désormais dans l'encart rouge unique, sous les encarts par plateforme.
+    stepPublishEbayAspectMissing:"obligatoire — à compléter ci-dessous",
     stepPublishGenericRequiredTitle:"Champs obligatoires {platform} pour cette catégorie :",
     stepPublishGenericAspectMissing:"à compléter ci-dessous",
     stepPublishGenericAspectInvalid:"valeur hors liste, choisis ci-dessous",
@@ -207,7 +209,11 @@ export const translations = {
     // libellé remplace les deux ci-dessus quand la liste ne fait PAS foi (tout
     // Vinted/LBC/Beebs, et eBay FREE_TEXT). Ton d'INFORMATION, pas d'erreur :
     // rien n'est bloqué, la valeur part telle quelle.
-    stepPublishAspectOffListWarn:"absente de la liste qu'on connaît — envoyée quand même",
+    // 2026-08-28 — « absente de la liste qu'on connaît — envoyée quand même »
+    // était du jargon d'implémentation qui inquiétait. Le chip montre
+    // désormais la valeur (« Marque : Alphalette — envoyée telle quelle ») ;
+    // le comportement (envoi de la valeur libre) est inchangé.
+    stepPublishAspectOffListWarn:"envoyée telle quelle",
     stepPublishGenericAspectPrefilled:"rempli automatiquement",
     stepPublishGenericRequiredMissing:"{platform} exige pour cette catégorie : {fields}. Complète ce(s) champ(s) dans l'encart, puis relance la publication.",
     stepPublishSingleValueMsg:"cette catégorie n'accepte que « {value} » côté {platform}.",
@@ -510,11 +516,11 @@ export const translations = {
     stepPublishEbayAspectInvalid:"value not in eBay's list, pick below",
     stepPublishEbayRequiredTitle:"eBay required fields for this category:",
     stepPublishEbayAspectPrefilled:"pre-filled by eBay",
-    stepPublishEbayAspectMissing:"required — fill it in here",
+    stepPublishEbayAspectMissing:"required — fill it in below",
     stepPublishGenericRequiredTitle:"{platform} required fields for this category:",
     stepPublishGenericAspectMissing:"fill it in below",
     stepPublishGenericAspectInvalid:"value not in the list, pick below",
-    stepPublishAspectOffListWarn:"not in the list we know — sent anyway",
+    stepPublishAspectOffListWarn:"sent as is",
     stepPublishGenericAspectPrefilled:"filled automatically",
     stepPublishGenericRequiredMissing:"{platform} requires the following for this category: {fields}. Fill in the field(s) in the box, then publish again.",
     stepPublishSingleValueMsg:"this category only accepts “{value}” on {platform}.",
