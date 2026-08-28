@@ -238,10 +238,11 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .gactions{margin-top:auto;display:flex;flex-direction:column;gap:4px;padding-top:2px;}
 .stock-v2 .gactions .btn-publier{padding:7px 0;font-size:12px;}
 .stock-v2 .gactions .btn-vendre{padding:6px 4px;}
-/* Barre de progression des republications (remplace la ligne verte 2.4.66) :
-   progression au niveau des JOBS (X faits sur N), jamais interne au job. */
+/* Écran de progression des republications (2026-08-28) : surfaces plates —
+   pas de dégradé ni d'ombre. Barre globale 6px, barres de phase fines 4px. */
 .stock-v2 .repub-track{height:6px;border-radius:999px;background:var(--canvas);overflow:hidden;margin-top:8px;}
-.stock-v2 .repub-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,#2F9E90,#1B6E62);transition:width 0.6s ease;min-width:0;}
+.stock-v2 .repub-track.mince{height:4px;margin-top:5px;}
+.stock-v2 .repub-fill{height:100%;border-radius:999px;background:#1B6E62;transition:width 0.6s ease;min-width:0;}
 `;
 
 // (GalleryPhoto / premierePhoto vivent dans components/GalleryPhoto.jsx depuis
@@ -2252,6 +2253,22 @@ const REPUB_PLANCHER_EUR = 2;
 // réponse doit être dans la phrase, pas déduite.
 const REPUB_ORDRE = ['a_capturer', 'captured', 'deleted', 'recreated'];
 
+// ── Pondération temps réel du lot (écran de progression, 2026-08-28) ──────────
+// Durées RÉELLES mesurées en prod le 28/08/2026 (137 captures + 12
+// republications observées). Jamais affichées : elles documentent les poids
+// juste en dessous — retoucher les deux ensemble.
+const REPUB_DUREE_CAPTURE_S = 17;      // capture d'une annonce
+const REPUB_DUREE_RECREATION_S = 175;  // suppression + recréation
+const REPUB_DUREE_CYCLE_S = 192;       // cycle complet d'une annonce
+// Poids d'une étape = part du cycle déjà écoulée (captured ≈ 17/192). Les 4
+// valeurs ci-dessous sont les SEULES qui existent ; une étape absente (jobs
+// 0.6.4/0.6.6) ou inconnue vaut a_capturer (poids 0), le job reste compté.
+const REPUB_POIDS = { a_capturer: 0, captured: 0.09, deleted: 0.55, recreated: 1 };
+// Un statut résolu pèse 1 : plus rien ne se passera sur ce job, il ne doit
+// pas retenir la barre sous 100 %. needs_user n'y est PAS : il sort du calcul
+// ET du dénominateur (ligne « action requise » dédiée).
+const REPUB_STATUS_RESOLUS = ['published', 'sold', 'failed', 'cancelled', 'dry_run_completed'];
+
 function etapeRepublication(job, fr) {
   if (!job) return null;
   const pf = job.platform_fields ?? {};
@@ -3175,44 +3192,47 @@ const StockTab = memo(function StockTab({
     }
     return s;
   }, [repubDernier, republishActif]);
-  // Bandeau : périmètre = LE LOT EN COURS, jamais la journée écoulée.
-  // ── Correctif 2026-08-09 : deux périmètres dans le même encadré ────────────
-  // Il comptait tout dernier job republish créé depuis moins de 24 h (`recent`)
-  // OU non terminal. Un lot de 6 s'affichait donc « 9 republications ·
-  // 4 terminées · 5 en cours » : les 3 en trop étaient des republications
-  // terminées le matin même, sans aucun rapport avec le lot lancé. La ligne
-  // « prochaine recréation » juste en dessous, elle, ne portait QUE sur la
-  // file — deux périmètres différents dans la même carte.
-  // ⚠️ bulk_batch_id N'EST PAS exploitable : vérifié en prod le 09/08, il est
-  // NULL sur 100 % des jobs republish (0 sur 70 lignes en 3 jours) — ni
-  // l'insert client (solo et lot, plus bas) ni le RPC ne le renseignent. Le
-  // seul marqueur de lot réellement disponible est la RAFALE DE CRÉATION : un
-  // lot part en un seul burst (mesuré en base : 5 jobs en 242 ms). Le
-  // périmètre est donc « ce qui est encore en file + les terminaux créés dans
-  // la même rafale » — c'est ce qui donne le dénominateur de « 1 sur 6 ».
-  // Rien en file ⇒ null : le bandeau disparaît, il ne raconte plus la journée.
-  // Durée : on n'affiche QUE next_action_after (heure réelle posée par
-  // l'extension) — jamais d'estimation inventée.
+  // ── Écran de progression du lot (2026-08-28, remplace le bandeau du 07/08) ──
+  // AFFICHAGE PUR : rien ici n'écrit un job, un platform_fields ou un step.
+  // Périmètre du LOT : bulk_batch_id quand il est renseigné ; sinon repli sur
+  // la RAFALE DE CRÉATION (bulk_batch_id vérifié NULL sur 100 % des jobs
+  // republish en prod le 09/08 — un lot part en un seul burst, 5 jobs en
+  // 242 ms) : les jobs en file + les terminaux créés dans la même rafale.
+  // « Vivant » = pending/processing/statut inconnu (prudence : jamais ignoré
+  // ni planté) OU needs_user — un job qui attend l'utilisateur n'est pas
+  // terminé, il maintient l'écran (à 100 %, ligne « action requise »).
+  // Rien de vivant ⇒ null : l'écran disparaît, il ne raconte pas la journée.
   const repubBandeau = useMemo(() => {
     if (!republishActif) return null;
-    // Un statut INCONNU compte « en file », jamais ignoré ni planté — même
-    // prudence qu'avant, elle décide désormais AUSSI de l'affichage du bandeau.
-    const enFile = (st) => st === 'pending' || st === 'processing'
-      || !['published', 'failed', 'cancelled', 'dry_run_completed', 'needs_user'].includes(st);
+    const resolu = (st) => REPUB_STATUS_RESOLUS.includes(st);
+    const enFile = (st) => !resolu(st) && st !== 'needs_user';
     const derniers = Object.values(repubDernier);
-    const enVol = derniers.filter((j) => enFile(j.status));
-    if (!enVol.length) return null;
-    // Début de la rafale = le plus ancien job encore en file, moins une marge.
-    // La marge absorbe un insert de lot étalé (une ligne par article) sans
-    // jamais aller chercher le lot précédent : 2 min contre plusieurs heures
-    // d'écart réel entre deux lots.
-    const debuts = enVol.map((j) => Date.parse(j.created_at ?? '')).filter(Number.isFinite);
-    const seuilLot = debuts.length ? Math.min(...debuts) - 2 * 60 * 1000 : Number.NEGATIVE_INFINITY;
-    let total = 0, terminees = 0, enCours = 0, aRelancer = 0, arretees = 0, prochaine = null;
-    // Article EN COURS DE TRAITEMENT — pour la ligne « ⏳ <titre> » de la
-    // barre de progression (2026-08-27). 'processing' d'abord (l'extension y
-    // travaille vraiment) ; à défaut, le prochain en file. Jamais inventé.
-    let enCoursJob = null, enAttenteJob = null;
+    const vivants = derniers.filter((j) => enFile(j.status) || j.status === 'needs_user');
+    if (!vivants.length) return null;
+    // Lot par bulk_batch_id : celui du vivant le plus récent, quand il existe.
+    const recent = vivants.reduce((a, b) =>
+      Date.parse(b.created_at ?? 0) > Date.parse(a.created_at ?? 0) ? b : a);
+    const batchId = recent.bulk_batch_id ?? null;
+    let lot;
+    if (batchId) {
+      lot = derniers.filter((j) => j.bulk_batch_id === batchId);
+    } else {
+      // Début de la rafale = le plus ancien job EN FILE, moins une marge de
+      // 2 min (absorbe un insert de lot étalé sans aller chercher le lot
+      // précédent). Ancrée sur la file SEULEMENT : un needs_user ancien
+      // ancrerait des jours de terminaux sans rapport avec le lot du moment.
+      // Les needs_user, eux, entrent au lot quel que soit leur âge (« tous
+      // les jobs republish non terminés de l'utilisateur »).
+      const debuts = vivants.filter((j) => enFile(j.status))
+        .map((j) => Date.parse(j.created_at ?? '')).filter(Number.isFinite);
+      const seuilLot = debuts.length ? Math.min(...debuts) - 2 * 60 * 1000 : Number.POSITIVE_INFINITY;
+      lot = derniers.filter((j) => enFile(j.status) || j.status === 'needs_user'
+        || (Number.isFinite(Date.parse(j.created_at ?? '')) && Date.parse(j.created_at) >= seuilLot));
+    }
+    // total/somme EXCLUENT les needs_user (ni numérateur ni dénominateur) :
+    // la barre peut être à 100 % avec la ligne « action requise » présente.
+    let total = 0, somme = 0, enFileCount = 0, prep = 0, repub = 0,
+      aRelancer = 0, arretees = 0;
     // Orpheline (3d-a) : une recréation en cours dont l'ordinateur ne répond
     // plus — mêmes seuils que la pastille (deleted > 20 min + heartbeat muet
     // > 10 min). Le memo se recalcule au rafraîchissement de
@@ -3221,33 +3241,49 @@ const StockTab = memo(function StockTab({
     let orpheline = false;
     const hb = Date.parse(extensionStatus?.lastSeenAt ?? '');
     const hbMuet = !Number.isFinite(hb) || Date.now() - hb > 10 * 60 * 1000;
-    for (const last of derniers) {
-      const st = last.status;
-      const step = last.platform_fields?.republish_step;
-      const cree = Date.parse(last.created_at ?? '');
-      // Un job en file appartient TOUJOURS au lot (même created_at illisible) ;
-      // un job terminal n'y entre que s'il vient de la même rafale.
-      if (!enFile(st) && !(Number.isFinite(cree) && cree >= seuilLot)) continue;
+    for (const j of lot) {
+      const st = j.status;
+      const stepBrut = j.platform_fields?.republish_step;
+      const step = REPUB_POIDS[stepBrut] !== undefined ? stepBrut : 'a_capturer';
+      if (st === 'needs_user') { aRelancer++; continue; }
       total++;
-      if (st === 'published' || step === 'recreated' || st === 'dry_run_completed') terminees++;
-      else if (st === 'needs_user') aRelancer++;
-      else if (st === 'failed' || st === 'cancelled') arretees++;
-      else {
-        enCours++;
-        if (st === 'processing' && !enCoursJob) enCoursJob = last;
-        else if (!enAttenteJob) enAttenteJob = last;
-      }
-      const naa = Date.parse(last.platform_fields?.next_action_after ?? '');
-      if ((st === 'pending' || st === 'processing') && Number.isFinite(naa) && naa > Date.now()
-        && (!prochaine || naa < prochaine)) prochaine = naa;
-      if ((st === 'pending' || st === 'processing') && step === 'deleted' && hbMuet) {
-        const d = Date.parse(last.platform_fields?.deleted_at ?? '');
+      if (st === 'failed' || st === 'cancelled') arretees++;
+      if (resolu(st)) somme += 1;
+      else { somme += REPUB_POIDS[step]; enFileCount++; }
+      // Phases : un job résolu en succès (published/sold) a forcément
+      // traversé les deux, quel que soit le step enregistré.
+      const succes = st === 'published' || st === 'sold';
+      if (succes || step !== 'a_capturer') prep++;
+      if (succes || step === 'recreated') repub++;
+      if (enFile(st) && step === 'deleted' && hbMuet) {
+        const d = Date.parse(j.platform_fields?.deleted_at ?? '');
         if (Number.isFinite(d) && Date.now() - d > 20 * 60 * 1000) orpheline = true;
       }
     }
-    return { total, terminees, enCours, aRelancer, arretees, prochaine, orpheline,
-      enCoursJob: enCoursJob ?? enAttenteJob };
+    // RÈGLE ABSOLUE : 100 % = terminé. Plancher (floor) + cap à 99 tant qu'il
+    // reste du pending ; 100 EXACT dès qu'il n'en reste plus — jamais par
+    // arrondi. total === 0 (que du needs_user) ⇒ branche 100, pas de division.
+    const pct = enFileCount === 0 ? 100
+      : Math.min(99, Math.floor((somme / total) * 100));
+    // Clé de lot pour le cliquet anti-recul : batch, sinon début de rafale
+    // (le job le plus ancien du lot y reste jusqu'au bout — clé stable).
+    const crees = lot.map((j) => Date.parse(j.created_at ?? '')).filter(Number.isFinite);
+    const lotCle = batchId ? `batch:${batchId}` : `rafale:${crees.length ? Math.min(...crees) : 0}`;
+    return { total, pct, prep, repub, enFileCount, aRelancer, arretees, orpheline, lotCle };
   }, [repubDernier, republishActif, extensionStatus?.lastSeenAt]);
+  // Cliquet anti-recul (garde-fou) : le pourcentage global d'un MÊME lot ne
+  // redescend jamais entre deux rafraîchissements (job repris plus tôt,
+  // dénominateur qui bouge). Ré-armé quand le lot change (lotCle). Le
+  // min(99, …) empêche le cliquet de resservir un 100 mémorisé tant qu'il
+  // reste du pending. Mutation idempotente : sûre en double rendu StrictMode.
+  const repubPctRef = useRef({ cle: null, pct: 0 });
+  let repubPct = null;
+  if (repubBandeau) {
+    const r = repubPctRef.current;
+    if (r.cle !== repubBandeau.lotCle) { r.cle = repubBandeau.lotCle; r.pct = 0; }
+    r.pct = Math.max(r.pct, repubBandeau.pct);
+    repubPct = repubBandeau.enFileCount === 0 ? 100 : Math.min(99, r.pct);
+  }
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
   const [repubFiltre, setRepubFiltre] = useState(null);
   useEffect(() => {
@@ -3372,7 +3408,9 @@ const StockTab = memo(function StockTab({
         // « En ligne » et leurs badges de job — remplacés par le repli
         // textuel « 🏪 <plateforme> ». Un select PostgREST est tout ou rien :
         // une colonne inconnue ne dégrade pas, elle annule.
-        .select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title")
+        // bulk_batch_id : VÉRIFIÉE dans le schéma prod le 28/08 (uuid,
+        // information_schema) — sert au périmètre du lot de republications.
+        .select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title, bulk_batch_id")
         .eq("user_id", user.id)
         // 'cancelled' et 'dry_run_completed' AJOUTÉS le 2026-08-05 : sans eux,
         // un republish qui se terminait DISPARAISSAIT de l'écran et la carte
@@ -3766,75 +3804,103 @@ const StockTab = memo(function StockTab({
           est monté par le <style> de la liste plus bas — les classes portent,
           l'ordre DOM d'un <style> est sans effet. */}
       <div className="stock-v2" style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
-        {/* ── Bandeau de lot de republications (2026-08-07, validé Nico ;
-            remonté en tête le 27/08). Visible SEULEMENT s'il reste du
-            non-terminal (repubBandeau null sinon). Les chips « à relancer » /
-            « arrêtées » filtrent la liste ; re-tap = retire le filtre. */}
+        {/* ── Écran de progression des republications (2026-08-28) : barre
+            globale pondérée temps réel, une barre par phase, ligne « action
+            requise », pied de page. Visible tant que le lot garde du vivant
+            (pending/processing/needs_user) — repubBandeau null sinon. Les
+            lignes « action requise » / « arrêtées » filtrent la liste ;
+            re-tap = retire le filtre. */}
         {repubBandeau&&(
-          <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer+repubBandeau.arretees>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"11px 14px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-              {/* Progression, pas inventaire : « 1 sur 6 » se lit dans le
-                  même périmètre que « prochaine recréation » juste en
-                  dessous. */}
-              <span style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
-                🔁 {lang==='fr'
-                  ?`Republication${repubBandeau.total>1?'s':''} — ${repubBandeau.terminees} sur ${repubBandeau.total}`
-                  :`Repost${repubBandeau.total>1?'s':''} — ${repubBandeau.terminees} of ${repubBandeau.total}`}
+          <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"12px 14px"}}>
+            {/* Niveau 1 — barre globale. repubPct sort du cliquet : 100 %
+                garanti « terminé », jamais atteint par arrondi. */}
+            <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+              <span style={{fontSize:13.5,fontWeight:700,color:"#10201B"}}>
+                🔁 {lang==='fr'?`Republication${repubBandeau.total>1?'s':''}`:`Repost${repubBandeau.total>1?'s':''}`}
               </span>
-              <span style={{fontSize:12,fontWeight:600,color:"#5C6560"}}>
-                {repubBandeau.enCours} {lang==='fr'?'en cours':'in progress'}
+              <span style={{marginLeft:"auto",fontSize:24,fontWeight:800,color:"#1B6E62",lineHeight:1,fontVariantNumeric:"tabular-nums"}}>
+                {repubPct}<span style={{fontSize:14,fontWeight:700}}> %</span>
               </span>
-              {repubBandeau.aRelancer>0&&(
-                <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
-                  style={{border:`1px solid ${repubFiltre==='relancer'?"#B91C1C":"#FECACA"}`,background:repubFiltre==='relancer'?"#B91C1C":"#FEF2F2",color:repubFiltre==='relancer'?"#fff":"#B91C1C",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  {repubBandeau.aRelancer} {lang==='fr'?'à relancer':'to relaunch'} ›
-                </button>
-              )}
-              {repubBandeau.arretees>0&&(
-                <button onClick={()=>setRepubFiltre(f=>f==='arretees'?null:'arretees')}
-                  style={{border:`1px solid ${repubFiltre==='arretees'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='arretees'?"#8A6100":"#FFF6E3",color:repubFiltre==='arretees'?"#fff":"#8A6100",borderRadius:999,padding:"3px 10px",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  {repubBandeau.arretees} {lang==='fr'?'arrêtée'+(repubBandeau.arretees>1?'s':''):'stopped'} ›
-                </button>
-              )}
             </div>
-            {/* Barre de progression au niveau des JOBS (terminés / total du
-                lot) — jamais une progression interne au job en cours (un
-                cycle prend ~4 min, elle serait inventée). Le bandeau entier
-                n'existe que s'il reste du non-terminal : jamais de barre à
-                zéro sans travail en cours. */}
-            {(()=>{
-              const j=repubBandeau.enCoursJob;
-              const titre=j?(stock.find(i=>i.id===j.inventaire_id)?.title??j.title??null):null;
-              if(!titre)return null;
-              return(
-                <div style={{fontSize:11.5,color:"#5C6560",marginTop:6,lineHeight:1.5,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                  ⏳ {lang==='fr'?'En cours :':'Working on:'} <span style={{fontWeight:700,color:"#10201B"}}>{titre}</span>
-                </div>
-              );
-            })()}
-            <div className="repub-track">
-              <div className="repub-fill" style={{width:`${repubBandeau.total>0?Math.round(repubBandeau.terminees/repubBandeau.total*100):0}%`}}/>
-            </div>
-            {/* Orpheline PRIME sur « prochaine recréation » : annoncer une
-                heure pendant que l'ordinateur dort serait un mensonge. */}
-            {repubBandeau.orpheline?(
-              <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",marginTop:6,lineHeight:1.5,fontWeight:600}}>
-                {lang==='fr'
-                  ?"⚠️ Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
-                  :"⚠️ Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
-              </div>
-            ):repubBandeau.prochaine?(
-              <div style={{fontSize:11.5,color:"#8A8578",marginTop:5,lineHeight:1.5}}>
-                {lang==='fr'
-                  ?`Prochaine recréation vers ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell espace volontairement ses gestes de quelques minutes, comme une vraie personne.`
-                  :`Next recreation around ${heureParis(new Date(repubBandeau.prochaine).toISOString())} — FillSell deliberately spaces its actions by a few minutes, like a real person.`}
-              </div>
-            ):null}
-            {repubFiltre&&(
-              <div style={{fontSize:11.5,color:"#8A8578",marginTop:5}}>
-                {lang==='fr'?'Liste filtrée — re-touche le compteur pour tout réafficher.':'List filtered — tap the counter again to show everything.'}
+            <div className="repub-track"><div className="repub-fill" style={{width:`${repubPct}%`}}/></div>
+            {/* Niveau 2 — une barre par phase, compteurs sur le total retenu
+                (needs_user exclus). « Préparation » avance d'un cran toutes
+                les ~17 s : c'est le vrai feedback visuel. Masquées quand
+                total === 0 (il ne reste que du needs_user). L'étape
+                'deleted' n'est jamais dite « en attente » : elle compte
+                préparée, en route vers la republication. */}
+            {repubBandeau.total>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:11,marginTop:13}}>
+                {[
+                  {ic:"💾",lib:lang==='fr'?"Préparation":"Preparation",fait:repubBandeau.prep,
+                   phrase:lang==='fr'
+                     ?"Chaque annonce est d'abord lue et sauvegardée en entier, photos comprises."
+                     :"Each listing is first read and fully saved, photos included."},
+                  {ic:"📤",lib:lang==='fr'?"Republication":"Reposting",fait:repubBandeau.repub,
+                   phrase:lang==='fr'
+                     ?"Chaque annonce sauvegardée est retirée puis aussitôt recréée sur Vinted."
+                     :"Each saved listing is removed then immediately recreated on Vinted."},
+                ].map((p)=>(
+                  <div key={p.lib}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontSize:13}}>{p.ic}</span>
+                      <span style={{fontSize:12.5,fontWeight:700,color:"#10201B"}}>{p.lib}</span>
+                      <span style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:"#5C6560",fontVariantNumeric:"tabular-nums"}}>
+                        {p.fait} / {repubBandeau.total}
+                      </span>
+                    </div>
+                    <div className="repub-track mince"><div className="repub-fill" style={{width:`${Math.round(p.fait/repubBandeau.total*100)}%`}}/></div>
+                    <div style={{fontSize:11.5,color:"#8A8578",marginTop:3,lineHeight:1.45}}>{p.phrase}</div>
+                  </div>
+                ))}
               </div>
             )}
+            {/* Ligne « action requise » — les needs_user ne comptent ni au
+                numérateur ni au dénominateur : la barre peut être à 100 %
+                avec cette ligne encore là, et c'est voulu (l'automatique est
+                fini, le reste dépend de l'utilisateur). Tap → filtre la
+                liste sur ces jobs. */}
+            {repubBandeau.aRelancer>0&&(
+              <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
+                style={{display:"block",width:"100%",textAlign:"left",marginTop:11,border:`1px solid ${repubFiltre==='relancer'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='relancer'?"#8A6100":"#FFF6E3",color:repubFiltre==='relancer'?"#fff":"#8A6100",borderRadius:10,padding:"8px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
+                ✋ {lang==='fr'
+                  ?`${repubBandeau.aRelancer} annonce${repubBandeau.aRelancer>1?'s attendent':' attend'} une action de ta part ›`
+                  :`${repubBandeau.aRelancer} listing${repubBandeau.aRelancer>1?'s are':' is'} waiting for your action ›`}
+              </button>
+            )}
+            {/* Arrêtées : ligne CONSERVÉE — elles pèsent 1 dans la barre
+                (résolues), sans cette ligne un échec serait invisible ici. */}
+            {repubBandeau.arretees>0&&(
+              <button onClick={()=>setRepubFiltre(f=>f==='arretees'?null:'arretees')}
+                style={{display:"block",width:"100%",textAlign:"left",marginTop:8,border:`1px solid ${repubFiltre==='arretees'?"#5C6560":"#E7E3D8"}`,background:repubFiltre==='arretees'?"#5C6560":"#F7F5EF",color:repubFiltre==='arretees'?"#fff":"#5C6560",borderRadius:10,padding:"8px 10px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
+                {repubBandeau.arretees} {lang==='fr'
+                  ?`republication${repubBandeau.arretees>1?'s':''} arrêtée${repubBandeau.arretees>1?'s':''} ›`
+                  :`stopped repost${repubBandeau.arretees>1?'s':''} ›`}
+              </button>
+            )}
+            {repubFiltre&&(
+              <div style={{fontSize:11.5,color:"#8A8578",marginTop:6}}>
+                {lang==='fr'?'Liste filtrée — re-touche le bouton pour tout réafficher.':'List filtered — tap the button again to show everything.'}
+              </div>
+            )}
+            {/* Pied de page, séparé par un filet. Orpheline PRIME : « ton
+                ordinateur travaille » serait un mensonge quand il ne répond
+                plus. Aucune durée ni estimation, nulle part. */}
+            <div style={{borderTop:"1px solid #EFECE3",marginTop:12,paddingTop:9}}>
+              {repubBandeau.orpheline?(
+                <div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",lineHeight:1.5,fontWeight:600}}>
+                  {lang==='fr'
+                    ?"⚠️ Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
+                    :"⚠️ Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
+                </div>
+              ):(
+                <div style={{fontSize:11.5,color:"#8A8578",lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?"Ton ordinateur travaille en continu, annonce après annonce — tu peux quitter cet écran, tout continue tout seul."
+                    :"Your computer keeps working, listing after listing — you can leave this screen, everything carries on by itself."}
+                </div>
+              )}
+            </div>
           </div>
         )}
         {/* ── Actualiser mon dressing — TOUT EN HAUT du contenu (27/08).
