@@ -491,6 +491,78 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des 'deleted' coupés:", (e as Error)?.message ?? e);
   }
 
+  // ── Reprise des 'processing' coupés à l'étape 'captured' (2026-08-29, cas
+  // Joe0410 job 38c6ca6e : Chrome fermé à 00:12 juste après la capture 2128,
+  // job figé 11 h — AUCUNE erreur, il n'y en a pas eu) ──────────────────────
+  // Même trou que l'étape 'deleted' sous une autre forme : le job s'arrête
+  // proprement et rien ne le relance. Même modèle de reprise, MÊMES garde-fous
+  // (capture vérifiée EN BASE, verdict 'valide' exigé — capture_id absent,
+  // ligne introuvable ou verdict autre ⇒ on ne touche à RIEN), compare-and-
+  // swap sur 'processing'. Aucune Pépite re-débitée : le débit vit à la
+  // création du job, aucun trigger de solde ne tire sur processing→pending.
+  // ⚠️ Ne concerne QUE 'processing' : les pending à l'étape 'captured'
+  // attendent normalement l'extension de leur propriétaire, on ne les lit pas.
+  // Seuil 45 min, PLUS LONG que les 30 min de 'deleted', à dessein : ici
+  // l'annonce est TOUJOURS EN LIGNE (zéro urgence), et une une-passe légitime
+  // mais lente (photos, attentes anti-bot) peut durer bien plus qu'une simple
+  // recréation — on ne réarme jamais sous les pieds d'une extension encore au
+  // travail. Le compare-and-swap reste le filet si elle se réveille pile là.
+  // Pas de borne d'âge de capture ICI (verdict seul, comme 'deleted') : c'est
+  // l'EXTENSION qui re-vérifie la fraîcheur à l'étape 'captured' et recapture
+  // (borné) avant toute suppression — jamais de retrait sur des données
+  // périmées. Conséquence assumée, voir le rapport du 29/08 : ce réarmement à
+  // 45 min passe AVANT le balayage 24 h « capture périmée → needs_user »
+  // ci-dessus pour ces jobs — ils repartent en pending et se re-capturent au
+  // retour de l'extension au lieu d'attendre une relance manuelle.
+  // Compatible /listing-restriction (même lot) : cette reprise-là écrit des
+  // jobs PENDING (avec next_action_after) — jamais scannés ici ; et un job
+  // repris ici conserve son compteur listing_restriction_retries.
+  const REPRISE_CAPTURED_MIN = 45;
+  let capturedRearmes = 0;
+  try {
+    const { data: coupes } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, created_at, platform_fields")
+      .eq("status", "processing")
+      .eq("action", "republish")
+      .filter("platform_fields->>republish_step", "eq", "captured")
+      .filter("platform_fields->>new_vinted_item_id", "is", "null");
+    // deno-lint-ignore no-explicit-any
+    for (const j of ((coupes ?? []) as any[])) {
+      const pf0 = j.platform_fields ?? {};
+      const since = Date.parse(pf0.processing_since ?? j.created_at ?? "");
+      if (!Number.isFinite(since) || now - since < REPRISE_CAPTURED_MIN * 60_000) continue;
+      const capId = Number(pf0.capture_id);
+      if (!Number.isFinite(capId)) continue; // capture absente : garde-fou, on ne touche pas
+      const { data: cap } = await supabase
+        .from("vinted_republish_captures")
+        .select("verdict")
+        .eq("id", capId)
+        .maybeSingle();
+      if (cap?.verdict !== "valide") continue; // incomplète ou introuvable : idem
+      const pf = { ...pf0 };
+      delete pf.processing_since;
+      delete pf.stale_recoveries;
+      const msg =
+        "Reprise après interruption : l'ordinateur a été coupé après la capture de l'annonce, " +
+        "avant tout retrait. Ton annonce est toujours en ligne sur Vinted, rien n'a été supprimé. " +
+        "Le job est remis en file et repartira tout seul dès qu'une extension connectée se " +
+        "réveille — rien à faire de ton côté, la Pépite reste engagée.";
+      const { data: maj } = await supabase
+        .from("cross_post_jobs")
+        .update({ status: "pending", error: msg, platform_fields: pf })
+        .eq("id", j.id)
+        .eq("status", "processing")
+        .select("id");
+      if (maj?.length) {
+        capturedRearmes++;
+        console.log(`[handler-watch] job ${j.id} : processing coupé à l'étape 'captured' (capture valide) → pending (annonce encore en ligne, rien supprimé)`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] reprise des 'captured' coupés:", (e as Error)?.message ?? e);
+  }
+
   // ── needs_user À ÉCHÉANCE : 72 h sans geste → failed (point 5, GO Nico
   // 16/08) ──────────────────────────────────────────────────────────────────
   // needs_user n'est pas terminal : aucun trigger ne rend jamais la Pépite —
@@ -841,7 +913,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -896,7 +968,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -950,7 +1022,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
     headers: { "Content-Type": "application/json" },
   });
 });
