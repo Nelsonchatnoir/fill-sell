@@ -89,6 +89,54 @@ serve(async (req) => {
     if (includeProcessing) statuses.push("processing");
     if (includeNeedsUser) statuses.push("needs_user");
 
+    // ── État du plafond quotidien d'exécution des republications ────────────
+    // (2026-08-29 soir) UNE seule définition, calculée ICI et nulle part
+    // ailleurs : limite = coin_config.republish_plafond_jour, faits = jobs
+    // republish 'published' du jour Europe/Paris (fenêtre 26 h filtrée par
+    // date Paris), retenue = faits >= limite. Sert à la retenue du claim
+    // ci-dessous ET à l'affichage de l'app (mode plafond_only) — le serveur
+    // fait autorité, l'app ne recalcule plus rien.
+    const etatPlafondRepublish = async () => {
+      let limite = 45;
+      const { data: cfg } = await userClient
+        .from("coin_config").select("value").eq("key", "republish_plafond_jour").maybeSingle();
+      const v = Number(cfg?.value);
+      if (Number.isFinite(v) && v > 0) limite = v;
+      const jourParis = (ts: number) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
+      const aujourdhui = jourParis(Date.now());
+      const depuis = new Date(Date.now() - 26 * 3600_000).toISOString();
+      const { data: faitsRows } = await userClient
+        .from("cross_post_jobs")
+        .select("published_at")
+        .eq("action", "republish")
+        .eq("status", "published")
+        .gte("published_at", depuis);
+      const faits = (faitsRows ?? []).filter((r: { published_at: string | null }) => {
+        const t = Date.parse(r.published_at ?? "");
+        return Number.isFinite(t) && jourParis(t) === aujourdhui;
+      }).length;
+      return { limite, faits, retenue: faits >= limite, jour: aujourdhui };
+    };
+
+    // Mode plafond_only (2026-08-29 soir) : appelé par l'APP (StockTab) pour
+    // afficher le bandeau « ta file reprend demain » — la retenue serveur est
+    // active depuis v18 mais l'app était muette (arrêt silencieux, exactement
+    // le reproche fait au blocage /listing-restriction du matin).
+    // ⚠️ COURT-CIRCUITE TOUT LE RESTE, et d'abord la TÉLÉMÉTRIE : un appel
+    // venu de l'app web ne doit JAMAIS stamper extension_last_seen_at ni
+    // extension_build — il ferait passer une extension éteinte pour vivante
+    // (bandeau « ordinateur éteint », fenêtre de fraîcheur de la facturation,
+    // ciblage des mails de mise à jour). Aucun job distribué, aucune commande
+    // de sync consommée.
+    if (body?.plafond_only === true) {
+      try {
+        return json({ plafond_republish: await etatPlafondRepublish() });
+      } catch (_e) {
+        // L'app masque le bandeau sur null : jamais un bandeau sur une panne.
+        return json({ plafond_republish: null });
+      }
+    }
+
     // Télémétrie extension (2026-07-18) : chaque poll stampe
     // profiles.extension_last_seen_at (+ extension_build si le background
     // l'envoie — versions récentes uniquement). Sert au ciblage du mail
@@ -163,38 +211,18 @@ serve(async (req) => {
     // filet ne doit pas devenir un point de panne, même règle que
     // platform_health ci-dessus).
     let heldRepublish = 0;
+    let plafondRepublish: { limite: number; faits: number; retenue: boolean; jour: string } | null = null;
     if (!includeProcessing && !includeNeedsUser && out.some((j) => j.action === "republish")) {
       try {
-        let plafond = 45;
-        const { data: cfg } = await userClient
-          .from("coin_config").select("value").eq("key", "republish_plafond_jour").maybeSingle();
-        const v = Number(cfg?.value);
-        if (Number.isFinite(v) && v > 0) plafond = v;
-        // Jour Europe/Paris quel que soit le fuseau du runtime : fenêtre
-        // glissante 26 h relue puis filtrée par date Paris — même règle de
-        // comptage que l'extension et que l'affichage StockTab (une seule
-        // définition du « jour »).
-        const jourParis = (ts: number) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
-        const aujourdhui = jourParis(Date.now());
-        const depuis = new Date(Date.now() - 26 * 3600_000).toISOString();
-        const { data: faitsRows } = await userClient
-          .from("cross_post_jobs")
-          .select("published_at")
-          .eq("action", "republish")
-          .eq("status", "published")
-          .gte("published_at", depuis);
-        const faits = (faitsRows ?? []).filter((r: { published_at: string | null }) => {
-          const t = Date.parse(r.published_at ?? "");
-          return Number.isFinite(t) && jourParis(t) === aujourdhui;
-        }).length;
-        if (faits >= plafond) {
+        plafondRepublish = await etatPlafondRepublish();
+        if (plafondRepublish.retenue) {
           const avant = out.length;
           out = out.filter((j) =>
             j.action !== "republish" ||
             (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "deleted");
           heldRepublish = avant - out.length;
           if (heldRepublish) {
-            console.log(`[get-pending-jobs] userId=${user.id} : plafond republish atteint (${faits}/${plafond} aujourd'hui, Paris) → ${heldRepublish} republish retenu(s) en pending jusqu'à demain (étape 'deleted' exemptée)`);
+            console.log(`[get-pending-jobs] userId=${user.id} : plafond republish atteint (${plafondRepublish.faits}/${plafondRepublish.limite} aujourd'hui, Paris) → ${heldRepublish} republish retenu(s) en pending jusqu'à demain (étape 'deleted' exemptée)`);
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
@@ -274,7 +302,9 @@ serve(async (req) => {
       } catch (_e) { /* idem */ }
     }
 
-    return json({ jobs: out, sync_command: syncCommand, contexte });
+    // plafond_republish joint au poll d'exécution aussi (null hors calcul) :
+    // le popup de l'extension pourra un jour l'afficher sans nouvel appel.
+    return json({ jobs: out, sync_command: syncCommand, contexte, plafond_republish: plafondRepublish });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[get-pending-jobs] Erreur inattendue:", msg);

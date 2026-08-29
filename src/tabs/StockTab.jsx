@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { RefreshCw, Check, ChevronDown, ChevronUp, ChevronRight, Hand, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Check, ChevronDown, ChevronUp, ChevronRight, Hand, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -3337,37 +3337,32 @@ const StockTab = memo(function StockTab({
     }
     return m;
   }, [jobsByInventaire]);
-  // ── Plafond quotidien d'exécution (2026-08-29) — AFFICHAGE SEULEMENT ─────
-  // Le plafond vit en base (coin_config.republish_plafond_jour, défaut 100)
-  // et c'est l'EXTENSION qui l'applique : ici on ne fait que l'expliquer
-  // (« N faites aujourd'hui — les M restantes reprennent demain »), pour que
-  // l'étalement se lise comme un choix, jamais comme une lenteur. Lecture
-  // une fois par montage (policy SELECT ouverte sur coin_config) ;
-  // best-effort : illisible → défaut 100, la phrase reste juste.
-  const [repubPlafondJour, setRepubPlafondJour] = useState(100);
+  // ── Plafond quotidien d'exécution : état SERVEUR (2026-08-29 soir) ───────
+  // La retenue vit dans get-pending-jobs (v18+) et elle est ACTIVE — la
+  // première version de ce bloc recalculait localement (coin_config + jobs
+  // chargés) : deux vérités possibles, et l'app pouvait se taire pendant que
+  // le serveur retenait la file (arrêt silencieux, le reproche fait au
+  // blocage /listing-restriction). Désormais UNE source : l'app demande
+  // l'état au serveur (mode plafond_only — SANS télémétrie : cet appel ne
+  // stampe jamais extension_last_seen_at, il ne doit pas faire passer une
+  // extension éteinte pour vivante). null (panne, pas d'état) → PAS de
+  // bandeau : jamais un bandeau sur une erreur ni préventif.
+  const [repubPlafondEtat, setRepubPlafondEtat] = useState(null); // {limite,faits,retenue,jour}|null
   useEffect(() => {
     if (!republishActif) return;
     let annule = false;
-    supabase.from('coin_config').select('value').eq('key', 'republish_plafond_jour').maybeSingle()
-      .then(({ data }) => {
-        const v = Number(data?.value);
-        if (!annule && Number.isFinite(v) && v > 0) setRepubPlafondJour(v);
-      })
-      .catch(() => {});
-    return () => { annule = true; };
+    const lire = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-pending-jobs', { body: { plafond_only: true } });
+        if (!annule) setRepubPlafondEtat(error ? null : (data?.plafond_republish ?? null));
+      } catch { if (!annule) setRepubPlafondEtat(null); }
+    };
+    lire();
+    // Rafraîchi toutes les 2 min onglet visible : la retenue se lève à
+    // minuit Paris, pas besoin de plus fin.
+    const t = setInterval(() => { if (document.visibilityState === 'visible') lire(); }, 120000);
+    return () => { annule = true; clearInterval(t); };
   }, [republishActif]);
-  // Republications EXÉCUTÉES aujourd'hui (jour Europe/Paris — même règle que
-  // le compteur de l'extension) : dernier job par article, published du jour.
-  // cadence_24h interdit deux republications du même article le même jour,
-  // le « dernier job » suffit donc à compter juste.
-  const repubFaitesAujourdhui = useMemo(() => {
-    const jour = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
-    return Object.values(repubDernier).filter((j) => {
-      if (j.status !== 'published') return false;
-      const t = Date.parse(j.published_at ?? '');
-      return Number.isFinite(t) && new Date(t).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' }) === jour;
-    }).length;
-  }, [repubDernier]);
   // Articles HORS LIGNE : republication arrêtée (needs_user/failed/cancelled)
   // À L'ÉTAPE 'deleted' — l'annonce a été retirée de Vinted et jamais recréée.
   // Le pire cas du produit (Combishort d'ornellaracano, 07/08 : plus d'une
@@ -3604,7 +3599,9 @@ const StockTab = memo(function StockTab({
         // bulk_batch_id : VÉRIFIÉE dans le schéma prod le 28/08 (uuid,
         // information_schema) — sert au périmètre du lot de republications.
         // published_at : VÉRIFIÉE dans le schéma prod le 29/08 (timestamptz,
-        // information_schema) — sert au compteur du plafond quotidien.
+        // information_schema). Le compteur du plafond quotidien est passé
+        // côté SERVEUR le soir même (get-pending-jobs plafond_only) — la
+        // colonne reste lue, prête pour tout affichage horodaté des jobs.
         .select("id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id")
         .eq("user_id", user.id)
         // 'cancelled' et 'dry_run_completed' AJOUTÉS le 2026-08-05 : sans eux,
@@ -4021,18 +4018,37 @@ const StockTab = memo(function StockTab({
             {repubBandeau.actif&&(
               <RepubBlocActif lang={lang} job={repubBandeau.actif} titre={repubTitre(repubBandeau.actif)}/>
             )}
-            {/* Plafond quotidien atteint (2026-08-29) : l'étalement est un
-                CHOIX (filet anti-emballement appliqué par l'extension), pas
-                une lenteur — on le dit, sobrement. Pas de date de fin
-                calculée, pas de plan multi-jours (décision Nico). */}
+            {/* Bandeau « ta file reprend demain » (2026-08-29 soir) : l'état
+                vient du SERVEUR (repubPlafondEtat, get-pending-jobs
+                plafond_only) — jamais recalculé ici. Ton NEUTRE ET POSITIF :
+                ni une erreur, ni une panne, ni une sanction — une protection
+                volontaire du compte, et le vocabulaire le dit (« reprend
+                demain », jamais « bloqué »/« limite »/« refusé »). Même
+                grammaire que les encarts du bloc (fond teinté doux, bord,
+                radius) ; teal de la palette Stock IA, pas de rouge. Affiché
+                SEULEMENT si la retenue serveur est active ET qu'il reste des
+                jobs en attente — jamais vide, jamais préventif. Pas de
+                compte à rebours, pas de pourcentage, pas de date de fin de
+                lot (décision Nico). */}
             {(()=>{
+              const p=repubPlafondEtat;
               const restantes=repubBandeau.file.length+(repubBandeau.actif&&!repubJobFini(repubBandeau.actif)?1:0);
-              if(repubFaitesAujourdhui<repubPlafondJour||restantes<=0)return null;
+              if(!p?.retenue||restantes<=0)return null;
               return(
-                <div style={{marginTop:12,background:"#F7F5EF",border:"1px solid #E7E3D8",borderRadius:10,padding:"9px 11px",fontSize:12.5,color:"#5C6560",lineHeight:1.45}}>
-                  {lang==='fr'
-                    ?`${repubFaitesAujourdhui} republications faites aujourd'hui — ${restantes>1?`les ${restantes} restantes reprennent`:'la dernière reprend'} demain.`
-                    :`${repubFaitesAujourdhui} reposts done today — ${restantes>1?`the ${restantes} remaining resume`:'the last one resumes'} tomorrow.`}
+                <div style={{display:"flex",alignItems:"flex-start",gap:10,marginTop:12,background:"#F0F7F5",border:"1px solid #CBE3DD",borderRadius:12,padding:"11px 13px"}}>
+                  <ShieldCheck size={16} style={{flexShrink:0,marginTop:2,color:"#1B6E62"}}/>
+                  <div style={{flex:1,minWidth:0,fontSize:12.5,lineHeight:1.5,color:"#1B6E62"}}>
+                    <div style={{fontWeight:700}}>
+                      {lang==='fr'
+                        ?`${p.faits} republications faites aujourd'hui — ta file reprend demain.`
+                        :`${p.faits} reposts done today — your queue resumes tomorrow.`}
+                    </div>
+                    <div style={{fontWeight:500,opacity:0.85,marginTop:2}}>
+                      {lang==='fr'
+                        ?`${restantes} annonce${restantes>1?'s':''} en attente, rien à faire de ton côté. FillSell espace tes republications pour protéger ton compte Vinted.`
+                        :`${restantes} listing${restantes>1?'s':''} waiting, nothing to do on your side. FillSell paces your reposts to protect your Vinted account.`}
+                    </div>
+                  </div>
                 </div>
               );
             })()}
