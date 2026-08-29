@@ -9002,6 +9002,105 @@ const REPUBLISH_DRY_RUN = false;
 const REPUBLISH_ESPACEMENT_MS = 2 * 60 * 1000;
 let dernierGesteRepublishAt = 0;
 
+// ── Cadence IRRÉGULIÈRE, coupe-circuit et plafond quotidien (2026-08-29) ─────
+// Campagne Vinted du 21/07/2026 : restrictions 24 h (/listing-restriction)
+// visant la republication automatisée, déclenchées sur la RÉGULARITÉ DE
+// MACHINE. Mesuré en base le 29/08 (compte restreint à 10:42) : 60 des 63
+// écarts entre republications tenaient entre 2,7 et 3,4 min, médiane 3,0,
+// écart-type 0,2 chez certains comptes. Ce n'était PAS un délai configuré :
+// REPUBLISH_ESPACEMENT_MS (2 min FIXES) est toujours déjà expiré quand le job
+// suivant se présente (le traitement dure ~3 min) — la file enchaînait sans
+// jamais attendre. Trois défenses, toutes côté extension, AUCUN changement au
+// système de Pépites (les jobs restent pending, débités à la création) :
+//   1. ESPACEMENT ALÉATOIRE : après chaque geste, tirage 1-3 min posé comme
+//      « prochaine republication pas avant » → écarts réels ~4-6 min, jamais
+//      deux identiques. La file tourne 24 h/24 (décision Nico) : aucune
+//      fenêtre horaire, aucun arrêt nocturne.
+//   2. COUPE-CIRCUIT : au premier /listing-restriction ou CHALLENGE DATADOME
+//      sur un republish, TOUS les republish du compte s'arrêtent ≥ 30 min
+//      (les 16 refus d'affilée du 29/08 : chaque job avait son recul
+//      individuel, mais la file continuait d'envoyer les suivants).
+//   3. PLAFOND quotidien d'EXÉCUTION (coin_config.republish_plafond_jour,
+//      défaut 100, journée Europe/Paris) : filet contre l'emballement, pas
+//      une bride — le record du parc est 96/jour, la veille d'une
+//      restriction. Au plafond, l'extension cesse de PRENDRE de nouvelles
+//      republications ; les pending attendent demain, Pépite déjà débitée,
+//      état que tout le parc connaît déjà.
+// MV3 : le service worker meurt entre deux alarmes — échéances et cache en
+// chrome.storage.session, jamais de setTimeout.
+const REPUB_NEXT_AT_KEY = "fillsell_repub_next_allowed_at";
+const REPUB_HOLD_KEY = "fillsell_repub_hold_until";
+const REPUB_QUOTA_CACHE_KEY = "fillsell_repub_quota_cache";
+const REPUB_HOLD_MS = 30 * 60_000;
+const REPUB_PLAFOND_DEFAUT = 100;
+const REPUB_QUOTA_CACHE_TTL_MS = 5 * 60_000;
+
+// Jour calendaire Europe/Paris (en-CA → YYYY-MM-DD), quel que soit le fuseau
+// de la machine.
+function jourParisRepub(ts = Date.now()) {
+  try { return new Date(ts).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" }); }
+  catch { return new Date(ts).toISOString().slice(0, 10); }
+}
+
+// Tirage 1-3 min, RETIRÉ À CHAQUE GESTE — jamais deux écarts identiques.
+async function tirerEspacementRepublish() {
+  const delai = 60_000 + Math.floor(Math.random() * 120_000);
+  try { await chrome.storage.session.set({ [REPUB_NEXT_AT_KEY]: Date.now() + delai }); } catch {}
+  console.log(`[republish] espacement tiré : prochaine republication dans ${Math.round(delai / 1000)} s`);
+}
+
+// Coupe-circuit : les deux motifs de la campagne anti-bot, et EUX SEULS.
+function motifCoupeCircuitRepublish(result) {
+  if (result?.listingRestriction) return "/listing-restriction";
+  if (/^CHALLENGE DATADOME/i.test(String(result?.error ?? ""))) return "challenge DataDome";
+  return null;
+}
+
+async function poserHoldRepublish(motif) {
+  const jusquA = Date.now() + REPUB_HOLD_MS;
+  try { await chrome.storage.session.set({ [REPUB_HOLD_KEY]: jusquA }); } catch {}
+  console.warn(`[republish] COUPE-CIRCUIT (${motif}) : tous les republish du compte en pause 30 min (jusqu'à ${new Date(jusquA).toISOString()})`);
+}
+
+// Republications EXÉCUTÉES aujourd'hui (Paris) : jobs republish 'published'
+// du compte (RLS via le token). Fenêtre glissante 26 h relue puis filtrée par
+// jour Paris côté JS — pas de calcul d'offset serveur. Cache 5 min : à ~4-6
+// min par republication, la dérive maximale au-delà du plafond est d'un job,
+// négligeable pour un filet volontairement haut. Lecture best-effort : quota
+// illisible ⇒ on NE BLOQUE PAS (le plafond est un filet, pas une barrière de
+// sécurité — la barrière avant-suppression, elle, ne dépend pas de ceci).
+async function quotaRepublishJour(accessToken) {
+  const jour = jourParisRepub();
+  try {
+    const store = await chrome.storage.session.get(REPUB_QUOTA_CACHE_KEY);
+    const cache = store[REPUB_QUOTA_CACHE_KEY];
+    if (cache && cache.jour === jour && Date.now() - cache.at < REPUB_QUOTA_CACHE_TTL_MS) return cache;
+  } catch {}
+  let plafond = REPUB_PLAFOND_DEFAUT;
+  try {
+    const rows = await restRequest("coin_config?key=eq.republish_plafond_jour&select=value", accessToken);
+    const v = Number(rows?.[0]?.value);
+    if (Number.isFinite(v) && v > 0) plafond = v;
+  } catch {}
+  let faits = 0;
+  try {
+    const depuis = encodeURIComponent(new Date(Date.now() - 26 * 3600_000).toISOString());
+    const rows = await restRequest(
+      `cross_post_jobs?action=eq.republish&status=eq.published&published_at=gte.${depuis}&select=published_at`,
+      accessToken,
+    );
+    faits = (rows ?? []).filter((r) => {
+      const t = Date.parse(r?.published_at ?? "");
+      return Number.isFinite(t) && jourParisRepub(t) === jour;
+    }).length;
+  } catch {
+    faits = 0;
+  }
+  const quota = { jour, at: Date.now(), plafond, faits };
+  try { await chrome.storage.session.set({ [REPUB_QUOTA_CACHE_KEY]: quota }); } catch {}
+  return quota;
+}
+
 // Prix de la recréation — UNE seule résolution, utilisée AUX DEUX BOUTS :
 // éprouvée AVANT la suppression (l'annonce est encore en ligne, on peut encore
 // renoncer sans rien perdre) et relue à la recréation. Les deux ne peuvent donc
@@ -9523,6 +9622,23 @@ async function processRepublishJob(job, accessToken) {
     return { status: "failed", error: msg };
   }
 
+  // ── COUPE-CIRCUIT — vérifié AVANT tout le reste (2026-08-29) ──────────────
+  // Premier /listing-restriction ou CHALLENGE DATADOME → hold de 30 min sur
+  // TOUS les republish du compte. Les jobs restent pending, rien n'est écrit
+  // en base, aucun mouvement de Pépite.
+  try {
+    const store = await chrome.storage.session.get([REPUB_HOLD_KEY, REPUB_NEXT_AT_KEY]);
+    if (store[REPUB_HOLD_KEY] && Date.now() < store[REPUB_HOLD_KEY]) {
+      return { status: "skipped", error: "coupe-circuit : Vinted a restreint un geste, republications du compte en pause" };
+    }
+    // ── ESPACEMENT ALÉATOIRE (2026-08-29) : échéance tirée (1-3 min) après
+    // chaque geste, persistée en storage.session (le SW meurt entre deux
+    // alarmes — la variable mémoire ci-dessous ne survit pas, elle reste en
+    // plancher pour le cas storage illisible).
+    if (store[REPUB_NEXT_AT_KEY] && Date.now() < store[REPUB_NEXT_AT_KEY]) {
+      return { status: "skipped", error: "espacement aléatoire entre gestes de republication" };
+    }
+  } catch {}
   // Espacement entre gestes + attente programmée suppression→recréation.
   // 'skipped' laisse le job en pending : le prochain poll le reprendra.
   if (Date.now() - dernierGesteRepublishAt < REPUBLISH_ESPACEMENT_MS) {
@@ -9530,6 +9646,20 @@ async function processRepublishJob(job, accessToken) {
   }
   if (pf.next_action_after && Date.now() < Date.parse(pf.next_action_after)) {
     return { status: "skipped", error: "attente humanisée avant recréation" };
+  }
+  // ── PLAFOND QUOTIDIEN D'EXÉCUTION (2026-08-29) : au-delà de
+  // republish_plafond_jour (coin_config, défaut 100) republications
+  // EXÉCUTÉES aujourd'hui (Paris), on cesse d'en PRENDRE de nouvelles — les
+  // pending attendent demain, Pépite déjà débitée, rien d'autre ne change.
+  // ⚠️ L'étape 'deleted' n'est PAS soumise au plafond : l'annonce est HORS
+  // LIGNE, une recréation engagée se termine toujours — le plafond borne
+  // l'entrée de nouvelles republications, jamais la sortie d'un article du
+  // vide.
+  if (step !== "deleted") {
+    const quota = await quotaRepublishJour(accessToken);
+    if (quota.faits >= quota.plafond) {
+      return { status: "skipped", error: `plafond quotidien atteint (${quota.faits}/${quota.plafond}) — reprise demain` };
+    }
   }
 
   // ── Étape 0 : CAPTURE (2026-08-05) ─────────────────────────────────────────
@@ -9856,6 +9986,11 @@ async function processRepublishJob(job, accessToken) {
         result = { success: false, error: `canal coupé pendant la republication : ${String(e?.message ?? e)}` };
       }
       dernierGesteRepublishAt = Date.now();
+      await tirerEspacementRepublish();
+      {
+        const motifCC = motifCoupeCircuitRepublish(result);
+        if (motifCC) await poserHoldRepublish(motifCC);
+      }
 
       // La suppression a-t-elle eu lieu ? Deux témoins concordants : le
       // résultat du content script (deleted:true) et la trace mémoire du
@@ -10134,6 +10269,11 @@ async function processRepublishJob(job, accessToken) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
       }
       dernierGesteRepublishAt = Date.now();
+      await tirerEspacementRepublish();
+      {
+        const motifCC = motifCoupeCircuitRepublish(result);
+        if (motifCC) await poserHoldRepublish(motifCC);
+      }
 
       return await conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result);
     } catch (e) {

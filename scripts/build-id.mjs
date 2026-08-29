@@ -798,7 +798,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Committé GIT_COMMITTER_DATE épinglée sur cette constante (ni futur, ni
 // antérieur). EXTENSION_MIN_BUILD inchangé — la promotion n'a lieu qu'après
 // acceptation CWS, en lisant le BUILD_ID dans le zip publié.
-export const EXTENSION_LAST_COMMIT = '2026-08-28T19:22:00Z';
+// 2026-08-29T13:25:00Z = lot anti-restriction Vinted (campagne du 21/07) :
+// /listing-restriction motif dédié + reprise différée 5/15/30/60 (4ad4e38),
+// relevé lecture seule du message Vinted (c814cf3), cadence irrégulière
+// 1-3 min + coupe-circuit 30 min + plafond quotidien d'exécution
+// (coin_config.republish_plafond_jour, défaut 100, jour Paris). ⚠️ HORS zip
+// 0.6.10 (déjà construit) : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
+// Committé GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-29T13:25:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

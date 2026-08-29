@@ -3337,6 +3337,37 @@ const StockTab = memo(function StockTab({
     }
     return m;
   }, [jobsByInventaire]);
+  // ── Plafond quotidien d'exécution (2026-08-29) — AFFICHAGE SEULEMENT ─────
+  // Le plafond vit en base (coin_config.republish_plafond_jour, défaut 100)
+  // et c'est l'EXTENSION qui l'applique : ici on ne fait que l'expliquer
+  // (« N faites aujourd'hui — les M restantes reprennent demain »), pour que
+  // l'étalement se lise comme un choix, jamais comme une lenteur. Lecture
+  // une fois par montage (policy SELECT ouverte sur coin_config) ;
+  // best-effort : illisible → défaut 100, la phrase reste juste.
+  const [repubPlafondJour, setRepubPlafondJour] = useState(100);
+  useEffect(() => {
+    if (!republishActif) return;
+    let annule = false;
+    supabase.from('coin_config').select('value').eq('key', 'republish_plafond_jour').maybeSingle()
+      .then(({ data }) => {
+        const v = Number(data?.value);
+        if (!annule && Number.isFinite(v) && v > 0) setRepubPlafondJour(v);
+      })
+      .catch(() => {});
+    return () => { annule = true; };
+  }, [republishActif]);
+  // Republications EXÉCUTÉES aujourd'hui (jour Europe/Paris — même règle que
+  // le compteur de l'extension) : dernier job par article, published du jour.
+  // cadence_24h interdit deux republications du même article le même jour,
+  // le « dernier job » suffit donc à compter juste.
+  const repubFaitesAujourdhui = useMemo(() => {
+    const jour = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+    return Object.values(repubDernier).filter((j) => {
+      if (j.status !== 'published') return false;
+      const t = Date.parse(j.published_at ?? '');
+      return Number.isFinite(t) && new Date(t).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' }) === jour;
+    }).length;
+  }, [repubDernier]);
   // Articles HORS LIGNE : republication arrêtée (needs_user/failed/cancelled)
   // À L'ÉTAPE 'deleted' — l'annonce a été retirée de Vinted et jamais recréée.
   // Le pire cas du produit (Combishort d'ornellaracano, 07/08 : plus d'une
@@ -3572,7 +3603,9 @@ const StockTab = memo(function StockTab({
         // une colonne inconnue ne dégrade pas, elle annule.
         // bulk_batch_id : VÉRIFIÉE dans le schéma prod le 28/08 (uuid,
         // information_schema) — sert au périmètre du lot de republications.
-        .select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title, bulk_batch_id")
+        // published_at : VÉRIFIÉE dans le schéma prod le 29/08 (timestamptz,
+        // information_schema) — sert au compteur du plafond quotidien.
+        .select("id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id")
         .eq("user_id", user.id)
         // 'cancelled' et 'dry_run_completed' AJOUTÉS le 2026-08-05 : sans eux,
         // un republish qui se terminait DISPARAISSAIT de l'écran et la carte
@@ -3988,6 +4021,21 @@ const StockTab = memo(function StockTab({
             {repubBandeau.actif&&(
               <RepubBlocActif lang={lang} job={repubBandeau.actif} titre={repubTitre(repubBandeau.actif)}/>
             )}
+            {/* Plafond quotidien atteint (2026-08-29) : l'étalement est un
+                CHOIX (filet anti-emballement appliqué par l'extension), pas
+                une lenteur — on le dit, sobrement. Pas de date de fin
+                calculée, pas de plan multi-jours (décision Nico). */}
+            {(()=>{
+              const restantes=repubBandeau.file.length+(repubBandeau.actif&&!repubJobFini(repubBandeau.actif)?1:0);
+              if(repubFaitesAujourdhui<repubPlafondJour||restantes<=0)return null;
+              return(
+                <div style={{marginTop:12,background:"#F7F5EF",border:"1px solid #E7E3D8",borderRadius:10,padding:"9px 11px",fontSize:12.5,color:"#5C6560",lineHeight:1.45}}>
+                  {lang==='fr'
+                    ?`${repubFaitesAujourdhui} republications faites aujourd'hui — ${restantes>1?`les ${restantes} restantes reprennent`:'la dernière reprend'} demain.`
+                    :`${repubFaitesAujourdhui} reposts done today — ${restantes>1?`the ${restantes} remaining resume`:'the last one resumes'} tomorrow.`}
+                </div>
+              );
+            })()}
             {/* File « ENSUITE » : numérotée à partir de 2, AUCUNE barre —
                 c'est elle qui dit que le traitement est séquentiel : chacun
                 voit sa position, personne ne se croit bloqué. Plafonnée à
