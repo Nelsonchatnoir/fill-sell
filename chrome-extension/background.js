@@ -861,6 +861,24 @@ function stampVintedItemId(accessToken, job, listingUrl) {
   );
 }
 
+// Même contrat que stampVintedItemId, pour la CATÉGORIE retenue (capteur
+// classement, 2026-08-29) : inventaire.vinted_catalog_id n'était rempli qu'à la
+// capture republication (background republish) — le voilà posé dès la première
+// publication. N'écrit QUE si encore NULL : capture republication et poses
+// antérieures font autorité. Fire-and-forget, jamais bloquant.
+function stampVintedCatalogId(accessToken, job, catalogId) {
+  if (job?.platform !== "vinted" || job.inventaire_id == null) return;
+  const id = Number(catalogId);
+  if (!Number.isFinite(id) || id <= 0) return;
+  restRequest(`inventaire?id=eq.${job.inventaire_id}&vinted_catalog_id=is.null`, accessToken, {
+    method: "PATCH",
+    body: JSON.stringify({ vinted_catalog_id: id }),
+  }).then(
+    () => console.log(`[background] Job ${job.id} : vinted_catalog_id ${id} rattaché à l'inventaire ${job.inventaire_id} (si encore NULL)`),
+    (e) => console.warn(`[background] Job ${job.id} : rattachement vinted_catalog_id non abouti (non bloquant) —`, String(e?.message ?? e)),
+  );
+}
+
 // Statut RÉEL du job en base, ici et maintenant. Le job qu'on manipule en
 // mémoire a été lu au début du cycle : entre-temps, l'utilisateur (ou nous) a pu
 // l'annuler, et une écriture aveugle le ferait revenir d'entre les morts.
@@ -1749,6 +1767,21 @@ async function processJob(rawJob, accessToken) {
       job.platform_fields = pf;
     }
 
+    // Capteur catégorie (chantier classement, 2026-08-29) : la catégorie
+    // RÉELLEMENT retenue par la plateforme à la soumission (Vinted :
+    // {catalog_id, chemin} lu sur le formulaire ; Beebs : {sys_id, feuille} du
+    // chemin fiber). Même mécanique de copie mémoire que warnings ci-dessus —
+    // persiste via completionExtras. Ne PAS confondre avec l'intention de
+    // l'app (categoryPath/beebsCategoryPath, inchangés) : c'est l'écart entre
+    // les deux que ce capteur sert à mesurer. Un run sans relevé n'efface PAS
+    // celui d'une tentative antérieure (un relevé vaut mieux que rien).
+    if (result?.categorieRetenue && typeof result.categorieRetenue === "object") {
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        categorie_retenue: { ...result.categorieRetenue, at: new Date().toISOString() },
+      };
+    }
+
     // Découverte réactive (chantier champs obligatoires, 2026-07-16) : les
     // requis observés pendant CE remplissage partent au catalogue cumulatif,
     // quel que soit le verdict du job — fire-and-forget, jamais bloquant.
@@ -2091,6 +2124,7 @@ async function processJob(rawJob, accessToken) {
       });
       // Après le 'published', jamais avant : la publication est déjà acquise.
       stampVintedItemId(accessToken, job, listingUrl);
+      stampVintedCatalogId(accessToken, job, result?.categorieRetenue?.catalog_id);
       await recordRecentResult(job, "published");
       // L'onglet n'est PAS fermé : il sert au job suivant, comme un humain
       // qui garde son onglet Vinted ouvert entre deux dépôts.
