@@ -758,6 +758,71 @@ serve(async (req) => {
     console.error("[handler-watch] déblocage garde Livres:", (e as Error)?.message ?? e);
   }
 
+  // ── Déblocage AUTO de la garde Couleur (2026-08-29, décision Nico — même
+  // traitement que la garde Livres, modèle 1e9a3d3) ─────────────────────────
+  // Les jobs pausés par la garde Couleur (needs_user_source=
+  // 'republish_couleur_garde') repassent en 'pending' TOUT SEULS dès que
+  // profiles.extension_build ≥ 0.6.9 — le fix couleur (daae23d, 0.6.8 puis
+  // 0.6.9) lit la palette réelle du picker, remplit depuis le titre, et a son
+  // propre filet (champ absent → no-op ; non remplissable → needs_user AVANT
+  // suppression via prevol_negatif). Même comparaison sur le PRÉFIXE HORODATÉ
+  // du BUILD_ID, jamais la chaîne de version. Ici c'est bien le PROFIL qui
+  // est lu : le handler_build du job bloqué est celui du vieux build qui
+  // s'est fait pauser — la question est « ce compte est-il passé en 0.6.9 ? ».
+  // PAS de condition supplémentaire (l'équivalent de l'ISBN n'existe pas :
+  // c'est justement l'ABSENCE de couleur qui définit le cas) et PAS
+  // d'interrupteur d'exemption dédié (modèle 1e9a3d3 d'origine — celui des
+  // Livres est né le 28/08 d'un contre-cas réel, Fairy tail ; aucun
+  // équivalent couleur connu). Étape 'deleted' EXCLUE. platform_fields
+  // CONSERVÉS (pepite_remboursee en poche : aucun re-débit) ; le marqueur
+  // retiré est needs_user_source, l'horodatage republish_couleur_bloque_le
+  // reste comme trace. Au retour en pending, l'extension ré-écrit le
+  // snapshot et c'est l'EXEMPTION côté update-job-status qui tranche — un
+  // compte rétrogradé re-pause aussitôt (et le trio garde/kill switch reste
+  // intact pour les builds < 0.6.9). Compare-and-swap, best-effort.
+  const COULEUR_EXEMPTION_MIN_BUILD_MS = Date.parse("2026-08-26T19:48:07Z"); // BUILD_ID 0.6.9 (7a88eb6)
+  let couleurDebloques = 0;
+  try {
+    const { data: bloquesCouleur } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform_fields")
+      .eq("status", "needs_user")
+      .eq("action", "republish")
+      .eq("platform", "vinted")
+      .filter("platform_fields->>needs_user_source", "eq", "republish_couleur_garde");
+    // deno-lint-ignore no-explicit-any
+    const candidatsCouleur = ((bloquesCouleur ?? []) as any[]).filter((j) =>
+      j.platform_fields?.republish_step === "captured" &&
+      !j.platform_fields?.deleted_at);
+    if (candidatsCouleur.length) {
+      const userIds = [...new Set(candidatsCouleur.map((j) => j.user_id as string))];
+      const { data: profs } = await supabase
+        .from("profiles").select("id, extension_build").in("id", userIds);
+      // deno-lint-ignore no-explicit-any
+      const buildOk = new Map(((profs ?? []) as any[]).map((p) => {
+        const ms = buildMsOf(p.extension_build);
+        return [p.id, Number.isFinite(ms) && ms >= COULEUR_EXEMPTION_MIN_BUILD_MS];
+      }));
+      for (const j of candidatsCouleur) {
+        if (!buildOk.get(j.user_id)) continue;
+        const pf = { ...(j.platform_fields ?? {}) };
+        delete pf.needs_user_source; // le job n'attend plus personne
+        const { data: maj } = await supabase
+          .from("cross_post_jobs")
+          .update({ status: "pending", error: null, platform_fields: pf })
+          .eq("id", j.id)
+          .eq("status", "needs_user")
+          .select("id");
+        if (maj?.length) {
+          couleurDebloques++;
+          console.log(`[handler-watch] job ${j.id} : garde Couleur levée pour ce compte (build ≥ 0.6.9) → pending`);
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] déblocage garde Couleur:", (e as Error)?.message ?? e);
+  }
+
   // ── Photos encore HORS FillSell au moment de publier (2026-08-27) ─────────
   // Cas réel : job leboncoin 94cbe6d9 (« Plateau vintage », Sandrine) —
   // generate-listing avait rapatrié 7 photos sur 8 (HTTP 520 Storage
@@ -913,7 +978,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -968,7 +1033,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1022,7 +1087,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
     headers: { "Content-Type": "application/json" },
   });
 });

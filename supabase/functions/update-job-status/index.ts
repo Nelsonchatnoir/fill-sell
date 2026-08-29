@@ -221,9 +221,27 @@ const MSG_GARDE_LIVRES =
 // couleur et la garde laisse passer. Le message le dit.
 // Kill switch : coin_config 'republish_couleur_garde' (clé absente = active ;
 // value=0 = off). Pépite rendue immédiatement (consigne Nico 24/08), même
-// mécanique et mêmes marqueurs que la garde Livres. PAS d'exemption
-// handler-watch : le job attend un geste utilisateur — le solde 72 h
-// s'applique normalement, sans double crédit (le trigger lit pepite_remboursee).
+// mécanique et mêmes marqueurs que la garde Livres.
+// ── EXEMPTION 0.6.9 de la garde Couleur (2026-08-29, décision Nico — modèle
+// 1e9a3d3, la phrase « L'exempté reste soumis à la garde Couleur » est levée
+// aujourd'hui) ─────────────────────────────────────────────────────────────
+// Le fix couleur de l'extension existe depuis le 25/08 (daae23d, embarqué en
+// 0.6.8 puis 0.6.9) : palette RÉELLE lue sur le picker, couleur remplie
+// depuis le titre, et son PROPRE filet — champ Couleur absent du formulaire
+// → no-op sans blocage ; présent mais non remplissable → needs_user AVANT
+// toute suppression (circuit prevol_negatif). Sur un build qui sait faire,
+// la garde n'intercepte plus un danger : elle prive l'extension de sa chance.
+// Un snapshot sans couleur N'EST PLUS un cas garde si le build QUI ÉCRIT
+// (body.handler_build — l'estampille de CET appel, jamais le profil) est
+// ≥ 0.6.9, comparé sur le PRÉFIXE HORODATÉ du BUILD_ID (ISO 8601 triable) —
+// JAMAIS sur la chaîne de version ; estampille absente ou illisible = PAS
+// d'exemption. Build < 0.6.9 → garde inchangée (c'est elle qui a sauvé le
+// Flipper de Prudence le 24/08). Le kill switch 'republish_couleur_garde'
+// est INTACT, fail-closed, toujours armé : l'exemption ne vit QUE dans le
+// choix « est-ce un cas garde ? ». Étape 'deleted' hors périmètre par
+// construction. Déblocage AUTO des jobs déjà pausés : handler-watch
+// (couleur_debloques), même comparaison horodatée sur le profil.
+// Le solde 72 h reste sans double crédit (le trigger lit pepite_remboursee).
 function snapshotSansCouleur(snap: Record<string, unknown>): boolean {
   const libelles = Array.isArray(snap.couleurs) ? snap.couleurs : [];
   const aLibelle = libelles.some((c) => String(c ?? "").trim());
@@ -250,6 +268,11 @@ const MSG_GARDE_COULEUR =
 // republish_couleur_garde et MSG_GARDE_COULEUR restent tels quels pour les
 // catégories où la garde s'applique encore (c'est elle qui a évité de
 // détruire le VTech de Cynthia Buterne).
+const EXEMPTION_COULEUR_MIN_BUILD_MS = Date.parse("2026-08-26T19:48:07Z"); // BUILD_ID 0.6.9 (7a88eb6)
+const exemptionCouleur069 = (handlerBuild: unknown): boolean => {
+  const ms = buildMsOf(handlerBuild);
+  return Number.isFinite(ms) && ms >= EXEMPTION_COULEUR_MIN_BUILD_MS;
+};
 const MEDIA_CATALOG_IDS = new Set([3039, 3045]); // CD, DVD
 function couleurNonExigee(snap: Record<string, unknown>): boolean {
   if (typeof snap.isbn === "string" && snap.isbn.trim()) return true;
@@ -491,7 +514,11 @@ serve(async (req) => {
               log: "garde Livres/ISBN",
               reponse: "Garde Livres : republication bloquée AVANT toute suppression (blocage ISBN connu) — job mis en pause, annonce intacte.",
             }
-          : (snapshotSansCouleur(snapIn) && !couleurNonExigee(snapIn))
+          // Exemption 0.6.9 (cf. bloc de tête Couleur) : build écrivain
+          // ≥ 0.6.9 → l'extension a son propre filet (pose depuis le titre,
+          // prevol_negatif AVANT suppression) — plus un cas garde Couleur.
+          : (snapshotSansCouleur(snapIn) && !couleurNonExigee(snapIn) &&
+             !exemptionCouleur069(body.handler_build))
           ? {
               configKey: "republish_couleur_garde",
               source: "republish_couleur_garde",
