@@ -805,7 +805,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (coin_config.republish_plafond_jour, défaut 100, jour Paris). ⚠️ HORS zip
 // 0.6.10 (déjà construit) : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
 // Committé GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-08-29T13:25:00Z';
+// 2026-08-29T13:40:00Z = catégorie Vinted : fin du « niveau introuvable » sec —
+// repli needs_user à CHOIX (liste réelle du panneau, modèle garde Taille),
+// détection interface non française, panneau vide = transitoire, renommage
+// racine avéré (Divertissement → Livres et médias) pour les chemins figés.
+// ⚠️ HORS zip 0.6.10 : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
+// Committé GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-29T13:40:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

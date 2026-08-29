@@ -1677,7 +1677,29 @@ async function fillListingForm(job) {
     await etape("Description", () => fillTextField('#description, [data-testid="description--input"]', job.description));
   }
 
-  await etape("Catégorie", () => selectCategory(fields.categoryPath));
+  // ── Catégorie : plus JAMAIS un failed sec sur « niveau introuvable » ──────
+  // (2026-08-29, 10 échecs / 7 comptes). selectCategory marque désormais ses
+  // erreurs actionnables (err.needsUser, err.needsUserField) : on les rend en
+  // résultat needsUser — publication normale → mini-éditeur (markNeedsUser) ou
+  // ré-armement borné ; une-passe republish → arrêt AVANT toute suppression
+  // (branches existantes de l'étape 'captured', annonce intacte). En
+  // RECRÉATION rien ne change : etape() avale l'erreur (non bloquant), la
+  // soumission est tentée quand même — ce catch ne voit alors rien passer.
+  try {
+    await etape("Catégorie", () => selectCategory(fields.categoryPath, fields));
+  } catch (e) {
+    if (e?.needsUser || e?.needsUserField) {
+      await closeAnyOpenDropdown().catch(() => {});
+      return {
+        success: false,
+        needsUser: true,
+        ...(e.needsUserField ? { needsUserField: e.needsUserField } : {}),
+        error: String(e?.message ?? e),
+        ...(e?.diagnostic ? { diagnostic: e.diagnostic } : {}),
+      };
+    }
+    throw e;
+  }
   if (photoResult?.duplicated) {
     warnings.push(
       `photos: ${job.photos.length} fournie(s), complétées à ${photoResult.count} par duplication ` +
@@ -4068,20 +4090,80 @@ function estSuggestionCatalogue(el) {
 // court dit quoi faire ; l'annexe technique complète voyage sur
 // err.diagnostic, relayée par le handler de messages puis rangée par le
 // background dans platform_fields.last_diagnostic (requêtable en SQL).
-function erreurCategorie(messageCourt, annexeTechnique) {
+// `extra` (2026-08-29, chantier « niveau introuvable ») : l'échec sec est
+// terminé — une erreur de catégorie peut désormais porter :
+//   · message : texte utilisateur COMPLET qui remplace le générique
+//     « relance depuis l'app » (mensonger quand la relance à l'identique
+//     reproduit l'échec) ;
+//   · needsUser : le caller (fillListingForm) la transforme en résultat
+//     needsUser au lieu de la laisser partir en failed sec ;
+//   · needsUserField : mini-éditeur de l'app (mêmes clés que la garde
+//     Taille : field_key/label, allowed_values, input_type, target).
+function erreurCategorie(messageCourt, annexeTechnique, extra = null) {
   const err = new Error(
-    `La catégorie Vinted n'a pas pu être sélectionnée (${messageCourt}). ` +
-    "Relance la publication depuis l'app ; si ça se reproduit, signale-le au support."
+    extra?.message ??
+    (`La catégorie Vinted n'a pas pu être sélectionnée (${messageCourt}). ` +
+    "Relance la publication depuis l'app ; si ça se reproduit, signale-le au support.")
   );
   err.diagnostic = `Catégorie: ${annexeTechnique}`;
+  if (extra?.needsUser) err.needsUser = true;
+  if (extra?.needsUserField) err.needsUserField = extra.needsUserField;
   return err;
 }
 
-async function selectCategory(path) {
+// ── Chantier « niveau introuvable » (2026-08-29, 10 échecs / 7 comptes) ──────
+// Racines FRANÇAISES du formulaire de dépôt (relevé 13/08, vintedCategories.js).
+// Sert UNIQUEMENT à détecter une interface non française : si Vinted affiche
+// une vraie liste racine et qu'AUCUN de ces libellés n'y figure, l'arbre est
+// servi dans une autre langue (cas Adam 23/08 : « Women », « Men », « Books &
+// Media » — le chemin français ne peut pas matcher, aucun retry n'y changera
+// rien, seul l'utilisateur peut repasser Vinted en français).
+const RACINES_FR_VINTED = ["Femmes", "Hommes", "Enfants", "Maison", "Électronique", "Livres et médias", "Loisirs et collections", "Sport", "Articles de créateurs"];
+
+// Renommages de racine AVÉRÉS de l'arbre Vinted — pas des devinettes : le
+// renommage « Divertissement » → « Livres et médias » est documenté (relevé
+// live du 13/08, niveaux 2-3 INCHANGÉS, cf. vintedCategories.js). Sert aux
+// chemins FIGÉS dans de vieux jobs (le categoryPath est écrit à la création :
+// un job d'avant le fix mapping du 13/08, relancé, rejoue le chemin périmé —
+// cas Alexandre, 2 jobs du 13/08). N'ajouter ici QUE des renommages relevés
+// sur le formulaire réel, jamais des correspondances supposées.
+const RENOMMAGES_RACINE_VINTED = { "Divertissement": "Livres et médias" };
+
+// Libellés PROPRES du panneau catégorie pour un CHOIX utilisateur : mêmes
+// nœuds que visibleCatalogLabels mais suggestions EXCLUES (leur textContent
+// concatène libellé + fil d'Ariane — illisible dans une liste de choix),
+// dédupliqués. C'est cette liste qui part en allowed_values du mini-éditeur :
+// l'utilisateur choisit parmi ce que Vinted affiche RÉELLEMENT, la catégorie
+// existe donc toujours dans l'arbre du moment.
+async function visibleCatalogChoices(limit = 30) {
+  const S = await sel();
+  const labels = Array.from(document.querySelectorAll(S.selectorFor("vinted", "publish.catalog_option")))
+    .filter((o) => !estSuggestionCatalogue(o))
+    .map((o) => o.textContent.trim())
+    .filter(Boolean);
+  return [...new Set(labels)].slice(0, limit);
+}
+
+async function selectCategory(path, fields = {}) {
   const catalogOptionSel = (await sel()).selectorFor("vinted", "publish.catalog_option");
+  // Copie de travail : renommage de racine avéré appliqué AVANT la descente
+  // (chemins figés dans de vieux jobs — cf. RENOMMAGES_RACINE_VINTED).
+  path = Array.isArray(path) ? path.slice() : path;
+  if (path?.length && RENOMMAGES_RACINE_VINTED[path[0]]) {
+    console.warn(`[vinted] catégorie : racine renommée par Vinted — « ${path[0]} » → « ${RENOMMAGES_RACINE_VINTED[path[0]]} » (chemin figé d'un job ancien)`);
+    path[0] = RENOMMAGES_RACINE_VINTED[path[0]];
+  }
+  // Choix posé par l'utilisateur au mini-éditeur (needs_user « catégorie ») :
+  // platform_fields.categoryLevelChoice, écrit par l'app (target root:null).
+  // Consommé UNE fois par descente, au premier point d'échec : substitution
+  // du niveau introuvable, ou niveau SUIVANT quand le chemin s'arrêtait sur
+  // un intermédiaire. Jamais deviné : la valeur vient de la liste réelle
+  // relevée sur le panneau au moment de l'échec précédent.
+  const choixUtilisateur = String(fields?.categoryLevelChoice ?? "").trim();
+  let choixConsomme = false;
   await openDropdown('#category, [data-testid="catalog-select-dropdown-input"]');
   for (let i = 0; i < path.length; i++) {
-    const levelLabel = path[i];
+    let levelLabel = path[i];
     const isLast = i === path.length - 1;
     // Niveau racine : match EXACT exigé (libellés courts et connus, repli
     // includes() dangereux — cf. waitForStableCatalogOption). Aux niveaux
@@ -4093,12 +4175,82 @@ async function selectCategory(path) {
     try {
       match = await waitForStableCatalogOption(catalogOptionSel, levelLabel, matchOpts);
     } catch {
-      throw erreurCategorie(
-        `niveau « ${levelLabel} » introuvable`,
-        `niveau "${levelLabel}" introuvable (chemin ${JSON.stringify(path)}). ` +
-        `Options affichées par Vinted à ce niveau: ${JSON.stringify(await visibleCatalogLabels())}. ` +
-        `Corriger le chemin dans vintedCategories.js avec un de ces libellés.`
-      );
+      // ── Le niveau du mapping n'est pas dans le panneau (2026-08-29) ────────
+      // L'échec sec « relance depuis l'app » est terminé : une relance à
+      // l'identique reproduisait le même mur. Quatre sorties, dans l'ordre :
+      // 1. Le CHOIX utilisateur d'un needs_user précédent, s'il existe et n'a
+      //    pas servi : on le tente À CE niveau (substitution). La valeur vient
+      //    de la liste réelle relevée à l'échec précédent — rien de deviné.
+      if (choixUtilisateur && !choixConsomme && choixUtilisateur !== levelLabel) {
+        try {
+          match = await waitForStableCatalogOption(catalogOptionSel, choixUtilisateur, matchOpts);
+          choixConsomme = true;
+          levelLabel = choixUtilisateur;
+          path[i] = choixUtilisateur;
+          console.log(`[vinted] catégorie : niveau ${i} remplacé par le choix utilisateur « ${choixUtilisateur} »`);
+        } catch { match = null; }
+      }
+      if (!match) {
+        const options = await visibleCatalogChoices();
+        // 2. INTERFACE NON FRANÇAISE (cas Adam 23/08 : Women/Men/Books &
+        //    Media) : une vraie liste racine sans AUCUNE racine FR. Aucun
+        //    retry ni choix n'y peut rien — seul l'utilisateur peut repasser
+        //    Vinted en français. Message dédié, jamais « niveau introuvable ».
+        if (i === 0 && options.length >= 3 && !options.some((o) => RACINES_FR_VINTED.includes(o))) {
+          throw erreurCategorie(
+            "interface Vinted dans une autre langue",
+            `interface non française au niveau racine (chemin ${JSON.stringify(path)}). ` +
+            `Racines affichées: ${JSON.stringify(options)}.`,
+            {
+              needsUser: true,
+              message:
+                "Ton Vinted est réglé dans une autre langue que le français " +
+                `(rayons affichés : ${options.slice(0, 3).join(", ")}…). FillSell choisit les catégories en français : ` +
+                "ouvre vinted.fr, passe la langue en Français (Paramètres), puis relance la publication.",
+            }
+          );
+        }
+        // 3. PANNEAU VIDE : rien d'exploitable — c'est un état de rendu (panneau
+        //    pas affiché, sélecteur aveugle), PAS un chemin faux. Jamais un
+        //    choix sur une liste vide, jamais un failed sec : transitoire.
+        if (!options.length) {
+          throw erreurCategorie(
+            "le panneau de catégories ne s'est pas affiché",
+            `niveau "${levelLabel}" : aucune option lisible dans le panneau (chemin ${JSON.stringify(path)}). ` +
+            "État de rendu ou sélecteur aveugle — pas un problème de chemin.",
+            {
+              needsUser: true,
+              message:
+                "Le panneau de catégories Vinted ne s'est pas affiché — ce n'est pas un problème " +
+                "de ton annonce. Nouvelle tentative au prochain passage, rien à faire.",
+            }
+          );
+        }
+        // 4. CHOIX EXPLICITE (modèle de la garde Taille) : la liste RÉELLE du
+        //    panneau part en allowed_values, l'utilisateur tranche dans l'app,
+        //    le job repart et la valeur choisie est substituée au niveau
+        //    échoué (bloc 1 ci-dessus). La catégorie vient de l'arbre du
+        //    moment : elle existe toujours dans Vinted, jamais devinée.
+        throw erreurCategorie(
+          `niveau « ${levelLabel} » introuvable`,
+          `niveau "${levelLabel}" introuvable (chemin ${JSON.stringify(path)}). ` +
+          `Options affichées par Vinted à ce niveau: ${JSON.stringify(options)}. ` +
+          `Corriger le chemin dans vintedCategories.js avec un de ces libellés.`,
+          {
+            needsUser: true,
+            message:
+              `Vinted ne propose pas « ${levelLabel} » à cet endroit de son catalogue. ` +
+              "Choisis la bonne catégorie parmi celles que Vinted propose — ton annonce partira ensuite toute seule.",
+            needsUserField: {
+              field_key: "categoryLevelChoice",
+              field_label: "Catégorie Vinted",
+              allowed_values: options,
+              input_type: "selection_only",
+              target: { root: null, key: "categoryLevelChoice" },
+            },
+          }
+        );
+      }
     }
 
     // Parmi TOUS les candidats du libellé (doublons possibles même hors
@@ -4150,11 +4302,37 @@ async function selectCategory(path) {
     if (isLast && hasChevron) {
       option.click();
       await sleep(400);
+      // Choix utilisateur disponible (needs_user précédent sur CE cul-de-sac) :
+      // il devient le niveau SUIVANT du chemin — la boucle continue et le
+      // sélectionne parmi les sous-niveaux qui viennent d'être révélés.
+      if (choixUtilisateur && !choixConsomme) {
+        choixConsomme = true;
+        path.push(choixUtilisateur);
+        console.log(`[vinted] catégorie : niveau terminal complété par le choix utilisateur « ${choixUtilisateur} »`);
+        continue;
+      }
+      const sousNiveaux = await visibleCatalogChoices();
       throw erreurCategorie(
         `le chemin s'arrête sur un niveau intermédiaire (« ${levelLabel} »)`,
         `le chemin ${JSON.stringify(path)} s'arrête sur un niveau intermédiaire. ` +
-        `Sous-niveaux proposés par Vinted: ${JSON.stringify(await visibleCatalogLabels())}. ` +
-        `Ajouter le niveau terminal manquant dans vintedCategories.js.`
+        `Sous-niveaux proposés par Vinted: ${JSON.stringify(sousNiveaux)}. ` +
+        `Ajouter le niveau terminal manquant dans vintedCategories.js.`,
+        // Même repli à choix que « niveau introuvable » (2026-08-29) : les
+        // sous-niveaux réels viennent d'être révélés — l'utilisateur tranche,
+        // le job repart, le choix s'ajoute en bout de chemin.
+        sousNiveaux.length ? {
+          needsUser: true,
+          message:
+            `Le catalogue Vinted demande une sous-catégorie plus précise sous « ${levelLabel} ». ` +
+            "Choisis-la parmi celles que Vinted propose — ton annonce partira ensuite toute seule.",
+          needsUserField: {
+            field_key: "categoryLevelChoice",
+            field_label: "Catégorie Vinted",
+            allowed_values: sousNiveaux,
+            input_type: "selection_only",
+            target: { root: null, key: "categoryLevelChoice" },
+          },
+        } : null
       );
     }
 
