@@ -1421,14 +1421,48 @@ async function fillListingForm(job) {
   // ré-armement borné historique (rearmBounded), qui n'écrit jamais
   // needs_user non plus (pending borné puis failed).
   if (location.pathname.startsWith("/listing-restriction")) {
+    // RELEVÉ du message Vinted (2026-08-29, complément — cas nadegemarcelin) :
+    // seule l'utilisatrice voit cette page, et elle ne la voit justement PAS
+    // (onglet de travail invisible). On relève le contenu VISIBLE — titre,
+    // corps, libellés des boutons/liens — pour le rendre tel quel dans le
+    // message du job et distinguer un throttle de volume (se lève seul) d'une
+    // restriction à motif (action requise). LECTURE SEULE : aucun clic,
+    // aucune soumission, aucun contournement — on observe et on repart.
+    // Rien d'exploitable (page vide, structure inconnue) → releve null, le
+    // message reste celui d'avant : jamais de motif inventé.
+    let releve = null;
+    try {
+      const racine = document.querySelector("main, [role=\"main\"]") ?? document.body;
+      const titre = (racine?.querySelector("h1, h2")?.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
+      // innerText = texte RENDU (pas les scripts) ; textContent en repli si le
+      // rendu est vide, seulement hors body (body.textContent = bruit).
+      let corps = (racine?.innerText ?? "").replace(/\s+/g, " ").trim();
+      if (!corps && racine !== document.body) corps = (racine?.textContent ?? "").replace(/\s+/g, " ").trim();
+      corps = corps.slice(0, 1200);
+      const actions = Array.from(racine?.querySelectorAll("a[href], button") ?? [])
+        .map((el) => (el.textContent ?? "").replace(/\s+/g, " ").trim())
+        .filter((t) => t && t.length <= 80)
+        .slice(0, 8);
+      if (titre || corps) releve = { titre, corps, actions, url: String(location.href).slice(0, 300) };
+    } catch { releve = null; }
+    // Le texte de Vinted, TEL QUEL (titre puis corps, borné) — repris dans le
+    // message utilisateur par le background ; l'intégralité part dans
+    // last_diagnostic via `diagnostic` (canal objet, jsonb).
+    const messageVinted = releve
+      ? [releve.titre, releve.corps.startsWith(releve.titre) ? releve.corps.slice(releve.titre.length).trim() : releve.corps]
+          .filter(Boolean).join(" — ").slice(0, 500)
+      : "";
     return {
       success: false,
       needsUser: true,
       listingRestriction: true,
+      restrictionMessage: messageVinted || null,
+      diagnostic: releve ? { signal: "listing_restriction", ...releve } : { signal: "listing_restriction", url: String(location.href).slice(0, 300) },
       error:
         "RESTRICTION VINTED : Vinted limite temporairement les mises en vente sur ce compte " +
         "(page /listing-restriction à la place du formulaire de dépôt). Ce n'est pas une " +
-        "erreur de l'annonce ni de la session — réessayer plus tard.",
+        "erreur de l'annonce ni de la session — réessayer plus tard." +
+        (messageVinted ? ` Message de Vinted : « ${messageVinted} »` : ""),
     };
   }
 

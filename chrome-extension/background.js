@@ -9345,7 +9345,20 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
     console.warn(`[republish] job ${job.id} : statut devenu "${actuel}" — reprise restriction ABANDONNÉE.`);
     return { status: "retry", error: String(result?.error ?? "restriction Vinted") };
   }
-  if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+  // Canal objet (même règle que le relais publish, 2026-08-11) : un String()
+  // sur l'objet du relevé donnerait « [object Object] » — la colonne est
+  // jsonb, l'objet part tel quel.
+  if (result?.diagnostic) {
+    pf.last_diagnostic = typeof result.diagnostic === "object" && result.diagnostic !== null
+      ? result.diagnostic
+      : String(result.diagnostic).slice(0, 2000);
+  }
+  // Le message de Vinted, TEL QUEL (relevé lecture seule sur la page) : c'est
+  // la seule fenêtre de l'utilisateur sur ce que la plateforme lui dit —
+  // l'onglet de travail est invisible. Absent → messages d'avant, rien
+  // d'inventé.
+  const messageVinted = String(result?.restrictionMessage ?? "").trim().slice(0, 500);
+  const suffixeVinted = messageVinted ? ` Message affiché par Vinted : « ${messageVinted} »` : "";
   const reprises = Number(pf.listing_restriction_retries) || 0;
   if (reprises < LISTING_RESTRICTION_DELAIS_MIN.length) {
     const delaiMin = LISTING_RESTRICTION_DELAIS_MIN[reprises];
@@ -9356,7 +9369,8 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
       error:
         "RESTRICTION VINTED : Vinted limite temporairement les mises en vente sur ce compte. " +
         `Ton annonce est intacte, rien n'a été supprimé. Reprise automatique dans ~${delaiMin} min ` +
-        `(tentative ${reprises + 1}/${LISTING_RESTRICTION_DELAIS_MIN.length}) — rien à faire.`,
+        `(tentative ${reprises + 1}/${LISTING_RESTRICTION_DELAIS_MIN.length}) — rien à faire.` +
+        suffixeVinted,
     });
     console.warn(`[republish] job ${job.id} : /listing-restriction — reprise différée ${reprises + 1}/${LISTING_RESTRICTION_DELAIS_MIN.length} dans ${delaiMin} min`);
     return { status: "retry", error: `restriction Vinted — reprise différée dans ${delaiMin} min` };
@@ -9365,7 +9379,8 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
     "Vinted limite temporairement les mises en vente sur ton compte : la page de dépôt est " +
     "remplacée par un avertissement (/listing-restriction). Ton annonce est INTACTE, rien n'a " +
     `été supprimé. ${reprises} reprises automatiques espacées n'ont pas suffi — attends un peu ` +
-    "(souvent quelques minutes à quelques heures), puis relance avec « Republier maintenant » depuis l'app.";
+    "(souvent quelques minutes à quelques heures), puis relance avec « Republier maintenant » depuis l'app." +
+    suffixeVinted;
   await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: messageFinal });
   console.warn(`[republish] job ${job.id} : /listing-restriction — reprises épuisées (${reprises}), pause explicite`);
   return { status: "needsUser", error: "restriction Vinted — reprises automatiques épuisées" };
