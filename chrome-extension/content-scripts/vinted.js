@@ -1403,6 +1403,35 @@ async function fillListingForm(job) {
     };
   }
 
+  // ── Restriction de mise en vente Vinted (2026-08-29, 11 jobs nadegemarcelin) ──
+  // Vinted redirige /items/new → /listing-restriction quand le compte est
+  // temporairement limité (throttle constaté après 318 republications en
+  // 50 min la veille ; la restriction s'est levée SEULE en quelques minutes,
+  // 74 republications réussies le même jour, refus intermittents entre deux
+  // succès). Session VALIDE, compte répondant — ce n'est ni une erreur de
+  // l'utilisateur ni un verdict sur le job. Avant cette branche, le cas
+  // tombait dans le « pathname inattendu » générique dont le message promet
+  // « nouvelle tentative au prochain passage » pendant que la republication
+  // à l'étape 'captured' écrivait needs_user — statut qu'aucun cron ne
+  // reprend : contradiction corrigée par le motif dédié, reconnaissable en
+  // SQL : error LIKE 'RESTRICTION VINTED%'.
+  // listingRestriction:true → le background republish (étape 'captured')
+  // repart en pending avec reprise DIFFÉRÉE et recul progressif — jamais
+  // needs_user sur ce motif. needsUser:true CONSERVÉ pour le flux publish :
+  // ré-armement borné historique (rearmBounded), qui n'écrit jamais
+  // needs_user non plus (pending borné puis failed).
+  if (location.pathname.startsWith("/listing-restriction")) {
+    return {
+      success: false,
+      needsUser: true,
+      listingRestriction: true,
+      error:
+        "RESTRICTION VINTED : Vinted limite temporairement les mises en vente sur ce compte " +
+        "(page /listing-restriction à la place du formulaire de dépôt). Ce n'est pas une " +
+        "erreur de l'annonce ni de la session — réessayer plus tard.",
+    };
+  }
+
   // Session : le background vient de naviguer l'onglet de travail sur
   // /items/new. Si Vinted a redirigé ailleurs (login, vérification) ou
   // affiche un formulaire d'authentification, on s'arrête AVANT tout

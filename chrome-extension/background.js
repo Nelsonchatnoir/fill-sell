@@ -9320,6 +9320,57 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
   return { status: "needsUser", error: motif };
 }
 
+// ── /listing-restriction à l'étape 'captured' : PAUSE IMPOSÉE PAR VINTED,
+// jamais un needs_user (2026-08-29, 11 jobs nadegemarcelin) ─────────────────
+// Le compte est temporairement limité par Vinted (throttle) : l'utilisateur
+// n'a RIEN à corriger, et la restriction observée s'est levée d'elle-même en
+// quelques minutes. Le job repart donc 'pending' avec une reprise DIFFÉRÉE
+// (next_action_after — la porte en tête de processRepublishJob le saute
+// jusqu'à l'échéance, le poll ~2 min le reprend ensuite), avec un recul
+// PROGRESSIF pour ne pas nourrir le throttle en boucle serrée. Rien n'a été
+// supprimé (on arrive ici depuis la branche !aSupprime) : l'annonce est
+// intacte, l'étape reste 'captured', la reprise rejouera le pré-vol entier.
+// AUCUNE Pépite n'est touchée ici : le débit a eu lieu à la création du job,
+// on n'écrit qu'un statut.
+// Plafond : au-delà de LISTING_RESTRICTION_DELAIS_MIN reprises, pause
+// EXPLICITE en needs_user avec un message honnête qui ne promet AUCUNE
+// reprise automatique — l'app propose « Republier maintenant »
+// (relancer_republish), même sortie que les recréations épuisées.
+const LISTING_RESTRICTION_DELAIS_MIN = [5, 15, 30, 60];
+async function replanifierRestrictionVinted(accessToken, job, pf, result) {
+  // Même garde que rearmBounded : ne JAMAIS réécrire par-dessus un statut
+  // devenu terminal/annulé pendant le traitement (leçon du 2026-07-13).
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(`[republish] job ${job.id} : statut devenu "${actuel}" — reprise restriction ABANDONNÉE.`);
+    return { status: "retry", error: String(result?.error ?? "restriction Vinted") };
+  }
+  if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+  const reprises = Number(pf.listing_restriction_retries) || 0;
+  if (reprises < LISTING_RESTRICTION_DELAIS_MIN.length) {
+    const delaiMin = LISTING_RESTRICTION_DELAIS_MIN[reprises];
+    pf.listing_restriction_retries = reprises + 1;
+    pf.next_action_after = new Date(Date.now() + delaiMin * 60000).toISOString();
+    await updateJobStatus(accessToken, job.id, "pending", {
+      platform_fields: pf,
+      error:
+        "RESTRICTION VINTED : Vinted limite temporairement les mises en vente sur ce compte. " +
+        `Ton annonce est intacte, rien n'a été supprimé. Reprise automatique dans ~${delaiMin} min ` +
+        `(tentative ${reprises + 1}/${LISTING_RESTRICTION_DELAIS_MIN.length}) — rien à faire.`,
+    });
+    console.warn(`[republish] job ${job.id} : /listing-restriction — reprise différée ${reprises + 1}/${LISTING_RESTRICTION_DELAIS_MIN.length} dans ${delaiMin} min`);
+    return { status: "retry", error: `restriction Vinted — reprise différée dans ${delaiMin} min` };
+  }
+  const messageFinal =
+    "Vinted limite temporairement les mises en vente sur ton compte : la page de dépôt est " +
+    "remplacée par un avertissement (/listing-restriction). Ton annonce est INTACTE, rien n'a " +
+    `été supprimé. ${reprises} reprises automatiques espacées n'ont pas suffi — attends un peu ` +
+    "(souvent quelques minutes à quelques heures), puis relance avec « Republier maintenant » depuis l'app.";
+  await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: messageFinal });
+  console.warn(`[republish] job ${job.id} : /listing-restriction — reprises épuisées (${reprises}), pause explicite`);
+  return { status: "needsUser", error: "restriction Vinted — reprises automatiques épuisées" };
+}
+
 // ── Conclusion COMMUNE après soumission d'une recréation (2026-08-12) ────────
 // Appelée par les DEUX chemins — l'une-passe de l'étape 'captured' (après que
 // la suppression a été actée) et la reprise de l'étape 'deleted'. Ils ne
@@ -9801,6 +9852,15 @@ async function processRepublishJob(job, accessToken) {
 
       if (!aSupprime) {
         // ── RIEN n'a été supprimé : l'annonce d'origine est intacte ─────────
+        // /listing-restriction (2026-08-29) : throttle Vinted, PAS une action
+        // utilisateur — reprise différée en pending (recul progressif), jamais
+        // le needs_user générique ci-dessous. Testé AVANT deleteFailed : le
+        // content script rend ce motif avant tout geste, les deux sont
+        // exclusifs. Les AUTRES motifs (DataDome, connexion, photos pas
+        // arrivées, canal coupé…) gardent leur chemin inchangé.
+        if (result?.listingRestriction) {
+          return await replanifierRestrictionVinted(accessToken, job, pf, result);
+        }
         if (result?.deleteFailed) {
           // Pré-vol OK mais l'API de suppression a refusé. L'état réel tranche
           // (leçon delete) : une annonce réellement absente = suppression déjà
