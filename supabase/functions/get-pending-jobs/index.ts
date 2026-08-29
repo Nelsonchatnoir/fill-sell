@@ -139,11 +139,71 @@ serve(async (req) => {
       paused = new Set((health ?? []).map((h: { platform: string }) => h.platform));
     } catch (_e) { /* mode dégradé indisponible → on distribue normalement */ }
 
-    const out = (jobs ?? []).filter((j) => !paused.has(j.platform));
+    let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+
+    // ── Plafond quotidien d'EXÉCUTION des republications (2026-08-29) ────────
+    // Campagne anti-bot Vinted du 21/07 (restrictions /listing-restriction sur
+    // la régularité et le volume — cas nadegemarcelin78 : 96 republications le
+    // 28/08, compte restreint le 29/08). Le débit et la création des jobs ne
+    // changent PAS (spend_coins_and_republish intouchée : 300 sélectionnés =
+    // 300 débités, 300 pending) — c'est la DISTRIBUTION qui est bornée : au-delà
+    // de coin_config.republish_plafond_jour republications EXÉCUTÉES aujourd'hui
+    // (published du jour Europe/Paris, toutes sources manuelles ET auto), plus
+    // aucun job republish n'est servi au poll d'exécution jusqu'à minuit. Les
+    // jobs restent 'pending', Pépite déjà débitée, et repartent le lendemain.
+    // Actif côté serveur SANS attendre un paquet CWS ; le plafond embarqué dans
+    // l'extension (même clé) reste en place — ceinture et bretelles.
+    // EXEMPTION : l'étape 'deleted' n'est JAMAIS plafonnée — une annonce déjà
+    // retirée de Vinted doit toujours pouvoir être recréée.
+    // Périmètre : le poll d'EXÉCUTION du background uniquement (ni
+    // include_processing ni include_needs_user — mêmes flags opt-in que le
+    // popup, qui doit continuer de VOIR la file complète pour l'affichage).
+    // Best-effort : comptage ou clé illisibles → on distribue normalement (un
+    // filet ne doit pas devenir un point de panne, même règle que
+    // platform_health ci-dessus).
+    let heldRepublish = 0;
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => j.action === "republish")) {
+      try {
+        let plafond = 45;
+        const { data: cfg } = await userClient
+          .from("coin_config").select("value").eq("key", "republish_plafond_jour").maybeSingle();
+        const v = Number(cfg?.value);
+        if (Number.isFinite(v) && v > 0) plafond = v;
+        // Jour Europe/Paris quel que soit le fuseau du runtime : fenêtre
+        // glissante 26 h relue puis filtrée par date Paris — même règle de
+        // comptage que l'extension et que l'affichage StockTab (une seule
+        // définition du « jour »).
+        const jourParis = (ts: number) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
+        const aujourdhui = jourParis(Date.now());
+        const depuis = new Date(Date.now() - 26 * 3600_000).toISOString();
+        const { data: faitsRows } = await userClient
+          .from("cross_post_jobs")
+          .select("published_at")
+          .eq("action", "republish")
+          .eq("status", "published")
+          .gte("published_at", depuis);
+        const faits = (faitsRows ?? []).filter((r: { published_at: string | null }) => {
+          const t = Date.parse(r.published_at ?? "");
+          return Number.isFinite(t) && jourParis(t) === aujourdhui;
+        }).length;
+        if (faits >= plafond) {
+          const avant = out.length;
+          out = out.filter((j) =>
+            j.action !== "republish" ||
+            (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "deleted");
+          heldRepublish = avant - out.length;
+          if (heldRepublish) {
+            console.log(`[get-pending-jobs] userId=${user.id} : plafond republish atteint (${faits}/${plafond} aujourd'hui, Paris) → ${heldRepublish} republish retenu(s) en pending jusqu'à demain (étape 'deleted' exemptée)`);
+          }
+        }
+      } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+
     console.log(
       `[get-pending-jobs] userId=${user.id} → ${out.length} job(s) distribué(s)` +
-      (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : ""),
+      (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : "") +
+      (heldRepublish ? `, ${heldRepublish} republish retenu(s) (plafond quotidien)` : ""),
     );
 
     // ── Commande de sync du dressing mise en file depuis le mobile ──────────
