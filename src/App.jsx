@@ -3934,7 +3934,16 @@ export default function App({ loginOnly = false }){
       return;
     }
     const aDesConsequences=plan.online.length>0||plan.aAnnuler.length>0;
-    const estVendu=item.statut==='vendu'||item.sell!=null;
+    // Vendu = une VENTE RÉELLE : statut posé par les flux de vente, ou une
+    // ligne `ventes` qui pointe l'article (ventesInvIds, lien par id). L'ancien
+    // `item.sell!=null` prenait le PRIX DEMANDÉ d'un article en stock pour une
+    // vente — cas Romain 29/08 : « marqué comme vendu » sur un article jamais
+    // vendu, parce que tout article avec un prix de vente affiché passait le
+    // test. La modale à deux options reste pour les VRAIS vendus ; un article
+    // sans vente se supprime directement (performItemDeletion détache de toute
+    // façon les ventes liées en base avant le delete — la FK NO ACTION ne
+    // plante pas, même sur une vente au-delà du cap de chargement client).
+    const estVendu=item.statut==='vendu'||ventesInvIds.has(String(item.id));
     if(estVendu){setDeleteConfirm({type:'soldItem',item,plan});return;}
     if(aDesConsequences){setDeleteConfirm({type:'itemListings',item,plan});return;}
     await performItemDeletion(item,plan);
@@ -3992,7 +4001,9 @@ export default function App({ loginOnly = false }){
         setTimeout(()=>setToast({visible:false,message:''}),4000);
         return;
       }
-      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:0,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null};
+      // purchase_costs:f (2026-08-29) : le champ « Frais » de la modale est
+      // actif en mode ajout aussi — un 0 en dur jetait la saisie (cas Romain).
+      const row={id:Date.now()+Math.floor(Math.random()*10000),user_id:uid,titre:stripMarque(editItem.title||"Article",marqueNorm),marque:marqueNorm,type:typeAuto,prix_achat:b,prix_vente:hasS?s:null,margin:mg,margin_pct:mgp,statut:"stock",date:new Date().toISOString(),description:editItem.description||null,purchase_costs:f,selling_fees:0,quantite:qty,emplacement:editItem.emplacement?.trim()||null,plateforme:null};
       const{data:d,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
         setItems(prev=>[mapItem({...d,quantite:d.quantite??qty}),...prev]);
@@ -4070,13 +4081,24 @@ export default function App({ loginOnly = false }){
       margin_pct:mgp,
       // Un prix saisi lève le drapeau « je ne sais plus » — la réponse a changé.
       ...(b!=null?{prix_achat_inconnu:false}:{}),
+      // Frais PERSISTÉS aussi côté inventaire (2026-08-29, cas Romain) : `f`
+      // entrait dans `margin` sans être écrit dans AUCUNE colonne, et les
+      // ouvreurs reposaient `frais:0` — une heure de répartition de frais de
+      // livraison évaporée sans erreur (les PATCH partaient bien, en 200 ;
+      // seule trace : un margin qui ne collait plus à prix_vente−prix_achat).
+      // Article en stock → frais d'acquisition (purchase_costs, doctrine du
+      // flux vocal : « lot achat → purchase_costs ») ; article vendu → frais
+      // de vente (selling_fees, même colonne que le flux « marquer vendu »).
+      // L'autre colonne n'est jamais touchée. Cohérent avec margeUnitaire
+      // (comptabilite.js), qui soustrait les deux.
+      ...(editItem.statut==='vendu'?{selling_fees:f}:{purchase_costs:f}),
       description:editItem.description||null,
       quantite:qty,
       // Même colonne que l'intention vocale inventory_move (moveToLocation).
       emplacement:editItem.emplacement?.trim()||null,
     }).eq('id',editItem.id).eq('user_id',user.id).select('id');
     if(!error&&updRows?.length){
-      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null}:i));
+      setItems(prev=>prev.map(i=>i.id===editItem.id?{...i,title:editItem.title,marque:editItem.marque,type:typeAuto,buy:b,prix_achat:b,...(b!=null?{prix_achat_inconnu:false}:{}),sell:s,margin:mg,marginPct:mgp,...(editItem.statut==='vendu'?{sellingFees:f}:{purchaseCosts:f}),description:editItem.description,quantite:qty,emplacement:editItem.emplacement?.trim()||null}:i));
       setEditItem(null);
       setToast({visible:true,message:lang==='fr'?'✓ Article modifié':'✓ Item updated'});
       setTimeout(()=>setToast({visible:false,message:''}),3000);

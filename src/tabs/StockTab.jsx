@@ -187,8 +187,14 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
    suppression + confirmation, jamais une suppression sèche. */
 .stock-v2 .gdel{position:absolute;top:6px;right:6px;width:16px;height:16px;border-radius:50%;border:none;background:rgba(16,32,27,0.28);color:rgba(255,255,255,0.9);font-size:8.5px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;z-index:2;font-family:inherit;}
 .stock-v2 .gdel:hover{background:rgba(16,32,27,0.55);color:#fff;}
-/* Plateformes — l'info n°2 : logos posés sur un dégradé bas de photo. */
-.stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:18px 8px 7px;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
+/* Plateformes — l'info n°2 : logos posés sur un dégradé bas de photo.
+   Chips blancs (2026-08-29, cas Romain) : les logos nus sur photo étaient
+   illisibles d'un coup d'œil — chaque logo gagne un fond blanc contrasté,
+   même recette que la pastille de statut. AFFICHAGE SEULEMENT : la
+   sémantique (grisé = masquée/brouillon/retrait, gelé = republication) vit
+   dans l'opacité du span et reste inchangée. */
+.stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:18px 7px 6px;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
+.stock-v2 .glogos .plogo{background:rgba(255,255,255,0.93);border-radius:8px;padding:3px;box-shadow:0 1px 4px rgba(16,32,27,0.25);}
 .stock-v2 .gqty{position:absolute;bottom:7px;right:8px;background:rgba(255,255,255,0.93);color:var(--ink);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;z-index:2;}
 .stock-v2 .gbody{padding:9px 10px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;}
 /* ── RANGÉES CONDITIONNELLES (3e passe du 27/08) : une rangée absente ne
@@ -4592,7 +4598,7 @@ const StockTab = memo(function StockTab({
                   // tiret s'affichait en « mauvaise marge ». Gris = pas d'avis.
                   const mc=margeConnue?getMargeColor(item.marginPct):"#A3A9A6";
                   return(
-                    <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,_table:'inventaire',frais:0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
+                    <SwipeRow key={item.id} onDelete={()=>delItem(item.id)} onEdit={()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""})} style={{borderLeft:`3px solid ${getCatBorder(item.type)}`}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <div style={{fontWeight:700,fontSize:14,color:"#10201B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
@@ -5236,7 +5242,7 @@ const StockTab = memo(function StockTab({
                   const toutEnLigne=nbEnLigne>=RM_PLATFORMS.length;
                   // _table:'inventaire' — cible d'écriture explicite de la modale
                   // d'édition (les ids ventes/inventaire se chevauchent).
-                  const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:0,sell:item.sell??""});
+                  const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""});
                   const photoUrl=premierePhoto(item.photos);
                   const vues=item.vinted_view_count;
                   const favs=item.vinted_favourite_count;
@@ -5379,7 +5385,7 @@ const StockTab = memo(function StockTab({
                                   title={lang==="en"?"Repost in progress — the listing comes back in a few minutes":"Republication en cours — l'annonce revient dans quelques minutes"}
                                   style={{cursor:"pointer",opacity:.45}}
                                   onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}>
-                                  <PlatformLogo platform={p} size={16}/>
+                                  <PlatformLogo platform={p} size={20}/>
                                 </span>
                               );
                               // Masquée/brouillon : logo CONSERVÉ mais grisé —
@@ -5395,7 +5401,7 @@ const StockTab = memo(function StockTab({
                                     :(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
                                   style={{cursor:"pointer",...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
                                   onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
-                                  <PlatformLogo platform={p} size={16}/>
+                                  <PlatformLogo platform={p} size={20}/>
                                 </span>
                               );
                             })}
