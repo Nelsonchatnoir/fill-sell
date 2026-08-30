@@ -811,7 +811,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // racine avéré (Divertissement → Livres et médias) pour les chemins figés.
 // ⚠️ HORS zip 0.6.10 : paquet SUIVANT. EXTENSION_MIN_BUILD inchangé.
 // Committé GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-08-29T13:40:00Z';
+// 2026-08-30T18:45:00Z = périmètre 0.6.11 ARRÊTÉ (décision Nico 30/08) :
+// correctifs de bugs constatés SEULEMENT, aucun nouveau mécanisme dans le
+// chemin de republication. Le paquet contient donc 0.6.10 + 4ad4e38
+// (/listing-restriction = pause + reprise différée 5/15/30/60) + c814cf3
+// (relevé lecture seule du message Vinted) + f49e5b3 (« niveau introuvable »
+// → choix utilisateur). RETIRÉS du code extension, jamais partis dans aucun
+// zip : la cadence irrégulière + coupe-circuit + plafond embarqué (7cbde00 —
+// l'entrée 13:25 ci-dessus les annonçait « paquet SUIVANT », c'est caduc) et
+// le capteur de catégorie retenue (f995f0a, qui n'avait pas bumpé cette
+// constante). Le plafond quotidien reste appliqué CÔTÉ SERVEUR
+// (get-pending-jobs v18/v19, coin_config.republish_plafond_jour = 45 en
+// base) : rien ne change pour le parc sur ce point. EXTENSION_MIN_BUILD
+// inchangé. Committé GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-08-30T18:45:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

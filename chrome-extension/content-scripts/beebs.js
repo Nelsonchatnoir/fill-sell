@@ -809,7 +809,7 @@ async function fillListingForm(job) {
 
   console.log(`[beebs] dépôt CONFIRMÉ (${proof.preuve}) — annonce en modération, listing_url différé`);
   warnings.push(`observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}`);
-  return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated, ...(categorieRetenueBeebs ? { categorieRetenue: categorieRetenueBeebs } : {}) };
+  return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
 }
 
 // Relevé de TOUS les champs dynamiques affichés pour la catégorie courante —
@@ -1415,12 +1415,6 @@ function probeClicLibre() {
 // minimisée n'est jamais lue, ces deux variables sont le seul canal fiable.
 let etatInterstitiel = "aucune";
 let cheminCategorie = "(non tentée)";
-// Capteur catégorie (chantier classement, 2026-08-29) : sys.id Contentful de la
-// feuille RÉELLEMENT posée par le chemin fiber — jusqu'ici loggé en console
-// (jamais lue) puis perdu. Chemin clic+panneau = pas d'id (le DOM n'en porte
-// pas) : la variable reste null, le capteur ne remonte rien, jamais un id d'un
-// run précédent — d'où la remise à null en tête de selectCategory.
-let categorieRetenueBeebs = null;
 
 function decrisDialog(d) {
   const boutons = Array.from(d.querySelectorAll('button, [role="button"]'))
@@ -1861,7 +1855,6 @@ function commitCategoryViaFiber(path) {
 }
 
 async function selectCategory(path) {
-  categorieRetenueBeebs = null;
   const trigger = findField("Catégorie")?.trigger;
   if (!trigger) throw new Error("Catégorie: bouton de sélection introuvable sur la page.");
 
@@ -1885,9 +1878,6 @@ async function selectCategory(path) {
       : null;
     if (libelleOk && champsOk) {
       cheminCategorie = `FIBER (feuille "${viaFiber.feuille}")`;
-      if (viaFiber.sysId) {
-        categorieRetenueBeebs = { sys_id: String(viaFiber.sysId), feuille: String(viaFiber.feuille ?? "") };
-      }
       console.log(
         `[beebs] catégorie posée via FIBER — onSelected("${viaFiber.feuille}", sys=${viaFiber.sysId}), ` +
         "effet constaté : libellé du trigger + champs dynamiques rendus"

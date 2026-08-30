@@ -111,7 +111,14 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // (BUILD_ID 2026-08-26T19:48:07Z+7a88eb6, relu dans le zip). Promotion vers
 // EXTENSION_MIN_BUILD faite le même jour SUR MAIN (le web de prod se déploie
 // depuis main, pas depuis cette branche) — cf. build-id.mjs côté main.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9'];
+// 0.6.10 ajoutée le 30/08 : zip 988ceda PUBLIÉ par le CWS et déployé sur le
+// parc le 30/08 (confirmé Nico). Le paquet courant est la 0.6.11 —
+// correctifs constatés SEULS (4ad4e38 + c814cf3 + f49e5b3), la cadence/
+// coupe-circuit/plafond extension (7cbde00) et le capteur de catégorie
+// (f995f0a) en sont RETIRÉS (décision Nico 30/08) ; le plafond quotidien
+// vit côté serveur (get-pending-jobs). Promotion EXTENSION_MIN_BUILD vers
+// le build 0.6.10 NON faite ici : geste séparé, sur GO.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10'];
 // (Merge 27/08 : la mise en garde côté main « un zip pris sur MAIN
 // embarquerait F1 » est CLOSE — la branche est réintégrée, main est
 // redevenue l'unique ligne ; F1 réduit à la trace d'identité.)

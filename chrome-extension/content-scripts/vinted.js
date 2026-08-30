@@ -2233,27 +2233,6 @@ async function fillListingForm(job) {
     if (photoGardeNote) warnings.push(photoGardeNote);
   }
 
-  // ── CAPTEUR CATÉGORIE (chantier classement, 2026-08-29) ─────────────────────
-  // La catégorie RÉELLEMENT retenue par le formulaire à l'instant de la
-  // soumission — pas celle voulue par l'app (platform_fields.categoryPath, qui
-  // reste l'intention). #category porte le catalog_id numérique de la feuille ;
-  // le chemin de libellés vient du même référentiel que la republication
-  // (mémoïsé par page, endpoint que le formulaire charge déjà lui-même).
-  // Best-effort STRICT : id illisible ou référentiel muet → on soumet sans
-  // capteur, jamais l'inverse. ⚠️ chemin dans la LANGUE du compte — seule
-  // catalog_id est comparable entre comptes (leçon estLivre du 23/08).
-  let categorieRetenue = null;
-  {
-    const brutCat = String(document.querySelector("#category")?.value ?? "").trim();
-    if (/^\d+$/.test(brutCat)) {
-      const cheminRetenu = await resoudreCheminCatalogue(brutCat).catch(() => null);
-      categorieRetenue = {
-        catalog_id: Number(brutCat),
-        ...(cheminRetenu ? { chemin: cheminRetenu } : {}),
-      };
-    }
-  }
-
   // RE-VÉRIFICATION DU PRIX À L'INSTANT DU CLIC (bug réel 2026-07-18) — la vérif
   // faite pendant fillPriceField ne protège pas d'un re-render survenu DEPUIS
   // (choix format de colis, refetch /attributes…) qui a pu vider la prop `value`
@@ -2425,7 +2404,7 @@ async function fillListingForm(job) {
     }
     return { success: false, error: messageEchec, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
   }
-  return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(categorieRetenue ? { categorieRetenue } : {}), ...(onePassDeleted ? { deleted: true } : {}) };
+  return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
 
   // La PREUVE DOM des étapes tolérées ne se perd pas parce qu'on a soumis
   // quand même : elle voyage sur result.diagnostic, que le background range
