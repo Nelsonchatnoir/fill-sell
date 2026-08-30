@@ -4183,7 +4183,17 @@ async function installNetworkProbe(tabId, platform) {
           const m = body.match(/"code"\s*:\s*"isbn"\s*,\s*"ids"\s*:\s*\[\s*"?([0-9Xx-]{9,17})/) ??
                     body.match(/"isbn"\s*:\s*"([0-9Xx-]{9,17})"/);
           if (m) return m[1];
-          return /isbn/i.test(body) ? "(motif isbn présent, forme non reconnue)" : "(absent du corps)";
+          // Forme non reconnue : EXTRAIT BORNÉ autour du premier motif
+          // (2026-08-30, 12 refus nadegemarcelin78 — le verdict opaque
+          // « forme non reconnue » ne permettait pas de trancher entre
+          // "isbn":null, "ids":[] et un ordre de clés inattendu). Fenêtre de
+          // 80 chars max (20 avant / 60 après), caractères de contrôle
+          // remplacés — extraction CIBLÉE, même doctrine que le bandeau.
+          const i = body.search(/isbn/i);
+          if (i < 0) return "(absent du corps)";
+          const fenetre = body.slice(Math.max(0, i - 20), i + 60)
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "�");
+          return `(forme non reconnue : « …${fenetre}… »)`;
         };
         // ⚠️ Numéro d'annonce cherché sur le corps COMPLET, AVANT troncature
         // (2026-07-13, job 5e3ee1e2) : la réponse de publication peut être un

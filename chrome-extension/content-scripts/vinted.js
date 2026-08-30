@@ -1739,16 +1739,27 @@ async function fillListingForm(job) {
         );
       }
       const el = await waitForElement('#isbn, [data-testid="isbn--input"]');
+      const relire = () => readCommittedValue(el).replace(/[\s-]/g, "");
+      // Trace de pose TOUJOURS consignée (2026-08-30, 12 refus nadegemarcelin78
+      // sur 0.6.10) : les 12 last_diagnostic disaient « forme non reconnue »
+      // sans qu'on sache si le lookup livre était retombé — lookupVu ne vivait
+      // que dans la console d'un onglet mort. La trace part dans
+      // diagnosticsRecreation (→ last_diagnostic, refus COMME succès) : le
+      // prochain 400 dira noir sur blanc quelle pose a eu lieu et si le
+      // lookup a rattaché le livre.
+      const tracePose = [];
       insertTextOneShot(el, norme.isbn13);
       el.blur();
       await humanPause();
-      let lu = readCommittedValue(el).replace(/[\s-]/g, "");
+      let lu = relire();
+      let poseParFrappe = false;
       if (lu !== norme.isbn13) {
         console.warn(`[vinted] ⚠️ ISBN : relecture « ${lu} » ≠ « ${norme.isbn13} » — retentative typeHuman`);
         await typeHuman(el, norme.isbn13);
         el.blur();
         await humanPause();
-        lu = readCommittedValue(el).replace(/[\s-]/g, "");
+        lu = relire();
+        poseParFrappe = true;
       }
       if (lu !== norme.isbn13) {
         throw new Error(
@@ -1756,6 +1767,7 @@ async function fillListingForm(job) {
           "Soumission refusée pour ne pas perdre l'annonce — relance la republication, ou pose l'ISBN à la main."
         );
       }
+      tracePose.push(poseParFrappe ? "pose en un coup non retenue, re-pose par frappe commitée" : "pose en un coup commitée");
       // ── Attente SUR LE RETOUR du lookup livre (2026-08-28, GO Nico — mur
       // « Fairy tail », job a25d171b) : le sleep FIXE de 1,2 s perdait la
       // course — le POST partait avant que le lookup ait rattaché le livre,
@@ -1791,18 +1803,64 @@ async function fillListingForm(job) {
         }
         return false;
       };
-      const debutLookup = Date.now();
-      let lookupVu = false;
-      while (Date.now() - debutLookup < 8000) {
-        if (preuveLookup()) { lookupVu = true; break; }
-        await sleep(250);
+      const attendreLookup = async () => {
+        const debut = Date.now();
+        while (Date.now() - debut < 8000) {
+          if (preuveLookup()) return Date.now() - debut;
+          await sleep(250);
+        }
+        return -1;
+      };
+      let attenteMs = await attendreLookup();
+      // ── RE-POSE PAR FRAPPE quand le lookup ne retombe pas (2026-08-30) ────
+      // Les 12 recréations Livres de nadegemarcelin78 (28-30/08, 0.6.10) ont
+      // toutes fini en 400 « Merci d'entrer un numéro ISBN valide » avec un
+      // motif isbn « forme non reconnue » dans le POST — alors que la forme
+      // ACCEPTÉE relevée en live le 24/08 ({"code":"isbn","ids":["…"]},
+      // annonce 9769001747) n'est produite par la page QUE lorsque son lookup
+      // livre a rattaché l'ouvrage. Le déclencheur observé du lookup est la
+      // FRAPPE du 13e chiffre (relevé live 28/08) — or la pose en un coup
+      // n'émet qu'UN seul InputEvent. Si la preuve DOM du lookup n'apparaît
+      // pas : on rejoue la pose en FRAPPE réelle (typeHuman : keydown/
+      // keypress/input/keyup par caractère — treize « 13e chiffre » au lieu
+      // de zéro), on re-vérifie l'état commité (même gate stricte : typeHuman
+      // VIDE le champ d'abord, il ne faut jamais soumettre avec un état pire
+      // que celui déjà validé — restauration one-shot en secours), puis on
+      // ré-attend la preuve. Inutile si la pose était DÉJÀ par frappe (la
+      // gate de relecture l'a rejouée) : rien de plus à tenter. Toujours pas
+      // de preuve → on soumet quand même, comme avant (à l'étape 'deleted'
+      // l'annonce n'existe plus : ne pas soumettre ne sauve rien), mais la
+      // trace le DIT désormais.
+      if (attenteMs < 0 && !poseParFrappe) {
+        console.warn("[vinted] ISBN : lookup non vu après la pose en un coup — re-pose par frappe (déclencheur observé : la frappe du 13e chiffre)");
+        tracePose.push("lookup NON vu en 8 s après la pose en un coup, re-pose par frappe");
+        await typeHuman(el, norme.isbn13);
+        el.blur();
+        await humanPause();
+        lu = relire();
+        if (lu !== norme.isbn13) {
+          insertTextOneShot(el, norme.isbn13);
+          el.blur();
+          await humanPause();
+          lu = relire();
+        }
+        if (lu !== norme.isbn13) {
+          throw new Error(
+            `ISBN ${norme.isbn13} : la re-pose par frappe a perdu la valeur (état relu : « ${lu || "vide"} »). ` +
+            "Soumission refusée pour ne pas perdre l'annonce — relance la republication, ou pose l'ISBN à la main."
+          );
+        }
+        attenteMs = await attendreLookup();
       }
-      if (lookupVu) {
-        console.log(`[vinted] ISBN : lookup livre retombé en ${Date.now() - debutLookup} ms (Auteur/Titre auto-remplis)`);
+      if (attenteMs >= 0) {
+        tracePose.push(`lookup livre vu en ${attenteMs} ms (Auteur/Titre auto-remplis)`);
+        console.log(`[vinted] ISBN : lookup livre retombé en ${attenteMs} ms (Auteur/Titre auto-remplis)`);
         await sleep(400); // marge de commit après le retour
       } else {
-        console.warn("[vinted] ISBN : retour du lookup livre non observé en 8 s — on soumet (plancher 3 s largement couvert)");
+        tracePose.push("lookup livre JAMAIS vu (8 s par pose) — soumission quand même");
+        console.warn("[vinted] ISBN : retour du lookup livre non observé — on soumet (plancher 3 s largement couvert)");
       }
+      diagnosticsRecreation.push(`pose ISBN ${norme.isbn13} : ${tracePose.join(" ; ")}`);
     });
   }
 

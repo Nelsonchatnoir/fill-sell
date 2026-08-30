@@ -824,7 +824,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (get-pending-jobs v18/v19, coin_config.republish_plafond_jour = 45 en
 // base) : rien ne change pour le parc sur ce point. EXTENSION_MIN_BUILD
 // inchangé. Committé GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-08-30T18:45:00Z';
+// 2026-08-30T20:31:00Z = 4e correctif de la 0.6.11 (zip 0aaeb2e jamais
+// téléversé — refait) : pose ISBN à la recréation. 12 refus nadegemarcelin78
+// (28-30/08, 0.6.10) en 400 « Merci d'entrer un numéro ISBN valide », motif
+// isbn « forme non reconnue » dans le POST — la forme acceptée
+// ({"code":"isbn","ids":["…"]}, relevé live 24/08) n'est produite par la page
+// QUE si son lookup livre a rattaché l'ouvrage, et le déclencheur observé est
+// la FRAPPE du 13e chiffre quand la pose en un coup n'émet qu'un événement.
+// Correctif : lookup non vu en 8 s → re-pose par FRAPPE (typeHuman) puis
+// nouvelle attente ; trace de pose (méthode + lookup vu/non vu) TOUJOURS
+// consignée dans last_diagnostic ; la sonde isbnEnvoye rend un extrait borné
+// du motif au lieu du verdict opaque. Détection ISBN, gates de relecture et
+// soumission « quand même » à l'étape deleted : inchangées.
+// EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE épinglée dessus.
+export const EXTENSION_LAST_COMMIT = '2026-08-30T20:31:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
