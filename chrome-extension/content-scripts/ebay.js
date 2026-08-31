@@ -36,8 +36,12 @@ console.log(`[ebay.js] build ${EBAY_BUILD}`);
 //     Couleur, Département (PRÉ-REMPLI par la catégorie, on n'y touche pas),
 //     et des champs par catégorie (Style, Longueur de la robe...) largement
 //     pré-remplis par eBay depuis le titre.
-//   - Prix : format par défaut = ENCHÈRES. Il faut basculer le listbox
-//     Format sur "Achat immédiat" pour exposer input[name="price"].
+//   - Prix : le format d'ARRIVÉE dépend du compte (eBay mémorise le dernier
+//     format utilisé — un compte qui n'a jamais vendu arrive en ENCHÈRES,
+//     relevé 31/08). Le listbox Format est basculé sur "Achat immédiat" si
+//     besoin. ⚠️ Un input[name="price"] VISIBLE existe AUSSI en mode
+//     Enchères (relevé jobs de15fd3f/da2b67e2) : la présence du champ ne
+//     prouve pas le format — cf. garde pré-submit FORMAT.
 //   - Description : RTE dans l'iframe same-origin #se-rte-frame__summary.
 //   - Pièges : popup "Astuces photos" (.lightbox-dialog, bouton OK) qui
 //     s'ouvre toute seule par-dessus le formulaire ; chips
@@ -361,6 +365,9 @@ async function fillListingForm(job) {
 
   const fields = job.platform_fields || {};
   const warnings = [];
+  // Trace structurée de la bascule de format (2026-08-31) : rendue au
+  // background sur les issues principales → platform_fields.ebay_format_trace.
+  let formatTrace = null;
   // Trace des specifics réellement posés — ou trouvés déjà remplis — pendant
   // ce run (2026-07-11). Sert UNIQUEMENT au constat unfilledRequired du
   // DRY_RUN : fillSpecificSafe ne dit pas QUEL label du groupe a matché, donc
@@ -670,7 +677,7 @@ async function fillListingForm(job) {
   // ── Prix : basculer Enchères → Achat immédiat puis poser le prix ─────────
   if (job.price != null) {
     await fieldSettle();
-    await ensureAchatImmediat(warnings);
+    formatTrace = await ensureAchatImmediat(warnings);
     // 20 s (et pas 8) : la section PRIX se re-rend après la bascule Achat
     // immédiat ET après le calcul du prix suggéré (priceAutoFillPref) — cas
     // réel campagne 2026-07-08 : le champ est apparu après le timeout de 8 s,
@@ -733,7 +740,7 @@ async function fillListingForm(job) {
       console.warn(`[ebay] ⚠️ ${note}`);
       warnings.push(note);
     }
-    return { success: true, dryRun: true, warnings, unfilledRequired };
+    return { success: true, dryRun: true, warnings, unfilledRequired, formatTrace };
   }
 
   // ── Publication LIVE ────────────────────────────────────────────────────────
@@ -866,20 +873,25 @@ async function fillListingForm(job) {
         error: `LIVE : prix absent ou nul sur le formulaire eBay au moment de la mise en vente (input[name="price"] = "${priceEl?.value ?? "introuvable"}") — mise en vente annulée pour éviter une annonce sans prix.`,
         warnings,
         unfilledRequired,
+        formatTrace,
       };
     }
   }
 
   // ── Garde-fou pré-submit FORMAT : jamais une ENCHÈRE (2026-08-31) ──────────
   // Jobs de15fd3f/da2b67e2 (raffalepic) : « format: option "Achat immédiat"
-  // pas apparue » — la bascule du listbox exige l'hydratation Marko, morte en
-  // fenêtre jamais rendue (famille B). Le brouillon reste alors une ENCHÈRE
-  // côté eBay : la soumission produit au mieux un refus « Prix de départ »
-  // manquant, au pire une VENTE AUX ENCHÈRES avec le prix du job en mise de
-  // départ — FillSell publie à prix fixe, jamais d'enchère. ⚠️ Constat du
-  // même relevé : un input[name="price"] VISIBLE existe aussi en mode
-  // Enchères (aucun warning « introuvable » sur ces jobs) — la garde prix
-  // ci-dessus ne suffit donc pas à prouver le bon format.
+  // pas apparue » — le formulaire arrive en Enchères (compte qui n'a jamais
+  // vendu ; eBay mémorise le format par compte) et la bascule échouait à
+  // cause du filtre offsetParent, aveugle ici (cf. bandeau
+  // ensureAchatImmediat — la piste « fenêtre minimisée = hydratation morte »
+  // est RÉFUTÉE par le parc : réussites et échecs ont le même
+  // window_state=minimized). Un brouillon resté ENCHÈRES à la soumission
+  // produit au mieux un refus « Prix de départ » manquant, au pire une VENTE
+  // AUX ENCHÈRES avec le prix du job en mise de départ — FillSell publie à
+  // prix fixe, jamais d'enchère. ⚠️ Constat du même relevé : un
+  // input[name="price"] VISIBLE existe aussi en mode Enchères (aucun warning
+  // « introuvable » sur ces jobs) — la garde prix ci-dessus ne suffit donc
+  // pas à prouver le bon format.
   // PREUVE POSITIVE seulement : on ne bloque que si le listbox Format se lit
   // ET affiche « Enchères ». Introuvable = comportement d'avant (le warning
   // de ensureAchatImmediat l'a déjà dit) — jamais un blocage sur une absence
@@ -892,10 +904,10 @@ async function fillListingForm(job) {
       needsUser: true,
       error:
         "Le formulaire eBay est resté en mode « Enchères » : la bascule « Achat immédiat » " +
-        "n'a pas pris (page eBay pas réactive — fenêtre jamais affichée). Rien n'a été soumis, " +
-        "aucune enchère créée, le brouillon est conservé chez eBay.",
+        "n'a pas pris. Rien n'a été soumis, aucune enchère créée, le brouillon est conservé chez eBay.",
       warnings,
       unfilledRequired,
+      formatTrace,
     };
   }
 
@@ -1025,7 +1037,7 @@ async function fillListingForm(job) {
   // description » vécu en LIVE réel, et seul le background survit à une
   // éventuelle redirection), puis captureListingUrl. On répond tout de suite.
   await sleep(3000);
-  return { success: true, listingUrl: null, warnings, unfilledRequired };
+  return { success: true, listingUrl: null, warnings, unfilledRequired, formatTrace };
 }
 
 // ── État : comparaison de famille (neuf vs occasion) ────────────────────────
@@ -1544,27 +1556,89 @@ async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, {
 // FillSell publie à prix fixe. Le listbox Format (bouton texte "Enchères",
 // aria-haspopup=listbox) expose exactement deux options relevées :
 // "Enchères" / "Achat immédiat".
+// ── RÉÉCRIT LE 2026-08-31 (jobs de15fd3f/da2b67e2 raffalepic) ───────────────
+// Relevé du parc : raffalepic est le SEUL compte à avoir jamais eu BESOIN de
+// la bascule (aucun autre warning « format: » en 30 j) — eBay mémorise le
+// dernier format utilisé par compte, les vendeurs déjà passés par FillSell
+// arrivent en « Achat immédiat » et sortent au retour anticipé ci-dessous.
+// Un compte qui n'a jamais vendu arrive en « Enchères » : chez lui la
+// bascule échouait TOUJOURS (« option pas apparue »). Cause : l'ancienne
+// détection filtrait sur offsetParent, en VIOLATION de la règle de tête de
+// CE fichier (2026-07-13, mesurée) — dans la fenêtre jamais rendue,
+// offsetParent ne mesure pas la visibilité (« null pour tout », « les CLICS,
+// eux, fonctionnent parfaitement ») ; et il est null PAR SPEC pour un
+// overlay position:fixed, même fenêtre rendue. L'option pouvait donc être
+// LÀ, cliquable, et invisible au code. ⚠️ La fenêtre minimisée seule
+// n'explique rien (correction Nico 31/08) : les 20 derniers jobs eBay du
+// parc, réussites comprises, tournent tous en window_state=minimized.
+// Désormais : détection par style CALCULÉ (estVisibleSansLayout, le seul
+// critère utilisable ici), VÉRIFICATION positive après clic (le bouton doit
+// se relire « Achat immédiat » — l'ancien sleep aveugle supposait la
+// sélection prise), UN second essai complet, et trace structurée rendue à
+// l'appelant → platform_fields.ebay_format_trace sur TOUTES les issues,
+// réussites comprises : c'est elle qui tranchera au prochain run (qui
+// arrive en Enchères, que montre le popup, qu'a donné la vérif).
+// Toujours pas vérifié « Achat immédiat » → warning d'avant (texte
+// inchangé, cherchable) et la garde pré-clic FORMAT refuse la mise en vente.
 async function ensureAchatImmediat(warnings) {
-  const current = [...document.querySelectorAll('button[aria-haspopup="listbox"]')]
-    .find((b) => ["Enchères", "Achat immédiat"].includes(b.textContent.trim()));
+  const lireListbox = () =>
+    [...document.querySelectorAll('button[aria-haspopup="listbox"]')]
+      .find((b) => ["Enchères", "Achat immédiat"].includes(texteDe(b))) ?? null;
+  const trace = { at: new Date().toISOString(), arrive: null, bascule: null, essais: 0, options_role: 0, options_visibles: 0, verif: null };
+  let current = lireListbox();
   if (!current) {
+    trace.arrive = "listbox_introuvable";
+    trace.bascule = "impossible";
     warnings.push("format: listbox Enchères/Achat immédiat introuvable — format eBay par défaut conservé");
-    return;
+    return trace;
   }
-  if (current.textContent.trim() === "Achat immédiat") return;
+  trace.arrive = texteDe(current);
+  if (trace.arrive === "Achat immédiat") {
+    trace.bascule = "inutile";
+    trace.verif = "Achat immédiat";
+    return trace;
+  }
 
-  realClick(current);
-  const option = await waitFor(() => {
-    return [...document.querySelectorAll('[role="option"]')]
-      .find((o) => o.offsetParent !== null && o.textContent.trim() === "Achat immédiat") || null;
-  }, 5000);
-  if (!option) {
-    warnings.push('format: option "Achat immédiat" pas apparue — format Enchères conservé');
-    document.body.click();
-    return;
+  for (let essai = 1; essai <= 2; essai++) {
+    trace.essais = essai;
+    realClick(current);
+    const option = await waitFor(() => {
+      const opts = [...document.querySelectorAll('[role="option"]')];
+      trace.options_role = opts.length;
+      const visibles = opts.filter(estVisibleSansLayout);
+      trace.options_visibles = visibles.length;
+      return visibles.find((o) => texteDe(o) === "Achat immédiat") || null;
+    }, essai === 1 ? 5000 : 8000);
+    if (option) {
+      realClick(option);
+      // Preuve positive de la sélection : le bouton du listbox se relit.
+      const verifie = await waitFor(() => {
+        const b = lireListbox();
+        return b && texteDe(b) === "Achat immédiat" ? b : null;
+      }, 4000);
+      await sleep(800); // re-render de la section PRIX (le champ price apparaît)
+      if (verifie) {
+        trace.bascule = essai === 1 ? "reussie" : "reussie_2e_essai";
+        trace.verif = "Achat immédiat";
+        return trace;
+      }
+      trace.bascule = "clic_option_sans_effet";
+    } else {
+      trace.bascule = trace.options_role ? "option_invisible_ou_absente" : "popup_sans_option";
+      document.body.click(); // referme un popup éventuel avant le 2e essai
+      await sleep(600);
+    }
+    current = lireListbox() ?? current;
+    if (current && texteDe(current) === "Achat immédiat") {
+      // La sélection avait pris malgré une vérif en retard : on ne re-clique pas.
+      trace.bascule = "reussie_relecture";
+      trace.verif = "Achat immédiat";
+      return trace;
+    }
   }
-  realClick(option);
-  await sleep(800); // re-render de la section PRIX (le champ price apparaît)
+  trace.verif = texteDe(lireListbox()) || null;
+  warnings.push('format: option "Achat immédiat" pas apparue — format Enchères conservé');
+  return trace;
 }
 
 // ── Description (iframe RTE same-origin #se-rte-frame__summary) ─────────────

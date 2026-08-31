@@ -892,7 +892,30 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // PAS de pose du prix/format par le PUT delta du brouillon : seul le champ
 // `description` est MESURÉ (24/08) — on n'invente pas de structure API.
 // EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE épinglée dessus.
-export const EXTENSION_LAST_COMMIT = '2026-08-31T11:18:00Z';
+// 2026-08-31T11:31:00Z = CORRECTION de la cause de l'entrée 11:18 (Nico,
+// données du parc) : la piste « hydratation Marko morte en fenêtre
+// minimisée » est RÉFUTÉE — les 20 derniers jobs eBay, RÉUSSITES comprises,
+// tournent tous en window_state=minimized ; et dans le run de raffalepic les
+// specifics ont bien répondu (saisies validées par Entrée). Cause retenue,
+// appuyée par les relevés : (1) raffalepic est le SEUL compte du parc à
+// n'avoir JAMAIS publié sur eBay — eBay mémorise le dernier format PAR
+// COMPTE, le parc arrive donc en « Achat immédiat » (bascule jamais
+// exercée, succès silencieux) quand son compte arrive en « Enchères » ;
+// (2) la détection de l'option filtrait sur offsetParent, en VIOLATION de
+// la règle de tête d'ebay.js (13/07, mesurée : offsetParent ne mesure pas
+// la visibilité dans la fenêtre jamais rendue, et il est null PAR SPEC pour
+// un overlay position:fixed) — l'option pouvait être là, cliquable,
+// invisible au code. Catégorie exclue (misscat801 a publié en 53557, la
+// catégorie du job échoué). Correctif : ensureAchatImmediat réécrit —
+// détection par style CALCULÉ (estVisibleSansLayout), vérification POSITIVE
+// post-clic (le bouton se relit « Achat immédiat »), un 2e essai complet,
+// et trace structurée ebay_format_trace persistée sur TOUTES les issues
+// (réussites comprises) pour trancher au prochain run si la cause résiste.
+// La garde pré-clic FORMAT et l'anti-doublon de l'entrée 11:18 restent tels
+// quels ; messages/commentaires purgés de la mention famille B. Toujours
+// 0.6.13 (zip bddcabd jamais téléversé — refait).
+// EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE épinglée dessus.
+export const EXTENSION_LAST_COMMIT = '2026-08-31T11:31:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

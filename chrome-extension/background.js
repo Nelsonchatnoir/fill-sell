@@ -106,8 +106,8 @@ const CAUSES_HUMAINES_CONNUES = {
   // 2026-08-31 (jobs de15fd3f/da2b67e2) : brouillon jamais basculé en « Achat
   // immédiat » — eBay le refuse sans « Prix de départ » (libellé ENCHÈRES).
   ebay_brouillon_encheres:
-    "La page eBay n'a pas réagi : le brouillon est resté au format « Enchères », " +
-    "sans prix, et eBay le refuse",
+    "Le brouillon eBay est resté au format « Enchères », sans prix de départ, " +
+    "et eBay le refuse",
 };
 function causeHumaineConnue(job) {
   let d = job?.platform_fields?.last_diagnostic;
@@ -1847,6 +1847,18 @@ async function processJob(rawJob, accessToken) {
       };
     }
 
+    // Trace de la bascule de format eBay (2026-08-31, chantier « Prix de
+    // départ ») : persistée sur TOUTES les issues, réussites comprises —
+    // même mécanique de copie mémoire que last_diagnostic. C'est elle qui
+    // dira qui arrive en « Enchères » (compte sans historique de vente) et
+    // ce que le popup a montré quand une bascule échoue.
+    if (result?.formatTrace && typeof result.formatTrace === "object") {
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        ebay_format_trace: result.formatTrace,
+      };
+    }
+
     // Warnings PERSISTÉS (2026-08-08) : platform_fields.warnings =
     // [{code, message, at}] — même mécanique de copie mémoire que
     // last_diagnostic ci-dessus, donc portés par TOUTES les écritures
@@ -2115,23 +2127,25 @@ async function processJob(rawJob, accessToken) {
             // « Prix de départ » est le libellé du mode ENCHÈRE chez eBay :
             // ce manquant signe un brouillon jamais basculé en « Achat
             // immédiat » (warning « format: option pas apparue » du même run —
-            // la bascule exige l'hydratation Marko, morte en fenêtre jamais
-            // rendue). L'ancien message conseillait de « compléter et publier
-            // à la main » : sur un brouillon ENCHÈRES, ce conseil ferait créer
-            // une VENTE AUX ENCHÈRES que FillSell n'a jamais voulue. Message
-            // dédié (le geste manuel commence par corriger le FORMAT) + cause
-            // structurée dans last_diagnostic (relue par causeHumaineConnue).
+            // cause : filtre offsetParent aveugle de l'ancienne détection,
+            // cf. bandeau ensureAchatImmediat d'ebay.js ; la piste « fenêtre
+            // minimisée » est réfutée par le parc). L'ancien message
+            // conseillait de « compléter et publier à la main » : sur un
+            // brouillon ENCHÈRES, ce conseil ferait créer une VENTE AUX
+            // ENCHÈRES que FillSell n'a jamais voulue. Message dédié (le geste
+            // manuel commence par corriger le FORMAT) + cause structurée dans
+            // last_diagnostic (relue par causeHumaineConnue).
             if (champs.some((m) => /prix de d[ée]part/i.test(m))) {
               job.platform_fields = {
                 ...(job.platform_fields ?? {}),
                 last_diagnostic: JSON.stringify({
                   quoi: "ebay_brouillon_encheres",
-                  detail: "publish du brouillon refusé : « Prix de départ » manquant — brouillon resté au format Enchères (bascule Achat immédiat jamais prise, hydratation morte)",
+                  detail: "publish du brouillon refusé : « Prix de départ » manquant — brouillon resté au format Enchères (bascule Achat immédiat non prise, cf. ebay_format_trace)",
                   at: new Date().toISOString(),
                 }),
               };
               const msgEncheres =
-                "Brouillon eBay resté au format « Enchères » (la page eBay n'a pas réagi) : " +
+                "Brouillon eBay resté au format « Enchères » : " +
                 "eBay refuse de le publier sans prix de départ. Aucune annonce n'a été créée. " +
                 "Pour le publier à la main (« Vendre > Brouillons »), passe d'abord le format " +
                 "sur « Achat immédiat » et vérifie le prix.";
