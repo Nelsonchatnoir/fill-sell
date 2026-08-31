@@ -130,7 +130,12 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // courant est la 0.6.13 (même contenu + chantier « Prix de départ » eBay :
 // gate pré-clic anti-Enchères, message/diagnostic du refus du brouillon,
 // anti-doublon pré-dépôt sur ebay_draft_id).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13'];
+// 0.6.13 (94d4104) ajoutée le 31/08 : elle a été TÉLÉVERSÉE et est en examen
+// au CWS. Elle manquait à cette liste — un re-packaging en 0.6.13 serait passé
+// ici et se serait fait rejeter par le Web Store, ce que cette garde existe
+// précisément pour éviter. ⚠️ Téléverser la 0.6.14 REMPLACE la 0.6.13 en
+// examen : le Web Store n'accepte qu'une version en attente à la fois.
 // (Merge 27/08 : la mise en garde côté main « un zip pris sur MAIN
 // embarquerait F1 » est CLOSE — la branche est réintégrée, main est
 // redevenue l'unique ligne ; F1 réduit à la trace d'identité.)

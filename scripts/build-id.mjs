@@ -915,7 +915,35 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // quels ; messages/commentaires purgés de la mention famille B. Toujours
 // 0.6.13 (zip bddcabd jamais téléversé — refait).
 // EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE épinglée dessus.
-export const EXTENSION_LAST_COMMIT = '2026-08-31T11:31:00Z';
+// 2026-08-31T16:48:15Z = 58c091f (0.6.14, main) — DEUX correctifs mesurés du
+// 31/08, plus ceux de 5f224f1 le même jour :
+//   · ISBN : le mur « Merci d'entrer un numéro ISBN valide » est tranché. Le
+//     diagnostic du job a25d171b dit que la frappe ABOUTIT (« pose en un coup
+//     commitée ; lookup livre vu en 1575 ms, Auteur/Titre auto-remplis ») et
+//     le corps du POST porte quand même "isbn":null — la valeur est perdue
+//     entre le commit de la frappe et la sérialisation du payload. La sonde
+//     MAIN pose donc `isbn` dans le corps de POST /item_upload/items, à
+//     l'endroit MESURÉ (l'objet qui porte catalog_id), sans toucher aucune
+//     autre clé et seulement si la page l'a laissé vide. Armé avant l'attente
+//     du lookup (couvre les livres sans lookup) et dans l'étape commune aux
+//     deux chemins de recréation — donc aussi les 26 annonces supprimées non
+//     recréées. ⛔ Chemin réservé à l'ISBN : le format eBay n'a jamais été
+//     mesuré, il ne se pose pas par la requête.
+//   · Cycle auto : 'needs_user' retiré de la garde « republication en vol »,
+//     qui gelait le cycle ENTIER du compte (josephinecerni, 0 cycle après
+//     16:03 malgré extension en ligne et plafond 0/15). pending/processing
+//     gardent la garde ; l'article en attente reste exclu par le pré-filtre
+//     PAR ARTICLE, 'failed' avec 24 h de délai.
+//   · 5f224f1 : compteur d'essais par article (3, borné 24 h) + écart de file,
+//     re-hébergement photo retiré du pré-vol auto, causes écrites dans
+//     platform_settings…republish_auto.derniere_erreur (affichées par
+//     StockTab). La migration serveur du même commit (garde de version
+//     comparée en TEXTE, '0.6.11' < '0.6.2') a été JOUÉE le 31/08 à 17:26 —
+//     republications reparties (josephinecerni 18:44/18:50, remialbertholl 47
+//     à 17:49, zéro refus).
+// EXTENSION_MIN_BUILD inchangé : il se lit dans le PAQUET PUBLIÉ, et la
+// promotion vers le build 0.6.11 (2026-08-30T20:31:09Z) reste EN ATTENTE DE GO.
+export const EXTENSION_LAST_COMMIT = '2026-08-31T16:48:15Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
