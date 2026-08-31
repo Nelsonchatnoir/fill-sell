@@ -1571,6 +1571,23 @@ async function fillListingForm(job) {
     matiere: "material",
     taille: "size",
     simlock: "sim_lock",
+    // ── isbn AJOUTÉ le 2026-08-31 (test réel « EAT », Gilles Lartigot) ────────
+    // Deux chemins écrivent l'ISBN, et UN SEUL était lu :
+    //   · REPUBLICATION : la capture de l'annonce d'origine pose fields.isbn —
+    //     l'étape ISBN tournait, la frappe commitait, le lookup répondait ;
+    //   · PUBLICATION NEUVE : l'app écrit dans platform_fields.vintedAspects
+    //     .isbn (Lens, stepper ou mini-éditeur). fields.isbn restait vide,
+    //     `if (fields.isbn)` était donc FAUX et l'étape ISBN ne tournait PAS
+    //     DU TOUT — rien de posé, rien d'armé, et le POST partait sans ISBN
+    //     (l'ISBN n'apparaissait que dans le texte de la description).
+    //     Mesuré : job du 31/08 19:23, HTTP 400 field "isbn", diagnostic sans
+    //     « pose ISBN » ni « pose au POST armée », alors que
+    //     platform_fields->'vintedAspects'->>'isbn' = '9782981413604'.
+    // Le pont le fait entrer par la porte normale, celle des autres requis.
+    // ⚠️ Ce n'est PAS le même défaut que le mur de la republication (valeur
+    // perdue entre le commit et la sérialisation du payload, couvert par la
+    // sonde) : ici, l'étape n'était jamais atteinte.
+    isbn: "isbn",
   };
   for (const [dedie, code] of Object.entries(_bridge)) {
     const v = String(_va[code] ?? "").trim();
@@ -2140,6 +2157,13 @@ async function fillListingForm(job) {
   const handledCodes = new Set([
     "brand", "model", "internal_memory_capacity", "sim_lock",
     "size", "condition", "color", "material",
+    // isbn (2026-08-31) : servi par l'étape ISBN dédiée via le pont ci-dessus
+    // (normalisation, pose commitée, relecture stricte, attente du lookup
+    // livre, armement de la pose au POST). Sans cette entrée, la boucle
+    // générique le traiterait EN PLUS comme une liste fermée
+    // (selectClosedOptionSafe) alors que #isbn est une saisie libre : une
+    // seconde pose, forcément en échec, et un warning trompeur.
+    "isbn",
   ]);
   if (fields.vintedAspects && typeof fields.vintedAspects === "object") {
     for (const [code, value] of Object.entries(fields.vintedAspects)) {

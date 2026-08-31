@@ -533,7 +533,11 @@ serve(async (req) => {
     // ⚠️ INERTE TANT QUE LE FRONT N'ENVOIE PAS LA CLÉ : ListingPreviewScreen ne
     // met encore que taille/couleur/matiere/marque dans canonical_fields. Le
     // serveur est prêt, le client suivra au déploiement Vercel.
-    for (const k of ["taille", "couleur", "matiere", "marque", "etat"]) {
+    // "isbn" ajouté le 2026-08-31 : le Lens LIT l'ISBN (attributs_visibles
+    // .isbn_ean sur la famille livres_medias) et il n'avait AUCUN chemin vers
+    // l'annonce — le stepper le réclamait en rouge et l'utilisateur devait le
+    // retaper à la main, sur une valeur déjà déchiffrée et payée.
+    for (const k of ["taille", "couleur", "matiere", "marque", "etat", "isbn"]) {
       const v = canonicalIn[k];
       if (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null") canonicalProvided[k] = v.trim();
     }
@@ -1211,6 +1215,22 @@ serve(async (req) => {
       // dans les prompts reste nécessaire : le prix peut aussi arriver via la
       // description utilisateur ou une étiquette photographiée.
       ...canonicalCtx,
+      // ── LIVRES ET MÉDIAS : la description porte sur le CONTENU (2026-08-31) ──
+      // Mesuré sur le test « EAT » de Gilles Lartigot : la description générée
+      // était « Couverture rigide illustrée d'un visage barbu en gros plan et
+      // d'un crâne de bovin au dos ». Décrire ce qu'on voit est exactement le
+      // bon réflexe sur un vêtement — c'est le seul réflexe possible quand le
+      // contexte est une photo. Sur un livre, c'est hors sujet : l'acheteur
+      // choisit sur le SUJET, pas sur la jaquette.
+      // ⚠️ CONSIGNE STRICTEMENT RÉSERVÉE À livres_medias (garde-fou explicite) :
+      // la famille vient de l'icône résolue (même résolveur que la retouche
+      // photo), et sur toute autre famille rien ne change.
+      ...(retouchProfileFor(item).family === "livres_medias" ? [
+        "LIVRE / MÉDIA — LA DESCRIPTION PORTE SUR LE CONTENU. Écris de quoi parle l'ouvrage : sujet, thème, angle, ce que le lecteur y trouve, et l'auteur. " +
+        "N'OUVRE JAMAIS la description sur l'apparence de la couverture, de la jaquette ou du visuel (« couverture rigide illustrée d'un visage… » est exactement ce qu'il ne faut pas écrire) — l'acheteur choisit un livre sur son sujet, pas sur son dessin de couverture. " +
+        "L'état physique reste mentionné, mais EN FIN de description et en une phrase courte, jamais comme sujet principal. " +
+        "N'INVENTE AUCUN CONTENU et ne raconte pas la fin : si tu ne connais pas l'ouvrage avec certitude, tiens-t'en à ce que le titre, l'auteur et le contexte permettent d'affirmer, et reste court plutôt que d'inventer un résumé.",
+      ] : []),
     ].filter(Boolean).join("\n");
 
     console.log(`[generate-listing] rédaction prompt ${VERSION_PROMPT} — plateformes: ${(platforms as string[]).join(", ")}`);
@@ -1342,6 +1362,82 @@ serve(async (req) => {
         for (const p of consumers) {
           if (platformListings[p]) platformListings[p].platform_fields[field] = canonical;
         }
+      }
+    }
+
+    // ── ÉTAT : UNE SEULE VALEUR, MAPPÉE (2026-08-31) ──────────────────────────
+    // `etat` était volontairement HORS de la carte de réplication ci-dessus,
+    // parce que les listes fermées diffèrent d'une plateforme à l'autre. La
+    // conséquence n'avait pas été tirée : chaque prompt tranchait donc SEUL, et
+    // quatre inférences indépendantes divergeaient sur le même article. Mesuré
+    // le 31/08 sur un livre d'occasion, même passage de génération :
+    //   vinted « Neuf sans étiquette » · ebay « Neuf sans étiquette »
+    //   leboncoin « Très bon état »    · beebs « Très bon état »
+    // Un état faux sur une annonce, c'est un litige acheteur — et deux annonces
+    // du même objet qui se contredisent, c'est pire.
+    // On ne demande plus le rapprochement au modèle : on part d'UNE valeur de
+    // référence et on la MAPPE, ici, dans le vocabulaire de chaque plateforme.
+    // Les cinq listes sont recopiées des prompts eux-mêmes (libellés réels des
+    // formulaires) — « Satisfaisant » Vinted/eBay vs « État satisfaisant » LBC
+    // vs « État moyen » Beebs, « Neuf avec étiquette » vs « Neuf, avec
+    // étiquette » vs « État neuf ». Vestiaire n'a pas de palier bas : son plus
+    // bas est « Bon état ».
+    {
+      const ETAT_PAR_PLATEFORME: Record<string, Record<string, string>> = {
+        neuf_etiquette: { vinted: "Neuf avec étiquette", ebay: "Neuf avec étiquette", beebs: "Neuf, avec étiquette", leboncoin: "État neuf",          vestiaire: "Neuf avec étiquette" },
+        neuf_sans:      { vinted: "Neuf sans étiquette", ebay: "Neuf sans étiquette", beebs: "Neuf, sans étiquette", leboncoin: "État neuf",          vestiaire: "Neuf sans étiquette" },
+        tres_bon:       { vinted: "Très bon état",       ebay: "Très bon état",       beebs: "Très bon état",        leboncoin: "Très bon état",      vestiaire: "Très bon état" },
+        bon:            { vinted: "Bon état",            ebay: "Bon état",            beebs: "Bon état",             leboncoin: "Bon état",           vestiaire: "Bon état" },
+        satisfaisant:   { vinted: "Satisfaisant",        ebay: "Satisfaisant",        beebs: "État moyen",           leboncoin: "État satisfaisant",  vestiaire: "Bon état" },
+      };
+      // Texte libre → palier. Le Lens rend une des 5 valeurs Vinted, mais les
+      // relevés du 28/07 montrent aussi « Bon », « bon », « Très bon » : on
+      // tolère. ⚠️ « très bon » AVANT « bon » — le second est inclus dans le
+      // premier et l'ordre des tests fait toute la différence.
+      const tierEtat = (v: string | null | undefined): string | null => {
+        const s = String(v ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+        if (!s) return null;
+        if (/neuf/.test(s) && /avec/.test(s)) return "neuf_etiquette";
+        if (/neuf/.test(s)) return "neuf_sans";
+        if (/tres bon|excellent/.test(s)) return "tres_bon";
+        if (/\bbon\b/.test(s)) return "bon";
+        if (/satisfaisant|moyen|correct|piece/.test(s)) return "satisfaisant";
+        return null;
+      };
+      const DEFAUT_ETAT = "tres_bon"; // règle produit, identique à DEFAULT_CONDITION côté client
+      const lus = Object.values(platformListings)
+        .map((l) => tierEtat(l?.platform_fields?.etat as string | null))
+        .filter((t): t is string => Boolean(t));
+      // Source unique, dans cet ordre :
+      //  1. l'état CANONIQUE (lu par le Lens sur les photos, ou saisi) ;
+      //  2. sinon, un « neuf » UNANIME — même palier sur toutes les plateformes
+      //     interrogées : c'est un signal du contexte, pas une divergence, et
+      //     l'écraser ferait passer un article réellement neuf en occasion ;
+      //  3. sinon le défaut « Très bon état », appliqué PARTOUT de la même
+      //     façon. C'est exactement ce qui manquait : deux plateformes sur
+      //     quatre l'appliquaient déjà, les deux autres inventaient du neuf.
+      const unanimeNeuf = lus.length > 0 && new Set(lus).size === 1 &&
+        (lus[0] === "neuf_etiquette" || lus[0] === "neuf_sans");
+      const tier = tierEtat(canonicalProvided.etat) ?? (unanimeNeuf ? lus[0] : DEFAUT_ETAT);
+      for (const [p, l] of Object.entries(platformListings)) {
+        const v = ETAT_PAR_PLATEFORME[tier]?.[p];
+        if (l && v) l.platform_fields.etat = v;
+      }
+    }
+
+    // ── ISBN : posé, jamais RÉ-ÉCRIT PAR LE MODÈLE (2026-08-31) ───────────────
+    // La valeur vient du Lens (attributs_visibles.isbn_ean) ou de l'utilisateur,
+    // et elle atterrit dans platform_fields.isbn — le champ dédié que
+    // vinted.js lit déjà (`if (fields.isbn)`, étape ISBN : normalisation, pose
+    // commitée, relecture stricte, attente du lookup livre).
+    // ⛔ Jamais demandé au rédacteur : treize chiffres, ça ne se reformule pas,
+    // et un ISBN faux envoie l'annonce sur un autre ouvrage.
+    {
+      const brut = String(canonicalProvided.isbn ?? "").replace(/[\s-]/g, "");
+      // ISBN-13 (13 chiffres) ou ISBN-10 (9 chiffres + clé, X compris) —
+      // vinted.js normalise le 10 en 13 avant de poser.
+      if (/^\d{13}$/.test(brut) || /^\d{9}[\dXx]$/.test(brut)) {
+        if (platformListings.vinted) platformListings.vinted.platform_fields.isbn = brut.toUpperCase();
       }
     }
 

@@ -881,6 +881,10 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
       // ce repli le fait arriver au formulaire même sur un job généré AVANT le
       // redéploiement de generate-listing (qui ne produisait pas la clé).
       case "modele":      lensVal = lensResult?.modele         ?? null; break;
+      // ISBN lu par le Lens sur la famille livres_medias (2026-08-31) : même
+      // repli que modele — il fait arriver la valeur au formulaire y compris
+      // sur un job généré AVANT le redéploiement de generate-listing.
+      case "isbn":        lensVal = lensResult?.attributs_visibles?.isbn_ean ?? null; break;
       default:            lensVal = null;
     }
     result[field.key] = lensVal
@@ -4019,6 +4023,12 @@ export default function ListingPreviewScreen({
         // fermée des 5 états (validation serveur lens-analysis), ce qui rend
         // le rapprochement vers la liste de chaque plateforme fiable.
         etat:        initialListing?.etat_estime ?? photoAnalysis?.etat_estime ?? null,
+        // ISBN LU par le Lens (2026-08-31). Il vit dans le sac d'attributs de
+        // la famille livres_medias (attributs_visibles.isbn_ean) et n'avait
+        // AUCUN chemin vers l'annonce : le Lens l'affichait dans sa fiche, le
+        // stepper le réclamait quand même en rouge, et il fallait retaper à la
+        // main treize chiffres déjà déchiffrés et déjà payés.
+        isbn:        initialListing?.attributs_visibles?.isbn_ean ?? photoAnalysis?.attributs_visibles?.isbn_ean ?? null,
         prixVente:   price ?? initialListing?.prix_vente_suggere ?? photoAnalysis?.prix_vente_suggere ?? null,
       };
       // Tant que l'article n'est pas en stock (invId absent), on envoie ses infos
@@ -4044,6 +4054,7 @@ export default function ListingPreviewScreen({
             matiere: src.matiere,
             marque:  src.marque,
             etat:    src.etat,
+            isbn:    src.isbn,
           },
           photos,
           platforms,
@@ -5133,6 +5144,11 @@ export default function ListingPreviewScreen({
       if (key === "color") return pf.colors?.[0] || pf.couleur;
       if (key === "size") return pf.taille;
       if (key === "material") return pf.matiere;
+      // isbn (2026-08-31) : champ dédié posé par generate-listing depuis la
+      // lecture du Lens. Sans ce cas, le requis « ISBN (Vinted) » restait
+      // « manquant » — rouge, CTA bloqué — sur une valeur que l'app connaissait
+      // déjà. C'est aussi la clé que vinted.js lit (fields.isbn).
+      if (key === "isbn") return pf.isbn;
       return null;
     }
     if (platform === "leboncoin") {
