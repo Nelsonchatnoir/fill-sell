@@ -563,6 +563,17 @@ function getPlatformFieldsConfig(t) {
       { key:"matiere",   label:t("fieldMaterialLabel"),  type:"text" },
       { key:"couleur",   label:t("fieldColorLabel"),     type:"text" },
       { key:"categorie", label:t("fieldCategoryLabel"),  type:"text" },
+      // ISBN (2026-08-31). MÊME PIÈGE que la taille et l'univers Leboncoin
+      // ci-dessous : mergeFieldsWithLens construit un objet NEUF en n'itérant
+      // que sur cette config — toute clé absente d'ici est JETÉE. L'ISBN posé
+      // par generate-listing dans platform_fields.isbn (lu du Lens) était donc
+      // supprimé à l'application de la génération, avant que le contrôle des
+      // requis puisse le lire : « ISBN · Vinted » restait rouge sur une valeur
+      // que le serveur venait de fournir (tracé le 31/08 : isbn_recu true,
+      // isbn_recu_len 13, isbn_pose true — et champ vide à l'écran).
+      // Cette entrée rend aussi atteignable le repli Lens du switch de
+      // mergeFieldsWithLens, qui ne tourne que pour les clés de cette config.
+      { key:"isbn",      label:"ISBN",                   type:"text" },
     ],
     leboncoin: [
       { key:"etat",         label:t("fieldConditionLabel"),     type:"select", options:[condition.new_, condition.veryGood, condition.good, condition.correct, condition.forParts] },
@@ -729,6 +740,14 @@ function isFieldRelevant(key, icon) {
     // matiere : bloquante uniquement sur la mode (cf. materialGuardApplies) —
     // ailleurs on ne la demande que si l'IA a trouvé une valeur (cf. appelant).
     case "matiere":  return fashion;
+    // isbn : Livres UNIQUEMENT (2026-08-31). Sans ce cas, le `default: true`
+    // ci-dessous afficherait un champ ISBN sur TOUS les articles Vinted,
+    // t-shirts compris — c'est exactement le défaut « Espace de stockage
+    // demandé sur un t-shirt » que ce filtre a été écrit pour corriger.
+    // `leaf` vient de getLbcCategoryPath : les icônes 📖 📚 📰 rendent
+    // ["Loisirs", "Livres"]. Un ISBN déjà rempli reste visible hors Livres —
+    // c'est visibleFields qui le garantit, et il n'est pas touché.
+    case "isbn":     return leaf === "Livres";
     default:         return true;   // etat, couleur, marque, categorie… : partout
   }
 }
