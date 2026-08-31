@@ -870,6 +870,35 @@ async function fillListingForm(job) {
     }
   }
 
+  // ── Garde-fou pré-submit FORMAT : jamais une ENCHÈRE (2026-08-31) ──────────
+  // Jobs de15fd3f/da2b67e2 (raffalepic) : « format: option "Achat immédiat"
+  // pas apparue » — la bascule du listbox exige l'hydratation Marko, morte en
+  // fenêtre jamais rendue (famille B). Le brouillon reste alors une ENCHÈRE
+  // côté eBay : la soumission produit au mieux un refus « Prix de départ »
+  // manquant, au pire une VENTE AUX ENCHÈRES avec le prix du job en mise de
+  // départ — FillSell publie à prix fixe, jamais d'enchère. ⚠️ Constat du
+  // même relevé : un input[name="price"] VISIBLE existe aussi en mode
+  // Enchères (aucun warning « introuvable » sur ces jobs) — la garde prix
+  // ci-dessus ne suffit donc pas à prouver le bon format.
+  // PREUVE POSITIVE seulement : on ne bloque que si le listbox Format se lit
+  // ET affiche « Enchères ». Introuvable = comportement d'avant (le warning
+  // de ensureAchatImmediat l'a déjà dit) — jamais un blocage sur une absence
+  // de lecture, un changement de markup eBay ne doit pas geler tout le parc.
+  const formatBtn = [...document.querySelectorAll('button[aria-haspopup="listbox"]')]
+    .find((b) => ["Enchères", "Achat immédiat"].includes(b.textContent.trim()));
+  if (formatBtn && formatBtn.textContent.trim() === "Enchères") {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "Le formulaire eBay est resté en mode « Enchères » : la bascule « Achat immédiat » " +
+        "n'a pas pris (page eBay pas réactive — fenêtre jamais affichée). Rien n'a été soumis, " +
+        "aucune enchère créée, le brouillon est conservé chez eBay.",
+      warnings,
+      unfilledRequired,
+    };
+  }
+
   // Le clic "Mettre en vente avec les frais affichés" est un engagement de
   // frais. Libellé relevé en session réelle 2026-07-07 ; on privilégie le
   // bouton mentionnant les frais, repli sur tout "Mettre en vente" hors liens

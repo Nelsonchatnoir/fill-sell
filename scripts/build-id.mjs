@@ -870,7 +870,29 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // inchangé — la promotion vers le build 0.6.11 publié (2026-08-30T20:31:09Z,
 // lu dans handler_build du parc) reste un geste séparé, sur GO.
 // Committé GIT_COMMITTER_DATE épinglée dessus.
-export const EXTENSION_LAST_COMMIT = '2026-08-31T10:57:00Z';
+// 2026-08-31T11:18:00Z = 0.6.13 : chantier « Prix de départ » eBay (job
+// de15fd3f raffalepic, 31/08 12:54 — 2e cas da2b67e2 le même jour, 0 autre
+// warning « format: » en 30 j). CAUSE ÉTABLIE par le relevé du job : la
+// bascule Enchères → Achat immédiat exige l'hydratation Marko (morte en
+// fenêtre jamais rendue, famille B) — « option pas apparue », brouillon
+// resté ENCHÈRES côté serveur, prix posé au DOM jamais parvenu au brouillon,
+// 3 clics avalés, et le repli ebayDirectPublish a soumis une enchère sans
+// prix de départ → refus. Trois pièces, chemin de dépôt eBay SEUL :
+//   1. ebay.js : garde pré-clic FORMAT — preuve POSITIVE « le listbox lit
+//      Enchères » ⇒ mise en vente NON tentée (needsUser → reprise espacée),
+//      jamais de soumission en mode enchère ; listbox introuvable = warning
+//      d'avant, jamais un blocage sur une absence de lecture ;
+//   2. background : refus du brouillon avec « Prix de départ » manquant ⇒
+//      message vrai (corriger le FORMAT avant tout geste manuel — l'ancien
+//      texte faisait créer une enchère) + last_diagnostic structuré
+//      ebay_brouillon_encheres, ajouté à CAUSES_HUMAINES_CONNUES ;
+//   3. background : anti-doublon pré-dépôt — job porteur d'ebay_draft_id ⇒
+//      titre cherché dans les annonces ACTIVES avant tout formulaire
+//      (requireTitle) ; trouvé = published avec l'URL, aucun re-dépôt.
+// PAS de pose du prix/format par le PUT delta du brouillon : seul le champ
+// `description` est MESURÉ (24/08) — on n'invente pas de structure API.
+// EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE épinglée dessus.
+export const EXTENSION_LAST_COMMIT = '2026-08-31T11:18:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

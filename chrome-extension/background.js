@@ -103,6 +103,11 @@ const CAUSES_HUMAINES_CONNUES = {
   prevol_stepup_vente:
     "REAUTH VENTE eBay : eBay exige une reconnexion de sécurité pour vendre. " +
     "Ouvre ebay.fr dans Chrome, clique « Vendre » et reconnecte-toi",
+  // 2026-08-31 (jobs de15fd3f/da2b67e2) : brouillon jamais basculé en « Achat
+  // immédiat » — eBay le refuse sans « Prix de départ » (libellé ENCHÈRES).
+  ebay_brouillon_encheres:
+    "La page eBay n'a pas réagi : le brouillon est resté au format « Enchères », " +
+    "sans prix, et eBay le refuse",
 };
 function causeHumaineConnue(job) {
   let d = job?.platform_fields?.last_diagnostic;
@@ -1691,6 +1696,40 @@ async function processJob(rawJob, accessToken) {
       }
     }
 
+    // ── Anti-doublon brouillon eBay (2026-08-31) ──────────────────────────────
+    // Un échec précédent a laissé un brouillon chez eBay ET un message qui
+    // propose de le compléter/publier à la main (ebay_draft_id consigné,
+    // famille B). Si l'utilisateur l'a FAIT pendant que le job attendait sa
+    // reprise, re-déposer créerait un DOUBLON : avant tout formulaire, on
+    // cherche le TITRE EXACT dans les annonces ACTIVES du vendeur
+    // (ebayConfirmViaActiveListings, requireTitle — jamais l'URL d'une autre
+    // annonce, leçon listing_url croisée). Trouvé → published avec l'URL,
+    // AUCUN dépôt. Introuvable → dépôt normal : navigateHomeToForm part du
+    // Hub aussi bien que de la home (son repli est une navigation directe
+    // vers /sl/list). Gate sur ebay_draft_id : seuls les restes de famille B
+    // paient ce détour — le dépôt nominal n'ajoute aucune navigation.
+    if (job.platform === "ebay" && job.platform_fields?.ebay_draft_id && job.title) {
+      const dejaEnLigne = await ebayConfirmViaActiveListings(tabId, job.title).catch(() => null);
+      if (dejaEnLigne) {
+        console.log(`[background] Job ${job.id} : annonce déjà ACTIVE chez eBay (brouillon publié à la main ?) — ${dejaEnLigne}, aucun re-dépôt`);
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          publish_proof: {
+            exit: "pre_deposit_active_listing",
+            at: new Date().toISOString(),
+            listing_url_capturee: true,
+          },
+        };
+        await updateJobStatus(accessToken, job.id, "published", {
+          error: null,
+          listing_url: dejaEnLigne,
+          platform_fields: job.platform_fields,
+        });
+        await recordRecentResult(job, "published");
+        return { status: "published", listingUrl: dejaEnLigne };
+      }
+    }
+
     if (handler.entryUrl) await navigateHomeToForm(tabId, listingUrl);
 
     // ⚠️ eBay : onglet PEINT pendant le remplissage (2026-07-12, non encore
@@ -2071,6 +2110,34 @@ async function processJob(rawJob, accessToken) {
             // affichait (fenêtre jamais rendue) — needs_user borné, avec le
             // brouillon consigné (ebay_draft_id) pour finir à la main.
             const champs = (direct.manquants ?? []).filter((m) => m.length < 60);
+            // ── « Prix de départ » = brouillon resté en ENCHÈRES (2026-08-31,
+            // jobs de15fd3f/da2b67e2 raffalepic) ─────────────────────────────
+            // « Prix de départ » est le libellé du mode ENCHÈRE chez eBay :
+            // ce manquant signe un brouillon jamais basculé en « Achat
+            // immédiat » (warning « format: option pas apparue » du même run —
+            // la bascule exige l'hydratation Marko, morte en fenêtre jamais
+            // rendue). L'ancien message conseillait de « compléter et publier
+            // à la main » : sur un brouillon ENCHÈRES, ce conseil ferait créer
+            // une VENTE AUX ENCHÈRES que FillSell n'a jamais voulue. Message
+            // dédié (le geste manuel commence par corriger le FORMAT) + cause
+            // structurée dans last_diagnostic (relue par causeHumaineConnue).
+            if (champs.some((m) => /prix de d[ée]part/i.test(m))) {
+              job.platform_fields = {
+                ...(job.platform_fields ?? {}),
+                last_diagnostic: JSON.stringify({
+                  quoi: "ebay_brouillon_encheres",
+                  detail: "publish du brouillon refusé : « Prix de départ » manquant — brouillon resté au format Enchères (bascule Achat immédiat jamais prise, hydratation morte)",
+                  at: new Date().toISOString(),
+                }),
+              };
+              const msgEncheres =
+                "Brouillon eBay resté au format « Enchères » (la page eBay n'a pas réagi) : " +
+                "eBay refuse de le publier sans prix de départ. Aucune annonce n'a été créée. " +
+                "Pour le publier à la main (« Vendre > Brouillons »), passe d'abord le format " +
+                "sur « Achat immédiat » et vérifie le prix.";
+              await rearmBounded(accessToken, job, msgEncheres);
+              return { status: "needsUser", error: msgEncheres };
+            }
             const msg =
               "Publication eBay bloquée : le clic « Mettre en vente » n'a produit aucune requête, " +
               "et la soumission directe du brouillon a été REFUSÉE par eBay" +

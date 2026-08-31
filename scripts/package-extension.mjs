@@ -124,7 +124,13 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // Conséquence : le zip 0.6.11-dd85a95 (5e correctif, reprise espacée des
 // échecs) n'a JAMAIS été téléversé et serait rejeté (même numéro) — son
 // contenu repart tel quel dans la 0.6.12, seul le manifest bouge.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11'];
+// 0.6.12 ajoutée le 31/08 : zip 4e0ec4f TÉLÉVERSÉ, EN REVIEW au CWS — pas
+// encore acceptée, mais un second 0.6.12 au contenu différent serait
+// indiscernable du zip en review (même doctrine que la 0.6.6). Le paquet
+// courant est la 0.6.13 (même contenu + chantier « Prix de départ » eBay :
+// gate pré-clic anti-Enchères, message/diagnostic du refus du brouillon,
+// anti-doublon pré-dépôt sur ebay_draft_id).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12'];
 // (Merge 27/08 : la mise en garde côté main « un zip pris sur MAIN
 // embarquerait F1 » est CLOSE — la branche est réintégrée, main est
 // redevenue l'unique ligne ; F1 réduit à la trace d'identité.)
