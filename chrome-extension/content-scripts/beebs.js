@@ -714,6 +714,29 @@ async function fillListingForm(job) {
       }
     }
 
+    // ── « Âge » : DIRE CE QUI EST RÉELLEMENT POSSIBLE (2026-08-31) ───────────
+    // Premier cas du parc, mesuré : « EAT » de Gilles Lartigot — un essai sur
+    // la nutrition pour adultes — rangé dans « Jeux, jouets et loisirs >
+    // Livres > Autres livres », où Beebs exige Âge. Le message disait
+    // « compléter Âge dans l'app » : un conseil qui fait tourner en rond quand
+    // AUCUNE valeur ne décrit l'article. Beebs est une plateforme de
+    // puériculture, et Âge y est la tranche d'âge de l'ENFANT visé (liste
+    // relevée le 19/08 sur la seule catégorie qui l'ait livrée, LEGO :
+    // 0-6 mois … 16 ans et +).
+    // ⛔ AUCUN retrait automatique de plateforme : décider qu'un article n'a
+    // pas sa place sur Beebs est un arbitrage produit, jamais une décision de
+    // handler. On NOMME la sortie — décocher Beebs pour cet article — et
+    // l'utilisateur choisit. Un article qui ne part pas doit le DIRE, pas
+    // disparaître en silence.
+    const estChampAge = /^age$/.test(
+      String(firstLabel ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase()
+    );
+    const noteAge = !estChampAge ? "" :
+      ` À savoir : « ${firstLabel} » est la tranche d'âge de l'ENFANT à qui l'article s'adresse — Beebs est une plateforme de puériculture.` +
+      (optionsChamp?.length ? ` Les seules valeurs proposées par cette catégorie sont : ${optionsChamp.slice(0, 12).join(" · ")}.` : "") +
+      " Si aucune ne décrit ton article (un livre pour adulte, un objet qui ne s'adresse pas à un enfant), c'est qu'il n'a pas sa place sur Beebs :" +
+      " décoche Beebs pour cet article et publie-le sur tes autres plateformes. Rien n'est retiré automatiquement.";
+
     // GARDE FINALE : toujours zéro option ⇒ PAS de needsUserField — un échec
     // franc et explicite vaut mieux qu'un mini-éditeur impossible. Le job
     // repart (l'app propose la relance), et le prochain passage — interstitiel
@@ -726,7 +749,8 @@ async function fillListingForm(job) {
           `Beebs exige des champs encore vides (${unfilledRequired.join(", ")}) et les valeurs autorisées de ` +
           `« ${firstLabel} » n'ont pas pu être relevées (panneau illisible même après purge de l'interstitiel). ` +
           `Aucun choix à proposer ⇒ pas de mini-éditeur (un needsUser sans options est inutilisable). ` +
-          `Relancer la publication — observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}.`,
+          `Relancer la publication — observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}.` +
+          noteAge,
         warnings,
         unfilledRequired,
         discoveredRequired: enumerated,
@@ -739,7 +763,8 @@ async function fillListingForm(job) {
       error:
         `Beebs exige des champs encore vides pour cette catégorie : ${unfilledRequired.join(", ")}. ` +
         "Compléter ces champs dans l'app (copie Beebs), puis relancer la publication. " +
-        `Observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}.`,
+        `Observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}.` +
+        noteAge,
       warnings,
       unfilledRequired,
       discoveredRequired: enumerated,
