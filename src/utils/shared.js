@@ -341,6 +341,48 @@ export function humanizeJobError(job, lang = 'fr') {
   // Message déjà humain (court, sans marqueur technique) : tel quel.
   if (!TECH_ERR_MARKERS_RE.test(raw) && raw.length <= 300) return raw;
 
+  // ── DÉBRUITAGE plutôt que remplacement (2026-08-31) ────────────────────────
+  // Le test ci-dessus est BINAIRE : un seul « HTTP 400 », ou 40 caractères de
+  // trop, et tout le message part à la poubelle au profit d'un générique.
+  // Mesuré sur le test du 31/08 (job publish Vinted, needs_user) — en base :
+  //   « Vinted a REFUSÉ la publication (réponse serveur HTTP 400) : Merci
+  //     d'entrer un numéro ISBN valide — l'annonce n'a PAS été créée. (Le
+  //     formulaire est resté sur /items/new.) — Champs exigés par le serveur
+  //     Vinted : ISBN (isbn). À faire : renseigne « ISBN » dans la copie
+  //     Vinted de l'app, puis relance la publication. »
+  //   affiché : « un imprévu technique […] enregistré pour le support ».
+  // On a payé le diagnostic et on le jetait à l'affichage, sur un message
+  // pourtant entièrement lisible : il nomme le champ ET le geste.
+  // On RETIRE donc le bruit au lieu de jeter le sens — aucune reformulation,
+  // aucun texte inventé, seulement des retraits :
+  //   · l'annexe d'observabilité (destinée au support, pas au vendeur) ;
+  //   · les incises techniques entre parenthèses (code HTTP, URL, chemin) ;
+  //   · les mentions de code HTTP nues.
+  // Si ce qui reste est propre, c'est CELA qu'on affiche. Sinon seulement, le
+  // générique véridique du bas.
+  {
+    const nettoye = raw
+      // « Observabilité: … » et « Observabilite: … » jusqu'à la fin : c'est
+      // explicitement l'annexe support (chemin de catégorie, interstitiel,
+      // fragments de DOM).
+      .replace(/\s*[—–-]?\s*Observabilit[ée]\s*:.*$/is, '')
+      // Incises entre parenthèses qui ne portent QUE de la technique.
+      .replace(/\s*\((?=[^)]*(?:HTTP\s*\d{3}|https?:\/\/|\/[a-z0-9_-]+\/))[^)]*\)/gi, '')
+      // Code HTTP nu (« réponse serveur HTTP 400 », « HTTP 400 »).
+      .replace(/\s*(?:r[ée]ponse\s+serveur\s+)?HTTP\s*\/?\s*\d{3}\s*/gi, ' ')
+      .replace(/\s{2,}/g, ' ')
+      // ⚠️ « : » VOLONTAIREMENT HORS de cette classe : en français l'espace
+      // avant le deux-points est correct, et le retirer donnait
+      // « Vinted a REFUSÉ la publication: … » — on nettoie du bruit, on
+      // n'abîme pas la typographie du message.
+      .replace(/\s+([.,;!?])/g, '$1')
+      // Ponctuation orpheline laissée par les retraits.
+      .replace(/\s*[—–-]\s*(?=[—–-])/g, ' ')
+      .replace(/^[\s—–:-]+/, '')
+      .trim();
+    if (nettoye && !TECH_ERR_MARKERS_RE.test(nettoye) && nettoye.length <= 600) return nettoye;
+  }
+
   return en
     ? `Publishing on ${name} was interrupted by a technical issue. Retry from the item; the full detail has been recorded for support.`
     : `La publication sur ${name} a été interrompue par un imprévu technique. Relancer depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;

@@ -943,7 +943,24 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 //     à 17:49, zéro refus).
 // EXTENSION_MIN_BUILD inchangé : il se lit dans le PAQUET PUBLIÉ, et la
 // promotion vers le build 0.6.11 (2026-08-30T20:31:09Z) reste EN ATTENTE DE GO.
-export const EXTENSION_LAST_COMMIT = '2026-08-31T16:48:15Z';
+// 2026-08-31T17:35:53Z = f52178e (0.6.14) : ISBN JAMAIS LU sur le chemin
+// PUBLICATION — second bug, distinct du mur de republication. L'étape ISBN se
+// garde sur fields.isbn, alimenté par la seule capture de republication ;
+// l'app, elle, écrit dans vintedAspects.isbn, donc l'étape ne tournait PAS et
+// rien n'était posé ni armé (mesuré : job du 31/08 19:23, HTTP 400 field
+// "isbn", diagnostic sans « pose ISBN »). `isbn` ajouté au pont
+// vintedAspects → champ dédié ET à handledCodes (#isbn est une saisie libre,
+// la boucle générique le reposait en liste fermée).
+// 2026-08-31T17:39:46Z = 3bac54e (0.6.14) : message needs_user Beebs sur le
+// champ « Âge ». Premier cas du parc — un essai sur la nutrition pour adultes
+// rangé dans « Jeux, jouets et loisirs > Livres > Autres livres », où Beebs
+// exige une tranche d'âge d'ENFANT. « Compléter dans l'app » faisait tourner
+// en rond : le message nomme désormais le champ, les valeurs réellement
+// proposées, et la sortie (décocher Beebs pour cet article).
+// ⛔ AUCUN retrait automatique de plateforme — arbitrage produit, pas handler.
+// EXTENSION_MIN_BUILD inchangé (il se lit dans le paquet PUBLIÉ ; promotion
+// vers le build 0.6.11 = 2026-08-30T20:31:09Z toujours EN ATTENTE DE GO).
+export const EXTENSION_LAST_COMMIT = '2026-08-31T17:39:46Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

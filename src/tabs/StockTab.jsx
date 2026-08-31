@@ -214,13 +214,33 @@ const RELANCE_MANUELLE_COOLDOWN_MS = 10 * 60 * 1000;
 // ARTICLE+PLATEFORME (comptées par le marqueur relance_copie_de, qui survit
 // aux jobs contrairement au compteur) ; cooldown 10 min toutes relances
 // confondues.
+// ── needs_user ADMIS le 2026-08-31 (le message promettait un bouton absent) ───
+// Constat : le job Vinted du test « EAT » finit en needs_user avec, en base,
+// « … puis relance la publication » — et AUCUN bouton nulle part. La pastille
+// « Échec » ne route que les 'failed', et cette fonction rendait null hors
+// failed/cancelled. L'utilisateur lisait une consigne inexécutable.
+// Un needs_user est VIVANT : sa réservation tient toujours, sa capture aussi.
+// Il se relance donc en mode 'repend' — le job repart tel quel en pending,
+// ZÉRO débit. ⛔ Jamais en mode 'copie' : copie INSÈRE un job neuf via
+// spend_coins_and_publish, ce qui débiterait une seconde fois un article déjà
+// payé et laisserait deux jobs vivants sur la même plateforme.
 function relanceManuelleInfo(job, jobsArticle) {
-  if (!['failed', 'cancelled'].includes(job?.status)) return null;
+  if (!['failed', 'cancelled', 'needs_user'].includes(job?.status)) return null;
   if ((job?.action ?? 'publish') !== 'publish') return null;
   if (job?.platform_fields?.listing_url_abandon) return null;
   const pf = job?.platform_fields ?? {};
   const faitesJob = Number(pf.relances_manuelles) || 0;
   const derniereJob = Date.parse(pf.derniere_relance_manuelle ?? '');
+
+  // needs_user : relance SIMPLE, sans test de motif récupérable — c'est
+  // précisément l'utilisateur qui vient de corriger la cause nommée dans le
+  // message (le champ manquant). Le job est vivant : re-pend, zéro débit.
+  // Mêmes plafond et cooldown que les autres relances manuelles.
+  if (job.status === 'needs_user') {
+    if (faitesJob >= RELANCE_MANUELLE_MAX) return { mode: 'repend', epuise: true };
+    const attenteMs = Number.isFinite(derniereJob) ? derniereJob + RELANCE_MANUELLE_COOLDOWN_MS - Date.now() : 0;
+    return { mode: 'repend', epuise: false, attenteMin: attenteMs > 0 ? Math.ceil(attenteMs / 60000) : 0 };
+  }
 
   // Mode re-pend (comportement d'origine).
   if (job.status === 'failed'
@@ -965,9 +985,41 @@ function isListingUrlRecoverable(platform, pubJob) {
 // (FILLSELL_PROGRESS, background.js:253) ne remonte JAMAIS en base — il n'est
 // émis que vers le popup, et seulement sur PUBLISH_NOW. L'afficher ici
 // demanderait de persister la progression à chaque étape ; reporté.
-function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose }) {
+function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose, onRelancer, relanceBusy }) {
   const fr = lang !== "en";
-  const diag = diagnostiquerExtension(extensionStatus, lang);
+  // ── LE BANDEAU DOIT PARLER DE CET ARTICLE (2026-08-31) ────────────────────
+  // diagnostiquerExtension ne décrit que la SANTÉ DE L'EXTENSION : dès qu'elle
+  // a donné signe de vie, il annonçait en vert « En file d'attente —
+  // la publication part au prochain passage », y compris au-dessus de deux
+  // plateformes en échec. Constaté sur le test du 31/08 : bandeau vert,
+  // Vinted et Beebs en « À compléter » juste en dessous. Le bandeau
+  // contredisait la modale qu'il coiffe.
+  // Règle : l'extension n'a le dernier mot que s'il reste quelque chose à
+  // attendre. Si AUCUN job de cet article n'est en file (pending/processing),
+  // rien ne partira au prochain passage — on le dit.
+  const enFile = jobs.some(j => j.status === "pending" || j.status === "processing");
+  const aCompleter = jobs.filter(j => j.status === "needs_user").length;
+  const enEchec = jobs.filter(j => j.status === "failed").length;
+  const diagExt = diagnostiquerExtension(extensionStatus, lang);
+  const diag = (!enFile && (aCompleter || enEchec))
+    ? {
+        ton: enEchec && !aCompleter ? "rouge" : "orange",
+        titre: aCompleter
+          ? (fr ? "En attente de toi" : "Waiting on you")
+          : (fr ? "Publication arrêtée" : "Publishing stopped"),
+        detail: fr
+          ? `Rien ne part au prochain passage : ${
+              aCompleter ? `${aCompleter} plateforme${aCompleter > 1 ? "s attendent" : " attend"} une information de ta part` : ""
+            }${aCompleter && enEchec ? ", et " : ""}${
+              enEchec ? `${enEchec} ${enEchec > 1 ? "sont arrêtées" : "est arrêtée"}` : ""
+            }. Le détail est ci-dessous, plateforme par plateforme.`
+          : `Nothing will go on the next pass: ${
+              aCompleter ? `${aCompleter} platform${aCompleter > 1 ? "s need" : " needs"} information from you` : ""
+            }${aCompleter && enEchec ? ", and " : ""}${
+              enEchec ? `${enEchec} stopped` : ""
+            }. Details per platform below.`,
+      }
+    : diagExt;
   const TONS = {
     vert:   { bg:"#ECFDF5", bord:"#A7F3D0", texte:"#047857" },
     orange: { bg:"#FFF7ED", bord:"#FED7AA", texte:"#7C2D12" },
@@ -1035,6 +1087,34 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose 
                 {j.error && (
                   <div style={{ fontSize:11.5, lineHeight:1.45, color:"#8C2F28", marginTop:6 }}>{humanizeJobError(j, lang)}</div>
                 )}
+                {/* ── LE BOUTON QUE LE MESSAGE PROMETTAIT (2026-08-31) ────────
+                    « Relancer depuis la fiche de l'article » s'affichait sans
+                    qu'aucun bouton n'existe : la pastille « Échec » ne route
+                    que les 'failed', et ces jobs-ci sont en 'needs_user'.
+                    Soit le bouton est là, soit le message ne le promet pas —
+                    il est là. Mode 'repend' seul : le job repart tel quel,
+                    ZÉRO Pépite (sa réservation n'a jamais été soldée). */}
+                {(() => {
+                  const info = onRelancer ? relanceManuelleInfo(j, jobs) : null;
+                  if (!info || info.mode !== "repend") return null;
+                  const bloque = info.epuise || info.attenteMin > 0 || relanceBusy;
+                  return (
+                    <button
+                      onClick={() => onRelancer(j)}
+                      disabled={bloque}
+                      style={{ marginTop:8, width:"100%", padding:"8px 12px", borderRadius:10, border:"none",
+                        background: bloque ? "#E7E3D8" : "linear-gradient(120deg,#2F9E90,#1B6E62)",
+                        color: bloque ? "#8A938F" : "#fff", fontSize:12.5, fontWeight:700,
+                        fontFamily:"inherit", cursor: bloque ? "default" : "pointer" }}
+                    >
+                      {info.epuise
+                        ? (fr ? "Relances épuisées pour ce job" : "No relaunch left for this job")
+                        : info.attenteMin > 0
+                          ? (fr ? `Relancer dans ${info.attenteMin} min` : `Relaunch in ${info.attenteMin} min`)
+                          : (fr ? "🔁 Relancer maintenant" : "🔁 Relaunch now")}
+                    </button>
+                  );
+                })()}
               </div>
             );
           })}
@@ -3770,15 +3850,19 @@ const StockTab = memo(function StockTab({
       pf.needsUserAttempts = 0;
       pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
       pf.derniere_relance_manuelle = new Date().toISOString();
-      // CAS sur le statut : on ne relance QUE depuis failed — si le job a bougé
-      // entre-temps (régénéré, reparti), 0 ligne et on le dit. .select()
-      // obligatoire après un update client (règle RLS du 30/07) : sans lui,
-      // une policy silencieuse ressemble à un succès.
+      // CAS sur le statut : on relance depuis l'état LU (failed, cancelled ou
+      // needs_user depuis le 31/08) — si le job a bougé entre-temps (régénéré,
+      // reparti), 0 ligne et on le dit. Le garde-fou d'origine était écrit
+      // `.eq('status','failed')` en dur ; le lier au statut effectivement lu
+      // garde exactement la même protection contre la course, sans figer la
+      // liste des états relançables à deux endroits. .select() obligatoire
+      // après un update client (règle RLS du 30/07) : sans lui, une policy
+      // silencieuse ressemble à un succès.
       const { data, error } = await supabase
         .from('cross_post_jobs')
         .update({ status: 'pending', error: null, platform_fields: pf })
         .eq('id', job.id)
-        .eq('status', 'failed')
+        .eq('status', job.status)
         .select('id');
       if (error) {
         setRelanceMsg(lang === 'en' ? `Relaunch failed: ${error.message}` : `Relance impossible : ${error.message}`);
@@ -6602,6 +6686,8 @@ const StockTab = memo(function StockTab({
           pausedSet={pausedSet}
           extensionStatus={extensionStatus}
           onClose={()=>setJobStatusItem(null)}
+          onRelancer={(j)=>relancerJobEchoue(j,'repend')}
+          relanceBusy={relanceBusy}
         />
       )}
       {/* alreadyPublished : plateformes DÉJÀ en ligne pour cet article. Le stepper
