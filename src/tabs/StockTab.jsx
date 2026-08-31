@@ -133,6 +133,43 @@ function failJobAction(job, lang) {
   return null;
 }
 
+// ── Relance MANUELLE d'un job échoué récupérable (2026-08-31) ─────────────────
+// L'utilisateur SAIT quand il vient de se reconnecter ou de passer un
+// challenge : il ne doit ni attendre la reprise espacée (5/15/30/60 min,
+// dd85a95), ni régénérer l'annonce (6 Pépites) pour un job qui contient déjà
+// tout. La relance = UPDATE status='pending', error=null — rien d'autre, comme
+// les 3 relances faites à la main en base le 31/08 (toutes abouties).
+// SÛRETÉ PÉPITE (établie AVANT de coder, migration 20260805000000 l. 26-27) :
+// le trigger settle_reservation a déjà soldé la réservation au passage en
+// failed (reservation_settled_at posé) — un job relancé qui finit publié « ne
+// re-capture rien... soldé une fois pour toutes. Perte bornée » : AUCUN débit
+// possible à la relance, par construction.
+// Causes RÉCUPÉRABLES seulement, par MOTIF ANCRÉ en tête du message stocké
+// (jamais une heuristique large) : challenge anti-robot, reconnexion vente
+// eBay, connexion requise, interruption technique (canal coupé, bfcache) —
+// les têtes que posent les content scripts ET les finals dd85a95 (qui gardent
+// la cause en tête). Les échecs DÉFINITIFS ne matchent pas : refus eBay
+// (« Publication eBay NON aboutie / REFUSÉE »), refus serveur 400, catégorie
+// manquante… — relancer un refus de contenu en boucle attire l'anti-bot.
+const RELANCE_RECUPERABLE_RE =
+  /^(CHALLENGE\s|REAUTH VENTE|Connexion\s+\S+\s+requise|Publication interrompue|Onglet suspendu par Chrome)/i;
+const RELANCE_MANUELLE_MAX = 3;
+const RELANCE_MANUELLE_COOLDOWN_MS = 10 * 60 * 1000;
+function relanceManuelleInfo(job) {
+  if (job?.status !== 'failed') return null;
+  if ((job?.action ?? 'publish') !== 'publish') return null;
+  // Échec « publication sans lien » (cron) : le message ORDONNE de vérifier
+  // ses annonces AVANT de republier — relancer ici risque le doublon.
+  if (job?.platform_fields?.listing_url_abandon) return null;
+  if (!RELANCE_RECUPERABLE_RE.test(String(job?.error ?? ''))) return null;
+  const pf = job?.platform_fields ?? {};
+  const faites = Number(pf.relances_manuelles) || 0;
+  if (faites >= RELANCE_MANUELLE_MAX) return { epuise: true, faites };
+  const derniere = Date.parse(pf.derniere_relance_manuelle ?? '');
+  const attenteMs = Number.isFinite(derniere) ? derniere + RELANCE_MANUELLE_COOLDOWN_MS - Date.now() : 0;
+  return { epuise: false, faites, attenteMin: attenteMs > 0 ? Math.ceil(attenteMs / 60000) : 0 };
+}
+
 // ── Design 2026 (Lens / navbar) — liste des articles en stock ──
 // Maquette validée : row grid [tuile | infos | prix+actions], palette canvas/paper.
 // CSS partagé avec VentesTab via buildCardCss (src/utils/shared.js).
@@ -3540,6 +3577,55 @@ const StockTab = memo(function StockTab({
   // Job échoué dont on montre l'erreur complète + action directe (remplace le
   // window.alert du 19/07 — chantier onboarding 2026-07-27).
   const [failJobModal, setFailJobModal] = useState(null);
+  // Relance manuelle d'un job échoué récupérable (2026-08-31) — voir
+  // relanceManuelleInfo en tête de fichier pour le périmètre et la sûreté.
+  const [relanceBusy, setRelanceBusy] = useState(false);
+  const [relanceMsg, setRelanceMsg] = useState(null);
+  useEffect(() => { setRelanceMsg(null); }, [failJobModal?.id]);
+  async function relancerJobEchoue(job) {
+    if (relanceBusy) return;
+    setRelanceBusy(true); setRelanceMsg(null);
+    try {
+      const pf = { ...(job.platform_fields ?? {}) };
+      // Une relance manuelle ANNULE la reprise automatique en attente (elle ne
+      // s'y ajoute pas) et ouvre un nouveau cycle de reprises espacées :
+      // l'extension repart de zéro sur le budget dd85a95 (5 essais, 5/15/30/60).
+      delete pf.next_action_after;
+      pf.needsUserAttempts = 0;
+      pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
+      pf.derniere_relance_manuelle = new Date().toISOString();
+      // CAS sur le statut : on ne relance QUE depuis failed — si le job a bougé
+      // entre-temps (régénéré, reparti), 0 ligne et on le dit. .select()
+      // obligatoire après un update client (règle RLS du 30/07) : sans lui,
+      // une policy silencieuse ressemble à un succès.
+      const { data, error } = await supabase
+        .from('cross_post_jobs')
+        .update({ status: 'pending', error: null, platform_fields: pf })
+        .eq('id', job.id)
+        .eq('status', 'failed')
+        .select('id');
+      if (error) {
+        setRelanceMsg(lang === 'en' ? `Relaunch failed: ${error.message}` : `Relance impossible : ${error.message}`);
+        return;
+      }
+      if (!data?.length) {
+        setRelanceMsg(lang === 'en'
+          ? 'This job already changed state — close and check its status.'
+          : 'Ce job a déjà changé d’état entre-temps — ferme et regarde son statut.');
+        return;
+      }
+      setJobsByInventaire(prev => {
+        const next = {};
+        for (const [inv, list] of Object.entries(prev)) {
+          next[inv] = list.map(j => j.id === job.id ? { ...j, status: 'pending', error: null, platform_fields: pf } : j);
+        }
+        return next;
+      });
+      setFailJobModal(null);
+    } finally {
+      setRelanceBusy(false);
+    }
+  }
   const [voiceInputMode, setVoiceInputMode] = useState('write');
   const [examplesOpen, setExamplesOpen] = useState(false);
 
@@ -6123,6 +6209,43 @@ const StockTab = memo(function StockTab({
                 {a.label} ↗
               </a>
             ):null;})()}
+            {/* Relance manuelle (2026-08-31) : le job repart TEL QUEL en
+                pending — pas de régénération, pas de débit (réservation déjà
+                soldée au failed, capture sautée par construction). Offerte
+                UNIQUEMENT sur les causes récupérables — relanceManuelleInfo. */}
+            {(()=>{
+              const r=relanceManuelleInfo(failJobModal);
+              if(!r)return null;
+              if(r.epuise)return(
+                <div style={{fontSize:12,color:"#8A8578",textAlign:"center",marginBottom:8,lineHeight:1.5}}>
+                  {lang==="en"
+                    ?`${RELANCE_MANUELLE_MAX} manual relaunches already used for this job — if it still fails, the cause is elsewhere.`
+                    :`${RELANCE_MANUELLE_MAX} relances manuelles déjà utilisées pour ce job — s'il échoue encore, la cause est ailleurs.`}
+                </div>
+              );
+              const enAttente=r.attenteMin>0;
+              return(
+                <>
+                  <button disabled={relanceBusy||enAttente}
+                    onClick={()=>relancerJobEchoue(failJobModal)}
+                    style={{width:"100%",padding:"12px",borderRadius:999,border:"1px solid #2F9E90",background:enAttente?"#F4F2EC":"#fff",color:enAttente?"#8A8578":"#1B6E62",fontSize:14,fontWeight:700,cursor:relanceBusy||enAttente?"default":"pointer",fontFamily:"inherit",marginBottom:6,opacity:relanceBusy?.6:1}}>
+                    {relanceBusy
+                      ?(lang==="en"?"Relaunching…":"Relance…")
+                      :enAttente
+                        ?(lang==="en"?`Relaunched recently — wait ~${r.attenteMin} min`:`Relancé il y a peu — patiente ~${r.attenteMin} min`)
+                        :(lang==="en"?"🔁 Relaunch now":"🔁 Relancer maintenant")}
+                  </button>
+                  <div style={{fontSize:11,color:"#8A8578",textAlign:"center",marginBottom:8,lineHeight:1.5}}>
+                    {lang==="en"
+                      ?"Once the cause above is fixed. The job restarts as-is — nothing regenerated, no Nugget charged."
+                      :"Une fois la cause ci-dessus réglée. Le job repart tel quel — rien de régénéré, aucune Pépite débitée."}
+                  </div>
+                  {relanceMsg&&(
+                    <div style={{fontSize:12,color:"#B0645A",fontWeight:600,textAlign:"center",marginBottom:8}}>{relanceMsg}</div>
+                  )}
+                </>
+              );
+            })()}
             <button onClick={()=>setFailJobModal(null)}
               style={{width:"100%",padding:"11px",borderRadius:999,background:"#fff",border:"1px solid #E7E3D8",fontSize:13.5,fontWeight:600,color:"#6B7A75",cursor:"pointer",fontFamily:"inherit"}}>
               {lang==="en"?"Close":"Fermer"}
