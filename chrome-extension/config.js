@@ -39,6 +39,13 @@ const FILLSELL_CONFIG = {
     // poll (toutes les 2 min) quand le token relayé est mort de toute façon.
     BOOTSTRAP_LAST_FAIL: "fillsell_bootstrap_last_fail",
     LAST_POLL: "fillsell_last_poll",
+    // Compteur d'essais de la republication AUTO, par article (2026-08-31) :
+    // { "<user_id>:<vinted_item_id>": { n, premier_le, dernier_le, motif,
+    //   ecarte_jusqu_a } }. C'est ce qui permet à la file séquentielle de
+    // SAUTER un article qui ne passe pas au lieu de rester bloquée dessus.
+    // Purgé à 7 jours à chaque écriture. Écarter n'efface RIEN : ni l'annonce
+    // Vinted, ni la ligne d'inventaire, ni les captures.
+    REPUBLISH_AUTO_ESSAIS: "fillsell_republish_auto_essais",
     // Jobs terminés récemment par le poll de fond (Sujet 5, 2026-07-11) :
     // { [jobId]: { platform, status, title, inventaire_id, annonceKey, ts } },
     // purgé à 30 min — lu par le popup pour afficher "Publié" après coup.

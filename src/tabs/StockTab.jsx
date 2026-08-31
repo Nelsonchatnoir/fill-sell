@@ -2196,6 +2196,43 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 // Pro (avantage de FONCTIONNALITÉ, pas de prix). Si le compte cesse d'être
 // Pro, le background coupe proprement (arret_motif='plan_non_pro') — ce bloc
 // AFFICHE ce motif.
+// ── Causes de pause de la republication auto (2026-08-31) ────────────────────
+// Ce bloc n'affichait QUE 'pepites_insuffisantes' — le seul motif que le RPC
+// savait poser. Tout le reste tombait dans le vide : le 30/08, une garde
+// serveur a refusé la republication de tout le parc à jour et l'écran a
+// continué d'annoncer « ON — N éligibles » pendant 38 heures.
+// Mêmes clés, même effacement au premier succès : on se contente d'AFFICHER
+// tout ce qui y est écrit, et un code inconnu s'affiche tel quel plutôt que de
+// redevenir un silence.
+const texteErreurRepublishAuto = (code, fr) => ({
+  pepites_insuffisantes: fr
+    ? 'La republication automatique est en pause : plus assez de Pépites (1 Pépite par annonce). Elle reprendra toute seule dès que ton solde le permettra — recharge ou attends tes Pépites mensuelles.'
+    : 'Automatic reposting is paused: not enough Nuggets (1 Nugget per listing). It will resume on its own as soon as your balance allows — top up or wait for your monthly Nuggets.',
+  maintenance_serveur: fr
+    ? "La republication automatique est en pause : elle est bloquée côté serveur. Ce n'est pas ton compte, tes annonces sont intactes et aucune Pépite n'a été débitée. Elle repartira toute seule dès que c'est rétabli."
+    : 'Automatic reposting is paused: it is blocked on our side. Nothing to do with your account — your listings are untouched and no Nuggets were charged. It will resume on its own once fixed.',
+  article_ecarte: fr
+    ? "Une annonce n'a pas pu être republiée après 3 essais : elle a été mise de côté pour 24 h et la file est passée à la suivante. Ton annonce est toujours en ligne, rien n'a été supprimé et aucune Pépite n'a été débitée."
+    : 'One listing failed to repost after 3 attempts: it was set aside for 24 h and the queue moved on. Your listing is still online, nothing was deleted and no Nuggets were charged.',
+  plafond_auto_atteint: fr
+    ? "Le plafond que tu as fixé pour aujourd'hui est atteint. La republication automatique reprendra demain."
+    : 'Your daily cap for today has been reached. Automatic reposting will resume tomorrow.',
+  extension_trop_ancienne: fr
+    ? "La republication automatique est en pause : ta version de l'extension Chrome n'est pas acceptée. Chrome la met à jour tout seul, la reprise est automatique."
+    : 'Automatic reposting is paused: your Chrome extension version is not accepted. Chrome updates it on its own, and reposting resumes automatically.',
+  extension_stale: fr
+    ? "La republication automatique est en pause : ton extension FillSell ne s'est pas manifestée depuis plus d'une semaine. Ouvre Chrome sur ton ordinateur pour la réveiller."
+    : "Automatic reposting is paused: your FillSell extension hasn't been seen for over a week. Open Chrome on your computer to wake it up.",
+  extension_required: fr
+    ? "La republication automatique a besoin de l'extension Chrome FillSell sur un ordinateur."
+    : 'Automatic reposting needs the FillSell Chrome extension on a computer.',
+  auto_reserve_pro: fr
+    ? "La republication automatique est réservée au plan Pro."
+    : 'Automatic reposting is a Pro plan feature.',
+}[code] ?? (fr
+  ? `La republication automatique est en pause (${code}). Tes annonces sont intactes et aucune Pépite n'a été débitée. Écris-nous si ça dure.`
+  : `Automatic reposting is paused (${code}). Your listings are untouched and no Nuggets were charged. Contact us if it lasts.`));
+
 function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);          // republish_auto de platform_settings
@@ -2362,11 +2399,9 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
             : 'Automation switched itself off: your account is no longer Pro. Re-enable it in one click once you are Pro again.'}
         </div>
       )}
-      {cfg?.derniere_erreur === 'pepites_insuffisantes' && (
+      {cfg?.derniere_erreur && (
         <div style={{ fontSize: 12, color: '#8C2F28', background: '#FBEDEC', border: '1px solid #EFC2BE', borderRadius: 10, padding: '8px 10px', lineHeight: 1.5 }}>
-          {fr
-            ? 'La republication automatique est en pause : plus assez de Pépites (1 Pépite par annonce). Elle reprendra toute seule dès que ton solde le permettra — recharge ou attends tes Pépites mensuelles.'
-            : 'Automatic reposting is paused: not enough Nuggets (1 Nugget per listing). It will resume on its own as soon as your balance allows — top up or wait for your monthly Nuggets.'}
+          {texteErreurRepublishAuto(cfg.derniere_erreur, fr)}
         </div>
       )}
       {actif ? (

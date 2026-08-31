@@ -10405,6 +10405,160 @@ async function processRepublishJob(job, accessToken) {
 // arret_motif:'plan_non_pro', lu par l'UI) — jamais une série d'échecs muets.
 let autoRepublishBusy = false;
 
+// ── É6-bis : ESSAIS PAR ARTICLE ET ÉCART DE FILE (2026-08-31) ────────────────
+// Défaut de fond corrigé ce jour (cas josephinecerni) : la file auto est
+// SÉQUENTIELLE — annonce la plus ancienne d'abord — et n'avait AUCUN moyen de
+// sauter. Un article qui ne passait pas restait en tête indéfiniment et tout
+// ce qui était derrière ne partait jamais : 143 captures du MÊME article en
+// une journée, 38 h à 0 republication, et pas un signal à l'utilisatrice.
+// Trois règles, pas une de plus :
+//  1. un compteur d'essais PAR ARTICLE, BORNÉ DANS LE TEMPS — la série expire
+//     au bout de FENETRE_MS, un article n'est jamais condamné par des échecs
+//     vieux d'une semaine ;
+//  2. au 3e essai perdu l'article est ÉCARTÉ pour ECART_MS et la file passe au
+//     suivant. Écarté = SAUTÉ à la sélection, jamais supprimé : ni l'annonce
+//     Vinted, ni la ligne d'inventaire, ni les captures ne sont touchées, et
+//     l'écart expire tout seul — l'article retentera le lendemain ;
+//  3. le motif est ÉCRIT (derniere_erreur du réglage, que l'app lit), pas
+//     seulement consolé.
+// ⚠️ CE QUI N'INCRÉMENTE PAS, et c'est le point qui compte. Un refus qui
+// concerne LE COMPTE et non l'article — plus de Pépites, plafond atteint,
+// extension jugée trop ancienne, maintenance serveur, réseau — ne dit RIEN de
+// l'article. Compter là-dessus écarterait la boutique entière, un article par
+// cycle, pour une cause qui n'a rien à voir avec eux, et le jour où la cause
+// tombe la file serait vide alors que tout est republiable. Ces refus-là
+// ARRÊTENT le cycle et s'écrivent dans derniere_erreur, compteur intact.
+// Seuls comptent les refus IMPUTABLES À L'ARTICLE (capture impossible ou
+// incomplète, article sans photo, identifiant invalide, cadence propre à cet
+// article).
+const REPUBLISH_AUTO_MAX_ESSAIS = 3;
+const REPUBLISH_AUTO_FENETRE_MS = 24 * 3_600_000; // durée de vie d'une série d'essais
+const REPUBLISH_AUTO_ECART_MS   = 24 * 3_600_000; // durée de l'écart, puis nouvelle chance
+const REPUBLISH_AUTO_OUBLI_MS   = 7 * 24 * 3_600_000;
+
+// Refus qui parlent DU COMPTE (cf. bandeau). `insufficient_coins` y figure
+// sous le nom que le RPC écrit déjà lui-même dans derniere_erreur.
+const REPUBLISH_AUTO_REFUS_COMPTE = new Set([
+  "pepites_insuffisantes", "plafond_auto_atteint", "auto_reserve_pro",
+  "extension_required", "extension_stale", "extension_trop_ancienne",
+  "price_not_configured", "unauthorized", "maintenance_serveur", "erreur_serveur",
+]);
+// Le RPC pose lui-même 'pepites_insuffisantes' pour ce refus : on garde SON
+// vocabulaire, sinon deux mots diraient la même chose et l'app en afficherait un.
+const REPUBLISH_AUTO_ALIAS = { insufficient_coins: "pepites_insuffisantes" };
+
+const cleEssaiAuto = (userId, itemId) => `${userId}:${itemId}`;
+
+async function lireEssaisAuto() {
+  const cle = FILLSELL_CONFIG.STORAGE_KEYS.REPUBLISH_AUTO_ESSAIS;
+  const st = await chrome.storage.local.get(cle).catch(() => null);
+  const brut = st?.[cle];
+  return brut && typeof brut === "object" ? brut : {};
+}
+
+async function ecrireEssaisAuto(essais) {
+  const cle = FILLSELL_CONFIG.STORAGE_KEYS.REPUBLISH_AUTO_ESSAIS;
+  const limite = Date.now() - REPUBLISH_AUTO_OUBLI_MS;
+  const propre = {};
+  for (const [k, v] of Object.entries(essais ?? {})) {
+    if ((Date.parse(v?.dernier_le ?? "") || 0) > limite) propre[k] = v;
+  }
+  await chrome.storage.local.set({ [cle]: propre })
+    .catch((e) => console.warn("[republish-auto] compteur d'essais non persisté :", String(e?.message ?? e)));
+}
+
+function estEcarteAuto(essais, userId, itemId) {
+  const e = essais?.[cleEssaiAuto(userId, itemId)];
+  return (Date.parse(e?.ecarte_jusqu_a ?? "") || 0) > Date.now();
+}
+
+// Un essai perdu imputable à l'article. Rend le motif d'écart si le compteur
+// vient d'être épuisé, sinon null (l'article reste dans la file).
+function compterEchecAuto(essais, userId, itemId, motif) {
+  const cle = cleEssaiAuto(userId, itemId);
+  const maintenant = Date.now();
+  const e = essais[cle];
+  // Série VIVANTE seulement : au-delà de la fenêtre, on repart de zéro. C'est
+  // ce qui borne le compteur dans le temps (règle 1).
+  const vivante = e && (maintenant - (Date.parse(e.premier_le ?? "") || 0)) < REPUBLISH_AUTO_FENETRE_MS;
+  const n = (vivante ? Number(e.n) || 0 : 0) + 1;
+  const suivant = {
+    n,
+    premier_le: vivante ? e.premier_le : new Date(maintenant).toISOString(),
+    dernier_le: new Date(maintenant).toISOString(),
+    motif: String(motif ?? "").slice(0, 300),
+    ecarte_jusqu_a: n >= REPUBLISH_AUTO_MAX_ESSAIS
+      ? new Date(maintenant + REPUBLISH_AUTO_ECART_MS).toISOString()
+      : null,
+  };
+  essais[cle] = suivant;
+  return suivant.ecarte_jusqu_a ? suivant.motif : null;
+}
+
+// ── Le silence, corrigé (2026-08-31) ─────────────────────────────────────────
+// MÊME mécanisme que celui du RPC, pas un nouveau : les deux mêmes clés
+// (derniere_erreur, derniere_erreur_le) sous platform_settings.vinted
+// .republish_auto, que le RPC efface déjà au premier succès auto — et qu'on
+// efface aussi ici, ceinture et bretelles, dès qu'une republication repart.
+// Lecture-fusion-écriture obligatoire : platform_settings porte aussi
+// l'adresse Leboncoin, jamais d'écrasement global.
+// Ré-écriture évitée quand le code n'a pas bougé : sinon c'est un PATCH du
+// profil toutes les 2 minutes pour redire la même chose.
+async function marquerErreurAuto(token, userId, ps, cfg, code) {
+  if (!code || cfg?.derniere_erreur === code) return;
+  const base = ps ?? {};
+  const next = {
+    ...base,
+    vinted: { ...(base.vinted ?? {}), republish_auto: {
+      ...(cfg ?? {}), derniere_erreur: code, derniere_erreur_le: new Date().toISOString(),
+    } },
+  };
+  await restRequest(`profiles?id=eq.${userId}`, token, {
+    method: "PATCH", body: JSON.stringify({ platform_settings: next }),
+  }).catch((e) => console.warn("[republish-auto] cause non écrite dans le réglage :", String(e?.message ?? e)));
+}
+
+async function effacerErreurAuto(token, userId, ps, cfg) {
+  if (!cfg || !("derniere_erreur" in cfg)) return;
+  const reste = { ...cfg };
+  delete reste.derniere_erreur;
+  delete reste.derniere_erreur_le;
+  const base = ps ?? {};
+  const next = { ...base, vinted: { ...(base.vinted ?? {}), republish_auto: reste } };
+  await restRequest(`profiles?id=eq.${userId}`, token, {
+    method: "PATCH", body: JSON.stringify({ platform_settings: next }),
+  }).catch((e) => console.warn("[republish-auto] marqueur non effacé :", String(e?.message ?? e)));
+}
+
+// Appel du RPC AVEC son motif. restRequest lève sans le corps, or c'est
+// exactement le corps qui dit pourquoi — et un refus levé côté serveur (garde
+// en trigger, contrainte) n'a AUCUNE autre trace : la transaction est annulée,
+// donc pas de job, pas de Pépite, pas d'usage_logs, rien dans l'app.
+// C'est ce qui a rendu l'incident du 30/08 invisible pendant 38 h.
+// ⚠️ On appelle et on RAPPORTE : aucune garde du RPC n'est recopiée ici.
+async function appelerRpcRepublishAuto(token, cand) {
+  const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/rpc/spend_coins_and_republish`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY,
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({
+      p_inventaire_id: cand.id, p_vinted_item_id: String(cand.vinted_item_id), p_source: "auto",
+    }),
+  });
+  const corps = await res.json().catch(() => null);
+  if (res.ok) return { allowed: corps?.allowed === true, code: corps?.reason ?? null };
+  const msg = String(corps?.message ?? corps?.error ?? `HTTP ${res.status}`);
+  return {
+    allowed: false,
+    code: /REPUBLISH_MAINTENANCE/.test(msg) ? "maintenance_serveur" : "erreur_serveur",
+    message: msg.slice(0, 300),
+  };
+}
+
 async function maybeAutoRepublish(session) {
   if (autoRepublishBusy) return;
   autoRepublishBusy = true;
@@ -10481,9 +10635,14 @@ async function maybeAutoRepublish(session) {
       `&photos->0=not.is.null` +
       `&or=(vinted_status.is.null,vinted_status.not.in.(hidden,draft))` +
       `&disparu_le=is.null&listed_at_guess=lt.${encodeURIComponent(seuil)}` +
-      `&select=id,vinted_item_id&order=listed_at_guess.asc&limit=10`,
+      // Fenêtre élargie de 10 à 50 (2026-08-31) : avec le mécanisme d'écart,
+      // la tête de file peut porter plusieurs articles sautés. À 10, une série
+      // d'écarts suffisait à re-fabriquer exactement la panne qu'on corrige —
+      // plus aucun candidat visible alors que la boutique en regorge.
+      `&select=id,vinted_item_id&order=listed_at_guess.asc&limit=50`,
       token, { headers: { Prefer: "return=representation" } },
     );
+    const essais = await lireEssaisAuto();
 
     // ── Garde snapshot rendue SATISFAISABLE (2026-08-23, option a) ──────────
     // Les relevés (vinted_listing_snapshots) n'existent que depuis le 03/08 :
@@ -10507,7 +10666,13 @@ async function maybeAutoRepublish(session) {
       Date.parse(premierReleveCompte[0].captured_on) <= Date.now() - ageJours * 86_400_000,
     );
 
+    let sautes = 0;
     for (const c of cands ?? []) {
+      // ÉCARTÉ : on saute AVANT la capture. C'est là que se joue tout le gain —
+      // un article écarté ne coûte ni capture, ni re-hébergement de photo, ni
+      // Pépite, ni créneau du plafond auto : il n'est simplement pas regardé.
+      if (estEcarteAuto(essais, userId, c.vinted_item_id)) { sautes++; continue; }
+
       // Republish vivant, ou abouti < 24 h ? Le RPC re-garde de toute façon —
       // ce pré-filtre évite juste de griller le tour du cycle sur un refus.
       const jr = await restRequest(
@@ -10533,9 +10698,46 @@ async function maybeAutoRepublish(session) {
         if (snap?.length && Date.parse(snap[0].captured_on) > Date.now() - ageJours * 86_400_000) continue;
       }
 
-      const ok = await autoCaptureEtRepublier(c, token, userId);
-      console.log(`[republish-auto] article ${c.vinted_item_id} : ${ok ? "mis en file" : "capture/RPC refusés — retentera un autre cycle"}`);
+      const r = await autoCaptureEtRepublier(c, token, userId);
+
+      if (r.ok) {
+        delete essais[cleEssaiAuto(userId, c.vinted_item_id)];
+        await ecrireEssaisAuto(essais);
+        // Le RPC efface déjà les deux clés au succès auto ; on double par le
+        // même geste, pour le cas où la cause écrite venait de l'extension.
+        await effacerErreurAuto(token, userId, prof?.platform_settings, cfg);
+        console.log(`[republish-auto] article ${c.vinted_item_id} : mis en file`);
+        return;
+      }
+
+      const code = REPUBLISH_AUTO_ALIAS[r.code] ?? r.code;
+
+      // Refus qui concerne LE COMPTE : rien à reprocher à cet article. Le
+      // cycle s'arrête, le compteur ne bouge pas, la cause est écrite là où
+      // l'app la lit. C'est exactement le cas du 30/08 — le trigger serveur
+      // refusait TOUT le parc à jour, et écarter les articles un par un aurait
+      // vidé la file sans qu'aucun d'eux n'ait le moindre défaut.
+      if (r.portee === "compte") {
+        await marquerErreurAuto(token, userId, prof?.platform_settings, cfg, code);
+        console.warn(`[republish-auto] refus qui concerne le COMPTE (${r.motif}) — file intacte, cause écrite dans le réglage`);
+        return;
+      }
+
+      const motifEcart = compterEchecAuto(essais, userId, c.vinted_item_id, r.motif);
+      await ecrireEssaisAuto(essais);
+      if (motifEcart) {
+        await marquerErreurAuto(token, userId, prof?.platform_settings, cfg, "article_ecarte");
+        console.warn(
+          `[republish-auto] article ${c.vinted_item_id} ÉCARTÉ après ${REPUBLISH_AUTO_MAX_ESSAIS} essais — ${motifEcart}. ` +
+          "Annonce Vinted, ligne d'inventaire et captures INTACTES ; la file passe au suivant, l'écart expire dans 24 h.",
+        );
+      } else {
+        console.log(`[republish-auto] article ${c.vinted_item_id} : essai perdu (${r.motif}) — il reste dans la file`);
+      }
       return; // UN article par cycle, réussi ou pas — jamais de rafale.
+    }
+    if (sautes) {
+      console.log(`[republish-auto] ${sautes} article(s) écarté(s) sauté(s) — aucun candidat au-delà pour ce cycle`);
     }
   } finally {
     autoRepublishBusy = false;
@@ -10550,32 +10752,30 @@ async function maybeAutoRepublish(session) {
 // file DERRIÈRE le poll lui-même — blocage mutuel silencieux, et AUCUN job
 // auto jamais créé sur tout le parc (constat du 23/08). Même contrainte que
 // processRepublishJob (cf. bandeau de captureVintedItemUnlocked).
+// ⚠️ LE RE-HÉBERGEMENT DES PHOTOS A QUITTÉ CE PRÉ-VOL (2026-08-31). Il y
+// faisait 4 uploads par passage pour un article qui n'a jamais obtenu de job —
+// 143 passages en une journée chez josephinecerni, soit 572 photos ré-uploadées
+// pour rien. Le pré-vol se contente désormais de vérifier que l'annonce est
+// capturable et qu'elle a des URLs de photos ; le re-hébergement RÉEL vit à
+// l'étape 'a_capturer' du job (capturerEtPersisterDepuisExtension), où son
+// échec a déjà son traitement (failed, annonce intacte, Pépite rendue).
+// Rien n'est perdu : cette capture-ci n'est JAMAIS relue — tous les lecteurs de
+// vinted_republish_captures ciblent platform_fields.capture_id, c'est-à-dire la
+// capture faite PAR le job. Elle reste écrite parce qu'elle est la trace
+// persistante, essai par essai, de ce que le pré-vol a vu.
+// Rend un verdict STRUCTURÉ : { ok } ou { ok:false, portee, code, motif }, la
+// portée disant si le refus est imputable à l'article ou au compte.
 async function autoCaptureEtRepublier(cand, token, userId) {
   const cap = await captureVintedItemUnlocked(cand.vinted_item_id);
-  if (!cap?.success) return false;
-  const manquants = (cap.champs_manquants ?? []).filter((m) => !m.startsWith("photos_rehebergees"));
-  let photos = [];
-  if (cap.photos_cdn?.length) {
-    try {
-      const r = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/functions/v1/republish-capture-photos`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({ vinted_item_id: String(cand.vinted_item_id), urls: cap.photos_cdn }),
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`);
-      photos = d.photos ?? [];
-      for (const e of d.echecs ?? []) manquants.push(`photo non re-hébergée (${e.raison})`);
-      if (!photos.length) manquants.push("photos_rehebergees (aucune photo re-hébergée)");
-    } catch (e) {
-      manquants.push(`photos_rehebergees (${String(e?.message ?? e)})`);
-    }
+  if (!cap?.success) {
+    return { ok: false, portee: "article", code: "capture_impossible",
+             motif: `capture impossible (${cap?.error ?? "raison inconnue"})` };
   }
+
+  const manquants = (cap.champs_manquants ?? []).filter((m) => !String(m).startsWith("photos_rehebergees"));
+  if (!cap.photos_cdn?.length) manquants.push("photos (aucune URL lisible)");
   const verdict = manquants.length ? "incomplet" : "valide";
+
   await restRequest("vinted_republish_captures", token, {
     method: "POST",
     body: JSON.stringify({
@@ -10584,19 +10784,30 @@ async function autoCaptureEtRepublier(cand, token, userId) {
       payload: { natif: cap.natif ?? null, dto_public: cap.dto_public ?? null,
                  titre: cap.titre ?? null, prix: cap.prix ?? null,
                  description: cap.description ?? null, photos_cdn: cap.photos_cdn ?? [],
-                 diagnostics: cap.diagnostics ?? null },
-      libelles: cap.libelles ?? null, photos_urls: photos,
+                 diagnostics: cap.diagnostics ?? null,
+                 // Marque la ligne comme un PRÉ-VOL : photos_urls y est vide
+                 // par construction, ce n'est pas une capture ratée.
+                 prevol_auto: true },
+      libelles: cap.libelles ?? null, photos_urls: [],
     }),
   }).catch((e) => console.warn("[republish-auto] persistance capture:", String(e?.message ?? e)));
-  if (verdict !== "valide") return false; // échec FERMÉ : l'article retentera un autre jour
-  const rpc = await restRequest("rpc/spend_coins_and_republish", token, {
-    method: "POST",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify({
-      p_inventaire_id: cand.id, p_vinted_item_id: String(cand.vinted_item_id), p_source: "auto",
-    }),
-  }).catch((e) => { console.warn("[republish-auto] RPC:", String(e?.message ?? e)); return null; });
-  return rpc?.allowed === true;
+
+  if (verdict !== "valide") {
+    return { ok: false, portee: "article", code: "capture_incomplete",
+             motif: `capture incomplète (${manquants.slice(0, 3).join(" ; ")})` };
+  }
+
+  const rpc = await appelerRpcRepublishAuto(token, cand)
+    .catch((e) => ({ allowed: false, code: "erreur_serveur", message: String(e?.message ?? e).slice(0, 300) }));
+  if (rpc.allowed) return { ok: true };
+
+  const code = REPUBLISH_AUTO_ALIAS[rpc.code] ?? rpc.code ?? "refus_sans_motif";
+  return {
+    ok: false,
+    portee: REPUBLISH_AUTO_REFUS_COMPTE.has(code) ? "compte" : "article",
+    code,
+    motif: (rpc.message ? `${code} — ${rpc.message}` : code).slice(0, 300),
+  };
 }
 
 async function processDeleteJob(job, accessToken) {
