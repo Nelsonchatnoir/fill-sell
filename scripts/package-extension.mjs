@@ -118,7 +118,13 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // (f995f0a) en sont RETIRÉS (décision Nico 30/08) ; le plafond quotidien
 // vit côté serveur (get-pending-jobs). Promotion EXTENSION_MIN_BUILD vers
 // le build 0.6.10 NON faite ici : geste séparé, sur GO.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10'];
+// 0.6.11 ajoutée le 31/08 : zip 6b37e94 ACCEPTÉ et PUBLIÉ par le CWS le
+// 31/08 vers 09:07 — preuve en base : 18 extensions du parc dessus le jour
+// même, jobs avec handler_build = 2026-08-30T20:31:09Z+6b37e94 · v0.6.11.
+// Conséquence : le zip 0.6.11-dd85a95 (5e correctif, reprise espacée des
+// échecs) n'a JAMAIS été téléversé et serait rejeté (même numéro) — son
+// contenu repart tel quel dans la 0.6.12, seul le manifest bouge.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11'];
 // (Merge 27/08 : la mise en garde côté main « un zip pris sur MAIN
 // embarquerait F1 » est CLOSE — la branche est réintégrée, main est
 // redevenue l'unique ligne ; F1 réduit à la trace d'identité.)

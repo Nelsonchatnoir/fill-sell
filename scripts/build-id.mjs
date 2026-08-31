@@ -858,7 +858,19 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Chemin de publication INTACT ; correctifs 0.6.11 intacts (listing-
 // restriction, relevé Vinted, niveau catégorie, pose ISBN).
 // EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE épinglée dessus.
-export const EXTENSION_LAST_COMMIT = '2026-08-31T10:30:00Z';
+// 2026-08-31T10:57:00Z = bump manifest 0.6.11 → 0.6.12, AUCUNE ligne de code
+// (le CWS a accepté et publié la 0.6.11-6b37e94 le 31/08 vers 09:07 — 18
+// extensions du parc dessus, handler_build en base — pendant que le zip
+// 0.6.11-dd85a95 du 5e correctif attendait le téléversement : même numéro,
+// rejet garanti). La 0.6.12 = contenu dd85a95 tel quel, les 5 correctifs
+// intacts (pause /listing-restriction + reprise différée, relevé lecture
+// seule du message Vinted, « niveau introuvable » → choix, pose ISBN durcie,
+// reprise réelle espacée + cause remontée), rien de reverté réintroduit.
+// '0.6.11' ajoutée à ALREADY_PUBLISHED du même geste. EXTENSION_MIN_BUILD
+// inchangé — la promotion vers le build 0.6.11 publié (2026-08-30T20:31:09Z,
+// lu dans handler_build du parc) reste un geste séparé, sur GO.
+// Committé GIT_COMMITTER_DATE épinglée dessus.
+export const EXTENSION_LAST_COMMIT = '2026-08-31T10:57:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
