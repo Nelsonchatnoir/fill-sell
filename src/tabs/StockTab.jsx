@@ -2273,25 +2273,70 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
     }
   }
 
+  // ── ACCROCHE non-Pro (redessinée le 2026-08-31) ────────────────────────────
+  // Visible par les comptes Free ET Premium (isPro = profiles.is_pro SEUL), et
+  // désormais quelle que soit la capacité de l'extension (cf. gate du site
+  // d'appel) : on ne peut pas vouloir un outil dont on ignore l'existence.
+  // L'argument porteur n'est pas la promesse générique, c'est le CHIFFRE DU
+  // COMPTE : `eligibles` est déjà calculé par les effets ci-dessus (ils
+  // tournent avant ce return — 2 count head, négligeables), avec EXACTEMENT
+  // le critère de sélection de l'extension. On ne montre le chiffre que s'il
+  // est > 0 : « 0 annonce concernée » serait un argument contre nous, et un
+  // chiffre pas encore chargé ne s'invente pas.
   if (!isPro) {
+    const nAttente = typeof eligibles === 'number' && eligibles > 0 ? eligibles : null;
+    const puces = fr
+      ? ['Elles remontent en tête des résultats Vinted, sans que tu y touches',
+         'Au rythme d\'un humain, quelques-unes par jour — jamais de rafale',
+         'Tu choisis l\'ancienneté et le nombre par jour ; tu coupes quand tu veux']
+      : ['They go back to the top of Vinted results, hands off',
+         'At a human pace, a few a day — never a burst',
+         'You set the age and the daily cap; turn it off whenever'];
     return (
-      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E7E3D8', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#10201B' }}>
-          ✨ {fr ? 'Republication automatique' : 'Automatic reposting'}
-          <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, background: '#10201B', color: '#F2B48C', borderRadius: 99, padding: '2px 8px', verticalAlign: 'middle' }}>PRO</span>
+      <div style={{ background: 'linear-gradient(150deg,#10201B,#1B3A32)', borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 10px 24px -16px rgba(16,32,27,.7)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 15 }}>🔁</span>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: '#fff', flex: 1 }}>
+            {fr ? 'Republication automatique' : 'Automatic reposting'}
+          </span>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.04em', background: 'linear-gradient(120deg,#E8956D,#F2B48C)', color: '#10201B', borderRadius: 99, padding: '3px 9px' }}>PRO</span>
         </div>
-        <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.5 }}>
-          {fr
-            ? 'Tes annonces qui stagnent depuis plus de 30 jours sont republiées toutes seules, au rythme humain — un avantage du plan Pro.'
-            : 'Listings sitting for 30+ days get reposted on their own, at a human pace — a Pro plan perk.'}
+
+        {/* Le chiffre du compte, quand il existe : c'est SA situation, pas une
+            promesse en l'air. Le seuil affiché est celui qui sert au décompte
+            (ageJours), donc les deux ne peuvent pas se contredire. */}
+        {nAttente !== null && (
+          <div style={{ background: 'rgba(242,180,140,.13)', border: '1px solid rgba(242,180,140,.3)', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#F2B48C', lineHeight: 1.1 }}>
+              {nAttente}
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.86)', lineHeight: 1.45, marginTop: 3 }}>
+              {fr
+                ? `de tes annonces dorment depuis plus de ${ageJours} jours. En Pro, elles repartiraient toutes seules.`
+                : `of your listings have been sitting for over ${ageJours} days. On Pro, they'd be reposted on their own.`}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {puces.map((p, i) => (
+            <div key={i} style={{ display: 'flex', gap: 7, fontSize: 12, color: 'rgba(255,255,255,.82)', lineHeight: 1.45 }}>
+              <span style={{ color: '#F2B48C', flexShrink: 0 }}>✓</span>
+              <span>{p}</span>
+            </div>
+          ))}
         </div>
-        <button onClick={() => openUpgradeModal?.(null,'stock_republication_auto')}
-          style={{ alignSelf: 'flex-start', padding: '9px 14px', borderRadius: 999, border: 'none', background: 'linear-gradient(120deg,#E8956D,#F2B48C)', color: '#10201B', fontSize: 12.5, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
-          {/* Le bloc porte déjà le badge PRO et dit « un avantage du plan
-              Pro » : le bouton, lui, ouvre le choix des paliers — il ne
-              nomme donc plus Pro (2026-08-09). */}
+
+        <button onClick={() => { track('premium_click', { source: 'stock_republication_auto' }); openUpgradeModal?.(null, 'stock_republication_auto'); }}
+          style={{ marginTop: 2, width: '100%', padding: '11px 14px', borderRadius: 999, border: 'none', background: 'linear-gradient(120deg,#E8956D,#F2B48C)', color: '#10201B', fontSize: 13, fontWeight: 800, fontFamily: 'inherit', cursor: 'pointer' }}>
+          {/* Le bloc porte déjà le badge PRO : le bouton, lui, ouvre le choix
+              des paliers — il ne nomme donc pas Pro (règle du 2026-08-09). */}
           {fr ? 'Voir les offres' : 'See plans'}
         </button>
+        <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.5)', textAlign: 'center', lineHeight: 1.4 }}>
+          {fr ? '1 Pépite par annonce republiée, comme une republication manuelle'
+              : '1 Nugget per reposted listing, same as a manual repost'}
+        </div>
       </div>
     );
   }
@@ -6243,6 +6288,41 @@ const StockTab = memo(function StockTab({
                     </div>
                   );})}
                 </div>
+                {/* ── ÉTAT VIDE EXPLICITE (2026-08-31) ─────────────────────────
+                    Un filtre qui ne ramène rien ne doit JAMAIS se traduire par
+                    un écran muet : c'est ce silence qui a rendu le bug des
+                    pills de marque invisible pendant des semaines (le filtre
+                    retombait sur « Toutes » et on croyait la pill morte). Ici
+                    la liste est vide ALORS QU'UN FILTRE EST ACTIF — on le dit,
+                    on nomme les filtres, et on offre la sortie en un tap.
+                    Les deux modes (prix d'achat, republication) ont déjà leur
+                    propre message : on ne les double pas. */}
+                {(()=>{
+                  if(modePrixAchat||modeRepublish)return null;
+                  if(listeStock.length)return null;
+                  const actifs=[];
+                  if(filterType!=="Tous")actifs.push(typeLabel(filterType,lang));
+                  if(filterMarque!=="Toutes")actifs.push(marqueLabel(filterMarque,lang));
+                  if(String(search??"").trim())actifs.push(`« ${String(search).trim()} »`);
+                  if(!actifs.length)return null;
+                  return(
+                    <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:12,padding:"16px",textAlign:"center"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#10201B",marginBottom:4}}>
+                        {lang==='en'?'No item matches':'Aucun article ne correspond'}
+                      </div>
+                      <div style={{fontSize:12,color:"#6B7A75",lineHeight:1.5,marginBottom:12}}>
+                        {lang==='en'
+                          ?`Nothing in your stock matches: ${actifs.join(' · ')}.`
+                          :`Rien dans ton stock ne correspond à : ${actifs.join(' · ')}.`}
+                      </div>
+                      <button
+                        onClick={()=>{setFilterType("Tous");setFilterMarque("Toutes");setSearch("");}}
+                        style={{padding:"9px 16px",borderRadius:999,border:"1px solid #2F9E90",background:"#fff",color:"#1B6E62",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        {lang==='en'?'Clear filters':'Réinitialiser les filtres'}
+                      </button>
+                    </div>
+                  );
+                })()}
                 {/* En mode republication, la liste montre déjà TOUS les
                     republiables (pas de slice) : un « Voir plus » compté sur
                     stockFiltre serait un bouton sans effet. */}
@@ -6256,11 +6336,22 @@ const StockTab = memo(function StockTab({
             )}
 
             {/* É6 : automatisation de la republication — avantage Pro,
-                réglable, arrêt propre affiché. Même gate que le bouton
-                Republier (republishActif = capacité réelle de l'extension).
-                La carte de sync du dressing, elle, vit désormais EN TÊTE de
-                la liste (2026-08-05). */}
-            {republishActif&&(
+                réglable, arrêt propre affiché. La carte de sync du dressing,
+                elle, vit EN TÊTE de la liste (2026-08-05).
+                ── GATE CORRIGÉE (2026-08-31, constat Nico) ──────────────────
+                Le bloc ENTIER était rendu sous `republishActif`, c'est-à-dire
+                sous la CAPACITÉ RÉELLE de l'extension (version installée,
+                heartbeat, et `!isNative` quand elle est inconnue). Un compte
+                Free ou Premium sans extension capable — le cas de la majorité
+                d'entre eux, et sur mobile de presque tous — ne voyait donc
+                JAMAIS la republication automatique : ni l'outil, ni même son
+                existence. On masquait l'argument de vente avec l'outil.
+                Désormais : l'ACCROCHE (branche !isPro) ne dépend plus de la
+                capacité — elle ne fait que présenter une fonctionnalité, elle
+                n'exécute rien et n'écrit rien. Le bloc RÉGLABLE, lui, reste
+                derrière `republishActif` : on ne laisse jamais activer une
+                automatisation que rien ne pourrait exécuter. */}
+            {(republishActif||!isPro)&&(
               <div style={{marginTop:12}}>
                 <RepublishAutoBlock lang={lang} user={user} isPro={isPro} openUpgradeModal={openUpgradeModal}/>
               </div>
