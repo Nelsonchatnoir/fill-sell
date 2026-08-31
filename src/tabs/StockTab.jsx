@@ -193,20 +193,74 @@ const RELANCE_RECUPERABLE_RE = new RegExp(
   ].join('|') + ')', 'i');
 const RELANCE_MANUELLE_MAX = 3;
 const RELANCE_MANUELLE_COOLDOWN_MS = 10 * 60 * 1000;
-function relanceManuelleInfo(job) {
-  if (job?.status !== 'failed') return null;
+// ── ÉLARGI le 31/08 (consigne Nico : « le bouton Relancer, PARTOUT ») ─────────
+// Deux modes, MÊME bouton, même libellé :
+//   · 'repend' — failed à motif récupérable, budget par job non épuisé : le
+//     job repart TEL QUEL en pending, zéro débit (réservation déjà soldée,
+//     capture sautée par construction). Comportement d'origine, inchangé.
+//   · 'copie'  — tout AUTRE job terminal (cancelled, relances de re-pend
+//     épuisées, définitif dont l'utilisateur a corrigé la cause) : un job
+//     NEUF est inséré, COPIÉ du terminal (titre, description, prix, photos,
+//     platform_fields), via le RPC spend_coins_and_publish = débit de la
+//     PUBLICATION seule (price_per_platform, réservation normale) — JAMAIS
+//     spend_generate : le contenu existe déjà dans le job.
+// Anti-doublon du mode copie (le RPC re-vérifie TOUT côté serveur,
+// v_conflicts → 'already_published') : pas de bouton si un job publish de la
+// même plateforme est actif (pending/processing/needs_user), si une annonce
+// y est crue en ligne (published SANS delete 'deleted' postérieur — même
+// règle que le RPC), si le job terminal porte un listing_url, ou s'il porte
+// listing_url_abandon (le cron ORDONNE de vérifier avant de republier).
+// Anti-spam : re-pend = 3 par job (compteur pf) ; copie = 3 par
+// ARTICLE+PLATEFORME (comptées par le marqueur relance_copie_de, qui survit
+// aux jobs contrairement au compteur) ; cooldown 10 min toutes relances
+// confondues.
+function relanceManuelleInfo(job, jobsArticle) {
+  if (!['failed', 'cancelled'].includes(job?.status)) return null;
   if ((job?.action ?? 'publish') !== 'publish') return null;
-  // Échec « publication sans lien » (cron) : le message ORDONNE de vérifier
-  // ses annonces AVANT de republier — relancer ici risque le doublon.
   if (job?.platform_fields?.listing_url_abandon) return null;
-  if (!RELANCE_RECUPERABLE_RE.test(String(job?.error ?? ''))) return null;
   const pf = job?.platform_fields ?? {};
-  const faites = Number(pf.relances_manuelles) || 0;
-  if (faites >= RELANCE_MANUELLE_MAX) return { epuise: true, faites };
-  const derniere = Date.parse(pf.derniere_relance_manuelle ?? '');
+  const faitesJob = Number(pf.relances_manuelles) || 0;
+  const derniereJob = Date.parse(pf.derniere_relance_manuelle ?? '');
+
+  // Mode re-pend (comportement d'origine).
+  if (job.status === 'failed'
+      && RELANCE_RECUPERABLE_RE.test(String(job.error ?? ''))
+      && faitesJob < RELANCE_MANUELLE_MAX) {
+    const attenteMs = Number.isFinite(derniereJob) ? derniereJob + RELANCE_MANUELLE_COOLDOWN_MS - Date.now() : 0;
+    return { mode: 'repend', epuise: false, attenteMin: attenteMs > 0 ? Math.ceil(attenteMs / 60000) : 0 };
+  }
+
+  // Mode copie — anti-doublon d'abord.
+  if (job.listing_url) return null;
+  const freres = (jobsArticle ?? []).filter(j =>
+    j.platform === job.platform && (j.action ?? 'publish') !== 'delete');
+  if (freres.some(j => j.action !== 'delete' && ['pending', 'processing', 'needs_user'].includes(j.status))) return null;
+  const publie = freres.some(j =>
+    j.status === 'published'
+    && !(jobsArticle ?? []).some(d =>
+      d.platform === job.platform && d.action === 'delete' && d.status === 'deleted'
+      && Date.parse(d.created_at ?? 0) > Date.parse(j.created_at ?? 0)));
+  if (publie) return null;
+  const copies = freres.filter(j => j.platform_fields?.relance_copie_de);
+  if (copies.length >= RELANCE_MANUELLE_MAX) return { mode: 'copie', epuise: true };
+  const dernieres = [derniereJob, ...copies.map(j => Date.parse(j.created_at ?? ''))]
+    .filter(Number.isFinite);
+  const derniere = dernieres.length ? Math.max(...dernieres) : NaN;
   const attenteMs = Number.isFinite(derniere) ? derniere + RELANCE_MANUELLE_COOLDOWN_MS - Date.now() : 0;
-  return { epuise: false, faites, attenteMin: attenteMs > 0 ? Math.ceil(attenteMs / 60000) : 0 };
+  return { mode: 'copie', epuise: false, attenteMin: attenteMs > 0 ? Math.ceil(attenteMs / 60000) : 0 };
 }
+
+// Clés de MACHINERIE retirées de platform_fields à la copie : elles décrivent
+// la vie du job SOURCE (reprises, diagnostics, relevés), pas l'annonce. Tout
+// le reste part tel quel (catégories, aspects, adresse, genre…), y compris
+// ebay_draft_id — c'est lui qui arme l'anti-doublon pré-dépôt de l'extension.
+const RELANCE_COPIE_CLES_RETIREES = [
+  'processing_since', 'next_action_after', 'needsUserAttempts', 'bfcache_rearms',
+  'frozenTabRetries', 'last_diagnostic', 'derniere_interruption',
+  'work_window_state', 'publish_proof', 'ebay_api_publish', 'warnings',
+  'server_required_fields', 'champs_a_completer', 'needs_user_source',
+  'relances_manuelles', 'derniere_relance_manuelle', 'ebay_format_trace',
+];
 
 // ── Design 2026 (Lens / navbar) — liste des articles en stock ──
 // Maquette validée : row grid [tuile | infos | prix+actions], palette canvas/paper.
@@ -3620,10 +3674,14 @@ const StockTab = memo(function StockTab({
   const [relanceBusy, setRelanceBusy] = useState(false);
   const [relanceMsg, setRelanceMsg] = useState(null);
   useEffect(() => { setRelanceMsg(null); }, [failJobModal?.id]);
-  async function relancerJobEchoue(job) {
+  async function relancerJobEchoue(job, mode = 'repend') {
     if (relanceBusy) return;
     setRelanceBusy(true); setRelanceMsg(null);
     try {
+      if (mode === 'copie') {
+        await relancerParCopie(job);
+        return;
+      }
       const pf = { ...(job.platform_fields ?? {}) };
       // Une relance manuelle ANNULE la reprise automatique en attente (elle ne
       // s'y ajoute pas) et ouvre un nouveau cycle de reprises espacées :
@@ -3663,6 +3721,87 @@ const StockTab = memo(function StockTab({
     } finally {
       setRelanceBusy(false);
     }
+  }
+  // ── Mode COPIE (31/08) : job NEUF copié du terminal, débit publication seul.
+  // Le RPC spend_coins_and_publish est le MÊME que le stepper : prix imposés
+  // côté serveur (price_per_platform ; part photos re-servie à 0 quand la
+  // retouche est déjà livrée, price_original = 0), garde extension, garde
+  // already_published (annonce en ligne ou job en file → refus, aucune Pépite
+  // débitée), réservation normale sur le job neuf. JAMAIS spend_generate ni
+  // le stepper : le contenu vient du job terminal, relu FRAIS en base (la
+  // liste en mémoire n'a ni description, ni prix, ni photos).
+  async function relancerParCopie(job) {
+    const { data: full, error: fetchErr } = await supabase
+      .from('cross_post_jobs')
+      .select('id, status, action, platform, inventaire_id, title, description, price, photos, photo_option, listing_url, platform_fields')
+      .eq('id', job.id)
+      .maybeSingle();
+    if (fetchErr || !full) {
+      setRelanceMsg(lang === 'en' ? 'Could not read the job — try again.' : 'Lecture du job impossible — réessaie.');
+      return;
+    }
+    // Re-vérification sur l'état FRAIS : terminal, publish, pas d'annonce.
+    if (!['failed', 'cancelled'].includes(full.status) || (full.action ?? 'publish') !== 'publish' || full.listing_url) {
+      setRelanceMsg(lang === 'en'
+        ? 'This job already changed state — close and check its status.'
+        : 'Ce job a déjà changé d’état entre-temps — ferme et regarde son statut.');
+      return;
+    }
+    if (full.inventaire_id == null) {
+      // Le RPC exige inventaire_id (garde missing_inventaire_id) — un job
+      // orphelin (article supprimé du stock) n'a plus d'article à publier.
+      setRelanceMsg(lang === 'en'
+        ? 'This job is no longer linked to a stock item — republish from the item instead.'
+        : 'Ce job n’est plus rattaché à un article du stock — repasse par la fiche de l’article.');
+      return;
+    }
+    const pf = { ...(full.platform_fields ?? {}) };
+    for (const k of RELANCE_COPIE_CLES_RETIREES) delete pf[k];
+    pf.relance_copie_de = full.id;
+    const { data: pubRes, error: pubErr } = await supabase.rpc('spend_coins_and_publish', {
+      p_photo_option: full.photo_option || 'original',
+      p_jobs: [{
+        inventaire_id: full.inventaire_id,
+        platform: full.platform,
+        title: full.title,
+        description: full.description,
+        price: full.price,
+        photos: full.photos,
+        platform_fields: pf,
+      }],
+    });
+    if (pubErr) {
+      setRelanceMsg(lang === 'en' ? `Relaunch failed: ${pubErr.message}` : `Relance impossible : ${pubErr.message}`);
+      return;
+    }
+    if (pubRes?.allowed === false) {
+      const raisons = {
+        insufficient_coins: lang === 'en'
+          ? 'Not enough Nuggets for a publication (1 needed). Nothing was charged.'
+          : 'Pépites insuffisantes pour une publication (1 requise). Rien n’a été débité.',
+        already_published: lang === 'en'
+          ? 'Already live or queued on this platform — nothing was charged.'
+          : 'Déjà en ligne (ou en file) sur cette plateforme — rien n’a été débité.',
+      };
+      setRelanceMsg(
+        raisons[pubRes.reason]
+        ?? (typeof pubRes.message === 'string' && pubRes.message.trim() ? pubRes.message
+          : (lang === 'en' ? 'The server refused the relaunch.' : 'Le serveur a refusé la relance.')));
+      return;
+    }
+    // Entrée optimiste : le poll (~20 s) la remplacera par la vraie ligne.
+    const now = new Date().toISOString();
+    setJobsByInventaire(prev => ({
+      ...prev,
+      [full.inventaire_id]: [
+        { id: `optimistic-relance-${full.id}-${now}`, inventaire_id: full.inventaire_id,
+          platform: full.platform, action: 'publish', status: 'pending', error: null,
+          created_at: now, listing_url: null, title: full.title, platform_fields: pf },
+        ...(prev[full.inventaire_id] ?? []),
+      ],
+    }));
+    track('relance_copie', { platform: full.platform });
+    setFailJobModal(null);
   }
   const [voiceInputMode, setVoiceInputMode] = useState('write');
   const [examplesOpen, setExamplesOpen] = useState(false);
@@ -6252,20 +6391,20 @@ const StockTab = memo(function StockTab({
                 soldée au failed, capture sautée par construction). Offerte
                 UNIQUEMENT sur les causes récupérables — relanceManuelleInfo. */}
             {(()=>{
-              const r=relanceManuelleInfo(failJobModal);
+              const r=relanceManuelleInfo(failJobModal,jobsByInventaire[failJobModal.inventaire_id]);
               if(!r)return null;
               if(r.epuise)return(
                 <div style={{fontSize:12,color:"#8A8578",textAlign:"center",marginBottom:8,lineHeight:1.5}}>
                   {lang==="en"
-                    ?`${RELANCE_MANUELLE_MAX} manual relaunches already used for this job — if it still fails, the cause is elsewhere.`
-                    :`${RELANCE_MANUELLE_MAX} relances manuelles déjà utilisées pour ce job — s'il échoue encore, la cause est ailleurs.`}
+                    ?`${RELANCE_MANUELLE_MAX} manual relaunches already used for this item on this platform — if it still fails, the cause is elsewhere.`
+                    :`${RELANCE_MANUELLE_MAX} relances manuelles déjà utilisées pour cet article sur cette plateforme — si ça échoue encore, la cause est ailleurs.`}
                 </div>
               );
               const enAttente=r.attenteMin>0;
               return(
                 <>
                   <button disabled={relanceBusy||enAttente}
-                    onClick={()=>relancerJobEchoue(failJobModal)}
+                    onClick={()=>relancerJobEchoue(failJobModal,r.mode)}
                     style={{width:"100%",padding:"12px",borderRadius:999,border:"1px solid #2F9E90",background:enAttente?"#F4F2EC":"#fff",color:enAttente?"#8A8578":"#1B6E62",fontSize:14,fontWeight:700,cursor:relanceBusy||enAttente?"default":"pointer",fontFamily:"inherit",marginBottom:6,opacity:relanceBusy?.6:1}}>
                     {relanceBusy
                       ?(lang==="en"?"Relaunching…":"Relance…")
@@ -6274,9 +6413,13 @@ const StockTab = memo(function StockTab({
                         :(lang==="en"?"🔁 Relaunch now":"🔁 Relancer maintenant")}
                   </button>
                   <div style={{fontSize:11,color:"#8A8578",textAlign:"center",marginBottom:8,lineHeight:1.5}}>
-                    {lang==="en"
-                      ?"Once the cause above is fixed. The job restarts as-is — nothing regenerated, no Nugget charged."
-                      :"Une fois la cause ci-dessus réglée. Le job repart tel quel — rien de régénéré, aucune Pépite débitée."}
+                    {r.mode==='repend'
+                      ?(lang==="en"
+                        ?"Once the cause above is fixed. The job restarts as-is — nothing regenerated, no Nugget charged."
+                        :"Une fois la cause ci-dessus réglée. Le job repart tel quel — rien de régénéré, aucune Pépite débitée.")
+                      :(lang==="en"
+                        ?"Once the cause above is fixed. A new send is created from this listing — cost of one publication (1 Nugget), never a new generation."
+                        :"Une fois la cause ci-dessus réglée. Un nouvel envoi est créé à partir de cette annonce — coût d'une publication (1 Pépite), jamais une nouvelle génération.")}
                   </div>
                   {relanceMsg&&(
                     <div style={{fontSize:12,color:"#B0645A",fontWeight:600,textAlign:"center",marginBottom:8}}>{relanceMsg}</div>
