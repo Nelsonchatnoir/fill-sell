@@ -162,7 +162,16 @@ function failJobAction(job, lang) {
 // (le geste est une REGÉNÉRATION, relancer tel quel re-échoue), « hors
 // FillSell » (photo CDN : reprise AUTOMATIQUE par handler-watch, un bouton
 // court-circuiterait le rapatriement serveur), et toutes les exclusions
-// existantes (refus eBay, refus serveur 400, listing_url_abandon).
+// existantes (refus eBay « NON aboutie »/« REFUSÉE » — refus de CONTENU —,
+// refus serveur 400, listing_url_abandon).
+// « Publication eBay bloquée » AJOUTÉ le 31/08 (correction Nico — j'avais
+// mal classé) : ce n'est PAS un refus de contenu, c'est le brouillon resté
+// en Enchères (format = un RÉGLAGE du compte eBay que l'utilisateur peut
+// changer) ou n'ayant pas retenu des champs que le job porte déjà — geste
+// puis relance du job existant, même famille que REAUTH VENTE. Ses deux
+// têtes SUCCESSEURS (posées par l'extension 0.6.13 pour le même cas) entrent
+// du même geste : « Brouillon eBay resté au format « Enchères » » et « Le
+// formulaire eBay est resté en mode « Enchères » ».
 const RELANCE_RECUPERABLE_RE = new RegExp(
   '^(' + [
     'CHALLENGE\\s',
@@ -178,6 +187,9 @@ const RELANCE_RECUPERABLE_RE = new RegExp(
     'RESTRICTION VINTED',
     'Impossible de vérifier les champs obligatoires Vinted',
     "La catégorie Vinted n['’]a pas pu être sélectionnée",
+    'Publication eBay bloquée',
+    'Brouillon eBay resté au format',
+    'Le formulaire eBay est resté en mode',
   ].join('|') + ')', 'i');
 const RELANCE_MANUELLE_MAX = 3;
 const RELANCE_MANUELLE_COOLDOWN_MS = 10 * 60 * 1000;
