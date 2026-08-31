@@ -1382,6 +1382,7 @@ serve(async (req) => {
     // vs « État moyen » Beebs, « Neuf avec étiquette » vs « Neuf, avec
     // étiquette » vs « État neuf ». Vestiaire n'a pas de palier bas : son plus
     // bas est « Bon état ».
+    let traceEtat: Record<string, unknown> = {};
     {
       const ETAT_PAR_PLATEFORME: Record<string, Record<string, string>> = {
         neuf_etiquette: { vinted: "Neuf avec étiquette", ebay: "Neuf avec étiquette", beebs: "Neuf, avec étiquette", leboncoin: "État neuf",          vestiaire: "Neuf avec étiquette" },
@@ -1418,11 +1419,27 @@ serve(async (req) => {
       //     quatre l'appliquaient déjà, les deux autres inventaient du neuf.
       const unanimeNeuf = lus.length > 0 && new Set(lus).size === 1 &&
         (lus[0] === "neuf_etiquette" || lus[0] === "neuf_sans");
-      const tier = tierEtat(canonicalProvided.etat) ?? (unanimeNeuf ? lus[0] : DEFAUT_ETAT);
+      const tierCanonique = tierEtat(canonicalProvided.etat);
+      const tier = tierCanonique ?? (unanimeNeuf ? lus[0] : DEFAUT_ETAT);
       for (const [p, l] of Object.entries(platformListings)) {
         const v = ETAT_PAR_PLATEFORME[tier]?.[p];
         if (l && v) l.platform_fields.etat = v;
       }
+      // ── TRACE (2026-08-31) : QUELLE BRANCHE A DÉCIDÉ ────────────────────────
+      // Le 31/08, sur le livre « EAT » sorti en « Neuf sans étiquette » alors
+      // qu'il est d'occasion, il a été IMPOSSIBLE de dire si l'état venait du
+      // Lens (canonique) ou de l'exception « neuf unanime » : ni l'un ni
+      // l'autre n'était tracé, et les réponses brutes des 4 modèles ne sont
+      // persistées nulle part. Trois clés suffisent à trancher au cas suivant.
+      // (Reste dans usage_logs, pas dans coin_ledger : c'est de la mesure.)
+      traceEtat = {
+        etat_branche: tierCanonique ? "canonique" : (unanimeNeuf ? "neuf_unanime" : "defaut"),
+        etat_tier: tier,
+        // Ce que les modèles ont répondu AVANT la normalisation — c'est lui qui
+        // dit si l'unanimité était réelle ou si un seul modèle a entraîné les
+        // autres. Trié pour être requêtable.
+        etat_lus: [...lus].sort(),
+      };
     }
 
     // ── ISBN : posé, jamais RÉ-ÉCRIT PAR LE MODÈLE (2026-08-31) ───────────────
@@ -1468,6 +1485,7 @@ serve(async (req) => {
       metadata: {
         platforms: platforms.length,
         photo_option,
+        ...traceEtat,
         claude_calls: cost.claude_calls,
         claude_input_tokens: cost.claude_in,
         claude_output_tokens: cost.claude_out,
