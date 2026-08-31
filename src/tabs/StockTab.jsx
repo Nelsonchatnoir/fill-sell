@@ -3011,10 +3011,25 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
   return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'rgba(16,32,27,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: '#EDEAE0', borderRadius: '26px 26px 0 0', maxHeight: '92vh', overflowY: 'auto', padding: '18px 18px calc(env(safe-area-inset-bottom,0px) + 24px)', fontFamily: "'Space Grotesk', sans-serif" }}>
+        {/* ── LA PLATEFORME EST NOMMÉE (2026-08-31) ────────────────────────
+            La modale disait « Republier cet article · En ligne à 14 € » sans
+            jamais écrire Vinted. Or la republication est Vinted UNIQUEMENT :
+            elle supprime puis recrée l'annonce pour la faire remonter dans le
+            fil. Sur un article qui a AUSSI une annonce Leboncoin et une eBay en
+            ligne — le cas qui a déclenché ce correctif — rien ne disait à
+            l'utilisateur que ses deux autres annonces ne seraient pas
+            rafraîchies, ni pire, supprimées et recréées.
+            Nommé aux TROIS endroits où la décision se prend : le titre (la
+            portée), la ligne de prix (l'état de départ, celle qui lève
+            l'ambiguïté avec les annonces LBC/eBay elles aussi « en ligne »), et
+            le bouton (l'action). Pas dans le sous-titre : quatre mentions dans
+            une feuille de cette taille, c'est du bruit, pas de la clarté.
+            ⚠️ LIBELLÉ SEUL — aucun comportement touché : ni le calcul du prix,
+            ni les paliers −5/−10/−15 %, ni le débit. */}
         <div style={{ fontSize: 17, fontWeight: 700, color: '#10201B', marginBottom: 4 }}>
           {solo
-            ? (fr ? 'Republier cet article' : 'Repost this item')
-            : (fr ? `Republier ${items.length} annonces` : `Repost ${items.length} listings`)}
+            ? (fr ? 'Republier sur Vinted' : 'Repost on Vinted')
+            : (fr ? `Republier ${items.length} annonces sur Vinted` : `Repost ${items.length} listings on Vinted`)}
         </div>
         <div style={{ fontSize: 12.5, color: '#5C6560', lineHeight: 1.5, marginBottom: 12 }}>
           {fr ? "Baisser un peu le prix aide l'annonce à repartir — à toi de voir." : 'A small price drop helps the listing take off again — up to you.'}
@@ -3023,8 +3038,8 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 13, color: '#5C6560', fontWeight: 600 }}>
               {items[0].prixActuel != null
-                ? (fr ? `En ligne à ${items[0].prixActuel} €` : `Live at €${items[0].prixActuel}`)
-                : (fr ? 'Prix actuel inconnu' : 'Current price unknown')}
+                ? (fr ? `En ligne sur Vinted à ${items[0].prixActuel} €` : `Live on Vinted at €${items[0].prixActuel}`)
+                : (fr ? 'Prix Vinted actuel inconnu' : 'Current Vinted price unknown')}
             </span>
             <input inputMode="decimal" value={prixLibre} onChange={e => setPrixLibre(e.target.value)}
               aria-label={fr ? 'Nouveau prix' : 'New price'}
@@ -3052,8 +3067,8 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
         <button onClick={confirmer}
           style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: 'linear-gradient(120deg,#2F9E90,#1B6E62)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           {solo
-            ? (fr ? <>Republier{prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''} · {cout}</> : <>Repost{prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''} · {cout}</>)
-            : (fr ? <>Republier les {items.length}{pct > 0 ? ` à −${pct} %` : ''} · {cout}</> : <>Repost {items.length}{pct > 0 ? ` at −${pct}%` : ''} · {cout}</>)}
+            ? (fr ? <>Republier sur Vinted{prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''} · {cout}</> : <>Repost on Vinted{prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''} · {cout}</>)
+            : (fr ? <>Republier les {items.length} sur Vinted{pct > 0 ? ` à −${pct} %` : ''} · {cout}</> : <>Repost {items.length} on Vinted{pct > 0 ? ` at −${pct}%` : ''} · {cout}</>)}
         </button>
         {/* (Le CTA « Gratuite et illimitée avec Premium » du 07/08 est mort le
             08/08 avec la gratuité plan : la republication coûte le même prix
