@@ -241,6 +241,10 @@ async function readItemsProbeOutcome() {
       refus = {
         status: Number(c?.status), url: String(c?.url ?? ""), validationErrors: c.validationErrors,
         isbnEnvoye: c?.isbnEnvoye ?? null, reponse: c?.reponse ?? null,
+        // isbnPose (2026-08-31) : la sonde a-t-elle dû écrire l'ISBN dans le
+        // corps parce que la page l'avait laissé vide ? Sans lui, un refus qui
+        // persiste ne dirait pas si la pose a eu lieu.
+        isbnPose: c?.isbnPose ?? null,
       };
     }
     if (last && refus) break;
@@ -366,6 +370,18 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       chrome.runtime.sendMessage({ type: "VINTED_PROBE_CAPTURE", capture: e.data.capture }).catch(() => {});
     } catch { /* extension rechargée : sans conséquence */ }
   });
+}
+
+// ── Armement de la pose d'ISBN dans le corps du POST (2026-08-31) ────────────
+// Le content script vit dans le monde ISOLÉ, la sonde qui écrit le corps du
+// POST dans le monde MAIN : postMessage est le seul canal entre les deux (même
+// chemin que le relais des captures, en sens inverse). Passer null DÉSARME.
+// La sonde ne pose la valeur que si la page a laissé `isbn` vide, et l'armement
+// expire de lui-même au bout de 15 min.
+function armerIsbnPourPost(isbn) {
+  try {
+    window.postMessage({ __fillsellArmeIsbn: true, isbn: isbn ?? null }, window.location.origin);
+  } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
 }
 
 // En-têtes des GET d'API Vinted (2026-08-12). X-Anon-Id (cookie anon_id) est
@@ -1626,6 +1642,11 @@ async function fillListingForm(job) {
   // Relevés d'options du run PRÉCÉDENT purgés : chaque remplissage repart
   // d'une page (et souvent d'une catégorie) différente.
   optionsRelevees.clear();
+  // ISBN à poser dans le corps du POST : DÉSARMÉ à chaque remplissage. L'onglet
+  // de travail est persistant et sert plusieurs jobs à la suite — un armement
+  // qui traîne poserait l'ISBN d'un livre sur l'article suivant. Il sera ré-armé
+  // par l'étape ISBN ci-dessous, et seulement pour cet article.
+  armerIsbnPourPost(null);
 
   // ══ B.5 ÉTENDU À TOUT LE REMPLISSAGE (2026-08-09, 3 annonces d'Ornella) ═════
   // B.5 ne couvrait QUE ensurePhotosLanded — la toute dernière garde, juste
@@ -1768,6 +1789,21 @@ async function fillListingForm(job) {
         );
       }
       tracePose.push(poseParFrappe ? "pose en un coup non retenue, re-pose par frappe commitée" : "pose en un coup commitée");
+      // ── POSE AU NIVEAU DU POST, ARMÉE ICI (2026-08-31) ────────────────────
+      // Mesuré sur le job a25d171b : la frappe aboutit (lookup livre retombé en
+      // 1575 ms, Auteur et Titre auto-remplis) et le corps du POST porte quand
+      // même "isbn":null. Le champ est perdu ENTRE le commit et la
+      // sérialisation du payload : aucune 3e frappe ne peut le rattraper.
+      // On arme donc la sonde à poser `isbn` dans le corps — clé mesurée, à
+      // côté de catalog_id, et seulement si la page l'a laissée vide.
+      // ARMÉ ICI, c'est-à-dire dès que l'état commité est vérifié et AVANT
+      // l'attente du lookup : les livres dont le lookup ne retombe jamais
+      // (hors base Vinted, champ redessiné) sont couverts exactement pareil.
+      // Vaut pour les DEUX chemins de recréation — l'une-passe ('captured') et
+      // la reprise ('deleted') passent toutes deux par cette étape, ce qui
+      // couvre les 26 annonces déjà supprimées et non recréées.
+      armerIsbnPourPost(norme.isbn13);
+      tracePose.push("pose au POST armée");
       // ── Attente SUR LE RETOUR du lookup livre (2026-08-28, GO Nico — mur
       // « Fairy tail », job a25d171b) : le sleep FIXE de 1,2 s perdait la
       // course — le POST partait avant que le lookup ait rattaché le livre,
@@ -2447,6 +2483,7 @@ async function fillListingForm(job) {
       const diagRefus = [
         `refus serveur HTTP ${sonde.refus?.status ?? "?"} (${sonde.refus?.url ?? "?"})`,
         sonde.refus?.isbnEnvoye != null ? `isbn dans le corps du POST : ${sonde.refus.isbnEnvoye}` : null,
+        sonde.refus?.isbnPose ? `isbn POSÉ dans le corps par la sonde (${sonde.refus.isbnPose}) — la page l'avait laissé vide` : null,
         sonde.refus?.reponse ? `réponse : ${sonde.refus.reponse}` : null,
         ...(diagnosticsRecreation.length ? [diagnosticsRecreation.join(" || ")] : []),
       ].filter(Boolean).join(" || ").slice(0, 2000);

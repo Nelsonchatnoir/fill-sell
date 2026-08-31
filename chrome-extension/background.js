@@ -4531,18 +4531,92 @@ async function installNetworkProbe(tabId, platform) {
           } catch { /* pas du JSON : extraits g\u00E9n\u00E9riques seulement */ }
           return extras;
         };
+        // ══ POSE DE L'ISBN DANS LE CORPS DU POST (2026-08-31) ═══════════════
+        // Mesuré sur le job a25d171b (josephinecerni, « Fairy tail de 1 à 11 »,
+        // catalog_id 2364, ISBN 9782811600174, 3e refus le 31/08 en 0.6.11) :
+        //   · diagnostic de pose : « pose en un coup commitée ; lookup livre vu
+        //     en 1575 ms (Auteur/Titre auto-remplis) » — la FRAPPE FONCTIONNE,
+        //     Vinted a lu l'ISBN et auto-rempli Auteur et Titre ;
+        //   · corps du POST : …,"catalog_id":2364,"isbn":null,"is_unisex":false,…
+        //   · réponse : validation_error, field "isbn".
+        // La saisie visuelle aboutit ; le state sérialisé au moment de
+        // construire le payload ne la contient pas. Le défaut est ENTRE le
+        // commit de la frappe et le POST — re-taper une 3e fois ne peut rien y
+        // changer, et les 12 refus de nadegemarcelin78 (0.6.10) puis ceux-ci
+        // (0.6.11, après la re-pose par frappe) le montrent.
+        // On pose donc la valeur LÀ OÙ ELLE A ÉTÉ MESURÉE : la clé `isbn`, dans
+        // l'objet qui porte catalog_id et is_unisex. Aucune clé inventée (elle
+        // est dans le corps relevé), AUCUNE autre clé touchée, et jamais
+        // d'écrasement — on ne remplit que si la page a laissé null/absent/vide.
+        // ⚠️ Ce chemin n'existe QUE pour l'ISBN. Le format eBay, lui, n'a jamais
+        // été mesuré : il ne se pose pas par la requête (cf. mémoire).
+        window.__fsIsbnAPoser = null;
+        const ISBN_ARME_TTL_MS = 15 * 60 * 1000; // borne : jamais d'armement qui traîne
+        const isbnArme = () => {
+          const a = window.__fsIsbnAPoser;
+          if (!a?.isbn) return null;
+          return (Date.now() - (a.armeeA ?? 0)) < ISBN_ARME_TTL_MS ? a.isbn : null;
+        };
+        window.addEventListener("message", (e) => {
+          if (e.source !== window || !e.data?.__fillsellArmeIsbn) return;
+          const v = String(e.data.isbn ?? "").replace(/[\s-]/g, "");
+          window.__fsIsbnAPoser = /^\d{13}$/.test(v) ? { isbn: v, armeeA: Date.now() } : null;
+        });
+        let dernierePoseIsbn = null;
+        // Rend le corps corrigé, ou null s'il n'y a rien à faire.
+        const corpsAvecIsbn = (url, body) => {
+          dernierePoseIsbn = null;
+          const isbn = isbnArme();
+          if (!isbn) return null;
+          if (!/item_upload\/items/i.test(String(url))) return null;
+          if (typeof body !== "string" || body.charAt(0) !== "{") return null;
+          let j;
+          try { j = JSON.parse(body); } catch { return null; }
+          if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+          // L'objet de l'article : celui qui porte catalog_id — le corps relevé
+          // montre isbn à côté de lui. Même résolution que priceOf (j.item ?? j),
+          // qui a fait ses preuves sur ce même endpoint.
+          const cible = (j.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+          const actuel = cible.isbn;
+          if (typeof actuel === "string" && actuel.replace(/[\s-]/g, "") !== "") return null; // la page a réussi
+          cible.isbn = isbn;
+          try {
+            const corrige = JSON.stringify(j);
+            dernierePoseIsbn = isbn;
+            return corrige;
+          } catch { return null; }
+        };
+
         const origFetch = window.fetch;
         window.fetch = async function (input, init) {
           const url = typeof input === "string" ? input : input?.url ?? "";
-          const res = await origFetch.apply(this, arguments);
+          let args = arguments;
+          let corpsEnvoye = init?.body;
+          let isbnPose = null;
+          try {
+            // Corps lisible uniquement : un Request porteur d'un flux n'est pas
+            // réécrit (angle mort assumé, jamais une publication cassée).
+            if (String(init?.method ?? "GET").toUpperCase() !== "GET" && typeof init?.body === "string") {
+              const corrige = corpsAvecIsbn(url, init.body);
+              if (corrige != null) {
+                isbnPose = dernierePoseIsbn;
+                corpsEnvoye = corrige;
+                args = [input, { ...init, body: corrige }];
+              }
+            }
+          } catch { /* la pose ne doit JAMAIS casser la publication */ }
+          const res = await origFetch.apply(this, args);
           try {
             if (ENDPOINT.test(url) && String(init?.method ?? "GET").toUpperCase() !== "GET") {
               const txt = await res.clone().text().catch(() => "");
               relay({
                 url, status: res.status,
-                prix: priceOf(init?.body),
-                attrsCatalogId: attrsCatalogIdOf(url, init?.body),
-                isbnEnvoye: isbnEnvoyeOf(url, init?.body),
+                prix: priceOf(corpsEnvoye),
+                attrsCatalogId: attrsCatalogIdOf(url, corpsEnvoye),
+                // Lu sur le corps RÉELLEMENT ENVOYÉ : le diagnostic doit dire
+                // ce qui est parti, pas ce que la page avait préparé.
+                isbnEnvoye: isbnEnvoyeOf(url, corpsEnvoye),
+                isbnPose,
                 annonceId: annonceIdOf(txt),
                 succesVinted: succesVintedOf(txt),
                 reponse: extraitSain(txt),
@@ -4556,6 +4630,14 @@ async function installNetworkProbe(tabId, platform) {
         const oSend = XMLHttpRequest.prototype.send;
         XMLHttpRequest.prototype.open = function (m, u) { this.__u = u; this.__m = m; return oOpen.apply(this, arguments); };
         XMLHttpRequest.prototype.send = function (body) {
+          let corpsEnvoye = body;
+          let isbnPose = null;
+          try {
+            if (String(this.__m).toUpperCase() !== "GET" && typeof body === "string") {
+              const corrige = corpsAvecIsbn(this.__u ?? "", body);
+              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; }
+            }
+          } catch { /* idem */ }
           try {
             if (ENDPOINT.test(this.__u ?? "") && String(this.__m).toUpperCase() !== "GET") {
               this.addEventListener("load", () => {
@@ -4565,9 +4647,10 @@ async function installNetworkProbe(tabId, platform) {
                 try { corps = this.responseText ?? ""; } catch { corps = "(responseType non texte)"; }
                 relay({
                   url: this.__u, status: this.status,
-                  prix: priceOf(typeof body === "string" ? body : null),
-                  attrsCatalogId: attrsCatalogIdOf(this.__u, typeof body === "string" ? body : null),
-                  isbnEnvoye: isbnEnvoyeOf(this.__u, typeof body === "string" ? body : null),
+                  prix: priceOf(typeof corpsEnvoye === "string" ? corpsEnvoye : null),
+                  attrsCatalogId: attrsCatalogIdOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
+                  isbnEnvoye: isbnEnvoyeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
+                  isbnPose,
                   annonceId: annonceIdOf(corps),
                   succesVinted: succesVintedOf(corps),
                   reponse: extraitSain(corps),
@@ -4576,7 +4659,7 @@ async function installNetworkProbe(tabId, platform) {
               });
             }
           } catch { /* idem */ }
-          return oSend.apply(this, arguments);
+          return oSend.call(this, corpsEnvoye);
         };
       },
     });
@@ -10598,9 +10681,23 @@ async function maybeAutoRepublish(session) {
     // ligne. Tant qu'UNE republication du compte est non terminale (quel que
     // soit l'article), on ne met RIEN de neuf en file : l'exécuteur porte
     // l'invariant, l'auto n'a aucune raison de fabriquer une file d'attente.
+    // ⚠️ 'needs_user' RETIRÉ DE CETTE GARDE (2026-08-31, cas josephinecerni).
+    // Il gelait le cycle ENTIER. Constat : capture toutes les 2 min jusqu'à
+    // 16:03, son job de republication part en processing, échoue, reste en
+    // needs_user — et à partir de là ZÉRO capture, ZÉRO cycle, extension en
+    // ligne, plafond à 0/15, deux syncs lancées. Rien côté serveur ne l'en
+    // empêchait (spend_coins_and_republish ne refuse 'republish_en_cours' que
+    // pour le MÊME vinted_item_id) : c'était bien cette ligne.
+    // Un needs_user attend une décision de l'utilisateur SUR UN ARTICLE. Il n'a
+    // aucune raison de suspendre les 400 autres. Le job reste needs_user,
+    // visible et relançable — c'est le CYCLE qui continue, pas le job qui saute,
+    // et l'article concerné reste exclu par le pré-filtre plus bas.
+    // Ce qui GARDE la garde : pending et processing. Là, une republication est
+    // réellement EN VOL (annonce peut-être déjà supprimée, recréation en
+    // route) — c'est l'invariant une-passe, il ne bouge pas.
     const enVol = await restRequest(
       `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
-      `&status=in.(pending,processing,needs_user)&select=id&limit=1`,
+      `&status=in.(pending,processing)&select=id&limit=1`,
       token, { headers: { Prefer: "return=representation" } },
     ).catch(() => null);
     if (enVol === null || enVol.length) return;
@@ -10678,13 +10775,27 @@ async function maybeAutoRepublish(session) {
       const jr = await restRequest(
         `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
         `&platform_fields->>vinted_item_id=eq.${c.vinted_item_id}` +
-        `&status=in.(pending,processing,needs_user,published)` +
-        `&select=status,published_at&order=created_at.desc&limit=1`,
+        `&status=in.(pending,processing,needs_user,published,failed)` +
+        `&select=status,published_at,created_at&order=created_at.desc&limit=1`,
         token, { headers: { Prefer: "return=representation" } },
       );
       const j = jr?.[0];
-      if (j && (j.status !== "published"
-        || (j.published_at && Date.now() - Date.parse(j.published_at) < 24 * 3_600_000))) continue;
+      if (j) {
+        // Contrepartie du needs_user retiré de la garde globale : c'est ICI que
+        // l'article en attente de l'utilisateur est écarté du cycle, et lui
+        // seul. Tant que le job est dans cet état, le proposer à nouveau
+        // fabriquerait exactement la boucle qu'on vient de casser.
+        if (j.status === "pending" || j.status === "processing" || j.status === "needs_user") continue;
+        // 'failed' est terminal, donc republiable — mais pas dans la seconde
+        // qui suit. Sans ce délai, un article qui échoue à chaque tentative
+        // repartirait au cycle suivant, indéfiniment, en réservant une Pépite
+        // à chaque fois (rendue par le trigger, mais le va-et-vient est réel).
+        // 24 h, la même fenêtre que la cadence des republications abouties.
+        if (j.status === "failed"
+          && j.created_at && Date.now() - Date.parse(j.created_at) < 24 * 3_600_000) continue;
+        if (j.status === "published"
+          && j.published_at && Date.now() - Date.parse(j.published_at) < 24 * 3_600_000) continue;
+      }
 
       // Second signal : observé par la sync depuis ≥ age_jours quand des
       // snapshots existent (le premier relevé fait foi) — appliqué SEULEMENT
