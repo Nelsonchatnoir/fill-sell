@@ -1383,6 +1383,7 @@ serve(async (req) => {
     // étiquette » vs « État neuf ». Vestiaire n'a pas de palier bas : son plus
     // bas est « Bon état ».
     let traceEtat: Record<string, unknown> = {};
+    let traceIsbn: Record<string, unknown> = {};
     {
       const ETAT_PAR_PLATEFORME: Record<string, Record<string, string>> = {
         neuf_etiquette: { vinted: "Neuf avec étiquette", ebay: "Neuf avec étiquette", beebs: "Neuf, avec étiquette", leboncoin: "État neuf",          vestiaire: "Neuf avec étiquette" },
@@ -1450,12 +1451,31 @@ serve(async (req) => {
     // ⛔ Jamais demandé au rédacteur : treize chiffres, ça ne se reformule pas,
     // et un ISBN faux envoie l'annonce sur un autre ouvrage.
     {
-      const brut = String(canonicalProvided.isbn ?? "").replace(/[\s-]/g, "");
-      // ISBN-13 (13 chiffres) ou ISBN-10 (9 chiffres + clé, X compris) —
-      // vinted.js normalise le 10 en 13 avant de poser.
-      if (/^\d{13}$/.test(brut) || /^\d{9}[\dXx]$/.test(brut)) {
-        if (platformListings.vinted) platformListings.vinted.platform_fields.isbn = brut.toUpperCase();
-      }
+      // ⚠️ VALIDATION ÉLARGIE (2026-08-31, 3e échec du test EAT). La version
+      // précédente exigeait que la chaîne ENTIÈRE soit l'ISBN
+      // (`/^\d{13}$/` après retrait des espaces et tirets). Or la valeur vient
+      // d'attributs_visibles.isbn_ean, qui est du TEXTE LIBRE relevé par le
+      // Lens : « EAN 9782981413604 », « ISBN : 978-2-9814136-0-4 », « ISBN-13
+      // 9782981413604 » sont tous refusés par une ancre stricte, alors qu'ils
+      // portent l'ISBN. On EXTRAIT désormais au lieu d'exiger une forme.
+      // Ancre sûre : un ISBN-13 commence TOUJOURS par 978 ou 979 — ce préfixe
+      // évite de ramasser un autre nombre à 13 chiffres. L'ISBN-10 n'est
+      // accepté que si la chaîne compacte ne contient QUE lui (sinon
+      // « ISBN-10 » ferait entrer son propre « 10 » dans le compte).
+      const compact = String(canonicalProvided.isbn ?? "").toUpperCase().replace(/[^0-9X]/g, "");
+      const isbn = compact.match(/97[89]\d{10}/)?.[0]
+        ?? (/^\d{9}[\dX]$/.test(compact) ? compact : null);
+      if (isbn && platformListings.vinted) platformListings.vinted.platform_fields.isbn = isbn;
+      // Trace du 5e maillon (2026-08-31). Quatre maillons sur cinq étaient
+      // prouvés par relevé — Lens rend bien isbn_ean, le cache identify est
+      // vide, canonical_fields.isbn part dans le bundle servi, et
+      // genericKnownSource lit pf.isbn. Le seul non observable était CE
+      // passage : reçu ? reconnu ? posé ? Trois clés, dans la trace existante.
+      traceIsbn = {
+        isbn_recu: Boolean(canonicalProvided.isbn),
+        isbn_recu_len: String(canonicalProvided.isbn ?? "").length,
+        isbn_pose: Boolean(isbn && platformListings.vinted),
+      };
     }
 
     // category_icon : attendu ICI seulement (il chevauchait la retouche photo
@@ -1486,6 +1506,7 @@ serve(async (req) => {
         platforms: platforms.length,
         photo_option,
         ...traceEtat,
+        ...traceIsbn,
         claude_calls: cost.claude_calls,
         claude_input_tokens: cost.claude_in,
         claude_output_tokens: cost.claude_out,
