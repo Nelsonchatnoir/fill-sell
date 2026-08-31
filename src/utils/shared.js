@@ -1553,6 +1553,31 @@ const TYPE_LABELS_EN={'High-Tech':'High-Tech','Mode':'Fashion','Luxe':'Luxury','
 export function typeLabel(type,lang){return lang==='en'?(TYPE_LABELS_EN[type]||type):type;}
 export function marqueLabel(m,lang){return(lang==='en'&&m?.toLowerCase()==='sans marque')?'Unbranded':m;}
 
+// ── Clé de COMPARAISON d'une marque (2026-08-31, bug des pills mortes) ────────
+// Les pills du Stock affichent un libellé RECALCULÉ (« Capitalisée » :
+// trim + 1re lettre majuscule + reste en minuscules), pendant que les
+// garde-fous d'App.jsx comparaient ce libellé à `inventaire.marque` BRUTE, en
+// égalité STRICTE. Toute marque dont la forme en base n'était pas exactement
+// sa forme capitalisée voyait donc son filtre annulé DANS LA FOULÉE du clic,
+// et la sélection retombait sur « Toutes » — pill morte, sans un mot.
+// Mesuré sur le compte de Nico (14:09) : « Tommy Jeans » → libellé « Tommy
+// jeans » (le J de Jeans passe en minuscule) ≠ base ⇒ cassée ; « Picture
+// Organic Clothing » → « Picture organic clothing » ⇒ cassée ; une marque
+// saisie tout en majuscules ou avec un espace parasite ⇒ cassée pareil. Les
+// mono-mots déjà capitalisés en base (Adidas, Casio, Volcom, Ego…) tombaient
+// juste par coïncidence — d'où « certaines marchent, d'autres non ».
+// CETTE clé est désormais le SEUL critère d'égalité entre une marque de pill
+// et une marque d'article, partout (filtre ET garde-fou).
+// ⚠️ Volontairement PAS de suppression d'accents ni de ponctuation (contrairement
+// à `_plat` plus bas, qui sert à un tout autre usage) : fusionner « Levi's » et
+// « Levis », ou « Café » et « Cafe », regrouperait des marques distinctes sous
+// une seule pill — c'est un choix produit, pas une correction de bug.
+// La BASE N'EST PAS TOUCHÉE : `inventaire.marque` garde sa casse d'origine,
+// c'est la comparaison à l'affichage qui devient juste.
+export function marqueKey(m){
+  return String(m??'').trim().replace(/\s+/g,' ').toLowerCase();
+}
+
 // La marque n'a plus sa place sur la LIGNE DE TITRE (2026-08-05) : elle s'y
 // disputait la largeur avec le titre et finissait rognée en « • Q… » / « • To… »,
 // c'est-à-dire illisible ET coûteuse. Elle passe en tête de la ligne meta, où

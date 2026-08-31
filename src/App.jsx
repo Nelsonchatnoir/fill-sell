@@ -48,7 +48,7 @@ import { Bar, Line } from 'react-chartjs-2';
 import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 // detectType + normalizeMarque : source de vérité UNIQUE dans utils/shared.js
 // (l'ancienne copie locale a fait survivre le bug Ralph Lauren→Luxe ; unifié 2026-07-17).
-import { detectType, normalizeMarque } from './utils/shared';
+import { detectType, normalizeMarque, marqueKey } from './utils/shared';
 import { prixAchatConnu, comptabilisables, nbSansPrixAchat, totalInvesti, totalMarge, totalCA, margeUnitaire } from './utils/comptabilite';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
@@ -3060,7 +3060,11 @@ export default function App({ loginOnly = false }){
   const stockFiltre=useMemo(()=>{
     const filtres=stock
       .filter(i=>filterType==="Tous"||i.type===filterType)
-      .filter(i=>filterMarque==="Toutes"||(i.marque?.toLowerCase()===filterMarque.toLowerCase()))
+      // marqueKey (2026-08-31) : le libellé de la pill est recalculé
+      // (« Capitalisée »), la marque de l'article est brute — un
+      // .toLowerCase() sans trim ni normalisation des espaces laissait
+      // passer à côté. Même clé ici et dans le garde-fou plus bas.
+      .filter(i=>filterMarque==="Toutes"||marqueKey(i.marque)===marqueKey(filterMarque))
       .filter(i=>searchMatch(i,search));
     const enLigneVinted=(i)=>!!i.vinted_item_id&&!i.disparu_le;
     const g1=filtres.filter(i=>!enLigneVinted(i));
@@ -3078,12 +3082,23 @@ export default function App({ loginOnly = false }){
   },[stock,filterType,filterMarque,search]);
   const soldFiltre=useMemo(()=>sold
     .filter(i=>filterType==="Tous"||i.type===filterType)
-    .filter(i=>filterMarqueSold==="Toutes"||(i.marque?.toLowerCase()===filterMarqueSold.toLowerCase()))
+    .filter(i=>filterMarqueSold==="Toutes"||marqueKey(i.marque)===marqueKey(filterMarqueSold))
     .filter(i=>searchMatch(i,search)),[sold,filterType,filterMarqueSold,search]);
+  // ── Garde-fous « la marque a disparu du stock » — LE BUG DU 31/08 ──────────
+  // Ils comparaient la marque de la pill (libellé RECALCULÉ, cf. marqueKey)
+  // à `i.marque` BRUTE en égalité STRICTE : toute marque dont la base ne
+  // portait pas exactement la forme capitalisée (« Tommy Jeans », « Picture
+  // Organic Clothing », une saisie en majuscules, un espace parasite) était
+  // jugée absente du stock DANS LA FOULÉE du clic → retour immédiat à
+  // « Toutes », pill morte et muette. Ces effets existent pour un cas réel
+  // (le dernier article d'une marque est vendu/supprimé pendant que son
+  // filtre est actif : sans eux, l'écran resterait vide sans pill active) —
+  // on les garde, avec la MÊME clé que le filtre. Ils ne se déclenchent donc
+  // plus que quand la marque a VRAIMENT disparu.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(()=>{if(filterMarque!=="Toutes"&&!stock.some(i=>i.marque===filterMarque))setFilterMarque("Toutes");},[stock,filterMarque]);
+  useEffect(()=>{if(filterMarque!=="Toutes"&&!stock.some(i=>marqueKey(i.marque)===marqueKey(filterMarque)))setFilterMarque("Toutes");},[stock,filterMarque]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(()=>{if(filterMarqueSold!=="Toutes"&&!sold.some(i=>i.marque===filterMarqueSold))setFilterMarqueSold("Toutes");},[sold,filterMarqueSold]);
+  useEffect(()=>{if(filterMarqueSold!=="Toutes"&&!sold.some(i=>marqueKey(i.marque)===marqueKey(filterMarqueSold)))setFilterMarqueSold("Toutes");},[sold,filterMarqueSold]);
   useEffect(()=>{setSoldShowAll(false);},[filterMarqueSold]);
   useEffect(()=>{setShowAllStock(false);},[filterMarque]);
   useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);},[search]);
