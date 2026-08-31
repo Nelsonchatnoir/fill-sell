@@ -151,8 +151,34 @@ function failJobAction(job, lang) {
 // la cause en tête). Les échecs DÉFINITIFS ne matchent pas : refus eBay
 // (« Publication eBay NON aboutie / REFUSÉE »), refus serveur 400, catégorie
 // manquante… — relancer un refus de contenu en boucle attire l'anti-bot.
-const RELANCE_RECUPERABLE_RE =
-  /^(CHALLENGE\s|REAUTH VENTE|Connexion\s+\S+\s+requise|Publication interrompue|Onglet suspendu par Chrome)/i;
+// Liste COMPLÉTÉE le 31/08 (cas réel 1e238834, brouillon LBC : le message
+// demande un geste PUIS une relance — l'usage exact du bouton) après relecture
+// de TOUS les messages d'échec du chemin publish. Ajoutés : brouillon LBC
+// (2 variantes, même tête), adresse LBC/Beebs absente + variante « champ déjà
+// rempli », vérification du compte vendeur eBay (/fpa), Vinted en langue
+// étrangère, throttle RESTRICTION VINTED, config des requis non captée,
+// catégorie Vinted non sélectionnée (le message lui-même dit « relance »).
+// Écartés sciemment : « Cet article n'a pas encore de catégorie Leboncoin »
+// (le geste est une REGÉNÉRATION, relancer tel quel re-échoue), « hors
+// FillSell » (photo CDN : reprise AUTOMATIQUE par handler-watch, un bouton
+// court-circuiterait le rapatriement serveur), et toutes les exclusions
+// existantes (refus eBay, refus serveur 400, listing_url_abandon).
+const RELANCE_RECUPERABLE_RE = new RegExp(
+  '^(' + [
+    'CHALLENGE\\s',
+    'REAUTH VENTE',
+    'Connexion\\s+\\S+\\s+requise',
+    'Publication interrompue',
+    'Onglet suspendu par Chrome',
+    'Un brouillon Leboncoin non terminé',
+    'Adresse requise pour (Leboncoin|Beebs)',
+    'Le champ adresse de Leboncoin contient déjà',
+    'eBay exige une mise à niveau',
+    'Ton Vinted est réglé dans une autre langue',
+    'RESTRICTION VINTED',
+    'Impossible de vérifier les champs obligatoires Vinted',
+    "La catégorie Vinted n['’]a pas pu être sélectionnée",
+  ].join('|') + ')', 'i');
 const RELANCE_MANUELLE_MAX = 3;
 const RELANCE_MANUELLE_COOLDOWN_MS = 10 * 60 * 1000;
 function relanceManuelleInfo(job) {
