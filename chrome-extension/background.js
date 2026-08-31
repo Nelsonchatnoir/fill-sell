@@ -42,9 +42,10 @@ console.log(
 const ALARM_NAME = "fillsell-poll-jobs";
 const SYNC_DRESSING_ALARM = "fillsell-sync-dressing";
 
-// Ré-armements "action utilisateur requise" (needsUser) autorisés avant de
-// basculer le job en failed : évite qu'un job attendant une info jamais
-// fournie (ex: adresse Leboncoin) ne rouvre un onglet à chaque cron sans fin.
+// Plafond du chemin « refus serveur nommé → needs_user » (Vinted 400, voir
+// le site d'appel dans processJob) : au-delà, failed. Depuis le 31/08 ce
+// n'est PLUS la borne de rearmBounded (reprise espacée, cf. ci-dessous) —
+// le compteur needsUserAttempts reste partagé entre les deux circuits.
 const MAX_NEEDS_USER_RETRIES = 2;
 
 // Erreurs qui ne disent RIEN sur le job lui-même, seulement sur l'instant où il
@@ -61,6 +62,69 @@ const MAX_NEEDS_USER_RETRIES = 2;
 // DataDome documenté plus bas), et masquerait le vrai problème à l'utilisateur.
 const TRANSIENT_JOB_ERROR_RE =
   /message channel closed|Receiving end does not exist|No tab with id|pas fini de charger|pas fini de s'ouvrir|Onglet de travail fermé pendant/i;
+
+// ── Reprise ESPACÉE des échecs RÉCUPÉRABLES (2026-08-31) ─────────────────────
+// Constat du 31/08 sur cas réels (842b0a22 DataDome LBC, fa69b1bd/0e2c5f8e
+// eBay) : un échec récupérable (challenge anti-robot, session à reconnecter,
+// canal coupé, interruption) était ré-armé au plus UNE fois par rearmBounded,
+// à ~2 min d'intervalle (le poll) — jamais le temps qu'un humain résolve la
+// cause — puis partait en `failed` AVEC un message qui promettait « le job
+// repartira au prochain passage ». La promesse était fausse : les 3 jobs ont
+// dû être repassés en pending À LA MAIN en base (et sont partis aussitôt).
+// Désormais la reprise est RÉELLE et espacée : recul progressif porté par
+// platform_fields.next_action_after — la même mécanique, éprouvée, que la
+// republication (/listing-restriction, recréations) : le job reste 'pending',
+// la porte de processJob le saute jusqu'à l'échéance sans rien écrire ni
+// ouvrir d'onglet, le poll ~2 min le reprend ensuite. Compteur inchangé
+// (needsUserAttempts, relayé par le poll) : aucune colonne nouvelle.
+// 5 essais au total (l'initial + ces 4 reprises), puis un failed HONNÊTE qui
+// ne promet plus rien (cf. rearmBounded). Un échec DÉFINITIF (refus de la
+// plateforme sur le contenu, verdict terminal eBay…) ne passe PAS par ici :
+// il reste failed/needs_user sec, comme avant — reprogrammer un refus
+// attirerait l'anti-bot pour rien.
+// Pépite : le ré-armement en pending ne passe jamais par 'failed' → le
+// trigger settle_reservation ne relâche rien, la réservation tient et la
+// reprise ne RE-DÉBITE jamais (même invariant que le palliatif bfcache
+// d'update-job-status) ; au failed final elle est rendue une seule fois.
+const REPRISE_ESPACEE_DELAIS_MIN = [5, 15, 30, 60];
+
+// ── Cause CONNUE → message humain (défaut n°2 du 31/08) ──────────────────────
+// Le job fa69b1bd affichait l'exception Chrome « the message channel closed »
+// alors que platform_fields.last_diagnostic portait DÉJÀ la vraie cause
+// (prevol_stepup_vente : pas connecté au flux de vente eBay). Dès qu'on lui a
+// dit la vraie raison, l'utilisateur s'est reconnecté et l'annonce est
+// partie. Quand last_diagnostic porte un motif nommé, c'est LUI qui mène le
+// message utilisateur — jamais l'exception technique seule.
+// Textes COURTS à dessein : humanizeJobError (app) remplace par un générique
+// tout message > 300 caractères — un final « cause + arrêt » doit tenir.
+// Fraîcheur bornée à 6 h : le diagnostic d'une tentative précédente reste
+// pertinent pendant le cycle de reprises (~2 h), pas au-delà.
+const CAUSES_HUMAINES_CONNUES = {
+  prevol_stepup_vente:
+    "REAUTH VENTE eBay : eBay exige une reconnexion de sécurité pour vendre. " +
+    "Ouvre ebay.fr dans Chrome, clique « Vendre » et reconnecte-toi",
+};
+function causeHumaineConnue(job) {
+  let d = job?.platform_fields?.last_diagnostic;
+  if (typeof d === "string") { try { d = JSON.parse(d); } catch { return null; } }
+  if (!d || typeof d !== "object") return null;
+  const at = Date.parse(String(d.at ?? ""));
+  if (Number.isFinite(at) && Date.now() - at > 6 * 60 * 60 * 1000) return null;
+  return CAUSES_HUMAINES_CONNUES[String(d.quoi ?? "")] ?? null;
+}
+
+// Retire d'un message la promesse de reprise (« le job repartira au prochain
+// passage »…) avant de l'employer dans un failed FINAL : y laisser la
+// promesse referait exactement le mensonge constaté le 31/08 — et l'app
+// (humanizeJobError) remplacerait le message entier par son générique.
+function sansPromesseDeReprise(msg) {
+  return String(msg ?? "")
+    .replace(/nouvelle tentative au prochain passage\s*;\s*sinon/gi, "Sinon")
+    .replace(/[,;]?\s*[—–-]?\s*\b(?:le job|la publication|il|elle)\s+(?:repartira|reprendra)[^.]*\.?/gi, ".")
+    .replace(/[,;]?\s*nouvelle tentative au prochain (?:passage|cycle)\s*[.;:]?/gi, ".")
+    .replace(/\s+\./g, ".").replace(/\.{2,}/g, ".").replace(/\s{2,}/g, " ")
+    .trim();
+}
 
 // ── Dispatch par plateforme ────────────────────────────────────────────────────
 // `implemented: false` → le job est loggé et laissé en pending (le content
@@ -1515,6 +1579,21 @@ async function processJob(rawJob, accessToken) {
     return { status: "skipped", error: `Handler ${job.platform} pas encore implémenté` };
   }
 
+  // ── Porte de reprise ESPACÉE (2026-08-31) ─────────────────────────────────
+  // Un job ré-armé par rearmBounded porte platform_fields.next_action_after :
+  // on ne le retraite pas avant l'échéance. Le job RESTE pending, aucun
+  // statut n'est écrit, aucun onglet n'est ouvert — rien à nourrir côté
+  // anti-bot pendant l'attente. Republish EXCLU : sa propre porte
+  // (processRepublishJob) gère déjà next_action_after, à l'identique — on ne
+  // touche pas à l'ordre de ses vérifications (périmètre 0.6.11 intact).
+  if (job.action !== "republish") {
+    const echeance = Date.parse(job.platform_fields?.next_action_after ?? "");
+    if (Number.isFinite(echeance) && Date.now() < echeance) {
+      console.log(`[background] Job ${job.id} : reprise espacée — pas avant ${job.platform_fields.next_action_after}`);
+      return { status: "skipped", error: "reprise espacée — échéance pas encore atteinte" };
+    }
+  }
+
   // Jobs de SUPPRESSION (Phase B, 2026-07-11) : même file, pipeline dédié —
   // pas de pré-check catégorie ni de formulaire de dépôt à ouvrir.
   if (job.action === "delete") return processDeleteJob(job, accessToken);
@@ -1548,6 +1627,10 @@ async function processJob(rawJob, accessToken) {
     // ci-dessous, extras de fin) repartent de job.platform_fields — sans cette
     // fusion, elles effaceraient processing_since en base.
     job.platform_fields = { ...(job.platform_fields ?? {}), processing_since: new Date().toISOString() };
+    // Échéance de reprise CONSOMMÉE (2026-08-31) : retirée de la copie mémoire
+    // pour que les écritures suivantes ne remettent pas en base une échéance
+    // passée — elle retarderait une relance manuelle après un needs_user.
+    delete job.platform_fields.next_action_after;
     await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields });
 
     // Onglet de travail UNIQUE, réutilisé de job en job — jamais un onglet
@@ -2214,17 +2297,41 @@ async function processJob(rawJob, accessToken) {
       }
 
       console.warn(`[background] Job ${job.id} : incident transitoire (canal coupé ou page trop lente) — ${msg}`);
-      await rearmBounded(accessToken, job, `Publication interrompue, nouvelle tentative au prochain cycle : ${msg}`)
-        .catch((err) => console.error("[background] update-job-status failed:", err));
+      // Défaut n°2 du 31/08 (job fa69b1bd) : l'exception technique masquait la
+      // cause réelle déjà en base (last_diagnostic prevol_stepup_vente). Quand
+      // une cause connue est posée, c'est ELLE que l'utilisateur lit ; le brut
+      // Chrome part en platform_fields.derniere_interruption (requêtable en
+      // SQL), plus jamais seul dans error.
+      const cause = causeHumaineConnue(job);
+      if (cause) {
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          derniere_interruption: msg.slice(0, 500),
+        };
+      }
+      await rearmBounded(
+        accessToken, job,
+        cause
+          ? `${cause}. La tentative en cours a été interrompue avant d'aboutir.`
+          : `Publication interrompue en cours d'opération : ${msg}`
+      ).catch((err) => console.error("[background] update-job-status failed:", err));
       return { status: "retry", error: msg };
     }
     console.error(`[background] Job ${job.id} en échec:`, e);
     // Observation fenêtre (2026-07-30) : re-relevé sur le failed sec aussi —
     // platform_fields joint pour porter work_window_state.at_end en base.
     stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
-    await updateJobStatus(accessToken, job.id, "failed", { error: msg, platform_fields: job.platform_fields })
+    // Cause connue en base (défaut n°2 du 31/08) : elle mène le message ; le
+    // brut reste DANS le texte, entre parenthèses — les requalifications
+    // serveur d'update-job-status (signature « back/forward cache ») matchent
+    // sur cross_post_jobs.error et doivent continuer de le voir.
+    const causeSec = causeHumaineConnue(job);
+    const msgSec = causeSec
+      ? `${causeSec}. La tentative a échoué avant d'aboutir (détail : ${msg})`
+      : msg;
+    await updateJobStatus(accessToken, job.id, "failed", { error: msgSec, platform_fields: job.platform_fields })
       .catch((err) => console.error("[background] update-job-status failed:", err));
-    return { status: "failed", error: msg };
+    return { status: "failed", error: msgSec };
   }
 }
 
@@ -2272,11 +2379,17 @@ function completionExtras(job, result) {
   return extras;
 }
 
-// Ré-armement BORNÉ d'un job en pending : au plus MAX_NEEDS_USER_RETRIES
-// passages, sinon le job bouclerait indéfiniment (rouvrant un onglet +
-// remplissant le formulaire à chaque cron) si la cause ne disparaît jamais —
-// même risque DataDome que le dry-run en boucle. Compteur porté par
-// platform_fields.needsUserAttempts (partagé needsUser / erreurs transitoires).
+// Ré-armement BORNÉ ET ESPACÉ d'un job en pending (refondu le 2026-08-31,
+// cf. bandeau REPRISE_ESPACEE_DELAIS_MIN) : reprises réelles à 5/15/30/60 min
+// (next_action_after + porte de processJob), 5 essais au total, puis failed
+// HONNÊTE — cause d'abord, arrêt dit clairement, AUCUNE promesse de reprise.
+// L'ancien schéma (2 essais collés au rythme du poll, puis failed avec le
+// message qui promettait « le job repartira au prochain passage ») ne laissait
+// jamais le temps de résoudre un challenge ou une reconnexion, et mentait à
+// l'arrivée. Sans borne, le job bouclerait indéfiniment (rouvrant un onglet à
+// chaque cron) si la cause ne disparaît jamais — même risque DataDome que le
+// dry-run en boucle. Compteur porté par platform_fields.needsUserAttempts
+// (partagé needsUser / erreurs transitoires, relayé par le poll).
 // ── Reprise sur onglet neuf, SANS consommer de tentative (2026-08-10) ───────
 // Un onglet de travail figé n'est pas un refus de la plateforme : c'est notre
 // outil qui est cassé, pas le dépôt qui est mauvais. Le faire décompter sur
@@ -2344,19 +2457,42 @@ async function rearmBounded(accessToken, job, errorMsg) {
   stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
 
   const attempts = (job.platform_fields?.needsUserAttempts ?? 0) + 1;
-  if (attempts >= MAX_NEEDS_USER_RETRIES) {
-    console.warn(`[background] Job ${job.id} : cause toujours présente après ${attempts} tentatives → failed (sort de la boucle) — ${errorMsg}`);
+  const totalEssais = REPRISE_ESPACEE_DELAIS_MIN.length + 1;
+  if (attempts >= totalEssais) {
+    // Essais épuisés : failed ASSUMÉ et honnête. La cause mène (last_diagnostic
+    // connu, sinon le message débarrassé de sa promesse de reprise) ; le texte
+    // ne porte aucun marqueur de promesse (« repartira »…) — sinon l'app le
+    // remplacerait par son générique — et reste court (< 300 c.). Le trigger
+    // settle_reservation rend la Pépite ICI, une seule fois (statut terminal).
+    const cause = causeHumaineConnue(job) ?? sansPromesseDeReprise(errorMsg);
+    const msgFinal =
+      cause + (/[.!?…]$/.test(cause) ? "" : ".") +
+      ` ${attempts} tentatives automatiques espacées ont échoué : le job est arrêté.` +
+      (job.action === "delete"
+        ? " Si l'annonce est encore en ligne, retire-la à la main sur la plateforme."
+        : " Corrige la cause ci-dessus, puis relance depuis la fiche de l'article.");
+    console.warn(`[background] Job ${job.id} : ${attempts} essais épuisés → failed (arrêt assumé) — ${errorMsg}`);
     // platform_fields joint depuis le 2026-07-30 : porte le relevé fenêtre
     // (work_window_state.at_end) sur la ligne failed, comme la branche pending.
     await updateJobStatus(accessToken, job.id, "failed", {
-      error: errorMsg,
+      error: msgFinal,
       platform_fields: { ...(job.platform_fields ?? {}), needsUserAttempts: attempts },
     });
   } else {
-    console.warn(`[background] Job ${job.id} : ré-armement (tentative ${attempts}/${MAX_NEEDS_USER_RETRIES}) — ${errorMsg}`);
+    // Reprise RÉELLE : recul progressif (l'échéance est sautée par la porte de
+    // processJob, le poll reprend le job après). Le message annonce le délai
+    // VRAI — plus jamais une promesse sans mécanisme derrière.
+    const delaiMin = REPRISE_ESPACEE_DELAIS_MIN[Math.min(attempts - 1, REPRISE_ESPACEE_DELAIS_MIN.length - 1)];
+    const base = String(errorMsg ?? "").trim();
+    console.warn(`[background] Job ${job.id} : ré-armement espacé (tentative ${attempts}/${totalEssais}, reprise dans ~${delaiMin} min) — ${errorMsg}`);
     await updateJobStatus(accessToken, job.id, "pending", {
-      error: errorMsg,
-      platform_fields: { ...(job.platform_fields ?? {}), needsUserAttempts: attempts },
+      error: base + (/[.!?…]$/.test(base) ? "" : ".") +
+        ` Reprise automatique dans ~${delaiMin} min (tentative ${attempts}/${totalEssais}).`,
+      platform_fields: {
+        ...(job.platform_fields ?? {}),
+        needsUserAttempts: attempts,
+        next_action_after: new Date(Date.now() + delaiMin * 60000).toISOString(),
+      },
     });
   }
 }
@@ -10429,6 +10565,8 @@ async function processDeleteJob(job, accessToken) {
     // aussi (2026-07-30, même raison que processJob : update-job-status écrase
     // platform_fields en entier).
     job.platform_fields = { ...(job.platform_fields ?? {}), processing_since: new Date().toISOString() };
+    // Échéance de reprise CONSOMMÉE (2026-08-31) — même règle que processJob.
+    delete job.platform_fields.next_action_after;
     await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields });
 
     const target = DELETE_TARGETS[job.platform]?.(job);

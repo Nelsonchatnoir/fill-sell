@@ -837,7 +837,28 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // du motif au lieu du verdict opaque. Détection ISBN, gates de relecture et
 // soumission « quand même » à l'étape deleted : inchangées.
 // EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE épinglée dessus.
-export const EXTENSION_LAST_COMMIT = '2026-08-30T20:31:00Z';
+// 2026-08-31T10:30:00Z = 5e correctif de la 0.6.11 (zip 6b37e94 jamais
+// téléversé — refait) : reprise RÉELLE des échecs récupérables + cause vraie
+// dans le message (2 défauts constatés le 31/08 en prod). (1) rearmBounded
+// passait un job en failed après 2 essais collés (~2 min, le poll) avec un
+// message promettant « le job repartira au prochain passage » — faux : jobs
+// 842b0a22 (DataDome LBC résolu par l'utilisatrice, job resté mort) et
+// fa69b1bd/0e2c5f8e (eBay), tous débloqués À LA MAIN. Désormais reprise
+// espacée 5/15/30/60 min via platform_fields.next_action_after (mécanique
+// éprouvée de la republication, porte ajoutée dans processJob pour
+// publish/delete — republish EXCLU, sa porte existe), 5 essais bornés, puis
+// failed HONNÊTE sans promesse (cause en tête, < 300 c. pour survivre au
+// filtre d'humanizeJobError). Pépite : pending ne passe jamais par failed →
+// réservation tenue, aucun re-débit ; rendue une fois au failed final.
+// (2) causeHumaineConnue : last_diagnostic à motif nommé (prevol_stepup_vente,
+// fraîcheur 6 h) mène le message utilisateur sur les chemins transitoire et
+// failed sec — le brut Chrome part en platform_fields.derniere_interruption
+// (transitoire) ou reste entre parenthèses (failed sec : la requalification
+// serveur « back/forward cache » d'update-job-status matche sur error).
+// Chemin de publication INTACT ; correctifs 0.6.11 intacts (listing-
+// restriction, relevé Vinted, niveau catégorie, pose ISBN).
+// EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE épinglée dessus.
+export const EXTENSION_LAST_COMMIT = '2026-08-31T10:30:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
