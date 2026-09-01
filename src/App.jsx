@@ -1169,16 +1169,29 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
   const MicSvg = ({ size=34, stroke="#fff" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
   );
+  // ── Grille 2×2 réordonnée (2026-09-01, audit Tableau vide) ────────────────
+  // La republication — le geste qui tourne sans que l'utilisateur touche à
+  // rien — n'apparaissait NULLE PART sur la seule page que voit un compte à
+  // zéro, pendant que deux cartes comptables (ventes, stats) occupaient la
+  // première ligne alors qu'elles ne concernent que qui a déjà vendu. La
+  // republication passe EN TÊTE ; les deux cartes comptables FUSIONNENT en
+  // une (même geste vocal, mêmes chiffres) et redescendent en dernier — la
+  // grille reste à 4, la page ne s'allonge pas. La phrase de la carte
+  // republication est LA MÊME que l'étape 3 de « Ce que FillSell fait »
+  // (StockTab vide) : un seul discours pour un seul geste.
   const CARDS = [
     {
-      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6"/><path d="M16 12h-6"/><path d="M12 16h-2"/></svg>,
-      titleFr:"Enregistre tes ventes", titleEn:"Log your sales",
-      descFr:"Dis « vendu 25 € », ta marge se calcule toute seule.", descEn:"Say “sold for €25” — your margin computes itself.",
+      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
+      titleFr:"Tes annonces remontent toutes seules", titleEn:"Your listings climb back on their own",
+      descFr:"Une annonce qui dort est republiée pour repasser en tête de recherche Vinted, au rythme d'une vraie personne — sans que tu touches à rien.", descEn:"A listing that sits gets reposted back to the top of Vinted search, at a human pace — without you touching a thing.",
     },
     {
-      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>,
-      titleFr:"Suis tes stats", titleEn:"Track your stats",
-      descFr:"Profit net, marges et évolution du mois, en un coup d'œil.", descEn:"Net profit, margins and monthly trend, at a glance.",
+      // Le retrait n'est jamais « tout seul » — détection automatique,
+      // retrait SUR CONFIRMATION (pending_removal + bandeau). Même discours
+      // que la landing. Icône cloche : FillSell PRÉVIENT, l'utilisateur agit.
+      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>,
+      titleFr:"Vendu quelque part ? Tu retires les autres en un tap", titleEn:"Sold somewhere? Remove the others in one tap",
+      descFr:"Vendu sur Vinted ? FillSell te prévient — tu retires Leboncoin, eBay et Beebs en un tap.", descEn:"Sold on Vinted? FillSell lets you know — you remove Leboncoin, eBay and Beebs in one tap.",
     },
     {
       icon:<MicSvg size={20} stroke="currentColor"/>,
@@ -1186,12 +1199,9 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
       descFr:"Dis « pull Zara taille M, 15 € », c'est ajouté et classé.", descEn:"Say “Zara sweater size M, €15” — added and sorted.",
     },
     {
-      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
-      // Lot 2 : le retrait n'est jamais « tout seul » — détection automatique,
-      // retrait SUR CONFIRMATION (pending_removal + bandeau). Même discours
-      // que la landing depuis le lot 1.
-      titleFr:"Vendu quelque part ? Tu retires les autres en un tap", titleEn:"Sold somewhere? Remove the others in one tap",
-      descFr:"Vendu sur Vinted ? FillSell te prévient — tu retires Leboncoin, eBay et Beebs en un tap.", descEn:"Sold on Vinted? FillSell lets you know — you remove Leboncoin, eBay and Beebs in one tap.",
+      icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>,
+      titleFr:"Enregistre tes ventes, suis tes marges", titleEn:"Log your sales, track your margins",
+      descFr:"Dis « vendu 25 € » : la vente est enregistrée — profit net et marges se mettent à jour en un coup d'œil.", descEn:"Say “sold for €25”: the sale is logged — net profit and margins update at a glance.",
     },
   ];
   return (
@@ -1220,18 +1230,15 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
               <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
             </div>
           </div>
-          {/* Titre remis à jour le 2026-08-09. L'ancien (« Publie tes articles
-              sur Vinted, Leboncoin, eBay et Beebs sans les saisir quatre
-              fois. ») disait mot pour mot ce que le bandeau « PUBLIÉ
-              AUTOMATIQUEMENT SUR » + les quatre logos disent déjà, à deux
-              centimètres en dessous : le premier écran vendait donc une seule
-              chose, deux fois. Il vend maintenant les deux promesses qui
-              n'étaient nulle part — la synchro du dressing Vinted (le premier
-              geste, celui du bouton juste dessous) et la marge (la raison pour
-              laquelle on tient un stock). Le cross-posting reste vendu par le
-              bandeau, avec ses logos. */}
+          {/* Titre remis à jour le 2026-09-01 (audit Tableau vide). L'ancien
+              (« …et tu sais enfin ce que chaque vente te rapporte ») vendait
+              la COMPTABILITÉ comme promesse d'entrée — elle a déjà sa carte
+              dans la grille plus bas. Le titre dit la valeur réelle du
+              produit : les annonces déjà en ligne sur Vinted remontent ici,
+              et de là elles partent sur les trois autres plateformes. C'est
+              aussi exactement ce que fait le bouton juste dessous. */}
           <h1 style={{margin:0,fontWeight:700,fontSize:25,lineHeight:1.2,letterSpacing:"-0.02em",color:UI.ink}}>
-            {fr?"Ton dressing Vinted arrive ici en un clic — et tu sais enfin ce que chaque vente te rapporte.":"Your Vinted closet lands here in one click — and you finally know what each sale earns you."}
+            {fr?"Tes annonces Vinted remontent ici — et repartent sur Leboncoin, eBay et Beebs.":"Your Vinted listings land here — and go out to Leboncoin, eBay and Beebs."}
           </h1>
           <button
             onClick={onImport}
@@ -1252,9 +1259,15 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
         </div>
       </section>
 
-      {/* Bandeau plateformes — vraies icônes d'app (PlatformLogo) */}
+      {/* Bandeau plateformes — vraies icônes d'app (PlatformLogo).
+          L'eyebrow dit LE GESTE (2026-09-01) : « PUBLIÉ AUTOMATIQUEMENT SUR »
+          décorait les logos sans rien dire de ce que fait l'app. Même
+          formulation que l'étape 2 de « Ce que FillSell fait » (StockTab
+          vide) — un seul discours. La ligne du dessous ne répète plus le
+          geste : elle ne garde que la suite (la vente confirmée met tout à
+          jour). */}
       <div style={{textAlign:"center",padding:"2px 4px 0"}}>
-        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"PUBLIÉ AUTOMATIQUEMENT SUR":"AUTOMATICALLY PUBLISHED ON"}</p>
+        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"UNE ANNONCE PRÉPARÉE UNE FOIS, DÉPOSÉE SUR LES QUATRE":"ONE LISTING PREPARED ONCE, POSTED TO ALL FOUR"}</p>
         <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:12,marginTop:14}}>
           {["vinted","leboncoin","ebay","beebs"].map(p=>(
             <span key={p} style={{display:"inline-flex",borderRadius:10,boxShadow:"0 2px 6px rgba(16,32,27,0.09)"}}>
@@ -1263,7 +1276,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
           ))}
         </div>
         <p style={{margin:"12px auto 0",maxWidth:288,fontSize:12.5,lineHeight:1.45,color:UI.mute,fontWeight:400}}>
-          {fr?"Une annonce, publiée partout. Dès que tu confirmes une vente, ton stock, tes ventes et tes marges se mettent à jour.":"One listing, published everywhere. As soon as you confirm a sale, your stock, sales and margins are updated."}
+          {fr?"Dès que tu confirmes une vente, ton stock, tes ventes et tes marges se mettent à jour.":"As soon as you confirm a sale, your stock, sales and margins are updated."}
         </p>
       </div>
 
