@@ -960,7 +960,16 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ⛔ AUCUN retrait automatique de plateforme — arbitrage produit, pas handler.
 // EXTENSION_MIN_BUILD inchangé (il se lit dans le paquet PUBLIÉ ; promotion
 // vers le build 0.6.11 = 2026-08-30T20:31:09Z toujours EN ATTENTE DE GO).
-export const EXTENSION_LAST_COMMIT = '2026-08-31T17:39:46Z';
+// 2026-09-01T16:58:39Z = RATTRAPAGE (comme 3db8465/58f8c54 le 12/08) : les
+// deux commits 0.6.15 du 01/09 (74ce865 « canal coupe eBay, 5 lots
+// indépendants » à 16:47:59Z et 43ee753 « le prix part systématiquement » à
+// 16:58:39Z) ont touché chrome-extension/ SANS bumper cette constante —
+// `npm run build` local échouait sur la garde ci-dessous, bloquant le
+// déploiement Capgo du lot onboarding (2.4.88→2.4.94), du JS app pur qui ne
+// dépend en rien de ces commits extension. Recalage de garde SEUL :
+// EXTENSION_MIN_BUILD ne bouge pas (aucun effet bannière, aucun effet parc),
+// aucun paquet extension n'est produit ici.
+export const EXTENSION_LAST_COMMIT = '2026-09-01T16:58:39Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
