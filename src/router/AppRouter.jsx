@@ -44,9 +44,11 @@ function RequireAuth({ children }) {
       setUser(session?.user ?? null);
     });
   }, []);
-  // Cible protégée hors /app (ex. /extension depuis le lien e-mail de
-  // l'accroche) : mémorisée AVANT la redirection, consommée par les chemins
-  // de login (handleLogin, AuthCallback) — sinon navigate('/app') l'avale.
+  // Cible protégée hors /app : mémorisée AVANT la redirection, consommée par
+  // les chemins de login (handleLogin, AuthCallback) — sinon navigate('/app')
+  // l'avale. (Depuis le 2026-09-01, /extension est PUBLIQUE et ne passe plus
+  // par ici — le mécanisme reste pour toute future route protégée listée dans
+  // postLoginRedirect.ALLOWED_TARGETS.)
   useEffect(() => {
     if (user === null) rememberPostLoginTarget(location.pathname);
   }, [user, location.pathname]);
@@ -79,7 +81,12 @@ export default function AppRouter() {
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/blog" element={<BlogList />} />
         <Route path="/blog/:slug" element={<BlogPost />} />
-        <Route path="/extension" element={<RequireAuth><ExtensionPage /></RequireAuth>} />
+        {/* PUBLIQUE depuis le 2026-09-01 (audit onboarding) : le mail
+            send-extension-link atterrit ici sur un ordinateur où la session
+            FillSell n'existe généralement pas encore — la garde d'auth
+            renvoyait ces visiteurs vers la landing avant tout affichage.
+            La page ne lit aucune donnée de session ni de profil. */}
+        <Route path="/extension" element={<ExtensionPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>

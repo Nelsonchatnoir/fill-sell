@@ -23,12 +23,11 @@ export default function ExtensionPage() {
 
   // Page à potentiel SEO (« extension revente vinted », « publier vinted
   // leboncoin automatiquement ») : on lui donne ses propres meta plutôt que de
-  // la masquer en noindex. ⚠️ Elle reste derrière RequireAuth dans le routeur :
-  // un visiteur (ou un crawler) déconnecté est redirigé vers / AVANT ce rendu,
-  // donc ces meta ne s'appliquent aujourd'hui qu'aux utilisateurs connectés.
-  // Pour que la page puisse réellement ranker, il faudra la servir sans garde
-  // d'auth (décision produit non prise) — c'est aussi pour ça qu'elle n'est pas
-  // encore au sitemap.
+  // la masquer en noindex. PUBLIQUE depuis le 2026-09-01 (audit onboarding) :
+  // le mail send-extension-link atterrit ici sur un ordinateur où la session
+  // FillSell n'existe généralement pas — la garde d'auth y perdait ces
+  // visiteurs. La page ne lit AUCUNE donnée de session/profil : toute future
+  // section personnalisée devra être conditionnelle à une session présente.
   useSeo({
     path: "/extension",
     title: "Extension Chrome FillSell — publier sur Vinted, Leboncoin, eBay",
@@ -105,6 +104,36 @@ export default function ExtensionPage() {
           <span style={{ fontSize: 18 }}>🧩</span>
           {en ? "Install from the Chrome Web Store" : "Installer depuis le Chrome Web Store"}
         </a>
+
+        {/* Ce que ça débloque — la récompense AVANT la procédure (2026-09-01,
+            audit onboarding) : le mail qui amène ici vend « ton dressing
+            remonte tout seul », la page ne le disait nulle part. La ligne du
+            contrat de lecture reprend MOT POUR MOT celle de l'onboarding et de
+            la carte de sync — une seule formulation partout. */}
+        <div style={{ background: UI.card, border: `1px solid ${UI.border}`, borderRadius: 16, padding: "14px 16px", marginBottom: 22, boxShadow: "0 1px 4px rgba(16,32,27,0.05)" }}>
+          <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 10 }}>
+            {en ? "What it unlocks" : "Ce que ça débloque"}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {(en
+              ? [
+                  ["🧥", "Your entire Vinted wardrobe syncs into the app on its own — titles, prices, photos, within seconds."],
+                  ["🚀", "Your listings go out to Vinted, Leboncoin, eBay and Beebs without retyping anything."],
+                  ["🔒", "We read your listings: titles, prices, photos. Nothing is published, edited or deleted."],
+                ]
+              : [
+                  ["🧥", "Ton dressing Vinted remonte tout seul dans l'app — titres, prix, photos, en quelques secondes."],
+                  ["🚀", "Tes annonces partent sur Vinted, Leboncoin, eBay et Beebs sans rien ressaisir."],
+                  ["🔒", "On lit tes annonces : titres, prix, photos. Rien n'est publié, modifié ni supprimé."],
+                ]
+            ).map(([emo, txt], i) => (
+              <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                <span style={{ flexShrink: 0, fontSize: 15, lineHeight: "19px" }}>{emo}</span>
+                <span style={{ fontSize: 13, lineHeight: 1.5, color: UI.mute2 }}>{txt}</span>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Étapes */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
