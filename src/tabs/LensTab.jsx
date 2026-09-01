@@ -113,6 +113,9 @@ function LensScanHome({
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative,
   analyzeLens, lensLoading, onCreateListing, creatingListing,
+  // Prix du scan (coin_config.price_lens_overflow) et solde du compte —
+  // AFFICHAGE seul, null tant que non chargés (2026-09-01, audit onboarding).
+  lensPrice = null, coinBalance = null, grantMensuel = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const [showLensHelp, setShowLensHelp] = useState(false);
@@ -262,9 +265,12 @@ function LensScanHome({
             disabled={analyzeDisabled}
             style={{ width:'100%', boxSizing:'border-box', borderRadius:999, padding:'13px 0', marginTop:8, display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:14, fontWeight:600, fontFamily:'inherit', background:'none', border:`1.5px solid ${TEAL_DEEP}`, color:TEAL_DEEP, cursor: analyzeDisabled ? 'not-allowed' : 'pointer', opacity: analyzeDisabled ? 0.6 : 1 }}
           >
+            {/* Prix lu de coin_config (2026-09-01) — le « 6 » en dur faisait
+                mentir l'écran à tout changement de grille. Pas encore chargé →
+                pas de montant (jamais un chiffre en dur en repli). */}
             {lensLoading
               ? t('lensAnalyzing')
-              : <>{lang === 'en' ? 'Analyse the deal' : 'Analyser le deal'} · <PepiteAmount value={6} size={12} /></>}
+              : <>{lang === 'en' ? 'Analyse the deal' : 'Analyser le deal'}{lensPrice != null && <> · <PepiteAmount value={lensPrice} size={12} /></>}</>}
           </button>
 
           {/* Tarif affiché EN PERMANENCE, tous tiers (2026-07-22) — et depuis le
@@ -284,6 +290,24 @@ function LensScanHome({
               ? 'Price estimate + deal verdict'
               : 'Estimation du prix + verdict du deal'}
           </div>
+
+          {/* ── Solde + première rencontre avec le mot « Pépites » (2026-09-01,
+              audit onboarding) : le mot n'était défini NULLE PART dans l'app
+              (seulement dans le mail de bienvenue), et le solde n'était
+              lisible que dans les Paramètres et à l'étape 1 du stepper. UNE
+              ligne, même style que celle du dessus. Solde et dotation viennent
+              de la base (coin_wallets, coin_config) — jamais un chiffre en
+              dur ; rien ne s'affiche tant qu'ils ne sont pas chargés. */}
+          {coinBalance != null && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:4, textAlign:'center', color:'#A6A192' }}>
+              <PepiteIcon size={11} />
+              <span>
+                {lang === 'en'
+                  ? <>Your Nuggets: <b style={{ color:'#8A8578' }}>{coinBalance}</b>{grantMensuel != null && <> — FillSell's currency, {grantMensuel} free every month</>}</>
+                  : <>Tes Pépites : <b style={{ color:'#8A8578' }}>{coinBalance}</b>{grantMensuel != null && <> — la monnaie FillSell, {grantMensuel} offertes chaque mois</>}</>}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Platform marquee */}
@@ -466,6 +490,10 @@ const LensTab = memo(function LensTab({
   // Battement serveur de l'extension — relayé au stepper pour la ligne
   // « ordinateur éteint » au-dessus du CTA Publier (2026-08-13).
   extensionLastSeenAt = null,
+  // Portefeuille lu par App (fetchAll) — AFFICHAGE seul (2026-09-01, audit
+  // onboarding) : le solde n'était lisible que dans les Paramètres et à
+  // l'étape 1 du stepper, jamais sur l'écran d'entrée où les coûts s'affichent.
+  coinWallet = null,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
   const [lensListingPhotos,setLensListingPhotos]=useState([]);
@@ -495,6 +523,35 @@ const LensTab = memo(function LensTab({
   const [identifyResult,setIdentifyResult]=useState(null);
   const [identifyEchec,setIdentifyEchec]=useState(false);
   const listingSource=identifyResult??lensResult;
+
+  // ── coin_config : prix + dotation mensuelle (2026-09-01, audit onboarding) ─
+  // Le « 6 » du CTA « Analyser le deal » était EN DUR alors que la grille vit
+  // dans coin_config (price_lens_overflow) : un changement en base faisait
+  // mentir l'écran d'entrée. Même mécanisme de lecture que le stepper
+  // (ListingPreviewScreen) : un select au montage, affichage seul — le débit
+  // reste tranché côté serveur. Tant que la lecture n'a pas répondu, AUCUN
+  // montant ne s'affiche (jamais un chiffre en dur en repli).
+  const [coinCfg,setCoinCfg]=useState(null);
+  useEffect(()=>{
+    supabase.from('coin_config').select('key, value').then(({data})=>{
+      const m={};
+      for(const row of data??[])m[row.key]=row.value;
+      setCoinCfg(m);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+  const lensPrice=Number.isFinite(coinCfg?.price_lens_overflow)?coinCfg.price_lens_overflow:null;
+  // Dotation mensuelle du PLAN de l'utilisateur (flags cumulatifs : business >
+  // pro > premium > free) — sert à la phrase de première rencontre des
+  // Pépites, jamais à un calcul.
+  const grantMensuel=(()=>{
+    if(!coinCfg)return null;
+    const key=isBusiness?'monthly_grant_business':isPro?'monthly_grant_pro':isPremium?'monthly_grant_premium':'monthly_grant_free';
+    return Number.isFinite(coinCfg[key])?coinCfg[key]:null;
+  })();
+  // Solde affichable : null tant que le portefeuille n'est pas chargé — on
+  // n'affiche jamais un faux zéro.
+  const coinBalance=coinWallet?(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0):null;
 
   // Reprise du stepper après remount (reload d'onglet Chrome ou navigation
   // interne) : le blob hôte écrit à l'ouverture permet de le REMONTER avec les
@@ -672,6 +729,7 @@ const LensTab = memo(function LensTab({
           analyzeLens={analyzeLens} lensLoading={lensLoading}
           onCreateListing={()=>extensionNeverSeen===true?setExtPitchAction('identify'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleIdentifyAndCreate())}
           creatingListing={generatingListing}
+          lensPrice={lensPrice} coinBalance={coinBalance} grantMensuel={grantMensuel}
         />
         {listingError&&(
           <div style={{maxWidth:520,margin:"10px auto 0",padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
@@ -843,10 +901,14 @@ const LensTab = memo(function LensTab({
             :(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
         </PrimaryButton>
 
-        {/* Tarif payant-par-scan (2026-07-23) — plus de quota ni de compteur */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578"}}>
-          <PepiteIcon size={11} /> {lang==="en"?"6 Nuggets per scan":"6 Pépites l'analyse"}
-        </div>
+        {/* Tarif payant-par-scan (2026-07-23) — plus de quota ni de compteur.
+            Prix lu de coin_config depuis le 2026-09-01 (plus de « 6 » en dur) :
+            la ligne ne s'affiche que le prix chargé. */}
+        {lensPrice!=null&&(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578"}}>
+            <PepiteIcon size={11} /> {lang==="en"?`${lensPrice} Nuggets per scan`:`${lensPrice} Pépites l'analyse`}
+          </div>
+        )}
         </>)}
 
         {/* Résultat */}

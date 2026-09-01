@@ -6044,6 +6044,7 @@ export default function App({ loginOnly = false }){
             onStepperOpenChange={setListingStepperOpen}
             extensionNeverSeen={extensionNeverSeen}
             extensionLastSeenAt={extensionLastSeenAt}
+            coinWallet={coinWallet}
           />
         )}
 
