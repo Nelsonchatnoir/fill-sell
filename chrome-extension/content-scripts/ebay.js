@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-09-01-filet-prix-format-put-delta (le format « Achat immediat » et le prix repartent par PUT delta du brouillon quand la relecture DOM montre que la pose n'a pas pris — formes MESUREES le 01/09, jamais devinees ; + etape() relaie l'etape de remplissage au background, qui survit a la mort de la page) + 2026-07-30-saisie-libre-entree (doctrine valeur hors liste : un aspect a vocabulaire ouvert « Recherchez/ajoutez » recoit la saisie libre validee par Entree quand la liste ne la materialise pas — relecture seule juge ; cas Type Bottines) + 2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
+const EBAY_BUILD = "2026-09-01-filet-prix-format-put-delta (PRIX pose SYSTEMATIQUEMENT par PUT delta du brouillon apres la pose DOM — mesure du 01/09 : setNativeValue+blur ne declenche AUCUNE sauvegarde, le champ affiche la valeur mais le brouillon serveur ne la recoit pas ; FORMAT en filet CONDITIONNEL, sa bascule DOM sauvegarde bien. Formes MESUREES, jamais devinees ; + etape() relaie l'etape de remplissage au background, qui survit a la mort de la page) + 2026-07-30-saisie-libre-entree (doctrine valeur hors liste : un aspect a vocabulaire ouvert « Recherchez/ajoutez » recoit la saisie libre validee par Entree quand la liste ne la materialise pas — relecture seule juge ; cas Type Bottines) + 2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -724,8 +724,9 @@ async function fillListingForm(job) {
   }
 
   // FILET (LOT 5) — la pose DOM ci-dessus reste la voie NORMALE et n'a pas
-  // bougé d'une ligne ; ceci ne part que si sa relecture montre qu'elle n'a
-  // pas pris. Voir filetPrixFormatParApi.
+  // bougé d'une ligne. Le FORMAT n'est reposé que si sa relecture montre que
+  // la bascule n'a pas pris ; le PRIX, lui, part SYSTÉMATIQUEMENT — sa pose
+  // DOM ne sauvegarde pas le brouillon (mesuré). Voir filetPrixFormatParApi.
   {
     const filet = await filetPrixFormatParApi(job, warnings);
     if (filet) formatTrace = { ...(formatTrace ?? {}), filet_api: filet };
@@ -1770,8 +1771,26 @@ async function fillDescription(text, warnings) {
 // Enchères.
 //
 // ⚠️ C'EST UN FILET, PAS UN REMPLACEMENT. ensureAchatImmediat et la pose DOM
-// du prix restent en premier et INCHANGÉES. Ce code ne fait rien tant que leur
-// relecture dit que le DOM a pris.
+// du prix restent en premier et INCHANGÉES.
+//
+// LES DEUX CHAMPS N'ONT PAS LE MÊME RÉGIME, ET C'EST UNE MESURE, PAS UN CHOIX
+// D'HUMEUR (01/09, sonde fetch/XHR sur un brouillon jetable) :
+//   · FORMAT → filet CONDITIONNEL. La bascule DOM d'ensureAchatImmediat (la
+//     séquence realClick exacte : pointerdown/mousedown/pointerup/mouseup/
+//     click sur le bouton listbox puis sur l'option [role="option"]) déclenche
+//     BIEN la sauvegarde — PUT {format:"ChineseAuction"} puis
+//     {format:"FixedPrice"} observés dans les deux sens. Quand le DOM a pris,
+//     reposer ne servirait à rien : on ne repose que si la relecture montre un
+//     format encore en « Enchères ».
+//   · PRIX → pose INCONDITIONNELLE. setNativeValue (setter natif + input +
+//     change) suivi d'un blur — la séquence exacte du handler — n'a déclenché
+//     AUCUN PUT : le champ affichait « 42,50 » pendant que le brouillon
+//     serveur ne recevait rien. La même valeur passée par
+//     execCommand('insertText') a produit le PUT immédiatement. La relecture
+//     DOM n'est donc PAS un oracle valable pour le prix : elle dit « posé »
+//     sur un brouillon vide. C'est très probablement la cause profonde de la
+//     famille « Prix de départ ». Le prix étant la valeur du job, sans aucune
+//     ambiguïté sémantique, on le pose systématiquement après la pose DOM.
 //
 // FORMES MESURÉES le 01/09 — jamais devinées (leçon de l'endpoint `images`
 // inventé pour Vinted en 0.5.3, qui a coûté l'annonce de Gabin). Sonde posée
@@ -1790,6 +1809,15 @@ async function fillDescription(text, warnings) {
 // RELECTURE OBLIGATOIRE : un 200 ne prouve rien. La réponse du PUT porte le
 // modèle complet du brouillon — on y cherche la valeur qu'on vient de poser,
 // et on ne la déclare posée que si on l'y retrouve.
+// ⚠️ LES MOTIFS DE RELECTURE NE SONT PAS CEUX DU CORPS ENVOYÉ. Mesuré aussi,
+// et c'est un piège : la réponse ne contient NI "price":"18.50" NI
+// "format":"FixedPrice". Ce qu'elle contient (relevé le 01/09) :
+//   · prix   → "precisionPrice":"18.5"  (juste après le bloc currency EUR) ;
+//   · format → "listingFormat":"FixedPrice"  — c'est l'état du BROUILLON.
+//     Ne PAS se contenter de chercher « FixedPrice » : la chaîne apparaît 3
+//     fois, dont une dans la LISTE DES OPTIONS ({"value":"FixedPrice","label"
+//     …}, à côté de « Enchères ») — elle y est même quand le brouillon est en
+//     Enchères, donc elle validerait n'importe quoi.
 // UN SEUL PUT PAR CHAMP, aucune boucle de reprise. Exécuté depuis le content
 // script d'une page /lstng chargée (jamais depuis le service worker), par le
 // même chemin exact que putDescriptionViaDraftApi, éprouvé en production
@@ -1845,33 +1873,39 @@ async function filetPrixFormatParApi(job, warnings) {
     const n = Number(String(el?.value ?? "").replace(",", ".").replace(/[^\d.]/g, ""));
     trace.prix_dom = Number.isFinite(n) && n > 0 ? n : null;
 
-    // Le DOM a pris : on ne touche à RIEN. C'est le cas nominal.
+    // FORMAT : filet CONDITIONNEL. La bascule DOM sauvegarde réellement le
+    // brouillon (mesuré), on ne repose donc que si elle a visiblement échoué.
     const formatKO = trace.format_dom !== null && trace.format_dom !== "Achat immédiat";
-    const prixKO = job.price != null && trace.prix_dom === null;
-    if (!formatKO && !prixKO) return trace;
+    // PRIX : pose INCONDITIONNELLE (mesuré — la pose DOM ne sauvegarde pas).
+    const posePrix = job.price != null;
+    if (!formatKO && !posePrix) return trace;
 
     const ctx = contexteBrouillonApi();
     if (!ctx) {
-      warnings.push("filet prix/format: impossible (csrf-data, jeton srt ou draftId absent)");
+      warnings.push("filet prix/format: impossible (csrf-data, jeton srt ou draftId absent) — brouillon non complété par l'API");
       trace.put_format = "contexte_absent";
+      trace.put_prix = "contexte_absent";
       return trace;
     }
 
+    // ORDRE IMPOSÉ : le format d'abord. Le champ prix n'a pas le même sens
+    // selon le format (prix de départ en Enchères, achat immédiat sinon) —
+    // poser le prix dans un brouillon encore en Enchères, c'est écrire une
+    // mise à prix d'enchère, exactement ce que FillSell ne veut jamais.
     if (formatKO) {
-      trace.put_format = await putChampBrouillon(ctx, { format: "FixedPrice" }, '"format":"FixedPrice"', warnings, "format");
+      trace.put_format = await putChampBrouillon(
+        ctx, { format: "FixedPrice" }, '"listingFormat":"FixedPrice"', warnings, "format",
+      );
     }
-    // Le prix repart aussi quand c'est le FORMAT qui avait échoué : un prix
-    // saisi dans un formulaire resté en Enchères n'est pas le prix d'achat
-    // immédiat, c'est le prix de départ — le brouillon doit recevoir le bon.
-    if ((formatKO || prixKO) && job.price != null) {
+    if (posePrix) {
       const p = Number(job.price);
       if (!Number.isFinite(p) || p <= 0) {
         trace.put_prix = "prix_du_job_invalide";
         return trace;
       }
-      const price = p.toFixed(2);
+      const precisionPrice = String(p);
       trace.put_prix = await putChampBrouillon(
-        ctx, { price, precisionPrice: String(p) }, `"price":"${price}"`, warnings, "prix",
+        ctx, { price: p.toFixed(2), precisionPrice }, `"precisionPrice":"${precisionPrice}"`, warnings, "prix",
       );
     }
     return trace;

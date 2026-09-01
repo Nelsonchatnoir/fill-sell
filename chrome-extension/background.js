@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-09-01-canal-coupe-ebay (5 lots INDÉPENDANTS sur le décrochage « back/forward cache » d'eBay : [1] le relevé de fenêtre porte enfin l'URL de l'onglet et l'étape de remplissage en cours — observation pure ; [2] les trois murs eBay connus (signin, /splashui/, /fpa/) sont nommés à la coupure du canal et partent en needs_user, jamais retentés ; [3] content-scripts/ebay.js déclaré aussi sur ebay.com ; [4] le canal coupé interroge la sonde AVANT de conclure — une publication partie mais d'issue inconnue ne se relance plus (garde anti-doublon) ; [5] filet prix/format par PUT delta du brouillon quand la pose DOM n'a pas pris)";
+  "2026-09-01-canal-coupe-ebay (5 lots INDÉPENDANTS sur le décrochage « back/forward cache » d'eBay : [1] le relevé de fenêtre porte enfin l'URL de l'onglet et l'étape de remplissage en cours — observation pure ; [2] les trois murs eBay connus (signin, /splashui/, /fpa/) sont nommés à la coupure du canal et partent en needs_user, jamais retentés ; [3] content-scripts/ebay.js déclaré aussi sur ebay.com ; [4] le canal coupé interroge la sonde AVANT de conclure — une publication partie mais d'issue inconnue ne se relance plus (garde anti-doublon) ; [5] le PRIX repart SYSTEMATIQUEMENT par PUT delta du brouillon apres la pose DOM (mesure : setNativeValue+blur n'ecrit rien cote serveur), le FORMAT seulement si sa bascule DOM n'a pas pris)";
 
 // ── BUILD_ID AUTOMATIQUE (2026-07-18) ─────────────────────────────────────────
 // FILLSELL_BUILD ci-dessus est une DESCRIPTION codée en dur que personne ne pense
