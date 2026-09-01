@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-07-30-saisie-libre-entree (doctrine valeur hors liste : un aspect a vocabulaire ouvert « Recherchez/ajoutez » recoit la saisie libre validee par Entree quand la liste ne la materialise pas — relecture seule juge ; cas Type Bottines) + 2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
+const EBAY_BUILD = "2026-09-01-filet-prix-format-put-delta (le format « Achat immediat » et le prix repartent par PUT delta du brouillon quand la relecture DOM montre que la pose n'a pas pris — formes MESUREES le 01/09, jamais devinees ; + etape() relaie l'etape de remplissage au background, qui survit a la mort de la page) + 2026-07-30-saisie-libre-entree (doctrine valeur hors liste : un aspect a vocabulaire ouvert « Recherchez/ajoutez » recoit la saisie libre validee par Entree quand la liste ne la materialise pas — relecture seule juge ; cas Type Bottines) + 2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -89,6 +89,21 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       chrome.runtime.sendMessage({ type: "FILLSELL_PROBE_CAPTURE", capture: e.data.capture }).catch(() => {});
     } catch { /* extension rechargée : sans conséquence */ }
   });
+}
+
+// ── LOT 1 (2026-09-01) : dire au background OÙ ON EN EST ────────────────────
+// Quand Chrome met /lstng en back/forward cache, la page est gelée et le canal
+// FILL_LISTING est coupé DÉFINITIVEMENT (Chrome 123) : ce handler n'a plus
+// aucun moyen de raconter ce qu'il faisait. Le background, lui, survit — comme
+// pour les captures de la sonde ci-dessus. On lui pousse donc l'étape en cours
+// au fil de l'eau ; elle finit dans platform_fields.work_window_state.at_end
+// .fill_step et dit enfin à quel moment du remplissage on décroche.
+// PUR RELEVÉ, et fire-and-forget par construction : jamais d'await, jamais de
+// throw, aucun effet sur les temporisations du remplissage.
+function etape(nom) {
+  try {
+    chrome.runtime?.sendMessage?.({ type: "FILLSELL_FILL_STEP", step: nom })?.catch?.(() => {});
+  } catch { /* hors extension (dry-run injecté), ou extension rechargée */ }
 }
 
 // ── Entrée par la home : clic réel sur "Vendre" ──────────────────────────────
@@ -556,7 +571,10 @@ async function fillListingForm(job) {
     }
   }
 
+  etape("formulaire_pret");
+
   if (job.photos?.length) {
+    etape("photos");
     const photoNote = await uploadPhotos(job.photos);
     if (photoNote) warnings.push(photoNote);
     await fieldSettle();
@@ -564,6 +582,7 @@ async function fillListingForm(job) {
 
   // Titre : déjà passé par l'URL, mais tronqué/réencodé possible — on
   // impose la valeur exacte du job si elle diffère (80 caractères max eBay).
+  etape("titre");
   const titleInput = document.querySelector('input[name="title"]');
   const wantedTitle = String(job.title ?? "").slice(0, 80);
   if (titleInput && wantedTitle && titleInput.value !== wantedTitle) {
@@ -574,6 +593,7 @@ async function fillListingForm(job) {
     await fieldSettle();
   }
 
+  etape("aspects");
   // ── Item specifics (tous non bloquants, warning si introuvable) ──────────
   // Département : jamais touché (pré-rempli par la catégorie genrée).
   // Libellés multiples par champ : le nom varie selon la catégorie
@@ -669,6 +689,7 @@ async function fillListingForm(job) {
   // bon état" en vêtements, "Occasion" ailleurs) — on relève sans corriger :
   // la granularité fine des états vêtements (Parfait état/Bon état...)
   // passera par l'UI dans un lot ultérieur si besoin.
+  etape("etat");
   const condLabel = document.querySelector("#summary-condition-field-value")?.textContent?.trim();
   if (fields.etat && condLabel && !sameConditionFamily(fields.etat, condLabel)) {
     warnings.push(`état: "${fields.etat}" → état eBay "${condLabel}" (défaut URL, granularité non ajustée)`);
@@ -676,6 +697,7 @@ async function fillListingForm(job) {
 
   // ── Prix : basculer Enchères → Achat immédiat puis poser le prix ─────────
   if (job.price != null) {
+    etape("prix_format");
     await fieldSettle();
     formatTrace = await ensureAchatImmediat(warnings);
     // 20 s (et pas 8) : la section PRIX se re-rend après la bascule Achat
@@ -701,6 +723,15 @@ async function fillListingForm(job) {
     }
   }
 
+  // FILET (LOT 5) — la pose DOM ci-dessus reste la voie NORMALE et n'a pas
+  // bougé d'une ligne ; ceci ne part que si sa relecture montre qu'elle n'a
+  // pas pris. Voir filetPrixFormatParApi.
+  {
+    const filet = await filetPrixFormatParApi(job, warnings);
+    if (filet) formatTrace = { ...(formatTrace ?? {}), filet_api: filet };
+  }
+
+  etape("description");
   // ── Description (RTE dans une iframe same-origin) ─────────────────────────
   // descOk (2026-07-12, vécu en LIVE réel) : l'iframe RTE n'était pas encore
   // chargée au moment du remplissage, le texte est parti dans le vide et eBay
@@ -955,6 +986,7 @@ async function fillListingForm(job) {
   // menus, avec le helper déjà utilisé avant chaque pose de specific.
   await dismissLightboxes();
 
+  etape("clic_mise_en_vente");
   console.log(`[ebay] 🚀 LIVE — clic « ${listBtn.textContent.trim()} » (engagement de frais)`);
   await humanPause(1200, 2400);
   realClick(listBtn);
@@ -1727,6 +1759,127 @@ async function fillDescription(text, warnings) {
   // n'est donc plus le miroir : c'est la réponse HTTP du PUT.
   warnings.push("description: textarea miroir jamais synchronisé (mécanique eBay changée, mesuré 24/08) — pose par l'API du brouillon");
   return await putDescriptionViaDraftApi(text, warnings);
+}
+
+// ── LOT 5 (2026-09-01) — FILET PRIX / FORMAT PAR PUT DELTA ──────────────────
+// Famille « Prix de départ » : 3 jobs raffalepic le 31/08, tous refusés par
+// eBay avec pour SEUL manquant « Prix de départ » — c'est-à-dire un brouillon
+// resté au format ENCHÈRES, jamais basculé en « Achat immédiat ». Le même run
+// portait le warning « format: option pas apparue ». Ça touche par
+// construction tout compte qui n'a jamais vendu : son formulaire arrive en
+// Enchères.
+//
+// ⚠️ C'EST UN FILET, PAS UN REMPLACEMENT. ensureAchatImmediat et la pose DOM
+// du prix restent en premier et INCHANGÉES. Ce code ne fait rien tant que leur
+// relecture dit que le DOM a pris.
+//
+// FORMES MESURÉES le 01/09 — jamais devinées (leçon de l'endpoint `images`
+// inventé pour Vinted en 0.5.3, qui a coûté l'annonce de Gabin). Sonde posée
+// sur fetch/XHR d'un brouillon jetable pendant que LA PAGE ELLE-MÊME
+// sauvegarde ses champs :
+//     PUT /lstng/api/listing_draft/{draftId}?mode=AddItem
+//     {requestId, removedFields: [], format: "FixedPrice"}      ← Achat immédiat
+//     {requestId, removedFields: [], format: "ChineseAuction"}  ← Enchères
+//     {requestId, removedFields: [], price: "37.90", precisionPrice: "37.9"}
+//   · `price` est une CHAÎNE à séparateur POINT (le DOM affiche « 37,90 », le
+//     réseau envoie « 37.90 ») ;
+//   · `requestMeta` accompagne les corps de la page mais n'est PAS requis :
+//     un PUT sans lui a répondu 200 et la valeur est revenue après
+//     rechargement complet du brouillon.
+//
+// RELECTURE OBLIGATOIRE : un 200 ne prouve rien. La réponse du PUT porte le
+// modèle complet du brouillon — on y cherche la valeur qu'on vient de poser,
+// et on ne la déclare posée que si on l'y retrouve.
+// UN SEUL PUT PAR CHAMP, aucune boucle de reprise. Exécuté depuis le content
+// script d'une page /lstng chargée (jamais depuis le service worker), par le
+// même chemin exact que putDescriptionViaDraftApi, éprouvé en production
+// depuis le 25/08.
+function contexteBrouillonApi() {
+  try {
+    const csrf = document.getElementById("csrf-data");
+    if (!csrf) return null;
+    const map = JSON.parse(csrf.getAttribute("data-value"));
+    const srt = map["/lstng/api/listing_draft/:draftId(\\d+)"];
+    const params = new URLSearchParams(location.search);
+    const draftId = params.get("draftId");
+    const mode = params.get("mode") || "AddItem";
+    if (!srt || !draftId) return null;
+    return { srt, draftId, mode };
+  } catch {
+    return null;
+  }
+}
+
+async function putChampBrouillon(ctx, champs, motifRelecture, warnings, libelle) {
+  try {
+    const uuid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const r = await fetch(`/lstng/api/listing_draft/${ctx.draftId}?mode=${encodeURIComponent(ctx.mode)}`, {
+      method: "PUT", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", srt: ctx.srt, Accept: "application/json" },
+      body: JSON.stringify({ requestId: uuid, removedFields: [], ...champs }),
+    });
+    if (!r.ok) {
+      warnings.push(`filet ${libelle}: PUT du brouillon refusé (HTTP ${r.status}) — valeur non posée`);
+      return `http_${r.status}`;
+    }
+    const txt = await r.text();
+    if (!txt.includes(motifRelecture)) {
+      warnings.push(`filet ${libelle}: PUT accepté (200) mais la relecture du brouillon ne montre pas la valeur`);
+      return "200_sans_relecture";
+    }
+    console.log(`[ebay] filet ${libelle} : posé par l'API du brouillon et RELU dans la réponse`);
+    return "pose_et_relu";
+  } catch (e) {
+    warnings.push(`filet ${libelle}: PUT en échec (${String(e?.message ?? e).slice(0, 120)})`);
+    return "exception";
+  }
+}
+
+async function filetPrixFormatParApi(job, warnings) {
+  const trace = { format_dom: null, prix_dom: null, put_format: null, put_prix: null };
+  try {
+    const boutonFormat = [...document.querySelectorAll('button[aria-haspopup="listbox"]')]
+      .find((b) => ["Enchères", "Achat immédiat"].includes(texteDe(b)));
+    trace.format_dom = boutonFormat ? texteDe(boutonFormat) : null;
+    const el = document.querySelector('input[name="price"]');
+    const n = Number(String(el?.value ?? "").replace(",", ".").replace(/[^\d.]/g, ""));
+    trace.prix_dom = Number.isFinite(n) && n > 0 ? n : null;
+
+    // Le DOM a pris : on ne touche à RIEN. C'est le cas nominal.
+    const formatKO = trace.format_dom !== null && trace.format_dom !== "Achat immédiat";
+    const prixKO = job.price != null && trace.prix_dom === null;
+    if (!formatKO && !prixKO) return trace;
+
+    const ctx = contexteBrouillonApi();
+    if (!ctx) {
+      warnings.push("filet prix/format: impossible (csrf-data, jeton srt ou draftId absent)");
+      trace.put_format = "contexte_absent";
+      return trace;
+    }
+
+    if (formatKO) {
+      trace.put_format = await putChampBrouillon(ctx, { format: "FixedPrice" }, '"format":"FixedPrice"', warnings, "format");
+    }
+    // Le prix repart aussi quand c'est le FORMAT qui avait échoué : un prix
+    // saisi dans un formulaire resté en Enchères n'est pas le prix d'achat
+    // immédiat, c'est le prix de départ — le brouillon doit recevoir le bon.
+    if ((formatKO || prixKO) && job.price != null) {
+      const p = Number(job.price);
+      if (!Number.isFinite(p) || p <= 0) {
+        trace.put_prix = "prix_du_job_invalide";
+        return trace;
+      }
+      const price = p.toFixed(2);
+      trace.put_prix = await putChampBrouillon(
+        ctx, { price, precisionPrice: String(p) }, `"price":"${price}"`, warnings, "prix",
+      );
+    }
+    return trace;
+  } catch (e) {
+    // Un filet ne doit JAMAIS faire échouer le job qu'il vient secourir.
+    warnings.push(`filet prix/format: abandonné (${String(e?.message ?? e).slice(0, 120)})`);
+    return trace;
+  }
 }
 
 // Pose la description DIRECTEMENT dans le brouillon eBay par le PUT delta —

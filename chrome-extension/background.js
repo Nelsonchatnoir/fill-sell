@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-08-03-sync-dressing-vinted (l'extension sait lire le dressing Vinted de l'utilisateur : GET /api/v2/wardrobe/{id}/items page par page, pauses variables, reprise sur curseur, upsert anti-doublon garanti par la base. Les articles importés arrivent SANS prix d'achat — jamais 0 — et entrent dans le cycle de détection de vente via un cross_post_jobs 'published')";
+  "2026-09-01-canal-coupe-ebay (5 lots INDÉPENDANTS sur le décrochage « back/forward cache » d'eBay : [1] le relevé de fenêtre porte enfin l'URL de l'onglet et l'étape de remplissage en cours — observation pure ; [2] les trois murs eBay connus (signin, /splashui/, /fpa/) sont nommés à la coupure du canal et partent en needs_user, jamais retentés ; [3] content-scripts/ebay.js déclaré aussi sur ebay.com ; [4] le canal coupé interroge la sonde AVANT de conclure — une publication partie mais d'issue inconnue ne se relance plus (garde anti-doublon) ; [5] filet prix/format par PUT delta du brouillon quand la pose DOM n'a pas pris)";
 
 // ── BUILD_ID AUTOMATIQUE (2026-07-18) ─────────────────────────────────────────
 // FILLSELL_BUILD ci-dessus est une DESCRIPTION codée en dur que personne ne pense
@@ -389,6 +389,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // eBay relaie sous FILLSELL_PROBE_CAPTURE, même traitement.)
   if ((msg?.type === "VINTED_PROBE_CAPTURE" || msg?.type === "FILLSELL_PROBE_CAPTURE") && senderTabId != null) {
     recordProbeCapture(senderTabId, msg.capture ?? {});
+    sendResponse({ ok: true });
+    return; // réponse synchrone
+  }
+  // LOT 1 (2026-09-01) — étape de remplissage en cours, relayée pour SURVIVRE
+  // à la mort de la page (même raison d'être que la capture ci-dessus). Pur
+  // relevé : rien ne décide sur cette valeur, elle n'existe que pour le
+  // diagnostic en base (work_window_state.at_end.fill_step).
+  if (msg?.type === "FILLSELL_FILL_STEP" && senderTabId != null) {
+    noterEtapeRemplissage(senderTabId, msg.step);
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
@@ -1572,6 +1581,88 @@ function sanitizeJob(job) {
   return { ...job, title };
 }
 
+// ── CANAL COUPÉ : LA SIGNATURE CHROME, DEUX FORMULATIONS ────────────────────
+// Chrome dit la MÊME chose de deux façons, selon que le document sortant était
+// éligible au back/forward cache (mesuré le 01/09 sur /lstng : servi sans
+// Cache-Control, restauré avec event.persisted=true — la page est bien gelée
+// puis reprise) :
+//   · gelé    → « The page keeping the extension port is moved into
+//                back/forward cache, so the message channel IS closed. »
+//   · détruit → « …the message channel closed before a response was received. »
+// ⚠️ Ce motif est PROPRE aux lots 2 et 4 : il ne remplace PAS
+// TRANSIENT_JOB_ERROR_RE et ne change RIEN au routage existant (le « is » de
+// la première formulation continue de ne pas y matcher, comme aujourd'hui).
+const CANAL_COUPE_RE =
+  /message channel (?:is )?closed|back\/forward cache|Receiving end does not exist/i;
+
+// ── LOT 2 (2026-09-01) — LES TROIS MURS eBAY, NOMMÉS ────────────────────────
+// On ne sait pas encore QUELLE navigation met /lstng en bfcache (l'URL de
+// sortie n'était jamais relevée : c'est le LOT 1). En attendant, les trois
+// candidats connus se reconnaissent à l'URL, et ils appellent tous la même
+// conduite : NE RIEN RETENTER. Un mur retenté, c'est exactement ce qui nourrit
+// l'anti-robot — et les 3 reprises actuelles (~2 min d'intervalle) sont
+// mécaniquement vouées à retomber dessus.
+// Messages REPRIS À L'IDENTIQUE de l'existant, aucun texte nouveau :
+//   · signin  → MSG_CONNEXION_EBAY (seul endroit où ce libellé s'écrit) ;
+//   · captcha → le texte de la garde estPageBotShieldEbay (ebay.js) ;
+//   · /fpa/*  → le texte du mur de vérification vendeur (ebay.js).
+// Lecture SEULE de l'URL : aucune navigation ici, sinon on détruirait la
+// preuve juste avant de la lire.
+const MSG_CHALLENGE_CAPTCHA_EBAY =
+  "CHALLENGE CAPTCHA : eBay affiche une vérification anti-robot (page captcha) à la " +
+  "place du formulaire de mise en vente. Ouvrir ebay.fr dans Chrome et résoudre la " +
+  "vérification (l'onglet de travail est resté ouvert), le job repartira au prochain passage.";
+const MSG_FPA_EBAY =
+  "eBay exige une mise à niveau ou une vérification de ton compte vendeur avant d'autoriser " +
+  "la mise en vente. Connecte-toi sur ebay.fr dans Chrome, clique « Vendre » et suis les étapes " +
+  "demandées par eBay sur ton compte, puis relance la publication depuis la fiche de l'article. " +
+  "Rien n'a été publié.";
+
+async function murEbayDeLOnglet(tabId) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  let u = null;
+  try { u = new URL(tab?.url ?? ""); } catch { return null; }
+  if (REAUTH_HOSTS.ebay.test(u.hostname)) {
+    return { quoi: "mur_signin", message: MSG_CONNEXION_EBAY };
+  }
+  if (u.pathname.includes("/splashui/")) {
+    return { quoi: "mur_captcha", message: MSG_CHALLENGE_CAPTCHA_EBAY };
+  }
+  if (/^\/fpa(\/|$)/.test(u.pathname)) {
+    return { quoi: "mur_fpa", message: MSG_FPA_EBAY };
+  }
+  return null; // URL anodine (ou /lstng) : comportement INCHANGÉ, on ne juge pas
+}
+
+// ── LOT 4 (2026-09-01) — LE CANAL COUPÉ PEUT ÊTRE LA SIGNATURE D'UN SUCCÈS ──
+// Ce filet existait UNIQUEMENT pour Vinted (redirection de succès qui détruit
+// le content script, job ba84ebb0 du 13/07). Côté eBay il n'existait pas : un
+// décrochage partait en échec, puis le job était relancé 3 fois SANS avoir
+// jamais demandé si une requête de publication était partie. C'est le seul
+// endroit de ce dossier qui peut fabriquer un DOUBLON PAYANT.
+// Trois issues, dans cet ordre de sûreté :
+//   1. AUCUNE requête /publish captée → preuve POSITIVE que rien n'est parti :
+//      on rend null, le comportement existant reprend la main (inchangé).
+//   2. Une requête est partie ET la réponse serveur porte un numéro d'annonce
+//      → published (ebayUploadSucceeded embarque déjà la garde anti-croisement
+//      d'URL, cf. ebayIdAlreadyKnown).
+//   3. Une requête est partie, issue inconnue → on NE RELANCE PAS. Le faux
+//      négatif coûte un job, le faux positif coûte une annonce en double.
+// Le repli Hub vendeur (requireTitle, jamais l'URL d'une autre annonce) NAVIGUE
+// l'onglet : il est interdit quand un mur a été reconnu, sinon on rebondit sur
+// le signin pour rien.
+async function ebayIssueApresCanalCoupe(accessToken, job, tabId, { hubAutorise }) {
+  const partie = await ebaySubmitRequestSeen(tabId);
+  if (!partie) return null; // rien n'a quitté le navigateur : reprise sans danger
+  const url = await ebayUploadSucceeded(tabId, accessToken).catch(() => null);
+  if (url) return { published: true, listingUrl: url };
+  if (hubAutorise && job.title) {
+    const viaHub = await ebayConfirmViaActiveListings(tabId, job.title).catch(() => null);
+    if (viaHub) return { published: true, listingUrl: viaHub };
+  }
+  return { incertain: true };
+}
+
 async function processJob(rawJob, accessToken) {
   const job = sanitizeJob(rawJob);
   const handler = PLATFORM_HANDLERS[job.platform];
@@ -2333,6 +2424,82 @@ async function processJob(rawJob, accessToken) {
     }
   } catch (e) {
     const msg = String(e?.message ?? e);
+
+    // ══════════════════════════════════════════════════════════════════════
+    // eBay, CANAL COUPÉ — LOT 4 (sonde) puis LOT 2 (murs), 2026-09-01
+    // ══════════════════════════════════════════════════════════════════════
+    // Deux traitements INDÉPENDANTS, dans cet ordre imposé par les faits :
+    //   · la lecture d'URL (LOT 2) passe D'ABORD parce que le repli Hub du
+    //     LOT 4 navigue l'onglet et détruirait la preuve ;
+    //   · le verdict du LOT 4 passe AVANT celui du LOT 2 : une annonce
+    //     réellement créée prime sur un mur, et « issue inconnue » est la
+    //     seule conduite qui protège du doublon.
+    // Hors eBay et hors canal coupé : RIEN ne change, on tombe dans le
+    // routage historique juste en dessous.
+    if (job.platform === "ebay" && tabId != null && CANAL_COUPE_RE.test(msg)) {
+      const mur = await murEbayDeLOnglet(tabId).catch(() => null);
+      const issue = await ebayIssueApresCanalCoupe(accessToken, job, tabId, { hubAutorise: !mur })
+        .catch(() => ({ incertain: true }));
+
+      if (issue?.published) {
+        console.log(
+          `[background] Job ${job.id} : canal coupé, mais la sonde prouve la PUBLICATION ` +
+          `(${issue.listingUrl}) — aucune reprise, aucun doublon possible`
+        );
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          publish_proof: { exit: "canal_coupe_sonde", at: new Date().toISOString(), listing_url_capturee: true },
+        };
+        await updateJobStatus(accessToken, job.id, "published", {
+          error: null,
+          listing_url: issue.listingUrl,
+          platform_fields: job.platform_fields,
+        });
+        await recordRecentResult(job, "published");
+        return { status: "published", listingUrl: issue.listingUrl };
+      }
+
+      if (issue?.incertain) {
+        const msgIncertain =
+          "Une demande de publication est partie vers eBay avant que l'onglet ne soit interrompu, " +
+          "et son résultat n'a pas pu être lu. Vérifie tes annonces eBay : si l'article y est, " +
+          "ne relance pas — sinon relance la publication depuis la fiche de l'article.";
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          last_diagnostic: {
+            quoi: "canal_coupe_publication_incertaine",
+            detail: `interruption après le départ de la requête de publication${mur ? ` (onglet retrouvé sur un mur : ${mur.quoi})` : ""} — ${msg.slice(0, 200)}`,
+            at: new Date().toISOString(),
+          },
+        };
+        stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+        console.warn(`[background] Job ${job.id} : publication d'issue INCONNUE — needs_user, aucune reprise (garde anti-doublon)`);
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          error: msgIncertain,
+          platform_fields: job.platform_fields,
+        }).catch((err) => console.error("[background] update-job-status failed:", err));
+        return { status: "needsUser", error: msgIncertain };
+      }
+
+      if (mur) {
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          last_diagnostic: {
+            quoi: mur.quoi,
+            detail: `onglet de travail retrouvé sur un mur eBay à la coupure du canal — ${msg.slice(0, 200)}`,
+            at: new Date().toISOString(),
+          },
+        };
+        stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+        console.warn(`[background] Job ${job.id} : ${mur.quoi} reconnu à la coupure — needs_user, aucune reprise`);
+        await updateJobStatus(accessToken, job.id, "needs_user", {
+          error: mur.message,
+          platform_fields: job.platform_fields,
+        }).catch((err) => console.error("[background] update-job-status failed:", err));
+        return { status: "needsUser", error: mur.message };
+      }
+    }
+
     // Canal de message coupé en plein remplissage (navigation/reload de
     // l'onglet, rechargement de l'extension pendant un test) : transitoire,
     // pas un verdict sur le job — ré-armement borné plutôt que failed sec
@@ -3264,6 +3431,47 @@ async function moveTabToWorkWindow(tabId) {
 //   platform_fields->'work_window_state'->'at_end'->>'window_focused'
 // ⚠️ Observation SEULE : aucune re-minimisation forcée, aucun avertissement,
 // aucun blocage si la fenêtre est visible — le comportement ne change en rien.
+// ── LOT 1 (2026-09-01) — OÙ EST L'ONGLET, ET OÙ EN ÉTAIT-ON ─────────────────
+// Le relevé de fenêtre disait window_state/tab_active mais JAMAIS l'URL : sur
+// les décrochages « back/forward cache » du 01/09 (jobs de vintedclaire972,
+// 96-113 s après le départ), impossible de savoir si l'onglet avait fini sur
+// signin.ebay.fr, sur /splashui/, sur ebay.com ou toujours sur /lstng — donc
+// impossible de nommer la navigation qui met la page en bfcache et coupe le
+// canal. Deux champs d'OBSERVATION PURE, lus nulle part ailleurs pour décider
+// quoi que ce soit (les murs du LOT 2 refont leur propre lecture).
+//
+// ⚠️ URL RÉDUITE À DESSEIN : origine + chemin, plus le seul `draftId`. Les URL
+// de signin eBay portent des paramètres de retour et de signature ; le reste
+// des plateformes peut porter des identifiants de session en query. On veut
+// savoir SUR QUELLE PAGE on a atterri, pas ce qu'elle transportait — rien
+// d'autre ne doit finir en base.
+function urlDiagnostic(brut) {
+  try {
+    const u = new URL(String(brut ?? ""));
+    const draft = u.searchParams.get("draftId");
+    return `${u.origin}${u.pathname}${draft ? `?draftId=${draft}` : ""}`.slice(0, 300);
+  } catch {
+    return null; // URL interne (chrome://), onglet sans URL commitée
+  }
+}
+
+// Étape de remplissage en cours, relayée par le content script (message
+// FILLSELL_FILL_STEP, fire-and-forget). Vit côté service worker : elle SURVIT
+// à la mort de la page, exactement comme les captures de la sonde réseau —
+// c'est tout l'intérêt, la page qui part en bfcache n'a plus voix au chapitre.
+// Borne dure : ce cache ne doit jamais grandir avec le temps.
+const etapeRemplissageParOnglet = new Map();
+function noterEtapeRemplissage(tabId, etape) {
+  if (tabId == null) return;
+  etapeRemplissageParOnglet.set(tabId, {
+    etape: String(etape ?? "").slice(0, 60),
+    at: new Date().toISOString(),
+  });
+  while (etapeRemplissageParOnglet.size > 20) {
+    etapeRemplissageParOnglet.delete(etapeRemplissageParOnglet.keys().next().value);
+  }
+}
+
 async function releverEtatFenetreTravail(platform) {
   let releve = null;
   try {
@@ -3276,6 +3484,7 @@ async function releverEtatFenetreTravail(platform) {
     const winId = tab?.windowId ?? dedicatedId;
     const win = winId != null ? await chrome.windows.get(winId).catch(() => null) : null;
     if (win || tab) {
+      const etape = tabId != null ? etapeRemplissageParOnglet.get(tabId) : null;
       releve = {
         at: new Date().toISOString(),
         window_id: win?.id ?? null,
@@ -3283,6 +3492,12 @@ async function releverEtatFenetreTravail(platform) {
         window_focused: win?.focused ?? null,
         tab_active: tab?.active ?? null,
         tab_in_dedicated_window: tab && dedicatedId != null ? tab.windowId === dedicatedId : null,
+        // LOT 1 — observation pure (cf. bandeau ci-dessus).
+        tab_url: urlDiagnostic(tab?.url),
+        tab_status: tab?.status ?? null,
+        tab_discarded: tab?.discarded ?? null,
+        fill_step: etape?.etape ?? null,
+        fill_step_at: etape?.at ?? null,
       };
     }
   } catch (e) {
@@ -3725,12 +3940,20 @@ function waitForTabComplete(tabId, expectUrl = null, timeoutMs = 30_000) {
 // La détection doit vivre ICI : la redirection détruit le contexte du content
 // script, qui a déjà répondu success sans savoir que l'annonce n'a pas été
 // créée. Sans cette garde, le job partait en "published" fantôme.
-// ⚠️ NOTÉ POUR PLUS TARD, PAS TRAITÉ ICI (2026-08-11) : ces motifs couvrent
-// .fr ET .com, mais content-scripts/ebay.js n'est DÉCLARÉ que sur
-// https://*.ebay.fr/* (manifest.json) alors que host_permissions couvre
-// ebay.com. Un onglet de travail qui finirait sur ebay.com n'exécuterait aucune
-// garde — le symptôme serait « Receiving end does not exist » (transitoire),
-// pas « Connexion eBay requise ». Autre bug, autre lot.
+// ✅ TROU ebay.com BOUCHÉ (LOT 3, 2026-09-01) : content-scripts/ebay.js est
+// désormais déclaré sur https://*.ebay.fr/* ET https://*.ebay.com/*
+// (host_permissions les couvrait déjà tous les deux — aucune permission
+// nouvelle). Un onglet de travail qui finit sur ebay.com — eBay navigue de
+// lui-même entre .fr et .com, cf. workTabForFetch — y exécute enfin ses gardes
+// au lieu de rendre « Receiving end does not exist ».
+// ⚠️ Réserve connue et ASSUMÉE : les gardes de session (hôte signin .fr|.com,
+// path /splashui/, path /fpa/, champ mot de passe visible) sont indépendantes
+// de la langue et fonctionnent telles quelles sur .com ; les LIBELLÉS du
+// remplissage (« Mettre en vente avec les frais », « Enchères »/« Achat
+// immédiat », « Marque », « Taille »…) sont français et ne matchent pas une
+// page .com. Conséquence voulue : sur une page .com le remplissage s'arrête
+// proprement (bouton de mise en vente introuvable → needsUser) — jamais un
+// clic, donc jamais une annonce créée par erreur.
 const REAUTH_HOSTS = {
   ebay: /(^|\.)signin\.ebay\.(fr|com)$/i,
   vinted: /(^|\.)vinted\.(fr|com)$/i, // sous-chemin /auth uniquement, cf. ci-dessous
