@@ -113,9 +113,10 @@ function LensScanHome({
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative,
   analyzeLens, lensLoading, onCreateListing, creatingListing,
-  // Prix du scan (coin_config.price_lens_overflow) et solde du compte —
-  // AFFICHAGE seul, null tant que non chargés (2026-09-01, audit onboarding).
-  lensPrice = null, coinBalance = null, grantMensuel = null,
+  // Prix du scan (coin_config.price_lens_overflow) — AFFICHAGE seul, null
+  // tant que non chargé (2026-09-01, audit onboarding). Le SOLDE, lui, vit
+  // dans l'en-tête global depuis le 01/09 au soir, plus ici.
+  lensPrice = null,
 }) {
   const { t, tpl } = useTranslation(lang);
   const [showLensHelp, setShowLensHelp] = useState(false);
@@ -291,23 +292,12 @@ function LensScanHome({
               : 'Estimation du prix + verdict du deal'}
           </div>
 
-          {/* ── Solde + première rencontre avec le mot « Pépites » (2026-09-01,
-              audit onboarding) : le mot n'était défini NULLE PART dans l'app
-              (seulement dans le mail de bienvenue), et le solde n'était
-              lisible que dans les Paramètres et à l'étape 1 du stepper. UNE
-              ligne, même style que celle du dessus. Solde et dotation viennent
-              de la base (coin_wallets, coin_config) — jamais un chiffre en
-              dur ; rien ne s'affiche tant qu'ils ne sont pas chargés. */}
-          {coinBalance != null && (
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:4, textAlign:'center', color:'#A6A192' }}>
-              <PepiteIcon size={11} />
-              <span>
-                {lang === 'en'
-                  ? <>Your Nuggets: <b style={{ color:'#8A8578' }}>{coinBalance}</b>{grantMensuel != null && <> — FillSell's currency, {grantMensuel} free every month</>}</>
-                  : <>Tes Pépites : <b style={{ color:'#8A8578' }}>{coinBalance}</b>{grantMensuel != null && <> — la monnaie FillSell, {grantMensuel} offertes chaque mois</>}</>}
-              </span>
-            </div>
-          )}
+          {/* (La ligne de solde « Tes Pépites : N — la monnaie FillSell… »
+              posée ici le matin du 01/09 a VÉCU UNE JOURNÉE : le solde est un
+              état de COMPTE, pas un détail de cet écran — il vit désormais
+              dans l'en-tête global (App.jsx, chip PepiteAmount), visible sur
+              tous les onglets. Le prix du scan lu de coin_config, lui, reste
+              ci-dessus : c'est bien une information de CET écran.) */}
         </div>
 
         {/* Platform marquee */}
@@ -490,10 +480,6 @@ const LensTab = memo(function LensTab({
   // Battement serveur de l'extension — relayé au stepper pour la ligne
   // « ordinateur éteint » au-dessus du CTA Publier (2026-08-13).
   extensionLastSeenAt = null,
-  // Portefeuille lu par App (fetchAll) — AFFICHAGE seul (2026-09-01, audit
-  // onboarding) : le solde n'était lisible que dans les Paramètres et à
-  // l'étape 1 du stepper, jamais sur l'écran d'entrée où les coûts s'affichent.
-  coinWallet = null,
 }) {
   const [generatingListing,setGeneratingListing]=useState(false);
   const [lensListingPhotos,setLensListingPhotos]=useState([]);
@@ -541,17 +527,9 @@ const LensTab = memo(function LensTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
   const lensPrice=Number.isFinite(coinCfg?.price_lens_overflow)?coinCfg.price_lens_overflow:null;
-  // Dotation mensuelle du PLAN de l'utilisateur (flags cumulatifs : business >
-  // pro > premium > free) — sert à la phrase de première rencontre des
-  // Pépites, jamais à un calcul.
-  const grantMensuel=(()=>{
-    if(!coinCfg)return null;
-    const key=isBusiness?'monthly_grant_business':isPro?'monthly_grant_pro':isPremium?'monthly_grant_premium':'monthly_grant_free';
-    return Number.isFinite(coinCfg[key])?coinCfg[key]:null;
-  })();
-  // Solde affichable : null tant que le portefeuille n'est pas chargé — on
-  // n'affiche jamais un faux zéro.
-  const coinBalance=coinWallet?(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0):null;
+  // (grantMensuel et coinBalance ont vécu une journée ici — le solde vit dans
+  // l'en-tête global depuis le 01/09 au soir, App.jsx lit coinWallet
+  // directement.)
 
   // Reprise du stepper après remount (reload d'onglet Chrome ou navigation
   // interne) : le blob hôte écrit à l'ouverture permet de le REMONTER avec les
@@ -729,7 +707,7 @@ const LensTab = memo(function LensTab({
           analyzeLens={analyzeLens} lensLoading={lensLoading}
           onCreateListing={()=>extensionNeverSeen===true?setExtPitchAction('identify'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleIdentifyAndCreate())}
           creatingListing={generatingListing}
-          lensPrice={lensPrice} coinBalance={coinBalance} grantMensuel={grantMensuel}
+          lensPrice={lensPrice}
         />
         {listingError&&(
           <div style={{maxWidth:520,margin:"10px auto 0",padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>

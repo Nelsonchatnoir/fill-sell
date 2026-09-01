@@ -108,6 +108,12 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .tb-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 @media (max-width: 480px) {
   .topbar { padding-left: 12px; padding-right: 12px; }
+  /* Solde de Pépites affiché (classe posée par App.jsx quand le portefeuille
+     est chargé) : sur écran étroit c'est le WORDMARK qui cède la place —
+     jamais le chiffre, qui serait tronqué. L'icône carrée reste, le logo
+     garde sa position et son tap (retour Tableau). Landing non concernée :
+     elle ne pose jamais cette classe. */
+  .topbar--solde .tb-logo .name { display: none; }
 }
 
 /* ─── Réserve basse unifiée (P3) — un seul endroit pour l'espace occupé par la

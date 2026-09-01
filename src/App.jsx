@@ -5541,8 +5541,36 @@ export default function App({ loginOnly = false }){
         <div style={{fontSize:13,color:"#6B7A75",maxWidth:280,lineHeight:1.5}}>{t('rotateToPortraitSubtitle')}</div>
       </div>
 
-      <div className="topbar">
+      {/* ── Solde de Pépites dans l'en-tête (2026-09-01 soir) ─────────────────
+          Le solde est un état de COMPTE, pas un détail d'un écran : il vivait
+          sur le seul écran Lens (une journée) et n'était sinon lisible que
+          dans les Paramètres et le stepper — un nouveau reçoit 50 Pépites
+          sans le savoir, un dépensier découvre le manque au blocage.
+          · Rendu : PepiteAmount (l'affichage canonique « N ‹icône› »), posé
+            sur le même traitement que la roue crantée (fond rgba(0,0,0,0.05),
+            pas de couleur pleine) — « Voir les offres » reste le SEUL élément
+            plein de l'en-tête.
+          · Source : coinWallet (fetchAll), lecture seule — null = rien,
+            jamais un faux zéro. Se met à jour avec l'état, sans rechargement.
+          · Tap → boutique de Pépites (setCoinStoreOpen, la même que
+            « Recharger mes Pépites » des Paramètres). Zone tactile 44 px,
+            même patron que le bouton d'offres natif ci-dessous.
+          · Écran étroit : la classe topbar--solde fait céder le WORDMARK
+            (App.css ≤480px) — jamais le chiffre. tabular-nums : un solde à
+            4 chiffres reste stable et court (~66 px tout compris). */}
+      <div className={coinWallet?"topbar topbar--solde":"topbar"}>
         <BrandMark onClick={()=>{setTab(0);localStorage.setItem('tab','0');}}/>
+        {coinWallet&&(
+          <button
+            onClick={()=>setCoinStoreOpen(true)}
+            title={lang==='fr'?"Mes Pépites — recharger":"My Nuggets — top up"}
+            style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}
+          >
+            <span style={{display:"inline-flex",alignItems:"center",padding:"6px 10px",borderRadius:999,background:"rgba(0,0,0,0.05)",color:UI.ink,fontSize:12.5,fontWeight:700,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
+              <PepiteAmount value={(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0)} size={13}/>
+            </span>
+          </button>
+        )}
         <div className="header-centre" style={{flex:1,textAlign:"center"}}>
           <div style={{fontSize:13,fontWeight:700,color:UI.ink,letterSpacing:"-0.02em",lineHeight:1}}>
             {fmt(tm.profit)}<span style={{opacity:0.55,fontSize:11,fontWeight:700}}> {t('profit')}</span>
@@ -6057,7 +6085,6 @@ export default function App({ loginOnly = false }){
             onStepperOpenChange={setListingStepperOpen}
             extensionNeverSeen={extensionNeverSeen}
             extensionLastSeenAt={extensionLastSeenAt}
-            coinWallet={coinWallet}
           />
         )}
 
