@@ -107,9 +107,12 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
   // « Oui j'ai des annonces » / « Non je commence » / sortie sans installer.
   // Même mécanique que sync_click (StockTab) : une ligne usage_logs par tap,
   // best-effort — un échec d'écriture ne bloque JAMAIS l'onboarding, il se
-  // contente d'un warn. Valeurs : 'oui' | 'non' | 'plus_tard' (les deux
-  // libellés de sortie — « Continuer sur mon téléphone » et « Plus tard » —
-  // sont le même geste, donc la même valeur).
+  // contente d'un warn. Valeurs : 'oui' | 'non' | 'continuer_telephone' (le
+  // CTA de l'écran d'attente téléphone — LA sortie créée le 01/09, celle
+  // qu'on veut mesurer) | 'plus_tard' (le Plus tard de l'écran ordinateur,
+  // l'ancienne sortie). Les confondre rendrait la mesure inutile (correctif
+  // 2.4.94). La sortie AUTOMATIQUE — extension détectée pendant l'attente —
+  // ne journalise RIEN : ce n'est pas un choix.
   const logChoix = (choix) => {
     if (!user?.id) return;
     try {
@@ -399,14 +402,14 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
           {/* ── PRIMAIRE : reprendre la main sur ce téléphone ──────────────── */}
           {envoi.etat === 'envoye' ? (
             <button
-              onClick={() => { logChoix('plus_tard'); terminer('stock'); }}
+              onClick={() => { logChoix('continuer_telephone'); terminer('stock'); }}
               style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
             >
               {fr ? 'Continuer sur mon téléphone' : 'Continue on my phone'}
             </button>
           ) : (
             <button
-              onClick={() => { logChoix('plus_tard'); terminer('stock'); }}
+              onClick={() => { logChoix('continuer_telephone'); terminer('stock'); }}
               style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 6 }}
             >
               {fr ? 'Continuer sur mon téléphone' : 'Continue on my phone'}
