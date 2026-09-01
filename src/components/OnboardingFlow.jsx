@@ -102,6 +102,22 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
   const [destApresPseudo, setDestApresPseudo] = useState(null);
   const pseudoFaitRef = useRef(false);
 
+  // ── Télémétrie du choix (2026-09-01, audit onboarding) ────────────────────
+  // AUCUNE mesure n'existait : impossible de connaître la répartition
+  // « Oui j'ai des annonces » / « Non je commence » / sortie sans installer.
+  // Même mécanique que sync_click (StockTab) : une ligne usage_logs par tap,
+  // best-effort — un échec d'écriture ne bloque JAMAIS l'onboarding, il se
+  // contente d'un warn. Valeurs : 'oui' | 'non' | 'plus_tard' (les deux
+  // libellés de sortie — « Continuer sur mon téléphone » et « Plus tard » —
+  // sont le même geste, donc la même valeur).
+  const logChoix = (choix) => {
+    if (!user?.id) return;
+    try {
+      supabase.from('usage_logs').insert({ user_id: user.id, feature: 'onboarding_choice', metadata: { choix } })
+        .then(({ error }) => { if (error) console.warn('[onboarding] choix non journalisé :', error.message); });
+    } catch { /* la télémétrie ne bloque jamais le parcours */ }
+  };
+
   // Fin de l'onboarding. La SOURCE DE VÉRITÉ est profiles.onboarded_at — un
   // fait de compte, pas d'appareil (lot 2b) : sans ça, un second téléphone
   // refaisait l'onboarding et un compte neuf sur un appareil déjà utilisé le
@@ -209,7 +225,7 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
         </h1>
 
         <button
-          onClick={() => { setStep('oui'); }}
+          onClick={() => { logChoix('oui'); setStep('oui'); }}
           style={{ ...btn, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', marginBottom: 12, boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
         >
           <div style={{ fontSize: 16, fontWeight: 700 }}>{fr ? "Oui, j'ai déjà des annonces" : 'Yes, I have listings'}</div>
@@ -217,7 +233,7 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
         </button>
 
         <button
-          onClick={() => terminer('lens')}
+          onClick={() => { logChoix('non'); terminer('lens'); }}
           style={{ ...btn, background: C.paper, color: C.ink, border: `1px solid ${C.border}` }}
         >
           <div style={{ fontSize: 16, fontWeight: 700 }}>{fr ? 'Non, je commence' : "No, I'm starting out"}</div>
@@ -383,14 +399,14 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
           {/* ── PRIMAIRE : reprendre la main sur ce téléphone ──────────────── */}
           {envoi.etat === 'envoye' ? (
             <button
-              onClick={() => terminer('stock')}
+              onClick={() => { logChoix('plus_tard'); terminer('stock'); }}
               style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
             >
               {fr ? 'Continuer sur mon téléphone' : 'Continue on my phone'}
             </button>
           ) : (
             <button
-              onClick={() => terminer('stock')}
+              onClick={() => { logChoix('plus_tard'); terminer('stock'); }}
               style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 6 }}
             >
               {fr ? 'Continuer sur mon téléphone' : 'Continue on my phone'}
@@ -440,7 +456,7 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
             </span>
           </div>
           <button
-            onClick={() => terminer('stock')}
+            onClick={() => { logChoix('plus_tard'); terminer('stock'); }}
             style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 6 }}
           >
             {fr ? 'Plus tard' : 'Later'}
