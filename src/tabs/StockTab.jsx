@@ -10,6 +10,7 @@ import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPe
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from '../utils/stockLimit';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
+import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import PepiteAmount from '../components/PepiteAmount';
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
@@ -1373,9 +1374,19 @@ const RETRY403_GRACE_MS = 5 * 60 * 1000;
 
 function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, onVoirArticles = null }) {
   const fr = lang !== 'en';
-  // (Le couple isMobile/surTelephone a disparu le 2026-08-09 : il ne servait
-  // qu'à décliner le message de blocage par support. Il n'y en a plus qu'un,
-  // valable sur les deux — cf. MESSAGE_BLOCAGE.)
+  // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
+  // doctrine du 09/08. `surTelephone` revient le 01/09 pour UNE décision qui
+  // n'est pas un message : quel CTA d'installation proposer sur un stock vide
+  // sans extension — l'e-mail en un tap sur téléphone, le lien /extension sur
+  // ordinateur. Même règle de support que l'onboarding.)
+  const surTelephone = isNative || (typeof window !== 'undefined' && window.innerWidth < 768);
+  // ── CTA d'installation sur stock vide (2026-09-01, audit Stock vide) ──────
+  // Même geste, même hook, mêmes états que l'onboarding et la feuille
+  // extension (useEnvoiLienExtension : envoi serveur, adresse lue sur le JWT,
+  // verrou 60 s, persistance partagée). Aucun second mécanisme d'envoi.
+  // ⚠️ `envoi` renommé `envoiLien` : cette carte a DÉJÀ un état `envoi`
+  // (mise en file de la sync) — ne pas les confondre.
+  const { envoi: envoiLien, secondesRestantes, envoyer: envoyerLien } = useEnvoiLienExtension(lang, user?.email ?? null);
   const [extVue, setExtVue] = useState(false);
   // Version annoncée par l'extension (null tant qu'elle ne s'est pas annoncée).
   const [extVersion, setExtVersion] = useState(null);
@@ -2088,6 +2099,61 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         </div>
       </div>
 
+      {/* ── Stock VIDE sans extension : un CTA VIVANT, jamais un bouton mort
+          (2026-09-01, audit Stock vide). Le bouton « Synchroniser » grisé en
+          position primaire, avec pour seul recours une ligne grise, était le
+          premier geste proposé à un compte neuf — et il était inutilisable.
+          Quand AUCUNE extension n'est vue sur le compte : la ligne de blocage
+          (MESSAGE_BLOCAGE, inchangée au mot près) devient l'explication, et
+          l'action est le même geste qu'à l'onboarding — l'e-mail en un tap
+          sur téléphone (hook partagé, adresse du JWT, verrou 60 s), le lien
+          /extension sur ordinateur. Dès qu'une extension est vue, la carte
+          reprend son bouton Synchroniser actif. UNIQUEMENT sur le stock vide
+          (source 'stock_empty') : un compte avec des articles garde l'écran
+          d'aujourd'hui. */}
+      {blocage&&source==='stock_empty'?(
+        <>
+          <div style={{fontSize:12.5,lineHeight:1.5,color:"#5C6560",fontWeight:600}}>{MESSAGE_BLOCAGE}</div>
+          {surTelephone?(
+            <>
+              {envoiLien.etat==='echec'&&(
+                <div style={{background:"#FEF3C7",border:"1px solid #FDE68A",borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:"#92400E"}}>
+                  {messageEchecLien(envoiLien.raison,fr,!!envoiLien.email)}
+                </div>
+              )}
+              {envoiLien.etat==='envoye'?(
+                <>
+                  <div style={{background:"#F0FDFB",border:"1px solid rgba(47,158,144,0.25)",borderRadius:10,padding:"10px 12px",fontSize:12.5,lineHeight:1.5,color:"#1B6E62",textAlign:"center",wordBreak:"break-word"}}>
+                    {fr?'Lien envoyé à ':'Link sent to '}<strong>{envoiLien.email}</strong>
+                    <div style={{fontSize:11.5,fontWeight:500,marginTop:2,color:"#5C6560"}}>
+                      {fr?"Ouvre-le sur ton ordinateur, dans Chrome — ton dressing arrivera ici tout seul.":"Open it on your computer, in Chrome — your closet will arrive here on its own."}
+                    </div>
+                  </div>
+                  <button
+                    onClick={envoyerLien}
+                    disabled={secondesRestantes>0}
+                    style={{display:"block",width:"100%",background:"none",border:"none",color:secondesRestantes>0?"#8A8578":"#1B6E62",fontSize:12,fontWeight:600,cursor:secondesRestantes>0?"default":"pointer",fontFamily:"inherit",padding:4,textDecoration:secondesRestantes>0?"none":"underline"}}
+                  >
+                    {secondesRestantes>0
+                      ?(fr?`Renvoyer dans ${secondesRestantes} s`:`Resend in ${secondesRestantes}s`)
+                      :(fr?'Renvoyer':'Resend')}
+                  </button>
+                </>
+              ):envoiLien.raison!=='no_email'?(
+                <SecondaryButton disabled={envoiLien.etat==='en_cours'} onClick={envoyerLien}>
+                  {envoiLien.etat==='en_cours'
+                    ?(fr?'Envoi du lien…':'Sending the link…')
+                    :(fr?"M'envoyer le lien pour mon ordinateur":'Email me the link for my computer')}
+                </SecondaryButton>
+              ):null}
+            </>
+          ):(
+            <a href="/extension" style={{display:"block",width:"100%",boxSizing:"border-box",textAlign:"center",textDecoration:"none",padding:"10px 14px",borderRadius:10,border:"1px solid #E7E3D8",background:"#F6F5F1",color:"#1B6E62",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
+              {fr?"Installer l'extension":'Install the extension'}
+            </a>
+          )}
+        </>
+      ):(
       <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee} onClick={lancer}>
         {enCours
           ? (fr?"Synchronisation en cours…":"Syncing…")
@@ -2101,6 +2167,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
                   ? (fr?"Actualiser mon dressing":"Refresh my closet")
                   : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
       </SecondaryButton>
+      )}
 
       {/* Une ligne grise, pas un encart. Deux choses, dans cet ordre : l'HEURE
           RÉELLE de la dernière synchro (un fait, affiché à chaque fois qu'il
@@ -2239,8 +2306,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 
       {/* Synchro impossible : LA phrase, la même partout — ordinateur,
           téléphone web, application native. Un seul geste à comprendre, et
-          rien qui exige de savoir ce qu'est un numéro de version. */}
-      {blocage&&(
+          rien qui exige de savoir ce qu'est un numéro de version.
+          Sur le stock VIDE, elle est déjà rendue AU-DESSUS du CTA
+          d'installation (bloc 2026-09-01) — pas deux fois. */}
+      {blocage&&source!=='stock_empty'&&(
         <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{MESSAGE_BLOCAGE}</div>
       )}
 
@@ -2257,14 +2326,26 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
             {fr
               ? "On lit tes annonces en ligne (titre, prix, photos, vues, favoris). Rien n'est publié, modifié ni supprimé sur Vinted."
               : "We read your online listings (title, price, photos, views, favourites). Nothing is published, edited or deleted on Vinted."}
-            <br/>
-            {fr
-              ? "Vinted n'expose pas tout l'historique de ventes : on récupère les annonces en ligne et les ventes récentes, pas l'intégralité de ton passé."
-              : "Vinted doesn't expose the full sales history: we get your online listings and recent sales, not everything you've ever sold."}
-            <br/>
-            {fr
-              ? "Les articles importés arrivent avec un prix d'achat à compléter — sans lui, aucune marge ne peut être calculée."
-              : "Imported items arrive with a purchase price to fill in — without it, no margin can be computed."}
+            {/* Sur le stock VIDE, seules ces deux phrases (le contrat de
+                lecture, mot pour mot) s'affichent : la limite de l'historique
+                et le prix d'achat à compléter répondent à des questions que
+                quelqu'un SANS article ne se pose pas encore (2026-09-01,
+                audit Stock vide). Elles restent entières sur un stock rempli —
+                la ligne « historique partiel » y est indispensable (un vendeur
+                à 400 ventes qui n'en voit revenir qu'une poignée conclut à
+                une sync ratée). */}
+            {source!=='stock_empty'&&(
+              <>
+                <br/>
+                {fr
+                  ? "Vinted n'expose pas tout l'historique de ventes : on récupère les annonces en ligne et les ventes récentes, pas l'intégralité de ton passé."
+                  : "Vinted doesn't expose the full sales history: we get your online listings and recent sales, not everything you've ever sold."}
+                <br/>
+                {fr
+                  ? "Les articles importés arrivent avec un prix d'achat à compléter — sans lui, aucune marge ne peut être calculée."
+                  : "Imported items arrive with a purchase price to fill in — without it, no margin can be computed."}
+              </>
+            )}
           </div>
         )}
         <button
@@ -4635,8 +4716,17 @@ const StockTab = memo(function StockTab({
           onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
         />
       </div>
+      {/* ── Stock VIDE, mobile : la carte d'ajout DESCEND (2026-09-01) ────────
+          Quatre portes se concurrençaient au premier écran d'un compte à
+          zéro : Synchroniser, Ajouter (écris/parle), Ajouter manuellement,
+          Excel. Hiérarchie rétablie par l'ORDRE seul (propriété flex order,
+          mobile uniquement — sur desktop les deux colonnes sont côte à côte,
+          rien ne bouge) : 1. carte de sync (geste principal), 2. bannière
+          « Ajoute ton premier article » + « Ce que FillSell fait » (remonté
+          de fait), 3. la carte d'ajout complète, repliée, en bas. Aucun
+          chemin supprimé. Un compte AVEC articles garde l'ordre actuel. */}
       <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
-        <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+        <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",...(isMobile&&stock.length===0?{order:2}:{})}}>
           {/* ── Zone de saisie IA — REPLIÉE PAR DÉFAUT (2026-08-09) ──────────
               Le drapeau voiceZoneOpen existait depuis toujours, mais valait
               `true` et AUCUN bouton ne le basculait (setVoiceZoneOpen était
@@ -4662,7 +4752,13 @@ const StockTab = memo(function StockTab({
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
                 </span>
                 <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:C.text}}>
-                  {lang==='fr'?"Ajouter un article — écris ou parle":"Add an item — write or speak"}
+                  {/* Stock vide : la bannière au-dessus porte déjà LE bouton
+                      « Ajouter un article » — cette barre repliée devient les
+                      « autres façons », plus un doublon du même libellé
+                      (2026-09-01). Stock rempli : libellé inchangé. */}
+                  {stock.length===0
+                    ?(lang==='fr'?"Autres façons d'ajouter — écrire ou dicter":"Other ways to add — write or dictate")
+                    :(lang==='fr'?"Ajouter un article — écris ou parle":"Add an item — write or speak")}
                 </span>
                 <span style={{flexShrink:0,display:"inline-flex",color:"#8A8578",transition:"transform 0.15s",transform:voiceZoneOpen?"rotate(180deg)":"none"}}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
@@ -4987,7 +5083,11 @@ const StockTab = memo(function StockTab({
               remplacé par cette rangée discrète sous « Ajouter manuellement ».
               Mêmes gestes, mêmes gardes qu'avant (note du 2026-08-09 :
               handleImportFile / handleExport sont 100 % client, aucun verrou
-              serveur, ouvert à tous) — déplacé et réduit, logique intacte. */}
+              serveur, ouvert à tous) — déplacé et réduit, logique intacte.
+              Stock VIDE (2026-09-01) : la rangée n'apparaît qu'un des deux
+              plis ouvert — l'Excel n'a rien à faire au premier plan d'un
+              stock à zéro. Stock rempli : toujours visible, comme avant. */}
+          {(stock.length>0||voiceZoneOpen||showManualForm)&&(
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",paddingTop:2,borderTop:"1px solid rgba(0,0,0,0.05)"}}>
             <span style={{flex:1,minWidth:0,fontSize:11.5,fontWeight:600,color:"#8A8578",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={t('importDesc')}>
               {t('importExcel')}
@@ -5013,9 +5113,10 @@ const StockTab = memo(function StockTab({
             </div>
             {importMsg&&<div style={{width:"100%",fontSize:11.5,color:C.green,fontWeight:600,marginTop:1}}>{importMsg}</div>}
           </div>
+          )}
         </div>
 
-        <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16}}>
+        <div ref={listRef} className="stock-v2" style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:16,...(isMobile&&stock.length===0?{order:1}:{})}}>
           <style>{STOCK_CSS}</style>
 
           {/* ── Réordonnancement du 2026-08-27 (hiérarchie Nico) ─────────────
@@ -5454,13 +5555,22 @@ const StockTab = memo(function StockTab({
                       logos:["vinted"],
                     },
                     {
-                      fr:["Publie sur 4 plateformes","Une annonce préparée une fois, envoyée sur Vinted, Leboncoin, eBay et Beebs."],
-                      en:["Publish on 4 marketplaces","One listing prepared once, sent to Vinted, Leboncoin, eBay and Beebs."],
+                      // Même formulation que l'eyebrow des logos du Tableau
+                      // vide (App.jsx, 2026-09-01) : un seul discours pour un
+                      // seul geste — « préparée une fois, déposée sur les
+                      // quatre ».
+                      fr:["Publie sur 4 plateformes","Une annonce préparée une fois, déposée sur Vinted, Leboncoin, eBay et Beebs."],
+                      en:["Publish on 4 marketplaces","One listing prepared once, posted to Vinted, Leboncoin, eBay and Beebs."],
                       logos:["vinted","leboncoin","ebay","beebs"],
                     },
                     {
-                      fr:["Republie ce qui stagne","Une annonce qui dort est recréée pour remonter en tête, au rythme d'une vraie personne."],
-                      en:["Repost what stalls","A listing that sits gets recreated to climb back to the top, at a human pace."],
+                      // Même phrase que la carte republication du Tableau vide
+                      // (App.jsx, 2026-09-01) — sans sa clause « sans que tu
+                      // touches à rien » : ici on décrit la republication à la
+                      // demande (1 Pépite), l'automatique reste un avantage
+                      // Pro (cf. ⚠️ du bandeau au-dessus).
+                      fr:["Republie ce qui stagne","Une annonce qui dort est republiée pour repasser en tête de recherche Vinted, au rythme d'une vraie personne."],
+                      en:["Repost what stalls","A listing that sits gets reposted back to the top of Vinted search, at a human pace."],
                       logos:[],
                     },
                     {
