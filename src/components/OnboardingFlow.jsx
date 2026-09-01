@@ -37,10 +37,12 @@
 //
 // L'étape 'attente' est PERSISTÉE (localStorage fs_onboard_state) : fermer
 // l'app et revenir reprend l'attente sans re-cliquer — c'est App.jsx qui
-// remonte ce composant au chargement si l'état est encore là. « Plus tard »
-// n'existe QUE sur l'écran d'attente (jamais sur le choix) : sans lui, un
-// utilisateur qui renonce à installer serait enfermé dans l'onboarding à
-// chaque ouverture de l'app.
+// remonte ce composant au chargement si l'état est encore là. La sortie
+// (« Continuer sur mon téléphone » sur téléphone — PRIMAIRE depuis le
+// 2026-09-01, le lien mettant ~70 h médianes à être ouvert —, « Plus tard »
+// sur ordinateur) n'existe QUE sur l'écran d'attente (jamais sur le choix) :
+// sans elle, un utilisateur qui renonce à installer serait enfermé dans
+// l'onboarding à chaque ouverture de l'app.
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
@@ -312,15 +314,25 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
   // ── Étape 3 : attente de l'extension, puis sync automatique ───────────────
   return ecran(
     <>
-      {/* ── Ordre imposé (lot 4, 09/08) ────────────────────────────────────────
-          Cet écran n'était pas lu — pas même par son auteur. Défaut de FORME :
-          trois lignes de texte et un bandeau de détection passaient AVANT
-          l'action, qui tombait sous la ligne de flottaison sur un téléphone.
-          Désormais : titre court → LE bouton → deux lignes au plus → tout le
-          reste (détection auto, « tu peux fermer l'app », plus tard) en
-          dessous, en secondaire. */}
+      {/* ── Refonte 2026-09-01 (audit onboarding) ──────────────────────────────
+          Cet écran était construit pour une résolution en session (spinner
+          « Détection automatique », consignes d'attente) alors que le délai
+          MESURÉ entre l'envoi du lien et l'installation est de ~70 h en
+          médiane : des comptes y réatterrissaient à chaque ouverture de l'app,
+          sans autre sortie qu'un « Plus tard » gris tout en bas.
+          Sur TÉLÉPHONE, l'écran dit désormais la vérité de l'échelle de
+          temps : titre → adresse servie → UNE ligne (tout se fera devant
+          l'ordinateur, rien à recliquer ici) → « Continuer sur mon téléphone »
+          en PRIMAIRE (même sortie que l'ancien « Plus tard » : terminer(),
+          donc onboarded_at écrit — on ne retombe plus jamais ici) →
+          « Renvoyer » en secondaire discret (verrou 60 s inchangé).
+          Le poll de détection, lui, est INCHANGÉ : si l'extension apparaît
+          pendant que l'écran est ouvert, la sync part et on sort sur le Stock
+          exactement comme avant — il tourne simplement sans bandeau.
+          Sur ORDINATEUR, installer ici même reste le scénario réel : le bloc
+          de détection visible et « Plus tard » sont conservés. */}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-        <div style={{ fontSize: 32 }}>{syncEnvoyee ? '✅' : '🖥️'}</div>
+        <div style={{ fontSize: 32 }}>{syncEnvoyee ? '✅' : surTelephone && envoi.etat === 'envoye' ? '📬' : '🖥️'}</div>
       </div>
       <h1 style={{ margin: '0 0 16px', fontSize: 23, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, textAlign: 'center', lineHeight: 1.25 }}>
         {syncEnvoyee
@@ -333,63 +345,71 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
             : (fr ? "Installe l'extension dans Chrome" : 'Install the extension in Chrome')}
       </h1>
 
-      {!syncEnvoyee && (
+      {!syncEnvoyee && (surTelephone ? (
         <>
-          {/* ── L'ACTION, immédiatement sous le titre ─────────────────────── */}
-          {surTelephone ? (
-            <>
-              {envoi.etat === 'echec' && (
-                <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, lineHeight: 1.5, color: '#92400E' }}>
-                  {messageEchecLien(envoi.raison, fr, !!envoi.email)}
-                </div>
-              )}
-              {envoi.etat === 'envoye' ? (
-                <div style={{ background: '#F0FDFB', border: '1px solid rgba(47,158,144,0.25)', borderRadius: 14, padding: '14px 16px', fontSize: 14, lineHeight: 1.45, color: C.tealDeep, textAlign: 'center', wordBreak: 'break-word' }}>
-                  <strong>{envoi.email}</strong>
-                </div>
-              ) : envoi.raison !== 'no_email' ? (
-                <button
-                  onClick={envoyerLien}
-                  disabled={envoi.etat === 'en_cours'}
-                  style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)', opacity: envoi.etat === 'en_cours' ? 0.75 : 1 }}
-                >
-                  {envoi.etat === 'en_cours'
-                    ? (fr ? 'Envoi du lien…' : 'Sending the link…')
-                    : (fr ? "M'envoyer le lien" : 'Email me the link')}
-                </button>
-              ) : null}
-            </>
-          ) : (
+          {envoi.etat === 'echec' && (
+            <div style={{ background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 12, padding: '11px 13px', marginBottom: 8, fontSize: 12.5, lineHeight: 1.5, color: '#92400E' }}>
+              {messageEchecLien(envoi.raison, fr, !!envoi.email)}
+            </div>
+          )}
+          {envoi.etat === 'envoye' && (
+            <div style={{ background: '#F0FDFB', border: '1px solid rgba(47,158,144,0.25)', borderRadius: 14, padding: '14px 16px', fontSize: 14, lineHeight: 1.45, color: C.tealDeep, textAlign: 'center', wordBreak: 'break-word' }}>
+              <strong>{envoi.email}</strong>
+            </div>
+          )}
+
+          {/* ── LA ligne : tout se fera là-bas, rien à recliquer ici ───────── */}
+          <p style={{ margin: '10px 0 12px', fontSize: 13, lineHeight: 1.55, color: C.mute2, textAlign: 'center' }}>
+            {envoi.etat === 'envoye'
+              ? (fr
+                  ? "Ouvre-le sur ton ordinateur, même dans trois jours : une minute d'installation, et ton dressing arrive ici tout seul — rien à recliquer."
+                  : 'Open it on your computer, even in three days: one minute to install, and your wardrobe arrives here on its own — nothing to click again.')
+              : (fr ? "Il part à l'adresse de ton compte et t'attendra devant ton ordinateur." : 'It goes to your account address and will be waiting at your computer.')}
+          </p>
+
+          {/* Envoi pas (encore) parti : le renvoi reste l'action dominante. */}
+          {envoi.etat !== 'envoye' && envoi.raison !== 'no_email' && (
             <button
-              onClick={() => setShowPitch(true)}
-              style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
+              onClick={envoyerLien}
+              disabled={envoi.etat === 'en_cours'}
+              style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)', marginBottom: 10, opacity: envoi.etat === 'en_cours' ? 0.75 : 1 }}
             >
-              {fr ? "Installer l'extension" : 'Install the extension'}
+              {envoi.etat === 'en_cours'
+                ? (fr ? 'Envoi du lien…' : 'Sending the link…')
+                : (fr ? "M'envoyer le lien" : 'Email me the link')}
             </button>
           )}
 
-          {/* ── Deux lignes AU PLUS sous l'action ─────────────────────────── */}
-          <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.55, color: C.mute2, textAlign: 'center' }}>
-            {surTelephone
-              ? (envoi.etat === 'envoye'
-                  ? (fr ? "Ouvre-le sur ton ordinateur et installe l'extension." : 'Open it on your computer and install the extension.')
-                  : (fr ? "Il part à l'adresse de ton compte." : 'It goes to your account address.'))
-              : (fr ? 'Ton dressing arrivera ici tout seul, deux minutes après.' : 'Your wardrobe will arrive here on its own, two minutes later.')}
-          </p>
+          {/* ── PRIMAIRE : reprendre la main sur ce téléphone ──────────────── */}
+          {envoi.etat === 'envoye' ? (
+            <button
+              onClick={() => terminer('stock')}
+              style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
+            >
+              {fr ? 'Continuer sur mon téléphone' : 'Continue on my phone'}
+            </button>
+          ) : (
+            <button
+              onClick={() => terminer('stock')}
+              style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 6 }}
+            >
+              {fr ? 'Continuer sur mon téléphone' : 'Continue on my phone'}
+            </button>
+          )}
 
-          {/* ── Secondaire ─────────────────────────────────────────────────── */}
-          {surTelephone && envoi.etat === 'envoye' && (
+          {/* ── Secondaires ────────────────────────────────────────────────── */}
+          {envoi.etat === 'envoye' && (
             <button
               onClick={envoyerLien}
               disabled={secondesRestantes > 0}
-              style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: secondesRestantes > 0 ? C.mute : C.tealDeep, fontSize: 12.5, fontWeight: 600, cursor: secondesRestantes > 0 ? 'default' : 'pointer', fontFamily: 'inherit', padding: 8, textDecoration: secondesRestantes > 0 ? 'none' : 'underline' }}
+              style={{ display: 'block', width: '100%', marginTop: 10, background: 'none', border: 'none', color: secondesRestantes > 0 ? C.mute : C.tealDeep, fontSize: 12.5, fontWeight: 600, cursor: secondesRestantes > 0 ? 'default' : 'pointer', fontFamily: 'inherit', padding: 8, textDecoration: secondesRestantes > 0 ? 'none' : 'underline' }}
             >
               {secondesRestantes > 0
                 ? (fr ? `Renvoyer dans ${secondesRestantes} s` : `Resend in ${secondesRestantes}s`)
                 : (fr ? 'Renvoyer' : 'Resend')}
             </button>
           )}
-          {surTelephone && envoi.etat === 'echec' && (
+          {envoi.etat === 'echec' && (
             <button
               onClick={() => setShowPitch(true)}
               style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 8, textDecoration: 'underline' }}
@@ -397,7 +417,21 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
               {fr ? 'Récupérer le lien autrement' : 'Get the link another way'}
             </button>
           )}
-
+        </>
+      ) : (
+        <>
+          {/* ── Ordinateur : installer ICI est le scénario réel — l'ordre du
+              lot 4 (titre → LE bouton → deux lignes → détection → plus tard)
+              reste le bon. */}
+          <button
+            onClick={() => setShowPitch(true)}
+            style={{ ...btn, textAlign: 'center', fontSize: 15, fontWeight: 700, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
+          >
+            {fr ? "Installer l'extension" : 'Install the extension'}
+          </button>
+          <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.55, color: C.mute2, textAlign: 'center' }}>
+            {fr ? 'Ton dressing arrivera ici tout seul, deux minutes après.' : 'Your wardrobe will arrive here on its own, two minutes later.'}
+          </p>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: '10px 12px', margin: '18px 0 10px' }}>
             <span style={{ width: 13, height: 13, border: `2px solid ${C.teal}`, borderTopColor: 'transparent', borderRadius: 99, display: 'inline-block', animation: 'fsObSpin 1s linear infinite' }} />
             <style>{'@keyframes fsObSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}'}</style>
@@ -405,11 +439,6 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
               {fr ? 'Détection automatique — rien à recliquer ici' : 'Automatic detection — nothing to click again here'}
             </span>
           </div>
-          <p style={{ margin: '0 0 6px', fontSize: 11.5, lineHeight: 1.5, color: C.mute, textAlign: 'center' }}>
-            {fr
-              ? "Tu peux fermer l'app : tes annonces t'attendront dans ton stock."
-              : 'You can close the app: your listings will be waiting in your stock.'}
-          </p>
           <button
             onClick={() => terminer('stock')}
             style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: C.mute, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', padding: 6 }}
@@ -417,7 +446,7 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
             {fr ? 'Plus tard' : 'Later'}
           </button>
         </>
-      )}
+      ))}
 
       {showPitch && (
         <ExtensionPitchScreen
