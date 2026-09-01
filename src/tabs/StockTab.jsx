@@ -5782,6 +5782,14 @@ const StockTab = memo(function StockTab({
                   // du bouton (4/4 = plus rien à publier).
                   const nbEnLigne=logosEnLigne.length;
                   const toutEnLigne=nbEnLigne>=RM_PLATFORMS.length;
+                  // Plateformes où l'article n'est PAS en ligne (2026-09-01,
+                  // audit onboarding) : portées par le bouton « Publier » en
+                  // logos — sur un article importé de Vinted, « Publier » nu
+                  // ne disait ni où ni pourquoi (l'article est déjà en ligne).
+                  // Même source que la pastille et le compteur (logosEnLigne) :
+                  // le stepper n'ouvrira que ces plateformes-là, le bouton
+                  // montre exactement ce qu'il fera.
+                  const aPublier=RM_PLATFORMS.filter(p=>!logosEnLigne.includes(p));
                   // _table:'inventaire' — cible d'écriture explicite de la modale
                   // d'édition (les ids ventes/inventaire se chevauchent).
                   const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""});
@@ -6353,7 +6361,21 @@ const StockTab = memo(function StockTab({
                                   ?(lang==='fr'?'Récupération…':'Fetching…')
                                   :toutEnLigne
                                   ?(lang==='fr'?`En ligne (${nbEnLigne}/${RM_PLATFORMS.length})`:`Live (${nbEnLigne}/${RM_PLATFORMS.length})`)
-                                  :(lang==='fr'?'Publier':'Publish')}
+                                  /* Le verbe + les DESTINATIONS (2026-09-01) : les logos des
+                                     plateformes manquantes remplacent le point d'interrogation
+                                     qu'était « Publier » nu sur un article déjà en ligne
+                                     Vinted. Chaque logo porte son propre socle blanc
+                                     (PlatformLogo) — lisible sur l'aplat teal. */
+                                  :(
+                                    <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:5,lineHeight:1}}>
+                                      {lang==='fr'?'Publier':'Publish'}
+                                      {aPublier.length>0&&(
+                                        <span style={{display:"inline-flex",alignItems:"center",gap:2}}>
+                                          {aPublier.map(p=><PlatformLogo key={p} platform={p} size={13}/>)}
+                                        </span>
+                                      )}
+                                    </span>
+                                  )}
                               </button>
                             <button className="btn-vendre" onClick={e=>{e.stopPropagation();markSold(item);}}>
                               {lang==='fr'?'Vendre':'Sell'}
@@ -6431,17 +6453,28 @@ const StockTab = memo(function StockTab({
                                     :(lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed.")}>
                                   {repubBusy===item.id
                                     ?(lang==='fr'?'Capture…':'Capturing…')
+                                    /* Logo Vinted À LA PLACE de l'émoji 🔁 (2026-09-01, audit
+                                       onboarding) : « Publier » et « Republier » ne se
+                                       distinguaient que par deux lettres — le logo dit la
+                                       destination (Vinted seul), le coût reste affiché, la
+                                       feuille qui s'ouvre au tap titre déjà « Republier sur
+                                       Vinted ». Conteneur inline-flex : plus de repli possible
+                                       entre verbe et prix, et un logo de 12px pèse moins que
+                                       l'émoji qui faisait déborder l'ancien libellé. */
                                     :(republishPrice!=null
-                                      /* Sans l'émoji 🔁 : « Republier (1 ‹icône›) » fait 80px et
-                                         tient sur la ligne des 82px utiles de .btn-stack (92px
-                                         − bordures − padding) ; avec lui, 98px → repli en deux
-                                         lignes, le débordement que ce libellé vient corriger.
-                                         Le groupe (prix) est insécable : si le prix passe à deux
-                                         chiffres, la coupure tombe entre le verbe et le prix. */
-                                      ?(lang==='fr'
-                                        ?<>Republier <span style={{whiteSpace:"nowrap"}}>(<PepiteAmount value={republishPrice}/>)</span></>
-                                        :<>Repost <span style={{whiteSpace:"nowrap"}}>(<PepiteAmount value={republishPrice}/>)</span></>)
-                                      :(lang==='fr'?'🔁 Republier':'🔁 Repost'))}
+                                      ?(
+                                        <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,lineHeight:1}}>
+                                          <PlatformLogo platform="vinted" size={12}/>
+                                          {lang==='fr'?'Republier':'Repost'}
+                                          <span style={{whiteSpace:"nowrap"}}>(<PepiteAmount value={republishPrice}/>)</span>
+                                        </span>
+                                      )
+                                      :(
+                                        <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,lineHeight:1}}>
+                                          <PlatformLogo platform="vinted" size={12}/>
+                                          {lang==='fr'?'Republier':'Repost'}
+                                        </span>
+                                      ))}
                                 </button>);
                             })()}
                         </div>
