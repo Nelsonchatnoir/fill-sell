@@ -1371,7 +1371,7 @@ const RETRY403_GRACE_MS = 5 * 60 * 1000;
 // Chrome. Le marquage des disparitions est protégé par l'identité du RUN,
 // côté extension : sync mono-compte.)
 
-function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0 }) {
+function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, onVoirArticles = null }) {
   const fr = lang !== 'en';
   // (Le couple isMobile/surTelephone a disparu le 2026-08-09 : il ne servait
   // qu'à décliner le message de blocage par support. Il n'y en a plus qu'un,
@@ -2204,6 +2204,38 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           </div>
         );
       })()}
+
+      {/* ── Le bilan devient une ÉTAPE (2026-09-01, audit onboarding) ────────
+          « Dressing synchronisé — N importés » se lisait comme un point
+          final : 64 % des comptes synchronisés depuis le 01/08 n'ont jamais
+          tenté une publication hors Vinted. Sous le bilan VERT uniquement —
+          jamais sous une erreur, un blocage, une sync en cours ou le retour
+          d'un clic (avis===bilan garantit tout ça d'un coup) — la même carte
+          dit la suite. AFFICHAGE + NAVIGATION seulement : aucun job créé,
+          aucune sélection automatique ; le tap fait défiler jusqu'aux
+          articles, où vit le bouton « Publier » de chacun (le flux de
+          publication existant, inchangé). Même patron que la ligne « action
+          requise » du bloc republication. */}
+      {avis&&avis===bilan&&bilan?.ton==='vert'&&!attenteOccupee&&onVoirArticles&&(
+        <button
+          onClick={onVoirArticles}
+          style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",border:"1px solid rgba(13,148,136,0.2)",background:"#F0FDFB",color:"#1B6E62",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}
+        >
+          <span style={{display:"inline-flex",gap:3,flexShrink:0}}>
+            {["leboncoin","ebay","beebs"].map(p=>(
+              <span key={p} style={{display:"inline-flex",borderRadius:6,overflow:"hidden",boxShadow:"0 1px 3px rgba(16,32,27,0.12)"}}>
+                <PlatformLogo platform={p} size={16}/>
+              </span>
+            ))}
+          </span>
+          <span style={{flex:1,minWidth:0}}>
+            {fr
+              ?"Ces annonces ne vivent que sur Vinted — publie-les aussi sur Leboncoin, eBay et Beebs."
+              :"These listings only live on Vinted — publish them on Leboncoin, eBay and Beebs too."}
+          </span>
+          <ChevronRight size={15} style={{flexShrink:0}}/>
+        </button>
+      )}
 
       {/* Synchro impossible : LA phrase, la même partout — ordinateur,
           téléphone web, application native. Un seul geste à comprendre, et
@@ -3182,6 +3214,9 @@ const StockTab = memo(function StockTab({
   const [detailFetchId, setDetailFetchId] = useState(null); // item.id en cours de récupération
   const [detailNote, setDetailNote] = useState(null);       // message doux (repli), auto-effacé
   const detailNoteTimer = useRef(null);
+  // Cible du CTA « publie-les aussi… » de la carte de sync (2026-09-01) :
+  // la grille d'articles, où vivent les boutons Publier. Navigation pure.
+  const galerieRef = useRef(null);
   useEffect(() => () => { if (detailNoteTimer.current) clearTimeout(detailNoteTimer.current); }, []);
   const montrerNoteDetail = (message) => {
     setDetailNote(message);
@@ -4597,6 +4632,7 @@ const StockTab = memo(function StockTab({
           source={stock.length===0?'stock_empty':'stock_liste'}
           onDone={rafraichirApresSync}
           repubEnVol={repubVivants}
+          onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
         />
       </div>
       <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
@@ -5492,7 +5528,7 @@ const StockTab = memo(function StockTab({
                     sur mobile. Pagination inchangée (slice de 10 + « Voir
                     plus ») et photos en loading="lazy" : les gros comptes
                     (3 000+ articles) ne chargent jamais tout d'un coup. */}
-                <div className="ggrid">
+                <div className="ggrid" ref={galerieRef}>
                 {(modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnables:listeStock).map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
