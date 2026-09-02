@@ -4569,7 +4569,18 @@ export default function ListingPreviewScreen({
     // un champ que les vraies données confirmeraient. Une sous-garde due à un
     // relevé V/B incomplet reste rattrapée par le gate pré-clic de
     // l'extension, dont l'échec sert de relevé correctif (philosophie 1.A).
+    // LIVRES sans Marque (2026-09-02, cas Delavier — règle du 31/08 alignée
+    // côté app) : les formulaires Livres n'ont pas de champ Marque (Vinted :
+    // relevé DOM du 23/08, catalogue Livres = condition + isbn seuls ; eBay
+    // Livres : pas d'aspect Marque exigé). Le repli STATIQUE la réclamait
+    // pourtant dès que le référentiel de la catégorie n'était pas encore
+    // chargé — « Marque · Vinted, eBay » sur un livre, publication bloquée
+    // sur un champ que les plateformes ne demandent pas. La garde DATA-DRIVEN
+    // reste souveraine : si un référentiel chargé exige une Marque (Beebs
+    // Livres > Mangas la porte), elle est demandée comme avant.
+    const isLivre = catPath?.[1] === "Livres";
     const staticGuard = (key) => {
+      if (key === "marque" && isLivre) return [];
       if (key === "matiere") return materialGuardApplies ? SHARED_GUARD.matiere : [];
       if (key === "couleur") return colorGuardApplies ? SHARED_GUARD.couleur : [];
       if (key !== "taille") return SHARED_GUARD[key];
@@ -5387,10 +5398,18 @@ export default function ListingPreviewScreen({
           // `value: src` (2026-07-30) : avec le rendu sticky, une ligne passée
           // à "ok" reste affichée — sans valeur, son input paraissait vide
           // alors que le champ est rempli.
-          return { key, label, state: "ok", value: src, allowedValues };
+          // ⚠️ dedicatedTarget AUSSI sur "ok" (2026-09-02, bug « un seul
+          // caractère » de l'Univers LBC, cas Delavier) : la PREMIÈRE frappe
+          // écrivait pf.univers via le canal dédié (branche "missing", qui
+          // porte la cible), l'aspect passait à "ok"… SANS cible — la frappe
+          // suivante partait dans le canal GÉNÉRIQUE, que cette dérivation ne
+          // relit qu'APRÈS la source dédiée : l'input revenait au premier
+          // caractère à chaque frappe, déterministe. Même classe que le fix
+          // sticky du 30/07 (l'input restait monté, mais écrivait à côté).
+          return { key, label, state: "ok", value: src, allowedValues, dedicatedTarget: genericDedicatedTarget(platform, key) };
         }
         const generic = String(aspects[key] ?? "").trim();
-        if (generic) return { key, label, state: "ok", source: "generic", value: generic, allowedValues };
+        if (generic) return { key, label, state: "ok", source: "generic", value: generic, allowedValues, dedicatedTarget: genericDedicatedTarget(platform, key) };
         if (GENERIC_PREFILLED[platform]?.includes(key)) {
           return {
             key, label, state: "prefilled", allowedValues,
@@ -5504,8 +5523,28 @@ export default function ListingPreviewScreen({
         taille:  src.platform_fields?.taille  || sharedFields.taille  || null,
         modele:  src.platform_fields?.modele  || lensPourChamps?.modele || null,
       };
+      // ── Univers LBC pré-rempli depuis le GENRE (2026-09-02, cas Delavier) ──
+      // « Univers » ne parle à personne, mais pour un vêtement/chaussure le
+      // genre de l'article LE DIT déjà (Femme/Homme ; Fille/Garçon/Bébé →
+      // Enfant). Posé UNIQUEMENT quand la valeur mappée figure dans la liste
+      // relevée de la catégorie — jamais sur une liste vide ou absente (les
+      // Univers de Sport/Déco/Arts de la table ne sont PAS des genres, y
+      // poser « Femme » serait faux). « Mixte » n'est pas déductible → saisie
+      // manuelle. Ce qui reste ambigu est demandé, rien de deviné.
+      const UNIVERS_PAR_GENRE = { "Femme": "Femme", "Homme": "Homme", "Fille": "Enfant", "Garçon": "Enfant", "Bébé": "Enfant", "Enfant": "Enfant" };
+      const genreArticle = String(
+        src.platform_fields?.genre || src.platform_fields?.univers
+        || edited.vinted?.platform_fields?.genre || edited.beebs?.platform_fields?.genre || ""
+      ).trim();
       const missing = [];
       for (const a of missingAll) {
+        if (a.dedicatedTarget === "univers") {
+          const cand = UNIVERS_PAR_GENRE[genreArticle] ?? null;
+          if (cand && (a.allowedValues ?? []).some(v => normAspectVal(v) === normAspectVal(cand))) {
+            setPlatformDedicatedField(gp, "univers", cand);
+            continue;
+          }
+        }
         const known = a.dedicatedTarget ? String(KNOWN_BY_TARGET[a.dedicatedTarget] ?? "").trim() : "";
         if (known) setPlatformDedicatedField(gp, a.dedicatedTarget, known);
         else missing.push(a);
