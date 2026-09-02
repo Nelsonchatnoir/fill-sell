@@ -4021,6 +4021,9 @@ const StockTab = memo(function StockTab({
   // App.jsx) ; une extension vivante éteint donc le bandeau en ≤ 1 min.
   // La valeur la plus RÉCENTE des deux (prop, relecture) fait foi.
   const [extSeenRelu, setExtSeenRelu] = useState(null);
+  // Session de l'extension refusée (02/09 soir) : stampée par le 401
+  // d'extension-session — fait primer « session expirée » sur « éteinte ».
+  const [extSessionRejetee, setExtSessionRejetee] = useState(null);
   const extLastSeenBest = (() => {
     const a = Date.parse(extensionStatus?.lastSeenAt ?? "");
     const b = Date.parse(extSeenRelu ?? "");
@@ -4028,7 +4031,25 @@ const StockTab = memo(function StockTab({
     if (!Number.isFinite(b)) return extensionStatus?.lastSeenAt;
     return a >= b ? extensionStatus.lastSeenAt : extSeenRelu;
   })();
-  const extFraicheur = fraicheurExtension(extLastSeenBest);
+  const extFraicheur = fraicheurExtension(extLastSeenBest, extSessionRejetee);
+  // Lecture du marqueur de rejet : UNE fois au montage, sans attendre que la
+  // fraîcheur se dégrade — une extension qui boucle sur le 401 ne stampe plus
+  // last_seen, mais pendant la première heure l'état resterait « vivante » et
+  // la panne serait invisible. SELECT SÉPARÉ (PostgREST tout-ou-rien) : la
+  // colonne vient de la migration 20260902233000, son absence ne doit pas
+  // emporter la lecture de last_seen.
+  useEffect(() => {
+    if (!user?.id) return;
+    let arret = false;
+    (async () => {
+      try {
+        const { data } = await supabase.from("profiles")
+          .select("extension_session_rejetee_at").eq("id", user.id).maybeSingle();
+        if (!arret && data) setExtSessionRejetee(data.extension_session_rejetee_at ?? null);
+      } catch { /* colonne pas encore posée : état inchangé */ }
+    })();
+    return () => { arret = true; };
+  }, [user?.id]);
   useEffect(() => {
     if (!user?.id) return;
     if (extFraicheur.etat === "vivante" || extFraicheur.etat === "inconnue") return;
@@ -4038,6 +4059,14 @@ const StockTab = memo(function StockTab({
         .select("extension_last_seen_at").eq("id", user.id).maybeSingle();
       if (arret || error || !data) return;
       setExtSeenRelu(data.extension_last_seen_at ?? null);
+      // Le marqueur de rejet se relit au même rythme : c'est lui qui ÉTEINT le
+      // bandeau « session expirée » quand le bootstrap repasse (mis à NULL) ou
+      // quand les polls reprennent (last_seen repasse devant).
+      try {
+        const { data: rej } = await supabase.from("profiles")
+          .select("extension_session_rejetee_at").eq("id", user.id).maybeSingle();
+        if (!arret && rej) setExtSessionRejetee(rej.extension_session_rejetee_at ?? null);
+      } catch { /* colonne pas encore posée */ }
     };
     relire();
     const timer = setInterval(relire, 60_000);
@@ -4490,6 +4519,29 @@ const StockTab = memo(function StockTab({
           comportement d'origine, après les états de fraîcheur. */}
       {isMobile && (() => {
         const stockVide = (stock?.length ?? 0) === 0;
+        // « Session expirée » (02/09 soir) prime sur tout : l'extension TOURNE
+        // (elle boucle sur le 401 d'extension-session) mais ne peut plus
+        // travailler — le dire « éteinte » était un diagnostic faux qui
+        // faisait conclure au produit cassé. Geste réparateur explicite.
+        if (!stockVide && extFraicheur.etat === "session_expiree") {
+          return (
+            <div style={{
+              display:"flex", gap:10, alignItems:"flex-start",
+              background:"#FEF2F2", border:"1px solid #FECACA", borderLeft:"4px solid #DC2626",
+              borderRadius:14, padding:"12px 14px", marginBottom:14, width:"100%", boxSizing:"border-box",
+            }}>
+              <span style={{fontSize:16, lineHeight:1.2, flexShrink:0}}>🔑</span>
+              <div style={{fontSize:13, lineHeight:1.5, color:"#3f3a2e"}}>
+                <div style={{fontWeight:700, marginBottom:2, color:"#B91C1C"}}>
+                  {lang==="en" ? "The extension needs to sign in again" : "L'extension doit se reconnecter"}
+                </div>
+                {lang==="en"
+                  ? "It lost its connection to your account. On your computer, open fillsell.app in Chrome, sign in, then reload the page (F5) — it reconnects by itself."
+                  : "Elle a perdu sa connexion à ton compte. Sur ton ordinateur, ouvre fillsell.app dans Chrome, connecte-toi, puis recharge la page (F5) — elle se reconnecte toute seule."}
+              </div>
+            </div>
+          );
+        }
         if (!stockVide && extFraicheur.etat === "inactive") {
           return (
             <div style={{
@@ -6059,7 +6111,7 @@ const StockTab = memo(function StockTab({
                             // Mêmes règles que l'ancien badge « En cours… »
                             // (2026-08-13) : extension hors fraîcheur → on
                             // nomme le vrai état, jamais un travail inventé.
-                            const horsFraicheur=extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive";
+                            const horsFraicheur=extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive"||extFraicheur.etat==="session_expiree";
                             const plusVieux=Math.min(...jobs
                               .filter(j=>j.status==="pending"||j.status==="processing")
                               .map(j=>Date.parse(j.created_at))

@@ -1790,9 +1790,25 @@ export const EXT_INACTIF_MS = 7 * 24 * 60 * 60 * 1000;
 
 // États : 'inconnue' (jamais vue — les gardes « jamais installée » s'en
 // chargent ailleurs, rien à afficher ici), 'vivante', 'eteinte' (ambre,
-// informatif : rien n'est cassé, le job partira), 'inactive' (rouge).
-export function fraicheurExtension(lastSeenAt) {
+// informatif : rien n'est cassé, le job partira), 'inactive' (rouge),
+// et 'session_expiree' (incident du 02/09 soir) : l'extension TOURNE mais son
+// bootstrap de session est refusé (extension-session 401 → le serveur stampe
+// profiles.extension_session_rejetee_at). Sans cet état, l'app affichait
+// « ton ordinateur est éteint » à quelqu'un dont l'extension hurlait dans la
+// console — il concluait que le produit est cassé. Le rejet PRIME sur la
+// fraîcheur quand il est plus récent que le dernier battement (une extension
+// sans session ne polle plus : last_seen gèle) et vieux de moins de 24 h ;
+// dès que les polls reprennent, last_seen repasse devant et l'état redevient
+// « vivante » tout seul — aucun nettoyage requis côté client.
+export const EXT_REJET_FENETRE_MS = 24 * 60 * 60 * 1000;
+export function fraicheurExtension(lastSeenAt, sessionRejeteeAt = null) {
   const seen = Date.parse(lastSeenAt ?? "");
+  const rejet = Date.parse(sessionRejeteeAt ?? "");
+  if (Number.isFinite(rejet)
+      && Date.now() - rejet <= EXT_REJET_FENETRE_MS
+      && (!Number.isFinite(seen) || rejet >= seen)) {
+    return { etat: "session_expiree", jours: null };
+  }
   if (!Number.isFinite(seen)) return { etat: "inconnue", jours: null };
   const age = Date.now() - seen;
   if (age <= EXT_ETEINT_MS) return { etat: "vivante", jours: 0 };

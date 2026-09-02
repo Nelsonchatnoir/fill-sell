@@ -4657,7 +4657,21 @@ export default function App({ loginOnly = false }){
   //   AppleSignIn (signInWithIdToken), voir handleAppleSignIn.
   const handleOAuthSignIn = async (provider) => {
     const { data: { session: existingSession } } = await supabase.auth.getSession();
-    if (existingSession) { navigate('/app'); return; }
+    if (existingSession) {
+      // ── Session locale ≠ session vivante (incident du 02/09 soir) ─────────
+      // Après un signOut global ou une révocation serveur, un cadavre de
+      // session localement « valide » (exp < 1 h) peut rester en storage.
+      // Ce court-circuit sur simple PRÉSENCE faisait du bouton Google/Apple
+      // un NO-OP TOTAL : navigate('/app') sans redirection provider, sans
+      // échange — prouvé par les logs GoTrue (aucun événement serveur sur
+      // les clics Google de 18:38-18:55), pendant que le pont relayait le
+      // jeton mort à l'extension (extension-session 401 en boucle). On
+      // vérifie donc la VIE côté serveur ; morte → purge locale et on
+      // continue vers l'OAuth normalement.
+      const { error: vieErr } = await supabase.auth.getUser();
+      if (!vieErr) { navigate('/app'); return; }
+      try { await supabase.auth.signOut({ scope: 'local' }); } catch { /* cadavre déjà purgé */ }
+    }
     setLoginError("");
     try {
       if (isNative) {
@@ -4770,7 +4784,12 @@ export default function App({ loginOnly = false }){
   }
 
   async function handleLogout(){
-    await supabase.auth.signOut();
+    // scope 'local' (02/09 soir) : signOut() nu = 'global' → détruisait TOUTES
+    // les sessions du compte, dont la session PROPRE de l'extension Chrome
+    // (celle du bootstrap extension-session) — chaque déconnexion de l'app
+    // mettait l'extension en panne jusqu'au prochain bootstrap. Se déconnecter
+    // ICI ne concerne que CE navigateur/appareil.
+    await supabase.auth.signOut({ scope: 'local' });
     setUser(null);setSales([]);setItems([]);setResetStep(0);
     navigate("/");
   }
@@ -4796,7 +4815,10 @@ export default function App({ loginOnly = false }){
         }
       );
       if(!res.ok){ const e=await res.json(); throw new Error(e.error||(lang==='en'?"Account deletion error":"Erreur suppression compte")); }
-      await supabase.auth.signOut();
+      // scope 'local' (02/09 soir, même doctrine que handleLogout) : le compte
+      // vient d'être SUPPRIMÉ côté serveur — toutes ses sessions meurent avec
+      // lui, le scope global n'apportait rien et la purge locale suffit.
+      await supabase.auth.signOut({ scope: 'local' });
       setUser(null);setSales([]);setItems([]);
       navigate("/");
     } catch(err){

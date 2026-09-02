@@ -76,7 +76,33 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: { user }, error: authErr } = await userClient.auth.getUser();
-    if (authErr || !user) return json({ error: "Token invalide ou expiré" }, 401);
+    if (authErr || !user) {
+      // ── Signal de panne pour l'app (incident bootstrap du 02/09 soir) ─────
+      // Ce 401 précis = « l'extension tourne mais son jeton relayé est mort »
+      // (session détruite par un signOut global, révocation…). Sans trace, il
+      // était invisible : l'app affichait « ordinateur éteint » pendant que
+      // l'extension bouclait. On stampe profiles.extension_session_rejetee_at
+      // — l'app le lit (fraicheurExtension) et affiche le geste qui répare.
+      // SÛRETÉ : verify_jwt=true sur cette fonction — la gateway a DÉJÀ validé
+      // signature et expiration du JWT avant d'entrer ici (sinon la requête
+      // n'arrive pas). Le `sub` du payload est donc authentique ; seul le lien
+      // à une session vivante manque. Décodage sans re-vérification, assumé.
+      // Best-effort : jamais bloquant, la réponse 401 part telle quelle.
+      try {
+        const payloadB64 = (authHeader.slice(7).split(".")[1] ?? "")
+          .replace(/-/g, "+").replace(/_/g, "/");
+        const payload = JSON.parse(atob(payloadB64));
+        const sub = typeof payload?.sub === "string" ? payload.sub : null;
+        if (sub) {
+          const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+          await admin.from("profiles")
+            .update({ extension_session_rejetee_at: new Date().toISOString() })
+            .eq("id", sub);
+          console.warn(`[extension-session] bootstrap refusé (session morte côté serveur) user=${sub} — extension_session_rejetee_at stampé`);
+        }
+      } catch { /* colonne absente (migration pas encore appliquée) ou payload illisible : sans conséquence */ }
+      return json({ error: "Token invalide ou expiré" }, 401);
+    }
     if (!user.email) {
       // generate_link s'appuie sur l'email. Un compte sans email (cas théorique)
       // ne peut pas être bootstrappé par cette voie : on le dit au lieu de
@@ -108,6 +134,15 @@ serve(async (req) => {
       console.error("[extension-session] hashed_token absent de la réponse admin");
       return json({ error: "Réponse d'auth inattendue (hashed_token absent)" }, 502);
     }
+
+    // Bootstrap réussi : on efface le marqueur de panne (best-effort — la
+    // reprise des polls ferait de toute façon repasser last_seen devant).
+    try {
+      const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      await admin.from("profiles")
+        .update({ extension_session_rejetee_at: null })
+        .eq("id", user.id);
+    } catch { /* colonne absente ou indisponible : sans conséquence */ }
 
     // On ne renvoie QUE le hashed_token : l'échange contre une session se fait
     // côté extension, pour que le refresh token n'existe jamais que là-bas.

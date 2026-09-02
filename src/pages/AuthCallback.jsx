@@ -19,23 +19,42 @@ export default function AuthCallback() {
 
   useEffect(() => {
     let cancelled = false;
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (cancelled) return;
-      // Cible protégée mémorisée par RequireAuth (ex. /extension depuis le
-      // lien e-mail de l'accroche) : le flux OAuth web repasse par ici, c'est
-      // LE point où la destination était perdue.
-      if (session) { navigate(consumePostLoginTarget() ?? "/app", { replace: true }); return; }
+    // Cible protégée mémorisée par RequireAuth (ex. /extension depuis le
+    // lien e-mail de l'accroche) : le flux OAuth web repasse par ici, c'est
+    // LE point où la destination était perdue.
+    const arrivee = () => navigate(consumePostLoginTarget() ?? "/app", { replace: true });
+    (async () => {
       const params = new URLSearchParams(window.location.search);
       // Refus/annulation côté provider : retour au login sans bruit.
       if (params.get("error")) { navigate("/login", { replace: true }); return; }
       const code = params.get("code");
+      // ── Le code PRIME sur toute session déjà en storage (02/09 soir) ──────
+      // L'ancien ordre testait getSession() D'ABORD : une session morte côté
+      // serveur mais localement « valide » (exp < 1 h — cadavre d'un signOut
+      // global) court-circuitait l'échange, le ?code= partait à la poubelle
+      // et le cadavre restait en storage — le pont de l'extension relayait
+      // alors un jeton mort (extension-session 401 en boucle). Un code frais
+      // dans l'URL est TOUJOURS plus digne de confiance qu'un storage local :
+      // on l'échange d'abord, l'échange REMPLACE la session locale. S'il
+      // échoue parce que l'auto-détection PKCE l'a déjà consommé à l'init du
+      // client, getSession() rend la session fraîche → même destination.
       if (code) {
         const { data, error: exErr } = await supabase.auth.exchangeCodeForSession(code);
         if (cancelled) return;
-        if (!exErr && data?.session) { navigate(consumePostLoginTarget() ?? "/app", { replace: true }); return; }
+        if (!exErr && data?.session) { arrivee(); return; }
+        const { data: { session: apres } } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (apres) { arrivee(); return; }
+        setError("Connexion impossible. Réessaie depuis la page de connexion.");
+        return;
       }
+      // Sans code (navigation SPA vers cette route) : la session en place
+      // fait foi, comme avant.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (session) { arrivee(); return; }
       setError("Connexion impossible. Réessaie depuis la page de connexion.");
-    });
+    })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

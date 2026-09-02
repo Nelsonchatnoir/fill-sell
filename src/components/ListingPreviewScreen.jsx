@@ -3587,6 +3587,11 @@ export default function ListingPreviewScreen({
   // colonne AU MONTAGE (SELECT ciblé, une fois), et la valeur la plus récente
   // des deux fait foi. Informatif seulement : rien n'est jamais bloqué ici.
   const [extSeenRelu, setExtSeenRelu] = useState(null);
+  // Session de l'extension refusée (02/09 soir) : stampée par
+  // extension-session sur son 401 « jeton relayé mort » — lue ici pour
+  // distinguer « session expirée » (l'extension tourne mais ne peut plus
+  // travailler, geste réparateur à afficher) d'« ordinateur éteint ».
+  const [extSessionRejetee, setExtSessionRejetee] = useState(null);
   useEffect(() => {
     if (!userId) return;
     let alive = true;
@@ -3596,6 +3601,14 @@ export default function ListingPreviewScreen({
           .select("extension_last_seen_at").eq("id", userId).maybeSingle();
         if (alive && data) setExtSeenRelu(data.extension_last_seen_at ?? null);
       } catch { /* best-effort : la prop reste la source */ }
+      // SELECT SÉPARÉ, jamais combiné (PostgREST tout-ou-rien) : la colonne
+      // vient de la migration 20260902233000 — tant qu'elle n'est pas
+      // appliquée, cet échec ne doit pas emporter la lecture de fraîcheur.
+      try {
+        const { data: rej } = await supabase.from("profiles")
+          .select("extension_session_rejetee_at").eq("id", userId).maybeSingle();
+        if (alive && rej) setExtSessionRejetee(rej.extension_session_rejetee_at ?? null);
+      } catch { /* colonne pas encore posée : état inchangé */ }
     })();
     return () => { alive = false; };
   }, [userId]);
@@ -3605,7 +3618,7 @@ export default function ListingPreviewScreen({
     const best = !Number.isFinite(a) ? (extSeenRelu ?? extensionLastSeenAt)
       : !Number.isFinite(b) ? extensionLastSeenAt
       : a >= b ? extensionLastSeenAt : extSeenRelu;
-    return fraicheurExtension(best);
+    return fraicheurExtension(best, extSessionRejetee);
   })();
   // La ligne inventaire a été créée PAR CETTE publication (et non préexistante) :
   // l'écran de fin le dit positivement — l'article est au stock, avec ses
@@ -6915,6 +6928,22 @@ export default function ListingPreviewScreen({
             mots « erreur/échec/problème » : rien n'est cassé. Ne s'affiche pas
             derrière l'écran d'accroche « jamais installée » (extensionBlocked),
             qui a son propre parcours. */}
+        {/* « Session expirée » (02/09 soir) : l'extension TOURNE mais son
+            bootstrap est refusé (extension_session_rejetee_at, stampé par le
+            401 d'extension-session). Avant, ce cas s'affichait « ordinateur
+            éteint » — faux, et sans geste réparateur. Le message dit le
+            geste EXACT : page fillsell.app connectée + F5, le pont relaie un
+            jeton frais et l'extension se reconnecte seule. */}
+        {step === 3 && !extensionBlocked && extFraicheurPublier.etat === "session_expiree" && (
+          <div style={{ marginBottom:8, display:"flex", gap:8, alignItems:"flex-start", padding:"8px 12px", borderRadius:10, background:"#FEF2F2", border:"1px solid #FECACA", fontSize:12, lineHeight:1.45, color:"#7F1D1D" }}>
+            <span style={{ flexShrink:0 }}>🔑</span>
+            <span>
+              {lang === "en"
+                ? "The extension lost its connection to your account. On your computer, open fillsell.app in Chrome, sign in, then reload the page (F5) — it reconnects by itself."
+                : "L'extension a perdu sa connexion à ton compte. Sur ton ordinateur, ouvre fillsell.app dans Chrome, connecte-toi, puis recharge la page (F5) — elle se reconnecte toute seule."}
+            </span>
+          </div>
+        )}
         {step === 3 && !extensionBlocked
           && (extFraicheurPublier.etat === "eteinte" || extFraicheurPublier.etat === "inactive") && (
           <div style={{ marginBottom:8, display:"flex", gap:8, alignItems:"center", padding:"8px 12px", borderRadius:10, background:"#FFFBEB", border:"1px solid #FDE68A", fontSize:12, lineHeight:1.45, color:"#78350F" }}>
