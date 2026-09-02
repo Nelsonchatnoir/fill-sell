@@ -975,7 +975,23 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Texte seul, aucun changement de comportement. Recalage de garde SEUL :
 // EXTENSION_MIN_BUILD ne bouge pas, aucun paquet produit ici — ces chaînes
 // partiront dans le prochain zip CWS.
-export const EXTENSION_LAST_COMMIT = '2026-09-02T15:11:22Z';
+// 2026-09-02T18:27:16Z : trois filets du soir (commit épinglé
+// GIT_COMMITTER_DATE sur cette constante — garde : ni futur, ni antérieur) :
+//   1. urlToFile (4 content scripts) : retentative 2× (2,5 s / 5 s) sur
+//      404/410 avec clé de cache neuve (?r=) — le CDN Supabase avait servi
+//      un 404 MIS EN CACHE sur des photos présentes (incident Delavier,
+//      3 plateformes refusées) ; côté app la parade immédiate est le ?v=<ts>
+//      posé à l'upload (OTA), ce filet couvre le résidu ;
+//   2. leboncoin.js : observatoire des VALEURS — les options des menus
+//      OUVERTS par fillCriterionSafe (aucun geste ajouté) partent au
+//      catalogue via enumerated/persistDiscoveredAspects : une catégorie
+//      publiée une fois remplit ses allowed_values pour les suivantes ;
+//   3. background.js persistDiscoveredAspects : les lignes SANS options
+//      partent dans un lot séparé où allowed_values est OMISE —
+//      merge-duplicates n'écrase plus une liste apprise par un null.
+// EXTENSION_MIN_BUILD ne bouge pas, aucun paquet produit ici — tout part
+// dans le prochain zip CWS (avec la 0.6.15 en attente).
+export const EXTENSION_LAST_COMMIT = '2026-09-02T18:27:16Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

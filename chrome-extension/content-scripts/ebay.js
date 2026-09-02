@@ -2244,6 +2244,20 @@ async function urlToFile(url, index) {
       "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
     );
   }
+  // ── Retentative sur 404/410 (2026-09-02, incident Delavier) ───────────────
+  // Le CDN Supabase peut servir un 404 MIS EN CACHE sur un fichier bien
+  // présent (une requête a précédé la fin de l'upload, l'absence a été
+  // mémorisée — les 3 plateformes ont refusé un livre dont les photos
+  // existaient en base). Un 404 sur une photo FillSell est transitoire par
+  // nature : on retente 2 fois (2,5 s puis 5 s) avec une clé de cache NEUVE
+  // (paramètre r=… : le CDN indexe par URL complète, la réponse empoisonnée
+  // n'est jamais resservie) avant d'échouer. Les autres statuts (403, 5xx…)
+  // gardent l'échec immédiat d'avant.
+  for (let tentative = 1; res && (res.status === 404 || res.status === 410) && tentative <= 2; tentative++) {
+    await new Promise((r) => setTimeout(r, tentative * 2500));
+    const sep = url.includes("?") ? "&" : "?";
+    try { res = await fetch(`${url}${sep}r=${Date.now()}`); } catch { break; }
+  }
   if (!res.ok) {
     throw new Error(
       `La photo ${index + 1} de l'annonce est indisponible (HTTP ${res.status}). ` +

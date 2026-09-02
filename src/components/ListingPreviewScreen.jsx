@@ -283,7 +283,13 @@ function canalGeneriquePose(platform, key) {
 // valeur), "invalid" ne bloque que contre une liste qui FAIT FOI
 // (a.blocking === true, cf. listeFaitFoi) — un « hors liste » jugé contre un
 // relevé partiel n'est qu'un avertissement.
-const aspectBloquant = (a) => a.state === "missing" || (a.state === "invalid" && a.blocking === true);
+// « missing » non bloquant (2026-09-02, règle « jamais deviner ») : un champ
+// FERMÉ (combobox/dropdown/list) dont la liste n'a jamais été relevée porte
+// blocking:false — on ne demande RIEN à l'utilisateur (il ne peut pas
+// connaître le vocabulaire de la plateforme), le pré-rempli de la plateforme
+// ou le mini-éditeur needs_user (options relevées au blocage, qui REMPLISSENT
+// le catalogue) font foi. Un missing ordinaire reste bloquant.
+const aspectBloquant = (a) => (a.state === "missing" && a.blocking !== false) || (a.state === "invalid" && a.blocking === true);
 
 // ── Poids du colis Leboncoin : table format → grammes, NON POSÉE (28/08) ─────
 // ⚠️ PRÉ-REMPLISSAGE RETIRÉ le 2026-08-28 au soir, sur relevé du CODE de
@@ -335,6 +341,19 @@ const LBC_POIDS_PAR_FORMAT = {
 const VALID_OBJECT_ICONS = new Set(ALL_OBJECT_ICONS);
 
 function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
+  // ── FAMILLE LENS SOUVERAINE — LIVRES (2026-09-02, cas Delavier) ───────────
+  // « La Méthode Delavier de MUSCULATION » : le mot-clé « musculation »
+  // accrochait l'icône sport → catégorie LBC « Loisirs > Sport & Plein air »
+  // → requis « Univers » (liste jamais relevée) sur un LIVRE, alors que la
+  // fiche Lens disait famille=livres_medias et catégorie Livres. Un livre
+  // parle TOUJOURS de son sujet (musculation, cuisine, yoga…) : la détection
+  // par mots-clés est structurellement piégée sur cette famille. La famille
+  // du schéma v81 est un descripteur FERMÉ et fiable : elle prime, POUR LES
+  // LIVRES SEULEMENT. (⛔ Ce n'est PAS l'inversion générale mot-clé/IA du
+  // chantier classement, qui reste interdite avant mesure.)
+  const familleFiche = initialListing?.famille ?? null;
+  const categorieFiche = String(pf?.categorie || initialListing?.categorie || "").trim();
+  if (familleFiche === "livres_medias" || /^livres?$/i.test(categorieFiche)) return "📚";
   // Copies FR seulement — jamais eBay (traduite en anglais).
   const frTitle =
     initialListing?.titre ??
@@ -2730,9 +2749,13 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               // Vinted/LBC/Beebs : blocking est TOUJOURS false ici (aucune de
               // leurs listes ne fait foi) — donc toujours l'avertissement jaune.
               const avert = state === "invalid" && blocking !== true;
-              const bg  = state === "ok" ? "#ECFDF5" : state === "prefilled" ? "#F5F3FF" : avert ? "#FFFBEB" : "#FEF2F2";
-              const bd  = state === "ok" ? "#A7F3D0" : state === "prefilled" ? "#DDD6FE" : avert ? "#FDE68A" : "#FECACA";
-              const fg  = state === "ok" ? "#047857" : state === "prefilled" ? "#6D28D9" : avert ? "#92400E" : "#B91C1C";
+              // Champ FERMÉ sans liste relevée (2026-09-02, cas Delavier) : on
+              // ne demande rien à l'utilisateur — le chip le DIT (« complété
+              // sur la page ») en violet informatif, jamais en rouge.
+              const missingDoux = state === "missing" && blocking === false;
+              const bg  = state === "ok" ? "#ECFDF5" : (state === "prefilled" || missingDoux) ? "#F5F3FF" : avert ? "#FFFBEB" : "#FEF2F2";
+              const bd  = state === "ok" ? "#A7F3D0" : (state === "prefilled" || missingDoux) ? "#DDD6FE" : avert ? "#FDE68A" : "#FECACA";
+              const fg  = state === "ok" ? "#047857" : (state === "prefilled" || missingDoux) ? "#6D28D9" : avert ? "#92400E" : "#B91C1C";
               // Même règle que le bloc eBay : la valeur « hors liste » qui
               // part est MONTRÉE (« Marque : Alphalette — envoyée telle
               // quelle ») au lieu du jargon d'implémentation (2026-08-28).
@@ -2742,14 +2765,16 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                 padding:"3px 9px", borderRadius:10, fontSize:12,
                 background: bg, border: `1px solid ${bd}`, color: fg,
               }}>
-                {state === "ok" ? "✓ " : avert ? "⚠ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{label}
+                {state === "ok" ? "✓ " : avert ? "⚠ " : missingDoux ? "◦ " : (state === "missing" || state === "invalid") ? "✗ " : ""}{label}
                 {avecValeur ? ` : ${String(value).trim()}` : ""}
                 {state === "prefilled"
                   ? ` — ${prefilledByPlatform
                       ? tpl("stepPublishAspectPrefilledByPlatform", { platform: PLATFORM_LABELS[gp] ?? gp })
                       : t("stepPublishGenericAspectPrefilled")}`
                   : ""}
-                {state === "missing" ? ` — ${t("stepPublishGenericAspectMissing")}` : ""}
+                {missingDoux
+                  ? (lang === "en" ? " — filled in on the page" : " — complété sur la page")
+                  : state === "missing" ? ` — ${t("stepPublishGenericAspectMissing")}` : ""}
                 {state === "invalid" ? ` — ${t(avert ? "stepPublishAspectOffListWarn" : "stepPublishGenericAspectInvalid")}` : ""}
               </span>
               );
@@ -3939,8 +3964,12 @@ export default function ListingPreviewScreen({
         const { error: upErr } = await supabase.storage
           .from("listing-photos")
           .upload(path, blob, { contentType:"image/jpeg", upsert:true });
+        // `?v=<ts>` : clé de cache CDN neuve par upload — parade au 404 mis en
+        // cache (incident Delavier 02/09, détail dans televerserPhotos de
+        // LensTab). Le nom de fichier posé aux plateformes n'en dépend pas
+        // (urlToFile nomme photo_N.ext sans parser l'URL).
         if (!upErr)
-          urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl);
+          urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl + `?v=${ts}`);
       }
       if (!urls.length) throw new Error(t("stepUploadError"));
       setPhotos(urls);
@@ -4046,8 +4075,9 @@ export default function ListingPreviewScreen({
       const { error: upErr } = await supabase.storage
         .from("listing-photos")
         .upload(path, blob, { contentType:"image/jpeg", upsert:true });
+      // `?v=<ts>` : même parade anti-404-en-cache que handleUpload.
       if (!upErr)
-        urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl);
+        urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl + `?v=${ts}`);
     }
     if (urls.length) setPhotos(prev => [...prev, ...urls]);
   }
@@ -4497,110 +4527,42 @@ export default function ListingPreviewScreen({
   // le fait l'encart bleu). `missingSharedFields` (les clés seules) en dérive et
   // garde la même forme qu'avant pour tous les consommateurs existants.
   const missingSharedFieldsDetailed = useMemo(() => {
-    // Même résolution d'icône que les mappings catalogue (resolveArticleIcon) :
-    // source française et stable, jamais la copie eBay (anglaise).
-    const catSrc = edited.leboncoin ?? edited.vinted ?? edited.ebay ?? edited.beebs ?? null;
-    const catIcon = resolveArticleIcon({
-      initialListing,
-      edited,
-      pf: catSrc?.platform_fields ?? {},
-      aiIcon: activeAiIcon,
-    });
-    const catPath = getLbcCategoryPath(catIcon);
-    const lbcShoes = catPath?.[0] === "Mode" && catPath?.[1] === "Chaussures";
-    // Scope catégorie de la taille (bug Xiaomi, 2026-07-12) : seuls les articles
-    // portés ont une taille. Un téléphone, un casque ou un lot de cartes n'en
-    // ont pas — les leur demander bloquait la publication sur un champ absurde.
-    const isFashionWearable =
-      catPath?.[0] === "Mode" && (catPath?.[1] === "Vêtements" || catPath?.[1] === "Chaussures");
-    // Vêtements de sport (2026-07-12) : une combinaison de ski, un maillot de
-    // foot ou des chaussons d'escalade se portent — et Vinted en demande la
-    // taille — mais le mapping les range en Loisirs>Sport & Plein air, avec
-    // l'ÉQUIPEMENT (ballons, vélos, tentes, haltères) qui n'a pas de taille.
-    // On ne peut donc pas élargir la garde à toute la feuille : on distingue,
-    // À L'INTÉRIEUR du sport uniquement, ce qui se porte de ce qui ne se porte
-    // pas. Restreint à la feuille sport pour ne pas rouvrir le bug d'origine
-    // (un "short" cité dans la description d'un téléphone ne doit rien déclencher).
-    const isSportLeaf = catPath?.[0] === "Loisirs" && catPath?.[1] === "Sport & Plein air";
-    const sportText = `${catSrc?.title ?? initialListing?.titre ?? ""} ${catSrc?.description ?? ""}`;
-    const isSportswear = isSportLeaf && SPORTSWEAR_RE.test(sportText);
-    const sizeGuardApplies = isFashionWearable || isSportswear;
-
-    // MATIÈRE — 3e cas du même bug que la Taille (2026-07-12). SHARED_GUARD la
-    // rendait bloquante sur les 4 plateformes, TOUTES catégories confondues.
-    // Vérifié dans le référentiel eBay réel (table ebay_item_aspects) : la
-    // Matière n'est obligatoire sur AUCUNE des catégories du run —
-    //   Chaises 54235      → Couleur, Hauteur, Largeur, Longueur, Marque, Type
-    //   Téléphones 9355    → Capacité, Couleur, Marque, Modèle
-    //   Baskets 15709      → Couleur, Département, Marque, Pointure EU, Style, Type
-    //   T-shirts 15687     → Couleur, Département, Marque, Taille, Type
-    // …alors qu'elle a un vrai sens sur les vêtements (coton/laine/cuir). On la
-    // garde donc sur la Mode (même périmètre que la Taille, vêtements de sport
-    // inclus) et on cesse de bloquer ailleurs.
-    // (Depuis les gardes data-driven ci-dessous, ces scopes ne servent plus
-    // que de FALLBACK quand le référentiel de la catégorie n'est pas chargé.)
-    const materialGuardApplies = sizeGuardApplies;
-
-    // COULEUR — 4e cas du même bug que Taille/Matière (2026-07-19, sérum
-    // Medik8 routé 🧴 par le fix B) : gardée en aveugle sur les 3 plateformes
-    // alors qu'aucun référentiel beauté ne l'exige (détail sur
-    // BEAUTY_PRODUCT_ICONS). Le signal du bug : eBay listé dans l'encart ROUGE
-    // pour Couleur alors que son propre encart BLEU (référentiel réel de la
-    // catégorie résolue) ne la demandait pas. Beebs non relevé — DÉFAUT
-    // ASSUMÉ : pas de couleur non plus ; si un relevé l'apprend un jour,
-    // l'encart générique platform_category_aspects la réclamera.
-    const colorGuardApplies = !BEAUTY_PRODUCT_ICONS.includes(catIcon);
-
-    // ── Gardes DATA-DRIVEN (2026-07-19) ─────────────────────────────────────
-    // 4 bugs de la même classe en une semaine (taille 12/07, matière 12/07,
-    // couleur beauté 18/07, audit 19/07 : ~90 catégories eBay sur-gardées en
-    // Couleur, médias sur-gardés en Marque, gants/casquettes sous-gardés en
-    // Taille) : une liste FIGÉE ne peut pas suivre les exigences réelles par
-    // catégorie. Les référentiels sont DÉJÀ chargés pour les encarts bleus —
-    // on branche la garde dessus. Par (champ, plateforme) :
-    //   · source dispo   → gardé SSI le référentiel exige le champ
-    //     (eBay : ebayRequiredPreview, vérité COMPLÈTE de la catégorie ;
-    //      Vinted/LBC/Beebs : genericAspectsCatalog, relevés cumulés) ;
-    //   · source absente (catégorie jamais relevée, chargement en cours,
-    //     échec réseau, ou catégorie sans aucun requis — indistinguable) →
-    //     FALLBACK = la garde statique scopée, à l'identique d'avant.
-    // Pendant le chargement async, la statique s'applique et le CTA Publier
-    // dérive du MÊME memo (requiredBlocking) : jamais publiable trop tôt sur
-    // un champ que les vraies données confirmeraient. Une sous-garde due à un
-    // relevé V/B incomplet reste rattrapée par le gate pré-clic de
-    // l'extension, dont l'échec sert de relevé correctif (philosophie 1.A).
-    // LIVRES sans Marque (2026-09-02, cas Delavier — règle du 31/08 alignée
-    // côté app) : les formulaires Livres n'ont pas de champ Marque (Vinted :
-    // relevé DOM du 23/08, catalogue Livres = condition + isbn seuls ; eBay
-    // Livres : pas d'aspect Marque exigé). Le repli STATIQUE la réclamait
-    // pourtant dès que le référentiel de la catégorie n'était pas encore
-    // chargé — « Marque · Vinted, eBay » sur un livre, publication bloquée
-    // sur un champ que les plateformes ne demandent pas. La garde DATA-DRIVEN
-    // reste souveraine : si un référentiel chargé exige une Marque (Beebs
-    // Livres > Mangas la porte), elle est demandée comme avant.
-    const isLivre = catPath?.[1] === "Livres";
-    const staticGuard = (key) => {
-      if (key === "marque" && isLivre) return [];
-      if (key === "matiere") return materialGuardApplies ? SHARED_GUARD.matiere : [];
-      if (key === "couleur") return colorGuardApplies ? SHARED_GUARD.couleur : [];
-      if (key !== "taille") return SHARED_GUARD[key];
-      if (!sizeGuardApplies) return [];
-      return lbcShoes ? [...SHARED_GUARD.taille, "leboncoin"] : SHARED_GUARD.taille;
-    };
+    // ── Gardes DATA-DRIVEN SEULES — le REPLI STATIQUE est MORT (2026-09-02) ──
+    // Historique : 4 bugs de la même classe en une semaine de juillet (taille
+    // 12/07, matière 12/07, couleur beauté 18/07, audit du 19/07) avaient
+    // branché la garde sur les référentiels réels (eBay : ebayRequiredPreview,
+    // vérité complète de la catégorie ; Vinted/LBC/Beebs :
+    // genericAspectsCatalog, relevés cumulés) — MAIS un repli statique scopé
+    // (SHARED_GUARD + périmètres Mode/sport/beauté, puis Livres) subsistait
+    // tant que le référentiel n'était pas chargé. Résultat STRUCTUREL (cas
+    // Delavier, 02/09 soir) : « Marque · Vinted, eBay » exigée sur un livre
+    // selon l'issue d'une COURSE au chargement — le même article demandait la
+    // marque une fois sur deux. Décision Nico : en cas de doute, on ne demande
+    // RIEN, la plateforme tranche.
+    // Pourquoi PERMISSIF plutôt qu'« attendre le catalogue » : « catégorie
+    // jamais relevée » et « catégorie sans aucun requis » sont INDISTINGUABLES
+    // en base (le catalogue ne stocke que des required=true) — une attente n'a
+    // pas de fin propre. Le plancher reste la gate pré-clic de l'extension +
+    // le needs_user structuré (options relevées SUR PLACE au blocage, qui
+    // remplissent le catalogue pour les passages suivants — philosophie 1.A) :
+    // une vraie exigence manquée coûte UNE reprise guidée ; le repli statique
+    // coûtait de la friction à CHAQUE publication sur des champs que les
+    // plateformes n'exigent pas forcément. (SHARED_GUARD/SPORTSWEAR_RE/
+    // BEAUTY_PRODUCT_ICONS restent définis en tête de fichier : mémoire des
+    // périmètres historiques, et BEAUTY sert encore ailleurs.)
     const guardPlatforms = (key) => {
-      const fallback = staticGuard(key);
       return ["vinted", "leboncoin", "beebs", "ebay"].filter(p => {
         if (p === "ebay") {
-          // ebayRequiredPreview n'est chargé que si eBay est sélectionné et
-          // sa catégorie résolue — sinon fallback (le filtre selected en aval
-          // neutralise de toute façon une plateforme non cochée).
+          // Preview pas (encore) chargée → on ne demande rien : le filtre
+          // selected en aval neutralise de toute façon une plateforme non
+          // cochée, et le référentiel arrive en async.
           return ebayRequiredPreview
             ? ebayRequiredPreview.some(a => EBAY_ASPECT_LABELS[key].includes(a.name))
-            : fallback.includes("ebay");
+            : false;
         }
         return genericAspectsCatalog[p]
           ? genericAspectsCatalog[p].some(r => genericFieldToSharedKey(p, r.field_key) === key)
-          : fallback.includes(p);
+          : false;
       });
     };
     // Manquant si la copie d'une plateforme gardée sélectionnée est vide : les
@@ -5420,7 +5382,20 @@ export default function ListingPreviewScreen({
         // confirmation valeur-unique doit écrire le champ DÉDIÉ (etat…) que
         // lit l'extension — le canal générique est ignoré pour les clés déjà
         // servies par un mapping dédié (handledForKeys/handledLabels).
-        return { key, label, state: "missing", value: "", allowedValues, dedicatedTarget: genericDedicatedTarget(platform, key) };
+        // ── Champ FERMÉ sans liste relevée → NON BLOQUANT (2026-09-02) ───────
+        // Cas Delavier : « Univers » (combobox LBC, allowed_values jamais
+        // relevées) exigé en SAISIE LIBRE — personne ne sait quoi y mettre,
+        // Nico le premier. Règle posée : on ne demande JAMAIS à l'utilisateur
+        // un champ dont on ne peut pas lui proposer les valeurs. On publie
+        // sans : le pré-rempli de la plateforme (souvent juste, doctrine
+        // 13/08) ou le refus propre → needs_user avec les options RELEVÉES
+        // sur place (qui remplissent le catalogue pour les suivants) font
+        // foi. Les champs TEXTE réels (isbn…) restent bloquants : l'utilisateur
+        // PEUT les connaître.
+        const ferme = ["combobox", "dropdown", "list"].includes(String(r.input_type ?? "").toLowerCase());
+        return { key, label, state: "missing", value: "", allowedValues,
+                 dedicatedTarget: genericDedicatedTarget(platform, key),
+                 blocking: !(ferme && allowedValues.length === 0) };
       });
       if (status.length) out[platform] = status;
     }

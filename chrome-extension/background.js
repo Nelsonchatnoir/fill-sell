@@ -8468,16 +8468,29 @@ async function persistDiscoveredAspects(accessToken, job, discovered) {
   }
   if (!rows.length) return;
   try {
-    await restRequest(
-      "platform_category_aspects?on_conflict=platform,category_key,field_key",
-      accessToken,
-      {
-        method: "POST",
-        headers: { Prefer: "return=minimal,resolution=merge-duplicates" },
-        body: JSON.stringify(rows),
-      }
-    );
-    console.log(`[background] catalogue requis : ${rows.length} champ(s) upserté(s) (${job.platform} / ${rows[0].category_key})`);
+    // ── Ne JAMAIS écraser des valeurs apprises par un null (2026-09-02) ──────
+    // merge-duplicates REMPLACE toute colonne fournie : une ligne envoyée avec
+    // allowed_values:null effaçait une liste déjà relevée lors d'un passage
+    // précédent (le trésor du catalogue — c'est lui qui évite la saisie libre
+    // côté app). Les lignes SANS options partent donc dans un lot séparé où la
+    // colonne est OMISE : l'upsert laisse alors la valeur existante intacte.
+    // (Deux lots parce que PostgREST exige des clés uniformes par tableau.)
+    const avecValeurs = rows.filter((r) => r.allowed_values);
+    const sansValeurs = rows.filter((r) => !r.allowed_values)
+      .map(({ allowed_values: _av, ...reste }) => reste);
+    for (const lot of [avecValeurs, sansValeurs]) {
+      if (!lot.length) continue;
+      await restRequest(
+        "platform_category_aspects?on_conflict=platform,category_key,field_key",
+        accessToken,
+        {
+          method: "POST",
+          headers: { Prefer: "return=minimal,resolution=merge-duplicates" },
+          body: JSON.stringify(lot),
+        }
+      );
+    }
+    console.log(`[background] catalogue requis : ${rows.length} champ(s) upserté(s), dont ${avecValeurs.length} avec options (${job.platform} / ${rows[0].category_key})`);
   } catch (e) {
     console.warn("[background] persistDiscoveredAspects (non bloquant) :", String(e?.message ?? e));
   }

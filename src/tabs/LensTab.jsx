@@ -533,7 +533,14 @@ const LensTab = memo(function LensTab({
       const blob=await compressImage(rawBlob);
       const path=`${user.id}/raw/${ts}_${i}.jpg`;
       const{error:upErr}=await supabase.storage.from('listing-photos').upload(path,blob,{contentType:'image/jpeg',upsert:true});
-      if(!upErr)uploadedUrls.push(supabase.storage.from('listing-photos').getPublicUrl(path).data.publicUrl);
+      // `?v=<ts>` (02/09 soir, incident Delavier) : le CDN Supabase avait
+      // servi puis MIS EN CACHE un 404 sur ces URLs — les 3 plateformes ont
+      // refusé « photo indisponible (HTTP 404) » sur des fichiers présents.
+      // Une clé de cache NEUVE par upload (le paramètre entre dans la clé
+      // CDN) ne peut par construction avoir été demandée avant l'upload :
+      // aucun 404 antérieur ne peut être resservi. Même v pour la vie de la
+      // photo → le cache utile (200) est intact.
+      if(!upErr)uploadedUrls.push(supabase.storage.from('listing-photos').getPublicUrl(path).data.publicUrl+`?v=${ts}`);
     }
     return uploadedUrls;
   }

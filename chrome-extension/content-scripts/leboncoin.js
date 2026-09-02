@@ -1169,6 +1169,21 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // confirmé (ou infirmé) par la validation du Continuer ci-dessous — LBC
   // reste le juge, on n'invente aucun blocage en amont.
   const enumerated = enumerateLbcCriteria();
+  // ── Fusion des options relevées AU FIL du remplissage (2026-09-02) ─────────
+  // fillCriterionSafe a lu les listes des menus qu'il a OUVERTS pour
+  // sélectionner (aucun geste ajouté) — on les attache ici aux critères
+  // énumérés : persistDiscoveredAspects les enverra au catalogue quel que
+  // soit le verdict du job. Une catégorie publiée UNE fois remplit ainsi ses
+  // allowed_values pour toutes les suivantes — c'est ce qui évite à l'app de
+  // demander un « Univers » en saisie libre (cas Delavier). Map vidée après
+  // consommation (un job suivant repart propre).
+  for (let i = 0; i < enumerated.length; i++) {
+    const opts = OPTIONS_VUES_AU_REMPLISSAGE[enumerated[i].key];
+    if (opts?.length && !(enumerated[i].options?.length)) {
+      enumerated[i] = { ...enumerated[i], options: opts };
+    }
+  }
+  for (const k of Object.keys(OPTIONS_VUES_AU_REMPLISSAGE)) delete OPTIONS_VUES_AU_REMPLISSAGE[k];
 
   // Continuer → interstitiel "juste prix" → aperçu final
   const continueBtn = findButtonByExactText("Continuer");
@@ -1456,6 +1471,12 @@ function findCriterionInput(labelSelector) {
 // (persistDiscoveredAspects les stocke déjà — les lignes table_art_product /
 // diy_product / leisure_collection_product étaient à 0 option, précisément
 // faute de ce relevé).
+// Options vues pendant le remplissage (2026-09-02, observatoire des valeurs) :
+// clé de critère → options lues dans le menu OUVERT par fillCriterionSafe —
+// aucune interaction ajoutée, pure lecture au passage. Consommée puis vidée à
+// l'énumération (fusion dans `enumerated`, cf. site d'appel).
+const OPTIONS_VUES_AU_REMPLISSAGE = {};
+
 async function releverOptionsCritere(labelSelector) {
   try {
     const input = findCriterionInput(labelSelector);
@@ -1541,6 +1562,24 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     for (let i = 0; i < 25 && menu && !menu.querySelector(optionSelector)?.textContent?.trim(); i++) {
       await sleep(100);
     }
+    // ── Observatoire des VALEURS au fil du remplissage (2026-09-02) ──────────
+    // Le menu est OUVERT pour la sélection : on relève ses options AU PASSAGE
+    // (aucun clic, aucun geste ajouté — juste une lecture du DOM déjà rendu)
+    // et on les attache au critère énuméré. persistDiscoveredAspects les
+    // envoie ensuite au catalogue quel que soit le verdict du job : une
+    // catégorie publiée UNE fois remplit ses listes pour toutes les suivantes
+    // — c'est ce qui évite à l'app de demander un « Univers » en saisie libre
+    // (cas Delavier : sports_hobbies_universe à 0 valeur relevée).
+    // Restreint au menu IDENTIFIÉ (aria-controls) : le repli document
+    // ramasserait tous les <button> de la page.
+    try {
+      const cle = input.id || input.getAttribute("name") || null;
+      if (cle && menu && !OPTIONS_VUES_AU_REMPLISSAGE[cle]) {
+        const opts = [...menu.querySelectorAll(optionSelector)]
+          .map((o) => o.textContent.trim()).filter(Boolean).slice(0, 60);
+        if (opts.length) OPTIONS_VUES_AU_REMPLISSAGE[cle] = opts;
+      }
+    } catch { /* observation seulement — jamais bloquant */ }
     let match = findOptionCascade(scope, optionSelector, rawValue, { sizeField });
     let valeurPosee = rawValue;
     if (!match && !prefilled) {
@@ -2282,6 +2321,20 @@ async function urlToFile(url, index) {
       "FillSell la rapatrie automatiquement et relance la publication sous quelques minutes — rien à payer, rien à refaire. " +
       "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
     );
+  }
+  // ── Retentative sur 404/410 (2026-09-02, incident Delavier) ───────────────
+  // Le CDN Supabase peut servir un 404 MIS EN CACHE sur un fichier bien
+  // présent (une requête a précédé la fin de l'upload, l'absence a été
+  // mémorisée — les 3 plateformes ont refusé un livre dont les photos
+  // existaient en base). Un 404 sur une photo FillSell est transitoire par
+  // nature : on retente 2 fois (2,5 s puis 5 s) avec une clé de cache NEUVE
+  // (paramètre r=… : le CDN indexe par URL complète, la réponse empoisonnée
+  // n'est jamais resservie) avant d'échouer. Les autres statuts (403, 5xx…)
+  // gardent l'échec immédiat d'avant.
+  for (let tentative = 1; res && (res.status === 404 || res.status === 410) && tentative <= 2; tentative++) {
+    await new Promise((r) => setTimeout(r, tentative * 2500));
+    const sep = url.includes("?") ? "&" : "?";
+    try { res = await fetch(`${url}${sep}r=${Date.now()}`); } catch { break; }
   }
   if (!res.ok) {
     throw new Error(
