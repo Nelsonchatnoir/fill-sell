@@ -54,30 +54,98 @@ const DRAFT_LBC_RE = /brouillon/i;
 // par l'extension sur les jobs ABOUTIS avec un repli dégradant (ex.
 // brand_fallback_no_brand — marque introuvable, annonce partie en « Sans
 // marque »). Entrées {code, message, at} ; les chaînes nues sont tolérées.
-// ── Warnings AFFICHABLES (2026-08-10) ────────────────────────────────────────
-// La sonde photo des handlers compte les img[src^="blob:"] — or les uploaders
-// remplacent la prévisualisation blob par l'URL CDN dès l'upload terminé.
-// MESURÉ : sur TOUS les jobs de la base portant ce warning, il dit « 0
-// détectée(s) », y compris sur des dépôts dont les photos sont bel et bien en
-// ligne ; il n'a jamais été confirmé une seule fois en prod. Il faisait pourtant
-// basculer la carte en « Publiée — à vérifier », avec pour seul détail ce
-// message-là : l'utilisateur croyait sa publication abîmée alors qu'elle avait
-// abouti.
-// Il reste ÉCRIT EN BASE (platform_fields.warnings) pour le support — on ne
-// touche pas à ce que l'extension persiste, seulement à ce qu'on montre.
-const WARN_PHOTO_BRUIT_RE = /^\s*photos\s*:/i;
-function warningsAffichables(job) {
-  return (job?.platform_fields?.warnings ?? []).filter((w) => {
+// ── RÈGLE POSÉE LE 02/09 SOIR : AUCUN DIAGNOSTIC À L'ÉCRAN, JAMAIS ──────────
+// L'extension journalise DEUX choses dans warnings : des DÉGRADATIONS réelles
+// (champ non posé, repli) et de la TRACE de diagnostic (observabilité, sondes
+// de clic, mécanique interne). La modale « Publiée — à vérifier » affichait le
+// tout, BRUT — cas Beebs du 02/09 19:16 : « observabilité: catégorie via
+// CLIC+PANNEAU (repli — fiber: pont MAIN muet après 3 s (CSP durcie ?…)) »,
+// mot pour mot, à l'écran. Désormais :
+//   · le diagnostic complet reste ÉCRIT EN BASE (platform_fields.warnings,
+//     last_diagnostic) — on ne touche pas à ce que l'extension persiste ;
+//   · ce qui s'AFFICHE est une phrase simple par FAMILLE connue, en français,
+//     sans jargon ni nom interne — et une phrase générique pour toute famille
+//     inconnue. Le texte brut d'un warning n'atteint plus jamais l'écran.
+//   · une famille purement diagnostique (l'issue vit ailleurs : observabilité,
+//     sonde photo jamais confirmée — mesure 2026-08-10 —, re-clics eBay dont
+//     le verdict est délégué au background, pré-rempli CONFIRMÉ identique)
+//     n'affiche RIEN — et ne fait plus basculer la carte en « à vérifier ».
+const WARN_DIAGNOSTIC_RES = [
+  /^\s*observabilité\s*:/i,
+  /^\s*photos\s*:/i,
+  /^\s*mise en vente\s*:/i,
+  /^\s*sonde\b/i,
+  /conservé \(matche/i,
+  /^\s*état\s*:/i, // équivalence d'état posée avec une valeur valide
+];
+// Familles connues → phrase utilisateur. L'ordre compte (premier match gagne).
+const WARN_FAMILLES = [
+  { code: 'brand_fallback_no_brand',
+    fr: "Marque introuvable dans la liste de la plateforme — l'annonce est partie en « Sans marque ». Tu peux la préciser sur l'annonce en ligne.",
+    en: 'Brand not found in the platform list — the listing went out as “No brand”. You can set it on the live listing.' },
+  { code: 'brand_field_absent',
+    fr: "Cette catégorie n'a pas de champ Marque sur la plateforme — la marque reste dans le titre et la description.",
+    en: 'This category has no Brand field on the platform — the brand lives in the title and description.' },
+  { re: /^adresse: champ introuvable/i,
+    fr: "Beebs n'a pas proposé de champ adresse : l'annonce est partie avec l'adresse déjà enregistrée sur ton compte Beebs — vérifie-la sur l'annonce si besoin.",
+    en: "Beebs didn't show an address field: the listing went out with the address already saved on your Beebs account — double-check it on the listing if needed." },
+  { re: /^description:.*(non remplie|non prise|refus|impossible|échec)/i,
+    fr: "La description n'a pas pu être posée automatiquement — ouvre l'annonce en ligne et complète-la.",
+    en: "The description couldn't be filled automatically — open the live listing and complete it." },
+  { re: /^description:/i, drop: true }, // repli qui a abouti par une autre voie
+  { re: /^couleur:.*(champ absent|rien à poser)/i, drop: true },
+  { re: /^couleur:/i,
+    fr: "La couleur n'a pas pu être posée — vérifie-la sur l'annonce en ligne.",
+    en: "The colour couldn't be set — check it on the live listing." },
+  { re: /^mati[èe]re:/i,
+    fr: "La matière n'a pas été posée (champ optionnel sur cette catégorie) — ajoute-la sur l'annonce si tu y tiens.",
+    en: "The material wasn't set (optional field for this category) — add it on the listing if you want it." },
+  { re: /^format:/i,
+    fr: "Le format de vente eBay (Enchères / Achat immédiat) n'a pas pu être vérifié — contrôle-le sur l'annonce.",
+    en: "The eBay selling format (Auction / Buy It Now) couldn't be verified — check it on the listing." },
+  { re: /^prix:/i,
+    fr: "Le prix n'a pas pu être posé — vérifie le prix affiché sur l'annonce.",
+    en: "The price couldn't be set — check the price shown on the listing." },
+  { re: /obligatoire lu VIDE/i,
+    fr: "Un champ obligatoire est resté vide malgré la pose — ouvre l'annonce en ligne et complète-le.",
+    en: 'A required field stayed empty despite being filled — open the live listing and complete it.' },
+  { re: /^brouillon eBay auto-sauvegardé/i,
+    fr: "eBay a conservé un brouillon en double de cette annonce — supprime-le sur ebay.fr, dans Vendre > Brouillons.",
+    en: 'eBay kept a duplicate draft of this listing — delete it on ebay.fr under Selling > Drafts.' },
+  { re: /^filet.*(refus|échec|ne montre pas la valeur|non posée)/i,
+    fr: "Un champ n'a pas pu être confirmé sur eBay — jette un œil à l'annonce en ligne.",
+    en: "A field couldn't be confirmed on eBay — take a look at the live listing." },
+  { re: /^filet/i, drop: true },
+  { re: /hors des options affichées/i,
+    fr: "Une valeur ne figurait pas dans les listes de la plateforme — elle a été saisie librement, vérifie-la sur l'annonce.",
+    en: "A value wasn't in the platform's lists — it was typed in freely, check it on the listing." },
+  { re: /pré-rempli.*laissé en place/i,
+    fr: "Le site avait pré-rempli un champ avec une autre valeur — elle a été laissée en place, vérifie qu'elle convient.",
+    en: 'The site had pre-filled a field with a different value — it was left in place, check that it fits.' },
+];
+const WARN_INCONNU = {
+  fr: "Un champ a été rempli avec un repli — jette un œil à l'annonce en ligne.",
+  en: 'A field was filled with a fallback — take a look at the live listing.',
+};
+// Rend les PHRASES affichables (traduites, dédupliquées) — jamais le texte
+// brut. Tableau vide = rien à montrer, pas de badge « à vérifier ».
+function warningsAffichables(job, lang = 'fr') {
+  const cle = lang === 'en' ? 'en' : 'fr';
+  const sorties = [];
+  for (const w of job?.platform_fields?.warnings ?? []) {
     const code = typeof w === 'string' ? 'generic' : String(w?.code ?? 'generic');
     const msg = typeof w === 'string' ? w : String(w?.message ?? '');
-    return !(code === 'generic' && WARN_PHOTO_BRUIT_RE.test(msg));
-  });
+    if (!msg && code === 'generic') continue;
+    if (WARN_DIAGNOSTIC_RES.some((re) => re.test(msg))) continue;
+    const fam = WARN_FAMILLES.find((f) => (f.code ? f.code === code : f.re.test(msg)));
+    if (fam?.drop) continue;
+    const phrase = fam ? fam[cle] : WARN_INCONNU[cle];
+    if (!sorties.includes(phrase)) sorties.push(phrase);
+  }
+  return sorties;
 }
-function jobWarningsTexte(job) {
-  return warningsAffichables(job)
-    .map((w) => (typeof w === 'string' ? w : String(w?.message ?? '')))
-    .filter(Boolean)
-    .join('\n');
+function jobWarningsTexte(job, lang = 'fr') {
+  return warningsAffichables(job, lang).join('\n');
 }
 
 // ── Lien d'annonce pas encore capturé (2026-08-10) ───────────────────────────
@@ -6438,8 +6506,8 @@ const StockTab = memo(function StockTab({
                                   ?((lang==="en"
                                       ?"The listing was submitted to Beebs, which reviews it before putting it online. The link will appear once it goes live; if it never does, the job will fail and nothing will be counted.\n\n"
                                       :"L'annonce a bien été déposée sur Beebs, qui la vérifie avant sa mise en ligne. Le lien apparaîtra dès qu'elle sera en ligne ; si elle ne l'est jamais, le job passera en échec et rien ne sera décompté.\n\n")
-                                    +(jobWarningsTexte(j)||""))
-                                  :(jobWarningsTexte(j)||undefined);
+                                    +(jobWarningsTexte(j,lang)||""))
+                                  :(jobWarningsTexte(j,lang)||undefined);
                                 return (
                                   <div
                                     key={"warn-"+j.platform}
@@ -6946,7 +7014,7 @@ const StockTab = memo(function StockTab({
                 continue de tester l'erreur BRUTE (motifs connexion/brouillon
                 posés côté extension). */}
             <div style={{fontSize:14,color:"#3A443F",lineHeight:1.6,marginBottom:16,whiteSpace:"pre-wrap"}}>
-              {estReserve?jobWarningsTexte(failJobModal):humanizeJobError(failJobModal,lang)}
+              {estReserve?jobWarningsTexte(failJobModal,lang):humanizeJobError(failJobModal,lang)}
             </div>
                 </>
               );
