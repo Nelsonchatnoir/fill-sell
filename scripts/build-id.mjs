@@ -991,7 +991,16 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 //      merge-duplicates n'écrase plus une liste apprise par un null.
 // EXTENSION_MIN_BUILD ne bouge pas, aucun paquet produit ici — tout part
 // dans le prochain zip CWS (avec la 0.6.15 en attente).
-export const EXTENSION_LAST_COMMIT = '2026-09-02T18:27:16Z';
+// 2026-09-02T21:01:13Z (0.6.16, commit épinglé sur cette constante) : cas
+// Joséphine (costume homme 40/48) — openPanelOptions prolonge l'attente au
+// budget nominal quand la liste derrière une barre de recherche n'est pas
+// rendue à 2,5 s : le relevé partait VIDE (rien au catalogue ni au
+// mini-éditeur) et la frappe filtrait un panneau encore vide (« panneau
+// d'options resté vide »). Manifest bumpé 0.6.15 → 0.6.16 : un zip 0.6.15
+// (BUILD_ID 2026-09-02T20:43:08Z+adc7a6d) a été LIVRÉ à Nico ce soir —
+// jamais deux zips de même version au contenu différent (leçon du 15/08).
+// Le zip 0.6.15 livré est PÉRIMÉ, ne pas le téléverser.
+export const EXTENSION_LAST_COMMIT = '2026-09-02T21:01:13Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

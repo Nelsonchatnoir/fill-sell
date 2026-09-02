@@ -1572,7 +1572,17 @@ async function openPanelOptions(trigger, rawText, timeoutMs = 4000, { label = nu
   let searchNouveau = panelSearchInput(trigger);
   // Budget court quand il y a une barre : on ne veut pas retarder la frappe de
   // 4 s à chaque champ. Sans barre, l'attente EST celle du chemin nominal.
-  const completes = await attendreOptions(searchNouveau ? 2500 : timeoutMs);
+  let completes = await attendreOptions(searchNouveau ? 2500 : timeoutMs);
+  // ── Liste LENTE derrière une barre (2026-09-02, cas Joséphine, costume 40) ─
+  // À 2,5 s la liste « Taille » des Costumes homme n'était pas encore rendue :
+  // relevé VIDE (rien pour le catalogue NI pour le mini-éditeur needs_user),
+  // puis la frappe « 40 » filtrait un panneau encore vide → « panneau
+  // d'options resté vide », champ laissé vide, needs_user sans liste. Une
+  // liste VIDE sur un dropdown n'existe pas chez Beebs (tous les champs sont
+  // des __selectButton à options) : vide = pas encore rendue. On prolonge
+  // alors l'attente jusqu'au budget nominal AVANT de taper — quelques
+  // secondes de plus valent mieux qu'un relevé perdu et un champ vide.
+  if (!completes.length && searchNouveau) completes = await attendreOptions(timeoutMs);
   // Le panneau peut n'être monté qu'à la 1re relecture d'options : re-vérifier
   // la barre maintenant qu'il l'est, sinon une liste longue partirait sans
   // frappe (et le repli « Autre » de researchPanelFor resterait inatteignable).
