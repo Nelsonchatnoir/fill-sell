@@ -2128,6 +2128,25 @@ serve(async (req) => {
     // ⚠️ IDENTIFY : AUCUN outil attaché — c'est toute la différence entre les
     // deux modes. Un seul tour, donc ni boucle pause_turn ni repli à prévoir
     // (la passe de réparation plus bas reste, elle, valable pour les deux).
+    // ── Plafond de recherches web (02/09 soir) ────────────────────────────────
+    // Mesuré : le coût du scan est LINÉAIRE en recherches (+0,019 $ pièce,
+    // frais direct 0,010 $ + cache des résultats) et 34 % des scans en
+    // faisaient ≥ 4 (max 7) SANS AUCUN plafond. max_uses borne le p99 du scan
+    // à ~0,086 $. La valeur vit dans coin_config.lens_max_recherches
+    // (initiale 3) : ajustable sans redéploiement, 0 ou clé absente =
+    // comportement historique sans plafond (fail-open). Best-effort : une
+    // panne de lecture ne bloque jamais un scan.
+    let maxRecherches: number | null = null;
+    try {
+      const { data: mrRow } = await adminClient.from("coin_config")
+        .select("value").eq("key", "lens_max_recherches").maybeSingle();
+      if (typeof mrRow?.value === "number" && mrRow.value > 0) maxRecherches = mrRow.value;
+    } catch { /* fail-open */ }
+    const outilRecherche = {
+      type: "web_search_20250305", name: "web_search",
+      ...(maxRecherches !== null ? { max_uses: maxRecherches } : {}),
+    };
+
     let data: any;
     if (estIdentify) {
       data = await callClaude(apiKey, { ...basePayload, messages: initialMessages });
@@ -2137,7 +2156,7 @@ serve(async (req) => {
       const wsMessages: any[] = [...initialMessages];
       data = await callClaude(apiKey, {
         ...basePayload,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        tools: [outilRecherche],
         messages: wsMessages,
       }, "web-search-2025-03-05");
       trackUsage(data);
@@ -2146,7 +2165,7 @@ serve(async (req) => {
         wsMessages.push({ role: "assistant", content: data.content });
         data = await callClaude(apiKey, {
           ...basePayload,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
+          tools: [outilRecherche],
           messages: wsMessages,
         }, "web-search-2025-03-05");
         trackUsage(data);
