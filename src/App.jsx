@@ -1958,6 +1958,9 @@ export default function App({ loginOnly = false }){
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
   const [coinWallet,setCoinWallet]=useState(null);
+  // Bascule quotas (02/09) : compteurs par geste (quotas_etat) — remplacent le
+  // solde de Pépites partout où il s'affichait. null = rien d'affiché.
+  const [quotas,setQuotas]=useState(null);
   const [coinHistory,setCoinHistory]=useState([]);
   const [showPremiumModal,setShowPremiumModal]=useState(false);
   // Viewport mobile (réactif, breakpoint 768 partagé) : sert à masquer ce qui
@@ -2537,10 +2540,13 @@ export default function App({ loginOnly = false }){
   //   plafond_stock             limite d'articles du plan gratuit   (auto)
   //   plafond_pepites_lens      Pépites insuffisantes — scan Lens    (auto)
   //   plafond_pepites_publi     Pépites insuffisantes — publication  (auto)
-  //   plafond_republication_free  3 republications manuelles/jour
-  //                             atteintes (compte free)              (auto)
+  //   plafond_republication_free  les 50 republications à vie du Free
+  //                             sont épuisées (bascule quotas 02/09) (auto)
   //   republication_lot_free    tap Free sur « Republier en lot »
   //                             (geste réservé aux payants)          (auto)
+  //   quota_annonces            quota d'annonces du cycle atteint    (auto)
+  //   quota_scan                quota de scans Lens atteint          (auto)
+  //   quota_retouche            quota de retouches IA atteint        (auto)
   //   modale_plan               carte de plan CHOISIE dans la modale
   const logTunnel=(feature,metadata={})=>{
     if(!user?.id) return Promise.resolve();
@@ -2756,26 +2762,22 @@ export default function App({ loginOnly = false }){
     setAppLoading(false);
     const voiceCount=await checkAndResetDaily(supabase,uid,'voice_count_today','voice_count_date');
     setVoiceUsedToday(voiceCount);
+    // ── Bascule quotas (02/09) : l'état des compteurs par geste ─────────────
+    // quotas_etat() (RPC, auth.uid) est LA source unique des compteurs
+    // affichés — annonces/scans/retouches/republication. Best-effort : un
+    // échec laisse quotas à null et AUCUN compteur ne s'affiche (jamais un
+    // faux zéro). Rafraîchi par fetchAll, comme le reste de l'état.
+    supabase.rpc('quotas_etat').then(({data})=>{if(data&&!data.error)setQuotas(data);}).catch(()=>{});
   }
 
-  // Solde + derniers mouvements de pièces, rechargés à chaque ouverture des
-  // réglages ET de la modale de conversion : celle-ci affiche le vrai solde
-  // (« Tu es en Free · X Pépites »), il ne doit jamais être vide faute d'avoir
-  // ouvert les réglages avant. L'historique ne sert qu'aux réglages.
+  // Bascule quotas (02/09) : les compteurs se rafraîchissent à l'ouverture
+  // des réglages et de la modale de conversion — même déclencheur que
+  // l'ancien rechargement du solde de Pépites, qui n'existe plus (le wallet
+  // et le ledger restent en base, dormants, plus rien ne les affiche).
   useEffect(()=>{
     const ouvert=showSettings||conversionModal.open;
     if(!ouvert||!user)return;
-    (async()=>{
-      const{data:w}=await supabase.from('coin_wallets').select('included_balance,purchased_balance,reserved_balance').eq('user_id',user.id).maybeSingle();
-      setCoinWallet(w??{included_balance:0,purchased_balance:0,reserved_balance:0});
-      if(!showSettings)return;
-      // 25 lignes et non plus 5 (2026-08-05) : release_publish (rendu par
-      // plateforme échouée) et spend/refund_generate multiplient les lignes —
-      // à 5, les remboursements automatiques étaient invisibles pour ceux
-      // qu'ils concernent. Conteneur scrollable côté rendu.
-      const{data:h}=await supabase.from('coin_ledger').select('delta,kind,created_at').eq('user_id',user.id).order('created_at',{ascending:false}).limit(25);
-      setCoinHistory(h??[]);
-    })();
+    supabase.rpc('quotas_etat').then(({data})=>{if(data&&!data.error)setQuotas(data);}).catch(()=>{});
   },[showSettings,conversionModal.open,user]);
 
   // Session déjà vue dans CE chargement de page : supabase-js ré-émet
@@ -3183,7 +3185,13 @@ export default function App({ loginOnly = false }){
       if(!iRes.ok){
         const iErrJson=await iRes.json().catch(()=>({}));
         if(iErrJson?.error==='ai_unavailable'||iRes.status===503){setToast({visible:true,message:lang==='fr'?'⏳ IA temporairement indisponible. Réessaie dans 30 secondes.':'⏳ AI temporarily unavailable. Please retry in 30 seconds.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
-        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){/* 50/j Free (2026-07-23), Premium/Pro illimités */ouvrirModalePlafond('plafond_voix',{trigger:'voice'});setVoiceStep("");setVoiceLoading(false);return;}
+        if(iRes.status===429||iErrJson?.error==='quota_exceeded'){
+          // Garde-fou MENSUEL (bascule quotas 02/09) : reason 'monthly' =
+          // borne de coût invisible, JAMAIS un paywall — message neutre.
+          // reason 'daily' = le 50/j Free historique → modale voix inchangée.
+          if(iErrJson?.reason==='monthly'){setToast({visible:true,message:lang==='fr'?'🎙️ Le vocal se repose un peu — il revient au prochain cycle.':'🎙️ Voice is taking a break — back next cycle.'});setTimeout(()=>setToast({visible:false,message:''}),5000);setVoiceStep("");setVoiceLoading(false);return;}
+          ouvrirModalePlafond('plafond_voix',{trigger:'voice'});setVoiceStep("");setVoiceLoading(false);return;
+        }
         throw new Error(lang==="en"?"Intent failed":"Erreur intention");
       }
       let iJson;try{iJson=await iRes.json();}catch{throw new Error(lang==="en"?"Invalid server response":"Réponse serveur invalide");}
@@ -5374,9 +5382,11 @@ export default function App({ loginOnly = false }){
       });
       if(!r.ok){
         const errBody=await r.json().catch(()=>({}));
-        // Pas assez de Pépites pour l'analyse : prix et solde réels du serveur
-        if(errBody.error==='insufficient_coins'){
-          ouvrirModalePlafond('plafond_pepites_lens',{trigger:'lens',coinPrice:errBody.price??6,coinBalance:errBody.balance??0});
+        // Bascule quotas (02/09) : le refus est le quota de scans du cycle —
+        // insufficient_coins ne peut plus arriver (prix à 0), la branche
+        // Pépites est morte. Modale de conversion, origine dédiée.
+        if(errBody.error==='quota_scan_atteint'){
+          ouvrirModalePlafond('quota_scan',{trigger:'quota_geste',quotaInfo:{geste:'scans',plafond:errBody.plafond,consommes:errBody.consommes}});
           return;
         }
         throw new Error(errBody.error||`HTTP ${r.status}`);
@@ -5545,33 +5555,28 @@ export default function App({ loginOnly = false }){
         <div style={{fontSize:13,color:"#6B7A75",maxWidth:280,lineHeight:1.5}}>{t('rotateToPortraitSubtitle')}</div>
       </div>
 
-      {/* ── Solde de Pépites dans l'en-tête (2026-09-01 soir) ─────────────────
-          Le solde est un état de COMPTE, pas un détail d'un écran : il vivait
-          sur le seul écran Lens (une journée) et n'était sinon lisible que
-          dans les Paramètres et le stepper — un nouveau reçoit 50 Pépites
-          sans le savoir, un dépensier découvre le manque au blocage.
-          · Rendu : PepiteAmount (l'affichage canonique « N ‹icône› »), posé
-            sur le même traitement que la roue crantée (fond rgba(0,0,0,0.05),
-            pas de couleur pleine) — « Voir les offres » reste le SEUL élément
-            plein de l'en-tête.
-          · Source : coinWallet (fetchAll), lecture seule — null = rien,
-            jamais un faux zéro. Se met à jour avec l'état, sans rechargement.
-          · Tap → boutique de Pépites (setCoinStoreOpen, la même que
-            « Recharger mes Pépites » des Paramètres). Zone tactile 44 px,
-            même patron que le bouton d'offres natif ci-dessous.
-          · Écran étroit : la classe topbar--solde fait céder le WORDMARK
-            (App.css ≤480px) — jamais le chiffre. tabular-nums : un solde à
-            4 chiffres reste stable et court (~66 px tout compris). */}
-      <div className={coinWallet?"topbar topbar--solde":"topbar"}>
+      {/* ── Compteur d'annonces dans l'en-tête (bascule quotas, 02/09) ────────
+          Remplace le solde de Pépites du 01/09 : l'état de compte se dit
+          désormais en GESTES RÉELS — les annonces restantes du cycle. Même
+          traitement visuel sobre que la roue crantée, jamais alarmiste : le
+          compteur informe, il ne menace pas.
+          · Source : quotas (quotas_etat via fetchAll) — null ou plafond
+            absent = RIEN d'affiché, jamais un faux zéro.
+          · Tap → la modale d'offres (openUpgradeModal, origine 'entete'),
+            plus jamais la boutique de Pépites. Zone tactile 44 px conservée.
+          · topbar--solde et tabular-nums conservés (mêmes contraintes
+            d'écran étroit que le solde d'hier). */}
+      <div className={quotas?.annonces?.plafond!=null?"topbar topbar--solde":"topbar"}>
         <BrandMark onClick={()=>{setTab(0);localStorage.setItem('tab','0');}}/>
-        {coinWallet&&(
+        {quotas?.annonces?.plafond!=null&&(
           <button
-            onClick={()=>setCoinStoreOpen(true)}
-            title={lang==='fr'?"Mes Pépites — recharger":"My Nuggets — top up"}
+            onClick={()=>openUpgradeModal(null,'entete')}
+            title={lang==='fr'?"Annonces restantes ce mois-ci — voir les offres":"Listings left this month — see plans"}
             style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}
           >
-            <span style={{display:"inline-flex",alignItems:"center",padding:"6px 10px",borderRadius:999,background:"rgba(0,0,0,0.05)",color:UI.ink,fontSize:12.5,fontWeight:700,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
-              <PepiteAmount value={(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0)} size={13}/>
+            <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 10px",borderRadius:999,background:"rgba(0,0,0,0.05)",color:UI.ink,fontSize:12.5,fontWeight:700,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
+              {quotas.annonces.restantes}
+              <span style={{fontWeight:600,opacity:0.65}}>{lang==='fr'?"annonces":"listings"}</span>
             </span>
           </button>
         )}
@@ -5992,6 +5997,7 @@ export default function App({ loginOnly = false }){
           <StockTab
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro} isBusiness={isBusiness}
             ouvrirModalePlafond={ouvrirModalePlafond}
+            quotas={quotas}
             items={items} user={user} voiceUsedToday={voiceUsedToday}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
@@ -6068,6 +6074,7 @@ export default function App({ loginOnly = false }){
           <LensTab
             lang={lang} currency={currency} userCountry={userCountry}
             isPremium={isPremium} isNative={isNative} user={user}
+            quotas={quotas}
             iapLoading={iapLoading}
             lensPhotos={lensPhotos} setLensPhotos={setLensPhotos}
             lensResult={lensResult} setLensResult={setLensResult}
@@ -6528,47 +6535,49 @@ export default function App({ loginOnly = false }){
               )}
             </div>
 
-            {/* Pépites de publication */}
-            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <Eyebrow>{lang==='fr'?'Mes Pépites':'My Nuggets'}</Eyebrow>
-              <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap"}}>
-                <span style={{fontSize:22,fontWeight:700,color:UI.ink}}><PepiteAmount value={(coinWallet?.included_balance??0)+(coinWallet?.purchased_balance??0)} size={24} /></span>
-                <span style={{fontSize:11,color:UI.mute,fontWeight:600}}>
-                  {lang==='fr'
-                    ?`${coinWallet?.included_balance??0} incluses · ${coinWallet?.purchased_balance??0} achetées`
-                    :`${coinWallet?.included_balance??0} included · ${coinWallet?.purchased_balance??0} purchased`}
-                </span>
-                {/* Réservation/capture (2026-08-05) : Pépites mises de côté pour
-                    des publications en file — capturées à la publication réelle,
-                    rendues automatiquement sinon (échec, annulation, 30 j). */}
-                {(coinWallet?.reserved_balance??0)>0&&(
-                  <span style={{fontSize:11,color:UI.mute,fontWeight:600,width:"100%"}}>
-                    {lang==='fr'
-                      ?`dont ${coinWallet.reserved_balance} en attente de publication (rendues si la publication n'aboutit pas)`
-                      :`${coinWallet.reserved_balance} pending publication (returned if publishing doesn't complete)`}
-                  </span>
-                )}
-              </div>
-              {/* Recharger : ouvre la boutique DÉJÀ montée (coinStoreOpen), la même
-                  que celle des modales de conversion. Toujours proposée, quel que
-                  soit le solde — on n'attend pas d'être bloqué pour recharger. */}
-              <button
-                onClick={()=>setCoinStoreOpen(true)}
-                style={{marginTop:12,width:"100%",padding:"11px 0",borderRadius:999,border:"none",fontFamily:"inherit",fontSize:13.5,fontWeight:600,color:"#fff",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,boxShadow:"0 8px 20px rgba(47,158,144,0.24)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}
-              >
-                <PepiteIcon size={16} /> {lang==='fr'?'Recharger mes Pépites':'Top up my Nuggets'}
-              </button>
-              {coinHistory.length>0&&(
-                <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${UI.border}`,display:"flex",flexDirection:"column",gap:5,maxHeight:190,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
-                  {coinHistory.map((h,i)=>(
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:11.5,color:UI.mute2}}>
-                      <span>{COIN_KIND_LABELS[h.kind]?.[lang==='fr'?'fr':'en']??h.kind} · {new Date(h.created_at).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')}</span>
-                      <span style={{fontWeight:700,color:h.delta>=0?UI.tealDeep:UI.negative}}>{h.delta>=0?`+${h.delta}`:h.delta}</span>
+            {/* ── Mon forfait ce mois-ci (bascule quotas, 02/09) ──────────────
+                Remplace le panneau « Mes Pépites » (solde, recharge,
+                historique) : l'état du compte se dit en gestes réels, lus
+                dans quotas_etat. Un geste sans plafond configuré ne
+                s'affiche pas ; la republication dit son mode (à vie /
+                mensuel / illimité). Sobre, jamais alarmiste. */}
+            {quotas&&!quotas.error&&(
+              <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
+                <Eyebrow>{lang==='fr'?'Mon forfait ce mois-ci':'My plan this month'}</Eyebrow>
+                <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:12.5,color:UI.ink,fontWeight:600}}>
+                  {quotas.annonces?.plafond!=null&&(
+                    <div style={{display:"flex",justifyContent:"space-between"}}>
+                      <span>{lang==='fr'?'Annonces créées':'Listings created'}</span>
+                      <span style={{fontVariantNumeric:"tabular-nums"}}>{quotas.annonces.consommes} / {quotas.annonces.plafond}</span>
                     </div>
-                  ))}
+                  )}
+                  {quotas.scans?.plafond!=null&&(
+                    <div style={{display:"flex",justifyContent:"space-between"}}>
+                      <span>{lang==='fr'?'Scans Lens':'Lens scans'}</span>
+                      <span style={{fontVariantNumeric:"tabular-nums"}}>{quotas.scans.consommes} / {quotas.scans.plafond}</span>
+                    </div>
+                  )}
+                  {quotas.retouches?.plafond!=null&&quotas.retouches.plafond>0&&(
+                    <div style={{display:"flex",justifyContent:"space-between"}}>
+                      <span>{lang==='fr'?'Retouches IA':'AI touch-ups'}</span>
+                      <span style={{fontVariantNumeric:"tabular-nums"}}>{quotas.retouches.consommes} / {quotas.retouches.plafond}</span>
+                    </div>
+                  )}
+                  <div style={{display:"flex",justifyContent:"space-between"}}>
+                    <span>{lang==='fr'?'Republications':'Repostings'}</span>
+                    <span style={{fontVariantNumeric:"tabular-nums"}}>
+                      {quotas.republication?.mode==='illimite'
+                        ?(lang==='fr'?'illimitées':'unlimited')
+                        :quotas.republication?.plafond!=null
+                          ?(quotas.republication.mode==='avie'
+                            ?(lang==='fr'?`${quotas.republication.restantes} restantes sur ${quotas.republication.plafond} offertes`:`${quotas.republication.restantes} left of ${quotas.republication.plafond} included`)
+                            :`${quotas.republication.faites} / ${quotas.republication.plafond}`)
+                          :'—'}
+                    </span>
+                  </div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Pseudo */}
             <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
@@ -6994,9 +7003,7 @@ export default function App({ loginOnly = false }){
         isBusiness={isBusiness}
         userId={user?.id}
         itemCount={items.filter(i=>i.statut!=='vendu').length}
-        coinBalance={conversionModal.coinBalance??(coinWallet?(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0):null)}
-        coinPrice={conversionModal.coinPrice??null}
-        onUseCoins={conversionModal.coinPrice!=null?()=>{setConversionModal(m=>({...m,open:false}));setCoinStoreOpen(true);}:null}
+        quotaInfo={conversionModal.quotaInfo??null}
         origine={conversionModal.origine??null}
         plafondRepub={conversionModal.plafondRepub??null}
       />

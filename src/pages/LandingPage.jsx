@@ -88,11 +88,11 @@ const COPY = {
     priceKicker: 'Tarifs', priceTitle: 'Un plan pour chaque volume.',
     priceSub: 'Commence gratuitement. Passe Premium ou Pro quand tu veux vendre plus, sans engagement.',
     perMonth: '/ mois', freeTag: 'Pour se lancer', priceFree: '0 €',
-    freeAds: '≈ {ADS_FREE} annonces créées et publiées sur les 4 plateformes chaque mois',
+    freeAds: '{ADS_FREE} annonces créées et publiées sur les 4 plateformes chaque mois',
     popular: 'Le plus populaire', priceP: '12,99 €',
-    pAds: '≈ {ADS_PREMIUM} annonces créées et publiées sur les 4 plateformes chaque mois',
+    pAds: '{ADS_PREMIUM} annonces créées et publiées sur les 4 plateformes chaque mois',
     pricePro: '29,99 €',
-    proAds: '≈ {ADS_PRO} annonces créées et publiées sur les 4 plateformes chaque mois',
+    proAds: '{ADS_PRO} annonces créées et publiées sur les 4 plateformes chaque mois',
     ctaFree: 'Commencer gratuitement', ctaPremium: 'Passer Premium', ctaPro: 'Passer Pro',
     coinsTitle: 'Les Pépites, tes crédits d\'action',
     coinsBody: "L'app t'affiche toujours le coût avant que tu valides, et elles n'expirent jamais.",
@@ -158,11 +158,11 @@ const COPY = {
     priceKicker: 'Pricing', priceTitle: 'A plan for every volume.',
     priceSub: 'Start free. Move to Premium or Pro whenever you want to sell more — no commitment.',
     perMonth: '/ mo', freeTag: 'To get started', priceFree: '€0',
-    freeAds: '≈ {ADS_FREE} listings created and published on all 4 marketplaces every month',
+    freeAds: '{ADS_FREE} listings created and published on all 4 marketplaces every month',
     popular: 'Most popular', priceP: '€12.99',
-    pAds: '≈ {ADS_PREMIUM} listings created and published on all 4 marketplaces every month',
+    pAds: '{ADS_PREMIUM} listings created and published on all 4 marketplaces every month',
     pricePro: '€29.99',
-    proAds: '≈ {ADS_PRO} listings created and published on all 4 marketplaces every month',
+    proAds: '{ADS_PRO} listings created and published on all 4 marketplaces every month',
     ctaFree: 'Start free', ctaPremium: 'Go Premium', ctaPro: 'Go Pro',
     coinsTitle: 'Pépites, your action credits',
     coinsBody: 'The app always shows the cost before you confirm, and they never expire.',
@@ -217,60 +217,58 @@ const PLANS = {
     // « N Pépites/mois » + republication au squelette UNIFORME — mêmes
     // formulations que les modales de l'app (uniformisation 27/08 soir,
     // décision Nico). Business n'a pas de carte ici (hors landing).
+    // Bascule quotas (02/09) : plus une Pépite sur les cartes — des GESTES,
+    // aux volumes lus en base (jetons {…} ci-dessous).
     free: [
-      '{FREE} Pépites/mois',
+      '{REPUB_FREE} republications Vinted offertes, à vie',
       "Ajout d'article à la voix",
       PUBLISH_LINE.fr,
       'Calcul de marge instantané',
       'Suivi de tes ventes',
     ],
     premium: [
-      '{PREMIUM} Pépites/mois',
+      '{REPUB_PREMIUM} republications Vinted par mois',
+      '{SCANS_PREMIUM} analyses Lens par mois',
+      'Retouche IA — {RETOUCHE_PREMIUM} photos par mois',
       'Stock illimité',
       PUBLISH_LINE.fr,
-      'Republication Vinted en un clic',
-      'Environ {LENS_PREMIUM} analyses Lens par mois',
       'Import & export Excel de ton stock',
-      'Commandes vocales illimitées',
       'Support par email',
     ],
     pro: [
-      '{PRO} Pépites/mois',
+      '{REPUB_PRO} republications Vinted par mois',
+      'Republication automatique — tes annonces remontent toutes seules',
+      '{SCANS_PRO} analyses Lens par mois',
+      'Retouche IA — {RETOUCHE_PRO} photos par mois',
       'Stock illimité',
       PUBLISH_LINE.fr,
-      "Republication Vinted automatique si tu l'actives",
-      'Environ {LENS_PRO} analyses Lens par mois',
-      'Import & export Excel de ton stock',
-      'Commandes vocales illimitées',
       'Support prioritaire',
     ],
   },
   en: {
     free: [
-      '{FREE} Pépites/month',
+      '{REPUB_FREE} Vinted repostings included, for life',
       'Voice item adding',
       PUBLISH_LINE.en,
       'Instant margin calculator',
       'Track your sales',
     ],
     premium: [
-      '{PREMIUM} Pépites/month',
+      '{REPUB_PREMIUM} Vinted repostings a month',
+      '{SCANS_PREMIUM} Lens scans a month',
+      'AI touch-up — {RETOUCHE_PREMIUM} photos a month',
       'Unlimited stock',
       PUBLISH_LINE.en,
-      'One-tap Vinted reposting',
-      'About {LENS_PREMIUM} Lens scans a month',
       'Excel import & export of your stock',
-      'Unlimited voice commands',
       'Email support',
     ],
     pro: [
-      '{PRO} Pépites/month',
+      '{REPUB_PRO} Vinted repostings a month',
+      'Automatic reposting — your listings bump themselves',
+      '{SCANS_PRO} Lens scans a month',
+      'AI touch-up — {RETOUCHE_PRO} photos a month',
       'Unlimited stock',
       PUBLISH_LINE.en,
-      'Automatic Vinted reposting if you turn it on',
-      'About {LENS_PRO} Lens scans a month',
-      'Excel import & export of your stock',
-      'Unlimited voice commands',
       'Priority support',
     ],
   },
@@ -285,23 +283,23 @@ const PLANS = {
    (extension Chrome), au lieu de la cacher. */
 const FAQ = {
   fr: [
-    ['C’est quoi les Pépites ?', 'Les Pépites sont la monnaie de FillSell. Tu en reçois chaque mois selon ton offre ({FREE} en Free, {PREMIUM} en Premium, {PRO} en Pro) et tu les dépenses pour générer une annonce par IA (6 Pépites), la publier (1 Pépite par plateforme, plus 9 ou 32 si tu choisis la retouche photos IA), republier une annonce Vinted (1 Pépite) ou lancer une analyse Lens (6 Pépites). Les prix sont les mêmes sur tous les paliers — seul le nombre de Pépites reçues change. Besoin de plus ? Des packs sont dispo dès 4,99 €.'],
+    ['Comment fonctionnent les forfaits ?', 'Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA et publiées sur les 4 plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro), des analyses Lens, des retouches photo et des republications Vinted ({REPUB_FREE} offertes à vie en Free, {REPUB_PREMIUM} par mois en Premium, {REPUB_PRO} en Pro). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l’app et se remettent à zéro à chaque cycle.'],
     ['Sur quelles plateformes je publie ?', 'Vinted, Leboncoin, eBay et Beebs — les 4 places de marché qui comptent en France. Un seul ajout, publié sur les quatre en même temps.'],
     ['Comment FillSell publie-t-il mes annonces ?', 'Par une extension Chrome installée une seule fois sur ton ordinateur. Elle remplit les formulaires avec tes comptes déjà connectés. FillSell ne connaît jamais tes mots de passe.'],
     ['Faut-il laisser mon ordinateur allumé ?', 'Pour que les publications partent, oui, avec Chrome ouvert. Si ton ordinateur est éteint, tes actions attendent en file et partent à la prochaine ouverture.'],
     ['Est-ce risqué pour mon compte Vinted ?', 'FillSell agit au rythme d’une personne : des gestes espacés, des plafonds que tu règles, et tu peux tout couper à tout moment. Aucun outil ne peut promettre zéro risque, et nous préférons la prudence aux promesses.'],
     ['Et si un article se vend ?', 'FillSell détecte la vente et te prévient. Tu confirmes, il retire les annonces des autres plateformes et met à jour ton stock, tes marges et tes stats.'],
-    ['Lens, c’est illimité ?', 'Non — chaque analyse Lens coûte 6 Pépites, quel que soit ton palier. Le Pro reçoit simplement bien plus de Pépites ({PRO}/mois) pour en faire davantage.'],
+    ['Lens, c’est illimité ?', 'Non — chaque forfait comprend un nombre d’analyses Lens par mois ({SCANS_PREMIUM} en Premium, {SCANS_PRO} en Pro). Le compteur est visible dans l’app et repart à chaque cycle.'],
     ['Je peux annuler quand je veux ?', 'Oui. Premium et Pro sont sans engagement : tu changes d’offre ou tu arrêtes en un clic depuis l’app.'],
   ],
   en: [
-    ['What are Pépites?', 'Pépites are FillSell’s currency. You get some every month based on your plan ({FREE} on Free, {PREMIUM} on Premium, {PRO} on Pro) and spend them to generate a listing with AI (6 Pépites), publish it (1 Pépite per platform, plus 9 or 32 if you pick AI photo editing), repost a Vinted listing (1 Pépite) or run a Lens analysis (6 Pépites). Prices are the same on every tier — only the monthly Pépite allowance changes. Need more? Packs start at €4.99.'],
+    ['How do the plans work?', 'Each plan includes monthly volumes of actions: AI-created listings published to the 4 marketplaces ({ADS_FREE} on Free, {ADS_PREMIUM} on Premium, {ADS_PRO} on Pro), Lens scans, AI photo touch-ups and Vinted repostings ({REPUB_FREE} included for life on Free, {REPUB_PREMIUM} a month on Premium, {REPUB_PRO} on Pro). Publishing itself is included and unlimited. Counters are visible in the app and reset every cycle.'],
     ['Which marketplaces can I publish to?', 'Vinted, Leboncoin, eBay and Beebs — the 4 marketplaces that matter in France. One add, posted to all four at once.'],
     ['How does FillSell publish my listings?', 'Through a Chrome extension installed once on your computer. It fills in the forms with your already-signed-in accounts. FillSell never knows your passwords.'],
     ['Do I need to leave my computer on?', 'For listings to go out, yes — with Chrome open. If your computer is off, your actions wait in line and go out the next time it opens.'],
     ['Is it risky for my Vinted account?', 'FillSell acts at a human pace: spaced-out actions, caps you control, and you can switch everything off at any time. No tool can promise zero risk, and we prefer caution over promises.'],
     ['What happens when an item sells?', 'FillSell detects the sale and lets you know. You confirm, it removes the listings from the other marketplaces and updates your stock, margins and stats.'],
-    ['Is Lens unlimited?', 'No — each Lens analysis costs 6 Pépites, on every tier. Pro simply gets far more Pépites ({PRO}/mo) so you can run more of them.'],
+    ['Is Lens unlimited?', 'No — each plan includes a number of Lens scans per month ({SCANS_PREMIUM} on Premium, {SCANS_PRO} on Pro). The counter is visible in the app and resets every cycle.'],
     ['Can I cancel anytime?', 'Yes. Premium and Pro have no commitment — switch plans or stop in one tap from the app.'],
   ],
 };
@@ -318,29 +316,27 @@ const FAQ = {
    un zéro ou un squelette — une page tarifaire vide coûte plus cher qu'une
    page légèrement datée. À tenir à jour au fil des changements de grant, mais
    ce n'est JAMAIS ce qui s'affiche quand la base répond. */
-const GRANTS_FALLBACK = { FREE: 50, PREMIUM: 400, PRO: 1200 };
-
-/* Remplace les jetons d'un texte par les grants courants. Appliqué aux libellés
-   des cartes ET aux réponses de la FAQ, où les nombres sont noyés dans la
-   phrase. Un texte sans jeton traverse la fonction inchangé. */
-/* 6 = coin_config.price_lens_overflow, en dur comme dans la FAQ et
-   translations.js — si ce coût change en base, ces textes sont à reprendre. */
-const LENS_COST = 6;
-/* 10 = price_generate (6) + 4 × price_per_platform (1) — grille coin_config du
-   2026-08-08. C'est le coût d'UNE annonce créée par IA et publiée sur les 4
-   plateformes, sans retouche photo : la base des jetons {ADS_*} des cartes de
-   plans. En dur comme LENS_COST — à reprendre si la grille bouge. */
-const LISTING_COST = 10;
+/* Bascule quotas (02/09) : les jetons ne dérivent plus des grants de Pépites
+   mais des QUOTAS PAR GESTE de coin_config — la même source que les cartes de
+   l'app. Filet, pas source : valeurs de la grille du 02/09. */
+const GRANTS_FALLBACK = {
+  ADS_FREE: 5, ADS_PREMIUM: 40, ADS_PRO: 120,
+  SCANS_PREMIUM: 40, SCANS_PRO: 120,
+  REPUB_FREE: 50, REPUB_PREMIUM: 1500, REPUB_PRO: 5000,
+  RETOUCHE_PREMIUM: 5, RETOUCHE_PRO: 20,
+};
 const fillGrants = (texte, g) =>
   String(texte)
-    .replace(/\{FREE\}/g, g.FREE)
-    .replace(/\{PREMIUM\}/g, g.PREMIUM)
-    .replace(/\{PRO\}/g, g.PRO)
-    .replace(/\{LENS_PREMIUM\}/g, Math.floor(g.PREMIUM / LENS_COST))
-    .replace(/\{LENS_PRO\}/g, Math.floor(g.PRO / LENS_COST))
-    .replace(/\{ADS_FREE\}/g, Math.floor(g.FREE / LISTING_COST))
-    .replace(/\{ADS_PREMIUM\}/g, Math.floor(g.PREMIUM / LISTING_COST))
-    .replace(/\{ADS_PRO\}/g, Math.floor(g.PRO / LISTING_COST));
+    .replace(/\{ADS_FREE\}/g, g.ADS_FREE)
+    .replace(/\{ADS_PREMIUM\}/g, g.ADS_PREMIUM)
+    .replace(/\{ADS_PRO\}/g, g.ADS_PRO)
+    .replace(/\{SCANS_PREMIUM\}/g, g.SCANS_PREMIUM)
+    .replace(/\{SCANS_PRO\}/g, g.SCANS_PRO)
+    .replace(/\{REPUB_FREE\}/g, g.REPUB_FREE)
+    .replace(/\{REPUB_PREMIUM\}/g, Number(g.REPUB_PREMIUM).toLocaleString('fr-FR'))
+    .replace(/\{REPUB_PRO\}/g, Number(g.REPUB_PRO).toLocaleString('fr-FR'))
+    .replace(/\{RETOUCHE_PREMIUM\}/g, g.RETOUCHE_PREMIUM)
+    .replace(/\{RETOUCHE_PRO\}/g, g.RETOUCHE_PRO);
 
 /* ── Fragments SVG réutilisés ───────────────────────────────── */
 /* Le dégradé est inliné dans CHAQUE SVG (id unique via useId) : iOS/WebKit ne
@@ -459,16 +455,28 @@ export default function LandingPage() {
     (async () => {
       try {
         const { supabase } = await import('../lib/supabase');
+        // Bascule quotas (02/09) : la landing lit les QUOTAS par geste,
+        // plus les grants de Pépites.
         const { data, error } = await supabase
           .from('coin_config')
           .select('key, value')
-          .in('key', ['monthly_grant_free', 'monthly_grant_premium', 'monthly_grant_pro']);
+          .in('key', ['quota_annonces_free', 'quota_annonces_premium', 'quota_annonces_pro',
+                      'quota_scan_premium', 'quota_scan_pro',
+                      'republication_avie_free', 'quota_republication_premium', 'quota_republication_pro',
+                      'quota_retouche_premium', 'quota_retouche_pro']);
         if (error || !data?.length || !vivant) return;
         const parKey = Object.fromEntries(data.map((r) => [r.key, r.value]));
         setGrants({
-          FREE:    parKey.monthly_grant_free    ?? GRANTS_FALLBACK.FREE,
-          PREMIUM: parKey.monthly_grant_premium ?? GRANTS_FALLBACK.PREMIUM,
-          PRO:     parKey.monthly_grant_pro     ?? GRANTS_FALLBACK.PRO,
+          ADS_FREE:          parKey.quota_annonces_free        ?? GRANTS_FALLBACK.ADS_FREE,
+          ADS_PREMIUM:       parKey.quota_annonces_premium     ?? GRANTS_FALLBACK.ADS_PREMIUM,
+          ADS_PRO:           parKey.quota_annonces_pro         ?? GRANTS_FALLBACK.ADS_PRO,
+          SCANS_PREMIUM:     parKey.quota_scan_premium         ?? GRANTS_FALLBACK.SCANS_PREMIUM,
+          SCANS_PRO:         parKey.quota_scan_pro             ?? GRANTS_FALLBACK.SCANS_PRO,
+          REPUB_FREE:        parKey.republication_avie_free    ?? GRANTS_FALLBACK.REPUB_FREE,
+          REPUB_PREMIUM:     parKey.quota_republication_premium ?? GRANTS_FALLBACK.REPUB_PREMIUM,
+          REPUB_PRO:         parKey.quota_republication_pro    ?? GRANTS_FALLBACK.REPUB_PRO,
+          RETOUCHE_PREMIUM:  parKey.quota_retouche_premium     ?? GRANTS_FALLBACK.RETOUCHE_PREMIUM,
+          RETOUCHE_PRO:      parKey.quota_retouche_pro         ?? GRANTS_FALLBACK.RETOUCHE_PRO,
         });
       } catch { /* hors ligne ou client indisponible : le repli reste affiché */ }
     })();
@@ -1000,13 +1008,15 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Lot 1 : l'encadré explique ce que SONT les Pépites (première
-              apparition du mot sur la page) au lieu d'aligner la grille de
-              coûts unitaires — le détail chiffré vit dans la FAQ. */}
+          {/* Bascule quotas (02/09) : l'encadré Pépites est MORT — la monnaie
+              interne n'existe plus côté produit. Sa place dit la règle simple
+              des forfaits. */}
           <div className="lp-coins lp-reveal">
-            <span className="lp-coins__title"><Pepite /><b>{t.coinsTitle}</b></span>
+            <span className="lp-coins__title"><b>{lang === 'en' ? 'Clear monthly volumes' : 'Des volumes mensuels clairs'}</b></span>
             <span className="lp-coins__sep" />
-            <span>{t.coinsBody}</span>
+            <span>{lang === 'en'
+              ? 'Every plan includes monthly action volumes — counters are visible in the app and reset each cycle.'
+              : "Chaque forfait comprend des volumes de gestes par mois — les compteurs sont visibles dans l'app et repartent à chaque cycle."}</span>
           </div>
         </div>
       </section>

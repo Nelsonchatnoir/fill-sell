@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import PepiteIcon from './PepiteIcon';
-import PepiteAmount from './PepiteAmount';
+// (PepiteIcon / PepiteAmount / PACKS : imports morts le 02/09 soir — plus une
+// Pépite ne s'affiche dans cette modale.)
 import PlanBadge, { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
-import { PACKS } from './coinPacks';
 import { supabase } from '../lib/supabase';
 import { businessOfferVisible } from '../config/businessOffer';
 
@@ -56,6 +55,17 @@ const ANIM = `
 // Exporté pour PlanDetailsModal (modale « mon plan » du badge header), qui lit
 // coin_config avec le même repli.
 export const COIN_CONFIG_FALLBACK = {
+  // ── Bascule quotas (02/09 soir) : les cartes lisent les QUOTAS par geste,
+  // plus les prix en Pépites. Même contrat que toujours : coin_config fait
+  // autorité, ces valeurs ne servent qu'en cas d'échec réseau.
+  quota_annonces_free: 5, quota_annonces_premium: 40,
+  quota_annonces_pro: 120, quota_annonces_business: 300,
+  quota_scan_free: 3, quota_scan_premium: 40,
+  quota_scan_pro: 120, quota_scan_business: 300,
+  quota_republication_premium: 1500, quota_republication_pro: 5000,
+  republication_avie_free: 50,
+  quota_retouche_free: 0, quota_retouche_premium: 5,
+  quota_retouche_pro: 20, quota_retouche_business: 50,
   // Grille du 2026-08-08 — MÊME PRIX POUR TOUS LES PALIERS : photos (par
   // article) + 1 Pépite/plateforme + 6 Pépites la génération d'annonce.
   price_original: 0,
@@ -110,35 +120,15 @@ const PLAN_PRICES = {
   business: { price: '59,99 €' },
 };
 
-// Coût Pépites d'UN article publié partout : génération d'annonce + 4
-// plateformes (Vinted, Leboncoin, eBay, Beebs). CALCULÉ depuis coin_config,
-// jamais écrit en dur — c'est ce qui permet d'annoncer « ≈ N articles » sans
-// que la promesse mente le jour où un prix bouge.
-const PLATEFORMES = 4;
-const coutArticleComplet = (K) => K.price_generate + PLATEFORMES * K.price_per_platform;
-const articlesParMois = (grant, K) => {
-  const unit = coutArticleComplet(K);
-  return unit > 0 ? Math.floor(grant / unit) : 0;
-};
+// (Bascule quotas 02/09 : articlesParMois / coutArticleComplet — les
+// équivalences « ≈ N articles » calculées depuis les prix en Pépites — sont
+// MORTS avec les CAS 1/2 et les bandeaux de grant. Eyebrow aussi : il ne
+// servait qu'aux écrans « Pépites insuffisantes ».)
 
 // ── Blocs (au niveau module : jamais recréés à chaque rendu) ─────────────────
 
 function Handle() {
   return <div style={{ width: 40, height: 4, background: C.border, borderRadius: 99, margin: '0 auto 16px' }} />;
-}
-
-function Eyebrow({ icon, children }) {
-  return (
-    <div style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(47,158,144,0.12)',
-      borderRadius: 999, padding: '5px 11px', marginBottom: 12,
-    }}>
-      {icon}
-      <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.04em', color: C.tealDeep, whiteSpace: 'nowrap' }}>
-        {children}
-      </span>
-    </div>
-  );
 }
 
 function Title({ children }) {
@@ -153,71 +143,10 @@ function Title({ children }) {
 // les cartes portent désormais LignesDiff, trois lignes fixes coche/croix.
 // Son style de rangée vit dans LignesDiff, à l'identique pour les coches.)
 
-// Jauge « ton solde » — solde réel (coin_wallets) / coût réel de l'action.
-function BalanceCard({ fr, balance, cost, missing, explain }) {
-  const pct = Math.max(0, Math.min(1, cost > 0 ? (balance ?? 0) / cost : 0)) * 100;
-  return (
-    <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: 14, marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 9 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, color: C.mute2 }}>
-          <PepiteIcon size={16} /> {fr ? 'Ton solde' : 'Your balance'}
-        </span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: C.amberInk }}>{balance ?? 0} / {cost}</span>
-      </div>
-      <div style={{ height: 7, borderRadius: 99, background: C.canvas, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: C.amber, borderRadius: 99, transition: 'width 0.4s ease' }} />
-      </div>
-      <div style={{ fontSize: 11.5, fontWeight: 500, lineHeight: 1.5, color: C.mute, marginTop: 9 }}>
-        {explain}
-        {missing != null && (
-          <> · {fr ? "il t'en manque" : 'you need'} <b style={{ color: C.amberInk, fontWeight: 700 }}>{missing}</b>.</>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Les 4 packs — même source que CoinStoreModal (PACKS), qui reste le SEUL chemin
-// d'achat : un clic ouvre le store, qui gère l'IAP natif et le checkout Stripe.
-function PackList({ fr, onUseCoins }) {
-  return (
-    <>
-      <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.faint, marginBottom: 10 }}>
-        {fr ? 'Recharge tes Pépites' : 'Top up your Nuggets'}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-        {PACKS.map(p => (
-          <button
-            key={p.id}
-            onClick={onUseCoins}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-              background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: '12px 14px',
-              cursor: 'pointer', fontFamily: 'inherit', width: '100%', textAlign: 'left',
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 15, fontWeight: 700, color: C.ink }}>
-                <PepiteAmount value={p.coins} size={17} />
-              </span>
-              {p.bonus && (
-                <span style={{ fontSize: 10, fontWeight: 700, color: C.tealDeep, background: '#E7F3F0', border: '1px solid #CBE5DF', borderRadius: 999, padding: '2px 7px' }}>
-                  {p.bonus}
-                </span>
-              )}
-            </span>
-            <span style={{
-              fontSize: 13, fontWeight: 700, color: '#fff', minWidth: 74, textAlign: 'center',
-              background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, padding: '8px 15px', borderRadius: 999,
-            }}>
-              {p.price}
-            </span>
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
+// (BalanceCard — la jauge de solde — et PackList — les 4 packs de Pépites —
+// sont MORTS le 02/09 soir avec la bascule quotas : plus de solde à jauger,
+// plus de packs à vendre. CoinStoreModal/coinPacks restent en place côté
+// fichiers, DÉBRANCHÉS — un achat en vol doit encore aboutir côté webhooks.)
 
 // ── Bloc commun « Dans tous les forfaits » (2026-09-02) ──────────────────────
 // Restructuration de lisibilité : les SEPT lignes quasi identiques répétées
@@ -227,15 +156,16 @@ function PackList({ fr, onUseCoins }) {
 // ligne, ici, lue dans coin_config comme tout le reste (jamais en dur).
 // Exporté pour un éventuel réemploi (PlanDetailsModal) — même source unique
 // que les cartes.
-export function ToutesOffresBlock({ fr, K }) {
-  // « Stock illimité » RETIRÉ (2026-09-02 soir, décision Nico) : la formule ne
-  // dit rien à qui découvre. Le bloc vit désormais AU-DESSUS des cartes — ce
-  // que fait le produit se lit avant de comparer les prix, pas après.
+export function ToutesOffresBlock({ fr }) {
+  // Bascule quotas (02/09 soir) : la ligne de tarif en Pépites est MORTE, et
+  // le bloc dit ce que TOUS les forfaits font (liste de la décision Nico) —
+  // import du dressing, 4 plateformes, voix, retrait auto après vente.
+  // Il vit AU-DESSUS des cartes : ce que fait le produit se lit avant les prix.
   const items = [
+    fr ? 'Import de ton dressing Vinted' : 'Import your Vinted wardrobe',
     fr ? 'Publication sur Vinted, Leboncoin, eBay & Beebs' : 'Publishing on Vinted, Leboncoin, eBay & Beebs',
-    fr ? 'Analyses Lens (photo → prix, plateforme, deal)' : 'Lens scans (photo → price, platform, deal)',
-    fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
-    fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+    fr ? 'Commandes vocales' : 'Voice commands',
+    fr ? 'Retrait automatique partout après une vente' : 'Automatic removal everywhere after a sale',
   ];
   return (
     <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 12 }}>
@@ -250,24 +180,6 @@ export function ToutesOffresBlock({ fr, K }) {
           </span>
         ))}
       </div>
-      {/* Tarif unitaire de la Pépite — identique sur TOUS les paliers depuis la
-          grille du 08/08, donc dit UNE fois, jamais trois. Valeurs lues en
-          base (K), le repli COIN_CONFIG_FALLBACK jouant comme partout. */}
-      <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 9, lineHeight: 1.5, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-        {fr
-          ? <>La Pépite paie tout, au même prix sur tous les forfaits : génération IA {K.price_generate} · publication {K.price_per_platform}/plateforme · republication {K.price_republish} · analyse Lens {K.price_lens_overflow}.</>
-          : <>Nuggets pay for everything, same price on every plan: AI listing {K.price_generate} · publishing {K.price_per_platform}/platform · reposting {K.price_republish} · Lens scan {K.price_lens_overflow}.</>}
-      </div>
-    </div>
-  );
-}
-
-function OrDivider({ fr }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-      <div style={{ flex: 1, height: 1, background: C.border }} />
-      <span style={{ fontSize: 10.5, fontWeight: 700, color: C.faint, letterSpacing: '0.06em' }}>{fr ? 'OU' : 'OR'}</span>
-      <div style={{ flex: 1, height: 1, background: C.border }} />
     </div>
   );
 }
@@ -299,30 +211,47 @@ function Dismiss({ onClose, label }) {
 //     conversion principal.
 // L'automatique reste Pro/Business : verrou extension plan_non_pro
 // (background.js) aligné avec la décision — ne pas promettre au-delà.
-// ORDRE D'AFFICHAGE (02/09 soir, 2e passe) : les lignes COCHÉES d'abord, les
-// BARRÉES en bas — sur la carte Premium, la croix « automatique » tombait
-// entre deux coches et coupait la carte en deux. Le tri est STABLE (Array
-// .prototype.sort l'est en JS) : l'ordre relatif à l'intérieur de chaque
-// groupe (manuelle · automatique · support) ne bouge pas. Libellés et
-// traitement visuel inchangés.
-function lignesDiff(fr, palier) {
+// ── BASCULE QUOTAS (02/09 soir) : les cartes parlent en GESTES RÉELS ────────
+// Plus une Pépite nulle part. Cinq lignes par carte, même ordre, coches
+// d'abord et croix en bas (tri STABLE — l'ordre relatif dans chaque groupe ne
+// bouge pas). Les volumes se lisent dans coin_config (K), jamais en dur — les
+// quotas sont ajustables sans OTA. Le mot « plafond » reste banni des cartes ;
+// registre « toi-même vs tout seul » conservé sur la republication. La
+// cadence technique 45/jour de l'auto (anti-bannissement) n'est PLUS affichée
+// nulle part : les cartes annoncent le volume mensuel, pas la cadence.
+function lignesDiff(fr, palier, K) {
   const paye = palier !== 'free';
   const auto = palier === 'pro' || palier === 'business';
+  const annonces = K[`quota_annonces_${palier}`];
+  const retouches = K[`quota_retouche_${palier}`] ?? 0;
+  const repubTexte = palier === 'free'
+    ? (fr ? `${K.republication_avie_free ?? 50} republications Vinted offertes, à vie`
+          : `${K.republication_avie_free ?? 50} Vinted repostings included, for life`)
+    : palier === 'business'
+      ? (fr ? 'Republications Vinted illimitées — tu republies quand tu veux, autant que tu veux'
+            : 'Unlimited Vinted repostings — repost whenever you want, as much as you want')
+      : (fr ? `${(K[`quota_republication_${palier}`] ?? 0).toLocaleString('fr-FR')} republications Vinted par mois`
+            : `${(K[`quota_republication_${palier}`] ?? 0).toLocaleString('en-US')} Vinted repostings a month`);
   return [
     {
-      ok: paye,
-      texte: paye
-        ? (fr ? 'Republication manuelle sans limite — tu republies tes annonces toi-même, quand tu veux'
-              : 'Unlimited manual reposting — you repost your listings yourself, whenever you want')
-        : (fr ? 'Republication manuelle limitée — 3 par jour'
-              : 'Manual reposting limited — 3 a day'),
+      ok: true,
+      texte: fr
+        ? `${annonces} annonces créées et publiées sur les 4 plateformes par mois`
+        : `${annonces} listings created and published on all 4 platforms a month`,
     },
+    { ok: true, texte: repubTexte },
     {
       ok: auto,
       texte: auto
-        ? (fr ? "Republication automatique — tes annonces remontent toutes seules, sans que tu y touches, jusqu'à 45 annonces par jour"
-              : 'Automatic reposting — your listings bump themselves, without you touching anything, up to 45 listings a day')
+        ? (fr ? 'Republication automatique — tes annonces remontent toutes seules, sans que tu y touches'
+              : 'Automatic reposting — your listings bump themselves, without you touching anything')
         : (fr ? 'Republication automatique' : 'Automatic reposting'),
+    },
+    {
+      ok: retouches > 0,
+      texte: retouches > 0
+        ? (fr ? `Retouche IA — ${retouches} photos embellies par mois` : `AI touch-up — ${retouches} enhanced photos a month`)
+        : (fr ? 'Retouche IA' : 'AI touch-up'),
     },
     {
       ok: paye,
@@ -335,7 +264,7 @@ function lignesDiff(fr, palier) {
   ].sort((a, b) => Number(b.ok) - Number(a.ok));
 }
 
-function LignesDiff({ fr, palier, dark }) {
+function LignesDiff({ fr, palier, dark, K = COIN_CONFIG_FALLBACK }) {
   const okBg   = dark ? 'rgba(232,149,109,0.22)' : 'rgba(47,158,144,0.15)';
   const okInk  = dark ? '#F2C98A' : C.tealDeep;
   const koBg   = dark ? 'rgba(246,245,241,0.10)' : 'rgba(163,157,142,0.14)';
@@ -344,7 +273,7 @@ function LignesDiff({ fr, palier, dark }) {
   const koTxt  = dark ? 'rgba(246,245,241,0.55)' : C.mute;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 18 }}>
-      {lignesDiff(fr, palier).map((l, i) => (
+      {lignesDiff(fr, palier, K).map((l, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
           <span style={{
             flexShrink: 0, width: 17, height: 17, borderRadius: '50%', marginTop: 1,
@@ -366,10 +295,9 @@ function LignesDiff({ fr, palier, dark }) {
 }
 
 // Carte Free (2026-09-02 soir) — le POINT DE DÉPART, pas une offre : fond
-// sobre, pas de CTA d'achat. Elle existe pour qu'un gratuit voie ce qu'il a
-// (grant 50, republication 3/jour) et ce que payer change, ligne à ligne,
-// même gabarit que les trois autres cartes.
-function FreePlanCard({ fr, grantFree, estMonPlan }) {
+// sobre, pas de CTA d'achat. Bascule quotas : plus de bandeau de grant, les
+// cinq lignes de gestes disent tout (5 annonces, 50 republications à vie…).
+function FreePlanCard({ fr, estMonPlan, K }) {
   return (
     <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 22, padding: '20px 18px 14px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -391,31 +319,17 @@ function FreePlanCard({ fr, grantFree, estMonPlan }) {
           <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
       </div>
-      <div style={{
-        background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 12,
-        padding: '9px 12px', marginBottom: 14,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <PepiteIcon size={18} />
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: C.mute2 }}>
-            {fr ? `${grantFree} Pépites/mois` : `${grantFree} Nuggets/mo`}
-          </span>
-        </div>
-      </div>
-      <LignesDiff fr={fr} palier="free" />
+      <LignesDiff fr={fr} palier="free" K={K} />
     </div>
   );
 }
 
 // Carte Premium (CAS 3) — badge repris de PlanBadge, jamais recréé.
-// ── Équivalences Pépites (2026-08-27, correction de cohérence Nico) ──────────
-// Le grant est UNE réserve unique : « ≈ N articles » et « ≈ M analyses » sont
-// des EXEMPLES ALTERNATIFS de la même réserve (3000 = 300 articles OU 500
-// analyses, PAS les deux). Les deux chiffres vivaient l'un dans le bandeau de
-// grant, l'autre dans la liste — lus comme deux quotas cumulables. Désormais :
-// une sous-ligne UNIQUE sous le grant les donne ensemble, reliés par « OU »,
-// et la ligne Lens de la liste ne porte plus que le prix unitaire.
-function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, articles, genPrice, pubUnit, repubPrice, onUpgrade }) {
+// Bascule quotas (02/09 soir) : le bandeau de grant et ses équivalences
+// « ≈ N articles OU M analyses » (27/08) sont MORTS — les Pépites ont disparu
+// de l'expérience, les cinq lignes de gestes portent tous les volumes.
+// (Props historiques conservées pour les hôtes — seules fr/K/onUpgrade servent.)
+function PremiumPlanCard({ fr, K, grantPrem, lensCost, lensScans, articles, genPrice, pubUnit, repubPrice, onUpgrade }) {
   return (
     <div style={{
       background: C.paper, border: `1.5px solid ${C.teal}`, borderRadius: 22,
@@ -428,30 +342,10 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, articles, genPric
           <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
       </div>
-      <div style={{
-        background: 'rgba(47,158,144,0.10)',
-        border: '1px solid rgba(47,158,144,0.22)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <PepiteIcon size={18} />
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: C.tealDeep }}>
-            {/* Même formulation que Pro/Business (uniformisation 27/08 soir,
-                décision Nico : « N Pépites/mois » partout — plus jamais
-                « offertes chaque mois » sur une carte et « /mois » sur
-                l'autre). */}
-            {fr ? `${grantPrem} Pépites/mois` : `${grantPrem} Nuggets/mo`}
-          </span>
-        </div>
-        <div style={{ fontSize: 10.5, fontWeight: 600, color: C.tealDeep, opacity: 0.85, marginTop: 4, lineHeight: 1.45 }}>
-          {fr ? `Une seule réserve pour tout — par exemple ≈ ${articles} articles publiés partout OU ≈ ${lensScans} analyses Lens.`
-              : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
-        </div>
-      </div>
-      {/* Les trois lignes différenciantes (02/09 soir) — cf. le commentaire
-          de lignesDiff : mêmes lignes, même ordre sur les QUATRE cartes ; la
-          croix « Republication automatique » rend visible ce qui manque au
-          Premium, c'est le levier vers Pro. */}
-      <LignesDiff fr={fr} palier="premium" />
+      {/* Les cinq lignes de gestes (bascule 02/09) — cf. lignesDiff : mêmes
+          lignes, même ordre sur les QUATRE cartes ; la croix « Republication
+          automatique » reste le levier visible vers Pro. */}
+      <LignesDiff fr={fr} palier="premium" K={K} />
       <button
         onClick={() => onUpgrade('premium')}
         style={{
@@ -472,7 +366,7 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, articles, genPric
 // paliers. On annonce ce que le grant permet réellement (calculé).
 // Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
-export function ProPlanCard({ fr, grantPro, lensCost, lensScans, articles, proFactor, showFactor, genPrice, pubUnit, repubPrice, onUpgrade }) {
+export function ProPlanCard({ fr, K, grantPro, lensCost, lensScans, articles, proFactor, showFactor, genPrice, pubUnit, repubPrice, onUpgrade }) {
   return (
     <div style={{
       position: 'relative',
@@ -487,29 +381,10 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, articles, proFa
           <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(246,245,241,0.6)', marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
       </div>
-      <div style={{
-        background: 'rgba(232,149,109,0.14)',
-        border: '1px solid rgba(214,178,96,0.3)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <PepiteIcon size={18} />
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#F2C98A' }}>
-            {fr ? `${grantPro} Pépites/mois` : `${grantPro} Nuggets/mo`}
-            {showFactor && proFactor ? (fr ? ` — ${proFactor}× plus` : ` — ${proFactor}× more`) : ''}
-          </span>
-        </div>
-        {/* Traduction concrète du grant (2026-08-27, point 4 Nico) — même
-            phrase-équivalence que les autres cartes : une réserve UNIQUE,
-            exemples alternatifs reliés par OU, jamais deux quotas. */}
-        <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(242,201,138,0.85)', marginTop: 4, lineHeight: 1.45 }}>
-          {fr ? `Une seule réserve pour tout — par exemple ≈ ${articles} articles publiés partout OU ≈ ${lensScans} analyses Lens.`
-              : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
-        </div>
-      </div>
-      {/* Lignes différenciantes (02/09 soir, cf. lignesDiff) — la phrase de
-          republication automatique est STRICTEMENT identique à Business
-          (« 45/jour » = le plafond réellement servi par le serveur). */}
-      <LignesDiff fr={fr} palier="pro" dark />
+      {/* Bascule quotas (02/09 soir) : bandeau de grant et équivalences MORTS
+          — les cinq lignes de gestes portent les volumes. La phrase de
+          republication automatique reste STRICTEMENT identique à Business. */}
+      <LignesDiff fr={fr} palier="pro" dark K={K} />
       <button
         onClick={() => onUpgrade('pro')}
         style={{
@@ -550,7 +425,7 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, articles, proFa
 // ⚠️ AUCUNE mention de « 8 photos par scan » : l'idée est abandonnée depuis le
 // 2026-08-09, tous les paliers sont identiques sur ce point.
 // Exportée pour PlanDetailsModal (upsell des Pro), comme ProPlanCard.
-export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, articles, genPrice, pubUnit, repubPrice, onUpgrade }) {
+export function BusinessPlanCard({ fr, K, grantBusiness, lensCost, lensScans, articles, genPrice, pubUnit, repubPrice, onUpgrade }) {
   return (
     <div style={{
       position: 'relative', overflow: 'hidden',
@@ -566,33 +441,14 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
           <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(246,245,241,0.6)', marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
         </div>
       </div>
-      <div style={{
-        background: 'rgba(155,232,220,0.10)',
-        border: '1px solid rgba(174,233,223,0.28)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <PepiteIcon size={18} />
-          <span style={{
-            fontSize: 12.5, fontWeight: 700,
-            background: 'linear-gradient(120deg,#F4FFFD,#9BE8DC 55%,#F2C98A)',
-            WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
-          }}>
-            {fr ? `${grantBusiness} Pépites/mois` : `${grantBusiness} Nuggets/mo`}
-          </span>
-        </div>
-        {/* Équivalences ALTERNATIVES d'une réserve unique (27/08) — plus
-            jamais « 300 articles » ici ET « 500 analyses » dans la liste,
-            lus comme deux quotas cumulables. */}
-        <div style={{ fontSize: 10.5, fontWeight: 600, color: 'rgba(246,245,241,0.75)', marginTop: 4, lineHeight: 1.45 }}>
-          {fr ? `Une seule réserve pour tout — par exemple ≈ ${articles} articles publiés partout OU ≈ ${lensScans} analyses Lens.`
-              : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
-        </div>
-      </div>
+      {/* Bascule quotas (02/09 soir) : bandeau de grant et équivalences MORTS
+          — les cinq lignes de gestes portent les volumes, dont la
+          republication ILLIMITÉE, le vrai différenciateur Business. */}
       {/* Lignes différenciantes (02/09 soir, cf. lignesDiff) — MÊMES phrases
           que Pro sur les trois lignes, y compris le support (« prioritaire »,
           promesse de priorité seulement, garde-fou du 09/08 inchangé) : seul
           le volume de Pépites distingue Business, et il est au-dessus. */}
-      <LignesDiff fr={fr} palier="business" dark />
+      <LignesDiff fr={fr} palier="business" dark K={K} />
       <button
         onClick={() => onUpgrade('business')}
         style={{
@@ -618,7 +474,7 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
 // `tiers` = les paliers RÉELLEMENT vendables à CET utilisateur, déjà filtrés
 // par la modale (cf. `sellable`) : plus aucun recoupement isPremium/isPro ici,
 // c'était la porte ouverte à deux vérités divergentes sur « qui voit quoi ».
-function PlansStack({ fr, tiers, grantPrem, grantPro, grantBusiness, lensCost, lensPerMonth, proFactor, K, onUpgrade, showFree = false }) {
+function PlansStack({ fr, tiers, K, onUpgrade, showFree = false }) {
   const showPremium = tiers.includes('premium');
   const showPro = tiers.includes('pro');
   const showBusiness = tiers.includes('business');
@@ -627,34 +483,10 @@ function PlansStack({ fr, tiers, grantPrem, grantPro, grantBusiness, lensCost, l
       {/* Le Free ouvre la pile QUAND le lecteur est en Free (02/09 soir) :
           c'est son point de départ — il voit ce qu'il a, puis ce que payer
           change, ligne à ligne. Jamais montré aux payants (rien à y lire). */}
-      {showFree && (
-        <FreePlanCard fr={fr} grantFree={K.monthly_grant_free ?? 50} estMonPlan />
-      )}
-      {showPremium && (
-        <PremiumPlanCard
-          fr={fr} grantPrem={grantPrem} lensCost={lensCost} lensScans={lensPerMonth(grantPrem)}
-          articles={articlesParMois(grantPrem, K)} repubPrice={K.price_republish}
-          genPrice={K.price_generate} pubUnit={K.price_per_platform}
-          onUpgrade={onUpgrade}
-        />
-      )}
-      {showPro && (
-        <ProPlanCard
-          fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensPerMonth(grantPro)}
-          articles={articlesParMois(grantPro, K)} repubPrice={K.price_republish}
-          proFactor={proFactor} showFactor
-          pubUnit={K.price_per_platform} retouchMax={K.price_ia_advanced} genPrice={K.price_generate}
-          onUpgrade={onUpgrade}
-        />
-      )}
-      {showBusiness && (
-        <BusinessPlanCard
-          fr={fr} grantBusiness={grantBusiness} lensCost={lensCost} lensScans={lensPerMonth(grantBusiness)}
-          articles={articlesParMois(grantBusiness, K)} repubPrice={K.price_republish}
-          pubUnit={K.price_per_platform} genPrice={K.price_generate}
-          onUpgrade={onUpgrade}
-        />
-      )}
+      {showFree && <FreePlanCard fr={fr} K={K} estMonPlan />}
+      {showPremium && <PremiumPlanCard fr={fr} K={K} onUpgrade={onUpgrade} />}
+      {showPro && <ProPlanCard fr={fr} K={K} onUpgrade={onUpgrade} />}
+      {showBusiness && <BusinessPlanCard fr={fr} K={K} onUpgrade={onUpgrade} />}
     </div>
   );
 }
@@ -719,9 +551,12 @@ export default function ConversionModal({
   // Point d'entrée EXACT (même vocabulaire que le tunnel d'App.jsx) — sert la
   // télémétrie de la modale elle-même, jamais l'affichage.
   origine      = null,
-  // trigger 'republish_cap' UNIQUEMENT : { plafond, faites } renvoyés par le
-  // refus serveur plafond_republication_free (spend_coins_and_republish).
+  // trigger 'republish_cap' UNIQUEMENT : { plafond, restantes } renvoyés par
+  // le refus serveur plafond_republication_free (50 à vie, bascule 02/09).
   plafondRepub = null,
+  // trigger 'quota_geste' UNIQUEMENT : { geste: 'annonces'|'scans'|'retouches',
+  // plafond, consommes } — le refus serveur quota_*_atteint relayé par l'hôte.
+  quotaInfo    = null,
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
@@ -800,23 +635,11 @@ export default function ConversionModal({
   if (!isOpen) return null;
 
   const K = cfg || COIN_CONFIG_FALLBACK;
-  const lensCost  = K.price_lens_overflow;
-  const grantPrem = K.monthly_grant_premium;      // lu en base (400)
-  const grantPro  = K.monthly_grant_pro;          // lu en base (1200)
-  const grantBusiness = K.monthly_grant_business; // lu en base (3000)
-  // Estimation d'analyses Lens permises par le grant mensuel — CALCULÉE, jamais
-  // écrite en dur : à 1200 Pépites et 6 par analyse, cela fait 200 analyses.
-  const lensPerMonth = (grant) => (lensCost > 0 ? Math.floor(grant / lensCost) : 0);
-  const proFactor = grantPrem > 0 ? Math.round((grantPro / grantPrem) * 10) / 10 : null;
-
-  // Libellé du coût affiché. Grille 2 axes (2026-08-04) : le serveur renvoie
-  // un TOTAL (photos + 3 × plateformes) — le confronter aux prix d'OPTION
-  // produirait de faux libellés (photos perso × 3 plateformes = 9 = l'ancien
-  // match « Retouche légère »). Libellé générique, toujours vrai.
-  const tierLabel = () => (fr ? 'Cette publication' : 'This publication');
-
-  const isCoinCase = coinPrice != null;                    // CAS 1 et CAS 2
-  const missing = isCoinCase && coinBalance != null ? Math.max(0, coinPrice - coinBalance) : null;
+  // Bascule quotas (02/09 soir) : les CAS 1/2 « Pépites insuffisantes » sont
+  // MORTS — le serveur ne peut plus émettre insufficient_coins (prix à 0), les
+  // props coinBalance/coinPrice/onUseCoins ne sont plus lues (conservées pour
+  // les hôtes pas encore nettoyés). La jauge de solde, la liste de packs et
+  // les grants n'existent plus dans cette modale.
 
   // ── Échelle des paliers (2026-08-09) ──────────────────────────────────────
   // Remplace l'ancien `isPro ? [] : isPremium ? ['pro'] : …`, qui codait en dur
@@ -838,105 +661,9 @@ export default function ConversionModal({
     .filter(t => RANG[t] > rangCourant)
     .sort((a, b) => RANG[a] - RANG[b]);
   paliersRef.current = sellable; // pour l'event d'abandon (paliers affichés)
-  const canBuyCoins = typeof onUseCoins === 'function';
 
-  // ══ Vue comparative demandée depuis les CAS 1/2 (bouton d'upsell) ═══════════
-  // Mêmes cartes que le CAS 3, avec retour vers l'écran Pépites.
-  if (isCoinCase && view === 'plans') {
-    return (
-      <Sheet onClose={fermer}>
-        <div
-          onClick={() => setView('entry')}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 700, color: C.mute2, cursor: 'pointer', marginBottom: 12 }}
-        >
-          ← {fr ? 'Retour' : 'Back'}
-        </div>
-        <Title>{fr ? 'Compare les plans.' : 'Compare the plans.'}</Title>
-        <ToutesOffresBlock fr={fr} K={K} />
-        <PlansStack
-          fr={fr} tiers={sellable} showFree={rangCourant === 0}
-          grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
-          lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
-          onUpgrade={choisirPalier}
-        />
-        <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
-      </Sheet>
-    );
-  }
-
-  // ══ CAS 1 & 2 — Pépites insuffisantes (publier / Lens) ══════════════════════
-  if (isCoinCase) {
-    const isLens = trigger === 'lens';
-    // Palier poussé en second rideau : le PROCHAIN cran au-dessus du sien (un
-    // Free voit Premium, un Premium voit Pro, un Pro voit Business). Au sommet,
-    // ou offre Business masquée : plus rien à pousser, packs seuls.
-    const upTier = sellable[0] ?? null;
-
-    return (
-      <Sheet onClose={fermer}>
-        <Eyebrow
-          icon={isLens
-            ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.tealDeep} strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="14.31" y1="8" x2="20.05" y2="17.94"/><line x1="9.69" y1="8" x2="21.17" y2="8"/><line x1="7.38" y1="12" x2="13.12" y2="2.06"/><line x1="9.69" y1="16" x2="3.95" y2="6.06"/><line x1="14.31" y1="16" x2="2.83" y2="16"/><line x1="16.62" y1="12" x2="10.88" y2="21.94"/></svg>
-            : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.tealDeep} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v13"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>}
-        >
-          {isLens ? (fr ? 'ANALYSE LENS' : 'LENS SCAN') : (fr ? 'PUBLIER UNE ANNONCE' : 'PUBLISH A LISTING')}
-        </Eyebrow>
-
-        <Title>
-          {isLens
-            ? (fr ? 'Plus assez de Pépites pour cette analyse.' : 'Not enough Nuggets for this scan.')
-            : (fr ? 'Il te manque des Pépites pour publier.' : 'You need more Nuggets to publish.')}
-        </Title>
-
-        <BalanceCard
-          fr={fr}
-          balance={coinBalance}
-          cost={coinPrice}
-          missing={missing}
-          explain={isLens
-            ? (fr
-                ? <>Une analyse Lens (photo → prix, plateforme, deal) coûte <b style={{ color: C.mute2, fontWeight: 700 }}>{coinPrice} Pépites</b></>
-                : <>A Lens scan (photo → price, platform, deal) costs <b style={{ color: C.mute2, fontWeight: 700 }}>{coinPrice} Nuggets</b></>)
-            : (fr
-                ? <>{tierLabel(coinPrice)} : <b style={{ color: C.mute2, fontWeight: 700 }}>{coinPrice} Pépites</b></>
-                : <>{tierLabel(coinPrice)}: <b style={{ color: C.mute2, fontWeight: 700 }}>{coinPrice} Nuggets</b></>)}
-        />
-
-        {canBuyCoins && <PackList fr={fr} onUseCoins={onUseCoins} />}
-
-        {upTier && (
-          <>
-            <OrDivider fr={fr} />
-            {/* BASCULE vers la vue comparative — plus jamais de checkout direct
-                depuis cette ligne : l'utilisateur n'a pas encore vu la carte
-                complète du plan (fix 2026-07-22). */}
-            <button
-              onClick={() => setView('plans')}
-              style={{
-                width: '100%', padding: 13, borderRadius: 14, border: `1.5px solid ${C.tealDeep}`,
-                background: 'none', color: C.tealDeep, fontSize: 13, fontWeight: 700,
-                fontFamily: 'inherit', cursor: 'pointer',
-              }}
-            >
-              {upTier === 'business'
-                ? (fr ? `Passe Business — ${grantBusiness} Pépites/mois (≈ ${articlesParMois(grantBusiness, K)} articles publiés partout)`
-                      : `Go Business — ${grantBusiness} Nuggets/mo (≈ ${articlesParMois(grantBusiness, K)} items listed everywhere)`)
-                : upTier === 'pro'
-                  /* Même traduction concrète que Business (27/08, point 4) :
-                     le grant se dit en articles publiés partout — UNE
-                     équivalence, jamais deux quotas dans la même phrase. */
-                  ? (fr ? `Passe Pro — ${grantPro} Pépites/mois (≈ ${articlesParMois(grantPro, K)} articles publiés partout)`
-                        : `Go Pro — ${grantPro} Nuggets/mo (≈ ${articlesParMois(grantPro, K)} items listed everywhere)`)
-                  : (fr ? `Passe Premium — ${grantPrem} Pépites/mois (≈ ${articlesParMois(grantPrem, K)} articles publiés partout)`
-                        : `Go Premium — ${grantPrem} Nuggets/mo (≈ ${articlesParMois(grantPrem, K)} items listed everywhere)`)}
-            </button>
-          </>
-        )}
-
-        <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
-      </Sheet>
-    );
-  }
+  // (CAS 1/2 « Pépites insuffisantes » et leur vue 'plans' : SUPPRIMÉS le
+  // 02/09 soir — insufficient_coins ne peut plus exister, cf. bascule quotas.)
 
   // ══ CAS 5 — Pro → Business (2026-08-09) ════════════════════════════════════
   // Placé AVANT le CAS 4 : un Pro porte aussi is_premium (flags cumulatifs), il
@@ -956,13 +683,8 @@ export default function ConversionModal({
           </span>
         </div>
         <Title>{fr ? 'Le sommet. Zéro limite.' : 'The top. No limits.'}</Title>
-        <ToutesOffresBlock fr={fr} K={K} />
-        <BusinessPlanCard
-          fr={fr} grantBusiness={grantBusiness} lensCost={lensCost} lensScans={lensPerMonth(grantBusiness)}
-          articles={articlesParMois(grantBusiness, K)} repubPrice={K.price_republish}
-          pubUnit={K.price_per_platform} genPrice={K.price_generate}
-          onUpgrade={choisirPalier}
-        />
+        <ToutesOffresBlock fr={fr} />
+        <BusinessPlanCard fr={fr} K={K} onUpgrade={choisirPalier} />
         <Dismiss onClose={fermer} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
       </Sheet>
     );
@@ -986,47 +708,42 @@ export default function ConversionModal({
           </span>
         </div>
         <Title>{fr ? 'Passe au volume supérieur.' : 'Move up a gear.'}</Title>
-        <ToutesOffresBlock fr={fr} K={K} />
-        <PlansStack
-          fr={fr} tiers={sellable}
-          grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
-          lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
-          onUpgrade={choisirPalier}
-        />
+        <ToutesOffresBlock fr={fr} />
+        <PlansStack fr={fr} tiers={sellable} K={K} onUpgrade={choisirPalier} />
         <Dismiss onClose={fermer} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
       </Sheet>
     );
   }
 
-  // ══ Plus rien à vendre : packs seuls ═══════════════════════════════════════
+  // ══ Plus rien à vendre ═════════════════════════════════════════════════════
   // Ne se dit QUE d'un utilisateur sans palier au-dessus — c'est-à-dire un
-  // Business, ou un Pro tant que l'offre Business est masquée.
+  // Business, ou un Pro tant que l'offre Business est masquée. (Les packs de
+  // Pépites ne se vendent plus — bascule 02/09.)
   if (sellable.length === 0) {
     return (
       <Sheet onClose={fermer}>
         <Title>{fr ? 'Tu es déjà au maximum.' : "You're already on the top plan."}</Title>
-        {canBuyCoins && <PackList fr={fr} onUseCoins={onUseCoins} />}
         <Dismiss onClose={fermer} label={fr ? 'Fermer' : 'Close'} />
       </Sheet>
     );
   }
 
   // ══ CAS 3 — Free → Premium ═════════════════════════════════════════════════
-  // Variante 'republish_cap' (2026-09-02) : le serveur a refusé une
-  // republication manuelle avec plafond_republication_free (3/jour en Free).
-  // Ce n'est PAS un message d'erreur : la modale dit le FAIT (limite du jour
-  // atteinte), puis ce que débloque le palier au-dessus, puis les cartes —
-  // dont les CTA partent en checkout. Ton informatif, aucun compte à rebours,
-  // aucune « offre limitée ». Elle s'ouvre à CHAQUE tentative refusée
-  // (verrou 1/jour retiré le 02/09 soir — l'appelant StockTab journalise
-  // chaque ouverture). Ne s'ouvre QUE sur ce code de refus.
+  // Variante 'republish_cap' (bascule 02/09) : le serveur a refusé une
+  // republication avec plafond_republication_free — en Free les 50
+  // republications OFFERTES À VIE sont épuisées. La modale dit le FAIT, puis
+  // ce que Premium change, puis les cartes. Ton informatif, aucun compte à
+  // rebours ; elle s'ouvre à CHAQUE tentative refusée.
+  // Variante 'republish_lot' : un Free a tapé « Republier en lot » — geste
+  // réservé aux payants, rien consommé. Même structure, même registre.
+  // Variante 'quota_geste' (bascule 02/09) : un quota du cycle est atteint
+  // (annonces / scans / retouches, prop quotaInfo {geste, plafond,
+  // consommes}) — le fait, le déblocage, les cartes.
   const stockFull = trigger === 'stock' && itemCount != null;
   const repubCap = trigger === 'republish_cap';
-  // Variante 'republish_lot' (02/09 soir) : un Free a tapé « Republier en
-  // lot » — il n'a RIEN consommé, il demande un geste réservé aux payants.
-  // Même structure et même registre que le plafond : le fait, puis ce que
-  // Premium change, puis les cartes, puis la sortie. Aucune urgence.
   const repubLot = trigger === 'republish_lot';
+  const quotaCas = trigger === 'quota_geste' ? (quotaInfo ?? {}) : null;
+  const repubPremium = (K.quota_republication_premium ?? 1500).toLocaleString(fr ? 'fr-FR' : 'en-US');
   return (
     <Sheet onClose={fermer}>
       <div style={{
@@ -1036,38 +753,69 @@ export default function ConversionModal({
       }}>
         {fr ? 'Tu es en Free' : "You're on Free"}
         {stockFull && <> · {itemCount}/{stockLimit} {fr ? 'articles' : 'items'}</>}
-        {coinBalance != null && <> · <PepiteAmount value={coinBalance} size={12} /></>}
       </div>
 
       <Title>
         {trigger === 'voice'
           ? (fr ? 'Passe en vocal illimité.' : 'Go unlimited on voice.')
           : repubCap
-            ? (fr ? 'Tes republications du jour sont faites.' : "Today's reposts are done.")
+            ? (fr ? 'Tes republications offertes sont épuisées.' : 'Your included repostings are used up.')
             : repubLot
               ? (fr ? 'Republie ton stock en un geste.' : 'Repost your stock in one move.')
-              : stockFull
-                ? (fr ? 'Ton stock est plein.' : 'Your stock is full.')
-                : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
+              : quotaCas
+                ? (quotaCas.geste === 'scans'
+                    ? (fr ? 'Tes scans du mois sont faits.' : "This month's scans are done.")
+                    : quotaCas.geste === 'retouches'
+                      ? (fr ? 'Tes retouches du mois sont faites.' : "This month's touch-ups are done.")
+                      : (fr ? 'Tes annonces du mois sont créées.' : "This month's listings are created."))
+                : stockFull
+                  ? (fr ? 'Ton stock est plein.' : 'Your stock is full.')
+                  : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
       </Title>
 
       {repubCap && (
-        /* Registre aligné sur les cartes (02/09 soir) : le Free A quelque
-           chose (3/jour) et le Premium change le TOI-MÊME — jamais le mot
-           « plafond », jamais deux registres. Déclenchement (exclusif au
-           code plafond_republication_free) et télémétrie portés par
-           StockTab ; depuis le 02/09 soir la modale s'ouvre À CHAQUE
-           tentative refusée (verrou 1/jour retiré — décision Nico). */
+        /* Registre des cartes : le Free A eu quelque chose (50 offertes, à
+           vie) et le Premium change le VOLUME. Jamais le mot « plafond ».
+           Déclenchement (exclusif au code plafond_republication_free) et
+           télémétrie portés par StockTab. */
         <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
             {fr
-              ? <>En Free, tu peux republier {plafondRepub?.plafond ?? 3} annonces par jour — c'est fait pour aujourd'hui. Rien n'a été débité.</>
-              : <>On Free you can repost {plafondRepub?.plafond ?? 3} listings a day — that's done for today. Nothing was charged.</>}
+              ? <>Tes {plafondRepub?.plafond ?? 50} republications offertes ont toutes été utilisées. Rien n'a été décompté aujourd'hui.</>
+              : <>Your {plafondRepub?.plafond ?? 50} included repostings have all been used. Nothing was deducted today.</>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
             {fr
-              ? <>En Premium, tu republies tes annonces toi-même, quand tu veux — autant que tu veux, tous les jours.</>
-              : <>On Premium, you repost your listings yourself, whenever you want — as many as you want, every day.</>}
+              ? <>En Premium, tu repars avec {repubPremium} republications par mois — tu republies toi-même, quand tu veux.</>
+              : <>On Premium you get {repubPremium} repostings a month — you repost yourself, whenever you want.</>}
+          </div>
+        </div>
+      )}
+
+      {quotaCas && (
+        /* Même gabarit que les encarts republication : le FAIT (quota du
+           cycle atteint, rien décompté au-delà), puis ce que le palier
+           au-dessus change. Textes par geste, volumes lus dans K. */
+        <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
+            {quotaCas.geste === 'scans'
+              ? (fr ? <>Ton forfait comprend {quotaCas.plafond ?? K.quota_scan_free} scans par mois — ils sont tous utilisés. Rien n'a été décompté.</>
+                    : <>Your plan includes {quotaCas.plafond ?? K.quota_scan_free} scans a month — they are all used. Nothing was deducted.</>)
+              : quotaCas.geste === 'retouches'
+                ? (fr ? <>Ton forfait comprend {quotaCas.plafond ?? 0} retouches IA par mois — elles sont toutes utilisées. Rien n'a été décompté.</>
+                      : <>Your plan includes {quotaCas.plafond ?? 0} AI touch-ups a month — they are all used. Nothing was deducted.</>)
+                : (fr ? <>Ton forfait comprend {quotaCas.plafond ?? K.quota_annonces_free} annonces créées par mois — elles le sont toutes. Rien n'a été décompté.</>
+                      : <>Your plan includes {quotaCas.plafond ?? K.quota_annonces_free} created listings a month — they are all used. Nothing was deducted.</>)}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
+            {quotaCas.geste === 'scans'
+              ? (fr ? <>En Premium, tu passes à {K.quota_scan_premium} scans par mois.</>
+                    : <>On Premium you get {K.quota_scan_premium} scans a month.</>)
+              : quotaCas.geste === 'retouches'
+                ? (fr ? <>En Premium, tu passes à {K.quota_retouche_premium} retouches IA par mois.</>
+                      : <>On Premium you get {K.quota_retouche_premium} AI touch-ups a month.</>)
+                : (fr ? <>En Premium, tu passes à {K.quota_annonces_premium} annonces par mois, publiées sur les 4 plateformes.</>
+                      : <>On Premium you get {K.quota_annonces_premium} listings a month, published on all 4 platforms.</>)}
           </div>
         </div>
       )}
@@ -1084,24 +832,19 @@ export default function ConversionModal({
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
             {fr
-              ? <>En Premium, tu republies tes annonces toi-même, quand tu veux — autant que tu veux, tous les jours.</>
-              : <>On Premium, you repost your listings yourself, whenever you want — as many as you want, every day.</>}
+              ? <>En Premium, tu republies jusqu'à {repubPremium} annonces par mois — toi-même, quand tu veux.</>
+              : <>On Premium you repost up to {repubPremium} listings a month — yourself, whenever you want.</>}
           </div>
         </div>
       )}
 
       {/* Bloc commun AU-DESSUS des cartes (02/09 soir) : ce que fait le
           produit se lit avant de comparer les prix. */}
-      <ToutesOffresBlock fr={fr} K={K} />
+      <ToutesOffresBlock fr={fr} />
 
       {/* Vue comparative (2026-07-22) : les cartes d'emblée, empilées —
           ouvertes par la carte Free (le point de départ du lecteur). */}
-      <PlansStack
-        fr={fr} tiers={sellable} showFree
-        grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
-        lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
-        onUpgrade={choisirPalier}
-      />
+      <PlansStack fr={fr} tiers={sellable} showFree K={K} onUpgrade={choisirPalier} />
 
       <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>

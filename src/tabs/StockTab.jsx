@@ -2397,16 +2397,21 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 // Mêmes clés, même effacement au premier succès : on se contente d'AFFICHER
 // tout ce qui y est écrit, et un code inconnu s'affiche tel quel plutôt que de
 // redevenir un silence.
-const texteErreurRepublishAuto = (code, fr) => ({
-  pepites_insuffisantes: fr
-    ? 'La republication automatique est en pause : plus assez de Pépites (1 Pépite par annonce). Elle reprendra toute seule dès que ton solde le permettra — recharge ou attends tes Pépites mensuelles.'
-    : 'Automatic reposting is paused: not enough Nuggets (1 Nugget per listing). It will resume on its own as soon as your balance allows — top up or wait for your monthly Nuggets.',
+const texteErreurRepublishAuto = (code, fr) => {
+  // pepites_insuffisantes : marqueur d'AVANT la bascule quotas (02/09) — le
+  // serveur ne le pose plus jamais (prix à 0), mais des comptes en portent
+  // encore un d'avant, effacé seulement au prochain succès auto. On l'IGNORE
+  // (null → l'appelant n'affiche rien) plutôt que d'afficher à vie un
+  // problème de Pépites qui n'existe plus. AVANT le map : un null dans le
+  // map tomberait dans le repli générique via `??`.
+  if (code === 'pepites_insuffisantes') return null;
+  return ({
   maintenance_serveur: fr
-    ? "La republication automatique est en pause : elle est bloquée côté serveur. Ce n'est pas ton compte, tes annonces sont intactes et aucune Pépite n'a été débitée. Elle repartira toute seule dès que c'est rétabli."
-    : 'Automatic reposting is paused: it is blocked on our side. Nothing to do with your account — your listings are untouched and no Nuggets were charged. It will resume on its own once fixed.',
+    ? "La republication automatique est en pause : elle est bloquée côté serveur. Ce n'est pas ton compte, tes annonces sont intactes. Elle repartira toute seule dès que c'est rétabli."
+    : 'Automatic reposting is paused: it is blocked on our side. Nothing to do with your account — your listings are untouched. It will resume on its own once fixed.',
   article_ecarte: fr
-    ? "Une annonce n'a pas pu être republiée après 3 essais : elle a été mise de côté pour 24 h et la file est passée à la suivante. Ton annonce est toujours en ligne, rien n'a été supprimé et aucune Pépite n'a été débitée."
-    : 'One listing failed to repost after 3 attempts: it was set aside for 24 h and the queue moved on. Your listing is still online, nothing was deleted and no Nuggets were charged.',
+    ? "Une annonce n'a pas pu être republiée après 3 essais : elle a été mise de côté pour 24 h et la file est passée à la suivante. Ton annonce est toujours en ligne, rien n'a été supprimé."
+    : 'One listing failed to repost after 3 attempts: it was set aside for 24 h and the queue moved on. Your listing is still online, nothing was deleted.',
   plafond_auto_atteint: fr
     ? "Le plafond que tu as fixé pour aujourd'hui est atteint. La republication automatique reprendra demain."
     : 'Your daily cap for today has been reached. Automatic reposting will resume tomorrow.',
@@ -2423,8 +2428,9 @@ const texteErreurRepublishAuto = (code, fr) => ({
     ? "La republication automatique est réservée au plan Pro."
     : 'Automatic reposting is a Pro plan feature.',
 }[code] ?? (fr
-  ? `La republication automatique est en pause (${code}). Tes annonces sont intactes et aucune Pépite n'a été débitée. Écris-nous si ça dure.`
-  : `Automatic reposting is paused (${code}). Your listings are untouched and no Nuggets were charged. Contact us if it lasts.`));
+  ? `La republication automatique est en pause (${code}). Tes annonces sont intactes. Écris-nous si ça dure.`
+  : `Automatic reposting is paused (${code}). Your listings are untouched. Contact us if it lasts.`));
+};
 
 function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
   const fr = lang !== 'en';
@@ -2564,8 +2570,10 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
           {fr ? 'Voir les offres' : 'See plans'}
         </button>
         <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.5)', textAlign: 'center', lineHeight: 1.4 }}>
-          {fr ? '1 Pépite par annonce republiée, comme une republication manuelle'
-              : '1 Nugget per reposted listing, same as a manual repost'}
+          {/* Bascule quotas (02/09) : plus de prix à la Pépite — la
+              republication auto puise dans le volume mensuel du forfait. */}
+          {fr ? 'Comprise dans les republications mensuelles de ton forfait'
+              : 'Included in your plan’s monthly repostings'}
         </div>
       </div>
     );
@@ -2592,7 +2600,9 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
             : 'Automation switched itself off: your account is no longer Pro. Re-enable it in one click once you are Pro again.'}
         </div>
       )}
-      {cfg?.derniere_erreur && (
+      {/* Bascule quotas (02/09) : un texte null (pepites_insuffisantes
+          résiduel d'avant la bascule) ne rend RIEN — jamais un cadre vide. */}
+      {cfg?.derniere_erreur && texteErreurRepublishAuto(cfg.derniere_erreur, fr) && (
         <div style={{ fontSize: 12, color: '#8C2F28', background: '#FBEDEC', border: '1px solid #EFC2BE', borderRadius: 10, padding: '8px 10px', lineHeight: 1.5 }}>
           {texteErreurRepublishAuto(cfg.derniere_erreur, fr)}
         </div>
@@ -2610,11 +2620,9 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
             : `On activation: ${eligibles != null ? `${eligibles} eligible listing${eligibles > 1 ? 's' : ''} today` : '…'} (live for over ${ageJours} d), reposted at up to ${plafond}/day — one per extension pass, with Chrome open. Turn it off anytime.`}
         </div>
       )}
-      <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.55, background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 10, padding: '8px 10px' }}>
-        {fr
-          ? <>💎 Chaque republication automatique coûte <strong>1 Pépite</strong>, comme une republication manuelle. Au plafond actuel de {plafond}/jour, cela représente au maximum <strong>~{plafond * 30} Pépites par mois</strong> — en pratique moins : seules les annonces éligibles partent.</>
-          : <>💎 Each automatic repost costs <strong>1 Nugget</strong>, same as a manual repost. At your current cap of {plafond}/day, that is at most <strong>~{plafond * 30} Nuggets per month</strong> — in practice fewer: only eligible listings go.</>}
-      </div>
+      {/* (Le bloc « 💎 1 Pépite par republication » est mort le 02/09 avec la
+          bascule quotas : la republication ne se facture plus, elle se compte
+          dans le volume mensuel du forfait.) */}
       {/* ⚠️ `key` sur les deux champs : ce sont des inputs NON CONTRÔLÉS
           (defaultValue), et React n'écrit defaultValue dans le DOM qu'au
           MONTAGE. Sans clé, le champ se peint à la valeur par défaut pendant
@@ -3105,7 +3113,9 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
     plafonne: pct > 0 && prixActuel != null && Math.floor(prixActuel * (1 - pct / 100)) < REPUB_PLANCHER_EUR,
   }));
   const plafonnes = lotApercu.filter(a => a.plafonne);
-  const cout = <PepiteAmount value={items.length * (prixUnitaire ?? 1)} />;
+  // Bascule quotas (02/09) : prixUnitaire null = republication non facturée →
+  // aucun coût affiché (fragment vide), le libellé reste « Republier … ».
+  const cout = prixUnitaire != null ? <PepiteAmount value={items.length * prixUnitaire} /> : null;
   const confirmer = () => {
     onConfirm(items.map(({ item, prixActuel }) => {
       let prix = null; // null = garder le prix de l'annonce
@@ -3180,8 +3190,8 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
         <button onClick={confirmer}
           style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: 'linear-gradient(120deg,#2F9E90,#1B6E62)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           {solo
-            ? (fr ? <>Republier sur Vinted{prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''} · {cout}</> : <>Repost on Vinted{prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''} · {cout}</>)
-            : (fr ? <>Republier les {items.length} sur Vinted{pct > 0 ? ` à −${pct} %` : ''} · {cout}</> : <>Repost {items.length} on Vinted{pct > 0 ? ` at −${pct}%` : ''} · {cout}</>)}
+            ? (fr ? <>Republier sur Vinted{prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''}{cout && <> · {cout}</>}</> : <>Repost on Vinted{prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''}{cout && <> · {cout}</>}</>)
+            : (fr ? <>Republier les {items.length} sur Vinted{pct > 0 ? ` à −${pct} %` : ''}{cout && <> · {cout}</>}</> : <>Repost {items.length} on Vinted{pct > 0 ? ` at −${pct}%` : ''}{cout && <> · {cout}</>}</>)}
         </button>
         {/* (Le CTA « Gratuite et illimitée avec Premium » du 07/08 est mort le
             08/08 avec la gratuité plan : la republication coûte le même prix
@@ -3242,6 +3252,9 @@ const StockTab = memo(function StockTab({
   // premium_cta_click declencheur:'automatique' — cf. App.jsx). Optionnelle :
   // absente, le refus plafond_republication_free retombe sur le message inline.
   ouvrirModalePlafond = null,
+  // Bascule quotas (02/09) : état des compteurs (quotas_etat via App) — sert
+  // le compteur de republications restantes sur le bouton de lot.
+  quotas = null,
   // Lot 2 : « Ajouter un article » de l'état vide → création par photo (Lens).
   onAddByPhoto = null,
   // Optionnelle : point d'entrée explicite après un import de dressing réussi.
@@ -3474,7 +3487,9 @@ const StockTab = memo(function StockTab({
     if (!republishActif) return;
     let stale = false;
     supabase.from('coin_config').select('value').eq('key', 'price_republish').maybeSingle()
-      .then(({ data }) => { if (!stale && Number.isFinite(data?.value)) setRepublishPrice(data.value); });
+      // Bascule quotas (02/09) : prix 0 = geste non facturé → null, et tous
+      // les « (1 🥜) » s'éteignent d'eux-mêmes (les rendus testent > 0/null).
+      .then(({ data }) => { if (!stale && Number.isFinite(data?.value) && data.value > 0) setRepublishPrice(data.value); });
     return () => { stale = true; };
   }, [republishActif]);
   // ── Maintenance republication (2026-08-13) ────────────────────────────────
@@ -3554,7 +3569,12 @@ const StockTab = memo(function StockTab({
             : 'The extension on your computer needs version 0.5.0 or newer to repost.',
           republish_en_cours: lang === 'fr' ? 'Une republication est déjà en cours sur cet article.' : 'A repost is already running for this item.',
           cadence_24h: lang === 'fr' ? 'Déjà republié il y a moins de 24 h — une republication par article et par jour.' : 'Already reposted less than 24 h ago — one repost per item per day.',
-          insufficient_coins: lang === 'fr' ? `Il manque des Pépites (${res.price ?? 1} nécessaire).` : `Not enough Nuggets (${res.price ?? 1} needed).`,
+          // Bascule quotas (02/09) : insufficient_coins est mort (prix à 0).
+          // Le plafond MENSUEL des payants s'affiche en inline sobre — ils
+          // paient déjà, pas de modale de conversion ici.
+          plafond_republication_mensuel: lang === 'fr'
+            ? `Tes ${res.plafond ?? ''} republications du mois sont faites — ça repart au prochain cycle.`
+            : `Your ${res.plafond ?? ''} monthly repostings are done — back next cycle.`,
         };
         setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: res.message ?? raisons[res.reason] ?? res.error ?? (lang === 'fr' ? 'Republication impossible.' : 'Repost failed.') } }));
         return;
@@ -4135,9 +4155,11 @@ const StockTab = memo(function StockTab({
     }
     if (pubRes?.allowed === false) {
       const raisons = {
+        // insufficient_coins : mort avec la bascule quotas (02/09, prix à 0) —
+        // l'entrée reste pour un éventuel retour arrière des prix.
         insufficient_coins: lang === 'en'
-          ? 'Not enough Nuggets for a publication (1 needed). Nothing was charged.'
-          : 'Pépites insuffisantes pour une publication (1 requise). Rien n’a été débité.',
+          ? 'Not enough Nuggets for a publication. Nothing was charged.'
+          : 'Pépites insuffisantes pour une publication. Rien n’a été débité.',
         already_published: lang === 'en'
           ? 'Already live or queued on this platform — nothing was charged.'
           : 'Déjà en ligne (ou en file) sur cette plateforme — rien n’a été débité.',
@@ -5523,14 +5545,19 @@ const StockTab = memo(function StockTab({
                     )}
                   </span>
                   <span className="sub">
+                    {/* Bascule quotas (02/09) : plus de « 1 Pépite par
+                        annonce » — le sous-titre porte le COMPTEUR de
+                        republications (restantes à vie en Free, restantes du
+                        mois en Premium/Pro, rien en illimité). */}
                     {modeRepublish
-                      ?(lang==='fr'?"Coche les annonces à faire remonter, puis lance — 1 Pépite par annonce."
-                          :"Tick the listings to bump, then launch — 1 Nugget each.")
+                      ?(lang==='fr'?"Coche les annonces à faire remonter, puis lance."
+                          :"Tick the listings to bump, then launch.")
                       :repubLotReserve
                         ?(lang==='fr'?"Republier plusieurs annonces d'un geste est un avantage des forfaits payants."
                             :"Reposting several listings in one move is a paid-plan perk.")
-                        :(lang==='fr'?"Supprime puis recrée chaque annonce à l'identique pour la faire remonter dans le fil Vinted."
-                            :"Deletes then recreates each listing identically to bump it in the Vinted feed.")}
+                        :(lang==='fr'
+                            ?`Supprime puis recrée chaque annonce pour la faire remonter dans le fil Vinted.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} restantes${quotas.republication.mode==='avie'?` sur ${quotas.republication.plafond} offertes`:' ce mois-ci'}.`:''}`
+                            :`Deletes then recreates each listing to bump it in the Vinted feed.${quotas?.republication?.restantes!=null?` ${quotas.republication.restantes} left${quotas.republication.mode==='avie'?` of ${quotas.republication.plafond} included`:' this month'}.`:''}`)}
                   </span>
                 </span>
               </button>
@@ -5544,9 +5571,11 @@ const StockTab = memo(function StockTab({
                 ):(
                   <>
                     <span className="lbl">
+                      {/* Bascule quotas (02/09) : le coût en Pépites du lot
+                          est mort — reste le compte et la durée estimée. */}
                       {lang==='fr'
-                        ?<>{repubSel.size} sélectionné{repubSel.size>1?"s":""} · <PepiteAmount value={repubSel.size}/> · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>
-                        :<>{repubSel.size} selected · <PepiteAmount value={repubSel.size}/> · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>}
+                        ?<>{repubSel.size} sélectionné{repubSel.size>1?"s":""} · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>
+                        :<>{repubSel.size} selected · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>}
                     </span>
                     <button className="apply" disabled={repubMaintenance||repubSel.size===0}
                       style={repubMaintenance?{opacity:0.45,cursor:"default"}:undefined}

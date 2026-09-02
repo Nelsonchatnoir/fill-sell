@@ -476,6 +476,9 @@ const LensTab = memo(function LensTab({
   openUpgradeModal,
   supabase, saveLensItemForListing, lensInventaireId, onStepperOpenChange,
   resetLensParcours,
+  // Bascule quotas (02/09) : compteurs du cycle (quotas_etat via App) — sert
+  // le « N scans restants ce mois-ci » sous le CTA d'analyse.
+  quotas = null,
   extensionNeverSeen = null,
   // Battement serveur de l'extension — relayé au stepper pour la ligne
   // « ordinateur éteint » au-dessus du CTA Publier (2026-08-13).
@@ -526,7 +529,9 @@ const LensTab = memo(function LensTab({
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
-  const lensPrice=Number.isFinite(coinCfg?.price_lens_overflow)?coinCfg.price_lens_overflow:null;
+  // Bascule quotas (02/09) : prix 0 = scan non facturé → null, et les mentions
+// « N Pépites l'analyse » s'éteignent d'elles-mêmes (rendus gardés != null).
+const lensPrice=Number.isFinite(coinCfg?.price_lens_overflow)&&coinCfg.price_lens_overflow>0?coinCfg.price_lens_overflow:null;
   // (grantMensuel et coinBalance ont vécu une journée ici — le solde vit dans
   // l'en-tête global depuis le 01/09 au soir, App.jsx lit coinWallet
   // directement.)
@@ -879,12 +884,20 @@ const LensTab = memo(function LensTab({
             :(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
         </PrimaryButton>
 
-        {/* Tarif payant-par-scan (2026-07-23) — plus de quota ni de compteur.
-            Prix lu de coin_config depuis le 2026-09-01 (plus de « 6 » en dur) :
-            la ligne ne s'affiche que le prix chargé. */}
+        {/* Tarif payant-par-scan (2026-07-23) — éteint par la bascule quotas
+            (02/09, prix 0 → lensPrice null) ; conservé pour un retour
+            arrière des prix. À la place : le COMPTEUR de scans du cycle
+            (quotas_etat via App), sobre, jamais alarmiste. */}
         {lensPrice!=null&&(
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578"}}>
             <PepiteIcon size={11} /> {lang==="en"?`${lensPrice} Nuggets per scan`:`${lensPrice} Pépites l'analyse`}
+          </div>
+        )}
+        {lensPrice==null&&quotas?.scans?.plafond!=null&&(
+          <div style={{textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578",fontWeight:600}}>
+            {lang==="en"
+              ?`${quotas.scans.restantes} scan${quotas.scans.restantes>1?"s":""} left this month`
+              :`${quotas.scans.restantes} scan${quotas.scans.restantes>1?"s":""} restant${quotas.scans.restantes>1?"s":""} ce mois-ci`}
           </div>
         )}
         </>)}

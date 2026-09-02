@@ -364,15 +364,21 @@ export default function Legal() {
               : <>Le plan gratuit permet de gérer jusqu'à <span className="legal-strong">200 articles</span> en stock. L'accès au dashboard, au calcul des marges et à l'historique des ventes est inclus sans limite de durée.</>}
           </p>
 
+          {/* Bascule quotas (02/09) : la description des plans dit désormais
+              les VOLUMES PAR CYCLE réellement servis (annonces IA, scans,
+              republications, retouches). Les deux mensonges historiques
+              (« sans frais supplémentaires », « 50/jour réglable défaut
+              10 ») sont morts avec elle. Toute évolution des volumes est
+              couverte par la clause d'évolution de la grille. */}
           {en ? (
-            <p className="legal-p"><span className="legal-strong">3.4 Premium and Pro Subscriptions</span><br />
-              The Premium plan is offered at <span className="legal-strong">€12.99 per month</span>, no commitment required. It gives access to unlimited items, advanced analytics, and includes manual reposting of Vinted listings at no extra charge. The Pro plan (<span className="legal-strong">€29.99 per month</span>) additionally includes automatic reposting, limited to a maximum of <span className="legal-strong">50 reposts per day</span>; this cap is adjustable by the user in the app and set to 10 by default. Reposting (manual and automatic) is being progressively rolled out and may not yet be available on all accounts. Its effects are described in Article 8 of the Terms of Sale below.<br /><br />
+            <p className="legal-p"><span className="legal-strong">3.4 Premium, Pro and Business Subscriptions</span><br />
+              Paid plans are offered with no commitment: Premium at <span className="legal-strong">€12.99 per month</span>, Pro at <span className="legal-strong">€29.99 per month</span>, Business at <span className="legal-strong">€59.99 per month</span>. Each plan includes monthly volumes of actions, displayed in the app and adjustable over time: AI listing creations published to the 4 supported platforms, Lens scans, Vinted repostings (Premium: monthly volume; Pro: monthly volume with optional automatic reposting; Business: unlimited repostings with automatic reposting) and AI photo touch-ups. The free plan includes reduced volumes and a one-time allowance of repostings. Current volumes for each plan are those displayed in the app at the time of use. Reposting effects are described in Article 8 of the Terms of Sale below.<br /><br />
               <span className="legal-strong">On web:</span> payment is securely processed by <span className="legal-strong">Stripe</span>.<br /><br />
               <span className="legal-strong">On iOS:</span> payment is managed via the Apple App Store (In-App Purchase). The subscription automatically renews unless cancelled at least 24 hours before the end of the current period. You can manage or cancel your subscription in your Apple account settings.
             </p>
           ) : (
-            <p className="legal-p"><span className="legal-strong">3.4 Abonnements Premium et Pro</span><br />
-              Le plan Premium est proposé au tarif de <span className="legal-strong">12,99 € TTC par mois</span>, sans engagement de durée. Il donne accès à des articles illimités et aux statistiques avancées, et inclut la republication manuelle d'annonces Vinted sans frais supplémentaires. Le plan Pro (<span className="legal-strong">29,99 € TTC par mois</span>) inclut en outre la republication automatique, limitée à <span className="legal-strong">50 republications par jour</span> au maximum ; ce plafond est réglable par l'utilisateur dans l'application et fixé à 10 par défaut. La republication (manuelle et automatique) est en cours de déploiement progressif et peut ne pas être encore disponible sur tous les comptes. Ses effets sont décrits à l'article 8 des CGV ci-dessous.<br /><br />
+            <p className="legal-p"><span className="legal-strong">3.4 Abonnements Premium, Pro et Business</span><br />
+              Les plans payants sont proposés sans engagement : Premium à <span className="legal-strong">12,99 € TTC par mois</span>, Pro à <span className="legal-strong">29,99 € TTC par mois</span>, Business à <span className="legal-strong">59,99 € TTC par mois</span>. Chaque plan comprend des volumes mensuels d'actions, affichés dans l'application et susceptibles d'évoluer : créations d'annonces par IA publiées sur les 4 plateformes prises en charge, analyses Lens, republications Vinted (Premium : volume mensuel ; Pro : volume mensuel avec republication automatique en option ; Business : republications illimitées avec republication automatique) et retouches photo par IA. Le plan gratuit comprend des volumes réduits et une dotation unique de republications. Les volumes en vigueur pour chaque plan sont ceux affichés dans l'application au moment de l'utilisation. Les effets de la republication sont décrits à l'article 8 des CGV ci-dessous.<br /><br />
               <span className="legal-strong">Sur le web :</span> le paiement est traité de manière sécurisée par <span className="legal-strong">Stripe</span>.<br /><br />
               <span className="legal-strong">Sur iOS :</span> le paiement est géré via l'App Store Apple (In-App Purchase). L'abonnement se renouvelle automatiquement sauf résiliation au moins 24h avant la fin de la période en cours. Vous pouvez gérer ou annuler votre abonnement dans les réglages de votre compte Apple.
             </p>
@@ -415,6 +421,15 @@ export default function Legal() {
             la numérotation des sections existantes (4 RGPD, 8 Extension…) est
             référencée ailleurs (fiches stores, liens du footer) et ne bouge pas. */}
         <Section id="cgv" icon="💎" title={en ? 'Terms of Sale — Nuggets and paid services' : 'Conditions générales de vente (CGV) — Pépites et services payants'}>
+          {/* Bascule quotas (02/09) : les Pépites ne sont plus ni vendues ni
+              requises — les articles ci-dessous restent PUBLIÉS pour les
+              achats passés (soldes achetés honorés, remboursements,
+              rétractation). L'avis daté ci-dessous le dit à qui les lit. */}
+          <p className="legal-p" style={{ fontStyle: 'italic' }}>
+            {en
+              ? 'Notice (September 2, 2026): FillSell plans are now expressed as monthly action volumes (see 3.4). Nuggets are no longer offered for sale and are no longer required to use the service. The articles below remain applicable to Nugget packs purchased before that date: purchased balances remain honored under the conditions described.'
+              : "Avis (2 septembre 2026) : les forfaits FillSell s'expriment désormais en volumes mensuels d'actions (voir 3.4). Les Pépites ne sont plus proposées à la vente et ne sont plus requises pour utiliser le service. Les articles ci-dessous restent applicables aux packs de Pépites achetés avant cette date : les soldes achetés restent honorés dans les conditions décrites."}
+          </p>
           {cgvTexts[en ? 'en' : 'fr'].map((art, ai) => (
             <div key={art.t} style={{ marginBottom: ai === cgvTexts[en ? 'en' : 'fr'].length - 1 ? 0 : 18 }}>
               <p className="legal-p"><span className="legal-strong">{art.t}</span></p>

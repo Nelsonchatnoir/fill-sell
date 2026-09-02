@@ -90,71 +90,37 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
   }, [onClose]);
 
   const K = cfg || COIN_CONFIG_FALLBACK;
+  // Bascule quotas (02/09) : le plan se décrit en GESTES RÉELS lus dans
+  // coin_config — plus une Pépite à l'écran. Le palier courant pilote les clés.
+  const palierCourant = isBusiness ? 'business' : isPro ? 'pro' : 'premium';
+  const qAnnonces = K[`quota_annonces_${palierCourant}`];
+  const qRetouches = K[`quota_retouche_${palierCourant}`] ?? 0;
+  const qRepub = K[`quota_republication_${palierCourant}`];
   const lensCost = K.price_lens_overflow;
-  const grant = isBusiness ? K.monthly_grant_business : isPro ? K.monthly_grant_pro : K.monthly_grant_premium;
-  const lensScans = lensCost > 0 ? Math.floor(grant / lensCost) : 0;
   // Carte sombre pour les deux paliers hauts (Pro or, Business platine) ; la
   // carte Premium reste claire. Une seule variable pour toutes les bascules de
   // style, au lieu de répéter `isPro || isBusiness` à chaque propriété.
   const sombre = isPro || isBusiness;
-  // Grille 2 axes (2026-08-04, prix 2026-08-08) : publication
-  // price_per_platform Pépites/plateforme — MÊME PRIX POUR TOUS LES PALIERS —
-  // retouche photos en option (0/9/32, une fois par article).
-  const pubUnit = K.price_per_platform;
-  const retouchMax = K.price_ia_advanced;
-  // Coût de la republication — identique pour TOUS les paliers (coin_config,
-  // vérifié en base le 27/08 : price_republish = 1). Affiché sur les trois.
-  const repubPrice = K.price_republish;
-  // Équivalence « articles publiés partout » du grant courant — même formule
-  // que articlesParMois (ConversionModal) : génération + 4 plateformes.
-  const coutArticle = K.price_generate + 4 * pubUnit;
-  const articles = coutArticle > 0 ? Math.floor(grant / coutArticle) : 0;
-  // Upsell Pro (Premium uniquement) — mêmes formules que ConversionModal.
-  const grantPro = K.monthly_grant_pro;
-  const grantPrem = K.monthly_grant_premium;
-  const proFactor = grantPrem > 0 ? Math.round((grantPro / grantPrem) * 10) / 10 : null;
-  const lensScansPro = lensCost > 0 ? Math.floor(grantPro / lensCost) : 0;
-
-  // ── SQUELETTE COMMUN (07/08 soir, validé Nico) — mêmes rubriques, même
-  // ordre, mêmes tournures que les cartes de ConversionModal :
-  // stock · publication · republication · Lens · Excel · voix · support
-  // (support : Business dit « Support prioritaire — tes demandes passent en
-  // premier » depuis le 2026-08-27, cf. le commentaire en bas de liste).
-  // Seule la VALEUR change selon le plan affiché. Toute retouche d'un
-  // libellé se répercute dans les trois endroits (+ FAQ landing).
+  // ── LISTE DU PLAN COURANT (bascule quotas 02/09) — mêmes registres que les
+  // cartes de ConversionModal : gestes réels, volumes lus dans coin_config,
+  // le mot « plafond » banni, la cadence 45/j de l'auto jamais affichée.
   const features = [
-    fr ? 'Stock illimité' : 'Unlimited stock',
-    // Grille 2026-08-08 : plus AUCUN prix conditionné au palier — la ligne
-    // tarifaire est UNIQUE (coin_config), la branche isPro « publication
-    // OFFERTE » est morte le jour même de sa naissance. Seule
-    // l'automatisation de la republication reste un avantage Pro
-    // (fonctionnalité, pas prix).
-    fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${K.price_generate} Pépite${K.price_generate > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
-       : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${K.price_generate} Nugget${K.price_generate > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-    // Coût de la republication AFFICHÉ sur les trois paliers (2026-08-27) :
-    // price_republish est identique pour tous — le taire sur Business
-    // laissait croire à une republication gratuite ou illimitée. Seule
-    // l'AUTOMATISATION distingue les paliers (Pro : opt-in ; Business :
-    // automatique — même moteur É6, réel en prod), jamais le prix.
-    // Squelette UNIFORME (27/08 soir, décision Nico) : « Republication Vinted
-    // <mode> — N Pépite(s) par annonce » sur les trois paliers, queues
-    // supprimées — seul le MODE change, car c'est la vraie différence.
+    fr ? `${qAnnonces} annonces créées et publiées sur les 4 plateformes par mois`
+       : `${qAnnonces} listings created and published on all 4 platforms a month`,
     isBusiness
-      ? (fr ? `Republication Vinted automatique — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
-            : `Automatic Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`)
-      : isPro
-        ? (fr ? `Republication Vinted automatique si tu l'actives — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
-              : `Automatic Vinted reposting if you turn it on — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`)
-        : (fr ? `Republication Vinted en un clic — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
-              : `One-tap Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`),
-    // Prix unitaire SEUL (2026-08-27) : « Environ N analyses par mois » ici,
-    // face aux « ≈ N articles » du bandeau de grant, se lisait comme DEUX
-    // quotas cumulables. Les équivalences vivent ENSEMBLE sous le grant,
-    // reliées par OU — une réserve unique, des exemples alternatifs.
-    fr ? `Analyses Lens — ${lensCost} Pépites l'analyse`
-       : `Lens scans — ${lensCost} Nuggets each`,
+      ? (fr ? 'Republications Vinted illimitées — tu republies quand tu veux, autant que tu veux'
+            : 'Unlimited Vinted repostings — repost whenever you want, as much as you want')
+      : (fr ? `${(qRepub ?? 0).toLocaleString('fr-FR')} republications Vinted par mois`
+            : `${(qRepub ?? 0).toLocaleString('en-US')} Vinted repostings a month`),
+    ...(isPro || isBusiness
+      ? [fr ? 'Republication automatique — tes annonces remontent toutes seules, sans que tu y touches'
+            : 'Automatic reposting — your listings bump themselves, without you touching anything']
+      : []),
+    ...(qRetouches > 0
+      ? [fr ? `Retouche IA — ${qRetouches} photos embellies par mois` : `AI touch-up — ${qRetouches} enhanced photos a month`]
+      : []),
     fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
-    fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+    fr ? 'Commandes vocales' : 'Voice commands',
     // Support — « Support dédié » reste RETIRÉ (09/08 : on ne vend pas ce que
     // l'app ne fait pas — aucun canal dédié, aucun interlocuteur nommé).
     // RÉVISÉ le 2026-08-27 (décision Nico) : Business à 59,99 € ne peut pas
@@ -218,39 +184,8 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
             background: C.paper, border: `1.5px solid ${C.teal}`, borderRadius: 22,
             padding: '18px 18px 20px', boxShadow: '0 12px 30px -16px rgba(27,110,98,0.4)',
           }}>
-            <div style={isBusiness ? {
-              background: 'rgba(155,232,220,0.10)',
-              border: '1px solid rgba(174,233,223,0.28)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
-            } : isPro ? {
-              background: 'rgba(232,149,109,0.14)',
-              border: '1px solid rgba(214,178,96,0.3)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
-            } : {
-              background: 'rgba(47,158,144,0.10)',
-              border: '1px solid rgba(47,158,144,0.22)', borderRadius: 12, padding: '9px 12px', marginBottom: 14,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <PepiteIcon size={18} />
-                <span style={isBusiness ? {
-                  fontSize: 12.5, fontWeight: 700,
-                  background: 'linear-gradient(120deg,#F4FFFD,#9BE8DC 55%,#F2C98A)',
-                  WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
-                } : { fontSize: 12.5, fontWeight: 700, color: isPro ? '#F2C98A' : C.tealDeep }}>
-                  {/* « N Pépites/mois » — même formulation que les cartes de
-                      ConversionModal (uniformisation 27/08 soir). */}
-                  {fr ? `${grant} Pépites/mois` : `${grant} Nuggets/mo`}
-                </span>
-              </div>
-              {/* Équivalences ALTERNATIVES d'une réserve unique (27/08) —
-                  mêmes mots que les cartes de ConversionModal. */}
-              <div style={{
-                fontSize: 10.5, fontWeight: 600, marginTop: 4, lineHeight: 1.45,
-                color: isBusiness ? 'rgba(246,245,241,0.75)' : isPro ? 'rgba(242,201,138,0.85)' : C.tealDeep,
-                ...(sombre || isBusiness ? {} : { opacity: 0.85 }),
-              }}>
-                {fr ? `Une seule réserve pour tout — par exemple ≈ ${articles} articles publiés partout OU ≈ ${lensScans} analyses Lens.`
-                    : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
-              </div>
-            </div>
+            {/* (Le bandeau « N Pépites/mois » et ses équivalences sont MORTS
+                le 02/09 avec la bascule quotas — la liste dit les volumes.) */}
             <Features dark={sombre} items={features} />
           </div>
 
@@ -264,14 +199,10 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
               }}>
                 {fr ? 'Le palier ultime' : 'The ultimate tier'}
               </div>
-              <BusinessPlanCard
-                fr={fr} grantBusiness={K.monthly_grant_business} lensCost={lensCost}
-                lensScans={lensCost > 0 ? Math.floor(K.monthly_grant_business / lensCost) : 0}
-                articles={coutArticle > 0 ? Math.floor(K.monthly_grant_business / coutArticle) : 0}
-                repubPrice={repubPrice}
-                pubUnit={pubUnit} genPrice={K.price_generate}
-                onUpgrade={() => onUpgradeBusiness()}
-              />
+              {/* Bascule quotas (02/09) : signature minimale fr/K/onUpgrade —
+                  les anciennes props de grant n'existent plus (le crash
+                  ReferenceError de la 2.4.6 ne se rejoue pas). */}
+              <BusinessPlanCard fr={fr} K={K} onUpgrade={() => onUpgradeBusiness()} />
             </>
           )}
 
@@ -283,19 +214,10 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
               }}>
                 {fr ? 'Passe au niveau supérieur' : 'Take it further'}
               </div>
-              {/* pubUnit/retouchMax/genPrice = la signature RÉELLE de
-                  ProPlanCard. L'appel passait pubMin/pubMax, variables
-                  inexistantes ici depuis la grille 2 axes → ReferenceError au
-                  rendu : la modale « mon plan » CRASHAIT pour tout Premium
-                  non-Pro (bug embarqué dans l'OTA 2.4.6, corrigé 08/08). */}
-              <ProPlanCard
-                fr={fr} grantPro={grantPro} lensCost={lensCost} lensScans={lensScansPro}
-                articles={coutArticle > 0 ? Math.floor(grantPro / coutArticle) : 0}
-                repubPrice={repubPrice}
-                proFactor={proFactor} showFactor
-                pubUnit={pubUnit} retouchMax={retouchMax} genPrice={K.price_generate}
-                onUpgrade={() => onUpgradePro()}
-              />
+              {/* Bascule quotas (02/09) : signature minimale fr/K/onUpgrade —
+                  les variables de grant sont mortes, et la leçon de la 2.4.6
+                  (ReferenceError au rendu sur des props fantômes) tient. */}
+              <ProPlanCard fr={fr} K={K} onUpgrade={() => onUpgradePro()} />
             </>
           )}
 

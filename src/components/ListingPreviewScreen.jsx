@@ -1273,20 +1273,16 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
   const MAX = MAX_PHOTOS;
   const drag = usePhotoDrag(onReorderPhotos);
 
-  // Système de pièces : plus de verrou par tier — chaque option affiche son
-  // prix en pièces (coin_config via coinPrices, jamais hardcodé). Libellés et
-  // descriptions différencient clairement les 3 niveaux.
+  // Bascule quotas (02/09) : le niveau AVANCÉ est SUPPRIMÉ du produit — il ne
+  // reste que la légère, renommée « Retouche IA » partout (serveur : un vieux
+  // client qui enverrait encore ia_advanced est dégradé en douceur vers la
+  // légère par generate-listing). Le choix de fond (avancé uniquement) meurt
+  // avec lui. Deux options, plus de prix affiché (les gestes se comptent au
+  // forfait, pas en Pépites).
   const retouchOptions = [
     {
-      id: "ia_advanced",
-      label: lang === "fr" ? "Retouche avancée" : "Advanced editing",
-      desc: lang === "fr"
-        ? "Rendu professionnel adapté à la catégorie, choix d'un fond pro (studio, béton, lin, parquet) et léger défroissage naturel des vêtements. L'objet reste fidèle : logo, couleurs et défauts sont conservés."
-        : "Professional, category-aware result, choice of a pro background (studio, concrete, linen, parquet) and light natural de-wrinkling for clothing. The item stays true: logo, colors and flaws are preserved.",
-    },
-    {
       id: "ia_light",
-      label: lang === "fr" ? "Retouche légère" : "Light editing",
+      label: lang === "fr" ? "Retouche IA" : "AI touch-up",
       desc: lang === "fr"
         ? "Améliore la lumière, la netteté et les couleurs de vos photos. Le fond et l'objet restent tels quels."
         : "Improves lighting, sharpness and colors. Background and item stay as-is.",
@@ -1659,8 +1655,11 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         </div>
       )}
 
-      {/* Solde de pièces + accès au store */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:24, padding:"10px 14px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}` }}>
+      {/* Solde de pièces + accès au store — MASQUÉ depuis la bascule quotas
+          (02/09) : les Pépites ne gouvernent plus rien et ne s'affichent plus.
+          Le bloc reste dans l'arbre (display none) pour un retour arrière à
+          une ligne ; wallet/coinBalance continuent d'exister côté données. */}
+      <div style={{ display:"none", alignItems:"center", justifyContent:"space-between", marginBottom:24, padding:"10px 14px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}` }}>
         <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, display:"inline-flex", alignItems:"center", gap:5, flexWrap:"wrap" }}>
           {lang === 'en' ? 'Your Nuggets:' : 'Tes Pépites :'}{' '}
           <strong style={{ color:T.ink }}><PepiteAmount value={coinBalance} size={15} /></strong>
@@ -3421,12 +3420,13 @@ export default function ListingPreviewScreen({
   }, [initialListing, modeleConfirme]);
 
   // Step 1 — option de retouche
-  const [photoOption, setPhotoOption] = useState(() =>
-    // Photos déjà retouchées : le défaut est « réutiliser » (option original =
-    // aucun pipeline relancé, part photos 0) — jamais re-proposer par défaut
-    // une retouche déjà payée.
-    draft?.photoOption ?? (alreadyRetouched ? "original" : (isPro ? "ia_advanced" : isPremium ? "ia_light" : "original"))
-  );
+  // Bascule quotas (02/09) : le niveau AVANCÉ n'existe plus — un brouillon ou
+  // un défaut qui portait ia_advanced est ramené sur la Retouche IA (légère).
+  // Free = 0 retouche au forfait → défaut original.
+  const [photoOption, setPhotoOption] = useState(() => {
+    const brut = draft?.photoOption ?? (alreadyRetouched ? "original" : (isPremium || isPro ? "ia_light" : "original"));
+    return brut === "ia_advanced" ? "ia_light" : brut;
+  });
   // Nouvelles photos PRÉSENTES dans la session (step 0 ou step 1) : le gel
   // « déjà retouchées » ne vaut que pour les images existantes — dès qu'un
   // vrai travail neuf entre, les options payantes réapparaissent (option A).
@@ -3735,7 +3735,12 @@ export default function ListingPreviewScreen({
     supabase.from("coin_config").select("key, value").then(({ data }) => {
       const p = {};
       for (const row of data ?? []) {
-        if (row.key.startsWith("price_")) p[row.key.slice(6)] = row.value;
+        // Bascule quotas (02/09) : un prix à 0 = geste NON facturé → on le
+        // pose à null, et TOUS les affichages « (N 🥜) », jauges et
+        // pré-checks de solde du stepper s'éteignent d'eux-mêmes (ils
+        // testent déjà != null / > 0). Remonter un prix en config les
+        // rallume tels quels — c'est la réversibilité.
+        if (row.key.startsWith("price_")) p[row.key.slice(6)] = row.value > 0 ? row.value : null;
         if (row.key === "free_stock_limit" && Number.isFinite(row.value)) setStockLimitCfg(row.value);
       }
       setCoinPrices(p);
@@ -3939,11 +3944,12 @@ export default function ListingPreviewScreen({
       if (fnErr) {
         let err = null;
         try { err = await fnErr.context?.json(); } catch { /* body non-JSON */ }
-        if (err?.error === "insufficient_coins") {
-          ouvrirQuotaModal("plafond_pepites_lens", {
-            trigger: "lens", targetTiers: ["premium","pro"],
-            coinPrice: err.price ?? coinPrices?.lens_overflow ?? null,
-            coinBalance: err.balance ?? coinBalance,
+        // Bascule quotas (02/09) : le refus est le quota de scans du cycle —
+        // insufficient_coins est mort (prix à 0), branche retirée.
+        if (err?.error === "quota_scan_atteint") {
+          ouvrirQuotaModal("quota_scan", {
+            trigger: "quota_geste", targetTiers: ["premium","pro"],
+            quotaInfo: { geste: "scans", plafond: err.plafond, consommes: err.consommes },
           });
           return;
         }
@@ -4113,12 +4119,20 @@ export default function ListingPreviewScreen({
         // chemin "Utiliser mes Pépites", jamais un message générique.
         let errBody = null;
         try { errBody = await fnErr.context?.json(); } catch { /* body non-JSON → chemin générique */ }
-        if (errBody?.error === "insufficient_coins") {
-          refreshWallet();
-          // coinPrice = le prix REFUSÉ par le serveur (1 Pépite de génération
-          // depuis le 2026-08-05) : la modale dit combien il manque pour QUOI,
-          // au lieu d'afficher le total de publication qui n'est pas en cause.
-          ouvrirQuotaModal("plafond_pepites_publi", { trigger: "publish", targetTiers: ["premium","pro"], coinPrice: errBody.price ?? null });
+        // Bascule quotas (02/09) : les refus sont les quotas du cycle —
+        // insufficient_coins est mort (prix à 0). Deux codes, deux modales.
+        if (errBody?.error === "quota_annonces_atteint") {
+          ouvrirQuotaModal("quota_annonces", {
+            trigger: "quota_geste", targetTiers: ["premium","pro"],
+            quotaInfo: { geste: "annonces", plafond: errBody.plafond, consommes: errBody.consommes },
+          });
+          return;
+        }
+        if (errBody?.error === "quota_retouche_atteint") {
+          ouvrirQuotaModal("quota_retouche", {
+            trigger: "quota_geste", targetTiers: ["premium","pro"],
+            quotaInfo: { geste: "retouches", plafond: errBody.plafond, consommes: errBody.consommes },
+          });
           return;
         }
         // Plafond de générations (2026-08-04) : le serveur explique déjà tout
@@ -6890,14 +6904,10 @@ export default function ListingPreviewScreen({
           isPro={isPro}
           isBusiness={isBusiness}
           userId={userId}
-          coinBalance={quotaModal.coinBalance ?? coinBalance}
-          // ⚠️ coinPrice non-null = la modale bascule en CAS « Pépites
-          // insuffisantes » (isCoinCase) et n'affiche PAS les cartes de plans.
-          // Le déclencheur stock (inventaire plein) n'est pas une histoire de
-          // Pépites : coinPrice DOIT être null pour atteindre le CAS 3, qui
-          // empile les deux cartes Premium + Pro (PlansStack).
-          coinPrice={quotaModal.trigger === "stock" ? null : (quotaModal.coinPrice ?? publishTotalFor(photoOption, selected.size))}
-          onUseCoins={() => { setQuotaModal(m => ({ ...m, open: false })); setStoreOpen(true); }}
+          // Bascule quotas (02/09) : les CAS « Pépites insuffisantes » sont
+          // morts — plus de coinPrice/coinBalance/onUseCoins. quotaInfo porte
+          // le geste refusé (annonces/scans/retouches) pour l'encart dédié.
+          quotaInfo={quotaModal.quotaInfo ?? null}
         />
       )}
 
