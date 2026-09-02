@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PepiteIcon from './PepiteIcon';
 import PepiteAmount from './PepiteAmount';
 import PlanBadge, { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
@@ -235,6 +235,47 @@ function PackList({ fr, onUseCoins }) {
   );
 }
 
+// ── Bloc commun « Dans tous les forfaits » (2026-09-02) ──────────────────────
+// Restructuration de lisibilité : les SEPT lignes quasi identiques répétées
+// sur les trois cartes en sortent — ce qui est COMMUN s'affiche UNE fois ici,
+// les cartes ne gardent que ce qui les distingue (grant, republication,
+// support). Le détail du tarif à la Pépite sort aussi des cartes : une seule
+// ligne, ici, lue dans coin_config comme tout le reste (jamais en dur).
+// Exporté pour un éventuel réemploi (PlanDetailsModal) — même source unique
+// que les cartes.
+export function ToutesOffresBlock({ fr, K }) {
+  const items = [
+    fr ? 'Stock illimité' : 'Unlimited stock',
+    fr ? 'Publication sur Vinted, Leboncoin, eBay & Beebs' : 'Publishing on Vinted, Leboncoin, eBay & Beebs',
+    fr ? 'Analyses Lens (photo → prix, plateforme, deal)' : 'Lens scans (photo → price, platform, deal)',
+    fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
+    fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+  ];
+  return (
+    <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginTop: 12 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.faint, marginBottom: 8 }}>
+        {fr ? 'Dans tous les forfaits' : 'In every plan'}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px 12px' }}>
+        {items.map((t, i) => (
+          <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 600, color: C.mute2 }}>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={C.tealDeep} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            {t}
+          </span>
+        ))}
+      </div>
+      {/* Tarif unitaire de la Pépite — identique sur TOUS les paliers depuis la
+          grille du 08/08, donc dit UNE fois, jamais trois. Valeurs lues en
+          base (K), le repli COIN_CONFIG_FALLBACK jouant comme partout. */}
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 9, lineHeight: 1.5, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+        {fr
+          ? <>La Pépite paie tout, au même prix sur tous les forfaits : génération IA {K.price_generate} · publication {K.price_per_platform}/plateforme · republication {K.price_republish} · analyse Lens {K.price_lens_overflow}.</>
+          : <>Nuggets pay for everything, same price on every plan: AI listing {K.price_generate} · publishing {K.price_per_platform}/platform · reposting {K.price_republish} · Lens scan {K.price_lens_overflow}.</>}
+      </div>
+    </div>
+  );
+}
+
 function OrDivider({ fr }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -295,31 +336,25 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, articles, genPric
               : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
         </div>
       </div>
-      {/* ── SQUELETTE COMMUN aux deux cartes (07/08 soir, validé Nico) ──────
-          MÊMES rubriques, MÊME ordre, MÊMES tournures que ProPlanCard :
-          stock · publication · republication · Lens · Excel · voix ·
-          support. Seule la VALEUR change — un utilisateur lit les deux
-          cartes ligne à ligne et voit immédiatement ce qui diffère. Toute
-          retouche d'un libellé se fait DANS LES DEUX cartes (et dans
-          PlanDetailsModal + la FAQ landing, mêmes mots).
-          Règles vérifiées en base : stock illimité = trigger
-          check_inventory_limit (premium/pro/comped exemptés pareil) ;
-          grille TARIFAIRE identique TOUS plans depuis le 2026-08-08 —
-          publication, génération ET republication au même prix pour tout le
-          monde, le grant seul fait la différence (affiché au-dessus) ;
-          republication cadence 1/article/24 h pour tous — jamais promise
-          au-delà ; Lens = grant ÷ coût. */}
+      {/* ── CARTES COURTES (2026-09-02) ─────────────────────────────────────
+          Restructuration de lisibilité : le socle commun (stock, publication,
+          Lens, Excel, voix) et le tarif à la Pépite vivent désormais dans
+          ToutesOffresBlock, affiché UNE fois sous les cartes. Chaque carte ne
+          porte plus que ce qui la DISTINGUE : le grant (bandeau au-dessus),
+          la republication et sa cadence — LA différence entre paliers — et
+          le support. MÊME ordre, MÊME gabarit sur les trois cartes : on
+          compare en balayant une colonne. Toute retouche d'un libellé se
+          fait dans les TROIS cartes (et PlanDetailsModal + FAQ landing,
+          mêmes mots).
+          ⚠️ Republication Premium = EN UN CLIC (manuelle). L'automatique
+          reste Pro/Business tant que l'extension coupe elle-même l'auto des
+          comptes non-Pro (background.js, arret_motif 'plan_non_pro') — ne
+          promettre l'auto en Premium QUE lorsque ce verrou extension sera
+          levé en production (passage CWS requis, constat du 02/09). */}
       <Features
         items={[
-          fr ? 'Stock illimité' : 'Unlimited stock',
-          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
-             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-          fr ? `Republication Vinted en un clic — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
-             : `One-tap Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`,
-          fr ? `Analyses Lens — ${lensCost} Pépites l'analyse`
-             : `Lens scans — ${lensCost} Nuggets each`,
-          fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
-          fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+          fr ? 'Republication Vinted en un clic, annonce par annonce — sans plafond quotidien'
+             : 'One-tap Vinted reposting, listing by listing — no daily cap',
           fr ? 'Support par email' : 'Email support',
         ]}
       />
@@ -377,33 +412,17 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, articles, proFa
               : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
         </div>
       </div>
-      {/* ── SQUELETTE COMMUN — même contrat que PremiumPlanCard (cf. le
-          commentaire là-bas). Le bandeau « Tout Premium, et en plus » a été
-          RETIRÉ (07/08 soir, point 4 Nico) : soit on hérite, soit on répète —
-          ici tout est répété À L'IDENTIQUE, le bandeau devenait faux (« en
-          plus » au-dessus d'une liste qui contient la base). Les différences
-          Pro : le grant (au-dessus), Lens (~4×), la republication
-          AUTOMATISABLE (un choix — toggle + plafond/jour — jamais un
-          comportement imposé), le support prioritaire. */}
+      {/* ── CARTE COURTE (2026-09-02, cf. le commentaire de PremiumPlanCard) —
+          socle commun et tarif Pépite dans ToutesOffresBlock. Les différences
+          Pro, et rien d'autre : le grant (au-dessus), la republication
+          AUTOMATIQUE (un choix — toggle + plafond/jour — jamais un
+          comportement imposé ; « jusqu'à 45/jour » = le plafond réellement
+          servi par le serveur, get-pending-jobs), le support prioritaire. */}
       <Features
         dark
         items={[
-          fr ? 'Stock illimité' : 'Unlimited stock',
-          // Grille 2026-08-08 : la publication OFFERTE en Pro (qui aura vécu
-          // une journée) est morte — MÊME ligne tarifaire que la carte
-          // Premium, seuls le grant et l'automatisation diffèrent.
-          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
-             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-          // Squelette UNIFORME (27/08 soir) : « Republication Vinted <mode> —
-          // N Pépite(s) par annonce » sur les trois cartes ; seul le MODE
-          // change car c'est la vraie différence (Premium un clic, Pro
-          // automatique sur activation, Business automatique).
-          fr ? `Republication Vinted automatique si tu l'actives — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
-             : `Automatic Vinted reposting if you turn it on — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`,
-          fr ? `Analyses Lens — ${lensCost} Pépites l'analyse`
-             : `Lens scans — ${lensCost} Nuggets each`,
-          fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
-          fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+          fr ? "Republication Vinted automatique si tu l'actives — tes annonces remontent seules, jusqu'à 45 par jour"
+             : 'Automatic Vinted reposting if you turn it on — your listings bump themselves, up to 45 a day',
           fr ? 'Support prioritaire' : 'Priority support',
         ]}
       />
@@ -485,21 +504,16 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
               : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
         </div>
       </div>
+      {/* ── CARTE COURTE (2026-09-02, cf. PremiumPlanCard) — socle commun et
+          tarif Pépite dans ToutesOffresBlock. Différences Business : le grant
+          (au-dessus), la republication automatique (même moteur et même
+          plafond servi que Pro : 45/jour), le support prioritaire renforcé
+          (promesse de PRIORITÉ seulement — garde-fou du 09/08 inchangé). */}
       <Features
         dark
         items={[
-          fr ? 'Stock illimité' : 'Unlimited stock',
-          fr ? `Publie sur Vinted, Leboncoin, eBay & Beebs (annonce générée par IA ${genPrice} Pépite${genPrice > 1 ? 's' : ''}, publication ${pubUnit} Pépite${pubUnit > 1 ? 's' : ''}/plateforme)`
-             : `Publish on Vinted, Leboncoin, eBay & Beebs (AI-generated listing ${genPrice} Nugget${genPrice > 1 ? 's' : ''}, publishing ${pubUnit} Nugget${pubUnit > 1 ? 's' : ''}/platform)`,
-          // Squelette UNIFORME (27/08 soir) — la queue « tes annonces
-          // remontent seules dans le fil » est retirée : même phrase que les
-          // deux autres cartes, seul le mode diffère.
-          fr ? `Republication Vinted automatique — ${repubPrice} Pépite${repubPrice > 1 ? 's' : ''} par annonce`
-             : `Automatic Vinted reposting — ${repubPrice} Nugget${repubPrice > 1 ? 's' : ''} per listing`,
-          fr ? `Analyses Lens — ${lensCost} Pépites l'analyse`
-             : `Lens scans — ${lensCost} Nuggets each`,
-          fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
-          fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
+          fr ? "Republication Vinted automatique — tes annonces remontent seules, jusqu'à 45 par jour"
+             : 'Automatic Vinted reposting — your listings bump themselves, up to 45 a day',
           fr ? 'Support prioritaire — tes demandes passent en premier' : 'Priority support — your requests come first',
         ]}
       />
@@ -620,6 +634,12 @@ export default function ConversionModal({
   coinBalance  = null,             // solde réel (coin_wallets), fourni par l'appelant
   coinPrice    = null,             // coût réel de l'action bloquée (réponse serveur)
   onUseCoins   = null,             // ouvre CoinStoreModal (chemin d'achat existant)
+  // Point d'entrée EXACT (même vocabulaire que le tunnel d'App.jsx) — sert la
+  // télémétrie de la modale elle-même, jamais l'affichage.
+  origine      = null,
+  // trigger 'republish_cap' UNIQUEMENT : { plafond, faites } renvoyés par le
+  // refus serveur plafond_republication_free (spend_coins_and_republish).
+  plafondRepub = null,
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
@@ -629,6 +649,49 @@ export default function ConversionModal({
   // sans avoir vu la carte complète du plan (bug « Découvre Pro » 2026-07-22).
   const [view, setView] = useState('entry');
   useEffect(() => { if (isOpen) setView('entry'); }, [isOpen]);
+
+  // ══ Télémétrie de la modale (2026-09-02) — le trou CTA → checkout ══════════
+  // Mesuré (audit 02/09) : 617 comptes ont cliqué un CTA premium, 30 seulement
+  // ont un checkout_open — et AUCUN event entre les deux. Ces trois events
+  // rendent la fuite visible : ouverture (avec origine), choix d'un palier,
+  // fermeture sans checkout. Même mécanique best-effort qu'onboarding_choice :
+  // try/catch, jamais bloquant, zéro changement visuel. Un échec d'écriture ne
+  // doit JAMAIS gêner le parcours de paiement.
+  const paliersRef = useRef([]);        // derniers paliers affichés (pour l'abandon)
+  const palierCliqueRef = useRef(false); // un CTA de carte a-t-il été cliqué ?
+  const logModale = (feature, metadata = {}) => {
+    if (!userId) return;
+    try {
+      supabase.from('usage_logs')
+        .insert({ user_id: userId, feature, metadata })
+        .then(({ error }) => { if (error) console.warn(`[offres] ${feature} non journalisé :`, error.message); });
+    } catch (e) { console.warn(`[offres] ${feature} non journalisé :`, e?.message ?? e); }
+  };
+  useEffect(() => {
+    if (!isOpen) return;
+    palierCliqueRef.current = false;
+    logModale('offers_modal_open', { origine: origine ?? 'non_precisee', trigger });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+  // Choix d'un palier : trace posée AVANT de passer la main au checkout — le
+  // canal (Stripe/IAP) et checkout_open restent journalisés par l'hôte.
+  const choisirPalier = (tier) => {
+    palierCliqueRef.current = true;
+    logModale('offers_modal_tier_click', { tier, origine: origine ?? 'non_precisee', trigger, view });
+    onUpgrade(tier);
+  };
+  // TOUTES les sorties (backdrop, Escape, « Non merci ») passent ici : une
+  // fermeture sans checkout est un abandon — avec les paliers qui étaient
+  // affichés, pour savoir DEVANT QUOI l'utilisateur est parti.
+  const fermer = () => {
+    if (!palierCliqueRef.current) {
+      logModale('offers_modal_abandon', {
+        origine: origine ?? 'non_precisee', trigger, view,
+        paliers: paliersRef.current.join(','),
+      });
+    }
+    onClose();
+  };
 
   // Coûts et grants : lus en base à chaque ouverture. Aucune valeur en dur.
   useEffect(() => {
@@ -646,9 +709,10 @@ export default function ConversionModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape') fermer(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -691,13 +755,14 @@ export default function ConversionModal({
   const sellable = proposables
     .filter(t => RANG[t] > rangCourant)
     .sort((a, b) => RANG[a] - RANG[b]);
+  paliersRef.current = sellable; // pour l'event d'abandon (paliers affichés)
   const canBuyCoins = typeof onUseCoins === 'function';
 
   // ══ Vue comparative demandée depuis les CAS 1/2 (bouton d'upsell) ═══════════
   // Mêmes cartes que le CAS 3, avec retour vers l'écran Pépites.
   if (isCoinCase && view === 'plans') {
     return (
-      <Sheet onClose={onClose}>
+      <Sheet onClose={fermer}>
         <div
           onClick={() => setView('entry')}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 700, color: C.mute2, cursor: 'pointer', marginBottom: 12 }}
@@ -709,9 +774,10 @@ export default function ConversionModal({
           fr={fr} tiers={sellable}
           grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
           lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
-          onUpgrade={onUpgrade}
+          onUpgrade={choisirPalier}
         />
-        <Dismiss onClose={onClose} label={fr ? 'Non merci' : 'No thanks'} />
+        <ToutesOffresBlock fr={fr} K={K} />
+        <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
       </Sheet>
     );
   }
@@ -725,7 +791,7 @@ export default function ConversionModal({
     const upTier = sellable[0] ?? null;
 
     return (
-      <Sheet onClose={onClose}>
+      <Sheet onClose={fermer}>
         <Eyebrow
           icon={isLens
             ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.tealDeep} strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="14.31" y1="8" x2="20.05" y2="17.94"/><line x1="9.69" y1="8" x2="21.17" y2="8"/><line x1="7.38" y1="12" x2="13.12" y2="2.06"/><line x1="9.69" y1="16" x2="3.95" y2="6.06"/><line x1="14.31" y1="16" x2="2.83" y2="16"/><line x1="16.62" y1="12" x2="10.88" y2="21.94"/></svg>
@@ -785,7 +851,7 @@ export default function ConversionModal({
           </>
         )}
 
-        <Dismiss onClose={onClose} label={fr ? 'Non merci' : 'No thanks'} />
+        <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
       </Sheet>
     );
   }
@@ -796,7 +862,7 @@ export default function ConversionModal({
   // le drapeau de masquage — offre coupée, un Pro retombe sur « au maximum ».
   if (isPro && sellable.includes('business')) {
     return (
-      <Sheet onClose={onClose}>
+      <Sheet onClose={fermer}>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12,
           background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -812,9 +878,10 @@ export default function ConversionModal({
           fr={fr} grantBusiness={grantBusiness} lensCost={lensCost} lensScans={lensPerMonth(grantBusiness)}
           articles={articlesParMois(grantBusiness, K)} repubPrice={K.price_republish}
           pubUnit={K.price_per_platform} genPrice={K.price_generate}
-          onUpgrade={onUpgrade}
+          onUpgrade={choisirPalier}
         />
-        <Dismiss onClose={onClose} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
+        <ToutesOffresBlock fr={fr} K={K} />
+        <Dismiss onClose={fermer} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
       </Sheet>
     );
   }
@@ -825,7 +892,7 @@ export default function ConversionModal({
   // être invisible à qui a le plus de chances de le prendre.
   if (isPremium && !isPro && sellable.length > 0) {
     return (
-      <Sheet onClose={onClose}>
+      <Sheet onClose={fermer}>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12,
           background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -841,9 +908,10 @@ export default function ConversionModal({
           fr={fr} tiers={sellable}
           grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
           lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
-          onUpgrade={onUpgrade}
+          onUpgrade={choisirPalier}
         />
-        <Dismiss onClose={onClose} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
+        <ToutesOffresBlock fr={fr} K={K} />
+        <Dismiss onClose={fermer} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
       </Sheet>
     );
   }
@@ -853,18 +921,26 @@ export default function ConversionModal({
   // Business, ou un Pro tant que l'offre Business est masquée.
   if (sellable.length === 0) {
     return (
-      <Sheet onClose={onClose}>
+      <Sheet onClose={fermer}>
         <Title>{fr ? 'Tu es déjà au maximum.' : "You're already on the top plan."}</Title>
         {canBuyCoins && <PackList fr={fr} onUseCoins={onUseCoins} />}
-        <Dismiss onClose={onClose} label={fr ? 'Fermer' : 'Close'} />
+        <Dismiss onClose={fermer} label={fr ? 'Fermer' : 'Close'} />
       </Sheet>
     );
   }
 
   // ══ CAS 3 — Free → Premium ═════════════════════════════════════════════════
+  // Variante 'republish_cap' (2026-09-02) : le serveur a refusé une
+  // republication manuelle avec plafond_republication_free (3/jour en Free).
+  // Ce n'est PAS un message d'erreur : la modale dit le FAIT (limite du jour
+  // atteinte), puis ce que débloque le palier au-dessus, puis les cartes —
+  // dont les CTA partent en checkout. Ton informatif, aucun compte à rebours,
+  // aucune « offre limitée ». L'anti-harcèlement (une ouverture/jour) vit chez
+  // l'appelant (StockTab), pas ici. Ne s'ouvre QUE sur ce code de refus.
   const stockFull = trigger === 'stock' && itemCount != null;
+  const repubCap = trigger === 'republish_cap';
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={fermer}>
       <div style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 12,
         background: C.paper, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -878,10 +954,27 @@ export default function ConversionModal({
       <Title>
         {trigger === 'voice'
           ? (fr ? 'Passe en vocal illimité.' : 'Go unlimited on voice.')
-          : stockFull
-            ? (fr ? 'Ton stock est plein.' : 'Your stock is full.')
-            : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
+          : repubCap
+            ? (fr ? 'Tes republications du jour sont faites.' : "Today's reposts are done.")
+            : stockFull
+              ? (fr ? 'Ton stock est plein.' : 'Your stock is full.')
+              : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
       </Title>
+
+      {repubCap && (
+        <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
+            {fr
+              ? <>Le plan Free permet {plafondRepub?.plafond ?? 3} republications par jour — tu les as utilisées aujourd'hui. Rien n'a été débité.</>
+              : <>The Free plan allows {plafondRepub?.plafond ?? 3} reposts a day — you've used them today. Nothing was charged.</>}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
+            {fr
+              ? <>En Premium, la republication n'a pas de limite quotidienne : tu remontes tes annonces une à une, autant de fois que tu veux.</>
+              : <>On Premium, reposting has no daily limit: bump your listings one by one, as often as you like.</>}
+          </div>
+        </div>
+      )}
 
       {/* Vue comparative (2026-07-22) : les DEUX cartes d'emblée, empilées.
           Remplace l'ancienne carte Premium seule + lien « Découvre Pro → » qui
@@ -890,10 +983,11 @@ export default function ConversionModal({
         fr={fr} tiers={sellable}
         grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
         lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
-        onUpgrade={onUpgrade}
+        onUpgrade={choisirPalier}
       />
 
-      <Dismiss onClose={onClose} label={fr ? 'Non merci' : 'No thanks'} />
+      <ToutesOffresBlock fr={fr} K={K} />
+      <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>
   );
 }

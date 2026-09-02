@@ -3238,6 +3238,10 @@ const StockTab = memo(function StockTab({
   // Injected components (defined in App.jsx)
   PremiumBanner, IAPUpgradeBlock,
   openUpgradeModal, onStepperOpenChange,
+  // Ouverture AUTOMATIQUE de la modale de conversion sur un plafond (journalise
+  // premium_cta_click declencheur:'automatique' — cf. App.jsx). Optionnelle :
+  // absente, le refus plafond_republication_free retombe sur le message inline.
+  ouvrirModalePlafond = null,
   // Lot 2 : « Ajouter un article » de l'état vide → création par photo (Lens).
   onAddByPhoto = null,
   // Optionnelle : point d'entrée explicite après un import de dressing réussi.
@@ -3498,6 +3502,35 @@ const StockTab = memo(function StockTab({
   // Safari iOS du 05/08. Les HANDLERS, eux, peuvent vivre ici : ils ne
   // s'exécutent qu'au clic, bien après l'initialisation.
 
+  // ── Plafond de republication free : modale de conversion (2026-09-02) ─────
+  // Le serveur (spend_coins_and_republish) refuse la 4e republication MANUELLE
+  // du jour d'un compte free avec le code DÉDIÉ plafond_republication_free
+  // (+ plafond, faites) — rien n'est débité, aucun job créé. Sur CE code
+  // précis, et lui seul, l'app ouvre la modale de conversion (trigger
+  // 'republish_cap') au lieu d'un message d'erreur.
+  // ANTI-HARCÈLEMENT : une ouverture par jour et par compte, mémorisée en
+  // localStorage (jour LOCAL de l'utilisateur). Modale déjà vue aujourd'hui,
+  // localStorage indisponible, ou prop absente → message inline sobre, comme
+  // les autres refus. try/catch : le localStorage peut lever (navigation
+  // privée) et ne doit jamais casser le parcours.
+  const plafondModaleCle = () => `fillsell_plafond_repub_modale_${user?.id ?? 'anon'}`;
+  const plafondModaleDejaVueAujourdhui = () => {
+    try { return localStorage.getItem(plafondModaleCle()) === new Date().toISOString().slice(0, 10); }
+    catch { return true; } // stockage illisible : on ne peut pas garantir « 1/jour » → inline
+  };
+  const ouvrirModalePlafondRepub = (res) => {
+    if (typeof ouvrirModalePlafond !== 'function' || plafondModaleDejaVueAujourdhui()) return false;
+    try { localStorage.setItem(plafondModaleCle(), new Date().toISOString().slice(0, 10)); } catch { return false; }
+    ouvrirModalePlafond('plafond_republication_free', {
+      trigger: 'republish_cap',
+      plafondRepub: { plafond: res?.plafond ?? 3, faites: res?.faites ?? null },
+    });
+    return true;
+  };
+  const msgPlafondRepub = (res) => (lang === 'fr'
+    ? `Limite du jour atteinte : ${res?.plafond ?? 3} republications par jour en Free. Rien n'a été débité — ça repart demain.`
+    : `Daily limit reached: ${res?.plafond ?? 3} reposts a day on Free. Nothing was charged — it resets tomorrow.`);
+
   async function lancerRepublication(item, prixRepublication = null) {
     if (repubBusy || repubMaintenance) return;
     if (extensionNeverSeen === true) { setExtPitchItem(item); return; }
@@ -3509,6 +3542,12 @@ const StockTab = memo(function StockTab({
       });
       if (!res.success) {
         if (rejetMaintenance(res)) { setRepubMaintenance(true); return; }
+        if (res.reason === 'plafond_republication_free') {
+          if (!ouvrirModalePlafondRepub(res)) {
+            setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: msgPlafondRepub(res) } }));
+          }
+          return;
+        }
         const raisons = {
           // capture_* ont disparu du RPC : la capture ne se fait plus au clic.
           // Un échec de capture se produit désormais à l'exécution et clôt le
@@ -3635,6 +3674,16 @@ const StockTab = memo(function StockTab({
           // on s'arrête là, le bandeau (armé ici) dit pourquoi, pas de liste
           // de refus techniques.
           if (rejetMaintenance(res)) { setRepubMaintenance(true); setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] }); break; }
+          // Plafond free (2026-09-02) : même logique d'arrêt — le serveur
+          // refusera pareil tout le reste du lot aujourd'hui. Une entrée
+          // lisible dans les refus, la modale de conversion (1/jour max), et
+          // on coupe : pas une ligne de refus par article restant.
+          if (res.reason === 'plafond_republication_free') {
+            refus.push({ titre: item.title, raison: msgPlafondRepub(res) });
+            setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] });
+            ouvrirModalePlafondRepub(res);
+            break;
+          }
           refus.push({ titre: item.title, raison: res.reason ?? res.error ?? 'refus' });
         }
       } catch (e) {

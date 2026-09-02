@@ -2537,6 +2537,8 @@ export default function App({ loginOnly = false }){
   //   plafond_stock             limite d'articles du plan gratuit   (auto)
   //   plafond_pepites_lens      Pépites insuffisantes — scan Lens    (auto)
   //   plafond_pepites_publi     Pépites insuffisantes — publication  (auto)
+  //   plafond_republication_free  3 republications manuelles/jour
+  //                             atteintes (compte free)              (auto)
   //   modale_plan               carte de plan CHOISIE dans la modale
   const logTunnel=(feature,metadata={})=>{
     if(!user?.id) return Promise.resolve();
@@ -5987,6 +5989,7 @@ export default function App({ loginOnly = false }){
         {tab===1&&(
           <StockTab
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro} isBusiness={isBusiness}
+            ouvrirModalePlafond={ouvrirModalePlafond}
             items={items} user={user} voiceUsedToday={voiceUsedToday}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
@@ -6992,6 +6995,8 @@ export default function App({ loginOnly = false }){
         coinBalance={conversionModal.coinBalance??(coinWallet?(coinWallet.included_balance??0)+(coinWallet.purchased_balance??0):null)}
         coinPrice={conversionModal.coinPrice??null}
         onUseCoins={conversionModal.coinPrice!=null?()=>{setConversionModal(m=>({...m,open:false}));setCoinStoreOpen(true);}:null}
+        origine={conversionModal.origine??null}
+        plafondRepub={conversionModal.plafondRepub??null}
       />
 
       <CoinStoreModal
