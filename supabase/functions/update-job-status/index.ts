@@ -174,7 +174,7 @@ function snapshotEstLivresMedias(snap: Record<string, unknown>): boolean {
 // désarmée (value=0) = comportement strictement inchangé.
 // Étape 'deleted' : hors périmètre par construction (la garde entière ne
 // s'applique qu'à republish_step='captured' + !deleted_at).
-const EXEMPTION_LIVRES_MIN_BUILD_MS = Date.parse("2026-08-26T19:48:07Z"); // BUILD_ID 0.6.9 (7a88eb6)
+const EXEMPTION_LIVRES_MIN_BUILD_MS = Date.parse("2026-08-31T19:33:14Z"); // BUILD_ID 0.6.14 (79f1c08)
 const buildMsOf = (hb: unknown): number => {
   const m = String(hb ?? "").match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/);
   return m ? Date.parse(m[1]) : NaN;

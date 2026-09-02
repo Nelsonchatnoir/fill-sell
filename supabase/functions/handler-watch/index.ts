@@ -684,7 +684,7 @@ serve(async (req) => {
   // rétrograde ou si le nouveau snapshot perd l'ISBN, la garde re-pause :
   // rien n'est contourné, le kill switch reste hors sujet ici.
   // Écritures en compare-and-swap (.eq status needs_user). Best-effort.
-  const LIVRES_EXEMPTION_MIN_BUILD_MS = Date.parse("2026-08-26T19:48:07Z"); // BUILD_ID 0.6.9 (7a88eb6)
+  const LIVRES_EXEMPTION_MIN_BUILD_MS = Date.parse("2026-08-31T19:33:14Z"); // BUILD_ID 0.6.14 (79f1c08)
   const buildMsOf = (hb: unknown): number => {
     const m = String(hb ?? "").match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/);
     return m ? Date.parse(m[1]) : NaN;
