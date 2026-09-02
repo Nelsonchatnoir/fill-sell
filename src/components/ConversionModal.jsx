@@ -68,6 +68,7 @@ export const COIN_CONFIG_FALLBACK = {
   // valeur ne sert qu'en cas d'échec réseau, comme les autres.
   price_republish: 1,
   price_lens_overflow: 6,
+  monthly_grant_free: 50,
   monthly_grant_premium: 400,
   monthly_grant_pro: 1200,
   // Business (2026-08-08, migration 20260808213500) — même statut de REPLI que
@@ -148,26 +149,9 @@ function Title({ children }) {
   );
 }
 
-function Features({ items, dark }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 18 }}>
-      {items.map((f, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
-          <span style={{
-            flexShrink: 0, width: 17, height: 17, borderRadius: '50%', marginTop: 1,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            background: dark ? 'rgba(232,149,109,0.22)' : 'rgba(47,158,144,0.15)',
-          }}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={dark ? '#F2C98A' : C.tealDeep} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 6 9 17l-5-5"/>
-            </svg>
-          </span>
-          <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35, color: dark ? C.paper : C.ink }}>{f}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+// (Features — la liste à coches générique — est morte le 02/09 soir :
+// les cartes portent désormais LignesDiff, trois lignes fixes coche/croix.
+// Son style de rangée vit dans LignesDiff, à l'identique pour les coches.)
 
 // Jauge « ton solde » — solde réel (coin_wallets) / coût réel de l'action.
 function BalanceCard({ fr, balance, cost, missing, explain }) {
@@ -244,15 +228,17 @@ function PackList({ fr, onUseCoins }) {
 // Exporté pour un éventuel réemploi (PlanDetailsModal) — même source unique
 // que les cartes.
 export function ToutesOffresBlock({ fr, K }) {
+  // « Stock illimité » RETIRÉ (2026-09-02 soir, décision Nico) : la formule ne
+  // dit rien à qui découvre. Le bloc vit désormais AU-DESSUS des cartes — ce
+  // que fait le produit se lit avant de comparer les prix, pas après.
   const items = [
-    fr ? 'Stock illimité' : 'Unlimited stock',
     fr ? 'Publication sur Vinted, Leboncoin, eBay & Beebs' : 'Publishing on Vinted, Leboncoin, eBay & Beebs',
     fr ? 'Analyses Lens (photo → prix, plateforme, deal)' : 'Lens scans (photo → price, platform, deal)',
     fr ? 'Import & export Excel de ton stock' : 'Excel import & export of your stock',
     fr ? 'Commandes vocales illimitées' : 'Unlimited voice commands',
   ];
   return (
-    <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginTop: 12 }}>
+    <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 12 }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.faint, marginBottom: 8 }}>
         {fr ? 'Dans tous les forfaits' : 'In every plan'}
       </div>
@@ -292,6 +278,125 @@ function Dismiss({ onClose, label }) {
       <span onClick={onClose} style={{ fontSize: 12.5, fontWeight: 600, color: C.mute, cursor: 'pointer' }}>
         {label}
       </span>
+    </div>
+  );
+}
+
+// ── Les TROIS lignes différenciantes (2026-09-02 soir) ──────────────────────
+// Chaque carte porte les MÊMES trois lignes, dans le MÊME ordre, avec coche
+// ou croix : republication manuelle · republication automatique · support.
+// C'est la comparaison en balayant une colonne qui doit sauter aux yeux.
+// 🚨 RÈGLES DE FORMULATION (décision Nico, 02/09 soir) :
+//   · le seul axe à comprendre est TOI-MÊME contre TOUT SEUL ;
+//   · le mot « plafond » est BANNI de la carte Premium (l'ancienne ligne
+//     « sans plafond quotidien » faisait lire Premium comme MOINS limité que
+//     le Pro « jusqu'à 45/jour » — sens inversé) ;
+//   · Pro et Business portent EXACTEMENT la même phrase de republication —
+//     jamais « si tu l'actives » sur l'un et pas sur l'autre ;
+//   · les croix n'existent QUE sur ces trois lignes (pas de mur de croix) :
+//     la croix informe — c'est elle qui rend visible ce qui MANQUE, dont la
+//     republication automatique sur la carte Premium, le levier de
+//     conversion principal.
+// L'automatique reste Pro/Business : verrou extension plan_non_pro
+// (background.js) aligné avec la décision — ne pas promettre au-delà.
+function lignesDiff(fr, palier) {
+  const paye = palier !== 'free';
+  const auto = palier === 'pro' || palier === 'business';
+  return [
+    {
+      ok: paye,
+      texte: paye
+        ? (fr ? 'Republication manuelle sans limite — tu republies tes annonces toi-même, quand tu veux'
+              : 'Unlimited manual reposting — you repost your listings yourself, whenever you want')
+        : (fr ? 'Republication manuelle limitée — 3 par jour'
+              : 'Manual reposting limited — 3 a day'),
+    },
+    {
+      ok: auto,
+      texte: auto
+        ? (fr ? "Republication automatique — tes annonces remontent toutes seules, sans que tu y touches, jusqu'à 45 annonces par jour"
+              : 'Automatic reposting — your listings bump themselves, without you touching anything, up to 45 listings a day')
+        : (fr ? 'Republication automatique' : 'Automatic reposting'),
+    },
+    {
+      ok: paye,
+      texte: palier === 'premium'
+        ? (fr ? 'Support par email' : 'Email support')
+        : paye
+          ? (fr ? 'Support prioritaire' : 'Priority support')
+          : (fr ? 'Support' : 'Support'),
+    },
+  ];
+}
+
+function LignesDiff({ fr, palier, dark }) {
+  const okBg   = dark ? 'rgba(232,149,109,0.22)' : 'rgba(47,158,144,0.15)';
+  const okInk  = dark ? '#F2C98A' : C.tealDeep;
+  const koBg   = dark ? 'rgba(246,245,241,0.10)' : 'rgba(163,157,142,0.14)';
+  const koInk  = dark ? 'rgba(246,245,241,0.45)' : C.faint;
+  const okTxt  = dark ? C.paper : C.ink;
+  const koTxt  = dark ? 'rgba(246,245,241,0.55)' : C.mute;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 18 }}>
+      {lignesDiff(fr, palier).map((l, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+          <span style={{
+            flexShrink: 0, width: 17, height: 17, borderRadius: '50%', marginTop: 1,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            background: l.ok ? okBg : koBg,
+          }}>
+            {l.ok ? (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={okInk} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            ) : (
+              /* Croix informative, jamais punitive : trait fin, couleur muette. */
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={koInk} strokeWidth="2.6" strokeLinecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            )}
+          </span>
+          <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.35, color: l.ok ? okTxt : koTxt }}>{l.texte}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Carte Free (2026-09-02 soir) — le POINT DE DÉPART, pas une offre : fond
+// sobre, pas de CTA d'achat. Elle existe pour qu'un gratuit voie ce qu'il a
+// (grant 50, republication 3/jour) et ce que payer change, ligne à ligne,
+// même gabarit que les trois autres cartes.
+function FreePlanCard({ fr, grantFree, estMonPlan }) {
+  return (
+    <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 22, padding: '20px 18px 14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', color: C.mute2,
+            background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 999, padding: '4px 10px',
+          }}>
+            Free
+          </span>
+          {estMonPlan && (
+            <span style={{ fontSize: 11, fontWeight: 600, color: C.mute }}>
+              {fr ? 'ton forfait actuel' : 'your current plan'}
+            </span>
+          )}
+        </span>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', color: C.mute2, lineHeight: 1 }}>0 €</div>
+          <div style={{ fontSize: 10.5, fontWeight: 600, color: C.mute, marginTop: 2 }}>{fr ? '/mois' : '/mo'}</div>
+        </div>
+      </div>
+      <div style={{
+        background: C.canvas, border: `1px solid ${C.border}`, borderRadius: 12,
+        padding: '9px 12px', marginBottom: 14,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <PepiteIcon size={18} />
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: C.mute2 }}>
+            {fr ? `${grantFree} Pépites/mois` : `${grantFree} Nuggets/mo`}
+          </span>
+        </div>
+      </div>
+      <LignesDiff fr={fr} palier="free" />
     </div>
   );
 }
@@ -336,28 +441,11 @@ function PremiumPlanCard({ fr, grantPrem, lensCost, lensScans, articles, genPric
               : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
         </div>
       </div>
-      {/* ── CARTES COURTES (2026-09-02) ─────────────────────────────────────
-          Restructuration de lisibilité : le socle commun (stock, publication,
-          Lens, Excel, voix) et le tarif à la Pépite vivent désormais dans
-          ToutesOffresBlock, affiché UNE fois sous les cartes. Chaque carte ne
-          porte plus que ce qui la DISTINGUE : le grant (bandeau au-dessus),
-          la republication et sa cadence — LA différence entre paliers — et
-          le support. MÊME ordre, MÊME gabarit sur les trois cartes : on
-          compare en balayant une colonne. Toute retouche d'un libellé se
-          fait dans les TROIS cartes (et PlanDetailsModal + FAQ landing,
-          mêmes mots).
-          ⚠️ Republication Premium = EN UN CLIC (manuelle). L'automatique
-          reste Pro/Business tant que l'extension coupe elle-même l'auto des
-          comptes non-Pro (background.js, arret_motif 'plan_non_pro') — ne
-          promettre l'auto en Premium QUE lorsque ce verrou extension sera
-          levé en production (passage CWS requis, constat du 02/09). */}
-      <Features
-        items={[
-          fr ? 'Republication Vinted en un clic, annonce par annonce — sans plafond quotidien'
-             : 'One-tap Vinted reposting, listing by listing — no daily cap',
-          fr ? 'Support par email' : 'Email support',
-        ]}
-      />
+      {/* Les trois lignes différenciantes (02/09 soir) — cf. le commentaire
+          de lignesDiff : mêmes lignes, même ordre sur les QUATRE cartes ; la
+          croix « Republication automatique » rend visible ce qui manque au
+          Premium, c'est le levier vers Pro. */}
+      <LignesDiff fr={fr} palier="premium" />
       <button
         onClick={() => onUpgrade('premium')}
         style={{
@@ -412,20 +500,10 @@ export function ProPlanCard({ fr, grantPro, lensCost, lensScans, articles, proFa
               : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
         </div>
       </div>
-      {/* ── CARTE COURTE (2026-09-02, cf. le commentaire de PremiumPlanCard) —
-          socle commun et tarif Pépite dans ToutesOffresBlock. Les différences
-          Pro, et rien d'autre : le grant (au-dessus), la republication
-          AUTOMATIQUE (un choix — toggle + plafond/jour — jamais un
-          comportement imposé ; « jusqu'à 45/jour » = le plafond réellement
-          servi par le serveur, get-pending-jobs), le support prioritaire. */}
-      <Features
-        dark
-        items={[
-          fr ? "Republication Vinted automatique si tu l'actives — tes annonces remontent seules, jusqu'à 45 par jour"
-             : 'Automatic Vinted reposting if you turn it on — your listings bump themselves, up to 45 a day',
-          fr ? 'Support prioritaire' : 'Priority support',
-        ]}
-      />
+      {/* Lignes différenciantes (02/09 soir, cf. lignesDiff) — la phrase de
+          republication automatique est STRICTEMENT identique à Business
+          (« 45/jour » = le plafond réellement servi par le serveur). */}
+      <LignesDiff fr={fr} palier="pro" dark />
       <button
         onClick={() => onUpgrade('pro')}
         style={{
@@ -504,19 +582,11 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
               : `One single pool for everything — e.g. ≈ ${articles} items listed everywhere OR ≈ ${lensScans} Lens scans.`}
         </div>
       </div>
-      {/* ── CARTE COURTE (2026-09-02, cf. PremiumPlanCard) — socle commun et
-          tarif Pépite dans ToutesOffresBlock. Différences Business : le grant
-          (au-dessus), la republication automatique (même moteur et même
-          plafond servi que Pro : 45/jour), le support prioritaire renforcé
-          (promesse de PRIORITÉ seulement — garde-fou du 09/08 inchangé). */}
-      <Features
-        dark
-        items={[
-          fr ? "Republication Vinted automatique — tes annonces remontent seules, jusqu'à 45 par jour"
-             : 'Automatic Vinted reposting — your listings bump themselves, up to 45 a day',
-          fr ? 'Support prioritaire — tes demandes passent en premier' : 'Priority support — your requests come first',
-        ]}
-      />
+      {/* Lignes différenciantes (02/09 soir, cf. lignesDiff) — MÊMES phrases
+          que Pro sur les trois lignes, y compris le support (« prioritaire »,
+          promesse de priorité seulement, garde-fou du 09/08 inchangé) : seul
+          le volume de Pépites distingue Business, et il est au-dessus. */}
+      <LignesDiff fr={fr} palier="business" dark />
       <button
         onClick={() => onUpgrade('business')}
         style={{
@@ -542,12 +612,18 @@ export function BusinessPlanCard({ fr, grantBusiness, lensCost, lensScans, artic
 // `tiers` = les paliers RÉELLEMENT vendables à CET utilisateur, déjà filtrés
 // par la modale (cf. `sellable`) : plus aucun recoupement isPremium/isPro ici,
 // c'était la porte ouverte à deux vérités divergentes sur « qui voit quoi ».
-function PlansStack({ fr, tiers, grantPrem, grantPro, grantBusiness, lensCost, lensPerMonth, proFactor, K, onUpgrade }) {
+function PlansStack({ fr, tiers, grantPrem, grantPro, grantBusiness, lensCost, lensPerMonth, proFactor, K, onUpgrade, showFree = false }) {
   const showPremium = tiers.includes('premium');
   const showPro = tiers.includes('pro');
   const showBusiness = tiers.includes('business');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Le Free ouvre la pile QUAND le lecteur est en Free (02/09 soir) :
+          c'est son point de départ — il voit ce qu'il a, puis ce que payer
+          change, ligne à ligne. Jamais montré aux payants (rien à y lire). */}
+      {showFree && (
+        <FreePlanCard fr={fr} grantFree={K.monthly_grant_free ?? 50} estMonPlan />
+      )}
       {showPremium && (
         <PremiumPlanCard
           fr={fr} grantPrem={grantPrem} lensCost={lensCost} lensScans={lensPerMonth(grantPrem)}
@@ -770,13 +846,13 @@ export default function ConversionModal({
           ← {fr ? 'Retour' : 'Back'}
         </div>
         <Title>{fr ? 'Compare les plans.' : 'Compare the plans.'}</Title>
+        <ToutesOffresBlock fr={fr} K={K} />
         <PlansStack
-          fr={fr} tiers={sellable}
+          fr={fr} tiers={sellable} showFree={rangCourant === 0}
           grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
           lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
           onUpgrade={choisirPalier}
         />
-        <ToutesOffresBlock fr={fr} K={K} />
         <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
       </Sheet>
     );
@@ -874,13 +950,13 @@ export default function ConversionModal({
           </span>
         </div>
         <Title>{fr ? 'Le sommet. Zéro limite.' : 'The top. No limits.'}</Title>
+        <ToutesOffresBlock fr={fr} K={K} />
         <BusinessPlanCard
           fr={fr} grantBusiness={grantBusiness} lensCost={lensCost} lensScans={lensPerMonth(grantBusiness)}
           articles={articlesParMois(grantBusiness, K)} repubPrice={K.price_republish}
           pubUnit={K.price_per_platform} genPrice={K.price_generate}
           onUpgrade={choisirPalier}
         />
-        <ToutesOffresBlock fr={fr} K={K} />
         <Dismiss onClose={fermer} label={fr ? 'Rester en Pro' : 'Stay on Pro'} />
       </Sheet>
     );
@@ -904,13 +980,13 @@ export default function ConversionModal({
           </span>
         </div>
         <Title>{fr ? 'Passe au volume supérieur.' : 'Move up a gear.'}</Title>
+        <ToutesOffresBlock fr={fr} K={K} />
         <PlansStack
           fr={fr} tiers={sellable}
           grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
           lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
           onUpgrade={choisirPalier}
         />
-        <ToutesOffresBlock fr={fr} K={K} />
         <Dismiss onClose={fermer} label={fr ? 'Rester en Premium' : 'Stay on Premium'} />
       </Sheet>
     );
@@ -962,31 +1038,37 @@ export default function ConversionModal({
       </Title>
 
       {repubCap && (
+        /* Registre aligné sur les cartes (02/09 soir) : le Free A quelque
+           chose (3/jour) et le Premium change le TOI-MÊME — jamais le mot
+           « plafond », jamais deux registres. Déclenchement, fréquence
+           1/jour/compte et télémétrie : inchangés (portés par StockTab). */
         <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
             {fr
-              ? <>Le plan Free permet {plafondRepub?.plafond ?? 3} republications par jour — tu les as utilisées aujourd'hui. Rien n'a été débité.</>
-              : <>The Free plan allows {plafondRepub?.plafond ?? 3} reposts a day — you've used them today. Nothing was charged.</>}
+              ? <>En Free, tu peux republier {plafondRepub?.plafond ?? 3} annonces par jour — c'est fait pour aujourd'hui. Rien n'a été débité.</>
+              : <>On Free you can repost {plafondRepub?.plafond ?? 3} listings a day — that's done for today. Nothing was charged.</>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
             {fr
-              ? <>En Premium, la republication n'a pas de limite quotidienne : tu remontes tes annonces une à une, autant de fois que tu veux.</>
-              : <>On Premium, reposting has no daily limit: bump your listings one by one, as often as you like.</>}
+              ? <>En Premium, tu republies tes annonces toi-même, quand tu veux — autant que tu veux, tous les jours.</>
+              : <>On Premium, you repost your listings yourself, whenever you want — as many as you want, every day.</>}
           </div>
         </div>
       )}
 
-      {/* Vue comparative (2026-07-22) : les DEUX cartes d'emblée, empilées.
-          Remplace l'ancienne carte Premium seule + lien « Découvre Pro → » qui
-          partait DIRECT en checkout Stripe sans présentation de l'offre Pro. */}
+      {/* Bloc commun AU-DESSUS des cartes (02/09 soir) : ce que fait le
+          produit se lit avant de comparer les prix. */}
+      <ToutesOffresBlock fr={fr} K={K} />
+
+      {/* Vue comparative (2026-07-22) : les cartes d'emblée, empilées —
+          ouvertes par la carte Free (le point de départ du lecteur). */}
       <PlansStack
-        fr={fr} tiers={sellable}
+        fr={fr} tiers={sellable} showFree
         grantPrem={grantPrem} grantPro={grantPro} grantBusiness={grantBusiness} lensCost={lensCost}
         lensPerMonth={lensPerMonth} proFactor={proFactor} K={K}
         onUpgrade={choisirPalier}
       />
 
-      <ToutesOffresBlock fr={fr} K={K} />
       <Dismiss onClose={fermer} label={fr ? 'Non merci' : 'No thanks'} />
     </Sheet>
   );
