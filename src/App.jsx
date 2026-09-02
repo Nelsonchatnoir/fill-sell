@@ -5592,9 +5592,16 @@ export default function App({ loginOnly = false }){
             title={lang==='fr'?"Annonces restantes ce mois-ci — voir les offres":"Listings left this month — see plans"}
             style={{background:"transparent",border:"none",padding:0,minHeight:44,display:"inline-flex",alignItems:"center",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}
           >
+            {/* « 5 annonces » ne disait pas s'il s'agit du restant ou du
+                total (relevé Nico 02/09 soir) : le mot « restantes » est
+                DANS le chip, pas seulement dans le title. */}
             <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"6px 10px",borderRadius:999,background:"rgba(0,0,0,0.05)",color:UI.ink,fontSize:12.5,fontWeight:700,fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap"}}>
               {quotas.annonces.restantes}
-              <span style={{fontWeight:600,opacity:0.65}}>{lang==='fr'?"annonces":"listings"}</span>
+              <span style={{fontWeight:600,opacity:0.65}}>
+                {lang==='fr'
+                  ?`annonce${quotas.annonces.restantes>1?"s":""} restante${quotas.annonces.restantes>1?"s":""}`
+                  :`listing${quotas.annonces.restantes>1?"s":""} left`}
+              </span>
             </span>
           </button>
         )}

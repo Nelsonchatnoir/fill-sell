@@ -112,9 +112,10 @@ function LensScanHome({
   lensDesc, setLensDesc, lensMicActive, lensMicLoading, toggleLensMic,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative,
-  analyzeLens, lensLoading, onCreateListing, creatingListing,
-  // (lensPrice retiré au nettoyage Pépites du 02/09 soir — plus aucun
-  // montant en Pépites affiché, l'écran parle en annonces du forfait.)
+  analyzeLens, lensLoading,
+  // (lensPrice retiré au nettoyage Pépites du 02/09 soir ;
+  // onCreateListing/creatingListing retirés à la fusion des CTA du même
+  // soir — le viseur n'a plus qu'UN bouton, le scan unifié.)
 }) {
   const { t, tpl } = useTranslation(lang);
   const [showLensHelp, setShowLensHelp] = useState(false);
@@ -135,8 +136,7 @@ function LensScanHome({
   const openPicker  = () => (isNative && handleLensCameraNative && handleLensPhotoNative ? setShowPhotoSheet(true) : lensFileRef.current?.click());
   const removePhoto = (i) => { setLensPhotos(prev => prev.filter((_, j) => j !== i)); setLensResult(null); setLensAdded(false); };
 
-  const analyzeDisabled = !lensPhotos.length || lensLoading || creatingListing;
-  const createDisabled  = !lensPhotos.length || lensLoading || creatingListing;
+  const analyzeDisabled = !lensPhotos.length || lensLoading;
 
   return (
     <div style={{ width:'100%', maxWidth:520, margin:'0 auto' }}>
@@ -226,26 +226,24 @@ function LensScanHome({
             </button>
           </div>
 
-          {/* ── Deux CTA (2026-07-28) ────────────────────────────────────────
-              PRIMAIRE « Créer l'annonce » : GRATUIT. Il déclenche le mode
-              identify de lens-analysis (lecture des photos sans recherche web,
-              incluse dans le prix de publication) puis ouvre le stepper avec
-              les champs pré-remplis. Mesuré sur 7 articles : marque 7/7
-              identique au scan complet, taille 7/7 exploitable, description
-              égale ou meilleure — seul le PRIX manque.
-              SECONDAIRE « Analyser le deal · 6 🥜 » : le flux historique, scan
-              complet + écran verdict/score/fourchette, strictement inchangé.
-              C'est le prix qui reste à vendre, il garde donc son bouton. */}
+          {/* ── UN SEUL CTA (fusion 02/09 soir, décision Nico) ───────────────
+              « Créer l'annonce » (identify gratuit) et « Analyser le deal »
+              (scan complet) faisaient la même passe chère pour deux sorties :
+              le geste unique lance le scan UNIFIÉ (mode 'annonce' de
+              lens-analysis) et livre TOUT — identification, estimation,
+              verdict du deal ET annonce prête à publier. 1 scan = 1 unité du
+              compteur fusionné, quoi qu'on fasse du résultat. Le libellé dit
+              les deux sorties sans faire une phrase. */}
           <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:12 }}>
             <button
-              onClick={onCreateListing}
-              disabled={createDisabled}
-              style={{ flex:1, boxSizing:'border-box', borderRadius:999, padding:'16px 0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:15, fontWeight:600, border:'none', cursor: createDisabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', background: photoCount === 0 ? '#DCEEEA' : `linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color: photoCount === 0 ? '#8FB5AE' : '#FFFFFF', boxShadow: photoCount === 0 ? 'none' : '0 10px 24px rgba(47,158,144,0.28)' }}
+              onClick={analyzeLens}
+              disabled={analyzeDisabled}
+              style={{ flex:1, boxSizing:'border-box', borderRadius:999, padding:'16px 0', display:'flex', alignItems:'center', justifyContent:'center', gap:8, fontSize:15, fontWeight:600, border:'none', cursor: analyzeDisabled ? 'not-allowed' : 'pointer', fontFamily:'inherit', background: photoCount === 0 ? '#DCEEEA' : `linear-gradient(120deg,${TEAL},${TEAL_DEEP})`, color: photoCount === 0 ? '#8FB5AE' : '#FFFFFF', boxShadow: photoCount === 0 ? 'none' : '0 10px 24px rgba(47,158,144,0.28)' }}
             >
               <Sparkles size={16} strokeWidth={2.2} />
-              {creatingListing
-                ? (lang === 'en' ? 'Reading your photos…' : 'Lecture des photos…')
-                : (lang === 'en' ? 'Create the listing' : "Créer l'annonce")}
+              {lensLoading
+                ? t('lensAnalyzing')
+                : (lang === 'en' ? 'Price it & create the listing' : "Estimer et créer l'annonce")}
             </button>
             {/* Notice « ? » — explique le fonctionnement (photo → scan IA → fiche) */}
             <button
@@ -259,28 +257,15 @@ function LensScanHome({
             </button>
           </div>
 
-          <button
-            onClick={analyzeLens}
-            disabled={analyzeDisabled}
-            style={{ width:'100%', boxSizing:'border-box', borderRadius:999, padding:'13px 0', marginTop:8, display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:14, fontWeight:600, fontFamily:'inherit', background:'none', border:`1.5px solid ${TEAL_DEEP}`, color:TEAL_DEEP, cursor: analyzeDisabled ? 'not-allowed' : 'pointer', opacity: analyzeDisabled ? 0.6 : 1 }}
-          >
-            {/* Nettoyage Pépites (02/09 soir) : le montant en Pépites du CTA
-                a disparu avec la monnaie — les quotas parlent en annonces,
-                le compteur vit sous le CTA d'analyse. */}
-            {lensLoading
-              ? t('lensAnalyzing')
-              : (lang === 'en' ? 'Analyse the deal' : 'Analyser le deal')}
-          </button>
-
           {/* ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
               <LensScanHome/> et RETOURNE (`if (!lensResult) return`) : tout ce
               qui suit dans LensTab n'est atteint qu'une fois un résultat
-              obtenu. (L'icône Pépite qui précédait cette ligne a été retirée
-              au nettoyage du 02/09 soir — plus aucun point d'affichage.) */}
+              obtenu. (L'icône Pépite qui vivait ici est morte au nettoyage
+              du 02/09 soir — plus aucun point d'affichage.) */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:8, textAlign:'center', color:'#A6A192' }}>
             {lang === 'en'
-              ? 'Price estimate + deal verdict'
-              : 'Estimation du prix + verdict du deal'}
+              ? 'Price estimate, deal verdict + ready-to-publish listing'
+              : 'Estimation du prix, verdict du deal + annonce prête à publier'}
           </div>
         </div>
 
@@ -683,9 +668,14 @@ const LensTab = memo(function LensTab({
           lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
           lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative}
           analyzeLens={analyzeLens} lensLoading={lensLoading}
-          onCreateListing={()=>extensionNeverSeen===true?setExtPitchAction('identify'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleIdentifyAndCreate())}
-          creatingListing={generatingListing}
         />
+        {/* (onCreateListing/creatingListing retirés à la fusion des CTA du
+            02/09 soir : le viseur n'a plus qu'UN bouton — le scan unifié —
+            et le scan n'exige pas l'extension. L'accroche/rappel extension
+            gardent leur rôle sur le CTA de l'écran RÉSULTAT, action 'create'.
+            Le parcours identify gratuit n'est plus déclenchable depuis le
+            viseur ; handleIdentifyAndCreate reste pour la reprise d'un blob
+            hôte viaIdentify d'une session antérieure.) */}
         {listingError&&(
           <div style={{maxWidth:520,margin:"10px auto 0",padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
             {listingError}
@@ -906,6 +896,25 @@ const LensTab = memo(function LensTab({
                 annonce » : le prix existe, l'avertissement le dit déjà. */}
             {!lensResult.error&&(
               <>
+                {/* Scan UNIFIÉ (02/09 soir) : le même scan a déjà rédigé
+                    l'annonce (lensResult.annonce, flag lens_unifie serveur).
+                    L'encart le DIT sans le vendre — le verdict reste
+                    au-dessus, l'estimateur en friperie l'ignore sans friction,
+                    rien de plus n'est consommé s'il publie. Sans annonce
+                    (flag éteint, rédaction ratée, vieux résultat), le CTA
+                    adaptatif historique reprend tel quel. */}
+                {lensResult.annonce?.platforms&&(
+                  <div style={{marginTop:14,padding:"12px 14px",background:"#F0FDF9",border:"1px solid #CBE5DF",borderRadius:12}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#10201B",marginBottom:2}}>
+                      {lang==="en"?"📝 Your listing is ready":"📝 Ton annonce est prête"}
+                    </div>
+                    <div style={{fontSize:12,color:"#5C6560",fontWeight:500,lineHeight:1.5}}>
+                      {lang==="en"
+                        ?"Written by this same scan — title, description and fields for the 4 marketplaces. Publishing it uses nothing more."
+                        :"Rédigée par ce même scan — titre, description et champs pour les 4 plateformes. La publier ne consomme rien de plus."}
+                    </div>
+                  </div>
+                )}
                 <PrimaryButton
                   onClick={()=>extensionNeverSeen===true?setExtPitchAction('create'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing())}
                   disabled={generatingListing}
@@ -913,7 +922,9 @@ const LensTab = memo(function LensTab({
                 >
                   {analyseFiabilite(lensResult).niveau==='aucune'
                     ? (lang==="en"?"Set your price":"Fixe ton prix")
-                    : `✨ ${lang==="en"?"Create a listing":"Créer une annonce"}`}
+                    : lensResult.annonce?.platforms
+                      ? `✨ ${lang==="en"?"Open & publish the listing":"Ouvrir et publier l'annonce"}`
+                      : `✨ ${lang==="en"?"Create a listing":"Créer une annonce"}`}
                 </PrimaryButton>
                 {listingError&&(
                   <div style={{marginTop:8,padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>

@@ -969,7 +969,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // dépend en rien de ces commits extension. Recalage de garde SEUL :
 // EXTENSION_MIN_BUILD ne bouge pas (aucun effet bannière, aucun effet parc),
 // aucun paquet extension n'est produit ici.
-export const EXTENSION_LAST_COMMIT = '2026-09-01T16:58:39Z';
+// 2026-09-02T15:11:22Z = 9d912a9 : nettoyage Pépites dans background.js —
+// 4 chaînes utilisateur (« Ta Pépite reste réservée… », « la Pépite est
+// rendue ») réécrites en « rien décompté » (fusion quotas du 02/09 soir).
+// Texte seul, aucun changement de comportement. Recalage de garde SEUL :
+// EXTENSION_MIN_BUILD ne bouge pas, aucun paquet produit ici — ces chaînes
+// partiront dans le prochain zip CWS.
+export const EXTENSION_LAST_COMMIT = '2026-09-02T15:11:22Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

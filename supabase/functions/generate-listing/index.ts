@@ -524,15 +524,25 @@ serve(async (req) => {
         .select("is_premium,is_pro,is_business,is_comped").eq("id", user.id).maybeSingle();
       const tierRetouche = tierRow?.is_business ? "business" : tierRow?.is_pro ? "pro"
         : (tierRow?.is_premium || tierRow?.is_comped) ? "premium" : "free";
-      const { data: qRow } = await adminClient.from("coin_config")
-        .select("value").eq("key", `quota_retouche_${tierRetouche}`).maybeSingle();
-      const quotaRetouche = typeof qRow?.value === "number" ? qRow.value : null;
+      const { data: qRows } = await adminClient.from("coin_config")
+        .select("key, value").in("key", [`quota_retouche_${tierRetouche}`, "quotas_retouche_depuis"]);
+      const parCle = Object.fromEntries((qRows ?? []).map((r) => [r.key, r.value]));
+      const quotaRetouche = typeof parCle[`quota_retouche_${tierRetouche}`] === "number"
+        ? parCle[`quota_retouche_${tierRetouche}`] as number : null;
       if (quotaRetouche !== null) {
         const { data: cycleDebut } = await adminClient.rpc("debut_cycle_quotas", { p_user_id: user.id });
+        // Remise à zéro à la fusion (02/09 soir) : les retouches payées en
+        // Pépites AVANT la bascule comptaient dans le cycle et saturaient
+        // 3 comptes payants à tort. Borne basse = max(début de cycle,
+        // quotas_retouche_depuis) — même modèle que le compteur d'annonces ;
+        // dès le cycle suivant, l'origine est dépassée et ne sert plus.
+        const depuisEpoch = typeof parCle["quotas_retouche_depuis"] === "number" ? parCle["quotas_retouche_depuis"] as number : 0;
+        const cycleIso = cycleDebut ?? new Date(Date.now() - 31 * 864e5).toISOString();
+        const borne = new Date(Math.max(Date.parse(cycleIso), depuisEpoch * 1000)).toISOString();
         const { count: retouchesFaites } = await adminClient.from("usage_logs")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id).eq("feature", "photo_retouche")
-          .gte("created_at", cycleDebut ?? new Date(Date.now() - 31 * 864e5).toISOString());
+          .gte("created_at", borne);
         if ((retouchesFaites ?? 0) >= quotaRetouche) {
           await refundGenerateFn?.("quota_retouche"); // prix 0 → no-op ; ancien monde → rendu
           return json({

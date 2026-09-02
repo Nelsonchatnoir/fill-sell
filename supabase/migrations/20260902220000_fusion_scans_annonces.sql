@@ -7,10 +7,12 @@
 -- · Le compteur retenu est quota_annonces_* (5/40/120/300). Les clés
 --   quota_scan_* passent à 0 et RESTENT en base pour le retour arrière
 --   (valeurs d'avant : 3/40/120/300).
--- · MIGRATION DES CONSOMMATIONS EN COURS : on ADDITIONNE scans + annonces
---   déjà consommés sur le cycle courant (2 scans + 1 annonce = 3). Personne
---   n'est coupé rétroactivement : un compte déjà au-delà voit simplement
---   « restantes 0 » (GREATEST(0,…) partout) et repart au cycle suivant.
+-- · REMISE À ZÉRO À LA FUSION (décision Nico, remplace l'addition envisagée
+--   d'abord — elle saturait 68 comptes free d'un coup) : le compteur ne
+--   compte QUE les gestes postérieurs à quotas_annonces_depuis (posée en fin
+--   de fichier à l'instant de l'application). Tout le monde démarre la
+--   fusion avec son plafond complet, tous paliers. Dès le cycle suivant,
+--   l'origine est dépassée par le début de cycle et ne sert plus.
 --
 -- MÉCANIQUE DE COMPTAGE (dérivée, rien de stocké) :
 --   consommés = lignes usage_logs 'generate_listing' du cycle (dédup
@@ -39,6 +41,15 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ── Le compteur FUSIONNÉ ────────────────────────────────────────────────────
+-- REMISE À ZÉRO À LA FUSION (décision Nico 02/09 soir) : personne ne démarre
+-- avec un compteur entamé — l'addition scan+annonce du cycle en cours aurait
+-- saturé 68 comptes free d'un coup (50 au-delà du plafond). La borne basse
+-- est GREATEST(début de cycle, quotas_annonces_depuis) : tout geste antérieur
+-- à l'application de la migration est oublié, TOUS paliers. Au cycle suivant,
+-- le début de cycle dépasse l'origine et le comptage redevient exactement
+-- « depuis le début du cycle » — l'origine ne sert que pour le cycle où la
+-- fusion arrive. Clé absente ou 0 → epoch 0, la borne retombe sur p_cycle
+-- (fail-open, même convention que republication_avie_depuis).
 CREATE OR REPLACE FUNCTION public.quota_annonces_consommees(p_user_id uuid, p_cycle timestamptz)
  RETURNS integer
  LANGUAGE sql
@@ -46,11 +57,17 @@ CREATE OR REPLACE FUNCTION public.quota_annonces_consommees(p_user_id uuid, p_cy
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $$
+  WITH borne AS (
+    SELECT GREATEST(
+      p_cycle,
+      to_timestamp(COALESCE((SELECT value FROM coin_config WHERE key = 'quotas_annonces_depuis'), 0))
+    ) AS t
+  )
   SELECT (
     -- Annonces générées (portes A et B) — dédup régénération 24 h inchangée.
-    (SELECT count(*) FROM usage_logs u
+    (SELECT count(*) FROM usage_logs u, borne
       WHERE u.user_id = p_user_id AND u.feature = 'generate_listing'
-        AND u.created_at >= p_cycle
+        AND u.created_at >= borne.t
         AND NOT (
           u.metadata ? 'inventaire_id' AND EXISTS (
             SELECT 1 FROM usage_logs prev
@@ -60,12 +77,13 @@ AS $$
               AND prev.created_at >= u.created_at - interval '24 hours'
           )
         ))
-    -- + scans NON unifiés du cycle (avant fusion, ou mode plein) : 1 unité
-    -- chacun. Les scans unifiés (unifie:true) sont portés par leur ligne
-    -- generate_listing — jamais comptés deux fois.
-    + (SELECT count(*) FROM usage_logs l
+    -- + scans NON unifiés depuis la borne (mode plein — analyse de marché du
+    -- stepper, ou clients d'avant l'OTA) : 1 unité chacun. Les scans unifiés
+    -- (unifie:true) sont portés par leur ligne generate_listing — jamais
+    -- comptés deux fois.
+    + (SELECT count(*) FROM usage_logs l, borne
         WHERE l.user_id = p_user_id AND l.feature = 'lens'
-          AND l.created_at >= p_cycle
+          AND l.created_at >= borne.t
           AND NOT (l.metadata ? 'unifie'))
   )::int;
 $$;
@@ -219,8 +237,15 @@ BEGIN
   v_ca := quota_annonces_consommees(v_user, v_cycle);
   SELECT count(*)::int INTO v_cs FROM usage_logs
    WHERE user_id = v_user AND feature = 'lens' AND created_at >= v_cycle;
+  -- Retouches : même remise à zéro que les annonces (quotas_retouche_depuis).
+  -- Mesuré avant la pose : 3 comptes payants saturés À TORT (2 Premium à 21,
+  -- 1 Pro à 41 retouches — TOUTES payées en Pépites avant la bascule de
+  -- 15:35). La garde vit dans generate-listing (edge), qui applique la même
+  -- borne — cette lecture-ci n'est que l'affichage.
   SELECT count(*)::int INTO v_cr FROM usage_logs
-   WHERE user_id = v_user AND feature = 'photo_retouche' AND created_at >= v_cycle;
+   WHERE user_id = v_user AND feature = 'photo_retouche'
+     AND created_at >= GREATEST(v_cycle,
+       to_timestamp(COALESCE((SELECT value FROM coin_config WHERE key = 'quotas_retouche_depuis'), 0)));
 
   IF v_tier = 'free' THEN
     SELECT value INTO v_avie   FROM coin_config WHERE key = 'republication_avie_free';
@@ -267,4 +292,22 @@ UPDATE coin_config SET value = 0, updated_at = now()
 WHERE key IN ('quota_scan_free', 'quota_scan_premium', 'quota_scan_pro', 'quota_scan_business');
 
 INSERT INTO coin_config (key, value) VALUES ('lens_unifie', 0)
+ON CONFLICT (key) DO NOTHING;
+
+-- ── REMISE À ZÉRO : les origines (modèle exact de republication_avie_depuis) ──
+-- Posées à l'instant où LA MIGRATION S'APPLIQUE ; ON CONFLICT DO NOTHING —
+-- un rejeu ne déplace JAMAIS l'origine. Tous paliers (décision Nico : plus
+-- simple, plus juste, effet négligeable sur les payants — 1 seul Premium
+-- saturé côté annonces).
+--   quotas_annonces_depuis : borne du compteur fusionné (fonction ci-dessus).
+--   quotas_retouche_depuis : borne du compteur de retouches — la garde de
+--     generate-listing comptait depuis le DÉBUT DU CYCLE, donc les retouches
+--     payées en Pépites avant la bascule de 15:35 : 3 comptes payants étaient
+--     saturés à tort (2 Premium, 1 Pro). Lue par generate-listing (garde) et
+--     quotas_etat (affichage).
+INSERT INTO coin_config (key, value)
+VALUES ('quotas_annonces_depuis', extract(epoch from now())::int)
+ON CONFLICT (key) DO NOTHING;
+INSERT INTO coin_config (key, value)
+VALUES ('quotas_retouche_depuis', extract(epoch from now())::int)
 ON CONFLICT (key) DO NOTHING;
