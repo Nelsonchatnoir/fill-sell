@@ -856,6 +856,13 @@ function defautAspectEbay(aspect, ctx = {}) {
   // Liste FERMÉE : on ne peut rien y écrire qui n'y figure pas. On laisse la
   // ligne « manquante » plutôt que d'envoyer une valeur qu'eBay refusera.
   if (aspect.mode === "SELECTION_ONLY") return undefined;
+  // ── Règle par FAMILLE (2026-09-02, cas Delavier — même doctrine que
+  // l'Univers) : un champ sans SENS pour la famille de l'article reçoit la
+  // valeur standard de la plateforme, jamais une question à l'utilisateur.
+  // Un LIVRE n'a pas de « Modèle » — même quand une « marque » (l'éditeur)
+  // est renseignée, la garde marque-réelle ci-dessous ne doit pas retenir la
+  // pose. famille = descripteur FERMÉ de la fiche Lens (v81).
+  if (ctx.famille === "livres_medias") return EBAY_MODELE_SANS_MARQUE;
   const marque = String(ctx.marque ?? "").trim();
   // Marque RENSEIGNÉE et réelle : le modèle existe peut-être, il n'appartient
   // pas au serveur de décider qu'il n'y en a pas. Saisie manuelle ou IA.
@@ -4860,6 +4867,10 @@ export default function ListingPreviewScreen({
   // chips passent ✓ tout de suite ; la valeur reste écrasable dans le fallback
   // UI. Jamais d'écrasement d'une source existante. Une pose par catégorie.
   const aspectDefaultsFor = useRef(null);
+  // Aspects déjà posés pour la passe courante (2026-09-02) : la pose se fait à
+  // la PREMIÈRE apparition de chaque aspect — jamais deux fois (on ne recouvre
+  // pas un champ que l'utilisateur a vidé exprès).
+  const aspectDefaultsPoses = useRef(new Set());
   useEffect(() => {
     if (!ebayRequiredStatus || !ebayPreviewCategoryId) return;
     // Clé composite catégorie|genre (2026-07-19) : le Département dérive du
@@ -4889,27 +4900,43 @@ export default function ListingPreviewScreen({
     // la passe à chaque frappe.
     const marqueCle = !marqueEbay ? "sans" : MARQUE_GENERIQUE_RE.test(marqueEbay) ? "generique" : "marque";
     const passeCle = `${ebayPreviewCategoryId}|${genreCle}|${marqueCle}`;
-    if (aspectDefaultsFor.current === passeCle) return;
+    // ── Pose « au plus une fois PAR ASPECT », plus « une fois par passe »
+    // (2026-09-02, cas Delavier : MPN demandé en saisie libre sur un livre
+    // alors que son défaut existe depuis le 16/07). L'ancien retour anticipé
+    // marquait la passe FAITE même quand ebayRequiredStatus était encore
+    // PARTIEL (les aspects arrivent en async) : un aspect apparu après le
+    // premier passage ne recevait JAMAIS son défaut. Désormais chaque aspect
+    // défautable est posé à sa PREMIÈRE apparition — et une seule fois par
+    // passe (un utilisateur qui vide le champ pour saisir un vrai MPN n'est
+    // jamais recouvert).
+    if (aspectDefaultsFor.current !== passeCle) {
+      aspectDefaultsFor.current = passeCle;
+      aspectDefaultsPoses.current = new Set();
+    }
     const toSet = {};
     for (const a of ebayRequiredStatus) {
-      const def = defautAspectEbay(a, { marque: marqueEbay });
-      if (def && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()) toSet[a.name] = def;
+      const def = defautAspectEbay(a, { marque: marqueEbay, famille: initialListing?.famille ?? null });
+      if (def && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()
+          && !aspectDefaultsPoses.current.has(a.name)) {
+        toSet[a.name] = def;
+        aspectDefaultsPoses.current.add(a.name);
+      }
       // Département ← genre de la copie eBay (2026-07-19, montre Casio) :
       // déterministe comme les défauts ci-dessus, mais dérivé d'une DONNÉE du
       // job — seul un candidat PRÉSENT dans la liste de la catégorie est posé
       // (libellés variables : « Adulte unisexe » vs « Unisexe » vs
       // « Adulte »…). Genre absent ou aucun candidat → reste "missing" :
       // resolve_aspects puis saisie manuelle, comme Type/Style.
-      if (a.name === "Département" && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()) {
+      if (a.name === "Département" && a.state === "missing" && !String(pfAspects[a.name] ?? "").trim()
+          && !aspectDefaultsPoses.current.has(a.name)) {
         // genreCle = genre effectif (copie eBay, sinon repli copies sœurs) —
         // cf. son calcul plus haut, aligné sur ebayPreviewCategoryId.
         const candidats = EBAY_DEPARTMENT_BY_GENRE[genreCle] ?? [];
         const libelle = candidats.find(c =>
           (a.allowedValues ?? []).some(v => normAspectVal(v) === normAspectVal(c)));
-        if (libelle) toSet[a.name] = libelle;
+        if (libelle) { toSet[a.name] = libelle; aspectDefaultsPoses.current.add(a.name); }
       }
     }
-    aspectDefaultsFor.current = passeCle;
     if (!Object.keys(toSet).length) return;
     setEdited(prev => prev.ebay ? {
       ...prev,
@@ -4976,7 +5003,7 @@ export default function ListingPreviewScreen({
       ?? edited.ebay?.platform_fields?.ebayAspects?.["Marque"] ?? ""
     ).trim();
     const missing = (ebayRequiredStatus ?? [])
-      .filter(a => a.state === "missing" && !defautAspectEbay(a, { marque: marqueEbay }))
+      .filter(a => a.state === "missing" && !defautAspectEbay(a, { marque: marqueEbay, famille: initialListing?.famille ?? null }))
       .map(a => a.name);
     if (!missing.length || !ebayPreviewCategoryId) return;
     if (aspectsResolvedFor.current === ebayPreviewCategoryId) return;
@@ -5517,6 +5544,19 @@ export default function ListingPreviewScreen({
           const cand = UNIVERS_PAR_GENRE[genreArticle] ?? null;
           if (cand && (a.allowedValues ?? []).some(v => normAspectVal(v) === normAspectVal(cand))) {
             setPlatformDedicatedField(gp, "univers", cand);
+            continue;
+          }
+        }
+        // ── Marque sur un LIVRE (2026-09-02, même doctrine que l'Univers) ────
+        // Un livre n'a pas de marque (l'« éditeur » n'en est pas une pour les
+        // listes des plateformes) : quand la liste relevée de la catégorie
+        // propose « Sans marque »/« Autre », on la pose d'office au lieu de
+        // demander. Liste sans valeur générique → comportement inchangé
+        // (l'extension a ses propres replis « Autre »/« Sans marque »).
+        if (a.dedicatedTarget === "marque" && initialListing?.famille === "livres_medias") {
+          const cand = (a.allowedValues ?? []).find(v => /sans\s*marque|^autres?$/i.test(String(v).trim()));
+          if (cand) {
+            setPlatformDedicatedField(gp, "marque", String(cand).trim());
             continue;
           }
         }
