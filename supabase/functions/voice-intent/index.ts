@@ -1083,18 +1083,40 @@ serve(async (req) => {
       profileData?.is_pro ||
       profileData?.is_comped
     );
+    // ── Garde-fou voix par cycle (bascule quotas 02/09) ─────────────────────
+    // INVISIBLE côté produit : jamais affiché, jamais vendu — c'est une borne
+    // de coût (la voix appelle Haiku), pas un argument commercial. Les clés
+    // quota_voix_{free,premium,pro,business} bornent le MOIS ; clé absente →
+    // comportement historique (Free 50/jour, payants illimités). Le refus
+    // garde la forme 'quota_exceeded' existante avec reason='monthly' — l'app
+    // affiche pour ce reason un message NEUTRE (« le vocal reprend bientôt »),
+    // jamais un paywall.
+    let voixMensuelFree: number | null = null;
+    let voixMensuelPremium: number | null = null;
+    try {
+      const { data: tierRow } = await adminClient.from("profiles")
+        .select("is_business,is_pro").eq("id", user.id).maybeSingle();
+      const tierVoix = tierRow?.is_business ? "business" : tierRow?.is_pro ? "pro"
+        : isPremiumUser ? "premium" : "free";
+      const { data: qv } = await adminClient.from("coin_config")
+        .select("value").eq("key", `quota_voix_${tierVoix}`).maybeSingle();
+      if (typeof qv?.value === "number" && qv.value > 0) {
+        if (tierVoix === "free") voixMensuelFree = qv.value;
+        else voixMensuelPremium = qv.value;
+      }
+    } catch { /* fail-open : une panne de lecture ne coupe pas la voix */ }
+
     const { data: quotaData, error: quotaError } = await adminClient.rpc("check_and_log_usage", {
       p_user_id: user.id,
       p_feature: "voice_intent",
       p_is_premium: isPremiumUser,
-      // Quotas 2026-07-23 : Free 50/jour sans plafond mensuel, Premium/Pro
-      // ILLIMITÉ (NULL = vrai bypass dans check_and_log_usage — le IF saute
-      // quand la limite est NULL, aucun plafond factice). Aligné sur
-      // VOICE_FREE_LIMIT (App.jsx) et voice-transcribe.
+      // Quotas 2026-07-23 : Free 50/jour (aligné VOICE_FREE_LIMIT App.jsx et
+      // voice-transcribe) ; les plafonds MENSUELS viennent de coin_config
+      // (bascule 02/09), NULL = vrai bypass comme avant.
       p_daily_limit_free: 50,
-      p_monthly_limit_free: null,
+      p_monthly_limit_free: voixMensuelFree,
       p_daily_limit_premium: null,
-      p_monthly_limit_premium: null,
+      p_monthly_limit_premium: voixMensuelPremium,
     });
     if (quotaError) console.error("[voice-intent] check_and_log_usage error:", quotaError.message);
     quotaLogId = (quotaData as any)?.log_id ?? null;

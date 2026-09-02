@@ -280,15 +280,17 @@ function welcomeHtml(lang: string): string {
         jour automatiquement à chaque nouvelle version.
       </p>
     </div>
+    <!-- Bascule quotas (02/09) : plus de Pépites — le mail dit ce que le
+         forfait gratuit PERMET, en gestes réels (mêmes mots que l'app). -->
     <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
       <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">
-        <img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Pépites" style="display:inline-block;vertical-align:-3px;"> Tes Pépites
+        🎁 Ce qui est inclus pour démarrer
       </p>
       <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        Tu démarres avec 50 Pépites offertes, et tu en reçois chaque mois. Elles servent
-        aux actions qui font travailler l'IA&nbsp;: retouche des photos, rédaction
-        d'annonce, publication. L'app t'affiche toujours le coût avant que tu valides —
-        rien n'est débité sans que tu le voies.
+        Chaque mois, tu peux créer des annonces avec l'IA et les publier sur les
+        4 plateformes, lancer des analyses Lens, et tu démarres avec des
+        republications Vinted offertes. Les compteurs sont visibles dans
+        l'app&nbsp;— rien ne se consomme sans que tu le voies.
       </p>
     </div>
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;

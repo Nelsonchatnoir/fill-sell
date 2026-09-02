@@ -683,12 +683,17 @@ serve(async (req) => {
       // Échec IA : on renvoie quand même les défauts déterministes déjà posés.
       return json({ aspects: out });
     }
-    // photo_option: "ia_advanced" (retouche marquée, fond nettoyé), "ia_light" (correction rapide
-    // luminosité/blancs uniquement), "original" (aucune retouche). Toute valeur absente, inconnue
-    // ou legacy ("ia", "ia_multi", "ia_simple", …) retombe sur "original" : jamais de retouche
-    // GPT Image payante par défaut — un ancien client obtient ses photos telles quelles.
+    // photo_option: "ia_light" (Retouche IA — correction luminosité/blancs), "original" (aucune
+    // retouche). Toute valeur absente, inconnue ou legacy ("ia", "ia_multi", "ia_simple", …)
+    // retombe sur "original" : jamais de retouche GPT Image par défaut.
+    // ⚠️ Bascule 02/09 : le niveau AVANCÉ ("ia_advanced") est SUPPRIMÉ du produit.
+    // Un vieux client OTA qui l'enverrait encore est DÉGRADÉ EN DOUCEUR vers la
+    // légère (renommée « Retouche IA ») — jamais un refus pour une option que son
+    // écran affichait la veille. Aucun job en vol ne casse : la retouche est
+    // synchrone (elle vit dans CET appel), photo_option sur les jobs existants
+    // n'est qu'une étiquette.
     const rawPhotoOption = typeof body.photo_option === "string" ? body.photo_option : "";
-    const photo_option = rawPhotoOption === "ia_advanced" || rawPhotoOption === "ia_light" ? rawPhotoOption : "original";
+    const photo_option = rawPhotoOption === "ia_advanced" || rawPhotoOption === "ia_light" ? "ia_light" : "original";
     // background: choix de fond, uniquement pris en compte en ia_advanced (voir
     // BACKGROUND_OPTIONS). Toute valeur absente/inconnue → "original" (aucun
     // remplacement de fond, comportement historique).
@@ -721,8 +726,16 @@ serve(async (req) => {
     // décision Nico : Capgo va être réactivé, les fronts mobiles retrouveront
     // l'affichage du prix à la source — le débit reste inconditionnel.)
     {
+      // Bascule quotas (02/09) : p_inventaire_id permet au RPC de laisser
+      // passer GRATUITEMENT une régénération du même article sous 24 h (42 %
+      // des générations sont des reprises de confort) et de dédupliquer le
+      // comptage. Les corps item_data (article pas encore sauvé) n'ont pas
+      // d'id : chaque appel compte — limite assumée, signalée à Nico.
       const { data: spend, error: spendErr } = await adminClient
-        .rpc("spend_coins_for_generate", { p_user_id: user.id });
+        .rpc("spend_coins_for_generate", {
+          p_user_id: user.id,
+          p_inventaire_id: inventaire_id ?? null,
+        });
       if (spendErr) {
         console.error("[generate-listing] spend_coins_for_generate:", spendErr.message);
         return json({ error: "Internal server error" }, 500);
@@ -730,6 +743,12 @@ serve(async (req) => {
       if (spend?.allowed === false) {
         if (spend.reason === "insufficient_coins") {
           return json({ error: "insufficient_coins", price: spend.price, balance: spend.balance }, 402);
+        }
+        // Quota d'annonces du cycle atteint (bascule 02/09) — refus AVANT
+        // tout appel IA, relayé tel quel : l'app ouvre la modale de
+        // conversion (origine quota_annonces).
+        if (spend.reason === "quota_annonces_atteint") {
+          return json({ error: "quota_annonces_atteint", plafond: spend.plafond, consommes: spend.consommes }, 402);
         }
         // Plafond quotidien Pro (2026-08-08) : la génération offerte a retiré
         // le frein économique — la RPC compte (usage_logs generate_pro_free)
@@ -756,6 +775,36 @@ serve(async (req) => {
         });
         if (error) console.error("[generate-listing] refund_coins:", error.message);
       };
+    }
+
+    // ── Quota Retouche IA (bascule 02/09) — AVANT tout appel image ──────────
+    // La retouche est synchrone et vit dans CET appel : le refus ici garantit
+    // qu'aucun appel GPT Image ne part. Clé absente → fail-open ; valeur 0 =
+    // aucune retouche au palier (free). Comptage par cycle d'abonnement, sur
+    // les lignes usage_logs 'photo_retouche' (posées plus bas à chaque
+    // retouche livrée). Refus nommé, relayé à l'app (modale quota_retouche).
+    if (photo_option === "ia_light") {
+      const { data: tierRow } = await adminClient.from("profiles")
+        .select("is_premium,is_pro,is_business,is_comped").eq("id", user.id).maybeSingle();
+      const tierRetouche = tierRow?.is_business ? "business" : tierRow?.is_pro ? "pro"
+        : (tierRow?.is_premium || tierRow?.is_comped) ? "premium" : "free";
+      const { data: qRow } = await adminClient.from("coin_config")
+        .select("value").eq("key", `quota_retouche_${tierRetouche}`).maybeSingle();
+      const quotaRetouche = typeof qRow?.value === "number" ? qRow.value : null;
+      if (quotaRetouche !== null) {
+        const { data: cycleDebut } = await adminClient.rpc("debut_cycle_quotas", { p_user_id: user.id });
+        const { count: retouchesFaites } = await adminClient.from("usage_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id).eq("feature", "photo_retouche")
+          .gte("created_at", cycleDebut ?? new Date(Date.now() - 31 * 864e5).toISOString());
+        if ((retouchesFaites ?? 0) >= quotaRetouche) {
+          await refundGenerateFn?.("quota_retouche"); // prix 0 → no-op ; ancien monde → rendu
+          return json({
+            error: "quota_retouche_atteint",
+            plafond: quotaRetouche, consommes: retouchesFaites ?? 0,
+          }, 402);
+        }
+      }
     }
 
     let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null };
@@ -1505,6 +1554,10 @@ serve(async (req) => {
       metadata: {
         platforms: platforms.length,
         photo_option,
+        // Bascule quotas (02/09) : l'id d'article alimente la dédup « une
+        // régénération sous 24 h ne recompte pas » (quota_annonces_consommees).
+        // Absent sur les corps item_data (article pas encore sauvé).
+        ...(inventaire_id ? { inventaire_id: String(inventaire_id) } : {}),
         ...traceEtat,
         ...traceIsbn,
         claude_calls: cost.claude_calls,

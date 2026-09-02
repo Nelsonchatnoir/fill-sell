@@ -1923,9 +1923,19 @@ serve(async (req) => {
     if (spend.reason === "insufficient_coins") {
       // 402 → le client ouvre la ConversionModal (trigger lens) avec le prix
       // et le solde réels — chemin déjà câblé côté App.jsx et
-      // ListingPreviewScreen.
+      // ListingPreviewScreen. (Inatteignable à prix 0 — conservé pour la
+      // réversibilité de la bascule quotas.)
       return new Response(
         JSON.stringify({ error: "insufficient_coins", price: spend.price, balance: spend.balance }),
+        { status: 402, headers: { "Content-Type": "application/json", ...CORS } }
+      );
+    }
+    // Quota de scans du cycle atteint (bascule 02/09) — refus posé par le RPC
+    // AVANT tout appel IA, relayé tel quel : l'app ouvre la modale de
+    // conversion (origine quota_scan).
+    if (spend.reason === "quota_scan_atteint") {
+      return new Response(
+        JSON.stringify({ error: "quota_scan_atteint", plafond: spend.plafond, consommes: spend.consommes }),
         { status: 402, headers: { "Content-Type": "application/json", ...CORS } }
       );
     }
