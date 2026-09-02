@@ -251,7 +251,7 @@ const MSG_GARDE_COULEUR =
   "Republication mise en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
   "Motif : Vinted exige désormais une couleur à la création d'une annonce, et la tienne n'en porte pas " +
   "(c'était accepté quand tu l'avais créée). Ajoute une couleur à ton annonce sur Vinted, " +
-  "puis relance la republication depuis l'app — ta Pépite est déjà rendue.";
+  "puis relance la republication depuis l'app — rien ne t'a été décompté.";
 // ── EXEMPTION famille MÉDIAS de la garde Couleur (2026-08-28, cas Joséphine,
 // job a25d171b « Fairy tail de 1 à 11 », catalog 2364) ──────────────────────
 // L'exemption Livres 0.6.9 du 27/08 sort les livres de la garde ISBN… qui
@@ -670,8 +670,12 @@ serve(async (req) => {
             categorie: "Catégorie", etat: "État", couleur: "Couleur",
             isbn: "ISBN", description: "Description",
           };
+          // Nettoyage Pépites (02/09 soir) : l'ancienne phrase « Ta Pépite
+          // reste réservée… rendue sous 72 h » était doublement fausse depuis
+          // la bascule (rien n'est débité). Le nom de la constante est gardé
+          // pour ne pas toucher les trois points d'assemblage.
           const PEPITE_72H =
-            "Ta Pépite reste réservée : elle te sera rendue automatiquement sous 72 h si la republication ne repart pas.";
+            "Rien ne t'a été décompté pour cette republication.";
           if (mCapture) {
             const motifs = mCapture[1].split(" ; ").map((m) => m.trim()).filter(Boolean);
             // photo* = échec technique (re-hébergement, URLs illisibles) : pas

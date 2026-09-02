@@ -94,8 +94,8 @@ const COPY = {
     pricePro: '29,99 €',
     proAds: '{ADS_PRO} annonces créées et publiées sur les 4 plateformes chaque mois',
     ctaFree: 'Commencer gratuitement', ctaPremium: 'Passer Premium', ctaPro: 'Passer Pro',
-    coinsTitle: 'Les Pépites, tes crédits d\'action',
-    coinsBody: "L'app t'affiche toujours le coût avant que tu valides, et elles n'expirent jamais.",
+    // (coinsTitle/coinsBody supprimées au nettoyage Pépites du 02/09 soir —
+    // chaînes mortes, l'encadré qui les lisait est déjà remplacé.)
 
     faqTitle: "Les questions qu'on nous pose.",
     ctaTitle: 'Prêt à publier partout, sans effort ?',
@@ -164,8 +164,8 @@ const COPY = {
     pricePro: '€29.99',
     proAds: '{ADS_PRO} listings created and published on all 4 marketplaces every month',
     ctaFree: 'Start free', ctaPremium: 'Go Premium', ctaPro: 'Go Pro',
-    coinsTitle: 'Pépites, your action credits',
-    coinsBody: 'The app always shows the cost before you confirm, and they never expire.',
+    // (coinsTitle/coinsBody removed with the 02/09 Pépites cleanup — dead
+    // strings, the block that read them is already replaced.)
 
     faqTitle: 'The questions we get asked.',
     ctaTitle: 'Ready to list everywhere, effortlessly?',
@@ -228,7 +228,9 @@ const PLANS = {
     ],
     premium: [
       '{REPUB_PREMIUM} republications Vinted par mois',
-      '{SCANS_PREMIUM} analyses Lens par mois',
+      // (La ligne « analyses Lens » a fusionné dans les annonces le 02/09
+      // soir : un scan crée l'annonce, un seul volume, dit par la ligne
+      // lp-plan__coins au-dessus des puces.)
       'Retouche IA — {RETOUCHE_PREMIUM} photos par mois',
       'Stock illimité',
       PUBLISH_LINE.fr,
@@ -238,7 +240,6 @@ const PLANS = {
     pro: [
       '{REPUB_PRO} republications Vinted par mois',
       'Republication automatique — tes annonces remontent toutes seules',
-      '{SCANS_PRO} analyses Lens par mois',
       'Retouche IA — {RETOUCHE_PRO} photos par mois',
       'Stock illimité',
       PUBLISH_LINE.fr,
@@ -255,7 +256,6 @@ const PLANS = {
     ],
     premium: [
       '{REPUB_PREMIUM} Vinted repostings a month',
-      '{SCANS_PREMIUM} Lens scans a month',
       'AI touch-up — {RETOUCHE_PREMIUM} photos a month',
       'Unlimited stock',
       PUBLISH_LINE.en,
@@ -265,7 +265,6 @@ const PLANS = {
     pro: [
       '{REPUB_PRO} Vinted repostings a month',
       'Automatic reposting — your listings bump themselves',
-      '{SCANS_PRO} Lens scans a month',
       'AI touch-up — {RETOUCHE_PRO} photos a month',
       'Unlimited stock',
       PUBLISH_LINE.en,
@@ -283,23 +282,23 @@ const PLANS = {
    (extension Chrome), au lieu de la cacher. */
 const FAQ = {
   fr: [
-    ['Comment fonctionnent les forfaits ?', 'Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA et publiées sur les 4 plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro), des analyses Lens, des retouches photo et des republications Vinted ({REPUB_FREE} offertes à vie en Free, {REPUB_PREMIUM} par mois en Premium, {REPUB_PRO} en Pro). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l’app et se remettent à zéro à chaque cycle.'],
+    ['Comment fonctionnent les forfaits ?', 'Chaque forfait comprend des volumes mensuels de gestes : des annonces créées par IA — depuis une photo (Lens) ou depuis ton stock — et publiées sur les 4 plateformes ({ADS_FREE} en Free, {ADS_PREMIUM} en Premium, {ADS_PRO} en Pro), des retouches photo et des republications Vinted ({REPUB_FREE} offertes à vie en Free, {REPUB_PREMIUM} par mois en Premium, {REPUB_PRO} en Pro). La publication elle-même est incluse et illimitée. Les compteurs sont visibles dans l’app et se remettent à zéro à chaque cycle.'],
     ['Sur quelles plateformes je publie ?', 'Vinted, Leboncoin, eBay et Beebs — les 4 places de marché qui comptent en France. Un seul ajout, publié sur les quatre en même temps.'],
     ['Comment FillSell publie-t-il mes annonces ?', 'Par une extension Chrome installée une seule fois sur ton ordinateur. Elle remplit les formulaires avec tes comptes déjà connectés. FillSell ne connaît jamais tes mots de passe.'],
     ['Faut-il laisser mon ordinateur allumé ?', 'Pour que les publications partent, oui, avec Chrome ouvert. Si ton ordinateur est éteint, tes actions attendent en file et partent à la prochaine ouverture.'],
     ['Est-ce risqué pour mon compte Vinted ?', 'FillSell agit au rythme d’une personne : des gestes espacés, et la republication automatique est volontairement plafonnée à 45 par jour — une limite de sécurité pour protéger ton compte, pas une limite commerciale. Tu peux tout couper à tout moment. Aucun outil ne peut promettre zéro risque, et nous préférons la prudence aux promesses.'],
     ['Et si un article se vend ?', 'FillSell détecte la vente et te prévient. Tu confirmes, il retire les annonces des autres plateformes et met à jour ton stock, tes marges et tes stats.'],
-    ['Lens, c’est illimité ?', 'Non — chaque forfait comprend un nombre d’analyses Lens par mois ({SCANS_PREMIUM} en Premium, {SCANS_PRO} en Pro). Le compteur est visible dans l’app et repart à chaque cycle.'],
+    ['Lens, c’est illimité ?', 'Un scan Lens crée directement l’annonce : il compte comme une annonce de ton forfait ({ADS_PREMIUM} par mois en Premium, {ADS_PRO} en Pro) — un seul compteur, visible dans l’app, qui repart à chaque cycle.'],
     ['Je peux annuler quand je veux ?', 'Oui. Premium et Pro sont sans engagement : tu changes d’offre ou tu arrêtes en un clic depuis l’app.'],
   ],
   en: [
-    ['How do the plans work?', 'Each plan includes monthly volumes of actions: AI-created listings published to the 4 marketplaces ({ADS_FREE} on Free, {ADS_PREMIUM} on Premium, {ADS_PRO} on Pro), Lens scans, AI photo touch-ups and Vinted repostings ({REPUB_FREE} included for life on Free, {REPUB_PREMIUM} a month on Premium, {REPUB_PRO} on Pro). Publishing itself is included and unlimited. Counters are visible in the app and reset every cycle.'],
+    ['How do the plans work?', 'Each plan includes monthly volumes of actions: AI-created listings — from a photo (Lens) or from your stock — published to the 4 marketplaces ({ADS_FREE} on Free, {ADS_PREMIUM} on Premium, {ADS_PRO} on Pro), AI photo touch-ups and Vinted repostings ({REPUB_FREE} included for life on Free, {REPUB_PREMIUM} a month on Premium, {REPUB_PRO} on Pro). Publishing itself is included and unlimited. Counters are visible in the app and reset every cycle.'],
     ['Which marketplaces can I publish to?', 'Vinted, Leboncoin, eBay and Beebs — the 4 marketplaces that matter in France. One add, posted to all four at once.'],
     ['How does FillSell publish my listings?', 'Through a Chrome extension installed once on your computer. It fills in the forms with your already-signed-in accounts. FillSell never knows your passwords.'],
     ['Do I need to leave my computer on?', 'For listings to go out, yes — with Chrome open. If your computer is off, your actions wait in line and go out the next time it opens.'],
     ['Is it risky for my Vinted account?', 'FillSell acts at a human pace: spaced-out actions, and automatic reposting is deliberately capped at 45 a day — a safety limit to protect your account, not a commercial one. You can switch everything off at any time. No tool can promise zero risk, and we prefer caution over promises.'],
     ['What happens when an item sells?', 'FillSell detects the sale and lets you know. You confirm, it removes the listings from the other marketplaces and updates your stock, margins and stats.'],
-    ['Is Lens unlimited?', 'No — each plan includes a number of Lens scans per month ({SCANS_PREMIUM} on Premium, {SCANS_PRO} on Pro). The counter is visible in the app and resets every cycle.'],
+    ['Is Lens unlimited?', 'A Lens scan creates the listing directly: it counts as one listing from your plan ({ADS_PREMIUM} a month on Premium, {ADS_PRO} on Pro) — a single counter, visible in the app, that resets every cycle.'],
     ['Can I cancel anytime?', 'Yes. Premium and Pro have no commitment — switch plans or stop in one tap from the app.'],
   ],
 };
@@ -319,9 +318,10 @@ const FAQ = {
 /* Bascule quotas (02/09) : les jetons ne dérivent plus des grants de Pépites
    mais des QUOTAS PAR GESTE de coin_config — la même source que les cartes de
    l'app. Filet, pas source : valeurs de la grille du 02/09. */
+/* Fusion scans+annonces (02/09 soir) : les jetons SCANS_* sont morts — un
+   scan Lens consomme une annonce, un seul volume partout. */
 const GRANTS_FALLBACK = {
   ADS_FREE: 5, ADS_PREMIUM: 40, ADS_PRO: 120,
-  SCANS_PREMIUM: 40, SCANS_PRO: 120,
   REPUB_FREE: 50, REPUB_PREMIUM: 1500, REPUB_PRO: 5000,
   RETOUCHE_PREMIUM: 5, RETOUCHE_PRO: 20,
 };
@@ -330,8 +330,6 @@ const fillGrants = (texte, g) =>
     .replace(/\{ADS_FREE\}/g, g.ADS_FREE)
     .replace(/\{ADS_PREMIUM\}/g, g.ADS_PREMIUM)
     .replace(/\{ADS_PRO\}/g, g.ADS_PRO)
-    .replace(/\{SCANS_PREMIUM\}/g, g.SCANS_PREMIUM)
-    .replace(/\{SCANS_PRO\}/g, g.SCANS_PRO)
     .replace(/\{REPUB_FREE\}/g, g.REPUB_FREE)
     .replace(/\{REPUB_PREMIUM\}/g, Number(g.REPUB_PREMIUM).toLocaleString('fr-FR'))
     .replace(/\{REPUB_PRO\}/g, Number(g.REPUB_PRO).toLocaleString('fr-FR'))
@@ -339,28 +337,13 @@ const fillGrants = (texte, g) =>
     .replace(/\{RETOUCHE_PRO\}/g, g.RETOUCHE_PRO);
 
 /* ── Fragments SVG réutilisés ───────────────────────────────── */
-/* Le dégradé est inliné dans CHAQUE SVG (id unique via useId) : iOS/WebKit ne
-   résout pas un fill="url(#id)" pointant vers un <defs> logé dans un <svg
-   width=0 height=0> séparé — la gemme sortait alors sans remplissage. */
-const Pepite = ({ size = 16 }) => {
-  const gid = 'pep-' + useId().replace(/:/g, '');
-  return (
-    <svg width={size} height={size} viewBox="0 0 64 64" style={{ flexShrink: 0 }} aria-hidden="true">
-      <defs>
-        <linearGradient id={gid} x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#F0B860" />
-          <stop offset="45%" stopColor="#E8956D" />
-          <stop offset="100%" stopColor="#2F9E90" />
-        </linearGradient>
-      </defs>
-      <path d="M32 4 L48 16 L54 30 L44 56 L32 60 L20 56 L10 30 L16 16 Z" fill={`url(#${gid})`} />
-      <path d="M32 4 L48 16 L32 24 L16 16 Z" fill="#fff" opacity="0.35" />
-    </svg>
-  );
-};
+/* (La gemme <Pepite/> a été SUPPRIMÉE au nettoyage Pépites du 02/09 soir —
+   plus aucune iconographie de la monnaie sur la landing.) */
 
-/* Étoile/couronne dorée des chips Premium & Pro : même correctif iOS que Pepite
-   — dégradé doré inliné, id unique. `path` reçu en prop (étoile ou couronne). */
+/* Étoile/couronne dorée des chips Premium & Pro : dégradé doré inliné, id
+   unique via useId — iOS/WebKit ne résout pas un fill="url(#id)" pointant
+   vers un <defs> logé dans un <svg width=0 height=0> séparé. `path` reçu en
+   prop (étoile ou couronne). */
 const GoldGlyph = ({ size = 14, d }) => {
   const gid = 'gold-' + useId().replace(/:/g, '');
   return (
@@ -456,12 +439,13 @@ export default function LandingPage() {
       try {
         const { supabase } = await import('../lib/supabase');
         // Bascule quotas (02/09) : la landing lit les QUOTAS par geste,
-        // plus les grants de Pépites.
+        // plus les grants de Pépites. Fusion du 02/09 soir : quota_scan_*
+        // n'est plus lu (les clés sont à 0 en base, un scan consomme une
+        // annonce — un seul volume).
         const { data, error } = await supabase
           .from('coin_config')
           .select('key, value')
           .in('key', ['quota_annonces_free', 'quota_annonces_premium', 'quota_annonces_pro',
-                      'quota_scan_premium', 'quota_scan_pro',
                       'republication_avie_free', 'quota_republication_premium', 'quota_republication_pro',
                       'quota_retouche_premium', 'quota_retouche_pro']);
         if (error || !data?.length || !vivant) return;
@@ -470,8 +454,6 @@ export default function LandingPage() {
           ADS_FREE:          parKey.quota_annonces_free        ?? GRANTS_FALLBACK.ADS_FREE,
           ADS_PREMIUM:       parKey.quota_annonces_premium     ?? GRANTS_FALLBACK.ADS_PREMIUM,
           ADS_PRO:           parKey.quota_annonces_pro         ?? GRANTS_FALLBACK.ADS_PRO,
-          SCANS_PREMIUM:     parKey.quota_scan_premium         ?? GRANTS_FALLBACK.SCANS_PREMIUM,
-          SCANS_PRO:         parKey.quota_scan_pro             ?? GRANTS_FALLBACK.SCANS_PRO,
           REPUB_FREE:        parKey.republication_avie_free    ?? GRANTS_FALLBACK.REPUB_FREE,
           REPUB_PREMIUM:     parKey.quota_republication_premium ?? GRANTS_FALLBACK.REPUB_PREMIUM,
           REPUB_PRO:         parKey.quota_republication_pro    ?? GRANTS_FALLBACK.REPUB_PRO,
@@ -957,7 +939,7 @@ export default function LandingPage() {
               {/* Lot 1 : la ligne sous le prix annonce un RÉSULTAT (≈ N annonces
                   créées + publiées sur les 4 plateformes), pas un solde de
                   crédits — le grant en Pépites est la 1re puce de la liste. */}
-              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.freeAds, grants)}</div>
+              <div className="lp-plan__coins">{fillGrants(t.freeAds, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].free.map((f) => (
                   <div className="lp-plan__feat" key={f}><Check /><span>{f}</span></div>
@@ -977,7 +959,7 @@ export default function LandingPage() {
                 <span className="lp-plan__chip-label">Premium</span>
               </div>
               <div className="lp-plan__price"><b>{t.priceP}</b><span>{t.perMonth}</span></div>
-              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.pAds, grants)}</div>
+              <div className="lp-plan__coins">{fillGrants(t.pAds, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].premium.map((f) => (
                   <div className="lp-plan__feat" key={f}><Check /><span>{fillGrants(f, grants)}</span></div>
@@ -996,7 +978,7 @@ export default function LandingPage() {
                 <span className="lp-plan__chip-label lp-plan__chip-label--gold">Pro</span>
               </div>
               <div className="lp-plan__price"><b>{t.pricePro}</b><span>{t.perMonth}</span></div>
-              <div className="lp-plan__coins"><Pepite size={13} />{fillGrants(t.proAds, grants)}</div>
+              <div className="lp-plan__coins">{fillGrants(t.proAds, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].pro.map((f) => (
                   <div className="lp-plan__feat" key={f}><Check color="#F2C98A" /><span>{fillGrants(f, grants)}</span></div>

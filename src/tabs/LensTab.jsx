@@ -5,8 +5,8 @@ import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readSte
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
-import PepiteIcon from '../components/PepiteIcon';
-import PepiteAmount from '../components/PepiteAmount';
+// (imports PepiteIcon/PepiteAmount retirés au nettoyage Pépites du 02/09
+// soir — plus aucun point d'affichage dans cet onglet.)
 // getTypeStyle / typeLabel sont partis avec les pastilles d'identification :
 // ils vivent désormais dans LensIdentite.
 import { getRotatingLensPlaceholders } from '../utils/shared';
@@ -113,10 +113,8 @@ function LensScanHome({
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative,
   analyzeLens, lensLoading, onCreateListing, creatingListing,
-  // Prix du scan (coin_config.price_lens_overflow) — AFFICHAGE seul, null
-  // tant que non chargé (2026-09-01, audit onboarding). Le SOLDE, lui, vit
-  // dans l'en-tête global depuis le 01/09 au soir, plus ici.
-  lensPrice = null,
+  // (lensPrice retiré au nettoyage Pépites du 02/09 soir — plus aucun
+  // montant en Pépites affiché, l'écran parle en annonces du forfait.)
 }) {
   const { t, tpl } = useTranslation(lang);
   const [showLensHelp, setShowLensHelp] = useState(false);
@@ -266,38 +264,24 @@ function LensScanHome({
             disabled={analyzeDisabled}
             style={{ width:'100%', boxSizing:'border-box', borderRadius:999, padding:'13px 0', marginTop:8, display:'flex', alignItems:'center', justifyContent:'center', gap:6, fontSize:14, fontWeight:600, fontFamily:'inherit', background:'none', border:`1.5px solid ${TEAL_DEEP}`, color:TEAL_DEEP, cursor: analyzeDisabled ? 'not-allowed' : 'pointer', opacity: analyzeDisabled ? 0.6 : 1 }}
           >
-            {/* Prix lu de coin_config (2026-09-01) — le « 6 » en dur faisait
-                mentir l'écran à tout changement de grille. Pas encore chargé →
-                pas de montant (jamais un chiffre en dur en repli). */}
+            {/* Nettoyage Pépites (02/09 soir) : le montant en Pépites du CTA
+                a disparu avec la monnaie — les quotas parlent en annonces,
+                le compteur vit sous le CTA d'analyse. */}
             {lensLoading
               ? t('lensAnalyzing')
-              : <>{lang === 'en' ? 'Analyse the deal' : 'Analyser le deal'}{lensPrice != null && <> · <PepiteAmount value={lensPrice} size={12} /></>}</>}
+              : (lang === 'en' ? 'Analyse the deal' : 'Analyser le deal')}
           </button>
 
-          {/* Tarif affiché EN PERMANENCE, tous tiers (2026-07-22) — et depuis le
-              2026-07-23 (payant-par-scan), c'est LA seule information de coût :
-              chaque analyse débite 6 Pépites côté serveur, il n'y a plus de
-              quota mensuel ni de compteur à afficher.
-              ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
+          {/* ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
               <LensScanHome/> et RETOURNE (`if (!lensResult) return`) : tout ce
-              qui suit dans LensTab n'est atteint qu'une fois un résultat obtenu. */}
-          {/* « l'annonce, elle, est gratuite » supprimé le 2026-08-05 : la
-              génération coûte désormais 1 Pépite (price_generate), le prix
-              s'affiche sur le CTA du stepper au moment du clic — pas de
-              montant en dur ici. */}
+              qui suit dans LensTab n'est atteint qu'une fois un résultat
+              obtenu. (L'icône Pépite qui précédait cette ligne a été retirée
+              au nettoyage du 02/09 soir — plus aucun point d'affichage.) */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:8, textAlign:'center', color:'#A6A192' }}>
-            <PepiteIcon size={11} />
             {lang === 'en'
               ? 'Price estimate + deal verdict'
               : 'Estimation du prix + verdict du deal'}
           </div>
-
-          {/* (La ligne de solde « Tes Pépites : N — la monnaie FillSell… »
-              posée ici le matin du 01/09 a VÉCU UNE JOURNÉE : le solde est un
-              état de COMPTE, pas un détail de cet écran — il vit désormais
-              dans l'en-tête global (App.jsx, chip PepiteAmount), visible sur
-              tous les onglets. Le prix du scan lu de coin_config, lui, reste
-              ci-dessus : c'est bien une information de CET écran.) */}
         </div>
 
         {/* Platform marquee */}
@@ -513,28 +497,11 @@ const LensTab = memo(function LensTab({
   const [identifyEchec,setIdentifyEchec]=useState(false);
   const listingSource=identifyResult??lensResult;
 
-  // ── coin_config : prix + dotation mensuelle (2026-09-01, audit onboarding) ─
-  // Le « 6 » du CTA « Analyser le deal » était EN DUR alors que la grille vit
-  // dans coin_config (price_lens_overflow) : un changement en base faisait
-  // mentir l'écran d'entrée. Même mécanisme de lecture que le stepper
-  // (ListingPreviewScreen) : un select au montage, affichage seul — le débit
-  // reste tranché côté serveur. Tant que la lecture n'a pas répondu, AUCUN
-  // montant ne s'affiche (jamais un chiffre en dur en repli).
-  const [coinCfg,setCoinCfg]=useState(null);
-  useEffect(()=>{
-    supabase.from('coin_config').select('key, value').then(({data})=>{
-      const m={};
-      for(const row of data??[])m[row.key]=row.value;
-      setCoinCfg(m);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
-  // Bascule quotas (02/09) : prix 0 = scan non facturé → null, et les mentions
-// « N Pépites l'analyse » s'éteignent d'elles-mêmes (rendus gardés != null).
-const lensPrice=Number.isFinite(coinCfg?.price_lens_overflow)&&coinCfg.price_lens_overflow>0?coinCfg.price_lens_overflow:null;
-  // (grantMensuel et coinBalance ont vécu une journée ici — le solde vit dans
-  // l'en-tête global depuis le 01/09 au soir, App.jsx lit coinWallet
-  // directement.)
+  // (La lecture de coin_config posée ici le 01/09 pour afficher le prix du
+  // scan — price_lens_overflow — a été RETIRÉE au nettoyage Pépites du 02/09
+  // soir : plus aucun montant en Pépites ne s'affiche, l'écran parle en
+  // annonces du forfait via la prop quotas. grantMensuel et coinBalance
+  // avaient déjà vécu une journée ici — même sort.)
 
   // Reprise du stepper après remount (reload d'onglet Chrome ou navigation
   // interne) : le blob hôte écrit à l'ouverture permet de le REMONTER avec les
@@ -677,6 +644,12 @@ const lensPrice=Number.isFinite(coinCfg?.price_lens_overflow)&&coinCfg.price_len
           initialPhotos={lensListingPhotos}
           initialListing={listingSource}
           identifyFailed={identifyEchec}
+          // Lens unifié (02/09 soir) : le scan payé (mode "annonce") rapporte
+          // les annonces déjà rédigées — le stepper les applique sans
+          // régénérer. Le parcours identify n'en porte jamais (listingSource
+          // = identifyResult → annonce absente → prop null, comportement
+          // classique).
+          annoncePrete={listingSource?.annonce ?? null}
           // published=true : le bouton de l'écran ✅ du stepper — on purge TOUT
           // le parcours (état App : photos, analyse, description, prix d'achat,
           // ligne inventaire) pour revenir au viseur vide. Sans argument
@@ -712,7 +685,6 @@ const lensPrice=Number.isFinite(coinCfg?.price_lens_overflow)&&coinCfg.price_len
           analyzeLens={analyzeLens} lensLoading={lensLoading}
           onCreateListing={()=>extensionNeverSeen===true?setExtPitchAction('identify'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleIdentifyAndCreate())}
           creatingListing={generatingListing}
-          lensPrice={lensPrice}
         />
         {listingError&&(
           <div style={{maxWidth:520,margin:"10px auto 0",padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
@@ -884,20 +856,16 @@ const lensPrice=Number.isFinite(coinCfg?.price_lens_overflow)&&coinCfg.price_len
             :(lang==="en"?"✨ Analyze with AI":"✨ Analyser avec l'IA")}
         </PrimaryButton>
 
-        {/* Tarif payant-par-scan (2026-07-23) — éteint par la bascule quotas
-            (02/09, prix 0 → lensPrice null) ; conservé pour un retour
-            arrière des prix. À la place : le COMPTEUR de scans du cycle
-            (quotas_etat via App), sobre, jamais alarmiste. */}
-        {lensPrice!=null&&(
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:5,textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578"}}>
-            <PepiteIcon size={11} /> {lang==="en"?`${lensPrice} Nuggets per scan`:`${lensPrice} Pépites l'analyse`}
-          </div>
-        )}
-        {lensPrice==null&&quotas?.scans?.plafond!=null&&(
+        {/* Fusion scans+annonces (02/09 soir) : UN compteur, UN chiffre — le
+            même que l'en-tête et la génération. Un scan consomme une annonce
+            du forfait (le geste unifié rédige les annonces dans la foulée).
+            Sobre, jamais alarmiste. (La mention « N Pépites l'analyse » et
+            son icône ont été retirées au nettoyage Pépites du même soir.) */}
+        {quotas?.annonces?.plafond!=null&&(
           <div style={{textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578",fontWeight:600}}>
             {lang==="en"
-              ?`${quotas.scans.restantes} scan${quotas.scans.restantes>1?"s":""} left this month`
-              :`${quotas.scans.restantes} scan${quotas.scans.restantes>1?"s":""} restant${quotas.scans.restantes>1?"s":""} ce mois-ci`}
+              ?`${quotas.annonces.restantes} listing${quotas.annonces.restantes>1?"s":""} left this month`
+              :`${quotas.annonces.restantes} annonce${quotas.annonces.restantes>1?"s":""} restante${quotas.annonces.restantes>1?"s":""} ce mois-ci`}
           </div>
         )}
         </>)}

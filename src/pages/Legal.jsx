@@ -365,8 +365,10 @@ export default function Legal() {
           </p>
 
           {/* Bascule quotas (02/09) : la description des plans dit désormais
-              les VOLUMES PAR CYCLE réellement servis (annonces IA, scans,
-              republications, retouches). Les deux mensonges historiques
+              les VOLUMES PAR CYCLE réellement servis (annonces IA,
+              republications, retouches — les « analyses Lens » ont fusionné
+              dans les annonces le 02/09 soir : un seul volume). Les deux
+              mensonges historiques
               (« sans frais supplémentaires », « 50/jour réglable défaut
               10 ») sont morts avec elle. Toute évolution des volumes est
               couverte par la clause d'évolution de la grille. */}
@@ -378,11 +380,11 @@ export default function Legal() {
               web / tarif boutiques (ils peuvent différer). */}
           {en ? (
             <p className="legal-p"><span className="legal-strong">3.4 Premium, Pro and Business Subscriptions</span><br />
-              Paid plans are offered with no commitment. Each plan includes volumes of actions per subscription cycle. As of September 2, 2026, these volumes are:<br />
-              — <span className="legal-strong">Free</span>: 5 AI-generated listings published to the 4 supported platforms, 3 Lens scans per cycle, and a one-time allowance of 50 Vinted repostings (granted once, no monthly renewal);<br />
-              — <span className="legal-strong">Premium</span>: 40 AI-generated listings, 40 Lens scans, 1,500 Vinted repostings and 5 AI photo touch-ups per cycle;<br />
-              — <span className="legal-strong">Pro</span>: 120 AI-generated listings, 120 Lens scans, 5,000 Vinted repostings (with optional automatic reposting) and 20 AI photo touch-ups per cycle;<br />
-              — <span className="legal-strong">Business</span>: 300 AI-generated listings, 300 Lens scans, unlimited Vinted repostings (with automatic reposting) and 50 AI photo touch-ups per cycle.<br />
+              Paid plans are offered with no commitment. Each plan includes volumes of actions per subscription cycle. An AI-generated listing may be created from a photo (Lens analysis) or from an inventory item: both count against the same single listings volume. As of September 2, 2026, these volumes are:<br />
+              — <span className="legal-strong">Free</span>: 5 AI-generated listings published to the 4 supported platforms per cycle, and a one-time allowance of 50 Vinted repostings (granted once, no monthly renewal);<br />
+              — <span className="legal-strong">Premium</span>: 40 AI-generated listings, 1,500 Vinted repostings and 5 AI photo touch-ups per cycle;<br />
+              — <span className="legal-strong">Pro</span>: 120 AI-generated listings, 5,000 Vinted repostings (with optional automatic reposting) and 20 AI photo touch-ups per cycle;<br />
+              — <span className="legal-strong">Business</span>: 300 AI-generated listings, unlimited Vinted repostings (with automatic reposting) and 50 AI photo touch-ups per cycle.<br />
               Publishing listings to the supported platforms is included in all plans and not counted. Volumes reset at each <span className="legal-strong">subscription cycle</span> (the monthly anniversary of the subscription), not on calendar months. Counters are visible in the app; volumes may change over time, and the applicable volumes are those displayed in the app at the time of use.<br /><br />
               <span className="legal-strong">Automatic reposting</span> (Pro and Business) is capped at <span className="legal-strong">45 repostings per day</span> regardless of plan. This is a safety limit designed to protect users' Vinted accounts against restrictions that Vinted may impose on high-frequency activity — not a commercial limit. Reposting effects are described in Article 8 of the Terms of Sale below.<br /><br />
               <span className="legal-strong">Prices:</span> the price in effect is the one displayed at the time of purchase, on the web (payment securely processed by <span className="legal-strong">Stripe</span>) or in the app stores. Web prices and app-store prices (Apple App Store, Google Play) may differ for the same plan.<br /><br />
@@ -390,11 +392,11 @@ export default function Legal() {
             </p>
           ) : (
             <p className="legal-p"><span className="legal-strong">3.4 Abonnements Premium, Pro et Business</span><br />
-              Les plans payants sont proposés sans engagement. Chaque plan comprend des volumes d'actions par cycle d'abonnement. Au 2 septembre 2026, ces volumes sont :<br />
-              — <span className="legal-strong">Free</span> : 5 annonces générées par IA et publiées sur les 4 plateformes prises en charge, 3 analyses Lens par cycle, et une dotation unique de 50 republications Vinted (accordée une fois, sans renouvellement mensuel) ;<br />
-              — <span className="legal-strong">Premium</span> : 40 annonces générées par IA, 40 analyses Lens, 1 500 republications Vinted et 5 retouches photo par IA par cycle ;<br />
-              — <span className="legal-strong">Pro</span> : 120 annonces générées par IA, 120 analyses Lens, 5 000 republications Vinted (avec republication automatique en option) et 20 retouches photo par IA par cycle ;<br />
-              — <span className="legal-strong">Business</span> : 300 annonces générées par IA, 300 analyses Lens, republications Vinted illimitées (avec republication automatique) et 50 retouches photo par IA par cycle.<br />
+              Les plans payants sont proposés sans engagement. Chaque plan comprend des volumes d'actions par cycle d'abonnement. Une annonce générée par IA peut être créée depuis une photo (analyse Lens) ou depuis un article du stock : les deux s'imputent sur le même volume unique d'annonces. Au 2 septembre 2026, ces volumes sont :<br />
+              — <span className="legal-strong">Free</span> : 5 annonces générées par IA et publiées sur les 4 plateformes prises en charge par cycle, et une dotation unique de 50 republications Vinted (accordée une fois, sans renouvellement mensuel) ;<br />
+              — <span className="legal-strong">Premium</span> : 40 annonces générées par IA, 1 500 republications Vinted et 5 retouches photo par IA par cycle ;<br />
+              — <span className="legal-strong">Pro</span> : 120 annonces générées par IA, 5 000 republications Vinted (avec republication automatique en option) et 20 retouches photo par IA par cycle ;<br />
+              — <span className="legal-strong">Business</span> : 300 annonces générées par IA, republications Vinted illimitées (avec republication automatique) et 50 retouches photo par IA par cycle.<br />
               La publication des annonces sur les plateformes prises en charge est incluse dans tous les plans et n'est pas décomptée. Les volumes se réarment à chaque <span className="legal-strong">cycle d'abonnement</span> (date anniversaire mensuelle de la souscription), et non au mois calendaire. Les compteurs sont visibles dans l'application ; les volumes peuvent évoluer, et ceux applicables sont ceux affichés dans l'application au moment de l'utilisation.<br /><br />
               <span className="legal-strong">La republication automatique</span> (Pro et Business) est plafonnée à <span className="legal-strong">45 republications par jour</span>, quel que soit le plan. Il s'agit d'une limite de sécurité destinée à protéger les comptes Vinted des utilisateurs contre les restrictions que Vinted peut imposer en cas d'activité à haute fréquence — et non d'une limite commerciale. Les effets de la republication sont décrits à l'article 8 des CGV ci-dessous.<br /><br />
               <span className="legal-strong">Prix :</span> le prix applicable est celui affiché au moment de l'achat, sur le web (paiement traité de manière sécurisée par <span className="legal-strong">Stripe</span>) ou dans les boutiques d'applications. Les prix web et les prix des boutiques (App Store Apple, Google Play) peuvent différer pour un même plan.<br /><br />

@@ -10123,7 +10123,7 @@ async function processRepublishJob(job, accessToken) {
       pf.needs_user_source = "capture_incomplete";
       const msg = `Republication en pause AVANT toute suppression : la capture de ton annonce est incomplète (${detail}). ` +
         "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication. " +
-        "Ta Pépite reste réservée : elle te sera rendue automatiquement sous 72 h si la republication ne repart pas.";
+        "Rien ne t’a été décompté pour cette republication.";
       await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
       return { status: "needsUser", error: `capture incomplète : ${detail}` };
     }
@@ -10321,7 +10321,7 @@ async function processRepublishJob(job, accessToken) {
             platform_fields: pf,
             error: `Republication en pause AVANT toute suppression : la nouvelle capture de ton annonce est incomplète (${detail}). ` +
               "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication. " +
-              "Ta Pépite reste réservée : elle te sera rendue automatiquement sous 72 h si la republication ne repart pas.",
+              "Rien ne t’a été décompté pour cette republication.",
           });
           return { status: "needsUser", error: `recapture incomplète : ${detail}` };
         }
@@ -10348,7 +10348,7 @@ async function processRepublishJob(job, accessToken) {
       } catch (e) {
         delete pf.republish_snapshot;
         const msg = "Republication annulée : impossible de sécuriser les données de ton annonce en base — " +
-          "rien n'a été touché, ton annonce est intacte et la Pépite est rendue. Réessaie dans un instant.";
+          "rien n'a été touché, ton annonce est intacte et rien ne t’a été décompté. Réessaie dans un instant.";
         await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg }).catch(() => {});
         return { status: "failed", error: `snapshot non écrit : ${String(e?.message ?? e)}` };
       }
@@ -10447,7 +10447,7 @@ async function processRepublishJob(job, accessToken) {
           pf.needs_user_source = "prevol_negatif";
           const msg = `Republication en pause AVANT toute suppression : Vinted exige « ${champs} » et l'annonce d'origine ne porte pas cette information. ` +
             `Ton annonce est intacte sur Vinted. Renseigne « ${champs} » depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication. ` +
-            "Ta Pépite reste réservée : elle te sera rendue automatiquement sous 72 h si la republication ne repart pas.";
+            "Rien ne t’a été décompté pour cette republication.";
           await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
           return { status: "needsUser", error: `pré-vol négatif : ${champs}` };
         }

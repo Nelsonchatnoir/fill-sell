@@ -6,7 +6,8 @@ import { Camera as CapCamera } from "@capacitor/camera";
 import ConversionModal from "./ConversionModal";
 import CoinStoreModal from "./CoinStoreModal";
 import ExtensionPitchScreen from "./ExtensionPitchScreen";
-import PepiteAmount from "./PepiteAmount";
+// (import PepiteAmount retiré au nettoyage Pépites du 02/09 soir — les
+// montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import AnalyseMarche from "./AnalyseMarche";
 import { useTranslation } from "../i18n/useTranslation";
@@ -1477,7 +1478,10 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                       padding:"3px 9px", borderRadius:999,
                       display:"inline-flex", alignItems:"center", gap:4,
                     }}>
-                      <PepiteAmount value={price} size={13} />
+                      {/* (icône Pépite retirée au nettoyage du 02/09 soir —
+                          branche dormante, prix > 0 impossible tant que la
+                          grille est à 0) */}
+                      {price}
                     </span>
                   )
                 )}
@@ -1647,7 +1651,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                   ? (lang === "en" ? "Analyzing…" : "Analyse en cours…")
                   : <>
                       {lang === "en" ? "Analyze my photos" : "Analyser mes photos"}
-                      {analysisCost != null && <> · <PepiteAmount value={analysisCost} size={13} /></>}
+                      {analysisCost != null && <> · {analysisCost}</>}
                     </>}
               </button>
             </>
@@ -1655,32 +1659,11 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
         </div>
       )}
 
-      {/* Solde de pièces + accès au store — MASQUÉ depuis la bascule quotas
-          (02/09) : les Pépites ne gouvernent plus rien et ne s'affichent plus.
-          Le bloc reste dans l'arbre (display none) pour un retour arrière à
-          une ligne ; wallet/coinBalance continuent d'exister côté données. */}
-      <div style={{ display:"none", alignItems:"center", justifyContent:"space-between", marginBottom:24, padding:"10px 14px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}` }}>
-        <span style={{ fontSize:12.5, fontWeight:600, color:T.mute2, display:"inline-flex", alignItems:"center", gap:5, flexWrap:"wrap" }}>
-          {lang === 'en' ? 'Your Nuggets:' : 'Tes Pépites :'}{' '}
-          <strong style={{ color:T.ink }}><PepiteAmount value={coinBalance} size={15} /></strong>
-          {/* Réservation/capture (2026-08-05) : montant mis de côté pour des
-              publications encore en file — rendu automatiquement si elles
-              n'aboutissent pas. */}
-          {reservedBalance > 0 && (
-            <span style={{ fontSize:11.5, color:T.mute }}>
-              {lang === 'en'
-                ? `· ${reservedBalance} pending publication`
-                : `· ${reservedBalance} en attente de publication`}
-            </span>
-          )}
-        </span>
-        <button
-          onClick={onOpenStore}
-          style={{ background:"none", border:"none", color:T.tealDeep, fontSize:12.5, fontWeight:700, cursor:"pointer", fontFamily:"inherit", textDecoration:"underline", textUnderlineOffset:3, padding:0 }}
-        >
-          {lang === 'en' ? '+ Get Nuggets' : '+ Recharger'}
-        </button>
-      </div>
+      {/* (Le bloc « Tes Pépites : N · + Recharger » — masqué display:none à la
+          bascule quotas — a été SUPPRIMÉ au nettoyage Pépites du 02/09 soir :
+          plus une seule occurrence du mot dans le rendu, boutique injoignable.
+          Retour arrière : historique git. wallet/coinBalance existent
+          toujours côté données pour les pré-checks dormants.) */}
 
       <Eyebrow>{t("stepPhotosPlatformsLabel")}</Eyebrow>
       <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:2 }}>
@@ -1762,7 +1745,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
               : <>Photos : {reuseRetouched ? 'déjà retouchées ✓' : (coinPrices[photoOption] === 0 ? 'offertes' : coinPrices[photoOption])} · Publication : {coinPrices.per_platform === 0 ? 'offerte' : <>{selected.size} × {coinPrices.per_platform}</>}</>}
           </span>
           <strong style={{ fontSize:13.5, fontWeight:700, color:T.ink, display:"inline-flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
-            = <PepiteAmount value={coinPrices[photoOption] + coinPrices.per_platform * selected.size} size={14} />
+            = {coinPrices[photoOption] + coinPrices.per_platform * selected.size}
           </strong>
         </div>
       )}
@@ -1896,7 +1879,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
               serveur : réessayer est une NOUVELLE génération, au même prix —
               affiché avant le clic, comme sur le CTA du step 1. */}
           {generatePrice != null
-            ? <>{t("stepGenRetryButton")} (<PepiteAmount value={generatePrice} />)</>
+            ? <>{t("stepGenRetryButton")} ({generatePrice})</>
             : t("stepGenRetryButton")}
         </button>
       </div>
@@ -1974,7 +1957,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
                 ? (lang === "en" ? "Checking the market…" : "Analyse du marché…")
                 : <>
                     {lang === "en" ? "Not sure? Estimate" : "Pas sûr du prix ? Estimer"}
-                    {estimateCost != null && <> · <PepiteAmount value={estimateCost} size={13} /></>}
+                    {estimateCost != null && <> · {estimateCost}</>}
                   </>}
             </button>
             <div style={{ fontSize:11.5, color:T.mute, marginTop:6, lineHeight:1.4 }}>
@@ -3163,6 +3146,13 @@ export default function ListingPreviewScreen({
   // stepper s'ouvre avec des champs vides. On le DIT, discrètement, plutôt que
   // de laisser croire à une analyse réussie.
   identifyFailed = false,
+  // Lens unifié (02/09 soir) : annonces DÉJÀ rédigées par le scan (mode
+  // "annonce" de lens-analysis, module partagé avec generate-listing). Même
+  // forme que la réponse de génération ({ platforms: {...} }) : elles
+  // hydratent platformListings, l'étape 2 les AFFICHE sans régénérer (l'effet
+  // d'auto-génération ne se déclenche que sur platformListings nul) — le
+  // geste n'a coûté qu'une unité, déjà comptée côté serveur.
+  annoncePrete = null,
   // Plateformes où cet article est DÉJÀ en ligne (Stock uniquement ; Lens publie
   // toujours du neuf). FillSell ne republie JAMAIS une annonce existante :
   // relancer une plateforme déjà "published" créait un SECOND job pour la même
@@ -3230,6 +3220,9 @@ export default function ListingPreviewScreen({
   const initialPhotos    = articleSourceMorte ? [] : initialPhotosProp;
   const initialListing   = articleSourceMorte ? null : initialListingProp;
   const alreadyRetouched = articleSourceMorte ? false : alreadyRetouchedProp;
+  // Lens unifié : les annonces pré-rédigées suivent le même sort que le reste
+  // de la source article — un changement d'article les invalide.
+  const annoncesDuScan   = articleSourceMorte ? null : annoncePrete;
   // Photos qui ont nourri la DERNIÈRE analyse de la session : seconde source
   // d'identité de l'article quand il n'est pas arrivé avec des photos.
   const photosAnalyseesRef = useRef(draft?.photosAnalysees ?? null);
@@ -3424,7 +3417,12 @@ export default function ListingPreviewScreen({
   // un défaut qui portait ia_advanced est ramené sur la Retouche IA (légère).
   // Free = 0 retouche au forfait → défaut original.
   const [photoOption, setPhotoOption] = useState(() => {
-    const brut = draft?.photoOption ?? (alreadyRetouched ? "original" : (isPremium || isPro ? "ia_light" : "original"));
+    // annoncesDuScan : le scan unifié a déjà tout rédigé SANS retouche — le
+    // défaut est « original » pour que le choix affiché dise la vérité. Si
+    // l'utilisateur sélectionne une retouche, handleNext (step 1) abandonne la
+    // rédaction pré-générée et repasse par la génération classique (qui
+    // applique la retouche et compte sa propre unité, comme avant la fusion).
+    const brut = draft?.photoOption ?? (annoncesDuScan ? "original" : (alreadyRetouched ? "original" : (isPremium || isPro ? "ia_light" : "original")));
     return brut === "ia_advanced" ? "ia_light" : brut;
   });
   // Nouvelles photos PRÉSENTES dans la session (step 0 ou step 1) : le gel
@@ -3453,6 +3451,28 @@ export default function ListingPreviewScreen({
   const [platformListings, setPlatformListings]       = useState(draft?.platformListings ?? null);
   const [processedPhotos, setProcessedPhotos]         = useState(draft?.processedPhotos ?? []);
   const [edited, setEdited]                           = useState(draft?.edited ?? {});
+
+  // ── Lens unifié : application des annonces pré-rédigées (02/09 soir) ──────
+  // Ouverture FRAÎCHE (pas de brouillon) avec des annonces déjà rédigées par
+  // le scan : on les applique via appliquerGeneration — le MÊME chemin qu'une
+  // génération fraîche ou re-servie du cache (edited, champs partagés, genre
+  // transposé…), jamais un troisième chemin recopié. photos: initialPhotos —
+  // aucune retouche n'a eu lieu, les photos du scan sont celles à publier.
+  // L'étape 2 les affiche sans régénérer (l'effet d'auto-génération ne se
+  // déclenche que sur platformListings nul) ; l'unité du geste est déjà
+  // comptée côté serveur (ligne generate_listing source:'lens_unifie').
+  const annonceScanAppliqueeRef = useRef(false);
+  useEffect(() => {
+    if (annonceScanAppliqueeRef.current) return;
+    annonceScanAppliqueeRef.current = true;
+    if (draft || !annoncesDuScan?.platforms) return;
+    const dispo = PLATFORMS_DEFAULT.filter(p => annoncesDuScan.platforms[p]);
+    if (!dispo.length) return;
+    // lens_unifie : marque l'origine — handleNext (step 1) ne jette que cette
+    // hydratation-là si une retouche est finalement choisie.
+    appliquerGeneration({ ...annoncesDuScan, lens_unifie: true, photos: [...initialPhotos] }, dispo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Bascule d'identité d'article (2026-08-08) ─────────────────────────────
   // Plus AUCUNE photo de l'article d'origine (ou de la dernière analyse) dans
@@ -3947,9 +3967,22 @@ export default function ListingPreviewScreen({
         // Bascule quotas (02/09) : le refus est le quota de scans du cycle —
         // insufficient_coins est mort (prix à 0), branche retirée.
         if (err?.error === "quota_scan_atteint") {
+          // Fenêtre de déploiement seulement (serveur pas encore migré) : la
+          // variante 'scans' de la modale n'existe plus, on parle annonces.
           ouvrirQuotaModal("quota_scan", {
             trigger: "quota_geste", targetTiers: ["premium","pro"],
-            quotaInfo: { geste: "scans", plafond: err.plafond, consommes: err.consommes },
+            quotaInfo: { geste: "annonces", plafond: err.plafond, consommes: err.consommes },
+          });
+          return;
+        }
+        // Fusion scans+annonces (02/09 soir) : le serveur refuse désormais
+        // sous le code UNIQUE du compteur fusionné. Même modale que la
+        // génération, geste « annonces ». (quota_scan_atteint ci-dessus =
+        // fenêtre de déploiement.)
+        if (err?.error === "quota_annonces_atteint") {
+          ouvrirQuotaModal("quota_annonces", {
+            trigger: "quota_geste", targetTiers: ["premium","pro"],
+            quotaInfo: { geste: "annonces", plafond: err.plafond, consommes: err.consommes },
           });
           return;
         }
@@ -6433,7 +6466,7 @@ export default function ListingPreviewScreen({
       // Génération payante pour TOUS les paliers (retour arrière du 08/08
       // après-midi — la gratuité Pro du matin n'était bornée par rien).
       const genPrice = coinPrices?.generate ?? null;
-      if (genPrice != null) return <>{t("ctaGenerateListings")} (<PepiteAmount value={genPrice} />)</>;
+      if (genPrice != null) return <>{t("ctaGenerateListings")} ({genPrice})</>;
       return t("ctaGenerateListings");
     }
     if (step === 2) {
@@ -6451,7 +6484,7 @@ export default function ListingPreviewScreen({
       // chaque plateforme cochée/décochée. Config pas encore lue → libellé
       // sans prix (jamais un total faux).
       const total = publishTotalFor(photoOption, n);
-      if (total != null) return <>{tpl("ctaPublishOnPlatforms", { n })} · <PepiteAmount value={total} /></>;
+      if (total != null) return <>{tpl("ctaPublishOnPlatforms", { n })} · {total}</>;
       return tpl("ctaPublishOnPlatforms", { n });
     }
     return "";
@@ -6582,6 +6615,18 @@ export default function ListingPreviewScreen({
       if (genPrice != null && coinBalance < genPrice) {
         ouvrirQuotaModal("plafond_pepites_publi", { trigger: "publish", targetTiers: ["premium","pro"], coinPrice: genPrice });
         return;
+      }
+      // Lens unifié : une retouche choisie exige la génération classique (le
+      // scan a rédigé sans retoucher). On abandonne la rédaction pré-générée —
+      // l'effet d'auto-génération de l'étape 2 reprend la main, applique la
+      // retouche et compte sa propre unité (comme avant la fusion). Le
+      // marqueur lens_unifie (posé à l'application, il survit au brouillon
+      // sessionStorage) garantit qu'on ne jette QUE l'hydratation du scan —
+      // jamais une génération classique déjà obtenue dans cette session.
+      if (platformListings?.lens_unifie && photoOption !== "original") {
+        setPlatformListings(null);
+        setProcessedPhotos([]);
+        setEdited({});
       }
       setStep(2);
       return;

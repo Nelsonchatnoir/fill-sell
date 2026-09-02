@@ -4,6 +4,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // normalize-title, stats-analysis, lot-distribute) : compte les appels sur 24 h
 // glissantes dans usage_logs et laisse passer si le comptage échoue.
 import { appelAutorise, loggerAppelIA, coutHaikuUsd } from "../_shared/usage-guard.ts";
+// Mode "annonce" (02/09 soir) : la rédaction par plateforme vit dans le module
+// PARTAGÉ avec generate-listing — même code, mêmes prompts, mêmes traces. Ce
+// fichier n'en possède aucune copie.
+import { construireContexteArticle, redigerAnnoncesPlateformes } from "../_shared/redaction-plateformes.ts";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
@@ -59,7 +63,17 @@ function getPlatforms(countryCode: string | null, lang: string): string {
 //     le PRIX dépend vraiment du web (identify est optimiste de +24 % à +150 %),
 //     donc identify n'en renvoie AUCUN — c'est aussi ce qui reste à vendre à
 //     6 Pépites. Coût mesuré : 0,0101 € contre 0,0716 €, 9 s contre 16 s.
-type LensMode = "full" | "identify";
+// Troisième mode (2026-09-02, lot Lens unifié) :
+//   • "annonce" — STRICTEMENT le mode "full" (même prompt, même schéma, mêmes
+//     25 gardes — AUCUNE ligne du prompt ne change, VERSION_PROMPT non plus),
+//     suivi de la rédaction par plateforme via le MODULE PARTAGÉ
+//     _shared/redaction-plateformes.ts (le même code que generate-listing,
+//     extrait tel quel). Un geste = une unité : le RPC pose la ligne 'lens'
+//     avec unifie:true (télémétrie, non comptée) et la fonction pose une
+//     ligne 'generate_listing' source:'lens_unifie' (l'unité comptée).
+//     Gardé par le flag coin_config lens_unifie : éteint → repli "full"
+//     silencieux (le client retombe sur la génération classique, porte B).
+type LensMode = "full" | "identify" | "annonce";
 
 // ══════════════════════════════════════════════════════════════════════════
 // FAMILLES D'OBJETS (2026-08-11)
@@ -1832,8 +1846,34 @@ serve(async (req) => {
   }
   const { urls, description, prixAchat, lang = "fr", userCountry, userStats } =
     (body ?? {}) as Record<string, any>;
-  const mode: LensMode = body?.mode === "identify" ? "identify" : "full";
+  let mode: LensMode = body?.mode === "identify" ? "identify"
+    : body?.mode === "annonce" ? "annonce" : "full";
+  // ── Mode unifié : flag + plateformes demandées (02/09 soir) ─────────────
+  // Deux conditions pour rester en "annonce", vérifiées AVANT le débit (le
+  // repli doit décider p_unifie : un scan replié en "full" compte 1 par sa
+  // ligne 'lens', et la génération qui suivra comptera la sienne — c'est le
+  // comportement d'avant la fusion, jamais un scan gratuit) :
+  //   · le flag coin_config lens_unifie (0/absent = éteint, repli "full") —
+  //     l'interrupteur de Nico, retour arrière sans redéploiement ;
+  //   · au moins une plateforme demandée dans le corps (sans elle, rien à
+  //     rédiger — client d'une version antérieure, ou appel malformé).
+  const platformsDemandees: string[] = Array.isArray(body?.platforms)
+    ? (body.platforms as unknown[]).filter((p): p is string => typeof p === "string" && p.length > 0)
+    : [];
+  if (mode === "annonce") {
+    let flagUnifie = 0;
+    try {
+      const { data } = await adminClient
+        .from("coin_config").select("value").eq("key", "lens_unifie").maybeSingle();
+      flagUnifie = (data?.value as number) ?? 0;
+    } catch { /* lecture flag best-effort : dans le doute, repli full */ }
+    if (flagUnifie < 1 || platformsDemandees.length === 0) {
+      console.log(`[lens-analysis] mode annonce replié en full (flag=${flagUnifie}, platforms=${platformsDemandees.length})`);
+      mode = "full";
+    }
+  }
   const estIdentify = mode === "identify";
+  const estAnnonce = mode === "annonce";
 
   if (!Array.isArray(urls) || urls.length === 0) {
     return new Response(JSON.stringify({ error: "Missing urls" }), {
@@ -1911,7 +1951,12 @@ serve(async (req) => {
     // appelle grant_monthly_coins('free') À L'INSCRIPTION (vérifié en base), et
     // le sweep de 04:15 reste le filet pour les mois suivants.
     ? { data: { allowed: true, price: 0 } as Record<string, any>, error: null }
-    : await adminClient.rpc("spend_coins_for_lens", { p_user_id: user.id });
+    // p_unifie (02/09 soir) : true = la ligne 'lens' posée par le RPC porte
+    // unifie:true et ne compte PAS dans le compteur fusionné — l'unité de ce
+    // geste sera la ligne 'generate_listing' posée après la rédaction. Si la
+    // rédaction échoue, aucune ligne generate_listing : le geste n'a rien
+    // consommé, la génération de secours (porte B) comptera la sienne.
+    : await adminClient.rpc("spend_coins_for_lens", { p_user_id: user.id, p_unifie: estAnnonce });
   if (spendErr || !spend) {
     console.error("[lens-analysis] spend_coins_for_lens:", spendErr?.message);
     return new Response(
@@ -1936,6 +1981,17 @@ serve(async (req) => {
     if (spend.reason === "quota_scan_atteint") {
       return new Response(
         JSON.stringify({ error: "quota_scan_atteint", plafond: spend.plafond, consommes: spend.consommes }),
+        { status: 402, headers: { "Content-Type": "application/json", ...CORS } }
+      );
+    }
+    // Fusion scans+annonces (02/09 soir) : le RPC garde désormais sur le
+    // compteur fusionné et refuse sous le MÊME code que la génération — une
+    // seule modale côté app, un seul chiffre. (quota_scan_atteint ci-dessus
+    // devient inatteignable après la migration — conservé pour la fenêtre de
+    // déploiement et la réversibilité.)
+    if (spend.reason === "quota_annonces_atteint") {
+      return new Response(
+        JSON.stringify({ error: "quota_annonces_atteint", plafond: spend.plafond, consommes: spend.consommes }),
         { status: 402, headers: { "Content-Type": "application/json", ...CORS } }
       );
     }
@@ -2577,13 +2633,102 @@ serve(async (req) => {
     } else {
       await enregistrerTelemetrie("ok", empreinteSortie(itemData));
     }
+
+    // ── Mode "annonce" : rédaction par plateforme, MODULE PARTAGÉ (02/09) ────
+    // La fiche canonique est déjà là (le schéma full émet tout) : on la mappe
+    // vers les entrées EXACTES de generate-listing — item {titre, marque,
+    // description, type} + canonicalProvided {taille, couleur, matiere,
+    // marque, etat, isbn} — et on appelle le même code. Best-effort : une
+    // rédaction qui échoue ne perd JAMAIS le scan (livré sans `annonce`, le
+    // client retombe sur la génération classique) ; dans ce cas aucune ligne
+    // generate_listing n'est posée, donc le geste n'a rien consommé et la
+    // porte B comptera la sienne — jamais 2 unités pour un article.
+    let annonce: Record<string, unknown> | null = null;
+    if (estAnnonce) {
+      const redactionCost = { in: 0, out: 0, calls: 0 };
+      try {
+        const av = (itemData.attributs_visibles ?? {}) as Record<string, unknown>;
+        const item = {
+          titre: (itemData.titre as string) ?? undefined,
+          marque: (itemData.marque as string) ?? undefined,
+          description: (itemData.description as string) ?? undefined,
+          type: (itemData.objet as string) ?? undefined,
+        };
+        // Même filtrage que generate-listing (chaîne non vide, jamais "null").
+        const canonicalProvided: Record<string, string> = {};
+        const brut: Record<string, unknown> = {
+          taille: itemData.taille_estimee, couleur: itemData.couleur,
+          matiere: itemData.matiere, marque: itemData.marque,
+          etat: itemData.etat_estime, isbn: av.isbn_ean,
+        };
+        for (const [k, v] of Object.entries(brut)) {
+          if (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null") canonicalProvided[k] = v.trim();
+        }
+        const { itemContext } = construireContexteArticle({
+          item, canonicalProvided,
+          familleLivresMedias: itemData.famille === "livres_medias",
+        });
+        const { platformListings, traceEtat, traceIsbn } = await redigerAnnoncesPlateformes({
+          apiKey, platforms: platformsDemandees, itemContext, item, canonicalProvided,
+          trackClaude: (data: unknown) => {
+            const u = (data as { usage?: { input_tokens?: number; output_tokens?: number } })?.usage;
+            if (!u) return;
+            redactionCost.in += u.input_tokens ?? 0;
+            redactionCost.out += u.output_tokens ?? 0;
+            redactionCost.calls += 1;
+          },
+        });
+        const livrees = Object.values(platformListings ?? {}).filter(Boolean).length;
+        // Livré = au moins une plateforme ET au moins un appel LLM abouti
+        // (mêmes critères que la livraison/le remboursement de
+        // generate-listing : un squelette de repli n'est pas un service rendu).
+        if (livrees > 0 && redactionCost.calls > 0) {
+          annonce = { platforms: platformListings, traceEtat, traceIsbn };
+          // L'UNITÉ du geste unifié — la ligne que compte
+          // quota_annonces_consommees (la ligne 'lens' de ce scan porte
+          // unifie:true et ne compte pas). Pas d'inventaire_id : l'article
+          // n'est pas encore sauvé (même situation que les corps item_data,
+          // dédup régénération impossible — connu et signalé à la bascule).
+          // Tarifs Haiku 4.5 (identiques à generate-listing) : 1 $/MTok in,
+          // 5 $/MTok out. cost_scope 'texte' : la part vision/web du geste
+          // vit dans la ligne 'lens' enrichie du même appel — coût réel du
+          // geste = somme des deux lignes.
+          const redactionUsd = (redactionCost.in / 1e6) * 1 + (redactionCost.out / 1e6) * 5;
+          const { error: logErr } = await adminClient.from("usage_logs").insert({
+            user_id: user.id,
+            feature: "generate_listing",
+            metadata: {
+              source: "lens_unifie",
+              platforms: platformsDemandees.length,
+              ...traceEtat,
+              ...traceIsbn,
+              claude_calls: redactionCost.calls,
+              claude_input_tokens: redactionCost.in,
+              claude_output_tokens: redactionCost.out,
+              cost_usd: Number(redactionUsd.toFixed(4)),
+              cost_scope: "texte",
+            },
+          });
+          if (logErr) console.error("[lens-analysis][annonce] usage_logs:", logErr.message);
+          console.log(
+            `[lens-analysis][annonce] user=${user.id} plateformes=${livrees}/${platformsDemandees.length}`
+            + ` redaction=${redactionCost.calls} appels ${redactionCost.in}in/${redactionCost.out}out usd=${redactionUsd.toFixed(4)}`
+          );
+        } else {
+          console.warn(`[lens-analysis][annonce] rédaction non livrée (plateformes=${livrees}, appels=${redactionCost.calls}) — scan livré sans annonce`);
+        }
+      } catch (e) {
+        console.error("[lens-analysis][annonce] rédaction échouée — scan livré sans annonce:", e);
+      }
+    }
+
     console.log(
       `[lens-analysis][usage] mode=${mode} user=${user.id} photos=${stats.photos} tours=${stats.tours}`
       + ` in=${stats.in} out=${stats.out} cache_w=${stats.cache_w} cache_r=${stats.cache_r}`
       + ` recherches=${stats.recherches} ms=${Date.now() - debutMs}`
     );
 
-    return new Response(JSON.stringify(itemData), {
+    return new Response(JSON.stringify(annonce ? { ...itemData, annonce } : itemData), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
   } catch (err: any) {

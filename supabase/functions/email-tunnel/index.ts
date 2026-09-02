@@ -244,9 +244,9 @@ function welcomeHtml(lang: string): string {
     <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
       letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Trois choses à connaître pour démarrer</p>
     ${bloc("1. Récupère ton dressing Vinted en un clic",
-      "Si tu vends déjà sur Vinted, FillSell importe toutes tes annonces — titres, prix, photos, vues et favoris. C'est gratuit et ça ne coûte aucune Pépite. Tu retrouves tout ton stock au même endroit, sans ressaisie.")}
+      "Si tu vends déjà sur Vinted, FillSell importe toutes tes annonces — titres, prix, photos, vues et favoris. C'est gratuit et rien n'est décompté de ton forfait. Tu retrouves tout ton stock au même endroit, sans ressaisie.")}
     ${bloc("2. Republie les annonces qui dorment",
-      "Sur Vinted, une annonce ancienne ne se voit presque plus. D'un clic, FillSell sauvegarde la fiche, retire l'annonce et la remet en ligne à l'identique — tu peux même baisser le prix au passage. 1 Pépite par annonce, et automatisable avec Pro.")}
+      "Sur Vinted, une annonce ancienne ne se voit presque plus. D'un clic, FillSell sauvegarde la fiche, retire l'annonce et la remet en ligne à l'identique — tu peux même baisser le prix au passage. 50 republications offertes, et automatisable avec Pro.")}
     ${bloc("3. Publie partout d'un seul geste",
       "Ajoute un article à la voix ou par photo, FillSell rédige le titre, la description et suggère un prix, puis publie sur les plateformes que tu choisis.", "0 0 24px")}
     <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
@@ -287,10 +287,10 @@ function welcomeHtml(lang: string): string {
         🎁 Ce qui est inclus pour démarrer
       </p>
       <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        Chaque mois, tu peux créer des annonces avec l'IA et les publier sur les
-        4 plateformes, lancer des analyses Lens, et tu démarres avec des
-        republications Vinted offertes. Les compteurs sont visibles dans
-        l'app&nbsp;— rien ne se consomme sans que tu le voies.
+        Chaque mois, tu peux créer des annonces avec l'IA — depuis une photo ou
+        depuis ton stock — et les publier sur les 4 plateformes, et tu démarres
+        avec des republications Vinted offertes. Les compteurs sont visibles
+        dans l'app&nbsp;— rien ne se consomme sans que tu le voies.
       </p>
     </div>
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
@@ -316,9 +316,9 @@ function welcomeHtml(lang: string): string {
     <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
       letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Three things to know to get started</p>
     ${bloc("1. Bring in your Vinted closet in one click",
-      "If you already sell on Vinted, FillSell imports all your listings — titles, prices, photos, views and favourites. It's free and costs no Nuggets. Your whole stock in one place, nothing to retype.")}
+      "If you already sell on Vinted, FillSell imports all your listings — titles, prices, photos, views and favourites. It's free and nothing is deducted from your plan. Your whole stock in one place, nothing to retype.")}
     ${bloc("2. Repost the listings that sleep",
-      "On Vinted, an old listing barely gets seen. In one click, FillSell saves the listing, removes it and puts it back online identically — you can even lower the price along the way. 1 Nugget per listing, and automatable with Pro.")}
+      "On Vinted, an old listing barely gets seen. In one click, FillSell saves the listing, removes it and puts it back online identically — you can even lower the price along the way. 50 repostings included, and automatable with Pro.")}
     ${bloc("3. List everywhere in a single move",
       "Add an item by voice or photo, FillSell writes the title and description and suggests a price, then lists on the platforms you choose.", "0 0 24px")}
     <div style="border:1px solid #CFF0EA;border-radius:12px;padding:22px;margin:0 0 24px;background:#FBFFFE;">
@@ -352,15 +352,18 @@ function welcomeHtml(lang: string): string {
         with every new version.
       </p>
     </div>
+    <!-- Nettoyage Pépites (02/09 soir) : le bloc « Your Nuggets » (oublié à
+         la bascule — la version FR avait déjà été recalée en v54) parle
+         désormais les gestes du forfait, comme le FR. -->
     <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
       <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">
-        <img src="https://fillsell.app/email/pepite.png" width="16" height="16" alt="Nuggets" style="display:inline-block;vertical-align:-3px;"> Your Nuggets
+        🎁 What's included to get started
       </p>
       <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        You start with 50 free Nuggets, and you receive more every month. They power the
-        actions where the AI works for you: photo retouching, listing writing,
-        publishing. The app always shows you the cost before you confirm — nothing is
-        charged without you seeing it.
+        Every month you can create listings with AI — from a photo or from your
+        stock — and publish them to the 4 marketplaces, and you start with free
+        Vinted repostings. The counters are visible in the app — nothing is
+        used without you seeing it.
       </p>
     </div>
     <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 6px;
@@ -943,7 +946,7 @@ function blastSyncDressingHtml(): string {
 <tr>
 <td style="padding:36px 32px 0 32px;">
 <p style="margin:0 0 18px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1B6E62;">Comment ça marche</p>
-${etape("01", "Tu importes ton dressing Vinted dans FillSell", "Un clic, gratuit, aucune Pépite. Titres, prix, photos, vues et favoris remontent tout seuls.", false,
+${etape("01", "Tu importes ton dressing Vinted dans FillSell", "Un clic, gratuit, rien de décompté. Titres, prix, photos, vues et favoris remontent tout seuls.", false,
   capture("blast-sync-01-dressing-v3.png", "La carte « Tu vends déjà sur Vinted ? » dans FillSell, avec le bouton Actualiser mon dressing"))}
 ${etape("02", "Sur chaque annonce, un bouton «&nbsp;Republier&nbsp;»", "FillSell sauvegarde la fiche, retire l'ancienne annonce et la remet en ligne à l'identique. Tu peux même baisser le prix au passage.", true,
   capture("blast-sync-02-republier-v2.png", "Une annonce importée dans FillSell, avec son bouton Republier"))}

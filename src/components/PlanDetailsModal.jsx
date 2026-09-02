@@ -19,7 +19,8 @@
 // ce fichier — seule coin_config a bougé.
 import { useEffect, useState } from 'react';
 import { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
-import PepiteIcon from './PepiteIcon';
+// (import PepiteIcon retiré au nettoyage Pépites du 02/09 soir — plus une
+// Pépite dans cette modale.)
 import { COIN_CONFIG_FALLBACK, ProPlanCard, BusinessPlanCard } from './ConversionModal';
 import { businessOfferVisible } from '../config/businessOffer';
 

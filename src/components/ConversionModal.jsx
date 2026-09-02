@@ -60,8 +60,8 @@ export const COIN_CONFIG_FALLBACK = {
   // autorité, ces valeurs ne servent qu'en cas d'échec réseau.
   quota_annonces_free: 5, quota_annonces_premium: 40,
   quota_annonces_pro: 120, quota_annonces_business: 300,
-  quota_scan_free: 3, quota_scan_premium: 40,
-  quota_scan_pro: 120, quota_scan_business: 300,
+  // (quota_scan_* retirés le 02/09 soir — fusion scans+annonces : les clés
+  // restent en base à 0 pour le retour arrière, plus rien ne les lit ici.)
   quota_republication_premium: 1500, quota_republication_pro: 5000,
   republication_avie_free: 50,
   quota_retouche_free: 0, quota_retouche_premium: 5,
@@ -554,8 +554,9 @@ export default function ConversionModal({
   // trigger 'republish_cap' UNIQUEMENT : { plafond, restantes } renvoyés par
   // le refus serveur plafond_republication_free (50 à vie, bascule 02/09).
   plafondRepub = null,
-  // trigger 'quota_geste' UNIQUEMENT : { geste: 'annonces'|'scans'|'retouches',
+  // trigger 'quota_geste' UNIQUEMENT : { geste: 'annonces'|'retouches',
   // plafond, consommes } — le refus serveur quota_*_atteint relayé par l'hôte.
+  // ('scans' a disparu le 02/09 soir — fusion scans+annonces, un seul geste.)
   quotaInfo    = null,
 }) {
   const fr = lang !== 'en';
@@ -737,8 +738,10 @@ export default function ConversionModal({
   // Variante 'republish_lot' : un Free a tapé « Republier en lot » — geste
   // réservé aux payants, rien consommé. Même structure, même registre.
   // Variante 'quota_geste' (bascule 02/09) : un quota du cycle est atteint
-  // (annonces / scans / retouches, prop quotaInfo {geste, plafond,
-  // consommes}) — le fait, le déblocage, les cartes.
+  // (annonces / retouches, prop quotaInfo {geste, plafond, consommes}) — le
+  // fait, le déblocage, les cartes. Le geste 'scans' n'existe plus (fusion
+  // scans+annonces du 02/09 soir : UN compteur, UN chiffre) — un scan refusé
+  // arrive en geste 'annonces'.
   const stockFull = trigger === 'stock' && itemCount != null;
   const repubCap = trigger === 'republish_cap';
   const repubLot = trigger === 'republish_lot';
@@ -763,11 +766,9 @@ export default function ConversionModal({
             : repubLot
               ? (fr ? 'Republie ton stock en un geste.' : 'Repost your stock in one move.')
               : quotaCas
-                ? (quotaCas.geste === 'scans'
-                    ? (fr ? 'Tes scans du mois sont faits.' : "This month's scans are done.")
-                    : quotaCas.geste === 'retouches'
-                      ? (fr ? 'Tes retouches du mois sont faites.' : "This month's touch-ups are done.")
-                      : (fr ? 'Tes annonces du mois sont créées.' : "This month's listings are created."))
+                ? (quotaCas.geste === 'retouches'
+                    ? (fr ? 'Tes retouches du mois sont faites.' : "This month's touch-ups are done.")
+                    : (fr ? 'Tes annonces du mois sont créées.' : "This month's listings are created."))
                 : stockFull
                   ? (fr ? 'Ton stock est plein.' : 'Your stock is full.')
                   : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
@@ -798,24 +799,18 @@ export default function ConversionModal({
            au-dessus change. Textes par geste, volumes lus dans K. */
         <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
-            {quotaCas.geste === 'scans'
-              ? (fr ? <>Ton forfait comprend {quotaCas.plafond ?? K.quota_scan_free} scans par mois — ils sont tous utilisés. Rien n'a été décompté.</>
-                    : <>Your plan includes {quotaCas.plafond ?? K.quota_scan_free} scans a month — they are all used. Nothing was deducted.</>)
-              : quotaCas.geste === 'retouches'
-                ? (fr ? <>Ton forfait comprend {quotaCas.plafond ?? 0} retouches IA par mois — elles sont toutes utilisées. Rien n'a été décompté.</>
-                      : <>Your plan includes {quotaCas.plafond ?? 0} AI touch-ups a month — they are all used. Nothing was deducted.</>)
-                : (fr ? <>Ton forfait comprend {quotaCas.plafond ?? K.quota_annonces_free} annonces créées par mois — elles le sont toutes. Rien n'a été décompté.</>
-                      : <>Your plan includes {quotaCas.plafond ?? K.quota_annonces_free} created listings a month — they are all used. Nothing was deducted.</>)}
+            {quotaCas.geste === 'retouches'
+              ? (fr ? <>Ton forfait comprend {quotaCas.plafond ?? 0} retouches IA par mois — elles sont toutes utilisées. Rien n'a été décompté.</>
+                    : <>Your plan includes {quotaCas.plafond ?? 0} AI touch-ups a month — they are all used. Nothing was deducted.</>)
+              : (fr ? <>Ton forfait comprend {quotaCas.plafond ?? K.quota_annonces_free} annonces créées par mois — elles le sont toutes. Rien n'a été décompté.</>
+                    : <>Your plan includes {quotaCas.plafond ?? K.quota_annonces_free} created listings a month — they are all used. Nothing was deducted.</>)}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
-            {quotaCas.geste === 'scans'
-              ? (fr ? <>En Premium, tu passes à {K.quota_scan_premium} scans par mois.</>
-                    : <>On Premium you get {K.quota_scan_premium} scans a month.</>)
-              : quotaCas.geste === 'retouches'
-                ? (fr ? <>En Premium, tu passes à {K.quota_retouche_premium} retouches IA par mois.</>
-                      : <>On Premium you get {K.quota_retouche_premium} AI touch-ups a month.</>)
-                : (fr ? <>En Premium, tu passes à {K.quota_annonces_premium} annonces par mois, publiées sur les 4 plateformes.</>
-                      : <>On Premium you get {K.quota_annonces_premium} listings a month, published on all 4 platforms.</>)}
+            {quotaCas.geste === 'retouches'
+              ? (fr ? <>En Premium, tu passes à {K.quota_retouche_premium} retouches IA par mois.</>
+                    : <>On Premium you get {K.quota_retouche_premium} AI touch-ups a month.</>)
+              : (fr ? <>En Premium, tu passes à {K.quota_annonces_premium} annonces par mois, publiées sur les 4 plateformes.</>
+                    : <>On Premium you get {K.quota_annonces_premium} listings a month, published on all 4 platforms.</>)}
           </div>
         </div>
       )}

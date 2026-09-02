@@ -30,6 +30,6 @@ export async function paiementsAndroidCoupes(supabase) {
 
 export function messagePaiementAndroidCoupe(lang) {
   return lang === "en"
-    ? "Payments are temporarily unavailable on Android — we're fixing it. Want Premium or Nuggets right now? Email support@fillsell.app"
-    : "Paiement temporairement indisponible sur Android — on répare. Tu veux Premium ou des Pépites tout de suite ? Écris-nous : support@fillsell.app";
+    ? "Payments are temporarily unavailable on Android — we're fixing it. Want Premium right now? Email support@fillsell.app"
+    : "Paiement temporairement indisponible sur Android — on répare. Tu veux Premium tout de suite ? Écris-nous : support@fillsell.app";
 }

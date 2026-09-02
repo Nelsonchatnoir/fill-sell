@@ -12,7 +12,8 @@ import ExtensionReminderModal, { shouldShowExtensionReminder } from '../componen
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
-import PepiteAmount from '../components/PepiteAmount';
+// (import PepiteAmount retiré au nettoyage Pépites du 02/09 soir — les
+// montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs } from '../utils/publicationState';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
@@ -2840,8 +2841,8 @@ function etapeRepublication(job, fr) {
   if (st === 'dry_run_completed') return {
     cle: 'arret', court: fr ? 'Test à blanc' : 'Dry run', ...bleu, fini: true,
     titre: fr ? 'Test à blanc terminé' : 'Dry run complete',
-    detail: fr ? "Tout le parcours a été vérifié sans rien toucher : ton annonce n'a été ni retirée ni recréée, et la Pépite t'a été rendue."
-               : 'The whole flow was checked without touching anything: your listing was neither removed nor recreated, and your Nugget was refunded.',
+    detail: fr ? "Tout le parcours a été vérifié sans rien toucher : ton annonce n'a été ni retirée ni recréée, et rien n'a été décompté."
+               : 'The whole flow was checked without touching anything: your listing was neither removed nor recreated, and nothing was deducted.',
   };
   if (st === 'failed' || st === 'cancelled') {
     const apres = step === 'deleted';
@@ -3115,7 +3116,8 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
   const plafonnes = lotApercu.filter(a => a.plafonne);
   // Bascule quotas (02/09) : prixUnitaire null = republication non facturée →
   // aucun coût affiché (fragment vide), le libellé reste « Republier … ».
-  const cout = prixUnitaire != null ? <PepiteAmount value={items.length * prixUnitaire} /> : null;
+  // (Nettoyage Pépites 02/09 soir : montant en chiffres nus, plus d'icône.)
+  const cout = prixUnitaire != null ? <>{items.length * prixUnitaire}</> : null;
   const confirmer = () => {
     onConfirm(items.map(({ item, prixActuel }) => {
       let prix = null; // null = garder le prix de l'annonce
@@ -4158,8 +4160,8 @@ const StockTab = memo(function StockTab({
         // insufficient_coins : mort avec la bascule quotas (02/09, prix à 0) —
         // l'entrée reste pour un éventuel retour arrière des prix.
         insufficient_coins: lang === 'en'
-          ? 'Not enough Nuggets for a publication. Nothing was charged.'
-          : 'Pépites insuffisantes pour une publication. Rien n’a été débité.',
+          ? 'This publication could not be started. Nothing was deducted.'
+          : 'Cette publication n’a pas pu être lancée. Rien n’a été décompté.',
         already_published: lang === 'en'
           ? 'Already live or queued on this platform — nothing was charged.'
           : 'Déjà en ligne (ou en file) sur cette plateforme — rien n’a été débité.',
@@ -4562,8 +4564,8 @@ const StockTab = memo(function StockTab({
               {lang==='fr'?"Republication en maintenance":"Reposting under maintenance"}
             </div>
             {lang==='fr'
-              ?"On corrige un problème qui pouvait empêcher la remise en ligne de certaines annonces. Vos annonces sont protégées et aucune Pépite n'est débitée. On vous prévient dès que c'est rétabli."
-              :"We're fixing an issue that could prevent some listings from going back online. Your listings are safe and no Nuggets are charged. We'll let you know as soon as it's back."}
+              ?"On corrige un problème qui pouvait empêcher la remise en ligne de certaines annonces. Vos annonces sont protégées et rien n'est décompté. On vous prévient dès que c'est rétabli."
+              :"We're fixing an issue that could prevent some listings from going back online. Your listings are safe and nothing is deducted. We'll let you know as soon as it's back."}
           </div>
         </div>
       )}
@@ -6382,8 +6384,8 @@ const StockTab = memo(function StockTab({
                                   :(lang==="en"?`Published — check it ${PLATFORM_LABELS[j.platform]||j.platform}`:`Publiée — à vérifier ${PLATFORM_LABELS[j.platform]||j.platform}`);
                                 const titre=beebsEnVerif
                                   ?((lang==="en"
-                                      ?"The listing was submitted to Beebs, which reviews it before putting it online. The link will appear once it goes live; if it never does, the job will fail and the Nugget will be refunded.\n\n"
-                                      :"L'annonce a bien été déposée sur Beebs, qui la vérifie avant sa mise en ligne. Le lien apparaîtra dès qu'elle sera en ligne ; si elle ne l'est jamais, le job passera en échec et la Pépite sera rendue.\n\n")
+                                      ?"The listing was submitted to Beebs, which reviews it before putting it online. The link will appear once it goes live; if it never does, the job will fail and nothing will be counted.\n\n"
+                                      :"L'annonce a bien été déposée sur Beebs, qui la vérifie avant sa mise en ligne. Le lien apparaîtra dès qu'elle sera en ligne ; si elle ne l'est jamais, le job passera en échec et rien ne sera décompté.\n\n")
                                     +(jobWarningsTexte(j)||""))
                                   :(jobWarningsTexte(j)||undefined);
                                 return (
@@ -6422,8 +6424,8 @@ const StockTab = memo(function StockTab({
                                     className="micon"
                                     title={beebs
                                       ?(lang==="en"
-                                        ?"The listing was submitted to Beebs, which reviews it before putting it online. The link will appear once it goes live; if it never does, the job will fail and the Nugget will be refunded."
-                                        :"L'annonce a bien été déposée sur Beebs, qui la vérifie avant sa mise en ligne. Le lien apparaîtra dès qu'elle sera en ligne ; si elle ne l'est jamais, le job passera en échec et la Pépite sera rendue.")
+                                        ?"The listing was submitted to Beebs, which reviews it before putting it online. The link will appear once it goes live; if it never does, the job will fail and nothing will be counted."
+                                        :"L'annonce a bien été déposée sur Beebs, qui la vérifie avant sa mise en ligne. Le lien apparaîtra dès qu'elle sera en ligne ; si elle ne l'est jamais, le job passera en échec et rien ne sera décompté.")
                                       :(lang==="en"
                                         ?"The listing is online. We're still fetching its link from the marketplace."
                                         :"L'annonce est en ligne. On récupère encore son lien sur la plateforme.")}
@@ -6452,11 +6454,11 @@ const StockTab = memo(function StockTab({
                                     className="micon"
                                     onClick={url?()=>window.open(url,'_blank','noopener'):undefined}
                                     title={lang==="en"
-                                      ?`We can't find your listing on ${nom}. The platform bans the sale of cosmetics and fragrances, which is the most likely cause. Your Nuggets have been refunded. Check your ${nom} listings before reposting, to avoid a duplicate.`
-                                      :`On ne retrouve pas ton annonce sur ${nom}. La plateforme interdit la vente de cosmétiques et parfums, c'est la cause la plus probable. Tes Pépites t'ont été rendues. Vérifie tes annonces ${nom} avant de republier, pour éviter un doublon.`}
+                                      ?`We can't find your listing on ${nom}. The platform bans the sale of cosmetics and fragrances, which is the most likely cause. Nothing was counted. Check your ${nom} listings before reposting, to avoid a duplicate.`
+                                      :`On ne retrouve pas ton annonce sur ${nom}. La plateforme interdit la vente de cosmétiques et parfums, c'est la cause la plus probable. Rien n'a été décompté. Vérifie tes annonces ${nom} avant de republier, pour éviter un doublon.`}
                                     style={{background:"#FFF6E3",border:"1px solid #EED9A6",color:"#8A6100",cursor:url?"pointer":"default"}}
                                   >
-                                    ⚠️ {lang==="en"?`Listing not found — Nuggets refunded`:`Annonce introuvable — Pépites rendues`} {nom}
+                                    ⚠️ {lang==="en"?`Listing not found — nothing counted`:`Annonce introuvable — rien décompté`} {nom}
                                   </div>
                                 );
                               })}
@@ -6689,7 +6691,7 @@ const StockTab = memo(function StockTab({
                                         <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,lineHeight:1}}>
                                           <PlatformLogo platform="vinted" size={12}/>
                                           {lang==='fr'?'Republier':'Repost'}
-                                          <span style={{whiteSpace:"nowrap"}}>(<PepiteAmount value={republishPrice}/>)</span>
+                                          <span style={{whiteSpace:"nowrap"}}>({republishPrice})</span>
                                         </span>
                                       )
                                       :(
@@ -6932,11 +6934,11 @@ const StockTab = memo(function StockTab({
                   <div style={{fontSize:11,color:"#8A8578",textAlign:"center",marginBottom:8,lineHeight:1.5}}>
                     {r.mode==='repend'
                       ?(lang==="en"
-                        ?"Once the cause above is fixed. The job restarts as-is — nothing regenerated, no Nugget charged."
-                        :"Une fois la cause ci-dessus réglée. Le job repart tel quel — rien de régénéré, aucune Pépite débitée.")
+                        ?"Once the cause above is fixed. The job restarts as-is — nothing regenerated, nothing counted."
+                        :"Une fois la cause ci-dessus réglée. Le job repart tel quel — rien de régénéré, rien de décompté.")
                       :(lang==="en"
-                        ?"Once the cause above is fixed. A new send is created from this listing — cost of one publication (1 Nugget), never a new generation."
-                        :"Une fois la cause ci-dessus réglée. Un nouvel envoi est créé à partir de cette annonce — coût d'une publication (1 Pépite), jamais une nouvelle génération.")}
+                        ?"Once the cause above is fixed. A new send is created from this listing — never a new generation, nothing counted against your plan."
+                        :"Une fois la cause ci-dessus réglée. Un nouvel envoi est créé à partir de cette annonce — jamais une nouvelle génération, rien de décompté sur ton forfait.")}
                   </div>
                   {relanceMsg&&(
                     <div style={{fontSize:12,color:"#B0645A",fontWeight:600,textAlign:"center",marginBottom:8}}>{relanceMsg}</div>

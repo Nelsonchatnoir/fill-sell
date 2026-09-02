@@ -327,7 +327,8 @@ export const translations = {
     // Tarif affiché en permanence sous le bouton d'analyse, tous tiers.
     // Payant-par-scan depuis le 2026-07-23 (plus de clés lensQuota*).
     // Valeur alignée sur coin_config.price_lens_overflow (= 6).
-    lensPricePerScan:"6 Pépites l'analyse",
+    // (lensPricePerScan supprimée au nettoyage Pépites du 02/09 soir — clé
+    // morte, plus aucun composant ne la lisait.)
   },
   en: {
     appName:"FillSell",
@@ -626,7 +627,7 @@ export const translations = {
     lensAnalyzeCta:"Analyze with AI",
     lensAnalyzing:"Analyzing…",
     lensMarqueeCaption:"Publish on your favorite platforms",
-    lensPricePerScan:"6 Nuggets per scan",
+    // (lensPricePerScan removed with the 02/09 Pépites cleanup — dead key.)
   }
 };
 

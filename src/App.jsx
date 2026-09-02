@@ -57,8 +57,9 @@ import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
 import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
 import CoinStoreModal from './components/CoinStoreModal';
-import PepiteIcon from './components/PepiteIcon';
-import PepiteAmount from './components/PepiteAmount';
+// (imports PepiteIcon/PepiteAmount retirés au nettoyage Pépites du 02/09
+// soir — plus aucun point d'affichage ; les composants ne vivent plus que
+// dans CoinStoreModal, injoignable.)
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
 import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
@@ -451,18 +452,9 @@ async function checkAndResetDaily(supabase, userId, field_count, field_date) {
   return currentCount;
 }
 
-// Libellés des mouvements du ledger de Pépites (Settings)
-const COIN_KIND_LABELS={
-  grant_monthly:{fr:'Pépites du mois',en:'Monthly Nuggets'},
-  purchase:{fr:'Pack acheté',en:'Pack purchased'},
-  spend_publish:{fr:'Publication',en:'Publish'},
-  spend_lens:{fr:'Analyse Lens',en:'Lens scan'},
-  spend_generate:{fr:"Génération d'annonce",en:'Listing generation'},
-  refund_generate:{fr:'Génération remboursée (échec)',en:'Generation refunded (failed)'},
-  release_publish:{fr:'Pépites rendues (non publié)',en:'Nuggets returned (not published)'},
-  refund:{fr:'Remboursement',en:'Refund'},
-  admin:{fr:'Ajustement',en:'Adjustment'},
-};
+// (COIN_KIND_LABELS — les libellés de l'historique du ledger de Pépites —
+// supprimés au nettoyage du 02/09 soir : le panneau « Mes Pépites » n'existe
+// plus, plus rien ne les lisait. L'historique vit dans coin_ledger en base.)
 
 // ── Libellé UNIQUE des points d'entrée vers la modale de plans (2026-08-09) ──
 // « Passer Pro » nommait un palier alors que le bouton ouvre le CHOIX des
@@ -1354,37 +1346,44 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
 
 // tier : la MÊME modale sert aux TROIS paliers (setShowPremiumWelcome est
 // appelé pour Premium, Pro et Business). Tant qu'elle n'affichait aucun
-// chiffre, la confusion était sans conséquence ; depuis qu'elle annonce un
-// nombre de Pépites, elle DOIT savoir lequel a été acheté.
+// chiffre, la confusion était sans conséquence ; depuis qu'elle annonce des
+// volumes, elle DOIT savoir lequel a été acheté.
 function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
   const pro = tier === 'pro';
   const business = tier === 'business';
-  // Montants pris dans COIN_CONFIG_FALLBACK, la MÊME constante de repli que les
-  // cartes de plan (ConversionModal) — et non plus deux nombres écrits à la
-  // main ici. Ils y étaient restés à 150/600 alors que coin_config vaut
-  // 400/1200 depuis la grille du 2026-08-08 : cette modale annonçait donc, à
-  // chaque achat, moins de Pépites que ce qui était réellement crédité.
-  // ⚠️ coin_config reste la SOURCE. Ce composant s'affiche dans la seconde qui
-  // suit l'achat, sans requête — d'où la constante partagée plutôt qu'une
-  // lecture réseau ; toute divergence se corrige DANS COIN_CONFIG_FALLBACK,
-  // jamais ici.
-  const pepites = business
-    ? COIN_CONFIG_FALLBACK.monthly_grant_business
-    : pro ? COIN_CONFIG_FALLBACK.monthly_grant_pro : COIN_CONFIG_FALLBACK.monthly_grant_premium;
+  // Nettoyage Pépites (02/09 soir) : la modale parlait encore en Pépites et
+  // en prix par scan — elle parle désormais les volumes du forfait, pris dans
+  // COIN_CONFIG_FALLBACK, la MÊME constante de repli que les cartes de plan
+  // (ConversionModal). ⚠️ coin_config reste la SOURCE. Ce composant s'affiche
+  // dans la seconde qui suit l'achat, sans requête — d'où la constante
+  // partagée plutôt qu'une lecture réseau ; toute divergence se corrige DANS
+  // COIN_CONFIG_FALLBACK, jamais ici. Mêmes phrases que lignesDiff (« Stock
+  // illimité » retiré des cartes le 02/09, il ne revient pas ici).
+  const K = COIN_CONFIG_FALLBACK;
+  const suffixe = business ? 'business' : pro ? 'pro' : 'premium';
+  const annonces = K[`quota_annonces_${suffixe}`];
+  const retouches = K[`quota_retouche_${suffixe}`];
+  const repub = business
+    ? (lang === 'en' ? 'Unlimited Vinted repostings' : 'Republications Vinted illimitées')
+    : (lang === 'en'
+        ? `${(K[`quota_republication_${suffixe}`] ?? 0).toLocaleString('en-US')} Vinted repostings a month`
+        : `${(K[`quota_republication_${suffixe}`] ?? 0).toLocaleString('fr-FR')} republications Vinted par mois`);
   const PERKS = lang === 'en'
     ? [
+        { icon: '📝', label: `${annonces} listings created and published on all 4 platforms a month` },
+        { icon: '🔁', label: repub },
+        ...(pro || business ? [{ icon: '🤖', label: 'Automatic reposting' }] : []),
+        { icon: '✨', label: `AI touch-up — ${retouches} enhanced photos a month` },
         { icon: '🎙️', label: 'AI Voice — Unlimited' },
-        { icon: '🪙', label: `${pepites} Nuggets/mo` },
-        { icon: '📸', label: 'AI Lens — 6 Nuggets per scan · live market price' },
-        { icon: '📦', label: 'Unlimited stock' },
         { icon: '📊', label: 'Advanced AI-powered stats' },
         { icon: '📤', label: 'Import / Export Excel' },
       ]
     : [
+        { icon: '📝', label: `${annonces} annonces créées et publiées sur les 4 plateformes par mois` },
+        { icon: '🔁', label: repub },
+        ...(pro || business ? [{ icon: '🤖', label: 'Republication automatique' }] : []),
+        { icon: '✨', label: `Retouche IA — ${retouches} photos embellies par mois` },
         { icon: '🎙️', label: 'IA vocale — Illimité' },
-        { icon: '🪙', label: `${pepites} Pépites/mois` },
-        { icon: '📸', label: 'Lens IA — 6 Pépites par scan · prix marché en direct' },
-        { icon: '📦', label: 'Stock illimité' },
         { icon: '📊', label: 'Stats avancées analysées par IA' },
         { icon: '📤', label: 'Import / Export Excel' },
       ];
@@ -5378,6 +5377,15 @@ export default function App({ loginOnly = false }){
           lang,
           userCountry,
           userStats:{avgMargin},
+          // Lens unifié (02/09 soir) : le scan demande AUSSI la rédaction des
+          // annonces (module partagé avec generate-listing, côté serveur). Un
+          // geste = une unité. Serveur derrière le flag coin_config
+          // lens_unifie : éteint → il répond comme un scan classique (aucun
+          // champ `annonce`) et le stepper génère comme avant. Les 4
+          // plateformes par défaut du stepper (PLATFORMS_DEFAULT) — une
+          // plateforme décochée ensuite laisse juste son annonce inutilisée.
+          mode:'annonce',
+          platforms:['vinted','leboncoin','beebs','ebay'],
         }),
       });
       if(!r.ok){
@@ -5386,7 +5394,17 @@ export default function App({ loginOnly = false }){
         // insufficient_coins ne peut plus arriver (prix à 0), la branche
         // Pépites est morte. Modale de conversion, origine dédiée.
         if(errBody.error==='quota_scan_atteint'){
-          ouvrirModalePlafond('quota_scan',{trigger:'quota_geste',quotaInfo:{geste:'scans',plafond:errBody.plafond,consommes:errBody.consommes}});
+          // Fenêtre de déploiement seulement (serveur pas encore migré) : la
+          // variante 'scans' de la modale n'existe plus, on parle annonces.
+          ouvrirModalePlafond('quota_scan',{trigger:'quota_geste',quotaInfo:{geste:'annonces',plafond:errBody.plafond,consommes:errBody.consommes}});
+          return;
+        }
+        // Fusion scans+annonces (02/09 soir) : le serveur garde désormais sur
+        // le compteur UNIQUE et refuse sous le même code que la génération —
+        // même modale, geste « annonces ». quota_scan_atteint ci-dessus est
+        // conservé pour la fenêtre de déploiement.
+        if(errBody.error==='quota_annonces_atteint'){
+          ouvrirModalePlafond('quota_annonces',{trigger:'quota_geste',quotaInfo:{geste:'annonces',plafond:errBody.plafond,consommes:errBody.consommes}});
           return;
         }
         throw new Error(errBody.error||`HTTP ${r.status}`);
@@ -6551,12 +6569,11 @@ export default function App({ loginOnly = false }){
                       <span style={{fontVariantNumeric:"tabular-nums"}}>{quotas.annonces.consommes} / {quotas.annonces.plafond}</span>
                     </div>
                   )}
-                  {quotas.scans?.plafond!=null&&(
-                    <div style={{display:"flex",justifyContent:"space-between"}}>
-                      <span>{lang==='fr'?'Scans Lens':'Lens scans'}</span>
-                      <span style={{fontVariantNumeric:"tabular-nums"}}>{quotas.scans.consommes} / {quotas.scans.plafond}</span>
-                    </div>
-                  )}
+                  {/* (Ligne « Scans Lens » retirée le 02/09 soir — fusion
+                      scans+annonces : un scan consomme une annonce du
+                      forfait, la ligne du dessus dit tout. Le serveur
+                      renvoie d'ailleurs scans.plafond null depuis la
+                      migration de fusion.) */}
                   {quotas.retouches?.plafond!=null&&quotas.retouches.plafond>0&&(
                     <div style={{display:"flex",justifyContent:"space-between"}}>
                       <span>{lang==='fr'?'Retouches IA':'AI touch-ups'}</span>

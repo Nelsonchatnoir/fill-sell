@@ -265,8 +265,8 @@ export default function LensIdentite({ result, lang }) {
             {contredite && (
               <div style={{ fontSize:11.5, color:'#92400E', lineHeight:1.5, marginTop:6, fontWeight:600 }}>
                 {lang === 'en'
-                  ? `No price was established: an estimate built on a misread object is worse than no estimate at all.${result.pepites_rendues ? ' Your Nuggets have been refunded.' : ''}`
-                  : `Aucun prix n’a été établi : une estimation fondée sur un objet mal reconnu est pire que pas d’estimation.${result.pepites_rendues ? ' Tes Pépites ont été rendues.' : ''}`}
+                  ? `No price was established: an estimate built on a misread object is worse than no estimate at all.${result.pepites_rendues ? ' Nothing was deducted.' : ''}`
+                  : `Aucun prix n’a été établi : une estimation fondée sur un objet mal reconnu est pire que pas d’estimation.${result.pepites_rendues ? ' Rien n’a été décompté.' : ''}`}
               </div>
             )}
           </div>

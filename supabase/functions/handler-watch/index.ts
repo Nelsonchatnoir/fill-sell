@@ -475,7 +475,7 @@ serve(async (req) => {
       const msg =
         "Reprise après interruption : l'ordinateur a été coupé juste après le retrait de l'annonce, " +
         "avant sa recréation. Le job est remis en file et la recréation repartira toute seule dès " +
-        "qu'une extension connectée se réveille — rien à faire de ton côté, la Pépite reste engagée.";
+        "qu'une extension connectée se réveille — rien à faire de ton côté, rien de décompté en plus.";
       const { data: maj } = await supabase
         .from("cross_post_jobs")
         .update({ status: "pending", error: msg, platform_fields: pf })
@@ -547,7 +547,7 @@ serve(async (req) => {
         "Reprise après interruption : l'ordinateur a été coupé après la capture de l'annonce, " +
         "avant tout retrait. Ton annonce est toujours en ligne sur Vinted, rien n'a été supprimé. " +
         "Le job est remis en file et repartira tout seul dès qu'une extension connectée se " +
-        "réveille — rien à faire de ton côté, la Pépite reste engagée.";
+        "réveille — rien à faire de ton côté, rien de décompté en plus.";
       const { data: maj } = await supabase
         .from("cross_post_jobs")
         .update({ status: "pending", error: msg, platform_fields: pf })
@@ -629,17 +629,17 @@ serve(async (req) => {
         continue;
       }
       if (now - vuLe < ECHEANCE_NEEDS_USER_MS) continue;
-      // La formulation par acte suit celle des triggers : la Pépite n'est
-      // annoncée que là où un solde existe réellement (réservation publish /
-      // débit republish) — un retrait n'en porte pas.
+      // Nettoyage Pépites (02/09 soir) : plus aucun montant annoncé — « rien
+      // décompté » est vrai dans les deux ères (ancien débit rendu par les
+      // triggers, nouveau régime sans débit).
       const msg = j.action === "republish"
         ? "Resté en attente de ton geste plus de 3 jours : le job est arrêté, ton annonce est intacte " +
-          "sur Vinted et la Pépite est rendue. Relance la republication depuis la fiche de l'article quand tu veux."
+          "sur Vinted et rien ne t'a été décompté. Relance la republication depuis la fiche de l'article quand tu veux."
         : j.action === "delete"
           ? "Resté en attente de ton geste plus de 3 jours : le job est arrêté. Si l'annonce est encore " +
             "en ligne, retire-la toi-même sur la plateforme."
-          : "Resté en attente de ton geste plus de 3 jours : le job est arrêté et la Pépite engagée a été " +
-            "rendue. Relance la publication depuis la fiche de l'article quand tu veux.";
+          : "Resté en attente de ton geste plus de 3 jours : le job est arrêté et rien ne t'a été " +
+            "décompté. Relance la publication depuis la fiche de l'article quand tu veux.";
       const { error: fErr } = await supabase
         .from("cross_post_jobs")
         .update({ status: "failed", error: msg, platform_fields: pf })
