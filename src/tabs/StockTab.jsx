@@ -3606,6 +3606,21 @@ const StockTab = memo(function StockTab({
   // prix d'achat (toggle + Set + checkboxes + barre sticky). Seuls les
   // articles ACTIONNABLES sont cochables : les bornes (republish vivant,
   // cadence 24 h) rendent la case absente, jamais un échec après le clic.
+  // ── Republication EN LOT réservée aux payants (2026-09-02 soir) ───────────
+  // Un Free est plafonné à 3 republications manuelles/jour (refus serveur
+  // plafond_republication_free) : lui laisser lancer un lot, c'est lui
+  // promettre le contraire du refus qu'il va prendre au premier article. La
+  // porte se ferme EN AMONT : bouton visible (levier de conversion) mais
+  // inopérant — au tap, modale de conversion (origine DISTINCTE
+  // republication_lot_free, trigger republish_lot), aucun job, aucun appel
+  // RPC, aucune Pépite engagée. isPremium inclut is_comped (expression
+  // canonique) ; flags cumulatifs → « est payant » = l'un des trois.
+  // La republication À L'UNITÉ reste ouverte au Free (3/jour, garde serveur).
+  const repubLotReserve = !(isPremium || isPro || isBusiness);
+  const ouvrirModaleLotReserve = () => {
+    if (typeof ouvrirModalePlafond !== 'function') return;
+    ouvrirModalePlafond('republication_lot_free', { trigger: 'republish_lot' });
+  };
   const [modeRepublish, setModeRepublish] = useState(false);
   const [repubSel, setRepubSel] = useState(new Set());
   const [repubLot, setRepubLot] = useState(null); // {fait, total, refus:[]} pendant/après un lot
@@ -3613,6 +3628,9 @@ const StockTab = memo(function StockTab({
   // — cf. le commentaire TDZ au-dessus de lancerRepublication.)
 
   async function lancerRepublicationLot(cibles /* [{item, prix}] */) {
+    // Ceinture (02/09 soir) : le bouton est déjà gaté, mais si un chemin
+    // résiduel arrivait ici en Free, on ouvre la modale et RIEN ne part.
+    if (repubLotReserve) { ouvrirModaleLotReserve(); return; }
     if (repubMaintenance) return;
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) return;
     setRepubLot({ fait: 0, total: cibles.length, refus: [] });
@@ -5475,24 +5493,44 @@ const StockTab = memo(function StockTab({
               <button className={`pa-call${modeRepublish?" on":""}`}
                 /* Maintenance : on ne peut plus ENTRER en mode lot (grisé),
                    mais on peut toujours en SORTIR — sinon un utilisateur déjà
-                   en mode au moment où la clé passe à 1 y resterait coincé. */
+                   en mode au moment où la clé passe à 1 y resterait coincé.
+                   Free (02/09 soir) : le bouton reste PLEINEMENT visible et
+                   cliquable — geste RÉSERVÉ, pas bouton cassé (jamais de gris
+                   mort, l'erreur corrigée sur la carte de sync du Stock
+                   vide) : pastille « Premium » + tap → modale de conversion,
+                   aucun mode armé. */
                 disabled={repubMaintenance&&!modeRepublish}
                 style={repubMaintenance&&!modeRepublish?{opacity:0.45,cursor:"default"}:undefined}
-                onClick={()=>{if(repubMaintenance&&!modeRepublish)return;setModeRepublish(v=>!v);setRepubSel(new Set());setRepubLot(null);}}>
+                onClick={()=>{
+                  if(repubMaintenance&&!modeRepublish)return;
+                  if(repubLotReserve){ouvrirModaleLotReserve();return;}
+                  setModeRepublish(v=>!v);setRepubSel(new Set());setRepubLot(null);
+                }}>
                 <span style={{fontSize:17,flexShrink:0}}>{modeRepublish?"↩":"🔁"}</span>
                 <span style={{flex:1,minWidth:0}}>
-                  <span className="n">
+                  <span className="n" style={{display:"inline-flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                     {modeRepublish
                       ?(lang==='fr'?"Quitter la republication en lot":"Exit bulk repost")
                       :(lang==='fr'?`Republier en lot (${repubActionnables.length} article${repubActionnables.length>1?"s":""} possible${repubActionnables.length>1?"s":""})`
                           :`Bulk repost (${repubActionnables.length} item${repubActionnables.length>1?"s":""} available)`)}
+                    {repubLotReserve&&!modeRepublish&&(
+                      <span style={{
+                        fontSize:10,fontWeight:700,letterSpacing:"0.04em",color:"#1B6E62",
+                        background:"#E7F3F0",border:"1px solid #CBE5DF",borderRadius:999,padding:"2px 8px",
+                      }}>
+                        Premium
+                      </span>
+                    )}
                   </span>
                   <span className="sub">
                     {modeRepublish
                       ?(lang==='fr'?"Coche les annonces à faire remonter, puis lance — 1 Pépite par annonce."
                           :"Tick the listings to bump, then launch — 1 Nugget each.")
-                      :(lang==='fr'?"Supprime puis recrée chaque annonce à l'identique pour la faire remonter dans le fil Vinted."
-                          :"Deletes then recreates each listing identically to bump it in the Vinted feed.")}
+                      :repubLotReserve
+                        ?(lang==='fr'?"Republier plusieurs annonces d'un geste est un avantage des forfaits payants."
+                            :"Reposting several listings in one move is a paid-plan perk.")
+                        :(lang==='fr'?"Supprime puis recrée chaque annonce à l'identique pour la faire remonter dans le fil Vinted."
+                            :"Deletes then recreates each listing identically to bump it in the Vinted feed.")}
                   </span>
                 </span>
               </button>

@@ -2539,6 +2539,8 @@ export default function App({ loginOnly = false }){
   //   plafond_pepites_publi     Pépites insuffisantes — publication  (auto)
   //   plafond_republication_free  3 republications manuelles/jour
   //                             atteintes (compte free)              (auto)
+  //   republication_lot_free    tap Free sur « Republier en lot »
+  //                             (geste réservé aux payants)          (auto)
   //   modale_plan               carte de plan CHOISIE dans la modale
   const logTunnel=(feature,metadata={})=>{
     if(!user?.id) return Promise.resolve();

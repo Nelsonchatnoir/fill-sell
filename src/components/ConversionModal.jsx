@@ -1022,6 +1022,11 @@ export default function ConversionModal({
   // chaque ouverture). Ne s'ouvre QUE sur ce code de refus.
   const stockFull = trigger === 'stock' && itemCount != null;
   const repubCap = trigger === 'republish_cap';
+  // Variante 'republish_lot' (02/09 soir) : un Free a tapé « Republier en
+  // lot » — il n'a RIEN consommé, il demande un geste réservé aux payants.
+  // Même structure et même registre que le plafond : le fait, puis ce que
+  // Premium change, puis les cartes, puis la sortie. Aucune urgence.
+  const repubLot = trigger === 'republish_lot';
   return (
     <Sheet onClose={fermer}>
       <div style={{
@@ -1039,9 +1044,11 @@ export default function ConversionModal({
           ? (fr ? 'Passe en vocal illimité.' : 'Go unlimited on voice.')
           : repubCap
             ? (fr ? 'Tes republications du jour sont faites.' : "Today's reposts are done.")
-            : stockFull
-              ? (fr ? 'Ton stock est plein.' : 'Your stock is full.')
-              : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
+            : repubLot
+              ? (fr ? 'Republie ton stock en un geste.' : 'Repost your stock in one move.')
+              : stockFull
+                ? (fr ? 'Ton stock est plein.' : 'Your stock is full.')
+                : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
       </Title>
 
       {repubCap && (
@@ -1056,6 +1063,24 @@ export default function ConversionModal({
             {fr
               ? <>En Free, tu peux republier {plafondRepub?.plafond ?? 3} annonces par jour — c'est fait pour aujourd'hui. Rien n'a été débité.</>
               : <>On Free you can repost {plafondRepub?.plafond ?? 3} listings a day — that's done for today. Nothing was charged.</>}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
+            {fr
+              ? <>En Premium, tu republies tes annonces toi-même, quand tu veux — autant que tu veux, tous les jours.</>
+              : <>On Premium, you repost your listings yourself, whenever you want — as many as you want, every day.</>}
+          </div>
+        </div>
+      )}
+
+      {repubLot && (
+        /* Même structure que l'encart du plafond : le FAIT (geste réservé,
+           rien lancé, rien débité), puis ce que Premium change — phrase
+           STRICTEMENT identique à celle du plafond, même registre toi-même. */
+        <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
+            {fr
+              ? <>La republication en lot est réservée aux forfaits payants — rien n'a été lancé, rien n'a été débité.</>
+              : <>Bulk reposting is for paid plans — nothing was launched, nothing was charged.</>}
           </div>
           <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
             {fr
