@@ -299,6 +299,12 @@ function Dismiss({ onClose, label }) {
 //     conversion principal.
 // L'automatique reste Pro/Business : verrou extension plan_non_pro
 // (background.js) aligné avec la décision — ne pas promettre au-delà.
+// ORDRE D'AFFICHAGE (02/09 soir, 2e passe) : les lignes COCHÉES d'abord, les
+// BARRÉES en bas — sur la carte Premium, la croix « automatique » tombait
+// entre deux coches et coupait la carte en deux. Le tri est STABLE (Array
+// .prototype.sort l'est en JS) : l'ordre relatif à l'intérieur de chaque
+// groupe (manuelle · automatique · support) ne bouge pas. Libellés et
+// traitement visuel inchangés.
 function lignesDiff(fr, palier) {
   const paye = palier !== 'free';
   const auto = palier === 'pro' || palier === 'business';
@@ -326,7 +332,7 @@ function lignesDiff(fr, palier) {
           ? (fr ? 'Support prioritaire' : 'Priority support')
           : (fr ? 'Support' : 'Support'),
     },
-  ];
+  ].sort((a, b) => Number(b.ok) - Number(a.ok));
 }
 
 function LignesDiff({ fr, palier, dark }) {
@@ -1011,8 +1017,9 @@ export default function ConversionModal({
   // Ce n'est PAS un message d'erreur : la modale dit le FAIT (limite du jour
   // atteinte), puis ce que débloque le palier au-dessus, puis les cartes —
   // dont les CTA partent en checkout. Ton informatif, aucun compte à rebours,
-  // aucune « offre limitée ». L'anti-harcèlement (une ouverture/jour) vit chez
-  // l'appelant (StockTab), pas ici. Ne s'ouvre QUE sur ce code de refus.
+  // aucune « offre limitée ». Elle s'ouvre à CHAQUE tentative refusée
+  // (verrou 1/jour retiré le 02/09 soir — l'appelant StockTab journalise
+  // chaque ouverture). Ne s'ouvre QUE sur ce code de refus.
   const stockFull = trigger === 'stock' && itemCount != null;
   const repubCap = trigger === 'republish_cap';
   return (
@@ -1040,8 +1047,10 @@ export default function ConversionModal({
       {repubCap && (
         /* Registre aligné sur les cartes (02/09 soir) : le Free A quelque
            chose (3/jour) et le Premium change le TOI-MÊME — jamais le mot
-           « plafond », jamais deux registres. Déclenchement, fréquence
-           1/jour/compte et télémétrie : inchangés (portés par StockTab). */
+           « plafond », jamais deux registres. Déclenchement (exclusif au
+           code plafond_republication_free) et télémétrie portés par
+           StockTab ; depuis le 02/09 soir la modale s'ouvre À CHAQUE
+           tentative refusée (verrou 1/jour retiré — décision Nico). */
         <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
             {fr
