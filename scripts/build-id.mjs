@@ -1038,7 +1038,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // LBC sur h1 VIDE = transitoire, plus jamais une contradiction ; titres
 // tout-en-majuscules normalisés avant dépôt (refus serveur connu d'avance) ;
 // « Failed to fetch » rejoint les transitoires (reprise espacée).
-export const EXTENSION_LAST_COMMIT = '2026-09-03T12:25:00Z';
+// 2026-09-03T12:51:06Z (0.6.17, commit épinglé) : chantier « les dépôts LBC/
+// eBay/Beebs doivent passer » — optionLabel Beebs réparé (Beebs a remplacé
+// l'id de checkbox par un identifiant opaque et vidé le 1er span : relevé
+// LIVE du 03/09, le libellé vit dans le 1er div ; c'est ce qui cassait le
+// Format du colis ET polluait les listes du mini-éditeur) ; taille US jean
+// 24-34 convertie en grille FR « X / NN » (match ancré, jamais silencieux) et
+// panneau filtré à vide relu en liste complète ; la réponse du mini-éditeur
+// PRIME sur le mapping colis (needsUserResolved.format_colis verbatim) ;
+// brouillon LBC : clic sur le bouton officiel « Recommencer » (le brouillon
+// est restauré côté serveur, la purge du storage ne l'atteint plus) puis
+// dépôt poursuivi dans le même onglet, relevé des boutons visibles en annexe
+// quand il manque ; pré-vol eBay étendu à /fpa/upgrade (mise à niveau du
+// compte vendeur dite AVANT toute tentative).
+export const EXTENSION_LAST_COMMIT = '2026-09-03T12:51:06Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

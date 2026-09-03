@@ -581,6 +581,14 @@ async function fillListingForm(job) {
       console.log(`[beebs] Format du colis: déjà posé par Beebs ("${current}"), conservé`);
     } else {
       const rawFormat = String(fields.format_colis ?? "").trim();
+      // ── VALEUR TRANCHÉE PAR L'UTILISATEUR : ELLE PRIME (2026-09-03) ────────
+      // Doctrine needsUserResolved du 19/07, jamais appliquée ici : la réponse
+      // du mini-éditeur (needs_user « Format du colis ») arrivait dans
+      // rawFormat, n'était ni un format canonique ni « Poids… », et RETOMBAIT
+      // sur le défaut — le choix de l'utilisateur était jeté (vérifié en prod
+      // par Nico le 03/09, job 17212f1b). La valeur marquée passe VERBATIM à
+      // la sélection, sans mapping ni défaut.
+      const tranche = String(fields.needsUserResolved?.format_colis ?? "").trim();
       // Un libellé palier Beebs DÉJÀ exact (« Poids jusqu'à … ») passe tel
       // quel : c'est ce que produit une sélection faite dans l'app contre une
       // liste relevée (allowed_values du catalogue) — le faire retomber sur le
@@ -588,9 +596,10 @@ async function fillListingForm(job) {
       // partait en 1 kg).
       const parDefaut = defautColisPourCategorie(fields.beebsCategoryPath);
       const mapped =
-        BEEBS_PACKAGE_BY_FORMAT[rawFormat] ??
-        (/^poids/i.test(rawFormat) ? rawFormat : parDefaut);
-      if (!BEEBS_PACKAGE_BY_FORMAT[rawFormat] && !/^poids/i.test(rawFormat)) {
+        tranche ||
+        (BEEBS_PACKAGE_BY_FORMAT[rawFormat] ??
+          (/^poids/i.test(rawFormat) ? rawFormat : parDefaut));
+      if (!tranche && !BEEBS_PACKAGE_BY_FORMAT[rawFormat] && !/^poids/i.test(rawFormat)) {
         const note = `format du colis: aucun format_colis exploitable ("${rawFormat}") — défaut déduit de la catégorie : "${mapped}"`;
         console.warn(`[beebs] ⚠️ ${note}`);
         warnings.push(note);
@@ -1118,19 +1127,36 @@ function containsAsWords(hay, needle) {
   return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:[^a-z0-9]|$)`).test(hay);
 }
 
-// Libellé court d'une option (DOM post-migration Tailwind, relevé 25/07) :
-// l'id/name de la checkbox Checkbox-module (= libellé EXACT, présent sur les
-// options d'attributs et les feuilles de catégorie), sinon le 1er span du
-// bouton (libellé gras rendu au-dessus de la description), sinon le
-// textContent complet en dernier recours — jamais en premier : pour un champ
-// à descriptions (État), le textContent CONCATÈNE libellé et description
-// ("Très bon étatLe produit a été…") et aucun étage de match n'y survivrait.
+// Libellé court d'une option. ⚠️ RELEVÉ LIVE du 2026-09-03 (cas « Format du
+// colis », jobs 17212f1b/b94dee56) : Beebs a remplacé l'id/name de la
+// checkbox par un IDENTIFIANT OPAQUE (« 3yKTvfHdFZrmnGLYPzT7BH ») et vidé le
+// 1er span (devenu la coche SVG). L'ancien lecteur (id d'abord, relevé 25/07
+// où id == libellé) rendait donc ces identifiants : plus AUCUN match possible
+// (« Poids jusqu'à 1 kg max » contre « 3yKTv… »), et les listes montrées à
+// l'utilisateur dans le mini-éditeur étaient du charabia. Nouvel ordre :
+//   1. id/name de la checkbox, SEULEMENT s'il est bien le libellé AFFICHÉ
+//      (présent dans le textContent) — couvre l'ancien DOM tel quel ;
+//   2. 1er div enfant du bouton (DOM 2026-09) : son 1er ENFANT est le
+//      libellé court quand une description suit (État — « Neuf, avec
+//      étiquette » + descriptif dans le même div), sinon son texte entier
+//      (Format du colis : « Poids jusqu'à 1 kg max ») ;
+//   3. 1er span NON VIDE, puis textContent — derniers recours, jamais en
+//      premier : pour un champ à descriptions le textContent CONCATÈNE
+//      libellé et description et aucun étage de match n'y survivrait.
 function optionLabel(el) {
   const cb = el.querySelector('input[type="checkbox"]');
-  const exact = (cb?.name || cb?.id || "").trim();
-  if (exact) return exact;
-  const court = el.querySelector("span")?.textContent.trim();
-  return court || el.textContent.trim();
+  const brut = (cb?.name || cb?.id || "").trim();
+  const texte = el.textContent ?? "";
+  if (brut && texte.includes(brut)) return brut;
+  const premierDiv = el.querySelector(":scope > div");
+  if (premierDiv) {
+    const enfant = premierDiv.firstElementChild?.textContent?.trim();
+    if (enfant) return enfant;
+    const entier = premierDiv.textContent.trim();
+    if (entier) return entier;
+  }
+  const span = [...el.querySelectorAll("span")].map((s) => s.textContent.trim()).find(Boolean);
+  return span || texte.trim();
 }
 
 // ⚠️ `els` est la liste des options DU PANNEAU OUVERT, pas un querySelectorAll
@@ -1179,6 +1205,14 @@ function findOptionCascade(els, text, { sizeField = false } = {}) {
   // « 13 ans » pour « 3 », jamais « 3-6 mois » (« ans » exigé collé au
   // nombre). Une SEULE candidate, sinon rien. (Les décimales sont déjà
   // unifiées ici : normalizeFuzzy retire les [.,].)
+  // ── 1ter. grille adulte FR « L / 40 » (2026-09-03, cas Levi's « 28 ») ──────
+  // Les tailles adultes Beebs s'écrivent « XS / 34 »…« 9XL / 58 » : un nombre
+  // nu matche l'option dont le libellé se TERMINE par « / N » — une seule
+  // candidate, sinon rien (même doctrine d'exactitude que la règle « ans »).
+  if (sizeField && PURE_NUMBER_RE.test(target)) {
+    const finExacte = options.filter((o) => new RegExp(`\\/\\s*${target}$`).test(o.norm));
+    if (finExacte.length === 1) return { ...finExacte[0], stage: "taille-fr-slash" };
+  }
   if (sizeField && PURE_NUMBER_RE.test(target)) {
     const candidats = options.filter((o) => {
       const m = o.norm.match(/^(\d+)\s*ans(?![a-z0-9])/);
@@ -1669,6 +1703,13 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
     options = await researchPanelFor(trigger, "Autre");
     researchedFallback = options.length > 0;
   }
+  // ── TAILLE filtrée à VIDE (2026-09-03, jean Levi's « 28 ») : la frappe
+  // avait réduit la grille FR (« XS / 34 »…) à zéro option et l'ancien code
+  // s'arrêtait là, champ vide. On repart de la LISTE COMPLÈTE (barre vidée) :
+  // c'est sur elle que jouent le match ancré « … / N » et la conversion US.
+  if (!options.length && sizeField) {
+    options = await researchPanelFor(trigger, "");
+  }
   if (!options.length) {
     const note = `${labelText}: panneau d'options resté vide (recherche "${rawText}" sans résultat, repli "Autre" introuvable), champ laissé vide`;
     console.warn(`[beebs] ⚠️ ${note}`);
@@ -1682,6 +1723,32 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
   }
 
   let match = findOptionCascade(options, rawText, { sizeField });
+
+  // ── Conversion TAILLE US → FR (2026-09-03, chantier « les dépôts doivent
+  // passer ») : une taille jean US (24-34) ne figure jamais dans la grille
+  // adulte FR de Beebs (« XS / 34 »…« 9XL / 58 »). Plutôt que de laisser le
+  // champ vide et bloquer le dépôt, on convertit N → N+10 (W26=36 … W34=44,
+  // la correspondance jean standard) et on ne prend que le match ANCRÉ
+  // « … / N » — une seule candidate, jamais du flou. La conversion est DITE
+  // en warning : jamais silencieuse. On repart de la liste complète si la
+  // frappe l'avait filtrée.
+  if (!match && sizeField) {
+    const n = Number(String(rawText).trim().replace(",", "."));
+    if (Number.isInteger(n) && n >= 24 && n <= 34) {
+      let base = options;
+      if (!findOptionCascade(base, String(n + 10), { sizeField })) {
+        const completes = await researchPanelFor(trigger, "");
+        if (completes.length) base = completes;
+      }
+      const converti = findOptionCascade(base, String(n + 10), { sizeField });
+      if (converti) {
+        match = converti;
+        const note = `${labelText}: taille US "${rawText}" convertie en ${n + 10} FR → option "${converti.label}"`;
+        console.log(`[beebs] ${note}`);
+        warnings.push(note);
+      }
+    }
+  }
 
   // Repli "Autre" : la liste des matières est PAR CATÉGORIE et ne contient pas
   // toutes les matières du monde (Figurines : Plastique | Bois | Caoutchouc |

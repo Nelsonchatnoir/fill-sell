@@ -3882,9 +3882,18 @@ const StockTab = memo(function StockTab({
   // mini-éditeur needs_user (double-clic, job reparti entre-temps, RLS
   // silencieuse).
   async function validerSaisieRelance(job, fournis) {
+    // Même règle de FRAÎCHEUR que relancerJobEchoue (2026-09-03) : la ligne
+    // est relue au clic — écrire par-dessus une copie mémoire périmée peut
+    // effacer une réponse du mini-éditeur posée entre-temps.
+    let pfBase = job.platform_fields ?? {};
+    try {
+      const { data: frais } = await supabase
+        .from('cross_post_jobs').select('platform_fields').eq('id', job.id).maybeSingle();
+      if (frais?.platform_fields) pfBase = frais.platform_fields;
+    } catch { /* repli : copie mémoire */ }
     const pfNext = {
-      ...(job.platform_fields ?? {}),
-      republish_user_fields: { ...(job.platform_fields?.republish_user_fields ?? {}), ...fournis },
+      ...pfBase,
+      republish_user_fields: { ...(pfBase?.republish_user_fields ?? {}), ...fournis },
     };
     const { data, error } = await supabase
       .from('cross_post_jobs')
@@ -4205,7 +4214,20 @@ const StockTab = memo(function StockTab({
         await relancerParCopie(job);
         return;
       }
-      const pf = { ...(job.platform_fields ?? {}) };
+      // ── PLATFORM_FIELDS FRAIS (2026-09-03, chantier « les dépôts doivent
+      // passer ») : le job en mémoire a 20 s à plusieurs minutes de retard —
+      // relancer avec lui ÉCRASAIT la réponse du mini-éditeur écrite
+      // entre-temps (vérifié en prod par Nico, job 17212f1b : format_colis
+      // choisi puis REVERTI par la relance ; c'est le « la consigne affichée
+      // ne débloque rien »). La ligne est relue AU CLIC ; la copie mémoire ne
+      // sert plus qu'au CAS sur le statut.
+      let pfFrais = job.platform_fields ?? {};
+      try {
+        const { data: frais } = await supabase
+          .from('cross_post_jobs').select('platform_fields').eq('id', job.id).maybeSingle();
+        if (frais?.platform_fields) pfFrais = frais.platform_fields;
+      } catch { /* repli : copie mémoire, comme avant */ }
+      const pf = { ...pfFrais };
       // Une relance manuelle ANNULE la reprise automatique en attente (elle ne
       // s'y ajoute pas) et ouvre un nouveau cycle de reprises espacées :
       // l'extension repart de zéro sur le budget dd85a95 (5 essais, 5/15/30/60).

@@ -715,6 +715,38 @@ async function fillListingForm(job) {
       // Le mot « brouillon » doit RESTER dans le texte : StockTab le repère par
       // DRAFT_LBC_RE (/brouillon/i) pour afficher le bouton « Ouvrir le
       // brouillon Leboncoin ». Le retirer casserait ce bouton en silence.
+      // ── 1er geste (2026-09-03, chantier « les dépôts doivent passer ») :
+      // LE BOUTON OFFICIEL DE LBC. 9 échecs / 5 comptes depuis le 22/08
+      // malgré la purge du storage : le brouillon est désormais restauré
+      // CÔTÉ SERVEUR, effacer le web storage ne l'atteint plus. Quand la
+      // page propose de recommencer une nouvelle annonce (« Recommencer »,
+      // « Nouvelle annonce »…), ce clic est le chemin que LBC offre lui-même
+      // pour jeter le brouillon — on le prend AVANT toute purge, on vérifie
+      // que le wizard est redevenu VIERGE, et le dépôt POURSUIT dans ce même
+      // onglet (plus de danse d'onglet ni de retentative).
+      const chercherRestart = () => [...document.querySelectorAll('button, a[role="button"], a')]
+        .find((b) => b.offsetParent !== null &&
+          /recommencer|nouvelle annonce|commencer une nouvelle|abandonner (le|mon|ce) brouillon|supprimer (le|mon|ce) brouillon/i
+            .test((b.textContent ?? "").replace(/\s+/g, " ").trim()));
+      const restart = chercherRestart();
+      if (restart) {
+        console.log(`[leboncoin] brouillon bloquant : clic sur « ${restart.textContent.replace(/\s+/g, " ").trim().slice(0, 60)} » (chemin officiel LBC)`);
+        restart.click();
+        await sleep(1500);
+        // Modale de confirmation éventuelle — un seul mot, jamais un pavé.
+        const confirme = [...document.querySelectorAll("button")]
+          .find((b) => b.offsetParent !== null && /^(confirmer|oui|recommencer|continuer)$/i.test((b.textContent ?? "").trim()));
+        if (confirme) { confirme.click(); await sleep(1500); }
+        const vierge = await waitFor(() => {
+          const s = document.querySelector('input[name="subject"]');
+          return s && !draftMarker() && !String(s.value ?? "").trim() ? s : null;
+        }, 8000);
+        if (vierge) {
+          console.log("[leboncoin] brouillon retiré par le chemin officiel LBC — wizard vierge, dépôt poursuivi dans CE même onglet");
+          entryState = "step1";
+        }
+      }
+      if (entryState !== "step1") {
       let clesRetirees = 0;
       if (titreBrouillon) {
         for (const storage of [window.localStorage, window.sessionStorage]) {
@@ -737,8 +769,15 @@ async function fillListingForm(job) {
       }
       console.log(
         `[leboncoin] brouillon bloquant (« ${titreBrouillon || "(titre illisible)"} ») : ` +
-        `${clesRetirees} clé(s) de storage retirée(s) — retentative unique en onglet neuf (draftBlocked).`
+        `${clesRetirees} clé(s) de storage retirée(s), aucun bouton « recommencer » trouvé — retentative unique en onglet neuf (draftBlocked).`
       );
+      // Annexe support (2026-09-03) : les boutons réellement affichés, pour
+      // apprendre le libellé du contrôle si LBC en change — c'est ce relevé
+      // qui manquait pour comprendre les 9 échecs.
+      const boutonsVisibles = [...document.querySelectorAll("button")]
+        .filter((b) => b.offsetParent !== null)
+        .map((b) => (b.textContent ?? "").replace(/\s+/g, " ").trim())
+        .filter(Boolean).slice(0, 15);
       return {
         success: false,
         needsUser: true,
@@ -746,7 +785,9 @@ async function fillListingForm(job) {
         error:
           "Un brouillon Leboncoin non terminé bloque le dépôt : supprime-le sur " +
           "leboncoin.fr/deposer-une-annonce, puis relance la publication.",
+        diagnostic: `brouillon serveur non retirable — boutons visibles: ${JSON.stringify(boutonsVisibles)}`,
       };
+      }
     }
   }
   // ── Étapes 1→3 : voir lbcRemplirJusquAApercu (extraction 2026-07-30) ─────

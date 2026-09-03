@@ -1950,6 +1950,25 @@ async function processJob(rawJob, accessToken) {
         await rearmBounded(accessToken, job, msg);
         return { status: "needsUser", error: msg };
       }
+      if (stepUp === "upgrade") {
+        // Mise à niveau du compte vendeur : action utilisateur chez eBay —
+        // needs_user direct (pas de reprises espacées : la page ne se lève
+        // pas toute seule), message qui dit le geste, aucun onglet consommé.
+        const msg =
+          "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce (/fpa/upgrade). " +
+          "Ouvre ebay.fr dans Chrome, suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.";
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          last_diagnostic: JSON.stringify({
+            quoi: "prevol_upgrade_vendeur",
+            detail: "GET /sl/list redirigé vers /fpa/upgrade AVANT toute tentative de dépôt",
+            at: new Date().toISOString(),
+          }),
+        };
+        console.warn(`[background] Job ${job.id} : mise à niveau du compte vendeur exigée par eBay — aucun formulaire ouvert.`);
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: job.platform_fields, error: msg });
+        return { status: "needsUser", error: msg };
+      }
     }
 
     // ── Anti-doublon brouillon eBay (2026-08-31) ──────────────────────────────
@@ -6501,6 +6520,12 @@ async function sonderStepUpVente() {
   });
   const u = new URL(r.url);
   if (/(^|\.)signin\.ebay\./i.test(u.hostname)) return "step_up";
+  // Compte vendeur à METTRE À NIVEAU (2026-09-03, relevé 30 j : redirection
+  // /fpa/upgrade AVANT le formulaire — l'ancien chemin ouvrait l'onglet,
+  // remplissait rien et échouait en « Formulaire eBay non atteint »). Même
+  // principe que le step-up : détecté au GET, dit à l'utilisateur AVANT
+  // toute tentative.
+  if (/\/fpa\/upgrade/i.test(u.pathname)) return "upgrade";
   return "ok";
 }
 
