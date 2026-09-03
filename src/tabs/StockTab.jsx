@@ -6722,6 +6722,24 @@ const StockTab = memo(function StockTab({
                                     {lang==='fr'?'✋ Compléter':'✋ Fill in'}
                                   </button>);
                                 }
+                                // Pré-vol « champ à trancher » (03/09, cas Joséphine —
+                                // « Catégorie Vinted » devenue niveau intermédiaire) : le
+                                // job porte un needsUserField avec les valeurs relevées
+                                // sur le panneau Vinted. La saisie libre de la feuille ne
+                                // sait pas y répondre et la relance sèche refrappe le même
+                                // mur (vérifié 03/09 : inventaire.vinted_catalog_id n'est
+                                // pas lu par le pré-vol) — le mini-éditeur à choix fermé,
+                                // lui, écrit categoryLevelChoice/vintedAspects que la
+                                // recréation consomme désormais.
+                                const aChoisir=!aSaisir&&!!repubLatest?.platform_fields?.needsUserField;
+                                if(aChoisir&&!apresSuppr){
+                                  return(
+                                  <button className="btn-vendre" disabled={repubBusy===item.id}
+                                    onClick={e=>{e.stopPropagation();setNeedsUserJob(repubLatest);}}
+                                    style={{opacity:repubBusy===item.id?0.6:1}}>
+                                    {lang==='fr'?'✋ Compléter':'✋ Fill in'}
+                                  </button>);
+                                }
                                 return(
                                 <button className="btn-vendre" disabled={repubBusy===item.id}
                                   onClick={e=>{e.stopPropagation();relancerRepublication(item,repubLatest);}}

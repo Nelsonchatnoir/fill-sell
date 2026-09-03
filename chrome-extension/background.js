@@ -9653,6 +9653,33 @@ async function cloreRepublishSurAnnonceExistante(accessToken, job, pf, nouvelId,
 // chaque poll). Les IDS accompagnent les libellés : un libellé absent se
 // re-résout depuis son id — les 3 captures du 12/08 (Polo Kaporal, Pull M,
 // Tee shirt M) n'avaient la taille QUE sous forme d'id dans item_attributes.
+// Valeur RÉELLEMENT capturée sur l'annonce d'origine pour un libellé de champ
+// du pré-vol (2026-09-03, job df496c00 : « Catégorie Vinted » déclarée
+// manquante alors que le snapshot portait catalog_id 1730 et le chemin complet
+// — le formulaire demandait un niveau PLUS FIN, pas une catégorie absente).
+// Sert UNIQUEMENT au message du pré-vol négatif : « la capture n'a pas cette
+// information » et « l'information capturée n'est pas acceptée telle quelle »
+// ne se corrigent pas au même endroit, le message ne doit plus les confondre.
+// null = rien de capturé pour ce champ (l'ancien libellé redevient vrai).
+function valeurCaptureePourChamp(snapshot, champLabel) {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const l = String(champLabel ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const texte = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  if (l.includes("categorie")) {
+    return Array.isArray(snapshot.categoryPath) && snapshot.categoryPath.length
+      ? snapshot.categoryPath.join(" › ") : null;
+  }
+  if (l.startsWith("etat")) return texte(snapshot.etat);
+  if (l.startsWith("taille")) return texte(snapshot.taille);
+  if (l.startsWith("marque")) return texte(snapshot.marque);
+  if (l.startsWith("couleur")) {
+    return Array.isArray(snapshot.couleurs) && snapshot.couleurs.length
+      ? snapshot.couleurs.filter(Boolean).join(", ") : texte(snapshot.couleurs);
+  }
+  if (l.includes("isbn")) return texte(snapshot.isbn);
+  return null;
+}
+
 function construireSnapshotRepublish(pf, cap) {
   const natif = cap?.payload?.natif ?? {};
   const attrs = Array.isArray(natif.item_attributes) ? natif.item_attributes : [];
@@ -9786,6 +9813,13 @@ function construireJobRecreation(job, pf, cap, prix) {
       ...(Array.isArray(cap.libelles?.matiere_ids) && cap.libelles.matiere_ids.length
         ? { matiere_ids: cap.libelles.matiere_ids } : {}),
       ...(pf.vintedAspects && typeof pf.vintedAspects === "object" ? { vintedAspects: pf.vintedAspects } : {}),
+      // Choix de niveau de catégorie tranché au mini-éditeur (needs_user
+      // « Catégorie Vinted » du pré-vol, 2026-09-03) : target root:null →
+      // l'app l'écrit à la racine de platform_fields. Sans cette propagation,
+      // la réponse de l'utilisateur n'atteignait JAMAIS selectCategory à la
+      // relance — même trou que vintedAspects en son temps (cf. bandeau).
+      ...(typeof pf.categoryLevelChoice === "string" && pf.categoryLevelChoice.trim()
+        ? { categoryLevelChoice: pf.categoryLevelChoice.trim() } : {}),
     },
   });
 }
@@ -10106,7 +10140,7 @@ async function processRepublishJob(job, accessToken) {
     // rien n'a été touché, l'annonce est intacte, et un statut terminal
     // déclenche republish_refund_on_terminal (la Pépite est rendue).
     if (!cap.success) {
-      const msg = `Republication annulée avant toute suppression : ${cap.error}. Ton annonce est intacte, la Pépite est rendue.`;
+      const msg = `Republication annulée avant toute suppression : ${cap.error}. Ton annonce est intacte.`;
       await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
       return { status: "failed", error: msg };
     }
@@ -10126,7 +10160,7 @@ async function processRepublishJob(job, accessToken) {
       const actionnables = tous.filter((m) => !/^photo/i.test(String(m)));
       const detail = tous.slice(0, 3).join(" ; ") || "champs manquants";
       if (!actionnables.length) {
-        const msg = `Capture incomplète (${detail}) — republication annulée AVANT toute suppression. Ton annonce est intacte, la Pépite est rendue.`;
+        const msg = `Capture incomplète (${detail}) — republication annulée AVANT toute suppression. Ton annonce est intacte.`;
         await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
         return { status: "failed", error: msg };
       }
@@ -10135,8 +10169,7 @@ async function processRepublishJob(job, accessToken) {
       pf.champs_a_completer = [...new Set(actionnables.map((m) => (String(m).split(/[\s(]/)[0] || "").toLowerCase()).filter(Boolean))];
       pf.needs_user_source = "capture_incomplete";
       const msg = `Republication en pause AVANT toute suppression : la capture de ton annonce est incomplète (${detail}). ` +
-        "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication. " +
-        "Rien ne t’a été décompté pour cette republication.";
+        "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication.";
       await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
       return { status: "needsUser", error: `capture incomplète : ${detail}` };
     }
@@ -10333,8 +10366,7 @@ async function processRepublishJob(job, accessToken) {
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
             error: `Republication en pause AVANT toute suppression : la nouvelle capture de ton annonce est incomplète (${detail}). ` +
-              "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication. " +
-              "Rien ne t’a été décompté pour cette republication.",
+              "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication.",
           });
           return { status: "needsUser", error: `recapture incomplète : ${detail}` };
         }
@@ -10361,7 +10393,7 @@ async function processRepublishJob(job, accessToken) {
       } catch (e) {
         delete pf.republish_snapshot;
         const msg = "Republication annulée : impossible de sécuriser les données de ton annonce en base — " +
-          "rien n'a été touché, ton annonce est intacte et rien ne t’a été décompté. Réessaie dans un instant.";
+          "rien n'a été touché et ton annonce est intacte. Réessaie dans un instant.";
         await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg }).catch(() => {});
         return { status: "failed", error: `snapshot non écrit : ${String(e?.message ?? e)}` };
       }
@@ -10451,17 +10483,60 @@ async function processRepublishJob(job, accessToken) {
           // suppression.
           // 'needs_user' et NON plus 'failed' (2026-08-21) : reprenable —
           // l'utilisateur complète dans l'app ou sur Vinted puis relance.
-          // Pépite réservée, soldée par le balayage 72 h si rien ne repart.
+          // ── VÉRITÉ DU MESSAGE (2026-09-03, job df496c00 josephinecerni) ───
+          // L'ancien message affirmait « l'annonce d'origine ne porte pas
+          // cette information » quel que soit le cas. Faux quand la capture
+          // PORTE la valeur mais que le formulaire ne l'accepte pas telle
+          // quelle (catalog_id 1730 « Figurines et accessoires » devenu
+          // niveau INTERMÉDIAIRE : Vinted demandait une sous-catégorie plus
+          // fine, le snapshot avait le chemin complet). On affiche donc :
+          //   1. le message du content script (il dit le vrai cas : niveau
+          //      plus fin demandé, valeur hors liste, champ vide — avec les
+          //      valeurs acceptées quand il les a relevées) ;
+          //   2. la valeur CAPTURÉE quand le snapshot la porte (la
+          //      distinction « absente » / « refusée telle quelle » se lit) ;
+          //   3. et le needsUserField est PERSISTÉ (contrat markNeedsUser) :
+          //      l'app peut enfin proposer le CHOIX (allowed_values relevées
+          //      sur le panneau) au lieu d'une relance qui refrappe le mur.
           const champs = (result.unfilledRequired ?? []).join(", ")
             || result?.needsUserField?.field_label || "un champ obligatoire";
           pf.champs_a_completer = (result.unfilledRequired ?? []).length
             ? result.unfilledRequired.map((c) => String(c))
             : [String(result?.needsUserField?.field_label ?? "champ obligatoire")];
           pf.needs_user_source = "prevol_negatif";
-          const msg = `Republication en pause AVANT toute suppression : Vinted exige « ${champs} » et l'annonce d'origine ne porte pas cette information. ` +
-            `Ton annonce est intacte sur Vinted. Renseigne « ${champs} » depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication. ` +
-            "Rien ne t’a été décompté pour cette republication.";
-          await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+          if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+          const f = result?.needsUserField;
+          if (f?.field_key && f?.field_label) {
+            pf.needsUserField = {
+              platform: "vinted",
+              field_key: String(f.field_key).slice(0, 120),
+              field_label: String(f.field_label).slice(0, 200),
+              ...(f.target && f.target.key ? { target: { root: f.target.root ?? null, key: String(f.target.key).slice(0, 200) } } : {}),
+              ...(Array.isArray(f.allowed_values) && f.allowed_values.length
+                ? { allowed_values: f.allowed_values.slice(0, 200).map((v) => String(v)) } : {}),
+              ...(f.input_type ? { input_type: String(f.input_type).slice(0, 40) } : {}),
+            };
+          }
+          const releves = pf.champs_a_completer
+            .map((c) => ({ c, v: valeurCaptureePourChamp(pf.republish_snapshot, c) }))
+            .filter((x) => x.v);
+          const corps = String(result?.error ?? "").trim() || (releves.length
+            ? `Vinted demande une information plus précise pour « ${champs} » : la valeur de ton annonce n'a pas été acceptée telle quelle. ` +
+              "Complète depuis l'app (carte de l'article), puis relance la republication."
+            : `Vinted exige « ${champs} » et l'annonce d'origine ne porte pas cette information. ` +
+              `Renseigne « ${champs} » depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication.`);
+          const annexe = releves.length
+            ? " " + releves.map(({ c, v }) => `Relevé sur ton annonce — ${c} : ${v}.`).join(" ")
+            : "";
+          // Geste qui DÉBLOQUE réellement (vérifié 03/09 : poser
+          // inventaire.vinted_catalog_id ne change rien, le pré-vol travaille
+          // sur la capture) : le choix fermé du mini-éditeur, ouvert par le
+          // bouton « ✋ Compléter » de la fiche — c'est LUI qu'on nomme.
+          const geste = pf.needsUserField
+            ? " Le choix se fait dans l'app : fiche de l'article, bouton « ✋ Compléter »."
+            : "";
+          const msg = "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " + corps + annexe + geste;
+          await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg.slice(0, 590) });
           return { status: "needsUser", error: `pré-vol négatif : ${champs}` };
         }
         // Transitoire (challenge DataDome, session, photos pas arrivées, canal

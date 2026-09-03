@@ -1000,7 +1000,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (BUILD_ID 2026-09-02T20:43:08Z+adc7a6d) a été LIVRÉ à Nico ce soir —
 // jamais deux zips de même version au contenu différent (leçon du 15/08).
 // Le zip 0.6.15 livré est PÉRIMÉ, ne pas le téléverser.
-export const EXTENSION_LAST_COMMIT = '2026-09-02T21:01:13Z';
+// 2026-09-03T07:05:00Z (0.6.17, commit épinglé sur cette constante) : pré-vol
+// de republication HONNÊTE (cas Joséphine, job df496c00 — catalog_id 1730
+// « Figurines et accessoires » devenu niveau intermédiaire : le message
+// affirmait « l'annonce d'origine ne porte pas cette information » alors que
+// le snapshot portait le chemin complet, et la consigne « renseigne depuis la
+// carte de l'article » était INOPÉRANTE — le pré-vol ne lit pas
+// inventaire.vinted_catalog_id). Désormais : needsUserField PERSISTÉ (choix
+// fermé dans l'app), message = celui du content script + valeur capturée
+// affichée, categoryLevelChoice propagé par construireJobRecreation jusqu'à
+// selectCategory. Aussi : dernières chaînes Pépites/« décompté » retirées des
+// messages (fusion quotas). La garde « pause AVANT suppression » est INTACTE.
+// Manifest bumpé 0.6.16 → 0.6.17 : un zip 0.6.16 existe déjà (02/09 23:01) —
+// jamais deux zips de même version au contenu différent (leçon du 15/08).
+export const EXTENSION_LAST_COMMIT = '2026-09-03T07:05:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
