@@ -368,7 +368,7 @@ function LensScanHome({
 // réponse : un « Excellent » à côté d'une perte était possible), et le deal
 // score est supprimé (nombre sans échelle, tassé entre 4 et 6, redondant avec
 // le verdict — décision Nico du 30/07).
-function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset }) {
+function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset, createCta }) {
   if (result.error) {
     return (
       <>
@@ -415,6 +415,18 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
 
       </div>
 
+      {/* ── Hiérarchie de la pile (03/09) ────────────────────────────────────
+          1. createCta (encart « annonce prête » + bouton PRINCIPAL de création,
+             construits par LensTab qui porte handleCreateListing) — remonté en
+             tête : c'est l'action attendue, et l'encart qui l'explique la
+             précède.
+          2. « Modifier & ajouter au stock » passe en SECONDAIRE (contour) :
+             deux verts pleins empilés ne disaient pas lequel crée l'annonce.
+          3. « Nouvelle analyse » descend en dernier, avec la mention de son
+             coût : des utilisateurs relançaient l'analyse jusqu'à épuiser
+             leur quota sans que rien ne le dise. */}
+      {createCta}
+
       {result.titre&&(
         lensAdded ? (
           <button disabled
@@ -422,15 +434,21 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
             {result.est_vendu?(lang==='en'?'✅ Sale recorded!':'✅ Vente enregistrée !'):(lang==='en'?'✅ Added to stock!':'✅ Ajouté au stock !')}
           </button>
         ) : (
-          <PrimaryButton onClick={result.est_vendu?addLensItem:openLensEditModal} style={{marginBottom:6}}>
+          <button onClick={result.est_vendu?addLensItem:openLensEditModal}
+            style={{width:'100%',padding:'12px',background:'transparent',color:'#1B6E62',border:'1.5px solid #1B6E62',borderRadius:999,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'inherit',marginBottom:6}}>
             {result.est_vendu?(lang==='en'?'💰 Record sale':'💰 Enregistrer la vente'):(lang==='en'?'✏️ Edit & add to stock':'✏️ Modifier & ajouter au stock')}
-          </PrimaryButton>
+          </button>
         )
       )}
       <button onClick={onReset}
         style={{width:'100%',padding:'9px',background:'transparent',border:'1px solid rgba(0,0,0,0.12)',borderRadius:10,fontSize:13,fontWeight:600,color:'#6B7A75',cursor:'pointer',fontFamily:'inherit',transition:'all 0.15s',marginTop:4}}>
         🔄 {lang==='en'?'New analysis':'Nouvelle analyse'}
       </button>
+      <div style={{textAlign:'center',fontSize:11,marginTop:6,color:'#8A8578',fontWeight:500,lineHeight:1.4}}>
+        {lang==='en'
+          ?'A new analysis uses one listing from your monthly quota.'
+          :'Une nouvelle analyse consomme une annonce de ton quota mensuel.'}
+      </div>
     </div>
   );
 }
@@ -884,62 +902,56 @@ const LensTab = memo(function LensTab({
               addLensItem={addLensItem}
               openLensEditModal={openLensEditModal}
               onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
+              // ⚠️ PAS DE GATE DE TIER (2026-07-21) : la condition était
+              // `isPro && !lensResult.error`, et isPro = profiles.is_pro SEUL
+              // (App.jsx) — un Free comme un Premium standard ne voyaient donc
+              // jamais « Créer une annonce » depuis Lens, exactement comme dans
+              // StockTab. Tout le monde cross-poste ; la différenciation se fait
+              // aux unités, côté serveur.
+              // CTA PRINCIPAL de l'écran (03/09) : construit ici (LensTab porte
+              // handleCreateListing et l'état d'extension), rendu par
+              // LensAnalysisResult EN TÊTE de la pile de boutons. Destination et
+              // comportement inchangés — seuls libellé et position ont bougé :
+              // l'ancien « Fixe ton prix » (zéro annonce comparable) devient
+              // « Créer l'annonce », le libellé dit l'ACTION, plus le champ.
+              createCta={!lensResult.error&&(
+                <>
+                  {/* Scan UNIFIÉ (02/09 soir) : le même scan a déjà rédigé
+                      l'annonce (lensResult.annonce, flag lens_unifie serveur).
+                      L'encart le DIT sans le vendre, et PRÉCÈDE le bouton
+                      qu'il explique. Sans annonce (flag éteint, rédaction
+                      ratée, vieux résultat), le CTA adaptatif reprend tel quel. */}
+                  {lensResult.annonce?.platforms&&(
+                    <div style={{marginBottom:8,padding:"12px 14px",background:"#F0FDF9",border:"1px solid #CBE5DF",borderRadius:12}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#10201B",marginBottom:2}}>
+                        {lang==="en"?"📝 Your listing is ready":"📝 Ton annonce est prête"}
+                      </div>
+                      <div style={{fontSize:12,color:"#5C6560",fontWeight:500,lineHeight:1.5}}>
+                        {lang==="en"
+                          ?"Title, description and fields for the 4 marketplaces are already written by this scan. Creating it uses nothing more."
+                          :"Titre, description et champs pour les 4 plateformes sont déjà rédigés par ce scan. La créer ne consomme rien de plus."}
+                      </div>
+                    </div>
+                  )}
+                  <PrimaryButton
+                    onClick={()=>extensionNeverSeen===true?setExtPitchAction('create'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing())}
+                    disabled={generatingListing}
+                    style={{marginBottom:6}}
+                  >
+                    {analyseFiabilite(lensResult).niveau==='aucune'
+                      ? `✨ ${lang==="en"?"Create the listing":"Créer l'annonce"}`
+                      : lensResult.annonce?.platforms
+                        ? `✨ ${lang==="en"?"Open & publish the listing":"Ouvrir et publier l'annonce"}`
+                        : `✨ ${lang==="en"?"Create a listing":"Créer une annonce"}`}
+                  </PrimaryButton>
+                  {listingError&&(
+                    <div style={{marginBottom:8,padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
+                      {listingError}
+                    </div>
+                  )}
+                </>
+              )}
             />
-            {/* ⚠️ PAS DE GATE DE TIER (2026-07-21) : la condition était
-                `isPro && !lensResult.error`, et isPro = profiles.is_pro SEUL
-                (App.jsx) — un Free comme un Premium standard ne voyaient donc
-                jamais « Créer une annonce » depuis Lens, exactement comme dans
-                StockTab. Tout le monde cross-poste ; la différenciation se fait
-                aux unités, côté serveur. */}
-            {/* CTA ADAPTATIF, DEUX ÉTATS (2026-07-31) — jamais plus, pour ne
-                pas faire varier le bouton à chaque nuance :
-                  · au moins une annonce retenue → « Créer une annonce » ;
-                  · AUCUNE → « Fixe ton prix » : l'écran vient de dire qu'il
-                    ne connaît pas le prix, l'inviter à publier se
-                    contredirait. Même destination (le stepper porte le champ
-                    prix central, éditable et mis en avant) — c'est le LIBELLÉ
-                    qui dit la vérité sur ce qu'il reste à faire.
-                Un prix fragile mais sourcé (1 annonce) garde « Créer une
-                annonce » : le prix existe, l'avertissement le dit déjà. */}
-            {!lensResult.error&&(
-              <>
-                {/* Scan UNIFIÉ (02/09 soir) : le même scan a déjà rédigé
-                    l'annonce (lensResult.annonce, flag lens_unifie serveur).
-                    L'encart le DIT sans le vendre — le verdict reste
-                    au-dessus, l'estimateur en friperie l'ignore sans friction,
-                    rien de plus n'est consommé s'il publie. Sans annonce
-                    (flag éteint, rédaction ratée, vieux résultat), le CTA
-                    adaptatif historique reprend tel quel. */}
-                {lensResult.annonce?.platforms&&(
-                  <div style={{marginTop:14,padding:"12px 14px",background:"#F0FDF9",border:"1px solid #CBE5DF",borderRadius:12}}>
-                    <div style={{fontSize:13,fontWeight:700,color:"#10201B",marginBottom:2}}>
-                      {lang==="en"?"📝 Your listing is ready":"📝 Ton annonce est prête"}
-                    </div>
-                    <div style={{fontSize:12,color:"#5C6560",fontWeight:500,lineHeight:1.5}}>
-                      {lang==="en"
-                        ?"Written by this same scan — title, description and fields for the 4 marketplaces. Publishing it uses nothing more."
-                        :"Rédigée par ce même scan — titre, description et champs pour les 4 plateformes. La publier ne consomme rien de plus."}
-                    </div>
-                  </div>
-                )}
-                <PrimaryButton
-                  onClick={()=>extensionNeverSeen===true?setExtPitchAction('create'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing())}
-                  disabled={generatingListing}
-                  style={{marginTop:8}}
-                >
-                  {analyseFiabilite(lensResult).niveau==='aucune'
-                    ? (lang==="en"?"Set your price":"Fixe ton prix")
-                    : lensResult.annonce?.platforms
-                      ? `✨ ${lang==="en"?"Open & publish the listing":"Ouvrir et publier l'annonce"}`
-                      : `✨ ${lang==="en"?"Create a listing":"Créer une annonce"}`}
-                </PrimaryButton>
-                {listingError&&(
-                  <div style={{marginTop:8,padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
-                    {listingError}
-                  </div>
-                )}
-              </>
-            )}
           </div>
         )}
       </div>

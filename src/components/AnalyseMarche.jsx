@@ -145,8 +145,8 @@ export default function AnalyseMarche({
     // ZÉRO ANNONCE — écrit comme une RÉPONSE, pas comme une excuse (Nico) :
     // ce qu'on ne sait pas, puis ce que l'utilisateur peut faire à la place.
     return en
-      ? `No comparable listing found for this item. The price above is the model's estimate, not a market reading — set your own price, then publish.`
-      : `Aucune annonce comparable trouvée pour cet article. Le prix ci-dessus est une estimation du modèle, pas un relevé — fixe ton prix, puis publie.`;
+      ? `No comparable listing found for this item. The price above is the model's estimate, not a market reading — you'll adjust the price in the listing.`
+      : `Aucune annonce comparable trouvée pour cet article. Le prix ci-dessus est une estimation du modèle, pas un relevé — tu ajusteras le prix dans l'annonce.`;
   };
 
   // ── Contenu replié, commun aux deux variantes ────────────────────────────

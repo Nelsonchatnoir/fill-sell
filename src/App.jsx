@@ -6055,6 +6055,7 @@ export default function App({ loginOnly = false }){
             EmptyStateDashboard={EmptyStateDashboard}
             extensionAbsente={extensionNeverSeen===true}
             onExtensionInfo={()=>setShowExtensionInfo(true)}
+            photosParInventaire={photosParInventaire}
           />
         )}
 

@@ -4,6 +4,7 @@ import { formatCurrency, fmtp, MONTHS_FR, MONTHS_EN, groupSales } from '../utils
 import { UI, Loader, SegmentedPills, StatTile } from '../components/ui';
 import { comptabilisable, comptabilisables, prixAchatNum, totalCA } from '../utils/comptabilite';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from '../utils/stockLimit';
+import { premierePhoto } from '../components/GalleryPhoto';
 
 // ── Design « Dashboard » (Claude Design, projet e47b36df — intégré 2026-07-14) ──
 // Hero en verre dépoli, KPI 2×2, sélecteur de période, graphes SVG (bénéfices +
@@ -288,6 +289,22 @@ function PanelCard({ title, subtitle, children, style }) {
   );
 }
 
+// Vignette d'activité récente (03/09) : première photo de l'article (même
+// normalisation que Ventes/Stock via premierePhoto). Sans photo, ou si l'image
+// casse au chargement (CDN Vinted expiré), la pastille teintée historique
+// (💰/📦) reprend sa place — jamais de case vide ni d'image cassée.
+// loading="lazy" : 5 lignes max, mais les photos ne retardent pas l'ouverture.
+function ActivityThumb({url,isSale}){
+  const [err,setErr]=useState(false);
+  if(!url||err)return(
+    <div style={{width:34,height:34,borderRadius:11,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,background:isSale?"rgba(47,158,144,0.14)":"rgba(217,119,6,0.12)"}}>
+      {isSale?"💰":"📦"}
+    </div>
+  );
+  return <img src={url} alt="" loading="lazy" decoding="async" onError={()=>setErr(true)}
+    style={{width:34,height:34,borderRadius:11,flexShrink:0,objectFit:"cover",border:`1px solid ${UI.border}`,background:UI.chip}}/>;
+}
+
 // Icônes des tuiles KPI (design) — SVG, pas d'emoji.
 const IcoBars = <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>;
 const IcoTrend = <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>;
@@ -303,6 +320,9 @@ const DashboardTab = memo(function DashboardTab({
   EmptyStateDashboard,
   // Lot 2 : ligne discrète « extension pas encore installée » de l'état vide.
   extensionAbsente = false, onExtensionInfo = null,
+  // Vignettes d'activité récente (03/09) : la table `ventes` ne porte aucune
+  // photo — lookup inventaire déjà construit par App.jsx pour l'onglet Ventes.
+  photosParInventaire = {},
 }) {
   const { t, tpl } = useTranslation(lang);
   const fmt = (amount, dec=null) => formatCurrency(amount, currency, dec);
@@ -344,6 +364,7 @@ const DashboardTab = memo(function DashboardTab({
     const soldRows = groupSales(sales).slice(0,5).map(s=>({
       kind:'sale', id:`s-${s.id}`, date:s.date_vente||s.date, noDate:!s.date, title:s.title, marque:s.marque, type:s.type,
       amount:comptabilisable(s)&&s.margin!=null&&Number.isFinite(Number(s.margin))?Number(s.margin):null, qty:s._qty||1,
+      photo:premierePhoto(photosParInventaire[s.inventaire_id]),
     }));
     const addRows = (stock||[])
       .filter(i=>i.date_ajout||i.created_at)
@@ -355,6 +376,7 @@ const DashboardTab = memo(function DashboardTab({
         // prix d'achat : prixAchatNum rend null, jamais un zéro inventé.
         kind:'add', id:`a-${i.id}`, date:i.date_ajout||i.created_at, title:i.title, marque:i.marque, type:i.type,
         amount:prixAchatNum(i), qty:i.quantite||1,
+        photo:premierePhoto(i.photos),
       }));
     return [...soldRows, ...addRows]
       .sort((a,b)=>new Date(b.date)-new Date(a.date))
@@ -521,13 +543,11 @@ const DashboardTab = memo(function DashboardTab({
                   const isSale=a.kind==='sale';
                   return(
                     <div key={a.id} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 0",borderTop:i>0?`1px solid ${UI.border}`:"none"}}>
-                      {/* Pastille ILLUSTRATIVE, jamais un contrôle (2026-07-30) : l'ancien
-                          « ➕ » sur carré gris était pris pour un bouton d'ajout. Même style
-                          de pastille teintée que « Vendu » (💰 sur teal), avec un 📦 sur
-                          ambre doux pour « Ajouté ». */}
-                      <div style={{width:34,height:34,borderRadius:11,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,background:isSale?"rgba(47,158,144,0.14)":"rgba(217,119,6,0.12)"}}>
-                        {isSale?"💰":"📦"}
-                      </div>
+                      {/* Vignette photo de l'article (03/09) ; sans photo, la pastille
+                          ILLUSTRATIVE historique (2026-07-30 — jamais un contrôle :
+                          l'ancien « ➕ » sur carré gris était pris pour un bouton
+                          d'ajout) reste le placeholder, dans ActivityThumb. */}
+                      <ActivityThumb url={a.photo} isSale={isSale}/>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:600,fontSize:13,color:UI.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4}}>
                           <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.title}</span>

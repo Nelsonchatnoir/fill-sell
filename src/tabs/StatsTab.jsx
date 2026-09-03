@@ -1,9 +1,10 @@
 import { memo, useState, useEffect, useMemo } from 'react';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
 import { Line } from 'react-chartjs-2';
-import { formatCurrency, typeLabel, marqueLabel, getTypeStyle } from '../utils/shared';
+import { formatCurrency, typeLabel, marqueLabel, getTypeStyle, PLATFORM_LABELS } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, comptabilisables } from '../utils/comptabilite';
 import { UI, Card, SegmentedPills } from '../components/ui';
+import PlatformLogo from '../components/platform-logos/PlatformLogo';
 
 function renderMd(text){
   const html=text
@@ -176,6 +177,30 @@ function AvgDaysChart({filtered, items, lang}) {
 
 const PLATFORM_COLORS=['#7C3AED','#2563EB','#059669','#D97706','#DC2626','#0891B2','#BE185D','#F97316','#16A34A','#EA580C'];
 
+// ── UNE table de couleurs par plateforme, partagée par « Ventes » et
+// « Stock » (03/09) : l'ancienne palette était indexée sur le RANG du tri de
+// chaque bloc — la même plateforme changeait donc de couleur d'un bloc à
+// l'autre (vinted violet dans Stock, bleu dans Ventes). Couleurs = celles des
+// pastilles .ic-* de shared.js (couleurs de marque déjà dans l'app).
+// PLATFORM_COLORS reste le repli, par rang, pour une plateforme hors liste.
+const PLATFORM_FIXED_COLORS={vinted:'#09B584',leboncoin:'#EA5B0C',beebs:'#FF6B35',ebay:'#0064D2'};
+const platColor=(p,i)=>PLATFORM_FIXED_COLORS[String(p).toLowerCase()]||PLATFORM_COLORS[i%PLATFORM_COLORS.length];
+// Libellé propre (Leboncoin, Vinted, eBay, Beebs) via PLATFORM_LABELS ; une
+// plateforme inconnue garde sa valeur brute plutôt qu'un libellé inventé.
+const platLabel=p=>PLATFORM_LABELS[String(p).toLowerCase()]||p;
+
+// Cellule de gauche des deux blocs : logo (composants d'icônes existants,
+// PlatformLogo) + libellé. PlatformLogo rend null pour une plateforme hors
+// liste → le libellé s'affiche seul, jamais un carré vide.
+function PlatformRowLabel({p}){
+  return(
+    <div style={{width:86,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'flex-end',gap:5,minWidth:0}}>
+      <PlatformLogo platform={String(p).toLowerCase()} size={16}/>
+      <span style={{fontSize:11,fontWeight:600,color:UI.mute2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{platLabel(p)}</span>
+    </div>
+  );
+}
+
 function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
   const platVentes=useMemo(()=>{
     const acc={};
@@ -216,9 +241,9 @@ function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {platVentes.map(({p,count,revenue},i)=>{
             const pct=(revenue/(platVentes[0].revenue||1))*100;
-            const color=PLATFORM_COLORS[i%PLATFORM_COLORS.length];
+            const color=platColor(p,i);
             return(<div key={p} style={{display:'flex',alignItems:'center',gap:10}}>
-              <div style={{width:76,flexShrink:0,fontSize:11,fontWeight:600,color:UI.mute2,textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p}</div>
+              <PlatformRowLabel p={p}/>
               <div style={{flex:1,height:8,background:UI.chip,borderRadius:99,overflow:'hidden'}}>
                 <div style={{width:`${pct}%`,height:'100%',background:color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
               </div>
@@ -231,7 +256,7 @@ function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
         </div>
         {(()=>{const best=[...platVentes].sort((a,b)=>b.avgMargin-a.avgMargin)[0];if(!best)return null;return(
           <div style={{marginTop:12,background:UI.chip,borderRadius:10,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontSize:11,fontWeight:600,color:UI.tealDeep}}>🏆 {lang==='en'?'Best margin:':'Meilleure marge :'} {best.p}</span>
+            <span style={{fontSize:11,fontWeight:600,color:UI.tealDeep}}>🏆 {lang==='en'?'Best margin:':'Meilleure marge :'} {platLabel(best.p)}</span>
             <span style={{fontSize:12,fontWeight:600,color:UI.tealDeep}}>{fmtP(best.avgMargin)}</span>
           </div>
         );})()}
@@ -243,9 +268,9 @@ function PlatformStatsSection({salesFiltered,stockItems,lang,fmt2}){
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {platStock.map(({p,count,invested},i)=>{
             const pct=(invested/(platStock[0].invested||1))*100;
-            const color=PLATFORM_COLORS[i%PLATFORM_COLORS.length];
+            const color=platColor(p,i);
             return(<div key={p} style={{display:'flex',alignItems:'center',gap:10}}>
-              <div style={{width:76,flexShrink:0,fontSize:11,fontWeight:600,color:UI.mute2,textAlign:'right',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p}</div>
+              <PlatformRowLabel p={p}/>
               <div style={{flex:1,height:8,background:UI.chip,borderRadius:99,overflow:'hidden'}}>
                 <div style={{width:`${pct}%`,height:'100%',background:color,borderRadius:99,transition:'width 0.6s cubic-bezier(0.4,0,0.2,1)'}}/>
               </div>
@@ -579,7 +604,24 @@ const StatsTab = memo(function StatsTab({sales,items,lang,currency='EUR',user,ai
               </button>
             </div>
           ):(
-            <div style={{fontSize:12,color:UI.tealDeep,fontStyle:'italic'}}>{lang==='en'?'Analysis unavailable':'Analyse non disponible'}</div>
+            /* Analyse pas encore lancée (onglet inactif au cache miss → outdated,
+               ou appel raté) : l'ancien « Analyse non disponible » en italique se
+               lisait comme une panne. C'est une INVITATION — même geste que le
+               bouton « ↺ Actualiser » de l'en-tête, aucune logique nouvelle. */
+            <div style={{textAlign:'center',padding:'10px 0 6px'}}>
+              <div style={{fontSize:13,fontWeight:600,color:UI.ink,marginBottom:4}}>
+                {lang==='en'?'Your AI coach has read your numbers 🤖':'Ton coach IA a lu tes chiffres 🤖'}
+              </div>
+              <div style={{fontSize:12,color:UI.mute2,fontWeight:500,lineHeight:1.5,marginBottom:12}}>
+                {lang==='en'
+                  ?"Trends, predictions and advice tailored to this period's sales — ready in a few seconds."
+                  :'Tendances, prédictions et conseils taillés sur tes ventes de la période — prêts en quelques secondes.'}
+              </div>
+              <button onClick={()=>{setOutdated(false);setRefreshKey(k=>k+1);}}
+                style={{background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,border:'none',color:'#fff',borderRadius:99,padding:'9px 22px',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',boxShadow:'0 6px 16px rgba(47,158,144,0.3)'}}>
+                ✨ {lang==='en'?'Launch my analysis':'Lancer mon analyse'}
+              </button>
+            </div>
           )
         )}
       </div>
