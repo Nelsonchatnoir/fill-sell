@@ -39,7 +39,7 @@ import {
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS, SYNC_FILE_TTL_MS,
   SYNC_RECLAMATION_MAX_MS, EXT_SILENCE_MAX_MS,
   lireDernierRunDressing, lireDerniereSyncReussie,
-  confirmerBoutiqueVinted,
+  confirmerBoutiqueVinted, lireBoutiqueConnectee,
   DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
   republishVisiblePour, republierArticleVinted, relancerRepublishVinted,
 } from '../utils/vintedSync';
@@ -2930,6 +2930,23 @@ function etapeRepublication(job, fr) {
   // la feuille d'avancement — on ne le répète pas ici. Les 4 jobs gelés à
   // l'étape 'deleted' (annonce réellement retirée) n'ont PAS droit au
   // « intacte » : leur détail dit seulement que tout est sauvegardé.
+  // ── ATTENTE NOMMÉE d'une boutique (multi-boutiques, 2026-09-03) ────────────
+  // Le job est PENDING avec le marqueur attente_boutique : l'annonce vit sur
+  // un autre dressing que celui connecté dans Chrome. Jamais « échec », jamais
+  // rouge — une attente qui NOMME la boutique, et qui se lève toute seule dès
+  // que l'utilisateur s'y connecte (libération par la sonde de l'extension).
+  if (encours && pf.attente_boutique) {
+    const qui = pf.attente_boutique.login
+      ? `@${pf.attente_boutique.login}`
+      : (fr ? 'une autre de tes boutiques' : 'another of your shops');
+    return {
+      cle: 'attente_boutique', court: fr ? `Attend ${qui}` : `Waiting ${qui}`, ...ambre, fini: false,
+      titre: fr ? `En attente de connexion au dressing ${qui}` : `Waiting for the ${qui} closet`,
+      detail: fr
+        ? `Cette annonce vit sur ${qui}. Connecte-toi à cette boutique sur vinted.fr dans Chrome : la republication repartira toute seule, rien à relancer.`
+        : `This listing lives on ${qui}. Sign in to that shop on vinted.fr in Chrome: the repost resumes on its own, nothing to relaunch.`,
+    };
+  }
   if (pf.gel_livres_le) {
     const intacte = step !== 'deleted';
     return {
@@ -3212,7 +3229,7 @@ function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance }) {
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   const [pct, setPct] = useState(0);
@@ -3304,6 +3321,39 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
             )}
           </div>
         )}
+        {/* ── Annonce de MASSE multi-boutiques (2026-09-03) : dire AVANT
+            combien partent maintenant et combien attendront une autre
+            boutique. On n'empêche RIEN : tous les jobs se créent, ceux des
+            autres boutiques portent l'attente nommée et repartent seuls à la
+            connexion. Invisible chez les mono-boutique. */}
+        {(() => {
+          if ((boutiquesVinted?.length ?? 0) < 2 || !boutiqueConnectee?.userId) return null;
+          const attendront = new Map();
+          let partentMaintenant = 0;
+          for (const { item } of items) {
+            const id = String(item?.vinted_account_id ?? '');
+            if (id && id !== boutiqueConnectee.userId) {
+              const b = boutiquesVinted.find(x => String(x.user_id) === id);
+              const nom = b?.login ? `@${b.login}` : (fr ? 'une autre boutique' : 'another shop');
+              attendront.set(nom, (attendront.get(nom) ?? 0) + 1);
+            } else partentMaintenant++;
+          }
+          if (!attendront.size) return null;
+          return (
+            <div style={{ background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#8A6100', lineHeight: 1.55, marginBottom: 12 }}>
+              {fr
+                ? `${partentMaintenant} partent maintenant.`
+                : `${partentMaintenant} start now.`}
+              {[...attendront.entries()].map(([nom, n]) => (
+                <div key={nom}>
+                  {fr
+                    ? `⏳ ${n} attendront le dressing ${nom} — connecte-le sur vinted.fr quand tu veux, ils partiront tout seuls.`
+                    : `⏳ ${n} will wait for the ${nom} closet — sign in to it on vinted.fr anytime and they go on their own.`}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         <button onClick={confirmer}
           style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: 'linear-gradient(120deg,#2F9E90,#1B6E62)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
           {solo
@@ -3916,6 +3966,38 @@ const StockTab = memo(function StockTab({
     return { success: true };
   }
   const [jobsByInventaire, setJobsByInventaire] = useState({});
+  // ── Boutique Vinted connectée dans Chrome (multi-boutiques, 2026-09-03) ───
+  // Relevée par la sonde de l'extension (profiles.extension_sessions). Lue
+  // UNIQUEMENT à partir de deux boutiques confirmées : le parc mono-boutique
+  // ne paie ni la requête ni l'affichage.
+  const [boutiqueConnectee, setBoutiqueConnectee] = useState(null);
+  useEffect(() => {
+    if (!user?.id || (boutiquesVinted?.length ?? 0) < 2) return;
+    let stop = false;
+    const lire = async () => {
+      try { const b = await lireBoutiqueConnectee(user.id); if (!stop) setBoutiqueConnectee(b); }
+      catch { /* relu au tick suivant */ }
+    };
+    lire();
+    const t = setInterval(lire, 120000);
+    return () => { stop = true; clearInterval(t); };
+  }, [user?.id, boutiquesVinted?.length]);
+  // Republications EN ATTENTE d'une boutique, comptées par pseudo — nourrit
+  // la ligne « N articles en attente du dressing @x ». Vide chez les
+  // mono-boutique par construction (le marqueur n'existe que chez les multi).
+  const attentesParBoutique = useMemo(() => {
+    const m = new Map();
+    for (const jobs of Object.values(jobsByInventaire)) {
+      for (const j of jobs) {
+        if (j.action !== 'republish' || j.status !== 'pending') continue;
+        const a = j.platform_fields?.attente_boutique;
+        if (!a) continue;
+        const cle = a.login ? `@${a.login}` : (lang === 'en' ? 'another shop' : 'une autre boutique');
+        m.set(cle, (m.get(cle) ?? 0) + 1);
+      }
+    }
+    return [...m.entries()];
+  }, [jobsByInventaire, lang]);
   // ── É5 : dérivations de RENDU qui lisent jobsByInventaire ────────────────
   // IMPÉRATIVEMENT APRÈS la déclaration du state ci-dessus : posées avant,
   // elles levaient une TDZ au montage (« Cannot access 'jobsByInventaire'
@@ -5601,21 +5683,54 @@ const StockTab = memo(function StockTab({
               })()}
             </div>
             {boutiquesVinted.length>=2&&(
-              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
-                <button onClick={()=>setFilterBoutique("Toutes")}
-                  style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterBoutique==="Toutes"?"#1B6E62":"#F2F0E9",color:filterBoutique==="Toutes"?"#fff":"#6B7A75",fontFamily:"inherit"}}>
-                  {lang==='fr'?'Toutes les boutiques':'All shops'}
-                </button>
-                {boutiquesVinted.map(b=>{
-                  const id=String(b.user_id);
-                  const actif=filterBoutique===id;
-                  return (
-                    <button key={id} onClick={()=>setFilterBoutique(id)}
-                      style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:actif?"#1B6E62":"#F2F0E9",color:actif?"#fff":"#6B7A75",fontFamily:"inherit"}}>
-                      @{b.login??b.user_id}
-                    </button>
-                  );
-                })}
+              <div style={{marginBottom:12}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  <button onClick={()=>setFilterBoutique("Toutes")}
+                    style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterBoutique==="Toutes"?"#1B6E62":"#F2F0E9",color:filterBoutique==="Toutes"?"#fff":"#6B7A75",fontFamily:"inherit"}}>
+                    {lang==='fr'?'Toutes les boutiques':'All shops'}
+                  </button>
+                  {boutiquesVinted.map(b=>{
+                    const id=String(b.user_id);
+                    const actif=filterBoutique===id;
+                    const connectee=boutiqueConnectee?.userId===id;
+                    return (
+                      <button key={id} onClick={()=>setFilterBoutique(id)}
+                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:actif?"#1B6E62":"#F2F0E9",color:actif?"#fff":"#6B7A75",fontFamily:"inherit"}}>
+                        {connectee?'● ':''}@{b.login??b.user_id}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* La boutique connectée dans Chrome, EN PERMANENCE — et le
+                    décalage éventuel avec la boutique regardée, dit avec le
+                    geste. Jamais d'identifiant technique. */}
+                <div style={{fontSize:11,lineHeight:1.5,color:"#8A8578",marginTop:5}}>
+                  {boutiqueConnectee
+                    ?(lang==='fr'
+                      ?<>Connectée dans Chrome : <strong>@{boutiqueConnectee.login??'ta boutique'}</strong></>
+                      :<>Signed in in Chrome: <strong>@{boutiqueConnectee.login??'your shop'}</strong></>)
+                    :(lang==='fr'
+                      ?'Boutique connectée dans Chrome : pas encore relevée — elle apparaît dès que ton ordinateur se réveille.'
+                      :'Shop signed in in Chrome: not seen yet — it shows up once your computer wakes up.')}
+                  {boutiqueConnectee&&filterBoutique!=="Toutes"&&filterBoutique!==boutiqueConnectee.userId&&(
+                    <span style={{color:"#8A6100"}}>
+                      {lang==='fr'
+                        ?' — tu regardes une autre boutique : ses republications attendront que tu la connectes sur vinted.fr.'
+                        :' — you are viewing another shop: its reposts will wait until you sign in to it on vinted.fr.'}
+                    </span>
+                  )}
+                </div>
+                {attentesParBoutique.length>0&&(
+                  <div style={{fontSize:11,lineHeight:1.5,color:"#8A6100",marginTop:3}}>
+                    {attentesParBoutique.map(([qui,n])=>(
+                      <div key={qui}>
+                        {lang==='fr'
+                          ?`⏳ ${n} article${n>1?'s':''} en attente du dressing ${qui} — connecte-le sur vinted.fr, tout repart tout seul.`
+                          :`⏳ ${n} item${n>1?'s':''} waiting for the ${qui} closet — sign in to it on vinted.fr and they resume.`}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {/* ── Quota du plan (07/08, validé Nico) — ligne DÉDIÉE sous le
@@ -6372,6 +6487,15 @@ const StockTab = memo(function StockTab({
                             </div>
                           );
                         })()}
+                        {/* Boutique d'origine de l'article (multi-boutiques,
+                            2026-09-03) — pseudo de la liste confirmée, sinon
+                            « autre boutique » : jamais un identifiant. Rendue
+                            UNIQUEMENT à partir de deux boutiques. */}
+                        {boutiquesVinted.length>=2&&item.vinted_account_id&&(()=>{
+                          const b=boutiquesVinted.find(x=>String(x.user_id)===String(item.vinted_account_id));
+                          const nom=b?.login?`@${b.login}`:(lang==='fr'?'autre boutique':'other shop');
+                          return <span style={{fontSize:10,fontWeight:700,color:"#6B7A75",background:"#F2F0E9",borderRadius:99,padding:"2px 8px",whiteSpace:"nowrap"}}>{nom}</span>;
+                        })()}
                         <button className="gdel"
                           title={lang==='fr'?'Supprimer cet article':'Delete this item'}
                           aria-label={lang==='fr'?'Supprimer cet article':'Delete this item'}
@@ -7076,6 +7200,8 @@ const StockTab = memo(function StockTab({
           lang={lang}
           items={repubSheet.items}
           prixUnitaire={republishPrice}
+          boutiquesVinted={boutiquesVinted}
+          boutiqueConnectee={boutiqueConnectee}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles)=>{
             setRepubSheet(null);

@@ -1061,7 +1061,19 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // passage suivant. Et repli d'appelant sur le Format du colis Beebs : une
 // valeur tranchée irrécupérable (id opaque d'une liste polluée — jobs
 // RoCotCot 17212f1b/b94dee56) retombe sur le mapping au lieu d'un champ vide.
-export const EXTENSION_LAST_COMMIT = '2026-09-03T14:42:15Z';
+// 2026-09-03T15:05:35Z (0.6.17, commit épinglé) : MULTI-BOUTIQUES COMPLET
+// (STOP Nico sur le trou de conception, puis correction « on ne bloque pas,
+// on met en attente ») — la sonde de sessions relève la BOUTIQUE connectée
+// (extension_sessions.vinted_identite) ; une republication dont l'article vit
+// sur une autre boutique reste PENDING avec attente_boutique {user_id, login,
+// depuis} + échéance 15 min : zéro tentative consommée, zéro needs_user, zéro
+// échec — et la sonde LIBÈRE les attentes dès que leur boutique est vue
+// connectée (l'utilisateur n'a rien à relancer). L'app affiche l'attente
+// nommée (« En attente de connexion au dressing @x »), les compteurs par
+// boutique, la boutique connectée en permanence, le chip d'origine par
+// article, et l'annonce de masse « X partent · Y attendront @Z ». Migration
+// de rattrapage 20260903160000 ÉCRITE, PAS APPLIQUÉE (GO Nico requis).
+export const EXTENSION_LAST_COMMIT = '2026-09-03T15:05:35Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

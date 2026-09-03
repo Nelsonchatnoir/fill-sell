@@ -6657,7 +6657,20 @@ async function probePlatformSessions() {
       // signal sûr noterSessionDeconnectee (garde d'entrée du handler,
       // après navigation réelle de l'onglet de travail). On perd un peu de
       // détection de vraie déconnexion, on supprime tous les faux positifs.
-      return { etat: r.ok ? true : null, http: r.status };
+      // ── Identité de la BOUTIQUE connectée (multi-boutiques, 2026-09-03) ──
+      // Un 200 porte l'id + le pseudo : c'est ce que l'app affiche
+      // (« Connectée dans Chrome : @x ») et ce qui libère les republications
+      // en attente d'une boutique. Un non-200 laisse null — jamais deviné.
+      let identite = null;
+      if (r.ok) {
+        try {
+          const j = await r.json();
+          if (j?.user?.id && j.user.login) {
+            identite = { user_id: String(j.user.id), login: String(j.user.login) };
+          }
+        } catch { /* corps illisible : identité inconnue */ }
+      }
+      return { etat: r.ok ? true : null, http: r.status, identite };
     }),
     probe(async () => {
       const r = await fetch("https://www.leboncoin.fr/deposer-une-annonce", {
@@ -6684,6 +6697,10 @@ async function probePlatformSessions() {
   return {
     checked_at: new Date().toISOString(),
     vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat,
+    // Boutique Vinted connectée (multi-boutiques, 2026-09-03) — null quand la
+    // sonde n'a pas pu la lire (401 ambigu compris). L'app l'affiche telle
+    // quelle, jamais un repli sur une identité mémorisée.
+    vinted_identite: vinted.identite ?? null,
     // Statut HTTP BRUT du relevé, par plateforme (traçabilité 2026-07-30) —
     // c'est lui qui dit si un null vient d'un 401 (token à rafraîchir), d'un
     // 403 (challenge) ou d'un échec réseau (null).
@@ -6750,6 +6767,65 @@ async function reportPlatformSessions(accessToken) {
       console.warn("[background] reprise auto des republications en attente de session:", e?.message ?? e);
     }
   }
+
+  // ── LIBÉRATION des republications EN ATTENTE D'UNE BOUTIQUE (2026-09-03) ──
+  // Les jobs marqués attente_boutique (multi-boutiques : l'annonce vit sur un
+  // autre dressing que celui connecté) repartent D'EUX-MÊMES dès que la sonde
+  // voit LEUR boutique connectée : le marqueur et l'échéance sautent, le poll
+  // suivant les prend. Lecture-fusion par job (platform_fields se remplace en
+  // entier via PostgREST) — volume borné par le nombre de jobs en attente,
+  // cadence bornée par la sonde (10 min). L'utilisateur n'a RIEN à relancer.
+  if (sessions.vinted_identite?.user_id) {
+    try {
+      const enAttente = await restRequest(
+        `cross_post_jobs?user_id=eq.${sub}&status=eq.pending&action=eq.republish&platform=eq.vinted` +
+        `&platform_fields->attente_boutique->>user_id=eq.${encodeURIComponent(sessions.vinted_identite.user_id)}` +
+        `&select=id,platform_fields&limit=200`,
+        accessToken, { headers: { Prefer: "return=representation" } },
+      );
+      let liberes = 0;
+      for (const j of enAttente ?? []) {
+        const pf = { ...(j.platform_fields ?? {}) };
+        delete pf.attente_boutique;
+        delete pf.next_action_after;
+        try {
+          await restRequest(`cross_post_jobs?id=eq.${j.id}`, accessToken, {
+            method: "PATCH",
+            headers: { Prefer: "return=representation" },
+            body: JSON.stringify({ platform_fields: pf, error: null }),
+          });
+          liberes++;
+        } catch { /* repris au prochain cycle de sonde, ou à l'échéance 15 min */ }
+      }
+      if (liberes) {
+        console.log(`[background] boutique @${sessions.vinted_identite.login ?? sessions.vinted_identite.user_id} connectée — ${liberes} republication(s) en attente libérée(s)`);
+      }
+    } catch (e) {
+      console.warn("[background] libération des attentes de boutique:", e?.message ?? e);
+    }
+  }
+}
+
+// ── Identité Vinted du CYCLE de poll (multi-boutiques, 2026-09-03) ──────────
+// Relevé par fetch (service worker, cookies du profil), mis en cache 90 s :
+// la garde de cloisonnement des republications la consulte à chaque job sans
+// re-frapper l'API. null = identité inconnue (401 ambigu, réseau) → la garde
+// est FAIL-OPEN : on tente la capture normalement, l'onglet tranchera.
+let identiteVintedCache = { at: 0, val: null };
+async function identiteVintedDuCycle() {
+  if (Date.now() - identiteVintedCache.at < 90_000) return identiteVintedCache.val;
+  let val = null;
+  try {
+    const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
+      headers: { Accept: "application/json" }, credentials: "include",
+    });
+    if (r.ok) {
+      const j = await r.json();
+      if (j?.user?.id && j.user.login) val = { user_id: String(j.user.id), login: String(j.user.login) };
+    }
+  } catch { /* inconnue */ }
+  identiteVintedCache = { at: Date.now(), val };
+  return val;
 }
 
 // Signal SÛR de déconnexion (2026-07-30) : la garde d'entrée d'un handler
@@ -10471,16 +10547,18 @@ async function processRepublishJob(job, accessToken) {
       await updateJobStatus(accessToken, job.id, "failed", { error: msg });
       return { status: "failed", error: msg };
     }
-    // ── CLOISONNEMENT MULTI-BOUTIQUES (2026-09-03) ─────────────────────────
-    // Quand l'article porte sa boutique d'origine (vinted_account_id,
-    // estampillé par la sync), la republication vérifie AVANT toute capture
-    // que Chrome est connecté à CETTE boutique. Sans la garde, la capture et
-    // la suppression échoueraient de toute façon (l'API refuse l'annonce
-    // d'un autre compte) mais avec un message cryptique — ici : needs_user
-    // clair, actionnable, AVANT tout geste. Lignes héritées (NULL) : aucune
-    // vérification, comportement du parc mono-boutique STRICTEMENT inchangé.
-    // Sonde en échec (403 anti-robot, onglet muet) → on laisse le flux
-    // normal gérer : cette garde n'ajoute jamais un blocage à elle seule.
+    // ── ATTENTE NOMMÉE DE LA BONNE BOUTIQUE (multi-boutiques, 2026-09-03,
+    // arbitrage Nico : on ne bloque pas, on ne fait jamais échouer) ─────────
+    // Quand l'article porte sa boutique d'origine (vinted_account_id) et que
+    // Chrome est connecté à une AUTRE boutique, le job reste PENDING avec le
+    // marqueur attente_boutique {user_id, login, depuis} + une échéance de
+    // 15 min : AUCUNE tentative consommée (needsUserAttempts intact), aucun
+    // needs_user (le balayage 72 h ne le touche pas), jamais d'échec — il
+    // attend, nommément. Il repart TOUT SEUL : la sonde de sessions libère
+    // les attentes dès que leur boutique est vue connectée, et l'échéance de
+    // 15 min re-vérifie de toute façon. Lignes héritées (NULL) et identité
+    // inconnue (401 ambigu, réseau) : FAIL-OPEN, flux strictement inchangé —
+    // le parc mono-boutique ne passe jamais ici.
     if (job.inventaire_id != null) {
       try {
         const inv = await restRequest(
@@ -10488,29 +10566,32 @@ async function processRepublishJob(job, accessToken) {
         );
         const boutiqueArticle = String(inv?.[0]?.vinted_account_id ?? "").trim();
         if (boutiqueArticle) {
-          const tabIdSonde = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
-          const identSonde = await sendMessageToTab(tabIdSonde, { type: "VINTED_CURRENT_USER" })
-            .catch(() => null);
-          if (identSonde?.success && identSonde.userId && String(identSonde.userId) !== boutiqueArticle) {
-            pf.needs_user_source = "boutique_differente";
-            // Le login de la boutique d'origine se lit dans la liste des
-            // boutiques confirmées quand elle le porte — sinon on parle en
-            // « autre boutique », jamais un identifiant technique à l'écran.
-            let loginOrigine = null;
-            try {
-              const prof = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, accessToken);
-              loginOrigine = lireBoutiquesPin(prof?.[0]?.vinted_sync_pin)
-                .boutiques.find((b) => String(b.user_id) === boutiqueArticle)?.login ?? null;
-            } catch { /* libellé générique */ }
-            const origineTexte = loginOrigine ? `ta boutique @${loginOrigine}` : "une autre de tes boutiques Vinted";
-            const couranteTexte = identSonde.login ? `@${identSonde.login}` : "une autre boutique";
-            const msg =
-              "Republication en pause AVANT toute suppression — ton annonce est intacte. " +
-              `Cette annonce vit sur ${origineTexte}, mais Chrome est connecté à ${couranteTexte}. ` +
-              "Connecte-toi à la bonne boutique sur vinted.fr dans Chrome, puis relance la republication depuis la fiche de l'article.";
-            await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
-            return { status: "needsUser", error: "boutique Vinted différente de celle de l'annonce" };
+          const identCourante = await identiteVintedDuCycle();
+          if (identCourante?.user_id && identCourante.user_id !== boutiqueArticle) {
+            // Le pseudo attendu se lit dans la liste des boutiques confirmées
+            // — sinon libellé générique, jamais un identifiant à l'écran.
+            let loginAttendu = job.platform_fields?.attente_boutique?.login ?? null;
+            if (!loginAttendu) {
+              try {
+                const prof = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, accessToken);
+                loginAttendu = lireBoutiquesPin(prof?.[0]?.vinted_sync_pin)
+                  .boutiques.find((b) => String(b.user_id) === boutiqueArticle)?.login ?? null;
+              } catch { /* libellé générique */ }
+            }
+            pf.attente_boutique = {
+              user_id: boutiqueArticle,
+              login: loginAttendu,
+              depuis: pf.attente_boutique?.depuis ?? new Date().toISOString(),
+            };
+            pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
+            await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+            const qui = loginAttendu ? `@${loginAttendu}` : `la boutique ${boutiqueArticle}`;
+            console.log(`[republish] job ${job.id} : en attente du dressing ${qui} (connecté : @${identCourante.login}) — aucune tentative consommée`);
+            return { status: "skipped", error: `en attente du dressing ${qui}` };
           }
+          // Boutique correspondante (ou identité inconnue → fail-open) : une
+          // attente qui traînait est levée — le flux normal reprend.
+          if (pf.attente_boutique) delete pf.attente_boutique;
         }
       } catch (e) {
         console.warn("[republish] cloisonnement boutique illisible (flux normal):", e?.message ?? e);

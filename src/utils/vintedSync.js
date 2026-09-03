@@ -478,6 +478,25 @@ export async function confirmerBoutiqueVinted(userId, { vintedUserId, login }) {
   return { success: true, boutiques };
 }
 
+// ── Boutique Vinted CONNECTÉE dans Chrome (multi-boutiques, 2026-09-03) ─────
+// Relevée par la sonde de sessions de l'extension (~10 min) et rangée dans
+// profiles.extension_sessions.vinted_identite. null = jamais relevée (sonde
+// muette, extension d'avant la 0.6.17, 401 ambigu) — l'app le DIT, elle ne
+// devine jamais.
+export async function lireBoutiqueConnectee(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('extension_sessions')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) return null;
+  const s = data?.extension_sessions;
+  const ident = s?.vinted_identite;
+  if (!ident?.user_id) return null;
+  return { userId: String(ident.user_id), login: ident.login ?? null, releveLe: s?.checked_at ?? null };
+}
+
 // ── Dernière synchro RÉUSSIE (2026-08-11) ───────────────────────────────────
 // L'heure affichée sous le bouton doit être celle de la dernière synchro qui a
 // VRAIMENT lu le dressing, cron comprise — donc le dernier run 'done', pas le
