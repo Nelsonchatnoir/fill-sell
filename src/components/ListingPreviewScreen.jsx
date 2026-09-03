@@ -5442,6 +5442,62 @@ export default function ListingPreviewScreen({
   // cf. le bandeau de LBC_POIDS_PAR_FORMAT en tête de fichier. Le champ se
   // complète à la main dans l'encart rouge, comme avant.)
 
+  // ── Trace des champs obligatoires bloquants (règle 3, 03/09 soir) ─────────
+  // Le blocage « champ requis » vivait AVANT toute création de job : aucun
+  // enregistrement serveur, donc aucun moyen de savoir combien de gens
+  // butaient là (cas des paniers en osier, découvert par un témoignage).
+  // Quatre moments, une feature usage_logs 'champ_requis_bloquant' :
+  //   affiche               → le champ bloquant apparaît au step Publier ;
+  //   complete              → l'utilisateur l'a rempli (il ne bloque plus) ;
+  //   abandonne             → stepper fermé avec le champ toujours bloquant ;
+  //   publie_sans_plateforme→ le geste est parti SANS cette plateforme ;
+  //   bloque_au_clic        → le clic n'a rien pu publier du tout.
+  // Best-effort, jamais bloquant — une télémétrie ne coûte jamais une vente.
+  const logChampBloquant = (issue, info) => {
+    if (!userId || !info) return;
+    supabase.from("usage_logs")
+      .insert({ user_id: userId, feature: "champ_requis_bloquant", metadata: { ...info, issue } })
+      .then(({ error }) => { if (error) console.warn("[stepper] champ_requis_bloquant non journalisé :", error.message); });
+  };
+  // Plateformes parties SANS une plateforme bloquée à ce clic — porté jusqu'à
+  // l'écran de succès pour le dire nommément.
+  const [publieesSansPf, setPublieesSansPf] = useState([]);
+  const champBloquantVus = useRef({});      // "gp:key" → {platform, champ, categorie, complete?}
+  const champBloquantRestants = useRef(new Set());
+  const doneRef = useRef(false);
+  useEffect(() => {
+    if (step !== 3) return;
+    const actifs = new Set();
+    for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
+      for (const a of list.filter(aspectBloquant)) {
+        const k = `${gp}:${a.key}`;
+        actifs.add(k);
+        if (!champBloquantVus.current[k]) {
+          champBloquantVus.current[k] = {
+            platform: gp, champs: [a.label ?? a.key],
+            categorie: genericCategoryKeys?.[gp] ?? initialListing?.categorie ?? null,
+          };
+          logChampBloquant("affiche", champBloquantVus.current[k]);
+        }
+      }
+    }
+    for (const k of champBloquantRestants.current) {
+      const vu = champBloquantVus.current[k];
+      if (!actifs.has(k) && vu && !vu.complete) {
+        vu.complete = true;
+        logChampBloquant("complete", vu);
+      }
+    }
+    champBloquantRestants.current = actifs;
+  }, [step, genericRequiredStatus]);
+  useEffect(() => { doneRef.current = done; }, [done]);
+  useEffect(() => () => {
+    if (doneRef.current) return;
+    for (const k of champBloquantRestants.current) {
+      logChampBloquant("abandonne", champBloquantVus.current[k]);
+    }
+  }, []);
+
   // Résolution IA ciblée des requis génériques SANS source (chantier 1.A) —
   // même micro-appel resolve_aspects que le bloc eBay : extraction depuis le
   // contexte (titre/description/modèle...), jamais deviné, null si non
@@ -5672,19 +5728,30 @@ export default function ListingPreviewScreen({
         }));
       }
 
-      // ── Garde générique Vinted/LBC/Beebs (chantier 1.A) : un requis du
-      // catalogue encore vide bloque AVANT le débit/insert — même règle que
-      // la garde eBay plus bas, l'encart de StepPublish est le chemin nominal
-      // (CTA désactivé), ce re-check attrape un état périmé ou une course.
+      // ── Garde générique Vinted/LBC/Beebs (chantier 1.A, refondue 03/09 soir
+      // — « le champ Produit ne doit plus jamais être un cul-de-sac ») ────────
+      // DEUX corrections en une :
+      //  1. Le re-check levait sur TOUT `state==="missing"`, y compris les
+      //     non-bloquants (champ FERMÉ sans liste relevée, règle permissive du
+      //     02/09 — exactement le « Produit » LBC des paniers en osier de ce
+      //     soir). Le CTA les laissait passer (aspectBloquant), le clic levait
+      //     un bandeau rouge SANS champ de saisie nulle part : cul-de-sac
+      //     total, zéro trace serveur. Le re-check lit désormais la MÊME
+      //     définition que le CTA et l'encart rouge : aspectBloquant, une
+      //     seule vérité. Un missing non bloquant part sans le champ — le
+      //     pré-rempli de la plateforme ou le needs_user aux options relevées
+      //     font foi (doctrine 13/08 + 02/09).
+      //  2. Un champ réellement BLOQUANT n'arrête plus TOUT le geste : la
+      //     plateforme concernée est EXCLUE de ce clic (même patron que
+      //     plateformesSansAdresse plus bas), les autres partent normalement.
+      //     Rien n'est publié incomplet : la plateforme exclue attend sa
+      //     complétion dans l'encart rouge, nommément.
+      const champsManquantsParPf = {};
       for (const [gp, list] of Object.entries(genericRequiredStatus ?? {})) {
-        const missing = list.filter(a => a.state === "missing").map(a => a.label);
-        if (missing.length) {
-          throw new Error(tpl("stepPublishGenericRequiredMissing", {
-            platform: GENERIC_PLATFORM_LABELS[gp] ?? gp,
-            fields: missing.join(", "),
-          }));
-        }
+        const bloquants = list.filter(aspectBloquant).map(a => a.label ?? a.key);
+        if (bloquants.length) champsManquantsParPf[gp] = bloquants;
       }
+      const plateformesChampManquant = Object.keys(champsManquantsParPf);
 
       // Article pas encore en stock : on crée sa ligne inventaire maintenant
       // (ajout systématique), juste avant de générer les jobs de publication,
@@ -5931,6 +5998,7 @@ export default function ListingPreviewScreen({
         p => !plateformesSansAdresse.includes(p)
           && !plateformesInterdites.includes(p)
           && !plateformesSansAnnonce.includes(p)
+          && !plateformesChampManquant.includes(p)
       );
       if (!plateformesAPublier.length) {
         // Rien de publiable ne restait. Le CTA est déjà gris dans ce cas
@@ -5938,6 +6006,23 @@ export default function ListingPreviewScreen({
         // Aucune unité engagée.
         if (plateformesInterdites.length) {
           throw new Error(supportMessage(t, "prohibited", plateformesInterdites.map(p => PLATFORM_LABELS[p]).join(", ")));
+        }
+        // Seules des plateformes à champ obligatoire manquant : INVITATION à
+        // compléter (le champ vit dans l'encart rouge juste au-dessus), plus
+        // jamais un « pas possible » sec. Trace règle 3 : ce refus n'existe
+        // nulle part côté serveur sans elle.
+        if (plateformesChampManquant.length) {
+          for (const gp of plateformesChampManquant) logChampBloquant("bloque_au_clic", {
+            platform: gp, champs: champsManquantsParPf[gp],
+            categorie: genericCategoryKeys?.[gp] ?? initialListing?.categorie ?? null,
+          });
+          throw new Error(plateformesChampManquant.map(gp =>
+            lang === "en"
+              ? `${GENERIC_PLATFORM_LABELS[gp] ?? gp} is waiting for: ${champsManquantsParPf[gp].join(", ")}`
+              : `${GENERIC_PLATFORM_LABELS[gp] ?? gp} attend : ${champsManquantsParPf[gp].join(", ")}`
+          ).join(" · ") + (lang === "en"
+            ? " — fill it in the red “Some info is missing to publish” box above, then publish again. Nothing was counted."
+            : " — complète dans l'encart rouge « Il manque des infos pour publier » juste au-dessus, puis republie. Rien n'a été décompté."));
         }
         // Aucune annonce générée : dire ÇA, et pas le message d'adresse — un
         // motif faux coûte plus cher qu'un motif générique.
@@ -6413,7 +6498,11 @@ export default function ListingPreviewScreen({
       // Les jobs sont en base : le Stock peut afficher « En cours… » tout de
       // suite (patch optimiste, cf. prop onJobsQueued). Une relecture réelle
       // écrasera ces lignes synthétiques au prochain poll.
-      onJobsQueued?.(currentInvId ?? null, [...selected]);
+      // plateformesAPublier et non [...selected] (03/09 soir) : une plateforme
+      // exclue de ce clic (champ manquant, adresse, interdite, sans annonce)
+      // n'a AUCUN job — l'annoncer « En cours… » au Stock était un mensonge
+      // optimiste que le poll suivant venait démentir.
+      onJobsQueued?.(currentInvId ?? null, plateformesAPublier);
       // Photos : PLUS d'UPDATE client ici (2026-08-04). spend_coins_and_publish
       // écrit inventaire.photos DANS la transaction du débit (migration
       // 20260804210000) : la retouche payée est rattachée à l'article même si
@@ -6443,6 +6532,21 @@ export default function ListingPreviewScreen({
           );
         }
       }
+      // Règles 2+3 (03/09 soir) : le geste est PARTI, mais sans les
+      // plateformes au champ obligatoire manquant — on le dit sur l'écran de
+      // succès (nommément) et on le trace (ce cas n'existe nulle part côté
+      // serveur : aucun job créé pour ces plateformes).
+      if (plateformesChampManquant.length) {
+        setPublieesSansPf(plateformesChampManquant.map(gp => ({
+          platform: gp, champs: champsManquantsParPf[gp],
+        })));
+        for (const gp of plateformesChampManquant) logChampBloquant("publie_sans_plateforme", {
+          platform: gp, champs: champsManquantsParPf[gp],
+          categorie: genericCategoryKeys?.[gp] ?? initialListing?.categorie ?? null,
+        });
+      } else {
+        setPublieesSansPf([]);
+      }
       setDone(true);
     } catch (e) {
       setPublishError(e.message);
@@ -6464,7 +6568,15 @@ export default function ListingPreviewScreen({
   // Depuis le 11/08 la liste est calculée UNE fois (plateformesPubliables) et
   // lue par toutes les gardes — le compteur du CTA n'en est plus qu'un des
   // consommateurs, il ne peut plus diverger de ce qui bloque.
-  const publishChips = [...plateformesPubliables];
+  // ── Règle 2 (03/09 soir) : une plateforme au champ obligatoire BLOQUANT ne
+  // part pas à ce clic (exclue par handlePublish) — elle sort donc AUSSI du
+  // compte et du total du CTA (« jamais un total faux »). ⚠️ On ne la retire
+  // PAS de plateformesPubliables : genericRequiredStatus en dérive — l'en
+  // retirer éteindrait le statut qui la bloque (boucle). eBay garde son
+  // comportement global (CTA gris), cf. requiredBlocking.
+  const plateformesBloqueesChamps = [...plateformesPubliables].filter(p =>
+    (genericRequiredStatus?.[p] ?? []).some(aspectBloquant));
+  const publishChips = [...plateformesPubliables].filter(p => !plateformesBloqueesChamps.includes(p));
 
   function ctaLabel() {
     if (step === 0) {
@@ -6524,9 +6636,15 @@ export default function ListingPreviewScreen({
   // un désaccord avec une liste.
   // (aspectBloquant : helper module, partagé avec l'encart rouge de StepPublish
   // et la liste des motifs ci-dessous — une seule définition de « bloquant ».)
+  // ── Règle 2 (03/09 soir) : le canal générique (Vinted/LBC/Beebs) ne grise
+  // plus le CTA GLOBALEMENT — une plateforme bloquée est exclue du clic et du
+  // compte (plateformesBloqueesChamps ↑), les autres partent. Toutes bloquées
+  // ⇒ publishChips tombe à 0 et ctaBlockingActive grise avec les motifs
+  // nommés, comme avant. Les bloqueurs de l'ARTICLE (champs partagés, prix
+  // d'achat) et eBay (garde au clic non refondue, signalée à Nico) restent
+  // globaux.
   const requiredBlocking =
     (ebayRequiredStatus ?? []).some(aspectBloquant) ||
-    Object.values(genericRequiredStatus ?? {}).some(list => list.some(aspectBloquant)) ||
     missingSharedFields.length > 0 ||
     prixAchatManquant ||
     vintedGenreBlocked ||
@@ -6701,6 +6819,25 @@ export default function ListingPreviewScreen({
           {/* « avec ses photos retouchées » seulement si la retouche a été
               LIVRÉE — sinon la ligne mentirait sur ce qui a été payé. */}
           {photoOption !== "original" && !retoucheNonLivree ? t("doneAddedToStockRetouched") : t("doneAddedToStock")}
+        </div>
+      )}
+      {/* Règle 2 (03/09 soir) : le geste est parti SANS ces plateformes — le
+          dire ICI, nommément, sinon l'écran « ✅ » raconte un succès complet
+          qui n'a pas eu lieu. Ambre, jamais rouge : rien n'est cassé. */}
+      {publieesSansPf.length > 0 && (
+        <div style={{ marginTop:14, padding:"10px 14px", borderRadius:12, background:"#FFF6E3", border:"1px solid #EED9A6", fontSize:12.5, lineHeight:1.55, color:"#8A6100", fontWeight:600, maxWidth:320, textAlign:"left" }}>
+          {publieesSansPf.map(({ platform, champs }) => (
+            <div key={platform}>
+              ✋ {lang === "en"
+                ? `${GENERIC_PLATFORM_LABELS[platform] ?? platform} did not go out — it is waiting for: ${champs.join(", ")}.`
+                : `${GENERIC_PLATFORM_LABELS[platform] ?? platform} n'est pas partie — elle attend : ${champs.join(", ")}.`}
+            </div>
+          ))}
+          <div style={{ fontWeight:500, marginTop:4 }}>
+            {lang === "en"
+              ? "Reopen “Publish” on the item, fill in the field, and it goes out too."
+              : "Rouvre « Publier » sur l'article, complète le champ, et elle part aussi."}
+          </div>
         </div>
       )}
       <button
@@ -6896,6 +7033,31 @@ export default function ListingPreviewScreen({
             {lang === "en"
               ? "Photo retouching didn't come through — you won't be charged for it. Your original photos will be posted as they are."
               : "La retouche photos n'a pas abouti — elle ne te sera pas facturée. Tes photos d'origine partent telles quelles."}
+          </div>
+        )}
+        {/* ── Règle 2 (03/09 soir) : plateforme(s) en attente d'un champ,
+            pendant que les AUTRES peuvent partir. AMBRE, jamais rouge : rien
+            n'est cassé, un geste complète. Nommé (« Leboncoin attend :
+            Produit ») + le chemin exact (l'encart rouge au-dessus porte le
+            champ de saisie). Invisible quand tout est propre ou quand TOUT
+            est bloqué (le CTA gris + motifs prennent alors le relais). */}
+        {step === 3 && !ctaBlockingActive && plateformesBloqueesChamps.length > 0 && (
+          <div style={{ marginBottom:8, padding:"9px 12px", borderRadius:10, background:"#FFF6E3", border:"1px solid #EED9A6", fontSize:12, lineHeight:1.5, color:"#8A6100", fontWeight:600 }}>
+            {plateformesBloqueesChamps.map(p => {
+              const champs = (genericRequiredStatus?.[p] ?? []).filter(aspectBloquant).map(a => a.label ?? a.key).join(", ");
+              return (
+                <div key={p}>
+                  ✋ {lang === "en"
+                    ? `${nomPlateforme(p)} is waiting for: ${champs}`
+                    : `${nomPlateforme(p)} attend : ${champs}`}
+                </div>
+              );
+            })}
+            <div style={{ fontWeight:500, marginTop:3 }}>
+              {lang === "en"
+                ? "Fill it in the red “Some info is missing to publish” box above — the other platforms will publish normally without waiting."
+                : "Complète dans l'encart rouge « Il manque des infos pour publier » ci-dessus — les autres plateformes partiront normalement sans attendre."}
+            </div>
           </div>
         )}
         {/* Motif du bouton gris (2026-08-11) — JAMAIS de CTA désactivé muet.
