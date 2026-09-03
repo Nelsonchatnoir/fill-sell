@@ -4209,6 +4209,38 @@ const StockTab = memo(function StockTab({
   // liste visible avec les hors-ligne remontés en tête (même au-delà du
   // slice de 10 : un article hors ligne ne peut pas être caché par « Voir
   // plus »).
+  // ── Lot B2 (03/09 soir) : articles avec un job EN COURS remontés en tête ──
+  // « En cours » = un job publish/republish pending ou processing — le même
+  // périmètre que la pastille « En cours… » — HORS attente_boutique (une
+  // attente indéfinie d'un autre dressing épinglerait l'article en tête des
+  // jours durant). ANTI-SAUT : l'ORDRE est un état, recalculé UNIQUEMENT
+  // quand l'ENSEMBLE des articles en cours change (un job démarre ou se
+  // termine) — jamais au simple rafraîchissement de jobsByInventaire (20 s),
+  // pour que la liste ne bouge pas sous le doigt pendant un scroll. Clé de
+  // tri : le job démarré le plus récemment d'abord (created_at max).
+  // ⚠️ DÉCLARÉ AVANT listeStock, qui le lit (TDZ = écran blanc, vécu le
+  // 03/09 soir même : le bloc était né 350 lignes plus bas).
+  const [tetesJobs, setTetesJobs] = useState([]);
+  useEffect(() => {
+    const ts = {};
+    for (const [invId, js] of Object.entries(jobsByInventaire)) {
+      for (const j of js || []) {
+        if (j.action === "delete") continue;
+        if (j.status !== "pending" && j.status !== "processing") continue;
+        if (j.platform_fields?.attente_boutique) continue;
+        const t = Date.parse(j.created_at ?? "") || 0;
+        if (!(invId in ts) || t > ts[invId]) ts[invId] = t;
+      }
+    }
+    setTetesJobs(prev => {
+      const ids = Object.keys(ts);
+      // Même ensemble → même tableau (référence conservée : aucun re-tri,
+      // aucun re-rendu de liste).
+      if (ids.length === prev.length && prev.every(id => id in ts)) return prev;
+      return ids.sort((a, b) => ts[b] - ts[a]);
+    });
+  }, [jobsByInventaire]);
+
   const listeStock = useMemo(() => {
     if (repubFiltre) {
       return stockFiltre.filter(i => {
@@ -4558,35 +4590,11 @@ const StockTab = memo(function StockTab({
     };
   }, [user?.id]);
 
-  // ── Lot B2 (03/09 soir) : articles avec un job EN COURS remontés en tête ──
-  // « En cours » = un job publish/republish pending ou processing — le même
-  // périmètre que la pastille « En cours… » — HORS attente_boutique (une
-  // attente indéfinie d'un autre dressing épinglerait l'article en tête des
-  // jours durant). ANTI-SAUT : l'ORDRE est un état, recalculé UNIQUEMENT
-  // quand l'ENSEMBLE des articles en cours change (un job démarre ou se
-  // termine) — jamais au simple rafraîchissement de jobsByInventaire (20 s),
-  // pour que la liste ne bouge pas sous le doigt pendant un scroll. Clé de
-  // tri : le job démarré le plus récemment d'abord (created_at max).
-  const [tetesJobs, setTetesJobs] = useState([]);
-  useEffect(() => {
-    const ts = {};
-    for (const [invId, js] of Object.entries(jobsByInventaire)) {
-      for (const j of js || []) {
-        if (j.action === "delete") continue;
-        if (j.status !== "pending" && j.status !== "processing") continue;
-        if (j.platform_fields?.attente_boutique) continue;
-        const t = Date.parse(j.created_at ?? "") || 0;
-        if (!(invId in ts) || t > ts[invId]) ts[invId] = t;
-      }
-    }
-    setTetesJobs(prev => {
-      const ids = Object.keys(ts);
-      // Même ensemble → même tableau (référence conservée : aucun re-tri,
-      // aucun re-rendu de liste).
-      if (ids.length === prev.length && prev.every(id => id in ts)) return prev;
-      return ids.sort((a, b) => ts[b] - ts[a]);
-    });
-  }, [jobsByInventaire]);
+  // (Le bloc « Lot B2 : tetesJobs » a vécu ICI quelques heures le 03/09 soir —
+  // 350 lignes APRÈS listeStock qui le lit : TDZ, écran blanc TOTAL au montage
+  // de StockTab, même classe exacte que l'incident 2.6.12. Il vit désormais
+  // AVANT listeStock, juste sous repubDernier. Ne jamais déclarer un état
+  // sous son premier lecteur.)
 
   // Mode dégradé (Phase B) : plateformes en pause → badge « En pause » sur les
   // jobs en attente concernés + bandeau en tête d'onglet (2026-08-27) dont le
