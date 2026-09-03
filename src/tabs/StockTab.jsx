@@ -2914,14 +2914,20 @@ function etapeRepublication(job, fr) {
   const step = pf.republish_step ?? 'a_capturer';
   const st = job.status;
   const encours = st === 'pending' || st === 'processing';
+  // Libellés d'étape (renommés 03/09 soir, décision Nico — l'état vit sur la
+  // CARTE, y compris la capture qui n'était nommée nulle part) :
+  // « Relevé de l'annonce… » (capture en cours), « Relevée — en attente »
+  // (capturée, attend son tour de republication), « Retrait… » (suppression
+  // en cours), « Recréation… ».
   const T = {
-    file:      fr ? 'En file'      : 'Queued',
-    lecture:   fr ? 'Lecture…'     : 'Reading…',
-    prete:     fr ? 'Prête'        : 'Ready',
-    recreation:fr ? 'Recréation…'  : 'Recreating…',
-    enligne:   fr ? 'En ligne'     : 'Live',
-    relancer:  fr ? 'À relancer'   : 'Needs action',
-    arretee:   fr ? 'Arrêtée'      : 'Stopped',
+    file:      fr ? 'En file'                : 'Queued',
+    lecture:   fr ? "Relevé de l'annonce…"   : 'Reading the listing…',
+    prete:     fr ? 'Relevée — en attente'   : 'Saved — queued',
+    retrait:   fr ? 'Retrait…'               : 'Removing…',
+    recreation:fr ? 'Recréation…'            : 'Recreating…',
+    enligne:   fr ? 'En ligne'               : 'Live',
+    relancer:  fr ? 'À relancer'             : 'Needs action',
+    arretee:   fr ? 'Arrêtée'                : 'Stopped',
   };
   const bleu  = { fond: '#EFF3F8', bord: '#C7D6E5', encre: '#334155' };
   const vert  = { fond: '#F0FDFB', bord: 'rgba(13,148,136,0.25)', encre: '#1B6E62' };
@@ -3026,12 +3032,23 @@ function etapeRepublication(job, fr) {
     detail: fr ? "Rien n'est perdu : le contenu de ton annonce a été lu et sauvegardé AVANT le retrait. Elle est en train d'être recréée à l'identique."
                : 'Nothing is lost: your listing was read and saved BEFORE removal. It is being recreated identically.',
   };
-  if (step === 'captured') return {
-    cle: 'captured', court: T.prete, ...bleu,
-    titre: fr ? 'Annonce lue et sauvegardée' : 'Listing read and saved',
-    detail: fr ? "Tout le contenu est en sécurité chez nous (photos comprises). La suppression puis la recréation suivent."
-               : 'All the content is safely stored with us (photos included). Deletion then recreation follow.',
-  };
+  if (step === 'captured') {
+    // Suppression EN COURS (processing) ≠ capturée qui ATTEND son tour
+    // (pending) — deux états réels, deux libellés (03/09 soir : 134 articles
+    // « relevés, en attente » n'avaient aucun affichage).
+    if (st === 'processing') return {
+      cle: 'retrait', court: T.retrait, ...bleu,
+      titre: fr ? "Retrait de l'ancienne annonce" : 'Removing the old listing',
+      detail: fr ? "Tout le contenu est sauvegardé chez nous (photos comprises). L'ancienne annonce est en train d'être retirée, la recréation suit dans la foulée."
+                 : 'All the content is safely stored with us (photos included). The old listing is being removed; recreation follows right after.',
+    };
+    return {
+      cle: 'captured', court: T.prete, ...bleu,
+      titre: fr ? 'Relevée, en attente de republication' : 'Read and saved, waiting to repost',
+      detail: fr ? "Tout le contenu est en sécurité chez nous (photos comprises). Cette annonce attend son tour : les republications passent une par une, retrait puis recréation."
+                 : 'All the content is safely stored with us (photos included). This listing is waiting its turn: reposts run one by one, removal then recreation.',
+    };
+  }
   // a_capturer : le seul état où RIEN n'a encore été touché côté Vinted.
   if (st === 'processing') return {
     cle: 'lecture', court: T.lecture, ...bleu,
@@ -4983,11 +5000,24 @@ const StockTab = memo(function StockTab({
             repubBandeau null sinon. Les lignes « action requise » /
             « arrêtées » filtrent la liste ; re-tap = retire le filtre. */}
         {repubBandeau&&(
-          <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"12px 14px"}}>
-            {/* En-tête : UN SEUL compteur (« N sur M ») — le « N en cours de
-                dépôt » de l'eyebrow a été supprimé, ils se contredisaient. */}
+          <div style={{background:"#fff",border:`1px solid ${repubBandeau.aRelancer>0?"#EED9A6":"#E7E3D8"}`,borderRadius:12,padding:"10px 12px"}}>
+            {/* ── LIGNE COMPACTE (03/09 soir, décision Nico) ──────────────────
+                L'ÉCRAN de progression (barre du job actif, file « ENSUITE »,
+                liste des terminées, pied de page) est SUPPRIMÉ : il restait
+                figé sur le même job, ne nommait jamais l'étape de capture, et
+                mangeait toute la hauteur utile. L'état vit désormais SUR LA
+                CARTE de chaque article (pastille + barre + libellé d'étape :
+                « Relevé de l'annonce… », « Relevée — en attente », « Retrait… »,
+                « Recréation… »).
+                Ce qui RESTE ici est ce qu'une carte ne peut pas dire : le
+                compteur global du lot, les deux filtres de liste (action
+                requise / arrêtées — sans eux on perdrait un accès), et le
+                plafond quotidien SERVEUR. Une ligne, pas un écran.
+                (RepubBlocActif et RepubTerminees ne sont plus montés — la
+                barre du job actif vivait dans le premier ; les cartes la
+                portent maintenant, une par article réellement en travail.) */}
             <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-              <span style={{fontSize:13.5,fontWeight:700,color:"#10201B"}}>
+              <span style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
                 {lang==='fr'?`Republication${repubBandeau.total>1?'s':''}`:`Repost${repubBandeau.total>1?'s':''}`}
               </span>
               {repubBandeau.total>0&&(
@@ -4998,9 +5028,11 @@ const StockTab = memo(function StockTab({
                 </span>
               )}
             </div>
-            {repubBandeau.actif&&(
-              <RepubBlocActif lang={lang} job={repubBandeau.actif} titre={repubTitre(repubBandeau.actif)}/>
-            )}
+            <div style={{fontSize:11.5,color:"#8A8578",lineHeight:1.45,marginTop:3}}>
+              {lang==='fr'
+                ? "L'avancement de chaque annonce s'affiche sur sa carte, plus bas. Tu peux quitter cet écran, tout continue tout seul."
+                : "Each listing's progress shows on its own card below. You can leave this screen, everything carries on by itself."}
+            </div>
             {/* Bandeau « ta file reprend demain » (2026-08-29 soir) : l'état
                 vient du SERVEUR (repubPlafondEtat, get-pending-jobs
                 plafond_only) — jamais recalculé ici. Ton NEUTRE ET POSITIF :
@@ -5035,30 +5067,13 @@ const StockTab = memo(function StockTab({
                 </div>
               );
             })()}
-            {/* File « ENSUITE » : numérotée à partir de 2, AUCUNE barre —
-                c'est elle qui dit que le traitement est séquentiel : chacun
-                voit sa position, personne ne se croit bloqué. Plafonnée à
-                5 lignes puis « + N en attente » (une file de 280 — cas
-                nadegemarcelin78 — ne s'affiche jamais en entier). */}
-            {repubBandeau.file.length>0&&(
-              <div style={{marginTop:12}}>
-                <div style={{fontSize:11,fontWeight:700,letterSpacing:"0.07em",color:"#8A8578",marginBottom:2}}>{lang==='fr'?'ENSUITE':'UP NEXT'}</div>
-                {repubBandeau.file.slice(0,5).map((j,i)=>(
-                  <div key={j.id} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0"}}>
-                    <span style={{width:16,flexShrink:0,fontSize:12,fontWeight:600,color:"#8A8578",fontVariantNumeric:"tabular-nums"}}>{i+2}</span>
-                    <span style={{flex:1,minWidth:0,fontSize:12.5,color:"#5C6560",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{repubTitre(j)}</span>
-                  </div>
-                ))}
-                {repubBandeau.file.length>5&&(
-                  <div style={{fontSize:12,color:"#8A8578",padding:"6px 0 0 26px"}}>
-                    {lang==='fr'?`+ ${repubBandeau.file.length-5} en attente`:`+ ${repubBandeau.file.length-5} waiting`}
-                  </div>
-                )}
-              </div>
-            )}
-            {repubBandeau.terminees.length>0&&(
-              <RepubTerminees lang={lang} jobs={repubBandeau.terminees} titreDe={repubTitre}/>
-            )}
+            {/* (La file « ENSUITE » numérotée et la liste dépliable des
+                terminées ont été RETIRÉES le 03/09 soir avec l'écran de
+                progression : elles répétaient, en tête de page, ce que chaque
+                carte dit maintenant à sa place — et c'est ce cumul qui mangeait
+                la hauteur utile. Le compteur « N sur M » ci-dessus suffit à la
+                vue d'ensemble ; la position dans la file n'a plus de sens
+                depuis le traitement article par article.) */}
             {/* Un dry run n'est ni une republiée ni une arrêtée : sans cette
                 ligne il disparaîtrait de l'écran (recette REPUBLISH_DRY_RUN). */}
             {repubBandeau.dryRuns>0&&(
@@ -5104,27 +5119,21 @@ const StockTab = memo(function StockTab({
                 {lang==='fr'?'Liste filtrée — re-touche le bouton pour tout réafficher.':'List filtered — tap the button again to show everything.'}
               </div>
             )}
-            {/* Pied de page, séparé par un filet. Orpheline PRIME : « ton
-                ordinateur travaille » serait un mensonge quand il ne répond
-                plus. Aucune durée ni estimation, nulle part. */}
-            <div style={{borderTop:"1px solid #EFECE3",marginTop:12,paddingTop:9}}>
-              {repubBandeau.orpheline?(
-                <div style={{display:"flex",alignItems:"flex-start",gap:8,background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",lineHeight:1.5,fontWeight:600}}>
-                  <AlertTriangle size={14} style={{flexShrink:0,marginTop:2}}/>
-                  <span>
-                    {lang==='fr'
-                      ?"Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
-                      :"Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
-                  </span>
-                </div>
-              ):(
-                <div style={{fontSize:11.5,color:"#8A8578",lineHeight:1.5}}>
+            {/* Recréation ORPHELINE : SEUL rescapé du pied de page — c'est une
+                alerte de compte (ordinateur muet alors qu'une annonce est hors
+                ligne), pas un état d'avancement. La ligne « ton ordinateur
+                travaille » est partie avec l'écran : elle est dite une fois,
+                sous le compteur. */}
+            {repubBandeau.orpheline&&(
+              <div style={{display:"flex",alignItems:"flex-start",gap:8,marginTop:10,background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:10,padding:"8px 10px",fontSize:11.5,color:"#B91C1C",lineHeight:1.5,fontWeight:600}}>
+                <AlertTriangle size={14} style={{flexShrink:0,marginTop:2}}/>
+                <span>
                   {lang==='fr'
-                    ?"Ton ordinateur travaille en continu, annonce après annonce — tu peux quitter cet écran, tout continue tout seul."
-                    :"Your computer keeps working, listing after listing — you can leave this screen, everything carries on by itself."}
-                </div>
-              )}
-            </div>
+                    ?"Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité."
+                    :"Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe."}
+                </span>
+              </div>
+            )}
           </div>
         )}
         {/* ── Actualiser mon dressing — TOUT EN HAUT du contenu (27/08).
@@ -7221,9 +7230,17 @@ const StockTab = memo(function StockTab({
                           (le job sort de pending/processing → plus de barre). */}
                       {(()=>{
                         const frB=lang==='fr';
+                        // Republication : barre animée UNIQUEMENT sur un travail
+                        // réel — processing (relevé/retrait en cours) ou étape
+                        // 'deleted' (annonce hors ligne, recréation imminente).
+                        // Une « Relevée — en attente » (pending @ captured) ne
+                        // fait pas semblant de travailler : la pastille et le
+                        // libellé disent l'attente (03/09 soir, article par
+                        // article).
                         const repubEnTravail=repubOccupeSlot&&!repubEtape.fini&&!repubOrpheline
                           &&repubEtape.cle!=='attente_boutique'
-                          &&(repubLatest?.status==='pending'||repubLatest?.status==='processing');
+                          &&(repubLatest?.status==='processing'
+                            ||((repubLatest?.status==='pending')&&repubStepDe(repubLatest)==='deleted'));
                         const extFraiche=!(extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive"||extFraicheur.etat==="session_expiree");
                         const pubEnTravail=!repubEnTravail&&hasPending&&!hasPausedPending&&extFraiche;
                         if(!repubEnTravail&&!pubEnTravail)return null;

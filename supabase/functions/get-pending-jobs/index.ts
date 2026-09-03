@@ -228,10 +228,60 @@ serve(async (req) => {
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
     }
 
+    // ── ARTICLE PAR ARTICLE (03/09 soir, lot de 245 republications) ─────────
+    // Constaté en réel : la machine à étapes du background traite UN pas par
+    // job et par cycle de poll (capture → pending 'captured' → « le poll
+    // suivant supprimera », background.js) — voulu pour l'espacement et la
+    // fraîcheur de capture. Mais la boucle du poll traite TOUTE la file reçue
+    // dans un même cycle : sur un lot de 245, les 245 captures s'enchaînent
+    // AVANT le premier retrait (~3 captures/min ⇒ 80 min sans une seule
+    // annonce republiée à l'écran). Défaut ÉMERGENT, pas un pré-vol assumé.
+    // Correction SERVEUR (aucun paquet CWS, effet immédiat sur tout le parc) :
+    // au poll d'exécution, la file republish non-'deleted' est servie au
+    // compte-gouttes — AU PLUS 1 job 'captured' (le prochain retrait) et
+    // AU PLUS 1 'a_capturer' (le prochain relevé). L'étape 'deleted' passe
+    // TOUJOURS en entier (annonce hors ligne = recréation urgente, même
+    // exemption que le plafond). Résultat : capture → retrait → recréation
+    // s'enchaînent article par article au rythme des polls (2 min), la
+    // première annonce remonte en quelques minutes.
+    // Candidats : les plus anciens SANS attente programmée (next_action_after
+    // futur : attente de boutique, espacement) — une attente en tête de file
+    // ne doit jamais bloquer les autres. Jobs retenus : ils RESTENT pending,
+    // rien n'est perdu ni annulé. Popup non concerné (mêmes flags opt-in que
+    // le plafond : il continue de voir la file complète).
+    let heldPipeline = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const pfOf = (j: { platform_fields: unknown }) =>
+        (j.platform_fields as Record<string, unknown> | null) ?? {};
+      // Étape normalisée : miroir de repubStepDe (background.js) — absente ou
+      // inconnue = a_capturer, le défaut qui ne touche à rien.
+      const stepOf = (j: { platform_fields: unknown }) => {
+        const s = String(pfOf(j)["republish_step"] ?? "");
+        return s === "captured" || s === "deleted" ? s : "a_capturer";
+      };
+      const enAttenteProgrammee = (j: { platform_fields: unknown }) => {
+        const t = Date.parse(String(pfOf(j)["next_action_after"] ?? ""));
+        return Number.isFinite(t) && t > Date.now();
+      };
+      const filePipeline = out.filter((j) => j.action === "republish" && stepOf(j) !== "deleted");
+      if (filePipeline.length > 1) {
+        const garder = new Set<string>();
+        for (const etape of ["captured", "a_capturer"]) {
+          const cand = filePipeline.find((j) => stepOf(j) === etape && !enAttenteProgrammee(j));
+          if (cand) garder.add(String(cand.id));
+        }
+        const avant = out.length;
+        out = out.filter((j) =>
+          j.action !== "republish" || stepOf(j) === "deleted" || garder.has(String(j.id)));
+        heldPipeline = avant - out.length;
+      }
+    }
+
     console.log(
       `[get-pending-jobs] userId=${user.id} → ${out.length} job(s) distribué(s)` +
       (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : "") +
-      (heldRepublish ? `, ${heldRepublish} republish retenu(s) (plafond quotidien)` : ""),
+      (heldRepublish ? `, ${heldRepublish} republish retenu(s) (plafond quotidien)` : "") +
+      (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : ""),
     );
 
     // ── Commande de sync du dressing mise en file depuis le mobile ──────────
