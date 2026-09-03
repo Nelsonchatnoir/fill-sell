@@ -448,8 +448,8 @@ async function checkAndResetDaily(supabase, userId, field_count, field_date) {
   return currentCount;
 }
 
-// (COIN_KIND_LABELS — les libellés de l'historique du ledger de Pépites —
-// supprimés au nettoyage du 02/09 soir : le panneau « Mes Pépites » n'existe
+// (COIN_KIND_LABELS — les libellés de l'historique du ledger d'unités —
+// supprimés au nettoyage du 02/09 soir : le panneau « Mes unités » n'existe
 // plus, plus rien ne les lisait. L'historique vit dans coin_ledger en base.)
 
 // ── Libellé UNIQUE des points d'entrée vers la modale de plans (2026-08-09) ──
@@ -1347,7 +1347,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
 function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
   const pro = tier === 'pro';
   const business = tier === 'business';
-  // Nettoyage Pépites (02/09 soir) : la modale parlait encore en Pépites et
+  // Nettoyage unités (02/09 soir) : la modale parlait encore en unités et
   // en prix par scan — elle parle désormais les volumes du forfait, pris dans
   // COIN_CONFIG_FALLBACK, la MÊME constante de repli que les cartes de plan
   // (ConversionModal). ⚠️ coin_config reste la SOURCE. Ce composant s'affiche
@@ -1954,7 +1954,7 @@ export default function App({ loginOnly = false }){
   const [showSettings,setShowSettings]=useState(false);
   const [coinWallet,setCoinWallet]=useState(null);
   // Bascule quotas (02/09) : compteurs par geste (quotas_etat) — remplacent le
-  // solde de Pépites partout où il s'affichait. null = rien d'affiché.
+  // solde d'unités partout où il s'affichait. null = rien d'affiché.
   const [quotas,setQuotas]=useState(null);
   const [coinHistory,setCoinHistory]=useState([]);
   const [showPremiumModal,setShowPremiumModal]=useState(false);
@@ -2151,7 +2151,7 @@ export default function App({ loginOnly = false }){
   const [lensPlaceholderFade,setLensPlaceholderFade]=useState(true);
   const [voiceUsedToday,setVoiceUsedToday]=useState(0);
   // Plus aucun quota Lens côté client (payant-par-scan 2026-07-23) : chaque
-  // analyse coûte 6 Pépites côté serveur, il n'y a plus de compteur mensuel.
+  // analyse coûte 6 unités côté serveur, il n'y a plus de compteur mensuel.
   useEffect(()=>{
     const _id=setInterval(()=>{
       setLensPlaceholderFade(false);
@@ -2508,8 +2508,8 @@ export default function App({ loginOnly = false }){
   // Avant, `premium_cta_click` partait NU. Deux gestes très différents
   // tombaient donc dans le même compteur — « il a cliqué sur le bouton
   // d'en-tête pour s'abonner » et « l'app lui a ouvert la modale parce qu'il
-  // n'avait plus de Pépites » — et les ouvertures automatiques (plafonds voix
-  // / stock / Pépites) ne laissaient, elles, AUCUNE trace. Le nom de la
+  // n'avait plus d'unités » — et les ouvertures automatiques (plafonds voix
+  // / stock / unités) ne laissaient, elles, AUCUNE trace. Le nom de la
   // feature ne change pas (les relevés existants restent lisibles) ; tout le
   // détail vit dans `metadata` :
   //   · origine     — le point d'entrée EXACT (liste ORIGINES ci-dessous) ;
@@ -2532,8 +2532,8 @@ export default function App({ loginOnly = false }){
   //   stepper_publication       CTA « inventaire plein » du stepper (Stock/Lens)
   //   plafond_voix              50 analyses vocales/jour atteintes  (auto)
   //   plafond_stock             limite d'articles du plan gratuit   (auto)
-  //   plafond_pepites_lens      Pépites insuffisantes — scan Lens    (auto)
-  //   plafond_pepites_publi     Pépites insuffisantes — publication  (auto)
+  //   plafond_pepites_lens      unités insuffisantes — scan Lens    (auto)
+  //   plafond_pepites_publi     unités insuffisantes — publication  (auto)
   //   plafond_republication_free  les 50 republications à vie du Free
   //                             sont épuisées (bascule quotas 02/09) (auto)
   //   republication_lot_free    tap Free sur « Republier en lot »
@@ -2766,7 +2766,7 @@ export default function App({ loginOnly = false }){
 
   // Bascule quotas (02/09) : les compteurs se rafraîchissent à l'ouverture
   // des réglages et de la modale de conversion — même déclencheur que
-  // l'ancien rechargement du solde de Pépites, qui n'existe plus (le wallet
+  // l'ancien rechargement du solde d'unités, qui n'existe plus (le wallet
   // et le ledger restent en base, dormants, plus rien ne les affiche).
   useEffect(()=>{
     const ouvert=showSettings||conversionModal.open;
@@ -2812,7 +2812,7 @@ export default function App({ loginOnly = false }){
     // Filet de rattrapage Android (2026-07-27) : pas de Transaction.updates ici,
     // on interroge Play directement au lancement (achats inapp non consommés)
     // et on rejoue la validation idempotente AVANT de consumer. Vécu le 27/07 :
-    // pack de Pépites débité (achat probablement passé PENDING pendant la
+    // pack d'unités débité (achat probablement passé PENDING pendant la
     // feuille Google) jamais crédité, zéro appel serveur.
     if(isNative&&platform==='android'){
       supabase.auth.getSession().then(async({data:{session:rcSess}})=>{
@@ -3334,7 +3334,7 @@ export default function App({ loginOnly = false }){
   // ── Retrait cross-plateforme (Phase B, 2026-07-11) ─────────────────────────
   // Arme les jobs action='delete' pour les annonces frères encore en ligne
   // d'un article vendu (insert direct : RLS "Users manage own cross_post_jobs",
-  // aucune Pépite débitée — ce n'est pas une publication). Le flag
+  // aucune unité débitée — ce n'est pas une publication). Le flag
   // pending_removal est levé pour que le bandeau disparaisse ; l'extension
   // exécutera les suppressions à son prochain cycle (30 min max), en
   // DELETE_DRY_RUN tant que les 3 validations réelles n'ont pas eu lieu.
@@ -5354,7 +5354,7 @@ export default function App({ loginOnly = false }){
 
   async function analyzeLens(){
     if(!lensPhotos.length)return;
-    // Facturation (payant-par-scan 2026-07-23) : le serveur débite 6 Pépites
+    // Facturation (payant-par-scan 2026-07-23) : le serveur débite 6 unités
     // par analyse (spend_coins_for_lens, grant mensuel lazy inclus) et
     // rembourse si l'analyse n'est pas livrée. Seul le 402 insufficient_coins
     // remonte ici — plus aucun quota mensuel.
@@ -5409,7 +5409,7 @@ export default function App({ loginOnly = false }){
         const errBody=await r.json().catch(()=>({}));
         // Bascule quotas (02/09) : le refus est le quota de scans du cycle —
         // insufficient_coins ne peut plus arriver (prix à 0), la branche
-        // Pépites est morte. Modale de conversion, origine dédiée.
+        // unités est morte. Modale de conversion, origine dédiée.
         if(errBody.error==='quota_scan_atteint'){
           // Fenêtre de déploiement seulement (serveur pas encore migré) : la
           // variante 'scans' de la modale n'existe plus, on parle annonces.
@@ -5591,14 +5591,14 @@ export default function App({ loginOnly = false }){
       </div>
 
       {/* ── Compteur d'annonces dans l'en-tête (bascule quotas, 02/09) ────────
-          Remplace le solde de Pépites du 01/09 : l'état de compte se dit
+          Remplace le solde d'unités du 01/09 : l'état de compte se dit
           désormais en GESTES RÉELS — les annonces restantes du cycle. Même
           traitement visuel sobre que la roue crantée, jamais alarmiste : le
           compteur informe, il ne menace pas.
           · Source : quotas (quotas_etat via fetchAll) — null ou plafond
             absent = RIEN d'affiché, jamais un faux zéro.
           · Tap → la modale d'offres (openUpgradeModal, origine 'entete'),
-            plus jamais la boutique de Pépites. Zone tactile 44 px conservée.
+            plus jamais la boutique d'unités. Zone tactile 44 px conservée.
           · topbar--solde et tabular-nums conservés (mêmes contraintes
             d'écran étroit que le solde d'hier). */}
       <div className={quotas?.annonces?.plafond!=null?"topbar topbar--solde":"topbar"}>
@@ -6578,7 +6578,7 @@ export default function App({ loginOnly = false }){
             </div>
 
             {/* ── Mon forfait ce mois-ci (bascule quotas, 02/09) ──────────────
-                Remplace le panneau « Mes Pépites » (solde, recharge,
+                Remplace le panneau « Mes unités » (solde, recharge,
                 historique) : l'état du compte se dit en gestes réels, lus
                 dans quotas_etat. Un geste sans plafond configuré ne
                 s'affiche pas ; la republication dit son mode (à vie /

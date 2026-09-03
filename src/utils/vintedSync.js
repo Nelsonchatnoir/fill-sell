@@ -226,7 +226,7 @@ export async function demanderSyncDressingServeur() {
 // « Publier ». Jamais en lot, jamais en tâche de fond, jamais « en avance ».
 // Contrairement à la sync, la réponse REVIENT par postMessage (aller-retour
 // relayé par fillsell-auth.js) : un seul article, pas de run à suivre en base.
-// GRATUIT : aucune Pépite — c'est la publication qui est payante, pas la
+// GRATUIT : aucune unité — c'est la publication qui est payante, pas la
 // lecture.
 // ── Règle de versionnage (Nico, 2026-08-05) ─────────────────────────────────
 // L'extension RESTE en 0.5.0 : c'est CE numéro qui sera empaqueté et soumis
@@ -311,7 +311,7 @@ export function sonderAnnonceVinted(listingUrl, { timeoutMs = SONDE_ANNONCE_TIME
 // Même contrat aller-retour que le détail, en plus riche : payload natif
 // complet + résolutions id→libellé + verdict 'valide'|'incomplet' avec
 // champs_manquants nommés. LECTURE SEULE, à l'unité, sur action humaine,
-// GRATUIT en Pépites. Un verdict 'incomplet' n'autorisera JAMAIS une
+// GRATUIT en unités. Un verdict 'incomplet' n'autorisera JAMAIS une
 // suppression (garde à la persistance — migration É2 à valider par Nico).
 // Tant que le re-hébergement des photos n'est pas en place (edge function à
 // valider), TOUTE capture est 'incomplet' par construction
@@ -340,7 +340,7 @@ export const CAPTURE_VERSION_MIN = '0.5.0';
 // extension, mais plus aucun code du site ne doit l'emprunter.
 
 // ── Republier une annonce Vinted (refondu 2026-08-05) ───────────────────────
-// UN SEUL appel : la RPC pose le job 'a_capturer' et débite la Pépite (Free
+// UN SEUL appel : la RPC pose le job 'a_capturer' et débite l'unité (Free
 // seulement — Premium/Pro/comped à 0). Aucune capture ici : c'est l'extension
 // qui capture au moment où elle ramasse le job, quelques secondes avant de
 // supprimer. Conséquence directe : ce bouton marche depuis un TÉLÉPHONE, et

@@ -5,7 +5,7 @@ import { Capacitor } from "@capacitor/core";
 import { Camera as CapCamera } from "@capacitor/camera";
 import ConversionModal from "./ConversionModal";
 import ExtensionPitchScreen from "./ExtensionPitchScreen";
-// (import PepiteAmount retiré au nettoyage Pépites du 02/09 soir — les
+// (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import AnalyseMarche from "./AnalyseMarche";
@@ -1304,7 +1304,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
   // client qui enverrait encore ia_advanced est dégradé en douceur vers la
   // légère par generate-listing). Le choix de fond (avancé uniquement) meurt
   // avec lui. Deux options, plus de prix affiché (les gestes se comptent au
-  // forfait, pas en Pépites).
+  // forfait, pas en unités).
   const retouchOptions = [
     {
       id: "ia_light",
@@ -1457,7 +1457,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
       <div style={{ display: reuseRetouched ? "none" : "flex", flexDirection:"column", gap:10, marginBottom:12 }}>
         {retouchOptions.map(o => {
           const active = photoOption === o.id;
-          // Suppression Pépites (03/09) : plus de monnaie interne ni de solde.
+          // Suppression unités (03/09) : plus de monnaie interne ni de solde.
           // Le chip n'affiche plus qu'un éventuel « Gratuit » ; un prix > 0
           // ne peut plus exister (coin_config à 0 → null au chargement).
           const price = coinPrices?.[o.id] ?? null;
@@ -1603,7 +1603,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
 
       {/* ── Analyse photo optionnelle (2026-07-14) ──────────────────────────
           Même moteur que Lens (edge lens-analysis) : deux entrées, un seul
-          moteur. Le débit des Pépites, le quota et le 402 sont gérés côté
+          moteur. Le débit des unités, le quota et le 402 sont gérés côté
           serveur par spend_coins_for_lens — aucun chemin de paiement recodé.
           Jamais proposée si l'article vient DÉJÀ de Lens : il a déjà ses
           attributs et son prix, la payer deux fois n'aurait aucun sens. */}
@@ -1728,7 +1728,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
       </div>
       {/* ── Récap du prix (grille 2 axes, 2026-08-04) ─────────────────────────
           LE point de compréhension : photos une fois (0/9/32 selon l'option) +
-          price_per_platform Pépites par plateforme (coin_config, même prix
+          price_per_platform unités par plateforme (coin_config, même prix
           pour tous depuis 2026-08-08). Recalculé à CHAQUE case cochée/décochée et
           à chaque changement d'option — c'est ce total que le CTA Publier
           débitera. Masqué tant que coin_config n'a pas répondu : jamais un
@@ -1970,7 +1970,7 @@ function StepGeneration({ generating, generateError, platformListings, processed
             MÊME composant que l'écran Lens, variante « publication » : une
             ligne repliée sous le champ prix, dépliable pour qui veut
             vérifier. Une seule source — la réponse lens-analysis déjà
-            facturée — et aucun nouvel appel. Avant, 6 Pépites de contenu se
+            facturée — et aucun nouvel appel. Avant, 6 unités de contenu se
             réduisaient ici à une ligne de titre. */}
         {!prixManquant && estimateResult && (
           <AnalyseMarche
@@ -3025,7 +3025,7 @@ export function clearStepperPersistence() {
 
 // ── Générations déjà PAYÉES (2026-08-10) ─────────────────────────────────────
 // Le 10/08 au soir : spend_generate -6 à 21:47:08 PUIS -6 à 21:48:18, pour UNE
-// seule publication à 21:48:37. 12 Pépites pour une annonce.
+// seule publication à 21:48:37. 12 unités pour une annonce.
 // Mécanique : rouvrir « Publier » sur le même article appelle
 // clearStepperPersistence() (StockTab), qui efface le brouillon — donc les
 // annonces déjà générées. Le stepper repart vierge et l'effet d'arrivée au
@@ -3301,7 +3301,7 @@ export default function ListingPreviewScreen({
   const [stockCount, setStockCount] = useState(null);
   // Limite Free lue en config (source unique serveur, clé free_stock_limit) ;
   // repli 200 partagé. Déclarée ICI (avant inventoryFull qui la lit) — la
-  // section Pépites, plus bas, alimente sa valeur au même fetch coin_config.
+  // section unités, plus bas, alimente sa valeur au même fetch coin_config.
   const [stockLimitCfg, setStockLimitCfg] = useState(FREE_STOCK_LIMIT_FALLBACK);
   useEffect(() => {
     if (step !== 3 || !supabase || !userId || !canToggleStock || isPremium || isPro) return;
@@ -3383,7 +3383,7 @@ export default function ListingPreviewScreen({
   // L'app ne peut PAS relancer un scan sur une analyse déjà faite (Estimer
   // n'existe que sans prix, la carte Analyser est masquée — les « deux scans »
   // du 30/07 étaient deux uploads volontaires des mêmes photos). Le vrai
-  // défaut : 6 Pépites de contenu réduites à une ligne, le stepper laissait
+  // défaut : 6 unités de contenu réduites à une ligne, le stepper laissait
   // photoAnalysis null et n'affichait rien du marché. On rend la donnée
   // disponible à l'affichage — aucun nouvel appel, la réponse déjà payée.
   const [photoAnalysis, setPhotoAnalysis] = useState(
@@ -3696,14 +3696,14 @@ export default function ListingPreviewScreen({
     });
   }, [lockedSet]);
 
-  // Modale de conversion (solde de Pépites insuffisant pour publier)
+  // Modale de conversion (solde d'unités insuffisant pour publier)
   const [quotaModal, setQuotaModal] = useState({
     open: false, trigger: "publish", targetTiers: ["premium","pro"],
   });
 
   // ── Journal du tunnel (2026-08-09) ────────────────────────────────────────
   // Le stepper ouvre SA propre ConversionModal — c'est ici que vit le cas que
-  // personne ne voyait : « plus assez de Pépites pour publier ». Il ne
+  // personne ne voyait : « plus assez d'unités pour publier ». Il ne
   // journalisait rien du tout, alors que c'est l'ouverture la plus fréquente
   // de la modale et la moins volontaire. Même feature que l'app
   // (premium_cta_click, inchangée) ; c'est metadata.declencheur qui dit si
@@ -3718,7 +3718,7 @@ export default function ListingPreviewScreen({
     setQuotaModal({ open: true, ...etat });
   };
 
-  // ── Grille de prix (coin_config) — suppression Pépites (03/09) ────────────
+  // ── Grille de prix (coin_config) — suppression unités (03/09) ────────────
   // La monnaie interne n'existe plus : le wallet (coin_wallets), le solde et
   // la boutique sont SUPPRIMÉS. coin_config reste la source des quotas et des
   // clés de configuration ; les prix y sont à 0 (→ null ici), donc tous les
@@ -3729,7 +3729,7 @@ export default function ListingPreviewScreen({
   const coinPriceFor = (opt) => coinPrices?.[opt] ?? null;
   // Grille à deux axes (2026-08-04) : coinPriceFor rend le prix PHOTOS de
   // l'option (0/9/32, une fois par article) ; la publication coûte EN PLUS
-  // price_per_platform Pépites par plateforme (coin_config — jamais en dur).
+  // price_per_platform unités par plateforme (coin_config — jamais en dur).
   // Le total est la seule somme qui engage l'utilisateur : c'est LUI que
   // lisent le pré-check du step 1, le CTA Publier et la ConversionModal, et il
   // se recalcule à chaque plateforme cochée/décochée.
@@ -3948,7 +3948,7 @@ export default function ListingPreviewScreen({
 
   // ── Analyse photo optionnelle — MÊME edge function que Lens ───────────────
   // On envoie les URLs déjà uploadées (bucket listing-photos) : aucun ré-upload.
-  // lens-analysis débite les Pépites elle-même (spend_coins_for_lens) et renvoie
+  // lens-analysis débite les unités elle-même (spend_coins_for_lens) et renvoie
   // 402 { error:"insufficient_coins", price, balance } — on rebranche ce 402 sur
   // la ConversionModal existante (trigger 'lens'), comme le fait déjà l'onglet
   // Lens. Aucun chemin de paiement nouveau.
@@ -4156,7 +4156,7 @@ export default function ListingPreviewScreen({
         // client du step 1 et cet appel) : functions.invoke ne lit pas le
         // body d'erreur, il faut aller le chercher sur fnErr.context
         // (Response). Même UX que Lens et publication : ConversionModal avec
-        // chemin "Utiliser mes Pépites", jamais un message générique.
+        // chemin "Utiliser mes unités", jamais un message générique.
         let errBody = null;
         try { errBody = await fnErr.context?.json(); } catch { /* body non-JSON → chemin générique */ }
         // Bascule quotas (02/09) : les refus sont les quotas du cycle —
@@ -4452,7 +4452,7 @@ export default function ListingPreviewScreen({
   // ── LES PLATEFORMES QUI VONT RÉELLEMENT PARTIR — SOURCE UNIQUE (2026-08-11) ─
   // Quatre gardes lisaient quatre listes différentes, et c'est ce qui permet
   // qu'une plateforme retienne les autres :
-  //   · publishChips (le compteur du CTA et le total de Pépites) filtrait déjà
+  //   · publishChips (le compteur du CTA et le total d'unités) filtrait déjà
   //     sur sélectionnée + générée + adresse + non interdite ;
   //   · missingSharedFieldsDetailed ne regardait QUE `selected` — une
   //     plateforme interdite (cosmétique LBC) ou privée d'adresse de remise,
@@ -5921,7 +5921,7 @@ export default function ListingPreviewScreen({
       const plateformesInterdites = [...selected].filter(p => platformSupport?.[p] === "prohibited");
       // Troisième terme (2026-08-11) : SANS ANNONCE GÉNÉRÉE. Il manquait, alors
       // que `publishChips` — qui compte les plateformes et calcule le total de
-      // Pépites affiché sur le bouton — le filtre depuis toujours. Une
+      // unités affiché sur le bouton — le filtre depuis toujours. Une
       // plateforme cochée dont la génération n'a pas rendu de copie partait
       // donc quand même : une ligne de job avec des platform_fields VIDES, et
       // un débit de plus que ce que le CTA annonçait. « Jamais un total faux »
@@ -5935,7 +5935,7 @@ export default function ListingPreviewScreen({
       if (!plateformesAPublier.length) {
         // Rien de publiable ne restait. Le CTA est déjà gris dans ce cas
         // (publishChips), ce re-check attrape un état périmé ou une course.
-        // Aucune Pépite engagée.
+        // Aucune unité engagée.
         if (plateformesInterdites.length) {
           throw new Error(supportMessage(t, "prohibited", plateformesInterdites.map(p => PLATFORM_LABELS[p]).join(", ")));
         }
@@ -6386,7 +6386,7 @@ export default function ListingPreviewScreen({
         }
         // Garde serveur extension (2026-08-04) : la garde UI (handleNext /
         // handlePublish) rend ce chemin rare — profil pas encore chargé, ou
-        // client qui a contourné. Aucune Pépite débitée. L'accroche vaut
+        // client qui a contourné. Aucune unité débitée. L'accroche vaut
         // mieux qu'un bandeau ici aussi.
         if (pubRes.reason === "extension_required") {
           setShowExtGate(true);
@@ -6457,7 +6457,7 @@ export default function ListingPreviewScreen({
 
   // Adresse de remise absente (2026-08-10) : ces plateformes ne partiront pas,
   // elles ne doivent donc ni être comptées dans « Publier sur N » ni gonfler le
-  // total de Pépites affiché — « jamais un total faux ». lbcAdresseManquante
+  // total d'unités affiché — « jamais un total faux ». lbcAdresseManquante
   // vaut null tant qu'on ne sait pas : le compte reste alors celui d'avant.
   // Même raison pour un produit INTERDIT par la plateforme (2026-08-11) : ce
   // qui ne peut pas partir ne se compte pas et ne se facture pas.
@@ -6617,7 +6617,7 @@ export default function ListingPreviewScreen({
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
     if (step === 1) {
-      // (Suppression Pépites 03/09 : la garde de solde pré-génération est
+      // (Suppression unités 03/09 : la garde de solde pré-génération est
       // morte avec le wallet — les quotas se tranchent côté serveur, qui
       // répond generation_limit/402 avec son propre message.)
       // Lens unifié : une retouche choisie exige la génération classique (le
@@ -6643,7 +6643,7 @@ export default function ListingPreviewScreen({
         return;
       }
       // Extension jamais vue : le CTA ouvre l'accroche (sync dressing, lien à
-      // récupérer sur ordinateur) — aucun RPC tenté, aucune Pépite engagée.
+      // récupérer sur ordinateur) — aucun RPC tenté, aucune unité engagée.
       if (extensionBlocked) {
         setShowExtGate(true);
         return;
@@ -6965,7 +6965,7 @@ export default function ListingPreviewScreen({
           isPro={isPro}
           isBusiness={isBusiness}
           userId={userId}
-          // Bascule quotas (02/09) : les CAS « Pépites insuffisantes » sont
+          // Bascule quotas (02/09) : les CAS « unités insuffisantes » sont
           // morts — plus de coinPrice/coinBalance/onUseCoins. quotaInfo porte
           // le geste refusé (annonces/scans/retouches) pour l'encart dédié.
           quotaInfo={quotaModal.quotaInfo ?? null}

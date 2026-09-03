@@ -122,7 +122,7 @@ const privacyTexts = {
 };
 
 // CGV — réécrites le 03/09/2026 pour un produit SANS monnaie interne (la
-// version « Pépites » validée le 05/08 vit dans l'historique git). Les
+// version antérieure, validée le 05/08, vit dans l'historique git). Les
 // forfaits s'expriment en volumes mensuels d'actions (CGU 3.4) ; l'article 5
 // est la clause de TRANSITION qui couvre les achats de crédits antérieurs au
 // 02/09/2026 sans réintroduire la monnaie : droits acquis maintenus, aux
@@ -410,8 +410,8 @@ export default function Legal() {
             interne). Articles numérotés 1-6 en propre : la numérotation des
             sections existantes (4 RGPD, 8 Extension…) est référencée ailleurs
             (fiches stores, liens du footer) et ne bouge pas. L'ancienne
-            version « Pépites » (articles 1-9, validée 05/08) vit dans
-            l'historique git ; l'article 5 couvre les achats antérieurs. */}
+            version (articles 1-9, validée 05/08) vit dans l'historique
+            git ; l'article 5 couvre les achats antérieurs. */}
         <Section id="cgv" icon="🧾" title={en ? 'Terms of Sale — Paid services' : 'Conditions générales de vente (CGV) — Services payants'}>
           {cgvTexts[en ? 'en' : 'fr'].map((art, ai) => (
             <div key={art.t} style={{ marginBottom: ai === cgvTexts[en ? 'en' : 'fr'].length - 1 ? 0 : 18 }}>

@@ -324,7 +324,7 @@ serve(async (req) => {
   // dont l'ordinateur ne revient pas est simplement en attente d'une extension
   // vivante — on le RÉ-ARME en 'pending', quelle que soit l'étape ('deleted'
   // compris : la recréation n'a AUCUNE limite d'âge, on détient la capture).
-  // La Pépite n'est PAS rendue : le job va aboutir. Aucun trigger de solde ne
+  // L'unité n'est PAS rendue : le job va aboutir. Aucun trigger de solde ne
   // tire sur pending/needs_user (ils ne tirent que sur un statut terminal).
   // Conditions du balayage, inchangées :
   //   - processing depuis ≥ 24 h (processing_since, sinon created_at) ;
@@ -415,7 +415,7 @@ serve(async (req) => {
           .eq("status", "processing");
         if (!uErr) {
           processingRearmes++;
-          console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) processing abandonné → pending (reprenable, Pépite conservée)`);
+          console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) processing abandonné → pending (reprenable, unité conservée)`);
         }
       }
     }
@@ -432,7 +432,7 @@ serve(async (req) => {
   // new_vinted_item_id, dont la prise date de plus de REPRISE_DELETED_MIN,
   // repasse SEUL en 'pending' — la recréation repartira au premier poll d'une
   // extension vivante (la reprise de l'étape 'deleted' re-sonde l'état réel
-  // avant de recréer, cf. processRepublishJob). Aucune Pépite re-débitée :
+  // avant de recréer, cf. processRepublishJob). Aucune unité re-débitée :
   // le débit vit à la création du job, et aucun trigger de solde ne tire sur
   // processing→pending (ils ne tirent que sur un statut terminal).
   // ⛔ GARDE-FOU (Nico, 28/08) : ne JAMAIS ré-armer un job de cette étape dont
@@ -498,7 +498,7 @@ serve(async (req) => {
   // proprement et rien ne le relance. Même modèle de reprise, MÊMES garde-fous
   // (capture vérifiée EN BASE, verdict 'valide' exigé — capture_id absent,
   // ligne introuvable ou verdict autre ⇒ on ne touche à RIEN), compare-and-
-  // swap sur 'processing'. Aucune Pépite re-débitée : le débit vit à la
+  // swap sur 'processing'. Aucune unité re-débitée : le débit vit à la
   // création du job, aucun trigger de solde ne tire sur processing→pending.
   // ⚠️ Ne concerne QUE 'processing' : les pending à l'étape 'captured'
   // attendent normalement l'extension de leur propriétaire, on ne les lit pas.
@@ -565,9 +565,9 @@ serve(async (req) => {
 
   // ── needs_user À ÉCHÉANCE : 72 h sans geste → failed (point 5, GO Nico
   // 16/08) ──────────────────────────────────────────────────────────────────
-  // needs_user n'est pas terminal : aucun trigger ne rend jamais la Pépite —
+  // needs_user n'est pas terminal : aucun trigger ne rend jamais l'unité —
   // l'utilisateur a payé un service jamais rendu (art. 5 des ANCIENNES CGV
-  // Pépites, remplacées le 03/09 — les triggers restent en place pour l'ère
+  // unités, remplacées le 03/09 — les triggers restent en place pour l'ère
   // des débits ; relevé du
   // 16/08 : 46 républish 'captured' débités + 11 réservations publish non
   // soldées). Mécanisme validé : AUCUN chemin d'argent neuf. Le cron passe le
@@ -592,9 +592,9 @@ serve(async (req) => {
   //     rembourserait mais ABANDONNERAIT la recréation. Traités à part.
   //   - EXCLUSION garde Livres/ISBN (2026-08-22) : ces jobs n'attendent PAS un
   //     geste de l'utilisateur — ils attendent NOTRE fix (« On te préviendra
-  //     dès que c'est réglé »), la Pépite est déjà rendue à la mise en pause
+  //     dès que c'est réglé »), l'unité est déjà rendue à la mise en pause
   //     (update-job-status), et le solde 72 h écraserait le message par un
-  //     « relance quand tu veux » qui ferait payer une nouvelle Pépite pour un
+  //     « relance quand tu veux » qui ferait payer une nouvelle unité pour un
   //     job qui re-bloquerait. Reconnus par le marqueur needs_user_source OU
   //     par le préfixe du message : les 6 jobs pausés À LA MAIN par Nico le
   //     22/08 (même formulation) sont ainsi couverts SANS être réécrits.
@@ -631,7 +631,7 @@ serve(async (req) => {
         continue;
       }
       if (now - vuLe < ECHEANCE_NEEDS_USER_MS) continue;
-      // Nettoyage Pépites, 2e passe (03/09) : même « rien décompté » est une
+      // Nettoyage unités, 2e passe (03/09) : même « rien décompté » est une
       // mention de décompte — la monnaie interne n'existe plus, les messages
       // n'en parlent plus du tout.
       const msg = j.action === "republish"
@@ -678,7 +678,7 @@ serve(async (req) => {
   // migration de plus sur un historique déjà divergent ; et get-pending-jobs
   // ne distribue que 'pending' : les needs_user ne passent jamais par lui.
   // Étape 'deleted' EXCLUE (garde-fou : ce chantier n'y touche pas). Aucune
-  // Pépite re-débitée : le job repart tel quel, pepite_remboursee en poche
+  // unité re-débitée : le job repart tel quel, pepite_remboursee en poche
   // (aucun débit n'existe sur pending, le débit vit à la création du job).
   // Le passage en pending EFFACE l'erreur et retire needs_user_source ; au
   // tour suivant l'extension 0.6.9 recapture/ré-écrit le snapshot, et c'est
@@ -836,7 +836,7 @@ serve(async (req) => {
   //   - jobs publish 'failed' < 7 j portant la signature « hors FillSell »
   //     (message urlToFile des content scripts) : rapatrier PUIS ré-armer en
   //     'pending' quand TOUTES les photos sont à nous — JAMAIS de regénération
-  //     demandée à l'utilisateur (6 Pépites pour notre bug). Les triggers de
+  //     demandée à l'utilisateur (6 unités pour notre bug). Les triggers de
   //     solde sont idempotents par reservation_settled_at : un ré-armement ne
   //     re-débite ni ne re-rembourse rien.
   // BORNÉ à 2 balayages par job (platform_fields.photo_rehost_sweeps) : une

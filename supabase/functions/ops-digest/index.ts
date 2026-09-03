@@ -199,11 +199,11 @@ serve(async (req) => {
     );
   }
 
-  // 6. Abonnés que le filet refuse de créditer faute d'événement de paiement
-  // (cycle par utilisateur du 28/07). Soit un past_due légitime, soit un
-  // webhook de renouvellement qui ne parvient plus — dans les deux cas un
-  // client payant cesse de recevoir ses Pépites, ça ne doit pas se découvrir
-  // par hasard. La RPC porte la même condition que la garde SQL.
+  // 6. Abonnés dont le renouvellement mensuel n'est pas constaté (cycle par
+  // utilisateur du 28/07). Soit un past_due légitime, soit un webhook de
+  // renouvellement qui ne parvient plus — dans les deux cas un client payant
+  // cesse de recevoir ce que son abonnement prévoit, ça ne doit pas se
+  // découvrir par hasard. La RPC porte la même condition que la garde SQL.
   const awaitingRows: string[] = [];
   try {
     const { data: awaiting, error: e6 } = await supabase.rpc("coins_awaiting_payment");
@@ -289,11 +289,11 @@ serve(async (req) => {
     );
   }
 
-  // 9. Réservations de publication expirées (2026-08-05) — relâchées cette
-  // nuit par expire_publish_reservations (pg_cron 03:20 UTC, jobid 8) : des
-  // jobs restés 30 jours sans JAMAIS être exécutés ont été annulés et les
-  // Pépites de publication rendues. Signal produit (extension jamais
-  // installée ? compte abandonné ?) autant que comptable.
+  // 9. Publications jamais exécutées à 30 j (2026-08-05) — jobs annulés
+  // cette nuit par expire_publish_reservations (pg_cron 03:20 UTC, jobid 8),
+  // lignes coin_reservations soldées par le même geste (mécanique de
+  // l'ancienne ère, toujours active pour les vieilles lignes). Signal produit
+  // (extension jamais installée ? compte abandonné ?) autant que comptable.
   const reservationRows: string[] = [];
   try {
     const { data: expired, error: e9 } = await supabase
@@ -303,10 +303,10 @@ serve(async (req) => {
       .order("expired_at", { ascending: false });
     if (e9) throw new Error(e9.message);
     for (const r of (expired ?? []) as Array<Record<string, unknown>>) {
-      const rendues = Number(r.released_included ?? 0) + Number(r.released_purchased ?? 0);
+      const relache = Number(r.released_included ?? 0) + Number(r.released_purchased ?? 0);
       reservationRows.push(
-        `user ${r.user_id} — ${r.job_count} job(s) jamais exécutés, ${rendues} Pépites rendues` +
-        ` (réservé ${r.amount}, capturé ${r.captured}) — clic du ${String(r.created_at).slice(0, 10)}`,
+        `user ${r.user_id} — ${r.job_count} job(s) jamais exécutés, ligne coin_reservations soldée` +
+        ` (amount ${r.amount}, captured ${r.captured}, released ${relache}) — clic du ${String(r.created_at).slice(0, 10)}`,
       );
     }
   } catch (e) {
@@ -470,7 +470,7 @@ serve(async (req) => {
     ${
     iapAlerts.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
-      🔴 IAP — achats store sans crédit Pépites (${iapAlerts.length})
+      🔴 IAP — achats store payés jamais enregistrés dans coin_ledger (${iapAlerts.length})
     </h2>
     <ul style="margin:0;padding:0 0 0 18px;">
       ${iapAlerts.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
@@ -519,10 +519,10 @@ serve(async (req) => {
     ${
     reservationRows.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
-      ⏳ Réservations de publication expirées — 30 j sans exécution (${reservationRows.length})
+      ⏳ Publications jamais exécutées — jobs annulés à 30 j (${reservationRows.length})
     </h2>
     <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
-      Jobs annulés cette nuit par expire_publish_reservations, Pépites de publication rendues.
+      Jobs annulés cette nuit par expire_publish_reservations (lignes coin_reservations soldées).
       Regarder si ces comptes n'ont simplement jamais installé l'extension.
     </p>
     <ul style="margin:0;padding:0 0 0 18px;">

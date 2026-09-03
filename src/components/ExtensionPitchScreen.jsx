@@ -2,7 +2,7 @@
 // Affiché quand profiles.extension_last_seen_at est NULL — aucune copie de
 // l'extension n'a JAMAIS pollé pour ce compte, donc un job de publication ne
 // serait ramassé par personne (23 jobs de comptes mobiles dormaient en pending,
-// Pépites débitées, constat du 04/08). Le RPC spend_coins_and_publish porte la
+// unités débitées, constat du 04/08). Le RPC spend_coins_and_publish porte la
 // même garde côté serveur (reason 'extension_required') : cet écran évite de
 // découvrir le mur au dernier clic, il ne protège pas l'argent — le serveur
 // s'en charge.

@@ -1,28 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 // (PepiteIcon / PepiteAmount / PACKS : imports morts le 02/09 soir — plus une
-// Pépite ne s'affiche dans cette modale.)
+// unité ne s'affiche dans cette modale.)
 import PlanBadge, { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
 import { supabase } from '../lib/supabase';
 import { businessOfferVisible } from '../config/businessOffer';
 
-// ConversionModal — modale de conversion unique (upsell Pépites / Premium / Pro).
+// ConversionModal — modale de conversion unique (upsell unités / Premium / Pro).
 // Design « Conversion Modals » (Claude Design, projet e47b36df) intégré le
 // 2026-07-14, avec CORRECTION des valeurs : la BASE fait autorité, jamais le
 // design. Divergences relevées et corrigées (vérifiées le 2026-07-14) :
-//   • Pépites/mois Pro : écart affichage/base résolu le 2026-07-23 — tout se
+//   • unités/mois Pro : écart affichage/base résolu le 2026-07-23 — tout se
 //     lit en base désormais. Éprouvé le 2026-07-28 : les grants sont passés à
 //     300/800 puis SONT REVENUS à 150/600 le même jour, sans qu'une seule
 //     ligne d'affichage ait besoin de changer — seule coin_config a bougé.
-//   • le design étiquetait « Annonce avancée : 12 Pépites » → 12 est le coût de
+//   • le design étiquetait « Annonce avancée : 12 unités » → 12 est le coût de
 //     la retouche LÉGÈRE (price_ia_light). Origine = 3, avancée = 35.
 //   • le design promettait « Lens illimité » en Pro → FAUX : Lens coûte des
-//     Pépites sur TOUS les paliers (price_lens_overflow = 6). Pro n'a pas de
-//     Lens gratuit, il a plus de Pépites — on affiche donc une ESTIMATION
+//     unités sur TOUS les paliers (price_lens_overflow = 6). Pro n'a pas de
+//     Lens gratuit, il a plus d'unités — on affiche donc une ESTIMATION
 //     d'analyses (grant ÷ coût Lens), calculée, jamais « illimité ».
 //
 // Les quatre cas du design :
-//   CAS 1 · Pépites insuffisantes — Publier  (trigger 'publish', coinPrice ≠ null)
-//   CAS 2 · Pépites insuffisantes — Lens     (trigger 'lens',    coinPrice ≠ null)
+//   CAS 1 · unités insuffisantes — Publier  (trigger 'publish', coinPrice ≠ null)
+//   CAS 2 · unités insuffisantes — Lens     (trigger 'lens',    coinPrice ≠ null)
 //   CAS 3 · Free → Premium + Pro             (vue comparative, cartes empilées)
 //   CAS 4 · Premium → Pro                    (isPremium && !isPro, carte Pro seule)
 // Depuis 2026-07-22 : le CAS 3 montre les DEUX cartes d'emblée (PlansStack), et
@@ -56,7 +56,7 @@ const ANIM = `
 // coin_config avec le même repli.
 export const COIN_CONFIG_FALLBACK = {
   // ── Bascule quotas (02/09 soir) : les cartes lisent les QUOTAS par geste,
-  // plus les prix en Pépites. Même contrat que toujours : coin_config fait
+  // plus les prix en unités. Même contrat que toujours : coin_config fait
   // autorité, ces valeurs ne servent qu'en cas d'échec réseau.
   quota_annonces_free: 5, quota_annonces_premium: 40,
   quota_annonces_pro: 120, quota_annonces_business: 300,
@@ -67,7 +67,7 @@ export const COIN_CONFIG_FALLBACK = {
   quota_retouche_free: 0, quota_retouche_premium: 5,
   quota_retouche_pro: 20, quota_retouche_business: 50,
   // Grille du 2026-08-08 — MÊME PRIX POUR TOUS LES PALIERS : photos (par
-  // article) + 1 Pépite/plateforme + 6 Pépites la génération d'annonce.
+  // article) + 1 unité/plateforme + 6 unités la génération d'annonce.
   price_original: 0,
   price_ia_light: 9,
   price_ia_advanced: 32,
@@ -95,9 +95,9 @@ export const COIN_CONFIG_FALLBACK = {
 // de coin_config, sans redéployer une ligne de front.
 //
 // POURQUOI 150/600 et pas plus — logique à ne pas remettre en cause : un pack
-// de 100 Pépites se vend 5 €, donc une Pépite vaut 5 centimes. À 300, un
-// Premium à 12,99 € offrirait 15 € de Pépites, soit plus que l'abonnement
-// lui-même, et l'inventaire illimité deviendrait un cadeau. Les Pépites
+// de 100 unités se vend 5 €, donc une unité vaut 5 centimes. À 300, un
+// Premium à 12,99 € offrirait 15 € d'unités, soit plus que l'abonnement
+// lui-même, et l'inventaire illimité deviendrait un cadeau. Les unités
 // incluses doivent valoir MOINS que l'abonnement : la différence, c'est le
 // prix de la fonctionnalité. À 300, Pro n'avait de surcroît plus rien à
 // vendre face à Premium.
@@ -121,9 +121,9 @@ const PLAN_PRICES = {
 };
 
 // (Bascule quotas 02/09 : articlesParMois / coutArticleComplet — les
-// équivalences « ≈ N articles » calculées depuis les prix en Pépites — sont
+// équivalences « ≈ N articles » calculées depuis les prix en unités — sont
 // MORTS avec les CAS 1/2 et les bandeaux de grant. Eyebrow aussi : il ne
-// servait qu'aux écrans « Pépites insuffisantes ».)
+// servait qu'aux écrans « unités insuffisantes ».)
 
 // ── Blocs (au niveau module : jamais recréés à chaque rendu) ─────────────────
 
@@ -143,7 +143,7 @@ function Title({ children }) {
 // les cartes portent désormais LignesDiff, trois lignes fixes coche/croix.
 // Son style de rangée vit dans LignesDiff, à l'identique pour les coches.)
 
-// (BalanceCard — la jauge de solde — et PackList — les 4 packs de Pépites —
+// (BalanceCard — la jauge de solde — et PackList — les 4 packs d'unités —
 // sont MORTS le 02/09 soir avec la bascule quotas : plus de solde à jauger,
 // plus de packs à vendre. CoinStoreModal/coinPacks SUPPRIMÉS le 03/09 côté
 // fichiers, DÉBRANCHÉS — un achat en vol doit encore aboutir côté webhooks.)
@@ -152,12 +152,12 @@ function Title({ children }) {
 // Restructuration de lisibilité : les SEPT lignes quasi identiques répétées
 // sur les trois cartes en sortent — ce qui est COMMUN s'affiche UNE fois ici,
 // les cartes ne gardent que ce qui les distingue (grant, republication,
-// support). Le détail du tarif à la Pépite sort aussi des cartes : une seule
+// support). Le détail du tarif à l'unité sort aussi des cartes : une seule
 // ligne, ici, lue dans coin_config comme tout le reste (jamais en dur).
 // Exporté pour un éventuel réemploi (PlanDetailsModal) — même source unique
 // que les cartes.
 export function ToutesOffresBlock({ fr }) {
-  // Bascule quotas (02/09 soir) : la ligne de tarif en Pépites est MORTE, et
+  // Bascule quotas (02/09 soir) : la ligne de tarif en unités est MORTE, et
   // le bloc dit ce que TOUS les forfaits font (liste de la décision Nico) —
   // import du dressing, 4 plateformes, voix, retrait auto après vente.
   // Il vit AU-DESSUS des cartes : ce que fait le produit se lit avant les prix.
@@ -212,7 +212,7 @@ function Dismiss({ onClose, label }) {
 // L'automatique reste Pro/Business : verrou extension plan_non_pro
 // (background.js) aligné avec la décision — ne pas promettre au-delà.
 // ── BASCULE QUOTAS (02/09 soir) : les cartes parlent en GESTES RÉELS ────────
-// Plus une Pépite nulle part. Cinq lignes par carte, même ordre, coches
+// Plus une unité nulle part. Cinq lignes par carte, même ordre, coches
 // d'abord et croix en bas (tri STABLE — l'ordre relatif dans chaque groupe ne
 // bouge pas). Les volumes se lisent dans coin_config (K), jamais en dur — les
 // quotas sont ajustables sans OTA. Le mot « plafond » reste banni des cartes ;
@@ -326,7 +326,7 @@ function FreePlanCard({ fr, estMonPlan, K }) {
 
 // Carte Premium (CAS 3) — badge repris de PlanBadge, jamais recréé.
 // Bascule quotas (02/09 soir) : le bandeau de grant et ses équivalences
-// « ≈ N articles OU M analyses » (27/08) sont MORTS — les Pépites ont disparu
+// « ≈ N articles OU M analyses » (27/08) sont MORTS — les unités ont disparu
 // de l'expérience, les cinq lignes de gestes portent tous les volumes.
 // (Props historiques conservées pour les hôtes — seules fr/K/onUpgrade servent.)
 function PremiumPlanCard({ fr, K, grantPrem, lensCost, lensScans, articles, genPrice, pubUnit, repubPrice, onUpgrade }) {
@@ -362,7 +362,7 @@ function PremiumPlanCard({ fr, K, grantPrem, lensCost, lensScans, articles, genP
 }
 
 // Carte Pro (CAS 4) — fond sombre, badge ProBadge.
-// ⚠️ Aucune promesse « Lens illimité » : Lens est payant en Pépites sur TOUS les
+// ⚠️ Aucune promesse « Lens illimité » : Lens est payant en unités sur TOUS les
 // paliers. On annonce ce que le grant permet réellement (calculé).
 // Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
@@ -447,7 +447,7 @@ export function BusinessPlanCard({ fr, K, grantBusiness, lensCost, lensScans, ar
       {/* Lignes différenciantes (02/09 soir, cf. lignesDiff) — MÊMES phrases
           que Pro sur les trois lignes, y compris le support (« prioritaire »,
           promesse de priorité seulement, garde-fou du 09/08 inchangé) : seul
-          le volume de Pépites distingue Business, et il est au-dessus. */}
+          le volume d'unités distingue Business, et il est au-dessus. */}
       <LignesDiff fr={fr} palier="business" dark K={K} />
       <button
         onClick={() => onUpgrade('business')}
@@ -560,7 +560,7 @@ export default function ConversionModal({
 }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);
-  // Vue interne : 'entry' = écran du cas d'entrée (packs de Pépites en CAS 1/2) ;
+  // Vue interne : 'entry' = écran du cas d'entrée (packs d'unités en CAS 1/2) ;
   // 'plans' = vue comparative des abonnements. Depuis les CAS 1/2, le bouton
   // d'upsell BASCULE ici au lieu de partir en checkout — jamais de checkout
   // sans avoir vu la carte complète du plan (bug « Découvre Pro » 2026-07-22).
@@ -660,7 +660,7 @@ export default function ConversionModal({
     .sort((a, b) => RANG[a] - RANG[b]);
   paliersRef.current = sellable; // pour l'event d'abandon (paliers affichés)
 
-  // (CAS 1/2 « Pépites insuffisantes » et leur vue 'plans' : SUPPRIMÉS le
+  // (CAS 1/2 « unités insuffisantes » et leur vue 'plans' : SUPPRIMÉS le
   // 02/09 soir — insufficient_coins ne peut plus exister, cf. bascule quotas.)
 
   // ══ CAS 5 — Pro → Business (2026-08-09) ════════════════════════════════════
@@ -716,7 +716,7 @@ export default function ConversionModal({
   // ══ Plus rien à vendre ═════════════════════════════════════════════════════
   // Ne se dit QUE d'un utilisateur sans palier au-dessus — c'est-à-dire un
   // Business, ou un Pro tant que l'offre Business est masquée. (Les packs de
-  // Pépites ne se vendent plus — bascule 02/09.)
+  // unités ne se vendent plus — bascule 02/09.)
   if (sellable.length === 0) {
     return (
       <Sheet onClose={fermer}>

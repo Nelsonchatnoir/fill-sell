@@ -2,7 +2,7 @@
 // Posé le 2026-07-28, avant lancement.
 //
 // Quatre fonctions (voice-parse, normalize-title, stats-analysis,
-// lot-distribute) appelaient une API payante sans quota, sans Pépites et sans
+// lot-distribute) appelaient une API payante sans quota, sans unités et sans
 // log : impossible de savoir combien de fois elles tournaient, donc impossible
 // de chiffrer leur coût ou de repérer une boucle. Ce module apporte les deux
 // briques manquantes, et RIEN d'autre : on ne facture pas, on ne restreint pas

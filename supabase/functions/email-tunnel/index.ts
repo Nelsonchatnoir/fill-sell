@@ -202,15 +202,15 @@ function welcomeHtml(lang: string): string {
   const isFr = lang !== "en";
   // ── Refonte 2026-08-07 (texte Nico, mot pour mot) ──────────────────────────
   // L'ancien mail promettait « publie automatiquement […] en quelques
-  // secondes » et « Gagnez et dépensez des Pépites à chaque action » — périmé
+  // secondes » et « Gagnez et dépensez des unités à chaque action » — périmé
   // et faux. Le nouveau parle sync du dressing, republication, et du contrat
-  // Pépites réel (coût affiché avant validation). AUCUN montant en dur (ni
+  // unités réel (coût affiché avant validation). AUCUN montant en dur (ni
   // prix d'abonnement, ni coût d'action) — la grille vit dans l'app, comme
-  // dans les CGV. Seule exception, assumée par Nico : « 50 Pépites
+  // dans les CGV. Seule exception, assumée par Nico : « 50 unités
   // offertes » (grille 2026-08-08), le grant d'inscription, affiché aussi
   // sur la landing.
   // Gabarit inchangé : blocs verts, rangée de logos, encart ambre
-  // « ordinateur », visuel Pépites, CTA — le design n'est pas refait.
+  // « ordinateur », visuel unités, CTA — le design n'est pas refait.
   const logosRow = `
       <table cellpadding="0" cellspacing="0" width="100%" role="presentation"
         style="background:#F0FDF9;border-radius:12px;margin:0 0 18px;">
@@ -280,7 +280,7 @@ function welcomeHtml(lang: string): string {
         jour automatiquement à chaque nouvelle version.
       </p>
     </div>
-    <!-- Bascule quotas (02/09) : plus de Pépites — le mail dit ce que le
+    <!-- Bascule quotas (02/09) : plus d'unités — le mail dit ce que le
          forfait gratuit PERMET, en gestes réels (mêmes mots que l'app). -->
     <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
       <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">
@@ -352,7 +352,7 @@ function welcomeHtml(lang: string): string {
         with every new version.
       </p>
     </div>
-    <!-- Nettoyage Pépites (02/09 soir) : le bloc « Your Nuggets » (oublié à
+    <!-- Nettoyage unités (02/09 soir) : le bloc « Your units » (oublié à
          la bascule — la version FR avait déjà été recalée en v54) parle
          désormais les gestes du forfait, comme le FR. -->
     <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 24px;">
@@ -1274,7 +1274,9 @@ serve(async (req) => {
       ["Email", a.email ?? "—"],
       ["Produit / plan", a.produit ?? "—"],
       ["Montant store", a.montant ?? "—"],
-      ["Pépites créditées", a.pepites ?? "—"],
+      // Champ `pepites` : nom hérité du contrat AlertePaiement (posé par les
+      // webhooks stores, intouchables — droits acquis). Libellé neutre ici.
+      ["Quantité enregistrée (coin_ledger)", a.pepites ?? "—"],
       ["Référence transaction", a.ref ?? "—"],
       ["Retour RPC", a.rpc == null ? "—" : JSON.stringify(a.rpc)],
     ];
@@ -1284,10 +1286,10 @@ serve(async (req) => {
 <body style="margin:0;padding:24px;background:#F2F2EE;">
   <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px;padding:26px;">
     <h1 style="margin:0 0 6px;font-size:18px;font-family:sans-serif;color:${ok ? "#111827" : "#B91C1C"};">
-      ${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON CRÉDITÉ"}
+      ${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON ENREGISTRÉ"}
     </h1>
     <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
-      ${esc(new Date().toISOString())}${ok ? "" : " — le client a payé, la Pépite n'est pas arrivée. Créditer à la main."}
+      ${esc(new Date().toISOString())}${ok ? "" : " — le client a payé, rien n'est arrivé sur son compte. Enregistrer à la main (coin_ledger, retour RPC ci-dessous)."}
     </p>
     <table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px;">
       ${lignes.map(([k, v]) => `<tr>
@@ -1300,7 +1302,7 @@ serve(async (req) => {
 </body></html>`;
     const envoye = await sendEmail(
       TO_OPS,
-      `${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON CRÉDITÉ"} — ${esc(a.canal)} ${esc(a.produit ?? "")}`.trim(),
+      `${ok ? "💰 Paiement reçu" : "🚨 PAIEMENT NON ENREGISTRÉ"} — ${esc(a.canal)} ${esc(a.produit ?? "")}`.trim(),
       html,
     );
     return new Response(JSON.stringify({ ok: true, mail_envoye: envoye }), {

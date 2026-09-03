@@ -19,8 +19,8 @@
 // ce fichier — seule coin_config a bougé.
 import { useEffect, useState } from 'react';
 import { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
-// (import PepiteIcon retiré au nettoyage Pépites du 02/09 soir — plus une
-// Pépite dans cette modale.)
+// (import PepiteIcon retiré au nettoyage unités du 02/09 soir — plus une
+// unité dans cette modale.)
 import { COIN_CONFIG_FALLBACK, ProPlanCard, BusinessPlanCard } from './ConversionModal';
 import { businessOfferVisible } from '../config/businessOffer';
 
@@ -92,7 +92,7 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
 
   const K = cfg || COIN_CONFIG_FALLBACK;
   // Bascule quotas (02/09) : le plan se décrit en GESTES RÉELS lus dans
-  // coin_config — plus une Pépite à l'écran. Le palier courant pilote les clés.
+  // coin_config — plus une unité à l'écran. Le palier courant pilote les clés.
   const palierCourant = isBusiness ? 'business' : isPro ? 'pro' : 'premium';
   const qAnnonces = K[`quota_annonces_${palierCourant}`];
   const qRetouches = K[`quota_retouche_${palierCourant}`] ?? 0;
@@ -185,7 +185,7 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
             background: C.paper, border: `1.5px solid ${C.teal}`, borderRadius: 22,
             padding: '18px 18px 20px', boxShadow: '0 12px 30px -16px rgba(27,110,98,0.4)',
           }}>
-            {/* (Le bandeau « N Pépites/mois » et ses équivalences sont MORTS
+            {/* (Le bandeau « N unités/mois » et ses équivalences sont MORTS
                 le 02/09 avec la bascule quotas — la liste dit les volumes.) */}
             <Features dark={sombre} items={features} />
           </div>

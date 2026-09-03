@@ -3,7 +3,7 @@
 // s'affiche avant lui. La modale devise qui le précédait est supprimée (le
 // défaut 'EUR' en base est le bon, le réglage vit dans les Paramètres), et la
 // modale pseudo aussi — la question du nom est devenue la dernière marche
-// d'ici. Un écran = une idée = une action, aucune mention de Pépites.
+// d'ici. Un écran = une idée = une action, aucune mention d'unités.
 //
 // Étapes :
 //   'choix'   → « Tu vends déjà sur Vinted ? » — deux réponses, pas de

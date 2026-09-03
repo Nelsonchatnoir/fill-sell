@@ -53,7 +53,7 @@ const HUMANIZE_PLATFORM_LABELS = PLATFORM_LABELS;
 const HUMANIZE_PLATFORM_SITES = { vinted: 'vinted.fr', leboncoin: 'leboncoin.fr', beebs: 'beebs.app', ebay: 'ebay.fr' };
 // Statuts d'où un job ne repart JAMAIS tout seul. Miroir du trigger
 // cross_post_job_settle_reservation (migration 20260805000000), qui rend la
-// Pépite réservée sur exactement ces statuts-là. 'sold' en est volontairement
+// unité réservée sur exactement ces statuts-là. 'sold' en est volontairement
 // absent : la réservation y est bien soldée, mais un job vendu n'est l'échec de
 // rien et ne passe pas par ce chemin de message.
 const JOB_STATUS_TERMINAL = new Set(['failed', 'cancelled']);
@@ -81,15 +81,18 @@ const TECH_ERR_MARKERS_RE = new RegExp([
 ].join('|'), 'i');
 
 // ── Bascule quotas (02/09) : plus de monnaie interne — purge à l'AFFICHAGE ───
-// Le système de Pépites a été supprimé le 02/09, mais les extensions du parc
+// Le système d'unités a été supprimé le 02/09, mais les extensions du parc
 // (jusqu'à 0.6.16 incluse pour certaines chaînes) et les jobs historiques
-// portent encore des phrases Pépites dans cross_post_jobs.error : « Ta Pépite
+// portent encore des phrases unités dans cross_post_jobs.error : « Ta unité
 // reste réservée : elle te sera rendue automatiquement sous 72 h… », « la
-// Pépite est rendue », « Rien ne t'a été décompté ». La colonne est une DONNÉE
+// unité est rendue », « Rien ne t'a été décompté ». La colonne est une DONNÉE
 // (on n'y touche pas) et le parc n'a pas d'OTA : le retrait se fait ici, à
 // l'affichage — clause accolée d'abord (pour garder « ton annonce est
 // intacte »), phrase entière ensuite, jamais un mot isolé qui laisserait une
 // tournure bancale. Sans /g sur le test d'entrée (lastIndex, cf. PROMESSE_*).
+// ⚠️ Ces motifs matchent le MOT HISTORIQUE tel qu'il vit dans les DONNÉES
+// (cross_post_jobs.error du parc) — ils ne doivent JAMAIS être « nettoyés » :
+// c'est précisément ce qui les efface de l'écran.
 const MOT_MONNAIE_RE = /Pépites?|pépites?|Nuggets?|décompté|deducted/;
 export function sansMentionMonnaie(texte) {
   const t0 = String(texte ?? '');
@@ -118,7 +121,7 @@ export function humanizeJobError(job, lang = 'fr') {
   // un needsUser est ré-armé au plus MAX_NEEDS_USER_RETRIES = 2 fois, à
   // quelques MINUTES d'intervalle — jamais le temps de résoudre une
   // vérification à la main. La 2ᵉ occurrence passe le job en `failed`, ce qui
-  // déclenche settle_publish_reservation('release') : la Pépite engagée
+  // déclenche settle_publish_reservation('release') : l'unité engagée
   // revient (coin_ledger kind='release_publish', reason='job_terminal').
   // Relevé prod du 2026-08-10 : 6 jobs `error LIKE 'CHALLENGE %'`, les 6 en
   // `failed`, 0 repris — la reprise promise n'a jamais eu lieu pour personne.
@@ -135,7 +138,7 @@ export function humanizeJobError(job, lang = 'fr') {
         ? `${name} is showing an anti-robot check instead of the listing form. One automatic retry is left and it happens within minutes — pass the check on ${name} in Chrome right now, otherwise the job will stop.`
         : `${name} affiche une vérification anti-robot à la place du formulaire. Il reste une tentative automatique, et elle a lieu dans les minutes qui viennent — passe la vérification sur ${name} dans Chrome tout de suite, sinon le job s'arrêtera.`;
     }
-    // Terminé : c'est fini, personne ne reprendra. (Nettoyage Pépites 03/09 :
+    // Terminé : c'est fini, personne ne reprendra. (Nettoyage unités 03/09 :
     // plus aucune mention de décompte — la monnaie interne n'existe plus.)
     const acte = job?.action === 'republish' ? 'republication' : 'publication';
     return en
@@ -217,7 +220,7 @@ export function humanizeJobError(job, lang = 'fr') {
   // « ton annonce est intacte » — disparaissait à cause du détail technique
   // (HTTP 403/404/400). Gate sur TECH_ERR_MARKERS_RE : les variantes sans
   // marqueur (sonde injoignable, motif connexion) passent déjà telles quelles
-  // aujourd'hui et gardent leur circuit. « La Pépite est rendue » n'est
+  // aujourd'hui et gardent leur circuit. « L'unité est rendue » n'est
   // affirmé que là où le message source l'affirme (variantes « annulée »).
   if (/^Republication (annulée|en pause) avant toute suppression/i.test(raw)
       && TECH_ERR_MARKERS_RE.test(raw)) {
@@ -267,7 +270,7 @@ export function humanizeJobError(job, lang = 'fr') {
   // préfixe est réécrit en texte anonyme, le brut ne passe JAMAIS — une
   // variante imprévue tombe ici, pas dans le brut. « Annonce intacte » n'est
   // affirmé que si le message source l'affirme (même règle que la famille
-  // republication ci-dessus). (Nettoyage Pépites 03/09 : plus aucune mention
+  // republication ci-dessus). (Nettoyage unités 03/09 : plus aucune mention
   // de décompte, quelle que soit l'ère du message source.)
   if (/^Annulé (par le support|manuellement|le )/i.test(raw)) {
     const termine = JOB_STATUS_TERMINAL.has(job?.status);
@@ -410,7 +413,7 @@ export function humanizeJobError(job, lang = 'fr') {
 // manuelle. La colonne en base reste intacte : filtrage à l'affichage seul.
 export function jobErrorSansFaussePromesse(job, lang = 'fr') {
   // sansMentionMonnaie AVANT tout : les jobs vivants passent « bruts », mais
-  // le brut du parc porte encore « Ta Pépite reste réservée… sous 72 h »
+  // le brut du parc porte encore « Ta unité reste réservée… sous 72 h »
   // (cas josephinecerni, job df496c00 du 03/09) — la monnaie n'existe plus.
   const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
   if (!raw) return '';
@@ -743,7 +746,7 @@ const OBJECT_ICON_RULES = [
   // ⚠️ `draps?` avec bornes Unicode et non \b (2026-08-15, robe Shein Carla) :
   // \b est ASCII — « é » n'est pas un caractère de mot, donc \bdrap\b matchait
   // dans « drapé »/« drapée » et une ROBE partait en 🛌 → catégorie Vinted
-  // « Maison > Textiles > Linge de lit » (5 jobs, 42 Pépites brûlées). Même
+  // « Maison > Textiles > Linge de lit » (5 jobs, 42 unités brûlées). Même
   // piège que gant/élégant documenté plus bas.
   [/housse.?de.?couette|parure.?de.?lit|taie.?d.?oreiller|drap.?housse|(?<![\p{L}\p{N}])draps?(?![\p{L}\p{N}])/iu, '🛌'],    // avant 🛏️ lit (scission literie/meuble)
   [/lit.?parapluie|lit.?à.?barreaux|berceau|cododo|table.?à.?langer|réducteur.?de.?lit|\btoise\b/i, '🚼'],    // avant 🛏️ lit, 🪑 chaise ET ☂️ parapluie (lit parapluie = lit de voyage bébé, pas un parapluie)
@@ -1587,7 +1590,7 @@ ${s} .btn-publier.is-complete{background:#F1F1EE;color:var(--mute);border:1px so
 ${s} .btn-vendre{font-size:11px;font-weight:600;color:var(--mute);text-align:center;background:transparent;border:1px solid var(--border);padding:5px 4px;border-radius:9px;cursor:pointer;font-family:inherit;}
 /* Pastille de cooldown de republication — « 🔁 Dans ~N h ». Classe DÉDIÉE,
    posée en plus de .btn-vendre : nowrap ne doit surtout PAS être global à
-   .btn-vendre, car le libellé prixé « Republier (1 ‹icône Pépite›) » (80px,
+   .btn-vendre, car le libellé prixé « Republier (1 ‹icône unité›) » (80px,
    sans émoji précisément pour tenir dans les 82px utiles) doit pouvoir se
    replier entre le verbe et le groupe (prix) si le prix passe à deux
    chiffres — l'y interdire le ferait DÉBORDER au lieu de se replier.

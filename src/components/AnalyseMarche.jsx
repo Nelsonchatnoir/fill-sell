@@ -3,7 +3,7 @@ import { formatCurrency } from "../utils/shared";
 
 // ── AnalyseMarche — LE rendu de l'analyse de marché, partout (2026-07-31) ────
 //
-// UNE SEULE SOURCE : la réponse lens-analysis DÉJÀ PAYÉE (6 Pépites), passée
+// UNE SEULE SOURCE : la réponse lens-analysis DÉJÀ PAYÉE (6 unités), passée
 // en prop. Ce composant n'appelle rien, ne recalcule aucun prix, ne relance
 // aucun scan — il présente. Deux variantes :
 //   · variant="verdict"     → écran de résultat Lens : c'est LE contenu.
@@ -13,7 +13,7 @@ import { formatCurrency } from "../utils/shared";
 // ce que le modèle produit au même niveau — prix, prix d'achat conseillé,
 // fourchette basse/moyenne/haute, annonces, vitesse, plateformes, 3 conseils,
 // deal score, description. Ça se lisait comme un rapport, pas comme une
-// réponse. Et le stepper, lui, ne montrait RIEN de cette analyse : 6 Pépites
+// réponse. Et le stepper, lui, ne montrait RIEN de cette analyse : 6 unités
 // de contenu réduites à une ligne. Un seul composant règle les deux.
 //
 // HIÉRARCHIE (validée par Nico le 30/07) :

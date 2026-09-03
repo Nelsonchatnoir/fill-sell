@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { AppleKeyError, chargerCléApple, genererJWTApple } from "../_shared/apple-jwt.ts";
 
 // Relecture de l'historique App Store Server Notifications V2 (180 jours max).
-// Créée le 2026-07-28 (incident raraajaws : pack de Pépites payé jamais
+// Créée le 2026-07-28 (incident raraajaws : pack d'unités payé jamais
 // crédité, notification ONE_TIME_CHARGE jetée par apple-iap-webhook).
 // Usage : outil d'admin + source du monitoring ops-digest (croisement avec
 // les refs apple:% de coin_ledger).

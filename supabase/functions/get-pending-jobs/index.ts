@@ -199,7 +199,7 @@ serve(async (req) => {
     // de coin_config.republish_plafond_jour republications EXÉCUTÉES aujourd'hui
     // (published du jour Europe/Paris, toutes sources manuelles ET auto), plus
     // aucun job republish n'est servi au poll d'exécution jusqu'à minuit. Les
-    // jobs restent 'pending', Pépite déjà débitée, et repartent le lendemain.
+    // jobs restent 'pending', unité déjà débitée, et repartent le lendemain.
     // Actif côté serveur SANS attendre un paquet CWS ; le plafond embarqué dans
     // l'extension (même clé) reste en place — ceinture et bretelles.
     // EXEMPTION : l'étape 'deleted' n'est JAMAIS plafonnée — une annonce déjà

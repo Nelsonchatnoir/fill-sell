@@ -113,9 +113,9 @@ const LISTING_ID_PATTERNS: Record<string, RegExp> = {
 //     ISBN sera livré (l'étape reste 'captured', l'extension re-capture et
 //     repart toute seule).
 //
-// PÉPITE (consigne du 22/08) : rendue IMMÉDIATEMENT, une seule fois — ordre
+// UNITÉ (consigne du 22/08) : rendue IMMÉDIATEMENT, une seule fois — ordre
 // « needs_user d'abord (CAS sur le statut = mutex), refund ensuite, marqueur
-// pepite_remboursee en dernier » : un crash au pire double-rembourse 1 Pépite,
+// pepite_remboursee en dernier » : un crash au pire double-rembourse 1 unité,
 // jamais l'inverse (marqueur posé sans refund = utilisateur jamais remboursé,
 // même au terminal — inacceptable). Le trigger republish_refund_on_terminal
 // lit le même marqueur : aucun double crédit au solde éventuel.
@@ -220,7 +220,7 @@ const MSG_GARDE_LIVRES =
 // une couleur à son annonce sur Vinted puis relancer — la recapture relit la
 // couleur et la garde laisse passer. Le message le dit.
 // Kill switch : coin_config 'republish_couleur_garde' (clé absente = active ;
-// value=0 = off). Pépite rendue immédiatement (consigne Nico 24/08), même
+// value=0 = off). unité rendue immédiatement (consigne Nico 24/08), même
 // mécanique et mêmes marqueurs que la garde Livres.
 // ── EXEMPTION 0.6.9 de la garde Couleur (2026-08-29, décision Nico — modèle
 // 1e9a3d3, la phrase « L'exempté reste soumis à la garde Couleur » est levée
@@ -570,9 +570,9 @@ serve(async (req) => {
             .select("id")
             .maybeSingle();
           if (bloque) {
-            // Pépite rendue tout de suite (consigne 22/08), une seule fois :
+            // unité rendue tout de suite (consigne 22/08), une seule fois :
             // marqueur pepite_remboursee posé APRÈS le refund réussi (un crash
-            // entre les deux double-rembourse au pire 1 Pépite ; l'ordre
+            // entre les deux double-rembourse au pire 1 unité ; l'ordre
             // inverse pouvait laisser un utilisateur jamais remboursé). Le
             // trigger republish_refund_on_terminal lit le même marqueur.
             const pfCur = (jRep.platform_fields ?? {}) as Record<string, unknown>;
@@ -586,7 +586,7 @@ serve(async (req) => {
                 p_kind: "refund_republish",
               });
               if (rErr) {
-                console.error(`[update-job-status] ${garde.log} job=${jobId} : refund_coins EN ÉCHEC (${rErr.message}) — Pépite NON rendue, à réparer à la main`);
+                console.error(`[update-job-status] ${garde.log} job=${jobId} : refund_coins EN ÉCHEC (${rErr.message}) — unité NON rendue, à réparer à la main`);
               } else {
                 await userClient
                   .from("cross_post_jobs")
@@ -641,10 +641,10 @@ serve(async (req) => {
     // seulement. JAMAIS les échecs techniques photo (re-hébergement Bad
     // Request : rien que l'utilisateur puisse faire) ni les vrais terminaux
     // (annonce 404/vendue), qui ne portent pas ces motifs.
-    // ⚠️ Pépite : needs_user n'est pas terminal → pas de remboursement ici.
+    // ⚠️ unité : needs_user n'est pas terminal → pas de remboursement ici.
     // Le balayage 72 h (handler-watch) soldera en failed si l'utilisateur ne
     // relance pas, et le trigger republish_refund_on_terminal rendra la
-    // Pépite à CE moment-là — le message l'annonce.
+    // unité à CE moment-là — le message l'annonce.
     // Devient un no-op naturel le jour où l'extension pose needs_user
     // elle-même : plus aucun failed ne portera ces motifs.
     let statutEffectif = status;
@@ -670,7 +670,7 @@ serve(async (req) => {
             categorie: "Catégorie", etat: "État", couleur: "Couleur",
             isbn: "ISBN", description: "Description",
           };
-          // Nettoyage Pépites, 2e passe (03/09) : même « Rien ne t'a été
+          // Nettoyage unités, 2e passe (03/09) : même « Rien ne t'a été
           // décompté » est une mention de décompte — la monnaie interne
           // n'existe plus, les messages n'en parlent plus du tout.
           if (mCapture) {
@@ -730,12 +730,12 @@ serve(async (req) => {
     // Signature PROPRE À CHROME, pas à une plateforme : appliquée quelle que
     // soit la plateforme ou l'action. Les autres signatures d'échec (REAUTH
     // VENTE, clic sans effet…) ne matchent pas et ne sont PAS touchées.
-    // ⚠️ Pépite : requalifier AVANT l'écriture évite le passage par 'failed',
+    // ⚠️ unité : requalifier AVANT l'écriture évite le passage par 'failed',
     // donc le trigger cross_post_jobs_settle_reservation ne relâche rien — la
     // réservation reste posée et la reprise ne re-débite JAMAIS (le débit est
     // porté par la réservation créée à la création du job, pas par tentative).
     // Borné : au-delà de MAX_BFCACHE_REARMS reprises, failed avec un message
-    // clair (et là seulement, le trigger rend la Pépite — une fois).
+    // clair (et là seulement, le trigger rend l'unité — une fois).
     const BFCACHE_RE = /back\/forward cache/i;
     const MAX_BFCACHE_REARMS = 3;
     let bfcacheRearms: number | null = null;
@@ -835,7 +835,7 @@ serve(async (req) => {
       // (affiché au survol/tap du badge « À compléter »), le détail structuré
       // vit dans platform_fields.needsUserField (déjà dans le patch ci-dessus).
       // messageEffectif (palliatif capture incomplète) prime sur body.error,
-      // qui porte encore l'ancien message failed « la Pépite est rendue » —
+      // qui porte encore l'ancien message failed « l'unité est rendue » —
       // faux en needs_user.
       patch.error = messageEffectif
         ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null);

@@ -28,7 +28,7 @@ function getInitialLang() {
 }
 
 /* Lot 1 (2026-08-09) — refonte compréhension. Règles tenues ici :
-   - le mot « Pépites » n'apparaît NULLE PART avant la section Tarifs ;
+   - le mot « unités » n'apparaît NULLE PART avant la section Tarifs ;
    - aucune promesse de retrait « tout seul / instantané / zéro risque » :
      le retrait après vente est SEMI-automatique (détection auto, confirmation
      utilisateur — pending_removal + bandeau), le texte doit le dire ;
@@ -94,7 +94,7 @@ const COPY = {
     pricePro: '29,99 €',
     proAds: '{ADS_PRO} annonces créées et publiées sur les 4 plateformes chaque mois',
     ctaFree: 'Commencer gratuitement', ctaPremium: 'Passer Premium', ctaPro: 'Passer Pro',
-    // (coinsTitle/coinsBody supprimées au nettoyage Pépites du 02/09 soir —
+    // (coinsTitle/coinsBody supprimées au nettoyage unités du 02/09 soir —
     // chaînes mortes, l'encadré qui les lisait est déjà remplacé.)
 
     faqTitle: "Les questions qu'on nous pose.",
@@ -164,7 +164,7 @@ const COPY = {
     pricePro: '€29.99',
     proAds: '{ADS_PRO} listings created and published on all 4 marketplaces every month',
     ctaFree: 'Start free', ctaPremium: 'Go Premium', ctaPro: 'Go Pro',
-    // (coinsTitle/coinsBody removed with the 02/09 Pépites cleanup — dead
+    // (coinsTitle/coinsBody removed with the 02/09 unités cleanup — dead
     // strings, the block that read them is already replaced.)
 
     faqTitle: 'The questions we get asked.',
@@ -181,7 +181,7 @@ const COPY = {
    « Tout le reste » (8 cartes) diluait la page et sa carte « Stock illimité »
    contredisait le plafond Free de 200 articles (coin_config.free_stock_limit).
    Chaque libellé se comprend sans connaître le produit : « Lens » ne sort
-   jamais sans son sous-titre explicatif. Aucun coût en Pépites ici — la
+   jamais sans son sous-titre explicatif. Aucun coût en unités ici — la
    monnaie n'apparaît qu'à partir de la section Tarifs. */
 const TOOLS = {
   fr: [
@@ -201,10 +201,10 @@ const TOOLS = {
 /* Cartes de plans — refonte lot 1 (2026-08-09) : chaque carte annonce d'abord
    un RÉSULTAT (« ≈ N annonces créées et publiées sur les 4 plateformes / mois »,
    jeton {ADS_*} calculé depuis les grants lus en base), les coûts unitaires
-   sont SORTIS des puces (ils restent dans la FAQ « C'est quoi les Pépites ? »).
+   sont SORTIS des puces (ils restent dans la FAQ « C'est quoi les unités ? »).
    La landing DIVERGE donc volontairement du squelette commun ConversionModal /
    PlanDetailsModal de l'app (07-08/08) : l'app parle à un utilisateur qui
-   connaît déjà les Pépites, la landing à un visiteur qui ne les connaît pas.
+   connaît déjà les unités, la landing à un visiteur qui ne les connaît pas.
    Les jetons {FREE}/{PREMIUM}/{PRO}/{LENS_*}/{ADS_*} sont remplis par
    fillGrants : la page ne peut pas promettre un volume qu'on ne sert pas. */
 const PUBLISH_LINE = {
@@ -214,10 +214,10 @@ const PUBLISH_LINE = {
 
 const PLANS = {
   fr: {
-    // « N Pépites/mois » + republication au squelette UNIFORME — mêmes
+    // « N unités/mois » + republication au squelette UNIFORME — mêmes
     // formulations que les modales de l'app (uniformisation 27/08 soir,
     // décision Nico). Business n'a pas de carte ici (hors landing).
-    // Bascule quotas (02/09) : plus une Pépite sur les cartes — des GESTES,
+    // Bascule quotas (02/09) : plus une unité sur les cartes — des GESTES,
     // aux volumes lus en base (jetons {…} ci-dessous).
     free: [
       '{REPUB_FREE} republications Vinted offertes, à vie',
@@ -315,7 +315,7 @@ const FAQ = {
    un zéro ou un squelette — une page tarifaire vide coûte plus cher qu'une
    page légèrement datée. À tenir à jour au fil des changements de grant, mais
    ce n'est JAMAIS ce qui s'affiche quand la base répond. */
-/* Bascule quotas (02/09) : les jetons ne dérivent plus des grants de Pépites
+/* Bascule quotas (02/09) : les jetons ne dérivent plus des grants d'unités
    mais des QUOTAS PAR GESTE de coin_config — la même source que les cartes de
    l'app. Filet, pas source : valeurs de la grille du 02/09. */
 /* Fusion scans+annonces (02/09 soir) : les jetons SCANS_* sont morts — un
@@ -337,7 +337,7 @@ const fillGrants = (texte, g) =>
     .replace(/\{RETOUCHE_PRO\}/g, g.RETOUCHE_PRO);
 
 /* ── Fragments SVG réutilisés ───────────────────────────────── */
-/* (La gemme <Pepite/> a été SUPPRIMÉE au nettoyage Pépites du 02/09 soir —
+/* (La gemme <Pepite/> a été SUPPRIMÉE au nettoyage unités du 02/09 soir —
    plus aucune iconographie de la monnaie sur la landing.) */
 
 /* Étoile/couronne dorée des chips Premium & Pro : dégradé doré inliné, id
@@ -439,7 +439,7 @@ export default function LandingPage() {
       try {
         const { supabase } = await import('../lib/supabase');
         // Bascule quotas (02/09) : la landing lit les QUOTAS par geste,
-        // plus les grants de Pépites. Fusion du 02/09 soir : quota_scan_*
+        // plus les grants d'unités. Fusion du 02/09 soir : quota_scan_*
         // n'est plus lu (les clés sont à 0 en base, un scan consomme une
         // annonce — un seul volume).
         const { data, error } = await supabase
@@ -627,7 +627,7 @@ export default function LandingPage() {
               </div>
             )}
 
-            {/* Lot 1 : plus de gemme Pépite ici — la monnaie interne n'apparaît
+            {/* Lot 1 : plus de gemme unité ici — la monnaie interne n'apparaît
                 qu'à partir de la section Tarifs. */}
             <div className="lp-hero__trust">
               <CheckDisc />
@@ -938,7 +938,7 @@ export default function LandingPage() {
               <div className="lp-plan__price"><b>{t.priceFree}</b></div>
               {/* Lot 1 : la ligne sous le prix annonce un RÉSULTAT (≈ N annonces
                   créées + publiées sur les 4 plateformes), pas un solde de
-                  crédits — le grant en Pépites est la 1re puce de la liste. */}
+                  crédits — le grant en unités est la 1re puce de la liste. */}
               <div className="lp-plan__coins">{fillGrants(t.freeAds, grants)}</div>
               <div className="lp-plan__feats">
                 {PLANS[lang].free.map((f) => (
@@ -990,7 +990,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Bascule quotas (02/09) : l'encadré Pépites est MORT — la monnaie
+          {/* Bascule quotas (02/09) : l'encadré unités est MORT — la monnaie
               interne n'existe plus côté produit. Sa place dit la règle simple
               des forfaits. */}
           <div className="lp-coins lp-reveal">

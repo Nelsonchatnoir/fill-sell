@@ -2019,7 +2019,7 @@ async function fillListingForm(job) {
     // faussée côté app) : la grille affichait Simple/Double/Queen/King Size,
     // la taille « S / 36 / 8 » ne matchait rien, le champ était SAUTÉ en
     // silence, et le gate des requis rendait un message qui accusait la
-    // TAILLE avec la liste du catalogue — 5 essais, 42 Pépites brûlées.
+    // TAILLE avec la liste du catalogue — 5 essais, 42 unités brûlées.
     // Désormais : taille fournie + options réellement affichées + ZÉRO
     // correspondance → on ARRÊTE AVANT publication en nommant la CATÉGORIE,
     // et le message cite les options du formulaire RÉEL. Jamais un dépôt dans

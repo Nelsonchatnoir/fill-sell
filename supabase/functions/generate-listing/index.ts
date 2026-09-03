@@ -192,7 +192,7 @@ serve(async (req) => {
   // Cette fonction était le seul appel payant NI facturé NI tracé : elle part
   // à chaque génération, y compris quand l'utilisateur ne publie pas ensuite,
   // et c'est l'action la plus fréquente du produit. Sans mesure, les rapports
-  // 3/12/35 Pépites étaient fixés à l'aveugle.
+  // 3/12/35 unités étaient fixés à l'aveugle.
   // L'accumulateur est déclaré ICI, dans le scope de la requête : les quatre
   // appels Claude et la retouche GPT Image vivent tous dans ce handler, donc
   // aucune variable de module (qui serait partagée entre requêtes concurrentes
@@ -446,7 +446,7 @@ serve(async (req) => {
       return json({ error: "Missing required fields: inventaire_id or item_data, photos, platforms" }, 400);
     }
 
-    // ── Génération PAYANTE : price_generate Pépites (6 depuis la grille du
+    // ── Génération PAYANTE : price_generate unités (6 depuis la grille du
     // 2026-08-08), débitées ICI, avant tout appel LLM ────────────────────────
     // (2026-08-05, remplace le plafond 15/60 par 24 h ET l'ancien pré-check
     // « le solde couvre-t-il la future publication » — la génération est un
@@ -532,7 +532,7 @@ serve(async (req) => {
       if (quotaRetouche !== null) {
         const { data: cycleDebut } = await adminClient.rpc("debut_cycle_quotas", { p_user_id: user.id });
         // Remise à zéro à la fusion (02/09 soir) : les retouches payées en
-        // Pépites AVANT la bascule comptaient dans le cycle et saturaient
+        // unités AVANT la bascule comptaient dans le cycle et saturaient
         // 3 comptes payants à tort. Borne basse = max(début de cycle,
         // quotas_retouche_depuis) — même modèle que le compteur d'annonces ;
         // dès le cycle suivant, l'origine est dépassée et ne sert plus.
@@ -563,7 +563,7 @@ serve(async (req) => {
         .eq("id", inventaire_id)
         .single();
       if (itemErr || !data) {
-        // Rien n'a été généré : la Pépite du clic est rendue.
+        // Rien n'a été généré : l'unité du clic est rendue.
         await refundGenerateFn?.("item_not_found");
         return json({ error: "Item not found" }, 404);
       }
@@ -986,7 +986,7 @@ serve(async (req) => {
     // ~0,01 $ l'image en quality "low", ~0,04 $ en "medium" (l'option de
     // retouche choisie décide, cf. qualityToUse).
     // Tracé DANS usage_logs (feature 'generate_listing') et non dans
-    // coin_ledger : aucune Pépite n'est débitée ici, c'est de la télémétrie de
+    // coin_ledger : aucune unité n'est débitée ici, c'est de la télémétrie de
     // coût, pas un mouvement de solde. Insert best-effort — une génération
     // réussie ne doit jamais échouer parce que la mesure n'a pas pu s'écrire.
     const claudeUsd = (cost.claude_in / 1e6) * 1 + (cost.claude_out / 1e6) * 5;
@@ -1028,7 +1028,7 @@ serve(async (req) => {
 
     // ── Livraison ou remboursement (2026-08-05) ──────────────────────────────
     // « Réponse vide ou inexploitable » = AUCUNE plateforme générée : le
-    // client n'aurait rien à afficher (il vérifie data.platforms) — la Pépite
+    // client n'aurait rien à afficher (il vérifie data.platforms) — l'unité
     // est rendue et l'erreur est franche. Une génération PARTIELLE (au moins
     // une plateforme sur les demandées) reste livrée et due : le stepper
     // permet de corriger/compléter plateforme par plateforme.
@@ -1040,10 +1040,10 @@ serve(async (req) => {
     // Cas dégradé TOTAL : la fonction pose des titres de REPLI quand un appel
     // Claude échoue (design d'avant le paiement, conservé — mieux vaut un
     // squelette que rien). Mais zéro appel LLM abouti = le service payé (la
-    // rédaction) n'a PAS été rendu : le squelette part quand même, la Pépite
+    // rédaction) n'a PAS été rendu : le squelette part quand même, l'unité
     // est rendue. cost.claude_calls ne compte que les réponses ABOUTIES.
     if (cost.claude_calls === 0) {
-      console.warn("[generate-listing] aucun appel LLM abouti — squelette livré, Pépite remboursée");
+      console.warn("[generate-listing] aucun appel LLM abouti — squelette livré, unité remboursée");
       await refundGenerateFn?.("no_llm_output");
     }
 
@@ -1058,7 +1058,7 @@ serve(async (req) => {
   } catch (e) {
     console.error("[generate-listing] unhandled:", e);
     // Génération jamais livrée (erreur LLM, timeout, exception quelconque) :
-    // la Pépite du clic est rendue avant de répondre.
+    // l'unité du clic est rendue avant de répondre.
     await refundGenerateFn?.("unhandled_error");
     return json({ error: "Internal server error" }, 500);
   }

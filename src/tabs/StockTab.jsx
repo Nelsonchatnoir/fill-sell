@@ -12,7 +12,7 @@ import ExtensionReminderModal, { shouldShowExtensionReminder } from '../componen
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
-// (import PepiteAmount retiré au nettoyage Pépites du 02/09 soir — les
+// (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs } from '../utils/publicationState';
@@ -124,7 +124,7 @@ const RECUP_LIEN_FENETRE_MS = 48 * 60 * 60 * 1000;
 function etatLienJob(job) {
   if (job?.status !== 'published' || job?.action !== 'publish') return null;
   if (job?.listing_url) return null;
-  // Sonde de modération Leboncoin (2026-08-11) : la Pépite a déjà été rendue,
+  // Sonde de modération Leboncoin (2026-08-11) : l'unité a déjà été rendue,
   // 2 h après la publication, parce que l'annonce est restée introuvable dans
   // « Mes annonces » sur 3 passages CONCLUANTS. La surveillance, elle,
   // continue jusqu'à 48 h — d'où un job toujours 'published'. Ce test passe
@@ -165,10 +165,10 @@ function failJobAction(job, lang) {
 // ── Relance MANUELLE d'un job échoué récupérable (2026-08-31) ─────────────────
 // L'utilisateur SAIT quand il vient de se reconnecter ou de passer un
 // challenge : il ne doit ni attendre la reprise espacée (5/15/30/60 min,
-// dd85a95), ni régénérer l'annonce (6 Pépites) pour un job qui contient déjà
+// dd85a95), ni régénérer l'annonce (6 unités) pour un job qui contient déjà
 // tout. La relance = UPDATE status='pending', error=null — rien d'autre, comme
 // les 3 relances faites à la main en base le 31/08 (toutes abouties).
-// SÛRETÉ PÉPITE (établie AVANT de coder, migration 20260805000000 l. 26-27) :
+// SÛRETÉ DU DÉBIT (établie AVANT de coder, migration 20260805000000 l. 26-27) :
 // le trigger settle_reservation a déjà soldé la réservation au passage en
 // failed (reservation_settled_at posé) — un job relancé qui finit publié « ne
 // re-capture rien... soldé une fois pour toutes. Perte bornée » : AUCUN débit
@@ -1122,7 +1122,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                     que les 'failed', et ces jobs-ci sont en 'needs_user'.
                     Soit le bouton est là, soit le message ne le promet pas —
                     il est là. Mode 'repend' seul : le job repart tel quel,
-                    ZÉRO Pépite (sa réservation n'a jamais été soldée). */}
+                    ZÉRO unité (sa réservation n'a jamais été soldée). */}
                 {(() => {
                   const info = onRelancer ? relanceManuelleInfo(j, jobs) : null;
                   if (!info || info.mode !== "repend") return null;
@@ -2409,9 +2409,9 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 // l'adresse Leboncoin). À l'activation : on dit CE QUI VA SE PASSER (combien
 // d'annonces éligibles aujourd'hui, à quel rythme) ET CE QUE ÇA COÛTE —
 // depuis la grille du 2026-08-08 la republication est payante pour tous
-// (1 Pépite/annonce, auto comprise) : le coût et le volume mensuel maximum
+// (1 unité/annonce, auto comprise) : le coût et le volume mensuel maximum
 // s'affichent à côté du réglage, personne ne doit découvrir ce débit dans
-// son solde. Si l'auto échoue faute de Pépites, le RPC pose
+// son solde. Si l'auto échoue faute d'unités, le RPC pose
 // republish_auto.derniere_erreur='pepites_insuffisantes' (effacée au succès
 // suivant) — ce bloc l'affiche en clair. L'automatisation reste un avantage
 // Pro (avantage de FONCTIONNALITÉ, pas de prix). Si le compte cesse d'être
@@ -2430,7 +2430,7 @@ const texteErreurRepublishAuto = (code, fr) => {
   // serveur ne le pose plus jamais (prix à 0), mais des comptes en portent
   // encore un d'avant, effacé seulement au prochain succès auto. On l'IGNORE
   // (null → l'appelant n'affiche rien) plutôt que d'afficher à vie un
-  // problème de Pépites qui n'existe plus. AVANT le map : un null dans le
+  // problème d'unités qui n'existe plus. AVANT le map : un null dans le
   // map tomberait dans le repli générique via `??`.
   if (code === 'pepites_insuffisantes') return null;
   return ({
@@ -2598,7 +2598,7 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
           {fr ? 'Voir les offres' : 'See plans'}
         </button>
         <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,.5)', textAlign: 'center', lineHeight: 1.4 }}>
-          {/* Bascule quotas (02/09) : plus de prix à la Pépite — la
+          {/* Bascule quotas (02/09) : plus de prix à l'unité — la
               republication auto puise dans le volume mensuel du forfait. */}
           {fr ? 'Comprise dans les republications mensuelles de ton forfait'
               : 'Included in your plan’s monthly repostings'}
@@ -2648,7 +2648,7 @@ function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
             : `On activation: ${eligibles != null ? `${eligibles} eligible listing${eligibles > 1 ? 's' : ''} today` : '…'} (live for over ${ageJours} d), reposted at up to ${plafond}/day — one per extension pass, with Chrome open. Turn it off anytime.`}
         </div>
       )}
-      {/* (Le bloc « 💎 1 Pépite par republication » est mort le 02/09 avec la
+      {/* (Le bloc « 💎 1 unité par republication » est mort le 02/09 avec la
           bascule quotas : la republication ne se facture plus, elle se compte
           dans le volume mensuel du forfait.) */}
       {/* ⚠️ `key` sur les deux champs : ce sont des inputs NON CONTRÔLÉS
@@ -3143,7 +3143,7 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm }) {
   const plafonnes = lotApercu.filter(a => a.plafonne);
   // Bascule quotas (02/09) : prixUnitaire null = republication non facturée →
   // aucun coût affiché (fragment vide), le libellé reste « Republier … ».
-  // (Nettoyage Pépites 02/09 soir : montant en chiffres nus, plus d'icône.)
+  // (Nettoyage unités 02/09 soir : montant en chiffres nus, plus d'icône.)
   const cout = prixUnitaire != null ? <>{items.length * prixUnitaire}</> : null;
   const confirmer = () => {
     onConfirm(items.map(({ item, prixActuel }) => {
@@ -3327,7 +3327,7 @@ const StockTab = memo(function StockTab({
   // autorisé À L'UNITÉ sur ACTION HUMAINE uniquement (décision 2 du chantier).
   // Le clic « Publier » est ce déclencheur : on demande LE détail de CET
   // article à l'extension, puis on ouvre le stepper description en place.
-  // GRATUIT (aucune Pépite) : c'est la publication qui est payante, pas la
+  // GRATUIT (aucune unité) : c'est la publication qui est payante, pas la
   // lecture. Extension absente/ancienne ou réponse en retard → le stepper
   // s'ouvre quand même (photos + titre déjà là) avec une note douce, jamais un
   // écran vide sans explication.
@@ -3550,7 +3550,7 @@ const StockTab = memo(function StockTab({
   // Le serveur (spend_coins_and_republish) refuse la 4e republication MANUELLE
   // du jour d'un compte free avec le code DÉDIÉ plafond_republication_free
   // (+ plafond, faites) — rien n'est débité, aucun job créé. Sur CE code
-  // précis, et LUI SEUL (jamais un manque de Pépites, un échec technique ou
+  // précis, et LUI SEUL (jamais un manque d'unités, un échec technique ou
   // un autre plafond), l'app ouvre la modale de conversion (trigger
   // 'republish_cap') au lieu d'un message d'erreur.
   // 02/09 soir (décision Nico) : le verrou « 1 ouverture/jour » et son
@@ -3662,7 +3662,7 @@ const StockTab = memo(function StockTab({
   // porte se ferme EN AMONT : bouton visible (levier de conversion) mais
   // inopérant — au tap, modale de conversion (origine DISTINCTE
   // republication_lot_free, trigger republish_lot), aucun job, aucun appel
-  // RPC, aucune Pépite engagée. isPremium inclut is_comped (expression
+  // RPC, aucune unité engagée. isPremium inclut is_comped (expression
   // canonique) ; flags cumulatifs → « est payant » = l'un des trois.
   // La republication À L'UNITÉ reste ouverte au Free (3/jour, garde serveur).
   const repubLotReserve = !(isPremium || isPro || isBusiness);
@@ -4163,7 +4163,7 @@ const StockTab = memo(function StockTab({
   // Le RPC spend_coins_and_publish est le MÊME que le stepper : prix imposés
   // côté serveur (price_per_platform ; part photos re-servie à 0 quand la
   // retouche est déjà livrée, price_original = 0), garde extension, garde
-  // already_published (annonce en ligne ou job en file → refus, aucune Pépite
+  // already_published (annonce en ligne ou job en file → refus, aucune unité
   // débitée), réservation normale sur le job neuf. JAMAIS spend_generate ni
   // le stepper : le contenu vient du job terminal, relu FRAIS en base (la
   // liste en mémoire n'a ni description, ni prix, ni photos).
@@ -4378,7 +4378,7 @@ const StockTab = memo(function StockTab({
   // action='delete' pour la plateforme confirmée (même mécanisme que
   // armRemovals côté vente, mais scopé à une seule annonce). Les autres
   // plateformes ne sont pas touchées : aucun job créé, aucune donnée modifiée.
-  // Insert direct (RLS "Users manage own cross_post_jobs"), aucune Pépite
+  // Insert direct (RLS "Users manage own cross_post_jobs"), aucune unité
   // débitée — ce n'est pas une publication. L'extension exécute au prochain
   // cycle ; la ligne passe en « retrait en cours… » (optimiste, via le job
   // inséré rendu dans jobsByInventaire) puis « retirée » quand le job atteint
@@ -5626,7 +5626,7 @@ const StockTab = memo(function StockTab({
                     )}
                   </span>
                   <span className="sub">
-                    {/* Bascule quotas (02/09) : plus de « 1 Pépite par
+                    {/* Bascule quotas (02/09) : plus de « 1 unité par
                         annonce » — le sous-titre porte le COMPTEUR de
                         republications (restantes à vie en Free, restantes du
                         mois en Premium/Pro, rien en illimité). */}
@@ -5652,7 +5652,7 @@ const StockTab = memo(function StockTab({
                 ):(
                   <>
                     <span className="lbl">
-                      {/* Bascule quotas (02/09) : le coût en Pépites du lot
+                      {/* Bascule quotas (02/09) : le coût en unités du lot
                           est mort — reste le compte et la durée estimée. */}
                       {lang==='fr'
                         ?<>{repubSel.size} sélectionné{repubSel.size>1?"s":""} · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>
@@ -5729,7 +5729,7 @@ const StockTab = memo(function StockTab({
                     n'agit pas.
                     ⚠️ Chaque ligne décrit une capacité RÉELLE et ouverte à
                     tous. L'étape 3 parle de la republication à la demande (1
-                    Pépite), pas de l'automatique, qui est un avantage Pro : ne
+                    unité), pas de l'automatique, qui est un avantage Pro : ne
                     pas y glisser une promesse d'automatisation. L'étape 4 dit
                     « te prévient / tu retires » — le retrait est TOUJOURS sur
                     confirmation, jamais automatique. */}
@@ -5761,7 +5761,7 @@ const StockTab = memo(function StockTab({
                       // Même phrase que la carte republication du Tableau vide
                       // (App.jsx, 2026-09-01) — sans sa clause « sans que tu
                       // touches à rien » : ici on décrit la republication à la
-                      // demande (1 Pépite), l'automatique reste un avantage
+                      // demande (1 unité), l'automatique reste un avantage
                       // Pro (cf. ⚠️ du bandeau au-dessus).
                       fr:["Republie ce qui stagne","Une annonce qui dort est republiée pour repasser en tête de recherche Vinted, au rythme d'une vraie personne."],
                       en:["Repost what stalls","A listing that sits gets reposted back to the top of Vinted search, at a human pace."],
@@ -6023,7 +6023,7 @@ const StockTab = memo(function StockTab({
                   const sansWarn=j=>!warnedJobs.includes(j);
                   const lienEnCoursJobs=Object.values(latestByPlatform)
                     .filter(j=>etatLienJob(j)==="en_cours"&&sansWarn(j));
-                  // Sonde de modération Leboncoin (2026-08-11) : Pépite déjà
+                  // Sonde de modération Leboncoin (2026-08-11) : unité déjà
                   // rendue, annonce toujours cherchée. Badge DISTINCT du gris
                   // « récupération en cours » — ici il y a quelque chose à
                   // faire (aller vérifier avant de republier), donc il est
@@ -6437,7 +6437,7 @@ const StockTab = memo(function StockTab({
                               ligne fixe, défilement horizontal si ça déborde. */}
                           {(warnedJobs.length>0||lienEnCoursJobs.length>0||lienRembourseJobs.length>0||item.emplacement||(item.vinted_item_id&&!disparuDeVinted))&&(
                             <div className="icons">
-                              {/* Publiée avec réserve / lien en cours / Pépites
+                              {/* Publiée avec réserve / lien en cours / unités
                                   rendues : PAS des doublons — la pastille dit
                                   « En ligne » (ou rien), le détail n'existe
                                   qu'ici. Conservés. */}
@@ -6520,7 +6520,7 @@ const StockTab = memo(function StockTab({
                                   </div>
                                 );
                               })}
-                              {/* Sonde de modération Leboncoin : Pépites déjà
+                              {/* Sonde de modération Leboncoin : unités déjà
                                   rendues. Le texte ne dit JAMAIS « refusée » —
                                   la sonde conclut sur une ABSENCE, pas sur un
                                   refus observé. Il nomme la cause la plus
@@ -6648,7 +6648,7 @@ const StockTab = memo(function StockTab({
                                 qui est LA fonction du produit, était invisible pour
                                 tout le monde sauf le tier Pro. Ce n'était pas le
                                 packaging voulu : tout le monde cross-poste, et la
-                                différenciation se fait aux PÉPITES, côté serveur —
+                                différenciation se fait aux UNITÉS, côté serveur —
                                 generate-listing facture déjà les non-premium en
                                 pièces (402 + prix/solde) au lieu de refuser. */}
                             <button

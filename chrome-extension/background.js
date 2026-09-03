@@ -82,7 +82,7 @@ const TRANSIENT_JOB_ERROR_RE =
 // plateforme sur le contenu, verdict terminal eBay…) ne passe PAS par ici :
 // il reste failed/needs_user sec, comme avant — reprogrammer un refus
 // attirerait l'anti-bot pour rien.
-// Pépite : le ré-armement en pending ne passe jamais par 'failed' → le
+// unité : le ré-armement en pending ne passe jamais par 'failed' → le
 // trigger settle_reservation ne relâche rien, la réservation tient et la
 // reprise ne RE-DÉBITE jamais (même invariant que le palliatif bfcache
 // d'update-job-status) ; au failed final elle est rendue une seule fois.
@@ -225,10 +225,10 @@ const CATEGORY_FIELD = {
 //     est d'abord une COULEUR. Sans cette restriction, la casquette Volcom
 //     beige/crème — RÉELLEMENT publiée sur Leboncoin le 21/07, URL à l'appui —
 //     serait refusée. Seules les formes contextualisées sont retenues.
-// La vraie garde est côté app (aucune Pépite engagée). Celle-ci est le filet
+// La vraie garde est côté app (aucune unité engagée). Celle-ci est le filet
 // des jobs DÉJÀ en file au moment de la mise à jour, et des versions d'app
 // antérieures — dans ces cas le job part en 'failed' et le trigger
-// cross_post_job_settle_reservation rend la Pépite (release).
+// cross_post_job_settle_reservation rend l'unité (release).
 const LBC_COSMETIQUE_CONSOMMABLE =
   /(?<![\p{L}\p{N}])parfums?(?![\p{L}\p{N}])|eaux?.?de.?(?:toilette|parfum|cologne)|(?<![\p{L}\p{N}])colognes?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])maquillages?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])mascaras?(?![\p{L}\p{N}])|rouges?.?[àa].?l[èe]vres?|(?<![\p{L}\p{N}])lipsticks?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])fards?(?![\p{L}\p{N}])|fonds?.?de.?teint|anti.?cernes?|vernis.?(?:[àa].?)?(?:ongles?|semi.?permanents?|gels?)|(?<![\p{L}\p{N}])manucures?(?![\p{L}\p{N}])|cr[èe]mes?.?(?:hydratantes?|nourrissantes?|solaires?|de.?jour|de.?nuit|visages?|corps|mains?|anti.?[âa]ges?|anti.?rides?|teintées?)|(?<![\p{L}\p{N}])s[ée]rums?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])lotions?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])shampo(?:o)?ings?(?![\p{L}\p{N}])|gels?.?douche|(?<![\p{L}\p{N}])d[ée]odorants?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])gommages?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])d[ée]maquillants?(?![\p{L}\p{N}])|masques?.?(?:pour.?)?(?:les?.?)?(?:visages?|corps|cheveux|capillaires?|hydratants?|de.?nuit|en.?tissu|en.?feuilles?|l[èe]vres?)|huiles?.?(?:pour.?)?(?:les?.?)?(?:visages?|corps|cheveux|barbe|d[ée]maquillante)|soins?.?(?:de.?)?(?:la.?)?(?:peau|visage|corps|anti.?[âa]ges?|anti.?rides?|anti.?rougeurs?)|(?<![\p{L}\p{N}])skincare(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])sunscreens?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])moisturi[sz]ers?(?![\p{L}\p{N}])|(?<![\p{L}\p{N}])cleansers?(?![\p{L}\p{N}])|lips?.?(?:balms?|masks?|oils?|glosses?|sticks?)/iu;
 const LBC_NON_CONSOMMABLE =
@@ -2123,7 +2123,7 @@ async function processJob(rawJob, accessToken) {
         //     `status=eq.processing`, recoverMissingListingUrls et
         //     checkPublishedListings `status=eq.published`, handler-watch lit
         //     `failed` pour ALERTER seulement, email-tunnel `status=eq.pending`).
-        // La Pépite est rendue par le release sur job terminal en échec : aucun
+        // L'unité est rendue par le release sur job terminal en échec : aucun
         // code de remboursement ici.
         if (verdict.fatal) {
           const msgFatal =
@@ -2299,7 +2299,7 @@ async function processJob(rawJob, accessToken) {
       // Beebs (2026-08-13, item 9) : la sonde a pu capter l'id produit dans la
       // réponse de la Server Action. On n'écrira QUE platform_listing_id — PAS
       // listing_url : chez Beebs, une URL en base signifie « annonce EN
-      // LIGNE » (veilleur de vente, cron 48 h « pas d'URL = échec + Pépite »,
+      // LIGNE » (veilleur de vente, cron 48 h « pas d'URL = échec + unité »,
       // modale de retrait). Or à cet instant l'annonce part en modération —
       // poser l'URL maintenant sortirait le job du filet 48 h et ferait
       // prendre la 404 de modération pour une disparition. C'est la re-capture
@@ -2380,7 +2380,7 @@ async function processJob(rawJob, accessToken) {
         //   2. CHAMP RÉELLEMENT RÉSOLUBLE. Un 400 sur title/description/price/
         //      photos/catalog_id/package_size_id ne se corrige pas en
         //      choisissant une valeur dans une modale — l'y envoyer bloquerait
-        //      la Pépite sur un champ sans issue. Ceux-là restent `failed`,
+        //      l'unité sur un champ sans issue. Ceux-là restent `failed`,
         //      remboursés comme aujourd'hui. Tout le reste est un code
         //      d'attribut : soit ponté vers un champ dédié (_bridge de
         //      vinted.js : brand, model, condition, material, size, sim_lock,
@@ -2389,7 +2389,7 @@ async function processJob(rawJob, accessToken) {
         //      précisément ce que le 400 sert à DÉCOUVRIR, on ne ferme donc pas
         //      la porte aux codes inconnus.
         //   3. PLAFOND EXISTANT, inchangé : needsUserAttempts < 2. Atteint →
-        //      `failed`, donc réservation soldée et Pépite rendue, comme avant.
+        //      `failed`, donc réservation soldée et unité rendue, comme avant.
         // Aucun risque de second dépôt : ce chemin n'est atteint QUE sur un 400
         // de validation lu dans la réponse de /api/v2/item_upload/items
         // (readServerValidationErrors n'accepte que status >= 400) — Vinted dit
@@ -2711,7 +2711,7 @@ async function rearmBounded(accessToken, job, errorMsg) {
     // connu, sinon le message débarrassé de sa promesse de reprise) ; le texte
     // ne porte aucun marqueur de promesse (« repartira »…) — sinon l'app le
     // remplacerait par son générique — et reste court (< 300 c.). Le trigger
-    // settle_reservation rend la Pépite ICI, une seule fois (statut terminal).
+    // settle_reservation rend l'unité ICI, une seule fois (statut terminal).
     const cause = causeHumaineConnue(job) ?? sansPromesseDeReprise(errorMsg);
     const msgFinal =
       cause + (/[.!?…]$/.test(cause) ? "" : ".") +
@@ -4059,7 +4059,7 @@ async function verifyEbaySubmission(tabId, timeoutMs = 20_000, job = null, acces
     // annonce (job 56c15a53, 10/08).
     // Verdict TERMINAL, jamais un ré-armement : `fatal` court-circuite
     // rearmBounded côté appelant — un job re-mis en pending re-déposerait, et
-    // un second dépôt payant est précisément ce qu'on refuse. La Pépite est
+    // un second dépôt payant est précisément ce qu'on refuse. L'unité est
     // rendue par le release sur job terminal en échec, rien à écrire ici.
     if (path && !/\/lstng/.test(path)) {
       return {
@@ -9000,11 +9000,11 @@ async function lbcSondeModeration(session, job, etatPage) {
 
   // Remboursement ANTICIPÉ. Le job RESTE 'published' : c'est ce qui le maintient
   // dans le filtre de cette même fonction (status=eq.published & listing_url is
-  // null) jusqu'à l'échéance 48 h. On rend la Pépite tôt sans cesser de
+  // null) jusqu'à l'échéance 48 h. On rend l'unité tôt sans cesser de
   // chercher — si l'annonce finit par apparaître, l'issue 1/3 la rattrape.
   // Le serveur revérifie TOUTES les conditions (cf. update-job-status) et la
   // RPC est idempotente : ni le cron de 48 h ni un second passage ne peuvent
-  // rendre une deuxième Pépite.
+  // rendre une deuxième unité.
   try {
     const res = await callEdgeFunction("update-job-status", session.access_token, {
       job_id: job.id,
@@ -9027,7 +9027,7 @@ async function lbcSondeModeration(session, job, etatPage) {
 //     et le job sort du périmètre du cron 48 h ;
 //   · « Oups, page perdue ! » (ou 404) → pas (encore) en ligne : modération en
 //     cours ou refus, indistinguables de l'extérieur — RIEN n'est écrit, on
-//     relit au prochain cycle, le cron 48 h tranche en échec + Pépite ;
+//     relit au prochain cycle, le cron 48 h tranche en échec + unité ;
 //   · bot-shield / réseau KO / redirection hors /p/<id> → AUCUNE conclusion.
 // @returns {Promise<boolean>} true si l'URL a été posée (le job est réglé).
 async function beebsProductPageOnline(session, job) {
@@ -9206,7 +9206,7 @@ async function recoverMissingListingUrls(session) {
           // ISSUE 1/3 — TITRE TROUVÉ. Le compteur de la sonde est remis à zéro
           // et l'épisode horodaté. L'annonce EXISTE : si un remboursement
           // anticipé avait eu lieu, elle redevient suivie pour la vente et le
-          // retrait, et AUCUNE Pépite n'est redébitée — le job garde juste la
+          // retrait, et AUCUNE unité n'est redébitée — le job garde juste la
           // trace qu'il a été rendu gratuit. Le message de l'app disparaît tout
           // seul, il est conditionné à l'absence de listing_url.
           const sondeResolue = job.platform_fields?.moderation_probe
@@ -9518,7 +9518,7 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
 //
 // ⛔⛔ REPUBLISH_DRY_RUN — LE drapeau (décision Nico, É2) ⛔⛔
 // true  = AUCUNE suppression réelle, AUCUNE création : le job vérifie ses
-//         prérequis puis se clôt en 'dry_run_completed' (Pépite remboursée
+//         prérequis puis se clôt en 'dry_run_completed' (unité remboursée
 //         par le trigger republish_refund_on_terminal — un dry run ne se
 //         paie pas).
 // false = suppression puis recréation réelles.
@@ -9535,7 +9535,7 @@ async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
 // déjà validé. Risque accepté sur un article du compte bêta.
 // Ce qui protège désormais, et qui n'a pas bougé : capture verdict='valide'
 // RELUE avant la suppression (+ borne de fraîcheur 24 h), échec avant
-// suppression → terminal avec Pépite rendue et annonce intacte, échec après
+// suppression → terminal avec unité rendue et annonce intacte, échec après
 // suppression → JAMAIS un failed sec (needs_user qui repart à la recréation),
 // espacement 2 min entre gestes et 2-5 min entre suppression et recréation.
 const REPUBLISH_DRY_RUN = false;
@@ -9910,7 +9910,7 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
 // PROGRESSIF pour ne pas nourrir le throttle en boucle serrée. Rien n'a été
 // supprimé (on arrive ici depuis la branche !aSupprime) : l'annonce est
 // intacte, l'étape reste 'captured', la reprise rejouera le pré-vol entier.
-// AUCUNE Pépite n'est touchée ici : le débit a eu lieu à la création du job,
+// AUCUNE unité n'est touchée ici : le débit a eu lieu à la création du job,
 // on n'écrit qu'un statut.
 // Plafond : au-delà de LISTING_RESTRICTION_DELAIS_MIN reprises, pause
 // EXPLICITE en needs_user avec un message honnête qui ne promet AUCUNE
@@ -10138,7 +10138,7 @@ async function processRepublishJob(job, accessToken) {
 
     // Échec de capture (session, réseau, annonce introuvable) : 'failed' —
     // rien n'a été touché, l'annonce est intacte, et un statut terminal
-    // déclenche republish_refund_on_terminal (la Pépite est rendue).
+    // déclenche republish_refund_on_terminal (l'unité est rendue).
     if (!cap.success) {
       const msg = `Republication annulée avant toute suppression : ${cap.error}. Ton annonce est intacte.`;
       await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
@@ -10148,11 +10148,11 @@ async function processRepublishJob(job, accessToken) {
     // 'needs_user' et NON plus 'failed' : le job est désormais REPRENABLE —
     // l'utilisateur complète le champ dans l'app (republish_user_fields, fusion
     // ci-dessus) ou sur son annonce Vinted, puis relance ; la relance rejoue
-    // cette étape en entier. La Pépite reste réservée pour ce service encore
+    // cette étape en entier. L'unité reste réservée pour ce service encore
     // livrable ; si rien ne repart, le balayage 72 h (handler-watch) solde en
     // failed et le trigger existant la rend — le message l'annonce.
     // EXCEPTION photo (re-hébergement en échec, URLs illisibles) : échec
-    // TECHNIQUE, l'utilisateur n'y peut rien → failed immédiat, Pépite rendue,
+    // TECHNIQUE, l'utilisateur n'y peut rien → failed immédiat, unité rendue,
     // comme avant. Un mélange photo+champ reste needs_user : le champ, lui,
     // est actionnable, et la relance retente le re-hébergement au passage.
     if (cap.verdict !== "valide") {
@@ -10189,7 +10189,7 @@ async function processRepublishJob(job, accessToken) {
   // ── Étape 1 : SUPPRESSION ──────────────────────────────────────────────────
   if (step === "captured") {
     if (REPUBLISH_DRY_RUN) {
-      // Rien n'est touché ; le trigger serveur rembourse la Pépite.
+      // Rien n'est touché ; le trigger serveur rembourse l'unité.
       pf.republish_dry_run = {
         at: new Date().toISOString(),
         note: "simulation : prérequis vérifiés, aucune suppression, aucune création",
@@ -10224,7 +10224,7 @@ async function processRepublishJob(job, accessToken) {
     // Ils y étaient au motif qu'une annonce hors ligne « attend un geste ».
     // Le résultat réel : son job 146b0648 bloqué le 08/08 à 18:11 a GELÉ ses
     // 15 republications suivantes pendant 21 heures — aucune n'a même été
-    // tentée (aucun processing_since), 5 Pépites débitées pour rien, et rien
+    // tentée (aucun processing_since), 5 unités débitées pour rien, et rien
     // dans l'app ne disait que le compte entier était à l'arrêt.
     // La raison de fond : l'invariant existe pour empêcher la file de se
     // vider PHASE PAR PHASE (7 suppressions avant la 1re recréation, lot
@@ -10311,7 +10311,7 @@ async function processRepublishJob(job, accessToken) {
         // repart. Ordre strict inchangé : capture fraîche RÉUSSIE d'abord,
         // suppression ensuite — une recapture en échec laisse le job bloqué
         // SANS suppression, exactement comme avant. Pas de re-débit : la
-        // Pépite du job est déjà posée (pepites_debitees), la capture est une
+        // unité du job est déjà posée (pepites_debitees), la capture est une
         // lecture.
         // Compteur de péremption (validé par Nico) : détecte le cycle
         // « dort → périmée → recapture → dort ». Il survit aux relances (la
@@ -10385,7 +10385,7 @@ async function processRepublishJob(job, accessToken) {
       // depuis le job lui-même : AUCUNE suppression tant que la copie complète
       // n'est pas SUR la ligne cross_post_jobs, écriture confirmée — pas un
       // fire-and-forget. Échec d'écriture → failed AVANT la suppression,
-      // annonce intacte, Pépite rendue par le trigger.
+      // annonce intacte, unité rendue par le trigger.
       pf.republish_snapshot = construireSnapshotRepublish(pf, capMeta);
       pf.processing_since = new Date().toISOString();
       try {
@@ -10816,7 +10816,7 @@ let autoRepublishBusy = false;
 //  3. le motif est ÉCRIT (derniere_erreur du réglage, que l'app lit), pas
 //     seulement consolé.
 // ⚠️ CE QUI N'INCRÉMENTE PAS, et c'est le point qui compte. Un refus qui
-// concerne LE COMPTE et non l'article — plus de Pépites, plafond atteint,
+// concerne LE COMPTE et non l'article — plus d'unités, plafond atteint,
 // extension jugée trop ancienne, maintenance serveur, réseau — ne dit RIEN de
 // l'article. Compter là-dessus écarterait la boutique entière, un article par
 // cycle, pour une cause qui n'a rien à voir avec eux, et le jour où la cause
@@ -10927,7 +10927,7 @@ async function effacerErreurAuto(token, userId, ps, cfg) {
 // Appel du RPC AVEC son motif. restRequest lève sans le corps, or c'est
 // exactement le corps qui dit pourquoi — et un refus levé côté serveur (garde
 // en trigger, contrainte) n'a AUCUNE autre trace : la transaction est annulée,
-// donc pas de job, pas de Pépite, pas d'usage_logs, rien dans l'app.
+// donc pas de job, pas de unité, pas d'usage_logs, rien dans l'app.
 // C'est ce qui a rendu l'incident du 30/08 invisible pendant 38 h.
 // ⚠️ On appelle et on RAPPORTE : aucune garde du RPC n'est recopiée ici.
 async function appelerRpcRepublishAuto(token, cand) {
@@ -11078,7 +11078,7 @@ async function maybeAutoRepublish(session) {
     for (const c of cands ?? []) {
       // ÉCARTÉ : on saute AVANT la capture. C'est là que se joue tout le gain —
       // un article écarté ne coûte ni capture, ni re-hébergement de photo, ni
-      // Pépite, ni créneau du plafond auto : il n'est simplement pas regardé.
+      // unité, ni créneau du plafond auto : il n'est simplement pas regardé.
       if (estEcarteAuto(essais, userId, c.vinted_item_id)) { sautes++; continue; }
 
       // Republish vivant, ou abouti < 24 h ? Le RPC re-garde de toute façon —
@@ -11099,7 +11099,7 @@ async function maybeAutoRepublish(session) {
         if (j.status === "pending" || j.status === "processing" || j.status === "needs_user") continue;
         // 'failed' est terminal, donc republiable — mais pas dans la seconde
         // qui suit. Sans ce délai, un article qui échoue à chaque tentative
-        // repartirait au cycle suivant, indéfiniment, en réservant une Pépite
+        // repartirait au cycle suivant, indéfiniment, en réservant une unité
         // à chaque fois (rendue par le trigger, mais le va-et-vient est réel).
         // 24 h, la même fenêtre que la cadence des republications abouties.
         if (j.status === "failed"
@@ -11180,7 +11180,7 @@ async function maybeAutoRepublish(session) {
 // pour rien. Le pré-vol se contente désormais de vérifier que l'annonce est
 // capturable et qu'elle a des URLs de photos ; le re-hébergement RÉEL vit à
 // l'étape 'a_capturer' du job (capturerEtPersisterDepuisExtension), où son
-// échec a déjà son traitement (failed, annonce intacte, Pépite rendue).
+// échec a déjà son traitement (failed, annonce intacte, unité rendue).
 // Rien n'est perdu : cette capture-ci n'est JAMAIS relue — tous les lecteurs de
 // vinted_republish_captures ciblent platform_fields.capture_id, c'est-à-dire la
 // capture faite PAR le job. Elle reste écrite parce qu'elle est la trace

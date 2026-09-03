@@ -51,18 +51,18 @@ function getPlatforms(countryCode: string | null, lang: string): string {
 
 // Qualité unifiée (2026-07) : un seul prompt — l'ex-analyse Premium avec
 // web_search — pour TOUS les tiers. Depuis le 2026-07-23 (levée du gate
-// économie v2), CHAQUE analyse coûte des Pépites (price_lens_overflow = 6),
+// économie v2), CHAQUE analyse coûte des unités (price_lens_overflow = 6),
 // tous tiers : la différenciation se fait uniquement sur le grant mensuel
-// de Pépites (coin_config monthly_grant_* — 50/400/1200 depuis la grille du
+// d'unités (coin_config monthly_grant_* — 50/400/1200 depuis la grille du
 // 2026-08-08).
 // Deux modes (2026-07-28) :
-//   • "full"     — le scan complet historique, web_search attaché, 6 Pépites.
+//   • "full"     — le scan complet historique, web_search attaché, 6 unités.
 //   • "identify" — la MÊME lecture de photos SANS recherche web, INCLUSE dans
 //     le prix de publication. Mesuré sur 7 articles réels : marque 7/7
 //     identique, taille 7/7 exploitable, description égale ou meilleure. Seul
 //     le PRIX dépend vraiment du web (identify est optimiste de +24 % à +150 %),
 //     donc identify n'en renvoie AUCUN — c'est aussi ce qui reste à vendre à
-//     6 Pépites. Coût mesuré : 0,0101 € contre 0,0716 €, 9 s contre 16 s.
+//     6 unités. Coût mesuré : 0,0101 € contre 0,0716 €, 9 s contre 16 s.
 // Troisième mode (2026-09-02, lot Lens unifié) :
 //   • "annonce" — STRICTEMENT le mode "full" (même prompt, même schéma, mêmes
 //     25 gardes — AUCUNE ligne du prompt ne change, VERSION_PROMPT non plus),
@@ -1570,10 +1570,10 @@ const PLAFOND_IDENTIFY_GLOBAL = 3000;
 // Plafond des remboursements « identification contredite » : 2 par utilisateur
 // et par 24 h GLISSANTES (2026-08-20). Le 20/08 à 00h09, un utilisateur en a
 // obtenu 3 en moins de 2 minutes sur 3 scans consécutifs — chaque scan étant
-// déjà payé côté API (14 remboursements / 84 Pépites depuis le 11/08). Au-delà
+// déjà payé côté API (14 remboursements / 84 unités depuis le 11/08). Au-delà
 // du plafond, RIEN ne change côté produit : le marché est retiré comme avant
 // et la correction de l'identification reste possible ; seul le remboursement
-// des 6 Pépites n'est plus accordé. Le décompte porte UNIQUEMENT sur les
+// des 6 unités n'est plus accordé. Le décompte porte UNIQUEMENT sur les
 // lignes coin_ledger kind='refund' + metadata->>'source' =
 // 'identification_contredite' — les autres motifs (lens_analysis_failed,
 // refund_publish, refund_republish, release_publish…) ne comptent pas et ne
@@ -1771,7 +1771,7 @@ serve(async (req) => {
   // Plus de quota mensuel inclus (ex 5/120/250), plus de frein journalier :
   // CHAQUE analyse débite price_lens_overflow (6) via spend_coins_for_lens,
   // tous tiers. Le RPC pose aussi le grant mensuel LAZY (30/150/600) si le
-  // mois du wallet est vierge — un inscrit du jour a ses Pépites dès sa
+  // mois du wallet est vierge — un inscrit du jour a ses unités dès sa
   // première analyse, sans attendre le sweep de 04:15. Les colonnes
   // lens_daily_override / lens_monthly_override ne sont plus consultées
   // (lettres mortes sans quotas — 2 comptes en avaient, cf. état des lieux).
@@ -1809,7 +1809,7 @@ serve(async (req) => {
   // Relâche ce que la tentative a coûté (idempotent, best-effort : un échec de
   // remboursement ne doit jamais masquer l'erreur d'origine). La ligne
   // usage_logs posée par spend_coins_for_lens reste en place : elle n'ouvre
-  // plus aucun droit (pure télémétrie), rembourser les Pépites suffit — la
+  // plus aucun droit (pure télémétrie), rembourser les unités suffit — la
   // reprise depuis LensTab est gratuite de fait.
   let released = false;
   const userId = user.id; // capturé hors closure : TS ne garde pas le narrowing
@@ -1830,7 +1830,7 @@ serve(async (req) => {
   // CORPS DE LA REQUÊTE — LU AVANT TOUT DÉBIT (2026-07-28)
   // ══════════════════════════════════════════════════════════════════════════
   // Il était lu APRÈS spend_coins_for_lens. Ajouter un paramètre `mode` sans
-  // toucher à cet ordre aurait débité 6 Pépites à CHAQUE identify — l'inverse
+  // toucher à cet ordre aurait débité 6 unités à CHAQUE identify — l'inverse
   // exact de la décision commerciale (identify INCLUS dans le prix de
   // publication). L'ordre est désormais : corps → mode → gardes → débit, et le
   // débit ne concerne que le mode complet.
@@ -1945,7 +1945,7 @@ serve(async (req) => {
 
   const { data: spend, error: spendErr } = estIdentify
     // Identify ne débite RIEN : l'identification est incluse dans le prix de
-    // publication (parcours minimum = 3 Pépites AU TOTAL, jamais 3 + 3).
+    // publication (parcours minimum = 3 unités AU TOTAL, jamais 3 + 3).
     // Ne pas passer par spend_coins_for_lens le prive aussi de son grant
     // mensuel LAZY — sans conséquence depuis le commit 0259849 : handle_new_user
     // appelle grant_monthly_coins('free') À L'INSCRIPTION (vérifié en base), et
@@ -2425,7 +2425,7 @@ serve(async (req) => {
       logMeta = { ...logMeta, marche_supprime: true, recherches_perdues: stats.recherches };
       // Le livrable payant du mode complet, c'est le PRIX. On vient de le
       // retirer : la même règle que sur un scan en échec s'applique, on rend
-      // les 6 Pépites. L'identification, elle, reste affichée (gratuitement),
+      // les 6 unités. L'identification, elle, reste affichée (gratuitement),
       // et l'écran demande une photo de plus.
       // ⚠️ Décision de facturation — volontairement conservatrice et signalée
       // dans le rapport. Volume attendu : quelques scans par semaine.
@@ -2468,7 +2468,7 @@ serve(async (req) => {
       // Dit au client, pour qu'il puisse l'écrire à l'écran. Champ posé ICI et
       // pas dans assainirSortie : le remboursement n'existe qu'en mode complet
       // (identify ne débite rien), l'écran ne doit donc pas le promettre
-      // ailleurs. Plafonné → false : l'écran ne promet jamais des Pépites qui
+      // ailleurs. Plafonné → false : l'écran ne promet jamais des unités qui
       // n'ont pas été rendues.
       itemData.pepites_rendues = refundAutorise;
       }
@@ -2481,7 +2481,7 @@ serve(async (req) => {
     // « Achète en dessous de 8 € » sur un objet que le modèle avait deviné.
     // Une erreur COHÉRENTE ne déclenche aucun des deux garde-fous existants :
     // c'est exactement le scan de 14:10 (identification_contredite=false,
-    // identification_incertaine=false, 2 photos, 4 recherches, 6 Pépites).
+    // identification_incertaine=false, 2 photos, 4 recherches, 6 unités).
     // `objet_source="deduit"` est le seul signal qui la voit, parce qu'il ne
     // demande pas au modèle d'être d'accord avec lui-même — il lui demande
     // d'où vient ce qu'il affirme.
@@ -2593,7 +2593,7 @@ serve(async (req) => {
     // est faux dans un sens CONNU (mesuré : +24 % à +150 % sur 4 cas sur 7) et
     // il contamine verdict et score — l'écran « bonne affaire » mentirait. Et
     // commercialement, le prix est exactement ce qui reste à vendre à
-    // 6 Pépites : s'il sortait gratuitement et de façon crédible, plus personne
+    // 6 unités : s'il sortait gratuitement et de façon crédible, plus personne
     // ne paierait le scan complet.
     if (estIdentify) {
       for (const champ of CHAMPS_MARCHE) itemData[champ] = null;
@@ -2733,7 +2733,7 @@ serve(async (req) => {
     });
   } catch (err: any) {
     console.error("[lens-analysis] Error:", err);
-    // Analyse jamais livrée : on rembourse les Pépites débitées (créditées en
+    // Analyse jamais livrée : on rembourse les unités débitées (créditées en
     // solde « acheté », cf. refund_coins). La reprise depuis le bouton
     // « Analyser avec l'IA » de LensTab est donc gratuite de fait : la
     // tentative ratée n'a rien coûté.

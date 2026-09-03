@@ -5,7 +5,7 @@ import ListingPreviewScreen, { PLATFORM_LABELS, clearStepperPersistence, readSte
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
-// (imports PepiteIcon/PepiteAmount retirés au nettoyage Pépites du 02/09
+// (imports PepiteIcon/PepiteAmount retirés au nettoyage unités du 02/09
 // soir — plus aucun point d'affichage dans cet onglet.)
 // getTypeStyle / typeLabel sont partis avec les pastilles d'identification :
 // ils vivent désormais dans LensIdentite.
@@ -113,7 +113,7 @@ function LensScanHome({
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative,
   analyzeLens, lensLoading,
-  // (lensPrice retiré au nettoyage Pépites du 02/09 soir ;
+  // (lensPrice retiré au nettoyage unités du 02/09 soir ;
   // onCreateListing/creatingListing retirés à la fusion des CTA du même
   // soir — le viseur n'a plus qu'UN bouton, le scan unifié.)
 }) {
@@ -260,7 +260,7 @@ function LensScanHome({
           {/* ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
               <LensScanHome/> et RETOURNE (`if (!lensResult) return`) : tout ce
               qui suit dans LensTab n'est atteint qu'une fois un résultat
-              obtenu. (L'icône Pépite qui vivait ici est morte au nettoyage
+              obtenu. (L'icône unité qui vivait ici est morte au nettoyage
               du 02/09 soir — plus aucun point d'affichage.) */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:5, fontSize:11.5, marginTop:8, textAlign:'center', color:'#A6A192' }}>
             {lang === 'en'
@@ -483,8 +483,8 @@ const LensTab = memo(function LensTab({
   const listingSource=identifyResult??lensResult;
 
   // (La lecture de coin_config posée ici le 01/09 pour afficher le prix du
-  // scan — price_lens_overflow — a été RETIRÉE au nettoyage Pépites du 02/09
-  // soir : plus aucun montant en Pépites ne s'affiche, l'écran parle en
+  // scan — price_lens_overflow — a été RETIRÉE au nettoyage unités du 02/09
+  // soir : plus aucun montant en unités ne s'affiche, l'écran parle en
   // annonces du forfait via la prop quotas. grantMensuel et coinBalance
   // avaient déjà vécu une journée ici — même sort.)
 
@@ -546,7 +546,7 @@ const LensTab = memo(function LensTab({
   }
 
   // ── « Créer l'annonce » — parcours GRATUIT (2026-07-28) ───────────────────
-  // Photos → identify (aucune Pépite débitée) → stepper pré-rempli. L'identify
+  // Photos → identify (aucune unité débitée) → stepper pré-rempli. L'identify
   // tourne sur les URLs listing-photos DÉFINITIVES, pas sur le bucket temporaire
   // lens-temp du scan complet : ce sont les mêmes que le stepper utilisera
   // ensuite, et la clé du cache d'idempotence (hash des URLs triées) reste donc
@@ -827,18 +827,18 @@ const LensTab = memo(function LensTab({
             Cet écran n'est atteint que si lensResult existe, donc APRÈS une
             tentative. Le bouton y était rendu inconditionnellement : sur une
             analyse RÉUSSIE, l'utilisateur voyait « Analyser avec l'IA » posé
-            AU-DESSUS de son résultat, cliquable, et sans la ligne « 6 Pépites »
+            AU-DESSUS de son résultat, cliquable, et sans la ligne « 6 unités »
             (elle ne vit que dans LensScanHome, l'écran de scan vide) — un tap
             relançait donc une analyse payante sans jamais afficher son prix.
             Règle désormais :
               • succès  → aucun bouton d'analyse. Seul « Nouvelle analyse »
                 (LensAnalysisResult, plus bas) reste : c'est un RESET pur, il ne
                 débite rien. Il repasse lensResult à null → LensScanHome revient,
-                vide, avec son bouton et son tarif « 6 Pépites » ; le prochain
+                vide, avec son bouton et son tarif « 6 unités » ; le prochain
                 tap est une analyse neuve, payante, annoncée comme telle.
               • échec   → le bouton revient pour retenter. La reprise ne coûte
                 rien de plus : la tentative ratée est relâchée côté serveur
-                (usage_logs + remboursement des Pépites, cf. lens-analysis),
+                (usage_logs + remboursement des unités, cf. lens-analysis),
                 donc l'utilisateur paie une seule fois l'analyse qu'il reçoit.
             La ligne de tarif accompagne le bouton : elle annonce le coût du
             prochain tap (la reprise d'un échec, elle, est gratuite de fait :
@@ -856,8 +856,8 @@ const LensTab = memo(function LensTab({
         {/* Fusion scans+annonces (02/09 soir) : UN compteur, UN chiffre — le
             même que l'en-tête et la génération. Un scan consomme une annonce
             du forfait (le geste unifié rédige les annonces dans la foulée).
-            Sobre, jamais alarmiste. (La mention « N Pépites l'analyse » et
-            son icône ont été retirées au nettoyage Pépites du même soir.) */}
+            Sobre, jamais alarmiste. (La mention « N unités l'analyse » et
+            son icône ont été retirées au nettoyage unités du même soir.) */}
         {quotas?.annonces?.plafond!=null&&(
           <div style={{textAlign:"center",fontSize:11,marginTop:6,color:"#8A8578",fontWeight:600}}>
             {lang==="en"
@@ -890,7 +890,7 @@ const LensTab = memo(function LensTab({
                 (App.jsx) — un Free comme un Premium standard ne voyaient donc
                 jamais « Créer une annonce » depuis Lens, exactement comme dans
                 StockTab. Tout le monde cross-poste ; la différenciation se fait
-                aux Pépites, côté serveur. */}
+                aux unités, côté serveur. */}
             {/* CTA ADAPTATIF, DEUX ÉTATS (2026-07-31) — jamais plus, pour ne
                 pas faire varier le bouton à chaque nuance :
                   · au moins une annonce retenue → « Créer une annonce » ;

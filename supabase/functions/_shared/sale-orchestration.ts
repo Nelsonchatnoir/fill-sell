@@ -194,7 +194,7 @@ export async function orchestrateSale(
     if (wonSaleGate && (unitesRestantes ?? 0) > 0) {
       console.log(
         `[sale] Article ${inv.id} : 1 unité vendue, ${unitesRestantes} restante(s) en stock — ` +
-        "l'article reste publiable, la republication est MANUELLE (nouveau clic Publier, débit de Pépites normal)."
+        "l'article reste publiable, la republication est MANUELLE (nouveau clic Publier, débit d'unités normal)."
       );
     }
   }
