@@ -1013,7 +1013,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // messages (fusion quotas). La garde « pause AVANT suppression » est INTACTE.
 // Manifest bumpé 0.6.16 → 0.6.17 : un zip 0.6.16 existe déjà (02/09 23:01) —
 // jamais deux zips de même version au contenu différent (leçon du 15/08).
-export const EXTENSION_LAST_COMMIT = '2026-09-03T07:05:00Z';
+// 2026-09-03T08:20:37Z = 89771d8 : purge des commentaires « Pépite » dans
+// background.js et vinted.js (mot → « unité », identifiants techniques
+// intacts). COMMENTAIRES SEULS, zéro comportement. Le zip 0.6.17 du matin est
+// ÉCARTÉ (renommé PERIME dans anciens-zips) : le prochain paquet 0.6.17 sera
+// refait UNE fois, avec la sync multi-comptes Vinted — ne rien téléverser
+// d'ici là (la 0.6.15 est encore en review CWS).
+export const EXTENSION_LAST_COMMIT = '2026-09-03T08:20:37Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
