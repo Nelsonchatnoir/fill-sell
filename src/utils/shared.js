@@ -106,6 +106,34 @@ export function sansMentionMonnaie(texte) {
     .trim();
 }
 
+// ── « Action requise » ≠ « Échec » (2026-09-03, chantier « plus aucun échec
+// visible ») ─────────────────────────────────────────────────────────────────
+// Relevé 30 j : les familles ci-dessous représentent l'écrasante majorité des
+// « échecs » affichés en ROUGE alors que RIEN n'est cassé — session à rouvrir,
+// reconnexion de sécurité, vérification anti-robot, information de compte à
+// compléter. L'annonce est intacte, un geste utilisateur débloque : ces jobs
+// se présentent en ✋ « À toi de jouer » (orange), jamais avec le vocabulaire
+// de l'échec. Reconnaissance sur le TEXTE (les jobs du parc et l'historique
+// n'ont pas d'autre marqueur) — toute nouvelle famille s'ajoute ICI.
+const ACTION_UTILISATEUR_RE = new RegExp([
+  '^CHALLENGE\\s',
+  '^REAUTH VENTE eBay',
+  'reconnexion de sécurité',
+  '^Connexion (Vinted|Leboncoin|Beebs|eBay) requise',
+  'session Vinted refusée',
+  'attend que Vinted soit rouvert',
+  'page de connexion à la place du formulaire',
+  '^Adresse requise pour Leboncoin',
+  'nom et ton prénom sur ton compte vendeur',
+  'brouillon Leboncoin non terminé',
+  '/fpa/upgrade',
+  'vérification anti-robot',
+].join('|'), 'i');
+export function jobActionRequise(job) {
+  if (job?.status === 'needs_user') return true;
+  return ACTION_UTILISATEUR_RE.test(String(job?.error ?? ''));
+}
+
 export function humanizeJobError(job, lang = 'fr') {
   const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
   if (!raw) return '';
@@ -290,6 +318,16 @@ export function humanizeJobError(job, lang = 'fr') {
     return en
       ? `Our team paused this job.${intacte ? ` Your listing is untouched on ${name}.` : ''} It can be relaunched from ${republish ? 'the item' : 'the app'}.`
       : `Ce job a été mis en pause par notre équipe.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''} Il pourra être relancé depuis ${republish ? "la fiche de l'article" : "l'app"}.`;
+  }
+
+  // ── Compte vendeur eBay à mettre à niveau (2026-09-03) : le brut affichait
+  // « Formulaire eBay non atteint (page actuelle: /fpa/upgrade) » — un chemin
+  // technique pour dire qu'eBay redirige vers sa page de mise à niveau du
+  // compte vendeur. Action utilisateur, pas un échec.
+  if (job?.platform === 'ebay' && /\/fpa\/upgrade/i.test(raw)) {
+    return en
+      ? 'eBay asks you to upgrade your seller account before listing. Open ebay.fr in Chrome, follow the upgrade steps eBay shows, then restart the publication from the item.'
+      : "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce. Ouvre ebay.fr dans Chrome, suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.";
   }
 
   // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :

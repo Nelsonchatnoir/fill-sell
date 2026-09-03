@@ -27,7 +27,7 @@ import {
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
   getCatTileColor, catClass, detectObjectIcon, buildCardCss,
   PLATFORM_LOGIN_URLS, PLATFORM_LISTINGS_URLS, LBC_DEPOSIT_URL, humanizeJobError,
-  jobErrorSansFaussePromesse,
+  jobErrorSansFaussePromesse, jobActionRequise,
   fraicheurExtension, detecterRetardHorloge,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
@@ -6282,12 +6282,24 @@ const StockTab = memo(function StockTab({
                             // plateforme, failed inclus depuis ce jour) : aucun
                             // accès perdu. Une seule → même modale d'échec
                             // qu'avant, à l'identique.
-                            dot="#B91C1C";fg="#B91C1C";
+                            // ── « Action requise » ≠ « Échec » (2026-09-03) :
+                            // session à rouvrir, reconnexion de sécurité,
+                            // anti-robot, info de compte — rien n'est cassé,
+                            // un geste débloque. Pastille ORANGE ✋, jamais le
+                            // vocabulaire de l'échec ni le rouge. Le rouge ne
+                            // reste que pour les échecs réels.
                             const j=failedJobs[0];
                             const actionables=failedJobs.length+needsUserJobs.length;
+                            const toutAction=failedJobs.every(x=>jobActionRequise(x));
+                            if(toutAction){dot="#E8956D";fg="#8A6100";}
+                            else{dot="#B91C1C";fg="#B91C1C";}
                             txt=actionables>1
-                              ?(fr?`Échec · ${actionables} plateformes`:`Failed · ${actionables} platforms`)
-                              :(fr?`Échec ${PLATFORM_LABELS[j.platform]||j.platform}`:`Failed ${PLATFORM_LABELS[j.platform]||j.platform}`);
+                              ?(toutAction
+                                ?(fr?`✋ À toi de jouer · ${actionables}`:`✋ Your move · ${actionables}`)
+                                :(fr?`Échec · ${actionables} plateformes`:`Failed · ${actionables} platforms`))
+                              :(toutAction
+                                ?(fr?`✋ Action ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ Action ${PLATFORM_LABELS[j.platform]||j.platform}`)
+                                :(fr?`Échec ${PLATFORM_LABELS[j.platform]||j.platform}`:`Failed ${PLATFORM_LABELS[j.platform]||j.platform}`));
                             titre=actionables>1
                               ?(fr?'Voir le détail par plateforme':'See details per platform')
                               :(j.error?humanizeJobError(j,lang):undefined);

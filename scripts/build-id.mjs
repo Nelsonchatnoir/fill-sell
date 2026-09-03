@@ -1030,7 +1030,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // (LAST_USER/PENDING_SWITCH : une session relayée d'un autre utilisateur
 // n'est JAMAIS utilisée sans clic dans le popup). Le zip 0.6.17 sera produit
 // UNE fois, avec ce lot + le pré-vol + le chantier « plus aucun échec ».
-export const EXTENSION_LAST_COMMIT = '2026-09-03T12:15:00Z';
+// 2026-09-03T12:25:00Z (0.6.17, commit épinglé) : chantier « plus aucun échec
+// visible » (analyse 30 j de cross_post_jobs) — session Vinted refusée sur
+// republication = needs_user doux + REPRISE AUTO quand la sonde revoit Vinted
+// vivant (115 jobs/9 comptes en failed rouge sur 30 j) ; catégorie « sans
+// sous-niveaux attendus » = repli à choix (fin du failed sec) ; contradiction
+// LBC sur h1 VIDE = transitoire, plus jamais une contradiction ; titres
+// tout-en-majuscules normalisés avant dépôt (refus serveur connu d'avance) ;
+// « Failed to fetch » rejoint les transitoires (reprise espacée).
+export const EXTENSION_LAST_COMMIT = '2026-09-03T12:25:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

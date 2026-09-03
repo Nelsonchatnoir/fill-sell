@@ -4406,12 +4406,31 @@ async function selectCategory(path, fields = {}) {
     // mapping trop profond (rare : le même chemin peut réussir par ailleurs),
     // ou état du panneau inattendu (pré-sélection, rendu partiel).
     if (!isLast && !hasChevron) {
+      // ── Repli à CHOIX (2026-09-03, chantier « plus aucun échec ») ─────────
+      // Cet échec partait SEC (failed) alors que la liste réelle du panneau
+      // est là : même traitement que « niveau introuvable » — l'utilisateur
+      // tranche parmi ce que Vinted affiche VRAIMENT, le choix est substitué
+      // à ce niveau à la relance (categoryLevelChoice, bloc 1 plus haut).
+      const optionsVisibles = await visibleCatalogChoices();
       throw erreurCategorie(
         `le niveau « ${levelLabel} » ne propose pas les sous-niveaux attendus`,
         `"${levelLabel}" affiché sans sous-niveaux (pas de chevron, vérifié 4×, suggestions exclues) alors que ` +
         `le chemin continue avec ${JSON.stringify(path.slice(i + 1))}. ` +
         `${describeMatchedOption(match)}. ` +
-        `Options affichées par Vinted à ce niveau: ${JSON.stringify(await visibleCatalogLabels())}.`
+        `Options affichées par Vinted à ce niveau: ${JSON.stringify(await visibleCatalogLabels())}.`,
+        optionsVisibles.length ? {
+          needsUser: true,
+          message:
+            `Le catalogue Vinted a changé autour de « ${levelLabel} ». ` +
+            "Choisis la bonne catégorie parmi celles que Vinted propose — ton annonce partira ensuite toute seule.",
+          needsUserField: {
+            field_key: "categoryLevelChoice",
+            field_label: "Catégorie Vinted",
+            allowed_values: optionsVisibles,
+            input_type: "selection_only",
+            target: { root: null, key: "categoryLevelChoice" },
+          },
+        } : null
       );
     }
 

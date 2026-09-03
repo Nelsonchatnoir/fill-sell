@@ -61,7 +61,10 @@ const MAX_NEEDS_USER_RETRIES = 2;
 // les ré-armer ferait rouvrir un onglet à chaque cron pour rien (risque
 // DataDome documenté plus bas), et masquerait le vrai problème à l'utilisateur.
 const TRANSIENT_JOB_ERROR_RE =
-  /message channel closed|Receiving end does not exist|No tab with id|pas fini de charger|pas fini de s'ouvrir|Onglet de travail fermé pendant/i;
+  // « Failed to fetch » ajouté le 2026-09-03 (chantier « plus aucun échec ») :
+  // un réseau coupé pendant l'opération est transitoire par nature — relevé
+  // 30 j : 5 jobs finis en failed sec sur cette seule exception.
+  /message channel closed|Receiving end does not exist|No tab with id|pas fini de charger|pas fini de s'ouvrir|Onglet de travail fermé pendant|Failed to fetch/i;
 
 // ── Reprise ESPACÉE des échecs RÉCUPÉRABLES (2026-08-31) ─────────────────────
 // Constat du 31/08 sur cas réels (842b0a22 DataDome LBC, fa69b1bd/0e2c5f8e
@@ -1713,10 +1716,33 @@ function stripEmoji(text) {
     .trim();
 }
 
+// ── Titres TOUT EN MAJUSCULES (2026-09-03, chantier « plus aucun échec ») ────
+// Vinted refuse au serveur « Le titre contient trop de lettres majuscules »
+// (5 jobs / 3 comptes sur 30 j, refus DÉFINITIF après remplissage complet).
+// La règle est connue d'avance : on normalise AVANT le dépôt — Title Case
+// mot à mot — plutôt que de laisser l'utilisateur découvrir un refus. Seuil
+// volontairement haut (≥ 8 lettres, > 60 % de majuscules) : un titre normal
+// avec un sigle ou une marque en capitales n'est JAMAIS touché.
+function normaliserTitreCriard(title) {
+  const t = String(title ?? "");
+  const lettres = t.replace(/[^\p{L}]/gu, "");
+  if (lettres.length < 8) return t;
+  const maj = (t.match(/\p{Lu}/gu) ?? []).length;
+  if (maj / lettres.length <= 0.6) return t;
+  return t.toLowerCase().replace(/(^|[\s\-—/(«"'])(\p{L})/gu, (m, sep, c) => sep + c.toUpperCase());
+}
+
 function sanitizeJob(job) {
-  const title = stripEmoji(job.title);
+  let title = stripEmoji(job.title);
+  if (job.platform === "vinted") {
+    const calme = normaliserTitreCriard(title);
+    if (calme !== title) {
+      console.log(`[background] Titre en capitales normalisé pour Vinted : "${title}" → "${calme}"`);
+      title = calme;
+    }
+  }
   if (title === job.title) return job;
-  console.log(`[background] Titre nettoyé (emoji retirés) : "${job.title}" → "${title}"`);
+  if (stripEmoji(job.title) !== job.title) console.log(`[background] Titre nettoyé (emoji retirés) : "${job.title}" → "${title}"`);
   return { ...job, title };
 }
 
@@ -6660,6 +6686,33 @@ async function reportPlatformSessions(accessToken) {
   const sessions = await probePlatformSessions();
   await ecrireExtensionSessions(accessToken, sub, sessions);
   console.log("[background] sessions plateformes relevées :", JSON.stringify(sessions));
+
+  // ── REPRISE AUTO des republications en attente de session (2026-09-03) ─────
+  // Les jobs mis en needs_user par la capture (needs_user_source =
+  // 'session_vinted') repartent d'eux-mêmes dès que la sonde voit Vinted
+  // VIVANT (200 sur users/current — le seul signal sûr, jamais un null).
+  // Pas de ping-pong possible : on ne ré-arme QUE session vivante, et une
+  // capture qui échoue à nouveau pour session repassera par la même porte au
+  // pire au prochain cycle de sonde (10 min). Best-effort, jamais bloquant.
+  if (sessions.vinted === true) {
+    try {
+      const repris = await restRequest(
+        `cross_post_jobs?user_id=eq.${sub}&status=eq.needs_user&action=eq.republish&platform=eq.vinted` +
+        `&platform_fields->>needs_user_source=eq.session_vinted`,
+        accessToken,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify({ status: "pending", error: null }),
+        },
+      );
+      if (Array.isArray(repris) && repris.length) {
+        console.log(`[background] session Vinted revenue — ${repris.length} republication(s) en attente reprises automatiquement`);
+      }
+    } catch (e) {
+      console.warn("[background] reprise auto des republications en attente de session:", e?.message ?? e);
+    }
+  }
 }
 
 // Signal SÛR de déconnexion (2026-07-30) : la garde d'entrée d'un handler
@@ -10434,10 +10487,26 @@ async function processRepublishJob(job, accessToken) {
       userFields: pf.republish_user_fields ?? null,
     });
 
-    // Échec de capture (session, réseau, annonce introuvable) : 'failed' —
-    // rien n'a été touché, l'annonce est intacte, et un statut terminal
-    // déclenche republish_refund_on_terminal (l'unité est rendue).
+    // Échec de capture : rien n'a été touché, l'annonce est intacte.
     if (!cap.success) {
+      // ── SESSION / ANTI-ROBOT : RÉCUPÉRABLE, pas un échec (2026-09-03) ────
+      // Relevé 30 j : 115 jobs « session Vinted refusée » chez 9 comptes,
+      // tous en failed ROUGE définitif — alors que la session revient (page
+      // Vinted rouverte, reconnexion). Désormais : needs_user DOUX (« action
+      // à faire », annonce intacte), et REPRISE AUTOMATIQUE dès que la sonde
+      // de sessions (10 min) revoit Vinted vivant — cf. reportPlatformSessions.
+      // L'utilisateur qui rouvre Vinted n'a plus RIEN à relancer.
+      if (/session Vinted refusée|CHALLENGE/i.test(String(cap.error ?? ""))) {
+        pf.needs_user_source = "session_vinted";
+        const msg =
+          "Ta republication attend que Vinted soit rouvert — ton annonce est intacte, rien n'a été touché. " +
+          "Connecte-toi sur vinted.fr dans Chrome (ou ouvre simplement un onglet Vinted) : " +
+          "la republication repartira toute seule dans les minutes qui suivent.";
+        await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+        return { status: "needsUser", error: `capture reportée : ${cap.error}` };
+      }
+      // Autres causes (annonce introuvable, réseau…) : 'failed' — un statut
+      // terminal déclenche republish_refund_on_terminal (mécanique d'époque).
       const msg = `Republication annulée avant toute suppression : ${cap.error}. Ton annonce est intacte.`;
       await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
       return { status: "failed", error: msg };

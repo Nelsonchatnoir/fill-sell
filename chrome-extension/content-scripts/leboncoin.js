@@ -190,6 +190,20 @@ async function deleteDepuisPageAnnonce(job, adId, trace, t) {
   const preuveTitre = annonceNommee(h1, job, null);
   if (preuveTitre) {
     t(`identité par titre vérifiée : ${preuveTitre} — « ${h1} »`);
+  } else if (!h1) {
+    // ── h1 VIDE ≠ contradiction (2026-09-03, chantier « plus aucun échec ») ──
+    // Relevé 30 j : 6 jobs « Contradiction d'identité : l'annonce N s'intitule
+    // «  » » chez 2 comptes — le h1 n'était pas RENDU (SPA en cours de
+    // chargement), il ne contredisait rien. Un titre ILLISIBLE est un état de
+    // rendu transitoire : on le dit comme tel — le message matche la famille
+    // « pas fini de charger » du ré-armement transitoire, la reprise est
+    // automatique et bornée. Aucun clic, rien de touché.
+    t(`titre de la page non rendu (h1 vide) — retentative, aucun clic`);
+    return {
+      success: false,
+      error: `Le titre de l'annonce ${idPage} n'a pas fini de charger — suppression reportée, aucun geste effectué`,
+      trace,
+    };
   } else if (motsSignificatifs(job?.title).length >= 3) {
     t(`ABANDON : l'annonce ${idPage} s'intitule « ${h1} », le job « ${job.title} » — aucun clic`);
     return {

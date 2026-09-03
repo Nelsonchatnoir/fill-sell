@@ -458,6 +458,49 @@ serve(async (req) => {
     );
   }
 
+  // 12. JOBS PENDING DEPUIS PLUS DE 48 H (2026-09-03, chantier « plus aucun
+  // échec visible ») : relevé du jour — 127 jobs pending chez 4 comptes
+  // depuis le 22/08, invisibles de partout (extension éteinte, plafond,
+  // needs_user_source hérité…). Groupé PAR COMPTE avec la dernière trace
+  // d'extension : c'est elle qui dit si c'est un ordinateur éteint.
+  const pendingBloques: string[] = [];
+  try {
+    const { data: vieux, error: e12 } = await supabase
+      .from("cross_post_jobs")
+      .select("user_id, platform, action, created_at")
+      .eq("status", "pending")
+      .lt("created_at", new Date(now - 48 * 3_600_000).toISOString())
+      .range(0, 999);
+    if (e12) throw new Error(e12.message);
+    const parCompte = new Map<string, { n: number; plusVieux: string; detail: Map<string, number> }>();
+    for (const j of (vieux ?? []) as Array<Record<string, unknown>>) {
+      const uid = String(j.user_id);
+      const e = parCompte.get(uid) ?? { n: 0, plusVieux: String(j.created_at), detail: new Map() };
+      e.n += 1;
+      if (String(j.created_at) < e.plusVieux) e.plusVieux = String(j.created_at);
+      const k = `${j.platform}/${j.action}`;
+      e.detail.set(k, (e.detail.get(k) ?? 0) + 1);
+      parCompte.set(uid, e);
+    }
+    if (parCompte.size) {
+      const uids = [...parCompte.keys()];
+      const { data: profs } = await supabase
+        .from("profiles").select("id, email, extension_last_seen_at").in("id", uids);
+      const parId = new Map((profs ?? []).map((p: Record<string, unknown>) => [String(p.id), p]));
+      for (const [uid, e] of parCompte) {
+        const p = parId.get(uid);
+        const vue = p?.extension_last_seen_at ? String(p.extension_last_seen_at).slice(0, 10) : "jamais";
+        const detail = [...e.detail.entries()].map(([k, n]) => `${k}×${n}`).join(", ");
+        pendingBloques.push(
+          `${p?.email ?? uid} — ${e.n} job(s) pending depuis ${e.plusVieux.slice(0, 10)} (${detail}) — extension vue : ${vue}`,
+        );
+      }
+      pendingBloques.sort();
+    }
+  } catch (e) {
+    pendingBloques.push(`Relevé des pending anciens illisible (${String((e as Error)?.message ?? e)}).`);
+  }
+
   const counts = {
     failed_24h: (failed ?? []).length,
     stuck_processing: stuck.length,
@@ -472,6 +515,7 @@ serve(async (req) => {
     sync_gardes_graves: gardeGraves.length,
     sync_gardes_anomalies: gardeAnomalies.length,
     dressings_croises: dressingsCroises.length,
+    pending_bloques: pendingBloques.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -598,6 +642,19 @@ serve(async (req) => {
     </ul>`
   }
     ${
+    pendingBloques.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      ⏳ Jobs pending depuis plus de 48 h (${pendingBloques.length} compte${pendingBloques.length > 1 ? "s" : ""})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Personne ne les voit échouer — ils n'avancent simplement pas. « extension vue » dit si
+      c'est un ordinateur éteint ; sinon, chercher pourquoi la file ne les distribue pas.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${pendingBloques.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#92400E;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
     dressingsCroises.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
       🔴 Même dressing Vinted vu par plusieurs comptes FillSell (${dressingsCroises.length})
@@ -635,7 +692,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques})`,
       html,
     }),
   });
