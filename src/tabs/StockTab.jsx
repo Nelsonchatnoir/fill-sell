@@ -4214,13 +4214,13 @@ const StockTab = memo(function StockTab({
     if (pubRes?.allowed === false) {
       const raisons = {
         // insufficient_coins : mort avec la bascule quotas (02/09, prix à 0) —
-        // l'entrée reste pour un éventuel retour arrière des prix.
+        // l'entrée reste, défensive, au cas où le serveur l'émettrait encore.
         insufficient_coins: lang === 'en'
-          ? 'This publication could not be started. Nothing was deducted.'
-          : 'Cette publication n’a pas pu être lancée. Rien n’a été décompté.',
+          ? 'This publication could not be started. Try again in a moment.'
+          : 'Cette publication n’a pas pu être lancée. Réessaie dans un instant.',
         already_published: lang === 'en'
-          ? 'Already live or queued on this platform — nothing was charged.'
-          : 'Déjà en ligne (ou en file) sur cette plateforme — rien n’a été débité.',
+          ? 'Already live or queued on this platform.'
+          : 'Déjà en ligne (ou en file) sur cette plateforme.',
       };
       setRelanceMsg(
         raisons[pubRes.reason]

@@ -4,7 +4,6 @@ import { Camera, Check, ChevronLeft, Mic, Plus, X, Sparkles, Pencil, Clock, Imag
 import { Capacitor } from "@capacitor/core";
 import { Camera as CapCamera } from "@capacitor/camera";
 import ConversionModal from "./ConversionModal";
-import CoinStoreModal from "./CoinStoreModal";
 import ExtensionPitchScreen from "./ExtensionPitchScreen";
 // (import PepiteAmount retiré au nettoyage Pépites du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
@@ -1292,9 +1291,9 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, coinBalance, reservedBalance = 0, reuseRetouched = false, retoucheNewCount = 0, onOpenStore, platformSupport, publishedSet, queuedSet, lang,
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, publishedSet, queuedSet, lang,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
-  onAnalyze, analyzing, analysisResult, analysisError, analysisCost, analysisHidden }) {
+  onAnalyze, analyzing, analysisResult, analysisError, analysisHidden }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
   const MAX = MAX_PHOTOS;
@@ -1458,15 +1457,10 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
       <div style={{ display: reuseRetouched ? "none" : "flex", flexDirection:"column", gap:10, marginBottom:12 }}>
         {retouchOptions.map(o => {
           const active = photoOption === o.id;
-          // Grille 2 axes (2026-08-04) : le chip porte le prix PHOTOS de
-          // l'option (0 = « Gratuit ») ; la publication (3/plateforme) vit
-          // dans le récap sous les plateformes. L'accessibilité (rouge) se
-          // juge sur le TOTAL — un solde qui couvre les photos mais pas la
-          // publication est bien un solde insuffisant.
+          // Suppression Pépites (03/09) : plus de monnaie interne ni de solde.
+          // Le chip n'affiche plus qu'un éventuel « Gratuit » ; un prix > 0
+          // ne peut plus exister (coin_config à 0 → null au chargement).
           const price = coinPrices?.[o.id] ?? null;
-          const unit = coinPrices?.per_platform ?? null;
-          const totalFor = price != null && unit != null ? price + unit * selected.size : null;
-          const affordable = totalFor == null || coinBalance >= totalFor;
           return (
             <button
               key={o.id}
@@ -1486,30 +1480,14 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                 <div style={{ fontSize:12, marginTop:2, lineHeight:1.4, color:T.mute2 }}>{o.desc}</div>
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-                {price != null && (
-                  price === 0 ? (
-                    <span style={{
-                      fontSize:12, fontWeight:700, whiteSpace:"nowrap",
-                      color:T.tealDeep, background:"#E7F3F0",
-                      border:"1px solid #CBE5DF", padding:"3px 9px", borderRadius:999,
-                    }}>
-                      {lang === "fr" ? "Gratuit" : "Free"}
-                    </span>
-                  ) : (
-                    <span style={{
-                      fontSize:12, fontWeight:700, whiteSpace:"nowrap",
-                      color: affordable ? T.tealDeep : "#B0645A",
-                      background: affordable ? "#E7F3F0" : "#F7ECEA",
-                      border: `1px solid ${affordable ? "#CBE5DF" : "#EAD4CF"}`,
-                      padding:"3px 9px", borderRadius:999,
-                      display:"inline-flex", alignItems:"center", gap:4,
-                    }}>
-                      {/* (icône Pépite retirée au nettoyage du 02/09 soir —
-                          branche dormante, prix > 0 impossible tant que la
-                          grille est à 0) */}
-                      {price}
-                    </span>
-                  )
+                {price === 0 && (
+                  <span style={{
+                    fontSize:12, fontWeight:700, whiteSpace:"nowrap",
+                    color:T.tealDeep, background:"#E7F3F0",
+                    border:"1px solid #CBE5DF", padding:"3px 9px", borderRadius:999,
+                  }}>
+                    {lang === "fr" ? "Gratuit" : "Free"}
+                  </span>
                 )}
                 <div style={{
                   width:20, height:20, borderRadius:"50%", flexShrink:0,
@@ -1675,21 +1653,13 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
               >
                 {analyzing
                   ? (lang === "en" ? "Analyzing…" : "Analyse en cours…")
-                  : <>
-                      {lang === "en" ? "Analyze my photos" : "Analyser mes photos"}
-                      {analysisCost != null && <> · {analysisCost}</>}
-                    </>}
+                  : (lang === "en" ? "Analyze my photos" : "Analyser mes photos")}
               </button>
             </>
           )}
         </div>
       )}
 
-      {/* (Le bloc « Tes Pépites : N · + Recharger » — masqué display:none à la
-          bascule quotas — a été SUPPRIMÉ au nettoyage Pépites du 02/09 soir :
-          plus une seule occurrence du mot dans le rendu, boutique injoignable.
-          Retour arrière : historique git. wallet/coinBalance existent
-          toujours côté données pour les pré-checks dormants.) */}
 
       <Eyebrow>{t("stepPhotosPlatformsLabel")}</Eyebrow>
       <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:2 }}>
@@ -3748,16 +3718,14 @@ export default function ListingPreviewScreen({
     setQuotaModal({ open: true, ...etat });
   };
 
-  // ── Pièces : solde (coin_wallets) + grille de prix (coin_config) ──────────
-  // Lecture seule côté client — tout débit passe par spend_coins_and_publish.
-  const [wallet, setWallet]         = useState(null);
+  // ── Grille de prix (coin_config) — suppression Pépites (03/09) ────────────
+  // La monnaie interne n'existe plus : le wallet (coin_wallets), le solde et
+  // la boutique sont SUPPRIMÉS. coin_config reste la source des quotas et des
+  // clés de configuration ; les prix y sont à 0 (→ null ici), donc tous les
+  // affichages de coût sont éteints. spend_coins_and_publish reste l'autorité
+  // de CRÉATION DES JOBS (quotas serveur) — son nom est historique, il ne
+  // débite plus rien (RPC inertes à prix nul, migration 20260902200000).
   const [coinPrices, setCoinPrices] = useState(null);
-  const [storeOpen, setStoreOpen]   = useState(false);
-  const coinBalance = (wallet?.included_balance ?? 0) + (wallet?.purchased_balance ?? 0);
-  // Réservation/capture (2026-08-05) : Pépites de publication mises de côté au
-  // clic, capturées plateforme par plateforme à la publication réelle, rendues
-  // sinon. Le solde DISPONIBLE (coinBalance) est déjà net de ce montant.
-  const reservedBalance = wallet?.reserved_balance ?? 0;
   const coinPriceFor = (opt) => coinPrices?.[opt] ?? null;
   // Grille à deux axes (2026-08-04) : coinPriceFor rend le prix PHOTOS de
   // l'option (0/9/32, une fois par article) ; la publication coûte EN PLUS
@@ -3786,17 +3754,7 @@ export default function ListingPreviewScreen({
     return photo + pubUnitPrice * nPlatforms;
   };
 
-  async function refreshWallet() {
-    const { data: w } = await supabase
-      .from("coin_wallets")
-      .select("included_balance, purchased_balance, reserved_balance")
-      .eq("user_id", userId)
-      .maybeSingle();
-    setWallet(w ?? { included_balance: 0, purchased_balance: 0, reserved_balance: 0 });
-  }
-
   useEffect(() => {
-    refreshWallet();
     supabase.from("coin_config").select("key, value").then(({ data }) => {
       const p = {};
       for (const row of data ?? []) {
@@ -4043,7 +4001,6 @@ export default function ListingPreviewScreen({
       // ce relevé que la bascule anti-contamination et la garde de génération
       // comparent à la sélection courante.
       photosAnalyseesRef.current = [...photos];
-      refreshWallet();
       // Prix par défaut : la valeur de marché estimée, jamais le prix d'achat.
       if (res?.prix_vente_suggere != null) {
         const estime = res.prix_vente_suggere;
@@ -4228,10 +4185,6 @@ export default function ListingPreviewScreen({
       }
       if (!data?.platforms) throw new Error(t("stepGenNoListingsError"));
 
-      // Génération payante : le solde affiché doit refléter le débit qui
-      // vient d'avoir lieu côté serveur (et un éventuel remboursement d'une
-      // tentative précédente).
-      refreshWallet();
       // Rangée AVANT d'être appliquée : si l'utilisateur referme le stepper
       // dans la seconde qui suit, la génération est déjà payée et déjà sauvée.
       ecrireGenerationCache(signature, data);
@@ -6457,13 +6410,6 @@ export default function ListingPreviewScreen({
         }
         throw new Error(t("genericError"));
       }
-      setWallet({
-        included_balance: pubRes.included_after,
-        purchased_balance: pubRes.purchased_after,
-        // reserved_after absent (RPC d'avant la réservation) → 0 plutôt qu'un
-        // état périmé ; refreshWallet réalignera à la prochaine ouverture.
-        reserved_balance: pubRes.reserved_after ?? 0,
-      });
       // Les jobs sont en base : le Stock peut afficher « En cours… » tout de
       // suite (patch optimiste, cf. prop onJobsQueued). Une relecture réelle
       // écrasera ces lignes synthétiques au prochain poll.
@@ -6671,18 +6617,9 @@ export default function ListingPreviewScreen({
   function handleNext() {
     if (step === 0) { handleUpload(); return; }
     if (step === 1) {
-      // Génération payante (2026-08-05) : le clic débite price_generate — la
-      // garde porte sur CE prix, pas sur le total de la future publication.
-      // Choix assumé : quelqu'un qui n'a que de quoi générer a le droit de
-      // générer (l'annonce a une valeur en soi) ; le récap du step 1 et le
-      // CTA Publier affichent le total de publication, chaque poste tranche à
-      // son propre clic. Le serveur refuse de toute façon en 402 si le solde
-      // a bougé entre-temps.
-      const genPrice = coinPrices?.generate ?? null;
-      if (genPrice != null && coinBalance < genPrice) {
-        ouvrirQuotaModal("plafond_pepites_publi", { trigger: "publish", targetTiers: ["premium","pro"], coinPrice: genPrice });
-        return;
-      }
+      // (Suppression Pépites 03/09 : la garde de solde pré-génération est
+      // morte avec le wallet — les quotas se tranchent côté serveur, qui
+      // répond generation_limit/402 avec son propre message.)
       // Lens unifié : une retouche choisie exige la génération classique (le
       // scan a rédigé sans retoucher). On abandonne la rédaction pré-générée —
       // l'effet d'auto-génération de l'étape 2 reprend la main, applique la
@@ -6852,13 +6789,10 @@ export default function ListingPreviewScreen({
             selected={selected}
             setSelected={setSelected}
             coinPrices={coinPrices}
-            coinBalance={coinBalance}
-            reservedBalance={reservedBalance}
             reuseRetouched={reuseRetouched}
             retoucheNewCount={alreadyRetouched && addedNewPhotos
               ? photos.filter(u => !initialPhotos.includes(u)).length
               : 0}
-            onOpenStore={() => setStoreOpen(true)}
             platformSupport={platformSupport}
             publishedSet={publishedSet}
             queuedSet={queuedSet}
@@ -6867,7 +6801,6 @@ export default function ListingPreviewScreen({
             analyzing={analyzing}
             analysisResult={photoAnalysis}
             analysisError={analysisError}
-            analysisCost={coinPrices?.lens_overflow ?? null}
             // Article venant de Lens : il a déjà prix et attributs → on ne
             // propose PAS une seconde analyse payante pour le même article.
             analysisHidden={initialListing?.prix_vente_suggere != null || initialListing?.taille_estimee != null}
@@ -7039,13 +6972,6 @@ export default function ListingPreviewScreen({
         />
       )}
 
-      <CoinStoreModal
-        open={storeOpen}
-        onClose={() => setStoreOpen(false)}
-        lang={lang}
-        supabase={supabase}
-        onPurchased={refreshWallet}
-      />
 
       {/* Accroche extension (2026-08-04) : ouverte par le CTA Publier quand
           l'extension n'a jamais été vue (ou par le reason extension_required

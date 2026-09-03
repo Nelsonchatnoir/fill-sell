@@ -16,7 +16,11 @@ export const PRODUCT_IDS = {
   business: 'app.fillsell.business.sub',
 };
 
-// Packs consumables — mêmes ids que CoinStoreModal et validate-coin-purchase.
+// Packs consumables — mêmes ids que validate-coin-purchase (serveur). La
+// boutique est SUPPRIMÉE (03/09) : plus aucun achat possible depuis l'app,
+// mais ce filet reste OBLIGATOIRE — il honore les achats payés AVANT la
+// bascule dont la transaction StoreKit n'a jamais été créditée (droit acquis,
+// crédit idempotent côté serveur). Ne pas retirer sans décision explicite.
 export const COIN_PRODUCT_IDS = [
   'app.fillsell.coins.100',
   'app.fillsell.coins.220',

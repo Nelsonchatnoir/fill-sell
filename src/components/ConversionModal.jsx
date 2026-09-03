@@ -145,7 +145,7 @@ function Title({ children }) {
 
 // (BalanceCard — la jauge de solde — et PackList — les 4 packs de Pépites —
 // sont MORTS le 02/09 soir avec la bascule quotas : plus de solde à jauger,
-// plus de packs à vendre. CoinStoreModal/coinPacks restent en place côté
+// plus de packs à vendre. CoinStoreModal/coinPacks SUPPRIMÉS le 03/09 côté
 // fichiers, DÉBRANCHÉS — un achat en vol doit encore aboutir côté webhooks.)
 
 // ── Bloc commun « Dans tous les forfaits » (2026-09-02) ──────────────────────
@@ -545,9 +545,8 @@ export default function ConversionModal({
   // Repli seulement — l'hôte passe la valeur lue dans coin_config
   // (free_stock_limit, source unique de la limite Free depuis le 05/08).
   stockLimit   = 200,
-  coinBalance  = null,             // solde réel (coin_wallets), fourni par l'appelant
-  coinPrice    = null,             // coût réel de l'action bloquée (réponse serveur)
-  onUseCoins   = null,             // ouvre CoinStoreModal (chemin d'achat existant)
+  // (coinBalance/coinPrice/onUseCoins : props supprimées le 03/09 avec la
+  // monnaie interne — plus aucun hôte ne les passe.)
   // Point d'entrée EXACT (même vocabulaire que le tunnel d'App.jsx) — sert la
   // télémétrie de la modale elle-même, jamais l'affichage.
   origine      = null,
@@ -636,11 +635,9 @@ export default function ConversionModal({
   if (!isOpen) return null;
 
   const K = cfg || COIN_CONFIG_FALLBACK;
-  // Bascule quotas (02/09 soir) : les CAS 1/2 « Pépites insuffisantes » sont
-  // MORTS — le serveur ne peut plus émettre insufficient_coins (prix à 0), les
-  // props coinBalance/coinPrice/onUseCoins ne sont plus lues (conservées pour
-  // les hôtes pas encore nettoyés). La jauge de solde, la liste de packs et
-  // les grants n'existent plus dans cette modale.
+  // Suppression de la monnaie interne (02-03/09) : les anciens CAS 1/2 sont
+  // MORTS (le serveur ne peut plus émettre insufficient_coins, prix à 0) et
+  // leurs props ont disparu. La modale ne parle qu'en gestes et en plans.
 
   // ── Échelle des paliers (2026-08-09) ──────────────────────────────────────
   // Remplace l'ancien `isPro ? [] : isPremium ? ['pro'] : …`, qui codait en dur

@@ -56,10 +56,6 @@ import VentesTab from './tabs/VentesTab';
 import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
 import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
-import CoinStoreModal from './components/CoinStoreModal';
-// (imports PepiteIcon/PepiteAmount retirés au nettoyage Pépites du 02/09
-// soir — plus aucun point d'affichage ; les composants ne vivent plus que
-// dans CoinStoreModal, injoignable.)
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
 import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
@@ -2073,7 +2069,6 @@ export default function App({ loginOnly = false }){
   },[]);
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
-  const [coinStoreOpen,setCoinStoreOpen]=useState(false);
   const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
   // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin) :
   // requise par le wizard LBC à chaque dépôt (champ "À quelle adresse se trouve
@@ -7052,13 +7047,6 @@ export default function App({ loginOnly = false }){
         quotaInfo={conversionModal.quotaInfo??null}
         origine={conversionModal.origine??null}
         plafondRepub={conversionModal.plafondRepub??null}
-      />
-
-      <CoinStoreModal
-        open={coinStoreOpen}
-        onClose={()=>setCoinStoreOpen(false)}
-        lang={lang}
-        supabase={supabase}
       />
 
       {/* ── PREMIUM WELCOME MODAL (post-IAP purchase) ── */}

@@ -566,7 +566,9 @@ serve(async (req) => {
   // ── needs_user À ÉCHÉANCE : 72 h sans geste → failed (point 5, GO Nico
   // 16/08) ──────────────────────────────────────────────────────────────────
   // needs_user n'est pas terminal : aucun trigger ne rend jamais la Pépite —
-  // l'utilisateur a payé un service jamais rendu (art. 5 des CGV ; relevé du
+  // l'utilisateur a payé un service jamais rendu (art. 5 des ANCIENNES CGV
+  // Pépites, remplacées le 03/09 — les triggers restent en place pour l'ère
+  // des débits ; relevé du
   // 16/08 : 46 républish 'captured' débités + 11 réservations publish non
   // soldées). Mécanisme validé : AUCUN chemin d'argent neuf. Le cron passe le
   // job en 'failed' et ce sont les triggers EXISTANTS qui remboursent,
