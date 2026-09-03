@@ -116,7 +116,12 @@ export default function AnalyseMarche({
   // autres appelants, stepper compris, gardent le comportement d'origine.
   masquerNotes = false,
 }) {
-  const [ouvert, setOuvert] = useState(false);
+  // Écran Lens (verdict) : détails OUVERTS par défaut (03/09, demande Nico) —
+  // annonces comparables, fourchette et conseils sont la preuve du travail du
+  // scan, les cacher derrière une flèche de 12px les faisait rater. Le stepper
+  // (publication) reste replié : là-bas l'analyse se signale, elle ne réclame
+  // pas l'écran.
+  const [ouvert, setOuvert] = useState(variant === "verdict");
   if (!result || result.prix_vente_suggere == null) return null;
 
   const en = lang === "en";
@@ -183,6 +188,9 @@ export default function AnalyseMarche({
 
       {annonces.length > 0 && (
         <div style={{ borderTop: `1px solid ${C.rule}`, paddingTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.09em", textTransform: "uppercase", color: C.mute2, marginBottom: 2 }}>
+            {en ? `Comparable listings (${annonces.length})` : `Annonces comparables (${annonces.length})`}
+          </div>
           {annonces.slice(0, 5).map((a, i) => (
             <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, color: C.mute2, lineHeight: 1.4 }}>
               <span>{a.titre}{a.plateforme ? ` · ${a.plateforme}` : ""}</span>
@@ -201,6 +209,9 @@ export default function AnalyseMarche({
 
       {result.conseils?.length > 0 && (
         <div style={{ borderTop: `1px solid ${C.rule}`, paddingTop: 9, display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.09em", textTransform: "uppercase", color: C.mute2, marginBottom: 2 }}>
+            {en ? "Tips to sell better" : "Conseils pour mieux vendre"}
+          </div>
           {result.conseils.map((c, i) => (
             <div key={i} style={{ display: "flex", gap: 7, fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
               <span style={{ color: C.teal, fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
@@ -356,17 +367,26 @@ export default function AnalyseMarche({
         </div>
       )}
 
+      {/* Détails ouverts par défaut sur cet écran (cf. useState plus haut) :
+          l'en-tête devient un titre de section, le repli reste possible. */}
       <div style={{ borderTop: `1px solid ${C.rule}`, paddingTop: 10 }}>
         <button
           onClick={() => setOuvert((o) => !o)}
           aria-expanded={ouvert}
-          style={{ background: "none", border: "none", padding: 0, fontFamily: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: C.mute }}
+          style={{ width: "100%", background: "none", border: "none", padding: 0, fontFamily: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: ouvert ? C.ink : C.mute, textAlign: "left" }}
         >
           <span style={{ color: "#A3A9A6" }}>{ouvert ? "▾" : "▸"}</span>
-          {en ? "Details" : "Détails"}
+          {ouvert
+            ? (en ? "Market details" : "Le détail du marché")
+            : (en ? "Details" : "Détails")}
           {!ouvert && (
             <span style={{ fontWeight: 400, color: "#A3A9A6", fontSize: 12 }}>
               {en ? "listings, range, sale speed, tips" : "annonces, fourchette, vitesse, conseils"}
+            </span>
+          )}
+          {ouvert && (
+            <span style={{ marginLeft: "auto", fontWeight: 500, color: "#A3A9A6", fontSize: 11.5 }}>
+              {en ? "hide" : "masquer"}
             </span>
           )}
         </button>

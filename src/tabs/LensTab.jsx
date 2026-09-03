@@ -368,6 +368,40 @@ function LensScanHome({
 // réponse : un « Excellent » à côté d'une perte était possible), et le deal
 // score est supprimé (nombre sans échelle, tassé entre 4 et 6, redondant avec
 // le verdict — décision Nico du 30/07).
+// ── CTA héros « Créer l'annonce » (03/09 soir, demande Nico) ────────────────
+// LE bouton de l'écran résultat, et de lui seul : signature visuelle unique —
+// vert nuit profond, filet doré (l'accent premium de l'app, cf. badge Pro),
+// balayage lumineux — pour qu'aucun autre bouton ne rivalise. PrimaryButton
+// (teal plein) reste le style des CTA ordinaires ailleurs. Style uniquement :
+// mêmes onClick/disabled que le bouton qu'il remplace.
+function LensHeroCta({ onClick, disabled, children, style }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        position:'relative', overflow:'hidden', width:'100%', boxSizing:'border-box',
+        borderRadius:999, padding:'17px 0', display:'flex', alignItems:'center',
+        justifyContent:'center', gap:8, fontSize:15.5, fontWeight:700,
+        fontFamily:'inherit', letterSpacing:'0.01em',
+        cursor:disabled?'not-allowed':'pointer',
+        background:disabled?'#DCEEEA':'linear-gradient(135deg,#1A5F52 0%,#0E3A32 55%,#10201B 100%)',
+        color:disabled?'#8FB5AE':'#FFFFFF',
+        border:disabled?'none':'1px solid rgba(240,196,106,0.55)',
+        boxShadow:disabled?'none':'0 14px 30px -8px rgba(16,32,27,0.5), inset 0 1px 0 rgba(255,255,255,0.12)',
+        ...style,
+      }}
+    >
+      <style>{`@keyframes lensHeroShine{0%{transform:translateX(-160%) skewX(-18deg)}55%,100%{transform:translateX(320%) skewX(-18deg)}}
+        @media (prefers-reduced-motion: reduce){.lens-hero-shine{animation:none !important}}`}</style>
+      {!disabled && (
+        <span aria-hidden className="lens-hero-shine" style={{ position:'absolute', top:0, bottom:0, left:0, width:'34%', background:'linear-gradient(105deg,transparent,rgba(255,255,255,0.28),transparent)', animation:'lensHeroShine 3.4s ease-in-out infinite', pointerEvents:'none' }} />
+      )}
+      {children}
+    </button>
+  );
+}
+
 function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset, createCta }) {
   if (result.error) {
     return (
@@ -745,16 +779,23 @@ const LensTab = memo(function LensTab({
   return (
     <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
 
-      {/* ── Header ── */}
-      <div style={{paddingTop:4}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-          <div style={{fontSize:28,fontWeight:700,color:"#10201B"}}>Lens</div>
-          <span style={{background:"#0D9488",color:"#fff",borderRadius:99,padding:"4px 10px",fontSize:11,fontWeight:700,letterSpacing:"0.03em"}}>IA</span>
+      {/* ── Header — repensé 03/09 soir (demande Nico) : une identité, pas un
+          titre gris. Tuile dégradée + wordmark + baseline qui dit le geste
+          entier (prix, verdict, annonce) plutôt qu'une périphrase. */}
+      <div style={{paddingTop:4,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:46,height:46,borderRadius:15,background:`linear-gradient(150deg,${TEAL} 0%,${TEAL_DEEP} 70%,#10201B 130%)`,boxShadow:"0 10px 22px -6px rgba(47,158,144,0.45)"}}>
+          <Sparkles size={21} color="#FFFFFF" strokeWidth={2.1}/>
+        </span>
+        <div style={{minWidth:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:7}}>
+            <span style={{fontSize:25,fontWeight:700,letterSpacing:"-0.02em",color:INK,lineHeight:1.1}}>Lens</span>
+            <span style={{background:"rgba(47,158,144,0.12)",color:TEAL_DEEP,border:"1px solid rgba(47,158,144,0.3)",borderRadius:99,padding:"2px 9px",fontSize:10.5,fontWeight:800,letterSpacing:"0.07em"}}>IA</span>
+          </div>
+          <div style={{fontSize:12.5,color:MUTE,fontWeight:500,marginTop:2,lineHeight:1.4}}>
+            {lang==="en"?"One scan: market price, verdict, ready listing":"Un scan : prix du marché, verdict, annonce prête"}
+            {userCountry&&<span style={{color:"#A3A9A6"}}> · 📍 {userCountry.name}</span>}
+          </div>
         </div>
-        <div style={{fontSize:14,color:"#6B7A75",fontWeight:500,lineHeight:1.5}}>
-          {lang==="en"?"The AI that analyses if it's a good deal":"L'IA qui analyse si c'est un bon deal"}
-        </div>
-        {userCountry&&<div style={{fontSize:11,color:"#A3A9A6",marginTop:4}}>📍 {userCountry.name}</div>}
       </div>
 
       <PhotoSourceSheet
@@ -766,16 +807,98 @@ const LensTab = memo(function LensTab({
         maxPhotos={5}
       />
 
-      {/* ── Zone photo ── */}
+      <input
+        ref={lensFileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        style={{display:"none"}}
+        onChange={handleLensPhoto}
+      />
+
+      {/* ── RÉSULTAT D'ABORD (03/09 soir, demande Nico) ──────────────────────
+          L'utilisateur doit comprendre en un regard que son objet est reconnu :
+          le résultat précède désormais les photos, qui n'apportent plus rien
+          une fois le scan rendu. En ÉCHEC, l'ordre historique reprend plus
+          bas : photos, puis bouton de reprise, puis l'encart d'erreur. */}
+      {!lensResult.error&&(
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:8,paddingLeft:2}}>
+            <span style={{width:7,height:7,borderRadius:99,background:TEAL,boxShadow:"0 0 0 3px rgba(47,158,144,0.18)",flexShrink:0}}/>
+            <span style={{fontSize:10,fontWeight:800,letterSpacing:"0.11em",textTransform:"uppercase",color:MUTE}}>
+              {lang==="en"?"Scan result":"Résultat du scan"}
+            </span>
+          </div>
+          {/* (prop openUpgradeModal retirée le 2026-08-09 : LensAnalysisResult
+              ne la destructure pas — elle n'a jamais rien ouvert.) */}
+          <LensAnalysisResult
+            result={lensResult}
+            lensBuy={lensBuy}
+            lang={lang}
+            currency={currency}
+            isPremium={isPremium}
+            lensAdded={lensAdded}
+            addLensItem={addLensItem}
+            openLensEditModal={openLensEditModal}
+            onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
+            // ⚠️ PAS DE GATE DE TIER (2026-07-21) : la condition était
+            // `isPro && !lensResult.error`, et isPro = profiles.is_pro SEUL
+            // (App.jsx) — un Free comme un Premium standard ne voyaient donc
+            // jamais « Créer une annonce » depuis Lens, exactement comme dans
+            // StockTab. Tout le monde cross-poste ; la différenciation se fait
+            // aux unités, côté serveur.
+            // CTA PRINCIPAL de l'écran (03/09) : construit ici (LensTab porte
+            // handleCreateListing et l'état d'extension), rendu par
+            // LensAnalysisResult EN TÊTE de la pile de boutons, en style HÉROS
+            // (LensHeroCta). Destination et comportement inchangés.
+            createCta={
+              <>
+                {/* Scan UNIFIÉ (02/09 soir) : le même scan a déjà rédigé
+                    l'annonce (lensResult.annonce, flag lens_unifie serveur).
+                    L'encart le DIT sans le vendre, et PRÉCÈDE le bouton
+                    qu'il explique. Sans annonce (flag éteint, rédaction
+                    ratée, vieux résultat), le CTA adaptatif reprend tel quel. */}
+                {lensResult.annonce?.platforms&&(
+                  <div style={{marginBottom:8,padding:"12px 14px",background:"#F0FDF9",border:"1px solid #CBE5DF",borderRadius:12}}>
+                    <div style={{fontSize:13,fontWeight:700,color:"#10201B",marginBottom:2}}>
+                      {lang==="en"?"📝 Your listing is ready":"📝 Ton annonce est prête"}
+                    </div>
+                    <div style={{fontSize:12,color:"#5C6560",fontWeight:500,lineHeight:1.5}}>
+                      {lang==="en"
+                        ?"Title, description and fields for the 4 marketplaces are already written by this scan. Creating it uses nothing more."
+                        :"Titre, description et champs pour les 4 plateformes sont déjà rédigés par ce scan. La créer ne consomme rien de plus."}
+                    </div>
+                  </div>
+                )}
+                <LensHeroCta
+                  onClick={()=>extensionNeverSeen===true?setExtPitchAction('create'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing())}
+                  disabled={generatingListing}
+                  style={{marginBottom:6}}
+                >
+                  {analyseFiabilite(lensResult).niveau==='aucune'
+                    ? `✨ ${lang==="en"?"Create the listing":"Créer l'annonce"}`
+                    : lensResult.annonce?.platforms
+                      ? `✨ ${lang==="en"?"Open & publish the listing":"Ouvrir et publier l'annonce"}`
+                      : `✨ ${lang==="en"?"Create a listing":"Créer une annonce"}`}
+                </LensHeroCta>
+                {listingError&&(
+                  <div style={{marginBottom:8,padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
+                    {listingError}
+                  </div>
+                )}
+              </>
+            }
+          />
+        </div>
+      )}
+
+      {/* ── Zone photo — sous le résultat en succès, en tête en échec ── */}
       <div style={{background:"#fff",borderRadius:16,padding:"20px",border:"1px solid rgba(0,0,0,0.07)",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
-        <input
-          ref={lensFileRef}
-          type="file"
-          accept="image/*"
-          multiple
-          style={{display:"none"}}
-          onChange={handleLensPhoto}
-        />
+        {!lensResult.error&&(
+          <div style={{fontSize:10,fontWeight:800,letterSpacing:"0.11em",textTransform:"uppercase",color:MUTE,marginBottom:10}}>
+            {lang==="en"?"Your scan photos":"Tes photos du scan"}
+          </div>
+        )}
         {lensPhotos.length>0?(
           <div style={{marginBottom:12}}>
             {/* Grille photos — max 5 UNIFORME (2026-07-17, décision Nico : plus
@@ -885,72 +1008,15 @@ const LensTab = memo(function LensTab({
         )}
         </>)}
 
-        {/* Résultat */}
-        {lensResult&&(
+        {/* Résultat en ÉCHEC uniquement : l'encart d'erreur + « Nouvelle
+            analyse » restent sous le bouton de reprise. Le SUCCÈS vit dans sa
+            propre carte, AU-DESSUS de celle-ci (03/09 soir). */}
+        {lensResult.error&&(
           <div style={{marginTop:14}}>
-            {/* (prop openUpgradeModal retirée le 2026-08-09 : LensAnalysisResult
-                ne la destructure pas — elle n'a jamais rien ouvert. La lui
-                passer avec une origine aurait inventé un point d'entrée qui
-                n'existe pas, et fait mentir le relevé.) */}
             <LensAnalysisResult
               result={lensResult}
-              lensBuy={lensBuy}
               lang={lang}
-              currency={currency}
-              isPremium={isPremium}
-              lensAdded={lensAdded}
-              addLensItem={addLensItem}
-              openLensEditModal={openLensEditModal}
               onReset={()=>{setLensPhotos([]);setLensResult(null);setLensAdded(false);setLensDesc("");setLensBuy("");}}
-              // ⚠️ PAS DE GATE DE TIER (2026-07-21) : la condition était
-              // `isPro && !lensResult.error`, et isPro = profiles.is_pro SEUL
-              // (App.jsx) — un Free comme un Premium standard ne voyaient donc
-              // jamais « Créer une annonce » depuis Lens, exactement comme dans
-              // StockTab. Tout le monde cross-poste ; la différenciation se fait
-              // aux unités, côté serveur.
-              // CTA PRINCIPAL de l'écran (03/09) : construit ici (LensTab porte
-              // handleCreateListing et l'état d'extension), rendu par
-              // LensAnalysisResult EN TÊTE de la pile de boutons. Destination et
-              // comportement inchangés — seuls libellé et position ont bougé :
-              // l'ancien « Fixe ton prix » (zéro annonce comparable) devient
-              // « Créer l'annonce », le libellé dit l'ACTION, plus le champ.
-              createCta={!lensResult.error&&(
-                <>
-                  {/* Scan UNIFIÉ (02/09 soir) : le même scan a déjà rédigé
-                      l'annonce (lensResult.annonce, flag lens_unifie serveur).
-                      L'encart le DIT sans le vendre, et PRÉCÈDE le bouton
-                      qu'il explique. Sans annonce (flag éteint, rédaction
-                      ratée, vieux résultat), le CTA adaptatif reprend tel quel. */}
-                  {lensResult.annonce?.platforms&&(
-                    <div style={{marginBottom:8,padding:"12px 14px",background:"#F0FDF9",border:"1px solid #CBE5DF",borderRadius:12}}>
-                      <div style={{fontSize:13,fontWeight:700,color:"#10201B",marginBottom:2}}>
-                        {lang==="en"?"📝 Your listing is ready":"📝 Ton annonce est prête"}
-                      </div>
-                      <div style={{fontSize:12,color:"#5C6560",fontWeight:500,lineHeight:1.5}}>
-                        {lang==="en"
-                          ?"Title, description and fields for the 4 marketplaces are already written by this scan. Creating it uses nothing more."
-                          :"Titre, description et champs pour les 4 plateformes sont déjà rédigés par ce scan. La créer ne consomme rien de plus."}
-                      </div>
-                    </div>
-                  )}
-                  <PrimaryButton
-                    onClick={()=>extensionNeverSeen===true?setExtPitchAction('create'):(shouldShowExtensionReminder()?setShowExtReminder(true):handleCreateListing())}
-                    disabled={generatingListing}
-                    style={{marginBottom:6}}
-                  >
-                    {analyseFiabilite(lensResult).niveau==='aucune'
-                      ? `✨ ${lang==="en"?"Create the listing":"Créer l'annonce"}`
-                      : lensResult.annonce?.platforms
-                        ? `✨ ${lang==="en"?"Open & publish the listing":"Ouvrir et publier l'annonce"}`
-                        : `✨ ${lang==="en"?"Create a listing":"Créer une annonce"}`}
-                  </PrimaryButton>
-                  {listingError&&(
-                    <div style={{marginBottom:8,padding:"8px 12px",background:"#F3E6E3",border:"1px solid #D9A69C",borderRadius:8,fontSize:12,color:"#B0645A",fontWeight:500}}>
-                      {listingError}
-                    </div>
-                  )}
-                </>
-              )}
             />
           </div>
         )}
