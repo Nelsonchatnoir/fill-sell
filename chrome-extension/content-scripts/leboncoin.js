@@ -715,36 +715,46 @@ async function fillListingForm(job) {
       // Le mot « brouillon » doit RESTER dans le texte : StockTab le repère par
       // DRAFT_LBC_RE (/brouillon/i) pour afficher le bouton « Ouvrir le
       // brouillon Leboncoin ». Le retirer casserait ce bouton en silence.
-      // ── 1er geste (2026-09-03, chantier « les dépôts doivent passer ») :
-      // LE BOUTON OFFICIEL DE LBC. 9 échecs / 5 comptes depuis le 22/08
-      // malgré la purge du storage : le brouillon est désormais restauré
-      // CÔTÉ SERVEUR, effacer le web storage ne l'atteint plus. Quand la
-      // page propose de recommencer une nouvelle annonce (« Recommencer »,
-      // « Nouvelle annonce »…), ce clic est le chemin que LBC offre lui-même
-      // pour jeter le brouillon — on le prend AVANT toute purge, on vérifie
-      // que le wizard est redevenu VIERGE, et le dépôt POURSUIT dans ce même
-      // onglet (plus de danse d'onglet ni de retentative).
-      const chercherRestart = () => [...document.querySelectorAll('button, a[role="button"], a')]
-        .find((b) => b.offsetParent !== null &&
-          /recommencer|nouvelle annonce|commencer une nouvelle|abandonner (le|mon|ce) brouillon|supprimer (le|mon|ce) brouillon/i
-            .test((b.textContent ?? "").replace(/\s+/g, " ").trim()));
-      const restart = chercherRestart();
-      if (restart) {
-        console.log(`[leboncoin] brouillon bloquant : clic sur « ${restart.textContent.replace(/\s+/g, " ").trim().slice(0, 60)} » (chemin officiel LBC)`);
-        restart.click();
-        await sleep(1500);
-        // Modale de confirmation éventuelle — un seul mot, jamais un pavé.
-        const confirme = [...document.querySelectorAll("button")]
-          .find((b) => b.offsetParent !== null && /^(confirmer|oui|recommencer|continuer)$/i.test((b.textContent ?? "").trim()));
-        if (confirme) { confirme.click(); await sleep(1500); }
-        const vierge = await waitFor(() => {
-          const s = document.querySelector('input[name="subject"]');
-          return s && !draftMarker() && !String(s.value ?? "").trim() ? s : null;
-        }, 8000);
-        if (vierge) {
-          console.log("[leboncoin] brouillon retiré par le chemin officiel LBC — wizard vierge, dépôt poursuivi dans CE même onglet");
-          entryState = "step1";
+      // ── 1er geste PROUVÉ LIVE (2026-09-03, test sur le compte de Nico avec
+      // son autorisation — brouillon reproduit puis jeté en vrai) ────────────
+      // Le wizard interrompu SANS passer par le dialogue de sortie est
+      // RESTAURÉ côté serveur au retour sur /deposer-une-annonce (reproduit :
+      // étape critères, subject ABSENT, label condition présent — exactement
+      // l'état de nos 9 échecs, titre illisible compris). La page n'offre
+      // AUCUN « Recommencer » (relevé complet des boutons : Quitter, Retour,
+      // Continuer, cases photos) — l'hypothèse du correctif précédent est
+      // RETIRÉE. Le SEUL chemin officiel, vérifié de bout en bout :
+      //   1. « Quitter » (header du wizard) ;
+      //   2. dialogue « Vous voulez interrompre votre dépôt ? » →
+      //      « Quitter sans enregistrer » ;
+      //   3. le wizard revient VIERGE au passage suivant (vérifié :
+      //      subject présent et vide, plus aucun marqueur).
+      // NB : un brouillon « Enregistré » via le dialogue ne bloque PAS le
+      // wizard (vérifié aussi) — seul l'état interrompu bloque.
+      // Le clic final NAVIGUE hors du wizard : la réponse draftDiscarded part
+      // AVANT le clic ; le background remet le job pending COURT et le
+      // passage suivant dépose sur wizard neuf. Si le canal meurt avant la
+      // réponse, le motif transitoire fait le même travail, en plus lent.
+      const btnQuitter = [...document.querySelectorAll("button")]
+        .find((b) => b.offsetParent !== null && /^quitter$/i.test((b.textContent ?? "").trim()));
+      if (btnQuitter) {
+        t("brouillon bloquant : « Quitter » cliqué (chemin officiel LBC, prouvé live 03/09)");
+        btnQuitter.click();
+        const sansEnreg = await waitFor(() => [...document.querySelectorAll("button")]
+          .find((b) => b.offsetParent !== null && /quitter sans enregistrer/i.test((b.textContent ?? "").replace(/\s+/g, " ").trim())) ?? null, 5000);
+        if (sansEnreg) {
+          t("dialogue « interrompre votre dépôt » : « Quitter sans enregistrer » — l'état en cours est jeté, redépôt au prochain passage");
+          setTimeout(() => { try { sansEnreg.click(); } catch { /* navigation en cours */ } }, 150);
+          return {
+            success: false,
+            draftBlocked: true,
+            draftDiscarded: true,
+            needsUser: true,
+            error: "Brouillon Leboncoin abandonné (« Quitter sans enregistrer ») — nouveau dépôt dans quelques instants, rien à faire.",
+            trace,
+          };
         }
+        t("dialogue de sortie non apparu après « Quitter » — repli sur l'ancien chemin");
       }
       if (entryState !== "step1") {
       let clesRetirees = 0;

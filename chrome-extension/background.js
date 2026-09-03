@@ -2085,6 +2085,18 @@ async function processJob(rawJob, accessToken) {
       if (release) await release().catch(() => {});
     }
 
+    // ── Brouillon LBC JETÉ via le chemin officiel (2026-09-03, prouvé live) ──
+    // Le content script vient de cliquer « Quitter » → « Quitter sans
+    // enregistrer » : l'état en cours est abandonné côté LBC et l'onglet a
+    // quitté le wizard. Le job repart pending COURT — le prochain passage
+    // (poll ≤ 2 min) trouve un wizard vierge et dépose. Aucun onglet
+    // temporaire, aucune tentative consommée, plus jamais l'échec brouillon.
+    if (result?.draftDiscarded) {
+      const pf = { ...(job.platform_fields ?? {}), next_action_after: new Date(Date.now() + 20_000).toISOString() };
+      await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+      console.log(`[background] Job ${job.id} : brouillon LBC jeté (« Quitter sans enregistrer ») — redépôt au prochain passage`);
+      return { status: "retry", error: "brouillon LBC abandonné — redépôt au prochain passage" };
+    }
     // Brouillon LBC bloquant sur l'onglet persistant : tentative unique dans
     // un onglet temporaire dédié à CE job (voir retryInTempTab — exception
     // bornée, l'onglet persistant et son brouillon ne sont jamais touchés).

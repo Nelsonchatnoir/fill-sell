@@ -604,7 +604,13 @@ async function fillListingForm(job) {
         console.warn(`[beebs] ⚠️ ${note}`);
         warnings.push(note);
       }
-      await selectDropdownValue("Format du colis", mapped, warnings, unfilledRequired);
+      // Repli d'appelant : si la valeur tranchée est irrécupérable (identifiant
+      // opaque d'une liste polluée par l'ancien optionLabel — jobs RoCotCot),
+      // le mapping/défaut de catégorie reprend la main au lieu d'un champ vide.
+      const replis = tranche
+        ? [BEEBS_PACKAGE_BY_FORMAT[rawFormat] ?? (/^poids/i.test(rawFormat) ? rawFormat : parDefaut)]
+        : [];
+      await selectDropdownValue("Format du colis", mapped, warnings, unfilledRequired, { fallbackTexts: replis });
     }
   }
 
@@ -1678,7 +1684,7 @@ async function researchPanelFor(trigger, query) {
  *   réussi à lui donner une valeur. Un job ne doit jamais se déclarer réussi
  *   en laissant un champ obligatoire vide (cf. background.js).
  */
-async function selectDropdownValue(labelText, rawText, warnings, unfilledRequired = [], { sizeField = false } = {}) {
+async function selectDropdownValue(labelText, rawText, warnings, unfilledRequired = [], { sizeField = false, fallbackTexts = [] } = {}) {
   const field = findField(labelText);
   if (!field) return; // champ non affiché pour cette catégorie : rien à signaler
   const { trigger, required } = field;
@@ -1746,6 +1752,26 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
         const note = `${labelText}: taille US "${rawText}" convertie en ${n + 10} FR → option "${converti.label}"`;
         console.log(`[beebs] ${note}`);
         warnings.push(note);
+      }
+    }
+  }
+
+  // ── Valeurs de REPLI de l'appelant (2026-09-03, jobs RoCotCot 17212f1b/
+  // b94dee56) : la valeur primaire peut être irrécupérable — cas réel : un
+  // identifiant opaque choisi dans une liste polluée par l'ancien optionLabel
+  // (« 2rMX8Sjp… »). Plutôt que de laisser un champ obligatoire VIDE, on
+  // essaie les valeurs de repli fournies (mapping/défaut de catégorie), dans
+  // l'ordre, avec la même cascade — dit en warning, jamais silencieux.
+  if (!match && fallbackTexts.length) {
+    for (const fb of fallbackTexts) {
+      if (!fb || fb === rawText) continue;
+      const m2 = findOptionCascade(options, fb, { sizeField });
+      if (m2) {
+        match = m2;
+        const note = `${labelText}: "${rawText}" sans correspondance — repli sur "${fb}" (→ option "${m2.label}")`;
+        console.warn(`[beebs] ${note}`);
+        warnings.push(note);
+        break;
       }
     }
   }

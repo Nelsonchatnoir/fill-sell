@@ -1051,7 +1051,17 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // dépôt poursuivi dans le même onglet, relevé des boutons visibles en annexe
 // quand il manque ; pré-vol eBay étendu à /fpa/upgrade (mise à niveau du
 // compte vendeur dite AVANT toute tentative).
-export const EXTENSION_LAST_COMMIT = '2026-09-03T12:51:06Z';
+// 2026-09-03T14:42:15Z (0.6.17, commit épinglé) : brouillon LBC PROUVÉ LIVE
+// (test autorisé sur le compte de Nico, 03/09 après-midi) — l'état interrompu
+// est restauré côté serveur, AUCUN bouton « Recommencer » n'existe (relevé
+// complet), le seul chemin est « Quitter » → « Quitter sans enregistrer »
+// (vérifié : wizard vierge ensuite ; un brouillon « Enregistré », lui, ne
+// bloque pas). Le correctif précédent (recherche d'un « Recommencer ») est
+// REMPLACÉ par ce chemin : draftDiscarded → job pending court → redépôt au
+// passage suivant. Et repli d'appelant sur le Format du colis Beebs : une
+// valeur tranchée irrécupérable (id opaque d'une liste polluée — jobs
+// RoCotCot 17212f1b/b94dee56) retombe sur le mapping au lieu d'un champ vide.
+export const EXTENSION_LAST_COMMIT = '2026-09-03T14:42:15Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
