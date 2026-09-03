@@ -1833,22 +1833,6 @@ export default function App({ loginOnly = false }){
   const [iPlateforme,setIPlateforme]=useState("");
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
-  // ── Multi-boutiques Vinted (2026-09-03) : boutiques confirmées du compte
-  // (profiles.vinted_sync_pin v2) + filtre du Stock par boutique. La liste ne
-  // pilote un affichage que quand il y a AU MOINS deux boutiques : le parc
-  // mono-boutique ne voit strictement rien de nouveau.
-  const [boutiquesVinted,setBoutiquesVinted]=useState([]);
-  const [filterBoutique,setFilterBoutique]=useState("Toutes");
-  const rechargerBoutiques=useCallback(async()=>{
-    if(!user?.id)return;
-    try{const r=await lireBoutiquesVinted(user.id);setBoutiquesVinted(r.boutiques);}catch{/* relu au prochain montage */}
-  },[user?.id]);
-  useEffect(()=>{rechargerBoutiques();},[rechargerBoutiques]);
-  // Boutique disparue de la liste (jamais en pratique) ou filtre orphelin :
-  // retour à « Toutes », même doctrine que les pills de marque.
-  useEffect(()=>{
-    if(filterBoutique!=="Toutes"&&!boutiquesVinted.some(b=>String(b.user_id)===filterBoutique))setFilterBoutique("Toutes");
-  },[boutiquesVinted,filterBoutique]);
   const [pillsExpandedStock,setPillsExpandedStock]=useState(false);
   const [pillsExpandedSold,setPillsExpandedSold]=useState(false);
   const [filterType,setFilterType]=useState("Tous");
@@ -1865,6 +1849,25 @@ export default function App({ loginOnly = false }){
   const [cShip,setCShip]=useState("");
   const [cSaved,setCSaved]=useState(false);
   const [user,setUser]=useState(null);
+  // ── Multi-boutiques Vinted (2026-09-03) : boutiques confirmées du compte
+  // (profiles.vinted_sync_pin v2) + filtre du Stock par boutique. La liste ne
+  // pilote un affichage que quand il y a AU MOINS deux boutiques.
+  // ⚠️ APRÈS la déclaration de `user`, IMPÉRATIVEMENT (règle TDZ du fichier,
+  // incident Safari du 05/08) : la première version de ce bloc vivait 27
+  // lignes AU-DESSUS et lisait `user?.id` avant sa déclaration — écran blanc
+  // TOTAL en prod le 03/09 (OTA 2.6.9→2.6.11 + web), corrigé en 2.6.12.
+  const [boutiquesVinted,setBoutiquesVinted]=useState([]);
+  const [filterBoutique,setFilterBoutique]=useState("Toutes");
+  const rechargerBoutiques=useCallback(async()=>{
+    if(!user?.id)return;
+    try{const r=await lireBoutiquesVinted(user.id);setBoutiquesVinted(r.boutiques);}catch{/* relu au prochain montage */}
+  },[user?.id]);
+  useEffect(()=>{rechargerBoutiques();},[rechargerBoutiques]);
+  // Boutique disparue de la liste (jamais en pratique) ou filtre orphelin :
+  // retour à « Toutes », même doctrine que les pills de marque.
+  useEffect(()=>{
+    if(filterBoutique!=="Toutes"&&!boutiquesVinted.some(b=>String(b.user_id)===filterBoutique))setFilterBoutique("Toutes");
+  },[boutiquesVinted,filterBoutique]);
   const [authLoading,setAuthLoading]=useState(true);
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
