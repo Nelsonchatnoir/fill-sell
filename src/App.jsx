@@ -1865,8 +1865,15 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{rechargerBoutiques();},[rechargerBoutiques]);
   // Boutique disparue de la liste (jamais en pratique) ou filtre orphelin :
   // retour à « Toutes », même doctrine que les pills de marque.
+  // « sans_origine » est une valeur LÉGITIME hors liste (pill dédiée aux
+  // articles jamais estampillés) : elle ne se réinitialise que si les pills
+  // elles-mêmes disparaissent (moins de 2 boutiques confirmées).
   useEffect(()=>{
-    if(filterBoutique!=="Toutes"&&!boutiquesVinted.some(b=>String(b.user_id)===filterBoutique))setFilterBoutique("Toutes");
+    if(filterBoutique==="Toutes")return;
+    const orphelin=filterBoutique==="sans_origine"
+      ?boutiquesVinted.length<2
+      :!boutiquesVinted.some(b=>String(b.user_id)===filterBoutique);
+    if(orphelin)setFilterBoutique("Toutes");
   },[boutiquesVinted,filterBoutique]);
   const [authLoading,setAuthLoading]=useState(true);
   const [email,setEmail]=useState("");
@@ -3095,7 +3102,11 @@ export default function App({ loginOnly = false }){
       // Filtre par boutique Vinted (2026-09-03) : sur vinted_account_id,
       // estampillé à l'observation par la sync. Inerte tant que le filtre est
       // à « Toutes » — c'est-à-dire toujours, pour le parc mono-boutique.
-      .filter(i=>filterBoutique==="Toutes"||String(i.vinted_account_id??'')===filterBoutique)
+      // « sans_origine » (03/09 soir) : les articles jamais estampillés
+      // (vinted_account_id NULL) doivent rester atteignables une fois les
+      // pills de boutique posées — sinon ils ne vivent que sous « Toutes ».
+      .filter(i=>filterBoutique==="Toutes"
+        ||(filterBoutique==="sans_origine"?i.vinted_account_id==null:String(i.vinted_account_id??'')===filterBoutique))
       // marqueKey (2026-08-31) : le libellé de la pill est recalculé
       // (« Capitalisée »), la marque de l'article est brute — un
       // .toLowerCase() sans trim ni normalisation des espaces laissait

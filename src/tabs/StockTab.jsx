@@ -430,6 +430,16 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
 .stock-v2 .repub-track{height:6px;border-radius:999px;background:var(--canvas);overflow:hidden;margin-top:8px;}
 .stock-v2 .repub-track.sur-teinte{background:rgba(13,148,136,0.14);}
 .stock-v2 .repub-fill{height:100%;border-radius:999px;background:#1B6E62;transition:width 0.6s ease;min-width:0;}
+/* ── Barre de progression PAR CARTE (Lot B, 03/09 soir) ─────────────────────
+   Indéterminée par construction : la progression réelle d'un job n'est pas
+   connue au grain de la carte, on ne fabrique pas de pourcentage. Animation
+   CSS pure — AUCUN tick React, la liste ne se re-rend jamais pour elle. */
+.stock-v2 .gjobbar{padding:0 10px 8px;display:flex;flex-direction:column;gap:4px;}
+.stock-v2 .gjobbar-txt{font-size:10.5px;font-weight:700;color:#1B6E62;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.stock-v2 .gjobbar-track{height:4px;border-radius:999px;background:rgba(13,148,136,0.14);overflow:hidden;position:relative;}
+.stock-v2 .gjobbar-fill{position:absolute;top:0;bottom:0;left:0;width:40%;border-radius:999px;background:#1B6E62;animation:gjobslide 1.6s ease-in-out infinite;}
+@keyframes gjobslide{0%{left:-40%;}100%{left:100%;}}
+@media (prefers-reduced-motion: reduce){.stock-v2 .gjobbar-fill{animation:none;left:0;width:100%;opacity:0.35;}}
 `;
 
 // (GalleryPhoto / premierePhoto vivent dans components/GalleryPhoto.jsx depuis
@@ -4209,10 +4219,26 @@ const StockTab = memo(function StockTab({
           : (last.status === 'failed' || last.status === 'cancelled');
       });
     }
-    if (!horsLigneIds.size) return stockVisible;
-    const tete = stockFiltre.filter(i => horsLigneIds.has(i.id));
-    return [...tete, ...stockVisible.filter(i => !horsLigneIds.has(i.id))];
-  }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier]);
+    let base;
+    if (!horsLigneIds.size) base = stockVisible;
+    else {
+      const tete = stockFiltre.filter(i => horsLigneIds.has(i.id));
+      base = [...tete, ...stockVisible.filter(i => !horsLigneIds.has(i.id))];
+    }
+    // Lot B2 (03/09 soir) : les articles avec un job EN COURS passent devant
+    // TOUT (hors-ligne compris) — pris dans stockFiltre, pas stockVisible :
+    // un article en cours de publication ne peut pas se cacher derrière
+    // « Voir plus ». L'ordre de tetesJobs est STABLE entre deux changements
+    // d'ensemble (cf. son effet) : pas de saut de liste pendant un scroll.
+    // Le job fini, l'article sort de tetesJobs et reprend sa place normale.
+    if (!tetesJobs.length) return base;
+    const setT = new Set(tetesJobs);
+    const enCours = tetesJobs
+      .map(id => stockFiltre.find(i => String(i.id) === id))
+      .filter(Boolean);
+    if (!enCours.length) return base;
+    return [...enCours, ...base.filter(i => !setT.has(String(i.id)))];
+  }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier, tetesJobs]);
 
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
@@ -4531,6 +4557,36 @@ const StockTab = memo(function StockTab({
       clearInterval(timer);
     };
   }, [user?.id]);
+
+  // ── Lot B2 (03/09 soir) : articles avec un job EN COURS remontés en tête ──
+  // « En cours » = un job publish/republish pending ou processing — le même
+  // périmètre que la pastille « En cours… » — HORS attente_boutique (une
+  // attente indéfinie d'un autre dressing épinglerait l'article en tête des
+  // jours durant). ANTI-SAUT : l'ORDRE est un état, recalculé UNIQUEMENT
+  // quand l'ENSEMBLE des articles en cours change (un job démarre ou se
+  // termine) — jamais au simple rafraîchissement de jobsByInventaire (20 s),
+  // pour que la liste ne bouge pas sous le doigt pendant un scroll. Clé de
+  // tri : le job démarré le plus récemment d'abord (created_at max).
+  const [tetesJobs, setTetesJobs] = useState([]);
+  useEffect(() => {
+    const ts = {};
+    for (const [invId, js] of Object.entries(jobsByInventaire)) {
+      for (const j of js || []) {
+        if (j.action === "delete") continue;
+        if (j.status !== "pending" && j.status !== "processing") continue;
+        if (j.platform_fields?.attente_boutique) continue;
+        const t = Date.parse(j.created_at ?? "") || 0;
+        if (!(invId in ts) || t > ts[invId]) ts[invId] = t;
+      }
+    }
+    setTetesJobs(prev => {
+      const ids = Object.keys(ts);
+      // Même ensemble → même tableau (référence conservée : aucun re-tri,
+      // aucun re-rendu de liste).
+      if (ids.length === prev.length && prev.every(id => id in ts)) return prev;
+      return ids.sort((a, b) => ts[b] - ts[a]);
+    });
+  }, [jobsByInventaire]);
 
   // Mode dégradé (Phase B) : plateformes en pause → badge « En pause » sur les
   // jobs en attente concernés + bandeau en tête d'onglet (2026-08-27) dont le
@@ -5700,6 +5756,17 @@ const StockTab = memo(function StockTab({
                       </button>
                     );
                   })}
+                  {/* « Sans origine » (03/09 soir) : les articles jamais
+                      estampillés (vinted_account_id NULL — saisis à la main,
+                      ou importés avant le multi-boutiques) doivent rester
+                      atteignables une fois les pills posées. Rendue seulement
+                      s'il en existe au moins un. */}
+                  {stock.some(i=>i.vinted_account_id==null)&&(
+                    <button onClick={()=>setFilterBoutique("sans_origine")}
+                      style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterBoutique==="sans_origine"?"#1B6E62":"#F2F0E9",color:filterBoutique==="sans_origine"?"#fff":"#6B7A75",fontFamily:"inherit"}}>
+                      {lang==='fr'?'Sans origine':'No origin'}
+                    </button>
+                  )}
                 </div>
                 {/* La boutique connectée dans Chrome, EN PERMANENCE — et le
                     décalage éventuel avec la boutique regardée, dit avec le
@@ -5712,7 +5779,7 @@ const StockTab = memo(function StockTab({
                     :(lang==='fr'
                       ?'Boutique connectée dans Chrome : pas encore relevée — elle apparaît dès que ton ordinateur se réveille.'
                       :'Shop signed in in Chrome: not seen yet — it shows up once your computer wakes up.')}
-                  {boutiqueConnectee&&filterBoutique!=="Toutes"&&filterBoutique!==boutiqueConnectee.userId&&(
+                  {boutiqueConnectee&&filterBoutique!=="Toutes"&&filterBoutique!=="sans_origine"&&filterBoutique!==boutiqueConnectee.userId&&(
                     <span style={{color:"#8A6100"}}>
                       {lang==='fr'
                         ?' — tu regardes une autre boutique : ses republications attendront que tu la connectes sur vinted.fr.'
@@ -5817,6 +5884,48 @@ const StockTab = memo(function StockTab({
                 </span>
               </button>
             )}
+
+            {/* ── Lot C (03/09 soir) : « Tout sélectionner » — porte sur les
+                articles ACTUELLEMENT AFFICHÉS (stockFiltre + paIncomplet,
+                exactement la liste rendue plus bas — le stock est chargé en
+                entier côté client, aucune pagination : « affichés » = tout ce
+                qui existe sous les filtres actifs, jamais plus). Trois états :
+                rien / tout / partiel (case indéterminée). Re-clic sur « tout
+                coché » → tout désélectionner. Le compteur existant de la
+                pa-bar suit tout seul (paSelection dérive de paSel). */}
+            {modePrixAchat&&(()=>{
+              const affiches=stockFiltre.filter(paIncomplet);
+              if(!affiches.length)return null;
+              const nSel=affiches.reduce((a,i)=>a+(paSel.has(i.id)?1:0),0);
+              const tout=nSel>0&&nSel===affiches.length;
+              const partiel=nSel>0&&!tout;
+              const filtresActifs=filterType!=="Tous"||filterMarque!=="Toutes"||filterBoutique!=="Toutes"||!!String(search??"").trim();
+              const libelle=lang==='fr'
+                ?`Tout sélectionner (${affiches.length}${filtresActifs?' affichés':''})`
+                :`Select all (${affiches.length}${filtresActifs?' shown':''})`;
+              return(
+                <div className="pa-bar" style={{marginBottom:paSelection.length>0?6:undefined}}>
+                  <label style={{display:"inline-flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12.5,fontWeight:700,color:"#1B6E62"}}>
+                    <input type="checkbox" className="pa-check" checked={tout}
+                      ref={el=>{if(el)el.indeterminate=partiel;}}
+                      onChange={()=>setPaSel(prev=>{
+                        const n=new Set(prev);
+                        if(tout)affiches.forEach(i=>n.delete(i.id));
+                        else affiches.forEach(i=>n.add(i.id));
+                        return n;
+                      })}
+                      aria-checked={partiel?"mixed":tout}
+                      aria-label={libelle}/>
+                    {libelle}
+                  </label>
+                  {partiel&&(
+                    <span className="pa-hint" style={{marginLeft:"auto"}}>
+                      {lang==='fr'?`${nSel} sur ${affiches.length}`:`${nSel} of ${affiches.length}`}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Barre de lot — le vide-grenier : « ces 10 articles, 2 € pièce ». */}
             {modePrixAchat&&paSelection.length>0&&(
@@ -7088,6 +7197,38 @@ const StockTab = memo(function StockTab({
                           </div>
                         )}
                       </div>
+                      {/* ── Lot B1 (03/09 soir) : barre de progression EN BAS de
+                          carte, pleine largeur, pour un job réellement EN
+                          TRAVAIL. Indéterminée (CSS pur, aucun tick React) : la
+                          progression au grain du job n'est pas connue ici, on
+                          n'invente pas de pourcentage. Libellés RÉUTILISÉS :
+                          l'étape de la feuille de republication
+                          (etapeRepublication.court) et le « En cours… » de la
+                          pastille — rien d'inventé. PAS de barre pour ce qui
+                          ATTEND (autre boutique, plateforme en pause,
+                          ordinateur éteint, recréation orpheline) : une barre
+                          qui bouge sur un travail à l'arrêt serait un
+                          mensonge — mêmes conditions que le pulse de la
+                          pastille. Disparaît d'elle-même au job terminé
+                          (le job sort de pending/processing → plus de barre). */}
+                      {(()=>{
+                        const frB=lang==='fr';
+                        const repubEnTravail=repubOccupeSlot&&!repubEtape.fini&&!repubOrpheline
+                          &&repubEtape.cle!=='attente_boutique'
+                          &&(repubLatest?.status==='pending'||repubLatest?.status==='processing');
+                        const extFraiche=!(extFraicheur.etat==="eteinte"||extFraicheur.etat==="inactive"||extFraicheur.etat==="session_expiree");
+                        const pubEnTravail=!repubEnTravail&&hasPending&&!hasPausedPending&&extFraiche;
+                        if(!repubEnTravail&&!pubEnTravail)return null;
+                        const txt=repubEnTravail
+                          ?`${frB?'Republication':'Repost'} · ${repubEtape.court}`
+                          :(frB?'Publication · En cours…':'Publishing · Posting…');
+                        return(
+                          <div className="gjobbar">
+                            <div className="gjobbar-txt">{txt}</div>
+                            <div className="gjobbar-track" role="progressbar" aria-label={txt}><div className="gjobbar-fill"/></div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );})}
                 </div>
@@ -7106,6 +7247,15 @@ const StockTab = memo(function StockTab({
                   const actifs=[];
                   if(filterType!=="Tous")actifs.push(typeLabel(filterType,lang));
                   if(filterMarque!=="Toutes")actifs.push(marqueLabel(filterMarque,lang));
+                  // Filtre boutique (03/09 soir) : nommé par le PSEUDO, jamais
+                  // l'identifiant — même règle que les pills.
+                  if(filterBoutique!=="Toutes"){
+                    if(filterBoutique==="sans_origine")actifs.push(lang==='fr'?'Sans origine':'No origin');
+                    else{
+                      const b=boutiquesVinted.find(x=>String(x.user_id)===filterBoutique);
+                      actifs.push(`@${b?.login??filterBoutique}`);
+                    }
+                  }
                   if(String(search??"").trim())actifs.push(`« ${String(search).trim()} »`);
                   if(!actifs.length)return null;
                   return(
@@ -7119,7 +7269,7 @@ const StockTab = memo(function StockTab({
                           :`Rien dans ton stock ne correspond à : ${actifs.join(' · ')}.`}
                       </div>
                       <button
-                        onClick={()=>{setFilterType("Tous");setFilterMarque("Toutes");setSearch("");}}
+                        onClick={()=>{setFilterType("Tous");setFilterMarque("Toutes");setFilterBoutique("Toutes");setSearch("");}}
                         style={{padding:"9px 16px",borderRadius:999,border:"1px solid #2F9E90",background:"#fff",color:"#1B6E62",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         {lang==='en'?'Clear filters':'Réinitialiser les filtres'}
                       </button>
