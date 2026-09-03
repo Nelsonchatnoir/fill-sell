@@ -357,6 +357,8 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
    un travail est en cours. */
 .stock-v2 .gstatus{position:absolute;top:8px;left:8px;max-width:calc(100% - 34px);display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:999px;background:rgba(255,255,255,0.93);font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 5px rgba(16,32,27,0.22);z-index:2;}
 .stock-v2 .gstatus .gdot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.stock-v2 .gstatus.is-queued{height:18px;padding:0 7px;font-size:9.5px;font-weight:600;letter-spacing:.01em;background:rgba(255,255,255,0.78);box-shadow:0 1px 3px rgba(16,32,27,0.10);}
+.stock-v2 .gstatus.is-queued .gdot{width:5px;height:5px;}
 .stock-v2 .gstatus .gdot.pulsing{animation:fs-pulse 1.4s ease-in-out infinite;}
 @media (prefers-reduced-motion:reduce){.stock-v2 .gstatus .gdot.pulsing{animation:none;}}
 /* ✕ de suppression — RÉDUIT et discret (2026-08-27, 2e passe) : 16 px visuels
@@ -2139,6 +2141,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // Blocage présent ⇒ le bilan du run passé se tait (contradiction sinon) ;
   // `message` reste : c'est le retour d'un clic de CETTE session.
   const avis = message || (blocage ? null : bilan);
+  // L'accroche cross-post (bouton « Ces annonces ne vivent que sur Vinted… »)
+  // n'apparaît que sous le bilan VERT : même condition pour le bouton et pour
+  // le repli du bilan en ligne grise (04/09) — une seule source de vérité.
+  const accrocheVisible = !!(avis && avis === bilan && bilan?.ton === 'vert' && !attenteOccupee && onVoirArticles);
 
   // Confirmation d'une boutique (décision [boutique_a_confirmer]) : écrit la
   // boutique VUE PAR LE RUN (id + pseudo de la trace, jamais une valeur
@@ -2343,6 +2349,17 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       )}
 
       {avis&&(()=>{
+        // ── UN SEUL ENCADRÉ À LA FOIS (04/09, constat Nico sur écran réel) :
+        // quand l'accroche cross-post s'affiche (bilan VERT, conditions
+        // identiques plus bas), le bilan ne double pas l'encadré — son fait
+        // (« N importés, M mis à jour ») descend en ligne grise, sous l'heure
+        // de synchro, sans le préfixe « Dressing synchronisé » que la ligne
+        // du dessus porte déjà. Rien n'est perdu : les chiffres restent,
+        // l'accroche garde seule le poids visuel.
+        if(accrocheVisible){
+          const fait=String(avis.texte).replace(/^(Dressing synchronisé|Closet synced) — /,'');
+          return <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",marginTop:-4}}>{fait}</div>;
+        }
         const c=AVIS_COULEURS[avis.ton]||AVIS_COULEURS.orange;
         // whiteSpace pre-line : l'encart 403 est le seul texte à retours à la
         // ligne (étapes numérotées) — sans effet sur les autres avis.
@@ -2409,7 +2426,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           articles, où vit le bouton « Publier » de chacun (le flux de
           publication existant, inchangé). Même patron que la ligne « action
           requise » du bloc republication. */}
-      {avis&&avis===bilan&&bilan?.ton==='vert'&&!attenteOccupee&&onVoirArticles&&(
+      {accrocheVisible&&(
         <button
           onClick={onVoirArticles}
           style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",border:"1px solid rgba(13,148,136,0.2)",background:"#F0FDFB",color:"#1B6E62",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}
@@ -2826,6 +2843,13 @@ const repubStepDe = (j) => {
 // n'y est pas : il compte EXACTEMENT comme pending (chaque republication le
 // traverse — il avait été oublié en 2.4.73).
 const repubJobFini = (j) => REPUB_STATUS_RESOLUS.includes(j.status) || repubStepDe(j) === 'recreated';
+// Estimation de durée pour n republications restantes — la formule É5
+// historique (~2 gestes espacés de 2 min + attentes 2-5 min ⇒ 5-7 min par
+// annonce, arrondi large ; en heures au-delà de 60 min). Jamais une promesse
+// que le poll ne tient pas. Une seule source depuis le 04/09 : la ligne
+// compacte du bandeau (l'encart sablier de la liste, qui la répétait, est
+// retiré).
+const estimationRepub = (n) => n * 5 >= 60 ? `~${Math.ceil(n * 5 / 60)} h` : `~${n * 5}-${n * 7} min`;
 
 // Phrase du bloc actif : ce que la machine FAIT, pas l'état interne.
 // a_capturer et captured partagent la phrase de relevé (avant l'étape deleted,
@@ -2915,16 +2939,18 @@ function etapeRepublication(job, fr) {
   const st = job.status;
   const encours = st === 'pending' || st === 'processing';
   // Libellés d'étape (renommés 03/09 soir, décision Nico — l'état vit sur la
-  // CARTE, y compris la capture qui n'était nommée nulle part) :
-  // « Relevé de l'annonce… » (capture en cours), « Relevée — en attente »
-  // (capturée, attend son tour de republication), « Retrait… » (suppression
-  // en cours), « Recréation… ».
+  // CARTE, y compris la capture qui n'était nommée nulle part). RACCOURCIS le
+  // 04/09 : « Relevée — en attente » débordait de la pastille sur une carte
+  // à deux colonnes (« Relevée — en attent… », capture Nico). La pastille
+  // DISTINGUE les états, elle ne les explique pas — l'explication vit dans
+  // `titre`/`detail` (feuille d'avancement, title au survol). Points de
+  // suspension = travail en cours ; sans = état posé, qui attend.
   const T = {
-    file:      fr ? 'En file'                : 'Queued',
-    lecture:   fr ? "Relevé de l'annonce…"   : 'Reading the listing…',
-    prete:     fr ? 'Relevée — en attente'   : 'Saved — queued',
-    retrait:   fr ? 'Retrait…'               : 'Removing…',
-    recreation:fr ? 'Recréation…'            : 'Recreating…',
+    file:      fr ? 'En file'      : 'Queued',
+    lecture:   fr ? 'Relevé…'      : 'Reading…',
+    prete:     fr ? 'Relevée'      : 'Saved',
+    retrait:   fr ? 'Retrait…'     : 'Removing…',
+    recreation:fr ? 'Recréation…'  : 'Recreating…',
     enligne:   fr ? 'En ligne'               : 'Live',
     relancer:  fr ? 'À relancer'             : 'Needs action',
     arretee:   fr ? 'Arrêtée'                : 'Stopped',
@@ -4230,32 +4256,57 @@ const StockTab = memo(function StockTab({
   // « En cours » = un job publish/republish pending ou processing — le même
   // périmètre que la pastille « En cours… » — HORS attente_boutique (une
   // attente indéfinie d'un autre dressing épinglerait l'article en tête des
-  // jours durant). ANTI-SAUT : l'ORDRE est un état, recalculé UNIQUEMENT
-  // quand l'ENSEMBLE des articles en cours change (un job démarre ou se
-  // termine) — jamais au simple rafraîchissement de jobsByInventaire (20 s),
-  // pour que la liste ne bouge pas sous le doigt pendant un scroll. Clé de
-  // tri : le job démarré le plus récemment d'abord (created_at max).
+  // jours durant).
+  // ── ORDRE STRICT PAR RANG (04/09, constat Nico sur écran réel : l'article
+  // réellement actif était EN BAS, derrière dix « En file » qui ne faisaient
+  // rien — la v1 triait tout le périmètre sur created_at, pending et
+  // processing confondus, et un lot créé d'un coup ne se départage pas sur
+  // cette clé). Rangs, du haut vers le bas :
+  //   0 · RETRAIT ou RECRÉATION (travail réel : processing @ captured, ou
+  //       étape deleted quel que soit le statut — l'annonce est hors ligne)
+  //   1 · RELEVÉ (processing @ a_capturer) — et un dépôt publish processing
+  //   2 · RELEVÉE, en attente de son tour (pending @ captured)
+  //   3 · EN FILE (pending @ a_capturer, publish pending)
+  // À rang égal : le job démarré le plus récemment d'abord (created_at max).
+  // ANTI-SAUT : l'ORDRE est un état, recalculé UNIQUEMENT quand la SIGNATURE
+  // (ensemble des articles + rang de chacun) change — un job démarre, change
+  // d'étape ou se termine — jamais au simple rafraîchissement de
+  // jobsByInventaire (20 s). Une transition d'étape ne déplace qu'UNE carte,
+  // quelques fois par heure ; la liste ne bouge pas sous le doigt en scroll.
   // ⚠️ DÉCLARÉ AVANT listeStock, qui le lit (TDZ = écran blanc, vécu le
   // 03/09 soir même : le bloc était né 350 lignes plus bas).
   const [tetesJobs, setTetesJobs] = useState([]);
+  const tetesSigRef = useRef('');
   useEffect(() => {
-    const ts = {};
+    const rang = {}, ts = {};
     for (const [invId, js] of Object.entries(jobsByInventaire)) {
       for (const j of js || []) {
         if (j.action === "delete") continue;
         if (j.status !== "pending" && j.status !== "processing") continue;
         if (j.platform_fields?.attente_boutique) continue;
+        let r;
+        if (j.action === "republish") {
+          const step = repubStepDe(j);
+          if (step === "recreated") continue; // fini (pastille « En ligne »)
+          if (step === "deleted" || (step === "captured" && j.status === "processing")) r = 0;
+          else if (j.status === "processing") r = 1;
+          else if (step === "captured") r = 2;
+          else r = 3;
+        } else {
+          r = j.status === "processing" ? 1 : 3;
+        }
+        if (!(invId in rang) || r < rang[invId]) rang[invId] = r;
         const t = Date.parse(j.created_at ?? "") || 0;
         if (!(invId in ts) || t > ts[invId]) ts[invId] = t;
       }
     }
-    setTetesJobs(prev => {
-      const ids = Object.keys(ts);
-      // Même ensemble → même tableau (référence conservée : aucun re-tri,
-      // aucun re-rendu de liste).
-      if (ids.length === prev.length && prev.every(id => id in ts)) return prev;
-      return ids.sort((a, b) => ts[b] - ts[a]);
-    });
+    const ids = Object.keys(rang);
+    const sig = ids.slice().sort().map(id => `${id}:${rang[id]}`).join("|");
+    // Même signature → même tableau (référence conservée : aucun re-tri,
+    // aucun re-rendu de liste).
+    if (sig === tetesSigRef.current) return;
+    tetesSigRef.current = sig;
+    setTetesJobs(ids.sort((a, b) => (rang[a] - rang[b]) || (ts[b] - ts[a])));
   }, [jobsByInventaire]);
 
   const listeStock = useMemo(() => {
@@ -5016,23 +5067,43 @@ const StockTab = memo(function StockTab({
                 (RepubBlocActif et RepubTerminees ne sont plus montés — la
                 barre du job actif vivait dans le premier ; les cartes la
                 portent maintenant, une par article réellement en travail.) */}
-            <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-              <span style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
-                {lang==='fr'?`Republication${repubBandeau.total>1?'s':''}`:`Repost${repubBandeau.total>1?'s':''}`}
-              </span>
-              {repubBandeau.total>0&&(
-                <span style={{marginLeft:"auto",fontSize:12.5,fontWeight:600,color:"#5C6560",fontVariantNumeric:"tabular-nums"}}>
-                  {lang==='fr'
-                    ?`${repubBandeau.terminees.length} sur ${repubBandeau.total}`
-                    :`${repubBandeau.terminees.length} of ${repubBandeau.total}`}
-                </span>
-              )}
-            </div>
-            <div style={{fontSize:11.5,color:"#8A8578",lineHeight:1.45,marginTop:3}}>
-              {lang==='fr'
-                ? "L'avancement de chaque annonce s'affiche sur sa carte, plus bas. Tu peux quitter cet écran, tout continue tout seul."
-                : "Each listing's progress shows on its own card below. You can leave this screen, everything carries on by itself."}
-            </div>
+            {/* ── UN SEUL NIVEAU (04/09, constat Nico sur écran réel) : le
+                compteur « N sur M » et l'estimation de durée, sur la même
+                ligne, plus un filet de progression de 3 px (déterminé :
+                terminées / total du lot — jamais un pourcentage inventé au
+                grain du job). Le paragraphe « tout continue tout seul » et
+                l'encart sablier de la liste (« ça reprend si tu fermes
+                Chrome ») disaient DEUX FOIS la même promesse et mangeaient
+                quatre lignes avant le premier article : retirés. L'estimation
+                se tait sous retenue serveur (la file reprend demain — l'encart
+                plafond le dit) et quand il ne reste rien à faire. */}
+            {(()=>{
+              const restantes=repubBandeau.file.length+(repubBandeau.actif&&!repubJobFini(repubBandeau.actif)?1:0);
+              const faites=repubBandeau.terminees.length;
+              const estimation=restantes>0&&!repubPlafondEtat?.retenue?estimationRepub(restantes):null;
+              const pct=repubBandeau.total>0?Math.round(100*faites/repubBandeau.total):0;
+              return(
+                <>
+                  <div style={{display:"flex",alignItems:"baseline",gap:8,minWidth:0}}>
+                    <span style={{fontSize:13,fontWeight:700,color:"#10201B",flexShrink:0}}>
+                      {lang==='fr'?`Republication${repubBandeau.total>1?'s':''}`:`Repost${repubBandeau.total>1?'s':''}`}
+                    </span>
+                    {repubBandeau.total>0&&(
+                      <span style={{marginLeft:"auto",fontSize:12.5,fontWeight:600,color:"#5C6560",fontVariantNumeric:"tabular-nums",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        {lang==='fr'?`${faites} sur ${repubBandeau.total}`:`${faites} of ${repubBandeau.total}`}
+                        {estimation&&<span style={{color:"#8A8578",fontWeight:500}}> · {estimation}</span>}
+                      </span>
+                    )}
+                  </div>
+                  {repubBandeau.total>0&&(
+                    <div role="progressbar" aria-valuemin={0} aria-valuemax={repubBandeau.total} aria-valuenow={faites}
+                      style={{height:3,borderRadius:999,background:"#EFECE3",marginTop:8,overflow:"hidden"}}>
+                      <div style={{width:`${pct}%`,height:"100%",borderRadius:999,background:"linear-gradient(90deg,#2F9E90,#1B6E62)",transition:"width .6s ease"}}/>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             {/* Bandeau « ta file reprend demain » (2026-08-29 soir) : l'état
                 vient du SERVEUR (repubPlafondEtat, get-pending-jobs
                 plafond_only) — jamais recalculé ici. Ton NEUTRE ET POSITIF :
@@ -6181,17 +6252,11 @@ const StockTab = memo(function StockTab({
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {/* Mode « à compléter » : liste COMPLÈTE des incomplets (filtres
                     actifs respectés via stockFiltre, pas de plafond de 10). */}
-                {/* É5 : estimation de durée quand la file de republication
-                    grossit — jamais une promesse que le poll ne tient pas :
-                    ~2 gestes espacés de 2 min + attentes 2-5 min ⇒ ~5-7 min
-                    par annonce, arrondi large. */}
-                {repubVivants>=3&&(
-                  <div style={{background:"#EFF3F8",border:"1px solid #C7D6E5",borderRadius:10,padding:"10px 14px",fontSize:12,color:"#334155",fontWeight:600,lineHeight:1.5,marginBottom:8}}>
-                    ⏳ {lang==='fr'
-                      ?`${repubVivants} republications en file — compte environ ${repubVivants*5>=60?`${Math.ceil(repubVivants*5/60)} h`:`${repubVivants*5}-${repubVivants*7} min`}, au rythme humain. Ça reprend tout seul si tu fermes Chrome.`
-                      :`${repubVivants} reposts queued — expect about ${repubVivants*5>=60?`${Math.ceil(repubVivants*5/60)} h`:`${repubVivants*5}-${repubVivants*7} min`}, at a human pace. It resumes on its own if you close Chrome.`}
-                  </div>
-                )}
+                {/* (L'encart sablier É5 « N republications en file — compte
+                    environ … » a été RETIRÉ le 04/09 : il répétait, au-dessus
+                    de la galerie, le compteur et l'estimation que la ligne
+                    compacte du bandeau « Republications » porte désormais —
+                    estimationRepub, même formule.) */}
                 {/* ── Mode republication en lot (fix 2026-08-08) : la liste ne
                     montre QUE les articles republiables, comme le fait déjà le
                     mode prix d'achat juste à côté (stockFiltre.filter). Avant,
@@ -6501,11 +6566,22 @@ const StockTab = memo(function StockTab({
                             corps de carte ; ici, le coup d'œil. */}
                         {(()=>{
                           const fr=lang==='fr';
-                          let dot=null,pulse=false,txt=null,onTap=null,fg="#10201B",titre=null;
+                          let dot=null,pulse=false,txt=null,onTap=null,fg="#10201B",titre=null,discrete=false;
                           if(repubOccupeSlot){
-                            pulse=!repubEtape.fini&&!repubOrpheline;
-                            dot=repubOrpheline?"#B91C1C":(repubEtape.encre||"#E8956D");
-                            fg=repubOrpheline?"#B91C1C":(repubEtape.encre||"#10201B");
+                            // POIDS VISUEL = TRAVAIL RÉEL (04/09, constat Nico :
+                            // dix cartes « En file » pulsaient comme l'unique
+                            // article en travail — l'écran entier semblait
+                            // s'agiter). Le point ne bat que sur relevé /
+                            // retrait / recréation ; « Relevée » attend, posée ;
+                            // « En file » devient une pastille DISCRÈTE (gris
+                            // léger, plus petite, cf. .gstatus.is-queued) —
+                            // conservée, parce qu'elle dit que l'article est
+                            // pris dans le lot, mais sans rivaliser avec l'actif.
+                            const travail=repubEtape.cle==='lecture'||repubEtape.cle==='retrait'||repubEtape.cle==='deleted';
+                            pulse=travail&&!repubEtape.fini&&!repubOrpheline;
+                            discrete=!!repubEtape.enFile&&!repubOrpheline;
+                            dot=repubOrpheline?"#B91C1C":discrete?"#B9B4A7":(repubEtape.encre||"#E8956D");
+                            fg=repubOrpheline?"#B91C1C":discrete?"#8A8578":(repubEtape.encre||"#10201B");
                             txt=repubOrpheline?(fr?'Ouvre Chrome':'Open Chrome'):repubEtape.court;
                             titre=repubOrpheline
                               ?(fr?"Ton ordinateur ne répond plus — ouvre Chrome pour terminer la recréation. Ton annonce et tes photos sont en sécurité.":"Your computer isn't responding — open Chrome to finish the recreation. Your listing and photos are safe.")
@@ -6604,7 +6680,7 @@ const StockTab = memo(function StockTab({
                           }
                           if(!txt)return null;
                           return(
-                            <div className="gstatus" style={{color:fg,cursor:onTap?"pointer":"default"}} title={titre}
+                            <div className={`gstatus${discrete?' is-queued':''}`} style={{color:fg,cursor:onTap?"pointer":"default"}} title={titre}
                               role={onTap?"button":undefined} tabIndex={onTap?0:undefined}
                               onClick={e=>{e.stopPropagation();if(onTap)onTap();}}
                               onKeyDown={onTap?e=>{if(e.key==='Enter'||e.key===' '){e.stopPropagation();onTap();}}:undefined}>
