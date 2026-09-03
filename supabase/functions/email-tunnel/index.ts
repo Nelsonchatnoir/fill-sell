@@ -244,7 +244,7 @@ function welcomeHtml(lang: string): string {
     <p style="margin:0 0 10px;font-size:13px;font-weight:700;text-transform:uppercase;
       letter-spacing:0.07em;color:#9CA3AF;font-family:sans-serif;">Trois choses à connaître pour démarrer</p>
     ${bloc("1. Récupère ton dressing Vinted en un clic",
-      "Si tu vends déjà sur Vinted, FillSell importe toutes tes annonces — titres, prix, photos, vues et favoris. C'est gratuit et rien n'est décompté de ton forfait. Tu retrouves tout ton stock au même endroit, sans ressaisie.")}
+      "Si tu vends déjà sur Vinted, FillSell importe toutes tes annonces — titres, prix, photos, vues et favoris. C'est gratuit. Tu retrouves tout ton stock au même endroit, sans ressaisie.")}
     ${bloc("2. Republie les annonces qui dorment",
       "Sur Vinted, une annonce ancienne ne se voit presque plus. D'un clic, FillSell sauvegarde la fiche, retire l'annonce et la remet en ligne à l'identique — tu peux même baisser le prix au passage. 50 republications offertes, et automatisable avec Pro.")}
     ${bloc("3. Publie partout d'un seul geste",
@@ -830,7 +830,7 @@ ${pastille(logo("logo-beebs.png", "Beebs"))}
 <!-- CTA final -->
 <tr>
 <td align="center" style="padding:40px 32px 12px 32px;">
-<p style="margin:0 0 20px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:16px; line-height:1.6; color:#10201B;">Ton compte est toujours actif, et tes pépites t'attendent.</p>
+<p style="margin:0 0 20px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:16px; line-height:1.6; color:#10201B;">Ton compte est toujours actif, et ton stock t'attend.</p>
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
 <tr>
 <td style="background-color:#10201B; border-radius:8px;">
@@ -946,7 +946,7 @@ function blastSyncDressingHtml(): string {
 <tr>
 <td style="padding:36px 32px 0 32px;">
 <p style="margin:0 0 18px 0; font-family:'Space Grotesk',Helvetica,Arial,sans-serif; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#1B6E62;">Comment ça marche</p>
-${etape("01", "Tu importes ton dressing Vinted dans FillSell", "Un clic, gratuit, rien de décompté. Titres, prix, photos, vues et favoris remontent tout seuls.", false,
+${etape("01", "Tu importes ton dressing Vinted dans FillSell", "Un clic, gratuit. Titres, prix, photos, vues et favoris remontent tout seuls.", false,
   capture("blast-sync-01-dressing-v3.png", "La carte « Tu vends déjà sur Vinted ? » dans FillSell, avec le bouton Actualiser mon dressing"))}
 ${etape("02", "Sur chaque annonce, un bouton «&nbsp;Republier&nbsp;»", "FillSell sauvegarde la fiche, retire l'ancienne annonce et la remet en ligne à l'identique. Tu peux même baisser le prix au passage.", true,
   capture("blast-sync-02-republier-v2.png", "Une annonce importée dans FillSell, avec son bouton Republier"))}

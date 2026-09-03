@@ -80,8 +80,31 @@ const TECH_ERR_MARKERS_RE = new RegExp([
   'platform_fields|needsUser|payload',
 ].join('|'), 'i');
 
+// ── Bascule quotas (02/09) : plus de monnaie interne — purge à l'AFFICHAGE ───
+// Le système de Pépites a été supprimé le 02/09, mais les extensions du parc
+// (jusqu'à 0.6.16 incluse pour certaines chaînes) et les jobs historiques
+// portent encore des phrases Pépites dans cross_post_jobs.error : « Ta Pépite
+// reste réservée : elle te sera rendue automatiquement sous 72 h… », « la
+// Pépite est rendue », « Rien ne t'a été décompté ». La colonne est une DONNÉE
+// (on n'y touche pas) et le parc n'a pas d'OTA : le retrait se fait ici, à
+// l'affichage — clause accolée d'abord (pour garder « ton annonce est
+// intacte »), phrase entière ensuite, jamais un mot isolé qui laisserait une
+// tournure bancale. Sans /g sur le test d'entrée (lastIndex, cf. PROMESSE_*).
+const MOT_MONNAIE_RE = /Pépites?|pépites?|Nuggets?|décompté|deducted/;
+export function sansMentionMonnaie(texte) {
+  const t0 = String(texte ?? '');
+  if (!MOT_MONNAIE_RE.test(t0)) return t0;
+  return t0
+    .replace(/,\s*(?:et\s+)?la Pépite (?:est|sera|te sera) rendue[^.!?…]*/gi, '')
+    .replace(/\s*(?:et|—|–)\s*rien ne t[’']a été décompté[^.!?…]*/gi, '')
+    .replace(/[^.!?…]*(?:Pépites?|Nuggets?|décompté|deducted)[^.!?…]*[.!?…]?/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([.,;!?])/g, '$1')
+    .trim();
+}
+
 export function humanizeJobError(job, lang = 'fr') {
-  const raw = String(job?.error ?? '').trim();
+  const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
   if (!raw) return '';
   const en = lang === 'en';
   const name = HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (en ? 'the platform' : 'la plateforme');
@@ -112,17 +135,13 @@ export function humanizeJobError(job, lang = 'fr') {
         ? `${name} is showing an anti-robot check instead of the listing form. One automatic retry is left and it happens within minutes — pass the check on ${name} in Chrome right now, otherwise the job will stop.`
         : `${name} affiche une vérification anti-robot à la place du formulaire. Il reste une tentative automatique, et elle a lieu dans les minutes qui viennent — passe la vérification sur ${name} dans Chrome tout de suite, sinon le job s'arrêtera.`;
     }
-    // Terminé : c'est fini, personne ne reprendra. La Pépite n'est annoncée
-    // rendue que pour une publication : seuls ces jobs portent une réservation
-    // (reservation_id), les republications et les retraits n'en ont pas.
-    const rendue = (job?.action ?? 'publish') === 'publish';
+    // Terminé : c'est fini, personne ne reprendra. (Nettoyage Pépites 03/09 :
+    // plus aucune mention de décompte — la monnaie interne n'existe plus.)
     const acte = job?.action === 'republish' ? 'republication' : 'publication';
     return en
       ? `${name} showed an anti-robot check instead of the listing form: nothing was published and the job has stopped.`
-        + (rendue ? ' Nothing was deducted.' : '')
         + ` Open ${name} in Chrome, pass the check, then start the ${acte} again yourself from the item.`
       : `${name} a affiché une vérification anti-robot à la place du formulaire : rien n'a été publié et le job est arrêté.`
-        + (rendue ? ' Rien ne t’a été décompté.' : '')
         + ` Ouvre ${name} dans Chrome, passe la vérification, puis relance la ${acte} toi-même depuis la fiche de l'article.`;
   }
 
@@ -145,12 +164,11 @@ export function humanizeJobError(job, lang = 'fr') {
   // OUVERTE, à reprendre avec plus de volume — rien ici n'en dépend.
   if (job?.platform === 'ebay' && /page inattendue.*session eBay est valide/is.test(raw)) {
     const termine = JOB_STATUS_TERMINAL.has(job?.status);
-    const rendue = termine && (job?.action ?? 'publish') === 'publish';
     const etatFr = termine
-      ? `Rien n'a été publié et le job est arrêté.${rendue ? ' Rien ne t’a été décompté.' : ''}`
+      ? "Rien n'a été publié et le job est arrêté."
       : "Rien n'a été publié, et les tentatives automatiques restantes échoueront aussi tant que la reconnexion n'est pas faite.";
     const etatEn = termine
-      ? `Nothing was published and the job has stopped.${rendue ? ' Nothing was deducted.' : ''}`
+      ? 'Nothing was published and the job has stopped.'
       : 'Nothing was published, and the remaining automatic retries will fail too until you sign in again.';
     return en
       ? `eBay requires you to sign in again before it lets you list an item, even though your eBay session is still valid elsewhere. ${etatEn} In order: open ebay.fr in Chrome, click "Sell", sign in again, then restart the publication from the item in the app.`
@@ -178,10 +196,9 @@ export function humanizeJobError(job, lang = 'fr') {
       (/[?&]draftId=(\d+)/i.exec(typeof diag === 'string' ? diag : JSON.stringify(diag ?? ''))?.[1] ?? '');
     if (draftId) {
       const termine = JOB_STATUS_TERMINAL.has(job?.status);
-      const rendue = termine && (job?.action ?? 'publish') === 'publish';
       return en
-        ? `The "List item" click never left the browser on eBay: nothing was published${termine ? ' and the job has stopped' : ''}.${rendue ? ' Nothing was deducted.' : ''} Your listing is not lost though: eBay kept it as a DRAFT (no. ${draftId}). Find it on ebay.fr under My eBay > Selling > Drafts to finish listing it yourself.`
-        : `Le clic « Mettre en vente » n'est jamais parti chez eBay : rien n'a été publié${termine ? ' et le job est arrêté' : ''}.${rendue ? ' Rien ne t’a été décompté.' : ''} Ton annonce n'est pas perdue pour autant : eBay l'a conservée en BROUILLON (n° ${draftId}). Retrouve-la sur ebay.fr dans Mon eBay > Vendre > Brouillons pour terminer la mise en vente toi-même.`;
+        ? `The "List item" click never left the browser on eBay: nothing was published${termine ? ' and the job has stopped' : ''}. Your listing is not lost though: eBay kept it as a DRAFT (no. ${draftId}). Find it on ebay.fr under My eBay > Selling > Drafts to finish listing it yourself.`
+        : `Le clic « Mettre en vente » n'est jamais parti chez eBay : rien n'a été publié${termine ? ' et le job est arrêté' : ''}. Ton annonce n'est pas perdue pour autant : eBay l'a conservée en BROUILLON (n° ${draftId}). Retrouve-la sur ebay.fr dans Mon eBay > Vendre > Brouillons pour terminer la mise en vente toi-même.`;
     }
   }
 
@@ -207,13 +224,13 @@ export function humanizeJobError(job, lang = 'fr') {
     const site = HUMANIZE_PLATFORM_SITES[job?.platform] || name;
     if (/^Republication annulée/i.test(raw) && /session/i.test(raw) && /refusée/i.test(raw)) {
       return en
-        ? `The relisting was cancelled before anything was deleted: your ${name} session was refused. Your listing is untouched and nothing was deducted. Sign in to ${site} again in Chrome, then restart the relisting from the item.`
-        : `Republication annulée avant toute suppression : ta session ${name} a été refusée. Ton annonce est intacte et rien ne t’a été décompté. Reconnecte-toi sur ${site} dans Chrome, puis relance la republication depuis la fiche de l'article.`;
+        ? `The relisting was cancelled before anything was deleted: your ${name} session was refused. Your listing is untouched. Sign in to ${site} again in Chrome, then restart the relisting from the item.`
+        : `Republication annulée avant toute suppression : ta session ${name} a été refusée. Ton annonce est intacte. Reconnecte-toi sur ${site} dans Chrome, puis relance la republication depuis la fiche de l'article.`;
     }
     if (/^Republication annulée/i.test(raw) && /introuvable/i.test(raw)) {
       return en
-        ? `The relisting was cancelled before anything was deleted: the listing could not be found on ${name} (it may have been removed or sold in the meantime). FillSell deleted nothing and nothing was deducted. Check the listing on ${name}, then relaunch from the item if needed.`
-        : `Republication annulée avant toute suppression : l'annonce n'a pas été retrouvée en ligne sur ${name} (elle a peut-être été supprimée ou vendue entre-temps). FillSell n'a rien supprimé et rien ne t’a été décompté. Vérifie l'annonce sur ${name}, puis relance depuis la fiche de l'article si besoin.`;
+        ? `The relisting was cancelled before anything was deleted: the listing could not be found on ${name} (it may have been removed or sold in the meantime). FillSell deleted nothing. Check the listing on ${name}, then relaunch from the item if needed.`
+        : `Republication annulée avant toute suppression : l'annonce n'a pas été retrouvée en ligne sur ${name} (elle a peut-être été supprimée ou vendue entre-temps). FillSell n'a rien supprimé. Vérifie l'annonce sur ${name}, puis relance depuis la fiche de l'article si besoin.`;
     }
     if (/^Republication en pause/i.test(raw)) {
       return en
@@ -231,12 +248,11 @@ export function humanizeJobError(job, lang = 'fr') {
   if (/^Connexion (Vinted|Leboncoin|Beebs|eBay) requise/i.test(raw) && /page observée/i.test(raw)) {
     const site = HUMANIZE_PLATFORM_SITES[job?.platform] || name;
     const termine = JOB_STATUS_TERMINAL.has(job?.status);
-    const rendue = termine && (job?.action ?? 'publish') === 'publish';
     const acte = job?.action === 'republish' ? (en ? 'relisting' : 'republication') : 'publication';
     if (termine) {
       return en
-        ? `${name} showed its sign-in page instead of the listing form: nothing was published and the job has stopped.${rendue ? ' Nothing was deducted.' : ''} Sign in to ${site} in Chrome, then restart the ${acte} from the item.`
-        : `${name} a affiché sa page de connexion à la place du formulaire de vente : rien n'a été publié et le job est arrêté.${rendue ? ' Rien ne t’a été décompté.' : ''} Connecte-toi sur ${site} dans Chrome, puis relance la ${acte} depuis la fiche de l'article.`;
+        ? `${name} showed its sign-in page instead of the listing form: nothing was published and the job has stopped. Sign in to ${site} in Chrome, then restart the ${acte} from the item.`
+        : `${name} a affiché sa page de connexion à la place du formulaire de vente : rien n'a été publié et le job est arrêté. Connecte-toi sur ${site} dans Chrome, puis relance la ${acte} depuis la fiche de l'article.`;
     }
     return en
       ? `${name} is showing its sign-in page instead of the listing form. Sign in to ${site} in Chrome now — an automatic retry happens within minutes, otherwise relaunch the ${acte} from the item.`
@@ -249,13 +265,13 @@ export function humanizeJobError(job, lang = 'fr') {
   // courtes (≤300 c.) s'affichaient TELLES QUELLES (fuite constatée le
   // 14/08). Branche UNIQUE, sans tri des variantes : tout message de ce
   // préfixe est réécrit en texte anonyme, le brut ne passe JAMAIS — une
-  // variante imprévue tombe ici, pas dans le brut. « Annonce intacte » et
-  // « Pépite rendue » ne sont affirmés que si le message source les affirme
-  // (même règle que la famille republication ci-dessus).
+  // variante imprévue tombe ici, pas dans le brut. « Annonce intacte » n'est
+  // affirmé que si le message source l'affirme (même règle que la famille
+  // republication ci-dessus). (Nettoyage Pépites 03/09 : plus aucune mention
+  // de décompte, quelle que soit l'ère du message source.)
   if (/^Annulé (par le support|manuellement|le )/i.test(raw)) {
     const termine = JOB_STATUS_TERMINAL.has(job?.status);
     const intacte = /intacte|non touchée|pas été supprimé/i.test(raw);
-    const pepite = /Pépite/i.test(raw) && /rendue/i.test(raw);
     const republish = job?.action === 'republish';
     if (termine) {
       const relanceFr = republish
@@ -265,12 +281,12 @@ export function humanizeJobError(job, lang = 'fr') {
         ? 'If needed, relaunch the relisting from the item.'
         : 'You can relaunch the publication from the app.';
       return en
-        ? `Our team cancelled this job.${intacte ? ` Your listing is untouched on ${name}.` : ''}${pepite ? ' Nothing was deducted.' : ''} ${relanceEn}`
-        : `Ce job a été annulé par notre équipe.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''}${pepite ? ' Rien ne t’a été décompté.' : ''} ${relanceFr}`;
+        ? `Our team cancelled this job.${intacte ? ` Your listing is untouched on ${name}.` : ''} ${relanceEn}`
+        : `Ce job a été annulé par notre équipe.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''} ${relanceFr}`;
     }
     return en
-      ? `Our team paused this job.${intacte ? ` Your listing is untouched on ${name}.` : ''}${pepite ? ' Nothing was deducted.' : ''} It can be relaunched from ${republish ? 'the item' : 'the app'}.`
-      : `Ce job a été mis en pause par notre équipe.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''}${pepite ? ' Rien ne t’a été décompté.' : ''} Il pourra être relancé depuis ${republish ? "la fiche de l'article" : "l'app"}.`;
+      ? `Our team paused this job.${intacte ? ` Your listing is untouched on ${name}.` : ''} It can be relaunched from ${republish ? 'the item' : 'the app'}.`
+      : `Ce job a été mis en pause par notre équipe.${intacte ? ` Ton annonce est intacte sur ${name}.` : ''} Il pourra être relancé depuis ${republish ? "la fiche de l'article" : "l'app"}.`;
   }
 
   // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :
@@ -305,9 +321,6 @@ export function humanizeJobError(job, lang = 'fr') {
   // de la promesse est traitée dès que le job est terminal, même une tournure
   // jamais vue — au pire elle tombe sur le générique véridique ci-dessous.
   if (PROMESSE_MARQUEUR_RE.test(raw) && JOB_STATUS_TERMINAL.has(job?.status)) {
-    // Pépite : seuls les jobs de publication portent une réservation — même
-    // règle que la branche CHALLENGE ci-dessus (settle sur statut terminal).
-    const rendue = (job?.action ?? 'publish') === 'publish';
     // Un retrait (delete) ne se « relance » pas depuis la fiche : le geste
     // manuel est de retirer l'annonce sur la plateforme elle-même.
     const verite = job?.action === 'delete'
@@ -315,8 +328,8 @@ export function humanizeJobError(job, lang = 'fr') {
         ? ` The job has stopped — it will not restart on its own. If the listing is still live, remove it yourself on ${name}.`
         : ` Le job est arrêté — il ne repartira pas tout seul. Si l'annonce est encore en ligne, retire-la toi-même sur ${name}.`)
       : (en
-        ? ` The job has stopped — it will not restart on its own.${rendue ? ' Nothing was deducted.' : ''} Relaunch it yourself from the item.`
-        : ` Le job est arrêté — il ne repartira pas tout seul.${rendue ? ' Rien ne t’a été décompté.' : ''} Relance-le toi-même depuis la fiche de l'article.`);
+        ? ` The job has stopped — it will not restart on its own. Relaunch it yourself from the item.`
+        : ` Le job est arrêté — il ne repartira pas tout seul. Relance-le toi-même depuis la fiche de l'article.`);
     const corps = raw.replace(new RegExp(PROMESSE_REPRISE_RE.source, 'gi'), '')
       .replace(/\s{2,}/g, ' ').trim()
       // Ponctuation orpheline laissée par le retrait (« …resté ouvert), » ) :
@@ -334,8 +347,8 @@ export function humanizeJobError(job, lang = 'fr') {
         : `Le retrait de l'annonce sur ${name} a été interrompu par un imprévu technique. Le job est arrêté — si l'annonce est encore en ligne, retire-la toi-même sur ${name} ; le détail complet est enregistré pour le support.`;
     }
     return en
-      ? `Publishing on ${name} was interrupted by a technical issue. The job has stopped${rendue ? ' and nothing was deducted' : ''} — retry from the item; the full detail has been recorded for support.`
-      : `La publication sur ${name} a été interrompue par un imprévu technique. Le job est arrêté${rendue ? ' et rien ne t\'a été décompté' : ''} — relance depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;
+      ? `Publishing on ${name} was interrupted by a technical issue. The job has stopped — retry from the item; the full detail has been recorded for support.`
+      : `La publication sur ${name} a été interrompue par un imprévu technique. Le job est arrêté — relance depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;
   }
 
   // Message déjà humain (court, sans marqueur technique) : tel quel.
@@ -396,7 +409,10 @@ export function humanizeJobError(job, lang = 'fr') {
 // à humanizeJobError, qui la retire et la remplace par la consigne de relance
 // manuelle. La colonne en base reste intacte : filtrage à l'affichage seul.
 export function jobErrorSansFaussePromesse(job, lang = 'fr') {
-  const raw = String(job?.error ?? '').trim();
+  // sansMentionMonnaie AVANT tout : les jobs vivants passent « bruts », mais
+  // le brut du parc porte encore « Ta Pépite reste réservée… sous 72 h »
+  // (cas josephinecerni, job df496c00 du 03/09) — la monnaie n'existe plus.
+  const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
   if (!raw) return '';
   if (!JOB_STATUS_TERMINAL.has(job?.status) || !PROMESSE_MARQUEUR_RE.test(raw)) return raw;
   return humanizeJobError(job, lang);
