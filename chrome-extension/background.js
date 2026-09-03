@@ -462,6 +462,63 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     );
     return true; // réponse asynchrone
   }
+  // ── Bascule de compte FillSell EXPLICITE (2026-09-03, incident Nadège) ─────
+  // Le popup lit la bascule en attente et, sur clic seulement, la consomme :
+  // bootstrap d'une session propre NEUVE sur le token relayé de l'autre
+  // compte, identité rattachée mise à jour, états de l'ancien compte purgés
+  // (résultats récents — les états retry403, eux, sont déjà par user).
+  if (msg?.type === "GET_PENDING_SWITCH") {
+    (async () => {
+      const { PENDING_SWITCH } = FILLSELL_CONFIG.STORAGE_KEYS;
+      const st = await chrome.storage.local.get(PENDING_SWITCH);
+      const p = st?.[PENDING_SWITCH];
+      const last = await lireLastUser();
+      if (!p?.sub) { sendResponse({ pending: null }); return; }
+      sendResponse({ pending: { email: p.email ?? null, actuel: last?.email ?? null } });
+    })().catch(() => sendResponse({ pending: null }));
+    return true; // réponse asynchrone
+  }
+  if (msg?.type === "CONFIRM_ACCOUNT_SWITCH") {
+    (async () => {
+      const { SESSION, SESSION_OWN, PENDING_SWITCH, BOOTSTRAP_LAST_FAIL, RECENT_RESULTS } = FILLSELL_CONFIG.STORAGE_KEYS;
+      const st = await chrome.storage.local.get(PENDING_SWITCH);
+      const p = st?.[PENDING_SWITCH];
+      if (!p?.session?.access_token) { sendResponse({ ok: false, reason: "aucune_bascule" }); return; }
+      if (p.session.expires_at && p.session.expires_at * 1000 - Date.now() < 60 * 1000) {
+        // Jeton relayé périmé : on ne peut pas bootstrapper dessus. Le pont en
+        // renverra un frais à la prochaine visite de fillsell.app connecté.
+        await chrome.storage.local.remove(PENDING_SWITCH);
+        sendResponse({ ok: false, reason: "session_perimee" });
+        return;
+      }
+      // L'ancienne session propre est ABANDONNÉE (pas révoquée : elle mourra
+      // d'elle-même) et les états liés à l'ancien compte sont purgés.
+      await chrome.storage.local.remove([SESSION_OWN, SESSION, BOOTSTRAP_LAST_FAIL, RECENT_RESULTS]);
+      const own = await bootstrapOwnSession(p.session.access_token);
+      if (own) {
+        await chrome.storage.local.set({ [SESSION]: p.session });
+        await chrome.storage.local.remove(PENDING_SWITCH);
+        console.log(`[background] extension basculée sur ${p.email ?? p.sub} (bascule EXPLICITE via le popup)`);
+        pollAndProcessJobs();
+        sendResponse({ ok: true });
+      } else {
+        // Bootstrap raté : la session relayée reste utilisable en dépannage —
+        // même régime que le chemin normal, mais l'identité change TOUT DE
+        // SUITE (c'est le sens du clic).
+        await chrome.storage.local.set({ [SESSION]: p.session });
+        await poserLastUser(p.sub, p.email);
+        await chrome.storage.local.remove(PENDING_SWITCH);
+        pollAndProcessJobs();
+        sendResponse({ ok: true, degrade: true });
+      }
+    })().catch((e) => sendResponse({ ok: false, reason: String(e?.message ?? e) }));
+    return true; // réponse asynchrone
+  }
+  if (msg?.type === "DISMISS_ACCOUNT_SWITCH") {
+    chrome.storage.local.remove(FILLSELL_CONFIG.STORAGE_KEYS.PENDING_SWITCH)
+      .then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
+    return true; // réponse asynchrone
+  }
   // Publication ciblée depuis le popup : publie UNIQUEMENT les jobs demandés
   // (plateformes cochées de l'annonce affichée), en réutilisant processJob.
   // Le poll automatique (POLL_NOW) reste inchangé.
@@ -647,6 +704,56 @@ async function publishSelectedUnlocked(jobIds) {
 // côté serveur, à partir du JWT relayé, sans jamais manipuler de mot de passe.
 const BOOTSTRAP_RETRY_MS = 30 * 60 * 1000;
 
+// ── Identité du compte rattaché à CETTE extension (2026-09-03) ───────────────
+// Incident Nadège (03/09) : la session relayée par fillsell.app était acceptée
+// sans jamais comparer son utilisateur à celui de la session propre. Quand la
+// propre mourait, un login différent sur le site faisait BASCULER l'extension
+// sur l'autre compte, en silence — et la sync versait le dressing du
+// navigateur dans l'inventaire de ce compte-là. Règle désormais :
+//   · même utilisateur → comportement historique, rien ne change ;
+//   · utilisateur DIFFÉRENT → la session relayée part en PENDING_SWITCH et
+//     N'EST JAMAIS utilisée sans un clic explicite dans le popup
+//     (« Basculer l'extension sur ce compte ») ;
+//   · aucune identité connue (install neuve, parc d'avant ce build) → le
+//     premier bootstrap réussi POSE l'identité — zéro friction pour le parc.
+function decodeJwtClaims(token) {
+  try {
+    const base64 = String(token).split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const p = JSON.parse(atob(base64));
+    return { sub: p?.sub ?? null, email: p?.email ?? null };
+  } catch { return { sub: null, email: null }; }
+}
+
+async function lireLastUser() {
+  try {
+    const st = await chrome.storage.local.get(FILLSELL_CONFIG.STORAGE_KEYS.LAST_USER);
+    const v = st?.[FILLSELL_CONFIG.STORAGE_KEYS.LAST_USER];
+    return v && typeof v === "object" && v.sub ? v : null;
+  } catch { return null; }
+}
+
+async function poserLastUser(sub, email) {
+  if (!sub) return;
+  try {
+    await chrome.storage.local.set({
+      [FILLSELL_CONFIG.STORAGE_KEYS.LAST_USER]: { sub, email: email ?? null, vu_le: new Date().toISOString() },
+    });
+  } catch { /* best-effort : reposé au prochain bootstrap */ }
+}
+
+async function poserPendingSwitch(relayed) {
+  const claims = decodeJwtClaims(relayed?.access_token);
+  if (!claims.sub) return;
+  try {
+    await chrome.storage.local.set({
+      [FILLSELL_CONFIG.STORAGE_KEYS.PENDING_SWITCH]: {
+        session: relayed, sub: claims.sub, email: claims.email, vu_le: new Date().toISOString(),
+      },
+    });
+    console.warn(`[background] compte FillSell DIFFÉRENT détecté sur fillsell.app (${claims.email ?? claims.sub}) — bascule en attente d'un clic dans le popup, rien n'est utilisé`);
+  } catch { /* le pont re-relaiera à la prochaine visite */ }
+}
+
 async function bootstrapOwnSession(relayedAccessToken) {
   const { SESSION_OWN, BOOTSTRAP_LAST_FAIL } = FILLSELL_CONFIG.STORAGE_KEYS;
   try {
@@ -679,6 +786,9 @@ async function bootstrapOwnSession(relayedAccessToken) {
     };
     await chrome.storage.local.set({ [SESSION_OWN]: own });
     await chrome.storage.local.remove(BOOTSTRAP_LAST_FAIL);
+    // Identité rattachée : posée à CHAQUE bootstrap réussi — c'est elle que
+    // la garde anti-bascule silencieuse compare aux sessions relayées.
+    await poserLastUser(decodeJwtClaims(own.access_token).sub, own.email);
     console.log("[background] Session propre de l'extension obtenue — indépendante de l'app web");
     return own;
   } catch (e) {
@@ -704,7 +814,24 @@ async function bootstrapOwnSession(relayedAccessToken) {
 // du premier bootstrap, si bien qu'à la mort de la session propre on retombait
 // sur un token vieux de plusieurs jours, mort lui aussi — impasse totale.
 async function acceptRelayedSession(relayed) {
-  const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL } = FILLSELL_CONFIG.STORAGE_KEYS;
+  const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL, PENDING_SWITCH } = FILLSELL_CONFIG.STORAGE_KEYS;
+
+  // ── Garde anti-bascule silencieuse (2026-09-03, incident Nadège) ──────────
+  // Un utilisateur DIFFÉRENT de celui rattaché à l'extension ne remplace ni
+  // la copie de secours ni la session propre : sa session part en attente de
+  // décision (popup). Sans identité connue (parc d'avant ce build, install
+  // neuve), comportement historique — le bootstrap posera l'identité.
+  const lastUser = await lireLastUser();
+  const relayedSub = decodeJwtClaims(relayed?.access_token).sub;
+  if (lastUser && relayedSub && relayedSub !== lastUser.sub) {
+    await poserPendingSwitch(relayed);
+    return { ok: true, ignored: true, pendingSwitch: true };
+  }
+  // Même utilisateur (ou identité inconnue) : toute bascule en attente d'un
+  // AUTRE compte est caduque — l'utilisateur du site est redevenu le nôtre.
+  if (relayedSub && lastUser && relayedSub === lastUser.sub) {
+    chrome.storage.local.remove(PENDING_SWITCH).catch(() => {});
+  }
   await chrome.storage.local.set({ [SESSION]: relayed });
 
   const store = await chrome.storage.local.get(SESSION_OWN);
@@ -748,6 +875,18 @@ async function getValidSession() {
   // et de dépannage en attendant que le bootstrap passe.
   const session = store[SESSION];
   if (!session?.access_token) return null;
+
+  // ── Garde anti-bascule silencieuse (2026-09-03) : une copie relayée d'un
+  // AUTRE utilisateur (stockée avant ce build) ne sert JAMAIS de repli — elle
+  // part en attente de décision et la clé est purgée. Sans ça, la mort de la
+  // session propre suffisait à faire changer l'extension de compte.
+  const lastUser = await lireLastUser();
+  const sessionSub = decodeJwtClaims(session.access_token).sub;
+  if (lastUser && sessionSub && sessionSub !== lastUser.sub) {
+    await poserPendingSwitch(session);
+    await chrome.storage.local.remove(SESSION);
+    return null;
+  }
 
   // ⚠️ JAMAIS de refreshSession sur la copie relayée (fix 2026-08-01) : son
   // refresh_token appartient à la famille de l'APP web — le consommer ici
@@ -6652,6 +6791,21 @@ function alarmeRetry403(userId) {
   return `${SYNC_RETRY403_ALARM_PREFIX}${userId}`;
 }
 
+// ── Boutiques Vinted confirmées (multi-boutiques, 2026-09-03) ────────────────
+// profiles.vinted_sync_pin (jsonb, migration 20260814110000 — DÉJÀ en prod) :
+//   { v: 2, a_confirmer: bool, boutiques: [{user_id, login, ajoute_le,
+//     source: 'premiere_sync'|'confirmation_app'|'pose_manuelle'}] }
+// Toute autre forme (null, ancien pin v1 du F1 abandonné) = aucune boutique
+// connue. `a_confirmer: true` désactive l'adoption automatique même à liste
+// vide — l'état des comptes dont la boutique légitime est inconnue.
+function lireBoutiquesPin(pin) {
+  if (!pin || typeof pin !== "object" || pin.v !== 2) return { boutiques: [], aConfirmer: false, brut: null };
+  const boutiques = Array.isArray(pin.boutiques)
+    ? pin.boutiques.filter((b) => b && typeof b === "object" && String(b.user_id ?? "").trim())
+    : [];
+  return { boutiques, aConfirmer: pin.a_confirmer === true, brut: pin };
+}
+
 async function lireEtatsRetry403() {
   try {
     const st = await chrome.storage.local.get(SYNC_RETRY403_STORAGE_KEY);
@@ -7583,6 +7737,89 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     }).catch((e) => console.warn("[sync-dressing] trace identité non écrite (migration absente ?):", e?.message ?? e));
   }
 
+  // ── GARDE D'IDENTITÉ — boutiques confirmées (2026-09-03, incident Nadège) ──
+  // Le dressing lu est celui du compte Vinted connecté dans CE navigateur ;
+  // jusqu'ici il atterrissait dans l'inventaire du compte FillSell de
+  // l'extension SANS AUCUN contrôle de propriété (~716 articles de
+  // @nadegemarcelin78 importés chez deux autres comptes FillSell). AVANT tout
+  // import désormais :
+  //   · boutique déjà confirmée (liste v2 de vinted_sync_pin) → sync normale ;
+  //   · aucune boutique connue, adoption permise → la boutique courante est
+  //     ADOPTÉE (source 'premiere_sync') — zéro friction pour le parc
+  //     mono-boutique, qui est la quasi-totalité ;
+  //   · a_confirmer:true (posé à la main sur les comptes à historique
+  //     douteux) OU boutique inconnue → AUCUN import : run 'failed' porteur
+  //     du marqueur [boutique_a_confirmer], l'app affiche la DÉCISION
+  //     (« c'est bien ma boutique » → ajout + relance / changer de compte
+  //     Vinted dans Chrome). Multi-boutiques légitime (cas Manon) : une
+  //     confirmation par boutique, une seule fois.
+  // Fail-open UNIQUEMENT sur l'aléa réseau de lecture du profil : on ne
+  // bloque pas le parc entier sur un 5xx PostgREST — ce run-là garde
+  // l'ancien comportement et la garde reprend au run suivant.
+  if (!mock && ident?.userId) {
+    const idActuel = String(ident.userId);
+    let pinInfo = null;
+    try {
+      const rows = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, token);
+      pinInfo = lireBoutiquesPin(rows?.[0]?.vinted_sync_pin);
+    } catch (e) {
+      console.warn("[sync-dressing] boutiques confirmées illisibles — garde passée pour CE run:", e?.message ?? e);
+    }
+    if (pinInfo) {
+      const connue = pinInfo.boutiques.some((b) => String(b.user_id) === idActuel);
+      if (connue) {
+        // Pseudo rafraîchi si l'utilisateur l'a changé sur Vinted (best-effort).
+        const entree = pinInfo.boutiques.find((b) => String(b.user_id) === idActuel);
+        if (entree && ident.login && entree.login !== String(ident.login)) {
+          const maj = {
+            ...pinInfo.brut,
+            boutiques: pinInfo.boutiques.map((b) =>
+              String(b.user_id) === idActuel ? { ...b, login: String(ident.login) } : b),
+          };
+          restRequest(`profiles?id=eq.${userId}`, token, {
+            method: "PATCH", headers: { Prefer: "return=representation" },
+            body: JSON.stringify({ vinted_sync_pin: maj }),
+          }).catch(() => {});
+        }
+      } else if (pinInfo.boutiques.length === 0 && !pinInfo.aConfirmer) {
+        // Adoption du 1er run : écrite AVANT l'import et VÉRIFIÉE (un UPDATE
+        // profiles bloqué par la RLS échoue en silence sans representation —
+        // leçon du 2026-07-06). Échec d'écriture = ancien comportement,
+        // retentée au prochain run.
+        const nouveau = {
+          v: 2, a_confirmer: false,
+          boutiques: [{
+            user_id: idActuel,
+            login: ident.login ? String(ident.login) : null,
+            ajoute_le: new Date().toISOString(),
+            source: "premiere_sync",
+          }],
+        };
+        try {
+          const maj = await restRequest(`profiles?id=eq.${userId}`, token, {
+            method: "PATCH", headers: { Prefer: "return=representation" },
+            body: JSON.stringify({ vinted_sync_pin: nouveau }),
+          });
+          if (Array.isArray(maj) && maj.length) {
+            console.log(`[sync-dressing] boutique @${ident.login ?? idActuel} adoptée (première sync du régime multi-boutiques)`);
+          } else {
+            console.warn("[sync-dressing] adoption de boutique non confirmée (0 ligne) — retentée au prochain run");
+          }
+        } catch (e) {
+          console.warn("[sync-dressing] adoption de boutique refusée — retentée au prochain run:", e?.message ?? e);
+        }
+      } else {
+        const connues = pinInfo.boutiques.map((b) => `@${b.login ?? b.user_id}`).join(", ");
+        await annulerRetry403(userId, "boutique à confirmer — rien à retenter avant décision");
+        return await echec(
+          `[boutique_a_confirmer] Ce navigateur est connecté au dressing @${ident.login ?? idActuel}` +
+          (connues ? ` — ce compte FillSell suit ${connues}.` : " — aucune boutique n'est encore confirmée sur ce compte FillSell.") +
+          " Rien n'a été importé. Confirme la boutique dans l'app (carte « Actualiser mon dressing ») ou change de compte Vinted dans Chrome, puis relance.",
+        );
+      }
+    }
+  }
+
   // ── Réservations de republication (volet c, 2026-08-05) ───────────────────
   // Les republications ARRÊTÉES À L'ÉTAPE 'deleted' : leur annonce a été
   // retirée et sa remplaçante peut déjà être en ligne. On charge leur titre
@@ -7676,7 +7913,14 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       // `connus` (qui exige vinted_item_id), et un `undefined` dans le Set
       // fausserait la comparaison vu/annoncé de la garde (b).
       for (const a of tranche) if (a.vinted_item_id) vusCetteSync.add(a.vinted_item_id);
-      const bilan = await enregistrerArticlesDressing(tranche, { token, userId, reservesRepublish });
+      const bilan = await enregistrerArticlesDressing(tranche, {
+        token, userId, reservesRepublish,
+        // Estampillage à l'OBSERVATION (multi-boutiques, 2026-09-03) : chaque
+        // run marque ce qu'il voit — c'est ce qui permet le filtre par
+        // boutique dans l'app et le cloisonnement des republications. Jamais
+        // en mode mock (aucune identité réelle).
+        compteObserve: !mock && ident?.userId ? String(ident.userId).slice(0, 60) : null,
+      });
       if (bilan.echecs?.length) echecsEcriture.push(...bilan.echecs);
       items_vus += tranche.length;
       items_crees += bilan.crees;
@@ -7968,7 +8212,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
  * Écrit une page d'articles : upsert inventaire + relevé du jour + entrée dans
  * le cycle de détection de vente. Rend le nombre de créations/mises à jour.
  */
-async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [] }) {
+async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [], compteObserve = null }) {
   if (!articles.length) return { crees: 0, majs: 0 };
 
   // Ce qui existe déjà, pour distinguer création et mise à jour (l'upsert seul
@@ -8171,6 +8415,10 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       // recréation ⇒ photo_ts ≈ date de recréation). Clé ABSENTE quand
       // photo_ts manque : jamais un NULL par-dessus une valeur.
       ...(a.photo_ts ? { listed_at_guess: new Date(a.photo_ts * 1000).toISOString() } : {}),
+      // Boutique d'origine, estampillée à l'observation (2026-09-03) — un
+      // FAIT Vinted (le dressing où l'annonce vit), pas une donnée
+      // utilisateur : la frontière de propriété reste intacte.
+      ...(compteObserve ? { vinted_account_id: compteObserve } : {}),
     }),
   });
 
@@ -8295,6 +8543,11 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       first_seen_at: dejaLa?.first_seen_at ?? maintenant,
       last_synced_at: maintenant,
       disparu_le: null, // réapparu : on efface la date de disparition
+      // Boutique d'origine (multi-boutiques, 2026-09-03) : estampillée à
+      // CHAQUE observation. ⚠️ merge-duplicates pose toutes les clés du
+      // payload dans le DO UPDATE : la clé n'est présente que quand
+      // l'identité du run est réelle (jamais un null par-dessus une valeur).
+      ...(compteObserve ? { vinted_account_id: compteObserve } : {}),
     };
   });
 
@@ -10127,6 +10380,51 @@ async function processRepublishJob(job, accessToken) {
       const msg = "Session illisible — rien n'a été touché, ton annonce est intacte.";
       await updateJobStatus(accessToken, job.id, "failed", { error: msg });
       return { status: "failed", error: msg };
+    }
+    // ── CLOISONNEMENT MULTI-BOUTIQUES (2026-09-03) ─────────────────────────
+    // Quand l'article porte sa boutique d'origine (vinted_account_id,
+    // estampillé par la sync), la republication vérifie AVANT toute capture
+    // que Chrome est connecté à CETTE boutique. Sans la garde, la capture et
+    // la suppression échoueraient de toute façon (l'API refuse l'annonce
+    // d'un autre compte) mais avec un message cryptique — ici : needs_user
+    // clair, actionnable, AVANT tout geste. Lignes héritées (NULL) : aucune
+    // vérification, comportement du parc mono-boutique STRICTEMENT inchangé.
+    // Sonde en échec (403 anti-robot, onglet muet) → on laisse le flux
+    // normal gérer : cette garde n'ajoute jamais un blocage à elle seule.
+    if (job.inventaire_id != null) {
+      try {
+        const inv = await restRequest(
+          `inventaire?id=eq.${job.inventaire_id}&select=vinted_account_id`, accessToken,
+        );
+        const boutiqueArticle = String(inv?.[0]?.vinted_account_id ?? "").trim();
+        if (boutiqueArticle) {
+          const tabIdSonde = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+          const identSonde = await sendMessageToTab(tabIdSonde, { type: "VINTED_CURRENT_USER" })
+            .catch(() => null);
+          if (identSonde?.success && identSonde.userId && String(identSonde.userId) !== boutiqueArticle) {
+            pf.needs_user_source = "boutique_differente";
+            // Le login de la boutique d'origine se lit dans la liste des
+            // boutiques confirmées quand elle le porte — sinon on parle en
+            // « autre boutique », jamais un identifiant technique à l'écran.
+            let loginOrigine = null;
+            try {
+              const prof = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, accessToken);
+              loginOrigine = lireBoutiquesPin(prof?.[0]?.vinted_sync_pin)
+                .boutiques.find((b) => String(b.user_id) === boutiqueArticle)?.login ?? null;
+            } catch { /* libellé générique */ }
+            const origineTexte = loginOrigine ? `ta boutique @${loginOrigine}` : "une autre de tes boutiques Vinted";
+            const couranteTexte = identSonde.login ? `@${identSonde.login}` : "une autre boutique";
+            const msg =
+              "Republication en pause AVANT toute suppression — ton annonce est intacte. " +
+              `Cette annonce vit sur ${origineTexte}, mais Chrome est connecté à ${couranteTexte}. ` +
+              "Connecte-toi à la bonne boutique sur vinted.fr dans Chrome, puis relance la republication depuis la fiche de l'article.";
+            await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+            return { status: "needsUser", error: "boutique Vinted différente de celle de l'annonce" };
+          }
+        }
+      } catch (e) {
+        console.warn("[republish] cloisonnement boutique illisible (flux normal):", e?.message ?? e);
+      }
     }
     const cap = await capturerEtPersisterDepuisExtension({
       vintedItemId: pf.vinted_item_id,

@@ -50,5 +50,18 @@ const FILLSELL_CONFIG = {
     // { [jobId]: { platform, status, title, inventaire_id, annonceKey, ts } },
     // purgé à 30 min — lu par le popup pour afficher "Publié" après coup.
     RECENT_RESULTS: "fillsell_recent_results",
+    // ── Fin de la bascule silencieuse de compte FillSell (2026-09-03) ────────
+    // Incident Nadège : la session relayée par fillsell.app était acceptée
+    // sans comparer son utilisateur à celui de la session propre — quand la
+    // propre mourait, l'extension DEVENAIT l'autre compte, en silence, et la
+    // sync versait le dressing du navigateur dans son inventaire.
+    // LAST_USER : { sub, email, vu_le } — l'utilisateur auquel cette
+    // extension est rattachée (posé à chaque bootstrap réussi).
+    LAST_USER: "fillsell_last_user",
+    // PENDING_SWITCH : { session, sub, email, vu_le } — session relayée d'un
+    // AUTRE utilisateur, mise en attente d'une décision EXPLICITE dans le
+    // popup (« Basculer l'extension sur ce compte ? »). Jamais utilisée sans
+    // clic.
+    PENDING_SWITCH: "fillsell_pending_switch",
   },
 };

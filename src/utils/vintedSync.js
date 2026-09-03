@@ -385,7 +385,10 @@ export async function relancerRepublishVinted(supabase, { job }) {
 // afficher « Dressing synchronisé : @pseudo » sur la carte de sync. NULL sur
 // les runs d'avant la trace : la carte n'affiche alors rien (jamais de libellé
 // vide, jamais « inconnu »).
-const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at,vinted_login';
+// vinted_user_id AUSSI (2026-09-03) : la carte de décision « boutique à
+// confirmer » écrit ce que le run a VU (id + pseudo) dans la liste des
+// boutiques confirmées — jamais une valeur devinée du texte d'erreur.
+const RUN_COLS = 'id,status,page_suivante,total_pages,total_entries,items_vus,items_crees,items_maj,erreur,started_at,finished_at,vinted_login,vinted_user_id';
 
 // RLS filtre déjà sur auth.uid() ; le `.eq('user_id')` explicite reste pour que
 // la requête dise ce qu'elle veut, et pour ne pas dépendre d'une policy.
@@ -415,6 +418,64 @@ export async function aDejaSynchroniseDressing(userId) {
     .limit(1);
   if (error) return false;
   return (data?.length ?? 0) > 0;
+}
+
+// ── Boutiques Vinted confirmées (multi-boutiques, 2026-09-03) ────────────────
+// profiles.vinted_sync_pin (jsonb, migration 20260814110000 déjà en prod) :
+//   { v: 2, a_confirmer: bool, boutiques: [{user_id, login, ajoute_le,
+//     source: 'premiere_sync'|'confirmation_app'|'pose_manuelle'}] }
+// MIROIR EXACT de lireBoutiquesPin (chrome-extension/background.js) — les deux
+// lecteurs doivent rester alignés, sinon l'app et l'extension ne voient pas
+// les mêmes boutiques. Toute autre forme (null, ancien pin v1) = liste vide.
+export function parseBoutiquesPin(pin) {
+  if (!pin || typeof pin !== 'object' || pin.v !== 2) return { boutiques: [], aConfirmer: false };
+  const boutiques = Array.isArray(pin.boutiques)
+    ? pin.boutiques.filter((b) => b && typeof b === 'object' && String(b.user_id ?? '').trim())
+    : [];
+  return { boutiques, aConfirmer: pin.a_confirmer === true };
+}
+
+export async function lireBoutiquesVinted(userId) {
+  if (!userId) return { boutiques: [], aConfirmer: false };
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('vinted_sync_pin')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) return { boutiques: [], aConfirmer: false };
+  return parseBoutiquesPin(data?.vinted_sync_pin);
+}
+
+// Confirmation depuis l'app (« C'est bien ma boutique ») : relecture FRAÎCHE
+// puis ajout — jamais un écrasement d'une liste périmée. Update CONDITIONNEL
+// + .select() : un update bloqué par la RLS échoue en silence sans lui
+// (leçon profiles du 2026-07-06). `a_confirmer` est levé par la confirmation :
+// l'utilisateur vient précisément de trancher.
+export async function confirmerBoutiqueVinted(userId, { vintedUserId, login }) {
+  if (!userId || !String(vintedUserId ?? '').trim()) {
+    return { success: false, error: 'boutique_inconnue' };
+  }
+  const { data: prof, error: eLect } = await supabase
+    .from('profiles').select('vinted_sync_pin').eq('id', userId).maybeSingle();
+  if (eLect) return { success: false, error: eLect.message };
+  const actuel = parseBoutiquesPin(prof?.vinted_sync_pin);
+  const id = String(vintedUserId);
+  const boutiques = actuel.boutiques.some((b) => String(b.user_id) === id)
+    ? actuel.boutiques
+    : [...actuel.boutiques, {
+        user_id: id,
+        login: login ? String(login) : null,
+        ajoute_le: new Date().toISOString(),
+        source: 'confirmation_app',
+      }];
+  const { data: maj, error: eMaj } = await supabase
+    .from('profiles')
+    .update({ vinted_sync_pin: { v: 2, a_confirmer: false, boutiques } })
+    .eq('id', userId)
+    .select('id');
+  if (eMaj) return { success: false, error: eMaj.message };
+  if (!maj?.length) return { success: false, error: 'écriture refusée (RLS)' };
+  return { success: true, boutiques };
 }
 
 // ── Dernière synchro RÉUSSIE (2026-08-11) ───────────────────────────────────

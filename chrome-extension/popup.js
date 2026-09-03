@@ -162,6 +162,10 @@ async function load() {
   // se reconnecter. Une seule source de vérité désormais.
   let session = null;
   try {
+    try {
+      const sw = await chrome.runtime.sendMessage({ type: "GET_PENDING_SWITCH" });
+      state.pendingSwitch = sw?.pending ?? null;
+    } catch { state.pendingSwitch = null; }
     const resp = await chrome.runtime.sendMessage({ type: "GET_VALID_SESSION" });
     session = resp?.session ?? null;
   } catch (e) {
@@ -501,17 +505,56 @@ function renderLife() {
 
 function renderAlerts() {
   const n = state.besoinGeste.length;
-  if (!n) { els.alerts.classList.add("hidden"); return; }
-  // Le motif écrit par l'extension est déjà rédigé pour être lu : on le montre
-  // tel quel s'il est propre, jamais un code technique.
-  const brut = String(state.besoinGeste[0]?.error ?? "").trim();
-  const propre = brut && brut.length <= 220 && !/[{}<>]|https?:\/\//.test(brut);
-  els.alerts.innerHTML =
-    `<div class="bloc alerte">` +
-    `<div class="bloc-t">⚠️ ${n} opération${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ta décision</div>` +
-    `<div class="bloc-s">${propre ? escapeHtml(brut) : "Ouvre FillSell pour voir ce qui bloque et relancer."}</div>` +
-    `</div>`;
+  // ── Bascule de compte FillSell en attente (2026-09-03, incident Nadège) ────
+  // fillsell.app est connecté avec un AUTRE compte que celui rattaché à cette
+  // extension : rien n'a été basculé tout seul — c'est CE clic qui décide.
+  const sw = state.pendingSwitch;
+  if (!n && !sw) { els.alerts.classList.add("hidden"); return; }
+  let html = "";
+  if (sw) {
+    const versQui = sw.email ? escapeHtml(sw.email) : "un autre compte";
+    const actuel = sw.actuel ? ` (actuellement : ${escapeHtml(sw.actuel)})` : "";
+    html +=
+      `<div class="bloc alerte">` +
+      `<div class="bloc-t">🔁 Changer de compte FillSell ?</div>` +
+      `<div class="bloc-s">fillsell.app est connecté avec ${versQui}, mais cette extension est rattachée à un autre compte${actuel}. Rien n'a été changé sans toi.</div>` +
+      `<div style="display:flex;gap:8px;margin-top:8px;">` +
+      `<button id="switch-ok" type="button" style="flex:1;padding:8px 10px;border-radius:9px;border:none;background:#1B6E62;color:#fff;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;">Basculer l'extension</button>` +
+      `<button id="switch-no" type="button" style="flex:1;padding:8px 10px;border-radius:9px;border:1px solid #E7E3D8;background:#F6F5F1;color:#5C6560;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;">Rester</button>` +
+      `</div></div>`;
+  }
+  if (n) {
+    // Le motif écrit par l'extension est déjà rédigé pour être lu : on le montre
+    // tel quel s'il est propre, jamais un code technique.
+    const brut = String(state.besoinGeste[0]?.error ?? "").trim();
+    const propre = brut && brut.length <= 220 && !/[{}<>]|https?:\/\//.test(brut);
+    html +=
+      `<div class="bloc alerte">` +
+      `<div class="bloc-t">⚠️ ${n} opération${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ta décision</div>` +
+      `<div class="bloc-s">${propre ? escapeHtml(brut) : "Ouvre FillSell pour voir ce qui bloque et relancer."}</div>` +
+      `</div>`;
+  }
+  els.alerts.innerHTML = html;
   els.alerts.classList.remove("hidden");
+  const ok = document.getElementById("switch-ok");
+  const no = document.getElementById("switch-no");
+  if (ok) ok.addEventListener("click", async () => {
+    ok.disabled = true; ok.textContent = "Bascule…";
+    try {
+      const r = await chrome.runtime.sendMessage({ type: "CONFIRM_ACCOUNT_SWITCH" });
+      if (r?.ok) { state.pendingSwitch = null; load(); }
+      else {
+        ok.textContent = r?.reason === "session_perimee"
+          ? "Rouvre fillsell.app connecté, puis reviens ici"
+          : "Impossible — réessaie";
+      }
+    } catch { ok.textContent = "Impossible — réessaie"; }
+  });
+  if (no) no.addEventListener("click", async () => {
+    try { await chrome.runtime.sendMessage({ type: "DISMISS_ACCOUNT_SWITCH" }); } catch { /* re-proposé à la prochaine visite du site */ }
+    state.pendingSwitch = null;
+    renderAlerts();
+  });
 }
 
 function renderNow() {

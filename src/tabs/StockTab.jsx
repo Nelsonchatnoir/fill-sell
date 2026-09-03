@@ -39,6 +39,7 @@ import {
   versionAuMoins, SYNC_VERSION_MIN, SYNC_CADENCE_MANUELLE_MS, SYNC_FILE_TTL_MS,
   SYNC_RECLAMATION_MAX_MS, EXT_SILENCE_MAX_MS,
   lireDernierRunDressing, lireDerniereSyncReussie,
+  confirmerBoutiqueVinted,
   DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
   republishVisiblePour, republierArticleVinted, relancerRepublishVinted,
 } from '../utils/vintedSync';
@@ -1400,7 +1401,7 @@ const RETRY403_GRACE_MS = 5 * 60 * 1000;
 // Chrome. Le marquage des disparitions est protégé par l'identité du RUN,
 // côté extension : sync mono-compte.)
 
-function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, onVoirArticles = null }) {
+function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null }) {
   const fr = lang !== 'en';
   // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
   // doctrine du 09/08. `surTelephone` revient le 01/09 pour UNE décision qui
@@ -1432,6 +1433,14 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // AVANT l'effet de suivi qui l'écrit (règle TDZ du fichier).
   const [attenteOccupee, setAttenteOccupee] = useState(false);
   const [message, setMessage] = useState(null);    // ce que la base ne dit pas (commande non prise, poll abandonné)
+  // ── Décision « boutique à confirmer » (multi-boutiques, 2026-09-03) ───────
+  // La garde d'identité de l'extension a refusé l'import d'un dressing
+  // inconnu : run 'failed' porteur de [boutique_a_confirmer], et l'identité
+  // VUE (vinted_user_id/login) sur la ligne du run. La confirmation écrit la
+  // boutique dans la liste puis RELANCE la sync — un geste, jamais d'écran
+  // mort. Le refus n'écrit rien : consigne « change de compte dans Chrome ».
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [boutiqueRefusee, setBoutiqueRefusee] = useState(false);
   // La carte vit en tête de liste (2026-08-05) : le contrat complet est replié
   // derrière « En savoir plus » pour ne pas pousser la liste hors écran.
   const [infosDepliees, setInfosDepliees] = useState(false);
@@ -2040,6 +2049,14 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // sync. Les messages posés par l'extension sont déjà lisibles ; on ne
       // masque que les pavés techniques (URL, JSON, traces).
       const brut = String(run.erreur ?? '').trim();
+      // ── Boutique à confirmer (multi-boutiques, 2026-09-03) : pas un échec,
+      // une QUESTION — l'encart porte les deux réponses (boutons plus bas).
+      if (brut.includes('[boutique_a_confirmer]')) {
+        const login = typeof run.vinted_login === 'string' && run.vinted_login.trim() ? run.vinted_login.trim() : null;
+        return { ton: 'orange', decision: 'boutique', texte: fr
+          ? `Ce navigateur est connecté ${login ? `au dressing @${login}` : 'à un dressing'} que ce compte ne suit pas encore. Rien n'a été importé — c'est bien ta boutique ?`
+          : `This browser is signed in to ${login ? `the @${login} closet` : 'a closet'} this account doesn't follow yet. Nothing was imported — is this your shop?` };
+      }
       // ── 403 = encart actionnable (2026-08-13, relevé en base) ──────────────
       // Les 9 comptes ayant pris un 403 ce jour sont TOUS inscrits d'hier ou
       // d'aujourd'hui ; 6/9 n'ont jamais réussi une seule sync, les 3 autres
@@ -2112,6 +2129,32 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // Blocage présent ⇒ le bilan du run passé se tait (contradiction sinon) ;
   // `message` reste : c'est le retour d'un clic de CETTE session.
   const avis = message || (blocage ? null : bilan);
+
+  // Confirmation d'une boutique (décision [boutique_a_confirmer]) : écrit la
+  // boutique VUE PAR LE RUN (id + pseudo de la trace, jamais une valeur
+  // devinée) dans la liste, recharge le filtre de l'app, puis RELANCE la sync.
+  const confirmerBoutique = async () => {
+    if (confirmBusy || !run?.vinted_user_id || !user?.id) return;
+    setConfirmBusy(true);
+    let r;
+    try {
+      r = await confirmerBoutiqueVinted(user.id, {
+        vintedUserId: run.vinted_user_id,
+        login: run.vinted_login ?? null,
+      });
+    } catch (e) { r = { success: false, error: String(e?.message ?? e) }; }
+    setConfirmBusy(false);
+    if (!r?.success) {
+      setMessage({ ton: 'rouge', texte: fr
+        ? "L'ajout de la boutique n'a pas pu être enregistré. Réessaie dans un instant."
+        : "The shop couldn't be saved. Try again in a moment." });
+      return;
+    }
+    setBoutiqueRefusee(false);
+    rechargerBoutiques?.();
+    setMessage(null);
+    lancer();
+  };
   const AVIS_COULEURS = {
     vert:   { bg: '#F0FDFB', bord: 'rgba(13,148,136,0.2)',  texte: '#1B6E62' },
     orange: { bg: '#FFF7ED', bord: '#FED7AA',               texte: '#9A3412' },
@@ -2299,6 +2342,51 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           </div>
         );
       })()}
+
+      {/* ── Décision « boutique à confirmer » (multi-boutiques, 2026-09-03) ──
+          Une QUESTION, deux réponses — jamais un écran mort. « Oui » écrit la
+          boutique dans la liste puis relance la sync ; « Non » donne le geste
+          (changer de compte Vinted dans Chrome) et un bouton de relance. */}
+      {avis&&avis===bilan&&bilan?.decision==='boutique'&&(
+        boutiqueRefusee?(
+          <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:"#5C6560"}}>
+            {fr
+              ?"Rien n'a été touché. Ouvre vinted.fr dans ce navigateur, connecte-toi à TA boutique, puis relance."
+              :"Nothing was touched. Open vinted.fr in this browser, sign in to YOUR shop, then run the sync again."}
+            <button onClick={()=>{setBoutiqueRefusee(false);lancer();}}
+              style={{display:"block",width:"100%",marginTop:8,padding:"9px 0",borderRadius:9,border:"1px solid #E7E3D8",background:"#fff",color:"#1B6E62",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {fr?"J'ai changé de boutique — relancer":"I switched shops — run again"}
+            </button>
+          </div>
+        ):(
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={confirmerBoutique} disabled={confirmBusy||!run?.vinted_user_id}
+              style={{flex:1.4,padding:"10px 8px",borderRadius:10,border:"none",background:confirmBusy?"#9CB8B2":"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,cursor:confirmBusy?"default":"pointer",fontFamily:"inherit"}}>
+              {confirmBusy
+                ?(fr?"Ajout…":"Adding…")
+                :(fr?"✓ C'est ma boutique — l'ajouter":"✓ It's my shop — add it")}
+            </button>
+            <button onClick={()=>setBoutiqueRefusee(true)} disabled={confirmBusy}
+              style={{flex:1,padding:"10px 8px",borderRadius:10,border:"1px solid #E7E3D8",background:"#F6F5F1",color:"#5C6560",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {fr?"Non, pas la mienne":"No, not mine"}
+            </button>
+          </div>
+        )
+      )}
+
+      {/* ── Tes boutiques (multi-boutiques confirmées uniquement) ────────────
+          La boutique ACTIVE est celle connectée dans Chrome — la ligne de
+          dernière synchro au-dessus la nomme déjà (« Dressing synchronisé :
+          @x »). Ici : la liste complète, et le rappel du geste de bascule. */}
+      {boutiquesVinted.length>=2&&(
+        <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>
+          {fr?"Tes boutiques : ":"Your shops: "}
+          {boutiquesVinted.map(b=>`@${b.login??b.user_id}`).join(" · ")}
+          {fr
+            ?" — pour changer de boutique, connecte-toi à l'autre compte sur vinted.fr dans Chrome puis actualise."
+            :" — to switch shops, sign in to the other account on vinted.fr in Chrome, then refresh."}
+        </div>
+      )}
 
       {/* ── Le bilan devient une ÉTAPE (2026-09-01, audit onboarding) ────────
           « Dressing synchronisé — N importés » se lisait comme un point
@@ -3261,6 +3349,8 @@ const StockTab = memo(function StockTab({
   // Filter state
   filterType, setFilterType, filterMarque, setFilterMarque,
   filterMarqueSold, setFilterMarqueSold,
+  boutiquesVinted = [], filterBoutique = "Toutes", setFilterBoutique = () => {},
+  rechargerBoutiques = null,
   search, setSearch, soldShowAll, setSoldShowAll,
   showAllStock, setShowAllStock,
   pillsExpandedSold, setPillsExpandedSold, pillsExpandedStock, setPillsExpandedStock,
@@ -4881,6 +4971,8 @@ const StockTab = memo(function StockTab({
           onDone={rafraichirApresSync}
           repubEnVol={repubVivants}
           onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
+          boutiquesVinted={boutiquesVinted}
+          rechargerBoutiques={rechargerBoutiques}
         />
       </div>
       {/* ── Stock VIDE, mobile : la carte d'ajout DESCEND (2026-09-01) ────────
@@ -5467,6 +5559,12 @@ const StockTab = memo(function StockTab({
                 {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
                 {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1B6E62":"#F2F0E9",color:filterMarque==="Toutes"?"#fff":"#6B7A75"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7A75",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button></>);})()}
               </div>
+              {/* ── Filtre par boutique Vinted (multi-boutiques, 2026-09-03) —
+                  affiché UNIQUEMENT à partir de deux boutiques confirmées :
+                  le parc mono-boutique ne voit rien. Filtre sur
+                  vinted_account_id (estampillé à l'observation) ; les
+                  articles pas encore observés restent visibles sur
+                  « Toutes ». */}
               {(()=>{
                 // Reflète le filtre actif (catégorie/marque/recherche) au lieu du total global :
                 // même formule que stockQty/stockVal (App.jsx) mais appliquée à stockFiltre.
@@ -5480,6 +5578,24 @@ const StockTab = memo(function StockTab({
                 return <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{_fQty} {lang==='fr'?'art.':'items'} · {fmt(_fVal)}</div>;
               })()}
             </div>
+            {boutiquesVinted.length>=2&&(
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+                <button onClick={()=>setFilterBoutique("Toutes")}
+                  style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterBoutique==="Toutes"?"#1B6E62":"#F2F0E9",color:filterBoutique==="Toutes"?"#fff":"#6B7A75",fontFamily:"inherit"}}>
+                  {lang==='fr'?'Toutes les boutiques':'All shops'}
+                </button>
+                {boutiquesVinted.map(b=>{
+                  const id=String(b.user_id);
+                  const actif=filterBoutique===id;
+                  return (
+                    <button key={id} onClick={()=>setFilterBoutique(id)}
+                      style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:actif?"#1B6E62":"#F2F0E9",color:actif?"#fff":"#6B7A75",fontFamily:"inherit"}}>
+                      @{b.login??b.user_id}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {/* ── Quota du plan (07/08, validé Nico) — ligne DÉDIÉE sous le
                 header : le chip au-dessus reflète le FILTRE actif, le quota
                 est GLOBAL — les mélanger mettrait deux nombres différents

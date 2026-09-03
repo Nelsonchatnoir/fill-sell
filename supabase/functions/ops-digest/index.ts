@@ -419,6 +419,45 @@ serve(async (req) => {
     });
   }
 
+  // 11. MÊME DRESSING VINTED VU PAR PLUSIEURS COMPTES FILLSELL (2026-09-03,
+  // incident Nadège : ~716 articles importés chez deux autres comptes, vu
+  // par hasard). La garde d'identité (extension ≥ 0.6.17) bloque désormais
+  // l'import, mais le CROISEMENT lui-même doit se voir en 24 h : fenêtre de
+  // 10 jours pour le contexte, remonté seulement si un run des 24 h y
+  // participe. Lecture seule, best-effort.
+  const dressingsCroises: string[] = [];
+  try {
+    const { data: runsIdent, error: e11 } = await supabase
+      .from("vinted_sync_runs")
+      .select("user_id, vinted_user_id, vinted_login, started_at")
+      .not("vinted_user_id", "is", null)
+      .gte("started_at", new Date(now - 10 * 86_400_000).toISOString())
+      .order("started_at", { ascending: false })
+      .range(0, 1999);
+    if (e11) throw new Error(e11.message);
+    const parDressing = new Map<string, { login: string | null; comptes: Map<string, string>; recent24h: boolean }>();
+    for (const r of (runsIdent ?? []) as Array<Record<string, unknown>>) {
+      const vid = String(r.vinted_user_id);
+      const e = parDressing.get(vid) ?? { login: null, comptes: new Map(), recent24h: false };
+      if (!e.login && r.vinted_login) e.login = String(r.vinted_login);
+      const uid = String(r.user_id);
+      if (!e.comptes.has(uid)) e.comptes.set(uid, String(r.started_at).slice(0, 10));
+      if (Date.parse(String(r.started_at)) >= now - 86_400_000) e.recent24h = true;
+      parDressing.set(vid, e);
+    }
+    for (const [vid, e] of parDressing) {
+      if (e.comptes.size < 2 || !e.recent24h) continue;
+      const detail = [...e.comptes.entries()].map(([u, d]) => `${u} (dernier run ${d})`).join(" · ");
+      dressingsCroises.push(
+        `dressing @${e.login ?? "?"} (${vid}) vu par ${e.comptes.size} comptes FillSell : ${detail}`,
+      );
+    }
+  } catch (e) {
+    dressingsCroises.push(
+      `Croisement des dressings illisible (${String((e as Error)?.message ?? e)}) — à revérifier demain.`,
+    );
+  }
+
   const counts = {
     failed_24h: (failed ?? []).length,
     stuck_processing: stuck.length,
@@ -432,6 +471,7 @@ serve(async (req) => {
     reservations_expirees: reservationRows.length,
     sync_gardes_graves: gardeGraves.length,
     sync_gardes_anomalies: gardeAnomalies.length,
+    dressings_croises: dressingsCroises.length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
@@ -558,6 +598,19 @@ serve(async (req) => {
     </ul>`
   }
     ${
+    dressingsCroises.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      🔴 Même dressing Vinted vu par plusieurs comptes FillSell (${dressingsCroises.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Croisement des identités de runs sur 10 jours, remonté quand un run des dernières 24 h y participe.
+      La garde d'identité (extension ≥ 0.6.17) bloque l'import — vérifier qui est derrière chaque compte.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${dressingsCroises.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B91C1C;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
     identifyRows.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
       🔴 Lens identify — plafond global journalier (${identifyRows.length})
@@ -582,7 +635,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises})`,
       html,
     }),
   });

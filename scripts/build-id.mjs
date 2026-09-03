@@ -1019,7 +1019,18 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ÉCARTÉ (renommé PERIME dans anciens-zips) : le prochain paquet 0.6.17 sera
 // refait UNE fois, avec la sync multi-comptes Vinted — ne rien téléverser
 // d'ici là (la 0.6.15 est encore en review CWS).
-export const EXTENSION_LAST_COMMIT = '2026-09-03T08:20:37Z';
+// 2026-09-03T12:15:00Z (0.6.17, commit épinglé sur cette constante) : SYNC
+// MULTI-BOUTIQUES (GO Nico 03/09, incident Nadège) — garde d'identité avant
+// tout import (liste v2 de vinted_sync_pin : confirmée → sync ; liste vide →
+// adoption 'premiere_sync' ; a_confirmer/inconnue → run failed
+// [boutique_a_confirmer], décision dans l'app), estampillage
+// inventaire.vinted_account_id à l'observation, cloisonnement des
+// republications (boutique de l'annonce ≠ boutique connectée → needs_user
+// AVANT capture), et FIN DE LA BASCULE SILENCIEUSE de compte FillSell
+// (LAST_USER/PENDING_SWITCH : une session relayée d'un autre utilisateur
+// n'est JAMAIS utilisée sans clic dans le popup). Le zip 0.6.17 sera produit
+// UNE fois, avec ce lot + le pré-vol + le chantier « plus aucun échec ».
+export const EXTENSION_LAST_COMMIT = '2026-09-03T12:15:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

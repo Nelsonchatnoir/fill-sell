@@ -35,7 +35,7 @@ const buildIdTimestamp = (id) => {
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from './utils/stockLimit';
-import { sonderAnnonceVinted } from './utils/vintedSync';
+import { sonderAnnonceVinted, lireBoutiquesVinted } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
 import Toast from './components/Toast';
 import ConversionModal, { COIN_CONFIG_FALLBACK } from './components/ConversionModal';
@@ -1833,6 +1833,22 @@ export default function App({ loginOnly = false }){
   const [iPlateforme,setIPlateforme]=useState("");
   const [filterMarque,setFilterMarque]=useState("Toutes");
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
+  // ── Multi-boutiques Vinted (2026-09-03) : boutiques confirmées du compte
+  // (profiles.vinted_sync_pin v2) + filtre du Stock par boutique. La liste ne
+  // pilote un affichage que quand il y a AU MOINS deux boutiques : le parc
+  // mono-boutique ne voit strictement rien de nouveau.
+  const [boutiquesVinted,setBoutiquesVinted]=useState([]);
+  const [filterBoutique,setFilterBoutique]=useState("Toutes");
+  const rechargerBoutiques=useCallback(async()=>{
+    if(!user?.id)return;
+    try{const r=await lireBoutiquesVinted(user.id);setBoutiquesVinted(r.boutiques);}catch{/* relu au prochain montage */}
+  },[user?.id]);
+  useEffect(()=>{rechargerBoutiques();},[rechargerBoutiques]);
+  // Boutique disparue de la liste (jamais en pratique) ou filtre orphelin :
+  // retour à « Toutes », même doctrine que les pills de marque.
+  useEffect(()=>{
+    if(filterBoutique!=="Toutes"&&!boutiquesVinted.some(b=>String(b.user_id)===filterBoutique))setFilterBoutique("Toutes");
+  },[boutiquesVinted,filterBoutique]);
   const [pillsExpandedStock,setPillsExpandedStock]=useState(false);
   const [pillsExpandedSold,setPillsExpandedSold]=useState(false);
   const [filterType,setFilterType]=useState("Tous");
@@ -3073,6 +3089,10 @@ export default function App({ loginOnly = false }){
   const stockFiltre=useMemo(()=>{
     const filtres=stock
       .filter(i=>filterType==="Tous"||i.type===filterType)
+      // Filtre par boutique Vinted (2026-09-03) : sur vinted_account_id,
+      // estampillé à l'observation par la sync. Inerte tant que le filtre est
+      // à « Toutes » — c'est-à-dire toujours, pour le parc mono-boutique.
+      .filter(i=>filterBoutique==="Toutes"||String(i.vinted_account_id??'')===filterBoutique)
       // marqueKey (2026-08-31) : le libellé de la pill est recalculé
       // (« Capitalisée »), la marque de l'article est brute — un
       // .toLowerCase() sans trim ni normalisation des espaces laissait
@@ -3092,7 +3112,7 @@ export default function App({ loginOnly = false }){
       })
       .map(([i])=>i);
     return [...g1,...g2];
-  },[stock,filterType,filterMarque,search]);
+  },[stock,filterType,filterMarque,filterBoutique,search]);
   const soldFiltre=useMemo(()=>sold
     .filter(i=>filterType==="Tous"||i.type===filterType)
     .filter(i=>filterMarqueSold==="Toutes"||marqueKey(i.marque)===marqueKey(filterMarqueSold))
@@ -6079,6 +6099,8 @@ export default function App({ loginOnly = false }){
             filterType={filterType} setFilterType={setFilterType}
             filterMarque={filterMarque} setFilterMarque={setFilterMarque}
             filterMarqueSold={filterMarqueSold} setFilterMarqueSold={setFilterMarqueSold}
+            boutiquesVinted={boutiquesVinted} filterBoutique={filterBoutique}
+            setFilterBoutique={setFilterBoutique} rechargerBoutiques={rechargerBoutiques}
             search={search} setSearch={setSearch}
             soldShowAll={soldShowAll} setSoldShowAll={setSoldShowAll}
             showAllStock={showAllStock} setShowAllStock={setShowAllStock}
