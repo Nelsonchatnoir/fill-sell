@@ -11005,11 +11005,25 @@ async function processRepublishJob(job, accessToken) {
           const releves = pf.champs_a_completer
             .map((c) => ({ c, v: valeurCaptureePourChamp(pf.republish_snapshot, c) }))
             .filter((x) => x.v);
+          // ── NE PROMETTRE QUE CE QUE L'APP SAIT FAIRE (2026-09-04) ──────────
+          // Cas Rage 2 (ornellaracano) : le pré-vol réclamait « Plateforme » et
+          // « Classement du contenu » SANS needsUserField — donc sans cible que
+          // l'app puisse ouvrir — et le message disait quand même « Renseigne
+          // depuis l'app (carte de l'article) ». L'utilisateur n'avait qu'un
+          // bouton « Relancer », qui refrappe le même mur : consigne fausse,
+          // job sans issue.
+          // Règle : si aucun needsUserField n'a pu être posé, on ne renvoie PAS
+          // vers l'app — on nomme le seul geste qui débloque, sur Vinted.
+          const appPeutOuvrir = Boolean(pf.needsUserField);
           const corps = String(result?.error ?? "").trim() || (releves.length
             ? `Vinted demande une information plus précise pour « ${champs} » : la valeur de ton annonce n'a pas été acceptée telle quelle. ` +
-              "Complète depuis l'app (carte de l'article), puis relance la republication."
+              (appPeutOuvrir
+                ? "Complète depuis l'app (carte de l'article), puis relance la republication."
+                : "Complète-la sur ton annonce Vinted, puis relance la republication.")
             : `Vinted exige « ${champs} » et l'annonce d'origine ne porte pas cette information. ` +
-              `Renseigne « ${champs} » depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication.`);
+              (appPeutOuvrir
+                ? `Renseigne « ${champs} » depuis l'app (carte de l'article), puis relance la republication.`
+                : `Renseigne « ${champs} » sur ton annonce Vinted — l'app ne sait pas saisir ce champ — puis relance la republication.`));
           const annexe = releves.length
             ? " " + releves.map(({ c, v }) => `Relevé sur ton annonce — ${c} : ${v}.`).join(" ")
             : "";

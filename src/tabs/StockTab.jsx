@@ -3040,6 +3040,31 @@ function etapeRepublication(job, fr, reprise = null) {
   }
   if (st === 'needs_user') {
     const apres = step === 'deleted';
+    // ── DIRE LA VÉRITÉ QUAND L'APP NE PEUT RIEN OUVRIR (2026-09-04) ──────────
+    // Cas Rage 2 (ornellaracano) : le pré-vol réclame « Plateforme » et
+    // « Classement du contenu », et le message stocké disait « Renseigne-les
+    // depuis l'app (carte de l'article) ». Or ces champs n'ont NI
+    // needsUserField (donc aucune cible à ouvrir) NI entrée dans
+    // REPUB_SAISISSABLES (donc aucune saisie proposée) : le seul bouton est
+    // « Relancer », qui refrappe le même mur. La consigne était fausse.
+    // Ici on ne relaie plus cette consigne : on nomme les champs et le SEUL
+    // geste qui débloque réellement — les renseigner sur l'annonce Vinted
+    // elle-même, puis relancer.
+    // ⛔ On ne remplit JAMAIS ces champs par défaut : un PEGI ou une plateforme
+    // faux font refuser l'annonce par Vinted.
+    const demandes = Array.isArray(pf.champs_a_completer) ? pf.champs_a_completer.map(String).filter(Boolean) : [];
+    const rienDOuvrable = demandes.length > 0 && !pf.needsUserField
+      && !demandes.some((c) => repubCleSaisie(c) in REPUB_SAISISSABLES);
+    if (!apres && rienDOuvrable) {
+      const liste = demandes.join(' · ');
+      return {
+        cle: 'needs_user', court: T.relancer, ...ambre, fini: true, apresSuppression: false,
+        titre: fr ? 'À renseigner sur Vinted' : 'To fill in on Vinted',
+        detail: fr
+          ? `Ton annonce est intacte, rien n'a été retiré. Vinted exige ${demandes.length > 1 ? 'ces champs' : 'ce champ'} pour cette catégorie : ${liste}. L'app ne peut pas ${demandes.length > 1 ? 'les' : 'le'} saisir à ta place — ${demandes.length > 1 ? 'ce sont' : "c'est"} ${demandes.length > 1 ? 'des valeurs' : 'une valeur'} que seule ton annonce Vinted peut porter. Ouvre-la sur Vinted, complète ${demandes.length > 1 ? 'ces champs' : 'ce champ'}, puis relance ici.`
+          : `Your listing is untouched, nothing was removed. Vinted requires ${demandes.length > 1 ? 'these fields' : 'this field'} for this category: ${liste}. The app cannot fill ${demandes.length > 1 ? 'them' : 'it'} for you. Open the listing on Vinted, fill ${demandes.length > 1 ? 'them' : 'it'} in, then relaunch here.`,
+      };
+    }
     return {
       cle: 'needs_user',
       court: apres ? (fr ? 'Hors ligne — republier' : 'Offline — republish') : T.relancer,

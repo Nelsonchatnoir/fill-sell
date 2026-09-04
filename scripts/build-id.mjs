@@ -1081,7 +1081,12 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // franc + relance. EXTENSION_MIN_BUILD inchangé : rien n'oblige le parc à se
 // mettre à jour pour ça, la garde jumelle côté app débloque déjà les jobs
 // existants sans paquet CWS.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T09:03:47Z';
+// 2026-09-04T10:30:00Z = pré-vol republication : un champ que l'app ne sait
+// pas ouvrir n'est plus annoncé comme saisissable dans l'app (cas Rage 2,
+// ornellaracano). Sans needsUserField posé, le message renvoie vers l'annonce
+// Vinted, seul endroit où le champ peut être renseigné. EXTENSION_MIN_BUILD
+// inchangé. Committé GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T10:30:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
