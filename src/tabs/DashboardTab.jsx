@@ -139,7 +139,22 @@ function HeroSparkline({ data, width=104, height=38 }) {
 function ProfitBars({ data, fmtShort, fmtValue }) {
   const [wrapRef, cw] = useContainerWidth();
   const [active, setActive] = useState(null);
-  useEffect(()=>{ setActive(null); }, [data]);
+  // Le mois sélectionné retombe quand la SÉRIE change (changement de période) :
+  // ajusté PENDANT LE RENDU, plus dans un effet. Un setState synchrone dans un
+  // effet rend d'abord une fois avec l'ancienne sélection, puis re-rend — la
+  // pastille d'un mois qui n'appartient plus à la série pouvait donc s'afficher
+  // une frame sur la nouvelle, et chaque changement de période coûtait deux
+  // rendus. Motif React « ajuster un état quand une prop change » : le setState
+  // pendant le rendu du MÊME composant relance le rendu avant peinture, rien
+  // n'est commité avec la valeur périmée.
+  // La série précédente est gardée en ÉTAT, pas dans une ref : lire ou écrire
+  // une ref pendant le rendu est interdit (react-hooks/refs), et l'état est de
+  // toute façon ce que le motif officiel utilise.
+  const [serieRendue, setSerieRendue] = useState(data);
+  if (serieRendue !== data) {
+    setSerieRendue(data);
+    if (active !== null) setActive(null);
+  }
   const vw = Math.max(W, Math.round(cw) || W);
   const plotW = vw-PAD_L-PAD_R;
   const values = data.map(d=>d.profit);

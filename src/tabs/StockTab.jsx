@@ -3192,6 +3192,11 @@ function repriseRepub(iso, fr, motif = null) {
 // comme un compteur de consommation.
 const REPUB_PLAFOND_PROCHE = 5;
 
+// Les articles VENDUS ne s'affichent pas dans Stock IA : ils ont l'onglet
+// Ventes (décision portée par b13fde1). Constante nommée plutôt qu'un `false`
+// nu dans le JSX — un littéral à cet endroit se lit comme un oubli.
+const AFFICHER_VENDUS_DANS_STOCK = false;
+
 // Champs d'une capture incomplète que l'app sait faire SAISIR (2026-08-21) —
 // miroir exact de la whitelist de fusion côté extension
 // (capturerEtPersisterDepuisExtension, republish_user_fields) : taille, marque,
@@ -5733,8 +5738,17 @@ const StockTab = memo(function StockTab({
             );
           })()}
 
-          {/* ── VENDUS — masqués dans Stock IA (visible dans Ventes) ── */}
-          {false&&<div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          {/* ── VENDUS — masqués dans Stock IA (visibles dans Ventes) ──────────
+              Section désactivée VOLONTAIREMENT par b13fde1 (« hide sold items
+              from Stock IA display ») : les articles vendus ont leur propre
+              onglet, les montrer ici les affichait deux fois.
+              Le littéral `false &&` est remplacé par une constante nommée : il
+              faisait lever no-constant-binary-expression, qui signale d'ordinaire
+              une condition écrite par erreur. Ici l'intention est délibérée et
+              elle se lit maintenant dans le nom. RIEN ne change à l'écran.
+              (Le bloc lui-même est du JSX qui ne peut plus rendre — sa
+              suppression relève du ménage, pas de ce commit.) */}
+          {AFFICHER_VENDUS_DANS_STOCK&&<div style={{background:"#fff",borderRadius:12,padding:20,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>{t('vendus')}</div>

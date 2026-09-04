@@ -15,7 +15,17 @@ export default defineConfig([
     ],
     languageOptions: {
       ecmaVersion: 2020,
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+        // Constantes injectées à la compilation par Vite (`define`,
+        // vite.config.js:38-41) : elles n'existent pas dans le source, seul le
+        // bundle les porte. Sans cette déclaration, no-undef les signalait
+        // alors que le code est correct — et App.jsx les lit déjà derrière un
+        // `typeof … !== 'undefined'`, ce qui couvre le cas du dev non buildé.
+        // ⚠️ Toute nouvelle clé de `define` doit être ajoutée ICI aussi.
+        __FILLSELL_APP_BUILD__: 'readonly',
+        __FILLSELL_EXT_MIN_BUILD__: 'readonly',
+      },
       parserOptions: {
         ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
