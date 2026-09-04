@@ -276,7 +276,11 @@ export default function Legal() {
             {en ? 'Legal Notice, T&C & Terms of Sale' : 'Mentions légales, CGU & CGV'}
           </h1>
           <p style={{ fontSize: 13, color: C.label }}>
-            {en ? 'Last updated: August 2026' : 'Dernière mise à jour : août 2026'}
+            {/* Date à remettre à jour À CHAQUE modification d'une clause —
+                elle était restée à « août 2026 » alors que les CGV ont été
+                réécrites le 03/09 (bascule sans monnaie interne) puis le 04/09
+                (article 3.3, fin de la limite d'articles). */}
+            {en ? 'Last updated: September 4, 2026' : 'Dernière mise à jour : 4 septembre 2026'}
           </p>
         </div>
 

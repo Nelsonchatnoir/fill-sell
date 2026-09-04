@@ -1,6 +1,10 @@
 import { memo, useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { RefreshCw, Check, ChevronDown, ChevronUp, ChevronRight, Hand, AlertTriangle } from 'lucide-react';
+// RefreshCw / ChevronDown / ChevronUp retirés le 2026-09-04 avec RepubBlocActif
+// et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
+// varsIgnorePattern '^[A-Z_]' exempte tout identifiant capitalisé, donc un
+// import de composant orphelin passe sous le radar — vérifié à la main.
+import { Check, ChevronRight, Hand, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -2892,7 +2896,9 @@ const REPUB_ORDRE = ['a_capturer', 'captured', 'deleted', 'recreated'];
 const REPUB_ANCRES = { a_capturer: 0, captured: 9, deleted: 55, recreated: 100 };
 // Durées ATTENDUES de chaque étape, en secondes (mesures prod du 28/08 : 137
 // captures + 30 republications). Ancres et durées se retouchent ICI, ensemble.
-const REPUB_DUREES = { a_capturer: 17, captured: 20, deleted: 155 };
+// (REPUB_DUREES supprimée le 2026-09-04 : elle ne servait qu'à l'interpolation
+// de la barre de RepubBlocActif, parti le même jour. Même angle mort eslint que
+// les icônes ci-dessus — un nom capitalisé n'est jamais signalé inutilisé.)
 // Statuts terminaux : barre FIGÉE à 100 %, le tick ne les regarde plus.
 // needs_user n'y est PAS : il sort des lignes ET du compteur (ligne « action
 // requise » dédiée). ⚠️ Piège de nommage : il existe un STATUS 'deleted'
@@ -2916,86 +2922,14 @@ const repubJobFini = (j) => REPUB_STATUS_RESOLUS.includes(j.status) || repubStep
 // retiré).
 const estimationRepub = (n) => n * 5 >= 60 ? `~${Math.ceil(n * 5 / 60)} h` : `~${n * 5}-${n * 7} min`;
 
-// Phrase du bloc actif : ce que la machine FAIT, pas l'état interne.
-// a_capturer et captured partagent la phrase de relevé (avant l'étape deleted,
-// le travail visible est la lecture/sauvegarde de l'annonce). L'étape
-// 'deleted' est le seul moment où l'annonce n'est plus en ligne : « On
-// recrée » est exact sans inquiéter — ne pas mentir, ne pas alarmer.
-const repubPhraseActive = (step, fr) => step === 'deleted'
-  ? (fr ? 'On recrée ton annonce sur Vinted' : 'We are recreating your listing on Vinted')
-  : (fr ? 'On relève ton annonce sur Vinted' : 'We are reading your listing on Vinted');
-
-// Bloc « EN COURS » — LA seule barre de l'écran, UN job à la fois : le
-// traitement réel est séquentiel (une republication toutes les ~3 min en
-// prod), la barre par job de 2.4.74 faisait avancer 6 barres jumelles
-// ensemble — illisible, et faux. Composant SÉPARÉ : le tick d'1 s ne re-rend
-// que lui, jamais l'onglet ; il s'arrête au démontage (plus d'actif).
-function RepubBlocActif({ lang, job, titre }) {
-  const fr = lang !== 'en';
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
-  // Mémoire locale de session : rien en base n'horodate l'entrée dans une
-  // étape (et poser un horodatage sortirait du périmètre affichage), donc on
-  // mémorise la première OBSERVATION de chaque étape et on interpole depuis.
-  // Map par job.id : survit au passage au job suivant tant que le bloc reste
-  // monté. App rouverte = origines réinitialisées, la barre repart de l'ancre
-  // de l'étape courante, jamais plus bas. maxPct = cliquet anti-recul
-  // (l'interpolation seule ne recule jamais ; le cliquet couvre une étape qui
-  // régresserait en base). Mutations idempotentes : sûres en StrictMode.
-  const suiviRef = useRef(new Map());
-  const step = repubStepDe(job);
-  const m = suiviRef.current;
-  let s = m.get(job.id);
-  if (!s || s.step !== step) {
-    s = { step, depuis: Date.now(), maxPct: s ? s.maxPct : 0 };
-    m.set(job.id, s);
-  }
-  const ancre = REPUB_ANCRES[step];
-  const suivante = REPUB_ANCRES[REPUB_ORDRE[REPUB_ORDRE.indexOf(step) + 1]];
-  const tSec = (Date.now() - s.depuis) / 1000;
-  s.maxPct = Math.max(s.maxPct, ancre + (suivante - ancre) * (1 - Math.exp(-tSec / REPUB_DUREES[step])));
-  return (
-    <div style={{ background: '#F0FDFB', border: '1px solid rgba(13,148,136,0.25)', borderRadius: 10, padding: '11px 12px', marginTop: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
-        <RefreshCw size={13} color="#1B6E62" strokeWidth={2.5} style={{ flexShrink: 0 }} />
-        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.07em', color: '#1B6E62' }}>{fr ? 'EN COURS' : 'IN PROGRESS'}</span>
-      </div>
-      <div style={{ fontSize: 14, fontWeight: 600, color: '#10201B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titre}</div>
-      <div className="repub-track sur-teinte"><div className="repub-fill" style={{ width: `${s.maxPct.toFixed(2)}%` }} /></div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#1B6E62', marginTop: 8 }}>{repubPhraseActive(step, fr)}</div>
-    </div>
-  );
-}
-
-// Terminées : repliées sous UNE ligne dépliable — sur un lot de 280 (cas
-// nadegemarcelin78, 28/08), la liste complète noierait la file.
-function RepubTerminees({ lang, jobs, titreDe }) {
-  const fr = lang !== 'en';
-  const [ouvert, setOuvert] = useState(false);
-  const n = jobs.length;
-  return (
-    <div style={{ borderTop: '1px solid #EFECE3', marginTop: 12, paddingTop: 10 }}>
-      <button onClick={() => setOuvert((o) => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-        <Check size={14} color="#1B6E62" strokeWidth={2.5} style={{ flexShrink: 0 }} />
-        <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#5C6560' }}>
-          {fr ? `${n} republiée${n > 1 ? 's' : ''}, de nouveau en ligne` : `${n} reposted, live again`}
-        </span>
-        {ouvert ? <ChevronUp size={15} color="#8A8578" style={{ flexShrink: 0 }} /> : <ChevronDown size={15} color="#8A8578" style={{ flexShrink: 0 }} />}
-      </button>
-      {ouvert && (
-        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {jobs.map((j) => (
-            <div key={j.id} style={{ paddingLeft: 22, fontSize: 12.5, color: '#8A8578', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{titreDe(j)}</div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// (RepubBlocActif, RepubTerminees et repubPhraseActive ont été SUPPRIMÉS le
+//  2026-09-04. Ils n'étaient plus montés depuis la refonte 2.6.17 — aucune
+//  balise <RepubBlocActif>/<RepubTerminees> dans le fichier, l'état de la
+//  republication vit sur les CARTES. Ils portaient les 2 dernières erreurs
+//  react-hooks/purity du projet, sur du code qu'aucun écran ne rendait :
+//  Date.now() et une mutation de Map pendant le rendu. Réécrire une animation
+//  invisible aurait été invérifiable ; la supprimer est le vrai correctif.
+//  Récupérables dans l'historique git si un écran de progression revient.)
 
 // `reprise` (2026-09-04) : objet de repriseRepub, passé UNIQUEMENT quand la
 // retenue serveur du plafond quotidien est active. null = plafond non atteint,
