@@ -329,8 +329,8 @@ export default function Legal() {
           <p className="legal-p">
             <span className="legal-strong">{en ? '3.3 Free Plan' : '3.3 Plan gratuit'}</span><br />
             {en
-              ? <>The free plan allows managing up to <span className="legal-strong">200 items</span> in inventory. Access to the dashboard, margin calculation, and sales history is included without time limit.</>
-              : <>Le plan gratuit permet de gérer jusqu'à <span className="legal-strong">200 articles</span> en stock. L'accès au dashboard, au calcul des marges et à l'historique des ventes est inclus sans limite de durée.</>}
+              ? <>The free plan has <span className="legal-strong">no limit on the number of items</span> in inventory. Access to the dashboard, margin calculation, and sales history is included without time limit. The volumes of AI-generated listings and Vinted repostings included in this plan are set out in Article 3.4.</>
+              : <>Le plan gratuit ne comporte <span className="legal-strong">aucune limite de nombre d'articles</span> en stock. L'accès au dashboard, au calcul des marges et à l'historique des ventes est inclus sans limite de durée. Les volumes d'annonces générées par IA et de republications Vinted inclus dans ce plan sont précisés à l'article 3.4.</>}
           </p>
 
           {/* Bascule quotas (02/09) : la description des plans dit désormais
