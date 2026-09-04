@@ -30,6 +30,15 @@ export default function BlogPost() {
     ogImage: post?.og_image ?? null,
   });
 
+  // Prérendu (2026-09-05) : en entrée directe sur /blog/<slug>, le HTML servi
+  // porte déjà les JSON-LD Article/FAQ de l'article (data-blog-jsonld, posés
+  // au build par scripts/vite-plugin-prerender-blog.mjs). On les retire au
+  // montage — les deux effets ci-dessous les reposent à l'identique — pour ne
+  // pas les servir en double une fois l'app montée.
+  useEffect(() => {
+    document.head.querySelectorAll('script[data-blog-jsonld]').forEach(el => el.remove());
+  }, []);
+
   // Article JSON-LD (2026-08-02) : posé pour TOUS les articles depuis le
   // frontmatter (title/description/date/og_image). Même contrat que le script
   // FAQ ci-dessous : injecté au montage, retiré au démontage, jamais d'erreur.

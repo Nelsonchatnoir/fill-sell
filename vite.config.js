@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import zipExtension from './scripts/vite-plugin-zip-extension.mjs'
+import prerenderBlog from './scripts/vite-plugin-prerender-blog.mjs'
 import { computeBuildId, EXTENSION_MIN_BUILD, assertExtensionMinBuildCurrent } from './scripts/build-id.mjs'
 
 // BUILD_ID calculé UNE fois par build et partagé entre le zip public de
@@ -34,7 +35,9 @@ const emitBuildJson = () => ({
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), zipExtension({ buildId: FILLSELL_BUILD_ID }), emitBuildJson()],
+  // prerenderBlog : HTML statique des articles + sitemap.xml, écrits APRÈS le
+  // bundle (closeBundle) — cf. scripts/vite-plugin-prerender-blog.mjs.
+  plugins: [react(), zipExtension({ buildId: FILLSELL_BUILD_ID }), emitBuildJson(), prerenderBlog()],
   define: {
     __FILLSELL_APP_BUILD__: JSON.stringify(FILLSELL_BUILD_ID),
     __FILLSELL_EXT_MIN_BUILD__: JSON.stringify(EXTENSION_MIN_BUILD),
