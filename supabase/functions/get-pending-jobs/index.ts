@@ -89,26 +89,96 @@ serve(async (req) => {
     if (includeProcessing) statuses.push("processing");
     if (includeNeedsUser) statuses.push("needs_user");
 
-    // ── État du plafond quotidien d'exécution des republications ────────────
-    // (2026-08-29 soir) UNE seule définition, calculée ICI et nulle part
-    // ailleurs : limite = coin_config.republish_plafond_jour, faits = jobs
-    // republish 'published' du jour Europe/Paris (fenêtre 26 h filtrée par
-    // date Paris), retenue = faits >= limite, reprise = le prochain minuit de
-    // Paris (l'instant où faits repart de zéro). Sert à la retenue du claim
+    // ── État de la RETENUE d'exécution des republications ───────────────────
+    // (2026-08-29, régime refondu le 2026-09-04) UNE seule définition,
+    // calculée ICI et nulle part ailleurs. Sert à la retenue du claim
     // ci-dessous ET à l'affichage de l'app (mode plafond_only) — le serveur
     // fait autorité, l'app ne recalcule plus rien.
-    // ⚠️ PÉRIODE = JOUR CALENDAIRE EUROPE/PARIS, pas 24 h glissantes : un
-    // compte qui bute à 04:18 repart à 00:00, pas 24 h plus tard. Le plafond
-    // vaut pour TOUS les paliers (aucune lecture de profiles ici) et ne
-    // connaît pas les catégories (republish_livres_exemption est un tout
-    // autre interrupteur, celui du gel Livres — les livres republiés comptent
-    // dans `faits` comme le reste).
+    //
+    // DEUX freins, jamais confondus, tous deux RÉVERSIBLES SEULS (on retient,
+    // on n'annule jamais : les jobs restent 'pending', unité déjà débitée) :
+    //
+    //  1. PAUSE DE RESPIRATION — après `republish_pause_apres` republications
+    //     d'affilée, la file souffle `republish_pause_duree_min` minutes.
+    //     C'est le frein qui répond vraiment à la campagne anti-bot Vinted du
+    //     21/07 : ce que /listing-restriction sanctionne, c'est la RAFALE,
+    //     pas le total d'une journée.
+    //  2. PLAFOND JOURNALIER PAR PALIER — filet de sécurité, jour calendaire
+    //     Europe/Paris. L'ancien 45 unique rendait les quotas vendus
+    //     inatteignables (45 × 30 = 1350 < quota_republication_premium 1500,
+    //     et très loin des 5000 du Pro) : le filet ne doit jamais démentir
+    //     l'offre.
+    //
+    // ⚠️ PÉRIODE DU PLAFOND = JOUR CALENDAIRE EUROPE/PARIS, pas 24 h
+    // glissantes : un compte qui bute à 04:18 repart à 00:00. La pause, elle,
+    // est un délai GLISSANT depuis la dernière republication réussie.
+    // ⚠️ Ni l'un ni l'autre ne connaît les catégories
+    // (republish_livres_exemption est un tout autre interrupteur, celui du
+    // gel Livres — les livres republiés comptent comme le reste).
+    // ⚠️ AUCUNE valeur de réglage en dur : tout vient de coin_config. Une clé
+    // de palier absente retombe sur `republish_plafond_jour` (le réglage
+    // historique) ; les clés de pause absentes = PAS DE PAUSE. Une clé
+    // manquante ne doit JAMAIS créer une retenue que Nico n'a pas posée.
     const etatPlafondRepublish = async () => {
-      let limite = 45;
-      const { data: cfg } = await userClient
-        .from("coin_config").select("value").eq("key", "republish_plafond_jour").maybeSingle();
-      const v = Number(cfg?.value);
-      if (Number.isFinite(v) && v > 0) limite = v;
+      // Une seule lecture pour tous les réglages.
+      const cfg = new Map<string, number>();
+      const { data: cfgRows } = await userClient
+        .from("coin_config").select("key, value").in("key", [
+          "republish_plafond_jour",
+          "republish_plafond_jour_premium",
+          "republish_plafond_jour_pro",
+          "republish_plafond_jour_business",
+          "republish_pause_apres",
+          "republish_pause_duree_min",
+        ]);
+      for (const r of (cfgRows ?? []) as { key: string; value: unknown }[]) {
+        const v = Number(r.value);
+        if (Number.isFinite(v)) cfg.set(r.key, v);
+      }
+      // Un réglage ne vaut que s'il est strictement positif : 0 ou négatif =
+      // clé mal posée, on retombe sur le repli, jamais sur « bloque tout »
+      // (le piège de check_inventory_limit, où 0 verrouille au lieu d'ouvrir).
+      const positif = (k: string): number | null => {
+        const v = cfg.get(k);
+        return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+      };
+      // Repli historique = la clé unique d'avant le 04/09. 45 en tout dernier
+      // recours (coin_config illisible), valeur inchangée depuis le 29/08.
+      const limiteHistorique = positif("republish_plafond_jour") ?? 45;
+
+      // ── PALIER ────────────────────────────────────────────────────────────
+      // Lu ICI, une fois par requête (jamais par job) et seulement sur les
+      // polls qui portent des republications : le coût est un aller-retour,
+      // pas N. Via le client SCOPED USER — la policy « select own profile »
+      // (auth.uid() = id) garantit qu'on ne lit que sa propre ligne, aucune
+      // service role n'est nécessaire ici.
+      // Flags CUMULATIFS : on prend le plus haut. is_comped = premium offert
+      // (CLAUDE.md). is_founder n'est PAS un signal de palier (marqueur de
+      // prix legacy — bug « premium fantôme » du 25/07).
+      // Palier illisible → null → repli sur la clé historique : on ne retire
+      // jamais le filet sur une lecture ratée.
+      let palier: "free" | "premium" | "pro" | "business" | null = null;
+      try {
+        const { data: prof } = await userClient
+          .from("profiles").select("is_business, is_pro, is_premium, is_comped")
+          .eq("id", user.id).maybeSingle();
+        if (prof) {
+          const p = prof as Record<string, unknown>;
+          palier = p.is_business === true ? "business"
+            : p.is_pro === true ? "pro"
+            : (p.is_premium === true || p.is_comped === true) ? "premium"
+            : "free";
+        }
+      } catch (_e) { /* palier illisible → repli */ }
+
+      // Free garde le réglage historique : son vrai gouvernail est
+      // republication_avie_free (50 à VIE, limite COMMERCIALE) — on ne lui
+      // invente pas de plafond quotidien, on ne lui en retire pas non plus.
+      const limite = palier === "business" ? (positif("republish_plafond_jour_business") ?? limiteHistorique)
+        : palier === "pro" ? (positif("republish_plafond_jour_pro") ?? limiteHistorique)
+        : palier === "premium" ? (positif("republish_plafond_jour_premium") ?? limiteHistorique)
+        : limiteHistorique;
+
       const jourParis = (ts: number) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
       // Secondes écoulées depuis minuit À PARIS. hourCycle h23 explicite :
       // hour12:false rend « 24:00:00 » à minuit sur certaines locales/ICU.
@@ -120,17 +190,58 @@ serve(async (req) => {
         return h * 3600 + m * 60 + s;
       };
       const aujourdhui = jourParis(Date.now());
-      const depuis = new Date(Date.now() - 26 * 3600_000).toISOString();
+      // Fenêtre élargie de 26 h à 96 h (04/09) : les mêmes lignes servent
+      // MAINTENANT à deux choses — le décompte du jour (filtré par date Paris,
+      // inchangé) et la longueur de la séquence en cours, qui peut remonter
+      // au-delà d'hier. UNE seule requête, ordonnée, plafonnée sous la coupure
+      // silencieuse de PostgREST à 1000 (au pire 170/jour × 4 = 680).
+      // Si une séquence débordait la fenêtre, elle serait SOUS-comptée : la
+      // pause ne se déclencherait pas. Sens du repli voulu — on ne retient
+      // jamais sur une lecture tronquée.
+      const depuis = new Date(Date.now() - 96 * 3600_000).toISOString();
       const { data: faitsRows } = await userClient
         .from("cross_post_jobs")
         .select("published_at")
         .eq("action", "republish")
         .eq("status", "published")
-        .gte("published_at", depuis);
-      const faits = (faitsRows ?? []).filter((r: { published_at: string | null }) => {
-        const t = Date.parse(r.published_at ?? "");
-        return Number.isFinite(t) && jourParis(t) === aujourdhui;
-      }).length;
+        .gte("published_at", depuis)
+        .order("published_at", { ascending: false })
+        .limit(1000);
+      // Du plus RÉCENT au plus ancien : l'ordre dont la séquence a besoin.
+      // Re-trié ici et pas seulement côté PostgREST — la marche arrière du
+      // calcul ne doit dépendre d'aucun ordre supposé.
+      const horodatages = (faitsRows ?? [])
+        .map((r: { published_at: string | null }) => Date.parse(r.published_at ?? ""))
+        .filter((t: number) => Number.isFinite(t))
+        .sort((a: number, b: number) => b - a);
+      const faits = horodatages.filter((t) => jourParis(t) === aujourdhui).length;
+
+      // ── SÉQUENCE ET PAUSE DE RESPIRATION ─────────────────────────────────
+      // « 50 d'affilée » ne s'appuie sur AUCUN état stocké : la séquence est
+      // le train de republications réussies dont chaque intervalle est plus
+      // court que la pause elle-même. La durée de pause EST la définition du
+      // repos — un trou >= à cette durée clôt la séquence.
+      // Conséquence voulue (garde-fou Nico) : un PC éteint 3 h casse la
+      // séquence et remet le compteur à zéro. La pause ne s'ajoute JAMAIS à
+      // une absence déjà subie — le repos a eu lieu, il compte.
+      // Et quand la pause s'applique, plus rien ne se publie : `dernier` est
+      // figé, la retenue se lève exactement à dernier + durée, et la
+      // republication suivante rouvre une séquence neuve (son écart au
+      // dernier est >= à la durée). Aucun état à écrire, aucune dérive.
+      const pauseApres = positif("republish_pause_apres");
+      const pauseDureeMs = (positif("republish_pause_duree_min") ?? 0) * 60_000;
+      let sequence = 0;
+      let finPause: number | null = null;
+      if (pauseApres !== null && pauseDureeMs > 0 && horodatages.length > 0) {
+        sequence = 1;
+        for (let i = 1; i < horodatages.length; i++) {
+          if (horodatages[i - 1] - horodatages[i] >= pauseDureeMs) break;
+          sequence++;
+        }
+        if (sequence >= pauseApres && Date.now() - horodatages[0] < pauseDureeMs) {
+          finPause = horodatages[0] + pauseDureeMs;
+        }
+      }
       // ── REPRISE (2026-09-04, AFFICHAGE SEUL) ────────────────────────────
       // L'instant EXACT où `aujourdhui` change et où `faits` repart de zéro :
       // le prochain minuit de Paris. Calculé ICI, avec la même horloge que le
@@ -142,12 +253,25 @@ serve(async (req) => {
       // Jamais par un offset en dur (+1 h l'hiver, +2 h l'été) : on saute au
       // bout du jour de Paris, on corrige le jour de 25 h (bascule d'octobre),
       // puis on recale sur 00:00:00 (couvre le jour de 23 h de mars).
-      let reprise = Date.now() + (86400 - secondesParis(Date.now())) * 1000;
-      if (jourParis(reprise) === aujourdhui) reprise += 3600_000;
-      reprise -= secondesParis(reprise) * 1000;
+      let minuitSuivant = Date.now() + (86400 - secondesParis(Date.now())) * 1000;
+      if (jourParis(minuitSuivant) === aujourdhui) minuitSuivant += 3600_000;
+      minuitSuivant -= secondesParis(minuitSuivant) * 1000;
+
+      // Le PLAFOND prime sur la PAUSE quand les deux mordent : sa reprise est
+      // la plus tardive (demain minuit vs dans 2 h), et annoncer la pause
+      // ferait repartir l'écran pour rien à la fin des 2 h.
+      const retenuePlafond = faits >= limite;
+      const retenuePause = finPause !== null;
+      const motif = retenuePlafond ? "plafond" : retenuePause ? "pause" : null;
       return {
-        limite, faits, retenue: faits >= limite, jour: aujourdhui,
-        reprise: new Date(reprise).toISOString(),
+        limite, faits, palier, sequence,
+        pause_apres: pauseApres, pause_duree_min: pauseDureeMs > 0 ? pauseDureeMs / 60_000 : null,
+        retenue: retenuePlafond || retenuePause,
+        motif,
+        jour: aujourdhui,
+        // Instant où la retenue se lève. Hors retenue, on garde le prochain
+        // minuit : c'est ce que lit la ligne « bientôt le plafond » de l'app.
+        reprise: new Date(motif === "pause" ? (finPause as number) : minuitSuivant).toISOString(),
       };
     };
 
@@ -223,20 +347,20 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
-    // ── Plafond quotidien d'EXÉCUTION des republications (2026-08-29) ────────
+    // ── RETENUE D'EXÉCUTION des republications (2026-08-29, refonte 04/09) ──
     // Campagne anti-bot Vinted du 21/07 (restrictions /listing-restriction sur
     // la régularité et le volume — cas nadegemarcelin78 : 96 republications le
     // 28/08, compte restreint le 29/08). Le débit et la création des jobs ne
     // changent PAS (spend_coins_and_republish intouchée : 300 sélectionnés =
-    // 300 débités, 300 pending) — c'est la DISTRIBUTION qui est bornée : au-delà
-    // de coin_config.republish_plafond_jour republications EXÉCUTÉES aujourd'hui
-    // (published du jour Europe/Paris, toutes sources manuelles ET auto), plus
-    // aucun job republish n'est servi au poll d'exécution jusqu'à minuit. Les
-    // jobs restent 'pending', unité déjà débitée, et repartent le lendemain.
-    // Actif côté serveur SANS attendre un paquet CWS ; le plafond embarqué dans
-    // l'extension (même clé) reste en place — ceinture et bretelles.
-    // EXEMPTION : l'étape 'deleted' n'est JAMAIS plafonnée — une annonce déjà
-    // retirée de Vinted doit toujours pouvoir être recréée.
+    // 300 débités, 300 pending) — c'est la DISTRIBUTION qui est bornée. Deux
+    // motifs possibles, calculés dans etatPlafondRepublish : la PAUSE de
+    // respiration (rafale trop longue → on souffle) et le PLAFOND journalier
+    // du palier (filet, jusqu'à minuit Paris). Dans les deux cas les jobs
+    // restent 'pending', unité déjà débitée, et repartent tout seuls.
+    // ⛔ RIEN N'EST REFUSÉ, JAMAIS : on retient, on étale, on n'annule pas et
+    // on ne met pas en 'failed' (principe posé par Nico le 04/09).
+    // EXEMPTION, PAUSE COMPRISE : l'étape 'deleted' n'est JAMAIS retenue — une
+    // annonce déjà retirée de Vinted doit toujours pouvoir être recréée.
     // Périmètre : le poll d'EXÉCUTION du background uniquement (ni
     // include_processing ni include_needs_user — mêmes flags opt-in que le
     // popup, qui doit continuer de VOIR la file complète pour l'affichage).
@@ -244,7 +368,7 @@ serve(async (req) => {
     // filet ne doit pas devenir un point de panne, même règle que
     // platform_health ci-dessus).
     let heldRepublish = 0;
-    let plafondRepublish: { limite: number; faits: number; retenue: boolean; jour: string; reprise: string } | null = null;
+    let plafondRepublish: Awaited<ReturnType<typeof etatPlafondRepublish>> | null = null;
     if (!includeProcessing && !includeNeedsUser && out.some((j) => j.action === "republish")) {
       try {
         plafondRepublish = await etatPlafondRepublish();
@@ -255,7 +379,13 @@ serve(async (req) => {
             (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "deleted");
           heldRepublish = avant - out.length;
           if (heldRepublish) {
-            console.log(`[get-pending-jobs] userId=${user.id} : plafond republish atteint (${plafondRepublish.faits}/${plafondRepublish.limite} aujourd'hui, Paris) → ${heldRepublish} republish retenu(s) en pending jusqu'à demain (étape 'deleted' exemptée)`);
+            const p = plafondRepublish;
+            console.log(
+              `[get-pending-jobs] userId=${user.id} : retenue republish (motif=${p.motif}, palier=${p.palier ?? "illisible"}, ` +
+              `jour ${p.faits}/${p.limite} Paris, séquence ${p.sequence}` +
+              (p.pause_apres !== null ? `/${p.pause_apres}` : "") +
+              `) → ${heldRepublish} republish retenu(s) en pending jusqu'à ${p.reprise} (étape 'deleted' exemptée)`,
+            );
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
@@ -313,7 +443,7 @@ serve(async (req) => {
     console.log(
       `[get-pending-jobs] userId=${user.id} → ${out.length} job(s) distribué(s)` +
       (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : "") +
-      (heldRepublish ? `, ${heldRepublish} republish retenu(s) (plafond quotidien)` : "") +
+      (heldRepublish ? `, ${heldRepublish} republish retenu(s) (${plafondRepublish?.motif ?? "retenue"})` : "") +
       (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : ""),
     );
 

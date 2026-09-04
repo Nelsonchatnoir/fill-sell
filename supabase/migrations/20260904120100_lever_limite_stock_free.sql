@@ -1,0 +1,111 @@
+-- 2026-09-04 — Limite de stock Free : LEVÉE POUR TOUS
+--
+-- ⚠️ NE PAS APPLIQUER SANS LE FEU VERT NOMMÉ DE NICO SUR CETTE MIGRATION.
+--
+-- CE QUI A ÉTÉ LU EN PROD AVANT D'ÉCRIRE (04/09) — corps exact de
+-- public.check_inventory_limit(), trigger BEFORE INSERT ON public.inventaire
+-- nommé enforce_inventory_limit, tgenabled = 'O' (actif) :
+--
+--   IF NEW.statut = 'vendu' THEN RETURN NEW; END IF;
+--   IF NEW.origine = 'vinted_sync' THEN RETURN NEW; END IF;
+--   SELECT is_premium, is_pro, is_comped INTO v_profile FROM profiles WHERE id = NEW.user_id;
+--   IF v_profile.is_pro IS TRUE THEN RETURN NEW; END IF;
+--   IF v_profile.is_premium IS TRUE OR v_profile.is_comped IS TRUE THEN RETURN NEW; END IF;
+--   SELECT value INTO v_limit FROM coin_config WHERE key = 'free_stock_limit';
+--   v_limit := COALESCE(v_limit, 200);
+--   SELECT COUNT(*) INTO v_count FROM inventaire
+--     WHERE user_id = NEW.user_id AND statut != 'vendu' AND (origine IS DISTINCT FROM 'vinted_sync');
+--   IF v_count >= v_limit THEN RAISE EXCEPTION 'LIMIT_REACHED'; END IF;
+--   RETURN NEW;
+--
+-- CE QUE CETTE LECTURE INTERDIT :
+--   · free_stock_limit = 0  →  COUNT(*) >= 0 est TOUJOURS vrai  →  RAISE sur
+--     CHAQUE insert  →  BLOCAGE TOTAL des 2013 comptes Free. La valeur 0
+--     n'ouvre pas, elle VERROUILLE. À ne jamais poser.
+--   · valeur NULL  →  impossible : coin_config.value est integer NOT NULL.
+--   · suppression de la clé  →  SELECT INTO sans ligne laisse v_limit à NULL
+--     →  COALESCE(v_limit, 200)  →  on retombe sur 200. N'ouvre rien.
+-- Aucune valeur de configuration ne peut donc lever la limite : seule la
+-- fonction (ou le trigger) peut le faire.
+--
+-- MÉTHODE RETENUE : neutraliser la FONCTION, pas le trigger.
+--   · le trigger reste attaché et visible (personne ne cherchera un trigger
+--     disparu, et un DISABLE se perd au fil des dumps/restaurations) ;
+--   · le COUNT(*) sur inventaire disparaît de chaque INSERT Free ;
+--   · aucune dépendance à une valeur de config qu'un futur réglage à 0
+--     transformerait instantanément en verrou pour tout le monde ;
+--   · retour arrière = un seul CREATE OR REPLACE, corps d'origine ci-dessous
+--     mot pour mot.
+--
+-- coin_config.free_stock_limit = 200 est LAISSÉE EN PLACE volontairement :
+-- plus personne ne la lit après cette migration (vérifié : check_inventory_limit
+-- était son seul lecteur SQL), et la garder rend le retour arrière complet
+-- sans rien réinsérer.
+
+CREATE OR REPLACE FUNCTION public.check_inventory_limit()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  -- 2026-09-04 : limite de stock LEVÉE POUR TOUS (décision Nico). Le produit
+  -- annonce un stock illimité à plusieurs endroits ; la garde des 200 articles
+  -- Free le démentait. Le trigger reste attaché pour que la levée soit
+  -- explicite et lisible ici, plutôt qu'invisible dans un tgenabled = 'D'.
+  RETURN NEW;
+END;
+$function$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- RETOUR ARRIÈRE — rétablit EXACTEMENT la garde des 200 articles Free.
+-- À rejouer tel quel, aucune autre action nécessaire (le trigger n'a pas
+-- bougé, coin_config.free_stock_limit = 200 est toujours là) :
+--
+-- CREATE OR REPLACE FUNCTION public.check_inventory_limit()
+--  RETURNS trigger
+--  LANGUAGE plpgsql
+-- AS $function$
+-- DECLARE
+--   v_profile  record;
+--   v_count    int;
+--   v_limit    int;
+-- BEGIN
+--   IF NEW.statut = 'vendu' THEN
+--     RETURN NEW;
+--   END IF;
+--
+--   -- Miroir du dressing Vinted : hors quota, à l'insert comme au comptage.
+--   IF NEW.origine = 'vinted_sync' THEN
+--     RETURN NEW;
+--   END IF;
+--
+--   SELECT is_premium, is_pro, is_comped
+--   INTO v_profile
+--   FROM profiles
+--   WHERE id = NEW.user_id;
+--
+--   IF v_profile.is_pro IS TRUE THEN
+--     RETURN NEW;
+--   END IF;
+--
+--   IF v_profile.is_premium IS TRUE OR v_profile.is_comped IS TRUE THEN
+--     RETURN NEW;
+--   END IF;
+--
+--   -- Limite lue en config (source unique) ; 200 en repli si la clé manque.
+--   SELECT value INTO v_limit FROM coin_config WHERE key = 'free_stock_limit';
+--   v_limit := COALESCE(v_limit, 200);
+--
+--   SELECT COUNT(*) INTO v_count
+--   FROM inventaire
+--   WHERE user_id = NEW.user_id
+--     AND statut != 'vendu'
+--     AND (origine IS DISTINCT FROM 'vinted_sync');
+--
+--   IF v_count >= v_limit THEN
+--     RAISE EXCEPTION 'LIMIT_REACHED';
+--   END IF;
+--
+--   RETURN NEW;
+-- END;
+-- $function$;
+-- ─────────────────────────────────────────────────────────────────────────────

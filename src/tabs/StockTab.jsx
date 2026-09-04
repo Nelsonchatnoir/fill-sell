@@ -3056,27 +3056,34 @@ function etapeRepublication(job, fr, reprise = null) {
   }
   if (!encours) return null;
 
-  // ── Plafond quotidien atteint (2026-09-04) ────────────────────────────────
-  // Ce job ne bougera plus aujourd'hui : get-pending-jobs ne sert plus aucun
-  // republish au poll d'exécution jusqu'au prochain minuit de Paris. Laisser
-  // « En file » (« ça part dans ~2 minutes ») serait faux pendant des heures —
-  // c'est ce silence qui fait croire à une panne (arrêt net à 04:18, 82
-  // annonces en file, extension vivante).
+  // ── Retenue serveur en cours (2026-09-04) ─────────────────────────────────
+  // Ce job ne bougera pas avant l'heure annoncée : get-pending-jobs ne sert
+  // plus aucun republish au poll d'exécution jusque-là. Laisser « En file »
+  // (« ça part dans ~2 minutes ») serait faux pendant des heures — c'est ce
+  // silence qui fait croire à une panne (arrêt net à 04:18, 82 annonces en
+  // file, extension vivante).
   // Périmètre EXACTEMENT celui de la retenue serveur : les 'pending' hors
-  // étape 'deleted'. Sont donc exclus l'étape 'deleted' (jamais plafonnée,
-  // l'annonce est hors ligne) et les 'processing' (déjà pris en main par
-  // l'extension, ils vont au bout).
-  // Ni un échec, ni une limite d'abonnement : une protection du compte Vinted
-  // qui se lève seule. Le vocabulaire le dit, la couleur aussi (bleu neutre),
-  // et `enFile` garde la pastille discrète — aucune barre ne tourne sur un
-  // travail à l'arrêt.
+  // étape 'deleted'. Sont donc exclus l'étape 'deleted' (jamais retenue, pause
+  // comprise — l'annonce est hors ligne) et les 'processing' (déjà pris en
+  // main par l'extension, ils vont au bout).
+  // DEUX motifs, deux phrases : la PAUSE de respiration (rafale trop longue,
+  // reprise le jour même) et le PLAFOND du palier (filet, reprise le
+  // lendemain). Ni l'un ni l'autre n'est un échec ni une limite d'abonnement :
+  // une protection du compte Vinted qui se lève seule. Le vocabulaire le dit,
+  // la couleur aussi (bleu neutre), et `enFile` garde la pastille discrète —
+  // aucune barre ne tourne sur un travail à l'arrêt.
   if (reprise && st === 'pending' && step !== 'deleted') return {
     cle: 'plafond_jour', court: reprise.court, ...bleu, enFile: true,
-    titre: fr ? `Republication étalée — reprend ${reprise.quand}`
-              : `Repost paced — resumes ${reprise.quand}`,
-    detail: fr
-      ? `FillSell étale tes republications sur la journée pour protéger ton compte Vinted. Celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. Ton annonce est intacte, rien n'a été retiré.`
-      : `FillSell paces your reposts through the day to protect your Vinted account. This one resumes on its own ${reprise.quand}, nothing to do on your side. Your listing is untouched, nothing was removed.`,
+    titre: reprise.motif === 'pause'
+      ? (fr ? `Republications en pause — reprise ${reprise.quand}` : `Reposts paused — resuming ${reprise.quand}`)
+      : (fr ? `Republication étalée — reprend ${reprise.quand}` : `Repost paced — resumes ${reprise.quand}`),
+    detail: reprise.motif === 'pause'
+      ? (fr
+        ? `Tes annonces viennent d'enchaîner une longue série. FillSell laisse souffler ton compte Vinted avant de reprendre : celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. Ton annonce est intacte, rien n'a été retiré.`
+        : `Your listings just ran a long streak. FillSell lets your Vinted account breathe before resuming: this one restarts on its own ${reprise.quand}, nothing to do on your side. Your listing is untouched, nothing was removed.`)
+      : (fr
+        ? `FillSell étale tes republications sur plusieurs jours pour protéger ton compte Vinted. Celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. Ton annonce est intacte, rien n'a été retiré.`
+        : `FillSell spreads your reposts over several days to protect your Vinted account. This one resumes on its own ${reprise.quand}, nothing to do on your side. Your listing is untouched, nothing was removed.`),
   };
 
   if (step === 'deleted') return {
@@ -3143,30 +3150,41 @@ function heureParis(iso) {
   return new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
 }
 
-// ── Plafond quotidien de republication : mise en mots de la REPRISE ────────
-// (2026-09-04) Le plafond (coin_config.republish_plafond_jour) est appliqué
-// par get-pending-jobs, qui compte sur le JOUR CALENDAIRE Europe/Paris : le
-// compteur repart au prochain minuit de Paris, pas 24 h après la coupure.
-// C'est le SERVEUR qui date cette reprise (champ `reprise` du mode
-// plafond_only) — ici on ne fait que la formater, jamais la déduire : une
-// seconde définition du reset finirait par mentir un jour de bascule d'heure.
-// Instant absent (fonction pas encore déployée) → « demain » SANS heure,
+// ── Retenue de republication : mise en mots de la REPRISE ──────────────────
+// (2026-09-04) Deux freins serveur, jamais confondus, tous deux calculés par
+// get-pending-jobs et jamais ici :
+//   · motif 'pause'   — la file souffle après une trop longue rafale ; la
+//     reprise tombe le plus souvent LE JOUR MÊME, dans quelques heures.
+//   · motif 'plafond' — filet journalier du palier ; la reprise est le
+//     prochain minuit de Paris.
+// C'est le SERVEUR qui DATE la reprise (champ `reprise`) : ici on la formate,
+// jamais on ne la déduit — une seconde définition finirait par mentir un jour
+// de bascule d'heure. Le jour, en revanche, se LIT sur l'instant reçu : on ne
+// dit « demain » que si c'en est un (une pause de 2 h à 14 h reprend
+// aujourd'hui).
+// Instant absent (fonction pas encore déployée) → forme vague SANS heure,
 // jamais une heure inventée. Instant DÉPASSÉ (état vieilli entre deux
 // rafraîchissements de 2 min) → null : on n'affiche rien plutôt qu'une
 // reprise fausse.
 // `court` tient dans la pastille de carte (≤ 12 caractères, règle du 04/09) ;
 // `quand` est la forme longue des phrases.
-function repriseRepub(iso, fr) {
+function repriseRepub(iso, fr, motif = null) {
   const t = Date.parse(iso ?? '');
-  if (!Number.isFinite(t)) return { court: fr ? 'Demain' : 'Tomorrow', quand: fr ? 'demain' : 'tomorrow' };
+  if (!Number.isFinite(t)) {
+    return { motif, court: fr ? 'En pause' : 'On hold', quand: fr ? 'un peu plus tard' : 'a little later' };
+  }
   if (t <= Date.now()) return null;
+  const jourParis = (ts) => new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
   const hhmm = new Date(t).toLocaleTimeString('en-GB', {
     timeZone: 'Europe/Paris', hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
   });
   const heure = fr ? hhmm.replace(':', 'h') : hhmm;
+  const demain = jourParis(t) !== jourParis(Date.now());
   return {
-    court: fr ? `Demain ${heure}` : `Tmrw ${heure}`,
-    quand: fr ? `demain à ${heure}` : `tomorrow at ${heure}`,
+    motif,
+    court: demain ? (fr ? `Demain ${heure}` : `Tmrw ${heure}`) : (fr ? `Dès ${heure}` : `From ${heure}`),
+    quand: demain ? (fr ? `demain à ${heure}` : `tomorrow at ${heure}`)
+                  : (fr ? `à ${heure}` : `at ${heure}`),
   };
 }
 // Marge d'approche du plafond : le décompte n'apparaît QUE dans les derniers
@@ -4197,7 +4215,9 @@ const StockTab = memo(function StockTab({
   // lecture). Recalculée à chaque relecture de l'état (2 min) : passé minuit,
   // repriseRepub rend null et les cartes reprennent leurs libellés d'étape.
   const repubPlafondReprise = useMemo(
-    () => (repubPlafondEtat?.retenue ? repriseRepub(repubPlafondEtat.reprise, lang !== 'en') : null),
+    () => (repubPlafondEtat?.retenue
+      ? repriseRepub(repubPlafondEtat.reprise, lang !== 'en', repubPlafondEtat.motif ?? 'plafond')
+      : null),
     [repubPlafondEtat, lang],
   );
   // Articles HORS LIGNE : republication arrêtée (needs_user/failed/cancelled)
@@ -6317,15 +6337,17 @@ const StockTab = memo(function StockTab({
                       :"No listings can be reposted right now. A listing is repostable when it's still live on Vinted, has no repost already queued, and wasn't recreated in the last 24 hours. Check back later — or exit the mode above."}
                   </div>
                 )}
-                {/* ── PLAFOND QUOTIDIEN : UNE ligne, en tête de LISTE (04/09) ──
-                    Le plafond technique (coin_config.republish_plafond_jour,
-                    appliqué par get-pending-jobs) n'était plus dit nulle part
-                    depuis la bascule du 02/09 : un compte qui s'arrête net à
-                    04:18 avec 82 annonces en file et son extension vivante
-                    croit que c'est cassé.
-                    Ce qui est dit ici : le compte du jour, le plafond, l'heure
-                    de reprise — tout vient du SERVEUR (repubPlafondEtat), rien
-                    n'est recalculé ni écrit en dur.
+                {/* ── RETENUE SERVEUR : UNE ligne, en tête de LISTE (04/09) ────
+                    Le frein technique (appliqué par get-pending-jobs) n'était
+                    plus dit nulle part depuis la bascule du 02/09 : un compte
+                    qui s'arrête net à 04:18 avec 82 annonces en file et son
+                    extension vivante croit que c'est cassé.
+                    DEUX motifs, deux phrases, jamais mélangées : la PAUSE de
+                    respiration (rafale trop longue, reprise le jour même) et
+                    le PLAFOND journalier du palier (reprise le lendemain).
+                    Ce qui est dit ici : le compte du jour, le plafond du
+                    palier, l'heure de reprise — tout vient du SERVEUR
+                    (repubPlafondEtat), rien n'est recalculé ni écrit en dur.
                     ⚠️ CE N'EST PAS UN QUOTA D'ABONNEMENT. Le plafond
                     journalier est une protection anti-restriction Vinted,
                     temporaire, qui repart seule : texte secondaire, aucune
@@ -6349,18 +6371,22 @@ const StockTab = memo(function StockTab({
                   // Même convention de langue que la pastille de carte
                   // (etapeRepublication) : les deux disent la même heure.
                   const fr=lang!=='en';
-                  const r=repriseRepub(p.reprise,fr);
+                  const motif=p.retenue?(p.motif??'plafond'):null;
+                  const r=repriseRepub(p.reprise,fr,motif);
                   if(!r)return null; // état vieilli : rien plutôt qu'une reprise fausse
+                  const texte=motif==='pause'
+                    ?(fr
+                      ?`${p.sequence||p.faits} republications d'affilée — les ${restantes} suivantes reprennent ${r.quand}. FillSell laisse souffler ton compte Vinted entre deux séries, tu n'as rien à faire.`
+                      :`${p.sequence||p.faits} reposts in a row — the next ${restantes} resume ${r.quand}. FillSell lets your Vinted account breathe between streaks, nothing to do on your side.`)
+                    :motif==='plafond'
+                    ?(fr
+                      ?`${p.faits} republications sur ${p.limite} aujourd'hui — les ${restantes} suivantes reprennent ${r.quand}. FillSell les étale pour protéger ton compte Vinted, tu n'as rien à faire.`
+                      :`${p.faits} of ${p.limite} reposts today — the next ${restantes} resume ${r.quand}. FillSell paces them to protect your Vinted account, nothing to do on your side.`)
+                    :(fr
+                      ?`${p.faits} republications sur ${p.limite} aujourd'hui — au-delà, la suite reprend ${r.quand}. FillSell les étale pour protéger ton compte Vinted.`
+                      :`${p.faits} of ${p.limite} reposts today — beyond that, the rest resumes ${r.quand}. FillSell paces them to protect your Vinted account.`);
                   return(
-                    <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",margin:"2px 2px 4px"}}>
-                      {p.retenue
-                        ?(fr
-                          ?`${p.faits} republications sur ${p.limite} aujourd'hui — les ${restantes} suivantes reprennent ${r.quand}. FillSell les étale pour protéger ton compte Vinted, tu n'as rien à faire.`
-                          :`${p.faits} of ${p.limite} reposts today — the next ${restantes} resume ${r.quand}. FillSell paces them to protect your Vinted account, nothing to do on your side.`)
-                        :(fr
-                          ?`${p.faits} republications sur ${p.limite} aujourd'hui — au-delà, la suite reprend ${r.quand}. FillSell les étale pour protéger ton compte Vinted.`
-                          :`${p.faits} of ${p.limite} reposts today — beyond that, the rest resumes ${r.quand}. FillSell paces them to protect your Vinted account.`)}
-                    </div>
+                    <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",margin:"2px 2px 4px"}}>{texte}</div>
                   );
                 })()}
                 {/* ── GALERIE (2026-08-27) : grille de cartes photo, 2 colonnes
