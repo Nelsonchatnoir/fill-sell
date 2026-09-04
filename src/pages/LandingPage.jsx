@@ -220,14 +220,14 @@ const PLANS = {
     // décision Nico). Business n'a pas de carte ici (hors landing).
     // Bascule quotas (02/09) : plus une unité sur les cartes — des GESTES,
     // aux volumes lus en base (jetons {…} ci-dessous).
-    // « Stock illimité » a QUITTÉ Premium et Pro le 2026-09-04 et rejoint le
-    // Free : la garde des 200 articles est levée pour tous (migration
-    // 20260904120100), donc ce n'est plus un avantage de palier — le laisser
-    // en face du prix ferait payer ce qui est désormais offert. Il reste
-    // annoncé, à sa vraie place : dans le socle.
+    // « Stock illimité » a été RETIRÉ de PARTOUT le 2026-09-04 (décision
+    // Nico, seconde passe). Première étape du jour : il quittait Premium/Pro
+    // pour le Free, la garde des 200 articles étant levée pour tous
+    // (migration 20260904120100). Mais l'afficher côté Free donne une raison
+    // de NE PAS payer : ce n'est plus un argument de vente du tout, c'est un
+    // acquis silencieux. Il ne doit réapparaître nulle part.
     free: [
       '{REPUB_FREE} republications Vinted offertes, à vie',
-      'Stock illimité',
       "Ajout d'article à la voix",
       PUBLISH_LINE.fr,
       'Calcul de marge instantané',
@@ -254,7 +254,6 @@ const PLANS = {
   en: {
     free: [
       '{REPUB_FREE} Vinted repostings included, for life',
-      'Unlimited stock',
       'Voice item adding',
       PUBLISH_LINE.en,
       'Instant margin calculator',
