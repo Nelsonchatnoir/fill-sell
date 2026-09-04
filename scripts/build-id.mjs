@@ -1123,7 +1123,22 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // qu'on ne lui déclare pas. Committé GIT_COMMITTER_DATE épinglée sur cette
 // constante. EXTENSION_MIN_BUILD inchangé : il ne se promeut qu'APRÈS
 // acceptation du paquet par Google.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T16:35:00Z';
+// 2026-09-04T19:09:13Z = 46a5ffd, « la sync passe devant la file » : la part
+// EXTENSION du lot (background.js) fait compter une sync en file comme du
+// travail dans l'arbitrage d'éveil — une file vidée pour laisser passer la
+// sync n'est pas une file vide, la machine ne doit pas s'endormir dessus.
+// ⚠️ TROISIÈME OUBLI DE LA MÊME NATURE, et le premier à avoir CASSÉ le build.
+// 46a5ffd touchait chrome-extension/background.js sans bumper cette constante :
+// `npm run build` refusait depuis, et c'est ce refus qui l'a révélé (le build
+// de vérification du lot avait été lancé AVANT le commit — l'ordre suffisait à
+// masquer la faute). La consigne est en tête de fichier : bumper DANS LE MÊME
+// COMMIT que tout changement sous chrome-extension/.
+// Sans effet sur le zip 0.6.18 déjà empaqueté (BUILD_ID 2026-09-04T20:02:54Z,
+// postérieur à cette valeur : il passe toujours la garde de package-extension).
+// Committé GIT_COMMITTER_DATE épinglée sur cette constante.
+// EXTENSION_MIN_BUILD inchangé : il ne se promeut qu'APRÈS acceptation du
+// paquet par Google.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T19:09:13Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

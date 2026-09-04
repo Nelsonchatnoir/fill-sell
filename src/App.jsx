@@ -705,7 +705,24 @@ function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.p
   // différence entre « non classé » et « classé Autre par l'utilisateur » —
   // or 27 articles importés du dressing ont type=NULL en base. `typeConnu`
   // conserve cette distinction pour l'AFFICHAGE, sans toucher au reste.
-  typeConnu:v.type!=null&&String(v.type).trim()!=="",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null,origine:v.origine||null,photos:Array.isArray(v.photos)?v.photos:null,vinted_item_id:v.vinted_item_id||null,vinted_catalog_id:v.vinted_catalog_id??null,disparu_le:v.disparu_le||null,vinted_status:v.vinted_status||null,last_synced_at:v.last_synced_at||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
+  typeConnu:v.type!=null&&String(v.type).trim()!=="",purchaseCosts:v.purchase_costs||0,sellingFees:v.selling_fees||0,quantite:v.quantite||1,emplacement:v.emplacement||null,plateforme:v.plateforme||null,origine:v.origine||null,photos:Array.isArray(v.photos)?v.photos:null,vinted_item_id:v.vinted_item_id||null,vinted_catalog_id:v.vinted_catalog_id??null,
+  // ── vinted_account_id : la boutique d'ORIGINE de l'article ────────────────
+  // (2026-09-04) OUBLIÉ ICI le 03/09 en posant le multi-boutiques. `mapItem`
+  // est une liste BLANCHE de champs : la colonne était bien lue par le
+  // select('*') et bien remplie en base, mais elle mourait à la mise en forme.
+  // Tous les lecteurs voyaient donc `undefined`, avec deux effets opposés et
+  // également faux (cas ornellaracano, 512 lignes '472079' + 54 '257364012') :
+  //   · `String(undefined ?? '') === '472079'` → FAUX pour tout le monde : le
+  //     filtre par boutique ne rendait AUCUN article, sur AUCUNE boutique ;
+  //   · `undefined == null` → VRAI : « Sans origine » rendait au contraire
+  //     TOUT le stock, et sa pill s'affichait même sans un seul article NULL.
+  // Étaient morts de la même cause : la pastille de boutique sur la carte
+  // article et la ligne « N republications en pause — boutique @x ».
+  // ⚠️ TEXTE, jamais un entier : la colonne est du texte côté base et l'id
+  // Vinted est comparé en chaîne partout (pill, garde serveur). Aucun cast,
+  // aucun trim, aucun repli — on transporte la valeur telle qu'elle est, et
+  // `??` plutôt que `||` pour ne pas transformer une chaîne vide en null.
+  vinted_account_id:v.vinted_account_id??null,disparu_le:v.disparu_le||null,vinted_status:v.vinted_status||null,last_synced_at:v.last_synced_at||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;
