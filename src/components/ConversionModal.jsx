@@ -541,10 +541,11 @@ export default function ConversionModal({
   // ListingPreviewScreen : prop `userId`), aucun nouveau chemin de données.
   // Absent → l'offre reste masquée, cf. src/config/businessOffer.js.
   userId       = null,
-  itemCount    = null,
-  // Repli seulement — l'hôte passe la valeur lue dans coin_config
-  // (free_stock_limit, source unique de la limite Free depuis le 05/08).
-  stockLimit   = 200,
+  // (itemCount / stockLimit : props RETIRÉES le 2026-09-04 avec la branche
+  // stockFull — elles ne servaient qu'à la puce « N/200 articles ». Les deux
+  // hôtes les passent encore ; une prop non lue est ignorée sans effet, et
+  // les laisser là évite de toucher App.jsx et ListingPreviewScreen dans un
+  // commit qui ne concerne que la modale.)
   // (coinBalance/coinPrice/onUseCoins : props supprimées le 03/09 avec la
   // monnaie interne — plus aucun hôte ne les passe.)
   // Point d'entrée EXACT (même vocabulaire que le tunnel d'App.jsx) — sert la
@@ -739,7 +740,15 @@ export default function ConversionModal({
   // fait, le déblocage, les cartes. Le geste 'scans' n'existe plus (fusion
   // scans+annonces du 02/09 soir : UN compteur, UN chiffre) — un scan refusé
   // arrive en geste 'annonces'.
-  const stockFull = trigger === 'stock' && itemCount != null;
+  // (2026-09-04) La branche `stockFull` — puce « N/200 articles » et titre
+  // « Ton stock est plein. » — est RETIRÉE : le stock est illimité pour tous
+  // depuis la migration 20260904120100, la modale ne peut plus être ouverte
+  // sur ce motif. Les cinq appelants qui posaient trigger='stock' existent
+  // toujours (App.jsx ×4, ListingPreviewScreen ×1) mais sont tous derrière
+  // quotaStockAtteint()/inventoryFull, donc derrière STOCK_ILLIMITE : aucun ne
+  // peut plus partir. Si l'interrupteur repassait à false, ces appels
+  // rouvriraient la modale sur sa branche GÉNÉRIQUE (« Débloque tout
+  // FillSell. », sans la puce de compteur) — dégradé, jamais cassé.
   const repubCap = trigger === 'republish_cap';
   const repubLot = trigger === 'republish_lot';
   const quotaCas = trigger === 'quota_geste' ? (quotaInfo ?? {}) : null;
@@ -752,7 +761,6 @@ export default function ConversionModal({
         padding: '5px 11px', fontSize: 11, fontWeight: 600, color: C.mute,
       }}>
         {fr ? 'Tu es en Free' : "You're on Free"}
-        {stockFull && <> · {itemCount}/{stockLimit} {fr ? 'articles' : 'items'}</>}
       </div>
 
       <Title>
@@ -766,9 +774,7 @@ export default function ConversionModal({
                 ? (quotaCas.geste === 'retouches'
                     ? (fr ? 'Tes retouches du mois sont faites.' : "This month's touch-ups are done.")
                     : (fr ? 'Tes annonces du mois sont créées.' : "This month's listings are created."))
-                : stockFull
-                  ? (fr ? 'Ton stock est plein.' : 'Your stock is full.')
-                  : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
+                : (fr ? 'Débloque tout FillSell.' : 'Unlock all of FillSell.')}
       </Title>
 
       {repubCap && (
