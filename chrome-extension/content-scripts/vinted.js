@@ -1338,7 +1338,26 @@ async function deleteListing(job) {
 // jeton CSRF vit dans un script inline présent sur TOUTES les pages vinted.fr,
 // et la suppression par API ne navigue rien). Mêmes en-têtes, mêmes
 // conclusions, même prudence : un refus n'est JAMAIS une preuve de suppression.
-async function deleteVintedItemViaApi(itemId, t, trace) {
+//
+// VERDICT PERSISTÉ (2026-09-05, doublons ornellaracano de la nuit du 04/09) :
+// chaque branche rend un objet `verdict` — endpoint, HTTP, extrait du corps,
+// conclusion nommée — que l'appelant fait écrire dans platform_fields
+// (suppression_verdict), succès COMPRIS. Avant, la trace n'existait qu'en
+// console : six republications identiques en base, impossible de dire ce que
+// l'API avait répondu à chacune. Le verdict dit désormais, job par job, ce qui
+// a été vu.
+//
+// `opts.preuveRequise` (une-passe de republication) : un HTTP 404 sur le POST
+// n'est PAS une preuve que l'annonce a disparu — cet endpoint n'a jamais été
+// mesuré sur un article absent ni sur l'article d'un autre compte. Sur ce
+// chemin, le 404 rend success:false, RIEN n'est soumis, et le background
+// lit l'état réel de l'annonce (checkListingState) avant de recréer : absente
+// → recréation à la passe suivante ; en ligne → needs_user, annonce intacte.
+// Le chemin historique (deleteListing, depuis la page de l'annonce) garde
+// l'idempotence 404 = déjà absente : il n'enchaîne aucune création.
+async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
+  const endpoint = `/api/v2/items/${itemId}/delete`;
+  const verdict = { at: new Date().toISOString(), endpoint, http: null, conclusion: "non_envoyee" };
   const csrf = await extractVintedCsrfToken();
   const anonId = getVintedCookie("anon_id");
   t(`tokens : csrf=${csrf ? "ok" : "ABSENT"}, anon_id=${anonId ? "ok" : "ABSENT"}`);
@@ -1370,6 +1389,7 @@ async function deleteVintedItemViaApi(itemId, t, trace) {
   // éprouvé en production, au lieu d'un endpoint mort.
   if (!csrf) {
     t("jeton CSRF absent — état de l'annonce NON DÉTERMINÉ ici (aucune sonde fiable disponible) ; requête de suppression NON envoyée");
+    verdict.conclusion = "csrf_absent";
     return {
       success: false,
       needsUser: true,
@@ -1378,11 +1398,12 @@ async function deleteVintedItemViaApi(itemId, t, trace) {
         "requête de suppression NON envoyée. L'annonce n'a pas été touchée, et son état " +
         "n'a PAS été déterminé ici : le background le vérifie sur la page de l'annonce.",
       trace,
+      verdict,
     };
   }
 
   try {
-    const resp = await fetch(`/api/v2/items/${itemId}/delete`, {
+    const resp = await fetch(endpoint, {
       method: "POST",
       credentials: "include",
       headers: {
@@ -1392,10 +1413,36 @@ async function deleteVintedItemViaApi(itemId, t, trace) {
         ...(anonId ? { "X-Anon-Id": anonId } : {}),
       },
     });
-    t(`API delete /api/v2/items/${itemId}/delete → HTTP ${resp.status}`);
-    // 200/204 = supprimée ; 404 = déjà absente (idempotent) → succès.
-    if (resp.ok || resp.status === 204 || resp.status === 404) {
-      return { success: true, trace };
+    verdict.http = resp.status;
+    // Le corps est lu sur TOUTE réponse (≤ 160 caractères) : c'est lui qui
+    // dira, la prochaine fois, ce qu'un 200 ou un 404 contenait vraiment.
+    const corps = (await resp.text().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 160);
+    verdict.corps = corps || "(vide)";
+    t(`API delete ${endpoint} → HTTP ${resp.status} ; corps : ${verdict.corps}`);
+    // 200/204 = supprimée, preuve positive.
+    if (resp.ok || resp.status === 204) {
+      verdict.conclusion = "supprimee";
+      return { success: true, trace, verdict };
+    }
+    // 404 : « déjà absente » n'est qu'une PRÉSOMPTION (endpoint jamais mesuré
+    // sur un article absent). Idempotent sur le chemin historique ; sur
+    // l'une-passe, ce n'est pas une preuve → pas de soumission, l'état réel
+    // est lu par le background.
+    if (resp.status === 404) {
+      if (opts.preuveRequise) {
+        verdict.conclusion = "http_404_sans_preuve";
+        t("HTTP 404 sur la suppression — pas une preuve de disparition ; rien ne sera soumis, le background lit l'état réel");
+        return {
+          success: false,
+          error:
+            "Suppression Vinted : l'API a répondu HTTP 404 — ce n'est pas une preuve que l'annonce a disparu. " +
+            "Rien n'a été soumis ; l'état réel de l'annonce est vérifié avant toute recréation.",
+          trace,
+          verdict,
+        };
+      }
+      verdict.conclusion = "http_404_presumee_absente";
+      return { success: true, trace, verdict };
     }
     // 401/403 : refus. On ne conclut plus « session invalide » par réflexe — on
     // journalise le corps (c'est lui qui distingue un refus CSRF d'un blocage
@@ -1407,11 +1454,11 @@ async function deleteVintedItemViaApi(itemId, t, trace) {
     // pas une preuve de suppression. L'état réel est lu par le background, sur
     // la page de l'annonce.
     if (resp.status === 401 || resp.status === 403) {
-      const corps = (await resp.text().catch(() => "")).slice(0, 300);
-      t(`corps du refus : ${corps || "(vide)"}`);
       t("refus reçu — état de l'annonce NON DÉTERMINÉ ici ; aucune suppression conclue");
 
       const session = await vintedSessionEtat(t);
+      verdict.conclusion = "refus";
+      verdict.session = String(session);
       return {
         success: false,
         needsUser: true,
@@ -1421,16 +1468,21 @@ async function deleteVintedItemViaApi(itemId, t, trace) {
             : `Suppression Vinted refusée (HTTP ${resp.status}) alors que la session est ${session} — ` +
               `refus CSRF ou protection anti-bot, PAS une déconnexion. Réponse : ${corps.slice(0, 120) || "(vide)"}`,
         trace,
+        verdict,
       };
     }
     // Autre code : le background revérifie l'état réel (jamais de faux « deleted »).
+    verdict.conclusion = "http_autre";
     return {
       success: false,
       error: `Suppression Vinted : l'API a répondu HTTP ${resp.status}. Le background revérifie l'état réel de l'annonce.`,
       trace,
+      verdict,
     };
   } catch (e) {
-    return { success: false, error: `Suppression Vinted (appel API) : ${String(e?.message ?? e)}`, trace };
+    verdict.conclusion = "reseau";
+    verdict.corps = String(e?.message ?? e).slice(0, 160);
+    return { success: false, error: `Suppression Vinted (appel API) : ${String(e?.message ?? e)}`, trace, verdict };
   }
 }
 
@@ -2496,11 +2548,15 @@ async function fillListingForm(job) {
   if (onePass?.item_id) {
     const traceDel = [];
     const tDel = (line) => { traceDel.push(line); console.log(`[vinted][republish-onepass] ${line}`); };
-    const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel);
+    // preuveRequise : ici, un 404 sur le POST ne vaut PAS suppression — on
+    // enchaînerait une création juste derrière (cf. bandeau de la fonction).
+    const del = await deleteVintedItemViaApi(String(onePass.item_id), tDel, traceDel, { preuveRequise: true });
     if (!del?.success) {
       // AUCUNE soumission sans suppression acquise : soumettre créerait un
       // DOUBLON à côté de l'annonce d'origine toujours en ligne. Le background
       // revérifie l'état réel de l'annonce (checkListingState) et décide.
+      // Le verdict (HTTP, corps, conclusion) part avec le refus : il est
+      // persisté dans platform_fields quoi qu'il arrive ensuite.
       return {
         success: false,
         deleteFailed: true,
@@ -2508,6 +2564,7 @@ async function fillListingForm(job) {
         error: `pré-vol OK mais suppression refusée — rien n'a été soumis. ${del?.error ?? ""}`.trim(),
         warnings,
         diagnostic: traceDel.join(" | ").slice(0, 2000),
+        suppression_verdict: del?.verdict ?? null,
       };
     }
     onePassDeleted = true;
@@ -2515,8 +2572,9 @@ async function fillListingForm(job) {
     // succès peut couper le canal juste après le clic. Si l'écriture échoue,
     // on soumet QUAND MÊME : l'annonce d'origine n'existe plus, une annonce
     // en ligne vaut mieux que la cohérence de la base (la sonde réseau et la
-    // ceinture dressing réconcilieront le job).
-    const marque = await askBackground({ type: "REPUBLISH_MARK_DELETED", jobId: job.id })
+    // ceinture dressing réconcilieront le job). Le verdict voyage avec le
+    // message : c'est le SEUL moment où il peut être écrit avant la coupure.
+    const marque = await askBackground({ type: "REPUBLISH_MARK_DELETED", jobId: job.id, verdict: del.verdict ?? null })
       .catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
     if (!marque?.ok) console.warn("[vinted][republish-onepass] étape 'deleted' non écrite:", marque?.error);
     // Pause humaine courte entre la suppression et le dépôt : un vendeur qui

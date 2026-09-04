@@ -639,7 +639,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // il nous demande d'acter l'étape 'deleted' en base AVANT la soumission
   // (la redirection de succès peut couper le canal juste après).
   if (msg?.type === "REPUBLISH_MARK_DELETED" && typeof msg.jobId === "string") {
-    marquerRepublishSupprime(msg.jobId).then(
+    marquerRepublishSupprime(msg.jobId, msg.verdict).then(
       (r) => sendResponse(r),
       (e) => sendResponse({ ok: false, error: String(e?.message ?? e) }),
     );
@@ -10580,10 +10580,32 @@ function construireJobRecreation(job, pf, cap, prix) {
 // base : le même service worker attend la réponse de FILL_LISTING — si
 // l'écriture base échoue, la map suffit à conclure ce cycle-ci, et une mort du
 // worker emporte les deux témoins ensemble (la reprise re-sonde l'état réel).
-const republishSupprimes = new Map(); // jobId → deleted_at ISO
-async function marquerRepublishSupprime(jobId) {
+//
+// VERDICT DE SUPPRESSION (2026-09-05) : le content script joint ce que l'API a
+// répondu (endpoint, HTTP, extrait du corps, conclusion nommée). Il est écrit
+// dans platform_fields.suppression_verdict ICI — avant la soumission, donc
+// avant la coupure — et gardé en mémoire pour survivre aux réécritures
+// ENTIÈRES de platform_fields qui suivent (le `pf` local du flux 'captured'
+// ne connaît pas ce que cette fonction a écrit en base). Sur un refus, c'est
+// le résultat de FILL_LISTING qui le porte (suppression_verdict) et le flux
+// 'captured' l'écrit avec le needs_user / la reprise.
+const republishSupprimes = new Map(); // jobId → { deletedAt, verdict }
+function nettoyerVerdictSuppression(v) {
+  if (!v || typeof v !== "object") return null;
+  const s = (x, n) => (x == null ? null : String(x).slice(0, n));
+  return {
+    at: s(v.at, 40),
+    endpoint: s(v.endpoint, 80),
+    http: Number.isFinite(Number(v.http)) && v.http != null ? Number(v.http) : null,
+    conclusion: s(v.conclusion, 40) ?? "inconnue",
+    ...(v.corps != null ? { corps: s(v.corps, 160) } : {}),
+    ...(v.session != null ? { session: s(v.session, 40) } : {}),
+  };
+}
+async function marquerRepublishSupprime(jobId, verdictBrut) {
   const deletedAt = new Date().toISOString();
-  republishSupprimes.set(jobId, deletedAt);
+  const verdict = nettoyerVerdictSuppression(verdictBrut);
+  republishSupprimes.set(jobId, { deletedAt, verdict });
   const session = await getValidSession();
   if (!session?.access_token) return { ok: false, error: "session FillSell absente", deleted_at: deletedAt };
   const token = session.access_token;
@@ -10592,7 +10614,12 @@ async function marquerRepublishSupprime(jobId) {
     const rows = await restRequest(`cross_post_jobs?id=eq.${jobId}&select=platform_fields`, token);
     const pfBase = rows?.[0]?.platform_fields ?? {};
     await updateJobStatus(token, jobId, "processing", {
-      platform_fields: { ...pfBase, republish_step: "deleted", deleted_at: deletedAt },
+      platform_fields: {
+        ...pfBase,
+        republish_step: "deleted",
+        deleted_at: deletedAt,
+        ...(verdict ? { suppression_verdict: verdict } : {}),
+      },
     });
     return { ok: true, deleted_at: deletedAt };
   } catch (e) {
@@ -11253,9 +11280,19 @@ async function processRepublishJob(job, accessToken) {
       // résultat du content script (deleted:true) et la trace mémoire du
       // message REPUBLISH_MARK_DELETED — qui, elle, survit à un canal coupé
       // par la redirection de succès.
-      const marqueDeletedAt = republishSupprimes.get(job.id) ?? null;
+      const marque = republishSupprimes.get(job.id) ?? null;
       republishSupprimes.delete(job.id);
+      const marqueDeletedAt = marque?.deletedAt ?? null;
       const aSupprime = result?.deleted === true || marqueDeletedAt != null;
+
+      // VERDICT DE SUPPRESSION (2026-09-05) : quoi qu'il arrive, ce que l'API
+      // de suppression a répondu est écrit dans platform_fields — la marque
+      // mémoire (succès, posée avant la soumission) ou le résultat du content
+      // script (refus, 404 sans preuve, réseau). Ce `pf` local écrase la base
+      // en entier plus bas : sans cette ligne, la trace posée par
+      // marquerRepublishSupprime disparaîtrait à la conclusion.
+      const verdictSuppression = nettoyerVerdictSuppression(marque?.verdict ?? result?.suppression_verdict ?? null);
+      if (verdictSuppression) pf.suppression_verdict = verdictSuppression;
 
       if (!aSupprime) {
         // ── RIEN n'a été supprimé : l'annonce d'origine est intacte ─────────
@@ -11274,6 +11311,9 @@ async function processRepublishJob(job, accessToken) {
           // effective ailleurs → on passe à la recréation ; sinon needs_user
           // honnête, rien n'a été soumis (pas de doublon possible).
           const { state } = await checkListingState(job.listing_url, "vinted").catch(() => ({ state: "unknown" }));
+          // L'état réel relevé s'écrit à côté du verdict : on lit en base
+          // POURQUOI la recréation a eu lieu (ou pas) après un refus.
+          if (pf.suppression_verdict) pf.suppression_verdict.etat_annonce = String(state).slice(0, 40);
           if (state === "unavailable" || state === "sold") {
             pf.republish_step = "deleted";
             pf.deleted_at = new Date().toISOString();
