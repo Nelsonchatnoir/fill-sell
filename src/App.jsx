@@ -34,7 +34,7 @@ const buildIdTimestamp = (id) => {
 };
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
-import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from './utils/stockLimit';
+import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
 import { sonderAnnonceVinted, lireBoutiquesVinted } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
 import Toast from './components/Toast';
@@ -545,7 +545,12 @@ function IAPUpgradeBlock({ lang, iapLoading, onPurchase, onRestore, label=null }
           juste en dessous répondait à une limite que l'utilisateur ne
           rencontre pas, pendant que celle qui le bloque n'était pas nommée.
           La pill dit maintenant ce que l'offre débloque VRAIMENT dans le
-          modèle courant. */}
+          modèle courant.
+          ⚠️ Et depuis la levée du plafond des 200 articles (le même jour,
+          migration 20260904120100), « Stock illimité » ne pourrait PLUS
+          revenir ici : c'est vrai pour tout le monde, Free compris — ce n'est
+          donc plus un argument d'abonnement, mais une ligne du socle (elle
+          vit désormais dans la colonne Free de la landing). */}
       <div style={{fontSize:11,fontWeight:700,background:"rgba(47,158,144,0.08)",color:"#1B6E62",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(47,158,144,0.18)"}}>
         ✨ {lang==='fr'?"Plus d'annonces · IA vocale · Stats":'More listings · Voice AI · Stats'}
       </div>
@@ -3260,7 +3265,7 @@ export default function App({ loginOnly = false }){
     const{data:{session:avSess}}=await supabase.auth.getSession();
     const avToken=avSess?.access_token;
     for(const item of voiceParsed.items){
-      if(!isPremium&&insertedCount>=FREE_STOCK_LIMIT_FALLBACK){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
+      if(!isPremium&&quotaStockAtteint(insertedCount,FREE_STOCK_LIMIT_FALLBACK)){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const qty=Math.max(1,item.quantite||1);
       const isVente=voiceParsed.action==='vente';
       const bRaw=voiceParsed.isLot?(parseFloat(item.prix_estime_lot)||0)/qty:(parseFloat(item.prix_achat)||0);
@@ -3327,7 +3332,7 @@ export default function App({ loginOnly = false }){
     const{data:{session:ntSess}}=await supabase.auth.getSession();
     const ntToken=ntSess?.access_token;
     for(const item of lotDistributed.items){
-      if(!isPremium&&insertedCount>=FREE_STOCK_LIMIT_FALLBACK){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
+      if(!isPremium&&quotaStockAtteint(insertedCount,FREE_STOCK_LIMIT_FALLBACK)){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}break;}
       const b=parseFloat(item.prix_estime_lot)||0;
       const marqueNorm=normalizeMarque(item.marque);
       const _td2=detectType(item.nom||"",marqueNorm);const typeAuto=(item.categorie&&item.categorie!=='Luxe')?item.categorie:_td2;
@@ -3348,7 +3353,7 @@ export default function App({ loginOnly = false }){
 
   async function addItem(){
     if(!iTitle||!iBuy)return;
-    if(!isPremium&&compteArticlesQuota(items)>=FREE_STOCK_LIMIT_FALLBACK){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
+    if(!isPremium&&quotaStockAtteint(compteArticlesQuota(items),FREE_STOCK_LIMIT_FALLBACK)){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
     const b=parseFloat(iBuy)||0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
     const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
@@ -5017,7 +5022,7 @@ export default function App({ loginOnly = false }){
       // ⚠️ Les libellés jetés (« Limite gratuite atteinte » / « Free plan limit
       // reached ») sont des MARQUEURS lus par saveLensItemForListing — ne pas
       // les reformuler.
-      if(!isPremium&&compteArticlesQuota(items)>=FREE_STOCK_LIMIT_FALLBACK){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
+      if(!isPremium&&quotaStockAtteint(compteArticlesQuota(items),FREE_STOCK_LIMIT_FALLBACK)){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached. Upgrade to Premium for unlimited stock.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte. Passez Premium pour un stock illimité.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}throw new Error(lang==='fr'?"Limite gratuite atteinte":"Free plan limit reached");}
       // prix_achat explicitement null (et aucune estimation de lot) = prix réellement inconnu,
       // à ne jamais confondre avec 0€ (payé gratuitement) ni combler par une estimation IA.
       const b=(data.prix_achat===null&&data.prix_estime_lot==null)?null:(parseFloat(String(data.prix_achat??data.prix_estime_lot??0).replace(",","."))||0);

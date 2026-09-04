@@ -17,3 +17,30 @@ export const FREE_STOCK_LIMIT_FALLBACK = 200;
 export function compteArticlesQuota(items) {
   return (items ?? []).filter(i => i?.statut !== 'vendu' && i?.origine !== 'vinted_sync').length;
 }
+
+// ── STOCK ILLIMITÉ POUR TOUS (2026-09-04, décision Nico) ─────────────────────
+// La garde serveur est TOMBÉE : check_inventory_limit ne compte plus rien et
+// ne lève plus LIMIT_REACHED (migration 20260904120100, appliquée et vérifiée
+// en prod — le trigger enforce_inventory_limit reste attaché, la fonction fait
+// RETURN NEW). Le produit annonçait un stock illimité à plusieurs endroits ;
+// c'est désormais vrai.
+//
+// ⚠️ Le serveur seul ne suffisait PAS : la limite était aussi tenue par le
+// client, à cinq endroits qui REFUSAIENT réellement (les quatre gardes d'ajout
+// d'App.jsx, qui lèvent « Limite gratuite atteinte », et `inventoryFull` de
+// ListingPreviewScreen, qui remplace l'écran de publication). Sans cet
+// interrupteur, la migration n'aurait rien changé pour l'utilisateur.
+//
+// UN SEUL point de décision, ici. Retour arrière = STOCK_ILLIMITE à false, et
+// tout redevient exactement ce qu'il était (les limites et l'assiette de
+// comptage sont conservées intactes au-dessus) — à faire en même temps que le
+// retour arrière SQL, jamais l'un sans l'autre.
+export const STOCK_ILLIMITE = true;
+
+/** Le quota d'articles est-il atteint ? Toujours faux tant que le stock est
+ *  illimité. `limite` non finie (config illisible) = pas de refus : on ne
+ *  bloque jamais un ajout sur une lecture ratée. */
+export function quotaStockAtteint(compte, limite) {
+  if (STOCK_ILLIMITE) return false;
+  return Number.isFinite(limite) && Number.isFinite(compte) && compte >= limite;
+}

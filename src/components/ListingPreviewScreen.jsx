@@ -20,7 +20,7 @@ import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../ut
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 import { getPlatformSupport } from "../utils/platformCompat";
 import { computeRemovalInfo } from "../utils/publicationState";
-import { FREE_STOCK_LIMIT_FALLBACK } from "../utils/stockLimit";
+import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimit";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   isChildGenre, childAxesForGenre, toPlatformChildSize, lbcChildSizeCategory,
@@ -3324,8 +3324,14 @@ export default function ListingPreviewScreen({
       });
     return () => { stale = true; };
   }, [step, supabase, userId, canToggleStock, isPremium, isPro]);
+  // 2026-09-04 : passe par quotaStockAtteint — stock illimité pour tous, cet
+  // écran ne remplace donc plus jamais la publication par « Passer au niveau
+  // supérieur ». Le comptage et la lecture de config restent en place tels
+  // quels : seul le VERDICT change, et il se rétablit d'une ligne
+  // (STOCK_ILLIMITE, utils/stockLimit.js).
   const inventoryFull =
-    !isPremium && !isPro && canToggleStock && stockCount != null && stockCount >= stockLimitCfg;
+    !isPremium && !isPro && canToggleStock && stockCount != null
+    && quotaStockAtteint(stockCount, stockLimitCfg);
 
   // Mode dégradé (Phase B) : plateformes en pause (platform_health) → bandeau
   // de maintenance dans StepPublish. Le texte est platform_health.reason

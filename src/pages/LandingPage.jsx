@@ -179,7 +179,8 @@ const COPY = {
 
 /* Boîte à outils (lot 1) : 4 cartes, pas une de plus — l'ancienne grille
    « Tout le reste » (8 cartes) diluait la page et sa carte « Stock illimité »
-   contredisait le plafond Free de 200 articles (coin_config.free_stock_limit).
+   contredisait le plafond Free de 200 articles — plafond LEVÉ le 2026-09-04
+   (la contradiction n'existe plus, la carte reste retirée pour la densité).
    Chaque libellé se comprend sans connaître le produit : « Lens » ne sort
    jamais sans son sous-titre explicatif. Aucun coût en unités ici — la
    monnaie n'apparaît qu'à partir de la section Tarifs. */
@@ -219,8 +220,14 @@ const PLANS = {
     // décision Nico). Business n'a pas de carte ici (hors landing).
     // Bascule quotas (02/09) : plus une unité sur les cartes — des GESTES,
     // aux volumes lus en base (jetons {…} ci-dessous).
+    // « Stock illimité » a QUITTÉ Premium et Pro le 2026-09-04 et rejoint le
+    // Free : la garde des 200 articles est levée pour tous (migration
+    // 20260904120100), donc ce n'est plus un avantage de palier — le laisser
+    // en face du prix ferait payer ce qui est désormais offert. Il reste
+    // annoncé, à sa vraie place : dans le socle.
     free: [
       '{REPUB_FREE} republications Vinted offertes, à vie',
+      'Stock illimité',
       "Ajout d'article à la voix",
       PUBLISH_LINE.fr,
       'Calcul de marge instantané',
@@ -232,7 +239,6 @@ const PLANS = {
       // soir : un scan crée l'annonce, un seul volume, dit par la ligne
       // lp-plan__coins au-dessus des puces.)
       'Retouche IA — {RETOUCHE_PREMIUM} photos par mois',
-      'Stock illimité',
       PUBLISH_LINE.fr,
       'Import & export Excel de ton stock',
       'Support par email',
@@ -241,7 +247,6 @@ const PLANS = {
       '{REPUB_PRO} republications Vinted par mois',
       'Republication automatique — tes annonces remontent toutes seules',
       'Retouche IA — {RETOUCHE_PRO} photos par mois',
-      'Stock illimité',
       PUBLISH_LINE.fr,
       'Support prioritaire',
     ],
@@ -249,6 +254,7 @@ const PLANS = {
   en: {
     free: [
       '{REPUB_FREE} Vinted repostings included, for life',
+      'Unlimited stock',
       'Voice item adding',
       PUBLISH_LINE.en,
       'Instant margin calculator',
@@ -257,7 +263,6 @@ const PLANS = {
     premium: [
       '{REPUB_PREMIUM} Vinted repostings a month',
       'AI touch-up — {RETOUCHE_PREMIUM} photos a month',
-      'Unlimited stock',
       PUBLISH_LINE.en,
       'Excel import & export of your stock',
       'Email support',
@@ -266,7 +271,6 @@ const PLANS = {
       '{REPUB_PRO} Vinted repostings a month',
       'Automatic reposting — your listings bump themselves',
       'AI touch-up — {RETOUCHE_PRO} photos a month',
-      'Unlimited stock',
       PUBLISH_LINE.en,
       'Priority support',
     ],

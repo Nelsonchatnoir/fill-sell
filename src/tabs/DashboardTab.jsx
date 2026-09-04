@@ -3,7 +3,7 @@ import { useTranslation } from '../i18n/useTranslation';
 import { formatCurrency, fmtp, MONTHS_FR, MONTHS_EN, groupSales } from '../utils/shared';
 import { UI, Loader, SegmentedPills, StatTile } from '../components/ui';
 import { comptabilisable, comptabilisables, prixAchatNum, totalCA } from '../utils/comptabilite';
-import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota } from '../utils/stockLimit';
+import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '../utils/stockLimit';
 import { premierePhoto } from '../components/GalleryPhoto';
 
 // ── Design « Dashboard » (Claude Design, projet e47b36df — intégré 2026-07-14) ──
@@ -391,7 +391,12 @@ const DashboardTab = memo(function DashboardTab({
   // la limite (articles hérités, le trigger ne bloque que les NOUVEAUX
   // ajouts) : compteur borné à 0 et libellé dédié une fois la limite
   // atteinte (« Plus que -21 article » vu en prod le 26/07).
-  const freeActive=compteArticlesQuota(items);
+  // 2026-09-04 : stock ILLIMITÉ pour tous — les deux encarts de quota
+  // ci-dessous (« Plus que N articles » et « Limite du plan gratuit
+  // atteinte ») ne doivent plus jamais paraître. Ils restent en place, éteints
+  // par le même interrupteur que les gardes (STOCK_ILLIMITE) : le retour
+  // arrière les rallume sans rien réécrire.
+  const freeActive=STOCK_ILLIMITE?0:compteArticlesQuota(items);
   const freeLeft=Math.max(0,FREE_STOCK_LIMIT_FALLBACK-freeActive);
 
   return (
