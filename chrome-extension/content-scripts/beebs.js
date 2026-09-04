@@ -752,6 +752,32 @@ async function fillListingForm(job) {
       " Si aucune ne décrit ton article (un livre pour adulte, un objet qui ne s'adresse pas à un enfant), c'est qu'il n'a pas sa place sur Beebs :" +
       " décoche Beebs pour cet article et publie-le sur tes autres plateformes. Rien n'est retiré automatiquement.";
 
+    // ── IDENTIFIANTS OPAQUES = PAS D'OPTIONS (2026-09-04, cas Romain Colson) ──
+    // Les deux jobs Beebs du 02/09 sont partis avec, pour « Format du colis »,
+    // sept identifiants de plateforme au lieu des libellés
+    // (3yKTvfHdFZrmnGLYPzT7BH…). Le mini-éditeur les a affichés tels quels :
+    // l'utilisateur ne pouvait RIEN choisir, son job était sans issue.
+    // Un relevé qui rend des identifiants est un relevé RATÉ, pas une liste de
+    // choix : on le traite exactement comme zéro option (branche ci-dessous),
+    // ce qui donne un échec franc et une relance — jamais un choix impossible.
+    // Signature : 20-24 caractères alphanumériques sans espace mélangeant
+    // majuscules, minuscules et chiffres. Les vrais libellés Beebs
+    // (« Poids jusqu'à 1 kg max », « 3 ans (94-102 cm) ») n'y ressemblent
+    // jamais — ils portent espace, accent ou ponctuation.
+    const estIdOpaque = (v) => {
+      const s = String(v ?? "").trim();
+      return /^[A-Za-z0-9_-]{20,24}$/.test(s) && /[a-z]/.test(s) && /[A-Z]/.test(s) && /\d/.test(s);
+    };
+    const optionsIllisibles = Array.isArray(optionsChamp) && optionsChamp.length > 0
+      && optionsChamp.filter(estIdOpaque).length * 2 > optionsChamp.length;
+    if (optionsIllisibles) {
+      console.warn(
+        `[beebs] « ${firstLabel} » : le panneau a rendu des identifiants et non des libellés ` +
+        `(${optionsChamp.slice(0, 3).join(", ")}…) — relevé considéré comme RATÉ, aucun choix proposé.`
+      );
+      optionsChamp = null;
+    }
+
     // GARDE FINALE : toujours zéro option ⇒ PAS de needsUserField — un échec
     // franc et explicite vaut mieux qu'un mini-éditeur impossible. Le job
     // repart (l'app propose la relance), et le prochain passage — interstitiel
@@ -762,7 +788,10 @@ async function fillListingForm(job) {
         needsUser: true,
         error:
           `Beebs exige des champs encore vides (${unfilledRequired.join(", ")}) et les valeurs autorisées de ` +
-          `« ${firstLabel} » n'ont pas pu être relevées (panneau illisible même après purge de l'interstitiel). ` +
+          `« ${firstLabel} » n'ont pas pu être relevées ` +
+          (optionsIllisibles
+            ? "(le panneau a rendu les identifiants internes de Beebs au lieu des libellés). "
+            : "(panneau illisible même après purge de l'interstitiel). ") +
           `Aucun choix à proposer ⇒ pas de mini-éditeur (un needsUser sans options est inutilisable). ` +
           `Relancer la publication — observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}.` +
           noteAge,

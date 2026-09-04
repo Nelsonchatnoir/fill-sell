@@ -670,6 +670,38 @@ const STOCK_TOP_CSS = `
 //   · job annulé/supprimé entre-temps → 0 ligne, message doux, jamais d'écrasement ;
 //   · leçon RLS (profiles 2026-07-06) : sans .select(), un update bloqué par
 //     la RLS échoue en silence.
+// ── IDENTIFIANTS OPAQUES : une liste d'IDs N'EST PAS une liste de choix ─────
+// (2026-09-04, cas Romain Colson — jobs Beebs du 02/09) Le mini-éditeur a
+// proposé « Format du colis » avec SEPT identifiants illisibles
+// (3yKTvfHdFZrmnGLYPzT7BH, 5i5zYtqOJt3Ji8EEtKhvP0, …) : l'utilisateur ne peut
+// RIEN choisir, et son job reste bloqué même s'il veut le débloquer. Le relevé
+// DOM du panneau Beebs a rendu les identifiants de la plateforme au lieu des
+// libellés — sur ce champ précis, alors que « Taille » sort correctement sur
+// un autre compte la même semaine.
+// RÈGLE : on n'affiche JAMAIS un choix que l'utilisateur ne peut pas faire.
+// Une liste inexploitable est traitée comme une liste ABSENTE — elle retombe
+// donc sur le chemin « Valeurs indisponibles », qui dit la vérité et offre la
+// relance. Aucune donnée n'est réécrite en base : le filtre est à la LECTURE,
+// donc les jobs déjà bloqués redeviennent traitables dès cette version.
+// Signature d'un identifiant Beebs/Sanity : 20 à 24 caractères, alphanumérique
+// sans espace, MÉLANGEANT majuscules et minuscules. Un vrai libellé porte un
+// espace, un accent, une unité ou une ponctuation (« Poids jusqu'à 1 kg max »,
+// « 3 ans (94-102 cm) ») — aucun ne peut être pris pour un identifiant.
+const RE_ID_OPAQUE = /^[A-Za-z0-9_-]{20,24}$/;
+function ressembleAIdentifiantOpaque(v) {
+  const s = String(v ?? "").trim();
+  if (!RE_ID_OPAQUE.test(s)) return false;
+  return /[a-z]/.test(s) && /[A-Z]/.test(s) && /\d/.test(s);
+}
+// La liste est jugée inexploitable dès que la MAJORITÉ de ses valeurs sont des
+// identifiants : un libellé isolé au milieu d'IDs ne fait pas un choix utile,
+// et une liste normale n'en contient jamais.
+function listeDeChoixExploitable(vals) {
+  if (!Array.isArray(vals) || !vals.length) return false;
+  const ids = vals.filter(ressembleAIdentifiantOpaque).length;
+  return ids * 2 <= vals.length;
+}
+
 const NU_T = { border:"#E7E3D8", chip:"#F2F0E9", ink:"#10201B", mute:"#8A8578" };
 const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects", beebs:"beebsAspects", ebay:"ebayAspects" };
 
@@ -805,9 +837,11 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
 
   if (!f) return null;
 
-  const listeRelevee = Array.isArray(f.allowed_values) && f.allowed_values.length
-    ? f.allowed_values
-    : (ebayAllowed ?? warningsAllowed ?? catalogueAllowed);
+  // Chaque source est filtrée par listeDeChoixExploitable : une liste
+  // d'identifiants opaques compte comme ABSENTE, et on passe à la source
+  // suivante (catalogue, warnings…) au lieu d'afficher l'illisible.
+  const listeRelevee = [f.allowed_values, ebayAllowed, warningsAllowed, catalogueAllowed]
+    .find(listeDeChoixExploitable) ?? null;
   // Le pré-rempli LBC passe en TÊTE des suggestions (c'est la déduction de la
   // plateforme pour cet article précis), la liste relevée suit, dédupliquée.
   const allowed = prefillAllowed
