@@ -1108,6 +1108,9 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // avant la catégorie dans fillListingForm, la suggestion est donc disponible au
 // bon moment. EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE
 // épinglée sur cette constante.
+// 2026-09-04T15:00:00Z = bump manifest 0.6.17 → 0.6.18 (paquet CWS). La 0.6.17
+// publiée est bâtie sur 01a3627 ; tout ce qui a été poussé depuis porte une
+// étiquette neuve. Committé GIT_COMMITTER_DATE épinglée sur cette constante.
 export const EXTENSION_LAST_COMMIT = '2026-09-04T14:00:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
