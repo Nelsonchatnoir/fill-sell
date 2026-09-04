@@ -1138,7 +1138,20 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Committé GIT_COMMITTER_DATE épinglée sur cette constante.
 // EXTENSION_MIN_BUILD inchangé : il ne se promeut qu'APRÈS acceptation du
 // paquet par Google.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T19:09:13Z';
+// 2026-09-04T20:36:00Z = refonte lisibilité du bandeau d'alerte du popup :
+// « N annonces attendent une action » au lieu de « N opérations attendent ta
+// décision », et la phrase nomme désormais l'onglet Stock IA. TEXTE SEUL —
+// aucune condition, aucun compteur, aucun seuil touché.
+// Bumpé DANS LE MÊME COMMIT que le changement sous chrome-extension/, comme
+// la consigne en tête de ce fichier l'exige (les trois oublis précédents sont
+// documentés ci-dessus). Committé GIT_COMMITTER_DATE épinglée sur cette
+// constante. EXTENSION_MIN_BUILD inchangé.
+// ⚠️ Le zip 0.6.18 déjà empaqueté (BUILD_ID 2026-09-04T20:02:54Z) est
+// ANTÉRIEUR à cette valeur : il ne contient donc PAS ce texte, et la garde de
+// package-extension le refusera désormais. C'est voulu et c'est exact — il
+// faudra re-packager avant de téléverser, ou téléverser en sachant que le
+// popup gardera l'ancien libellé.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T20:36:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

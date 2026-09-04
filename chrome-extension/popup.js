@@ -555,10 +555,21 @@ function renderAlerts() {
     // tel quel s'il est propre, jamais un code technique.
     const brut = String(state.besoinGeste[0]?.error ?? "").trim();
     const propre = brut && brut.length <= 220 && !/[{}<>]|https?:\/\//.test(brut);
+    // ── Dire QUOI, OÙ, et QUEL GESTE (lisibilité 2026-09-04) ────────────────
+    // Avant : « N opérations attendent ta décision » + « Ouvre FillSell pour
+    // voir ce qui bloque et relancer ». Trois défauts relevés sur écran réel :
+    // « opération » n'est pas un mot de vendeur (ce sont des ANNONCES), « ta
+    // décision » ne dit pas laquelle, et rien n'indiquait OÙ regarder — l'app
+    // a cinq onglets. On nomme donc l'onglet exact.
+    // Le motif écrit par l'extension reste en tête quand il est propre : c'est
+    // le QUOI. La phrase de localisation le suit toujours, y compris dans ce
+    // cas — sans elle, savoir ce qui bloque ne dit toujours pas où aller.
+    // Aucune condition touchée : `n`, `propre` et `brut` sont inchangés.
     html +=
       `<div class="bloc alerte">` +
-      `<div class="bloc-t">⚠️ ${n} opération${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ta décision</div>` +
-      `<div class="bloc-s">${propre ? escapeHtml(brut) : "Ouvre FillSell pour voir ce qui bloque et relancer."}</div>` +
+      `<div class="bloc-t">⚠️ ${n} annonce${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} une action</div>` +
+      `<div class="bloc-s">${propre ? escapeHtml(brut) + " " : ""}` +
+      `Ouvre FillSell, onglet Stock IA : la fiche de l'annonce dit ce qui manque et porte le bouton pour relancer.</div>` +
       `</div>`;
   }
   els.alerts.innerHTML = html;

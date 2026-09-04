@@ -1536,6 +1536,9 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // mort. Le refus n'écrit rien : consigne « change de compte dans Chrome ».
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [boutiqueRefusee, setBoutiqueRefusee] = useState(false);
+  // Repli des détails de synchro — FERMÉ PAR DÉFAUT (refonte lisibilité
+  // 2026-09-04). État d'affichage pur : il ne conditionne aucun calcul.
+  const [detailsOuverts, setDetailsOuverts] = useState(false);
   // La carte vit en tête de liste (2026-08-05) : le contrat complet est replié
   // derrière « En savoir plus » pour ne pas pousser la liste hors écran.
   const [infosDepliees, setInfosDepliees] = useState(false);
@@ -1866,19 +1869,19 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryProchaineA, user?.id]);
   const enCadence = !enCours && cadenceFinA > Date.now();
+  // ── LIGNE 2 : CE QU'ON PEUT FAIRE (refonte lisibilité 2026-09-04) ──────────
+  // Ne dit plus QUE ça. Le « Dressing synchronisé il y a N min » qui ouvrait
+  // cette phrase répétait mot pour mot la ligne d'état juste au-dessus : c'est
+  // le doublon le plus visible de la carte, supprimé ici.
+  // Le « ~ » part aussi : il ne veut rien dire pour qui lit, et la minute
+  // n'est de toute façon jamais promise à la seconde près.
+  // Ton neutre : c'est une cadence, pas une faute.
   const cadenceTexte = (() => {
     if (!enCadence) return null;
-    const depuisMin = Math.max(0, Math.round((Date.now() - finDernierDone) / 60000));
     const dansMin = Math.max(1, Math.ceil((cadenceFinA - Date.now()) / 60000));
-    // Ton neutre : c'est une cadence, pas une faute.
-    if (depuisMin < 1) {
-      return fr
-        ? `Dressing synchronisé à l'instant — tu pourras actualiser dans ~${dansMin} min.`
-        : `Closet synced just now — you can refresh in ~${dansMin} min.`;
-    }
     return fr
-      ? `Dressing synchronisé il y a ${depuisMin} min — tu pourras actualiser dans ~${dansMin} min.`
-      : `Closet synced ${depuisMin} min ago — you can refresh in ~${dansMin} min.`;
+      ? `Tu pourras actualiser dans ${dansMin} min.`
+      : `You can refresh in ${dansMin} min.`;
   })();
 
   // ── Synchro impossible : UN SEUL message (refonte 2026-08-09) ─────────────
@@ -1941,17 +1944,34 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // afficherait du GMT), ni forcer un timeZone en dur.
   const heureLocale = (ms) => new Date(ms).toLocaleTimeString(fr ? 'fr-FR' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
   const jourLocal = (ms) => new Date(ms).toLocaleDateString(fr ? 'fr-FR' : 'en-GB', { day: '2-digit', month: '2-digit' });
+  // ── LIGNE 1 : L'ÉTAT, en une phrase (refonte lisibilité 2026-09-04) ────────
+  // Relevé sur écran réel (ornellaracano) : CINQ lignes empilées sous le
+  // bouton, dont deux disaient « synchronisé » — une fois ici, une fois dans
+  // la cadence juste en dessous. Une information ne s'écrit qu'UNE fois.
+  // Cette ligne-ci porte l'état et rien d'autre : QUELLE boutique, DEPUIS
+  // QUAND. Le « depuis quand » remplace l'heure absolue : « il y a 10 min »
+  // se lit sans calcul mental, « à 22:14 » demandait de savoir l'heure qu'il
+  // est. La cadence en dessous ne dit plus que ce qu'on peut FAIRE.
+  // Le rappel « automatique toutes les 24 h » descend sous le repli : c'est
+  // une promesse de fond, pas l'état du moment.
+  const depuisTexte = (ms) => {
+    const min = Math.max(0, Math.round((Date.now() - ms) / 60000));
+    if (min < 1) return fr ? "à l'instant" : 'just now';
+    if (min < 60) return fr ? `il y a ${min} min` : `${min} min ago`;
+    const jours = Math.round(
+      (new Date().setHours(0, 0, 0, 0) - new Date(ms).setHours(0, 0, 0, 0)) / 86400000
+    );
+    if (jours <= 0) {
+      const h = Math.floor(min / 60);
+      return fr ? `il y a ${h} h` : `${h} h ago`;
+    }
+    if (jours === 1) return fr ? `hier à ${heureLocale(ms)}` : `yesterday at ${heureLocale(ms)}`;
+    return fr ? `le ${jourLocal(ms)}` : `on ${jourLocal(ms)}`;
+  };
   const derniereSyncTexte = (() => {
     const fini = derniereReussie?.finished_at ? Date.parse(derniereReussie.finished_at) : NaN;
     if (!Number.isFinite(fini)) return null;
-    const jours = Math.round(
-      (new Date().setHours(0, 0, 0, 0) - new Date(fini).setHours(0, 0, 0, 0)) / 86400000
-    );
-    const quand = jours <= 0
-      ? (fr ? `à ${heureLocale(fini)}` : `at ${heureLocale(fini)}`)
-      : jours === 1
-        ? (fr ? `hier à ${heureLocale(fini)}` : `yesterday at ${heureLocale(fini)}`)
-        : (fr ? `le ${jourLocal(fini)} à ${heureLocale(fini)}` : `on ${jourLocal(fini)} at ${heureLocale(fini)}`);
+    const quand = depuisTexte(fini);
     // SYNC MONO-COMPTE (27/08) : le pseudo Vinted du dernier run réussi, quand
     // la trace d'identité l'a porté. Runs anciens (trace absente) → NULL → on
     // n'affiche RIEN de plus (jamais de libellé vide, jamais « inconnu »).
@@ -1959,10 +1979,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       ? derniereReussie.vinted_login.trim() : null;
     if (login) {
       return fr
-        ? `Dressing synchronisé : @${login} · dernière synchro ${quand}`
-        : `Wardrobe synced: @${login} · last sync ${quand}`;
+        ? `Dressing @${login} synchronisé ${quand}.`
+        : `@${login} wardrobe synced ${quand}.`;
     }
-    return fr ? `Dernière synchro ${quand}` : `Last sync ${quand}`;
+    return fr ? `Dressing synchronisé ${quand}.` : `Wardrobe synced ${quand}.`;
   })();
   // Le rappel « c'est automatique », lui, garde ses conditions : il PROMET
   // quelque chose, contrairement à l'heure ci-dessus qui ne fait que constater.
@@ -1972,11 +1992,12 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       ? 'automatique toutes les 24 h quand Chrome est ouvert'
       : 'automatic every 24 h while Chrome is open';
   })();
-  const ligneSync = derniereSyncTexte && autoTexte
-    ? `${derniereSyncTexte} · ${autoTexte}`
-    : derniereSyncTexte
-      || (autoTexte && (fr ? 'Synchro automatique toutes les 24 h quand Chrome est ouvert.' : 'Automatic sync every 24 h while Chrome is open.'))
-      || null;
+  // `autoTexte` n'est plus accolé à l'état (il descend sous le repli). Le
+  // REPLI de secours est conservé tel quel : quand aucune synchro n'a encore
+  // abouti, cette ligne reste le seul endroit qui annonce l'automatique.
+  const ligneSync = derniereSyncTexte
+    || (autoTexte && (fr ? 'Synchro automatique toutes les 24 h quand Chrome est ouvert.' : 'Automatic sync every 24 h while Chrome is open.'))
+    || null;
 
   const progression = (() => {
     if (attente) return fr ? 'Démarrage…' : 'Starting…';
@@ -2251,6 +2272,17 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // et il est remis à null par le chemin d'attente lui-même.
   const demandeEnVol = enCours || envoi || attenteOccupee || enAttenteDistante;
   const avis = message || ((blocage || demandeEnVol) ? null : bilan);
+  // ── CE QUI PASSE SOUS LE REPLI (refonte lisibilité 2026-09-04) ─────────────
+  // Le compte rendu chiffré du dernier passage n'est PAS l'état courant : il
+  // dit ce qui s'est passé, pas où on en est. Il descend donc sous le repli,
+  // avec le rappel de l'automatique, la liste des boutiques et l'accroche
+  // cross-post. Rien n'est supprimé, tout reste à un tap.
+  // ⛔ SEUL LE BILAN VERT est repliable. Un échec, un 403, une décision de
+  // boutique ou le retour d'un clic (message) restent EN VUE, toujours : on ne
+  // cache jamais un problème derrière un repli. Même condition de couleur que
+  // `accrocheVisible`, pour que les deux descendent ensemble.
+  const bilanRepliable = !!(avis && avis === bilan && bilan?.ton === 'vert');
+  const avisEnVue = bilanRepliable ? null : avis;
   // L'accroche cross-post (bouton « Ces annonces ne vivent que sur Vinted… »)
   // n'apparaît que sous le bilan VERT : même condition pour le bouton et pour
   // le repli du bilan en ligne grise (04/09) — une seule source de vérité.
@@ -2475,24 +2507,13 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         </div>
       )}
 
-      {avis&&(()=>{
-        // ── UN SEUL ENCADRÉ À LA FOIS (04/09, constat Nico sur écran réel) :
-        // quand l'accroche cross-post s'affiche (bilan VERT, conditions
-        // identiques plus bas), le bilan ne double pas l'encadré — son fait
-        // (« N importés, M mis à jour ») descend en ligne grise, sous l'heure
-        // de synchro, sans le préfixe « Dressing synchronisé » que la ligne
-        // du dessus porte déjà. Rien n'est perdu : les chiffres restent,
-        // l'accroche garde seule le poids visuel.
-        if(accrocheVisible){
-          const fait=String(avis.texte).replace(/^(Dressing synchronisé|Closet synced) — /,'');
-          return <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",marginTop:-4}}>{fait}</div>;
-        }
-        const c=AVIS_COULEURS[avis.ton]||AVIS_COULEURS.orange;
+      {avisEnVue&&(()=>{
+        const c=AVIS_COULEURS[avisEnVue.ton]||AVIS_COULEURS.orange;
         // whiteSpace pre-line : l'encart 403 est le seul texte à retours à la
         // ligne (étapes numérotées) — sans effet sur les autres avis.
         return (
           <div style={{background:c.bg,border:`1px solid ${c.bord}`,borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:c.texte,whiteSpace:'pre-line'}}>
-            {avis.texte}
+            {avisEnVue.texte}
           </div>
         );
       })()}
@@ -2528,50 +2549,76 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         )
       )}
 
-      {/* ── Tes boutiques (multi-boutiques confirmées uniquement) ────────────
-          La boutique ACTIVE est celle connectée dans Chrome — la ligne de
-          dernière synchro au-dessus la nomme déjà (« Dressing synchronisé :
-          @x »). Ici : la liste complète, et le rappel du geste de bascule. */}
-      {boutiquesVinted.length>=2&&(
-        <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>
-          {fr?"Tes boutiques : ":"Your shops: "}
-          {boutiquesVinted.map(b=>`@${b.login??b.user_id}`).join(" · ")}
-          {fr
-            ?" — pour changer de boutique, connecte-toi à l'autre compte sur vinted.fr dans Chrome puis actualise."
-            :" — to switch shops, sign in to the other account on vinted.fr in Chrome, then refresh."}
+      {/* ── REPLI « Détails » — FERMÉ PAR DÉFAUT (lisibilité 2026-09-04) ─────
+          Trois blocs qui empilaient du texte sous les deux lignes utiles
+          descendent ici, INCHANGÉS quant à leurs conditions d'affichage :
+            · le compte rendu chiffré du dernier passage (bilan VERT) ;
+            · le rappel « automatique toutes les 24 h » ;
+            · la liste des boutiques et le geste pour en changer ;
+            · l'accroche cross-post.
+          Rien n'est supprimé : tout est à un tap. Le repli lui-même n'existe
+          que s'il a quelque chose à montrer. */}
+      {(bilanRepliable||autoTexte||boutiquesVinted.length>=2||accrocheVisible)&&(
+        <div>
+          <button
+            onClick={()=>setDetailsOuverts(v=>!v)}
+            aria-expanded={detailsOuverts}
+            style={{display:"flex",alignItems:"center",gap:4,width:"100%",textAlign:"left",background:"none",border:"none",padding:"2px 0",cursor:"pointer",fontFamily:"inherit",fontSize:11.5,fontWeight:700,color:"#8A8578"}}
+          >
+            <ChevronRight size={13} style={{flexShrink:0,transition:"transform .15s",transform:detailsOuverts?"rotate(90deg)":"none"}}/>
+            {fr?"Détails":"Details"}
+          </button>
+          {detailsOuverts&&(
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
+              {/* Le fait chiffré, sans le préfixe « Dressing synchronisé » que
+                  la ligne d'état porte déjà. */}
+              {bilanRepliable&&(
+                <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>
+                  {String(bilan.texte).replace(/^(Dressing synchronisé|Closet synced) — /,'')}
+                </div>
+              )}
+              {autoTexte&&(
+                <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>
+                  {fr?"Synchro automatique toutes les 24 h quand Chrome est ouvert."
+                     :"Automatic sync every 24 h while Chrome is open."}
+                </div>
+              )}
+              {/* Tes boutiques (multi-boutiques confirmées uniquement). La
+                  boutique ACTIVE est nommée par la ligne d'état ; ici, la
+                  liste complète et le geste de bascule — phrases courtes,
+                  plus de tiret d'incise. */}
+              {boutiquesVinted.length>=2&&(
+                <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>
+                  {fr?"Tes boutiques : ":"Your shops: "}
+                  {boutiquesVinted.map(b=>`@${b.login??b.user_id}`).join(" · ")}
+                  {fr
+                    ?". Pour changer de boutique, connecte-toi à l'autre compte sur vinted.fr dans Chrome, puis actualise."
+                    :". To switch shops, sign in to the other account on vinted.fr in Chrome, then refresh."}
+                </div>
+              )}
+              {accrocheVisible&&(
+                <button
+                  onClick={onVoirArticles}
+                  style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",border:"1px solid rgba(13,148,136,0.2)",background:"#F0FDFB",color:"#1B6E62",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}
+                >
+                  <span style={{display:"inline-flex",gap:3,flexShrink:0}}>
+                    {["leboncoin","ebay","beebs"].map(p=>(
+                      <span key={p} style={{display:"inline-flex",borderRadius:6,overflow:"hidden",boxShadow:"0 1px 3px rgba(16,32,27,0.12)"}}>
+                        <PlatformLogo platform={p} size={16}/>
+                      </span>
+                    ))}
+                  </span>
+                  <span style={{flex:1,minWidth:0}}>
+                    {fr
+                      ?"Ces annonces ne vivent que sur Vinted. Publie-les aussi sur Leboncoin, eBay et Beebs."
+                      :"These listings only live on Vinted. Publish them on Leboncoin, eBay and Beebs too."}
+                  </span>
+                  <ChevronRight size={15} style={{flexShrink:0}}/>
+                </button>
+              )}
+            </div>
+          )}
         </div>
-      )}
-
-      {/* ── Le bilan devient une ÉTAPE (2026-09-01, audit onboarding) ────────
-          « Dressing synchronisé — N importés » se lisait comme un point
-          final : 64 % des comptes synchronisés depuis le 01/08 n'ont jamais
-          tenté une publication hors Vinted. Sous le bilan VERT uniquement —
-          jamais sous une erreur, un blocage, une sync en cours ou le retour
-          d'un clic (avis===bilan garantit tout ça d'un coup) — la même carte
-          dit la suite. AFFICHAGE + NAVIGATION seulement : aucun job créé,
-          aucune sélection automatique ; le tap fait défiler jusqu'aux
-          articles, où vit le bouton « Publier » de chacun (le flux de
-          publication existant, inchangé). Même patron que la ligne « action
-          requise » du bloc republication. */}
-      {accrocheVisible&&(
-        <button
-          onClick={onVoirArticles}
-          style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",border:"1px solid rgba(13,148,136,0.2)",background:"#F0FDFB",color:"#1B6E62",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}
-        >
-          <span style={{display:"inline-flex",gap:3,flexShrink:0}}>
-            {["leboncoin","ebay","beebs"].map(p=>(
-              <span key={p} style={{display:"inline-flex",borderRadius:6,overflow:"hidden",boxShadow:"0 1px 3px rgba(16,32,27,0.12)"}}>
-                <PlatformLogo platform={p} size={16}/>
-              </span>
-            ))}
-          </span>
-          <span style={{flex:1,minWidth:0}}>
-            {fr
-              ?"Ces annonces ne vivent que sur Vinted — publie-les aussi sur Leboncoin, eBay et Beebs."
-              :"These listings only live on Vinted — publish them on Leboncoin, eBay and Beebs too."}
-          </span>
-          <ChevronRight size={15} style={{flexShrink:0}}/>
-        </button>
       )}
 
       {/* Synchro impossible : LA phrase, la même partout — ordinateur,
