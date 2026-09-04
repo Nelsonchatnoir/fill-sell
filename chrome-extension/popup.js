@@ -7,7 +7,11 @@
 // La publication réelle passe par le background (POLL_NOW aujourd'hui,
 // PUBLISH_NOW ciblé au commit suivant) — jamais réécrite ici.
 
-const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL, LAST_POLL, RECENT_RESULTS } = FILLSELL_CONFIG.STORAGE_KEYS;
+const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL, LAST_POLL, RECENT_RESULTS, KEEP_AWAKE } = FILLSELL_CONFIG.STORAGE_KEYS;
+// Le marqueur d'éveil est PERSISTÉ (le service worker MV3 meurt sans arrêt) :
+// il peut donc survivre à un Chrome fermé en plein lot. On ne l'affiche que
+// s'il a été rafraîchi récemment — sinon il ne prouve plus rien.
+const EVEIL_FRAICHEUR_MS = 5 * 60 * 1000;
 
 // Plateformes affichées, de haut en bas. `supported:false` => "Bientôt"
 // (ligne atténuée, non sélectionnable). Beebs passé à true le 2026-07-11 :
@@ -36,6 +40,7 @@ const els = {
   queueLabel: document.getElementById("queue-label"),
   history: document.getElementById("history"),
   life: document.getElementById("life"),
+  awake: document.getElementById("awake"),
   alerts: document.getElementById("alerts"),
   now: document.getElementById("now"),
   queueExtra: document.getElementById("queue-extra"),
@@ -56,6 +61,7 @@ const state = {
   besoinGeste: [],      // jobs 'needs_user' — ce qui attend une décision
   sync: null,           // dernier run vinted_sync_runs (état + progression)
   sessions: null,       // profiles.extension_sessions (relevé de l'extension)
+  eveil: null,          // épisode de maintien en éveil en cours, ou null
   dernierPoll: null,    // chrome.storage.local LAST_POLL
   prochainPoll: null,   // chrome.alarms — échéance réelle, pas une estimation
 };
@@ -202,6 +208,14 @@ async function load() {
       const al = await chrome.alarms.get("fillsell-poll-jobs");
       state.prochainPoll = al?.scheduledTime ?? null;
     } catch { state.prochainPoll = null; }
+    // Maintien en éveil en cours (2026-09-04) — lecture SEULE d'un marqueur
+    // écrit par le background. Le popup ne demande ni ne relâche rien.
+    try {
+      const ka = await chrome.storage.local.get(KEEP_AWAKE);
+      const ep = ka?.[KEEP_AWAKE] ?? null;
+      const frais = ep?.maj && Date.now() - Date.parse(ep.maj) < EVEIL_FRAICHEUR_MS;
+      state.eveil = frais ? ep : null;
+    } catch { state.eveil = null; }
     state.annonce = firstAnnonce(state.jobs);
     // Sélection par défaut : toutes les plateformes supportées présentes dans
     // l'annonce (session plateforme supposée ouverte — détection réactive).
@@ -503,6 +517,19 @@ function renderLife() {
   els.life.classList.remove("hidden");
 }
 
+// ── Maintien en éveil (2026-09-04) ──────────────────────────────────────────
+// Une ligne, présente UNIQUEMENT tant que le maintien est actif. Personne ne
+// doit découvrir après coup que son ordinateur n'a pas dormi — et personne ne
+// doit avoir à chercher pourquoi : c'est dit là où l'extension dit déjà ce
+// qu'elle fait. Aucun réglage à créer : ça s'arrête tout seul avec la file.
+function renderAwake() {
+  if (!state.eveil) { els.awake.classList.add("hidden"); return; }
+  els.awake.innerHTML =
+    '<span class="dot awake"></span>' +
+    "<span>FillSell garde ton ordinateur éveillé pendant la publication</span>";
+  els.awake.classList.remove("hidden");
+}
+
 function renderAlerts() {
   const n = state.besoinGeste.length;
   // ── Bascule de compte FillSell en attente (2026-09-03, incident Nadège) ────
@@ -653,6 +680,7 @@ function renderDiag() {
 function render() {
   renderAccount();
   renderLife();
+  renderAwake();
   renderAlerts();
   renderNow();
   renderListing();

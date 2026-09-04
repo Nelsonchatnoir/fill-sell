@@ -1111,7 +1111,19 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // 2026-09-04T15:00:00Z = bump manifest 0.6.17 → 0.6.18 (paquet CWS). La 0.6.17
 // publiée est bâtie sur 01a3627 ; tout ce qui a été poussé depuis porte une
 // étiquette neuve. Committé GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T14:00:00Z';
+// 2026-09-04T16:35:00Z = chrome.power : la machine ne s'endort plus tant qu'il
+// reste du travail dans la file (niveau "system", jamais "display"), + le
+// correctif taille eBay de b6c0ee1.
+// ⚠️ CETTE VALEUR RATTRAPE DEUX OUBLIS, pas un. La constante était restée à
+// 2026-09-04T14:00:00Z alors que DEUX commits extension ont suivi : 4d41219
+// (bump 0.6.18 — il a écrit la ligne de commentaire « 15:00:00Z » ci-dessus
+// SANS toucher la constante) puis b6c0ee1 (taille eBay). Conséquence
+// mesurable : le zip bâti à 14:00:11Z passait la garde de package-extension
+// alors qu'il lui manquait ces deux commits — la garde ne peut pas voir ce
+// qu'on ne lui déclare pas. Committé GIT_COMMITTER_DATE épinglée sur cette
+// constante. EXTENSION_MIN_BUILD inchangé : il ne se promeut qu'APRÈS
+// acceptation du paquet par Google.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T16:35:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

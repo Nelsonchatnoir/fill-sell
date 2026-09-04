@@ -63,5 +63,13 @@ const FILLSELL_CONFIG = {
     // popup (« Basculer l'extension sur ce compte ? »). Jamais utilisée sans
     // clic.
     PENDING_SWITCH: "fillsell_pending_switch",
+    // ── Épisode de maintien en éveil (2026-09-04) ───────────────────────────
+    // { depuis: iso, maj: iso, demarrage_trace: bool } — présent UNIQUEMENT
+    // pendant qu'un lot est en cours. PERSISTÉ parce que le service worker
+    // MV3 redémarre en permanence : sans cet état hors mémoire, chaque
+    // redémarrage rouvrirait un « épisode » neuf et écrirait une trace pour
+    // rien. Lu par le popup pour afficher la ligne « ordinateur éveillé »,
+    // écrit par le background seul. Effacé à toute relâche réelle.
+    KEEP_AWAKE: "fillsell_keep_awake",
   },
 };

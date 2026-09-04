@@ -39,6 +39,201 @@ console.log(
   `[background.js] build (desc) ${FILLSELL_BUILD}`
 );
 
+// ── MAINTIEN EN ÉVEIL PENDANT LE TRAVAIL (2026-09-04) ────────────────────────
+// Constat du jour, sur plusieurs comptes : l'utilisateur lance un lot et
+// s'éloigne, la machine se met en veille, l'extension cesse d'écrire, et le job
+// pris en charge reste 'processing' jusqu'à ce que le repêchage le relâche.
+// chrome.power.requestKeepAwake("system") empêche cette veille automatique.
+//
+// CE QUE CE LOT N'EST PAS : il ne touche NI la machine à étapes des jobs, NI le
+// poll, NI aucun verrou. Aucun timeout, aucun chien de garde, aucune reprise —
+// c'est le lot service worker refusé le 03/09, il reste dehors. Ici, un pur
+// effet de bord observateur, branché sur une file qu'on lit déjà.
+//
+// RÈGLES, dans l'ordre d'importance :
+//  1. LE TRAVAIL NE DÉPEND JAMAIS DE L'ÉVEIL. API absente, permission refusée,
+//     appel qui lève : on trace 'indisponible' et le flux continue exactement
+//     comme avant. Rien ici ne peut faire échouer un job.
+//  2. NIVEAU "system", JAMAIS "display". On empêche la machine de dormir, on
+//     n'allume pas l'écran de quelqu'un.
+//  3. BORNÉE, JAMAIS PERMANENTE. Demandée seulement s'il y a du travail dans la
+//     file, relâchée dès qu'elle est vide, avec trois filets (plafond absolu,
+//     démarrage du service worker, session perdue).
+//
+// ÉPISODE : un lot = un épisode, dont l'état vit dans chrome.storage
+// (STORAGE_KEYS.KEEP_AWAKE) et NON en mémoire. Raison mesurée : un service
+// worker MV3 est tué après ~30 s d'inactivité et repart à chaque alarme (2 min).
+// Un état en mémoire seule ferait donc croire à un nouvel épisode toutes les
+// deux minutes — et écrirait deux lignes de trace à chaque fois pendant qu'un
+// lot espacé attend. L'épisode persiste, la demande se ré-arme en silence.
+const EVEIL_PLAFOND_MS = 4 * 60 * 60 * 1000;
+const EVEIL_KEY = FILLSELL_CONFIG.STORAGE_KEYS.KEEP_AWAKE;
+
+let eveilArme = false;          // CE service worker-ci a demandé et pas relâché
+let eveilPlafondAtteint = false; // plafond franchi : plus de demande jusqu'à file vide
+let eveilIndispoTrace = false;   // 'indisponible' : une fois par service worker, pas par poll
+let eveilTracesEnAttente = [];   // traces sans token (démarrage), vidées au poll
+
+const eveilApiDispo = () =>
+  typeof chrome !== "undefined" && !!chrome.power
+  && typeof chrome.power.requestKeepAwake === "function"
+  && typeof chrome.power.releaseKeepAwake === "function";
+
+async function lireEpisodeEveil() {
+  try {
+    const st = await chrome.storage.local.get(EVEIL_KEY);
+    return st?.[EVEIL_KEY] ?? null;
+  } catch { return null; }
+}
+
+async function ecrireEpisodeEveil(ep) {
+  try {
+    if (ep) await chrome.storage.local.set({ [EVEIL_KEY]: ep });
+    else await chrome.storage.local.remove(EVEIL_KEY);
+  } catch { /* storage indisponible : l'éveil n'est pas un état critique */ }
+}
+
+const eveilDureeS = (ep) =>
+  ep?.depuis ? Math.max(0, Math.round((Date.now() - Date.parse(ep.depuis)) / 1000)) : 0;
+
+// Demande — idempotente à deux niveaux : `eveilArme` empêche de rappeler
+// requestKeepAwake dans CE service worker, l'épisode persisté empêche de
+// re-tracer une demande déjà ouverte après un redémarrage.
+async function demanderEveil(jobsEnFile, accessToken) {
+  if (eveilPlafondAtteint) return;
+  if (!eveilApiDispo()) {
+    tracerEveilIndisponible(jobsEnFile, accessToken);
+    return;
+  }
+  if (!eveilArme) {
+    try {
+      // ⚠️ "system" et jamais "display" — cf. règle 2 du bandeau.
+      chrome.power.requestKeepAwake("system");
+    } catch (e) {
+      console.warn("[background] keep-awake refusé (sans conséquence sur les jobs) :", String(e?.message ?? e));
+      tracerEveilIndisponible(jobsEnFile, accessToken);
+      return;
+    }
+    eveilArme = true;
+  }
+  const maintenant = new Date().toISOString();
+  const ep = await lireEpisodeEveil();
+  if (ep?.depuis) {
+    // Épisode déjà ouvert (lot en cours) : ré-armement MUET, on rafraîchit
+    // seulement la date qui prouve au popup que ça tourne encore.
+    await ecrireEpisodeEveil({ ...ep, maj: maintenant });
+    return;
+  }
+  await ecrireEpisodeEveil({ depuis: maintenant, maj: maintenant, demarrage_trace: false });
+  console.log(`[background] éveil système demandé (${jobsEnFile} job(s) en file)`);
+  tracerEveil("demande", jobsEnFile, 0, accessToken);
+}
+
+// Relâche — idempotente : rien d'armé et aucun épisode ouvert = on ne relâche
+// pas deux fois et on n'écrit pas de trace.
+async function relacherEveil(action, jobsEnFile, accessToken) {
+  const ep = await lireEpisodeEveil();
+  if (!eveilArme && !ep) return;
+  try { if (eveilApiDispo()) chrome.power.releaseKeepAwake(); } catch { /* jamais bloquant */ }
+  eveilArme = false;
+  const duree = eveilDureeS(ep);
+  await ecrireEpisodeEveil(null);
+  console.log(`[background] éveil système relâché (${action}, ${duree} s)`);
+  tracerEveil(action, jobsEnFile, duree, accessToken);
+}
+
+// UN SEUL point de décision, appelé par le poll avec la file qu'il vient de
+// lire. Le plafond est constaté ICI, au passage du poll — pas par un timer :
+// aucun minuteur n'est introduit par ce lot.
+async function arbitrerEveil(jobsEnFile, accessToken) {
+  const ep = await lireEpisodeEveil();
+  if (ep?.depuis && Date.now() - Date.parse(ep.depuis) > EVEIL_PLAFOND_MS) {
+    // Filet 1 — PLAFOND ABSOLU : au-delà, on relâche même si la file n'est pas
+    // vide. Une file qui ne se vide pas est un symptôme, pas une raison de
+    // garder la machine de quelqu'un éveillée indéfiniment.
+    eveilPlafondAtteint = true;
+    await relacherEveil("relache_plafond", jobsEnFile, accessToken);
+    return;
+  }
+  if (jobsEnFile > 0) {
+    await demanderEveil(jobsEnFile, accessToken);
+    return;
+  }
+  eveilPlafondAtteint = false; // file vide : le plafond se ré-arme pour le prochain lot
+  await relacherEveil("relache", 0, accessToken);
+}
+
+// Trace 'keep_awake' — même contrat que 'taille_non_mappee' : fire-and-forget,
+// jamais bloquante, jamais capable de changer l'issue d'un job. Sans token
+// (relâche au démarrage), la ligne attend le prochain poll plutôt que de
+// déclencher un rafraîchissement de session toutes les deux minutes.
+// 'indisponible' UNE FOIS par service worker : sur une machine où l'API
+// manque, la file non vide repasse toutes les 2 min — sans ce garde-fou on
+// écrirait une ligne à chaque passage pour dire la même chose.
+function tracerEveilIndisponible(jobsEnFile, accessToken) {
+  if (eveilIndispoTrace) return;
+  eveilIndispoTrace = true;
+  tracerEveil("indisponible", jobsEnFile, 0, accessToken);
+}
+
+function tracerEveil(action, jobsEnFile, dureeS, accessToken) {
+  const ligne = {
+    action,
+    jobs_en_file: Number(jobsEnFile) || 0,
+    duree_s: Number(dureeS) || 0,
+    at: new Date().toISOString(),
+  };
+  if (!accessToken) {
+    if (eveilTracesEnAttente.length < 10) eveilTracesEnAttente.push(ligne);
+    return;
+  }
+  ecrireTracesEveil(accessToken, [ligne]).catch((e) =>
+    console.warn("[background] trace keep_awake non écrite (sans conséquence) :", String(e?.message ?? e)));
+}
+
+async function ecrireTracesEveil(accessToken, lignes) {
+  const userId = decodeJwtSub(accessToken);
+  if (!userId || !lignes.length) return;
+  await restRequest("usage_logs", accessToken, {
+    method: "POST",
+    body: JSON.stringify(lignes.map((l) => ({
+      user_id: userId,
+      feature: "keep_awake",
+      metadata: {
+        action: l.action,
+        jobs_en_file: l.jobs_en_file,
+        duree_s: l.duree_s,
+        at: l.at,
+        build: FILLSELL_BUILD_ID,
+      },
+    }))),
+  });
+}
+
+function viderTracesEveilEnAttente(accessToken) {
+  if (!accessToken || !eveilTracesEnAttente.length) return;
+  const lot = eveilTracesEnAttente;
+  eveilTracesEnAttente = [];
+  ecrireTracesEveil(accessToken, lot).catch((e) =>
+    console.warn("[background] traces keep_awake différées non écrites :", String(e?.message ?? e)));
+}
+
+// ── Filet 2 — DÉMARRAGE DU SERVICE WORKER, AVANT TOUTE AUTRE CHOSE ──────────
+// Après un redémarrage on ne sait pas dans quel état on était : on repart
+// propre. Synchrone et inconditionnel, exécuté à l'évaluation du script — donc
+// avant le premier poll, avant tout listener. L'épisode persisté, lui, N'EST
+// PAS effacé : s'il reste du travail, le prochain poll ré-arme la demande sans
+// rouvrir d'épisode. Une seule ligne 'relache_demarrage' par épisode, sinon un
+// lot espacé en écrirait une toutes les deux minutes.
+try { chrome.power?.releaseKeepAwake?.(); } catch { /* API absente : sans conséquence */ }
+eveilArme = false;
+(async () => {
+  const ep = await lireEpisodeEveil();
+  if (!ep || ep.demarrage_trace) return;
+  await ecrireEpisodeEveil({ ...ep, demarrage_trace: true });
+  tracerEveil("relache_demarrage", 0, eveilDureeS(ep), null);
+})().catch(() => { /* jamais bloquant */ });
+
 const ALARM_NAME = "fillsell-poll-jobs";
 const SYNC_DRESSING_ALARM = "fillsell-sync-dressing";
 
@@ -1505,12 +1700,22 @@ async function pollAndProcessJobsUnlocked() {
   const session = await getValidSession();
   if (!session) {
     console.log("[background] Pas de session valide, poll ignoré");
+    // Filet 3 — PLUS DE SESSION : déconnexion, extension basculée sur un autre
+    // compte, session révoquée. Plus rien ne peut publier, donc plus aucune
+    // raison de garder la machine éveillée. (L'extension DÉSACTIVÉE ou
+    // désinstallée, elle, est traitée par Chrome lui-même : il libère la
+    // demande de l'extension déchargée — il n'y a rien à écrire ici pour ça.)
+    await relacherEveil("relache", 0, null);
     return;
   }
 
   await chrome.storage.local.set({
     [FILLSELL_CONFIG.STORAGE_KEYS.LAST_POLL]: new Date().toISOString(),
   });
+
+  // Traces d'éveil écrites sans token (relâche au démarrage du service
+  // worker) : ce passage-ci en a un, on les évacue. Fire-and-forget.
+  viderTracesEveilEnAttente(session.access_token);
 
   // AVANT de lire la file : repêcher les jobs orphelins d'un cycle précédent
   // (service worker tué en plein remplissage, PC éteint…). Sans ça, ils restent
@@ -1566,6 +1771,17 @@ async function pollAndProcessJobsUnlocked() {
   }
 
   console.log(`[background] ${jobs.length} job(s) pending`);
+
+  // ── Maintien en éveil : LE point de décision (2026-09-04) ────────────────
+  // Ici, et nulle part ailleurs — on vient de lire la file, c'est le seul
+  // moment où on sait s'il reste du travail. Au moins un job → on demande ;
+  // file vide → on relâche ; plafond dépassé → on relâche quand même.
+  // `await` volontaire mais sans effet sur la cadence : deux lectures de
+  // chrome.storage.local, aucun appel réseau bloquant (la trace, elle, part en
+  // fire-and-forget). Si quoi que ce soit échoue ici, la boucle de jobs
+  // ci-dessous n'en sait rien et se déroule à l'identique.
+  await arbitrerEveil(jobs.length, session.access_token).catch((e) =>
+    console.warn("[background] éveil : arbitrage en échec (sans conséquence sur les jobs) :", String(e?.message ?? e)));
 
   // Nouveau cycle : ré-arme le droit à UN onglet temporaire (cf. retryInTempTab).
   tempTabUsedThisPoll = false;
