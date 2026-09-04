@@ -4579,6 +4579,48 @@ async function selectCategory(path, fields = {}) {
         continue;
       }
       const sousNiveaux = await visibleCatalogChoices();
+      // ── ÉCHELLE DE DESCENTE AUTOMATIQUE (2026-09-04) ──────────────────────
+      // Vinted affine son arbre : une catégorie sur laquelle une annonce a été
+      // créée devient un niveau INTERMÉDIAIRE, et le dépôt n'est plus accepté
+      // dessus. Mesuré ce jour : 6 des 444 catégories du parc sont dans ce cas
+      // (Jupes, Baskets, Jeux et jouets, Figurines et accessoires, Éclairage,
+      // Cartes à collectionner) — et ça s'étendra, ce sont des rayons majeurs.
+      //
+      // ⛔ GARDE-FOU DE PÉRIMÈTRE : tout ce qui suit ne s'exécute QUE dans cette
+      // branche, c'est-à-dire quand le chemin capturé s'arrête sur un nœud QUI A
+      // DES ENFANTS. Une catégorie feuille n'y entre jamais : mesuré sur les 748
+      // republications réussies des 7 derniers jours, ZÉRO y serait passée. Pas
+      // un appel, pas une branche de plus sur le chemin qui marche.
+      //
+      // BARREAU 1 — UN SEUL SOUS-NIVEAU : il n'y a rien à arbitrer, la
+      // destination est unique. On descend, sans rien demander.
+      // ⛔ Et SEULEMENT dans ce cas : à deux sous-niveaux ou plus, on ne prend
+      // JAMAIS le premier venu. Une mauvaise catégorie Vinted, c'est une
+      // annonce invisible ou refusée — le barreau 3 tranche à la place.
+      if (sousNiveaux.length === 1) {
+        choixConsomme = true; // la place du choix utilisateur est prise
+        path.push(sousNiveaux[0]);
+        console.log(
+          `[vinted] catégorie : « ${levelLabel} » est devenu intermédiaire et n'a qu'un seul sous-niveau ` +
+          `(« ${sousNiveaux[0]} ») — descente automatique, aucune ambiguïté.`
+        );
+        continue;
+      }
+      // BARREAU 2 — départage par la suggestion de Vinted : NON DISPONIBLE.
+      // Relevé en réel le 2026-09-04, panneau ouvert, sur deux titres explicites
+      // (« La cascade lumineuse Hatchimals », « Jupe en jean Levis taille 38 ») :
+      // AUCUN nœud `catalog-suggestion-*` n'est rendu. Le sélecteur n'affiche
+      // que les 8 racines. Le mécanisme documenté le 06/08 ne sort plus du
+      // titre seul ; il faudrait peut-être une photo, ce qui n'a pas pu être
+      // vérifié. Le jour où il revient, sa place est ICI, entre les barreaux 1
+      // et 3, et sa règle est écrite d'avance : n'accepter une suggestion QUE si
+      // son id appartient à l'ensemble des enfants du nœud courant — jamais
+      // pour naviguer, jamais ailleurs.
+      //
+      // BARREAU 3 — plusieurs sous-niveaux et rien pour trancher : l'utilisateur
+      // choisit, sur la liste RÉELLE que Vinted vient d'afficher. Le
+      // needsUserField ci-dessous est complet (choix fermé, cible
+      // categoryLevelChoice) : jamais un message nu avec un bouton qui boucle.
       throw erreurCategorie(
         `le chemin s'arrête sur un niveau intermédiaire (« ${levelLabel} »)`,
         `le chemin ${JSON.stringify(path)} s'arrête sur un niveau intermédiaire. ` +

@@ -1094,7 +1094,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // vintedAspects. Les captures DÉJÀ en base portent les ids : aucune recapture,
 // aucune suppression. EXTENSION_MIN_BUILD inchangé. Committé
 // GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T12:00:00Z';
+// 2026-09-04T13:00:00Z = descente automatique quand une catégorie capturée est
+// devenue un niveau INTERMÉDIAIRE (Vinted affine son arbre). Un seul
+// sous-niveau ⇒ on descend sans rien demander ; plusieurs ⇒ choix fermé sur la
+// liste réelle (needsUserField complet, déjà en place). ⛔ Code atteint UNIQUEMENT
+// quand le chemin capturé s'arrête sur un nœud à enfants : 0 des 748
+// republications réussies des 7 derniers jours y serait passée.
+// EXTENSION_MIN_BUILD inchangé. Committé GIT_COMMITTER_DATE épinglée dessus.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T13:00:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
