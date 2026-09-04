@@ -1073,7 +1073,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // boutique, la boutique connectée en permanence, le chip d'origine par
 // article, et l'annonce de masse « X partent · Y attendront @Z ». Migration
 // de rattrapage 20260903160000 ÉCRITE, PAS APPLIQUÉE (GO Nico requis).
-export const EXTENSION_LAST_COMMIT = '2026-09-03T15:05:35Z';
+// 2026-09-04T09:03:47Z = garde IDs opaques Beebs (12615f1) : un relevé
+// d'options majoritairement composé d'identifiants de plateforme
+// (3yKTvfHdFZrmnGLYPzT7BH…) est traité comme un relevé RATÉ — plus jamais de
+// mini-éditeur proposant un choix que l'utilisateur ne peut pas faire (cas
+// Romain Colson, « Format du colis », jobs du 02/09). Le job repart en échec
+// franc + relance. EXTENSION_MIN_BUILD inchangé : rien n'oblige le parc à se
+// mettre à jour pour ça, la garde jumelle côté app débloque déjà les jobs
+// existants sans paquet CWS.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T09:03:47Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

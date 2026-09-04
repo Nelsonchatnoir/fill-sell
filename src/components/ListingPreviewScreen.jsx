@@ -21,6 +21,7 @@ import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategori
 import { getPlatformSupport } from "../utils/platformCompat";
 import { computeRemovalInfo } from "../utils/publicationState";
 import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimit";
+import { versImageDecodable, chargerImage, messageDecodage } from "../utils/imageDecode";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   isChildGenre, childAxesForGenre, toPlatformChildSize, lbcChildSizeCategory,
@@ -3906,18 +3907,24 @@ export default function ListingPreviewScreen({
     setPhotos(prev => moveItem(prev, from, to));
   }
 
-  function compressImage(file, maxWidth = 1024, quality = 0.85) {
-    return new Promise(resolve => {
-      const img = new window.Image();
-      img.onload = () => {
-        const c = document.createElement("canvas");
-        const sc = Math.min(1, maxWidth / img.width);
-        c.width = img.width * sc;
-        c.height = img.height * sc;
-        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-        c.toBlob(b => resolve(b), "image/jpeg", quality);
-      };
-      img.src = URL.createObjectURL(file);
+  // ⚠️ Cette fonction n'avait NI onerror NI délai maximum (2026-09-04) : sur une
+  // image que le navigateur ne sait pas décoder — un HEIC d'iPhone ouvert dans
+  // Chrome ou Firefox — `onload` ne partait jamais, la Promise restait
+  // pendante, `await compressImage(...)` ne rendait jamais la main et
+  // handleUpload laissait « Upload en cours… » à l'écran, définitivement.
+  // versImageDecodable() porte désormais les deux gardes ET la conversion HEIC
+  // (décodeur chargé à la demande). `toBlob` reçoit lui aussi un rejet
+  // explicite : il peut rendre null, ce qui aurait laissé une autre pendante.
+  async function compressImage(file, maxWidth = 1024, quality = 0.85) {
+    const { blob } = await versImageDecodable(file);
+    const img = await chargerImage(blob);
+    const c = document.createElement("canvas");
+    const sc = Math.min(1, maxWidth / img.width);
+    c.width = img.width * sc;
+    c.height = img.height * sc;
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return await new Promise((resolve, reject) => {
+      c.toBlob(b => (b ? resolve(b) : reject(new Error("compression_impossible"))), "image/jpeg", quality);
     });
   }
 
@@ -3928,9 +3935,20 @@ export default function ListingPreviewScreen({
     setUploadError("");
     try {
       const urls = [];
+      const illisibles = [];
       const ts = Date.now();
       for (let i = 0; i < pickedFiles.length; i++) {
-        const blob = await compressImage(pickedFiles[i]);
+        // Une photo illisible ne fait plus tomber tout le lot ni figer l'écran :
+        // elle est SAUTÉE et nommée à la fin. Avant le 04/09, un HEIC bloquait
+        // ici pour toujours (compressImage ne rendait jamais la main).
+        let blob;
+        try {
+          blob = await compressImage(pickedFiles[i]);
+        } catch (e) {
+          console.warn(`[photos] « ${pickedFiles[i]?.name ?? `photo ${i + 1}`} » illisible :`, e?.message ?? e);
+          illisibles.push(pickedFiles[i]?.name ?? `photo ${i + 1}`);
+          continue;
+        }
         const path = `${userId}/raw/${ts}_${i}.jpg`;
         const { error: upErr } = await supabase.storage
           .from("listing-photos")
@@ -3942,7 +3960,14 @@ export default function ListingPreviewScreen({
         if (!upErr)
           urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl + `?v=${ts}`);
       }
-      if (!urls.length) throw new Error(t("stepUploadError"));
+      // AUCUNE photo lisible : on le dit avec le message dédié plutôt que
+      // l'erreur d'upload générique — rien n'a échoué côté réseau.
+      if (!urls.length) throw new Error(illisibles.length ? messageDecodage(lang) : t("stepUploadError"));
+      if (illisibles.length) {
+        setUploadError(lang === "en"
+          ? `${illisibles.length} photo(s) could not be read and were skipped: ${illisibles.join(", ")}. The others were uploaded.`
+          : `${illisibles.length} photo(s) n'ont pas pu être lues et ont été ignorées : ${illisibles.join(", ")}. Les autres sont bien montées.`);
+      }
       setPhotos(urls);
       setStep(1);
     } catch (e) {

@@ -35,6 +35,7 @@ const buildIdTimestamp = (id) => {
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
+import { versImageDecodable, messageDecodage } from './utils/imageDecode';
 import { sonderAnnonceVinted, lireBoutiquesVinted } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
 import Toast from './components/Toast';
@@ -5202,27 +5203,43 @@ export default function App({ loginOnly = false }){
     setDealMicActive(true);
   }
 
-  function handleLensPhoto(e){
+  // ⚠️ RÉÉCRIT LE 2026-09-04. L'ancienne version RÉÉTIQUETAIT le mime
+  // (`ALLOWED_MIMES.includes(rawMime) ? rawMime : "image/jpeg"`) : les octets
+  // restaient du HEIC et on les déclarait JPEG à l'IA. Deux dégâts — l'aperçu
+  // (`data:image/heic;…`) était indécodable par Chrome et Firefox, d'où les
+  // vignettes grises cassées ; et lens-analysis recevait un mime menteur.
+  // Désormais on CONVERTIT (décodeur chargé à la demande) et on ne déclare que
+  // le mime du blob RÉELLEMENT décodé. versImageDecodable porte onerror + délai
+  // maximum : aucune promesse ne peut rester pendante.
+  async function handleLensPhoto(e){
     const files=Array.from(e.target.files||[]);
+    if(lensFileRef.current)lensFileRef.current.value="";
     if(!files.length)return;
     setLensResult(null);setLensAdded(false);
-    const ALLOWED_MIMES=["image/jpeg","image/png","image/gif","image/webp"];
-    files.forEach(file=>{
-      if(file.size>8*1024*1024){alert(lang==="fr"?"Image trop lourde (max 8 Mo).":"Image too large (max 8MB).");return;}
-      const rawMime=file.type||"image/jpeg";
-      // HEIC/HEIF and other iOS formats not supported by Anthropic → declare as jpeg
-      const safeMime=ALLOWED_MIMES.includes(rawMime)?rawMime:"image/jpeg";
-      const reader=new FileReader();
-      reader.onload=ev=>{
-        const dataUrl=ev.target.result;
-        setLensPhotos(prev=>{
-          if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
-          return[...prev,{preview:dataUrl,mime:safeMime}];
-        });
-      };
-      reader.readAsDataURL(file);
-    });
-    if(lensFileRef.current)lensFileRef.current.value="";
+    const illisibles=[];
+    for(const file of files){
+      if(file.size>8*1024*1024){alert(lang==="fr"?"Image trop lourde (max 8 Mo).":"Image too large (max 8MB).");continue;}
+      let decodee;
+      try{
+        decodee=await versImageDecodable(file);
+      }catch(err){
+        console.warn(`[lens] « ${file?.name??"photo"} » illisible :`,err?.message??err);
+        illisibles.push(file?.name??"photo");continue;
+      }
+      const mime=decodee.blob.type||decodee.mime||"image/jpeg";
+      const dataUrl=await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=ev=>resolve(ev.target.result);
+        reader.onerror=()=>reject(new Error("lecture_impossible"));
+        reader.readAsDataURL(decodee.blob);
+      }).catch(err=>{console.warn("[lens] lecture du blob impossible :",err?.message??err);return null;});
+      if(!dataUrl){illisibles.push(file?.name??"photo");continue;}
+      setLensPhotos(prev=>{
+        if(prev.length>=5)return prev; // cap 5 tant que lens-analysis gelé (slice 0,5 déployé) ; passer à (isPro?8:5) EN MÊME TEMPS que le déploiement lens slice(0,8)
+        return[...prev,{preview:dataUrl,mime}];
+      });
+    }
+    if(illisibles.length)setLensResult({error:messageDecodage(lang)});
   }
 
   // Caméra directe native (reprise S5, 2026-07-25) : getPhoto une photo à la
