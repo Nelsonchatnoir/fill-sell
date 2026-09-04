@@ -1073,27 +1073,58 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
   // Règle : l'extension n'a le dernier mot que s'il reste quelque chose à
   // attendre. Si AUCUN job de cet article n'est en file (pending/processing),
   // rien ne partira au prochain passage — on le dit.
-  const enFile = jobs.some(j => j.status === "pending" || j.status === "processing");
+  // ⚠️ CORRIGÉ LE 2026-09-04 (capture Romain Colson). La garde du 31/08 ne
+  // portait pas assez loin : `enFile` valait vrai dès qu'un job était
+  // 'pending', ERREUR COMPRISE. Or son job eBay était pending AVEC une erreur
+  // (rejeté depuis deux jours) et son job Beebs en needs_user affichait
+  // « Relances épuisées ». Rien ne pouvait partir — et le bandeau annonçait en
+  // vert « L'extension tourne, la publication part au prochain passage ».
+  // Un job 'pending' qui porte une erreur n'est PAS en file d'attente : c'est
+  // une reprise après échec. On ne le compte donc plus comme tel, et on ne
+  // promet plus le prochain passage à sa place.
+  const enCours = (j) => j.status === "pending" || j.status === "processing";
+  const aEchoue = (j) => Boolean(String(j.error ?? "").trim());
+  const enFile = jobs.some(j => enCours(j) && !aEchoue(j));
+  const enReprise = jobs.filter(j => enCours(j) && aEchoue(j)).length;
   const aCompleter = jobs.filter(j => j.status === "needs_user").length;
   const enEchec = jobs.filter(j => j.status === "failed").length;
+  // Recours ÉPUISÉS : même source que le bouton de relance affiché plus bas
+  // (relanceManuelleInfo) — une seule vérité, jamais deux avis contradictoires
+  // dans la même modale.
+  const sansRecours = jobs.some(j => relanceManuelleInfo(j, jobs)?.epuise);
   const diagExt = diagnostiquerExtension(extensionStatus, lang);
-  const diag = (!enFile && (aCompleter || enEchec))
+  const parties = fr
+    ? [
+        aCompleter ? `${aCompleter} plateforme${aCompleter > 1 ? "s attendent" : " attend"} une information de ta part` : "",
+        enEchec ? `${enEchec} ${enEchec > 1 ? "sont arrêtées" : "est arrêtée"}` : "",
+        enReprise ? `${enReprise} ${enReprise > 1 ? "sont reprises" : "est reprise"} après un échec` : "",
+      ].filter(Boolean)
+    : [
+        aCompleter ? `${aCompleter} platform${aCompleter > 1 ? "s need" : " needs"} information from you` : "",
+        enEchec ? `${enEchec} stopped` : "",
+        enReprise ? `${enReprise} being retried after a failure` : "",
+      ].filter(Boolean);
+  const diag = (!enFile && (aCompleter || enEchec || enReprise))
     ? {
-        ton: enEchec && !aCompleter ? "rouge" : "orange",
+        ton: (enEchec || sansRecours) && !aCompleter ? "rouge" : "orange",
         titre: aCompleter
           ? (fr ? "En attente de toi" : "Waiting on you")
-          : (fr ? "Publication arrêtée" : "Publishing stopped"),
+          : enEchec || sansRecours
+            ? (fr ? "Publication arrêtée" : "Publishing stopped")
+            : (fr ? "Reprise après échec" : "Retrying after a failure"),
+        // ⛔ Quand plus aucun recours automatique n'existe, on ne dit JAMAIS que
+        // ça repart tout seul — on nomme le geste qui débloque.
         detail: fr
-          ? `Rien ne part au prochain passage : ${
-              aCompleter ? `${aCompleter} plateforme${aCompleter > 1 ? "s attendent" : " attend"} une information de ta part` : ""
-            }${aCompleter && enEchec ? ", et " : ""}${
-              enEchec ? `${enEchec} ${enEchec > 1 ? "sont arrêtées" : "est arrêtée"}` : ""
-            }. Le détail est ci-dessous, plateforme par plateforme.`
-          : `Nothing will go on the next pass: ${
-              aCompleter ? `${aCompleter} platform${aCompleter > 1 ? "s need" : " needs"} information from you` : ""
-            }${aCompleter && enEchec ? ", and " : ""}${
-              enEchec ? `${enEchec} stopped` : ""
-            }. Details per platform below.`,
+          ? `Rien ne part au prochain passage : ${parties.join(", et ")}.` +
+            (sansRecours
+              ? " Les relances automatiques sont épuisées : cette publication ne repartira pas seule."
+              : "") +
+            " Le détail est ci-dessous, plateforme par plateforme."
+          : `Nothing will go on the next pass: ${parties.join(", and ")}.` +
+            (sansRecours
+              ? " Automatic relaunches are exhausted: this will not resume on its own."
+              : "") +
+            " Details per platform below.",
       }
     : diagExt;
   const TONS = {
