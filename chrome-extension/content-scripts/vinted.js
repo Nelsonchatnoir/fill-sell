@@ -135,6 +135,84 @@ async function readLatestAttrsConfig() {
   return null;
 }
 
+// ── RÉSOLUTION id → LIBELLÉ D'UN ATTRIBUT DE CATÉGORIE (2026-09-04) ──────────
+// Le payload d'édition d'une annonce Vinted porte ses attributs propres sous la
+// forme { code: "video_game_platform", ids: [1280] } — des IDENTIFIANTS, jamais
+// des libellés. Personne ne les résolvait : la capture les stockait dans
+// `natif` sans les traduire, la recréation ne les réinjectait donc pas, le
+// formulaire restait vide et le pré-vol bloquait la republication (cas
+// « Jeu PS4 Rage 2 », ornellaracano, capture 3408).
+//
+// GÉNÉRIQUE PAR CONSTRUCTION : aucun code d'attribut n'est cité ici. Le même
+// trou existe pour toute catégorie à attributs propres — c'est un hasard si nos
+// utilisateurs postent surtout du vêtement.
+//
+// DEUX SOURCES, dans cet ordre :
+//   1. la config attributes reniflée pour la catégorie posée (optionsBrutes,
+//      background.js) : on y cherche l'objet dont une valeur numérique vaut
+//      l'id, puis son libellé. On ne PRÉSUME AUCUN NOM DE CLÉ — ni pour l'id,
+//      ni pour le titre : la forme exacte de l'option n'a pas été relevée côté
+//      API, et deviner serait précisément l'erreur à éviter.
+//   2. repli DOM, RELEVÉ EN RÉEL le 2026-09-04 sur vinted.fr : chaque option
+//      d'une liste porte `data-testid="<code>-<id>"` et son libellé
+//      `data-testid="<code>-<id>--title"`. Vérifié sur la catégorie 3026 :
+//      video_game_platform-1280 → « PlayStation 4 », video_game_ratings-163 →
+//      « PEGI 18 ». Ce repli sert les captures reniflées avant ce correctif.
+// Rien trouvé ⇒ null. ⛔ On n'invente JAMAIS de valeur : un PEGI faux fait
+// refuser l'annonce par Vinted. L'attribut reste vide, le pré-vol fait son
+// travail, et le job repart en needs_user comme aujourd'hui.
+const CLES_TITRE_OPTION = ["title", "name", "label", "text"];
+function libelleAttributParId(meta, id, code) {
+  const cible = Number(id);
+  if (!Number.isFinite(cible)) return null;
+  for (const opt of Array.isArray(meta?.optionsBrutes) ? meta.optionsBrutes : []) {
+    if (!opt || typeof opt !== "object") continue;
+    // L'id est cherché parmi TOUTES les valeurs numériques de l'objet.
+    const correspond = Object.values(opt).some((v) => Number(v) === cible && v !== null && v !== "");
+    if (!correspond) continue;
+    for (const k of CLES_TITRE_OPTION) {
+      const t = String(opt[k] ?? "").trim();
+      if (t) return t;
+    }
+    // Aucune clé de titre connue : première chaîne non vide et non numérique.
+    const brut = Object.values(opt).find((v) => typeof v === "string" && v.trim() && !/^\d+$/.test(v.trim()));
+    if (brut) return String(brut).trim();
+  }
+  if (code) {
+    const el = document.querySelector(`[data-testid="${CSS.escape(code)}-${cible}--title"]`);
+    const t = String(el?.textContent ?? "").trim();
+    if (t) return t;
+  }
+  return null;
+}
+
+// Attributs propres de l'annonce d'origine, résolus en libellés et rendus sous
+// la forme attendue par le canal générique de remplissage
+// (platform_fields.vintedAspects = { "<code serveur>": "<libellé>" }).
+// `deja` = codes déjà servis par un canal dédié ou par une saisie utilisateur :
+// on ne les écrase jamais.
+async function resoudreAttributsCaptures(itemAttributes, deja = new Set()) {
+  const resolus = {};
+  const nonResolus = [];
+  if (!Array.isArray(itemAttributes) || !itemAttributes.length) return { resolus, nonResolus };
+  const attrs = await readLatestAttrsConfig().catch(() => null);
+  const byCode = new Map();
+  for (const a of attrs ?? []) if (a?.code) byCode.set(a.code, a);
+  for (const at of itemAttributes) {
+    const code = String(at?.code ?? "").trim();
+    const ids = Array.isArray(at?.ids) ? at.ids : [];
+    if (!code || !ids.length || deja.has(code)) continue;
+    const libelles = ids
+      .map((id) => libelleAttributParId(byCode.get(code), id, code))
+      .filter(Boolean);
+    // Un seul libellé attendu par ces listes fermées ; s'il y en a plusieurs on
+    // prend le premier (le canal générique pose une valeur).
+    if (libelles.length) resolus[code] = libelles[0];
+    else nonResolus.push(code);
+  }
+  return { resolus, nonResolus };
+}
+
 // État RÉEL des requis de la catégorie courante : croise la config attributes
 // (required=true) avec ce que le DOM affiche et porte comme valeurs.
 // - `unfilled`  : libellés humains des requis encore vides → à bloquer.
@@ -1045,11 +1123,35 @@ async function capturerAnnonceVinted(vintedItemId) {
   if (!photosCdn.length) manquants.push("photos (aucune URL lisible)");
   manquants.push("photos_rehebergees (re-hébergement en attente — infra à valider)");
 
+  // ── ATTRIBUTS PROPRES : DIRE QU'ON NE TRANCHE PAS (2026-09-04) ─────────────
+  // L'annonce porte des attributs de catégorie ({ code, ids } — Plateforme,
+  // Classement du contenu, Capacité de stockage…) que CETTE capture ne sait pas
+  // résoudre : la config attributes n'est lisible que sur le formulaire de
+  // dépôt, pas ici. Ils sont conservés intacts dans `natif` et résolus à la
+  // recréation (resoudreAttributsCaptures).
+  // Le verdict ne peut donc RIEN en conclure — mais il ne doit plus faire comme
+  // s'ils n'existaient pas : c'est ce silence qui rendait le bug invisible
+  // (verdict 'valide', champs_manquants=[], et un refus du pré-vol trente
+  // secondes plus tard, cas Rage 2).
+  // ⚠️ NOTE, PAS BLOCAGE : le verdict reste 'valide'. Le garde-fou est le
+  // PRÉ-VOL, déjà au bon endroit — AVANT toute suppression. Faire basculer le
+  // verdict ici arrêterait des republications qui passent très bien.
+  const attributsPropres = Array.isArray(natif?.item_attributes)
+    ? natif.item_attributes.map((a) => String(a?.code ?? "")).filter(Boolean)
+    : [];
+  if (attributsPropres.length) {
+    diagnostics.push({
+      cle: "attributs_categorie",
+      note: `portés par l'annonce mais NON résolus ici (la config attributes n'est lisible que sur le formulaire) : ${attributsPropres.join(", ")} — résolution à la recréation, le pré-vol reste le garde-fou`,
+    });
+  }
+
   return {
     success: true,
     vintedItemId: String(vintedItemId),
     verdict: manquants.length ? "incomplet" : "valide",
     champs_manquants: manquants,
+    attributs_non_resolus: attributsPropres,
     titre: String(natif?.title ?? dtoPublic?.title ?? "").trim() || null,
     prix: natif?.price?.amount ?? natif?.price ?? dtoPublic?.price?.amount ?? null,
     description: detail.description,
@@ -2165,6 +2267,33 @@ async function fillListingForm(job) {
     // seconde pose, forcément en échec, et un warning trompeur.
     "isbn",
   ]);
+  // ── Attributs de l'annonce d'origine versés DANS ce canal (2026-09-04) ─────
+  // On ALIMENTE la boucle générique ci-dessous, on ne la modifie pas : c'est
+  // elle qui fait passer les publications aujourd'hui.
+  // Priorité stricte : une valeur déjà posée dans vintedAspects vient de
+  // l'utilisateur (stepper ou mini-éditeur needs_user) ou d'un canal dédié —
+  // elle prime TOUJOURS sur la valeur relevée sur l'ancienne annonce.
+  // Un attribut non résolu n'est PAS inventé : il reste absent, le champ reste
+  // vide, et le pré-vol (inchangé, en amont de toute suppression) tranche.
+  if (Array.isArray(job.platform_fields?.itemAttributesCaptures)) {
+    const dejaPoses = new Set([
+      ...handledCodes,
+      ...Object.keys(fields.vintedAspects && typeof fields.vintedAspects === "object" ? fields.vintedAspects : {}),
+    ]);
+    const { resolus, nonResolus } = await resoudreAttributsCaptures(
+      job.platform_fields.itemAttributesCaptures, dejaPoses,
+    );
+    if (Object.keys(resolus).length) {
+      fields.vintedAspects = { ...(fields.vintedAspects ?? {}), ...resolus };
+      console.log("[vinted] attributs de l'annonce d'origine résolus :",
+        Object.entries(resolus).map(([c, v]) => `${c}=${v}`).join(", "));
+    }
+    if (nonResolus.length) {
+      const note = `attributs non résolus (${nonResolus.join(", ")}) : laissés VIDES — aucune valeur inventée, le pré-vol tranchera`;
+      console.warn(`[vinted] ⚠️ ${note}`);
+      warnings.push(note);
+    }
+  }
   if (fields.vintedAspects && typeof fields.vintedAspects === "object") {
     for (const [code, value] of Object.entries(fields.vintedAspects)) {
       const val = String(value ?? "").trim();

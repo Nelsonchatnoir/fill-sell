@@ -4932,6 +4932,23 @@ async function installNetworkProbe(tabId, platform) {
                     .map((o) => o?.title)
                     .filter(Boolean)
                     .slice(0, 60),
+                  // ── optionsBrutes (2026-09-04) ───────────────────────────
+                  // `options` ci-dessus ne garde que les TITRES : c'est là que
+                  // se perdait la correspondance id → libellé, alors qu'elle
+                  // est dans la réponse de Vinted. Sans elle, une annonce
+                  // republiée dont le payload porte { code:"video_game_platform",
+                  // ids:[1280] } ne pouvait pas retrouver « PlayStation 4 », le
+                  // champ restait vide et le pré-vol bloquait (cas Rage 2,
+                  // ornellaracano).
+                  // On garde l'objet ENTIER plutôt qu'une clé nommée : la forme
+                  // exacte de l'option n'a pas été relevée côté API, et deviner
+                  // un nom de clé serait exactement l'erreur à ne pas commettre.
+                  // libelleAttributParId (vinted.js) y cherche l'id sans rien
+                  // présumer. Plafond identique aux titres.
+                  optionsBrutes: (a?.configuration?.options ?? [])
+                    .flatMap((g) => (g?.type === "group" ? g.options ?? [] : [g]))
+                    .filter((o) => o && typeof o === "object")
+                    .slice(0, 60),
                 })).filter((a) => a.code);
               }
             }
@@ -10232,6 +10249,21 @@ function construireJobRecreation(job, pf, cap, prix) {
       ...(Array.isArray(cap.libelles?.matiere_ids) && cap.libelles.matiere_ids.length
         ? { matiere_ids: cap.libelles.matiere_ids } : {}),
       ...(pf.vintedAspects && typeof pf.vintedAspects === "object" ? { vintedAspects: pf.vintedAspects } : {}),
+      // ── Attributs propres de la catégorie (2026-09-04) ───────────────────
+      // Transmis BRUTS ({ code, ids }) : ils ne peuvent être résolus en
+      // libellés QUE sur le formulaire de dépôt, là où la config attributes de
+      // la catégorie posée vient d'être reniflée. Le content script les résout
+      // et les verse dans vintedAspects juste avant le canal générique de
+      // remplissage — canal inchangé, il sait déjà poser un
+      // « <code serveur> → <libellé> ».
+      // C'est ce chaînon qui manquait : la capture les stockait dans `natif`,
+      // personne ne les relisait, le formulaire restait vide et le pré-vol
+      // bloquait la republication (cas « Jeu PS4 Rage 2 »).
+      // ⭐ Les captures DÉJÀ en base les portent : aucune recapture, aucune
+      // suppression, les jobs bloqués repartent à leur passage suivant.
+      ...(Array.isArray(natifCap.item_attributes) && natifCap.item_attributes.length
+        ? { itemAttributesCaptures: natifCap.item_attributes }
+        : {}),
       // Choix de niveau de catégorie tranché au mini-éditeur (needs_user
       // « Catégorie Vinted » du pré-vol, 2026-09-03) : target root:null →
       // l'app l'écrit à la racine de platform_fields. Sans cette propagation,

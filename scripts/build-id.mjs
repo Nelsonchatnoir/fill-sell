@@ -1086,7 +1086,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ornellaracano). Sans needsUserField posé, le message renvoie vers l'annonce
 // Vinted, seul endroit où le champ peut être renseigné. EXTENSION_MIN_BUILD
 // inchangé. Committé GIT_COMMITTER_DATE épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T10:30:00Z';
+// 2026-09-04T12:00:00Z = attributs de catégorie enfin réinjectés. Le payload
+// d'édition Vinted porte { code, ids } (Plateforme, Classement du contenu,
+// Capacité…) ; personne ne les résolvait, le formulaire restait vide et le
+// pré-vol bloquait la republication. Résolution À LA RECRÉATION, sur la config
+// attributes de la catégorie posée, versée dans le canal générique
+// vintedAspects. Les captures DÉJÀ en base portent les ids : aucune recapture,
+// aucune suppression. EXTENSION_MIN_BUILD inchangé. Committé
+// GIT_COMMITTER_DATE épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T12:00:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
