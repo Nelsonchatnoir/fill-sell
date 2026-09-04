@@ -196,6 +196,9 @@ const extensionPermissions = [
   { key: 'cookies', scope: 'permissions',
     fr: "Vérifie la présence du cookie de session Vinted (v_uid), uniquement sur les domaines listés ci-dessous, pour distinguer « vous n'êtes pas connecté à Vinted » d'un blocage anti-robot lors de la synchronisation du dressing. Aucun cookie n'est lu en dehors de ce test, ni transmis, ni stocké.",
     en: "Checks for the Vinted session cookie (v_uid), only on the domains listed below, to tell \"you are not signed in to Vinted\" apart from an anti-bot block during closet sync. No cookie is read beyond this check, transmitted, or stored." },
+  { key: 'power', scope: 'permissions',
+    fr: "Empêche l'ordinateur de se mettre en veille tant qu'il reste des annonces à publier dans la file, et rien d'autre : l'écran n'est jamais forcé à rester allumé. Le maintien s'arrête dès que la file est vide, et au plus tard au bout de quatre heures.",
+    en: "Prevents the computer from going to sleep while listings are still queued for publishing, and nothing else: the screen is never forced to stay on. It stops as soon as the queue is empty, and after four hours at the latest." },
   // host_permissions (accès par domaine)
   { key: 'https://*.vinted.fr/*', scope: 'host_permissions',
     fr: "Remplir le formulaire de dépôt, vérifier le statut des annonces publiées et exécuter leur retrait après confirmation d'une vente, sur Vinted (domaine français).",
