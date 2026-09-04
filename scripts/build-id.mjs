@@ -1157,7 +1157,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // même écran. Repli sur le compte local si le champ manque.
 // Bumpé DANS LE MÊME COMMIT que le changement sous chrome-extension/.
 // Committé GIT_COMMITTER_DATE épinglée. EXTENSION_MIN_BUILD inchangé.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T20:43:00Z';
+// 2026-09-04T21:31:00Z = manifest 0.6.18 → 0.6.19. Aucun changement de code :
+// le contenu est celui des lots popup 574538c (« N annonces attendent une
+// action », onglet Stock IA nommé) et 88b715f (le total vient du serveur).
+// La 0.6.18 n'a jamais été téléversée — elle n'est donc PAS dans
+// ALREADY_PUBLISHED, et rien n'interdit de repartir en 0.6.19.
+// Bumpé DANS LE MÊME COMMIT que le changement sous chrome-extension/.
+// Committé GIT_COMMITTER_DATE épinglée. EXTENSION_MIN_BUILD INCHANGÉ : il ne
+// se promeut qu'APRÈS acceptation du paquet par Google.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T21:31:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
