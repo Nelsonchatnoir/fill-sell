@@ -4129,11 +4129,17 @@ export default function App({ loginOnly = false }){
         // Convention des lignes `ventes` : quantite NULL sauf lot (cf. srow).
         quantite:qty>1?qty:null,
         emplacement:editItem.emplacement?.trim()||null,
+        // Plateforme de vente (2026-09-04) : seule l'utilisateur sait où
+        // l'acheteur a payé. La détection automatique écrit la plateforme du
+        // job détecté hors ligne, ce qui peut se tromper sur un article publié
+        // partout — le champ est désormais corrigeable, et c'est cette
+        // correction qui est persistée.
+        plateforme:editItem.plateforme||null,
         // ⚠️ pas de prix_achat_inconnu ici : la colonne n'existe pas sur
         // `ventes` (schéma vérifié le 03/08), le drapeau vit sur l'article lié.
       }).eq('id',editItem.id).eq('user_id',user.id).select('id');
       if(!error&&updRows?.length){
-        setSales(prev=>prev.map(v=>v.id===editItem.id?{...v,title:editItem.title,marque:marqueNorm||"",type:typeAuto,buy:b,prix_achat:b,sell:hasS?s:null,prix_vente:hasS?s:null,margin:benef,marginPct:benef!=null&&hasS&&s>0?(benef/s)*100:null,sellingFees:f,description:editItem.description||null,quantite:qty>1?qty:null,emplacement:editItem.emplacement?.trim()||null}:v));
+        setSales(prev=>prev.map(v=>v.id===editItem.id?{...v,title:editItem.title,marque:marqueNorm||"",type:typeAuto,buy:b,prix_achat:b,sell:hasS?s:null,prix_vente:hasS?s:null,margin:benef,marginPct:benef!=null&&hasS&&s>0?(benef/s)*100:null,sellingFees:f,description:editItem.description||null,quantite:qty>1?qty:null,emplacement:editItem.emplacement?.trim()||null,plateforme:editItem.plateforme||null}:v));
         setEditItem(null);
         setToast({visible:true,message:lang==='fr'?'✓ Vente modifiée':'✓ Sale updated'});
         setTimeout(()=>setToast({visible:false,message:''}),3000);
@@ -6404,6 +6410,33 @@ export default function App({ loginOnly = false }){
                     placeholder={lang==='fr'?"Ex: Étagère salon, Carton 3...":"Ex: Living room shelf, Box 3..."} style={S.input}
                     onFocus={focusTeal} onBlur={blurBorder}/>
                 </div>
+                {/* ── Plateforme de vente, CORRIGEABLE (2026-09-04) ─────────────
+                    Retour Romain Colson : « Uriage a été vendu sur VINTED pas
+                    ebay », et sa vente portait bien le logo eBay.
+                    D'où venait « ebay » : quand une annonce est détectée hors
+                    ligne, le bandeau propose d'enregistrer la vente, et
+                    sale-orchestration écrit ventes.plateforme = la plateforme
+                    DU JOB détecté. Sur un article publié sur plusieurs
+                    plateformes, c'est celle dont l'annonce a disparu EN
+                    PREMIER — pas forcément celle où l'acheteur a payé.
+                    La base n'a aucune autre trace de la vérité : elle ne peut
+                    donc pas se corriger toute seule. On rend le champ à
+                    l'utilisateur, seul à savoir. Rien n'est réécrit d'office.
+                    Visible sur une ligne de VENTE uniquement. */}
+                {editItem._table==='ventes'&&(
+                  <div>
+                    <div style={S.label}>{lang==='fr'?"Vendu sur":"Sold on"}</div>
+                    <select value={editItem.plateforme||""} onChange={e=>setEditItem(p=>({...p,plateforme:e.target.value||null}))}
+                      style={S.input} onFocus={focusTeal} onBlur={blurBorder}>
+                      <option value="">{lang==='fr'?"Non précisé":"Not specified"}</option>
+                      <option value="vinted">Vinted</option>
+                      <option value="leboncoin">Leboncoin</option>
+                      <option value="ebay">eBay</option>
+                      <option value="beebs">Beebs</option>
+                      <option value="autre">{lang==='fr'?"Autre":"Other"}</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* ── Description ── */}
