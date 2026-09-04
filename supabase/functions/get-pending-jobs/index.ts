@@ -275,6 +275,48 @@ serve(async (req) => {
       };
     };
 
+    // ── ANNONCES EN ATTENTE D'UNE ACTION — LA SOURCE UNIQUE (2026-09-04) ────
+    // Deux compteurs se contredisaient sur le même écran, au même instant :
+    // le popup de l'extension annonçait « 6 opérations », le bandeau de
+    // l'onglet Stock IA « 4 annonces ». Cause établie sur pièces, ce n'était
+    // ni la fraîcheur ni un filtre de boutique :
+    //   · le POPUP comptait TOUS les jobs 'needs_user' du compte, quelle que
+    //     soit l'action (publish, delete, republish) et la plateforme ;
+    //   · l'APP ne comptait que les 'needs_user' d'action 'republish', et
+    //     seulement le DERNIER job de chaque article, et seulement à
+    //     l'intérieur du « lot » de republications en cours.
+    // Sur ornellaracano au moment du relevé : 2 publications bloquées (une
+    // Beebs, une Vinted) que le bandeau ne montrait pas — il disait
+    // « annonces » en n'en comptant qu'une sorte.
+    //
+    // Le CRITÈRE MÉTIER NE CHANGE PAS : une annonce en attente d'action est un
+    // job 'needs_user', ici comme avant, des deux côtés. Ce qui change, c'est
+    // qu'il n'y a plus qu'UN endroit qui l'applique — celui-ci — et deux
+    // lecteurs. Le popup et l'app affichent désormais le même nombre parce
+    // qu'ils lisent le même, pas parce qu'on a aligné deux calculs.
+    // `inventaire_ids` accompagne le total : c'est ce qui permet à l'app de
+    // filtrer sa liste sur EXACTEMENT les articles comptés, sans re-dériver un
+    // périmètre de son côté.
+    const annoncesEnAttente = async () => {
+      // action='delete' EXCLUE : un retrait n'est pas une annonce à débloquer,
+      // et aucun des deux lecteurs ne le comptait (le popup les écarte dès
+      // fetchPendingJobs). On unifie le périmètre, on ne l'invente pas.
+      const { data } = await userClient
+        .from("cross_post_jobs")
+        .select("id, inventaire_id")
+        .eq("status", "needs_user")
+        .neq("action", "delete");
+      const lignes = (data ?? []) as { id: unknown; inventaire_id: unknown }[];
+      // Le TOTAL compte les jobs (deux plateformes bloquées sur un même
+      // article = deux annonces à débloquer) ; les ids servent au filtre de
+      // liste, dédoublonnés puisqu'une carte d'article y est unique.
+      const ids = [...new Set(
+        lignes.map((l) => (l.inventaire_id == null ? null : String(l.inventaire_id)))
+          .filter((v): v is string => v !== null),
+      )];
+      return { total: lignes.length, inventaire_ids: ids };
+    };
+
     // Mode plafond_only (2026-08-29 soir) : appelé par l'APP (StockTab) pour
     // afficher le bandeau « ta file reprend demain » — la retenue serveur est
     // active depuis v18 mais l'app était muette (arrêt silencieux, exactement
@@ -286,11 +328,17 @@ serve(async (req) => {
     // ciblage des mails de mise à jour). Aucun job distribué, aucune commande
     // de sync consommée.
     if (body?.plafond_only === true) {
+      // annonces_en_attente voyage AVEC le plafond : c'est le même appel de
+      // 2 min que l'app fait déjà, pas un aller-retour de plus. Lecture
+      // séparée et tolérante — un échec du comptage ne doit pas priver l'app
+      // du bandeau de plafond, et inversement.
+      let attente: { total: number; inventaire_ids: string[] } | null = null;
+      try { attente = await annoncesEnAttente(); } catch (_e) { /* null = l'app garde son affichage précédent */ }
       try {
-        return json({ plafond_republish: await etatPlafondRepublish() });
+        return json({ plafond_republish: await etatPlafondRepublish(), annonces_en_attente: attente });
       } catch (_e) {
         // L'app masque le bandeau sur null : jamais un bandeau sur une panne.
-        return json({ plafond_republish: null });
+        return json({ plafond_republish: null, annonces_en_attente: attente });
       }
     }
 
@@ -661,8 +709,18 @@ serve(async (req) => {
     // connaissent pas ce champ l'ignorent : rien ne change pour elles.
     // boutique_pause : de quoi écrire « X republications en pause — elles
     // concernent ta boutique @x » sans que personne ait à le recalculer.
+    // annonces_en_attente : le MÊME calcul que celui servi à l'app en mode
+    // plafond_only. Le popup l'affiche au lieu de compter lui-même — c'est ce
+    // qui garantit que les deux écrans disent le même nombre.
+    // Servi au popup seul (include_needs_user) : le background poll toutes les
+    // 2 min et n'a que faire de ce chiffre, il ne le paie donc pas.
+    let annoncesAttente: { total: number; inventaire_ids: string[] } | null = null;
+    if (includeNeedsUser) {
+      try { annoncesAttente = await annoncesEnAttente(); } catch (_e) { /* le popup retombe sur son propre compte */ }
+    }
     return json({
       jobs: out,
+      annonces_en_attente: annoncesAttente,
       sync_command: syncCommand,
       sync_prioritaire: heldSync > 0,
       jobs_retenus_sync: heldSync,

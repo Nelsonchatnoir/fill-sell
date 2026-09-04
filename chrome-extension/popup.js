@@ -59,6 +59,7 @@ const state = {
   publishing: false,
   // ── Poste de pilotage (2026-08-04) ────────────────────────────────────────
   besoinGeste: [],      // jobs 'needs_user' — ce qui attend une décision
+  attenteTotal: null,   // total servi par get-pending-jobs (source unique, partagée avec l'app)
   sync: null,           // dernier run vinted_sync_runs (état + progression)
   sessions: null,       // profiles.extension_sessions (relevé de l'extension)
   eveil: null,          // épisode de maintien en éveil en cours, ou null
@@ -138,6 +139,16 @@ async function fetchPendingJobs(accessToken) {
   const data = await res.json().catch(() => ({}));
   state.sync = data?.contexte?.sync ?? null;
   state.sessions = data?.contexte?.sessions ?? null;
+  // ── LE NOMBRE VIENT DU SERVEUR (2026-09-04) ─────────────────────────────
+  // Le popup et le bandeau de l'app affichaient deux nombres différents pour
+  // la même chose (« 6 opérations » ici, « 4 annonces » là-bas) parce que
+  // chacun comptait de son côté sur un périmètre différent. get-pending-jobs
+  // fait maintenant LE calcul, et les deux écrans lisent le même résultat.
+  // Repli sur le compte local si le champ manque (fonction pas encore
+  // déployée) : le popup n'affiche jamais rien de moins qu'avant.
+  state.attenteTotal = Number.isFinite(data?.annonces_en_attente?.total)
+    ? data.annonces_en_attente.total
+    : null;
   // Les jobs action='delete' (retrait cross-plateforme, 2026-07-11) passent
   // par la même file mais ne sont PAS des annonces à publier : ils
   // n'apparaissent pas dans le popup et ne sont jamais ciblés par
@@ -531,7 +542,9 @@ function renderAwake() {
 }
 
 function renderAlerts() {
-  const n = state.besoinGeste.length;
+  // Le total fait foi quand le serveur l'a rendu (source unique partagée avec
+  // le bandeau de l'app) ; sinon le compte local, comme avant.
+  const n = state.attenteTotal ?? state.besoinGeste.length;
   // ── Bascule de compte FillSell en attente (2026-09-03, incident Nadège) ────
   // fillsell.app est connecté avec un AUTRE compte que celui rattaché à cette
   // extension : rien n'a été basculé tout seul — c'est CE clic qui décide.

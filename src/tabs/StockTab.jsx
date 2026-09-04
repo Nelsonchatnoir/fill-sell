@@ -4381,6 +4381,14 @@ const StockTab = memo(function StockTab({
   // extension éteinte pour vivante). null (panne, pas d'état) → PAS de
   // bandeau : jamais un bandeau sur une erreur ni préventif.
   const [repubPlafondEtat, setRepubPlafondEtat] = useState(null); // {limite,faits,retenue,jour}|null
+  // ── Annonces en attente d'une action : LE NOMBRE VIENT DU SERVEUR ─────────
+  // (2026-09-04) Même appel, même cadence — get-pending-jobs le calcule une
+  // fois et le popup de l'extension lit EXACTEMENT le même. Fini les deux
+  // compteurs qui se contredisent sur le même écran. `inventaire_ids` porte le
+  // périmètre exact du filtre de liste, pour que le bandeau et la liste
+  // montrent la même chose. null = pas encore lu ou panne : on retombe sur le
+  // compte local, jamais sur zéro.
+  const [attenteServeur, setAttenteServeur] = useState(null); // {total, inventaire_ids}|null
   useEffect(() => {
     if (!republishActif) return;
     let annule = false;
@@ -4388,6 +4396,7 @@ const StockTab = memo(function StockTab({
       try {
         const { data, error } = await supabase.functions.invoke('get-pending-jobs', { body: { plafond_only: true } });
         if (!annule) setRepubPlafondEtat(error ? null : (data?.plafond_republish ?? null));
+        if (!annule && !error) setAttenteServeur(data?.annonces_en_attente ?? null);
       } catch { if (!annule) setRepubPlafondEtat(null); }
     };
     lire();
@@ -4509,14 +4518,37 @@ const StockTab = memo(function StockTab({
     const actif = nonFinis.find((j) => j.status === 'processing') ?? nonFinis[0] ?? null;
     const file = nonFinis.filter((j) => j !== actif);
     const terminees = jobs.filter((j) => j.status === 'published' || j.status === 'sold' || repubStepDe(j) === 'recreated');
-    return { jobs, total: jobs.length, aRelancer, arretees, dryRuns, orpheline, actif, file, terminees };
-  }, [repubDernier, republishActif, extensionStatus?.lastSeenAt]);
+    // ── LE COMPTEUR VIENT DU SERVEUR QUAND IL EST LÀ (2026-09-04) ───────────
+    // `aRelancer` ci-dessus ne voyait que les republications du lot en cours,
+    // et une seule par article : il annonçait « 4 annonces » quand le popup en
+    // annonçait 6. Le critère métier est le même des deux côtés (un job
+    // 'needs_user'), c'est le PÉRIMÈTRE qui divergeait — désormais calculé une
+    // seule fois, dans get-pending-jobs, et lu ici comme par le popup.
+    // Repli sur le compte local tant que le serveur n'a pas répondu : le
+    // bandeau ne disparaît jamais et n'affiche jamais zéro à tort.
+    const enAttente = Number.isFinite(attenteServeur?.total) ? attenteServeur.total : aRelancer;
+    return { jobs, total: jobs.length, aRelancer: enAttente, arretees, dryRuns, orpheline, actif, file, terminees };
+  }, [repubDernier, republishActif, extensionStatus?.lastSeenAt, attenteServeur]);
   // Titres des lignes du lot : le job ne porte pas toujours son title, la
   // fiche d'inventaire fait foi.
   const repubTitres = useMemo(() => new Map((stock ?? []).map((i) => [i.id, i.title])), [stock]);
   const repubTitre = (j) => repubTitres.get(j.inventaire_id) ?? j.title ?? (lang === 'fr' ? 'Annonce' : 'Listing');
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
   const [repubFiltre, setRepubFiltre] = useState(null);
+  // ── LE CLIC DOIT AMENER QUELQUE PART (2026-09-04) ─────────────────────────
+  // Le bandeau filtrait bien la liste, mais la vue ne bougeait pas : les
+  // articles retenus sont plus bas dans la page, et sur un écran de portable
+  // la personne ne voyait RIEN changer — elle croyait le bouton mort.
+  // On saute donc sur la liste, après le rendu du filtre (rAF : sans lui on
+  // mesure la position de l'ANCIENNE liste, plus longue, et on atterrit à
+  // côté). Uniquement sur ce clic-ci, jamais ailleurs.
+  // `block:'start'` et pas 'center' : le premier article doit être visible,
+  // pas centré avec du vide au-dessus.
+  const sauterAuxArticles = () => {
+    requestAnimationFrame(() => {
+      galerieRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
   useEffect(() => {
     // Le filtre se retire tout seul quand sa catégorie se vide (relances
     // faites) : jamais une liste vide inexpliquée.
@@ -4586,13 +4618,24 @@ const StockTab = memo(function StockTab({
   }, [jobsByInventaire]);
 
   const listeStock = useMemo(() => {
+    if (repubFiltre === 'relancer') {
+      // MÊME PÉRIMÈTRE QUE LE COMPTEUR (2026-09-04) : les ids viennent du
+      // serveur, comme le nombre. Sans ça le bandeau annonçait N annonces et
+      // la liste en montrait M — c'est exactement la contradiction qu'on
+      // supprime. Repli sur la lecture locale (dernier job republish de
+      // l'article) tant que le serveur n'a pas répondu.
+      const ids = attenteServeur?.inventaire_ids;
+      if (Array.isArray(ids)) {
+        const set = new Set(ids.map(String));
+        return stockFiltre.filter(i => set.has(String(i.id)));
+      }
+      return stockFiltre.filter(i => repubDernier[i.id]?.status === 'needs_user');
+    }
     if (repubFiltre) {
       return stockFiltre.filter(i => {
         const last = repubDernier[i.id];
         if (!last) return false;
-        return repubFiltre === 'relancer'
-          ? last.status === 'needs_user'
-          : (last.status === 'failed' || last.status === 'cancelled');
+        return last.status === 'failed' || last.status === 'cancelled';
       });
     }
     let base;
@@ -4614,7 +4657,7 @@ const StockTab = memo(function StockTab({
       .filter(Boolean);
     if (!enCours.length) return base;
     return [...enCours, ...base.filter(i => !setT.has(String(i.id)))];
-  }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier, tetesJobs]);
+  }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier, tetesJobs, attenteServeur]);
 
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
@@ -5409,7 +5452,7 @@ const StockTab = memo(function StockTab({
                 M » côté N ni dans la file ; sans cette ligne un échec serait
                 invisible ici. Tap → filtre la liste. */}
             {repubBandeau.arretees>0&&(
-              <button onClick={()=>setRepubFiltre(f=>f==='arretees'?null:'arretees')}
+              <button onClick={()=>{const on=repubFiltre!=='arretees';setRepubFiltre(on?'arretees':null);if(on)sauterAuxArticles();}}
                 style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginTop:12,border:`1px solid ${repubFiltre==='arretees'?"#5C6560":"#E7E3D8"}`,background:repubFiltre==='arretees'?"#5C6560":"#F7F5EF",color:repubFiltre==='arretees'?"#fff":"#5C6560",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
                 <span style={{flex:1,minWidth:0}}>
                   {repubBandeau.arretees} {lang==='fr'
@@ -5425,7 +5468,7 @@ const StockTab = memo(function StockTab({
                 le reste dépend de l'utilisateur). Tap → filtre la liste sur
                 ces jobs. */}
             {repubBandeau.aRelancer>0&&(
-              <button onClick={()=>setRepubFiltre(f=>f==='relancer'?null:'relancer')}
+              <button onClick={()=>{const on=repubFiltre!=='relancer';setRepubFiltre(on?'relancer':null);if(on)sauterAuxArticles();}}
                 style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",marginTop:12,border:`1px solid ${repubFiltre==='relancer'?"#8A6100":"#EED9A6"}`,background:repubFiltre==='relancer'?"#8A6100":"#FFF6E3",color:repubFiltre==='relancer'?"#fff":"#8A6100",borderRadius:10,padding:"9px 11px",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
                 <Hand size={14} style={{flexShrink:0}}/>
                 <span style={{flex:1,minWidth:0}}>
@@ -6582,6 +6625,26 @@ const StockTab = memo(function StockTab({
                       </div>
                     ))}
                   </div>
+                )}
+                {/* ── LE RETOUR, LÀ OÙ ON ATTERRIT (2026-09-04) ──────────────
+                    « Liste filtrée — re-touche le bouton pour tout
+                    réafficher » ne vit qu'EN HAUT du bloc republication.
+                    Depuis que le clic fait sauter jusqu'ici, la personne se
+                    retrouve en BAS : elle voit une liste courte sans savoir
+                    pourquoi, et le seul moyen de revenir est hors de l'écran.
+                    Ce bouton est ce moyen, à l'endroit où elle est. Il pose le
+                    MÊME état que le chip du bandeau (repubFiltre à null) —
+                    aucune autre logique, aucun compteur touché. */}
+                {repubFiltre&&!modePrixAchat&&!modeRepublish&&(
+                  <button onClick={()=>setRepubFiltre(null)}
+                    style={{display:"flex",alignItems:"center",gap:6,width:"100%",textAlign:"left",marginBottom:10,border:"1px solid #E7E3D8",background:"#F7F5EF",color:"#5C6560",borderRadius:10,padding:"8px 11px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",lineHeight:1.45}}>
+                    <span style={{flex:1,minWidth:0}}>
+                      {lang==='fr'
+                        ?`Liste filtrée sur ${listeStock.length} article${listeStock.length>1?'s':''}. Afficher tout le stock.`
+                        :`List filtered to ${listeStock.length} item${listeStock.length>1?'s':''}. Show all stock.`}
+                    </span>
+                    <ChevronRight size={15} style={{flexShrink:0}}/>
+                  </button>
                 )}
                 {/* ── GALERIE (2026-08-27) : grille de cartes photo, 2 colonnes
                     sur mobile. Pagination inchangée (slice de 10 + « Voir

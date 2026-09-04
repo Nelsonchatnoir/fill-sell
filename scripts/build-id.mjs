@@ -1151,7 +1151,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // package-extension le refusera désormais. C'est voulu et c'est exact — il
 // faudra re-packager avant de téléverser, ou téléverser en sachant que le
 // popup gardera l'ancien libellé.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T20:36:00Z';
+// 2026-09-04T20:43:00Z = le popup n'additionne plus lui-même les annonces en
+// attente : il affiche le total servi par get-pending-jobs (v24), le MÊME que
+// le bandeau de l'app. Fin des deux compteurs qui se contredisaient sur le
+// même écran. Repli sur le compte local si le champ manque.
+// Bumpé DANS LE MÊME COMMIT que le changement sous chrome-extension/.
+// Committé GIT_COMMITTER_DATE épinglée. EXTENSION_MIN_BUILD inchangé.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T20:43:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
