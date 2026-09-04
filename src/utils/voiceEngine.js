@@ -902,6 +902,7 @@ async function handleBusinessAdvice(task, context) {
     const analysis = d?.analysis || (lang === "en" ? "No data available yet." : "Pas encore assez de données.");
     return { intent: "business_advice", taskData: task.data, status: "success", data: { analysis }, message: analysis };
   } catch (e) {
+    console.warn("[vocal] conseil business en échec :", e?.message ?? e);
     return { intent: "business_advice", taskData: task.data, status: "error", data: {}, message: lang === "en" ? "Analysis failed" : "Analyse échouée" };
   }
 }
@@ -981,7 +982,9 @@ export async function executeVoiceTasks(tasks, context) {
           }),
         }).catch(() => {});
       }
-    } catch {}
+    } catch (e) {
+      console.warn("[vocal] journalisation voice_add_guard perdue — la garde a bien tourné, seule sa trace manque :", e?.message ?? e);
+    }
   }
 
   for (const task of tasks) {
@@ -1318,6 +1321,9 @@ export async function executeVoiceTasks(tasks, context) {
             const analysis = d?.analysis || (context.lang === "en" ? "No analysis available." : "Analyse non disponible.");
             result = { intent: task.intent, taskData: task.data, status: "success", data: { analysis }, message: analysis };
           } catch (e) {
+            // « Analyse échouée » est tout ce que voit l'utilisateur : sans ce
+            // log, la cause réelle était perdue à chaque fois.
+            console.warn(`[vocal] intent « ${task.intent} » en échec :`, e?.message ?? e);
             result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Analysis failed" : "Analyse échouée" };
           }
           break;
@@ -1354,6 +1360,9 @@ export async function executeVoiceTasks(tasks, context) {
             const analysis = d?.analysis || (context.lang === "en" ? "No analysis available." : "Analyse non disponible.");
             result = { intent: task.intent, taskData: task.data, status: "success", data: { analysis }, message: analysis };
           } catch (e) {
+            // « Analyse échouée » est tout ce que voit l'utilisateur : sans ce
+            // log, la cause réelle était perdue à chaque fois.
+            console.warn(`[vocal] intent « ${task.intent} » en échec :`, e?.message ?? e);
             result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Analysis failed" : "Analyse échouée" };
           }
           break;
@@ -1390,6 +1399,9 @@ export async function executeVoiceTasks(tasks, context) {
               message: analysis + addPrompt,
             };
           } catch (e) {
+            // « Analyse échouée » est tout ce que voit l'utilisateur : sans ce
+            // log, la cause réelle était perdue à chaque fois.
+            console.warn(`[vocal] intent « ${task.intent} » en échec :`, e?.message ?? e);
             result = { intent: task.intent, taskData: task.data, status: "error", data: {}, message: context.lang === "en" ? "Analysis failed" : "Analyse échouée" };
           }
           break;
@@ -1448,7 +1460,9 @@ export async function executeVoiceTasks(tasks, context) {
                     const _t = (_j.tasks || []).find(t => t.intent === "inventory_add");
                     if (_t?.data) _addData = _t.data;
                   }
-                } catch {}
+                } catch (e) {
+                  console.warn(`[vocal] enrichissement voice-intent indisponible pour « ${article} » — repli sur le nom seul :`, e?.message ?? e);
+                }
                 task.data = { ...(_addData || { nom: article }), emplacement };
                 task.intent = "inventory_add";
                 const _ddk3 = norm([task.data.nom, task.data.marque, task.data.description].filter(Boolean).join(" ") || "");
@@ -1696,7 +1710,10 @@ export async function executeVoiceTasks(tasks, context) {
   }
 
   if (hadMutation) {
-    try { await context.actions.fetchAll(); } catch {}
+    // ⚠️ Ce catch-ci masquait le cas le plus visible du lot : une écriture a
+    // eu lieu, mais la relecture échoue → l'écran garde les anciennes données
+    // et l'utilisateur croit que sa commande vocale n'a rien fait.
+    try { await context.actions.fetchAll(); } catch (e) { console.warn("[vocal] mutation faite mais relecture (fetchAll) en échec — l'écran peut rester sur les anciennes valeurs jusqu'au prochain rafraîchissement :", e?.message ?? e); }
   }
 
   console.group("[VoiceEngine]");
@@ -1726,7 +1743,9 @@ export async function executeVoiceTasks(tasks, context) {
         body: JSON.stringify({ user_id: _uid, feature: "voice_intent_result", metadata: _meta }),
       }).catch(() => {});
     }
-  } catch {}
+  } catch (e) {
+    console.warn("[vocal] journalisation voice_intent_result perdue — la commande a bien été traitée, seule sa trace manque :", e?.message ?? e);
+  }
 
   return { results };
 }

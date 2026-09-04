@@ -328,8 +328,12 @@ function FreePlanCard({ fr, estMonPlan, K }) {
 // Bascule quotas (02/09 soir) : le bandeau de grant et ses équivalences
 // « ≈ N articles OU M analyses » (27/08) sont MORTS — les unités ont disparu
 // de l'expérience, les cinq lignes de gestes portent tous les volumes.
-// (Props historiques conservées pour les hôtes — seules fr/K/onUpgrade servent.)
-function PremiumPlanCard({ fr, K, grantPrem, lensCost, lensScans, articles, genPrice, pubUnit, repubPrice, onUpgrade }) {
+// (Props historiques de la monnaie interne — grantPrem, lensCost, lensScans,
+// articles, genPrice, pubUnit, repubPrice — RETIRÉES de la signature le
+// 2026-09-04 : aucun corps ne les lisait depuis la bascule du 02/09. Les hôtes
+// peuvent continuer de les passer, une prop non destructurée est ignorée.
+// Seules fr/K/onUpgrade servent.)
+function PremiumPlanCard({ fr, K, onUpgrade }) {
   return (
     <div style={{
       background: C.paper, border: `1.5px solid ${C.teal}`, borderRadius: 22,
@@ -366,7 +370,8 @@ function PremiumPlanCard({ fr, K, grantPrem, lensCost, lensScans, articles, genP
 // paliers. On annonce ce que le grant permet réellement (calculé).
 // Exportée pour PlanDetailsModal (2026-07-24) : la modale du badge la réutilise
 // comme upsell Pro pour les Premium — source UNIQUE de ce que Pro promet.
-export function ProPlanCard({ fr, K, grantPro, lensCost, lensScans, articles, proFactor, showFactor, genPrice, pubUnit, repubPrice, onUpgrade }) {
+// Mêmes props mortes retirées qu'au-dessus (+ proFactor / showFactor).
+export function ProPlanCard({ fr, K, onUpgrade }) {
   return (
     <div style={{
       position: 'relative',
@@ -425,7 +430,8 @@ export function ProPlanCard({ fr, K, grantPro, lensCost, lensScans, articles, pr
 // ⚠️ AUCUNE mention de « 8 photos par scan » : l'idée est abandonnée depuis le
 // 2026-08-09, tous les paliers sont identiques sur ce point.
 // Exportée pour PlanDetailsModal (upsell des Pro), comme ProPlanCard.
-export function BusinessPlanCard({ fr, K, grantBusiness, lensCost, lensScans, articles, genPrice, pubUnit, repubPrice, onUpgrade }) {
+// Mêmes props mortes retirées qu'au-dessus.
+export function BusinessPlanCard({ fr, K, onUpgrade }) {
   return (
     <div style={{
       position: 'relative', overflow: 'hidden',

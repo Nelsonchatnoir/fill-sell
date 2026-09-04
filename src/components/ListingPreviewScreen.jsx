@@ -142,7 +142,7 @@ async function pickPhotosAndroid(remaining, onFiles, fallbackClick) {
       const mime = blob.type || (ph.format ? `image/${ph.format}` : "image/jpeg");
       const ext = ph.format || mime.split("/")[1] || "jpg";
       files.push(new File([blob], `photo_${Date.now()}_${i}.${ext}`, { type: mime }));
-    } catch (_) { /* photo illisible : sautée, les autres passent */ }
+    } catch { /* photo illisible : sautée, les autres passent */ }
   }
   if (files.length) onFiles(files);
 }

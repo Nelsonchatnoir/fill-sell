@@ -1546,7 +1546,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
   useEffect(()=>{
     const onVisibility=()=>{
       if(!document.hidden)return;
-      try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
+      try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch(e){console.warn("[vocal] arrêt du MediaRecorder refusé (état déjà changé ?) —",e?.message??e);}
       vaStreamRef.current?.getTracks().forEach(t=>t.stop());
       vaStreamRef.current=null;
     };
@@ -1564,7 +1564,7 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
   function resetVA(){
     clearTimeout(autoCloseRef.current);
     clearTimeout(voiceAutoStopRef.current);
-    try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch{}
+    try{if(vaMediaRef.current&&vaMediaRef.current.state!=="inactive")vaMediaRef.current.stop();}catch(e){console.warn("[vocal] arrêt du MediaRecorder refusé (état déjà changé ?) —",e?.message??e);}
     vaMediaRef.current=null;vaChunksRef.current=[];
     vaStreamRef.current?.getTracks().forEach(t=>t.stop());
     vaStreamRef.current=null;
@@ -2393,7 +2393,7 @@ export default function App({ loginOnly = false }){
       catch(e){console.warn('[IAP] lecture abos Play:',e?.message);}
       if(!upgradeOldToken){
         let prof=null;
-        try{const{data}=await supabase.from('profiles').select('stripe_customer_id,google_purchase_token,google_product_id').eq('id',user.id).single();prof=data;}catch{}
+        try{const{data}=await supabase.from('profiles').select('stripe_customer_id,google_purchase_token,google_product_id').eq('id',user.id).single();prof=data;}catch(e){console.warn("[abonnement] lecture du profil de facturation impossible — prof reste indéfini, la gestion d'abonnement retombera sur son chemin par défaut :",e?.message??e);}
         const cibleId=isBusinessPurchase?PRODUCT_IDS.business:PRODUCT_IDS.pro;
         if(prof?.google_purchase_token&&prof?.google_product_id!==cibleId){
           // Repli si getPurchases est muet (autre compte Google sur l'appareil…) :
@@ -3288,7 +3288,7 @@ export default function App({ loginOnly = false }){
       const marqueNorm=normalizeMarque(item.marque);
       const _td1=detectType(item.nom||"",marqueNorm);const typeAuto=(item.categorie&&item.categorie!=='Luxe')?item.categorie:_td1;
       let nomNorm=item.nom||"Article";
-      if(avToken&&(qty>1||voiceParsed.isLot)){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${avToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch{}}
+      if(avToken&&(qty>1||voiceParsed.isLot)){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${avToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch(e){console.warn("[normalize-title] normalisation ignorée, le titre saisi est conservé —",e?.message??e);}}
       const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:item.date?new Date(item.date).toISOString():new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:qty,emplacement:item.emplacement||null,plateforme:item.plateforme||null};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){
@@ -3341,7 +3341,7 @@ export default function App({ loginOnly = false }){
       const lotFraisG=parseFloat(voiceParsed?.items?.[0]?.frais_global)||0;
       const lotFraisU=lotFraisG>0?lotFraisG/(voiceParsed?.items?.length||1):(parseFloat(voiceParsed?.items?.[0]?.frais_unitaire)||0);
       let nomNorm=item.nom||"Article";
-      if(ntToken){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ntToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch{}}
+      if(ntToken){try{const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${ntToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:nomNorm})});if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nomNorm=nJson.nom;}}catch(e){console.warn("[normalize-title] normalisation ignorée, le titre saisi est conservé —",e?.message??e);}}
       const row={id:idBase++,user_id:user.id,titre:stripMarque(nomNorm,marqueNorm),prix_achat:b,prix_vente:null,margin:null,margin_pct:null,statut:"stock",date:new Date().toISOString(),marque:marqueNorm,description:item.description||null,type:typeAuto,purchase_costs:lotFraisU,selling_fees:0,quantite:1,plateforme:voiceParsed?.items?.[0]?.plateforme||null};
       const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
       if(!error){insertedCount++;setItems(prev=>[mapItem(data),...prev]);}
@@ -4316,7 +4316,11 @@ export default function App({ loginOnly = false }){
       return isNaN(d)?null:d.toISOString().split('T')[0];
     }
     const s=String(val).trim();
-    const m1=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    // [/-] : le « / » n'a pas à être échappé dans une classe, et le « - » en
+    // DERNIÈRE position y est littéral. Même appariement qu'avant —
+    // 12/05/2024 comme 12-05-2024 — sans les échappements inutiles qui
+    // faisaient douter de la classe.
+    const m1=s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
     if(m1){const y=m1[3].length===2?"20"+m1[3]:m1[3];return `${y}-${m1[2].padStart(2,'0')}-${m1[1].padStart(2,'0')}`;}
     const m2=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if(m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
@@ -5229,7 +5233,7 @@ export default function App({ loginOnly = false }){
   async function handleLensCameraNative(){
     try{
       let perms;
-      try{ perms=await Camera.checkPermissions(); }catch(_){ perms=null; }
+      try{ perms=await Camera.checkPermissions(); }catch{ perms=null; }
 
       if(perms?.camera==='denied'){
         alert(lang==='fr'
@@ -5238,7 +5242,7 @@ export default function App({ loginOnly = false }){
         return;
       }
       if(perms?.camera==='prompt'||perms?.camera==='prompt-with-rationale'){
-        try{ await Camera.requestPermissions({permissions:['camera']}); }catch(_){}
+        try{ await Camera.requestPermissions({permissions:['camera']}); }catch(e){console.warn("[camera] demande de permission caméra en échec — la prise de photo suivante peut être refusée sans message :",e?.message??e);}
       }
 
       const photo=await Camera.getPhoto({
@@ -5278,7 +5282,7 @@ export default function App({ loginOnly = false }){
       // Vérifier l'état des permissions avant d'ouvrir (photos, plus caméra :
       // pickImages ne se sert que de la photothèque)
       let perms;
-      try{ perms=await Camera.checkPermissions(); }catch(_){ perms=null; }
+      try{ perms=await Camera.checkPermissions(); }catch{ perms=null; }
 
       if(perms?.photos==='denied'){
         alert(lang==='fr'
@@ -5289,7 +5293,7 @@ export default function App({ loginOnly = false }){
 
       // Si "prompt" (jamais demandé) → demander explicitement avant d'ouvrir
       if(perms?.photos==='prompt'||perms?.photos==='prompt-with-rationale'){
-        try{ await Camera.requestPermissions({permissions:['photos']}); }catch(_){}
+        try{ await Camera.requestPermissions({permissions:['photos']}); }catch(e){console.warn("[camera] demande de permission photothèque en échec — la sélection de photos suivante peut être refusée sans message :",e?.message??e);}
       }
 
       const res=await Camera.pickImages({ quality:90, limit:5 });
@@ -5309,7 +5313,7 @@ export default function App({ loginOnly = false }){
             fr.readAsDataURL(blob);
           });
           if(dataUrl)converted.push({preview:dataUrl,mime:blob.type||'image/jpeg'});
-        }catch(_){/* photo illisible : sautée */}
+        }catch{/* photo illisible : sautée */}
       }
       if(!converted.length)return;
       setLensResult(null);setLensAdded(false);
@@ -5396,6 +5400,7 @@ export default function App({ loginOnly = false }){
       mr.start();
       setLensMicActive(true);
     }catch(err){
+      console.warn("[vocal] accès micro refusé :",err?.message??err);
       setLensResult({error:lang==='fr'?'❌ Accès micro refusé.':'❌ Microphone access denied.'});
     }
   }
@@ -5582,7 +5587,7 @@ export default function App({ loginOnly = false }){
           const nRes=await fetch(`${supabaseUrl}/functions/v1/normalize-title`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${lToken}`,"apikey":supabaseAnonKey},body:JSON.stringify({titre:lensResult.titre})});
           if(nRes.ok){const nJson=await nRes.json();if(nJson?.nom)nom=nJson.nom;}
         }
-      }catch{}
+      }catch(e){console.warn("[normalize-title] normalisation ignorée (Lens), le titre relevé est conservé —",e?.message??e);}
       if(lensResult.est_vendu===true){
         const pv=lensResult.prix_vente_reel||lensResult.prix_vente_suggere||0;
         // ── VIDE ≠ ZÉRO, y compris ici (2026-08-11) ─────────────────────────

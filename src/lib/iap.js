@@ -66,6 +66,9 @@ export const initIAP = async () => {
     });
     return products?.[0] || null;
   } catch (e) {
+    // null = « pas de produit lisible » côté appelant, il n'a jamais su
+    // pourquoi : la cause du store était perdue ici.
+    console.warn("[iap] lecture du produit d'abonnement impossible :", e?.message ?? e);
     return null;
   }
 };
@@ -182,16 +185,18 @@ export const findActivePlayPremiumSub = async (lowerIds = [PRODUCT_IDS.sub, PROD
   return tx?.purchaseToken ?? null;
 };
 
-export const restorePurchases = async (source) => {
-  try {
-    await NativePurchases.restorePurchases();
-    const { purchases } = await NativePurchases.getPurchases();
-    const allIds = Object.values(PRODUCT_IDS);
-    const tx = purchases?.find(p => allIds.includes(p.productIdentifier));
-    if (!tx) return { isPremium: false, receipt: null, purchaseToken: null, productId: null };
-    const isActive = tx.isActive === true || (tx.expirationDate && new Date(tx.expirationDate) > new Date()) || tx.purchaseState === '1';
-    return { isPremium: !!isActive, receipt: tx.receipt ?? null, purchaseToken: tx.purchaseToken ?? null, productId: tx.productIdentifier ?? null };
-  } catch (e) {
-    throw e;
-  }
+// Le `try { … } catch (e) { throw e }` qui enveloppait ce corps est retiré : il
+// rattrapait pour relancer à l'identique, donc il ne faisait rien. Les erreurs
+// remontent exactement comme avant, à l'appelant.
+// (paramètre `source` retiré le 2026-09-04 : plus aucun corps ne le lisait —
+// c'était le reliquat d'une télémétrie supprimée. Les appelants qui le passent
+// encore ne sont pas affectés, un argument en trop est ignoré en JS.)
+export const restorePurchases = async () => {
+  await NativePurchases.restorePurchases();
+  const { purchases } = await NativePurchases.getPurchases();
+  const allIds = Object.values(PRODUCT_IDS);
+  const tx = purchases?.find(p => allIds.includes(p.productIdentifier));
+  if (!tx) return { isPremium: false, receipt: null, purchaseToken: null, productId: null };
+  const isActive = tx.isActive === true || (tx.expirationDate && new Date(tx.expirationDate) > new Date()) || tx.purchaseState === '1';
+  return { isPremium: !!isActive, receipt: tx.receipt ?? null, purchaseToken: tx.purchaseToken ?? null, productId: tx.productIdentifier ?? null };
 };
