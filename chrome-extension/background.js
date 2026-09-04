@@ -1323,6 +1323,9 @@ function withJobFlowLock(label, fn) {
 // Variable de module et non valeur de retour : pollAndProcessJobsUnlocked a
 // une dizaine de sorties anticipées, toutes devraient la propager.
 let commandeSyncEnAttente = null;
+// Nombre de jobs que le serveur a retenus POUR laisser passer la sync de ce
+// cycle (get-pending-jobs, champ sync_prioritaire). 0 = file honnêtement vide.
+let syncPrioritaireDuCycle = 0;
 
 function pollAndProcessJobs() {
   const p = withJobFlowLock("poll", pollAndProcessJobsUnlocked);
@@ -1738,6 +1741,9 @@ async function pollAndProcessJobsUnlocked() {
   );
 
   let jobs;
+  // Remis à zéro AVANT la lecture : un cycle qui échoue ne doit pas laisser
+  // croire au suivant qu'une sync prioritaire l'attend encore.
+  syncPrioritaireDuCycle = 0;
   try {
     // build : télémétrie de version (profiles.extension_build via
     // get-pending-jobs) — sert au ciblage du mail « mise à jour extension ».
@@ -1752,6 +1758,13 @@ async function pollAndProcessJobsUnlocked() {
     });
     jobs = rep.jobs;
     commandeSyncEnAttente = rep.sync_command ?? null;
+    // sync_prioritaire (2026-09-04) : le serveur a VOLONTAIREMENT vidé ce
+    // cycle pour laisser passer la demande de sync qu'il vient de nous
+    // confier. Distinct d'une file réellement vide — et c'est exactement la
+    // distinction dont l'arbitrage d'éveil a besoin ci-dessous.
+    syncPrioritaireDuCycle = rep.sync_prioritaire === true
+      ? Number(rep.jobs_retenus_sync) || 1
+      : 0;
   } catch (e) {
     console.error("[background] get-pending-jobs:", e);
     if (e?.status === 401) {
@@ -1776,11 +1789,22 @@ async function pollAndProcessJobsUnlocked() {
   // Ici, et nulle part ailleurs — on vient de lire la file, c'est le seul
   // moment où on sait s'il reste du travail. Au moins un job → on demande ;
   // file vide → on relâche ; plafond dépassé → on relâche quand même.
+  //
+  // ⚠️ UNE SYNC EN FILE EST DU TRAVAIL (2026-09-04, effet de bord relevé par
+  // Nico). La « récréation » se cale sur ce que le serveur vient de servir :
+  // une file entièrement différée (échéances futures) ou volontairement vidée
+  // pour laisser passer la sync rend `jobs.length === 0`, et l'ancienne
+  // lecture concluait « plus rien à faire » — la machine était libre de
+  // s'endormir en emportant la demande de sync qu'on venait de recevoir. Une
+  // sync en file n'est JAMAIS couverte par une récréation : on la compte.
   // `await` volontaire mais sans effet sur la cadence : deux lectures de
   // chrome.storage.local, aucun appel réseau bloquant (la trace, elle, part en
   // fire-and-forget). Si quoi que ce soit échoue ici, la boucle de jobs
   // ci-dessous n'en sait rien et se déroule à l'identique.
-  await arbitrerEveil(jobs.length, session.access_token).catch((e) =>
+  const travailDuCycle = jobs.length
+    + (commandeSyncEnAttente ? 1 : 0)
+    + syncPrioritaireDuCycle;
+  await arbitrerEveil(travailDuCycle, session.access_token).catch((e) =>
     console.warn("[background] éveil : arbitrage en échec (sans conséquence sur les jobs) :", String(e?.message ?? e)));
 
   // Nouveau cycle : ré-arme le droit à UN onglet temporaire (cf. retryInTempTab).

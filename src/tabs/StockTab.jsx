@@ -1496,7 +1496,7 @@ const RETRY403_GRACE_MS = 5 * 60 * 1000;
 // Chrome. Le marquage des disparitions est protégé par l'identité du RUN,
 // côté extension : sync mono-compte.)
 
-function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null }) {
+function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null }) {
   const fr = lang !== 'en';
   // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
   // doctrine du 09/08. `surTelephone` revient le 01/09 pour UNE décision qui
@@ -1661,11 +1661,21 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         // à une panne. Quand une republication est non terminale sur le
         // compte, on dit la vérité : occupée, ça partira après —
         // et la télémétrie sync_click dit 'attente' et non 'echec'.
-        if (repubEnVol > 0) {
+        // ⚠️ `repubEnVol` ne compte plus que les republications SERVABLES
+        // (2026-09-04) : celles qu'une échéance future retient ne rendent pas
+        // l'extension occupée. Une file entièrement différée (repubRepriseA)
+        // reste néanmoins une file — l'écran le dit, avec son heure de reprise,
+        // au lieu de crier « extension muette » sur une extension en bonne
+        // santé qui n'a simplement rien à faire.
+        if (repubEnVol > 0 || repubRepriseA) {
           if (user?.id) {
             supabase.from('usage_logs').insert({
               user_id: user.id, feature: 'sync_click',
-              metadata: { resultat: 'attente', raison: 'extension_occupee_republication', voie: 'directe', source, repub_en_vol: repubEnVol },
+              metadata: {
+                resultat: 'attente', raison: 'extension_occupee_republication', voie: 'directe', source,
+                repub_en_vol: repubEnVol,
+                repub_toutes_differees: repubEnVol === 0 && !!repubRepriseA,
+              },
             }).then(({ error }) => { if (error) console.warn('[sync_click] non journalisé:', error.message); });
           }
           setMessage(null);
@@ -1749,7 +1759,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // bouton au lieu de bloquer pour toujours.
   useEffect(() => {
     if (!attenteOccupee || !user?.id) return;
-    if (repubEnVol === 0) { setAttenteOccupee(false); return; }
+    if (repubEnVol === 0 && !repubRepriseA) { setAttenteOccupee(false); return; }
     const id = setInterval(async () => {
       let r = null;
       try { r = await lireDernierRunDressing(user.id); }
@@ -1763,7 +1773,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       }
     }, 30000);
     return () => clearInterval(id);
-  }, [attenteOccupee, user?.id, repubEnVol]);
+  }, [attenteOccupee, user?.id, repubEnVol, repubRepriseA]);
 
   // ── Attente d'une réclamation (2026-08-04) ────────────────────────────────
   // Le cas FRÉQUENT est Chrome ouvert : la demande part en 2 min au plus. On
@@ -2221,9 +2231,26 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     return null;
   })();
 
-  // Blocage présent ⇒ le bilan du run passé se tait (contradiction sinon) ;
-  // `message` reste : c'est le retour d'un clic de CETTE session.
-  const avis = message || (blocage ? null : bilan);
+  // ── UN SEUL ÉTAT RENDU À LA FOIS (2026-09-04) ─────────────────────────────
+  // Capture d'ornellaracano : trois éléments empilés dans le même bloc, EN
+  // MÊME TEMPS — « Sync en attente », puis « l'extension est occupée, pas
+  // besoin de recliquer », puis « ta demande n'a pas été exécutée, tu peux la
+  // relancer ». Le deuxième dit de ne rien faire, le troisième dit de
+  // relancer : d'où les quatre clics en deux minutes.
+  // Les deux ne peuvent pas coexister parce qu'ils ne parlent PAS du même
+  // objet : l'encart d'attente parle de la demande EN COURS, le bilan parle du
+  // run PRÉCÉDENT (cancelled/expired). Dès qu'une demande est en vol, le
+  // passé se tait — même règle que `blocage`, et même geste que l'en-tête de
+  // la modale de publication (ee5a01c, 04/09) : une seule source rendue.
+  //   · demande en file (envoi, attente, sync en cours) → l'encart seul, et le
+  //     bouton est déjà désactivé sur ces mêmes états (un clic qui ne peut
+  //     rien déclencher n'est pas proposé) ;
+  //   · demande réellement échouée ou expirée → le bilan, et là seulement ;
+  //   · aucune demande → état normal.
+  // `message` reste prioritaire : c'est le retour d'un clic de CETTE session,
+  // et il est remis à null par le chemin d'attente lui-même.
+  const demandeEnVol = enCours || envoi || attenteOccupee || enAttenteDistante;
+  const avis = message || ((blocage || demandeEnVol) ? null : bilan);
   // L'accroche cross-post (bouton « Ces annonces ne vivent que sur Vinted… »)
   // n'apparaît que sous le bilan VERT : même condition pour le bouton et pour
   // le repli du bilan en ligne grise (04/09) — une seule source de vérité.
@@ -2254,6 +2281,11 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     setMessage(null);
     lancer();
   };
+  // Heure de reprise de la file différée — MÊME formateur que la ligne de
+  // plafond de l'onglet Stock (repriseRepub) : les deux écrans disent la même
+  // heure, dans les mêmes mots, et gèrent « demain » au même endroit. Null si
+  // l'échéance est déjà passée : on n'écrit pas une reprise fausse.
+  const repriseFile = repubRepriseA ? repriseRepub(new Date(repubRepriseA).toISOString(), fr) : null;
   const AVIS_COULEURS = {
     vert:   { bg: '#F0FDFB', bord: 'rgba(13,148,136,0.2)',  texte: '#1B6E62' },
     orange: { bg: '#FFF7ED', bord: '#FED7AA',               texte: '#9A3412' },
@@ -2349,22 +2381,34 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
 
       {/* Extension OCCUPÉE (2026-08-07 soir, cas antavintage : 22
           republications en vol, 6 re-clics sur un « extension muette »
-          mensonger). La sync n'a pas échoué : elle attend le verrou de
-          l'extension. Estimation HONNÊTE : la même formule 5-7 min par
-          republication que la feuille de lot — jamais un chiffre inventé.
-          Le bouton est désactivé tant que ça dure : recliquer n'apporte
-          rien (la demande est déjà en file dans l'extension). */}
+          mensonger). La sync n'a pas échoué : elle attend son tour dans
+          l'extension. Le bouton est désactivé tant que ça dure : recliquer
+          n'apporte rien (la demande est déjà en file).
+          ── L'ESTIMATION « ~5-7 min PAR REPUBLICATION » A ÉTÉ RETIRÉE le
+          2026-09-04. Elle valait quand la sync attendait DERRIÈRE toute la
+          file ; depuis ce soir get-pending-jobs ne distribue AUCUN job du
+          cycle qui emporte une demande de sync — la sync passe devant. Ce qui
+          reste à attendre, c'est au plus l'article déjà commencé, soit le
+          prochain poll : deux minutes, pas seize heures (compte ornellaracano,
+          189 republications, « environ 16 h » à l'écran et quatre re-clics).
+          Deux phrases, jamais mélangées : la file est SERVABLE (on attend
+          l'article en cours), ou elle est entièrement DIFFÉRÉE (on donne
+          l'heure de reprise, jamais une durée). */}
       {attenteOccupee&&(
         <div style={{display:"flex",alignItems:"center",gap:10,background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px"}}>
           <Loader size={18} thickness={2}/>
           <div style={{minWidth:0}}>
             <div style={{fontSize:12.5,fontWeight:700,color:"#5C6560"}}>
-              {fr?"L'extension est occupée — ta synchronisation attend son tour":"The extension is busy — your sync is waiting its turn"}
+              {fr?"Ta synchronisation passe en premier":"Your sync goes first"}
             </div>
             <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",marginTop:2}}>
-              {fr
-                ?`${repubEnVol} republication${repubEnVol>1?'s':''} en cours — la synchronisation partira automatiquement juste après${repubEnVol>0?` (compte ${repubEnVol*5>=60?`environ ${Math.ceil(repubEnVol*5/60)} h`:`~${repubEnVol*5}-${repubEnVol*7} min`})`:''}. Pas besoin de recliquer.`
-                :`${repubEnVol} repost${repubEnVol>1?'s':''} in progress — the sync will start automatically right after${repubEnVol>0?` (allow ${repubEnVol*5>=60?`about ${Math.ceil(repubEnVol*5/60)} h`:`~${repubEnVol*5}-${repubEnVol*7} min`})`:''}. No need to click again.`}
+              {repubEnVol>0
+                ?(fr
+                  ?`Elle part dès que l'article en cours est terminé — deux minutes environ. Tes ${repubEnVol} republication${repubEnVol>1?'s':''} reprennent juste après. Pas besoin de recliquer.`
+                  :`It starts as soon as the item in progress is done — about two minutes. Your ${repubEnVol} repost${repubEnVol>1?'s':''} resume right after. No need to click again.`)
+                :(fr
+                  ?`Tes republications sont en attente${repriseFile?` et reprennent ${repriseFile.quand}`:''} — elles ne retardent pas la synchronisation, qui part dès que ton ordinateur reprend la main. Pas besoin de recliquer.`
+                  :`Your reposts are on hold${repriseFile?` and resume ${repriseFile.quand}`:''} — they are not delaying the sync, which starts as soon as your computer picks up. No need to click again.`)}
             </div>
           </div>
         </div>
@@ -4143,8 +4187,14 @@ const StockTab = memo(function StockTab({
   // UNIQUEMENT à partir de deux boutiques confirmées : le parc mono-boutique
   // ne paie ni la requête ni l'affichage.
   const [boutiqueConnectee, setBoutiqueConnectee] = useState(null);
+  // ⚠️ SEUIL ABAISSÉ À UNE BOUTIQUE (2026-09-04) : le cloisonnement serveur
+  // retient des republications dès qu'UNE boutique est confirmée et que Chrome
+  // est connecté ailleurs — cas d'ornellaracano, une seule boutique épinglée
+  // (@ornella-vend) et Chrome basculé sur @luciatrendyshop. À deux boutiques,
+  // elle ne voyait rien de la mise en pause. Les PILLS de filtre, elles,
+  // restent à deux (rien à filtrer avec une seule).
   useEffect(() => {
-    if (!user?.id || (boutiquesVinted?.length ?? 0) < 2) return;
+    if (!user?.id || (boutiquesVinted?.length ?? 0) < 1) return;
     let stop = false;
     const lire = async () => {
       try { const b = await lireBoutiqueConnectee(user.id); if (!stop) setBoutiqueConnectee(b); }
@@ -4170,6 +4220,35 @@ const StockTab = memo(function StockTab({
     }
     return [...m.entries()];
   }, [jobsByInventaire, lang]);
+  // ── REPUBLICATIONS EN PAUSE FAUTE DE LA BONNE BOUTIQUE (2026-09-04) ───────
+  // MIROIR EXACT de la garde de get-pending-jobs : même comparaison (l'origine
+  // estampillée de l'article contre l'identité relevée par la sonde), mêmes
+  // deux fail-open (origine NULL, sonde absente) — pour que l'écran dise
+  // précisément ce que le serveur fait, ni plus ni moins.
+  // Distinct d'`attentesParBoutique` ci-dessus, qui lit le marqueur posé par
+  // l'extension à la seule étape 'a_capturer' : ce marqueur ne couvre pas les
+  // jobs déjà 'captured' (103 sur 173 ce soir), et il exige la 0.6.17.
+  // ⚠️ Aucune écriture, aucun bouton : ces jobs repartent seuls dès que le bon
+  // compte est reconnecté dans Chrome.
+  const pauseBoutique = useMemo(() => {
+    if (!republishActif || !boutiqueConnectee?.userId) return null;
+    const origines = new Map(stock.map(i => [String(i.id), i.vinted_account_id == null ? '' : String(i.vinted_account_id).trim()]));
+    const parBoutique = new Map();
+    for (const [invId, jobs] of Object.entries(jobsByInventaire)) {
+      const o = origines.get(String(invId));
+      if (!o || o === boutiqueConnectee.userId) continue; // inconnue ou bonne boutique
+      for (const j of jobs) {
+        if (j.action !== 'republish' || j.platform !== 'vinted') continue;
+        if (j.status !== 'pending' && j.status !== 'processing') continue;
+        parBoutique.set(o, (parBoutique.get(o) ?? 0) + 1);
+      }
+    }
+    if (!parBoutique.size) return null;
+    return [...parBoutique.entries()].map(([id, n]) => ({
+      n,
+      login: boutiquesVinted.find(b => String(b.user_id) === id)?.login ?? null,
+    })).sort((a, b) => b.n - a.n);
+  }, [republishActif, boutiqueConnectee, stock, jobsByInventaire, boutiquesVinted]);
   // ── É5 : dérivations de RENDU qui lisent jobsByInventaire ────────────────
   // IMPÉRATIVEMENT APRÈS la déclaration du state ci-dessus : posées avant,
   // elles levaient une TDZ au montage (« Cannot access 'jobsByInventaire'
@@ -4177,9 +4256,30 @@ const StockTab = memo(function StockTab({
   // incident Safari iOS du 05/08. Les non-bêta étaient épargnés par le
   // court-circuit du ternaire republishActif — c'est ce qui a fait croire à
   // un bug spécifique iOS.
-  const repubVivants = republishActif
-    ? Object.values(jobsByInventaire).flat().filter(j => j.action === 'republish' && (j.status === 'pending' || j.status === 'processing')).length
-    : 0;
+  // ── CE QUI PEUT RÉELLEMENT PARTIR (2026-09-04, cas ornellaracano) ─────────
+  // `repubVivants` nourrit l'attente de la carte de sync (« N republications
+  // en cours — compte environ X h »). Il comptait les 'pending' BRUTS, alors
+  // que get-pending-jobs n'en sert AUCUN dont platform_fields.next_action_after
+  // est dans le futur (attente de boutique, espacement, report). Vécu ce soir :
+  // 181 republications toutes différées à 23:30, pas une seule servable — et
+  // l'écran promettait quand même « environ 16 h ». Le serveur et l'app ne
+  // comptaient pas la même chose, et c'est l'app qui mentait.
+  // On compte donc ce que le SERVEUR servirait, et rien d'autre.
+  const repubEcheance = (j) => {
+    const t = Date.parse(j.platform_fields?.next_action_after ?? '');
+    return Number.isFinite(t) && t > Date.now() ? t : null;
+  };
+  const repubJobsVivants = republishActif
+    ? Object.values(jobsByInventaire).flat().filter(j => j.action === 'republish' && (j.status === 'pending' || j.status === 'processing'))
+    : [];
+  const repubVivants = repubJobsVivants.filter(j => repubEcheance(j) === null).length;
+  // Tout est différé : on n'annonce pas une DURÉE (elle serait fausse), on
+  // annonce l'INSTANT où la file redevient servable. null dès qu'un seul job
+  // peut partir — la durée reprend alors son sens.
+  const repubRepriseA = repubVivants > 0 ? null : repubJobsVivants.reduce((min, j) => {
+    const t = repubEcheance(j);
+    return t !== null && (min === null || t < min) ? t : min;
+  }, null);
   const repubEtat = (item) => {
     // Masquée/brouillon inéligibles (2026-08-28, décision Nico) : une annonce
     // masquée ou brouillon n'est pas « en ligne » — la republier la
@@ -5322,6 +5422,7 @@ const StockTab = memo(function StockTab({
           source={stock.length===0?'stock_empty':'stock_liste'}
           onDone={rafraichirApresSync}
           repubEnVol={repubVivants}
+          repubRepriseA={repubRepriseA}
           onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
           boutiquesVinted={boutiquesVinted}
           rechargerBoutiques={rechargerBoutiques}
@@ -6415,6 +6516,26 @@ const StockTab = memo(function StockTab({
                     <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",margin:"2px 2px 4px"}}>{texte}</div>
                   );
                 })()}
+                {/* ── REPUBLICATIONS EN PAUSE : PAS LA BONNE BOUTIQUE ──────────
+                    (2026-09-04) Chrome est connecté à un autre dressing que
+                    celui d'origine des articles : le serveur ne sert pas ces
+                    jobs, ils restent en file, intacts, et repartent SEULS dès
+                    que le bon compte est reconnecté. La seule information utile
+                    est le NOM de la boutique attendue — c'est le seul geste.
+                    Aucun bouton : il n'y a rien à relancer.
+                    Même ton secondaire que la ligne de plafond au-dessus : ce
+                    n'est ni une panne ni une faute, c'est une attente nommée. */}
+                {!modePrixAchat&&!modeRepublish&&pauseBoutique&&(
+                  <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A6100",margin:"2px 2px 4px"}}>
+                    {pauseBoutique.map((p,i)=>(
+                      <div key={i}>
+                        {lang==='fr'
+                          ?`${p.n} republication${p.n>1?'s':''} en pause — elle${p.n>1?'s':''} concerne${p.n>1?'nt':''} ta boutique ${p.login?`@${p.login}`:'d’origine'}, reconnecte-toi dessus dans Chrome pour ${p.n>1?'qu’elles repartent':'qu’elle reparte'}.`
+                          :`${p.n} repost${p.n>1?'s':''} paused — ${p.n>1?'they belong':'it belongs'} to your ${p.login?`@${p.login}`:'original'} shop, sign back in to it in Chrome and ${p.n>1?'they resume':'it resumes'}.`}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {/* ── GALERIE (2026-08-27) : grille de cartes photo, 2 colonnes
                     sur mobile. Pagination inchangée (slice de 10 + « Voir
                     plus ») et photos en loading="lazy" : les gros comptes

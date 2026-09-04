@@ -563,6 +563,102 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des 'captured' coupés:", (e as Error)?.message ?? e);
   }
 
+  // ── CHIEN DE GARDE DES RUNS DE SYNC (2026-09-04) ───────────────────────────
+  // Il existait handler-watch pour les jobs de publication et RIEN pour les
+  // runs de dressing : un run laissé 'running' l'était POUR TOUJOURS. Relevé
+  // ce soir avant correctif : six runs libérés à la main, dont trois ouverts
+  // depuis plus de 500 heures (t.lambert08380 le 12/08, axelweiler4 le 13/08,
+  // amelinelemay59 le 14/08), plus deux demandes 'queued' de 22 jours.
+  //
+  // COMMENT UN RUN RESTE OUVERT — mécanique relevée dans background.js :
+  // traiterCommandeSyncDistante passe la ligne en 'running' AVANT de prendre
+  // le verrou de flux, et syncDressingVinted ne s'exécute qu'APRÈS. Entre les
+  // deux, le service worker MV3 peut mourir (tué à ~30 s d'inactivité), et
+  // aucun appel de sortie n'a de minuteur : rien ne referme la ligne. Le run
+  // d'ornellaracano de 20:35 en est la photo exacte — started_at, claimed_at
+  // et updated_at à la même milliseconde, aucune écriture ensuite.
+  //
+  // CRITÈRE = ABSENCE DE PROGRESSION, JAMAIS DURÉE TOTALE. Un dressing de 700
+  // articles est LENT mais VIVANT : la boucle écrit updated_at à chaque
+  // tranche de 8 articles et attend au plus 9 s entre deux pages (mesuré sur
+  // 834 runs 'done' de 30 jours : p95 = 0,98 min par page). Un run qui n'a
+  // rien écrit depuis 30 min n'est donc pas lent — il est mort. Le seuil est
+  // ~30× la page légitime la plus lente. Et un run REPRIS garde son started_at
+  // d'origine : le mesurer sur la durée totale tuerait des runs bien vivants.
+  //
+  // ⛔ ON N'ANNULE RIEN, ON NE PERD RIEN : 'expired' est l'état déjà utilisé
+  // pour les demandes non exécutées (l'app sait l'afficher), le curseur
+  // page_suivante reste en place et la prochaine sync REPREND là où celle-ci
+  // s'est arrêtée. Compare-and-swap sur (status, updated_at) : si l'extension
+  // se réveille pile pendant qu'on écrit, sa page gagne et on ne touche à rien.
+  const SYNC_RUN_SANS_PROGRES_MIN = 30;   // 'running' muet → expiré
+  const SYNC_QUEUE_TTL_H = 6;             // 'queued' jamais réclamée → expirée
+  let syncRunsExpires = 0;
+  let syncQueuesExpirees = 0;
+  try {
+    const muetIso = new Date(now - SYNC_RUN_SANS_PROGRES_MIN * 60_000).toISOString();
+    const { data: figes } = await supabase
+      .from("vinted_sync_runs")
+      .select("id, user_id, page_suivante, items_vus, updated_at, started_at")
+      .eq("status", "running")
+      .lt("updated_at", muetIso);
+    for (const r of ((figes ?? []) as Array<Record<string, unknown>>)) {
+      const muetDepuis = Math.round((now - Date.parse(String(r.updated_at ?? ""))) / 60_000);
+      if (!Number.isFinite(muetDepuis)) continue;
+      const page = Number(r.page_suivante) || 1;
+      const vus = Number(r.items_vus) || 0;
+      const { data: maj } = await supabase
+        .from("vinted_sync_runs")
+        .update({
+          status: "expired",
+          finished_at: new Date(now).toISOString(),
+          updated_at: new Date(now).toISOString(),
+          erreur:
+            `[watchdog] synchronisation arrêtée en cours de route : aucune progression depuis ${muetDepuis} min ` +
+            `(page ${page}, ${vus} article${vus > 1 ? "s" : ""} lu${vus > 1 ? "s" : ""}). ` +
+            "L'ordinateur s'est mis en veille ou Chrome a été fermé pendant la lecture. " +
+            "Rien n'est perdu : relance la synchronisation, elle reprendra là où elle s'est arrêtée.",
+        })
+        .eq("id", r.id as string)
+        .eq("status", "running")
+        .eq("updated_at", r.updated_at as string)
+        .select("id");
+      if (maj?.length) {
+        syncRunsExpires++;
+        console.log(`[handler-watch] run de sync ${r.id} (user ${r.user_id}) figé depuis ${muetDepuis} min à la page ${page} → expiré`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] chien de garde des runs de sync:", (e as Error)?.message ?? e);
+  }
+  try {
+    // 'queued' : le TTL de 6 h est déjà le contrat de livraison
+    // (get-pending-jobs ne sert jamais au-delà). Mais le MARQUAGE vivait
+    // uniquement dans purger_ma_sync_queue, appelée au poll d'une extension
+    // capable — donc jamais pour qui n'a pas rouvert Chrome. D'où les deux
+    // demandes de 22 jours. On le fait ici, pour tout le monde.
+    const ttlIso = new Date(now - SYNC_QUEUE_TTL_H * 3600_000).toISOString();
+    const { data: maj } = await supabase
+      .from("vinted_sync_runs")
+      .update({
+        status: "expired",
+        finished_at: new Date(now).toISOString(),
+        updated_at: new Date(now).toISOString(),
+        erreur:
+          `demande jamais réclamée en ${SYNC_QUEUE_TTL_H} h — ton ordinateur n'a pas ouvert Chrome avec ` +
+          "l'extension FillSell pendant ce temps. Relance la synchronisation quand il est allumé.",
+      })
+      .eq("status", "queued")
+      .lt("queued_at", ttlIso)
+      .select("id");
+    syncQueuesExpirees = maj?.length ?? 0;
+    if (syncQueuesExpirees) {
+      console.log(`[handler-watch] ${syncQueuesExpirees} demande(s) de sync jamais réclamée(s) en ${SYNC_QUEUE_TTL_H} h → expirée(s)`);
+    }
+  } catch (e) {
+    console.error("[handler-watch] expiration des demandes de sync en file:", (e as Error)?.message ?? e);
+  }
+
   // ── needs_user À ÉCHÉANCE : 72 h sans geste → failed (point 5, GO Nico
   // 16/08) ──────────────────────────────────────────────────────────────────
   // needs_user n'est pas terminal : aucun trigger ne rend jamais l'unité —
@@ -980,7 +1076,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1035,7 +1131,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1089,7 +1185,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
     headers: { "Content-Type": "application/json" },
   });
 });

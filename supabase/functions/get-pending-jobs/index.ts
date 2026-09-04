@@ -318,6 +318,52 @@ serve(async (req) => {
       if (version) await admin.rpc("noter_version_extension", { p_user_id: user.id, p_version: version });
     } catch (_e) { /* télémétrie best-effort, jamais bloquante */ }
 
+    // ── Commande de sync du dressing mise en file depuis le mobile ──────────
+    // (2026-08-05) L'utilisateur installe l'extension UNE FOIS sur son
+    // ordinateur puis commande depuis son téléphone : le clic pose une ligne
+    // vinted_sync_runs en 'queued', que l'extension réclame ici à son poll.
+    //
+    // ⚠️ LUE ICI, AVANT LA FILE (2026-09-04) : depuis ce soir la présence
+    // d'une demande de sync DÉCIDE de ce qu'on distribue (cf. « LA SYNC PASSE
+    // DEVANT » plus bas). Le bloc n'a pas changé d'un mot, seulement de place.
+    //
+    // ⚠️ LA GARDE DE VERSION EST TENUE ICI, À LA LIVRAISON, ET NULLE PART
+    // AILLEURS. Une 0.4.x sait entretenir extension_last_seen_at mais ignore
+    // complètement la commande de sync : si on la lui servait, elle
+    // l'AVALERAIT (demande consommée, jamais exécutée). Elle n'envoie pas de
+    // `version` au poll → elle n'apprend jamais que la commande existe, et
+    // celle-ci attend une extension capable (ou expire à 6 h).
+    // La version qui fait foi est celle de CE poll, pas la colonne stockée
+    // (qui est un max historique, potentiellement d'une AUTRE machine).
+    // Le TTL de 6 h est appliqué ICI en simple filtre de lecture : une demande
+    // trop vieille n'est jamais servie. Le MARQUAGE en 'expired' vit dans
+    // demander_sync_dressing() (au clic suivant) — c'est le seul endroit où il
+    // est nécessaire, puisque c'est là qu'une demande morte bloquerait le
+    // compte via l'index unique. Rien à purger depuis un poll.
+    let syncCommand: { id: string } | null = null;
+    if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing) {
+      try {
+        // Marque en 'expired' les demandes trop vieilles AVANT de lire. Sans
+        // cet appel, une demande jamais réclamée resterait 'queued' pour
+        // toujours : l'écran afficherait une attente qui ne viendra jamais, et
+        // le bouton resterait grisé. Ici, elle est nettoyée dans les 2 min qui
+        // suivent l'ouverture de Chrome.
+        await userClient.rpc("purger_ma_sync_queue");
+        // Le .gte reste la garde qui FAIT FOI : même si le marquage ci-dessus
+        // échoue, une demande périmée n'est jamais servie.
+        const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+        const { data: cmds } = await userClient
+          .from("vinted_sync_runs")
+          .select("id")
+          .eq("kind", "dressing")
+          .eq("status", "queued")
+          .gte("queued_at", ttl)
+          .order("queued_at", { ascending: true })
+          .limit(1);
+        if (cmds?.length) syncCommand = { id: cmds[0].id as string };
+      } catch (_e) { /* la file de sync ne doit JAMAIS bloquer la distribution des jobs */ }
+    }
+
     // action + listing_url (2026-07-11) : les jobs de SUPPRESSION
     // (action='delete', armés par le bandeau semi-auto de l'app après une
     // vente) passent par la même file — le background route sur job.action
@@ -346,6 +392,44 @@ serve(async (req) => {
 
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
+
+    // ── LA SYNC PASSE DEVANT LA FILE (2026-09-04, cas ornellaracano) ────────
+    // Constaté en réel : 189 republications en file, une demande de sync
+    // derrière, et l'app annonçait « environ 16 h ». Quatre clics en deux
+    // minutes (usage_logs sync_click 19:22→19:24), rien ne partait.
+    //
+    // La sync alimente TOUT — inventaire, identité de boutique, pin
+    // multi-boutiques, détection des ventes. La faire attendre derrière des
+    // republications, c'est faire attendre la LECTURE derrière l'ÉCRITURE :
+    // une republication qui part 20 min plus tard ne coûte rien, une sync qui
+    // part 16 h plus tard rend l'app fausse pendant 16 h.
+    //
+    // Alors, sur le poll d'EXÉCUTION qui emporte une commande de sync : on ne
+    // distribue AUCUN job de ce cycle. L'extension exécute la sync (elle la
+    // lance après avoir rendu le verrou de flux, cf. pollAndProcessJobs) et
+    // les jobs repartent au poll suivant, dans 2 min.
+    // ⛔ RIEN N'EST REFUSÉ : les jobs restent 'pending', aucune tentative
+    // consommée, aucune unité touchée. On décale d'un cycle, on n'annule pas.
+    // ⚠️ Un job DÉJÀ EN COURS n'est jamais interrompu : le poll d'exécution ne
+    // voit que les 'pending' (les 'processing' sont hors périmètre par
+    // construction) — on ne coupe personne au milieu d'un formulaire.
+    // ⚠️ Coût borné à UN cycle : la commande n'est plus 'queued' dès que
+    // l'extension la réclame, quelle que soit l'issue (running, cancelled par
+    // la cadence, expired) — jamais une file gelée 6 h en attendant une
+    // demande que personne n'exécute. Et une extension qui ne sait pas
+    // synchroniser ne reçoit jamais de commande (garde de version ci-dessus),
+    // donc ne retient jamais rien.
+    // Périmètre : le poll d'exécution SEUL, mêmes flags opt-in que les autres
+    // retenues — le popup continue de voir la file complète.
+    let heldSync = 0;
+    if (syncCommand && !includeProcessing && !includeNeedsUser && out.length) {
+      heldSync = out.length;
+      out = [];
+      console.log(
+        `[get-pending-jobs] userId=${user.id} : demande de sync ${syncCommand.id} servie ` +
+        `→ ${heldSync} job(s) retenu(s) en pending pour ce cycle (la sync passe devant)`,
+      );
+    }
 
     // ── RETENUE D'EXÉCUTION des republications (2026-08-29, refonte 04/09) ──
     // Campagne anti-bot Vinted du 21/07 (restrictions /listing-restriction sur
@@ -389,6 +473,98 @@ serve(async (req) => {
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+
+    // ── CLOISONNEMENT PAR BOUTIQUE VINTED (2026-09-04, cas ornellaracano) ───
+    // Chrome bascule de @ornella-vend vers @luciatrendyshop pour synchroniser
+    // la deuxième boutique, et 187 republications appartenant à la PREMIÈRE
+    // partent taper la seconde. Ce n'est pas une hypothèse : le 03/09 au soir,
+    // 12 republications d'articles @luciatrendyshop lancées pendant que Chrome
+    // était sur @ornella-vend ont TOUTES échoué en 404.
+    //
+    // POURQUOI ICI ET PAS DANS L'EXTENSION. La 0.6.17 porte déjà une attente
+    // nommée par boutique (attente_boutique) — mais UNIQUEMENT à l'étape
+    // 'a_capturer'. Relevé ce soir sur ce compte : 70 jobs à 'a_capturer'
+    // (gardés) contre 103 déjà à 'captured' (passés depuis longtemps devant la
+    // seule porte, et donc en route pour supprimer une annonce sur le mauvais
+    // compte). La garde extension est indispensable mais insuffisante, et elle
+    // est derrière le Chrome Web Store. Celle-ci vaut pour TOUTES les étapes,
+    // pour tout le parc, dès ce déploiement — 0.6.14 comprise.
+    //
+    // ⛔ RIEN N'EST REFUSÉ : le job n'est pas servi, il RESTE 'pending',
+    // intact. Aucune tentative consommée, aucun 'failed', aucun 'needs_user',
+    // aucune écriture — cette fonction ne fait que ne pas distribuer. Il
+    // repart TOUT SEUL au poll suivant la reconnexion du bon compte : aucun
+    // bouton, aucun geste.
+    //
+    // DEUX FAIL-OPEN, tous deux voulus (arbitrage Nico) :
+    //  · `inventaire.vinted_account_id` NULL — 29 962 articles du parc n'ont
+    //    pas d'origine estampillée (estampillage à l'observation, 03/09). On
+    //    ne bloque pas 30 000 articles sur une garde qu'on ne peut pas
+    //    évaluer : comportement strictement inchangé.
+    //  · sonde d'identité absente, sans user_id, ou PÉRIMÉE — on ne devine
+    //    pas. La sonde tourne au plus toutes les 10 min (background.js) et
+    //    n'écrit `vinted_identite` que sur un 200 franc ; au-delà de 30 min
+    //    elle ne prouve plus qui est connecté MAINTENANT, donc elle ne décide
+    //    plus rien. Idem si la lecture échoue : un filet ne devient jamais un
+    //    point de panne.
+    // Périmètre : republish Vinted du poll d'exécution. Une publication crée
+    // une annonce neuve (pas d'origine à trahir) et un delete vise une URL
+    // précise — ni l'un ni l'autre n'entre ici.
+    const BOUTIQUE_SONDE_FRAICHEUR_MS = 30 * 60 * 1000;
+    let heldBoutique = 0;
+    let boutiquePause:
+      | { connectee: { user_id: string; login: string | null }; retenus: number; par_boutique: Record<string, number> }
+      | null = null;
+    if (!includeProcessing && !includeNeedsUser) {
+      const candidats = out.filter((j) =>
+        j.action === "republish" && j.platform === "vinted" && j.inventaire_id != null);
+      if (candidats.length) {
+        try {
+          const { data: prof } = await userClient
+            .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+          const sessions = (prof?.extension_sessions ?? null) as Record<string, unknown> | null;
+          const ident = (sessions?.["vinted_identite"] ?? null) as { user_id?: unknown; login?: unknown } | null;
+          const identId = ident?.user_id != null ? String(ident.user_id).trim() : "";
+          const releve = Date.parse(String(sessions?.["checked_at"] ?? ""));
+          const fraiche = Number.isFinite(releve) && Date.now() - releve <= BOUTIQUE_SONDE_FRAICHEUR_MS;
+          if (identId && fraiche) {
+            const ids = [...new Set(candidats.map((j) => j.inventaire_id))];
+            const { data: arts } = await userClient
+              .from("inventaire").select("id, vinted_account_id").in("id", ids);
+            // Origine par article. Absente de la table (article supprimé
+            // entre-temps) = inconnue = fail-open, comme un NULL.
+            const origine = new Map<string, string>();
+            for (const a of (arts ?? []) as { id: unknown; vinted_account_id: unknown }[]) {
+              const o = a.vinted_account_id != null ? String(a.vinted_account_id).trim() : "";
+              if (o) origine.set(String(a.id), o);
+            }
+            const parBoutique: Record<string, number> = {};
+            const avant = out.length;
+            out = out.filter((j) => {
+              if (j.action !== "republish" || j.platform !== "vinted" || j.inventaire_id == null) return true;
+              const o = origine.get(String(j.inventaire_id));
+              if (!o || o === identId) return true; // inconnue ou bonne boutique
+              parBoutique[o] = (parBoutique[o] ?? 0) + 1;
+              return false;
+            });
+            heldBoutique = avant - out.length;
+            if (heldBoutique) {
+              boutiquePause = {
+                connectee: { user_id: identId, login: ident?.login != null ? String(ident.login) : null },
+                retenus: heldBoutique,
+                par_boutique: parBoutique,
+              };
+              console.log(
+                `[get-pending-jobs] userId=${user.id} : Chrome connecté au dressing ` +
+                `${identId}${ident?.login ? ` (@${ident.login})` : ""} — ${heldBoutique} republication(s) ` +
+                `d'une AUTRE boutique (${Object.entries(parBoutique).map(([k, n]) => `${k}: ${n}`).join(", ")}) ` +
+                `retenue(s) en pending, aucune tentative consommée`,
+              );
+            }
+          }
+        } catch (_e) { /* cloisonnement best-effort : jamais un point de panne */ }
+      }
     }
 
     // ── ARTICLE PAR ARTICLE (03/09 soir, lot de 245 republications) ─────────
@@ -443,51 +619,11 @@ serve(async (req) => {
     console.log(
       `[get-pending-jobs] userId=${user.id} → ${out.length} job(s) distribué(s)` +
       (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : "") +
+      (heldSync ? `, ${heldSync} retenu(s) (la sync passe devant)` : "") +
       (heldRepublish ? `, ${heldRepublish} republish retenu(s) (${plafondRepublish?.motif ?? "retenue"})` : "") +
+      (heldBoutique ? `, ${heldBoutique} republish retenu(s) (boutique Vinted non connectée)` : "") +
       (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : ""),
     );
-
-    // ── Commande de sync du dressing mise en file depuis le mobile ──────────
-    // (2026-08-05) L'utilisateur installe l'extension UNE FOIS sur son
-    // ordinateur puis commande depuis son téléphone : le clic pose une ligne
-    // vinted_sync_runs en 'queued', que l'extension réclame ici à son poll.
-    //
-    // ⚠️ LA GARDE DE VERSION EST TENUE ICI, À LA LIVRAISON, ET NULLE PART
-    // AILLEURS. Une 0.4.x sait entretenir extension_last_seen_at mais ignore
-    // complètement la commande de sync : si on la lui servait, elle
-    // l'AVALERAIT (demande consommée, jamais exécutée). Elle n'envoie pas de
-    // `version` au poll → elle n'apprend jamais que la commande existe, et
-    // celle-ci attend une extension capable (ou expire à 6 h).
-    // La version qui fait foi est celle de CE poll, pas la colonne stockée
-    // (qui est un max historique, potentiellement d'une AUTRE machine).
-    // Le TTL de 6 h est appliqué ICI en simple filtre de lecture : une demande
-    // trop vieille n'est jamais servie. Le MARQUAGE en 'expired' vit dans
-    // demander_sync_dressing() (au clic suivant) — c'est le seul endroit où il
-    // est nécessaire, puisque c'est là qu'une demande morte bloquerait le
-    // compte via l'index unique. Rien à purger depuis un poll.
-    let syncCommand: { id: string } | null = null;
-    if (versionAuMoins(version, SYNC_VERSION_MIN) && !includeProcessing) {
-      try {
-        // Marque en 'expired' les demandes trop vieilles AVANT de lire. Sans
-        // cet appel, une demande jamais réclamée resterait 'queued' pour
-        // toujours : l'écran afficherait une attente qui ne viendra jamais, et
-        // le bouton resterait grisé. Ici, elle est nettoyée dans les 2 min qui
-        // suivent l'ouverture de Chrome.
-        await userClient.rpc("purger_ma_sync_queue");
-        // Le .gte reste la garde qui FAIT FOI : même si le marquage ci-dessus
-        // échoue, une demande périmée n'est jamais servie.
-        const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-        const { data: cmds } = await userClient
-          .from("vinted_sync_runs")
-          .select("id")
-          .eq("kind", "dressing")
-          .eq("status", "queued")
-          .gte("queued_at", ttl)
-          .order("queued_at", { ascending: true })
-          .limit(1);
-        if (cmds?.length) syncCommand = { id: cmds[0].id as string };
-      } catch (_e) { /* la file de sync ne doit JAMAIS bloquer la distribution des jobs */ }
-    }
 
     // ── Contexte du popup (2026-08-04) ──────────────────────────────────────
     // Le popup doit répondre à « où j'en suis ? », pas seulement « qu'est-ce
@@ -517,7 +653,23 @@ serve(async (req) => {
 
     // plafond_republish joint au poll d'exécution aussi (null hors calcul) :
     // le popup de l'extension pourra un jour l'afficher sans nouvel appel.
-    return json({ jobs: out, sync_command: syncCommand, contexte, plafond_republish: plafondRepublish });
+    // sync_prioritaire (2026-09-04) : dit à l'extension que ce cycle est VIDE
+    // PAR DÉCISION, pas parce qu'il n'y a rien à faire. C'est ce que lit son
+    // arbitrage de maintien en éveil — une file retenue pour laisser passer la
+    // sync est du TRAVAIL, pas une file vide (sans ça, la machine s'endort
+    // pendant la sync qu'on vient de lui confier). Les versions qui ne
+    // connaissent pas ce champ l'ignorent : rien ne change pour elles.
+    // boutique_pause : de quoi écrire « X republications en pause — elles
+    // concernent ta boutique @x » sans que personne ait à le recalculer.
+    return json({
+      jobs: out,
+      sync_command: syncCommand,
+      sync_prioritaire: heldSync > 0,
+      jobs_retenus_sync: heldSync,
+      boutique_pause: boutiquePause,
+      contexte,
+      plafond_republish: plafondRepublish,
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[get-pending-jobs] Erreur inattendue:", msg);
