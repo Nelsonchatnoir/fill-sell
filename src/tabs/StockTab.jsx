@@ -872,6 +872,19 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   const champFerme = CLOSED_INPUT_TYPES.has(String(f.input_type ?? "").toLowerCase());
   const valeursIndisponibles = champFerme && !(allowed?.length);
 
+  // ── Exception NOMMÉE à la doctrine du 29/07 (2026-09-04, tailles eBay) ─────
+  // « Une liste relevée est une SUGGESTION » parce qu'un relevé peut être
+  // PARTIEL (Beebs/Marque coupée à « Amisu ») : d'où « Autre valeur… ».
+  // Quand le handler certifie que sa liste est le référentiel ENTIER du champ
+  // (options_completes — groupe de toggles fermé de la taille eBay, relevé en
+  // entier), l'inverse devient vrai : proposer une saisie libre, c'est proposer
+  // une valeur qu'eBay refusera, et renvoyer l'utilisateur au même mur. Le
+  // select se ferme alors — uniquement sur ce drapeau, et uniquement si la
+  // liste affichée est bien CELLE du handler (pas le catalogue, pas un relevé
+  // de warnings, pas un pré-rempli LBC).
+  const listeCertifieeComplete = f.options_completes === true
+    && Array.isArray(f.allowed_values) && allowed === f.allowed_values;
+
   // `sansValeur` (2026-07-22) : relance SANS rien écrire, pour le cas
   // « valeurs indisponibles ». Le job repart en pending avec un budget de
   // re-tentatives neuf — le prochain passage relève la liste (cf. capture des
@@ -973,11 +986,12 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
              La divergence assumée du 19/07 avec le stepper (« ici le select est
              FERMÉ ») tombe donc : ce qu'elle protégeait — ne pas envoyer une
              valeur que la plateforme refusera — ne vaut que si notre relevé est
-             complet, et il ne l'est pas. */
+             complet, et il ne l'est pas… SAUF quand le handler certifie qu'il
+             l'est (listeCertifieeComplete, cf. bandeau ci-dessus). */
           <AspectValueInput
             value={value}
             allowedValues={allowed ?? []}
-            strict={false}
+            strict={listeCertifieeComplete}
             onChange={setValue}
             T={NU_T}
             idBase={`nu-${job.id}`}

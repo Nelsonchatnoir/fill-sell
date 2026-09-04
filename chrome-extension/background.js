@@ -2170,6 +2170,18 @@ async function processJob(rawJob, accessToken) {
       job.platform_fields = pf;
     }
 
+    // Trace « taille eBay » (2026-09-04, job 58be2b6d) : le handler traduit
+    // désormais la taille de l'article contre la liste RELEVÉE sur le
+    // formulaire — on mesure ce que ça donne sur le parc. Même mécanique
+    // fire-and-forget que la découverte réactive ci-dessous, et écrite sur
+    // TOUTES les issues (une taille qui passe compte autant qu'une qui bloque :
+    // sans les réussites, on ne mesure pas une couverture, on compte des
+    // plaintes).
+    if (job.platform === "ebay" && result?.tailleTrace?.length) {
+      tracerTaillesEbay(accessToken, job, result.tailleTrace).catch((e) =>
+        console.warn("[background] trace taille eBay non écrite (sans conséquence) :", String(e?.message ?? e)));
+    }
+
     // Découverte réactive (chantier champs obligatoires, 2026-07-16) : les
     // requis observés pendant CE remplissage partent au catalogue cumulatif,
     // quel que soit le verdict du job — fire-and-forget, jamais bloquant.
@@ -2941,6 +2953,41 @@ async function rearmBounded(accessToken, job, errorMsg) {
   }
 }
 
+// ── Trace « taille eBay » → usage_logs (2026-09-04, job 58be2b6d) ────────────
+// Le vocabulaire de taille d'eBay n'est PAS le nôtre : l'article part avec la
+// taille Vinted ("XXL", "S / 36 / 8", "EU 38", "TAILLE UNIQUE") et le
+// formulaire n'accepte que les options de SA liste, qui varie par catégorie.
+// Le handler traduit contre la liste relevée (cf. resoudreTailleEbay) ; ici on
+// mesure, sinon on ne saura jamais si ce mapping couvre le parc.
+// UNE LIGNE PAR CHAMP TAILLE RENCONTRÉ, RÉUSSITES COMPRISES : c'est la
+// répartition des résolutions (exacte · equivalence · segment · prefixe ·
+// approx · echec) qui dit la couverture — le seul décompte des échecs ne
+// mesurerait rien.
+// Fire-and-forget de bout en bout : une trace n'a jamais le droit de changer
+// l'issue d'un job, ni de le retarder.
+async function tracerTaillesEbay(accessToken, job, traces) {
+  const userId = decodeJwtSub(accessToken);
+  if (!userId || !Array.isArray(traces) || !traces.length) return;
+  const lignes = traces.slice(0, 6).map((t) => ({
+    user_id: userId,
+    feature: "taille_non_mappee",
+    metadata: {
+      platform: "ebay",
+      categorie_id: t.categorie_id != null ? String(t.categorie_id) : null,
+      valeur_envoyee: String(t.valeur ?? "").slice(0, 120),
+      options_relevees: Array.isArray(t.options) ? t.options.slice(0, 40).map((o) => String(o).slice(0, 60)) : [],
+      resolution: String(t.resolution ?? "inconnue").slice(0, 20),
+      // Liste relevée sous filtre de recherche actif = partielle : à ne pas
+      // lire comme le référentiel entier de la catégorie quand on dépouillera.
+      ...(t.filtre ? { options_filtrees_par: String(t.filtre).slice(0, 60) } : {}),
+      champ: String(t.champ ?? "").slice(0, 120),
+      option_retenue: t.retenue != null ? String(t.retenue).slice(0, 60) : null,
+      job_id: job.id,
+    },
+  }));
+  await restRequest("usage_logs", accessToken, { method: "POST", body: JSON.stringify(lignes) });
+}
+
 // ── Statut PERSISTÉ 'needs_user' (socle 2026-07-19) ────────────────────────────
 // Un handler a identifié UN champ obligatoire précis que seul l'utilisateur
 // peut trancher (result.needsUserField = { field_key, field_label,
@@ -3005,6 +3052,16 @@ async function markNeedsUser(accessToken, job, result) {
         // un champ fermé sans options s'affichait en saisie libre, dont la
         // valeur ne pouvait que re-bloquer.
         ...(f.input_type ? { input_type: String(f.input_type).slice(0, 40) } : {}),
+        // options_completes (2026-09-04) : le handler certifie que la liste
+        // jointe est le référentiel ENTIER du champ pour cette catégorie —
+        // relevé d'un groupe fermé (les toggles de taille eBay), pas un
+        // échantillon d'un panneau à barre de recherche. L'app peut alors
+        // fermer le select : une valeur hors de cette liste ne pourrait que
+        // re-frapper le même refus. Absent = comportement historique (liste
+        // proposée, « Autre valeur… » possible) — la doctrine du 29/07
+        // « une liste relevée est une SUGGESTION » reste la règle par défaut,
+        // et ce drapeau son exception, nommée et posée par qui a fait le relevé.
+        ...(f.options_completes === true && allowed ? { options_completes: true } : {}),
       },
     },
   });

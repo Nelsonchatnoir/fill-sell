@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-09-01-filet-prix-format-put-delta (PRIX pose SYSTEMATIQUEMENT par PUT delta du brouillon apres la pose DOM — mesure du 01/09 : setNativeValue+blur ne declenche AUCUNE sauvegarde, le champ affiche la valeur mais le brouillon serveur ne la recoit pas ; FORMAT en filet CONDITIONNEL, sa bascule DOM sauvegarde bien. Formes MESUREES, jamais devinees ; + etape() relaie l'etape de remplissage au background, qui survit a la mort de la page) + 2026-07-30-saisie-libre-entree (doctrine valeur hors liste : un aspect a vocabulaire ouvert « Recherchez/ajoutez » recoit la saisie libre validee par Entree quand la liste ne la materialise pas — relecture seule juge ; cas Type Bottines) + 2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
+const EBAY_BUILD = "2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire — jamais une table figee : exact -> equivalences X-multiples (XXL=2XL) -> segments du libelle compose Vinted (« S / 36 / 8 ») -> prefixe pays retire (« EU 38 ») ; aucun repli au hasard, une taille intraduisible laisse le job aller en needs_user avec la VRAIE liste et un message qui dit la verite au lieu de « complete le champ » sur un champ deja rempli) + 2026-09-01-filet-prix-format-put-delta (PRIX pose SYSTEMATIQUEMENT par PUT delta du brouillon apres la pose DOM — mesure du 01/09 : setNativeValue+blur ne declenche AUCUNE sauvegarde, le champ affiche la valeur mais le brouillon serveur ne la recoit pas ; FORMAT en filet CONDITIONNEL, sa bascule DOM sauvegarde bien. Formes MESUREES, jamais devinees ; + etape() relaie l'etape de remplissage au background, qui survit a la mort de la page) + 2026-07-30-saisie-libre-entree (doctrine valeur hors liste : un aspect a vocabulaire ouvert « Recherchez/ajoutez » recoit la saisie libre validee par Entree quand la liste ne la materialise pas — relecture seule juge ; cas Type Bottines) + 2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -52,6 +52,66 @@ const DRY_RUN = false;
 
 const SPECIFICS_MENU_SELECTOR = ".se-filter-menu-button__menu-container";
 
+// ── TAILLE : le vocabulaire d'eBay, relevé sur LA PAGE (2026-09-04) ──────────
+// Job 58be2b6d (philippe.folch, extension 0.6.15, catégorie 15687 « T-shirts
+// homme ») : l'article part avec taille="XXL" ; le groupe de toggles relevé sur
+// le formulaire propose 2XS, XS, XS/S, S, S/M, M, M/L, L, L/XL, XL, 2XL, 3XL…
+// « XXL » n'existe pas chez eBay — eBay écrit « 2XL ». En cascade : champ
+// sauté → re-check qui lit l'obligatoire « Taille » VIDE → needs_user →
+// « Compléter le champ dans l'app » alors que le champ EST rempli. L'utilisateur
+// ouvre sa fiche, voit XXL déjà saisi, et ne comprend rien.
+// Parc mesuré le 04/09 (jobs depuis le 01/08 portant une taille) : UNIQUE /
+// TAILLE UNIQUE 62 jobs (15 comptes), libellés composés Vinted « S / 36 / 8 »
+// ~70 (~10 comptes), XXL/XXXL 13 (6 comptes), préfixés « EU 38 » ~26
+// (~8 comptes), tailles enfants ~20 (~6 comptes).
+//
+// RÈGLES DE CE CHANTIER, à ne pas défaire :
+//  · la liste qui fait foi est celle RELEVÉE sur le formulaire — elle varie par
+//    catégorie, donc AUCUNE table d'options par catégorie eBay n'est codée ici :
+//    elle serait périmée le jour où eBay la change ;
+//  · la traduction est LOCALE à eBay et au moment du remplissage. L'inventaire
+//    garde la taille Vinted ("XXL"), et Vinted/Leboncoin/Beebs ne sont pas
+//    touchés — leurs steppers et leurs vocabulaires sont hors sujet ;
+//  · RIEN N'EST REFUSÉ EN AMONT. Une taille sans correspondance ne bloque pas
+//    le flux : le job va jusqu'à needs_user, avec le bon message et la liste
+//    relevée. Un garde-fou qui empêche de publier ne laisserait même pas de
+//    trace.
+// TAILLE_TRACES alimente à la fois le message de needs_user (dire la vérité) et
+// usage_logs 'taille_non_mappee' (mesurer si le mapping couvre le parc) — la
+// remontée est faite par le background, cf. tracerTaillesEbay.
+let TAILLE_TRACES = [];
+let EBAY_CATEGORIE_COURANTE = null;
+
+function reinitTraceTaille(categorieId) {
+  TAILLE_TRACES = [];
+  EBAY_CATEGORIE_COURANTE = categorieId != null ? String(categorieId) : null;
+}
+
+// Dédup sur (champ, valeur, résolution) : un même champ passe jusqu'à 2 fois
+// par setSpecificValue (2 poses vérifiées) et repasse dans la passe finale —
+// sans ça on écrirait 4 lignes identiques en base pour un seul article.
+function noterTraceTaille({ champ, fieldName, valeur, options, resolution, retenue = null, filtre = "" }) {
+  const entree = {
+    champ: String(champ ?? fieldName ?? "").slice(0, 120),
+    fieldName: String(fieldName ?? "").slice(0, 120),
+    valeur: String(valeur ?? "").slice(0, 120),
+    options: (Array.isArray(options) ? options : []).map((o) => String(o).slice(0, 60)).slice(0, 60),
+    resolution,
+    retenue: retenue != null ? String(retenue).slice(0, 60) : null,
+    // Liste relevée sous un filtre de recherche encore actif = PARTIELLE.
+    // Elle vaut pour la trace, jamais comme référentiel proposé à
+    // l'utilisateur (cf. tailleNonTraduitePour) ni comme preuve de couverture.
+    filtre: String(filtre ?? "").slice(0, 60),
+  };
+  const cle = `${entree.champ}|${entree.valeur}|${entree.resolution}`;
+  if (TAILLE_TRACES.some((e) => `${e.champ}|${e.valeur}|${e.resolution}` === cle)) return;
+  TAILLE_TRACES.push(entree);
+}
+
+function traceTaille() {
+  return TAILLE_TRACES.map((e) => ({ ...e, platform: "ebay", categorie_id: EBAY_CATEGORIE_COURANTE }));
+}
+
 // ── Communication avec le background ────────────────────────────────────────
 
 // typeof guard : permet d'injecter ce fichier tel quel dans une page pour un
@@ -70,9 +130,15 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     }
     if (msg?.type !== "FILL_LISTING") return;
 
+    // tailleTrace joint ICI, au point de sortie UNIQUE (2026-09-04) : le
+    // remplissage a une dizaine de `return` (dry-run, gardes pré-submit,
+    // needs_user, publication) et la trace doit partir sur TOUTES les issues,
+    // réussites comprises — sinon on ne mesure que les échecs et on ne saura
+    // jamais si le mapping couvre le parc. Le `catch` la joint aussi : une
+    // exception en cours de remplissage n'efface pas ce qu'on a déjà relevé.
     fillListingForm(msg.job)
-      .then((result) => sendResponse(result))
-      .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      .then((result) => sendResponse({ ...result, tailleTrace: traceTaille() }))
+      .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err), tailleTrace: traceTaille() }));
 
     return true; // réponse asynchrone
   });
@@ -379,6 +445,10 @@ async function fillListingForm(job) {
   console.log("[ebay] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
   const fields = job.platform_fields || {};
+  // Trace taille remise à zéro À CHAQUE run (2026-09-04) : le content script
+  // survit à plusieurs jobs si la page n'est pas rechargée entre deux — sans
+  // ça, on attribuerait à cet article les options relevées du précédent.
+  reinitTraceTaille(fields.ebayCategoryId);
   const warnings = [];
   // Trace structurée de la bascule de format (2026-08-31) : rendue au
   // background sur les issues principales → platform_fields.ebay_format_trace.
@@ -629,7 +699,13 @@ async function fillListingForm(job) {
   if (fields.stockage) {
     await fillSpecificTracked(["Capacité de stockage"], fields.stockage);
   }
-  const taille = fields.taille ? String(fields.taille).replace(/^EU\s*/i, "") : null;
+  // Taille envoyée TELLE QUELLE (2026-09-04) : le rabotage « EU » qui vivait
+  // ici (`replace(/^EU\s*/i, "")`) est descendu dans la cascade, avec les
+  // autres règles de traduction (étape « prefixe »). Deux raisons : il ne
+  // couvrait qu'un préfixe sur quatre, et surtout il MENTAIT à la trace — une
+  // « EU 38 » comptée comme une correspondance exacte, donc invisible dans la
+  // mesure de couverture. Ce qui part au formulaire est ce que porte l'article.
+  const taille = fields.taille ? String(fields.taille).trim() : null;
   if (taille) {
     await fillSpecificTracked(["Taille", "Pointure EU", "Pointure"], taille);
   }
@@ -864,6 +940,46 @@ async function fillListingForm(job) {
     // écrits nulle part. Deux soirs de suite, ce diagnostic manquant nous a
     // laissés deviner. Il remonte maintenant en base avec le job.
     const detail = warnings.length ? ` Détail du remplissage : ${warnings.join(" | ")}` : "";
+
+    // ── DIRE LA VÉRITÉ (2026-09-04, job 58be2b6d) ─────────────────────────────
+    // Deux situations mènent ici, et elles n'appellent PAS le même message :
+    //   · la donnée est ABSENTE → « Compléter le champ dans l'app », message
+    //     historique inchangé, plus bas ;
+    //   · la donnée est PRÉSENTE mais intraduisible en vocabulaire eBay (le
+    //     « XXL » de l'article face à une liste qui dit « 2XL ») → dire ÇA. Le
+    //     message d'avant envoyait l'utilisateur remplir un champ qu'il avait
+    //     déjà rempli : il ouvrait sa fiche, voyait XXL, et n'avait aucune
+    //     action possible. On nomme la valeur refusée ET les valeurs acceptées,
+    //     et on joint la liste relevée (needsUserField.allowed_values) pour que
+    //     l'app propose un CHOIX au lieu d'un champ libre — une saisie libre ne
+    //     pourrait que re-frapper le même mur.
+    const bloquee = tailleNonTraduitePour(unfilledRequired);
+    if (bloquee) {
+      const apercu = bloquee.options.slice(0, 12).join(", ") + (bloquee.options.length > 12 ? ", …" : "");
+      console.warn(`[ebay] ⚠️ taille « ${bloquee.valeur} » sans équivalent eBay — ${bloquee.options.length} option(s) relevée(s)`);
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          `LIVE : on n'a pas su traduire ta taille « ${bloquee.valeur} » pour eBay — publication NON tentée ` +
+          `(eBay refuse une annonce dont « ${bloquee.aspect} » est vide). Choisis parmi les tailles qu'eBay ` +
+          `accepte dans cette catégorie : ${apercu}. Le choix se fait dans l'app (badge « À compléter » du ` +
+          `Stock) ; le job repartira ensuite automatiquement.${detail}`,
+        warnings,
+        unfilledRequired,
+        needsUserField: {
+          field_key: bloquee.aspect,
+          field_label: bloquee.aspect,
+          target: { root: "ebayAspects", key: bloquee.aspect },
+          // Liste RELEVÉE sur le formulaire, donc complète pour cette catégorie :
+          // le champ est fermé et l'app doit l'imposer (options_completes).
+          allowed_values: bloquee.options,
+          input_type: "selection_only",
+          options_completes: true,
+        },
+      };
+    }
+
     // ── needsUserField (socle needs_user, 2026-07-19) : cas (a) — champ précis
     // identifié. Premier aspect obligatoire vide, un champ à la fois. Cible :
     // ebayAspects.<nom d'aspect exact> — le canal générique (l.515) pose tout
@@ -1252,6 +1368,29 @@ function computeUnfilledRequired(fields, filledSpecifics, warnings = []) {
   return unfilled;
 }
 
+// ── « Le champ est vide » ≠ « tu n'as rien saisi » (2026-09-04) ──────────────
+// Parmi les aspects obligatoires restés vides, retrouve celui — s'il existe —
+// dont on SAIT que la valeur du job était là mais intraduisible (trace
+// 'echec' posée par setSpecificValue, avec la liste relevée sur le formulaire).
+// L'appariement se fait sur le libellé DOM du champ (« Taille », « Pointure
+// EU »… — c'est lui qui figure dans ebayRequiredAspects) ou, à défaut, sur le
+// nom interne du groupe de labels. Sans liste relevée, on ne rend rien : un
+// message qui promet un choix sans pouvoir le proposer serait le même échec
+// qu'avant, en pire.
+function tailleNonTraduitePour(unfilled) {
+  for (const nom of unfilled) {
+    const cle = normalizeFuzzy(String(nom));
+    const trace = TAILLE_TRACES.find(
+      (e) => e.resolution === "echec"
+        && e.options.length
+        && !e.filtre // liste filtrée = partielle : on ne propose pas un choix tronqué
+        && (normalizeFuzzy(e.champ) === cle || normalizeFuzzy(e.fieldName) === cle),
+    );
+    if (trace) return { aspect: nom, valeur: trace.valeur, options: trace.options };
+  }
+  return null;
+}
+
 // overwrite (2026-07-19) : true UNIQUEMENT pour un aspect tranché par
 // l'utilisateur (needsUserResolved) — une valeur déjà affichée qui ne matche
 // pas est alors RE-POSÉE au lieu d'être conservée. false partout ailleurs :
@@ -1430,12 +1569,23 @@ async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, {
   // toggles, pas de dropdown.
   const toggles = [...anatomy.row.querySelectorAll("button.se-toggle-button-group__toggle-button, .toggle-button")];
   if (toggles.length) {
+    // Liste relevée = LE référentiel de traduction de ce champ pour CETTE
+    // catégorie (2026-09-04). Elle sert trois fois : à traduire, à tracer, et
+    // — si rien ne matche — à proposer le vrai choix à l'utilisateur.
+    const optionsRelevees = toggles.map((t) => t.textContent.trim()).filter(Boolean);
     const match = findOptionCascade(anatomy.row, "button.se-toggle-button-group__toggle-button, .toggle-button", String(rawValue), { sizeField });
     if (!match) {
+      if (sizeField) noterTraceTaille({ champ: found.label, fieldName, valeur: rawValue, options: optionsRelevees, resolution: "echec" });
       throw new Error(
         `option "${rawValue}" absente du groupe de toggles. Options: ` +
-        JSON.stringify(toggles.map((t) => t.textContent.trim()).slice(0, 20))
+        JSON.stringify(optionsRelevees.slice(0, 20))
       );
+    }
+    if (sizeField) {
+      noterTraceTaille({
+        champ: found.label, fieldName, valeur: rawValue, options: optionsRelevees,
+        resolution: resolutionDeStage(match.stage), retenue: match.label,
+      });
     }
     realClick(match.el);
     await humanPause();
@@ -1528,6 +1678,19 @@ async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, {
 
   const optionSelector = '[role="menuitemradio"], [role="menuitemcheckbox"], .menu__item';
   let match = findOptionCascade(menu, optionSelector, String(rawValue), { sizeField });
+  // ── Le filtre de recherche cache la liste qu'on doit LIRE (2026-09-04) ────
+  // Sur un champ taille servi en menu (« Pointure EU »), la valeur du job a été
+  // tapée dans la barre de recherche : « XXL » ou « EU 38 » ne filtre RIEN, et
+  // le menu se retrouve vide. On perdait alors les deux choses dont on a
+  // besoin — les options contre lesquelles traduire, et la liste à proposer à
+  // l'utilisateur. On efface donc le filtre et on rejoue la cascade sur la
+  // liste ENTIÈRE avant de conclure. Taille uniquement : ailleurs, la saisie
+  // libre reste un chemin légitime (cf. doctrine « valeur hors liste »).
+  if (!match && search && sizeField) {
+    setNativeValue(search, "");
+    await sleep(1500);
+    match = findOptionCascade(menu, optionSelector, String(rawValue), { sizeField });
+  }
   if (!match && search && !sizeField) {
     // Aucune option : valeur libre — eBay matérialise la saisie comme
     // première entrée du menu une fois tapée ; on re-scanne sans filtre
@@ -1560,10 +1723,22 @@ async function setSpecificValue(found, anatomy, rawValue, warnings, fieldName, {
     await sleep(1500);
     return;
   }
+  // Liste relevée à l'INSTANT de la décision (2026-09-04) — et une seule fois,
+  // pour l'échec comme pour la réussite. `filtre` dit si la barre de recherche
+  // tenait encore une saisie : dans ce cas la liste est FILTRÉE, donc partielle,
+  // et ne doit pas être lue plus tard comme le référentiel entier du champ.
+  const relevees = [...menu.querySelectorAll(optionSelector)]
+    .map((o) => o.textContent.trim()).filter(Boolean);
+  const filtre = search ? String(search.value ?? "").trim() : "";
   if (!match) {
-    const available = [...menu.querySelectorAll(optionSelector)]
-      .map((o) => o.textContent.trim()).filter(Boolean).slice(0, 20);
-    throw new Error(`option "${rawValue}" sans correspondance. Options: ${JSON.stringify(available)}`);
+    if (sizeField) noterTraceTaille({ champ: found.label, fieldName, valeur: rawValue, options: relevees, resolution: "echec", filtre });
+    throw new Error(`option "${rawValue}" sans correspondance. Options: ${JSON.stringify(relevees.slice(0, 20))}`);
+  }
+  if (sizeField) {
+    noterTraceTaille({
+      champ: found.label, fieldName, valeur: rawValue, options: relevees, filtre,
+      resolution: resolutionDeStage(match.stage), retenue: match.label,
+    });
   }
 
   await humanPause(); // temps de "lecture" de la liste avant le clic
@@ -2176,6 +2351,116 @@ function prefilledMatchesTarget(prefilled, rawValue) {
 // purement numérique rejetée. Champs non taille strictement inchangés.
 const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
 
+// ── Traduction de la taille contre la liste RELEVÉE (2026-09-04) ────────────
+// Normalisation propre aux tailles : normalizeFuzzy (casse + accents) PUIS
+// suppression des espaces et des points — « 2 XL » ≡ « 2XL », « XXL » ≡ « xxl ».
+// N'est utilisée QUE par les comparaisons de taille : les autres aspects
+// gardent normalizeFuzzy tel quel (« New Balance » ≠ « NewBalance »).
+const normTaille = (s) => normalizeFuzzy(String(s ?? "")).replace(/[\s.]/g, "");
+
+// XXL ≡ 2XL, XXXL ≡ 3XL, XXS ≡ 2XS…, dans les DEUX sens. Ce n'est pas une
+// équivalence inventée : c'est la MÊME taille écrite dans deux conventions
+// (Vinted écrit XXL, eBay écrit 2XL). Rien d'autre n'est équivalé ici — et
+// surtout pas « UNIQUE » / « TAILLE UNIQUE », qui n'a AUCUN correspondant dans
+// les listes eBay relevées : ces valeurs doivent tomber proprement en
+// needs_user, jamais être mappées au hasard sur « M » ou sur la 1re option.
+function equivalencesTailleX(norm) {
+  const out = [];
+  const versChiffre = norm.match(/^(x{2,8})(s|l)$/);
+  if (versChiffre) out.push(`${versChiffre[1].length}x${versChiffre[2]}`);
+  const versX = norm.match(/^([2-8])x(s|l)$/);
+  if (versX) out.push(`${"x".repeat(Number(versX[1]))}${versX[2]}`);
+  return out;
+}
+
+// « EU 38 », « FR 40 », « UK 8 », « US 10 » : le préfixe pays est un habillage
+// de NOTRE côté, jamais du vocabulaire eBay. Rendu null s'il n'y en a pas —
+// l'étape est alors sautée au lieu de re-tenter la même chose.
+function sansPrefixePays(brut) {
+  const m = String(brut ?? "").trim().match(/^(?:eu|fr|uk|us)[\s.]+(.+)$/i);
+  return m ? m[1].trim() : null;
+}
+
+// Ordre de résolution, du plus sûr au moins sûr :
+//   a. correspondance exacte (casse et espaces ignorés)
+//   b. équivalence X-multiples (XXL ↔ 2XL)
+//   c. libellé composé Vinted : découpe sur « / », PREMIER segment qui matche
+//      une option relevée (« S / 36 / 8 » → « S », puis « 36 », puis « 8 »)
+//   d. préfixe pays retiré, puis a. et b. à nouveau
+// Chaque segment de (c) rejoue a., b. et d. — « XXL / 44 / 16 » doit donner 2XL.
+// Rend { option, stage } ou null. AUCUNE approximation n'est faite ici : sans
+// correspondance on rend null, l'appelant relève la liste et laisse le job
+// aller jusqu'à needs_user. C'est volontairement plus strict que les étapes
+// fuzzy de findOptionCascade, qui restent en dernier recours après celle-ci.
+function resoudreTailleEbay(valeur, options) {
+  const index = new Map();
+  for (const o of options) {
+    const k = normTaille(o.label ?? o.norm);
+    if (k && !index.has(k)) index.set(k, o);
+  }
+  const exact = (v) => {
+    const k = normTaille(v);
+    return k ? index.get(k) ?? null : null;
+  };
+  const equiv = (v) => {
+    for (const e of equivalencesTailleX(normTaille(v))) {
+      const o = index.get(e);
+      if (o) return o;
+    }
+    return null;
+  };
+  const essaiComplet = (v) => {
+    const direct = exact(v) ?? equiv(v);
+    if (direct) return direct;
+    const nu = sansPrefixePays(v);
+    return nu ? exact(nu) ?? equiv(nu) : null;
+  };
+
+  let o = exact(valeur);
+  if (o) return { option: o, stage: "taille-exacte" };
+  o = equiv(valeur);
+  if (o) return { option: o, stage: "taille-equivalence" };
+
+  const segments = String(valeur ?? "").split("/").map((s) => s.trim()).filter(Boolean);
+  if (segments.length > 1) {
+    for (const seg of segments) {
+      const trouve = essaiComplet(seg);
+      if (trouve) return { option: trouve, stage: "taille-segment" };
+    }
+  }
+
+  const nu = sansPrefixePays(valeur);
+  if (nu) {
+    o = exact(nu) ?? equiv(nu);
+    if (o) return { option: o, stage: "taille-prefixe" };
+  }
+  return null;
+}
+
+// Vocabulaire de la trace (usage_logs 'taille_non_mappee') : exacte ·
+// equivalence · segment · prefixe · echec. « approx » est le 6e cas, assumé :
+// les étapes fuzzy PRÉEXISTANTES de findOptionCascade (fuzzy, fuzzy-inverse,
+// composant) restent en dernier recours avant l'échec — les retirer ferait
+// régresser des tailles qui passent aujourd'hui (« Taille M » → « M »). Une
+// ligne 'approx' dit « ça a matché, mais pas par la règle sûre » : c'est ce
+// qu'il faudra regarder en premier quand on relira le parc.
+const RESOLUTION_TAILLE_PAR_STAGE = {
+  exact: "exacte",
+  "taille-exacte": "exacte",
+  // taille-num (garde numérique ancrée du 28/08) : « 3 » → « 3 ans », « 38 »
+  // → « 38 cm ». Ce n'est pas une correspondance exacte — c'est une
+  // équivalence, et elle doit se compter comme telle dans la mesure de
+  // couverture, sans quoi on croirait le vocabulaire commun là où il ne l'est
+  // pas.
+  "taille-num": "equivalence",
+  "taille-equivalence": "equivalence",
+  "taille-segment": "segment",
+  "taille-prefixe": "prefixe",
+};
+function resolutionDeStage(stage) {
+  return RESOLUTION_TAILLE_PAR_STAGE[stage] ?? "approx";
+}
+
 function findOptionCascade(root, optionSelector, text, { sizeField = false } = {}) {
   const options = Array.from(root.querySelectorAll(optionSelector))
     .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
@@ -2199,6 +2484,19 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
       return !!m && m[1].replace(",", ".") === num;
     });
     if (candidats.length === 1) return { ...candidats[0], stage: "taille-num" };
+  }
+
+  // ── 1ter. VOCABULAIRE eBay de la page (2026-09-04, job 58be2b6d) ──────────
+  // « XXL » n'existe pas chez eBay, qui écrit « 2XL » ; « S / 36 / 8 » est un
+  // libellé Vinted, pas une option ; « EU 38 » porte un préfixe qui n'est pas
+  // du vocabulaire eBay. Ces trois traductions sont SÛRES et passent donc
+  // AVANT les étapes fuzzy — c'est tout l'objet du correctif : là où le fuzzy
+  // trouvait par accident (ou pas du tout), la règle nommée tranche et se
+  // trace. Placée après taille-num pour ne rien changer aux tailles purement
+  // numériques, dont l'ancrage est déjà plus strict que l'exact.
+  if (sizeField) {
+    const t = resoudreTailleEbay(text, options);
+    if (t) return { ...t.option, stage: t.stage };
   }
 
   const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
