@@ -538,8 +538,16 @@ function PremiumBanner({ userEmail, compact=false, source='banner', onOpenModal=
 function IAPUpgradeBlock({ lang, iapLoading, onPurchase, onRestore, label=null }) {
   return (
     <div style={{background:"linear-gradient(135deg,#2F9E9008,#E8956D08)",border:"1px solid rgba(232,149,109,0.22)",borderRadius:14,padding:"16px 18px",display:"flex",flexDirection:"column",gap:10,alignItems:"center",textAlign:"center",boxShadow:"0 2px 10px rgba(0,0,0,0.05)"}}>
+      {/* « Stock illimité » RETIRÉ de la pill (2026-09-04, constat Nico sur
+          l'onglet Ventes vide) : depuis la bascule du 02/09, ce qui se compte
+          et se voit à l'écran, c'est le volume d'ANNONCES — l'en-tête de la
+          même page affiche « N annonces restantes ». Vendre « stock illimité »
+          juste en dessous répondait à une limite que l'utilisateur ne
+          rencontre pas, pendant que celle qui le bloque n'était pas nommée.
+          La pill dit maintenant ce que l'offre débloque VRAIMENT dans le
+          modèle courant. */}
       <div style={{fontSize:11,fontWeight:700,background:"rgba(47,158,144,0.08)",color:"#1B6E62",borderRadius:99,padding:"4px 12px",border:"1px solid rgba(47,158,144,0.18)"}}>
-        ✨ {lang==='fr'?'Stock illimité · IA vocale · Stats':'Unlimited stock · Voice AI · Stats'}
+        ✨ {lang==='fr'?"Plus d'annonces · IA vocale · Stats":'More listings · Voice AI · Stats'}
       </div>
       <CtaPremium
         onClick={onPurchase}

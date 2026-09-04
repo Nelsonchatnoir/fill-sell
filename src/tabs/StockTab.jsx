@@ -1,6 +1,6 @@
 import { memo, useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { RefreshCw, Check, ChevronDown, ChevronUp, ChevronRight, Hand, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { RefreshCw, Check, ChevronDown, ChevronUp, ChevronRight, Hand, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../i18n/useTranslation';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { track } from '../analytics/analytics';
@@ -2932,7 +2932,11 @@ function RepubTerminees({ lang, jobs, titreDe }) {
   );
 }
 
-function etapeRepublication(job, fr) {
+// `reprise` (2026-09-04) : objet de repriseRepub, passé UNIQUEMENT quand la
+// retenue serveur du plafond quotidien est active. null = plafond non atteint,
+// état illisible, ou panne de lecture → rien ne change, les étapes habituelles
+// s'appliquent.
+function etapeRepublication(job, fr, reprise = null) {
   if (!job) return null;
   const pf = job.platform_fields ?? {};
   const step = pf.republish_step ?? 'a_capturer';
@@ -3052,6 +3056,29 @@ function etapeRepublication(job, fr) {
   }
   if (!encours) return null;
 
+  // ── Plafond quotidien atteint (2026-09-04) ────────────────────────────────
+  // Ce job ne bougera plus aujourd'hui : get-pending-jobs ne sert plus aucun
+  // republish au poll d'exécution jusqu'au prochain minuit de Paris. Laisser
+  // « En file » (« ça part dans ~2 minutes ») serait faux pendant des heures —
+  // c'est ce silence qui fait croire à une panne (arrêt net à 04:18, 82
+  // annonces en file, extension vivante).
+  // Périmètre EXACTEMENT celui de la retenue serveur : les 'pending' hors
+  // étape 'deleted'. Sont donc exclus l'étape 'deleted' (jamais plafonnée,
+  // l'annonce est hors ligne) et les 'processing' (déjà pris en main par
+  // l'extension, ils vont au bout).
+  // Ni un échec, ni une limite d'abonnement : une protection du compte Vinted
+  // qui se lève seule. Le vocabulaire le dit, la couleur aussi (bleu neutre),
+  // et `enFile` garde la pastille discrète — aucune barre ne tourne sur un
+  // travail à l'arrêt.
+  if (reprise && st === 'pending' && step !== 'deleted') return {
+    cle: 'plafond_jour', court: reprise.court, ...bleu, enFile: true,
+    titre: fr ? `Republication étalée — reprend ${reprise.quand}`
+              : `Repost paced — resumes ${reprise.quand}`,
+    detail: fr
+      ? `FillSell étale tes republications sur la journée pour protéger ton compte Vinted. Celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. Ton annonce est intacte, rien n'a été retiré.`
+      : `FillSell paces your reposts through the day to protect your Vinted account. This one resumes on its own ${reprise.quand}, nothing to do on your side. Your listing is untouched, nothing was removed.`,
+  };
+
   if (step === 'deleted') return {
     cle: 'deleted', court: T.recreation, ...bleu,
     titre: fr ? 'Ancienne annonce retirée, recréation en cours' : 'Old listing removed, recreating',
@@ -3116,6 +3143,37 @@ function heureParis(iso) {
   return new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
 }
 
+// ── Plafond quotidien de republication : mise en mots de la REPRISE ────────
+// (2026-09-04) Le plafond (coin_config.republish_plafond_jour) est appliqué
+// par get-pending-jobs, qui compte sur le JOUR CALENDAIRE Europe/Paris : le
+// compteur repart au prochain minuit de Paris, pas 24 h après la coupure.
+// C'est le SERVEUR qui date cette reprise (champ `reprise` du mode
+// plafond_only) — ici on ne fait que la formater, jamais la déduire : une
+// seconde définition du reset finirait par mentir un jour de bascule d'heure.
+// Instant absent (fonction pas encore déployée) → « demain » SANS heure,
+// jamais une heure inventée. Instant DÉPASSÉ (état vieilli entre deux
+// rafraîchissements de 2 min) → null : on n'affiche rien plutôt qu'une
+// reprise fausse.
+// `court` tient dans la pastille de carte (≤ 12 caractères, règle du 04/09) ;
+// `quand` est la forme longue des phrases.
+function repriseRepub(iso, fr) {
+  const t = Date.parse(iso ?? '');
+  if (!Number.isFinite(t)) return { court: fr ? 'Demain' : 'Tomorrow', quand: fr ? 'demain' : 'tomorrow' };
+  if (t <= Date.now()) return null;
+  const hhmm = new Date(t).toLocaleTimeString('en-GB', {
+    timeZone: 'Europe/Paris', hourCycle: 'h23', hour: '2-digit', minute: '2-digit',
+  });
+  const heure = fr ? hhmm.replace(':', 'h') : hhmm;
+  return {
+    court: fr ? `Demain ${heure}` : `Tmrw ${heure}`,
+    quand: fr ? `demain à ${heure}` : `tomorrow at ${heure}`,
+  };
+}
+// Marge d'approche du plafond : le décompte n'apparaît QUE dans les derniers
+// articles avant la coupure (règle du 04/09) — jamais en permanence, jamais
+// comme un compteur de consommation.
+const REPUB_PLAFOND_PROCHE = 5;
+
 // Champs d'une capture incomplète que l'app sait faire SAISIR (2026-08-21) —
 // miroir exact de la whitelist de fusion côté extension
 // (capturerEtPersisterDepuisExtension, republish_user_fields) : taille, marque,
@@ -3137,14 +3195,15 @@ const repubCleSaisie = (c) => String(c ?? '').toLowerCase().normalize('NFD').rep
 
 // Feuille « où ça en est » — même patron que RepublishSheet (portail, feuille
 // basse, canvas). Ouverte au tap sur la pastille de la carte.
-function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance }) {
+function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise = null }) {
   const fr = lang !== 'en';
   // ⚠️ Hooks AVANT le retour anticipé (règle des hooks) : la feuille peut
   // rendre null quand l'étape est illisible, la saisie n'existe alors pas.
   const [saisie, setSaisie] = useState({});
   const [saisieBusy, setSaisieBusy] = useState(false);
   const [saisieMsg, setSaisieMsg] = useState(null);
-  const et = etapeRepublication(job, fr);
+  // Même vocabulaire que la pastille, plafond compris (une seule source).
+  const et = etapeRepublication(job, fr, reprise);
   if (!et) return null;
   const pf = job.platform_fields ?? {};
   // Saisie proposée UNIQUEMENT sur un needs_user de capture incomplète / pré-vol
@@ -3153,7 +3212,10 @@ function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance }) {
   const aCompleter = job.status === 'needs_user' && Array.isArray(pf.champs_a_completer)
     ? [...new Set(pf.champs_a_completer.map(repubCleSaisie).filter((c) => c in REPUB_SAISISSABLES))]
     : [];
-  const courant = et.cle === 'arret' || et.cle === 'needs_user'
+  // 'plafond_jour' n'est pas une étape du parcours mais une ATTENTE posée sur
+  // l'étape en cours : la frise reste ancrée sur republish_step (sans quoi
+  // indexOf rendrait -1 et la frise entière retomberait à « rien de fait »).
+  const courant = et.cle === 'arret' || et.cle === 'needs_user' || et.cle === 'plafond_jour'
     ? (pf.republish_step ?? 'a_capturer')
     : (et.cle === 'file' || et.cle === 'lecture' ? 'a_capturer' : et.cle);
   const iCourant = REPUB_ORDRE.indexOf(courant);
@@ -4130,6 +4192,14 @@ const StockTab = memo(function StockTab({
     const t = setInterval(() => { if (document.visibilityState === 'visible') lire(); }, 120000);
     return () => { annule = true; clearInterval(t); };
   }, [republishActif]);
+  // Mention de reprise portée par les CARTES : posée SEULEMENT sous retenue
+  // serveur active — jamais préventive, jamais sur un état null (panne de
+  // lecture). Recalculée à chaque relecture de l'état (2 min) : passé minuit,
+  // repriseRepub rend null et les cartes reprennent leurs libellés d'étape.
+  const repubPlafondReprise = useMemo(
+    () => (repubPlafondEtat?.retenue ? repriseRepub(repubPlafondEtat.reprise, lang !== 'en') : null),
+    [repubPlafondEtat, lang],
+  );
   // Articles HORS LIGNE : republication arrêtée (needs_user/failed/cancelled)
   // À L'ÉTAPE 'deleted' — l'annonce a été retirée de Vinted et jamais recréée.
   // Le pire cas du produit (Combishort d'ornellaracano, 07/08 : plus d'une
@@ -5104,40 +5174,15 @@ const StockTab = memo(function StockTab({
                 </>
               );
             })()}
-            {/* Bandeau « ta file reprend demain » (2026-08-29 soir) : l'état
-                vient du SERVEUR (repubPlafondEtat, get-pending-jobs
-                plafond_only) — jamais recalculé ici. Ton NEUTRE ET POSITIF :
-                ni une erreur, ni une panne, ni une sanction — une protection
-                volontaire du compte, et le vocabulaire le dit (« reprend
-                demain », jamais « bloqué »/« limite »/« refusé »). Même
-                grammaire que les encarts du bloc (fond teinté doux, bord,
-                radius) ; teal de la palette Stock IA, pas de rouge. Affiché
-                SEULEMENT si la retenue serveur est active ET qu'il reste des
-                jobs en attente — jamais vide, jamais préventif. Pas de
-                compte à rebours, pas de pourcentage, pas de date de fin de
-                lot (décision Nico). */}
-            {(()=>{
-              const p=repubPlafondEtat;
-              const restantes=repubBandeau.file.length+(repubBandeau.actif&&!repubJobFini(repubBandeau.actif)?1:0);
-              if(!p?.retenue||restantes<=0)return null;
-              return(
-                <div style={{display:"flex",alignItems:"flex-start",gap:10,marginTop:12,background:"#F0F7F5",border:"1px solid #CBE3DD",borderRadius:12,padding:"11px 13px"}}>
-                  <ShieldCheck size={16} style={{flexShrink:0,marginTop:2,color:"#1B6E62"}}/>
-                  <div style={{flex:1,minWidth:0,fontSize:12.5,lineHeight:1.5,color:"#1B6E62"}}>
-                    <div style={{fontWeight:700}}>
-                      {lang==='fr'
-                        ?`${p.faits} republications faites aujourd'hui — ta file reprend demain.`
-                        :`${p.faits} reposts done today — your queue resumes tomorrow.`}
-                    </div>
-                    <div style={{fontWeight:500,opacity:0.85,marginTop:2}}>
-                      {lang==='fr'
-                        ?`${restantes} annonce${restantes>1?'s':''} en attente, rien à faire de ton côté. FillSell espace tes republications pour protéger ton compte Vinted.`
-                        :`${restantes} listing${restantes>1?'s':''} waiting, nothing to do on your side. FillSell paces your reposts to protect your Vinted account.`}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
+            {/* (L'encart teal « ta file reprend demain » du 29/08 a été RETIRÉ
+                le 04/09 : il vivait ici, en tête d'ÉCRAN, alors que l'état
+                appartient désormais aux cartes — même doctrine que l'écran de
+                progression supprimé la veille. Il est remplacé par UNE ligne
+                de texte secondaire en tête de la LISTE (au-dessus de la
+                galerie) et par la mention « Demain 00h00 » portée par chaque
+                carte en attente. L'état serveur, lui, ne bouge pas :
+                repubPlafondEtat reste lu ici pour taire l'estimation de durée
+                sous retenue.) */}
             {/* (La file « ENSUITE » numérotée et la liste dépliable des
                 terminées ont été RETIRÉES le 03/09 soir avec l'écran de
                 progression : elles répétaient, en tête de page, ce que chaque
@@ -6272,6 +6317,52 @@ const StockTab = memo(function StockTab({
                       :"No listings can be reposted right now. A listing is repostable when it's still live on Vinted, has no repost already queued, and wasn't recreated in the last 24 hours. Check back later — or exit the mode above."}
                   </div>
                 )}
+                {/* ── PLAFOND QUOTIDIEN : UNE ligne, en tête de LISTE (04/09) ──
+                    Le plafond technique (coin_config.republish_plafond_jour,
+                    appliqué par get-pending-jobs) n'était plus dit nulle part
+                    depuis la bascule du 02/09 : un compte qui s'arrête net à
+                    04:18 avec 82 annonces en file et son extension vivante
+                    croit que c'est cassé.
+                    Ce qui est dit ici : le compte du jour, le plafond, l'heure
+                    de reprise — tout vient du SERVEUR (repubPlafondEtat), rien
+                    n'est recalculé ni écrit en dur.
+                    ⚠️ CE N'EST PAS UN QUOTA D'ABONNEMENT. Le plafond
+                    journalier est une protection anti-restriction Vinted,
+                    temporaire, qui repart seule : texte secondaire, aucune
+                    couleur d'alerte, aucun appel à l'achat, aucun bouton. Les
+                    limites commerciales (republication_avie_free,
+                    quota_republication_*) ont leur propre chemin — la modale
+                    de conversion — et ne doivent jamais se ressembler.
+                    Affichée SEULEMENT quand la coupure est atteinte ou
+                    imminente (REPUB_PLAFOND_PROCHE) ET qu'il reste des
+                    republications en attente : rien en permanence, rien de
+                    préventif, rien sur une panne de lecture (état null). */}
+                {(()=>{
+                  if(modePrixAchat||modeRepublish)return null;
+                  const p=repubPlafondEtat;
+                  if(!republishActif||!p||!repubBandeau)return null;
+                  const restantes=repubBandeau.file.length+(repubBandeau.actif&&!repubJobFini(repubBandeau.actif)?1:0);
+                  if(restantes<=0)return null;
+                  const reste=Number.isFinite(p.limite)&&Number.isFinite(p.faits)?p.limite-p.faits:null;
+                  const proche=!p.retenue&&reste!==null&&reste>0&&reste<=REPUB_PLAFOND_PROCHE;
+                  if(!p.retenue&&!proche)return null;
+                  // Même convention de langue que la pastille de carte
+                  // (etapeRepublication) : les deux disent la même heure.
+                  const fr=lang!=='en';
+                  const r=repriseRepub(p.reprise,fr);
+                  if(!r)return null; // état vieilli : rien plutôt qu'une reprise fausse
+                  return(
+                    <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",margin:"2px 2px 4px"}}>
+                      {p.retenue
+                        ?(fr
+                          ?`${p.faits} republications sur ${p.limite} aujourd'hui — les ${restantes} suivantes reprennent ${r.quand}. FillSell les étale pour protéger ton compte Vinted, tu n'as rien à faire.`
+                          :`${p.faits} of ${p.limite} reposts today — the next ${restantes} resume ${r.quand}. FillSell paces them to protect your Vinted account, nothing to do on your side.`)
+                        :(fr
+                          ?`${p.faits} republications sur ${p.limite} aujourd'hui — au-delà, la suite reprend ${r.quand}. FillSell les étale pour protéger ton compte Vinted.`
+                          :`${p.faits} of ${p.limite} reposts today — beyond that, the rest resumes ${r.quand}. FillSell paces them to protect your Vinted account.`)}
+                    </div>
+                  );
+                })()}
                 {/* ── GALERIE (2026-08-27) : grille de cartes photo, 2 colonnes
                     sur mobile. Pagination inchangée (slice de 10 + « Voir
                     plus ») et photos en loading="lazy" : les gros comptes
@@ -6349,7 +6440,7 @@ const StockTab = memo(function StockTab({
                   // l'article n'est plus republiable — un article devenu
                   // 'disparu' juste après sa republication perdait sinon
                   // l'affichage du job qui venait de tourner.
-                  const repubEtape=republishActif?etapeRepublication(repubLatest,lang!=='en'):null;
+                  const repubEtape=republishActif?etapeRepublication(repubLatest,lang!=='en',repubPlafondReprise):null;
                   // La pastille dit déjà l'état : le message transitoire ne le
                   // répète pas. Il ne reste affiché que quand il apporte autre
                   // chose (refus, échec de relance).
@@ -7469,7 +7560,7 @@ const StockTab = memo(function StockTab({
         const frais=(jobsByInventaire[repubProgress.inventaire_id]??[])
           .find(j=>j.id===repubProgress.id)??repubProgress;
         return(
-          <RepublishProgressSheet lang={lang} job={frais} onClose={()=>setRepubProgress(null)} onSaisieRelance={validerSaisieRelance}/>
+          <RepublishProgressSheet lang={lang} job={frais} reprise={repubPlafondReprise} onClose={()=>setRepubProgress(null)} onSaisieRelance={validerSaisieRelance}/>
         );
       })()}
       {/* Mini-éditeur « À compléter » (socle needs_user, 2026-07-19).

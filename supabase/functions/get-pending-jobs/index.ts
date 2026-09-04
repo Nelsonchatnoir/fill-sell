@@ -93,9 +93,16 @@ serve(async (req) => {
     // (2026-08-29 soir) UNE seule définition, calculée ICI et nulle part
     // ailleurs : limite = coin_config.republish_plafond_jour, faits = jobs
     // republish 'published' du jour Europe/Paris (fenêtre 26 h filtrée par
-    // date Paris), retenue = faits >= limite. Sert à la retenue du claim
+    // date Paris), retenue = faits >= limite, reprise = le prochain minuit de
+    // Paris (l'instant où faits repart de zéro). Sert à la retenue du claim
     // ci-dessous ET à l'affichage de l'app (mode plafond_only) — le serveur
     // fait autorité, l'app ne recalcule plus rien.
+    // ⚠️ PÉRIODE = JOUR CALENDAIRE EUROPE/PARIS, pas 24 h glissantes : un
+    // compte qui bute à 04:18 repart à 00:00, pas 24 h plus tard. Le plafond
+    // vaut pour TOUS les paliers (aucune lecture de profiles ici) et ne
+    // connaît pas les catégories (republish_livres_exemption est un tout
+    // autre interrupteur, celui du gel Livres — les livres republiés comptent
+    // dans `faits` comme le reste).
     const etatPlafondRepublish = async () => {
       let limite = 45;
       const { data: cfg } = await userClient
@@ -103,6 +110,15 @@ serve(async (req) => {
       const v = Number(cfg?.value);
       if (Number.isFinite(v) && v > 0) limite = v;
       const jourParis = (ts: number) => new Date(ts).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
+      // Secondes écoulées depuis minuit À PARIS. hourCycle h23 explicite :
+      // hour12:false rend « 24:00:00 » à minuit sur certaines locales/ICU.
+      const secondesParis = (ts: number) => {
+        const [h, m, s] = new Date(ts).toLocaleTimeString("en-GB", {
+          timeZone: "Europe/Paris", hourCycle: "h23",
+          hour: "2-digit", minute: "2-digit", second: "2-digit",
+        }).split(":").map(Number);
+        return h * 3600 + m * 60 + s;
+      };
       const aujourdhui = jourParis(Date.now());
       const depuis = new Date(Date.now() - 26 * 3600_000).toISOString();
       const { data: faitsRows } = await userClient
@@ -115,7 +131,24 @@ serve(async (req) => {
         const t = Date.parse(r.published_at ?? "");
         return Number.isFinite(t) && jourParis(t) === aujourdhui;
       }).length;
-      return { limite, faits, retenue: faits >= limite, jour: aujourdhui };
+      // ── REPRISE (2026-09-04, AFFICHAGE SEUL) ────────────────────────────
+      // L'instant EXACT où `aujourdhui` change et où `faits` repart de zéro :
+      // le prochain minuit de Paris. Calculé ICI, avec la même horloge que le
+      // décompte, parce que la SÉMANTIQUE DU RESET appartient à cette
+      // fonction — l'app doit pouvoir écrire « reprend demain à 00h00 » sans
+      // la redevenir une seconde fois (elle formate un instant, elle ne le
+      // déduit pas). Ne change RIEN à la retenue : `retenue` est toujours
+      // faits >= limite, et rien d'autre ne lit ce champ.
+      // Jamais par un offset en dur (+1 h l'hiver, +2 h l'été) : on saute au
+      // bout du jour de Paris, on corrige le jour de 25 h (bascule d'octobre),
+      // puis on recale sur 00:00:00 (couvre le jour de 23 h de mars).
+      let reprise = Date.now() + (86400 - secondesParis(Date.now())) * 1000;
+      if (jourParis(reprise) === aujourdhui) reprise += 3600_000;
+      reprise -= secondesParis(reprise) * 1000;
+      return {
+        limite, faits, retenue: faits >= limite, jour: aujourdhui,
+        reprise: new Date(reprise).toISOString(),
+      };
     };
 
     // Mode plafond_only (2026-08-29 soir) : appelé par l'APP (StockTab) pour
@@ -211,7 +244,7 @@ serve(async (req) => {
     // filet ne doit pas devenir un point de panne, même règle que
     // platform_health ci-dessus).
     let heldRepublish = 0;
-    let plafondRepublish: { limite: number; faits: number; retenue: boolean; jour: string } | null = null;
+    let plafondRepublish: { limite: number; faits: number; retenue: boolean; jour: string; reprise: string } | null = null;
     if (!includeProcessing && !includeNeedsUser && out.some((j) => j.action === "republish")) {
       try {
         plafondRepublish = await etatPlafondRepublish();
