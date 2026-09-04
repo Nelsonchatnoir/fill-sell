@@ -4392,6 +4392,21 @@ async function visibleCatalogChoices(limit = 30) {
   return [...new Set(labels)].slice(0, limit);
 }
 
+// Ids des sous-niveaux RÉELS actuellement affichés (suggestions exclues, comme
+// visibleCatalogChoices). Sert au seul barreau 2 de selectCategory : vérifier
+// qu'une suggestion de Vinted désigne bien un ENFANT du nœud courant.
+async function visibleCatalogChildIds() {
+  const S = await sel();
+  const ids = new Set();
+  for (const o of document.querySelectorAll(S.selectorFor("vinted", "publish.catalog_option"))) {
+    if (estSuggestionCatalogue(o)) continue;
+    const noeud = /^catalog-\d+$/.test(o.id ?? "") ? o : o.closest?.('[id^="catalog-"]');
+    const m = /^catalog-(\d+)$/.exec(noeud?.id ?? "");
+    if (m) ids.add(Number(m[1]));
+  }
+  return ids;
+}
+
 async function selectCategory(path, fields = {}) {
   const catalogOptionSel = (await sel()).selectorFor("vinted", "publish.catalog_option");
   // Copie de travail : renommage de racine avéré appliqué AVANT la descente
@@ -4410,6 +4425,25 @@ async function selectCategory(path, fields = {}) {
   const choixUtilisateur = String(fields?.categoryLevelChoice ?? "").trim();
   let choixConsomme = false;
   await openDropdown('#category, [data-testid="catalog-select-dropdown-input"]');
+  // ── SUGGESTIONS DE VINTED, RELEVÉES À L'OUVERTURE (2026-09-04) ────────────
+  // Vinted propose lui-même des catégories, calculées À PARTIR DES PHOTOS.
+  // Relevé en réel ce jour : photo seule, SANS titre → deux suggestions ;
+  // ajouter le titre ne change RIEN (mêmes ids). C'est donc la photo qui décide,
+  // et nos photos sont déjà montées quand on arrive ici (étape "Photos",
+  // l. 1811, avant l'étape "Catégorie", l. 1829).
+  // Le relevé se fait ICI, à l'ouverture, parce que le bloc « Suggestions »
+  // vit en TÊTE du sélecteur et disparaît dès qu'on descend d'un niveau.
+  // ⚠️ SEULE LIGNE DE CE CHANTIER QUI S'EXÉCUTE SUR LE CHEMIN QUI MARCHE :
+  // un querySelectorAll sur un menu déjà ouvert. Aucun appel réseau, aucune
+  // branche, aucun effet — le résultat n'est LU que par le barreau 2, dans la
+  // branche des catégories devenues intermédiaires. Sur une feuille il est
+  // calculé puis ignoré.
+  const suggestionsVinted = [...document.querySelectorAll('[id^="catalog-suggestion-"]')]
+    .map((el) => ({
+      id: Number(String(el.id).replace("catalog-suggestion-", "")),
+      libelle: String(el.innerText ?? "").trim().split("\n")[0].trim(),
+    }))
+    .filter((s) => Number.isFinite(s.id) && s.libelle);
   for (let i = 0; i < path.length; i++) {
     let levelLabel = path[i];
     const isLast = i === path.length - 1;
@@ -4606,16 +4640,41 @@ async function selectCategory(path, fields = {}) {
         );
         continue;
       }
-      // BARREAU 2 — départage par la suggestion de Vinted : NON DISPONIBLE.
-      // Relevé en réel le 2026-09-04, panneau ouvert, sur deux titres explicites
-      // (« La cascade lumineuse Hatchimals », « Jupe en jean Levis taille 38 ») :
-      // AUCUN nœud `catalog-suggestion-*` n'est rendu. Le sélecteur n'affiche
-      // que les 8 racines. Le mécanisme documenté le 06/08 ne sort plus du
-      // titre seul ; il faudrait peut-être une photo, ce qui n'a pas pu être
-      // vérifié. Le jour où il revient, sa place est ICI, entre les barreaux 1
-      // et 3, et sa règle est écrite d'avance : n'accepter une suggestion QUE si
-      // son id appartient à l'ensemble des enfants du nœud courant — jamais
-      // pour naviguer, jamais ailleurs.
+      // BARREAU 2 — DÉPARTAGE PAR LA SUGGESTION DE VINTED.
+      // Relevé en réel le 2026-09-04 sur le cas d'origine (photo de « La cascade
+      // lumineuse Hatchimals » montée sur un dépôt, aucune annonce créée) :
+      //   catalog-suggestion-3313 « Sets de jeux »
+      //     — Enfants > Jeux et jouets > Figurines et accessoires
+      //   catalog-suggestion-3366 « Autres jeux et jouets électroniques »
+      // 3313 EST l'un des trois enfants de 1730. Les deux sont des radios SANS
+      // chevron, donc des feuilles, et le fil d'Ariane le confirme.
+      // Photo SEULE suffit ; ajouter le titre ne change ni le nombre ni les ids.
+      //
+      // ⛔ LA RÈGLE, INCHANGÉE : on n'accepte une suggestion QUE si son id
+      // appartient aux ENFANTS du nœud courant, et seulement s'il n'y en a
+      // qu'une. Jamais pour naviguer, jamais à un autre niveau. C'est ce qui
+      // protège du cas documenté le 06/08, où une suggestion dupliquait une
+      // RACINE : hors de l'ensemble des enfants, elle est ignorée.
+      // Deux suggestions valides ⇒ ambigu ⇒ on ne tranche pas, barreau 3.
+      const idsEnfants = await visibleCatalogChildIds();
+      const retenues = [...new Set(
+        suggestionsVinted.filter((s) => idsEnfants.has(s.id)).map((s) => s.libelle)
+      )];
+      if (retenues.length === 1) {
+        choixConsomme = true;
+        path.push(retenues[0]);
+        console.log(
+          `[vinted] catégorie : « ${levelLabel} » est devenu intermédiaire — Vinted suggère ` +
+          `« ${retenues[0]} », qui est l'un de ses sous-niveaux. Descente sur la suggestion de la plateforme.`
+        );
+        continue;
+      }
+      if (retenues.length > 1) {
+        console.warn(
+          `[vinted] catégorie : ${retenues.length} suggestions Vinted valides sous « ${levelLabel} » ` +
+          `(${retenues.join(", ")}) — ambigu, on ne tranche pas : choix laissé à l'utilisateur.`
+        );
+      }
       //
       // BARREAU 3 — plusieurs sous-niveaux et rien pour trancher : l'utilisateur
       // choisit, sur la liste RÉELLE que Vinted vient d'afficher. Le
