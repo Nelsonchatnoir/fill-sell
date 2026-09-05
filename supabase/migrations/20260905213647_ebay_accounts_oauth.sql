@@ -23,7 +23,12 @@
 -- « à reconnecter », jamais une erreur technique. Une reconnexion réussie
 -- remet revoked_at à NULL (upsert sur user_id).
 --
--- ⚠️ À appliquer explicitement (db push INTERDIT). Idempotente.
+-- ✅ APPLIQUÉE EN PROD par Nico le 05/09/2026 à 23:36 (Europe/Paris), enregistrée
+-- dans supabase_migrations.schema_migrations sous version 20260905213647,
+-- name ebay_accounts_oauth — ce fichier a été RENOMMÉ de 20260905210000 vers
+-- cette version pour que l'historique local suive le distant (db push reste
+-- INTERDIT). Vérifs faites après pose : relrowsecurity=true · 0 policy ·
+-- grants = service_role + postgres · 16 colonnes. Idempotente.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS public.ebay_accounts (

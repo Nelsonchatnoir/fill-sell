@@ -23,7 +23,7 @@ import {
   APP_ORIGIN,
   dateExpiration,
   echangerCode,
-  lireEbayUserId,
+  lireIdentiteEbay,
   lireEnvEbay,
   lireIdentifiants,
   REPLI_ACCESS_S,
@@ -73,13 +73,16 @@ Deno.serve(async (req) => {
     const refreshExp = dateExpiration(json.refresh_token_expires_in, REPLI_REFRESH_S);
     console.log(`[ebay-oauth-callback] jetons obtenus user=${userId} env=${env} access=${json.expires_in ?? "?"}s(${accessExp.source}) refresh=${json.refresh_token_expires_in ?? "?"}s(${refreshExp.source})`);
 
-    // Pseudo eBay : best-effort, jamais bloquant.
-    const ebayUserId = await lireEbayUserId(env, json.access_token);
+    // Identité eBay : pseudo (affichage) + EIASToken (immuable, clé
+    // d'effacement pour Marketplace Account Deletion). Best-effort, jamais
+    // bloquant.
+    const identite = await lireIdentiteEbay(env, json.access_token);
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { error } = await admin.from("ebay_accounts").upsert({
+    const ligne: Record<string, unknown> = {
       user_id: userId,
-      ebay_user_id: ebayUserId,
+      ebay_user_id: identite.username,
+      ebay_eias_token: identite.eiasToken,
       refresh_token: json.refresh_token,
       access_token: json.access_token,
       expires_at: accessExp.iso,
@@ -88,11 +91,20 @@ Deno.serve(async (req) => {
       connected_at: new Date().toISOString(),
       revoked_at: null,
       revoked_reason: null,
-    }, { onConflict: "user_id" });
+    };
+    let { error } = await admin.from("ebay_accounts").upsert(ligne, { onConflict: "user_id" });
+    // Colonne ebay_eias_token pas encore posée (migration 20260906090000 à
+    // appliquer par Nico) : la connexion ne doit PAS casser pour autant.
+    if (error && /ebay_eias_token/i.test(error.message)) {
+      console.warn("[ebay-oauth-callback] colonne ebay_eias_token absente — écriture sans elle");
+      delete ligne.ebay_eias_token;
+      ({ error } = await admin.from("ebay_accounts").upsert(ligne, { onConflict: "user_id" }));
+    }
     if (error) {
       console.error(`[ebay-oauth-callback] écriture ebay_accounts refusée : ${error.message}`);
       return retour("erreur", "stockage");
     }
+    console.log(`[ebay-oauth-callback] compte relié user=${userId} pseudo=${identite.username ? "oui" : "non"} eias=${identite.eiasToken ? "oui" : "non"}`);
     return retour("ok");
   } catch (err) {
     console.error("[ebay-oauth-callback] erreur inattendue :", (err as Error)?.message ?? err);

@@ -322,12 +322,21 @@ export function messageErreurEbay(json: unknown, texte: string): string {
   return texte.slice(0, 200);
 }
 
-// Identifiant du compte eBay — BEST-EFFORT (lot 0). L'Identity API exige un
-// scope de plus (commerce.identity.readonly) qu'on ne demande pas ; le Trading
-// API GetUser accepte le jeton OAuth (en-tête X-EBAY-API-IAF-TOKEN). S'il
-// refuse, ebay_user_id reste NULL et rien ne casse : le pseudo n'est qu'un
-// confort d'affichage (« c'est bien le bon compte »).
-export async function lireEbayUserId(env: EbayEnv, token: string): Promise<string | null> {
+// Identité du compte eBay — BEST-EFFORT. L'Identity API exige un scope de plus
+// (commerce.identity.readonly) qu'on ne demande pas ; le Trading API GetUser
+// accepte le jeton OAuth (en-tête X-EBAY-API-IAF-TOKEN) et rend, vérifié dans
+// la référence GetUser le 06/09 :
+//   · <UserID>    : le pseudo public — il peut CHANGER ;
+//   · <EIASToken> : l'identifiant IMMUABLE du vendeur — c'est lui que porte
+//                   aussi la notification Marketplace Account Deletion
+//                   (data.eiasToken), donc la clé de rapprochement pour effacer.
+// DetailLevel ReturnAll pour être sûr d'avoir l'EIASToken (relevé le 05/09 en
+// ReturnSummary : UserID présent, EIASToken non vérifié). Si l'appel refuse,
+// les deux restent NULL et rien ne casse (le pseudo n'est qu'un confort
+// d'affichage, l'effacement retombe sur le pseudo).
+export interface IdentiteEbay { username: string | null; eiasToken: string | null; }
+
+export async function lireIdentiteEbay(env: EbayEnv, token: string): Promise<IdentiteEbay> {
   try {
     const r = await fetch(`${hotes(env).api}/ws/api.dll`, {
       method: "POST",
@@ -338,12 +347,13 @@ export async function lireEbayUserId(env: EbayEnv, token: string): Promise<strin
         "X-EBAY-API-COMPATIBILITY-LEVEL": "1193",
         "Content-Type": "text/xml",
       },
-      body: '<?xml version="1.0" encoding="utf-8"?><GetUserRequest xmlns="urn:ebay:apis:eBLBaseComponents"><DetailLevel>ReturnSummary</DetailLevel></GetUserRequest>',
+      body: '<?xml version="1.0" encoding="utf-8"?><GetUserRequest xmlns="urn:ebay:apis:eBLBaseComponents"><DetailLevel>ReturnAll</DetailLevel></GetUserRequest>',
     });
     const xml = await r.text();
-    const m = xml.match(/<UserID>([^<]{1,64})<\/UserID>/);
-    return m ? m[1] : null;
+    const u = xml.match(/<UserID>([^<]{1,64})<[/]UserID>/);
+    const e = xml.match(/<EIASToken>([^<]{1,200})<[/]EIASToken>/);
+    return { username: u ? u[1] : null, eiasToken: e ? e[1] : null };
   } catch {
-    return null;
+    return { username: null, eiasToken: null };
   }
 }

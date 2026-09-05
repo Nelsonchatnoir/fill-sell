@@ -127,6 +127,12 @@ verify_jwt = false
 [functions.ebay-oauth-callback]
 verify_jwt = false
 
+# Marketplace Account Deletion (06/09) : c'est eBay qui appelle (GET défi,
+# POST notification signée x-ebay-signature), sans JWT Supabase. Efface la
+# ligne ebay_accounts du vendeur — et rien d'autre.
+[functions.ebay-account-deletion]
+verify_jwt = false
+
 # Paiement / compte : le JWT identifie le titulaire, jamais optionnel.
 # eBay par API (lot 0-1, 05/09) : appelées par l'app avec le JWT utilisateur.
 [functions.ebay-oauth-start]

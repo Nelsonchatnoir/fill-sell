@@ -190,6 +190,9 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const action = String(body.action ?? "statut");
     const env = lireEnvEbay();
+    // Trace d'entrée : « le bouton ne fait rien » du 05/09 n'a laissé AUCUNE
+    // ligne ici — avec ce log, une requête arrivée se voit toujours.
+    console.log(`[ebay-account] action=${action} type=${String(body.type ?? "-")} user=${user.id}`);
 
     if (action === "statut") {
       const { compte, erreur } = await lireCompte(admin, user.id);
