@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
+const LEBONCOIN_BUILD = "2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -30,12 +30,98 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     }
     if (msg?.type !== "FILL_LISTING") return;
 
+    etapeCourante = null; // nouveau job : le relevé d'étape repart de zéro
     fillListingForm(msg.job)
       .then((result) => sendResponse(result))
-      .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      .catch((err) => sendResponse(reponseEchecInterne(err)));
 
     return true; // réponse asynchrone
   });
+}
+
+// ── Relevé d'étape et diagnostic de page (2026-09-05, cas geronimo) ──────────
+// Ce handler ne relayait AUCUNE étape au background : fill_step restait null
+// pour TOUT échec Leboncoin, et « null » se lisait à tort comme « mort avant le
+// premier champ ». Même mécanique qu'ebay.js (FILLSELL_FILL_STEP, fire-and-
+// forget, jamais d'await, jamais de throw) ; la copie locale est voulue — les
+// content scripts sont autonomes (OBSERVATORY.md ADR-03).
+let etapeCourante = null;
+function relayerEtape(nom) {
+  etapeCourante = String(nom ?? "");
+  try {
+    chrome.runtime?.sendMessage?.({ type: "FILLSELL_FILL_STEP", step: nom })?.catch?.(() => {});
+  } catch { /* hors extension (dry-run injecté), ou extension rechargée */ }
+}
+
+// Ce qu'un utilisateur lit quand le SCRIPT casse (ReferenceError, TypeError…) :
+// jamais l'exception brute (« t is not defined » a été affiché tel quel à un
+// utilisateur, 5 jobs sur 5, cas geronimo 09/2026). Le texte ne dit PAS de se
+// reconnecter : la session était valide, ce n'en était pas la cause.
+const MSG_PAGE_DEPOT_ILLISIBLE =
+  "La page de dépôt Leboncoin n'a pas pu être lue par FillSell : rien n'a été publié. " +
+  "Relance la publication depuis la fiche de l'article ; si ça se reproduit, signale-le au support.";
+const estErreurDeCode = (err) =>
+  err instanceof ReferenceError || err instanceof TypeError || err instanceof SyntaxError || err instanceof RangeError;
+
+// Photographie de STRUCTURE de la page au moment de l'échec — URL sans query,
+// titre du document, présence/absence des ancres que ce handler utilise déjà
+// (booléens), 3 premiers titres tronqués. AUCUN contenu de champ, aucune
+// donnée de compte : ce relevé part en base (platform_fields
+// .diagnostic_page_lbc). `compte_pro` reste null tant qu'aucun marqueur DOM
+// fiable n'a été relevé en session réelle — on ne devine pas.
+function diagnostiquerPageLbc() {
+  const q = (sel) => { try { return Boolean(document.querySelector(sel)); } catch { return null; } };
+  const boutonVisible = (re) => {
+    try {
+      return [...document.querySelectorAll("button")]
+        .some((b) => b.offsetParent !== null && re.test((b.textContent ?? "").replace(/\s+/g, " ").trim()));
+    } catch { return null; }
+  };
+  let titres = [];
+  try {
+    titres = [...document.querySelectorAll("h1, h2, h3")]
+      .map((h) => (h.textContent ?? "").replace(/\s+/g, " ").trim())
+      .filter(Boolean).slice(0, 3).map((t) => t.slice(0, 120));
+  } catch { /* structure seule, jamais bloquant */ }
+  return {
+    at: new Date().toISOString(),
+    etape_atteinte: etapeCourante,
+    url: `${location.origin}${location.pathname}`,
+    document_title: String(document.title ?? "").slice(0, 120),
+    ancres: {
+      subject: q('input[name="subject"], input#subject'),
+      body: q("textarea#body, #body"),
+      price_cents: q("#price_cents"),
+      condition_label: q('label[for="condition"], label[for$="_condition"]'),
+      location_label: q('label[for="location"]'),
+      input_file: q('input[type="file"]'),
+      input_password: q('input[type="password"]'),
+      dialog: q('[role="dialog"], [aria-modal="true"]'),
+      didomi: q("#didomi-host, .didomi-popup-container, #didomi-notice"),
+      bouton_quitter: boutonVisible(/^quitter$/i),
+      bouton_continuer: boutonVisible(/^continuer$/i),
+      bot_shield: (() => { try { return estPageBotShieldLbc(); } catch { return null; } })(),
+    },
+    titres,
+    compte_pro: null,
+  };
+}
+
+// Réponse d'échec quand fillListingForm a JETÉ (et non rendu un résultat) :
+//   · erreur de code → message français + exception brute en annexe
+//     (erreurInterne), jamais le brut dans `error` ;
+//   · toute exception survenue avant la première étape relevée → la
+//     photographie de page part avec (diagnosticPage) — c'est le relevé qui
+//     manquait pour comprendre un échec « avant le premier champ ».
+function reponseEchecInterne(err) {
+  const brut = String(err?.message ?? err);
+  const codeCasse = estErreurDeCode(err);
+  const reponse = { success: false, error: codeCasse ? MSG_PAGE_DEPOT_ILLISIBLE : brut };
+  if (codeCasse) reponse.erreurInterne = brut.slice(0, 300);
+  if (codeCasse || etapeCourante == null) {
+    try { reponse.diagnosticPage = diagnostiquerPageLbc(); } catch { /* relevé best-effort */ }
+  }
+  return reponse;
 }
 
 // ── Suppression d'annonce (Phase B, 2026-07-11) ─────────────────────────────
@@ -569,6 +655,15 @@ async function fillListingForm(job) {
   // vides (cf. BUG 2 du 2026-07-09). Les autres critères LBC sont
   // explicitement non bloquants (cf. commentaire de fillCriterionSafe).
   const unfilledRequired = [];
+  // Trace du chemin « brouillon bloquant » (retournée au background dans
+  // draftDiscarded). Le commit c00f156 (03/09, 0.6.17) appelait t()/trace ici
+  // sans jamais les définir — ils n'existaient que dans beebs.js : chaque
+  // passage par « Quitter » mourait en ReferenceError « t is not defined »,
+  // affichée telle quelle à l'utilisateur (geronimo, 5 jobs sur 5 — le seul
+  // compte du parc dont le wizard restaure un dépôt interrompu à CHAQUE
+  // entrée). Définis ici, dans la portée où ils sont lus.
+  const trace = [];
+  const t = (ligne) => { trace.push(String(ligne)); console.log(`[leboncoin] ${ligne}`); };
 
   // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) : une
   // page d'interception DataDome servie à la place du formulaire n'a ni input
@@ -632,6 +727,7 @@ async function fillListingForm(job) {
   // Didomi en tête. Appelé ICI UNIQUEMENT, jamais entre deux étapes : le
   // wizard LBC (« juste prix », coordonnées, suggestions de catégorie) est
   // fait d'écrans que le flux pilote lui-même — cf. exclusions du détecteur.
+  relayerEtape("wizard_entree");
   await dismissInterstitials("arrivée sur le dépôt");
 
   // État vierge requis. L'ancien test (présence du seul input titre) laissait
@@ -735,6 +831,7 @@ async function fillListingForm(job) {
       // AVANT le clic ; le background remet le job pending COURT et le
       // passage suivant dépose sur wizard neuf. Si le canal meurt avant la
       // réponse, le motif transitoire fait le même travail, en plus lent.
+      relayerEtape("brouillon_bloquant");
       const btnQuitter = [...document.querySelectorAll("button")]
         .find((b) => b.offsetParent !== null && /^quitter$/i.test((b.textContent ?? "").trim()));
       if (btnQuitter) {
@@ -816,6 +913,7 @@ async function fillListingForm(job) {
   }
 
   // ── Étape 4 : aperçu final ───────────────────────────────────────────────
+  relayerEtape("description");
   if (job.description && bodyArea) {
     // typeInto (et non setFieldValue) : la description est le plus long champ
     // du wizard, c'est celui dont l'apparition instantanée se voyait le plus.
@@ -833,6 +931,7 @@ async function fillListingForm(job) {
     // LBC pré-remplit un prix suggéré — on impose celui du job. Flux paginé :
     // #price_cents peut être sur la page SUIVANTE (« Quel est votre prix ? »),
     // advanceWizardTo clique Continuer pour l'atteindre si besoin.
+    relayerEtape("prix");
     const priceInput = await advanceWizardTo("#price_cents", { probeMs: 5000 });
     if (priceInput) {
       // Pose en un coup (setFieldValue, pas typeInto) : champ à format
@@ -858,6 +957,7 @@ async function fillListingForm(job) {
   // avance jusqu'à elle si le champ n'est pas déjà là. fillAddress garde son
   // comportement (champ introuvable → warning non bloquant : LBC pré-remplit
   // l'adresse du compte sur ce flux, relevé live 2026-07-19).
+  relayerEtape("adresse");
   await advanceWizardTo('label[for="location"]', { probeMs: 4000, maxSteps: 2 });
   const addressResult = await fillAddress(fields.adresse, warnings);
   if (!addressResult.ok) {
@@ -895,6 +995,7 @@ async function fillListingForm(job) {
   // confirmation ("Nous avons bien reçu votre annonce !"). Politique STRICTE :
   // on ne clique JAMAIS un CTA qui mentionne un paiement non nul ; le chemin
   // gratuit explicite ("Déposer sans booster…") est requis, sinon needsUser.
+  relayerEtape("depot");
   const finalContinue = findButtonByExactText("Continuer");
   if (!finalContinue) {
     return { success: false, needsUser: true, error: "LIVE : Continuer final introuvable sur l'aperçu.", warnings, unfilledRequired, discoveredRequired: enumerated };
@@ -1080,9 +1181,11 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   const subjectInput = document.querySelector('input[name="subject"]');
 
   // ── Étape 1 : titre → catégorie ──────────────────────────────────────────
+  relayerEtape("titre");
   await typeInto(subjectInput, job.title);
 
   const [root, leaf] = fields.lbcCategoryPath;
+  relayerEtape("categorie");
   await selectCategory(root, leaf);
 
   // ── Étape 2 : photos + critères ──────────────────────────────────────────
@@ -1096,6 +1199,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // input[type=file] ») : il faut cliquer Continuer pour ATTEINDRE les photos.
   // advanceWizardTo couvre les deux mondes : trouve tout de suite sur les
   // catégories standard, avance de page en page sur les flux paginés.
+  relayerEtape("photos");
   const photoInput = await advanceWizardTo('input[type="file"]', { probeMs: 6000 });
   if (!photoInput) throw new Error('Élément introuvable: input[type="file"] (même après avance du wizard paginé)');
   if (job.photos?.length) {
@@ -1124,6 +1228,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     // Le critère état s'appelle "condition" sur certaines catégories (relevé
     // Montres & Bijoux) mais "clothing_condition" sur le rayon Vêtements
     // (relevé campagne 2026-07-08) — même pattern suffixe que _brand/_material.
+    relayerEtape("criteres");
     await fillCriterionSafe("état", 'label[for="condition"], label[for$="_condition"]', fields.etat, warnings);
   }
   if (hasCriteria && (fields.univers || fields.genre)) {

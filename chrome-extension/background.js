@@ -2023,6 +2023,43 @@ const MSG_FPA_EBAY =
   "demandées par eBay sur ton compte, puis relance la publication depuis la fiche de l'article. " +
   "Rien n'a été publié.";
 
+// ── Le refus du publish DIRECT, reconstruisible depuis la base (2026-09-05) ──
+// Textes de la branche « soumission directe REFUSÉE » (24/08) et de la branche
+// « brouillon Enchères » (31/08), REPRIS À L'IDENTIQUE — un seul endroit les
+// écrit désormais, et ils se reconstruisent depuis platform_fields
+// .ebay_api_publish. Pourquoi : le mur signin du lot 2 (ci-dessous) écrasait
+// ce motif. Cas voirememe, job Filorga du 02/09 : ebay_api_publish = { http 200,
+// itemId null, manquants ["Photos"] } écrit à 10:32, puis « Connexion eBay
+// requise » écrit à 10:40 par le mur — la vraie cause, connue 8 minutes avant,
+// disparaissait sous un message faux (la sonde disait 200).
+const MSG_EBAY_BROUILLON_ENCHERES =
+  "Brouillon eBay resté au format « Enchères » : " +
+  "eBay refuse de le publier sans prix de départ. Aucune annonce n'a été créée. " +
+  "Pour le publier à la main (« Vendre > Brouillons »), passe d'abord le format " +
+  "sur « Achat immédiat » et vérifie le prix.";
+const msgEbayPublishRefuse = (champs) =>
+  "Publication eBay bloquée : le clic « Mettre en vente » n'a produit aucune requête, " +
+  "et la soumission directe du brouillon a été REFUSÉE par eBay" +
+  (champs.length ? ` — éléments manquants dans le brouillon : ${champs.join(", ")}` : "") +
+  ". Aucune annonce n'a été créée. Le brouillon est conservé dans « Vendre > Brouillons » " +
+  "sur ebay.fr : tu peux le compléter et le publier à la main, puis marquer l'article publié dans l'app.";
+// Un ebay_api_publish porte un MOTIF quand eBay a RÉPONDU (http connu) sans
+// créer d'annonce (itemId null). « Indisponible » (jeton absent, onglet perdu)
+// n'est pas un motif : il n'y a rien à préserver. Les champs sont repris tels
+// que persistés — plus aucun filtre de longueur (cf. ebayDirectPublish).
+function motifRefusPublishDirect(apiPublish) {
+  if (!apiPublish || typeof apiPublish !== "object") return null;
+  if (apiPublish.http == null || apiPublish.itemId) return null;
+  // Champs nommés d'abord ; à défaut les textes complets de GLOBAL_MESSAGE —
+  // même préférence qu'au moment du refus (branche submit_never_sent).
+  const source = Array.isArray(apiPublish.manquants) && apiPublish.manquants.length
+    ? apiPublish.manquants
+    : (Array.isArray(apiPublish.textes_global_message) ? apiPublish.textes_global_message : []);
+  const champs = source.map((m) => String(m ?? "").trim()).filter(Boolean);
+  const encheres = champs.some((m) => /prix de d[ée]part/i.test(m));
+  return { encheres, champs, message: encheres ? MSG_EBAY_BROUILLON_ENCHERES : msgEbayPublishRefuse(champs) };
+}
+
 async function murEbayDeLOnglet(tabId) {
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   let u = null;
@@ -2149,6 +2186,10 @@ async function processJob(rawJob, accessToken) {
     // (workTabId est déclaré HORS du try : le catch en a besoin pour demander à
     // la sonde si l'annonce a malgré tout été créée — cf. canal coupé.)
     tabId = await getOrCreateWorkTab(job.platform, handler.entryUrl ?? listingUrl);
+    // Le relevé d'étape (FILLSELL_FILL_STEP) est par onglet et l'onglet de
+    // travail sert de job en job : sans remise à zéro, l'étape du job PRÉCÉDENT
+    // passerait pour celle de celui-ci (2026-09-05).
+    etapeRemplissageParOnglet.delete(tabId);
 
     // ── Observation fenêtre de travail (2026-07-30, mesure DataDome) ─────────
     // État RÉEL fenêtre/onglet au démarrage du job, persisté tout de suite :
@@ -2643,7 +2684,15 @@ async function processJob(rawJob, accessToken) {
               at: new Date().toISOString(),
               http: direct.http ?? null,
               itemId: direct.itemId ?? null,
+              // COMPLETS, jamais tronqués à l'écriture (2026-09-05) : champs
+              // nommés par eBay, tous les textes de GLOBAL_MESSAGE, et la forme
+              // de la réponse (hôte final, content-type, longueur) — c'est ce
+              // qui manquait pour distinguer un refus de validation d'une page
+              // servie à la place du JSON. Aucune donnée personnelle : que des
+              // libellés eBay et des métadonnées HTTP.
               manquants: direct.manquants ?? null,
+              textes_global_message: direct.textes ?? null,
+              reponse: direct.reponse ?? null,
               indisponible: direct.unavailable ?? null,
             },
           };
@@ -2660,7 +2709,14 @@ async function processJob(rawJob, accessToken) {
             // nommés. Le brouillon n'a pas retenu ce que le formulaire
             // affichait (fenêtre jamais rendue) — needs_user borné, avec le
             // brouillon consigné (ebay_draft_id) pour finir à la main.
-            const champs = (direct.manquants ?? []).filter((m) => m.length < 60);
+            // Plus aucun filtre de longueur (2026-09-05) : le plafond de 60
+            // caractères (regex ET filtre) faisait disparaître en silence tout
+            // motif plus long — 5 refus sur 9 en 30 jours sortaient « REFUSÉE »
+            // sans cause. Champs nommés d'abord ; à défaut, les textes complets
+            // de GLOBAL_MESSAGE (cf. ebayDirectPublish). On tronque à
+            // l'affichage, jamais à l'écriture.
+            const champs = ((direct.manquants?.length ? direct.manquants : direct.textes) ?? [])
+              .map((m) => String(m ?? "").trim()).filter(Boolean);
             // ── « Prix de départ » = brouillon resté en ENCHÈRES (2026-08-31,
             // jobs de15fd3f/da2b67e2 raffalepic) ─────────────────────────────
             // « Prix de départ » est le libellé du mode ENCHÈRE chez eBay :
@@ -2683,20 +2739,11 @@ async function processJob(rawJob, accessToken) {
                   at: new Date().toISOString(),
                 }),
               };
-              const msgEncheres =
-                "Brouillon eBay resté au format « Enchères » : " +
-                "eBay refuse de le publier sans prix de départ. Aucune annonce n'a été créée. " +
-                "Pour le publier à la main (« Vendre > Brouillons »), passe d'abord le format " +
-                "sur « Achat immédiat » et vérifie le prix.";
+              const msgEncheres = MSG_EBAY_BROUILLON_ENCHERES;
               await rearmBounded(accessToken, job, msgEncheres);
               return { status: "needsUser", error: msgEncheres };
             }
-            const msg =
-              "Publication eBay bloquée : le clic « Mettre en vente » n'a produit aucune requête, " +
-              "et la soumission directe du brouillon a été REFUSÉE par eBay" +
-              (champs.length ? ` — éléments manquants dans le brouillon : ${champs.join(", ")}` : "") +
-              ". Aucune annonce n'a été créée. Le brouillon est conservé dans « Vendre > Brouillons » " +
-              "sur ebay.fr : tu peux le compléter et le publier à la main, puis marquer l'article publié dans l'app.";
+            const msg = msgEbayPublishRefuse(champs);
             await rearmBounded(accessToken, job, msg);
             return { status: "needsUser", error: msg };
           } else {
@@ -2804,6 +2851,22 @@ async function processJob(rawJob, accessToken) {
       // qui doit trancher, au prochain run, entre « la saisie ne part pas » et
       // « Vinted attend autre chose ».
       const base = result?.error || "Le content script n'a pas retourné de résultat";
+      // ── Leboncoin : la photographie de page et l'exception brute partent en
+      // base (2026-09-05, cas geronimo). Le content script les joint quand le
+      // script a cassé (erreurInterne) ou quand l'échec précède toute étape
+      // relevée (diagnosticPage) ; l'écriture terminale ci-dessous repart de
+      // job.platform_fields, elles voyagent avec le verdict.
+      if (job.platform === "leboncoin") {
+        if (result?.diagnosticPage && typeof result.diagnosticPage === "object") {
+          job.platform_fields = { ...(job.platform_fields ?? {}), diagnostic_page_lbc: { ...result.diagnosticPage, source: "content_script" } };
+        }
+        if (result?.erreurInterne) {
+          job.platform_fields = {
+            ...(job.platform_fields ?? {}),
+            last_diagnostic: { quoi: "erreur_interne_script_lbc", detail: String(result.erreurInterne).slice(0, 300), at: new Date().toISOString() },
+          };
+        }
+      }
       const probe = job.platform === "vinted" ? await readVintedProbe(tabId) : "";
       // Requis révélés par le REFUS serveur (400 parsé par la sonde) : portés
       // par platform_fields.server_required_fields en plus du message — c'est
@@ -2930,21 +2993,61 @@ async function processJob(rawJob, accessToken) {
       }
 
       if (mur) {
+        let message = mur.message;
+        const annexe = {};
+        if (mur.quoi === "mur_signin") {
+          // ── Le mur signin N'ÉCRIT PLUS « Connexion eBay requise » seul (2026-09-05) ──
+          // Depuis 0.6.15 cette branche posait MSG_CONNEXION_EBAY sur le seul
+          // hôte de l'onglet, SANS la sonde — la porte dérobée du bug du 11/08.
+          // Or signin.ebay.* en cours de job est la signature du step-up
+          // « REAUTH VENTE » : session de navigation VIVANTE (sonde 200), mur
+          // sur le flux de vente. Relevé du 05/09 : 2 jobs, 2 comptes, sonde à
+          // 200 au même moment ; voirememe a « reconnecté » trois jours pour
+          // rien. Deux règles, dans cet ordre :
+          //   1. un refus du publish direct déjà consigné sur CE job gagne —
+          //      c'est la vraie cause (Filorga : « Photos » manquantes à 10:32,
+          //      écrasées par le mur à 10:40) ; le mur ne l'écrase jamais ;
+          //   2. sinon l'arbitrage d'arbitrerSessionEbay, à l'identique :
+          //      sonde false → « Connexion eBay requise » (et seul ce cas écrit
+          //      ebay:false dans extension_sessions) ; sonde true → « REAUTH
+          //      VENTE eBay » ; sonde null → constat neutre. Aucun texte neuf.
+          // La conduite du lot 2 est conservée : needs_user, AUCUNE reprise —
+          // d'où la promesse de reprise retirée des libellés qui en portent.
+          const motif = motifRefusPublishDirect(job.platform_fields?.ebay_api_publish);
+          if (motif) {
+            message = motif.message;
+            annexe.motif_conserve = "ebay_api_publish";
+            annexe.ebay_api_publish_at = job.platform_fields?.ebay_api_publish?.at ?? null;
+          } else {
+            const tabMur = await chrome.tabs.get(tabId).catch(() => null);
+            const arbitrage = await arbitrerSessionEbay({
+              sessionSuspecte: true, sessionSignal: "hote_canal_coupe", sessionUrl: tabMur?.url ?? "",
+            });
+            message = sansPromesseDeReprise(arbitrage.error);
+            annexe.sonde = arbitrage.diagnostic?.sonde ?? null;
+            annexe.http = arbitrage.diagnostic?.http ?? null;
+            if (arbitrage.sessionConfirmee === true) {
+              noterSessionDeconnectee(accessToken, "ebay").catch((e) =>
+                console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
+            }
+          }
+        }
         job.platform_fields = {
           ...(job.platform_fields ?? {}),
           last_diagnostic: {
             quoi: mur.quoi,
             detail: `onglet de travail retrouvé sur un mur eBay à la coupure du canal — ${msg.slice(0, 200)}`,
             at: new Date().toISOString(),
+            ...annexe,
           },
         };
         stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
-        console.warn(`[background] Job ${job.id} : ${mur.quoi} reconnu à la coupure — needs_user, aucune reprise`);
+        console.warn(`[background] Job ${job.id} : ${mur.quoi} reconnu à la coupure — needs_user, aucune reprise${annexe.motif_conserve ? " (motif du publish direct conservé)" : annexe.sonde !== undefined ? ` (sonde=${String(annexe.sonde)})` : ""}`);
         await updateJobStatus(accessToken, job.id, "needs_user", {
-          error: mur.message,
+          error: message,
           platform_fields: job.platform_fields,
         }).catch((err) => console.error("[background] update-job-status failed:", err));
-        return { status: "needsUser", error: mur.message };
+        return { status: "needsUser", error: message };
       }
     }
 
@@ -3017,14 +3120,36 @@ async function processJob(rawJob, accessToken) {
     // Observation fenêtre (2026-07-30) : re-relevé sur le failed sec aussi —
     // platform_fields joint pour porter work_window_state.at_end en base.
     stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+    // ── Leboncoin, échec AVANT toute étape relevée (2026-09-05) ─────────────
+    // Quand le content script n'a rien pu raconter (relevé d'étape vide) et
+    // n'a pas joint sa propre photographie, le background photographie la page
+    // lui-même — structure seule, cf. diagnostiquerPageLbcDepuisBackground.
+    if (job.platform === "leboncoin" && tabId != null && !job.platform_fields?.diagnostic_page_lbc) {
+      const etapeVue = etapeRemplissageParOnglet.get(tabId)?.etape ?? null;
+      if (!etapeVue) {
+        const diag = await diagnostiquerPageLbcDepuisBackground(tabId);
+        if (diag) job.platform_fields = { ...(job.platform_fields ?? {}), diagnostic_page_lbc: { ...diag, source: "background" } };
+      }
+    }
     // Cause connue en base (défaut n°2 du 31/08) : elle mène le message ; le
     // brut reste DANS le texte, entre parenthèses — les requalifications
     // serveur d'update-job-status (signature « back/forward cache ») matchent
     // sur cross_post_jobs.error et doivent continuer de le voir.
     const causeSec = causeHumaineConnue(job);
-    const msgSec = causeSec
+    let msgSec = causeSec
       ? `${causeSec}. La tentative a échoué avant d'aboutir (détail : ${msg})`
       : msg;
+    // Une exception de CODE (« t is not defined », « Cannot read properties… »)
+    // n'atteint plus l'utilisateur sur Leboncoin (2026-09-05) : le brut part en
+    // last_diagnostic, le texte dit que la page n'a pas pu être lue — et ne
+    // parle PAS de connexion (vérifié : ce n'en est pas la cause).
+    if (job.platform === "leboncoin" && !causeSec && ERREUR_DE_CODE_RE.test(msg)) {
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        last_diagnostic: { quoi: "erreur_interne_script_lbc", detail: msg.slice(0, 300), at: new Date().toISOString() },
+      };
+      msgSec = MSG_LBC_PAGE_DEPOT_ILLISIBLE;
+    }
     await updateJobStatus(accessToken, job.id, "failed", { error: msgSec, platform_fields: job.platform_fields })
       .catch((err) => console.error("[background] update-job-status failed:", err));
     return { status: "failed", error: msgSec };
@@ -3954,6 +4079,77 @@ function urlDiagnostic(brut) {
 // c'est tout l'intérêt, la page qui part en bfcache n'a plus voix au chapitre.
 // Borne dure : ce cache ne doit jamais grandir avec le temps.
 const etapeRemplissageParOnglet = new Map();
+
+// ── Leboncoin : exception de code et photographie de page (2026-09-05) ──────
+// Cas geronimo : « t is not defined » affiché tel quel, 5 jobs sur 5 (cause :
+// helper t()/trace appelé dans leboncoin.js sans y être défini, c00f156). Même
+// texte que MSG_PAGE_DEPOT_ILLISIBLE côté content script — copie voulue, les
+// deux mondes ne partagent aucun module. Il ne dit PAS de se reconnecter.
+const MSG_LBC_PAGE_DEPOT_ILLISIBLE =
+  "La page de dépôt Leboncoin n'a pas pu être lue par FillSell : rien n'a été publié. " +
+  "Relance la publication depuis la fiche de l'article ; si ça se reproduit, signale-le au support.";
+const ERREUR_DE_CODE_RE =
+  /\bis not defined\b|\bis not a function\b|Cannot read propert|\bis not iterable\b|Cannot access '[^']*' before initialization|Unexpected token/i;
+
+// Photographie de STRUCTURE de la page de dépôt, depuis le background, quand
+// le content script n'a rien pu dire. La fonction injectée est AUTONOME (aucune
+// variable capturée : elle est sérialisée et exécutée dans la page — une
+// capture y deviendrait précisément un « x is not defined »). URL sans query,
+// titre du document, ancres du handler en booléens, 3 premiers titres tronqués.
+// AUCUN contenu de champ, aucune donnée de compte. `compte_pro` reste null :
+// aucun marqueur DOM fiable relevé — on ne devine pas.
+async function diagnostiquerPageLbcDepuisBackground(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const q = (sel) => { try { return Boolean(document.querySelector(sel)); } catch { return null; } };
+        const boutonVisible = (re) => {
+          try {
+            return Array.from(document.querySelectorAll("button"))
+              .some((b) => b.offsetParent !== null && re.test((b.textContent || "").replace(/\s+/g, " ").trim()));
+          } catch { return null; }
+        };
+        let titres = [];
+        try {
+          titres = Array.from(document.querySelectorAll("h1, h2, h3"))
+            .map((h) => (h.textContent || "").replace(/\s+/g, " ").trim())
+            .filter(Boolean).slice(0, 3).map((s) => s.slice(0, 120));
+        } catch { /* structure seule */ }
+        let botShield = null;
+        try {
+          botShield = Boolean(document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="geo.captcha"]'));
+        } catch { /* structure seule */ }
+        return {
+          at: new Date().toISOString(),
+          etape_atteinte: null,
+          url: `${location.origin}${location.pathname}`,
+          document_title: String(document.title || "").slice(0, 120),
+          ancres: {
+            subject: q('input[name="subject"], input#subject'),
+            body: q("textarea#body, #body"),
+            price_cents: q("#price_cents"),
+            condition_label: q('label[for="condition"], label[for$="_condition"]'),
+            location_label: q('label[for="location"]'),
+            input_file: q('input[type="file"]'),
+            input_password: q('input[type="password"]'),
+            dialog: q('[role="dialog"], [aria-modal="true"]'),
+            didomi: q("#didomi-host, .didomi-popup-container, #didomi-notice"),
+            bouton_quitter: boutonVisible(/^quitter$/i),
+            bouton_continuer: boutonVisible(/^continuer$/i),
+            bot_shield: botShield,
+          },
+          titres,
+          compte_pro: null,
+        };
+      },
+    });
+    return res?.result ?? null;
+  } catch (e) {
+    console.warn("[background] diagnostic de page Leboncoin impossible —", String(e?.message ?? e));
+    return null;
+  }
+}
 function noterEtapeRemplissage(tabId, etape) {
   if (tabId == null) return;
   etapeRemplissageParOnglet.set(tabId, {
@@ -4941,18 +5137,47 @@ async function ebayDirectPublish(tabId, job) {
           });
           const txt = await r.text();
           const itemId = (txt.match(/"(?:listingId|itemId|item_id|listing_id)"\s*:\s*"?(\d{9,})/i) ?? [])[1] ?? null;
-          let manquants = [];
+          // Forme de la réponse (2026-09-05) : hôte et chemin FINAUX (une
+          // redirection suivie vers signin se lit ici, pas dans le status),
+          // content-type et longueur. Jamais le corps : il peut peser 2,5 Mo
+          // de modules.
+          let hote = null, chemin = null;
+          try { const u = new URL(r.url); hote = u.hostname; chemin = u.pathname; } catch { /* URL illisible */ }
+          const reponse = {
+            hote, chemin, redirigee: Boolean(r.redirected),
+            content_type: r.headers.get("content-type"), longueur: txt.length, json: false,
+          };
+          // Motifs de refus : parcours RÉCURSIF de GLOBAL_MESSAGE, sans plafond
+          // de longueur. L'ancienne regex n'attrapait que les "text" de 2 à 60
+          // caractères suivis d'"action" — tout motif plus long disparaissait
+          // (5 refus sur 9 rendus sans cause). `manquants` = les entrées
+          // porteuses d'une action (les champs nommés, sémantique inchangée) ;
+          // `textes` = TOUTES les chaînes text/title/message/label, complètes.
+          const manquants = [];
+          const textes = [];
           try {
             const j = JSON.parse(txt);
-            const gm = JSON.stringify(j.GLOBAL_MESSAGE ?? {});
-            manquants = (gm.match(/"text":"((?:[^"\\]|\\.){2,60})","action"/g) ?? [])
-              .map((s) => {
-                try { return JSON.parse(`"${s.match(/"text":"((?:[^"\\]|\\.)+)"/)[1]}"`); }
-                catch { return null; }
-              })
-              .filter(Boolean);
-          } catch { /* réponse non-JSON : itemId (regex) fait foi */ }
-          return { fired: true, http: r.status, len: txt.length, itemId, manquants: manquants.slice(0, 8) };
+            reponse.json = true;
+            const vus = new Set();
+            const noter = (liste, s) => { if (!vus.has(`${liste === manquants ? "m" : "t"}:${s}`)) { vus.add(`${liste === manquants ? "m" : "t"}:${s}`); liste.push(s); } };
+            const marcher = (n, profondeur) => {
+              if (n == null || profondeur > 12) return;
+              if (Array.isArray(n)) { for (const x of n) marcher(x, profondeur + 1); return; }
+              if (typeof n !== "object") return;
+              const texte = typeof n.text === "string" ? n.text.trim() : "";
+              if (texte && Object.prototype.hasOwnProperty.call(n, "action")) noter(manquants, texte);
+              for (const [k, v] of Object.entries(n)) {
+                if (typeof v === "string") {
+                  const s = v.trim();
+                  if (s && (k === "text" || k === "title" || k === "message" || k === "label")) noter(textes, s);
+                } else if (v && typeof v === "object") {
+                  marcher(v, profondeur + 1);
+                }
+              }
+            };
+            marcher(j.GLOBAL_MESSAGE ?? null, 0);
+          } catch { /* réponse non-JSON (reponse.json=false le dit) : itemId (regex) fait foi */ }
+          return { fired: true, http: r.status, itemId, manquants, textes, reponse };
         } catch (e) {
           return { unavailable: String((e && e.message) || e).slice(0, 200) };
         }
