@@ -13,7 +13,11 @@
 -- Le callback TOLÈRE l'absence de la colonne (retente sans elle) : déployer
 -- le code avant la pose ne casse pas la connexion.
 --
--- ⚠️ À appliquer explicitement (db push INTERDIT). Idempotente.
+-- ✅ APPLIQUÉE EN PROD par Nico le 06/09/2026 (00:08 Europe/Paris), enregistrée dans
+-- supabase_migrations.schema_migrations sous version 20260905220811, name
+-- ebay_accounts_eias_token — fichier RENOMMÉ de 20260906090000 vers cette version
+-- pour que l'historique local suive le distant (db push reste INTERDIT).
+-- Vérifié : colonne ebay_eias_token présente (17 colonnes). Idempotente.
 -- ═══════════════════════════════════════════════════════════════════════════
 ALTER TABLE public.ebay_accounts
   ADD COLUMN IF NOT EXISTS ebay_eias_token text;

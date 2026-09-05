@@ -32,7 +32,7 @@
 //     seul un échec BASE rend 500 — pour qu'eBay réessaie et que la donnée
 //     finisse par partir ;
 //   · rapprochement par eiasToken (immuable, colonne ebay_eias_token — migration
-//     20260906090000) PUIS par pseudo (ebay_user_id) : une ligne connectée
+//     20260905220811) PUIS par pseudo (ebay_user_id) : une ligne connectée
 //     avant la colonne n'a que le pseudo, elle est couverte ;
 //   · signature : verdict trois états (cf. _shared/ebay-notification.ts).
 //     « invalide » = on n'efface pas (forgerie) ; « indéterminée » = on efface
@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
   if (eias) {
     const { data: rows, error } = await admin.from("ebay_accounts").delete().eq("ebay_eias_token", eias).select("user_id");
     if (error) {
-      // Colonne pas encore posée (migration 20260906090000) : on passe au pseudo.
+      // Colonne pas encore posée (migration 20260905220811) : on passe au pseudo.
       if (/ebay_eias_token/i.test(error.message)) console.warn("[ebay-account-deletion] colonne ebay_eias_token absente — rapprochement par pseudo seul");
       else { console.error(`[ebay-account-deletion] base (eias) : ${error.message}`); return json({ error: "base" }, 500); }
     } else {

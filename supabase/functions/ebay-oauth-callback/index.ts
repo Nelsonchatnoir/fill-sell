@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
       revoked_reason: null,
     };
     let { error } = await admin.from("ebay_accounts").upsert(ligne, { onConflict: "user_id" });
-    // Colonne ebay_eias_token pas encore posée (migration 20260906090000 à
+    // Colonne ebay_eias_token pas encore posée (migration 20260905220811 à
     // appliquer par Nico) : la connexion ne doit PAS casser pour autant.
     if (error && /ebay_eias_token/i.test(error.message)) {
       console.warn("[ebay-oauth-callback] colonne ebay_eias_token absente — écriture sans elle");
