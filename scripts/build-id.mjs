@@ -1165,7 +1165,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Bumpé DANS LE MÊME COMMIT que le changement sous chrome-extension/.
 // Committé GIT_COMMITTER_DATE épinglée. EXTENSION_MIN_BUILD INCHANGÉ : il ne
 // se promeut qu'APRÈS acceptation du paquet par Google.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T21:31:00Z';
+// 2026-09-04T22:51:32Z = RATTRAPAGE, pas un lot extension : b015336 (verdict de
+// suppression écrit dans platform_fields, un 404 sur le POST delete n'est plus
+// une preuve) a touché chrome-extension/ SANS bumper la constante. `npm run
+// build` local échouait donc depuis — Vercel, lui, skippe la garde (clone
+// shallow), le web est passé sans rien signaler. Valeur = date de commit exacte
+// de b015336. EXTENSION_MIN_BUILD INCHANGÉ : la 0.6.19 est toujours en review,
+// la bannière ne doit demander que ce qui est réellement installable.
+export const EXTENSION_LAST_COMMIT = '2026-09-04T22:51:32Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

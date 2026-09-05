@@ -93,6 +93,67 @@ export async function versImageDecodable(file) {
   return { blob: jpeg, mime: "image/jpeg", converti: true };
 }
 
+// ── Réduction avant envoi à l'IA (2026-09-05) ────────────────────────────────
+// L'API d'analyse REFUSE toute image dont un côté dépasse 8 000 px, et ce refus
+// tombe AVANT la lecture : le scan entier échoue, l'utilisateur lit « échec »
+// sans savoir pourquoi (6 scans sur 226 en 20 jours). Un iPhone Pro en 48 Mpx
+// sort du 8064 × 6048 : il suffit d'une photo prise au maximum de définition.
+//
+// On réduit donc AVANT l'upload — et seulement au-dessus du seuil : sous 6 000 px
+// la photo part inchangée, à sa définition d'origine. Le serveur refait la même
+// mesure de son côté (les apps déjà installées ne montent pas ce correctif) ;
+// ici, c'est la réduction la moins chère et la meilleure — le navigateur décode
+// et redimensionne nativement.
+
+/** Au-delà de ce côté, on réduit. Marge volontaire sous la limite de 8 000 px. */
+export const COTE_DECLENCHEMENT_IA = 6000;
+
+/** Côté le plus long visé après réduction. Très au-dessus de ce que le modèle
+ *  exploite réellement : aucun détail utile n'est perdu. */
+export const COTE_CIBLE_IA = 4000;
+
+/**
+ * Rend une version de l'image dont aucun côté ne dépasse `coteCible`, ou le blob
+ * d'origine s'il est déjà sous le seuil. Redimensionnement PROPORTIONNEL : jamais
+ * de déformation. Ne lève jamais pour une raison de taille — un échec de canvas
+ * rend l'original, le garde-fou serveur prend alors le relais.
+ * @returns {Promise<{ blob: Blob, mime: string, reduite: boolean, largeur: number|null, hauteur: number|null }>}
+ */
+export async function reduireSousLimiteIA(
+  blob,
+  coteDeclenchement = COTE_DECLENCHEMENT_IA,
+  coteCible = COTE_CIBLE_IA,
+  quality = 0.92,
+) {
+  const mimeOrigine = String(blob?.type ?? "") || "image/jpeg";
+  let img;
+  try {
+    img = await chargerImage(blob);
+  } catch {
+    // Illisible ici : ce n'est pas à cette fonction de le signaler — l'appelant
+    // a déjà passé la photo par versImageDecodable.
+    return { blob, mime: mimeOrigine, reduite: false, largeur: null, hauteur: null };
+  }
+  const plusGrand = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height);
+  if (!plusGrand || plusGrand <= coteDeclenchement) {
+    return { blob, mime: mimeOrigine, reduite: false, largeur: img.naturalWidth || img.width, hauteur: img.naturalHeight || img.height };
+  }
+  try {
+    const facteur = coteCible / plusGrand;
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round((img.naturalWidth || img.width) * facteur));
+    c.height = Math.max(1, Math.round((img.naturalHeight || img.height) * facteur));
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    const reduit = await new Promise((resolve, reject) => {
+      c.toBlob(b => (b ? resolve(b) : reject(new Error("reduction_impossible"))), "image/jpeg", quality);
+    });
+    return { blob: reduit, mime: "image/jpeg", reduite: true, largeur: c.width, hauteur: c.height };
+  } catch (e) {
+    console.warn("[photos] réduction impossible, photo envoyée telle quelle :", e?.message ?? e);
+    return { blob, mime: mimeOrigine, reduite: false, largeur: img.naturalWidth || img.width, hauteur: img.naturalHeight || img.height };
+  }
+}
+
 /** Message utilisateur d'un échec de décodage — factuel, sans jargon, et sans
  *  jamais demander de convertir soi-même. */
 export function messageDecodage(lang) {

@@ -35,7 +35,7 @@ const buildIdTimestamp = (id) => {
 import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
-import { versImageDecodable, messageDecodage } from './utils/imageDecode';
+import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
 import { sonderAnnonceVinted, lireBoutiquesVinted } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
 import Toast from './components/Toast';
@@ -5466,10 +5466,17 @@ export default function App({ loginOnly = false }){
       // Upload photos to lens-temp (converts data: URLs to blobs — works on iOS WKWebView)
       const urls=[];
       for(const photo of lensPhotos){
-        const blob=await fetch(photo.preview).then(r=>r.blob());
-        const ext=(photo.mime||"image/jpeg").split("/")[1]||"jpg";
+        const brut=await fetch(photo.preview).then(r=>r.blob());
+        // ⚠️ TOUTES les photos du lot, jamais la seule première (2026-09-05) :
+        // au-delà de 8 000 px de côté, l'API refuse l'image et fait tomber le
+        // scan ENTIER avant la moindre lecture — 6 échecs muets en 20 jours.
+        // Sous le seuil, `reduite` est faux et le blob d'origine repart intact :
+        // la définition pleine reste la règle, la réduction est l'exception.
+        const{blob,mime:mimeReduit,reduite}=await reduireSousLimiteIA(brut);
+        const mime=reduite?mimeReduit:(photo.mime||"image/jpeg");
+        const ext=(mime||"image/jpeg").split("/")[1]||"jpg";
         const path=`lens/${user.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-        const{error:upErr}=await supabase.storage.from('lens-temp').upload(path,blob,{contentType:photo.mime||"image/jpeg"});
+        const{error:upErr}=await supabase.storage.from('lens-temp').upload(path,blob,{contentType:mime});
         if(upErr)throw new Error(upErr.message);
         uploadedPaths.push(path);
         const{data:{publicUrl}}=supabase.storage.from('lens-temp').getPublicUrl(path);

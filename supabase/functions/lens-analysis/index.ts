@@ -8,6 +8,9 @@ import { appelAutorise, loggerAppelIA, coutHaikuUsd } from "../_shared/usage-gua
 // PARTAGÉ avec generate-listing — même code, mêmes prompts, mêmes traces. Ce
 // fichier n'en possède aucune copie.
 import { construireContexteArticle, redigerAnnoncesPlateformes } from "../_shared/redaction-plateformes.ts";
+// Préparation des images (2026-09-05) : mesure, réduction sous la limite de
+// l'API, écartement tracé. Détail complet et raisons dans le module.
+import { preparerPhotos, tracePhoto, type PhotoPreparee } from "./images.ts";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
@@ -1732,9 +1735,52 @@ async function callClaude(apiKey: string, payload: object, beta?: string): Promi
   });
   if (!r.ok) {
     const t = await r.text().catch(() => `HTTP ${r.status}`);
-    throw new Error(`Anthropic ${r.status}: ${t}`);
+    // Statut et corps ATTACHÉS à l'erreur (2026-09-05) : sans eux, l'appelant
+    // ne pouvait que relire un message concaténé et ne savait pas distinguer un
+    // refus portant sur UNE image d'une panne générale. C'est cette
+    // indistinction qui a rendu le refus « 8000 pixels » invisible 20 jours.
+    const err = new Error(`Anthropic ${r.status}: ${t}`);
+    (err as any).statutApi = r.status;
+    (err as any).corpsApi = t;
+    throw err;
   }
   return r.json();
+}
+
+/**
+ * Le refus porte-t-il sur UN bloc image précis ? L'API nomme le chemin exact du
+ * bloc fautif dans son message :
+ *   messages.0.content.2.image.source.url: At least one of the image dimensions
+ *   exceed max allowed size: 8000 pixels
+ * Rend l'index du bloc (les images sont en tête du contenu, donc index de bloc
+ * = index de photo) et le message d'origine, ou null si l'erreur est autre.
+ */
+function refusImageApi(err: unknown): { index: number; message: string } | null {
+  const e = err as { statutApi?: number; corpsApi?: string };
+  if (e?.statutApi !== 400) return null;
+  const corps = String(e?.corpsApi ?? "");
+  const m = corps.match(/messages\.\d+\.content\.(\d+)\.image/);
+  if (!m) return null;
+  return { index: Number(m[1]), message: corps.slice(0, 500) };
+}
+
+/**
+ * Motif d'échec écrit dans usage_logs (2026-09-05). Avant, la ligne ne portait
+ * que `issue: echec` : impossible de savoir, sans ouvrir les logs de la
+ * fonction, si le scan est tombé sur une image refusée, une panne API ou une
+ * réponse non parsable. C'est exactement ce qui a laissé passer 20 jours.
+ */
+function motifEchec(err: unknown): Record<string, unknown> {
+  const e = err as {
+    codeMotif?: string; detailMotif?: Record<string, unknown>;
+    isAiUnavailable?: boolean; statutApi?: number; corpsApi?: string; message?: string;
+  };
+  if (e?.codeMotif) return { code: e.codeMotif, ...(e.detailMotif ?? {}) };
+  const refus = refusImageApi(err);
+  if (refus) return { code: "image_refusee", photo: refus.index + 1, message_api: refus.message };
+  if (e?.isAiUnavailable) return { code: "api_injoignable", message: "3 tentatives sans réponse (timeout ou 429)" };
+  if (e?.statutApi) return { code: `api_${e.statutApi}`, message: String(e.corpsApi ?? "").slice(0, 500) };
+  return { code: "erreur", message: String(e?.message ?? err).slice(0, 500) };
 }
 
 serve(async (req) => {
@@ -1788,6 +1834,12 @@ serve(async (req) => {
   // requêtes concurrentes partagent l'isolat Deno et mélangeraient les
   // compteurs de deux scans simultanés.
   const stats = { in: 0, out: 0, cache_w: 0, cache_r: 0, recherches: 0, tours: 0, photos: 0 };
+  // Journal des images (2026-09-05) : ce qui a été réduit, ce qui a été écarté,
+  // et pourquoi. Part dans usage_logs À CHAQUE FOIS qu'il n'est pas vide, succès
+  // compris — une photo silencieusement retirée d'un scan livré doit se voir
+  // autant qu'un échec. Même portée que `stats` : requête, jamais module.
+  const journalImages: { reduites: Record<string, unknown>[]; ecartees: Record<string, unknown>[] } =
+    { reduites: [], ecartees: [] };
   const debutMs = Date.now();
   const trackUsage = (d: unknown) => {
     const u = (d as {
@@ -2030,7 +2082,14 @@ serve(async (req) => {
   // se voir. Best-effort de bout en bout.
   // `sortie` : empreinte de ce que le modèle a RÉELLEMENT produit (2026-08-11),
   // absente sur un échec — il n'y a alors rien à décrire.
-  async function enregistrerTelemetrie(issue: string, sortie?: Record<string, unknown>) {
+  // `motif` (2026-09-05) : dit POURQUOI un scan a échoué — refus d'une image et
+  // laquelle, panne API, réponse non parsable. Sans lui, `issue: echec` seul a
+  // masqué 6 échecs pendant 20 jours.
+  async function enregistrerTelemetrie(
+    issue: string,
+    sortie?: Record<string, unknown>,
+    motif?: Record<string, unknown>,
+  ) {
     if (logId == null) return;
     try {
       await adminClient.from("usage_logs").update({
@@ -2038,6 +2097,9 @@ serve(async (req) => {
           ...logMeta,
           ...(sortie ?? {}),
           issue,
+          ...(motif ? { motif } : {}),
+          ...(journalImages.reduites.length ? { images_reduites: journalImages.reduites } : {}),
+          ...(journalImages.ecartees.length ? { images_ecartees: journalImages.ecartees } : {}),
           photos: stats.photos,
           tours: stats.tours,
           input_tokens: stats.in,
@@ -2072,7 +2134,10 @@ serve(async (req) => {
     const countryCode = userCountry?.code ?? null;
     const countryName = userCountry?.name ?? null;
     const platforms = getPlatforms(countryCode, _lang);
-    const systemPrompt = buildSystemPrompt(_lang, platforms, countryName, photoUrls.length, mode);
+    // Le prompt système annonce au modèle COMBIEN de photos il reçoit : il est
+    // donc construit après la préparation des images, à partir du nombre
+    // réellement joint (identique à photoUrls.length dans tous les cas où
+    // aucune photo n'est écartée, c'est-à-dire la totalité des scans jusqu'ici).
 
     const textParts: string[] = [];
     // TOUJOURS envoyée, même vide (2026-07-22). Le prompt système ordonne TROIS
@@ -2136,22 +2201,60 @@ serve(async (req) => {
     // La pose est donc conditionnée à la présence de web_search, c'est-à-dire au
     // mode complet, où le cache est massivement relu (10 k à 115 k tokens par
     // scan, via les itérations internes de l'outil serveur).
-    const imageContent = photoUrls.map((url, i, arr) => ({
-      type: "image",
-      source: { type: "url", url },
-      // Ordre strictement déterministe : il suit celui du tableau `urls` reçu,
-      // jamais un tri ni une itération d'objet — un ordre instable ferait
-      // manquer le cache à chaque tour.
-      ...(!estIdentify && i === arr.length - 1 ? { cache_control: { type: "ephemeral" } } : {}),
-    }));
+    // ── PRÉPARATION DES IMAGES (2026-09-05) ─────────────────────────────────
+    // Une photo dont un côté dépasse 8 000 px est refusée par l'API, et ce
+    // refus fait tomber le scan ENTIER avant le premier token (tours=0,
+    // input_tokens=0 sur les 6 échecs relevés). On mesure donc chaque photo et
+    // on réduit celles qui approchent la limite — TOUT le lot, pas la première.
+    // Une photo sous le seuil n'est pas touchée : mêmes octets, même URL, même
+    // préfixe de cache qu'avant ce correctif.
+    const photosPreparees = await preparerPhotos(photoUrls, supabaseUrl);
+    for (const p of photosPreparees) {
+      if (p.reduite) journalImages.reduites.push(tracePhoto(p));
+      if (p.ecartee) journalImages.ecartees.push(tracePhoto(p));
+      if (p.reduite || p.ecartee) {
+        console.warn(
+          `[lens-analysis][image] photo ${p.index + 1} ${p.dimensions?.largeur ?? "?"}×${p.dimensions?.hauteur ?? "?"}`
+          + ` — ${p.reduite ? `réduite (${p.reduite})` : `ÉCARTÉE (${p.ecartee})`}`
+        );
+      }
+    }
 
-    stats.photos = imageContent.length;
+    // Prunable : une image que l'API refuse malgré la réduction sort du lot et
+    // le scan repart avec les autres (cf. appelerAvecRepliImage).
+    let photosEnvoyees: PhotoPreparee[] = photosPreparees.filter(p => p.source);
+    stats.photos = photosEnvoyees.length;
 
-    const initialMessages = [
-      { role: "user", content: [...imageContent, { type: "text", text: userText }] },
+    const erreurAucunePhoto = () => {
+      const e: any = new Error(_lang === "en"
+        ? "None of the photos could be sent for analysis"
+        : "Aucune photo n'a pu être envoyée à l'analyse");
+      e.codeMotif = "aucune_photo_exploitable";
+      e.detailMotif = { photos_recues: photoUrls.length, ecartees: journalImages.ecartees };
+      return e;
+    };
+    if (!photosEnvoyees.length) throw erreurAucunePhoto();
+
+    const construireMessages = () => [
+      {
+        role: "user",
+        content: [
+          ...photosEnvoyees.map((p, i, arr) => ({
+            type: "image",
+            source: p.source,
+            // Ordre strictement déterministe : il suit celui du tableau `urls`
+            // reçu, jamais un tri ni une itération d'objet — un ordre instable
+            // ferait manquer le cache à chaque tour.
+            ...(!estIdentify && i === arr.length - 1 ? { cache_control: { type: "ephemeral" } } : {}),
+          })),
+          { type: "text", text: userText },
+        ],
+      },
     ];
 
-    const basePayload = {
+    let initialMessages = construireMessages();
+
+    const construirePayloadBase = () => ({
       // max_tokens 1200 → 2500 (2026-07-18) : 1200 pouvait être épuisé en
       // narration/recherches AVANT l'émission du JSON (schéma massif) →
       // stop_reason "max_tokens" sans la moindre accolade → "non parsable".
@@ -2167,8 +2270,11 @@ serve(async (req) => {
       // Le prompt ne contient AUCUNE variable par appel (ni horodatage, ni
       // identifiant, ni compteur) : seuls le pays, la langue et le nombre de
       // photos le font varier, et ces trois-là sont constants pendant un scan.
-      system: [{ type: "text", text: systemPrompt }],
-    };
+      // Reconstruit après un écartement : le prompt annoncerait sinon plus de
+      // photos qu'il n'en part réellement.
+      system: [{ type: "text", text: buildSystemPrompt(_lang, platforms, countryName, photosEnvoyees.length, mode) }],
+    });
+    let basePayload = construirePayloadBase();
 
     // Analyse unifiée : web_search pour tout le monde (prix marché en direct),
     // avec repli sur l'analyse vision seule si l'outil échoue.
@@ -2203,19 +2309,47 @@ serve(async (req) => {
       ...(maxRecherches !== null ? { max_uses: maxRecherches } : {}),
     };
 
+    // ── UN CLICHÉ REFUSÉ NE TUE PLUS LE SCAN (2026-09-05) ───────────────────
+    // Si l'API refuse UNE image malgré la réduction (elle nomme le bloc fautif
+    // dans son message), cette image sort du lot et l'appel repart avec les
+    // autres. Le scan n'échoue plus que si toutes les photos y passent — auquel
+    // cas les unités sont remboursées comme n'importe quel échec.
+    // Borné par construction : chaque tour de boucle retire une photo.
+    const cleApi = apiKey; // capturée hors closure : TS ne garde pas le narrowing
+    async function appelerAvecRepliImage(extra: Record<string, unknown>, beta?: string): Promise<any> {
+      for (;;) {
+        if (!photosEnvoyees.length) throw erreurAucunePhoto();
+        try {
+          return await callClaude(cleApi, { ...basePayload, ...extra, messages: initialMessages }, beta);
+        } catch (e) {
+          const refus = refusImageApi(e);
+          if (!refus || refus.index >= photosEnvoyees.length) throw e;
+          const fautive = photosEnvoyees[refus.index];
+          journalImages.ecartees.push(tracePhoto(fautive, { motif: "refus_api", message_api: refus.message }));
+          console.error(
+            `[lens-analysis][image] photo ${fautive.index + 1} refusée par l'API — ${refus.message}`
+          );
+          photosEnvoyees = photosEnvoyees.filter((_, i) => i !== refus.index);
+          stats.photos = photosEnvoyees.length;
+          if (!photosEnvoyees.length) throw erreurAucunePhoto();
+          initialMessages = construireMessages();
+          basePayload = construirePayloadBase();
+        }
+      }
+    }
+
     let data: any;
     if (estIdentify) {
-      data = await callClaude(apiKey, { ...basePayload, messages: initialMessages });
+      data = await appelerAvecRepliImage({});
       trackUsage(data);
     } else {
     try {
-      const wsMessages: any[] = [...initialMessages];
-      data = await callClaude(apiKey, {
-        ...basePayload,
-        tools: [outilRecherche],
-        messages: wsMessages,
-      }, "web-search-2025-03-05");
+      data = await appelerAvecRepliImage({ tools: [outilRecherche] }, "web-search-2025-03-05");
       trackUsage(data);
+
+      // Construits APRÈS le premier appel : si une photo a été écartée, c'est
+      // le lot réduit qui doit servir de base aux relances pause_turn.
+      const wsMessages: any[] = [...initialMessages];
 
       for (let i = 0; i < 3 && data.stop_reason === "pause_turn"; i++) {
         wsMessages.push({ role: "assistant", content: data.content });
@@ -2226,10 +2360,13 @@ serve(async (req) => {
         }, "web-search-2025-03-05");
         trackUsage(data);
       }
-    } catch {
+    } catch (e) {
+      // Une image refusée jusqu'au bout n'est pas un échec d'OUTIL : rejouer
+      // sans web_search ne changerait rien et coûterait un appel de plus.
+      if ((e as any)?.codeMotif === "aucune_photo_exploitable") throw e;
       // Repli sans outil : le préfixe diffère (plus de définition d'outil), il
       // ne peut donc pas réutiliser le cache écrit par le tour précédent.
-      data = await callClaude(apiKey, { ...basePayload, messages: initialMessages });
+      data = await appelerAvecRepliImage({});
       trackUsage(data);
     }
     }
@@ -2301,6 +2438,9 @@ serve(async (req) => {
     // modele_source normalisée, etat_estime ramené dans sa liste fermée
     // (2026-07-29). APRÈS le parsing et la passe de réparation : tout chemin
     // qui produit un JSON passe par ici.
+    // `photos` = nombre de photos RÉELLEMENT lues par le modèle, pas le nombre
+    // reçu : les deux sont égaux sauf si une photo a été écartée, et dans ce
+    // cas c'est bien le lot VU qui doit être jugé.
     const {
       mpnRejete, mpnAbsente, etatRejete, familleInconnue,
       marqueForceeNull, marqueNegationExpr, marqueNegationChamp, marqueContestee,
@@ -2309,7 +2449,7 @@ serve(async (req) => {
       objetDeduit, objetSourceRejetee, margeNegativeRetiree,
       attributsFonctionnementNeutralises, attributsMesureEcartes,
       fuiteVariable, fuiteIdentifiants, snakeInconnu,
-    } = assainirSortie(itemData, { photos: photoUrls.length, lang: _lang });
+    } = assainirSortie(itemData, { photos: stats.photos, lang: _lang });
     // Depuis le 03/08, mpn_rejete ne compte QUE les vraies valeurs invalides
     // (celles pour lesquelles le garde-fou a été écrit). mpn_absente = le
     // modèle a posé la clé à null : article sans référence imprimée, réponse
@@ -2629,6 +2769,10 @@ serve(async (req) => {
         ...(margeNegativeRetiree ? { marge_negative_retiree: true } : {}),
         ...(fuiteVariable ? { fuite_variable: true, fuite_identifiants: fuiteIdentifiants } : {}),
         ...(snakeInconnu ? { snake_inconnu: snakeInconnu } : {}),
+        // Images réduites ou écartées : visibles MÊME sur un succès — un scan
+        // livré avec une vue en moins doit se voir autant qu'un échec.
+        ...(journalImages.reduites.length ? { images_reduites: journalImages.reduites } : {}),
+        ...(journalImages.ecartees.length ? { images_ecartees: journalImages.ecartees } : {}),
       });
     } else {
       await enregistrerTelemetrie("ok", empreinteSortie(itemData));
@@ -2746,9 +2890,12 @@ serve(async (req) => {
       await loggerAppelIA(adminClient, userId, "lens_identify", { in: stats.in, out: stats.out }, {
         mode, cache_hit: false, photos: stats.photos, tours: stats.tours,
         duree_ms: Date.now() - debutMs, issue: "echec",
+        motif: motifEchec(err),
+        ...(journalImages.reduites.length ? { images_reduites: journalImages.reduites } : {}),
+        ...(journalImages.ecartees.length ? { images_ecartees: journalImages.ecartees } : {}),
       });
     } else {
-      await enregistrerTelemetrie("echec");
+      await enregistrerTelemetrie("echec", undefined, motifEchec(err));
     }
     await releaseAttempt("lens_analysis_failed");
     if (err?.isAiUnavailable) {
