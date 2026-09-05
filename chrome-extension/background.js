@@ -17,7 +17,7 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-09-01-canal-coupe-ebay (5 lots INDÉPENDANTS sur le décrochage « back/forward cache » d'eBay : [1] le relevé de fenêtre porte enfin l'URL de l'onglet et l'étape de remplissage en cours — observation pure ; [2] les trois murs eBay connus (signin, /splashui/, /fpa/) sont nommés à la coupure du canal et partent en needs_user, jamais retentés ; [3] content-scripts/ebay.js déclaré aussi sur ebay.com ; [4] le canal coupé interroge la sonde AVANT de conclure — une publication partie mais d'issue inconnue ne se relance plus (garde anti-doublon) ; [5] le PRIX repart SYSTEMATIQUEMENT par PUT delta du brouillon apres la pose DOM (mesure : setNativeValue+blur n'ecrit rien cote serveur), le FORMAT seulement si sa bascule DOM n'a pas pris)";
+  "2026-09-05-lbc-attente-utilisateur-et-adresse-fraiche (Leboncoin, 2 points : [1] un résultat attenteUtilisateur du handler — nom et prénom exigés par la Transaction sécurisée, escrow_* vides sur l'aperçu — passe le job en needs_user PERSISTÉ, sans reprise espacée ni failed, Relancer depuis le Stock ; [2] l'adresse de remise est relue dans profiles.platform_settings.leboncoin juste avant FILL_LISTING — platform_fields.adresse n'est qu'une copie prise à la création du job, une correction dans les Réglages ne débloquait pas les jobs en attente) + 2026-09-01-canal-coupe-ebay (5 lots INDÉPENDANTS sur le décrochage « back/forward cache » d'eBay : [1] le relevé de fenêtre porte enfin l'URL de l'onglet et l'étape de remplissage en cours — observation pure ; [2] les trois murs eBay connus (signin, /splashui/, /fpa/) sont nommés à la coupure du canal et partent en needs_user, jamais retentés ; [3] content-scripts/ebay.js déclaré aussi sur ebay.com ; [4] le canal coupé interroge la sonde AVANT de conclure — une publication partie mais d'issue inconnue ne se relance plus (garde anti-doublon) ; [5] le PRIX repart SYSTEMATIQUEMENT par PUT delta du brouillon apres la pose DOM (mesure : setNativeValue+blur n'ecrit rien cote serveur), le FORMAT seulement si sa bascule DOM n'a pas pris)";
 
 // ── BUILD_ID AUTOMATIQUE (2026-07-18) ─────────────────────────────────────────
 // FILLSELL_BUILD ci-dessus est une DESCRIPTION codée en dur que personne ne pense
@@ -301,6 +301,11 @@ const CAUSES_HUMAINES_CONNUES = {
   prevol_stepup_vente:
     "REAUTH VENTE eBay : eBay exige une reconnexion de sécurité pour vendre. " +
     "Ouvre ebay.fr dans Chrome, clique « Vendre » et reconnecte-toi",
+  // 2026-09-05 (santanalily010, bilelbourouis45) : nom/prénom de la Transaction
+  // sécurisée absents du compte vendeur — escrow_* vides sur l'aperçu Leboncoin.
+  lbc_escrow_identite:
+    "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la " +
+    "Transaction sécurisée) : complète-les sur leboncoin.fr",
   // 2026-08-31 (jobs de15fd3f/da2b67e2) : brouillon jamais basculé en « Achat
   // immédiat » — eBay le refuse sans « Prix de départ » (libellé ENCHÈRES).
   ebay_brouillon_encheres:
@@ -2355,6 +2360,12 @@ async function processJob(rawJob, accessToken) {
     clearProbeCaptures(tabId);
     await installNetworkProbe(tabId, job.platform);
 
+    // ── Leboncoin : adresse de remise relue dans les Réglages AU DÉPÔT ────────
+    // (2026-09-05, santanalily010) platform_fields.adresse est une copie prise
+    // à la création du job ; la valeur courante du profil l'emporte, voir
+    // rafraichirAdresseLbc. Leboncoin seul, jamais bloquant.
+    if (job.platform === "leboncoin") await rafraichirAdresseLbc(accessToken, job);
+
     // Le content script est déclaré dans le manifest pour ce domaine (il est
     // ré-injecté à chaque navigation/reload de l'onglet de travail) ;
     // on lui envoie le job et on attend le résultat du remplissage.
@@ -2505,6 +2516,15 @@ async function processJob(rawJob, accessToken) {
           await recordRecentResult(job, "published");
           return { status: "published", listingUrl: url };
         }
+      }
+      // ── Attente utilisateur NOMMÉE par le handler (2026-09-05, Leboncoin) ──
+      // Une information de COMPTE manque chez la plateforme (nom/prénom de la
+      // Transaction sécurisée, escrow_* vides sur l'aperçu) : le handler pose
+      // attenteUtilisateur. Ni reprise espacée ni failed — 'needs_user'
+      // PERSISTÉ, Relancer depuis le Stock (voir marquerAttenteUtilisateur).
+      if (result.attenteUtilisateur === true) {
+        await marquerAttenteUtilisateur(accessToken, job, result);
+        return { status: "needsUser", error: result.error };
       }
       // ── Tri (a)/(b) du socle needs_user (2026-07-19) ────────────────────────
       // (a) Le handler a identifié UN champ précis à trancher (needsUserField
@@ -3353,6 +3373,44 @@ async function tracerTaillesEbay(accessToken, job, traces) {
   await restRequest("usage_logs", accessToken, { method: "POST", body: JSON.stringify(lignes) });
 }
 
+// ── Attente utilisateur NOMMÉE par le handler (2026-09-05, Leboncoin) ─────────
+// Le content script a établi qu'une information de COMPTE manque chez la
+// plateforme (result.attenteUtilisateur = true, motif dans attenteMotif) : nom
+// et prénom exigés par la Transaction sécurisée Leboncoin — escrow_lastname /
+// escrow_firstname vides sur l'aperçu (santanalily010 ×2 le 05/09,
+// bilelbourouis45 ×5 le 20/08 : 7 des 10 « chemin gratuit introuvable » du
+// parc). Une donnée personnelle ne se devine pas et la page ne se lève pas
+// toute seule : les reprises espacées ne servaient à rien (5 tentatives pour
+// rien, puis failed — c'est ce qui arrivait). Même conduite que la mise à
+// niveau vendeur eBay (/fpa/upgrade) : 'needs_user' PERSISTÉ, le job SORT de la
+// file (get-pending-jobs ne distribue que 'pending') et le bouton Relancer du
+// Stock le rend à la file une fois le geste fait. Aucune tentative consommée
+// (needsUserAttempts intact), jamais failed sur ce motif. Le motif part en
+// last_diagnostic (CAUSES_HUMAINES_CONNUES le connaît : un échec sec dans les
+// 6 h suivantes porte la vraie cause en tête).
+async function marquerAttenteUtilisateur(accessToken, job, result) {
+  // Même garde que rearmBounded / markNeedsUser : ne JAMAIS réécrire par-dessus
+  // un statut devenu terminal/annulé pendant le traitement.
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(
+      `[background] Job ${job.id} : statut devenu "${actuel}" pendant le traitement — ` +
+      `attente utilisateur ABANDONNÉE (on ne réécrit pas par-dessus). Cause : ${result.error}`
+    );
+    return;
+  }
+  stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+  const motif = String(result.attenteMotif ?? "attente_utilisateur").slice(0, 60);
+  console.warn(`[background] Job ${job.id} : attente utilisateur « ${motif} » → needs_user (aucune reprise espacée, aucune tentative consommée)`);
+  await updateJobStatus(accessToken, job.id, "needs_user", {
+    error: result.error,
+    platform_fields: {
+      ...(job.platform_fields ?? {}),
+      last_diagnostic: { quoi: motif, detail: String(result.error ?? "").slice(0, 300), at: new Date().toISOString() },
+    },
+  });
+}
+
 // ── Statut PERSISTÉ 'needs_user' (socle 2026-07-19) ────────────────────────────
 // Un handler a identifié UN champ obligatoire précis que seul l'utilisateur
 // peut trancher (result.needsUserField = { field_key, field_label,
@@ -4090,6 +4148,38 @@ const MSG_LBC_PAGE_DEPOT_ILLISIBLE =
   "Relance la publication depuis la fiche de l'article ; si ça se reproduit, signale-le au support.";
 const ERREUR_DE_CODE_RE =
   /\bis not defined\b|\bis not a function\b|Cannot read propert|\bis not iterable\b|Cannot access '[^']*' before initialization|Unexpected token/i;
+
+// ── Adresse de remise Leboncoin relue AU DÉPÔT (2026-09-05, santanalily010) ──
+// platform_fields.adresse est une COPIE prise à la création du job (app,
+// handlePublish de ListingPreviewScreen). Un utilisateur qui corrige son
+// adresse dans les Réglages ne débloquait donc PAS ses jobs en attente : ils
+// repartaient avec l'ancienne, et le contrôle d'adresse du handler les
+// refusait à nouveau. Ici, juste avant FILL_LISTING : lecture de
+// profiles.platform_settings.leboncoin.adresse (RLS : sa propre ligne) ; si
+// elle diffère de la copie, elle l'emporte — mutation de la COPIE MÉMOIRE de
+// job.platform_fields (règle processing_since / last_diagnostic) : la valeur
+// part en base avec le verdict, le job la porte pour ses reprises, et
+// adresse_rafraichie garde l'ancienne en trace. Vide ou lecture en échec → la
+// copie du job sert, comme avant. Jamais bloquant. Leboncoin seul (Beebs lit la
+// même adresse mais reste hors de ce lot).
+async function rafraichirAdresseLbc(accessToken, job) {
+  try {
+    const userId = decodeJwtSub(accessToken);
+    if (!userId) return;
+    const rows = await restRequest(`profiles?id=eq.${userId}&select=platform_settings`, accessToken);
+    const courante = String(rows?.[0]?.platform_settings?.leboncoin?.adresse ?? "").trim();
+    const copie = String(job.platform_fields?.adresse ?? "").trim();
+    if (!courante || courante === copie) return;
+    console.log(`[background] Job ${job.id} : adresse de remise relue dans les Réglages ("${copie}" → "${courante}")`);
+    job.platform_fields = {
+      ...(job.platform_fields ?? {}),
+      adresse: courante,
+      adresse_rafraichie: { de: copie || null, at: new Date().toISOString() },
+    };
+  } catch (e) {
+    console.warn(`[background] Job ${job.id} : adresse de remise non relue (copie du job conservée) — ${String(e?.message ?? e)}`);
+  }
+}
 
 // Photographie de STRUCTURE de la page de dépôt, depuis le background, quand
 // le content script n'a rien pu dire. La fonction injectée est AUTONOME (aucune
