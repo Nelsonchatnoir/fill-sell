@@ -53,20 +53,27 @@ export function lireIdentifiants() {
   return { clientId, clientSecret, ruName, complet: Boolean(clientId && clientSecret) };
 }
 
-// ── Scopes demandés au consentement — SOURCE UNIQUE ─────────────────────────
-// Lots 0-1 : api_scope (socle) + sell.account (Account API : privilèges,
-// programmes, politiques, création de politiques sur action explicite).
-// sell.inventory est demandé DÈS MAINTENANT : c'est la raison d'être du
-// chantier (publier sans Chrome) et un refresh token porte les scopes du
-// consentement — l'ajouter au lot 2 obligerait chaque vendeur relié à
-// reconnecter. sell.fulfillment et commerce.notification.subscription
-// attendent le lot qui en aura besoin (une ligne de consentement en moins
-// aujourd'hui). Pour retirer sell.inventory avant mise en ligne : supprimer
-// UNE ligne ici, rien d'autre à toucher.
+// ── Scopes demandés au consentement — SOURCE UNIQUE (arbitrage Nico, 05/09) ─
+// Un refresh token porte les scopes du consentement : tout scope ajouté plus
+// tard forcerait CHAQUE vendeur relié à reconnecter. On demande donc dès le
+// lot 0 tout ce que les lots 0-4 utiliseront, et RIEN d'autre :
+//   · api_scope                          socle
+//   · sell.account                       lot 1 — privilèges, programmes,
+//                                        politiques (création sur action explicite)
+//   · sell.inventory                     lot 2 — publier sans Chrome
+//   · sell.fulfillment                   lot 3 — détecter les ventes
+//   · commerce.notification.subscription lot 3 — webhooks eBay (retrait des
+//                                        autres plateformes à la vente)
+// ⛔ GARDE-FOU : ne JAMAIS ajouter sell.finances (retiré du keyset exprès),
+// sell.marketing, commerce.message ni aucun autre — le keyset les autorise
+// peut-être, on ne les demande pas. L'écran de consentement liste ce qu'on
+// demande, pas ce que le keyset permet.
 export const SCOPES_DEMANDES: readonly string[] = [
   "https://api.ebay.com/oauth/api_scope",
   "https://api.ebay.com/oauth/api_scope/sell.account",
   "https://api.ebay.com/oauth/api_scope/sell.inventory",
+  "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
+  "https://api.ebay.com/oauth/api_scope/commerce.notification.subscription",
 ];
 
 // ── Origine de l'app, pour l'atterrissage après le callback ─────────────────

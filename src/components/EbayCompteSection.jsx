@@ -22,15 +22,22 @@ import { demarrerConnexionEbay, lireEtatEbay, agirEbay, ouvrirConsentementEbay }
 // section ne touche à aucun handler.
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Liens eBay FR par ligne — à valider sur un compte réellement bloqué avant
-// mise en ligne du lot 1 (garde-fou Nico : pas de mise en ligne sans le lien
-// EXACT). Les pages bizpolicy exigent une session eBay ouverte.
+// Liens eBay FR par ligne — VÉRIFIÉS dans Chrome le 05/09 (session Nico) :
+//   · /bp/policyoptin et /bp/manage sont les adresses qu'eBay lui-même pose
+//     dans sa page d'aide « Gestionnaire des conditions de vente » (id=4212).
+//     Sur un compte NON activé, /bp/manage redirige vers /bp/policyoptin
+//     (page « Mettez plus rapidement vos objets en vente », blocs Retours /
+//     Livraison / Paiement) — c'est bien l'écran d'activation ;
+//   · /sl/sell est l'entrée « Vendre » d'eBay (atterrit sur /sl/sell?sr=wnstart
+//     pour un vendeur établi ; un compte à l'inscription incomplète y est
+//     redirigé vers son parcours d'inscription).
+// Les pages exigent une session eBay ouverte dans le navigateur.
 const LIENS = {
   inscription_vendeur: 'https://www.ebay.fr/sl/sell',
-  politiques_activees: 'https://www.bizpolicy.ebay.fr/businesspolicy/policyoptin',
-  politique_livraison: 'https://www.bizpolicy.ebay.fr/businesspolicy/manage',
-  politique_paiement: 'https://www.bizpolicy.ebay.fr/businesspolicy/manage',
-  politique_retours: 'https://www.bizpolicy.ebay.fr/businesspolicy/manage',
+  politiques_activees: 'https://www.ebay.fr/bp/policyoptin',
+  politique_livraison: 'https://www.ebay.fr/bp/manage',
+  politique_paiement: 'https://www.ebay.fr/bp/manage',
+  politique_retours: 'https://www.ebay.fr/bp/manage',
 };
 
 const TYPE_PAR_CLE = { politique_livraison: 'fulfillment', politique_paiement: 'payment', politique_retours: 'return' };
