@@ -21,6 +21,7 @@ const Legal = lazy(() => import("../pages/Legal"));
 const BlogList = lazy(() => import("../pages/BlogList"));
 const BlogPost = lazy(() => import("../pages/BlogPost"));
 const ExtensionPage = lazy(() => import("../pages/ExtensionPage"));
+const EbayRetour = lazy(() => import("../pages/EbayRetour"));
 
 // Bloque /login et / si déjà connecté
 function RedirectIfLoggedIn({ children }) {
@@ -87,6 +88,11 @@ export default function AppRouter() {
             renvoyait ces visiteurs vers la landing avant tout affichage.
             La page ne lit aucune donnée de session ni de profil. */}
         <Route path="/extension" element={<ExtensionPage />} />
+        {/* Atterrissage après le consentement eBay (lot 0, 05/09) : la fonction
+            ebay-oauth-callback a déjà stocké les jetons et renvoie ici
+            ?etat=ok|refus|erreur. PUBLIQUE : sur natif la page s'ouvre dans le
+            navigateur système, sans session FillSell. */}
+        <Route path="/ebay/retour" element={<EbayRetour />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>

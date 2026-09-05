@@ -121,7 +121,20 @@ verify_jwt = true
 [functions.republish-purge]
 verify_jwt = false
 
+# eBay par API (lot 0, 05/09) : eBay redirige le NAVIGATEUR ici après le
+# consentement, sans JWT Supabase — l'identité vient du `state` signé (HMAC,
+# clé = client_secret) vérifié dans le code. Nom IMPOSÉ par le RuName eBay.
+[functions.ebay-oauth-callback]
+verify_jwt = false
+
 # Paiement / compte : le JWT identifie le titulaire, jamais optionnel.
+# eBay par API (lot 0-1, 05/09) : appelées par l'app avec le JWT utilisateur.
+[functions.ebay-oauth-start]
+verify_jwt = true
+
+[functions.ebay-account]
+verify_jwt = true
+
 [functions.create-checkout-session]
 verify_jwt = true
 

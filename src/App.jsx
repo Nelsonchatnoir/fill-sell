@@ -61,6 +61,7 @@ import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
 import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
 import ExtensionPitchScreen from './components/ExtensionPitchScreen';
+import EbayCompteSection from './components/EbayCompteSection';
 import PlanDetailsModal from './components/PlanDetailsModal';
 import { useIsMobile } from './hooks/useIsMobile';
 import BrandMark from './components/BrandMark';
@@ -6944,6 +6945,10 @@ export default function App({ loginOnly = false }){
             </div>
               );
             })()}
+
+            {/* ── Compte eBay (lot 0-1 API eBay, 05/09) : connexion OAuth +
+                checklist vendeur. La voie formulaire reste inchangée. ── */}
+            <EbayCompteSection lang={lang} user={user} />
 
             {/* Désabonnement — visible uniquement si premium */}
             {isPremium&&(
