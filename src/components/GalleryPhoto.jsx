@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { urlsPhotos } from '../utils/photos';
 
 // ── Photo d'article (galerie Stock IA + vignettes Ventes, 2026-08-27) ────────
 // Deux formats coexistent dans inventaire.photos : objets {type,url} (flux
@@ -10,13 +11,10 @@ import { useState } from 'react';
 // carte vide ni une image cassée.
 // loading="lazy" : le navigateur ne charge que les photos proches du viewport,
 // les gros comptes (3 000+ articles) ne téléchargent pas tout d'un coup.
+// Délègue au normaliseur unique (utils/photos.js) depuis le 05/09 — même
+// lecture des deux formes partout, plus de copie locale de la règle.
 export function premierePhoto(photos){
-  if(!Array.isArray(photos))return null;
-  for(const p of photos){
-    const u=typeof p==='string'?p:(p?.url||p?.original||p?.enhanced||p?.bg_removed);
-    if(u)return u;
-  }
-  return null;
+  return urlsPhotos(photos)[0]??null;
 }
 
 export default function GalleryPhoto({url,alt,fallback}){

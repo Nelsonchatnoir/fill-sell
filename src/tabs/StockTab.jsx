@@ -19,6 +19,9 @@ import PlatformLogo from '../components/platform-logos/PlatformLogo';
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
+// Photos : lecture des deux formes, écriture en objets { type, url } — le
+// normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
+import { urlsPhotos, entreesPhotos } from '../utils/photos';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs } from '../utils/publicationState';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
@@ -4842,7 +4845,9 @@ const StockTab = memo(function StockTab({
         title: full.title,
         description: full.description,
         price: full.price,
-        photos: full.photos,
+        // Un job ancien relancé peut porter des chaînes (jobs écrits avant le
+        // 05/09 par le parcours Lens unifié) : la copie repart en objets.
+        photos: entreesPhotos(full.photos),
         platform_fields: pf,
       }],
     });
@@ -8027,14 +8032,10 @@ const StockTab = memo(function StockTab({
             ...plateformesReserveesParRepublication(jobsByInventaire[publishItem.id]||[]),
           ])]}
           plateformesLiberees={publishItem.disparu_le?['vinted']:[]}
-          initialPhotos={(Array.isArray(publishItem.photos)?publishItem.photos:[])
-            // Deux formats coexistent en base : objets {type,url} (flux photos
-            // retouchées) et STRINGS nues (URLs CDN Vinted écrites par la sync
-            // du dressing). `p?.url` sur une string rend undefined — le filter
-            // vidait donc les photos des articles importés et le stepper
-            // réclamait un upload à des annonces qui ont déjà leurs photos.
-            .map(p=>typeof p==='string'?p:(p?.url||p?.original||p?.enhanced||p?.bg_removed))
-            .filter(Boolean)}
+          // Deux formats coexistent en base : objets {type,url} (flux photos
+          // retouchées) et STRINGS nues (URLs CDN Vinted écrites par la sync
+          // du dressing) — urlsPhotos lit les deux, le stepper reçoit des URLs.
+          initialPhotos={urlsPhotos(publishItem.photos)}
           initialListing={{
             // ⚠️ publishItem vient de mapItem (App.jsx), qui RENOMME les
             // colonnes : `titre` → `title` et `prix_vente` → `sell`. Lire les

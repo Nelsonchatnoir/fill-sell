@@ -9,6 +9,10 @@ import ExtensionPitchScreen from "./ExtensionPitchScreen";
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import PlatformLogo from "./platform-logos/PlatformLogo";
 import AnalyseMarche from "./AnalyseMarche";
+// Photos : lecture tolérante (chaîne ou objet), écriture TOUJOURS en objets
+// `{ type, url }` — la forme de generate-listing, la seule que les handlers
+// de l'extension savent lire. Règle et incident dans utils/photos.js.
+import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee } from "../utils/photos";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension } from "../utils/shared";
@@ -52,13 +56,10 @@ export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"
 //  · schéma historique : objets {original, bg_removed, enhanced} ;
 //  · strings nues : /enhanced/ = retouche réutilisée puis aplatie par la
 //    persistance ; /raw/ ou CDN Vinted = rien de payé.
+// Délègue au normaliseur unique (utils/photos.js) — le nom est conservé pour
+// StockTab, qui l'importe d'ici.
 export function isRetouchedPhotoEntry(p) {
-  if (!p) return false;
-  if (typeof p === "string") return p.includes("/enhanced/");
-  if (typeof p !== "object") return false;
-  if (p.enhanced || p.bg_removed) return true;
-  if (typeof p.type === "string" && p.type.startsWith("enhanced")) return true;
-  return typeof p.url === "string" && p.url.includes("/enhanced/");
+  return estPhotoRetouchee(p);
 }
 const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2" };
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
@@ -1906,10 +1907,10 @@ function StepGeneration({ generating, generateError, platformListings, processed
             {processedPhotos.map((ph, i) => (
               <div
                 key={i}
-                onClick={() => onPhotoClick(ph.url ?? ph)}
+                onClick={() => onPhotoClick(urlPhoto(ph))}
                 style={{ flexShrink:0, width:80, height:80, borderRadius:12, overflow:"hidden", border:`1px solid ${T.border}`, cursor:"pointer" }}
               >
-                <img src={ph.url ?? ph} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                <img src={urlPhoto(ph)} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
               </div>
             ))}
           </div>
@@ -3479,7 +3480,11 @@ export default function ListingPreviewScreen({
     if (!dispo.length) return;
     // lens_unifie : marque l'origine — handleNext (step 1) ne jette que cette
     // hydratation-là si une retouche est finalement choisie.
-    appliquerGeneration({ ...annoncesDuScan, lens_unifie: true, photos: [...initialPhotos] }, dispo);
+    // ⚠️ entreesPhotos, JAMAIS [...initialPhotos] (incident du 05/09) : ce
+    // chemin poussait des CHAÎNES dans cross_post_jobs.photos quand
+    // generate-listing rend des objets { type, url } — et les handlers de
+    // l'extension lisent `p.url`. Même forme que la génération, à l'octet près.
+    appliquerGeneration({ ...annoncesDuScan, lens_unifie: true, photos: entreesPhotos(initialPhotos) }, dispo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -3828,10 +3833,9 @@ export default function ListingPreviewScreen({
       .then(({ data }) => {
         const existing = data?.[0]?.photos;
         if (Array.isArray(existing) && existing.length > 0) {
-          const urls = existing
-            .filter(p => p.type === "original" || p.url)
-            .map(p => p.url || p.original || p.enhanced || p.bg_removed)
-            .filter(Boolean);
+          // Les deux formes (un job ancien peut porter des chaînes) : le
+          // filtre `p.type === "original" || p.url` vidait les chaînes.
+          const urls = urlsPhotos(existing);
           if (urls.length > 0) {
             setPhotos(urls);
             setStep(1);
@@ -6072,7 +6076,12 @@ export default function ListingPreviewScreen({
         // Photos du JOB, par plateforme. Identiques à processedPhotos partout —
         // SAUF plafonnement Leboncoin (quota gratuit par feuille, cf. bloc LBC
         // plus bas). Aucune autre plateforme n'y touche.
-        let rowPhotos = processedPhotos;
+        // Forme du JOB garantie ICI, quel que soit l'amont (génération fraîche,
+        // cache, brouillon sessionStorage d'une session ouverte AVANT le
+        // correctif du 05/09, Lens unifié) : des objets { type, url }, jamais
+        // une chaîne — les handlers de l'extension lisent `p.url`.
+        const photosJob = entreesPhotos(processedPhotos);
+        let rowPhotos = photosJob;
         // Dernier filet avant l'insert du job : un état vidé à la main (ou un
         // `edited` venant d'un chemin qui n'est pas passé par
         // mergeFieldsWithLens) ne part JAMAIS vide vers l'extension.
@@ -6151,14 +6160,13 @@ export default function ListingPreviewScreen({
           // au-dessus (route « Vêtements bébé »), c'est la valeur FINALE qui
           // décide. Les autres plateformes gardent processedPhotos intact.
           const quotaPhotosLbc = getLbcFreePhotoQuota(pf.lbcCategoryPath);
-          if (quotaPhotosLbc != null && Array.isArray(processedPhotos) &&
-              processedPhotos.length > quotaPhotosLbc) {
-            pf.lbcPhotosOriginales = processedPhotos.length;
+          if (quotaPhotosLbc != null && photosJob.length > quotaPhotosLbc) {
+            pf.lbcPhotosOriginales = photosJob.length;
             pf.lbcPhotosCapped = true;
-            rowPhotos = processedPhotos.slice(0, quotaPhotosLbc);
+            rowPhotos = photosJob.slice(0, quotaPhotosLbc);
             console.log(
               `[publish] Leboncoin ${pf.lbcCategoryPath.join(" > ")} : ` +
-              `${processedPhotos.length} photos → ${quotaPhotosLbc} (quota gratuit de la catégorie)`
+              `${photosJob.length} photos → ${quotaPhotosLbc} (quota gratuit de la catégorie)`
             );
           }
         }
