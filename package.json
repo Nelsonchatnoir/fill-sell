@@ -1,7 +1,7 @@
 {
   "name": "fillsell",
   "private": true,
-  "version": "2.6.28",
+  "version": "2.6.29",
   "type": "module",
   "scripts": {
     "postinstall": "node -e \"if(process.env.VERCEL){console.log('Vercel: patch-package saute (patches natifs seulement, et le cache de build casse leur application)')}else{require('child_process').execSync('patch-package',{stdio:'inherit'})}\"",
@@ -12,6 +12,7 @@
     "build:extension": "node scripts/build-extension.mjs",
     "package:extension": "node scripts/package-extension.mjs",
     "lint": "eslint .",
+  "selftest:texte-comparable": "node scripts/texte-comparable-selftest.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

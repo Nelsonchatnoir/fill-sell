@@ -1172,7 +1172,18 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // shallow), le web est passé sans rien signaler. Valeur = date de commit exacte
 // de b015336. EXTENSION_MIN_BUILD INCHANGÉ : la 0.6.19 est toujours en review,
 // la bannière ne doit demander que ce qui est réellement installable.
-export const EXTENSION_LAST_COMMIT = '2026-09-04T22:51:32Z';
+// 2026-09-05T17:08:37Z = comparaison de valeurs TOLÉRANTE aux variantes Unicode (job
+// 2e4f88f1, Hatchimals) : bloc texteComparable copié à l'identique dans les 4
+// content scripts (apostrophes ’/', guillemets, tirets longs, espaces
+// insécables, casse, accents gommés POUR COMPARER, jamais pour écrire) ;
+// leboncoin.js pose enfin une clé lbcAspects sautée par handledForKeys quand
+// le bloc dédié n'avait rien reçu, et nomme « valeur non reconnue » au lieu
+// de « champ requis ». Couvre aussi le RATTRAPAGE de 98fbe79 (lot 0.6.20,
+// 2026-09-05T13:08:31Z) qui avait touché chrome-extension/ sans bumper la
+// constante — `npm run build` local échouait depuis. Bumpé DANS LE MÊME
+// COMMIT, GIT_COMMITTER_DATE épinglée. EXTENSION_MIN_BUILD INCHANGÉ (0.6.19
+// en review, 0.6.20 pas encore soumise).
+export const EXTENSION_LAST_COMMIT = '2026-09-05T17:08:37Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

@@ -1153,8 +1153,35 @@ function findField(labelText) {
 // Ponctuation retirée en plus des accents : les états Beebs s'écrivent avec
 // une virgule ("Neuf, sans étiquette") là où l'app dit "Neuf sans étiquette"
 // — sans ça, aucun étage de la cascade ne matche (relevé campagne 2026-07-08).
-const normalizeFuzzy = (s) =>
-  s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[.,]/g, "");
+// ── Forme COMPARABLE d'un libellé (2026-09-05) ───────────────────────────────
+// Copie IDENTIQUE de src/utils/texteComparable.js (les content scripts sont des
+// scripts classiques sans module partagé — ADR-03) ; le corps est vérifié par
+// scripts/texte-comparable-selftest.mjs. Sert UNIQUEMENT à COMPARER notre
+// valeur aux options de la page : casse, accents, apostrophes typographiques,
+// guillemets, tirets longs, points de suspension, invisibles et espaces
+// insécables sont gommés. On n'écrit JAMAIS cette forme : l'option cliquée
+// reste celle que la plateforme affiche, caractère pour caractère.
+// Cas fondateur : « Jouets d'éveil » (U+0027, écrit par l'IA) ≠ « Jouets
+// d’éveil » (U+2019, affiché par Leboncoin) pour === — égaux ici.
+// ⟦texte-comparable:début⟧
+function texteComparable(s) {
+  return String(s ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")                  // accents → lettre nue
+    .replace(/[\u2018\u2019\u201a\u201b\u2032\u02bc\u0060\u00b4]/g, "'") // apostrophes ‘ ’ ‚ ‛ ′ ʼ ` ´ → '
+    .replace(/[\u201c\u201d\u201e\u201f\u00ab\u00bb\u2033]/g, '"')       // guillemets “ ” „ ‟ « » ″ → "
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-")       // tirets ‐ ‑ ‒ – — ― − → -
+    .replace(/\u2026/g, "...")                                                  // … → ...
+    .replace(/\u00ad|\u200b|\u200c|\u200d|\ufeff/g, "")                    // invisibles (soft hyphen, zero-width, BOM) — en alternance, pas en classe
+    .replace(/\s+/g, " ")                                                           // espaces (insécables U+00A0/U+202F comprises) → espace simple
+    .trim()
+    .toLowerCase();
+}
+// ⟦texte-comparable:fin⟧
+
+// Forme comparable partagée (bloc ci-dessus) + ponctuation retirée (règle Beebs
+// ci-dessus : « Neuf, sans étiquette » ↔ « Neuf sans étiquette »). Levi’s ↔
+// Levi's, « Tape à l’œil » ↔ « Tape à l'oeil » matchent désormais.
+const normalizeFuzzy = (s) => texteComparable(s).replace(/[.,]/g, "");
 
 function containsAsWords(hay, needle) {
   if (!needle) return false;

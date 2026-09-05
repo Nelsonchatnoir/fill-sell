@@ -13,6 +13,7 @@ import AnalyseMarche from "./AnalyseMarche";
 // `{ type, url }` — la forme de generate-listing, la seule que les handlers
 // de l'extension savent lire. Règle et incident dans utils/photos.js.
 import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee } from "../utils/photos";
+import { texteComparable } from "../utils/texteComparable";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension } from "../utils/shared";
@@ -716,15 +717,18 @@ const optionMatchesAsWords = (hay, needle) => {
 function findMatchingOption(raw, options, { sizeField = false } = {}) {
   if (!raw || raw === "null") return "";
   const n = raw.toLowerCase().trim();
-  const exact = options.find(o => o.value.toLowerCase() === n);
+  // Exact sur la forme COMPARABLE (05/09) : « Très bon état » ↔ « Tres bon etat »,
+  // apostrophes et espaces insécables gommées — la valeur rendue reste o.value.
+  const nc = texteComparable(raw);
+  const exact = options.find(o => texteComparable(o.value) === nc);
   if (exact) return exact.value;
   const mapped = FR_TO_EBAY_CONDITION[n];
   if (mapped && options.some(o => o.value === mapped)) return mapped;
   if (sizeField && PURE_NUMBER_RE.test(n)) return "";
   const candidates = options.filter(o => {
-    const v = o.value.toLowerCase();
+    const v = texteComparable(o.value);
     if (v.length <= 1) return false;
-    return optionMatchesAsWords(n, v) || optionMatchesAsWords(v, n);
+    return optionMatchesAsWords(nc, v) || optionMatchesAsWords(v, nc);
   });
   if (!candidates.length) return "";
   candidates.sort((a, b) => b.value.length - a.value.length);
@@ -2238,8 +2242,13 @@ const listeFaitFoi = (platform, mode) => platform === "ebay" && mode === "SELECT
 // « Europe » ou un « eu » isolé ne sont pas touchés. La garde ne s'affaiblit
 // pas : « EU 99 » reste hors liste, et « EU 34.5 » reste hors liste face à la
 // liste homme (qui démarre à 38) — c'est le comportement voulu.
-const normAspectVal = s => String(s).trim().toLowerCase().normalize("NFD")
-  .replace(/[̀-ͯ]/g, "").replace(/(\d),(\d)/g, "$1.$2")
+// Forme comparable PARTAGÉE (utils/texteComparable — même corps que les 4
+// content scripts et le serveur) + deux règles propres aux aspects : virgule
+// décimale → point, préfixe « EU » rogné devant un chiffre. Depuis le 05/09,
+// apostrophes typographiques, guillemets, tirets longs et espaces insécables
+// des listes relevées ne font plus passer une valeur pour « hors liste ».
+const normAspectVal = s => texteComparable(s)
+  .replace(/(\d),(\d)/g, "$1.$2")
   .replace(/^eu\s+(?=\d)/, "");
 // Valeur de la liste la plus proche d'une saisie hors liste ("Unique" →
 // « Taille unique », "58 cm" → « 58 »). Rapprochement par TOKENS entiers
@@ -5669,11 +5678,27 @@ export default function ListingPreviewScreen({
           // resolve_aspects répond par LIBELLÉ ; le canal générique écrit par
           // CLÉ plateforme (code serveur / for= / libellé Beebs) — mappage
           // retour label → key.
-          const keyOfLabel = Object.fromEntries(askable.map(a => [a.label, a.key]));
+          const aspectOfLabel = Object.fromEntries(askable.map(a => [a.label, a]));
           for (const [label, v] of Object.entries(values)) {
-            const key = keyOfLabel[label];
+            const a = aspectOfLabel[label];
             const s = typeof v === "string" ? v.trim() : "";
-            if (key && s && s.toLowerCase() !== "null") setPlatformAspect(gp, key, s);
+            if (!a || !s || s.toLowerCase() === "null") continue;
+            // ── On écrit la CHAÎNE DE LA PLATEFORME (2026-09-05) : l'IA recopie
+            // mal la typographie (« Jouets d'éveil » pour « Jouets d’éveil »,
+            // job 2e4f88f1) — si sa réponse se rapproche d'une valeur relevée,
+            // c'est cette valeur-là, caractère pour caractère, qui part.
+            const exacte = (a.allowedValues ?? []).find(av => texteComparable(av) === texteComparable(s)) ?? s;
+            // ── Route vers le champ que le handler LIT (2026-09-05) : une clé
+            // que le canal générique SAUTE (LBC _type$ → lbcProduit, univers ;
+            // Beebs Âge/Format du colis/État) écrite dans lbcAspects/beebsAspects
+            // n'est jamais posée — c'est la cause réelle du job 2e4f88f1
+            // (toy_type rempli, lbcProduit vide, Produit « requis » chez LBC).
+            // Les champs partagés (marque/matiere/couleur/taille) gardent leur
+            // chemin : setPlatformDedicatedField y poserait une trace d'édition
+            // manuelle que les écritures IA ne doivent pas laisser.
+            const versDedie = a.dedicatedTarget && !canalGeneriquePose(gp, a.key) && !SHARED_FIELD_KEYS.includes(a.dedicatedTarget);
+            if (versDedie) setPlatformDedicatedField(gp, a.dedicatedTarget, exacte);
+            else setPlatformAspect(gp, a.key, exacte);
           }
         } catch { /* micro-appel de secours : jamais bloquant */ }
       })();

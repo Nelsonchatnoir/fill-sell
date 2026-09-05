@@ -32,6 +32,9 @@ import {
   construireContexteArticle,
   redigerAnnoncesPlateformes,
 } from "../_shared/redaction-plateformes.ts";
+// Forme comparable partagée (05/09) : une réponse IA qui se rapproche d'une
+// valeur de la liste transmise repart sous la forme EXACTE de cette valeur.
+import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
 
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
@@ -373,7 +376,7 @@ serve(async (req) => {
       if (!wanted.length || !askAI.length || !ctx) return json({ aspects: out });
       const lines = askAI.map((a: { name: string; allowedValues?: string[] }) => {
         const allowed = Array.isArray(a.allowedValues) ? a.allowedValues.slice(0, 60) : [];
-        return `- "${a.name}"${allowed.length ? ` — valeurs eBay (suggestions, saisie libre acceptée) : ${allowed.join(" | ")}` : " — texte libre"}`;
+        return `- "${a.name}"${allowed.length ? ` — valeurs eBay (suggestions, saisie libre acceptée ; si tu retiens une valeur de la liste, recopie-la caractère pour caractère, apostrophes et espaces compris) : ${allowed.join(" | ")}` : " — texte libre"}`;
       }).join("\n");
       try {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -403,10 +406,18 @@ serve(async (req) => {
             // ne peut renseigner QUE les aspects demandés à l'IA (askAI) —
             // jamais écraser un défaut déterministe ni inventer une clé.
             const askNames = new Set(askAI.map((a: { name: string }) => a.name));
+            // Liste transmise par aspect : si la réponse s'en rapproche (casse,
+            // accents, apostrophes ’/', espaces insécables, tirets gommés), on
+            // renvoie l'entrée de la liste TELLE QUELLE — l'IA réécrit « Jouets
+            // d’éveil » en « Jouets d'éveil » et la plateforme ne reconnaît pas
+            // la seconde (job 2e4f88f1, 05/09). Hors liste : réponse inchangée.
+            const allowedByName = new Map<string, string[]>(
+              askAI.map((a: { name: string; allowedValues?: string[] }) => [a.name, Array.isArray(a.allowedValues) ? a.allowedValues : []]),
+            );
             for (const [k, v] of Object.entries(raw)) {
               if (!askNames.has(k)) continue; // hors demande IA
               const s = typeof v === "string" ? v.trim() : "";
-              if (s && s.toLowerCase() !== "null") out[k] = s;
+              if (s && s.toLowerCase() !== "null") out[k] = valeurDeListeCorrespondante(s, allowedByName.get(k) ?? []) ?? s;
             }
             return json({ aspects: out });
           }

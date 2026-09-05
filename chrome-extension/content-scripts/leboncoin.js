@@ -1179,6 +1179,7 @@ async function fillListingForm(job) {
 // unfilledRequired sont mutés en place (tableaux du caller).
 async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   const subjectInput = document.querySelector('input[name="subject"]');
+  for (const k of Object.keys(VALEURS_NON_RECONNUES)) delete VALEURS_NON_RECONNUES[k]; // un job repart propre
 
   // ── Étape 1 : titre → catégorie ──────────────────────────────────────────
   relayerEtape("titre");
@@ -1298,10 +1299,31 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // ci-dessus. La clé est le nom sémantique du label (ex. watches_jewels_type),
   // stable contrairement aux ids React — relevé form-survey du 05/07.
   const handledForKeys = /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$)/;
+  // ── Clé SAUTÉE mais bloc dédié resté MUET (2026-09-05, job 2e4f88f1) ──────
+  // handledForKeys existe pour que le bloc dédié (produit/taille/marque…) reste
+  // le seul écrivain de son critère. Mais quand ce bloc n'a RIEN reçu
+  // (fields.lbcProduit vide) et que la valeur vit dans lbcAspects.<clé>, la
+  // sauter revient à la JETER : Leboncoin bloque ensuite sur « Ce champ est
+  // requis » alors que le job portait « Jouets d'éveil » dans toy_type. Les 3
+  // jobs Jeux & Jouets « publiés » du 05/09 ne l'étaient que parce que LBC
+  // avait pré-rempli Produit lui-même. Règle : on saute UNIQUEMENT si le bloc
+  // dédié avait une valeur ; sinon le canal générique pose la valeur sur
+  // label[for=clé], exactement comme pour une clé libre — la logique de choix
+  // de la valeur ne change pas, seule sa route vers la page.
+  const dedieAvaitValeur = (forKey) => {
+    if (/(_condition$|^condition$)/.test(forKey)) return !!fields.etat;
+    if (/(_univers$|_universe$)/.test(forKey)) return !!(fields.univers || fields.genre);
+    if (/(_type$|^baby_clothing_category$)/.test(forKey)) return !!fields.lbcProduit;
+    if (/(_size$|^clothing_st$|^baby_age$)/.test(forKey)) return !!fields.taille;
+    if (/_brand$/.test(forKey)) return !!fields.marque;
+    if (/_material$/.test(forKey)) return !!fields.matiere;
+    return false;
+  };
   if (hasCriteria && fields.lbcAspects && typeof fields.lbcAspects === "object") {
     for (const [forKey, value] of Object.entries(fields.lbcAspects)) {
       const val = String(value ?? "").trim();
-      if (!val || handledForKeys.test(forKey)) continue;
+      if (!val) continue;
+      if (handledForKeys.test(forKey) && dedieAvaitValeur(forKey)) continue;
       await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true });
     }
   }
@@ -1410,9 +1432,37 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       if (idx >= 0) enumerated[idx] = { ...enumerated[idx], options: opts };
     }
 
+    // ── La vérité du message (2026-09-05) : un champ bloqué dont la valeur du
+    // job a été REFUSÉE par la cascade (« sans correspondance ») n'est pas un
+    // champ oublié — l'utilisateur l'avait rempli. On le dit, et on l'invite à
+    // choisir dans la liste relevée au lieu de « compléter ». Le nom du critère
+    // tel que fillCriterionSafe l'a enregistré : bloc dédié → nom fixe, canal
+    // générique → la clé for= elle-même ; libellé « Univers » d'abord (cf.
+    // cibleBloquee plus bas : le libellé est la vérité de ce que LBC demande).
+    const nomCritereDeCle = (f) => {
+      if (normalizeFuzzy(f.label ?? "") === "univers") return "univers";
+      const key = f.key ?? "";
+      if (/(_condition$|^condition$)/.test(key)) return "état";
+      if (/(_univers$|_universe$)/.test(key)) return "univers";
+      if (/(_type$|^baby_clothing_category$)/.test(key)) return "produit";
+      if (/(_size$|^clothing_st$|^baby_age$)/.test(key)) return "taille";
+      if (/_brand$/.test(key)) return "marque";
+      if (/_material$/.test(key)) return "matière";
+      return key;
+    };
+    const valeurNonReconnuePour = (f) =>
+      VALEURS_NON_RECONNUES[nomCritereDeCle(f)] ?? VALEURS_NON_RECONNUES[f.key] ?? null;
+    const decrireBloque = (f) => {
+      const nr = valeurNonReconnuePour(f);
+      return nr
+        ? `${f.label} (la valeur « ${nr} » n'a pas été reconnue parmi les options Leboncoin)`
+        : `${f.label} (« ${f.message} »)`;
+    };
     const details = blockedFields.length
-      ? `Leboncoin exige : ${blockedFields.map((f) => `${f.label} (« ${f.message} »)`).join(", ")}. ` +
-        "Compléter ces champs dans l'app (copie Leboncoin), puis relancer la publication."
+      ? `Leboncoin exige : ${blockedFields.map(decrireBloque).join(", ")}. ` +
+        (blockedFields.some((f) => valeurNonReconnuePour(f))
+          ? "Choisir une des options proposées dans l'app (copie Leboncoin), puis relancer la publication."
+          : "Compléter ces champs dans l'app (copie Leboncoin), puis relancer la publication.")
       : "Le wizard n'est pas passé à l'aperçu après Continuer" +
         (validationMsgs.length
           ? ` — messages de validation LBC: ${JSON.stringify(validationMsgs)}`
@@ -1464,6 +1514,9 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
           // valeur hors liste rebouclait (6 jobs jocaille le 13/08).
           input_type: "dropdown",
           ...(blockedFields[0].options ? { allowed_values: blockedFields[0].options } : {}),
+          // Valeur du job refusée par la cascade (2026-09-05) : l'app peut dire
+          // « X n'a pas été reconnue » plutôt que « champ requis ».
+          ...(valeurNonReconnuePour(blockedFields[0]) ? { valeur_non_reconnue: valeurNonReconnuePour(blockedFields[0]) } : {}),
         }
       : LBC_PSEUDO_FIELDS[unfilledRequired[0]] ?? null;
 
@@ -1537,7 +1590,11 @@ async function selectCategory(root, leaf) {
   const leftUl = [...document.querySelectorAll("ul")]
     .find((u) => u.children.length >= 10 && u.textContent.includes("Divers"));
   if (!leftUl) throw new Error("Catégorie: panneau des racines introuvable.");
-  const rootLi = [...leftUl.children].find((li) => li.textContent.trim() === root);
+  // Égalité stricte d'abord ; en repli, forme comparable (apostrophe, espace
+  // insécable, tiret d'un libellé de rayon qui aurait changé de typographie).
+  const memeLibelle = (a, b) => texteComparable(a) === texteComparable(b);
+  const rootLi = [...leftUl.children].find((li) => li.textContent.trim() === root)
+    ?? [...leftUl.children].find((li) => memeLibelle(li.textContent, root));
   if (!rootLi) {
     throw new Error(
       `Catégorie: racine "${root}" introuvable. Racines Leboncoin: ` +
@@ -1550,7 +1607,7 @@ async function selectCategory(root, leaf) {
 
   const rightUl = [...document.querySelectorAll("ul")]
     .filter((u) => u !== leftUl)
-    .find((u) => [...u.children].some((c) => c.textContent.trim() === leaf));
+    .find((u) => [...u.children].some((c) => c.textContent.trim() === leaf || memeLibelle(c.textContent, leaf)));
   if (!rightUl) {
     const panes = [...document.querySelectorAll("ul")].filter((u) => u !== leftUl && u.children.length > 0);
     throw new Error(
@@ -1559,7 +1616,8 @@ async function selectCategory(root, leaf) {
       ". Corriger src/utils/lbcCategories.js avec un de ces libellés."
     );
   }
-  const leafLi = [...rightUl.children].find((c) => c.textContent.trim() === leaf);
+  const leafLi = [...rightUl.children].find((c) => c.textContent.trim() === leaf)
+    ?? [...rightUl.children].find((c) => memeLibelle(c.textContent, leaf));
   await humanPause(); // temps de "lecture" des feuilles avant le clic
   (leafLi.querySelector("button, a") || leafLi).dispatchEvent(new MouseEvent("click", { bubbles: true }));
   await humanPause();
@@ -1646,6 +1704,11 @@ function findCriterionInput(labelSelector) {
 // aucune interaction ajoutée, pure lecture au passage. Consommée puis vidée à
 // l'énumération (fusion dans `enumerated`, cf. site d'appel).
 const OPTIONS_VUES_AU_REMPLISSAGE = {};
+// Valeurs que la cascade n'a rapprochées d'AUCUNE option (2026-09-05) :
+// critère → valeur du job. Consommé par le routage needs_user pour dire la
+// vérité à l'utilisateur : « la valeur X n'a pas été reconnue », et non
+// « ce champ est requis » alors qu'il l'avait rempli. Vidé à chaque job.
+const VALEURS_NON_RECONNUES = {};
 
 async function releverOptionsCritere(labelSelector) {
   try {
@@ -1779,6 +1842,7 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
         warnings.push(note);
         return true;
       }
+      VALEURS_NON_RECONNUES[fieldName] = String(rawValue);
       throw new Error(`option "${rawValue}" sans correspondance. Options: ${JSON.stringify(available)}`);
     }
     await humanPause(); // temps de "lecture" de la liste avant le clic
@@ -2374,8 +2438,35 @@ function findButtonByExactText(text) {
   return null;
 }
 
-const normalizeFuzzy = (s) =>
-  s.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+// ── Forme COMPARABLE d'un libellé (2026-09-05) ───────────────────────────────
+// Copie IDENTIQUE de src/utils/texteComparable.js (les content scripts sont des
+// scripts classiques sans module partagé — ADR-03) ; le corps est vérifié par
+// scripts/texte-comparable-selftest.mjs. Sert UNIQUEMENT à COMPARER notre
+// valeur aux options de la page : casse, accents, apostrophes typographiques,
+// guillemets, tirets longs, points de suspension, invisibles et espaces
+// insécables sont gommés. On n'écrit JAMAIS cette forme : l'option cliquée
+// reste celle que la plateforme affiche, caractère pour caractère.
+// Cas fondateur : « Jouets d'éveil » (U+0027, écrit par l'IA) ≠ « Jouets
+// d’éveil » (U+2019, affiché par Leboncoin) pour === — égaux ici.
+// ⟦texte-comparable:début⟧
+function texteComparable(s) {
+  return String(s ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")                  // accents → lettre nue
+    .replace(/[\u2018\u2019\u201a\u201b\u2032\u02bc\u0060\u00b4]/g, "'") // apostrophes ‘ ’ ‚ ‛ ′ ʼ ` ´ → '
+    .replace(/[\u201c\u201d\u201e\u201f\u00ab\u00bb\u2033]/g, '"')       // guillemets “ ” „ ‟ « » ″ → "
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-")       // tirets ‐ ‑ ‒ – — ― − → -
+    .replace(/\u2026/g, "...")                                                  // … → ...
+    .replace(/\u00ad|\u200b|\u200c|\u200d|\ufeff/g, "")                    // invisibles (soft hyphen, zero-width, BOM) — en alternance, pas en classe
+    .replace(/\s+/g, " ")                                                           // espaces (insécables U+00A0/U+202F comprises) → espace simple
+    .trim()
+    .toLowerCase();
+}
+// ⟦texte-comparable:fin⟧
+
+// Rapprochement de la cascade et de prefilledMatchesTarget : forme comparable
+// partagée (bloc ci-dessus). « Jouets d'éveil » ↔ « Jouets d’éveil »,
+// « 38 - M » ↔ « 38 – M », « 128 Go » ↔ « 128 Go » (U+00A0) matchent désormais.
+const normalizeFuzzy = (s) => texteComparable(s);
 
 function containsAsWords(hay, needle) {
   if (!needle) return false;
