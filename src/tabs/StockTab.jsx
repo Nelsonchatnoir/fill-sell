@@ -14,7 +14,8 @@ import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPe
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '../utils/stockLimit';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
-import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
+import InstallExtensionCta from '../components/InstallExtensionCta';
+import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
@@ -1106,6 +1107,15 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
   const enCours = (j) => j.status === "pending" || j.status === "processing";
   const aEchoue = (j) => Boolean(String(j.error ?? "").trim());
   const enFile = jobs.some(j => enCours(j) && !aEchoue(j));
+  // ── VOIE API (07/09/2026, job d9463010 publié par le worker serveur) ──────
+  // Un job eBay en voie 'api' est publié par NOS serveurs : l'extension, Chrome
+  // et l'ordinateur n'y sont pour rien. Le bandeau ne doit donc jamais parler
+  // d'extension pour lui. La voie vient du JOB (colonne cross_post_jobs.voie,
+  // posée par le trigger à l'insert ; repli sur le diagnostic écrit par le
+  // worker) — jamais du drapeau du profil. Un lot MIXTE (eBay API + Vinted
+  // extension) garde le texte extension : il est vrai pour les autres.
+  const voieApi = (j) => j.voie === "api" || j.platform_fields?.last_diagnostic?.voie === "api";
+  const enFileApiSeule = enFile && jobs.filter(j => enCours(j) && !aEchoue(j)).every(voieApi);
   const enReprise = jobs.filter(j => enCours(j) && aEchoue(j)).length;
   const aCompleter = jobs.filter(j => j.status === "needs_user").length;
   const enEchec = jobs.filter(j => j.status === "failed").length;
@@ -1147,7 +1157,15 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
               : "") +
             " Details per platform below.",
       }
-    : diagExt;
+    : enFileApiSeule
+      ? {
+          ton: "vert",
+          titre: fr ? "En file d'attente" : "Queued",
+          detail: fr
+            ? "La publication part de nos serveurs — ton ordinateur n'a pas besoin d'être allumé. Prochain passage dans 2 min au plus."
+            : "Publishing runs from our servers — your computer doesn't need to be on. Next pass within 2 min.",
+        }
+      : diagExt;
   const TONS = {
     vert:   { bg:"#ECFDF5", bord:"#A7F3D0", texte:"#047857" },
     orange: { bg:"#FFF7ED", bord:"#FED7AA", texte:"#7C2D12" },
@@ -1502,18 +1520,10 @@ const RETRY403_GRACE_MS = 5 * 60 * 1000;
 function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null }) {
   const fr = lang !== 'en';
   // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
-  // doctrine du 09/08. `surTelephone` revient le 01/09 pour UNE décision qui
-  // n'est pas un message : quel CTA d'installation proposer sur un stock vide
-  // sans extension — l'e-mail en un tap sur téléphone, le lien /extension sur
-  // ordinateur. Même règle de support que l'onboarding.)
-  const surTelephone = isNative || (typeof window !== 'undefined' && window.innerWidth < 768);
-  // ── CTA d'installation sur stock vide (2026-09-01, audit Stock vide) ──────
-  // Même geste, même hook, mêmes états que l'onboarding et la feuille
-  // extension (useEnvoiLienExtension : envoi serveur, adresse lue sur le JWT,
-  // verrou 60 s, persistance partagée). Aucun second mécanisme d'envoi.
-  // ⚠️ `envoi` renommé `envoiLien` : cette carte a DÉJÀ un état `envoi`
-  // (mise en file de la sync) — ne pas les confondre.
-  const { envoi: envoiLien, secondesRestantes, envoyer: envoyerLien } = useEnvoiLienExtension(lang, user?.email ?? null);
+  // doctrine du 09/08. Le CTA d'installation sur stock vide — l'e-mail en un
+  // tap sur téléphone, le lien /extension sur ordinateur, hook
+  // useEnvoiLienExtension partagé avec l'onboarding — vit depuis le 05/09 dans
+  // InstallExtensionCta, rendu plus bas : aucun second mécanisme d'envoi ici.)
   const [extVue, setExtVue] = useState(false);
   // Version annoncée par l'extension (null tant qu'elle ne s'est pas annoncée).
   const [extVersion, setExtVersion] = useState(null);
@@ -2348,48 +2358,15 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           reprend son bouton Synchroniser actif. UNIQUEMENT sur le stock vide
           (source 'stock_empty') : un compte avec des articles garde l'écran
           d'aujourd'hui. */}
+      {/* 05/09 : le CTA vit dans InstallExtensionCta (partagé avec l'étape 1
+          du Tableau vide) — même hook, mêmes états, plus la télémétrie
+          install_extension. Rien de visible n'a changé ici. */}
       {blocage&&source==='stock_empty'?(
-        <>
-          <div style={{fontSize:12.5,lineHeight:1.5,color:"#5C6560",fontWeight:600}}>{MESSAGE_BLOCAGE}</div>
-          {surTelephone?(
-            <>
-              {envoiLien.etat==='echec'&&(
-                <div style={{background:"#FEF3C7",border:"1px solid #FDE68A",borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:"#92400E"}}>
-                  {messageEchecLien(envoiLien.raison,fr,!!envoiLien.email)}
-                </div>
-              )}
-              {envoiLien.etat==='envoye'?(
-                <>
-                  <div style={{background:"#F0FDFB",border:"1px solid rgba(47,158,144,0.25)",borderRadius:10,padding:"10px 12px",fontSize:12.5,lineHeight:1.5,color:"#1B6E62",textAlign:"center",wordBreak:"break-word"}}>
-                    {fr?'Lien envoyé à ':'Link sent to '}<strong>{envoiLien.email}</strong>
-                    <div style={{fontSize:11.5,fontWeight:500,marginTop:2,color:"#5C6560"}}>
-                      {fr?"Ouvre-le sur ton ordinateur, dans Chrome — ton dressing arrivera ici tout seul.":"Open it on your computer, in Chrome — your closet will arrive here on its own."}
-                    </div>
-                  </div>
-                  <button
-                    onClick={envoyerLien}
-                    disabled={secondesRestantes>0}
-                    style={{display:"block",width:"100%",background:"none",border:"none",color:secondesRestantes>0?"#8A8578":"#1B6E62",fontSize:12,fontWeight:600,cursor:secondesRestantes>0?"default":"pointer",fontFamily:"inherit",padding:4,textDecoration:secondesRestantes>0?"none":"underline"}}
-                  >
-                    {secondesRestantes>0
-                      ?(fr?`Renvoyer dans ${secondesRestantes} s`:`Resend in ${secondesRestantes}s`)
-                      :(fr?'Renvoyer':'Resend')}
-                  </button>
-                </>
-              ):envoiLien.raison!=='no_email'?(
-                <SecondaryButton disabled={envoiLien.etat==='en_cours'} onClick={envoyerLien}>
-                  {envoiLien.etat==='en_cours'
-                    ?(fr?'Envoi du lien…':'Sending the link…')
-                    :(fr?"M'envoyer le lien pour mon ordinateur":'Email me the link for my computer')}
-                </SecondaryButton>
-              ):null}
-            </>
-          ):(
-            <a href="/extension" style={{display:"block",width:"100%",boxSizing:"border-box",textAlign:"center",textDecoration:"none",padding:"10px 14px",borderRadius:10,border:"1px solid #E7E3D8",background:"#F6F5F1",color:"#1B6E62",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
-              {fr?"Installer l'extension":'Install the extension'}
-            </a>
-          )}
-        </>
+        <InstallExtensionCta
+          lang={lang} isNative={isNative}
+          userId={user?.id??null} userEmail={user?.email??null}
+          source="stock_vide" message={MESSAGE_BLOCAGE}
+        />
       ):(
       <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee} onClick={lancer}>
         {enCours
@@ -3043,7 +3020,12 @@ const estimationRepub = (n) => n * 5 >= 60 ? `~${Math.ceil(n * 5 / 60)} h` : `~$
 // retenue serveur du plafond quotidien est active. null = plafond non atteint,
 // état illisible, ou panne de lecture → rien ne change, les étapes habituelles
 // s'appliquent.
-function etapeRepublication(job, fr, reprise = null) {
+// `attente` (07/09/2026) : messageFicheAttenteBoutique (utils/attenteBoutique),
+// calculé par l'appelant depuis l'origine de l'article et la boutique relevée
+// dans Chrome — LE MÊME calcul que l'en-tête et la feuille de masse. Il couvre
+// les jobs déjà 'captured' que le marqueur de l'extension ne voit pas ; le
+// marqueur reste le repli quand la sonde n'a rien relevé (fail-open).
+function etapeRepublication(job, fr, reprise = null, attente = null) {
   if (!job) return null;
   const pf = job.platform_fields ?? {};
   const step = pf.republish_step ?? 'a_capturer';
@@ -3088,6 +3070,9 @@ function etapeRepublication(job, fr, reprise = null) {
   // un autre dressing que celui connecté dans Chrome. Jamais « échec », jamais
   // rouge — une attente qui NOMME la boutique, et qui se lève toute seule dès
   // que l'utilisateur s'y connecte (libération par la sonde de l'extension).
+  if (encours && attente) {
+    return { cle: 'attente_boutique', court: attente.court, ...ambre, fini: false, titre: attente.titre, detail: attente.detail };
+  }
   if (encours && pf.attente_boutique) {
     const qui = pf.attente_boutique.login
       ? `@${pf.attente_boutique.login}`
@@ -3591,36 +3576,25 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
             )}
           </div>
         )}
-        {/* ── Annonce de MASSE multi-boutiques (2026-09-03) : dire AVANT
-            combien partent maintenant et combien attendront une autre
-            boutique. On n'empêche RIEN : tous les jobs se créent, ceux des
-            autres boutiques portent l'attente nommée et repartent seuls à la
-            connexion. Invisible chez les mono-boutique. */}
+        {/* ── Annonce de MASSE multi-boutiques : LE MÊME calcul que l'en-tête
+            et la fiche (utils/attenteBoutique, 07/09), appliqué aux jobs qui
+            vont être créés — dire AVANT combien partent maintenant et combien
+            attendront une autre boutique. On n'empêche RIEN : tous les jobs se
+            créent, ceux des autres boutiques repartent seuls à la connexion.
+            Aucun seuil de nombre de boutiques (une seule épinglée + Chrome
+            ailleurs = déjà une attente, cas ornellaracano). */}
         {(() => {
-          if ((boutiquesVinted?.length ?? 0) < 2 || !boutiqueConnectee?.userId) return null;
-          const attendront = new Map();
-          let partentMaintenant = 0;
-          for (const { item } of items) {
-            const id = String(item?.vinted_account_id ?? '');
-            if (id && id !== boutiqueConnectee.userId) {
-              const b = boutiquesVinted.find(x => String(x.user_id) === id);
-              const nom = b?.login ? `@${b.login}` : (fr ? 'une autre boutique' : 'another shop');
-              attendront.set(nom, (attendront.get(nom) ?? 0) + 1);
-            } else partentMaintenant++;
-          }
-          if (!attendront.size) return null;
+          if (!boutiqueConnectee?.userId) return null;
+          const jobsAVenir = items.map(({ item }) => ({ action: 'republish', platform: 'vinted', status: 'pending', inventaire_id: item?.id }));
+          const origines = new Map(items.map(({ item }) => [String(item?.id), item?.vinted_account_id == null ? '' : String(item.vinted_account_id).trim()]));
+          const etat = etatAttenteBoutique({ jobs: jobsAVenir, origines, connectee: boutiqueConnectee, boutiques: boutiquesVinted ?? [], lang });
+          if (!etat) return null;
+          const partentMaintenant = items.length - etat.total;
           return (
             <div style={{ background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#8A6100', lineHeight: 1.55, marginBottom: 12 }}>
-              {fr
-                ? `${partentMaintenant} partent maintenant.`
-                : `${partentMaintenant} start now.`}
-              {[...attendront.entries()].map(([nom, n]) => (
-                <div key={nom}>
-                  {fr
-                    ? `⏳ ${n} attendront le dressing ${nom} — connecte-le sur vinted.fr quand tu veux, ils partiront tout seuls.`
-                    : `⏳ ${n} will wait for the ${nom} closet — sign in to it on vinted.fr anytime and they go on their own.`}
-                </div>
-              ))}
+              {fr ? `${partentMaintenant} partent maintenant.` : `${partentMaintenant} start now.`}
+              {lignesAttenteBoutique(etat, lang).map((l, i) => <div key={i}>⏳ {l}</div>)}
+              <div style={{ marginTop: 4, color: '#8A8578' }}>{phraseRassurance(lang)}</div>
             </div>
           );
         })()}
@@ -4256,51 +4230,23 @@ const StockTab = memo(function StockTab({
     const t = setInterval(lire, 120000);
     return () => { stop = true; clearInterval(t); };
   }, [user?.id, boutiquesVinted?.length]);
-  // Republications EN ATTENTE d'une boutique, comptées par pseudo — nourrit
-  // la ligne « N articles en attente du dressing @x ». Vide chez les
-  // mono-boutique par construction (le marqueur n'existe que chez les multi).
-  const attentesParBoutique = useMemo(() => {
-    const m = new Map();
-    for (const jobs of Object.values(jobsByInventaire)) {
-      for (const j of jobs) {
-        if (j.action !== 'republish' || j.status !== 'pending') continue;
-        const a = j.platform_fields?.attente_boutique;
-        if (!a) continue;
-        const cle = a.login ? `@${a.login}` : (lang === 'en' ? 'another shop' : 'une autre boutique');
-        m.set(cle, (m.get(cle) ?? 0) + 1);
-      }
-    }
-    return [...m.entries()];
-  }, [jobsByInventaire, lang]);
-  // ── REPUBLICATIONS EN PAUSE FAUTE DE LA BONNE BOUTIQUE (2026-09-04) ───────
-  // MIROIR EXACT de la garde de get-pending-jobs : même comparaison (l'origine
-  // estampillée de l'article contre l'identité relevée par la sonde), mêmes
-  // deux fail-open (origine NULL, sonde absente) — pour que l'écran dise
-  // précisément ce que le serveur fait, ni plus ni moins.
-  // Distinct d'`attentesParBoutique` ci-dessus, qui lit le marqueur posé par
-  // l'extension à la seule étape 'a_capturer' : ce marqueur ne couvre pas les
-  // jobs déjà 'captured' (103 sur 173 ce soir), et il exige la 0.6.17.
-  // ⚠️ Aucune écriture, aucun bouton : ces jobs repartent seuls dès que le bon
-  // compte est reconnecté dans Chrome.
-  const pauseBoutique = useMemo(() => {
-    if (!republishActif || !boutiqueConnectee?.userId) return null;
+  // ── ATTENTE DE BOUTIQUE — UN SEUL CALCUL (07/09/2026) ─────────────────────
+  // Les trois calculs concurrents d'avant (marqueur attente_boutique posé par
+  // l'extension à la seule étape 'a_capturer', miroir « pauseBoutique » des
+  // republications seules, calcul refait par la feuille de masse) sont
+  // REMPLACÉS par utils/attenteBoutique.etatAttenteBoutique : le miroir exact
+  // de la garde de get-pending-jobs — republications ET retraits d'annonce sur
+  // Vinted, mêmes deux fail-open (origine inconnue, sonde muette). Aucun seuil
+  // de nombre de boutiques : dès qu'une origine est connue et que Chrome est
+  // connecté ailleurs, l'attente est dite (cas ornellaracano, une seule
+  // boutique épinglée). Aucune écriture, aucun bouton : rien n'a échoué, ça
+  // attend et ça repart seul à la reconnexion.
+  const attenteBoutique = useMemo(() => {
+    if (!boutiqueConnectee?.userId) return null;
     const origines = new Map(stock.map(i => [String(i.id), i.vinted_account_id == null ? '' : String(i.vinted_account_id).trim()]));
-    const parBoutique = new Map();
-    for (const [invId, jobs] of Object.entries(jobsByInventaire)) {
-      const o = origines.get(String(invId));
-      if (!o || o === boutiqueConnectee.userId) continue; // inconnue ou bonne boutique
-      for (const j of jobs) {
-        if (j.action !== 'republish' || j.platform !== 'vinted') continue;
-        if (j.status !== 'pending' && j.status !== 'processing') continue;
-        parBoutique.set(o, (parBoutique.get(o) ?? 0) + 1);
-      }
-    }
-    if (!parBoutique.size) return null;
-    return [...parBoutique.entries()].map(([id, n]) => ({
-      n,
-      login: boutiquesVinted.find(b => String(b.user_id) === id)?.login ?? null,
-    })).sort((a, b) => b.n - a.n);
-  }, [republishActif, boutiqueConnectee, stock, jobsByInventaire, boutiquesVinted]);
+    const jobs = Object.values(jobsByInventaire).flat();
+    return etatAttenteBoutique({ jobs, origines, connectee: boutiqueConnectee, boutiques: boutiquesVinted, lang });
+  }, [boutiqueConnectee, stock, jobsByInventaire, boutiquesVinted, lang]);
   // ── É5 : dérivations de RENDU qui lisent jobsByInventaire ────────────────
   // IMPÉRATIVEMENT APRÈS la déclaration du state ci-dessus : posées avant,
   // elles levaient une TDZ au montage (« Cannot access 'jobsByInventaire'
@@ -4950,7 +4896,7 @@ const StockTab = memo(function StockTab({
         // information_schema). Le compteur du plafond quotidien est passé
         // côté SERVEUR le soir même (get-pending-jobs plafond_only) — la
         // colonne reste lue, prête pour tout affichage horodaté des jobs.
-        .select("id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id")
+        .select("id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id, voie")
         .eq("user_id", user.id)
         // 'cancelled' et 'dry_run_completed' AJOUTÉS le 2026-08-05 : sans eux,
         // un republish qui se terminait DISPARAISSAIT de l'écran et la carte
@@ -5070,7 +5016,7 @@ const StockTab = memo(function StockTab({
         // change un comportement visible, ça se décide, ça ne se glisse pas
         // dans un commit de propagation de drapeau.
         platform_fields: pub.listing_url ? {} : { removal_url_missing: true },
-      }).select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title").single();
+      }).select("id, inventaire_id, platform, status, error, created_at, platform_fields, action, listing_url, title, voie").single();
       if (error) {
         console.error('[armRemoveJob] insert:', error.message);
         return lang === 'fr' ? `Le retrait n'a pas pu être lancé (${error.message}).` : `Removal could not be started (${error.message}).`;
@@ -5935,6 +5881,26 @@ const StockTab = memo(function StockTab({
               « Ajouter un article »). L'Import/Export Excel, lui, est replié
               DANS la carte « Ajouter un article ». Rien d'autre n'a bougé. */}
 
+          {/* ── BOUTIQUE ACTIVE, EN PERMANENCE (07/09/2026) ──────────────────
+              Hors du bloc Stock : quelle boutique Chrome porte en ce moment,
+              et ce qui attend une autre (republications ET retraits), nommé —
+              jamais un identifiant (utils/attenteBoutique). Sans bouton : rien
+              n'a échoué, ça repart seul à la reconnexion. Visible dès qu'il y
+              a quelque chose à dire : une boutique relevée, une attente, ou
+              plusieurs boutiques confirmées — un compte mono-boutique sans
+              relevé ne voit rien. */}
+          {(boutiqueConnectee||attenteBoutique||boutiquesVinted.length>=2)&&(
+            <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:12,padding:"9px 12px",fontSize:11.5,lineHeight:1.5,color:"#5C6560"}}>
+              <div style={{fontWeight:700,color:"#10201B"}}>{phraseBoutiqueActive(boutiqueConnectee,lang)}</div>
+              {attenteBoutique&&(
+                <div style={{marginTop:4,color:"#8A6100"}}>
+                  {lignesAttenteBoutique(attenteBoutique,lang).map((l,i)=><div key={i}>⏳ {l}</div>)}
+                  <div style={{marginTop:2,color:"#8A8578"}}>{phraseRassurance(lang)}</div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Barre de recherche + Filtres type ──
               Masquée tant qu'il n'y a RIEN à chercher (2026-08-09) : sur un
               compte vide elle occupait une ligne pleine largeur au-dessus d'un
@@ -6167,34 +6133,14 @@ const StockTab = memo(function StockTab({
                     </button>
                   )}
                 </div>
-                {/* La boutique connectée dans Chrome, EN PERMANENCE — et le
-                    décalage éventuel avec la boutique regardée, dit avec le
-                    geste. Jamais d'identifiant technique. */}
-                <div style={{fontSize:11,lineHeight:1.5,color:"#8A8578",marginTop:5}}>
-                  {boutiqueConnectee
-                    ?(lang==='fr'
-                      ?<>Connectée dans Chrome : <strong>@{boutiqueConnectee.login??'ta boutique'}</strong></>
-                      :<>Signed in in Chrome: <strong>@{boutiqueConnectee.login??'your shop'}</strong></>)
-                    :(lang==='fr'
-                      ?'Boutique connectée dans Chrome : pas encore relevée — elle apparaît dès que ton ordinateur se réveille.'
-                      :'Shop signed in in Chrome: not seen yet — it shows up once your computer wakes up.')}
-                  {boutiqueConnectee&&filterBoutique!=="Toutes"&&filterBoutique!=="sans_origine"&&filterBoutique!==boutiqueConnectee.userId&&(
-                    <span style={{color:"#8A6100"}}>
-                      {lang==='fr'
-                        ?' — tu regardes une autre boutique : ses republications attendront que tu la connectes sur vinted.fr.'
-                        :' — you are viewing another shop: its reposts will wait until you sign in to it on vinted.fr.'}
-                    </span>
-                  )}
-                </div>
-                {attentesParBoutique.length>0&&(
-                  <div style={{fontSize:11,lineHeight:1.5,color:"#8A6100",marginTop:3}}>
-                    {attentesParBoutique.map(([qui,n])=>(
-                      <div key={qui}>
-                        {lang==='fr'
-                          ?`⏳ ${n} article${n>1?'s':''} en attente du dressing ${qui} — connecte-le sur vinted.fr, tout repart tout seul.`
-                          :`⏳ ${n} item${n>1?'s':''} waiting for the ${qui} closet — sign in to it on vinted.fr and they resume.`}
-                      </div>
-                    ))}
+                {/* La boutique active et les attentes sont dites dans l'en-tête
+                    permanent, au-dessus de la liste (07/09). Ici ne reste que
+                    le décalage avec la boutique REGARDÉE, dit avec le geste. */}
+                {boutiqueConnectee&&filterBoutique!=="Toutes"&&filterBoutique!=="sans_origine"&&filterBoutique!==boutiqueConnectee.userId&&(
+                  <div style={{fontSize:11,lineHeight:1.5,color:"#8A6100",marginTop:5}}>
+                    {lang==='fr'
+                      ?'Tu regardes une autre boutique : ses republications et ses retraits attendront que tu la connectes sur vinted.fr.'
+                      :'You are viewing another shop: its reposts and removals will wait until you sign in to it on vinted.fr.'}
                   </div>
                 )}
               </div>
@@ -6613,26 +6559,10 @@ const StockTab = memo(function StockTab({
                     <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578",margin:"2px 2px 4px"}}>{texte}</div>
                   );
                 })()}
-                {/* ── REPUBLICATIONS EN PAUSE : PAS LA BONNE BOUTIQUE ──────────
-                    (2026-09-04) Chrome est connecté à un autre dressing que
-                    celui d'origine des articles : le serveur ne sert pas ces
-                    jobs, ils restent en file, intacts, et repartent SEULS dès
-                    que le bon compte est reconnecté. La seule information utile
-                    est le NOM de la boutique attendue — c'est le seul geste.
-                    Aucun bouton : il n'y a rien à relancer.
-                    Même ton secondaire que la ligne de plafond au-dessus : ce
-                    n'est ni une panne ni une faute, c'est une attente nommée. */}
-                {!modePrixAchat&&!modeRepublish&&pauseBoutique&&(
-                  <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A6100",margin:"2px 2px 4px"}}>
-                    {pauseBoutique.map((p,i)=>(
-                      <div key={i}>
-                        {lang==='fr'
-                          ?`${p.n} republication${p.n>1?'s':''} en pause — elle${p.n>1?'s':''} concerne${p.n>1?'nt':''} ta boutique ${p.login?`@${p.login}`:'d’origine'}, reconnecte-toi dessus dans Chrome pour ${p.n>1?'qu’elles repartent':'qu’elle reparte'}.`
-                          :`${p.n} repost${p.n>1?'s':''} paused — ${p.n>1?'they belong':'it belongs'} to your ${p.login?`@${p.login}`:'original'} shop, sign back in to it in Chrome and ${p.n>1?'they resume':'it resumes'}.`}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* (Les republications en pause faute de la bonne boutique
+                    sont dites UNE fois, dans l'en-tête permanent au-dessus de
+                    la liste — même calcul que la fiche et la feuille de masse,
+                    utils/attenteBoutique, 07/09.) */}
                 {/* ── LE RETOUR, LÀ OÙ ON ATTERRIT (2026-09-04) ──────────────
                     « Liste filtrée — re-touche le bouton pour tout
                     réafficher » ne vit qu'EN HAUT du bloc republication.
@@ -6730,7 +6660,11 @@ const StockTab = memo(function StockTab({
                   // l'article n'est plus republiable — un article devenu
                   // 'disparu' juste après sa republication perdait sinon
                   // l'affichage du job qui venait de tourner.
-                  const repubEtape=republishActif?etapeRepublication(repubLatest,lang!=='en',repubPlafondReprise):null;
+                  // Attente de boutique de CET article — même calcul que
+                  // l'en-tête (utils/attenteBoutique) : plus jamais un
+                  // « en attente » muet sur la fiche (07/09).
+                  const attenteFiche=repubLatest?messageFicheAttenteBoutique({connectee:boutiqueConnectee,origine:item.vinted_account_id,boutiques:boutiquesVinted,action:repubLatest.action==='delete'?'delete':'republish',lang}):null;
+                  const repubEtape=republishActif?etapeRepublication(repubLatest,lang!=='en',repubPlafondReprise,attenteFiche):null;
                   // La pastille dit déjà l'état : le message transitoire ne le
                   // répète pas. Il ne reste affiché que quand il apporte autre
                   // chose (refus, échec de relance).
