@@ -21,13 +21,13 @@ export const MARKETPLACE = "EBAY_FR";
 export const ARBRE_FR = "71";
 
 // ── Erreurs eBay REST : premier message lisible + errorId ───────────────────
-export interface ErreurEbay { errorId: number | null; message: string; parametres?: string; }
+export interface ErreurEbay { errorId: number | null; message: string; parametres?: string; params?: Array<{ name: string; value: string }>; }
 export function lireErreurEbay(json: unknown, texte: string): ErreurEbay {
   const errs = (json as { errors?: Array<{ errorId?: number; message?: string; longMessage?: string; parameters?: Array<{ name?: string; value?: string }> }> } | null)?.errors;
   if (Array.isArray(errs) && errs.length) {
     const e = errs[0];
     const params = (e.parameters ?? []).map((p) => `${p.name ?? "?"}=${p.value ?? ""}`).join(", ");
-    return { errorId: e.errorId ?? null, message: String(e.longMessage ?? e.message ?? "").slice(0, 400), parametres: params || undefined };
+    return { errorId: e.errorId ?? null, message: String(e.longMessage ?? e.message ?? "").slice(0, 400), parametres: params || undefined, params: (e.parameters ?? []).map((p) => ({ name: String(p.name ?? ""), value: String(p.value ?? "") })) };
   }
   const warns = (json as { warnings?: Array<{ message?: string }> } | null)?.warnings;
   if (Array.isArray(warns) && warns.length) return { errorId: null, message: String(warns[0].message ?? "").slice(0, 400) };
@@ -137,6 +137,26 @@ export async function aspectsCategorie(admin: SupabaseClient, env: EbayEnv, toke
     }, { onConflict: "category_id" });
   } catch (_e) { /* best-effort */ }
   return { aspects: lignes.map(normaliserCache), source: "taxonomy" };
+}
+
+// Après un refus 25129 (« no longer support custom values for … »), eBay
+// impose SES valeurs pour cet aspect même si Taxonomy le dit encore FREE_TEXT
+// (relevé 06/09 : « Taille » des T-shirts homme, 15687 — Taxonomy relu =
+// toujours FREE_TEXT, publication refusée quand même). On grave donc le mode
+// SELECTION_ONLY dans la ligne du cache pour cet aspect : l'IA est contrainte
+// à la liste, une valeur hors liste devient « manquant » → mini-éditeur.
+export async function marquerAspectFerme(admin: SupabaseClient, categoryId: string, nomAspect: string): Promise<boolean> {
+  const { data } = await admin.from("ebay_item_aspects").select("aspects, note").eq("category_id", categoryId).maybeSingle();
+  if (!data || !Array.isArray(data.aspects)) return false;
+  let touche = false;
+  const aspects = (data.aspects as Array<Record<string, unknown>>).map((a) => {
+    if (String(a.name ?? "") !== nomAspect) return a;
+    touche = true;
+    return { ...a, mode: "SELECTION_ONLY", mode_taxonomy: a.mode_taxonomy ?? a.mode, ferme_par: "refus_25129", ferme_le: new Date().toISOString() };
+  });
+  if (!touche) return false;
+  const { error } = await admin.from("ebay_item_aspects").update({ aspects, note: `${String(data.note ?? "")} · ${nomAspect} fermé (25129)`.slice(0, 300) }).eq("category_id", categoryId);
+  return !error;
 }
 
 function normaliserCache(a: Record<string, unknown>): AspectCatalogue {
