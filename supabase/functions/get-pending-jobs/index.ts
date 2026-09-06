@@ -445,6 +445,53 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
+    // ── UNE REPUBLICATION ORPHELINE N'EST JAMAIS SERVIE (2026-09-06) ────────
+    // Supprimer un article n'annulait pas ses REPUBLICATIONS (App.jsx,
+    // buildDeletePlan, corrigé le même jour). La FK
+    // cross_post_jobs_inventaire_id_fkey étant en ON DELETE **SET NULL**, la
+    // republication survivante perdait son `inventaire_id` : plus rattachable
+    // à aucune ligne de Stock, donc INVISIBLE dans l'app — mais toujours
+    // distribuée ici, et toujours en train de travailler sur l'annonce d'un
+    // article qui n'existe plus. Sa machine à étapes commence par SUPPRIMER
+    // l'annonce de Vinted avant de la recréer : sur les 12 orphelines relevées
+    // en prod (7 comptes), 4 se sont arrêtées entre les deux, sur « annonce
+    // retirée de Vinted et pas pu être recréée ». Une annonce perdue, sans
+    // rien à l'écran pour le dire.
+    //
+    // La correction côté app tarit la source ; cette garde est le FILET, et
+    // elle vaut pour le parc entier, tout de suite, sans dépendre d'un
+    // déploiement web ni d'un paquet d'extension.
+    //
+    // PÉRIMÈTRE : action='republish' SEULE. Un `inventaire_id` null sur un
+    // 'publish' ou un 'delete' est normal et doit continuer de passer — le
+    // delete armé par la suppression PERD justement son lien au même
+    // instant (SET NULL), et c'est lui qui doit partir retirer l'annonce ;
+    // l'extension n'a besoin que de platform + listing_url. Le retenir ici
+    // laisserait l'annonce en ligne pour toujours : exactement le trou qu'on
+    // ferme.
+    //
+    // ⛔ RIEN N'EST REFUSÉ, RIEN N'EST ÉCRIT : le job n'est pas servi, il
+    // reste tel quel, aucune tentative consommée, aucun 'failed', aucun
+    // 'needs_user'. Cette garde ne fait que ne pas distribuer.
+    //
+    // ⚠️ TOUS LES MODES, y compris le popup (contrairement aux retenues
+    // ci-dessous, qui laissent le popup voir la file complète). Les autres
+    // sont TRANSITOIRES — la boutique se reconnecte, le plafond retombe à
+    // minuit, la sync passe : le job repart. Celle-ci est DÉFINITIVE :
+    // l'article n'existe plus, le lien ne reviendra jamais. L'afficher, ce
+    // serait promettre un travail qui n'aura pas lieu.
+    const orphelinesRepublish = out.filter((j) => j.action === "republish" && j.inventaire_id == null);
+    if (orphelinesRepublish.length) {
+      const ids = new Set(orphelinesRepublish.map((j) => j.id));
+      out = out.filter((j) => !ids.has(j.id));
+      console.log(
+        `[get-pending-jobs] userId=${user.id} : ${orphelinesRepublish.length} republication(s) ORPHELINE(S) ` +
+        `(inventaire_id null — article supprimé) non servie(s) : ` +
+        `${orphelinesRepublish.map((j) => `${String(j.id).slice(0, 8)}/${j.platform}/${j.status}`).join(", ")}. ` +
+        `Aucune écriture, aucune tentative consommée.`,
+      );
+    }
+
     // ── LA SYNC PASSE DEVANT LA FILE (2026-09-04, cas ornellaracano) ────────
     // Constaté en réel : 189 republications en file, une demande de sync
     // derrière, et l'app annonçait « environ 16 h ». Quatre clics en deux

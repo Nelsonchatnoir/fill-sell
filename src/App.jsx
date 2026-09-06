@@ -3810,10 +3810,31 @@ export default function App({ loginOnly = false }){
       const prec=parPlateforme[j.platform];
       if(!prec||Date.parse(j.created_at||0)>Date.parse(prec.created_at||0))parPlateforme[j.platform]=j;
     }
-    // À annuler : les PUBLISH non terminaux, needs_user compris. Les delete
-    // actifs restent épargnés (cf. ci-dessus : les annuler laisserait l'annonce
-    // en ligne).
-    const aAnnuler=jobs.filter(j=>j.action==='publish'&&CANCELLABLE_JOB_STATUSES.includes(j.status));
+    // À annuler : les PUBLISH **ET LES REPUBLISH** non terminaux, needs_user
+    // compris. Les delete actifs restent épargnés (cf. ci-dessus : les annuler
+    // laisserait l'annonce en ligne).
+    //
+    // ── LES REPUBLICATIONS SURVIVAIENT À LA SUPPRESSION (2026-09-06) ────────
+    // Le filtre disait `j.action==='publish'` : une REPUBLICATION en cours
+    // n'était donc jamais annulée. Elle survivait au delete de l'article et,
+    // la FK étant en ON DELETE SET NULL, elle le faisait EN ORPHELINE
+    // (inventaire_id null) — plus rattachable à aucune ligne de Stock, donc
+    // invisible dans l'app, mais toujours servie par get-pending-jobs. Elle
+    // continuait de travailler sur l'annonce d'un article qui n'existe plus :
+    // la retirer de Vinted, puis tenter de la recréer. 12 orphelines relevées
+    // en prod sur 7 comptes, dont 4 finies sur « annonce retirée de Vinted et
+    // pas pu être recréée » — c'est-à-dire une annonce PERDUE pour de bon.
+    // Supprimer un article doit tout arrêter, republication comprise.
+    //
+    // ⛔ PÉRIMÈTRE. `jobs` vient d'une lecture déjà bornée à
+    // `.eq('user_id',user.id).eq('inventaire_id',id)` : ce filtre ne peut
+    // atteindre que les jobs de CET article, jamais ceux d'un autre. Et le
+    // test est `!=='delete'`, pas une liste blanche : les retraits — ceux
+    // déjà en cours comme ceux que performItemDeletion s'apprête à armer —
+    // sont les seuls à devoir partir, ils ne sont jamais annulés ici.
+    // (`action` null = ligne historique, donc un publish : `!=='delete'` la
+    // prend, comme le faisait `==='publish'` sur les lignes estampillées.)
+    const aAnnuler=jobs.filter(j=>(j.action??'publish')!=='delete'&&CANCELLABLE_JOB_STATUSES.includes(j.status));
     // republishEnVol (2026-08-10) : entre la suppression et la recréation d'une
     // republication, l'annonce est LÉGITIMEMENT hors ligne. La sonde d'avant-
     // suppression doit se taire dans cette fenêtre — sinon on demanderait
@@ -4025,10 +4046,20 @@ export default function App({ loginOnly = false }){
           // Plateformes des jobs annulés — nommées, pas juste comptées : un
           // « 2 publications annulées » sans dire OÙ n'aide pas à décider.
           const noms=[...new Set(plan.aAnnuler.map(j=>PLATEFORME_LABELS[j.platform]||j.platform))];
+          // Depuis le 06/09 aAnnuler porte AUSSI les republications : les
+          // nommer pour ce qu'elles sont. Une republication qu'on annule, ce
+          // n'est pas la même chose qu'une publication qu'on annule —
+          // l'utilisateur qui vient de payer une unité doit lire le mot juste.
+          const nRepub=plan.aAnnuler.filter(j=>j.action==='republish').length;
+          const nPub=n-nRepub;
+          const morceaux=lang==='fr'
+            ?[nPub>0&&`${nPub} publication${nPub>1?'s':''}`,nRepub>0&&`${nRepub} republication${nRepub>1?'s':''}`]
+            :[nPub>0&&`${nPub} publication${nPub>1?'s':''}`,nRepub>0&&`${nRepub} relisting${nRepub>1?'s':''}`];
+          const liste=morceaux.filter(Boolean).join(lang==='fr'?' et ':' and ');
           return(
             <div>{lang==='fr'
-              ?`${n} publication${n>1?'s':''} en cours ou en attente ${n>1?'seront annulées':'sera annulée'} (${noms.join(', ')}).`
-              :`${n} publication${n>1?'s':''} in progress or awaiting input will be cancelled (${noms.join(', ')}).`}</div>
+              ?`${liste} en cours ou en attente ${n>1?'seront annulées':'sera annulée'} (${noms.join(', ')}).`
+              :`${liste} in progress or awaiting input will be cancelled (${noms.join(', ')}).`}</div>
           );
         })()}
         {plan.retraitsEnCours?.length>0&&(
