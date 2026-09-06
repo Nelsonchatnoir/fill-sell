@@ -130,7 +130,17 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // courant est la 0.6.13 (même contenu + chantier « Prix de départ » eBay :
 // gate pré-clic anti-Enchères, message/diagnostic du refus du brouillon,
 // anti-doublon pré-dépôt sur ebay_draft_id).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19'];
+// 0.6.14, 0.6.17 et 0.6.19 ajoutées le 06/09 au bump 0.6.20 : la liste était
+// restée à 0.6.13 alors que ces trois-là ont bel et bien été téléversées —
+// 0.6.14 (paquet CWS courant noté le 31/08), 0.6.17 (elle TOURNE en prod :
+// c'est le handler_build des jobs du parc), 0.6.19 (« en review » selon le
+// journal de scripts/build-id.mjs). Sans elles, un re-packaging sous l'un de
+// ces numéros passait la garde et se serait fait rejeter par le Web Store.
+// ⚠️ 0.6.15, 0.6.16 et 0.6.18 restent VOLONTAIREMENT absentes : rien dans le
+// dépôt ne prouve qu'elles aient été téléversées (le journal dit même
+// explicitement que la 0.6.18 ne l'a jamais été). On n'inscrit ici que ce qui
+// est établi — inscrire au jugé bloquerait un numéro encore libre.
 // 0.6.13 (94d4104) ajoutée le 31/08 : elle a été TÉLÉVERSÉE et est en examen
 // au CWS. Elle manquait à cette liste — un re-packaging en 0.6.13 serait passé
 // ici et se serait fait rejeter par le Web Store, ce que cette garde existe

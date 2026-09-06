@@ -1189,7 +1189,26 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // paquet publié : rien ne bouge pour la bannière.
 // 2026-09-06 (2) : recalage sur b0de857 (attributs depuis la liste et le détail
 // Vinted) — toujours AUCUN paquet, EXTENSION_MIN_BUILD inchangé.
-export const EXTENSION_LAST_COMMIT = '2026-09-06T13:08:40Z';
+// 2026-09-06T16:34:02Z = PAQUET 0.6.20 (manifest 0.6.19 → 0.6.20). Contenu : les
+// sept commits extension postérieurs à la 0.6.19 (b015336 verdict de
+// suppression, 98fbe79 lot 0.6.20 dont « t is not defined » Leboncoin,
+// 8dd9237 texteComparable, 9f2d4bb + 16837af gabarits de messages, b0de857
+// attributs Vinted, 18191a1 libellés Beebs dupliqués + garde anti-boucle
+// needs_user) PLUS le merge de la branche fix/lbc-apercu-nom-prenom-escrow
+// (9a2269b, aperçu LBC refusé pour nom/prénom manquants). La 0.6.19 est en
+// review au CWS : téléverser la 0.6.20 la REMPLACE (une seule version en
+// attente à la fois).
+// ⚠️ NON EMBARQUÉ, sur décision à prendre : la branche locale
+// fix/service-worker-timeouts (e0cfc3a, « 0.6.18 URGENT », incident du 03/09
+// 21:53) n'est TOUJOURS pas dans main — fetchAvecDelai, flowBeat et
+// LAST_POLL_OUTCOME sont absents du code publié. Elle réécrit tous les fetches
+// du service worker et le verrou de flux : trop de surface pour l'ajouter sans
+// arbitrage explicite. À trancher avant le paquet suivant.
+// EXTENSION_MIN_BUILD INCHANGÉ : il ne se promeut qu'APRÈS acceptation du
+// paquet par Google — la bannière ne doit demander que ce qui est installable.
+// Bumpé DANS LE MÊME COMMIT que le bump du manifest, GIT_COMMITTER_DATE
+// épinglée sur cette constante.
+export const EXTENSION_LAST_COMMIT = '2026-09-06T16:34:02Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
