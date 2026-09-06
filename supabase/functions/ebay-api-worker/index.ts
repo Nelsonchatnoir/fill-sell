@@ -27,7 +27,7 @@ import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { hotes } from "../_shared/ebay-oauth.ts";
 import {
-  aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand,
+  aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand, marquerAspectFerme,
   lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
 
@@ -247,11 +247,40 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     // l'aspect, désormais fermé, ne prendra plus la valeur libre → manquant →
     // needsUserField avec la liste exacte d'eBay. Une 2e fois → needs_user
     // avec le refus eBay tel quel (pas de boucle).
-    const dejaRafraichi = Boolean(((pf.ebay_api as Record<string, unknown>) ?? {}).aspects_rafraichis);
-    if (e.errorId === 25129 && !dejaRafraichi) {
+    // Relevé 06/09 (Adidas, 15687) : Taxonomy relu dit TOUJOURS FREE_TEXT pour
+    // « Taille », eBay refuse quand même la valeur libre. Le rejeu seul ne
+    // suffit donc pas : on lit l'aspect nommé par eBay (paramètre « 2 »), on
+    // grave SELECTION_ONLY dans le cache, et on demande la valeur à
+    // l'utilisateur dans la liste d'eBay (mini-éditeur, liste fermée). Sans
+    // aspect identifiable : rejeu unique après rafraîchissement, puis
+    // needs_user avec le refus tel quel.
+    if (e.errorId === 25129) {
+      const dejaRafraichi = Boolean(((pf.ebay_api as Record<string, unknown>) ?? {}).aspects_rafraichis);
       const frais = await aspectsCategorie(admin, env, token, categoryId, { rafraichir: true });
-      await marquer(admin, job, { status: "pending", error: null }, { etape: "publish", quoi: "aspects_rafraichis_25129", http: pub.http, message: e.message, cache: "erreur" in frais ? `échec : ${frais.erreur}` : `${frais.aspects.length} aspects relus (Taxonomy)` }, { sku, offer_id: offerId, tentatives, aspects_rafraichis: true });
-      return { job: job.id, issue: "aspects_rafraichis", http: pub.http, ebay: e };
+      const nomAspect = (e.params ?? []).find((p) => p.name === "2")?.value?.trim()
+        || (String((e.params ?? []).find((p) => p.name === "0")?.value ?? "").match(/pour\s+(.+?)\.?$/)?.[1] ?? "").trim();
+      const valeurRefusee = (e.params ?? []).find((p) => p.name === "3")?.value?.trim() ?? "";
+      const catAspect = !("erreur" in frais) && nomAspect ? frais.aspects.find((a) => a.name === nomAspect) : undefined;
+      if (catAspect) {
+        const ferme = await marquerAspectFerme(admin, categoryId, nomAspect);
+        const valeurs = catAspect.allowedValues.filter(Boolean).map(String).slice(0, 200);
+        const ebayAspectsJob = { ...((pf.ebayAspects as Record<string, unknown>) ?? {}) };
+        if (valeurRefusee && String(ebayAspectsJob[nomAspect] ?? "") === valeurRefusee) delete ebayAspectsJob[nomAspect];
+        const needsUserField: Record<string, unknown> = {
+          platform: "ebay", field_key: nomAspect, field_label: nomAspect,
+          target: { root: "ebayAspects", key: nomAspect },
+          ...(valeurs.length ? { allowed_values: valeurs, input_type: "selection_only", options_completes: true } : {}),
+          source: "ebay_api_worker_25129",
+        };
+        job.platform_fields = { ...(job.platform_fields ?? {}), ebayAspects: ebayAspectsJob, needsUserField, needsUserAttempts: (Number((job.platform_fields ?? {}).needsUserAttempts) || 0) + 1 };
+        const msg = `eBay n'accepte que ses propres valeurs pour « ${nomAspect} »${valeurRefusee ? ` (« ${valeurRefusee} » refusée)` : ""}. Choisis-en une depuis la fiche de l'article (bouton « ✋ Compléter »), puis « Valider et relancer » : la publication repart d'elle-même.`;
+        await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "publish", quoi: "aspect_ferme_25129", http: pub.http, message: e.message, aspect: nomAspect, valeur_refusee: valeurRefusee || null, cache_ferme: ferme, nb_valeurs: valeurs.length }, { sku, offer_id: offerId, tentatives, aspects_rafraichis: true });
+        return { job: job.id, issue: "needs_user", motif: "aspect_ferme_25129", aspect: nomAspect, valeur_refusee: valeurRefusee, nb_valeurs: valeurs.length, cache_ferme: ferme };
+      }
+      if (!dejaRafraichi) {
+        await marquer(admin, job, { status: "pending", error: null }, { etape: "publish", quoi: "aspects_rafraichis_25129", http: pub.http, message: e.message, cache: "erreur" in frais ? `échec : ${frais.erreur}` : `${frais.aspects.length} aspects relus (Taxonomy)` }, { sku, offer_id: offerId, tentatives, aspects_rafraichis: true });
+        return { job: job.id, issue: "aspects_rafraichis", http: pub.http, ebay: e };
+      }
     }
     await marquer(admin, job, { status: verdictHttp(pub.http, tentatives), error: `eBay a refusé la publication (${pub.http}${e.errorId ? `, ${e.errorId}` : ""}) : ${e.message}${e.parametres ? ` [${e.parametres}]` : ""}` }, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message }, { sku, offer_id: offerId, tentatives });
     return { job: job.id, issue: "publish", http: pub.http, ebay: e };
