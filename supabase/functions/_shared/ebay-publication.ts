@@ -152,8 +152,24 @@ const DEPARTEMENT_PAR_GENRE: Record<string, string[]> = {
 export interface PlatformFields {
   marque?: string | null; taille?: string | null; couleur?: string | null; colors?: string[] | null;
   matiere?: string | null; genre?: string | null; modele?: string | null; stockage?: string | null; etat?: string | null;
+  famille?: string | null; ebayCategoryPath?: string[] | null;
   ebayAspects?: Record<string, string> | null;
   [k: string]: unknown;
+}
+
+// Règles DÉTERMINISTES portées depuis ListingPreviewScreen (defautAspectEbay,
+// 11/08 et 02/09) — une seule doctrine pour les deux voies :
+//   · marque absente ou générique → l'entrée générique de la liste eBay
+//     (« - Sans marque/Générique - ») quand la catégorie en propose une ;
+//   · « Modèle » FREE_TEXT sur un objet sans marque réelle, ou sur un LIVRE
+//     (famille livres_medias, ou chemin de catégorie « Livres… ») →
+//     « Ne s'applique pas » ; SELECTION_ONLY → on laisse manquant.
+const MARQUE_GENERIQUE_RE = /(sans\s*marque|g[ée]n[ée]rique|unbranded|no\s*brand)/i;
+const VALEUR_NE_S_APPLIQUE_PAS = "Ne s'applique pas";
+function estLivre(pf: PlatformFields): boolean {
+  if (String(pf.famille ?? "") === "livres_medias") return true;
+  const racine = Array.isArray(pf.ebayCategoryPath) ? String(pf.ebayCategoryPath[0] ?? "") : "";
+  return /^livres/i.test(racine);
 }
 
 // Valeur candidate pour un aspect : d'abord ce que le job porte déjà
@@ -169,8 +185,11 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
   const sourcesIA = (pf.ebayAspectsSources && typeof pf.ebayAspectsSources === "object") ? pf.ebayAspectsSources as Record<string, string> : {};
   const ebayAspects = (pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {};
   const couleur = (Array.isArray(pf.colors) && pf.colors[0]) ? String(pf.colors[0]) : (pf.couleur ? String(pf.couleur) : "");
+  const marqueBrute = String(pf.marque ?? "").trim();
+  const marqueGenerique = !marqueBrute || MARQUE_GENERIQUE_RE.test(marqueBrute);
+  const entreeGenerique = (liste: string[]) => liste.find((v) => /sans\s*marque|g[ée]n[ée]rique/i.test(v)) ?? "";
   const standard: Record<string, string> = {
-    "Marque": String(pf.marque ?? ""),
+    "Marque": marqueBrute,
     "Taille": String(pf.taille ?? ""),
     "Couleur": couleur,
     "Matière": String(pf.matiere ?? ""),
@@ -188,6 +207,10 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
       source = "genre";
     }
     if (!brut) { brut = String(standard[a.name] ?? "").trim(); source = a.name === "Numéro de pièce fabricant" ? "defaut" : "standard"; }
+    // Marque générique/absente → entrée générique de la liste ; Modèle sans
+    // marque réelle ou sur un livre → « Ne s'applique pas » (FREE_TEXT seul).
+    if (a.name === "Marque" && marqueGenerique) { const g = entreeGenerique(a.allowedValues); if (g) { brut = g; source = "defaut"; } }
+    if (a.name === "Modèle" && !brut && a.mode !== "SELECTION_ONLY" && (marqueGenerique || estLivre(pf))) { brut = VALEUR_NE_S_APPLIQUE_PAS; source = "defaut"; }
     if (!brut) { if (a.required) manquants.push(a.name); continue; }
     const recale = a.allowedValues.length ? valeurDeListeCorrespondante(brut, a.allowedValues) : null;
     if (recale) {
@@ -226,8 +249,32 @@ export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalo
     ebayAspects: { ...((pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {}), ...ia.aspects },
     ebayAspectsSources: Object.fromEntries(Object.keys(ia.aspects).map((k) => [k, "ia"])),
   };
-  const second = assemblerAspects(pf2, catalogue);
-  return { ...second, ia: { demandes: demandes.map((d) => d.name), obtenus: ia.aspects, refuses: ia.refuses, appel: ia.appel_ia } };
+  let second = assemblerAspects(pf2, catalogue);
+  let obtenus = { ...ia.aspects };
+  let refuses = [...ia.refuses];
+  const demandesNoms = demandes.map((d) => d.name);
+  // 2e passe : un aspect FREE_TEXT requis encore vide (ex. « Style » d'un
+  // sweat, dont la liste eBay ne propose que des styles de pull) — eBay
+  // accepte le texte libre, on demande le terme exact du contexte, sans liste.
+  const libres = second.manquants
+    .map((nom) => catalogue.find((c) => c.name === nom))
+    .filter((c): c is AspectCatalogue => Boolean(c) && c.mode !== "SELECTION_ONLY" && c.name !== "Marque")
+    .map((c) => ({ name: c.name, mode: c.mode, allowedValues: c.allowedValues, libre: true }));
+  if (libres.length) {
+    const ia2 = await resoudreAspectsIA(libres, contexte, { apiKey, onUsage });
+    if (Object.keys(ia2.aspects).length) {
+      const pf3: PlatformFields = {
+        ...pf2,
+        ebayAspects: { ...((pf2.ebayAspects && typeof pf2.ebayAspects === "object") ? pf2.ebayAspects : {}), ...ia2.aspects },
+        ebayAspectsSources: { ...((pf2.ebayAspectsSources as Record<string, string>) ?? {}), ...Object.fromEntries(Object.keys(ia2.aspects).map((k) => [k, "ia"])) },
+      };
+      second = assemblerAspects(pf3, catalogue);
+      obtenus = { ...obtenus, ...ia2.aspects };
+    }
+    refuses = [...refuses, ...ia2.refuses];
+    for (const l of libres) if (!demandesNoms.includes(l.name)) demandesNoms.push(l.name);
+  }
+  return { ...second, ia: { demandes: demandesNoms, obtenus, refuses, appel: ia.appel_ia } };
 }
 
 // ── Catégorie : suggestions eBay depuis le titre (repli de la phase 0) ──────

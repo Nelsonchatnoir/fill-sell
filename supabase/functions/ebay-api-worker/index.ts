@@ -200,7 +200,12 @@ function contexteDuJob(job: Job, pf: PlatformFields) {
 // vendeur, combien passeraient SANS needs_user — catégorie, état, photos,
 // aspects (job/standard/défauts + IA sous contrainte). Aucune publication,
 // aucune écriture de job ; seul dépôt possible : le cache d'aspects.
-async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_user_id?: string; limit?: number; inventaire_ids?: number[] }): Promise<Record<string, unknown>> {
+// Options : ignorer_aspects_job (défaut true — on mesure l'IA, pas ce qu'un
+// job antérieur ou une main a déjà posé) ; ignorer_champs_job (défaut false —
+// true = contexte inventaire seul, sans marque/taille/couleur/genre du job).
+async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean }): Promise<Record<string, unknown>> {
+  const ignorerAspects = body.ignorer_aspects_job !== false;
+  const ignorerChamps = body.ignorer_champs_job === true;
   const { data: compte } = await admin.from("ebay_accounts").select("user_id").eq("ebay_user_id", String(body.ebay_user_id ?? "")).maybeSingle();
   if (!compte) return { error: "compte eBay inconnu" };
   const jeton = await obtenirAccessToken(admin, compte.user_id);
@@ -223,7 +228,11 @@ async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_
       const sugg = await suggererCategories(env, token, a.titre);
       if (sugg[0]) { categorie = sugg[0].id; chemin = sugg[0].chemin; categorieSource = "suggestion eBay n°1"; }
     }
-    const pf: PlatformFields = { ...pfJob, marque: pfJob.marque ?? a.marque ?? null, etat: pfJob.etat ?? "Très bon état" };
+    const base: PlatformFields = ignorerChamps
+      ? { ebayCategoryId: pfJob.ebayCategoryId, ebayCategoryPath: pfJob.ebayCategoryPath as string[] | undefined }
+      : { ...pfJob };
+    if (ignorerAspects) { delete base.ebayAspects; delete base.ebayAspectsSources; }
+    const pf: PlatformFields = { ...base, marque: (ignorerChamps ? null : pfJob.marque) ?? a.marque ?? null, etat: (ignorerChamps ? null : pfJob.etat) ?? "Très bon état", ebayCategoryPath: chemin };
     const ligne: Record<string, unknown> = { id: a.id, titre: a.titre, photos, categorie: categorie || null, categorie_source: categorieSource || "aucune", chemin: chemin.join(" > ") };
     if (!categorie) { lignes.push({ ...ligne, passe: false, bloque_par: "catégorie" }); continue; }
     const conditions = await conditionsCategorie(env, token, categorie);
@@ -244,7 +253,7 @@ async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_
     lignes.push({ ...ligne, passe: bloque.length === 0, bloque_par: bloque.join(" ; ") || null });
   }
   const passes = lignes.filter((l) => l.passe).length;
-  return { articles: lignes.length, passent_sans_needs_user: passes, lignes };
+  return { mode: { ignorer_aspects_job: ignorerAspects, ignorer_champs_job: ignorerChamps }, articles: lignes.length, passent_sans_needs_user: passes, lignes };
 }
 
 async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
@@ -284,7 +293,7 @@ Deno.serve(async (req) => {
   const attendu = Deno.env.get("CRON_SECRET");
   if (!attendu || req.headers.get("x-cron-secret") !== attendu) return json({ error: "Non autorisé" }, 401);
 
-  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string; action?: string; ebay_user_id?: string; limit?: number; inventaire_ids?: number[] };
+  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string; action?: string; ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean };
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const env = lireEnvEbay();
   if (body.action === "mesure_aspects") return json(await mesurerAspects(admin, env, body));

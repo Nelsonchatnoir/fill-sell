@@ -21,7 +21,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
 
-export interface AspectDemande { name: string; mode: string; allowedValues: string[]; }
+export interface AspectDemande { name: string; mode: string; allowedValues: string[]; libre?: boolean; }
 export interface ContexteArticle {
   titre?: string | null; description?: string | null; marque?: string | null; modele?: string | null;
   matiere?: string | null; couleur?: string | null; taille?: string | null; genre?: string | null;
@@ -64,8 +64,11 @@ function ligneDemande(a: AspectDemande): string {
     return `- "${a.name}" — LISTE FERMÉE, réponds UNIQUEMENT par une de ces valeurs recopiée caractère pour caractère (apostrophes, accents, espaces compris), sinon null : ${liste.slice(0, LISTE_FERMEE_MAX).join(" | ")}`;
   }
   if (a.name === "Marque") return `- "Marque" — texte libre : la marque telle qu'elle est écrite dans le contexte, sinon null (jamais une marque plausible)`;
+  // 2e passe (aspect FREE_TEXT resté vide après la liste) : eBay accepte le
+  // texte libre — on demande le terme EXACT du contexte, sans liste.
+  if (a.libre) return `- "${a.name}" — texte libre court (1 à 4 mots) : le terme EXACT qui décrit cet aspect dans le contexte (ex. le type ou le style d'article tel qu'écrit dans le titre : « Short de bain », « Sweat », « Robe longue ») ; null seulement si le contexte ne dit rien`;
   if (liste.length && liste.length <= LISTE_COURTE_MAX) {
-    return `- "${a.name}" — valeurs eBay suggérées (préfère l'une d'elles, recopiée caractère pour caractère ; texte libre accepté si aucune ne convient ; null si rien n'est déductible) : ${liste.join(" | ")}`;
+    return `- "${a.name}" — valeurs eBay suggérées (préfère l'une d'elles, recopiée caractère pour caractère ; si AUCUNE ne correspond mais que le contexte le dit, réponds par le terme exact du contexte plutôt que null ; null seulement si rien n'est déductible) : ${liste.join(" | ")}`;
   }
   return `- "${a.name}" — texte libre, uniquement si lisible ou strictement déductible du contexte, sinon null`;
 }
