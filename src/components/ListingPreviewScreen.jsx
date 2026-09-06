@@ -5491,11 +5491,22 @@ export default function ListingPreviewScreen({
       // générique /_type$/ les routait sur lbcProduit (jamais posé pour la
       // mode) → fausse saisie manuelle de l'Univers à chaque vêtement.
       if (key === "clothing_type" || key === "shoe_type") return pf.univers || pf.genre;
-      // house_and_garden_type = « Univers* » de Maison & Jardin (Décoration
-      // d'intérieur/extérieur…) — ce n'est NI le genre NI un produit : aucune
-      // source app fiable → null explicite (résolution IA puis saisie manuelle),
-      // surtout pas lbcProduit qui poserait une valeur FAUSSE silencieuse.
-      if (key === "house_and_garden_type") return null;
+      // house_and_garden_type = « Univers* » de Maison & Jardin > Décoration
+      // (Éclairage/Décoration murale/Objet décoratif…) — ni un genre ni un
+      // produit. Du 17/07 au 07/09 cette clé renvoyait `null` EXPLICITE
+      // (« aucune source app fiable ») — mais genericDedicatedTarget, écrit
+      // plus tard en « parallèle exact », n'a jamais reçu ce cas et route la
+      // clé par /_type$/ vers lbcProduit. Résultat vécu (josephinecerni,
+      // 06/09 23:39, télémétrie champ_requis_bloquant « affiche » puis
+      // « abandonne ») : le sélecteur de l'encart rouge ÉCRIVAIT pf.lbcProduit,
+      // cette lecture ne le relisait jamais → « — » réaffiché, « 1 à
+      // compléter » figé, Leboncoin exclu du clic sur un champ pourtant
+      // rempli. La lecture suit désormais l'écriture : lbcProduit, que
+      // leboncoin.js pose sur label[for$="_type"] — pour Décoration, c'est
+      // précisément ce combobox Univers. Rien ne change dans le job.
+      // ⚠️ decoration_type (« Produit* » de la même feuille) lit et écrit
+      // AUSSI lbcProduit : un seul slot pour deux critères, dette signalée le
+      // 07/09 (6 feuilles Maison & Jardin dans ce cas), pas élargie ici.
       if (/_univers$|_universe$/.test(key)) return pf.univers || pf.genre;
       if (/_type$/.test(key) || /_product$/.test(key) || key === "baby_clothing_category" || key === "clothing_category") return pf.lbcProduit;
       return null;
