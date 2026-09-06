@@ -181,7 +181,57 @@ export interface PlatformFields {
   matiere?: string | null; genre?: string | null; modele?: string | null; stockage?: string | null; etat?: string | null;
   famille?: string | null; ebayCategoryPath?: string[] | null;
   ebayAspects?: Record<string, string> | null;
+  // Lot 1 (07/09/2026) : champs comblés depuis inventaire.attributs et leur
+  // étiquette ('attributs' | 'lens') — cf. enrichirDepuisAttributs.
+  attributsSources?: Record<string, "attributs" | "lens"> | null;
+  attributs_visibles?: Record<string, unknown> | null;
+  objet?: string | null; isbn?: string | null;
   [k: string]: unknown;
+}
+
+// ── inventaire.attributs → champs du job (lot 1, 07/09/2026) ────────────────
+// Le job reste la photographie des choix de l'utilisateur : un champ NON VIDE
+// du job gagne toujours ; attributs (sync liste, détail Vinted, capture, Lens,
+// saisie — fusionnés par priorité EN BASE, trigger inventaire_attributs_fusion)
+// ne fait que combler les vides. Chaque champ comblé est étiqueté dans
+// pf.attributsSources ('lens' si la valeur vient d'un scan, 'attributs' sinon)
+// pour que last_diagnostic.sources dise d'où vient chaque aspect ; `utilises`
+// garde la source exacte (vinted_liste, vinted_detail, capture, manuel, lens).
+export type AttributsInventaire = Record<string, { v?: unknown; source?: string; at?: string } | undefined>;
+const CHAMPS_ATTRIBUTS_TEXTE = ["taille", "etat", "marque", "couleur", "matiere", "genre", "modele", "isbn", "famille", "objet"] as const;
+function champVide(x: unknown): boolean { return x == null || (typeof x === "string" && !x.trim()); }
+export function enrichirDepuisAttributs(pf: PlatformFields, attributs: AttributsInventaire | null | undefined): { pf: PlatformFields; utilises: Record<string, string>; disponibles: string[] } {
+  const out: PlatformFields = { ...pf };
+  const utilises: Record<string, string> = {};
+  const attributsSources: Record<string, "attributs" | "lens"> = { ...((pf.attributsSources as Record<string, "attributs" | "lens"> | null) ?? {}) };
+  const a: AttributsInventaire = (attributs && typeof attributs === "object") ? attributs : {};
+  const lire = (cle: string): { v: unknown; source: string } | null => {
+    const champ = a[cle];
+    if (!champ || typeof champ !== "object" || champVide(champ.v)) return null;
+    return { v: champ.v, source: String(champ.source ?? "") };
+  };
+  for (const cle of CHAMPS_ATTRIBUTS_TEXTE) {
+    const lu = lire(cle);
+    if (!lu || typeof lu.v !== "string") continue;
+    // couleur : le job porte colors[] (split Vinted) ou couleur — l'un ou
+    // l'autre non vide vaut choix du job.
+    const dejaLa = cle === "couleur"
+      ? (!champVide(out.couleur) || (Array.isArray(out.colors) && out.colors.length > 0))
+      : !champVide(out[cle]);
+    if (dejaLa) continue;
+    out[cle] = lu.v.trim();
+    utilises[cle] = lu.source;
+    attributsSources[cle] = lu.source === "lens" ? "lens" : "attributs";
+  }
+  const av = lire("attributs_visibles");
+  const avJob = out.attributs_visibles;
+  const avJobVide = !(avJob && typeof avJob === "object" && Object.keys(avJob as object).length);
+  if (av && av.v && typeof av.v === "object" && !Array.isArray(av.v) && Object.keys(av.v as object).length && avJobVide) {
+    out.attributs_visibles = av.v as Record<string, unknown>;
+    utilises.attributs_visibles = av.source;
+  }
+  out.attributsSources = attributsSources;
+  return { pf: out, utilises, disponibles: Object.keys(a).filter((k) => lire(k) !== null) };
 }
 
 // Règles DÉTERMINISTES portées depuis ListingPreviewScreen (defautAspectEbay,
@@ -203,13 +253,21 @@ function estLivre(pf: PlatformFields): boolean {
 // (ebayAspects, posé par l'app / la réponse needs_user), puis nos champs
 // standard. Recalée sur la liste eBay quand elle y correspond ; SELECTION_ONLY
 // hors liste = manquant (eBay refuserait) ; FREE_TEXT hors liste = gardé tel quel.
-export type SourceAspect = "job" | "genre" | "standard" | "defaut" | "ia";
+// 'attributs' / 'lens' (lot 1, 07/09/2026) : valeur standard comblée depuis
+// inventaire.attributs — respectivement une source Vinted/capture/saisie, ou
+// un scan Lens (stepper ou worker).
+export type SourceAspect = "job" | "genre" | "standard" | "attributs" | "lens" | "defaut" | "ia";
+const CHAMP_PAR_ASPECT: Record<string, string> = {
+  "Marque": "marque", "Taille": "taille", "Couleur": "couleur", "Matière": "matiere", "Modèle": "modele",
+  "Capacité de stockage": "stockage", "ISBN": "isbn",
+};
 export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[]): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[]; sources: Record<string, SourceAspect> } {
   const aspects: Record<string, string[]> = {};
   const manquants: string[] = [];
   const recalages: string[] = [];
   const sources: Record<string, SourceAspect> = {};
   const sourcesIA = (pf.ebayAspectsSources && typeof pf.ebayAspectsSources === "object") ? pf.ebayAspectsSources as Record<string, string> : {};
+  const attributsSources = (pf.attributsSources && typeof pf.attributsSources === "object") ? pf.attributsSources as Record<string, string> : {};
   const ebayAspects = (pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {};
   const couleur = (Array.isArray(pf.colors) && pf.colors[0]) ? String(pf.colors[0]) : (pf.couleur ? String(pf.couleur) : "");
   const marqueBrute = String(pf.marque ?? "").trim();
@@ -222,6 +280,7 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
     "Matière": String(pf.matiere ?? ""),
     "Modèle": String(pf.modele ?? ""),
     "Capacité de stockage": String(pf.stockage ?? ""),
+    "ISBN": String(pf.isbn ?? ""),
     "Numéro de pièce fabricant": "Ne s'applique pas",
   };
   for (const a of catalogue) {
@@ -233,7 +292,13 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
       brut = cands.find((c) => valeurDeListeCorrespondante(c, a.allowedValues)) ?? cands[0] ?? "";
       source = "genre";
     }
-    if (!brut) { brut = String(standard[a.name] ?? "").trim(); source = a.name === "Numéro de pièce fabricant" ? "defaut" : "standard"; }
+    if (!brut) {
+      brut = String(standard[a.name] ?? "").trim();
+      // Étiquette de provenance : champ posé par le stepper ('standard'),
+      // comblé depuis inventaire.attributs ('attributs' / 'lens'), ou défaut.
+      const origine = attributsSources[CHAMP_PAR_ASPECT[a.name] ?? ""];
+      source = a.name === "Numéro de pièce fabricant" ? "defaut" : origine === "lens" ? "lens" : origine === "attributs" ? "attributs" : "standard";
+    }
     // Marque générique/absente → entrée générique de la liste ; Modèle sans
     // marque réelle ou sur un livre → « Ne s'applique pas » (FREE_TEXT seul).
     if (a.name === "Marque" && marqueGenerique) { const g = entreeGenerique(a.allowedValues); if (g) { brut = g; source = "defaut"; } }

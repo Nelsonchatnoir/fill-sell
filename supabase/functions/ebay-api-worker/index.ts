@@ -18,8 +18,17 @@
 //     révoqué → needs_user « reconnecte ton compte eBay » ;
 //   · une erreur eBay est écrite TELLE QUELLE dans error + last_diagnostic
 //     {voie:'api', etape, http, errorId} — jamais un silence ;
-//   · rien d'inventé : catégorie et champs viennent du job, conditions et
-//     aspects d'eBay (Metadata/Taxonomy) ou du cache ebay_item_aspects.
+//   · rien d'inventé : catégorie et champs viennent du job, PUIS de
+//     inventaire.attributs (lot 1, 07/09 : sync liste, détail Vinted, capture,
+//     Lens, saisie — fusionnés par priorité en base ; un champ non vide du job
+//     gagne toujours, attributs comble les vides), PUIS de l'IA texte sous
+//     contrainte ; conditions et aspects d'eBay (Metadata/Taxonomy) ou du
+//     cache ebay_item_aspects ;
+//   · lot 2 (07/09) : couleur / matière / taille encore vides après le job
+//     et attributs → Lens en mode IDENTIFY (jamais full) sur les photos du
+//     job, UNE fois par article à vie (marqueur attributs.lens_scan posé
+//     AVANT l'appel), sans Pépite ni quota utilisateur ; un échec de Lens ne
+//     fait jamais échouer la publication.
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
@@ -27,12 +36,20 @@ import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { hotes } from "../_shared/ebay-oauth.ts";
 import {
-  aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand, marquerAspectFerme,
-  lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos, type PlatformFields,
+  aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
+  lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos, type AttributsInventaire, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
 
-const HANDLER_BUILD = "ebay-api-worker 2a";
+const HANDLER_BUILD = "ebay-api-worker 3-lens";
 const LOT_MAX = 10;
+// Budget d'une passe (lot 2) : un scan Lens identify = 7-9 s dans l'isolat
+// (p50 7,1 s / p90 8,6 s mesurés sur 30 jours) ; au-delà de
+// SCANS_MAX_PAR_PASSE scans ou de PASSE_MAX_MS, la passe rend la main et le
+// tick suivant (2 min) reprend les jobs restés pending.
+const SCANS_MAX_PAR_PASSE = 3;
+const PASSE_MAX_MS = 100_000;
+const LENS_TIMEOUT_MS = 45_000;
+interface Passe { scans: number; debut: number }
 const MSG_RETRAIT = "Annonce retirée par le vendeur (retrait ciblé depuis l'app) — pas une vente";
 
 interface Job {
@@ -63,14 +80,42 @@ function verdictHttp(http: number, tentatives: number): "needs_user" | "pending"
   return "needs_user";
 }
 
-async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
-  const pf = (job.platform_fields ?? {}) as PlatformFields;
-  const tentatives = Number(((pf.ebay_api as Record<string, unknown>) ?? {}).tentatives ?? 0) + 1;
+async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: Job, passe?: Passe): Promise<Record<string, unknown>> {
+  // pfJob = la photographie des choix de l'utilisateur (jamais réécrite par
+  // l'enrichissement) ; pf = la copie de travail, comblée depuis
+  // inventaire.attributs puis, au besoin, par le scan Lens.
+  const pfJob = (job.platform_fields ?? {}) as PlatformFields;
+  const tentatives = Number(((pfJob.ebay_api as Record<string, unknown>) ?? {}).tentatives ?? 0) + 1;
   const photos = urlsPhotos(job.photos);
   const prix = Number(job.price);
   // Sans photo, rien ne part — arrêté ICI, avant tout appel eBay, cause nommée.
   if (!photos.length) { await marquer(admin, job, { status: "needs_user", error: "Cet article n'a aucune photo : eBay exige au moins une image. Ajoute une photo à l'article, puis relance la publication." }, { etape: "controle", quoi: "photos_absentes" }); return { job: job.id, issue: "needs_user", motif: "photos_absentes" }; }
-  const categorie = await resoudreCategorie(env, token, { title: (await titreInventaire(admin, job.inventaire_id)) || job.title }, pf);
+  if (!(prix > 0)) { await marquer(admin, job, { status: "needs_user", error: "Prix absent ou nul." }, { etape: "controle", quoi: "prix_absent" }); return { job: job.id, issue: "needs_user", motif: "prix_absent" }; }
+  if (!job.inventaire_id) { await marquer(admin, job, { status: "failed", error: "Job sans inventaire_id : impossible de former le SKU." }, { etape: "controle", quoi: "inventaire_absent" }); return { job: job.id, issue: "failed", motif: "inventaire_absent" }; }
+
+  // ── Lot 1 (07/09) : l'article en base — titre (catégorie) et attributs. ──
+  const inv = await lireInventaire(admin, job.inventaire_id);
+  let attributs = inv.attributs;
+  let enrichi = enrichirDepuisAttributs(pfJob, attributs);
+  let pf = enrichi.pf;
+
+  // Filet photos (décision Nico 06/09) : toute URL hors de notre Storage est
+  // copiée chez nous AVANT d'appeler eBay (et avant Lens) ; le job garde
+  // alors NOS URLs.
+  const rap = await rapatrierPhotosPublication(admin, photos, job.user_id, job.inventaire_id);
+  if (rap.rapatriees > 0) {
+    const nouvellesPhotos = rap.urls.map((u, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url: u }));
+    await admin.from("cross_post_jobs").update({ photos: nouvellesPhotos }).eq("id", job.id);
+    job.photos = nouvellesPhotos;
+  }
+  const photosPublication = rap.urls;
+
+  // ── Lot 2 (07/09) : Lens identify côté serveur, UNE fois par article. ────
+  const scan = await scannerLensSiNecessaire(admin, job, pf, attributs, photosPublication, inv.titre || job.title || "", passe);
+  if (scan.attributs) { attributs = scan.attributs; enrichi = enrichirDepuisAttributs(pfJob, attributs); pf = enrichi.pf; }
+  const diagAttributs = { attributs: { utilises: enrichi.utilises, disponibles: enrichi.disponibles }, lens: scan.resume };
+
+  const categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, (pf.famille as string | null) ?? null);
   if ("choix" in categorie) {
     const mappee = String(pf.ebayCategoryId ?? "").trim();
     const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
@@ -87,23 +132,16 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     // ebayCategorieAttente : posé ICI, lu à la relance — relancer sans rien
     // changer vaut confirmation du mapping de l'app (jamais une boucle).
     job.platform_fields = { ...(job.platform_fields ?? {}), ebayCategorieAttente: { mapping: mappee || null, choix: categorie.choix, at: new Date().toISOString() } };
-    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "categorie", quoi: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, motif: categorie.motif, suggestions: categorie.suggestions });
+    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "categorie", quoi: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, motif: categorie.motif, suggestions: categorie.suggestions, ...diagAttributs });
     return { job: job.id, issue: "needs_user", motif: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, detail: categorie.motif };
   }
   const categoryId = categorie.id;
-  if (categorie.source !== "mapping" && categorie.source !== "mapping_confirme_par_relance") pf.ebayCategoryPath = categorie.chemin;
-
-  if (!(prix > 0)) { await marquer(admin, job, { status: "needs_user", error: "Prix absent ou nul." }, { etape: "controle", quoi: "prix_absent" }); return { job: job.id, issue: "needs_user", motif: "prix_absent" }; }
-  if (!job.inventaire_id) { await marquer(admin, job, { status: "failed", error: "Job sans inventaire_id : impossible de former le SKU." }, { etape: "controle", quoi: "inventaire_absent" }); return { job: job.id, issue: "failed", motif: "inventaire_absent" }; }
-  // Filet photos (décision Nico 06/09) : toute URL hors de notre Storage est
-  // copiée chez nous AVANT d'appeler eBay ; le job garde alors NOS URLs.
-  const rap = await rapatrierPhotosPublication(admin, photos, job.user_id, job.inventaire_id);
-  if (rap.rapatriees > 0) {
-    const nouvellesPhotos = rap.urls.map((u, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url: u }));
-    await admin.from("cross_post_jobs").update({ photos: nouvellesPhotos }).eq("id", job.id);
-    job.photos = nouvellesPhotos;
+  if (categorie.source !== "mapping" && categorie.source !== "mapping_confirme_par_relance") {
+    pf.ebayCategoryPath = categorie.chemin;
+    // pf est une copie de travail : le chemin retenu doit aussi atteindre le
+    // job (marquer() écrit job.platform_fields).
+    job.platform_fields = { ...(job.platform_fields ?? {}), ebayCategoryPath: categorie.chemin };
   }
-  const photosPublication = rap.urls;
 
   // 1. Emplacement marchand (une fois par vendeur).
   const empl = await emplacementMarchand(admin, env, token, job.user_id);
@@ -162,7 +200,7 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     };
     job.platform_fields = { ...(job.platform_fields ?? {}), needsUserField, needsUserAttempts: (Number((job.platform_fields ?? {}).needsUserAttempts) || 0) + 1 };
     const msg = `eBay exige encore : ${manquants.join(", ")}. Renseigne « ${premier} » depuis la fiche de l'article (bouton « ✋ Compléter »), puis « Valider et relancer » : la publication repart d'elle-même.`;
-    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "aspects", quoi: "aspects_manquants", manquants, champ_propose: premier, ferme, nb_valeurs: valeurs.length, source_catalogue: cat.source, ia: rempli.ia, sources: rempli.sources });
+    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "aspects", quoi: "aspects_manquants", manquants, champ_propose: premier, ferme, nb_valeurs: valeurs.length, source_catalogue: cat.source, ia: rempli.ia, sources: rempli.sources, ...diagAttributs });
     return { job: job.id, issue: "needs_user", motif: "aspects_manquants", manquants, champ_propose: premier, ferme, nb_valeurs: valeurs.length, ia: rempli.ia };
   }
 
@@ -290,7 +328,7 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const publishedAt = new Date().toISOString();
   await marquer(admin, job,
     { status: "published", error: null, platform_listing_id: listingId, listing_url: urlAnnonce(listingId), published_at: publishedAt },
-    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin, suggestions: categorie.suggestions }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs } },
+    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin, suggestions: categorie.suggestions }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, ...diagAttributs },
     { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives });
   return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
 }
@@ -326,12 +364,111 @@ type Categorie = { id: string; chemin: string[]; source: string; detail?: string
 // fois en Haltères (820094103491, 820094121646, retirées). Avec le titre de
 // l'inventaire (auteurs compris) : 6 Livres sur 8 → needs_user. On interroge
 // donc le titre de l'inventaire, repli sur celui du job.
-async function titreInventaire(admin: SupabaseClient, inventaireId: number | null): Promise<string> {
-  if (!inventaireId) return "";
-  const { data } = await admin.from("inventaire").select("titre").eq("id", inventaireId).maybeSingle();
-  return String((data as { titre?: string } | null)?.titre ?? "").trim();
+async function lireInventaire(admin: SupabaseClient, inventaireId: number | null): Promise<{ titre: string; attributs: AttributsInventaire | null }> {
+  if (!inventaireId) return { titre: "", attributs: null };
+  const { data } = await admin.from("inventaire").select("titre, attributs").eq("id", inventaireId).maybeSingle();
+  const ligne = data as { titre?: string; attributs?: unknown } | null;
+  const attributs = (ligne?.attributs && typeof ligne.attributs === "object" && !Array.isArray(ligne.attributs)) ? ligne.attributs as AttributsInventaire : null;
+  return { titre: String(ligne?.titre ?? "").trim(), attributs };
 }
-async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "title">, pf: PlatformFields): Promise<Categorie> {
+
+// ── Lot 2 (07/09/2026) : Lens identify côté serveur, UNE fois par article ──
+// Déclenché quand couleur, matière ou taille manquent encore APRÈS le job et
+// inventaire.attributs, et qu'aucun scan n'a jamais été posé sur l'article.
+// RÉSERVATION AVANT L'APPEL : le marqueur attributs.lens_scan est écrit par un
+// UPDATE conditionnel (attributs->lens_scan IS NULL) — 0 ligne = quelqu'un
+// d'autre l'a posé (job jumeau, relance concurrente, autre plateforme) et on
+// ne scanne pas. Le marqueur survit donc aux retries, aux relances manuelles,
+// aux jobs recréés et aux autres plateformes : UN scan par article à vie,
+// échec compris (une tentative qui a atteint l'API a coûté ; elle n'est
+// jamais rejouée en silence — pour réarmer, retirer la clé lens_scan à la
+// main). Mode identify FORCÉ côté lens-analysis (jamais full, même en repli).
+// Un échec de Lens ne fait JAMAIS échouer la publication : l'article part
+// avec ses trous, le mini-éditeur prend le relais s'il manque un requis.
+interface ResumeScan { statut: "non_necessaire" | "deja_scanne" | "reserve_ailleurs" | "sans_photo" | "ok" | "echec"; champs_manquants?: string[]; champs_lus?: string[]; detail?: string; duree_ms?: number; photos?: number; at?: string }
+function texteOuNull(x: unknown): string | null {
+  return (typeof x === "string" && x.trim() && x.trim().toLowerCase() !== "null") ? x.trim() : null;
+}
+async function scannerLensSiNecessaire(admin: SupabaseClient, job: Job, pf: PlatformFields, attributs: AttributsInventaire | null, photos: string[], titre: string, passe?: Passe): Promise<{ resume: ResumeScan; attributs: AttributsInventaire | null }> {
+  const manque = ["couleur", "matiere", "taille"].filter((c) => {
+    if (c === "couleur") return !texteOuNull(pf.couleur) && !(Array.isArray(pf.colors) && pf.colors.length > 0);
+    return !texteOuNull(pf[c]);
+  });
+  if (!manque.length) return { resume: { statut: "non_necessaire" }, attributs: null };
+  const deja = attributs?.lens_scan?.v;
+  if (deja && typeof deja === "object") return { resume: { statut: "deja_scanne", champs_manquants: manque, detail: JSON.stringify(deja).slice(0, 240) }, attributs: null };
+  if (!photos.length) return { resume: { statut: "sans_photo", champs_manquants: manque }, attributs: null };
+  const at = new Date().toISOString();
+  const marqueur = (v: Record<string, unknown>) => ({ lens_scan: { v, source: "lens", at } });
+  // Réservation atomique — le trigger de fusion garde toutes les autres clés.
+  const { data: reserve, error: errReserve } = await admin.from("inventaire")
+    .update({ attributs: marqueur({ statut: "en_cours", mode: "identify", motif: "ebay_api", job: job.id, at, photos: photos.length }) })
+    .eq("id", job.inventaire_id).eq("user_id", job.user_id).is("attributs->lens_scan", null).select("id");
+  if (errReserve) return { resume: { statut: "echec", champs_manquants: manque, detail: `réservation refusée : ${errReserve.message}`.slice(0, 300) }, attributs: null };
+  if (!reserve?.length) {
+    const { data: relu } = await admin.from("inventaire").select("attributs").eq("id", job.inventaire_id).maybeSingle();
+    const a = (relu as { attributs?: unknown } | null)?.attributs;
+    return { resume: { statut: "reserve_ailleurs", champs_manquants: manque }, attributs: (a && typeof a === "object") ? a as AttributsInventaire : null };
+  }
+  if (passe) passe.scans += 1;
+  const debut = Date.now();
+  let resultat: Record<string, unknown> | null = null;
+  let detailEchec = "";
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), LENS_TIMEOUT_MS);
+    const cle = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const r = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/lens-analysis`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cle}`, apikey: cle, "x-cron-secret": Deno.env.get("CRON_SECRET") ?? "" },
+      body: JSON.stringify({ origine: "ebay_api", user_id: job.user_id, mode: "identify", lang: "fr", urls: photos.slice(0, 8), ...(titre ? { description: `Titre de l'annonce : ${titre}` } : {}) }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    const texte = await r.text();
+    let json: Record<string, unknown> | null = null;
+    try { json = JSON.parse(texte); } catch { json = null; }
+    if (!r.ok || !json || json.error) detailEchec = `HTTP ${r.status} ${String(json?.error ?? texte.slice(0, 200))}`;
+    else resultat = json;
+  } catch (e) {
+    detailEchec = (e as Error)?.name === "AbortError" ? `délai dépassé (${LENS_TIMEOUT_MS} ms)` : String((e as Error)?.message ?? e);
+  }
+  const duree = Date.now() - debut;
+  if (!resultat) {
+    const { error } = await admin.from("inventaire").update({ attributs: marqueur({ statut: "echec", mode: "identify", motif: "ebay_api", job: job.id, at, duree_ms: duree, photos: photos.length, detail: detailEchec.slice(0, 300) }) }).eq("id", job.inventaire_id);
+    if (error) console.error(`[ebay-api-worker] lens_scan échec non gardé sur ${job.inventaire_id} : ${error.message}`);
+    console.warn(`[ebay-api-worker] Lens identify KO pour l'article ${job.inventaire_id} (job ${job.id}) : ${detailEchec.slice(0, 200)}`);
+    return { resume: { statut: "echec", champs_manquants: manque, detail: detailEchec.slice(0, 300), duree_ms: duree, photos: photos.length, at }, attributs: null };
+  }
+  // Ce que Lens a LU → attributs source lens. La base ne laisse jamais une
+  // lecture IA écraser une valeur Vinted ou une saisie (trigger de fusion) ;
+  // ici on ne pose que ce qui est non vide.
+  const av = (resultat.attributs_visibles && typeof resultat.attributs_visibles === "object" && !Array.isArray(resultat.attributs_visibles)) ? resultat.attributs_visibles as Record<string, unknown> : null;
+  const lus: Record<string, unknown> = {
+    couleur: texteOuNull(resultat.couleur), matiere: texteOuNull(resultat.matiere), taille: texteOuNull(resultat.taille_estimee),
+    marque: texteOuNull(resultat.marque), etat: texteOuNull(resultat.etat_estime), modele: texteOuNull(resultat.modele),
+    famille: texteOuNull(resultat.famille), objet: texteOuNull(resultat.objet), isbn: texteOuNull(av?.isbn_ean),
+    attributs_visibles: av && Object.keys(av).length ? av : null,
+  };
+  const nouveaux: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(lus)) if (v != null) nouveaux[k] = { v, source: "lens", at };
+  const champsLus = Object.keys(nouveaux);
+  nouveaux.lens_scan = { v: { statut: "ok", mode: "identify", motif: "ebay_api", job: job.id, at, duree_ms: duree, photos: photos.length, champs_lus: champsLus, confiance: texteOuNull(resultat.confiance) }, source: "lens", at };
+  const { data: apres, error: errEcriture } = await admin.from("inventaire").update({ attributs: nouveaux }).eq("id", job.inventaire_id).select("attributs").maybeSingle();
+  if (errEcriture) console.error(`[ebay-api-worker] attributs Lens non gardés sur ${job.inventaire_id} : ${errEcriture.message}`);
+  const a = (apres as { attributs?: unknown } | null)?.attributs;
+  // Repli mémoire si la relecture manque : l'existant (toute source ≥ lens) prime, les lectures comblent.
+  const fusionLocale: AttributsInventaire = { ...(nouveaux as AttributsInventaire), ...(attributs ?? {}) };
+  console.log(`[ebay-api-worker] Lens identify OK pour l'article ${job.inventaire_id} (job ${job.id}) : ${champsLus.join(", ") || "rien de lisible"} en ${duree} ms`);
+  return { resume: { statut: "ok", champs_manquants: manque, champs_lus: champsLus, duree_ms: duree, photos: photos.length, at }, attributs: (a && typeof a === "object") ? a as AttributsInventaire : fusionLocale };
+}
+// `famille` (lot 1, 07/09) : la famille lue par Lens (pf.famille, comblée
+// depuis inventaire.attributs). Seule règle qui s'en sert : un article en
+// « livres_medias » ne part jamais en silence hors du rayon Livres — c'est la
+// règle « famille souveraine pour les LIVRES seulement » de l'app
+// (resolveArticleIcon, cas Delavier), portée au serveur.
+const LIVRES_RE = /^livres/i;
+async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "title">, pf: PlatformFields, famille: string | null = null): Promise<Categorie> {
   const mappee = String(pf.ebayCategoryId ?? "").trim();
   const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
   const titre = String(job.title ?? "").trim();
@@ -388,9 +525,29 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
         };
       }
     }
+    // Garde famille livres (lot 1) : la fiche Lens dit « livres_medias » et le
+    // mapping de l'app n'est pas dans Livres → needs_user à choix, comme le
+    // conflit v2 (relancer sans rien changer = garder le mapping, jamais de
+    // boucle). Les suggestions du rayon Livres passent en tête de la liste.
+    if (famille === "livres_medias" && !LIVRES_RE.test(String(cheminMappe[0] ?? "")) && !(pf as Record<string, unknown>).ebayCategorieAttente) {
+      const livres = suggestions.filter((x) => LIVRES_RE.test(String(x.chemin[0] ?? "")));
+      const autres = suggestions.filter((x) => !LIVRES_RE.test(String(x.chemin[0] ?? "")));
+      return {
+        choix: [...livres, ...autres].slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
+        motif: `l'analyse photo classe cet article en Livres et médias ; l'app l'a classé en « ${cheminMappe.join(" > ")} » (${mappee})`,
+        suggestions: resume,
+      };
+    }
     return { id: mappee, chemin: cheminMappe, source: dejaTrancheSource(pf), suggestions: resume };
   }
   if (top) {
+    // Sans mapping, famille livres : la première suggestion du rayon Livres,
+    // sinon needs_user — jamais un livre publié dans un autre rayon.
+    if (famille === "livres_medias" && !LIVRES_RE.test(String(top.chemin[0] ?? ""))) {
+      const livre = suggestions.find((x) => LIVRES_RE.test(String(x.chemin[0] ?? "")));
+      if (livre) return { id: livre.id, chemin: livre.chemin, source: "suggestion_livres", detail: "famille Lens livres_medias : suggestion eBay du rayon Livres retenue", suggestions: resume };
+      return { choix: suggestions.slice(0, 5).map((s) => ({ id: s.id, chemin: s.chemin.join(" > ") })), motif: "l'analyse photo classe cet article en Livres et médias, aucune suggestion eBay dans ce rayon", suggestions: resume };
+    }
     const genre = String(pf.genre ?? "").trim();
     const re = GENRE_DANS_CHEMIN[genre];
     const cheminTexte = top.chemin.join(" > ");
@@ -430,7 +587,7 @@ function contexteDuJob(job: Job, pf: PlatformFields) {
   return {
     titre: job.title, description: job.description, marque: pf.marque as string | null, modele: pf.modele as string | null,
     matiere: pf.matiere as string | null, couleur: (Array.isArray(pf.colors) && pf.colors[0]) ? String(pf.colors[0]) : (pf.couleur as string | null),
-    taille: pf.taille as string | null, genre: pf.genre as string | null, type: null,
+    taille: pf.taille as string | null, genre: pf.genre as string | null, type: (pf.objet as string | null) ?? null,
     attributs: (pf.attributs_visibles && typeof pf.attributs_visibles === "object") ? pf.attributs_visibles as Record<string, unknown> : null,
   };
 }
@@ -450,12 +607,12 @@ async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_
   const jeton = await obtenirAccessToken(admin, compte.user_id);
   if (!jeton.ok) return { error: `jeton : ${jeton.motif}` };
   const token = jeton.token;
-  let q = admin.from("inventaire").select("id, titre, description, marque, type, statut, prix_vente, photos").eq("user_id", compte.user_id).eq("statut", "stock").order("created_at", { ascending: false });
+  let q = admin.from("inventaire").select("id, titre, description, marque, type, statut, prix_vente, photos, attributs").eq("user_id", compte.user_id).eq("statut", "stock").order("created_at", { ascending: false });
   if (Array.isArray(body.inventaire_ids) && body.inventaire_ids.length) q = q.in("id", body.inventaire_ids);
   const { data: articles } = await q.limit(Math.min(30, Number(body.limit) || 10));
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
   const lignes: Record<string, unknown>[] = [];
-  for (const a of (articles ?? []) as Array<{ id: number; titre: string; description: string | null; marque: string | null; type: string | null; prix_vente: number | null; photos: unknown }>) {
+  for (const a of (articles ?? []) as Array<{ id: number; titre: string; description: string | null; marque: string | null; type: string | null; prix_vente: number | null; photos: unknown; attributs: AttributsInventaire | null }>) {
     const photos = urlsPhotos(a.photos).length;
     // Catégorie : celle d'un job eBay existant (mapping icône de l'app), sinon suggestion eBay n°1.
     const { data: job } = await admin.from("cross_post_jobs").select("platform_fields").eq("inventaire_id", a.id).eq("platform", "ebay").not("platform_fields->>ebayCategoryId", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -479,7 +636,12 @@ async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_
     ligne.condition = condition ? `${condition.enumValue} (${condition.id} ${condition.libelle})` : null;
     const cat = await aspectsCategorie(admin, env, token, categorie);
     if ("erreur" in cat) { lignes.push({ ...ligne, passe: false, bloque_par: `aspects : ${cat.erreur}` }); continue; }
-    const rempli = await remplirAspects(pf, cat.aspects, { titre: a.titre, description: a.description, marque: pf.marque as string | null, type: a.type, genre: pf.genre as string | null, taille: pf.taille as string | null, couleur: pf.couleur as string | null }, apiKey);
+    // Lot 1 : la mesure lit inventaire.attributs comme le vrai chemin (sans
+    // scan Lens — la mesure ne coûte rien et n'écrit rien).
+    const enr = enrichirDepuisAttributs(pf, a.attributs);
+    const pfE = enr.pf;
+    ligne.attributs_utilises = enr.utilises;
+    const rempli = await remplirAspects(pfE, cat.aspects, { titre: a.titre, description: a.description, marque: pfE.marque as string | null, modele: pfE.modele as string | null, matiere: pfE.matiere as string | null, type: (pfE.objet as string | null) ?? a.type, genre: pfE.genre as string | null, taille: pfE.taille as string | null, couleur: pfE.couleur as string | null, attributs: (pfE.attributs_visibles as Record<string, unknown> | null) ?? null }, apiKey);
     const requis = cat.aspects.filter((x) => x.required).map((x) => x.name);
     ligne.requis = requis;
     ligne.remplis = Object.fromEntries(Object.entries(rempli.aspects).map(([k, v]) => [k, `${v[0]} ← ${rempli.sources[k] ?? "?"}`]));
@@ -531,7 +693,7 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
 // puis nouvelle publication de la même offre → nouveau listingId. Le job porte
 // republish_step comme la voie formulaire ('deleted' puis 'recreated') pour
 // que la frise de l'app reste lisible.
-async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
+async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job: Job, passe?: Passe): Promise<Record<string, unknown>> {
   if (!job.inventaire_id) { await marquer(admin, job, { status: "failed", error: "Job de republication sans inventaire_id." }, { etape: "controle", quoi: "inventaire_absent" }); return { job: job.id, issue: "failed" }; }
   const sku = skuPour(job.inventaire_id);
   const r = await appelEbay(env, token, `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`);
@@ -546,7 +708,7 @@ async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job
     }
     job.platform_fields = { ...(job.platform_fields ?? {}), republish_step: "deleted" };
   }
-  const res = await publier(admin, env, token, job);
+  const res = await publier(admin, env, token, job, passe);
   if (res.issue === "published") {
     const { data: apres } = await admin.from("cross_post_jobs").select("platform_fields").eq("id", job.id).maybeSingle();
     const pf = { ...((apres?.platform_fields as Record<string, unknown>) ?? {}), republish_step: "recreated" };
@@ -653,7 +815,16 @@ Deno.serve(async (req) => {
   if (!jobs?.length) return json({ traites: 0, reprises });
 
   const resultats: Record<string, unknown>[] = [];
+  // Budget de la passe (lot 2) : au-delà de SCANS_MAX_PAR_PASSE scans Lens ou
+  // de PASSE_MAX_MS, on rend la main — les jobs restés pending sont pris par
+  // le tick suivant (2 min). Compteur PAR REQUÊTE, jamais au niveau module
+  // (deux passes concurrentes partagent l'isolat).
+  const passe: Passe = { scans: 0, debut: Date.now() };
   for (const brut of jobs as Job[]) {
+    if (passe.scans >= SCANS_MAX_PAR_PASSE || Date.now() - passe.debut > PASSE_MAX_MS) {
+      console.log(`[ebay-api-worker] passe bornée : ${passe.scans} scan(s) Lens, ${Math.round((Date.now() - passe.debut) / 1000)} s — le reste attend le tick suivant`);
+      break;
+    }
     // Claim atomique : seul celui qui fait passer pending → processing traite.
     // processing_since posé À LA PRISE (même clé que handler-watch) : c'est
     // lui que lit le chien de garde. Effacé par marquer() à la conclusion.
@@ -672,9 +843,9 @@ Deno.serve(async (req) => {
         resultats.push({ job: job.id, issue: "jeton", motif: jeton.motif });
         continue;
       }
-      if (job.action === "publish") resultats.push(await publier(admin, env, jeton.token, job));
+      if (job.action === "publish") resultats.push(await publier(admin, env, jeton.token, job, passe));
       else if (job.action === "delete") resultats.push(await retirer(admin, env, jeton.token, job));
-      else if (job.action === "republish") resultats.push(await republier(admin, env, jeton.token, job));
+      else if (job.action === "republish") resultats.push(await republier(admin, env, jeton.token, job, passe));
       else {
         await marquer(admin, job, { status: "failed", error: `Action « ${job.action} » non prise en charge par la voie API en 2a.` }, { etape: "controle", quoi: "action_non_geree" });
         resultats.push({ job: job.id, issue: "failed", motif: "action_non_geree" });
@@ -687,5 +858,5 @@ Deno.serve(async (req) => {
     }
   }
   console.log(`[ebay-api-worker] ${resultats.length} job(s) : ${resultats.map((r) => `${String(r.job).slice(0, 8)}=${r.issue}`).join(", ")}`);
-  return json({ traites: resultats.length, resultats });
+  return json({ traites: resultats.length, scans_lens: passe.scans, resultats });
 });

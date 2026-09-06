@@ -1803,14 +1803,31 @@ serve(async (req) => {
     });
   }
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: { user }, error: authError } = await userClient.auth.getUser();
-  if (authError || !user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401, headers: { "Content-Type": "application/json", ...CORS },
+  // ── Appel INTERNE (07/09/2026, lot 2 « Lens identify côté serveur ») ─────
+  // ebay-api-worker appelle cette fonction pour un article qui part sur eBay
+  // sans couleur / matière / taille : jeton service_role en Authorization
+  // (passe la porte verify_jwt) + x-cron-secret (même mécanique que
+  // handler-watch) + user_id dans le corps. Pas de session utilisateur ici :
+  // on n'appelle pas getUser, l'identité vient du corps et n'est acceptée QUE
+  // sous le secret. Sur ce chemin : mode identify FORCÉ (jamais full, même en
+  // repli), aucune Pépite, aucun quota utilisateur (plafond par user sauté,
+  // lignes exclues du comptage par metadata.origine), plafond GLOBAL
+  // journalier conservé (coupe-circuit de coût). Ligne usage_logs : feature
+  // lens_identify, metadata { origine: 'ebay_api', motif: 'ebay_api' }.
+  const secretCron = Deno.env.get("CRON_SECRET");
+  const appelInterne = Boolean(secretCron) && req.headers.get("x-cron-secret") === secretCron;
+  let user: { id: string } | null = null;
+  if (!appelInterne) {
+    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: authHeader } },
     });
+    const { data: { user: u }, error: authError } = await userClient.auth.getUser();
+    if (authError || !u) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+    user = u;
   }
 
   // ── Payant-par-scan (2026-07-23, levée du gate économie v2) ───────────────
@@ -1864,7 +1881,9 @@ serve(async (req) => {
   // plus aucun droit (pure télémétrie), rembourser les unités suffit — la
   // reprise depuis LensTab est gratuite de fait.
   let released = false;
-  const userId = user.id; // capturé hors closure : TS ne garde pas le narrowing
+  // Capturé hors closure (TS ne garde pas le narrowing). `let` : sur l'appel
+  // interne, l'identité n'est connue qu'après lecture du corps.
+  let userId: string = user?.id ?? "";
   async function releaseAttempt(reason: string) {
     if (released) return;
     released = true;
@@ -1900,6 +1919,19 @@ serve(async (req) => {
     (body ?? {}) as Record<string, any>;
   let mode: LensMode = body?.mode === "identify" ? "identify"
     : body?.mode === "annonce" ? "annonce" : "full";
+  if (appelInterne) {
+    // Identité et origine lues dans le corps, sous le secret cron seulement.
+    // Mode identify FORCÉ quoi que dise le corps : jamais full sur ce chemin.
+    const uid = String(body?.user_id ?? "").trim();
+    if (body?.origine !== "ebay_api" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) {
+      return new Response(JSON.stringify({ error: "appel_interne_invalide" }), {
+        status: 400, headers: { "Content-Type": "application/json", ...CORS },
+      });
+    }
+    user = { id: uid };
+    userId = uid;
+    mode = "identify";
+  }
   // ── Mode unifié : flag + plateformes demandées (02/09 soir) ─────────────
   // Deux conditions pour rester en "annonce", vérifiées AVANT le débit (le
   // repli doit décider p_unifie : un scan replié en "full" compte 1 par sa
@@ -1963,6 +1995,7 @@ serve(async (req) => {
       // quota (aucun appel API, aucun coût), mais doit rester visible.
       await loggerAppelIA(adminClient, userId, "lens_identify_cache", { in: 0, out: 0 }, {
         mode, cache_hit: true, photos: photoUrls.length,
+        ...(appelInterne ? { origine: "ebay_api", motif: "ebay_api" } : {}),
       });
       return new Response(JSON.stringify(memorise), {
         headers: { "Content-Type": "application/json", ...CORS },
@@ -1972,7 +2005,10 @@ serve(async (req) => {
     // b) Plafond par utilisateur — même helper que les 4 autres fonctions IA
     //    non facturées. 60 et non 100 : le maximum réel observé en base est de
     //    16 analyses/jour/utilisateur. Comptage impossible ⇒ on laisse passer.
-    if (!(await appelAutorise(adminClient, userId, "lens_identify", PLAFOND_IDENTIFY_PAR_USER))) {
+    //    Appel interne (worker eBay) : plafond par utilisateur SAUTÉ — c'est
+    //    nous qui déclenchons, le vendeur n'y est pour rien ; le plafond
+    //    global ci-dessous reste le coupe-circuit.
+    if (!appelInterne && !(await appelAutorise(adminClient, userId, "lens_identify", PLAFOND_IDENTIFY_PAR_USER))) {
       console.warn(`[lens-analysis] garde-fou identify atteint pour ${userId}`);
       return new Response(JSON.stringify({ error: "rate_limited" }), {
         status: 429, headers: { "Content-Type": "application/json", ...CORS },
@@ -2008,7 +2044,7 @@ serve(async (req) => {
     // geste sera la ligne 'generate_listing' posée après la rédaction. Si la
     // rédaction échoue, aucune ligne generate_listing : le geste n'a rien
     // consommé, la génération de secours (porte B) comptera la sienne.
-    : await adminClient.rpc("spend_coins_for_lens", { p_user_id: user.id, p_unifie: estAnnonce });
+    : await adminClient.rpc("spend_coins_for_lens", { p_user_id: userId, p_unifie: estAnnonce });
   if (spendErr || !spend) {
     console.error("[lens-analysis] spend_coins_for_lens:", spendErr?.message);
     return new Response(
@@ -2070,7 +2106,7 @@ serve(async (req) => {
     try {
       const { data: ligne } = await adminClient
         .from("usage_logs").select("id, metadata")
-        .eq("user_id", user.id).eq("feature", "lens")
+        .eq("user_id", userId).eq("feature", "lens")
         .order("created_at", { ascending: false }).limit(1).maybeSingle();
       if (ligne) { logId = ligne.id as string; logMeta = (ligne.metadata as Record<string, unknown>) ?? {}; }
     } catch { /* télémétrie seulement : ne doit jamais empêcher le scan */ }
@@ -2750,6 +2786,7 @@ serve(async (req) => {
       await loggerAppelIA(adminClient, userId, "lens_identify", { in: stats.in, out: stats.out }, {
         mode, cache_hit: false, photos: stats.photos, tours: stats.tours,
         duree_ms: Date.now() - debutMs,
+        ...(appelInterne ? { origine: "ebay_api", motif: "ebay_api" } : {}),
         modele_source: itemData.modele_source ?? null,
         ...empreinteSortie(itemData),
         ...(mpnRejete ? { mpn_rejete: true } : {}),
@@ -2839,7 +2876,7 @@ serve(async (req) => {
           // geste = somme des deux lignes.
           const redactionUsd = (redactionCost.in / 1e6) * 1 + (redactionCost.out / 1e6) * 5;
           const { error: logErr } = await adminClient.from("usage_logs").insert({
-            user_id: user.id,
+            user_id: userId,
             feature: "generate_listing",
             metadata: {
               source: "lens_unifie",
@@ -2855,7 +2892,7 @@ serve(async (req) => {
           });
           if (logErr) console.error("[lens-analysis][annonce] usage_logs:", logErr.message);
           console.log(
-            `[lens-analysis][annonce] user=${user.id} plateformes=${livrees}/${platformsDemandees.length}`
+            `[lens-analysis][annonce] user=${userId} plateformes=${livrees}/${platformsDemandees.length}`
             + ` redaction=${redactionCost.calls} appels ${redactionCost.in}in/${redactionCost.out}out usd=${redactionUsd.toFixed(4)}`
           );
         } else {
@@ -2867,7 +2904,7 @@ serve(async (req) => {
     }
 
     console.log(
-      `[lens-analysis][usage] mode=${mode} user=${user.id} photos=${stats.photos} tours=${stats.tours}`
+      `[lens-analysis][usage] mode=${mode} user=${userId} photos=${stats.photos} tours=${stats.tours}`
       + ` in=${stats.in} out=${stats.out} cache_w=${stats.cache_w} cache_r=${stats.cache_r}`
       + ` recherches=${stats.recherches} ms=${Date.now() - debutMs}`
     );
@@ -2891,6 +2928,7 @@ serve(async (req) => {
         mode, cache_hit: false, photos: stats.photos, tours: stats.tours,
         duree_ms: Date.now() - debutMs, issue: "echec",
         motif: motifEchec(err),
+        ...(appelInterne ? { origine: "ebay_api" } : {}),
         ...(journalImages.reduites.length ? { images_reduites: journalImages.reduites } : {}),
         ...(journalImages.ecartees.length ? { images_ecartees: journalImages.ecartees } : {}),
       });

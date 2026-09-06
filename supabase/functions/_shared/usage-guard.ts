@@ -96,12 +96,18 @@ async function appelsDernieres24h(
 ): Promise<number | null> {
   try {
     const depuis = new Date(Date.now() - 24 * 3600_000).toISOString();
+    // Les appels INTERNES (worker eBay → lens identify, metadata.origine =
+    // 'ebay_api', 07/09/2026) ne comptent pas dans le plafond de l'utilisateur :
+    // c'est nous qui les déclenchons et qui les payons, un vendeur qui publie
+    // 60 articles sur eBay dans la journée ne doit pas se retrouver privé de
+    // son propre identify dans l'app.
     const { count, error } = await admin
       .from("usage_logs")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
       .eq("feature", feature)
-      .gte("created_at", depuis);
+      .gte("created_at", depuis)
+      .or("metadata->>origine.is.null,metadata->>origine.neq.ebay_api");
     if (error) return null;
     return count ?? 0;
   } catch {
