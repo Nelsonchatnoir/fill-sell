@@ -49,6 +49,7 @@ function json(body: unknown, status = 200): Response {
 async function marquer(admin: SupabaseClient, job: Job, patch: Record<string, unknown>, diagnostic: Record<string, unknown>, ebayApi?: Record<string, unknown>) {
   const pf = { ...(job.platform_fields ?? {}) };
   if (patch.status && patch.status !== "processing") delete pf.processing_since;
+  if (patch.status === "published") delete pf.needsUserField;
   pf.last_diagnostic = { voie: "api", at: new Date().toISOString(), ...diagnostic };
   if (ebayApi) pf.ebay_api = { ...((pf.ebay_api as Record<string, unknown>) ?? {}), ...ebayApi };
   const { error } = await admin.from("cross_post_jobs").update({ ...patch, platform_fields: pf, handler_build: HANDLER_BUILD }).eq("id", job.id);
@@ -133,8 +134,36 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const rempli = await remplirAspects(pf, cat.aspects, contexteDuJob(job, pf), Deno.env.get("ANTHROPIC_API_KEY") ?? "");
   const { aspects, manquants, recalages } = rempli;
   if (manquants.length) {
-    await marquer(admin, job, { status: "needs_user", error: `eBay exige encore : ${manquants.join(", ")}. Complète ces caractéristiques puis relance.` }, { etape: "aspects", quoi: "aspects_manquants", manquants, source_catalogue: cat.source, ia: rempli.ia, sources: rempli.sources });
-    return { job: job.id, issue: "needs_user", motif: "aspects_manquants", manquants, ia: rempli.ia };
+    // needsUserField (Nico, 06/09 soir — bloquant pour un compte issu d'un
+    // import Vinted) : EXACTEMENT la convention du parcours formulaire
+    // (chrome-extension/content-scripts/ebay.js, background.js markNeedsUser)
+    // pour que le mini-éditeur « Valider et relancer » de l'app s'ouvre :
+    //   { platform, field_key, field_label, target { root:'ebayAspects', key },
+    //     allowed_values?, input_type?, options_completes? }
+    // Un champ à la fois (le premier manquant) ; l'app écrit la réponse dans
+    // platform_fields.ebayAspects.<aspect> et needsUserResolved, efface
+    // needsUserField, remet needsUserAttempts à 0 et repasse le job pending —
+    // assemblerAspects relit ebayAspects en PREMIER, la valeur tranchée prime.
+    // Liste fermée (SELECTION_ONLY) → allowed_values complètes + options_completes,
+    // l'app impose le choix ; texte libre → les suggestions eBay en liste,
+    // saisie libre possible. Le message reste ≤ 300 car. (humanizeJobError).
+    const premier = manquants[0];
+    const catAspect = cat.aspects.find((a) => a.name === premier);
+    const ferme = catAspect?.mode === "SELECTION_ONLY";
+    const valeurs = (catAspect?.allowedValues ?? []).filter(Boolean).map(String).slice(0, 200);
+    const needsUserField: Record<string, unknown> = {
+      platform: "ebay",
+      field_key: premier,
+      field_label: premier,
+      target: { root: "ebayAspects", key: premier },
+      ...(valeurs.length ? { allowed_values: valeurs } : {}),
+      ...(ferme ? { input_type: "selection_only", options_completes: true } : {}),
+      source: "ebay_api_worker",
+    };
+    job.platform_fields = { ...(job.platform_fields ?? {}), needsUserField, needsUserAttempts: (Number((job.platform_fields ?? {}).needsUserAttempts) || 0) + 1 };
+    const msg = `eBay exige encore : ${manquants.join(", ")}. Renseigne « ${premier} » depuis la fiche de l'article (bouton « ✋ Compléter »), puis « Valider et relancer » : la publication repart d'elle-même.`;
+    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "aspects", quoi: "aspects_manquants", manquants, champ_propose: premier, ferme, nb_valeurs: valeurs.length, source_catalogue: cat.source, ia: rempli.ia, sources: rempli.sources });
+    return { job: job.id, issue: "needs_user", motif: "aspects_manquants", manquants, champ_propose: premier, ferme, nb_valeurs: valeurs.length, ia: rempli.ia };
   }
 
   // 4. createOrReplaceInventoryItem (PUT, idempotent sur le SKU).
