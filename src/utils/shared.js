@@ -134,6 +134,66 @@ export function jobActionRequise(job) {
   return ACTION_UTILISATEUR_RE.test(String(job?.error ?? ''));
 }
 
+// ── Débruitage ÉQUILIBRÉ des parenthèses (2026-09-06) ─────────────────────────
+// Le retrait « incise technique entre parenthèses » se faisait par une regex
+// [^)]* : sur une parenthèse IMBRIQUÉE — « (Vinted a REFUSÉ … (réponse
+// serveur HTTP 400) : … (Le formulaire est resté sur /items/new.) — … ) » —
+// elle s'arrêtait à la PREMIÈRE parenthèse fermante et laissait « serveu).
+// Rien n'est perdu : » à l'écran (14 jobs, 9 comptes, relevé du 06/09).
+// Ici : parcours à profondeur, groupe par groupe. Un groupe dont le contenu
+// (imbrications comprises) porte un marqueur technique est retiré EN ENTIER ;
+// sinon on descend dedans et on ne retire que ses sous-groupes techniques.
+const INCISE_TECH_RE = /HTTP\s*\d{3}|https?:\/\/|\/[a-z0-9_-]+\/|\.js\b|outerHTML|querySelector|data-testid/i;
+export function retirerParenthesesTechniques(texte) {
+  const t = String(texte ?? '');
+  let out = '';
+  let i = 0;
+  while (i < t.length) {
+    const c = t[i];
+    if (c !== '(') { out += c; i++; continue; }
+    // Trouver la fermante ÉQUILIBRÉE.
+    let depth = 0, j = i;
+    for (; j < t.length; j++) {
+      if (t[j] === '(') depth++;
+      else if (t[j] === ')') { depth--; if (depth === 0) break; }
+    }
+    if (j >= t.length) { out += t.slice(i); break; } // jamais fermée : on laisse tel quel
+    const interieur = t.slice(i + 1, j);
+    if (INCISE_TECH_RE.test(interieur)) {
+      // Groupe technique : retiré en entier, avec l'espace qui le précède.
+      out = out.replace(/\s+$/, '');
+    } else {
+      out += '(' + retirerParenthesesTechniques(interieur) + ')';
+    }
+    i = j + 1;
+  }
+  return out;
+}
+
+// ── Raccourcissement qui GARDE le champ et le geste (2026-09-06) ──────────────
+// Un message débruité mais trop long (> 600 car.) partait en « imprévu
+// technique » : le vendeur perdait le champ à corriger. Ici : on découpe en
+// segments (phrases, tirets, points-virgules), on garde le premier (le
+// constat) puis, dans l'ordre, ceux qui nomment un champ ou un geste, jusqu'à
+// 300 caractères. Jamais un texte inventé : seulement des segments du message.
+const SEGMENT_GESTE_RE = /à faire|renseigne|compl[èe]te|relance|choisis|corrige|ajoute|exige|doit être|champ|puis /i;
+export function raccourcirMessageJob(texte, max = 300) {
+  const t = String(texte ?? '').replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  const segments = t.split(/(?<=[.!?])\s+|\s+[—–]\s+|\s*;\s+/).map(x => x.trim()).filter(Boolean);
+  if (segments.length <= 1) return t.slice(0, max - 1).replace(/\s+\S*$/, '') + '…';
+  const gardes = [segments[0]];
+  let total = segments[0].length;
+  for (const seg of segments.slice(1)) {
+    if (!SEGMENT_GESTE_RE.test(seg)) continue;
+    if (total + 1 + seg.length > max) continue;
+    gardes.push(seg); total += 1 + seg.length;
+  }
+  let out = gardes.join(' ');
+  if (out.length > max) out = out.slice(0, max - 1).replace(/\s+\S*$/, '') + '…';
+  return out;
+}
+
 export function humanizeJobError(job, lang = 'fr') {
   const raw = sansMentionMonnaie(String(job?.error ?? '').trim());
   if (!raw) return '';
@@ -415,15 +475,19 @@ export function humanizeJobError(job, lang = 'fr') {
   // Si ce qui reste est propre, c'est CELA qu'on affiche. Sinon seulement, le
   // générique véridique du bas.
   {
-    const nettoye = raw
-      // « Observabilité: … » et « Observabilite: … » jusqu'à la fin : c'est
-      // explicitement l'annexe support (chemin de catégorie, interstitiel,
-      // fragments de DOM).
-      .replace(/\s*[—–-]?\s*Observabilit[ée]\s*:.*$/is, '')
-      // Incises entre parenthèses qui ne portent QUE de la technique.
-      .replace(/\s*\((?=[^)]*(?:HTTP\s*\d{3}|https?:\/\/|\/[a-z0-9_-]+\/))[^)]*\)/gi, '')
+    const nettoye = retirerParenthesesTechniques(
+      raw
+        // « Observabilité: … » et « Observabilite: … » jusqu'à la fin : c'est
+        // explicitement l'annexe support (chemin de catégorie, interstitiel,
+        // fragments de DOM).
+        .replace(/\s*[—–-]?\s*Observabilit[ée]\s*:.*$/is, ''),
+    )
+      // Incises entre parenthèses techniques : retirées CI-DESSUS, groupe par
+      // groupe, parenthèses imbriquées comprises (06/09).
       // Code HTTP nu (« réponse serveur HTTP 400 », « HTTP 400 »).
       .replace(/\s*(?:r[ée]ponse\s+serveur\s+)?HTTP\s*\/?\s*\d{3}\s*/gi, ' ')
+      // URL nue (jamais à l'écran).
+      .replace(/https?:\/\/\S+/g, '')
       .replace(/\s{2,}/g, ' ')
       // ⚠️ « : » VOLONTAIREMENT HORS de cette classe : en français l'espace
       // avant le deux-points est correct, et le retirer donnait
@@ -435,6 +499,15 @@ export function humanizeJobError(job, lang = 'fr') {
       .replace(/^[\s—–:-]+/, '')
       .trim();
     if (nettoye && !TECH_ERR_MARKERS_RE.test(nettoye) && nettoye.length <= 600) return nettoye;
+    // Trop long mais lisible : RACCOURCI (constat + champ + geste), jamais
+    // remplacé par le générique (Nico, 06/09).
+    if (nettoye && !TECH_ERR_MARKERS_RE.test(nettoye)) return raccourcirMessageJob(nettoye, 300);
+    // Encore un marqueur technique : on tente le raccourci sur les segments
+    // sains seulement ; si rien de propre ne reste, générique.
+    if (nettoye) {
+      const propre = raccourcirMessageJob(nettoye, 300);
+      if (propre && !TECH_ERR_MARKERS_RE.test(propre)) return propre;
+    }
   }
 
   return en
