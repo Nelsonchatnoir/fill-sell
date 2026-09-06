@@ -83,3 +83,41 @@ export async function ouvrirConsentementEbay(url) {
   if (Capacitor.isNativePlatform()) { await Browser.open({ url }); return; }
   window.location.assign(url);
 }
+
+// ── « Ce compte eBay est-il utilisable ? » — MIROIR EXACT du trigger ────────
+// La décision de voie vit en base (cross_post_jobs_voie_ebay, migration
+// 20260906150000) et nulle part ailleurs. Le prédicat ci-dessous en est le
+// reflet À L'ÉCRAN, mot pour mot :
+//   revoked_at IS NULL
+//   AND fulfillment_policy_id IS NOT NULL
+//   AND payment_policy_id IS NOT NULL
+//   AND return_policy_id IS NOT NULL
+//   AND (seller_state->>'bloque_par_etat_ebay') = 'false'
+// `etat` est la vue publique rendue par ebay-account (action 'statut') : une
+// simple lecture de ebay_accounts, AUCUN appel à eBay.
+//
+// ⚠️ Ce prédicat ne dit RIEN de la voie extension. Un compte sans le drapeau
+// profiles.ebay_voie_api publie eBay par le formulaire (l'extension remplit
+// ebay.fr) : ni les politiques de vente, ni la checklist Account API n'y
+// entrent. Ne jamais s'en servir pour griser eBay à un compte non basculé.
+//
+// Tri-état : null = pas encore lu (on ne conclut pas), true/false sinon.
+export function ebayCompteUtilisable(etat) {
+  if (!etat) return etat === null || etat === undefined ? null : false;
+  if (!etat.connecte || etat.a_reconnecter) return false;
+  const pol = etat.politiques ?? {};
+  if (!pol.fulfillment || !pol.payment || !pol.return) return false;
+  // seller_state absent = checklist jamais relevée → le trigger ne bascule pas
+  // non plus (NULL ->> renvoie NULL, jamais 'false'). Même verdict ici.
+  return etat.seller_state?.bloque_par_etat_ebay === false;
+}
+
+// Motif LE PLUS EN AMONT du refus — une seule phrase à afficher, jamais un
+// diagnostic. 'non_connecte' | 'a_reconnecter' | 'a_finir' (politiques ou
+// checklist rouge : dans les deux cas le geste est le même, finir dans
+// Réglages › Compte eBay).
+export function motifEbayInutilisable(etat) {
+  if (!etat || !etat.connecte) return etat?.a_reconnecter ? 'a_reconnecter' : 'non_connecte';
+  if (etat.a_reconnecter) return 'a_reconnecter';
+  return 'a_finir';
+}

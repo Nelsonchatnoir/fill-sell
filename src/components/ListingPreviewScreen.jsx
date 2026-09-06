@@ -27,6 +27,8 @@ import { getPlatformSupport } from "../utils/platformCompat";
 import { computeRemovalInfo } from "../utils/publicationState";
 import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimit";
 import { versImageDecodable, chargerImage, messageDecodage } from "../utils/imageDecode";
+import EbayCompteSection from "./EbayCompteSection";
+import { lireEtatEbay, ebayCompteUtilisable, motifEbayInutilisable } from "../utils/ebayCompte";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   isChildGenre, childAxesForGenre, toPlatformChildSize, lbcChildSizeCategory,
@@ -104,6 +106,20 @@ const SUPPORT_MESSAGE_KEY = {
 };
 const supportMessage = (t, support, platformLabel) =>
   t(SUPPORT_MESSAGE_KEY[support] ?? "platformUnmapped").replace("{platform}", platformLabel);
+
+// Compte eBay pas encore utilisable (07/09/2026) : UNE phrase, qui dit le
+// geste — jamais un diagnostic ni un code. Même vocabulaire que la section
+// Réglages › Compte eBay, pour que la personne reconnaisse l'écran d'arrivée.
+const messageCompteEbay = (motif, lang) => {
+  if (lang === "en") {
+    if (motif === "non_connecte") return "eBay: your eBay account isn't linked yet — link it to publish there.";
+    if (motif === "a_reconnecter") return "eBay: your eBay account needs to be reconnected before publishing.";
+    return "eBay: your seller account isn't fully set up yet (seller registration, selling policies) — finish it to publish there.";
+  }
+  if (motif === "non_connecte") return "eBay : ton compte eBay n'est pas encore relié — relie-le pour publier dessus.";
+  if (motif === "a_reconnecter") return "eBay : ton compte eBay est à reconnecter avant de pouvoir publier.";
+  return "eBay : ton compte vendeur n'est pas fini de paramétrer (inscription vendeur, conditions de vente) — termine-le pour publier dessus.";
+};
 
 // ── Multi-select photos sur ANDROID uniquement (2026-07-27) ──────────────────
 // L'<input type="file" multiple> de la WebView part en ACTION_GET_CONTENT vers
@@ -1318,7 +1334,14 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, publishedSet, queuedSet, lang,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
-  onAnalyze, analyzing, analysisResult, analysisError, analysisHidden }) {
+  onAnalyze, analyzing, analysisResult, analysisError, analysisHidden,
+  // Compte eBay pas encore utilisable (07/09/2026, demande Joséphine). Vaut
+  // true UNIQUEMENT pour un compte en voie API (profiles.ebay_voie_api) dont
+  // le compte eBay n'est pas relié / pas fini de paramétrer. eBay est alors
+  // GRISÉ — jamais masqué : la personne doit savoir que la plateforme existe
+  // et ce qu'il lui reste à faire. Aucune autre plateforme n'est touchée, et
+  // un compte en voie extension ne voit rien changer (ebayBloque false).
+  ebayBloque = false, ebayMotif = null, onParametrerEbay = null }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
   const MAX = MAX_PHOTOS;
@@ -1705,7 +1728,11 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
           // job de toute façon — mais libellé DISTINCT : l'annonce n'est pas
           // encore en ligne, dire « en ligne » serait mentir sur l'état.
           const enCours = !dejaEnLigne && (queuedSet?.has(p) ?? false);
-          const disabled = support !== "supported" || dejaEnLigne || enCours;
+          // Compte eBay pas paramétré : SEUL eBay est concerné, et seulement
+          // pour un compte en voie API. Grisé comme une catégorie non
+          // supportée — même traitement visuel, motif dit sous la rangée.
+          const compteAbsent = p === "ebay" && ebayBloque;
+          const disabled = support !== "supported" || dejaEnLigne || enCours || compteAbsent;
           return (
             <button
               key={p}
@@ -1714,6 +1741,8 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                 ? (lang === 'en' ? `Already live on ${PLATFORM_LABELS[p]}` : `Déjà en ligne sur ${PLATFORM_LABELS[p]}`)
                 : enCours
                 ? (lang === 'en' ? `Already being published on ${PLATFORM_LABELS[p]}` : `Publication déjà en cours sur ${PLATFORM_LABELS[p]}`)
+                : compteAbsent
+                ? messageCompteEbay(ebayMotif, lang)
                 : disabled
                 ? supportMessage(t, support, PLATFORM_LABELS[p])
                 : undefined}
@@ -1782,6 +1811,27 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
           {supportMessage(t, platformSupport[p], PLATFORM_LABELS[p])}
         </p>
       ))}
+      {/* Compte eBay pas paramétré : la phrase du geste + l'accès direct à
+          Réglages › Compte eBay (la MÊME section, ouverte par-dessus le
+          stepper — le brouillon n'est pas perdu, on ne ferme rien). Ton
+          neutre : ce n'est pas une erreur, c'est une étape qui reste. */}
+      {ebayBloque && (platformSupport?.ebay ?? "supported") === "supported" && (
+        <div style={{ margin:"8px 0 0", display:"flex", flexWrap:"wrap", alignItems:"center", gap:8 }}>
+          <p style={{ margin:0, flex:"1 1 200px", minWidth:0, fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
+            {messageCompteEbay(ebayMotif, lang)}
+          </p>
+          {onParametrerEbay && (
+            <button
+              type="button"
+              onClick={onParametrerEbay}
+              style={{ padding:"7px 13px", borderRadius:999, border:`1.5px solid ${T.tealDeep}`, background:"none",
+                color:T.tealDeep, fontSize:12.5, fontWeight:700, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap" }}
+            >
+              {lang === "en" ? "Set up eBay" : "Paramétrer eBay"}
+            </button>
+          )}
+        </div>
+      )}
       {selected.size === 0 && (
         <p style={{ margin:"8px 0 0", fontSize:12.5, color:"#EF4444", fontWeight:600 }}>
           {t("stepPhotosSelectPlatformError")}
@@ -3658,6 +3708,53 @@ export default function ListingPreviewScreen({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const lockedSet = useMemo(() => new Set([...publishedSet, ...queuedSet]), [alreadyPublishedKey, queuedKey]);
 
+  // ── Compte eBay pas paramétré → eBay grisé (07/09/2026, demande Joséphine) ─
+  // « Utilisable » = exactement ce que le trigger cross_post_jobs_voie_ebay
+  // exige pour basculer un job en voie 'api' : compte relié et non révoqué,
+  // les 3 politiques choisies, et la checklist vendeur verte
+  // (seller_state.bloque_par_etat_ebay = false). Le prédicat vit dans
+  // utils/ebayCompte, en un seul exemplaire.
+  //
+  // ⛔ GARDE : rien de tout ceci ne concerne la VOIE EXTENSION. Un compte sans
+  // profiles.ebay_voie_api publie eBay par le formulaire (l'extension remplit
+  // ebay.fr avec la session eBay du navigateur) : ni les conditions de vente,
+  // ni la checklist Account API n'y jouent le moindre rôle. Pour lui, l'effet
+  // ci-dessous rend la main immédiatement — aucun appel réseau, aucun état,
+  // ebayBloque reste false, l'écran est celui d'hier au pixel près.
+  //
+  // 'statut' est une simple lecture de ebay_accounts côté serveur : AUCUN
+  // appel à eBay, contrairement à 'checklist' (5 appels Account API) que seule
+  // la section Réglages déclenche.
+  const [ebayEtatCompte, setEbayEtatCompte] = useState(null);
+  const [ebayEtatLu, setEbayEtatLu] = useState(false);
+  const [ebayPanneauOuvert, setEbayPanneauOuvert] = useState(false);
+  // Incrémenté à la fermeture du panneau de réglages : le compte vient
+  // peut-être d'être fini, on relit — sinon eBay resterait grisé jusqu'au
+  // prochain montage du stepper.
+  const [ebayRelecture, setEbayRelecture] = useState(0);
+  useEffect(() => {
+    if (!ebayVoieApi) { setEbayEtatLu(false); setEbayEtatCompte(null); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const r = await lireEtatEbay('statut');
+        if (!alive) return;
+        setEbayEtatCompte(r?.etat ?? null);
+        setEbayEtatLu(true);
+      } catch (e) {
+        // Lecture impossible (réseau, session) : on ne conclut RIEN. eBay
+        // reste cochable — le trigger tranchera de toute façon côté serveur,
+        // et griser sur une ignorance serait pire que ne pas griser.
+        console.warn('[stepper] état du compte eBay illisible —', e?.message ?? e);
+        if (alive) setEbayEtatLu(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [ebayVoieApi, ebayRelecture]);
+  // Tri-état : true = grisé, false = cochable, jamais grisé tant qu'on ne sait pas.
+  const ebayBloque = Boolean(ebayVoieApi) && ebayEtatLu && ebayCompteUtilisable(ebayEtatCompte) === false;
+  const ebayMotif = ebayBloque ? motifEbayInutilisable(ebayEtatCompte) : null;
+
   // Step 3 — sélection plateformes (chips) + publication
   // Les plateformes déjà en ligne ou en file ne sont JAMAIS pré-cochées — y
   // compris à la reprise d'un brouillon (une publication a pu aboutir ou
@@ -3786,6 +3883,14 @@ export default function ListingPreviewScreen({
       return next.size === prev.size ? prev : next;
     });
   }, [lockedSet]);
+  // Même filet pour eBay quand le compte n'est pas utilisable : la case est
+  // grisée, elle ne doit pas rester COCHÉE derrière (elle l'est par défaut,
+  // PLATFORMS_DEFAULT contient "ebay", et un brouillon repris la remet). Le
+  // décochage se fait dès que la lecture a tranché — jamais avant.
+  useEffect(() => {
+    if (!ebayBloque) return;
+    setSelected(prev => (prev.has("ebay") ? new Set([...prev].filter(p => p !== "ebay")) : prev));
+  }, [ebayBloque]);
 
   // Modale de conversion (solde d'unités insuffisant pour publier)
   const [quotaModal, setQuotaModal] = useState({
@@ -7126,6 +7231,9 @@ export default function ListingPreviewScreen({
             platformSupport={platformSupport}
             publishedSet={publishedSet}
             queuedSet={queuedSet}
+            ebayBloque={ebayBloque}
+            ebayMotif={ebayMotif}
+            onParametrerEbay={() => setEbayPanneauOuvert(true)}
             lang={lang}
             onAnalyze={handleAnalyzePhotos}
             analyzing={analyzing}
@@ -7342,6 +7450,41 @@ export default function ListingPreviewScreen({
           userId={userId}
           onExtensionSeen={() => { setExtSeenOverride(true); setShowExtGate(false); }}
         />
+      )}
+
+      {/* Réglages › Compte eBay, ouvert PAR-DESSUS le stepper (07/09/2026).
+          La même section que les Paramètres, à l'identique — pas une copie.
+          Ouverte ici plutôt qu'en fermant le stepper : le brouillon en cours
+          (photos, annonces générées, prix) ne doit rien perdre pour un compte
+          à finir de paramétrer. À la fermeture, on relit l'état du compte :
+          si tout est vert, eBay redevient cochable sans quitter l'écran. */}
+      {ebayPanneauOuvert && (
+        <div
+          onClick={() => { setEbayPanneauOuvert(false); setEbayRelecture(n => n + 1); }}
+          style={{ position:"fixed", inset:0, zIndex:20001, background:"rgba(16,32,27,0.45)", backdropFilter:"blur(2px)",
+            display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"24px 12px", overflowY:"auto" }}
+        >
+          <div
+            onClick={ev => ev.stopPropagation()}
+            style={{ width:"100%", maxWidth:560, background:T.paper, borderRadius:18, padding:"14px 16px 18px", boxShadow:"0 24px 60px rgba(16,32,27,0.28)" }}
+          >
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, marginBottom:6 }}>
+              <div style={{ fontSize:14, fontWeight:800, color:T.ink }}>
+                {lang === "en" ? "Settings › eBay account" : "Réglages › Compte eBay"}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEbayPanneauOuvert(false); setEbayRelecture(n => n + 1); }}
+                style={{ width:32, height:32, borderRadius:999, border:"none", background:T.chip, color:T.mute2,
+                  display:"inline-flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}
+                aria-label={lang === "en" ? "Close" : "Fermer"}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <EbayCompteSection lang={lang} user={userId ? { id: userId } : null} />
+          </div>
+        </div>
       )}
 
       <Lightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
