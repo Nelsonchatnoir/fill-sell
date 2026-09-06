@@ -3413,6 +3413,19 @@ export default function ListingPreviewScreen({
   );
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  // ── inventaire.attributs (2026-09-06, chemins d'aspects) ──────────────────
+  // Un seul endroit par article, une clé par champ = { v, source, at }, posé
+  // par la sync du dressing (taille, état, marque de la liste), le clic
+  // Publier (couleur, catégorie du détail Vinted), le Lens (ci-dessous) ou
+  // une saisie. Lu ICI pour nourrir canonical_fields quand initialListing ne
+  // porte pas le champ — un article importé de Vinted arrive alors avec sa
+  // taille, son état et sa couleur au lieu de les faire deviner au texte.
+  const [attributsBase, setAttributsBase] = useState(null);
+  const attributV = (cle) => {
+    const champ = attributsBase && typeof attributsBase === "object" ? attributsBase[cle] : null;
+    const v = champ && typeof champ === "object" ? champ.v : null;
+    return v == null || v === "" ? null : v;
+  };
 
   // ── Modèle à confirmer (2026-07-28) ───────────────────────────────────────
   // Tri-état : null = pas encore tranché (la carte s'affiche, le modèle est
@@ -3807,10 +3820,11 @@ export default function ListingPreviewScreen({
     if (invId) {
       supabase
         .from("inventaire")
-        .select("prix_vente,prix_achat")
+        .select("prix_vente,prix_achat,attributs")
         .eq("id", invId)
         .single()
         .then(({ data }) => {
+          if (data?.attributs && typeof data.attributs === "object") setAttributsBase(data.attributs);
           // ⚠️ Plus AUCUN repli sur prix_achat (2026-07-14) : un article ajouté
           // au stock sans prix de vente retombait sur son prix d'ACHAT, et
           // partait donc en ligne à marge nulle. Sans analyse et sans prix
@@ -4127,23 +4141,55 @@ export default function ListingPreviewScreen({
         marque:      initialListing?.marque      ?? photoAnalysis?.marque      ?? null,
         description: initialListing?.description ?? photoAnalysis?.description ?? null,
         categorie:   initialListing?.categorie   ?? photoAnalysis?.categorie   ?? null,
-        taille:      initialListing?.taille_estimee ?? initialListing?.taille ?? photoAnalysis?.taille_estimee ?? null,
-        couleur:     initialListing?.couleur     ?? photoAnalysis?.couleur     ?? null,
-        matiere:     initialListing?.matiere     ?? photoAnalysis?.matiere     ?? null,
+        // Repli sur inventaire.attributs (2026-09-06) : ce que la sync, le clic
+        // Publier ou un Lens précédent ont déjà posé sur l'article.
+        taille:      initialListing?.taille_estimee ?? initialListing?.taille ?? photoAnalysis?.taille_estimee ?? attributV("taille") ?? null,
+        couleur:     initialListing?.couleur     ?? photoAnalysis?.couleur     ?? attributV("couleur") ?? null,
+        matiere:     initialListing?.matiere     ?? photoAnalysis?.matiere     ?? attributV("matiere") ?? null,
         // État LU par le Lens (2026-07-29). Seule source : etat_estime — la
         // table inventaire ne porte pas l'état (statut vaut stock|vendu, c'est
         // autre chose). Depuis le 29/07 la valeur est garantie dans la liste
         // fermée des 5 états (validation serveur lens-analysis), ce qui rend
         // le rapprochement vers la liste de chaque plateforme fiable.
-        etat:        initialListing?.etat_estime ?? photoAnalysis?.etat_estime ?? null,
+        etat:        initialListing?.etat_estime ?? photoAnalysis?.etat_estime ?? attributV("etat") ?? null,
         // ISBN LU par le Lens (2026-08-31). Il vit dans le sac d'attributs de
         // la famille livres_medias (attributs_visibles.isbn_ean) et n'avait
         // AUCUN chemin vers l'annonce : le Lens l'affichait dans sa fiche, le
         // stepper le réclamait quand même en rouge, et il fallait retaper à la
         // main treize chiffres déjà déchiffrés et déjà payés.
-        isbn:        initialListing?.attributs_visibles?.isbn_ean ?? photoAnalysis?.attributs_visibles?.isbn_ean ?? null,
+        isbn:        initialListing?.attributs_visibles?.isbn_ean ?? photoAnalysis?.attributs_visibles?.isbn_ean ?? attributV("isbn") ?? null,
         prixVente:   price ?? initialListing?.prix_vente_suggere ?? photoAnalysis?.prix_vente_suggere ?? null,
       };
+      // ── Ce que le Lens ou l'analyse photo ont LU est gardé sur l'article
+      // (2026-09-06, arbitrage Nico : « un article créé par Lens doit garder
+      // taille, couleur, matière, état et attributs_visibles en base »). Source
+      // 'lens' : la plus faible de l'échelle, la base ne laisse jamais une
+      // lecture IA écraser une valeur Vinted ou une saisie (trigger de fusion).
+      // Best-effort, jamais bloquant pour la génération.
+      if (invId && userId) {
+        const lu = initialListing?.taille_estimee != null || initialListing?.etat_estime != null || photoAnalysis
+          ? {
+              taille:  initialListing?.taille_estimee ?? photoAnalysis?.taille_estimee ?? null,
+              couleur: initialListing?.couleur       ?? photoAnalysis?.couleur       ?? null,
+              matiere: initialListing?.matiere       ?? photoAnalysis?.matiere       ?? null,
+              etat:    initialListing?.etat_estime   ?? photoAnalysis?.etat_estime   ?? null,
+              genre:   initialListing?.genre         ?? photoAnalysis?.genre         ?? null,
+              isbn:    initialListing?.attributs_visibles?.isbn_ean ?? photoAnalysis?.attributs_visibles?.isbn_ean ?? null,
+              attributs_visibles: initialListing?.attributs_visibles ?? photoAnalysis?.attributs_visibles ?? null,
+            }
+          : null;
+        const at = new Date().toISOString();
+        const attributs = {};
+        for (const [k, v] of Object.entries(lu ?? {})) {
+          const vide = v == null || (typeof v === "string" && !v.trim()) || (typeof v === "object" && !Object.keys(v).length);
+          if (!vide) attributs[k] = { v, source: "lens", at };
+        }
+        if (Object.keys(attributs).length) {
+          supabase.from("inventaire").update({ attributs }).eq("id", invId).eq("user_id", userId).select("id")
+            .then(({ error }) => { if (error) console.warn("[stepper] attributs Lens non gardés :", error.message); })
+            .catch(() => {});
+        }
+      }
       // Tant que l'article n'est pas en stock (invId absent), on envoie ses infos
       // directement plutôt qu'un inventaire_id qui n'existe pas encore.
       const itemData = invId ? null : {
