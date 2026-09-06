@@ -68,11 +68,18 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   if (!photos.length) { await marquer(admin, job, { status: "needs_user", error: "Cet article n'a aucune photo : eBay exige au moins une image. Ajoute une photo à l'article, puis relance la publication." }, { etape: "controle", quoi: "photos_absentes" }); return { job: job.id, issue: "needs_user", motif: "photos_absentes" }; }
   const categorie = await resoudreCategorie(env, token, { title: (await titreInventaire(admin, job.inventaire_id)) || job.title }, pf);
   if ("choix" in categorie) {
-    const liste = categorie.choix.map((c, i) => `${i + 1}. ${c.chemin} (${c.id})`).join(" · ");
     const mappee = String(pf.ebayCategoryId ?? "").trim();
+    const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
+    const feuille = (chemin: string[]) => String(chemin[chemin.length - 1] ?? "").trim();
+    const racine = (chemin: string[]) => String(chemin[0] ?? "").trim();
+    const top = categorie.choix[0];
+    const topChemin = top ? top.chemin.split(" > ") : [];
+    // ≤ 300 caractères, sans identifiant ni marqueur technique : au-delà,
+    // l'app remplace le message par « un imprévu technique » (humanizeJobError)
+    // et le choix n'est jamais vu. Le détail complet est dans last_diagnostic.
     const msg = mappee
-      ? `Catégorie eBay à confirmer : ${categorie.motif}. Relance la publication depuis la fiche pour garder la catégorie de l'app, ou change l'icône / le genre de l'article pour en choisir une autre. Suggestions eBay : ${liste}.`
-      : `Catégorie eBay à choisir pour cet article : ${liste || "aucune suggestion eBay"}. Change l'icône / le genre de l'article depuis la fiche, puis relance.`;
+      ? `Catégorie eBay à confirmer : l'app classe cet article en « ${feuille(cheminMappe)} » (${racine(cheminMappe)}), eBay le voit plutôt en « ${feuille(topChemin)} » (${racine(topChemin)}). Relance pour garder la catégorie de l'app, ou change l'icône / le genre de l'article pour en choisir une autre.`
+      : `Aucune catégorie eBay n'a pu être posée pour cet article. Change l'icône / le genre de l'article depuis la fiche, puis relance.`;
     // ebayCategorieAttente : posé ICI, lu à la relance — relancer sans rien
     // changer vaut confirmation du mapping de l'app (jamais une boucle).
     job.platform_fields = { ...(job.platform_fields ?? {}), ebayCategorieAttente: { mapping: mappee || null, choix: categorie.choix, at: new Date().toISOString() } };
