@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
+const LEBONCOIN_BUILD = "2026-09-05-apercu-refuse-nom-prenom-escrow (l'aperçu resté affiché après le Continuer final n'est plus pris pour l'écran coordonnées — téléphone VISIBLE et hors aperçu seulement ; escrow_lastname/escrow_firstname vides = nom et prénom exigés par la Transaction sécurisée → attenteUtilisateur, needs_user persisté, jamais failed ; refus visibles relevés, re-clic unique si aucun ; adresse comparée sans apostrophes ni traits d'union — « 56b rue dalger » retrouve « 56B Rue d'Alger ») + 2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -62,6 +62,18 @@ const MSG_PAGE_DEPOT_ILLISIBLE =
   "Relance la publication depuis la fiche de l'article ; si ça se reproduit, signale-le au support.";
 const estErreurDeCode = (err) =>
   err instanceof ReferenceError || err instanceof TypeError || err instanceof SyntaxError || err instanceof RangeError;
+
+// Nom et prénom exigés par la Transaction sécurisée (2026-09-05) : les champs
+// escrow_lastname / escrow_firstname de l'aperçu restent VIDES quand le compte
+// vendeur ne les porte pas, et Leboncoin refuse le Continuer final. Donnée
+// personnelle : jamais saisie par nous. La tournure « nom et ton prénom sur ton
+// compte vendeur » est celle que l'app reconnaît déjà comme action utilisateur
+// (ACTION_UTILISATEUR_RE, src/utils/shared.js) — ne pas la reformuler.
+const MSG_LBC_ESCROW_IDENTITE =
+  "Leboncoin demande ton nom et ton prénom sur ton compte vendeur (obligatoires pour la " +
+  "Transaction sécurisée) : sans eux, la publication ne peut pas être validée. Complète-les " +
+  "sur leboncoin.fr — les champs Nom et Prénom de l'aperçu resté ouvert, ou les informations " +
+  "de ton compte —, puis relance la publication depuis la fiche de l'article.";
 
 // Photographie de STRUCTURE de la page au moment de l'échec — URL sans query,
 // titre du document, présence/absence des ancres que ce handler utilise déjà
@@ -1041,11 +1053,26 @@ async function fillListingForm(job) {
   //     email + téléphone PRÉ-REMPLIS depuis le compte, avec son propre
   //     Continuer, AVANT l'écran options — jamais vu sur les catégories
   //     standard ; le job mourait en « écran post-aperçu non reconnu ».
-  // Politique : on ne SAISIT jamais un email/téléphone nous-mêmes (champ tél
-  // vide → needsUser explicite) — on ne fait que confirmer des valeurs que
-  // Leboncoin a déjà posées. Écran toujours inconnu → needsUser AVEC un
-  // relevé d'écran joint (l'ancien message promettait « la trace servira de
-  // relevé » sans jamais joindre de trace).
+  //   · L'APERÇU LUI-MÊME, resté affiché (2026-09-05 — santanalily010 ×2 ce
+  //     soir, bilelbourouis45 ×5 le 20/08 : 7 des 10 « chemin gratuit
+  //     introuvable » du parc depuis le 06/08, relevés en base). Leboncoin
+  //     REFUSE le Continuer final quand un champ de l'aperçu est vide ; les
+  //     relevés montrent toujours les deux mêmes : escrow_lastname et
+  //     escrow_firstname — le nom et le prénom qu'exige la Transaction
+  //     sécurisée quand le compte vendeur ne les porte pas (comptes neufs ou
+  //     incomplets : d'où la concentration par compte, et la disparition du
+  //     motif dès que le vendeur a complété son profil). L'ancienne boucle
+  //     prenait cet aperçu pour l'écran coordonnées : findContactPhone
+  //     matchait un input « phone » NON visible de la page (aucun tel parmi
+  //     les champs visibles du relevé), le même Continuer était recliqué
+  //     trois fois, et le job concluait « chemin gratuit introuvable » —
+  //     faux motif, geste utilisateur jamais nommé, job mort après 5 reprises.
+  // Politique : on ne SAISIT jamais un email/téléphone/nom/prénom nous-mêmes —
+  // on ne fait que confirmer des valeurs que Leboncoin a déjà posées. Nom et
+  // prénom manquants → attenteUtilisateur (needs_user PERSISTÉ côté
+  // background, aucune reprise espacée : la page ne se lève pas toute seule ;
+  // Relancer depuis le Stock une fois le compte complété). Écran toujours
+  // inconnu → needsUser AVEC un relevé d'écran joint.
   const findFreeCta = () => {
     const btns = Array.from(document.querySelectorAll("button, a[role='button'], a"));
     return (
@@ -1055,22 +1082,91 @@ async function fillListingForm(job) {
       null
     );
   };
-  // Discriminant de l'écran coordonnées : un champ téléphone (les écrans
-  // options/confirmation n'en portent pas). Le CTA gratuit est sondé AVANT :
+  // Discriminant de l'écran coordonnées : un champ téléphone VISIBLE, sur un
+  // écran qui n'est PAS l'aperçu. L'ancien querySelector nu (sans visibilité)
+  // trouvait un input « phone » caché de l'aperçu — c'est lui qui a fabriqué
+  // les faux « chemin gratuit introuvable ». Le CTA gratuit est sondé AVANT :
   // s'il existe, il gagne toujours.
   const findContactPhone = () =>
-    document.querySelector('input[type="tel"], input[name*="phone" i], input[id*="phone" i]');
+    [...document.querySelectorAll('input[type="tel"], input[name*="phone" i], input[id*="phone" i]')]
+      .find((el) => el.type !== "hidden" && estVisibleParStyles(el)) ?? null;
+  // Marqueurs de l'aperçu : tant qu'ils sont là, Leboncoin n'a pas accepté le
+  // dépôt (prix/adresse de l'aperçu, ou son titre — celui des relevés).
+  const estEncoreApercu = () =>
+    Boolean(document.querySelector('#price_cents, input[name="location"], label[for="location"]')) ||
+    /dernier aperçu avant de publier/i.test(document.body?.textContent ?? "");
+  // Champs de l'aperçu visibles et VIDES, par name/id — ceux de la Transaction
+  // sécurisée commencent par escrow_.
+  const champsVidesApercu = () =>
+    [...document.querySelectorAll("input:not([type=hidden]), textarea")]
+      .filter((el) => !["checkbox", "radio", "file", "submit", "button", "search"].includes(el.type))
+      .filter((el) => estVisibleParStyles(el) && !String(el.value ?? "").trim())
+      .map((el) => ({ cle: String(el.name || el.id || ""), libelle: libelleDuChamp(el) }));
+  const champsEscrowVides = () => champsVidesApercu().filter((c) => /^escrow_/i.test(c.cle));
+  const attendreEcranSuivant = () => waitFor(() => {
+    const cta = findFreeCta();
+    if (cta) return { cta };
+    const phone = findContactPhone();
+    if (phone && !estEncoreApercu()) return { phone };
+    return null;
+  }, 15_000);
+  // Verdict quand l'aperçu n'a pas bougé : nom/prénom → attente utilisateur ;
+  // refus lisible → needsUser nommé ; rien de lisible → needsUser avec relevé.
+  // Le relevé d'écran voyage en ANNEXE « — Observabilité: … » : l'app la retire
+  // à l'affichage (humanizeJobError, src/utils/shared.js) et montre la phrase
+  // humaine ; en clair, le JSON du relevé ferait basculer TOUT le message sur
+  // le générique « imprévu technique » — personne ne lirait « nom et prénom ».
+  // En base, la colonne error garde l'annexe entière (lisible en SQL).
+  const refusApercu = () => {
+    const escrow = champsEscrowVides();
+    if (escrow.length) {
+      console.warn(`[leboncoin] aperçu refusé : ${escrow.map((c) => c.cle).join(", ")} vides (Transaction sécurisée) — attente utilisateur`);
+      return {
+        success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_escrow_identite",
+        warnings, unfilledRequired, discoveredRequired: enumerated,
+        error: `${MSG_LBC_ESCROW_IDENTITE} — Observabilité: ${dumpEcranVisible()}`,
+      };
+    }
+    const refus = messagesErreurVisibles();
+    if (refus.length) {
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+        error:
+          `Leboncoin refuse le dépôt sur l'aperçu : « ${refus.join(" » · « ")} » — corriger sur ` +
+          `l'onglet resté ouvert (ou l'article dans FillSell), puis relancer. — Observabilité: ${dumpEcranVisible()}`,
+      };
+    }
+    const vides = champsVidesApercu().map((c) => c.libelle || c.cle).filter(Boolean);
+    return {
+      success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+      error:
+        "LIVE : l'aperçu Leboncoin est resté affiché après le Continuer final (deux clics), sans message " +
+        "d'erreur visible — terminer le dépôt à la main sur l'onglet resté ouvert." +
+        ` — Observabilité: ${vides.length ? `champs vides ${JSON.stringify(vides.slice(0, 5))} ; ` : ""}${dumpEcranVisible()}`,
+    };
+  };
 
   let freeCta = null;
+  let reclicApercu = false;
   for (let ecran = 0; ecran < 3 && !freeCta; ecran++) {
-    const etape = await waitFor(() => {
-      const cta = findFreeCta();
-      if (cta) return { cta };
-      const phone = findContactPhone();
-      if (phone) return { phone };
-      return null;
-    }, 15_000);
+    let etape = await attendreEcranSuivant();
+    if (!etape && estEncoreApercu() && !reclicApercu && !champsEscrowVides().length && !messagesErreurVisibles().length) {
+      // Aperçu inchangé et rien de lisible ne le justifie : clic avalé (onglet
+      // caché — même famille que le re-clic du chemin gratuit plus bas).
+      // Re-clic UNIQUE du Continuer final, puis on ré-attend l'écran suivant.
+      reclicApercu = true;
+      const encore = findButtonByExactText("Continuer");
+      if (encore) {
+        const note = "dépôt: Continuer final sans effet observable après 15 s (aperçu inchangé, aucun refus visible) — re-clic unique";
+        console.warn(`[leboncoin] ⚠️ ${note}`);
+        warnings.push(note);
+        await humanPause(800, 1500);
+        realClick(encore);
+        etape = await attendreEcranSuivant();
+      }
+    }
     if (!etape) {
+      if (estEncoreApercu()) return refusApercu();
       return {
         success: false, needsUser: true, warnings, unfilledRequired,
         error: `LIVE : écran post-aperçu non reconnu — terminer le dépôt à la main. Relevé de l'écran : ${dumpEcranVisible()}`,
@@ -1104,7 +1200,7 @@ async function fillListingForm(job) {
   if (!freeCta) {
     return {
       success: false, needsUser: true, warnings, unfilledRequired,
-      error: `LIVE : chemin gratuit toujours introuvable après les écrans intermédiaires — terminer le dépôt à la main. Relevé : ${dumpEcranVisible()}`,
+      error: `LIVE : chemin gratuit toujours introuvable après les écrans intermédiaires (écran « Vos coordonnées » recliqué trois fois sans avancer) — terminer le dépôt à la main. Relevé : ${dumpEcranVisible()}`,
     };
   }
   const ctaText = freeCta.textContent.trim();
@@ -1540,14 +1636,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
 // « Vos coordonnées » sans intervention manuelle. Visibilité par styles
 // calculés uniquement (fenêtre minimisée : pas de layout, getClientRects nul).
 function dumpEcranVisible() {
-  const visible = (el) => {
-    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
-      if (n.getAttribute("aria-hidden") === "true") return false;
-      const st = getComputedStyle(n);
-      if (st.display === "none" || st.visibility === "hidden") return false;
-    }
-    return true;
-  };
+  const visible = estVisibleParStyles;
   const titres = [...document.querySelectorAll("h1, h2, h3, legend")]
     .filter(visible).map((e) => e.textContent.trim()).filter(Boolean).slice(0, 5);
   const boutons = [...document.querySelectorAll("button, a[role='button']")]
@@ -1557,6 +1646,46 @@ function dumpEcranVisible() {
     .map((e) => `${e.type}[${e.name || e.id || "?"}]${String(e.value ?? "").trim() ? "(rempli)" : "(vide)"}`)
     .slice(0, 8);
   return `${location.pathname} · titres ${JSON.stringify(titres)} · boutons ${JSON.stringify(boutons)} · champs ${JSON.stringify(champs)}`;
+}
+
+// Visibilité par styles calculés uniquement — fenêtre minimisée : pas de
+// layout, getClientRects nul (règle du relevé d'écran, partagée depuis le
+// 2026-09-05 avec les discriminants d'écran post-aperçu).
+function estVisibleParStyles(el) {
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.getAttribute("aria-hidden") === "true") return false;
+    const st = getComputedStyle(n);
+    if (st.display === "none" || st.visibility === "hidden") return false;
+  }
+  return true;
+}
+
+// Libellé humain d'un champ : label[for], aria-label, placeholder — sinon rien
+// (l'appelant retombe sur name/id).
+function libelleDuChamp(el) {
+  const viaFor = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null;
+  const txt = viaFor?.textContent ?? el.getAttribute("aria-label") ?? el.getAttribute("placeholder") ?? "";
+  return String(txt).replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+// Messages d'erreur RÉELLEMENT affichés (refus de formulaire) : nœuds d'alerte
+// visibles par styles, au texte humain (jamais une clé i18n brute — cf.
+// isHumanMessageNode, « localisationLocation »), les plus internes seulement,
+// dédoublonnés, 4 au plus.
+function messagesErreurVisibles() {
+  const SEL = '[role="alert"], [aria-live="assertive"], [class*="error" i]';
+  const vus = new Set();
+  const out = [];
+  for (const el of document.querySelectorAll(SEL)) {
+    if (el.querySelector(SEL)) continue; // on garde le nœud le plus interne
+    const txt = (el.textContent || "").replace(/\s+/g, " ").trim();
+    if (!txt || !/\s/.test(txt) || txt.length > 200) continue;
+    if (!estVisibleParStyles(el) || vus.has(txt)) continue;
+    vus.add(txt);
+    out.push(txt.slice(0, 160));
+    if (out.length >= 4) break;
+  }
+  return out;
 }
 
 // ── Catégorie ────────────────────────────────────────────────────────────────
@@ -2032,11 +2161,14 @@ async function fillAddress(adresse, warnings) {
     };
   }
 
-  // Tokens significatifs de l'adresse des Réglages (mots ≥ 3 lettres + nombres).
-  const tokens = normalizeFuzzy(adresse).split(/[^a-z0-9]+/)
+  // Tokens significatifs de l'adresse des Réglages (mots ≥ 3 lettres + nombres),
+  // en forme comparable d'ADRESSE (adresseComparable : apostrophes, points et
+  // traits d'union gommés — « dalger » retrouve « d'Alger », cas santanalily010
+  // du 05/09, où « 56b rue dalger » était refusé face à « 56B Rue d'Alger »).
+  const tokens = adresseComparable(adresse).split(/[^a-z0-9]+/)
     .filter((t) => t.length >= 3 || /^\d+$/.test(t));
   const missingTokens = (text) => {
-    const n = normalizeFuzzy(text);
+    const n = adresseComparable(text);
     return tokens.filter((t) => !n.includes(t));
   };
 
@@ -2201,7 +2333,7 @@ async function fillAddress(adresse, warnings) {
     };
   }
 
-  if (normalizeFuzzy(chosen) !== normalizeFuzzy(adresse)) {
+  if (adresseComparable(chosen) !== adresseComparable(adresse)) {
     const note = `adresse: "${adresse}" → suggestion LBC "${chosen}"`;
     console.log(`[leboncoin] ≈ ${note}`);
     warnings.push(note);
@@ -2467,6 +2599,17 @@ function texteComparable(s) {
 // partagée (bloc ci-dessus). « Jouets d'éveil » ↔ « Jouets d’éveil »,
 // « 38 - M » ↔ « 38 – M », « 128 Go » ↔ « 128 Go » (U+00A0) matchent désormais.
 const normalizeFuzzy = (s) => texteComparable(s);
+
+// ── Forme comparable d'une ADRESSE (2026-09-05, santanalily010) ─────────────
+// La forme comparable générale GARDE l'apostrophe ; or « 56b rue dalger »
+// (Réglages) doit retrouver « 56B Rue d'Alger, Calais (62100) » (suggestion
+// Leboncoin), et « d'Alger », « l'Église », « d'Antibes », « Saulx-les-
+// Chartreux » se tapent avec ou sans apostrophe, avec ou sans trait d'union.
+// Pour COMPARER (jamais pour écrire) : apostrophes, guillemets, points et
+// traits d'union gommés des DEUX côtés — « d'alger » ↔ « dalger »,
+// « saulx-les-chartreux » ↔ « saulx les chartreux » (tokens sous-chaînes). Les
+// espaces restent : ce sont eux qui séparent les tokens.
+const adresseComparable = (s) => texteComparable(s).replace(/['".-]/g, "");
 
 function containsAsWords(hay, needle) {
   if (!needle) return false;
