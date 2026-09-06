@@ -191,3 +191,45 @@ export function annoncesEncoreEnLigne(item, jobsAll) {
   }
   return enLigne.sort((a, b) => rangPlateforme(a.platform) - rangPlateforme(b.platform));
 }
+
+// ── ARRÊT D'UNE VAGUE DE REPUBLICATIONS — qui peut être annulé ? ────────────
+// (07/09/2026, demande Ornella : une vague lancée ne pouvait plus s'arrêter.)
+//
+// LE DANGER, et la seule question qui compte : une republication SUPPRIME
+// l'annonce puis la recrée. L'arrêter entre les deux, c'est perdre l'annonce
+// pour de bon. On n'annule donc QUE ce qui n'a encore rien supprimé.
+//
+// La machine à étapes vit dans platform_fields.republish_step (background.js) :
+//     'a_capturer' → 'captured' → 'deleted' → 'recreated'
+// et depuis le 12/08 l'étape 'captured' fait le chemin critique EN UNE PASSE :
+// relevé confirmé → formulaire rempli et vérifié → SUPPRESSION → 'deleted' →
+// soumission. La suppression a donc lieu PENDANT 'captured', et le marqueur
+// 'deleted' n'est écrit qu'APRÈS coup (marquerRepublishSupprime), écriture qui
+// peut elle-même échouer (session absente, réseau). Autrement dit : un job à
+// 'captured' PEUT déjà avoir supprimé l'annonce sans le dire.
+//
+// D'où la frontière, volontairement conservatrice :
+//   · ANNULABLE       — republish_step absent ou 'a_capturer' : le relevé n'a
+//                       même pas commencé, aucun formulaire n'a été rempli,
+//                       aucune suppression n'a pu partir. Certitude, pas pari.
+//   · JAMAIS ANNULÉ   — 'captured', 'deleted', 'recreated', et TOUT statut
+//                       'processing' (une extension l'a en main à cet instant :
+//                       l'annuler courserait la passe qui va supprimer).
+//
+// ⚠️ On lit la valeur BRUTE, jamais repubStepDe() qui normalise l'inconnu en
+// 'a_capturer' : une étape non reconnue doit être traitée comme avancée, pas
+// comme sûre. Une valeur inattendue n'est pas une preuve d'innocence.
+export function republishAnnulable(job) {
+  if (!job || job.action !== "republish") return false;
+  if (job.status !== "pending" && job.status !== "needs_user") return false;
+  const step = job.platform_fields?.republish_step;
+  return step == null || step === "a_capturer";
+}
+
+// Marqueur d'un arrêt DEMANDÉ par l'utilisateur : ce n'est pas un échec, et
+// l'écran ne doit pas le raconter comme tel (ni pastille « Arrêtée », ni
+// compteur d'arrêtées). L'annonce n'a jamais bougé — l'article repasse
+// simplement « En ligne ». Même doctrine que gel_livres_le, qui a son propre
+// rendu neutre plutôt que le « cancelled » générique.
+export const MARQUEUR_ARRET_UTILISATEUR = "arret_utilisateur";
+export const estArretUtilisateur = (job) => Boolean(job?.platform_fields?.[MARQUEUR_ARRET_UTILISATEUR]);
