@@ -258,7 +258,7 @@ export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalo
   // accepte le texte libre, on demande le terme exact du contexte, sans liste.
   const libres = second.manquants
     .map((nom) => catalogue.find((c) => c.name === nom))
-    .filter((c): c is AspectCatalogue => Boolean(c) && c.mode !== "SELECTION_ONLY" && c.name !== "Marque")
+    .filter((c): c is AspectCatalogue => c !== undefined && c.mode !== "SELECTION_ONLY" && c.name !== "Marque")
     .map((c) => ({ name: c.name, mode: c.mode, allowedValues: c.allowedValues, libre: true }));
   if (libres.length) {
     const ia2 = await resoudreAspectsIA(libres, contexte, { apiKey, onUsage });
