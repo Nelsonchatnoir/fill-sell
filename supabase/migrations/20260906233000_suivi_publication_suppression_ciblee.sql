@@ -1,7 +1,9 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Suivi des publications : une suppression vise SA publication (2026-09-06).
 --
--- NON APPLIQUÉE — attend le feu vert nominal de Nico (règle du 07/08).
+-- APPLIQUÉE en prod le 06/09/2026 (feu vert nominal de Nico), via db query --linked -f.
+-- Vérifié après application : annonce_id_de_job OK sur eBay/Vinted/LBC (null sur Beebs sans id),
+-- rpc_ok = true, trigger_ok = true (pg_proc).
 --
 -- Cas réel du 06/09 (T-shirt Adidas, voie API) : publish créé 12:08, publié
 -- 12:24 ; un delete créé 12:18 visait l'annonce PRÉCÉDENTE (820094298354).
