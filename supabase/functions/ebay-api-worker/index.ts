@@ -204,11 +204,6 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
 //   · pas de mapping : suggestion n°1 si son chemin porte le Département
 //     attendu par `genre` (ou article hors mode : genre vide), sinon
 //     needs_user avec les 5 chemins — jamais une publication dans « Autres ».
-const MOTS_VIDES = new Set(["les", "des", "pour", "avec", "sans", "dans", "sur", "une", "the", "and", "taille", "size", "vetements", "accessoires", "autres", "autre"]);
-function mots(texte: string): Set<string> {
-  return new Set(String(texte ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-    .split(/[^a-z0-9]+/).filter((m) => m.length >= 4 && !MOTS_VIDES.has(m)));
-}
 const GENRE_DANS_CHEMIN: Record<string, RegExp> = {
   Femme: /\bfemme\b/i, Homme: /\bhomme\b/i, Fille: /\bfille\b/i, "Garçon": /gar[cç]on/i, "Bébé": /b[ée]b[ée]/i, Enfant: /enfant/i,
 };
