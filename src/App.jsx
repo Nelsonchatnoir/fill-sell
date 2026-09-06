@@ -62,6 +62,7 @@ import PlanBadge from './components/PlanBadge';
 import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
 import ExtensionPitchScreen from './components/ExtensionPitchScreen';
 import EbayCompteSection from './components/EbayCompteSection';
+import { extensionTraceeAilleurs } from './utils/extensionTrace';
 import PlanDetailsModal from './components/PlanDetailsModal';
 import { useIsMobile } from './hooks/useIsMobile';
 import BrandMark from './components/BrandMark';
@@ -2034,13 +2035,18 @@ export default function App({ loginOnly = false }){
   // (fetch en cours). La garde de publication (2026-08-04) ne bloque côté UI
   // que sur le premier cas — le RPC tranche de toute façon côté serveur.
   const [extensionSeenLoaded,setExtensionSeenLoaded]=useState(false);
+  // Trace d'extension AILLEURS que sur le profil (job traité, run de sync
+  // exécuté) — lue par fetchAll quand extension_last_seen_at est NULL, cf.
+  // utils/extensionTrace. Une extension vue une fois l'est pour toujours : un
+  // ordinateur éteint aujourd'hui ne ramène jamais l'étape « installer ».
+  const [extensionTraceAilleurs,setExtensionTraceAilleurs]=useState(false);
   // eBay par API (lot 2b, 06/09) : drapeau PAR COMPTE posé par Nico en base
   // (profiles.ebay_voie_api). Lu ici, jamais écrit par le client. Sert à
   // l'écran de publication pour arrêter un article sans photo AVANT le job
   // (la voie API n'accepte aucune annonce sans image).
   const [ebayVoieApi,setEbayVoieApi]=useState(false);
   // Tri-état passé aux tabs : true = jamais vue, false = déjà vue, null = inconnu.
-  const extensionNeverSeen=extensionSeenLoaded?(extensionLastSeenAt==null):null;
+  const extensionNeverSeen=extensionSeenLoaded?(extensionLastSeenAt==null&&!extensionTraceAilleurs):null;
   // Renvoi de la bannière mémorisé par couple (build installé | build minimal
   // requis) : elle revient si l'extension change de build en restant obsolète,
   // OU si un nouveau commit extension bumpe l'exigence — jamais pour rien.
@@ -2716,6 +2722,13 @@ export default function App({ loginOnly = false }){
       setExtensionBuild(p.data?.extension_build??null);
       setExtensionLastSeenAt(p.data?.extension_last_seen_at??null);
       setEbayVoieApi(p.data?.ebay_voie_api===true);
+      // Horodatage NULL ≠ jamais d'extension (05/09) : on cherche une trace
+      // sur un job (handler_build) ou un run de sync (extension_build) AVANT
+      // de déclarer le chargement fini — sinon l'étape 1 du Tableau vide
+      // clignoterait (affichée, puis retirée). Lecture seulement dans ce cas.
+      let traceAilleurs=false;
+      if(p.data?.extension_last_seen_at==null) traceAilleurs=await extensionTraceeAilleurs(uid);
+      setExtensionTraceAilleurs(traceAilleurs);
       setExtensionSeenLoaded(true);
       // ── Onboarding : déclencheur PAR COMPTE (lot 2b, 2026-08-09) ───────────
       // AVANT : l'écran de choix était branché sur la confirmation de la modale

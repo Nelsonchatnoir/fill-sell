@@ -59,8 +59,13 @@ export function useEnvoiLienExtension(lang, emailDeSecours = null) {
   // UN TAP = l'e-mail part à l'adresse du compte. 'throttle' n'est PAS un
   // échec : le mail précédent est en route vers la même adresse — on affiche la
   // confirmation et le décompte restant, jamais une erreur.
+  // Rend le résultat serveur ({ ok, reason, email… }) pour que l'appelant
+  // puisse JOURNALISER un envoi réellement parti (usage_logs install_extension
+  // · mail_envoye, 05/09) — l'état React n'est pas relisible dans le même tour.
+  // `r.ok` seul vaut « parti » : un throttle est un envoi précédent, pas un
+  // nouveau.
   const envoyer = async () => {
-    if (envoi.etat === 'en_cours') return;
+    if (envoi.etat === 'en_cours') return { ok: false, reason: 'en_cours' };
     setEnvoi((v) => ({ ...v, etat: 'en_cours', raison: null }));
     const r = await envoyerLienExtension(lang === 'en' ? 'en' : 'fr');
     if (r.ok || r.reason === 'throttle') {
@@ -72,12 +77,13 @@ export function useEnvoiLienExtension(lang, emailDeSecours = null) {
       setMaintenant(Date.now());   // recale l'horloge du décompte
       try { localStorage.setItem(LIEN_ENVOYE_KEY, JSON.stringify({ email, envoyeA })); }
       catch { /* cache d'affichage seul */ }
-      return;
+      return r;
     }
     // Rien n'est parti : on le dit, et le bouton reste actif. L'adresse d'un
     // envoi précédent réussi est conservée pour distinguer « le renvoi a
     // échoué » d'un premier envoi raté.
     setEnvoi((v) => ({ etat: 'echec', email: v.email, envoyeA: 0, raison: r.reason }));
+    return r;
   };
 
   return { envoi, secondesRestantes, envoyer };
