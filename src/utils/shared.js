@@ -1280,6 +1280,42 @@ const INCLUDED_ACCESSORY_CLAUSE =
 const FRAGRANCE_NEGATION =
   /(?:\bsans\b|\b0\s*%)\s*parfum\b|\bnon\s+parfum[ée]e?s?\b|fragrance[-\s]?free|unscented/gi;
 
+// ── « UN DVD N'A PAS D'ISBN » (2026-09-06, lot de 24 DVD d'Ornella) ─────────
+// La famille Lens `livres_medias` s'appelle littéralement « livres ET médias » :
+// elle porte les livres, mais AUSSI les DVD, Blu-ray, CD, vinyles et jeux
+// vidéo. La règle « famille souveraine pour les livres » du 02/09 (cas
+// Delavier) en tirait 📚 pour TOUTE la famille — et un lot de 24 DVD est parti
+// côté Beebs en « Jeux, jouets et loisirs > Livres > Autres livres », avec le
+// mur ISBN au bout : on a réclamé à une vendeuse le numéro ISBN de DVD.
+//
+// Ce prédicat dit « support NON-livre », et rien d'autre :
+//  · uniquement des mots qui désignent un SUPPORT physique (dvd, vinyle,
+//    console…), JAMAIS un sujet. « Musique », « film » et « série » sont
+//    volontairement ABSENTS de la liste : un livre parle toujours de son sujet
+//    — c'est la leçon exacte du cas Delavier (« La Méthode Delavier de
+//    MUSCULATION » n'est pas un article de sport), qu'on ne rejoue pas à
+//    l'envers ;
+//  · DÉSARMÉ dès que le texte nomme explicitement un livre (« méthode + CD »,
+//    « roman », « manga », « tome ») : un livre vendu avec un CD reste un livre,
+//    et c'est le cas de faux positif le plus probable de toute la règle.
+//
+// Vocabulaire aligné sur MEDIA_NON_LIVRE_RE d'update-job-status (24/08, les 12
+// DVD de Prudence Fresnel) : la même doctrine des deux côtés de la barrière.
+export const SUPPORT_NON_LIVRE_RE =
+  /\b(dvd|blu[-\s]?ray|vhs|k7|laserdisc|vinyles?|33\s?tours|45\s?tours|cd|cds|cd-?rom|jeux?\s+vid[ée]o|video\s?games?|consoles?|playstation|xbox|nintendo|game\s?boy|gamecube|megadrive|dreamcast)\b/i;
+export const LIVRE_EXPLICITE_RE =
+  /\b(livres?|romans?|mangas?|bandes?\s+dessin[ée]es?|bd|tomes?|beaux?[-\s]livres?|books?|novels?|isbn)\b/i;
+
+// true = le texte désigne un support vidéo/audio/jeu, donc PAS un livre, donc
+// PAS d'ISBN. Utilisé aux deux bouts de la chaîne : le mapping de catégorie
+// (ceinture) et l'exigence d'ISBN (bretelles).
+export function estSupportNonLivre(...textes) {
+  const t = textes.filter(Boolean).map(String).join(" ");
+  if (!t.trim()) return false;
+  if (LIVRE_EXPLICITE_RE.test(t)) return false;
+  return SUPPORT_NON_LIVRE_RE.test(t);
+}
+
 // Détection par MOT-CLÉ seule (les 2 passes d'OBJECT_ICON_RULES), SANS repli sur
 // le défaut de catégorie : renvoie l'icône si un mot-objet explicite matche,
 // sinon null. Extraite de detectObjectIcon (2026-07-21) pour que les appelants

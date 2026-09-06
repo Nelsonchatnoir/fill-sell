@@ -16,7 +16,7 @@ import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee } from "../utils
 import { texteComparable } from "../utils/texteComparable";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
-import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension } from "../utils/shared";
+import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
@@ -355,7 +355,6 @@ function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
   // chantier classement, qui reste interdite avant mesure.)
   const familleFiche = initialListing?.famille ?? null;
   const categorieFiche = String(pf?.categorie || initialListing?.categorie || "").trim();
-  if (familleFiche === "livres_medias" || /^livres?$/i.test(categorieFiche)) return "📚";
   // Copies FR seulement — jamais eBay (traduite en anglais).
   const frTitle =
     initialListing?.titre ??
@@ -368,6 +367,18 @@ function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
     edited?.leboncoin?.description ??
     edited?.vinted?.description ??
     "";
+  // ── CEINTURE (2026-09-06, lot de 24 DVD d'Ornella) ────────────────────────
+  // La souveraineté ci-dessus s'appliquait à la famille ENTIÈRE, sans jamais
+  // regarder le titre — or `livres_medias` veut dire « livres ET médias » : un
+  // lot de DVD y tombe aussi, et repartait en 📚, donc en rayon Livres sur les
+  // 4 plateformes, donc dans le mur ISBN. La règle reste souveraine pour les
+  // LIVRES, mais elle rend la main dès que la source FR nomme un SUPPORT
+  // non-livre (DVD, Blu-ray, vinyle, console…) — detectObjectIcon sait déjà
+  // rendre 📀 / 💿 / 🎮 sur ces mots, il suffisait de le laisser parler.
+  // ⛔ Le prédicat ne connaît QUE des supports, jamais des sujets, et se
+  // désarme si le texte dit « livre » : le cas Delavier reste couvert.
+  if ((familleFiche === "livres_medias" || /^livres?$/i.test(categorieFiche))
+      && !estSupportNonLivre(frTitle, frDesc)) return "📚";
   // La marque et la taille sont des signaux : "New Balance" + "EU 44" disent
   // "chaussure" là où le titre marketing ne le dit pas.
   const marque = pf?.marque ?? initialListing?.marque ?? "";
@@ -743,7 +754,7 @@ function findMatchingOption(raw, options, { sizeField = false } = {}) {
 // la publication). Le prédicat est DÉRIVÉ des tables déjà en place
 // (getLbcCategoryPath, indexée par l'icône detectObjectIcon, celle-là même que
 // missingSharedFields utilise) : aucun nouveau mapping catégorie→champs.
-function isFieldRelevant(key, icon) {
+function isFieldRelevant(key, icon, texteArticle = "") {
   const path = getLbcCategoryPath(icon);
   const root = path?.[0] ?? null;
   const leaf = path?.[1] ?? null;
@@ -772,7 +783,15 @@ function isFieldRelevant(key, icon) {
     // `leaf` vient de getLbcCategoryPath : les icônes 📖 📚 📰 rendent
     // ["Loisirs", "Livres"]. Un ISBN déjà rempli reste visible hors Livres —
     // c'est visibleFields qui le garantit, et il n'est pas touché.
-    case "isbn":     return leaf === "Livres";
+    // ── BRETELLES (2026-09-06) : un DVD n'a pas d'ISBN, même rangé en Livres ─
+    // La ceinture (resolveArticleIcon) empêche un support vidéo/audio de
+    // devenir 📚. Celle-ci vaut MÊME SI une catégorie Livres a été posée par
+    // erreur — icône fausse, catégorie éditée à la main, mapping futur : on ne
+    // réclame JAMAIS un ISBN à un article dont le texte dit DVD, Blu-ray,
+    // vinyle, CD ou jeu vidéo. Deux barrières indépendantes, parce qu'aucune
+    // des deux ne doit être seule à tenir : c'est un utilisateur à qui on
+    // demande un numéro qui n'existe pas.
+    case "isbn":     return leaf === "Livres" && !estSupportNonLivre(texteArticle);
     default:         return true;   // etat, couleur, marque, categorie… : partout
   }
 }
@@ -780,9 +799,9 @@ function isFieldRelevant(key, icon) {
 // Filtre d'affichage : garde un champ s'il est pertinent OU s'il porte déjà une
 // valeur (ne jamais cacher une donnée que l'IA a trouvée et que l'utilisateur
 // pourrait vouloir corriger).
-function visibleFields(fieldConfigs, icon, values) {
+function visibleFields(fieldConfigs, icon, values, texteArticle = "") {
   return fieldConfigs.filter(f =>
-    isFieldRelevant(f.key, icon) || String(values?.[f.key] ?? "").trim() !== ""
+    isFieldRelevant(f.key, icon, texteArticle) || String(values?.[f.key] ?? "").trim() !== ""
   );
 }
 
@@ -2004,7 +2023,13 @@ function StepGeneration({ generating, generateError, platformListings, processed
           const fieldConfigsVisible = visibleFields(
             platformFieldsConfig[p] ?? [],
             articleIcon,
-            e.platform_fields ?? {}
+            e.platform_fields ?? {},
+            // Copies FR seulement — jamais eBay (traduite en anglais) : même
+            // chaîne de repli que resolveArticleIcon. L'article d'origine n'est
+            // pas descendu jusqu'ici, et ces copies portent le même mot :
+            // « DVD » reste « DVD » sur Leboncoin, Vinted et Beebs.
+            `${edited?.leboncoin?.title ?? edited?.vinted?.title ?? edited?.beebs?.title ?? ""} ` +
+            `${edited?.leboncoin?.description ?? edited?.vinted?.description ?? ""}`
           );
           // Union sticky (cf. shownFieldsRef) dans l'ordre de la config.
           const shownSet = shownFieldsRef.current[p] ?? (shownFieldsRef.current[p] = new Set());
