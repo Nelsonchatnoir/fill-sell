@@ -1259,8 +1259,130 @@ function texteSain(s) {
   return String(s ?? "").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "�");
 }
 
+// ── GARDE ANTI-BOUCLE needs_user (2026-09-06) — TOUTES PLATEFORMES ──────────
+// Cas fondateur : Joséphine, deux chemises homme sur Beebs. Le handler
+// désignait « Taille » comme champ à trancher, elle répondait « M », l'app
+// l'écrivait dans platform_fields.taille, le job repartait… et re-bloquait sur
+// « Taille » — parce que la catégorie porte DEUX champs de ce libellé et que le
+// needsUser désignait le mauvais. Elle a répondu, re-répondu, puis nous a
+// écrit : « nous avons beau mettre la taille dans l'application, cela revient
+// toujours en erreur ». Rien, nulle part, ne détectait ça : le job restait
+// vivant, le mini-éditeur reposait la même question, indéfiniment.
+//
+// Signature du défaut, indépendante de la plateforme ET du champ : le job
+// revient en needs_user sur la MÊME cible d'écriture alors que
+// needsUserResolved porte DÉJÀ, pour cette cible, la valeur qu'on vient
+// d'essayer. La réponse de l'utilisateur n'a rien changé — la reposer ne
+// changera rien non plus.
+//
+// ⚠️ Ce qui n'est PAS une boucle et doit continuer de marcher : la plateforme
+// refuse une valeur, on redemande le champ, l'utilisateur en donne une AUTRE.
+// D'où la mémoire par cible (platform_fields.needsUserBoucle) : on retient la
+// valeur présente AU BLOCAGE PRÉCÉDENT et on ne coupe que si elle est
+// IDENTIQUE — ou après BOUCLE_NEEDS_USER_MAX blocages sur la même cible quelles
+// que soient les valeurs, parce qu'un carrousel de réponses est une boucle
+// aussi. Le 1er blocage (aucune réponse encore donnée) ne coupe jamais.
+//
+// Placée dans updateJobStatus et non dans markNeedsUser : c'est le SEUL point
+// de passage commun aux ~20 sites qui écrivent 'needs_user', donc la seule
+// place d'où la garde couvre Vinted, Leboncoin, eBay et Beebs sans être
+// recopiée. Strictement inerte partout ailleurs : elle ne regarde que les
+// transitions vers 'needs_user' porteuses d'un needsUserField.
+const BOUCLE_NEEDS_USER_MAX = 4;
+
+// Miroir EXACT de NU_CHANNEL_BY_PLATFORM (src/tabs/StockTab.jsx) : c'est l'app
+// qui choisit où atterrit la réponse quand le handler n'a pas posé de target.
+// Les deux doivent dire la même chose, sinon la garde surveillerait une clé que
+// personne n'écrit — et ne se déclencherait jamais.
+const NU_CHANNEL_BY_PLATFORM = {
+  vinted: "vintedAspects", leboncoin: "lbcAspects", beebs: "beebsAspects", ebay: "ebayAspects",
+};
+
+// Cible d'écriture de la réponse, calculée comme StockTab.jsx la calcule.
+function cleCibleNeedsUser(f, platform) {
+  if (!f) return null;
+  const aTarget = Boolean(f.target && f.target.key);
+  const root = aTarget ? (f.target.root ?? null) : (NU_CHANNEL_BY_PLATFORM[platform] ?? null);
+  const key = aTarget ? f.target.key : f.field_key;
+  if (!key) return null;
+  return root ? `${root}.${key}` : String(key);
+}
+
+function gardeAntiBoucleNeedsUser(jobId, safe) {
+  const pf = { ...(safe.platform_fields ?? {}) };
+  const f = pf.needsUserField;
+  const plateforme = f?.platform ?? null;
+  const cle = cleCibleNeedsUser(f, plateforme);
+  if (!cle) return { status: "needs_user", safe };
+
+  const brut = pf.needsUserResolved?.[cle];
+  const reponse = brut === undefined || brut === null ? null : String(brut).trim();
+  const memoire = pf.needsUserBoucle?.[cle] ?? null;
+  const n = Number(memoire?.n ?? 0) + 1;
+
+  const memeReponse = Boolean(memoire) && Boolean(reponse)
+    && String(memoire.valeur ?? "") === reponse;
+  const tropDeTours = n > BOUCLE_NEEDS_USER_MAX;
+  const journal = {
+    ...(pf.needsUserBoucle ?? {}),
+    [cle]: { valeur: reponse, n, at: new Date().toISOString() },
+  };
+
+  if (!memeReponse && !tropDeTours) {
+    // Cours normal : on ne fait que TENIR LE COMPTE. Aucun changement de
+    // statut, aucun message modifié.
+    return { status: "needs_user", safe: { ...safe, platform_fields: { ...pf, needsUserBoucle: journal } } };
+  }
+
+  // BOUCLE : on arrête. needsUserField RETIRÉ — sans lui l'app ne peut plus
+  // reposer la même question — statut terminal explicite, et un marqueur que
+  // l'on retrouve d'une requête (platform_fields ? 'boucle_needs_user').
+  const libelle = String(f.field_label ?? f.field_key ?? "ce champ").slice(0, 120);
+  const motif = memeReponse ? "valeur_inchangee" : "trop_de_tours";
+  delete pf.needsUserField;
+  pf.needsUserBoucle = journal;
+  pf.boucle_needs_user = {
+    field_key: String(f.field_key ?? "").slice(0, 120),
+    field_label: libelle,
+    cible: cle,
+    valeur: reponse ? reponse.slice(0, 120) : null,
+    blocages: n,
+    motif,
+    platform: plateforme,
+    at: new Date().toISOString(),
+  };
+
+  // Message au VENDEUR : court (le raccourci de humanizeJobError s'applique
+  // au-delà de 300 caractères), sans jargon, sans promesse de reprise, et qui
+  // dit à qui est la faute. Le détail part en annexe « — Observabilité: »,
+  // que l'affichage retire.
+  const humain = memeReponse
+    ? `« ${libelle} » : ta réponse a bien été enregistrée, et ce champ est pourtant redemandé à l'identique. `
+      + `La saisir à nouveau ne changerait rien — on arrête là plutôt que de te faire tourner en rond. `
+      + `Le problème vient de chez nous et il est signalé.`
+    : `« ${libelle} » : ce champ a été redemandé ${n} fois malgré tes réponses. `
+      + `On arrête là plutôt que de te faire tourner en rond. `
+      + `Le problème vient de chez nous et il est signalé.`;
+  const observabilite =
+    ` — Observabilité: boucle needs_user (${motif}) sur la cible ${cle}, ${n} blocage(s), `
+    + `valeur ${JSON.stringify(reponse)}, plateforme ${plateforme ?? "inconnue"}, job ${jobId}.`;
+
+  console.warn(
+    `[background] Job ${jobId} : BOUCLE needs_user détectée sur « ${cle} » ` +
+    `(${motif}, ${n} blocage(s)) → failed, mini-éditeur retiré, marqueur boucle_needs_user posé.`
+  );
+  return { status: "failed", safe: { ...safe, error: humain + observabilite, platform_fields: pf } };
+}
+
 function updateJobStatus(accessToken, jobId, status, extra = {}) {
-  const safe = { ...extra };
+  let safe = { ...extra };
+  // Garde anti-boucle : n'intercepte QUE les passages en needs_user porteurs
+  // d'un mini-éditeur. Tout le reste traverse sans être touché.
+  if (status === "needs_user" && safe.platform_fields?.needsUserField) {
+    const verdict = gardeAntiBoucleNeedsUser(jobId, safe);
+    status = verdict.status;
+    safe = verdict.safe;
+  }
   if (typeof safe.error === "string") safe.error = texteSain(safe.error);
   return callEdgeFunction("update-job-status", accessToken, {
     job_id: jobId,

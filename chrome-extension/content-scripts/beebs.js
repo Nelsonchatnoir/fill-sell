@@ -485,6 +485,12 @@ async function fillListingForm(job) {
   await waitFor(() => document.querySelector('button[class*="__selectButton"]')
     && document.querySelectorAll('div[class*="__label"]').length > 2, 8000);
 
+  // Nom d'attribut de CHAQUE champ + son référentiel complet, lus sur le fiber
+  // (2026-09-06). C'est ce relevé qui permet de distinguer deux champs au
+  // libellé identique — « Taille » ×2 sur Chemises (homme) — et de leur donner
+  // une clé propre. Muet ⇒ repli positionnel, jamais bloquant.
+  await chargerChampsFiber();
+
   // Couleur : même normalisation que Vinted/eBay (colors[] posé par l'app,
   // sinon split de couleur libre) — Beebs n'affiche qu'un choix simple, on
   // ne prend que la dominante.
@@ -615,9 +621,15 @@ async function fillListingForm(job) {
   }
 
   // ── Canal GÉNÉRIQUE (chantier champs obligatoires, 1.A/1.B) ────────────────
-  // platform_fields.beebsAspects = { "<libellé exact du champ>": "valeur" } —
-  // posé par l'app (saisie manuelle du stepper) pour les champs SANS mapping
-  // dédié ci-dessus. Les libellés déjà servis sont ignorés (jamais deux poses).
+  // platform_fields.beebsAspects = { "<clé de champ>": "valeur" } — posé par
+  // l'app (saisie manuelle du stepper, mini-éditeur needs_user) pour les champs
+  // SANS mapping dédié ci-dessus. Les libellés déjà servis sont ignorés (jamais
+  // deux poses).
+  // ⚠️ La garde porte sur la CLÉ BRUTE, égalité stricte. Un homonyme porte une
+  // clé À DISCRIMINANT (« Taille [attributes.size_men_shirt] ») qui n'est donc
+  // PAS dans ce Set : il passe, et resoudreChamps l'envoie sur le bon champ.
+  // C'est ce qui débloque le 2ᵉ « Taille » des chemises homme — avant le
+  // 06/09 il était sauté en silence, sans que rien ne le dise.
   const handledLabels = new Set(["Couleur", "Marque", "Pointure", "Taille", "État", "Matière", "Âge", "Format du colis"]);
   if (fields.beebsAspects && typeof fields.beebsAspects === "object") {
     for (const [label, value] of Object.entries(fields.beebsAspects)) {
@@ -637,10 +649,16 @@ async function fillListingForm(job) {
   // formulaire Baskets femme).
   const enumerated = enumerateBeebsFields();
   for (const f of enumerated) {
-    if (f.required && !f.filled && !unfilledRequired.includes(f.label)) {
-      unfilledRequired.push(f.label);
+    // Par CLÉ et non par libellé (2026-09-06) : deux champs « Taille » sont
+    // deux entrées distinctes, et le second n'est plus avalé par le premier.
+    if (f.required && !f.filled && !unfilledRequired.includes(f.key)) {
+      unfilledRequired.push(f.key);
     }
   }
+  // Ce que le vendeur lira : le libellé affichable, jamais la clé technique.
+  const nomLisible = (cle) =>
+    enumerated.find((e) => e.key === cle)?.field_label ?? libelleHumainDeCle(cle);
+  const listeLisible = (cles) => cles.map(nomLisible).join(", ");
 
   if (job.price != null) await fillPriceField("#price", job.price);
 
@@ -687,8 +705,9 @@ async function fillListingForm(job) {
     // CE remplissage (listes sans barre de recherche uniquement) — sinon le
     // background complète depuis le catalogue. Cible d'écriture : les libellés
     // couverts par un bloc dédié → champ racine de platform_fields (le canal
-    // beebsAspects les SAUTE, cf. handledLabels l.483) ; sinon →
-    // beebsAspects.<libellé exact>.
+    // beebsAspects les SAUTE, cf. handledLabels) ; sinon → beebsAspects.<clé>.
+    // Depuis le 06/09, un homonyme (clé à discriminant) va TOUJOURS dans
+    // beebsAspects : sa clé n'est pas dans handledLabels, donc il est servi.
     const BEEBS_DEDICATED_TARGETS = {
       "Couleur": "couleur",
       "Marque": "marque",
@@ -699,9 +718,15 @@ async function fillListingForm(job) {
       "Âge": "age",
       "Format du colis": "format_colis",
     };
-    const firstLabel = unfilledRequired[0];
-    const firstMeta = enumerated.find((e) => e.label === firstLabel);
-    const dedicated = BEEBS_DEDICATED_TARGETS[firstLabel];
+    const firstKey = unfilledRequired[0];
+    const firstMeta = enumerated.find((e) => e.key === firstKey);
+    const firstLabel = firstMeta?.field_label ?? libelleHumainDeCle(firstKey);
+    // ⛔ La cible dédiée (platform_fields.taille, .couleur…) n'est légitime que
+    // pour un libellé UNIQUE. Dès qu'il y a des homonymes, le 2ᵉ champ et les
+    // suivants portent une clé à discriminant : ils passent par beebsAspects,
+    // dont la clé n'est PAS « Taille » — donc handledLabels ne les saute plus,
+    // et la réponse de l'utilisateur atterrit sur le champ qui la réclame.
+    const dedicated = cleADiscriminant(firstKey) ? null : BEEBS_DEDICATED_TARGETS[firstKey];
 
     // ── RELEVÉ DE SECOURS (2026-07-26, cas Casio « Taille » vide) ────────────
     // Un needsUser de champ fermé SANS allowed_values est INUTILISABLE : l'app
@@ -714,19 +739,29 @@ async function fillListingForm(job) {
     // 26/07 : Taille@Montres rend ses 6 diamètres à l'ouverture).
     let optionsChamp = Array.isArray(firstMeta?.options) && firstMeta.options.length
       ? firstMeta.options
-      : (beebsObservedOptions[firstLabel] ?? null);
+      : (beebsObservedOptions[firstKey] ?? null);
+    // Liste issue du fiber = référentiel ENTIER du champ (ni filtré, ni
+    // tronqué) : c'est la définition même d'options_completes. On ne le
+    // certifie que si la liste tient sous le plafond de 200 que le background
+    // applique à allowed_values — au-delà (Marque : 1 400 valeurs), la liste
+    // transmise serait tronquée et le drapeau mentirait.
+    let optionsCompletes = firstMeta?.optionsSource === "fiber"
+      && Array.isArray(firstMeta.options) && firstMeta.options.length <= 200;
     if (!optionsChamp?.length) {
-      const champ = findField(firstLabel);
+      // Résolution par CLÉ : sur un libellé dupliqué, le secours doit ouvrir le
+      // panneau du champ RÉELLEMENT vide, pas celui du premier homonyme.
+      const champ = resoudreChamps(firstKey)[0] ?? null;
       if (champ?.trigger) {
         try {
-          console.log(`[beebs] needsUser: relevé de secours des options de « ${firstLabel} »`);
-          const lues = await openPanelOptions(champ.trigger, "", 4000, { label: firstLabel });
+          console.log(`[beebs] needsUser: relevé de secours des options de « ${firstKey} »`);
+          const lues = await openPanelOptions(champ.trigger, "", 4000, { label: firstKey });
           if (lues.length) optionsChamp = lues.map(optionLabel).filter(Boolean).slice(0, 60);
           await closePanel(champ.trigger);
         } catch (e) {
-          console.warn(`[beebs] relevé de secours « ${firstLabel} » impossible : ${String(e?.message ?? e)}`);
+          console.warn(`[beebs] relevé de secours « ${firstKey} » impossible : ${String(e?.message ?? e)}`);
         }
       }
+      optionsCompletes = false; // relevé DOM : suggestion, jamais un référentiel certifié
     }
 
     // ── « Âge » : DIRE CE QUI EST RÉELLEMENT POSSIBLE (2026-08-31) ───────────
@@ -787,7 +822,7 @@ async function fillListingForm(job) {
         success: false,
         needsUser: true,
         error:
-          `Beebs exige des champs encore vides (${unfilledRequired.join(", ")}) et les valeurs autorisées de ` +
+          `Beebs exige des champs encore vides (${listeLisible(unfilledRequired)}) et les valeurs autorisées de ` +
           `« ${firstLabel} » n'ont pas pu être relevées ` +
           (optionsIllisibles
             ? "(le panneau a rendu les identifiants internes de Beebs au lieu des libellés). "
@@ -805,17 +840,22 @@ async function fillListingForm(job) {
       success: false,
       needsUser: true,
       error:
-        `Beebs exige des champs encore vides pour cette catégorie : ${unfilledRequired.join(", ")}. ` +
+        `Beebs exige des champs encore vides pour cette catégorie : ${listeLisible(unfilledRequired)}. ` +
         "Compléter ces champs dans l'app (copie Beebs), puis relancer la publication. " +
-        `Observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}.` +
+        `Observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; ` +
+        `champs fiber: ${etatChampsFiber} ; clé du champ à trancher: ${firstKey}.` +
         noteAge,
       warnings,
       unfilledRequired,
       discoveredRequired: enumerated,
       needsUserField: {
-        field_key: firstLabel,
+        // CLÉ désambiguïsée (2026-09-06) : « Taille » pour un libellé unique —
+        // donc rigoureusement l'historique — et « Taille [attributes.…] » pour
+        // le 2ᵉ homonyme. C'est elle qui indexe le catalogue et la cible
+        // d'écriture ; le libellé affiché, lui, reste lisible par le vendeur.
+        field_key: firstKey,
         field_label: firstLabel,
-        target: dedicated ? { root: null, key: dedicated } : { root: "beebsAspects", key: firstLabel },
+        target: dedicated ? { root: null, key: dedicated } : { root: "beebsAspects", key: firstKey },
         // input_type (2026-07-22) : dit à l'app que ce champ est FERMÉ côté
         // Beebs. Sans lui, un champ dont on n'a pas pu relever les options
         // arrivait dans le mini-éditeur indistinguable d'un champ libre, et
@@ -828,8 +868,15 @@ async function fillListingForm(job) {
         // que le champ serait libre.
         input_type: firstMeta?.inputType ?? "dropdown",
         // allowed_values TOUJOURS non vide ici (garde ci-dessus) — plus jamais
-        // de mini-éditeur à liste vide (26/07).
+        // de mini-éditeur à liste vide (26/07). Et, depuis le 06/09, c'est la
+        // liste DU champ réellement vide : sur un libellé dupliqué, on ne
+        // renvoie plus celle du premier homonyme (déjà rempli, donc un choix
+        // qui ne pouvait rien débloquer).
         allowed_values: optionsChamp,
+        // Référentiel lu sur le fiber = liste ENTIÈRE du champ : l'app peut
+        // fermer le select (doctrine options_completes du 04/09). Jamais posé
+        // sur un relevé DOM, qui reste une suggestion.
+        ...(optionsCompletes ? { options_completes: true } : {}),
       },
     };
   }
@@ -890,24 +937,33 @@ async function fillListingForm(job) {
 //   - pré-rempli par Beebs (Format du colis) : texte ≠ placeholder.
 // La Catégorie elle-même est exclue (gérée en bloquant par selectCategory).
 function enumerateBeebsFields() {
+  const tous = champsFormulaire();
   const out = [];
-  for (const l of document.querySelectorAll('div[class*="__label"]')) {
-    const btn = l.parentElement?.querySelector('button[class*="__selectButton"]');
-    if (!btn) continue;
-    const text = l.textContent.trim();
-    const label = text.replace(/\s*\(facultatif\)\s*/i, "").trim();
-    if (!label || /^catégorie$/i.test(label)) continue;
-    const value = (btn.textContent || "").trim();
+  for (const c of tous) {
+    if (!c.label || /^catégorie$/i.test(c.label)) continue;
+    const value = (c.trigger.textContent || "").trim();
+    const cle = cleDeChamp(c, tous);
     out.push({
-      key: label,
-      label,
-      required: !/\(facultatif\)/i.test(text),
+      // Clé DÉSAMBIGUÏSÉE (2026-09-06) : identique au libellé tant qu'il est
+      // unique — donc identique à l'historique pour la quasi-totalité du parc
+      // — et suffixée du nom d'attribut (ou de la position) pour les
+      // homonymes. C'est elle qui part en field_key du catalogue et du
+      // needsUserField : deux champs « Taille » ne s'écrasent plus.
+      key: cle,
+      label: c.label,
+      // Ce que l'app AFFICHE : jamais la clé technique.
+      field_label: libelleAffichable(c, tous),
+      ...(c.name ? { name: c.name } : {}),
+      required: c.required,
       inputType: "dropdown",
       filled: Boolean(value) && !/^sélectionner/i.test(value),
-      // Options complètes relevées à l'ouverture du panneau pendant CE
-      // remplissage (listes sans recherche uniquement, cf. selectDropdownValue)
-      // → allowed_values du catalogue, comme la config attributes Vinted.
-      options: beebsObservedOptions[label] ?? undefined,
+      // Options : le référentiel COMPLET lu sur le fiber quand il est là (ni
+      // filtré par la barre de recherche, ni tronqué, et jamais des
+      // identifiants opaques) ; sinon celles relevées à l'ouverture du panneau
+      // pendant CE remplissage (cf. selectDropdownValue) → allowed_values du
+      // catalogue, comme la config attributes Vinted.
+      options: c.valuesFiber ?? beebsObservedOptions[cle] ?? undefined,
+      optionsSource: c.valuesFiber ? "fiber" : (beebsObservedOptions[cle] ? "dom" : undefined),
       source: "dom",
     });
   }
@@ -915,9 +971,18 @@ function enumerateBeebsFields() {
 }
 
 // Options complètes observées par champ pendant le remplissage courant
-// (libellé → libellés d'options). Rempli par selectDropdownValue, consommé par
-// enumerateBeebsFields → catalogue platform_category_aspects.allowed_values.
+// (CLÉ DE CHAMP → libellés d'options). Rempli par selectDropdownValue, consommé
+// par enumerateBeebsFields → catalogue platform_category_aspects.allowed_values.
+// ⚠️ Indexé par la CLÉ et non par le libellé depuis le 2026-09-06 : deux champs
+// homonymes écrasaient mutuellement leur liste, et le needsUser repartait avec
+// celle du mauvais.
 const beebsObservedOptions = {};
+
+// Relevé du monde MAIN : index = `ordre` de champsFormulaire(), valeur =
+// { ordre, label, name, values }. Vide tant que le pont n'a pas répondu (ou
+// s'il est muet) — dans ce cas la désambiguïsation se fait par la POSITION.
+let beebsFiberChamps = [];
+let etatChampsFiber = "(non tenté)";
 
 // Confirmation de dépôt Beebs : page de succès OU message de confirmation.
 // ⚠️ Aucun filtre par getClientRects()/offsetParent : l'onglet de travail vit
@@ -1127,21 +1192,119 @@ async function fillPriceField(selector, value) {
 // est le suffixe "(facultatif)" dans le libellé (relevé, cf. en-tête). Un
 // champ affiché SANS ce suffixe est donc obligatoire : c'est ce qui alimente
 // unfilledRequired quand on n'arrive pas à le remplir.
-function findField(labelText) {
-  // Le suffixe "(facultatif)" vit dans un span[class*="__optionalAttribute"]
-  // enfant (ex: Couleur) — ne PAS filtrer sur children.length === 0, ça
-  // exclurait justement les champs facultatifs (bug réel trouvé en dry-run :
-  // Couleur n'était jamais rempli). Le textContent complet ("Couleur
-  // (facultatif)") reste un bon terrain de départ.
-  const labels = document.querySelectorAll('div[class*="__label"]');
-  for (const l of labels) {
+// ── Champs du formulaire, DANS L'ORDRE, avec leur nom d'attribut ─────────────
+// (2026-09-06, cas Joséphine — deux chemises homme en boucle needs_user)
+// Beebs affiche parfois PLUSIEURS champs obligatoires sous le MÊME libellé.
+// Relevé live sur Mode > Homme > Vêtements (homme) > Chemises (homme) : deux
+// champs « Taille », non adjacents, texte identique au caractère près,
+// id="dropDown_label_undefined" pour les deux — le n°2 est
+// attributes.size_men_clothing (13 lettres), le n°5 attributes.size_men_shirt
+// (30 valeurs, dont les cols 35→52 cm). findField() s'arrêtait au premier :
+// le second n'était jamais ni ouvert, ni lu, ni rempli, et le gate pré-clic
+// rebouclait dessus indéfiniment avec la liste du PREMIER.
+// `ordre` est l'index dans la liste FILTRÉE (libellés porteurs d'un
+// __selectButton) : c'est exactement la numérotation qu'emploie le relevé du
+// monde MAIN, sinon les deux tableaux ne s'aligneraient pas.
+function champsFormulaire() {
+  const out = [];
+  for (const l of document.querySelectorAll('div[class*="__label"]')) {
+    const trigger = l.parentElement?.querySelector('button[class*="__selectButton"]');
+    if (!trigger) continue;
     const text = l.textContent.trim();
-    if (text === labelText || text.startsWith(`${labelText} `) || text.startsWith(`${labelText}(`)) {
-      const btn = l.parentElement?.querySelector('button[class*="__selectButton"]');
-      if (btn) return { trigger: btn, required: !/\(facultatif\)/i.test(text) };
-    }
+    const ordre = out.length;
+    // Le relevé fiber n'est repris que si le libellé à cette position est
+    // TOUJOURS le même : entre le relevé et ici, un re-rendu React a pu
+    // réordonner les champs. Mieux vaut retomber sur la position que poser
+    // un nom d'attribut qui appartient à un autre champ.
+    const releve = beebsFiberChamps[ordre]?.label === text ? beebsFiberChamps[ordre] : null;
+    out.push({
+      ordre,
+      text,
+      label: text.replace(/\s*\(facultatif\)\s*/i, "").trim(),
+      required: !/\(facultatif\)/i.test(text),
+      trigger,
+      // Nom react-hook-form (« attributes.size_men_shirt ») quand le pont MAIN
+      // a répondu ; null sinon — on retombe alors sur l'indexation positionnelle.
+      name: releve?.name ?? null,
+      // Référentiel COMPLET du champ tel que le composant le reçoit : ni
+      // filtré par une barre de recherche, ni tronqué par le rendu. C'est la
+      // meilleure source d'allowed_values quand elle est là.
+      valuesFiber: Array.isArray(releve?.values) && releve.values.length ? releve.values : null,
+    });
   }
-  return null;
+  return out;
+}
+
+// Prédicat historique de findField, inchangé (2026-07-09) : le libellé complet
+// porte le suffixe « (facultatif) », d'où les deux formes préfixées.
+const libelleCorrespond = (text, labelText) =>
+  text === labelText || text.startsWith(`${labelText} `) || text.startsWith(`${labelText}(`);
+
+// TOUS les champs portant ce libellé, dans l'ordre du formulaire.
+function findFields(labelText) {
+  return champsFormulaire().filter((c) => libelleCorrespond(c.text, labelText));
+}
+
+// Retourne { trigger, required } (+ ordre, label, name…) ou null si le champ
+// n'est pas affiché pour la catégorie courante. Comportement INCHANGÉ pour ses
+// appelants : le PREMIER match, comme depuis le 2026-07-09.
+//
+// `required` : Beebs ne pose AUCUN attribut aria/disabled — le seul marqueur
+// est le suffixe "(facultatif)" dans le libellé (relevé, cf. en-tête). Un
+// champ affiché SANS ce suffixe est donc obligatoire : c'est ce qui alimente
+// unfilledRequired quand on n'arrive pas à le remplir.
+function findField(labelText) {
+  return findFields(labelText)[0] ?? null;
+}
+
+// ── Clé de champ ────────────────────────────────────────────────────────────
+// Le PREMIER champ d'un libellé garde le libellé NU pour clé : c'est la clé
+// historique de platform_category_aspects (platform, category_key, field_key),
+// de beebsAspects et de needsUserField.field_key. Rien de ce qui a déjà été
+// appris n'est donc invalidé et AUCUNE MIGRATION n'est nécessaire — seuls les
+// homonymes SUIVANTS, qui n'ont jamais eu de clé à eux, en reçoivent une.
+// Discriminant : le nom d'attribut si le pont MAIN a parlé, sinon la POSITION.
+function cleDeChamp(champ, tous = champsFormulaire()) {
+  const homonymes = tous.filter((c) => c.label === champ.label);
+  const rang = homonymes.findIndex((c) => c.ordre === champ.ordre);
+  if (homonymes.length <= 1 || rang <= 0) return champ.label;
+  return `${champ.label} [${champ.name || `#${rang + 1}`}]`;
+}
+
+// Libellé AFFICHABLE dans le mini-éditeur de l'app : jamais la clé technique.
+function libelleAffichable(champ, tous = champsFormulaire()) {
+  const homonymes = tous.filter((c) => c.label === champ.label);
+  const rang = homonymes.findIndex((c) => c.ordre === champ.ordre);
+  if (homonymes.length <= 1) return champ.label;
+  return `${champ.label} (${rang + 1}ᵉ champ « ${champ.label} » de cette catégorie)`;
+}
+
+// Libellé humain d'une clé, quand on n'a pas le champ sous la main.
+const libelleHumainDeCle = (cle) => String(cle ?? "").replace(/\s*\[[^\]]*\]\s*$/, "").trim();
+const cleADiscriminant = (cle) => /\[[^\]]+\]\s*$/.test(String(cle ?? ""));
+
+// Résolution d'une clé vers le ou les champs qu'elle désigne :
+//   « Taille »                             → TOUS les champs « Taille » de la
+//                                            page (correctif 1 : on les remplit
+//                                            tous, chacun contre SA liste)
+//   « Taille [attributes.size_men_shirt] » → celui-là, et lui seul
+//   « Taille [#2] »                        → le 2ᵉ, et lui seul
+// ⛔ Jamais de repli sur le premier quand un discriminant est fourni et ne
+// retrouve rien : poser la valeur sur le mauvais homonyme est EXACTEMENT le
+// bug qu'on corrige. Champ non résolu ⇒ champ laissé vide ⇒ needs_user.
+function resoudreChamps(cle) {
+  const brut = String(cle ?? "").trim();
+  const m = brut.match(/^(.*?)\s*\[([^\]]+)\]$/);
+  const label = (m ? m[1] : brut).trim();
+  const discriminant = m ? m[2].trim() : null;
+  const champs = findFields(label);
+  if (!discriminant) return champs;
+  const position = /^#(\d+)$/.exec(discriminant);
+  if (position) {
+    const c = champs[Number(position[1]) - 1];
+    return c ? [c] : [];
+  }
+  return champs.filter((c) => c.name === discriminant);
 }
 
 // Match en cascade, du plus sûr au plus permissif — mêmes règles que Vinted
@@ -1735,15 +1898,67 @@ async function researchPanelFor(trigger, query) {
 }
 
 /**
- * @param {string[]} unfilledRequired — accumulateur : reçoit le libellé du
- *   champ si celui-ci est OBLIGATOIRE (pas de "(facultatif)") et qu'on n'a pas
- *   réussi à lui donner une valeur. Un job ne doit jamais se déclarer réussi
- *   en laissant un champ obligatoire vide (cf. background.js).
+ * Pose `rawText` sur TOUS les champs que `cle` désigne (2026-09-06).
+ *
+ * Un libellé unique — la quasi-totalité du parc — désigne exactement un champ :
+ * la boucle tourne une fois et le comportement est celui de findField(), au
+ * caractère près (mêmes warnings, même clé dans unfilledRequired).
+ * Un libellé DUPLIQUÉ désigne N champs : chacun reçoit la valeur si elle figure
+ * dans SA PROPRE liste, et reste VIDE sinon — avec un warning qui dit lequel et
+ * pourquoi. ⛔ Aucun assouplissement de la cascade pour les homonymes : la
+ * doctrine taille du 15/07 (jamais de valeur approchée, jamais de repli
+ * « Autre » sur une taille) reste entière, et un champ vide vaut mieux qu'une
+ * taille fausse.
+ *
+ * @param {string[]} unfilledRequired — accumulateur : reçoit la CLÉ du champ
+ *   s'il est OBLIGATOIRE (pas de "(facultatif)") et qu'on n'a pas réussi à lui
+ *   donner une valeur. Un job ne doit jamais se déclarer réussi en laissant un
+ *   champ obligatoire vide (cf. background.js).
  */
-async function selectDropdownValue(labelText, rawText, warnings, unfilledRequired = [], { sizeField = false, fallbackTexts = [] } = {}) {
-  const field = findField(labelText);
-  if (!field) return; // champ non affiché pour cette catégorie : rien à signaler
-  const { trigger, required } = field;
+async function selectDropdownValue(cle, rawText, warnings, unfilledRequired = [], opts = {}) {
+  const champs = resoudreChamps(cle);
+  if (!champs.length) {
+    // Une clé À DISCRIMINANT qui ne retrouve rien (pont MAIN muet ce
+    // passage-ci, ou attribut renommé par Beebs) ne doit PAS disparaître en
+    // silence : on ne pose rien — surtout pas sur un homonyme au hasard — mais
+    // on le dit. Le champ ressortira vide de l'énumération, qui l'ajoutera à
+    // unfilledRequired : pas de double comptage ici.
+    if (cleADiscriminant(cle)) {
+      const note =
+        `${cle}: champ homonyme introuvable sur cette page (discriminant non résolu) — ` +
+        `valeur "${rawText}" NON posée, et aucun repli sur un autre champ du même libellé`;
+      console.warn(`[beebs] ⚠️ ${note}`);
+      warnings.push(note);
+    }
+    return; // champ non affiché pour cette catégorie : rien à signaler
+  }
+  const tous = champsFormulaire();
+  for (let i = 0; i < champs.length; i++) {
+    await poserValeurSurChamp(champs[i], rawText, warnings, unfilledRequired, opts, {
+      cle: cleDeChamp(champs[i], tous),
+      rang: i + 1,
+      total: champs.length,
+    });
+  }
+}
+
+async function poserValeurSurChamp(
+  champ,
+  rawText,
+  warnings,
+  unfilledRequired = [],
+  { sizeField = false, fallbackTexts = [] } = {},
+  { cle, rang = 1, total = 1 } = {},
+) {
+  const { trigger, required } = champ;
+  // Étiquette des messages ET clé d'accumulation : la clé désambiguïsée, donc
+  // le libellé nu tant qu'il est unique (aucun changement visible pour le parc).
+  const labelText = cle ?? champ.label;
+  // Situation dite seulement quand elle est ambiguë — sinon les warnings
+  // historiques ne bougent pas d'un caractère.
+  const situe = total > 1
+    ? ` [champ ${rang}/${total} portant le libellé « ${champ.label} »${champ.name ? `, ${champ.name}` : ""}]`
+    : "";
 
   // Le relevé pour le catalogue se fait DANS openPanelOptions, à l'ouverture du
   // panneau et avant toute frappe (2026-07-19 pour le principe — cas Medik8 où
@@ -1773,7 +1988,7 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
     options = await researchPanelFor(trigger, "");
   }
   if (!options.length) {
-    const note = `${labelText}: panneau d'options resté vide (recherche "${rawText}" sans résultat, repli "Autre" introuvable), champ laissé vide`;
+    const note = `${labelText}${situe}: panneau d'options resté vide (recherche "${rawText}" sans résultat, repli "Autre" introuvable), champ laissé vide`;
     console.warn(`[beebs] ⚠️ ${note}`);
     warnings.push(note);
     if (required) unfilledRequired.push(labelText);
@@ -1855,8 +2070,8 @@ async function selectDropdownValue(labelText, rawText, warnings, unfilledRequire
     // vinted.js).
     const available = options.map(optionLabel).filter(Boolean).slice(0, 20);
     const note =
-      `${labelText}: "${rawText}" sans correspondance (même approximative) dans la liste Beebs, ` +
-      `champ laissé vide. Options affichées: ${JSON.stringify(available)}`;
+      `${labelText}${situe}: "${rawText}" sans correspondance (même approximative) dans la liste ` +
+      `de CE champ, laissé vide. Options affichées: ${JSON.stringify(available)}`;
     console.warn(`[beebs] ⚠️ ${note}`);
     warnings.push(note);
     if (required) unfilledRequired.push(labelText);
@@ -1957,6 +2172,103 @@ async function waitForCategoryOption(text, { path = [], level = 0, trigger, time
     `Options réellement affichées par Beebs: ${JSON.stringify(lastNonEmpty)}. ` +
     "Corriger le chemin dans beebsCategories.js."
   );
+}
+
+// ── Relevé FIBER des champs : nom d'attribut + référentiel complet ──────────
+// (2026-09-06, cas Joséphine) Même pont monde MAIN que la catégorie, même
+// contrat : script INLINE (CSP Beebs « default-src * 'unsafe-inline' »),
+// réponse par window.postMessage, marqueur DÉDIÉ __fillsellBeebsChamps portant
+// un NONCE aléatoire, tout message dont e.source n'est pas la page est ignoré,
+// 3 s de budget puis abandon SILENCIEUX (jamais bloquant).
+// Ce qu'on va chercher, et qui n'existe QUE là :
+//   · props.name  — le nom react-hook-form du champ (« attributes.size_men_shirt »),
+//     seul discriminant entre deux champs au libellé identique ;
+//   · props.values — le référentiel ENTIER du champ, avant toute barre de
+//     recherche et avant tout rendu partiel. Les entrées peuvent être des
+//     objets (Format du colis : { sys, title, weight, price }) : on en garde
+//     le libellé, jamais l'identifiant opaque.
+// Pont muet ⇒ beebsFiberChamps reste vide ⇒ repli POSITIONNEL (« Taille [#2] »).
+function releverChampsViaFiber() {
+  return new Promise((resolve) => {
+    const nonce = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      window.removeEventListener("message", onMsg);
+      resolve({ ok: false, reason: "pont MAIN muet après 3 s (CSP durcie ? script bloqué ?)" });
+    }, 3000);
+    function onMsg(e) {
+      if (e.source !== window || e.data?.__fillsellBeebsChamps !== nonce) return;
+      clearTimeout(timer);
+      window.removeEventListener("message", onMsg);
+      resolve(e.data);
+    }
+    window.addEventListener("message", onMsg);
+    const s = document.createElement("script");
+    s.textContent = `(() => {
+      const reponds = (p) => window.postMessage(Object.assign({ __fillsellBeebsChamps: ${JSON.stringify(nonce)} }, p), "*");
+      try {
+        const texte = (v) => {
+          if (v == null) return "";
+          if (typeof v === "string") return v.trim();
+          if (typeof v === "number") return String(v);
+          if (typeof v === "object") return String(v.title || v.label || v.name || v.value || "").trim();
+          return String(v).trim();
+        };
+        const champs = [];
+        for (const l of document.querySelectorAll('div[class*="__label"]')) {
+          const btn = l.parentElement && l.parentElement.querySelector('button[class*="__selectButton"]');
+          if (!btn) continue;
+          let nom = null, valeurs = null;
+          const fk = Object.keys(btn).find((k) => k.indexOf("__reactFiber$") === 0);
+          if (fk) {
+            let f = btn[fk];
+            for (let i = 0; f && i < 16; i++, f = f.return) {
+              const p = f.memoizedProps;
+              if (!p || typeof p !== "object") continue;
+              if (valeurs === null && Array.isArray(p.values)) valeurs = p.values.map(texte).filter(Boolean).slice(0, 300);
+              if (nom === null && typeof p.name === "string" && p.name) nom = p.name;
+              if (nom !== null && valeurs !== null) break;
+            }
+          }
+          champs.push({ ordre: champs.length, label: l.textContent.trim(), name: nom, values: valeurs });
+        }
+        reponds({ ok: true, champs });
+      } catch (e) { reponds({ ok: false, reason: "exception MAIN: " + (e && e.message) }); }
+    })();`;
+    (document.head ?? document.documentElement).appendChild(s);
+    s.remove(); // l'exécution d'un script inline est synchrone à l'insertion
+  });
+}
+
+// Pose beebsFiberChamps pour la catégorie couramment affichée. Non bloquant :
+// tout échec laisse le tableau vide et la désambiguïsation se fait par position.
+async function chargerChampsFiber() {
+  beebsFiberChamps = [];
+  try {
+    const r = await releverChampsViaFiber();
+    if (r?.ok && Array.isArray(r.champs)) {
+      beebsFiberChamps = r.champs;
+      const nommes = r.champs.filter((c) => c.name).length;
+      etatChampsFiber = `${r.champs.length} champ(s), ${nommes} nommé(s) par le fiber`;
+      const doublons = {};
+      for (const c of r.champs) {
+        const l = String(c.label ?? "").replace(/\s*\(facultatif\)\s*/i, "").trim();
+        if (l) doublons[l] = (doublons[l] ?? 0) + 1;
+      }
+      const homonymes = Object.entries(doublons).filter(([, n]) => n > 1);
+      if (homonymes.length) {
+        console.warn(
+          "[beebs] libellé(s) DUPLIQUÉ(S) sur cette catégorie : " +
+          homonymes.map(([l, n]) => `« ${l} » ×${n}`).join(", ") +
+          " — chacun sera rempli et catalogué séparément."
+        );
+      }
+    } else {
+      etatChampsFiber = `muet (${r?.reason ?? "sans raison"}) — repli positionnel`;
+    }
+  } catch (e) {
+    etatChampsFiber = `exception (${String(e?.message ?? e)}) — repli positionnel`;
+  }
+  console.log(`[beebs] relevé fiber des champs : ${etatChampsFiber}`);
 }
 
 // ── Chemin FIBER pour la catégorie (2026-07-26, GO Nico après preuve live) ───
