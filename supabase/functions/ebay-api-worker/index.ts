@@ -227,15 +227,27 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: Plat
   const suggestions = await suggererCategories(env, token, job.title ?? "");
   const top = suggestions[0];
   if (mappee) {
-    if (top && top.id !== mappee) {
-      const motsTitre = mots(job.title ?? "");
-      const motsChemin = new Set<string>();
-      for (const niveau of cheminMappe.slice(1)) for (const m of mots(niveau)) motsChemin.add(m);
-      const aucunMotCommun = ![...motsTitre].some((m) => motsChemin.has(m));
+    // Règle v2 PROPOSÉE (désactivée tant que Nico n'a pas tranché) — relevé du
+    // 06/09 sur les 5 suggestions eBay :
+    //   · « T-shirt Adidas Sergio Garcia vintage » : Sports/Collections, BD,
+    //     T-shirts (le mapping, 3e), Polos, Cartes → pas de consensus, le
+    //     mapping est DANS la liste → on le garde ;
+    //   · « La Méthode Delavier de Musculation… » (mappé 137865 Haltères) :
+    //     4 × Livres + 1 CD, le mapping ABSENT → consensus Livres → remplacer
+    //     par la n°1 (171243 Non-fiction).
+    // Donc : remplacer UNIQUEMENT si le mapping n'apparaît dans AUCUNE des 5
+    // suggestions ET qu'au moins 4 des 5 partagent une racine différente de
+    // celle du mapping. La règle v1 (mots du titre + autre racine) a publié
+    // un T-shirt en BD ; elle est retirée.
+    if (CONTROLE_CATEGORIE_PAR_SUGGESTION && top && top.id !== mappee) {
+      const cinq = suggestions.slice(0, 5);
+      const mappeeDansLaListe = cinq.some((x) => x.id === mappee);
       const racineMappee = String(cheminMappe[0] ?? "");
-      const autreBranche = racineMappee && top.chemin[0] && top.chemin[0] !== racineMappee;
-      if (CONTROLE_CATEGORIE_PAR_SUGGESTION && aucunMotCommun && autreBranche) {
-        return { id: top.id, chemin: top.chemin, source: "suggestion_controle", detail: `mapping ${mappee} (${cheminMappe.join(" > ")}) remplacé : aucun mot du titre dans le chemin, autre branche racine` };
+      const parRacine = new Map<string, number>();
+      for (const x of cinq) parRacine.set(x.chemin[0] ?? "", (parRacine.get(x.chemin[0] ?? "") ?? 0) + 1);
+      const [racineDominante, poids] = [...parRacine.entries()].sort((a, b) => b[1] - a[1])[0] ?? ["", 0];
+      if (!mappeeDansLaListe && poids >= 4 && racineDominante && racineDominante !== racineMappee && top.chemin[0] === racineDominante) {
+        return { id: top.id, chemin: top.chemin, source: "suggestion_consensus", detail: `mapping ${mappee} (${cheminMappe.join(" > ")}) remplacé : absent des 5 suggestions, ${poids}/5 dans la branche « ${racineDominante} »` };
       }
     }
     return { id: mappee, chemin: cheminMappe, source: "mapping" };
