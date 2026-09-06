@@ -3149,6 +3149,10 @@ const FREE_STOCK_LIMIT = FREE_STOCK_LIMIT_FALLBACK;
 
 export default function ListingPreviewScreen({
   inventaireId, userId, initialPhotos: initialPhotosProp = [], initialListing: initialListingProp = null, supabase, lang, onClose,
+  // eBay par API (lot 2b, 06/09) : true = ce compte publie eBay par le worker
+  // serveur (profiles.ebay_voie_api, posé par Nico). Un article SANS PHOTO ne
+  // part alors jamais en job : arrêté ici, cause nommée.
+  ebayVoieApi = false,
   // isBusiness ne pilote AUCUNE gate ici (les flags sont cumulatifs : un
   // Business porte is_pro, toutes les gates isPro/isPremium le couvrent déjà).
   // Il n'est propagé que pour que la modale de conversion NOMME le bon palier
@@ -6118,6 +6122,11 @@ export default function ListingPreviewScreen({
         // une chaîne — les handlers de l'extension lisent `p.url`.
         const photosJob = entreesPhotos(processedPhotos);
         let rowPhotos = photosJob;
+        if (platform === "ebay" && ebayVoieApi && !photosJob.length) {
+          throw new Error(lang === "en"
+            ? "eBay: this item has no photo. eBay requires at least one image — add a photo before publishing."
+            : "eBay : cet article n'a aucune photo. eBay exige au moins une image — ajoute une photo avant de publier.");
+        }
         // Dernier filet avant l'insert du job : un état vidé à la main (ou un
         // `edited` venant d'un chemin qui n'est pas passé par
         // mergeFieldsWithLens) ne part JAMAIS vide vers l'extension.

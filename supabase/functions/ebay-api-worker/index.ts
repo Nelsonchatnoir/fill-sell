@@ -61,11 +61,18 @@ function verdictHttp(http: number, tentatives: number): "needs_user" | "pending"
 async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
   const pf = (job.platform_fields ?? {}) as PlatformFields;
   const tentatives = Number(((pf.ebay_api as Record<string, unknown>) ?? {}).tentatives ?? 0) + 1;
-  const categoryId = String(pf.ebayCategoryId ?? "").trim();
   const photos = (job.photos ?? []).map((p) => String(p?.url ?? "")).filter((u) => /^https:\/\//.test(u)).slice(0, 24);
   const prix = Number(job.price);
-  if (!categoryId) { await marquer(admin, job, { status: "needs_user", error: "Aucune catégorie eBay sur ce job (ebayCategoryId absent)." }, { etape: "controle", quoi: "categorie_absente" }); return { job: job.id, issue: "needs_user", motif: "categorie_absente" }; }
-  if (!photos.length) { await marquer(admin, job, { status: "needs_user", error: "Aucune photo en https sur ce job : eBay exige au moins une image." }, { etape: "controle", quoi: "photos_absentes" }); return { job: job.id, issue: "needs_user", motif: "photos_absentes" }; }
+  // Sans photo, rien ne part — arrêté ICI, avant tout appel eBay, cause nommée.
+  if (!photos.length) { await marquer(admin, job, { status: "needs_user", error: "Cet article n'a aucune photo : eBay exige au moins une image. Ajoute une photo à l'article, puis relance la publication." }, { etape: "controle", quoi: "photos_absentes" }); return { job: job.id, issue: "needs_user", motif: "photos_absentes" }; }
+  const categorie = await resoudreCategorie(env, token, job, pf);
+  if ("choix" in categorie) {
+    const liste = categorie.choix.map((c, i) => `${i + 1}. ${c.chemin} (${c.id})`).join(" · ");
+    await marquer(admin, job, { status: "needs_user", error: `Catégorie eBay à choisir pour cet article : ${liste || "aucune suggestion eBay"}. Choisis-la depuis la fiche, puis relance.` }, { etape: "categorie", quoi: "categorie_a_choisir", choix: categorie.choix });
+    return { job: job.id, issue: "needs_user", motif: "categorie_a_choisir", choix: categorie.choix };
+  }
+  const categoryId = categorie.id;
+  if (categorie.source !== "mapping") pf.ebayCategoryPath = categorie.chemin;
   if (!(prix > 0)) { await marquer(admin, job, { status: "needs_user", error: "Prix absent ou nul." }, { etape: "controle", quoi: "prix_absent" }); return { job: job.id, issue: "needs_user", motif: "prix_absent" }; }
   if (!job.inventaire_id) { await marquer(admin, job, { status: "failed", error: "Job sans inventaire_id : impossible de former le SKU." }, { etape: "controle", quoi: "inventaire_absent" }); return { job: job.id, issue: "failed", motif: "inventaire_absent" }; }
 
@@ -147,6 +154,8 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     await marquer(admin, job, { status: "failed", error: `Cet article est déjà en ligne sur eBay par API (offre ${publiee.offerId}${listingId ? `, annonce ${listingId}` : ""}). Retire-le avant de republier.` }, { etape: "offre", quoi: "deja_publiee" }, { sku, offer_id: publiee.offerId, listing_id: listingId || null });
     return { job: job.id, issue: "failed", motif: "deja_publiee", offer_id: publiee.offerId, listing_id: listingId };
   }
+  // Offre existante non publiée (jamais publiée, ou RETIRÉE par withdraw) :
+  // on la met à jour et on la republie — c'est la republication par API.
   const brouillon = offres.find((o) => o.offerId);
   if (brouillon?.offerId) {
     const maj = await appelEbay(env, token, `/sell/inventory/v1/offer/${brouillon.offerId}`, { method: "PUT", body: offre });
@@ -182,9 +191,53 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const publishedAt = new Date().toISOString();
   await marquer(admin, job,
     { status: "published", error: null, platform_listing_id: listingId, listing_url: urlAnnonce(listingId), published_at: publishedAt },
-    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia },
+    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin } },
     { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives });
-  return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
+  return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null }, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
+}
+
+// ── Catégorie (règle validée par Nico, phase 0 (b)) ─────────────────────────
+//   · mapping icône de l'app (pf.ebayCategoryId) = source première ;
+//   · CONTRÔLE : suggestion eBay n°1 à la place du mapping SI le titre ne porte
+//     aucun mot du chemin mappé ET que la suggestion est dans une autre
+//     branche racine ;
+//   · pas de mapping : suggestion n°1 si son chemin porte le Département
+//     attendu par `genre` (ou article hors mode : genre vide), sinon
+//     needs_user avec les 5 chemins — jamais une publication dans « Autres ».
+const MOTS_VIDES = new Set(["les", "des", "pour", "avec", "sans", "dans", "sur", "une", "the", "and", "taille", "size", "vetements", "accessoires", "autres", "autre"]);
+function mots(texte: string): Set<string> {
+  return new Set(String(texte ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .split(/[^a-z0-9]+/).filter((m) => m.length >= 4 && !MOTS_VIDES.has(m)));
+}
+const GENRE_DANS_CHEMIN: Record<string, RegExp> = {
+  Femme: /\bfemme\b/i, Homme: /\bhomme\b/i, Fille: /\bfille\b/i, "Garçon": /gar[cç]on/i, "Bébé": /b[ée]b[ée]/i, Enfant: /enfant/i,
+};
+async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: PlatformFields): Promise<{ id: string; chemin: string[]; source: string; detail?: string } | { choix: Array<{ id: string; chemin: string }> }> {
+  const mappee = String(pf.ebayCategoryId ?? "").trim();
+  const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
+  const suggestions = await suggererCategories(env, token, job.title ?? "");
+  const top = suggestions[0];
+  if (mappee) {
+    if (top && top.id !== mappee) {
+      const motsTitre = mots(job.title ?? "");
+      const motsChemin = new Set<string>();
+      for (const niveau of cheminMappe.slice(1)) for (const m of mots(niveau)) motsChemin.add(m);
+      const aucunMotCommun = ![...motsTitre].some((m) => motsChemin.has(m));
+      const racineMappee = String(cheminMappe[0] ?? "");
+      const autreBranche = racineMappee && top.chemin[0] && top.chemin[0] !== racineMappee;
+      if (aucunMotCommun && autreBranche) {
+        return { id: top.id, chemin: top.chemin, source: "suggestion_controle", detail: `mapping ${mappee} (${cheminMappe.join(" > ")}) remplacé : aucun mot du titre dans le chemin, autre branche racine` };
+      }
+    }
+    return { id: mappee, chemin: cheminMappe, source: "mapping" };
+  }
+  if (top) {
+    const genre = String(pf.genre ?? "").trim();
+    const re = GENRE_DANS_CHEMIN[genre];
+    const cheminTexte = top.chemin.join(" > ");
+    if (!genre || !re || re.test(cheminTexte)) return { id: top.id, chemin: top.chemin, source: "suggestion" };
+  }
+  return { choix: suggestions.slice(0, 5).map((s) => ({ id: s.id, chemin: s.chemin.join(" > ") })) };
 }
 
 function contexteDuJob(job: Job, pf: PlatformFields) {
@@ -288,6 +341,34 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   return { job: job.id, issue: "deleted", sku, offer_id: offerId, listing_id: listingId };
 }
 
+// Republication par API = retrait de l'annonce en ligne (si elle l'est encore)
+// puis nouvelle publication de la même offre → nouveau listingId. Le job porte
+// republish_step comme la voie formulaire ('deleted' puis 'recreated') pour
+// que la frise de l'app reste lisible.
+async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
+  if (!job.inventaire_id) { await marquer(admin, job, { status: "failed", error: "Job de republication sans inventaire_id." }, { etape: "controle", quoi: "inventaire_absent" }); return { job: job.id, issue: "failed" }; }
+  const sku = skuPour(job.inventaire_id);
+  const r = await appelEbay(env, token, `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`);
+  const offres = (r.json as { offers?: Array<{ offerId?: string; status?: string }> } | null)?.offers ?? [];
+  const publiee = offres.find((o) => o.status === "PUBLISHED");
+  if (publiee?.offerId) {
+    const w = await appelEbay(env, token, `/sell/inventory/v1/offer/${publiee.offerId}/withdraw`, { method: "POST" });
+    if (w.http !== 200) {
+      const e = lireErreurEbay(w.json, w.texte);
+      await marquer(admin, job, { status: "failed", error: `eBay a refusé le retrait avant republication (${w.http}) : ${e.message}` }, { etape: "withdraw", http: w.http, errorId: e.errorId }, { sku, offer_id: publiee.offerId });
+      return { job: job.id, issue: "withdraw", http: w.http, ebay: e };
+    }
+    job.platform_fields = { ...(job.platform_fields ?? {}), republish_step: "deleted" };
+  }
+  const res = await publier(admin, env, token, job);
+  if (res.issue === "published") {
+    const { data: apres } = await admin.from("cross_post_jobs").select("platform_fields").eq("id", job.id).maybeSingle();
+    const pf = { ...((apres?.platform_fields as Record<string, unknown>) ?? {}), republish_step: "recreated" };
+    await admin.from("cross_post_jobs").update({ platform_fields: pf }).eq("id", job.id);
+  }
+  return { ...res, republication: true, retiree_avant: Boolean(publiee?.offerId) };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("Méthode non autorisée", { status: 405 });
   const attendu = Deno.env.get("CRON_SECRET");
@@ -326,6 +407,7 @@ Deno.serve(async (req) => {
       }
       if (job.action === "publish") resultats.push(await publier(admin, env, jeton.token, job));
       else if (job.action === "delete") resultats.push(await retirer(admin, env, jeton.token, job));
+      else if (job.action === "republish") resultats.push(await republier(admin, env, jeton.token, job));
       else {
         await marquer(admin, job, { status: "failed", error: `Action « ${job.action} » non prise en charge par la voie API en 2a.` }, { etape: "controle", quoi: "action_non_geree" });
         resultats.push({ job: job.id, issue: "failed", motif: "action_non_geree" });
