@@ -4521,6 +4521,16 @@ export default function ListingPreviewScreen({
       .filter(p => !(lbcAdresseManquante?.plateformes ?? []).includes(p))
       .filter(p => platformSupport?.[p] !== "prohibited")
   ), [selected, platformListings, lbcAdresseManquante, platformSupport]);
+  // ── Exemption extension « eBay seul + voie API » (2026-09-06, GO Nico) ──
+  // L'écran d'accroche extension (extensionBlocked) protège une file qui
+  // n'aurait PERSONNE pour l'exécuter. Quand le lot ne contient QUE eBay et
+  // que ce compte publie eBay par le worker serveur (ebayVoieApi), il a un
+  // exécuteur : on ne bloque pas. Toute autre plateforme dans le lot → garde
+  // inchangée. Le RPC spend_coins_and_publish porte la même exemption, avec le
+  // même prédicat (trigger cross_post_jobs_voie_ebay) — celle-ci n'est que le
+  // reflet côté écran. Déclarée APRÈS plateformesPubliables, jamais avant
+  // (TDZ, écran blanc 2.6.15).
+  const exemptionEbayApi = Boolean(ebayVoieApi) && plateformesPubliables.size === 1 && plateformesPubliables.has("ebay");
 
   // Référentiels par catégorie, déclarés ICI (avant la garde qui les lit) —
   // leurs effets de chargement restent plus bas, à côté des encarts bleus
@@ -5768,7 +5778,7 @@ export default function ListingPreviewScreen({
     // Garde extension (2026-08-04) : extension jamais vue → écran d'accroche,
     // AVANT toute création de ligne et tout appel réseau. handleNext route
     // déjà ; ce re-check attrape un état périmé. Le RPC porte la même garde.
-    if (extensionBlocked) { setShowExtGate(true); return; }
+    if (extensionBlocked && !exemptionEbayApi) { setShowExtGate(true); return; }
     // Garde-fou prix (2026-07-13, job 3d194668) : un job price=NULL a atteint
     // la base via « Republier » et n'a été refusé qu'en bout de chaîne, par
     // Vinted. AUCUN flux ne doit pouvoir publier sans prix valide — seuil à
@@ -6846,7 +6856,7 @@ export default function ListingPreviewScreen({
       }
       // Extension jamais vue : le CTA ouvre l'accroche (sync dressing, lien à
       // récupérer sur ordinateur) — aucun RPC tenté, aucune unité engagée.
-      if (extensionBlocked) {
+      if (extensionBlocked && !exemptionEbayApi) {
         setShowExtGate(true);
         return;
       }
