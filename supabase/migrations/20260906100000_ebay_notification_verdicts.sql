@@ -18,7 +18,11 @@
 -- RLS activée, ZÉRO policy, REVOKE anon/authenticated (même verrou que
 -- ebay_accounts).
 --
--- ⚠️ À appliquer explicitement (db push INTERDIT). Idempotente.
+-- ✅ APPLIQUÉE EN PROD le 06/09/2026 ~10:15 (Europe/Paris) sur GO nominal de Nico,
+-- via db query --linked --file (pas de ligne dans schema_migrations : c'est la
+-- pratique des poses par CLI ; db push reste INTERDIT). Vérifié après pose :
+-- relrowsecurity=true · 0 policy · grants = postgres + service_role · 10 colonnes.
+-- Idempotente.
 -- ═══════════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS public.ebay_notification_verdicts (
   id              bigserial PRIMARY KEY,
