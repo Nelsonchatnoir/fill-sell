@@ -76,7 +76,7 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     // ebayCategorieAttente : posé ICI, lu à la relance — relancer sans rien
     // changer vaut confirmation du mapping de l'app (jamais une boucle).
     job.platform_fields = { ...(job.platform_fields ?? {}), ebayCategorieAttente: { mapping: mappee || null, choix: categorie.choix, at: new Date().toISOString() } };
-    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "categorie", quoi: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, motif: categorie.motif });
+    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "categorie", quoi: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, motif: categorie.motif, suggestions: categorie.suggestions });
     return { job: job.id, issue: "needs_user", motif: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, detail: categorie.motif };
   }
   const categoryId = categorie.id;
@@ -209,7 +209,7 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const publishedAt = new Date().toISOString();
   await marquer(admin, job,
     { status: "published", error: null, platform_listing_id: listingId, listing_url: urlAnnonce(listingId), published_at: publishedAt },
-    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs } },
+    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin, suggestions: categorie.suggestions }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs } },
     { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives });
   return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
 }
@@ -234,11 +234,24 @@ const GENRE_DANS_CHEMIN: Record<string, RegExp> = {
 // règle plus sûre (consensus des 5 suggestions ?) ; la suggestion ne sert
 // qu'en l'absence de mapping.
 const CONTROLE_CATEGORIE_PAR_SUGGESTION = true;
-async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: PlatformFields): Promise<{ id: string; chemin: string[]; source: string; detail?: string } | { choix: Array<{ id: string; chemin: string }>; motif: string }> {
+// Résumé des suggestions eBay, écrit dans le last_diagnostic à chaque
+// résolution — « jamais en silence » : on doit pouvoir relire pourquoi la
+// règle a gardé le mapping ou demandé un choix.
+interface ResumeSuggestions { n: number; racine_top: string | null; meme_racine_que_top: number; mapping_dans_liste: boolean; liste: string[] }
+type Categorie = { id: string; chemin: string[]; source: string; detail?: string; suggestions: ResumeSuggestions } | { choix: Array<{ id: string; chemin: string }>; motif: string; suggestions: ResumeSuggestions };
+async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "title">, pf: PlatformFields): Promise<Categorie> {
   const mappee = String(pf.ebayCategoryId ?? "").trim();
   const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
   const suggestions = await suggererCategories(env, token, job.title ?? "");
   const top = suggestions[0];
+  const racineTop0 = top ? String(top.chemin[0] ?? "") : null;
+  const resume: ResumeSuggestions = {
+    n: suggestions.length,
+    racine_top: racineTop0,
+    meme_racine_que_top: racineTop0 === null ? 0 : suggestions.filter((x) => (x.chemin[0] ?? "") === racineTop0).length,
+    mapping_dans_liste: Boolean(mappee) && suggestions.some((x) => x.id === mappee),
+    liste: suggestions.map((x) => `${x.id} ${x.chemin.join(" > ")}`),
+  };
   if (mappee) {
     // Règle v2 PROPOSÉE (désactivée tant que Nico n'a pas tranché) — relevé du
     // 06/09 sur les 5 suggestions eBay :
@@ -274,18 +287,43 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: Plat
         return {
           choix: suggestions.slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
           motif: `classé par l'app en « ${cheminMappe.join(" > ")} » (${mappee}) ; eBay le voit plutôt en « ${racineTop} » (${memeRacineQueTop} suggestions sur ${n}, la 1re : ${top.chemin.join(" > ")})`,
+          suggestions: resume,
         };
       }
     }
-    return { id: mappee, chemin: cheminMappe, source: dejaTrancheSource(pf) };
+    return { id: mappee, chemin: cheminMappe, source: dejaTrancheSource(pf), suggestions: resume };
   }
   if (top) {
     const genre = String(pf.genre ?? "").trim();
     const re = GENRE_DANS_CHEMIN[genre];
     const cheminTexte = top.chemin.join(" > ");
-    if (!genre || !re || re.test(cheminTexte)) return { id: top.id, chemin: top.chemin, source: "suggestion" };
+    if (!genre || !re || re.test(cheminTexte)) return { id: top.id, chemin: top.chemin, source: "suggestion", suggestions: resume };
   }
-  return { choix: suggestions.slice(0, 5).map((s) => ({ id: s.id, chemin: s.chemin.join(" > ") })), motif: "aucune catégorie eBay sur ce job et aucune suggestion eBay compatible avec le rayon" };
+  return { choix: suggestions.slice(0, 5).map((s) => ({ id: s.id, chemin: s.chemin.join(" > ") })), motif: "aucune catégorie eBay sur ce job et aucune suggestion eBay compatible avec le rayon", suggestions: resume };
+}
+
+// Mesure SANS publication (même esprit que mesure_aspects) : pour des articles
+// en stock, le mapping icône du dernier job eBay + les suggestions eBay sur
+// le titre → ce que la règle v2 déciderait. Aucune écriture.
+async function mesurerCategories(admin: SupabaseClient, env: EbayEnv, body: { ebay_user_id?: string; limit?: number; inventaire_ids?: number[] }): Promise<Record<string, unknown>> {
+  const { data: compte } = await admin.from("ebay_accounts").select("user_id").eq("ebay_user_id", String(body.ebay_user_id ?? "")).maybeSingle();
+  if (!compte) return { error: "compte eBay inconnu" };
+  const jeton = await obtenirAccessToken(admin, compte.user_id);
+  if (!jeton.ok) return { error: `jeton : ${jeton.motif}` };
+  let q = admin.from("inventaire").select("id, titre").eq("user_id", compte.user_id).eq("statut", "stock").order("created_at", { ascending: false });
+  if (Array.isArray(body.inventaire_ids) && body.inventaire_ids.length) q = q.in("id", body.inventaire_ids);
+  const { data: articles } = await q.limit(Math.min(30, Number(body.limit) || 10));
+  const lignes: Record<string, unknown>[] = [];
+  for (const a of (articles ?? []) as Array<{ id: number; titre: string }>) {
+    const { data: job } = await admin.from("cross_post_jobs").select("platform_fields").eq("inventaire_id", a.id).eq("platform", "ebay").not("platform_fields->>ebayCategoryId", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const pfJob = (job?.platform_fields ?? {}) as PlatformFields;
+    const pf: PlatformFields = { ebayCategoryId: pfJob.ebayCategoryId, ebayCategoryPath: pfJob.ebayCategoryPath as string[] | undefined, genre: pfJob.genre };
+    const r = await resoudreCategorie(env, jeton.token, { title: a.titre }, pf);
+    const mapping = pf.ebayCategoryId ? `${pf.ebayCategoryId} ${(pf.ebayCategoryPath ?? []).join(" > ")}` : null;
+    if ("choix" in r) lignes.push({ id: a.id, titre: a.titre, mapping, verdict: mapping ? "needs_user (racine contestée)" : "needs_user (sans mapping)", motif: r.motif, suggestions: r.suggestions });
+    else lignes.push({ id: a.id, titre: a.titre, mapping, verdict: r.source, categorie: `${r.id} ${r.chemin.join(" > ")}`, suggestions: r.suggestions });
+  }
+  return { articles: lignes.length, needs_user: lignes.filter((l) => String(l.verdict).startsWith("needs_user")).length, lignes };
 }
 function dejaTrancheSource(pf: PlatformFields): string {
   return (pf as Record<string, unknown>).ebayCategorieAttente ? "mapping_confirme_par_relance" : "mapping";
@@ -429,6 +467,7 @@ Deno.serve(async (req) => {
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const env = lireEnvEbay();
   if (body.action === "mesure_aspects") return json(await mesurerAspects(admin, env, body));
+  if (body.action === "mesure_categories") return json(await mesurerCategories(admin, env, body));
 
   let cible = admin.from("cross_post_jobs")
     .select("id, user_id, inventaire_id, platform, action, status, title, description, price, photos, platform_fields, listing_url, platform_listing_id, created_at, voie")
