@@ -1187,7 +1187,9 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // vinted.js/background.js, AUCUN paquet produit — décision Nico, 0.6.20 à venir
 // avec le fix Leboncoin escrow). EXTENSION_MIN_BUILD reste sur le dernier
 // paquet publié : rien ne bouge pour la bannière.
-export const EXTENSION_LAST_COMMIT = '2026-09-06T12:16:47Z';
+// 2026-09-06 (2) : recalage sur b0de857 (attributs depuis la liste et le détail
+// Vinted) — toujours AUCUN paquet, EXTENSION_MIN_BUILD inchangé.
+export const EXTENSION_LAST_COMMIT = '2026-09-06T13:08:40Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
