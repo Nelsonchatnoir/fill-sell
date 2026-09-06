@@ -35,8 +35,26 @@ export function shouldShowExtensionReminder() {
   try { return !localStorage.getItem(EXT_REMINDER_KEY); } catch { return true; }
 }
 
-export default function ExtensionReminderModal({ onClose, onContinue, lang }) {
+// ── Lot mixte : la popup NOMME les plateformes concernées (07/09/2026) ──────
+// L'appelant passe la répartition du lot (utils/ebayCompte → repartirParVoie).
+//   · plateformesExtension vide  → l'appelant ne monte PAS cette popup : rien
+//     n'a besoin de l'extension, faire cliquer sur un avertissement qui ne
+//     concerne personne est une faute (constat du 07/09 sur un lot eBay seul
+//     en voie serveur) ;
+//   · plateformesServeur vide (ou props absentes) → texte D'ORIGINE, mot pour
+//     mot : c'est le cas de presque tout le parc, il ne bouge pas ;
+//   · les deux garnies → on dit ce qui a besoin de l'extension, et ce qui n'en
+//     a pas besoin. Jamais de message global sur un lot qui ne l'est pas.
+const listeFr = (noms) => noms.length <= 1 ? (noms[0] ?? '') : `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`;
+const listeEn = (noms) => noms.length <= 1 ? (noms[0] ?? '') : `${noms.slice(0, -1).join(', ')} and ${noms[noms.length - 1]}`;
+
+export default function ExtensionReminderModal({ onClose, onContinue, lang, plateformesExtension = null, plateformesServeur = null }) {
   const fr = lang !== 'en';
+  const LABELS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay' };
+  const nomsExt = (plateformesExtension ?? []).map((p) => LABELS[p] ?? p);
+  const nomsSrv = (plateformesServeur ?? []).map((p) => LABELS[p] ?? p);
+  const mixte = nomsExt.length > 0 && nomsSrv.length > 0;
+  const liste = fr ? listeFr : listeEn;
   const [dontShowAgain, setDontShowAgain] = useState(false);
   // Le guide d'installation n'a de sens que sur Chrome desktop : une extension
   // ne s'installe ni depuis l'app native ni depuis un navigateur mobile.
@@ -100,12 +118,18 @@ export default function ExtensionReminderModal({ onClose, onContinue, lang }) {
             {fr ? 'Avant de publier' : 'Before publishing'}
           </div>
           <div style={{ textAlign: 'center', fontSize: 19, fontWeight: 700, color: C.ink, letterSpacing: '-0.01em', marginBottom: 10 }}>
-            {fr ? "L'extension FillSell est requise" : 'The FillSell extension is required'}
+            {mixte
+              ? (fr ? `L'extension FillSell est requise pour ${liste(nomsExt)}` : `The FillSell extension is required for ${liste(nomsExt)}`)
+              : (fr ? "L'extension FillSell est requise" : 'The FillSell extension is required')}
           </div>
           <p style={{ margin: '0 0 16px', fontSize: 13.5, color: C.mute2, lineHeight: 1.55, textAlign: 'center' }}>
-            {fr
-              ? "Assure-toi d'avoir installé l'extension FillSell depuis le Chrome Web Store, et d'être connecté aux plateformes sur lesquelles tu veux publier."
-              : 'Make sure you have installed the FillSell extension from the Chrome Web Store, and that you are logged in to the platforms you want to publish on.'}
+            {mixte
+              ? (fr
+                ? `Assure-toi d'avoir installé l'extension FillSell depuis le Chrome Web Store, et d'être connecté à ${liste(nomsExt)}. ${liste(nomsSrv)} ne demande rien de tout ça : FillSell publie depuis ses serveurs.`
+                : `Make sure you have installed the FillSell extension from the Chrome Web Store, and that you are logged in to ${liste(nomsExt)}. ${liste(nomsSrv)} needs none of that: FillSell publishes from its own servers.`)
+              : (fr
+                ? "Assure-toi d'avoir installé l'extension FillSell depuis le Chrome Web Store, et d'être connecté aux plateformes sur lesquelles tu veux publier."
+                : 'Make sure you have installed the FillSell extension from the Chrome Web Store, and that you are logged in to the platforms you want to publish on.')}
           </p>
 
           {showInstallLink && (

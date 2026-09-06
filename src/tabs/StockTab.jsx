@@ -11,6 +11,7 @@ import { track } from '../analytics/analytics';
 import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
+import { repartirParVoie } from '../utils/ebayCompte';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '../utils/stockLimit';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
@@ -3619,8 +3620,10 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
 const StockTab = memo(function StockTab({
   // Config
   lang, currency, isPremium, isNative, isPro, isBusiness, items, user, voiceUsedToday,
-  // eBay par API (lot 2b) : drapeau par compte, relayé tel quel à l'écran de publication.
-  ebayVoieApi = false,
+  // Compte eBay vu par App.jsx : { voieApi, etat, lu, voieApiReelle, rafraichir }.
+  // voieApiReelle = la VOIE (miroir du trigger cross_post_jobs_voie_ebay), la
+  // SEULE chose sur laquelle se règlent les textes qui parlent d'extension.
+  ebayCompte = null,
   // (iapProduct retiré le 2026-08-09 : son seul lecteur était le sous-titre
   // d'IAPUpgradeBlock, qui annonçait le prix Premium sous un bouton menant à
   // trois tarifs.)
@@ -7451,8 +7454,18 @@ const StockTab = memo(function StockTab({
                                   // le stepper ne doit pas pouvoir s'ouvrir sans une
                                   // seule plateforme à publier.
                                   if(toutEnLigne||detailFetchId)return;
+                                  // ── Le rappel extension suit la VOIE RÉELLE (07/09/2026) ──
+                                  // `aPublier` est exactement le lot que le stepper va
+                                  // pré-cocher. S'il ne reste RIEN qui passe par
+                                  // l'extension, ni le rappel ni l'accroche n'ont lieu
+                                  // d'être : on n'arrête pas quelqu'un sur un
+                                  // avertissement qui ne le concerne pas (constat du
+                                  // 07/09 : lot eBay seul en voie serveur, popup
+                                  // « L'extension FillSell est requise » — faux).
+                                  const voiesLot=repartirParVoie(aPublier,ebayCompte?.voieApiReelle);
+                                  if(voiesLot.toutServeur){publierAvecDetail(item);return;}
                                   if(extensionNeverSeen===true){setExtPitchItem(item);}
-                                  else if(shouldShowExtensionReminder()){setExtReminderItem(item);}
+                                  else if(shouldShowExtensionReminder()){setExtReminderItem({item,voies:voiesLot});}
                                   else{publierAvecDetail(item);}
                                 }}
                               >
@@ -7740,8 +7753,13 @@ const StockTab = memo(function StockTab({
       {extReminderItem&&(
         <ExtensionReminderModal
           lang={lang}
+          // Lot mixte : la popup nomme ce qui a besoin de Chrome et ce qui n'en
+          // a pas besoin. Lot 100 % extension : `plateformesServeur` est vide,
+          // la popup sert son texte d'origine, mot pour mot.
+          plateformesExtension={extReminderItem.voies?.extension??null}
+          plateformesServeur={extReminderItem.voies?.serveur??null}
           onClose={()=>setExtReminderItem(null)}
-          onContinue={()=>{const it=extReminderItem;setExtReminderItem(null);publierAvecDetail(it);}}
+          onContinue={()=>{const it=extReminderItem.item;setExtReminderItem(null);publierAvecDetail(it);}}
         />
       )}
       {/* Accroche extension (2026-08-04) : remplace le rappel quand l'extension
@@ -7963,7 +7981,7 @@ const StockTab = memo(function StockTab({
         <ListingPreviewScreen
           inventaireId={publishItem.id}
           userId={user.id}
-          ebayVoieApi={ebayVoieApi}
+          ebayCompte={ebayCompte}
           alreadyPublished={[...new Set([
             ...computeRemovalInfo(jobsByInventaire[publishItem.id]||[]).publishedActive,
             ...plateformesReserveesParRepublication(jobsByInventaire[publishItem.id]||[]),

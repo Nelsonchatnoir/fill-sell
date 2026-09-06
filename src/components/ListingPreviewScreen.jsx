@@ -28,7 +28,7 @@ import { computeRemovalInfo } from "../utils/publicationState";
 import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimit";
 import { versImageDecodable, chargerImage, messageDecodage } from "../utils/imageDecode";
 import EbayCompteSection from "./EbayCompteSection";
-import { lireEtatEbay, ebayCompteUtilisable, motifEbayInutilisable } from "../utils/ebayCompte";
+import { ebayCompteUtilisable, motifEbayInutilisable, repartirParVoie } from "../utils/ebayCompte";
 import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   isChildGenre, childAxesForGenre, toPlatformChildSize, lbcChildSizeCategory,
@@ -2425,7 +2425,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApi = false }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -2433,9 +2433,15 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
   // pour eBay quand ce compte publie par nos serveurs — on ne dit jamais
   // « eBay : non connecté » à quelqu'un qui publie très bien par l'API. Les
   // comptes en voie extension (tous sauf Nico aujourd'hui) ne voient rien
-  // changer : ebayVoieApi vaut false, chipsSession === chips.
-  const chipsSession = ebayVoieApi ? chips.filter(p => p !== "ebay") : chips;
-  const ebayParApi = ebayVoieApi && chips.includes("ebay");
+  // changer : ebayVoieApiReelle vaut false, chipsSession === chips.
+  //
+  // 07/09 — `ebayVoieApiReelle`, jamais le drapeau seul : un compte basculé
+  // dont la checklist vendeur est rouge repart en voie extension (le trigger
+  // ne bascule pas), et tous les textes ci-dessous doivent alors dire
+  // « extension », comme avant.
+  const voies = repartirParVoie(chips, ebayVoieApiReelle);
+  const chipsSession = voies.extension;
+  const ebayParApi = voies.serveur.includes("ebay");
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
   // On n'empêche PAS la sélection (le job est mis en file et repris auto) — on
   // informe seulement, ton neutre « maintenance », jamais rouge d'erreur.
@@ -3096,20 +3102,44 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         </p>
       )}
 
+      {/* ── Comment ça part : réglé sur la VOIE RÉELLE (07/09/2026) ──────────
+          Trois cas, et un seul texte à l'écran :
+          · TOUT en voie serveur → nos serveurs publient, ordinateur éteint
+            compris. La ligne « si ton PC est éteint, tes annonces restent en
+            attente » DISPARAÎT : elle disait l'exact contraire de la vérité
+            (et de l'argument de vente) ;
+          · lot MIXTE → le texte extension reste, mais il NOMME les
+            plateformes qu'il concerne, et dit qu'eBay, lui, part de nos
+            serveurs. Plus de message global sur un lot qui n'est pas global ;
+          · TOUT en voie extension (presque tout le parc) → les deux textes
+            d'origine, mot pour mot, inchangés. */}
       {chips.length > 0 && (
         <>
           <div style={{ borderRadius:18, padding:16, display:"flex", gap:12, marginBottom:16, background:"#E7F3F0", border:"1px solid #BFE0D9" }}>
             <Clock size={18} color={T.tealDeep} style={{ flexShrink:0, marginTop:1 }} />
             <p style={{ margin:0, fontSize:12.5, lineHeight:1.6, color:T.tealDeep }}>
-              {t("stepPublishCronText1")}
+              {voies.toutServeur
+                ? t("stepPublishServeurText")
+                : voies.mixte
+                ? tpl("stepPublishMixteText", {
+                    extension: voies.extension.map(p => PLATFORM_LABELS[p] ?? p).join(", "),
+                    serveur: voies.serveur.map(p => PLATFORM_LABELS[p] ?? p).join(", "),
+                  })
+                : t("stepPublishCronText1")}
             </p>
           </div>
-          <div style={{ display:"flex", gap:8, alignItems:"flex-start", padding:"0 4px" }}>
-            <ImageOff size={15} color={T.mute} style={{ flexShrink:0, marginTop:1 }} />
-            <p style={{ margin:0, fontSize:11.5, lineHeight:1.6, color:T.mute }}>
-              {t("stepPublishCronText2")}
-            </p>
-          </div>
+          {/* Ordinateur éteint : vrai seulement pour les plateformes en voie
+              extension. Muet quand tout part de nos serveurs. */}
+          {!voies.toutServeur && (
+            <div style={{ display:"flex", gap:8, alignItems:"flex-start", padding:"0 4px" }}>
+              <ImageOff size={15} color={T.mute} style={{ flexShrink:0, marginTop:1 }} />
+              <p style={{ margin:0, fontSize:11.5, lineHeight:1.6, color:T.mute }}>
+                {voies.mixte
+                  ? tpl("stepPublishCronText2Partiel", { extension: voies.extension.map(p => PLATFORM_LABELS[p] ?? p).join(", ") })
+                  : t("stepPublishCronText2")}
+              </p>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -3255,7 +3285,14 @@ export default function ListingPreviewScreen({
   // eBay par API (lot 2b, 06/09) : true = ce compte publie eBay par le worker
   // serveur (profiles.ebay_voie_api, posé par Nico). Un article SANS PHOTO ne
   // part alors jamais en job : arrêté ici, cause nommée.
-  ebayVoieApi = false,
+  // Compte eBay vu par l'hôte (App.jsx), en UN objet :
+  //   { voieApi, etat, lu, voieApiReelle, rafraichir }
+  // · voieApi        = profiles.ebay_voie_api, le drapeau posé par Nico ;
+  // · voieApiReelle  = la VOIE, miroir du trigger cross_post_jobs_voie_ebay
+  //                   (drapeau ET compte relié/politiques/checklist verte).
+  // Tout ce qui parle d'extension à l'écran lit voieApiReelle, jamais le
+  // drapeau : un compte basculé mais pas fini repart en voie extension.
+  ebayCompte = null,
   // isBusiness ne pilote AUCUNE gate ici (les flags sont cumulatifs : un
   // Business porte is_pro, toutes les gates isPro/isPremium le couvrent déjà).
   // Il n'est propagé que pour que la modale de conversion NOMME le bon palier
@@ -3722,38 +3759,22 @@ export default function ListingPreviewScreen({
   // ci-dessous rend la main immédiatement — aucun appel réseau, aucun état,
   // ebayBloque reste false, l'écran est celui d'hier au pixel près.
   //
-  // 'statut' est une simple lecture de ebay_accounts côté serveur : AUCUN
-  // appel à eBay, contrairement à 'checklist' (5 appels Account API) que seule
-  // la section Réglages déclenche.
-  const [ebayEtatCompte, setEbayEtatCompte] = useState(null);
-  const [ebayEtatLu, setEbayEtatLu] = useState(false);
+  // La lecture est faite UNE fois par l'hôte (App.jsx) et descendue ici :
+  // `ebayCompte` porte le drapeau, l'état brut du compte, le fait qu'on ait
+  // lu, la VOIE RÉELLE, et de quoi relire. Aucun écran ne recalcule la voie
+  // dans son coin.
   const [ebayPanneauOuvert, setEbayPanneauOuvert] = useState(false);
-  // Incrémenté à la fermeture du panneau de réglages : le compte vient
-  // peut-être d'être fini, on relit — sinon eBay resterait grisé jusqu'au
-  // prochain montage du stepper.
-  const [ebayRelecture, setEbayRelecture] = useState(0);
-  useEffect(() => {
-    if (!ebayVoieApi) { setEbayEtatLu(false); setEbayEtatCompte(null); return; }
-    let alive = true;
-    (async () => {
-      try {
-        const r = await lireEtatEbay('statut');
-        if (!alive) return;
-        setEbayEtatCompte(r?.etat ?? null);
-        setEbayEtatLu(true);
-      } catch (e) {
-        // Lecture impossible (réseau, session) : on ne conclut RIEN. eBay
-        // reste cochable — le trigger tranchera de toute façon côté serveur,
-        // et griser sur une ignorance serait pire que ne pas griser.
-        console.warn('[stepper] état du compte eBay illisible —', e?.message ?? e);
-        if (alive) setEbayEtatLu(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [ebayVoieApi, ebayRelecture]);
+  const ebayEtatCompte = ebayCompte?.etat ?? null;
+  const ebayEtatLu = Boolean(ebayCompte?.lu);
   // Tri-état : true = grisé, false = cochable, jamais grisé tant qu'on ne sait pas.
-  const ebayBloque = Boolean(ebayVoieApi) && ebayEtatLu && ebayCompteUtilisable(ebayEtatCompte) === false;
+  const ebayBloque = Boolean(ebayCompte?.voieApi) && ebayEtatLu && ebayCompteUtilisable(ebayEtatCompte) === false;
   const ebayMotif = ebayBloque ? motifEbayInutilisable(ebayEtatCompte) : null;
+  // ── LA VOIE RÉELLE d'eBay pour CE compte (07/09/2026) ─────────────────────
+  // Tout ce qui parle d'extension à l'écran se règle là-dessus, JAMAIS sur le
+  // drapeau seul : un compte basculé dont la checklist est rouge repart en
+  // voie extension (le trigger ne bascule pas), et lui promettre « publié
+  // depuis nos serveurs » serait un mensonge — c'était le cas avant.
+  const ebayVoieApiReelle = Boolean(ebayCompte?.voieApiReelle);
 
   // Step 3 — sélection plateformes (chips) + publication
   // Les plateformes déjà en ligne ou en file ne sont JAMAIS pré-cochées — y
@@ -4734,7 +4755,10 @@ export default function ListingPreviewScreen({
   // même prédicat (trigger cross_post_jobs_voie_ebay) — celle-ci n'est que le
   // reflet côté écran. Déclarée APRÈS plateformesPubliables, jamais avant
   // (TDZ, écran blanc 2.6.15).
-  const exemptionEbayApi = Boolean(ebayVoieApi) && plateformesPubliables.size === 1 && plateformesPubliables.has("ebay");
+  // Répartition du lot RÉELLEMENT publiable par voie — le seul calcul, lu par
+  // l'exemption ci-dessous ET par tous les textes de l'écran 3 (07/09/2026).
+  const voiesDuLot = repartirParVoie([...plateformesPubliables], ebayVoieApiReelle);
+  const exemptionEbayApi = voiesDuLot.toutServeur;
 
   // Référentiels par catégorie, déclarés ICI (avant la garde qui les lit) —
   // leurs effets de chargement restent plus bas, à côté des encarts bleus
@@ -6336,7 +6360,7 @@ export default function ListingPreviewScreen({
         // une chaîne — les handlers de l'extension lisent `p.url`.
         const photosJob = entreesPhotos(processedPhotos);
         let rowPhotos = photosJob;
-        if (platform === "ebay" && ebayVoieApi && !photosJob.length) {
+        if (platform === "ebay" && ebayVoieApiReelle && !photosJob.length) {
           throw new Error(lang === "en"
             ? "eBay: this item has no photo. eBay requires at least one image — add a photo before publishing."
             : "eBay : cet article n'a aucune photo. eBay exige au moins une image — ajoute une photo avant de publier.");
@@ -7106,7 +7130,17 @@ export default function ListingPreviewScreen({
         {t("doneTitle")}
       </div>
       <div style={{ fontSize:14, color:T.mute2, textAlign:"center", lineHeight:1.6, marginTop:8, maxWidth:280 }}>
-        {t("doneSubtitle")}
+        {/* Écran ✅ : même règle que l'encart de confirmation — on ne renvoie
+            pas quelqu'un vers Chrome pour des annonces qui partent de nos
+            serveurs (07/09/2026). */}
+        {voiesDuLot.toutServeur
+          ? t("doneSubtitleServeur")
+          : voiesDuLot.mixte
+          ? tpl("doneSubtitleMixte", {
+              serveur: voiesDuLot.serveur.map(p => PLATFORM_LABELS[p] ?? p).join(", "),
+              extension: voiesDuLot.extension.map(p => PLATFORM_LABELS[p] ?? p).join(", "),
+            })
+          : t("doneSubtitle")}
       </div>
       {/* Ligne POSITIVE (2026-08-04) : la publication vient de créer la ligne
           inventaire (1-bis) — on le dit comme un acquis (« ajouté à ton
@@ -7317,7 +7351,7 @@ export default function ListingPreviewScreen({
             pausedReasons={pausedReasons}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
-            ebayVoieApi={ebayVoieApi}
+            ebayVoieApiReelle={ebayVoieApiReelle}
           />
         )}
       </div>
@@ -7385,7 +7419,7 @@ export default function ListingPreviewScreen({
             éteint » — faux, et sans geste réparateur. Le message dit le
             geste EXACT : page fillsell.app connectée + F5, le pont relaie un
             jeton frais et l'extension se reconnecte seule. */}
-        {step === 3 && !extensionBlocked && extFraicheurPublier.etat === "session_expiree" && (
+        {step === 3 && !extensionBlocked && !voiesDuLot.toutServeur && extFraicheurPublier.etat === "session_expiree" && (
           <div style={{ marginBottom:8, display:"flex", gap:8, alignItems:"flex-start", padding:"8px 12px", borderRadius:10, background:"#FEF2F2", border:"1px solid #FECACA", fontSize:12, lineHeight:1.45, color:"#7F1D1D" }}>
             <span style={{ flexShrink:0 }}>🔑</span>
             <span>
@@ -7395,7 +7429,11 @@ export default function ListingPreviewScreen({
             </span>
           </div>
         )}
-        {step === 3 && !extensionBlocked
+        {/* Ordinateur éteint / extension inactive : n'a de sens que si au
+            moins une plateforme du lot part par l'extension (07/09/2026). Un
+            lot entièrement en voie serveur ne dépend d'aucun ordinateur —
+            l'afficher là serait faux, et démentirait l'encart du dessus. */}
+        {step === 3 && !extensionBlocked && !voiesDuLot.toutServeur
           && (extFraicheurPublier.etat === "eteinte" || extFraicheurPublier.etat === "inactive") && (
           <div style={{ marginBottom:8, display:"flex", gap:8, alignItems:"center", padding:"8px 12px", borderRadius:10, background:"#FFFBEB", border:"1px solid #FDE68A", fontSize:12, lineHeight:1.45, color:"#78350F" }}>
             <span style={{ flexShrink:0 }}>💻</span>
@@ -7460,7 +7498,7 @@ export default function ListingPreviewScreen({
           si tout est vert, eBay redevient cochable sans quitter l'écran. */}
       {ebayPanneauOuvert && (
         <div
-          onClick={() => { setEbayPanneauOuvert(false); setEbayRelecture(n => n + 1); }}
+          onClick={() => { setEbayPanneauOuvert(false); ebayCompte?.rafraichir?.(); }}
           style={{ position:"fixed", inset:0, zIndex:20001, background:"rgba(16,32,27,0.45)", backdropFilter:"blur(2px)",
             display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"24px 12px", overflowY:"auto" }}
         >
@@ -7474,7 +7512,7 @@ export default function ListingPreviewScreen({
               </div>
               <button
                 type="button"
-                onClick={() => { setEbayPanneauOuvert(false); setEbayRelecture(n => n + 1); }}
+                onClick={() => { setEbayPanneauOuvert(false); ebayCompte?.rafraichir?.(); }}
                 style={{ width:32, height:32, borderRadius:999, border:"none", background:T.chip, color:T.mute2,
                   display:"inline-flex", alignItems:"center", justifyContent:"center", cursor:"pointer", flexShrink:0 }}
                 aria-label={lang === "en" ? "Close" : "Fermer"}

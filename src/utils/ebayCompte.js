@@ -121,3 +121,21 @@ export function motifEbayInutilisable(etat) {
   if (etat.a_reconnecter) return 'a_reconnecter';
   return 'a_finir';
 }
+
+// ── Répartition d'un lot par VOIE — source unique de la question « qui a ────
+// ── besoin de l'extension ? » (07/09/2026) ─────────────────────────────────
+// AUCUN écran ne redécide la voie dans son coin : la décision vit dans le
+// trigger cross_post_jobs_voie_ebay, `ebayVoieApiReelle` en est le miroir
+// (drapeau ET compte utilisable, cf. ebayCompteUtilisable), et cette fonction
+// est le SEUL endroit qui en tire la liste des plateformes concernées.
+//
+// Aujourd'hui eBay est la seule plateforme qui sache partir par nos serveurs :
+// tout le reste (Vinted, Leboncoin, Beebs) passe par l'extension, toujours.
+// Le jour où une deuxième bascule, c'est ici qu'on l'ajoute — et les popups,
+// encarts et textes d'attente suivent sans être retouchés.
+export function repartirParVoie(plateformes, ebayVoieApiReelle) {
+  const lot = [...new Set(plateformes ?? [])];
+  const serveur = ebayVoieApiReelle ? lot.filter((p) => p === 'ebay') : [];
+  const extension = lot.filter((p) => !serveur.includes(p));
+  return { serveur, extension, toutServeur: lot.length > 0 && extension.length === 0, mixte: serveur.length > 0 && extension.length > 0 };
+}

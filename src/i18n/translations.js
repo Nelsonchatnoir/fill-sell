@@ -236,8 +236,17 @@ export const translations = {
     stepPublishInventoryFull:"Ton inventaire est plein : {n} articles en gratuit.",
     stepPublishCronText1:"L'extension FillSell dans Chrome les publie automatiquement en quelques minutes. PC allumé + Chrome ouvert = publication automatique, sans rien faire.",
     stepPublishCronText2:"Si ton PC est éteint, tes annonces restent en attente et seront publiées dès la prochaine ouverture de Chrome.",
+    // ── Voie serveur (07/09/2026) ─────────────────────────────────────────
+    // Textes servis quand les jobs partent par nos serveurs (voie 'api' du
+    // trigger cross_post_jobs_voie_ebay), et jamais autrement. Le besoin
+    // d'extension ne s'affiche que sous les plateformes qui en ont un.
+    stepPublishServeurText:"FillSell les publie depuis ses serveurs, en quelques minutes. Ni Chrome, ni extension : ton ordinateur peut rester éteint.",
+    stepPublishMixteText:"{extension} : l'extension FillSell dans Chrome les publie en quelques minutes (PC allumé + Chrome ouvert). {serveur} part de nos serveurs, sans rien de tout ça.",
+    stepPublishCronText2Partiel:"Si ton PC est éteint, seule ton annonce {extension} attend la prochaine ouverture de Chrome.",
     doneTitle:"Annonces envoyées !",
     doneSubtitle:"L'extension Chrome va les publier automatiquement dès que tu l'ouvres.",
+    doneSubtitleServeur:"FillSell les publie depuis ses serveurs — rien à ouvrir, ton ordinateur peut rester éteint.",
+    doneSubtitleMixte:"{serveur} part de nos serveurs. {extension} sera publié par l'extension Chrome dès que tu l'ouvres.",
     doneButton:"Terminer",
     doneAddedToStock:"Ton article a été ajouté à ton stock 📦",
     doneAddedToStockRetouched:"Ton article a été ajouté à ton stock, avec ses photos retouchées ✨",
@@ -544,8 +553,13 @@ export const translations = {
     stepPublishInventoryFull:"Your inventory is full: {n} items on the free plan.",
     stepPublishCronText1:"The FillSell Chrome extension publishes them automatically within a few minutes. PC on + Chrome open = fully automatic, no action needed.",
     stepPublishCronText2:"If your PC is off, listings stay queued and will publish next time Chrome opens.",
+    stepPublishServeurText:"FillSell publishes them from its own servers, within a few minutes. No Chrome, no extension: your computer can stay off.",
+    stepPublishMixteText:"{extension}: the FillSell Chrome extension publishes these within a few minutes (PC on + Chrome open). {serveur} goes out from our servers, with none of that needed.",
+    stepPublishCronText2Partiel:"If your PC is off, only your {extension} listing waits for the next time Chrome opens.",
     doneTitle:"Listings sent!",
     doneSubtitle:"Your Chrome extension will publish them automatically when you open it.",
+    doneSubtitleServeur:"FillSell publishes them from its own servers — nothing to open, your computer can stay off.",
+    doneSubtitleMixte:"{serveur} goes out from our servers. {extension} will be published by the Chrome extension when you open it.",
     doneButton:"Done",
     doneAddedToStock:"Your item has been added to your stock 📦",
     doneAddedToStockRetouched:"Your item has been added to your stock, with its retouched photos ✨",

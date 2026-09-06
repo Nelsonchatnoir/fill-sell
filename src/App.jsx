@@ -63,6 +63,7 @@ import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
 import ExtensionPitchScreen from './components/ExtensionPitchScreen';
 import EbayCompteSection from './components/EbayCompteSection';
 import { extensionTraceeAilleurs } from './utils/extensionTrace';
+import { lireEtatEbay, ebayCompteUtilisable } from './utils/ebayCompte';
 import PlanDetailsModal from './components/PlanDetailsModal';
 import { useIsMobile } from './hooks/useIsMobile';
 import BrandMark from './components/BrandMark';
@@ -2045,6 +2046,54 @@ export default function App({ loginOnly = false }){
   // l'écran de publication pour arrêter un article sans photo AVANT le job
   // (la voie API n'accepte aucune annonce sans image).
   const [ebayVoieApi,setEbayVoieApi]=useState(false);
+  // ── LA VOIE RÉELLE, lue UNE fois pour toute l'app (07/09/2026) ────────────
+  // Le drapeau seul ne dit PAS par où part un job eBay : le trigger
+  // cross_post_jobs_voie_ebay exige EN PLUS un compte relié, non révoqué, ses
+  // 3 politiques choisies et la checklist vendeur verte. Un compte basculé
+  // mais pas fini reste en voie='extension' — et tout écran qui se fie au
+  // drapeau seul ment (bandeau « publié depuis nos serveurs », popups,
+  // encarts). D'où cette lecture, et le prédicat ebayCompteUtilisable qui est
+  // le miroir mot pour mot du trigger.
+  //
+  // 'statut' = simple SELECT sur ebay_accounts côté serveur, AUCUN appel à
+  // eBay (c'est 'checklist' qui coûte les 5 appels Account API, et lui ne part
+  // que des Réglages). Et rien ne part du tout sans le drapeau : un compte en
+  // voie extension — presque tout le parc — ne déclenche aucune requête et ne
+  // voit pas une ligne changer.
+  const [ebayCompteEtat,setEbayCompteEtat]=useState(null);
+  const [ebayCompteEtatLu,setEbayCompteEtatLu]=useState(false);
+  const [ebayCompteTick,setEbayCompteTick]=useState(0);
+  const rafraichirEtatEbay=useCallback(()=>setEbayCompteTick(n=>n+1),[]);
+  useEffect(()=>{
+    if(!ebayVoieApi||!user){ setEbayCompteEtat(null); setEbayCompteEtatLu(false); return; }
+    let vivant=true;
+    (async()=>{
+      try{
+        const r=await lireEtatEbay('statut');
+        if(!vivant)return;
+        setEbayCompteEtat(r?.etat??null);
+        setEbayCompteEtatLu(true);
+      }catch(e){
+        // Lecture impossible : on ne conclut RIEN. Les écrans retombent sur le
+        // discours extension (le plus prudent : il ne promet pas un service
+        // serveur qu'on ne sait pas garanti), et le trigger tranche de toute
+        // façon à l'insert.
+        console.warn('[ebay-compte] statut illisible —',e?.message??e);
+        if(vivant)setEbayCompteEtatLu(false);
+      }
+    })();
+    return()=>{vivant=false;};
+  },[ebayVoieApi,user,ebayCompteTick]);
+  // Objet UNIQUE descendu aux onglets puis au stepper : le drapeau (pour
+  // griser eBay quand le compte n'est pas fini), l'état brut (pour nommer le
+  // motif), le fait qu'on ait lu, la VOIE RÉELLE, et de quoi relire.
+  const ebayCompte=useMemo(()=>({
+    voieApi:ebayVoieApi,
+    etat:ebayCompteEtat,
+    lu:ebayCompteEtatLu,
+    voieApiReelle:ebayVoieApi&&ebayCompteEtatLu&&ebayCompteUtilisable(ebayCompteEtat)===true,
+    rafraichir:rafraichirEtatEbay,
+  }),[ebayVoieApi,ebayCompteEtat,ebayCompteEtatLu,rafraichirEtatEbay]);
   // Tri-état passé aux tabs : true = jamais vue, false = déjà vue, null = inconnu.
   const extensionNeverSeen=extensionSeenLoaded?(extensionLastSeenAt==null&&!extensionTraceAilleurs):null;
   // Renvoi de la bannière mémorisé par couple (build installé | build minimal
@@ -6195,7 +6244,7 @@ export default function App({ loginOnly = false }){
             items={items} user={user} voiceUsedToday={voiceUsedToday}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
-            ebayVoieApi={ebayVoieApi}
+            ebayCompte={ebayCompte}
             iapLoading={iapLoading}
             stock={stock} sold={sold}
             stockFiltre={stockFiltre} soldFiltre={soldFiltre}
@@ -6272,6 +6321,7 @@ export default function App({ loginOnly = false }){
             lang={lang} currency={currency} userCountry={userCountry}
             isPremium={isPremium} isNative={isNative} user={user}
             quotas={quotas}
+            ebayCompte={ebayCompte}
             iapLoading={iapLoading}
             lensPhotos={lensPhotos} setLensPhotos={setLensPhotos}
             lensResult={lensResult} setLensResult={setLensResult}

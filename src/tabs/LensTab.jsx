@@ -500,6 +500,11 @@ const LensTab = memo(function LensTab({
   // Bascule quotas (02/09) : compteurs du cycle (quotas_etat via App) — sert
   // le « N scans restants ce mois-ci » sous le CTA d'analyse.
   quotas = null,
+  // Compte eBay vu par App.jsx (07/09/2026) : { voieApi, etat, lu,
+  // voieApiReelle, rafraichir }. Le parcours Lens l'ignorait complètement —
+  // le stepper ouvert depuis un scan croyait donc TOUJOURS être en voie
+  // extension, et servait les textes Chrome même à un compte en voie serveur.
+  ebayCompte = null,
   extensionNeverSeen = null,
   // Battement serveur de l'extension — relayé au stepper pour la ligne
   // « ordinateur éteint » au-dessus du CTA Publier (2026-08-13).
@@ -688,6 +693,7 @@ const LensTab = memo(function LensTab({
           initialPhotos={lensListingPhotos}
           initialListing={listingSource}
           identifyFailed={identifyEchec}
+          ebayCompte={ebayCompte}
           // Lens unifié (02/09 soir) : le scan payé (mode "annonce") rapporte
           // les annonces déjà rédigées — le stepper les applique sans
           // régénérer. Le parcours identify n'en porte jamais (listingSource
