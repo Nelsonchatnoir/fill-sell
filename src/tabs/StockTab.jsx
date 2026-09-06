@@ -14,7 +14,7 @@ import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPe
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '../utils/stockLimit';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
-import InstallExtensionCta from '../components/InstallExtensionCta';
+import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
@@ -1502,10 +1502,18 @@ const RETRY403_GRACE_MS = 5 * 60 * 1000;
 function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null }) {
   const fr = lang !== 'en';
   // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
-  // doctrine du 09/08. Le CTA d'installation sur stock vide — l'e-mail en un
-  // tap sur téléphone, le lien /extension sur ordinateur, hook
-  // useEnvoiLienExtension partagé avec l'onboarding — vit depuis le 05/09 dans
-  // InstallExtensionCta, rendu plus bas : aucun second mécanisme d'envoi ici.)
+  // doctrine du 09/08. `surTelephone` revient le 01/09 pour UNE décision qui
+  // n'est pas un message : quel CTA d'installation proposer sur un stock vide
+  // sans extension — l'e-mail en un tap sur téléphone, le lien /extension sur
+  // ordinateur. Même règle de support que l'onboarding.)
+  const surTelephone = isNative || (typeof window !== 'undefined' && window.innerWidth < 768);
+  // ── CTA d'installation sur stock vide (2026-09-01, audit Stock vide) ──────
+  // Même geste, même hook, mêmes états que l'onboarding et la feuille
+  // extension (useEnvoiLienExtension : envoi serveur, adresse lue sur le JWT,
+  // verrou 60 s, persistance partagée). Aucun second mécanisme d'envoi.
+  // ⚠️ `envoi` renommé `envoiLien` : cette carte a DÉJÀ un état `envoi`
+  // (mise en file de la sync) — ne pas les confondre.
+  const { envoi: envoiLien, secondesRestantes, envoyer: envoyerLien } = useEnvoiLienExtension(lang, user?.email ?? null);
   const [extVue, setExtVue] = useState(false);
   // Version annoncée par l'extension (null tant qu'elle ne s'est pas annoncée).
   const [extVersion, setExtVersion] = useState(null);
@@ -2340,15 +2348,48 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           reprend son bouton Synchroniser actif. UNIQUEMENT sur le stock vide
           (source 'stock_empty') : un compte avec des articles garde l'écran
           d'aujourd'hui. */}
-      {/* 05/09 : le CTA vit dans InstallExtensionCta (partagé avec l'étape 1
-          du Tableau vide) — même hook, mêmes états, plus la télémétrie
-          install_extension. Rien de visible n'a changé ici. */}
       {blocage&&source==='stock_empty'?(
-        <InstallExtensionCta
-          lang={lang} isNative={isNative}
-          userId={user?.id??null} userEmail={user?.email??null}
-          source="stock_vide" message={MESSAGE_BLOCAGE}
-        />
+        <>
+          <div style={{fontSize:12.5,lineHeight:1.5,color:"#5C6560",fontWeight:600}}>{MESSAGE_BLOCAGE}</div>
+          {surTelephone?(
+            <>
+              {envoiLien.etat==='echec'&&(
+                <div style={{background:"#FEF3C7",border:"1px solid #FDE68A",borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:"#92400E"}}>
+                  {messageEchecLien(envoiLien.raison,fr,!!envoiLien.email)}
+                </div>
+              )}
+              {envoiLien.etat==='envoye'?(
+                <>
+                  <div style={{background:"#F0FDFB",border:"1px solid rgba(47,158,144,0.25)",borderRadius:10,padding:"10px 12px",fontSize:12.5,lineHeight:1.5,color:"#1B6E62",textAlign:"center",wordBreak:"break-word"}}>
+                    {fr?'Lien envoyé à ':'Link sent to '}<strong>{envoiLien.email}</strong>
+                    <div style={{fontSize:11.5,fontWeight:500,marginTop:2,color:"#5C6560"}}>
+                      {fr?"Ouvre-le sur ton ordinateur, dans Chrome — ton dressing arrivera ici tout seul.":"Open it on your computer, in Chrome — your closet will arrive here on its own."}
+                    </div>
+                  </div>
+                  <button
+                    onClick={envoyerLien}
+                    disabled={secondesRestantes>0}
+                    style={{display:"block",width:"100%",background:"none",border:"none",color:secondesRestantes>0?"#8A8578":"#1B6E62",fontSize:12,fontWeight:600,cursor:secondesRestantes>0?"default":"pointer",fontFamily:"inherit",padding:4,textDecoration:secondesRestantes>0?"none":"underline"}}
+                  >
+                    {secondesRestantes>0
+                      ?(fr?`Renvoyer dans ${secondesRestantes} s`:`Resend in ${secondesRestantes}s`)
+                      :(fr?'Renvoyer':'Resend')}
+                  </button>
+                </>
+              ):envoiLien.raison!=='no_email'?(
+                <SecondaryButton disabled={envoiLien.etat==='en_cours'} onClick={envoyerLien}>
+                  {envoiLien.etat==='en_cours'
+                    ?(fr?'Envoi du lien…':'Sending the link…')
+                    :(fr?"M'envoyer le lien pour mon ordinateur":'Email me the link for my computer')}
+                </SecondaryButton>
+              ):null}
+            </>
+          ):(
+            <a href="/extension" style={{display:"block",width:"100%",boxSizing:"border-box",textAlign:"center",textDecoration:"none",padding:"10px 14px",borderRadius:10,border:"1px solid #E7E3D8",background:"#F6F5F1",color:"#1B6E62",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
+              {fr?"Installer l'extension":'Install the extension'}
+            </a>
+          )}
+        </>
       ):(
       <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee} onClick={lancer}>
         {enCours
