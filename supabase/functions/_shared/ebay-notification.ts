@@ -10,12 +10,20 @@
 //   3. la signature ECDSA (DER, comme la produit Java) se vérifie sur le CORPS
 //      BRUT de la requête avec le digest annoncé par la clé.
 //
+// ⚠️ 06/09 09:47 — premier test eBay : « signature indéterminée (Not
+// implemented) ». La brique fautive était crypto.subtle.verify : le WebCrypto
+// du runtime Deno de Supabase (ring) n'accepte pour ECDSA que SHA-256/384,
+// jamais SHA-1 — le digest d'eBay. L'import SPKI et la courbe P-256 passaient.
+// Remplacée par une vérification ECDSA P-256 interne (_shared/ecdsa-p256.ts,
+// BigInt, testée hors Deno avec des signatures node:crypto) ; le SHA-1 du
+// corps vient de crypto.subtle.digest, qui lui est supporté.
+//
 // VERDICT EN TROIS ÉTATS, jamais deux :
 //   · "valide"        → on traite ;
-//   · "invalide"      → crypto.subtle.verify a rendu false avec une clé et une
-//                       signature correctement décodées : on NE traite PAS ;
+//   · "invalide"      → clé et signature correctement décodées, mais la
+//                       vérification mathématique rend faux : on NE traite PAS ;
 //   · "indeterminee"  → tout le reste (en-tête absent ou illisible, clé
-//                       injoignable, courbe/digest non supportés, DER inattendu).
+//                       injoignable, courbe/digest non gérés, DER inattendu).
 //                       L'appelant décide ; pour la suppression de compte on
 //                       TRAITE quand même (fail-open) : effacer une ligne
 //                       ebay_accounts coûte une reconnexion, ne pas l'effacer
@@ -24,6 +32,7 @@
 //                       eBay dise si cette vérification est juste.
 // ═══════════════════════════════════════════════════════════════════════════
 import { hotes, type EbayEnv } from "./ebay-oauth.ts";
+import { cleSpkiVersPoint, signatureDerVersRS, verifierEcdsaP256 } from "./ecdsa-p256.ts";
 
 export type VerdictSignature = { verdict: "valide" | "invalide" | "indeterminee"; detail: string; kid?: string };
 
@@ -85,52 +94,9 @@ function pemVersSpki(pem: string): Uint8Array {
   return b64VersOctets(corps);
 }
 
-// Signature ECDSA DER (SEQUENCE { INTEGER r, INTEGER s }) → r||s brut, taille
-// fixe par coordonnée (32 pour P-256). STRICT : toute structure inattendue
-// lève — mieux « indéterminée » qu'un faux « invalide ».
-function derVersBrut(der: Uint8Array, taille: number): Uint8Array {
-  let i = 0;
-  const lireLongueur = (): number => {
-    let len = der[i++];
-    if (len === undefined) throw new Error("DER tronqué");
-    if (len & 0x80) {
-      const n = len & 0x7f;
-      if (n === 0 || n > 4) throw new Error("DER longueur inattendue");
-      len = 0;
-      for (let k = 0; k < n; k++) len = (len << 8) | der[i++];
-    }
-    return len;
-  };
-  if (der[i++] !== 0x30) throw new Error("DER : SEQUENCE attendue");
-  const seqLen = lireLongueur();
-  if (i + seqLen !== der.length) throw new Error("DER : longueur de séquence incohérente");
-  const lireEntier = (): Uint8Array => {
-    if (der[i++] !== 0x02) throw new Error("DER : INTEGER attendu");
-    const len = lireLongueur();
-    let v = der.slice(i, i + len);
-    i += len;
-    while (v.length > taille && v[0] === 0) v = v.slice(1);
-    if (v.length > taille) throw new Error("DER : entier plus long que la courbe");
-    const out = new Uint8Array(taille);
-    out.set(v, taille - v.length);
-    return out;
-  };
-  const r = lireEntier();
-  const s = lireEntier();
-  if (i !== der.length) throw new Error("DER : octets résiduels");
-  const out = new Uint8Array(taille * 2);
-  out.set(r, 0);
-  out.set(s, taille);
-  return out;
-}
-
-const COURBES: Array<{ nom: string; taille: number }> = [
-  { nom: "P-256", taille: 32 },
-  { nom: "P-384", taille: 48 },
-  { nom: "P-521", taille: 66 },
-];
-
-function nomHash(digest: string | undefined): string {
+// Digest annoncé par la clé (« SHA1 ») → nom WebCrypto pour subtle.digest,
+// qui supporte SHA-1 (contrairement à subtle.verify en ECDSA).
+function nomDigest(digest: string | undefined): "SHA-1" | "SHA-256" | "SHA-384" | "SHA-512" {
   const d = String(digest ?? "SHA1").toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (d === "SHA1") return "SHA-1";
   if (d === "SHA256") return "SHA-256";
@@ -158,27 +124,17 @@ export async function verifierSignatureNotification(
 
     const cle = await obtenirClePublique(env, clientId, clientSecret, kid);
     if (cle.algorithm && !/ecdsa/i.test(cle.algorithm)) return { verdict: "indeterminee", detail: `algorithme non géré : ${cle.algorithm}`, kid };
-    const hash = nomHash(cle.digest ?? meta.digest);
-    const spki = pemVersSpki(cle.key);
-    const sigDer = b64VersOctets(sigB64);
+    const digestNom = nomDigest(cle.digest ?? meta.digest);
 
-    // Courbe inconnue à l'avance : on importe avec chacune, la bonne accepte.
-    let derniereErreur = "";
-    for (const courbe of COURBES) {
-      let clePub: CryptoKey;
-      try {
-        clePub = await crypto.subtle.importKey("spki", spki, { name: "ECDSA", namedCurve: courbe.nom }, false, ["verify"]);
-      } catch (e) {
-        derniereErreur = `import ${courbe.nom} : ${(e as Error).message}`;
-        continue;
-      }
-      const brut = derVersBrut(sigDer, courbe.taille);
-      const ok = await crypto.subtle.verify({ name: "ECDSA", hash: { name: hash } }, clePub, brut, corpsBrut);
-      return ok
-        ? { verdict: "valide", detail: `${courbe.nom}/${hash}`, kid }
-        : { verdict: "invalide", detail: `signature refusée (${courbe.nom}/${hash})`, kid };
-    }
-    return { verdict: "indeterminee", detail: `aucune courbe n'accepte la clé — ${derniereErreur}`, kid };
+    // Clé → point P-256 ; signature DER → (r, s) ; condensé du corps brut.
+    const q = cleSpkiVersPoint(pemVersSpki(cle.key));
+    const { r, s } = signatureDerVersRS(b64VersOctets(sigB64));
+    const condense = new Uint8Array(await crypto.subtle.digest(digestNom, corpsBrut));
+
+    const ok = verifierEcdsaP256(q, condense, r, s);
+    return ok
+      ? { verdict: "valide", detail: `P-256/${digestNom} (vérification interne)`, kid }
+      : { verdict: "invalide", detail: `signature refusée (P-256/${digestNom}, vérification interne)`, kid };
   } catch (e) {
     return { verdict: "indeterminee", detail: (e as Error)?.message ?? String(e), kid: kid || undefined };
   }
