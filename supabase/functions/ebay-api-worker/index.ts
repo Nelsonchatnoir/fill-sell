@@ -24,7 +24,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
-import { obtenirAppToken } from "../_shared/ebay-notification.ts";
+import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { hotes } from "../_shared/ebay-oauth.ts";
 import {
   aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand,
@@ -492,10 +492,8 @@ async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job
 // pas POURQUOI ni QUAND une annonce a pris fin.
 async function mesurerAnnonces(env: EbayEnv, body: { ids?: string[] }): Promise<Record<string, unknown>> {
   const ids = (Array.isArray(body.ids) ? body.ids : []).map((x) => String(x).trim()).filter((x) => /^\d{9,15}$/.test(x)).slice(0, 200);
-  const clientId = Deno.env.get("EBAY_CLIENT_ID") ?? "", clientSecret = Deno.env.get("EBAY_CLIENT_SECRET") ?? "";
-  if (!clientId || !clientSecret) return { error: "EBAY_CLIENT_ID / EBAY_CLIENT_SECRET absents" };
   let token: string;
-  try { token = await obtenirAppToken(env, clientId, clientSecret); } catch (e) { return { error: String((e as Error)?.message ?? e) }; }
+  try { token = await obtenirJetonApplicatif(env); } catch (e) { return { error: String((e as Error)?.message ?? e) }; }
   const lignes: Record<string, unknown>[] = [];
   for (const id of ids) {
     try {
