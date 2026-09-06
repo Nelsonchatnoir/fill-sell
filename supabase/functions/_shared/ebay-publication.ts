@@ -101,10 +101,17 @@ export interface AspectCatalogue { name: string; required: boolean; mode: string
 // jeton du vendeur (api_scope, vérifié en phase 0), puis dépôt dans le cache
 // (même forme que fetch-ebay-aspects : mode,name,format,dataType,required,
 // cardinality,allowedValues).
-export async function aspectsCategorie(admin: SupabaseClient, env: EbayEnv, token: string, categoryId: string): Promise<{ aspects: AspectCatalogue[]; source: "cache" | "taxonomy" } | { erreur: string }> {
-  const { data } = await admin.from("ebay_item_aspects").select("aspects, status").eq("category_id", categoryId).maybeSingle();
-  if (data && (data.status === "ok" || data.status === "empty") && Array.isArray(data.aspects)) {
-    return { aspects: (data.aspects as Array<Record<string, unknown>>).map(normaliserCache), source: "cache" };
+// `rafraichir` (06/09) : eBay change le mode d'un aspect sans prévenir —
+// « Taille » des T-shirts homme est passée de texte libre à liste fermée
+// (refus 25129 « no longer support custom values ») pendant que le cache
+// disait encore FREE_TEXT. Sur ce refus, le worker relit Taxonomy et
+// remplace la ligne du cache avant de rejouer.
+export async function aspectsCategorie(admin: SupabaseClient, env: EbayEnv, token: string, categoryId: string, options: { rafraichir?: boolean } = {}): Promise<{ aspects: AspectCatalogue[]; source: "cache" | "taxonomy" } | { erreur: string }> {
+  if (!options.rafraichir) {
+    const { data } = await admin.from("ebay_item_aspects").select("aspects, status").eq("category_id", categoryId).maybeSingle();
+    if (data && (data.status === "ok" || data.status === "empty") && Array.isArray(data.aspects)) {
+      return { aspects: (data.aspects as Array<Record<string, unknown>>).map(normaliserCache), source: "cache" };
+    }
   }
   const r = await appelEbay(env, token, `/commerce/taxonomy/v1/category_tree/${ARBRE_FR}/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`);
   if (r.http !== 200 || !r.json) return { erreur: `Taxonomy ${r.http} : ${lireErreurEbay(r.json, r.texte).message}` };
@@ -125,7 +132,7 @@ export async function aspectsCategorie(admin: SupabaseClient, env: EbayEnv, toke
   try {
     await admin.from("ebay_item_aspects").upsert({
       category_id: categoryId, aspects: lignes, aspect_count: lignes.length, required_count: lignes.filter((l) => l.required).length,
-      status: lignes.length ? "ok" : "empty", note: "worker api 2a", source: "get_item_aspects_for_category",
+      status: lignes.length ? "ok" : "empty", note: options.rafraichir ? "worker api — rafraîchi sur refus 25129" : "worker api 2a", source: "get_item_aspects_for_category",
       category_tree_id: ARBRE_FR, category_tree_version: "120", marketplace_id: MARKETPLACE, ebay_env: env, fetched_at: new Date().toISOString(),
     }, { onConflict: "category_id" });
   } catch (_e) { /* best-effort */ }
