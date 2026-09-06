@@ -50,6 +50,32 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 }
 
+// ── Journal d'exploitation (table ebay_notification_verdicts, migration
+// 20260906100000) — BEST-EFFORT : jamais de donnée utilisateur eBay, jamais
+// d'effet sur la réponse faite à eBay. Table absente = un warn, rien d'autre.
+interface Verdict {
+  kind: "defi" | "notification";
+  topic?: string | null;
+  notification_id?: string | null;
+  verdict: string;
+  detail?: string | null;
+  kid?: string | null;
+  effacees?: number;
+  http_status?: number;
+}
+async function journaliser(v: Verdict): Promise<void> {
+  try {
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { error } = await admin.from("ebay_notification_verdicts").insert({
+      kind: v.kind, topic: v.topic ?? null, notification_id: v.notification_id ?? null, verdict: v.verdict,
+      detail: v.detail ?? null, kid: v.kid ?? null, effacees: v.effacees ?? 0, http_status: v.http_status ?? null,
+    });
+    if (error) console.warn(`[ebay-account-deletion] journal non écrit (${error.message})`);
+  } catch (e) {
+    console.warn(`[ebay-account-deletion] journal non écrit (${(e as Error)?.message ?? e})`);
+  }
+}
+
 async function sha256Hex(texte: string): Promise<string> {
   const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texte));
   return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -81,6 +107,7 @@ Deno.serve(async (req) => {
     // ORDRE IMPOSÉ par la doc : challengeCode + verificationToken + endpoint.
     const challengeResponse = await sha256Hex(challenge + token + endpoint);
     console.log(`[ebay-account-deletion] défi reçu (${challenge.length} car.) → réponse calculée pour ${endpoint}`);
+    await journaliser({ kind: "defi", verdict: "defi_repondu", detail: `endpoint ${endpoint}`, http_status: 200 });
     return json({ challengeResponse });
   }
 
@@ -100,10 +127,12 @@ Deno.serve(async (req) => {
 
   if (topic !== "MARKETPLACE_ACCOUNT_DELETION") {
     console.warn(`[ebay-account-deletion] topic ignoré : "${topic}" (notif ${notifId || "?"})`);
+    await journaliser({ kind: "notification", topic, notification_id: notifId, verdict: "ignoree", detail: "topic non géré", http_status: 200 });
     return json({ ok: true, ignore: true });
   }
   if (!username && !eias) {
     console.warn(`[ebay-account-deletion] notification sans username ni eiasToken (notif ${notifId || "?"}, userId ${userId ? "présent" : "absent"})`);
+    await journaliser({ kind: "notification", topic, notification_id: notifId, verdict: "ignoree", detail: "sans username ni eiasToken", http_status: 200 });
     return json({ ok: true, ignore: true });
   }
 
@@ -113,6 +142,7 @@ Deno.serve(async (req) => {
   const verdict = await verifierSignatureNotification(corpsBrut, req.headers.get("x-ebay-signature"), env, ids.clientId, ids.clientSecret);
   if (verdict.verdict === "invalide") {
     console.error(`[ebay-account-deletion] SIGNATURE INVALIDE — rien effacé (notif ${notifId || "?"}, kid ${verdict.kid ?? "?"}, ${verdict.detail})`);
+    await journaliser({ kind: "notification", topic, notification_id: notifId, verdict: "invalide", detail: verdict.detail, kid: verdict.kid, effacees: 0, http_status: 200 });
     return json({ ok: true, ignore: true });
   }
   if (verdict.verdict === "indeterminee") {
@@ -127,16 +157,25 @@ Deno.serve(async (req) => {
     if (error) {
       // Colonne pas encore posée (migration 20260905220811) : on passe au pseudo.
       if (/ebay_eias_token/i.test(error.message)) console.warn("[ebay-account-deletion] colonne ebay_eias_token absente — rapprochement par pseudo seul");
-      else { console.error(`[ebay-account-deletion] base (eias) : ${error.message}`); return json({ error: "base" }, 500); }
+      else {
+        console.error(`[ebay-account-deletion] base (eias) : ${error.message}`);
+        await journaliser({ kind: "notification", topic, notification_id: notifId, verdict: verdict.verdict, detail: `base (eias) : ${error.message}`, kid: verdict.kid, http_status: 500 });
+        return json({ error: "base" }, 500);
+      }
     } else {
       effacees += rows?.length ?? 0;
     }
   }
   if (username) {
     const { data: rows, error } = await admin.from("ebay_accounts").delete().eq("ebay_user_id", username).select("user_id");
-    if (error) { console.error(`[ebay-account-deletion] base (pseudo) : ${error.message}`); return json({ error: "base" }, 500); }
+    if (error) {
+      console.error(`[ebay-account-deletion] base (pseudo) : ${error.message}`);
+      await journaliser({ kind: "notification", topic, notification_id: notifId, verdict: verdict.verdict, detail: `base (pseudo) : ${error.message}`, kid: verdict.kid, effacees, http_status: 500 });
+      return json({ error: "base" }, 500);
+    }
     effacees += rows?.length ?? 0;
   }
   console.log(`[ebay-account-deletion] notif ${notifId || "?"} · signature ${verdict.verdict} · ${effacees} ligne(s) ebay_accounts effacée(s)`);
+  await journaliser({ kind: "notification", topic, notification_id: notifId, verdict: verdict.verdict, detail: verdict.detail, kid: verdict.kid, effacees, http_status: 200 });
   return json({ ok: true, effacees });
 });
