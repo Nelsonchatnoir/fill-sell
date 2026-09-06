@@ -133,6 +133,11 @@ verify_jwt = false
 [functions.ebay-account-deletion]
 verify_jwt = false
 
+# eBay par API, lot 2a (06/09) : worker de publication serveur, appelé par
+# pg_cron (x-cron-secret) — jamais par l'app.
+[functions.ebay-api-worker]
+verify_jwt = false
+
 # Paiement / compte : le JWT identifie le titulaire, jamais optionnel.
 # eBay par API (lot 0-1, 05/09) : appelées par l'app avec le JWT utilisateur.
 [functions.ebay-oauth-start]

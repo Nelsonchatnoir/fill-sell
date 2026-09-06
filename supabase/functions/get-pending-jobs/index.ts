@@ -420,6 +420,10 @@ serve(async (req) => {
       .from("cross_post_jobs")
       .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at")
       .in("status", statuses)
+      // Voie d'exécution (lot 2a eBay API, 06/09) : l'extension ne reçoit que
+      // les jobs voie='extension' (= tout le parc existant, valeur par défaut).
+      // Les jobs voie='api' sont pour ebay-api-worker, jamais pour Chrome.
+      .eq("voie", "extension")
       .order("created_at", { ascending: true });
 
     if (jobsErr) return json({ error: jobsErr.message }, 500);

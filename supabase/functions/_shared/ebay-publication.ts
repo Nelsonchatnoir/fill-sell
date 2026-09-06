@@ -1,0 +1,257 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// eBay par API — briques de publication (Inventory API), lot 2a, 06/09/2026
+//
+// Utilisé par ebay-api-worker. Tout ce qui touche à une catégorie, un état,
+// un aspect ou un emplacement est lu chez eBay ou dans nos caches — jamais
+// deviné. Relevés de la phase 0 (06/09, compte de Nico) :
+//   · arbre EBAY_FR = 71, version 120 = celle du cache ebay_item_aspects ;
+//   · Metadata get_item_condition_policies : conditions PAR CATÉGORIE
+//     (vêtements 1000/1500/1750/2990/3000/3010, général 1000/1500/3000/7000,
+//     livres 1000/2750/4000/5000/6000) ;
+//   · aspects : SELECTION_ONLY rares (Département…), FREE_TEXT à suggestions
+//     partout (Marque 19 037 valeurs) ; MPN FREE_TEXT sans valeur ;
+//   · 0 emplacement marchand sur le compte → createInventoryLocation.
+// ═══════════════════════════════════════════════════════════════════════════
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { appelEbay, type EbayEnv } from "./ebay-oauth.ts";
+import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
+
+export const MARKETPLACE = "EBAY_FR";
+export const ARBRE_FR = "71";
+
+// ── Erreurs eBay REST : premier message lisible + errorId ───────────────────
+export interface ErreurEbay { errorId: number | null; message: string; parametres?: string; }
+export function lireErreurEbay(json: unknown, texte: string): ErreurEbay {
+  const errs = (json as { errors?: Array<{ errorId?: number; message?: string; longMessage?: string; parameters?: Array<{ name?: string; value?: string }> }> } | null)?.errors;
+  if (Array.isArray(errs) && errs.length) {
+    const e = errs[0];
+    const params = (e.parameters ?? []).map((p) => `${p.name ?? "?"}=${p.value ?? ""}`).join(", ");
+    return { errorId: e.errorId ?? null, message: String(e.longMessage ?? e.message ?? "").slice(0, 400), parametres: params || undefined };
+  }
+  const warns = (json as { warnings?: Array<{ message?: string }> } | null)?.warnings;
+  if (Array.isArray(warns) && warns.length) return { errorId: null, message: String(warns[0].message ?? "").slice(0, 400) };
+  return { errorId: null, message: texte.slice(0, 300) };
+}
+
+// ── Conditions ──────────────────────────────────────────────────────────────
+// conditionId (Metadata) → valeur de l'enum `condition` de l'Inventory API.
+// ⚠️ Correspondance à CONFIRMER par la réponse d'eBay au premier
+// createOrReplaceInventoryItem (consigne Nico) : un refus est rendu tel quel.
+export const CONDITION_ENUM_PAR_ID: Record<string, string> = {
+  "1000": "NEW",
+  "1500": "NEW_OTHER",
+  "1750": "NEW_WITH_DEFECTS",
+  "2000": "CERTIFIED_REFURBISHED",
+  "2500": "SELLER_REFURBISHED",
+  "2750": "LIKE_NEW",
+  "2990": "PRE_OWNED_EXCELLENT",
+  "3000": "USED_EXCELLENT",
+  "3010": "PRE_OWNED_FAIR",
+  "4000": "USED_VERY_GOOD",
+  "5000": "USED_GOOD",
+  "6000": "USED_ACCEPTABLE",
+  "7000": "FOR_PARTS_OR_NOT_WORKING",
+};
+
+// Notre `etat` → conditionIds acceptables, du plus fidèle au repli. Le premier
+// présent dans la liste de la catégorie gagne.
+const PREFERENCES_ETAT: Array<[RegExp, string[]]> = [
+  [/neuf avec/i, ["1000"]],
+  [/neuf sans/i, ["1500", "1000"]],
+  [/neuf/i, ["1000", "1500"]],
+  [/tr[eè]s bon/i, ["3000", "2990", "4000", "2750"]],
+  [/^bon/i, ["3010", "5000", "3000", "4000"]],
+  [/satisf|correct|us[ée]/i, ["6000", "3010", "5000", "3000"]],
+];
+
+export interface ConditionCategorie { id: string; libelle: string; }
+const cacheConditions = new Map<string, ConditionCategorie[]>();
+
+export async function conditionsCategorie(env: EbayEnv, token: string, categoryId: string): Promise<ConditionCategorie[] | null> {
+  const enCache = cacheConditions.get(categoryId);
+  if (enCache) return enCache;
+  const r = await appelEbay(env, token, `/sell/metadata/v1/marketplace/${MARKETPLACE}/get_item_condition_policies?filter=categoryIds:%7B${encodeURIComponent(categoryId)}%7D`);
+  if (r.http !== 200 || !r.json) return null;
+  const pol = (r.json as { itemConditionPolicies?: Array<{ categoryId?: string; itemConditions?: Array<{ conditionId?: string; conditionDescription?: string }> }> }).itemConditionPolicies?.[0];
+  if (!pol?.itemConditions?.length) return null;
+  const liste = pol.itemConditions.map((c) => ({ id: String(c.conditionId ?? ""), libelle: String(c.conditionDescription ?? "") })).filter((c) => c.id);
+  cacheConditions.set(categoryId, liste);
+  return liste;
+}
+
+export function choisirCondition(etat: string | null | undefined, conditions: ConditionCategorie[] | null): { id: string; enumValue: string; libelle: string } | null {
+  const e = String(etat ?? "").trim();
+  let candidats: string[] = ["3000", "4000", "5000", "2990", "3010"];
+  for (const [re, ids] of PREFERENCES_ETAT) { if (re.test(e)) { candidats = ids; break; } }
+  const autorises = conditions ? new Set(conditions.map((c) => c.id)) : null;
+  for (const id of candidats) {
+    if (autorises && !autorises.has(id)) continue;
+    const enumValue = CONDITION_ENUM_PAR_ID[id];
+    if (!enumValue) continue;
+    return { id, enumValue, libelle: conditions?.find((c) => c.id === id)?.libelle ?? "" };
+  }
+  return null;
+}
+
+// ── Aspects ─────────────────────────────────────────────────────────────────
+export interface AspectCatalogue { name: string; required: boolean; mode: string; allowedValues: string[]; }
+
+// Lecture du cache ebay_item_aspects ; catégorie absente → Taxonomy avec le
+// jeton du vendeur (api_scope, vérifié en phase 0), puis dépôt dans le cache
+// (même forme que fetch-ebay-aspects : mode,name,format,dataType,required,
+// cardinality,allowedValues).
+export async function aspectsCategorie(admin: SupabaseClient, env: EbayEnv, token: string, categoryId: string): Promise<{ aspects: AspectCatalogue[]; source: "cache" | "taxonomy" } | { erreur: string }> {
+  const { data } = await admin.from("ebay_item_aspects").select("aspects, status").eq("category_id", categoryId).maybeSingle();
+  if (data && (data.status === "ok" || data.status === "empty") && Array.isArray(data.aspects)) {
+    return { aspects: (data.aspects as Array<Record<string, unknown>>).map(normaliserCache), source: "cache" };
+  }
+  const r = await appelEbay(env, token, `/commerce/taxonomy/v1/category_tree/${ARBRE_FR}/get_item_aspects_for_category?category_id=${encodeURIComponent(categoryId)}`);
+  if (r.http !== 200 || !r.json) return { erreur: `Taxonomy ${r.http} : ${lireErreurEbay(r.json, r.texte).message}` };
+  const brut = (r.json as { aspects?: Array<Record<string, unknown>> }).aspects ?? [];
+  const lignes = brut.map((a) => {
+    const c = (a.aspectConstraint ?? {}) as Record<string, unknown>;
+    return {
+      name: String(a.localizedAspectName ?? ""),
+      required: Boolean(c.aspectRequired),
+      mode: String(c.aspectMode ?? "FREE_TEXT"),
+      format: c.aspectFormat ? String(c.aspectFormat) : null,
+      dataType: String(c.aspectDataType ?? "STRING"),
+      cardinality: String(c.itemToAspectCardinality ?? "SINGLE"),
+      allowedValues: ((a.aspectValues ?? []) as Array<{ localizedValue?: string }>).map((v) => String(v.localizedValue ?? "")).filter(Boolean),
+    };
+  }).filter((l) => l.name);
+  // Dépôt best-effort dans le référentiel (jamais bloquant).
+  try {
+    await admin.from("ebay_item_aspects").upsert({
+      category_id: categoryId, aspects: lignes, aspect_count: lignes.length, required_count: lignes.filter((l) => l.required).length,
+      status: lignes.length ? "ok" : "empty", note: "worker api 2a", source: "get_item_aspects_for_category",
+      category_tree_id: ARBRE_FR, category_tree_version: "120", marketplace_id: MARKETPLACE, ebay_env: env, fetched_at: new Date().toISOString(),
+    }, { onConflict: "category_id" });
+  } catch (_e) { /* best-effort */ }
+  return { aspects: lignes.map(normaliserCache), source: "taxonomy" };
+}
+
+function normaliserCache(a: Record<string, unknown>): AspectCatalogue {
+  return {
+    name: String(a.name ?? ""),
+    required: Boolean(a.required),
+    mode: String(a.mode ?? a.aspectMode ?? "FREE_TEXT"),
+    allowedValues: Array.isArray(a.allowedValues) ? (a.allowedValues as unknown[]).map(String) : [],
+  };
+}
+
+// Département eBay depuis notre `genre` (valeurs exactes relevées en phase 0
+// sur 15687/15689/11484 : Femme, Homme, Adolescents, Bébé et tout-petit
+// (unisexe), Garçon, Fille, Adulte unisexe).
+const DEPARTEMENT_PAR_GENRE: Record<string, string[]> = {
+  Femme: ["Femme"], Homme: ["Homme"], Fille: ["Fille"], "Garçon": ["Garçon"],
+  "Bébé": ["Bébé et tout-petit (unisexe)"], Enfant: ["Bébé et tout-petit (unisexe)"], Mixte: ["Adulte unisexe"],
+};
+
+export interface PlatformFields {
+  marque?: string | null; taille?: string | null; couleur?: string | null; colors?: string[] | null;
+  matiere?: string | null; genre?: string | null; modele?: string | null; stockage?: string | null; etat?: string | null;
+  ebayAspects?: Record<string, string> | null;
+  [k: string]: unknown;
+}
+
+// Valeur candidate pour un aspect : d'abord ce que le job porte déjà
+// (ebayAspects, posé par l'app / la réponse needs_user), puis nos champs
+// standard. Recalée sur la liste eBay quand elle y correspond ; SELECTION_ONLY
+// hors liste = manquant (eBay refuserait) ; FREE_TEXT hors liste = gardé tel quel.
+export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[]): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[] } {
+  const aspects: Record<string, string[]> = {};
+  const manquants: string[] = [];
+  const recalages: string[] = [];
+  const ebayAspects = (pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {};
+  const couleur = (Array.isArray(pf.colors) && pf.colors[0]) ? String(pf.colors[0]) : (pf.couleur ? String(pf.couleur) : "");
+  const standard: Record<string, string> = {
+    "Marque": String(pf.marque ?? ""),
+    "Taille": String(pf.taille ?? ""),
+    "Couleur": couleur,
+    "Matière": String(pf.matiere ?? ""),
+    "Modèle": String(pf.modele ?? ""),
+    "Capacité de stockage": String(pf.stockage ?? ""),
+    "Numéro de pièce fabricant": "Ne s'applique pas",
+  };
+  for (const a of catalogue) {
+    if (!a.required && !(a.name in ebayAspects)) continue; // 2a : requis + ce que le job porte déjà
+    let brut = String(ebayAspects[a.name] ?? "").trim();
+    if (!brut && a.name === "Département") {
+      const cands = DEPARTEMENT_PAR_GENRE[String(pf.genre ?? "")] ?? [];
+      brut = cands.find((c) => valeurDeListeCorrespondante(c, a.allowedValues)) ?? cands[0] ?? "";
+    }
+    if (!brut) brut = String(standard[a.name] ?? "").trim();
+    if (!brut) { if (a.required) manquants.push(a.name); continue; }
+    const recale = a.allowedValues.length ? valeurDeListeCorrespondante(brut, a.allowedValues) : null;
+    if (recale) {
+      if (recale !== brut) recalages.push(`${a.name}: « ${brut} » → « ${recale} »`);
+      aspects[a.name] = [recale];
+    } else if (a.mode === "SELECTION_ONLY") {
+      if (a.required) manquants.push(a.name);
+    } else {
+      aspects[a.name] = [brut];
+    }
+  }
+  return { aspects, manquants, recalages };
+}
+
+// ── Emplacement marchand ────────────────────────────────────────────────────
+export const CLE_EMPLACEMENT = "fs-principal";
+
+interface CompteEmplacement { merchant_location_key: string | null; }
+
+export async function emplacementMarchand(admin: SupabaseClient, env: EbayEnv, token: string, userId: string): Promise<{ cle: string; cree: boolean } | { manque: "adresse" | "eBay"; detail: string }> {
+  const { data: compte } = await admin.from("ebay_accounts").select("merchant_location_key").eq("user_id", userId).maybeSingle();
+  const existante = (compte as CompteEmplacement | null)?.merchant_location_key;
+  if (existante) return { cle: existante, cree: false };
+
+  // Déjà créé chez eBay (clé connue) mais pas mémorisé ? On relit avant de créer.
+  const lecture = await appelEbay(env, token, `/sell/inventory/v1/location/${CLE_EMPLACEMENT}`);
+  if (lecture.http === 200) {
+    await admin.from("ebay_accounts").update({ merchant_location_key: CLE_EMPLACEMENT }).eq("user_id", userId);
+    return { cle: CLE_EMPLACEMENT, cree: false };
+  }
+
+  // Adresse : code postal + ville depuis l'adresse de remise Leboncoin
+  // (profiles.platform_settings.leboncoin.adresse) — la rue n'est jamais
+  // envoyée à eBay, seuls ville, code postal et pays.
+  const { data: profil } = await admin.from("profiles").select("platform_settings").eq("id", userId).maybeSingle();
+  const adresse = String((profil?.platform_settings as { leboncoin?: { adresse?: string } } | null)?.leboncoin?.adresse ?? "");
+  const m = adresse.match(/\b(\d{5})\b\s*(.+)$/);
+  if (!m) return { manque: "adresse", detail: "aucune ville + code postal connus (adresse Leboncoin absente ou illisible)" };
+  const codePostal = m[1];
+  const ville = m[2].trim().replace(/\s+/g, " ");
+
+  const creation = await appelEbay(env, token, `/sell/inventory/v1/location/${CLE_EMPLACEMENT}`, {
+    method: "POST",
+    body: {
+      name: "FillSell",
+      merchantLocationStatus: "ENABLED",
+      locationTypes: ["WAREHOUSE"],
+      location: { address: { city: ville, postalCode: codePostal, country: "FR" } },
+    },
+  });
+  if (creation.http !== 204 && creation.http !== 200 && creation.http !== 201) {
+    return { manque: "eBay", detail: `createInventoryLocation HTTP ${creation.http} : ${lireErreurEbay(creation.json, creation.texte).message}` };
+  }
+  await admin.from("ebay_accounts").update({ merchant_location_key: CLE_EMPLACEMENT }).eq("user_id", userId);
+  return { cle: CLE_EMPLACEMENT, cree: true };
+}
+
+// ── Texte ───────────────────────────────────────────────────────────────────
+export function titreEbay(titre: string): string {
+  return String(titre ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+}
+export function descriptionEbay(description: string, titre: string): string {
+  const d = String(description ?? "").trim() || String(titre ?? "").trim();
+  // Texte brut → HTML minimal (eBay affiche listingDescription en HTML).
+  const echap = d.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<p>${echap.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>`.slice(0, 4000);
+}
+export function skuPour(inventaireId: number | string): string {
+  return `fs-${inventaireId}`.slice(0, 50);
+}
+export function urlAnnonce(listingId: string): string {
+  return `https://www.ebay.fr/itm/${listingId}`;
+}
