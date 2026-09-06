@@ -2646,15 +2646,23 @@ async function fillListingForm(job) {
     const sonde = await readItemsProbeOutcome().catch(() => ({ last: null, refus: null }));
     const messageEchec = proof.error ??
       (sonde.refus
-        ? `Vinted a REFUSÉ la publication (réponse serveur HTTP ${sonde.refus.status}) : ` +
+        ? `Vinted a refusé la publication : ` +
           `${proof.validation ?? sonde.refus.validationErrors.map((e) => e?.value).filter(Boolean).join(" · ")} — ` +
-          "l'annonce n'a PAS été créée. (Le formulaire est resté sur /items/new.)"
+          "l'annonce n'a PAS été créée."
         : sonde.last
-          ? `Publication Vinted non aboutie après soumission (dernière réponse serveur HTTP ${sonde.last.status}, sans détail exploitable)` +
-            `${proof.validation ? ` : ${proof.validation}` : ""} — l'annonce n'a PAS été créée. (Le formulaire est resté sur /items/new.)`
+          ? `Publication Vinted non aboutie après soumission, sans détail exploitable de Vinted` +
+            `${proof.validation ? ` : ${proof.validation}` : ""} — l'annonce n'a PAS été créée.`
           : `La validation du formulaire Vinted a bloqué l'envoi : ${proof.validation ?? "(message non lu)"} — ` +
-            "AUCUNE requête de création n'a été observée par la sonde réseau, Vinted n'a PAS été interrogé. " +
-            "L'annonce n'a PAS été créée. (Le formulaire est resté sur /items/new.)");
+            "Vinted n'a pas été interrogé, l'annonce n'a PAS été créée.");
+    // Le technique (statut HTTP, page restée sur /items/new, sonde) vit dans
+    // le diagnostic — jamais dans le message (règle Nico, 06/09 : pas de code
+    // HTTP ni de parenthèse imbriquée à l'écran).
+    const diagEchecBase = [
+      sonde.refus ? `refus serveur HTTP ${sonde.refus.status}`
+        : sonde.last ? `dernière réponse serveur HTTP ${sonde.last.status}, sans détail exploitable`
+        : "aucune requête de création observée par la sonde réseau, Vinted non interrogé",
+      "le formulaire est resté sur /items/new",
+    ].join(" || ");
     // Refus 400 : les errors[{field,value}] parsées par la sonde sont les
     // requis que NI le DOM NI la config attributes n'avaient révélés (cas
     // fondateur : model). Traduits en libellés humains et remontés
@@ -2681,9 +2689,9 @@ async function fillListingForm(job) {
       // les options RELEVÉES SUR LE FORMULAIRE quand la pose les a vues
       // (même règle que la garde catégorie : le DOM prime sur le catalogue).
       const conseils = serverRequired.map((f) => {
-        const reelles = optionsRelevees.get(String(f.label).toLowerCase()) ?? [];
-        return `renseigne « ${f.label} » dans la copie Vinted de l'app` +
-          (reelles.length ? ` (options du formulaire : ${reelles.slice(0, 8).join(" · ")})` : "");
+        // Les options relevées partent au diagnostic (ci-dessous), plus dans
+        // le message : elles faisaient dépasser 300 car. et l'app masquait tout.
+        return `renseigne « ${f.label} » dans la copie Vinted de l'app`;
       }).join(" ; ");
       // Diagnostic PERSISTÉ (2026-08-28, mur ISBN « Fairy tail » : sur un
       // refus serveur, last_diagnostic restait VIDE — impossible de trancher
@@ -2696,11 +2704,17 @@ async function fillListingForm(job) {
         sonde.refus?.isbnEnvoye != null ? `isbn dans le corps du POST : ${sonde.refus.isbnEnvoye}` : null,
         sonde.refus?.isbnPose ? `isbn POSÉ dans le corps par la sonde (${sonde.refus.isbnPose}) — la page l'avait laissé vide` : null,
         sonde.refus?.reponse ? `réponse : ${sonde.refus.reponse}` : null,
+        `champs exigés : ${details}`,
+        serverRequired.map((f) => {
+          const reelles = optionsRelevees.get(String(f.label).toLowerCase()) ?? [];
+          return reelles.length ? `options relevées pour ${f.label} : ${reelles.slice(0, 12).join(" · ")}` : null;
+        }).filter(Boolean).join(" ; ") || null,
+        "le formulaire est resté sur /items/new",
         ...(diagnosticsRecreation.length ? [diagnosticsRecreation.join(" || ")] : []),
       ].filter(Boolean).join(" || ").slice(0, 2000);
       return {
         success: false,
-        error: `${messageEchec} — Champs exigés par le serveur Vinted : ${details}. À faire : ${conseils}, puis relance la publication.`,
+        error: `${messageEchec} Champ${serverRequired.length > 1 ? "s" : ""} exigé${serverRequired.length > 1 ? "s" : ""} par Vinted : ${serverRequired.map((f) => f.label).join(", ")}. À faire : ${conseils}, puis relance la publication.`,
         warnings,
         serverRequired,
         diagnostic: diagRefus,
@@ -2708,7 +2722,7 @@ async function fillListingForm(job) {
         ...(onePassDeleted ? { deleted: true } : {}),
       };
     }
-    return { success: false, error: messageEchec, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
+    return { success: false, error: messageEchec, warnings, ...annexeRecreation(), diagnostic: [diagEchecBase, annexeRecreation().diagnostic].filter(Boolean).join(" || ").slice(0, 2000), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
   }
   return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
 
