@@ -280,7 +280,11 @@ export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalo
 // ── Catégorie : suggestions eBay depuis le titre (repli de la phase 0) ──────
 export interface SuggestionCategorie { id: string; nom: string; chemin: string[]; }
 export async function suggererCategories(env: EbayEnv, token: string, titre: string): Promise<SuggestionCategorie[]> {
-  const q = String(titre ?? "").replace(/s+/g, " ").trim().slice(0, 120);
+  // ⚠️ 06/09 : /s+/ (sans antislash) effaçait chaque « s » du titre —
+  // « Musculation » devenait « Mu culation », « T-shirt Adidas » « T- hirt
+  // Adida  » : les suggestions eBay répondaient à un titre mutilé (la BD
+  // du T-shirt Sergio Garcia vient de là). Les blancs seuls sont repliés.
+  const q = String(titre ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
   if (!q) return [];
   const r = await appelEbay(env, token, `/commerce/taxonomy/v1/category_tree/${ARBRE_FR}/get_category_suggestions?q=${encodeURIComponent(q)}`);
   if (r.http !== 200 || !r.json) return [];
