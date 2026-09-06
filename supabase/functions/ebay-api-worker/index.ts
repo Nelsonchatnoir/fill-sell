@@ -278,12 +278,15 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
     // suggestions ET qu'au moins 4 des 5 partagent une racine différente de
     // celle du mapping. La règle v1 (mots du titre + autre racine) a publié
     // un T-shirt en BD ; elle est retirée.
-    // Règle v2 EN PROPORTION (arbitrage Nico, 06/09 après-midi) :
+    // Règle v2 STRICTE (arbitrage Nico, 06/09 soir — « un clic coûte moins
+    // cher qu'une annonce en BD ») :
     //   · n = suggestions rendues ; on ne conclut qu'avec n ≥ 3 ;
     //   · le mapping figure dans la liste → gardé ;
-    //   · sinon, si ≥ 2/3 des n suggestions partagent la racine de la n°1 et
-    //     que cette racine ≠ celle du mapping → changement de RACINE → JAMAIS
-    //     en silence : needs_user avec les chemins, l'utilisateur tranche.
+    //   · sinon, si la racine de la n°1 ≠ celle du mapping → changement de
+    //     RACINE, SANS condition de proportion → JAMAIS en silence :
+    //     needs_user avec les chemins, l'utilisateur tranche. (La version
+    //     « ≥ 2/3 » laissait passer 3 Livres / 6 Sports sur le titre
+    //     raccourci du Delavier.)
     //     Relancer le job SANS rien changer = garder le mapping de l'app
     //     (marque ebayCategorieAttente) ; changer l'icône/le genre = nouveau
     //     mapping.
@@ -296,7 +299,7 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
       const racineTop = String(top.chemin[0] ?? "");
       const memeRacineQueTop = suggestions.filter((x) => (x.chemin[0] ?? "") === racineTop).length;
       const dejaTranche = Boolean((pf as Record<string, unknown>).ebayCategorieAttente);
-      if (!dejaTranche && n >= 3 && !mappeeDansLaListe && racineTop && racineTop !== racineMappee && memeRacineQueTop * 3 >= n * 2) {
+      if (!dejaTranche && n >= 3 && !mappeeDansLaListe && racineTop && racineTop !== racineMappee) {
         return {
           choix: suggestions.slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
           motif: `classé par l'app en « ${cheminMappe.join(" > ")} » (${mappee}) ; eBay le voit plutôt en « ${racineTop} » (${memeRacineQueTop} suggestions sur ${n}, la 1re : ${top.chemin.join(" > ")})`,
