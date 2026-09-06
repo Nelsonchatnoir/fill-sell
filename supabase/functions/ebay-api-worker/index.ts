@@ -23,6 +23,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
+import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import {
   aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand,
   lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos, type PlatformFields,
@@ -68,13 +69,30 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const categorie = await resoudreCategorie(env, token, job, pf);
   if ("choix" in categorie) {
     const liste = categorie.choix.map((c, i) => `${i + 1}. ${c.chemin} (${c.id})`).join(" · ");
-    await marquer(admin, job, { status: "needs_user", error: `Catégorie eBay à choisir pour cet article : ${liste || "aucune suggestion eBay"}. Choisis-la depuis la fiche, puis relance.` }, { etape: "categorie", quoi: "categorie_a_choisir", choix: categorie.choix });
-    return { job: job.id, issue: "needs_user", motif: "categorie_a_choisir", choix: categorie.choix };
+    const mappee = String(pf.ebayCategoryId ?? "").trim();
+    const msg = mappee
+      ? `Catégorie eBay à confirmer : ${categorie.motif}. Relance la publication depuis la fiche pour garder la catégorie de l'app, ou change l'icône / le genre de l'article pour en choisir une autre. Suggestions eBay : ${liste}.`
+      : `Catégorie eBay à choisir pour cet article : ${liste || "aucune suggestion eBay"}. Change l'icône / le genre de l'article depuis la fiche, puis relance.`;
+    // ebayCategorieAttente : posé ICI, lu à la relance — relancer sans rien
+    // changer vaut confirmation du mapping de l'app (jamais une boucle).
+    job.platform_fields = { ...(job.platform_fields ?? {}), ebayCategorieAttente: { mapping: mappee || null, choix: categorie.choix, at: new Date().toISOString() } };
+    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "categorie", quoi: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, motif: categorie.motif });
+    return { job: job.id, issue: "needs_user", motif: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, detail: categorie.motif };
   }
   const categoryId = categorie.id;
-  if (categorie.source !== "mapping") pf.ebayCategoryPath = categorie.chemin;
+  if (categorie.source !== "mapping" && categorie.source !== "mapping_confirme_par_relance") pf.ebayCategoryPath = categorie.chemin;
+
   if (!(prix > 0)) { await marquer(admin, job, { status: "needs_user", error: "Prix absent ou nul." }, { etape: "controle", quoi: "prix_absent" }); return { job: job.id, issue: "needs_user", motif: "prix_absent" }; }
   if (!job.inventaire_id) { await marquer(admin, job, { status: "failed", error: "Job sans inventaire_id : impossible de former le SKU." }, { etape: "controle", quoi: "inventaire_absent" }); return { job: job.id, issue: "failed", motif: "inventaire_absent" }; }
+  // Filet photos (décision Nico 06/09) : toute URL hors de notre Storage est
+  // copiée chez nous AVANT d'appeler eBay ; le job garde alors NOS URLs.
+  const rap = await rapatrierPhotosPublication(admin, photos, job.user_id, job.inventaire_id);
+  if (rap.rapatriees > 0) {
+    const nouvellesPhotos = rap.urls.map((u, i) => ({ type: i === 0 ? "original" : `photo_${i}`, url: u }));
+    await admin.from("cross_post_jobs").update({ photos: nouvellesPhotos }).eq("id", job.id);
+    job.photos = nouvellesPhotos;
+  }
+  const photosPublication = rap.urls;
 
   // 1. Emplacement marchand (une fois par vendeur).
   const empl = await emplacementMarchand(admin, env, token, job.user_id);
@@ -118,7 +136,7 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
       title: titreEbay(job.title ?? ""),
       description: descriptionEbay(job.description ?? "", job.title ?? ""),
       aspects,
-      imageUrls: photos,
+      imageUrls: photosPublication,
       // PAS de product.brand : eBay exige alors product.mpn (refus 25002
       // « BrandMPN manquante ou invalide », constaté au 1er publish du 06/09).
       // La marque est portée par l'aspect « Marque », qui suffit.
@@ -191,9 +209,9 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const publishedAt = new Date().toISOString();
   await marquer(admin, job,
     { status: "published", error: null, platform_listing_id: listingId, listing_url: urlAnnonce(listingId), published_at: publishedAt },
-    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin } },
+    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null, chemin: categorie.chemin }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs } },
     { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives });
-  return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null }, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
+  return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, categorie: { id: categoryId, source: categorie.source, detail: categorie.detail ?? null }, photos: { rapatriees: rap.rapatriees, deja_chez_nous: rap.deja_chez_nous, echecs: rap.echecs }, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
 }
 
 // ── Catégorie (règle validée par Nico, phase 0 (b)) ─────────────────────────
@@ -215,8 +233,8 @@ const GENRE_DANS_CHEMIN: Record<string, RegExp> = {
 // mapping icône de l'app gagne TOUJOURS tant que Nico n'a pas tranché une
 // règle plus sûre (consensus des 5 suggestions ?) ; la suggestion ne sert
 // qu'en l'absence de mapping.
-const CONTROLE_CATEGORIE_PAR_SUGGESTION = false;
-async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: PlatformFields): Promise<{ id: string; chemin: string[]; source: string; detail?: string } | { choix: Array<{ id: string; chemin: string }> }> {
+const CONTROLE_CATEGORIE_PAR_SUGGESTION = true;
+async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: PlatformFields): Promise<{ id: string; chemin: string[]; source: string; detail?: string } | { choix: Array<{ id: string; chemin: string }>; motif: string }> {
   const mappee = String(pf.ebayCategoryId ?? "").trim();
   const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
   const suggestions = await suggererCategories(env, token, job.title ?? "");
@@ -234,18 +252,32 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: Plat
     // suggestions ET qu'au moins 4 des 5 partagent une racine différente de
     // celle du mapping. La règle v1 (mots du titre + autre racine) a publié
     // un T-shirt en BD ; elle est retirée.
+    // Règle v2 EN PROPORTION (arbitrage Nico, 06/09 après-midi) :
+    //   · n = suggestions rendues ; on ne conclut qu'avec n ≥ 3 ;
+    //   · le mapping figure dans la liste → gardé ;
+    //   · sinon, si ≥ 2/3 des n suggestions partagent la racine de la n°1 et
+    //     que cette racine ≠ celle du mapping → changement de RACINE → JAMAIS
+    //     en silence : needs_user avec les chemins, l'utilisateur tranche.
+    //     Relancer le job SANS rien changer = garder le mapping de l'app
+    //     (marque ebayCategorieAttente) ; changer l'icône/le genre = nouveau
+    //     mapping.
+    //   Relevé : Adidas (mapping 3e des 10) → gardé ; Delavier (6/9 Livres,
+    //   mapping Haltères absent) → needs_user ; sweat (1 seule) → gardé.
     if (CONTROLE_CATEGORIE_PAR_SUGGESTION && top && top.id !== mappee) {
-      const cinq = suggestions.slice(0, 5);
-      const mappeeDansLaListe = cinq.some((x) => x.id === mappee);
+      const n = suggestions.length;
+      const mappeeDansLaListe = suggestions.some((x) => x.id === mappee);
       const racineMappee = String(cheminMappe[0] ?? "");
-      const parRacine = new Map<string, number>();
-      for (const x of cinq) parRacine.set(x.chemin[0] ?? "", (parRacine.get(x.chemin[0] ?? "") ?? 0) + 1);
-      const [racineDominante, poids] = [...parRacine.entries()].sort((a, b) => b[1] - a[1])[0] ?? ["", 0];
-      if (!mappeeDansLaListe && poids >= 4 && racineDominante && racineDominante !== racineMappee && top.chemin[0] === racineDominante) {
-        return { id: top.id, chemin: top.chemin, source: "suggestion_consensus", detail: `mapping ${mappee} (${cheminMappe.join(" > ")}) remplacé : absent des 5 suggestions, ${poids}/5 dans la branche « ${racineDominante} »` };
+      const racineTop = String(top.chemin[0] ?? "");
+      const memeRacineQueTop = suggestions.filter((x) => (x.chemin[0] ?? "") === racineTop).length;
+      const dejaTranche = Boolean((pf as Record<string, unknown>).ebayCategorieAttente);
+      if (!dejaTranche && n >= 3 && !mappeeDansLaListe && racineTop && racineTop !== racineMappee && memeRacineQueTop * 3 >= n * 2) {
+        return {
+          choix: suggestions.slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
+          motif: `classé par l'app en « ${cheminMappe.join(" > ")} » (${mappee}) ; eBay le voit plutôt en « ${racineTop} » (${memeRacineQueTop} suggestions sur ${n}, la 1re : ${top.chemin.join(" > ")})`,
+        };
       }
     }
-    return { id: mappee, chemin: cheminMappe, source: "mapping" };
+    return { id: mappee, chemin: cheminMappe, source: dejaTrancheSource(pf) };
   }
   if (top) {
     const genre = String(pf.genre ?? "").trim();
@@ -253,7 +285,10 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: Plat
     const cheminTexte = top.chemin.join(" > ");
     if (!genre || !re || re.test(cheminTexte)) return { id: top.id, chemin: top.chemin, source: "suggestion" };
   }
-  return { choix: suggestions.slice(0, 5).map((s) => ({ id: s.id, chemin: s.chemin.join(" > ") })) };
+  return { choix: suggestions.slice(0, 5).map((s) => ({ id: s.id, chemin: s.chemin.join(" > ") })), motif: "aucune catégorie eBay sur ce job et aucune suggestion eBay compatible avec le rayon" };
+}
+function dejaTrancheSource(pf: PlatformFields): string {
+  return (pf as Record<string, unknown>).ebayCategorieAttente ? "mapping_confirme_par_relance" : "mapping";
 }
 
 function contexteDuJob(job: Job, pf: PlatformFields) {
