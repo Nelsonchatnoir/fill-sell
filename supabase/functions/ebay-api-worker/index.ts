@@ -35,6 +35,7 @@ import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_sh
 import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { hotes } from "../_shared/ebay-oauth.ts";
+import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 import {
   aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
   lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos, type AttributsInventaire, type PlatformFields,
@@ -113,9 +114,24 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   // ── Lot 2 (07/09) : Lens identify côté serveur, UNE fois par article. ────
   const scan = await scannerLensSiNecessaire(admin, job, pf, attributs, photosPublication, inv.titre || job.title || "", passe);
   if (scan.attributs) { attributs = scan.attributs; enrichi = enrichirDepuisAttributs(pfJob, attributs); pf = enrichi.pf; }
-  const diagAttributs = { attributs: { utilises: enrichi.utilises, disponibles: enrichi.disponibles }, lens: scan.resume };
+  // ── « Un DVD n'est pas un livre » (07/09/2026, lot de 24 DVD d'Ornella,
+  // miroir serveur du commit app 9958a8f) : la famille Lens `livres_medias`
+  // porte AUSSI les DVD, CD, vinyles et jeux vidéo. Le SUPPORT se lit dans le
+  // texte (estSupportNonLivre : supports seulement, jamais un sujet ; désarmé
+  // par « livre / roman / manga / tome / BD »). Un média : la famille ne pèse
+  // plus sur la catégorie, « Modèle » n'est plus défaulté comme un livre, et
+  // l'aspect ISBN n'est jamais réclamé. Décidé ICI, une fois, avant toute
+  // règle « livre » — famille effective = null sur un média.
+  const supportNonLivre = estSupportNonLivre(inv.titre, job.title, job.description);
+  pf.support_non_livre = supportNonLivre;
+  const familleEffective = (String(pf.famille ?? "") === "livres_medias" && supportNonLivre) ? null : ((pf.famille as string | null) ?? null);
+  const diagAttributs = {
+    attributs: { utilises: enrichi.utilises, disponibles: enrichi.disponibles },
+    lens: scan.resume,
+    ...(String(pf.famille ?? "") === "livres_medias" ? { famille: { lens: "livres_medias", support_non_livre: supportNonLivre, effective: familleEffective } } : {}),
+  };
 
-  const categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, (pf.famille as string | null) ?? null);
+  const categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, familleEffective);
   if ("choix" in categorie) {
     const mappee = String(pf.ebayCategoryId ?? "").trim();
     const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
@@ -640,7 +656,10 @@ async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_
     // scan Lens — la mesure ne coûte rien et n'écrit rien).
     const enr = enrichirDepuisAttributs(pf, a.attributs);
     const pfE = enr.pf;
+    // Même ceinture que publier() : un média n'est jamais traité en livre.
+    pfE.support_non_livre = estSupportNonLivre(a.titre, a.description);
     ligne.attributs_utilises = enr.utilises;
+    if (pfE.support_non_livre) ligne.support_non_livre = true;
     const rempli = await remplirAspects(pfE, cat.aspects, { titre: a.titre, description: a.description, marque: pfE.marque as string | null, modele: pfE.modele as string | null, matiere: pfE.matiere as string | null, type: (pfE.objet as string | null) ?? a.type, genre: pfE.genre as string | null, taille: pfE.taille as string | null, couleur: pfE.couleur as string | null, attributs: (pfE.attributs_visibles as Record<string, unknown> | null) ?? null }, apiKey);
     const requis = cat.aspects.filter((x) => x.required).map((x) => x.name);
     ligne.requis = requis;

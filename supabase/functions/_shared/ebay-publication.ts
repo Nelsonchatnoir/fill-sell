@@ -186,6 +186,11 @@ export interface PlatformFields {
   attributsSources?: Record<string, "attributs" | "lens"> | null;
   attributs_visibles?: Record<string, unknown> | null;
   objet?: string | null; isbn?: string | null;
+  // 07/09/2026 (lot de 24 DVD d'Ornella) : true = le texte de l'article
+  // désigne un support vidéo/audio/jeu (estSupportNonLivre, _shared/
+  // support-non-livre.ts). Posé par le worker AVANT toute règle « livre » :
+  // la famille Lens `livres_medias` n'est PAS un synonyme de « livre ».
+  support_non_livre?: boolean | null;
   [k: string]: unknown;
 }
 
@@ -243,7 +248,13 @@ export function enrichirDepuisAttributs(pf: PlatformFields, attributs: Attributs
 //     « Ne s'applique pas » ; SELECTION_ONLY → on laisse manquant.
 const MARQUE_GENERIQUE_RE = /(sans\s*marque|g[ée]n[ée]rique|unbranded|no\s*brand)/i;
 const VALEUR_NE_S_APPLIQUE_PAS = "Ne s'applique pas";
+// ⚠️ 07/09/2026 : la famille Lens `livres_medias` porte AUSSI les DVD, CD,
+// vinyles et jeux vidéo — elle ne vaut « livre » que si le SUPPORT n'est pas
+// un média (pf.support_non_livre, posé par le worker depuis le titre). Garde
+// dormante jusqu'ici (famille jamais écrite sur un job) que le lot 2
+// (attributs.famille écrit par le scan Lens) aurait réveillée à tort.
 function estLivre(pf: PlatformFields): boolean {
+  if (pf.support_non_livre === true) return false;
   if (String(pf.famille ?? "") === "livres_medias") return true;
   const racine = Array.isArray(pf.ebayCategoryPath) ? String(pf.ebayCategoryPath[0] ?? "") : "";
   return /^livres/i.test(racine);
@@ -285,6 +296,10 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
   };
   for (const a of catalogue) {
     if (!a.required && !(a.name in ebayAspects)) continue; // 2a : requis + ce que le job porte déjà
+    // Bretelle 07/09/2026 : un DVD / CD / jeu n'a pas d'ISBN — même si une
+    // catégorie Livres a été posée par erreur, l'aspect n'est ni envoyé ni
+    // compté manquant (jamais de « mur ISBN » sur un média).
+    if (a.name === "ISBN" && pf.support_non_livre === true) continue;
     let brut = String(ebayAspects[a.name] ?? "").trim();
     let source: SourceAspect = sourcesIA[a.name] === "ia" ? "ia" : "job";
     if (!brut && a.name === "Département") {

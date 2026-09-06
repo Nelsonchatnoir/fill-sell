@@ -13,6 +13,7 @@
     "package:extension": "node scripts/package-extension.mjs",
     "lint": "eslint .",
   "selftest:texte-comparable": "node scripts/texte-comparable-selftest.mjs",
+    "selftest:support-non-livre": "node scripts/support-non-livre-selftest.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
