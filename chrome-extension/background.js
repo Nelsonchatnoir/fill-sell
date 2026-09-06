@@ -743,7 +743,30 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // du bandeau ⛔ de lirePageDressing, content-scripts/vinted.js).
   if (msg?.type === "FETCH_VINTED_ITEM") {
     fetchVintedItemDetail(msg.vintedItemId).then(
-      (r) => sendResponse(r),
+      async (r) => {
+        // (b) 2026-09-06 : le détail est GARDÉ sur l'article (couleur, état,
+        // marque, catalogue, ISBN — source vinted_detail) au lieu d'être jeté
+        // après la description. Best-effort, borné à 4 s, jamais bloquant pour
+        // la réponse à l'app ; RLS « update own » limite l'écriture aux lignes
+        // du compte de la session.
+        try {
+          const attributs = r?.success ? attributsDepuisDetail(r.natif, new Date().toISOString()) : {};
+          if (Object.keys(attributs).length) {
+            const session = await getValidSession();
+            if (session?.access_token) {
+              await Promise.race([
+                restRequest(`inventaire?vinted_item_id=eq.${encodeURIComponent(String(msg.vintedItemId))}`, session.access_token, {
+                  method: "PATCH", body: JSON.stringify({ attributs }),
+                }),
+                new Promise((resolve) => setTimeout(resolve, 4000)),
+              ]);
+            }
+          }
+        } catch (e) {
+          console.warn("[background] FETCH_VINTED_ITEM : attributs non gardés (non bloquant) :", String(e?.message ?? e));
+        }
+        sendResponse(r);
+      },
       (e) => sendResponse({ success: false, error: String(e?.message ?? e) })
     );
     return true; // réponse asynchrone
@@ -8951,6 +8974,41 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
  * Écrit une page d'articles : upsert inventaire + relevé du jour + entrée dans
  * le cycle de détection de vente. Rend le nombre de créations/mises à jour.
  */
+// ── inventaire.attributs (2026-09-06, arbitrage Nico) ────────────────────────
+// Un seul endroit par article, une clé par champ = { v, source, at }. La base
+// fusionne par priorité (trigger inventaire_attributs_fusion_trg : manuel >
+// vinted_detail > capture > vinted_liste > lens) — l'extension envoie ses
+// champs sans relire la ligne. Valeurs = libellés EN CLAIR, jamais un id seul.
+function attributsChamps(champs, source, at) {
+  const out = {};
+  for (const [k, v] of Object.entries(champs ?? {})) {
+    if (v == null) continue;
+    if (typeof v === "string" && !v.trim()) continue;
+    out[k] = { v: typeof v === "string" ? v.trim() : v, source, at };
+  }
+  return out;
+}
+// (a) La LISTE du dressing porte déjà brand / size / status en clair (relevé
+// 06/09 : « adidas », « L », « Bon état ») — la sync les jetait.
+function attributsDepuisListe(a, at) {
+  return attributsChamps({ taille: a?.taille ?? null, etat: a?.etat ?? null, marque: a?.marque ?? null }, "vinted_liste", at);
+}
+// (b) Le DÉTAIL (formulaire d'édition, un appel, sur geste utilisateur) porte
+// couleur(s), état, marque, catalogue, ISBN — le clic Publier ne gardait que
+// la description et le catalog_id.
+function attributsDepuisDetail(natif, at) {
+  if (!natif || typeof natif !== "object") return {};
+  const marque = String(natif.brand_dto?.title ?? "").trim();
+  return attributsChamps({
+    couleur: natif.color1 ?? null,
+    couleur2: natif.color2 ?? null,
+    etat: natif.status ?? null,
+    marque: marque || null,
+    categorie_vinted: Number.isFinite(Number(natif.catalog_id)) && Number(natif.catalog_id) > 0 ? Number(natif.catalog_id) : null,
+    isbn: natif.isbn ?? null,
+  }, "vinted_detail", at);
+}
+
 async function enregistrerArticlesDressing(articles, { token, userId, reservesRepublish = [], compteObserve = null }) {
   if (!articles.length) return { crees: 0, majs: 0 };
 
@@ -9138,6 +9196,9 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       vinted_status: a.statut,
       last_synced_at: maintenant,
       disparu_le: null,
+      // (a) taille / état / marque de la liste — la base fusionne (trigger) :
+      // une saisie ou un détail déjà posés ne sont jamais écrasés par la liste.
+      ...(Object.keys(attributsDepuisListe(a, maintenant)).length ? { attributs: attributsDepuisListe(a, maintenant) } : {}),
       // COMBLEMENT du prix de vente (2026-08-27) : uniquement quand l'appelant
       // a VU prix_vente NULL en base sur un article non vendu (frontière de
       // propriété intacte : rien de renseigné n'est jamais réécrit — on ne
@@ -9282,6 +9343,10 @@ async function enregistrerArticlesDressing(articles, { token, userId, reservesRe
       first_seen_at: dejaLa?.first_seen_at ?? maintenant,
       last_synced_at: maintenant,
       disparu_le: null, // réapparu : on efface la date de disparition
+      // (a) taille / état / marque de la liste — à l'upsert, la ligne existante
+      // passe par le trigger de fusion (jamais un écrasement d'une saisie ou
+      // d'un détail par la liste).
+      attributs: attributsDepuisListe(a, maintenant),
       // Boutique d'origine (multi-boutiques, 2026-09-03) : estampillée à
       // CHAQUE observation. ⚠️ merge-duplicates pose toutes les clés du
       // payload dans le DO UPDATE : la clé n'est présente que quand
