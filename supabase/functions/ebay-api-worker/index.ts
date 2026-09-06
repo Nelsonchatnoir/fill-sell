@@ -24,6 +24,8 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
+import { obtenirAppToken } from "../_shared/ebay-notification.ts";
+import { hotes } from "../_shared/ebay-oauth.ts";
 import {
   aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand,
   lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos, type PlatformFields,
@@ -482,6 +484,39 @@ async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job
   return { ...res, republication: true, retiree_avant: Boolean(publiee?.offerId) };
 }
 
+// ── Mesure SANS écriture (Nico, 06/09 soir, avant tout chantier « détection
+// des ventes ») : pour une liste d'identifiants d'annonces eBay, l'état réel
+// côté eBay via l'API Browse (jeton applicatif, aucun jeton vendeur, aucune
+// écriture). 200 = annonce vivante (itemEndDate, disponibilité) ; erreur
+// 11001 = introuvable = terminée (vendue, retirée ou expirée). Browse ne dit
+// pas POURQUOI ni QUAND une annonce a pris fin.
+async function mesurerAnnonces(env: EbayEnv, body: { ids?: string[] }): Promise<Record<string, unknown>> {
+  const ids = (Array.isArray(body.ids) ? body.ids : []).map((x) => String(x).trim()).filter((x) => /^\d{9,15}$/.test(x)).slice(0, 200);
+  const clientId = Deno.env.get("EBAY_CLIENT_ID") ?? "", clientSecret = Deno.env.get("EBAY_CLIENT_SECRET") ?? "";
+  if (!clientId || !clientSecret) return { error: "EBAY_CLIENT_ID / EBAY_CLIENT_SECRET absents" };
+  let token: string;
+  try { token = await obtenirAppToken(env, clientId, clientSecret); } catch (e) { return { error: String((e as Error)?.message ?? e) }; }
+  const lignes: Record<string, unknown>[] = [];
+  for (const id of ids) {
+    try {
+      const r = await fetch(`${hotes(env).api}/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${id}`, {
+        headers: { Authorization: `Bearer ${token}`, "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE, Accept: "application/json" },
+      });
+      const j = await r.json().catch(() => ({})) as Record<string, unknown>;
+      if (r.status === 200) {
+        const dispo = (j.estimatedAvailabilities as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
+        lignes.push({ id, http: 200, etat: "vivante", item_id: j.itemId ?? null, fin: j.itemEndDate ?? null, disponibilite: dispo.estimatedAvailabilityStatus ?? null, quantite_restante: dispo.estimatedAvailableQuantity ?? null, vendus: dispo.estimatedSoldQuantity ?? null, prix: (j.price as Record<string, unknown> | undefined)?.value ?? null, titre: String(j.title ?? "").slice(0, 80) });
+      } else {
+        const err = (j.errors as Array<Record<string, unknown>> | undefined)?.[0] ?? {};
+        lignes.push({ id, http: r.status, etat: r.status === 404 ? "terminee" : "indeterminee", errorId: err.errorId ?? null, message: String(err.message ?? "").slice(0, 160) });
+      }
+    } catch (e) {
+      lignes.push({ id, http: 0, etat: "indeterminee", message: String((e as Error)?.message ?? e).slice(0, 160) });
+    }
+  }
+  return { demandees: ids.length, vivantes: lignes.filter((l) => l.etat === "vivante").length, terminees: lignes.filter((l) => l.etat === "terminee").length, indeterminees: lignes.filter((l) => l.etat === "indeterminee").length, lignes };
+}
+
 const PROCESSING_MAX_MS = 10 * 60_000;
 const PROCESSING_REPRISES_MAX = 3;
 async function reprendreProcessingMorts(admin: SupabaseClient): Promise<Record<string, unknown>> {
@@ -521,11 +556,12 @@ Deno.serve(async (req) => {
   const attendu = Deno.env.get("CRON_SECRET");
   if (!attendu || req.headers.get("x-cron-secret") !== attendu) return json({ error: "Non autorisé" }, 401);
 
-  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string; action?: string; ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean };
+  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string; action?: string; ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean; ids?: string[] };
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const env = lireEnvEbay();
   if (body.action === "mesure_aspects") return json(await mesurerAspects(admin, env, body));
   if (body.action === "mesure_categories") return json(await mesurerCategories(admin, env, body));
+  if (body.action === "mesure_annonces") return json(await mesurerAnnonces(env, body as { ids?: string[] }));
 
   // ── Chien de garde (Nico, 06/09 soir) : un job pris (processing) depuis
   // plus de PROCESSING_MAX_MS sans conclusion = l'isolat est mort en route
