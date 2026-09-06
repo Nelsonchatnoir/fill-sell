@@ -2375,9 +2375,17 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApi = false }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
+  // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
+  // session de l'extension (profiles.extension_sessions) n'a plus de sens
+  // pour eBay quand ce compte publie par nos serveurs — on ne dit jamais
+  // « eBay : non connecté » à quelqu'un qui publie très bien par l'API. Les
+  // comptes en voie extension (tous sauf Nico aujourd'hui) ne voient rien
+  // changer : ebayVoieApi vaut false, chipsSession === chips.
+  const chipsSession = ebayVoieApi ? chips.filter(p => p !== "ebay") : chips;
+  const ebayParApi = ebayVoieApi && chips.includes("ebay");
   // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
   // On n'empêche PAS la sélection (le job est mis en file et repris auto) — on
   // informe seulement, ton neutre « maintenance », jamais rouge d'erreur.
@@ -2407,13 +2415,22 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
   // Parade : un champ APPARU dans un encart y RESTE tant que le step est
   // monté (ensembles cumulatifs) — il passe à l'état rempli au lieu de
   // disparaître. Les ensembles se réinitialisent avec le step (état local).
+  // ── CORRECTIF 07/09/2026 (capture Nico 19:00 : Type et Style « Pull » déjà
+  // remplis DANS l'encart rouge, pastille verte « ✓ tout est complété » dans
+  // un cadre rouge). La capture sticky se faisait AU RENDU, dès qu'un champ
+  // manquait — donc AUSSI pour un champ que l'IA (resolve_aspects, écrit par
+  // setEdited / setPlatformAspect directs, 2-5 s après le montage du step)
+  // allait remplir sans que personne ne tape. Le champ restait collé dans le
+  // rouge, rempli. Désormais un champ n'est collé QUE quand l'utilisateur y
+  // ÉCRIT (toucher*, appelé dans le même événement que la valeur : React
+  // rend les deux ensemble, l'input n'est jamais démonté sous les doigts —
+  // le fix « une seule lettre » du 30/07 tient toujours). Un champ rempli par
+  // l'IA, par un repli ou par la sync sort simplement du rouge : il reste ✓
+  // dans les encarts bleus. Même règle pour les trois listes (partagés,
+  // Vinted/LBC/Beebs, eBay) : le défaut était identique sur les quatre
+  // plateformes.
   const [stickyShared, setStickyShared] = useState(() => new Set());
-  useEffect(() => {
-    if (missingSharedFields.some(k => !stickyShared.has(k))) {
-      setStickyShared(prev => new Set([...prev, ...missingSharedFields]));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [missingSharedFields]);
+  const toucherShared = (key) => setStickyShared(prev => prev.has(key) ? prev : new Set([...prev, key]));
   const sharedFieldsToRender = [...new Set([...stickyShared, ...missingSharedFields])]
     .filter(k => sharedFieldCfg[k]);
 
@@ -2422,22 +2439,10 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
   // dans l'encart rouge. Un aspect rempli (source "generic" comprise) reste un
   // simple chip ✓/⚠ des encarts bleus, désormais purement informatifs.
   const [stickyGeneric, setStickyGeneric] = useState(() => ({}));
-  useEffect(() => {
-    if (!genericRequiredStatus) return;
-    setStickyGeneric(prev => {
-      let changed = false;
-      const next = { ...prev };
-      for (const [gp, list] of Object.entries(genericRequiredStatus)) {
-        const cur = prev[gp] ?? new Set();
-        const add = list.filter(a => aspectBloquant(a) && !cur.has(a.key));
-        if (add.length) {
-          next[gp] = new Set([...cur, ...add.map(a => a.key)]);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [genericRequiredStatus]);
+  const toucherGeneric = (gp, key) => setStickyGeneric(prev => {
+    const cur = prev[gp] ?? new Set();
+    return cur.has(key) ? prev : { ...prev, [gp]: new Set([...cur, key]) };
+  });
   // Un aspect appartient à l'encart ROUGE s'il bloque, ou s'il y est déjà
   // apparu (sticky : l'input ne se démonte jamais sous les doigts, fix
   // « une seule lettre » du 2026-07-30).
@@ -2448,12 +2453,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
   // champ DÉDIÉ, l'aspect passe à "ok" SANS source:"generic", et la ligne
   // sortait du filtre → input démonté à la première frappe.
   const [stickyEbay, setStickyEbay] = useState(() => new Set());
-  useEffect(() => {
-    if (!ebayRequiredStatus) return;
-    const add = ebayRequiredStatus.filter(a => aspectBloquant(a) && !stickyEbay.has(a.name));
-    if (add.length) setStickyEbay(prev => new Set([...prev, ...add.map(a => a.name)]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ebayRequiredStatus]);
+  const toucherEbay = (name) => setStickyEbay(prev => prev.has(name) ? prev : new Set([...prev, name]));
   const ebayDansRouge = (a) => aspectBloquant(a) || stickyEbay.has(a.name);
 
   // ── Encart ROUGE unique (2026-08-28) : TOUT champ bloquant se saisit ici ──
@@ -2608,12 +2608,12 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         </div>
       )}
 
-      {platformSessions && chips.some(p => platformSessions[p] === false) && (
+      {platformSessions && chipsSession.some(p => platformSessions[p] === false) && (
         <div style={{ padding:"11px 14px", background:"#FBEDEC", border:"1px solid #EFC2BE", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#8C2F28" }}>
           <div style={{ fontWeight:700, marginBottom:4 }}>
             {lang === "en" ? "Not signed in on some platforms" : "Connexion manquante sur certaines plateformes"}
           </div>
-          {chips.filter(p => platformSessions[p] === false).map(p => (
+          {chipsSession.filter(p => platformSessions[p] === false).map(p => (
             <div key={p} style={{ display:"flex", alignItems:"center", gap:8, marginTop:4 }}>
               <span style={{ width:8, height:8, borderRadius:"50%", background:"#C0392B", flexShrink:0 }} />
               <span style={{ flex:1 }}>
@@ -2629,14 +2629,26 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           ))}
         </div>
       )}
-      {platformSessions && chips.some(p => platformSessions[p] === true) && !chips.some(p => platformSessions[p] === false) && (
+      {platformSessions && chipsSession.some(p => platformSessions[p] === true) && !chipsSession.some(p => platformSessions[p] === false) && (
         <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 }}>
-          {chips.filter(p => platformSessions[p] === true).map(p => (
+          {chipsSession.filter(p => platformSessions[p] === true).map(p => (
             <span key={p} style={{ display:"inline-flex", alignItems:"center", gap:6, padding:"4px 10px", borderRadius:999, background:"#E7F3F0", border:"1px solid #BFDCD5", fontSize:12, fontWeight:600, color:"#1B6E62" }}>
               <span style={{ width:7, height:7, borderRadius:"50%", background:"#2F9E90" }} />
               {(PLATFORM_LABELS[p] ?? p)} {lang === "en" ? "signed in" : "connecté"}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* eBay par la voie API (07/09/2026) : la vérité de ce parcours, dite
+          AVANT le clic — la publication part de nos serveurs, ni Chrome, ni
+          extension, ni ordinateur allumé. Ton neutre, informatif. Invisible
+          en voie extension (ebayVoieApi false). */}
+      {ebayParApi && (
+        <div style={{ padding:"10px 14px", background:"#EFF3F8", border:"1px solid #C7D6E5", borderRadius:14, marginBottom:12, fontSize:12.5, lineHeight:1.5, color:"#334155" }}>
+          {lang === "en"
+            ? "eBay: published from our servers with your linked eBay account — no Chrome, no extension, your computer doesn't need to be on."
+            : "eBay : publié depuis nos serveurs avec ton compte eBay relié — sans Chrome, sans extension, ton ordinateur n'a pas besoin d'être allumé."}
         </div>
       )}
 
@@ -2810,10 +2822,16 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         // L'encart disparaît quand plus rien ne manque ET que rien n'y a été
         // saisi pendant ce passage (les listes sticky repartent vides au
         // montage du step).
-        <div style={{ padding:14, background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, marginBottom:12 }}>
+        // Plus rien ne bloque (redRestants = 0, il ne reste que ce que
+        // l'utilisateur a saisi) → l'encart passe en VERT, titre compris :
+        // jamais un cadre rouge « il manque des infos » avec une pastille
+        // verte dedans (capture Nico 07/09).
+        <div style={{ padding:14, background: redRestants > 0 ? "#FEF2F2" : "#ECFDF5", border:`1px solid ${redRestants > 0 ? "#FECACA" : "#A7F3D0"}`, borderRadius:14, marginBottom:12 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
-            <span style={{ fontSize:13, color:"#B91C1C", fontWeight:700 }}>
-              {t("stepPublishSharedMissingTitle")}
+            <span style={{ fontSize:13, color: redRestants > 0 ? "#B91C1C" : "#047857", fontWeight:700 }}>
+              {redRestants > 0
+                ? t("stepPublishSharedMissingTitle")
+                : (lang === "en" ? "Everything is filled in — you can publish" : "Tout est complété — tu peux publier")}
             </span>
             {redRestants > 0 ? (
               <span style={{ flexShrink:0, fontSize:11.5, fontWeight:700, color:"#B91C1C", background:"#FEE2E2", border:"1px solid #FECACA", borderRadius:999, padding:"2px 9px", whiteSpace:"nowrap" }}>
@@ -2827,10 +2845,14 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
               </span>
             )}
           </div>
-          <div style={{ fontSize:12, color:"#991B1B", lineHeight:1.45, margin:"4px 0 12px" }}>
-            {lang === "en"
-              ? "Everything is filled in here — the platform cards above only recap what each one will receive."
-              : "Tout se complète ici — les encarts par plateforme au-dessus récapitulent seulement ce que chacune recevra."}
+          <div style={{ fontSize:12, color: redRestants > 0 ? "#991B1B" : "#065F46", lineHeight:1.45, margin:"4px 0 12px" }}>
+            {redRestants > 0
+              ? (lang === "en"
+                  ? "Everything is filled in here — the platform cards above only recap what each one will receive."
+                  : "Tout se complète ici — les encarts par plateforme au-dessus récapitulent seulement ce que chacune recevra.")
+              : (lang === "en"
+                  ? "What you typed stays below — you can still adjust it."
+                  : "Ce que tu as saisi reste ci-dessous — tu peux encore l'ajuster.")}
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
             {sharedFieldsToRender.map((key) => {
@@ -2857,7 +2879,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                   {field.type === "select" ? (
                     <select
                       value={val}
-                      onChange={ev => onSharedFieldChange?.(key, ev.target.value)}
+                      onChange={ev => { toucherShared(key); onSharedFieldChange?.(key, ev.target.value); }}
                       style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, boxSizing:"border-box", color: val ? T.ink : T.mute }}
                     >
                       <option value="">—</option>
@@ -2873,7 +2895,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                     <input
                       type="text"
                       value={val}
-                      onChange={ev => onSharedFieldChange?.(key, ev.target.value)}
+                      onChange={ev => { toucherShared(key); onSharedFieldChange?.(key, ev.target.value); }}
                       placeholder="—"
                       style={{ width:"100%", padding:"9px 10px", borderRadius:12, border:`1px solid ${T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:T.chip, color:T.ink, boxSizing:"border-box" }}
                     />
@@ -2889,7 +2911,7 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                   {key === "marque" && (
                     <button
                       type="button"
-                      onClick={() => onSharedFieldChange?.("marque", NO_BRAND_VALUE)}
+                      onClick={() => { toucherShared("marque"); onSharedFieldChange?.("marque", NO_BRAND_VALUE); }}
                       style={{
                         marginTop:6, padding:"5px 10px", borderRadius:999,
                         border:`1px solid ${T.border}`, background: val === NO_BRAND_VALUE ? T.teal : T.card,
@@ -2917,9 +2939,11 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                   </div>
                   <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                     <button
-                      onClick={() => (a.dedicatedTarget && onPlatformDedicatedChange)
-                        ? onPlatformDedicatedChange(gp, a.dedicatedTarget, seule)
-                        : onPlatformAspectChange(gp, a.key, seule)}
+                      onClick={() => {
+                        toucherGeneric(gp, a.key);
+                        if (a.dedicatedTarget && onPlatformDedicatedChange) onPlatformDedicatedChange(gp, a.dedicatedTarget, seule);
+                        else onPlatformAspectChange(gp, a.key, seule);
+                      }}
                       style={{ padding:"7px 14px", borderRadius:10, border:"none", background:"#059669", color:"#fff", fontSize:12.5, fontWeight:600, cursor:"pointer" }}>
                       {t("stepPublishSingleValueYes")}
                     </button>
@@ -2948,9 +2972,11 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                     // trois plateformes ET remplit la copie que lit la garde du
                     // CTA — c'est ce décalage qui laissait « ✓ Taille » au vert
                     // avec un bouton Publier mort (cas RoCotCot du 11/08).
-                    onChange={v => (a.dedicatedTarget && onPlatformDedicatedChange)
-                      ? onPlatformDedicatedChange(gp, a.dedicatedTarget, v)
-                      : onPlatformAspectChange(gp, a.key, v)}
+                    onChange={v => {
+                      toucherGeneric(gp, a.key);
+                      if (a.dedicatedTarget && onPlatformDedicatedChange) onPlatformDedicatedChange(gp, a.dedicatedTarget, v);
+                      else onPlatformAspectChange(gp, a.key, v);
+                    }}
                     T={T}
                     idBase={`gen-${gp}-${aspectSlug(a.key)}`}
                   />
@@ -2975,9 +3001,11 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
                   allowedValues={a.allowedValues}
                   strict={a.mode === "SELECTION_ONLY"}
                   closedMax={EBAY_CLOSED_LIST_MAX}
-                  onChange={v => (a.sharedKey && onEbaySharedFieldChange)
-                    ? onEbaySharedFieldChange(a.sharedKey, v)
-                    : onEbayAspectChange(a.name, v)}
+                  onChange={v => {
+                    toucherEbay(a.name);
+                    if (a.sharedKey && onEbaySharedFieldChange) onEbaySharedFieldChange(a.sharedKey, v);
+                    else onEbayAspectChange(a.name, v);
+                  }}
                   T={T}
                   idBase={`ebay-${aspectSlug(a.name)}`}
                 />
@@ -7181,6 +7209,7 @@ export default function ListingPreviewScreen({
             pausedReasons={pausedReasons}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
+            ebayVoieApi={ebayVoieApi}
           />
         )}
       </div>
