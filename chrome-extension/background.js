@@ -3177,6 +3177,40 @@ const UNFILLED_PREFIX = "COMPLÉTÉ AVEC CHAMPS MANQUANTS";
 // Un warning est une chaîne (historique) ou un objet {code, message, …}.
 const warningMessage = (w) => (typeof w === "string" ? w : String(w?.message ?? ""));
 
+// Motif LISIBLE pour un message utilisateur (2026-09-06, règle Nico) : jamais
+// de code HTTP, jamais d'URL, jamais de parenthèse technique — le technique
+// vit dans le diagnostic. Les parenthèses sont parcourues groupe par groupe
+// (imbriquées comprises) : un groupe qui porte du technique est retiré en
+// entier, les autres sont conservés. Coupe au mot, jamais au milieu.
+const MOTIF_TECH_RE = /HTTP\s*\d{3}|https?:\/\/|\/[a-z0-9_-]+\/|\.js\b|querySelector|data-testid|outerHTML/i;
+function motifLisible(texte, max = 200) {
+  const t = String(texte ?? "");
+  let out = "";
+  let i = 0;
+  while (i < t.length) {
+    if (t[i] !== "(") { out += t[i]; i++; continue; }
+    let depth = 0, j = i;
+    for (; j < t.length; j++) {
+      if (t[j] === "(") depth++;
+      else if (t[j] === ")") { depth--; if (depth === 0) break; }
+    }
+    if (j >= t.length) { out += t.slice(i); break; }
+    const interieur = t.slice(i + 1, j);
+    if (MOTIF_TECH_RE.test(interieur)) out = out.replace(/\s+$/, "");
+    else out += "(" + motifLisible(interieur, Infinity) + ")";
+    i = j + 1;
+  }
+  out = out
+    .replace(/\s*(?:r[ée]ponse\s+serveur\s+)?HTTP\s*\/?\s*\d{3}\s*/gi, " ")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+([.,;!?])/g, "$1")
+    .replace(/[\s:—–-]+$/, "")
+    .trim();
+  if (Number.isFinite(max) && out.length > max) out = out.slice(0, max - 1).replace(/\s+\S*$/, "") + "…";
+  return out || "raison inconnue";
+}
+
 function completionExtras(job, result) {
   const unfilled = result.unfilledRequired ?? [];
   const warnings = result.warnings ?? [];
@@ -10873,10 +10907,15 @@ async function replanifierOuArreterRecreation(accessToken, job, pf, result) {
     console.warn(`[republish] job ${job.id} : recréation échouée (${result?.error ?? "?"}) — retentative auto ${retries + 1}/2 dans ${delaiMin} min`);
     return { status: "retry", error: `recréation échouée — retentative automatique ${retries + 1}/2 dans ${delaiMin} min` };
   }
-  const motif = String(result?.error ?? "raison inconnue").slice(0, 200);
+  // Motif SANS parenthèse imbriquée ni code HTTP (06/09) : le champ exigé
+  // quand Vinted l'a nommé, sinon le message d'échec rendu lisible.
+  const champsExiges = (result?.serverRequired ?? []).map((f) => f?.label).filter(Boolean);
+  const motif = champsExiges.length
+    ? `Vinted exige « ${champsExiges.join(" », « ")} »`
+    : motifLisible(result?.error ?? "raison inconnue", 200);
   const messageFinal =
-    "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement " +
-    `(${motif}). Rien n'est perdu : toutes ses données sont sauvegardées. ` +
+    "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement : " +
+    `${motif}. Rien n'est perdu : toutes ses données sont sauvegardées. ` +
     "Clique « Republier maintenant » — si un champ manque, il te sera demandé.";
   // Refus serveur NOMMÉ sur un champ résoluble → le mini-éditeur de l'app peut
   // le trancher. Même liste d'exclusions que le chemin publish : un 400 sur
@@ -11234,7 +11273,7 @@ async function processRepublishJob(job, accessToken) {
       // l'app lit pour proposer la bonne saisie (champs_a_completer).
       pf.champs_a_completer = [...new Set(actionnables.map((m) => (String(m).split(/[\s(]/)[0] || "").toLowerCase()).filter(Boolean))];
       pf.needs_user_source = "capture_incomplete";
-      const msg = `Republication en pause AVANT toute suppression : la capture de ton annonce est incomplète (${detail}). ` +
+      const msg = `Republication en pause AVANT toute suppression : la capture de ton annonce est incomplète : ${motifLisible(detail, 200)}. ` +
         "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication.";
       await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
       return { status: "needsUser", error: `capture incomplète : ${detail}` };
@@ -11416,7 +11455,7 @@ async function processRepublishJob(job, accessToken) {
           const msg = absente
             ? "Republication impossible : cette annonce n'est plus en ligne sur Vinted (vendue ou supprimée entre-temps). " +
               "FillSell n'a rien supprimé. Si l'article est vendu, marque-le vendu dans l'app ; sinon, republie-le depuis Vinted puis relance."
-            : `Republication en pause AVANT toute suppression : ta capture datait de plus de 24 h et la nouvelle capture a échoué (${recap.error}). ` +
+            : `Republication en pause AVANT toute suppression : ta capture datait de plus de 24 h et la nouvelle capture a échoué : ${motifLisible(recap.error, 160)}. ` +
               "Rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app, Chrome ouvert.";
           await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
           return { status: "needsUser", error: `recapture en échec : ${recap.error}` };
@@ -11431,7 +11470,7 @@ async function processRepublishJob(job, accessToken) {
           pf.needs_user_source = "capture_incomplete";
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
-            error: `Republication en pause AVANT toute suppression : la nouvelle capture de ton annonce est incomplète (${detail}). ` +
+            error: `Republication en pause AVANT toute suppression : la nouvelle capture de ton annonce est incomplète : ${motifLisible(detail, 200)}. ` +
               "Ton annonce est intacte sur Vinted. Complète l'information manquante depuis l'app (carte de l'article) ou sur ton annonce Vinted, puis relance la republication.",
           });
           return { status: "needsUser", error: `recapture incomplète : ${detail}` };
@@ -11548,7 +11587,7 @@ async function processRepublishJob(job, accessToken) {
           }
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
-            error: `Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : ${result?.error ?? "inconnu"}. Corrige puis relance depuis l'app.`,
+            error: `Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Corrige puis relance depuis l'app.`,
           });
           return { status: "needsUser", error: result?.error };
         }
@@ -11638,7 +11677,7 @@ async function processRepublishJob(job, accessToken) {
         if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
         await updateJobStatus(accessToken, job.id, "needs_user", {
           platform_fields: pf,
-          error: `Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : ${result?.error ?? "inconnu"}. Corrige puis relance depuis l'app.`,
+          error: `Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Corrige puis relance depuis l'app.`,
         });
         return { status: "needsUser", error: result?.error };
       }
