@@ -109,7 +109,9 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
       description: descriptionEbay(job.description ?? "", job.title ?? ""),
       aspects,
       imageUrls: photos,
-      ...(pf.marque ? { brand: String(pf.marque) } : {}),
+      // PAS de product.brand : eBay exige alors product.mpn (refus 25002
+      // « BrandMPN manquante ou invalide », constaté au 1er publish du 06/09).
+      // La marque est portée par l'aspect « Marque », qui suffit.
     },
   };
   const rItem = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method: "PUT", body: item });
