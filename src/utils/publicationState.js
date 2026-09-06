@@ -20,6 +20,37 @@
 // Partagé carte Stock (logos) + RemovePlatformsModal + stepper (publishedSet) :
 // un seul calcul, jamais deux vérités. La garde serveur de
 // spend_coins_and_publish (already_published) réplique la même sémantique.
+// ── Quelle suppression vise quelle publication (2026-09-06) ──────────────────
+// Un job delete « couvre » une publication si :
+//   · les deux portent un identifiant d'annonce ET c'est le MÊME
+//     (platform_listing_id, ou l'id lu dans listing_url) — la preuve directe ;
+//   · sinon (au moins un des deux sans identifiant), si la suppression est
+//     POSTÉRIEURE À LA MISE EN LIGNE — published_at, pas created_at.
+// Pourquoi published_at : un job publish peut vivre longtemps avant d'être
+// publié (needs_user relancé, voie API, reprise) ; sa created_at est alors
+// plus ancienne qu'un delete visant une AUTRE publication du même article.
+// Cas réel du 06/09 (T-shirt Adidas, voie API) : publish créé 12:08, publié
+// 12:24 ; un delete créé 12:18 visait l'annonce précédente (820094298354) et
+// « effaçait » la nouvelle (820094306007) — aucune pastille eBay, article
+// pourtant en ligne. La voie formulaire a le même trou dès qu'un publish est
+// relancé après un retrait.
+export function idAnnonceDe(job) {
+  const direct = String(job?.platform_listing_id ?? "").trim();
+  if (direct) return direct;
+  const url = String(job?.listing_url ?? "");
+  const m = url.match(/\/itm\/(\d+)|\/items\/(\d+)|\/(\d{6,})(?:[/?#]|$)/);
+  return m ? (m[1] || m[2] || m[3]) : null;
+}
+export function miseEnLigneDe(job) {
+  return Date.parse(job?.published_at || job?.created_at || 0);
+}
+export function suppressionCouvre(del, pub) {
+  if (!del || !pub) return false;
+  const idDel = idAnnonceDe(del), idPub = idAnnonceDe(pub);
+  if (idDel && idPub) return idDel === idPub;
+  return Date.parse(del.created_at || 0) > miseEnLigneDe(pub);
+}
+
 export function computeRemovalInfo(jobsAll) {
   const jobs = jobsAll.filter(j => j.action !== "delete");
   const deleteJobs = jobsAll.filter(j => j.action === "delete");
@@ -28,17 +59,18 @@ export function computeRemovalInfo(jobsAll) {
   for (const j of jobs) {
     if (j.status !== "published") continue;
     const cur = latestPubByPlatform[j.platform];
-    if (!cur || Date.parse(j.created_at || 0) > Date.parse(cur.created_at || 0)) latestPubByPlatform[j.platform] = j;
-  }
-  const latestDelByPlatform = {};
-  for (const j of deleteJobs) {
-    const cur = latestDelByPlatform[j.platform];
-    if (!cur || Date.parse(j.created_at || 0) > Date.parse(cur.created_at || 0)) latestDelByPlatform[j.platform] = j;
+    // Dernière MISE EN LIGNE (published_at), pas dernière création.
+    if (!cur || miseEnLigneDe(j) > miseEnLigneDe(cur)) latestPubByPlatform[j.platform] = j;
   }
   const removalState = {};
   for (const p of published) {
-    const pub = latestPubByPlatform[p], del = latestDelByPlatform[p];
-    if (!pub || !del || Date.parse(del.created_at || 0) <= Date.parse(pub.created_at || 0)) continue;
+    const pub = latestPubByPlatform[p];
+    if (!pub) continue;
+    // La suppression la plus récente QUI VISE cette publication.
+    const del = deleteJobs
+      .filter(j => j.platform === p && suppressionCouvre(j, pub))
+      .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))[0];
+    if (!del) continue;
     if (del.status === "deleted") removalState[p] = "removed";
     else if (del.status === "pending" || del.status === "processing") removalState[p] = "removing";
   }
