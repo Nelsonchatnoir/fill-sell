@@ -240,6 +240,19 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const pub = await appelEbay(env, token, `/sell/inventory/v1/offer/${offerId}/publish`, { method: "POST" });
   if (pub.http !== 200) {
     const e = lireErreurEbay(pub.json, pub.texte);
+    // 25129 « The product aspects for this category no longer support custom
+    // values for <aspect> » (06/09, Adidas : Taille « T-shirt ») : notre cache
+    // d'aspects est PÉRIMÉ (texte libre → liste fermée chez eBay). On relit
+    // Taxonomy, on remplace la ligne du cache, et on rejoue le job UNE fois :
+    // l'aspect, désormais fermé, ne prendra plus la valeur libre → manquant →
+    // needsUserField avec la liste exacte d'eBay. Une 2e fois → needs_user
+    // avec le refus eBay tel quel (pas de boucle).
+    const dejaRafraichi = Boolean(((pf.ebay_api as Record<string, unknown>) ?? {}).aspects_rafraichis);
+    if (e.errorId === 25129 && !dejaRafraichi) {
+      const frais = await aspectsCategorie(admin, env, token, categoryId, { rafraichir: true });
+      await marquer(admin, job, { status: "pending", error: null }, { etape: "publish", quoi: "aspects_rafraichis_25129", http: pub.http, message: e.message, cache: "erreur" in frais ? `échec : ${frais.erreur}` : `${frais.aspects.length} aspects relus (Taxonomy)` }, { sku, offer_id: offerId, tentatives, aspects_rafraichis: true });
+      return { job: job.id, issue: "aspects_rafraichis", http: pub.http, ebay: e };
+    }
     await marquer(admin, job, { status: verdictHttp(pub.http, tentatives), error: `eBay a refusé la publication (${pub.http}${e.errorId ? `, ${e.errorId}` : ""}) : ${e.message}${e.parametres ? ` [${e.parametres}]` : ""}` }, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message }, { sku, offer_id: offerId, tentatives });
     return { job: job.id, issue: "publish", http: pub.http, ebay: e };
   }
