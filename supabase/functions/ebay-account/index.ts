@@ -46,6 +46,7 @@ import {
   obtenirAccessToken,
   type EbayEnv,
 } from "../_shared/ebay-oauth.ts";
+import { listerServicesLivraison, resoudreServiceLivraison, resumerServicesDomestiques, MODES_LIVRAISON } from "../_shared/ebay-shipping.ts";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 const MARKETPLACE = "EBAY_FR";
@@ -140,7 +141,11 @@ async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: stri
 // ── Corps de création — minimaux, lisibles, marketplace FR ──────────────────
 // Toute valeur refusée par eBay remonte TELLE QUELLE (messageErreurEbay) : on
 // ne devine pas ce qu'eBay attend.
-function corpsCreation(type: TypePolitique, options: Record<string, unknown>) {
+// Politique de livraison : le shippingServiceCode n'est JAMAIS écrit en dur
+// ici — il est résolu depuis la liste GeteBayDetails d'eBay pour le mode de
+// l'app (cf. _shared/ebay-shipping.ts) et passé en `serviceCode`. Le 06/09,
+// « FR_Colissimo » codé en dur avait valu « Échec de la validation LSAS ».
+function corpsCreation(type: TypePolitique, options: Record<string, unknown>, serviceCode?: string) {
   const nom = String(options.nom ?? "").trim().slice(0, 64) || `FillSell ${type}`;
   const base = { name: nom, marketplaceId: MARKETPLACE, categoryTypes: [{ name: "ALL_EXCLUDING_MOTORS_VEHICLES" }] };
   if (type === "payment") return { ...base, immediatePay: true };
@@ -150,8 +155,13 @@ function corpsCreation(type: TypePolitique, options: Record<string, unknown>) {
   }
   // fulfillment
   const delai = Math.min(3, Math.max(1, Number(options.delai_jours) || 2));
-  if (options.livraison === "main_propre") return { ...base, handlingTime: { value: delai, unit: "DAY" }, localPickup: true };
-  const frais = Math.max(0, Number(String(options.frais_eur ?? "0").replace(",", ".")) || 0);
+  if (!serviceCode) throw new Error("code de service de livraison non résolu");
+  // Remise en main propre = un service de livraison eBay à part entière
+  // (FR_RemiseEnMainPropre, catégorie PICKUP, valide pour la vente), gratuit
+  // par nature. On ne combine PAS avec le booléen localPickup : un seul
+  // mécanisme, celui que la liste d'eBay valide.
+  const mainPropre = options.livraison === "main_propre";
+  const frais = mainPropre ? 0 : Math.max(0, Number(String(options.frais_eur ?? "0").replace(",", ".")) || 0);
   return {
     ...base,
     handlingTime: { value: delai, unit: "DAY" },
@@ -159,7 +169,7 @@ function corpsCreation(type: TypePolitique, options: Record<string, unknown>) {
       optionType: "DOMESTIC",
       costType: "FLAT_RATE",
       shippingServices: [{
-        shippingServiceCode: "FR_Colissimo",
+        shippingServiceCode: serviceCode,
         sortOrder: 1,
         freeShipping: frais === 0,
         ...(frais === 0 ? {} : { shippingCost: { value: frais.toFixed(2), currency: "EUR" } }),
@@ -245,7 +255,25 @@ Deno.serve(async (req) => {
     if (action === "creer_politique") {
       // Création UNIQUEMENT ici, sur clic explicite « Créer » de l'utilisateur.
       const options = (body.options && typeof body.options === "object" ? body.options : {}) as Record<string, unknown>;
-      const r = await appelEbay(env, token, TYPES[type].chemin, { method: "POST", body: corpsCreation(type, options) });
+      let serviceCode: string | undefined;
+      if (type === "fulfillment") {
+        // Le code du mode est lu dans la liste qu'eBay rend pour le site FR
+        // (GeteBayDetails, cache 1 h) et refusé ICI s'il n'y est pas valide.
+        const mode = String(options.livraison ?? "colissimo");
+        if (!MODES_LIVRAISON[mode]) return json({ error: `Mode de livraison inconnu : ${mode}` }, 400);
+        let services;
+        try { services = await listerServicesLivraison(env, token); }
+        catch (e) { return json({ error: `Impossible de lire les services de livraison chez eBay : ${(e as Error).message}` }, 502); }
+        const service = resoudreServiceLivraison(mode, services);
+        if (!service) {
+          return json({
+            error: `eBay ne propose pas (ou plus) le service « ${MODES_LIVRAISON[mode].code} » pour la France. Services domestiques valides selon eBay : ${resumerServicesDomestiques(services)}.`,
+          }, 400);
+        }
+        serviceCode = service.code;
+        console.log(`[ebay-account] politique livraison : mode=${mode} → ${service.code} (${service.libelle}, ${service.categorie})`);
+      }
+      const r = await appelEbay(env, token, TYPES[type].chemin, { method: "POST", body: corpsCreation(type, options, serviceCode) });
       if (r.http < 200 || r.http >= 300) {
         return json({ error: `eBay a refusé la création : ${messageErreurEbay(r.json, r.texte)}`, http: r.http }, 502);
       }
