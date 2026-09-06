@@ -2,7 +2,8 @@
 -- spend_coins_and_publish : exemption de la garde extension pour un lot
 -- « eBay SEUL + voie API » (2026-09-06, arbitrage Nico).
 --
--- NON APPLIQUÉE — attend le feu vert nominal de Nico (règle du 07/08).
+-- APPLIQUÉE en prod le 06/09/2026 (feu vert nominal de Nico), via db query --linked -f.
+-- Vérifié après application : exemption_presente = true, garde1 = true, garde2 = true (pg_proc).
 --
 -- Corps = définition PROD relue par pg_get_functiondef le 06/09 (le fichier
 -- 20260902200000 diverge de la prod sur les commentaires), + trois touches :
