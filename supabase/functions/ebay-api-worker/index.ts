@@ -46,6 +46,7 @@ function json(body: unknown, status = 200): Response {
 
 async function marquer(admin: SupabaseClient, job: Job, patch: Record<string, unknown>, diagnostic: Record<string, unknown>, ebayApi?: Record<string, unknown>) {
   const pf = { ...(job.platform_fields ?? {}) };
+  if (patch.status && patch.status !== "processing") delete pf.processing_since;
   pf.last_diagnostic = { voie: "api", at: new Date().toISOString(), ...diagnostic };
   if (ebayApi) pf.ebay_api = { ...((pf.ebay_api as Record<string, unknown>) ?? {}), ...ebayApi };
   const { error } = await admin.from("cross_post_jobs").update({ ...patch, platform_fields: pf, handler_build: HANDLER_BUILD }).eq("id", job.id);
@@ -481,6 +482,40 @@ async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job
   return { ...res, republication: true, retiree_avant: Boolean(publiee?.offerId) };
 }
 
+const PROCESSING_MAX_MS = 10 * 60_000;
+const PROCESSING_REPRISES_MAX = 3;
+async function reprendreProcessingMorts(admin: SupabaseClient): Promise<Record<string, unknown>> {
+  const { data: enCours } = await admin.from("cross_post_jobs")
+    .select("id, action, created_at, platform_fields")
+    .eq("platform", "ebay").eq("voie", "api").eq("status", "processing");
+  const now = Date.now();
+  let rearmes = 0, abandonnes = 0;
+  const ids: string[] = [];
+  for (const j of (enCours ?? []) as Array<{ id: string; action: string; created_at: string; platform_fields: Record<string, unknown> | null }>) {
+    const pf = { ...(j.platform_fields ?? {}) };
+    // Sans processing_since (pris par une version antérieure à v16) : la prise
+    // date au plus tard de la création — on la traite comme périmée.
+    const since = Date.parse(String(pf.processing_since ?? j.created_at ?? ""));
+    if (Number.isFinite(since) && now - since < PROCESSING_MAX_MS) continue;
+    const n = (Number(pf.reprises_processing) || 0) + 1;
+    delete pf.processing_since;
+    pf.reprises_processing = n;
+    pf.derniere_reprise_processing = new Date(now).toISOString();
+    const minutes = Number.isFinite(since) ? Math.round((now - since) / 60_000) : null;
+    const epuise = n > PROCESSING_REPRISES_MAX;
+    pf.last_diagnostic = { voie: "api", at: new Date(now).toISOString(), etape: "chien_de_garde", quoi: epuise ? "processing_abandonne" : "processing_repris", minutes_en_processing: minutes, reprise_n: n };
+    const patch = epuise
+      ? { status: "failed", error: `Le traitement eBay s'est interrompu ${PROCESSING_REPRISES_MAX} fois de suite sans conclure. Relance depuis la fiche de l'article ; si l'annonce est déjà en ligne sur eBay, retire-la d'abord.`, platform_fields: pf, handler_build: HANDLER_BUILD }
+      : { status: "pending", error: null, platform_fields: pf, handler_build: HANDLER_BUILD };
+    const { data } = await admin.from("cross_post_jobs").update(patch).eq("id", j.id).eq("status", "processing").select("id");
+    if (!data?.length) continue;
+    if (epuise) abandonnes++; else rearmes++;
+    ids.push(j.id);
+    console.log(`[ebay-api-worker] chien de garde : job ${j.id} (${j.action}) processing depuis ${minutes ?? "?"} min → ${epuise ? "failed" : "pending"} (reprise ${n})`);
+  }
+  return { rearmes, abandonnes, ids };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("Méthode non autorisée", { status: 405 });
   const attendu = Deno.env.get("CRON_SECRET");
@@ -492,6 +527,17 @@ Deno.serve(async (req) => {
   if (body.action === "mesure_aspects") return json(await mesurerAspects(admin, env, body));
   if (body.action === "mesure_categories") return json(await mesurerCategories(admin, env, body));
 
+  // ── Chien de garde (Nico, 06/09 soir) : un job pris (processing) depuis
+  // plus de PROCESSING_MAX_MS sans conclusion = l'isolat est mort en route
+  // (photos lentes, IA, eBay). handler-watch ne le reprend qu'après 24 h et
+  // seulement si l'extension de l'utilisateur est muette : un job API mort
+  // restait processing pour toujours. Ici : → pending, compteur de reprises,
+  // et au 3e coup → failed, cause nommée. Rejouer publier() est sûr : la
+  // fiche produit est idempotente par SKU, l'offre non publiée est réutilisée,
+  // et une offre DÉJÀ publiée fait échouer le job avec l'annonce nommée
+  // (jamais de doublon).
+  const reprises = await reprendreProcessingMorts(admin);
+
   let cible = admin.from("cross_post_jobs")
     .select("id, user_id, inventaire_id, platform, action, status, title, description, price, photos, platform_fields, listing_url, platform_listing_id, created_at, voie")
     .eq("platform", "ebay").eq("voie", "api").eq("status", "pending")
@@ -499,15 +545,18 @@ Deno.serve(async (req) => {
   if (body.job_id) cible = cible.eq("id", body.job_id);
   const { data: jobs, error } = await cible;
   if (error) return json({ error: error.message }, 500);
-  if (!jobs?.length) return json({ traites: 0 });
+  if (!jobs?.length) return json({ traites: 0, reprises });
 
   const resultats: Record<string, unknown>[] = [];
   for (const brut of jobs as Job[]) {
     // Claim atomique : seul celui qui fait passer pending → processing traite.
-    const { data: pris } = await admin.from("cross_post_jobs").update({ status: "processing", handler_build: HANDLER_BUILD })
+    // processing_since posé À LA PRISE (même clé que handler-watch) : c'est
+    // lui que lit le chien de garde. Effacé par marquer() à la conclusion.
+    const pfPrise = { ...(brut.platform_fields ?? {}), processing_since: new Date().toISOString() };
+    const { data: pris } = await admin.from("cross_post_jobs").update({ status: "processing", handler_build: HANDLER_BUILD, platform_fields: pfPrise })
       .eq("id", brut.id).eq("status", "pending").select("id");
     if (!pris?.length) continue;
-    const job = brut;
+    const job: Job = { ...brut, platform_fields: pfPrise };
     try {
       const jeton = await obtenirAccessToken(admin, job.user_id);
       if (!jeton.ok) {
