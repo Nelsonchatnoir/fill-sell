@@ -21,6 +21,11 @@
 --    sans job voie='api' pending coûte une requête et sort.
 --    ⚠️ À N'APPLIQUER QU'APRÈS le déploiement de ebay-api-worker.
 --
+-- ✅ APPLIQUÉE EN PROD le 06/09/2026 11:00 (Europe/Paris) sur le GO 2a de Nico, via
+-- db query --linked --file, APRÈS le déploiement de ebay-api-worker v1 et AVANT
+-- celui de get-pending-jobs v26. Vérifié après pose : 36 432 jobs voie='extension'
+-- (435 pending, 88 needs_user, 2 processing), 0 'api' ; cron actif ;
+-- ebay_accounts.merchant_location_key présente.
 -- Idempotente. db push INTERDIT.
 -- ═══════════════════════════════════════════════════════════════════════════
 
