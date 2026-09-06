@@ -478,6 +478,67 @@ export async function confirmerBoutiqueVinted(userId, { vintedUserId, login }) {
   return { success: true, boutiques };
 }
 
+// ── LE NOM MANQUANT, ON VA LE CHERCHER (2026-09-06 soir, consigne Nico) ─────
+// Une boutique du pin peut porter `login: null` : adoptée par une sync dont la
+// sonde d'identité n'avait pas rendu le pseudo, ou posée à la main. L'écran
+// retombe alors sur « une autre de tes boutiques » — honnête, mais inutile
+// quand on en a deux et qu'il faut savoir LAQUELLE reconnecter.
+// Le pseudo existe pourtant déjà en base : chaque run de sync du dressing
+// écrit `vinted_sync_runs.vinted_login` à côté de `vinted_user_id`. On le
+// récupère et on le REPOSE dans le pin — une fois, pas à chaque rendu.
+//
+// Best-effort de bout en bout : aucune lecture ne bloque, aucune écriture
+// n'est réclamée à l'utilisateur, et un échec laisse simplement le libellé
+// générique en place (retenté au prochain montage). Ne touche JAMAIS un login
+// déjà présent — c'est la sync qui fait autorité sur les renommages.
+export async function completerLoginsBoutiques(userId) {
+  if (!userId) return { complete: 0, boutiques: [] };
+  const { data: prof, error: eLect } = await supabase
+    .from('profiles').select('vinted_sync_pin').eq('id', userId).maybeSingle();
+  if (eLect) return { complete: 0, boutiques: [] };
+  const actuel = parseBoutiquesPin(prof?.vinted_sync_pin);
+  const orphelines = actuel.boutiques.filter((b) => !b.login);
+  if (!orphelines.length) return { complete: 0, boutiques: actuel.boutiques };
+
+  // Un seul aller-retour : les runs récents de CE compte, pseudo renseigné.
+  const { data: runs, error: eRuns } = await supabase
+    .from('vinted_sync_runs')
+    .select('vinted_user_id,vinted_login,started_at')
+    .eq('user_id', userId)
+    .eq('kind', 'dressing')
+    .not('vinted_login', 'is', null)
+    .order('started_at', { ascending: false })
+    .limit(200);
+  if (eRuns) return { complete: 0, boutiques: actuel.boutiques };
+  // Le PLUS RÉCENT gagne : la liste arrive déjà triée, on ne réécrit pas.
+  const parId = new Map();
+  for (const r of runs ?? []) {
+    const id = String(r?.vinted_user_id ?? '').trim();
+    if (id && !parId.has(id)) parId.set(id, String(r.vinted_login));
+  }
+
+  let complete = 0;
+  const boutiques = actuel.boutiques.map((b) => {
+    if (b.login) return b;
+    const trouve = parId.get(String(b.user_id));
+    if (!trouve) return b;
+    complete += 1;
+    return { ...b, login: trouve };
+  });
+  if (!complete) return { complete: 0, boutiques: actuel.boutiques };
+
+  // Update CONDITIONNEL + .select() : un update bloqué par la RLS échoue en
+  // silence sans lui (leçon profiles du 2026-07-06). `a_confirmer` est
+  // reconduit tel quel — poser un pseudo ne décide RIEN sur la propriété.
+  const { data: maj, error: eMaj } = await supabase
+    .from('profiles')
+    .update({ vinted_sync_pin: { v: 2, a_confirmer: actuel.aConfirmer, boutiques } })
+    .eq('id', userId)
+    .select('id');
+  if (eMaj || !maj?.length) return { complete: 0, boutiques: actuel.boutiques };
+  return { complete, boutiques };
+}
+
 // ── Boutique Vinted CONNECTÉE dans Chrome (multi-boutiques, 2026-09-03) ─────
 // Relevée par la sonde de sessions de l'extension (~10 min) et rangée dans
 // profiles.extension_sessions.vinted_identite. null = jamais relevée (sonde

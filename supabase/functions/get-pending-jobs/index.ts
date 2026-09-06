@@ -560,27 +560,99 @@ serve(async (req) => {
     //    elle ne prouve plus qui est connecté MAINTENANT, donc elle ne décide
     //    plus rien. Idem si la lecture échoue : un filet ne devient jamais un
     //    point de panne.
-    // Périmètre : republish Vinted du poll d'exécution. Une publication crée
-    // une annonce neuve (pas d'origine à trahir) et un delete vise une URL
-    // précise — ni l'un ni l'autre n'entre ici.
+    // ── PÉRIMÈTRE ÉLARGI AUX SUPPRESSIONS (2026-09-06 soir, cas claeys59450) ─
+    // La v1 disait : « une publication crée une annonce neuve (pas d'origine à
+    // trahir) et un delete vise une URL précise — ni l'un ni l'autre n'entre
+    // ici. » La deuxième moitié de cette phrase est FAUSSE, et elle a coûté sa
+    // soirée à un abonné Pro. L'URL d'un delete n'est pas neutre : elle désigne
+    // l'annonce d'UNE boutique, et la suppression est précisément l'opération
+    // que Vinted refuse quand le navigateur est connecté ailleurs.
+    //
+    // Mesuré en prod le 06/09 à 19:09 (job 33247fd2, article 9798949066, compte
+    // qui venait d'ouvrir sa 2e boutique) :
+    //   POST /api/v2/items/9798949066/delete → HTTP 403
+    //   {"code":106,"message":"Accès refusé","message_code":"access_denied"}
+    // Session Vinted VIVANTE (l'extension l'avait re-sondée : « valide »), corps
+    // JSON bien formé de l'API Vinted — donc ni DataDome (qui rend du HTML de
+    // captcha), ni un refus CSRF : un refus de PROPRIÉTÉ, mot pour mot « tu
+    // n'es pas le vendeur de cet article ». Le job a ensuite brûlé ses
+    // tentatives dans rearmBounded (2/5 en 8 min, 5/5 en ~2 h) pour finir en
+    // 'failed' sur « retire-la à la main » — un échec inventé de toutes pièces,
+    // alors que le seul geste réel est de se reconnecter à la bonne boutique.
+    // Un job qui vise une boutique où l'utilisateur n'est pas connecté doit
+    // ATTENDRE, pas échouer : les deux actions passent donc la même porte.
+    // (publish reste dehors, à raison : il crée une annonce neuve.)
+    //
+    // ── QUI EST CONNECTÉ *MAINTENANT* (même incident) ───────────────────────
+    // La v1 ne lisait que la sonde d'identité (extension_sessions), qui tourne
+    // au plus toutes les 10 min. Or une bascule de boutique prend QUELQUES
+    // SECONDES : entre la bascule et la sonde suivante, la garde comparait
+    // l'origine des articles à l'identité de l'ANCIEN compte — elle laissait
+    // donc passer exactement les jobs qui allaient être refusés, tout en
+    // retenant ceux qui auraient marché. Une identité périmée n'est pas neutre,
+    // elle est À L'ENVERS.
+    // Deuxième source, sans aucun paquet d'extension : le dernier run de sync du
+    // dressing. `vinted_sync_runs.vinted_user_id` est le compte RÉELLEMENT lu
+    // par le navigateur, horodaté par `started_at` — une preuve au moins aussi
+    // forte que la sonde. On retient la plus RÉCENTE des deux, et elle doit
+    // rester dans la fenêtre de fraîcheur. (Chez claeys59450 : sonde sur
+    // l'ancienne boutique, sync 19:15 sur la nouvelle → les tentatives 3, 4 et 5
+    // du delete n'auraient jamais été distribuées.)
+    //
+    // ⛔ RIEN N'EST REFUSÉ, ici non plus : le job n'est pas servi, il reste
+    // 'pending', intact, aucune tentative consommée. Il repart tout seul.
     const BOUTIQUE_SONDE_FRAICHEUR_MS = 30 * 60 * 1000;
+    const boutiqueConcernee = (j: { action: string; platform: string; inventaire_id: unknown }) =>
+      (j.action === "republish" || j.action === "delete") &&
+      j.platform === "vinted" && j.inventaire_id != null;
     let heldBoutique = 0;
     let boutiquePause:
-      | { connectee: { user_id: string; login: string | null }; retenus: number; par_boutique: Record<string, number> }
+      | {
+        connectee: { user_id: string; login: string | null; source: string };
+        retenus: number;
+        par_boutique: Record<string, number>;
+        par_action: Record<string, number>;
+      }
       | null = null;
     if (!includeProcessing && !includeNeedsUser) {
-      const candidats = out.filter((j) =>
-        j.action === "republish" && j.platform === "vinted" && j.inventaire_id != null);
+      const candidats = out.filter(boutiqueConcernee);
       if (candidats.length) {
         try {
-          const { data: prof } = await userClient
-            .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+          // Deux relevés d'identité, le plus RÉCENT tranche.
+          const [{ data: prof }, { data: runs }] = await Promise.all([
+            userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle(),
+            userClient
+              .from("vinted_sync_runs")
+              .select("vinted_user_id, vinted_login, started_at")
+              .eq("kind", "dressing")
+              .not("vinted_user_id", "is", null)
+              .not("started_at", "is", null)
+              .order("started_at", { ascending: false })
+              .limit(1),
+          ]);
           const sessions = (prof?.extension_sessions ?? null) as Record<string, unknown> | null;
-          const ident = (sessions?.["vinted_identite"] ?? null) as { user_id?: unknown; login?: unknown } | null;
-          const identId = ident?.user_id != null ? String(ident.user_id).trim() : "";
-          const releve = Date.parse(String(sessions?.["checked_at"] ?? ""));
-          const fraiche = Number.isFinite(releve) && Date.now() - releve <= BOUTIQUE_SONDE_FRAICHEUR_MS;
-          if (identId && fraiche) {
+          const identSonde = (sessions?.["vinted_identite"] ?? null) as { user_id?: unknown; login?: unknown } | null;
+          const run = (runs?.[0] ?? null) as
+            { vinted_user_id?: unknown; vinted_login?: unknown; started_at?: unknown } | null;
+          const sources = [
+            {
+              source: "sonde",
+              id: identSonde?.user_id != null ? String(identSonde.user_id).trim() : "",
+              login: identSonde?.login != null ? String(identSonde.login) : null,
+              at: Date.parse(String(sessions?.["checked_at"] ?? "")),
+            },
+            {
+              source: "sync_dressing",
+              id: run?.vinted_user_id != null ? String(run.vinted_user_id).trim() : "",
+              login: run?.vinted_login != null ? String(run.vinted_login) : null,
+              at: Date.parse(String(run?.started_at ?? "")),
+            },
+          ].filter((s) => s.id && Number.isFinite(s.at));
+          sources.sort((a, b) => b.at - a.at);
+          const vu = sources[0] ?? null;
+          const fraiche = vu != null && Date.now() - vu.at <= BOUTIQUE_SONDE_FRAICHEUR_MS;
+          if (vu && fraiche) {
+            const identId = vu.id;
             const ids = [...new Set(candidats.map((j) => j.inventaire_id))];
             const { data: arts } = await userClient
               .from("inventaire").select("id, vinted_account_id").in("id", ids);
@@ -592,26 +664,31 @@ serve(async (req) => {
               if (o) origine.set(String(a.id), o);
             }
             const parBoutique: Record<string, number> = {};
+            const parAction: Record<string, number> = {};
             const avant = out.length;
             out = out.filter((j) => {
-              if (j.action !== "republish" || j.platform !== "vinted" || j.inventaire_id == null) return true;
+              if (!boutiqueConcernee(j)) return true;
               const o = origine.get(String(j.inventaire_id));
               if (!o || o === identId) return true; // inconnue ou bonne boutique
               parBoutique[o] = (parBoutique[o] ?? 0) + 1;
+              parAction[j.action] = (parAction[j.action] ?? 0) + 1;
               return false;
             });
             heldBoutique = avant - out.length;
             if (heldBoutique) {
               boutiquePause = {
-                connectee: { user_id: identId, login: ident?.login != null ? String(ident.login) : null },
+                connectee: { user_id: identId, login: vu.login, source: vu.source },
                 retenus: heldBoutique,
                 par_boutique: parBoutique,
+                par_action: parAction,
               };
               console.log(
                 `[get-pending-jobs] userId=${user.id} : Chrome connecté au dressing ` +
-                `${identId}${ident?.login ? ` (@${ident.login})` : ""} — ${heldBoutique} republication(s) ` +
+                `${identId}${vu.login ? ` (@${vu.login})` : ""} [relevé ${vu.source} ` +
+                `${new Date(vu.at).toISOString()}] — ${heldBoutique} job(s) ` +
+                `(${Object.entries(parAction).map(([a, n]) => `${a}: ${n}`).join(", ")}) ` +
                 `d'une AUTRE boutique (${Object.entries(parBoutique).map(([k, n]) => `${k}: ${n}`).join(", ")}) ` +
-                `retenue(s) en pending, aucune tentative consommée`,
+                `retenu(s) en pending, aucune tentative consommée`,
               );
             }
           }
@@ -673,7 +750,7 @@ serve(async (req) => {
       (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : "") +
       (heldSync ? `, ${heldSync} retenu(s) (la sync passe devant)` : "") +
       (heldRepublish ? `, ${heldRepublish} republish retenu(s) (${plafondRepublish?.motif ?? "retenue"})` : "") +
-      (heldBoutique ? `, ${heldBoutique} republish retenu(s) (boutique Vinted non connectée)` : "") +
+      (heldBoutique ? `, ${heldBoutique} job(s) retenu(s) (boutique Vinted non connectée)` : "") +
       (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : ""),
     );
 
