@@ -27,6 +27,7 @@ const CORS = {
 // (canonicalisation, état mappé, pose ISBN) vivent désormais dans
 // _shared/redaction-plateformes.ts — extraits tels quels, partagés avec le
 // mode unifié de lens-analysis : une seule source de prompts, un seul contrat.
+import { resoudreAspectsIA } from "../_shared/ebay-aspects-ia.ts";
 import {
   VERSION_PROMPT,
   construireContexteArticle,
@@ -374,6 +375,26 @@ serve(async (req) => {
       // Rien à extraire par l'IA (tout couvert par les défauts, ou pas de
       // contexte) : on renvoie directement les défauts déterministes.
       if (!wanted.length || !askAI.length || !ctx) return json({ aspects: out });
+      // ── 06/09 (lot 2, aspects automatiques) : UNE règle partagée avec le
+      // worker API (_shared/ebay-aspects-ia.ts) : SELECTION_ONLY imposé au
+      // modèle et contrôlé exactement (hors liste = absent), FREE_TEXT à
+      // liste courte recalé sur l'entrée de la liste, Marque jamais listée.
+      // `mode` vient du client (ListingPreviewScreen) ; un ancien client OTA
+      // qui n'envoie pas de mode mais une liste = SELECTION_ONLY (c'était le
+      // seul cas où il envoyait une liste), sans liste = FREE_TEXT.
+      {
+        const demandes = askAI.map((a: { name: string; mode?: string; allowedValues?: string[] }) => ({
+          name: a.name,
+          mode: a.mode ?? (Array.isArray(a.allowedValues) && a.allowedValues.length ? "SELECTION_ONLY" : "FREE_TEXT"),
+          allowedValues: Array.isArray(a.allowedValues) ? a.allowedValues : [],
+        }));
+        const ia = await resoudreAspectsIA(demandes, {
+          titre: it.titre, marque: it.marque, modele: it.modele, matiere: it.matiere, couleur: it.couleur,
+          taille: it.taille, genre: it.genre, type: it.type, description: it.description,
+          attributs: it.attributs && typeof it.attributs === "object" ? it.attributs : null,
+        }, { apiKey: Deno.env.get("ANTHROPIC_API_KEY") ?? "", onUsage: trackClaude });
+        return json({ aspects: { ...out, ...ia.aspects }, refuses: ia.refuses });
+      }
       const lines = askAI.map((a: { name: string; allowedValues?: string[] }) => {
         const allowed = Array.isArray(a.allowedValues) ? a.allowedValues.slice(0, 60) : [];
         return `- "${a.name}"${allowed.length ? ` — valeurs eBay (suggestions, saisie libre acceptée ; si tu retiens une valeur de la liste, recopie-la caractère pour caractère, apostrophes et espaces compris) : ${allowed.join(" | ")}` : " — texte libre"}`;

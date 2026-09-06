@@ -15,6 +15,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { appelEbay, type EbayEnv } from "./ebay-oauth.ts";
 import { valeurDeListeCorrespondante } from "./texte-comparable.ts";
+import { resoudreAspectsIA, type AspectDemande, type ContexteArticle } from "./ebay-aspects-ia.ts";
 
 export const MARKETPLACE = "EBAY_FR";
 export const ARBRE_FR = "71";
@@ -159,10 +160,13 @@ export interface PlatformFields {
 // (ebayAspects, posé par l'app / la réponse needs_user), puis nos champs
 // standard. Recalée sur la liste eBay quand elle y correspond ; SELECTION_ONLY
 // hors liste = manquant (eBay refuserait) ; FREE_TEXT hors liste = gardé tel quel.
-export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[]): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[] } {
+export type SourceAspect = "job" | "genre" | "standard" | "defaut" | "ia";
+export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[]): { aspects: Record<string, string[]>; manquants: string[]; recalages: string[]; sources: Record<string, SourceAspect> } {
   const aspects: Record<string, string[]> = {};
   const manquants: string[] = [];
   const recalages: string[] = [];
+  const sources: Record<string, SourceAspect> = {};
+  const sourcesIA = (pf.ebayAspectsSources && typeof pf.ebayAspectsSources === "object") ? pf.ebayAspectsSources as Record<string, string> : {};
   const ebayAspects = (pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {};
   const couleur = (Array.isArray(pf.colors) && pf.colors[0]) ? String(pf.colors[0]) : (pf.couleur ? String(pf.couleur) : "");
   const standard: Record<string, string> = {
@@ -177,23 +181,68 @@ export function assemblerAspects(pf: PlatformFields, catalogue: AspectCatalogue[
   for (const a of catalogue) {
     if (!a.required && !(a.name in ebayAspects)) continue; // 2a : requis + ce que le job porte déjà
     let brut = String(ebayAspects[a.name] ?? "").trim();
+    let source: SourceAspect = sourcesIA[a.name] === "ia" ? "ia" : "job";
     if (!brut && a.name === "Département") {
       const cands = DEPARTEMENT_PAR_GENRE[String(pf.genre ?? "")] ?? [];
       brut = cands.find((c) => valeurDeListeCorrespondante(c, a.allowedValues)) ?? cands[0] ?? "";
+      source = "genre";
     }
-    if (!brut) brut = String(standard[a.name] ?? "").trim();
+    if (!brut) { brut = String(standard[a.name] ?? "").trim(); source = a.name === "Numéro de pièce fabricant" ? "defaut" : "standard"; }
     if (!brut) { if (a.required) manquants.push(a.name); continue; }
     const recale = a.allowedValues.length ? valeurDeListeCorrespondante(brut, a.allowedValues) : null;
     if (recale) {
       if (recale !== brut) recalages.push(`${a.name}: « ${brut} » → « ${recale} »`);
-      aspects[a.name] = [recale];
+      aspects[a.name] = [recale]; sources[a.name] = source;
     } else if (a.mode === "SELECTION_ONLY") {
       if (a.required) manquants.push(a.name);
     } else {
-      aspects[a.name] = [brut];
+      aspects[a.name] = [brut]; sources[a.name] = source;
     }
   }
-  return { aspects, manquants, recalages };
+  return { aspects, manquants, recalages, sources };
+}
+
+// ── Remplissage complet : job/standard/défauts, PUIS l'IA sous contrainte
+// pour ce qui manque encore, PUIS ré-assemblage (recalage + contrôle exact).
+// C'est ce qui rend la publication autonome : un job qui sortait en
+// needs_user « Type, Style » (test 2a du 06/09) se complète ici tout seul.
+export interface RemplissageAspects {
+  aspects: Record<string, string[]>;
+  manquants: string[];
+  recalages: string[];
+  sources: Record<string, SourceAspect>;
+  ia: { demandes: string[]; obtenus: Record<string, string>; refuses: Array<{ name: string; valeur: string; motif: string }>; appel: boolean } | null;
+}
+export async function remplirAspects(pf: PlatformFields, catalogue: AspectCatalogue[], contexte: ContexteArticle, apiKey: string, onUsage?: (d: unknown) => void): Promise<RemplissageAspects> {
+  const premier = assemblerAspects(pf, catalogue);
+  if (!premier.manquants.length) return { ...premier, ia: null };
+  const demandes: AspectDemande[] = premier.manquants
+    .map((nom) => catalogue.find((c) => c.name === nom))
+    .filter((c): c is AspectCatalogue => Boolean(c))
+    .map((c) => ({ name: c.name, mode: c.mode, allowedValues: c.allowedValues }));
+  const ia = await resoudreAspectsIA(demandes, contexte, { apiKey, onUsage });
+  const pf2: PlatformFields = {
+    ...pf,
+    ebayAspects: { ...((pf.ebayAspects && typeof pf.ebayAspects === "object") ? pf.ebayAspects : {}), ...ia.aspects },
+    ebayAspectsSources: Object.fromEntries(Object.keys(ia.aspects).map((k) => [k, "ia"])),
+  };
+  const second = assemblerAspects(pf2, catalogue);
+  return { ...second, ia: { demandes: demandes.map((d) => d.name), obtenus: ia.aspects, refuses: ia.refuses, appel: ia.appel_ia } };
+}
+
+// ── Catégorie : suggestions eBay depuis le titre (repli de la phase 0) ──────
+export interface SuggestionCategorie { id: string; nom: string; chemin: string[]; }
+export async function suggererCategories(env: EbayEnv, token: string, titre: string): Promise<SuggestionCategorie[]> {
+  const q = String(titre ?? "").replace(/s+/g, " ").trim().slice(0, 120);
+  if (!q) return [];
+  const r = await appelEbay(env, token, `/commerce/taxonomy/v1/category_tree/${ARBRE_FR}/get_category_suggestions?q=${encodeURIComponent(q)}`);
+  if (r.http !== 200 || !r.json) return [];
+  const brut = (r.json as { categorySuggestions?: Array<{ category?: { categoryId?: string; categoryName?: string }; categoryTreeNodeAncestors?: Array<{ categoryName?: string }> }> }).categorySuggestions ?? [];
+  return brut.map((s) => ({
+    id: String(s.category?.categoryId ?? ""),
+    nom: String(s.category?.categoryName ?? ""),
+    chemin: [...(s.categoryTreeNodeAncestors ?? []).map((a) => String(a.categoryName ?? "")).reverse(), String(s.category?.categoryName ?? "")],
+  })).filter((s) => s.id);
 }
 
 // ── Emplacement marchand ────────────────────────────────────────────────────

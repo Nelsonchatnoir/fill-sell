@@ -24,8 +24,8 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import {
-  aspectsCategorie, assemblerAspects, choisirCondition, conditionsCategorie, descriptionEbay,
-  emplacementMarchand, lireErreurEbay, MARKETPLACE, skuPour, titreEbay, urlAnnonce, type PlatformFields,
+  aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand,
+  lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
 
 const HANDLER_BUILD = "ebay-api-worker 2a";
@@ -93,10 +93,13 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     await marquer(admin, job, { status: verdictHttp(502, tentatives), error: `Impossible de lire les caractéristiques de la catégorie ${categoryId} chez eBay : ${cat.erreur}` }, { etape: "aspects", quoi: "taxonomy_indisponible" }, { tentatives });
     return { job: job.id, issue: "aspects", detail: cat.erreur };
   }
-  const { aspects, manquants, recalages } = assemblerAspects(pf, cat.aspects);
+  // Job/standard/défauts d'abord, puis l'IA sous contrainte de la liste eBay
+  // pour ce qui manque, puis contrôle exact — needs_user seulement après.
+  const rempli = await remplirAspects(pf, cat.aspects, contexteDuJob(job, pf), Deno.env.get("ANTHROPIC_API_KEY") ?? "");
+  const { aspects, manquants, recalages } = rempli;
   if (manquants.length) {
-    await marquer(admin, job, { status: "needs_user", error: `eBay exige encore : ${manquants.join(", ")}. Complète ces caractéristiques puis relance.` }, { etape: "aspects", quoi: "aspects_manquants", manquants, source_catalogue: cat.source });
-    return { job: job.id, issue: "needs_user", motif: "aspects_manquants", manquants };
+    await marquer(admin, job, { status: "needs_user", error: `eBay exige encore : ${manquants.join(", ")}. Complète ces caractéristiques puis relance.` }, { etape: "aspects", quoi: "aspects_manquants", manquants, source_catalogue: cat.source, ia: rempli.ia, sources: rempli.sources });
+    return { job: job.id, issue: "needs_user", motif: "aspects_manquants", manquants, ia: rempli.ia };
   }
 
   // 4. createOrReplaceInventoryItem (PUT, idempotent sur le SKU).
@@ -179,9 +182,69 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const publishedAt = new Date().toISOString();
   await marquer(admin, job,
     { status: "published", error: null, platform_listing_id: listingId, listing_url: urlAnnonce(listingId), published_at: publishedAt },
-    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements },
+    { etape: "publie", http: 200, condition_envoyee: condition.enumValue, condition_id: condition.id, condition_libelle: condition.libelle, recalages, source_catalogue: cat.source, avertissements, sources: rempli.sources, ia: rempli.ia },
     { sku, offer_id: offerId, listing_id: listingId, published_at: publishedAt, location_key: empl.cle, location_creee: empl.cree, tentatives });
-  return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, aspects, recalages, avertissements, emplacement: empl };
+  return { job: job.id, issue: "published", sku, offer_id: offerId, listing_id: listingId, url: urlAnnonce(listingId), condition: condition, aspects, sources: rempli.sources, ia: rempli.ia, recalages, avertissements, emplacement: empl };
+}
+
+function contexteDuJob(job: Job, pf: PlatformFields) {
+  return {
+    titre: job.title, description: job.description, marque: pf.marque as string | null, modele: pf.modele as string | null,
+    matiere: pf.matiere as string | null, couleur: (Array.isArray(pf.colors) && pf.colors[0]) ? String(pf.colors[0]) : (pf.couleur as string | null),
+    taille: pf.taille as string | null, genre: pf.genre as string | null, type: null,
+    attributs: (pf.attributs_visibles && typeof pf.attributs_visibles === "object") ? pf.attributs_visibles as Record<string, unknown> : null,
+  };
+}
+
+// ── MESURE (consigne Nico, 06/09) : sur N articles réels du stock d'un
+// vendeur, combien passeraient SANS needs_user — catégorie, état, photos,
+// aspects (job/standard/défauts + IA sous contrainte). Aucune publication,
+// aucune écriture de job ; seul dépôt possible : le cache d'aspects.
+async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_user_id?: string; limit?: number; inventaire_ids?: number[] }): Promise<Record<string, unknown>> {
+  const { data: compte } = await admin.from("ebay_accounts").select("user_id").eq("ebay_user_id", String(body.ebay_user_id ?? "")).maybeSingle();
+  if (!compte) return { error: "compte eBay inconnu" };
+  const jeton = await obtenirAccessToken(admin, compte.user_id);
+  if (!jeton.ok) return { error: `jeton : ${jeton.motif}` };
+  const token = jeton.token;
+  let q = admin.from("inventaire").select("id, titre, description, marque, type, statut, prix_vente, photos").eq("user_id", compte.user_id).eq("statut", "stock").order("created_at", { ascending: false });
+  if (Array.isArray(body.inventaire_ids) && body.inventaire_ids.length) q = q.in("id", body.inventaire_ids);
+  const { data: articles } = await q.limit(Math.min(30, Number(body.limit) || 10));
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+  const lignes: Record<string, unknown>[] = [];
+  for (const a of (articles ?? []) as Array<{ id: number; titre: string; description: string | null; marque: string | null; type: string | null; prix_vente: number | null; photos: Array<{ url?: string }> | null }>) {
+    const photos = (a.photos ?? []).filter((p) => /^https:\/\//.test(String(p?.url ?? ""))).length;
+    // Catégorie : celle d'un job eBay existant (mapping icône de l'app), sinon suggestion eBay n°1.
+    const { data: job } = await admin.from("cross_post_jobs").select("platform_fields").eq("inventaire_id", a.id).eq("platform", "ebay").not("platform_fields->>ebayCategoryId", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const pfJob = (job?.platform_fields ?? {}) as PlatformFields;
+    let categorie = String(pfJob.ebayCategoryId ?? "");
+    let categorieSource = categorie ? "job (mapping icône)" : "";
+    let chemin: string[] = Array.isArray(pfJob.ebayCategoryPath) ? pfJob.ebayCategoryPath as string[] : [];
+    if (!categorie) {
+      const sugg = await suggererCategories(env, token, a.titre);
+      if (sugg[0]) { categorie = sugg[0].id; chemin = sugg[0].chemin; categorieSource = "suggestion eBay n°1"; }
+    }
+    const pf: PlatformFields = { ...pfJob, marque: pfJob.marque ?? a.marque ?? null, etat: pfJob.etat ?? "Très bon état" };
+    const ligne: Record<string, unknown> = { id: a.id, titre: a.titre, photos, categorie: categorie || null, categorie_source: categorieSource || "aucune", chemin: chemin.join(" > ") };
+    if (!categorie) { lignes.push({ ...ligne, passe: false, bloque_par: "catégorie" }); continue; }
+    const conditions = await conditionsCategorie(env, token, categorie);
+    const condition = choisirCondition(pf.etat as string, conditions);
+    ligne.condition = condition ? `${condition.enumValue} (${condition.id} ${condition.libelle})` : null;
+    const cat = await aspectsCategorie(admin, env, token, categorie);
+    if ("erreur" in cat) { lignes.push({ ...ligne, passe: false, bloque_par: `aspects : ${cat.erreur}` }); continue; }
+    const rempli = await remplirAspects(pf, cat.aspects, { titre: a.titre, description: a.description, marque: pf.marque as string | null, type: a.type, genre: pf.genre as string | null, taille: pf.taille as string | null, couleur: pf.couleur as string | null }, apiKey);
+    const requis = cat.aspects.filter((x) => x.required).map((x) => x.name);
+    ligne.requis = requis;
+    ligne.remplis = Object.fromEntries(Object.entries(rempli.aspects).map(([k, v]) => [k, `${v[0]} ← ${rempli.sources[k] ?? "?"}`]));
+    ligne.ia = rempli.ia ? { demandes: rempli.ia.demandes, refuses: rempli.ia.refuses } : null;
+    ligne.manquants = rempli.manquants;
+    const bloque: string[] = [];
+    if (!photos) bloque.push("photos");
+    if (!condition) bloque.push("état");
+    if (rempli.manquants.length) bloque.push(`aspects : ${rempli.manquants.join(", ")}`);
+    lignes.push({ ...ligne, passe: bloque.length === 0, bloque_par: bloque.join(" ; ") || null });
+  }
+  const passes = lignes.filter((l) => l.passe).length;
+  return { articles: lignes.length, passent_sans_needs_user: passes, lignes };
 }
 
 async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
@@ -221,9 +284,10 @@ Deno.serve(async (req) => {
   const attendu = Deno.env.get("CRON_SECRET");
   if (!attendu || req.headers.get("x-cron-secret") !== attendu) return json({ error: "Non autorisé" }, 401);
 
-  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string };
+  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string; action?: string; ebay_user_id?: string; limit?: number; inventaire_ids?: number[] };
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const env = lireEnvEbay();
+  if (body.action === "mesure_aspects") return json(await mesurerAspects(admin, env, body));
 
   let cible = admin.from("cross_post_jobs")
     .select("id, user_id, inventaire_id, platform, action, status, title, description, price, photos, platform_fields, listing_url, platform_listing_id, created_at, voie")

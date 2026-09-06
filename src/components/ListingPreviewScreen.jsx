@@ -5015,12 +5015,23 @@ export default function ListingPreviewScreen({
         // choisir une marque plausible dans la liste au lieu d'extraire du
         // contexte ou de répondre null (même mécanisme que les marques
         // fantômes Vinted/Beebs du 29-30/07, doctrine « liste = suggestion »).
+        // 06/09 (lot 2, aspects automatiques) : le serveur applique désormais
+        // UNE règle partagée avec le worker API (_shared/ebay-aspects-ia.ts) :
+        //   · SELECTION_ONLY → liste imposée et contrôlée exactement ;
+        //   · FREE_TEXT à liste COURTE (≤ 60) → liste en suggestion, réponse
+        //     recalée sur l'entrée de la liste (Couleur, Style, Type, Taille) ;
+        //   · Marque → JAMAIS de liste (doctrine marques fantômes), recalée
+        //     après coup ; listes longues → texte libre.
+        // On envoie donc le mode, et la liste selon ces règles.
         const details = (ebayRequiredStatus ?? [])
           .filter(a => missing.includes(a.name))
-          .map(a => ({
-            name: a.name,
-            allowedValues: a.mode === "SELECTION_ONLY" ? (a.allowedValues ?? []).slice(0, 60) : [],
-          }));
+          .map(a => {
+            const liste = a.allowedValues ?? [];
+            const envoyer = a.mode === "SELECTION_ONLY"
+              ? liste.slice(0, 120)
+              : (a.name !== "Marque" && liste.length && liste.length <= 60 ? liste : []);
+            return { name: a.name, mode: a.mode ?? (liste.length ? "SELECTION_ONLY" : "FREE_TEXT"), allowedValues: envoyer };
+          });
         if (!details.length) return;
         const src = edited.ebay ?? {};
         const { data: res } = await supabase.functions.invoke("generate-listing", {
