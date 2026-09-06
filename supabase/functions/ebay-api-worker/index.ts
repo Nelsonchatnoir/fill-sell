@@ -66,7 +66,7 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const prix = Number(job.price);
   // Sans photo, rien ne part — arrêté ICI, avant tout appel eBay, cause nommée.
   if (!photos.length) { await marquer(admin, job, { status: "needs_user", error: "Cet article n'a aucune photo : eBay exige au moins une image. Ajoute une photo à l'article, puis relance la publication." }, { etape: "controle", quoi: "photos_absentes" }); return { job: job.id, issue: "needs_user", motif: "photos_absentes" }; }
-  const categorie = await resoudreCategorie(env, token, job, pf);
+  const categorie = await resoudreCategorie(env, token, { title: (await titreInventaire(admin, job.inventaire_id)) || job.title }, pf);
   if ("choix" in categorie) {
     const liste = categorie.choix.map((c, i) => `${i + 1}. ${c.chemin} (${c.id})`).join(" · ");
     const mappee = String(pf.ebayCategoryId ?? "").trim();
@@ -237,15 +237,28 @@ const CONTROLE_CATEGORIE_PAR_SUGGESTION = true;
 // Résumé des suggestions eBay, écrit dans le last_diagnostic à chaque
 // résolution — « jamais en silence » : on doit pouvoir relire pourquoi la
 // règle a gardé le mapping ou demandé un choix.
-interface ResumeSuggestions { n: number; racine_top: string | null; meme_racine_que_top: number; mapping_dans_liste: boolean; liste: string[] }
+interface ResumeSuggestions { titre_interroge: string; n: number; racine_top: string | null; meme_racine_que_top: number; mapping_dans_liste: boolean; liste: string[] }
 type Categorie = { id: string; chemin: string[]; source: string; detail?: string; suggestions: ResumeSuggestions } | { choix: Array<{ id: string; chemin: string }>; motif: string; suggestions: ResumeSuggestions };
+// ⚠️ 06/09 : le titre du job est le titre eBay RACCOURCI (« La Méthode
+// Delavier de Musculation pour la Femme ») ; interrogé tel quel, eBay
+// répondait 3 Livres / 6 Sports et la règle gardait Haltères — publié deux
+// fois en Haltères (820094103491, 820094121646, retirées). Avec le titre de
+// l'inventaire (auteurs compris) : 6 Livres sur 8 → needs_user. On interroge
+// donc le titre de l'inventaire, repli sur celui du job.
+async function titreInventaire(admin: SupabaseClient, inventaireId: number | null): Promise<string> {
+  if (!inventaireId) return "";
+  const { data } = await admin.from("inventaire").select("titre").eq("id", inventaireId).maybeSingle();
+  return String((data as { titre?: string } | null)?.titre ?? "").trim();
+}
 async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "title">, pf: PlatformFields): Promise<Categorie> {
   const mappee = String(pf.ebayCategoryId ?? "").trim();
   const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
-  const suggestions = await suggererCategories(env, token, job.title ?? "");
+  const titre = String(job.title ?? "").trim();
+  const suggestions = await suggererCategories(env, token, titre);
   const top = suggestions[0];
   const racineTop0 = top ? String(top.chemin[0] ?? "") : null;
   const resume: ResumeSuggestions = {
+    titre_interroge: titre,
     n: suggestions.length,
     racine_top: racineTop0,
     meme_racine_que_top: racineTop0 === null ? 0 : suggestions.filter((x) => (x.chemin[0] ?? "") === racineTop0).length,
