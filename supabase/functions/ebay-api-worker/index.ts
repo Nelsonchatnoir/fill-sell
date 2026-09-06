@@ -25,7 +25,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { appelEbay, lireEnvEbay, obtenirAccessToken, type EbayEnv } from "../_shared/ebay-oauth.ts";
 import {
   aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand,
-  lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, type PlatformFields,
+  lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
 
 const HANDLER_BUILD = "ebay-api-worker 2a";
@@ -35,7 +35,7 @@ const MSG_RETRAIT = "Annonce retirée par le vendeur (retrait ciblé depuis l'ap
 interface Job {
   id: string; user_id: string; inventaire_id: number | null; platform: string; action: string; status: string;
   title: string | null; description: string | null; price: number | string | null;
-  photos: Array<{ type?: string; url?: string }> | null; platform_fields: Record<string, unknown> | null;
+  photos: unknown; platform_fields: Record<string, unknown> | null;
   listing_url: string | null; platform_listing_id: string | null; created_at: string; voie: string;
 }
 
@@ -61,7 +61,7 @@ function verdictHttp(http: number, tentatives: number): "needs_user" | "pending"
 async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
   const pf = (job.platform_fields ?? {}) as PlatformFields;
   const tentatives = Number(((pf.ebay_api as Record<string, unknown>) ?? {}).tentatives ?? 0) + 1;
-  const photos = (job.photos ?? []).map((p) => String(p?.url ?? "")).filter((u) => /^https:\/\//.test(u)).slice(0, 24);
+  const photos = urlsPhotos(job.photos);
   const prix = Number(job.price);
   // Sans photo, rien ne part — arrêté ICI, avant tout appel eBay, cause nommée.
   if (!photos.length) { await marquer(admin, job, { status: "needs_user", error: "Cet article n'a aucune photo : eBay exige au moins une image. Ajoute une photo à l'article, puis relance la publication." }, { etape: "controle", quoi: "photos_absentes" }); return { job: job.id, issue: "needs_user", motif: "photos_absentes" }; }
@@ -212,6 +212,15 @@ function mots(texte: string): Set<string> {
 const GENRE_DANS_CHEMIN: Record<string, RegExp> = {
   Femme: /\bfemme\b/i, Homme: /\bhomme\b/i, Fille: /\bfille\b/i, "Garçon": /gar[cç]on/i, "Bébé": /b[ée]b[ée]/i, Enfant: /enfant/i,
 };
+// ⛔ CONTRÔLE PAR SUGGESTION DÉSACTIVÉ (06/09 11:55) : sur « T-shirt Adidas
+// Sergio Garcia vintage », la règle a REMPLACÉ le mapping 15687 (T-shirts
+// homme) par la suggestion n°1 d'eBay 121889 (Livres > BD franco-belges) :
+// « t-shirt » ne matchait pas « T-shirts » (pluriel) et la branche racine
+// différait — un T-shirt publié en BD (annonce 820093913142, retirée). Le
+// mapping icône de l'app gagne TOUJOURS tant que Nico n'a pas tranché une
+// règle plus sûre (consensus des 5 suggestions ?) ; la suggestion ne sert
+// qu'en l'absence de mapping.
+const CONTROLE_CATEGORIE_PAR_SUGGESTION = false;
 async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: PlatformFields): Promise<{ id: string; chemin: string[]; source: string; detail?: string } | { choix: Array<{ id: string; chemin: string }> }> {
   const mappee = String(pf.ebayCategoryId ?? "").trim();
   const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
@@ -225,7 +234,7 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Job, pf: Plat
       const aucunMotCommun = ![...motsTitre].some((m) => motsChemin.has(m));
       const racineMappee = String(cheminMappe[0] ?? "");
       const autreBranche = racineMappee && top.chemin[0] && top.chemin[0] !== racineMappee;
-      if (aucunMotCommun && autreBranche) {
+      if (CONTROLE_CATEGORIE_PAR_SUGGESTION && aucunMotCommun && autreBranche) {
         return { id: top.id, chemin: top.chemin, source: "suggestion_controle", detail: `mapping ${mappee} (${cheminMappe.join(" > ")}) remplacé : aucun mot du titre dans le chemin, autre branche racine` };
       }
     }
@@ -269,8 +278,8 @@ async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_
   const { data: articles } = await q.limit(Math.min(30, Number(body.limit) || 10));
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
   const lignes: Record<string, unknown>[] = [];
-  for (const a of (articles ?? []) as Array<{ id: number; titre: string; description: string | null; marque: string | null; type: string | null; prix_vente: number | null; photos: Array<{ url?: string }> | null }>) {
-    const photos = (a.photos ?? []).filter((p) => /^https:\/\//.test(String(p?.url ?? ""))).length;
+  for (const a of (articles ?? []) as Array<{ id: number; titre: string; description: string | null; marque: string | null; type: string | null; prix_vente: number | null; photos: unknown }>) {
+    const photos = urlsPhotos(a.photos).length;
     // Catégorie : celle d'un job eBay existant (mapping icône de l'app), sinon suggestion eBay n°1.
     const { data: job } = await admin.from("cross_post_jobs").select("platform_fields").eq("inventaire_id", a.id).eq("platform", "ebay").not("platform_fields->>ebayCategoryId", "is", null).order("created_at", { ascending: false }).limit(1).maybeSingle();
     const pfJob = (job?.platform_fields ?? {}) as PlatformFields;

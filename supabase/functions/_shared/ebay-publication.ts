@@ -345,6 +345,17 @@ export function descriptionEbay(description: string, titre: string): string {
   const echap = d.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<p>${echap.replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>")}</p>`.slice(0, 4000);
 }
+// Photos d'un job ou d'un article : objets { type, url } (forme garantie par
+// l'app, cf. src/utils/photos.js) OU chaînes nues (URLs CDN Vinted écrites par
+// la sync du dressing — 06/09 : le T-shirt Adidas de Nico en portait 6). Les
+// deux formes sont lues ; seules les URLs https comptent.
+export function urlsPhotos(photos: unknown): string[] {
+  if (!Array.isArray(photos)) return [];
+  return photos
+    .map((p) => typeof p === "string" ? p : String((p as { url?: unknown })?.url ?? ""))
+    .filter((u) => /^https:\/\//.test(u))
+    .slice(0, 24);
+}
 export function skuPour(inventaireId: number | string): string {
   return `fs-${inventaireId}`.slice(0, 50);
 }
