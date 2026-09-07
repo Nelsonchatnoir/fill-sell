@@ -22,6 +22,7 @@ import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcClePremierCombobox } from "../utils/lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "../utils/categorieGardeFou";
+import { resoudreParMot } from "../utils/categorieParMot";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
@@ -6502,6 +6503,42 @@ export default function ListingPreviewScreen({
           ? "Add your pickup address in Settings → “Leboncoin pickup address” before publishing on Leboncoin or Beebs."
           : "Renseigne ton adresse dans Réglages → « Adresse de remise Leboncoin » avant de publier sur Leboncoin ou Beebs.");
       }
+      // ══ ÉTAPE 2 : LA CATÉGORIE PAR LE MOT, CONTRE NOS ARBRES ══════════════
+      // L'IA a nommé l'objet en français (étape 1). On résout ce nom contre les
+      // FEUILLES RELEVÉES de chaque plateforme, chez nous, sans IA : recherche
+      // texte, instantanée et gratuite. Aucun emoji dans ce chemin — c'est la
+      // sortie de l'intermédiaire qui coûtait « Claviers arrangeurs, synthés »
+      // à une chapka de bébé.
+      //
+      // ⛔ EXACT, OU RIEN. Une seule feuille dont le libellé est EXACTEMENT le
+      //    mot (jetons identiques, pluriels ramenés au singulier), après
+      //    filtrage par le genre de la fiche. Deux feuilles, ou seulement des
+      //    voisines, ne décident RIEN : on garde le chemin de l'icône, et la
+      //    règle n°2 laissera la plateforme trancher si la source est incertaine.
+      //    « bonnet » rend « Bonnets de bain » et « Bonnets de douche » comme
+      //    voisines : c'est précisément ce qu'il ne faut jamais poser.
+      // ⛔ Les feuilles viennent des RELEVÉS (scripts/gen-arbres-feuilles.mjs) :
+      //    l'IA ne peut pas produire une catégorie qui n'existe pas chez nous.
+      // Index chargés en import() dynamique, une seule fois, ici — au clic
+      // Publier, jamais au démarrage de l'app.
+      const categorieParMotParPf = {};
+      if (activeAiObjet) {
+        await Promise.all(plateformesAPublier.map(async (platform) => {
+          const pfE = edited[platform]?.platform_fields ?? {};
+          const genrePf = pfE.genre || pfE.univers || autoGenre || "";
+          try {
+            const r = await resoudreParMot(activeAiObjet, platform, { genre: genrePf });
+            if (r.certitude === "exact") categorieParMotParPf[platform] = r;
+          } catch (e) {
+            console.warn(`[publish] ${platform} — arbre indisponible pour « ${activeAiObjet} » :`, e?.message ?? e);
+          }
+        }));
+        const poses = Object.keys(categorieParMotParPf);
+        console.log(
+          `[publish] mot « ${activeAiObjet} » → catégorie EXACTE sur ${poses.length ? poses.join(", ") : "aucune plateforme"}`
+        );
+      }
+
       const rows = plateformesAPublier.map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
         // Photos du JOB, par plateforme. Identiques à processedPhotos partout —
@@ -6581,11 +6618,19 @@ export default function ListingPreviewScreen({
         if (categorieIncertaine({ sourceFinale: garde.source, catalogId: catalogVinted })) {
           pf.categorie_incertaine = true;
         }
+        // La catégorie tirée du MOT prime sur celle tirée de l'icône : elle
+        // vient du libellé exact d'une feuille relevée, pas d'un emoji.
+        const parMot = categorieParMotParPf[platform] ?? null;
+        if (parMot) {
+          pf.categorie_source = "mot_objet_arbre";
+          pf.categorie_par_mot = { mot: activeAiObjet, chemin: parMot.chemin, id: parMot.id ?? null };
+          delete pf.categorie_incertaine;
+        }
         if (platform === "leboncoin") {
           // La catégorie Leboncoin découle de l'icône DÉJÀ passée au
           // garde-fou (bloc commun ci-dessus) — plus aucun calcul local.
           const icon = iconeArticle;
-          const lbcPath = getLbcCategoryPath(icon);
+          const lbcPath = parMot?.chemin ?? getLbcCategoryPath(icon);
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
           if (lbcAddress) pf.adresse = lbcAddress;
           // Nom historique du même drapeau, conservé pour les extensions
@@ -6709,7 +6754,7 @@ export default function ListingPreviewScreen({
           if (autoGenre && vintedGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")) pf.genre = autoGenre;
           // Titre de la copie joint (2026-08-08, B3b) : il affine la feuille
           // enfant (body → Bodies, manteau → Manteaux) — même chemin sinon.
-          const categoryPath = getVintedCategoryPath(icon, pf.genre, edited[platform]?.title ?? "");
+          const categoryPath = parMot?.chemin ?? getVintedCategoryPath(icon, pf.genre, edited[platform]?.title ?? "");
           if (categoryPath) pf.categoryPath = categoryPath;
           // Flag statique lu par l'extension : permet un message d'échec
           // précis ("genre requis") quand un job sans categoryPath vient d'un
@@ -6750,8 +6795,8 @@ export default function ListingPreviewScreen({
           // déjà un rayon (🌸+Mixte = Parfums mixtes, rayon réel).
           if (autoGenre && ebayGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")
               && !getEbayCategoryId(icon, pf.genre)) pf.genre = autoGenre;
-          const categoryPath = getEbayCategoryPath(icon, pf.genre);
-          const categoryId = getEbayCategoryId(icon, pf.genre);
+          const categoryPath = parMot?.chemin ?? getEbayCategoryPath(icon, pf.genre);
+          const categoryId = parMot?.id ?? getEbayCategoryId(icon, pf.genre);
           if (categoryPath) pf.ebayCategoryPath = categoryPath;
           if (categoryId) pf.ebayCategoryId = categoryId;
           if (ebayGenreRequired(icon)) pf.ebayGenreRequired = true;
@@ -6782,7 +6827,7 @@ export default function ListingPreviewScreen({
           // sacs…) — sans genre, AUCUNE montre ne pouvait jamais partir
           // (pré-check extension → failed à 100 %, cas réel Casio 2026-07-09).
           if (autoGenre && beebsGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")) pf.genre = autoGenre;
-          const categoryPath = getBeebsCategoryPath(icon, pf.genre);
+          const categoryPath = parMot?.chemin ?? getBeebsCategoryPath(icon, pf.genre);
           if (categoryPath) pf.beebsCategoryPath = categoryPath;
           if (beebsGenreRequired(icon)) pf.beebsGenreRequired = true;
           if (lbcAddress) pf.adresse = lbcAddress;
