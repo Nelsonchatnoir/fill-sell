@@ -15,7 +15,8 @@
     "selftest:texte-comparable": "node scripts/texte-comparable-selftest.mjs",
     "selftest:support-non-livre": "node scripts/support-non-livre-selftest.mjs",
     "selftest:attente-boutique": "node scripts/attente-boutique-selftest.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "selftest:categorie-garde-fou": "node scripts/categorie-garde-fou-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

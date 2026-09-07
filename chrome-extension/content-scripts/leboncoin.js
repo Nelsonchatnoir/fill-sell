@@ -1283,7 +1283,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
 
   const [root, leaf] = fields.lbcCategoryPath;
   relayerEtape("categorie");
-  await selectCategory(root, leaf);
+  await selectCategory(root, leaf, { incertaine: fields.lbcCategorieIncertaine === true, warnings });
 
   // ── Étape 2 : photos + critères ──────────────────────────────────────────
   // ⚠️ WIZARD PAGINÉ (relevé live 2026-07-19, cas réel Medik8 sur Divers >
@@ -1738,9 +1738,38 @@ function messagesErreurVisibles() {
 // feuille mappée → un seul clic ; 2) sinon sélecteur manuel 2 panneaux ;
 // 3) sinon erreur listant ce que Leboncoin affiche (même philosophie que le
 // selectCategory Vinted : l'erreur du job sert de relevé correctif).
-async function selectCategory(root, leaf) {
+async function selectCategory(root, leaf, { incertaine = false, warnings = [] } = {}) {
   // Les suggestions arrivent en asynchrone après la frappe du titre.
   await sleep(1500);
+
+  // ── CATÉGORIE INCERTAINE : Leboncoin sait mieux (2026-09-07, job c324b5ee) ─
+  // L'app pose ce drapeau quand notre catégorie n'est qu'une SUPPOSITION de
+  // l'IA (aucun mot-objet dans le titre, aucun catalogue Vinted pour trancher).
+  // Leboncoin, lui, déduit une catégorie du titre et l'affiche en suggestion :
+  // sur « Ensemble thermique d'intérieur », il proposait « Mode > Vêtements »
+  // pendant que nous partions en Électroménager. Dans ce cas précis, et
+  // seulement dans ce cas, sa suggestion prime sur notre supposition.
+  // ⛔ Jamais quand notre catégorie est confirmée (mot-objet, catalogue Vinted,
+  // garde-fou) : l'app ne pose alors pas le drapeau.
+  if (incertaine) {
+    const premiere = document.querySelector('input[type="radio"]');
+    const etiquette = premiere?.closest("li, label, div")?.textContent?.trim() ?? "";
+    // Une suggestion, et une seule vérité : on ne clique que si Leboncoin en
+    // affiche vraiment une (l'écran « Type d'annonce » porte aussi des radios,
+    // mais il n'apparaît qu'APRÈS la catégorie — ici la page n'a que celles-ci).
+    if (premiere && etiquette && !/^offre|^demande/i.test(etiquette)) {
+      await humanPause();
+      premiere.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await humanPause();
+      const note = `catégorie: notre valeur « ${root} > ${leaf} » n'était qu'une supposition (aucun mot-objet, aucun catalogue Vinted) — suggestion Leboncoin « ${etiquette} » retenue`;
+      console.log(`[leboncoin] ${note}`);
+      warnings.push(note);
+      return;
+    }
+    const note = `catégorie: supposition « ${root} > ${leaf} » conservée — Leboncoin n'a proposé aucune suggestion`;
+    console.log(`[leboncoin] ${note}`);
+    warnings.push(note);
+  }
 
   const suggestionRadio = findSuggestionRadio(root, leaf);
   if (suggestionRadio) {

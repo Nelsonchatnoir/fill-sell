@@ -21,6 +21,7 @@ import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCateg
 import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcClePremierCombobox } from "../utils/lbcMaisonJardin";
+import { gardeFouCategorieLbc, categorieIncertaine } from "../utils/categorieGardeFou";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
@@ -359,7 +360,19 @@ const LBC_POIDS_PAR_FORMAT = {
 // hors de ce set est ignorée → fallback detectObjectIcon.
 const VALID_OBJECT_ICONS = new Set(ALL_OBJECT_ICONS);
 
-function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
+// L'icône SEULE (tous les appelants historiques) — la source de l'icône, elle,
+// se lit par resolveArticleIconDetail. Deux fonctions, un seul corps : elles ne
+// peuvent pas diverger (leçon du 07/09, lecture/écriture désaccordées).
+function resolveArticleIcon(args) {
+  return resolveArticleIconDetail(args).icon;
+}
+
+// D'OÙ VIENT L'ICÔNE (2026-09-07) — le job doit pouvoir le dire après coup.
+// Sans cette trace, on ne pouvait pas répondre à « quelle icône Haiku a-t-il
+// rendue ? » sur le job c324b5ee : la catégorie était fausse et sa cause
+// invérifiable. Valeurs : famille_livres | mot_cle | ia | detection |
+// pointure | defaut.
+function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null }) {
   // ── FAMILLE LENS SOUVERAINE — LIVRES (2026-09-02, cas Delavier) ───────────
   // « La Méthode Delavier de MUSCULATION » : le mot-clé « musculation »
   // accrochait l'icône sport → catégorie LBC « Loisirs > Sport & Plein air »
@@ -395,7 +408,7 @@ function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
   // ⛔ Le prédicat ne connaît QUE des supports, jamais des sujets, et se
   // désarme si le texte dit « livre » : le cas Delavier reste couvert.
   if ((familleFiche === "livres_medias" || /^livres?$/i.test(categorieFiche))
-      && !estSupportNonLivre(frTitle, frDesc)) return "📚";
+      && !estSupportNonLivre(frTitle, frDesc)) return { icon: "📚", source: "famille_livres" };
   // La marque et la taille sont des signaux : "New Balance" + "EU 44" disent
   // "chaussure" là où le titre marketing ne le dit pas.
   const marque = pf?.marque ?? initialListing?.marque ?? "";
@@ -411,7 +424,7 @@ function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
   // L'icône IA ne sert donc plus qu'à COMBLER les cas SANS mot-clé (detect
   // renvoie null) — c'est le rôle « filet » pour lequel elle avait été ajoutée.
   const keywordIcon = detectObjectIconKeyword(frTitle, `${frDesc} ${marque}`);
-  if (keywordIcon) return keywordIcon;
+  if (keywordIcon) return { icon: keywordIcon, source: "mot_cle" };
   // Aucun mot-objet reconnu → on fait confiance à l'IA (si valide), exactement
   // là où detectObjectIcon retomberait sur un simple défaut de catégorie.
   // ⚠️ SAUF 📦 (2026-08-15, « Cendrier vintage Noilly Prat », type Maison) :
@@ -420,19 +433,19 @@ function resolveArticleIcon({ initialListing, edited, pf, aiIcon = null }) {
   // informatif — et l'article partait sans catégorie LBC. Un 📦 de l'IA ne
   // porte aucune information : on laisse detectObjectIcon jouer le défaut de
   // type, et 📦 ne revient qu'en tout dernier ressort (type Autre).
-  if (aiIcon && aiIcon !== "📦" && VALID_OBJECT_ICONS.has(aiIcon)) return aiIcon;
+  if (aiIcon && aiIcon !== "📦" && VALID_OBJECT_ICONS.has(aiIcon)) return { icon: aiIcon, source: "ia" };
 
   const icon = detectObjectIcon(frTitle, `${frDesc} ${marque}`, categorie);
-  if (icon !== "📦") return icon; // 📦 = CAT_DEFAULT_ICONS['Autre'] (shared.js)
+  if (icon !== "📦") return { icon, source: "detection" }; // 📦 = CAT_DEFAULT_ICONS['Autre'] (shared.js)
 
   // Dernier recours UNIQUEMENT (l'icône est déjà le défaut « Autre », on ne peut
   // rien dégrader) : une POINTURE trahit une chaussure. Volontairement borné aux
   // libellés de pointure (EU/UK/US/« pointure ») — un simple "44" ne suffit pas,
   // une veste peut être taille 44.
   if (/(?:pointure|\b(?:eu|uk|us)\s?(?:3[5-9]|4[0-9]|50)\b)/i.test(`${taille} ${frTitle}`)) {
-    return "👟";
+    return { icon: "👟", source: "pointure" };
   }
-  return icon;
+  return { icon, source: "defaut" };
 }
 
 // Vêtements & chaussures de SPORT (2026-07-12) — utilisé UNIQUEMENT à l'intérieur
@@ -5330,10 +5343,23 @@ export default function ListingPreviewScreen({
     for (const platform of ["vinted", "leboncoin", "beebs"]) {
       if (!selected.has(platform) || !edited[platform]) continue;
       const pf = edited[platform].platform_fields ?? {};
-      const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
+      const det = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon });
+      const icon = det.icon;
       let path = null;
       if (platform === "vinted") path = getVintedCategoryPath(icon, pf.genre, edited[platform]?.title ?? "");
-      if (platform === "leboncoin") path = getLbcCategoryPath(icon);
+      if (platform === "leboncoin") {
+        // MÊME garde-fou qu'à l'insert (2026-09-07) : les requis affichés à
+        // l'écran doivent être ceux de la catégorie RÉELLEMENT publiée. Sans
+        // ça, l'encart rouge réclamerait un « Produit » d'électroménager sur
+        // un vêtement que le job enverra, lui, en Mode > Vêtements.
+        path = gardeFouCategorieLbc({
+          cheminCalcule: getLbcCategoryPath(icon),
+          catalogId: initialListing?.vinted_catalog_id ?? null,
+          genre: pf.univers || pf.genre || edited.vinted?.platform_fields?.genre || "",
+          taille: pf.taille || initialListing?.taille || "",
+          sourceIcone: det.source,
+        }).chemin;
+      }
       if (platform === "beebs") path = getBeebsCategoryPath(icon, pf.genre);
       // MÊME clé que categoryKeyOf de l'extension (background.js) : chemin
       // joint par " > " — c'est elle qui écrit, nous qui lisons.
@@ -6413,10 +6439,43 @@ export default function ListingPreviewScreen({
         }
         sanitizeJobFields(platform, pf);
         if (platform === "leboncoin") {
-          const icon = resolveArticleIcon({ initialListing, edited, pf, aiIcon: activeAiIcon });
-          const lbcPath = getLbcCategoryPath(icon);
+          // ── GARDE-FOU DE CATÉGORIE (2026-09-07, job c324b5ee) ────────────
+          // Le catalogue Vinted d'origine fait AUTORITÉ sur la famille : un
+          // article que Vinted range en vêtement/chaussure/accessoire ne peut
+          // pas sortir du rayon Mode de Leboncoin, quoi qu'en dise l'icône de
+          // l'IA. À défaut de catalog_id, les signaux de la fiche (genre,
+          // taille) refusent qu'une icône DEVINÉE par l'IA seule envoie
+          // l'article dans un rayon d'objets. Tout est tracé dans le job.
+          const detIcone = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon });
+          const catalogVinted = initialListing?.vinted_catalog_id ?? null;
+          const garde = gardeFouCategorieLbc({
+            cheminCalcule: getLbcCategoryPath(detIcone.icon),
+            catalogId: catalogVinted,
+            genre: pf.univers || pf.genre || edited.vinted?.platform_fields?.genre || "",
+            taille: pf.taille || sharedFields.taille || initialListing?.taille || "",
+            sourceIcone: detIcone.source,
+          });
+          const icon = garde.icone ?? detIcone.icon;
+          const lbcPath = garde.chemin;
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
           if (lbcAddress) pf.adresse = lbcAddress;
+          // Traçabilité de la catégorie — on doit pouvoir répondre, un job en
+          // main, à « d'où venait cette catégorie ? » (impossible avant le
+          // 07/09 : l'icône de l'IA n'était persistée nulle part).
+          pf.categorie_icone = icon;
+          pf.categorie_icone_ia = activeAiIcon ?? null;
+          pf.categorie_source = garde.source;
+          if (garde.corrige) {
+            pf.categorie_garde_fou = { motif: garde.motif, icone_ecartee: detIcone.icon, source_icone: detIcone.source };
+            console.warn(`[publish] Leboncoin — catégorie corrigée par le garde-fou : ${garde.motif}`);
+          }
+          // Simple supposition de l'IA que rien ne confirme : la 0.6.21
+          // préfèrera la suggestion que Leboncoin affiche lui-même à partir du
+          // titre. Les versions ≤ 0.6.20 ignorent ce drapeau et utilisent le
+          // chemin, qui reste posé — aucun job ne part sans catégorie.
+          if (categorieIncertaine({ sourceFinale: garde.source, catalogId: catalogVinted })) {
+            pf.lbcCategorieIncertaine = true;
+          }
           // ── Miroir de compatibilité du slot par clé (2026-09-07) ─────────
           // L'app écrit chaque critère Univers/Type/Produit LBC dans
           // lbcAspects.<clé for=> (cf. genericKnownSource). Les extensions

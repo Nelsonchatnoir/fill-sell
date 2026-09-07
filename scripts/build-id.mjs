@@ -1208,7 +1208,21 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // paquet par Google — la bannière ne doit demander que ce qui est installable.
 // Bumpé DANS LE MÊME COMMIT que le bump du manifest, GIT_COMMITTER_DATE
 // épinglée sur cette constante.
-export const EXTENSION_LAST_COMMIT = '2026-09-06T16:34:02Z';
+// 2026-09-07T07:38:53Z = 57472de (0.6.21) : un slot PAR CLÉ pour les critères
+// Univers/Type/Produit de Leboncoin (fin de l'écrasement mutuel sur les 6
+// feuilles Maison & Jardin), un repli générique qui ne remplace plus jamais un
+// pré-rempli précis de la plateforme, et un needs_user Beebs qui dit si la
+// fiche est vide ou si le remplissage a échoué. Puis le garde-fou de catégorie
+// (suggestion Leboncoin quand notre catégorie n'est qu'une supposition).
+// ⚠️ VERSION BUMPÉE À 0.6.21 le 07/09 : la 0.6.20 est EN REVIEW au Chrome Web
+// Store depuis 00:35 et ne contient AUCUN de ces correctifs. Or le build web
+// rezippe chrome-extension/ dans dist/fillsell-extension.zip (servi par
+// fillsell.app) : sans ce bump, deux extensions DIFFÉRENTES auraient porté le
+// même numéro, et handler_build aurait menti sur qui a traité quoi.
+// EXTENSION_MIN_BUILD reste sur la 0.4.5 du 26/08 : ni la 0.6.20 (en review)
+// ni la 0.6.21 ne sont acceptées par le Chrome Web Store — on ne réclame
+// jamais au parc une version que personne ne peut installer.
+export const EXTENSION_LAST_COMMIT = '2026-09-07T07:38:53Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

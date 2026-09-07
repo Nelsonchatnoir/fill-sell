@@ -8196,6 +8196,13 @@ const StockTab = memo(function StockTab({
             titre:       publishItem.title  ?? publishItem.titre  ?? null,
             description: publishItem.description ?? null,
             categorie:   publishItem.type        ?? null,
+            // Catalogue Vinted d'origine (2026-09-07) : il FAIT AUTORITÉ sur la
+            // famille de l'article — un vêtement selon Vinted ne peut pas partir
+            // en Maison & Jardin chez Leboncoin (garde-fou categorieGardeFou.js,
+            // job c324b5ee). Rempli au clic Publier depuis le détail Vinted
+            // (cf. plus haut) ; absent, le garde-fou retombe sur les signaux de
+            // la fiche, jamais sur un blocage.
+            vinted_catalog_id: publishItem.vinted_catalog_id ?? null,
             marque:      publishItem.marque      ?? null,
             // Prix connu de la ligne inventaire (2026-07-13, job 3d194668) :
             // pré-remplissage SYNCHRONE de la carte — le fallback DB du
