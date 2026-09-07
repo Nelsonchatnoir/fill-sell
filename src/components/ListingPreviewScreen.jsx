@@ -4177,17 +4177,44 @@ export default function ListingPreviewScreen({
   // les photos déjà en ligne (article venant du Stock). On réordonne la source
   // réellement affichée — et pickedFiles DOIT suivre pickedPreviews, c'est lui
   // qui part à l'upload (handleUpload conserve l'ordre du tableau).
+  // ── L'ORDRE DE PUBLICATION VIT DANS processedPhotos (2026-09-07) ──────────
+  // Bug réel : trois photos prises au Lens, remises dans l'ordre au stepper,
+  // publiées dans l'ordre d'ORIGINE — donc une étiquette en couverture.
+  // Cause : le stepper réordonne `photos` (les URLs brutes), mais la
+  // publication lit `processedPhotos` (ce que generate-listing a rendu). Les
+  // deux listes sont alignées index par index à la génération, et RIEN ne les
+  // resynchronisait ensuite : réordonner après la génération ne touchait que
+  // la liste affichée. La première photo est la couverture de l'annonce sur
+  // les quatre plateformes — c'est ce que voient les acheteurs.
+  //
+  // On applique donc la MÊME permutation aux deux listes, et seulement quand
+  // elles sont alignées (même longueur). Le `type` est RETIRÉ des entrées
+  // déplacées : il est purement positionnel (typePhotoParDefaut : « original »
+  // pour la 1re, « photo_<i> » ensuite) et entreesPhotos le recalcule à
+  // l'insert — le garder ferait porter « photo_2 » à la couverture.
+  function sansType(entree) {
+    if (!entree || typeof entree !== "object") return entree;
+    const { type: _type, ...reste } = entree;
+    return reste;
+  }
+  function permuterPhotos(from, to) {
+    setPhotos(prev => moveItem(prev, from, to));
+    setProcessedPhotos(prev => (Array.isArray(prev) && prev.length === photos.length
+      ? moveItem(prev, from, to).map(sansType)
+      : prev));
+  }
+
   function handleReorderPreviews(from, to) {
     if (pickedPreviews.length > 0) {
       setPickedFiles(prev => moveItem(prev, from, to));
       setPickedPreviews(prev => moveItem(prev, from, to));
     } else {
-      setPhotos(prev => moveItem(prev, from, to));
+      permuterPhotos(from, to);
     }
   }
 
   function handleReorderPhotos(from, to) {
-    setPhotos(prev => moveItem(prev, from, to));
+    permuterPhotos(from, to);
   }
 
   // ⚠️ Cette fonction n'avait NI onerror NI délai maximum (2026-09-04) : sur une
@@ -4361,6 +4388,12 @@ export default function ListingPreviewScreen({
   }
 
   function handleRemovePhoto(idx) {
+    // Les deux listes restent alignées index par index (cf. permuterPhotos) :
+    // retirer d'un seul côté les désaligne, et la garde de longueur désarmerait
+    // ensuite le réordonnancement en silence.
+    setProcessedPhotos(prev => (Array.isArray(prev) && prev.length === photos.length
+      ? prev.filter((_, i) => i !== idx)
+      : prev));
     setPhotos(prev => prev.filter((_, i) => i !== idx));
   }
 
