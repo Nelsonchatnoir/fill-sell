@@ -1006,8 +1006,52 @@ async function capturerAnnonceVinted(vintedItemId) {
   if (chemin?.length) libelles.categoryPath = chemin;
   else manquants.push("categorie (catalog_id → chemin de libellés)");
 
-  // État — libellé ("Bon état"), jamais déduit du seul status_id.
-  const etat = String(natif?.status ?? "").trim() || String((await lireDtoPublic())?.status ?? "").trim();
+  // ── État — DEUX emplacements, comme la taille (2026-09-07, INCIDENT) ──────
+  // Vinted a RETIRÉ le champ racine `status` du payload du formulaire
+  // d'édition le 07/09 vers 13h25 (heure de Paris). Mesuré en base, sans
+  // ambiguïté : du 28/08 au 06/09, 1 637 captures sur 7 à 14 comptes par jour,
+  // `status` présent à 100 %. Le 07/09 : 80 captures sans `status`, toutes
+  // postérieures à 13h25, sur DEUX comptes. La comparaison des clés du payload
+  // avant/après le montre : 37 clés identiques, `status` en moins, rien de
+  // renommé. Effet : plus aucune source d'état → verdict 'incomplet' → toutes
+  // les republications du parc bloquées (le garde-fou de capture a fait son
+  // travail : 80 annonces intactes, rien de supprimé).
+  // L'état n'a pas disparu : il est passé dans `item_attributes`, sous le code
+  // `condition` — exactement le chemin qu'avait pris la taille le 12/08.
+  // La table id → libellé est RELEVÉE sur nos propres captures, pas devinée :
+  // 3 116 captures portaient ENCORE `status` ET DÉJÀ `item_attributes`, ce qui
+  // donne la correspondance sans aucune ambiguïté (un seul libellé français
+  // par identifiant ; les variantes anglaises sont la langue du compte).
+  //   1 → Neuf sans étiquette (427 captures)   2 → Très bon état (2 191)
+  //   3 → Bon état (271)                       4 → Satisfaisant (36)
+  //   6 → Neuf avec étiquette (191)
+  // ⚠️ Les endpoints de référentiel plausibles ont été testés en direct le
+  // 07/09 : /api/v2/item_upload/conditions, /api/v2/statuses et
+  // /api/v2/item_upload/attributes rendent tous 404. On ne devine pas d'URL
+  // supplémentaire — si Vinted en expose un un jour, il remplacera cette table.
+  // ⚠️ Compte en ANGLAIS : le libellé posé reste le français. Ces comptes
+  // (7 captures sur 3 116) retombent sur le comportement actuel, ils ne sont
+  // pas dégradés.
+  const VINTED_CONDITION_LIBELLES = {
+    1: "Neuf sans étiquette",
+    2: "Très bon état",
+    3: "Bon état",
+    4: "Satisfaisant",
+    6: "Neuf avec étiquette",
+  };
+  let etat = String(natif?.status ?? "").trim();
+  if (!etat) {
+    const condId = attributVintedIds(natif, "condition")[0] ?? null;
+    const libelleCond = condId != null ? VINTED_CONDITION_LIBELLES[Number(condId)] : null;
+    if (libelleCond) {
+      etat = libelleCond;
+      diagnostics.push({
+        cle: "etat",
+        note: `champ racine 'status' absent du payload (retiré par Vinted le 07/09) — résolu par item_attributes[condition]=${condId} → « ${libelleCond} »`,
+      });
+    }
+  }
+  if (!etat) etat = String((await lireDtoPublic())?.status ?? "").trim();
   if (etat) libelles.etat = etat;
   else manquants.push("etat (libellé d'état absent du payload)");
 
