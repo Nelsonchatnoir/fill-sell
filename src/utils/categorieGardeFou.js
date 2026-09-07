@@ -1,40 +1,78 @@
 // ═══════════════════════════════════════════════════════════════════════════
-// GARDE-FOU DE CATÉGORIE (2026-09-07, demande Nico après le job c324b5ee)
+// GARDE-FOU DE CATÉGORIE — LES QUATRE PLATEFORMES (2026-09-07)
 // ═══════════════════════════════════════════════════════════════════════════
-// « Ensemble thermique d'intérieur S » — un vêtement de josephinecerni — est
-// parti sur Leboncoin en Maison & Jardin > Électroménager. Chaîne complète :
-// detectObjectIcon ne trouve AUCUN mot-objet dans le titre (« ensemble » ne
-// compte que sur un article bébé, « thermique » n'est dans aucune règle) →
-// resolveArticleIcon fait confiance au category_icon rendu par Haiku (une
-// icône de chauffage) → lbcCategories suit → deux critères d'électroménager à
-// remplir sur un vêtement. Leboncoin, lui, suggérait « Mode > Vêtements ».
+// Première version (matin du 07/09, job c324b5ee) : « Ensemble thermique
+// d'intérieur S », un VÊTEMENT, parti sur Leboncoin en Maison & Jardin >
+// Électroménager. Elle ne protégeait QUE Leboncoin, et corrigeait le CHEMIN
+// Leboncoin.
 //
-// DEUX AUTORITÉS, dans cet ordre :
+// Le soir même, ornellaracano : « Lot de 4 taies d'oreiller coton beige et
+// rose ». Relevé en base sur les 4 jobs (16h34) :
+//   · vinted    → Femmes > Beauté > Soins du visage            needs_user
+//   · beebs     → Hygiène et beauté > Soins visage et corps     needs_user
+//   · ebay      → Beauté > Soins de la peau > Hydratants (21205) needs_user
+//   · leboncoin → Divers > Autres                               PUBLIÉ
+// Une seule icône devinée par Haiku (🧴) pilotait les QUATRE arbres ; un seul
+// avait un filet — et ce filet n'a même pas joué : Leboncoin est passé parce
+// que 🧴 y tombe dans le fourre-tout « Divers > Autres », qui n'exige rien.
+//
+// ⚠️ ET L'ÉTAT NE MANQUAIT PAS : les 4 jobs portaient `etat = "Très bon état"`.
+// Le needs_user « État exigé » était une CONSÉQUENCE du rayon : les rayons
+// beauté de Vinted, Beebs et eBay n'acceptent qu'un état « neuf / non ouvert ».
+// Une mauvaise catégorie se paie donc en publication BLOQUÉE, pas seulement en
+// annonce mal rangée.
+//
+// D'OÙ LA RÈGLE : LE GARDE-FOU CORRIGE L'ICÔNE, PAS UN CHEMIN.
+// L'icône est le pivot unique dont dérivent les quatre catégories
+// (getLbcCategoryPath, getVintedCategoryPath, getEbayCategoryPath,
+// getBeebsCategoryPath). La corriger une fois protège les quatre plateformes,
+// et rend structurellement impossible qu'une plateforme reçoive un filet que
+// les autres n'ont pas.
+//
+// TROIS AUTORITÉS, dans cet ordre :
 //   1. Le catalog_id Vinted d'origine. Quand Vinted dit vêtement / chaussure /
-//      accessoire, la catégorie Leboncoin ne peut JAMAIS sortir de Mode —
+//      accessoire, l'article ne peut sortir du textile sur AUCUNE plateforme —
 //      l'icône de l'IA ne peut pas contredire le catalogue de la plateforme
-//      qui héberge déjà l'annonce (table relevée en direct, cf.
-//      vintedCatalogMode.js).
-//   2. À défaut de catalog_id : les SIGNAUX DE LA FICHE (genre humain, taille
-//      de vêtement). Une icône devinée par l'IA SEULE — sans mot-objet — ne
-//      peut pas envoyer dans un rayon d'OBJETS un article qui porte un genre
-//      ou une taille de vêtement. Ce garde-fou ne se déclenche jamais quand un
-//      mot-objet a parlé (« bouilloire », « aspirateur » : la règle mot-clé est
-//      auditée, elle fait foi) ni sur le rayon Sport (un maillot de foot a sa
-//      place dans Loisirs > Sport & Plein air).
+//      qui héberge déjà l'annonce (table relevée en direct, vintedCatalogMode).
+//   2. Les SIGNAUX DE LA FICHE (genre humain, taille de vêtement) : une icône
+//      devinée par l'IA SEULE — sans mot-objet — ne peut pas envoyer dans un
+//      rayon d'OBJETS un article qui porte un genre ou une taille de vêtement.
+//   3. Le RAYON BEAUTÉ, ajouté le 07/09 au soir. Symétrique de la 2 : une icône
+//      devinée par l'IA seule ne peut pas faire ENTRER dans le rayon beauté un
+//      article dont notre propre fiche dit qu'il n'en est pas un. Mesuré le
+//      11/08 sur 4 881 lignes d'inventaire : 205 tombent sur une icône
+//      cosmétique et 166 (81 %) n'en sont pas — c'est, de loin, la famille la
+//      plus sur-déclenchée du système, et celle dont l'erreur coûte le plus
+//      cher (publication bloquée, cf. ci-dessus).
 //
-// Ce module ne DEVINE rien : il refuse une famille, il n'en invente pas.
+// Aucune de ces autorités ne DEVINE : chacune REFUSE une famille au nom d'une
+// source certaine, elle n'en invente aucune. Un mot-objet audité
+// (« bouilloire ») n'est JAMAIS écarté : la règle mot-clé fait foi.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { brancheModeDuCatalogue, LBC_FEUILLE_PAR_BRANCHE, ICONE_PAR_BRANCHE } from "./vintedCatalogMode";
+import { brancheModeDuCatalogue, ICONE_PAR_BRANCHE, LBC_FEUILLE_PAR_BRANCHE } from "./vintedCatalogMode";
+import { getLbcCategoryPath } from "./lbcCategories";
 
-// Racines Leboncoin qui ne peuvent pas contenir un vêtement porté (relevé de
-// l'arbre LBC, cf. lbcCategories.js). « Famille » en est ABSENTE : c'est là que
-// vivent les vêtements bébé. « Loisirs » aussi : c'est le rayon Sport.
+// L'arbre Leboncoin sert ici de TAXONOMIE DE L'ICÔNE — pas de catégorie de
+// publication. C'est le seul relevé complet qui range chaque icône du système
+// dans une famille ; la question posée est « cette icône désigne-t-elle un
+// objet ou un vêtement ? », et sa réponse ne dépend pas de la plateforme visée.
+// « Famille » est ABSENTE de la liste : c'est là que vivent les vêtements bébé.
+// « Loisirs » aussi : c'est le rayon Sport (un maillot de foot y a sa place).
 const RACINES_OBJET_LBC = new Set([
   "Maison & Jardin", "Électronique", "Multimédia", "Divers", "Matériel professionnel",
   "Véhicules", "Immobilier", "Emploi", "Services", "Animaux", "Locations de vacances",
 ]);
+
+// Les quatre icônes du rayon beauté (cf. ICON_LEGEND de shared.js). 🪒 en est
+// EXCLU : un rasoir électrique est un APPAREIL, rangé en électroménager par
+// l'arbre Leboncoin, et sa catégorie n'a jamais bloqué personne.
+const ICONES_COSMETIQUES = new Set(["🌸", "💄", "💅", "🧴"]);
+
+// Ce que la FICHE dit d'elle-même quand elle parle de beauté : le type produit
+// (detectType / stepper, colonne inventaire.type) et la famille fermée du
+// schéma Lens. Une fiche qui dit « Beauté » garde évidemment son rayon beauté.
+const TYPE_BEAUTE = /beaut|cosm[ée]t|parfum|maquillage|hygi[èe]ne/i;
 
 const GENRES_MODE = /^(femme|homme|fille|gar[çc]on|b[ée]b[ée]|enfant|mixte|unisexe)$/i;
 
@@ -65,36 +103,46 @@ function estTailleMode(taille) {
   return true;
 }
 
+/** La racine Leboncoin d'une icône — sa FAMILLE, indépendamment de la plateforme visée. */
+function racineDeLIcone(icone) {
+  return getLbcCategoryPath(icone)?.[0] ?? null;
+}
+
 /**
- * Applique les deux autorités au chemin Leboncoin calculé par l'icône.
+ * Le garde-fou, appliqué à l'ICÔNE — donc aux quatre plateformes à la fois.
  *
  * @param {object} p
- * @param {string[]|null} p.cheminCalcule  [racine, feuille] issu de l'icône, ou null
+ * @param {string|null} p.icone       icône résolue (resolveArticleIconDetail)
+ * @param {string} p.sourceIcone      "mot_cle" | "ia" | "famille_livres" | "detection" | "pointure" | "defaut"
  * @param {number|string|null} p.catalogId  inventaire.vinted_catalog_id
- * @param {string} p.genre                  genre de la copie (univers/genre)
- * @param {string} p.taille                 taille de la copie
- * @param {string} p.sourceIcone            "mot_cle" | "ia" | "famille_livres" | "type" | "defaut"
- * @returns {{chemin: string[]|null, source: string, corrige: boolean, motif: string|null, icone: string|null}}
- *   `source` : d'où vient la catégorie FINALE (catalog_vinted | signaux_fiche |
- *   la sourceIcone d'origine). `icone` : icône imposée par la correction, sinon null.
+ * @param {string} p.genre            genre de la fiche (genre / univers)
+ * @param {string} p.taille           taille de la fiche
+ * @param {string} p.typeFiche        type produit de la fiche (inventaire.type : Maison, Beauté…)
+ * @param {string} p.familleFiche     famille fermée du schéma Lens, si présente
+ * @param {string|null} p.iconeSansIa ce que la détection rendrait SANS l'icône
+ *                                    de l'IA (défaut de type) — seule valeur de
+ *                                    repli acceptée par l'autorité 3
+ * @returns {{icone: string|null, source: string, corrige: boolean, motif: string|null, iconeEcartee: string|null}}
  */
-export function gardeFouCategorieLbc({ cheminCalcule, catalogId, genre, taille, sourceIcone }) {
-  const chemin = Array.isArray(cheminCalcule) && cheminCalcule.length ? cheminCalcule : null;
-  const racine = chemin?.[0] ?? null;
+export function gardeFouCategorie({
+  icone, sourceIcone, catalogId, genre, taille,
+  typeFiche = "", familleFiche = "", iconeSansIa = null,
+}) {
+  const racine = racineDeLIcone(icone);
 
   // ── AUTORITÉ 1 : le catalogue Vinted d'origine ──────────────────────────
   const branche = brancheModeDuCatalogue(catalogId);
   if (branche) {
     if (racine === "Mode") {
-      return { chemin, source: "catalog_vinted", corrige: false, motif: null, icone: null };
+      return { icone, source: "catalog_vinted", corrige: false, motif: null, iconeEcartee: null };
     }
     return {
-      chemin: LBC_FEUILLE_PAR_BRANCHE[branche],
+      icone: ICONE_PAR_BRANCHE[branche] ?? icone,
       source: "catalog_vinted",
       corrige: true,
       motif: `Vinted range cet article en ${branche.replace("_", " / ")} (catalog_id ${catalogId})`
-        + (chemin ? ` — « ${chemin.join(" > ")} » écarté` : ""),
-      icone: ICONE_PAR_BRANCHE[branche] ?? null,
+        + (icone ? ` — l'icône « ${icone} » est écartée` : ""),
+      iconeEcartee: icone ?? null,
     };
   }
 
@@ -106,17 +154,44 @@ export function gardeFouCategorieLbc({ cheminCalcule, catalogId, genre, taille, 
       const signaux = [genreMode ? `genre « ${String(genre).trim()} »` : null,
                        tailleMode ? `taille « ${String(taille).trim()} »` : null].filter(Boolean).join(" et ");
       return {
-        chemin: LBC_FEUILLE_PAR_BRANCHE.vetements,
+        icone: ICONE_PAR_BRANCHE.vetements,
         source: "signaux_fiche",
         corrige: true,
         motif: `aucun mot-objet dans le titre : l'icône venait de l'IA seule, et l'article porte ${signaux}`
-          + ` — « ${chemin.join(" > ")} » écarté`,
-        icone: ICONE_PAR_BRANCHE.vetements,
+          + ` — l'icône « ${icone} » est écartée`,
+        iconeEcartee: icone ?? null,
       };
     }
   }
 
-  return { chemin, source: sourceIcone, corrige: false, motif: null, icone: null };
+  // ── AUTORITÉ 3 : on n'ENTRE pas dans le rayon beauté sur une supposition ──
+  // Symétrique de l'autorité 2. Ne se déclenche que si TOUT est réuni :
+  // l'icône vient de l'IA SEULE, elle est cosmétique, la fiche dit
+  // explicitement autre chose, et il existe un repli qui n'est pas de l'IA.
+  // Sans ce repli, on ne corrige PAS : refuser sans savoir quoi mettre à la
+  // place serait deviner, et un article sans catégorie ne part nulle part.
+  if (sourceIcone === "ia" && ICONES_COSMETIQUES.has(icone)) {
+    const type = String(typeFiche ?? "").trim();
+    const famille = String(familleFiche ?? "").trim();
+    const ficheParle = Boolean(type || famille);
+    const ficheDitBeaute = TYPE_BEAUTE.test(type) || TYPE_BEAUTE.test(famille);
+    const repli = iconeSansIa && iconeSansIa !== icone && !ICONES_COSMETIQUES.has(iconeSansIa)
+      ? iconeSansIa : null;
+    if (ficheParle && !ficheDitBeaute && repli) {
+      return {
+        icone: repli,
+        source: "signaux_fiche",
+        corrige: true,
+        motif: "aucun mot-objet dans le titre : le rayon beauté venait de l'IA seule, et la fiche dit "
+          + (type ? `« ${type} »` : `famille « ${famille} »`)
+          + ` — l'icône « ${icone} » est écartée (les rayons beauté de Vinted, Beebs et eBay`
+          + " n'acceptent qu'un état neuf : l'article y serait bloqué)",
+        iconeEcartee: icone,
+      };
+    }
+  }
+
+  return { icone, source: sourceIcone, corrige: false, motif: null, iconeEcartee: null };
 }
 
 /**
@@ -129,4 +204,7 @@ export function categorieIncertaine({ sourceFinale, catalogId }) {
   return sourceFinale === "ia" && !brancheModeDuCatalogue(catalogId);
 }
 
-export const _internes = { estTailleMode, RACINES_OBJET_LBC };
+export const _internes = {
+  estTailleMode, racineDeLIcone,
+  RACINES_OBJET_LBC, ICONES_COSMETIQUES, LBC_FEUILLE_PAR_BRANCHE,
+};

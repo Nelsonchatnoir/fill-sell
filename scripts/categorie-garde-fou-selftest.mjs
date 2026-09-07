@@ -31,13 +31,15 @@ const check = (nom, ok, extra = "") => {
 const tmps = [];
 function copieImportable(rel, nomTmp) {
   const src = fs.readFileSync(join(ROOT, rel), "utf8")
-    .replace(/from "\.\/vintedCatalogMode"/g, 'from "./.vintedCatalogMode.selftest.tmp.mjs"');
+    .replace(/from "\.\/vintedCatalogMode"/g, 'from "./.vintedCatalogMode.selftest.tmp.mjs"')
+    .replace(/from "\.\/lbcCategories"/g, 'from "./.lbcCategories.selftest.tmp.mjs"');
   const p = join(ROOT, "scripts", nomTmp);
   fs.writeFileSync(p, src);
   tmps.push(p);
   return p;
 }
 copieImportable("src/utils/vintedCatalogMode.js", ".vintedCatalogMode.selftest.tmp.mjs");
+copieImportable("src/utils/lbcCategories.js", ".lbcCategories.selftest.tmp.mjs");
 const pGarde = copieImportable("src/utils/categorieGardeFou.js", ".categorieGardeFou.selftest.tmp.mjs");
 const mode = await import(pathToFileURL(join(ROOT, "scripts", ".vintedCatalogMode.selftest.tmp.mjs")).href);
 const garde = await import(pathToFileURL(pGarde).href);
@@ -60,51 +62,70 @@ for (const [id, nom] of [[1918, "Maison"], [2994, "Électronique"], [2309, "Livr
 }
 check("identifiant absurde → null", mode.brancheModeDuCatalogue("x") === null && mode.brancheModeDuCatalogue(0) === null);
 
-console.log("2. Garde-fou :");
+console.log("2. Garde-fou — il corrige l'ICÔNE, donc les QUATRE plateformes :");
+// Chaque cas donne l'icône d'entrée ; l'attendu est l'icône de SORTIE. Une
+// icône juste vaut une catégorie juste sur les quatre arbres à la fois.
 const cas = [
-  ["cas fondateur c324b5ee (IA seule + genre Femme)",
-   { cheminCalcule: ["Maison & Jardin", "Électroménager"], catalogId: null, genre: "Femme", taille: "", sourceIcone: "ia" },
-   { corrige: true, chemin: "Mode > Vêtements", source: "signaux_fiche" }],
+  ["cas fondateur c324b5ee (icône IA de chauffage + genre Femme)",
+   { icone: "🌡️", sourceIcone: "ia", catalogId: null, genre: "Femme", taille: "" },
+   { corrige: true, icone: "👕", source: "signaux_fiche" }],
   ["même article, signal TAILLE seul",
-   { cheminCalcule: ["Maison & Jardin", "Électroménager"], catalogId: null, genre: "", taille: "S", sourceIcone: "ia" },
-   { corrige: true, chemin: "Mode > Vêtements", source: "signaux_fiche" }],
+   { icone: "🌡️", sourceIcone: "ia", catalogId: null, genre: "", taille: "S" },
+   { corrige: true, icone: "👕", source: "signaux_fiche" }],
   ["bouilloire trouvée par MOT-OBJET — jamais écartée",
-   { cheminCalcule: ["Maison & Jardin", "Électroménager"], catalogId: null, genre: "", taille: "", sourceIcone: "mot_cle" },
-   { corrige: false, chemin: "Maison & Jardin > Électroménager", source: "mot_cle" }],
+   { icone: "🫖", sourceIcone: "mot_cle", catalogId: null, genre: "", taille: "" },
+   { corrige: false, icone: "🫖", source: "mot_cle" }],
   ["électroménager deviné par l'IA, aucun signal mode",
-   { cheminCalcule: ["Maison & Jardin", "Électroménager"], catalogId: null, genre: "", taille: "", sourceIcone: "ia" },
-   { corrige: false, chemin: "Maison & Jardin > Électroménager", source: "ia" }],
+   { icone: "🌡️", sourceIcone: "ia", catalogId: null, genre: "", taille: "" },
+   { corrige: false, icone: "🌡️", source: "ia" }],
   ["catalogue Vinted vêtement (2050) contre icône de chauffage",
-   { cheminCalcule: ["Maison & Jardin", "Électroménager"], catalogId: 2050, genre: "", taille: "", sourceIcone: "ia" },
-   { corrige: true, chemin: "Mode > Vêtements", source: "catalog_vinted" }],
-  ["catalogue Vinted chaussures (1231) depuis Divers",
-   { cheminCalcule: ["Divers", "Autres"], catalogId: 1231, genre: "", taille: "", sourceIcone: "ia" },
-   { corrige: true, chemin: "Mode > Chaussures", source: "catalog_vinted" }],
-  ["catalogue Vinted sacs (1187) depuis Divers",
-   { cheminCalcule: ["Divers", "Autres"], catalogId: 1187, genre: "", taille: "", sourceIcone: "ia" },
-   { corrige: true, chemin: "Mode > Accessoires & Bagagerie", source: "catalog_vinted" }],
+   { icone: "🌡️", sourceIcone: "ia", catalogId: 2050, genre: "", taille: "" },
+   { corrige: true, icone: "👕", source: "catalog_vinted" }],
+  ["catalogue Vinted chaussures (1231)",
+   { icone: "📦", sourceIcone: "ia", catalogId: 1231, genre: "", taille: "" },
+   { corrige: true, icone: "👟", source: "catalog_vinted" }],
+  ["catalogue Vinted sacs (1187)",
+   { icone: "📦", sourceIcone: "ia", catalogId: 1187, genre: "", taille: "" },
+   { corrige: true, icone: "👜", source: "catalog_vinted" }],
   ["maillot de sport : le rayon Sport reste le rayon Sport",
-   { cheminCalcule: ["Loisirs", "Sport & Plein air"], catalogId: null, genre: "Homme", taille: "L", sourceIcone: "ia" },
-   { corrige: false, chemin: "Loisirs > Sport & Plein air", source: "ia" }],
-  ["vêtements bébé : la feuille Famille reste",
-   { cheminCalcule: ["Famille", "Vêtements bébé"], catalogId: null, genre: "Bébé", taille: "6 mois", sourceIcone: "ia" },
-   { corrige: false, chemin: "Famille > Vêtements bébé", source: "ia" }],
+   { icone: "⚽", sourceIcone: "ia", catalogId: null, genre: "Homme", taille: "L" },
+   { corrige: false, icone: "⚽", source: "ia" }],
   ["livre : famille souveraine intacte",
-   { cheminCalcule: ["Loisirs", "Livres"], catalogId: null, genre: "", taille: "", sourceIcone: "famille_livres" },
-   { corrige: false, chemin: "Loisirs > Livres", source: "famille_livres" }],
+   { icone: "📚", sourceIcone: "famille_livres", catalogId: null, genre: "", taille: "" },
+   { corrige: false, icone: "📚", source: "famille_livres" }],
   ["« 500 » (watts) n'est pas une taille",
-   { cheminCalcule: ["Maison & Jardin", "Électroménager"], catalogId: null, genre: "", taille: "500", sourceIcone: "ia" },
-   { corrige: false, chemin: "Maison & Jardin > Électroménager", source: "ia" }],
-  ["catalogue mode + rayon Mode déjà bon : rien ne bouge",
-   { cheminCalcule: ["Mode", "Vêtements"], catalogId: 2050, genre: "Femme", taille: "M", sourceIcone: "mot_cle" },
-   { corrige: false, chemin: "Mode > Vêtements", source: "catalog_vinted" }],
+   { icone: "🌡️", sourceIcone: "ia", catalogId: null, genre: "", taille: "500" },
+   { corrige: false, icone: "🌡️", source: "ia" }],
+  ["catalogue mode + icône mode déjà bonne : rien ne bouge",
+   { icone: "👗", sourceIcone: "mot_cle", catalogId: 2050, genre: "Femme", taille: "M" },
+   { corrige: false, icone: "👗", source: "catalog_vinted" }],
+  // ── AUTORITÉ 3 : le rayon beauté (ornellaracano, 07/09 16h34) ────────────
+  ["taies d'oreiller : 🧴 deviné par l'IA contre une fiche « Maison »",
+   { icone: "🧴", sourceIcone: "ia", catalogId: null, genre: "", taille: "",
+     typeFiche: "Maison", iconeSansIa: "🏠" },
+   { corrige: true, icone: "🏠", source: "signaux_fiche" }],
+  ["une vraie crème (fiche « Beauté ») garde son rayon",
+   { icone: "🧴", sourceIcone: "ia", catalogId: null, genre: "", taille: "",
+     typeFiche: "Beauté", iconeSansIa: "🏠" },
+   { corrige: false, icone: "🧴", source: "ia" }],
+  ["🧴 trouvé par MOT-OBJET (« crème ») : jamais écarté, même fiche Maison",
+   { icone: "🧴", sourceIcone: "mot_cle", catalogId: null, genre: "", taille: "",
+     typeFiche: "Maison", iconeSansIa: "🏠" },
+   { corrige: false, icone: "🧴", source: "mot_cle" }],
+  ["aucun repli hors-IA disponible : on ne corrige PAS (on ne devine jamais)",
+   { icone: "🧴", sourceIcone: "ia", catalogId: null, genre: "", taille: "",
+     typeFiche: "Maison", iconeSansIa: "🧴" },
+   { corrige: false, icone: "🧴", source: "ia" }],
+  ["fiche muette (ni type ni famille) : on ne corrige PAS",
+   { icone: "🧴", sourceIcone: "ia", catalogId: null, genre: "", taille: "",
+     typeFiche: "", familleFiche: "", iconeSansIa: "🏠" },
+   { corrige: false, icone: "🧴", source: "ia" }],
 ];
 for (const [nom, entree, attendu] of cas) {
-  const r = garde.gardeFouCategorieLbc(entree);
-  const chemin = (r.chemin ?? []).join(" > ");
-  check(`${nom} → ${attendu.chemin}`,
-    r.corrige === attendu.corrige && chemin === attendu.chemin && r.source === attendu.source,
-    `(corrigé=${r.corrige}, chemin=« ${chemin} », source=${r.source})`);
+  const r = garde.gardeFouCategorie(entree);
+  check(`${nom} → ${attendu.icone}`,
+    r.corrige === attendu.corrige && r.icone === attendu.icone && r.source === attendu.source,
+    `(corrigé=${r.corrige}, icône=${r.icone}, source=${r.source})`);
 }
 
 console.log("3. Tailles reconnues / refusées :");

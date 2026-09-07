@@ -16,7 +16,8 @@
     "selftest:support-non-livre": "node scripts/support-non-livre-selftest.mjs",
     "selftest:attente-boutique": "node scripts/attente-boutique-selftest.mjs",
     "preview": "vite preview",
-    "selftest:categorie-garde-fou": "node scripts/categorie-garde-fou-selftest.mjs"
+    "selftest:categorie-garde-fou": "node scripts/categorie-garde-fou-selftest.mjs",
+    "selftest:mot-objet-pluriel": "node scripts/mot-objet-pluriel-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
