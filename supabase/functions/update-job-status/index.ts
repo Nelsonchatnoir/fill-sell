@@ -800,6 +800,11 @@ serve(async (req) => {
     // ⚠️ unité : requalifier AVANT l'écriture évite le passage par un statut
     // terminal, donc aucun trigger de solde ne tire — rien n'est re-débité.
     let pfRepareEtat: Record<string, unknown> | null = null;
+    // ⛔ L'erreur de l'extension ne doit PAS survivre à la réparation : sur un
+    // job repassé en 'pending', patch.error retombe sinon sur body.error — le
+    // vendeur lirait « complète l'information manquante » sur un job qui n'a
+    // plus rien à compléter. C'est exactement ce qu'on lui épargne.
+    let erreurEffaceeParReparation = false;
     if (statutEffectif === "needs_user") {
       try {
         const pfCourant = (pfIn ?? {}) as Record<string, unknown>;
@@ -843,6 +848,7 @@ serve(async (req) => {
               };
               statutEffectif = "pending";
               messageEffectif = null;
+              erreurEffaceeParReparation = true;
               champsACompleter = null;
               raisonRequalif = `état réparé depuis ${resolu.source} (« ${resolu.etat} »)`;
               console.log(
@@ -923,8 +929,10 @@ serve(async (req) => {
       // Ré-armement (ex: needsUser, l'utilisateur doit compléter une info) :
       // on garde l'error explicative si fournie, sinon on nettoie.
       // messageEffectif (requalification bfcache) prime sur le brut Chrome.
-      patch.error = messageEffectif
-        ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null);
+      // Réparation d'état : l'erreur est EFFACÉE, il n'y a plus rien à corriger.
+      patch.error = erreurEffaceeParReparation
+        ? null
+        : (messageEffectif ?? (typeof body.error === "string" && body.error ? body.error.slice(0, 2000) : null));
     } else if (statutEffectif === "needs_user") {
       // Champ précis à trancher côté app : error porte le message humain
       // (affiché au survol/tap du badge « À compléter »), le détail structuré
