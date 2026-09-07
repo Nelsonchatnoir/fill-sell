@@ -1227,7 +1227,12 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // normalisation de l'adresse Leboncoin avant saisie (apostrophe typographique,
 // « 3bis » collé), et la 2ᵉ tentative de capture Vinted reconnaît enfin toute
 // la famille « canal coupé » (CANAL_COUPE_RE) au lieu de deux `includes`.
-export const EXTENSION_LAST_COMMIT = '2026-09-07T10:16:47Z';
+// 2026-09-07T11:25:00Z = 9655935 (toujours 0.6.21) : le detail Vinted lu au clic
+// Publier resout ses libelles (taille, etat, marque, couleurs, colis) au lieu
+// de rendre des identifiants bruts — c'est ce qui remplit inventaire.attributs
+// a chaque publication. Aucune photo re-hebergee, chemin de republication
+// intact.
+export const EXTENSION_LAST_COMMIT = '2026-09-07T11:52:23Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
