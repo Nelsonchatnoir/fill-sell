@@ -102,8 +102,14 @@ serve(async (req) => {
     titre?: string;
     attributs?: Record<string, unknown>;
     candidats?: Partial<Record<Plateforme, Candidat[]>>;
+    user_id?: string;
   };
   try { corps = await req.json(); } catch { return json({ error: "corps illisible" }, 400); }
+  // Appel SERVEUR (secret cron) : le coût doit quand même être imputé à
+  // l'utilisateur du job, sinon il n'apparaît dans aucune mesure. Le garde-fou
+  // par utilisateur, lui, ne s'applique qu'aux appels de l'app — un worker ne
+  // boucle pas.
+  const userPourJournal = userId ?? (typeof corps.user_id === "string" ? corps.user_id : null);
 
   const titre = String(corps.titre ?? "").trim().slice(0, 200);
   const candidats = corps.candidats ?? {};
@@ -153,7 +159,7 @@ serve(async (req) => {
     texte = String(data.content?.[0]?.text ?? "");
     // Coût journalisé comme les autres appels IA : c'est ce qui permettra de
     // répondre « combien ça coûte » sans réestimer à la louche.
-    try { await loggerAppelIA(admin, userId, "resolve_categorie", tokensDe(data)); }
+    try { await loggerAppelIA(admin, userPourJournal, "resolve_categorie", tokensDe(data)); }
     catch { /* la journalisation ne fait jamais échouer un classement */ }
   } catch (e) {
     console.error("[resolve-categorie] exception:", e);

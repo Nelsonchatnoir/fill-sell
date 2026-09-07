@@ -131,7 +131,11 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     ...(String(pf.famille ?? "") === "livres_medias" ? { famille: { lens: "livres_medias", support_non_livre: supportNonLivre, effective: familleEffective } } : {}),
   };
 
+  // L'utilisateur du job voyage avec pf pour que le coût IA de la résolution
+  // de catégorie lui soit imputé (usage_logs) — sinon il n'apparaît nulle part.
+  (pf as Record<string, unknown>).__userId = job.user_id;
   const categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, familleEffective);
+  delete (pf as Record<string, unknown>).__userId;
   if ("choix" in categorie) {
     const mappee = String(pf.ebayCategoryId ?? "").trim();
     const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
@@ -526,7 +530,7 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
       // DANS la liste, sa réponse vérifiée par resolve-categorie.
       const retenu = await choisirParmiSuggestions(suggestions, {
         titre, genre: pf.genre as string | null, taille: pf.taille as string | null,
-        marque: pf.marque as string | null,
+        marque: pf.marque as string | null, userId: (pf as Record<string, unknown>).__userId as string | null,
       });
       if (retenu) {
         return {
@@ -652,7 +656,7 @@ async function mesurerCategories(admin: SupabaseClient, env: EbayEnv, body: { eb
 // d'avant (la n°1), qui reste meilleur que rien.
 async function choisirParmiSuggestions(
   suggestions: Array<{ id: string; chemin: string[] }>,
-  contexte: { titre: string; genre?: string | null; taille?: string | null; marque?: string | null },
+  contexte: { titre: string; genre?: string | null; taille?: string | null; marque?: string | null; userId?: string | null },
 ): Promise<{ id: string; chemin: string[] } | null> {
   if (suggestions.length < 2) return suggestions[0] ?? null;
   const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
@@ -663,6 +667,7 @@ async function choisirParmiSuggestions(
       headers: { "Content-Type": "application/json", "x-cron-secret": secret },
       body: JSON.stringify({
         titre: contexte.titre,
+        user_id: contexte.userId ?? null,
         attributs: { genre: contexte.genre, taille: contexte.taille, marque: contexte.marque },
         candidats: {
           ebay: suggestions.slice(0, 10).map((s) => ({ chemin: s.chemin, id: s.id, source: "eBay" })),
@@ -706,7 +711,7 @@ async function backtestCategorie(admin: SupabaseClient, env: EbayEnv, body: { li
     if (!sugg.length) { sansSuggestion++; lignes.push({ id: j.id, titre: j.title, partie: `${partie} ${cheminParti}`, suggestions: 0 }); continue; }
     const retenu = await choisirParmiSuggestions(sugg, {
       titre: j.title ?? "", genre: pf.genre as string | null,
-      taille: pf.taille as string | null, marque: pf.marque as string | null,
+      taille: pf.taille as string | null, marque: pf.marque as string | null, userId: j.user_id,
     });
     const memeQuePremiere = retenu?.id === sugg[0].id;
     if (retenu?.id === partie) identique++; else change++;
