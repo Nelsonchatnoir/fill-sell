@@ -465,6 +465,106 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des processing abandonnés:", (e as Error)?.message ?? e);
   }
 
+  // ══ INCIDENT VINTED « status » : DEMANDER L'ÉTAT PLUTÔT QUE RETENIR ══════
+  // (2026-09-07) Depuis que Vinted a retiré `status` du payload d'édition, une
+  // republication ne peut aboutir que si l'état vient d'ailleurs. Le serveur le
+  // fournit depuis une capture antérieure du même article (get-pending-jobs) —
+  // 332 jobs sur 440. Restent ceux dont AUCUNE trace d'état n'existe : des
+  // articles jamais capturés ni lus en détail, arrivés par la sync du dressing
+  // qui, avant la 0.6.20, ne gardait pas l'état.
+  // Les RETENIR en silence, c'est laisser la republication à moitié en panne
+  // pendant les jours de review du Chrome Web Store. Or l'utilisateur, lui,
+  // CONNAÎT l'état de son article : on le lui demande, en un geste, sur le
+  // canal qui existe déjà (republish_user_fields, lu par l'extension depuis le
+  // 21/08). Sa réponse rend la capture valide sans rien deviner.
+  // ⛔ Liste FERMÉE des 5 états de Vinted — l'utilisateur choisit, il ne tape
+  // rien : une valeur libre serait refusée par le formulaire.
+  // ⛔ Une seule question par article : le job passe en needs_user, aucune
+  // tentative n'est consommée, et l'annonce reste intacte sur Vinted.
+  // ⏳ Même auto-extinction que le dépannage : on ne pose la question que tant
+  // qu'une capture des dernières 24 h a réellement manqué l'état.
+  const ETATS_VINTED = [
+    "Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "Satisfaisant",
+  ];
+  let etatDemande = 0;
+  try {
+    const { data: sansEtat } = await supabase
+      .from("vinted_republish_captures")
+      .select("user_id, captured_at")
+      .gte("captured_at", new Date(now - 24 * 3600_000).toISOString())
+      .contains("champs_manquants", ["etat (libellé d'état absent du payload)"]);
+    const comptesTouches = [...new Set(((sansEtat ?? []) as Array<{ user_id: string }>).map((r) => r.user_id))];
+    if (comptesTouches.length) {
+      const { data: enFile } = await supabase
+        .from("cross_post_jobs")
+        .select("id, user_id, inventaire_id, title, platform_fields")
+        .eq("action", "republish").eq("status", "pending")
+        .in("user_id", comptesTouches)
+        .range(0, 499);
+      // deno-lint-ignore no-explicit-any
+      const candidats = ((enFile ?? []) as any[]).filter((j) => {
+        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const step = String(pf["republish_step"] ?? "");
+        if (step === "captured" || step === "deleted") return false; // capture déjà faite
+        const uf = (pf["republish_user_fields"] ?? {}) as Record<string, unknown>;
+        return !String(uf["etat"] ?? "").trim() && j.inventaire_id != null;
+      });
+      if (candidats.length) {
+        // Un état connu quelque part ? Alors get-pending-jobs le fournira : on
+        // ne dérange personne. On ne demande QUE si aucune trace n'existe.
+        const ids = [...new Set(candidats.map((j) => j.inventaire_id))];
+        const { data: caps } = await supabase
+          .from("vinted_republish_captures").select("inventaire_id, libelles").in("inventaire_id", ids);
+        const connus = new Set(
+          // deno-lint-ignore no-explicit-any
+          ((caps ?? []) as any[])
+            .filter((c) => String(c.libelles?.etat ?? "").trim())
+            .map((c) => String(c.inventaire_id)),
+        );
+        const { data: arts } = await supabase
+          .from("inventaire").select("id, attributs").in("id", ids);
+        // deno-lint-ignore no-explicit-any
+        for (const a of (arts ?? []) as any[]) {
+          const e = a.attributs?.etat;
+          if (e?.v && ["capture", "vinted_detail", "vinted_liste", "manuel"].includes(String(e.source))) {
+            connus.add(String(a.id));
+          }
+        }
+        for (const j of candidats.filter((j) => !connus.has(String(j.inventaire_id)))) {
+          const msg =
+            "Vinted ne nous transmet plus l'état de tes annonces depuis aujourd'hui (changement de leur côté, " +
+            "constaté le 07/09 à 13h25). Pour republier cet article, confirme son état en un clic : c'est la " +
+            "seule information qui manque, ton annonce est intacte sur Vinted et rien n'a été supprimé.";
+          const { error: uErr } = await supabase
+            .from("cross_post_jobs")
+            .update({
+              status: "needs_user", error: msg,
+              platform_fields: {
+                ...(j.platform_fields ?? {}),
+                needsUserField: {
+                  field_key: "etat", field_label: "État",
+                  target: { root: "republish_user_fields", key: "etat" },
+                  input_type: "dropdown", allowed_values: ETATS_VINTED, options_completes: true,
+                  platform: "vinted",
+                },
+                incident_etat_vinted: { le: new Date(now).toISOString(), motif: "status retiré du payload Vinted" },
+              },
+            })
+            .eq("id", j.id).eq("status", "pending");
+          if (!uErr) etatDemande++;
+        }
+        if (etatDemande) {
+          console.log(
+            `[handler-watch] incident Vinted « status » : état demandé à l'utilisateur sur ${etatDemande} republication(s) ` +
+            `— aucune trace d'état en base pour ces articles, un clic les débloque`,
+          );
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] demande d'état (incident Vinted):", (e as Error)?.message ?? e);
+  }
+
   // ── Reprise RAPIDE des 'processing' coupés APRÈS la suppression (2026-08-28,
   // cas Joe0410 : job 32761461, Chrome fermé à 01:46 juste après deleted_at,
   // annonce hors ligne 7 h — la reprise 24 h ci-dessus était la SEULE issue) ─

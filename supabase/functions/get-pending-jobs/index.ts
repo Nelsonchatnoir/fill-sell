@@ -897,12 +897,16 @@ serve(async (req) => {
           .contains("champs_manquants", ["etat (libellé d'état absent du payload)"]);
         if ((capturesSansEtat ?? 0) > 0) {
           const ids = [...new Set(republishServis.map((j) => j.inventaire_id))];
+          // ⚠️ PAS de filtre sur le verdict (élargi le 07/09) : le verdict porte
+          // sur l'ENSEMBLE des champs — une capture peut être 'incomplet' à
+          // cause d'une photo non ré-hébergée tout en portant un libellé d'état
+          // parfaitement relevé sur Vinted. Seul le libellé compte ici. Mesuré :
+          // +11 jobs couverts, 321 → 332 sur 440.
           const { data: caps } = await userClient
             .from("vinted_republish_captures")
             .select("inventaire_id, libelles, captured_at")
             .eq("user_id", user.id)
             .in("inventaire_id", ids)
-            .eq("verdict", "valide")
             .order("captured_at", { ascending: false });
           const etatParArticle = new Map<string, { etat: string; at: string }>();
           for (const c of (caps ?? []) as Array<Record<string, unknown>>) {
