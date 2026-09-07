@@ -146,11 +146,8 @@ serve(async (req) => {
           erreur: "Session de pack sans user_id ou sans nombre de Pépites dans les métadonnées.",
         });
       }
-      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: "Purchase", value: (session.amount_total ?? 0) / 100, currency: "EUR" }),
-      }).catch(() => {});
+      // Conversion TikTok RETIRÉE le 7 septembre 2026 (décision Nico) : plus
+      // aucune donnée d'achat ne part vers une régie publicitaire.
       return new Response(JSON.stringify({ received: true }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -245,11 +242,7 @@ serve(async (req) => {
       }
     }
 
-    await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event: "Purchase", value: 9.99, currency: "EUR" }),
-    }).catch(() => {});
+    // Conversion TikTok RETIRÉE le 7 septembre 2026 (décision Nico).
   }
 
   // Renouvellements d'abonnement : re-crédit des pièces incluses, idempotent

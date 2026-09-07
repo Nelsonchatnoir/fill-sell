@@ -51,8 +51,8 @@ verify_jwt = false
 [functions.apple-subscription-status]
 verify_jwt = false
 
-[functions.tiktok-event]
-verify_jwt = false
+# [functions.tiktok-event] — fonction SUPPRIMÉE en prod le 7 septembre 2026
+# (décision Nico) : plus aucune donnée ne part vers une régie publicitaire.
 
 # Auth applicative interne : Bearer utilisateur vérifié DANS le code (getUser).
 [functions.voice-intent]

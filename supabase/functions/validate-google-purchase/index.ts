@@ -53,14 +53,8 @@ const COIN_PRODUCTS: Record<string, number> = {
   "app.fillsell.coins.1150": 1300,
 };
 
-// Prix TTC/mois — Founder = tarif legacy grandfathered (miroir de
-// validate-apple-receipt, sert uniquement à l'événement TikTok).
-const SUB_PRICES: Record<string, number> = {
-  [FOUNDER_PRODUCT_ID]: 9.99,
-  [STANDARD_PRODUCT_ID]: 12.99,
-  [PRO_PRODUCT_ID]: 29.99,
-  [BUSINESS_PRODUCT_ID]: 59.99,
-};
+// (La table des prix ne servait qu'à la valeur de l'événement TikTok, retiré
+// le 7 septembre 2026 : elle est supprimée avec lui.)
 
 // États subscriptionsv2 valant « abonnement payé et en cours ».
 // SUBSCRIPTION_STATE_CANCELED en fait PARTIE (2026-08-08) : chez Google,
@@ -325,13 +319,7 @@ serve(async (req) => {
         pepites: (grantRes as { amount?: number })?.amount ?? null,
         ref: (purchase?.latestOrderId as string) ?? purchaseToken, rpc: grantRes,
       });
-      // Conversion : même événement que validate-apple-receipt, et seulement
-      // sur un cycle réellement crédité (jamais sur un rejeu).
-      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event: "Purchase", value: SUB_PRICES[productId] ?? 12.99, currency: "EUR" }),
-      }).catch((e) => console.error("[validate-google-purchase] tiktok-event:", e));
+      // Conversion TikTok RETIRÉE le 7 septembre 2026 (décision Nico).
     }
 
     console.log(`[validate-google-purchase] user=${userId} product=${productId} état=${etat} is_pro=${estPro} is_business=${estBusiness} grant=`, JSON.stringify(grantRes));

@@ -9,7 +9,6 @@ import { SplashScreen } from '@capacitor/splash-screen';
 import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdates, recoverAndroidCoinPurchases, findActivePlayPremiumSub, PRODUCT_IDS } from './lib/iap';
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
-import { trackTikTokEvent } from './lib/tiktok';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
 const platform = Capacitor.getPlatform();
@@ -2684,7 +2683,6 @@ export default function App({ loginOnly = false }){
       return;
     }
     logTunnel(business?'business_cta_click':pro?'pro_cta_click':'premium_cta_click',{origine,declencheur:'clic',tier:business?'business':pro?'pro':'premium'});
-    trackTikTokEvent("InitiateCheckout",user?.email,business?59.99:pro?29.99:12.99);
     if(business){isNative?handleIAPPurchase('business',origine):triggerCheckout('business',origine);}
     else if(pro){isNative?handleIAPPurchase('pro',origine):triggerCheckout('pro',origine);}
     else{isNative?handleIAPPurchase(undefined,origine):triggerCheckout(undefined,origine);}
@@ -5055,7 +5053,6 @@ export default function App({ loginOnly = false }){
       const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
       if(error){alert(error.message);return;}
       track('sign_up', { method: 'email' });
-      trackTikTokEvent("CompleteRegistration", emailVal);
       if(data?.session){
         // Splash jusqu'à la fin de fetchAll — évite le flash d'app vide
         setAppLoading(true);

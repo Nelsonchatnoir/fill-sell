@@ -20,6 +20,91 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
+// ── Accusé de réception de résiliation (7 septembre 2026) ───────────────────
+// Exigé par l'article L215-1-1 du Code de la consommation (résiliation en
+// trois clics, décret 2023-417) : la confirmation doit arriver sur un
+// « support durable ». Un e-mail en est un ; l'écran, non.
+//
+// RÈGLES, dans l'ordre où elles comptent :
+//  · l'e-mail ne part QU'APRÈS une annulation Stripe réussie. Un accusé envoyé
+//    sur un échec serait pire que pas d'accusé du tout ;
+//  · il ne bloque JAMAIS la résiliation : l'annulation est déjà faite chez
+//    Stripe quand on l'envoie, une panne d'e-mail ne doit pas la faire
+//    échouer ni la faire rejouer ;
+//  · il n'existe QUE pour les résiliations web. Un abonnement souscrit dans
+//    l'App Store ou Google Play ne passe pas par ici : c'est la boutique qui
+//    accuse réception, et les CGV le disent.
+// ⛔ TYPE RÉCURRENT : un même compte peut résilier plusieurs fois dans sa vie.
+// 'resiliation_ar' ne doit donc JAMAIS entrer dans l'index partiel
+// email_logs_one_shot_unique — sinon la deuxième résiliation d'un même
+// utilisateur échouerait en 23505 et l'accusé ne partirait pas.
+const RESEND_API = "https://api.resend.com/emails";
+const FROM = "FillSell <support@fillsell.app>";
+const TYPE_AR = "resiliation_ar";
+
+function nomFormule(p: { is_business?: boolean; is_pro?: boolean }): string {
+  if (p?.is_business) return "Business";
+  if (p?.is_pro) return "Pro";
+  return "Premium";
+}
+
+async function envoyerAccuseResiliation(
+  email: string,
+  userId: string,
+  formule: string,
+  finAcces: string | null,
+): Promise<void> {
+  const cle = Deno.env.get("RESEND_API_KEY");
+  if (!cle) {
+    console.error("[cancel-subscription] RESEND_API_KEY absente — accusé de réception NON envoyé");
+    return;
+  }
+  const demandeLe = new Date().toLocaleString("fr-FR", {
+    timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+  const ligneFin = finAcces
+    ? `Ton accès ${formule} reste actif jusqu'au <strong>${finAcces}</strong> inclus. Aucun nouveau prélèvement ne sera effectué après cette date.`
+    : `Ton accès ${formule} prend fin à l'issue de la période déjà payée. Aucun nouveau prélèvement ne sera effectué.`;
+  const html = `<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;color:#0F172A">
+<p>Bonjour,</p>
+<p>Nous confirmons la <strong>résiliation de ton abonnement FillSell</strong>.</p>
+<ul>
+<li>Demande reçue le <strong>${demandeLe}</strong> (heure de Paris)</li>
+<li>Formule résiliée : <strong>${formule}</strong></li>
+<li>${ligneFin}</li>
+</ul>
+<p>Ton compte, ton inventaire et ton historique de ventes <strong>restent accessibles</strong> : tu repasses simplement en formule gratuite. Rien n'est supprimé.</p>
+<p>Si tu changes d'avis, tu peux te réabonner à tout moment depuis l'application.</p>
+<p style="color:#64748B;font-size:13px">Cet e-mail est l'accusé de réception de ta demande de résiliation. Conserve-le.</p>
+<p>— L'équipe FillSell</p>
+</div>`;
+  try {
+    const res = await fetch(RESEND_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cle}` },
+      body: JSON.stringify({
+        from: FROM,
+        to: [email],
+        subject: "Ta résiliation FillSell est bien enregistrée",
+        html,
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[cancel-subscription] Resend a refusé l'accusé (HTTP ${res.status}) :`, await res.text());
+      return;
+    }
+    console.log(`[cancel-subscription] accusé de réception envoyé à l'utilisateur ${userId}`);
+  } catch (e) {
+    console.error("[cancel-subscription] envoi de l'accusé impossible :", (e as Error)?.message ?? e);
+    return;
+  }
+  // Trace : jamais bloquante, jamais muette. Une violation 23505 ici voudrait
+  // dire que le type a été ajouté par erreur à l'index one-shot.
+  const { error } = await supabaseAdmin.from("email_logs").insert({ user_id: userId, email_type: TYPE_AR });
+  if (error) console.error("[cancel-subscription] email_logs (accusé) :", error.message);
+}
+
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
   const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
@@ -42,7 +127,7 @@ serve(async (req) => {
     // Récupère stripe_customer_id depuis profiles (admin = bypass RLS)
     const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("stripe_customer_id, is_premium")
+      .select("stripe_customer_id, is_premium, is_pro, is_business")
       .eq("id", user.id)
       .single();
 
@@ -92,6 +177,15 @@ serve(async (req) => {
       periodEnd = `${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()}`;
       console.log("[cancel-subscription] cancel_at_period_end=true, fin le:", periodEnd);
       await supabaseAdmin.from("profiles").update({ subscription_period_end: periodEnd }).eq("id", user.id);
+      // L'accusé ne part QUE d'ici : Stripe a accepté l'annulation, la date de
+      // fin est connue. Non bloquant — la résiliation est déjà actée.
+      const destinataire = user?.email ?? null;
+      const idUtilisateur = user?.id ?? null;
+      if (destinataire && idUtilisateur) {
+        await envoyerAccuseResiliation(destinataire, idUtilisateur, nomFormule(profile), periodEnd);
+      } else {
+        console.error("[cancel-subscription] utilisateur sans e-mail — accusé de réception impossible");
+      }
     }
 
     // is_premium reste true — sera mis à false par le webhook customer.subscription.deleted

@@ -27,14 +27,9 @@ const PRO_PRODUCT_IDS = ["app.fillsell.pro2.sub", "app.fillsell.pro.sub"];
 const BUSINESS_PRODUCT_IDS = ["app.fillsell.business.sub"];
 const PREMIUM_PRODUCT_IDS = [FOUNDER_PRODUCT_ID, STANDARD_PRODUCT_ID, ...PRO_PRODUCT_IDS, ...BUSINESS_PRODUCT_IDS];
 
-// Prix TTC/mois par produit — Founder = tarif legacy grandfathered
-const PRODUCT_PRICES: Record<string, number> = {
-  [FOUNDER_PRODUCT_ID]: 9.99,
-  [STANDARD_PRODUCT_ID]: 12.99,
-  "app.fillsell.pro2.sub": 29.99,
-  "app.fillsell.pro.sub": 29.99,
-  "app.fillsell.business.sub": 59.99,
-};
+// (La table des prix par produit ne servait qu'à la valeur de l'événement
+// TikTok, retiré le 7 septembre 2026 : elle est supprimée avec lui. Le montant
+// réellement encaissé est chez Apple, pas ici.)
 
 async function verifyWithApple(receipt: string, url: string): Promise<any> {
   const res = await fetch(url, {
@@ -145,17 +140,10 @@ serve(async (req) => {
     }
     await supabaseAdmin.from("profiles").update(update).eq("id", userId);
 
-    if (isPremium) {
-      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/tiktok-event`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: "Purchase",
-          value: PRODUCT_PRICES[activeSub!.product_id] ?? 12.99,
-          currency: "EUR",
-        }),
-      });
-    }
+    // Conversion TikTok RETIRÉE le 7 septembre 2026 (décision Nico).
+    // ⚠️ Cet appel-ci était `await` SANS `.catch()` : une panne réseau vers
+    // TikTok pouvait faire échouer la validation d'un achat Apple déjà
+    // encaissé. Le retirer supprime ce chemin d'échec au passage.
 
     if (isFounderPurchase) {
       const { data: profile } = await supabaseAdmin.from("profiles").select("is_founder").eq("id", userId).single();

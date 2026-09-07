@@ -512,8 +512,22 @@ décision d'adéquation.
 > tournent, elles perdent : l'attribution des conversions (inscription et
 > achat), l'optimisation automatique sur ces événements, et le reporting de ROAS
 > dans TikTok Ads Manager. Les campagnes continueront de diffuser, mais à
-> l'aveugle. **C'est une décision marketing, pas technique : à confirmer avant
-> que je coupe.**
+> l'aveugle.
+>
+> ✅ **COUPE FAITE le 7 septembre 2026** aux 7 endroits : pixel retiré
+> d'`index.html`, `src/lib/tiktok.ts` supprimé, les 2 appels d'`App.jsx`
+> retirés, la fonction `tiktok-event` supprimée du dépôt ET de la production,
+> les 4 appels serveur retirés, les secrets `TIKTOK_ACCESS_TOKEN` et
+> `TIKTOK_PIXEL_ID` retirés. Les trois phrases de la page légale
+> (« jamais utilisées pour du suivi publicitaire », « aucun SDK de tracking ou
+> publicitaire », « aucun cookie publicitaire ni traceur tiers ») sont
+> redevenues vraies **pour TikTok**.
+>
+> ⚠️ **MAIS elles restent fausses tant que Google Tag Manager est là.**
+> `index.html` charge encore GTM (conteneur `GTM-TJNKL6T5`, plus une balise
+> `<noscript>` vers googletagmanager.com), sur chaque page et sans consentement.
+> C'est exactement le même problème juridique que le pixel TikTok. Hors du
+> périmètre demandé le 7 septembre : **à trancher séparément.**
 
 ### Section 9 — Signalement et point de contact (NOUVEAU, DSA)
 
