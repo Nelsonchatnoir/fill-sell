@@ -574,6 +574,34 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // ⛔ Borné : sans session, sans candidats, en cas d'erreur ou au-delà de
   //    6 secondes, on rend null — l'appelant garde alors la première, c'est-à-
   //    dire exactement le comportement d'avant. Jamais moins bon.
+  // ── LISTES FERMÉES : l'IA choisit DANS la liste affichée (2026-09-07 soir) ─
+  // Les valeurs acceptées ne vivent que dans la page, et elles changent : le
+  // content script relève la liste RÉELLE et nous l'envoie. resolve-categorie
+  // vérifie côté serveur que la réponse en fait partie et rend la valeur
+  // d'origine. Mêmes bornes que l'arbitrage de catégorie : sans session, au-
+  // delà de 6 s ou sur erreur, on rend null et l'appelant garde EXACTEMENT son
+  // comportement d'avant.
+  if (msg?.type === "LISTE_FERMEE_CHOISIR") {
+    (async () => {
+      try {
+        const session = await getValidSession();
+        if (!session) return sendResponse({ valeurs: null, motif: "pas_de_session" });
+        const rep = await Promise.race([
+          callEdgeFunction("resolve-categorie", session.access_token, {
+            titre: String(msg.titre ?? "").slice(0, 200),
+            attributs: msg.attributs ?? {},
+            listes: msg.listes ?? {},
+          }),
+          new Promise((r) => setTimeout(() => r({ __timeout: true }), 6000)),
+        ]);
+        if (rep?.__timeout) return sendResponse({ valeurs: null, motif: "timeout" });
+        sendResponse({ valeurs: rep?.valeurs ?? null });
+      } catch (e) {
+        sendResponse({ valeurs: null, motif: String(e?.message ?? e) });
+      }
+    })();
+    return true;
+  }
   if (msg?.type === "CATEGORIE_CHOISIR") {
     (async () => {
       try {

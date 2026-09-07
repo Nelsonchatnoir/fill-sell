@@ -70,6 +70,17 @@ Réponds UNIQUEMENT du JSON valide, de la forme :
 {"vinted":"v3","leboncoin":null,"beebs":"b1","ebay":"e12"}
 Une plateforme absente de l'entrée est absente de ta réponse.`;
 
+const SYSTEM_LISTES = `Tu remplis une annonce d'occasion. Pour chaque CHAMP, on te donne la liste EXACTE des valeurs que la plateforme accepte, chacune précédée de sa CLÉ. Tu choisis la valeur qui correspond à l'article, et tu réponds par sa CLÉ.
+
+RÈGLES ABSOLUES :
+- Tu ne peux répondre QUE par une clé présente dans la liste de CE champ.
+- Si aucune valeur ne correspond VRAIMENT, réponds null pour ce champ. C'est une bonne réponse : mieux vaut un champ vide qu'une valeur fausse.
+- JAMAIS « au plus proche ». Un 2XL n'est pas un XL. Un bleu marine n'est pas un bleu. Une taille 6 ans n'est pas une taille 5 ans. Si la valeur exacte n'est pas dans la liste, c'est null.
+- Les libellés peuvent contenir une description après le nom : juge sur le nom.
+
+Réponds UNIQUEMENT du JSON valide, une clé par champ, par exemple :
+{"État":"x3","Couleur":null,"Taille":"x12"}`;
+
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
   const corsOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "https://fillsell.app";
@@ -117,6 +128,7 @@ serve(async (req) => {
     titre?: string;
     attributs?: Record<string, unknown>;
     candidats?: Partial<Record<Plateforme, Candidat[]>>;
+    listes?: Record<string, { plateforme?: string; options?: string[] }>;
     user_id?: string;
   };
   try { corps = await req.json(); } catch { return json({ error: "corps illisible" }, 400); }
@@ -127,6 +139,95 @@ serve(async (req) => {
   const userPourJournal = userId ?? (typeof corps.user_id === "string" ? corps.user_id : null);
 
   const titre = String(corps.titre ?? "").trim().slice(0, 200);
+  // ══ LISTES FERMÉES (point 5, 07/09 soir) ══════════════════════════════════
+  // MÊME PRINCIPE QUE LA CATÉGORIE, appliqué aux valeurs : la machine propose
+  // la liste RÉELLEMENT affichée par la plateforme, l'IA choisit DEDANS, et on
+  // vérifie. Les clés sont opaques, la valeur rendue est recopiée de la liste
+  // d'entrée, et « aucune » reste une réponse légitime.
+  //
+  // ⛔ POURQUOI ON N'ENVOIE PAS UNE TABLE ÉCRITE DANS LE CODE : les valeurs
+  //    acceptées changent, et une liste périmée est exactement ce qui produit
+  //    les refus. L'appelant lit la liste SUR LA PAGE et nous l'envoie.
+  // ⛔ JAMAIS « AU PLUS PROCHE » : pas de 2XL vers XL, pas de bleu marine vers
+  //    bleu. Le modèle choisit une valeur EXACTE de la liste, ou rien.
+  const listes = corps.listes ?? {};
+  if (Object.keys(listes).length) {
+    const parCleV = new Map<string, { champ: string; valeur: string }>();
+    const lignesV: string[] = [];
+    let iv = 0;
+    for (const [champ, def] of Object.entries(listes)) {
+      const options = (def?.options ?? []).map((o) => String(o ?? "").trim()).filter(Boolean).slice(0, 60);
+      if (!options.length) continue;
+      lignesV.push(`\n${champ}${def?.plateforme ? ` (${def.plateforme})` : ""} :`);
+      for (const o of options) {
+        const cle = `x${iv++}`;
+        parCleV.set(cle, { champ, valeur: o });
+        lignesV.push(`  ${cle} = ${o}`);
+      }
+    }
+    if (!parCleV.size) return json({ valeurs: {}, motif: "aucune option fournie" });
+
+    const attributsV = Object.entries(corps.attributs ?? {})
+      .filter(([, v]) => v != null && String(v).trim() !== "")
+      .map(([k, v]) => `${k}: ${String(v).slice(0, 60)}`).join("\n");
+    const messageV =
+      `ARTICLE\n${titre || "(sans titre)"}\n${attributsV ? attributsV + "\n" : ""}` +
+      `\nVALEURS POSSIBLES${lignesV.join("\n")}`;
+
+    let texteV = "";
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 150, temperature: 0, system: SYSTEM_LISTES,
+          messages: [{ role: "user", content: messageV }],
+        }),
+      });
+      if (!res.ok) { console.error("[resolve-categorie] listes IA:", await res.text()); return json({ valeurs: {}, motif: "ia_indisponible" }); }
+      const data = await res.json();
+      texteV = String(data.content?.[0]?.text ?? "");
+      try { await loggerAppelIA(admin, userPourJournal, "resolve_listes", tokensDe(data)); } catch { /* mesure */ }
+    } catch (e) {
+      console.error("[resolve-categorie] listes exception:", e);
+      return json({ valeurs: {}, motif: "ia_indisponible" });
+    }
+
+    // On lit du JSON, pas un motif construit à la volée : un nom de champ
+    // contient des accents et des espaces, en faire une expression régulière
+    // est une source d'échec silencieux.
+    const valeurs: Record<string, string> = {};
+    const refusesV: string[] = [];
+    let rendu: Record<string, unknown> = {};
+    try {
+      const d = texteV.indexOf("{"), fin = texteV.lastIndexOf("}");
+      if (d >= 0 && fin > d) rendu = JSON.parse(texteV.slice(d, fin + 1));
+    } catch { /* réponse illisible : traitée comme « aucune » partout */ }
+    for (const champ of Object.keys(listes)) {
+      const brut = rendu[champ];
+      if (typeof brut !== "string" || !brut) continue;   // absent ou null : légitime
+      const t = parCleV.get(brut.trim());
+      if (!t || t.champ !== champ) { refusesV.push(`${champ}:${brut}`); continue; }
+      valeurs[champ] = t.valeur;                          // la valeur D'ORIGINE, recopiée
+    }
+    if (refusesV.length) console.warn(`[resolve-categorie] valeur hors liste ignorée : ${refusesV.join(", ")}`);
+    try {
+      const lignesJ = Object.keys(listes).map((champ) => ({
+        user_id: userPourJournal,
+        plateforme: String(listes[champ]?.plateforme ?? "?"),
+        etape: "arbitrage",
+        issue: valeurs[champ] ? "choisi" : refusesV.some((r) => r.startsWith(`${champ}:`)) ? "hors_liste" : "aucune",
+        motif: `liste_fermee:${champ}`,
+        n_candidats: (listes[champ]?.options ?? []).length,
+        choisi_chemin: valeurs[champ] ?? null,
+        titre: titre.slice(0, 200),
+      }));
+      if (lignesJ.length) await admin.from("categorie_journal").insert(lignesJ);
+    } catch (e) { console.error("[resolve-categorie] journal listes:", (e as Error)?.message); }
+    return json({ valeurs, refuses: refusesV });
+  }
+
   const candidats = corps.candidats ?? {};
   // Clés opaques : « v0…v19 », « e0…e19 ». C'est CE vocabulaire fermé que le
   // modèle doit rendre, et c'est lui qu'on vérifie — pas un libellé recopié.

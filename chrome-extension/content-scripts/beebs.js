@@ -373,7 +373,13 @@ function estPageBotShieldBeebs() {
   return /geo\.captcha|captcha-delivery|\bAre you a human\b|Please enable JS and disable any ad blocker|Vérification que vous n/i.test(debut);
 }
 
+// Titre de l'article en cours — l'arbitrage des listes fermées en a besoin
+// pour juger (« quel état pour CE produit ? »), et poserValeurSurChamp est
+// appelée depuis une dizaine d'endroits qui n'ont pas le job sous la main.
+let titreArticleCourant = "";
+
 async function fillListingForm(job) {
+  titreArticleCourant = String(job?.title ?? "");
   console.log("[beebs] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
   // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) : une
@@ -464,7 +470,15 @@ async function fillListingForm(job) {
   if (job.title) await fillTextField("#title", job.title);
   if (job.description) await fillTextField("#description", job.description);
 
-  await selectCategory(fields.beebsCategoryPath);
+  await selectCategory(fields.beebsCategoryPath, fields, job?.title ?? "");
+  if (categorieRechercheRetenue) {
+    warnings.push({
+      code: "categorie_arbitrage", plateforme: "beebs", motif: "recherche_beebs",
+      n_candidats: categorieRechercheRetenue.n,
+      message: `catégorie Beebs : « ${categorieRechercheRetenue.requete} » → "${categorieRechercheRetenue.choisi}" ` +
+        `(choisie parmi ${categorieRechercheRetenue.n} résultats de la recherche Beebs)`,
+    });
+  }
 
   // Dégradation propre : seule la CATÉGORIE (ci-dessus) reste bloquante —
   // sans elle rien n'est publiable. Les champs dynamiques qui suivent sautent
@@ -2091,6 +2105,52 @@ async function poserValeurSurChamp(
     }
   }
 
+  // ── L'IA CHOISIT DANS LA LISTE RÉELLEMENT AFFICHÉE (2026-09-07 soir) ──────
+  // Dernier recours AVANT de laisser le champ vide. Toutes les tentatives
+  // déterministes ont échoué : exact, cascade, conversion de taille, replis de
+  // l'appelant, bac « Autre ». Plutôt que de renoncer, on envoie à l'IA la
+  // liste que Beebs affiche À CET INSTANT et on lui demande LAQUELLE.
+  //
+  // ⛔ Ce n'est PAS un « au plus proche » : la fonction serveur vérifie que la
+  //    réponse est une valeur de la liste envoyée et rend la valeur d'origine ;
+  //    et le modèle a pour consigne explicite de répondre « aucune » plutôt que
+  //    d'approcher (un 2XL n'est pas un XL, un bleu marine n'est pas un bleu).
+  // ⛔ Aucune table écrite dans le code : les valeurs acceptées changent, et
+  //    une liste périmée est exactement ce qui produit les refus d'aujourd'hui.
+  // ⛔ Sans session, au-delà de 6 s, sur erreur ou sur « aucune » : on retombe
+  //    EXACTEMENT sur le comportement d'avant (champ vide + warning).
+  if (!match) {
+    const libelles = options.map(optionLabel).filter(Boolean).slice(0, 60);
+    if (libelles.length) {
+      try {
+        const rep = await chrome.runtime.sendMessage({
+          type: "LISTE_FERMEE_CHOISIR",
+          titre: titreArticleCourant,
+          attributs: { valeur_voulue: rawText, champ: labelText },
+          listes: { [labelText]: { plateforme: "beebs", options: libelles } },
+        });
+        const choisi = rep?.valeurs?.[labelText];
+        if (choisi) {
+          const el = options.find((o) => optionLabel(o) === choisi);
+          if (el) {
+            match = { el, label: choisi, stage: "ia-liste-fermee" };
+            const note = `${labelText}: "${rawText}" absent de la liste — l'IA a retenu "${choisi}" PARMI les ${libelles.length} valeurs affichées par Beebs`;
+            console.log(`[beebs] ${note}`);
+            warnings.push(note);
+          }
+        } else if (rep?.motif) {
+          warnings.push({
+            code: "liste_fermee_arbitrage", plateforme: "beebs", champ: labelText,
+            motif: String(rep.motif), n_candidats: libelles.length,
+            message: `${labelText}: arbitrage indisponible (${rep.motif}) — champ laissé vide`,
+          });
+        }
+      } catch (e) {
+        console.warn(`[beebs] arbitrage de valeur indisponible :`, e?.message ?? e);
+      }
+    }
+  }
+
   if (!match) {
     // Le warning porte les options RÉELLEMENT affichées : c'est ce relevé qui
     // permet de corriger la valeur envoyée (même méthode que leboncoin.js et
@@ -2377,9 +2437,98 @@ function commitCategoryViaFiber(path) {
   });
 }
 
-async function selectCategory(path) {
+// ── LA RECHERCHE DE BEEBS EST UNE SOURCE, ET ELLE EXISTE (2026-09-07 soir) ──
+// On a longtemps écrit que Beebs n'expose « aucune suggestion » et qu'il fallait
+// donc s'en remettre à l'icône. RELEVÉ SUR LA VRAIE PAGE ce soir : son
+// sélecteur de catégorie porte un champ « Rechercher une catégorie », et il est
+// tolérant aux accents ET aux pluriels — « echarpes » rend « Bonnets, écharpes
+// et gants (bébé/fille/garçon) », « Echarpes de portage » et « Écharpes et
+// foulards (femme/homme) ». Chaque résultat est un <button> dont le texte est
+// la feuille, avec le genre entre parenthèses.
+//
+// C'est donc exactement le canal qui manquait : notre MOT-OBJET interroge le
+// catalogue de Beebs, et l'IA tranche parmi les feuilles que Beebs propose
+// lui-même. Le piège que ça évite est visible dans l'exemple ci-dessus : une
+// écharpe de PORTAGE (puériculture) et une écharpe de MODE partagent le mot.
+//
+// ⛔ Un mot inconnu de Beebs rend 0 résultat (« chapka » : mesuré) — on ne
+//    force rien, on retombe sur le chemin de l'icône.
+// ⛔ Aucun succès sans EFFET CONSTATÉ : le libellé du déclencheur doit devenir
+//    la feuille ET les champs dynamiques doivent apparaître, la même
+//    vérification que le chemin fiber. Sinon, repli intégral.
+async function categorieParRecherche(trigger, mot, titre) {
+  const requete = String(mot ?? "").trim();
+  if (!requete) return false;
+  let ouvert = false;
+  try {
+    if (!panelOf(trigger)) { trigger.click(); await sleep(400); }
+    ouvert = Boolean(panelOf(trigger));
+    if (!ouvert) return false;
+    const options = await researchPanelFor(trigger, requete);
+    const libelles = options.map(optionLabel).map((s) => String(s ?? "").trim()).filter(Boolean).slice(0, 20);
+    if (!libelles.length) {
+      console.log(`[beebs] catégorie : « ${requete} » ne rend aucun résultat dans la recherche Beebs — chemin de l'icône conservé`);
+      return false;
+    }
+    let choisi = null;
+    if (libelles.length === 1) {
+      choisi = libelles[0];
+    } else {
+      const rep = await chrome.runtime.sendMessage({
+        type: "CATEGORIE_CHOISIR",
+        titre: String(titre ?? ""),
+        attributs: { objet: requete },
+        candidats: { beebs: libelles.map((l, i) => ({ chemin: [l], id: String(i) })) },
+      });
+      const idx = Number(rep?.choix?.beebs?.id);
+      if (Number.isInteger(idx) && libelles[idx]) choisi = libelles[idx];
+    }
+    if (!choisi) {
+      console.log(`[beebs] catégorie : aucun choix retenu parmi ${libelles.length} résultats — chemin de l'icône conservé`);
+      return false;
+    }
+    const el = options.find((o) => String(optionLabel(o) ?? "").trim() === choisi);
+    if (!el) return false;
+    await humanPause();
+    el.click();
+    await sleep(600);
+    const libelleOk = await waitFor(() => {
+      const t = findField("Catégorie")?.trigger;
+      return t && normalizeFuzzy(texteDe(t)).includes(normalizeFuzzy(choisi)) ? t : null;
+    }, 6000);
+    const champsOk = libelleOk
+      ? await waitFor(() => document.querySelectorAll('div[class*="__label"]').length > 2, 6000)
+      : null;
+    if (libelleOk && champsOk) {
+      cheminCategorie = `RECHERCHE BEEBS (« ${requete} » → "${choisi}")`;
+      console.log(`[beebs] catégorie posée par la RECHERCHE Beebs : « ${requete} » → "${choisi}" (parmi ${libelles.length} résultats)`);
+      categorieRechercheRetenue = { requete, choisi, n: libelles.length };
+      return true;
+    }
+    console.warn(`[beebs] recherche : "${choisi}" cliqué mais effet NON constaté — repli sur le chemin habituel`);
+    return false;
+  } catch (e) {
+    console.warn(`[beebs] recherche de catégorie indisponible :`, e?.message ?? e);
+    return false;
+  } finally {
+    if (ouvert && panelOf(trigger)) await closePanel(trigger).catch(() => {});
+  }
+}
+
+// Trace de la recherche retenue — remontée dans les warnings du job.
+let categorieRechercheRetenue = null;
+
+async function selectCategory(path, fields = {}, titre = "") {
   const trigger = findField("Catégorie")?.trigger;
   if (!trigger) throw new Error("Catégorie: bouton de sélection introuvable sur la page.");
+
+  // ── CHEMIN PRIORITAIRE : la RECHERCHE de Beebs, quand notre catégorie n'est
+  // qu'une supposition. Voir le commentaire de categorieParRecherche.
+  categorieRechercheRetenue = null;
+  if (fields?.categorie_incertaine === true) {
+    const mot = String(fields.categorie_objet_ia ?? "").trim();
+    if (mot && await categorieParRecherche(trigger, mot, titre)) return;
+  }
 
   // ── CHEMIN 1 : COMMIT FIBER — le chemin nominal depuis le 26/07. Le chemin
   // utilisé est TOUJOURS loggé (« via FIBER » ou « repli clic+panneau ») :

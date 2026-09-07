@@ -1253,7 +1253,14 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // 2026-09-07T17:55:00Z : instrumentation PURE — vinted.js et leboncoin.js
 // posent le motif de l'arbitrage de categorie dans le canal EXISTANT
 // platform_fields.warnings, en forme structuree. Aucun comportement change.
-export const EXTENSION_LAST_COMMIT = '2026-09-07T17:55:00Z';
+// 2026-09-07T18:40:00Z : BEEBS rejoint les autres. Sa RECHERCHE de categorie
+// (relevee sur la vraie page ce soir : tolerante aux accents et aux pluriels)
+// devient une source de candidats, et l'IA tranche parmi ce que Beebs propose.
+// Les LISTES FERMEES (etat, taille, couleur...) sont lues SUR LA PAGE et
+// arbitrees de la meme facon, en dernier recours avant un champ vide.
+// MIN_BUILD INCHANGE : une extension anterieure ignore le drapeau et garde son
+// comportement exact.
+export const EXTENSION_LAST_COMMIT = '2026-09-07T18:40:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
