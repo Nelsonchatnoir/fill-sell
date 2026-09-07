@@ -6828,8 +6828,15 @@ export default function ListingPreviewScreen({
           // déjà un rayon (🌸+Mixte = Parfums mixtes, rayon réel).
           if (autoGenre && ebayGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")
               && !getEbayCategoryId(icon, pf.genre)) pf.genre = autoGenre;
-          const categoryPath = parMot?.chemin ?? getEbayCategoryPath(icon, pf.genre);
-          const categoryId = parMot?.id ?? getEbayCategoryId(icon, pf.genre);
+          // ⚠️ eBay NAVIGUE PAR IDENTIFIANT, pas par chemin (c'est lui qui va
+          // dans l'URL /sl/list ; le chemin ne sert qu'aux messages et à la
+          // vérification). Un chemin venu du mot avec un identifiant venu de
+          // l'icône publierait dans une catégorie qui ne correspond PAS au
+          // libellé affiché — le pire des deux mondes, et invisible. On ne
+          // retient donc le mot que s'il porte les DEUX.
+          const parMotEbay = parMot?.id ? parMot : null;
+          const categoryPath = parMotEbay?.chemin ?? getEbayCategoryPath(icon, pf.genre);
+          const categoryId = parMotEbay?.id ?? getEbayCategoryId(icon, pf.genre);
           if (categoryPath) pf.ebayCategoryPath = categoryPath;
           if (categoryId) pf.ebayCategoryId = categoryId;
           if (ebayGenreRequired(icon)) pf.ebayGenreRequired = true;
