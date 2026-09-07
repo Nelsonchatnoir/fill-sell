@@ -1285,7 +1285,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   relayerEtape("categorie");
   await selectCategory(root, leaf, {
     incertaine: fields.categorie_incertaine === true || fields.lbcCategorieIncertaine === true,
-    warnings,
+    warnings, job, fields,
   });
 
   // ── Étape 2 : photos + critères ──────────────────────────────────────────
@@ -1783,7 +1783,7 @@ function messagesErreurVisibles() {
 // feuille mappée → un seul clic ; 2) sinon sélecteur manuel 2 panneaux ;
 // 3) sinon erreur listant ce que Leboncoin affiche (même philosophie que le
 // selectCategory Vinted : l'erreur du job sert de relevé correctif).
-async function selectCategory(root, leaf, { incertaine = false, warnings = [] } = {}) {
+async function selectCategory(root, leaf, { incertaine = false, warnings = [], job = null, fields = {} } = {}) {
   // Les suggestions arrivent en asynchrone après la frappe du titre.
   await sleep(1500);
 
@@ -1797,16 +1797,42 @@ async function selectCategory(root, leaf, { incertaine = false, warnings = [] } 
   // ⛔ Jamais quand notre catégorie est confirmée (mot-objet, catalogue Vinted,
   // garde-fou) : l'app ne pose alors pas le drapeau.
   if (incertaine) {
-    const premiere = document.querySelector('input[type="radio"]');
-    const etiquette = premiere?.closest("li, label, div")?.textContent?.trim() ?? "";
-    // Une suggestion, et une seule vérité : on ne clique que si Leboncoin en
-    // affiche vraiment une (l'écran « Type d'annonce » porte aussi des radios,
-    // mais il n'apparaît qu'APRÈS la catégorie — ici la page n'a que celles-ci).
-    if (premiere && etiquette && !/^offre|^demande/i.test(etiquette)) {
+    // Toutes les suggestions affichées, pas seulement la première (correctif
+    // du 07/09 soir). L'écran « Type d'annonce » porte aussi des radios, mais
+    // il n'apparaît qu'APRÈS la catégorie : ici la page n'a que celles-ci. On
+    // écarte quand même Offre/Demande par prudence.
+    const propositions = [...document.querySelectorAll('input[type="radio"]')]
+      .map((el) => ({ el, etiquette: el.closest("li, label, div")?.textContent?.trim() ?? "" }))
+      .filter((p) => p.etiquette && !/^offre|^demande/i.test(p.etiquette))
+      .slice(0, 10);
+    if (propositions.length) {
+      // ⚠️ PAS « la première » : rien ne dit que la bonne est en tête —
+      // mesuré chez eBay, la bonne était TROISIÈME sur cinq. L'IA tranche
+      // DANS la liste relevée (resolve-categorie vérifie côté serveur que sa
+      // réponse en fait partie). Sans réponse — pas de session, délai dépassé,
+      // erreur — on garde la première : le comportement d'avant.
+      let choisie = propositions[0];
+      let arbitre = false;
+      if (propositions.length > 1) {
+        try {
+          const rep = await chrome.runtime.sendMessage({
+            type: "CATEGORIE_CHOISIR",
+            titre: job?.title ?? "",
+            attributs: { genre: fields.univers ?? fields.genre ?? null, taille: fields.taille ?? null, marque: fields.marque ?? null },
+            candidats: { leboncoin: propositions.map((p, i) => ({ chemin: [p.etiquette], id: String(i) })) },
+          });
+          const idx = Number(rep?.choix?.leboncoin?.id);
+          if (Number.isInteger(idx) && propositions[idx]) { choisie = propositions[idx]; arbitre = true; }
+        } catch (e) {
+          console.warn("[leboncoin] arbitrage de catégorie indisponible :", e?.message ?? e);
+        }
+      }
       await humanPause();
-      premiere.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      choisie.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await humanPause();
-      const note = `catégorie: notre valeur « ${root} > ${leaf} » n'était qu'une supposition (aucun mot-objet, aucun catalogue Vinted) — suggestion Leboncoin « ${etiquette} » retenue`;
+      const note = `catégorie: notre valeur « ${root} > ${leaf} » n'était qu'une supposition (aucun mot-objet, aucun catalogue Vinted) — suggestion Leboncoin « ${choisie.etiquette} » retenue`
+        + (arbitre ? ` (choisie par l'IA parmi ${propositions.length} suggestions)`
+                   : propositions.length > 1 ? ` (1re des ${propositions.length} — arbitrage indisponible)` : "");
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
       return;

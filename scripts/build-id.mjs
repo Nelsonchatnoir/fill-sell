@@ -1244,7 +1244,13 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // leboncoin.js lit le drapeau commun categorie_incertaine). MIN_BUILD
 // INCHANGE : rien ici ne casse une extension anterieure, elles ignorent
 // simplement le drapeau et gardent le chemin, qui reste pose.
-export const EXTENSION_LAST_COMMIT = '2026-09-07T16:15:12Z';
+// 2026-09-07T17:20:00Z : ARBITRAGE DE CATEGORIE — vinted.js et leboncoin.js
+// ne prennent plus « la premiere suggestion » ; ils relaient toutes celles
+// qu'ils voient au background (CATEGORIE_CHOISIR), qui fait trancher l'IA
+// DANS la liste via resolve-categorie. Borne a 6 s, repli = la premiere.
+// MIN_BUILD INCHANGE : une extension anterieure ignore le drapeau et garde le
+// chemin, qui reste pose.
+export const EXTENSION_LAST_COMMIT = '2026-09-07T17:20:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

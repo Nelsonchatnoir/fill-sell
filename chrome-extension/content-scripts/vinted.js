@@ -1941,7 +1941,7 @@ async function fillListingForm(job) {
   // soumission est tentée quand même — ce catch ne voit alors rien passer.
   try {
     categorieSuggestionRetenue = null;
-    await etape("Catégorie", () => selectCategory(fields.categoryPath, fields));
+    await etape("Catégorie", () => selectCategory(fields.categoryPath, fields, job?.title ?? ""));
     // Trace lisible en base : la suggestion de Vinted a remplacé notre chemin.
     if (categorieSuggestionRetenue) {
       warnings.push(
@@ -4582,7 +4582,7 @@ async function visibleCatalogChildIds() {
 // annonce est-elle dans cette catégorie ? » resterait sans réponse.
 let categorieSuggestionRetenue = null;
 
-async function selectCategory(path, fields = {}) {
+async function selectCategory(path, fields = {}, titreArticle = "") {
   const catalogOptionSel = (await sel()).selectorFor("vinted", "publish.catalog_option");
   // Copie de travail : renommage de racine avéré appliqué AVANT la descente
   // (chemins figés dans de vieux jobs — cf. RENOMMAGES_RACINE_VINTED).
@@ -4639,7 +4639,32 @@ async function selectCategory(path, fields = {}) {
   //    perdu : le chemin du job est toujours là.
   // ⛔ AUCUN ÉCRAN, AUCUNE QUESTION : l'annonce part, c'est tout.
   if (fields?.categorie_incertaine === true && suggestionsVinted.length) {
-    const suggestion = suggestionsVinted[0];
+    // ⚠️ PAS « la première » (correctif du 07/09 soir) : Vinted en propose
+    // plusieurs et rien ne dit que la bonne est en tête — mesuré chez eBay,
+    // la bonne était TROISIÈME sur cinq. On fait trancher l'IA DANS la liste
+    // relevée, via le background (resolve-categorie vérifie côté serveur que
+    // la réponse en fait bien partie). Sans réponse — pas de session, délai
+    // dépassé, erreur — on garde la première : le comportement d'avant, jamais
+    // moins bon.
+    let suggestion = suggestionsVinted[0];
+    let arbitre = false;
+    if (suggestionsVinted.length > 1) {
+      try {
+        const rep = await chrome.runtime.sendMessage({
+          type: "CATEGORIE_CHOISIR",
+          titre: titreArticle,
+          attributs: { genre: fields.genre ?? null, taille: fields.taille ?? null, marque: fields.marque ?? null },
+          candidats: { vinted: suggestionsVinted.map((s) => ({ chemin: [s.libelle], id: String(s.id) })) },
+        });
+        const choisi = rep?.choix?.vinted;
+        if (choisi?.id) {
+          const trouve = suggestionsVinted.find((s) => String(s.id) === String(choisi.id));
+          if (trouve) { suggestion = trouve; arbitre = true; }
+        }
+      } catch (e) {
+        console.warn("[vinted] arbitrage de catégorie indisponible :", e?.message ?? e);
+      }
+    }
     const cellule = document.getElementById(`catalog-suggestion-${suggestion.id}`);
     if (cellule) {
       await humanPause();
@@ -4654,7 +4679,9 @@ async function selectCategory(path, fields = {}) {
         console.log(
           `[vinted] catégorie : notre valeur « ${(path ?? []).join(" > ")} » n'était qu'une ` +
           `supposition (aucun mot-objet, aucun catalogue Vinted) — suggestion Vinted ` +
-          `« ${suggestion.libelle} » retenue`
+          `« ${suggestion.libelle} » retenue` +
+          (arbitre ? ` (choisie par l'IA parmi ${suggestionsVinted.length} suggestions)`
+                   : suggestionsVinted.length > 1 ? ` (1re des ${suggestionsVinted.length} — arbitrage indisponible)` : "")
         );
         categorieSuggestionRetenue = suggestion.libelle;
         return;

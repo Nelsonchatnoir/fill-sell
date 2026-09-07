@@ -564,6 +564,37 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // Preuve de commit du prix Vinted (2026-07-13) — demandes émises par le
   // content script vinted.js PENDANT le remplissage (cf. readVintedPriceState).
   const senderTabId = _sender?.tab?.id;
+  // ── CHOIX DE CATÉGORIE ARBITRÉ (2026-09-07 soir) ─────────────────────────
+  // Vinted et Leboncoin proposent PLUSIEURS catégories, et elles ne sont
+  // visibles que dans la page — donc seulement ici, au remplissage. Prendre la
+  // première était le même piège que côté eBay : sur la chapka, eBay proposait
+  // cinq catégories et la bonne était TROISIÈME. Le content script relaie donc
+  // ce qu'il voit, et resolve-categorie fait trancher l'IA DANS cette liste,
+  // en vérifiant côté serveur que la réponse en fait partie.
+  // ⛔ Borné : sans session, sans candidats, en cas d'erreur ou au-delà de
+  //    6 secondes, on rend null — l'appelant garde alors la première, c'est-à-
+  //    dire exactement le comportement d'avant. Jamais moins bon.
+  if (msg?.type === "CATEGORIE_CHOISIR") {
+    (async () => {
+      try {
+        const session = await getValidSession();
+        if (!session) return sendResponse({ choix: null, motif: "no_session" });
+        const rep = await Promise.race([
+          callEdgeFunction("resolve-categorie", session.access_token, {
+            titre: String(msg.titre ?? "").slice(0, 200),
+            attributs: msg.attributs ?? {},
+            candidats: msg.candidats ?? {},
+          }),
+          new Promise((r) => setTimeout(() => r({ __timeout: true }), 6000)),
+        ]);
+        if (rep?.__timeout) return sendResponse({ choix: null, motif: "timeout" });
+        sendResponse({ choix: rep?.choix ?? null });
+      } catch (e) {
+        sendResponse({ choix: null, motif: String(e?.message ?? e) });
+      }
+    })();
+    return true;
+  }
   if (msg?.type === "VINTED_PRICE_STATE" && senderTabId != null) {
     readVintedPriceState(senderTabId).then(sendResponse);
     return true;
