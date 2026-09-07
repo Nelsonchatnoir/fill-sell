@@ -1417,6 +1417,18 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings,
       { skipIfPrefilled: true, fallbackValues: ["Autre", "Sans marque"], rechercheParFrappe: true });
   }
+  // ── MODÈLE (2026-09-07) — un champ de RECHERCHE, jamais posé jusqu'ici ────
+  // Leboncoin a un champ Modèle sur la téléphonie (`phone_model`, relevé au
+  // catalogue). L'app renseigne pf.modele depuis le Lens (« iPhone 13 »,
+  // « Redmi Note 10 Pro ») mais aucun chemin ne l'amenait sur le formulaire :
+  // ni bloc dédié, ni canal générique. Or un acheteur cherche par modèle —
+  // c'est, avec la marque et la catégorie, ce qui fait TROUVER l'annonce.
+  // Même mécanique que la marque : menu probablement vide à l'ouverture (liste
+  // à recherche), donc frappe puis correspondance EXACTE, sinon champ vide.
+  if (hasCriteria && fields.modele) {
+    await fillCriterionSafe("modèle", 'label[for$="_model"]', fields.modele, warnings,
+      { skipIfPrefilled: true, rechercheParFrappe: true });
+  }
   // ── COULEUR (2026-09-07) — jamais posée jusqu'ici sur Leboncoin ───────────
   // Relevé live : Mode > Vêtements a bien un champ `clothing_color` (21
   // valeurs, libellés COMPOSÉS « Marine / Turquoise », « Rouge / Bordeaux »).
@@ -1441,7 +1453,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // stable contrairement aux ids React — relevé form-survey du 05/07.
   // `_color$` ajouté le 2026-09-07 : la couleur a désormais son bloc dédié
   // (ci-dessus), le canal générique ne doit plus la reposer par-dessus.
-  const handledForKeys = /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$|_color$)/;
+  const handledForKeys = /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$|_color$|_model$)/;
   // ── Clé SAUTÉE mais bloc dédié resté MUET (2026-09-05, job 2e4f88f1) ──────
   // handledForKeys existe pour que le bloc dédié (produit/taille/marque…) reste
   // le seul écrivain de son critère. Mais quand ce bloc n'a RIEN reçu
@@ -1464,6 +1476,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     if (/_brand$/.test(forKey)) return !!fields.marque;
     if (/_material$/.test(forKey)) return !!fields.matiere;
     if (/_color$/.test(forKey)) return !!(fields.colors?.[0] || fields.couleur);
+    if (/_model$/.test(forKey)) return !!fields.modele;
     return false;
   };
   if (hasCriteria && Object.keys(lbcAspectsJob).length) {

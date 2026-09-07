@@ -847,6 +847,98 @@ serve(async (req) => {
       try { annoncesAttente = await annoncesEnAttente(); } catch (_e) { /* le popup retombe sur son propre compte */ }
     }
 
+    // ══ INCIDENT VINTED DU 07/09 : L'ÉTAT FOURNI PAR LE SERVEUR ═════════════
+    // Vinted a retiré le champ racine `status` du payload du formulaire
+    // d'édition le 07/09 vers 13h25 (mesuré : 1 637 captures à 100 % de
+    // présence du 28/08 au 06/09, puis 83 captures sans lui, toutes après
+    // 13h25, sur deux comptes ; 37 clés identiques par ailleurs, rien de
+    // renommé). Plus aucune source d'état ⇒ verdict 'incomplet' ⇒ AUCUNE
+    // republication ne peut aboutir, dans tout le parc : 448 jobs en attente
+    // chez 28 comptes. Le correctif d'extension (lecture de
+    // item_attributes[condition]) attend une revue du Chrome Web Store, soit
+    // plusieurs jours. Voici le chemin SERVEUR, disponible tout de suite.
+    //
+    // COMMENT : `platform_fields.republish_user_fields` est déjà lu par
+    // l'extension EN PRODUCTION (background.js, canal du needs_user depuis le
+    // 21/08). Ses valeurs sont injectées dans les libellés de la capture AVANT
+    // le calcul du verdict, et retirent le motif correspondant de
+    // champs_manquants. Sa liste blanche contient « etat ». En le renseignant
+    // ici, la capture redevient 'valide' sans qu'une seule ligne d'extension
+    // change.
+    //
+    // ⛔ ÉTAT CERTAIN, JAMAIS DEVINÉ (garde-fou absolu posé par Nico) :
+    //   · la SEULE source acceptée est une capture ANTÉRIEURE VALIDE DE CE
+    //     MÊME ARTICLE (jointure par inventaire_id), dont le libellé d'état a
+    //     été relevé sur Vinted. Ni Lens, ni une valeur d'un job de
+    //     publication (source backfill_job), ni un article voisin ;
+    //   · si aucune capture antérieure ne porte l'état, ON NE FOURNIT RIEN et
+    //     le job reste en attente. 107 jobs sont dans ce cas : ils attendront
+    //     la 0.6.21. Une file à l'arrêt vaut mieux qu'une annonce republiée
+    //     avec un état faux ;
+    //   · une valeur déjà présente dans republish_user_fields (saisie par
+    //     l'utilisateur) n'est JAMAIS écrasée.
+    //
+    // ⏳ AUTO-EXTINCTION : l'injection n'a lieu que tant que l'incident dure —
+    // c'est-à-dire tant qu'une capture des dernières 24 h a réellement manqué
+    // l'état. Le jour où Vinted rétablit `status` (ou où la 0.6.21 est
+    // installée), plus aucune capture ne le manque, la condition retombe et le
+    // serveur cesse de fournir quoi que ce soit, sans nouveau déploiement.
+    // C'est ce qui évite de figer un état ancien par-dessus un payload sain.
+    try {
+      const republishServis = out.filter((j) =>
+        j.action === "republish" && j.platform === "vinted" && j.inventaire_id != null
+      );
+      if (republishServis.length) {
+        const { count: capturesSansEtat } = await userClient
+          .from("vinted_republish_captures")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .gte("captured_at", new Date(Date.now() - 24 * 3600_000).toISOString())
+          .contains("champs_manquants", ["etat (libellé d'état absent du payload)"]);
+        if ((capturesSansEtat ?? 0) > 0) {
+          const ids = [...new Set(republishServis.map((j) => j.inventaire_id))];
+          const { data: caps } = await userClient
+            .from("vinted_republish_captures")
+            .select("inventaire_id, libelles, captured_at")
+            .eq("user_id", user.id)
+            .in("inventaire_id", ids)
+            .eq("verdict", "valide")
+            .order("captured_at", { ascending: false });
+          const etatParArticle = new Map<string, { etat: string; at: string }>();
+          for (const c of (caps ?? []) as Array<Record<string, unknown>>) {
+            const cle = String(c.inventaire_id);
+            if (etatParArticle.has(cle)) continue; // la plus récente d'abord
+            const etat = String((c.libelles as Record<string, unknown> | null)?.etat ?? "").trim();
+            if (etat) etatParArticle.set(cle, { etat, at: String(c.captured_at) });
+          }
+          let fournis = 0;
+          for (const j of republishServis) {
+            const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+            const uf = (pf["republish_user_fields"] as Record<string, unknown> | null) ?? {};
+            if (String(uf["etat"] ?? "").trim()) continue; // saisie de l'utilisateur : intouchable
+            const connu = etatParArticle.get(String(j.inventaire_id));
+            if (!connu) continue;
+            j.platform_fields = {
+              ...pf,
+              republish_user_fields: { ...uf, etat: connu.etat },
+              // Trace : d'où vient cet état, et de quand. Auditable en SQL.
+              republish_etat_fourni: {
+                source: "capture_anterieure", etat: connu.etat,
+                capture_at: connu.at, motif: "status retiré du payload Vinted le 07/09",
+              },
+            };
+            fournis++;
+          }
+          if (fournis) {
+            console.log(
+              `[get-pending-jobs] userId=${user.id} : état fourni depuis une capture antérieure sur ${fournis} republication(s) ` +
+              `— incident Vinted « status » absent du payload (${capturesSansEtat} capture(s) sans état sur 24 h)`,
+            );
+          }
+        }
+      }
+    } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
+
     // ── ADRESSE DE REMISE : LES RÉGLAGES FONT FOI AU MOMENT DE PUBLIER ──────
     // (2026-09-07, job 6b4e9f45 d'Hugo) L'adresse est COPIÉE dans le job au
     // clic Publier. Quand l'autocomplete Leboncoin la refusait, le message
