@@ -22,6 +22,7 @@ import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcClePremierCombobox } from "../utils/lbcMaisonJardin";
 import { gardeFouCategorieLbc, categorieIncertaine } from "../utils/categorieGardeFou";
+import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
@@ -2451,7 +2452,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -2687,6 +2688,25 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           {lang === "en"
             ? `Your item is filed under “${lbcPhotoCap.categorie}”, where Leboncoin includes ${lbcPhotoCap.quota} photos and charges for the rest. Only the first ${lbcPhotoCap.quota} of your ${lbcPhotoCap.total} photos will be sent — the other platforms get all ${lbcPhotoCap.total}. Reorder them at the photos step if you want different ones.`
             : `Ton article est rangé en « ${lbcPhotoCap.categorie} », où Leboncoin n'inclut que ${lbcPhotoCap.quota} photos et fait payer les suivantes. Seules les ${lbcPhotoCap.quota} premières de tes ${lbcPhotoCap.total} photos partiront — les autres plateformes reçoivent bien les ${lbcPhotoCap.total}. Remets-les dans l'ordre à l'étape photos si tu préfères en envoyer d'autres.`}
+        </div>
+      )}
+
+      {descriptionMentions && (
+        <div style={{ padding:"11px 14px", background:"#EEF4FB", border:"1px solid #C6D9EE", borderRadius:14, marginBottom:12, fontSize:13, lineHeight:1.6, color:"#1F4A73" }}>
+          <div style={{ fontWeight:700, marginBottom:4 }}>
+            {lang === "en" ? "Your description mentions another platform" : "Ta description parle d'une autre plateforme"}
+          </div>
+          {/* ⛔ INFORMATIF, JAMAIS BLOQUANT (règle posée le 07/09) : aucun
+              needs_user, aucune garde sur le bouton Publier, et sans réponse la
+              description part TELLE QUELLE. On ne réécrit rien — c'est la
+              vendeuse qui décide si « voir mon dressing » a sa place sur
+              Leboncoin. Affiché une seule fois par article. */}
+          {descriptionMentions.message}
+          <div style={{ marginTop:6, opacity:0.85 }}>
+            {lang === "en"
+              ? "Nothing is blocked: it will be published as is unless you edit it at the previous step."
+              : "Rien n'est bloqué : elle sera publiée telle quelle si tu n'y touches pas — tu peux la modifier à l'étape précédente."}
+          </div>
         </div>
       )}
 
@@ -4695,6 +4715,22 @@ export default function ListingPreviewScreen({
   // (getLbcFreePhotoQuota — une seule feuille aujourd'hui, cf. son commentaire).
   // La route « Vêtements bébé » ne peut pas invalider ce calcul : elle ne se
   // déclenche que depuis lbcPath[0] === "Mode", jamais depuis Divers > Autres.
+  // ── « Ta description parle d'une autre plateforme » (2026-09-07) ──────────
+  // Ne se déclenche QUE sur la description VERROUILLÉE (celle de l'annonce
+  // Vinted, marquée description_source='vinted') : c'est la seule qui part
+  // telle quelle sur les autres plateformes. Une description que nous avons
+  // produite est réécrite par plateforme, elle n'a pas ce problème.
+  // Liste FERMÉE (descriptionMentions.js), mesurée à 11,15 % du parc capturé.
+  // Informatif seulement : aucune garde, aucun needs_user, publication telle
+  // quelle sans réponse.
+  const descriptionMentions = useMemo(() => {
+    if (attributV("description_source") !== "vinted") return null;
+    const texte = String(initialListing?.description ?? "").trim();
+    const m = mentionsAutrePlateforme(texte);
+    return m ? { ...m, message: messageMentions(m, lang) } : null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attributsBase, initialListing?.description, lang]);
+
   const lbcPhotoCap = useMemo(() => {
     if (!selected.has("leboncoin")) return null;
     const path = getLbcCategoryPath(articleIcon);
@@ -7490,6 +7526,7 @@ export default function ListingPreviewScreen({
             pausedReasons={pausedReasons}
             lbcPhotoCap={lbcPhotoCap}
             lbcAdresseManquante={lbcAdresseManquante}
+            descriptionMentions={descriptionMentions}
             ebayVoieApiReelle={ebayVoieApiReelle}
           />
         )}

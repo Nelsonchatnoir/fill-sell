@@ -69,10 +69,22 @@ export function attributsDepuisVinted(libelles, natif, source, contexte = {}) {
     attributs.categorie_vinted = { v: catalogId, source, at, ...(Array.isArray(l.categoryPath) ? { chemin: l.categoryPath } : {}) };
   }
 
+  // ── D'OÙ VIENT LA DESCRIPTION (2026-09-07, question de Nico) ─────────────
+  // Le verrou « on ne réécrit pas la description » ne doit protéger que le
+  // texte de la VENDEUSE. Or `inventaire.description` peut aussi porter un
+  // texte que NOUS avons produit : un article créé par le Lens ou par la
+  // saisie vocale y range la description d'analyse. Verrouiller celle-là
+  // figerait notre propre brouillon à la place d'une vraie annonce rédigée par
+  // plateforme — une régression de qualité, sans aucun risque de litige à
+  // couvrir. On marque donc explicitement l'origine, et le verrou ne s'applique
+  // qu'aux descriptions VINTED. Tout le reste garde le comportement d'avant.
+  const description = typeof n.description === "string" && n.description.trim() ? n.description : null;
+  if (description) attributs.description_source = { v: "vinted", source, at };
+
   return {
     attributs,
     catalogId: Number.isFinite(catalogId) && catalogId > 0 ? catalogId : null,
-    description: typeof n.description === "string" && n.description.trim() ? n.description : null,
+    description,
   };
 }
 

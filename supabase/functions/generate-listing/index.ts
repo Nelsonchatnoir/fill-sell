@@ -585,13 +585,16 @@ serve(async (req) => {
       }
     }
 
-    let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null };
+    let item: { titre?: string; marque?: string; description?: string; type?: string; statut?: string; prix_vente?: number | null; attributs?: Record<string, unknown> | null };
     if (item_data) {
       item = item_data;
     } else {
       const { data, error: itemErr } = await adminClient
         .from("inventaire")
-        .select("id, titre, marque, description, type, statut, prix_vente")
+        // attributs (2026-09-07) : on y lit description_source, le SEUL marqueur qui
+        // dit si la description vient de l'annonce Vinted de la vendeuse (verrou)
+        // ou d'un texte que nous avons nous-mêmes produit (Lens, vocal).
+        .select("id, titre, marque, description, type, statut, prix_vente, attributs")
         .eq("id", inventaire_id)
         .single();
       if (itemErr || !data) {
@@ -1014,8 +1017,25 @@ serve(async (req) => {
     // reprend alors la main (seule exception, demandée par Nico).
     // Le client peut forcer la génération avec description_verrouillee:false
     // (bouton « régénérer le texte »), jamais l'inverse.
+    // ⚠️ LE VERROU NE PROTÈGE QUE LE TEXTE DE LA VENDEUSE (2026-09-07,
+    // question de Nico). `inventaire.description` peut aussi porter un texte
+    // que NOUS avons produit : un article créé par le Lens ou par la saisie
+    // vocale y range sa description d'analyse. Verrouiller celle-là figerait
+    // notre propre brouillon à la place d'une annonce rédigée par plateforme —
+    // une régression de qualité, et aucun litige à couvrir puisque personne
+    // n'a signalé de défaut dans ce texte.
+    // Le marqueur attributs.description_source = 'vinted' est posé UNIQUEMENT
+    // quand la description est rapatriée de l'annonce Vinted (détail au clic
+    // Publier, ou capture de republication). Pas de marqueur = pas de verrou,
+    // donc comportement d'avant, à l'identique.
+    // ⚠️ RESTE OUVERT : une description SAISIE À LA MAIN par l'utilisateur
+    // mériterait le même verrou, mais rien ne la distingue aujourd'hui d'une
+    // description d'analyse — à trancher séparément, on ne devine pas ici.
     const descriptionVendeuse = (() => {
       if (body.description_verrouillee === false) return null;
+      const src = (item.attributs as Record<string, { v?: unknown }> | null | undefined)?.description_source?.v;
+      const vientDeVinted = String(src ?? "") === "vinted" || body.description_verrouillee === true;
+      if (!vientDeVinted) return null;
       const t = String(item.description ?? "").trim();
       return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : null;
     })();

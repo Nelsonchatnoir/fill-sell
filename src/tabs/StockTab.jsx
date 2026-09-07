@@ -3870,6 +3870,9 @@ const StockTab = memo(function StockTab({
     if (detail?.success && detail.description) {
       // Persistée pour ne plus jamais re-demander cet article ; la sync ne
       // réécrit pas `description` (champ à l'utilisateur), elle survivra.
+      // Le marqueur d'origine part avec elle (attributsDetail porte
+      // description_source = 'vinted') : c'est lui, et lui seul, qui autorise
+      // le verrou anti-réécriture côté generate-listing.
       await supabase.from('inventaire')
         .update({ description: detail.description, ...(catalogAEcrire ? { vinted_catalog_id: catalogAEcrire } : {}) })
         .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
