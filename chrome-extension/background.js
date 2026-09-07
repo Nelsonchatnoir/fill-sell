@@ -6918,6 +6918,28 @@ const PUBLISH_GRACE_MS = {
 };
 const PUBLISH_GRACE_DEFAULT_MS = 2 * 60 * 60 * 1000;
 
+// ── Grâce PLUS LONGUE pour une annonce RECRÉÉE (2026-09-07) ──────────────────
+// Une republication vient de supprimer une annonce et d'en créer une autre
+// quelques secondes plus tard. C'est précisément l'annonce que Vinted sert le
+// moins bien : elle s'indexe, et le job d'Ornella l'a montré — bandeau à
+// 20:13 pour une recréation de 16:12, soit 4 h 01 après, sur une annonce
+// parfaitement en ligne. Deux heures de grâce (celles d'un publish) ne
+// couvraient pas cette fenêtre.
+// 12 H, et voici pourquoi ce n'est pas cher payé :
+//   · le bandeau exige grâce + un second strike deux heures plus tard : le
+//     plus tôt possible devient +14 h, très au-delà des 4 h observées ;
+//   · une VRAIE vente n'attend pas pour autant. La sync du dressing pose
+//     sale_signal='sold' sur preuve POSITIVE (is_closed + item_closing_action)
+//     et n'est PAS soumise à cette grâce — le bandeau « Vendue 🎉 » arrive par
+//     ce chemin-là, inchangé ;
+//   · on reste sous les 24 h : une vente que seule la page révélerait sort
+//     quand même dans la journée.
+// Ne s'applique qu'aux jobs action='republish' : un publish garde ses 2 h.
+const REPUBLISH_GRACE_MS = 12 * 60 * 60 * 1000;
+const graceDuJob = (j) =>
+  (j?.action === "republish" ? REPUBLISH_GRACE_MS : null)
+  ?? PUBLISH_GRACE_MS[j?.platform] ?? PUBLISH_GRACE_DEFAULT_MS;
+
 // ── Détection d'état d'une annonce — RÉÉCRITE le 2026-07-12 ───────────────────
 // Les détecteurs précédents (portés d'un scraping serveur qui n'a JAMAIS tourné
 // avec succès) étaient FAUX DANS LES DEUX SENS. Vérifié sur du vrai HTML :
@@ -7311,7 +7333,59 @@ async function memoriserLbcMorte(url) {
 // Leboncoin : plusieurs tirs, et « morte » l'emporte (cf. bloc ci-dessus). Les
 // autres plateformes n'ont jamais montré ce va-et-vient — lecture unique,
 // comportement inchangé.
+// ── VINTED : un 404 isolé ne fait plus un strike (2026-09-07, job 74709f47) ──
+// CE QUI S'EST PASSÉ. Annonce d'Ornella republiée à 16:12, EN LIGNE (vérifiée
+// sur son téléphone), bandeau « n'est plus en ligne — vendue ? » à 20:13.
+// Établi en base : listing_url, platform_listing_id et inventaire.vinted_item_id
+// portaient TOUS LES TROIS le nouvel identifiant. La sonde a donc lu la BONNE
+// annonce, vivante, et l'a conclue absente — deux fois, à deux heures d'écart.
+// Ce n'était pas un problème d'identifiant : c'était la LECTURE qui mentait.
+// La répartition le confirme : le drapeau n'arrive pas au fil de l'eau mais par
+// ÉPISODES, sur un compte à la fois (18 le 29/08, 9 le 10/08) — le profil d'une
+// session dont les lectures se dégradent, pas d'un défaut permanent.
+//
+// POURQUOI C'ÉTAIT POSSIBLE. lireEtatAnnonce conclut 'unavailable' sur UN
+// SEUL 404/410 (aucune relecture), là où Leboncoin tire LBC_CHECK_TIRS fois
+// avant d'oser le même verdict. La règle des deux lectures espacées de 2 h
+// protégeait de l'incident ISOLÉ, pas de l'épisode : deux tirs malchanceux à
+// deux heures d'écart, et le bandeau part.
+//
+// CE QU'ON FAIT. Chaque lecture Vinted devient elle-même UNANIME : on ne
+// retient 'unavailable' que si les VINTED_CHECK_TIRS tirs concluent pareil.
+//   · un tir 'active' ou 'sold' → PREUVE POSITIVE, on rend immédiatement (et
+//     un 'active' efface le drapeau plus haut : la fausse alerte se répare) ;
+//   · un seul tir 'unknown' (bot-shield, HTTP non-ok, page inattendue) suffit
+//     à casser l'unanimité → 'unknown', donc AUCUN drapeau, et le repli
+//     wardrobe garde sa chance de conclure sur le dressing du vendeur.
+// ⛔ On DURCIT chaque strike, on ne relâche RIEN : la règle des deux lectures
+// espacées de 2 h et le garde-fou superseded_listing sont inchangés.
+const VINTED_CHECK_TIRS = 3;
+
+async function checkVintedUnanime(url) {
+  let dernier = { state: "unknown", price: null };
+  for (let tir = 1; tir <= VINTED_CHECK_TIRS; tir++) {
+    if (tir > 1) await sleep(randInt(700, 1600));
+    const res = await lireEtatAnnonce(url, "vinted");
+    // Preuve POSITIVE : la page a répondu et dit quelque chose. Inutile
+    // d'insister, et surtout : un 'active' doit remonter tel quel pour lever
+    // un drapeau posé à tort au cycle précédent.
+    if (res.state === "active" || res.state === "sold") {
+      if (tir > 1) console.log(`[background] vinted : ${res.state} au tir ${tir}/${VINTED_CHECK_TIRS} — verdict positif retenu`);
+      return res;
+    }
+    if (res.state !== "unavailable") {
+      console.log(`[background] vinted : tir ${tir}/${VINTED_CHECK_TIRS} → ${res.state} — unanimité rompue, aucune conclusion`);
+      return { state: "unknown", price: null };
+    }
+    dernier = res;
+    console.log(`[background] vinted : tir ${tir}/${VINTED_CHECK_TIRS} → unavailable`);
+  }
+  console.log(`[background] vinted : ${VINTED_CHECK_TIRS} tirs unanimes 'unavailable' — strike retenu (confirmation au prochain cycle)`);
+  return dernier;
+}
+
 async function checkListingState(url, platform) {
+  if (platform === "vinted") return checkVintedUnanime(url);
   if (platform !== "leboncoin") return lireEtatAnnonce(url, platform);
 
   if (await lbcUrlDejaMorte(url)) {
@@ -9914,7 +9988,11 @@ async function checkPublishedListings(session) {
   try {
     jobs = await restRequest(
       "cross_post_jobs" +
-        "?select=id,platform,inventaire_id,listing_url,last_checked_at,published_at,created_at,platform_fields" +
+        // La colonne `action` est LUE (2026-09-07) : c'est elle qui distingue
+        // la grâce d'un publish (2 h) de celle d'une republication (12 h),
+        // cf. graceDuJob. Sans elle, j.action valait undefined et toutes les
+        // republications retombaient sur les 2 h.
+        "?select=id,platform,action,inventaire_id,listing_url,last_checked_at,published_at,created_at,platform_fields" +
         // É4 (2026-08-05) : un job republish 'published' EST une annonce en
         // ligne — sans lui, un article republié sortait de la détection de
         // vente (le publish d'origine est clos 'cancelled' à la suppression).
@@ -9942,7 +10020,7 @@ async function checkPublishedListings(session) {
   const inGrace = (j) => {
     const ref = Date.parse(j.published_at ?? j.created_at ?? "");
     if (!Number.isFinite(ref)) return false; // pas de date fiable : on ne bloque pas
-    const grace = PUBLISH_GRACE_MS[j.platform] ?? PUBLISH_GRACE_DEFAULT_MS;
+    const grace = graceDuJob(j);
     return now - ref < grace;
   };
 
@@ -9950,7 +10028,7 @@ async function checkPublishedListings(session) {
   if (fresh.length) {
     console.log(
       `[background] Délai de grâce : ${fresh.length} annonce(s) trop récente(s), non vérifiée(s) — ` +
-      fresh.map((j) => `${j.platform} (${Math.round((PUBLISH_GRACE_MS[j.platform] ?? PUBLISH_GRACE_DEFAULT_MS) / 3600000)} h)`).join(", ")
+      fresh.map((j) => `${j.platform}${j.action === "republish" ? " (republication)" : ""} (${Math.round(graceDuJob(j) / 3600000)} h)`).join(", ")
     );
   }
 

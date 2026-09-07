@@ -3507,6 +3507,50 @@ export default function App({ loginOnly = false }){
     if((data??[]).length) setPendingRemovals(prev=>prev.filter(p=>!(data??[]).some(d=>d.id===p.id)));
   }
 
+  // ── SUPPRIMER UNE VENTE REMET L'ARTICLE EN STOCK (2026-09-07) ─────────────
+  // POURQUOI. Un faux bandeau « plus en ligne — vendue ? » existe (job
+  // 74709f47 : annonce d'Ornella bien en ligne, lecture Vinted qui ment). Le
+  // clic « Oui, enregistrer la vente » sort l'article du stock, et jusqu'ici
+  // supprimer la vente ne le faisait PAS revenir : statut restait 'vendu', il
+  // fallait rééditer l'article à la main. Le filet manquait exactement là où
+  // le dégât se produit.
+  //
+  // CE QU'ON REMET, CE QU'ON GARDE — rien n'est deviné :
+  //   · statut 'vendu' → 'stock'                    (l'article revient) ;
+  //   · margin / margin_pct → NULL                  (dérivés de la vente qui
+  //     n'existe plus ; les laisser afficherait un bénéfice sans vente) ;
+  //   · selling_fees → 0                            (frais de CETTE vente) ;
+  //   · prix_vente : CONSERVÉ. Ce n'est pas une donnée de vente — c'est aussi
+  //     le prix de mise en ligne, écrit par la republication et par la fiche
+  //     article. L'effacer perdrait une valeur vraie ;
+  //   · prix_achat, purchase_costs, quantite, titre, marque, plateforme :
+  //     jamais touchés ;
+  //   · `date` : CONSERVÉE telle quelle. confirmSell l'écrase avec la date de
+  //     vente et la date d'origine n'est nulle part — la restaurer serait
+  //     l'inventer.
+  //
+  // GARDES :
+  //   · rien sans lien : une vente sans inventaire_id (confirmSell n'en pose
+  //     pas) ne touche à aucun article — jamais de restauration devinée ;
+  //   · seulement statut='vendu' : un article déjà en stock n'est pas réécrit,
+  //     et une vente PARTIELLE de lot (l'article d'origine est resté en stock
+  //     avec une quantité amputée) n'est donc pas concernée — l'unité vendue
+  //     ne revient pas au stock, c'est une limite connue et assumée ici ;
+  //   · .select() après l'update : un update muet bloqué par RLS a déjà été
+  //     vécu sur profiles, on vérifie que la ligne revient.
+  // ⛔ Ne touche AUCUN job : le job vendu reste 'sold', les frères annulés
+  // restent annulés. C'est volontaire — revenir sur des statuts de job
+  // demanderait ses propres gardes.
+  async function remettreEnStockApresVenteSupprimee(inventaireId){
+    if(inventaireId==null)return;
+    const{data,error}=await supabase.from('inventaire')
+      .update({statut:'stock',margin:null,margin_pct:null,selling_fees:0})
+      .eq('id',inventaireId).eq('user_id',user.id).eq('statut','vendu')
+      .select('id');
+    if(error){console.error('[venteSupprimee] remise en stock:',error.message);return;}
+    if((data??[]).length) console.log(`[venteSupprimee] article ${inventaireId} remis en stock`);
+  }
+
   // « Plus tard » DURABLE (2026-09-07). Avant, il ne filtrait qu'un état React :
   // le drapeau restait en base et le bandeau revenait au chargement suivant,
   // puis au suivant, sans fin. Il s'écrit désormais en base — le bandeau ne
@@ -7592,6 +7636,10 @@ export default function App({ loginOnly = false }){
                     // La vente n'existe plus : la question « retirer les autres
                     // annonces ? » n'a plus lieu d'être posée.
                     await eteindreRetraitsEnAttente(invVente);
+                    // … et l'article revient dans le stock (2026-09-07) : sans
+                    // ça, un clic « Oui, enregistrer la vente » sur un faux
+                    // bandeau sortait l'article DÉFINITIVEMENT du stock.
+                    await remettreEnStockApresVenteSupprimee(invVente);
                     await fetchAll(user.id);
                     setDeleteConfirm(null);
                   }} style={{flex:1,padding:"12px",background:UI.negative,border:"none",borderRadius:999,fontSize:13,fontWeight:600,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
