@@ -337,14 +337,15 @@ droit de rétractation une fois le service pleinement exécuté, l'article L221-
 du Code de la consommation s'applique. À défaut d'un tel accord exprès recueilli
 au moment de la souscription, **le droit de rétractation s'exerce en totalité**.
 
-> ⚠️ **À arbitrer avant publication.** Aujourd'hui le tunnel de paiement ne
-> recueille aucune renonciation expresse. Deux options, et une seule doit
-> figurer dans le texte final :
-> **(a)** on ajoute la case à cocher au tunnel (web et stores) et on trace le
-> consentement, et alors la clause de prorata est valable ;
-> **(b)** on ne l'ajoute pas, et on rembourse intégralement pendant 14 jours.
-> La rédaction ci-dessus retient (b), qui est la seule tenable en l'état du
-> code. **Ne pas publier la version « prorata » sans avoir livré la case.**
+> ✅ **ARBITRAGE TRANCHÉ (Nico, 7 septembre 2026) : remboursement intégral sous
+> 14 jours. On ne construit aucune case de renonciation.** La rédaction
+> ci-dessus est donc définitive sur ce point, et le paragraphe « Exécution
+> immédiate » est conservé uniquement pour dire ce qui s'appliquerait si une
+> renonciation était un jour recueillie — il ne décrit pas le fonctionnement
+> actuel. À la publication, la mention « le remboursement est diminué du prorata
+> correspondant à la période déjà écoulée » qui figure aujourd'hui en ligne
+> (CGU 3.6 et CGV article 6) **doit disparaître** : elle est sans base tant
+> qu'aucune renonciation n'est recueillie.
 
 **Achats par les boutiques.** Pour les achats effectués via l'App Store ou
 Google Play, les demandes de remboursement relèvent des conditions de la
@@ -378,14 +379,31 @@ de vos données depuis l'application (Profil → Réglages → Supprimer mon com
 La suppression est immédiate et définitive ; elle emporte l'annulation de
 l'abonnement en cours.
 
-> ⚠️ **Obligation L215-1-1 non satisfaite aujourd'hui.** Le parcours doit être :
-> visible en permanence, en trois étapes, avec accusé de réception sur support
-> durable. La fonction serveur existe (`cancel-subscription`) et l'application
-> l'appelle — mais **elle n'envoie aucun e-mail** : vérifié, le fichier ne
-> contient ni appel à Resend ni envoi de message. Tant que l'accusé de réception
-> n'est pas livré, la phrase « un accusé de réception vous est adressé par
-> e-mail » promet ce que le code ne fait pas : **soit on livre l'e-mail, soit on
-> retire la phrase.**
+> ✅ **ARBITRAGE TRANCHÉ (Nico, 7 septembre 2026) : l'accusé de réception sera
+> envoyé.** Tant qu'il ne l'est pas, la phrase « un accusé de réception vous est
+> adressé par e-mail » ne doit pas être publiée.
+>
+> **Ce que ça demande, précisément :**
+> 1. `cancel-subscription` n'envoie aujourd'hui **aucun** e-mail (vérifié : ni
+>    Resend, ni autre). Il faut y ajouter un envoi après l'annulation Stripe
+>    réussie, et **seulement** après — un accusé envoyé sur un échec serait pire
+>    que pas d'accusé.
+> 2. Le socle existe déjà : `RESEND_API_KEY` est en place et `email-tunnel`
+>    envoie déjà des e-mails transactionnels. C'est un gabarit de plus, pas une
+>    brique de plus.
+> 3. Contenu imposé par l'esprit du texte (support durable) : la date et l'heure
+>    de la demande, la formule concernée, **la date à laquelle l'accès prend
+>    fin** (fin de la période payée), et le rappel que les données restent
+>    accessibles en formule gratuite.
+> 4. Traçabilité : une ligne dans `email_logs`. ⚠️ Le type sera **récurrent**
+>    (un utilisateur peut résilier plusieurs fois dans sa vie) : il ne doit
+>    donc **PAS** entrer dans l'index partiel `email_logs_one_shot_unique`,
+>    sinon la deuxième résiliation d'un même compte échouerait en 23505.
+> 5. Périmètre : uniquement les résiliations **web** (Stripe). Une résiliation
+>    faite dans l'App Store ou Google Play ne passe pas par nous — c'est la
+>    boutique qui accuse réception, et le texte le dit.
+>
+> Coût estimé : une petite heure, dont l'essentiel en rédaction du message.
 
 *Fondé sur : C. consom. L215-1-1 et décret 2023-417 ; code — `cancel-subscription`,
 `delete-account`.*
@@ -458,18 +476,44 @@ sont établis hors de l'Union. Ces transferts sont encadrés par les clauses
 contractuelles types de la Commission européenne ou, le cas échéant, par une
 décision d'adéquation.
 
-**4.9 Mesure d'audience et conversions publicitaires (NOUVEAU)** — lorsque vous
-souscrivez un abonnement, FillSell transmet à TikTok un identifiant **haché**
-(votre adresse e-mail transformée par une fonction à sens unique) et le montant
-de la transaction, afin de mesurer l'efficacité de ses campagnes. Aucune donnée
-de votre inventaire, de vos ventes ou de vos annonces n'est transmise.
-**Base légale : consentement** — à recueillir avant l'envoi.
+**4.9 Mesure publicitaire — SUPPRIMÉE**
 
-> ⚠️ Aujourd'hui cet envoi a lieu **sans consentement recueilli**, et la page
-> affirme l'inverse (« jamais utilisées pour du suivi publicitaire »). Deux
-> issues, à trancher : recueillir le consentement, ou couper l'envoi. **La
-> rédaction ci-dessus suppose que le consentement est recueilli. Ne pas publier
-> avant d'avoir choisi.**
+> ✅ **ARBITRAGE TRANCHÉ (Nico, 7 septembre 2026) : on coupe l'envoi.** Pas de
+> consentement à construire. Une fois la coupe faite, aucune section 4.9 n'est
+> nécessaire, et les phrases déjà en ligne (« jamais utilisées pour du suivi
+> publicitaire », « aucun SDK de tracking ou publicitaire », « aucun cookie
+> publicitaire ni traceur tiers ») redeviennent vraies — elles ne le sont pas
+> aujourd'hui.
+>
+> **Périmètre exact de la coupe — 7 endroits, dont un que je n'avais pas vu au
+> premier relevé :**
+>
+> | # | Où | Ce que c'est |
+> |---|---|---|
+> | 1 | `index.html` lignes 197-205 | **Le pixel TikTok navigateur** (`ttq.load('D8ELPJJC77UANKFS7C60')` puis `ttq.page()`). Chargé sur CHAQUE page du site, pour CHAQUE visiteur, avant tout consentement. C'est lui le vrai sujet : il dépose des cookies tiers et c'est un SDK publicitaire. |
+> | 2 | `src/lib/tiktok.ts` | le client (`trackTikTokEvent`) |
+> | 3 | `src/App.jsx:2687` | `InitiateCheckout` (e-mail + montant) |
+> | 4 | `src/App.jsx:5058` | `CompleteRegistration` (e-mail) |
+> | 5 | `supabase/functions/tiktok-event` | la fonction serveur qui hache l'e-mail et appelle la TikTok Business API |
+> | 6 | `stripe-webhook` (2 appels), `validate-apple-receipt`, `validate-google-purchase` | les 4 appels serveur d'événements d'achat |
+> | 7 | secrets `TIKTOK_ACCESS_TOKEN`, `TIKTOK_PIXEL_ID` | à retirer après la coupe |
+>
+> `index.html:94` contient aussi un simple lien vers le profil TikTok de la
+> marque : **ce n'est pas du traçage, on le garde.**
+>
+> **Ce que ça casse — rien, techniquement.** Les appels sont tous en
+> « tire et oublie » : `trackTikTokEvent` est enveloppé dans un try/catch et ne
+> rend rien ; les 4 appels serveur sont suivis d'un `.catch()` et ne
+> conditionnent aucune écriture. Aucun crédit, aucun abonnement, aucun e-mail ne
+> dépend d'eux. Supprimer les 7 points ci-dessus ne change aucun comportement
+> visible par un utilisateur.
+>
+> **Ce que ça coûte — la mesure publicitaire.** Si des campagnes TikTok Ads
+> tournent, elles perdent : l'attribution des conversions (inscription et
+> achat), l'optimisation automatique sur ces événements, et le reporting de ROAS
+> dans TikTok Ads Manager. Les campagnes continueront de diffuser, mais à
+> l'aveugle. **C'est une décision marketing, pas technique : à confirmer avant
+> que je coupe.**
 
 ### Section 9 — Signalement et point de contact (NOUVEAU, DSA)
 
@@ -526,10 +570,15 @@ ligne des litiges : ec.europa.eu/consumers/odr.
 
 ## 6. Ordre de travail proposé
 
-1. Nico complète le §0 (identité, SIRET, adresse, médiateur).
-2. On tranche les trois arbitrages marqués ⚠️ : renonciation à la rétractation,
-   consentement TikTok, accusé de réception de résiliation.
-3. Le code rattrape ce que le texte promet (case de renonciation, ou pas ;
-   consentement TikTok, ou coupure ; e-mail d'accusé de réception).
+1. ✅ **Fait le 7 septembre 2026** — les trois arbitrages sont tranchés :
+   remboursement intégral 14 jours (pas de case de renonciation) ; coupe de
+   TikTok ; envoi de l'accusé de réception de résiliation.
+2. Nico complète le §0 (identité, SIRET, adresse, téléphone, médiateur) —
+   annoncé pour le lendemain.
+3. Le code rattrape ce que le texte promet, dans cet ordre :
+   a. couper TikTok aux 7 endroits du §4.9 (attente d'une confirmation : la
+      perte de mesure publicitaire est une décision marketing) ;
+   b. ajouter l'accusé de réception de résiliation (§ article 8) ;
+   c. retirer la mention de prorata aujourd'hui en ligne (CGU 3.6, CGV art. 6).
 4. Relecture avocat sur les 8 points du §5.
 5. Publication de la page, et mise à jour de la date de dernière modification.
