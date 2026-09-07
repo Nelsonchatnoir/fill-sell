@@ -514,23 +514,27 @@ serve(async (req) => {
     if (itemIds.length) {
       // La capture la plus récente de chaque article, par paquets de 100 :
       // l'ordre décroissant + « premier vu gagne » suffit à la sélectionner.
+      // ⛔ Clé (user_id, vinted_item_id), jamais l'id seul : ce cron tourne en
+      // service role, sans RLS. Un id d'annonce appartient certes à un seul
+      // vendeur Vinted, mais la règle « jamais l'article d'un autre » ne se
+      // repose pas sur cette supposition — elle se code.
       const parItem = new Map<string, { libelles?: unknown; payload?: unknown }>();
       for (let i = 0; i < itemIds.length; i += 100) {
         const { data: caps } = await supabase
           .from("vinted_republish_captures")
-          .select("vinted_item_id, libelles, payload, captured_at")
+          .select("user_id, vinted_item_id, libelles, payload, captured_at")
           .in("vinted_item_id", itemIds.slice(i, i + 100))
           .order("captured_at", { ascending: false });
         // deno-lint-ignore no-explicit-any
         for (const c of (caps ?? []) as any[]) {
-          const cle = String(c.vinted_item_id);
+          const cle = `${c.user_id}|${c.vinted_item_id}`;
           if (!parItem.has(cle)) parItem.set(cle, c);
         }
       }
       for (const j of candidats) {
         const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
         const itemId = String(pf.vinted_item_id ?? "").trim();
-        const resolu = etatDepuisCapture(parItem.get(itemId));
+        const resolu = etatDepuisCapture(parItem.get(`${j.user_id}|${itemId}`));
         if (!resolu) continue;
         const uf = (pf.republish_user_fields ?? {}) as Record<string, unknown>;
         delete pf.champs_a_completer;
