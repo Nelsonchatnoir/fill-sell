@@ -36,6 +36,9 @@ import { rapatrierPhotosPublication } from "../_shared/photos-rapatriement.ts";
 import { obtenirJetonApplicatif } from "../_shared/ebay-app-token.ts";
 import { hotes } from "../_shared/ebay-oauth.ts";
 import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
+// Module PUR (aucun import, aucune API navigateur) : le rétro-test doit
+// appliquer EXACTEMENT la règle mot-objet de l'app, pas une approximation.
+import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
 import {
   aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
   lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos, type AttributsInventaire, type PlatformFields,
@@ -687,45 +690,104 @@ async function choisirParmiSuggestions(
   }
 }
 
-// ── RÉTRO-TEST (consigne Nico, 07/09 soir) : sur des articles RÉELS déjà
-// partis, ce que le choix arbitré aurait donné contre ce qui est parti.
-// « Je veux voir qu'il fait mieux, pas qu'il fait différent. »
-// N'écrit RIEN : ni job, ni annonce, ni cache. Lecture seule + un appel IA
-// par article.
-async function backtestCategorie(admin: SupabaseClient, env: EbayEnv, body: { limit?: number }): Promise<Record<string, unknown>> {
-  const limite = Math.min(40, Number(body.limit) || 15);
+// ── RÉTRO-TEST SUR LE VRAI PÉRIMÈTRE (consigne Nico, 07/09 soir) ───────────
+// Le premier rétro-test ne prouvait presque rien : 7 des 8 articles avaient un
+// mot-objet dans leur titre, donc une source CERTAINE — le mécanisme ne les
+// touche jamais en production, il avait fallu forcer l'arbitrage pour les
+// voir. Ici on ne force RIEN : l'échantillon est construit avec la MÊME règle
+// que la production.
+//
+// Entrent dans l'échantillon les articles pour lesquels, exactement :
+//   · detectObjectIconKeyword ne trouve AUCUN mot-objet dans la source FR
+//     (titre + description + marque de la FICHE — jamais le titre eBay, qui
+//     est traduit en anglais) ;
+//   · la famille Lens ne tranche pas (un `livres_medias` non-média a une
+//     source certaine, cf. la règle « famille souveraine pour les livres »).
+// C'est-à-dire : les articles qui, en production, partent sur l'icône de l'IA
+// seule — les seuls que l'arbitrage traite.
+//
+// Les suggestions eBay sont lues avec le jeton APPLICATIF : elles ne dépendent
+// d'aucun compte vendeur, ce qui permet de mesurer sur tout le parc et non sur
+// les 18 jobs des 2 vendeurs ayant connecté eBay.
+// Lecture seule : aucun job, aucune annonce, aucune écriture.
+async function backtestCategorie(admin: SupabaseClient, env: EbayEnv, body: { limit?: number; scan?: number }): Promise<Record<string, unknown>> {
+  const vise = Math.min(60, Number(body.limit) || 30);
+  const aScanner = Math.min(600, Number(body.scan) || 400);
   const { data: jobs } = await admin.from("cross_post_jobs")
-    .select("id, user_id, title, status, platform_fields, created_at")
-    .eq("platform", "ebay").in("action", ["publish"]) 
+    .select("id, user_id, inventaire_id, title, status, platform_fields, created_at")
+    .eq("platform", "ebay").eq("action", "publish")
     .not("platform_fields->>ebayCategoryId", "is", null)
-    .order("created_at", { ascending: false }).limit(limite);
+    .order("created_at", { ascending: false }).limit(aScanner);
+
+  const ids = [...new Set((jobs ?? []).map((j) => (j as { inventaire_id: number | null }).inventaire_id).filter((x): x is number => x != null))];
+  const fiches = new Map<number, { titre: string; description: string | null; marque: string | null; famille: string | null }>();
+  for (let i = 0; i < ids.length; i += 200) {
+    const { data } = await admin.from("inventaire")
+      .select("id, titre, description, marque, attributs")
+      .in("id", ids.slice(i, i + 200));
+    for (const a of (data ?? []) as Array<{ id: number; titre: string; description: string | null; marque: string | null; attributs: AttributsInventaire | null }>) {
+      const fam = (a.attributs as Record<string, { v?: unknown }> | null)?.famille;
+      fiches.set(a.id, {
+        titre: a.titre, description: a.description, marque: a.marque,
+        famille: fam && typeof fam === "object" ? String((fam as { v?: unknown }).v ?? "") : null,
+      });
+    }
+  }
+
+  const token = await obtenirJetonApplicatif(env);
   const lignes: Record<string, unknown>[] = [];
-  let identique = 0, change = 0, sansSuggestion = 0;
-  for (const j of (jobs ?? []) as Array<{ id: string; user_id: string; title: string; status: string; platform_fields: PlatformFields }>) {
-    const pf = j.platform_fields ?? {};
+  let ecartesMotObjet = 0, ecartesFamille = 0, sansFiche = 0, sansSuggestion = 0;
+  let mieux = 0, identique = 0, moinsBien = 0;
+
+  for (const brut of (jobs ?? []) as Array<{ id: string; user_id: string; inventaire_id: number | null; title: string; status: string; platform_fields: PlatformFields }>) {
+    if (lignes.length >= vise) break;
+    const fiche = brut.inventaire_id != null ? fiches.get(brut.inventaire_id) : null;
+    if (!fiche) { sansFiche++; continue; }
+    // MÊME règle que resolveArticleIconDetail, dans le même ordre.
+    if (fiche.famille === "livres_medias" && !estSupportNonLivre(fiche.titre, fiche.description ?? "")) { ecartesFamille++; continue; }
+    const motObjet = detectObjectIconKeyword(fiche.titre ?? "", `${fiche.description ?? ""} ${fiche.marque ?? ""}`);
+    if (motObjet) { ecartesMotObjet++; continue; }
+
+    const pf = brut.platform_fields ?? {};
     const partie = String(pf.ebayCategoryId ?? "");
     const cheminParti = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]).join(" > ") : "";
-    const jeton = await obtenirAccessToken(admin, j.user_id);
-    if (!jeton.ok) { lignes.push({ id: j.id, titre: j.title, erreur: `jeton : ${jeton.motif}` }); continue; }
-    const sugg = await suggererCategories(env, jeton.token, j.title ?? "");
-    if (!sugg.length) { sansSuggestion++; lignes.push({ id: j.id, titre: j.title, partie: `${partie} ${cheminParti}`, suggestions: 0 }); continue; }
+    const sugg = await suggererCategories(env, token, brut.title ?? "");
+    if (!sugg.length) {
+      sansSuggestion++;
+      lignes.push({ titre_fr: fiche.titre, titre_ebay: brut.title, partie: `${partie} ${cheminParti}`, suggestions: 0, verdict: "aucune suggestion eBay" });
+      continue;
+    }
     const retenu = await choisirParmiSuggestions(sugg, {
-      titre: j.title ?? "", genre: pf.genre as string | null,
-      taille: pf.taille as string | null, marque: pf.marque as string | null, userId: j.user_id,
+      titre: brut.title ?? "", genre: pf.genre as string | null,
+      taille: pf.taille as string | null, marque: pf.marque as string | null, userId: brut.user_id,
     });
-    const memeQuePremiere = retenu?.id === sugg[0].id;
-    if (retenu?.id === partie) identique++; else change++;
+    const change = retenu?.id !== partie;
+    if (!change) identique++;
     lignes.push({
-      id: j.id, statut: j.status, titre: j.title,
+      job: brut.id, statut: brut.status,
+      titre_fr: fiche.titre, titre_ebay: brut.title,
       partie: `${partie} ${cheminParti}`,
-      suggestions: sugg.map((s, i) => `${i + 1}. ${s.id} ${s.chemin.join(" > ")}`),
-      premiere_suggestion: `${sugg[0].id} ${sugg[0].chemin.join(" > ")}`,
-      choix_ia: retenu ? `${retenu.id} ${retenu.chemin.join(" > ")}` : null,
-      ia_suit_la_premiere: memeQuePremiere,
-      verdict: retenu?.id === partie ? "inchangé" : "CHANGÉ",
+      n1_ebay: `${sugg[0].id} ${sugg[0].chemin.join(" > ")}`,
+      choix: retenu ? `${retenu.id} ${retenu.chemin.join(" > ")}` : null,
+      suit_n1: retenu?.id === sugg[0].id,
+      n_suggestions: sugg.length,
+      change,
     });
   }
-  return { articles: lignes.length, inchange: identique, change, sans_suggestion: sansSuggestion, lignes };
+  return {
+    echantillon: lignes.length,
+    jobs_scannes: (jobs ?? []).length,
+    ecartes_mot_objet: ecartesMotObjet,
+    ecartes_famille_lens: ecartesFamille,
+    sans_fiche: sansFiche,
+    sans_suggestion_ebay: sansSuggestion,
+    identiques: identique,
+    changes: lignes.filter((l) => l.change === true).length,
+    // « mieux / moins bien » ne se déduit pas d'un identifiant : c'est un
+    // jugement, il est rendu à la lecture des lignes. On ne l'invente pas ici.
+    mieux, moins_bien: moinsBien,
+    lignes,
+  };
 }
 
 function dejaTrancheSource(pf: PlatformFields): string {
@@ -939,7 +1001,7 @@ Deno.serve(async (req) => {
   const attendu = Deno.env.get("CRON_SECRET");
   if (!attendu || req.headers.get("x-cron-secret") !== attendu) return json({ error: "Non autorisé" }, 401);
 
-  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string; action?: string; ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean; ids?: string[] };
+  const body = await req.json().catch(() => ({})) as { job_id?: string; trigger?: string; action?: string; ebay_user_id?: string; limit?: number; inventaire_ids?: number[]; ignorer_aspects_job?: boolean; ignorer_champs_job?: boolean; ids?: string[]; scan?: number };
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const env = lireEnvEbay();
   if (body.action === "mesure_aspects") return json(await mesurerAspects(admin, env, body));

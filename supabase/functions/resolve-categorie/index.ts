@@ -41,6 +41,21 @@ type Plateforme = typeof PLATEFORMES[number];
 
 interface Candidat { chemin: string[]; id?: string | null; source?: string }
 
+// ── « AUTRE » N'EST PAS UNE CATÉGORIE (règle Nico, appliquée le 07/09 soir) ─
+// Rétro-test sur le VRAI périmètre (22 articles sans mot-objet) : 8 choix
+// meilleurs, 12 identiques, 2 moins bons — et les DEUX moins bons sont le même
+// cas, un fourre-tout retenu alors que la liste contenait de vraies feuilles :
+//   · « Guerlain Aqua Allegoria 125 ml » → Collections > Autres (32643)
+//   · « Uriage Huile Lavante pour Bébé » → Bébé, puériculture > Autres (1261)
+// Une annonce dans « Autres » ne se trouve pas. On RETIRE donc les fourre-tout
+// de la liste dès qu'elle contient au moins une vraie feuille : le modèle doit
+// choisir une catégorie réelle, ou répondre « aucune ».
+// ⛔ Quand il n'y a QUE des fourre-tout, on les garde : un fourre-tout vaut
+//    mieux qu'une catégorie fausse, et mieux que rien du tout.
+const FOURRE_TOUT = /^(autres?|divers|other|others|miscellaneous)$/i;
+const estFourreTout = (c: Candidat) =>
+  FOURRE_TOUT.test(String(c.chemin[c.chemin.length - 1] ?? "").trim());
+
 const SYSTEM = `Tu ranges un article d'occasion dans le catalogue de plusieurs plateformes de vente.
 
 Pour CHAQUE plateforme, on te donne une liste numérotée de catégories POSSIBLES. Tu choisis celle qui correspond à l'article, et tu réponds par sa CLÉ exacte.
@@ -118,8 +133,13 @@ serve(async (req) => {
   const parCle = new Map<string, { plateforme: Plateforme; candidat: Candidat }>();
   const lignes: string[] = [];
   for (const pf of PLATEFORMES) {
-    const liste = (candidats[pf] ?? []).filter((c) => Array.isArray(c?.chemin) && c.chemin.length).slice(0, 20);
+    const brutes = (candidats[pf] ?? []).filter((c) => Array.isArray(c?.chemin) && c.chemin.length);
+    const vraies = brutes.filter((c) => !estFourreTout(c));
+    const liste = (vraies.length ? vraies : brutes).slice(0, 20);
     if (!liste.length) continue;
+    if (vraies.length && vraies.length < brutes.length) {
+      console.log(`[resolve-categorie] ${pf} : ${brutes.length - vraies.length} fourre-tout ecarte(s)`);
+    }
     lignes.push(`\n${pf.toUpperCase()} :`);
     liste.forEach((c, i) => {
       const cle = `${pf[0]}${i}`;
