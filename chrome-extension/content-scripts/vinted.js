@@ -1942,6 +1942,7 @@ async function fillListingForm(job) {
   try {
     categorieSuggestionRetenue = null;
     categorieArbitrage = null;
+    titreArticleVinted = String(job?.title ?? "");
     await etape("Catégorie", () => selectCategory(fields.categoryPath, fields, job?.title ?? ""));
     // Trace lisible en base : la suggestion de Vinted a remplacé notre chemin.
     if (categorieArbitrage) {
@@ -4593,6 +4594,9 @@ async function visibleCatalogChildIds() {
 // dans les warnings du job, donc lisible en base : sans ça, « pourquoi cette
 // annonce est-elle dans cette catégorie ? » resterait sans réponse.
 let categorieSuggestionRetenue = null;
+// Titre de l'article en cours — l'arbitrage des listes fermées en a besoin
+// pour juger, et selectColors est appelée sans le job sous la main.
+let titreArticleVinted = "";
 // Instrumentation (point 2) : ce qui s'est réellement passé à l'arbitrage —
 // 'choisi' | 'suggestion_unique' | 'pas_de_session' | 'timeout' | 'erreur'.
 // Voyage par le canal EXISTANT platform_fields.warnings, en forme structurée
@@ -5051,6 +5055,64 @@ async function selectColors(colorNames, warnings = []) {
       const note = `couleur: "${name}" sans correspondance dans le picker`;
       console.warn(`[vinted] ⚠️ ${note}`);
       warnings.push(note);
+    }
+  }
+  // ── LA PALETTE SE LIT SUR LA PAGE, PAS DANS UNE TABLE (2026-09-07 soir) ────
+  // Dernier recours AVANT de renoncer : aucune couleur n'a pu être posée, et le
+  // comportement d'avant était un ÉCHEC DUR du job (« COULEUR INTROUVABLE »,
+  // publication perdue avant dépôt). Plutôt que de renoncer, on envoie à l'IA
+  // la palette que Vinted affiche À CET INSTANT — relevée quelques lignes plus
+  // haut dans paletteCouleursRelevee — et elle choisit dedans.
+  //
+  // POURQUOI ÇA COMPTE ICI PLUS QU'AILLEURS : la valeur envoyée par l'app est
+  // normalisée contre vintedColors.js, une TABLE. Relevée le 30/07, revérifiée
+  // sur la vraie page le 07/09 — 29 libellés, identiques, même ordre, et la
+  // palette est GLOBALE (identique sur « Robes longues » et sur « Taies
+  // d'oreiller »). Elle est donc juste aujourd'hui ; mais une table peut
+  // vieillir sans prévenir, et c'est précisément ce qu'on refuse de laisser
+  // décider seul. Ce bloc rend le mécanisme INDÉPENDANT de la table : même
+  // périmée, la publication passe par la liste réelle.
+  //
+  // ⛔ Ce n'est PAS un « au plus proche » : la fonction serveur vérifie que la
+  //    réponse est une valeur de la palette envoyée et rend la valeur d'origine.
+  //    Le modèle a pour consigne de répondre « aucune » plutôt que d'approcher —
+  //    un bleu marine n'est pas un bleu.
+  // ⛔ Sans session, au-delà de 6 s, sur erreur ou sur « aucune » : on retombe
+  //    EXACTEMENT sur le comportement d'avant (échec nommé, palette dans
+  //    l'erreur). Jamais moins bon qu'aujourd'hui.
+  if (!posees && colorNames.length && paletteCouleursRelevee?.length) {
+    try {
+      const rep = await chrome.runtime.sendMessage({
+        type: "LISTE_FERMEE_CHOISIR",
+        titre: titreArticleVinted,
+        attributs: { valeur_voulue: colorNames.join(", "), champ: "Couleur" },
+        listes: { Couleur: { plateforme: "vinted", options: paletteCouleursRelevee } },
+      });
+      const choisi = rep?.valeurs?.Couleur;
+      if (choisi) {
+        const match = findOptionCascade(
+          document,
+          '[data-testid^="color-"]:not([data-testid$="-dropdown-content"]):not([data-testid$="-dropdown-input"])',
+          choisi,
+        );
+        if (match && normalizeFuzzy(match.label) === normalizeFuzzy(choisi)) {
+          await humanPause();
+          match.el.click();
+          await humanPause();
+          posees++;
+          const note = `couleur: ${JSON.stringify(colorNames)} absent de la palette — l'IA a retenu "${choisi}" PARMI les ${paletteCouleursRelevee.length} couleurs affichées par Vinted`;
+          console.log(`[vinted] ${note}`);
+          warnings.push(note);
+        }
+      } else if (rep?.motif) {
+        warnings.push({
+          code: "liste_fermee_arbitrage", plateforme: "vinted", champ: "Couleur",
+          motif: String(rep.motif), n_candidats: paletteCouleursRelevee.length,
+          message: `couleur: arbitrage indisponible (${rep.motif})`,
+        });
+      }
+    } catch (e) {
+      console.warn("[vinted] arbitrage de couleur indisponible :", e?.message ?? e);
     }
   }
   // Multi-sélection sans bouton "valider" : le clic body NE FERME PAS le

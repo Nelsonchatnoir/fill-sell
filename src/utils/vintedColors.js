@@ -15,6 +15,29 @@
 // de l'API. Diffère des listes qui circulent en ligne : Corail, Fuchsia et
 // Transparence existent bel et bien. Les codes serveur sont en commentaire
 // pour retrouver la correspondance dans les payloads réseau.
+//
+// ── RE-VÉRIFIÉE LE 2026-09-07 AU SOIR, SUR LE VRAI FORMULAIRE ──────────────
+// (vinted.fr/items/new, session de Nico, panneau Couleur ouvert)
+//   · 29 libellés, IDENTIQUES, dans le MÊME ORDRE : rien n'a bougé en 5 semaines.
+//     Aucune valeur disparue, aucune nouvelle, aucun libellé changé.
+//   · la palette est GLOBALE, pas par catégorie : rigoureusement la même sur
+//     « Femmes > Vêtements > Robes > Robes longues » et sur « Maison >
+//     Textiles > Linge de lit > Taies d'oreiller ». C'est CE fait qui rend une
+//     table légitime ici, là où les tailles Beebs (qui dépendent de la
+//     catégorie) l'interdisent.
+//   · ⚠️ l'API d'origine répond désormais 403 : la PAGE est la seule source
+//     lisible. Le relevé futur passera par elle.
+//
+// POURQUOI CETTE TABLE SURVIT, alors que partout ailleurs les listes fermées
+// se lisent sur la page : la couleur est normalisée par l'APP au clic Publier,
+// bien avant que la page Vinted existe — l'app n'a aucune page à lire. La
+// table est donc une PRÉ-normalisation, pas l'autorité.
+// L'AUTORITÉ, elle, est la palette affichée : depuis le 07/09, quand aucune
+// couleur ne se pose, vinted.js fait choisir l'IA PARMI les options réellement
+// affichées (selectColors). Même périmée, cette table ne peut donc plus faire
+// échouer un dépôt à elle seule.
+// Garde-fou : `npm run selftest:vinted-couleurs` compare la table au relevé du
+// 07/09 — s'il casse, RE-RELEVER SUR LA PAGE avant de toucher quoi que ce soit.
 export const VINTED_COLORS = [
   "Noir",        // BLACK
   "Gris",        // GREY

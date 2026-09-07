@@ -19,7 +19,8 @@
     "selftest:categorie-garde-fou": "node scripts/categorie-garde-fou-selftest.mjs",
     "selftest:mot-objet-pluriel": "node scripts/mot-objet-pluriel-selftest.mjs",
     "selftest:categorie-par-mot": "node scripts/categorie-par-mot-selftest.mjs",
-    "gen:arbres": "node scripts/gen-arbres-feuilles.mjs"
+    "gen:arbres": "node scripts/gen-arbres-feuilles.mjs",
+    "selftest:vinted-couleurs": "node scripts/vinted-couleurs-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

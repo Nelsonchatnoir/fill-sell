@@ -1260,7 +1260,11 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // arbitrees de la meme facon, en dernier recours avant un champ vide.
 // MIN_BUILD INCHANGE : une extension anterieure ignore le drapeau et garde son
 // comportement exact.
-export const EXTENSION_LAST_COMMIT = '2026-09-07T18:40:00Z';
+// 2026-09-07T18:15:00Z (20h15 Paris) : la PALETTE VINTED cesse d'etre une
+// table qui decide. Quand aucune couleur ne se pose, vinted.js fait choisir
+// l'IA PARMI les couleurs reellement affichees par le panneau — au lieu de
+// l'echec dur « COULEUR INTROUVABLE » d'avant. MIN_BUILD INCHANGE.
+export const EXTENSION_LAST_COMMIT = '2026-09-07T18:15:00Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
