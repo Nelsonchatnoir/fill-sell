@@ -1232,7 +1232,11 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // de rendre des identifiants bruts — c'est ce qui remplit inventaire.attributs
 // a chaque publication. Aucune photo re-hebergee, chemin de republication
 // intact.
-export const EXTENSION_LAST_COMMIT = '2026-09-07T11:52:23Z';
+// 2026-09-07T12:47Z = b041a34 (toujours 0.6.21) : la marque Leboncoin se cherche
+// par frappe (son menu est vide tant qu'on ne tape pas — 122 annonces sans
+// marque par mois), et taille/couleur se rapprochent par composants EXACTS
+// (« 38 - M » pour « M / 38 / 10 », « Marine / Turquoise » pour « Marine »).
+export const EXTENSION_LAST_COMMIT = '2026-09-07T13:01:09Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
