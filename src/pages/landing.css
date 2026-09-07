@@ -1,842 +1,96 @@
-/* ──────────────────────────────────────────────────────────────
-   FillSell — Landing page (maquette Claude Design, juillet 2026)
-   Tout est préfixé .lp- et scopé sous .lp-root : la landing partage
-   le bundle CSS avec l'app, aucune règle ne doit fuir vers /app.
-   ────────────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────
+   Landing FillSell — feuille de la page d'accueil publique (route « / » web).
 
-.lp-root {
-  --lp-bg: #EDEAE0;
-  --lp-surface: #F6F5F1;
-  --lp-line: #E7E3D8;
-  --lp-line-strong: #D8D3C6;
-  --lp-ink: #10201B;
-  --lp-muted: #5C6560;
-  --lp-dim: #8A8578;
-  --lp-faint: #A39D8E;
-  --lp-teal: #2F9E90;
-  --lp-teal-dark: #1B6E62;
-  --lp-teal-light: #37AC9C;
-  --lp-peach: #E8956D;
-  --lp-brand: #4A5A52;
+   Le dessin vient du projet Claude Design « FillSell Landing » : il porte ses
+   couleurs, ses tailles et ses espacements en styles INLINE, dans
+   LandingPage.jsx. Ne vivent ici que les trois choses qu'un style inline ne
+   peut pas exprimer : les @keyframes, les media queries, et les quelques
+   règles d'élément (police, liens, <summary>).
 
-  overflow-x: hidden;
-  min-height: 100vh;
-  background: var(--lp-bg);
-  color: var(--lp-ink);
-  font-family: 'Space Grotesk', system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
+   ⚠️ TOUT est cloisonné sous .lp-root. Cette feuille est importée par
+   LandingPage.jsx, qui reste dans le CHUNK D'ENTRÉE (décision de
+   code-splitting, cf. AppRouter) : elle est donc chargée sur toutes les
+   routes. Une règle nue sur *, a, body ou summary repeindrait l'app entière.
+   ───────────────────────────────────────────────────────────────────────── */
+.lp-root, .lp-root *{box-sizing:border-box}
+html.lp-smooth{scroll-behavior:smooth}
+.lp-root{color:#10201B;font-family:'Space Grotesk',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.lp-root a{color:#1B6E62;text-decoration:none}
+.lp-root a:hover{color:#2F9E90}
+.lp-root ::selection{background:rgba(47,158,144,0.22)}
+.lp-root summary::-webkit-details-marker{display:none}
+.lp-root summary{list-style:none;cursor:pointer}
+@keyframes fsFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes fsSpin{to{transform:rotate(360deg)}}
+@keyframes fsPulse{0%,100%{box-shadow:0 0 0 0 rgba(78,205,196,.45)}60%{box-shadow:0 0 0 14px rgba(78,205,196,0)}}
+@keyframes fsRing{to{transform:rotate(360deg)}}
+@keyframes fsCaret{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes fsWipe{0%{clip-path:inset(0 100% 0 0)}55%,100%{clip-path:inset(0 0 0 0)}}
+@keyframes fsBar{0%{transform:scaleY(.04)}100%{transform:scaleY(1)}}
+@keyframes fsTile{0%,8%{opacity:0;transform:translateY(14px) scale(.9)}22%,100%{opacity:1;transform:none}}
+@keyframes fsFlyA{0%,10%{opacity:0;transform:translate(0,0) scale(.5)}22%{opacity:1}45%,100%{opacity:1;transform:translate(196px,-86px) scale(1)}}
+@keyframes fsFlyB{0%,18%{opacity:0;transform:translate(0,0) scale(.5)}30%{opacity:1}53%,100%{opacity:1;transform:translate(196px,-29px) scale(1)}}
+@keyframes fsFlyC{0%,26%{opacity:0;transform:translate(0,0) scale(.5)}38%{opacity:1}61%,100%{opacity:1;transform:translate(196px,29px) scale(1)}}
+@keyframes fsFlyD{0%,34%{opacity:0;transform:translate(0,0) scale(.5)}46%{opacity:1}69%,100%{opacity:1;transform:translate(196px,86px) scale(1)}}
+@keyframes fsArrA{0%,10%{opacity:0;transform:translate(-34px,-50%) scale(.5)}18%{opacity:1}38%{opacity:1;transform:translate(0,-50%) scale(1)}44%,100%{opacity:0;transform:translate(0,-50%) scale(.2)}}
+@keyframes fsArrB{0%,20%{opacity:0;transform:translate(-34px,-50%) scale(.5)}28%{opacity:1}48%{opacity:1;transform:translate(0,-50%) scale(1)}54%,100%{opacity:0;transform:translate(0,-50%) scale(.2)}}
+@keyframes fsArrC{0%,30%{opacity:0;transform:translate(-34px,-50%) scale(.5)}38%{opacity:1}58%{opacity:1;transform:translate(0,-50%) scale(1)}64%,100%{opacity:0;transform:translate(0,-50%) scale(.2)}}
+@keyframes fsArrD{0%,40%{opacity:0;transform:translate(-34px,-50%) scale(.5)}48%{opacity:1}68%{opacity:1;transform:translate(0,-50%) scale(1)}74%,100%{opacity:0;transform:translate(0,-50%) scale(.2)}}
+@keyframes fsTick{0%,40%{opacity:0;transform:scale(.4)}52%,100%{opacity:1;transform:scale(1)}}
+@keyframes fsTickB{0%,50%{opacity:0;transform:scale(.4)}62%,100%{opacity:1;transform:scale(1)}}
+@keyframes fsTickC{0%,60%{opacity:0;transform:scale(.4)}72%,100%{opacity:1;transform:scale(1)}}
+@keyframes fsTickD{0%,70%{opacity:0;transform:scale(.4)}82%,100%{opacity:1;transform:scale(1)}}
+@keyframes fsPkt{0%{opacity:0;offset-distance:0%}8%{opacity:1}92%{opacity:1}100%{opacity:0;offset-distance:100%}}
+@keyframes fsDash{to{stroke-dashoffset:-28}}
+@keyframes fsSweep{0%,12%{clip-path:inset(0 100% 0 0)}42%,88%{clip-path:inset(0 0 0 0)}100%{clip-path:inset(0 100% 0 0)}}
+@keyframes fsCnt1{0%,30%{opacity:1}34%,100%{opacity:0}}
+@keyframes fsCnt2{0%,31%{opacity:0}35%,63%{opacity:1}67%,100%{opacity:0}}
+@keyframes fsCnt3{0%,64%{opacity:0}68%,96%{opacity:1}100%{opacity:0}}
+@keyframes fsShimmer{0%{background-position:150% 0}100%{background-position:-150% 0}}
+@keyframes fsStrike{0%,30%{transform:scaleX(0)}55%,100%{transform:scaleX(1)}}
+/* Scène du hero : l'annonce quitte le dressing Vinted vers les 3 autres
+plateformes, puis le cycle de republication tourne — même chorégraphie que
+l'animation Instagram. Deltas calés sur la géométrie absolue de la scène. */
+@keyframes fsHA{0%,6%{opacity:0;transform:translate(0,0) scale(.4)}12%{opacity:1;transform:translate(0,0) scale(1)}36%{opacity:1;transform:translate(274px,-15px) scale(1)}44%,100%{opacity:0;transform:translate(274px,-15px) scale(.2)}}
+@keyframes fsHB{0%,16%{opacity:0;transform:translate(0,0) scale(.4)}22%{opacity:1;transform:translate(0,0) scale(1)}46%{opacity:1;transform:translate(274px,85px) scale(1)}54%,100%{opacity:0;transform:translate(274px,85px) scale(.2)}}
+@keyframes fsHC{0%,26%{opacity:0;transform:translate(0,0) scale(.4)}32%{opacity:1;transform:translate(0,0) scale(1)}56%{opacity:1;transform:translate(274px,185px) scale(1)}64%,100%{opacity:0;transform:translate(274px,185px) scale(.2)}}
+@keyframes fsHTA{0%,36%{opacity:0;transform:scale(.4)}44%,100%{opacity:1;transform:scale(1)}}
+@keyframes fsHTB{0%,46%{opacity:0;transform:scale(.4)}54%,100%{opacity:1;transform:scale(1)}}
+@keyframes fsHTC{0%,56%{opacity:0;transform:scale(.4)}64%,100%{opacity:1;transform:scale(1)}}
+@keyframes fsHRepub{0%,62%{opacity:0;transform:translateY(10px)}72%,100%{opacity:1;transform:none}}
+/* Scène du hero réduite sous 560px. transform-origin CENTRÉ en X (le design
+   disait `top left`) : la scène fait 440px de large dans une colonne de ~330,
+   elle est donc centrée en négatif (left ≈ -32) AVANT d'être réduite — avec une
+   origine à gauche, le téléphone sortait de l'écran à gauche et laissait un
+   trou à droite. L'origine reste en `top` : c'est elle que compense le
+   margin-bottom négatif (454 × 0,26 ≈ 118). */
+@media (max-width:560px){.lp-root [data-hero-stage]{transform:scale(.74);transform-origin:top center;margin-bottom:-118px}}
+@keyframes fsFade{0%,25%{opacity:1;filter:grayscale(0)}55%,100%{opacity:.45;filter:grayscale(1)}}
+@media (prefers-reduced-motion:reduce){.lp-root *{animation:none !important;transition:none !important}}
+/* Repli responsive du header, porté de src/pages/landing.css : les ancres et le
+bloc langue/connexion quittent la barre et passent dans le menu burger. Une
+media query ne peut pas vivre en style inline. Seuil à 1040px et non aux
+900px de landing.css : cette barre porte cinq ancres (482px à elle seule) +
+langue + connexion + CTA, soit ~971px incompressibles. */
+@media (max-width:1100px){.lp-root [data-proof-3]{display:none !important}}
+@media (max-width:1180px){.lp-root [data-plans]{grid-template-columns:repeat(2,minmax(0,1fr)) !important}}
+@media (max-width:640px){.lp-root [data-plans]{grid-template-columns:minmax(0,1fr) !important}}
+@media (max-width:1040px){
+.lp-root [data-nav-links],.lp-root [data-nav-desk]{display:none !important}
+.lp-root [data-burger]{display:flex !important}
 }
-
-.lp-root *,
-.lp-root *::before,
-.lp-root *::after { box-sizing: border-box; }
-
-.lp-root a { color: var(--lp-teal-dark); text-decoration: none; }
-.lp-root a:hover { color: var(--lp-teal); }
-.lp-root ::selection { background: rgba(47, 158, 144, 0.22); }
-.lp-root h1, .lp-root h2, .lp-root p { margin: 0; }
-
-/* ── Animations ─────────────────────────────────────────────── */
-@keyframes lpFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-@keyframes lpPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(47, 158, 144, 0.4); } 50% { box-shadow: 0 0 0 8px rgba(47, 158, 144, 0); } }
-@keyframes lpWave { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
-@keyframes lpShine { 0% { transform: translateX(-40px) skewX(-18deg); } 55%, 100% { transform: translateX(320px) skewX(-18deg); } }
-@keyframes lpSpin { to { transform: rotate(360deg); } }
-
-@keyframes lpLensBeam { 0% { transform: translateY(0); opacity: 0.95; } 40% { transform: translateY(224px); opacity: 0.95; } 46%, 100% { opacity: 0; } }
-@keyframes lpLensScanUI { 0%, 44% { opacity: 1; } 52%, 100% { opacity: 0; } }
-@keyframes lpLensResult { 0%, 48% { opacity: 0; transform: translateY(34px); } 57%, 94% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(34px); } }
-@keyframes lpLensGauge { 0%, 50% { width: 0; } 66%, 100% { width: 84%; } }
-
-/* Téléphone du hero : 4 écrans du stepper qui défilent sur 8 s */
-@keyframes lpScr1 { 0%, 20% { opacity: 1; transform: translateX(0); } 24%, 100% { opacity: 0; transform: translateX(-12px); } }
-@keyframes lpScr2 { 0%, 21% { opacity: 0; transform: translateX(12px); } 25%, 44% { opacity: 1; transform: translateX(0); } 48%, 100% { opacity: 0; transform: translateX(-12px); } }
-@keyframes lpScr3 { 0%, 45% { opacity: 0; transform: translateX(12px); } 49%, 71% { opacity: 1; transform: translateX(0); } 75%, 100% { opacity: 0; transform: translateX(-12px); } }
-@keyframes lpScr4 { 0%, 72% { opacity: 0; transform: translateX(12px); } 76%, 98% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(12px); } }
-@keyframes lpPop { 0%, 74% { transform: scale(0.5); opacity: 0; } 82% { transform: scale(1.08); opacity: 1; } 88%, 98% { transform: scale(1); opacity: 1; } 100% { opacity: 0; } }
-@keyframes lpStNum2 { 0%, 24% { background: #D8D3C6; color: #8A8578; } 25%, 100% { background: #2F9E90; color: #fff; } }
-@keyframes lpStNum3 { 0%, 48% { background: #D8D3C6; color: #8A8578; } 49%, 100% { background: #2F9E90; color: #fff; } }
-@keyframes lpStNum4 { 0%, 75% { background: #D8D3C6; color: #8A8578; } 76%, 100% { background: #2F9E90; color: #fff; } }
-@keyframes lpStFill1 { 0%, 4% { transform: scaleX(0); } 22%, 100% { transform: scaleX(1); } }
-@keyframes lpStFill2 { 0%, 26% { transform: scaleX(0); } 45%, 100% { transform: scaleX(1); } }
-@keyframes lpStFill3 { 0%, 50% { transform: scaleX(0); } 73%, 100% { transform: scaleX(1); } }
-
-/* Apparition au scroll — pilotée par IntersectionObserver (.in) */
-.lp-reveal {
-  opacity: 0; transform: translateY(28px);
-  transition: opacity .7s cubic-bezier(.2, .7, .3, 1), transform .7s cubic-bezier(.2, .7, .3, 1);
-}
-.lp-reveal.in { opacity: 1; transform: none; }
-
-@media (prefers-reduced-motion: reduce) {
-  .lp-root *, .lp-root *::before, .lp-root *::after {
-    animation: none !important;
-    transition: none !important;
-  }
-  .lp-reveal { opacity: 1; transform: none; }
-}
-
-/* ── Layout ─────────────────────────────────────────────────── */
-.lp-shell { max-width: 1120px; margin: 0 auto; }
-.lp-section { padding: clamp(60px, 8vw, 116px) 22px; }
-.lp-section--tint { background: var(--lp-surface); border-top: 1px solid var(--lp-line); border-bottom: 1px solid var(--lp-line); }
-.lp-section--rule { border-top: 1px solid var(--lp-line); border-bottom: 1px solid var(--lp-line); }
-.lp-split { display: flex; gap: clamp(28px, 4vw, 64px); flex-wrap: wrap; align-items: center; }
-.lp-split--rev { flex-wrap: wrap-reverse; justify-content: center; }
-.lp-split__copy { flex: 1 1 380px; min-width: 300px; }
-.lp-split__media { flex: 1 1 340px; min-width: 290px; display: flex; justify-content: center; }
-
-.lp-kicker {
-  font-weight: 700; font-size: 12px; text-transform: uppercase;
-  letter-spacing: 0.12em; color: var(--lp-teal); margin-bottom: 14px;
-}
-.lp-kicker--icon { display: inline-flex; align-items: center; gap: 7px; }
-.lp-h2 { font-weight: 700; font-size: clamp(30px, 4vw, 48px); line-height: 1.05; letter-spacing: -0.03em; margin: 0 0 16px; }
-.lp-lead { font-weight: 500; font-size: clamp(15px, 1.4vw, 18px); line-height: 1.55; color: var(--lp-muted); max-width: 480px; }
-.lp-head { text-align: center; max-width: 720px; margin: 0 auto 48px; }
-.lp-head--narrow { max-width: 640px; margin-bottom: 44px; }
-.lp-head .lp-lead { max-width: none; }
-
-/* ── Boutons ────────────────────────────────────────────────── */
-.lp-btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  font-family: inherit; font-weight: 700; border: none; cursor: pointer;
-  text-align: center; white-space: nowrap;
-}
-.lp-btn--grad {
-  font-size: 15.5px; color: #fff; padding: 15px 26px; border-radius: 14px;
-  background: linear-gradient(135deg, var(--lp-teal), var(--lp-teal-dark));
-  box-shadow: 0 12px 26px -10px rgba(27, 110, 98, 0.55);
-}
-.lp-btn--nav {
-  font-size: 13.5px; color: #fff; padding: 10px 18px; border-radius: 999px;
-  background: linear-gradient(135deg, var(--lp-teal), var(--lp-teal-dark));
-  box-shadow: 0 6px 16px -6px rgba(27, 110, 98, 0.5);
-}
-.lp-btn--grad:hover, .lp-btn--nav:hover { color: #fff; filter: brightness(1.06); }
-.lp-btn--ghost {
-  font-size: 13.5px; color: var(--lp-muted); padding: 9px 14px; border-radius: 999px;
-  background: none; border: 1px solid var(--lp-line);
-}
-.lp-btn--ghost:hover { color: var(--lp-ink); background: var(--lp-surface); }
-
-/* ── Nav ────────────────────────────────────────────────────── */
-/* Même verre que le .topbar de l'app connectée (App.css), au pixel près : la
-   landing le rend seulement en sticky au lieu de fixed, faute de layout en
-   hauteur fixe. */
-.lp-nav {
-  position: sticky; top: 0; z-index: 60;
-  /* Safe area iOS : le verre dépoli remonte sous la barre de statut et le
-     contenu (logo + « Commencer ») descend dessous. Même pattern que le reste
-     de l'app (App.css/.redesign.css : calc(env(safe-area-inset-top,0px) + …)). */
-  padding-top: env(safe-area-inset-top, 0px);
-  background: rgba(250, 250, 248, 0.92);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  /* --lp-line, PAS --line : cette dernière est définie dans App.css, qui n'est
-     plus chargé sur la landing depuis le code-splitting (5115c57). La variable
-     ne se résolvant plus, toute la déclaration devenait invalide et la bordure
-     tombait à `none` — le filet sous le header collant avait disparu. */
-  border-bottom: 1px solid var(--lp-line);
-}
-/* nowrap : rien ne doit jamais retomber sous le logo. Ce qui ne tient plus part
-   dans le menu burger, jamais sur une deuxième ligne. */
-.lp-nav__inner {
-  max-width: 1200px; margin: 0 auto; padding: 13px 22px;
-  display: flex; align-items: center; gap: 18px; flex-wrap: nowrap;
-}
-/* La marque du header vient du composant partagé <BrandMark> : elle porte les
-   classes .tb-logo / .logo-desktop / .logo-mobile / .name du topbar de l'app,
-   stylées dans App.css + App.redesign.css. Rien à redéfinir ici — c'est ce qui
-   garantit qu'il n'y a aucun écart visuel entre header public et header app. */
-
-.lp-nav__links { display: flex; gap: 6px; margin-left: 6px; flex-wrap: nowrap; }
-.lp-nav__link {
-  font-family: inherit; font-weight: 600; font-size: 13.5px; color: var(--lp-muted);
-  padding: 7px 11px; border-radius: 9px; background: none; border: none; cursor: pointer;
-  white-space: nowrap;
-}
-.lp-nav__link:hover { color: var(--lp-ink); background: var(--lp-surface); }
-.lp-nav__actions {
-  margin-left: auto; display: flex; align-items: center; gap: 11px; flex-shrink: 0;
-}
-/* Langue + Se connecter : dans la barre en desktop, dans le menu en mobile. */
-.lp-nav__desk { display: flex; align-items: center; gap: 11px; }
-
-/* ── Burger (< 900px) ───────────────────────────────────────── */
-.lp-burger {
-  display: none; width: 38px; height: 38px; flex-shrink: 0;
-  flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  background: var(--lp-surface); border: 1px solid var(--lp-line);
-  border-radius: 10px; cursor: pointer; padding: 0;
-}
-.lp-burger span {
-  display: block; width: 16px; height: 2px; border-radius: 2px;
-  background: var(--lp-ink); transition: transform .2s ease, opacity .2s ease;
-}
-.lp-burger[aria-expanded="true"] span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
-.lp-burger[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
-.lp-burger[aria-expanded="true"] span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
-
-.lp-menu {
-  display: none;
-  border-top: 1px solid var(--lp-line);
-  background: rgba(250, 250, 248, 0.98);
-  padding: 10px 16px 14px;
-}
-.lp-menu__links { display: flex; flex-direction: column; }
-.lp-menu__link {
-  font-family: inherit; font-weight: 600; font-size: 15px; color: var(--lp-ink);
-  background: none; border: none; cursor: pointer; text-align: left;
-  padding: 13px 6px; border-bottom: 1px solid var(--lp-line);
-}
-.lp-menu__foot {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding-top: 14px;
-}
-.lp-menu__foot .lp-btn--ghost { padding: 10px 16px; font-size: 14px; }
-
-.lp-lang {
-  display: inline-flex; background: var(--lp-surface);
-  border: 1px solid var(--lp-line); border-radius: 999px; padding: 3px;
-}
-.lp-lang button {
-  font-family: inherit; font-weight: 700; font-size: 12px; padding: 6px 11px;
-  border: none; border-radius: 999px; cursor: pointer;
-  background: transparent; color: var(--lp-dim);
-}
-.lp-lang button.on { background: var(--lp-ink); color: #fff; }
-
-/* ── Hero ───────────────────────────────────────────────────── */
-.lp-hero { position: relative; padding: clamp(44px, 6vw, 88px) 22px clamp(60px, 7vw, 104px); }
-.lp-hero__blob { position: absolute; pointer-events: none; border-radius: 50%; }
-.lp-hero__blob--teal {
-  top: -80px; right: -60px; width: 460px; height: 440px; filter: blur(20px);
-  background: radial-gradient(circle, rgba(47, 158, 144, 0.28), transparent 66%);
-}
-.lp-hero__blob--peach {
-  bottom: -120px; left: -80px; width: 420px; height: 420px; filter: blur(24px);
-  background: radial-gradient(circle, rgba(232, 149, 109, 0.24), transparent 66%);
-}
-.lp-hero__inner {
-  position: relative; max-width: 1200px; margin: 0 auto;
-  display: flex; gap: clamp(28px, 4vw, 64px); flex-wrap: wrap; align-items: center;
-}
-.lp-hero__copy { flex: 1 1 440px; min-width: 300px; }
-.lp-hero__phone { flex: 1 1 320px; min-width: 290px; display: flex; justify-content: center; }
-
-.lp-pill {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: var(--lp-surface); border: 1px solid var(--lp-line);
-  border-radius: 999px; padding: 7px 13px; margin-bottom: 22px;
-}
-.lp-pill i { width: 7px; height: 7px; border-radius: 99px; background: var(--lp-teal); }
-.lp-pill span {
-  font-weight: 700; font-size: 11px; text-transform: uppercase;
-  letter-spacing: 0.1em; color: var(--lp-muted);
-}
-.lp-hero__title {
-  font-weight: 700; font-size: clamp(38px, 5.4vw, 66px); line-height: 1.02;
-  letter-spacing: -0.035em; margin: 0 0 20px;
-}
-.lp-hero__title em { font-style: normal; color: var(--lp-teal); }
-.lp-hero__sub {
-  font-weight: 500; font-size: clamp(16px, 1.5vw, 19px); line-height: 1.55;
-  color: var(--lp-muted); max-width: 520px; margin: 0 0 30px;
-}
-.lp-hero__ctas { display: flex; gap: 13px; flex-wrap: wrap; align-items: center; }
-/* La phrase passe sur 2 lignes sur iPhone. AVEC flex-wrap:wrap, le <span>
-   (flex-basis auto = très large) ne tenait pas à côté de la gemme et basculait
-   ENTIÈREMENT sur la ligne suivante → gemme seule sur sa ligne, texte dessous.
-   Sans flex-wrap (nowrap), la gemme et le span restent sur la même ligne flex :
-   le span rétrécit (flex-shrink + min-width:0) et enroule son texte À CÔTÉ de la
-   gemme, qui reste alignée sur la 1re ligne (flex-start + 2px de nudge optique). */
-.lp-hero__trust { display: flex; align-items: flex-start; gap: 10px; margin-top: 24px; }
-.lp-hero__trust > svg { flex-shrink: 0; margin-top: 2px; }
-.lp-hero__trust span { font-weight: 500; font-size: 13.5px; line-height: 1.4; color: var(--lp-dim); min-width: 0; }
-/* Badges officiels App Store / Google Play, calés sur la même hauteur de bouton.
-   Apple sert un SVG détouré (126.5x40) : à 48px de haut, le bouton fait 48px.
-   Google sert un PNG 646x250 dont le bouton ne fait que 192px de haut — 29px de
-   vide transparent en haut ET en bas, aucun sur les côtés. Pour un bouton de
-   48px : image = 48 x 250/192 = 62.5px, et on résorbe le vide avec 7.25px de
-   marge négative VERTICALE uniquement (une marge horizontale mangerait le gap). */
-.lp-stores { display: flex; align-items: center; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
-.lp-store { display: block; line-height: 0; }
-.lp-store img { width: auto; display: block; }
-.lp-store--apple img { height: 48px; border-radius: 9px; }
-.lp-store--play img { height: 62.5px; margin: -7.25px 0; }
-
-/* ── Téléphone (châssis) ────────────────────────────────────── */
-.lp-phone { position: relative; width: 300px; animation: lpFloat 6s ease-in-out infinite; }
-.lp-phone__body {
-  position: relative; background: var(--lp-ink); border-radius: 44px; padding: 11px;
-  box-shadow: 0 34px 70px -30px rgba(16, 32, 27, 0.55);
-}
-.lp-phone__screen {
-  position: relative; background: var(--lp-bg); border-radius: 34px; overflow: hidden;
-  height: 600px; display: flex; flex-direction: column;
-}
-.lp-phone__bar {
-  flex: none; padding: 14px 20px 6px;
-  display: flex; justify-content: space-between; align-items: center;
-}
-.lp-phone__time { font-weight: 700; font-size: 13px; color: var(--lp-ink); }
-.lp-phone__notch { width: 56px; height: 16px; background: var(--lp-ink); border-radius: 99px; }
-.lp-phone__app { font-weight: 600; font-size: 11px; color: var(--lp-dim); }
-.lp-phone__stage { flex: 1; min-height: 0; padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 14px; }
-
-/* Stepper 1-2-3-4 */
-.lp-stepper { display: flex; align-items: center; gap: 6px; }
-.lp-stepper__num {
-  width: 24px; height: 24px; flex-shrink: 0; border-radius: 999px;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 11px; background: var(--lp-line-strong); color: var(--lp-dim);
-}
-.lp-stepper__num--on { background: var(--lp-teal); color: #fff; }
-.lp-stepper__num--2 { animation: lpStNum2 8s linear infinite; }
-.lp-stepper__num--3 { animation: lpStNum3 8s linear infinite; }
-.lp-stepper__num--4 { animation: lpStNum4 8s linear infinite; }
-.lp-stepper__bar { flex: 1; height: 3px; border-radius: 99px; background: var(--lp-line-strong); overflow: hidden; }
-.lp-stepper__bar > i {
-  display: block; width: 100%; height: 100%; background: var(--lp-teal);
-  transform-origin: left; transform: scaleX(0);
-}
-.lp-stepper__bar--1 > i { animation: lpStFill1 8s linear infinite; }
-.lp-stepper__bar--2 > i { animation: lpStFill2 8s linear infinite; }
-.lp-stepper__bar--3 > i { animation: lpStFill3 8s linear infinite; }
-
-/* Écrans du stepper */
-.lp-scr__wrap { position: relative; flex: 1; min-height: 0; }
-.lp-scr { position: absolute; inset: 0; display: flex; flex-direction: column; opacity: 0; }
-.lp-scr--1 { gap: 11px; animation: lpScr1 8s ease infinite; }
-.lp-scr--2 { gap: 12px; animation: lpScr2 8s ease infinite; }
-.lp-scr--3 { gap: 9px; animation: lpScr3 8s ease infinite; }
-.lp-scr--4 { align-items: center; justify-content: center; gap: 13px; animation: lpScr4 8s ease infinite; }
-.lp-scr__label {
-  font-weight: 700; font-size: 10px; text-transform: uppercase;
-  letter-spacing: 0.1em; color: var(--lp-teal);
+/* Bandeau de preuve : le design le pose en `nowrap`. Ses deux puces restantes
+   (la 3e est déjà masquée sous 1100px) pèsent ~500px, contre ~280px utiles sur
+   un téléphone : sans repli, la moitié de droite était COUPÉE. Il passe donc à
+   la ligne, centré, et ses séparateurs verticaux disparaissent — un trait de
+   séparation entre deux lignes empilées n'a plus de sens. */
+@media (max-width:760px){
+.lp-root [data-proof]{flex-wrap:wrap !important;justify-content:center !important;row-gap:12px !important;text-align:center}
+.lp-root [data-proof-sep]{display:none !important}
 }
 
-.lp-item {
-  display: flex; align-items: center; gap: 12px; background: var(--lp-surface);
-  border: 1px solid var(--lp-line); border-radius: 16px; padding: 13px;
-}
-.lp-item__photo {
-  width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
-  object-fit: cover; display: block; background: var(--lp-line);
-}
-.lp-item__body { flex: 1; min-width: 0; }
-.lp-item__name {
-  font-weight: 700; font-size: 13.5px; color: var(--lp-ink);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.lp-item__meta { font-weight: 500; font-size: 11.5px; color: var(--lp-dim); }
-.lp-item__price { font-weight: 700; font-size: 15px; color: var(--lp-ink); flex-shrink: 0; }
-
-.lp-tags { display: flex; flex-wrap: wrap; gap: 7px; }
-.lp-tag {
-  font-weight: 700; font-size: 11px; border-radius: 999px; padding: 5px 10px;
-  background: var(--lp-bg); border: 1px solid var(--lp-line); color: var(--lp-muted);
-}
-.lp-tag--cat { color: #8A5A8F; background: #F4E9F4; border-color: #E6D2E7; }
-.lp-tag--brand { color: var(--lp-teal-dark); background: rgba(47, 158, 144, 0.1); border-color: rgba(47, 158, 144, 0.22); }
-.lp-tag--warn { color: #C2410C; background: rgba(232, 149, 109, 0.14); border-color: rgba(232, 149, 109, 0.3); }
-.lp-tag--loc { color: var(--lp-ink); }
-
-.lp-desc {
-  font-weight: 500; font-size: 11px; line-height: 1.5; color: var(--lp-dim);
-  background: var(--lp-surface); border: 1px solid var(--lp-line);
-  border-radius: 12px; padding: 10px 12px;
-}
-
-/* Écran 2 — retouche IA */
-.lp-retouch {
-  display: flex; align-items: center; justify-content: center; gap: 12px;
-  background: var(--lp-surface); border: 1px solid var(--lp-line);
-  border-radius: 16px; padding: 16px;
-}
-.lp-retouch__shot { position: relative; width: 80px; height: 98px; border-radius: 12px; overflow: hidden; }
-.lp-retouch__shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.lp-retouch__shot--raw img { filter: saturate(0.7) brightness(0.9) contrast(0.92); }
-.lp-retouch__shot--clean { background: linear-gradient(160deg, #FFFFFF, #EEF3F1); border: 1px solid var(--lp-line); }
-.lp-retouch__shot--clean img { filter: saturate(1.08) contrast(1.06) brightness(1.04); }
-.lp-retouch__spark {
-  position: absolute; top: 6px; right: 6px; font-weight: 700; font-size: 9px;
-  color: var(--lp-teal-dark); background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(47, 158, 144, 0.3); border-radius: 999px; padding: 3px 6px;
-}
-.lp-retouch__caption { text-align: center; font-weight: 600; font-size: 12.5px; color: var(--lp-muted); }
-
-/* Écran 3 — envoi vers les plateformes */
-.lp-send {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-  border-radius: 12px; background: var(--lp-surface); border: 1px solid var(--lp-line);
-}
-.lp-send__status { font-weight: 600; font-size: 11px; color: var(--lp-dim); }
-.lp-send__spin {
-  width: 15px; height: 15px; border-radius: 999px; flex-shrink: 0;
-  border: 2px solid var(--lp-line-strong); border-top-color: var(--lp-teal);
-  animation: lpSpin 0.8s linear infinite;
-}
-
-/* Plateformes — les logos eux-mêmes viennent de <PlatformLogo> (vrais tracés de
-   marque et icônes d'app officielles). On ne stylise ici que le libellé posé à
-   côté : aucune recoloration du logo. */
-.lp-plat__name { font-weight: 700; font-size: 13px; color: var(--lp-ink); }
-
-/* Écran 4 — succès */
-.lp-done__badge {
-  width: 64px; height: 64px; border-radius: 999px;
-  background: linear-gradient(135deg, var(--lp-teal), var(--lp-teal-dark));
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 12px 26px -10px rgba(27, 110, 98, 0.55);
-  animation: lpPop 8s ease infinite;
-}
-.lp-done__title { font-weight: 700; font-size: 17px; color: var(--lp-ink); }
-.lp-done__sub { font-weight: 500; font-size: 12.5px; color: var(--lp-dim); margin-top: 3px; }
-.lp-done__list { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.lp-done__list > span { display: inline-flex; align-items: center; gap: 3px; }
-.lp-done__ok { color: var(--lp-teal); font-size: 12px; font-weight: 700; }
-
-/* ── Publication auto ───────────────────────────────────────── */
-.lp-fan {
-  background: var(--lp-bg); border: 1px solid var(--lp-line); border-radius: 26px;
-  padding: clamp(24px, 3vw, 40px); margin-bottom: 24px;
-}
-.lp-fan__inner { display: flex; align-items: center; justify-content: center; gap: clamp(20px, 4vw, 56px); flex-wrap: wrap; }
-.lp-fan__col { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.lp-fan__tile {
-  width: 96px; height: 96px; border-radius: 22px; overflow: hidden;
-  background: var(--lp-surface); border: 1px solid var(--lp-line);
-  box-shadow: 0 10px 26px -14px rgba(16, 32, 27, 0.3);
-}
-.lp-fan__tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.lp-fan__caption { font-weight: 700; font-size: 13px; color: var(--lp-muted); }
-.lp-fan__arrow { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.lp-fan__arrow span {
-  font-weight: 700; font-size: 10px; text-transform: uppercase;
-  letter-spacing: 0.08em; color: var(--lp-dim);
-}
-.lp-fan__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.lp-fan__cell {
-  display: flex; align-items: center; gap: 8px; background: var(--lp-surface);
-  border: 1px solid var(--lp-line); border-radius: 13px; padding: 12px 15px;
-}
-
-.lp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
-.lp-card { background: var(--lp-bg); border: 1px solid var(--lp-line); border-radius: 20px; padding: 26px; }
-.lp-card__icon {
-  width: 42px; height: 42px; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
-}
-.lp-card__icon--teal { background: var(--lp-teal); }
-.lp-card__icon--peach { background: var(--lp-peach); }
-.lp-card__icon--deep { background: var(--lp-teal-dark); }
-.lp-card__title { font-weight: 700; font-size: 17px; color: var(--lp-ink); margin-bottom: 7px; }
-.lp-card__body { font-weight: 500; font-size: 14px; line-height: 1.5; color: var(--lp-muted); }
-.lp-card__sold { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-.lp-card__sold-on {
-  display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 11px;
-  color: var(--lp-teal-dark); background: rgba(47, 158, 144, 0.12);
-  border-radius: 999px; padding: 5px 10px;
-}
-.lp-card__sold-arr { font-weight: 700; font-size: 12px; color: #C99A3F; }
-/* Les 3 plateformes retirées : les vrais logos, désaturés et barrés — on ne les
-   recolore pas, on les éteint. */
-.lp-card__sold-off {
-  position: relative; display: inline-flex; align-items: center; gap: 6px;
-  filter: grayscale(1); opacity: 0.55;
-}
-.lp-card__sold-off::after {
-  content: ''; position: absolute; left: -3px; right: -3px; top: 50%;
-  height: 1.5px; background: rgba(176, 57, 47, 0.7);
-}
-
-/* ── Vocal ──────────────────────────────────────────────────── */
-.lp-panel {
-  width: 100%; max-width: 440px; background: var(--lp-surface);
-  border: 1px solid var(--lp-line); border-radius: 24px; padding: 26px;
-  box-shadow: 0 18px 44px -24px rgba(16, 32, 27, 0.32);
-}
-.lp-voc__head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
-.lp-voc__mic {
-  position: relative; width: 58px; height: 58px; border-radius: 999px; flex-shrink: 0;
-  background: linear-gradient(150deg, var(--lp-teal), var(--lp-teal-dark));
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 10px 22px -8px rgba(27, 110, 98, 0.5);
-}
-.lp-voc__mic i {
-  position: absolute; inset: -6px; border-radius: 999px;
-  border: 1px solid rgba(47, 158, 144, 0.3); animation: lpPulse 2s ease infinite;
-}
-.lp-voc__wave { display: flex; align-items: flex-end; gap: 4px; height: 40px; }
-.lp-voc__wave span {
-  width: 4px; height: 100%; border-radius: 99px; background: var(--lp-teal);
-  transform-origin: bottom; animation: lpWave 1s ease infinite;
-}
-.lp-voc__quote { font-weight: 600; font-size: 18px; line-height: 1.4; color: var(--lp-ink); margin-bottom: 18px; }
-.lp-voc__tags .lp-tag { font-size: 11.5px; padding: 6px 11px; }
-.lp-voc__added {
-  display: flex; align-items: center; gap: 8px; margin-top: 18px; padding-top: 16px;
-  border-top: 1px solid var(--lp-line); font-weight: 600; font-size: 13px; color: var(--lp-teal-dark);
-}
-.lp-voc__link { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; color: var(--lp-teal-dark); margin-top: 22px; }
-
-/* ── Lens ───────────────────────────────────────────────────── */
-.lp-lens { position: relative; width: 288px; }
-.lp-lens__body {
-  background: var(--lp-ink); border-radius: 44px; padding: 11px;
-  box-shadow: 0 34px 70px -30px rgba(16, 32, 27, 0.55);
-}
-.lp-lens__screen { position: relative; background: #0C1512; border-radius: 34px; overflow: hidden; height: 566px; }
-.lp-lens__view {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(120% 90% at 50% 40%, #16302A, #0C1512);
-}
-.lp-lens__view img {
-  width: 74%; height: auto; border-radius: 16px; display: block;
-  filter: drop-shadow(0 20px 30px rgba(0, 0, 0, 0.5));
-}
-.lp-lens__frame { position: absolute; inset: 34px 30px; animation: lpLensScanUI 5s ease infinite; }
-.lp-lens__frame i { position: absolute; width: 34px; height: 34px; }
-.lp-lens__frame .tl { top: 0; left: 0; border-top: 3px solid var(--lp-teal); border-left: 3px solid var(--lp-teal); border-radius: 10px 0 0 0; }
-.lp-lens__frame .tr { top: 0; right: 0; border-top: 3px solid var(--lp-teal); border-right: 3px solid var(--lp-teal); border-radius: 0 10px 0 0; }
-.lp-lens__frame .bl { bottom: 0; left: 0; border-bottom: 3px solid var(--lp-teal); border-left: 3px solid var(--lp-teal); border-radius: 0 0 0 10px; }
-.lp-lens__frame .br { bottom: 0; right: 0; border-bottom: 3px solid var(--lp-teal); border-right: 3px solid var(--lp-teal); border-radius: 0 0 10px 0; }
-.lp-lens__beam {
-  position: absolute; left: 6px; right: 6px; top: 0; width: auto; height: 2px;
-  background: linear-gradient(90deg, transparent, #37F0D4, transparent);
-  box-shadow: 0 0 14px 2px rgba(55, 240, 212, 0.6);
-  animation: lpLensBeam 5s ease infinite;
-}
-.lp-lens__scanning { position: absolute; top: 20px; left: 0; right: 0; text-align: center; animation: lpLensScanUI 5s ease infinite; }
-.lp-lens__scanning span {
-  font-weight: 700; font-size: 11px; letter-spacing: 0.14em;
-  color: #8FE9DC; text-transform: uppercase;
-}
-.lp-lens__sheet {
-  position: absolute; left: 0; right: 0; bottom: 0; opacity: 0;
-  background: var(--lp-bg); border-radius: 24px 24px 0 0; padding: 18px 18px 22px;
-  box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.4);
-  animation: lpLensResult 5s ease infinite;
-}
-.lp-lens__grab { width: 38px; height: 4px; background: var(--lp-line); border-radius: 99px; margin: 0 auto 14px; }
-.lp-lens__row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.lp-lens__eyebrow { font-weight: 500; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--lp-dim); }
-.lp-lens__item { font-weight: 700; font-size: 16px; color: var(--lp-ink); margin-top: 2px; }
-.lp-lens__score { display: inline-flex; align-items: center; gap: 5px; background: var(--lp-ink); border-radius: 999px; padding: 6px 11px; }
-.lp-lens__score b { font-weight: 700; font-size: 18px; color: #fff; line-height: 1; }
-.lp-lens__score span { font-weight: 600; font-size: 10px; color: rgba(255, 255, 255, 0.6); }
-.lp-lens__price { background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 14px; padding: 13px; margin-bottom: 11px; }
-.lp-lens__price b { display: block; font-weight: 700; font-size: 26px; letter-spacing: -0.02em; color: var(--lp-ink); line-height: 1; }
-.lp-lens__gauge {
-  height: 7px; border-radius: 99px; background: var(--lp-bg);
-  border: 1px solid var(--lp-line); overflow: hidden; margin-top: 11px;
-}
-.lp-lens__gauge i {
-  display: block; height: 100%; width: 0; border-radius: 99px;
-  background: linear-gradient(90deg, var(--lp-teal), var(--lp-teal-light));
-  animation: lpLensGauge 5s ease infinite;
-}
-.lp-lens__foot { display: flex; align-items: center; justify-content: space-between; }
-.lp-lens__verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12px; color: var(--lp-teal-dark); }
-.lp-lens__cost { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: 11px; color: #8A6E3B; }
-.lp-lens__steps { display: flex; flex-direction: column; gap: 12px; max-width: 420px; margin-top: 22px; }
-.lp-lens__step { display: flex; align-items: center; gap: 12px; }
-.lp-lens__step i {
-  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(47, 158, 144, 0.12);
-}
-.lp-lens__step i.peach { background: rgba(232, 149, 109, 0.16); }
-.lp-lens__step span { font-weight: 500; font-size: 14.5px; color: var(--lp-ink); }
-
-/* ── Retouche photo (section) ───────────────────────────────── */
-.lp-photo { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
-.lp-photo__col { display: flex; flex-direction: column; align-items: center; gap: 9px; }
-/* Les deux photos avant/après doivent être géométriquement IDENTIQUES pour que le
-   t-shirt soit à la même taille et hauteur. Sous box-sizing:border-box (global,
-   App.css), une bordure présente sur --clean SEULEMENT rétrécissait sa zone image
-   à 130×152 (vs 132×154 pour --raw sans bordure) et la décalait de 1px → object-
-   fit:cover redimensionnait le t-shirt. Bordure commune sur la base = zone image
-   identique (130×152) des deux côtés. --clean garde juste son fond + son ombre. */
-.lp-photo__shot { position: relative; width: 132px; height: 154px; border-radius: 16px; overflow: hidden; border: 1px solid var(--lp-line); }
-.lp-photo__shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.lp-photo__shot--raw img { filter: saturate(0.65) brightness(0.88) contrast(0.92); }
-.lp-photo__shot--clean {
-  background: linear-gradient(160deg, #FFFFFF, #EEF3F1);
-  box-shadow: 0 12px 26px -14px rgba(16, 32, 27, 0.35);
-}
-.lp-photo__shot--clean img { filter: saturate(1.1) contrast(1.08) brightness(1.05); }
-.lp-photo__badge {
-  position: absolute; top: 8px; right: 8px; display: inline-flex; align-items: center; gap: 4px;
-  font-weight: 700; font-size: 9.5px; color: var(--lp-teal-dark);
-  background: rgba(255, 255, 255, 0.92); border: 1px solid rgba(47, 158, 144, 0.32);
-  border-radius: 999px; padding: 4px 8px;
-}
-.lp-photo__caption { font-weight: 600; font-size: 12px; color: var(--lp-dim); }
-.lp-photo__caption--after { color: var(--lp-teal-dark); }
-.lp-photo__arrow { display: flex; flex-direction: column; align-items: center; gap: 5px; }
-.lp-photo__arrow span { font-weight: 700; font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--lp-dim); }
-
-/* ── Features ───────────────────────────────────────────────── */
-.lp-feats { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
-.lp-feat { background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 20px; padding: 24px; }
-.lp-feat__icon {
-  width: 46px; height: 46px; border-radius: 13px; background: var(--lp-bg);
-  border: 1px solid var(--lp-line); display: flex; align-items: center; justify-content: center;
-  font-size: 22px; margin-bottom: 15px;
-}
-.lp-feat__title { font-weight: 700; font-size: 16px; color: var(--lp-ink); margin-bottom: 6px; }
-.lp-feat__body { font-weight: 500; font-size: 13.5px; line-height: 1.5; color: var(--lp-muted); }
-
-/* ── Tarifs ─────────────────────────────────────────────────── */
-.lp-pricing { background: var(--lp-surface); border-top: 1px solid var(--lp-line); padding: clamp(60px, 8vw, 116px) 22px; }
-.lp-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; align-items: stretch; }
-.lp-plan {
-  position: relative; display: flex; flex-direction: column;
-  border-radius: 24px; padding: 30px 26px;
-  background: var(--lp-bg); border: 1px solid var(--lp-line);
-}
-.lp-plan--premium {
-  background: var(--lp-surface); border: 1.5px solid var(--lp-teal);
-  box-shadow: 0 20px 48px -24px rgba(27, 110, 98, 0.5);
-}
-.lp-plan--pro {
-  background: radial-gradient(130% 120% at 100% 0%, rgba(232, 149, 109, 0.26), transparent 58%), var(--lp-ink);
-  border: 1.5px solid rgba(214, 178, 96, 0.5);
-  box-shadow: 0 22px 50px -24px rgba(16, 32, 27, 0.6);
-}
-.lp-plan__flag {
-  position: absolute; top: -13px; left: 50%; transform: translateX(-50%);
-  font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
-  color: #fff; background: linear-gradient(135deg, var(--lp-teal-light), var(--lp-teal-dark));
-  border-radius: 999px; padding: 6px 14px; white-space: nowrap;
-  box-shadow: 0 6px 14px -5px rgba(27, 110, 98, 0.6);
-}
-.lp-plan__name { font-weight: 700; font-size: 16px; color: var(--lp-ink); }
-.lp-plan__tag { font-weight: 500; font-size: 13px; color: var(--lp-dim); margin: 4px 0 18px; }
-.lp-plan__chip {
-  position: relative; overflow: hidden; align-self: flex-start;
-  display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px;
-  border-radius: 999px; margin-bottom: 16px;
-}
-.lp-plan__chip--premium {
-  background: linear-gradient(135deg, var(--lp-teal-light), var(--lp-teal-dark));
-  box-shadow: 0 6px 14px -4px rgba(27, 110, 98, 0.5);
-}
-.lp-plan__chip--pro {
-  background: linear-gradient(135deg, #1C4038, #0D1F1A);
-  border: 1px solid rgba(214, 178, 96, 0.55);
-  box-shadow: 0 0 16px -6px rgba(214, 178, 96, 0.4);
-}
-.lp-plan__shine {
-  position: absolute; top: 0; bottom: 0; left: 0; width: 34px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
-  animation: lpShine 3.8s linear infinite;
-}
-.lp-plan__shine--gold {
-  width: 36px; animation-delay: 0.6s;
-  background: linear-gradient(90deg, transparent, rgba(240, 205, 120, 0.5), transparent);
-}
-.lp-plan__chip-label { position: relative; font-weight: 700; font-size: 14px; color: #fff; }
-.lp-plan__chip-label--gold {
-  background: linear-gradient(135deg, #FBE9A6, #E7B84C);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-}
-.lp-plan__price { display: flex; align-items: flex-end; gap: 5px; margin-bottom: 6px; }
-.lp-plan__price b { font-weight: 700; font-size: 40px; letter-spacing: -0.03em; color: var(--lp-ink); line-height: 1; }
-.lp-plan__price span { font-weight: 600; font-size: 13px; color: var(--lp-dim); margin-bottom: 5px; }
-.lp-plan--pro .lp-plan__price b { color: var(--lp-surface); }
-.lp-plan--pro .lp-plan__price span { color: rgba(246, 245, 241, 0.6); }
-.lp-plan__coins {
-  display: inline-flex; align-self: flex-start; align-items: center; gap: 6px;
-  font-weight: 700; font-size: 12px; color: var(--lp-teal-dark);
-  background: rgba(47, 158, 144, 0.1); border: 1px solid rgba(47, 158, 144, 0.2);
-  border-radius: 999px; padding: 6px 11px; margin-bottom: 22px;
-}
-.lp-plan--pro .lp-plan__coins { color: #F2C98A; background: rgba(232, 149, 109, 0.14); border-color: rgba(214, 178, 96, 0.3); }
-.lp-plan__feats { display: flex; flex-direction: column; gap: 11px; margin-bottom: 26px; }
-.lp-plan__feat { display: flex; align-items: flex-start; gap: 9px; }
-.lp-plan__feat svg { flex-shrink: 0; margin-top: 2px; }
-.lp-plan__feat span { font-weight: 500; font-size: 13.5px; line-height: 1.4; color: var(--lp-ink); }
-.lp-plan--pro .lp-plan__feat span { color: var(--lp-surface); }
-.lp-plan__cta {
-  margin-top: auto; width: 100%; font-family: inherit; font-weight: 700; font-size: 14px;
-  text-align: center; border-radius: 13px; padding: 13px; cursor: pointer;
-}
-.lp-plan__cta--free { color: var(--lp-teal-dark); background: none; border: 1.5px solid var(--lp-teal-dark); }
-.lp-plan__cta--free:hover { background: rgba(47, 158, 144, 0.08); }
-.lp-plan__cta--premium {
-  font-size: 14.5px; color: #fff; border: none; padding: 14px;
-  background: linear-gradient(120deg, var(--lp-teal), var(--lp-teal-dark));
-  box-shadow: 0 10px 22px -8px rgba(47, 158, 144, 0.55);
-}
-.lp-plan__cta--pro {
-  font-size: 14.5px; color: var(--lp-ink); border: none; padding: 14px;
-  background: linear-gradient(120deg, var(--lp-peach), #F2B48C);
-  box-shadow: 0 10px 22px -8px rgba(232, 149, 109, 0.5);
-}
-.lp-plan__cta--premium:hover, .lp-plan__cta--pro:hover { filter: brightness(1.06); }
-
-.lp-coins {
-  margin-top: 28px; background: var(--lp-bg); border: 1px solid var(--lp-line);
-  border-radius: 18px; padding: 20px 24px;
-  display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap;
-}
-.lp-coins > span { font-weight: 600; font-size: 13px; color: var(--lp-muted); }
-.lp-coins__title { display: inline-flex; align-items: center; gap: 7px; }
-.lp-coins__title b { color: var(--lp-ink); font-weight: 700; }
-.lp-coins__sep { width: 1px; height: 16px; background: var(--lp-line); }
-
-/* ── FAQ ────────────────────────────────────────────────────── */
-.lp-faq { max-width: 780px; margin: 0 auto; }
-.lp-faq__head { text-align: center; margin-bottom: 40px; }
-.lp-faq__list { display: flex; flex-direction: column; gap: 12px; }
-.lp-faq__item { background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 16px; overflow: hidden; }
-.lp-faq__q {
-  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  background: none; border: none; cursor: pointer; padding: 18px 20px; text-align: left;
-  font-family: inherit; font-weight: 700; font-size: 15.5px; color: var(--lp-ink);
-}
-.lp-faq__plus {
-  flex-shrink: 0; width: 26px; height: 26px; border-radius: 8px;
-  background: var(--lp-bg); border: 1px solid var(--lp-line);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--lp-teal-dark); font-weight: 700; font-size: 18px;
-  transition: transform .2s ease;
-}
-.lp-faq__q[aria-expanded="true"] .lp-faq__plus { transform: rotate(45deg); }
-.lp-faq__a { padding: 0 20px 20px; font-weight: 500; font-size: 14px; line-height: 1.6; color: var(--lp-muted); }
-
-/* ── CTA final ──────────────────────────────────────────────── */
-.lp-final { padding: 0 22px clamp(64px, 8vw, 110px); }
-.lp-final__box {
-  position: relative; overflow: hidden; max-width: 1000px; margin: 0 auto;
-  background:
-    radial-gradient(120% 140% at 0% 0%, rgba(47, 158, 144, 0.9), transparent 55%),
-    radial-gradient(120% 140% at 100% 100%, rgba(232, 149, 109, 0.55), transparent 55%),
-    var(--lp-ink);
-  border-radius: 30px; padding: clamp(40px, 6vw, 72px) 30px; text-align: center;
-}
-.lp-final__title {
-  font-weight: 700; font-size: clamp(28px, 4vw, 46px); line-height: 1.08;
-  letter-spacing: -0.03em; color: #fff; margin: 0 auto 14px; max-width: 640px;
-}
-.lp-final__body {
-  font-weight: 500; font-size: clamp(15px, 1.4vw, 18px); line-height: 1.5;
-  color: rgba(246, 245, 241, 0.78); margin: 0 auto 30px; max-width: 520px;
-}
-.lp-final__cta {
-  display: inline-flex; align-items: center; gap: 9px; font-family: inherit;
-  font-weight: 700; font-size: 16px; color: var(--lp-ink); background: var(--lp-surface);
-  border: none; cursor: pointer; padding: 16px 30px; border-radius: 14px;
-  box-shadow: 0 16px 34px -14px rgba(0, 0, 0, 0.5);
-}
-.lp-final__cta:hover { filter: brightness(1.04); }
-
-/* ── Footer ─────────────────────────────────────────────────── */
-.lp-footer { background: var(--lp-surface); border-top: 1px solid var(--lp-line); padding: 34px 22px; }
-.lp-footer__inner {
-  max-width: 1120px; margin: 0 auto; display: flex; align-items: center;
-  justify-content: space-between; gap: 18px; flex-wrap: wrap;
-}
-.lp-footer__brand { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.lp-footer__brand img { width: 26px; height: 26px; border-radius: 7px; display: block; }
-.lp-footer__brand b {
-  font-family: 'Space Grotesk', system-ui, sans-serif;
-  font-weight: 700; font-size: 17px; color: var(--lp-brand);
-}
-.lp-footer__copy { font-weight: 500; font-size: 12.5px; color: var(--lp-faint); margin-left: 6px; }
-.lp-footer__links { display: flex; gap: 20px; flex-wrap: wrap; }
-.lp-footer__links a { font-weight: 600; font-size: 13px; color: var(--lp-muted); }
-.lp-footer__links a:hover { color: var(--lp-teal-dark); }
-.lp-footer__social { display: flex; gap: 10px; }
-.lp-footer__social a {
-  width: 36px; height: 36px; border-radius: 999px;
-  background: var(--lp-bg); border: 1px solid var(--lp-line);
-  display: flex; align-items: center; justify-content: center; color: var(--lp-brand);
-  transition: background .15s ease, color .15s ease, border-color .15s ease;
-}
-.lp-footer__social a:hover { background: var(--lp-teal); border-color: var(--lp-teal); color: #fff; }
-
-/* ── Responsive ─────────────────────────────────────────────── */
-/* < 900px : les liens d'ancres et le bloc langue/connexion quittent la barre et
-   passent dans le burger. Restent en ligne : marque + CTA + burger. */
-@media (max-width: 900px) {
-  .lp-nav__links { display: none; }
-  .lp-nav__desk { display: none; }
-  .lp-burger { display: flex; }
-  .lp-menu.open { display: block; }
-}
-
-@media (max-width: 640px) {
-  .lp-nav__inner { padding: 11px 16px; gap: 10px; }
-  .lp-nav__actions { gap: 8px; }
-  .lp-btn--nav { padding: 9px 14px; font-size: 12.5px; }
-
-  .lp-hero { padding: 32px 16px 52px; }
-  .lp-hero__blob--teal, .lp-hero__blob--peach { display: none; }
-  .lp-hero__copy, .lp-hero__phone { flex-basis: 100%; min-width: 0; }
-  .lp-hero__ctas .lp-btn { width: 100%; }
-
-  .lp-section, .lp-pricing { padding: 52px 16px; }
-  .lp-final { padding: 0 16px 56px; }
-  .lp-split__copy, .lp-split__media { flex-basis: 100%; min-width: 0; }
-
-  /* Les téléphones doivent tenir dans l'écran, jamais déborder */
-  .lp-phone { width: min(300px, 100%); }
-  .lp-lens { width: min(288px, 100%); }
-  .lp-phone__screen { height: min(600px, 125vw); }
-  .lp-lens__screen { height: min(566px, 125vw); }
-
-  .lp-fan { padding: 22px 16px; }
-  .lp-fan__grid { grid-template-columns: 1fr; }
-  .lp-fan__arrow svg { transform: rotate(90deg); }
-
-  .lp-plan { padding: 26px 20px; }
-  .lp-coins { flex-direction: column; gap: 10px; text-align: center; }
-  .lp-coins__sep { display: none; }
-
-  .lp-faq__q { font-size: 14.5px; padding: 16px; }
-  .lp-faq__a { padding: 0 16px 16px; }
-
-  .lp-footer__inner { flex-direction: column; align-items: flex-start; }
-  .lp-footer__copy { margin-left: 0; }
-  .lp-footer__links { gap: 14px; }
-}
-
-/* Très petits écrans (iPhone SE, 320px) : marque + CTA + burger doivent encore
-   tenir sur une ligne, y compris avec le libellé anglais "Get started". */
-@media (max-width: 380px) {
-  .lp-nav__inner { padding: 11px 12px; gap: 8px; }
-  .lp-nav__actions { gap: 8px; }
-  .lp-btn--nav { padding: 8px 12px; font-size: 12px; }
-  .lp-burger { width: 34px; height: 34px; }
-  .lp-menu { padding: 8px 12px 12px; }
-}
-
-/* ── Lot 1 (2026-08-09) : Comment ça marche · Import Vinted · mentions ──────
-   Nouvelles sections de compréhension. Réutilisent lp-cards/lp-card et
-   lp-feats/lp-feat ; seuls les éléments sans équivalent existant sont ici. */
-.lp-how__emoji {
-  width: 46px; height: 46px; border-radius: 13px; background: var(--lp-surface);
-  border: 1px solid var(--lp-line); display: flex; align-items: center; justify-content: center;
-  font-size: 22px; margin-bottom: 15px;
-}
-/* La phrase « PC éteint ? rien n'est perdu » : mise en évidence sous les 3
-   blocs — c'est la réponse à l'objection n°1, elle ne doit pas se rater. */
-.lp-hownote {
-  margin: 26px auto 0; max-width: 640px; text-align: center;
-  background: var(--lp-bg); border: 1px solid var(--lp-line); border-radius: 16px;
-  padding: 16px 22px; font-weight: 700; font-size: 15px; line-height: 1.5; color: var(--lp-ink);
-}
-.lp-import { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.lp-import__badge {
-  display: inline-flex; align-items: center; gap: 8px; text-align: center;
-  background: var(--lp-surface); border: 1px solid var(--lp-line); border-radius: 999px;
-  padding: 8px 16px; font-weight: 600; font-size: 13.5px; color: var(--lp-muted);
-}
-/* Vignette « Vendu sur Vinted → retiré des autres » recyclée de l'ancienne
-   carte : fond page (la section est teintée) pour rester lisible. */
-.lp-panel--sold { max-width: 460px; margin: 0 auto; background: var(--lp-bg); }
+/* Apparition au scroll. La classe .lp-armed n'est posée QU'EN JS : sans
+   JavaScript (et pour un crawler) la page reste entièrement visible, jamais
+   un bloc à opacity:0 qui ne se révélera pas. */
+.lp-root [data-r].lp-armed{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.2,.7,.3,1),transform .7s cubic-bezier(.2,.7,.3,1)}
+.lp-root [data-r].lp-armed.lp-in{opacity:1;transform:none}
