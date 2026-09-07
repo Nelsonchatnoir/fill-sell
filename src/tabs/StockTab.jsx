@@ -715,7 +715,61 @@ function listeDeChoixExploitable(vals) {
 const NU_T = { border:"#E7E3D8", chip:"#F2F0E9", ink:"#10201B", mute:"#8A8578" };
 const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects", beebs:"beebsAspects", ebay:"ebayAspects" };
 
+// ── UNE MODALE DOIT TOUJOURS POUVOIR SE FERMER (2026-09-07) ─────────────────
+// Capture réelle (17h22, téléphone) : la modale « Où en est la publication »
+// d'un article à 3 plateformes en « À compléter » — trois cartes portant
+// chacune un message d'erreur de plusieurs lignes — dépasse la hauteur de
+// l'écran. Or le voile était `display:flex; align-items:center` SANS
+// défilement, et la carte n'avait AUCUNE hauteur maximale : le contenu
+// débordait par le haut ET par le bas, le bouton « Fermer » se retrouvait hors
+// écran, et la carte couvrant toute la surface il ne restait même plus de
+// voile à taper. Plus aucune sortie — l'app est figée pour l'utilisateur.
+//
+// Les TROIS modales de Stock (NeedsUserModal, JobStatusModal,
+// RemovePlatformsModal) portaient ce style au caractère près : la correction
+// est donc UNE constante partagée, pas trois retouches.
+//   · le voile DÉFILE (`overflowY:auto`) et aligne en haut ; la carte se
+//     recentre d'elle-même par `margin:auto` tant qu'elle tient ;
+//   · la carte est bornée à la hauteur RÉELLEMENT visible (`dvh` : la barre
+//     d'URL mobile ne peut plus manger le bouton) et devient une colonne dont
+//     seul le CORPS défile ;
+//   · le PIED — c'est-à-dire la sortie — reste collé en bas, toujours visible.
+// La fermeture au tap sur le voile est conservée, et l'échappement clavier
+// s'ajoute (useFermetureEchap) : trois sorties valent mieux qu'une.
+const MODAL_VOILE = {
+  position: "fixed", inset: 0, background: "rgba(16,32,27,0.45)", zIndex: 1000,
+  display: "flex", alignItems: "flex-start", justifyContent: "center",
+  padding: 16, overflowY: "auto", overscrollBehavior: "contain",
+};
+const MODAL_CARTE = {
+  background: "#F6F5F1", borderRadius: 16, border: `1px solid ${NU_T.border}`,
+  width: "100%", maxWidth: 380, boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+  fontFamily: "inherit", margin: "auto",
+  maxHeight: "calc(100dvh - 32px)", display: "flex", flexDirection: "column",
+};
+// Le CORPS défile — jamais la page derrière. Le padding vit ici (il était sur
+// la carte) pour que la barre de défilement longe le bord de la carte.
+const MODAL_CORPS = { padding: 20, overflowY: "auto", flex: "1 1 auto", minHeight: 0 };
+// Le PIED ne défile pas : la sortie est toujours sous le pouce.
+const MODAL_PIED = {
+  padding: "12px 20px 16px", borderTop: `1px solid ${NU_T.border}`,
+  background: "#F6F5F1", borderRadius: "0 0 16px 16px", flex: "0 0 auto",
+};
+
+// Échap ferme la modale. Ceinture clavier de la règle ci-dessus : sur
+// ordinateur aussi, une carte plus haute que la fenêtre laisse trop peu de
+// voile à cliquer.
+function useFermetureEchap(onClose) {
+  useEffect(() => {
+    if (!onClose) return undefined;
+    const surTouche = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", surTouche);
+    return () => window.removeEventListener("keydown", surTouche);
+  }, [onClose]);
+}
+
 function NeedsUserModal({ job, lang, onClose, onDone }) {
+  useFermetureEchap(onClose);
   const f = job.platform_fields?.needsUserField ?? null;
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
@@ -951,12 +1005,13 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   return (
     <div
       onClick={onClose}
-      style={{ position:"fixed", inset:0, background:"rgba(16,32,27,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+      style={MODAL_VOILE}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background:"#F6F5F1", borderRadius:16, border:`1px solid ${NU_T.border}`, padding:20, width:"100%", maxWidth:380, boxShadow:"0 8px 32px rgba(0,0,0,0.18)", fontFamily:"inherit" }}
+        style={MODAL_CARTE}
       >
+        <div style={MODAL_CORPS}>
         <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"#8A6100", marginBottom:6 }}>
           ✋ {lang === "en" ? "Action needed" : "À compléter"} — {platformLabel}
         </div>
@@ -1008,7 +1063,8 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
             {errMsg}
           </div>
         )}
-        <div style={{ display:"flex", gap:10, marginTop:16 }}>
+        </div>
+        <div style={{ ...MODAL_PIED, display:"flex", gap:10 }}>
           <button
             onClick={onClose}
             disabled={saving}
@@ -1086,6 +1142,7 @@ function isListingUrlRecoverable(platform, pubJob) {
 // émis que vers le popup, et seulement sur PUBLISH_NOW. L'afficher ici
 // demanderait de persister la progression à chaque étape ; reporté.
 function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose, onRelancer, relanceBusy }) {
+  useFermetureEchap(onClose);
   const fr = lang !== "en";
   // ── LE BANDEAU DOIT PARLER DE CET ARTICLE (2026-08-31) ────────────────────
   // diagnostiquerExtension ne décrit que la SANTÉ DE L'EXTENSION : dès qu'elle
@@ -1197,12 +1254,13 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
   return (
     <div
       onClick={onClose}
-      style={{ position:"fixed", inset:0, background:"rgba(16,32,27,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+      style={MODAL_VOILE}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background:"#F6F5F1", borderRadius:16, border:`1px solid ${NU_T.border}`, padding:20, width:"100%", maxWidth:380, boxShadow:"0 8px 32px rgba(0,0,0,0.18)", fontFamily:"inherit" }}
+        style={MODAL_CARTE}
       >
+        <div style={MODAL_CORPS}>
         <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:NU_T.mute, marginBottom:6 }}>
           {fr ? "Où en est la publication" : "Publishing status"}
         </div>
@@ -1267,19 +1325,23 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
             );
           })}
         </div>
+        </div>
 
-        <button
-          onClick={onClose}
-          style={{ marginTop:16, width:"100%", padding:"10px 14px", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:NU_T.ink, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
-        >
-          {fr ? "Fermer" : "Close"}
-        </button>
+        <div style={MODAL_PIED}>
+          <button
+            onClick={onClose}
+            style={{ width:"100%", padding:"10px 14px", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:NU_T.ink, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
+          >
+            {fr ? "Fermer" : "Close"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove }) {
+  useFermetureEchap(onClose);
   const [confirming, setConfirming] = useState(null);
   const [errMsg, setErrMsg] = useState(null);
   const { published, removalState, latestPubByPlatform } = computeRemovalInfo(jobsAll);
@@ -1287,12 +1349,13 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
   return (
     <div
       onClick={onClose}
-      style={{ position:"fixed", inset:0, background:"rgba(16,32,27,0.45)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+      style={MODAL_VOILE}
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ background:"#F6F5F1", borderRadius:16, border:`1px solid ${NU_T.border}`, padding:20, width:"100%", maxWidth:380, boxShadow:"0 8px 32px rgba(0,0,0,0.18)", fontFamily:"inherit" }}
+        style={MODAL_CARTE}
       >
+        <div style={MODAL_CORPS}>
         <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:NU_T.mute, marginBottom:6 }}>
           {fr ? "Retirer des plateformes" : "Remove from platforms"}
         </div>
@@ -1391,12 +1454,15 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
             {errMsg}
           </div>
         )}
-        <button
-          onClick={onClose}
-          style={{ width:"100%", marginTop:16, padding:"10px 0", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#6B7A75", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
-        >
-          {fr ? "Fermer" : "Close"}
-        </button>
+        </div>
+        <div style={MODAL_PIED}>
+          <button
+            onClick={onClose}
+            style={{ width:"100%", padding:"10px 0", borderRadius:12, border:`1px solid ${NU_T.border}`, background:"#fff", color:"#6B7A75", fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}
+          >
+            {fr ? "Fermer" : "Close"}
+          </button>
+        </div>
       </div>
     </div>
   );
