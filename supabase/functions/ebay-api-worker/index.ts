@@ -816,6 +816,71 @@ async function backtestCategorie(admin: SupabaseClient, env: EbayEnv, body: { li
   };
 }
 
+// ── MOTS FRÉQUENTS DES ARTICLES SANS MOT-OBJET (point 3, Nico 07/09 soir) ──
+// Chaque mot ajouté au dictionnaire = une source CERTAINE de plus = un
+// arbitrage IA en moins. Pour savoir lesquels ajouter, il faut regarder les
+// titres RÉELS des articles que le dictionnaire rate aujourd'hui.
+// Même règle exacte que la production : on ne garde que les articles dont
+// detectObjectIconKeyword ne trouve rien dans la source FR.
+// Lecture seule, aucune écriture.
+async function motsSansMotObjet(admin: SupabaseClient, body: { scan?: number }): Promise<Record<string, unknown>> {
+  const aScanner = Math.min(20000, Number(body.scan) || 8000);
+  const compte = new Map<string, { n: number; exemples: string[] }>();
+  let articles = 0, avecMotObjet = 0, sansMotObjet = 0;
+  const page = 1000;
+  for (let d = 0; d < aScanner; d += page) {
+    const { data } = await admin.from("inventaire")
+      .select("titre, description, marque")
+      .not("titre", "is", null)
+      .order("created_at", { ascending: false })
+      .range(d, d + page - 1);
+    const lot = (data ?? []) as Array<{ titre: string; description: string | null; marque: string | null }>;
+    if (!lot.length) break;
+    for (const a of lot) {
+      articles++;
+      if (detectObjectIconKeyword(a.titre ?? "", `${a.description ?? ""} ${a.marque ?? ""}`)) { avecMotObjet++; continue; }
+      sansMotObjet++;
+      // Les mots du TITRE seulement : c'est lui qui nomme l'objet.
+      const mots = String(a.titre ?? "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase().replace(/[^a-z\s'-]/g, " ").split(/[\s'-]+/)
+        .filter((m) => m.length >= 4 && !MOTS_VIDES_FR.has(m));
+      for (const m of new Set(mots)) {
+        const e = compte.get(m) ?? { n: 0, exemples: [] };
+        e.n++;
+        if (e.exemples.length < 3) e.exemples.push(String(a.titre).slice(0, 70));
+        compte.set(m, e);
+      }
+    }
+  }
+  const tri = [...compte.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 120);
+  return {
+    articles_lus: articles, avec_mot_objet: avecMotObjet, sans_mot_objet: sansMotObjet,
+    taux_sans_mot_objet: articles ? Math.round((sansMotObjet / articles) * 1000) / 10 : 0,
+    mots: tri.map(([m, e]) => ({ mot: m, n: e.n, exemples: e.exemples })),
+  };
+}
+
+// Mots de structure et qualificatifs : ils ne nomment jamais un objet.
+const MOTS_VIDES_FR = new Set([
+  "avec", "sans", "pour", "dans", "chez", "tres", "plus", "moins", "neuf", "neuve",
+  "bon", "bonne", "etat", "taille", "pointure", "noir", "noire", "blanc", "blanche",
+  "bleu", "bleue", "rouge", "vert", "verte", "gris", "grise", "rose", "jaune", "beige",
+  "marron", "violet", "orange", "kaki", "creme", "ecru", "marine", "clair", "fonce",
+  "grand", "grande", "petit", "petite", "long", "longue", "court", "courte",
+  "vintage", "ancien", "ancienne", "retro", "occasion", "jamais", "porte", "portee",
+  "femme", "homme", "fille", "garcon", "bebe", "enfant", "mixte", "unisexe",
+  "coton", "laine", "cuir", "soie", "lin", "polyester", "acrylique", "velours",
+  "motif", "motifs", "raye", "rayee", "fleuri", "fleurie", "imprime", "imprimee",
+  "manche", "manches", "courtes", "longues", "capuche", "zippe", "zippee",
+  "modele", "reference", "collection", "edition", "serie", "made", "france",
+  "lot", "ensemble", "paire", "set", "pack", "double", "triple",
+  "mois", "ans", "annee", "annees", "cm", "mm", "kit", "boite", "boites",
+  "etiquette", "etiquettes", "originale", "original", "complet", "complete",
+  "sublime", "magnifique", "superbe", "jolie", "beau", "belle", "chic", "style",
+  "haute", "haut", "basse", "bas", "medium", "large", "small",
+]);
+
 function dejaTrancheSource(pf: PlatformFields): string {
   return (pf as Record<string, unknown>).ebayCategorieAttente ? "mapping_confirme_par_relance" : "mapping";
 }
@@ -1032,6 +1097,7 @@ Deno.serve(async (req) => {
   const env = lireEnvEbay();
   if (body.action === "mesure_aspects") return json(await mesurerAspects(admin, env, body));
   if (body.action === "mesure_categories") return json(await mesurerCategories(admin, env, body));
+  if (body.action === "mots_sans_mot_objet") return json(await motsSansMotObjet(admin, body));
   if (body.action === "backtest_categorie") return json(await backtestCategorie(admin, env, body));
   if (body.action === "mesure_annonces") return json(await mesurerAnnonces(env, body as { ids?: string[] }));
 

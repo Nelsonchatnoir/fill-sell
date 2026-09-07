@@ -903,13 +903,13 @@ const OBJECT_ICON_RULES = [
   // (?:^|[^-\w]) : exclut "garde-robe" (fréquent dans les descriptions IA) et
   // "wardrobe" — sinon un t-shirt dont la description dit "à avoir dans sa
   // garde-robe" devient une robe et le mapping Vinted part sur le mauvais rayon.
-  [/(?:^|[^-\w])robe\b|jupe/i, '👗'],
+  [/(?:^|[^-\w])robes?\b|jupes?\b/i, '👗'],
   // 🥼/🤵/🎀 scindés de 🧥/👔 (2026-07-09) : blazer/tailleur, costume et
   // cravate ont chacun leur branche Vinted dédiée (Blazers et tailleurs,
   // Costumes et blazers, Accessoires > Cravates et nœuds papillons) — le
   // T4 "Pantalon de costume → Chemises" venait de "costume" logé dans 👔.
   [/blazer|tailleur\b/i, '🥼'],
-  [/(?<!porte.)manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono|polaire\b/i, '🧥'],  // porte-manteau = mobilier, pas un manteau (audit 2026-07-19)
+  [/(?<!porte.)manteau|veste|blouson|parka|doudoune|trench|imperméable|kimono|ponchos?\b|polaire\b/i, '🧥'],  // porte-manteau = mobilier, pas un manteau (audit 2026-07-19)
   // ── Vestes techniques sans le mot « veste » (2026-08-12) ────────────────────
   // Cas réel : 384 articles importés d'un dressing Vinted, tous type=NULL en
   // base — le TITRE est le seul signal, et les titres Vinted SEO ne nomment
@@ -921,7 +921,7 @@ const OBJECT_ICON_RULES = [
   [/coupe[sx]?.?vents?\b|(?<![\p{L}\p{N}])k.?ways?(?![\p{L}\p{N}])|\bbombers?\b|softshell/iu, '🧥'],
   [/cravate|n[œo]e?ud.?papillon/i, '🎀'],
   [/costume|smoking\b/i, '🤵'],
-  [/chemise|blouse\b/i, '👔'],
+  [/chemise|chemisiers?\b|blouse\b/i, '👔'],   // « chemisier » n'est PAS « chemise » : chemis-IER (82 articles du parc)
   // Scindé de 👕 : pull/sweat/hoodie/cardigan vivent chez Vinted sous une
   // branche "Sweats et pulls" entièrement différente de "Hauts et t-shirts"
   // (voir vintedCategories.js) — un seul et même mot-clé ne peut plus servir
@@ -934,7 +934,7 @@ const OBJECT_ICON_RULES = [
   // → Hauts et t-shirts).
   // \bbod(?:ys?|ies)\b (2026-08-08, B3b) : le pluriel courant de « body »
   // est « bodies » — « Lot 8 bodies bébé » (job réel 46e7dfc9) tombait en 📦.
-  [/t.?shirt|tee[sx]?.?shirt|débardeur|(?<!volkswagen\s)(?<!vw\s)polos?\b(?!\s*(?:\d|tdi|tsi|gti|gtd))|(?<!au\s)\btops?\b(?!\s*(?:qualité|état|etat|condition|niveau|prix))|tunique|\bbod(?:ys?|ies)\b/i, '👕'],
+  [/t.?shirt|tee[sx]?.?shirt|débardeur|caracos?\b|marinieres?\b|(?<!volkswagen\s)(?<!vw\s)polos?\b(?!\s*(?:\d|tdi|tsi|gti|gtd))|(?<!au\s)\btops?\b(?!\s*(?:qualité|état|etat|condition|niveau|prix))|tunique|\bbod(?:ys?|ies)\b/i, '👕'],
   // « maillot » NU (2026-08-12, dressing importés) : la règle sport (plus
   // haut) exige un qualificatif (foot/rugby/basket/…) et « maillot de bain »
   // part en 👙 avant — un « Maillot Adidas » seul ne matchait RIEN et tombait
@@ -943,7 +943,7 @@ const OBJECT_ICON_RULES = [
   // 🩳 AVANT 👖 : "short en jean" doit rester un short (le mot-clé jean
   // matcherait sinon en premier).
   [/\bshorts?\b|\bbermudas?\b/i, '🩳'],
-  [/jean(?!\W(?:paul|patou|jacques|claude|charles|louis|pierre|michel|marie|baptiste))|pantalon|jogging|legging|\bchino\b|salopette|survêtement/i, '👖'],
+  [/jean(?!\W(?:paul|patou|jacques|claude|charles|louis|pierre|michel|marie|baptiste))|pantalon|jogging|legging|\bchino\b|salopette|pantacourts?\b|jeggings?\b|combishorts?\b|survêtement/i, '👖'],
   // « survet » nu (2026-08-12, dressing importés) : « survêtement » (règle
   // au-dessus) ne le couvre pas — le ê coupe le préfixe ASCII.
   [/\bsurvets?\b/i, '👖'],
@@ -1316,6 +1316,35 @@ export function estSupportNonLivre(...textes) {
   return SUPPORT_NON_LIVRE_RE.test(t);
 }
 
+// ── LES ACCENTS NE DOIVENT PAS DÉCIDER (2026-09-07 soir) ───────────────────
+// Mesuré sur le parc : « débardeur » est reconnu, « debardeur » ne l'est PAS —
+// et les vendeurs écrivent sans accents en permanence (téléphone, majuscules,
+// copier-coller d'une fiche produit). Même chose pour « marinière/mariniere »,
+// « cuillère/cuillere », « paréo/pareo », « boléro/bolero ».
+// La doctrine du dépôt est déjà celle-là ailleurs (texteComparable) : ON
+// NORMALISE POUR COMPARER. On l'applique donc ici, des DEUX côtés — le texte
+// ET les motifs — pour que la comparaison ait lieu dans le même alphabet.
+//
+// ⚠️ EFFET DE BORD HEUREUX, ET VÉRIFIÉ : « boléro » (une veste courte) était
+// classé 🍽️ ARTS DE LA TABLE, parce que `\bbol\b` matche dans « boléro » —
+// « é » n'est pas un caractère de mot ASCII, donc la borne \b tombe juste
+// après « bol ». Exactement le piège documenté de gant/élégant et drap/drapé.
+// Sur le texte sans accents, « bolero » ne matche plus : la borne échoue sur
+// le « e ». Les deux pièges historiques, eux, restent fermés — leurs règles
+// utilisent des bornes Unicode (?<![\p{L}\p{N}]) que la normalisation ne
+// touche pas. Les trois cas sont sous test.
+const SANS_ACCENTS = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+// Motifs dé-accentués, construits UNE fois depuis la source de vérité : on ne
+// maintient pas deux listes, on en dérive une.
+let _reglesSansAccents = null;
+function reglesComparables() {
+  if (!_reglesSansAccents) {
+    _reglesSansAccents = OBJECT_ICON_RULES.map(([re, icon]) =>
+      [new RegExp(SANS_ACCENTS(re.source), re.flags), icon]);
+  }
+  return _reglesSansAccents;
+}
+
 // Détection par MOT-CLÉ seule (les 2 passes d'OBJECT_ICON_RULES), SANS repli sur
 // le défaut de catégorie : renvoie l'icône si un mot-objet explicite matche,
 // sinon null. Extraite de detectObjectIcon (2026-07-21) pour que les appelants
@@ -1335,12 +1364,13 @@ export function detectObjectIconKeyword(titre, description){
   // vole l'icône à l'objet du titre : « Sérum anti-rides » + description
   // « …parfum délicat » partait en 🌸 Parfums (l'ordre des règles fait la
   // priorité, pas la position du mot dans le texte).
-  const tTitre=denoise(titre);
-  for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(tTitre)) return icon; }
+  const regles=reglesComparables();
+  const tTitre=SANS_ACCENTS(denoise(titre));
+  for(const [re,icon] of regles){ if(re.test(tTitre)) return icon; }
   // Passe 2 — titre + description (comportement historique, filet pour les
   // titres sans mot-objet : « Medik8 Crystal Retinal 6 » + desc « crème… »).
-  const t=denoise((titre||'')+' '+(description||''));
-  for(const [re,icon] of OBJECT_ICON_RULES){ if(re.test(t)) return icon; }
+  const t=SANS_ACCENTS(denoise((titre||'')+' '+(description||'')));
+  for(const [re,icon] of regles){ if(re.test(t)) return icon; }
   return null;
 }
 
