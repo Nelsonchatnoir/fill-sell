@@ -14,6 +14,17 @@
 //   creer_politique     { type, options } — crée une politique chez eBay, sur
 //                       action EXPLICITE de l'utilisateur (bouton « Créer »),
 //                       puis la mémorise. JAMAIS appelée d'office.
+//   services_livraison  la liste VIVANTE des modes d'envoi qu'eBay FR accepte
+//                       aujourd'hui (GeteBayDetails), groupée pour un vendeur
+//   detail_politique    { type, id } — LECTURE SEULE du contenu d'une politique
+//                       (transporteur, prix, délai) : la liste des politiques
+//                       ne rend qu'un nom, le vendeur ne savait pas ce qu'il
+//                       désignait (07/09)
+//   poser_livraison     { services:[{code, frais_eur}], delai_jours } — écrit
+//                       la politique de livraison FillSell avec les
+//                       transporteurs CHOISIS (1 à 4), sur action explicite.
+//                       Ne touche JAMAIS une politique faite par le vendeur :
+//                       elle est adressée par son nom (« Livraison FillSell »).
 //   activer_politiques  opt-in au programme SELLING_POLICY_MANAGEMENT, sur
 //                       action explicite
 //   deconnecter         supprime la ligne ebay_accounts
@@ -46,7 +57,11 @@ import {
   obtenirAccessToken,
   type EbayEnv,
 } from "../_shared/ebay-oauth.ts";
-import { listerServicesLivraison, resoudreServiceLivraison, resumerServicesDomestiques, MODES_LIVRAISON } from "../_shared/ebay-shipping.ts";
+import {
+  listerServicesLivraison, resoudreServiceLivraison, resumerServicesDomestiques, MODES_LIVRAISON,
+  grouperServicesDomestiques, resoudreCodeService, familleService, PLAFOND_SERVICES_DOMESTIQUES,
+  type ServiceLivraison,
+} from "../_shared/ebay-shipping.ts";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 const MARKETPLACE = "EBAY_FR";
@@ -178,6 +193,93 @@ function corpsCreation(type: TypePolitique, options: Record<string, unknown>, se
   };
 }
 
+// ── Politique de livraison « à plusieurs transporteurs » (07/09/2026) ───────
+// La politique FillSell est adressée par SON NOM : on ne réécrit jamais une
+// politique que le vendeur a faite lui-même (cas relevé le 07/09 : un vendeur
+// avait désigné la sienne, avec Mondial Relay à 2,78 € — l'écraser aurait
+// effacé son réglage). Si elle existe déjà chez eBay → PUT (mise à jour),
+// sinon → POST (création). Dans les deux cas UN SEUL appel : eBay l'applique
+// en entier ou pas du tout, il n'y a pas de politique à moitié écrite.
+const NOM_POLITIQUE_LIVRAISON = "Livraison FillSell";
+
+interface ServiceDemande { code: string; frais: number }
+
+function corpsLivraison(demandes: ServiceDemande[], services: ServiceLivraison[], delaiJours: number) {
+  const delai = Math.min(3, Math.max(1, delaiJours || 2));
+  return {
+    name: NOM_POLITIQUE_LIVRAISON,
+    marketplaceId: MARKETPLACE,
+    categoryTypes: [{ name: "ALL_EXCLUDING_MOTORS_VEHICLES" }],
+    handlingTime: { value: delai, unit: "DAY" },
+    shippingOptions: [{
+      optionType: "DOMESTIC",
+      costType: "FLAT_RATE",
+      shippingServices: demandes.map((d, i) => {
+        // Remise en main propre (catégorie PICKUP) : gratuite par nature, eBay
+        // ne veut pas de prix dessus. Le reste porte SON prix — jamais 4,99 €
+        // recopié sur tout le monde.
+        const s = services.find((x) => x.code === d.code);
+        const frais = s?.categorie === "PICKUP" ? 0 : Math.max(0, d.frais);
+        return {
+          shippingServiceCode: d.code,
+          sortOrder: i + 1,
+          freeShipping: frais === 0,
+          ...(frais === 0 ? {} : { shippingCost: { value: frais.toFixed(2), currency: "EUR" } }),
+        };
+      }),
+    }],
+  };
+}
+
+// Contenu LISIBLE d'une politique — ce que la liste {id, name} ne disait pas.
+// Les libellés et délais viennent de la liste vivante d'eBay quand elle est
+// lisible ; sans elle, on rend le code brut plutôt que rien.
+function resumerPolitique(type: TypePolitique, brut: unknown, services: ServiceLivraison[] | null) {
+  const p = (brut ?? {}) as Record<string, unknown>;
+  const base = { id: String(p[TYPES[type].id] ?? ""), nom: String(p.name ?? "") };
+  if (type === "payment") return { ...base, paiement_immediat: p.immediatePay === true };
+  if (type === "return") {
+    const periode = (p.returnPeriod ?? {}) as { value?: number };
+    return {
+      ...base,
+      retours_acceptes: p.returnsAccepted === true,
+      delai_jours: typeof periode.value === "number" ? periode.value : null,
+      payeur_retour: String(p.returnShippingCostPayer ?? "") || null,
+    };
+  }
+  const handling = (p.handlingTime ?? {}) as { value?: number };
+  const options = Array.isArray(p.shippingOptions) ? p.shippingOptions as Record<string, unknown>[] : [];
+  const domestiques = options.filter((o) => String(o.optionType ?? "") === "DOMESTIC");
+  const lignes: Array<Record<string, unknown>> = [];
+  for (const o of domestiques) {
+    const liste = Array.isArray(o.shippingServices) ? o.shippingServices as Record<string, unknown>[] : [];
+    for (const sv of liste) {
+      const code = String(sv.shippingServiceCode ?? "");
+      if (!code) continue;
+      const vivant = services?.find((x) => x.code === code) ?? null;
+      const cout = (sv.shippingCost ?? {}) as { value?: string };
+      const gratuit = sv.freeShipping === true || Number(cout.value ?? NaN) === 0;
+      lignes.push({
+        code,
+        libelle: vivant?.libelle || code,
+        famille: vivant ? familleService(vivant) : null,
+        delai_min: vivant?.delaiMin ?? null,
+        delai_max: vivant?.delaiMax ?? null,
+        frais_eur: gratuit ? 0 : (cout.value != null ? Number(cout.value) : null),
+        gratuit,
+        ordre: typeof sv.sortOrder === "number" ? sv.sortOrder : null,
+      });
+    }
+  }
+  return {
+    ...base,
+    delai_traitement_jours: typeof handling.value === "number" ? handling.value : null,
+    services: lignes.sort((a, b) => Number(a.ordre ?? 99) - Number(b.ordre ?? 99)),
+    a_international: options.some((o) => String(o.optionType ?? "") === "INTERNATIONAL"),
+    nous_appartient: String(p.name ?? "") === NOM_POLITIQUE_LIVRAISON,
+  };
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
   const CORS = {
@@ -237,8 +339,105 @@ Deno.serve(async (req) => {
       return json({ etat: etatPublic(compte), checklist });
     }
 
+    // ── Les modes d'envoi qu'eBay FR accepte AUJOURD'HUI ────────────────────
+    // Lecture seule. La liste vient de GeteBayDetails (cache 1 h par isolat),
+    // filtrée sur ValidForSellingFlow : un service retiré par eBay disparaît
+    // de l'écran tout seul, un service ajouté y apparaît sans redéploiement.
+    if (action === "services_livraison") {
+      try {
+        const services = await listerServicesLivraison(env, token);
+        return json({
+          familles: grouperServicesDomestiques(services),
+          plafond: PLAFOND_SERVICES_DOMESTIQUES,
+          at: new Date().toISOString(),
+        });
+      } catch (e) {
+        return json({ error: `Impossible de lire les modes d'envoi chez eBay : ${(e as Error).message}` }, 502);
+      }
+    }
+
+    // ── Écrire la politique de livraison avec les transporteurs choisis ─────
+    if (action === "poser_livraison") {
+      const brut = Array.isArray(body.services) ? body.services as Array<Record<string, unknown>> : [];
+      if (!brut.length) return json({ error: "Choisis au moins un mode d'envoi." }, 400);
+      if (brut.length > PLAFOND_SERVICES_DOMESTIQUES) {
+        return json({ error: `eBay accepte au maximum ${PLAFOND_SERVICES_DOMESTIQUES} modes d'envoi dans une même politique.` }, 400);
+      }
+      const codes = brut.map((s) => String(s.code ?? "").trim()).filter(Boolean);
+      if (codes.length !== brut.length) return json({ error: "Un mode d'envoi est arrivé sans code." }, 400);
+      if (new Set(codes).size !== codes.length) return json({ error: "Le même mode d'envoi est choisi deux fois." }, 400);
+
+      let services: ServiceLivraison[];
+      try { services = await listerServicesLivraison(env, token); }
+      catch (e) { return json({ error: `Impossible de lire les modes d'envoi chez eBay : ${(e as Error).message}` }, 502); }
+
+      // Chaque code est RE-VALIDÉ contre la liste vivante avant d'être posé —
+      // un code absent ou plus valide est refusé ICI, avec la liste, plutôt
+      // que par un « Échec de la validation LSAS » opaque côté eBay.
+      const demandes: ServiceDemande[] = [];
+      for (const s of brut) {
+        const code = String(s.code ?? "").trim();
+        const service = resoudreCodeService(code, services);
+        if (!service) {
+          return json({
+            error: `eBay ne propose pas (ou plus) le mode d'envoi « ${code} » pour la France. Modes valides selon eBay : ${resumerServicesDomestiques(services)}.`,
+          }, 400);
+        }
+        const fraisTexte = String(s.frais_eur ?? "0").replace(",", ".").trim();
+        const frais = Number(fraisTexte);
+        if (fraisTexte !== "" && !Number.isFinite(frais)) {
+          return json({ error: `Le prix de « ${service.libelle} » n'est pas un montant.` }, 400);
+        }
+        demandes.push({ code, frais: Number.isFinite(frais) ? Math.max(0, frais) : 0 });
+      }
+
+      const corps = corpsLivraison(demandes, services, Number(body.delai_jours ?? 2));
+      // Politique FillSell déjà chez eBay ? On la met à jour ; sinon on la crée.
+      // 404 = elle n'existe pas encore, c'est un état normal, pas une erreur.
+      const existante = await appelEbay(env, token, `${TYPES.fulfillment.chemin}/get_by_policy_name?marketplace_id=${MARKETPLACE}&name=${encodeURIComponent(NOM_POLITIQUE_LIVRAISON)}`);
+      const idExistant = existante.http === 200 ? String((existante.json as Record<string, unknown> | null)?.fulfillmentPolicyId ?? "") : "";
+      const r = idExistant
+        ? await appelEbay(env, token, `${TYPES.fulfillment.chemin}/${idExistant}`, { method: "PUT", body: corps })
+        : await appelEbay(env, token, TYPES.fulfillment.chemin, { method: "POST", body: corps });
+      if (r.http < 200 || r.http >= 300) {
+        // Rien n'est écrit chez nous : le vendeur garde la politique qu'il avait.
+        return json({ error: `eBay a refusé ${idExistant ? "la mise à jour" : "la création"} de la politique de livraison : ${messageErreurEbay(r.json, r.texte)}`, http: r.http }, 502);
+      }
+      const rendu = (r.json ?? {}) as Record<string, unknown>;
+      const id = String(rendu[TYPES.fulfillment.id] ?? idExistant);
+      if (!id) return json({ error: "eBay a répondu sans identifiant de politique." }, 502);
+      await admin.from("ebay_accounts").update({ fulfillment_policy_id: id }).eq("user_id", user.id);
+      console.log(`[ebay-account] livraison posée user=${user.id} ${idExistant ? "maj" : "creation"}=${id} services=${demandes.map((d) => d.code).join(",")}`);
+      const lecture = await appelEbay(env, token, `${TYPES.fulfillment.chemin}/${id}`);
+      const checklist = await releverChecklist(admin, env, token, user.id);
+      const { compte } = await lireCompte(admin, user.id);
+      return json({
+        etat: etatPublic(compte),
+        checklist,
+        detail: lecture.http === 200 ? resumerPolitique("fulfillment", lecture.json, services) : null,
+        maj: Boolean(idExistant),
+      });
+    }
+
     const type = String(body.type ?? "") as TypePolitique;
     if (!TYPES[type]) return json({ error: "Type de politique inconnu" }, 400);
+
+    // ── Ce qu'il y a DANS une politique — lecture seule, n'écrit rien ───────
+    if (action === "detail_politique") {
+      const id = String(body.id ?? "").trim();
+      if (!id) return json({ error: "Identifiant de politique absent" }, 400);
+      const r = await appelEbay(env, token, `${TYPES[type].chemin}/${encodeURIComponent(id)}`);
+      if (r.http !== 200) {
+        return json({ error: `eBay n'a pas rendu cette politique : ${messageErreurEbay(r.json, r.texte)}`, http: r.http }, 502);
+      }
+      // La liste vivante sert à nommer les codes ; si elle manque, on rend le
+      // code brut — un détail partiel vaut mieux qu'un écran vide.
+      let services: ServiceLivraison[] | null = null;
+      if (type === "fulfillment") {
+        try { services = await listerServicesLivraison(env, token); } catch { services = null; }
+      }
+      return json({ detail: resumerPolitique(type, r.json, services) });
+    }
 
     if (action === "choisir_politique") {
       const id = String(body.id ?? "").trim();

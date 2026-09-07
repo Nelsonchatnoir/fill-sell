@@ -73,7 +73,9 @@ export const demarrerConnexionEbay = () => appeler('ebay-oauth-start');
 export const lireEtatEbay = (action = 'statut') => appeler('ebay-account', { action });
 
 // choisir_politique { type, id } · creer_politique { type, options } ·
-// activer_politiques · deconnecter
+// activer_politiques · deconnecter · services_livraison (liste vivante des
+// modes d'envoi eBay FR) · detail_politique { type, id } (lecture seule du
+// contenu) · poser_livraison { services:[{code, frais_eur}], delai_jours }
 export const agirEbay = (action, params = {}) => appeler('ebay-account', { action, ...params });
 
 // Ouvre l'écran de consentement : plein écran sur le web (eBay revient sur

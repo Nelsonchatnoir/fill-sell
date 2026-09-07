@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { UI, Eyebrow } from './ui';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { demarrerConnexionEbay, lireEtatEbay, agirEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
+import { supabase } from '../lib/supabase';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Section « eBay » des Paramètres — LOT 0 (connecter) + LOT 1 (dire ce qui
@@ -123,6 +124,42 @@ const T = {
     retoursAcceptes: 'Acceptés sous 30 jours, frais de retour à l\'acheteur',
     retoursRefuses: 'Pas de retour',
     creee: (nom) => `Politique « ${nom} » créée chez eBay et retenue pour FillSell.`,
+    // ── Transporteurs (07/09) ──────────────────────────────────────────────
+    transporteurs: 'Mes transporteurs',
+    transporteursIntro: "Choisis comment tu expédies. Ces modes d'envoi seront proposés à l'acheteur sur toutes tes annonces eBay.",
+    familles: { point_relais: 'Point relais', domicile: 'À domicile', courrier: 'Courrier', main_propre: 'Remise en main propre' },
+    choisirTransporteurs: 'Choisir mes transporteurs',
+    modifierTransporteurs: 'Modifier mes transporteurs',
+    lectureServices: "Lecture des modes d'envoi chez eBay…",
+    compteur: (n, max) => `${n} choisi${n > 1 ? 's' : ''} sur ${max} possibles`,
+    plafondAtteint: (max) => `eBay accepte ${max} modes d'envoi au maximum dans une politique. Décoche-en un pour en ajouter un autre.`,
+    prixMode: 'Prix (€, 0 = offert)',
+    gratuitNature: 'Gratuit',
+    delaiService: (min, max) => (min == null && max == null) ? null : (min === max ? `${min} j` : `${min ?? '?'}-${max ?? '?'} j`),
+    enregistrerLivraison: 'Enregistrer chez eBay',
+    livraisonEnCours: 'Envoi à eBay…',
+    livraisonPosee: 'Tes modes d\'envoi sont enregistrés chez eBay.',
+    aucunChoisi: "Choisis au moins un mode d'envoi.",
+    prixInvalide: (l) => `Le prix de « ${l} » doit être un montant (ex. 4.99).`,
+    contenuActuel: 'Ce que voit l\'acheteur aujourd\'hui',
+    sansService: "Aucun mode d'envoi domestique dans cette politique.",
+    delaiTraitement: (n) => `Expédition sous ${n} jour${n > 1 ? 's' : ''}`,
+    voirContenu: 'Voir ce qu\'elle contient',
+    lectureContenu: 'Lecture chez eBay…',
+    politiqueAmoi: 'Politique créée par FillSell',
+    politiqueSienne: 'Ta politique eBay',
+    // ── Adresse d'expédition (07/09) ───────────────────────────────────────
+    adresseTitre: 'Lieu d\'expédition',
+    adresseIntro: "eBay demande d'où part le colis pour publier depuis nos serveurs. Renseigne-le maintenant : sans lui, ta première annonce s'arrête et t'attend.",
+    adresseCp: 'Code postal',
+    adresseVille: 'Ville',
+    adresseEnregistrer: 'Enregistrer',
+    adresseEnregistree: 'Lieu d\'expédition enregistré.',
+    adresseCpInvalide: 'Le code postal doit faire 5 chiffres.',
+    adresseVilleRequise: 'Indique la ville.',
+    adresseDepuisLbc: 'Repris de ton adresse de remise Leboncoin.',
+    adresseErreur: 'Enregistrement impossible. Réessaie dans un instant.',
+    adresseNote: 'Seuls la ville et le code postal partent chez eBay — jamais ta rue.',
     deconnecter: 'Déconnecter eBay de FillSell',
     confirmerDeco: 'Confirmer la déconnexion',
     decoNote: 'FillSell oublie les jetons ; rien n\'est supprimé chez eBay.',
@@ -192,6 +229,40 @@ const T = {
     retoursAcceptes: 'Accepted within 30 days, buyer pays return shipping',
     retoursRefuses: 'No returns',
     creee: (nom) => `Policy “${nom}” created at eBay and selected for FillSell.`,
+    transporteurs: 'My shipping methods',
+    transporteursIntro: 'Choose how you ship. Buyers will see these options on all your eBay listings.',
+    familles: { point_relais: 'Pickup point', domicile: 'To the door', courrier: 'Letter post', main_propre: 'Local pickup' },
+    choisirTransporteurs: 'Choose my shipping methods',
+    modifierTransporteurs: 'Change my shipping methods',
+    lectureServices: 'Reading shipping methods from eBay…',
+    compteur: (n, max) => `${n} of ${max} selected`,
+    plafondAtteint: (max) => `eBay allows at most ${max} shipping methods in one policy. Unselect one to add another.`,
+    prixMode: 'Price (€, 0 = free)',
+    gratuitNature: 'Free',
+    delaiService: (min, max) => (min == null && max == null) ? null : (min === max ? `${min} d` : `${min ?? '?'}-${max ?? '?'} d`),
+    enregistrerLivraison: 'Save at eBay',
+    livraisonEnCours: 'Sending to eBay…',
+    livraisonPosee: 'Your shipping methods are saved at eBay.',
+    aucunChoisi: 'Choose at least one shipping method.',
+    prixInvalide: (l) => `The price for “${l}” must be an amount (e.g. 4.99).`,
+    contenuActuel: 'What buyers see today',
+    sansService: 'No domestic shipping method in this policy.',
+    delaiTraitement: (n) => `Ships within ${n} day${n > 1 ? 's' : ''}`,
+    voirContenu: 'See what it contains',
+    lectureContenu: 'Reading from eBay…',
+    politiqueAmoi: 'Policy created by FillSell',
+    politiqueSienne: 'Your own eBay policy',
+    adresseTitre: 'Ship-from location',
+    adresseIntro: "eBay needs to know where the parcel ships from to publish from our servers. Fill it in now: without it your first listing stops and waits for you.",
+    adresseCp: 'Postal code',
+    adresseVille: 'City',
+    adresseEnregistrer: 'Save',
+    adresseEnregistree: 'Ship-from location saved.',
+    adresseCpInvalide: 'The postal code must be 5 digits.',
+    adresseVilleRequise: 'Enter the city.',
+    adresseDepuisLbc: 'Taken from your Leboncoin handover address.',
+    adresseErreur: "Couldn't save. Try again in a moment.",
+    adresseNote: 'Only the city and postal code go to eBay — never your street.',
     deconnecter: 'Disconnect eBay from FillSell',
     confirmerDeco: 'Confirm disconnection',
     decoNote: 'FillSell forgets the tokens; nothing is deleted at eBay.',
@@ -244,6 +315,21 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
   // { type, etat: 'envoi' | 'erreur' | 'ok', message }
   const [statutCreation, setStatutCreation] = useState(null);
   const [confirmDeco, setConfirmDeco] = useState(false);
+  // ── Transporteurs (07/09/2026) ────────────────────────────────────────────
+  // `services` = la liste VIVANTE d'eBay, groupée par le serveur. Jamais une
+  // table écrite ici : si eBay retire un mode d'envoi, il disparaît de l'écran
+  // sans qu'on redéploie. Chargée au premier ouvrage du sélecteur.
+  const [services, setServices] = useState(null);           // { familles, plafond }
+  const [picker, setPicker] = useState(null);               // { choix: [{code, frais}], delai }
+  const [statutLivraison, setStatutLivraison] = useState(null); // { etat, message }
+  const [details, setDetails] = useState({});               // { [idPolitique]: detail | 'erreur' }
+  const [detailEnCours, setDetailEnCours] = useState(null);
+  // ── Lieu d'expédition (07/09/2026) ────────────────────────────────────────
+  // Relevé du 07/09 : 2 048 comptes sur 2 150 n'ont AUCUNE adresse exploitable.
+  // Sans elle, la 1re publication par API s'arrête en needs_user au moment de
+  // créer l'emplacement marchand eBay. On la demande donc ICI, avant.
+  const [adresse, setAdresse] = useState(null);             // { cp, ville, source }
+  const [statutAdresse, setStatutAdresse] = useState(null); // { etat, message }
 
   // Un seul appel : sans compte relié, le serveur répond sans toucher eBay ;
   // avec compte, il relève la checklist (5 appels Account API) et la stocke.
@@ -272,6 +358,161 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [charger]);
+
+  // ── Lieu d'expédition : lecture, puis écriture sur clic explicite ─────────
+  // Deux sources, dans l'ordre exact que lit le serveur (emplacementMarchand,
+  // _shared/ebay-publication.ts) : l'adresse eBay saisie ici, puis l'adresse de
+  // remise Leboncoin. Même expression régulière des deux côtés — si l'une
+  // change, l'autre doit changer avec.
+  const chargerAdresse = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const { data } = await supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle();
+      const ps = data?.platform_settings ?? {};
+      const propre = ps?.ebay?.adresse_expedition ?? null;
+      if (/^\d{5}$/.test(String(propre?.code_postal ?? '').trim()) && String(propre?.ville ?? '').trim()) {
+        setAdresse({ cp: String(propre.code_postal).trim(), ville: String(propre.ville).trim(), source: 'ebay' });
+        return;
+      }
+      const m = String(ps?.leboncoin?.adresse ?? '').match(/\b(\d{5})\b\s*(.+)$/);
+      setAdresse(m ? { cp: m[1], ville: m[2].trim().replace(/\s+/g, ' '), source: 'leboncoin' } : { cp: '', ville: '', source: null });
+    } catch (e) {
+      console.warn('[ebay-compte] lieu d\'expédition illisible —', e?.message ?? e);
+      setAdresse({ cp: '', ville: '', source: null });
+    }
+  }, [userId]);
+  useEffect(() => { chargerAdresse(); }, [chargerAdresse]);
+
+  const enregistrerAdresse = async () => {
+    const cp = String(adresse?.cp ?? '').trim();
+    const ville = String(adresse?.ville ?? '').trim().replace(/\s+/g, ' ');
+    // On ne devine JAMAIS : pas de code postal complété, pas de ville approchée.
+    if (!/^\d{5}$/.test(cp)) { setStatutAdresse({ etat: 'erreur', message: t.adresseCpInvalide }); return; }
+    if (!ville) { setStatutAdresse({ etat: 'erreur', message: t.adresseVilleRequise }); return; }
+    setBusy('adresse'); setStatutAdresse(null);
+    try {
+      // Lecture-fusion-écriture : platform_settings est partagé entre
+      // plateformes, ne jamais écraser les clés des autres. Le .select() est
+      // obligatoire — sans lui, un update filtré par RLS (0 ligne) ne renvoie
+      // pas d'erreur et l'écran dirait « enregistré » à tort.
+      const { data: cur } = await supabase.from('profiles').select('platform_settings').eq('id', userId).maybeSingle();
+      const socle = cur?.platform_settings ?? {};
+      const next = { ...socle, ebay: { ...(socle.ebay ?? {}), adresse_expedition: { code_postal: cp, ville } } };
+      const { data: upd, error } = await supabase.from('profiles').update({ platform_settings: next }).eq('id', userId).select('platform_settings');
+      if (error || !upd?.length) throw new Error(error?.message || 'aucune ligne écrite');
+      setAdresse({ cp, ville, source: 'ebay' });
+      setStatutAdresse({ etat: 'ok', message: t.adresseEnregistree });
+    } catch (e) {
+      console.warn('[ebay-compte] lieu d\'expédition non enregistré —', e?.message ?? e);
+      setStatutAdresse({ etat: 'erreur', message: t.adresseErreur });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // ── Contenu d'une politique — lecture seule, une fois par politique ───────
+  const detailsDemandes = useRef(new Set());
+  const chargerDetail = useCallback(async (type, id) => {
+    if (!id || detailsDemandes.current.has(id)) return;
+    detailsDemandes.current.add(id);
+    setDetailEnCours(id);
+    try {
+      const r = await agirEbay('detail_politique', { type, id });
+      setDetails((d) => ({ ...d, [id]: r?.detail ?? 'erreur' }));
+    } catch (e) {
+      console.warn('[ebay-compte] contenu de politique illisible —', e?.message ?? e);
+      setDetails((d) => ({ ...d, [id]: 'erreur' }));
+    } finally {
+      setDetailEnCours(null);
+    }
+  }, []);
+
+  const livraisonId = etat?.politiques?.fulfillment ?? null;
+  // La politique retenue est lue dès qu'elle est connue : c'est elle qui dit à
+  // l'acheteur comment il sera livré, l'écran ne peut pas se contenter d'un nom.
+  useEffect(() => { if (livraisonId) chargerDetail('fulfillment', livraisonId); }, [livraisonId, chargerDetail]);
+
+  const plafond = services?.plafond ?? 4;
+  const trouverService = (code) => {
+    for (const f of services?.familles ?? []) {
+      const s = f.services.find((x) => x.code === code);
+      if (s) return s;
+    }
+    return null;
+  };
+
+  const ouvrirPicker = async () => {
+    setStatutLivraison(null);
+    const courant = livraisonId ? details[livraisonId] : null;
+    const dejaChoisis = (courant && courant !== 'erreur' ? (courant.services ?? []) : [])
+      .map((s) => ({ code: s.code, frais: s.gratuit ? '0' : (s.frais_eur != null ? String(s.frais_eur) : '') }));
+    setPicker({
+      choix: dejaChoisis.slice(0, plafond),
+      delai: (courant && courant !== 'erreur' && courant.delai_traitement_jours) || 2,
+    });
+    if (services) return;
+    setBusy('services');
+    try {
+      const r = await agirEbay('services_livraison');
+      setServices({ familles: r?.familles ?? [], plafond: r?.plafond ?? 4 });
+    } catch (e) {
+      console.warn('[ebay-compte] modes d\'envoi illisibles —', e?.message ?? e);
+      setStatutLivraison({ etat: 'erreur', message: e?.message || t.erreurGenerique });
+      setPicker(null);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const basculerService = (s) => {
+    setStatutLivraison(null);
+    setPicker((p) => {
+      if (!p) return p;
+      if (p.choix.some((c) => c.code === s.code)) return { ...p, choix: p.choix.filter((c) => c.code !== s.code) };
+      if (p.choix.length >= plafond) return p;   // plafond eBay : le message est affiché à côté
+      return { ...p, choix: [...p.choix, { code: s.code, frais: s.gratuitParNature ? '0' : '' }] };
+    });
+  };
+
+  // Écriture de la politique de livraison — LE SEUL endroit qui appelle
+  // poser_livraison, sur clic explicite. Un refus d'eBay laisse la politique
+  // actuelle intacte et le dit sous le formulaire.
+  const soumettreLivraison = async () => {
+    const choix = picker?.choix ?? [];
+    if (!choix.length) { setStatutLivraison({ etat: 'erreur', message: t.aucunChoisi }); return; }
+    for (const c of choix) {
+      const s = trouverService(c.code);
+      if (s?.gratuitParNature) continue;
+      // Un vide n'est pas un zéro : on le refuse au lieu d'offrir le port sans
+      // que le vendeur l'ait décidé.
+      const brut = String(c.frais ?? '').replace(',', '.').trim();
+      if (brut === '' || Number.isNaN(Number(brut))) {
+        setStatutLivraison({ etat: 'erreur', message: t.prixInvalide(s?.libelle || c.code) });
+        return;
+      }
+    }
+    setBusy('livraison'); setErreurAction('');
+    setStatutLivraison({ etat: 'envoi', message: t.livraisonEnCours });
+    try {
+      const r = await agirEbay('poser_livraison', {
+        services: choix.map((c) => ({ code: c.code, frais_eur: String(c.frais ?? '0').replace(',', '.') })),
+        delai_jours: picker.delai,
+      });
+      if (r.etat) setEtat(r.etat);
+      if (r.checklist) setChecklist(r.checklist);
+      if (r.detail?.id) {
+        detailsDemandes.current.add(r.detail.id);
+        setDetails((d) => ({ ...d, [r.detail.id]: r.detail }));
+      }
+      setPicker(null);
+      setStatutLivraison({ etat: 'ok', message: t.livraisonPosee });
+    } catch (e) {
+      console.warn('[ebay-compte] livraison refusée —', e?.message ?? e);
+      setStatutLivraison({ etat: 'erreur', message: e?.message || t.erreurGenerique });
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const connecter = async () => {
     setBusy('connexion'); setErreurAction('');
@@ -403,6 +644,150 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
     </div>
   );
 
+  // ── Ce que l'acheteur voit : le CONTENU de la politique, pas son nom ──────
+  const rendreDetailLivraison = (d) => {
+    if (!d || d === 'erreur') return null;
+    const svc = d.services ?? [];
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, background: UI.chip, borderRadius: 10, padding: '8px 10px' }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: UI.mute2 }}>{t.contenuActuel}</div>
+        {svc.length === 0
+          ? <div style={{ fontSize: 12.5, color: UI.mute2 }}>{t.sansService}</div>
+          : svc.map((s) => {
+            const delai = t.delaiService(s.delai_min, s.delai_max);
+            return (
+              <div key={s.code} style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: UI.ink }}>{s.libelle}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: UI.tealDeep }}>
+                  {s.gratuit ? t.gratuitNature : (s.frais_eur != null ? `${Number(s.frais_eur).toFixed(2)} €` : '—')}
+                </span>
+                {delai && <span style={{ fontSize: 11.5, color: UI.mute }}>{delai}</span>}
+              </div>
+            );
+          })}
+        {d.delai_traitement_jours != null && (
+          <div style={{ fontSize: 11.5, color: UI.mute }}>{t.delaiTraitement(d.delai_traitement_jours)}</div>
+        )}
+      </div>
+    );
+  };
+
+  // ── Sélecteur de transporteurs — la liste vient d'eBay, pas d'ici ─────────
+  const rendrePicker = () => (
+    <div style={{ background: UI.card, border: `1px solid ${UI.border}`, borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.compteur(picker.choix.length, plafond)}</div>
+      {picker.choix.length >= plafond && (
+        <div style={{ fontSize: 11.5, color: '#9A5A3A', fontWeight: 600, lineHeight: 1.45 }}>{t.plafondAtteint(plafond)}</div>
+      )}
+      {(services.familles ?? []).map((f) => (
+        <div key={f.cle} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, color: UI.mute2 }}>{t.familles[f.cle] ?? f.cle}</div>
+          {f.services.map((s) => {
+            const choisi = picker.choix.find((c) => c.code === s.code);
+            const delai = t.delaiService(s.delaiMin, s.delaiMax);
+            const bloque = !choisi && picker.choix.length >= plafond;
+            return (
+              <div key={s.code} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <button type="button" onClick={() => basculerService(s)} disabled={bloque || busy != null}
+                  style={{ ...boutonCreux(bloque || busy != null), textAlign: 'left', ...(choisi ? selection : {}) }}>
+                  {choisi ? '✓ ' : ''}{s.libelle}{delai ? ` · ${delai}` : ''}
+                </button>
+                {choisi && !s.gratuitParNature && (
+                  <label style={{ fontSize: 11, fontWeight: 700, color: UI.mute2 }}>{t.prixMode}
+                    <input value={choisi.frais} inputMode="decimal"
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^\d.,]/g, '').slice(0, 6);
+                        setPicker((p) => ({ ...p, choix: p.choix.map((c) => (c.code === s.code ? { ...c, frais: v } : c)) }));
+                      }}
+                      style={{ ...champ, marginTop: 4 }} />
+                  </label>
+                )}
+                {choisi && s.gratuitParNature && <div style={{ fontSize: 11.5, color: UI.mute }}>{t.gratuitNature}</div>}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.delai}</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {[1, 2, 3].map((n) => (
+          <button type="button" key={n} onClick={() => setPicker((p) => ({ ...p, delai: n }))} style={{ ...boutonCreux(false), ...(picker.delai === n ? selection : {}) }}>{t.jours(n)}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {/* L'écriture chez eBay ne part QUE d'ici — clic explicite. */}
+        <button type="button" onClick={soumettreLivraison} disabled={busy != null} style={boutonPlein(busy != null)}>
+          {busy === 'livraison' ? t.livraisonEnCours : t.enregistrerLivraison}
+        </button>
+        <button type="button" onClick={() => { setPicker(null); setStatutLivraison(null); }} disabled={busy != null} style={boutonCreux(busy != null)}>{t.annuler}</button>
+      </div>
+      {statutLivraison && statutLivraison.etat !== 'ok' && (
+        <div role="status" style={statutLivraison.etat === 'erreur' ? messageErreur : { fontSize: 12, color: UI.mute2, fontWeight: 600 }}>
+          {statutLivraison.message}
+        </div>
+      )}
+    </div>
+  );
+
+  // Les politiques que le VENDEUR a faites lui-même : on ne les réécrit
+  // jamais, mais il peut voir ce qu'elles contiennent et en désigner une.
+  const rendreAutresPolitiques = (autres) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, borderTop: `1px solid ${UI.border}`, paddingTop: 8 }}>
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.utiliserExistante}</div>
+      {autres.map((p) => {
+        const d = details[p.id];
+        return (
+          <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontSize: 12.5, color: UI.ink, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name || p.id}</span>
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                {d === undefined && (
+                  <button type="button" onClick={() => chargerDetail('fulfillment', p.id)} disabled={busy != null} style={boutonCreux(busy != null)}>
+                    {detailEnCours === p.id ? '…' : t.voirContenu}
+                  </button>
+                )}
+                <button type="button" onClick={() => agir('choisir_politique', { type: 'fulfillment', id: p.id }, 'choix_fulfillment')} disabled={busy != null} style={boutonCreux(busy != null)}>
+                  {busy === 'choix_fulfillment' ? '…' : t.utiliser}
+                </button>
+              </div>
+            </div>
+            {d && d !== 'erreur' && rendreDetailLivraison(d)}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  // Ligne « Politique de livraison » : PAS un choix parmi des politiques (les
+  // vendeurs n'en ont qu'une), mais le choix des transporteurs — c'est nous qui
+  // construisons la politique avec ce qu'ils cochent.
+  const rendreLivraison = (ligne) => {
+    const choisie = etat?.politiques?.fulfillment ?? null;
+    const detail = choisie ? details[choisie] : null;
+    const autres = (ligne.existantes ?? []).filter((p) => p.id !== choisie);
+    const aDesServices = Boolean(detail && detail !== 'erreur' && (detail.services ?? []).length);
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.transporteurs}</div>
+        <div style={{ fontSize: 12.5, color: UI.mute2, lineHeight: 1.5 }}>{t.transporteursIntro}</div>
+        {choisie && detailEnCours === choisie && <div style={{ fontSize: 12, color: UI.mute2 }}>{t.lectureContenu}</div>}
+        {rendreDetailLivraison(detail)}
+        {!picker && (
+          <button type="button" onClick={ouvrirPicker} disabled={busy != null} style={{ ...boutonCreux(busy != null), alignSelf: 'flex-start' }}>
+            {busy === 'services' ? t.lectureServices : (aDesServices ? t.modifierTransporteurs : t.choisirTransporteurs)}
+          </button>
+        )}
+        {picker && services && rendrePicker()}
+        {!picker && statutLivraison && (
+          <div role="status" style={statutLivraison.etat === 'erreur' ? messageErreur : { fontSize: 12, color: UI.tealDeep, fontWeight: 600 }}>
+            {statutLivraison.message}
+          </div>
+        )}
+        {autres.length > 0 && rendreAutresPolitiques(autres)}
+      </div>
+    );
+  };
+
   const rendreChoixPolitique = (ligne) => {
     const type = TYPE_PAR_CLE[ligne.cle];
     if (!type) return null;
@@ -497,13 +882,50 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
                           )}
                         </div>
                       )}
-                      {TYPE_PAR_CLE[ligne.cle] && rendreChoixPolitique(ligne)}
+                      {ligne.cle === 'politique_livraison'
+                        ? rendreLivraison(ligne)
+                        : (TYPE_PAR_CLE[ligne.cle] ? rendreChoixPolitique(ligne) : null)}
                     </div>
                   </div>
                 );
               })}
               {limite && (limite.quantity != null || montant) && (
                 <div style={{ fontSize: 11.5, color: UI.mute, lineHeight: 1.4 }}>{t.plafond(limite.quantity, montant)}</div>
+              )}
+            </div>
+          )}
+
+          {/* Lieu d'expédition — DEMANDÉ ICI, avant la première publication.
+              eBay en a besoin pour créer l'emplacement marchand ; sans lui, la
+              1re annonce par API s'arrête en « à compléter ». Seuls la ville et
+              le code postal partent chez eBay, jamais la rue. */}
+          {adresse && (
+            <div style={{ borderTop: `1px solid ${UI.border}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.adresseTitre}</div>
+              <div style={{ fontSize: 12.5, color: UI.mute2, lineHeight: 1.5 }}>{t.adresseIntro}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: UI.mute2, flex: '0 0 110px' }}>{t.adresseCp}
+                  <input value={adresse.cp} inputMode="numeric"
+                    onChange={(e) => { setStatutAdresse(null); setAdresse((a) => ({ ...a, cp: e.target.value.replace(/\D/g, '').slice(0, 5) })); }}
+                    style={{ ...champ, marginTop: 4 }} />
+                </label>
+                <label style={{ fontSize: 11, fontWeight: 700, color: UI.mute2, flex: '1 1 160px' }}>{t.adresseVille}
+                  <input value={adresse.ville}
+                    onChange={(e) => { setStatutAdresse(null); setAdresse((a) => ({ ...a, ville: e.target.value.slice(0, 80) })); }}
+                    style={{ ...champ, marginTop: 4 }} />
+                </label>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button type="button" onClick={enregistrerAdresse} disabled={busy != null} style={boutonCreux(busy != null)}>
+                  {busy === 'adresse' ? '…' : t.adresseEnregistrer}
+                </button>
+                <span style={{ fontSize: 11, color: UI.mute }}>{t.adresseNote}</span>
+              </div>
+              {adresse.source === 'leboncoin' && <div style={{ fontSize: 11.5, color: UI.mute }}>{t.adresseDepuisLbc}</div>}
+              {statutAdresse && (
+                <div role="status" style={statutAdresse.etat === 'erreur' ? messageErreur : { fontSize: 12, color: UI.tealDeep, fontWeight: 600 }}>
+                  {statutAdresse.message}
+                </div>
               )}
             </div>
           )}

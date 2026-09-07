@@ -420,15 +420,35 @@ export async function emplacementMarchand(admin: SupabaseClient, env: EbayEnv, t
     return { cle: CLE_EMPLACEMENT, cree: false };
   }
 
-  // Adresse : code postal + ville depuis l'adresse de remise Leboncoin
-  // (profiles.platform_settings.leboncoin.adresse) — la rue n'est jamais
-  // envoyée à eBay, seuls ville, code postal et pays.
+  // Adresse : ville + code postal. La rue n'est JAMAIS envoyée à eBay, seuls
+  // ville, code postal et pays.
+  // DEUX sources, dans cet ordre (07/09/2026) :
+  //   1. platform_settings.ebay.adresse_expedition {code_postal, ville} —
+  //      saisie EXPLICITEMENT dans l'écran « Compte eBay », pour les vendeurs
+  //      qui n'ont pas d'adresse Leboncoin (2 048 comptes sur 2 150 au 07/09 :
+  //      sans cette source, leur toute première publication API partait en
+  //      needs_user « adresse ») ;
+  //   2. l'adresse de remise Leboncoin, comme avant — aucune publication qui
+  //      marche aujourd'hui ne change.
+  // On ne devine JAMAIS : ni ville approchante, ni code postal complété.
+  // Absente ou illisible → needs_user, et l'écran la demande.
   const { data: profil } = await admin.from("profiles").select("platform_settings").eq("id", userId).maybeSingle();
-  const adresse = String((profil?.platform_settings as { leboncoin?: { adresse?: string } } | null)?.leboncoin?.adresse ?? "");
-  const m = adresse.match(/\b(\d{5})\b\s*(.+)$/);
-  if (!m) return { manque: "adresse", detail: "aucune ville + code postal connus (adresse Leboncoin absente ou illisible)" };
-  const codePostal = m[1];
-  const ville = m[2].trim().replace(/\s+/g, " ");
+  const reglages = (profil?.platform_settings ?? null) as { ebay?: { adresse_expedition?: { code_postal?: string; ville?: string } }; leboncoin?: { adresse?: string } } | null;
+  const propre = reglages?.ebay?.adresse_expedition ?? null;
+  const cpPropre = String(propre?.code_postal ?? "").trim();
+  const villePropre = String(propre?.ville ?? "").trim();
+  let codePostal = "";
+  let ville = "";
+  if (/^\d{5}$/.test(cpPropre) && villePropre) {
+    codePostal = cpPropre;
+    ville = villePropre.replace(/\s+/g, " ");
+  } else {
+    const adresse = String(reglages?.leboncoin?.adresse ?? "");
+    const m = adresse.match(/\b(\d{5})\b\s*(.+)$/);
+    if (!m) return { manque: "adresse", detail: "aucune ville + code postal connus (adresse d'expédition eBay et adresse Leboncoin absentes ou illisibles)" };
+    codePostal = m[1];
+    ville = m[2].trim().replace(/\s+/g, " ");
+  }
 
   const creation = await appelEbay(env, token, `/sell/inventory/v1/location/${CLE_EMPLACEMENT}`, {
     method: "POST",

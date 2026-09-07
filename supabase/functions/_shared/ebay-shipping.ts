@@ -105,3 +105,102 @@ export function resumerServicesDomestiques(services: ServiceLivraison[], max = 1
     .map((s) => `${s.code} (${s.libelle})`)
     .join(", ");
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOT « TRANSPORTEURS » (07/09/2026) — regrouper la liste VIVANTE pour un
+// vendeur, sans table de codes écrite en dur.
+//
+// Le classement n'invente rien : il se lit dans les champs qu'eBay rend pour
+// chaque service (GeteBayDetails), et rien d'autre.
+//   · ShippingCategory = PICKUP          → remise en main propre
+//   · ShippingCategory = POINT_TO_POINT  → point relais (Mondial Relay,
+//                                          Shop2Shop, Chrono Relais, DPD Relais)
+//   · ShippingCarrier  = LAPOSTE         → courrier (Lettre Suivie, Lettre
+//                                          recommandée, Lettre Verte)
+//   · ShippingCategory = STANDARD/EXPRESS → à domicile (Colissimo, Colissimo
+//                                          Recommandé, GLS, UPS, Chronopost…)
+//   · tout le reste (OTHER, …_FROM_OUTSIDE) → PAS proposé : ce sont les
+//     SpeedPAK, les livraisons depuis l'étranger, les DOM-TOM, Convelio, le
+//     contre-remboursement — rien qu'un vendeur particulier français choisit
+//     pour expédier un colis.
+// Les services non valides pour la vente sont déjà écartés en amont : c'est
+// ainsi que FR_LivraisonEnLockerMondialRelay (ValidForSellingFlow = false)
+// n'apparaît JAMAIS à l'écran, sans avoir à le nommer.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Plafond eBay, cité de la spec Account API (sell_account_v1_oas3, ShippingOption) :
+// « Sellers can specify up to four domestic shipping services and up to five
+// international shipping service options ». On le dit à l'écran plutôt que de
+// laisser le vendeur se faire refuser.
+export const PLAFOND_SERVICES_DOMESTIQUES = 4;
+
+export type FamilleLivraison = "point_relais" | "domicile" | "courrier" | "main_propre";
+
+export const ORDRE_FAMILLES: FamilleLivraison[] = ["point_relais", "domicile", "courrier", "main_propre"];
+
+export function familleService(s: ServiceLivraison): FamilleLivraison | null {
+  if (s.categorie === "PICKUP") return "main_propre";
+  if (s.categorie === "POINT_TO_POINT") return "point_relais";
+  if (s.transporteur.trim().toUpperCase() === "LAPOSTE") return "courrier";
+  if (s.categorie === "STANDARD" || s.categorie === "EXPRESS") return "domicile";
+  return null;
+}
+
+// ORDRE D'AFFICHAGE SEULEMENT — ne filtre RIEN. Les services connus des
+// vendeurs remontent en tête de leur famille ; tous les autres services que
+// la liste vivante rend restent affichés, à la suite. Un code absent d'ici
+// n'est pas écarté ; un code présent ici mais absent de la liste d'eBay
+// n'apparaît pas.
+const FREQUENTS = [
+  "FR_LivraisonEnRelaisMondialRelay", "FR_Shop2Shop", "FR_ChronopostChronoRelais", "FR_DpdRelais",
+  "FR_ColiposteColissimo", "FR_ColiposteColissimoRecommended", "FR_Chronopost", "FR_GLSStandard", "FR_UPSStandard",
+  "FR_PostOfficeLetterFollowed", "FR_PostOfficeLetterRecommended", "FR_Ecopli",
+  "FR_RemiseEnMainPropre",
+];
+
+export interface ServicePropose {
+  code: string;
+  libelle: string;
+  transporteur: string;
+  categorie: string;
+  delaiMin: number | null;
+  delaiMax: number | null;
+  gratuitParNature: boolean;   // PICKUP : eBay ne veut pas de prix dessus
+}
+
+export interface FamilleProposee { cle: FamilleLivraison; services: ServicePropose[] }
+
+// Les services domestiques VALIDES, non dépréciés, groupés. Rien d'autre.
+export function grouperServicesDomestiques(services: ServiceLivraison[]): FamilleProposee[] {
+  const retenus = services.filter((s) => s.valide && !s.international && !s.deprecie);
+  const rang = (code: string) => {
+    const i = FREQUENTS.indexOf(code);
+    return i === -1 ? FREQUENTS.length : i;
+  };
+  return ORDRE_FAMILLES.map((cle) => ({
+    cle,
+    services: retenus
+      .filter((s) => familleService(s) === cle)
+      .sort((a, b) => rang(a.code) - rang(b.code)
+        || (a.delaiMax ?? 99) - (b.delaiMax ?? 99)
+        || a.libelle.localeCompare(b.libelle, "fr"))
+      .map((s) => ({
+        code: s.code,
+        libelle: s.libelle,
+        transporteur: s.transporteur,
+        categorie: s.categorie,
+        delaiMin: s.delaiMin,
+        delaiMax: s.delaiMax,
+        gratuitParNature: s.categorie === "PICKUP",
+      })),
+  })).filter((f) => f.services.length > 0);
+}
+
+// Un code demandé par l'écran, s'il est ENCORE proposable : présent dans la
+// liste vivante, valide pour la vente, domestique, non déprécié. Sinon null —
+// l'appelant dit pourquoi, avec la liste. Un code ne se devine jamais
+// (« FR_Colissimo » n'existe pas : refus LSAS du 06/09).
+export function resoudreCodeService(code: string, services: ServiceLivraison[]): ServiceLivraison | null {
+  const s = services.find((x) => x.code === code);
+  return s && s.valide && !s.international && !s.deprecie ? s : null;
+}
