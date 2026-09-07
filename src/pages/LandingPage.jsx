@@ -45,6 +45,14 @@ const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=app.fillse
 /* Badges stores : l'app est publiée sur les DEUX stores. Le drapeau couvre les
    deux d'un bloc — ne repasser à false que si les deux fiches disparaissent. */
 const STORE_BADGES_VISIBLE = true;
+/* Fiche Chrome Web Store — SEULE voie d'installation de l'extension (décision
+   2026-09-07). Les CTA « Installer l'extension Chrome » y mènent DIRECTEMENT :
+   ni /extension, ni le zip. Le zip continue d'être généré et servi
+   (vite-plugin-zip-extension), mais plus aucun lien du site n'y conduit — une
+   installation en mode développeur ne reçoit pas les mises à jour et fait
+   cohabiter deux copies qui se disputent les mêmes jobs.
+   Même id que le JSON-LD d'index.html et que ExtensionPage. */
+const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm';
 const TIKTOK_URL = 'https://www.tiktok.com/@fill.sell';
 const X_URL = 'https://x.com/fillsellapp';
 
@@ -457,10 +465,12 @@ export default function LandingPage() {
     track('cta_click', { cta: 'login', page: 'landing' });
     goSpa('/login')(e);
   }, [goSpa]);
-  const onExtension = useCallback((e) => {
-    track('cta_click', { cta: 'extension', page: 'landing' });
-    goSpa('/extension')(e);
-  }, [goSpa]);
+  /* Sortie du site vers le Chrome Web Store : on se contente de compter le
+     clic, le navigateur suit le lien (nouvel onglet). Surtout PAS goSpa ici —
+     ce n'est pas une route interne. */
+  const onExtension = useCallback(() => {
+    track('cta_click', { cta: 'extension_webstore', page: 'landing' });
+  }, []);
 
   return (
       <div className="lp-root" style={{ maxWidth: "100%", overflowX: "hidden" }}>
@@ -532,7 +542,7 @@ export default function LandingPage() {
                     <path d="M13 6l6 6-6 6" />
                   </svg>
                 </a>
-                <a href="/extension" onClick={onExtension} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "15px", color: "#1B6E62", padding: "14px 22px", borderRadius: "14px", border: "1.5px solid #1B6E62", whiteSpace: "nowrap" }}>
+                <a href={CHROME_STORE_URL} target="_blank" rel="noopener noreferrer" onClick={onExtension} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "15px", color: "#1B6E62", padding: "14px 22px", borderRadius: "14px", border: "1.5px solid #1B6E62", whiteSpace: "nowrap" }}>
                   <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0" }}>
                     <path d="M14 3a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v3h-1a2 2 0 1 0 0 4h1v3a2 2 0 0 1-2 2h-3v-1a2 2 0 1 0-4 0v1H8a2 2 0 0 1-2-2v-3H5a2 2 0 1 1 0-4h1V8a2 2 0 0 1 2-2h2V5a2 2 0 0 1 2-2z" />
                   </svg>
@@ -790,7 +800,7 @@ export default function LandingPage() {
               </span>
             </div>
             <div data-r="1" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "14px", flexWrap: "wrap", marginTop: "22px" }}>
-              <a href="/extension" onClick={onExtension} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "15px", color: "#fff", padding: "14px 24px", borderRadius: "14px", background: "linear-gradient(135deg,#2F9E90,#1B6E62)", boxShadow: "0 12px 26px -10px rgba(27,110,98,.55)", whiteSpace: "nowrap" }}>
+              <a href={CHROME_STORE_URL} target="_blank" rel="noopener noreferrer" onClick={onExtension} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "15px", color: "#fff", padding: "14px 24px", borderRadius: "14px", background: "linear-gradient(135deg,#2F9E90,#1B6E62)", boxShadow: "0 12px 26px -10px rgba(27,110,98,.55)", whiteSpace: "nowrap" }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0" }}>
                   <path d="M14 3a2 2 0 0 1 2 2v1h2a2 2 0 0 1 2 2v3h-1a2 2 0 1 0 0 4h1v3a2 2 0 0 1-2 2h-3v-1a2 2 0 1 0-4 0v1H8a2 2 0 0 1-2-2v-3H5a2 2 0 1 1 0-4h1V8a2 2 0 0 1 2-2h2V5a2 2 0 0 1 2-2z" />
                 </svg>
@@ -813,7 +823,7 @@ export default function LandingPage() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: "9px" }}>
                   <div style={{ aspectRatio: "1", minWidth: "0", borderRadius: "12px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", animation: "fsTile 4.6s ease infinite 0s" }} />
-                  <div style={{ aspectRatio: "1", minWidth: "0", borderRadius: "12px", backgroundImage: "url(/landing/maillot-yamaha.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", animation: "fsTile 4.6s ease infinite .12s" }} />
+                  <div style={{ aspectRatio: "1", minWidth: "0", borderRadius: "12px", backgroundImage: "url(/landing/tshirt-graphique.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", animation: "fsTile 4.6s ease infinite .12s" }} />
                   <div style={{ aspectRatio: "1", minWidth: "0", borderRadius: "12px", backgroundImage: "url(/landing/short-polo.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", animation: "fsTile 4.6s ease infinite .24s" }} />
                   <div style={{ aspectRatio: "1", minWidth: "0", borderRadius: "12px", backgroundImage: "url(/landing/sweat-redbull.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", animation: "fsTile 4.6s ease infinite .36s" }} />
                   <div style={{ aspectRatio: "1", minWidth: "0", borderRadius: "12px", backgroundImage: "url(/landing/tshirt-patagonia.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", animation: "fsTile 4.6s ease infinite .48s" }} />

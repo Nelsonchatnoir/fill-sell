@@ -7,13 +7,15 @@ import useSeo from "../lib/seo";
 // l'extension est PUBLIÉE sur le Chrome Web Store (« FillSell — Cross-post »,
 // id ooeagobimgoabciggfamljdfpkginhnm) : l'installation en un clic avec
 // mise à jour automatique remplace l'ancien parcours zip + mode développeur.
-// Le zip reste généré à chaque build (vite-plugin-zip-extension) et servi en
-// /fillsell-extension.zip — conservé en repli discret pour les navigateurs
-// Chromium sans accès au Web Store ; le guide illustré du parcours manuel
-// (public/extension-guide/) n'est plus affiché mais les captures restent en
-// place si besoin de le ressusciter.
+// ⛔ 2026-09-07 : le Store est la SEULE voie d'installation proposée. Le lien
+// « Installation manuelle (.zip) » qui vivait en bas de page a été retiré, et
+// la landing pointe elle aussi droit sur la fiche. Le zip reste généré à
+// chaque build (vite-plugin-zip-extension) et servi en /fillsell-extension.zip
+// — génération INCHANGÉE, on a seulement coupé les liens qui y menaient : une
+// copie en mode développeur ne se met jamais à jour et se dispute les jobs
+// avec la version du Store. Le guide illustré du parcours manuel
+// (public/extension-guide/) n'est plus affiché ; les captures restent en place.
 const WEBSTORE_URL = "https://chromewebstore.google.com/detail/ooeagobimgoabciggfamljdfpkginhnm";
-const EXTENSION_ZIP_URL = "/fillsell-extension.zip";
 const GUIDE = "/extension-guide";
 
 export default function ExtensionPage() {
@@ -175,13 +177,18 @@ export default function ExtensionPage() {
             : "Une fois installée, utilise l'app FillSell normalement : chaque annonce publiée est mise en file et l'extension remplit les formulaires des plateformes pour toi."}
         </p>
 
-        {/* Repli : navigateurs Chromium sans accès au Web Store */}
+        {/* Le repli « Installation manuelle (.zip) » a été RETIRÉ le
+            2026-09-07 (décision Nico) : le Chrome Web Store est la SEULE voie
+            d'installation. Une copie chargée en mode développeur ne reçoit
+            aucune mise à jour, et cohabite avec la version du Store en se
+            disputant les mêmes jobs. Le zip continue d'être généré et servi en
+            /fillsell-extension.zip (vite-plugin-zip-extension, inchangé), mais
+            plus AUCUN lien du site n'y mène — ni ici, ni sur la landing. */}
         <p style={{ margin: "14px 4px 0", fontSize: 12, lineHeight: 1.55, color: UI.mute }}>
-          {en ? "Browser without Web Store access? " : "Navigateur sans accès au Web Store ? "}
-          <a href={EXTENSION_ZIP_URL} download style={{ color: UI.teal, fontWeight: 600, textDecoration: "none" }}>
-            {en ? "Manual install (.zip)" : "Installation manuelle (.zip)"}
+          {en ? "The Chrome Web Store is the only way to install FillSell — that's what keeps the extension updated on its own. " : "Le Chrome Web Store est la seule voie d'installation de FillSell — c'est ce qui garde l'extension à jour toute seule. "}
+          <a href={WEBSTORE_URL} target="_blank" rel="noopener noreferrer" style={{ color: UI.teal, fontWeight: 600, textDecoration: "none" }}>
+            {en ? "Open the Store listing" : "Ouvrir la fiche du Store"}
           </a>
-          {en ? " — unzip, then « Load unpacked » in chrome://extensions (developer mode)." : " — dézippe, puis « Charger l'extension non empaquetée » dans chrome://extensions (mode développeur)."}
         </p>
 
         <p style={{ margin: "14px 4px 0", fontSize: 12, lineHeight: 1.55, color: UI.mute }}>
