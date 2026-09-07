@@ -6530,6 +6530,22 @@ export default function ListingPreviewScreen({
           };
           console.warn(`[publish] ${platform} — catégorie corrigée par le garde-fou : ${garde.motif}`);
         }
+        // ── RÈGLE N°2 : LA PLATEFORME BAT UNE ICÔNE DEVINÉE (07/09 soir) ────
+        // Quand notre catégorie n'est qu'une SUPPOSITION de l'IA — aucun
+        // mot-objet dans le titre, aucun catalogue Vinted, aucun garde-fou
+        // pour trancher — la catégorie que la plateforme propose ELLE-MÊME à
+        // partir du titre et des photos fait foi. Elle gagne SILENCIEUSEMENT :
+        // ni écran, ni question. Cas fondateur : « Chapka Obaibi bébé »,
+        // classée « Claviers arrangeurs, synthés » par une icône 🎹 devinée,
+        // alors qu'eBay proposait « Pyjamas » — et nous lui avons désobéi.
+        // ⛔ JAMAIS quand la source est certaine (mot-objet, catalogue Vinted,
+        // famille Lens) : le drapeau n'est alors pas posé.
+        // Lu par : ebay-api-worker (voie API), vinted.js et leboncoin.js
+        // (0.6.21). Beebs n'expose AUCUNE suggestion — son sélecteur est un
+        // arbre nu : rien à préférer là-bas, constaté au relevé.
+        if (categorieIncertaine({ sourceFinale: garde.source, catalogId: catalogVinted })) {
+          pf.categorie_incertaine = true;
+        }
         if (platform === "leboncoin") {
           // La catégorie Leboncoin découle de l'icône DÉJÀ passée au
           // garde-fou (bloc commun ci-dessus) — plus aucun calcul local.
@@ -6537,13 +6553,11 @@ export default function ListingPreviewScreen({
           const lbcPath = getLbcCategoryPath(icon);
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
           if (lbcAddress) pf.adresse = lbcAddress;
-          // Simple supposition de l'IA que rien ne confirme : la 0.6.21
-          // préfèrera la suggestion que Leboncoin affiche lui-même à partir du
-          // titre. Les versions ≤ 0.6.20 ignorent ce drapeau et utilisent le
-          // chemin, qui reste posé — aucun job ne part sans catégorie.
-          if (categorieIncertaine({ sourceFinale: garde.source, catalogId: catalogVinted })) {
-            pf.lbcCategorieIncertaine = true;
-          }
+          // Nom historique du même drapeau, conservé pour les extensions
+          // ≤ 0.6.20 déjà déployées. La décision, elle, est prise une seule
+          // fois dans le bloc commun ci-dessus. Aucun job ne part sans
+          // catégorie : le chemin reste posé dans tous les cas.
+          if (pf.categorie_incertaine) pf.lbcCategorieIncertaine = true;
           // ── ORDRE DES CRITÈRES DANS lbcAspects (2026-09-07) ──────────────
           // Sur les 6 feuilles Maison & Jardin, la liste « Produit » DÉPEND de
           // l'Univers/Type et se VIDE quand celui-ci change : poser Produit

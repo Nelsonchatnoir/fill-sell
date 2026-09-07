@@ -1283,7 +1283,10 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
 
   const [root, leaf] = fields.lbcCategoryPath;
   relayerEtape("categorie");
-  await selectCategory(root, leaf, { incertaine: fields.lbcCategorieIncertaine === true, warnings });
+  await selectCategory(root, leaf, {
+    incertaine: fields.categorie_incertaine === true || fields.lbcCategorieIncertaine === true,
+    warnings,
+  });
 
   // ── Étape 2 : photos + critères ──────────────────────────────────────────
   // ⚠️ WIZARD PAGINÉ (relevé live 2026-07-19, cas réel Medik8 sur Divers >

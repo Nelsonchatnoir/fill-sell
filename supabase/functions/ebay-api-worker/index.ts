@@ -500,6 +500,38 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
     liste: suggestions.map((x) => `${x.id} ${x.chemin.join(" > ")}`),
   };
   if (mappee) {
+    // ── RÈGLE N°2 : eBAY BAT UNE ICÔNE DEVINÉE (2026-09-07 soir) ───────────
+    // L'app pose `categorie_incertaine` quand NOTRE catégorie n'est qu'une
+    // supposition : aucun mot-objet dans le titre, aucun catalog_id Vinted,
+    // aucun garde-fou pour trancher — il ne reste que l'emoji rendu par l'IA.
+    // Cas fondateur, 07/09 17h36 : « Chapka Obaibi bébé 18-23 mois » classée
+    // par une icône 🎹 en « Claviers arrangeurs, synthés » (38088) — pendant
+    // qu'eBay, lui, proposait « Pyjamas ». On LISAIT déjà sa suggestion, et
+    // on lui désobéissait : le job partait en needs_user pour faire trancher
+    // une vendeuse sur une question à laquelle eBay avait déjà répondu.
+    //
+    // Désormais : quand notre source est incertaine, la suggestion d'eBay
+    // GAGNE, SILENCIEUSEMENT. Aucun écran, aucune question, l'annonce part.
+    //
+    // ⛔ JAMAIS quand notre source est certaine (mot-objet, catalog_id Vinted,
+    //    famille Lens) : l'app ne pose alors pas le drapeau, et l'arbitrage
+    //    v2 ci-dessous reprend la main à l'identique.
+    // ⛔ JAMAIS sans suggestion : sans réponse d'eBay, notre mapping reste —
+    //    une catégorie approchée vaut mieux qu'aucune catégorie.
+    // ⛔ La garde famille LIVRES plus bas n'est pas court-circuitée : un livre
+    //    a une source certaine (famille_livres), donc pas de drapeau.
+    if (pf.categorie_incertaine === true && top && top.id !== mappee) {
+      return {
+        id: top.id,
+        chemin: top.chemin,
+        source: "suggestion_categorie_incertaine",
+        detail:
+          `notre catégorie « ${cheminMappe.join(" > ") || mappee} » ne venait que de l'icône de l'IA ` +
+          `(categorie_source=${String(pf.categorie_source ?? "ia")}) ; eBay propose ` +
+          `« ${top.chemin.join(" > ")} » (${top.id}) — la plateforme fait foi`,
+        suggestions: resume,
+      };
+    }
     // Règle v2 PROPOSÉE (désactivée tant que Nico n'a pas tranché) — relevé du
     // 06/09 sur les 5 suggestions eBay :
     //   · « T-shirt Adidas Sergio Garcia vintage » : Sports/Collections, BD,

@@ -1940,7 +1940,15 @@ async function fillListingForm(job) {
   // RECRÉATION rien ne change : etape() avale l'erreur (non bloquant), la
   // soumission est tentée quand même — ce catch ne voit alors rien passer.
   try {
+    categorieSuggestionRetenue = null;
     await etape("Catégorie", () => selectCategory(fields.categoryPath, fields));
+    // Trace lisible en base : la suggestion de Vinted a remplacé notre chemin.
+    if (categorieSuggestionRetenue) {
+      warnings.push(
+        `catégorie: notre valeur « ${(fields.categoryPath ?? []).join(" > ")} » n'était qu'une ` +
+        `supposition — suggestion Vinted « ${categorieSuggestionRetenue} » retenue`
+      );
+    }
   } catch (e) {
     if (e?.needsUser || e?.needsUserField) {
       await closeAnyOpenDropdown().catch(() => {});
@@ -4569,6 +4577,11 @@ async function visibleCatalogChildIds() {
   return ids;
 }
 
+// Suggestion Vinted retenue à la place de notre chemin (règle n°2) — remontée
+// dans les warnings du job, donc lisible en base : sans ça, « pourquoi cette
+// annonce est-elle dans cette catégorie ? » resterait sans réponse.
+let categorieSuggestionRetenue = null;
+
 async function selectCategory(path, fields = {}) {
   const catalogOptionSel = (await sel()).selectorFor("vinted", "publish.catalog_option");
   // Copie de travail : renommage de racine avéré appliqué AVANT la descente
@@ -4606,6 +4619,53 @@ async function selectCategory(path, fields = {}) {
       libelle: String(el.innerText ?? "").trim().split("\n")[0].trim(),
     }))
     .filter((s) => Number.isFinite(s.id) && s.libelle);
+
+  // ── RÈGLE N°2 : VINTED BAT UNE ICÔNE DEVINÉE (2026-09-07 soir) ────────────
+  // L'app pose `categorie_incertaine` quand NOTRE catégorie n'est qu'une
+  // supposition : aucun mot-objet dans le titre, aucun catalog_id Vinted,
+  // aucun garde-fou pour trancher — il ne reste que l'emoji rendu par l'IA.
+  // Cas fondateur, 07/09 : « Chapka Obaibi bébé 18-23 mois » → icône 🎹 →
+  // « Loisirs > Instruments de musique > Claviers électroniques ». Personne ne
+  // confond une chapka avec un synthétiseur ; Vinted, lui, calcule ses
+  // suggestions SUR LA PHOTO (relevé du 04/09 : la photo seule suffit, le
+  // titre ne les change pas) et nos photos sont déjà montées à cet instant.
+  // Dans ce cas précis — et seulement dans celui-là — sa suggestion prime.
+  //
+  // ⛔ JAMAIS quand notre catégorie est certaine : le drapeau n'est pas posé.
+  // ⛔ JAMAIS de succès sans EFFET CONSTATÉ (règle du bug LBC) : la cellule de
+  //    suggestion est un RADIO — sélection finale directe, sans chevron — et
+  //    on vérifie que le champ Catégorie porte bien le libellé après le clic.
+  //    Sans effet, on retombe sur la descente d'arbre habituelle, qui n'a rien
+  //    perdu : le chemin du job est toujours là.
+  // ⛔ AUCUN ÉCRAN, AUCUNE QUESTION : l'annonce part, c'est tout.
+  if (fields?.categorie_incertaine === true && suggestionsVinted.length) {
+    const suggestion = suggestionsVinted[0];
+    const cellule = document.getElementById(`catalog-suggestion-${suggestion.id}`);
+    if (cellule) {
+      await humanPause();
+      (cellule.querySelector('input[type="radio"], [role="radio"]') ?? cellule).click();
+      await sleep(400);
+      const pose = await waitFor(() => {
+        const t = document.querySelector('#category, [data-testid="catalog-select-dropdown-input"]');
+        const txt = String(t?.textContent ?? t?.value ?? "").trim();
+        return txt && normalizeFuzzy(txt).includes(normalizeFuzzy(suggestion.libelle)) ? txt : null;
+      }, 4000);
+      if (pose) {
+        console.log(
+          `[vinted] catégorie : notre valeur « ${(path ?? []).join(" > ")} » n'était qu'une ` +
+          `supposition (aucun mot-objet, aucun catalogue Vinted) — suggestion Vinted ` +
+          `« ${suggestion.libelle} » retenue`
+        );
+        categorieSuggestionRetenue = suggestion.libelle;
+        return;
+      }
+      console.warn(
+        `[vinted] suggestion « ${suggestion.libelle} » cliquée mais effet NON constaté — ` +
+        `repli sur la descente d'arbre habituelle`
+      );
+    }
+  }
+
   for (let i = 0; i < path.length; i++) {
     let levelLabel = path[i];
     const isLast = i === path.length - 1;
