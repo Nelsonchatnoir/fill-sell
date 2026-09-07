@@ -1264,7 +1264,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // table qui decide. Quand aucune couleur ne se pose, vinted.js fait choisir
 // l'IA PARMI les couleurs reellement affichees par le panneau — au lieu de
 // l'echec dur « COULEUR INTROUVABLE » d'avant. MIN_BUILD INCHANGE.
-export const EXTENSION_LAST_COMMIT = '2026-09-07T18:15:00Z';
+// 2026-09-07T19:58:49Z (21h58 Paris, commit 874d25c) : la sonde de vente cesse
+// de fabriquer de faux « plus en ligne » sur Vinted. Chaque lecture devient
+// UNANIME (VINTED_CHECK_TIRS = 3 tirs, un seul tir divergent → 'unknown', donc
+// aucun drapeau), et les jobs action='republish' passent a 12 h de grace au
+// lieu de 2 h — une annonce recreee est celle que Vinted sert le moins bien.
+// La regle des DEUX lectures espacees de 2 h et le garde-fou
+// superseded_listing sont INCHANGES : on durcit chaque strike, on ne relache
+// rien. MIN_BUILD INCHANGE — le parc actuel garde son comportement.
+export const EXTENSION_LAST_COMMIT = '2026-09-07T19:58:49Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
