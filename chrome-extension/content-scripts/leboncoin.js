@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-09-05-apercu-refuse-nom-prenom-escrow (l'aperçu resté affiché après le Continuer final n'est plus pris pour l'écran coordonnées — téléphone VISIBLE et hors aperçu seulement ; escrow_lastname/escrow_firstname vides = nom et prénom exigés par la Transaction sécurisée → attenteUtilisateur, needs_user persisté, jamais failed ; refus visibles relevés, re-clic unique si aucun ; adresse comparée sans apostrophes ni traits d'union — « 56b rue dalger » retrouve « 56B Rue d'Alger ») + 2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
+const LEBONCOIN_BUILD = "2026-09-07-un-slot-par-cle-maison-jardin (lbcAspects.<clé> posé PAR CLÉ et dans l'ordre du DOM — Univers/Type AVANT Produit, dont la liste en dépend ; le bloc lbcProduit ne vise que le premier label _type et cède quand lbcAspects porte déjà sa clé ; seule la clé réellement écrite par ce bloc est sautée par le canal générique — sur Décoration, decoration_type n'était JAMAIS posé ; needs_user cible lbcAspects.<clé> pour tout _type ; job c324b5ee josephinecerni) + 2026-09-07-repli-generique-conserve-le-prefill (« Autre »/« Autres »/« Sans marque » ne remplacent JAMAIS un pré-rempli précis de Leboncoin — « Cuisine et cuisson » conservé, warning explicite) + 2026-09-05-apercu-refuse-nom-prenom-escrow (l'aperçu resté affiché après le Continuer final n'est plus pris pour l'écran coordonnées — téléphone VISIBLE et hors aperçu seulement ; escrow_lastname/escrow_firstname vides = nom et prénom exigés par la Transaction sécurisée → attenteUtilisateur, needs_user persisté, jamais failed ; refus visibles relevés, re-clic unique si aucun ; adresse comparée sans apostrophes ni traits d'union — « 56b rue dalger » retrouve « 56B Rue d'Alger ») + 2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -1332,6 +1332,22 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     const ok = await fillUnivers(fields.univers || fields.genre, warnings);
     if (!ok) unfilledRequired.push("univers");
   }
+  // ── UN SLOT PAR CLÉ (2026-09-07, relevé live des 6 feuilles Maison & Jardin) ─
+  // L'app écrit désormais chaque critère Univers/Type/Produit dans
+  // lbcAspects.<clé for=> ; lbcProduit n'est plus qu'un MIROIR de
+  // compatibilité (valeur du premier combobox) recopié par handlePublish pour
+  // les extensions ≤ 0.6.20. Ici : si lbcAspects porte déjà la clé du premier
+  // label _type, c'est le canal générique (plus bas — PAR CLÉ, dans l'ordre du
+  // DOM) qui la posera, et ce bloc cède : aucune double écriture. Sinon (job
+  // d'une app antérieure, route bébé) : comportement historique.
+  // `cleEcriteParProduit` dit au canal générique quelle clé ce bloc a
+  // RÉELLEMENT visée — et SEULEMENT celle-là est sautée. Avant, tout _type
+  // était sauté dès que lbcProduit existait : sur Décoration,
+  // house_and_garden_type (Univers) ET decoration_type (Produit) finissent en
+  // _type, et le second n'était JAMAIS posé (dette signalée le 07/09).
+  const lbcAspectsJob = fields.lbcAspects && typeof fields.lbcAspects === "object" ? fields.lbcAspects : {};
+  const valeurAspect = (k) => String(lbcAspectsJob[k] ?? "").trim();
+  let cleEcriteParProduit = null;
   if (hasCriteria && fields.lbcProduit) {
     // Produit* : critère OBLIGATOIRE dont les options dépendent de
     // l'univers — d'où le passage APRÈS fillUnivers. Le combobox peut
@@ -1349,7 +1365,14 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     // → timeout 5 s → champ jamais rempli. Relevé DOM du 2026-07-16.
     const PRODUIT_LABEL_SELECTOR = 'label[for$="_type"], label[for="baby_clothing_category"]';
     const produitLabel = await waitFor(() => document.querySelector(PRODUIT_LABEL_SELECTOR), 5000);
-    if (produitLabel) {
+    const clePremierType = produitLabel?.getAttribute("for") ?? null;
+    if (produitLabel && clePremierType && valeurAspect(clePremierType)) {
+      console.log(
+        `[leboncoin] produit: lbcAspects.${clePremierType} = "${valeurAspect(clePremierType)}" porte déjà ce critère — ` +
+        "posé par le canal générique (par clé), lbcProduit (miroir de compatibilité) ignoré"
+      );
+    } else if (produitLabel) {
+      cleEcriteParProduit = clePremierType;
       const ok = await fillCriterionSafe("produit", PRODUIT_LABEL_SELECTOR, fields.lbcProduit, warnings, { skipIfPrefilled: true });
       if (!ok) unfilledRequired.push("produit");
     } else {
@@ -1409,16 +1432,33 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   const dedieAvaitValeur = (forKey) => {
     if (/(_condition$|^condition$)/.test(forKey)) return !!fields.etat;
     if (/(_univers$|_universe$)/.test(forKey)) return !!(fields.univers || fields.genre);
-    if (/(_type$|^baby_clothing_category$)/.test(forKey)) return !!fields.lbcProduit;
+    // _type : SEULE la clé que le bloc Produit a réellement écrite est sautée
+    // (2026-09-07) — « lbcProduit existe » ne veut plus dire « tous les _type
+    // sont servis » (Décoration en a deux, le second restait vide à vie).
+    if (/(_type$|^baby_clothing_category$)/.test(forKey)) return forKey === cleEcriteParProduit;
     if (/(_size$|^clothing_st$|^baby_age$)/.test(forKey)) return !!fields.taille;
     if (/_brand$/.test(forKey)) return !!fields.marque;
     if (/_material$/.test(forKey)) return !!fields.matiere;
     return false;
   };
-  if (hasCriteria && fields.lbcAspects && typeof fields.lbcAspects === "object") {
-    for (const [forKey, value] of Object.entries(fields.lbcAspects)) {
-      const val = String(value ?? "").trim();
-      if (!val) continue;
+  if (hasCriteria && Object.keys(lbcAspectsJob).length) {
+    // ── ORDRE DU DOM (2026-09-07, relevé live) : sur les 6 feuilles Maison &
+    // Jardin, la liste « Produit » DÉPEND de l'Univers/Type et se VIDE quand
+    // celui-ci change — poser Produit avant Type le perdrait. L'ordre
+    // d'insertion de lbcAspects (celui des saisies dans l'app) ne garantit
+    // rien : on trie par la position du label sur la page, Type d'abord.
+    // Une clé absente de la page va en fin (fillCriterionSafe la saute).
+    const labelsPage = [...document.querySelectorAll("label[for]")];
+    const position = (k) => {
+      const l = document.querySelector(`label[for="${CSS.escape(k)}"]`);
+      const i = l ? labelsPage.indexOf(l) : -1;
+      return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+    };
+    const entrees = Object.entries(lbcAspectsJob)
+      .map(([forKey, value]) => [forKey, String(value ?? "").trim()])
+      .filter(([, val]) => val)
+      .sort((a, b) => position(a[0]) - position(b[0]));
+    for (const [forKey, val] of entrees) {
       if (handledForKeys.test(forKey) && dedieAvaitValeur(forKey)) continue;
       await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true });
     }
@@ -1577,7 +1617,11 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     const lbcTargetFor = (key) => {
       if (/(_condition$|^condition$)/.test(key)) return { root: null, key: "etat" };
       if (/(_univers$|_universe$)/.test(key)) return { root: null, key: "univers" };
-      if (/(_type$|^baby_clothing_category$)/.test(key)) return { root: null, key: "lbcProduit" };
+      // baby_clothing_category garde lbcProduit (route bébé de handlePublish).
+      // Tout autre _type (2026-09-07, un slot PAR CLÉ) tombe dans le défaut
+      // lbcAspects.<clé> : c'est là que l'app le relit (genericKnownSource) et
+      // que ce handler le pose, par clé et dans l'ordre du DOM.
+      if (key === "baby_clothing_category") return { root: null, key: "lbcProduit" };
       if (/(_size$|^clothing_st$|^baby_age$)/.test(key)) return { root: null, key: "taille" };
       if (/_brand$/.test(key)) return { root: null, key: "marque" };
       if (/_material$/.test(key)) return { root: null, key: "matiere" };
@@ -1906,6 +1950,21 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     const prefilled = skipIfPrefilled && input.value.trim() ? input.value.trim() : null;
     if (prefilled && prefilledMatchesTarget(prefilled, rawValue)) {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" conservé (matche "${rawValue}")`;
+      console.log(`[leboncoin] ${note}`);
+      warnings.push(note);
+      return true;
+    }
+    // ── RÈGLE DU REPLI GÉNÉRIQUE (2026-09-07, job c324b5ee josephinecerni) ──
+    // « Autre », « Autres », « Sans marque »… ne sont jamais MIEUX qu'une
+    // valeur précise que Leboncoin a déjà déduite du titre : Type « Cuisine et
+    // cuisson » a été remplacé par « Autre » (valeur bien présente dans la
+    // liste, mais vide de sens), et le Produit dépendant est resté à
+    // compléter. Un repli générique ne remplace un pré-rempli que si ce
+    // pré-rempli est lui-même générique. La valeur du job n'est pas touchée ;
+    // le warning dit ce qui a été conservé et pourquoi. Le chemin nominal
+    // (notre valeur précise, présente dans la liste) est inchangé.
+    if (prefilled && estValeurGenerique(rawValue) && !estValeurGenerique(prefilled)) {
+      const note = `${fieldName}: pré-rempli LBC "${prefilled}" CONSERVÉ — notre valeur "${rawValue}" est un repli générique, jamais mieux qu'une valeur précise posée par Leboncoin`;
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
       return true;
@@ -2599,6 +2658,14 @@ function texteComparable(s) {
 // partagée (bloc ci-dessus). « Jouets d'éveil » ↔ « Jouets d’éveil »,
 // « 38 - M » ↔ « 38 – M », « 128 Go » ↔ « 128 Go » (U+00A0) matchent désormais.
 const normalizeFuzzy = (s) => texteComparable(s);
+
+// Valeurs « fourre-tout » des listes Leboncoin — un REPLI, jamais une
+// information (2026-09-07). Relevé live des 6 feuilles Maison & Jardin :
+// « Autre » (premier combobox), « Autres » (Produit d'Électroménager), et la
+// famille « Sans marque » des listes de marques. Comparé sur la forme
+// comparable (accents, apostrophes, casse) — on ne réécrit jamais avec.
+const VALEUR_GENERIQUE_RE = /^(autres?|sans marque|non renseignee?|ne s'applique pas|inconnue?|indeterminee?)$/;
+const estValeurGenerique = (v) => VALEUR_GENERIQUE_RE.test(normalizeFuzzy(v));
 
 // ── Forme comparable d'une ADRESSE (2026-09-05, santanalily010) ─────────────
 // La forme comparable générale GARDE l'apostrophe ; or « 56b rue dalger »

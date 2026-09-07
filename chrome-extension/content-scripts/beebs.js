@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-07-26-interstitiel-et-parite (trois causes du « panneau jamais ouvert » traitées ensemble : 1. la modale « Toujours plus sur l'appli » avale le clic d'ouverture — détection structurelle role=dialog/aria-modal/modal + fermeture par bouton NON-store avant toute interaction ; 2. la boucle d'ouverture re-cliquait sans regarder alors que le clic BASCULE — on ne re-clique plus que panneau constaté fermé ; 3. panelOf repli sur l'unique panneau visible du document quand la lecture scopée ne voit rien — c'était le cas capture du 26/07 : panneau OUVERT avec 5 options, lecture vide ; diagnostic DOM complet dans l'erreur)";
+const BEEBS_BUILD = "2026-09-07-le-vide-dit-sa-cause (needs_user « champs encore vides » : champ par champ, la fiche NE PORTE PAS la donnée — Beebs a raison, à compléter — ou la fiche la porte et elle n'a pas pu être posée — panne de remplissage ; fin de la confusion Short/bonnets vs Chemisette Celio) + 2026-07-26-interstitiel-et-parite (trois causes du « panneau jamais ouvert » traitées ensemble : 1. la modale « Toujours plus sur l'appli » avale le clic d'ouverture — détection structurelle role=dialog/aria-modal/modal + fermeture par bouton NON-store avant toute interaction ; 2. la boucle d'ouverture re-cliquait sans regarder alors que le clic BASCULE — on ne re-clique plus que panneau constaté fermé ; 3. panelOf repli sur l'unique panneau visible du document quand la lecture scopée ne voit rien — c'était le cas capture du 26/07 : panneau OUVERT avec 5 options, lecture vide ; diagnostic DOM complet dans l'erreur)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -728,6 +728,32 @@ async function fillListingForm(job) {
     // et la réponse de l'utilisateur atterrit sur le champ qui la réclame.
     const dedicated = cleADiscriminant(firstKey) ? null : BEEBS_DEDICATED_TARGETS[firstKey];
 
+    // ── DIRE D'OÙ VIENT LE VIDE (2026-09-07, demande Nico) ────────────────
+    // Le même message couvrait deux familles que le vendeur ne peut pas
+    // distinguer : (a) la FICHE de l'article ne porte pas la donnée (marque et
+    // taille vides dans l'inventaire — « Short femme S », « Lot 2 bonnets » :
+    // Beebs a raison, rien n'est en panne, c'est à compléter) ; (b) la fiche
+    // porte une valeur qui n'a pas pu être posée sur la page (« Chemisette
+    // Celio M » : taille « M » présente, libellé « Taille » dupliqué — une
+    // panne de remplissage, pas une donnée manquante). Compléter « dans
+    // l'app » n'a de sens que pour (a) ; pour (b) le vendeur relance, ou
+    // attend le correctif. Le message nomme la famille, champ par champ.
+    // Source de la valeur : beebsAspects.<clé> (canal générique, homonymes à
+    // discriminant compris), sinon le champ dédié du libellé de base.
+    const valeurJobPour = (cle) => {
+      const enAspects = String(fields.beebsAspects?.[cle] ?? "").trim();
+      if (enAspects) return enAspects;
+      const dedie = BEEBS_DEDICATED_TARGETS[libelleHumainDeCle(cle)];
+      if (dedie === "couleur") return String(fields.colors?.[0] || fields.couleur || "").trim();
+      return dedie ? String(fields[dedie] ?? "").trim() : "";
+    };
+    const detailVides = unfilledRequired.map((cle) => {
+      const v = valeurJobPour(cle);
+      return v
+        ? `« ${nomLisible(cle)} » : la fiche porte « ${v} » mais la valeur n'a pas pu être posée sur la page — panne de remplissage, PAS une donnée manquante (relancer, ou attendre le correctif)`
+        : `« ${nomLisible(cle)} » : la fiche FillSell de l'article ne le renseigne pas (vide dans l'inventaire) — Beebs a raison de le réclamer, rien n'est en panne : à compléter`;
+    }).join(" ; ");
+
     // ── RELEVÉ DE SECOURS (2026-07-26, cas Casio « Taille » vide) ────────────
     // Un needsUser de champ fermé SANS allowed_values est INUTILISABLE : l'app
     // (à raison, principe du 19/07) refuse la saisie libre et n'offre qu'une
@@ -822,7 +848,7 @@ async function fillListingForm(job) {
         success: false,
         needsUser: true,
         error:
-          `Beebs exige des champs encore vides (${listeLisible(unfilledRequired)}) et les valeurs autorisées de ` +
+          `Beebs exige des champs encore vides (${listeLisible(unfilledRequired)}) — ${detailVides} — et les valeurs autorisées de ` +
           `« ${firstLabel} » n'ont pas pu être relevées ` +
           (optionsIllisibles
             ? "(le panneau a rendu les identifiants internes de Beebs au lieu des libellés). "
@@ -841,6 +867,7 @@ async function fillListingForm(job) {
       needsUser: true,
       error:
         `Beebs exige des champs encore vides pour cette catégorie : ${listeLisible(unfilledRequired)}. ` +
+        `${detailVides}. ` +
         "Compléter ces champs dans l'app (copie Beebs), puis relancer la publication. " +
         `Observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; ` +
         `champs fiber: ${etatChampsFiber} ; clé du champ à trancher: ${firstKey}.` +

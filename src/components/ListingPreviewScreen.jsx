@@ -20,6 +20,7 @@ import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_L
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
+import { lbcProduitsDependants, lbcClePremierCombobox } from "../utils/lbcMaisonJardin";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
@@ -5504,11 +5505,24 @@ export default function ListingPreviewScreen({
       // rempli. La lecture suit désormais l'écriture : lbcProduit, que
       // leboncoin.js pose sur label[for$="_type"] — pour Décoration, c'est
       // précisément ce combobox Univers. Rien ne change dans le job.
-      // ⚠️ decoration_type (« Produit* » de la même feuille) lit et écrit
-      // AUSSI lbcProduit : un seul slot pour deux critères, dette signalée le
-      // 07/09 (6 feuilles Maison & Jardin dans ce cas), pas élargie ici.
       if (/_univers$|_universe$/.test(key)) return pf.univers || pf.genre;
-      if (/_type$/.test(key) || /_product$/.test(key) || key === "baby_clothing_category" || key === "clothing_category") return pf.lbcProduit;
+      // ── UN SLOT PAR CLÉ (2026-09-07, feu vert Nico) ────────────────────────
+      // Six feuilles Maison & Jardin (Décoration, Arts de la table, Bricolage,
+      // Électroménager, Jardin & Plantes, Linge de maison) exigent DEUX
+      // combobox — Univers/Type (`*_type`) ET Produit (`*_product`,
+      // `decoration_type`) — que l'ancien routage envoyait sur le MÊME slot
+      // lbcProduit : la 2e saisie écrasait la 1re à l'écran, l'IA faisait
+      // pareil, et l'extension ne posait que le premier label _type. Cas
+      // josephinecerni c324b5ee (07/09) : lbcProduit = « Autre » écrit sur
+      // Type (écrasant « Cuisine et cuisson » pré-rempli), Produit jamais
+      // rempli → « Ce champ est requis ». Désormais ces clés vivent CHACUNE
+      // dans lbcAspects.<clé for=> (canal générique : lu juste après cette
+      // source, écrit par setPlatformAspect) ; handlePublish recopie la
+      // valeur du PREMIER combobox dans lbcProduit pour les extensions
+      // ≤ 0.6.20, qui ne lisent que lui. baby_clothing_category et
+      // clothing_category gardent leur slot dédié (routes bébé/Mode inchangées).
+      if (key === "baby_clothing_category" || key === "clothing_category") return pf.lbcProduit;
+      if (/_type$/.test(key) || /_product$/.test(key)) return null;
       return null;
     }
     if (platform === "beebs") {
@@ -5580,7 +5594,11 @@ export default function ListingPreviewScreen({
       if (/_size$/.test(key) || key === "clothing_st" || key === "baby_age") return "taille";
       if (/_material$/.test(key)) return "matiere";
       if (key === "clothing_type" || key === "shoe_type" || /_univers$|_universe$/.test(key)) return "univers";
-      if (/_type$/.test(key) || /_product$/.test(key) || key === "baby_clothing_category" || key === "clothing_category") return "lbcProduit";
+      // Un slot PAR CLÉ (2026-09-07) — miroir exact de genericKnownSource :
+      // `*_type` / `*_product` n'ont plus de cible dédiée, le sélecteur écrit
+      // lbcAspects.<clé> (setPlatformAspect). Seules les deux clés bébé/Mode
+      // gardent lbcProduit.
+      if (key === "baby_clothing_category" || key === "clothing_category") return "lbcProduit";
       return null;
     }
     if (platform === "beebs") {
@@ -5603,9 +5621,19 @@ export default function ListingPreviewScreen({
         // trim : les allowed_values sont des relevés DOM et certains portent
         // des espaces finaux (« Boutique italienne  » retrouvé tel quel dans
         // un job du 30/07 — la valeur venait de la liste, pas d'une saisie).
-        const allowedValues = Array.isArray(r.allowed_values)
+        // ── Listes DÉPENDANTES Maison & Jardin (2026-09-07, relevé live) ─────
+        // Sur les 6 feuilles où « Produit » dépend de l'Univers/Type, la liste
+        // proposée est CELLE de la valeur courante du premier combobox — pas
+        // la liste unique (souvent fausse : « Autres » seul sur Électroménager,
+        // apprise sous Type = Autre) que le catalogue ne peut porter qu'à plat.
+        // Premier combobox vide, ou valeur hors relevé : catalogue, comme avant.
+        const dependants = platform === "leboncoin"
+          ? lbcProduitsDependants(genericCategoryKeys?.[platform], key,
+              (k) => String(genericKnownSource(platform, k, pf) ?? aspects[k] ?? "").trim())
+          : null;
+        const allowedValues = dependants ?? (Array.isArray(r.allowed_values)
           ? r.allowed_values.slice(0, 1000).map(v => String(v).trim()).filter(Boolean)
-          : [];
+          : []);
         // « title » (appris par un 400 serveur sur Montres homme Vinted) : le
         // job porte TOUJOURS un titre (edited[platform].title, édité au step
         // Génération et posé tel quel à l'insert) — ce n'est jamais un requis
@@ -5688,7 +5716,7 @@ export default function ListingPreviewScreen({
       if (status.length) out[platform] = status;
     }
     return Object.keys(out).length ? out : null;
-  }, [genericAspectsCatalog, plateformesPubliables, edited]);
+  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── UN SEUL endroit de saisie (2026-08-28, remplace l'unicité du 30/07) ────
   // L'ancienne règle répartissait la saisie entre le rouge et les bleus selon
@@ -6389,6 +6417,31 @@ export default function ListingPreviewScreen({
           const lbcPath = getLbcCategoryPath(icon);
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
           if (lbcAddress) pf.adresse = lbcAddress;
+          // ── Miroir de compatibilité du slot par clé (2026-09-07) ─────────
+          // L'app écrit chaque critère Univers/Type/Produit LBC dans
+          // lbcAspects.<clé for=> (cf. genericKnownSource). Les extensions
+          // ≤ 0.6.20 ne lisent QUE lbcProduit pour le premier label _type et
+          // SAUTENT ces clés dans leur canal générique : on recopie ici la
+          // valeur du PREMIER combobox (Univers/Type — relevé du 07/09 : sur
+          // les 6 feuilles Maison & Jardin, label[for$="_type"] atteint
+          // toujours celui-là en premier) pour qu'elles continuent de le
+          // poser. La 0.6.21 lit lbcAspects par clé et cède quand la clé y
+          // est déjà : aucune double écriture. Un lbcProduit déjà porté
+          // (route bébé posée plus bas, brouillon ancien) n'est pas touché.
+          if (!String(pf.lbcProduit ?? "").trim() && pf.lbcAspects && typeof pf.lbcAspects === "object") {
+            const catKey = Array.isArray(pf.lbcCategoryPath) ? pf.lbcCategoryPath.join(" > ") : "";
+            const rowsLbc = genericAspectsCatalog?.leboncoin ?? [];
+            const labelDe = (k) => String(rowsLbc.find(r => r.field_key === k)?.field_label ?? "");
+            const portes = Object.entries(pf.lbcAspects)
+              .filter(([k, v]) => String(v ?? "").trim() && (/_type$/.test(k) || /_product$/.test(k)))
+              .map(([k]) => k);
+            const premier = lbcClePremierCombobox(catKey)
+              ?? portes.find(k => /_type$/.test(k) && !/^produit$/i.test(labelDe(k)))
+              ?? portes.find(k => /_type$/.test(k))
+              ?? portes[0] ?? null;
+            const valeur = premier ? String(pf.lbcAspects[premier] ?? "").trim() : "";
+            if (valeur) pf.lbcProduit = valeur;
+          }
           // Famille > Équipement bébé : Univers* est FONCTIONNEL
           // (Alimentation/Mobilité/…) et Produit* en dépend — deux critères
           // bloquants indéductibles du genre (relevé campagne 2026-07-08).
