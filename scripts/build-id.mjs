@@ -1236,7 +1236,10 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // par frappe (son menu est vide tant qu'on ne tape pas — 122 annonces sans
 // marque par mois), et taille/couleur se rapprochent par composants EXACTS
 // (« 38 - M » pour « M / 38 / 10 », « Marine / Turquoise » pour « Marine »).
-export const EXTENSION_LAST_COMMIT = '2026-09-07T13:01:09Z';
+// 2026-09-07T13:22:53Z : Vinted a retire le champ 'status' du payload d'edition le 07/09 a
+// 13h25 — l'etat se lit desormais dans item_attributes[condition]. Sans ce
+// correctif, AUCUNE republication du parc ne peut aboutir.
+export const EXTENSION_LAST_COMMIT = '2026-09-07T13:22:53Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
