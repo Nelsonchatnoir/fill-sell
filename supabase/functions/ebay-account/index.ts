@@ -36,6 +36,11 @@
 //                            (sellerRegistrationCompleted) — déterminable ;
 //   · politiques_activees  ← GET /program/get_opted_in_programs
 //                            (SELLING_POLICY_MANAGEMENT) — déterminable ;
+//   · lieu_expedition      ← nos propres réglages (adresse d'expédition eBay,
+//                            à défaut adresse Leboncoin) ou emplacement
+//                            marchand déjà créé — déterminable, et BLOQUANT :
+//                            sans lui la 1re publication API tombe en
+//                            needs_user (cf. lieuExpeditionEtat) ;
 //   · politique_livraison / paiement / retours ← GET /{type}_policy
 //                            ?marketplace_id=EBAY_FR — déterminables dès que
 //                            le programme est actif ;
@@ -91,13 +96,54 @@ async function listerPolitiques(env: EbayEnv, token: string, type: TypePolitique
   return { etat: "inconnu", liste: [], http: r.http, detail: messageErreurEbay(r.json, r.texte) };
 }
 
+// ── Lieu d'expédition : la 6e ligne de la checklist (07/09/2026, soir) ─────
+// Relevé du jour : 2 048 comptes sur 2 150 n'ont aucune adresse exploitable.
+// Sans elle, la 1re publication par API s'arrête en needs_user au moment de
+// créer l'emplacement marchand eBay — le vendeur découvre le problème au pire
+// moment, sur sa première annonce.
+//
+// ⛔ LE VERROU SE POSE ICI, ET NULLE PART AILLEURS. La décision de voie vit
+// dans le trigger cross_post_jobs_voie_ebay, qui reste INCHANGÉ : il lit
+// seller_state->>'bloque_par_etat_ebay'. En faisant entrer le lieu
+// d'expédition dans ce drapeau, un compte sans adresse garde voie='extension'
+// (il publie par le formulaire, comme tout le parc) au lieu de partir en
+// needs_user — et l'écran, qui reflète le même drapeau, le dit. Aucune
+// désynchronisation possible entre ce que l'app affiche et ce que la base
+// décide : c'est la même valeur, calculée une fois.
+//
+// MÊMES SOURCES, MÊME ORDRE que emplacementMarchand (_shared/ebay-publication.ts) :
+//   0. emplacement marchand DÉJÀ créé chez eBay → plus rien à demander ;
+//   1. platform_settings.ebay.adresse_expedition {code_postal, ville} ;
+//   2. l'adresse de remise Leboncoin.
+// Si l'une des deux lectures échoue, l'état est « inconnu » : la ligne n'est
+// pas affichée et ne bloque RIEN — on ne ferme jamais une porte sur une
+// lecture ratée.
+async function lieuExpeditionEtat(admin: SupabaseClient, userId: string): Promise<Etat> {
+  try {
+    const [{ data: compte }, { data: profil }] = await Promise.all([
+      admin.from("ebay_accounts").select("merchant_location_key").eq("user_id", userId).maybeSingle(),
+      admin.from("profiles").select("platform_settings").eq("id", userId).maybeSingle(),
+    ]);
+    if (String((compte as { merchant_location_key?: string } | null)?.merchant_location_key ?? "").trim()) return "ok";
+    const reglages = (profil?.platform_settings ?? null) as
+      { ebay?: { adresse_expedition?: { code_postal?: string; ville?: string } }; leboncoin?: { adresse?: string } } | null;
+    const propre = reglages?.ebay?.adresse_expedition ?? null;
+    if (/^\d{5}$/.test(String(propre?.code_postal ?? "").trim()) && String(propre?.ville ?? "").trim()) return "ok";
+    return /\b(\d{5})\b\s*(.+)$/.test(String(reglages?.leboncoin?.adresse ?? "")) ? "ok" : "manque";
+  } catch (e) {
+    console.warn(`[ebay-account] lieu d'expédition illisible pour ${userId} :`, (e as Error)?.message ?? e);
+    return "inconnu";
+  }
+}
+
 async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: string, userId: string) {
-  const [priv, prog, liv, pai, ret] = await Promise.all([
+  const [priv, prog, liv, pai, ret, lieu] = await Promise.all([
     appelEbay(env, token, "/sell/account/v1/privilege"),
     appelEbay(env, token, "/sell/account/v1/program/get_opted_in_programs"),
     listerPolitiques(env, token, "fulfillment"),
     listerPolitiques(env, token, "payment"),
     listerPolitiques(env, token, "return"),
+    lieuExpeditionEtat(admin, userId),
   ]);
 
   // Inscription vendeur
@@ -126,6 +172,7 @@ async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: stri
     { cle: "politique_livraison", etat: livraison.etat, existantes: livraison.liste },
     { cle: "politique_paiement", etat: paiement.etat, existantes: paiement.liste },
     { cle: "politique_retours", etat: retours.etat, existantes: retours.liste },
+    { cle: "lieu_expedition", etat: lieu },
   ];
   const affichees = lignes.filter((l) => l.etat !== "inconnu");
   const indeterminees = lignes.filter((l) => l.etat === "inconnu").map((l) => l.cle);
@@ -142,11 +189,20 @@ async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: stri
       paiement: paiement.etat === "inconnu" ? null : paiement.liste.length,
       retours: retours.etat === "inconnu" ? null : retours.liste.length,
     },
+    lieu_expedition: lieu === "inconnu" ? null : lieu === "ok",
     selling_limit: sellingLimit,
     indeterminees,
     http,
-    // Résumé pour la MESURE : bloqué par un état eBay ?
-    bloque_par_etat_ebay: inscription === "manque" || programme === "manque" || [livraison, paiement, retours].some((x) => x.etat === "manque"),
+    // Drapeau LU PAR LE TRIGGER cross_post_jobs_voie_ebay (migration
+    // 20260906150000) : « ce compte est-il prêt à publier par API ? ».
+    // ⚠️ Son nom dit « état eBay » (il ne portait que ça au 06/09) mais depuis
+    // le 07/09 il porte AUSSI le lieu d'expédition, qui est notre donnée à
+    // nous : sans ville + code postal, l'emplacement marchand eBay ne peut pas
+    // être créé et la 1re publication tomberait en needs_user. Le nom de la
+    // clé ne change pas — le trigger et le miroir de l'app la lisent
+    // littéralement, la renommer les casserait tous les deux en silence.
+    bloque_par_etat_ebay: inscription === "manque" || programme === "manque" || lieu === "manque"
+      || [livraison, paiement, retours].some((x) => x.etat === "manque"),
     at: new Date().toISOString(),
   };
   await admin.from("ebay_accounts").update({ seller_state: sellerState, seller_state_at: sellerState.at }).eq("user_id", userId);

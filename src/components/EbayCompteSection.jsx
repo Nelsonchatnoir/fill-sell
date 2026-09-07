@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { UI, Eyebrow } from './ui';
 import PlatformLogo from './platform-logos/PlatformLogo';
 import { demarrerConnexionEbay, lireEtatEbay, agirEbay, ouvrirConsentementEbay } from '../utils/ebayCompte';
@@ -101,6 +101,10 @@ const T = {
         manque: "Tu n'as aucune politique de retours eBay : elle dit si tu acceptes les retours, et sous quel délai.",
         lien: 'Gérer mes politiques sur eBay ↗',
       },
+      lieu_expedition: {
+        label: "Lieu d'expédition",
+        manque: "eBay a besoin de savoir d'où part le colis pour mettre tes annonces en ligne depuis nos serveurs. Renseigne ta ville et ton code postal ci-dessous : tant qu'ils manquent, tes annonces eBay partent par l'extension Chrome, comme avant.",
+      },
     },
     utiliserExistante: 'Utiliser une politique existante',
     utiliser: 'Utiliser',
@@ -148,6 +152,7 @@ const T = {
     lectureContenu: 'Lecture chez eBay…',
     politiqueAmoi: 'Politique créée par FillSell',
     politiqueSienne: 'Ta politique eBay',
+    tarifVendeur: 'Ton tarif actuel sur eBay',
     // ── Adresse d'expédition (07/09) ───────────────────────────────────────
     adresseTitre: 'Lieu d\'expédition',
     adresseIntro: "eBay demande d'où part le colis pour publier depuis nos serveurs. Renseigne-le maintenant : sans lui, ta première annonce s'arrête et t'attend.",
@@ -206,6 +211,10 @@ const T = {
         manque: "You have no eBay return policy: it says whether you accept returns, and within what period.",
         lien: 'Manage my policies on eBay ↗',
       },
+      lieu_expedition: {
+        label: 'Ship-from location',
+        manque: "eBay needs to know where the parcel ships from to publish your listings from our servers. Fill in your city and postal code below: until then, your eBay listings go through the Chrome extension, as before.",
+      },
     },
     utiliserExistante: 'Use an existing policy',
     utiliser: 'Use',
@@ -252,6 +261,7 @@ const T = {
     lectureContenu: 'Reading from eBay…',
     politiqueAmoi: 'Policy created by FillSell',
     politiqueSienne: 'Your own eBay policy',
+    tarifVendeur: 'Your current rate on eBay',
     adresseTitre: 'Ship-from location',
     adresseIntro: "eBay needs to know where the parcel ships from to publish from our servers. Fill it in now: without it your first listing stops and waits for you.",
     adresseCp: 'Postal code',
@@ -402,6 +412,10 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
       if (error || !upd?.length) throw new Error(error?.message || 'aucune ligne écrite');
       setAdresse({ cp, ville, source: 'ebay' });
       setStatutAdresse({ etat: 'ok', message: t.adresseEnregistree });
+      // La ligne de checklist est calculée par le serveur (et c'est elle qui
+      // décide de la voie) : on la relit pour qu'elle passe au vert tout de
+      // suite, sans que le vendeur ait à recharger.
+      charger();
     } catch (e) {
       console.warn('[ebay-compte] lieu d\'expédition non enregistré —', e?.message ?? e);
       setStatutAdresse({ etat: 'erreur', message: t.adresseErreur });
@@ -432,6 +446,39 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
   // l'acheteur comment il sera livré, l'écran ne peut pas se contenter d'un nom.
   useEffect(() => { if (livraisonId) chargerDetail('fulfillment', livraisonId); }, [livraisonId, chargerDetail]);
 
+  // ── LE TARIF DU VENDEUR, JAMAIS UN TARIF INVENTÉ (07/09/2026) ────────────
+  // 4,99 € proposé à tout le monde ne voulait rien dire, et le vendeur ne peut
+  // pas deviner les vrais tarifs (ils dépendent du poids et de son contrat).
+  // On lit donc TOUTES ses politiques de livraison eBay et on en tire, par
+  // transporteur, le prix qu'il pratique DÉJÀ. Rien d'autre n'entre ici :
+  // aucune moyenne, aucun tarif d'un autre vendeur, aucun barème.
+  const politiquesLivraison = useMemo(() => {
+    const l = (checklist?.lignes ?? []).find((x) => x.cle === 'politique_livraison');
+    return (l?.existantes ?? []).map((p) => p.id).filter(Boolean);
+  }, [checklist]);
+  useEffect(() => {
+    for (const id of politiquesLivraison) chargerDetail('fulfillment', id);
+  }, [politiquesLivraison, chargerDetail]);
+
+  // code de service → prix qu'il pratique. La politique RETENUE d'abord : si
+  // deux de ses politiques portent le même transporteur à des prix
+  // différents, c'est celle qui sert aujourd'hui qui gagne.
+  const tarifsVendeur = useMemo(() => {
+    const m = new Map();
+    const ordre = [livraisonId, ...politiquesLivraison.filter((id) => id !== livraisonId)].filter(Boolean);
+    for (const id of ordre) {
+      const d = details[id];
+      if (!d || d === 'erreur') continue;
+      for (const s of (d.services ?? [])) {
+        if (!s.code || m.has(s.code)) continue;
+        const frais = s.gratuit ? '0' : (s.frais_eur != null ? String(s.frais_eur) : '');
+        if (frais === '') continue;            // prix illisible : on ne propose rien
+        m.set(s.code, frais);
+      }
+    }
+    return m;
+  }, [details, livraisonId, politiquesLivraison]);
+
   const plafond = services?.plafond ?? 4;
   const trouverService = (code) => {
     for (const f of services?.familles ?? []) {
@@ -444,8 +491,15 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
   const ouvrirPicker = async () => {
     setStatutLivraison(null);
     const courant = livraisonId ? details[livraisonId] : null;
+    // Le vendeur doit retrouver SA configuration, pas une page vierge : ses
+    // transporteurs déjà en place, leurs prix, et son délai d'expédition.
+    // L'écran doit pouvoir se valider tel quel sans rien changer.
     const dejaChoisis = (courant && courant !== 'erreur' ? (courant.services ?? []) : [])
-      .map((s) => ({ code: s.code, frais: s.gratuit ? '0' : (s.frais_eur != null ? String(s.frais_eur) : '') }));
+      .map((s) => ({
+        code: s.code,
+        frais: s.gratuit ? '0' : (s.frais_eur != null ? String(s.frais_eur) : ''),
+        source: 'vendeur',
+      }));
     setPicker({
       choix: dejaChoisis.slice(0, plafond),
       delai: (courant && courant !== 'erreur' && courant.delai_traitement_jours) || 2,
@@ -470,7 +524,17 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
       if (!p) return p;
       if (p.choix.some((c) => c.code === s.code)) return { ...p, choix: p.choix.filter((c) => c.code !== s.code) };
       if (p.choix.length >= plafond) return p;   // plafond eBay : le message est affiché à côté
-      return { ...p, choix: [...p.choix, { code: s.code, frais: s.gratuitParNature ? '0' : '' }] };
+      // Prix pré-rempli SEULEMENT s'il vient de ses propres politiques eBay.
+      // Sinon champ vide — on ne propose pas un montant qu'on aurait inventé.
+      const sien = tarifsVendeur.get(s.code);
+      return {
+        ...p,
+        choix: [...p.choix, {
+          code: s.code,
+          frais: s.gratuitParNature ? '0' : (sien ?? ''),
+          source: (!s.gratuitParNature && sien) ? 'vendeur' : null,
+        }],
+      };
     });
   };
 
@@ -547,7 +611,10 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
 
   const ouvrirCreation = (type) => {
     setStatutCreation(null);
-    setCreation({ type, nom: NOMS_DEFAUT[type], livraison: 'colissimo', frais: '4.99', delai: 2, retours: 'acceptes_30' });
+    // ⛔ Plus AUCUN prix par défaut ici (07/09) : ce formulaire ne sert plus
+    // qu'au paiement et aux retours — la livraison passe par le sélecteur de
+    // transporteurs, où un prix ne se pré-remplit qu'avec le tarif du vendeur.
+    setCreation({ type, nom: NOMS_DEFAUT[type], retours: 'acceptes_30' });
   };
 
   // Création d'une politique — LE SEUL endroit qui appelle creer_politique, sur
@@ -560,18 +627,10 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
     }
     const nom = String(creation.nom ?? '').trim();
     if (!nom) { setStatutCreation({ type, etat: 'erreur', message: t.nomRequis }); return; }
-    const fraisTexte = String(creation.frais ?? '').replace(',', '.').trim();
-    if (type === 'fulfillment' && creation.livraison === 'colissimo' && (fraisTexte === '' || Number.isNaN(Number(fraisTexte)))) {
-      setStatutCreation({ type, etat: 'erreur', message: t.fraisInvalide });
-      return;
-    }
     setBusy(`creer_${type}`); setErreurAction('');
     setStatutCreation({ type, etat: 'envoi', message: t.creationEnCours });
     try {
-      const r = await agirEbay('creer_politique', {
-        type,
-        options: { nom, livraison: creation.livraison, frais_eur: fraisTexte, delai_jours: creation.delai, retours: creation.retours },
-      });
+      const r = await agirEbay('creer_politique', { type, options: { nom, retours: creation.retours } });
       if (r.etat) setEtat(r.etat);
       if (r.checklist) setChecklist(r.checklist);
       setCreation(null);
@@ -597,28 +656,10 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
       <label style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.nom}
         <input value={creation.nom} onChange={(e) => setCreation((c) => ({ ...c, nom: e.target.value.slice(0, 64) }))} style={{ ...champ, marginTop: 4 }} />
       </label>
-      {type === 'fulfillment' && (
-        <>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.livraisonMode}</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {[['colissimo', t.colissimo], ['main_propre', t.mainPropre]].map(([v, l]) => (
-              <button type="button" key={v} onClick={() => setCreation((c) => ({ ...c, livraison: v }))} style={{ ...boutonCreux(false), ...(creation.livraison === v ? selection : {}) }}>{l}</button>
-            ))}
-          </div>
-          {creation.livraison === 'colissimo' && (
-            <label style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.frais}
-              <input value={creation.frais} inputMode="decimal" onChange={(e) => setCreation((c) => ({ ...c, frais: e.target.value.replace(/[^\d.,]/g, '').slice(0, 6) }))} style={{ ...champ, marginTop: 4 }} />
-            </label>
-          )}
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.delai}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {[1, 2, 3].map((n) => (
-              <button type="button" key={n} onClick={() => setCreation((c) => ({ ...c, delai: n }))} style={{ ...boutonCreux(false), ...(creation.delai === n ? selection : {}) }}>{t.jours(n)}</button>
-            ))}
-          </div>
-        </>
-      )}
-      {type === 'payment' && <div style={{ fontSize: 12, color: UI.mute2, lineHeight: 1.5 }}>{t.paiementNote}</div>}
+      {/* La livraison ne passe PLUS par ce formulaire (07/09) : elle a son
+          sélecteur de transporteurs, avec un prix par transporteur. Ce
+          formulaire ne sert qu'au paiement et aux retours. */}
+      {type === 'payment' &&<div style={{ fontSize: 12, color: UI.mute2, lineHeight: 1.5 }}>{t.paiementNote}</div>}
       {type === 'return' && (
         <>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.retoursMode}</div>
@@ -697,9 +738,14 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
                     <input value={choisi.frais} inputMode="decimal"
                       onChange={(e) => {
                         const v = e.target.value.replace(/[^\d.,]/g, '').slice(0, 6);
-                        setPicker((p) => ({ ...p, choix: p.choix.map((c) => (c.code === s.code ? { ...c, frais: v } : c)) }));
+                        // Dès qu'il modifie, ce n'est plus « son tarif actuel » :
+                        // la mention disparaît, elle ne doit jamais mentir.
+                        setPicker((p) => ({ ...p, choix: p.choix.map((c) => (c.code === s.code ? { ...c, frais: v, source: null } : c)) }));
                       }}
                       style={{ ...champ, marginTop: 4 }} />
+                    {choisi.source === 'vendeur' && (
+                      <span style={{ display: 'block', marginTop: 3, fontSize: 11, fontWeight: 600, color: UI.mute }}>{t.tarifVendeur}</span>
+                    )}
                   </label>
                 )}
                 {choisi && s.gratuitParNature && <div style={{ fontSize: 11.5, color: UI.mute }}>{t.gratuitNature}</div>}
@@ -757,6 +803,45 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
       })}
     </div>
   );
+
+  // Ligne « Lieu d'expédition » — le seul endroit où il se saisit. eBay en a
+  // besoin pour créer l'emplacement marchand ; tant qu'il manque, la checklist
+  // reste rouge et les annonces eBay partent par l'extension (le trigger lit le
+  // même drapeau) — jamais un needs_user découvert sur la 1re annonce.
+  // Le formulaire s'affiche AUSSI quand la ligne est verte : c'est là qu'un
+  // vendeur corrige un lieu faux.
+  // Seuls la ville et le code postal partent chez eBay, jamais la rue.
+  const rendreAdresse = () => {
+    if (!adresse) return null;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: UI.mute2, flex: '0 0 110px' }}>{t.adresseCp}
+            <input value={adresse.cp} inputMode="numeric"
+              onChange={(e) => { setStatutAdresse(null); setAdresse((a) => ({ ...a, cp: e.target.value.replace(/\D/g, '').slice(0, 5) })); }}
+              style={{ ...champ, marginTop: 4 }} />
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 700, color: UI.mute2, flex: '1 1 160px' }}>{t.adresseVille}
+            <input value={adresse.ville}
+              onChange={(e) => { setStatutAdresse(null); setAdresse((a) => ({ ...a, ville: e.target.value.slice(0, 80) })); }}
+              style={{ ...champ, marginTop: 4 }} />
+          </label>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" onClick={enregistrerAdresse} disabled={busy != null} style={boutonCreux(busy != null)}>
+            {busy === 'adresse' ? '…' : t.adresseEnregistrer}
+          </button>
+          <span style={{ fontSize: 11, color: UI.mute }}>{t.adresseNote}</span>
+        </div>
+        {adresse.source === 'leboncoin' && <div style={{ fontSize: 11.5, color: UI.mute }}>{t.adresseDepuisLbc}</div>}
+        {statutAdresse && (
+          <div role="status" style={statutAdresse.etat === 'erreur' ? messageErreur : { fontSize: 12, color: UI.tealDeep, fontWeight: 600 }}>
+            {statutAdresse.message}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Ligne « Politique de livraison » : PAS un choix parmi des politiques (les
   // vendeurs n'en ont qu'une), mais le choix des transporteurs — c'est nous qui
@@ -874,7 +959,11 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
                       {!ok && (
                         <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
                           <div style={{ fontSize: 12.5, color: UI.ink, lineHeight: 1.5 }}>{txt.manque}</div>
-                          <a href={LIENS[ligne.cle]} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 700, color: UI.tealDeep, textDecoration: 'none' }}>{txt.lien}</a>
+                          {/* Toutes les lignes n'ont pas de page eBay à ouvrir :
+                              le lieu d'expédition se règle ICI, pas chez eBay. */}
+                          {LIENS[ligne.cle] && txt.lien && (
+                            <a href={LIENS[ligne.cle]} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12.5, fontWeight: 700, color: UI.tealDeep, textDecoration: 'none' }}>{txt.lien}</a>
+                          )}
                           {ligne.cle === 'politiques_activees' && (
                             <button type="button" onClick={() => agir('activer_politiques', {}, 'activer')} disabled={busy != null} style={{ ...boutonCreux(busy != null), alignSelf: 'flex-start' }}>
                               {busy === 'activer' ? '…' : txt.action}
@@ -884,48 +973,15 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
                       )}
                       {ligne.cle === 'politique_livraison'
                         ? rendreLivraison(ligne)
-                        : (TYPE_PAR_CLE[ligne.cle] ? rendreChoixPolitique(ligne) : null)}
+                        : ligne.cle === 'lieu_expedition'
+                          ? rendreAdresse()
+                          : (TYPE_PAR_CLE[ligne.cle] ? rendreChoixPolitique(ligne) : null)}
                     </div>
                   </div>
                 );
               })}
               {limite && (limite.quantity != null || montant) && (
                 <div style={{ fontSize: 11.5, color: UI.mute, lineHeight: 1.4 }}>{t.plafond(limite.quantity, montant)}</div>
-              )}
-            </div>
-          )}
-
-          {/* Lieu d'expédition — DEMANDÉ ICI, avant la première publication.
-              eBay en a besoin pour créer l'emplacement marchand ; sans lui, la
-              1re annonce par API s'arrête en « à compléter ». Seuls la ville et
-              le code postal partent chez eBay, jamais la rue. */}
-          {adresse && (
-            <div style={{ borderTop: `1px solid ${UI.border}`, paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.adresseTitre}</div>
-              <div style={{ fontSize: 12.5, color: UI.mute2, lineHeight: 1.5 }}>{t.adresseIntro}</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: UI.mute2, flex: '0 0 110px' }}>{t.adresseCp}
-                  <input value={adresse.cp} inputMode="numeric"
-                    onChange={(e) => { setStatutAdresse(null); setAdresse((a) => ({ ...a, cp: e.target.value.replace(/\D/g, '').slice(0, 5) })); }}
-                    style={{ ...champ, marginTop: 4 }} />
-                </label>
-                <label style={{ fontSize: 11, fontWeight: 700, color: UI.mute2, flex: '1 1 160px' }}>{t.adresseVille}
-                  <input value={adresse.ville}
-                    onChange={(e) => { setStatutAdresse(null); setAdresse((a) => ({ ...a, ville: e.target.value.slice(0, 80) })); }}
-                    style={{ ...champ, marginTop: 4 }} />
-                </label>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button type="button" onClick={enregistrerAdresse} disabled={busy != null} style={boutonCreux(busy != null)}>
-                  {busy === 'adresse' ? '…' : t.adresseEnregistrer}
-                </button>
-                <span style={{ fontSize: 11, color: UI.mute }}>{t.adresseNote}</span>
-              </div>
-              {adresse.source === 'leboncoin' && <div style={{ fontSize: 11.5, color: UI.mute }}>{t.adresseDepuisLbc}</div>}
-              {statutAdresse && (
-                <div role="status" style={statutAdresse.etat === 'erreur' ? messageErreur : { fontSize: 12, color: UI.tealDeep, fontWeight: 600 }}>
-                  {statutAdresse.message}
-                </div>
               )}
             </div>
           )}
