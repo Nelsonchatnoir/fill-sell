@@ -1813,7 +1813,10 @@ async function selectCategory(root, leaf, { incertaine = false, warnings = [], j
       // erreur — on garde la première : le comportement d'avant.
       let choisie = propositions[0];
       let arbitre = false;
+      // Instrumentation (point 2) : le motif du repli, compté en SQL.
+      let motifArbitrage = "suggestion_unique";
       if (propositions.length > 1) {
+        motifArbitrage = "erreur";
         try {
           const rep = await chrome.runtime.sendMessage({
             type: "CATEGORIE_CHOISIR",
@@ -1822,9 +1825,13 @@ async function selectCategory(root, leaf, { incertaine = false, warnings = [], j
             candidats: { leboncoin: propositions.map((p, i) => ({ chemin: [p.etiquette], id: String(i) })) },
           });
           const idx = Number(rep?.choix?.leboncoin?.id);
-          if (Number.isInteger(idx) && propositions[idx]) { choisie = propositions[idx]; arbitre = true; }
+          if (Number.isInteger(idx) && propositions[idx]) {
+            choisie = propositions[idx]; arbitre = true; motifArbitrage = "choisi";
+          } else if (rep?.motif) { motifArbitrage = String(rep.motif); }
+          else { motifArbitrage = "aucune"; }
         } catch (e) {
           console.warn("[leboncoin] arbitrage de catégorie indisponible :", e?.message ?? e);
+          motifArbitrage = "erreur";
         }
       }
       await humanPause();
@@ -1835,6 +1842,11 @@ async function selectCategory(root, leaf, { incertaine = false, warnings = [], j
                    : propositions.length > 1 ? ` (1re des ${propositions.length} — arbitrage indisponible)` : "");
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
+      warnings.push({
+        code: "categorie_arbitrage", plateforme: "leboncoin",
+        motif: motifArbitrage, n_candidats: propositions.length,
+        message: `catégorie Leboncoin — arbitrage : ${motifArbitrage} (${propositions.length} suggestion(s))`,
+      });
       return;
     }
     const note = `catégorie: supposition « ${root} > ${leaf} » conservée — Leboncoin n'a proposé aucune suggestion`;

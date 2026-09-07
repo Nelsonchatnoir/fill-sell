@@ -578,7 +578,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       try {
         const session = await getValidSession();
-        if (!session) return sendResponse({ choix: null, motif: "no_session" });
+        if (!session) return sendResponse({ choix: null, motif: "pas_de_session" });
         const rep = await Promise.race([
           callEdgeFunction("resolve-categorie", session.access_token, {
             titre: String(msg.titre ?? "").slice(0, 200),

@@ -1941,8 +1941,20 @@ async function fillListingForm(job) {
   // soumission est tentée quand même — ce catch ne voit alors rien passer.
   try {
     categorieSuggestionRetenue = null;
+    categorieArbitrage = null;
     await etape("Catégorie", () => selectCategory(fields.categoryPath, fields, job?.title ?? ""));
     // Trace lisible en base : la suggestion de Vinted a remplacé notre chemin.
+    if (categorieArbitrage) {
+      // Forme STRUCTURÉE : c'est elle qu'on compte en SQL (point 2). Le
+      // message reste lisible pour l'humain qui ouvre le job.
+      warnings.push({
+        code: "categorie_arbitrage",
+        plateforme: "vinted",
+        motif: categorieArbitrage.motif,
+        n_candidats: categorieArbitrage.n,
+        message: `catégorie Vinted — arbitrage : ${categorieArbitrage.motif} (${categorieArbitrage.n} suggestion(s))`,
+      });
+    }
     if (categorieSuggestionRetenue) {
       warnings.push(
         `catégorie: notre valeur « ${(fields.categoryPath ?? []).join(" > ")} » n'était qu'une ` +
@@ -4581,6 +4593,11 @@ async function visibleCatalogChildIds() {
 // dans les warnings du job, donc lisible en base : sans ça, « pourquoi cette
 // annonce est-elle dans cette catégorie ? » resterait sans réponse.
 let categorieSuggestionRetenue = null;
+// Instrumentation (point 2) : ce qui s'est réellement passé à l'arbitrage —
+// 'choisi' | 'suggestion_unique' | 'pas_de_session' | 'timeout' | 'erreur'.
+// Voyage par le canal EXISTANT platform_fields.warnings, en forme structurée
+// {code:'categorie_arbitrage'} : aucune plomberie ajoutée.
+let categorieArbitrage = null;
 
 async function selectCategory(path, fields = {}, titreArticle = "") {
   const catalogOptionSel = (await sel()).selectorFor("vinted", "publish.catalog_option");
@@ -4648,7 +4665,9 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
     // moins bon.
     let suggestion = suggestionsVinted[0];
     let arbitre = false;
+    categorieArbitrage = { motif: "suggestion_unique", n: suggestionsVinted.length };
     if (suggestionsVinted.length > 1) {
+      categorieArbitrage = { motif: "erreur", n: suggestionsVinted.length };
       try {
         const rep = await chrome.runtime.sendMessage({
           type: "CATEGORIE_CHOISIR",
@@ -4659,10 +4678,15 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
         const choisi = rep?.choix?.vinted;
         if (choisi?.id) {
           const trouve = suggestionsVinted.find((s) => String(s.id) === String(choisi.id));
-          if (trouve) { suggestion = trouve; arbitre = true; }
+          if (trouve) { suggestion = trouve; arbitre = true; categorieArbitrage = { motif: "choisi", n: suggestionsVinted.length }; }
+        } else if (rep?.motif) {
+          categorieArbitrage = { motif: String(rep.motif), n: suggestionsVinted.length };
+        } else {
+          categorieArbitrage = { motif: "aucune", n: suggestionsVinted.length };
         }
       } catch (e) {
         console.warn("[vinted] arbitrage de catégorie indisponible :", e?.message ?? e);
+        categorieArbitrage = { motif: "erreur", n: suggestionsVinted.length };
       }
     }
     const cellule = document.getElementById(`catalog-suggestion-${suggestion.id}`);

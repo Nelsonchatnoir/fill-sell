@@ -137,8 +137,10 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   // L'utilisateur du job voyage avec pf pour que le coût IA de la résolution
   // de catégorie lui soit imputé (usage_logs) — sinon il n'apparaît nulle part.
   (pf as Record<string, unknown>).__userId = job.user_id;
+  (pf as Record<string, unknown>).__admin = admin;
   const categorie = await resoudreCategorie(env, token, { title: inv.titre || job.title }, pf, familleEffective);
   delete (pf as Record<string, unknown>).__userId;
+  delete (pf as Record<string, unknown>).__admin;
   if ("choix" in categorie) {
     const mappee = String(pf.ebayCategoryId ?? "").trim();
     const cheminMappe = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]) : [];
@@ -534,7 +536,7 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
       const retenu = await choisirParmiSuggestions(suggestions, {
         titre, genre: pf.genre as string | null, taille: pf.taille as string | null,
         marque: pf.marque as string | null, userId: (pf as Record<string, unknown>).__userId as string | null,
-      });
+      }, (pf as Record<string, unknown>).__admin as SupabaseClient | undefined);
       if (retenu) {
         return {
           id: retenu.id,
@@ -660,8 +662,27 @@ async function mesurerCategories(admin: SupabaseClient, env: EbayEnv, body: { eb
 async function choisirParmiSuggestions(
   suggestions: Array<{ id: string; chemin: string[] }>,
   contexte: { titre: string; genre?: string | null; taille?: string | null; marque?: string | null; userId?: string | null },
+  admin?: SupabaseClient,
 ): Promise<{ id: string; chemin: string[] } | null> {
-  if (suggestions.length < 2) return suggestions[0] ?? null;
+  // Journal des REPLIS (point 2, instrumentation pure). Le repli est le point
+  // noir : la n°1 d'eBay est fausse 4 fois sur 8 (mesuré), donc chaque repli
+  // est une catégorie probablement fausse. On veut pouvoir les compter.
+  const journaliser = async (motif: string) => {
+    if (!admin) return;
+    try {
+      await admin.from("categorie_journal").insert({
+        user_id: contexte.userId ?? null, plateforme: "ebay", etape: "repli",
+        issue: "premiere_suggestion", motif, n_candidats: suggestions.length,
+        choisi_id: suggestions[0]?.id ?? null,
+        choisi_chemin: suggestions[0]?.chemin.join(" > ").slice(0, 300) ?? null,
+        titre: String(contexte.titre ?? "").slice(0, 200),
+      });
+    } catch (e) { console.error("[ebay-api-worker] journal repli:", (e as Error)?.message); }
+  };
+  if (suggestions.length < 2) {
+    if (suggestions.length === 1) await journaliser("suggestion_unique");
+    return suggestions[0] ?? null;
+  }
   const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
   const secret = Deno.env.get("CRON_SECRET") ?? "";
   try {
@@ -677,15 +698,20 @@ async function choisirParmiSuggestions(
         },
       }),
     });
-    if (!r.ok) { console.warn(`[ebay-api-worker] resolve-categorie HTTP ${r.status}`); return suggestions[0]; }
+    if (!r.ok) {
+      console.warn(`[ebay-api-worker] resolve-categorie HTTP ${r.status}`);
+      await journaliser("erreur"); return suggestions[0];
+    }
     const data = await r.json() as { choix?: { ebay?: { chemin: string[]; id: string | null } } };
     const choisi = data.choix?.ebay;
     if (choisi?.id) return { id: String(choisi.id), chemin: choisi.chemin };
     // « aucune » : on garde la n°1 d'eBay — c'est le comportement d'avant, et
     // il vaut toujours mieux que pas de catégorie du tout.
+    await journaliser("aucune");
     return suggestions[0];
   } catch (e) {
     console.warn("[ebay-api-worker] resolve-categorie injoignable :", e);
+    await journaliser("ia_indisponible");
     return suggestions[0];
   }
 }

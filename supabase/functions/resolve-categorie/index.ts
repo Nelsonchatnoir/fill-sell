@@ -131,12 +131,14 @@ serve(async (req) => {
   // Clés opaques : « v0…v19 », « e0…e19 ». C'est CE vocabulaire fermé que le
   // modèle doit rendre, et c'est lui qu'on vérifie — pas un libellé recopié.
   const parCle = new Map<string, { plateforme: Plateforme; candidat: Candidat }>();
+  const parPlateforme = new Map<Plateforme, number>();
   const lignes: string[] = [];
   for (const pf of PLATEFORMES) {
     const brutes = (candidats[pf] ?? []).filter((c) => Array.isArray(c?.chemin) && c.chemin.length);
     const vraies = brutes.filter((c) => !estFourreTout(c));
     const liste = (vraies.length ? vraies : brutes).slice(0, 20);
     if (!liste.length) continue;
+    parPlateforme.set(pf, liste.length);
     if (vraies.length && vraies.length < brutes.length) {
       console.log(`[resolve-categorie] ${pf} : ${brutes.length - vraies.length} fourre-tout ecarte(s)`);
     }
@@ -208,6 +210,32 @@ serve(async (req) => {
   if (refuses.length) {
     console.warn(`[resolve-categorie] réponse hors liste ignorée : ${refuses.join(", ")} — titre « ${titre} »`);
   }
+  // ── JOURNAL (point 2, instrumentation PURE) ───────────────────────────────
+  // Une ligne par décision et par plateforme. Rien ne le relit pour décider :
+  // aucun comportement ne dépend de son contenu. Best-effort de bout en bout —
+  // une écriture de mesure ne doit jamais faire échouer un classement.
+  try {
+    const lignes: Record<string, unknown>[] = [];
+    for (const pf of PLATEFORMES) {
+      if (!parPlateforme.has(pf)) continue;
+      const c = choix[pf];
+      const horsListe = refuses.some((r) => r.startsWith(`${pf}:`));
+      lignes.push({
+        user_id: userPourJournal,
+        plateforme: pf,
+        etape: "arbitrage",
+        issue: c ? "choisi" : horsListe ? "hors_liste" : "aucune",
+        n_candidats: parPlateforme.get(pf) ?? 0,
+        choisi_id: c?.id ?? null,
+        choisi_chemin: c ? c.chemin.join(" > ").slice(0, 300) : null,
+        titre: titre.slice(0, 200),
+      });
+    }
+    if (lignes.length) await admin.from("categorie_journal").insert(lignes);
+  } catch (e) {
+    console.error("[resolve-categorie] journal:", (e as Error)?.message);
+  }
+
   return json({
     choix,
     refuses,
