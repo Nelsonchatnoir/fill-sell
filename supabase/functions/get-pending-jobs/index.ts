@@ -935,6 +935,38 @@ serve(async (req) => {
               `— incident Vinted « status » absent du payload (${capturesSansEtat} capture(s) sans état sur 24 h)`,
             );
           }
+          // ── ET ON RETIENT CELLES QU'ON NE PEUT PAS RÉPARER ──────────────
+          // Une republication dont l'état n'est fournissable par AUCUNE
+          // capture antérieure va, pendant l'incident, échouer à coup sûr :
+          // capture 'incomplet', passage en needs_user, une tentative
+          // consommée, et l'utilisateur voit une erreur qu'il ne peut pas
+          // corriger. Mesuré à 15h36 : 15 captures ratées en 30 minutes, toutes
+          // dans ce cas. On les laisse donc en file, intactes, jusqu'à la
+          // 0.6.21 (qui lit l'état à sa nouvelle place) ou jusqu'au retour du
+          // champ côté Vinted — la même condition d'auto-extinction gouverne
+          // les deux, personne n'a à intervenir.
+          // ⛔ L'étape 'deleted' n'est JAMAIS retenue : l'annonce est déjà hors
+          // ligne, sa recréation prime sur tout. 'captured' non plus : sa
+          // capture est faite et valide.
+          const stepDe = (j: { platform_fields: unknown }) => {
+            const s = String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_step"] ?? "");
+            return s === "captured" || s === "deleted" ? s : "a_capturer";
+          };
+          const avantRetenue = out.length;
+          out = out.filter((j) => {
+            if (j.action !== "republish" || j.platform !== "vinted") return true;
+            if (stepDe(j) !== "a_capturer") return true;
+            const uf = ((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_user_fields"] as
+              Record<string, unknown> | null;
+            return Boolean(String(uf?.["etat"] ?? "").trim()); // état en main → on sert
+          });
+          const retenus = avantRetenue - out.length;
+          if (retenus) {
+            console.log(
+              `[get-pending-jobs] userId=${user.id} : ${retenus} republication(s) RETENUE(S) — aucun état certain ` +
+              `disponible pendant l'incident Vinted, elles repartiront seules (0.6.21 ou retour du champ)`,
+            );
+          }
         }
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
