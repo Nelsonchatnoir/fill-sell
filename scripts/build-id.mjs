@@ -1239,7 +1239,12 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // 2026-09-07T13:22:53Z : Vinted a retire le champ 'status' du payload d'edition le 07/09 a
 // 13h25 — l'etat se lit desormais dans item_attributes[condition]. Sans ce
 // correctif, AUCUNE republication du parc ne peut aboutir.
-export const EXTENSION_LAST_COMMIT = '2026-09-07T13:30:47Z';
+// 2026-09-07T16:15:12Z : REGLE N°2 — la suggestion de la plateforme bat une
+// icone devinee (vinted.js prend la suggestion catalog-suggestion-*,
+// leboncoin.js lit le drapeau commun categorie_incertaine). MIN_BUILD
+// INCHANGE : rien ici ne casse une extension anterieure, elles ignorent
+// simplement le drapeau et gardent le chemin, qui reste pose.
+export const EXTENSION_LAST_COMMIT = '2026-09-07T16:15:12Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

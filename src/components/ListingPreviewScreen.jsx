@@ -373,7 +373,7 @@ function resolveArticleIcon(args) {
 // rendue ? » sur le job c324b5ee : la catégorie était fausse et sa cause
 // invérifiable. Valeurs : famille_livres | mot_cle | ia | detection |
 // pointure | defaut.
-function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null }) {
+function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null, aiObjet = null }) {
   // ── FAMILLE LENS SOUVERAINE — LIVRES (2026-09-02, cas Delavier) ───────────
   // « La Méthode Delavier de MUSCULATION » : le mot-clé « musculation »
   // accrochait l'icône sport → catégorie LBC « Loisirs > Sport & Plein air »
@@ -426,6 +426,26 @@ function resolveArticleIconDetail({ initialListing, edited, pf, aiIcon = null })
   // renvoie null) — c'est le rôle « filet » pour lequel elle avait été ajoutée.
   const keywordIcon = detectObjectIconKeyword(frTitle, `${frDesc} ${marque}`);
   if (keywordIcon) return { icon: keywordIcon, source: "mot_cle", iconeSansIa: keywordIcon };
+
+  // ── LE MOT DE L'IA, PASSÉ À NOS RÈGLES AUDITÉES (2026-09-07 soir) ─────────
+  // Depuis ce soir, generate-listing rend AUSSI le nom de l'objet en clair
+  // (« chapka », « taie d'oreiller », « lave-vaisselle ») en plus de l'emoji.
+  // Un NOM traverse la couche auditée ; un emoji ne le peut pas — il n'a que
+  // 164 valeurs pour ~3 900 feuilles eBay, et « chapka » n'en a aucune.
+  // On soumet donc le mot aux MÊMES règles que le titre. Quand elles le
+  // reconnaissent, la source n'est plus « l'IA a deviné un emoji » mais « l'IA
+  // a nommé un objet que NOS règles savent traduire » : c'est une source
+  // CERTAINE, elle désarme le drapeau categorie_incertaine et le garde-fou la
+  // respecte comme un mot-objet du titre.
+  // ⛔ Après le titre, jamais avant : le titre est la source du vendeur.
+  // ⛔ Si nos règles ne connaissent pas le mot, il ne se passe RIEN ici — on
+  //    ne devine pas, on retombe sur l'emoji comme avant.
+  const objetIa = String(aiObjet ?? "").trim();
+  if (objetIa) {
+    const iconeDuMot = detectObjectIconKeyword(objetIa, "");
+    if (iconeDuMot) return { icon: iconeDuMot, source: "mot_objet_ia", iconeSansIa: iconeDuMot };
+  }
+
   // Aucun mot-objet reconnu → on fait confiance à l'IA (si valide), exactement
   // là où detectObjectIcon retomberait sur un simple défaut de catégorie.
   // ⚠️ SAUF 📦 (2026-08-15, « Cendrier vintage Noilly Prat », type Maison) :
@@ -4691,6 +4711,17 @@ export default function ListingPreviewScreen({
   //      historique intact). Un ancien run sans category_icon → null d'office.
   // Le pristine se dérive de platformListings (déjà persisté dans le brouillon),
   // donc un remount d'onglet conserve le bon comportement sans état ajouté.
+  // ── LE MOT DE L'IA (2026-09-07 soir) ──────────────────────────────────────
+  // generate-listing rend, dans le MÊME micro-appel que l'emoji, le nom commun
+  // français de l'objet. Contrairement à l'icône, il n'est PAS invalidé quand
+  // une copie est retouchée : l'emoji décrivait le contexte des copies
+  // générées, le mot décrit l'ARTICLE (titre, marque, type, description de la
+  // fiche). Réécrire la copie eBay ne change pas ce qu'est l'objet.
+  const activeAiObjet = useMemo(() => {
+    const o = String(platformListings?.objet ?? "").trim();
+    return o || null;
+  }, [platformListings]);
+
   const activeAiIcon = useMemo(() => {
     const ai = platformListings?.category_icon;
     if (!ai || !VALID_OBJECT_ICONS.has(ai)) return null;
@@ -5397,7 +5428,7 @@ export default function ListingPreviewScreen({
     for (const platform of ["vinted", "leboncoin", "beebs"]) {
       if (!selected.has(platform) || !edited[platform]) continue;
       const pf = edited[platform].platform_fields ?? {};
-      const det = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon });
+      const det = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon, aiObjet: activeAiObjet });
       // MÊME garde-fou qu'à l'insert (2026-09-07) : les requis affichés à
       // l'écran doivent être ceux de la catégorie RÉELLEMENT publiée. Sans ça,
       // l'encart rouge réclamerait un « Produit » d'électroménager sur un
@@ -5423,7 +5454,7 @@ export default function ListingPreviewScreen({
       if (Array.isArray(path) && path.length) keys[platform] = path.join(" > ");
     }
     return keys;
-  }, [selected, edited, initialListing, activeAiIcon]);
+  }, [selected, edited, initialListing, activeAiIcon, activeAiObjet]);
 
   // ⚠️ DÉPENDANCE PAR SIGNATURE, PAS PAR IDENTITÉ (fix boucle 2026-07-16) :
   // genericCategoryKeys est un OBJET recalculé à chaque rendu (useMemo sur
@@ -6505,7 +6536,7 @@ export default function ListingPreviewScreen({
         // Beebs et eBay (needs_user « État exigé » sur les trois, parce que ces
         // rayons n'acceptent qu'un état neuf), pendant que Leboncoin passait
         // par le fourre-tout « Divers > Autres ».
-        const detIcone = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon });
+        const detIcone = resolveArticleIconDetail({ initialListing, edited, pf, aiIcon: activeAiIcon, aiObjet: activeAiObjet });
         const catalogVinted = initialListing?.vinted_catalog_id ?? null;
         const garde = gardeFouCategorie({
           icone: detIcone.icon,
@@ -6523,6 +6554,10 @@ export default function ListingPreviewScreen({
         // cette catégorie ? » — y compris pour un job eBay.
         pf.categorie_icone = iconeArticle;
         pf.categorie_icone_ia = activeAiIcon ?? null;
+        // Le MOT rendu par l'IA, tel quel. C'est la seule façon de répondre à
+        // « qu'est-ce que l'IA a compris ? » sans reconstituer à rebours trois
+        // transformations — la question posée le 07/09 sur la chapka.
+        pf.categorie_objet_ia = activeAiObjet ?? null;
         pf.categorie_source = garde.source;
         if (garde.corrige) {
           pf.categorie_garde_fou = {

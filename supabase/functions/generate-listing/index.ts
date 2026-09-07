@@ -755,14 +755,14 @@ serve(async (req) => {
         return label ? `${ic} = ${label}` : ic;
       })
       .join("\n");
-    const classifyCategoryIcon = async (): Promise<string | null> => {
+    const classifyCategoryIcon = async (): Promise<{ icon: string | null; objet: string | null }> => {
       const ctx = [
         item.marque && `Marque: ${item.marque}`,
         item.titre && `Article: ${item.titre}`,
         item.type && `Type: ${item.type}`,
         item.description && `Description: ${item.description}`,
       ].filter(Boolean).join("\n");
-      if (!ctx) return null;
+      if (!ctx) return { icon: null, objet: null };
       try {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -773,9 +773,23 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             model: "claude-haiku-4-5-20251001",
-            max_tokens: 20,
-            system: `Tu classes un article d'occasion en choisissant l'emoji qui représente le mieux son OBJET PRINCIPAL, STRICTEMENT parmi cette liste (aucune autre valeur n'est acceptée). Chaque emoji est suivi de son SENS — fie-toi au sens, pas à l'apparence de l'emoji :\n${ICON_MENU}\n\nRègles : choisis l'objet lui-même, pas un accessoire inclus ni la marque. Un sweat/pull/hoodie (même d'une marque outdoor comme Patagonia, The North Face…) est un vêtement en maille → 🧶, PAS un manteau 🧥. Réponds UNIQUEMENT du JSON valide {"icon":"<un emoji exact de la liste>"} ; si aucun ne convient clairement, {"icon":null}.`,
-            messages: [{ role: "user", content: `Quel emoji pour cet article ?\n${ctx}` }],
+            max_tokens: 60,
+            system: `Tu classes un article d'occasion. Tu rends DEUX choses.
+
+1) "objet" — LE NOM COMMUN FRANÇAIS de l'objet principal, au SINGULIER, en
+   minuscules, 1 à 3 mots. Le nom que n'importe qui emploierait : « chapka »,
+   « taie d'oreiller », « lave-vaisselle », « bonnet de bébé », « soupière ».
+   Pas de marque, pas de matière, pas de couleur, pas de taille. Aucune liste
+   ne t'est imposée ici : écris le mot juste. Si tu n'es pas sûr, null.
+
+2) "icon" — l'emoji qui représente le mieux ce même objet, STRICTEMENT parmi
+   cette liste (aucune autre valeur n'est acceptée). Chaque emoji est suivi de
+   son SENS — fie-toi au sens, pas à l'apparence de l'emoji :
+${ICON_MENU}
+
+Règles : choisis l'objet lui-même, pas un accessoire inclus ni la marque. Un sweat/pull/hoodie (même d'une marque outdoor comme Patagonia, The North Face…) est un vêtement en maille → 🧶, PAS un manteau 🧥.
+Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un emoji exact de la liste ou null>"}. Les deux champs sont indépendants : tu peux très bien nommer un objet dont aucun emoji ne rend compte — réponds alors le nom et {"icon":null}, c'est la bonne réponse, pas un échec.`,
+            messages: [{ role: "user", content: `Quel objet, et quel emoji ?\n${ctx}` }],
           }),
         });
         if (res.ok) {
@@ -784,14 +798,26 @@ serve(async (req) => {
           const text: string = data.content?.[0]?.text ?? "";
           const m = text.match(/"icon"\s*:\s*"([^"]+)"/);
           const icon = m?.[1];
-          if (icon && ICON_SET.has(icon)) return icon;
+          // ── LE MOT, PAS L'EMOJI (2026-09-07 soir) ─────────────────────────
+          // On demandait au modèle de faire tenir sa compréhension dans UN
+          // emoji parmi 164, pour ~3 900 feuilles eBay. « Chapka » n'a pas
+          // d'emoji : le modèle ne répond pas « je ne sais pas », il rend le
+          // moins lointain — et « le moins lointain » dans l'espace des emojis
+          // n'a aucun sens (🎹 pour un bonnet de bébé, job du 07/09 17h36).
+          // Le NOM, lui, est vérifiable, journalisable et corrigeable.
+          // Borné : 40 caractères, lettres/espaces/traits d'union/apostrophes
+          // seulement — jamais une phrase, jamais un identifiant.
+          const mo = text.match(/"objet"\s*:\s*"([^"]{1,60})"/);
+          const brut = (mo?.[1] ?? "").trim().toLowerCase();
+          const objet = /^[\p{L}][\p{L}\s'’-]{1,39}$/u.test(brut) ? brut : null;
+          return { icon: icon && ICON_SET.has(icon) ? icon : null, objet };
         } else {
           console.error("[generate-listing] category_icon:", await res.text());
         }
       } catch (e) {
         console.error("[generate-listing] category_icon exception:", e);
       }
-      return null;
+      return { icon: null, objet: null };
     };
     const categoryIconPromise = classifyCategoryIcon();
 
@@ -1054,7 +1080,9 @@ serve(async (req) => {
 
     // category_icon : attendu ICI seulement (il chevauchait la retouche photo
     // et la génération). null → champ OMIS → fallback client detectObjectIcon.
-    const category_icon = await categoryIconPromise;
+    const classification = await categoryIconPromise;
+    const category_icon = classification.icon;
+    const objet = classification.objet;
 
     // ── Coût de l'appel (2026-07-28) ─────────────────────────────────────────
     // Tarifs Haiku 4.5 : 1 $/MTok in, 5 $/MTok out. GPT Image 2 /images/edits :
@@ -1128,6 +1156,12 @@ serve(async (req) => {
       platforms: platformListings,
       price: item.prix_vente ?? body_price ?? null,
       ...(category_icon ? { category_icon } : {}),
+      // Le NOM de l'objet en clair. UN SEUL appel, à la génération : l'objet ne
+      // change pas d'une plateforme à l'autre — c'est sa traduction en rayon
+      // qui change, et c'est notre travail. Journalisé sur les jobs
+      // (categorie_objet_ia) : « qu'est-ce que l'IA a compris ? » doit avoir
+      // une réponse en une ligne de SQL, pas en reconstitution à rebours.
+      ...(objet ? { objet } : {}),
     });
 
   } catch (e) {
