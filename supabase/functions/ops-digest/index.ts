@@ -501,7 +501,49 @@ serve(async (req) => {
     pendingBloques.push(`Relevé des pending anciens illisible (${String((e as Error)?.message ?? e)}).`);
   }
 
+  // 13. JOBS QUI BRÛLENT LEURS TENTATIVES EN SILENCE (2026-09-07) ───────────
+  // Un échec récupérable est ré-armé en 'pending' avec needsUserAttempts + 1
+  // (rearmBounded, 5 essais espacés 5/15/30/60 min). Tant qu'il reste pending,
+  // il n'apparaît NI dans les 'failed' du jour, NI dans les 'processing'
+  // bloqués — et la section 12 ne le voit qu'au bout de 48 h. Résultat mesuré
+  // le 07/09 : des blocages eBay (« REAUTH VENTE », onglet en back/forward
+  // cache) tournaient depuis des jours à 1-3 essais sur 5, invisibles de tout
+  // balayage published/failed, pour finir en failed sans que personne ne les
+  // ait vus venir. On les nomme AVANT le dernier essai, avec leur cause.
+  const tentativesEnCours: string[] = [];
+  try {
+    const { data: brulent, error: e13 } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, platform, action, title, error, created_at, platform_fields")
+      .eq("status", "pending")
+      .not("error", "is", null)
+      .range(0, 999);
+    const candidats = ((brulent ?? []) as Array<Record<string, unknown>>).filter((j) => {
+      const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+      return Number(pf.needsUserAttempts ?? 0) >= 2;
+    });
+    if (e13) throw new Error(e13.message);
+    if (candidats.length) {
+      const uids = [...new Set(candidats.map((j) => String(j.user_id)))];
+      const { data: profs } = await supabase.from("profiles").select("id, email").in("id", uids);
+      const parId = new Map((profs ?? []).map((p: Record<string, unknown>) => [String(p.id), String(p.email ?? "")]));
+      for (const j of candidats) {
+        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const essais = Number(pf.needsUserAttempts ?? 0);
+        const cause = String(j.error ?? "").replace(/\s+/g, " ").slice(0, 110);
+        tentativesEnCours.push(
+          `${parId.get(String(j.user_id)) ?? j.user_id} — [${j.platform}/${j.action}] « ${String(j.title ?? "").slice(0, 40)} » ` +
+          `tentative ${essais}/5 depuis le ${String(j.created_at).slice(0, 10)} — ${cause}`,
+        );
+      }
+      tentativesEnCours.sort();
+    }
+  } catch (e) {
+    tentativesEnCours.push(`Relevé des tentatives en cours illisible (${String((e as Error)?.message ?? e)}).`);
+  }
+
   const counts = {
+    tentatives_en_cours: tentativesEnCours.length,
     failed_24h: (failed ?? []).length,
     stuck_processing: stuck.length,
     delete_overdue: (deletesOverdue ?? []).length,
@@ -642,6 +684,20 @@ serve(async (req) => {
     </ul>`
   }
     ${
+    tentativesEnCours.length === 0 ? "" : `
+    <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
+      🔁 Jobs qui brûlent leurs tentatives (${tentativesEnCours.length})
+    </h2>
+    <p style="margin:0 0 8px;font-size:12px;font-family:sans-serif;color:#6B7280;">
+      Ré-armés en 'pending' après un échec récupérable : ils ne sont NI dans les failed du jour,
+      NI dans les processing bloqués, et la section « pending 48 h » ne les verra que dans deux
+      jours. Au 5ᵉ essai ils passeront en failed. C'est le moment de regarder la cause.
+    </p>
+    <ul style="margin:0;padding:0 0 0 18px;">
+      ${tentativesEnCours.map((a) => `<li style="margin:0 0 8px;font-family:sans-serif;font-size:13px;line-height:1.6;color:#B45309;">${esc(a)}</li>`).join("")}
+    </ul>`
+  }
+    ${
     pendingBloques.length === 0 ? "" : `
     <h2 style="margin:20px 0 8px;font-size:15px;font-family:sans-serif;color:#111827;">
       ⏳ Jobs pending depuis plus de 48 h (${pendingBloques.length} compte${pendingBloques.length > 1 ? "s" : ""})
@@ -692,7 +748,7 @@ serve(async (req) => {
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques})`,
+      subject: `⚠️ FillSell ops-digest — ${total} anomalie${total > 1 ? "s" : ""} (failed ${counts.failed_24h} · stuck ${counts.stuck_processing} · delete ${counts.delete_overdue} · beebs ${counts.beebs_unavailable_7d} · iap ${counts.iap_alerts} · abo ${counts.awaiting_payment} · identify ${counts.lens_identify} · email_logs ${counts.email_log_doublons + counts.email_log_echecs} · resa ${counts.reservations_expirees} · gardes ${counts.sync_gardes_graves + counts.sync_gardes_anomalies} · dressings ${counts.dressings_croises} · pending48h ${counts.pending_bloques} · tentatives ${counts.tentatives_en_cours})`,
       html,
     }),
   });

@@ -1222,7 +1222,12 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // EXTENSION_MIN_BUILD reste sur la 0.4.5 du 26/08 : ni la 0.6.20 (en review)
 // ni la 0.6.21 ne sont acceptées par le Chrome Web Store — on ne réclame
 // jamais au parc une version que personne ne peut installer.
-export const EXTENSION_LAST_COMMIT = '2026-09-07T07:38:53Z';
+// 2026-09-07T10:16:47Z = 4d80b24 (toujours 0.6.21) : filet anti-doublon avant
+// une reprise décidée par le serveur (verifier_doublon_avant_publication),
+// normalisation de l'adresse Leboncoin avant saisie (apostrophe typographique,
+// « 3bis » collé), et la 2ᵉ tentative de capture Vinted reconnaît enfin toute
+// la famille « canal coupé » (CANAL_COUPE_RE) au lieu de deux `includes`.
+export const EXTENSION_LAST_COMMIT = '2026-09-07T10:16:47Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

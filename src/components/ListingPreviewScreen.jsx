@@ -6476,30 +6476,34 @@ export default function ListingPreviewScreen({
           if (categorieIncertaine({ sourceFinale: garde.source, catalogId: catalogVinted })) {
             pf.lbcCategorieIncertaine = true;
           }
-          // ── Miroir de compatibilité du slot par clé (2026-09-07) ─────────
-          // L'app écrit chaque critère Univers/Type/Produit LBC dans
-          // lbcAspects.<clé for=> (cf. genericKnownSource). Les extensions
-          // ≤ 0.6.20 ne lisent QUE lbcProduit pour le premier label _type et
-          // SAUTENT ces clés dans leur canal générique : on recopie ici la
-          // valeur du PREMIER combobox (Univers/Type — relevé du 07/09 : sur
-          // les 6 feuilles Maison & Jardin, label[for$="_type"] atteint
-          // toujours celui-là en premier) pour qu'elles continuent de le
-          // poser. La 0.6.21 lit lbcAspects par clé et cède quand la clé y
-          // est déjà : aucune double écriture. Un lbcProduit déjà porté
-          // (route bébé posée plus bas, brouillon ancien) n'est pas touché.
-          if (!String(pf.lbcProduit ?? "").trim() && pf.lbcAspects && typeof pf.lbcAspects === "object") {
+          // ── ORDRE DES CRITÈRES DANS lbcAspects (2026-09-07) ──────────────
+          // Sur les 6 feuilles Maison & Jardin, la liste « Produit » DÉPEND de
+          // l'Univers/Type et se VIDE quand celui-ci change : poser Produit
+          // avant lui le perdrait. La 0.6.21 trie par position dans le DOM ;
+          // les versions ≤ 0.6.20 parcourent lbcAspects dans l'ordre
+          // D'INSERTION des clés — c'est-à-dire l'ordre des saisies dans
+          // l'app, qui ne garantit rien. On réordonne donc ici, une fois, à
+          // l'insert du job : Univers/Type d'abord, Produit ensuite.
+          //
+          // ⛔ ET SURTOUT : ON NE POSE PLUS DE MIROIR lbcProduit. C'était
+          // l'intention première de ce bloc, et elle était FAUSSE : sur les
+          // extensions ≤ 0.6.20, un lbcProduit non vide fait SAUTER toutes les
+          // clés `_type` du canal générique (dedieAvaitValeur), donc le
+          // « Produit » de Décoration n'aurait jamais été posé — exactement le
+          // bug qu'on corrige (job 2374ed7f : lbcProduit = « Objet décoratif »,
+          // l'Univers, et Produit resté vide). Sans miroir, ces versions
+          // posent les DEUX critères par le canal générique. lbcProduit reste
+          // réservé aux routes qui l'écrivent vraiment (Équipement bébé,
+          // Vêtements bébé, plus bas).
+          if (pf.lbcAspects && typeof pf.lbcAspects === "object") {
             const catKey = Array.isArray(pf.lbcCategoryPath) ? pf.lbcCategoryPath.join(" > ") : "";
-            const rowsLbc = genericAspectsCatalog?.leboncoin ?? [];
-            const labelDe = (k) => String(rowsLbc.find(r => r.field_key === k)?.field_label ?? "");
-            const portes = Object.entries(pf.lbcAspects)
-              .filter(([k, v]) => String(v ?? "").trim() && (/_type$/.test(k) || /_product$/.test(k)))
-              .map(([k]) => k);
-            const premier = lbcClePremierCombobox(catKey)
-              ?? portes.find(k => /_type$/.test(k) && !/^produit$/i.test(labelDe(k)))
-              ?? portes.find(k => /_type$/.test(k))
-              ?? portes[0] ?? null;
-            const valeur = premier ? String(pf.lbcAspects[premier] ?? "").trim() : "";
-            if (valeur) pf.lbcProduit = valeur;
+            const clePremier = lbcClePremierCombobox(catKey);
+            const rang = (k) => (k === clePremier ? 0 : /_type$/.test(k) && !/^decoration_type$/.test(k) ? 1 : 2);
+            const ordonne = {};
+            for (const [k, v] of Object.entries(pf.lbcAspects).sort((a, b) => rang(a[0]) - rang(b[0]))) {
+              ordonne[k] = v;
+            }
+            pf.lbcAspects = ordonne;
           }
           // Famille > Équipement bébé : Univers* est FONCTIONNEL
           // (Alimentation/Mobilité/…) et Produit* en dépend — deux critères
