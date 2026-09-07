@@ -2844,7 +2844,11 @@ export default function App({ loginOnly = false }){
     const{data:pendingRem}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, inventaire_id, listing_url, platform_fields')
       .eq('user_id',uid).eq('status','cancelled').eq('action','publish')
-      .contains('platform_fields',{pending_removal:true});
+      .contains('platform_fields',{pending_removal:true})
+      // « Plus tard » est DURABLE depuis le 07/09 : un report écrit en base
+      // sort l'annonce du bandeau pour de bon. Sans ce filtre, le bandeau
+      // revenait à chaque fetchAll — donc à chaque retour sur l'app.
+      .is('platform_fields->>pending_removal_reporte_le',null);
     setPendingRemovals(pendingRem||[]);
 
     // Annonces DISPARUES sans preuve de vente (2026-07-12) : le poll de
@@ -3473,6 +3477,54 @@ export default function App({ loginOnly = false }){
   // pending_removal est levé pour que le bandeau disparaisse ; l'extension
   // exécutera les suppressions à son prochain cycle (30 min max), en
   // DELETE_DRY_RUN tant que les 3 validations réelles n'ont pas eu lieu.
+  // ── UNE VENTE ANNULÉE ÉTEINT LE BANDEAU (2026-09-07) ───────────────────────
+  // Le bandeau « Vendu — encore en ligne sur X, retirer ? » se recalcule à
+  // CHAQUE chargement depuis la base (platform_fields.pending_removal), et
+  // fetchAll rejoue à chaque retour sur l'app. Quand une vente est ANNULÉE —
+  // acheteur qui se rétracte, vente supprimée du tableau de bord — la ligne de
+  // vente disparaît mais le drapeau, lui, restait posé : le bandeau revenait
+  // indéfiniment, et « Plus tard » ne le masquait que jusqu'au rechargement
+  // suivant. Cas réel signalé le 07/09.
+  // On éteint donc le drapeau à la source : plus de vente, plus de bandeau.
+  // ⛔ On ne RESSUSCITE aucun job : les frères restent 'cancelled'. Annuler une
+  //    vente ne remet pas des annonces en ligne — ça ne fait que retirer une
+  //    question qui n'a plus lieu d'être posée.
+  async function eteindreRetraitsEnAttente(inventaireId){
+    if(inventaireId==null)return;
+    const{data,error}=await supabase.from('cross_post_jobs')
+      .select('id,platform_fields')
+      .eq('user_id',user.id).eq('inventaire_id',inventaireId)
+      .contains('platform_fields',{pending_removal:true});
+    if(error){console.error('[venteAnnulee] lecture:',error.message);return;}
+    for(const j of data??[]){
+      // .select() après update : un update silencieusement bloqué par RLS a
+      // déjà été vécu sur profiles — on vérifie que la ligne revient.
+      await supabase.from('cross_post_jobs')
+        .update({platform_fields:{...(j.platform_fields||{}),pending_removal:false,
+          pending_removal_eteint:{motif:'vente_annulee',at:new Date().toISOString()}}})
+        .eq('id',j.id).select('id');
+    }
+    if((data??[]).length) setPendingRemovals(prev=>prev.filter(p=>!(data??[]).some(d=>d.id===p.id)));
+  }
+
+  // « Plus tard » DURABLE (2026-09-07). Avant, il ne filtrait qu'un état React :
+  // le drapeau restait en base et le bandeau revenait au chargement suivant,
+  // puis au suivant, sans fin. Il s'écrit désormais en base — le bandeau ne
+  // revient plus pour CES annonces-là. Ce n'est pas un oubli : les annonces
+  // restent retirables à tout moment depuis la fiche de l'article (« Retirer
+  // des plateformes »), c'est seulement la RELANCE automatique qui s'arrête.
+  async function reporterRetraits(group){
+    if(!group.length)return;
+    setPendingRemovals(prev=>prev.filter(p=>!group.some(g=>g.id===p.id)));
+    for(const j of group){
+      await supabase.from('cross_post_jobs')
+        .update({platform_fields:{...(j.platform_fields||{}),
+          pending_removal_reporte_le:new Date().toISOString()}})
+        .eq('id',j.id).select('id');
+    }
+    track('pending_removal_reporte',{count:group.length});
+  }
+
   async function armRemovals(group){
     if(!group.length)return;
     // removal_url_missing propagé au job delete (2026-07-22) : sans URL captée,
@@ -5986,7 +6038,7 @@ export default function App({ loginOnly = false }){
                   style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   {lang==='fr'?`Retirer (${group.length})`:`Remove (${group.length})`}
                 </button>
-                <button onClick={()=>setPendingRemovals(prev=>prev.filter(p=>!group.some(g=>g.id===p.id)))}
+                <button onClick={()=>reporterRetraits(group)}
                   style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                   {lang==='fr'?'Plus tard':'Later'}
                 </button>
@@ -7535,7 +7587,11 @@ export default function App({ loginOnly = false }){
                 </div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={async()=>{
+                    const invVente=deleteConfirm.sale?.inventaire_id??null;
                     await supabase.from('ventes').delete().eq('id',deleteConfirm.sale.id);
+                    // La vente n'existe plus : la question « retirer les autres
+                    // annonces ? » n'a plus lieu d'être posée.
+                    await eteindreRetraitsEnAttente(invVente);
                     await fetchAll(user.id);
                     setDeleteConfirm(null);
                   }} style={{flex:1,padding:"12px",background:UI.negative,border:"none",borderRadius:999,fontSize:13,fontWeight:600,color:"#fff",cursor:"pointer",fontFamily:"inherit"}}>
