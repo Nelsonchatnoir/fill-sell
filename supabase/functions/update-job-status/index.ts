@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -768,6 +769,96 @@ serve(async (req) => {
       }
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    // RÉPARATION AUTOMATIQUE DE L'ÉTAT (incident Vinted du 07/09) — SERVEUR
+    // ══════════════════════════════════════════════════════════════════════
+    // Vinted a retiré `status` du payload d'édition le 07/09 à 13h25. Depuis,
+    // la capture ne trouve plus l'état, verdict 'incomplet', et TOUTE la file
+    // de republication du parc s'arrête — 88 captures sur 88 depuis l'incident
+    // ne sont bloquées QUE par ce champ. Le garde-fou a fait son travail (rien
+    // n'a été supprimé), mais la panne vient de chez Vinted, pas du vendeur :
+    // ⛔ IL NE DOIT RIEN VOIR, RIEN SAISIR, RIEN RELANCER (consigne Nico).
+    //
+    // L'état n'est pas perdu, il a DÉMÉNAGÉ : `item_attributes[code=condition]`.
+    // La capture que l'extension vient d'écrire porte le payload natif complet
+    // — donc l'état, à sa nouvelle place. On le résout ICI, on le pose dans
+    // `republish_user_fields.etat` (canal lu par l'extension EN PRODUCTION
+    // depuis le 21/08 : ses valeurs sont fusionnées dans les libellés AVANT le
+    // calcul du verdict), et le job repart en 'pending'. Au poll suivant, la
+    // même capture est refaite avec l'état en main : verdict 'valide'.
+    // Pour le vendeur, le job n'a jamais quitté « en attente ».
+    //
+    // ⛔ ÉTAT CERTAIN, JAMAIS DEVINÉ : la valeur vient du payload Vinted de CET
+    // article, résolue par une table RELEVÉE sur 3 116 de nos captures (cf.
+    // _shared/vinted-etat.ts). Un id hors table ne rend rien et le job suit son
+    // chemin normal — une file à l'arrêt vaut mieux qu'un état faux.
+    // ⛔ PÉRIMÈTRE STRICT : republish Vinted, et l'état DOIT être le SEUL champ
+    // actionnable manquant. S'il en manque un autre, réparer ne débloquerait
+    // rien : le job part en needs_user comme avant.
+    // ⛔ BORNÉ À UNE FOIS (marqueur etat_repare_le) : si le job revient malgré
+    // la réparation, il passe en needs_user — jamais de boucle pending↔capture.
+    // ⚠️ unité : requalifier AVANT l'écriture évite le passage par un statut
+    // terminal, donc aucun trigger de solde ne tire — rien n'est re-débité.
+    let pfRepareEtat: Record<string, unknown> | null = null;
+    if (statutEffectif === "needs_user") {
+      try {
+        const pfCourant = (pfIn ?? {}) as Record<string, unknown>;
+        const cles = (champsACompleter ?? (Array.isArray(pfCourant.champs_a_completer)
+          ? (pfCourant.champs_a_completer as unknown[]).map((c) => String(c).toLowerCase())
+          : [])).filter(Boolean);
+        const ufCourant = (pfCourant.republish_user_fields ?? {}) as Record<string, unknown>;
+        const seulEtat = cles.length === 1 && cles[0] === "etat";
+        if (seulEtat && !pfCourant.etat_repare_le && !String(ufCourant.etat ?? "").trim()) {
+          const { data: jEtat } = await userClient
+            .from("cross_post_jobs")
+            .select("action, platform, inventaire_id, platform_fields")
+            .eq("id", jobId)
+            .maybeSingle();
+          const pfBase = (jEtat?.platform_fields ?? {}) as Record<string, unknown>;
+          const itemId = String(pfCourant.vinted_item_id ?? pfBase.vinted_item_id ?? "").trim();
+          if (jEtat?.action === "republish" && jEtat.platform === "vinted" && itemId) {
+            // La capture que l'extension vient d'écrire (elle POSTe la ligne
+            // AVANT d'annoncer le statut) : la plus récente de cet article.
+            const { data: caps } = await userClient
+              .from("vinted_republish_captures")
+              .select("libelles, payload, captured_at")
+              .eq("user_id", user.id)
+              .eq("vinted_item_id", itemId)
+              .order("captured_at", { ascending: false })
+              .limit(1);
+            const resolu = etatDepuisCapture((caps ?? [])[0] as { libelles?: unknown; payload?: unknown });
+            if (resolu) {
+              const pfSuivant = { ...pfCourant };
+              delete pfSuivant.champs_a_completer;
+              delete pfSuivant.needs_user_source;
+              pfRepareEtat = {
+                ...pfSuivant,
+                republish_user_fields: { ...ufCourant, etat: resolu.etat },
+                etat_repare_le: new Date().toISOString(),
+                republish_etat_fourni: {
+                  source: `capture_du_job (${resolu.source})`,
+                  etat: resolu.etat,
+                  motif: "status retiré du payload Vinted le 07/09 — état lu dans item_attributes[condition]",
+                },
+              };
+              statutEffectif = "pending";
+              messageEffectif = null;
+              champsACompleter = null;
+              raisonRequalif = `état réparé depuis ${resolu.source} (« ${resolu.etat} »)`;
+              console.log(
+                `[update-job-status] userId=${user.id} job=${jobId} — incident Vinted « status » : ` +
+                `état « ${resolu.etat} » relu dans la capture (${resolu.source}), job maintenu en attente, ` +
+                `aucune question posée au vendeur`,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        // La réparation est un confort : jamais elle n'empêche d'écrire le statut.
+        console.error("[update-job-status] réparation d'état (incident Vinted):", (e as Error)?.message ?? e);
+      }
+    }
+
     const patch: Record<string, unknown> = { status: statutEffectif };
 
     // platform_fields optionnel : l'extension envoie l'objet DÉJÀ fusionné
@@ -795,6 +886,10 @@ serve(async (req) => {
         bfcache_rearms: bfcacheRearms,
       };
     }
+
+    // Réparation d'état : elle écrase les blocs ci-dessus (elle a retiré
+    // champs_a_completer et needs_user_source — le job n'attend plus personne).
+    if (pfRepareEtat) patch.platform_fields = pfRepareEtat;
 
     // Estampille de version du build extension (handler-watch, 2026-07-16) :
     // colonne dédiée, purement diagnostique, jamais bloquante.

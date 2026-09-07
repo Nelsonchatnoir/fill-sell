@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 
 // Appelée par l'extension Chrome (background service worker) toutes les 30 min.
 // Auth : JWT utilisateur (Bearer). Les jobs sont lus via un client scoped user
@@ -908,12 +909,37 @@ serve(async (req) => {
             .eq("user_id", user.id)
             .in("inventaire_id", ids)
             .order("captured_at", { ascending: false });
-          const etatParArticle = new Map<string, { etat: string; at: string }>();
+          const etatParArticle = new Map<string, { etat: string; at: string; source: string }>();
           for (const c of (caps ?? []) as Array<Record<string, unknown>>) {
             const cle = String(c.inventaire_id);
             if (etatParArticle.has(cle)) continue; // la plus récente d'abord
             const etat = String((c.libelles as Record<string, unknown> | null)?.etat ?? "").trim();
-            if (etat) etatParArticle.set(cle, { etat, at: String(c.captured_at) });
+            if (etat) etatParArticle.set(cle, { etat, at: String(c.captured_at), source: "libelles" });
+          }
+          // ── SECONDE SOURCE : L'ÉTAT À SA NOUVELLE PLACE ────────────────────
+          // Un article dont AUCUNE capture ne porte de libellé d'état n'est pas
+          // perdu : ses captures d'aujourd'hui portent le payload natif, donc
+          // `item_attributes[code=condition]`. Mesuré le 07/09 : 88 captures
+          // ratées sur 88 le portent, avec un id de la table relevée. C'est la
+          // MÊME annonce, lue chez Vinted — jamais une valeur devinée.
+          // Requête par article (payload volumineux) et bornée à 25 par poll :
+          // le reste passe au poll suivant, la file s'écoule sans à-coup.
+          const sansLibelle = ids.filter((id) => !etatParArticle.has(String(id)));
+          for (const id of sansLibelle.slice(0, 25)) {
+            const { data: une } = await userClient
+              .from("vinted_republish_captures")
+              .select("libelles, payload, captured_at")
+              .eq("user_id", user.id)
+              .eq("inventaire_id", id)
+              .order("captured_at", { ascending: false })
+              .limit(1);
+            const ligne = (une ?? [])[0] as Record<string, unknown> | undefined;
+            const resolu = etatDepuisCapture(ligne);
+            if (resolu) {
+              etatParArticle.set(String(id), {
+                etat: resolu.etat, at: String(ligne?.captured_at ?? ""), source: resolu.source,
+              });
+            }
           }
           let fournis = 0;
           for (const j of republishServis) {
@@ -927,7 +953,7 @@ serve(async (req) => {
               republish_user_fields: { ...uf, etat: connu.etat },
               // Trace : d'où vient cet état, et de quand. Auditable en SQL.
               republish_etat_fourni: {
-                source: "capture_anterieure", etat: connu.etat,
+                source: `capture_anterieure (${connu.source})`, etat: connu.etat,
                 capture_at: connu.at, motif: "status retiré du payload Vinted le 07/09",
               },
             };
@@ -939,38 +965,18 @@ serve(async (req) => {
               `— incident Vinted « status » absent du payload (${capturesSansEtat} capture(s) sans état sur 24 h)`,
             );
           }
-          // ── ET ON RETIENT CELLES QU'ON NE PEUT PAS RÉPARER ──────────────
-          // Une republication dont l'état n'est fournissable par AUCUNE
-          // capture antérieure va, pendant l'incident, échouer à coup sûr :
-          // capture 'incomplet', passage en needs_user, une tentative
-          // consommée, et l'utilisateur voit une erreur qu'il ne peut pas
-          // corriger. Mesuré à 15h36 : 15 captures ratées en 30 minutes, toutes
-          // dans ce cas. On les laisse donc en file, intactes, jusqu'à la
-          // 0.6.21 (qui lit l'état à sa nouvelle place) ou jusqu'au retour du
-          // champ côté Vinted — la même condition d'auto-extinction gouverne
-          // les deux, personne n'a à intervenir.
-          // ⛔ L'étape 'deleted' n'est JAMAIS retenue : l'annonce est déjà hors
-          // ligne, sa recréation prime sur tout. 'captured' non plus : sa
-          // capture est faite et valide.
-          const stepDe = (j: { platform_fields: unknown }) => {
-            const s = String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_step"] ?? "");
-            return s === "captured" || s === "deleted" ? s : "a_capturer";
-          };
-          const avantRetenue = out.length;
-          out = out.filter((j) => {
-            if (j.action !== "republish" || j.platform !== "vinted") return true;
-            if (stepDe(j) !== "a_capturer") return true;
-            const uf = ((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_user_fields"] as
-              Record<string, unknown> | null;
-            return Boolean(String(uf?.["etat"] ?? "").trim()); // état en main → on sert
-          });
-          const retenus = avantRetenue - out.length;
-          if (retenus) {
-            console.log(
-              `[get-pending-jobs] userId=${user.id} : ${retenus} republication(s) RETENUE(S) — aucun état certain ` +
-              `disponible pendant l'incident Vinted, elles repartiront seules (0.6.21 ou retour du champ)`,
-            );
-          }
+          // ── PLUS AUCUNE RETENUE : LA FILE NE S'ARRÊTE PAS ────────────────
+          // Une version antérieure de ce dépannage retenait en file les
+          // republications dont l'état n'était fournissable par aucune capture
+          // antérieure. C'était une demi-panne visible du vendeur, et elle est
+          // désormais inutile : quand une capture échoue faute d'état,
+          // update-job-status relit `item_attributes[condition]` dans la
+          // capture qui vient d'être écrite, pose l'état et laisse le job en
+          // 'pending' — il repart au poll suivant, sans erreur affichée, sans
+          // question posée. Un article jamais capturé doit donc PARTIR : c'est
+          // sa première capture qui fournit son propre état.
+          // Le garde-fou, lui, n'a pas bougé : sans état certain, rien n'est
+          // supprimé — la capture reste 'incomplet' et le job attend.
         }
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }

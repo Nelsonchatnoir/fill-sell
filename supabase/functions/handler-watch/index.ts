@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -465,104 +466,98 @@ serve(async (req) => {
     console.error("[handler-watch] reprise des processing abandonnés:", (e as Error)?.message ?? e);
   }
 
-  // ══ INCIDENT VINTED « status » : DEMANDER L'ÉTAT PLUTÔT QUE RETENIR ══════
-  // (2026-09-07) Depuis que Vinted a retiré `status` du payload d'édition, une
-  // republication ne peut aboutir que si l'état vient d'ailleurs. Le serveur le
-  // fournit depuis une capture antérieure du même article (get-pending-jobs) —
-  // 332 jobs sur 440. Restent ceux dont AUCUNE trace d'état n'existe : des
-  // articles jamais capturés ni lus en détail, arrivés par la sync du dressing
-  // qui, avant la 0.6.20, ne gardait pas l'état.
-  // Les RETENIR en silence, c'est laisser la republication à moitié en panne
-  // pendant les jours de review du Chrome Web Store. Or l'utilisateur, lui,
-  // CONNAÎT l'état de son article : on le lui demande, en un geste, sur le
-  // canal qui existe déjà (republish_user_fields, lu par l'extension depuis le
-  // 21/08). Sa réponse rend la capture valide sans rien deviner.
-  // ⛔ Liste FERMÉE des 5 états de Vinted — l'utilisateur choisit, il ne tape
-  // rien : une valeur libre serait refusée par le formulaire.
-  // ⛔ Une seule question par article : le job passe en needs_user, aucune
-  // tentative n'est consommée, et l'annonce reste intacte sur Vinted.
-  // ⏳ Même auto-extinction que le dépannage : on ne pose la question que tant
-  // qu'une capture des dernières 24 h a réellement manqué l'état.
-  const ETATS_VINTED = [
-    "Neuf avec étiquette", "Neuf sans étiquette", "Très bon état", "Bon état", "Satisfaisant",
-  ];
-  let etatDemande = 0;
+  // ══ INCIDENT VINTED « status » : L'ÉTAT SE RÉPARE, IL NE SE DEMANDE PAS ══
+  // (2026-09-07) Vinted a retiré `status` du payload d'édition à 13h25 : la
+  // capture ne trouve plus l'état, verdict 'incomplet', et les republications
+  // tombent en needs_user avec un message que le vendeur ne peut PAS résoudre —
+  // son annonce est parfaitement remplie, c'est notre lecture qui a changé de
+  // place. ⛔ Il ne doit rien voir, rien saisir, rien relancer (consigne Nico).
+  //
+  // Or l'état N'EST PAS PERDU : la capture écrite au moment de l'échec porte le
+  // payload natif complet, donc `item_attributes[code=condition]`. Mesuré sur
+  // les captures de l'incident : 88 sur 88 le portent, et 88 sur 88 n'étaient
+  // bloquées QUE par l'état. On le relit donc et on RÉ-ARME le job.
+  //
+  // update-job-status répare désormais À LA VOLÉE (le job ne passe même plus
+  // par needs_user). Cette passe-ci solde le PASSIF : les republications déjà
+  // tombées avant ce correctif, qui attendraient sinon un geste impossible.
+  //
+  // ⛔ ÉTAT CERTAIN, JAMAIS DEVINÉ : la valeur vient du payload Vinted de CET
+  // article (jointure vinted_item_id), résolue par la table RELEVÉE sur 3 116
+  // de nos captures. Un id hors table ne rend rien : le job reste en
+  // needs_user, une file à l'arrêt valant mieux qu'un état faux.
+  // ⛔ Réparés SEULEMENT les needs_user dont l'état est le SEUL champ
+  // actionnable manquant, et jamais deux fois (marqueur etat_repare_le).
+  // ⚠️ needs_user → pending ne tire aucun trigger de solde (ils ne tirent que
+  // sur un statut terminal) : rien n'est re-débité.
+  let etatsRepares = 0;
   try {
-    const { data: sansEtat } = await supabase
-      .from("vinted_republish_captures")
-      .select("user_id, captured_at")
-      .gte("captured_at", new Date(now - 24 * 3600_000).toISOString())
-      .contains("champs_manquants", ["etat (libellé d'état absent du payload)"]);
-    const comptesTouches = [...new Set(((sansEtat ?? []) as Array<{ user_id: string }>).map((r) => r.user_id))];
-    if (comptesTouches.length) {
-      const { data: enFile } = await supabase
-        .from("cross_post_jobs")
-        .select("id, user_id, inventaire_id, title, platform_fields")
-        .eq("action", "republish").eq("status", "pending")
-        .in("user_id", comptesTouches)
-        .range(0, 499);
-      // deno-lint-ignore no-explicit-any
-      const candidats = ((enFile ?? []) as any[]).filter((j) => {
-        const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
-        const step = String(pf["republish_step"] ?? "");
-        if (step === "captured" || step === "deleted") return false; // capture déjà faite
-        const uf = (pf["republish_user_fields"] ?? {}) as Record<string, unknown>;
-        return !String(uf["etat"] ?? "").trim() && j.inventaire_id != null;
-      });
-      if (candidats.length) {
-        // Un état connu quelque part ? Alors get-pending-jobs le fournira : on
-        // ne dérange personne. On ne demande QUE si aucune trace n'existe.
-        const ids = [...new Set(candidats.map((j) => j.inventaire_id))];
+    const { data: bloques } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, inventaire_id, platform_fields")
+      .eq("action", "republish").eq("platform", "vinted").eq("status", "needs_user")
+      .range(0, 499);
+    // deno-lint-ignore no-explicit-any
+    const candidats = ((bloques ?? []) as any[]).filter((j) => {
+      const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+      if (pf.etat_repare_le) return false;                       // déjà réparé une fois
+      const uf = (pf.republish_user_fields ?? {}) as Record<string, unknown>;
+      if (String(uf.etat ?? "").trim()) return false;            // état déjà en main
+      const cles = Array.isArray(pf.champs_a_completer)
+        ? (pf.champs_a_completer as unknown[]).map((c) => String(c).toLowerCase())
+        : [];
+      return cles.length === 1 && cles[0] === "etat";            // l'état, et rien d'autre
+    });
+    const itemIds = [...new Set(candidats
+      .map((j) => String(((j.platform_fields ?? {}) as Record<string, unknown>).vinted_item_id ?? "").trim())
+      .filter(Boolean))];
+    if (itemIds.length) {
+      // La capture la plus récente de chaque article, par paquets de 100 :
+      // l'ordre décroissant + « premier vu gagne » suffit à la sélectionner.
+      const parItem = new Map<string, { libelles?: unknown; payload?: unknown }>();
+      for (let i = 0; i < itemIds.length; i += 100) {
         const { data: caps } = await supabase
-          .from("vinted_republish_captures").select("inventaire_id, libelles").in("inventaire_id", ids);
-        const connus = new Set(
-          // deno-lint-ignore no-explicit-any
-          ((caps ?? []) as any[])
-            .filter((c) => String(c.libelles?.etat ?? "").trim())
-            .map((c) => String(c.inventaire_id)),
-        );
-        const { data: arts } = await supabase
-          .from("inventaire").select("id, attributs").in("id", ids);
+          .from("vinted_republish_captures")
+          .select("vinted_item_id, libelles, payload, captured_at")
+          .in("vinted_item_id", itemIds.slice(i, i + 100))
+          .order("captured_at", { ascending: false });
         // deno-lint-ignore no-explicit-any
-        for (const a of (arts ?? []) as any[]) {
-          const e = a.attributs?.etat;
-          if (e?.v && ["capture", "vinted_detail", "vinted_liste", "manuel"].includes(String(e.source))) {
-            connus.add(String(a.id));
-          }
+        for (const c of (caps ?? []) as any[]) {
+          const cle = String(c.vinted_item_id);
+          if (!parItem.has(cle)) parItem.set(cle, c);
         }
-        for (const j of candidats.filter((j) => !connus.has(String(j.inventaire_id)))) {
-          const msg =
-            "Vinted ne nous transmet plus l'état de tes annonces depuis aujourd'hui (changement de leur côté, " +
-            "constaté le 07/09 à 13h25). Pour republier cet article, confirme son état en un clic : c'est la " +
-            "seule information qui manque, ton annonce est intacte sur Vinted et rien n'a été supprimé.";
-          const { error: uErr } = await supabase
-            .from("cross_post_jobs")
-            .update({
-              status: "needs_user", error: msg,
-              platform_fields: {
-                ...(j.platform_fields ?? {}),
-                needsUserField: {
-                  field_key: "etat", field_label: "État",
-                  target: { root: "republish_user_fields", key: "etat" },
-                  input_type: "dropdown", allowed_values: ETATS_VINTED, options_completes: true,
-                  platform: "vinted",
-                },
-                incident_etat_vinted: { le: new Date(now).toISOString(), motif: "status retiré du payload Vinted" },
-              },
-            })
-            .eq("id", j.id).eq("status", "pending");
-          if (!uErr) etatDemande++;
-        }
-        if (etatDemande) {
-          console.log(
-            `[handler-watch] incident Vinted « status » : état demandé à l'utilisateur sur ${etatDemande} republication(s) ` +
-            `— aucune trace d'état en base pour ces articles, un clic les débloque`,
-          );
-        }
+      }
+      for (const j of candidats) {
+        const pf = { ...((j.platform_fields ?? {}) as Record<string, unknown>) };
+        const itemId = String(pf.vinted_item_id ?? "").trim();
+        const resolu = etatDepuisCapture(parItem.get(itemId));
+        if (!resolu) continue;
+        const uf = (pf.republish_user_fields ?? {}) as Record<string, unknown>;
+        delete pf.champs_a_completer;
+        delete pf.needs_user_source;
+        pf.republish_user_fields = { ...uf, etat: resolu.etat };
+        pf.etat_repare_le = new Date(now).toISOString();
+        pf.republish_etat_fourni = {
+          source: `capture_du_job (${resolu.source})`,
+          etat: resolu.etat,
+          motif: "status retiré du payload Vinted le 07/09 — état lu dans item_attributes[condition]",
+        };
+        const { error: uErr } = await supabase
+          .from("cross_post_jobs")
+          .update({ status: "pending", error: null, platform_fields: pf })
+          .eq("id", j.id)
+          .eq("status", "needs_user");
+        if (!uErr) etatsRepares++;
+      }
+      if (etatsRepares) {
+        console.log(
+          `[handler-watch] incident Vinted « status » : ${etatsRepares} republication(s) ré-armée(s) — ` +
+          `état relu dans item_attributes[condition] de leur propre capture, aucune question posée au vendeur`,
+        );
       }
     }
   } catch (e) {
-    console.error("[handler-watch] demande d'état (incident Vinted):", (e as Error)?.message ?? e);
+    console.error("[handler-watch] réparation d'état (incident Vinted):", (e as Error)?.message ?? e);
   }
 
   // ── Reprise RAPIDE des 'processing' coupés APRÈS la suppression (2026-08-28,
@@ -1218,7 +1213,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1273,7 +1268,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1327,7 +1322,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
     headers: { "Content-Type": "application/json" },
   });
 });
