@@ -4299,6 +4299,21 @@ export default function App({ loginOnly = false }){
       // (comptabilite.js), qui soustrait les deux.
       ...(editItem.statut==='vendu'?{selling_fees:f}:{purchase_costs:f}),
       description:editItem.description||null,
+      // ── QUI A ÉCRIT CETTE DESCRIPTION ? (2026-09-07, arbitrage Nico) ───────
+      // Une description SAISIE À LA MAIN mérite le même verrou que celle de
+      // l'annonce Vinted : c'est le texte de la personne, elle peut y avoir
+      // signalé un défaut, et le réécrire l'exposerait à un litige.
+      // Le marqueur n'est posé QUE sur un geste explicite : le texte a changé
+      // dans CETTE modale d'édition. Une description simplement héritée du
+      // Lens ou de la saisie vocale n'est pas marquée — on ne devine pas son
+      // origine, et un texte d'analyse doit rester réécrit par plateforme.
+      // ⛔ Aucun rattrapage rétroactif : les descriptions déjà en base ne
+      // portent pas cette information, et rien ne permet de la reconstituer.
+      // La base arbitre : source 'manuel' = rang 5, elle prime sur tout.
+      ...(((editItem.description||'').trim()
+           && (editItem.description||'').trim() !== (items.find(i=>i.id===editItem.id)?.description||'').trim())
+        ? {attributs:{description_source:{v:'manuel',source:'manuel',at:new Date().toISOString()}}}
+        : {}),
       quantite:qty,
       // Même colonne que l'intention vocale inventory_move (moveToLocation).
       emplacement:editItem.emplacement?.trim()||null,

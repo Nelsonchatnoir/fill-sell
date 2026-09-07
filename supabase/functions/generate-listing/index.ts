@@ -1033,9 +1033,16 @@ serve(async (req) => {
     // description d'analyse — à trancher séparément, on ne devine pas ici.
     const descriptionVendeuse = (() => {
       if (body.description_verrouillee === false) return null;
-      const src = (item.attributs as Record<string, { v?: unknown }> | null | undefined)?.description_source?.v;
-      const vientDeVinted = String(src ?? "") === "vinted" || body.description_verrouillee === true;
-      if (!vientDeVinted) return null;
+      // 'vinted' = rapatriée de l'annonce ; 'manuel' = saisie à la main dans la
+      // modale d'édition (2026-09-07). Les deux sont le texte de la personne,
+      // les deux se publient tels quels. Tout le reste — description d'analyse
+      // Lens ou vocale, dont l'origine est indistinguable — reste rédigé par
+      // plateforme, comme avant.
+      const src = String(
+        (item.attributs as Record<string, { v?: unknown }> | null | undefined)?.description_source?.v ?? "",
+      );
+      const texteDeLaPersonne = src === "vinted" || src === "manuel" || body.description_verrouillee === true;
+      if (!texteDeLaPersonne) return null;
       const t = String(item.description ?? "").trim();
       return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : null;
     })();

@@ -1399,14 +1399,36 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       warnings,
       // Garde anti-nombre-nu : un « 3 » ne doit jamais matcher « 3 ans /
       // 98 cm » par contenance, ni « 36 » l'option « 36 mois / 98 cm ».
-      { sizeField: true }
+      // `composants` (2026-09-07) : Leboncoin écrit « 38 - M » là où Vinted
+      // écrit « M / 38 / 10 » — relevé live des 15 tailles de Mode >
+      // Vêtements. Les deux composants de l'option doivent se retrouver dans
+      // notre valeur, sinon champ vide (jamais la taille la plus proche).
+      { sizeField: true, composants: true }
     );
   }
   if (hasCriteria && fields.marque) {
     // Repli « Autre »/« Sans marque » (2026-08-13) : les marques de faïencerie
     // (Longwy, Gien, Badonviller, Sovirel…) sont hors liste LBC — sans repli,
     // les annonces partaient SANS marque quand LBC n'avait rien pré-rempli.
-    await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings, { skipIfPrefilled: true, fallbackValues: ["Autre", "Sans marque"] });
+    // `rechercheParFrappe` (2026-09-07) : sur la Mode, le menu Marque est VIDE
+    // à l'ouverture et ne se peuple qu'après une frappe servie par le serveur
+    // Leboncoin. Sans ça, 122 jobs sur 464 (30 j) partaient sans marque —
+    // seuls ceux que Leboncoin pré-remplissait lui-même s'en sortaient.
+    await fillCriterionSafe("marque", 'label[for$="_brand"]', fields.marque, warnings,
+      { skipIfPrefilled: true, fallbackValues: ["Autre", "Sans marque"], rechercheParFrappe: true });
+  }
+  // ── COULEUR (2026-09-07) — jamais posée jusqu'ici sur Leboncoin ───────────
+  // Relevé live : Mode > Vêtements a bien un champ `clothing_color` (21
+  // valeurs, libellés COMPOSÉS « Marine / Turquoise », « Rouge / Bordeaux »).
+  // La couleur de l'article n'y arrivait par aucun chemin — ni bloc dédié
+  // (celui-ci n'existait pas), ni canal générique (l'app ne remplit pas une
+  // liste qu'elle n'a jamais relevée). Rapprochement par COMPOSANT EXACT :
+  // « Marine » (Vinted) trouve « Marine / Turquoise » ; « Vert foncé » ne
+  // trouve rien et le champ reste vide. Pré-rempli respecté.
+  const couleurLbc = fields.colors?.[0] || fields.couleur;
+  if (hasCriteria && couleurLbc) {
+    await fillCriterionSafe("couleur", 'label[for$="_color"]', couleurLbc, warnings,
+      { skipIfPrefilled: true, composants: true });
   }
   if (hasCriteria && fields.matiere) {
     await fillCriterionSafe("matière", 'label[for$="_material"]', fields.matiere, warnings, { skipIfPrefilled: true });
@@ -1417,7 +1439,9 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // l'app (saisie manuelle du stepper) pour les critères SANS mapping dédié
   // ci-dessus. La clé est le nom sémantique du label (ex. watches_jewels_type),
   // stable contrairement aux ids React — relevé form-survey du 05/07.
-  const handledForKeys = /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$)/;
+  // `_color$` ajouté le 2026-09-07 : la couleur a désormais son bloc dédié
+  // (ci-dessus), le canal générique ne doit plus la reposer par-dessus.
+  const handledForKeys = /(_condition$|^condition$|_univers$|_universe$|_type$|^baby_clothing_category$|_size$|^clothing_st$|^baby_age$|_brand$|_material$|_color$)/;
   // ── Clé SAUTÉE mais bloc dédié resté MUET (2026-09-05, job 2e4f88f1) ──────
   // handledForKeys existe pour que le bloc dédié (produit/taille/marque…) reste
   // le seul écrivain de son critère. Mais quand ce bloc n'a RIEN reçu
@@ -1439,6 +1463,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     if (/(_size$|^clothing_st$|^baby_age$)/.test(forKey)) return !!fields.taille;
     if (/_brand$/.test(forKey)) return !!fields.marque;
     if (/_material$/.test(forKey)) return !!fields.matiere;
+    if (/_color$/.test(forKey)) return !!(fields.colors?.[0] || fields.couleur);
     return false;
   };
   if (hasCriteria && Object.keys(lbcAspectsJob).length) {
@@ -1460,7 +1485,11 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       .sort((a, b) => position(a[0]) - position(b[0]));
     for (const [forKey, val] of entrees) {
       if (handledForKeys.test(forKey) && dedieAvaitValeur(forKey)) continue;
-      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true });
+      // `composants` sur tout le canal générique (2026-09-07) : l'étage est
+      // STRICT (tous les composants de l'option présents dans notre valeur, ou
+      // notre valeur entière égale à l'un d'eux) — il ne peut rapprocher que
+      // des libellés qui désignent la même chose écrite autrement.
+      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true, composants: true });
     }
   }
 
@@ -1969,7 +1998,17 @@ function prefilledMatchesTarget(prefilled, rawValue) {
 // on tente ces options génériques (« Autre », « Sans marque ») plutôt que de
 // laisser le champ vide (annonces jocaille parties sans marque : Longwy,
 // Gien, Badonviller, Sovirel — toutes hors liste LBC).
-async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false, fallbackValues = [] } = {}) {
+// `rechercheParFrappe` (2026-09-07, champ Marque) : certains combobox de
+// Leboncoin ouvrent un menu VIDE et ne se peuplent qu'après une frappe, servie
+// par leur serveur. Relevé live : sur Mode > Vêtements, le menu de
+// `clothing_brand` ne contient AUCUNE option à l'ouverture ; taper « Zar » rend
+// « Ana Alcazar, Azzaro, Rene Lezard, Zara ». Mesure en base sur 464 jobs
+// Leboncoin des 30 derniers jours : 122 avaient le champ Marque SAUTÉ (la
+// marque n'est posée que quand Leboncoin l'a lui-même pré-remplie). Une annonce
+// sans marque se trouve moins bien : c'est de la vente perdue, tous les jours.
+// `composants` : rapprochement par composants EXACTS (« 38 - M » ⊂
+// « M / 38 / 10 », « Marine » ∈ « Marine / Turquoise »), cf. findOptionCascade.
+async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false, fallbackValues = [], rechercheParFrappe = false, composants = false } = {}) {
   try {
     const input = findCriterionInput(labelSelector);
     if (!input) {
@@ -2030,7 +2069,51 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
         if (opts.length) OPTIONS_VUES_AU_REMPLISSAGE[cle] = opts;
       }
     } catch { /* observation seulement — jamais bloquant */ }
-    let match = findOptionCascade(scope, optionSelector, rawValue, { sizeField });
+
+    // ── CHAMP À RECHERCHE : le menu ne se peuple qu'après une frappe ─────────
+    // (2026-09-07, champ Marque). Trois gardes, dans cet ordre :
+    //  1. JAMAIS si le champ porte déjà une valeur. Sur 464 jobs Leboncoin,
+    //     201 s'en sortent parce que Leboncoin a lui-même pré-rempli la
+    //     marque : typeInto VIDE le champ avant de taper, une frappe qui
+    //     échouerait ferait donc perdre un pré-rempli correct. On ne touche
+    //     qu'un champ VIDE.
+    //  2. Correspondance EXACTE seulement (aucune cascade, aucun repli
+    //     générique) : taper « Zar » rend « Ana Alcazar, Azzaro, Rene Lezard,
+    //     Zara » — prendre la première serait catastrophique. Rien d'exact,
+    //     on efface la frappe et on saute le champ, comme avant.
+    //  3. Attente BORNÉE (2,5 s) : un menu muet ne fige jamais la publication.
+    if (rechercheParFrappe && !prefilled && menu && !menu.querySelector(optionSelector)?.textContent?.trim()) {
+      await typeInto(input, String(rawValue));
+      for (let i = 0; i < 25 && !menu.querySelector(optionSelector)?.textContent?.trim(); i++) {
+        await sleep(100);
+      }
+      const cible = normalizeFuzzy(rawValue);
+      const exact = [...menu.querySelectorAll(optionSelector)]
+        .map((el) => ({ el, label: el.textContent.trim() }))
+        .find((o) => normalizeFuzzy(o.label) === cible);
+      if (exact) {
+        await humanPause();
+        exact.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await humanPause();
+        const note = `${fieldName}: « ${exact.label} » trouvé par recherche (le menu de ce champ est vide tant qu'on ne tape pas)`;
+        console.log(`[leboncoin] ${note}`);
+        warnings.push(note);
+        return true;
+      }
+      // Rien d'exact : on retire la frappe pour ne pas laisser un texte
+      // parasite dans un champ qui n'accepte que ses propres options.
+      await typeInto(input, "");
+      document.body.click();
+      await humanPause();
+      const vues = [...menu.querySelectorAll(optionSelector)].map((o) => o.textContent.trim()).filter(Boolean).slice(0, 12);
+      const note = `${fieldName}: « ${rawValue} » sans correspondance EXACTE dans la recherche Leboncoin — champ laissé vide (jamais la valeur la plus proche). Propositions vues: ${JSON.stringify(vues)}`;
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+      VALEURS_NON_RECONNUES[fieldName] = String(rawValue);
+      return false;
+    }
+
+    let match = findOptionCascade(scope, optionSelector, rawValue, { sizeField, composants });
     let valeurPosee = rawValue;
     if (!match && !prefilled) {
       // Pas d'option pour notre valeur et rien à préserver : replis génériques
@@ -2772,7 +2855,7 @@ const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
 
 // Cascade v2 identique à vinted.js : exact → option⊂valeur (la plus longue) →
 // valeur⊂option (la plus courte) → composants (et/,/&/+) → null.
-function findOptionCascade(root, optionSelector, text, { sizeField = false } = {}) {
+function findOptionCascade(root, optionSelector, text, { sizeField = false, composants = false } = {}) {
   const options = Array.from(root.querySelectorAll(optionSelector))
     .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
     .filter((o) => o.norm);
@@ -2800,6 +2883,33 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
       return !!m && m[1].replace(",", ".") === num;
     });
     if (candidats.length === 1) return { ...candidats[0], stage: "taille-num" };
+  }
+
+  // ── 1ter. COMPOSANTS EXACTS (2026-09-07, relevé live des listes LBC) ──────
+  // Leboncoin compose ses libellés là où Vinted les écrit autrement :
+  //   · taille   — LBC « 38 - M »            / Vinted « M / 38 / 10 »
+  //   · couleur  — LBC « Marine / Turquoise » / Vinted « Marine »
+  // Ce ne sont PAS des valeurs approchées : ce sont les mêmes valeurs écrites
+  // avec une autre ponctuation. On les rapproche donc par COMPOSANTS, et
+  // seulement à l'identique :
+  //   a) tous les composants de l'option se retrouvent dans notre valeur
+  //      (« 38 - M » ⊂ « M / 38 / 10 ») ;
+  //   b) ou notre valeur ENTIÈRE est l'un des composants de l'option
+  //      (« Marine » ∈ « Marine / Turquoise »).
+  // ⛔ Jamais un composant PARTIEL, jamais le plus proche : « Vert foncé » ne
+  // matche pas « Vert », « 40 - L » ne matche pas « M / 38 / 10 ». À défaut,
+  // le champ reste vide — c'est la règle du projet (leçon « 48 → L »).
+  // Activé explicitement (opts.composants) par les champs qui en ont besoin.
+  if (composants) {
+    const morceaux = (s) => String(s ?? "").split(/[/\-–—]/).map((x) => normalizeFuzzy(x)).filter(Boolean);
+    const jetonsCible = new Set(morceaux(target));
+    for (const o of options) {
+      const m = morceaux(o.norm);
+      if (!m.length) continue;
+      const tousPresents = m.length > 1 && m.every((x) => jetonsCible.has(x));
+      const valeurEstUnComposant = m.length > 1 && m.includes(target);
+      if (tousPresents || valeurEstUnComposant) return { ...o, stage: "composants-exacts" };
+    }
   }
 
   const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
