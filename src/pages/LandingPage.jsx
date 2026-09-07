@@ -285,6 +285,10 @@ const EN = {
   "Contact": "Contact",
   "Guides & blog revente": "Reselling guides & blog",
   "Mar": "Mar", "Avr": "Apr", "Mai": "May", "Juin": "Jun", "Juil": "Jul", "Août": "Aug", "Sep": "Sep",
+  "annonces restantes": "listings left",
+  "En ligne": "Live",
+  "Publier": "Publish",
+  "Short Polo Ralph Lauren": "Polo Ralph Lauren shorts",
   "Télécharger dans l'App Store": "Download on the App Store",
   "Disponible sur Google Play": "Get it on Google Play",
 };
@@ -572,14 +576,85 @@ export default function LandingPage() {
             {/* Scène : le dressing Vinted part vers les 3 autres plateformes, puis republication */}
             <div style={{ flex: "1 1 440px", minWidth: "290px", display: "flex", justifyContent: "center" }}>
               <div data-hero-stage="1" style={{ position: "relative", width: "440px", height: "454px", flexShrink: "0", borderRadius: "28px", background: "radial-gradient(120% 100% at 0% 0%,#1B6E62,transparent 60%),#10302B", boxShadow: "0 30px 66px -30px rgba(16,32,27,.6)", overflow: "hidden" }}>
-                {/* Le téléphone : la vraie app (Stock IA) */}
+                {/* ── Le téléphone : l'écran STOCK, deux articles ────────────
+                    Rendu en MARKUP, pas en capture d'écran. La capture du
+                    projet Design (uploads/IMG_7764.png) ne peut pas être
+                    récupérée entière — l'API la coupe à 256 Kio et seuls 18 %
+                    des lignes se décodent. Reconstruit à l'identique d'après
+                    la partie lisible + la maquette : en-tête « N annonces
+                    restantes » + chip Pro, puis DEUX cartes d'article, et
+                    c'est la vignette de la première qui s'envole vers les
+                    trois autres plateformes. Avantage sur une image : net à
+                    tous les zooms, ~0 octet, et les vraies photos d'articles.
+
+                    ⚠️ La vignette de la carte 1 est l'ANCRE de l'animation :
+                    elle est à (12,45) dans l'écran, soit (41,82) dans la
+                    scène. Les trois copies volantes partent de là et les
+                    deltas des keyframes fsHA/fsHB/fsHC (landing.css) sont
+                    calculés depuis ce point vers le centre des trois tuiles
+                    de destination. Bouger l'un sans l'autre casse la visée. */}
                 <div style={{ position: "absolute", left: "22px", top: "30px", width: "168px", height: "300px", background: "#10201B", borderRadius: "26px", padding: "7px", boxShadow: "0 22px 46px -22px rgba(0,0,0,.6)", animation: "fsFloat 6s ease-in-out infinite" }}>
-                  <div style={{ width: "100%", height: "100%", borderRadius: "20px", overflow: "hidden", backgroundColor: "#F6F5F1", backgroundImage: "url(/landing/app-stock.webp)", backgroundSize: "154px auto", backgroundPosition: "0 -40px", backgroundRepeat: "no-repeat" }} />
+                  <div style={{ width: "100%", height: "100%", borderRadius: "20px", overflow: "hidden", background: "#F6F5F1", display: "flex", flexDirection: "column" }}>
+                    {/* Barre d'état */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px 0", fontWeight: "700", fontSize: "7px", color: "#10201B" }}>
+                      <span>10:42</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                        <span style={{ width: "8px", height: "4px", borderRadius: "1px", border: "1px solid #10201B" }} />
+                        <span style={{ width: "10px", height: "5px", borderRadius: "1.5px", background: "#2F9E90" }} />
+                      </span>
+                    </div>
+                    {/* En-tête de l'app */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px", padding: "5px 6px 6px" }}>
+                      <img src="/icon-192x192.png" alt="" style={{ width: "14px", height: "14px", borderRadius: "4px", display: "block", flexShrink: "0" }} />
+                      <span style={{ flex: "1", minWidth: "0", background: "#EDEAE0", borderRadius: "99px", padding: "3px 6px", fontWeight: "600", fontSize: "6.5px", color: "#5C6560", whiteSpace: "nowrap", overflow: "hidden" }}>
+                        <b style={{ color: "#10201B" }}>116</b> {t("annonces restantes")}
+                      </span>
+                      <span style={{ flexShrink: "0", background: "#10302B", color: "#F2C98A", borderRadius: "99px", padding: "3px 7px", fontWeight: "700", fontSize: "6.5px" }}>{t("Pro")}</span>
+                    </div>
+                    {/* Les deux articles du stock */}
+                    {/* flex:1 + overflow:hidden : la 3e carte est COUPÉE par le
+                        bas de l'écran, comme dans une vraie liste qui défile —
+                        sinon le téléphone montrait deux cartes puis du vide. */}
+                    <div style={{ flex: "1", overflow: "hidden", display: "flex", flexDirection: "column", gap: "6px", padding: "0 6px" }}>
+                      {[
+                        { photo: "/landing/casquette-volcom.webp", titre: "Casquette beige Volcom", prix: "21,00 €" },
+                        { photo: "/landing/short-polo.webp", titre: "Short Polo Ralph Lauren", prix: "48,00 €" },
+                        { photo: "/landing/tshirt-patagonia.webp", titre: "T-shirt Patagonia noir", prix: "25,00 €" },
+                      ].map((a) => (
+                        <div key={a.titre} style={{ flexShrink: "0", display: "flex", gap: "6px", background: "#FFFFFF", border: "1px solid #EEEBE3", borderRadius: "9px", padding: "6px" }}>
+                          <div style={{ width: "40px", height: "40px", flexShrink: "0", borderRadius: "7px", backgroundImage: `url(${a.photo})`, backgroundSize: "cover", backgroundPosition: "center" }} />
+                          <div style={{ flex: "1", minWidth: "0", display: "flex", flexDirection: "column", gap: "3px" }}>
+                            <span style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: "2px", background: "#E7F4F1", color: "#1B6E62", borderRadius: "99px", padding: "1px 5px", fontWeight: "700", fontSize: "5.5px" }}>
+                              <span style={{ width: "3px", height: "3px", borderRadius: "99px", background: "#2F9E90" }} />
+                              {t("En ligne")}
+                            </span>
+                            <span style={{ fontWeight: "700", fontSize: "6.5px", color: "#10201B", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t(a.titre)}</span>
+                            <span style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                              <b style={{ fontWeight: "700", fontSize: "7px", color: "#1B6E62" }}>{a.prix}</b>
+                              <span style={{ display: "flex", gap: "1.5px", marginLeft: "auto" }}>
+                                <PlatformLogo platform="vinted" size={9} />
+                                <PlatformLogo platform="leboncoin" size={9} />
+                                <PlatformLogo platform="ebay" size={9} />
+                                <PlatformLogo platform="beebs" size={9} />
+                              </span>
+                            </span>
+                            <span style={{ display: "block", textAlign: "center", background: "linear-gradient(135deg,#2F9E90,#1B6E62)", color: "#fff", borderRadius: "5px", padding: "2.5px 0", fontWeight: "700", fontSize: "6px" }}>{t("Publier")}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Barre d'onglets */}
+                    <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-around", borderTop: "1px solid #E7E3D8", background: "#FFFFFF", padding: "5px 0 7px" }}>
+                      {[false, true, false, false, false].map((actif, i) => (
+                        <span key={i} style={{ width: "12px", height: "3px", borderRadius: "99px", background: actif ? "#2F9E90" : "#D8D3C6" }} />
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 {/* Les copies qui s'échappent du téléphone vers les 3 autres plateformes */}
-                <div style={{ position: "absolute", zIndex: "2", left: "55px", top: "114px", width: "36px", height: "36px", borderRadius: "10px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHA 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
-                <div style={{ position: "absolute", zIndex: "2", left: "55px", top: "114px", width: "36px", height: "36px", borderRadius: "10px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHB 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
-                <div style={{ position: "absolute", zIndex: "2", left: "55px", top: "114px", width: "36px", height: "36px", borderRadius: "10px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHC 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
+                <div style={{ position: "absolute", zIndex: "2", left: "41px", top: "82px", width: "40px", height: "40px", borderRadius: "7px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHA 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
+                <div style={{ position: "absolute", zIndex: "2", left: "41px", top: "82px", width: "40px", height: "40px", borderRadius: "7px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHB 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
+                <div style={{ position: "absolute", zIndex: "2", left: "41px", top: "82px", width: "40px", height: "40px", borderRadius: "7px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHC 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
                 {/* Destinations */}
                 <div style={{ position: "absolute", left: "318px", top: "88px", width: "58px", height: "58px", borderRadius: "15px", background: "rgba(246,245,241,.06)", border: "1px solid rgba(78,205,196,.28)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <PlatformLogo platform="leboncoin" size={40} />
@@ -730,7 +805,7 @@ export default function LandingPage() {
             </div>
             {/* Schéma animé : téléphone ↔ FillSell ↔ extension */}
             <div data-r="1" style={{ background: "#EDEAE0", border: "1px solid #E7E3D8", borderRadius: "26px", padding: "clamp(26px,3.5vw,46px) clamp(18px,3vw,40px)", marginBottom: "24px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "clamp(10px,2.5vw,34px)", flexWrap: "wrap" }}>
+              <div data-flow="1" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "clamp(10px,2.5vw,34px)", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", width: "150px" }}>
                   <div style={{ width: "74px", height: "120px", borderRadius: "16px", background: "#10201B", padding: "6px", boxShadow: "0 14px 30px -16px rgba(16,32,27,.5)" }}>
                     <div style={{ width: "100%", height: "100%", borderRadius: "11px", background: "#F6F5F1", display: "flex", flexDirection: "column", gap: "4px", padding: "8px 6px" }}>
@@ -745,7 +820,7 @@ export default function LandingPage() {
                     <div style={{ fontWeight: "500", fontSize: "12.5px", color: "#8A8578", lineHeight: "1.4", marginTop: "3px" }}>{t("Tu ajoutes, tu choisis, tu pilotes")}</div>
                   </div>
                 </div>
-                <svg width="86" height="30" viewBox="0 0 86 30" style={{ flexShrink: "0" }}>
+                <svg data-flow-arrow="1" width="86" height="30" viewBox="0 0 86 30" style={{ flexShrink: "0" }}>
                   <path d="M4 15h74" stroke="#D8D3C6" strokeWidth="2" strokeLinecap="round" strokeDasharray="7 7" style={{ animation: "fsDash 1.4s linear infinite" }} />
                   <path d="M70 8l8 7-8 7" fill="none" stroke="#2F9E90" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   <circle cx="4" cy="15" r="4" fill="#2F9E90" />
@@ -760,7 +835,7 @@ export default function LandingPage() {
                     <div style={{ fontWeight: "500", fontSize: "12.5px", color: "#8A8578", lineHeight: "1.4", marginTop: "3px" }}>{t("Met tes annonces en file d'attente")}</div>
                   </div>
                 </div>
-                <svg width="86" height="30" viewBox="0 0 86 30" style={{ flexShrink: "0" }}>
+                <svg data-flow-arrow="1" width="86" height="30" viewBox="0 0 86 30" style={{ flexShrink: "0" }}>
                   <path d="M4 15h74" stroke="#D8D3C6" strokeWidth="2" strokeLinecap="round" strokeDasharray="7 7" style={{ animation: "fsDash 1.4s linear infinite .3s" }} />
                   <path d="M70 8l8 7-8 7" fill="none" stroke="#2F9E90" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   <circle cx="4" cy="15" r="4" fill="#2F9E90" />

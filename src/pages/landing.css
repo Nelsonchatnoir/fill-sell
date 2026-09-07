@@ -51,9 +51,15 @@ html.lp-smooth{scroll-behavior:smooth}
 /* Scène du hero : l'annonce quitte le dressing Vinted vers les 3 autres
 plateformes, puis le cycle de republication tourne — même chorégraphie que
 l'animation Instagram. Deltas calés sur la géométrie absolue de la scène. */
-@keyframes fsHA{0%,6%{opacity:0;transform:translate(0,0) scale(.4)}12%{opacity:1;transform:translate(0,0) scale(1)}36%{opacity:1;transform:translate(274px,-15px) scale(1)}44%,100%{opacity:0;transform:translate(274px,-15px) scale(.2)}}
-@keyframes fsHB{0%,16%{opacity:0;transform:translate(0,0) scale(.4)}22%{opacity:1;transform:translate(0,0) scale(1)}46%{opacity:1;transform:translate(274px,85px) scale(1)}54%,100%{opacity:0;transform:translate(274px,85px) scale(.2)}}
-@keyframes fsHC{0%,26%{opacity:0;transform:translate(0,0) scale(.4)}32%{opacity:1;transform:translate(0,0) scale(1)}56%{opacity:1;transform:translate(274px,185px) scale(1)}64%,100%{opacity:0;transform:translate(274px,185px) scale(.2)}}
+/* Vol de la vignette d'article vers les 3 autres plateformes. Deltas
+   CALCULÉS, pas devinés : la vignette part de la carte 1 de l'écran, à
+   (41,82) dans la scène, 40px de côté — donc centre (61,102). Les tuiles de
+   destination sont à left:318 top:88/188/288, 58px — centres (347,117),
+   (347,217), (347,317). D'où (286,15), (286,115), (286,215). Déplacer la
+   vignette dans LandingPage.jsx oblige à recalculer ces six nombres. */
+@keyframes fsHA{0%,6%{opacity:0;transform:translate(0,0) scale(.4)}12%{opacity:1;transform:translate(0,0) scale(1)}36%{opacity:1;transform:translate(286px,15px) scale(1)}44%,100%{opacity:0;transform:translate(286px,15px) scale(.2)}}
+@keyframes fsHB{0%,16%{opacity:0;transform:translate(0,0) scale(.4)}22%{opacity:1;transform:translate(0,0) scale(1)}46%{opacity:1;transform:translate(286px,115px) scale(1)}54%,100%{opacity:0;transform:translate(286px,115px) scale(.2)}}
+@keyframes fsHC{0%,26%{opacity:0;transform:translate(0,0) scale(.4)}32%{opacity:1;transform:translate(0,0) scale(1)}56%{opacity:1;transform:translate(286px,215px) scale(1)}64%,100%{opacity:0;transform:translate(286px,215px) scale(.2)}}
 @keyframes fsHTA{0%,36%{opacity:0;transform:scale(.4)}44%,100%{opacity:1;transform:scale(1)}}
 @keyframes fsHTB{0%,46%{opacity:0;transform:scale(.4)}54%,100%{opacity:1;transform:scale(1)}}
 @keyframes fsHTC{0%,56%{opacity:0;transform:scale(.4)}64%,100%{opacity:1;transform:scale(1)}}
@@ -78,6 +84,17 @@ langue + connexion + CTA, soit ~971px incompressibles. */
 @media (max-width:1040px){
 .lp-root [data-nav-links],.lp-root [data-nav-desk]{display:none !important}
 .lp-root [data-burger]{display:flex !important}
+}
+/* Schéma « téléphone → FillSell → ton ordinateur ». En ligne il tient sur une
+   rangée ; sur téléphone le `flex-wrap` du design faisait retomber les flèches
+   À CÔTÉ des blocs, pointant vers le vide. Sous 760px la suite passe en
+   COLONNE et les flèches pivotent d'un quart de tour pour désigner le bloc
+   suivant. Une rotation ne change pas la boîte de mise en page (la flèche
+   reste 56×20) : les marges verticales réservent la place qu'occupe la
+   flèche une fois tournée. */
+@media (max-width:760px){
+.lp-root [data-flow]{flex-direction:column !important;gap:2px !important}
+.lp-root [data-flow-arrow]{width:56px !important;height:20px !important;transform:rotate(90deg);margin:18px 0 !important}
 }
 /* Bandeau de preuve : le design le pose en `nowrap`. Ses deux puces restantes
    (la 3e est déjà masquée sous 1100px) pèsent ~500px, contre ~280px utiles sur
