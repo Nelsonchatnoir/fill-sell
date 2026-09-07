@@ -22,7 +22,7 @@ import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcClePremierCombobox } from "../utils/lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "../utils/categorieGardeFou";
-import { resoudreParMot } from "../utils/categorieParMot";
+import { resoudreParMot, candidatsParMot } from "../utils/categorieParMot";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
@@ -6572,6 +6572,66 @@ export default function ListingPreviewScreen({
         );
       }
 
+      // ══ ÉTAPE 3 : LA MACHINE PROPOSE, L'IA TRANCHE ════════════════════════
+      // Le mot n'est pas tombé EXACT sur cette plateforme. Plutôt que de
+      // retomber tout de suite sur l'emoji, on RATISSE des candidates dans
+      // l'arbre relevé (dix à vingt feuilles qui ressemblent, de près ou de
+      // loin) et on demande à l'IA laquelle — resolve-categorie vérifie côté
+      // serveur que sa réponse est bien l'une des candidates ENVOYÉES et rend
+      // la candidate d'origine.
+      // Pourquoi pas un rapprochement de lettres : mesuré sur l'arbre réel,
+      // « bonnet » ne ressemble qu'à « Bonnets de bain » (Natation) et
+      // « Bonnets de douche » (Beauté). Un score choisirait l'un des deux ;
+      // seul un modèle sait qu'un bonnet de bébé n'est ni l'un ni l'autre.
+      // ⛔ AUCUN APPEL s'il n'y a rien à choisir : zéro candidate → on garde
+      //    l'emoji, et la règle n°2 laissera la plateforme trancher. Le coût
+      //    ne se paie donc que sur les cas difficiles.
+      // ⛔ L'IA a le droit de répondre « aucune » : on ne pose alors rien.
+      // ⛔ Une source CERTAINE n'est jamais écrasée : on ne ratisse que pour
+      //    les plateformes sans correspondance exacte.
+      if (activeAiObjet) {
+        const aRatisser = plateformesAPublier.filter(p => !categorieParMotParPf[p]);
+        const candidats = {};
+        await Promise.all(aRatisser.map(async (platform) => {
+          const pfE = edited[platform]?.platform_fields ?? {};
+          try {
+            const liste = await candidatsParMot(activeAiObjet, platform, {
+              genre: pfE.genre || pfE.univers || autoGenre || "",
+              titre: edited[platform]?.title || initialListing?.titre || "",
+            });
+            if (liste.length) candidats[platform] = liste.map(c => ({ chemin: c.chemin, id: c.id }));
+          } catch { /* arbre indisponible : on garde l'icône */ }
+        }));
+        if (Object.keys(candidats).length) {
+          try {
+            const { data: choixIa } = await supabase.functions.invoke("resolve-categorie", {
+              body: {
+                titre: initialListing?.titre || edited[plateformesAPublier[0]]?.title || "",
+                attributs: {
+                  genre: sharedFields.genre || autoGenre || "",
+                  taille: sharedFields.taille || initialListing?.taille || "",
+                  marque: sharedFields.marque || initialListing?.marque || "",
+                  objet: activeAiObjet,
+                },
+                candidats,
+              },
+            });
+            for (const [platform, choix] of Object.entries(choixIa?.choix ?? {})) {
+              if (!Array.isArray(choix?.chemin) || !choix.chemin.length) continue;
+              categorieParMotParPf[platform] = { chemin: choix.chemin, id: choix.id ?? null, choisiParIa: true };
+            }
+            const retenus = Object.keys(choixIa?.choix ?? {});
+            console.log(
+              `[publish] mot « ${activeAiObjet} » — l'IA a choisi dans nos candidats sur ` +
+              `${retenus.length ? retenus.join(", ") : "aucune plateforme"}` +
+              (choixIa?.refuses?.length ? ` (réponses hors liste ignorées : ${choixIa.refuses.join(", ")})` : "")
+            );
+          } catch (e) {
+            console.warn("[publish] resolve-categorie injoignable — on garde l'icône :", e?.message ?? e);
+          }
+        }
+      }
+
       const rows = plateformesAPublier.map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
         // Photos du JOB, par plateforme. Identiques à processedPhotos partout —
@@ -6655,8 +6715,11 @@ export default function ListingPreviewScreen({
         // vient du libellé exact d'une feuille relevée, pas d'un emoji.
         const parMot = categorieParMotParPf[platform] ?? null;
         if (parMot) {
-          pf.categorie_source = "mot_objet_arbre";
-          pf.categorie_par_mot = { mot: activeAiObjet, chemin: parMot.chemin, id: parMot.id ?? null };
+          pf.categorie_source = parMot.choisiParIa ? "ia_parmi_candidats" : "mot_objet_arbre";
+          pf.categorie_par_mot = {
+            mot: activeAiObjet, chemin: parMot.chemin, id: parMot.id ?? null,
+            ...(parMot.choisiParIa ? { choisi_par_ia: true } : {}),
+          };
           delete pf.categorie_incertaine;
         }
         if (platform === "leboncoin") {

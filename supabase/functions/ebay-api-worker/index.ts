@@ -521,16 +521,25 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
     // ⛔ La garde famille LIVRES plus bas n'est pas court-circuitée : un livre
     //    a une source certaine (famille_livres), donc pas de drapeau.
     if (pf.categorie_incertaine === true && top && top.id !== mappee) {
-      return {
-        id: top.id,
-        chemin: top.chemin,
-        source: "suggestion_categorie_incertaine",
-        detail:
-          `notre catégorie « ${cheminMappe.join(" > ") || mappee} » ne venait que de l'icône de l'IA ` +
-          `(categorie_source=${String(pf.categorie_source ?? "ia")}) ; eBay propose ` +
-          `« ${top.chemin.join(" > ")} » (${top.id}) — la plateforme fait foi`,
-        suggestions: resume,
-      };
+      // ⚠️ PAS « la première de la liste » : eBay en propose jusqu'à cinq, et
+      // la bonne n'est pas toujours en tête (chapka : 3e sur 5). L'IA tranche
+      // DANS la liste, sa réponse vérifiée par resolve-categorie.
+      const retenu = await choisirParmiSuggestions(suggestions, {
+        titre, genre: pf.genre as string | null, taille: pf.taille as string | null,
+        marque: pf.marque as string | null,
+      });
+      if (retenu) {
+        return {
+          id: retenu.id,
+          chemin: retenu.chemin,
+          source: retenu.id === top.id ? "suggestion_categorie_incertaine" : "suggestion_choisie_par_ia",
+          detail:
+            `notre catégorie « ${cheminMappe.join(" > ") || mappee} » ne venait que de l'icône de l'IA ` +
+            `(categorie_source=${String(pf.categorie_source ?? "ia")}) ; retenu « ${retenu.chemin.join(" > ")} » ` +
+            `(${retenu.id}) parmi les ${suggestions.length} suggestions eBay`,
+          suggestions: resume,
+        };
+      }
     }
     // Règle v2 PROPOSÉE (désactivée tant que Nico n'a pas tranché) — relevé du
     // 06/09 sur les 5 suggestions eBay :
@@ -627,6 +636,93 @@ async function mesurerCategories(admin: SupabaseClient, env: EbayEnv, body: { eb
   }
   return { articles: lignes.length, needs_user: lignes.filter((l) => String(l.verdict).startsWith("needs_user")).length, lignes };
 }
+// ── ÉTAPE 3 : L'IA CHOISIT PARMI LES SUGGESTIONS D'eBAY ────────────────────
+// eBay ne rend pas UNE suggestion, il en rend jusqu'à cinq. Prendre la
+// première, c'est remplacer une erreur grossière par une erreur discrète — et
+// une erreur discrète ne se voit plus passer. Cas mesuré, chapka Obaibi
+// (07/09) : eBay proposait dans l'ordre Pyjamas (260026), Déguisements (312),
+// « Bébé : accessoires > Casquettes, chapeaux » (163224 — LA BONNE),
+// Hauts/T-shirts (260031), « Garçon : accessoires > Chapeaux » (57884 — juste
+// aussi). La bonne réponse était TROISIÈME.
+//
+// On délègue donc le choix à resolve-categorie, qui vérifie côté serveur que
+// la réponse est bien l'une des candidates ENVOYÉES et rend la candidate
+// D'ORIGINE — chemin et identifiant indissociables, jamais du texte régénéré.
+// « Aucune » est une réponse légitime : on retombe alors sur le comportement
+// d'avant (la n°1), qui reste meilleur que rien.
+async function choisirParmiSuggestions(
+  suggestions: Array<{ id: string; chemin: string[] }>,
+  contexte: { titre: string; genre?: string | null; taille?: string | null; marque?: string | null },
+): Promise<{ id: string; chemin: string[] } | null> {
+  if (suggestions.length < 2) return suggestions[0] ?? null;
+  const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`;
+  const secret = Deno.env.get("CRON_SECRET") ?? "";
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-cron-secret": secret },
+      body: JSON.stringify({
+        titre: contexte.titre,
+        attributs: { genre: contexte.genre, taille: contexte.taille, marque: contexte.marque },
+        candidats: {
+          ebay: suggestions.slice(0, 10).map((s) => ({ chemin: s.chemin, id: s.id, source: "eBay" })),
+        },
+      }),
+    });
+    if (!r.ok) { console.warn(`[ebay-api-worker] resolve-categorie HTTP ${r.status}`); return suggestions[0]; }
+    const data = await r.json() as { choix?: { ebay?: { chemin: string[]; id: string | null } } };
+    const choisi = data.choix?.ebay;
+    if (choisi?.id) return { id: String(choisi.id), chemin: choisi.chemin };
+    // « aucune » : on garde la n°1 d'eBay — c'est le comportement d'avant, et
+    // il vaut toujours mieux que pas de catégorie du tout.
+    return suggestions[0];
+  } catch (e) {
+    console.warn("[ebay-api-worker] resolve-categorie injoignable :", e);
+    return suggestions[0];
+  }
+}
+
+// ── RÉTRO-TEST (consigne Nico, 07/09 soir) : sur des articles RÉELS déjà
+// partis, ce que le choix arbitré aurait donné contre ce qui est parti.
+// « Je veux voir qu'il fait mieux, pas qu'il fait différent. »
+// N'écrit RIEN : ni job, ni annonce, ni cache. Lecture seule + un appel IA
+// par article.
+async function backtestCategorie(admin: SupabaseClient, env: EbayEnv, body: { limit?: number }): Promise<Record<string, unknown>> {
+  const limite = Math.min(40, Number(body.limit) || 15);
+  const { data: jobs } = await admin.from("cross_post_jobs")
+    .select("id, user_id, title, status, platform_fields, created_at")
+    .eq("platform", "ebay").in("action", ["publish"]) 
+    .not("platform_fields->>ebayCategoryId", "is", null)
+    .order("created_at", { ascending: false }).limit(limite);
+  const lignes: Record<string, unknown>[] = [];
+  let identique = 0, change = 0, sansSuggestion = 0;
+  for (const j of (jobs ?? []) as Array<{ id: string; user_id: string; title: string; status: string; platform_fields: PlatformFields }>) {
+    const pf = j.platform_fields ?? {};
+    const partie = String(pf.ebayCategoryId ?? "");
+    const cheminParti = Array.isArray(pf.ebayCategoryPath) ? (pf.ebayCategoryPath as string[]).join(" > ") : "";
+    const jeton = await obtenirAccessToken(admin, j.user_id);
+    if (!jeton.ok) { lignes.push({ id: j.id, titre: j.title, erreur: `jeton : ${jeton.motif}` }); continue; }
+    const sugg = await suggererCategories(env, jeton.token, j.title ?? "");
+    if (!sugg.length) { sansSuggestion++; lignes.push({ id: j.id, titre: j.title, partie: `${partie} ${cheminParti}`, suggestions: 0 }); continue; }
+    const retenu = await choisirParmiSuggestions(sugg, {
+      titre: j.title ?? "", genre: pf.genre as string | null,
+      taille: pf.taille as string | null, marque: pf.marque as string | null,
+    });
+    const memeQuePremiere = retenu?.id === sugg[0].id;
+    if (retenu?.id === partie) identique++; else change++;
+    lignes.push({
+      id: j.id, statut: j.status, titre: j.title,
+      partie: `${partie} ${cheminParti}`,
+      suggestions: sugg.map((s, i) => `${i + 1}. ${s.id} ${s.chemin.join(" > ")}`),
+      premiere_suggestion: `${sugg[0].id} ${sugg[0].chemin.join(" > ")}`,
+      choix_ia: retenu ? `${retenu.id} ${retenu.chemin.join(" > ")}` : null,
+      ia_suit_la_premiere: memeQuePremiere,
+      verdict: retenu?.id === partie ? "inchangé" : "CHANGÉ",
+    });
+  }
+  return { articles: lignes.length, inchange: identique, change, sans_suggestion: sansSuggestion, lignes };
+}
+
 function dejaTrancheSource(pf: PlatformFields): string {
   return (pf as Record<string, unknown>).ebayCategorieAttente ? "mapping_confirme_par_relance" : "mapping";
 }
@@ -843,6 +939,7 @@ Deno.serve(async (req) => {
   const env = lireEnvEbay();
   if (body.action === "mesure_aspects") return json(await mesurerAspects(admin, env, body));
   if (body.action === "mesure_categories") return json(await mesurerCategories(admin, env, body));
+  if (body.action === "backtest_categorie") return json(await backtestCategorie(admin, env, body));
   if (body.action === "mesure_annonces") return json(await mesurerAnnonces(env, body as { ids?: string[] }));
 
   // ── Chien de garde (Nico, 06/09 soir) : un job pris (processing) depuis

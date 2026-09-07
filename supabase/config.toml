@@ -107,6 +107,12 @@ verify_jwt = true
 [functions.normalize-title]
 verify_jwt = true
 
+# resolve-categorie : DEUX appelants — l'app (JWT utilisateur) et le worker
+# eBay (secret cron, il n'a pas de session). L'authentification est faite DANS
+# la fonction, qui refuse tout ce qui n'est ni l'un ni l'autre.
+[functions.resolve-categorie]
+verify_jwt = false
+
 [functions.lot-distribute]
 verify_jwt = true
 

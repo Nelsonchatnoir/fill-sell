@@ -183,4 +183,56 @@ export async function resoudreParMot(mot, plateforme, { genre = "" } = {}) {
   };
 }
 
+/**
+ * ÉTAPE A du choix assisté : la machine RATISSE, elle ne choisit pas.
+ *
+ * Rend jusqu'à `max` feuilles qui ressemblent au mot, de près ou de loin. Le
+ * tri sert seulement à garder les plus plausibles quand il y en a trop — il ne
+ * vaut PAS décision : c'est l'IA qui tranchera dans cette liste (étape B), et
+ * elle seule sait qu'une chapka n'est pas un bonnet de douche. Un rapprochement
+ * par ressemblance de lettres se planterait ici : mesuré sur l'arbre réel,
+ * « bonnet » ne rend que « Bonnets de bain » (Natation) et « Bonnets de
+ * douche » (Beauté).
+ *
+ * ⛔ Seuls les jetons du MOT font entrer une feuille dans la liste. Ceux du
+ *    titre ne servent qu'à RE-CLASSER : sans ça, « bébé » d'un titre ferait
+ *    entrer des centaines de feuilles et la liste ne voudrait plus rien dire.
+ * ⛔ Le genre filtre comme partout : une branche genrée incompatible sort.
+ * ⛔ Un mot inconnu de l'arbre rend une liste VIDE — et c'est la bonne réponse.
+ *    Les suggestions de la plateforme, elles, sont ajoutées par l'appelant qui
+ *    les possède (le worker eBay les a ; l'app ne les a pas).
+ */
+export async function candidatsParMot(mot, plateforme, { genre = "", titre = "", max = 20 } = {}) {
+  const jm = jetons(mot);
+  if (!jm.length) return [];
+  const feuilles = await feuillesDe(plateforme);
+  if (!feuilles.length) return [];
+
+  const g = genreNormalise(genre);
+  const accepte = g ? new Set(ACCEPTE[g] ?? [g]) : null;
+  const jt = new Set(jetons(titre));
+  const jmSet = new Set(jm);
+
+  const notes = [];
+  for (const f of feuilles) {
+    if (accepte) {
+      const b = brancheGenre(f.chemin);
+      if (b !== null && !accepte.has(b)) continue;
+    }
+    const jf = jetons(f.chemin[f.chemin.length - 1]);
+    if (!jf.length) continue;
+    let communsMot = 0;
+    for (const t of jf) if (jmSet.has(t)) communsMot++;
+    if (!communsMot) continue; // le MOT seul fait entrer
+    let communsTitre = 0;
+    for (const t of jf) if (jt.has(t)) communsTitre++;
+    // Une feuille courte qui partage tout est plus précise qu'une feuille
+    // fourre-tout qui partage un mot sur six.
+    const precision = communsMot / jf.length;
+    notes.push({ f, score: communsMot * 3 + communsTitre + precision });
+  }
+  notes.sort((a, b) => b.score - a.score);
+  return notes.slice(0, max).map((n) => ({ chemin: n.f.chemin, id: n.f.id }));
+}
+
 export const _internes = { memeEnsemble, inclus, genreNormalise, ACCEPTE, VIDES };
