@@ -160,6 +160,13 @@ async function releverChecklist(admin: SupabaseClient, env: EbayEnv, token: stri
 // ici — il est résolu depuis la liste GeteBayDetails d'eBay pour le mode de
 // l'app (cf. _shared/ebay-shipping.ts) et passé en `serviceCode`. Le 06/09,
 // « FR_Colissimo » codé en dur avait valu « Échec de la validation LSAS ».
+// ⚠️ Ces corps ne servent QU'À LA CRÉATION (POST). eBay y applique les défauts
+// des champs absents — c'est pourquoi les politiques du 06/09 sont passées sans
+// globalShipping. Le jour où une MISE À JOUR (PUT) est ajoutée pour le paiement
+// ou les retours, elle devra envoyer un corps COMPLET (« this call overwrites
+// the existing policy »), sinon elle butera sur le même « field is null » que
+// la livraison le 07/09, et effacera au passage description / instructions /
+// overrides que le vendeur aurait posés. Voir corpsLivraison.
 function corpsCreation(type: TypePolitique, options: Record<string, unknown>, serviceCode?: string) {
   const nom = String(options.nom ?? "").trim().slice(0, 64) || `FillSell ${type}`;
   const base = { name: nom, marketplaceId: MARKETPLACE, categoryTypes: [{ name: "ALL_EXCLUDING_MOTORS_VEHICLES" }] };
@@ -202,11 +209,56 @@ function corpsCreation(type: TypePolitique, options: Record<string, unknown>, se
 // en entier ou pas du tout, il n'y a pas de politique à moitié écrite.
 const NOM_POLITIQUE_LIVRAISON = "Livraison FillSell";
 
+// ── « Global shipping field is null » (refus relevé le 07/09 au soir, compte
+// nelsonthecat, mise à jour d'une politique existante) ─────────────────────
+// CAUSE, dans la doc d'eBay elle-même (updateFulfillmentPolicy, PUT
+// /fulfillment_policy/{id}, sell_account_v1_oas3) : « Supply a COMPLETE policy
+// payload with the updates you want to make; this call OVERWRITES the existing
+// policy with the new details specified in the payload. »
+// Un PUT n'est donc pas une mise à jour partielle : tout champ absent est
+// écrasé, et les booléens absents arrivent à null — d'où le refus. (Le POST de
+// création, lui, applique les défauts : c'est pourquoi les créations du 06/09
+// étaient passées avec le même corps.)
+// ⚠️ La spec ne déclare AUCUN champ `required` pour ces trois schémas — la
+// vérité est dans la phrase ci-dessus et dans le refus d'eBay, pas dans le JSON.
+//
+// DEUX conséquences, traitées ici :
+//  1. les quatre booléens du schéma sont TOUJOURS envoyés, à leur valeur
+//     documentée « non activé » :
+//       globalShipping  false — « If set to false or if the field is omitted,
+//                        the seller has to specify any international shipping
+//                        service options ». Le programme d'expédition
+//                        internationale n'est donc PAS activé, et la doc
+//                        précise qu'il ne concerne de toute façon que le
+//                        marché britannique (EBAY_GB) ;
+//       freightShipping false — « Default: false » (fret, objets > 150 lbs) ;
+//       localPickup     false — « Default: false ». On ne l'active pas : la
+//                        remise en main propre passe par le service
+//                        FR_RemiseEnMainPropre, un seul mécanisme ;
+//       pickupDropOff   false — « Click and Collect », réservé aux grands
+//                        distributeurs. Non activé.
+//  2. sur une MISE À JOUR, les champs que cet écran ne gère pas sont REPRIS
+//     tels qu'eBay les rend (description, shipToLocations) : sans ça, le PUT
+//     effacerait en silence ce que le vendeur y avait mis. Et si l'un des
+//     quatre booléens était déjà à true chez lui, sa valeur est conservée —
+//     on ne décide à sa place ni dans un sens ni dans l'autre.
+const BOOLEENS_POLITIQUE = ["globalShipping", "freightShipping", "localPickup", "pickupDropOff"] as const;
+const CHAMPS_REPRIS = ["description", "shipToLocations"] as const;
+
 interface ServiceDemande { code: string; frais: number }
 
-function corpsLivraison(demandes: ServiceDemande[], services: ServiceLivraison[], delaiJours: number) {
+function corpsLivraison(demandes: ServiceDemande[], services: ServiceLivraison[], delaiJours: number, existant: Record<string, unknown> | null) {
   const delai = Math.min(3, Math.max(1, delaiJours || 2));
+  const repris: Record<string, unknown> = {};
+  for (const champ of CHAMPS_REPRIS) {
+    const v = existant?.[champ];
+    if (v !== undefined && v !== null) repris[champ] = v;
+  }
+  for (const b of BOOLEENS_POLITIQUE) {
+    repris[b] = typeof existant?.[b] === "boolean" ? existant[b] as boolean : false;
+  }
   return {
+    ...repris,
     name: NOM_POLITIQUE_LIVRAISON,
     marketplaceId: MARKETPLACE,
     categoryTypes: [{ name: "ALL_EXCLUDING_MOTORS_VEHICLES" }],
@@ -391,11 +443,16 @@ Deno.serve(async (req) => {
         demandes.push({ code, frais: Number.isFinite(frais) ? Math.max(0, frais) : 0 });
       }
 
-      const corps = corpsLivraison(demandes, services, Number(body.delai_jours ?? 2));
       // Politique FillSell déjà chez eBay ? On la met à jour ; sinon on la crée.
       // 404 = elle n'existe pas encore, c'est un état normal, pas une erreur.
+      // getFulfillmentPolicyByName rend la politique COMPLÈTE : c'est elle qui
+      // fournit les champs à reprendre pour que le PUT n'écrase rien.
       const existante = await appelEbay(env, token, `${TYPES.fulfillment.chemin}/get_by_policy_name?marketplace_id=${MARKETPLACE}&name=${encodeURIComponent(NOM_POLITIQUE_LIVRAISON)}`);
-      const idExistant = existante.http === 200 ? String((existante.json as Record<string, unknown> | null)?.fulfillmentPolicyId ?? "") : "";
+      const dejaLa = existante.http === 200 && existante.json && typeof existante.json === "object"
+        ? existante.json as Record<string, unknown>
+        : null;
+      const idExistant = String(dejaLa?.fulfillmentPolicyId ?? "");
+      const corps = corpsLivraison(demandes, services, Number(body.delai_jours ?? 2), dejaLa);
       const r = idExistant
         ? await appelEbay(env, token, `${TYPES.fulfillment.chemin}/${idExistant}`, { method: "PUT", body: corps })
         : await appelEbay(env, token, TYPES.fulfillment.chemin, { method: "POST", body: corps });
