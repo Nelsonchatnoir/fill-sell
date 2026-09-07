@@ -1910,11 +1910,26 @@ serve(async (req) => {
     }
 
     const t = Date.now();
+    // ── UN JOB RETENU PAR NOTRE PROPRE RÉGULATION N'EST PAS UN JOB OUBLIÉ ────
+    // (2026-09-07) Le passage de 10:00 a classé claeys59450 en
+    // « cas3_bug_extension » avec 37 jobs et l'extension vue à 10:00 — pendant
+    // que ses republications passaient normalement (16 réussies, la dernière à
+    // 10:19). Il n'y avait aucun bug : ces 37 jobs étaient RETENUS EXPRÈS par
+    // get-pending-jobs, qui sert les republications article par article
+    // (capture → retrait → recréation, 1 job par étape et par cycle) et
+    // applique un plafond quotidien par palier. Ils restent donc 'pending' avec
+    // handler_build NULL pendant des heures, par construction.
+    // Deux exclusions, toutes deux mesurables sur le job lui-même :
+    //   · action 'republish' — c'est la file régulée ; elle ne s'oublie pas,
+    //     elle s'écoule. (action NULL = publication d'avant le champ.)
+    //   · next_action_after dans le futur — reprise espacée ou attente
+    //     programmée : le job a un rendez-vous, il n'attend pas un humain.
     const { data: jobs, error: jobsErr } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, platform, title, created_at")
+      .select("id, user_id, platform, title, created_at, platform_fields")
       .eq("status", "pending")
       .is("handler_build", null)
+      .or("action.is.null,action.eq.publish")
       .lte("created_at", new Date(t - RELANCE_AGE_MIN_H * 3_600_000).toISOString())
       .gte("created_at", new Date(t - RELANCE_AGE_MAX_H * 3_600_000).toISOString())
       .order("created_at", { ascending: true });
@@ -1926,6 +1941,10 @@ serve(async (req) => {
     // Un seul mail par utilisateur, qui mentionne TOUS ses jobs en attente.
     const parUser = new Map<string, any[]>();
     for (const j of (jobs ?? []) as any[]) {
+      // Rendez-vous dans le futur (reprise espacée, attente de boutique,
+      // espacement anti-robot) : ce job n'attend personne.
+      const rdv = Date.parse(String(j.platform_fields?.next_action_after ?? ""));
+      if (Number.isFinite(rdv) && rdv > t) continue;
       if (!parUser.has(j.user_id)) parUser.set(j.user_id, []);
       parUser.get(j.user_id)!.push(j);
     }
@@ -1953,9 +1972,28 @@ serve(async (req) => {
 
     const apercu: any[] = [];
     const cas3: any[] = [];
+    const fileEnCours: any[] = [];
     const enAttente: any[] = [];
     const seuilFrais = t - RELANCE_EXT_FRAICHE_H * 3_600_000;
     const seuilCooldown = t - RELANCE_COOLDOWN_H * 3_600_000;
+
+    // ── PREUVE DE TRAVAIL RÉCENT (2026-09-07) ───────────────────────────────
+    // « L'extension a été vue » ne dit pas qu'elle est en panne sur CES jobs :
+    // elle peut être en train d'écouler une file régulée. La preuve qu'elle
+    // travaille, c'est une publication ABOUTIE dans les deux dernières heures.
+    // Sans elle, « cas 3 = bug de notre côté » se déclenchait sur des comptes
+    // qui publiaient très bien (claeys59450, 07/09 à 10:00 : 16 republications
+    // réussies dont une à 10:19).
+    const travailRecentPar = new Set<string>();
+    if (parUser.size > 0) {
+      const { data: recents } = await supabase
+        .from("cross_post_jobs")
+        .select("user_id")
+        .in("user_id", [...parUser.keys()])
+        .eq("status", "published")
+        .gte("published_at", new Date(t - 2 * 3_600_000).toISOString());
+      for (const r of (recents ?? []) as any[]) travailRecentPar.add(r.user_id as string);
+    }
 
     for (const [userId, jobsUser] of parUser) {
       const prof = profilParId.get(userId);
@@ -1970,6 +2008,19 @@ serve(async (req) => {
       // pour un idiot. On journalise (une ligne par job, jamais dupliquée) et
       // on ne réserve RIEN, pour que le job reparte normalement en cas 2 si
       // l'extension redevient muette.
+      // L'extension a publié dans les 2 h : la file s'écoule, ce n'est ni un
+      // oubli de l'utilisateur ni un bug de notre côté. On le NOTE (pour la
+      // lecture du digest) et on ne réserve rien — le job repartira en cas 2
+      // si l'extension redevient muette, ou s'écoulera tout seul.
+      if (travailRecentPar.has(userId)) {
+        fileEnCours.push({
+          email: prof.email, jobs: jobsUser.length,
+          extension_vue: prof.extension_last_seen_at ? dateParis(prof.extension_last_seen_at) : null,
+          job_le_plus_vieux: dateParis(jobsUser[0].created_at),
+        });
+        continue;
+      }
+
       if (vue !== null && vue >= seuilFrais) {
         if (!dryRun) {
           await supabase.from("job_relaunch_log").upsert(
@@ -2060,6 +2111,9 @@ serve(async (req) => {
       jobs_eligibles: jobs?.length ?? 0, utilisateurs: parUser.size,
       envoyes: sent.length, echecs: errors.length,
       cas3_bug_extension: cas3,
+      // File qui s'écoule normalement (publication aboutie dans les 2 h) :
+      // surtout PAS un bug. Séparé de cas3 depuis le 07/09.
+      file_en_cours: fileEnCours,
       en_attente_cooldown: enAttente,
       apercu: dryRun ? apercu : undefined,
       sent, errors,

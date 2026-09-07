@@ -2218,7 +2218,16 @@ async function advanceWizardTo(selector, { probeMs = 5000, maxSteps = 3 } = {}) 
   return null;
 }
 
-async function fillAddress(adresse, warnings) {
+async function fillAddress(adresseBrute, warnings) {
+  // Normalisation AVANT tout : apostrophe typographique et « 3bis » collé
+  // cassaient la saisie ET la vérification (cf. normaliserAdresseLbc).
+  const norm = normaliserAdresseLbc(adresseBrute);
+  const adresse = norm.valeur;
+  if (norm.changee) {
+    const note = `adresse: « ${String(adresseBrute).trim()} » normalisée en « ${adresse} » avant saisie (apostrophe droite, « Nbis » espacé)`;
+    console.log(`[leboncoin] ${note}`);
+    warnings.push(note);
+  }
   const input = findCriterionInput('label[for="location"]')
     || [...document.querySelectorAll("input")].find((i) => (i.placeholder || "") === "Adresse");
   if (!input) {
@@ -2344,9 +2353,19 @@ async function fillAddress(adresse, warnings) {
   if (!candidates) {
     return {
       ok: false,
+      // ⚠️ MESSAGE RÉÉCRIT LE 2026-09-07 (job 6b4e9f45) : il envoyait dans les
+      // Réglages FillSell une personne dont les Réglages Leboncoin étaient
+      // VIDES — l'adresse tapée venait de la copie enregistrée avec la
+      // publication. On dit maintenant les deux endroits, et le geste qui
+      // marche. (Depuis la même date, get-pending-jobs sert la valeur des
+      // Réglages quand elle existe : corriger puis relancer a enfin un effet.)
       error:
-        `Adresse "${adresse}" sans suggestion dans l'autocomplete Leboncoin — vérifier ` +
-        "l'orthographe dans les Réglages FillSell (format : numéro rue, ville). " +
+        `Adresse "${adresse}" sans suggestion dans l'autocomplete Leboncoin. ` +
+        "Cette adresse est celle enregistrée avec cette publication ; si tes Réglages " +
+        "FillSell portent une adresse, c'est elle qui est utilisée à chaque relance. " +
+        "Corrige-la dans Réglages › « Adresse de remise Leboncoin » (format : numéro rue, " +
+        "code postal ville — l'apostrophe et les « bis » collés au numéro sont corrigés " +
+        "automatiquement), puis relance la publication. " +
         "Le brouillon Leboncoin est conservé.",
     };
   }
@@ -2706,6 +2725,31 @@ const estValeurGenerique = (v) => VALEUR_GENERIQUE_RE.test(normalizeFuzzy(v));
 // « saulx-les-chartreux » ↔ « saulx les chartreux » (tokens sous-chaînes). Les
 // espaces restent : ce sont eux qui séparent les tokens.
 const adresseComparable = (s) => texteComparable(s).replace(/['".-]/g, "");
+
+// ── NORMALISATION D'ADRESSE AVANT SAISIE (2026-09-07, job 6b4e9f45 d'Hugo) ───
+// « 3bis Route d'Etrepagny 27480 Lyons-la-Forêt » a été refusé par
+// l'autocomplete Leboncoin — « sans suggestion » — alors que le MÊME format
+// avec code postal passe très bien (171 publications réussies avec « 4 Rue Du
+// Hameau 26230 Chantemerle-lès-Grignan », relevé en base). Deux suspects, tous
+// deux corrigés ici, tous deux sans effet sur une adresse déjà propre :
+//   · l'apostrophe TYPOGRAPHIQUE « ’ » (celle que produisent les claviers de
+//     téléphone et les copier-coller) → apostrophe droite ;
+//   · « 3bis » COLLÉ → « 3 bis » : Leboncoin écrit « 3 Bis Route d'Etrepagny ».
+//     Le collage cassait AUSSI la vérification, et pas seulement la saisie : le
+//     token « 3bis » n'existe dans aucune suggestion, donc même une bonne
+//     proposition était rejetée pour « couverture incomplète ».
+// ⛔ On ne touche NI à la casse NI à la ponctuation utile : le bandeau de
+// typeInto ci-dessous rappelle qu'un reformatage « d'affichage » (virgules,
+// parenthèses) peut au contraire perdre le géocodeur.
+function normaliserAdresseLbc(adresse) {
+  const brut = String(adresse ?? "");
+  const propre = brut
+    .replace(/[‘’ʼ′`´]/g, "'")   // ’ ‘ ʼ ′ ` ´ → '
+    .replace(/\b(\d+)\s*(bis|ter|quater)\b/gi, "$1 $2")         // 3bis / 3  BIS → 3 bis
+    .replace(/\s+/g, " ")
+    .trim();
+  return { valeur: propre, changee: propre !== brut.trim() };
+}
 
 function containsAsWords(hay, needle) {
   if (!needle) return false;

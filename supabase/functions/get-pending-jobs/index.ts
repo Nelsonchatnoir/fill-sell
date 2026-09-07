@@ -846,6 +846,43 @@ serve(async (req) => {
     if (includeNeedsUser) {
       try { annoncesAttente = await annoncesEnAttente(); } catch (_e) { /* le popup retombe sur son propre compte */ }
     }
+
+    // ── ADRESSE DE REMISE : LES RÉGLAGES FONT FOI AU MOMENT DE PUBLIER ──────
+    // (2026-09-07, job 6b4e9f45 d'Hugo) L'adresse est COPIÉE dans le job au
+    // clic Publier. Quand l'autocomplete Leboncoin la refusait, le message
+    // disait « vérifier l'orthographe dans les Réglages FillSell » — un
+    // conseil qui ne menait nulle part : corriger les Réglages ne touchait pas
+    // un job déjà créé, et la relance retapait la même adresse, indéfiniment.
+    // Désormais la valeur des Réglages, quand elle existe, est servie à
+    // l'extension à la place de la copie figée : corriger puis relancer
+    // FONCTIONNE, et le message de l'extension redevient vrai.
+    // ⛔ Uniquement si les Réglages portent une valeur NON VIDE : un compte
+    // sans adresse enregistrée (cas d'Hugo, platform_settings vide) garde la
+    // copie du job — y compris une correction posée à la main en base.
+    // Rien n'est réécrit en base : on ne fait que servir la valeur fraîche.
+    try {
+      const besoinAdresse = out.filter((j) => j.platform === "leboncoin" || j.platform === "beebs");
+      if (besoinAdresse.length) {
+        const { data: prof } = await userClient
+          .from("profiles").select("platform_settings").eq("id", user.id).maybeSingle();
+        const reglages = String(
+          ((prof?.platform_settings as Record<string, Record<string, unknown>> | null)
+            ?.leboncoin?.adresse ?? "") as string,
+        ).trim();
+        if (reglages) {
+          let rafraichies = 0;
+          for (const j of besoinAdresse) {
+            const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+            if (String(pf["adresse"] ?? "").trim() === reglages) continue;
+            j.platform_fields = { ...pf, adresse: reglages, adresse_source: "reglages" };
+            rafraichies++;
+          }
+          if (rafraichies) {
+            console.log(`[get-pending-jobs] userId=${user.id} → adresse de remise rafraîchie depuis les Réglages sur ${rafraichies} job(s)`);
+          }
+        }
+      }
+    } catch (_e) { /* l'adresse fraîche est un confort : jamais un point de panne */ }
     return json({
       jobs: out,
       annonces_en_attente: annoncesAttente,

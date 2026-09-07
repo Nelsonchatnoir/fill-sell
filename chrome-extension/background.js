@@ -2306,6 +2306,37 @@ async function processJob(rawJob, accessToken) {
       return { status: "failed", error: blocker };
     }
 
+    // ── REPRISE SERVEUR D'UN JOB INTERROMPU (2026-09-07, job 6b4e9f45) ──────
+    // handler-watch ré-arme désormais une PUBLICATION laissée en 'processing'
+    // par un ordinateur muet au bout de 45 min (au lieu de 24 h : l'app
+    // promettait « reprise dans ~5 min » et personne ne reprenait le job de la
+    // journée). Le serveur, lui, ne peut pas demander à la plateforme si
+    // l'annonce a été acceptée juste avant la mort du worker — il pose donc ce
+    // marqueur, et la question se pose ICI, avec le filet qui existe depuis le
+    // 19/07. Annonce déjà en ligne → published direct, aucune re-soumission,
+    // aucun doublon. Invérifiable → publication normale, comme avant.
+    if (job.platform_fields?.verifier_doublon_avant_publication) {
+      const dejaEnLigne = await staleJobExistingListingUrl(job).catch((e) => {
+        console.warn(`[background] Job ${job.id} : vérification anti-doublon impossible —`, String(e?.message ?? e));
+        return null;
+      });
+      const pfSansMarqueur = { ...(job.platform_fields ?? {}) };
+      delete pfSansMarqueur.verifier_doublon_avant_publication;
+      job.platform_fields = pfSansMarqueur;
+      if (dejaEnLigne) {
+        console.log(
+          `[background] Job ${job.id} (${job.platform}) repris par le serveur MAIS l'annonce existe déjà ` +
+          `(${dejaEnLigne}) — published direct, aucune re-soumission (doublon évité)`
+        );
+        await updateJobStatus(accessToken, job.id, "published", {
+          error: null, listing_url: dejaEnLigne, platform_fields: pfSansMarqueur,
+        });
+        stampVintedItemId(accessToken, job, dejaEnLigne);
+        await recordRecentResult(job, "published").catch(() => {});
+        return { status: "published", listingUrl: dejaEnLigne };
+      }
+    }
+
     // processing_since : horodatage du DÉBUT de traitement, lu par
     // recoverStaleProcessingJobs pour repêcher un job dont le worker est mort en
     // route. Sans lui, la reprise se baserait sur created_at — qui peut être bien
@@ -8185,7 +8216,18 @@ async function captureVintedItemUnlocked(vintedItemId) {
     const res = await sendMessageToTab(tabId, { type: "VINTED_ITEM_CAPTURE", vintedItemId: id })
       .catch((e) => {
         const msg = String(e?.message ?? e);
-        injoignable = msg.includes("Receiving end does not exist") || msg.includes("Could not establish connection");
+        // ⚠️ ÉLARGI LE 2026-09-07 (claeys59450, 06/09 19:56) : la 2e tentative
+        // ne se déclenchait que sur « Receiving end does not exist » / « Could
+        // not establish connection ». L'échec réellement observé était
+        // « A listener indicated an asynchronous response by returning true,
+        // but the message channel closed before a response was received » —
+        // MÊME famille (page mise en back/forward cache, service worker coupé,
+        // onglet déchargé), même remède (navigation neuve), mais il tombait
+        // dans la branche « vraie réponse du content script » et n'était jamais
+        // rejoué. CANAL_COUPE_RE nomme déjà cette famille : on s'en sert ici au
+        // lieu de deux `includes` partiels. La capture reste une LECTURE — la
+        // rejouer ne peut rien dupliquer (c'est ce qui autorise le retry).
+        injoignable = CANAL_COUPE_RE.test(msg) || msg.includes("Could not establish connection");
         return { success: false, error: `sonde injoignable : ${msg}` };
       });
     if (!injoignable) return res ?? { success: false, error: "réponse vide du content script" };

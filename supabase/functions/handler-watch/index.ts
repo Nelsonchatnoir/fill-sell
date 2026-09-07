@@ -343,6 +343,29 @@ serve(async (req) => {
   // conserve platform_fields, l'extension re-capturera avant de supprimer).
   // Écritures en compare-and-swap (.eq status processing) : si le statut a
   // bougé entre-temps, on n'écrase rien. Best-effort intégral.
+  // ── LE FILET DE 24 h NE RATTRAPAIT PERSONNE LE JOUR MÊME (2026-09-07) ──────
+  // Job 6b4e9f45 (hugodacosta052) : l'app annonçait « Reprise automatique dans
+  // ~5 min (tentative 1/5) », et trente minutes plus tard le job dormait
+  // toujours en 'processing', tentative 1. Rien n'était cassé — c'était le
+  // dessin : l'extension reprend ses 'processing' à 15 min (STALE_PROCESSING_MS,
+  // au poll de 2 min), mais SI ELLE NE POLLE PLUS (Chrome fermé, service worker
+  // tué sans réveil — cf. les coupures de canal du 06/09), plus personne ne
+  // reprend le job avant VINGT-QUATRE HEURES. La promesse affichée était donc
+  // fausse pour tout job dont l'ordinateur s'est tu.
+  // Nouveau seuil, borné au strict nécessaire :
+  //   · action 'publish' UNIQUEMENT, et seulement si l'extension est muette
+  //     depuis ≥ 30 min — donc personne ne travaille dessus (elle-même aurait
+  //     repris à 15 min) : reprise à 45 min au lieu de 24 h ;
+  //   · 'republish' garde ses 24 h : son étape 'captured' SUPPRIME l'annonce,
+  //     on ne raccourcit pas le délai d'un traitement destructif.
+  // Filet anti-doublon : c'est l'extension qui sait demander à la plateforme
+  // « une annonce à notre titre existe-t-elle déjà ? » (staleJobExistingListingUrl,
+  // jamais exécuté côté serveur). On pose donc verifier_doublon_avant_publication
+  // sur le job ré-armé : la 0.6.21 fait la vérification AVANT de re-publier ;
+  // les versions antérieures ignorent le marqueur et se comportent comme
+  // aujourd'hui à 24 h.
+  const SEUIL_ABANDON_RAPIDE_MS = 45 * 60_000;
+  const SEUIL_MUET_RAPIDE_MS = 30 * 60_000;
   let processingRearmes = 0;
   let processingNeedsUser = 0;
   try {
@@ -353,9 +376,15 @@ serve(async (req) => {
       .eq("status", "processing")
       .in("action", ["publish", "republish"]);
     // deno-lint-ignore no-explicit-any
+    const ageProcessing = (j: { platform_fields?: Record<string, unknown> | null; created_at?: string }) =>
+      now - Date.parse(String(j.platform_fields?.processing_since ?? j.created_at ?? ""));
+    // Seuil applicable au job : 45 min pour une publication, 24 h sinon.
+    const seuilDe = (j: { action?: string }) =>
+      j.action === "publish" ? SEUIL_ABANDON_RAPIDE_MS : SEUIL_ABANDON_MS;
+    // deno-lint-ignore no-explicit-any
     const candidats = ((bloques ?? []) as any[]).filter((j) => {
-      const since = Date.parse(j.platform_fields?.processing_since ?? j.created_at ?? "");
-      return Number.isFinite(since) && now - since >= SEUIL_ABANDON_MS;
+      const age = ageProcessing(j);
+      return Number.isFinite(age) && age >= seuilDe(j);
     });
     if (candidats.length) {
       const userIds = [...new Set(candidats.map((j) => j.user_id as string))];
@@ -365,10 +394,18 @@ serve(async (req) => {
       const lastSeen = new Map(((profs ?? []) as any[]).map((p) => [p.id, Date.parse(p.extension_last_seen_at ?? "")]));
       for (const j of candidats) {
         const seen = lastSeen.get(j.user_id);
-        if (Number.isFinite(seen as number) && now - (seen as number) < SEUIL_ABANDON_MS) continue;
+        // Silence exigé de l'extension : 30 min sur la reprise rapide (une
+        // extension vivante aurait repris le job à 15 min), 24 h sinon.
+        const seuilMuet = j.action === "publish" ? SEUIL_MUET_RAPIDE_MS : SEUIL_ABANDON_MS;
+        if (Number.isFinite(seen as number) && now - (seen as number) < seuilMuet) continue;
+        const repriseRapide = j.action === "publish" && ageProcessing(j) < SEUIL_ABANDON_MS;
         const pf = { ...(j.platform_fields ?? {}) };
         delete pf.processing_since;
         delete pf.stale_recoveries;
+        // Le serveur ne sait pas demander à la plateforme si l'annonce existe
+        // déjà (le worker est mort peut-être APRÈS l'acceptation du dépôt) :
+        // on le demande à l'extension, qui a ce filet depuis le 19/07.
+        if (repriseRapide) pf.verifier_doublon_avant_publication = true;
 
         if (j.action === "republish" && pf.republish_step === "captured") {
           // Capture à vérifier EN BASE (platform_fields ne porte que capture_id).
@@ -404,10 +441,15 @@ serve(async (req) => {
           }
         }
 
-        const msg =
-          "Reprise après interruption : l'ordinateur qui portait ce traitement ne s'est plus manifesté " +
-          "depuis plus de 24 h. Le job est remis en file et repartira automatiquement dès qu'une " +
-          "extension connectée se réveille — rien à faire de ton côté.";
+        // Le message dit la VRAIE durée : promettre « 24 h » sur une reprise
+        // déclenchée à 45 min ferait mentir l'écran dans l'autre sens.
+        const msg = repriseRapide
+          ? "Reprise après interruption : l'ordinateur qui portait cette publication ne s'est plus " +
+            "manifesté depuis une demi-heure. La publication est remise en file et repartira " +
+            "automatiquement dès qu'une extension connectée se réveille — rien à faire de ton côté."
+          : "Reprise après interruption : l'ordinateur qui portait ce traitement ne s'est plus manifesté " +
+            "depuis plus de 24 h. Le job est remis en file et repartira automatiquement dès qu'une " +
+            "extension connectée se réveille — rien à faire de ton côté.";
         const { error: uErr } = await supabase
           .from("cross_post_jobs")
           .update({ status: "pending", error: msg, platform_fields: pf })
