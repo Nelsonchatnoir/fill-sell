@@ -408,8 +408,26 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       return true; // réponse asynchrone
     }
     if (msg?.type === "VINTED_ITEM_DETAIL") {
-      lireDetailArticle(msg.vintedItemId)
-        .then((result) => sendResponse(result))
+      // ── LE DÉTAIL RÉSOUT SES LIBELLÉS (2026-09-07, chantier « la capture est
+      // la source de vérité ») ───────────────────────────────────────────────
+      // Ce chemin (clic Publier, un appel, sur geste humain) rendait le payload
+      // NATIF brut : l'app y lisait la description et le catalog_id, et jetait
+      // tout le reste — taille, état, marque, couleurs, colis — parce que ces
+      // champs sont des IDENTIFIANTS dans le payload d'édition. Résultat : on
+      // republierait fidèlement sur Vinted, mais on redemandait la taille à la
+      // vendeuse pour Beebs, et l'IA devinait la catégorie ailleurs.
+      // capturerAnnonceVinted résout déjà ces identifiants en libellés (mêmes
+      // référentiels, mémoïsés pour la page) et rend un SUR-ENSEMBLE de
+      // lireDetailArticle : description et natif y sont, aux mêmes clés.
+      // ⛔ Ce n'est PAS une capture de republication : aucune photo n'est
+      // ré-hébergée, aucune ligne n'est écrite dans vinted_republish_captures.
+      // Le chemin de republication n'est pas touché.
+      // `photos` est réajouté à l'identique : c'est la clé que lisent les
+      // consommateurs historiques (capturerAnnonceVinted les nomme photos_cdn).
+      capturerAnnonceVinted(msg.vintedItemId)
+        .then((result) => sendResponse(
+          result?.success ? { ...result, photos: result.photos_cdn ?? [] } : result,
+        ))
         .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
       return true; // réponse asynchrone
     }

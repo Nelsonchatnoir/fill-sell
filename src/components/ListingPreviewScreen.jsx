@@ -2338,6 +2338,18 @@ const listeFaitFoi = (platform, mode) => platform === "ebay" && mode === "SELECT
 // des listes relevées ne font plus passer une valeur pour « hors liste ».
 const normAspectVal = s => texteComparable(s)
   .replace(/(\d),(\d)/g, "$1.$2")
+  // ── LA VIRGULE D'UN LIBELLÉ N'EST PAS UNE DIFFÉRENCE (2026-09-07) ─────────
+  // Mesuré sur les 2 278 articles capturés : la liste Beebs écrit « Neuf, sans
+  // étiquette » (avec virgule), Vinted écrit « Neuf sans étiquette ». 496
+  // articles étaient donc jugés « hors liste » par cet écran pour une seule
+  // virgule — la couverture des états passe de 76,5 % à 98,2 % en la gommant.
+  // ⚠️ L'EXTENSION, ELLE, MATCHE DÉJÀ (beebs.js normalizeFuzzy retire « . » et
+  // « , » depuis toujours) : ce n'était donc PAS un refus de publication, mais
+  // un faux « à compléter » dans l'encart rouge, sur une valeur que la
+  // plateforme aurait acceptée. La virgule est retirée APRÈS le point décimal
+  // ci-dessus, qui doit rester prioritaire (« 38,5 » → « 38.5 »).
+  .replace(/[.,](?!\d)/g, "")
+  .replace(/\s+/g, " ").trim()
   .replace(/^eu\s+(?=\d)/, "");
 // Valeur de la liste la plus proche d'une saisie hors liste ("Unique" →
 // « Taille unique », "58 cm" → « 58 »). Rapprochement par TOKENS entiers

@@ -40,6 +40,7 @@ import {
   fraicheurExtension, detecterRetardHorloge,
 } from '../utils/shared';
 import { prixAchatConnu, prixAchatNum, totalInvesti } from '../utils/comptabilite';
+import { attributsDepuisVinted } from '../utils/vintedAttributs';
 import { SecondaryButton, Loader } from '../components/ui';
 import {
   EXT_SONDE_MS, SYNC_POLL_MS, SYNC_POLL_MAX_MS, SYNC_DEMARRAGE_MAX_MS,
@@ -3770,6 +3771,59 @@ const StockTab = memo(function StockTab({
       ouvrirStepper(item);
       return;
     }
+    // ── LE CACHE AVANT LE RÉSEAU (2026-09-07, chantier « source de vérité ») ─
+    // Une capture de republication porte déjà, pour cet article, tout ce qu'on
+    // s'apprête à demander à Vinted : catégorie, taille, état, marque,
+    // couleurs, colis, description. Si elle est FRAÎCHE, on s'en sert et on ne
+    // fait aucun appel — le but est d'accélérer la publication, pas d'ajouter
+    // une requête.
+    // RECHERCHE PAR inventaire_id, JAMAIS par vinted_item_id : une
+    // republication réussie recrée l'annonce sous un NOUVEL identifiant (mesuré
+    // le 07/09 : 76 % des articles capturés sont dans ce cas). L'identifiant
+    // périmé ne périme pas le contenu — c'est de cette capture-là que l'annonce
+    // a été recréée à l'identique.
+    // FRAÎCHEUR (les trois conditions, sinon on recapture) : verdict valide,
+    // moins de 30 jours, et l'article n'a pas bougé depuis (titre ET prix
+    // identiques à la fiche). 48 % des captures divergent sur l'un des deux —
+    // une capture de trop coûte un appel, une capture périmée publie une
+    // fausse annonce.
+    try {
+      const ilYA30j = new Date(Date.now() - 30 * 86400000).toISOString();
+      const { data: caps } = await supabase
+        .from('vinted_republish_captures')
+        .select('captured_at, libelles, payload')
+        .eq('inventaire_id', item.id)
+        .eq('verdict', 'valide')
+        .gte('captured_at', ilYA30j)
+        .order('captured_at', { ascending: false })
+        .limit(1);
+      const cap = caps?.[0] ?? null;
+      const natif = cap?.payload?.natif ?? null;
+      const titreCapture = String(cap?.payload?.titre ?? natif?.title ?? '').trim();
+      const prixCapture = natif?.price?.amount != null ? parseFloat(String(natif.price.amount)) : null;
+      const memeArticle = cap
+        && titreCapture === String(item.title ?? item.titre ?? '').trim()
+        && (prixCapture == null || item.sell == null || Math.abs(prixCapture - Number(item.sell)) < 0.005);
+      if (memeArticle) {
+        const t = attributsDepuisVinted(cap.libelles, natif, 'capture',
+          { marqueDejaConnue: Boolean(String(item.marque ?? '').trim()) });
+        const maj = {};
+        if (Object.keys(t.attributs).length) maj.attributs = t.attributs;
+        if (t.catalogId && !item.vinted_catalog_id) maj.vinted_catalog_id = t.catalogId;
+        if (t.description && !String(item.description ?? '').trim()) maj.description = t.description;
+        if (Object.keys(maj).length) {
+          await supabase.from('inventaire').update(maj)
+            .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
+        }
+        ouvrirStepper({
+          ...item,
+          ...(maj.description ? { description: maj.description } : {}),
+          ...(maj.vinted_catalog_id ? { vinted_catalog_id: maj.vinted_catalog_id } : {}),
+        });
+        return; // zéro appel réseau : la capture faisait foi
+      }
+    } catch { /* le cache est un raccourci : son échec ne bloque jamais */ }
+
     if (detailFetchId) return; // une récupération à la fois — jamais de lot
     setDetailFetchId(item.id);
     const detail = await new Promise((resolve) => {
@@ -3788,6 +3842,31 @@ const StockTab = memo(function StockTab({
     const catalogId = Number(detail?.natif?.catalog_id);
     const catalogAEcrire = Number.isFinite(catalogId) && catalogId > 0 && !item.vinted_catalog_id
       ? catalogId : null;
+    // ── ON NE JETTE PLUS 90 % DE CE QU'ON VIENT DE LIRE (2026-09-07) ────────
+    // Ce chemin ne gardait que la description et le catalog_id. Le détail
+    // porte AUSSI la taille, l'état, la marque, les couleurs, le colis et les
+    // mesures — désormais résolus en libellés par l'extension (0.6.21). On les
+    // écrit dans inventaire.attributs, source 'vinted_detail' : le stepper les
+    // relit déjà pour préremplir les copies, et le worker eBay aussi. Chaque
+    // publication enrichit donc l'article, une fois pour toutes.
+    // La base arbitre les priorités (trigger de fusion) : une saisie de
+    // l'utilisateur n'est jamais écrasée. La marque n'est proposée que si
+    // l'article n'en a aucune — Vinted range sous des marques fourre-tout.
+    // Extension ≤ 0.6.20 : pas de `libelles` dans la réponse, l'objet est vide
+    // et rien n'est écrit — comportement d'avant, à l'identique.
+    let attributsDetail = null;
+    if (detail?.success && detail.libelles) {
+      try {
+        const t = attributsDepuisVinted(detail.libelles, detail.natif, "vinted_detail",
+          { marqueDejaConnue: Boolean(String(item.marque ?? "").trim()) });
+        if (Object.keys(t.attributs).length) attributsDetail = t.attributs;
+      } catch { /* enrichissement best-effort : jamais un point de panne */ }
+    }
+    if (attributsDetail) {
+      await supabase.from('inventaire')
+        .update({ attributs: attributsDetail })
+        .eq('id', item.id).eq('user_id', user.id).then(() => {}, () => {});
+    }
     if (detail?.success && detail.description) {
       // Persistée pour ne plus jamais re-demander cet article ; la sync ne
       // réécrit pas `description` (champ à l'utilisateur), elle survivra.

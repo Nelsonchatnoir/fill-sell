@@ -1004,9 +1004,25 @@ serve(async (req) => {
       item, canonicalProvided,
       familleLivresMedias: retouchProfileFor(item).family === "livres_medias",
     });
+    // ── DESCRIPTION DE LA VENDEUSE : VERROU (2026-09-07) ───────────────────
+    // Quand l'article porte la description de son annonce Vinted (rapatriée par
+    // la capture de republication ou par la lecture du détail au clic Publier),
+    // c'est ELLE qui part sur les autres plateformes, telle quelle. On ne la
+    // réécrit pas, on ne la résume pas, on ne l'améliore pas : elle peut
+    // signaler un défaut, et l'effacer exposerait la vendeuse à un litige.
+    // Une description vide ou d'UN SEUL MOT ne dit rien de l'article : l'IA
+    // reprend alors la main (seule exception, demandée par Nico).
+    // Le client peut forcer la génération avec description_verrouillee:false
+    // (bouton « régénérer le texte »), jamais l'inverse.
+    const descriptionVendeuse = (() => {
+      if (body.description_verrouillee === false) return null;
+      const t = String(item.description ?? "").trim();
+      return t && t.split(/\s+/).filter(Boolean).length >= 2 ? t : null;
+    })();
     const { platformListings, traceEtat, traceIsbn } = await redigerAnnoncesPlateformes({
       apiKey: ANTHROPIC_KEY, platforms: platforms as string[],
       itemContext, item, canonicalProvided, trackClaude,
+      descriptionFournie: descriptionVendeuse,
     });
 
     // category_icon : attendu ICI seulement (il chevauchait la retouche photo

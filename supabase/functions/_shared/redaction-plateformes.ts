@@ -365,14 +365,41 @@ export function construireContexteArticle({ item, canonicalProvided, familleLivr
 }
 
 // ── Rédaction + post-production (extraites telles quelles) ──────────────────
-export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude }: {
+// ── LA DESCRIPTION DE LA VENDEUSE NE SE RÉÉCRIT PAS (2026-09-07) ────────────
+// Règle posée par Nico : « une vendeuse qui signale les défauts de son vêtement
+// ne doit jamais voir ce texte remplacé par une description générée — c'est un
+// risque de litige pour elle ». Quand l'article porte déjà la description de
+// son annonce Vinted, elle est publiée TELLE QUELLE sur les autres plateformes.
+// La génération est coupée EN AMONT : le modèle est prié de renvoyer une
+// description vide, et on n'attend plus que le titre et les platform_fields.
+// L'appel subsiste (le titre et les champs, eux, doivent être rédigés par
+// plateforme) mais ne paie plus les tokens de sortie du texte le plus long.
+// ⛔ AUCUNE TRONCATURE : mesuré le 07/09 sur les 3 675 descriptions en base,
+// la plus longue fait 1 982 caractères, aucune ne dépasse les limites réelles
+// (Vinted 2 000, eBay 2 000, Leboncoin 3 000). 27 dépassent le plafond Beebs de
+// 1 500 — un chiffre PRUDENT sans source, pas une limite mesurée : on ne coupe
+// pas le texte d'une vendeuse sur une valeur qu'on n'a jamais vérifiée. Couper
+// ferait disparaître un défaut signalé en fin de description.
+const DIRECTIVE_DESCRIPTION_FOURNIE =
+  `DESCRIPTION DÉJÀ ÉCRITE PAR LA VENDEUSE : ne rédige AUCUNE description. ` +
+  `Renvoie "description": "" (chaîne vide) et concentre-toi sur "title" et "platform_fields". ` +
+  `N'essaie ni de la résumer, ni de l'améliorer, ni de la reformuler.`;
+
+export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContext, item, canonicalProvided, trackClaude, descriptionFournie }: {
   apiKey: string;
   platforms: string[];
   itemContext: string;
   item: { titre?: string; marque?: string; description?: string; type?: string };
   canonicalProvided: Record<string, string>;
   trackClaude: (data: unknown) => void;
+  /** Description de la vendeuse à publier telle quelle (null = génération normale). */
+  descriptionFournie?: string | null;
 }) {
+    const descVendeuse = typeof descriptionFournie === "string" && descriptionFournie.trim()
+      ? descriptionFournie : null;
+    if (descVendeuse) {
+      console.log(`[redaction] description de la vendeuse VERROUILLÉE (${descVendeuse.length} car.) — non générée, publiée telle quelle`);
+    }
     console.log(`[redaction] rédaction prompt ${VERSION_PROMPT} — plateformes: ${(platforms as string[]).join(", ")}`);
     // Marque UNE seule fois dans le titre de repli (2026-07-30, cas réel New
     // Balance 9060) : le titre Lens contient souvent déjà la marque
@@ -418,7 +445,8 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
               // paie que les tokens réellement produits, un plafond haut ne
               // coûte rien alors qu'un plafond juste casse la réponse.
               max_tokens: 1400,
-              system: `${cfg.system}\n${LANG_DIRECTIVE[cfg.lang] ?? LANG_DIRECTIVE.fr}\n${redactionDirective(platform, cfg.lang)}`,
+              system: `${cfg.system}\n${LANG_DIRECTIVE[cfg.lang] ?? LANG_DIRECTIVE.fr}\n${redactionDirective(platform, cfg.lang)}`
+                + (descVendeuse ? `\n${DIRECTIVE_DESCRIPTION_FOURNIE}` : ""),
               messages: [{ role: "user", content: userMsg }],
             }),
           });
@@ -444,7 +472,9 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
                 }
                 platformListings[platform] = {
                   title: lim ? clampToWord(brutTitle, lim.titre) : brutTitle,
-                  description: lim ? clampToWord(brutDesc, lim.desc) : brutDesc,
+                  // La description de la vendeuse passe INTACTE : ni tronquée,
+                  // ni reformulée, quelle que soit la limite de la plateforme.
+                  description: descVendeuse ?? (lim ? clampToWord(brutDesc, lim.desc) : brutDesc),
                   platform_fields: parsed.platform_fields ?? {},
                 };
               } catch (parseErr) {
@@ -459,7 +489,7 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
         }
 
         if (!platformListings[platform]) {
-          platformListings[platform] = { title: fallbackTitle, description: item.description ?? "", platform_fields: {} };
+          platformListings[platform] = { title: fallbackTitle, description: descVendeuse ?? item.description ?? "", platform_fields: {} };
         }
       })
     );
