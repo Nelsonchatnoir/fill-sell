@@ -85,6 +85,14 @@ langue + connexion + CTA, soit ~971px incompressibles. */
 .lp-root [data-nav-links],.lp-root [data-nav-desk]{display:none !important}
 .lp-root [data-burger]{display:flex !important}
 }
+/* Les 4 tuiles de plateformes (section Publication) sont en 2 colonnes. Sur un
+   téléphone chaque tuile ne fait plus que ~135px : logo 30 + libellé + coche +
+   marges. « leboncoin » est le libellé le plus long des quatre, il poussait sa
+   coche HORS de la tuile, coupée par l'overflow:hidden de la ligne (constat de
+   Nico, 07/09). Sous 620px les tuiles passent donc sur une seule colonne, où
+   elles ont toute la largeur. Ceinture et bretelles côté JSX : les libellés
+   sont rétrécissables et les coches ont flex-shrink:0. */
+@media (max-width:620px){.lp-root [data-pubgrid]{grid-template-columns:minmax(0,1fr) !important}}
 /* Schéma « téléphone → FillSell → ton ordinateur ». En ligne il tient sur une
    rangée ; sur téléphone le `flex-wrap` du design faisait retomber les flèches
    À CÔTÉ des blocs, pointant vers le vide. Sous 760px la suite passe en

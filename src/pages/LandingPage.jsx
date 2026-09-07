@@ -56,6 +56,27 @@ const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/ooeagobimgoab
 const TIKTOK_URL = 'https://www.tiktok.com/@fill.sell';
 const X_URL = 'https://x.com/fillsellapp';
 
+/* Badges stores — RÈGLE : c'est le VISUEL qui doit faire la même taille, pas
+   le fichier. Les deux images n'ont pas le même cadre :
+     Apple  — SVG 126,5 × 40, le badge occupe TOUT le cadre ;
+     Google — PNG 646 × 250 avec 29 px de vide transparent en haut ET en bas
+              (mesuré au trim) : son visuel ne fait que 192/250 de la hauteur
+              du fichier, soit 77 %.
+   Aligner les deux `height` donnait donc un badge Google 30 % plus grand
+   (constat de Nico sur iPhone, 07/09). On aligne la hauteur du VISUEL :
+   Google est agrandi de 250/192 puis remonté par des marges négatives, si
+   bien que sa boîte de mise en page reste haute de BADGE_H comme Apple.
+   Les largeurs restent légèrement différentes — les deux badges n'ont pas le
+   même rapport (3,16 contre 3,37) et les chartes des deux stores INTERDISENT
+   de les déformer : on aligne sur la hauteur, jamais sur la largeur. */
+const BADGE_H = 44;
+const BADGE_GOOGLE_H = Math.round(BADGE_H * 250 / 192);
+const S_BADGE_APPLE = { height: `${BADGE_H}px`, width: 'auto', display: 'block' };
+const S_BADGE_GOOGLE = {
+  height: `${BADGE_GOOGLE_H}px`, width: 'auto', display: 'block',
+  margin: `${-(BADGE_GOOGLE_H - BADGE_H) / 2}px 0`,
+};
+
 const SFOOT = { fontWeight: '600', fontSize: '13px', color: '#5C6560' };
 const SSOCIAL = {
   width: 30, height: 30, borderRadius: 9, background: '#EDEAE0',
@@ -557,10 +578,10 @@ export default function LandingPage() {
                 {STORE_BADGES_VISIBLE && !isNative && (
                   <>
                     <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer" style={{ display: "block", lineHeight: "0" }}>
-                      <img src={`https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/${lang === "fr" ? "fr-fr" : "en-us"}`} alt={t("Télécharger dans l'App Store")} loading="lazy" style={{ height: "44px", width: "auto", display: "block" }} />
+                      <img src={`https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/${lang === "fr" ? "fr-fr" : "en-us"}`} alt={t("Télécharger dans l'App Store")} loading="lazy" style={S_BADGE_APPLE} />
                     </a>
                     <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" style={{ display: "block", lineHeight: "0" }}>
-                      <img src={`https://play.google.com/intl/en_us/badges/static/images/badges/${lang === "fr" ? "fr" : "en"}_badge_web_generic.png`} alt={t("Disponible sur Google Play")} loading="lazy" style={{ height: "64px", width: "auto", display: "block", margin: "-10px 0" }} />
+                      <img src={`https://play.google.com/intl/en_us/badges/static/images/badges/${lang === "fr" ? "fr" : "en"}_badge_web_generic.png`} alt={t("Disponible sur Google Play")} loading="lazy" style={S_BADGE_GOOGLE} />
                     </a>
                   </>
                 )}
@@ -966,13 +987,13 @@ export default function LandingPage() {
                   </svg>
                   <span style={{ fontWeight: "700", fontSize: "10px", textTransform: "uppercase", letterSpacing: ".08em", color: "#8A8578" }}>{t("Automatique")}</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "11px" }}>
+                <div data-pubgrid="1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "11px" }}>
                   <div style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "9px", background: "#EDEAE0", border: "1px solid #E7E3D8", borderRadius: "13px", padding: "12px 15px" }}>
                     <div style={{ position: "absolute", zIndex: "2", right: "10px", top: "50%", width: "28px", height: "28px", borderRadius: "8px", backgroundImage: "url(/landing/chaussures-cyrillus.webp)", backgroundSize: "cover", backgroundPosition: "center", boxShadow: "0 0 0 2px #F6F5F1,0 6px 14px rgba(16,32,27,.3)", animation: "fsArrA 5.2s cubic-bezier(.45,.05,.2,1) infinite" }} />
                     <PlatformLogo platform="vinted" size={30} />
-                    <span style={{ fontWeight: "700", fontSize: "13px" }}>{t("Vinted")}</span>
+                    <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("Vinted")}</span>
                     <span style={{ flex: "1" }} />
-                    <span style={{ animation: "fsTick 5.2s ease infinite", display: "flex" }}>
+                    <span style={{ flexShrink: "0", animation: "fsTick 5.2s ease infinite", display: "flex" }}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="#2F9E90">
                         <circle cx="12" cy="12" r="10" />
                         <path d="M20 6 9 17l-5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
@@ -982,9 +1003,9 @@ export default function LandingPage() {
                   <div style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "9px", background: "#EDEAE0", border: "1px solid #E7E3D8", borderRadius: "13px", padding: "12px 15px" }}>
                     <div style={{ position: "absolute", zIndex: "2", right: "10px", top: "50%", width: "28px", height: "28px", borderRadius: "8px", backgroundImage: "url(/landing/chaussures-cyrillus.webp)", backgroundSize: "cover", backgroundPosition: "center", boxShadow: "0 0 0 2px #F6F5F1,0 6px 14px rgba(16,32,27,.3)", animation: "fsArrB 5.2s cubic-bezier(.45,.05,.2,1) infinite" }} />
                     <PlatformLogo platform="leboncoin" size={30} />
-                    <span style={{ fontWeight: "700", fontSize: "13px" }}>{t("leboncoin")}</span>
+                    <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("leboncoin")}</span>
                     <span style={{ flex: "1" }} />
-                    <span style={{ animation: "fsTickB 5.2s ease infinite", display: "flex" }}>
+                    <span style={{ flexShrink: "0", animation: "fsTickB 5.2s ease infinite", display: "flex" }}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="#2F9E90">
                         <circle cx="12" cy="12" r="10" />
                         <path d="M20 6 9 17l-5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
@@ -994,9 +1015,9 @@ export default function LandingPage() {
                   <div style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "9px", background: "#EDEAE0", border: "1px solid #E7E3D8", borderRadius: "13px", padding: "12px 15px" }}>
                     <div style={{ position: "absolute", zIndex: "2", right: "10px", top: "50%", width: "28px", height: "28px", borderRadius: "8px", backgroundImage: "url(/landing/chaussures-cyrillus.webp)", backgroundSize: "cover", backgroundPosition: "center", boxShadow: "0 0 0 2px #F6F5F1,0 6px 14px rgba(16,32,27,.3)", animation: "fsArrC 5.2s cubic-bezier(.45,.05,.2,1) infinite" }} />
                     <PlatformLogo platform="ebay" size={30} />
-                    <span style={{ fontWeight: "700", fontSize: "13px" }}>{t("eBay")}</span>
+                    <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("eBay")}</span>
                     <span style={{ flex: "1" }} />
-                    <span style={{ animation: "fsTickC 5.2s ease infinite", display: "flex" }}>
+                    <span style={{ flexShrink: "0", animation: "fsTickC 5.2s ease infinite", display: "flex" }}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="#2F9E90">
                         <circle cx="12" cy="12" r="10" />
                         <path d="M20 6 9 17l-5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
@@ -1006,9 +1027,9 @@ export default function LandingPage() {
                   <div style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "9px", background: "#EDEAE0", border: "1px solid #E7E3D8", borderRadius: "13px", padding: "12px 15px" }}>
                     <div style={{ position: "absolute", zIndex: "2", right: "10px", top: "50%", width: "28px", height: "28px", borderRadius: "8px", backgroundImage: "url(/landing/chaussures-cyrillus.webp)", backgroundSize: "cover", backgroundPosition: "center", boxShadow: "0 0 0 2px #F6F5F1,0 6px 14px rgba(16,32,27,.3)", animation: "fsArrD 5.2s cubic-bezier(.45,.05,.2,1) infinite" }} />
                     <PlatformLogo platform="beebs" size={30} />
-                    <span style={{ fontWeight: "700", fontSize: "13px" }}>{t("Beebs")}</span>
+                    <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("Beebs")}</span>
                     <span style={{ flex: "1" }} />
-                    <span style={{ animation: "fsTickD 5.2s ease infinite", display: "flex" }}>
+                    <span style={{ flexShrink: "0", animation: "fsTickD 5.2s ease infinite", display: "flex" }}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="#2F9E90">
                         <circle cx="12" cy="12" r="10" />
                         <path d="M20 6 9 17l-5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
@@ -1129,21 +1150,21 @@ export default function LandingPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: "9px" }}>
                 <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "10px", padding: "10px 13px", borderRadius: "12px", background: "#F6F5F1", border: "1px solid #E7E3D8", animation: "fsFade 4.4s ease infinite" }}>
                   <PlatformLogo platform="leboncoin" size={26} />
-                  <span style={{ fontWeight: "700", fontSize: "13px" }}>{t("leboncoin")}</span>
+                  <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("leboncoin")}</span>
                   <span style={{ flex: "1" }} />
                   <span style={{ fontWeight: "600", fontSize: "12px", color: "#8A8578" }}>{t("Annonce retirée")}</span>
                   <span style={{ position: "absolute", left: "13px", right: "13px", top: "50%", height: "1.5px", background: "rgba(176,57,47,.65)", transformOrigin: "left", animation: "fsStrike 4.4s ease infinite" }} />
                 </div>
                 <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "10px", padding: "10px 13px", borderRadius: "12px", background: "#F6F5F1", border: "1px solid #E7E3D8", animation: "fsFade 4.4s ease infinite .18s" }}>
                   <PlatformLogo platform="ebay" size={26} />
-                  <span style={{ fontWeight: "700", fontSize: "13px" }}>{t("eBay")}</span>
+                  <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("eBay")}</span>
                   <span style={{ flex: "1" }} />
                   <span style={{ fontWeight: "600", fontSize: "12px", color: "#8A8578" }}>{t("Annonce retirée")}</span>
                   <span style={{ position: "absolute", left: "13px", right: "13px", top: "50%", height: "1.5px", background: "rgba(176,57,47,.65)", transformOrigin: "left", animation: "fsStrike 4.4s ease infinite .18s" }} />
                 </div>
                 <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "10px", padding: "10px 13px", borderRadius: "12px", background: "#F6F5F1", border: "1px solid #E7E3D8", animation: "fsFade 4.4s ease infinite .36s" }}>
                   <PlatformLogo platform="beebs" size={26} />
-                  <span style={{ fontWeight: "700", fontSize: "13px" }}>{t("Beebs")}</span>
+                  <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("Beebs")}</span>
                   <span style={{ flex: "1" }} />
                   <span style={{ fontWeight: "600", fontSize: "12px", color: "#8A8578" }}>{t("Annonce retirée")}</span>
                   <span style={{ position: "absolute", left: "13px", right: "13px", top: "50%", height: "1.5px", background: "rgba(176,57,47,.65)", transformOrigin: "left", animation: "fsStrike 4.4s ease infinite .36s" }} />
@@ -1529,10 +1550,10 @@ export default function LandingPage() {
               {STORE_BADGES_VISIBLE && !isNative && (
                 <>
                   <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer" style={{ display: "block", lineHeight: "0" }}>
-                    <img src={`https://tools.applemediaservices.com/api/badges/download-on-the-app-store/white/${lang === "fr" ? "fr-fr" : "en-us"}`} alt={t("Télécharger dans l'App Store")} loading="lazy" style={{ height: "44px", width: "auto", display: "block" }} />
+                    <img src={`https://tools.applemediaservices.com/api/badges/download-on-the-app-store/white/${lang === "fr" ? "fr-fr" : "en-us"}`} alt={t("Télécharger dans l'App Store")} loading="lazy" style={S_BADGE_APPLE} />
                   </a>
                   <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" style={{ display: "block", lineHeight: "0" }}>
-                    <img src={`https://play.google.com/intl/en_us/badges/static/images/badges/${lang === "fr" ? "fr" : "en"}_badge_web_generic.png`} alt={t("Disponible sur Google Play")} loading="lazy" style={{ height: "64px", width: "auto", display: "block", margin: "-10px 0" }} />
+                    <img src={`https://play.google.com/intl/en_us/badges/static/images/badges/${lang === "fr" ? "fr" : "en"}_badge_web_generic.png`} alt={t("Disponible sur Google Play")} loading="lazy" style={S_BADGE_GOOGLE} />
                   </a>
                 </>
               )}
