@@ -153,6 +153,9 @@ const T = {
     politiqueAmoi: 'Politique créée par FillSell',
     politiqueSienne: 'Ta politique eBay',
     tarifVendeur: 'Ton tarif actuel sur eBay',
+    voirDetail: 'Voir le détail',
+    masquerDetail: 'Masquer le détail',
+    aFinir: (l) => `À finir : ${l}.`,
     // ── Adresse d'expédition (07/09) ───────────────────────────────────────
     adresseTitre: 'Lieu d\'expédition',
     adresseIntro: "eBay demande d'où part le colis pour publier depuis nos serveurs. Renseigne-le maintenant : sans lui, ta première annonce s'arrête et t'attend.",
@@ -262,6 +265,9 @@ const T = {
     politiqueAmoi: 'Policy created by FillSell',
     politiqueSienne: 'Your own eBay policy',
     tarifVendeur: 'Your current rate on eBay',
+    voirDetail: 'Show details',
+    masquerDetail: 'Hide details',
+    aFinir: (l) => `Still to do: ${l}.`,
     adresseTitre: 'Ship-from location',
     adresseIntro: "eBay needs to know where the parcel ships from to publish from our servers. Fill it in now: without it your first listing stops and waits for you.",
     adresseCp: 'Postal code',
@@ -325,6 +331,13 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
   // { type, etat: 'envoi' | 'erreur' | 'ok', message }
   const [statutCreation, setStatutCreation] = useState(null);
   const [confirmDeco, setConfirmDeco] = useState(false);
+  // Repli de l'écran quand tout est vert (07/09 nuit) — PRÉSENTATION SEULE :
+  // aucun appel, aucune checklist, aucun calcul ne change. Un compte en règle
+  // n'a pas besoin de relire six lignes cochées à chaque ouverture ; il veut
+  // savoir ce que voit l'acheteur et pouvoir le changer. Dès qu'UNE ligne
+  // n'est pas verte, le détail s'ouvre tout seul et ne peut pas être replié :
+  // un problème ne se cache jamais.
+  const [detailOuvert, setDetailOuvert] = useState(false);
   // ── Transporteurs (07/09/2026) ────────────────────────────────────────────
   // `services` = la liste VIVANTE d'eBay, groupée par le serveur. Jamais une
   // table écrite ici : si eBay retire un mode d'envoi, il disparaît de l'écran
@@ -648,6 +661,12 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
   const tonPastille = connecte ? 'ok' : aReconnecter ? 'attention' : 'neutre';
   const textePastille = connecte ? t.connecte : aReconnecter ? t.aReconnecter : t.nonConnecte;
   const dateConnexion = etat?.connected_at ? new Date(etat.connected_at).toLocaleDateString(langue === 'fr' ? 'fr-FR' : 'en-GB') : null;
+  // Repli : dérivé de la checklist déjà relevée, aucune lecture de plus.
+  const lignesChecklist = checklist?.lignes ?? [];
+  const lignesManquantes = lignesChecklist.filter((l) => l.etat !== 'ok');
+  const toutVert = lignesChecklist.length > 0 && lignesManquantes.length === 0;
+  const detailVisible = !toutVert || detailOuvert;
+  const ligneLivraison = lignesChecklist.find((l) => l.cle === 'politique_livraison') ?? null;
   const limite = checklist?.selling_limit;
   const montant = limite?.amount?.value != null ? `${Number(limite.amount.value).toLocaleString(langue === 'fr' ? 'fr-FR' : 'en-GB')} ${limite.amount.currency ?? ''}`.trim() : null;
 
@@ -846,15 +865,17 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
   // Ligne « Politique de livraison » : PAS un choix parmi des politiques (les
   // vendeurs n'en ont qu'une), mais le choix des transporteurs — c'est nous qui
   // construisons la politique avec ce qu'ils cochent.
-  const rendreLivraison = (ligne) => {
+  // `compact` = vue repliée : on garde ce que voit l'acheteur et le bouton pour
+  // le changer, on laisse tomber le titre, l'intro et les autres politiques.
+  const rendreLivraison = (ligne, compact = false) => {
     const choisie = etat?.politiques?.fulfillment ?? null;
     const detail = choisie ? details[choisie] : null;
-    const autres = (ligne.existantes ?? []).filter((p) => p.id !== choisie);
+    const autres = compact ? [] : ((ligne?.existantes ?? []).filter((p) => p.id !== choisie));
     const aDesServices = Boolean(detail && detail !== 'erreur' && (detail.services ?? []).length);
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-        <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.transporteurs}</div>
-        <div style={{ fontSize: 12.5, color: UI.mute2, lineHeight: 1.5 }}>{t.transporteursIntro}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: compact ? 0 : 8 }}>
+        {!compact && <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.transporteurs}</div>}
+        {!compact && <div style={{ fontSize: 12.5, color: UI.mute2, lineHeight: 1.5 }}>{t.transporteursIntro}</div>}
         {choisie && detailEnCours === choisie && <div style={{ fontSize: 12, color: UI.mute2 }}>{t.lectureContenu}</div>}
         {rendreDetailLivraison(detail)}
         {!picker && (
@@ -942,10 +963,28 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
 
           {chargement && !checklist && <div style={{ fontSize: 12, color: UI.mute2 }}>{t.verif}</div>}
 
-          {checklist?.lignes?.length > 0 && (
+          {/* REPLIÉ — tout est vert : le compte est en règle, on montre ce que
+              voit l'acheteur et le bouton pour le changer. Le reste (checklist,
+              lieu d'expédition, plafond, déconnexion) est à un clic. */}
+          {!detailVisible && ligneLivraison && rendreLivraison(ligneLivraison, true)}
+          {!detailVisible && (
+            <button type="button" onClick={() => setDetailOuvert(true)} disabled={busy != null}
+              style={{ ...boutonCreux(busy != null), alignSelf: 'flex-start' }}>
+              {t.voirDetail}
+            </button>
+          )}
+
+          {detailVisible && lignesChecklist.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Ce qui manque, dit en une ligne et en tête — un problème ne se
+                  cherche pas dans une liste de coches. */}
+              {lignesManquantes.length > 0 && (
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#9A5A3A', background: `${UI.amber}22`, border: `1px solid ${UI.amber}55`, borderRadius: 10, padding: '8px 10px', lineHeight: 1.45 }}>
+                  {t.aFinir(lignesManquantes.map((l) => t.lignes[l.cle]?.label ?? l.cle).join(', '))}
+                </div>
+              )}
               <div style={{ fontSize: 11.5, fontWeight: 700, color: UI.mute2 }}>{t.checklist}</div>
-              {checklist.lignes.map((ligne) => {
+              {lignesChecklist.map((ligne) => {
                 const txt = t.lignes[ligne.cle];
                 if (!txt) return null;
                 const ok = ligne.etat === 'ok';
@@ -983,9 +1022,19 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
               {limite && (limite.quantity != null || montant) && (
                 <div style={{ fontSize: 11.5, color: UI.mute, lineHeight: 1.4 }}>{t.plafond(limite.quantity, montant)}</div>
               )}
+              {/* Repliable UNIQUEMENT quand tout est vert : sinon le bouton
+                  n'existe pas, et le détail ne peut pas être refermé sur un
+                  problème non réglé. */}
+              {toutVert && (
+                <button type="button" onClick={() => setDetailOuvert(false)} disabled={busy != null}
+                  style={{ ...boutonCreux(busy != null), alignSelf: 'flex-start' }}>
+                  {t.masquerDetail}
+                </button>
+              )}
             </div>
           )}
 
+          {detailVisible && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 }}>
             {!confirmDeco ? (
               <button type="button" onClick={() => setConfirmDeco(true)} disabled={busy != null} style={{ background: 'none', border: 'none', padding: 0, fontSize: 11.5, color: UI.mute, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
@@ -1001,6 +1050,7 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
               </>
             )}
           </div>
+          )}
         </div>
       )}
 
