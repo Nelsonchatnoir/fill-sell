@@ -8,7 +8,9 @@
 //   · re-épeler : « 85 G » devient « 85G », « VILA » devient « Vila » —
 //     la même valeur, écrite comme Beebs l'écrit. La comparaison ignore la
 //     casse, les accents, les espaces et la ponctuation, et RIEN D'AUTRE ;
-//   · router : une catégorie peut porter DEUX champs du même libellé
+//   · router : une catégorie peut porter DEUX champs du même libellé — on
+//     adresse alors CHACUN par sa clé positionnelle (« Taille [#1] »,
+//     « Taille [#2] ») et on coupe le canal dédié, qui frappait les deux
 //     (relevé live le 08/09 : « Pyjamas (femme) » a « Taille » = XXXS/30 … et
 //     « Taille [#2] » = 75A … 95L ; « Chemises (homme) » a la taille et le col
 //     — le cas fondateur de Joséphine). Quand la valeur n'appartient qu'au
@@ -179,6 +181,71 @@ export function rapprocherValeursBeebs(
       .filter((a) => libelles.includes(libelleDeCle(a.field_key)) && valeursDe(a).length)
       .sort((a, b) => Number(cleADiscriminant(a.field_key)) - Number(cleADiscriminant(b.field_key)));
     if (!champs.length) continue;
+
+    // ── LIBELLÉ DUPLIQUÉ : LE CANAL DÉDIÉ DOIT SE TAIRE ────────────────────
+    // `platform_fields.taille` fait poser la MÊME valeur sur TOUS les champs
+    // « Taille » de la page (selectDropdownValue → resoudreChamps sur le
+    // libellé nu). Sur une catégorie qui en porte deux, l'un des deux la
+    // refuse forcément — et son refus l'inscrit dans `unfilledRequired`, que
+    // rien ne retire ensuite, même quand une passe ultérieure le remplit
+    // (relevé 08/09 sur le job 500c04c6 : « Taille [#2] » rempli à 85G et
+    // pourtant redemandé). C'est CE défaut qui rendait la catégorie
+    // structurellement impubliable, et qui aurait rejoué la boucle de
+    // Joséphine à la première réponse de la vendeuse.
+    //
+    // On coupe donc le canal dédié pour ce libellé et on adresse CHAQUE champ
+    // par une clé à discriminant POSITIONNEL — « Taille [#1] », « Taille [#2] » :
+    //   · resoudreChamps() de la 0.6.20 les résout par position (`^#(\d+)$`) ;
+    //   · aucune n'est dans `handledLabels`, donc la boucle beebsAspects les
+    //     sert toutes les deux ;
+    //   · plus aucune passe ne peut échouer sur un champ qui n'est pas le sien.
+    // Un champ dont on n'a pas la valeur reste VIDE et ressort de l'énumération
+    // — needsUser honnête, sur LE champ qui manque, avec SA liste.
+    const parLibelle = new Map<string, AspectRow[]>();
+    for (const a of champs) {
+      const l = libelleDeCle(a.field_key);
+      parLibelle.set(l, [...(parLibelle.get(l) ?? []), a]);
+    }
+    const duplique = parLibelle.size === 1 && [...parLibelle.values()][0].length > 1
+      ? [...parLibelle.entries()][0]
+      : null;
+    if (duplique) {
+      const [label, rangs] = duplique;
+      let servis = 0;
+      rangs.forEach((a, i) => {
+        // Clé positionnelle : le 1er champ n'a pas de clé à discriminant dans
+        // le catalogue (il porte le libellé nu) — on lui en fabrique une, sans
+        // quoi la boucle beebsAspects le sauterait (handledLabels).
+        const clePosee = i === 0 ? `${label} [#1]` : a.field_key;
+        // Réponse déjà donnée par l'utilisateur, sous l'une ou l'autre clé :
+        // intouchable, et elle sera posée par la boucle générique.
+        if (String(dejaSaisi[a.field_key] ?? "").trim() || String(dejaSaisi[clePosee] ?? "").trim()) {
+          servis++;
+          return;
+        }
+        const exacte = valeursDe(a).includes(valeur) ? valeur : valeurComparableUnique(a, cible);
+        if (!exacte) return;
+        res.aspects[clePosee] = exacte;
+        res.posees.push({
+          cle_source: cleRacine, champ: clePosee,
+          valeur_source: valeur, valeur_posee: exacte,
+          methode: i === 0 ? "homonyme_champ_1" : "homonyme_champ_n",
+        });
+        servis++;
+      });
+      // Le canal dédié n'est coupé que si quelqu'un prend le relais : sans
+      // cela on perdrait la valeur sans rien gagner.
+      if (servis) {
+        res.racines[cleRacine] = "";
+        if (!res.posees.some((p) => p.cle_source === cleRacine)) {
+          res.posees.push({
+            cle_source: cleRacine, champ: label,
+            valeur_source: valeur, valeur_posee: "", methode: "canal_dedie_coupe",
+          });
+        }
+      }
+      continue;
+    }
 
     // a. EXACT sur le champ principal : la valeur part déjà bien, on ne
     //    touche à rien. C'est le cas de la quasi-totalité du parc.

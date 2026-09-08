@@ -30,10 +30,31 @@ const pyjamas: AspectRow[] = [
   );
   console.log("CAS 1 — soutien-gorge « 85 G » dans Pyjamas (femme)");
   ok("routé sur Taille [#2] = 85G", r.aspects["Taille [#2]"] === "85G", r.aspects);
-  ok("racine taille INTACTE (le 1er champ reste à demander)", r.racines.taille === undefined, r.racines);
+  ok("1er champ NON servi (85 G n'est pas une taille de vêtement)", r.aspects["Taille [#1]"] === undefined, r.aspects);
+  ok("canal dédié COUPÉ (il frapperait les deux champs)", r.racines.taille === "", r.racines);
   ok("marque Darjeeling absente du catalogue → RIEN", r.posees.every((p) => p.cle_source !== "marque"), r.posees);
   ok("état exact → rien posé", r.posees.every((p) => p.cle_source !== "etat"), r.posees);
-  ok("méthode tracée", r.posees[0]?.methode === "normalisee_autre_champ", r.posees);
+  ok("méthode tracée", r.posees[0]?.methode === "homonyme_champ_n", r.posees);
+}
+
+// ── CAS 1 bis : la vendeuse a répondu pour le 1er champ — les DEUX partent ───
+{
+  const r = rapprocherValeursBeebs(
+    { taille: "S / 36", beebsAspects: { "Taille [#2]": "85G" } },
+    pyjamas,
+  );
+  console.log("CAS 1 bis — réponse du 1er champ arrivée, le 2ᵉ déjà servi");
+  ok("1er champ adressé par sa clé positionnelle", r.aspects["Taille [#1]"] === "S / 36", r.aspects);
+  ok("réponse du 2ᵉ champ JAMAIS réécrite", r.aspects["Taille [#2]"] === undefined, r.aspects);
+  ok("canal dédié coupé", r.racines.taille === "", r.racines);
+}
+
+// ── CAS 1 ter : libellé dupliqué mais AUCUNE valeur ne tombe → on ne coupe rien
+{
+  const r = rapprocherValeursBeebs({ taille: "42 ans" }, pyjamas);
+  console.log("CAS 1 ter — libellé dupliqué, aucune correspondance");
+  ok("rien posé", Object.keys(r.aspects).length === 0, r.aspects);
+  ok("canal dédié INTACT (sinon on perdrait la valeur pour rien)", r.racines.taille === undefined, r.racines);
 }
 
 // ── CAS 2 : casse seule (« VILA » / « Vila »), champ principal ───────────────
@@ -90,6 +111,8 @@ console.log("GARDE-FOUS");
     pyjamas,
   );
   ok("réponse de l'utilisateur JAMAIS écrasée", r.aspects["Taille [#2]"] === undefined, r.aspects);
+  const u = rapprocherValeursBeebs({ marque: "VILA", beebsAspects: { "Marque": "Zara" } }, [A("Marque", ["Vila","Zara"])]);
+  ok("champ unique : une saisie ne bloque pas la ré-épellation de la racine", u.racines.marque === "Vila", u.racines);
 }
 {
   const r = rapprocherValeursBeebs({ colors: ["Noir"] }, [A("Couleur", ["Noir"], false)]);
