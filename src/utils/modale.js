@@ -71,13 +71,30 @@ function deverrouiller() {
   ouvertes = Math.max(0, ouvertes - 1);
   if (ouvertes > 0) return;
   document.documentElement.classList.remove('fs-modale-ouverte');
-  for (const f of figes) {
+  const aRendre = figes;
+  figes = [];
+  for (const f of aRendre) {
     f.el.style.overflow = f.overflow;
-    // Rendue sans animation : un défilement doux ici donnerait l'impression
-    // que la page bouge toute seule après la fermeture.
+    // ⚠️ FORCER LE RECALCUL AVANT DE RENDRE LA POSITION. Mesuré : sans cette
+    // ligne, le conteneur revenait à 0 au lieu de 600. `overflow:hidden` lui
+    // fait perdre son scrollTop tout de suite ; à la réouverture du flux, le
+    // navigateur n'a pas encore refait la mise en page, donc l'assignation
+    // tombe sur un élément qui « ne peut pas défiler » et elle est ignorée.
+    // Lire offsetHeight force le reflow et rend l'assignation effective.
+    void f.el.offsetHeight;
     f.el.scrollTop = f.scrollTop;
   }
-  figes = [];
+  // Ceinture : si un re-rendu de React repasse derrière nous à la fermeture
+  // (la liste se reconstruit quand la modale se démonte), on repose la
+  // position à la frame suivante. Sans animation — un défilement doux ici
+  // donnerait l'impression que la page bouge toute seule.
+  if (aRendre.length && typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => {
+      for (const f of aRendre) {
+        if (f.el.isConnected && f.el.scrollTop !== f.scrollTop) f.el.scrollTop = f.scrollTop;
+      }
+    });
+  }
 }
 
 /**
