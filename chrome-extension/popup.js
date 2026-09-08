@@ -536,13 +536,20 @@ function etatPlateforme(p, sondeFraiche) {
     return { etat: "bloquee", sous: `Vérification anti-robot à passer sur ${p.name.toLowerCase()}` };
   }
   if (p.key === "beebs") {
-    if (msgs.some((m) => BEEBS_DECO_RE.test(m.trim()))) {
-      return { etat: "ko", sous: "Session fermée" };
-    }
-    // Un dépôt Beebs abouti récemment PROUVE la session, là où la sonde ne
-    // peut rien prouver.
+    // ⚠️ LE PLUS RÉCENT TRANCHE, dans cet ordre. Un job en needs_user peut
+    // porter « Connexion Beebs requise » depuis des jours : s'il primait, on
+    // enverrait se reconnecter quelqu'un dont le dépôt d'il y a dix minutes a
+    // abouti. Un dépôt réussi PROUVE la session, là où la sonde ne peut rien
+    // prouver — c'est lui qui passe devant.
     if (rec && (rec.status === "published" || rec.status === "dry_run_completed")) {
       return { etat: "ok", sous: null };
+    }
+    if (rec?.error && BEEBS_DECO_RE.test(String(rec.error).trim())) {
+      return { etat: "ko", sous: "Session fermée" };
+    }
+    // Aucun résultat frais : le verdict d'un job encore en attente fait foi.
+    if (msgs.some((m) => BEEBS_DECO_RE.test(m.trim()))) {
+      return { etat: "ko", sous: "Session fermée" };
     }
     return { etat: null, sous: null };
   }
