@@ -94,7 +94,7 @@ const privacyTexts = {
     ],
     storage: "Les données sont stockées de manière sécurisée via Supabase (infrastructure EU) et protégées par des mesures de sécurité standard.",
     rights: "Les utilisateurs peuvent demander l'accès, la modification ou la suppression de leurs données en contactant :",
-    noTrack: "FillSell ne contient aucun SDK de tracking ou de publicité.",
+    noTrack: "FillSell ne contient aucun SDK publicitaire. Le site et l'application utilisent Google Tag Manager à des fins de mesure d'audience : comprendre comment le service est utilisé et quelles pages sont consultées. Aucune donnée n'est utilisée à des fins publicitaires, et aucune donnée n'est vendue ni cédée à un tiers.",
     compliance: "This app complies with Apple App Store privacy requirements.",
   },
   en: {
@@ -116,7 +116,7 @@ const privacyTexts = {
     ],
     storage: "Data is stored securely via Supabase (EU infrastructure) and protected by standard security measures.",
     rights: "Users may request access, modification, or deletion of their data by contacting:",
-    noTrack: "FillSell contains no tracking or advertising SDKs.",
+    noTrack: "FillSell contains no advertising SDK. The site and the app use Google Tag Manager for audience measurement: understanding how the service is used and which pages are viewed. No data is used for advertising purposes, and no data is sold or transferred to any third party.",
     compliance: "This app complies with Apple App Store privacy requirements.",
   },
 };
@@ -547,8 +547,8 @@ export default function Legal() {
           </ul>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en
-              ? <>FillSell uses <span className="legal-strong">no advertising cookies</span> or third-party trackers for targeting purposes. No explicit consent is required for strictly necessary cookies, in accordance with the ePrivacy Directive.</>
-              : <>FillSell n'utilise <span className="legal-strong">aucun cookie publicitaire</span> ni tracker tiers à des fins de ciblage. Aucun consentement explicite n'est requis pour les cookies strictement nécessaires, conformément à la directive ePrivacy.</>}
+              ? <>FillSell also uses <span className="legal-strong">Google Tag Manager</span> for <span className="legal-strong">audience measurement</span>: understanding how the site is used and which pages are viewed. <span className="legal-strong">No data is used for advertising purposes</span>, and <span className="legal-strong">no data is sold or transferred to any third party</span>. No explicit consent is required for strictly necessary cookies, in accordance with the ePrivacy Directive.</>
+              : <>FillSell utilise par ailleurs <span className="legal-strong">Google Tag Manager</span> à des fins de <span className="legal-strong">mesure d'audience</span> : comprendre comment le site est utilisé et quelles pages sont consultées. <span className="legal-strong">Aucune donnée n'est utilisée à des fins publicitaires</span>, et <span className="legal-strong">aucune donnée n'est vendue ni cédée à un tiers</span>. Aucun consentement explicite n'est requis pour les cookies strictement nécessaires, conformément à la directive ePrivacy.</>}
           </p>
         </Section>
 

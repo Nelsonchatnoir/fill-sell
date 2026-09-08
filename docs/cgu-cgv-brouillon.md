@@ -469,6 +469,7 @@ chiffré, qui appelle un avis (§5).*
 | PhotoRoom | retouche photo | UE |
 | Remove.bg | détourage photo | UE |
 | Resend | e-mails transactionnels | États-Unis |
+| Google (Tag Manager) | mesure d'audience du site et de l'application (cf. 4.9 bis) | États-Unis |
 | TikTok | mesure des conversions publicitaires | hors UE |
 
 **4.8 Transferts hors Union européenne (NOUVEAU)** — certains sous-traitants
@@ -523,11 +524,53 @@ décision d'adéquation.
 > publicitaire », « aucun cookie publicitaire ni traceur tiers ») sont
 > redevenues vraies **pour TikTok**.
 >
-> ⚠️ **MAIS elles restent fausses tant que Google Tag Manager est là.**
-> `index.html` charge encore GTM (conteneur `GTM-TJNKL6T5`, plus une balise
-> `<noscript>` vers googletagmanager.com), sur chaque page et sans consentement.
-> C'est exactement le même problème juridique que le pixel TikTok. Hors du
-> périmètre demandé le 7 septembre : **à trancher séparément.**
+> ⚠️ **MAIS elles restaient fausses tant que Google Tag Manager était passé
+> sous silence.** `index.html` charge GTM (conteneur `GTM-TJNKL6T5`, plus une
+> balise `<noscript>` vers googletagmanager.com), sur chaque page. Le site ET
+> l'application mobile sont concernés : la webview Capacitor sert le même
+> `index.html`.
+
+**4.9 bis Mesure d'audience — Google Tag Manager (ARBITRÉ, 8 septembre 2026)**
+
+> ✅ **ARBITRAGE TRANCHÉ (Nico, 8 septembre 2026) : on GARDE Google Tag
+> Manager.** Contrairement au pixel TikTok, on ne touche pas au code — c'est le
+> **texte** qui était faux, et c'est lui qu'on corrige. La phrase « aucun cookie
+> publicitaire ni traceur tiers » est retirée : elle affirmait une absence qui
+> n'existe pas.
+>
+> **Formulation retenue, à reprendre à l'identique partout :**
+>
+> - FillSell utilise **Google Tag Manager** à des fins de **mesure d'audience**
+>   (comprendre comment le site est utilisé, quelles pages sont consultées) ;
+> - **aucune donnée n'est utilisée à des fins publicitaires** ;
+> - **aucune donnée n'est vendue ni cédée à un tiers.**
+>
+> **Posé le 8 septembre 2026 dans `src/pages/Legal.jsx`**, aux deux seuls
+> endroits du site qui portaient une affirmation d'absence de traceur, en
+> français et en anglais :
+> 1. **section 5 — Politique de cookies** : la phrase « aucun cookie
+>    publicitaire ni tracker tiers à des fins de ciblage » est remplacée par la
+>    formulation ci-dessus ;
+> 2. **section 7 — App Store Privacy** (`privacyTexts.noTrack`) : « FillSell ne
+>    contient aucun SDK de tracking ou de publicité » devient « aucun SDK
+>    **publicitaire** » + la formulation ci-dessus. Cette section couvre
+>    l'**application mobile**, qui embarque GTM par la webview — l'affirmation
+>    initiale y était donc fausse elle aussi.
+>
+> **Ce qui n'a PAS bougé, et pourquoi :**
+> - *Section 4 (« Jamais vendues à des tiers », « Jamais utilisées pour du
+>   tracking publicitaire »)* : reste vrai, et dit exactement ce que l'arbitrage
+>   affirme.
+> - *Section 8.2 (« l'extension ne contient aucun SDK de tracking ou de
+>   publicité »)* : reste vrai — l'extension Chrome ne charge pas `index.html`
+>   et donc pas GTM (vérifié : aucune occurrence de `GTM-` ni de
+>   `googletagmanager` dans `chrome-extension/`).
+> - *Le code* : `index.html`, `App.jsx` et la config GTM sont **inchangés**.
+>
+> ⚠️ **Reste ouvert, non tranché ici** : GTM est chargé **sans consentement
+> préalable**. La formulation ci-dessus rend le texte *exact*, elle ne règle pas
+> la question du bandeau de consentement (ePrivacy / recommandation CNIL sur la
+> mesure d'audience exemptée). À examiner avec l'avocat (§5).
 
 ### Section 9 — Signalement et point de contact (NOUVEAU, DSA)
 
