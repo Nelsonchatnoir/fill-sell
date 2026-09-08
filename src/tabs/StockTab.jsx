@@ -7687,7 +7687,13 @@ const StockTab = memo(function StockTab({
                                       boxShadow:`inset 0 0 0 1.5px ${teinte.trait}, 0 1px 4px rgba(16,32,27,0.25)`}:{}),
                                     ...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
                                   onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
-                                  <PlatformLogo platform={p} size={20}/>
+                                  {/* Le socle du logo prend la MÊME teinte et
+                                      perd sa bordure : la mini-carte devient un
+                                      seul aplat avec un seul contour, au lieu
+                                      d'un cadre coloré autour d'un carré blanc. */}
+                                  <PlatformLogo platform={p} size={20}
+                                    fond={teinte?teinte.fond:undefined}
+                                    bord={teinte?"transparent":undefined}/>
                                 </span>
                               );
                             })}
@@ -7730,15 +7736,16 @@ const StockTab = memo(function StockTab({
                                     background:x.ton==='warn'?"#FFF6E3":"#FEF2F2",
                                     boxShadow:`inset 0 0 0 1.5px ${x.ton==='warn'?"#8A6100":"#B91C1C"}, 0 1px 4px rgba(16,32,27,0.25)`}}
                                   onClick={ev=>{ev.stopPropagation();setRemoveModalItem(item);}}>
-                                  {/* Le NOIR ET BLANC porte sur le LOGO seul,
-                                      jamais sur la mini-carte : désaturer la
-                                      carte effacerait la teinte qui dit le
-                                      registre. Couleur = en ligne ici ;
-                                      noir et blanc = pas en ligne, mais
-                                      quelque chose t'attend. */}
-                                  <span style={{display:"flex",lineHeight:0,filter:"grayscale(1)",opacity:.78}}>
-                                    <PlatformLogo platform={x.p} size={20}/>
-                                  </span>
+                                  {/* Socle teinté + bordure transparente : la
+                                      mini-carte est un seul aplat. Le NOIR ET
+                                      BLANC porte sur le GLYPHE seul (prop
+                                      desature) — désaturer le socle effacerait
+                                      la teinte qui dit le registre. Couleur =
+                                      en ligne ici ; noir et blanc = pas en
+                                      ligne, mais quelque chose t'attend. */}
+                                  <PlatformLogo platform={x.p} size={20} desature
+                                    fond={x.ton==='warn'?"#FFF6E3":"#FEF2F2"}
+                                    bord="transparent"/>
                                 </span>
                               ));
                             })()}
