@@ -753,10 +753,22 @@ const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects",
 // orange, beige, sombre, bariolé — sans changer la palette. En box-shadow,
 // donc sans occuper la moindre place dans la mise en page : le gabarit ne
 // bouge pas. L'ombre portée d'origine est conservée derrière lui.
+// ⚠️ TAILLE FIXÉE EN border-box, ET CE N'EST PAS UNE PRÉCAUTION THÉORIQUE.
+// Mesuré en prod : la carte teintée faisait 24,8 px contre 26 px pour une carte
+// normale. Cause relevée dans le navigateur — `devicePixelRatio` valait 1,25 :
+// une bordure de 3 px CSS fait 3,75 px physiques, que le moteur arrondit à 3,
+// soit 2,4 px CSS. La bordure rétrécit donc la carte d'un écran à l'autre (sur
+// un iPhone, dPR 3, 3 px tombe juste et le problème ne se voit pas). C'est le
+// même arrondi qui rendait le contour plus épais d'un côté.
+// En fixant 26×26 en border-box, la carte fait la MÊME taille que les autres
+// quel que soit l'écran, et c'est la bordure qui s'ajuste à l'intérieur.
 const LOGO_TEINTE = (t) => ({
   background: t.fond,
   border: `3px solid ${t.trait}`,
   padding: 0,
+  boxSizing: 'border-box',
+  width: 26,
+  height: 26,
   boxShadow: `0 0 0 2px rgba(255,255,255,0.92), 0 1px 4px rgba(16,32,27,0.35)`,
 });
 
