@@ -84,17 +84,26 @@ function deverrouiller() {
     void f.el.offsetHeight;
     f.el.scrollTop = f.scrollTop;
   }
-  // Ceinture : si un re-rendu de React repasse derrière nous à la fermeture
-  // (la liste se reconstruit quand la modale se démonte), on repose la
-  // position à la frame suivante. Sans animation — un défilement doux ici
-  // donnerait l'impression que la page bouge toute seule.
-  if (aRendre.length && typeof requestAnimationFrame === 'function') {
-    requestAnimationFrame(() => {
-      for (const f of aRendre) {
-        if (f.el.isConnected && f.el.scrollTop !== f.scrollTop) f.el.scrollTop = f.scrollTop;
-      }
-    });
+  // ⚠️ CONTOURNEMENT DE TIMING, ET JE LE DIS PLUTÔT QUE DE LE MAQUILLER.
+  // La fermeture démonte la modale, ce qui déclenche un re-rendu de la liste :
+  // celui-ci repasse APRÈS notre restauration et remet le conteneur à zéro
+  // (mesuré : 0 au lieu de 600, deux fois de suite). Le reflow forcé ci-dessus
+  // ne suffit donc pas — ce n'est pas un problème de mise en page mais d'ordre
+  // d'exécution avec React. On repose la position aux deux frames suivantes,
+  // puis une dernière fois après 60 ms pour le cas d'un rendu différé.
+  // Chaque passe ne fait rien si la position est déjà la bonne, donc aucun
+  // saut visible ; et rien n'est animé — un défilement doux ici donnerait
+  // l'impression que la page bouge toute seule après la fermeture.
+  if (!aRendre.length) return;
+  const reposer = () => {
+    for (const f of aRendre) {
+      if (f.el.isConnected && f.el.scrollTop !== f.scrollTop) f.el.scrollTop = f.scrollTop;
+    }
+  };
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => { reposer(); requestAnimationFrame(reposer); });
   }
+  setTimeout(reposer, 60);
 }
 
 /**
