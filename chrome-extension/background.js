@@ -12802,9 +12802,55 @@ async function autoCaptureEtRepublier(cand, token, userId) {
     }),
   }).catch((e) => console.warn("[republish-auto] persistance capture:", String(e?.message ?? e)));
 
-  if (verdict !== "valide") {
+  // ── CE QUE LE PRÉ-VOL A LE DROIT DE REFUSER (2026-09-08, incident état) ────
+  // Le 07/09 à 12h15, Vinted a retiré le champ racine `status` du payload.
+  // Effet mesuré : 225 captures de pré-vol 'incomplet' chez 11 comptes pour ce
+  // SEUL motif, et la voie auto à l'arrêt — un article brûlé par cycle, écarté
+  // 24 h après 3 essais, sans qu'aucun appel ne parte vers le serveur. Aucune
+  // trace en base, rien de réparable à distance : le refus se décidait ici, en
+  // mémoire, avant le moindre octet envoyé.
+  //
+  // La cause de fond n'est PAS l'état : c'est que ce pré-vol refaisait le
+  // jugement COMPLET de la capture, alors que son propre en-tête dit depuis le
+  // 31/08 qu'il « se contente de vérifier que l'annonce est capturable et
+  // qu'elle a des URLs de photos ». Le code, lui, reprenait tous les champs
+  // manquants. Le prochain champ que Vinted déplacera rejouerait la panne à
+  // l'identique.
+  //
+  // ⛔ ON NE CODE PAS ICI LA LISTE DES CHAMPS QUE LE SERVEUR SAIT FOURNIR.
+  // Une liste en dur serait fausse au premier champ suivant — exactement le
+  // piège qu'on vient de prendre. La règle est l'inverse, et elle ne nomme
+  // aucun champ : le pré-vol ne retient QUE ce qui l'empêche de fabriquer un
+  // job (annonce illisible, aucune photo — ce dernier motif étant de toute
+  // façon le refus `article_sans_photo` du RPC). Les LIBELLÉS manquants ne
+  // sont pas son affaire.
+  //
+  // Qui tranche alors ? L'étape 'captured' du job, et elle le fait mieux :
+  //   · elle relit la capture faite PAR le job, enrichie de
+  //     `republish_user_fields` — le canal par lequel le serveur fournit déjà
+  //     l'état depuis le 07/09, et par lequel il fournira n'importe quel autre
+  //     champ demain, sans qu'une ligne d'extension change ;
+  //   · elle REFUSE de supprimer tant que le verdict n'est pas 'valide' (prix,
+  //     titre et snapshot vérifiés en plus) : « on ne supprime jamais tant que
+  //     tout ce qu'il faut pour recréer n'est pas écrit en base » ;
+  //   · son refus est un needs_user VISIBLE et relançable, pas un article
+  //     silencieusement écarté pour 24 h.
+  // Preuve relevée pendant l'incident (07/09 23h → 08/09) : 45 jobs créés par
+  // la voie MANUELLE, qui n'a jamais eu de pré-vol — 38 republiés, 6 retenus
+  // AVANT toute suppression (annonces intactes), 1 refusé par Vinted à la
+  // recréation. Ce pré-vol n'a donc jamais rien protégé que la machine à
+  // étapes ne protège déjà.
+  const bloquants = manquants.filter((m) => /^photos\b/i.test(String(m)));
+  if (bloquants.length) {
     return { ok: false, portee: "article", code: "capture_incomplete",
-             motif: `capture incomplète (${manquants.slice(0, 3).join(" ; ")})` };
+             motif: `capture incomplète (${bloquants.slice(0, 3).join(" ; ")})` };
+  }
+  if (verdict !== "valide") {
+    console.log(
+      `[republish-auto] article ${cand.vinted_item_id} : libellés incomplets au pré-vol ` +
+      `(${manquants.slice(0, 3).join(" ; ")}) — mis en file quand même. L'étape « captured » ` +
+      "du job tranchera, avec ce que le serveur fournit, et AVANT toute suppression.",
+    );
   }
 
   const rpc = await appelerRpcRepublishAuto(token, cand)
