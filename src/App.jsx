@@ -72,6 +72,7 @@ import VoiceResultCard from './components/voice/VoiceResultCard';
 // Avertissement « encore en ligne » — MÊME composant que la carte vocale
 // inventory_sell. Les deux chemins de vente disent la même chose, une seule fois.
 import AvertissementAnnoncesEnLigne from './components/AvertissementAnnoncesEnLigne';
+import { useFondFige } from './utils/modale';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -2231,6 +2232,21 @@ export default function App({ loginOnly = false }){
   const [editItem,setEditItem]=useState(null);
   const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',sellingFees:'',rememberFees:false}
   const [deleteConfirm,setDeleteConfirm]=useState(null); // {type:'soldItem'|'sale', item?, sale?}
+  // ── FOND FIGÉ SOUS TOUTE MODALE (2026-09-08) ──────────────────────────────
+  // Le défaut relevé sur « Retirer des plateformes » (le geste de défilement
+  // partait dans la page derrière et emportait le bouton « Fermer » hors de
+  // l'écran) n'était pas propre à cette popup : il vient du body qui reste
+  // scrollable et de la barre du bas qui passe devant sur WebKit. Toutes les
+  // modales plein écran de l'app portent donc la même garde, au même endroit,
+  // plutôt qu'un correctif par écran. Le hook compte les modales ouvertes : deux
+  // superposées ne se déverrouillent pas l'une l'autre.
+  useFondFige(disparusModal);
+  useFondFige(showSettings);
+  useFondFige(showBugReport);
+  useFondFige(!!importModal);
+  useFondFige(!!editItem);
+  useFondFige(!!sellModal);
+  useFondFige(!!deleteConfirm);
   // Sonde d'avant-suppression (2026-08-10) : état de l'annonce Vinted du plan de
   // suppression. {jobId, statut:'encours'|'hors_ligne'|'muette', signal, prix}
   // 'muette' = active, indéterminée, sans extension, ou hors délai — dans TOUS

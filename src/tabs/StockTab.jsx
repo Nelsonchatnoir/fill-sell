@@ -25,6 +25,7 @@ import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 // normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
 import { urlsPhotos, entreesPhotos } from '../utils/photos';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
+import { useFondFige } from '../utils/modale';
 import {
   PLATEFORMES_STOCK, LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
   filtrerStock, trierStock, TRIS_STOCK, libelleTri, pastillesEtat, etatPlateformes,
@@ -788,10 +789,18 @@ const MODAL_PIED = {
   background: "#F6F5F1", borderRadius: "0 0 16px 16px", flex: "0 0 auto",
 };
 
-// Échap ferme la modale. Ceinture clavier de la règle ci-dessus : sur
-// ordinateur aussi, une carte plus haute que la fenêtre laisse trop peu de
-// voile à cliquer.
+// Le SOCLE d'une modale, en un seul hook (élargi le 2026-09-08) :
+//   · Échap ferme — ceinture clavier de la règle ci-dessus : sur ordinateur
+//     aussi, une carte plus haute que la fenêtre laisse trop peu de voile à
+//     cliquer ;
+//   · le fond est FIGÉ et la barre de navigation retirée (useFondFige) — sans
+//     quoi, sur Safari iOS, le geste de défilement part dans la page derrière
+//     et emporte le bouton « Fermer » hors de l'écran (constat Nico du 08/09
+//     sur « Retirer des plateformes »).
+// Le nom reste celui d'origine : les trois modales du patron l'appellent déjà,
+// et le renommer aurait été un changement sans effet utile.
 function useFermetureEchap(onClose) {
+  useFondFige(true);
   useEffect(() => {
     if (!onClose) return undefined;
     const surTouche = (e) => { if (e.key === "Escape") onClose(); };
@@ -5425,6 +5434,11 @@ const StockTab = memo(function StockTab({
   // inséré rendu dans jobsByInventaire) puis « retirée » quand le job atteint
   // 'deleted'. Retourne un message d'erreur (affiché DANS le modal) ou null.
   const [removeModalItem, setRemoveModalItem] = useState(null);
+  // Les deux modales de Stock qui ne passent PAS par le patron partagé (elles
+  // sont écrites en ligne dans le rendu) : elles ont droit au même fond figé,
+  // sinon le défaut corrigé le 08/09 revient par la porte d'à côté.
+  useFondFige(!!repubArret);
+  useFondFige(!!failJobModal);
   // Tap sur « En cours… » → panneau de diagnostic (2026-07-20).
   const [jobStatusItem, setJobStatusItem] = useState(null);
   const [removeBusy, setRemoveBusy] = useState(null);
