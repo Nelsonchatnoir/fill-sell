@@ -5,7 +5,11 @@
   <title>FillSell</title>
   <style>
     /* Space Grotesk bundlée en local (woff2 variable, subset latin) — CSP MV3,
-       aucun chargement externe. Source : Google Fonts (OFL). */
+       aucun chargement externe. Source : Google Fonts (OFL).
+       La maquette Claude Design (08/09) est dessinée en Nunito 800/900 ; on
+       reste sur la police de l'app, comme la landing refondue depuis le même
+       projet (.lp-root = Space Grotesk). Le poids plafonne à 700, c'est le
+       maximum du fichier embarqué. */
     @font-face {
       font-family: "Space Grotesk";
       font-style: normal;
@@ -14,21 +18,27 @@
       src: url("assets/space-grotesk.woff2") format("woff2");
     }
 
-    /* ── Design tokens FillSell (identiques à src/components/ui.jsx) ── */
+    /* ── Palette de la maquette (08/09) — les mêmes teintes que App.css :
+       --teal-strong #1D9E75, --peach #F9A26C, focus #4ECDC4. ── */
     :root {
-      --canvas: #EDEAE0;
-      --paper:  #F6F5F1;
-      --ink:    #10201B;
-      --teal:   #2F9E90;
-      --teal-deep: #1B6E62;
-      --amber:  #E8956D;
+      --bg:        #F5F6F5;
+      --ink:       #0D0D0D;
+      --ink-2:     #374151;
+      --muted:     #6B7280;
+      --muted-2:   #A3A9A6;
+      --muted-3:   #9CA3AF;
+      --teal:      #1D9E75;
+      --teal-2:    #4ECDC4;
+      --teal-deep: #0F6E56;
+      --teal-soft: #E8F5F0;
+      --peach:       #F9A26C;
+      --peach-soft:  #FFF4EE;
+      --peach-deep:  #9A3412;
+      --peach-light: #FFD9BF;
       --card:   #FFFFFF;
-      --chip:   #F2F0E9;
-      /* séparateurs = ink à faible opacité */
-      --line:   rgba(16,32,27,0.10);
-      --ink-50: rgba(16,32,27,0.50);
-      --ink-35: rgba(16,32,27,0.35);
-      --ink-15: rgba(16,32,27,0.15);
+      --line:   rgba(0,0,0,0.06);
+      --line-2: rgba(0,0,0,0.04);
+      --shadow: 0 1px 4px rgba(0,0,0,0.05), 0 4px 16px rgba(0,0,0,0.04);
     }
 
     * { box-sizing: border-box; }
@@ -37,335 +47,361 @@
        pourtour du popup (coins arrondis + arrondis de pixels aux échelles
        d'affichage fractionnaires type 125 %) — laissé au blanc par défaut,
        c'était le liseré blanc autour du popup. */
-    html { background: var(--canvas); }
+    html { background: var(--bg); }
 
     body {
       width: 380px;
       margin: 0;
-      padding: 14px 14px 12px;
-      background: var(--canvas);
+      background: var(--bg);
       color: var(--ink);
       font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 14px;
+      font-size: 13px;
       -webkit-font-smoothing: antialiased;
     }
-
-    /* Poids max 700 imposé */
     b, strong { font-weight: 700; }
+    button { font-family: inherit; }
 
-    .eyebrow {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--ink-50);
-      margin: 0 0 8px;
+    /* ── Bandeau de marque ── */
+    .topbar {
+      position: relative; overflow: hidden;
+      background: linear-gradient(135deg, var(--teal), var(--teal-2));
+      padding: 14px 16px 16px;
+      display: flex; align-items: center; gap: 10px;
     }
-
-    /* ── Header ── */
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 14px;
+    .topbar .sheen {
+      position: absolute; top: 0; bottom: 0; left: 0; width: 40%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent);
+      animation: sheen 6s ease-in-out infinite; pointer-events: none;
     }
     .brand-logo {
-      width: 32px; height: 32px; border-radius: 9px;
-      flex-shrink: 0; object-fit: cover; display: block;
-      background: var(--card); border: 1px solid var(--line);
+      width: 34px; height: 34px; border-radius: 9px; display: block; flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
     }
-    .brand-text { display: flex; flex-direction: column; line-height: 1.1; }
-    .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+    .brand { flex: 1; min-width: 0; position: relative; }
+    .brand-name { font-weight: 700; font-size: 17px; letter-spacing: -0.02em; color: #fff; line-height: 1.1; }
     .brand-sub {
-      font-size: 10px; font-weight: 600; letter-spacing: 0.14em;
-      text-transform: uppercase; color: var(--ink-50); margin-top: 2px;
+      font-weight: 700; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: rgba(255,255,255,0.75); margin-top: 2px;
     }
-    .acct {
-      margin-left: auto;
-      display: inline-flex; align-items: center; gap: 7px;
-      padding: 6px 11px; border-radius: 999px;
-      background: var(--paper); border: 1px solid var(--line);
-      font-size: 12px; font-weight: 600; color: var(--ink);
-      cursor: default; transition: background 0.15s, border-color 0.15s;
-    }
-    .acct .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    .acct.on   .dot { background: var(--teal); box-shadow: 0 0 0 3px rgba(47,158,144,0.18); }
-    .acct.off  { cursor: pointer; color: var(--teal-deep); border-color: rgba(47,158,144,0.45); }
-    .acct.off  .dot { background: var(--amber); }
-    .acct.off:hover { background: rgba(47,158,144,0.08); }
-
-    /* ── Carte "Annonce prête" ── */
-    .section { margin-bottom: 14px; }
-    .listing {
-      display: flex; align-items: center; gap: 12px;
-      background: var(--paper); border: 1px solid var(--line);
-      border-radius: 16px; padding: 12px;
-    }
-    /* Vignette agrandie et ÉCLAIRCIE (2026-09-08) : à 56 px sur fond sombre,
-       une photo portée ne permettait pas de reconnaître l'article. */
-    .listing-thumb {
-      width: 78px; height: 78px; border-radius: 12px; flex-shrink: 0;
-      object-fit: cover; background: var(--paper);
-      box-shadow: inset 0 0 0 1px var(--line);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 26px;
-    }
-    .listing-body { min-width: 0; flex: 1; }
-    /* Titre ENTIER (2026-09-08) : « Blouse blanche sans manches à nou… » ne
-       permettait pas de distinguer l'article de celui en cours de dépôt. */
-    .listing-title {
-      font-size: 13.5px; font-weight: 600; color: var(--ink);
-      line-height: 1.35; margin-bottom: 4px;
-      overflow-wrap: anywhere;
-    }
-    .listing-meta { display: flex; align-items: center; gap: 8px; }
-    .listing-price { font-size: 15px; font-weight: 700; color: var(--teal-deep); }
-    .tag {
-      font-size: 9.5px; font-weight: 600; letter-spacing: 0.06em;
-      text-transform: uppercase; color: var(--ink-50);
-      background: var(--chip); border-radius: 999px; padding: 3px 8px;
-    }
-
-    /* État vide */
-    .empty {
-      background: var(--paper); border: 1px dashed var(--ink-15);
-      border-radius: 16px; padding: 22px 16px; text-align: center;
-    }
-    .empty-emoji { font-size: 26px; }
-    .empty-title { font-size: 13.5px; font-weight: 600; margin: 8px 0 3px; }
-    .empty-sub { font-size: 12px; color: var(--ink-50); line-height: 1.45; }
-
-    /* ── "Diffuser sur" : liste + trait de flux ── */
-    .flow { position: relative; }
-    /* le trait vertical teal, signature du popup */
-    .flow::before {
-      content: "";
-      position: absolute; left: 17px; top: 20px; bottom: 20px; width: 2px;
-      background: linear-gradient(var(--teal), var(--teal-deep));
-      opacity: 0.30; border-radius: 2px;
-    }
-    .prow {
+    /* La pastille de compte : « Active » / « Ralentie » / « En veille » quand on
+       est connecté (clic = déconnexion en deux temps), « Se connecter » sinon. */
+    .pill {
       position: relative;
-      display: flex; align-items: center; gap: 10px;
-      padding: 9px 8px 9px 40px;
-      border-radius: 12px;
-      transition: background 0.15s;
+      display: flex; align-items: center; gap: 7px;
+      background: rgba(255,255,255,0.18); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.28); border-radius: 99px;
+      padding: 6px 11px 6px 9px; color: #fff; font-weight: 700; font-size: 12px;
+      cursor: pointer; white-space: nowrap; transition: background 0.15s;
     }
-    .prow + .prow { margin-top: 2px; }
-    .prow.actionable:hover { background: var(--chip); }
-    .prow.dim { opacity: 0.5; }
-    /* noeud sur la ligne de flux */
-    .pnode {
-      position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
-      width: 14px; height: 14px; border-radius: 50%;
-      background: var(--canvas); box-sizing: border-box;
-      transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
-    }
-    .pnode.ready   { background: var(--teal); box-shadow: 0 0 0 3px rgba(47,158,144,0.16); }
-    .pnode.connect { background: var(--paper); border: 2px solid var(--amber); }
-    .pnode.soon    { background: var(--paper); border: 2px dashed var(--ink-35); }
-    .pnode.none    { background: var(--paper); border: 2px solid var(--ink-15); }
-    .pnode.done    { background: var(--teal-deep); box-shadow: 0 0 0 3px rgba(47,158,144,0.20); }
-    .pnode.busy    { background: var(--teal); box-shadow: 0 0 0 3px rgba(47,158,144,0.12); }
-    .pnode.queued  { background: var(--paper); border: 2px solid var(--teal); opacity: 0.55; }
-    .pnode.err     { background: var(--amber); box-shadow: 0 0 0 3px rgba(232,149,109,0.20); }
+    .pill:hover { background: rgba(255,255,255,0.28); }
+    .pill-dot { width: 8px; height: 8px; border-radius: 99px; background: #fff; display: block; flex-shrink: 0; }
+    .pill.active   .pill-dot { animation: pulseW 2.2s ease infinite; }
+    .pill.ralentie .pill-dot { background: var(--peach-light); animation: pulseO 2.2s ease infinite; }
+    .pill.veille   .pill-dot { background: rgba(255,255,255,0.55); }
+    .pill.off      .pill-dot { background: var(--peach-light); }
 
+    /* ── Lignes d'état sous le bandeau ── */
+    .bar {
+      padding: 9px 16px; background: #fff; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 8px;
+      font-weight: 500; font-size: 12px; color: var(--muted); line-height: 1.35;
+    }
+    .bar b { font-weight: 700; color: var(--ink); }
+    .bdot { width: 6px; height: 6px; border-radius: 99px; background: var(--teal); display: block; flex-shrink: 0; }
+    .bdot.cold { background: var(--muted-3); }
+    .bar-alerte { background: var(--peach-soft); border-bottom-color: rgba(249,162,108,0.35); color: var(--peach-deep); font-weight: 600; }
+    .bar-alerte .bdot { background: var(--peach); }
+    .bar-awake .bdot { background: var(--peach); }
+
+    /* ── Corps ── */
+    .corps { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 18px; }
+    .eyebrow {
+      font-weight: 700; font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    .eyebrow.soft { color: var(--muted-2); }
+    .sec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .sec-head .eyebrow { margin: 0; }
+    .pill-mini {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-weight: 700; font-size: 10px; color: var(--teal); background: var(--teal-soft);
+      border-radius: 99px; padding: 3px 8px;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+      box-shadow: var(--shadow); overflow: hidden;
+    }
+    .card.peach { background: var(--peach-soft); border-color: rgba(249,162,108,0.45); }
+    .card.encours { border-color: rgba(29,158,117,0.28); }
+    .stack { display: flex; flex-direction: column; gap: 8px; }
+
+    /* ── Logos plateformes : tracé SVG sur socle blanc (Vinted, eBay), icône
+       d'app PNG plein cadre (Leboncoin, Beebs) — les mêmes visuels que l'app. */
     .plogo {
-      width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
-      object-fit: cover; display: block;
-      background: var(--card); border: 1px solid var(--line);
+      width: 32px; height: 32px; border-radius: 9px; background: #fff;
+      border: 1px solid var(--line); display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; overflow: hidden;
     }
-    .pname { font-size: 13.5px; font-weight: 600; color: var(--ink); flex: 1; min-width: 0; }
-    .pstate { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .plogo img { width: 18px; height: 18px; display: block; }
+    .plogo.ebay img { width: 20px; height: 20px; }
+    .plogo.png { border: none; }
+    .plogo.png img { width: 100%; height: 100%; object-fit: cover; }
+    .plogo.sm { width: 18px; height: 18px; border-radius: 5px; }
+    .plogo.sm img { width: 11px; height: 11px; }
+    .plogo.sm.ebay img { width: 12px; height: 12px; }
+    .plogo.xs { width: 16px; height: 16px; border-radius: 4px; }
+    .plogo.xs img { width: 10px; height: 10px; }
+    .plogo.png.sm img, .plogo.png.xs img { width: 100%; height: 100%; }
 
-    /* ── ÉTAT DES PLATEFORMES (2026-09-08) ─────────────────────────────────
-       Une ligne par plateforme, en tête : c'est la question qu'on se pose en
-       ouvrant le popup. L'état vient de `contexte.sessions`, servi à chaque
-       poll et jusqu'ici réduit à quatre pastilles de 6 px tout en bas. */
-    .plat {
-      display: flex; align-items: center; gap: 9px;
-      padding: 8px 0; border-top: 1px solid var(--line);
+    /* ── Plateformes ── */
+    .plat { display: flex; align-items: center; gap: 11px; padding: 11px 14px; border-bottom: 1px solid var(--line-2); }
+    .plat:last-child { border-bottom: none; }
+    .plat.bloquee { background: var(--peach-soft); align-items: flex-start; }
+    .plat-txt { flex: 1; min-width: 0; }
+    .plat-ligne { display: flex; align-items: center; gap: 8px; }
+    .plat-nom { font-weight: 700; font-size: 14px; color: var(--ink); }
+    .plat-sous {
+      display: flex; align-items: center; gap: 6px;
+      font-weight: 600; font-size: 11.5px; color: var(--muted); margin-top: 2px; line-height: 1.45;
     }
-    .plat:first-child { border-top: none; padding-top: 2px; }
     /* État inconnu : la ligne RESTE (la plateforme est là), en gris et sans un
        mot. Faire disparaître la ligne répondait à la question par l'absence —
        on croyait la plateforme retirée. */
-    .plat.muette .plogo { filter: grayscale(1); opacity: 0.38; }
-    .plat.muette .plat-nom { color: var(--ink-35); font-weight: 500; }
-    .plat-txt { min-width: 0; }
-    .plat-nom { font-size: 13.5px; font-weight: 600; color: var(--ink); }
-    .plat-sous { font-size: 10.5px; font-weight: 500; color: var(--ink-35); margin-top: 2px; line-height: 1.4; }
-    .plat-etat {
-      margin-left: auto; display: flex; align-items: center; gap: 6px;
-      font-size: 11.5px; font-weight: 600; white-space: nowrap; flex-shrink: 0;
+    .plat.muette .plogo { opacity: 0.5; filter: grayscale(1); }
+    .plat.muette .plat-nom { color: var(--muted-2); }
+    .etat { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+    .etat.ok { color: var(--teal); }
+    .etat.ko { color: var(--peach-deep); }
+    .dot { width: 7px; height: 7px; border-radius: 99px; display: block; flex-shrink: 0; }
+    .dot.teal  { background: var(--teal); }
+    .dot.peach { background: var(--peach); }
+    .dot.gris  { background: var(--muted-3); }
+    .dot.pulse.teal  { animation: pulseT 2.6s ease infinite; }
+    .dot.pulse.peach { animation: pulseO 2.4s ease infinite; }
+    .plat-vu { font-weight: 500; font-size: 11px; color: var(--muted-2); margin: 7px 2px 0; }
+    .btn-outline {
+      font-weight: 700; font-size: 12px; color: var(--teal-deep); background: none;
+      border: 1.5px solid var(--teal); border-radius: 99px; padding: 6px 11px;
+      white-space: nowrap; cursor: pointer; transition: background 0.15s;
     }
-    .plat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .plat-etat.ok  { color: var(--teal-deep); } .plat-dot.ok  { background: var(--teal); }
-    .plat-etat.ko  { color: #9A3412; }          .plat-dot.ko  { background: var(--amber); }
-    .plat-vu { font-size: 10.5px; color: var(--ink-35); margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line); }
-
-    /* bouton "Se connecter" amber */
-    .connect-btn {
-      font-family: inherit; font-size: 11.5px; font-weight: 600;
-      color: var(--amber); background: rgba(232,149,109,0.10);
-      border: 1px solid rgba(232,149,109,0.55); border-radius: 999px;
-      padding: 5px 11px; cursor: pointer; transition: background 0.15s;
+    .btn-outline:hover { background: var(--teal-soft); }
+    .lien {
+      display: inline-flex; align-items: center; gap: 5px; margin-top: 6px;
+      font-weight: 700; font-size: 12px; color: var(--teal-deep);
+      background: none; border: none; padding: 0; cursor: pointer;
     }
-    .connect-btn:hover { background: rgba(232,149,109,0.18); }
+    .lien:hover { color: var(--teal); }
 
-    .badge-soft {
-      font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em;
-      color: var(--ink-50); background: var(--chip);
-      border-radius: 999px; padding: 4px 9px;
+    /* ── En cours ── */
+    .encours { display: flex; gap: 12px; padding: 11px 12px; }
+    .thumb {
+      width: 78px; height: 78px; border-radius: 12px; flex-shrink: 0; object-fit: cover;
+      background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 26px;
     }
-    .status-ok  { font-size: 12px; font-weight: 600; color: var(--teal-deep); display: flex; align-items: center; gap: 5px; }
-    .status-err { font-size: 11.5px; font-weight: 600; color: var(--amber); max-width: 130px;
-                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .status-run { font-size: 12px; font-weight: 600; color: var(--teal-deep); display: flex; align-items: center; gap: 6px; }
-    /* En attente de son tour (publication séquentielle) : ton neutre, point amber
-       qui pulse doucement — pas encore le teal actif de « Publication… ». */
-    .status-wait { font-size: 12px; font-weight: 600; color: var(--ink-50); display: flex; align-items: center; gap: 6px; }
-    .status-wait .dot-wait {
-      width: 8px; height: 8px; border-radius: 50%; background: var(--amber);
-      animation: pulse 1.2s ease-in-out infinite;
+    .encours-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+    .encours-tag { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 11px; color: var(--teal); }
+    /* Titre ENTIER, toujours : coupé, il ne permettait pas de distinguer deux
+       articles au libellé voisin. */
+    .titre { font-weight: 700; font-size: 13.5px; line-height: 1.3; color: var(--ink); overflow-wrap: anywhere; text-wrap: pretty; }
+    .barre { margin-top: auto; height: 5px; border-radius: 99px; background: var(--teal-soft); overflow: hidden; }
+    .barre-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--teal), var(--teal-2)); animation: bar 7s cubic-bezier(0.3,0.7,0.3,1) infinite; }
+
+    /* ── Prête à publier ── */
+    .prete-top { padding: 12px 12px 10px; display: flex; gap: 12px; align-items: center; }
+    .prete-body { flex: 1; min-width: 0; }
+    .prete-meta { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+    .prix { font-weight: 700; font-size: 15px; letter-spacing: -0.03em; }
+    .chip {
+      display: inline-flex; align-items: center; white-space: nowrap;
+      font-weight: 700; font-size: 10px; border-radius: 99px; padding: 3px 8px;
+      color: var(--teal-deep); background: var(--teal-soft); border: 1px solid rgba(29,158,117,0.25);
     }
-    @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
-
-    .spinner {
-      width: 13px; height: 13px; border-radius: 50%;
-      border: 2px solid rgba(47,158,144,0.25); border-top-color: var(--teal);
-      animation: spin 0.7s linear infinite;
+    .prete-etat { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-weight: 600; font-size: 11px; color: var(--teal); line-height: 1.35; }
+    .prete-etat.peach { color: var(--peach-deep); }
+    .prete-etat.gris { color: var(--muted); }
+    .dots { display: inline-flex; gap: 2px; }
+    .dots i { width: 4px; height: 4px; border-radius: 99px; background: currentColor; display: block; animation: dots 1.2s ease infinite; }
+    .dots i:nth-child(2) { animation-delay: 0.2s; }
+    .dots i:nth-child(3) { animation-delay: 0.4s; }
+    .prete-bas { border-top: 1px solid var(--line-2); padding: 10px 12px 12px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .cell {
+      display: flex; align-items: center; gap: 7px; padding: 7px 8px; border-radius: 10px;
+      background: var(--bg); border: 1px solid rgba(0,0,0,0.05); min-width: 0;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .cell.teal  { background: var(--teal-soft); border-color: rgba(29,158,117,0.2); }
+    .cell.peach { background: var(--peach-soft); border-color: rgba(249,162,108,0.35); }
+    .cell.gris .plogo { opacity: 0.55; }
+    .cell.gris .cell-nom { color: var(--muted-3); }
+    .cell-nom { flex: 1 0 auto; font-weight: 700; font-size: 12px; }
+    .cell-etat { display: flex; align-items: center; gap: 3px; white-space: nowrap; font-weight: 700; font-size: 10px; color: var(--teal); }
+    .cell-etat.peach { color: var(--peach-deep); }
+    /* « Pas dans cet envoi » est plus long qu'une case : il passe sur deux
+       lignes plutôt que de chevaucher le nom de la plateforme. */
+    .cell-etat.gris { color: var(--muted-2); font-weight: 600; font-size: 9.5px; white-space: normal; text-align: right; line-height: 1.15; }
+    .cell .lien { margin: 0; font-size: 10px; }
+    .spin {
+      width: 9px; height: 9px; border-radius: 99px; flex-shrink: 0;
+      border: 2px solid rgba(29,158,117,0.25); border-top-color: var(--teal);
+      display: block; animation: spin 0.9s linear infinite;
+    }
+    .check { width: 10px; height: 10px; flex-shrink: 0; }
 
-    .icon-check { width: 14px; height: 14px; }
+    /* ── État vide ── */
+    .vide { border: 1.5px dashed rgba(0,0,0,0.1); box-shadow: none; padding: 26px 20px; text-align: center; }
+    .vide-ico {
+      width: 52px; height: 52px; border-radius: 16px; margin: 0 auto 12px; background: var(--teal-soft);
+      display: flex; align-items: center; justify-content: center; font-size: 24px;
+      animation: float 4s ease-in-out infinite;
+    }
+    .vide-t { font-weight: 700; font-size: 14px; }
+    .vide-s { font-weight: 500; font-size: 12.5px; line-height: 1.5; color: var(--muted); margin-top: 4px; text-wrap: pretty; }
+    .cta {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-weight: 700; font-size: 12.5px; color: #fff;
+      background: linear-gradient(135deg, var(--teal), var(--teal-2));
+      border: none; border-radius: 99px; padding: 9px 16px;
+      box-shadow: 0 4px 12px rgba(29,158,117,0.3); cursor: pointer; white-space: nowrap;
+    }
+    .cta:hover { filter: brightness(1.05); }
+    .vide .cta { margin-top: 14px; }
 
-    /* ── CTA ── */
-    /* ── « Publier maintenant » RETIRÉ (2026-09-08, décision Nico) ──────────
-       Les jobs partent tout seuls au poll. Un job qui n'est pas parti a
-       toujours une cause — mauvais dressing, session fermée, champ manquant —
-       et cliquer ne la levait pas : il repartait au même mur. Le bouton
-       promettait une action qui n'existait pas. À sa place : la cause, et le
-       geste qui la lève. Les cases à cocher tombent avec lui (elles ne
-       servaient qu'à le nourrir), le flux « Diffuser sur » devient un ÉTAT. */
+    /* ── En attente ── */
+    .att { padding: 12px 14px; }
+    .att-head { display: flex; align-items: baseline; gap: 8px; }
+    .att-n {
+      font-weight: 700; font-size: 26px; letter-spacing: -0.03em; line-height: 1;
+      background-image: linear-gradient(90deg, #F9A26C 0%, #F9A26C 40%, #FFD9BF 50%, #F9A26C 60%, #F9A26C 100%);
+      background-size: 300% 100%; -webkit-background-clip: text; background-clip: text;
+      color: transparent; -webkit-text-fill-color: transparent;
+      animation: shimmer 4s ease-in-out infinite;
+    }
+    .att-t { font-weight: 700; font-size: 13px; color: var(--ink); }
+    .att-list { display: flex; flex-direction: column; gap: 6px; margin-top: 11px; }
+    .motif { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 12.5px; color: var(--ink-2); }
+    .motif-n { min-width: 22px; font-weight: 700; font-size: 13px; text-align: right; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .motif-sep { width: 1px; height: 12px; background: rgba(0,0,0,0.08); flex-shrink: 0; }
+    .rien { padding: 13px 14px; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 13px; color: var(--ink); }
+    .tick {
+      width: 26px; height: 26px; border-radius: 99px; background: var(--teal-soft); color: var(--teal);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      animation: tick 0.6s cubic-bezier(0.2,0.8,0.2,1) both;
+    }
+    .tick .check { width: 13px; height: 13px; }
 
-    /* ── Footer ── */
+    /* ── Pourquoi ça attend ── */
+    .why { padding: 12px 14px; display: flex; gap: 11px; }
+    .why .dot { margin-top: 5px; width: 8px; height: 8px; }
+    .why-body { flex: 1; min-width: 0; }
+    .why-t { font-weight: 700; font-size: 13px; line-height: 1.35; color: var(--ink); }
+    .why-t .qui { color: var(--peach-deep); }
+    .why-s { font-weight: 500; font-size: 12px; line-height: 1.5; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+    .why-s b { color: var(--ink-2); }
+    .why .lien { margin-top: 8px; }
+
+    /* ── Aussi en file ── */
+    .extra { padding: 12px 14px; }
+    .extra-l { font-size: 12px; line-height: 1.6; color: var(--muted); font-weight: 500; }
+    .extra-l b { color: var(--ink); }
+
+    /* ── Bascule de compte ── */
+    .switch-btns { display: flex; gap: 8px; margin-top: 10px; }
+    .btn-full { flex: 1; padding: 8px 10px; border-radius: 9px; border: none; background: var(--teal-deep); color: #fff; font-weight: 700; font-size: 12px; cursor: pointer; }
+    .btn-ghost { flex: 1; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--muted); font-weight: 700; font-size: 12px; cursor: pointer; }
+
+    /* ── Pied ── */
     .footer {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line);
+      padding: 11px 16px 12px; background: #fff; border-top: 1px solid var(--line);
+      display: flex; align-items: center; gap: 10px;
     }
-    .queue { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-50); font-weight: 600; }
-    .queue .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); }
-    .history {
-      font-size: 12px; font-weight: 600; color: var(--teal-deep);
-      background: none; border: none; cursor: pointer; font-family: inherit;
-      padding: 2px 0; transition: opacity 0.15s;
-    }
-    .history:hover { opacity: 0.7; }
-
-    /* ── Poste de pilotage (2026-08-04) ─────────────────────────────────────
-       Le popup ne répondait qu'à « qu'est-ce que je publie ? ». Ces blocs
-       répondent à « où j'en suis ? ». Chacun n'existe QUE s'il a quelque
-       chose à dire — rien ne s'affiche « vide ». */
-    .life {
-      display: flex; align-items: center; gap: 7px;
-      font-size: 11px; color: var(--ink-50); font-weight: 600;
-      margin: -4px 0 12px;
-    }
-    .life .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); flex-shrink: 0; }
-    .life .dot.cold { background: var(--ink-50); opacity: 0.5; }
-    .life .dot.awake { background: var(--amber); }
-
-    .bloc {
-      border-radius: 14px; padding: 10px 12px; margin-bottom: 10px;
-      border: 1px solid var(--line); background: var(--paper);
-    }
-    .bloc.alerte { border-color: var(--amber); background: rgba(232,149,109,0.10); }
-    .bloc-t { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
-    .bloc.alerte .bloc-t { color: #9A3412; }
-    .bloc-s { font-size: 11px; line-height: 1.5; color: var(--ink-50); }
-    .bloc-l { font-size: 11.5px; line-height: 1.6; color: var(--ink-50); }
-    .bloc-l b { color: var(--ink); font-weight: 700; }
-
-    /* Motifs dominants des annonces en attente : un nombre seul n'aide personne. */
-    .motifs { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
-    .motif { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; line-height: 1.4; color: var(--ink-50); }
-    .motif-n { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 17px; text-align: right; flex-shrink: 0; }
-
-    .diag {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 8px; margin-top: 8px; font-size: 10.5px; color: var(--ink-50);
-    }
-    .diag .sess { display: flex; align-items: center; gap: 5px; }
-    .diag .sdot { width: 6px; height: 6px; border-radius: 50%; }
-    .diag .sdot.ok { background: var(--teal); }
-    .diag .sdot.ko { background: var(--amber); }
-    .diag .build { opacity: 0.65; font-family: ui-monospace, Menlo, monospace; }
+    .queue { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 12px; color: var(--teal); white-space: nowrap; }
+    .queue.zero  { color: var(--muted-2); }
+    .queue.pause { color: var(--peach-deep); }
+    .qdot { width: 7px; height: 7px; border-radius: 99px; background: var(--teal); display: block; animation: pulseT 2.2s ease infinite; }
+    .queue.zero  .qdot { background: #D1D5DB; animation: none; }
+    .queue.pause .qdot { background: var(--peach); animation: pulseO 2.2s ease infinite; }
+    .spacer { flex: 1; }
+    .link-btn { font-weight: 700; font-size: 12px; color: var(--teal-deep); background: none; border: none; cursor: pointer; padding: 2px 0; }
+    .link-btn:hover { color: var(--teal); }
+    .footer .cta { font-size: 12px; padding: 7px 12px; }
+    .diag { padding: 0 16px 8px; background: #fff; text-align: right; font-size: 10px; color: var(--muted-2); font-family: ui-monospace, Menlo, monospace; }
 
     .hidden { display: none !important; }
 
+    @keyframes spin    { to { transform: rotate(360deg); } }
+    @keyframes pulseT  { 0%, 100% { box-shadow: 0 0 0 0 rgba(29,158,117,0.45); } 70% { box-shadow: 0 0 0 7px rgba(29,158,117,0); } }
+    @keyframes pulseO  { 0%, 100% { box-shadow: 0 0 0 0 rgba(249,162,108,0.5); } 70% { box-shadow: 0 0 0 7px rgba(249,162,108,0); } }
+    @keyframes pulseW  { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.5); } 70% { box-shadow: 0 0 0 7px rgba(255,255,255,0); } }
+    @keyframes shimmer { 0% { background-position: 150% 0; } 100% { background-position: -150% 0; } }
+    @keyframes sheen   { 0% { transform: translateX(-120%) skewX(-18deg); } 35%, 100% { transform: translateX(260%) skewX(-18deg); } }
+    @keyframes bar     { 0% { width: 8%; } 45% { width: 62%; } 100% { width: 96%; } }
+    @keyframes dots    { 0%, 20% { opacity: 0.2; } 40% { opacity: 1; } 100% { opacity: 0.2; } }
+    @keyframes float   { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-6px) rotate(4deg); } }
+    @keyframes tick    { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+
     @media (prefers-reduced-motion: reduce) {
-      * { transition: none !important; animation-duration: 0.001ms !important; }
+      * { transition: none !important; animation: none !important; }
     }
   </style>
 </head>
 <body>
-  <!-- Header -->
-  <div class="header">
+  <!-- Bandeau de marque + pastille de compte -->
+  <header class="topbar">
+    <div class="sheen"></div>
     <img id="brand-logo" class="brand-logo" src="assets/fillsell-logo.png" alt="FillSell" />
-    <div class="brand-text">
-      <span class="brand-name">FillSell</span>
-      <span class="brand-sub">Cross-post</span>
+    <div class="brand">
+      <div class="brand-name">FillSell</div>
+      <div class="brand-sub">Cross-post</div>
     </div>
-    <button id="acct" class="acct off" type="button">
-      <span class="dot"></span>
+    <button id="acct" class="pill off" type="button">
+      <span class="pill-dot"></span>
       <span id="acct-label">Se connecter</span>
     </button>
-  </div>
+  </header>
 
+  <!-- Plateformes qui ont besoin d'un geste : dit une fois, en tête. -->
+  <div id="bar-alerte" class="bar bar-alerte hidden"></div>
   <!-- Ligne de vie : dernier passage / prochain. Gratuite et exacte. -->
-  <div id="life" class="life hidden"></div>
+  <div id="life" class="bar hidden"></div>
+  <!-- Maintien en éveil : visible UNIQUEMENT pendant qu'il est actif (2026-09-04). -->
+  <div id="awake" class="bar bar-awake hidden"></div>
 
-  <!-- Maintien en éveil : visible UNIQUEMENT pendant qu'il est actif (2026-09-04).
-       Pas un réglage, pas une modale — une phrase, pour que personne ne
-       découvre après coup que son ordinateur n'a pas dormi. -->
-  <div id="awake" class="life hidden"></div>
+  <main class="corps">
+    <!-- Bascule de compte FillSell en attente d'une décision (2026-09-03) -->
+    <section id="switch" class="hidden"></section>
 
-  <!-- État des plateformes : la question qu'on se pose en ouvrant le popup. -->
-  <div id="plateformes" class="section hidden">
-    <p class="eyebrow">Plateformes</p>
-    <div id="plat-list"><!-- rendu par popup.js --></div>
-  </div>
+    <!-- État des plateformes : la question qu'on se pose en ouvrant le popup. -->
+    <section id="plateformes" class="hidden">
+      <div class="eyebrow">Plateformes</div>
+      <div id="plat-list"><!-- rendu par popup.js --></div>
+    </section>
 
-  <!-- Ce qui bloque, avec sa cause et son geste -->
-  <div id="alerts" class="hidden"></div>
+    <!-- Ce qui tourne en ce moment : qui, et sur quoi -->
+    <section id="now" class="hidden"></section>
 
-  <!-- Ce qui tourne en ce moment -->
-  <div id="now" class="hidden"></div>
+    <!-- Prochaine annonce à partir + « Diffuser sur » (un ÉTAT, plus une sélection) -->
+    <section id="prete">
+      <div class="eyebrow">Prête à publier</div>
+      <div id="listing-card"><!-- rendu par popup.js --></div>
+    </section>
 
-  <!-- Prête à publier -->
-  <div class="section">
-    <p class="eyebrow">Prête à publier</p>
-    <div id="listing-card"><!-- rendu par popup.js --></div>
-  </div>
+    <!-- Ce qui attend un geste : le nombre, puis les motifs -->
+    <section id="attente" class="hidden"></section>
 
-  <!-- Diffuser sur : un ÉTAT, plus une sélection (le CTA a été retiré) -->
-  <div class="section">
-    <p class="eyebrow">Diffuser sur</p>
-    <div id="flow" class="flow"><!-- rendu par popup.js --></div>
-  </div>
+    <!-- Chaque motif avec sa cause et le geste qui la lève -->
+    <section id="pourquoi" class="hidden"></section>
 
-  <!-- Le reste de la file : republications, demande de sync -->
-  <div id="queue-extra" class="hidden"></div>
+    <!-- Le reste de la file : republications, demande de sync -->
+    <section id="queue-extra" class="hidden"></section>
+  </main>
 
-  <!-- Footer -->
-  <div class="footer">
-    <div class="queue"><span class="dot"></span><span id="queue-label">0 en file</span></div>
-    <button id="history" class="history" type="button">Historique</button>
-  </div>
-
-  <!-- Diagnostic discret : sessions plateformes (seulement si le relevé est
-       récent) + version installée. Jamais de pastille verte périmée. -->
+  <footer class="footer">
+    <span id="queue" class="queue zero"><i class="qdot"></i><span id="queue-label">0 en file</span></span>
+    <span class="spacer"></span>
+    <button id="history" class="link-btn" type="button">Historique</button>
+    <button id="open-app" class="cta" type="button">Ouvrir l'appli</button>
+  </footer>
+  <!-- Version installée, discrète -->
   <div id="diag" class="diag hidden"></div>
 
   <script src="config.js"></script>
