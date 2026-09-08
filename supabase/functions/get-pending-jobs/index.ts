@@ -432,15 +432,41 @@ serve(async (req) => {
     // (action='delete', armés par le bandeau semi-auto de l'app après une
     // vente) passent par la même file — le background route sur job.action
     // et cible l'annonce via listing_url.
-    const { data: jobs, error: jobsErr } = await userClient
+    // Voie d'exécution (lot 2a eBay API, 06/09) : l'extension ne reçoit que
+    // les jobs voie='extension' (= tout le parc existant, valeur par défaut).
+    // Les jobs voie='api' sont pour ebay-api-worker, jamais pour Chrome.
+    const lireFile = () => userClient
       .from("cross_post_jobs")
       .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at")
       .in("status", statuses)
-      // Voie d'exécution (lot 2a eBay API, 06/09) : l'extension ne reçoit que
-      // les jobs voie='extension' (= tout le parc existant, valeur par défaut).
-      // Les jobs voie='api' sont pour ebay-api-worker, jamais pour Chrome.
       .eq("voie", "extension")
       .order("created_at", { ascending: true });
+    // ── « DÉJÀ EN LIGNE », source Vinted (2026-09-08, décision Nico) ────────
+    // inventaire.vinted_item_id (+ disparu_le, vinted_status) EMBARQUÉ sur ce
+    // SELECT par la FK cross_post_jobs_inventaire_id_fkey : un lookup pkey par
+    // ligne, aucune requête séparée. POPUP SEUL (include_needs_user) : le poll
+    // de fond, toutes les 2 min, lit la file sans l'embed et ne paie rien.
+    const lireFileAvecArticle = () => userClient
+      .from("cross_post_jobs")
+      .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at, inventaire:inventaire_id(vinted_item_id, disparu_le, vinted_status)")
+      .in("status", statuses)
+      .eq("voie", "extension")
+      .order("created_at", { ascending: true });
+    let jobs: Awaited<ReturnType<typeof lireFile>>["data"] = null;
+    let jobsErr: Awaited<ReturnType<typeof lireFile>>["error"] = null;
+    if (includeNeedsUser) {
+      const r = await lireFileAvecArticle();
+      if (!r.error) {
+        jobs = r.data as unknown as typeof jobs;
+      } else {
+        // L'embed ne prive JAMAIS le popup de sa file : on relit sans lui, et
+        // « Déjà en ligne » retombe sur l'état actuel des cases.
+        console.warn(`[get-pending-jobs] embed inventaire refusé (${r.error.message}) — relecture sans embed`);
+        ({ data: jobs, error: jobsErr } = await lireFile());
+      }
+    } else {
+      ({ data: jobs, error: jobsErr } = await lireFile());
+    }
 
     if (jobsErr) return json({ error: jobsErr.message }, 500);
 
@@ -1371,6 +1397,74 @@ serve(async (req) => {
       }
     } catch (_e) { /* le rapprochement ne doit JAMAIS empêcher de servir la file */ }
 
+    // ══ « DÉJÀ EN LIGNE » POUR L'ARTICLE AFFICHÉ (2026-09-08, décision Nico) ══
+    // La grille « Diffuser sur » du popup disait « Pas dans cet envoi » sur des
+    // plateformes où l'article était en réalité DÉJÀ publié (Blouse blanche :
+    // trois fois sur quatre). Deux sources, jamais confondues :
+    //   · Vinted → inventaire.vinted_item_id de l'article, lu par l'embed du
+    //     SELECT principal. Non nul = en ligne — sauf annonce disparue
+    //     (disparu_le) ou masquée/brouillon (vinted_status hidden/draft) :
+    //     l'expression unique de l'app (publicationState.js), un acheteur ne
+    //     les voit pas.
+    //   · Leboncoin / eBay / Beebs → cross_post_jobs, status = 'published'
+    //     STRICTEMENT (deleted, cancelled, sold = plus en ligne), inventaire_id
+    //     = l'article, par l'index partiel cross_post_jobs_inventaire (mesuré
+    //     le 08/09 : Index Scan, 3-4 buffers, < 0,2 ms).
+    // POPUP SEUL (include_needs_user), à l'ouverture : jamais dans la boucle de
+    // poll. Lecture en échec → clé ABSENTE → la case garde son état actuel ;
+    // « Déjà en ligne » n'est JAMAIS une valeur par défaut.
+    // ⛔ PUREMENT INFORMATIF : rien ici ne filtre, ne retient ni ne décale un
+    // job. La file servie (`out`) est la même, ligne pour ligne.
+    let dejaEnLigne: { inventaire_id: string; plateformes: Record<string, boolean> } | null = null;
+    if (includeNeedsUser) {
+      try {
+        // Le MÊME choix d'article que le popup (firstAnnonce) : jobs de dépôt
+        // (ni delete, ni republish, ni needs_user), groupés par article dans
+        // l'ordre servi, premier groupe sans ligne en cours, sinon le premier.
+        // Le popup ne se fie qu'à l'inventaire_id renvoyé : un désaccord de
+        // choix ne peut produire qu'une case inchangée, jamais une fausse.
+        const depots = out.filter((j) => j.action !== "delete" && j.action !== "republish" && j.status !== "needs_user");
+        const groupes = new Map<string, typeof depots>();
+        for (const j of depots) {
+          const cle = j.inventaire_id != null ? `inv:${j.inventaire_id}` : `title:${j.title || j.id}`;
+          if (!groupes.has(cle)) groupes.set(cle, []);
+          groupes.get(cle)!.push(j);
+        }
+        const listes = [...groupes.values()];
+        const groupe = listes.find((g) => !g.some((j) => j.status === "processing")) ?? listes[0];
+        const tete = groupe?.[0] ?? null;
+        if (tete && tete.inventaire_id != null) {
+          const plateformes: Record<string, boolean> = {};
+          const article = (tete as {
+            inventaire?: { vinted_item_id?: unknown; disparu_le?: unknown; vinted_status?: unknown } | null;
+          }).inventaire;
+          // undefined = embed absent (relecture sans embed) → Vinted non mesuré,
+          // on ne dit rien. null = ligne d'inventaire introuvable → pas en ligne.
+          if (article !== undefined) {
+            plateformes.vinted = article != null
+              && article.vinted_item_id != null
+              && article.disparu_le == null
+              && !["hidden", "draft"].includes(String(article.vinted_status ?? ""));
+          }
+          const { data: pubs, error: pubsErr } = await userClient
+            .from("cross_post_jobs")
+            .select("platform")
+            .eq("inventaire_id", tete.inventaire_id)
+            .in("platform", ["leboncoin", "ebay", "beebs"])
+            .eq("status", "published");
+          if (!pubsErr) {
+            const vues = new Set((pubs ?? []).map((p) => String(p.platform)));
+            for (const pf of ["leboncoin", "ebay", "beebs"]) plateformes[pf] = vues.has(pf);
+          } else {
+            console.warn(`[get-pending-jobs] déjà en ligne : lecture cross_post_jobs refusée (${pubsErr.message}) — cases inchangées`);
+          }
+          if (Object.keys(plateformes).length) {
+            dejaEnLigne = { inventaire_id: String(tete.inventaire_id), plateformes };
+          }
+        }
+      } catch (_e) { dejaEnLigne = null; /* informatif : jamais un point de panne */ }
+    }
+
     return json({
       jobs: out,
       annonces_en_attente: annoncesAttente,
@@ -1378,6 +1472,7 @@ serve(async (req) => {
       sync_prioritaire: heldSync > 0,
       jobs_retenus_sync: heldSync,
       boutique_pause: boutiquePause,
+      deja_en_ligne: dejaEnLigne,
       contexte,
       plafond_republish: plafondRepublish,
     });

@@ -67,6 +67,11 @@ const state = {
   sessions: null,       // profiles.extension_sessions (relevé de l'extension)
   // Republications retenues parce que Chrome est connecté à un AUTRE dressing.
   boutiquePause: null,  // { connectee:{login}, retenus, par_boutique, par_boutique_login }
+  // « Déjà en ligne » pour l'article affiché (2026-09-08) : servi par
+  // get-pending-jobs à l'ouverture du popup seulement.
+  // { inventaire_id, plateformes: { vinted?, leboncoin?, ebay?, beebs? } } —
+  // une clé ABSENTE = non mesuré (lecture en échec) → la case garde son état.
+  dejaEnLigne: null,
   eveil: null,          // épisode de maintien en éveil en cours, ou null
   dernierPoll: null,    // chrome.storage.local LAST_POLL
   prochainPoll: null,   // chrome.alarms — échéance réelle, pas une estimation
@@ -175,6 +180,7 @@ async function fetchPendingJobs(accessToken) {
   state.sync = data?.contexte?.sync ?? null;
   state.sessions = data?.contexte?.sessions ?? null;
   state.boutiquePause = data?.boutique_pause ?? null;
+  state.dejaEnLigne = data?.deja_en_ligne ?? null;
   // ── LE NOMBRE VIENT DU SERVEUR (2026-09-04) ─────────────────────────────
   // Le popup et le bandeau de l'app affichaient deux nombres différents pour
   // la même chose. get-pending-jobs fait maintenant LE calcul, et les deux
@@ -835,6 +841,16 @@ function renderPrete() {
   renderFlow();
 }
 
+// L'article affiché est-il DÉJÀ en ligne sur cette plateforme ? Vrai seulement
+// si le serveur l'a MESURÉ pour CET article (même inventaire_id que l'annonce
+// affichée — le choix de l'article est le même des deux côtés, mais on ne se
+// fie qu'à l'identifiant) et l'a dit vrai. Tout le reste = non.
+function dejaEnLigne(key) {
+  const d = state.dejaEnLigne;
+  if (!d || !state.annonce || state.annonce.key !== `inv:${d.inventaire_id}`) return false;
+  return d.plateformes?.[key] === true;
+}
+
 // « Diffuser sur » : un ÉTAT par plateforme, plus une sélection (le bouton
 // « Publier maintenant » a été retiré le 08/09 — les jobs partent seuls au poll).
 function renderFlow() {
@@ -873,15 +889,22 @@ function renderFlow() {
       droite = `<span class="cell-etat peach" title="${escapeHtml(complet)}">Échec</span>`;
     } else if (s === "soon") {
       droite = `<span class="cell-etat gris">Bientôt</span>`;
+    } else if (dejaEnLigne(p.key)) {
+      // ── « DÉJÀ EN LIGNE » (2026-09-08, décision Nico) ─────────────────────
+      // « Non incluse », puis « Pas dans cet envoi », se lisaient sur des
+      // plateformes où l'article était en réalité DÉJÀ publié (Blouse blanche :
+      // trois fois sur quatre). Le serveur le dit désormais pour l'article
+      // affiché — Vinted par inventaire.vinted_item_id, les trois autres par un
+      // job 'published' STRICTEMENT — lu à l'ouverture du popup seulement.
+      // ⛔ PUREMENT INFORMATIF : cette case ne filtre, ne retient ni ne décale
+      // rien. Un job présent sur la plateforme garde son propre état (branches
+      // ci-dessus) ; on n'arrive ici qu'en l'absence de job et de résultat.
+      cls = "teal";
+      droite = `<span class="cell-etat">${CHECK_SVG}Déjà en ligne</span>`;
     } else {
-      // « Non incluse » (retiré le 08/09) laissait lire « pas connectée » ou
-      // « ça ne marche pas ». Relevé sur le cas d'Ornella : l'article était en
-      // réalité DÉJÀ PUBLIÉ sur les trois plateformes ainsi étiquetées. On dit
-      // que ce dépôt-ci ne concerne pas la plateforme, ce qui est vrai dans
-      // tous les cas. « Déjà en ligne » demanderait une lecture de plus par
-      // ouverture du popup (mesuré le 08/09 : aucun SELECT existant ne porte
-      // les lignes 'published', et cross_post_jobs n'a pas d'index sur
-      // inventaire_id) — on reste léger.
+      // On dit que ce dépôt-ci ne concerne pas la plateforme, ce qui est vrai
+      // dans tous les cas — y compris quand « déjà en ligne » n'a pas pu être
+      // mesuré : on ne l'affiche JAMAIS par défaut.
       droite = `<span class="cell-etat gris">Pas dans cet envoi</span>`;
     }
     cells.push(
