@@ -4,7 +4,7 @@
 //
 //   deno run --allow-read scripts/beebs-valeurs-selftest.ts
 //
-import { rapprocherValeursBeebs, categorieDuJob, comparable, type AspectRow } from "../supabase/functions/_shared/beebs-valeurs.ts";
+import { rapprocherValeursBeebs, categorieDuJob, comparable, champsArbitrablesBeebs, marqueIntrouvableBeebs, type AspectRow } from "../supabase/functions/_shared/beebs-valeurs.ts";
 
 const A = (field_key: string, allowed_values: string[] | null, required = true): AspectRow => ({
   category_key: "C", field_key, field_label: field_key, required, allowed_values,
@@ -126,6 +126,70 @@ console.log("GARDE-FOUS");
   ok("catégorie du job", categorieDuJob({ beebsCategoryPath: ["Mode","Femme","Pyjamas (femme)"] }) === "Mode > Femme > Pyjamas (femme)");
   ok("catégorie absente → null", categorieDuJob({}) === null);
   ok("comparable stable", comparable("Neuf, sans étiquette") === comparable("NEUF SANS ETIQUETTE"));
+}
+
+// ── ÉTAPE (d) : CE QUE L'IA A LE DROIT DE TRANCHER ──────────────────────────
+console.log("ÉTAPE (d) — champs arbitrables");
+const VIDE = { racines: {}, aspects: {}, posees: [] };
+const M60 = Array.from({ length: 60 }, (_, i) => `Marque ${i}`);
+{
+  const cat: AspectRow[] = [
+    A("État", ["Neuf, avec étiquette", "Bon état", "État moyen"]),
+    A("Marque", M60),
+    A("Matière", ["Coton", "Laine"], false),
+    A("Format du colis", []),
+  ];
+  const c = champsArbitrablesBeebs({ titre: "Robe" }, cat, VIDE);
+  const cles = c.map((x) => x.field_key);
+  ok("champ obligatoire à liste fermée → arbitrable", cles.includes("État"), cles);
+  ok("Marque (60 valeurs, liste tronquée) → JAMAIS", !cles.includes("Marque"), cles);
+  ok("champ facultatif → jamais", !cles.includes("Matière"), cles);
+  ok("liste vide → jamais", !cles.includes("Format du colis"), cles);
+  ok("cible = la clé racine dédiée", c.find((x) => x.field_key === "État")?.cible.racine === "etat", c);
+}
+{
+  const cat: AspectRow[] = [A("État", ["Bon état", "État moyen"])];
+  ok("valeur déjà exacte → rien à arbitrer",
+    champsArbitrablesBeebs({ etat: "Bon état" }, cat, VIDE).length === 0);
+  ok("valeur ré-épelable → rien à arbitrer (le déterministe a servi)",
+    champsArbitrablesBeebs({ etat: "bon etat" }, cat, VIDE).length === 0);
+  ok("réponse déjà saisie → rien à arbitrer",
+    champsArbitrablesBeebs({ beebsAspects: { "État": "Bon état" } }, cat, VIDE).length === 0);
+  ok("déjà tranché « aucune » pour la même valeur → on ne repose pas",
+    champsArbitrablesBeebs({ etat: "impec" }, cat, VIDE, { "État": { valeur_source: "impec", valeur: null } }).length === 0);
+  ok("tranché pour une AUTRE valeur → on redemande",
+    champsArbitrablesBeebs({ etat: "impec" }, cat, VIDE, { "État": { valeur_source: "nickel", valeur: null } }).length === 1);
+}
+{
+  const c = champsArbitrablesBeebs({ taille: "85 G" }, pyjamas, rapprocherValeursBeebs({ taille: "85 G" }, pyjamas));
+  const cles = c.map((x) => x.field_key);
+  ok("libellé dupliqué : le champ servi par le routage n'est pas re-arbitré", !cles.includes("Taille [#2]"), cles);
+  ok("Marque du même catalogue toujours exclue", !cles.includes("Marque"), cles);
+}
+
+// ── MARQUE INTROUVABLE CHEZ BEEBS ───────────────────────────────────────────
+console.log("MARQUE — bac « Autre » sur preuve live");
+const wVila = [{ at: "x", code: "generic", message: 'Marque: "VILA" sans correspondance (même approximative) dans la liste de CE champ, laissé vide. Options affichées: ["Vilac"]' }];
+{
+  const cat = [A("Marque", M60), A("État", ["Bon état"])];
+  const r = rapprocherValeursBeebs({ marque: "VILA", warnings: wVila }, cat);
+  ok("posé sur Marque [#1]", r.aspects["Marque [#1]"] === "Autre", r.aspects);
+  ok("canal dédié coupé", r.racines.marque === "", r.racines);
+  ok("méthode tracée", r.posees.some((p) => p.methode === "marque_introuvable_bac_autre"), r.posees);
+}
+{
+  const vide = [{ message: 'Marque: "VILA" sans correspondance (même approximative) dans la liste de CE champ, laissé vide. Options affichées: []' }];
+  ok("liste VIDE → rien (l'extension bascule déjà seule sur « Autre »)",
+    marqueIntrouvableBeebs({ marque: "VILA", warnings: vide }, [A("Marque", M60)]) === null);
+  ok("aucun warning → rien (le catalogue tronqué ne prouve pas l'absence)",
+    marqueIntrouvableBeebs({ marque: "VILA" }, [A("Marque", M60)]) === null);
+  ok("warning portant sur une AUTRE marque → périmé, rien",
+    marqueIntrouvableBeebs({ marque: "Zara", warnings: wVila }, [A("Marque", M60)]) === null);
+  const r = rapprocherValeursBeebs({ marque: "VILA", warnings: wVila }, [A("Marque", ["Vila", "Zara"])]);
+  ok("marque en fait présente au catalogue → ré-épellation, pas « Autre »",
+    r.racines.marque === "Vila" && r.aspects["Marque [#1]"] === undefined, r);
+  ok("réponse déjà saisie sur Marque → intouchable",
+    marqueIntrouvableBeebs({ marque: "VILA", warnings: wVila, beebsAspects: { "Marque": "Zara" } }, [A("Marque", M60)]) === null);
 }
 
 console.log(ko ? `\n${ko} ÉCHEC(S)` : "\nTOUT PASSE");

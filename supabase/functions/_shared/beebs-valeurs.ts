@@ -295,7 +295,206 @@ export function rapprocherValeursBeebs(
     if (!traite) continue; // rien de sûr : on ne pose RIEN, le job demandera.
   }
 
+  // ── Marque que Beebs a lui-même déclarée introuvable (cf. plus haut) ──────
+  // Après la ré-épellation : si celle-ci a trouvé la marque dans le catalogue,
+  // le warning est périmé et on ne touche à rien.
+  if (!String(res.racines["marque"] ?? "").trim()) {
+    const marqueKo = marqueIntrouvableBeebs(pf, aspects);
+    if (marqueKo && !res.aspects[marqueKo.aspect]) {
+      res.aspects[marqueKo.aspect] = marqueKo.valeur;
+      res.racines["marque"] = ""; // sinon la passe « Marque » refrappe la marque refusée
+      res.posees.push({
+        cle_source: "marque", champ: marqueKo.aspect,
+        valeur_source: marqueKo.valeur_source, valeur_posee: marqueKo.valeur,
+        methode: "marque_introuvable_bac_autre",
+      });
+    }
+  }
+
   return res;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ÉTAPE (d) — CE QUE L'IA A LE DROIT DE TRANCHER, ET SUR QUOI
+// ═══════════════════════════════════════════════════════════════════════════
+// Le déterministe ci-dessus ne sait que ré-épeler. Quand il ne tombe sur rien,
+// il reste deux situations que Beebs refuse également : la fiche porte une
+// valeur que la liste n'a pas sous cette forme (« Unique » face à « Taille
+// unique »), et la fiche ne porte RIEN alors que le champ est obligatoire.
+// L'IA tranche alors DANS la liste, avec droit explicite de répondre « aucune »
+// (resolve-categorie, mode `listes`, SYSTEM_LISTES — « JAMAIS au plus proche »).
+//
+// ⛔ LISTES FERMÉES SEULEMENT, ET ON SAIT LESQUELLES LE SONT.
+//    L'extension coupe son relevé DOM à 60 valeurs : une liste stockée à 60
+//    est donc SUSPECTE DE TRONCATURE, et arbitrer dans une liste tronquée,
+//    c'est choisir dans un catalogue dont on ne voit qu'un bout. Plafond
+//    strict : 1 ≤ n < 60.
+// ⛔ « Marque » est exclue NOMMÉMENT en plus du plafond : Beebs en propose
+//    ~1 400, le catalogue en garde 60. Aucune de ses listes n'est fermée.
+// ⛔ Champs OBLIGATOIRES seulement : un champ facultatif vide ne bloque
+//    personne, et le faire remplir par une machine n'apporte rien.
+// ⛔ Jamais un champ que le déterministe vient de servir, jamais un champ
+//    portant déjà une réponse de l'utilisateur, jamais un champ déjà tranché
+//    (y compris quand la réponse fut « aucune » : on ne repose pas la question).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MARQUE INTROUVABLE CHEZ BEEBS — CE QUE LE SERVEUR PEUT, ET SUR QUELLE PREUVE
+// ═══════════════════════════════════════════════════════════════════════════
+// beebs.js ne bascule sur le bac générique « Autre » que si la recherche rend
+// ZÉRO option (`if (!options.length && !sizeField)`). Mesuré sur 30 jours :
+// 114 jobs passent par ce repli et publient. Mais quand Beebs rend des marques
+// qui CONTIENNENT le texte cherché sans être la bonne, la liste n'est pas vide
+// et le repli ne se déclenche jamais — le champ reste vide et le job boucle.
+// Les 2 seuls cas du parc en 30 jours, relevés dans les warnings des jobs :
+//   « VILA » → ["Vilac"]        (job 8885d178, failed)
+//   « alo »  → ["Kaloo","Kimbaloo","Lunaloop","Palomino","Salomon"] (e5f68f81)
+//
+// ⛔ LE CATALOGUE NE PEUT PAS SERVIR DE PREUVE : « Marque » y est stockée à 60
+//    valeurs pour ~1 400 chez Beebs. L'absence d'une marque n'y prouve RIEN.
+//    La seule preuve acceptée est celle rendue par BEEBS LUI-MÊME, sur CET
+//    article, dans CE champ : le warning du job, écrit à partir de la liste
+//    réellement affichée. Sans ce warning, on ne pose rien.
+// ⛔ ET ON NE POSE PAS UNE AUTRE MARQUE : « Autre » est un BAC, pas une marque
+//    voisine. C'est exactement la valeur que l'extension choisit déjà elle-même
+//    dans les 114 autres cas — on n'invente aucune politique, on étend la
+//    sienne au cas qu'elle ne sait pas voir. « Sans marque » serait un mensonge
+//    (l'article EN a une).
+// Écriture : `Marque [#1]` (clé positionnelle, hors handledLabels) ET le canal
+// dédié coupé — sinon la passe `Marque` refrapperait le champ avec la marque
+// refusée et l'inscrirait à tort dans unfilledRequired.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MARQUE_REFUS = /^Marque\b[^:]*:\s*"(.*?)"\s+sans correspondance/;
+const MARQUE_OPTIONS = /Options affichées\s*:\s*(\[[\s\S]*\])\s*$/;
+
+/** Le texte d'un warning, qu'il soit une chaîne ou un objet {message}. */
+function messageWarning(w: unknown): string {
+  if (typeof w === "string") return w;
+  if (w && typeof w === "object") return String((w as Record<string, unknown>).message ?? "");
+  return "";
+}
+
+/**
+ * Beebs a-t-il DÉJÀ dit, sur ce job, qu'il ne connaît pas cette marque tout en
+ * rendant des options ? Retourne la pose à faire, ou null.
+ */
+export function marqueIntrouvableBeebs(
+  pf: Record<string, unknown>,
+  aspects: AspectRow[],
+): { aspect: string; valeur: string; valeur_source: string } | null {
+  const marque = String(pf["marque"] ?? "").trim();
+  if (!marque) return null;
+  const dejaSaisi = (pf["beebsAspects"] ?? {}) as Record<string, unknown>;
+
+  const brut = pf["warnings"];
+  if (!Array.isArray(brut)) return null;
+  let prouve = false;
+  for (const w of brut) {
+    const m = MARQUE_REFUS.exec(messageWarning(w));
+    if (!m) continue;
+    // Le warning doit porter sur LA valeur que le job envoie encore : un
+    // relevé qui parle d'une autre marque est périmé.
+    if (comparable(m[1]) !== comparable(marque)) continue;
+    const o = MARQUE_OPTIONS.exec(messageWarning(w));
+    let options: unknown = null;
+    try { options = o ? JSON.parse(o[1]) : null; } catch { options = null; }
+    // Liste VIDE : l'extension bascule déjà seule sur « Autre », rien à faire.
+    if (!Array.isArray(options) || options.length === 0) continue;
+    prouve = true;
+    break;
+  }
+  if (!prouve) return null;
+
+  const champsMarque = aspects.filter((a) => libelleDeCle(a.field_key) === "Marque");
+  if (!champsMarque.length) return null;
+  const cle = cleADiscriminant(champsMarque[0].field_key) ? champsMarque[0].field_key : "Marque [#1]";
+  if (String(dejaSaisi[cle] ?? "").trim() || String(dejaSaisi["Marque"] ?? "").trim()) return null;
+  return { aspect: cle, valeur: "Autre", valeur_source: marque };
+}
+
+/** Plafond de fermeture d'une liste : l'extension tronque son relevé à 60. */
+export const BEEBS_LISTE_FERMEE_MAX = 60;
+
+export interface ChampArbitrable {
+  field_key: string;
+  label: string;
+  options: string[];
+  /** Ce que la fiche porte pour ce champ, "" si elle ne porte rien. */
+  valeur_source: string;
+  /** Où écrire la réponse pour que l'extension 0.6.20 la pose. */
+  cible: { racine: string | null; aspect: string | null };
+}
+
+/**
+ * Les champs de cette catégorie qu'on a le droit de soumettre à l'IA, une fois
+ * le rapprochement déterministe passé.
+ *
+ * @param pf       platform_fields du job
+ * @param aspects  lignes de catalogue de la catégorie
+ * @param deja     résultat du rapprochement déterministe (ses poses comptent
+ *                 comme servies)
+ * @param tranches clés de champ déjà tranchées par l'IA (valeur retenue OU
+ *                 « aucune ») — on ne repose jamais la même question
+ */
+export function champsArbitrablesBeebs(
+  pf: Record<string, unknown>,
+  aspects: AspectRow[],
+  deja: ResultatRapprochement,
+  tranches: Record<string, unknown> = {},
+): ChampArbitrable[] {
+  const dejaSaisi = (pf["beebsAspects"] ?? {}) as Record<string, unknown>;
+  const out: ChampArbitrable[] = [];
+
+  // Combien de champs partagent chaque libellé : décide de la cible d'écriture.
+  const parLibelle = new Map<string, AspectRow[]>();
+  for (const a of aspects) {
+    const l = libelleDeCle(a.field_key);
+    parLibelle.set(l, [...(parLibelle.get(l) ?? []), a]);
+  }
+
+  for (const a of aspects) {
+    if (a.required !== true) continue;
+    const label = libelleDeCle(a.field_key);
+    if (label === "Marque") continue;                       // liste jamais fermée
+    const options = valeursDe(a);
+    if (!options.length || options.length >= BEEBS_LISTE_FERMEE_MAX) continue;
+
+    const rangs = parLibelle.get(label) ?? [a];
+    const homonyme = rangs.length > 1;
+    const rang = rangs.findIndex((r) => r.field_key === a.field_key);
+    // Clé positionnelle sur un libellé dupliqué, sinon la clé du catalogue.
+    const clePosee = homonyme && rang === 0 ? `${label} [#1]` : a.field_key;
+    const racine = homonyme ? null : (BEEBS_CHAMPS_DEDIES[label] ?? null);
+
+    // Déjà servi ? (réponse de l'utilisateur, pose déterministe, ré-épellation)
+    if (String(dejaSaisi[a.field_key] ?? "").trim()) continue;
+    if (String(dejaSaisi[clePosee] ?? "").trim()) continue;
+    if (deja.aspects[a.field_key] || deja.aspects[clePosee]) continue;
+    if (racine && deja.racines[racine]) continue;
+
+    // La fiche porte-t-elle déjà une valeur que CE champ accepte ? Alors le
+    // déterministe l'a laissée passer telle quelle : rien à arbitrer.
+    const brut = racine === "couleur"
+      ? (pf["couleur"] ?? (Array.isArray(pf["colors"]) ? (pf["colors"] as unknown[])[0] : null))
+      : (racine ? pf[racine] : null);
+    const valeurSource = String(brut ?? "").trim();
+    if (valeurSource && options.includes(valeurSource)) continue;
+    if (valeurSource && valeurComparableUnique(a, comparable(valeurSource))) continue;
+    // ⚠️ Le canal dédié coupé (racines[x] === "") est une pose, pas un vide :
+    // la valeur est partie sur une clé positionnelle, on n'arbitre pas.
+    if (racine && deja.racines[racine] === "") continue;
+
+    // Déjà tranché une fois pour CETTE valeur source ? On ne repose pas.
+    const t = tranches[a.field_key] as Record<string, unknown> | undefined;
+    if (t && String(t.valeur_source ?? "") === valeurSource) continue;
+
+    out.push({
+      field_key: a.field_key, label, options, valeur_source: valeurSource,
+      cible: { racine, aspect: racine ? null : clePosee },
+    });
+  }
+  return out;
 }
 
 /** Chemin de catégorie d'un job Beebs → clé du catalogue, ou null. */

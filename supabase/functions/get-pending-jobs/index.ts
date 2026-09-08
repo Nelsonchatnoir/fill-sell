@@ -3,9 +3,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import {
   type AspectRow,
+  BEEBS_CHAMPS_DEDIES,
   categorieDuJob,
+  champsArbitrablesBeebs,
   rapprocherValeursBeebs,
 } from "../_shared/beebs-valeurs.ts";
+
+// L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
+// version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
+// que Beebs affiche EN DIRECT — strictement mieux que notre instantané. Le
+// dépannage serveur ci-dessous s'éteint donc de lui-même, poll par poll, dès
+// qu'une extension au moins aussi récente réclame la file : aucune bascule à
+// faire, aucun déploiement à refaire le jour de la publication au Web Store.
+const BEEBS_IA_VERSION_EXTINCTION = "0.6.21";
 
 // Appelée par l'extension Chrome (background service worker) toutes les 30 min.
 // Auth : JWT utilisateur (Bearer). Les jobs sont lus via un client scoped user
@@ -1155,11 +1165,19 @@ serve(async (req) => {
           parCategorie.set(r.category_key, liste);
         }
         let traduits = 0;
+        // platform_fields TEL QU'IL EST EN BASE, avant nos poses de service :
+        // c'est LUI que l'arbitrage IA persistera, jamais la version enrichie
+        // (un canal dédié coupé vaut "" en mémoire — l'écrire en base
+        // effacerait pour de bon la taille du job).
+        const pfEnBase = new Map<string, Record<string, unknown>>();
+        const resultats = new Map<string, ReturnType<typeof rapprocherValeursBeebs>>();
         for (const j of beebsServis) {
           const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+          pfEnBase.set(j.id, pf);
           const cat = categorieDuJob(pf);
           if (!cat) continue;
           const r = rapprocherValeursBeebs(pf, parCategorie.get(cat) ?? []);
+          resultats.set(j.id, r);
           if (!r.posees.length) continue;
           const aspectsCourants = (pf["beebsAspects"] ?? {}) as Record<string, unknown>;
           j.platform_fields = {
@@ -1181,6 +1199,138 @@ serve(async (req) => {
         }
         if (traduits) {
           console.log(`[get-pending-jobs] userId=${user.id} : valeurs Beebs rapprochées du catalogue sur ${traduits} job(s)`);
+        }
+
+        // ══ (d) L'IA TRANCHE DANS LA LISTE FERMÉE — DÉPANNAGE SERVEUR ═══════
+        // Le déterministe ne sait que ré-épeler. Ce qui reste — une valeur que
+        // la liste n'a pas sous cette forme, ou un champ obligatoire que la
+        // fiche ne renseigne pas — est envoyé à resolve-categorie (mode
+        // `listes`), qui fait choisir DANS la liste et n'accepte en retour
+        // qu'une clé de la liste envoyée. « aucune » est une réponse légitime.
+        //
+        // BORNES, toutes tenues ici :
+        //   · UN SEUL appel par poll, sur UN SEUL job — le premier qui en a
+        //     besoin. Les autres passent au poll suivant ;
+        //   · 4 champs au plus dans cet appel (l'IA les traite ensemble) ;
+        //   · 6 s puis on abandonne : servir la file passe avant tout ;
+        //   · la réponse est REVÉRIFIÉE ici contre allowed_values — le module
+        //     serveur vérifie déjà, on ne s'en remet pas à lui pour autant ;
+        //   · le verdict est PERSISTÉ, « aucune » compris : on ne repose jamais
+        //     deux fois la même question, donc pas un appel par poll ;
+        //   · jamais sur un appel d'AFFICHAGE (le popup demande needs_user /
+        //     processing pour montrer, pas pour exécuter) ;
+        //   · jamais si l'extension qui poll sait déjà le faire elle-même.
+        // Le JWT de l'utilisateur est transmis : le garde-fou de volume et le
+        // coût s'imputent à son compte, comme pour la catégorie.
+        const arbitrageOuvert = !includeNeedsUser && !includeProcessing
+          && !versionAuMoins(version, BEEBS_IA_VERSION_EXTINCTION);
+        if (arbitrageOuvert) {
+          for (const j of beebsServis) {
+            const pfOrigine = pfEnBase.get(j.id) ?? {};
+            const cat = categorieDuJob(pfOrigine);
+            if (!cat) continue;
+            const deja = resultats.get(j.id) ?? { racines: {}, aspects: {}, posees: [] };
+            const tranchesAvant = (pfOrigine["beebs_ia_valeurs"] ?? {}) as Record<string, unknown>;
+            const champs = champsArbitrablesBeebs(
+              pfOrigine, parCategorie.get(cat) ?? [], deja, tranchesAvant,
+            ).slice(0, 4);
+            if (!champs.length) continue;
+
+            const listes: Record<string, { plateforme: string; options: string[] }> = {};
+            for (const c of champs) listes[c.field_key] = { plateforme: "beebs", options: c.options };
+            const attributs: Record<string, unknown> = { categorie_beebs: cat };
+            for (const [libelle, cle] of Object.entries(BEEBS_CHAMPS_DEDIES)) {
+              const v = String(pfOrigine[cle] ?? "").trim();
+              if (v) attributs[libelle.toLowerCase()] = v;
+            }
+
+            const ctrl = new AbortController();
+            const minuteur = setTimeout(() => ctrl.abort(), 6000);
+            let valeurs: Record<string, string> = {};
+            try {
+              const rep = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/resolve-categorie`, {
+                method: "POST",
+                signal: ctrl.signal,
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: authHeader,
+                  apikey: Deno.env.get("SUPABASE_ANON_KEY")!,
+                },
+                body: JSON.stringify({ titre: j.title ?? "", attributs, listes, user_id: user.id }),
+              });
+              if (rep.ok) {
+                valeurs = ((await rep.json())?.valeurs ?? {}) as Record<string, string>;
+              } else {
+                console.warn(`[get-pending-jobs] arbitrage valeurs beebs : HTTP ${rep.status}`);
+              }
+            } catch (e) {
+              console.warn(`[get-pending-jobs] arbitrage valeurs beebs indisponible : ${(e as Error)?.message ?? e}`);
+            } finally {
+              clearTimeout(minuteur);
+            }
+
+            const traceIa: Record<string, unknown> = { ...tranchesAvant };
+            const racinesIa: Record<string, string> = {};
+            const aspectsIa: Record<string, string> = {};
+            const dits: string[] = [];
+            for (const c of champs) {
+              const brut = String(valeurs[c.field_key] ?? "").trim();
+              // ⛔ REVÉRIFICATION : seule une valeur PRÉSENTE TELLE QUELLE dans
+              // la liste envoyée est retenue. Tout le reste vaut « aucune ».
+              const retenue = brut && c.options.includes(brut) ? brut : "";
+              traceIa[c.field_key] = {
+                valeur_source: c.valeur_source,
+                valeur: retenue || null,
+                n_options: c.options.length,
+                at: new Date().toISOString(),
+                ...(brut && !retenue ? { hors_liste: brut.slice(0, 80) } : {}),
+              };
+              if (!retenue) { dits.push(`${c.field_key} ← aucune`); continue; }
+              if (c.cible.racine) racinesIa[c.cible.racine] = retenue;
+              else if (c.cible.aspect) aspectsIa[c.cible.aspect] = retenue;
+              dits.push(`${c.field_key} ← "${retenue}"`);
+            }
+
+            // Persistance : le verdict (y compris « aucune ») et les seules
+            // poses de l'IA. Le rapprochement déterministe, lui, se recalcule
+            // à chaque service et n'a rien à faire en base.
+            const pfPersiste = {
+              ...pfOrigine,
+              ...racinesIa,
+              ...(Object.keys(aspectsIa).length
+                ? { beebsAspects: { ...((pfOrigine["beebsAspects"] ?? {}) as Record<string, unknown>), ...aspectsIa } }
+                : {}),
+              beebs_ia_valeurs: traceIa,
+            };
+            try {
+              const admin = createClient(
+                Deno.env.get("SUPABASE_URL")!,
+                Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+              );
+              // .eq('status','pending') : on ne réécrit JAMAIS par-dessus un job
+              // qui vient de changer d'état (annulé, pris en charge).
+              await admin.from("cross_post_jobs")
+                .update({ platform_fields: pfPersiste })
+                .eq("id", j.id).eq("status", "pending");
+            } catch (e) {
+              console.warn(`[get-pending-jobs] verdict IA non persisté (job ${j.id}) : ${(e as Error)?.message ?? e}`);
+            }
+
+            // Servi dans la foulée, par-dessus les poses déterministes.
+            const servi = (j.platform_fields ?? {}) as Record<string, unknown>;
+            j.platform_fields = {
+              ...servi,
+              ...racinesIa,
+              ...(Object.keys(aspectsIa).length
+                ? { beebsAspects: { ...((servi["beebsAspects"] ?? {}) as Record<string, unknown>), ...aspectsIa } }
+                : {}),
+              beebs_ia_valeurs: traceIa,
+            };
+            console.log(
+              `[get-pending-jobs] job ${j.id} (beebs) : liste fermée arbitrée — ${dits.join(" ; ")}`,
+            );
+            break; // UN job par poll, quoi qu'il arrive
+          }
         }
       }
     } catch (_e) { /* le rapprochement ne doit JAMAIS empêcher de servir la file */ }
