@@ -1445,6 +1445,24 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                       <span style={{ color:"#B91C1C", fontWeight:600 }}>{fr ? "La publication a échoué" : "Publishing failed"}</span></>
                     )}
                   </div>
+                  {/* ⚠️ POURQUOI LE BOUTON EST GRIS, ÉCRIT EN TOUTES LETTRES.
+                      C'était un `title` : sur un téléphone, le survol n'existe
+                      pas — le motif était donc invisible pour la moitié du
+                      parc. Il vit maintenant dans la ligne, sans interaction. */}
+                  {aCompleterPar.has(p) && !aCompleterPar.get(p)?.job?.platform_fields?.needsUserField && (
+                    <div style={{ fontSize:11, lineHeight:1.35, color:"#8A6100", marginTop:3 }}>
+                      {fr
+                        ? "À renseigner sur l'annonce, chez la plateforme — l'app ne peut pas le saisir à ta place. Puis relance."
+                        : "To be filled in on the listing, at the platform — the app cannot enter it for you. Then relaunch."}
+                    </div>
+                  )}
+                  {enEchecPar.has(p) && !(enEchecPar.get(p)?.job && relanceManuelleInfo(enEchecPar.get(p).job, jobsAll)) && (
+                    <div style={{ fontSize:11, lineHeight:1.35, color:"#B91C1C", marginTop:3 }}>
+                      {fr
+                        ? "Relance indisponible pour l'instant : soit elle vient d'être tentée, soit une annonce pourrait déjà être en ligne."
+                        : "Relaunch unavailable for now: either it was just attempted, or a listing may already be live."}
+                    </div>
+                  )}
                 </div>
                 {/* Actions de déblocage. Elles COEXISTENT avec « Retirer »
                     quand les deux s'appliquent (une republication Vinted en
@@ -7644,7 +7662,19 @@ const StockTab = memo(function StockTab({
                               const etatLogo=indexEtat.get(String(item.id));
                               const bloqueIci=etatLogo?.aCompleter?.some(x=>x.platform===p);
                               const echecIci=!bloqueIci&&etatLogo?.enEchec?.some(x=>x.platform===p);
-                              const anneau=bloqueIci?"#8A6100":echecIci?"#B91C1C":null;
+                              // ⚠️ AUCUN anneau AUTOUR de la mini-carte : c'est
+                              // ELLE qui prend la couleur du registre — fond
+                              // teinté + sa propre bordure (box-shadow INSET,
+                              // donc à l'intérieur). Deux contours empilés
+                              // alourdissaient la photo pour rien.
+                              // Lisibilité sur photo claire ET sombre : le fond
+                              // reste CLAIR (c'est lui qui détache le logo d'une
+                              // photo sombre, rôle que tenait le blanc), et
+                              // c'est la bordure SATURÉE qui le détache d'une
+                              // photo claire. Aucune teinte nouvelle : les
+                              // quatre valeurs sont celles des pastilles.
+                              const teinte=bloqueIci?{fond:"#FFF6E3",trait:"#8A6100"}
+                                :echecIci?{fond:"#FEF2F2",trait:"#B91C1C"}:null;
                               return(
                                 <span key={p} className="plogo"
                                   title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`)
@@ -7653,7 +7683,8 @@ const StockTab = memo(function StockTab({
                                       :`${item.vinted_status==='draft'?'Brouillon':'Masquée'} sur Vinted — l'annonce existe mais les acheteurs ne la voient pas. Toucher pour gérer.`)
                                     :(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
                                   style={{cursor:"pointer",
-                                    ...(anneau?{boxShadow:`0 0 0 2px ${anneau}, 0 1px 4px rgba(16,32,27,0.25)`}:{}),
+                                    ...(teinte?{background:teinte.fond,
+                                      boxShadow:`inset 0 0 0 1.5px ${teinte.trait}, 0 1px 4px rgba(16,32,27,0.25)`}:{}),
                                     ...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
                                   onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
                                   <PlatformLogo platform={p} size={20}/>
@@ -7695,10 +7726,19 @@ const StockTab = memo(function StockTab({
                                                  :`${PLATFORM_LABELS[x.p]||x.p} attend une information — toucher pour compléter`)
                                     :(lang==='en'?`${PLATFORM_LABELS[x.p]||x.p}: publishing failed — tap to relaunch`
                                                  :`${PLATFORM_LABELS[x.p]||x.p} : la publication a échoué — toucher pour relancer`)}
-                                  style={{cursor:"pointer",filter:"grayscale(1)",opacity:.62,
-                                    boxShadow:`0 0 0 2px ${x.ton==='warn'?"#8A6100":"#B91C1C"}, 0 1px 4px rgba(16,32,27,0.25)`}}
+                                  style={{cursor:"pointer",
+                                    background:x.ton==='warn'?"#FFF6E3":"#FEF2F2",
+                                    boxShadow:`inset 0 0 0 1.5px ${x.ton==='warn'?"#8A6100":"#B91C1C"}, 0 1px 4px rgba(16,32,27,0.25)`}}
                                   onClick={ev=>{ev.stopPropagation();setRemoveModalItem(item);}}>
-                                  <PlatformLogo platform={x.p} size={20}/>
+                                  {/* Le NOIR ET BLANC porte sur le LOGO seul,
+                                      jamais sur la mini-carte : désaturer la
+                                      carte effacerait la teinte qui dit le
+                                      registre. Couleur = en ligne ici ;
+                                      noir et blanc = pas en ligne, mais
+                                      quelque chose t'attend. */}
+                                  <span style={{display:"flex",lineHeight:0,filter:"grayscale(1)",opacity:.78}}>
+                                    <PlatformLogo platform={x.p} size={20}/>
+                                  </span>
                                 </span>
                               ));
                             })()}
