@@ -6607,6 +6607,9 @@ export default function ListingPreviewScreen({
         );
       }
 
+      // Candidates ratissées à l'étape 3, gardées pour la VÉRIFICATION du chemin
+      // tiré de l'icône (bloc après la construction des jobs).
+      const candidatsRatisses = {};
       // ══ ÉTAPE 3 : LA MACHINE PROPOSE, L'IA TRANCHE ════════════════════════
       // Le mot n'est pas tombé EXACT sur cette plateforme. Plutôt que de
       // retomber tout de suite sur l'emoji, on RATISSE des candidates dans
@@ -6626,7 +6629,7 @@ export default function ListingPreviewScreen({
       //    les plateformes sans correspondance exacte.
       if (activeAiObjet) {
         const aRatisser = plateformesAPublier.filter(p => !categorieParMotParPf[p]);
-        const candidats = {};
+        const candidats = candidatsRatisses;
         await Promise.all(aRatisser.map(async (platform) => {
           const pfE = edited[platform]?.platform_fields ?? {};
           try {
@@ -6667,6 +6670,9 @@ export default function ListingPreviewScreen({
         }
       }
 
+      // Chemins posés depuis l'ICÔNE (aucun mot exact, aucun arbitrage) — relevés
+      // ici par plateforme pour être VÉRIFIÉS contre le mot juste après.
+      const poseParIcone = {};
       const rows = plateformesAPublier.map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
         // Photos du JOB, par plateforme. Identiques à processedPhotos partout —
@@ -6763,6 +6769,7 @@ export default function ListingPreviewScreen({
           const icon = iconeArticle;
           const lbcPath = parMot?.chemin ?? getLbcCategoryPath(icon);
           if (lbcPath) pf.lbcCategoryPath = lbcPath;
+          if (!parMot?.chemin && lbcPath) poseParIcone.leboncoin = { chemin: lbcPath, id: null };
           if (lbcAddress) pf.adresse = lbcAddress;
           // Nom historique du même drapeau, conservé pour les extensions
           // ≤ 0.6.20 déjà déployées. La décision, elle, est prise une seule
@@ -6887,6 +6894,7 @@ export default function ListingPreviewScreen({
           // enfant (body → Bodies, manteau → Manteaux) — même chemin sinon.
           const categoryPath = parMot?.chemin ?? getVintedCategoryPath(icon, pf.genre, edited[platform]?.title ?? "");
           if (categoryPath) pf.categoryPath = categoryPath;
+          if (!parMot?.chemin && categoryPath) poseParIcone.vinted = { chemin: categoryPath, id: null };
           // Flag statique lu par l'extension : permet un message d'échec
           // précis ("genre requis") quand un job sans categoryPath vient d'un
           // article de mode plutôt que d'une icône hors mapping.
@@ -6937,6 +6945,7 @@ export default function ListingPreviewScreen({
           const categoryId = parMotEbay?.id ?? getEbayCategoryId(icon, pf.genre);
           if (categoryPath) pf.ebayCategoryPath = categoryPath;
           if (categoryId) pf.ebayCategoryId = categoryId;
+          if (!parMotEbay && categoryPath && categoryId) poseParIcone.ebay = { chemin: categoryPath, id: String(categoryId) };
           if (ebayGenreRequired(icon)) pf.ebayGenreRequired = true;
           // Couleur : l'extension consomme colors[0] (les specifics eBay
           // Couleur sont mono-valeur) — même split que Vinted, dominante
@@ -6967,6 +6976,7 @@ export default function ListingPreviewScreen({
           if (autoGenre && beebsGenreRequired(icon) && (!pf.genre || pf.genre === "Mixte")) pf.genre = autoGenre;
           const categoryPath = parMot?.chemin ?? getBeebsCategoryPath(icon, pf.genre);
           if (categoryPath) pf.beebsCategoryPath = categoryPath;
+          if (!parMot?.chemin && categoryPath) poseParIcone.beebs = { chemin: categoryPath, id: null };
           if (beebsGenreRequired(icon)) pf.beebsGenreRequired = true;
           if (lbcAddress) pf.adresse = lbcAddress;
           // Format du colis (généralisation 2026-07-19 soir) : requis Beebs
@@ -7018,6 +7028,108 @@ export default function ListingPreviewScreen({
           platform_fields: pf,
         };
       });
+      // ══ VÉRIFICATION DU CHEMIN TIRÉ DE L'ICÔNE CONTRE LE MOT (2026-09-08 soir) ══
+      // Cas fondateur : deux soutiens-gorge (Marie-Pierre, 08/09 15:24 et 15:25)
+      // publiés sur Beebs en « Nuit et pyjamas > Pyjamas (femme) », avec
+      // categorie_objet_ia = « soutien-gorge » et categorie_source =
+      // catalog_vinted. MESURÉ : l'étape 3 avait bien tourné (arbitrage du
+      // legging voisin dans categorie_journal à 15:24:17), mais l'arbre Beebs
+      // n'a AUCUNE feuille lingerie hors maternité → zéro candidate → aucun
+      // appel → le chemin de l'ICÔNE (🩲 → Pyjamas) partait tel quel, étiqueté
+      // « catalog_vinted » par le garde-fou — une étiquette qui ne certifie que
+      // la BRANCHE (Mode / Femme), jamais la feuille. Sur les 22 jobs Beebs
+      // « catalog_vinted » de 3 jours, 18 portaient le mot et aucun ne l'avait
+      // utilisé. Le mot juste était en main et ne servait à rien.
+      // RÈGLE : un chemin qui ne vient PAS du mot (icône, transposition du
+      // catalogue Vinted, garde-fou) est VÉRIFIÉ contre le mot avant de partir,
+      // sur les quatre plateformes : l'IA reçoit ce chemin ET les voisines
+      // ratissées à l'étape 3, et tranche — même resolve-categorie, mêmes clés
+      // opaques, même « aucune » légitime. Confirmé → il part, tracé. Une
+      // voisine préférée → elle remplace (source ia_parmi_candidats). « Aucune »
+      // → INCOHÉRENCE : ce chemin ne part pas tel quel. Beebs n'expose aucune
+      // suggestion : le job part SANS chemin et l'extension le met en needs_user
+      // en disant pourquoi (categorie_a_choisir). Vinted, eBay, Leboncoin
+      // gardent le chemin mais FLAGUÉ incertain → la suggestion de la
+      // plateforme gagne (règle n°2, déjà câblée des trois côtés).
+      // ⛔ Sans mot (categorie_objet_ia absent), rien à vérifier : rien ne change.
+      // ⛔ IA injoignable : rien ne change non plus — on ne bloque pas un dépôt
+      //    sur une panne, on le trace (categorie_verification absent).
+      // Coût : un appel Haiku de plus par publication concernée (≈ 0,0013 $,
+      // mesuré le 07/09), soit au pire quelques centimes par jour.
+      if (activeAiObjet && Object.keys(poseParIcone).length) {
+        const cle = (chemin) => (Array.isArray(chemin) ? chemin : [chemin])
+          .map(s => texteComparable(String(s ?? ""))).join(" > ");
+        const memeChemin = (a, b) => cle(a) === cle(b);
+        const candidatsVerif = {};
+        for (const [pfKey, pose] of Object.entries(poseParIcone)) {
+          const voisines = (candidatsRatisses[pfKey] ?? []).filter(c => !memeChemin(c.chemin, pose.chemin));
+          candidatsVerif[pfKey] = [{ chemin: pose.chemin, id: pose.id ?? null }, ...voisines].slice(0, 20);
+        }
+        let reponse = null;
+        try {
+          const { data } = await supabase.functions.invoke("resolve-categorie", {
+            body: {
+              titre: initialListing?.titre || edited[plateformesAPublier[0]]?.title || "",
+              attributs: {
+                genre: sharedFields.genre || autoGenre || "",
+                taille: sharedFields.taille || initialListing?.taille || "",
+                marque: sharedFields.marque || initialListing?.marque || "",
+                objet: activeAiObjet,
+              },
+              candidats: candidatsVerif,
+            },
+          });
+          reponse = data ?? null;
+        } catch (e) {
+          console.warn("[publish] vérification du chemin de l'icône : resolve-categorie injoignable — chemins conservés :", e?.message ?? e);
+        }
+        const choixVerif = reponse && reponse.motif !== "ia_indisponible" && reponse.choix && typeof reponse.choix === "object"
+          ? reponse.choix : null;
+        if (choixVerif) {
+          // eBay NAVIGUE PAR IDENTIFIANT : un chemin sans id n'y remplace rien.
+          const poserChemin = (platform, pf, chemin, id) => {
+            if (platform === "vinted") pf.categoryPath = chemin;
+            else if (platform === "beebs") pf.beebsCategoryPath = chemin;
+            else if (platform === "leboncoin") pf.lbcCategoryPath = chemin;
+            else if (platform === "ebay") { if (!id) return false; pf.ebayCategoryPath = chemin; pf.ebayCategoryId = id; }
+            return true;
+          };
+          for (const row of rows) {
+            const pose = poseParIcone[row.platform];
+            if (!pose) continue;
+            const pf = row.platform_fields;
+            const choix = choixVerif[row.platform] ?? null;
+            const cheminChoisi = Array.isArray(choix?.chemin) && choix.chemin.length ? choix.chemin : null;
+            const trace = { objet: activeAiObjet, chemin_icone: pose.chemin, source_avant: pf.categorie_source ?? null };
+            if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin)) {
+              pf.categorie_verification = { ...trace, verdict: "confirme" };
+              continue;
+            }
+            if (cheminChoisi && poserChemin(row.platform, pf, cheminChoisi, choix.id ?? null)) {
+              pf.categorie_source = "ia_parmi_candidats";
+              pf.categorie_par_mot = {
+                mot: activeAiObjet, chemin: cheminChoisi, id: choix.id ?? null, choisi_par_ia: true, apres_verification: true,
+              };
+              delete pf.categorie_incertaine;
+              delete pf.lbcCategorieIncertaine;
+              pf.categorie_verification = { ...trace, verdict: "remplace", chemin_retenu: cheminChoisi };
+              console.log(`[publish] ${row.platform} — « ${activeAiObjet} » : l'IA préfère « ${cheminChoisi.join(" > ")} » au chemin de l'icône « ${pose.chemin.join(" > ")} »`);
+              continue;
+            }
+            // INCOHÉRENCE : l'IA refuse le chemin de l'icône et n'en retient aucun autre.
+            pf.categorie_verification = { ...trace, verdict: "incoherent" };
+            pf.categorie_source = "icone_non_confirmee";
+            console.warn(`[publish] ${row.platform} — « ${activeAiObjet} » : le chemin de l'icône « ${pose.chemin.join(" > ")} » est INCOHÉRENT avec le mot — il ne part pas tel quel`);
+            if (row.platform === "beebs") {
+              delete pf.beebsCategoryPath;
+              pf.categorie_a_choisir = { objet: activeAiObjet, chemin_ecarte: pose.chemin };
+            } else {
+              pf.categorie_incertaine = true;
+              if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
+            }
+          }
+        }
+      }
       // ── Aspects obligatoires eBay (2026-07-11, Phase 2 du référentiel) ──
       // ebay_item_aspects (peuplée depuis l'API Taxonomy, lecture ouverte à
       // authenticated) : le job eBay embarque les NOMS d'aspects

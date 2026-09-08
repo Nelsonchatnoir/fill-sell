@@ -192,9 +192,24 @@ export function filtrerStock(items, index, { diffusion = null, probleme = null }
 export const TRIS_STOCK = ['defaut', 'prix_desc', 'prix_asc', 'ajout_desc', 'ajout_asc'];
 
 const nombreOuNull = (v) => {
+  // ⚠️ Number(null) et Number("") valent 0 : un prix ABSENT se classerait
+  // comme un prix nul (règle VIDE ≠ ZÉRO). On écarte explicitement.
+  if (v == null || (typeof v === "string" && !v.trim())) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
+
+// ⛔ FORME DES ARTICLES DANS L'APP (mapItem, App.jsx) : la ligne `inventaire`
+// est RENOMMÉE avant d'arriver ici — `prix_vente` devient `sell`, `created_at`
+// devient `date_ajout` (avec repli date_achat/date), et rien n'est recopié
+// sous le nom de la colonne. Le tri lisait `it.prix_vente` / `it.created_at` :
+// toujours undefined, donc « inconnu » sur TOUS les articles, donc ordre
+// inchangé — les quatre tris étaient morts, seul « défaut » vivait (retour
+// Joséphine, 08/09 22:40 : « le tri par prix n'est pas pris en compte »).
+// On lit d'abord le nom de l'app, puis celui de la colonne, pour qu'une
+// ligne brute (test, appel hors mapItem) se trie aussi.
+const lirePrix = (it) => it?.sell ?? it?.prix_vente ?? null;
+const lireAjout = (it) => it?.date_ajout ?? it?.created_at ?? null;
 
 export function trierStock(items, tri) {
   const liste = items ?? [];
@@ -214,10 +229,10 @@ export function trierStock(items, tri) {
     return croissant ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1);
   }).map(([it]) => it);
 
-  if (tri === 'prix_desc') return parCle((it) => nombreOuNull(it?.prix_vente), false);
-  if (tri === 'prix_asc') return parCle((it) => nombreOuNull(it?.prix_vente), true);
-  if (tri === 'ajout_desc') return parCle((it) => Date.parse(it?.created_at ?? '') || null, false);
-  if (tri === 'ajout_asc') return parCle((it) => Date.parse(it?.created_at ?? '') || null, true);
+  if (tri === 'prix_desc') return parCle((it) => nombreOuNull(lirePrix(it)), false);
+  if (tri === 'prix_asc') return parCle((it) => nombreOuNull(lirePrix(it)), true);
+  if (tri === 'ajout_desc') return parCle((it) => Date.parse(lireAjout(it) ?? '') || null, false);
+  if (tri === 'ajout_asc') return parCle((it) => Date.parse(lireAjout(it) ?? '') || null, true);
   return liste;
 }
 
