@@ -575,6 +575,93 @@ serve(async (req) => {
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
     }
 
+    // ── UN SEUL LEBONCOIN À LA FOIS, PAR COMPTE (2026-09-08) ────────────────
+    // CE QUI SE PASSE. Chaque publication Leboncoin ouvre le formulaire de
+    // dépôt, et Leboncoin crée AUTOMATIQUEMENT un brouillon côté serveur. Si
+    // un second job démarre avant que le premier ait refermé le sien, il tombe
+    // dessus : « Un brouillon Leboncoin non terminé bloque le dépôt ». Chaque
+    // job fabrique donc l'obstacle du suivant, et le retrait automatique du
+    // brouillon (0.6.20) court après un brouillon qu'on est en train de
+    // recréer — c'est pour ça qu'il n'y arrive pas.
+    //
+    // MESURÉ (samira.460, Premium depuis 13:11) : 6 publications Leboncoin
+    // demandées entre 13:13 et 13:33, ZÉRO aboutie, et les six portent un
+    // `processing_since` compris dans la même fenêtre de 4 minutes — la preuve
+    // du télescopage, pas une hypothèse. Sur la journée : 10 demandées,
+    // 2 abouties, contre 121/110 la veille et 97/89 l'avant-veille.
+    //
+    // LA GARDE. Tant qu'un job leboncoin de ce compte est en 'processing', on
+    // ne sert aucun autre leboncoin. C'est exactement la garde anti-rafale de
+    // la republication Vinted, étendue à Leboncoin — et à Leboncoin SEUL :
+    // eBay et Beebs n'ouvrent pas de brouillon serveur, ils ne sont pas
+    // concernés et ne doivent pas être ralentis.
+    //
+    // ⛔ RIEN N'EST REFUSÉ : les jobs restent 'pending', intacts. Aucune
+    // tentative consommée, aucun 'failed', aucun 'needs_user', aucune
+    // écriture. Ils repartent seuls au poll suivant — attendre son tour n'est
+    // pas un échec.
+    //
+    // ⏳ PÉREMPTION à 10 minutes. Un 'processing' zombie (Chrome fermé au
+    // milieu d'un formulaire) gèlerait sinon Leboncoin pour ce compte
+    // indéfiniment. 10 min est très au-dessus du pire cas mesuré : sur
+    // 434 publications abouties, la durée médiane est de 98 s, le 90e centile
+    // de 126 s, et le maximum observé de 317 s. Un job plus vieux que ça n'est
+    // plus en train de travailler.
+    //
+    // ⚠️ PAS DE DÉLAI D'ATTENTE EN PLUS, ET C'EST UNE CONCLUSION DE MESURE, pas
+    // une omission. Sur 351 paires de publications Leboncoin abouties du même
+    // compte (30 jours), l'écart minimum entre deux est de 96 s — pour une
+    // durée médiane de job de 98 s. Autrement dit, quand ça marche, le job
+    // suivant démarre déjà à la fin du précédent : le temps mort réel est
+    // proche de zéro. Sérialiser suffit ; ajouter un délai ne ferait que
+    // ralentir des publications qui aboutissent aujourd'hui.
+    //
+    // Périmètre : le poll d'EXÉCUTION seul (ni include_processing ni
+    // include_needs_user), comme les autres retenues — le popup continue de
+    // voir la file entière.
+    // Best-effort : lecture illisible → on distribue normalement. Un filet ne
+    // devient jamais un point de panne.
+    let heldLbc = 0;
+    if (!includeProcessing && !includeNeedsUser && out.some((j) => j.platform === "leboncoin")) {
+      try {
+        // ⛔ PAS de `updated_at` dans ce select : la colonne N'EXISTE PAS sur
+        // cross_post_jobs (vérifié en base), et PostgREST est TOUT OU RIEN —
+        // une seule colonne inconnue et la requête entière échoue. Le
+        // best-effort ci-dessous aurait alors avalé l'erreur, et la garde
+        // n'aurait jamais rien gardé, en silence. C'est exactement le piège
+        // qui a déjà coûté un chantier sur ce projet.
+        const { data: lbcEnCours } = await userClient
+          .from("cross_post_jobs")
+          .select("id, platform_fields, created_at")
+          .eq("user_id", user.id)
+          .eq("platform", "leboncoin")
+          .eq("status", "processing")
+          .limit(20);
+        const limite = Date.now() - 10 * 60_000;
+        const occupe = (lbcEnCours ?? []).some((j) => {
+          const pf = j.platform_fields as Record<string, unknown> | null;
+          const depuis = Date.parse(String(pf?.["processing_since"] ?? "")) ||
+                         Date.parse(String((j as Record<string, unknown>).created_at ?? ""));
+          // Horodatage illisible : on considère le job VIVANT. Mieux vaut
+          // attendre un tour que fabriquer le brouillon qui bloque tout.
+          if (!Number.isFinite(depuis)) return true;
+          return depuis > limite;
+        });
+        if (occupe) {
+          const avant = out.length;
+          out = out.filter((j) => j.platform !== "leboncoin");
+          heldLbc = avant - out.length;
+          if (heldLbc) {
+            console.log(
+              `[get-pending-jobs] userId=${user.id} : un job leboncoin est déjà en cours ` +
+              `→ ${heldLbc} leboncoin retenu(s) en pending pour ce cycle ` +
+              `(un seul dépôt à la fois : deux formulaires ouverts ensemble se bloquent par leur brouillon)`,
+            );
+          }
+        }
+      } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+
     // ── CLOISONNEMENT PAR BOUTIQUE VINTED (2026-09-04, cas ornellaracano) ───
     // Chrome bascule de @ornella-vend vers @luciatrendyshop pour synchroniser
     // la deuxième boutique, et 187 republications appartenant à la PREMIÈRE
@@ -799,7 +886,8 @@ serve(async (req) => {
       (heldSync ? `, ${heldSync} retenu(s) (la sync passe devant)` : "") +
       (heldRepublish ? `, ${heldRepublish} republish retenu(s) (${plafondRepublish?.motif ?? "retenue"})` : "") +
       (heldBoutique ? `, ${heldBoutique} job(s) retenu(s) (boutique Vinted non connectée)` : "") +
-      (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : ""),
+      (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : "") +
+      (heldLbc ? `, ${heldLbc} leboncoin retenu(s) (un seul dépôt à la fois)` : ""),
     );
 
     // ── Contexte du popup (2026-08-04) ──────────────────────────────────────
