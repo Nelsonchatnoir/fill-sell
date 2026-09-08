@@ -2371,6 +2371,15 @@ async function processJob(rawJob, accessToken) {
 
   // Jobs de SUPPRESSION (Phase B, 2026-07-11) : même file, pipeline dédié —
   // pas de pré-check catégorie ni de formulaire de dépôt à ouvrir.
+  // Sonde de session AVANT un job de la plateforme (2026-09-08) : Leboncoin,
+  // eBay et Beebs ne sont plus sondées au rythme régulier — seulement ici, et
+  // sous le même throttle de 10 min réelles. Fire-and-forget : le job ne
+  // l'attend pas, le relevé sert au popup et à l'app.
+  if (job.platform !== "vinted") {
+    reportPlatformSessions(accessToken, { plateformes: [job.platform], motif: `avant job ${job.platform}` })
+      .catch((e) => console.warn("[background] sonde avant job (non bloquante) :", String(e?.message ?? e)));
+  }
+
   if (job.action === "delete") return processDeleteJob(job, accessToken);
 
   // Jobs de REPUBLICATION (É2, 2026-08-05) : machine à étapes persistée en
@@ -7657,8 +7666,33 @@ async function lireEtatAnnonce(url, platform) {
 //     client) → null (indéterminé), jamais un faux « connecté ».
 // Tri-état true/false/null par plateforme. Fire-and-forget : une sonde qui
 // échoue ne bloque JAMAIS le traitement des jobs.
-let lastSessionProbeAt = 0;
+// ⚠️ THROTTLE PERSISTÉ (2026-09-08, mesure) : `let lastSessionProbeAt` vivait en
+// mémoire du service worker MV3, qui meurt entre deux polls — la sonde partait
+// donc à CHAQUE poll (écart médian mesuré entre deux relevés : 2,0 min), soit
+// ≈ 720 sondes et ≈ 2 880 fetch par jour et par extension, depuis un contexte
+// sans page ni JS DataDome. La mesure ne prouve PAS que ces fetch causent les
+// 403 (ce qui sépare les comptes à 200 des comptes à 403, c'est l'activité
+// Leboncoin réelle, pas le volume de sondes) ; on corrige parce que 2 880
+// fetch/jour est un défaut en soi.
+// Désormais : horodatage PAR PLATEFORME dans chrome.storage.local, 10 minutes
+// RÉELLES ; Vinted seule au rythme régulier (identité de boutique →
+// cloisonnement serveur, reprise session_vinted) ; Leboncoin / eBay / Beebs
+// sondées UNIQUEMENT avant un job de leur plateforme (processJob).
 const SESSION_PROBE_INTERVAL_MS = 10 * 60 * 1000;
+const SESSION_PROBE_STORAGE_KEY = FILLSELL_CONFIG.STORAGE_KEYS.SESSION_PROBE_AT;
+async function lireHorodatagesSondes() {
+  try {
+    const st = await chrome.storage.local.get(SESSION_PROBE_STORAGE_KEY);
+    const v = st?.[SESSION_PROBE_STORAGE_KEY];
+    return v && typeof v === "object" ? v : {};
+  } catch { return {}; }
+}
+async function ecrireHorodatagesSondes(maj) {
+  try {
+    const actuel = await lireHorodatagesSondes();
+    await chrome.storage.local.set({ [SESSION_PROBE_STORAGE_KEY]: { ...actuel, ...maj } });
+  } catch { /* sans stockage, on sonde quand même : jamais bloquant */ }
+}
 
 function decodeJwtSub(token) {
   try {
@@ -7708,6 +7742,8 @@ async function sonderSessionEbay() {
   });
   const u = new URL(r.url);
   if (/(^|\.)signin\.ebay\./.test(u.hostname)) return { etat: false, http: r.status };
+  // 401/403 ⇒ null, jamais « connectée » (2026-09-08) — même règle que Leboncoin.
+  if (r.status === 401 || r.status === 403) return { etat: null, http: r.status };
   return { etat: /(^|\.)ebay\.fr$/.test(u.hostname) ? true : null, http: r.status };
 }
 
@@ -7802,10 +7838,13 @@ async function arbitrerSessionEbay(result) {
   };
 }
 
-async function probePlatformSessions() {
+async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay", "beebs"]) {
   const probe = async (fn) => { try { return await fn(); } catch { return { etat: null, http: null }; } };
+  // Plateforme non demandée = NON MESURÉE : null/null, jamais une valeur
+  // recopiée (2026-09-08). C'est ecrireExtensionSessions qui fusionne.
+  const sonde = (pf, fn) => (plateformes.includes(pf) ? probe(fn) : Promise.resolve({ etat: null, http: null }));
   const [vinted, leboncoin, ebay, beebs] = await Promise.all([
-    probe(async () => {
+    sonde("vinted", async () => {
       const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
         headers: { Accept: "application/json" }, credentials: "include",
       });
@@ -7833,16 +7872,21 @@ async function probePlatformSessions() {
       }
       return { etat: r.ok ? true : null, http: r.status, identite };
     }),
-    probe(async () => {
+    sonde("leboncoin", async () => {
       const r = await fetch("https://www.leboncoin.fr/deposer-une-annonce", {
         credentials: "include", redirect: "follow",
       });
       const u = new URL(r.url);
       if (/(^|\.)auth\.leboncoin\.fr$/.test(u.hostname) || u.pathname.startsWith("/connexion")) return { etat: false, http: r.status };
+      // 401/403 ⇒ null, JAMAIS « connectée » (2026-09-08, décision Nico) : sur
+      // un 403 DataDome l'URL ne bouge pas, et « leboncoin: true » à côté d'un
+      // http 403 est ce qui a fait chercher au mauvais endroit sur le cas
+      // Joséphine. Le statut brut reste dans `http`.
+      if (r.status === 401 || r.status === 403) return { etat: null, http: r.status };
       return { etat: u.pathname.startsWith("/deposer-une-annonce") ? true : null, http: r.status };
     }),
-    probe(sonderSessionEbay),
-    probe(async () => {
+    sonde("ebay", sonderSessionEbay),
+    sonde("beebs", async () => {
       const r = await fetch("https://www.beebs.app/fr/listing", {
         credentials: "include", redirect: "follow",
       });
@@ -7855,8 +7899,15 @@ async function probePlatformSessions() {
       return { etat: /\/(login|signin|connexion)|\/auth(\/|$)/i.test(u.pathname) ? false : null, http: r.status };
     }),
   ]);
+  const maintenant = new Date().toISOString();
+  const parPlateforme = {};
+  for (const pf of plateformes) parPlateforme[pf] = maintenant;
   return {
-    checked_at: new Date().toISOString(),
+    checked_at: maintenant,
+    // (2026-09-08) Quelles plateformes CE relevé a réellement sondées, et
+    // quand : les lecteurs (popup, app) jugent la fraîcheur PAR plateforme.
+    sondees: plateformes.slice(),
+    checked_at_par_plateforme: parPlateforme,
     vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat,
     // Boutique Vinted connectée (multi-boutiques, 2026-09-03) — null quand la
     // sonde n'a pas pu la lire (401 ambigu compris). L'app l'affiche telle
@@ -7887,20 +7938,60 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
       previous = sessionsSansHistorique(rows?.[0]?.extension_sessions);
     } catch { previous = null; } // l'historique est un confort, jamais bloquant
   }
+  // ── FUSION PAR PLATEFORME (2026-09-08) ─────────────────────────────────────
+  // Un relevé PARTIEL (Vinted seule au rythme régulier, les autres avant un
+  // job) ne doit ni ÉCRASER par null une déconnexion OBSERVÉE par un handler
+  // (http = "login_redirect_observee", noterSessionDeconnectee), ni RECOPIER
+  // une vieille valeur de sonde comme si elle datait d'aujourd'hui. Règle :
+  //   · plateforme sondée → la valeur du relevé ;
+  //   · Vinted non sondée → l'état et l'identité de boutique précédents sont
+  //     conservés (son rythme régulier les garantit ≤ 10 min ; le serveur lit
+  //     vinted_identite pour le cloisonnement des boutiques — un null ici lui
+  //     ferait perdre la boutique connectée entre deux sondes) ;
+  //   · Leboncoin / eBay / Beebs non sondées → seule une observation handler
+  //     est conservée, avec SON horodatage ; tout le reste retombe à null.
+  // Un relevé sans `sondees` (noterSessionDeconnectee) s'écrit tel quel.
+  let final = releve;
+  if (Array.isArray(releve?.sondees)) {
+    const prev = previous ?? {};
+    const prevHttp = prev.http && typeof prev.http === "object" ? prev.http : {};
+    const prevPar = prev.checked_at_par_plateforme && typeof prev.checked_at_par_plateforme === "object" ? prev.checked_at_par_plateforme : {};
+    const fusion = {
+      ...releve,
+      http: { ...(releve.http ?? {}) },
+      checked_at_par_plateforme: { ...(releve.checked_at_par_plateforme ?? {}) },
+    };
+    for (const pf of ["vinted", "leboncoin", "ebay", "beebs"]) {
+      if (releve.sondees.includes(pf)) continue;
+      const observationHandler = typeof prevHttp[pf] === "string" && !/^\d+$/.test(prevHttp[pf]);
+      const conserver = pf === "vinted" || observationHandler;
+      fusion[pf] = conserver ? (prev[pf] ?? null) : null;
+      fusion.http[pf] = conserver ? (prevHttp[pf] ?? null) : null;
+      if (conserver) fusion.checked_at_par_plateforme[pf] = prevPar[pf] ?? prev.checked_at ?? null;
+      if (pf === "vinted") fusion.vinted_identite = prev.vinted_identite ?? null;
+    }
+    final = fusion;
+  }
   await restRequest(`profiles?id=eq.${sub}`, accessToken, {
     method: "PATCH",
-    body: JSON.stringify({ extension_sessions: { ...releve, ...(previous ? { previous } : {}) } }),
+    body: JSON.stringify({ extension_sessions: { ...final, ...(previous ? { previous } : {}) } }),
   });
 }
 
-async function reportPlatformSessions(accessToken) {
-  if (Date.now() - lastSessionProbeAt < SESSION_PROBE_INTERVAL_MS) return;
-  lastSessionProbeAt = Date.now();
+async function reportPlatformSessions(accessToken, { plateformes = ["vinted"], motif = "poll" } = {}) {
+  // Throttle PERSISTÉ, par plateforme (cf. en-tête de SESSION_PROBE_INTERVAL_MS).
+  const horodatages = await lireHorodatagesSondes();
+  const maintenant = Date.now();
+  const cibles = plateformes.filter((pf) => maintenant - (Number(horodatages[pf]) || 0) >= SESSION_PROBE_INTERVAL_MS);
+  if (!cibles.length) return;
   const sub = decodeJwtSub(accessToken);
   if (!sub) return;
-  const sessions = await probePlatformSessions();
+  // Écrit AVANT de sonder : deux réveils du service worker à quelques secondes
+  // d'écart ne doivent pas sonder deux fois.
+  await ecrireHorodatagesSondes(Object.fromEntries(cibles.map((pf) => [pf, maintenant])));
+  const sessions = await probePlatformSessions(cibles);
   await ecrireExtensionSessions(accessToken, sub, sessions);
-  console.log("[background] sessions plateformes relevées :", JSON.stringify(sessions));
+  console.log(`[background] sessions plateformes relevées (${motif} : ${cibles.join(", ")}) :`, JSON.stringify(sessions));
 
   // ── REPRISE AUTO des republications en attente de session (2026-09-03) ─────
   // Les jobs mis en needs_user par la capture (needs_user_source =
@@ -8003,13 +8094,21 @@ async function noterSessionDeconnectee(accessToken, platform) {
     const rows = await restRequest(`profiles?id=eq.${sub}&select=extension_sessions`, accessToken);
     base = sessionsSansHistorique(rows?.[0]?.extension_sessions);
   } catch { /* base = null : on écrit quand même le signal sûr */ }
+  const observeLe = new Date().toISOString();
   const releve = {
     vinted: null, leboncoin: null, ebay: null, beebs: null,
     ...(base ?? {}),
     [platform]: false,
-    checked_at: new Date().toISOString(),
+    checked_at: observeLe,
     http: { ...(base?.http ?? {}), [platform]: "login_redirect_observee" },
+    // Horodatage propre à l'observation (0.6.23) : le popup juge la fraîcheur
+    // par plateforme, et cette déconnexion date de MAINTENANT.
+    checked_at_par_plateforme: { ...(base?.checked_at_par_plateforme ?? {}), [platform]: observeLe },
   };
+  // Relevé COMPLET (recopie de base + observation) : écrit tel quel, sans
+  // passer par la fusion des relevés partiels — `sondees` hérité de base
+  // ferait effacer l'observation qu'on vient justement de poser.
+  delete releve.sondees;
   await ecrireExtensionSessions(accessToken, sub, releve, base);
   console.log(`[background] session ${platform} : DÉCONNEXION observée par le handler — extension_sessions mis à jour`);
 }

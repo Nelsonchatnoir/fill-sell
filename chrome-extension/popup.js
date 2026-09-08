@@ -539,8 +539,19 @@ function calculerEtats() {
   state.sondeFraiche = Number.isFinite(vu) && Date.now() - vu < SESSIONS_FRAICHEUR_MS;
   state.etats = {};
   for (const p of PLATFORMS) {
-    state.etats[p.key] = state.session ? etatPlateforme(p, state.sondeFraiche) : { etat: null, sous: null };
+    state.etats[p.key] = state.session ? etatPlateforme(p, sondeFraichePour(p.key)) : { etat: null, sous: null };
   }
+}
+
+// Fraîcheur PAR plateforme (0.6.23) : Vinted est sondée au rythme régulier,
+// Leboncoin / eBay / Beebs seulement avant un job — un relevé porte donc
+// checked_at_par_plateforme. À défaut (relevé d'une version antérieure), le
+// checked_at global fait foi, comme avant.
+function sondeFraichePour(key) {
+  const s = state.sessions;
+  const propre = s?.checked_at_par_plateforme?.[key];
+  const vu = Date.parse(propre ?? s?.checked_at ?? "");
+  return Number.isFinite(vu) && Date.now() - vu < SESSIONS_FRAICHEUR_MS;
 }
 const estKo = (key) => ["ko", "bloquee"].includes(state.etats[key]?.etat);
 const plateformesKo = () => PLATFORMS.filter((p) => estKo(p.key));

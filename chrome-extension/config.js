@@ -71,5 +71,11 @@ const FILLSELL_CONFIG = {
     // rien. Lu par le popup pour afficher la ligne « ordinateur éveillé »,
     // écrit par le background seul. Effacé à toute relâche réelle.
     KEEP_AWAKE: "fillsell_keep_awake",
+    // ── Sondes de session : dernier horodatage PAR PLATEFORME (2026-09-08) ─
+    // { vinted: ms, leboncoin: ms, ebay: ms, beebs: ms }. Persisté parce que
+    // le throttle de 10 min vivait en mémoire d'un service worker MV3 qui
+    // meurt entre deux polls : la sonde partait à chaque poll (mesuré :
+    // médiane 2 min, ≈ 2 880 fetch/jour). Écrit par le background seul.
+    SESSION_PROBE_AT: "fillsell_session_probe_at",
   },
 };
