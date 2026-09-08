@@ -245,15 +245,36 @@ export function pastillesEtat(etat, lang = 'fr') {
   const out = [];
   const nc = etat?.aCompleter?.length ?? 0;
   const ne = etat?.enEchec?.length ?? 0;
-  // ⛔ ON NE NOMME LA PLATEFORME QUE S'IL N'Y A QU'UNE SEULE PASTILLE.
-  // Avec deux pastilles côte à côte, « À compléter · Beebs » puis « 2 échecs »
-  // ne tiennent pas dans la largeur d'une carte : la seconde se coupait en
-  // « 2 éc… » (capture Nico, 08/09). Un compte tronqué ne vaut pas mieux qu'un
-  // nom tronqué. Dès qu'il y a deux registres, les deux comptent au lieu de
-  // nommer — et le détail complet reste dans le title, la popup le dit en
-  // entier.
-  const deuxPastilles = nc > 0 && ne > 0;
-  if (nc === 1 && !deuxPastilles) {
+  // ⛔ JAMAIS DEUX PASTILLES : UNE SEULE, TOUJOURS.
+  // Deux pastilles côte à côte débordent de la carte sur un téléphone, quels
+  // que soient les libellés — mesuré deux fois (« 2 éc… » coupé au texte, puis
+  // la pastille entière coupée au bord de la carte). Raccourcir ne fait que
+  // repousser le problème d'un mot : à trois plateformes concernées, il
+  // reviendrait. On supprime donc la cause au lieu de la contourner.
+  // Quand les deux registres coexistent, la carte ALERTE et compte ;
+  // elle ne détaille pas — le détail vit dans la popup, qui est la porte
+  // unique, et dans l'infobulle. Le rouge l'emporte : un échec est un ratage
+  // de notre côté, il prime sur une information à fournir.
+  if (nc > 0 && ne > 0) {
+    const total = nc + ne;
+    return [{
+      ton: 'err', platform: null, job: null,
+      texte: fr ? `${total} à traiter` : `${total} to handle`,
+      detail: [
+        ...etat.aCompleter.map((e) => {
+          const nom = LIBELLE_PLATEFORME[e.platform] ?? e.platform;
+          return e.champ
+            ? (fr ? `${nom} : il manque ${e.champ}` : `${nom}: ${e.champ} is missing`)
+            : nom;
+        }),
+        ...etat.enEchec.map((e) => {
+          const nom = LIBELLE_PLATEFORME[e.platform] ?? e.platform;
+          return fr ? `${nom} : la publication a échoué` : `${nom}: publishing failed`;
+        }),
+      ].join(' · '),
+    }];
+  }
+  if (nc === 1) {
     const e = etat.aCompleter[0];
     const nom = LIBELLE_PLATEFORME[e.platform] ?? e.platform;
     out.push({
@@ -277,7 +298,7 @@ export function pastillesEtat(etat, lang = 'fr') {
         .join(fr ? ' · ' : ' · '),
     });
   }
-  if (ne === 1 && !deuxPastilles) {
+  if (ne === 1) {
     const e = etat.enEchec[0];
     const nom = LIBELLE_PLATEFORME[e.platform] ?? e.platform;
     out.push({
