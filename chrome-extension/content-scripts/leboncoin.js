@@ -1067,7 +1067,31 @@ async function fillListingForm(job) {
 
   console.log("[leboncoin] 🚀 LIVE — Continuer final (« je confirme l'exactitude »)");
   await humanPause(1200, 2400);
+  // ── LA SEULE PREUVE QU'UN CLIC A PRIS, C'EST LA REQUÊTE (2026-09-08) ──────
+  // Même doctrine que la famille B eBay : on horodate le clic, et la sonde
+  // réseau du background (PROBE_ENDPOINTS.leboncoin : non-GET vers
+  // api.leboncoin.fr) dira si une requête est partie APRÈS lui. Sans ça,
+  // « aperçu resté affiché » (Joséphine ×10 en 0.6.20, 5 tentatives brûlées
+  // par job) ne distinguait pas un clic AVALÉ — re-clic sans danger — d'une
+  // requête PARTIE sans réponse, où re-cliquer fabrique un DOUBLON.
+  const depuisClicFinal = Date.now();
   realClick(finalContinue);
+  const depotRequeteVue = async () => {
+    try {
+      const r = await new Promise((resolve) => {
+        try {
+          chrome.runtime.sendMessage({ type: "LBC_DEPOT_SEEN", since: depuisClicFinal }, (rep) => {
+            void chrome.runtime.lastError; // canal fermé = réponse nulle, jamais un throw
+            resolve(rep ?? null);
+          });
+        } catch { resolve(null); }
+      });
+      // Sonde illisible : on ne PRÉTEND pas que rien n'est parti (prudence,
+      // même catch que la sonde eBay).
+      if (!r || typeof r !== "object") return { seen: true, requetes: [], illisible: true };
+      return { seen: r.seen === true, requetes: Array.isArray(r.requetes) ? r.requetes : [], illisible: false };
+    } catch { return { seen: true, requetes: [], illisible: true }; }
+  };
 
   // Écrans post-aperçu, avancés d'écran en écran (3 max) :
   //   · /options : chemin gratuit explicite ("Déposer sans booster mon
@@ -1127,13 +1151,13 @@ async function fillListingForm(job) {
       .filter((el) => estVisibleParStyles(el) && !String(el.value ?? "").trim())
       .map((el) => ({ cle: String(el.name || el.id || ""), libelle: libelleDuChamp(el) }));
   const champsEscrowVides = () => champsVidesApercu().filter((c) => /^escrow_/i.test(c.cle));
-  const attendreEcranSuivant = () => waitFor(() => {
+  const attendreEcranSuivant = (budgetMs = 15_000) => waitFor(() => {
     const cta = findFreeCta();
     if (cta) return { cta };
     const phone = findContactPhone();
     if (phone && !estEncoreApercu()) return { phone };
     return null;
-  }, 15_000);
+  }, budgetMs);
   // Verdict quand l'aperçu n'a pas bougé : nom/prénom → attente utilisateur ;
   // refus lisible → needsUser nommé ; rien de lisible → needsUser avec relevé.
   // Le relevé d'écran voyage en ANNEXE « — Observabilité: … » : l'app la retire
@@ -1141,7 +1165,7 @@ async function fillListingForm(job) {
   // humaine ; en clair, le JSON du relevé ferait basculer TOUT le message sur
   // le générique « imprévu technique » — personne ne lirait « nom et prénom ».
   // En base, la colonne error garde l'annexe entière (lisible en SQL).
-  const refusApercu = () => {
+  const refusApercu = async () => {
     const escrow = champsEscrowVides();
     if (escrow.length) {
       console.warn(`[leboncoin] aperçu refusé : ${escrow.map((c) => c.cle).join(", ")} vides (Transaction sécurisée) — attente utilisateur`);
@@ -1160,37 +1184,92 @@ async function fillListingForm(job) {
           `l'onglet resté ouvert (ou l'article dans FillSell), puis relancer. — Observabilité: ${dumpEcranVisible()}`,
       };
     }
+    // ── REQUÊTE PARTIE OU CLIC AVALÉ ? (2026-09-08) ──────────────────────────
+    // (a) Une requête non-GET vers api.leboncoin.fr est partie après le clic :
+    //     le dépôt a PEUT-ÊTRE abouti sans que la page ne le montre. On ne
+    //     retente JAMAIS (doublon) : needs_user PERSISTÉ, aucune tentative
+    //     consommée ; le background tente d'abord la confirmation par « Mes
+    //     annonces » (depotPeutEtreParti), puis le vendeur vérifie lui-même.
+    // (b) Aucune requête : le clic a été AVALÉ, c'est certain — un re-dépôt
+    //     est sans danger par construction (reprise bornée comme avant), et si
+    //     un challenge anti-robot s'est interposé au moment du dépôt, on le
+    //     nomme au lieu de « sans message ».
+    const sonde = await depotRequeteVue();
+    if (sonde.seen) {
+      const detail = sonde.illisible
+        ? "sonde réseau illisible — traité comme « requête peut-être partie », par prudence"
+        : `requête(s) non-GET vers api.leboncoin.fr après le clic : ${JSON.stringify(sonde.requetes.slice(0, 5))}`;
+      console.warn(`[leboncoin] aperçu inchangé mais ${detail} — aucune reprise (risque de doublon)`);
+      return {
+        success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_depot_incertain", depotPeutEtreParti: true,
+        warnings, unfilledRequired, discoveredRequired: enumerated,
+        error:
+          "Leboncoin n'a pas confirmé le dépôt, mais une requête est partie après le Continuer final : pour ne pas " +
+          "créer de doublon, on ne retente pas. Vérifie « Mes annonces » sur leboncoin.fr — si l'annonce y est, " +
+          "tout est bon ; sinon relance-la depuis le Stock." +
+          ` — Observabilité: ${detail} ; ${dumpEcranVisible()}`,
+      };
+    }
+    if (estPageBotShieldLbc()) {
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+        error:
+          "CHALLENGE DATADOME : Leboncoin a affiché une vérification anti-robot au moment du dépôt (aucune " +
+          "requête de dépôt n'est partie). Ouvrir leboncoin.fr dans Chrome et résoudre la vérification " +
+          "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+      };
+    }
     const vides = champsVidesApercu().map((c) => c.libelle || c.cle).filter(Boolean);
     return {
       success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
       error:
         "LIVE : l'aperçu Leboncoin est resté affiché après le Continuer final (deux clics), sans message " +
-        "d'erreur visible — terminer le dépôt à la main sur l'onglet resté ouvert." +
-        ` — Observabilité: ${vides.length ? `champs vides ${JSON.stringify(vides.slice(0, 5))} ; ` : ""}${dumpEcranVisible()}`,
+        "d'erreur visible et sans qu'aucune requête de dépôt ne parte (clic avalé) — nouvel essai au prochain " +
+        "passage ; si ça se répète, terminer le dépôt à la main sur l'onglet resté ouvert." +
+        ` — Observabilité: clic avalé (0 requête non-GET api.leboncoin.fr après le clic) ; ${vides.length ? `champs vides ${JSON.stringify(vides.slice(0, 5))} ; ` : ""}${dumpEcranVisible()}`,
     };
   };
 
+  // ── LA CADENCE DE LA 0.6.19, AVEC LA PREUVE RÉSEAU EN PLUS (2026-09-08) ──
+  // Cas A/B Joséphine (compte Joe0410, 07/09 18:00-21:30, deux Chrome sur la
+  // même file) : 0.6.19 publie 60 annonces Leboncoin d'affilée, 0.6.20 échoue
+  // 4 fois sur « aperçu resté affiché » dans le même créneau. Le diff
+  // 088cef0 → d994e33 le dit : en 0.6.19, findContactPhone (querySelector nu)
+  // matchait un input téléphone CACHÉ de l'aperçu, la boucle prenait ça pour
+  // l'écran « Vos coordonnées » et RE-CLIQUAIT « Continuer » 2 s après, jusqu'à
+  // 3 fois — un clic avalé se rattrapait tout de suite. La 0.6.20 (9a2269b)
+  // exige un téléphone VISIBLE hors aperçu (juste), attend 15 s, re-clique UNE
+  // fois, attend 15 s : chez Joséphine ce second clic tardif ne prend pas, là
+  // où le re-clic rapide passait. Ornella, Rico, Ritthik publient en 0.6.20 :
+  // leur premier clic prend — le second facteur est le poste (une 2ᵉ session
+  // Chrome sur le même compte), pas la catégorie ni le compte.
+  // On rend donc la cadence rapide (3 s, puis re-clics à 4 s d'écart, 3 au
+  // plus, dernier budget 15 s) SOUS LA GARDE de la sonde : jamais un re-clic
+  // si une requête non-GET est partie vers api.leboncoin.fr — c'est la seule
+  // différence avec la 0.6.19, et c'est celle qui empêche le doublon.
   let freeCta = null;
-  let reclicApercu = false;
+  let reclicsApercu = 0;
   for (let ecran = 0; ecran < 3 && !freeCta; ecran++) {
-    let etape = await attendreEcranSuivant();
-    if (!etape && estEncoreApercu() && !reclicApercu && !champsEscrowVides().length && !messagesErreurVisibles().length) {
-      // Aperçu inchangé et rien de lisible ne le justifie : clic avalé (onglet
-      // caché — même famille que le re-clic du chemin gratuit plus bas).
-      // Re-clic UNIQUE du Continuer final, puis on ré-attend l'écran suivant.
-      reclicApercu = true;
-      const encore = findButtonByExactText("Continuer");
-      if (encore) {
-        const note = "dépôt: Continuer final sans effet observable après 15 s (aperçu inchangé, aucun refus visible) — re-clic unique";
-        console.warn(`[leboncoin] ⚠️ ${note}`);
-        warnings.push(note);
-        await humanPause(800, 1500);
-        realClick(encore);
-        etape = await attendreEcranSuivant();
+    let etape = await attendreEcranSuivant(ecran === 0 ? 3_000 : 15_000);
+    while (!etape && estEncoreApercu() && reclicsApercu < 3
+           && !champsEscrowVides().length && !messagesErreurVisibles().length) {
+      const sonde = await depotRequeteVue();
+      if (sonde.seen) {
+        warnings.push(`dépôt: aperçu inchangé mais une requête est partie après le Continuer final (${sonde.illisible ? "sonde illisible" : JSON.stringify(sonde.requetes.slice(0, 3))}) — aucun re-clic (doublon)`);
+        break;
       }
+      const encore = findButtonByExactText("Continuer");
+      if (!encore) break;
+      reclicsApercu++;
+      const note = `dépôt: Continuer final sans effet observable (aperçu inchangé, aucun refus visible, aucune requête captée) — re-clic ${reclicsApercu}/3`;
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push(note);
+      await humanPause(800, 1500);
+      realClick(encore);
+      etape = await attendreEcranSuivant(reclicsApercu >= 3 ? 15_000 : 4_000);
     }
     if (!etape) {
-      if (estEncoreApercu()) return refusApercu();
+      if (estEncoreApercu()) return await refusApercu();
       return {
         success: false, needsUser: true, warnings, unfilledRequired,
         error: `LIVE : écran post-aperçu non reconnu — terminer le dépôt à la main. Relevé de l'écran : ${dumpEcranVisible()}`,
@@ -1529,7 +1608,34 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       // STRICT (tous les composants de l'option présents dans notre valeur, ou
       // notre valeur entière égale à l'un d'eux) — il ne peut rapprocher que
       // des libellés qui désignent la même chose écrite autrement.
-      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true, composants: true });
+      // Produit (« *_product », decoration_type) : si notre valeur n'est pas
+      // dans la liste et que rien n'est pré-rempli, le repli Leboncoin
+      // « Autre »/« Autres » est une réponse VALIDE (décision Nico 08/09).
+      const repliProduit = /_product$|^decoration_type$/.test(forKey) ? ["Autre", "Autres"] : [];
+      await fillCriterionSafe(forKey, `label[for="${forKey}"]`, val, warnings, { skipIfPrefilled: true, composants: true, fallbackValues: repliProduit });
+    }
+  }
+
+  // ── PRODUIT REQUIS SANS VALEUR : LE REPLI LEBONCOIN, PUIS ON PUBLIE ────────
+  // (2026-09-08, décision Nico.) Les listes Produit de Maison & Jardin
+  // DÉPENDENT du premier combobox (relevé live 07/09 : Univers « Autre » →
+  // Produit ["Autre"], Électroménager Type « Autre » → ["Autres"]). Elles sont
+  // relevées COMPLÈTES — leboncoin.js ne tape JAMAIS dans un combobox fermé
+  // (vérifié 08/09 : seule Marque/Modèle passent par la frappe, et seulement
+  // sur un champ vide). Quand la fiche n'a rien à mettre dans Produit, « Autre »
+  // ou « Autres » EST la réponse ; on ne bloque plus le dépôt dessus.
+  // needs_user SEULEMENT si la liste n'offre aucun repli : le Continuer le
+  // produira, avec la liste complète (releverOptionsCritere). Un pré-rempli
+  // valide n'est jamais touché (skipIfPrefilled).
+  if (hasCriteria) {
+    for (const crit of enumerateLbcCriteria()) {
+      if (!crit.required || crit.filled || !/_product$|^decoration_type$/.test(crit.key)) continue;
+      const ok = await fillCriterionSafe(crit.key, `label[for="${crit.key}"]`, "Autre", warnings, { skipIfPrefilled: true, fallbackValues: ["Autres"] });
+      const note = ok
+        ? `${crit.key}: aucune valeur dans la fiche — repli Leboncoin posé (« Autre »/« Autres »), le dépôt continue`
+        : `${crit.key}: aucune valeur dans la fiche et aucun repli « Autre »/« Autres » dans la liste — Leboncoin tranchera au Continuer`;
+      console.log(`[leboncoin] ${note}`);
+      warnings.push(note);
     }
   }
 

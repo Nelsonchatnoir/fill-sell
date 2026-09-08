@@ -96,6 +96,10 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       .catch((err) => sendResponse({
         success: false,
         error: String(err?.message ?? err),
+        // err.needsUser (2026-09-08) : une erreur LEVÉE peut être un needs_user
+        // borné (pont MAIN indisponible dans selectCategory) — sans ce relais,
+        // elle partirait en échec sec.
+        ...(err?.needsUser === true ? { needsUser: true } : {}),
         ...(err?.diagnostic ? { diagnostic: String(err.diagnostic) } : {}),
       }));
 
@@ -717,7 +721,7 @@ async function fillListingForm(job) {
       warnings.length ? `\nWarnings (${warnings.length}): ${warnings.join(" | ")}` : "\nAucun warning.",
       unfilledRequired.length ? `\n⚠️ Champs OBLIGATOIRES non remplis: ${unfilledRequired.join(", ")}` : ""
     );
-    warnings.push(`observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}`);
+    warnings.push(`observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; pont MAIN: ${canalPontMain} ; pont inline: ${etatPontInline}`);
     return { success: true, dryRun: true, warnings, unfilledRequired, discoveredRequired: enumerated };
   }
 
@@ -867,6 +871,30 @@ async function fillListingForm(job) {
       optionsChamp = null;
     }
 
+    // ── HOMONYMES SANS PONT : PAS DE MINI-ÉDITEUR (2026-09-08, décision Nico) ─
+    // Plusieurs champs portent ce libellé et le pont n'a nommé aucun d'eux
+    // (beebsFiberChamps vide) : la clé à trancher serait POSITIONNELLE, et
+    // resoudreChamps refuse désormais de l'écrire. Demander une valeur au
+    // vendeur ne mènerait donc qu'à une boucle. On le dit, sans rien lui
+    // demander ; le job repartira quand le pont parlera.
+    const libelleNu = libelleHumainDeCle(firstKey);
+    const homonymesSansNom = !beebsFiberChamps.length
+      && champsFormulaire().filter((c) => c.label === libelleNu).length > 1;
+    if (homonymesSansNom) {
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          `Beebs affiche plusieurs champs « ${libelleNu} » pour cette catégorie et le pont vers son formulaire ` +
+          "n'a pas répondu : impossible de les distinguer sans écrire à l'aveugle, et on ne le fait pas. " +
+          "Le problème vient de chez nous et il est signalé — le job repartira au prochain passage. " +
+          `Observabilité: catégorie via ${cheminCategorie} ; pont MAIN: ${canalPontMain} ; pont inline: ${etatPontInline}.`,
+        warnings,
+        unfilledRequired,
+        discoveredRequired: enumerated,
+      };
+    }
+
     // GARDE FINALE : toujours zéro option ⇒ PAS de needsUserField — un échec
     // franc et explicite vaut mieux qu'un mini-éditeur impossible. Le job
     // repart (l'app propose la relance), et le prochain passage — interstitiel
@@ -898,7 +926,7 @@ async function fillListingForm(job) {
         `${detailVides}. ` +
         "Compléter ces champs dans l'app (copie Beebs), puis relancer la publication. " +
         `Observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; ` +
-        `champs fiber: ${etatChampsFiber} ; clé du champ à trancher: ${firstKey}.` +
+        `champs fiber: ${etatChampsFiber} ; pont MAIN: ${canalPontMain} ; pont inline: ${etatPontInline} ; clé du champ à trancher: ${firstKey}.` +
         noteAge,
       warnings,
       unfilledRequired,
@@ -1356,8 +1384,15 @@ function resoudreChamps(cle) {
   if (!discriminant) return champs;
   const position = /^#(\d+)$/.exec(discriminant);
   if (position) {
-    const c = champs[Number(position[1]) - 1];
-    return c ? [c] : [];
+    // ⛔ (2026-09-08, décision Nico) Une clé POSITIONNELLE (« Taille [#2] »)
+    // n'est plus jamais écrite : elle est née d'un passage où le pont MAIN
+    // était muet, et rien ne garantit que le 2ᵉ champ d'aujourd'hui est celui
+    // d'hier. Écrire à l'aveugle sur un homonyme, c'est exactement le bug
+    // qu'on refuse. Le champ reste vide → needs_user, et si le pont parle
+    // maintenant, la clé nominative (« Taille [attributes.…] ») remplace la
+    // positionnelle au prochain tour.
+    console.warn(`[beebs] ⚠️ clé positionnelle « ${brut} » refusée : aucune écriture à l'aveugle sur un homonyme`);
+    return [];
   }
   return champs.filter((c) => c.name === discriminant);
 }
@@ -2288,19 +2323,97 @@ async function waitForCategoryOption(text, { path = [], level = 0, trigger, time
 //     recherche et avant tout rendu partiel. Les entrées peuvent être des
 //     objets (Format du colis : { sys, title, weight, price }) : on en garde
 //     le libellé, jamais l'identifiant opaque.
-// Pont muet ⇒ beebsFiberChamps reste vide ⇒ repli POSITIONNEL (« Taille [#2] »).
-function releverChampsViaFiber() {
+// Pont muet ⇒ beebsFiberChamps reste vide ⇒ les homonymes ne sont PLUS écrits
+// par position (2026-09-08, cf. resoudreChamps) : needs_user plutôt qu'une
+// valeur sur le mauvais champ.
+
+// ── CANAL PRINCIPAL : executeScript world MAIN, via le background (2026-09-08) ─
+// Le pont inline ci-dessous est MUET dans 100 % des jobs prod depuis le 09/08
+// (276/280 publications), alors que la CSP de beebs.app est restée
+// « default-src * 'unsafe-inline' » (relevés 26/07, 07/09, 08/09), sans nonce,
+// sans Trusted Types imposés, et que le même script répond immédiatement
+// rejoué depuis la page — onglet caché compris. Ce qu'on ne peut pas rejouer
+// sans extension chargée, c'est le monde ISOLÉ du content script. On demande
+// donc au background d'exécuter la fonction dans le monde MAIN de CET onglet
+// (chrome.scripting.executeScript, canal déjà prouvé pour le prix Vinted) et
+// on lit sa valeur de retour. Le pont inline reste en DIAGNOSTIC (il dit
+// désormais pourquoi il se tait) et en dernier repli.
+let canalPontMain = "(non tenté)";
+let etatPontInline = "(non sondé)";
+let diagnosticPontInlineLance = false;
+
+/** Résultat de la fonction MAIN, ou null si le CANAL lui-même a échoué
+ *  (background injoignable, executeScript refusé, délai dépassé). */
+async function demanderMainBeebs(fn, args) {
+  let res = null;
+  try {
+    res = await Promise.race([
+      askBackground({ type: "BEEBS_MAIN", fn, args }),
+      sleep(8000).then(() => ({ ok: false, reason: "executeScript : aucune réponse du background en 8 s" })),
+    ]);
+  } catch (e) {
+    res = { ok: false, reason: `executeScript : ${String(e?.message ?? e)}` };
+  }
+  if (!res || typeof res !== "object") {
+    canalPontMain = "inline (executeScript : background muet)";
+    return null;
+  }
+  const echecCanal = res.ok === false && /^(executeScript|BEEBS_MAIN)/.test(String(res.reason ?? ""));
+  if (echecCanal) {
+    console.warn(`[beebs] canal executeScript indisponible (${res.reason}) — repli sur le pont inline`);
+    canalPontMain = `inline (${res.reason})`;
+    return null;
+  }
+  canalPontMain = "executeScript";
+  return res;
+}
+
+// Le pont inline est sondé UNE fois par page, en parallèle du vrai travail et
+// sans jamais l'attendre : c'est lui qui répondra enfin, en prod, à « pourquoi
+// est-il muet ? » (violation CSP relevée, visibilité, readyState).
+function lancerDiagnosticPontInline() {
+  if (diagnosticPontInlineLance) return;
+  diagnosticPontInlineLance = true;
+  releverChampsViaPontInline()
+    .then((r) => { etatPontInline = r?.ok ? `répond (${Array.isArray(r.champs) ? r.champs.length : "?"} champ(s))` : String(r?.reason ?? "sans raison"); })
+    .catch((e) => { etatPontInline = `exception (${String(e?.message ?? e)})`; });
+}
+
+function raisonPontInlineMuet(debut, violation) {
+  return `pont inline muet après ${Math.round((Date.now() - debut) / 100) / 10} s — ` +
+    `CSP : ${violation ?? "aucune violation signalée"} ; visibilité : ${document.visibilityState} ; ` +
+    `readyState : ${document.readyState} ; scripts page : ${document.scripts.length}`;
+}
+
+const pontIndisponible = (r) => !r || (r.ok === false && /muet|executeScript|BEEBS_MAIN|sans résultat/.test(String(r.reason ?? "")));
+
+async function releverChampsViaFiber() {
+  const viaExec = await demanderMainBeebs("champs", []);
+  if (viaExec) { lancerDiagnosticPontInline(); return viaExec; }
+  return releverChampsViaPontInline();
+}
+
+function releverChampsViaPontInline() {
   return new Promise((resolve) => {
     const nonce = crypto.randomUUID();
+    const debut = Date.now();
+    let violation = null;
+    const onViol = (ev) => {
+      violation = `${ev.effectiveDirective || ev.violatedDirective || "?"} bloque ${ev.blockedURI || "inline"}` +
+        (ev.disposition ? ` (${ev.disposition})` : "");
+    };
+    document.addEventListener("securitypolicyviolation", onViol);
     const timer = setTimeout(() => {
       window.removeEventListener("message", onMsg);
-      resolve({ ok: false, reason: "pont MAIN muet après 3 s (CSP durcie ? script bloqué ?)" });
+      document.removeEventListener("securitypolicyviolation", onViol);
+      resolve({ ok: false, reason: raisonPontInlineMuet(debut, violation) });
     }, 3000);
     function onMsg(e) {
       if (e.source !== window || e.data?.__fillsellBeebsChamps !== nonce) return;
       clearTimeout(timer);
       window.removeEventListener("message", onMsg);
-      resolve(e.data);
+      document.removeEventListener("securitypolicyviolation", onViol);
+      resolve(Object.assign({ canal: "inline" }, e.data));
     }
     window.addEventListener("message", onMsg);
     const s = document.createElement("script");
@@ -2395,18 +2508,35 @@ async function chargerChampsFiber() {
 // elle-même est ignoré. Sans réponse en 3 s (CSP durcie, obfuscation
 // changée…) : {ok:false} → le REPLI clic+panneau — le chemin actuel, INTACT —
 // prend la main. Jamais bloquant.
-function commitCategoryViaFiber(path) {
+// (2026-09-08) Canal principal = executeScript world MAIN via le background
+// (cf. demanderMainBeebs) ; le pont inline ci-dessous n'est plus que le repli.
+async function commitCategoryViaFiber(path) {
+  const viaExec = await demanderMainBeebs("categorie", [path]);
+  if (viaExec) { lancerDiagnosticPontInline(); return viaExec; }
+  return commitCategoryViaPontInline(path);
+}
+
+function commitCategoryViaPontInline(path) {
   return new Promise((resolve) => {
     const nonce = crypto.randomUUID();
+    const debut = Date.now();
+    let violation = null;
+    const onViol = (ev) => {
+      violation = `${ev.effectiveDirective || ev.violatedDirective || "?"} bloque ${ev.blockedURI || "inline"}` +
+        (ev.disposition ? ` (${ev.disposition})` : "");
+    };
+    document.addEventListener("securitypolicyviolation", onViol);
     const timer = setTimeout(() => {
       window.removeEventListener("message", onMsg);
-      resolve({ ok: false, reason: "pont MAIN muet après 3 s (CSP durcie ? script bloqué ?)" });
+      document.removeEventListener("securitypolicyviolation", onViol);
+      resolve({ ok: false, reason: raisonPontInlineMuet(debut, violation) });
     }, 3000);
     function onMsg(e) {
       if (e.source !== window || e.data?.__fillsellBeebsCategory !== nonce) return;
       clearTimeout(timer);
       window.removeEventListener("message", onMsg);
-      resolve(e.data);
+      document.removeEventListener("securitypolicyviolation", onViol);
+      resolve(Object.assign({ canal: "inline" }, e.data));
     }
     window.addEventListener("message", onMsg);
     const s = document.createElement("script");
@@ -2577,6 +2707,25 @@ async function selectCategory(path, fields = {}, titre = "") {
     );
   } else {
     console.warn(`[beebs] chemin fiber indisponible : ${viaFiber.reason} — repli sur le chemin clic+panneau`);
+  }
+  // ── ⛔ PAS DE CATÉGORIE SANS PONT (2026-09-08, décision Nico) ─────────────
+  // Quand le pont lui-même est INDISPONIBLE (executeScript refusé ET pont
+  // inline muet), on ne pose plus la catégorie par un autre chemin : une
+  // catégorie fausse est pire qu'un job en attente. needsUser borné (le canal
+  // peut revenir au passage suivant) ; le message dit que le problème est
+  // de notre côté, rien n'est demandé au vendeur.
+  // Le repli clic+panneau reste pour les seuls refus PARLÉS par la page
+  // (chemin absent de props.categories, effet non constaté) : là, le pont a
+  // répondu, et le clic vérifie chaque niveau par son libellé.
+  if (!viaFiber.ok && pontIndisponible(viaFiber)) {
+    cheminCategorie = `REFUSÉE (pont indisponible : ${viaFiber.reason})`;
+    const err = new Error(
+      `Beebs : le pont vers le formulaire n'a pas répondu (${viaFiber.reason}) — la catégorie n'a pas été posée : ` +
+      "on ne publie jamais une catégorie que le pont n'a pas confirmée. Nouvel essai au prochain passage ; " +
+      "si ça persiste, le problème vient de chez nous et il est signalé."
+    );
+    err.needsUser = true;
+    throw err;
   }
   cheminCategorie = `CLIC+PANNEAU (repli — fiber: ${viaFiber.ok ? "effet non constaté" : viaFiber.reason})`;
   console.log("[beebs] catégorie : chemin CLIC+PANNEAU (repli) utilisé");

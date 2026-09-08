@@ -311,6 +311,12 @@ const CAUSES_HUMAINES_CONNUES = {
   ebay_brouillon_encheres:
     "Le brouillon eBay est resté au format « Enchères », sans prix de départ, " +
     "et eBay le refuse",
+  // 2026-09-08 (Joséphine ×10 en 0.6.20) : aperçu Leboncoin inchangé après le
+  // Continuer final ALORS QU'une requête est partie — dépôt peut-être abouti,
+  // on ne retente jamais (doublon), le vendeur vérifie « Mes annonces ».
+  lbc_depot_incertain:
+    "Le dépôt Leboncoin est peut-être parti sans confirmation : vérifie « Mes annonces » " +
+    "sur leboncoin.fr avant de relancer",
 };
 function causeHumaineConnue(job) {
   let d = job?.platform_fields?.last_diagnostic;
@@ -581,6 +587,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // d'origine. Mêmes bornes que l'arbitrage de catégorie : sans session, au-
   // delà de 6 s ou sur erreur, on rend null et l'appelant garde EXACTEMENT son
   // comportement d'avant.
+  // ── PONT MONDE MAIN BEEBS (2026-09-08) ────────────────────────────────────
+  // beebs.js demande ici l'exécution d'une fonction dans le monde MAIN de SON
+  // onglet (cf. beebsMain) : le canal déjà prouvé pour le prix Vinted. Sans
+  // onglet émetteur (popup, autre contexte) on refuse — jamais un autre onglet
+  // que celui qui demande.
+  if (msg?.type === "BEEBS_MAIN") {
+    (async () => {
+      if (!Number.isInteger(senderTabId)) return sendResponse({ ok: false, reason: "BEEBS_MAIN sans onglet émetteur" });
+      sendResponse(await beebsMain(senderTabId, _sender?.frameId, msg.fn, msg.args));
+    })();
+    return true;
+  }
   if (msg?.type === "LISTE_FERMEE_CHOISIR") {
     (async () => {
       try {
@@ -677,6 +695,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       // content script s'arrête de re-cliquer, le chemin prudent du verdict
       // final (pas de reprise aveugle) fait foi.
       () => sendResponse({ ok: true, seen: true }),
+    );
+    return true; // réponse asynchrone
+  }
+  // Jumeau Leboncoin (2026-09-08) : une requête non-GET vers api.leboncoin.fr
+  // est-elle partie APRÈS le Continuer final (msg.since) ? Même lecteur pour
+  // la décision de re-clic et pour le verdict de l'aperçu inchangé.
+  if (msg?.type === "LBC_DEPOT_SEEN" && senderTabId != null) {
+    lbcDepotRequestSeen(senderTabId, Number(msg.since) || 0).then(
+      (r) => sendResponse({ ok: true, ...r }),
+      () => sendResponse({ ok: true, seen: true, requetes: [] }),
     );
     return true; // réponse asynchrone
   }
@@ -2738,7 +2766,10 @@ async function processJob(rawJob, accessToken) {
       // requireTitle:true : jamais l'URL d'une autre annonce, leçon
       // listing_url croisée). Trouvée → publié AVEC URL (même filet que
       // ebayConfirmViaActiveListings) ; absente → le needsUser était juste.
-      if (job.platform === "leboncoin" && result.depositUnconfirmed && job.title && tabId != null) {
+      // depotPeutEtreParti (2026-09-08) : l'aperçu est resté affiché mais la
+      // sonde a vu partir une requête — même filet « Mes annonces » AVANT de
+      // persister l'attente utilisateur.
+      if (job.platform === "leboncoin" && (result.depositUnconfirmed || result.depotPeutEtreParti) && job.title && tabId != null) {
         const url = await captureFromMyListings(
           tabId, "leboncoin", LISTING_URL_PATTERNS.leboncoin, MY_LISTINGS_URL.leboncoin, job.title
         ).catch(() => null);
@@ -5373,6 +5404,32 @@ async function ebaySubmitRequestSeen(tabId) {
   }
 }
 
+// ── Jumeau Leboncoin (2026-09-08) : une requête est-elle partie APRÈS le clic ? ─
+// Captures non-GET vers api.leboncoin.fr (PROBE_ENDPOINTS.leboncoin) dont
+// l'horodatage `at` est postérieur à `since` (le Continuer final). Une capture
+// SANS horodatage (relais d'une version antérieure de la sonde) compte comme
+// vue : prudence, jamais un re-dépôt sur un doute. Rend aussi la liste
+// (url + statut, jamais le corps) pour l'annexe d'observabilité — c'est elle
+// qui gravera un jour l'endpoint exact.
+async function lbcDepotRequestSeen(tabId, since) {
+  try {
+    const { captures } = await readProbeCaptures(tabId);
+    const apres = captures.filter((c) => {
+      if (!/api\.leboncoin\.fr/i.test(String(c?.url ?? ""))) return false;
+      if (String(c?.method ?? "").toUpperCase() === "GET") return false;
+      const at = Number(c?.at);
+      return !Number.isFinite(at) || at >= Number(since || 0);
+    });
+    const requetes = apres.slice(0, 8).map((c) => ({
+      url: String(c?.url ?? "").replace(/^https?:\/\/api\.leboncoin\.fr/i, "").slice(0, 120),
+      status: c?.status ?? null,
+    }));
+    return { seen: apres.length > 0, requetes };
+  } catch {
+    return { seen: true, requetes: [] };
+  }
+}
+
 // ── Le brouillon existe même quand la soumission n'est jamais partie ─────────
 // (2026-08-14, 5 jobs des 12-14/08 dont 8d1e0060/15bfa00a.) La télémétrie eBay
 // captée pendant le clic (collectsysteminfo / collectbehaviorinfo, HTTP 204)
@@ -5628,6 +5685,14 @@ const PROBE_ENDPOINTS = {
   // "itemId":"<12 chiffres>" au succès — et 200 AUSSI au refus de validation,
   // sans itemId. Le motif large reste : il couvre ce endpoint et ses replis.)
   ebay: String.raw`ebay\.(?:fr|com)`,
+  // Leboncoin (2026-09-08, aperçu resté affiché — Joséphine ×10 en 0.6.20) :
+  // l'endpoint de dépôt n'a JAMAIS été relevé (aucune sonde LBC jusqu'ici).
+  // Mode APPRENTISSAGE, comme Beebs : TOUTE requête non-GET vers
+  // api.leboncoin.fr est capturée, horodatée, et c'est leboncoin.js qui
+  // tranche « clic avalé » (rien après le Continuer final) contre « requête
+  // partie » (aucune reprise — doublon). Le motif exact se gravera après
+  // lecture des premières captures en base, jamais avant.
+  leboncoin: String.raw`api\.leboncoin\.fr`,
   // Beebs (2026-08-13, dépôt réel observé — chantier item 9) : la création est
   // une Server Action Next.js, POST sur /fr/listing (le même chemin que la
   // page du formulaire). La réponse est un flux RSC, pas un JSON propre ;
@@ -6095,6 +6160,126 @@ async function beebsCapturedProductId(tabId, accessToken, job) {
   return null;
 }
 
+// ── PONT MONDE MAIN BEEBS PAR chrome.scripting (2026-09-08) ──────────────────
+// Le pont INLINE de beebs.js (<script> injecté + postMessage) est MUET dans
+// 100 % des jobs prod depuis le 09/08 (276 des 280 publications Beebs
+// portent « pont MAIN muet après 3 s », 0 « via FIBER »), alors que la CSP de
+// beebs.app/fr/listing — relevée le 26/07, le 07/09 et le 08/09 — est
+// « default-src * data: 'unsafe-eval' 'unsafe-inline' blob: », sans nonce, sans
+// Trusted Types imposés, et que le même script, rejoué depuis la page, répond
+// immédiatement sans violation CSP (onglet caché compris). La seule variable
+// qu'on ne peut PAS reproduire sans extension chargée est le monde ISOLÉ du
+// content script. On passe donc par le canal que l'extension emploie déjà pour
+// Vinted (readVintedPriceState, commitVintedPrice) : executeScript en world
+// "MAIN", fonction sérialisée, VALEUR DE RETOUR — ni CSP, ni postMessage, ni
+// timer de page. Le pont inline reste dans beebs.js en DIAGNOSTIC (il dit
+// désormais POURQUOI il se tait : violation CSP, visibilité, readyState) et en
+// dernier repli.
+// ⛔ Les fonctions ci-dessous sont SÉRIALISÉES : aucune référence à une
+//    variable extérieure, aucune closure — tout ce dont elles ont besoin
+//    arrive par `args` et repart par `return`.
+const BEEBS_MAIN_FONCTIONS = {
+  // Commit de la catégorie par les props React du sélecteur : le composant
+  // { categories, onSelected } porte l'ARBRE COMPLET (nœuds Contentful) et
+  // onSelected(FEUILLE) pose le libellé et fait apparaître les champs
+  // dynamiques — même contrat que le pont inline du 26/07.
+  categorie: function (chemin) {
+    try {
+      const norm = (x) => String(x ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+      let trigger = null;
+      for (const l of document.querySelectorAll('div[class*="__label"]')) {
+        if (norm(l.textContent).startsWith("categorie")) {
+          trigger = l.parentElement && l.parentElement.querySelector('button[class*="__selectButton"]');
+          if (trigger) break;
+        }
+      }
+      if (!trigger) return { ok: false, reason: "trigger Catégorie introuvable (monde MAIN)" };
+      const fk = Object.keys(trigger).find((k) => k.startsWith("__reactFiber$"));
+      if (!fk) return { ok: false, reason: "expando __reactFiber$ absent du trigger" };
+      let f = trigger[fk], props = null;
+      for (let i = 0; f && i < 15; i++, f = f.return) {
+        const p = f.memoizedProps;
+        if (p && Array.isArray(p.categories) && typeof p.onSelected === "function") { props = p; break; }
+      }
+      if (!props) return { ok: false, reason: "composant {categories, onSelected} introuvable dans la chaîne fiber" };
+      const etapes = Array.isArray(chemin) ? chemin : [];
+      let niveau = props.categories, noeud = null;
+      for (const etiquette of etapes) {
+        const cible = norm(etiquette);
+        const items = Array.isArray(niveau) ? niveau : [];
+        noeud = items.find((c) => norm(c && c.title) === cible)
+          || items.find((c) => norm(c && c.title).startsWith(cible) || cible.startsWith(norm(c && c.title)));
+        if (!noeud) {
+          return { ok: false, reason: 'niveau "' + etiquette + '" introuvable dans props.categories — titres du niveau: ' + items.map((c) => c && c.title).slice(0, 12).join(" | ") };
+        }
+        niveau = (noeud.subcategoriesCollection && noeud.subcategoriesCollection.items) || [];
+      }
+      if (!noeud) return { ok: false, reason: "chemin vide" };
+      const enfants = (noeud.subcategoriesCollection && noeud.subcategoriesCollection.items) || [];
+      if (enfants.length) {
+        return { ok: false, reason: 'le chemin finit sur un niveau NON feuille ("' + noeud.title + '", ' + enfants.length + ' enfants)' };
+      }
+      props.onSelected(noeud);
+      return { ok: true, feuille: noeud.title, sysId: noeud.sys && noeud.sys.id, canal: "executeScript" };
+    } catch (e) {
+      return { ok: false, reason: "exception MAIN: " + (e && e.message) };
+    }
+  },
+  // Relevé des champs de la catégorie courante : props.name (le seul
+  // discriminant entre deux champs au même libellé) et props.values (le
+  // référentiel ENTIER, avant barre de recherche et rendu partiel).
+  champs: function () {
+    try {
+      const texte = (v) => {
+        if (v == null) return "";
+        if (typeof v === "string") return v.trim();
+        if (typeof v === "number") return String(v);
+        if (typeof v === "object") return String(v.title || v.label || v.name || v.value || "").trim();
+        return String(v).trim();
+      };
+      const champs = [];
+      for (const l of document.querySelectorAll('div[class*="__label"]')) {
+        const btn = l.parentElement && l.parentElement.querySelector('button[class*="__selectButton"]');
+        if (!btn) continue;
+        let nom = null, valeurs = null;
+        const fk = Object.keys(btn).find((k) => k.indexOf("__reactFiber$") === 0);
+        if (fk) {
+          let f = btn[fk];
+          for (let i = 0; f && i < 16; i++, f = f.return) {
+            const p = f.memoizedProps;
+            if (!p || typeof p !== "object") continue;
+            if (valeurs === null && Array.isArray(p.values)) valeurs = p.values.map(texte).filter(Boolean).slice(0, 300);
+            if (nom === null && typeof p.name === "string" && p.name) nom = p.name;
+            if (nom !== null && valeurs !== null) break;
+          }
+        }
+        champs.push({ ordre: champs.length, label: l.textContent.trim(), name: nom, values: valeurs });
+      }
+      return { ok: true, champs, canal: "executeScript" };
+    } catch (e) {
+      return { ok: false, reason: "exception MAIN: " + (e && e.message) };
+    }
+  },
+};
+
+async function beebsMain(tabId, frameId, fn, args) {
+  const func = BEEBS_MAIN_FONCTIONS[fn];
+  if (typeof func !== "function") return { ok: false, reason: `executeScript : fonction MAIN inconnue (${String(fn)})` };
+  try {
+    const target = { tabId };
+    if (Number.isInteger(frameId)) target.frameIds = [frameId];
+    const [res] = await chrome.scripting.executeScript({
+      target,
+      world: "MAIN",
+      func,
+      args: Array.isArray(args) ? args : [],
+    });
+    return res?.result ?? { ok: false, reason: "executeScript sans résultat" };
+  } catch (e) {
+    return { ok: false, reason: `executeScript : ${String(e?.message ?? e)}` };
+  }
+}
+
 // ── Preuve de commit du prix Vinted (2026-07-13) ───────────────────────────────
 // Le champ prix peut AFFICHER un montant jamais commité dans l'état React que le
 // formulaire sérialise (price: null à la soumission — prouvé par la sonde, puis
@@ -6321,7 +6506,11 @@ const probeCapturesByTab = new Map();
 
 function recordProbeCapture(tabId, capture) {
   const list = probeCapturesByTab.get(tabId) ?? [];
-  list.push(capture);
+  // Horodatage de réception (2026-09-08) : lbcDepotRequestSeen distingue les
+  // requêtes d'AVANT et d'APRÈS le Continuer final. La sonde pose déjà `at` à
+  // la capture ; ce filet couvre une page qui tournerait sur une sonde plus
+  // ancienne.
+  list.push(capture && typeof capture === "object" && capture.at ? capture : { ...(capture ?? {}), at: Date.now() });
   // On ne garde que les dernières : un onglet de travail sert des dizaines de
   // jobs sans jamais être fermé. (eBay capture TOUT le non-GET du domaine :
   // la fenêtre est plus large que sur Vinted, d'où les 30.)
