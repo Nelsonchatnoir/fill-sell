@@ -1848,6 +1848,10 @@ export default function App({ loginOnly = false }){
   const [authMode, setAuthMode] = useState(() => searchParams.get('mode') === 'signup' ? 'signup' : 'login');
   const [tab,setTab]=useState(()=>{const s=parseInt(localStorage.getItem('tab')||'0');return s===4?0:s;});
   const [items,setItems]=useState([]);
+  // Articles en attente d'une information (jobs 'needs_user'), comptés par
+  // ARTICLE. Sert la pastille de l'entrée « Stock IA » — visible sans ouvrir
+  // l'écran. 0 = aucune pastille, jamais un rond vide.
+  const [nbAComplete,setNbAComplete]=useState(0);
   const [sales,setSales]=useState([]);
   const [loading,setLoading]=useState(true);
   const [appLoading,setAppLoading]=useState(true);
@@ -2747,6 +2751,22 @@ export default function App({ loginOnly = false }){
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
+    // ── COMBIEN D'ARTICLES ATTENDENT UNE INFO (2026-09-08) ───────────────────
+    // Le compteur doit se voir SANS ouvrir le Stock : l'utilisatrice de
+    // référence avait 14 articles bloqués et ne le savait pas (sur le parc :
+    // 93 articles chez 12 comptes, dont 54 chez une seule personne).
+    // Lecture SEULE et volontairement séparée du gros chargement : elle ne
+    // ralentit rien et son échec ne peut pas casser l'écran — la pastille
+    // disparaît, c'est tout. On compte les ARTICLES distincts, pas les jobs :
+    // un article bloqué sur deux plateformes ne compte qu'une fois, comme dans
+    // l'écran Stock.
+    supabase.from('cross_post_jobs')
+      .select('inventaire_id').eq('user_id',uid).eq('status','needs_user')
+      .not('inventaire_id','is',null).limit(1000)
+      .then(({data,error})=>{
+        if(error)return;
+        setNbAComplete(new Set((data||[]).map(r=>String(r.inventaire_id))).size);
+      });
     // Expression premium canonique (2026-07-25, cf. CLAUDE.md) : is_premium/is_pro
     // = source de vérité maintenue par les flux de paiement (Stripe/Apple/Google),
     // is_comped = comptes offerts. is_founder et les ids Apple/Google résiduels
@@ -5972,7 +5992,14 @@ export default function App({ loginOnly = false }){
                 style={{flex:1,textAlign:"center",padding:"10px 8px",background:"transparent",border:"none",borderBottom:`2px solid ${tab===i?UI.teal:"transparent"}`,color:tab===i?UI.tealDeep:UI.mute,fontSize:13,fontWeight:700,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.15s ease"}}
                 onMouseEnter={e=>{if(i!==tab)e.currentTarget.style.color=UI.teal;}}
                 onMouseLeave={e=>{if(i!==tab)e.currentTarget.style.color=UI.mute;}}
-              >{tabLabel}</button>
+              >{tabLabel}
+                {/* Même compteur que la barre du bas : la navigation existe en
+                    DEUX formes (bnav mobile, onglets ici en grande largeur) et
+                    la pastille doit dire la même chose aux deux endroits. */}
+                {i===1&&nbAComplete>0&&(
+                  <span style={{marginLeft:6,display:"inline-block",minWidth:18,padding:"0 5px",borderRadius:99,background:"#8A6100",color:"#fff",fontSize:10.5,fontWeight:700,lineHeight:"17px",verticalAlign:"middle"}}>{nbAComplete}</span>
+                )}
+              </button>
             ))}
           </div>
         </div>
@@ -7686,6 +7713,12 @@ export default function App({ loginOnly = false }){
                 <div style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center", width:34, height:30 }}>
                   {isActive && <span style={{ position:"absolute", inset:0, borderRadius:12, background:"rgba(47,158,144,0.10)" }} />}
                   <Icon size={17} color={isActive ? "#2F9E90" : "#A6A192"} strokeWidth={isActive ? 2.1 : 1.7} />
+                  {/* « Elle ne sait même pas qu'elle en a 14 » — la pastille se
+                      voit SANS ouvrir l'écran. Ambre : il manque une
+                      information, l'annonce est intacte. Jamais rendue à 0. */}
+                  {tm.idx===1 && nbAComplete>0 && (
+                    <span style={{ position:"absolute", top:-2, right:-4, minWidth:17, height:17, padding:"0 5px", borderRadius:999, background:"#8A6100", color:"#fff", fontSize:9.5, fontWeight:700, lineHeight:"17px", textAlign:"center" }}>{nbAComplete}</span>
+                  )}
                 </div>
                 <span style={{ fontSize:10, fontWeight:500, color: isActive ? "#2F9E90" : "#8A8578" }}>{tm.label}</span>
                 {isActive && <span style={{ position:"absolute", bottom:-3, width:3, height:3, borderRadius:"50%", background:"#2F9E90" }} />}

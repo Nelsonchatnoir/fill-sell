@@ -25,6 +25,10 @@ import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 // normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
 import { urlsPhotos, entreesPhotos } from '../utils/photos';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
+import {
+  PLATEFORMES_STOCK, LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
+  filtrerStock, trierStock, TRIS_STOCK, libelleTri, pastillesEtat,
+} from '../utils/stockFiltres';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
@@ -4740,6 +4744,32 @@ const StockTab = memo(function StockTab({
   const repubTitre = (j) => repubTitres.get(j.inventaire_id) ?? j.title ?? (lang === 'fr' ? 'Annonce' : 'Listing');
   // Filtre posé par les chips du bandeau : 'relancer' | 'arretees' | null.
   const [repubFiltre, setRepubFiltre] = useState(null);
+
+  // ── Tris et filtres du stock (2026-09-08) ─────────────────────────────────
+  // Déclarés ICI, au-dessus de listeStock qui les lit : une déclaration plus
+  // bas = zone morte temporelle = écran blanc au montage (vécu le 03/09 soir).
+  // Ils vivent AU-DESSUS de la liste, jamais dans une carte : ouvrir puis
+  // refermer un article ne peut donc pas les perdre.
+  const [triStock, setTriStock] = useState('defaut');
+  const [filtreDiffusion, setFiltreDiffusion] = useState(null); // {mode,platform}
+  const [filtreProbleme, setFiltreProbleme] = useState(null);   // 'a_completer'|'en_echec'
+  const [panneauDiffusion, setPanneauDiffusion] = useState(false);
+  const [menuTri, setMenuTri] = useState(false);
+  const aucunFiltreStock = () => { setFiltreDiffusion(null); setFiltreProbleme(null); };
+  // Même dessin que le bouton « Marques (N) › » voisin : on n'introduit pas
+  // une seconde grammaire de bouton dans une ligne qui en a déjà une.
+  const btnLigneStock = (actif) => ({
+    padding: "3px 9px", borderRadius: 99, fontSize: 10, fontWeight: 700, cursor: "pointer",
+    border: `1px solid ${actif ? "#1B6E62" : "rgba(0,0,0,0.1)"}`,
+    background: actif ? "#1B6E62" : "transparent", color: actif ? "#fff" : "#6B7A75",
+    lineHeight: 1.4, fontFamily: "inherit", whiteSpace: "nowrap",
+  });
+  const chipDiffusion = (actif, pointille) => ({
+    padding: "6px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+    border: `1px ${pointille && !actif ? "dashed" : "solid"} ${actif ? "#1B6E62" : "#E7E3D8"}`,
+    background: actif ? "#1B6E62" : (pointille ? "#fff" : "#F7F5EF"),
+    color: actif ? "#fff" : "#5C6560", fontFamily: "inherit", whiteSpace: "nowrap",
+  });
   // ── LE CLIC DOIT AMENER QUELQUE PART (2026-09-04) ─────────────────────────
   // Le bandeau filtrait bien la liste, mais la vue ne bougeait pas : les
   // articles retenus sont plus bas dans la page, et sur un écran de portable
@@ -4822,7 +4852,53 @@ const StockTab = memo(function StockTab({
     setTetesJobs(ids.sort((a, b) => (rang[a] - rang[b]) || (ts[b] - ts[a])));
   }, [jobsByInventaire]);
 
+  // ── TRIS ET FILTRES DU STOCK (2026-09-08) ─────────────────────────────────
+  // L'index dit, article par article, quelles plateformes sont en ligne, et
+  // lesquelles réclament une information ou ont échoué. Il vient de
+  // computeRemovalInfo — la MÊME fonction qui décide des logos de la carte :
+  // un compteur de filtre qui divergerait d'elle annoncerait un nombre que
+  // l'écran n'applique pas.
+  const indexEtat = useMemo(
+    () => indexEtatStock(stockFiltre, jobsByInventaire, lang),
+    [stockFiltre, jobsByInventaire, lang],
+  );
+  const comptesStock = useMemo(() => compteursStock(stockFiltre, indexEtat), [stockFiltre, indexEtat]);
+
+  // Quand un filtre OU un tri est actif, on repart de la liste COMPLÈTE
+  // (stockFiltre) et on recoupe ici : filtrer ou trier APRÈS le slice de
+  // stockVisible ne donnerait que les 10 premiers de l'ancien ordre.
+  const filtreOuTriActif = !!filtreDiffusion || !!filtreProbleme || triStock !== 'defaut';
+  const stockRetenu = useMemo(() => {
+    if (!filtreOuTriActif) return null;
+    return trierStock(
+      filtrerStock(stockFiltre, indexEtat, { diffusion: filtreDiffusion, probleme: filtreProbleme }),
+      triStock,
+    );
+  }, [filtreOuTriActif, stockFiltre, indexEtat, filtreDiffusion, filtreProbleme, triStock]);
+
+  // « Republier en lot » RESTE visible sous filtre, et porte sur les articles
+  // FILTRÉS (décision Nico 08/09) : un bandeau qui compterait tout le stock
+  // pendant qu'on regarde 14 articles annoncerait un lot qu'on ne voit pas.
+  // ⛔ C'est le SEUL lot du produit : publier passe toujours par le stepper,
+  // un article à la fois. Rien ici ne doit suggérer un envoi groupé.
+  const repubActionnablesVue = stockRetenu
+    ? stockRetenu.filter(i => repubEtat(i) === 'ok')
+    : repubActionnables;
+
   const listeStock = useMemo(() => {
+    // Les nouveaux filtres passent AVANT le chemin repubFiltre : ce sont deux
+    // portes vers la même liste, jamais deux filtres cumulés en silence.
+    if (stockRetenu) {
+      const coupe = showAllStock ? stockRetenu : stockRetenu.slice(0, 10);
+      // Les « têtes de jobs » (articles en cours de publication devant tout)
+      // ne s'appliquent QUE sur l'ordre par défaut : un tri explicite demandé
+      // par l'utilisatrice ne doit pas être réarrangé dans son dos.
+      if (triStock !== 'defaut' || !tetesJobs.length) return coupe;
+      const setT = new Set(tetesJobs);
+      const enCours = tetesJobs.map(id => stockRetenu.find(i => String(i.id) === id)).filter(Boolean);
+      if (!enCours.length) return coupe;
+      return [...enCours, ...coupe.filter(i => !setT.has(String(i.id)))];
+    }
     if (repubFiltre === 'relancer') {
       // MÊME PÉRIMÈTRE QUE LE COMPTEUR (2026-09-04) : les ids viennent du
       // serveur, comme le nombre. Sans ça le bandeau annonçait N annonces et
@@ -4862,7 +4938,8 @@ const StockTab = memo(function StockTab({
       .filter(Boolean);
     if (!enCours.length) return base;
     return [...enCours, ...base.filter(i => !setT.has(String(i.id)))];
-  }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier, tetesJobs, attenteServeur]);
+  }, [repubFiltre, stockFiltre, stockVisible, horsLigneIds, repubDernier, tetesJobs, attenteServeur,
+      stockRetenu, showAllStock, triStock]);
 
   // Job 'needs_user' ouvert dans le mini-éditeur « À compléter » (socle
   // needs_user, 2026-07-19). null = fermé. La fermeture sans valider ne touche
@@ -6366,10 +6443,26 @@ const StockTab = memo(function StockTab({
           {/* ── EN STOCK ── */}
           <div style={{background:"#F6F5F1",borderRadius:16,padding:16,border:"1px solid #E7E3D8"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
+              {/* flexWrap ajouté le 08/09 : deux boutons de plus dans cette
+                  ligne, elle doit pouvoir passer à la ligne sur un téléphone
+                  au lieu de pousser le compteur hors de l'écran. */}
+              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:0}}>
                 <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>{t('enStockLabel')}</div>
                 {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
                 {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1B6E62":"#F2F0E9",color:filterMarque==="Toutes"?"#fff":"#6B7A75"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7A75",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button></>);})()}
+                {/* ── Diffusion et Tri (2026-09-08) ──────────────────────────
+                    Ils ENTRENT dans cette ligne au lieu de créer une rangée :
+                    « Toutes » et « Marques (N) » y sont déjà des filtres
+                    repliés, on réutilise leur patron plutôt que d'en inventer
+                    un second. Zéro hauteur ajoutée à l'écran au repos. */}
+                <button onClick={()=>{setPanneauDiffusion(v=>!v);setMenuTri(false);}}
+                  style={btnLigneStock(!!filtreDiffusion||panneauDiffusion)}>
+                  {lang==='fr'?'Diffusion':'Where'} {panneauDiffusion?'▴':'▾'}
+                </button>
+                <button onClick={()=>{setMenuTri(v=>!v);setPanneauDiffusion(false);}}
+                  style={btnLigneStock(triStock!=='defaut'||menuTri)}>
+                  {lang==='fr'?'Trier':'Sort'}{triStock!=='defaut'?` : ${libelleTri(triStock,lang)}`:''} {menuTri?'▴':'▾'}
+                </button>
               </div>
               {/* ── Filtre par boutique Vinted (multi-boutiques, 2026-09-03) —
                   affiché UNIQUEMENT à partir de deux boutiques confirmées :
@@ -6390,6 +6483,147 @@ const StockTab = memo(function StockTab({
                 return <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{_fQty} {lang==='fr'?'art.':'items'} · {fmt(_fVal)}</div>;
               })()}
             </div>
+
+            {/* ── PANNEAU « DIFFUSION » (2026-09-08) ────────────────────────
+                Les deux rangées vivent ici, dépliées à la demande : hauteur
+                ZÉRO au repos, et « Pas encore sur Leboncoin » reste à un seul
+                tap — pas caché derrière un inverseur.
+                ⛔ Un chip à 0 ne s'affiche pas : le nombre avant le clic est la
+                règle, et une porte qui ne mène à rien n'est pas une porte.
+                ⛔ « Pas encore sur X » sert à TROUVER les articles, jamais à en
+                envoyer un lot : la publication passe toujours par le stepper,
+                un article à la fois. Aucun bouton d'ensemble ici. */}
+            {panneauDiffusion&&(
+              <div style={{marginBottom:12,background:"#fff",border:"1px solid #E7E3D8",borderRadius:14,padding:"10px 10px 11px"}}>
+                <div style={{fontSize:9.5,fontWeight:700,letterSpacing:".09em",textTransform:"uppercase",color:"#8A8578",margin:"0 2px 6px"}}>
+                  {lang==='fr'?'En ligne sur':'Live on'}
+                </div>
+                <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:3}}>
+                  {PLATEFORMES_STOCK.filter(p=>comptesStock.enLigne[p]>0).map(p=>{
+                    const actif=filtreDiffusion?.mode==='en_ligne'&&filtreDiffusion.platform===p;
+                    return (
+                      <button key={`el-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'en_ligne',platform:p});setPanneauDiffusion(false);setShowAllStock(false);}}
+                        style={chipDiffusion(actif,false)}>
+                        {LIBELLE_PLATEFORME[p]} <span style={{color:actif?"rgba(255,255,255,.72)":"#8A8578"}}>{comptesStock.enLigne[p]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{fontSize:9.5,fontWeight:700,letterSpacing:".09em",textTransform:"uppercase",color:"#8A8578",margin:"11px 2px 6px"}}>
+                  {lang==='fr'?'Pas encore sur':'Not yet on'}
+                </div>
+                <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:3}}>
+                  {PLATEFORMES_STOCK.filter(p=>comptesStock.pasEncore[p]>0).map(p=>{
+                    const actif=filtreDiffusion?.mode==='pas_encore'&&filtreDiffusion.platform===p;
+                    return (
+                      <button key={`pe-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'pas_encore',platform:p});setPanneauDiffusion(false);setShowAllStock(false);}}
+                        style={chipDiffusion(actif,true)}>
+                        {LIBELLE_PLATEFORME[p]} <span style={{color:actif?"rgba(255,255,255,.72)":"#8A8578"}}>{comptesStock.pasEncore[p]}</span>
+                      </button>
+                    );
+                  })}
+                  {comptesStock.jamais>0&&(()=>{
+                    // « Jamais publié » n'est PAS « pas encore sur Leboncoin » :
+                    // l'un n'est nulle part, l'autre est déjà en ligne ailleurs.
+                    const actif=filtreDiffusion?.mode==='jamais';
+                    return (
+                      <button onClick={()=>{setFiltreDiffusion(actif?null:{mode:'jamais'});setPanneauDiffusion(false);setShowAllStock(false);}}
+                        style={chipDiffusion(actif,true)}>
+                        {lang==='fr'?'Jamais publié':'Never published'} <span style={{color:actif?"rgba(255,255,255,.72)":"#8A8578"}}>{comptesStock.jamais}</span>
+                      </button>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* ── MENU DE TRI — un bouton-menu, pas une rangée de chips de
+                plus : l'écran en porte déjà assez (décision Nico 08/09). */}
+            {menuTri&&(
+              <div style={{marginBottom:12,background:"#fff",border:"1px solid #E7E3D8",borderRadius:14,padding:6,display:"flex",flexDirection:"column",gap:2}}>
+                {TRIS_STOCK.map(k=>(
+                  <button key={k} onClick={()=>{setTriStock(k);setMenuTri(false);setShowAllStock(false);}}
+                    style={{textAlign:"left",padding:"9px 11px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"inherit",
+                      fontSize:12.5,fontWeight:triStock===k?700:600,
+                      background:triStock===k?"#E7F3F0":"transparent",color:triStock===k?"#1B6E62":"#5C6560"}}>
+                    {triStock===k?'✓ ':''}{libelleTri(k,lang)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* ── FILTRES ACTIFS ────────────────────────────────────────────
+                Toujours sous les yeux dès qu'un filtre est posé : on ne doit
+                jamais se demander « pourquoi je ne vois que 12 articles ». */}
+            {(filtreDiffusion||filtreProbleme)&&(
+              <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",
+                background:"#E7F3F0",border:"1px solid rgba(27,110,98,.22)",borderRadius:12,padding:"7px 9px"}}>
+                <span style={{fontSize:11.5,fontWeight:700,color:"#1B6E62"}}>{lang==='fr'?'Filtré :':'Filtered:'}</span>
+                {filtreProbleme&&(
+                  <button onClick={()=>setFiltreProbleme(null)}
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 8px 4px 9px",background:"#fff",
+                      border:"1px solid rgba(27,110,98,.26)",borderRadius:99,fontSize:11.5,fontWeight:600,color:"#1B6E62",cursor:"pointer",fontFamily:"inherit"}}>
+                    {filtreProbleme==='a_completer'?(lang==='fr'?'À compléter':'To complete'):(lang==='fr'?'En échec':'Failed')}
+                    <span style={{color:"#6B7280",fontSize:13,lineHeight:1}}>✕</span>
+                  </button>
+                )}
+                {filtreDiffusion&&(
+                  <button onClick={()=>setFiltreDiffusion(null)}
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 8px 4px 9px",background:"#fff",
+                      border:"1px solid rgba(27,110,98,.26)",borderRadius:99,fontSize:11.5,fontWeight:600,color:"#1B6E62",cursor:"pointer",fontFamily:"inherit"}}>
+                    {filtreDiffusion.mode==='jamais'
+                      ?(lang==='fr'?'Jamais publié':'Never published')
+                      :`${filtreDiffusion.mode==='en_ligne'?(lang==='fr'?'En ligne sur':'Live on'):(lang==='fr'?'Pas encore sur':'Not yet on')} ${LIBELLE_PLATEFORME[filtreDiffusion.platform]}`}
+                    <span style={{color:"#6B7280",fontSize:13,lineHeight:1}}>✕</span>
+                  </button>
+                )}
+                <button onClick={aucunFiltreStock}
+                  style={{marginLeft:"auto",fontSize:11.5,fontWeight:700,color:"#1B6E62",background:"none",border:"none",
+                    textDecoration:"underline",cursor:"pointer",fontFamily:"inherit"}}>
+                  {lang==='fr'?'Tout afficher':'Show all'}
+                </button>
+              </div>
+            )}
+
+            {/* ── CE QUI APPELLE UNE ACTION ─────────────────────────────────
+                Deux chips PLEINS et colorés, contre les filtres creux et gris :
+                ce ne sont pas des filtres comme les autres, ce sont des choses
+                à traiter. Ambre = il manque une information à l'utilisatrice
+                (l'annonce est intacte) ; rouge = la publication a échoué de
+                NOTRE côté. Même registre de couleur que les pastilles de carte.
+                ⛔ La ligne s'efface entièrement à zéro : un compte sain ne la
+                voit jamais, et elle ne coûte alors aucune hauteur. */}
+            {(comptesStock.aCompleter>0||comptesStock.enEchec>0)&&(
+              <div style={{marginBottom:12,display:"flex",gap:7}}>
+                {comptesStock.aCompleter>0&&(()=>{
+                  const on=filtreProbleme==='a_completer';
+                  return (
+                    <button onClick={()=>{setFiltreProbleme(on?null:'a_completer');setShowAllStock(false);setPanneauDiffusion(false);setMenuTri(false);}}
+                      style={{flex:1,display:"flex",alignItems:"center",gap:7,minHeight:44,padding:"8px 10px",borderRadius:12,
+                        cursor:"pointer",fontFamily:"inherit",textAlign:"left",fontSize:12,
+                        background:on?"#8A6100":"#FFF6E3",border:`1px solid ${on?"#8A6100":"#EED9A6"}`,color:on?"#fff":"#8A6100"}}>
+                      <span style={{width:6,height:6,borderRadius:99,background:"currentColor",flex:"0 0 auto"}}/>
+                      <span style={{fontSize:16,fontWeight:700}}>{comptesStock.aCompleter}</span>
+                      <span style={{fontWeight:600,lineHeight:1.2}}>{lang==='fr'?'À compléter':'To complete'}</span>
+                    </button>
+                  );
+                })()}
+                {comptesStock.enEchec>0&&(()=>{
+                  const on=filtreProbleme==='en_echec';
+                  return (
+                    <button onClick={()=>{setFiltreProbleme(on?null:'en_echec');setShowAllStock(false);setPanneauDiffusion(false);setMenuTri(false);}}
+                      style={{flex:1,display:"flex",alignItems:"center",gap:7,minHeight:44,padding:"8px 10px",borderRadius:12,
+                        cursor:"pointer",fontFamily:"inherit",textAlign:"left",fontSize:12,
+                        background:on?"#B91C1C":"#FEF2F2",border:`1px solid ${on?"#B91C1C":"#FECACA"}`,color:on?"#fff":"#B91C1C"}}>
+                      <span style={{width:6,height:6,borderRadius:99,background:"currentColor",flex:"0 0 auto"}}/>
+                      <span style={{fontSize:16,fontWeight:700}}>{comptesStock.enEchec}</span>
+                      <span style={{fontWeight:600,lineHeight:1.2}}>{lang==='fr'?'En échec':'Failed'}</span>
+                    </button>
+                  );
+                })()}
+              </div>
+            )}
+
             {boutiquesVinted.length>=2&&(
               <div style={{marginBottom:12}}>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -6564,7 +6798,7 @@ const StockTab = memo(function StockTab({
                 quelque chose à republier ; en mode, seuls les articles
                 ACTIONNABLES portent une case (bornes = pas de case, jamais un
                 échec post-clic). */}
-            {republishActif&&!modePrixAchat&&(repubActionnables.length>0||modeRepublish)&&(
+            {republishActif&&!modePrixAchat&&(repubActionnablesVue.length>0||modeRepublish)&&(
               <button className={`pa-call${modeRepublish?" on":""}`}
                 /* Maintenance : on ne peut plus ENTRER en mode lot (grisé),
                    mais on peut toujours en SORTIR — sinon un utilisateur déjà
@@ -6586,14 +6820,22 @@ const StockTab = memo(function StockTab({
                   <span className="n" style={{display:"inline-flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                     {modeRepublish
                       ?(lang==='fr'?"Quitter la republication en lot":"Exit bulk repost")
-                      :(lang==='fr'?`Republier en lot (${repubActionnables.length} article${repubActionnables.length>1?"s":""} possible${repubActionnables.length>1?"s":""})`
-                          :`Bulk repost (${repubActionnables.length} item${repubActionnables.length>1?"s":""} available)`)}
+                      :(lang==='fr'?`Republier en lot (${repubActionnablesVue.length} article${repubActionnablesVue.length>1?"s":""} possible${repubActionnablesVue.length>1?"s":""})`
+                          :`Bulk repost (${repubActionnablesVue.length} item${repubActionnablesVue.length>1?"s":""} available)`)}
                     {repubLotReserve&&!modeRepublish&&(
                       <span style={{
                         fontSize:10,fontWeight:700,letterSpacing:"0.04em",color:"#1B6E62",
                         background:"#E7F3F0",border:"1px solid #CBE5DF",borderRadius:999,padding:"2px 8px",
                       }}>
                         Premium
+                      </span>
+                    )}
+                    {/* Le bandeau reste sous filtre, mais il DIT sur quoi il
+                        porte : sans ça, « 9 possibles » pendant qu'on regarde
+                        14 articles laisserait croire à un lot invisible. */}
+                    {stockRetenu&&!modeRepublish&&(
+                      <span style={{fontSize:10,fontWeight:700,color:"#5C6560",background:"#F7F5EF",border:"1px solid #E7E3D8",borderRadius:999,padding:"2px 8px"}}>
+                        {lang==='fr'?`sur ${stockRetenu.length} filtré${stockRetenu.length>1?'s':''}`:`of ${stockRetenu.length} filtered`}
                       </span>
                     )}
                   </span>
@@ -6632,10 +6874,10 @@ const StockTab = memo(function StockTab({
                     </span>
                     <button className="apply" disabled={repubMaintenance||repubSel.size===0}
                       style={repubMaintenance?{opacity:0.45,cursor:"default"}:undefined}
-                      onClick={()=>{if(repubMaintenance)return;ouvrirFeuilleRepublication(repubActionnables.filter(i=>repubSel.has(i.id)));}}>
+                      onClick={()=>{if(repubMaintenance)return;ouvrirFeuilleRepublication(repubActionnablesVue.filter(i=>repubSel.has(i.id)));}}>
                       {lang==='fr'?`Republier les ${repubSel.size}`:`Repost ${repubSel.size}`}
                     </button>
-                    <button className="pa-ghost" onClick={()=>{setRepubSel(new Set(repubActionnables.map(i=>i.id)));}}>
+                    <button className="pa-ghost" onClick={()=>{setRepubSel(new Set(repubActionnablesVue.map(i=>i.id)));}}>
                       {lang==='fr'?'Tout':'All'}
                     </button>
                     <button className="pa-ghost" onClick={()=>{setRepubSel(new Set());setRepubLot(null);}}>✕</button>
@@ -6787,7 +7029,7 @@ const StockTab = memo(function StockTab({
                     n'apparaissaient qu'après un long scroll : écran de
                     sélection « vide » en apparence. Les non-éligibles
                     reviennent dès la sortie du mode. */}
-                {modeRepublish&&repubActionnables.length===0&&(
+                {modeRepublish&&repubActionnablesVue.length===0&&(
                   <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:12,padding:"14px 16px",fontSize:12.5,color:"#5C6560",fontWeight:600,lineHeight:1.55,marginBottom:8}}>
                     🔁 {lang==='fr'
                       ?"Aucune annonce republiable pour le moment. Une annonce est republiable quand elle est encore en ligne sur Vinted, sans republication déjà en file, et pas déjà recréée depuis moins de 24 h. Reviens un peu plus tard — ou quitte le mode ci-dessus."
@@ -6875,7 +7117,7 @@ const StockTab = memo(function StockTab({
                     plus ») et photos en loading="lazy" : les gros comptes
                     (3 000+ articles) ne chargent jamais tout d'un coup. */}
                 <div className="ggrid" ref={galerieRef}>
-                {(modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnables:listeStock).map(item=>{
+                {(modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:listeStock).map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
                   // prix d'achat absent et 0 € sur un null — la carte annonçait
@@ -7324,6 +7566,28 @@ const StockTab = memo(function StockTab({
                               // l'annonce existe (masquée ≠ disparue) et le tap
                               // vers le modal de retrait reste le bon geste.
                               const masque=vintedMasquee&&p==="vinted";
+                              // ── L'ANNEAU DIT L'ÉTAT DE CETTE PLATEFORME (08/09) ──
+                              // Ambre : elle réclame une information. Rouge : sa
+                              // publication a échoué. L'anneau ne peut apparaître
+                              // que sur une plateforme EN LIGNE (logosEnLigne ne
+                              // porte que celles-là) — typiquement une
+                              // republication Vinted en attente. Pour toutes les
+                              // autres, c'est la pastille de la rangée .icons qui
+                              // porte l'information ET le geste : elle, elle est
+                              // toujours là.
+                              // ⚠️ Quand l'anneau est posé, le tap ouvre le
+                              // DÉBLOCAGE plutôt que le retrait : entre « gérer
+                              // l'annonce » et « la débloquer », c'est le second
+                              // qui presse. Le retrait reste accessible par la
+                              // carte (Vendre) et la feuille d'avancement.
+                              const etatLogo=indexEtat.get(String(item.id));
+                              const bloqueIci=etatLogo?.aCompleter?.find(x=>x.platform===p)??null;
+                              const echecIci=!bloqueIci?(etatLogo?.enEchec?.find(x=>x.platform===p)??null):null;
+                              const relanceIci=echecIci?relanceManuelleInfo(echecIci.job,jobsAll):null;
+                              const anneau=bloqueIci?"#8A6100":echecIci?"#B91C1C":null;
+                              const gesteLogo=bloqueIci&&bloqueIci.job?.platform_fields?.needsUserField
+                                ?()=>setNeedsUserJob(bloqueIci.job)
+                                :(echecIci&&relanceIci?()=>relancerJobEchoue(echecIci.job,relanceIci.mode):null);
                               return(
                                 <span key={p} className="plogo"
                                   title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`)
@@ -7331,8 +7595,10 @@ const StockTab = memo(function StockTab({
                                       ?`${item.vinted_status==='draft'?'Draft':'Hidden'} on Vinted — the listing exists but buyers can't see it. Tap to manage.`
                                       :`${item.vinted_status==='draft'?'Brouillon':'Masquée'} sur Vinted — l'annonce existe mais les acheteurs ne la voient pas. Toucher pour gérer.`)
                                     :(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
-                                  style={{cursor:"pointer",...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
-                                  onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
+                                  style={{cursor:"pointer",
+                                    ...(anneau?{boxShadow:`0 0 0 2px ${anneau}, 0 1px 4px rgba(16,32,27,0.25)`}:{}),
+                                    ...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
+                                  onClick={e=>{e.stopPropagation();if(gesteLogo)gesteLogo();else setRemoveModalItem(item);}}>
                                   <PlatformLogo platform={p} size={20}/>
                                 </span>
                               );
@@ -7694,6 +7960,58 @@ const StockTab = memo(function StockTab({
                                   </div>
                                 );
                               })()}
+                              {/* ── CE QUI COINCE, PAR PLATEFORME (2026-09-08) ──
+                                  Une pastille de plus dans CETTE rangée, et
+                                  c'est tout : .icons est déjà à hauteur figée
+                                  (21 px, nowrap, défilement horizontal). La
+                                  carte ne grandit donc JAMAIS, qu'une seule
+                                  plateforme réclame quelque chose ou que les
+                                  quatre le fassent — la contrainte non
+                                  négociable posée par Nico.
+                                  ⛔ Un nom de plateforme ne se tronque jamais :
+                                  pastillesEtat ne nomme que s'il y en a UNE, et
+                                  COMPTE dès qu'il y en a plusieurs.
+                                  Le tap est la seconde cible de l'action (la
+                                  première étant l'anneau sur le logo) : ambre →
+                                  le mini-éditeur du socle needs_user s'ouvre sur
+                                  CETTE plateforme ; rouge → la relance
+                                  existante, avec ses gardes (relanceManuelleInfo
+                                  décide du mode et refuse quand il faut).
+                                  Aucun chemin nouveau n'est créé ici. */}
+                              {(()=>{
+                                const etatArt=indexEtat.get(String(item.id));
+                                const pastilles=etatArt?pastillesEtat(etatArt,lang):[];
+                                if(!pastilles.length)return null;
+                                return pastilles.map((p,k)=>{
+                                  const amb=p.ton==='warn';
+                                  // Ouvrable seulement si l'app sait réellement
+                                  // quoi ouvrir : sinon la pastille INFORME,
+                                  // elle ne promet pas un geste qui n'existe pas.
+                                  const relance=!amb&&p.job?relanceManuelleInfo(p.job,jobsAll):null;
+                                  const ouvrable=amb
+                                    ?!!p.job?.platform_fields?.needsUserField
+                                    :!!relance;
+                                  const geste=()=>{
+                                    if(!ouvrable)return;
+                                    if(amb)setNeedsUserJob(p.job);
+                                    else relancerJobEchoue(p.job,relance.mode);
+                                  };
+                                  return (
+                                    <div key={`etat-${p.ton}-${k}`} className="micon"
+                                      role={ouvrable?"button":undefined}
+                                      tabIndex={ouvrable?0:undefined}
+                                      onClick={ouvrable?(e)=>{e.stopPropagation();geste();}:undefined}
+                                      onKeyDown={ouvrable?(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();geste();}}:undefined}
+                                      title={p.detail}
+                                      style={{cursor:ouvrable?"pointer":"default",
+                                        background:amb?"#FFF6E3":"#FEF2F2",
+                                        border:`1px solid ${amb?"#EED9A6":"#FECACA"}`,
+                                        color:amb?"#8A6100":"#B91C1C"}}>
+                                      {p.texte}
+                                    </div>
+                                  );
+                                });
+                              })()}
                               {/* (La pastille de republication a quitté cette
                                   rangée le 2026-08-27 : c'est la pastille de
                                   STATUT sur la photo qui porte le cycle —
@@ -7970,6 +8288,15 @@ const StockTab = memo(function StockTab({
                     }
                   }
                   if(String(search??"").trim())actifs.push(`« ${String(search).trim()} »`);
+                  // Filtres du 08/09 : ils doivent être NOMMÉS ici comme les
+                  // autres — une liste vide sans explication est exactement ce
+                  // qu'on cherche à supprimer.
+                  if(filtreProbleme)actifs.push(filtreProbleme==='a_completer'
+                    ?(lang==='fr'?'À compléter':'To complete')
+                    :(lang==='fr'?'En échec':'Failed'));
+                  if(filtreDiffusion)actifs.push(filtreDiffusion.mode==='jamais'
+                    ?(lang==='fr'?'Jamais publié':'Never published')
+                    :`${filtreDiffusion.mode==='en_ligne'?(lang==='fr'?'En ligne sur':'Live on'):(lang==='fr'?'Pas encore sur':'Not yet on')} ${LIBELLE_PLATEFORME[filtreDiffusion.platform]}`);
                   if(!actifs.length)return null;
                   return(
                     <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:12,padding:"16px",textAlign:"center"}}>
@@ -7982,7 +8309,7 @@ const StockTab = memo(function StockTab({
                           :`Rien dans ton stock ne correspond à : ${actifs.join(' · ')}.`}
                       </div>
                       <button
-                        onClick={()=>{setFilterType("Tous");setFilterMarque("Toutes");setFilterBoutique("Toutes");setSearch("");}}
+                        onClick={()=>{setFilterType("Tous");setFilterMarque("Toutes");setFilterBoutique("Toutes");setSearch("");aucunFiltreStock();}}
                         style={{padding:"9px 16px",borderRadius:999,border:"1px solid #2F9E90",background:"#fff",color:"#1B6E62",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         {lang==='en'?'Clear filters':'Réinitialiser les filtres'}
                       </button>
