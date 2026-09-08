@@ -731,46 +731,21 @@ const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects",
 // plus épais d'un côté que de l'autre (capture Nico, 11h05). Une `border` en
 // entier se rend nette et symétrique, à tous les taux de pixels.
 //
-// ⚠️ PADDING À ZÉRO — INSPECTÉ DANS LE NAVIGATEUR, PAS SUPPOSÉ (08/09).
-// Relevé sur l'app en production, sur une carte réellement teintée :
-//   .plogo   background #FFF6E3, border 1.6px #8A6100, padding 1px, 25.2 px
-//   └ span   transparent, 20 px            ← wrapper de désaturation
-//     └ img  transparent, 20 px            ← l'icône Beebs
-// AUCUN élément du DOM ne pose de blanc. Le liseré clair visible venait de
-// DEUX choses : ce padding de 1 px qui laissait voir le fond pâle, et — pour
-// Beebs et Leboncoin — le cadre crème qui fait PARTIE de l'icône d'app
-// officielle (un PNG de marque, qu'on ne retouche pas).
-// Padding 0 : la bordure touche le logo. Deux couches, pas trois.
-// Bordure 3 px au lieu de 2 : elle absorbe le padding supprimé, donc la carte
-// garde EXACTEMENT son gabarit (20 + 3 + 3 = 26 px, comme un logo non teinté),
-// et un trait plus épais se voit mieux sur une photo chargée.
-//
-// ⚠️ LE HALO BLANC N'EST PAS UNE COQUETTERIE — c'est ce qui fait tenir la
-// couleur sur N'IMPORTE QUELLE photo. L'ambre #8A6100 disparaissait sur une
-// couverture orange (capture Nico du 08/09) alors que le rouge tenait : une
-// teinte ne peut pas être lisible sur tous les fonds d'un parc d'articles.
-// Un liseré blanc EXTÉRIEUR sépare la bordure du fond quel qu'il soit —
-// orange, beige, sombre, bariolé — sans changer la palette. En box-shadow,
-// donc sans occuper la moindre place dans la mise en page : le gabarit ne
-// bouge pas. L'ombre portée d'origine est conservée derrière lui.
-// ⚠️ TAILLE FIXÉE EN border-box, ET CE N'EST PAS UNE PRÉCAUTION THÉORIQUE.
-// Mesuré en prod : la carte teintée faisait 24,8 px contre 26 px pour une carte
-// normale. Cause relevée dans le navigateur — `devicePixelRatio` valait 1,25 :
-// une bordure de 3 px CSS fait 3,75 px physiques, que le moteur arrondit à 3,
-// soit 2,4 px CSS. La bordure rétrécit donc la carte d'un écran à l'autre (sur
-// un iPhone, dPR 3, 3 px tombe juste et le problème ne se voit pas). C'est le
-// même arrondi qui rendait le contour plus épais d'un côté.
-// En fixant 26×26 en border-box, la carte fait la MÊME taille que les autres
-// quel que soit l'écran, et c'est la bordure qui s'ajuste à l'intérieur.
-const LOGO_TEINTE = (t) => ({
-  background: t.fond,
-  border: `3px solid ${t.trait}`,
-  padding: 0,
-  boxSizing: 'border-box',
-  width: 26,
-  height: 26,
-  boxShadow: `0 0 0 2px rgba(255,255,255,0.92), 0 1px 4px rgba(16,32,27,0.35)`,
-});
+// ⛔ UNE SEULE PROPRIÉTÉ CHANGE : LE FOND. Rien d'autre.
+// Historique de mes erreurs, pour qu'on ne les refasse pas : j'ai
+// successivement ajouté un anneau extérieur, une bordure interne, un halo
+// blanc, une taille fixe. Chaque ajout créait une couche de plus — cadre
+// épais, liseré blanc extérieur, coins qui ne suivaient plus l'arrondi de
+// l'icône d'app. La demande était simple depuis le début : la mini-carte qui
+// ACCUEILLE le logo change de couleur, et c'est tout.
+// Donc pas de border, pas de box-shadow ajouté, pas de width : `.plogo` garde
+// son padding de 3 px, son radius de 8 px et son ombre portée d'origine. Le
+// liseré de 3 px autour du logo prend la couleur — c'est lui, et lui seul, qui
+// dit l'état. Les coins restent ceux de la carte existante, donc ils
+// s'accordent avec l'arrondi du logo comme avant.
+// Teinte SATURÉE (et non la version pâle) : un aplat plein se voit sur une
+// photo chargée là où un fond crème s'y noyait.
+const LOGO_TEINTE = (t) => ({ background: t.trait });
 
 // ── UNE MODALE DOIT TOUJOURS POUVOIR SE FERMER (2026-09-07) ─────────────────
 // Capture réelle (17h22, téléphone) : la modale « Où en est la publication »
@@ -7739,13 +7714,10 @@ const StockTab = memo(function StockTab({
                                     ...(teinte?LOGO_TEINTE(teinte):{}),
                                     ...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
                                   onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
-                                  {/* Socle du logo TRANSPARENT : sans ça, son
-                                      carré se superposait à la mini-carte et on
-                                      voyait deux carrés emboîtés. Ici, un seul
-                                      carré teinté, le glyphe posé dessus. */}
-                                  <PlatformLogo platform={p} size={20}
-                                    fond={teinte?"transparent":undefined}
-                                    bord={teinte?"transparent":undefined}/>
+                                  {/* Le logo est rendu TEL QUEL, sans rien lui
+                                      passer : il est simplement posé sur une
+                                      mini-carte devenue colorée. */}
+                                  <PlatformLogo platform={p} size={20}/>
                                 </span>
                               );
                             })}
@@ -7789,15 +7761,12 @@ const StockTab = memo(function StockTab({
                                       ?{fond:"#FFF6E3",trait:"#8A6100"}
                                       :{fond:"#FEF2F2",trait:"#B91C1C"})}}
                                   onClick={ev=>{ev.stopPropagation();setRemoveModalItem(item);}}>
-                                  {/* Socle transparent : un seul carré, celui
-                                      de la mini-carte. Le NOIR ET BLANC porte
-                                      sur le GLYPHE seul (prop desature) —
-                                      désaturer le socle effacerait la teinte
-                                      qui dit le registre. Couleur = en ligne
-                                      ici ; noir et blanc = pas en ligne, mais
-                                      quelque chose t'attend. */}
-                                  <PlatformLogo platform={x.p} size={20} desature
-                                    fond="transparent" bord="transparent"/>
+                                  {/* Le NOIR ET BLANC porte sur le logo seul
+                                      (prop desature) — la mini-carte, elle,
+                                      garde sa couleur. Couleur = en ligne ici ;
+                                      noir et blanc = pas en ligne, mais quelque
+                                      chose t'attend. */}
+                                  <PlatformLogo platform={x.p} size={20} desature/>
                                 </span>
                               ));
                             })()}
