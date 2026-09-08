@@ -101,17 +101,22 @@
       background: var(--paper); border: 1px solid var(--line);
       border-radius: 16px; padding: 12px;
     }
+    /* Vignette agrandie et ÉCLAIRCIE (2026-09-08) : à 56 px sur fond sombre,
+       une photo portée ne permettait pas de reconnaître l'article. */
     .listing-thumb {
-      width: 56px; height: 56px; border-radius: 12px; flex-shrink: 0;
-      object-fit: cover; background: var(--chip);
+      width: 78px; height: 78px; border-radius: 12px; flex-shrink: 0;
+      object-fit: cover; background: var(--paper);
+      box-shadow: inset 0 0 0 1px var(--line);
       display: flex; align-items: center; justify-content: center;
-      font-size: 22px;
+      font-size: 26px;
     }
     .listing-body { min-width: 0; flex: 1; }
+    /* Titre ENTIER (2026-09-08) : « Blouse blanche sans manches à nou… » ne
+       permettait pas de distinguer l'article de celui en cours de dépôt. */
     .listing-title {
-      font-size: 14px; font-weight: 600; color: var(--ink);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      margin-bottom: 3px;
+      font-size: 13.5px; font-weight: 600; color: var(--ink);
+      line-height: 1.35; margin-bottom: 4px;
+      overflow-wrap: anywhere;
     }
     .listing-meta { display: flex; align-items: center; gap: 8px; }
     .listing-price { font-size: 15px; font-weight: 700; color: var(--teal-deep); }
@@ -173,18 +178,26 @@
     .pname { font-size: 13.5px; font-weight: 600; color: var(--ink); flex: 1; min-width: 0; }
     .pstate { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
-    /* case à cocher custom */
-    .check {
-      width: 20px; height: 20px; border-radius: 6px; cursor: pointer;
-      border: 2px solid var(--ink-35); background: var(--card);
-      display: flex; align-items: center; justify-content: center;
-      transition: background 0.18s, border-color 0.18s, transform 0.1s;
+    /* ── ÉTAT DES PLATEFORMES (2026-09-08) ─────────────────────────────────
+       Une ligne par plateforme, en tête : c'est la question qu'on se pose en
+       ouvrant le popup. L'état vient de `contexte.sessions`, servi à chaque
+       poll et jusqu'ici réduit à quatre pastilles de 6 px tout en bas. */
+    .plat {
+      display: flex; align-items: center; gap: 9px;
+      padding: 8px 0; border-top: 1px solid var(--line);
     }
-    .check:hover { border-color: var(--teal); }
-    .check:active { transform: scale(0.92); }
-    .check.on { background: var(--teal); border-color: var(--teal); }
-    .check svg { width: 12px; height: 12px; opacity: 0; transition: opacity 0.15s; }
-    .check.on svg { opacity: 1; }
+    .plat:first-child { border-top: none; padding-top: 2px; }
+    .plat-txt { min-width: 0; }
+    .plat-nom { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+    .plat-sous { font-size: 10.5px; font-weight: 500; color: var(--ink-35); margin-top: 2px; line-height: 1.4; }
+    .plat-etat {
+      margin-left: auto; display: flex; align-items: center; gap: 6px;
+      font-size: 11.5px; font-weight: 600; white-space: nowrap; flex-shrink: 0;
+    }
+    .plat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .plat-etat.ok  { color: var(--teal-deep); } .plat-dot.ok  { background: var(--teal); }
+    .plat-etat.ko  { color: #9A3412; }          .plat-dot.ko  { background: var(--amber); }
+    .plat-vu { font-size: 10.5px; color: var(--ink-35); margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line); }
 
     /* bouton "Se connecter" amber */
     .connect-btn {
@@ -223,25 +236,13 @@
     .icon-check { width: 14px; height: 14px; }
 
     /* ── CTA ── */
-    .cta {
-      width: 100%; font-family: inherit;
-      display: flex; align-items: center; justify-content: center; gap: 8px;
-      background: var(--ink); color: var(--canvas);
-      border: none; border-radius: 14px; padding: 14px 0;
-      font-size: 14.5px; font-weight: 700; cursor: pointer;
-      margin-top: 4px;
-      transition: transform 0.1s, box-shadow 0.2s, opacity 0.2s;
-      box-shadow: 0 8px 20px rgba(16,32,27,0.18);
-    }
-    .cta:hover:not(:disabled) { box-shadow: 0 10px 26px rgba(16,32,27,0.26); }
-    .cta:active:not(:disabled) { transform: translateY(1px); }
-    .cta:disabled { opacity: 0.42; cursor: not-allowed; box-shadow: none; }
-    .cta-count {
-      font-size: 12px; font-weight: 700; color: var(--canvas);
-      background: rgba(255,255,255,0.16); border-radius: 999px;
-      min-width: 20px; height: 20px; padding: 0 6px;
-      display: inline-flex; align-items: center; justify-content: center;
-    }
+    /* ── « Publier maintenant » RETIRÉ (2026-09-08, décision Nico) ──────────
+       Les jobs partent tout seuls au poll. Un job qui n'est pas parti a
+       toujours une cause — mauvais dressing, session fermée, champ manquant —
+       et cliquer ne la levait pas : il repartait au même mur. Le bouton
+       promettait une action qui n'existait pas. À sa place : la cause, et le
+       geste qui la lève. Les cases à cocher tombent avec lui (elles ne
+       servaient qu'à le nourrir), le flux « Diffuser sur » devient un ÉTAT. */
 
     /* ── Footer ── */
     .footer {
@@ -280,6 +281,11 @@
     .bloc-s { font-size: 11px; line-height: 1.5; color: var(--ink-50); }
     .bloc-l { font-size: 11.5px; line-height: 1.6; color: var(--ink-50); }
     .bloc-l b { color: var(--ink); font-weight: 700; }
+
+    /* Motifs dominants des annonces en attente : un nombre seul n'aide personne. */
+    .motifs { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+    .motif { display: flex; align-items: baseline; gap: 8px; font-size: 11.5px; line-height: 1.4; color: var(--ink-50); }
+    .motif-n { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 17px; text-align: right; flex-shrink: 0; }
 
     .diag {
       display: flex; align-items: center; justify-content: space-between;
@@ -320,29 +326,29 @@
        découvre après coup que son ordinateur n'a pas dormi. -->
   <div id="awake" class="life hidden"></div>
 
-  <!-- Ce qui attend un geste : TOUJOURS en tête, rien ne passe devant. -->
+  <!-- État des plateformes : la question qu'on se pose en ouvrant le popup. -->
+  <div id="plateformes" class="section hidden">
+    <p class="eyebrow">Plateformes</p>
+    <div id="plat-list"><!-- rendu par popup.js --></div>
+  </div>
+
+  <!-- Ce qui bloque, avec sa cause et son geste -->
   <div id="alerts" class="hidden"></div>
 
   <!-- Ce qui tourne en ce moment -->
   <div id="now" class="hidden"></div>
 
-  <!-- Annonce prête -->
+  <!-- Prête à publier -->
   <div class="section">
-    <p class="eyebrow">Annonce prête</p>
+    <p class="eyebrow">Prête à publier</p>
     <div id="listing-card"><!-- rendu par popup.js --></div>
   </div>
 
-  <!-- Diffuser sur -->
+  <!-- Diffuser sur : un ÉTAT, plus une sélection (le CTA a été retiré) -->
   <div class="section">
     <p class="eyebrow">Diffuser sur</p>
     <div id="flow" class="flow"><!-- rendu par popup.js --></div>
   </div>
-
-  <!-- CTA -->
-  <button id="cta" class="cta" type="button" disabled>
-    <span id="cta-label">Publier maintenant</span>
-    <span id="cta-count" class="cta-count hidden">0</span>
-  </button>
 
   <!-- Le reste de la file : republications, demande de sync -->
   <div id="queue-extra" class="hidden"></div>

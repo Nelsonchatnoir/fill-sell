@@ -761,16 +761,30 @@ serve(async (req) => {
         connectee: { user_id: string; login: string | null; source: string };
         retenus: number;
         par_boutique: Record<string, number>;
+        par_boutique_login: Record<string, string | null>;
         par_action: Record<string, number>;
       }
       | null = null;
-    if (!includeProcessing && !includeNeedsUser) {
+    // ── LE DIAGNOSTIC EST CALCULÉ POUR TOUT LE MONDE, LE FILTRE NON ─────────
+    // (2026-09-08) Ce bloc vivait ENTIÈREMENT derrière la garde du poll
+    // d'exécution : le popup, qui demande needs_user et processing, ne recevait
+    // donc JAMAIS `boutique_pause`. Résultat mesuré chez ornellaracano : 70
+    // republications retenues, la seule explication existante calculée à chaque
+    // poll… et jamais montrée à la personne concernée.
+    // Désormais : le COMPTAGE tourne pour tous les appels (le popup en a besoin
+    // pour le dire), le FILTRAGE reste réservé au poll d'exécution — le popup
+    // continue de voir la file entière, exactement comme avant.
+    {
       const candidats = out.filter(boutiqueConcernee);
       if (candidats.length) {
         try {
           // Deux relevés d'identité, le plus RÉCENT tranche.
           const [{ data: prof }, { data: runs }] = await Promise.all([
-            userClient.from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle(),
+            // vinted_sync_pin joint à un SELECT qui existait déjà (aucune
+            // requête de plus) : c'est lui qui porte le PSEUDO des boutiques,
+            // sans quoi le message ne peut nommer que celle qui est connectée
+            // et laisse l'autre en identifiant numérique.
+            userClient.from("profiles").select("extension_sessions, vinted_sync_pin").eq("id", user.id).maybeSingle(),
             userClient
               .from("vinted_sync_runs")
               .select("vinted_user_id, vinted_login, started_at")
@@ -815,21 +829,41 @@ serve(async (req) => {
             }
             const parBoutique: Record<string, number> = {};
             const parAction: Record<string, number> = {};
-            const avant = out.length;
-            out = out.filter((j) => {
-              if (!boutiqueConcernee(j)) return true;
+            // On DÉSIGNE d'abord, on retire ensuite : le comptage est le même
+            // pour tous, le retrait de la file ne concerne que l'exécution.
+            const aRetenir = new Set<string>();
+            for (const j of out) {
+              if (!boutiqueConcernee(j)) continue;
               const o = origine.get(String(j.inventaire_id));
-              if (!o || o === identId) return true; // inconnue ou bonne boutique
+              if (!o || o === identId) continue; // inconnue ou bonne boutique
+              aRetenir.add(String(j.id));
               parBoutique[o] = (parBoutique[o] ?? 0) + 1;
               parAction[j.action] = (parAction[j.action] ?? 0) + 1;
-              return false;
-            });
-            heldBoutique = avant - out.length;
+            }
+            heldBoutique = aRetenir.size;
+            if (!includeProcessing && !includeNeedsUser) {
+              out = out.filter((j) => !aRetenir.has(String(j.id)));
+            }
             if (heldBoutique) {
+              // Pseudo de chaque dressing d'origine, lu dans le PIN de sync.
+              // Absent = null : on ne devine jamais un pseudo.
+              const pin = (prof?.vinted_sync_pin ?? null) as
+                { v?: unknown; boutiques?: unknown } | null;
+              const logins: Record<string, string | null> = {};
+              const liste = Array.isArray(pin?.boutiques) ? pin!.boutiques as unknown[] : [];
+              for (const cle of Object.keys(parBoutique)) {
+                const b = liste.find((x) =>
+                  x && typeof x === "object" &&
+                  String((x as Record<string, unknown>).user_id ?? "").trim() === cle
+                ) as Record<string, unknown> | undefined;
+                const l = b?.login != null ? String(b.login).trim() : "";
+                logins[cle] = l || null;
+              }
               boutiquePause = {
                 connectee: { user_id: identId, login: vu.login, source: vu.source },
                 retenus: heldBoutique,
                 par_boutique: parBoutique,
+                par_boutique_login: logins,
                 par_action: parAction,
               };
               console.log(
@@ -838,7 +872,9 @@ serve(async (req) => {
                 `${new Date(vu.at).toISOString()}] — ${heldBoutique} job(s) ` +
                 `(${Object.entries(parAction).map(([a, n]) => `${a}: ${n}`).join(", ")}) ` +
                 `d'une AUTRE boutique (${Object.entries(parBoutique).map(([k, n]) => `${k}: ${n}`).join(", ")}) ` +
-                `retenu(s) en pending, aucune tentative consommée`,
+                (!includeProcessing && !includeNeedsUser
+                  ? `retenu(s) en pending, aucune tentative consommée`
+                  : `— comptés pour le popup, file servie ENTIÈRE`),
               );
             }
           }

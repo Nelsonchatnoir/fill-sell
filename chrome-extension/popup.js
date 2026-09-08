@@ -25,7 +25,6 @@ const PLATFORMS = [
   { key: "beebs",     name: "Beebs",     supported: true, loginUrl: "https://www.beebs.app/" },
 ];
 
-const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 const CHECK_TEAL = '<svg class="icon-check" viewBox="0 0 24 24" fill="none" stroke="#1B6E62" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
 const els = {
@@ -34,9 +33,8 @@ const els = {
   acctLabel: document.getElementById("acct-label"),
   listing: document.getElementById("listing-card"),
   flow: document.getElementById("flow"),
-  cta: document.getElementById("cta"),
-  ctaLabel: document.getElementById("cta-label"),
-  ctaCount: document.getElementById("cta-count"),
+  plateformes: document.getElementById("plateformes"),
+  platList: document.getElementById("plat-list"),
   queueLabel: document.getElementById("queue-label"),
   history: document.getElementById("history"),
   life: document.getElementById("life"),
@@ -53,7 +51,6 @@ const state = {
   repub: [],            // jobs republish pending/processing — ligne d'état au footer
   recentRepub: null,    // dernier résultat récent d'une republication (<30 min)
   annonce: null,        // { key, title, price, photo, tag, byPlatform: {vinted: job, ...} }
-  selected: new Set(),  // plateformes cochées (parmi celles "prêtes")
   status: {},           // { [platform]: { phase: 'idle'|'busy'|'done'|'err'|'connect', msg } }
   recent: {},           // { [platform]: résultat terminé <30 min par le poll de fond (Sujet 5) }
   publishing: false,
@@ -62,6 +59,10 @@ const state = {
   attenteTotal: null,   // total servi par get-pending-jobs (source unique, partagée avec l'app)
   sync: null,           // dernier run vinted_sync_runs (état + progression)
   sessions: null,       // profiles.extension_sessions (relevé de l'extension)
+  // Republications retenues parce que Chrome est connecté à un AUTRE dressing.
+  // Calculé par get-pending-jobs à chaque poll depuis le 04/09 et jamais lu
+  // jusqu'ici : c'est LA cause des files Vinted qui ne s'écoulent pas.
+  boutiquePause: null,  // { connectee:{login}, retenus, par_boutique, par_boutique_login }
   eveil: null,          // épisode de maintien en éveil en cours, ou null
   dernierPoll: null,    // chrome.storage.local LAST_POLL
   prochainPoll: null,   // chrome.alarms — échéance réelle, pas une estimation
@@ -139,6 +140,7 @@ async function fetchPendingJobs(accessToken) {
   const data = await res.json().catch(() => ({}));
   state.sync = data?.contexte?.sync ?? null;
   state.sessions = data?.contexte?.sessions ?? null;
+  state.boutiquePause = data?.boutique_pause ?? null;
   // ── LE NOMBRE VIENT DU SERVEUR (2026-09-04) ─────────────────────────────
   // Le popup et le bandeau de l'app affichaient deux nombres différents pour
   // la même chose (« 6 opérations » ici, « 4 annonces » là-bas) parce que
@@ -228,19 +230,6 @@ async function load() {
       state.eveil = frais ? ep : null;
     } catch { state.eveil = null; }
     state.annonce = firstAnnonce(state.jobs);
-    // Sélection par défaut : toutes les plateformes supportées présentes dans
-    // l'annonce (session plateforme supposée ouverte — détection réactive).
-    state.selected = new Set();
-    if (state.annonce) {
-      for (const p of PLATFORMS) {
-        const job = state.annonce.byPlatform[p.key];
-        // ⚠️ JAMAIS un job déjà en cours (status 'processing', visible depuis
-        // include_processing) : le cocher par défaut le ferait re-publier par
-        // PUBLISH_NOW → DOUBLE ANNONCE. Il s'affiche en « Publication… », il ne
-        // se sélectionne pas.
-        if (p.supported && job && job.status !== "processing") state.selected.add(p.key);
-      }
-    }
     // Jobs terminés récemment par le poll de fond (Sujet 5) : ils sortent de
     // get-pending-jobs (status=pending only) → badge "Publié" au lieu de
     // "Non incluse". Match sur la MÊME annonce quand une annonce pending est
@@ -287,7 +276,6 @@ async function load() {
     state.repub = [];
     state.recentRepub = null;
     state.annonce = null;
-    state.selected = new Set();
     state.recent = {};
   }
   state.status = {};
@@ -410,14 +398,21 @@ function renderFlow() {
 
     let right = "";
     if (s === "ready") {
-      const on = state.selected.has(p.key);
-      right = `<div class="check ${on ? "on" : ""}" data-check="${p.key}" role="checkbox" aria-checked="${on}" tabindex="0">${CHECK_SVG}</div>`;
+      // Plus de case à cocher : le job part TOUT SEUL au prochain poll. On dit
+      // donc où il en est, avec le mot que le popup emploie déjà en pied
+      // d'écran (« N en file ») — rien de neuf à apprendre au vendeur.
+      right = `<span class="badge-soft">En file</span>`;
     } else if (s === "connect") {
       right = `<button class="connect-btn" data-connect="${p.key}" type="button">Se connecter</button>`;
     } else if (s === "soon") {
       right = `<span class="badge-soft">Bientôt</span>`;
     } else if (s === "none") {
-      right = `<span class="badge-soft">Non incluse</span>`;
+      // « Non incluse » (retiré le 08/09) laissait lire « pas connectée » ou
+      // « ça ne marche pas ». Relevé sur le cas d'Ornella : l'article était en
+      // réalité DÉJÀ PUBLIÉ sur les trois plateformes ainsi étiquetées. On ne
+      // dit donc plus que la plateforme est exclue de quoi que ce soit — on dit
+      // que ce dépôt-ci ne la concerne pas, ce qui est vrai dans tous les cas.
+      right = `<span class="badge-soft">Pas dans cet envoi</span>`;
     } else if (s === "queued") {
       // En attente de son tour (publication SÉQUENTIELLE plateforme par plateforme).
       right = `<span class="status-wait"><span class="dot-wait"></span>En attente…</span>`;
@@ -466,14 +461,127 @@ function batchRunning() {
   });
 }
 
-function renderCta() {
-  const count = state.selected.size;
-  const running = batchRunning();
-  const disabled = running || !state.annonce || count === 0;
-  els.cta.disabled = disabled;
-  els.ctaLabel.textContent = running ? "Publication…" : "Publier maintenant";
-  els.ctaCount.textContent = String(count);
-  els.ctaCount.classList.toggle("hidden", count === 0 || running);
+// ── MOTIFS DOMINANTS DES ANNONCES EN ATTENTE (2026-09-08) ────────────────────
+// ⛔ REGROUPEMENT PAR TÊTE DE MESSAGE ANCRÉE, JAMAIS PAR RESSEMBLANCE.
+// Chaque motif ci-dessous est un ^ancrage sur le début EXACT d'un message que
+// les handlers écrivent aujourd'hui. Une recherche large (« contient
+// connexion ») rangerait « Republication en pause … reconnecte-toi » dans la
+// mauvaise famille, et personne ne s'en apercevrait. Une tête que cette table
+// ne connaît pas tombe dans « autre motif » — jamais rangée de force.
+// Vérifié sur les 27 jobs en attente d'ornellaracano le 08/09 : 17 + 6 + 3 + 1.
+const MOTIFS_ANCRES = [
+  { re: /^Republication en pause/i, libelle: "republications en pause — ton annonce est intacte" },
+  { re: /^Ta republication attend/i, libelle: "republications en pause — ton annonce est intacte" },
+  { re: /^(Connexion .+ requise|Session .+ (fermée|expirée))/i, libelle: "reconnexion demandée" },
+  { re: /^CHALLENGE /, libelle: "vérification anti-robot à passer" },
+  { re: /^Catégorie \S+ à confirmer/i, libelle: "catégorie à confirmer" },
+  { re: /^(Aucun état|\S+ exige|LIVE : aspect)/i, libelle: "une information manque à la fiche" },
+  { re: /^Un brouillon Leboncoin non terminé/i, libelle: "brouillon à supprimer sur Leboncoin" },
+  { re: /^Publication non confirmée/i, libelle: "publication à vérifier sur la plateforme" },
+];
+
+/** [{ libelle, n }] trié du plus nombreux au moins nombreux, 4 au plus. */
+function motifsDominants(jobs) {
+  const compte = new Map();
+  for (const j of jobs ?? []) {
+    const msg = String(j?.error ?? "").trim();
+    const f = MOTIFS_ANCRES.find((m) => m.re.test(msg));
+    const cle = f ? f.libelle : "autre motif";
+    compte.set(cle, (compte.get(cle) ?? 0) + 1);
+  }
+  return [...compte.entries()]
+    .map(([libelle, n]) => ({ libelle, n }))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 4);
+}
+
+// ── ÉTAT DES PLATEFORMES (2026-09-08) ────────────────────────────────────────
+// La question qu'on se pose en ouvrant le popup, et qui n'était nulle part :
+// quelle plateforme est joignable ? Tout vient de ce que l'extension a DÉJÀ —
+// `contexte.sessions` (servi à chaque poll) et les verdicts des jobs. Aucune
+// sonde, aucun appel.
+//
+// ⛔ BEEBS NE PASSE PAS PAR LA SONDE. `probePlatformSessions` le dit lui-même :
+// sa page est une SPA qui redirige CÔTÉ CLIENT, le fetch ne verra donc
+// « quasiment jamais false » — un `null` y signifie aussi bien « pas connecté »
+// que « pas pu vérifier ». Afficher « non connectée » dessus, ce serait refaire
+// le faux bandeau du 30/07. Pour Beebs, la seule preuve acceptée est le VERDICT
+// D'UN JOB : un job revenu avec « Connexion Beebs requise » est un fait.
+// Tant qu'aucun job n'a tranché, cette ligne ne dit RIEN.
+//
+// ⛔ Et pour les trois autres, un `null` ne dit rien non plus : la ligne reste
+// muette. On n'affiche que ce qu'on sait.
+const BEEBS_DECO_RE = /^Connexion Beebs requise/i;
+const CHALLENGE_RE = /^CHALLENGE /;
+
+/** Tous les messages d'erreur connus du popup pour une plateforme, du plus
+ *  récent au plus ancien. Jobs servis + résultats terminés (< 30 min). */
+function messagesPlateforme(key) {
+  const out = [];
+  const rec = state.recent[key];
+  if (rec?.error) out.push(String(rec.error));
+  for (const j of [...state.besoinGeste, ...state.jobs, ...state.repub]) {
+    if (j.platform === key && j.error) out.push(String(j.error));
+  }
+  return out;
+}
+
+/** { etat: 'ok'|'ko'|'bloquee'|null, sous } — null = on ne dit rien. */
+function etatPlateforme(p, sondeFraiche) {
+  const msgs = messagesPlateforme(p.key);
+  // Anti-robot : motif ANCRÉ en tête de message (jamais une recherche large),
+  // et seulement sur un résultat récent — un challenge d'hier est passé.
+  const rec = state.recent[p.key];
+  if (rec?.error && CHALLENGE_RE.test(String(rec.error).trim())) {
+    return { etat: "bloquee", sous: `Vérification anti-robot à passer sur ${p.name.toLowerCase()}` };
+  }
+  if (p.key === "beebs") {
+    if (msgs.some((m) => BEEBS_DECO_RE.test(m.trim()))) {
+      return { etat: "ko", sous: "Session fermée" };
+    }
+    // Un dépôt Beebs abouti récemment PROUVE la session, là où la sonde ne
+    // peut rien prouver.
+    if (rec && (rec.status === "published" || rec.status === "dry_run_completed")) {
+      return { etat: "ok", sous: null };
+    }
+    return { etat: null, sous: null };
+  }
+  if (!sondeFraiche) return { etat: null, sous: null };
+  const v = state.sessions?.[p.key];
+  if (v === true) {
+    const ident = p.key === "vinted" ? state.sessions?.vinted_identite : null;
+    return { etat: "ok", sous: ident?.login ? `Chrome connecté à @${ident.login}` : null };
+  }
+  if (v === false) return { etat: "ko", sous: "Session fermée" };
+  return { etat: null, sous: null };
+}
+
+function renderPlateformes() {
+  if (!state.session) { els.plateformes.classList.add("hidden"); return; }
+  const s = state.sessions;
+  const vu = s?.checked_at ? Date.parse(s.checked_at) : NaN;
+  const sondeFraiche = Number.isFinite(vu) && Date.now() - vu < SESSIONS_FRAICHEUR_MS;
+
+  const lignes = [];
+  for (const p of PLATFORMS) {
+    const { etat, sous } = etatPlateforme(p, sondeFraiche);
+    if (!etat) continue; // rien de sûr à dire : la ligne n'existe pas
+    const droite = etat === "ko"
+      ? `<button class="connect-btn" data-connect="${p.key}" type="button">Se connecter</button>`
+      : `<span class="plat-etat ${etat === "ok" ? "ok" : "ko"}">` +
+        `<span class="plat-dot ${etat === "ok" ? "ok" : "ko"}"></span>` +
+        `${etat === "ok" ? "Connectée" : "Bloquée"}</span>`;
+    lignes.push(
+      `<div class="plat">${platformLogo(p)}` +
+      `<div class="plat-txt"><div class="plat-nom">${escapeHtml(p.name)}</div>` +
+      `${sous ? `<div class="plat-sous">${escapeHtml(sous)}</div>` : ""}</div>` +
+      `${droite}</div>`,
+    );
+  }
+  if (!lignes.length) { els.plateformes.classList.add("hidden"); return; }
+  const age = sondeFraiche ? `<div class="plat-vu">Vérifié ${ilYA(Date.now() - vu)}.</div>` : "";
+  els.platList.innerHTML = `<div class="bloc">${lignes.join("")}${age}</div>`;
+  els.plateformes.classList.remove("hidden");
 }
 
 function renderFooter() {
@@ -549,7 +657,10 @@ function renderAlerts() {
   // fillsell.app est connecté avec un AUTRE compte que celui rattaché à cette
   // extension : rien n'a été basculé tout seul — c'est CE clic qui décide.
   const sw = state.pendingSwitch;
-  if (!n && !sw) { els.alerts.classList.add("hidden"); return; }
+  // `boutique_pause` compte lui aussi comme un blocage à dire : sans lui dans
+  // cette garde, une file entièrement retenue par un mauvais dressing (aucun
+  // needs_user) n'afficherait rien du tout.
+  if (!n && !sw && !state.boutiquePause?.retenus) { els.alerts.classList.add("hidden"); return; }
   let html = "";
   if (sw) {
     const versQui = sw.email ? escapeHtml(sw.email) : "un autre compte";
@@ -562,6 +673,27 @@ function renderAlerts() {
       `<button id="switch-ok" type="button" style="flex:1;padding:8px 10px;border-radius:9px;border:none;background:#1B6E62;color:#fff;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;">Basculer l'extension</button>` +
       `<button id="switch-no" type="button" style="flex:1;padding:8px 10px;border-radius:9px;border:1px solid #E7E3D8;background:#F6F5F1;color:#5C6560;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;">Rester</button>` +
       `</div></div>`;
+  }
+  // ── LE DRESSING QUI NE CORRESPOND PAS (2026-09-08) ───────────────────────
+  // get-pending-jobs calcule `boutique_pause` à chaque poll depuis le 04/09 et
+  // PERSONNE ne l'affichait — alors que c'est la seule explication d'une file
+  // Vinted qui ne s'écoule pas (mesuré chez ornellaracano : 70 republications
+  // immobiles, Chrome connecté à l'autre boutique). Cause + geste, rien d'autre.
+  const bp = state.boutiquePause;
+  if (bp?.retenus) {
+    const origine = Object.entries(bp.par_boutique ?? {})
+      .sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    // Pseudo quand on l'a, identifiant sinon — jamais un pseudo deviné.
+    const pseudo = origine ? (bp.par_boutique_login?.[origine] ?? null) : null;
+    const quelDressing = pseudo ? `@${pseudo}` : (origine ? `nº ${origine}` : "un autre dressing");
+    const connectee = bp.connectee?.login ? `@${bp.connectee.login}` : "un autre compte";
+    const nb = bp.retenus;
+    html +=
+      `<div class="bloc alerte">` +
+      `<div class="bloc-t">${nb} republication${nb > 1 ? "s" : ""} sur le dressing ${escapeHtml(quelDressing)}</div>` +
+      `<div class="bloc-s">Chrome est connecté à ${escapeHtml(connectee)}. ` +
+      `Change de compte sur vinted.fr, elles repartiront seules.</div>` +
+      `</div>`;
   }
   if (n) {
     // Le motif écrit par l'extension est déjà rédigé pour être lu : on le montre
@@ -577,12 +709,26 @@ function renderAlerts() {
     // Le motif écrit par l'extension reste en tête quand il est propre : c'est
     // le QUOI. La phrase de localisation le suit toujours, y compris dans ce
     // cas — sans elle, savoir ce qui bloque ne dit toujours pas où aller.
-    // Aucune condition touchée : `n`, `propre` et `brut` sont inchangés.
+    // ── LES MOTIFS DOMINANTS (2026-09-08) ─────────────────────────────────
+    // Un nombre seul n'aide personne : « 27 annonces » ne dit ni quoi ni où.
+    // Les 27 jobs sont DÉJÀ dans le popup avec leur texte d'erreur — on les
+    // regroupe. Le motif du premier job (montré depuis le 04/09) laisse la
+    // place à la répartition : elle dit la même chose pour les 27, pas pour un.
+    const familles = motifsDominants(state.besoinGeste);
+    const lignes = familles.map((f) =>
+      `<div class="motif"><span class="motif-n">${f.n}</span>` +
+      `<span>${escapeHtml(f.libelle)}</span></div>`,
+    ).join("");
+    // Repli si aucun job n'est en main (le total vient du serveur, la liste
+    // peut être vide) : le motif du premier job, comme avant.
+    const corps = lignes
+      ? `<div class="motifs">${lignes}</div>`
+      : `<div class="bloc-s">${propre ? escapeHtml(brut) : ""}</div>`;
     html +=
       `<div class="bloc alerte">` +
-      `<div class="bloc-t">⚠️ ${n} annonce${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} une action</div>` +
-      `<div class="bloc-s">${propre ? escapeHtml(brut) + " " : ""}` +
-      `Ouvre FillSell, onglet Stock IA : la fiche de l'annonce dit ce qui manque et porte le bouton pour relancer.</div>` +
+      `<div class="bloc-t">⚠️ ${n} annonce${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} un geste de ta part</div>` +
+      corps +
+      `<div class="bloc-s" style="margin-top:7px">Ouvre FillSell, onglet Stock IA : la fiche de l'annonce dit ce qui manque et porte le bouton pour relancer.</div>` +
       `</div>`;
   }
   els.alerts.innerHTML = html;
@@ -617,14 +763,24 @@ function renderNow() {
       ? `Synchronisation du dressing — ${vus} articles sur ${s.total_entries}`
       : `Synchronisation du dressing — ${vus} article${vus > 1 ? "s" : ""} lu${vus > 1 ? "s" : ""}`);
   }
-  const pub = state.jobs.filter((j) => j.status === "processing").length;
-  if (pub) morceaux.push(`Publication en cours sur ${pub} plateforme${pub > 1 ? "s" : ""}`);
+  // ── QUI, ET SUR QUOI (2026-09-08) ────────────────────────────────────────
+  // « Publication en cours sur 1 plateforme » ne disait ni laquelle ni lequel —
+  // et l'article déposé n'est PAS celui affiché en « Prête à publier » (relevé
+  // sur écran réel : Robe camisole en cours, Blouse blanche prête). On les
+  // confondait pour un seul article dont la vignette ne correspondait pas.
+  for (const j of state.jobs.filter((x) => x.status === "processing")) {
+    const nom = PLATFORMS.find((p) => p.key === j.platform)?.name ?? j.platform;
+    const titre = String(j.title ?? "").trim();
+    morceaux.push(`Dépôt sur ${nom}${titre ? ` — « ${titre} »` : ""}`);
+  }
   // LAQUELLE est traitée (2026-08-07, chantier lisibilité) : le titre dit ce
   // qui se passe — « Republication en cours » tout court laissait deviner.
   const repEnCours = state.repub.find((j) => j.status === "processing");
   if (repEnCours) {
     const etape = REPUB_ETAPES[repEnCours.platform_fields?.republish_step ?? "a_capturer"] ?? "";
-    const titre = String(repEnCours.title ?? "").slice(0, 40);
+    // Titre ENTIER (2026-09-08) : coupé à 40 caractères, il ne permettait pas
+    // de distinguer deux articles au libellé voisin.
+    const titre = String(repEnCours.title ?? "").trim();
     morceaux.push(`Republication en cours${titre ? ` — « ${titre} »` : ""}${etape ? ` (${etape})` : ""}`);
   }
   if (!morceaux.length) { els.now.classList.add("hidden"); return; }
@@ -687,14 +843,10 @@ const SESSIONS_FRAICHEUR_MS = 60 * 60 * 1000;
 
 function renderDiag() {
   const bouts = [];
-  const s = state.sessions;
-  const vu = s?.checked_at ? Date.parse(s.checked_at) : NaN;
-  if (Number.isFinite(vu) && Date.now() - vu < SESSIONS_FRAICHEUR_MS) {
-    const pastilles = PLATFORMS
-      .filter((p) => typeof s[p.key] === "boolean")
-      .map((p) => `<span class="sess"><span class="sdot ${s[p.key] ? "ok" : "ko"}"></span>${escapeHtml(p.name)}</span>`);
-    if (pastilles.length) bouts.push(`<div style="display:flex;gap:9px;flex-wrap:wrap">${pastilles.join("")}</div>`);
-  }
+  // Les pastilles de sessions ont quitté ce pied de page le 08/09 : elles sont
+  // devenues le bloc « Plateformes », en tête, où on les cherchait. Les répéter
+  // ici en 6 px n'apporterait rien — et pour Beebs elles MENTAIENT (un `null`
+  // de sonde y passait pour une déconnexion).
   const v = chrome.runtime.getManifest().version;
   bouts.push(`<span class="build">v${escapeHtml(v)}</span>`);
   els.diag.innerHTML = bouts.join("");
@@ -705,11 +857,11 @@ function render() {
   renderAccount();
   renderLife();
   renderAwake();
+  renderPlateformes();
   renderAlerts();
   renderNow();
   renderListing();
   renderFlow();
-  renderCta();
   renderQueueExtra();
   renderFooter();
   renderDiag();
@@ -752,33 +904,16 @@ els.history.addEventListener("click", () => {
   window.close();
 });
 
-// Délégation : cocher/décocher une plateforme, ou "Se connecter" sur une ligne.
-els.flow.addEventListener("click", (e) => {
-  const check = e.target.closest("[data-check]");
-  // batchRunning et non state.publishing : les cases restent aussi gelées
-  // quand le popup a été rouvert en plein lot (cohérent avec le CTA).
-  if (check && !batchRunning()) {
-    const key = check.getAttribute("data-check");
-    if (state.selected.has(key)) state.selected.delete(key);
-    else state.selected.add(key);
-    renderFlow();
-    renderCta();
-    return;
-  }
+// Délégation : "Se connecter" sur une ligne, dans le flux comme dans le bloc
+// Plateformes. Plus de case à cocher depuis le retrait du CTA (2026-09-08).
+function ouvrirConnexion(e) {
   const connect = e.target.closest("[data-connect]");
-  if (connect) {
-    const p = PLATFORMS.find((x) => x.key === connect.getAttribute("data-connect"));
-    if (p) { chrome.tabs.create({ url: p.loginUrl }); window.close(); }
-  }
-});
-
-// Accessibilité clavier sur les cases à cocher.
-els.flow.addEventListener("keydown", (e) => {
-  if ((e.key === " " || e.key === "Enter")) {
-    const check = e.target.closest("[data-check]");
-    if (check) { e.preventDefault(); check.click(); }
-  }
-});
+  if (!connect) return;
+  const p = PLATFORMS.find((x) => x.key === connect.getAttribute("data-connect"));
+  if (p) { chrome.tabs.create({ url: p.loginUrl }); window.close(); }
+}
+els.flow.addEventListener("click", ouvrirConnexion);
+els.platList.addEventListener("click", ouvrirConnexion);
 
 // ── Publication ──────────────────────────────────────────────────────────────
 // Envoie au background la liste des jobs des plateformes cochées ; les états
@@ -792,50 +927,17 @@ const shortErr = (msg) => {
   return s.length > 42 ? s.slice(0, 41) + "…" : s;
 };
 
-function selectedJobIds() {
-  const ids = [];
-  for (const key of state.selected) {
-    const job = state.annonce?.byPlatform[key];
-    // Double filet contre la double publication : un job 'processing' n'est
-    // jamais envoyé à PUBLISH_NOW, même s'il s'était retrouvé sélectionné.
-    if (job && job.status !== "processing") ids.push(job.id);
-  }
-  return ids;
-}
-
-els.cta.addEventListener("click", () => {
-  if (els.cta.disabled || batchRunning()) return;
-  const jobIds = selectedJobIds();
-  if (!jobIds.length) return;
-
-  state.publishing = true;
-  // « En attente… » d'emblée pour TOUTES les plateformes cochées : la
-  // publication est SÉQUENTIELLE (background : une plateforme à la fois), et
-  // l'événement FILLSELL_PROGRESS "processing" fait passer chacune à « Publication… »
-  // à son tour — la séquence devient lisible au lieu d'un « Publication… » global.
-  for (const key of state.selected) state.status[key] = { phase: "queued" };
-  render();
-
-  chrome.runtime.sendMessage({ type: "PUBLISH_NOW", jobIds }, (res) => {
-    state.publishing = false;
-    if (chrome.runtime.lastError || !res?.ok) {
-      // Échec global (session FillSell invalide, ou aucun job trouvé) : bascule
-      // les lignes concernées, sans écraser un état live déjà reçu.
-      const reason = res?.reason;
-      for (const key of state.selected) {
-        // "queued" inclus : sur un échec GLOBAL (pas de session, aucun job),
-        // aucune plateforme n'a reçu d'événement "processing" → elles sont
-        // encore en attente et doivent basculer, pas rester bloquées.
-        if (["busy", "queued"].includes(state.status[key]?.phase)) {
-          state.status[key] = reason === "no_session"
-            ? { phase: "connect" }
-            : { phase: "err", msg: reason === "no_matching_jobs" ? "Déjà traité" : "Échec" };
-        }
-      }
-    }
-    render();
-  });
-});
+// ── PLUS DE DÉCLENCHEMENT MANUEL (2026-09-08, décision Nico) ─────────────────
+// Le bouton « Publier maintenant » et son envoi PUBLISH_NOW ont été retirés
+// d'ici. Motif : les jobs partent tout seuls au poll. Un job qui n'est PAS parti
+// a toujours une cause — mauvais dressing, session fermée, champ manquant — et
+// cliquer ne la levait pas : il repartait au même mur. Le bouton promettait une
+// action qui n'existait pas.
+// Ce que le popup fait à la place, plus haut : nommer la cause et le geste qui
+// la lève. Le handler PUBLISH_NOW du background n'est PAS touché (la logique de
+// publication reste hors de ce chantier) ; il n'a simplement plus d'appelant.
+// Les états live ci-dessous continuent d'arriver : ils viennent du poll, pas
+// d'un clic.
 
 // États live par plateforme, poussés par le background pendant la publication.
 chrome.runtime.onMessage.addListener((msg) => {
@@ -867,9 +969,10 @@ chrome.runtime.onMessage.addListener((msg) => {
     default: break;
   }
   renderFlow();
-  // renderCta aussi : popup rouvert en plein lot, c'est l'événement 'processing'
-  // (ou la fin du lot done/err) qui doit geler/dégeler le bouton en direct.
-  renderCta();
+  // Le bloc Plateformes suit le direct lui aussi : un refus « CHALLENGE » ou
+  // « Connexion Beebs requise » qui arrive pendant que le popup est ouvert doit
+  // changer la ligne tout de suite, sans attendre une réouverture.
+  renderPlateformes();
 });
 
 // Re-render si le background met à jour la session pendant que le popup est ouvert.
