@@ -1195,6 +1195,25 @@ async function fillListingForm(job) {
     //     un challenge anti-robot s'est interposé au moment du dépôt, on le
     //     nomme au lieu de « sans message ».
     const sonde = await depotRequeteVue();
+    // (c) Requête(s) parties mais TOUTES refusées (4xx/5xx, statut connu) : rien
+    //     n'a été déposé, il n'y a pas de doublon possible. 403 = DataDome sur
+    //     l'API (relevé chez Joséphine : sonde leboncoin http 403 pendant que la
+    //     page dit « connectée ») — c'est le mur que le clic « avalé » cachait.
+    const statuts = sonde.requetes.map((r) => Number(r?.status)).filter(Number.isFinite);
+    if (sonde.seen && !sonde.illisible && statuts.length && statuts.length === sonde.requetes.length && statuts.every((s) => s >= 400)) {
+      const detail = `requête(s) de dépôt REFUSÉE(S) par Leboncoin : ${JSON.stringify(sonde.requetes.slice(0, 5))}`;
+      console.warn(`[leboncoin] aperçu inchangé — ${detail}`);
+      const datadome = statuts.some((s) => s === 403);
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+        error: (datadome
+          ? "CHALLENGE DATADOME : Leboncoin a refusé la requête de dépôt (403, vérification anti-robot sur l'API). " +
+            "Ouvrir leboncoin.fr dans Chrome — sur CET ordinateur — et résoudre la vérification ; le job repartira au prochain passage."
+          : `Leboncoin a refusé la requête de dépôt (HTTP ${statuts.join("/")}) sans message à l'écran — nouvel essai au prochain passage ; ` +
+            "si ça se répète, terminer le dépôt à la main sur l'onglet resté ouvert.") +
+          ` — Observabilité: ${detail} ; ${dumpEcranVisible()}`,
+      };
+    }
     if (sonde.seen) {
       const detail = sonde.illisible
         ? "sonde réseau illisible — traité comme « requête peut-être partie », par prudence"
