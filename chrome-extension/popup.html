@@ -187,6 +187,11 @@
       padding: 8px 0; border-top: 1px solid var(--line);
     }
     .plat:first-child { border-top: none; padding-top: 2px; }
+    /* État inconnu : la ligne RESTE (la plateforme est là), en gris et sans un
+       mot. Faire disparaître la ligne répondait à la question par l'absence —
+       on croyait la plateforme retirée. */
+    .plat.muette .plogo { filter: grayscale(1); opacity: 0.38; }
+    .plat.muette .plat-nom { color: var(--ink-35); font-weight: 500; }
     .plat-txt { min-width: 0; }
     .plat-nom { font-size: 13.5px; font-weight: 600; color: var(--ink); }
     .plat-sous { font-size: 10.5px; font-weight: 500; color: var(--ink-35); margin-top: 2px; line-height: 1.4; }

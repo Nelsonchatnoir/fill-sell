@@ -480,6 +480,16 @@ const MOTIFS_ANCRES = [
   { re: /^Publication non confirmée/i, libelle: "publication à vérifier sur la plateforme" },
 ];
 
+// ⛔ DEUX FAMILLES NE SONT PAS RÉPÉTÉES ICI (2026-09-08, correction Nico) :
+// « reconnexion demandée » et « vérification anti-robot à passer » se lisent
+// DÉJÀ, en haut, sur la ligne de la plateforme concernée — « Session fermée »
+// avec son bouton, « Bloquée » avec son geste. Les redire ici, c'était la même
+// information à deux endroits, dans deux formulations, et sans le bouton.
+// Le TOTAL, lui, ne bouge pas : il vient du serveur et reste celui du bandeau
+// de l'app (source unique posée le 04/09). Cette liste n'a jamais été une
+// décomposition du total — c'est un dessus de pile, déjà borné à 4 lignes.
+const MOTIFS_DITS_AILLEURS = new Set(["reconnexion demandée", "vérification anti-robot à passer"]);
+
 /** [{ libelle, n }] trié du plus nombreux au moins nombreux, 4 au plus. */
 function motifsDominants(jobs) {
   const compte = new Map();
@@ -487,6 +497,7 @@ function motifsDominants(jobs) {
     const msg = String(j?.error ?? "").trim();
     const f = MOTIFS_ANCRES.find((m) => m.re.test(msg));
     const cle = f ? f.libelle : "autre motif";
+    if (MOTIFS_DITS_AILLEURS.has(cle)) continue;
     compte.set(cle, (compte.get(cle) ?? 0) + 1);
   }
   return [...compte.entries()]
@@ -569,23 +580,34 @@ function renderPlateformes() {
   const vu = s?.checked_at ? Date.parse(s.checked_at) : NaN;
   const sondeFraiche = Number.isFinite(vu) && Date.now() - vu < SESSIONS_FRAICHEUR_MS;
 
+  // ── LES QUATRE LIGNES SONT TOUJOURS LÀ (2026-09-08, correction Nico) ──────
+  // Faire DISPARAÎTRE une plateforme dont on ne sait rien, c'est répondre à la
+  // question par l'absence : vu sur écran réel, Beebs s'évanouissait et on
+  // croyait la plateforme retirée. Une ligne muette dit deux choses vraies à la
+  // fois — la plateforme est bien là, et on n'a rien mesuré sur elle.
+  // Logo et nom en gris, AUCUNE pastille, AUCUN mot : on n'affirme rien.
   const lignes = [];
+  let sues = 0;
   for (const p of PLATFORMS) {
     const { etat, sous } = etatPlateforme(p, sondeFraiche);
-    if (!etat) continue; // rien de sûr à dire : la ligne n'existe pas
-    const droite = etat === "ko"
-      ? `<button class="connect-btn" data-connect="${p.key}" type="button">Se connecter</button>`
-      : `<span class="plat-etat ${etat === "ok" ? "ok" : "ko"}">` +
-        `<span class="plat-dot ${etat === "ok" ? "ok" : "ko"}"></span>` +
-        `${etat === "ok" ? "Connectée" : "Bloquée"}</span>`;
+    let droite = "";
+    if (etat === "ko") {
+      droite = `<button class="connect-btn" data-connect="${p.key}" type="button">Se connecter</button>`;
+    } else if (etat === "bloquee") {
+      droite = `<span class="plat-etat ko"><span class="plat-dot ko"></span>Bloquée</span>`;
+    } else if (etat === "ok") {
+      droite = `<span class="plat-etat ok"><span class="plat-dot ok"></span>Connectée</span>`;
+    }
+    if (etat) sues++;
     lignes.push(
-      `<div class="plat">${platformLogo(p)}` +
+      `<div class="plat${etat ? "" : " muette"}">${platformLogo(p)}` +
       `<div class="plat-txt"><div class="plat-nom">${escapeHtml(p.name)}</div>` +
-      `${sous ? `<div class="plat-sous">${escapeHtml(sous)}</div>` : ""}</div>` +
+      `${etat && sous ? `<div class="plat-sous">${escapeHtml(sous)}</div>` : ""}</div>` +
       `${droite}</div>`,
     );
   }
-  if (!lignes.length) { els.plateformes.classList.add("hidden"); return; }
+  // Rien de mesuré sur AUCUNE des quatre : le bloc n'apprendrait rien.
+  if (!sues) { els.plateformes.classList.add("hidden"); return; }
   const age = sondeFraiche ? `<div class="plat-vu">Vérifié ${ilYA(Date.now() - vu)}.</div>` : "";
   els.platList.innerHTML = `<div class="bloc">${lignes.join("")}${age}</div>`;
   els.plateformes.classList.remove("hidden");
