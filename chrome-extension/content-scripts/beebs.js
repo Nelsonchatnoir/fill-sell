@@ -464,6 +464,25 @@ async function fillListingForm(job) {
   // message actionnable. beebsGenreRequired (posé par l'app à la création du
   // job) permet de distinguer genre manquant/non résolu vs icône hors mapping.
   if (!fields.beebsCategoryPath?.length) {
+    // ── Chemin ÉCARTÉ par l'app après vérification contre le mot (2026-09-08) ──
+    // L'app a un mot juste (« soutien-gorge »), notre table d'icônes proposait
+    // un rayon (Pyjamas), l'IA a dit « aucune » et l'arbre Beebs n'a rien
+    // d'autre : le job part SANS chemin, exprès. Beebs n'affiche aucune
+    // suggestion de catégorie (relevé 07/09) — il n'y a rien à préférer ici.
+    // needs_user borné, qui dit l'objet et le rayon écarté : jamais un dépôt
+    // dans un rayon faux, jamais un échec sec qui brûle des tentatives.
+    if (fields.categorie_a_choisir?.objet) {
+      const ecarte = Array.isArray(fields.categorie_a_choisir.chemin_ecarte)
+        ? fields.categorie_a_choisir.chemin_ecarte.join(" > ") : "";
+      return {
+        success: false, needsUser: true,
+        error:
+          `Beebs n'a pas de rayon reconnu pour « ${fields.categorie_a_choisir.objet} »` +
+          (ecarte ? ` (le rayon « ${ecarte} » a été écarté après vérification : il ne correspond pas à l'objet)` : "") +
+          ". Cet article n'est pas publiable sur Beebs tel quel — publie-le à la main sur beebs.app " +
+          "si tu y tiens, ou retire Beebs de cet envoi. Aucune tentative n'est consommée.",
+      };
+    }
     if (fields.beebsGenreRequired) {
       return {
         success: false,

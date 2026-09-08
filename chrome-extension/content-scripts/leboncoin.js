@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-09-07-un-slot-par-cle-maison-jardin (lbcAspects.<clé> posé PAR CLÉ et dans l'ordre du DOM — Univers/Type AVANT Produit, dont la liste en dépend ; le bloc lbcProduit ne vise que le premier label _type et cède quand lbcAspects porte déjà sa clé ; seule la clé réellement écrite par ce bloc est sautée par le canal générique — sur Décoration, decoration_type n'était JAMAIS posé ; needs_user cible lbcAspects.<clé> pour tout _type ; job c324b5ee josephinecerni) + 2026-09-07-repli-generique-conserve-le-prefill (« Autre »/« Autres »/« Sans marque » ne remplacent JAMAIS un pré-rempli précis de Leboncoin — « Cuisine et cuisson » conservé, warning explicite) + 2026-09-05-apercu-refuse-nom-prenom-escrow (l'aperçu resté affiché après le Continuer final n'est plus pris pour l'écran coordonnées — téléphone VISIBLE et hors aperçu seulement ; escrow_lastname/escrow_firstname vides = nom et prénom exigés par la Transaction sécurisée → attenteUtilisateur, needs_user persisté, jamais failed ; refus visibles relevés, re-clic unique si aucun ; adresse comparée sans apostrophes ni traits d'union — « 56b rue dalger » retrouve « 56B Rue d'Alger ») + 2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
+const LEBONCOIN_BUILD = "2026-09-08-cadence-0-6-19-mesuree (aperçu : re-clics du Continuer final à ~2 s, ~5 s, ~8 s comme la 0.6.19 — 182/192 publiés contre 9/41 en 0.6.20, 11 relevés identiques, 4e compte à sonde 200 ; la sonde réseau non-GET api.leboncoin.fr OBSERVE et nomme un refus 4xx/5xx, elle ne retient plus aucun re-clic ; bouton disabled/aria-busy jamais recliqué) + 2026-09-07-un-slot-par-cle-maison-jardin (lbcAspects.<clé> posé PAR CLÉ et dans l'ordre du DOM — Univers/Type AVANT Produit, dont la liste en dépend ; le bloc lbcProduit ne vise que le premier label _type et cède quand lbcAspects porte déjà sa clé ; seule la clé réellement écrite par ce bloc est sautée par le canal générique — sur Décoration, decoration_type n'était JAMAIS posé ; needs_user cible lbcAspects.<clé> pour tout _type ; job c324b5ee josephinecerni) + 2026-09-07-repli-generique-conserve-le-prefill (« Autre »/« Autres »/« Sans marque » ne remplacent JAMAIS un pré-rempli précis de Leboncoin — « Cuisine et cuisson » conservé, warning explicite) + 2026-09-05-apercu-refuse-nom-prenom-escrow (l'aperçu resté affiché après le Continuer final n'est plus pris pour l'écran coordonnées — téléphone VISIBLE et hors aperçu seulement ; escrow_lastname/escrow_firstname vides = nom et prénom exigés par la Transaction sécurisée → attenteUtilisateur, needs_user persisté, jamais failed ; refus visibles relevés, re-clic unique si aucun ; adresse comparée sans apostrophes ni traits d'union — « 56b rue dalger » retrouve « 56B Rue d'Alger ») + 2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -1249,43 +1249,75 @@ async function fillListingForm(job) {
     };
   };
 
-  // ── LA CADENCE DE LA 0.6.19, AVEC LA PREUVE RÉSEAU EN PLUS (2026-09-08) ──
-  // Cas A/B Joséphine (compte Joe0410, 07/09 18:00-21:30, deux Chrome sur la
-  // même file) : 0.6.19 publie 60 annonces Leboncoin d'affilée, 0.6.20 échoue
-  // 4 fois sur « aperçu resté affiché » dans le même créneau. Le diff
-  // 088cef0 → d994e33 le dit : en 0.6.19, findContactPhone (querySelector nu)
-  // matchait un input téléphone CACHÉ de l'aperçu, la boucle prenait ça pour
-  // l'écran « Vos coordonnées » et RE-CLIQUAIT « Continuer » 2 s après, jusqu'à
-  // 3 fois — un clic avalé se rattrapait tout de suite. La 0.6.20 (9a2269b)
-  // exige un téléphone VISIBLE hors aperçu (juste), attend 15 s, re-clique UNE
-  // fois, attend 15 s : chez Joséphine ce second clic tardif ne prend pas, là
-  // où le re-clic rapide passait. Ornella, Rico, Ritthik publient en 0.6.20 :
-  // leur premier clic prend — le second facteur est le poste (une 2ᵉ session
-  // Chrome sur le même compte), pas la catégorie ni le compte.
-  // On rend donc la cadence rapide (3 s, puis re-clics à 4 s d'écart, 3 au
-  // plus, dernier budget 15 s) SOUS LA GARDE de la sonde : jamais un re-clic
-  // si une requête non-GET est partie vers api.leboncoin.fr — c'est la seule
-  // différence avec la 0.6.19, et c'est celle qui empêche le doublon.
+  // ── LA CADENCE DE LA 0.6.19, TELLE QUELLE — LA SONDE OBSERVE, ELLE NE RETIENT PLUS (2026-09-08 soir) ──
+  // MESURÉ EN BASE sur 4 jours (publish Leboncoin, handler_build) :
+  //   0.6.17 : 62 jobs, 52 publiés, 0 « aperçu resté affiché »
+  //   0.6.19 : 192 jobs, 182 publiés, 0 « aperçu resté affiché »
+  //   0.6.20 :  41 jobs,   9 publiés, 11 « aperçu resté affiché » (9 comptes)
+  // Les 11 relevés d'écran sont IDENTIQUES : /deposer-une-annonce, titre « Un
+  // dernier aperçu avant de publier votre annonce ! », subject/price_cents/
+  // location remplis, boutons Je vends · Je donne · Retour · Continuer, aucun
+  // refus, aucun champ escrow. Quatrième compte le 08/09 23:09 (Choupette) avec
+  // la sonde Leboncoin à 200 et la session vraie : l'hypothèse « poste /
+  // DataDome » TOMBE. realClick, waitFor, humanPause sont octet pour octet les
+  // mêmes en 0.6.19 et 0.6.20 : la SEULE différence est cette boucle.
+  //   · 0.6.19 : findContactPhone (querySelector nu) trouvait un input
+  //     téléphone CACHÉ de l'aperçu lui-même → attendreEcranSuivant rendait
+  //     {phone} À L'INSTANT → la boucle prenait ça pour « Vos coordonnées » et
+  //     recliquait « Continuer » ~1,4 s après le premier clic, puis ~3,4 s plus
+  //     tard, puis encore : QUATRE clics en ~8 s. C'est cette cadence
+  //     accidentelle qui publiait — 60 d'affilée chez Joséphine.
+  //   · 0.6.20 (9a2269b) exige un téléphone VISIBLE hors aperçu : quand le
+  //     premier clic ne prend pas, il n'y a NI CTA NI téléphone à attendre —
+  //     15 s d'attente à vide, UN re-clic tardif qui ne prend pas davantage,
+  //     15 s encore, abandon. Nom d'erreur juste, tentatives brûlées.
+  // CE QUE LA MESURE NE DIT PAS : POURQUOI un premier clic ne prend pas sur
+  // ces postes et pourquoi un re-clic RAPIDE prend (onglet caché — même
+  // famille que le re-clic du chemin gratuit plus bas et que la famille B
+  // eBay). Aucune requête de dépôt Leboncoin n'a encore été relevée.
+  // DÉCISION : on rend la cadence de la 0.6.19 SANS CONDITION (re-clics à
+  // ~2 s, ~5 s, ~8 s, puis 15 s de patience), et la sonde réseau OBSERVE :
+  // ses captures partent en warning et dans l'annexe du verdict (c'est là que
+  // l'endpoint de dépôt se lira enfin), mais elle ne retient AUCUN re-clic —
+  // retenir sur une requête qu'on ne sait pas nommer aurait transformé ces
+  // 11 échecs en 11 needs_user « dépôt incertain ». Le doublon redouté n'a
+  // jamais été observé en 182 dépôts 0.6.19 avec cette même cadence ; un
+  // bouton disabled/aria-busy (dépôt en cours) n'est jamais recliqué.
   let freeCta = null;
   let reclicsApercu = 0;
+  let sondeNotee = false;
   for (let ecran = 0; ecran < 3 && !freeCta; ecran++) {
-    let etape = await attendreEcranSuivant(ecran === 0 ? 3_000 : 15_000);
+    let etape = await attendreEcranSuivant(ecran === 0 ? 600 : 15_000);
     while (!etape && estEncoreApercu() && reclicsApercu < 3
            && !champsEscrowVides().length && !messagesErreurVisibles().length) {
-      const sonde = await depotRequeteVue();
-      if (sonde.seen) {
-        warnings.push(`dépôt: aperçu inchangé mais une requête est partie après le Continuer final (${sonde.illisible ? "sonde illisible" : JSON.stringify(sonde.requetes.slice(0, 3))}) — aucun re-clic (doublon)`);
-        break;
-      }
       const encore = findButtonByExactText("Continuer");
       if (!encore) break;
+      if (encore.disabled || encore.getAttribute("aria-busy") === "true" || encore.getAttribute("aria-disabled") === "true") {
+        // Le bouton travaille (dépôt en cours) : on ne le bouscule pas, on
+        // attend l'écran suivant avec le budget entier.
+        warnings.push("dépôt: Continuer final désactivé après le clic (dépôt en cours ?) — aucun re-clic, attente de l'écran suivant");
+        etape = await attendreEcranSuivant(15_000);
+        break;
+      }
+      const sonde = await depotRequeteVue();
+      if (sonde.seen && !sondeNotee) {
+        sondeNotee = true;
+        warnings.push(
+          "dépôt: requête(s) non-GET api.leboncoin.fr captée(s) après le Continuer final, aperçu pourtant inchangé — " +
+          (sonde.illisible ? "sonde illisible" : JSON.stringify(sonde.requetes.slice(0, 3))) +
+          " (re-clics maintenus : cadence 0.6.19, mesurée)"
+        );
+      }
+      await humanPause(900, 1800);
+      // La page a pu bouger pendant la pause : on ne reclique jamais un
+      // bouton détaché ni un aperçu déjà parti.
+      if (!encore.isConnected || !estEncoreApercu()) { etape = await attendreEcranSuivant(15_000); break; }
       reclicsApercu++;
-      const note = `dépôt: Continuer final sans effet observable (aperçu inchangé, aucun refus visible, aucune requête captée) — re-clic ${reclicsApercu}/3`;
+      const note = `dépôt: Continuer final sans effet observable (aperçu inchangé, aucun refus visible) — re-clic ${reclicsApercu}/3`;
       console.warn(`[leboncoin] ⚠️ ${note}`);
       warnings.push(note);
-      await humanPause(800, 1500);
       realClick(encore);
-      etape = await attendreEcranSuivant(reclicsApercu >= 3 ? 15_000 : 4_000);
+      etape = await attendreEcranSuivant(reclicsApercu >= 3 ? 15_000 : 2_000);
     }
     if (!etape) {
       if (estEncoreApercu()) return await refusApercu();
