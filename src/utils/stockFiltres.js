@@ -245,7 +245,15 @@ export function pastillesEtat(etat, lang = 'fr') {
   const out = [];
   const nc = etat?.aCompleter?.length ?? 0;
   const ne = etat?.enEchec?.length ?? 0;
-  if (nc === 1) {
+  // ⛔ ON NE NOMME LA PLATEFORME QUE S'IL N'Y A QU'UNE SEULE PASTILLE.
+  // Avec deux pastilles côte à côte, « À compléter · Beebs » puis « 2 échecs »
+  // ne tiennent pas dans la largeur d'une carte : la seconde se coupait en
+  // « 2 éc… » (capture Nico, 08/09). Un compte tronqué ne vaut pas mieux qu'un
+  // nom tronqué. Dès qu'il y a deux registres, les deux comptent au lieu de
+  // nommer — et le détail complet reste dans le title, la popup le dit en
+  // entier.
+  const deuxPastilles = nc > 0 && ne > 0;
+  if (nc === 1 && !deuxPastilles) {
     const e = etat.aCompleter[0];
     const nom = LIBELLE_PLATEFORME[e.platform] ?? e.platform;
     out.push({
@@ -255,7 +263,7 @@ export function pastillesEtat(etat, lang = 'fr') {
         ? (fr ? `${nom} : il manque ${e.champ}` : `${nom}: ${e.champ} is missing`)
         : (fr ? `${nom} attend une information` : `${nom} is waiting for information`),
     });
-  } else if (nc > 1) {
+  } else if (nc >= 1) {
     out.push({
       ton: 'warn', platform: null, job: null,
       texte: fr ? `${nc} à compléter` : `${nc} to complete`,
@@ -269,7 +277,7 @@ export function pastillesEtat(etat, lang = 'fr') {
         .join(fr ? ' · ' : ' · '),
     });
   }
-  if (ne === 1) {
+  if (ne === 1 && !deuxPastilles) {
     const e = etat.enEchec[0];
     const nom = LIBELLE_PLATEFORME[e.platform] ?? e.platform;
     out.push({
@@ -277,10 +285,10 @@ export function pastillesEtat(etat, lang = 'fr') {
       texte: fr ? `1 échec · ${nom}` : `1 failure · ${nom}`,
       detail: fr ? `${nom} : la publication a échoué` : `${nom}: publishing failed`,
     });
-  } else if (ne > 1) {
+  } else if (ne >= 1) {
     out.push({
       ton: 'err', platform: null, job: null,
-      texte: fr ? `${ne} échecs` : `${ne} failures`,
+      texte: fr ? `${ne} échec${ne > 1 ? 's' : ''}` : `${ne} failure${ne > 1 ? 's' : ''}`,
       detail: etat.enEchec.map((e) => LIBELLE_PLATEFORME[e.platform] ?? e.platform).join(' · '),
     });
   }

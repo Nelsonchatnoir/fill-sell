@@ -8167,6 +8167,15 @@ const StockTab = memo(function StockTab({
                                       onKeyDown={(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();ouvrir(e);}}}
                                       title={p.detail}
                                       style={{cursor:"pointer",
+                                        // ⛔ maxWidth:none — .micon porte
+                                        // max-width:100% + ellipsis, un filet
+                                        // pensé pour des libellés longs. Ici il
+                                        // coupait « 2 échecs » en « 2 éc… »
+                                        // (capture Nico). Ces pastilles sont
+                                        // COURTES par construction : on les
+                                        // laisse entières, la rangée .icons
+                                        // défile déjà à l'horizontale.
+                                        maxWidth:"none",
                                         background:amb?"#FFF6E3":"#FEF2F2",
                                         border:`1px solid ${amb?"#EED9A6":"#FECACA"}`,
                                         color:amb?"#8A6100":"#B91C1C"}}>
