@@ -719,6 +719,23 @@ function listeDeChoixExploitable(vals) {
 const NU_T = { border:"#E7E3D8", chip:"#F2F0E9", ink:"#10201B", mute:"#8A8578" };
 const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects", beebs:"beebsAspects", ebay:"ebayAspects" };
 
+// ── LA MINI-CARTE D'UN LOGO QUI APPELLE UNE ACTION (2026-09-08) ──────────────
+// UNE seule forme : un carré teinté, un contour, le glyphe posé dessus. Le
+// socle blanc que PlatformLogo pose pour vinted/ebay est rendu TRANSPARENT par
+// l'appelant — sans quoi on voit deux carrés emboîtés (capture Nico, 11h04).
+//
+// ⚠️ BORDURE EN PIXELS ENTIERS, JAMAIS UN box-shadow INSET FRACTIONNAIRE.
+// Le premier essai posait `inset 0 0 0 1.5px` : sur un écran à 3 pixels
+// physiques par pixel CSS, 1,5 px vaut 4,5 px, et l'arrondi ne tombe pas pareil
+// sur les quatre côtés d'un carré à coins ronds — d'où un contour visiblement
+// plus épais d'un côté que de l'autre (capture Nico, 11h05). Une `border` en
+// entier se rend nette et symétrique, à tous les taux de pixels.
+//
+// Le padding passe de 3 à 1 px pour que la carte garde EXACTEMENT le gabarit
+// des logos non teintés (1 + 2 = 3 px de chaque côté) : une plateforme ne
+// grandit pas et ne fait pas sauter la rangée selon son état.
+const LOGO_TEINTE = (t) => ({ background: t.fond, border: `2px solid ${t.trait}`, padding: 1 });
+
 // ── UNE MODALE DOIT TOUJOURS POUVOIR SE FERMER (2026-09-07) ─────────────────
 // Capture réelle (17h22, téléphone) : la modale « Où en est la publication »
 // d'un article à 3 plateformes en « À compléter » — trois cartes portant
@@ -7683,16 +7700,15 @@ const StockTab = memo(function StockTab({
                                       :`${item.vinted_status==='draft'?'Brouillon':'Masquée'} sur Vinted — l'annonce existe mais les acheteurs ne la voient pas. Toucher pour gérer.`)
                                     :(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
                                   style={{cursor:"pointer",
-                                    ...(teinte?{background:teinte.fond,
-                                      boxShadow:`inset 0 0 0 1.5px ${teinte.trait}, 0 1px 4px rgba(16,32,27,0.25)`}:{}),
+                                    ...(teinte?LOGO_TEINTE(teinte):{}),
                                     ...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
                                   onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
-                                  {/* Le socle du logo prend la MÊME teinte et
-                                      perd sa bordure : la mini-carte devient un
-                                      seul aplat avec un seul contour, au lieu
-                                      d'un cadre coloré autour d'un carré blanc. */}
+                                  {/* Socle du logo TRANSPARENT : sans ça, son
+                                      carré se superposait à la mini-carte et on
+                                      voyait deux carrés emboîtés. Ici, un seul
+                                      carré teinté, le glyphe posé dessus. */}
                                   <PlatformLogo platform={p} size={20}
-                                    fond={teinte?teinte.fond:undefined}
+                                    fond={teinte?"transparent":undefined}
                                     bord={teinte?"transparent":undefined}/>
                                 </span>
                               );
@@ -7733,19 +7749,19 @@ const StockTab = memo(function StockTab({
                                     :(lang==='en'?`${PLATFORM_LABELS[x.p]||x.p}: publishing failed — tap to relaunch`
                                                  :`${PLATFORM_LABELS[x.p]||x.p} : la publication a échoué — toucher pour relancer`)}
                                   style={{cursor:"pointer",
-                                    background:x.ton==='warn'?"#FFF6E3":"#FEF2F2",
-                                    boxShadow:`inset 0 0 0 1.5px ${x.ton==='warn'?"#8A6100":"#B91C1C"}, 0 1px 4px rgba(16,32,27,0.25)`}}
+                                    ...LOGO_TEINTE(x.ton==='warn'
+                                      ?{fond:"#FFF6E3",trait:"#8A6100"}
+                                      :{fond:"#FEF2F2",trait:"#B91C1C"})}}
                                   onClick={ev=>{ev.stopPropagation();setRemoveModalItem(item);}}>
-                                  {/* Socle teinté + bordure transparente : la
-                                      mini-carte est un seul aplat. Le NOIR ET
-                                      BLANC porte sur le GLYPHE seul (prop
-                                      desature) — désaturer le socle effacerait
-                                      la teinte qui dit le registre. Couleur =
-                                      en ligne ici ; noir et blanc = pas en
-                                      ligne, mais quelque chose t'attend. */}
+                                  {/* Socle transparent : un seul carré, celui
+                                      de la mini-carte. Le NOIR ET BLANC porte
+                                      sur le GLYPHE seul (prop desature) —
+                                      désaturer le socle effacerait la teinte
+                                      qui dit le registre. Couleur = en ligne
+                                      ici ; noir et blanc = pas en ligne, mais
+                                      quelque chose t'attend. */}
                                   <PlatformLogo platform={x.p} size={20} desature
-                                    fond={x.ton==='warn'?"#FFF6E3":"#FEF2F2"}
-                                    bord="transparent"/>
+                                    fond="transparent" bord="transparent"/>
                                 </span>
                               ));
                             })()}
