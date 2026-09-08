@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
+import {
+  type AspectRow,
+  categorieDuJob,
+  rapprocherValeursBeebs,
+} from "../_shared/beebs-valeurs.ts";
 
 // Appelée par l'extension Chrome (background service worker) toutes les 30 min.
 // Auth : JWT utilisateur (Bearer). Les jobs sont lus via un client scoped user
@@ -1105,6 +1110,81 @@ serve(async (req) => {
         }
       }
     } catch (_e) { /* l'adresse fraîche est un confort : jamais un point de panne */ }
+
+    // ══ BEEBS : LA VALEUR PART DANS L'ORTHOGRAPHE DE BEEBS, ET SUR LE CHAMP
+    //    QUI LA RÉCLAME (2026-09-08) ═════════════════════════════════════════
+    // CE QUI SE PASSAIT, relevé dans platform_fields.warnings des jobs bloqués :
+    //   · job 500c04c6 (soutien-gorge Darjeeling) — la fiche porte « 85 G », la
+    //     catégorie posée a DEUX champs « Taille » : le 1er en XXXS/30…, le 2nd
+    //     en 75A…95L. La valeur EXISTE, dans le second, écrite « 85G ». La
+    //     cascade de l'extension compare sans accent ni ponctuation mais AVEC
+    //     les espaces : « 85 G » ne matche « 85G » sur AUCUN des deux. Les deux
+    //     champs restent vides, le needsUser désigne le 1er, la réponse de la
+    //     vendeuse atterrit sur le 1er, et le 2ᵉ redemande — la boucle.
+    //   · cas fondateur du 06/09 (Joséphine, chemises homme) : même forme, deux
+    //     « Taille » dont l'une est le col.
+    // Ce bloc re-ÉPELLE la valeur du job dans l'orthographe du catalogue et la
+    // ROUTE vers le champ homonyme quand c'est lui qui l'accepte. Il ne CHOISIT
+    // jamais : sans correspondance sûre, il ne pose rien et le job continue de
+    // demander à l'utilisateur (cf. _shared/beebs-valeurs.ts pour les garde-fous).
+    //
+    // CANAL : platform_fields.beebsAspects et les clés racines dédiées
+    // (taille, marque, etat…) — ceux que l'extension 0.6.20 lit DÉJÀ en
+    // production. Aucun octet d'extension ne change, et rien n'est réécrit en
+    // base : on ne fait que servir la valeur bien écrite.
+    // ⚠️ Ce n'est PAS republish_user_fields : ce canal-là n'est lu que par
+    // l'étape de capture des REPUBLICATIONS Vinted (background.js), jamais par
+    // le remplissage d'un formulaire Beebs. L'y écrire n'aurait rien changé.
+    try {
+      const beebsServis = out.filter((j) => j.platform === "beebs" && j.action === "publish");
+      const cats = [...new Set(
+        beebsServis
+          .map((j) => categorieDuJob((j.platform_fields ?? {}) as Record<string, unknown>))
+          .filter((c): c is string => Boolean(c)),
+      )];
+      if (cats.length) {
+        const { data: rows } = await userClient
+          .from("platform_category_aspects")
+          .select("category_key, field_key, field_label, required, allowed_values")
+          .eq("platform", "beebs")
+          .in("category_key", cats);
+        const parCategorie = new Map<string, AspectRow[]>();
+        for (const r of (rows ?? []) as AspectRow[]) {
+          const liste = parCategorie.get(r.category_key) ?? [];
+          liste.push(r);
+          parCategorie.set(r.category_key, liste);
+        }
+        let traduits = 0;
+        for (const j of beebsServis) {
+          const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+          const cat = categorieDuJob(pf);
+          if (!cat) continue;
+          const r = rapprocherValeursBeebs(pf, parCategorie.get(cat) ?? []);
+          if (!r.posees.length) continue;
+          const aspectsCourants = (pf["beebsAspects"] ?? {}) as Record<string, unknown>;
+          j.platform_fields = {
+            ...pf,
+            ...r.racines,
+            ...(Object.keys(r.aspects).length
+              ? { beebsAspects: { ...aspectsCourants, ...r.aspects } }
+              : {}),
+            // Trace : quelle valeur a été posée sur quel champ, et par quelle
+            // méthode. C'est ce qui permettra de mesurer après coup, en SQL,
+            // ce que le rapprochement a réellement débloqué.
+            beebs_valeurs_posees: r.posees,
+          };
+          traduits++;
+          console.log(
+            `[get-pending-jobs] job ${j.id} (beebs) : ` +
+            r.posees.map((p) => `${p.champ} ← "${p.valeur_posee}" (${p.methode}, depuis "${p.valeur_source}")`).join(" ; "),
+          );
+        }
+        if (traduits) {
+          console.log(`[get-pending-jobs] userId=${user.id} : valeurs Beebs rapprochées du catalogue sur ${traduits} job(s)`);
+        }
+      }
+    } catch (_e) { /* le rapprochement ne doit JAMAIS empêcher de servir la file */ }
+
     return json({
       jobs: out,
       annonces_en_attente: annoncesAttente,
