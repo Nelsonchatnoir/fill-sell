@@ -1272,7 +1272,17 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // La regle des DEUX lectures espacees de 2 h et le garde-fou
 // superseded_listing sont INCHANGES : on durcit chaque strike, on ne relache
 // rien. MIN_BUILD INCHANGE — le parc actuel garde son comportement.
-export const EXTENSION_LAST_COMMIT = '2026-09-08T06:24:38Z';
+// 2026-09-08T13:13:06Z (15h13 Paris, commit 11b85f1) : le BANDEAU DE
+// CONSENTEMENT (Didomi) est detecte et REFUSE avant toutes les gardes, sur
+// Leboncoin, Beebs et eBay — un compte neuf ne verra plus « brouillon
+// Leboncoin non termine » alors que la page n'affichait qu'une fenetre
+// cookies (6 publications perdues, samira.460, 08/09). Le module
+// content-scripts/consentement.js est aussi injecte sur VINTED mais n'y est
+// APPELE nulle part : inerte par decision assumee, le chemin Vinted ne bouge
+// pas d'un octet.
+// MIN_BUILD INCHANGE — c'est le paquet 0.6.21 qui porte la correction, et la
+// banniere « extension obsolete » ne s'allume qu'apres acceptation CWS.
+export const EXTENSION_LAST_COMMIT = '2026-09-08T13:13:06Z';
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
