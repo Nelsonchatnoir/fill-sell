@@ -677,19 +677,17 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 
 /* ── FOND FIGÉ PENDANT QU'UNE MODALE EST OUVERTE (2026-09-08) ───────────────
    Posée/retirée par useFondFige (src/utils/modale.js), jamais à la main.
-   `position:fixed` sur le body est le SEUL verrou que Safari iOS honore :
-   `overflow:hidden` seul y laisse passer le geste, et c'est ce qui faisait
-   défiler l'app derrière la popup « Retirer des plateformes » jusqu'à sortir
-   le bouton « Fermer » de l'écran (constat du 08/09).
-   Le décalage `top` est posé en JS pour ne pas perdre la position de lecture.
+   ⚠️ CES DEUX PREMIÈRES RÈGLES NE SUFFISENT PAS, ET C'EST LE PIÈGE : dans
+   cette app LE BODY NE DÉFILE PAS — tout le défilement vit dans
+   .wrap.page-pad (mesuré en prod : 2 462 px de contenu pour 667 px de haut,
+   document lui-même non scrollable). `overflow:hidden` sur le body n'y
+   change donc rien, et c'est ce qui laissait l'app défiler derrière la popup
+   « Retirer des plateformes » jusqu'à sortir le bouton « Fermer » de l'écran.
+   Le vrai verrou est posé en JS, sur le conteneur qui défile vraiment ; ces
+   deux règles ne sont que la ceinture, pour le jour où le body défilerait.
    `.bnav` est retirée : elle porte un backdrop-filter, donc sa propre couche
    de compositing, que WebKit peut placer au-dessus de la modale quel que soit
    le z-index. Elle ne sert à rien tant qu'une modale est ouverte. */
 html.fs-modale-ouverte { overflow: hidden; }
-html.fs-modale-ouverte body {
-  position: fixed;
-  left: 0; right: 0; width: 100%;
-  overflow: hidden;
-  overscroll-behavior: none;
-}
+html.fs-modale-ouverte body { overflow: hidden; overscroll-behavior: none; }
 html.fs-modale-ouverte .bnav { display: none !important; }

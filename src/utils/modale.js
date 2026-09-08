@@ -9,52 +9,75 @@ import { useEffect } from 'react';
 // exactement la panne du 07/09, sur une modale que le lot d'alors n'avait pas
 // couverte.
 //
-// DEUX CAUSES DISTINCTES, ET LE PATRON PARTAGÉ N'EN RÉGLAIT QU'UNE :
+// ⛔ CE QUI FAIT ÉCHOUER LE CORRECTIF « ÉVIDENT », ET QUE SEULE L'INSPECTION
+// RÉVÈLE : dans cette app, LE BODY NE DÉFILE PAS. Mesuré en production —
+// `document.documentElement.scrollHeight` (770) est égal à la hauteur de la
+// fenêtre, tandis que `.wrap.page-pad` porte 2 462 px de contenu pour 667 px
+// de haut. Tout le défilement de l'app vit donc dans ce conteneur.
+// Conséquence : `overflow:hidden` sur le body, ou `position:fixed` dessus — le
+// remède qu'on trouve partout et que j'avais écrit d'abord — n'a AUCUN effet
+// ici. Le geste continue de partir dans le conteneur. Il faut figer
+// L'ÉLÉMENT QUI DÉFILE VRAIMENT, et lui rendre sa position ensuite.
 //
-//  1. LE CHAÎNAGE DU DÉFILEMENT. Le voile a bien `overscroll-behavior:contain`,
-//     mais WebKit ne l'honore de façon fiable que depuis iOS 16 — et jamais
-//     quand le voile lui-même n'a rien à faire défiler. Le geste part alors
-//     dans le body. Le seul verrou qui tienne sur iOS est de FIGER le body en
-//     `position:fixed`, en mémorisant la position pour la rendre à la
-//     fermeture. `overflow:hidden` seul ne suffit pas sur ce navigateur, c'est
-//     un fait connu de WebKit.
-//
-//  2. LA BARRE DE NAVIGATION PASSAIT DEVANT. Le voile est à z-index 1000 et
-//     `.bnav` à 50 : sur le papier, la modale gagne, et l'inspection le
-//     confirme — aucun ancêtre ne crée de contexte d'empilement. Mais `.bnav`
-//     porte un `backdrop-filter`, qui la place dans sa propre couche de
-//     compositing ; sur WebKit, cette couche peut se retrouver AU-DESSUS,
-//     indépendamment du z-index. Plutôt que de courir après les couches, on
-//     retire la barre pendant qu'une modale est ouverte : elle ne sert à rien
-//     à ce moment-là, et l'utilisateur la retrouve en fermant.
+// La seconde cause est ailleurs : LA BARRE DE NAVIGATION PASSAIT DEVANT. Le
+// voile est à z-index 1000 et `.bnav` à 50 ; l'inspection confirme qu'aucun
+// ancêtre ne crée de contexte d'empilement, donc sur le papier la modale
+// gagne. Mais `.bnav` porte un `backdrop-filter`, qui la place dans sa propre
+// couche de compositing — que WebKit peut placer au-dessus, quel que soit le
+// z-index. Plutôt que de courir après les couches, on retire la barre pendant
+// qu'une modale est ouverte : elle ne sert à rien à ce moment-là.
 //
 // ⛔ POURQUOI UN COMPTEUR ET PAS UN BOOLÉEN : deux modales peuvent se
 // superposer (une confirmation par-dessus un formulaire). Avec un booléen, la
-// fermeture de la seconde déverrouillerait le fond alors que la première est
-// encore ouverte. Le compteur ne rend le fond qu'au dernier départ.
+// fermeture de la seconde rendrait le fond alors que la première est encore
+// ouverte. Le compteur ne le rend qu'au dernier départ.
 // ═══════════════════════════════════════════════════════════════════════════
 
 let ouvertes = 0;
-let positionRendue = 0;
+let figes = [];
+
+// Les conteneurs qui portent réellement le défilement, au moment où la modale
+// s'ouvre. On les cherche au lieu de coder un sélecteur en dur : la classe du
+// conteneur principal peut changer, la propriété qui le rend scrollable, non.
+function conteneursQuiDefilent() {
+  const out = [];
+  const racine = document.body;
+  if (!racine) return out;
+  for (const el of racine.querySelectorAll('*')) {
+    // Un voile de modale défile légitimement — c'est même le but. On ne fige
+    // que ce qui est SOUS la modale.
+    if (getComputedStyle(el).position === 'fixed') continue;
+    const s = getComputedStyle(el);
+    if ((s.overflowY === 'auto' || s.overflowY === 'scroll')
+        && el.scrollHeight > el.clientHeight + 8) out.push(el);
+  }
+  return out;
+}
 
 function verrouiller() {
   ouvertes += 1;
   if (ouvertes > 1) return;
-  positionRendue = window.scrollY || window.pageYOffset || 0;
   document.documentElement.classList.add('fs-modale-ouverte');
-  // Le décalage compense le `position:fixed` posé par la classe : sans lui, la
-  // page sauterait en haut à l'ouverture, et l'utilisateur perdrait sa place.
-  document.body.style.top = `-${positionRendue}px`;
+  // Mémoriser la position AVANT de couper l'overflow : le navigateur remet
+  // scrollTop à zéro dès qu'un conteneur ne peut plus défiler, et l'utilisateur
+  // retrouverait le haut de son stock en fermant la modale.
+  figes = conteneursQuiDefilent().map((el) => ({
+    el, scrollTop: el.scrollTop, overflow: el.style.overflow,
+  }));
+  for (const f of figes) f.el.style.overflow = 'hidden';
 }
 
 function deverrouiller() {
   ouvertes = Math.max(0, ouvertes - 1);
   if (ouvertes > 0) return;
   document.documentElement.classList.remove('fs-modale-ouverte');
-  document.body.style.top = '';
-  // Restaurée SANS animation : un défilement doux ici donnerait l'impression
-  // que la page bouge toute seule après la fermeture.
-  window.scrollTo(0, positionRendue);
+  for (const f of figes) {
+    f.el.style.overflow = f.overflow;
+    // Rendue sans animation : un défilement doux ici donnerait l'impression
+    // que la page bouge toute seule après la fermeture.
+    f.el.scrollTop = f.scrollTop;
+  }
+  figes = [];
 }
 
 /**
