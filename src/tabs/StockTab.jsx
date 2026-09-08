@@ -731,10 +731,34 @@ const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects",
 // plus épais d'un côté que de l'autre (capture Nico, 11h05). Une `border` en
 // entier se rend nette et symétrique, à tous les taux de pixels.
 //
-// Le padding passe de 3 à 1 px pour que la carte garde EXACTEMENT le gabarit
-// des logos non teintés (1 + 2 = 3 px de chaque côté) : une plateforme ne
-// grandit pas et ne fait pas sauter la rangée selon son état.
-const LOGO_TEINTE = (t) => ({ background: t.fond, border: `2px solid ${t.trait}`, padding: 1 });
+// ⚠️ PADDING À ZÉRO — INSPECTÉ DANS LE NAVIGATEUR, PAS SUPPOSÉ (08/09).
+// Relevé sur l'app en production, sur une carte réellement teintée :
+//   .plogo   background #FFF6E3, border 1.6px #8A6100, padding 1px, 25.2 px
+//   └ span   transparent, 20 px            ← wrapper de désaturation
+//     └ img  transparent, 20 px            ← l'icône Beebs
+// AUCUN élément du DOM ne pose de blanc. Le liseré clair visible venait de
+// DEUX choses : ce padding de 1 px qui laissait voir le fond pâle, et — pour
+// Beebs et Leboncoin — le cadre crème qui fait PARTIE de l'icône d'app
+// officielle (un PNG de marque, qu'on ne retouche pas).
+// Padding 0 : la bordure touche le logo. Deux couches, pas trois.
+// Bordure 3 px au lieu de 2 : elle absorbe le padding supprimé, donc la carte
+// garde EXACTEMENT son gabarit (20 + 3 + 3 = 26 px, comme un logo non teinté),
+// et un trait plus épais se voit mieux sur une photo chargée.
+//
+// ⚠️ LE HALO BLANC N'EST PAS UNE COQUETTERIE — c'est ce qui fait tenir la
+// couleur sur N'IMPORTE QUELLE photo. L'ambre #8A6100 disparaissait sur une
+// couverture orange (capture Nico du 08/09) alors que le rouge tenait : une
+// teinte ne peut pas être lisible sur tous les fonds d'un parc d'articles.
+// Un liseré blanc EXTÉRIEUR sépare la bordure du fond quel qu'il soit —
+// orange, beige, sombre, bariolé — sans changer la palette. En box-shadow,
+// donc sans occuper la moindre place dans la mise en page : le gabarit ne
+// bouge pas. L'ombre portée d'origine est conservée derrière lui.
+const LOGO_TEINTE = (t) => ({
+  background: t.fond,
+  border: `3px solid ${t.trait}`,
+  padding: 0,
+  boxShadow: `0 0 0 2px rgba(255,255,255,0.92), 0 1px 4px rgba(16,32,27,0.35)`,
+});
 
 // ── UNE MODALE DOIT TOUJOURS POUVOIR SE FERMER (2026-09-07) ─────────────────
 // Capture réelle (17h22, téléphone) : la modale « Où en est la publication »
