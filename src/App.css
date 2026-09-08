@@ -675,19 +675,17 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
 .heatmap-cell.l3 { background:#1D9E75; }
 .heatmap-cell.l4 { background:#0F6E56; }
 
-/* ── FOND FIGÉ PENDANT QU'UNE MODALE EST OUVERTE (2026-09-08) ───────────────
-   Posée/retirée par useFondFige (src/utils/modale.js), jamais à la main.
-   ⚠️ CES DEUX PREMIÈRES RÈGLES NE SUFFISENT PAS, ET C'EST LE PIÈGE : dans
-   cette app LE BODY NE DÉFILE PAS — tout le défilement vit dans
-   .wrap.page-pad (mesuré en prod : 2 462 px de contenu pour 667 px de haut,
-   document lui-même non scrollable). `overflow:hidden` sur le body n'y
-   change donc rien, et c'est ce qui laissait l'app défiler derrière la popup
-   « Retirer des plateformes » jusqu'à sortir le bouton « Fermer » de l'écran.
-   Le vrai verrou est posé en JS, sur le conteneur qui défile vraiment ; ces
-   deux règles ne sont que la ceinture, pour le jour où le body défilerait.
-   `.bnav` est retirée : elle porte un backdrop-filter, donc sa propre couche
-   de compositing, que WebKit peut placer au-dessus de la modale quel que soit
-   le z-index. Elle ne sert à rien tant qu'une modale est ouverte. */
-html.fs-modale-ouverte { overflow: hidden; }
-html.fs-modale-ouverte body { overflow: hidden; overscroll-behavior: none; }
+/* ── UNE MODALE EST OUVERTE (2026-09-08) ────────────────────────────────────
+   Classe posée/retirée par useFondFige (src/utils/modale.js), jamais à la main.
+   ⚠️ LE BLOCAGE DU DÉFILEMENT N'EST PLUS FAIT EN CSS, et c'est délibéré :
+   figer le conteneur par overflow:hidden lui faisait perdre sa position, et la
+   liste revenait en haut à chaque fermeture — insupportable sur 350 articles.
+   Le geste est désormais intercepté en JS (touchmove non passif), donc rien
+   n'est figé et rien n'est perdu. Il ne reste ici que deux choses :
+   · overscroll-behavior, ceinture pour les navigateurs qui l'honorent ;
+   · .bnav retirée — elle porte un backdrop-filter, donc sa propre couche de
+     compositing, que WebKit peut placer AU-DESSUS de la modale quel que soit
+     le z-index (constaté sur iPhone : la barre recouvrait le bouton Fermer).
+     Elle ne sert à rien tant qu'une modale est ouverte. */
+html.fs-modale-ouverte, html.fs-modale-ouverte body { overscroll-behavior: none; }
 html.fs-modale-ouverte .bnav { display: none !important; }
