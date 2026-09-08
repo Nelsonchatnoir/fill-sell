@@ -27,7 +27,7 @@ import { urlsPhotos, entreesPhotos } from '../utils/photos';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
 import {
   PLATEFORMES_STOCK, LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
-  filtrerStock, trierStock, TRIS_STOCK, libelleTri, pastillesEtat,
+  filtrerStock, trierStock, TRIS_STOCK, libelleTri, pastillesEtat, etatPlateformes,
 } from '../utils/stockFiltres';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
@@ -1344,11 +1344,26 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
   );
 }
 
-function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove }) {
+// ── LA PORTE UNIQUE, PAR PLATEFORME (élargie le 2026-09-08) ──────────────────
+// Cette popup raisonnait déjà plateforme par plateforme, une ligne un état une
+// action : c'est exactement la logique du blocage, qui vit sur la plateforme et
+// jamais sur l'article. On y ajoute donc les deux états qui manquaient, au lieu
+// d'inventer un écran :
+//   · en ligne         → « Retirer »   (existant, inchangé)
+//   · en échec         → « Relancer »  (relancerJobEchoue, avec ses gardes)
+//   · à compléter      → « Compléter » (mini-éditeur du socle needs_user)
+//   · rien de tout ça  → rien, comme avant.
+// Bénéfice décisif : elle liste les QUATRE plateformes même quand l'annonce n'y
+// est pas publiée. Un blocage Beebs y apparaît donc toujours — là où le logo
+// sur la photo, lui, n'existe que pour les plateformes en ligne.
+function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer }) {
   useFermetureEchap(onClose);
   const [confirming, setConfirming] = useState(null);
   const [errMsg, setErrMsg] = useState(null);
   const { published, removalState, latestPubByPlatform } = computeRemovalInfo(jobsAll);
+  const etatPlat = etatPlateformes(jobsAll, lang);
+  const aCompleterPar = new Map(etatPlat.aCompleter.map(x => [x.platform, x]));
+  const enEchecPar = new Map(etatPlat.enEchec.map(x => [x.platform, x]));
   const fr = lang !== "en";
   return (
     <div
@@ -1414,9 +1429,60 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                     {noUrl && !urlRecovering && <span>{p === "beebs"
                       ? (fr ? "Jamais mise en ligne par Beebs — vérifie ton dressing Beebs" : "Never went live on Beebs — check your Beebs wardrobe")
                       : (fr ? `Lien d'annonce introuvable — retire-la sur ${label}` : `Listing link missing — remove it on ${label}`)}</span>}
-                    {!isPublished && <span>{fr ? "Pas publiée ici" : "Not listed here"}</span>}
+                    {/* « Pas publiée ici » se tait quand on a mieux à dire :
+                        un motif de blocage est plus utile qu'une absence. */}
+                    {!isPublished && !aCompleterPar.has(p) && !enEchecPar.has(p) && <span>{fr ? "Pas publiée ici" : "Not listed here"}</span>}
+                    {aCompleterPar.has(p) && (
+                      <><span style={{ width:5, height:5, borderRadius:"50%", background:"#E8B54D", flex:"0 0 auto" }}/>
+                      <span style={{ color:"#8A6100", fontWeight:600 }}>
+                        {aCompleterPar.get(p).champ
+                          ? (fr ? `Il manque ${aCompleterPar.get(p).champ}` : `${aCompleterPar.get(p).champ} is missing`)
+                          : (fr ? "Une information est attendue" : "Information is awaited")}
+                      </span></>
+                    )}
+                    {enEchecPar.has(p) && (
+                      <><span style={{ width:5, height:5, borderRadius:"50%", background:"#B91C1C", flex:"0 0 auto" }}/>
+                      <span style={{ color:"#B91C1C", fontWeight:600 }}>{fr ? "La publication a échoué" : "Publishing failed"}</span></>
+                    )}
                   </div>
                 </div>
+                {/* Actions de déblocage. Elles COEXISTENT avec « Retirer »
+                    quand les deux s'appliquent (une republication Vinted en
+                    attente est en ligne ET bloquée) : on ne retire jamais un
+                    geste légitime pour en offrir un autre. */}
+                {aCompleterPar.has(p) && !armed && (
+                  <button
+                    onClick={() => { const e = aCompleterPar.get(p); if (e?.job) { onClose(); onCompleter?.(e.job); } }}
+                    disabled={!aCompleterPar.get(p)?.job?.platform_fields?.needsUserField}
+                    title={!aCompleterPar.get(p)?.job?.platform_fields?.needsUserField
+                      ? (fr ? "Cette information ne peut pas être saisie ici — ouvre l'annonce sur la plateforme, puis relance."
+                            : "This cannot be filled in here — open the listing on the platform, then relaunch.")
+                      : undefined}
+                    style={{ flex:"0 0 auto", padding:"7px 14px", borderRadius:10, border:"1px solid #EED9A6",
+                      background: aCompleterPar.get(p)?.job?.platform_fields?.needsUserField ? "#8A6100" : "#FFF6E3",
+                      color: aCompleterPar.get(p)?.job?.platform_fields?.needsUserField ? "#fff" : "#B79355",
+                      fontSize:12, fontWeight:700,
+                      cursor: aCompleterPar.get(p)?.job?.platform_fields?.needsUserField ? "pointer" : "default", fontFamily:"inherit" }}
+                  >
+                    {fr ? "Compléter" : "Complete"}
+                  </button>
+                )}
+                {enEchecPar.has(p) && !armed && (()=>{
+                  const e = enEchecPar.get(p);
+                  const info = e?.job ? relanceManuelleInfo(e.job, jobsAll) : null;
+                  return (
+                    <button
+                      onClick={() => { if (info && e?.job) { onClose(); onRelancer?.(e.job, info.mode); } }}
+                      disabled={!info}
+                      title={!info ? (fr ? "Rien à relancer ici pour l'instant." : "Nothing to relaunch here for now.") : undefined}
+                      style={{ flex:"0 0 auto", padding:"7px 14px", borderRadius:10, border:"1px solid #FECACA",
+                        background: info ? "#B91C1C" : "#FEF2F2", color: info ? "#fff" : "#D08B8B",
+                        fontSize:12, fontWeight:700, cursor: info ? "pointer" : "default", fontFamily:"inherit" }}
+                    >
+                      {fr ? "Relancer" : "Relaunch"}
+                    </button>
+                  );
+                })()}
                 {online && !armed && (
                   <button
                     onClick={() => { setErrMsg(null); setConfirming(p); }}
@@ -7566,28 +7632,19 @@ const StockTab = memo(function StockTab({
                               // l'annonce existe (masquée ≠ disparue) et le tap
                               // vers le modal de retrait reste le bon geste.
                               const masque=vintedMasquee&&p==="vinted";
-                              // ── L'ANNEAU DIT L'ÉTAT DE CETTE PLATEFORME (08/09) ──
-                              // Ambre : elle réclame une information. Rouge : sa
-                              // publication a échoué. L'anneau ne peut apparaître
-                              // que sur une plateforme EN LIGNE (logosEnLigne ne
-                              // porte que celles-là) — typiquement une
-                              // republication Vinted en attente. Pour toutes les
-                              // autres, c'est la pastille de la rangée .icons qui
-                              // porte l'information ET le geste : elle, elle est
-                              // toujours là.
-                              // ⚠️ Quand l'anneau est posé, le tap ouvre le
-                              // DÉBLOCAGE plutôt que le retrait : entre « gérer
-                              // l'annonce » et « la débloquer », c'est le second
-                              // qui presse. Le retrait reste accessible par la
-                              // carte (Vendre) et la feuille d'avancement.
+                              // ── L'ANNEAU SIGNALE, IL N'AGIT PAS (08/09) ────────
+                              // Ambre : cette plateforme réclame une information.
+                              // Rouge : sa publication a échoué. Le tap reste
+                              // celui qu'il a toujours été — il ouvre la popup
+                              // « Retirer des plateformes », qui liste les QUATRE
+                              // plateformes ligne par ligne et porte désormais
+                              // « Compléter » et « Relancer » à côté de
+                              // « Retirer ». Une seule porte, et le geste se
+                              // choisit sur la bonne ligne.
                               const etatLogo=indexEtat.get(String(item.id));
-                              const bloqueIci=etatLogo?.aCompleter?.find(x=>x.platform===p)??null;
-                              const echecIci=!bloqueIci?(etatLogo?.enEchec?.find(x=>x.platform===p)??null):null;
-                              const relanceIci=echecIci?relanceManuelleInfo(echecIci.job,jobsAll):null;
+                              const bloqueIci=etatLogo?.aCompleter?.some(x=>x.platform===p);
+                              const echecIci=!bloqueIci&&etatLogo?.enEchec?.some(x=>x.platform===p);
                               const anneau=bloqueIci?"#8A6100":echecIci?"#B91C1C":null;
-                              const gesteLogo=bloqueIci&&bloqueIci.job?.platform_fields?.needsUserField
-                                ?()=>setNeedsUserJob(bloqueIci.job)
-                                :(echecIci&&relanceIci?()=>relancerJobEchoue(echecIci.job,relanceIci.mode):null);
                               return(
                                 <span key={p} className="plogo"
                                   title={removing?(lang==="en"?`Removing from ${PLATFORM_LABELS[p]||p}…`:`Retrait de ${PLATFORM_LABELS[p]||p} en cours…`)
@@ -7598,11 +7655,53 @@ const StockTab = memo(function StockTab({
                                   style={{cursor:"pointer",
                                     ...(anneau?{boxShadow:`0 0 0 2px ${anneau}, 0 1px 4px rgba(16,32,27,0.25)`}:{}),
                                     ...(removing?{opacity:.35}:masque?{opacity:.45}:{})}}
-                                  onClick={e=>{e.stopPropagation();if(gesteLogo)gesteLogo();else setRemoveModalItem(item);}}>
+                                  onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
                                   <PlatformLogo platform={p} size={20}/>
                                 </span>
                               );
                             })}
+                            {/* ── « QUELQUE CHOSE T'ATTEND ICI » (2026-09-08) ────
+                                Le logo d'une plateforme BLOQUÉE apparaît même
+                                quand l'annonce n'y est pas en ligne. Il ne dit
+                                pas « en ligne ici » — il dit qu'il y a un geste
+                                à faire de ce côté.
+                                ⚠️ DISTINCTION SANS AMBIGUÏTÉ, et c'est le point
+                                délicat : « grisé » servait DÉJÀ à deux autres
+                                choses (retrait en cours à 35 %, annonce masquée
+                                ou brouillon à 45 %) — un troisième sens porté
+                                par la seule opacité aurait été illisible. Ces
+                                logos-ci sont donc en NOIR ET BLANC
+                                (grayscale), ce qui n'existe nulle part
+                                ailleurs. La règle se lit d'un coup d'œil :
+                                COULEUR = en ligne, NOIR ET BLANC = pas en
+                                ligne mais en attente. L'anneau dit lequel des
+                                deux registres (ambre : il manque une info ;
+                                rouge : la publication a échoué).
+                                Aucune hauteur ajoutée : .glogos est une rangée
+                                à hauteur fixe, posée sur la photo. */}
+                            {(()=>{
+                              const e=indexEtat.get(String(item.id));
+                              if(!e)return null;
+                              const dejaLa=new Set(logosEnLigne);
+                              const enAttente=[
+                                ...e.aCompleter.map(x=>({p:x.platform,ton:'warn'})),
+                                ...e.enEchec.map(x=>({p:x.platform,ton:'err'})),
+                              ].filter(x=>!dejaLa.has(x.p));
+                              if(!enAttente.length)return null;
+                              return enAttente.map(x=>(
+                                <span key={`att-${x.p}`} className="plogo"
+                                  title={x.ton==='warn'
+                                    ?(lang==='en'?`${PLATFORM_LABELS[x.p]||x.p} is waiting for information — tap to complete`
+                                                 :`${PLATFORM_LABELS[x.p]||x.p} attend une information — toucher pour compléter`)
+                                    :(lang==='en'?`${PLATFORM_LABELS[x.p]||x.p}: publishing failed — tap to relaunch`
+                                                 :`${PLATFORM_LABELS[x.p]||x.p} : la publication a échoué — toucher pour relancer`)}
+                                  style={{cursor:"pointer",filter:"grayscale(1)",opacity:.62,
+                                    boxShadow:`0 0 0 2px ${x.ton==='warn'?"#8A6100":"#B91C1C"}, 0 1px 4px rgba(16,32,27,0.25)`}}
+                                  onClick={ev=>{ev.stopPropagation();setRemoveModalItem(item);}}>
+                                  <PlatformLogo platform={x.p} size={20}/>
+                                </span>
+                              ));
+                            })()}
                           </div>
                         )}
                         {(item.quantite||1)>1&&<div className="gqty">×{item.quantite}</div>}
@@ -7984,26 +8083,22 @@ const StockTab = memo(function StockTab({
                                 if(!pastilles.length)return null;
                                 return pastilles.map((p,k)=>{
                                   const amb=p.ton==='warn';
-                                  // Ouvrable seulement si l'app sait réellement
-                                  // quoi ouvrir : sinon la pastille INFORME,
-                                  // elle ne promet pas un geste qui n'existe pas.
-                                  const relance=!amb&&p.job?relanceManuelleInfo(p.job,jobsAll):null;
-                                  const ouvrable=amb
-                                    ?!!p.job?.platform_fields?.needsUserField
-                                    :!!relance;
-                                  const geste=()=>{
-                                    if(!ouvrable)return;
-                                    if(amb)setNeedsUserJob(p.job);
-                                    else relancerJobEchoue(p.job,relance.mode);
-                                  };
+                                  // UNE SEULE PORTE (08/09) : la pastille ouvre
+                                  // la popup « Retirer des plateformes », qui
+                                  // porte désormais l'état ET l'action de
+                                  // chaque plateforme, ligne par ligne. Plus de
+                                  // logique de déblocage ici — et donc plus de
+                                  // pastille morte : même quand aucun geste
+                                  // n'est possible, la popup dit lequel et
+                                  // pourquoi, ce qui est déjà utile.
+                                  const ouvrir=(e)=>{e.stopPropagation();setRemoveModalItem(item);};
                                   return (
                                     <div key={`etat-${p.ton}-${k}`} className="micon"
-                                      role={ouvrable?"button":undefined}
-                                      tabIndex={ouvrable?0:undefined}
-                                      onClick={ouvrable?(e)=>{e.stopPropagation();geste();}:undefined}
-                                      onKeyDown={ouvrable?(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();geste();}}:undefined}
+                                      role="button" tabIndex={0}
+                                      onClick={ouvrir}
+                                      onKeyDown={(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();ouvrir(e);}}}
                                       title={p.detail}
-                                      style={{cursor:ouvrable?"pointer":"default",
+                                      style={{cursor:"pointer",
                                         background:amb?"#FFF6E3":"#FEF2F2",
                                         border:`1px solid ${amb?"#EED9A6":"#FECACA"}`,
                                         color:amb?"#8A6100":"#B91C1C"}}>
@@ -8599,7 +8694,11 @@ const StockTab = memo(function StockTab({
       {/* Modal de retrait ciblé (2026-07-19). jobsAll relu à CHAQUE rendu
           depuis jobsByInventaire : le patch local post-insert et le poll de
           20 s font vivre les lignes (En ligne → Retrait en cours… → Retirée)
-          pendant que le modal est ouvert. Fermeture = aucune action. */}
+          pendant que le modal est ouvert. Fermeture = aucune action.
+          onCompleter / onRelancer (08/09) : les deux gestes de déblocage
+          passent par les chemins EXISTANTS — le mini-éditeur du socle
+          needs_user, et la relance manuelle avec ses gardes. La popup ne fait
+          que les proposer au bon endroit, une ligne par plateforme. */}
       {removeModalItem&&(
         <RemovePlatformsModal
           item={removeModalItem}
@@ -8607,6 +8706,8 @@ const StockTab = memo(function StockTab({
           lang={lang}
           busyPlatform={removeBusy}
           onClose={()=>setRemoveModalItem(null)}
+          onCompleter={(job)=>setNeedsUserJob(job)}
+          onRelancer={(job,mode)=>relancerJobEchoue(job,mode)}
           onRemove={armRemoveJob}
         />
       )}
