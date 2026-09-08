@@ -130,7 +130,16 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // courant est la 0.6.13 (même contenu + chantier « Prix de départ » eBay :
 // gate pré-clic anti-Enchères, message/diagnostic du refus du brouillon,
 // anti-doublon pré-dépôt sur ebay_draft_id).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19'];
+// 0.6.20 ajoutée le 08/09 — geste POST-PUBLICATION n°1, sur PREUVE en base et
+// non sur une supposition : 24 comptes du parc (hors emails de test) portent
+// extension_version='0.6.20' / extension_build='2026-09-06T21:33:19Z+d994e33',
+// le build du zip livré, vus dans les 3 derniers jours (dernier heartbeat
+// 08/09 15h28 Paris). Le Chrome Web Store l'a donc ACCEPTÉE et la SERT — la
+// mention « EN REVIEW, ne pas retéléverser » qui gardait le dossier était
+// périmée, et elle bloquait à tort l'envoi de la 0.6.21.
+// Le paquet courant est la 0.6.21 (refus du bandeau de consentement Didomi
+// avant toutes les gardes, sur Leboncoin/Beebs/eBay).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20'];
 // 0.6.14, 0.6.17 et 0.6.19 ajoutées le 06/09 au bump 0.6.20 : la liste était
 // restée à 0.6.13 alors que ces trois-là ont bel et bien été téléversées —
 // 0.6.14 (paquet CWS courant noté le 31/08), 0.6.17 (elle TOURNE en prod :
