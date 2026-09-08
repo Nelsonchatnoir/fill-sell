@@ -543,7 +543,7 @@ function calculerEtats() {
   }
 }
 
-// Fraîcheur PAR plateforme (0.6.23) : Vinted est sondée au rythme régulier,
+// Fraîcheur PAR plateforme (0.6.22, sonde de session) : Vinted est sondée au rythme régulier,
 // Leboncoin / eBay / Beebs seulement avant un job — un relevé porte donc
 // checked_at_par_plateforme. À défaut (relevé d'une version antérieure), le
 // checked_at global fait foi, comme avant.

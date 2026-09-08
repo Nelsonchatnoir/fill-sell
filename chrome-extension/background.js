@@ -8101,7 +8101,7 @@ async function noterSessionDeconnectee(accessToken, platform) {
     [platform]: false,
     checked_at: observeLe,
     http: { ...(base?.http ?? {}), [platform]: "login_redirect_observee" },
-    // Horodatage propre à l'observation (0.6.23) : le popup juge la fraîcheur
+    // Horodatage propre à l'observation (0.6.22, sonde de session) : le popup juge la fraîcheur
     // par plateforme, et cette déconnexion date de MAINTENANT.
     checked_at_par_plateforme: { ...(base?.checked_at_par_plateforme ?? {}), [platform]: observeLe },
   };
