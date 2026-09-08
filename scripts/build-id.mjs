@@ -1284,7 +1284,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // banniere « extension obsolete » ne s'allume qu'apres acceptation CWS.
 // 2026-09-08 (lot 0.6.22, commit 07b1edb) : pont Beebs par executeScript MAIN, sonde reseau du depot Leboncoin,
 // repli « Autre » sur Produit. EXTENSION_MIN_BUILD inchange (44 comptes encore en 0.6.19).
-export const EXTENSION_LAST_COMMIT = '2026-09-08T21:13:37Z'; // recale ade8cdd (0.6.23 : sonde de session 10 min reelles) — MIN_BUILD inchange
+export const EXTENSION_LAST_COMMIT = '2026-09-08T21:15:40Z'; // recale a0a4313 (0.6.22 avec la sonde de session) — MIN_BUILD inchange
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
