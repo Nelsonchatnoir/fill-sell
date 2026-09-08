@@ -12,6 +12,7 @@ import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
 import { repartirParVoie } from '../utils/ebayCompte';
+import { lbcProduitsDependants } from '../utils/lbcMaisonJardin';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '../utils/stockLimit';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
@@ -858,6 +859,16 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
     const chemin = pf.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? null;
     const categoryKey = Array.isArray(chemin) ? chemin.join(" > ") : null;
     if (job.platform === "ebay" || !f || (Array.isArray(f.allowed_values) && f.allowed_values.length) || !categoryKey) return;
+    // ── Listes DÉPENDANTES Maison & Jardin d'abord (2026-09-08) ─────────────
+    // Le catalogue plat porte la liste du DERNIER passage : decoration_type y
+    // vaut ["Autre"] depuis qu'un job est passé sous Univers « Autre », écrasant
+    // les 7 valeurs d'« Objet décoratif » (relevé prod 08/09). La liste relevée
+    // live pour la valeur COURANTE du premier combobox fait foi quand on l'a.
+    if (job.platform === "leboncoin") {
+      const dep = lbcProduitsDependants(categoryKey, String(f.field_key ?? ""),
+        (k) => String(pf.lbcAspects?.[k] ?? pf[k] ?? "").trim());
+      if (Array.isArray(dep) && dep.length) { setCatalogueAllowed(dep); return; }
+    }
     (async () => {
       try {
         const { data } = await supabase

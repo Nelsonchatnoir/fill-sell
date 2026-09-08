@@ -151,6 +151,15 @@ Deno.serve(async (req) => {
 
   // Suppression — UNIQUEMENT ebay_accounts. Rapprochement eiasToken puis pseudo.
   const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  // Compte eBay supprimé chez eBay ⇒ plus de voie API pour ces users (2026-09-08) :
+  // le drapeau retombe, l'app rend eBay à la voie extension. Best-effort, jamais
+  // bloquant pour l'accusé de réception dû à eBay.
+  const retirerVoieApi = async (adm: typeof admin, rows: { user_id: string }[] | null) => {
+    const ids = (rows ?? []).map((r) => r.user_id).filter(Boolean);
+    if (!ids.length) return;
+    const { error } = await adm.from("profiles").update({ ebay_voie_api: false }).in("id", ids);
+    if (error) console.warn(`[ebay-account-deletion] ebay_voie_api non remis à false (${ids.length}) : ${error.message}`);
+  };
   let effacees = 0;
   if (eias) {
     const { data: rows, error } = await admin.from("ebay_accounts").delete().eq("ebay_eias_token", eias).select("user_id");
@@ -164,6 +173,7 @@ Deno.serve(async (req) => {
       }
     } else {
       effacees += rows?.length ?? 0;
+      await retirerVoieApi(admin, rows);
     }
   }
   if (username) {
@@ -174,6 +184,7 @@ Deno.serve(async (req) => {
       return json({ error: "base" }, 500);
     }
     effacees += rows?.length ?? 0;
+    await retirerVoieApi(admin, rows);
   }
   console.log(`[ebay-account-deletion] notif ${notifId || "?"} · signature ${verdict.verdict} · ${effacees} ligne(s) ebay_accounts effacée(s)`);
   await journaliser({ kind: "notification", topic, notification_id: notifId, verdict: verdict.verdict, detail: verdict.detail, kid: verdict.kid, effacees, http_status: 200 });

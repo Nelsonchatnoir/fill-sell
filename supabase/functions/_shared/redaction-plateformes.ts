@@ -281,6 +281,46 @@ LONGUEUR — ${bas} à ${haut} caractères QUAND la matière le permet, pas dava
 ${hashtagBloc}`;
 }
 
+// ── TROP DE MAJUSCULES DANS LE TITRE (2026-09-08, refus Vinted) ─────────────
+// Vinted a refusé « Jaz Réveil de voyage BOURSIC 319-91 vintage avec étui » :
+// « Le titre contient trop de lettres majuscules » — un SEUL mot en capitales
+// (7 lettres) suffit, à 25 % de majuscules sur l'ensemble. On corrige donc À LA
+// GÉNÉRATION, pour toutes les plateformes, et par MOT : un mot entièrement en
+// capitales de 5 lettres ou plus redescend en Capitalisé (« Boursic »,
+// « Gore-Tex »). Les acronymes et marques courts (IKEA, H&M, NIKE, LEGO, DVD)
+// ont 4 lettres ou moins : jamais touchés. La marque de l'article, elle, est
+// réécrite EXACTEMENT comme la fiche l'écrit (« Levi's » reste « Levi's »),
+// jamais devinée. Un titre où les capitales resteraient majoritaires après ça
+// (rafale de mots courts) redescend aussi ses mots de 4 lettres, sauf la
+// marque. Les chiffres et la ponctuation ne comptent pas.
+const ACRONYMES_TOLERES = new Set(["IKEA", "NIKE", "LEGO", "ASOS", "DKNY", "HDMI", "USB", "GPS", "LED", "DVD", "VHS", "BMX", "SUV", "PS4", "PS5", "XL", "XXL", "XS", "XXS"]);
+function capitaliser(mot: string): string {
+  return mot.replace(/\p{L}+/gu, (seg) => seg.charAt(0).toUpperCase() + seg.slice(1).toLowerCase());
+}
+function tempererMajuscules(titre: string, marque?: string | null): string {
+  const t = String(titre ?? "");
+  const marqueFiche = String(marque ?? "").trim();
+  const estLaMarque = (mot: string) => marqueFiche && mot.replace(/[^\p{L}\p{N}]/gu, "").toLowerCase() === marqueFiche.replace(/[^\p{L}\p{N}]/gu, "").toLowerCase();
+  const toutCapitales = (mot: string) => {
+    const lettres = mot.replace(/[^\p{L}]/gu, "");
+    return lettres.length > 0 && lettres === lettres.toUpperCase() && lettres !== lettres.toLowerCase();
+  };
+  const passe = (texte: string, minLettres: number) => texte.split(/(\s+)/).map((mot) => {
+    if (/^\s+$/.test(mot) || !toutCapitales(mot)) return mot;
+    const lettres = mot.replace(/[^\p{L}]/gu, "");
+    if (lettres.length < minLettres) return mot;
+    if (ACRONYMES_TOLERES.has(lettres)) return mot;
+    if (estLaMarque(mot)) return mot.replace(/[\p{L}\p{N}'’&.-]+/u, () => marqueFiche);
+    return capitaliser(mot);
+  }).join("");
+  let sortie = passe(t, 5);
+  const lettres = sortie.replace(/[^\p{L}]/gu, "");
+  const majuscules = (sortie.match(/\p{Lu}/gu) ?? []).length;
+  if (lettres.length >= 8 && majuscules / lettres.length > 0.35) sortie = passe(sortie, 3);
+  if (sortie !== t) console.log(`[redaction] titre tempéré (majuscules) : « ${t} » → « ${sortie} »`);
+  return sortie;
+}
+
 // Tronquage de sécurité au dernier mot entier (jamais au milieu d'un mot, et
 // jamais au milieu d'un hashtag : on coupe sur une frontière d'espace).
 function clampToWord(s: string, max: number): string {
@@ -471,7 +511,7 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
                   console.warn(`[redaction] ${platform} hors gabarit (titre ${brutTitle.length}/${lim.titre}, desc ${brutDesc.length}/${lim.desc}) — tronqué, prompt ${VERSION_PROMPT}`);
                 }
                 platformListings[platform] = {
-                  title: lim ? clampToWord(brutTitle, lim.titre) : brutTitle,
+                  title: tempererMajuscules(lim ? clampToWord(brutTitle, lim.titre) : brutTitle, item?.marque),
                   // La description de la vendeuse passe INTACTE : ni tronquée,
                   // ni reformulée, quelle que soit la limite de la plateforme.
                   description: descVendeuse ?? (lim ? clampToWord(brutDesc, lim.desc) : brutDesc),

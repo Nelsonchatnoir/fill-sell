@@ -63,3 +63,7 @@ fillsell-backups/
 # future baseline.
 !supabase/migrations/*.sql
 !supabase/migrations_archive/*.sql
+
+# send-relance : source rapatriee de prod le 08/09 pour redeployer par le CLI (numero de version fige) —
+# elle porte des adresses e-mail d utilisateurs et des corps de mails nominatifs : JAMAIS commitee.
+supabase/functions/send-relance/

@@ -1374,7 +1374,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, publishedSet, queuedSet, lang,
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, publishedSet, queuedSet, lang, ebayVoieApi = false,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisHidden,
   // Compte eBay pas encore utilisable (07/09/2026, demande Joséphine). Vaut
@@ -1872,6 +1872,28 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
               {lang === "en" ? "Set up eBay" : "Paramétrer eBay"}
             </button>
           )}
+        </div>
+      )}
+      {/* Compte en voie EXTENSION (2026-09-08, ouverture du parcours à tous) :
+          eBay part par le formulaire ebay.fr, rien n'est grisé — on PROPOSE la
+          liaison OAuth, même section Réglages › Compte eBay ouverte par-dessus
+          le stepper. Le drapeau ebay_voie_api n'est posé QUE par le serveur,
+          après une connexion prouvée (ebay-oauth-callback) — jamais ici. */}
+      {!ebayBloque && !ebayVoieApi && selected.has("ebay") && (platformSupport?.ebay ?? "supported") === "supported" && onParametrerEbay && (
+        <div style={{ margin:"8px 0 0", display:"flex", flexWrap:"wrap", alignItems:"center", gap:8 }}>
+          <p style={{ margin:0, flex:"1 1 200px", minWidth:0, fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
+            {lang === "en"
+              ? "eBay goes through the extension. Prefer publishing from our servers? Link your eBay account."
+              : "eBay part par l'extension. Publier depuis nos serveurs ? Relie ton compte eBay."}
+          </p>
+          <button
+            type="button"
+            onClick={onParametrerEbay}
+            style={{ padding:"7px 13px", borderRadius:999, border:`1.5px solid ${T.tealDeep}`, background:"none",
+              color:T.tealDeep, fontSize:12.5, fontWeight:700, fontFamily:"inherit", cursor:"pointer", whiteSpace:"nowrap" }}
+          >
+            {lang === "en" ? "Link eBay" : "Relier eBay"}
+          </button>
         </div>
       )}
       {selected.size === 0 && (
@@ -4384,7 +4406,20 @@ export default function ListingPreviewScreen({
       if (!upErr)
         urls.push(supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl + `?v=${ts}`);
     }
-    if (urls.length) setPhotos(prev => [...prev, ...urls]);
+    if (urls.length) {
+      setPhotos(prev => [...prev, ...urls]);
+      // ── LA PHOTO AJOUTÉE APRÈS GÉNÉRATION PART AUSSI (2026-09-08) ────────
+      // Le job est construit depuis processedPhotos ; n'ajouter qu'à `photos`
+      // laissait la nouvelle photo HORS de l'annonce ET désalignait les deux
+      // listes (garde de longueur de permuterPhotos/handleRemovePhoto) — tout
+      // réordonnancement ultérieur redevenait muet, la vignette choisie n'était
+      // plus celle publiée. Même règle d'alignement que la suppression : on
+      // n'ajoute côté processedPhotos que si les listes étaient alignées ; le
+      // `type` positionnel est recalculé à l'insert (entreesPhotos).
+      setProcessedPhotos(prev => (Array.isArray(prev) && prev.length === photos.length
+        ? [...prev, ...urls.map(url => ({ url }))]
+        : prev));
+    }
   }
 
   function handleRemovePhoto(idx) {
@@ -7659,6 +7694,7 @@ export default function ListingPreviewScreen({
             queuedSet={queuedSet}
             ebayBloque={ebayBloque}
             ebayMotif={ebayMotif}
+            ebayVoieApi={Boolean(ebayCompte?.voieApi)}
             onParametrerEbay={() => setEbayPanneauOuvert(true)}
             lang={lang}
             onAnalyze={handleAnalyzePhotos}

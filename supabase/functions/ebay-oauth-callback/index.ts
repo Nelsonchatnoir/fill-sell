@@ -105,6 +105,21 @@ Deno.serve(async (req) => {
       return retour("erreur", "stockage");
     }
     console.log(`[ebay-oauth-callback] compte relié user=${userId} pseudo=${identite.username ? "oui" : "non"} eias=${identite.eiasToken ? "oui" : "non"}`);
+    // ── LA VOIE API S'OUVRE ICI, ET SEULEMENT ICI (2026-09-08, décision Nico) ──
+    // Un compte passe en voie API quand sa connexion OAuth est ÉTABLIE (jeton
+    // échangé, ligne écrite) ET PROUVÉE : GetUser (Trading) a répondu avec un
+    // pseudo — la seule requête authentifiée eBay de ce flux. Sans preuve, le
+    // compte est stocké mais le drapeau ne bouge pas : la voie extension reste
+    // la sienne, rien n'est perdu. Jamais d'activation en masse : une ligne,
+    // ce user. Le trigger cross_post_jobs_voie_ebay garde de toute façon la
+    // dernière garde (3 politiques + état vendeur) à l'insert de chaque job.
+    if (identite.username) {
+      const { error: ePf } = await admin.from("profiles").update({ ebay_voie_api: true }).eq("id", userId);
+      if (ePf) console.warn(`[ebay-oauth-callback] ebay_voie_api non posé pour ${userId} : ${ePf.message}`);
+      else console.log(`[ebay-oauth-callback] ebay_voie_api=true posé pour ${userId} (connexion prouvée par GetUser)`);
+    } else {
+      console.warn(`[ebay-oauth-callback] connexion stockée SANS preuve GetUser pour ${userId} — drapeau ebay_voie_api inchangé`);
+    }
     return retour("ok");
   } catch (err) {
     console.error("[ebay-oauth-callback] erreur inattendue :", (err as Error)?.message ?? err);

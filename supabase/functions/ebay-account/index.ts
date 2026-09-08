@@ -423,6 +423,10 @@ Deno.serve(async (req) => {
     if (action === "deconnecter") {
       const { error } = await admin.from("ebay_accounts").delete().eq("user_id", user.id);
       if (error) return json({ error: error.message }, 500);
+      // Sortie explicite de la voie API (2026-09-08) : sans compte relié, le
+      // drapeau retombe — l'app rend eBay à la voie extension, sans grisage.
+      const { error: ePf } = await admin.from("profiles").update({ ebay_voie_api: false }).eq("id", user.id);
+      if (ePf) console.warn(`[ebay-account] deconnecter : ebay_voie_api non remis à false pour ${user.id} : ${ePf.message}`);
       return json({ etat: etatPublic(null) });
     }
 
