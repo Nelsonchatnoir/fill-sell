@@ -382,6 +382,20 @@ async function fillListingForm(job) {
   titreArticleCourant = String(job?.title ?? "");
   console.log("[beebs] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
+  // ── Bandeau de consentement, AVANT tout le reste (2026-09-08) ────────────
+  // Même garde que sur Leboncoin, pour la même raison : un compte neuf voit le
+  // bandeau, et tant qu'il est là aucune des gardes suivantes ne peut lire ce
+  // qu'elle cherche. On REFUSE (jamais accepter) ; si le refus ne se trouve
+  // pas, on ne clique rien et on le dit.
+  const consentB = await fsConsentRefuser();
+  if (consentB.restant) {
+    return {
+      success: false,
+      needsUser: true,
+      error: fsConsentMessage("Beebs", "beebs.app"),
+    };
+  }
+
   // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) : une
   // interception DataDome est servie SOUS LA MÊME URL (/fr/listing), sans
   // champ password — elle passait la garde de session puis échouait plus loin

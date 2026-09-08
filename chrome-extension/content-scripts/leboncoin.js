@@ -677,6 +677,30 @@ async function fillListingForm(job) {
   const trace = [];
   const t = (ligne) => { trace.push(String(ligne)); console.log(`[leboncoin] ${ligne}`); };
 
+  // ── LE BANDEAU DE CONSENTEMENT, AVANT TOUT LE RESTE (2026-09-08) ─────────
+  // Il passe en PREMIER parce qu'il masque tout ce que les gardes suivantes
+  // cherchent : ni le formulaire, ni le champ de session, ni le wizard de
+  // dépôt ne sont atteignables tant qu'il est là. Le 08/09, faute de cette
+  // garde, six publications de samira.460 (abonnée du jour) ont été
+  // diagnostiquées « brouillon Leboncoin non terminé » alors que la page
+  // n'affichait QUE la fenêtre Didomi — le relevé des boutons dans
+  // last_diagnostic le prouve, sept fois « Refuser/Accepter » et « Voir nos
+  // partenaires ».
+  // ⛔ On REFUSE, on n'accepte jamais (décision Nico) : aucune donnée ne part
+  // chez les partenaires. Et si le refus ne se trouve pas, on ne clique RIEN
+  // et on le dit — sans jamais prononcer le mot « brouillon ».
+  const consent = await fsConsentRefuser();
+  if (consent.present) t(`bandeau de consentement : ${consent.refuse ? "refusé" : "non refusé"}${consent.motif ? ` (${consent.motif})` : ""}`);
+  if (consent.restant) {
+    return {
+      success: false,
+      needsUser: true,
+      error: fsConsentMessage("Leboncoin", "leboncoin.fr"),
+      diagnostic: `consentement non levé — ${consent.motif ?? "bandeau toujours affiché"}`,
+      trace,
+    };
+  }
+
   // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) : une
   // page d'interception DataDome servie à la place du formulaire n'a ni input
   // password ni redirection d'auth — elle partait en « Connexion Leboncoin

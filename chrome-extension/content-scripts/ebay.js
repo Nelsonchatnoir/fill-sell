@@ -485,6 +485,18 @@ async function fillListingForm(job) {
   // Vérifié : ce libellé ne matche PAS TRANSIENT_JOB_ERROR_RE (background.js)
   // — needsUser borné classique (MAX_NEEDS_USER_RETRIES), jamais le
   // ré-armement « transitoire ».
+  // ── Bandeau de consentement, avant les gardes qui lisent la page (08/09) ──
+  // Même garde que Leboncoin et Beebs : un compte neuf le rencontre, et rien
+  // n'est lisible tant qu'il est là. On REFUSE, jamais on n'accepte.
+  const consentE = await fsConsentRefuser();
+  if (consentE.restant) {
+    return {
+      success: false,
+      needsUser: true,
+      error: fsConsentMessage("eBay", "ebay.fr"),
+    };
+  }
+
   if (estPageBotShieldEbay()) {
     return {
       success: false,

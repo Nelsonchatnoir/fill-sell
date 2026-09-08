@@ -223,8 +223,8 @@ export function humanizeJobError(job, lang = 'fr') {
       // pour ce qu'elle est — quelques minutes, pas un rattrapage — sans
       // promettre qu'elle aboutira.
       return en
-        ? `${name} is showing an anti-robot check instead of the listing form. One automatic retry is left and it happens within minutes — pass the check on ${name} in Chrome right now, otherwise the job will stop.`
-        : `${name} affiche une vérification anti-robot à la place du formulaire. Il reste une tentative automatique, et elle a lieu dans les minutes qui viennent — passe la vérification sur ${name} dans Chrome tout de suite, sinon le job s'arrêtera.`;
+        ? `${name} is showing an anti-robot check. Open ${name} in Chrome and pass it now — one automatic retry is left, within minutes.`
+        : `${name} affiche une vérification anti-robot. Ouvre ${name} dans Chrome et valide-la maintenant — il reste une tentative automatique, dans les minutes qui viennent.`;
     }
     // Terminé : c'est fini, personne ne reprendra. (Nettoyage unités 03/09 :
     // plus aucune mention de décompte — la monnaie interne n'existe plus.)

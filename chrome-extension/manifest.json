@@ -3,7 +3,13 @@
   "name": "FillSell — Cross-post",
   "version": "0.6.21",
   "description": "Publie automatiquement vos annonces FillSell sur Vinted, Leboncoin, Beebs et eBay.",
-  "permissions": ["storage", "alarms", "scripting", "cookies", "power"],
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting",
+    "cookies",
+    "power"
+  ],
   "host_permissions": [
     "https://*.vinted.fr/*",
     "https://*.vinted.com/*",
@@ -35,7 +41,9 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["selectors/*.js"],
+      "resources": [
+        "selectors/*.js"
+      ],
       "matches": [
         "https://*.vinted.fr/*",
         "https://*.vinted.com/*",
@@ -47,28 +55,54 @@
   ],
   "content_scripts": [
     {
-      "matches": ["https://fillsell.app/*"],
-      "js": ["content-scripts/fillsell-auth.js"],
+      "matches": [
+        "https://fillsell.app/*"
+      ],
+      "js": [
+        "content-scripts/fillsell-auth.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.vinted.fr/*", "https://*.vinted.com/*"],
-      "js": ["content-scripts/vinted.js"],
+      "matches": [
+        "https://*.vinted.fr/*",
+        "https://*.vinted.com/*"
+      ],
+      "js": [
+        "content-scripts/consentement.js",
+        "content-scripts/vinted.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.leboncoin.fr/*"],
-      "js": ["content-scripts/leboncoin.js"],
+      "matches": [
+        "https://*.leboncoin.fr/*"
+      ],
+      "js": [
+        "content-scripts/consentement.js",
+        "content-scripts/leboncoin.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.ebay.fr/*", "https://*.ebay.com/*"],
-      "js": ["content-scripts/ebay.js"],
+      "matches": [
+        "https://*.ebay.fr/*",
+        "https://*.ebay.com/*"
+      ],
+      "js": [
+        "content-scripts/consentement.js",
+        "content-scripts/ebay.js"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.beebs.app/*"],
-      "js": ["content-scripts/beebs.js"],
+      "matches": [
+        "https://*.beebs.app/*"
+      ],
+      "js": [
+        "content-scripts/consentement.js",
+        "content-scripts/beebs.js"
+      ],
       "run_at": "document_idle"
     }
   ]
