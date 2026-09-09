@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
+import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
 import {
   type AspectRow,
   BEEBS_CHAMPS_DEDIES,
@@ -1463,6 +1464,33 @@ serve(async (req) => {
           }
         }
       } catch (_e) { dejaEnLigne = null; /* informatif : jamais un point de panne */ }
+    }
+
+    // ── DESCRIPTION LEBONCOIN SANS MENTION D'UN AUTRE SITE (2026-09-09) ──────
+    // Leboncoin refuse en 403 (POST adsubmit/v2/classifieds, champ body) toute
+    // description qui mentionne un autre site — un simple « #VintedStyle »
+    // suffit (mesuré sur le compte de Nico, job 8fea6e80) — et la description
+    // Vinted de la vendeuse part telle quelle sur Leboncoin (verrou
+    // anti-réécriture du 07/09, VOULU : elle porte les défauts). On nettoie
+    // ICI le texte SERVI à l'extension, liste fermée et règle déterministe
+    // (_shared/description-leboncoin.ts) ; le job en base n'est pas modifié,
+    // l'IA n'y touche pas. Best-effort : une exception laisse la description
+    // telle quelle. `description_nettoyage` dit à l'extension ce qui est parti
+    // (informatif ; les versions qui ne le lisent pas l'ignorent).
+    let nettoyagesLbc = 0;
+    try {
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (j.platform !== "leboncoin" || j.action !== "publish" || typeof j.description !== "string") continue;
+        const r = nettoyerDescriptionLeboncoin(j.description);
+        if (r.vide) console.warn(`[get-pending-jobs] description Leboncoin ${String(j.id).slice(0, 8)} : le nettoyage aurait tout effacé — servie telle quelle`);
+        if (!r.modifiee) continue;
+        j.description = r.texte;
+        j.description_nettoyage = { termes: r.termes, retires: r.retires };
+        nettoyagesLbc++;
+      }
+      if (nettoyagesLbc) console.log(`[get-pending-jobs] user=${user.id} descriptions Leboncoin nettoyées : ${nettoyagesLbc}`);
+    } catch (e) {
+      console.warn(`[get-pending-jobs] nettoyage description Leboncoin : ${String((e as Error)?.message ?? e)} — descriptions servies telles quelles`);
     }
 
     return json({
