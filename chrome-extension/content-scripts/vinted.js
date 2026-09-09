@@ -1,7 +1,7 @@
 ﻿// Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-08-09-photos-endpoint-reel (upload = POST /api/v2/photos, PAS /api/v2/images ; preuve croisée réseau + vignettes image-wrapper ; garde non bloquante sur recréation)";
+const VINTED_BUILD = "2026-09-09-envoi-journalise-et-taille-lettree (0.6.24 : l'ENVOI de la création est journalisé avant la réponse — sans réponse en 30 s le job attend une vérification, il n'accuse plus « Vinted n'a pas été interrogé » ; 42 → XL sur une grille purement lettrée ; grille lettrée + taille numérique = catégorie probablement fausse) — précédent : 2026-08-09-photos-endpoint-reel (upload = POST /api/v2/photos, PAS /api/v2/images ; preuve croisée r";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -327,7 +327,21 @@ async function readItemsProbeOutcome() {
     }
     if (last && refus) break;
   }
-  return { last, refus };
+  // 0.6.24 : la création a-t-elle été ENVOYÉE, même sans réponse lue ? Le
+  // background garde les envois relayés par la sonde (FILLSELL_PROBE_ENVOI).
+  let envoi = null;
+  try {
+    const env = await askBackground({ type: "FILLSELL_PROBE_ENVOIS" });
+    const envois = Array.isArray(env?.envois) ? env.envois : [];
+    for (let i = envois.length - 1; i >= 0; i--) {
+      const e = envois[i];
+      if (!/item_upload\/items/i.test(String(e?.url ?? ""))) continue;
+      if (String(e?.method ?? "").toUpperCase() === "GET") continue;
+      envoi = { url: String(e?.url ?? ""), method: String(e?.method ?? ""), at: e?.at ?? null };
+      break;
+    }
+  } catch { /* pur relevé */ }
+  return { last, refus, envoi };
 }
 
 // Panneau réutilisé par les dropdowns du formulaire (confirmé pour Catégorie ;
@@ -463,7 +477,11 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   window.addEventListener("message", (e) => {
     if (e.source !== window || !e.data?.__fillsellProbe) return;
     try {
-      chrome.runtime.sendMessage({ type: "VINTED_PROBE_CAPTURE", capture: e.data.capture }).catch(() => {});
+      if (e.data.capture) chrome.runtime.sendMessage({ type: "VINTED_PROBE_CAPTURE", capture: e.data.capture }).catch(() => {});
+      // 0.6.24 : l'ENVOI (requête partie, réponse pas encore lue) est relayé
+      // aussi — c'est lui qui distingue « Vinted jamais interrogé » de
+      // « Vinted interrogé, réponse jamais lue » (faux négatif du 09/09).
+      if (e.data.envoi) chrome.runtime.sendMessage({ type: "FILLSELL_PROBE_ENVOI", envoi: e.data.envoi }).catch(() => {});
     } catch { /* extension rechargée : sans conséquence */ }
   });
 }
@@ -2266,6 +2284,26 @@ async function fillListingForm(job) {
     // (l'annonce d'origine n'existe plus, B.5 : on soumet quand même — et son
     // categoryPath vient de la capture de l'annonce, pas du mapping icône).
     const optionsTaille = optionsRelevees.get("taille") ?? [];
+    // 0.6.24 : grille purement LETTRÉE face à une taille NUMÉRIQUE hors table
+    // (46, 50, 41…) — ce n'est plus « taille OU catégorie » : la catégorie
+    // posée attend des lettres, l'article porte un nombre, la catégorie est
+    // probablement fausse. On le dit, et on donne la sortie.
+    const tailleNue = String(fields.taille ?? "").replace(/^EU\s*/i, "").trim();
+    const grilleLettreeSeule = optionsTaille.length > 0 && !optionsTaille.some((o) => /\d/.test(String(o)));
+    if (!taillePosee && grilleLettreeSeule && PURE_NUMBER_RE.test(tailleNue) && !recreation) {
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          `La catégorie posée (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}) attend des tailles lettrées ` +
+          `(${optionsTaille.slice(0, 8).map((o) => `« ${o} »`).join(", ")}${optionsTaille.length > 8 ? " …" : ""}), ` +
+          `et la taille de l'article est numérique (« ${fields.taille} ») — la catégorie est probablement fausse. ` +
+          "Regénère l'annonce pour corriger sa catégorie (ou, si la catégorie est bien la bonne, mets une taille lettrée " +
+          "dans l'app), puis relance la publication.",
+        warnings,
+        discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
+      };
+    }
     if (!taillePosee && optionsTaille.length && !recreation) {
       // Message HONNÊTE (2026-08-28, cardigan de Laurence) : l'ancien texte
       // AFFIRMAIT « la catégorie ne correspond pas » et tronquait la liste à
@@ -2726,7 +2764,18 @@ async function fillListingForm(job) {
     //   3. AUCUNE requête item_upload/items observée → la validation du
     //      formulaire a bloqué l'envoi, Vinted n'a PAS été interrogé — et on
     //      l'écrit, au lieu d'accuser Vinted.
-    const sonde = await readItemsProbeOutcome().catch(() => ({ last: null, refus: null }));
+    const sonde = await readItemsProbeOutcome().catch(() => ({ last: null, refus: null, envoi: null }));
+    // ── ENVOYÉ SANS RÉPONSE ≠ JAMAIS INTERROGÉ (0.6.24, Pull côtelé d'Ornella,
+    // job 36796d25) : la création était PARTIE, Vinted l'avait créée, la page
+    // avait planté avant la réponse — et le verdict disait « Vinted n'a pas
+    // été interrogé ». Désormais l'envoi journalisé fait la différence : sans
+    // réponse lue en 30 s, l'annonce a PEUT-ÊTRE été créée → le job ATTEND
+    // (needs_user persisté, aucune reprise : une reprise ferait le doublon ;
+    // la synchro du dressing rattache l'annonce si elle existe).
+    // ⛔ Publication SEULEMENT : la republication (recréation, une-passe)
+    //    garde son verdict et sa reprise tels quels — chemin intouché.
+    const envoiSansReponse = Boolean(sonde.envoi) && !sonde.last && !sonde.refus
+      && !recreation && String(job?.action ?? "") !== "republish";
     const messageEchec = proof.error ??
       (sonde.refus
         ? `Vinted a refusé la publication : ` +
@@ -2735,6 +2784,10 @@ async function fillListingForm(job) {
         : sonde.last
           ? `Publication Vinted non aboutie après soumission, sans détail exploitable de Vinted` +
             `${proof.validation ? ` : ${proof.validation}` : ""} — l'annonce n'a PAS été créée.`
+          : envoiSansReponse
+            ? "La demande de création est partie vers Vinted, mais aucune réponse n'a été lue en 30 s : l'annonce a " +
+              "PEUT-ÊTRE été créée. Vérifie ta garde-robe Vinted avant toute relance — si elle y est, tout est bon " +
+              "(la synchro la rattachera) ; sinon relance-la depuis le Stock."
           : `La validation du formulaire Vinted a bloqué l'envoi : ${proof.validation ?? "(message non lu)"} — ` +
             "Vinted n'a pas été interrogé, l'annonce n'a PAS été créée.");
     // Le technique (statut HTTP, page restée sur /items/new, sonde) vit dans
@@ -2743,7 +2796,8 @@ async function fillListingForm(job) {
     const diagEchecBase = [
       sonde.refus ? `refus serveur HTTP ${sonde.refus.status}`
         : sonde.last ? `dernière réponse serveur HTTP ${sonde.last.status}, sans détail exploitable`
-        : "aucune requête de création observée par la sonde réseau, Vinted non interrogé",
+        : sonde.envoi ? `requête de création ENVOYÉE à Vinted (${sonde.envoi.method} ${sonde.envoi.url}, at ${sonde.envoi.at ?? "?"}), aucune réponse lue en 30 s`
+        : "aucune requête de création observée par la sonde réseau (ni envoi, ni réponse), Vinted non interrogé",
       "le formulaire est resté sur /items/new",
     ].join(" || ");
     // Refus 400 : les errors[{field,value}] parsées par la sonde sont les
@@ -2803,6 +2857,13 @@ async function fillListingForm(job) {
         diagnostic: diagRefus,
         discoveredRequired: requiredState.discovered,
         ...(onePassDeleted ? { deleted: true } : {}),
+      };
+    }
+    if (envoiSansReponse) {
+      return {
+        success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "vinted_depot_incertain", depotPeutEtreParti: true,
+        error: messageEchec, warnings, discoveredRequired: requiredState.discovered,
+        diagnostic: [diagEchecBase, annexeRecreation().diagnostic].filter(Boolean).join(" || ").slice(0, 2000),
       };
     }
     return { success: false, error: messageEchec, warnings, ...annexeRecreation(), diagnostic: [diagEchecBase, annexeRecreation().diagnostic].filter(Boolean).join(" || ").slice(0, 2000), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
@@ -3800,6 +3861,15 @@ function containsAsWords(hay, needle) {
 // laissé vide avec warning, jamais faux). Les autres champs sont inchangés.
 const PURE_NUMBER_RE = /^\d+(?:[.,]\d+)?$/;
 
+// ── Taille NUMÉRIQUE sur une grille purement LETTRÉE (0.6.24) ────────────────
+// Jupe d'Ornella (job 571ad7e5) : « Femmes > Vêtements > Jupes » n'accepte que
+// XXXS…9XL / Autre / Taille unique, l'article dit 42 → 5 tentatives brûlées.
+// Grille FEMME de Vinted, relevée dans /api/v2/size_groups (« XL / 42 / 14 ») :
+// 30→XXXS, 32→XXS, 34→XS, 36→S, 38→M, 40→L, 42→XL, 44→XXL. Appliquée SEULEMENT
+// quand AUCUNE option n'a de chiffre (grille purement lettrée) et que le
+// nombre est dans la table — hors table, rien n'est posé (jamais deviné).
+const TAILLE_LETTREE_PAR_NUMERIQUE = { "30": "XXXS", "32": "XXS", "34": "XS", "36": "S", "38": "M", "40": "L", "42": "XL", "44": "XXL" };
+
 function findOptionCascade(root, optionSelector, text, { sizeField = false } = {}) {
   const options = Array.from(root.querySelectorAll(optionSelector))
     .map((el) => ({ el, label: el.textContent.trim(), norm: normalizeFuzzy(el.textContent) }))
@@ -3834,6 +3904,15 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
       return !!m && m[1].replace(",", ".") === num;
     });
     if (candidats.length === 1) return { ...candidats[0], stage: "taille-num" };
+    // 1ter. grille purement lettrée : traduction par la grille femme de Vinted
+    if (!options.some((o) => /\d/.test(o.norm))) {
+      const lettre = TAILLE_LETTREE_PAR_NUMERIQUE[String(num).replace(/\.0+$/, "")];
+      if (lettre) {
+        const cible = normalizeFuzzy(lettre);
+        const opt = options.find((o) => o.norm === cible);
+        if (opt) return { ...opt, stage: "taille-lettree" };
+      }
+    }
   }
 
   const sizeGuardOk = (contained) => !sizeField || !PURE_NUMBER_RE.test(contained);
