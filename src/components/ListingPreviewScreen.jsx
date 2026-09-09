@@ -110,6 +110,11 @@ const SUPPORT_MESSAGE_KEY = {
 };
 const supportMessage = (t, support, platformLabel) =>
   t(SUPPORT_MESSAGE_KEY[support] ?? "platformUnmapped").replace("{platform}", platformLabel);
+// Plateforme EN PAUSE (platform_health.paused, 2026-09-09) : le texte lu par
+// l'utilisateur est message_fr / message_en, écrit en base (sans
+// redéploiement) ; à défaut, repli générique i18n. Jamais `reason` (interne).
+const messagePause = (tpl, pausedReasons, p, platformLabel) =>
+  pausedReasons?.[p] || tpl("platformPaused", { platform: platformLabel });
 
 // Compte eBay pas encore utilisable (07/09/2026) : UNE phrase, qui dit le
 // geste — jamais un diagnostic ni un code. Même vocabulaire que la section
@@ -1383,7 +1388,12 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
   // GRISÉ — jamais masqué : la personne doit savoir que la plateforme existe
   // et ce qu'il lui reste à faire. Aucune autre plateforme n'est touchée, et
   // un compte en voie extension ne voit rien changer (ebayBloque false).
-  ebayBloque = false, ebayMotif = null, onParametrerEbay = null }) {
+  ebayBloque = false, ebayMotif = null, onParametrerEbay = null,
+  // Plateforme EN PAUSE (platform_health, 2026-09-09) : grisée comme une
+  // catégorie non supportée, motif sous la rangée = message_fr/message_en
+  // écrit en base. Lecture tolérante en amont : drapeau illisible ou absent
+  // → listes vides → rien de grisé (fail-safe, jamais une pause par accident).
+  pausedPlatforms = [], pausedReasons = {} }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
   const MAX = MAX_PHOTOS;
@@ -1774,7 +1784,12 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
           // pour un compte en voie API. Grisé comme une catégorie non
           // supportée — même traitement visuel, motif dit sous la rangée.
           const compteAbsent = p === "ebay" && ebayBloque;
-          const disabled = support !== "supported" || dejaEnLigne || enCours || compteAbsent;
+          // Plateforme en pause (platform_health) : verrouillée, motif = le
+          // texte écrit en base. La sélection est aussi purgée en amont (effet
+          // sur pausedPlatforms) et le RPC refuse platform_paused en dernier
+          // filet — trois verrous, aucun ne repose sur les deux autres.
+          const enPause = pausedPlatforms.includes(p);
+          const disabled = support !== "supported" || dejaEnLigne || enCours || compteAbsent || enPause;
           return (
             <button
               key={p}
@@ -1785,8 +1800,10 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                 ? (lang === 'en' ? `Already being published on ${PLATFORM_LABELS[p]}` : `Publication déjà en cours sur ${PLATFORM_LABELS[p]}`)
                 : compteAbsent
                 ? messageCompteEbay(ebayMotif, lang)
-                : disabled
+                : support !== "supported"
                 ? supportMessage(t, support, PLATFORM_LABELS[p])
+                : enPause
+                ? messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p])
                 : undefined}
               onClick={() => !disabled && setSelected(prev => {
                 const s = new Set(prev);
@@ -1816,6 +1833,11 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
               {enCours && (
                 <span style={{ fontSize:11, fontWeight:600 }}>
                   · {lang === 'en' ? 'in progress' : 'en cours'}
+                </span>
+              )}
+              {enPause && !dejaEnLigne && !enCours && (
+                <span style={{ fontSize:11, fontWeight:600 }}>
+                  · {lang === 'en' ? 'paused' : 'en pause'}
                 </span>
               )}
             </button>
@@ -1851,6 +1873,15 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
       {PLATFORMS_DEFAULT.filter(p => (platformSupport?.[p] ?? "supported") !== "supported").map(p => (
         <p key={p} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {supportMessage(t, platformSupport[p], PLATFORM_LABELS[p])}
+        </p>
+      ))}
+      {/* Plateforme en pause (platform_health) : UNE phrase sous la rangée,
+          celle écrite en base (message_fr/message_en) — ton neutre, pas une
+          erreur. Pas répétée si la case est déjà grisée pour un motif déjà
+          affiché (catégorie non supportée, déjà en ligne, en cours). */}
+      {PLATFORMS_DEFAULT.filter(p => pausedPlatforms.includes(p) && (platformSupport?.[p] ?? "supported") === "supported" && !publishedSet?.has(p) && !queuedSet?.has(p)).map(p => (
+        <p key={`pause-${p}`} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
+          {messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p])}
         </p>
       ))}
       {/* Compte eBay pas paramétré : la phrase du geste + l'accès direct à
@@ -2518,11 +2549,13 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
   const voies = repartirParVoie(chips, ebayVoieApiReelle);
   const chipsSession = voies.extension;
   const ebayParApi = voies.serveur.includes("ebay");
-  // Mode dégradé (Phase B) : plateformes sélectionnées actuellement en pause.
-  // On n'empêche PAS la sélection (le job est mis en file et repris auto) — on
-  // informe seulement, ton neutre « maintenance », jamais rouge d'erreur.
+  // Mode dégradé (Phase B) : plateformes en pause (platform_health). Depuis le
+  // 09/09 la sélection est PURGÉE des plateformes en pause (case grisée dans
+  // StepPhotos, RPC platform_paused en dernier filet) : le bandeau se lit donc
+  // sur toute plateforme en pause, sélectionnée ou non — ton neutre
+  // « maintenance », jamais rouge d'erreur, texte = message_fr/message_en.
   const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
-  const pausedChips = chips.filter(p => pausedPlatforms.includes(p));
+  const pausedChips = pausedPlatforms.filter(p => PLATFORM_LABELS[p]);
   // Config des champs partagés à compléter inline (Sujet 4) : mêmes selects/
   // inputs que l'éditeur de StepGeneration — la taille réutilise les groupes
   // (lettres/numérique/pointures) de la config Vinted, le reste est texte.
@@ -3583,12 +3616,14 @@ export default function ListingPreviewScreen({
     !isPremium && !isPro && canToggleStock && stockCount != null
     && quotaStockAtteint(stockCount, stockLimitCfg);
 
-  // Mode dégradé (Phase B) : plateformes en pause (platform_health) → bandeau
-  // de maintenance dans StepPublish. Le texte est platform_health.reason
-  // affiché TEL QUEL quand il existe (écrit en base, incident par incident,
-  // sans redéploiement) ; sinon repli sur le texte générique i18n. Lecture
+  // Mode dégradé (Phase B) : plateformes en pause (platform_health) → case
+  // grisée dans StepPhotos + bandeau dans StepPublish. Le texte est
+  // platform_health.message_fr / message_en (2026-09-09 ; `reason` est
+  // redevenu INTERNE et n'est plus lu), écrit en base, incident par incident,
+  // sans redéploiement ; sinon repli sur le texte générique i18n. Lecture
   // TOLÉRANTE (rafraîchie à l'affichage puis toutes les 60 s) : un échec de
-  // lecture ne bloque jamais rien, il masque juste le bandeau.
+  // lecture ne bloque jamais rien — drapeau illisible ou absent = aucune
+  // plateforme grisée, comportement normal (fail-safe non négociable).
   const [pausedPlatforms, setPausedPlatforms] = useState([]);
   const [pausedReasons, setPausedReasons] = useState({});
   useEffect(() => {
@@ -3596,17 +3631,19 @@ export default function ListingPreviewScreen({
     const lire = async () => {
       if (document.visibilityState !== "visible") return;
       try {
-        const { data } = await supabase.from("platform_health").select("platform, reason").eq("paused", true);
+        // PostgREST est tout-ou-rien : une colonne absente ferait échouer la
+        // lecture → catch → rien de grisé, rien d'affiché (fail-safe voulu).
+        const { data } = await supabase.from("platform_health").select("platform, message_fr, message_en").eq("paused", true);
         if (alive) {
           setPausedPlatforms((data ?? []).map(h => h.platform));
-          setPausedReasons(Object.fromEntries((data ?? []).map(h => [h.platform, h.reason])));
+          setPausedReasons(Object.fromEntries((data ?? []).map(h => [h.platform, (lang === "en" ? (h.message_en || h.message_fr) : h.message_fr) || null])));
         }
       } catch { /* mode dégradé indisponible : pas de bandeau, jamais bloquant */ }
     };
     lire();
     const timer = setInterval(lire, 60_000);
     return () => { alive = false; clearInterval(timer); };
-  }, [supabase]);
+  }, [supabase, lang]);
 
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
@@ -3989,6 +4026,19 @@ export default function ListingPreviewScreen({
       return next.size === prev.size ? prev : next;
     });
   }, [platformSupport]);
+  // Plateforme en PAUSE (platform_health, 2026-09-09) : elle sort de la
+  // sélection séance tenante, comme une catégorie non supportée — la case est
+  // grisée dans StepPhotos et le RPC refuserait de toute façon (platform_paused).
+  // Clé texte : l'état est relu toutes les 60 s avec un tableau neuf.
+  const pausedKey = pausedPlatforms.slice().sort().join(",");
+  useEffect(() => {
+    if (!pausedKey) return;
+    const enPause = new Set(pausedKey.split(","));
+    setSelected(prev => {
+      const next = new Set([...prev].filter(p => !enPause.has(p)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [pausedKey]);
   // Même filet pour les plateformes déjà en ligne OU en file : si l'une d'elles
   // bascule en "published" (ou si la relecture révèle un job pending) pendant
   // que le stepper est ouvert, elle sort de la sélection séance tenante. Aucun
@@ -7338,6 +7388,22 @@ export default function ListingPreviewScreen({
           setShowExtGate(true);
           return;
         }
+        // Plateforme EN PAUSE (platform_health, 2026-09-09) : le RPC refuse le
+        // lot AVANT tout débit et rend les textes utilisateur (message_fr/en).
+        // On arme le grisage tout de suite (sans attendre la relecture à 60 s),
+        // on sort la plateforme de la sélection, et on dit la phrase écrite en
+        // base — l'utilisateur relance sur les autres plateformes d'un tap.
+        if (pubRes.reason === "platform_paused") {
+          const plats = (Array.isArray(pubRes.platforms) ? pubRes.platforms : []).filter(p => PLATFORM_LABELS[p]);
+          const textes = Object.fromEntries(plats.map(p => {
+            const m = pubRes.messages?.[p];
+            return [p, (lang === "en" ? (m?.en || m?.fr) : m?.fr) || null];
+          }));
+          setPausedPlatforms(prev => [...new Set([...prev, ...plats])]);
+          setPausedReasons(prev => ({ ...prev, ...textes }));
+          setSelected(prev => { const s = new Set(prev); plats.forEach(p => s.delete(p)); return s; });
+          throw new Error(plats.map(p => messagePause(tpl, textes, p, PLATFORM_LABELS[p])).join(" "));
+        }
         // Garde serveur anti-republication (2026-07-25, S7) : le RPC refuse un
         // job pour une plateforme déjà en ligne ou déjà en file — dernier filet
         // quand le griséage front n'a pas suffi (chemin Lens, course).
@@ -7808,6 +7874,8 @@ export default function ListingPreviewScreen({
             ebayMotif={ebayMotif}
             ebayVoieApi={Boolean(ebayCompte?.voieApi)}
             onParametrerEbay={() => setEbayPanneauOuvert(true)}
+            pausedPlatforms={pausedPlatforms}
+            pausedReasons={pausedReasons}
             lang={lang}
             onAnalyze={handleAnalyzePhotos}
             analyzing={analyzing}
