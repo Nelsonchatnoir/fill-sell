@@ -769,6 +769,72 @@ serve(async (req) => {
       }
     }
 
+    // ═════════════════════════════════════════════════════════════
+    // ÉCRAN /deposer-une-annonce/options = DÉPÔT ACCEPTÉ, JAMAIS UN ÉCHEC
+    // (2026-09-09 soir, Nico — job a2849f53, deux annonces en vérification)
+    // ═════════════════════════════════════════════════════════════
+    // Leboncoin ne sert l'écran /options (« Boostez votre annonce ! ») qu'APRÈS
+    // avoir accepté le dépôt (prouvé le 09/09 : une sonde acceptée a créé une
+    // annonce). Quand l'extension relève cette URL sur une page encore VIDE
+    // (titres [], boutons [] : pas fini de se rendre), elle conclut « écran
+    // post-aperçu non reconnu » et réarme une reprise — et la reprise REDÉPOSE :
+    // c'est exactement ce qui a fabriqué le doublon. Le vendeur, lui, lisait
+    // « interrompue par un imprévu technique, relancer depuis la fiche ».
+    // Ici, SERVEUR, sans zip : ce verdict devient 'published' SANS URL — l'état
+    // que l'extension pose elle-même quand « Mes annonces » confirme un dépôt.
+    // Le lien arrive par recoverMissingListingUrls (fenêtre 48 h, par titre) ;
+    // sans lien au bout de 48 h, le cron « publication sans lien » requalifie
+    // et ORDONNE d'aller vérifier ses annonces avant de republier. Aucune
+    // reprise automatique, aucun « relancer » proposé ; la sonde de modération
+    // rend l'unité si l'annonce n'apparaît jamais. L'app lit le marqueur
+    // lbc_depot_en_verification et affiche « Déposée — vérification Leboncoin ».
+    // ⛔ Périmètre STRICT : Leboncoin, action publish, verdict « post-aperçu
+    //    non reconnu » dont le relevé porte /deposer-une-annonce/options.
+    //    L'aperçu resté affiché, « Vos coordonnées », un refus : rien ne change.
+    // ⛔ La 0.6.24 doit ATTENDRE le rendu de /options et le traiter comme un
+    //    succès côté extension ; ce bloc reste le filet pour les 0.6.23.
+    let pfDepotOptions: Record<string, unknown> | null = null;
+    if ((statutEffectif === "needs_user" || statutEffectif === "failed" || statutEffectif === "pending")
+        && typeof body.error === "string"
+        && /post-aper[çc]u non reconnu/i.test(body.error)
+        && /\/deposer-une-annonce\/options/i.test(body.error)) {
+      try {
+        const { data: jrow } = await userClient
+          .from("cross_post_jobs")
+          .select("platform, action, platform_fields")
+          .eq("id", jobId)
+          .maybeSingle();
+        if (jrow?.platform === "leboncoin" && jrow?.action === "publish") {
+          const pfBase = ((body.platform_fields && typeof body.platform_fields === "object")
+            ? body.platform_fields : (jrow.platform_fields ?? {})) as Record<string, unknown>;
+          // La reprise programmée par l'extension (next_action_after) tombe :
+          // il n'y a plus rien à reprendre.
+          const { next_action_after: _nao, ...pfSans } = pfBase;
+          pfDepotOptions = {
+            ...pfSans,
+            lbc_depot_en_verification: {
+              releve: body.error.slice(0, 600),
+              at: new Date().toISOString(),
+              tentative: pfBase.needsUserAttempts ?? null,
+              verdict_extension: statutEffectif,
+              pose_par: "update-job-status (écran /options = dépôt accepté)",
+            },
+          };
+          statutEffectif = "published";
+          messageEffectif = null;
+          raisonRequalif = "écran /options relevé = dépôt accepté par Leboncoin, annonce en vérification";
+          console.log(
+            `[update-job-status] userId=${user.id} job=${jobId} — « post-aperçu non reconnu » sur /options : ` +
+            "dépôt ACCEPTÉ, job published sans URL (lien par recoverMissingListingUrls), aucune reprise",
+          );
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] requalification /options:", (e as Error)?.message ?? e);
+        pfDepotOptions = null;
+      }
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // RÉPARATION AUTOMATIQUE DE L'ÉTAT (incident Vinted du 07/09) — SERVEUR
     // ══════════════════════════════════════════════════════════════════════
@@ -896,6 +962,9 @@ serve(async (req) => {
     // Réparation d'état : elle écrase les blocs ci-dessus (elle a retiré
     // champs_a_completer et needs_user_source — le job n'attend plus personne).
     if (pfRepareEtat) patch.platform_fields = pfRepareEtat;
+    // Dépôt Leboncoin accepté (écran /options) : platform_fields SANS la
+    // reprise programmée, AVEC la trace du relevé.
+    if (pfDepotOptions) patch.platform_fields = pfDepotOptions;
 
     // Estampille de version du build extension (handler-watch, 2026-07-16) :
     // colonne dédiée, purement diagnostique, jamais bloquante.
