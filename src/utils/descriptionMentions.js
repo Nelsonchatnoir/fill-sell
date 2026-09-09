@@ -60,8 +60,8 @@ export function messageMentions(mentions, lang = "fr") {
   if (!mentions) return null;
   const liste = mentions.termes.slice(0, 3).map((t) => `« ${t} »`).join(", ");
   return lang === "en"
-    ? `Your Vinted description mentions ${liste}. It will be published as is on the other platforms — edit it if you'd rather not.`
-    : `Ta description Vinted mentionne ${liste}. Elle part telle quelle sur les autres plateformes — modifie-la si tu préfères.`;
+    ? `Your Vinted description mentions ${liste}. It will be published as is on the other platforms — edit it if you'd rather not. On Leboncoin, which rejects any mention of another website, mentions of Vinted, eBay, Beebs and web addresses are removed automatically at posting time.`
+    : `Ta description Vinted mentionne ${liste}. Elle part telle quelle sur les autres plateformes — modifie-la si tu préfères. Sur Leboncoin, qui refuse toute mention d'un autre site, les mentions de Vinted, eBay, Beebs et les adresses web sont retirées automatiquement au dépôt.`;
 }
 
 export const _internes = { TERMES, comparable };
