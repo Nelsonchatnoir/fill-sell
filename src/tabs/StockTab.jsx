@@ -4331,7 +4331,7 @@ const StockTab = memo(function StockTab({
     : `Daily limit reached: ${res?.plafond ?? 3} reposts a day on Free. Nothing was charged — it resets tomorrow.`);
 
   async function lancerRepublication(item, prixRepublication = null) {
-    if (repubBusy || repubMaintenance) return;
+    if (repubBusy || repubEnPause) return;
     if (extensionNeverSeen === true) { setExtPitchItem(item); return; }
     setRepubBusy(item.id);
     setRepubMsgs(m => ({ ...m, [item.id]: null }));
@@ -4438,7 +4438,7 @@ const StockTab = memo(function StockTab({
     // Ceinture (02/09 soir) : le bouton est déjà gaté, mais si un chemin
     // résiduel arrivait ici en Free, on ouvre la modale et RIEN ne part.
     if (repubLotReserve) { ouvrirModaleLotReserve(); return; }
-    if (repubMaintenance) return;
+    if (repubEnPause) return;
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) return;
     setRepubLot({ fait: 0, total: cibles.length, refus: [] });
     const refus = [];
@@ -5401,10 +5401,12 @@ const StockTab = memo(function StockTab({
 
   // Mode dégradé (Phase B) : plateformes en pause → badge « En pause » sur les
   // jobs en attente concernés + bandeau en tête d'onglet (2026-08-27) dont le
-  // texte est platform_health.reason affiché TEL QUEL : il s'écrit en base,
-  // incident par incident, sans redéploiement. Lecture TOLÉRANTE, jamais
-  // bloquante — et jamais bloquante pour l'utilisateur non plus : le bandeau
-  // informe, il ne grise rien, les autres plateformes continuent.
+  // texte est platform_health.message_fr / message_en (2026-09-09 ; `reason`
+  // est redevenu INTERNE et n'est plus lu) : il s'écrit en base, incident par
+  // incident, sans redéploiement. Lecture TOLÉRANTE, jamais bloquante —
+  // drapeau illisible ou absent = comportement normal (fail-safe). Ici seule
+  // la REPUBLICATION Vinted est retenue quand Vinted est en pause (même gating
+  // que l'interrupteur, cf. repubEnPause) ; les autres plateformes continuent.
   const [pausedPlatforms, setPausedPlatforms] = useState([]);
   const [pausedReasons, setPausedReasons] = useState({});
   useEffect(() => {
@@ -5412,18 +5414,26 @@ const StockTab = memo(function StockTab({
     let alive = true;
     const lire = async () => {
       try {
-        const { data } = await supabase.from("platform_health").select("platform, reason").eq("paused", true);
+        // PostgREST est tout-ou-rien : colonne absente → catch → rien d'affiché.
+        const { data } = await supabase.from("platform_health").select("platform, message_fr, message_en").eq("paused", true);
         if (alive) {
           setPausedPlatforms((data ?? []).map(h => h.platform));
-          setPausedReasons(Object.fromEntries((data ?? []).map(h => [h.platform, h.reason])));
+          setPausedReasons(Object.fromEntries((data ?? []).map(h => [h.platform, (lang === 'en' ? (h.message_en || h.message_fr) : h.message_fr) || null])));
         }
       } catch { /* jamais bloquant */ }
     };
     lire();
     const timer = setInterval(() => { if (document.visibilityState === "visible") lire(); }, 60000);
     return () => { alive = false; clearInterval(timer); };
-  }, [user?.id]);
+  }, [user?.id, lang]);
   const pausedSet = new Set(pausedPlatforms);
+  // Vinted en PAUSE (platform_health, 2026-09-09) retient aussi la
+  // republication — même gating que l'interrupteur coin_config
+  // .republish_maintenance : le trigger republish_maintenance_guard refuse
+  // côté serveur dans les deux cas (REPUBLISH_MAINTENANCE), l'app grise avant.
+  // Lu par des fonctions déclarées plus haut (hoisting) : elles ne s'exécutent
+  // qu'après le rendu, jamais avant cette ligne.
+  const repubEnPause = repubMaintenance || pausedSet.has('vinted');
 
   // (Le compteur « N republications réussies ces 7 derniers jours » livré en
   // 2.4.66 a été RETIRÉ le 2026-08-27, décision Nico : remplacé par la barre
@@ -6945,10 +6955,10 @@ const StockTab = memo(function StockTab({
                    mort, l'erreur corrigée sur la carte de sync du Stock
                    vide) : pastille « Premium » + tap → modale de conversion,
                    aucun mode armé. */
-                disabled={repubMaintenance&&!modeRepublish}
-                style={repubMaintenance&&!modeRepublish?{opacity:0.45,cursor:"default"}:undefined}
+                disabled={repubEnPause&&!modeRepublish}
+                style={repubEnPause&&!modeRepublish?{opacity:0.45,cursor:"default"}:undefined}
                 onClick={()=>{
-                  if(repubMaintenance&&!modeRepublish)return;
+                  if(repubEnPause&&!modeRepublish)return;
                   if(repubLotReserve){ouvrirModaleLotReserve();return;}
                   setModeRepublish(v=>!v);setRepubSel(new Set());setRepubLot(null);
                 }}>
@@ -7009,9 +7019,9 @@ const StockTab = memo(function StockTab({
                         ?<>{repubSel.size} sélectionné{repubSel.size>1?"s":""} · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>
                         :<>{repubSel.size} selected · ~{repubSel.size*5>=60?`${Math.ceil(repubSel.size*5/60)} h`:`${repubSel.size*5} min`}</>}
                     </span>
-                    <button className="apply" disabled={repubMaintenance||repubSel.size===0}
-                      style={repubMaintenance?{opacity:0.45,cursor:"default"}:undefined}
-                      onClick={()=>{if(repubMaintenance)return;ouvrirFeuilleRepublication(repubActionnablesVue.filter(i=>repubSel.has(i.id)));}}>
+                    <button className="apply" disabled={repubEnPause||repubSel.size===0}
+                      style={repubEnPause?{opacity:0.45,cursor:"default"}:undefined}
+                      onClick={()=>{if(repubEnPause)return;ouvrirFeuilleRepublication(repubActionnablesVue.filter(i=>repubSel.has(i.id)));}}>
                       {lang==='fr'?`Republier les ${repubSel.size}`:`Repost ${repubSel.size}`}
                     </button>
                     <button className="pa-ghost" onClick={()=>{setRepubSel(new Set(repubActionnablesVue.map(i=>i.id)));}}>
@@ -8369,16 +8379,16 @@ const StockTab = memo(function StockTab({
                                   </button>);
                               }
                               return(
-                                <button className="btn-vendre" disabled={repubMaintenance||repubBusy===item.id}
+                                <button className="btn-vendre" disabled={repubEnPause||repubBusy===item.id}
                                   onClick={e=>{
                                     e.stopPropagation();
-                                    if(repubMaintenance)return;
+                                    if(repubEnPause)return;
                                     if(extensionNeverSeen===true){setExtPitchItem(item);return;}
                                     ouvrirFeuilleRepublication([item]);
                                   }}
-                                  style={{opacity:repubMaintenance?0.45:repubBusy===item.id?0.6:1,cursor:repubMaintenance?"default":undefined}}
-                                  title={repubMaintenance
-                                    ?(lang==='fr'?"Republication en maintenance — de retour très vite.":"Reposting under maintenance — back very soon.")
+                                  style={{opacity:repubEnPause?0.45:repubBusy===item.id?0.6:1,cursor:repubEnPause?"default":undefined}}
+                                  title={repubEnPause
+                                    ?(pausedReasons.vinted||(lang==='fr'?"Republication en maintenance — de retour très vite.":"Reposting under maintenance — back very soon."))
                                     :(lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed.")}>
                                   {repubBusy===item.id
                                     ?(lang==='fr'?'Capture…':'Capturing…')
