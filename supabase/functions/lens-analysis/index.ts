@@ -2864,7 +2864,27 @@ serve(async (req) => {
         // (mêmes critères que la livraison/le remboursement de
         // generate-listing : un squelette de repli n'est pas un service rendu).
         if (livrees > 0 && redactionCost.calls > 0) {
-          annonce = { platforms: platformListings, traceEtat, traceIsbn };
+          // ── LE MOT DU SCAN VOYAGE AVEC L'ANNONCE (2026-09-09, GO Nico) ────
+          // Le scan NOMME l'objet (étape 0 du prompt, itemData.objet) mais
+          // l'annonce partait sans lui : côté app, platformListings.objet
+          // restait vide, l'étape « mot → arbre » et l'étape 3 (l'IA choisit
+          // parmi des candidates) ne tournaient JAMAIS sur un article Lens, et
+          // c'est le repli mot-clé — l'emoji — qui décidait seul. Mesuré sur
+          // 60 jours : 31 jobs à categorie_objet_ia = null, 31/31 issus d'un
+          // scan lens_unifie (jupe d'Ornella rangée en « Robes > Midi » parce
+          // que robe et jupe partagent 👗). Même garde-fou que generate-listing
+          // (classifyCategoryIcon) : minuscules, lettres/espaces/apostrophes/
+          // traits d'union, 40 caractères — jamais une phrase, jamais un code.
+          // Pas d'emoji ici : le scan n'en classe pas, et l'app n'en a plus
+          // besoin quand le mot est là (l'icône reste le dernier repli).
+          const objetBrutAnnonce = String(itemData.objet ?? "").trim().toLowerCase();
+          const objetAnnonce = /^[\p{L}][\p{L}\s'’-]{1,39}$/u.test(objetBrutAnnonce) ? objetBrutAnnonce : null;
+          annonce = {
+            platforms: platformListings, traceEtat, traceIsbn,
+            objet: objetAnnonce,
+            objet_source: objetAnnonce ? (String(itemData.objet_source ?? "") || null) : null,
+            category_icon: null,
+          };
           // L'UNITÉ du geste unifié — la ligne que compte
           // quota_annonces_consommees (la ligne 'lens' de ce scan porte
           // unifie:true et ne compte pas). Pas d'inventaire_id : l'article
