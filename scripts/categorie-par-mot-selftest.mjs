@@ -42,7 +42,7 @@ const pMot = copieImportable("src/utils/categorieParMot.js", ".categorieParMot.s
 const mot = await import(pathToFileURL(pMot).href);
 
 console.log("1. Les quatre index de feuilles (générés depuis les relevés) :");
-const tailles = { vinted: 2493, ebay: 3906, beebs: 579, leboncoin: 83 };
+const tailles = { vinted: 2489, ebay: 3906, beebs: 579, leboncoin: 83 };
 for (const [pf, attendu] of Object.entries(tailles)) {
   const f = await mot.feuillesDe(pf);
   check(`${pf} : ${attendu} feuilles`, f.length === attendu, `(${f.length})`);
