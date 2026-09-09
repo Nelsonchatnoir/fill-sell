@@ -1284,7 +1284,17 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // banniere « extension obsolete » ne s'allume qu'apres acceptation CWS.
 // 2026-09-08 (lot 0.6.22, commit 07b1edb) : pont Beebs par executeScript MAIN, sonde reseau du depot Leboncoin,
 // repli « Autre » sur Produit. EXTENSION_MIN_BUILD inchange (44 comptes encore en 0.6.19).
-export const EXTENSION_LAST_COMMIT = '2026-09-08T21:49:53Z'; // recale d87d7f0 (0.6.22 : cadence 0.6.19 de l'aperçu Leboncoin + needs_user categorie_a_choisir Beebs) — MIN_BUILD inchange
+// 2026-09-09T15:20:50Z (17h20 Paris, commit 783fa4f, paquet 0.6.23) : askBackground
+// DEFINI dans beebs.js — la 0.6.22 l'appelait sans le definir (il n'existait que
+// dans vinted.js) : ReferenceError, canal executeScript « indisponible », pont
+// inline muet, refus « pas de categorie sans pont » — 0 publication Beebs pour
+// tout le parc depuis le 08/09 23:47. Le refus ne s'applique plus que si le
+// canal a ete REELLEMENT tente ; le message porte canalPontMain. Selftest des
+// mondes de scripts (content-scripts-selftest) branche sur package:extension.
+// Le zip embarque aussi 7146f5b (re-capture non affamee, Beebs 7 j, retrait
+// Leboncoin qui reprend + DataDome nomme, 2e passage Mes annonces).
+// MIN_BUILD INCHANGE — la banniere n'attend que l'acceptation CWS.
+export const EXTENSION_LAST_COMMIT = '2026-09-09T15:20:50Z'; // recale 783fa4f (0.6.23 : askBackground defini dans beebs.js) — MIN_BUILD inchange
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
