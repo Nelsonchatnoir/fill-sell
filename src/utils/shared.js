@@ -134,6 +134,40 @@ export function jobActionRequise(job) {
   return ACTION_UTILISATEUR_RE.test(String(job?.error ?? ''));
 }
 
+// ── needs_user SANS champ à remplir (2026-09-10, règle Nico) ────────────────
+// Un job 'needs_user' n'est pas toujours « à compléter ». Trois natures, que
+// l'écran doit distinguer — sinon on affiche « ✋ À compléter » et un bouton
+// « Compléter » qui n'ouvre rien (vécu le 09/09 sur Leboncoin) :
+//   · 'a_completer' : un CHAMP à trancher (needsUserField, champs_a_completer,
+//     serverRequired) → « À compléter », bouton « Compléter » ;
+//   · 'en_cours'    : la requête est PARTIE et la plateforme n'a pas encore
+//     répondu (vinted_depot_incertain, lbc_depot_incertain — posés par
+//     l'extension via last_diagnostic.quoi). L'app ne sait pas encore → elle
+//     dit « en cours » et NE DEMANDE RIEN : aucun bouton, aucune relance
+//     (une relance ferait le doublon ; la synchro / la re-capture tranchent) ;
+//   · 'action'      : une action hors app (identité Leboncoin, catégorie
+//     eBay à confirmer…) → « Action », le message dit quoi, jamais
+//     « Compléter ».
+export const NEEDS_USER_EN_COURS = new Set(['vinted_depot_incertain', 'lbc_depot_incertain']);
+export function natureNeedsUser(job) {
+  if (job?.status !== 'needs_user') return null;
+  const pf = job.platform_fields ?? {};
+  const quoi = String(pf.last_diagnostic?.quoi ?? '');
+  if (NEEDS_USER_EN_COURS.has(quoi)) return 'en_cours';
+  const champs = Array.isArray(pf.champs_a_completer) ? pf.champs_a_completer : [];
+  const server = Array.isArray(pf.serverRequired) ? pf.serverRequired
+    : (Array.isArray(pf.server_required_fields) ? pf.server_required_fields : []);
+  if (pf.needsUserField?.field_key || champs.length || server.length) return 'a_completer';
+  return 'action';
+}
+export function texteEnCoursConfirmation(job, lang = 'fr') {
+  const en = lang === 'en';
+  const name = HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (en ? 'the platform' : 'la plateforme');
+  return en
+    ? `Your listing went through to ${name} and is awaiting their confirmation. Nothing to do on your side.`
+    : `Ta publication est partie sur ${name}, elle est en cours de confirmation chez eux. Rien à faire de ton côté.`;
+}
+
 // ── Débruitage ÉQUILIBRÉ des parenthèses (2026-09-06) ─────────────────────────
 // Le retrait « incise technique entre parenthèses » se faisait par une regex
 // [^)]* : sur une parenthèse IMBRIQUÉE — « (Vinted a REFUSÉ … (réponse
@@ -199,6 +233,12 @@ export function humanizeJobError(job, lang = 'fr') {
   if (!raw) return '';
   const en = lang === 'en';
   const name = HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (en ? 'the platform' : 'la plateforme');
+
+  // ── needs_user EN COURS chez la plateforme (2026-09-10) : le texte stocké
+  // par une extension d'avant la 0.6.24 (« vérifie Mes annonces… ») n'est
+  // jamais affiché — quand l'app ne sait pas encore, elle dit « en cours » et
+  // ne demande rien.
+  if (natureNeedsUser(job) === 'en_cours') return texteEnCoursConfirmation(job, lang);
 
   // ── Challenge anti-robot (message RÉÉCRIT ICI depuis le 2026-08-10) ────────
   // Le libellé stocké commence par « CHALLENGE <nom> : » (motif SQL) suivi

@@ -35,7 +35,7 @@ import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
 import { supabase } from '../lib/supabase';
-import {
+import { natureNeedsUser, texteEnCoursConfirmation,
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
   getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType,
   getRotatingExamples, SKELETON_SOLD,
@@ -272,6 +272,9 @@ const RELANCE_MANUELLE_COOLDOWN_MS = 10 * 60 * 1000;
 // payé et laisserait deux jobs vivants sur la même plateforme.
 function relanceManuelleInfo(job, jobsArticle) {
   if (!['failed', 'cancelled', 'needs_user'].includes(job?.status)) return null;
+  // needs_user EN COURS chez la plateforme (2026-09-10) : la requête est
+  // partie, une relance ferait le doublon — aucun bouton, nulle part.
+  if (natureNeedsUser(job) === 'en_cours') return null;
   if ((job?.action ?? 'publish') !== 'publish') return null;
   if (job?.platform_fields?.listing_url_abandon) return null;
   const pf = job?.platform_fields ?? {};
@@ -1228,7 +1231,10 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
   const voieApi = (j) => j.voie === "api" || j.platform_fields?.last_diagnostic?.voie === "api";
   const enFileApiSeule = enFile && jobs.filter(j => enCours(j) && !aEchoue(j)).every(voieApi);
   const enReprise = jobs.filter(j => enCours(j) && aEchoue(j)).length;
-  const aCompleter = jobs.filter(j => j.status === "needs_user").length;
+  // needs_user EN COURS chez la plateforme (2026-09-10) : ni « attend une
+  // information de ta part » ni orange — l'app dit « en cours » et ne demande rien.
+  const enConfirmation = jobs.filter(j => natureNeedsUser(j) === "en_cours").length;
+  const aCompleter = jobs.filter(j => j.status === "needs_user").length - enConfirmation;
   const enEchec = jobs.filter(j => j.status === "failed").length;
   // Recours ÉPUISÉS : même source que le bouton de relance affiché plus bas
   // (relanceManuelleInfo) — une seule vérité, jamais deux avis contradictoires
@@ -1246,7 +1252,15 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
         enEchec ? `${enEchec} stopped` : "",
         enReprise ? `${enReprise} being retried after a failure` : "",
       ].filter(Boolean);
-  const diag = (!enFile && (aCompleter || enEchec || enReprise))
+  const diag = (!enFile && !aCompleter && !enEchec && !enReprise && enConfirmation)
+    ? {
+        ton: "gris",
+        titre: fr ? "En cours de confirmation" : "Awaiting confirmation",
+        detail: fr
+          ? `La publication est partie, ${enConfirmation > 1 ? "les plateformes la confirment" : "la plateforme la confirme"} de ${enConfirmation > 1 ? "leur" : "son"} côté. Rien à faire de ton côté.`
+          : `The listing went through and the platform${enConfirmation > 1 ? "s are" : " is"} confirming it. Nothing to do on your side.`,
+      }
+    : (!enFile && (aCompleter || enEchec || enReprise))
     ? {
         ton: (enEchec || sansRecours) && !aCompleter ? "rouge" : "orange",
         titre: aCompleter
@@ -1278,6 +1292,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
         }
       : diagExt;
   const TONS = {
+    gris:   { bg:"#F1F5F4", bord:"#DCE4E2", texte:"#5A6B66" },
     vert:   { bg:"#ECFDF5", bord:"#A7F3D0", texte:"#047857" },
     orange: { bg:"#FFF7ED", bord:"#FED7AA", texte:"#7C2D12" },
     rouge:  { bg:"#FEF2F2", bord:"#FECACA", texte:"#B91C1C" },
@@ -1288,6 +1303,15 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
     processing: fr ? "Publication…"      : "Publishing…",
     needs_user: fr ? "À compléter"       : "Needs input",
     failed:     fr ? "Échec"             : "Failed",
+  };
+  // Un needs_user n'est « À compléter » que s'il y a un champ à remplir
+  // (2026-09-10) : en cours chez la plateforme → « En cours de confirmation »,
+  // action hors app → « Action requise ».
+  const libStatut = (j) => {
+    const n = natureNeedsUser(j);
+    if (n === "en_cours") return fr ? "En cours de confirmation" : "Awaiting confirmation";
+    if (n === "action") return fr ? "Action requise" : "Action needed";
+    return LIB_STATUT[j.status] || j.status;
   };
   // Un seul job par plateforme : le plus récent — même règle que les badges.
   const parPlateforme = {};
@@ -1335,7 +1359,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                     {PLATFORM_LABELS[j.platform] || j.platform}
                   </span>
                   <span style={{ fontSize:12, fontWeight:600, color:NU_T.mute }}>
-                    {LIB_STATUT[j.status] || j.status}
+                    {libStatut(j)}
                   </span>
                 </div>
                 <div style={{ fontSize:11.5, color:NU_T.mute, marginTop:4 }}>
@@ -1343,7 +1367,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                   {enPause && (fr ? " · plateforme en pause (reprise auto)" : " · platform paused (auto-resume)")}
                 </div>
                 {j.error && (
-                  <div style={{ fontSize:11.5, lineHeight:1.45, color:"#8C2F28", marginTop:6 }}>{humanizeJobError(j, lang)}</div>
+                  <div style={{ fontSize:11.5, lineHeight:1.45, color: natureNeedsUser(j) === "en_cours" ? "#5A6B66" : "#8C2F28", marginTop:6 }}>{humanizeJobError(j, lang)}</div>
                 )}
                 {/* ── LE BOUTON QUE LE MESSAGE PROMETTAIT (2026-08-31) ────────
                     « Relancer depuis la fiche de l'article » s'affichait sans
@@ -1410,6 +1434,8 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
   const [errMsg, setErrMsg] = useState(null);
   const { published, removalState, latestPubByPlatform } = computeRemovalInfo(jobsAll);
   const etatPlat = etatPlateformes(jobsAll, lang);
+  // needs_user EN COURS chez la plateforme (2026-09-10) : une ligne neutre, sans bouton.
+  const enConfirmationPar = new Map((etatPlat.enConfirmation ?? []).map((e) => [e.platform, e]));
   const aCompleterPar = new Map(etatPlat.aCompleter.map(x => [x.platform, x]));
   const enEchecPar = new Map(etatPlat.enEchec.map(x => [x.platform, x]));
   const fr = lang !== "en";
@@ -1488,6 +1514,10 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                           : (fr ? "Une information est attendue" : "Information is awaited")}
                       </span></>
                     )}
+                    {enConfirmationPar.has(p) && (
+                      <><span style={{ width:5, height:5, borderRadius:"50%", background:"#8A938F", flex:"0 0 auto" }}/>
+                      <span style={{ color:"#5A6B66", fontWeight:600 }}>{fr ? "Publication en cours de confirmation" : "Awaiting the platform's confirmation"}</span></>
+                    )}
                     {enEchecPar.has(p) && (
                       <><span style={{ width:5, height:5, borderRadius:"50%", background:"#B91C1C", flex:"0 0 auto" }}/>
                       <span style={{ color:"#B91C1C", fontWeight:600 }}>{fr ? "La publication a échoué" : "Publishing failed"}</span></>
@@ -1516,7 +1546,11 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                     quand les deux s'appliquent (une republication Vinted en
                     attente est en ligne ET bloquée) : on ne retire jamais un
                     geste légitime pour en offrir un autre. */}
-                {aCompleterPar.has(p) && !armed && (
+                {/* Le bouton « Compléter » n'existe que s'il OUVRE quelque chose
+                    (2026-09-10) : sans needsUserField, il était rendu grisé —
+                    un bouton qui ne mène nulle part, exactement le bug vu la
+                    veille sur Leboncoin. La ligne d'explication reste. */}
+                {aCompleterPar.has(p) && !armed && !!aCompleterPar.get(p)?.job?.platform_fields?.needsUserField && (
                   <button
                     onClick={() => { const e = aCompleterPar.get(p); if (e?.job) { onClose(); onCompleter?.(e.job); } }}
                     disabled={!aCompleterPar.get(p)?.job?.platform_fields?.needsUserField}
@@ -7408,7 +7442,12 @@ const StockTab = memo(function StockTab({
                   // que l'Échec — seul le job LE PLUS RÉCENT de la plateforme
                   // compte. Dès que le job repart en pending (valeur fournie)
                   // ou se conclut (published/failed), le badge s'éteint.
-                  const needsUserJobs=Object.values(latestByPlatform).filter(j=>j.status==="needs_user");
+                  const needsUserTous=Object.values(latestByPlatform).filter(j=>j.status==="needs_user");
+                  // needs_user EN COURS chez la plateforme (2026-09-10) : ni une
+                  // action ni un « À compléter » — pastille grise, sans tap. Ils
+                  // sortent de needsUserJobs pour ne compter dans aucun « actionable ».
+                  const enConfirmationJobs=needsUserTous.filter(j=>natureNeedsUser(j)==="en_cours");
+                  const needsUserJobs=needsUserTous.filter(j=>natureNeedsUser(j)!=="en_cours");
                   // « Publiée — à vérifier » (2026-08-08) : le job a ABOUTI
                   // mais avec un repli dégradant signalé par l'extension
                   // (platform_fields.warnings, ex. brand_fallback_no_brand :
@@ -7642,13 +7681,30 @@ const StockTab = memo(function StockTab({
                             // statut.
                             dot="#E8956D";fg="#8A6100";
                             const j=needsUserJobs[0];
+                            // Sans champ à remplir, la pastille dit « Action »,
+                            // jamais « À compléter » (2026-09-10).
+                            const tousChamp=needsUserJobs.every(x=>natureNeedsUser(x)==="a_completer");
                             txt=needsUserJobs.length>1
-                              ?(fr?`✋ À compléter · ${needsUserJobs.length}`:`✋ Needed · ${needsUserJobs.length}`)
-                              :(fr?`✋ À compléter ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ ${PLATFORM_LABELS[j.platform]||j.platform}`);
+                              ?(tousChamp
+                                ?(fr?`✋ À compléter · ${needsUserJobs.length}`:`✋ Needed · ${needsUserJobs.length}`)
+                                :(fr?`✋ À toi de jouer · ${needsUserJobs.length}`:`✋ Your move · ${needsUserJobs.length}`))
+                              :(tousChamp
+                                ?(fr?`✋ À compléter ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ ${PLATFORM_LABELS[j.platform]||j.platform}`)
+                                :(fr?`✋ Action ${PLATFORM_LABELS[j.platform]||j.platform}`:`✋ Action ${PLATFORM_LABELS[j.platform]||j.platform}`));
                             titre=j.error?humanizeJobError(j,lang):undefined;
                             onTap=needsUserJobs.length>1
                               ?()=>setJobStatusItem(item)
                               :()=>{if(j.platform_fields?.needsUserField)setNeedsUserJob(j);else if(j.error)setFailJobModal(j);};
+                          }else if(enConfirmationJobs.length>0){
+                            // EN COURS chez la plateforme : gris, sans tap, sans
+                            // action attendue — « en cours », pas « incertain ».
+                            dot="#8A938F";fg="#5A6B66";
+                            const j=enConfirmationJobs[0];
+                            txt=enConfirmationJobs.length>1
+                              ?(fr?`En cours de confirmation · ${enConfirmationJobs.length}`:`Awaiting confirmation · ${enConfirmationJobs.length}`)
+                              :(fr?`En cours de confirmation ${PLATFORM_LABELS[j.platform]||j.platform}`:`Awaiting confirmation ${PLATFORM_LABELS[j.platform]||j.platform}`);
+                            titre=texteEnCoursConfirmation(j,lang);
+                            onTap=null;
                           }else if(disparuDeVinted){
                             dot="#8A8578";fg="#8A6100";
                             txt=(fr?'Plus en ligne':'Gone')+(dateCourteParis(item.disparu_le)?` · ${dateCourteParis(item.disparu_le)}`:'');

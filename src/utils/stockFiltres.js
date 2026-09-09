@@ -26,6 +26,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { computeRemovalInfo } from './publicationState';
+import { natureNeedsUser } from './shared';
 
 export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay'];
 
@@ -99,6 +100,9 @@ export function etatPlateformes(jobs, lang = 'fr') {
   const { publishedActive } = computeRemovalInfo(liste);
   const aCompleter = new Map();
   const enEchec = new Map();
+  // needs_user EN COURS chez la plateforme (2026-09-10) : ni « à compléter »
+  // ni en échec — une ligne neutre, aucun bouton, hors du filtre « À compléter ».
+  const enConfirmation = new Map();
   // Du plus ancien au plus récent : le dernier écrit gagne, donc l'état le
   // plus frais l'emporte sans avoir à trier deux fois.
   const parDate = liste.slice().sort(
@@ -108,23 +112,31 @@ export function etatPlateformes(jobs, lang = 'fr') {
     const p = j?.platform;
     if (!p || !PLATEFORMES_STOCK.includes(p)) continue;
     if (j.action === 'delete') continue;
-    if (j.status === 'needs_user') {
+    if (j.status === 'needs_user' && natureNeedsUser(j) === 'en_cours') {
+      enConfirmation.set(p, { platform: p, job: j });
+      aCompleter.delete(p);
+      enEchec.delete(p);
+    } else if (j.status === 'needs_user') {
       aCompleter.set(p, { platform: p, job: j, champ: champManquant(j, lang) });
       enEchec.delete(p);
+      enConfirmation.delete(p);
     } else if (j.status === 'failed') {
       enEchec.set(p, { platform: p, job: j, champ: null });
       aCompleter.delete(p);
+      enConfirmation.delete(p);
     } else if (j.status === 'published' || j.status === 'pending' || j.status === 'processing') {
       // Un job reparti efface l'ardoise de CETTE plateforme : sans ça, un
       // needs_user résolu la semaine dernière la marquerait à vie.
       aCompleter.delete(p);
       enEchec.delete(p);
+      enConfirmation.delete(p);
     }
   }
   return {
     enLigne: Array.isArray(publishedActive) ? publishedActive : [],
     aCompleter: [...aCompleter.values()],
     enEchec: [...enEchec.values()],
+    enConfirmation: [...enConfirmation.values()],
   };
 }
 
