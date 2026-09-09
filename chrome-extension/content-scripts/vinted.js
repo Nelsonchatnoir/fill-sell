@@ -2295,11 +2295,9 @@ async function fillListingForm(job) {
         success: false,
         needsUser: true,
         error:
-          `La catégorie posée (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}) attend des tailles lettrées ` +
-          `(${optionsTaille.slice(0, 8).map((o) => `« ${o} »`).join(", ")}${optionsTaille.length > 8 ? " …" : ""}), ` +
-          `et la taille de l'article est numérique (« ${fields.taille} ») — la catégorie est probablement fausse. ` +
-          "Regénère l'annonce pour corriger sa catégorie (ou, si la catégorie est bien la bonne, mets une taille lettrée " +
-          "dans l'app), puis relance la publication.",
+          `Cette catégorie (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}) attend une taille en lettres (S, M, L…), ` +
+          `l'article a une taille en chiffres (« ${fields.taille} ») : la catégorie est probablement fausse. ` +
+          "Regénère l'annonce pour corriger la catégorie, puis relance la publication.",
         warnings,
         discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
       };
@@ -2785,9 +2783,8 @@ async function fillListingForm(job) {
           ? `Publication Vinted non aboutie après soumission, sans détail exploitable de Vinted` +
             `${proof.validation ? ` : ${proof.validation}` : ""} — l'annonce n'a PAS été créée.`
           : envoiSansReponse
-            ? "La demande de création est partie vers Vinted, mais aucune réponse n'a été lue en 30 s : l'annonce a " +
-              "PEUT-ÊTRE été créée. Vérifie ta garde-robe Vinted avant toute relance — si elle y est, tout est bon " +
-              "(la synchro la rattachera) ; sinon relance-la depuis le Stock."
+            ? "Ta publication est en cours de confirmation chez Vinted. La synchro de ton dressing la rattachera " +
+              "dès qu'elle apparaît. Rien à faire de ton côté."
           : `La validation du formulaire Vinted a bloqué l'envoi : ${proof.validation ?? "(message non lu)"} — ` +
             "Vinted n'a pas été interrogé, l'annonce n'a PAS été créée.");
     // Le technique (statut HTTP, page restée sur /items/new, sonde) vit dans
