@@ -52,7 +52,7 @@ check("eBay porte des identifiants numériques", ebayF.every((f) => /^\d+$/.test
 const vintedF = await mot.feuillesDe("vinted");
 // 09/09 : le relevé live (/api/v2/item_upload/catalogs) porte l'id de chaque feuille — la
 // navigation de l'extension reste par libellés, l'id sert aux grilles (tailles) par catalogue.
-check("Vinted porte l'identifiant numérique de chaque feuille (relevé du 09/09)", vintedF.every((f) => /^d+$/.test(f.id ?? "")));
+check("Vinted porte l'identifiant numérique de chaque feuille (relevé du 09/09)", vintedF.every((f) => /^[0-9]+$/.test(f.id ?? "")));
 
 console.log("\n2. Les cas réels du 07/09 :");
 const taie = await mot.resoudreParMot("taie d'oreiller", "ebay", {});
