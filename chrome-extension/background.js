@@ -672,6 +672,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
+  // Envoi relayé par la sonde (0.6.24) : requête PARTIE, réponse pas encore lue.
+  if (msg?.type === "FILLSELL_PROBE_ENVOI" && senderTabId != null) {
+    recordProbeEnvoi(senderTabId, msg.envoi ?? {});
+    sendResponse({ ok: true });
+    return; // réponse synchrone
+  }
+  if (msg?.type === "FILLSELL_PROBE_ENVOIS" && senderTabId != null) {
+    readProbeEnvois(senderTabId).then(sendResponse);
+    return true;
+  }
   // LOT 1 (2026-09-01) — étape de remplissage en cours, relayée pour SURVIVRE
   // à la mort de la page (même raison d'être que la capture ci-dessus). Pur
   // relevé : rien ne décide sur cette valeur, elle n'existe que pour le
@@ -3130,8 +3140,26 @@ async function processJob(rawJob, accessToken) {
           body: JSON.stringify({ platform_listing_id: beebsProductId }),
         }).catch((e) => console.warn(`[background] PATCH platform_listing_id beebs :`, String(e?.message ?? e)));
       }
+      // Leboncoin (0.6.24) : l'id lu dans la réponse adsubmit — s'il y en a un —
+      // devient platform_listing_id, et la trace du dépôt (preuve : écran
+      // /options ou adsubmit 2xx, extrait de la réponse) part dans
+      // platform_fields.lbc_depot. ⛔ PAS de listing_url à cet instant : l'annonce
+      // est EN VÉRIFICATION, sa page publique rend 404 tant que Leboncoin ne l'a
+      // pas relâchée — et le veilleur de vente lit un 404 comme « morte »
+      // (même règle que Beebs). C'est la re-capture qui posera l'URL, et elle
+      // peut désormais viser l'id au lieu du seul titre.
+      const extrasPublie = completionExtras(job, result);
+      if (job.platform === "leboncoin" && result.lbcDepot) {
+        extrasPublie.platform_fields = { ...(extrasPublie.platform_fields ?? {}), lbc_depot: result.lbcDepot };
+      }
+      if (job.platform === "leboncoin" && result.lbcAdId && /^\d{6,}$/.test(String(result.lbcAdId))) {
+        await restRequest(`cross_post_jobs?id=eq.${job.id}`, accessToken, {
+          method: "PATCH",
+          body: JSON.stringify({ platform_listing_id: String(result.lbcAdId) }),
+        }).catch((e) => console.warn(`[background] PATCH platform_listing_id leboncoin :`, String(e?.message ?? e)));
+      }
       await updateJobStatus(accessToken, job.id, "published", {
-        ...completionExtras(job, result),
+        ...extrasPublie,
         listing_url: listingUrl ?? undefined,
       });
       // Après le 'published', jamais avant : la publication est déjà acquise.
@@ -5420,22 +5448,48 @@ async function ebaySubmitRequestSeen(tabId) {
 // vue : prudence, jamais un re-dépôt sur un doute. Rend aussi la liste
 // (url + statut, jamais le corps) pour l'annexe d'observabilité — c'est elle
 // qui gravera un jour l'endpoint exact.
+// ── 0.6.24 : la garde ne compte QUE adsubmit (2026-09-09) ────────────────────
+// L'endpoint de dépôt est RELEVÉ : POST https://api.leboncoin.fr/api/adsubmit/
+// v2/classifieds (403 {"status":"rejected","details":[…]} au refus). Compter
+// « n'importe quel non-GET » faisait un faux positif sur les uploads de photos
+// et les appels de pricing qui partent pendant l'aperçu. Deux sources :
+//   · les ENVOIS (requête partie, réponse pas encore lue) — c'est eux qui
+//     interdisent le re-clic pendant un POST lent ;
+//   · les CAPTURES (réponse lue : statut, details[], id éventuel).
+// `seen` = adsubmit parti ou répondu APRÈS `since` (le Continuer final). Une
+// entrée sans horodatage compte comme vue (prudence, jamais un re-dépôt sur
+// un doute). `autres` = les non-GET hors adsubmit, pour l'annexe seulement.
 async function lbcDepotRequestSeen(tabId, since) {
   try {
     const { captures } = await readProbeCaptures(tabId);
-    const apres = captures.filter((c) => {
-      if (!/api\.leboncoin\.fr/i.test(String(c?.url ?? ""))) return false;
-      if (String(c?.method ?? "").toUpperCase() === "GET") return false;
-      const at = Number(c?.at);
-      return !Number.isFinite(at) || at >= Number(since || 0);
-    });
-    const requetes = apres.slice(0, 8).map((c) => ({
+    const { envois } = await readProbeEnvois(tabId);
+    const surLbc = (x) => /api\.leboncoin\.fr/i.test(String(x?.url ?? ""));
+    const nonGet = (x) => String(x?.method ?? "").toUpperCase() !== "GET";
+    const adsubmit = (x) => /\/api\/adsubmit\//i.test(String(x?.url ?? ""));
+    const apres = (x) => { const at = Number(x?.at); return !Number.isFinite(at) || at >= Number(since || 0); };
+    const reponses = captures.filter((c) => surLbc(c) && nonGet(c) && adsubmit(c) && apres(c));
+    const envoisAd = envois.filter((e) => surLbc(e) && nonGet(e) && adsubmit(e) && apres(e));
+    const autres = captures.filter((c) => surLbc(c) && nonGet(c) && !adsubmit(c) && apres(c)).length;
+    const derniere = reponses[reponses.length - 1] ?? null;
+    const requetes = reponses.slice(0, 8).map((c) => ({
       url: String(c?.url ?? "").replace(/^https?:\/\/api\.leboncoin\.fr/i, "").slice(0, 120),
       status: c?.status ?? null,
     }));
-    return { seen: apres.length > 0, requetes };
+    return {
+      seen: reponses.length > 0 || envoisAd.length > 0,
+      requetes,
+      adsubmit: {
+        envoye: reponses.length > 0 || envoisAd.length > 0,
+        envois: envoisAd.length,
+        reponses: reponses.length,
+        status: derniere?.status ?? null,
+        detail: derniere?.lbcAdsubmit ?? null,
+        at: derniere?.at ?? null,
+      },
+      autres,
+    };
   } catch {
-    return { seen: true, requetes: [] };
+    return { seen: true, requetes: [], adsubmit: { envoye: true, illisible: true, envois: 0, reponses: 0, status: null, detail: null }, autres: 0 };
   }
 }
 
@@ -5842,6 +5896,21 @@ async function installNetworkProbe(tabId, platform) {
             window.postMessage({ __fillsellProbe: true, capture: cap }, window.location.origin);
           } catch { /* la sonde ne doit JAMAIS casser la publication */ }
         };
+        // ── L'ENVOI, JOURNALISÉ AVANT LA RÉPONSE (0.6.24, 2026-09-09) ────────
+        // Jusqu'ici la sonde ne relayait que des RÉPONSES. Pendant un POST
+        // lent, elle ne voyait donc RIEN : « aucune requête observée » voulait
+        // dire « aucune réponse en 30 s » (faux négatif Vinted du Pull côtelé,
+        // annonce pourtant en ligne), et leboncoin.js recliquait le Continuer
+        // final pendant que l'adsubmit partait (doublon du 09/09). Chaque
+        // requête non-GET vers l'endpoint sondé est relayée AU DÉPART, avec
+        // son horodatage ; la réponse suit dans __fsCaptures comme avant.
+        window.__fsEnvois = [];
+        const relayEnvoi = (env) => {
+          window.__fsEnvois.push(env);
+          try {
+            window.postMessage({ __fillsellProbe: true, envoi: env }, window.location.origin);
+          } catch { /* idem : jamais une publication cassée */ }
+        };
         // ⚠️ CORPS BINAIRES ASSAINIS (2026-07-13, job c1cd4ff1). Le motif eBay
         // capture TOUTE requête non-GET du domaine (assumé) — y compris les
         // pixels de tracking (collectsysteminfo, collectbehaviorinfo) dont la
@@ -5873,6 +5942,33 @@ async function installNetworkProbe(tabId, platform) {
         // Parse best-effort : pas du JSON attendu \u2192 extraits g\u00E9n\u00E9riques seuls.
         const structuredExtras = (url, status, txt) => {
           const extras = {};
+          // Leboncoin, POST /api/adsubmit/v2/classifieds (0.6.24) : la réponse
+          // du dépôt, jamais lue jusqu'ici. Au refus, details[{field,message}]
+          // porte le texte EXACT de Leboncoin (relevé le 09/09 : 403
+          // {"status":"rejected","details":[{"field":"body","message":"Nous
+          // vous invitons à supprimer toute mention…"}]}). À l'acceptation, un
+          // éventuel id — la forme réelle du succès N'A PAS ENCORE été relevée
+          // (aucune capture en base) : motifs larges + extrait borné conservé
+          // pour l'apprendre au premier dépôt. Best-effort, jamais bloquant.
+          try {
+            if (/\/api\/adsubmit\//i.test(String(url))) {
+              const corps = String(txt ?? "");
+              let j = null;
+              try { j = JSON.parse(corps); } catch { /* pas du JSON */ }
+              const details = Array.isArray(j?.details)
+                ? j.details.filter((d) => d && (d.message || d.field)).slice(0, 3)
+                  .map((d) => ({ field: String(d.field ?? "").slice(0, 60), message: String(d.message ?? "").slice(0, 300) }))
+                : [];
+              const idM = corps.match(/"(?:list_id|ad_id|classified_id|listing_id)"\s*:\s*"?(\d{6,})/i)
+                ?? corps.match(/"id"\s*:\s*"?(\d{8,})"?/);
+              extras.lbcAdsubmit = {
+                statut: typeof j?.status === "string" ? j.status.slice(0, 40) : null,
+                id: idM ? idM[1] : null,
+                details,
+                extrait: corps.slice(0, 600).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "\uFFFD"),
+              };
+            }
+          } catch { /* pur relevé */ }
           try {
             if (/item_upload\/attributes/i.test(String(url)) && !/suggestions/i.test(String(url))) {
               const j = JSON.parse(String(txt));
@@ -5996,12 +6092,16 @@ async function installNetworkProbe(tabId, platform) {
               }
             }
           } catch { /* la pose ne doit JAMAIS casser la publication */ }
+          try {
+            const methodeEnvoi = String(init?.method ?? input?.method ?? "GET").toUpperCase();
+            if (ENDPOINT.test(url) && methodeEnvoi !== "GET") relayEnvoi({ url, method: methodeEnvoi, at: Date.now() });
+          } catch { /* la sonde ne doit JAMAIS casser la publication */ }
           const res = await origFetch.apply(this, args);
           try {
             if (ENDPOINT.test(url) && String(init?.method ?? "GET").toUpperCase() !== "GET") {
               const txt = await res.clone().text().catch(() => "");
               relay({
-                url, status: res.status,
+                url, status: res.status, method: String(init?.method ?? "").toUpperCase(), at: Date.now(),
                 prix: priceOf(corpsEnvoye),
                 attrsCatalogId: attrsCatalogIdOf(url, corpsEnvoye),
                 // Lu sur le corps RÉELLEMENT ENVOYÉ : le diagnostic doit dire
@@ -6037,7 +6137,7 @@ async function installNetworkProbe(tabId, platform) {
                 let corps = "";
                 try { corps = this.responseText ?? ""; } catch { corps = "(responseType non texte)"; }
                 relay({
-                  url: this.__u, status: this.status,
+                  url: this.__u, status: this.status, method: String(this.__m ?? "").toUpperCase(), at: Date.now(),
                   prix: priceOf(typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   attrsCatalogId: attrsCatalogIdOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   isbnEnvoye: isbnEnvoyeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
@@ -6048,6 +6148,11 @@ async function installNetworkProbe(tabId, platform) {
                   ...structuredExtras(this.__u, this.status, corps),
                 });
               });
+            }
+          } catch { /* idem */ }
+          try {
+            if (ENDPOINT.test(this.__u ?? "") && String(this.__m).toUpperCase() !== "GET") {
+              relayEnvoi({ url: this.__u, method: String(this.__m).toUpperCase(), at: Date.now() });
             }
           } catch { /* idem */ }
           return oSend.call(this, corpsEnvoye);
@@ -6513,6 +6618,40 @@ async function vintedFiberClick(tabId, selector) {
 // mort du content script, et au job lui-même.
 const probeCapturesByTab = new Map();
 
+// Envois relayés par la sonde (0.6.24) : une requête PARTIE, avant toute
+// réponse. Même durée de vie que les captures ; lus par lbcDepotRequestSeen
+// (« adsubmit est-il parti ? ») et par le verdict Vinted (« la création
+// a-t-elle été envoyée ? »). Journalisés au relais : c'est la trace que le
+// faux négatif du 09/09 n'avait pas.
+const probeEnvoisByTab = new Map();
+function recordProbeEnvoi(tabId, envoi) {
+  const list = probeEnvoisByTab.get(tabId) ?? [];
+  const e = envoi && typeof envoi === "object" ? envoi : {};
+  list.push(e.at ? e : { ...e, at: Date.now() });
+  probeEnvoisByTab.set(tabId, list.slice(-30));
+  console.log(`[background] sonde : requête ENVOYÉE ${String(e.method ?? "?")} ${String(e.url ?? "").slice(0, 140)} (onglet ${tabId})`);
+}
+async function readProbeEnvois(tabId) {
+  let inPage = [];
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: () => window.__fsEnvois ?? [],
+    });
+    inPage = res?.result ?? [];
+  } catch { /* page morte/naviguée : les envois relayés suffisent */ }
+  const relayed = probeEnvoisByTab.get(tabId) ?? [];
+  const seen = new Set();
+  const envois = [...relayed, ...inPage].filter((e) => {
+    const k = `${e?.url}|${e?.method}|${e?.at}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return { envois };
+}
+
 function recordProbeCapture(tabId, capture) {
   const list = probeCapturesByTab.get(tabId) ?? [];
   // Horodatage de réception (2026-09-08) : lbcDepotRequestSeen distingue les
@@ -6556,11 +6695,12 @@ async function readProbeCaptures(tabId) {
 // créerait des doublons et des listing_url croisés.
 function clearProbeCaptures(tabId) {
   probeCapturesByTab.delete(tabId);
+  probeEnvoisByTab.delete(tabId);
   chrome.scripting
     .executeScript({
       target: { tabId },
       world: "MAIN",
-      func: () => { window.__fsCaptures = []; },
+      func: () => { window.__fsCaptures = []; window.__fsEnvois = []; },
     })
     .catch(() => {});
 }
@@ -11055,10 +11195,23 @@ async function recoverMissingListingUrls(session) {
       const stillMissing = [];
       let diagPage = null;
       for (const job of remaining) {
+        // Leboncoin (0.6.24) : quand l'id adsubmit a été lu au dépôt
+        // (platform_listing_id), la carte se cherche PAR ID — deux annonces au
+        // même titre (le doublon du 09/09) ne se confondent plus, et un titre
+        // remanié par Leboncoin ne fait plus rater le lien. Le motif ne peut
+        // matcher que CETTE annonce : le repli « lien unique » y est sans danger.
+        let urlParId = null;
+        if (platform === "leboncoin" && /^\d{6,}$/.test(String(job.platform_listing_id ?? ""))) {
+          const motifParIdLbc = String.raw`https://www\.leboncoin\.fr/ad/[^#\s"'/]+/` + String(job.platform_listing_id) + String.raw`(?![0-9])`;
+          urlParId = (await findListingLinkInPage(tabId, motifParIdLbc, null).catch(() => ({ url: null }))).url ?? null;
+          if (urlParId) console.log(`[background] listing_url récupéré PAR ID (leboncoin, job ${job.id}, id ${job.platform_listing_id}) : ${urlParId}`);
+        }
         // requireTitle : on est sur une page de LISTE, et on y cherche PLUSIEURS
         // jobs à la fois — le repli « lien unique » y serait catastrophique
         // (il attribuerait la même URL à tous les jobs de la plateforme).
-        const { url, diag } = await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true });
+        const { url, diag } = urlParId
+          ? { url: urlParId, diag: null }
+          : await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true });
         if (url) {
           console.log(`[background] listing_url récupéré (${platform}, job ${job.id}) : ${url}`);
           // platform_listing_id accompagne l'URL (même règle que
