@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-09-09-suppression-attend-le-titre (page d'annonce : le h1 est attendu jusqu'à 15 s au lieu d'être lu une fois ; l'interstitiel DataDome — sans en-tête, sans navigation, sans contenu — est NOMMÉ « CHALLENGE DATADOME » au lieu de passer pour un titre pas chargé ; deux retraits d'Ornella du 09/09 sur des annonces vérifiées en ligne) + 2026-09-08-cadence-0-6-19-mesuree (aperçu : re-clics du Continuer final à ~2 s, ~5 s, ~8 s comme la 0.6.19 — 182/192 publiés contre 9/41 en 0.6.20, 11 relevés identiques, 4e compte à sonde 200 ; la sonde réseau non-GET api.leboncoin.fr OBSERVE et nomme un refus 4xx/5xx, elle ne retient plus aucun re-clic ; bouton disabled/aria-busy jamais recliqué) + 2026-09-07-un-slot-par-cle-maison-jardin (lbcAspects.<clé> posé PAR CLÉ et dans l'ordre du DOM — Univers/Type AVANT Produit, dont la liste en dépend ; le bloc lbcProduit ne vise que le premier label _type et cède quand lbcAspects porte déjà sa clé ; seule la clé réellement écrite par ce bloc est sautée par le canal générique — sur Décoration, decoration_type n'était JAMAIS posé ; needs_user cible lbcAspects.<clé> pour tout _type ; job c324b5ee josephinecerni) + 2026-09-07-repli-generique-conserve-le-prefill (« Autre »/« Autres »/« Sans marque » ne remplacent JAMAIS un pré-rempli précis de Leboncoin — « Cuisine et cuisson » conservé, warning explicite) + 2026-09-05-apercu-refuse-nom-prenom-escrow (l'aperçu resté affiché après le Continuer final n'est plus pris pour l'écran coordonnées — téléphone VISIBLE et hors aperçu seulement ; escrow_lastname/escrow_firstname vides = nom et prénom exigés par la Transaction sécurisée → attenteUtilisateur, needs_user persisté, jamais failed ; refus visibles relevés, re-clic unique si aucun ; adresse comparée sans apostrophes ni traits d'union — « 56b rue dalger » retrouve « 56B Rue d'Alger ») + 2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
+const LEBONCOIN_BUILD = "2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti, réponse attendue ≤ 60 s ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin ; /options = succès, page vide attendue 20 s) — précédent : 2026-09-09-suppression-attend-le-titre (page d'annonce : le h1 est attendu jusqu'à 15 s au lieu d'être lu une fois ; l'i";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -36,6 +36,19 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
       .catch((err) => sendResponse(reponseEchecInterne(err)));
 
     return true; // réponse asynchrone
+  });
+
+  // ── Relais de la sonde réseau (0.6.24) ─────────────────────────────────────
+  // Même mécanique que vinted.js/ebay.js : la sonde (monde MAIN) postMessage
+  // chaque capture ET chaque envoi ; on les relaie au background, qui survit à
+  // la navigation. leboncoin.js n'avait AUCUN relais : après le Continuer
+  // final, la page /options n'a plus la preuve du dépôt.
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || !e.data?.__fillsellProbe) return;
+    try {
+      if (e.data.capture) chrome.runtime.sendMessage({ type: "FILLSELL_PROBE_CAPTURE", capture: e.data.capture }).catch(() => {});
+      if (e.data.envoi) chrome.runtime.sendMessage({ type: "FILLSELL_PROBE_ENVOI", envoi: e.data.envoi }).catch(() => {});
+    } catch { /* extension rechargée : sans conséquence */ }
   });
 }
 
@@ -1122,9 +1135,16 @@ async function fillListingForm(job) {
       });
       // Sonde illisible : on ne PRÉTEND pas que rien n'est parti (prudence,
       // même catch que la sonde eBay).
-      if (!r || typeof r !== "object") return { seen: true, requetes: [], illisible: true };
-      return { seen: r.seen === true, requetes: Array.isArray(r.requetes) ? r.requetes : [], illisible: false };
-    } catch { return { seen: true, requetes: [], illisible: true }; }
+      if (!r || typeof r !== "object") return { seen: true, requetes: [], illisible: true, adsubmit: { envoye: true, illisible: true, envois: 0, reponses: 0, status: null, detail: null }, autres: 0 };
+      return {
+        seen: r.seen === true, requetes: Array.isArray(r.requetes) ? r.requetes : [], illisible: false,
+        // 0.6.24 : la garde ne compte QUE adsubmit (envois + réponses) — cf.
+        // lbcDepotRequestSeen (background). detail = statut/details[]/id lus
+        // dans la RÉPONSE d'adsubmit par la sonde.
+        adsubmit: r.adsubmit && typeof r.adsubmit === "object" ? r.adsubmit : { envoye: r.seen === true, illisible: false, envois: 0, reponses: 0, status: null, detail: null },
+        autres: Number(r.autres) || 0,
+      };
+    } catch { return { seen: true, requetes: [], illisible: true, adsubmit: { envoye: true, illisible: true, envois: 0, reponses: 0, status: null, detail: null }, autres: 0 }; }
   };
 
   // Écrans post-aperçu, avancés d'écran en écran (3 max) :
@@ -1234,6 +1254,25 @@ async function fillListingForm(job) {
     //     l'API (relevé chez Joséphine : sonde leboncoin http 403 pendant que la
     //     page dit « connectée ») — c'est le mur que le clic « avalé » cachait.
     const statuts = sonde.requetes.map((r) => Number(r?.status)).filter(Number.isFinite);
+    // 0.6.24 : details[] de la réponse adsubmit = le texte EXACT de Leboncoin,
+    // jamais un « n'a pas confirmé le dépôt » (cas fondateur : « Nous vous
+    // invitons à supprimer toute mention d'un site internet autre que
+    // leboncoin.fr… », 403 muet à l'écran).
+    const detailsLbc = Array.isArray(sonde.adsubmit?.detail?.details) ? sonde.adsubmit.detail.details.filter((d) => d?.message) : [];
+    if (sonde.seen && !sonde.illisible && Number(sonde.adsubmit?.status) >= 400 && detailsLbc.length) {
+      const textes = detailsLbc.map((d) => d.message);
+      const champs = detailsLbc.map((d) => d.field).filter(Boolean);
+      console.warn(`[leboncoin] dépôt REFUSÉ par Leboncoin (adsubmit ${sonde.adsubmit.status}) : ${textes.join(" · ")}`);
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+        lbcRefus: { status: sonde.adsubmit.status, details: detailsLbc },
+        error:
+          `Leboncoin refuse le dépôt : « ${textes.join(" » · « ")} »` +
+          (champs.length ? ` (champ ${champs.join(", ")})` : "") +
+          " — corrige l'annonce dans FillSell (ou sur l'onglet resté ouvert), puis relance." +
+          ` — Observabilité: adsubmit HTTP ${sonde.adsubmit.status} ; ${dumpEcranVisible()}`,
+      };
+    }
     if (sonde.seen && !sonde.illisible && statuts.length && statuts.length === sonde.requetes.length && statuts.every((s) => s >= 400)) {
       const detail = `requête(s) de dépôt REFUSÉE(S) par Leboncoin : ${JSON.stringify(sonde.requetes.slice(0, 5))}`;
       console.warn(`[leboncoin] aperçu inchangé — ${detail}`);
@@ -1320,6 +1359,110 @@ async function fillListingForm(job) {
   let freeCta = null;
   let reclicsApercu = 0;
   let sondeNotee = false;
+  // ── 0.6.24 : LE DÉPÔT, C'EST LA REQUÊTE adsubmit — PLUS JAMAIS UN RE-CLIC DESSUS ──
+  // Doublon du 09/09 (job a2849f53, Nico) : Leboncoin met l'annonce EN
+  // VÉRIFICATION, donc son POST /api/adsubmit/v2/classifieds est LENT ; la
+  // cadence de re-clics de la 0.6.19 recliquait le Continuer final pendant
+  // qu'il partait → deux annonces. Et la page /options servie ensuite, encore
+  // vide, était lue « écran post-aperçu non reconnu » → reprise → un troisième
+  // dépôt évité de justesse (job gelé à la main).
+  // La sonde journalise désormais l'ENVOI (avant la réponse) : dès qu'un
+  // adsubmit est parti, AUCUN re-clic, on attend sa RÉPONSE (≤ 60 s).
+  //   · 2xx → dépôt ACCEPTÉ (id lu dans la réponse s'il y en a un) ;
+  //   · ≥ 400 avec details[] → needs_user avec le texte EXACT de Leboncoin ;
+  //   · aucune réponse en 60 s → « dépôt incertain », aucune reprise.
+  // Seul un clic AVALÉ (aucun adsubmit parti) autorise encore un re-clic —
+  // et la sonde est relue juste AVANT chaque re-clic.
+  let depotAccepte = null;   // { status, id, statut, extrait } : adsubmit a répondu 2xx
+  let refusAdsubmit = null;  // { status, details, extrait } : adsubmit a répondu ≥ 400
+  const attendreReponseAdsubmit = async (budgetMs = 60_000) => {
+    const fin = Date.now() + budgetMs;
+    while (Date.now() < fin) {
+      const sonde = await depotRequeteVue();
+      const ad = sonde.adsubmit;
+      if (ad && !ad.illisible && Number(ad.reponses) > 0 && Number.isFinite(Number(ad.status))) {
+        return { sonde, status: Number(ad.status), detail: ad.detail ?? null };
+      }
+      // L'écran a avancé sans que la sonde ait lu la réponse (capture perdue,
+      // sonde illisible) : la suite juge sur l'écran.
+      if (findFreeCta() || /\/deposer-une-annonce\/(?:options|confirmation)/.test(location.pathname)) {
+        return { sonde, status: null, detail: null, ecran: true };
+      }
+      await sleep(1000);
+    }
+    return { sonde: await depotRequeteVue(), status: null, detail: null, timeout: true };
+  };
+  const noterReponseAdsubmit = (r) => {
+    if (r.status == null) return;
+    if (r.status >= 200 && r.status < 300) {
+      depotAccepte = { status: r.status, id: r.detail?.id ?? null, statut: r.detail?.statut ?? null, extrait: r.detail?.extrait ?? null };
+      warnings.push(`dépôt: adsubmit a répondu ${r.status} — dépôt ACCEPTÉ par Leboncoin${depotAccepte.id ? ` (id ${depotAccepte.id})` : " (aucun id lisible dans la réponse — forme à relever)"}`);
+      console.log(`[leboncoin] dépôt ACCEPTÉ par adsubmit (${r.status})`, depotAccepte);
+    } else {
+      refusAdsubmit = { status: r.status, details: Array.isArray(r.detail?.details) ? r.detail.details : [], extrait: r.detail?.extrait ?? null };
+      console.warn(`[leboncoin] adsubmit REFUSÉ (${r.status})`, refusAdsubmit);
+    }
+  };
+  // Refus adsubmit : le texte EXACT de Leboncoin. 403 sans details = DataDome.
+  const verdictRefusAdsubmit = () => {
+    const d = refusAdsubmit;
+    const textes = (d.details ?? []).map((x) => x?.message).filter(Boolean);
+    const champs = (d.details ?? []).map((x) => x?.field).filter(Boolean);
+    if (textes.length) {
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+        lbcRefus: d,
+        error:
+          `Leboncoin refuse le dépôt : « ${textes.join(" » · « ")} »` +
+          (champs.length ? ` (champ ${champs.join(", ")})` : "") +
+          " — corrige l'annonce dans FillSell (ou sur l'onglet resté ouvert), puis relance." +
+          ` — Observabilité: adsubmit HTTP ${d.status} ; ${dumpEcranVisible()}`,
+      };
+    }
+    if (d.status === 403) {
+      return {
+        success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+        error:
+          "CHALLENGE DATADOME : Leboncoin a refusé la requête de dépôt (403, vérification anti-robot sur l'API). " +
+          "Ouvrir leboncoin.fr dans Chrome — sur CET ordinateur — et résoudre la vérification ; le job repartira au prochain passage." +
+          ` — Observabilité: adsubmit HTTP 403 sans details ; ${dumpEcranVisible()}`,
+      };
+    }
+    return {
+      success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+      error:
+        `Leboncoin a refusé la requête de dépôt (HTTP ${d.status}) sans message lisible — nouvel essai au prochain passage ; ` +
+        "si ça se répète, terminer le dépôt à la main sur l'onglet resté ouvert." +
+        ` — Observabilité: adsubmit HTTP ${d.status} : ${String(d.extrait ?? "").slice(0, 200)} ; ${dumpEcranVisible()}`,
+    };
+  };
+  // adsubmit PARTI, rien lu en 60 s : dépôt incertain, AUCUNE reprise (doublon).
+  const verdictDepotIncertain = (sonde) => ({
+    success: false, needsUser: true, attenteUtilisateur: true, attenteMotif: "lbc_depot_incertain", depotPeutEtreParti: true,
+    warnings, unfilledRequired, discoveredRequired: enumerated,
+    error:
+      "Leboncoin n'a pas confirmé le dépôt, mais la requête de dépôt est partie après le Continuer final : pour ne pas " +
+      "créer de doublon, on ne retente pas. Vérifie « Mes annonces » sur leboncoin.fr — si l'annonce y est, " +
+      "tout est bon ; sinon relance-la depuis le Stock." +
+      ` — Observabilité: adsubmit envoyé, aucune réponse lue en 60 s (${JSON.stringify(sonde?.adsubmit ?? null)}) ; ${dumpEcranVisible()}`,
+  });
+  // /options = DÉPÔT ACCEPTÉ (point 3) : Leboncoin ne sert cet écran qu'après
+  // avoir accepté l'annonce. Une page encore VIDE (titres [], boutons []) n'est
+  // pas un écran inconnu, elle n'a pas fini de se rendre : on attend son rendu
+  // (h1 « Boostez votre annonce ! » ou le CTA gratuit) jusqu'à 20 s. CTA → on
+  // suit le chemin gratuit ; sinon le dépôt est acquis quand même — annonce en
+  // vérification, lien par la re-capture, jamais « publié » sans cette preuve.
+  const surEcranOptions = () => /\/deposer-une-annonce\/options/.test(location.pathname);
+  const succesDepotAccepte = (preuve, note) => {
+    warnings.push(`dépôt: ${note}`);
+    console.log(`[leboncoin] dépôt ACCEPTÉ (${preuve}) — annonce en vérification, lien par la re-capture`);
+    return {
+      success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated,
+      lbcAdId: depotAccepte?.id ?? null,
+      lbcDepot: { preuve, adsubmit: depotAccepte, at: new Date().toISOString() },
+    };
+  };
+
   for (let ecran = 0; ecran < 3 && !freeCta; ecran++) {
     let etape = await attendreEcranSuivant(ecran === 0 ? 600 : 15_000);
     while (!etape && estEncoreApercu() && reclicsApercu < 3
@@ -1334,27 +1477,67 @@ async function fillListingForm(job) {
         break;
       }
       const sonde = await depotRequeteVue();
-      if (sonde.seen && !sondeNotee) {
-        sondeNotee = true;
-        warnings.push(
-          "dépôt: requête(s) non-GET api.leboncoin.fr captée(s) après le Continuer final, aperçu pourtant inchangé — " +
-          (sonde.illisible ? "sonde illisible" : JSON.stringify(sonde.requetes.slice(0, 3))) +
-          " (re-clics maintenus : cadence 0.6.19, mesurée)"
-        );
+      if (sonde.seen) {
+        // adsubmit est parti (ou la sonde est illisible : prudence) : on n'y
+        // touche plus, on attend sa réponse.
+        if (!sondeNotee) {
+          sondeNotee = true;
+          warnings.push(
+            "dépôt: requête adsubmit partie après le Continuer final — aucun re-clic, attente de la réponse (≤ 60 s)" +
+            (sonde.illisible ? " [sonde illisible : traitée comme partie, par prudence]" : "")
+          );
+        }
+        const r = await attendreReponseAdsubmit(60_000);
+        noterReponseAdsubmit(r);
+        if (refusAdsubmit) return verdictRefusAdsubmit();
+        if (!depotAccepte && r.timeout) return verdictDepotIncertain(r.sonde);
+        etape = await attendreEcranSuivant(depotAccepte ? 20_000 : 15_000);
+        break;
       }
       await humanPause(900, 1800);
       // La page a pu bouger pendant la pause : on ne reclique jamais un
       // bouton détaché ni un aperçu déjà parti.
       if (!encore.isConnected || !estEncoreApercu()) { etape = await attendreEcranSuivant(15_000); break; }
+      // Dernière lecture AVANT le clic : si adsubmit vient de partir, la boucle
+      // reprend par la branche « attente de la réponse », jamais par un clic.
+      if ((await depotRequeteVue()).seen) continue;
       reclicsApercu++;
-      const note = `dépôt: Continuer final sans effet observable (aperçu inchangé, aucun refus visible) — re-clic ${reclicsApercu}/3`;
+      const note = `dépôt: Continuer final sans effet observable (aperçu inchangé, aucun adsubmit parti, aucun refus visible) — re-clic ${reclicsApercu}/3`;
       console.warn(`[leboncoin] ⚠️ ${note}`);
       warnings.push(note);
       realClick(encore);
       etape = await attendreEcranSuivant(reclicsApercu >= 3 ? 15_000 : 2_000);
     }
     if (!etape) {
-      if (estEncoreApercu()) return await refusApercu();
+      // L'aperçu est parti (ou la boucle s'est arrêtée) sans écran reconnu :
+      // adsubmit a-t-il parlé ?
+      if (!depotAccepte && !refusAdsubmit) {
+        const s = await depotRequeteVue();
+        if (s.seen) {
+          const r = await attendreReponseAdsubmit(60_000);
+          noterReponseAdsubmit(r);
+          if (refusAdsubmit) return verdictRefusAdsubmit();
+          if (!depotAccepte && r.timeout) return verdictDepotIncertain(r.sonde);
+        }
+      }
+      if (estEncoreApercu() && !depotAccepte) return await refusApercu();
+      if (surEcranOptions() || depotAccepte) {
+        const rendu = await waitFor(
+          () => findFreeCta() ?? (/boostez votre annonce/i.test(document.body?.textContent ?? "") ? "h1" : null),
+          20_000
+        );
+        if (rendu && rendu !== "h1") { freeCta = rendu; break; }
+        return succesDepotAccepte(
+          surEcranOptions() ? "ecran_options" : "adsubmit_2xx",
+          surEcranOptions()
+            ? `écran /options ${rendu === "h1" ? "rendu (« Boostez votre annonce ! »), sans CTA gratuit" : "resté vide après 20 s"} — dépôt accepté par Leboncoin, annonce en vérification`
+            : "adsubmit 2xx sans écran reconnu ensuite — dépôt accepté par Leboncoin, annonce en vérification"
+        );
+      }
+      // Écran inconnu : si un adsubmit est parti, ce n'est pas un écran inconnu
+      // qu'on retente — c'est un dépôt peut-être abouti. Aucune reprise.
+      const sondeFinale = await depotRequeteVue();
+      if (sondeFinale.seen) return verdictDepotIncertain(sondeFinale);
       return {
         success: false, needsUser: true, warnings, unfilledRequired,
         error: `LIVE : écran post-aperçu non reconnu — terminer le dépôt à la main. Relevé de l'écran : ${dumpEcranVisible()}`,
@@ -1384,6 +1567,9 @@ async function fillListingForm(job) {
     await humanPause(900, 1800);
     realClick(continuerCoord);
     await sleep(2000); // laisse l'écran suivant arriver avant de re-sonder
+  }
+  if (!freeCta && (depotAccepte || surEcranOptions())) {
+    return succesDepotAccepte(surEcranOptions() ? "ecran_options" : "adsubmit_2xx", "chemin gratuit introuvable après les écrans intermédiaires, mais le dépôt est accepté (adsubmit 2xx / écran /options) — annonce en vérification");
   }
   if (!freeCta) {
     return {
@@ -1438,6 +1624,9 @@ async function fillListingForm(job) {
       preuve = await waitFor(preuveDepot, 12_000);
     }
   }
+  if (!preuve && (depotAccepte || surEcranOptions())) {
+    return succesDepotAccepte(depotAccepte ? "adsubmit_2xx" : "ecran_options", "confirmation non lue après le chemin gratuit, mais le dépôt est accepté (adsubmit 2xx / écran /options) — annonce en vérification");
+  }
   if (!preuve) {
     return {
       success: false, needsUser: true, depositUnconfirmed: true,
@@ -1450,7 +1639,13 @@ async function fillListingForm(job) {
     };
   }
   console.log(`[leboncoin] dépôt CONFIRMÉ (${preuve})`);
-  return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
+  return {
+    success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated,
+    // 0.6.24 : l'id adsubmit (s'il a été lu) et la trace du dépôt voyagent avec
+    // le succès — platform_listing_id + platform_fields.lbc_depot côté background.
+    lbcAdId: depotAccepte?.id ?? null,
+    lbcDepot: { preuve: `confirmation (${preuve})`, adsubmit: depotAccepte, at: new Date().toISOString() },
+  };
 }
 
 // ── Étapes 1→3 du dépôt : titre → catégorie → photos/critères → Continuer ───
