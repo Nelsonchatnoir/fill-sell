@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-09-07-le-vide-dit-sa-cause (needs_user « champs encore vides » : champ par champ, la fiche NE PORTE PAS la donnée — Beebs a raison, à compléter — ou la fiche la porte et elle n'a pas pu être posée — panne de remplissage ; fin de la confusion Short/bonnets vs Chemisette Celio) + 2026-07-26-interstitiel-et-parite (trois causes du « panneau jamais ouvert » traitées ensemble : 1. la modale « Toujours plus sur l'appli » avale le clic d'ouverture — détection structurelle role=dialog/aria-modal/modal + fermeture par bouton NON-store avant toute interaction ; 2. la boucle d'ouverture re-cliquait sans regarder alors que le clic BASCULE — on ne re-clique plus que panneau constaté fermé ; 3. panelOf repli sur l'unique panneau visible du document quand la lecture scopée ne voit rien — c'était le cas capture du 26/07 : panneau OUVERT avec 5 options, lecture vide ; diagnostic DOM complet dans l'erreur)";
+const BEEBS_BUILD = "2026-09-09-askBackground-defini-ici (la 0.6.22 appelait askBackground sans le définir dans ce fichier — défini seulement dans vinted.js — ReferenceError, canal executeScript « indisponible », pont inline muet, refus « pas de catégorie sans pont » : 0 publication Beebs pour tout le parc depuis le 08/09 23:47 ; désormais défini ici, le refus ne s'applique que si le canal a été RÉELLEMENT tenté, sinon repli clic+panneau, et le message porte canalPontMain) + 2026-09-07-le-vide-dit-sa-cause (needs_user « champs encore vides » : champ par champ, la fiche NE PORTE PAS la donnée — Beebs a raison, à compléter — ou la fiche la porte et elle n'a pas pu être posée — panne de remplissage ; fin de la confusion Short/bonnets vs Chemisette Celio) + 2026-07-26-interstitiel-et-parite (trois causes du « panneau jamais ouvert » traitées ensemble : 1. la modale « Toujours plus sur l'appli » avale le clic d'ouverture — détection structurelle role=dialog/aria-modal/modal + fermeture par bouton NON-store avant toute interaction ; 2. la boucle d'ouverture re-cliquait sans regarder alors que le clic BASCULE — on ne re-clique plus que panneau constaté fermé ; 3. panelOf repli sur l'unique panneau visible du document quand la lecture scopée ne voit rien — c'était le cas capture du 26/07 : panneau OUVERT avec 5 options, lecture vide ; diagnostic DOM complet dans l'erreur)";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -2360,6 +2360,30 @@ async function waitForCategoryOption(text, { path = [], level = 0, trigger, time
 let canalPontMain = "(non tenté)";
 let etatPontInline = "(non sondé)";
 let diagnosticPontInlineLance = false;
+// Le canal a-t-il été RÉELLEMENT tenté (message parti vers le background) ?
+// false = une erreur de code CHEZ NOUS avant même l'envoi — ce n'est pas un
+// signal Beebs, et ça ne doit jamais fermer la porte au repli clic+panneau.
+let canalTente = false;
+
+// ── askBackground : DÉFINI ICI, PAS AILLEURS (2026-09-09) ────────────────────
+// La 0.6.22 appelait askBackground sans le définir dans ce fichier : il
+// n'existait que dans vinted.js, et un content script vit SEUL sur son site.
+// Sur beebs.app : ReferenceError → attrapé → « executeScript : askBackground is
+// not defined » → canal déclaré indisponible → pont inline muet (comme
+// toujours) → refus « pas de catégorie sans pont ». Quatre publications sur
+// quatre, deux comptes, deux postes — le parc Beebs entier à l'arrêt depuis
+// le 08/09 23:47, pour une fonction absente. Copie conforme de vinted.js,
+// résiliente : background plus ancien ou message inconnu → null.
+function askBackground(msg) {
+  try {
+    return chrome.runtime.sendMessage(msg).catch(() => null);
+  } catch {
+    return Promise.resolve(null);
+  }
+}
+
+const estErreurDeCode = (e) =>
+  e instanceof ReferenceError || e instanceof TypeError || e instanceof SyntaxError || e instanceof RangeError;
 
 /** Résultat de la fonction MAIN, ou null si le CANAL lui-même a échoué
  *  (background injoignable, executeScript refusé, délai dépassé). */
@@ -2370,7 +2394,18 @@ async function demanderMainBeebs(fn, args) {
       askBackground({ type: "BEEBS_MAIN", fn, args }),
       sleep(8000).then(() => ({ ok: false, reason: "executeScript : aucune réponse du background en 8 s" })),
     ]);
+    canalTente = true;
   } catch (e) {
+    // Une exception ICI, c'est notre code qui casse avant d'avoir parlé au
+    // background — jamais un verdict sur Beebs. Nommée comme telle, et le
+    // canal est marqué NON tenté : la suite garde le repli clic+panneau.
+    if (estErreurDeCode(e)) {
+      canalTente = false;
+      canalPontMain = `erreur de code (${String(e?.message ?? e)})`;
+      console.error(`[beebs] canal executeScript : erreur de code chez nous — ${String(e?.message ?? e)}`);
+      return null;
+    }
+    canalTente = true;
     res = { ok: false, reason: `executeScript : ${String(e?.message ?? e)}` };
   }
   if (!res || typeof res !== "object") {
@@ -2736,12 +2771,23 @@ async function selectCategory(path, fields = {}, titre = "") {
   // Le repli clic+panneau reste pour les seuls refus PARLÉS par la page
   // (chemin absent de props.categories, effet non constaté) : là, le pont a
   // répondu, et le clic vérifie chaque niveau par son libellé.
-  if (!viaFiber.ok && pontIndisponible(viaFiber)) {
-    cheminCategorie = `REFUSÉE (pont indisponible : ${viaFiber.reason})`;
+  // ⚠️ SEULEMENT SI LE CANAL A ÉTÉ RÉELLEMENT TENTÉ (2026-09-09, décision Nico).
+  // Une erreur de code chez nous (askBackground absent en 0.6.22) n'est pas un
+  // signal Beebs : elle a transformé un bug de plomberie en arrêt total du
+  // parc. Dans ce cas on retombe sur le repli clic+panneau — le chemin qui a
+  // produit 215 publications à fenêtre minimisée — et on le DIT.
+  // Et le message porte désormais canalPontMain : une panne de canal ne se
+  // déguise plus jamais en « pont inline muet ».
+  // (canalPontMain part déjà dans le warning « observabilité » du job — la
+  // cause « erreur de code (…) » y sera lisible sans rien ajouter ici.)
+  if (!viaFiber.ok && pontIndisponible(viaFiber) && !canalTente) {
+    console.warn(`[beebs] pont NON tenté (${canalPontMain}) — repli clic+panneau, la cause est chez nous`);
+  } else if (!viaFiber.ok && pontIndisponible(viaFiber)) {
+    cheminCategorie = `REFUSÉE (pont indisponible : canal MAIN ${canalPontMain} ; pont inline ${viaFiber.reason})`;
     const err = new Error(
-      `Beebs : le pont vers le formulaire n'a pas répondu (${viaFiber.reason}) — la catégorie n'a pas été posée : ` +
-      "on ne publie jamais une catégorie que le pont n'a pas confirmée. Nouvel essai au prochain passage ; " +
-      "si ça persiste, le problème vient de chez nous et il est signalé."
+      `Beebs : le pont vers le formulaire n'a pas répondu (canal MAIN : ${canalPontMain} ; pont inline : ${viaFiber.reason}) — ` +
+      "la catégorie n'a pas été posée : on ne publie jamais une catégorie que le pont n'a pas confirmée. " +
+      "Nouvel essai au prochain passage ; si ça persiste, le problème vient de chez nous et il est signalé."
     );
     err.needsUser = true;
     throw err;

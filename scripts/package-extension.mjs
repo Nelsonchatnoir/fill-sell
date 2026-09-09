@@ -139,7 +139,16 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // périmée, et elle bloquait à tort l'envoi de la 0.6.21.
 // Le paquet courant est la 0.6.21 (refus du bandeau de consentement Didomi
 // avant toutes les gardes, sur Leboncoin/Beebs/eBay).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20'];
+// 0.6.22 ajoutée le 09/09 : zip 784320a TÉLÉVERSÉ le 09/09 vers 00:05, en
+// examen au CWS — un second 0.6.22 serait indiscernable (doctrine 0.6.6).
+// 0.6.21 ajoutée avec elle : jamais téléversée, mais le Web Store refuse tout
+// numéro inférieur ou égal au dernier reçu (0.6.22) — le numéro est mort de
+// fait, l'inscrire évite un paquet qui passerait la garde pour se faire
+// rejeter. Le paquet courant est la 0.6.23 (askBackground défini dans
+// beebs.js — le parc Beebs était à l'arrêt en 0.6.22 —, re-capture non
+// affamée, retrait Leboncoin qui reprend + interstitiel DataDome nommé, 2e
+// passage « Mes annonces »).
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22'];
 // 0.6.14, 0.6.17 et 0.6.19 ajoutées le 06/09 au bump 0.6.20 : la liste était
 // restée à 0.6.13 alors que ces trois-là ont bel et bien été téléversées —
 // 0.6.14 (paquet CWS courant noté le 31/08), 0.6.17 (elle TOURNE en prod :
@@ -173,6 +182,18 @@ ${porcelain.split('\n').map(l => '    ' + l).join('\n')}
 }
 const head = git('rev-parse --short HEAD');
 console.log(`[package:extension] HEAD = ${head}${porcelain ? ' (SALE, forcé)' : ''}`);
+
+// 1bis. chaque script se suffit à lui-même (2026-09-09). La 0.6.22 est partie
+// au Web Store avec un `askBackground` appelé dans beebs.js et défini dans
+// vinted.js seulement : Beebs à l'arrêt pour tout le parc. Le selftest lit
+// chaque content script SEUL, comme Chrome le charge, et refuse le paquet au
+// premier identifiant absent. Une heure de garde pour ne plus jamais livrer ça.
+console.log('[package:extension] selftest content-scripts (identifiants absents)…');
+try {
+  execSync('node scripts/content-scripts-selftest.mjs', { cwd: ROOT, stdio: 'inherit' });
+} catch {
+  die('un script de l\'extension référence un identifiant qui n\'existe pas dans son propre fichier — voir le détail ci-dessus');
+}
 
 // 2. build depuis la source, jamais un dossier de sortie réutilisé
 console.log('[package:extension] npm run build:extension (reconstruction from scratch)…');
