@@ -7023,18 +7023,33 @@ async function captureFromMyListings(tabId, platform, pattern, myListingsUrl, ti
     // (modération plus longue), recoverMissingListingUrls re-cherchera aux
     // cycles de poll suivants.
     await sleep(randInt(8000, 15000));
-    const loaded = waitForTabComplete(tabId);
-    await neutralizeBeforeUnload(tabId);
-    await chrome.tabs.update(tabId, { url: myListingsUrl + WORK_TAB_FRAGMENT });
-    await loaded;
-    await sleep(randInt(1200, 2500)); // rendu de la liste
+    // DEUX passages au lieu d'un (2026-09-09). Un job « publié sans URL » coûte
+    // cher en aval : invisible pour la garde already_published, retrait à la
+    // vente impossible (Ritthik, gants de boxe : vendu sur Vinted le lendemain,
+    // l'annonce Leboncoin introuvable faute de lien), et la re-capture
+    // différée reste aveugle au-delà de la 1re page de « Mes annonces ». Le
+    // second passage ne part QUE si le premier revient bredouille, ~30 s plus
+    // tard — le temps d'indexation qui manquait à ~10 s.
+    const DELAIS_PASSAGES_MS = [0, randInt(25000, 40000)];
+    for (let passage = 0; passage < DELAIS_PASSAGES_MS.length; passage++) {
+      if (DELAIS_PASSAGES_MS[passage]) await sleep(DELAIS_PASSAGES_MS[passage]);
+      const loaded = waitForTabComplete(tabId);
+      await neutralizeBeforeUnload(tabId);
+      if (passage === 0) await chrome.tabs.update(tabId, { url: myListingsUrl + WORK_TAB_FRAGMENT });
+      else await chrome.tabs.reload(tabId);
+      await loaded;
+      await sleep(randInt(1200, 2500)); // rendu de la liste
 
-    // requireTitle : page de LISTE — jamais de repli « lien unique » ici (c'est
-    // ce repli qui a collé l'URL du T-shirt Patagonia sur le job New Balance).
-    const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
-    if (url) {
-      console.log(`[background] captureListingUrl(${platform}) : URL trouvée dans Mes annonces — ${url}`);
-      return url;
+      // requireTitle : page de LISTE — jamais de repli « lien unique » ici (c'est
+      // ce repli qui a collé l'URL du T-shirt Patagonia sur le job New Balance).
+      const { url } = await findListingLinkInPage(tabId, pattern.source, title, { requireTitle: true });
+      if (url) {
+        console.log(`[background] captureListingUrl(${platform}) : URL trouvée dans Mes annonces (passage ${passage + 1}) — ${url}`);
+        return url;
+      }
+      console.log(
+        `[background] captureListingUrl(${platform}) : titre absent de Mes annonces au passage ${passage + 1}/${DELAIS_PASSAGES_MS.length}`
+      );
     }
     // Log volontairement NEUTRE (2026-07-13) : un listing_url pas encore
     // disponible n'est PAS une anomalie — le job est publié, l'annonce est
@@ -10594,7 +10609,26 @@ const LISTING_URL_RECOVERY_PAGES = {
     "https://www.beebs.app/fr/account/my-adverts/creating",
   ],
 };
-const LISTING_URL_RECOVERY_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+// Fenêtre de re-capture PAR PLATEFORME (2026-09-09). ⚠️ VALEUR DUPLIQUÉE avec
+// fail_publish_without_listing_url (SQL, cron de 03 h 30) : les deux doivent
+// bouger ensemble.
+//   · leboncoin / ebay : 48 h — l'URL y est captée à la redirection du dépôt
+//     dans l'immense majorité des cas (97 % des LBC aboutis sur 60 j), 48 h ne
+//     couvrent que l'indexation de « Mes annonces » ;
+//   · beebs : 7 jours — l'annonce part en MODÉRATION HUMAINE (« il sera mis en
+//     ligne dès qu'il aura été vérifié par notre équipe ») et 15 dépôts du
+//     dimanche 06/09 au soir ont été requalifiés en échec par le cron de 48 h
+//     avant qu'une URL n'ait pu être lue, alors que les 15 articles sont
+//     toujours en vente. Le délai réel de modération n'avait jamais été
+//     mesuré : listing_url_recovery.delai_min (posé plus bas) le mesure
+//     désormais.
+const LISTING_URL_RECOVERY_MAX_AGE_MS = {
+  leboncoin: 48 * 60 * 60 * 1000,
+  ebay: 48 * 60 * 60 * 1000,
+  beebs: 7 * 24 * 60 * 60 * 1000,
+};
+const listingUrlRecoveryMaxAgeMs = (platform) =>
+  LISTING_URL_RECOVERY_MAX_AGE_MS[platform] ?? 48 * 60 * 60 * 1000;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SONDE DE MODÉRATION LEBONCOIN (2026-08-11) — LEBONCOIN UNIQUEMENT
@@ -10660,8 +10694,28 @@ async function lbcMesAnnoncesEtat(tabId) {
         //    ICI ne prouve rien. Le caller (recoverMissingListingUrls) marche
         //    les pages ?page=N et ne conclut que sur la COUVERTURE CUMULÉE —
         //    cette page-ci, seule, reste non concluante.
-        if (visibles < enLigne) return { vue: false, motif: `liste_partielle_${visibles}_sur_${enLigne}`, enLigne, visibles, liens };
-        return { vue: true, motif: "ok", enLigne, visibles, liens };
+        // 5. PAGINATION RÉELLE (2026-09-09). Le schéma `?page=N` deviné le
+        //    23/08 ne rapporte JAMAIS de neuf : sur 30 j, TOUTES les sondes des
+        //    comptes de plus de 30 annonces finissent « couverture_incomplete_
+        //    30_sur_N » (Ornella 56, Ritthik 39, Joséphine 237). On relève donc
+        //    le contrôle « page suivante » que la page porte ELLE-MÊME
+        //    (rel=next, libellé ou aria-label), et un échantillon borné des
+        //    contrôles candidats pour APPRENDRE le vrai schéma — jamais une
+        //    supposition de plus.
+        const candidats = Array.from(document.querySelectorAll("a[href], button")).filter((el) => {
+          const t = `${el.getAttribute("aria-label") ?? ""} ${el.textContent ?? ""} ${el.getAttribute("rel") ?? ""}`;
+          return /\bnext\b|suivant|\bpage\b/i.test(t) || /[?&]page=/.test(el.getAttribute("href") ?? "");
+        });
+        const suivantEl =
+          candidats.find((el) => /(^|\s)next(\s|$)/i.test(el.getAttribute("rel") ?? "")) ??
+          candidats.find((el) => /suivant|\bnext\b/i.test(`${el.getAttribute("aria-label") ?? ""} ${el.textContent ?? ""}`));
+        const suivant = suivantEl?.href && /leboncoin\.fr/.test(suivantEl.href) ? suivantEl.href : null;
+        const pagination = candidats.slice(0, 8).map((el) =>
+          `${el.tagName.toLowerCase()}[${(el.getAttribute("aria-label") ?? el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 30)}]` +
+          (el.getAttribute("href") ? `→${el.getAttribute("href").slice(0, 60)}` : "")
+        );
+        if (visibles < enLigne) return { vue: false, motif: `liste_partielle_${visibles}_sur_${enLigne}`, enLigne, visibles, liens, suivant, pagination };
+        return { vue: true, motif: "ok", enLigne, visibles, liens, suivant, pagination };
       },
       args: [LISTING_URL_PATTERNS.leboncoin.source],
     });
@@ -10706,6 +10760,11 @@ async function lbcSondeModeration(session, job, etatPage) {
       misses: precedent.misses ?? 0,
       last_inconclusive_at: new Date().toISOString(),
       last_inconclusive: etatPage.motif,
+      // Relevé borné des contrôles de pagination (2026-09-09) — apprentissage
+      // du schéma réel, jamais une décision.
+      ...(Array.isArray(etatPage.pagination) && etatPage.pagination.length
+        ? { pagination_dom: etatPage.pagination.slice(0, 8) }
+        : {}),
     });
     return;
   }
@@ -10797,6 +10856,52 @@ async function beebsProductPageOnline(session, job) {
   return true;
 }
 
+// Le TITRE d'un job apparaît-il dans le TEXTE d'une page (sans lien) ? Même
+// règle de repérage que findListingLinkInPage (tous les mots, dans l'ordre,
+// intercalaires ignorés), mais sur le texte seul — c'est tout ce que l'onglet
+// Beebs « En cours de vérification » offre (2026-09-09). Deux gardes contre le
+// faux positif d'un titre court (« Robe été S » = trois mots que n'importe
+// quelle page contient) : on ne teste que des éléments COURTS (≤ 200 c., une
+// carte ou un titre, jamais le body), et le texte couvert par le match doit
+// rester proche de la longueur du titre. textContent, jamais innerText : la
+// fenêtre de travail est minimisée, donc sans layout.
+async function titrePresentDansPage(tabId, title) {
+  if (!title) return false;
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (wanted) => {
+        const norm = (s) => (s || "").toLowerCase().normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+        const target = norm(wanted);
+        const mots = target.split(" ").filter(Boolean);
+        if (!mots.length) return false;
+        const ordre = new RegExp(mots.map((m) => `(?<![\\p{L}\\p{N}])${m}`).join("[\\s\\S]*?"), "u");
+        for (const el of document.querySelectorAll("h1, h2, h3, h4, p, span, a, li, div")) {
+          const txt = el.textContent ?? "";
+          if (!txt || txt.length > 200) continue;
+          const m = ordre.exec(norm(txt));
+          if (m && m[0].length <= target.length + 40) return true;
+        }
+        return false;
+      },
+      args: [title],
+    });
+    return res?.result === true;
+  } catch { return false; }
+}
+
+// Read-modify-write de platform_fields sur la copie mémoire du balayage — même
+// contrat que lbcPatchSonde : personne d'autre n'écrit ce champ sur un job déjà
+// publié, un écrasement coûterait au pire un compteur, jamais une décision.
+async function patchPlatformFields(session, job, patch) {
+  const pf = { ...(job.platform_fields ?? {}), ...patch };
+  await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+    method: "PATCH",
+    body: JSON.stringify({ platform_fields: pf }),
+  }).catch((e) => console.warn("[background] PATCH platform_fields:", String(e?.message ?? e)));
+  job.platform_fields = pf;
+}
+
 async function recoverMissingListingUrls(session) {
   let jobs;
   try {
@@ -10823,7 +10928,17 @@ async function recoverMissingListingUrls(session) {
         // findListingLinkInPage requireTitle:true) : rien d'autre à changer.
         // vinted reste HORS liste, et c'est un constat assumé, pas un oubli —
         // pas de page de récupération pour lui (cf. commentaire ci-dessus).
-        "&platform=in.(leboncoin,beebs,ebay)&order=created_at.desc&limit=10",
+        // ⛔ FAMINE (2026-09-09) : `order=created_at.desc&limit=10` ne
+        // regardait que les 10 jobs les PLUS RÉCENTS sans URL. Chez une
+        // vendeuse qui publie 100+ articles Beebs par jour (Joséphine : de 80
+        // à 142 jobs plus récents que chacun de ses 8 jobs perdus, 13 à 19
+        // encore sans URL au moment du cron), un job du 06/09 au soir n'était
+        // plus JAMAIS relu — et le cron de 48 h l'a requalifié en échec alors
+        // que l'annonce, elle, est en ligne. Désormais : les plus ANCIENS
+        // d'abord (ce sont eux que l'échéance menace), et une limite large —
+        // le coût est par PAGE visitée, pas par job (une lecture DOM de
+        // quelques ms par job).
+        "&platform=in.(leboncoin,beebs,ebay)&order=published_at.asc.nullslast,created_at.asc&limit=100",
       session.access_token
     );
   } catch (e) {
@@ -10834,8 +10949,13 @@ async function recoverMissingListingUrls(session) {
   const now = Date.now();
   // Le titre est indispensable au repérage dans la liste (règle
   // findListingLinkInPage : jamais "le premier lien qui matche").
+  // Repère = published_at, repli created_at — le MÊME que le cron serveur
+  // (2026-09-09) : un job créé le 07/09 à 14 h et publié le 08/09 à 21 h
+  // (needs_user entre les deux, cas Ritthik) perdait 31 h de fenêtre sur
+  // created_at.
+  const repereDe = (j) => Date.parse(j.published_at ?? j.created_at ?? "");
   const eligible = (jobs ?? []).filter(
-    (j) => j.title && j.created_at && now - Date.parse(j.created_at) < LISTING_URL_RECOVERY_MAX_AGE_MS
+    (j) => j.title && Number.isFinite(repereDe(j)) && now - repereDe(j) < listingUrlRecoveryMaxAgeMs(j.platform)
   );
   if (!eligible.length) return;
 
@@ -10889,6 +11009,7 @@ async function recoverMissingListingUrls(session) {
     let lbcEnLigne = null;
     let lbcDernierMotif = null;
     let lbcPagesRendues = 0;
+    let lbcPaginationDom = null;
     for (let pi = 0; pi < pagesAVisiter.length; pi++) {
       const pageUrl = pagesAVisiter[pi];
       if (!remaining.length) break;
@@ -10922,8 +11043,14 @@ async function recoverMissingListingUrls(session) {
         );
         if (lbcEnLigne != null && liensLbcVus.size < lbcEnLigne && nouveaux > 0
             && pagesAVisiter.length < LBC_PAGINATION_MAX_PAGES) {
-          pagesAVisiter.push(`${LISTING_URL_RECOVERY_PAGES.leboncoin[0]}?page=${pagesAVisiter.length + 1}`);
+          // Le lien « page suivante » porté par la page ELLE-MÊME d'abord ; le
+          // schéma deviné `?page=N` ne reste que le repli (2026-09-09).
+          const suivant = etatPage.suivant && !pagesAVisiter.includes(etatPage.suivant) ? etatPage.suivant : null;
+          pagesAVisiter.push(suivant ?? `${LISTING_URL_RECOVERY_PAGES.leboncoin[0]}?page=${pagesAVisiter.length + 1}`);
         }
+        // Relevé des contrôles de pagination de la 1re page — persisté avec le
+        // verdict non concluant (cf. bloc post-boucle) pour APPRENDRE le schéma.
+        if (pi === 0 && etatPage.pagination?.length) lbcPaginationDom = etatPage.pagination;
       }
       const stillMissing = [];
       let diagPage = null;
@@ -10948,9 +11075,23 @@ async function recoverMissingListingUrls(session) {
           const sondeResolue = job.platform_fields?.moderation_probe
             ? { ...job.platform_fields.moderation_probe, misses: 0, resolved_at: new Date().toISOString() }
             : null;
-          const pfResolu = sondeResolue
-            ? { platform_fields: { ...(job.platform_fields ?? {}), moderation_probe: sondeResolue } }
-            : {};
+          // Mesure (2026-09-09) : QUAND l'URL a été lue, sur quelle page, et
+          // combien de minutes après la publication. Le délai de modération
+          // Beebs n'avait jamais été mesuré — seule sa conséquence (échec à
+          // 48 h) l'était. C'est ce chiffre qui dira si 7 jours suffisent.
+          const repereRecovery = Date.parse(job.published_at ?? job.created_at ?? "");
+          const recovery = {
+            at: new Date().toISOString(),
+            page: pageUrl.replace(/^https?:\/\/www\./, "").slice(0, 80),
+            delai_min: Number.isFinite(repereRecovery) ? Math.round((Date.now() - repereRecovery) / 60000) : null,
+          };
+          const pfResolu = {
+            platform_fields: {
+              ...(job.platform_fields ?? {}),
+              listing_url_recovery: recovery,
+              ...(sondeResolue ? { moderation_probe: sondeResolue } : {}),
+            },
+          };
           await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
             method: "PATCH",
             body: JSON.stringify({ listing_url: url, ...(listingId ? { platform_listing_id: listingId } : {}), ...pfResolu }),
@@ -10960,6 +11101,28 @@ async function recoverMissingListingUrls(session) {
           diagPage = diag;
           // LBC : plus de verdict de sonde par PAGE — il est rendu après la
           // dernière page, sur la couverture cumulée (GO 9b, 2026-08-23).
+          // Beebs, onglet « En cours de vérification » (2026-09-09) : la carte
+          // n'y porte AUCUN lien /p/ (vérifié le 13/08), mais elle porte le
+          // TITRE. Le voir, c'est savoir que le dépôt EXISTE et attend la
+          // modération — exactement l'information qui manquait pour ne pas le
+          // déclarer perdu. Pur relevé horodaté (platform_fields
+          // .beebs_moderation) : aucune décision n'en dépend encore, il
+          // apprend d'abord la durée réelle de la modération.
+          if (platform === "beebs" && /my-adverts\/creating/.test(pageUrl)) {
+            const vu = await titrePresentDansPage(tabId, job.title).catch(() => false);
+            if (vu) {
+              const prec = job.platform_fields?.beebs_moderation ?? {};
+              const maintenant = new Date().toISOString();
+              await patchPlatformFields(session, job, {
+                beebs_moderation: {
+                  premiere_vue_at: prec.premiere_vue_at ?? maintenant,
+                  vu_at: maintenant,
+                  vues: (Number(prec.vues) || 0) + 1,
+                },
+              });
+              console.log(`[background] recover(beebs) job ${job.id} : titre vu dans « En cours de vérification » — dépôt existant, modération en cours`);
+            }
+          }
         }
       }
       // Échec sur cette page : le diagnostic NOMME la cause au lieu de laisser
@@ -10991,6 +11154,10 @@ async function recoverMissingListingUrls(session) {
             motif: `couverture_incomplete_${cumul}_sur_${lbcEnLigne ?? "?"}` +
               (lbcDernierMotif && lbcDernierMotif !== "ok" ? `_(${lbcDernierMotif})` : ""),
             enLigne: lbcEnLigne, visibles: cumul,
+            // Contrôles de pagination relevés sur la 1re page (2026-09-09) :
+            // c'est ce relevé qui dira quel est le VRAI schéma de pagination
+            // de « Mes annonces » — `?page=N` n'a jamais rapporté de neuf.
+            ...(lbcPaginationDom ? { pagination: lbcPaginationDom } : {}),
           };
       console.log(
         `[background] sonde LBC : verdict cumulé ${etatCumul.vue ? "LISTE COUVERTE" : "non concluant"} ` +
@@ -13288,6 +13455,20 @@ async function processDeleteJob(job, accessToken) {
               "vérifier à la main sur la plateforme.";
         await rearmBounded(accessToken, job, msg);
         return { status: "needsUser", error: msg };
+      }
+      // ── Verdict TRANSITOIRE du handler (2026-09-09, deux retraits d'Ornella) ─
+      // « Le titre de l'annonce n'a pas fini de charger », « CHALLENGE
+      // DATADOME » : le content script le dit lui-même, ce n'est pas un verdict
+      // sur l'annonce mais sur l'INSTANT (fiche pas rendue, vérification
+      // anti-robot servie à sa place). Ces résultats tombaient dans le `throw`
+      // final → catch → `failed` SEC, alors que le commentaire du handler
+      // promettait « reprise automatique et bornée » — la promesse n'avait
+      // aucun mécanisme derrière. Même circuit que la publication désormais :
+      // reprise espacée, jamais un failed sur une lecture ratée.
+      const verdictBrut = String(result.error ?? "");
+      if (!result.needsUser && (TRANSIENT_JOB_ERROR_RE.test(verdictBrut) || /^CHALLENGE /i.test(verdictBrut))) {
+        await rearmBounded(accessToken, job, verdictBrut);
+        return { status: "retry", error: verdictBrut };
       }
     }
 

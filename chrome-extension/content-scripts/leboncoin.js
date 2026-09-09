@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-09-08-cadence-0-6-19-mesuree (aperçu : re-clics du Continuer final à ~2 s, ~5 s, ~8 s comme la 0.6.19 — 182/192 publiés contre 9/41 en 0.6.20, 11 relevés identiques, 4e compte à sonde 200 ; la sonde réseau non-GET api.leboncoin.fr OBSERVE et nomme un refus 4xx/5xx, elle ne retient plus aucun re-clic ; bouton disabled/aria-busy jamais recliqué) + 2026-09-07-un-slot-par-cle-maison-jardin (lbcAspects.<clé> posé PAR CLÉ et dans l'ordre du DOM — Univers/Type AVANT Produit, dont la liste en dépend ; le bloc lbcProduit ne vise que le premier label _type et cède quand lbcAspects porte déjà sa clé ; seule la clé réellement écrite par ce bloc est sautée par le canal générique — sur Décoration, decoration_type n'était JAMAIS posé ; needs_user cible lbcAspects.<clé> pour tout _type ; job c324b5ee josephinecerni) + 2026-09-07-repli-generique-conserve-le-prefill (« Autre »/« Autres »/« Sans marque » ne remplacent JAMAIS un pré-rempli précis de Leboncoin — « Cuisine et cuisson » conservé, warning explicite) + 2026-09-05-apercu-refuse-nom-prenom-escrow (l'aperçu resté affiché après le Continuer final n'est plus pris pour l'écran coordonnées — téléphone VISIBLE et hors aperçu seulement ; escrow_lastname/escrow_firstname vides = nom et prénom exigés par la Transaction sécurisée → attenteUtilisateur, needs_user persisté, jamais failed ; refus visibles relevés, re-clic unique si aucun ; adresse comparée sans apostrophes ni traits d'union — « 56b rue dalger » retrouve « 56B Rue d'Alger ») + 2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
+const LEBONCOIN_BUILD = "2026-09-09-suppression-attend-le-titre (page d'annonce : le h1 est attendu jusqu'à 15 s au lieu d'être lu une fois ; l'interstitiel DataDome — sans en-tête, sans navigation, sans contenu — est NOMMÉ « CHALLENGE DATADOME » au lieu de passer pour un titre pas chargé ; deux retraits d'Ornella du 09/09 sur des annonces vérifiées en ligne) + 2026-09-08-cadence-0-6-19-mesuree (aperçu : re-clics du Continuer final à ~2 s, ~5 s, ~8 s comme la 0.6.19 — 182/192 publiés contre 9/41 en 0.6.20, 11 relevés identiques, 4e compte à sonde 200 ; la sonde réseau non-GET api.leboncoin.fr OBSERVE et nomme un refus 4xx/5xx, elle ne retient plus aucun re-clic ; bouton disabled/aria-busy jamais recliqué) + 2026-09-07-un-slot-par-cle-maison-jardin (lbcAspects.<clé> posé PAR CLÉ et dans l'ordre du DOM — Univers/Type AVANT Produit, dont la liste en dépend ; le bloc lbcProduit ne vise que le premier label _type et cède quand lbcAspects porte déjà sa clé ; seule la clé réellement écrite par ce bloc est sautée par le canal générique — sur Décoration, decoration_type n'était JAMAIS posé ; needs_user cible lbcAspects.<clé> pour tout _type ; job c324b5ee josephinecerni) + 2026-09-07-repli-generique-conserve-le-prefill (« Autre »/« Autres »/« Sans marque » ne remplacent JAMAIS un pré-rempli précis de Leboncoin — « Cuisine et cuisson » conservé, warning explicite) + 2026-09-05-apercu-refuse-nom-prenom-escrow (l'aperçu resté affiché après le Continuer final n'est plus pris pour l'écran coordonnées — téléphone VISIBLE et hors aperçu seulement ; escrow_lastname/escrow_firstname vides = nom et prénom exigés par la Transaction sécurisée → attenteUtilisateur, needs_user persisté, jamais failed ; refus visibles relevés, re-clic unique si aucun ; adresse comparée sans apostrophes ni traits d'union — « 56b rue dalger » retrouve « 56B Rue d'Alger ») + 2026-09-05-trace-brouillon-definie-et-diagnostic-page (t()/trace du chemin « Quitter » enfin définis — ReferenceError « t is not defined » sur tout brouillon bloquant depuis c00f156 ; étapes relayées au background (fill_step n'est plus toujours null) ; exception de code → message français + diagnostic_page_lbc, structure seule) + 2026-07-22-suppression-par-page-annonce (la suppression part de la PAGE DE L'ANNONCE, pas de « Mes annonces » : l'index vendeur peut etre en panne pendant que la fiche repond ; garde nº1 = id de l'URL + titre du h1, garde nº2 = list_id lu dans selectedAdsForDeletion avant de valider ; « Mes annonces » reste le repli des jobs sans listing_url) + 2026-07-19-prefill-verifie (le pre-rempli LBC — deduction IA titre/photos — n'est conserve QUE s'il matche la valeur du job, sinon ecrase par la donnee produit ; conserve OU remplace = toujours un warning persiste, plus jamais silencieux — cas reel Volcom→New Era) + needs-user + preuve-de-depot";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -273,7 +273,41 @@ async function deleteDepuisPageAnnonce(job, adId, trace, t) {
   // celui que processDeleteJob reconnaît, et il redemandera de toute façon
   // l'état réel à la plateforme avant de conclure — une annonce plus en ligne
   // est une suppression RÉUSSIE, pas un échec.
-  const h1 = (document.querySelector("h1")?.textContent ?? "").replace(/\s+/g, " ").trim();
+  // ── Le TITRE se lit après ATTENTE, pas d'un coup (2026-09-09) ───────────────
+  // Relevé du 09/09 (deux retraits d'Ornella sous 0.6.22, annonces VÉRIFIÉES en
+  // ligne, bouton Acheter actif) : « Le titre de l'annonce n'a pas fini de
+  // charger » puis « Receiving end does not exist ». Mesuré le même jour hors
+  // extension : la fiche sert son h1 en moins d'une seconde, dans le HTML
+  // initial. Un h1 encore vide après 1-2 s, c'est donc une AUTRE page —
+  // l'interstitiel DataDome, qui n'a pas de h1 et se recharge tout seul (d'où
+  // le canal coupé juste après). On distingue donc les deux cas : la
+  // vérification anti-robot est NOMMÉE (famille CHALLENGE, reprise espacée
+  // côté background), et le titre est attendu jusqu'à 15 s avant de conclure
+  // « pas fini de charger ». Aucun clic dans les deux cas.
+  // ⚠️ estPageBotShieldLbc() ne convient pas ici : une fiche NORMALE embarque
+  // elle aussi l'iframe de contrôle DataDome (mesuré le 09/09, `captcha: true`
+  // dès 2,5 s sur une page saine). L'interstitiel, lui, n'a ni en-tête, ni
+  // navigation, ni contenu : c'est cette ABSENCE qui le signe.
+  const lireH1 = () => (document.querySelector("h1")?.textContent ?? "").replace(/\s+/g, " ").trim();
+  const estInterstitielDataDome = () => {
+    const debut = String(document.documentElement?.innerHTML ?? "").slice(0, 4000);
+    return /geo\.captcha-delivery\.com|ct\.captcha-delivery\.com|\bAre you a human\b|Vérification que vous n/i.test(debut)
+      && !document.querySelector("header, nav, main");
+  };
+  let h1 = lireH1();
+  const limiteH1 = Date.now() + 15_000;
+  while (!h1 && Date.now() < limiteH1) {
+    if (estInterstitielDataDome()) {
+      t("vérification anti-robot (DataDome) servie à la place de la fiche — aucun clic");
+      return {
+        success: false,
+        error: `CHALLENGE DATADOME : Leboncoin affiche une vérification anti-robot à la place de la page de l'annonce ${idPage} — suppression reportée, aucun geste effectué`,
+        trace,
+      };
+    }
+    await sleep(1000);
+    h1 = lireH1();
+  }
   if (/desactivee|annonce introuvable|n est plus en ligne|supprimee/.test(lbcNorm(h1))) {
     t(`annonce déjà hors ligne — LBC affiche « ${h1} »`);
     return { success: false, error: `Annonce introuvable sur sa page (LBC affiche « ${h1} ») — probablement déjà retirée`, trace };
