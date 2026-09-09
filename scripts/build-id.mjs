@@ -1,4 +1,4 @@
-﻿// BUILD_ID partagé — source UNIQUE pour les trois consommateurs :
+// BUILD_ID partagé — source UNIQUE pour les trois consommateurs :
 //   1. build local minifié (scripts/build-extension.mjs, « Load unpacked ») ;
 //   2. zip public fillsell.app (scripts/vite-plugin-zip-extension.mjs) ;
 //   3. app web elle-même (define __FILLSELL_APP_BUILD__ dans vite.config.js),
@@ -1294,7 +1294,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Le zip embarque aussi 7146f5b (re-capture non affamee, Beebs 7 j, retrait
 // Leboncoin qui reprend + DataDome nomme, 2e passage Mes annonces).
 // MIN_BUILD INCHANGE — la banniere n'attend que l'acceptation CWS.
-export const EXTENSION_LAST_COMMIT = '2026-09-09T15:20:50Z'; // recale 783fa4f (0.6.23 : askBackground defini dans beebs.js) — MIN_BUILD inchange
+export const EXTENSION_LAST_COMMIT = '2026-09-09T21:58:23Z'; // recale 010009d (0.6.24 : adsubmit = preuve du depot Leboncoin, envoi journalise, 42 vers XL) - MIN_BUILD inchange
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
