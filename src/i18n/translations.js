@@ -156,6 +156,10 @@ export const translations = {
     stepPhotosSelectPlatformError:"Sélectionne au moins une plateforme.",
     platformUnavailable:"Non vendable sur {platform} : catégorie non disponible sur cette plateforme.",
     platformUnmapped:"{platform} indisponible pour cet article : catégorie pas encore prise en charge par FillSell (bientôt).",
+    // Plateforme EN PAUSE (platform_health, 2026-09-09) : repli générique quand
+    // message_fr est vide en base. Ton neutre — ce n'est pas une erreur de
+    // l'utilisateur, et rien n'est débité.
+    platformPaused:"{platform} : publication momentanément en pause, on travaille dessus. Rien n'est débité — les autres plateformes restent disponibles.",
     // Interdiction de PRODUIT, pas de catégorie (2026-08-11). Le message doit
     // dire pourquoi ET où publier : sans le motif, l'utilisateur croit à un bug
     // ou cherche une catégorie de contournement — il n'y en a aucune.
@@ -495,6 +499,7 @@ export const translations = {
     stepPhotosSelectPlatformError:"Select at least one platform.",
     platformUnavailable:"Not sellable on {platform}: this category doesn't exist on that platform.",
     platformUnmapped:"{platform} unavailable for this item: category not yet supported by FillSell (coming soon).",
+    platformPaused:"{platform}: posting is paused for now while we work on it. Nothing is charged — the other platforms remain available.",
     platformProhibited:"{platform} bans the sale of cosmetics and fragrances (creams, skincare, make-up): the listing would be rejected by moderation. Post this item on Vinted, eBay or Beebs instead.",
     retouchIaMultiLabel:"Advanced AI retouch",
     retouchIaMultiDesc:"Lighting, clarity, multiple angles enhanced",
