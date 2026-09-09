@@ -8047,6 +8047,16 @@ const StockTab = memo(function StockTab({
                                 // chez elles l'annonce est bien en ligne, seul
                                 // le lien manque encore.
                                 const beebs=j.platform==="beebs";
+                                // Leboncoin, écran /options relevé (2026-09-09,
+                                // job a2849f53 de Nico) : Leboncoin ne sert cet
+                                // écran qu'APRÈS avoir accepté le dépôt — le
+                                // serveur (update-job-status) pose le marqueur
+                                // et le job est publié SANS lien tant que la
+                                // vérification Leboncoin dure. Dire « en ligne »
+                                // serait faux ; dire « imprévu technique,
+                                // relancer » a fabriqué un DOUBLON. Le texte dit
+                                // la seule chose utile : ne pas republier.
+                                const lbcEnVerif=j.platform==="leboncoin"&&!j.listing_url&&!!j.platform_fields?.lbc_depot_en_verification;
                                 return (
                                   <div
                                     key={"lien-"+j.platform}
@@ -8055,6 +8065,10 @@ const StockTab = memo(function StockTab({
                                       ?(lang==="en"
                                         ?"Beebs is reviewing your listing before putting it online. Hang tight."
                                         :"Beebs vérifie ton annonce avant de la mettre en ligne. Patiente un peu.")
+                                      :lbcEnVerif
+                                      ?(lang==="en"
+                                        ?"Your listing went through to Leboncoin and is awaiting their review. It will show up within a few minutes. Don't repost it — you would create a duplicate."
+                                        :"Ton annonce est partie sur Leboncoin et attend leur vérification. Elle apparaîtra d'ici quelques minutes. Ne la republie pas, tu créerais un doublon.")
                                       :(lang==="en"
                                         ?"The listing is online. We're still fetching its link from the marketplace."
                                         :"L'annonce est en ligne. On récupère encore son lien sur la plateforme.")}
@@ -8062,6 +8076,8 @@ const StockTab = memo(function StockTab({
                                   >
                                     {beebs
                                       ?(lang==="en"?"Submitted — Beebs is reviewing it":"Déposée — vérification Beebs en cours")
+                                      :lbcEnVerif
+                                      ?(lang==="en"?"Submitted — Leboncoin is reviewing it, don't repost":"Déposée — vérification Leboncoin en cours, ne pas republier")
                                       :(lang==="en"?`Published — fetching the link ${PLATFORM_LABELS[j.platform]||j.platform}`:`Publiée — récupération du lien en cours ${PLATFORM_LABELS[j.platform]||j.platform}`)}
                                   </div>
                                 );
