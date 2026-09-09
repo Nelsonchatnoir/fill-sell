@@ -2,7 +2,7 @@
 // à l'injection — permet de vérifier, à chaque test, quelle version du code
 // tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à chaque modification de
 // ce fichier.
-const EBAY_BUILD = "2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire — jamais une table figee : exact -> equivalences X-multiples (XXL=2XL) -> segments du libelle compose Vinted (« S / 36 / 8 ») -> prefixe pays retire (« EU 38 ») ; aucun repli au hasard, une taille intraduisible laisse le job aller en needs_user avec la VRAIE liste et un message qui dit la verite au lieu de « complete le champ » sur un champ deja rempli) + 2026-09-01-filet-prix-format-put-delta (PRIX pose SYSTEMATIQUEMENT par PUT delta du brouillon apres la pose DOM — mesure du 01/09 : setNativeValue+blur ne declenche AUCUNE sauvegarde, le champ affiche la valeur mais le brouillon serveur ne la recoit pas ; FORMAT en filet CONDITIONNEL, sa bascule DOM sauvegarde bien. Formes MESUREES, jamais devinees ; + etape() relaie l'etape de remplissage au background, qui survit a la mort de la page) + 2026-07-30-saisie-libre-entree (doctrine valeur hors liste : un aspect a vocabulaire ouvert « Recherchez/ajoutez » recoit la saisie libre validee par Entree quand la liste ne la materialise pas — relecture seule juge ; cas Type Bottines) + 2026-07-19-reponse-needs-user-prime (fillSpecificSafe {overwrite} : un aspect marque needsUserResolved RE-ECRIT un « deja rempli » au lieu de le conserver — la reponse utilisateur ne doit jamais etre ecartee en silence ; relecture qui exige le CHANGEMENT de valeur, pas la simple presence) + lecture-valeur-hors-menu + needs-user + submit-suit-le-rerender";
+const EBAY_BUILD = "2026-09-09-taille-chiffree-voisines (0.6.24 : une taille chiffrée absente de la liste eBay, « 25 », n'est plus renvoyée vers 3XS…6XL — le message nomme les tailles chiffrées acceptées et ses voisines) — précédent : 2026-09-04-taille-vocabulaire-ebay (la taille est traduite contre la liste RELEVEE sur le formulaire";
 console.log(`[ebay.js] build ${EBAY_BUILD}`);
 
 // Content script eBay — remplit le formulaire "Terminer votre annonce".
@@ -967,16 +967,36 @@ async function fillListingForm(job) {
     //     pourrait que re-frapper le même mur.
     const bloquee = tailleNonTraduitePour(unfilledRequired);
     if (bloquee) {
-      const apercu = bloquee.options.slice(0, 12).join(", ") + (bloquee.options.length > 12 ? ", …" : "");
-      console.warn(`[ebay] ⚠️ taille « ${bloquee.valeur} » sans équivalent eBay — ${bloquee.options.length} option(s) relevée(s)`);
+      // ── Taille CHIFFRÉE absente de la liste (0.6.24, jobs b63f26dc/04b142a5 :
+      // « 25 », liste eBay 3XS…6XL puis 24, 26, 28…38) : l'aperçu tronqué à 12
+      // options ne montrait QUE les lettres, « 25 » n'apparaissait nulle part
+      // et l'utilisateur ne voyait pas que 24 et 26 existent. eBay n'offre pas
+      // ce nombre : AUCUNE équivalence n'est inventée (règle du 04/09), mais le
+      // message nomme les tailles chiffrées acceptées et les deux voisines —
+      // le choix reste à l'utilisateur, dans l'app.
+      const valeurNum = /^\d+(?:[.,]\d+)?$/.test(String(bloquee.valeur).trim()) ? Number(String(bloquee.valeur).replace(",", ".")) : null;
+      const chiffrees = bloquee.options.filter((o) => /^\d+(?:[.,]\d+)?$/.test(String(o).trim()));
+      let apercu = bloquee.options.slice(0, 12).join(", ") + (bloquee.options.length > 12 ? ", …" : "");
+      let voisines = "";
+      if (valeurNum != null && chiffrees.length) {
+        apercu = chiffrees.join(", ") + (bloquee.options.length > chiffrees.length ? ` (et en lettres : ${bloquee.options.filter((o) => !chiffrees.includes(o)).slice(0, 8).join(", ")})` : "");
+        const nums = chiffrees.map((o) => Number(String(o).replace(",", "."))).filter(Number.isFinite).sort((a, b) => a - b);
+        const dessous = [...nums].reverse().find((n) => n < valeurNum);
+        const dessus = nums.find((n) => n > valeurNum);
+        if (dessous != null && dessus != null) voisines = ` « ${bloquee.valeur} » se situe entre ${dessous} et ${dessus}.`;
+      }
+      console.warn(`[ebay] ⚠️ taille « ${bloquee.valeur} » sans équivalent eBay — ${bloquee.options.length} option(s) relevée(s)${voisines}`);
       return {
         success: false,
         needsUser: true,
         error:
-          `LIVE : on n'a pas su traduire ta taille « ${bloquee.valeur} » pour eBay — publication NON tentée ` +
-          `(eBay refuse une annonce dont « ${bloquee.aspect} » est vide). Choisis parmi les tailles qu'eBay ` +
-          `accepte dans cette catégorie : ${apercu}. Le choix se fait dans l'app (badge « À compléter » du ` +
-          `Stock) ; le job repartira ensuite automatiquement.${detail}`,
+          (valeurNum != null && chiffrees.length
+            ? `LIVE : eBay ne propose pas la taille « ${bloquee.valeur} » dans cette catégorie — publication NON tentée ` +
+              `(eBay refuse une annonce dont « ${bloquee.aspect} » est vide). Tailles qu'eBay accepte ici : ${apercu}.${voisines}`
+            : `LIVE : on n'a pas su traduire ta taille « ${bloquee.valeur} » pour eBay — publication NON tentée ` +
+              `(eBay refuse une annonce dont « ${bloquee.aspect} » est vide). Choisis parmi les tailles qu'eBay ` +
+              `accepte dans cette catégorie : ${apercu}.`) +
+          ` Le choix se fait dans l'app (badge « À compléter » du Stock) ; le job repartira ensuite automatiquement.${detail}`,
         warnings,
         unfilledRequired,
         needsUserField: {
