@@ -900,10 +900,25 @@ const OBJECT_ICON_RULES = [
   [/^(?=[\s\S]*\b(?:ensembles?|bodysuits?)\b)(?=[\s\S]*(?:bébé|bebe|\b\d+\s?mois\b|naissance|nourrisson))/i, '👕'],
   [/^(?=[\s\S]*grenouillères?)(?=[\s\S]*(?:bébé|bebe|\b\d+\s?mois\b|naissance|nourrisson))/i, '🩲'],
   [/^(?=[\s\S]*\bsarouels?\b)(?=[\s\S]*(?:bébé|bebe|\b\d+\s?mois\b|naissance|nourrisson))/i, '👖'],
-  // (?:^|[^-\w]) : exclut "garde-robe" (fréquent dans les descriptions IA) et
+  // (?<![-\w]) : exclut "garde-robe" (fréquent dans les descriptions IA) et
   // "wardrobe" — sinon un t-shirt dont la description dit "à avoir dans sa
   // garde-robe" devient une robe et le mapping Vinted part sur le mauvais rayon.
-  [/(?:^|[^-\w])robes?\b|jupes?\b/i, '👗'],
+  // Écrit en LOOKBEHIND (2026-09-10), plus en (?:^|[^-\w]) : ce contexte
+  // CONSOMMAIT l'espace, et la borne de mot posée à la compilation
+  // (BORNE_GAUCHE) se retrouvait devant l'espace, donc devant la lettre du
+  // mot précédent — « Jolie robe » ne matchait plus.
+  [/(?<![-\w])robes?\b|jupes?\b/i, '👗'],
+  // Combinaison / combi (2026-09-10, « Combinaison Kiabi noire » publiée en
+  // Téléviseurs) : aucune règle ne la nommait. L'icône n'est qu'un repli —
+  // c'est le MOT qui compte désormais : « combinaison » se résout contre
+  // l'arbre (Vinted « Combinaisons et combishorts > Combinaisons », Beebs
+  // « Combinaisons (femme) »…), l'IA départage les homonymes (étape 3).
+  // Les combinaisons de sport (ski, surf, plongée…) sont prises AVANT par la
+  // règle 🧥 dédiée, l'ordre des règles fait foi.
+  // « combi short » / « combi-short » restent au short (batterie
+  // audit-coverage : 🩳 attendu) ; « combishort » soudé est pris par 👖 plus
+  // bas et son mot rejoint la feuille « Combishorts ».
+  [/combinaisons?\b|\bcombis?\b(?![\s-]*shorts?\b)/i, '👗'],
   // 🥼/🤵/🎀 scindés de 🧥/👔 (2026-07-09) : blazer/tailleur, costume et
   // cravate ont chacun leur branche Vinted dédiée (Blazers et tailleurs,
   // Costumes et blazers, Accessoires > Cravates et nœuds papillons) — le
@@ -1337,10 +1352,24 @@ const SANS_ACCENTS = (s) => String(s ?? "").normalize("NFD").replace(/[\u0300-\u
 // Motifs dé-accentués, construits UNE fois depuis la source de vérité : on ne
 // maintient pas deux listes, on en dérive une.
 let _reglesSansAccents = null;
+// ── BORNE DE MOT À GAUCHE, POUR TOUTES LES RÈGLES (2026-09-10) ──────────────
+// Cas fondateur : « Combinaison Kiabi… en coton CÔTELÉ » publiée en
+// « Électronique > Téléviseurs » — la règle 📺 `télé(?![a-zà-ÿ])` n'avait pas
+// de borne à GAUCHE ; une fois les accents retirés, « cotele » contient
+// « tele ». Audit du 10/09 : 169 des 177 règles ont au moins une alternative
+// qui commence par une lettre sans \b — c'est un défaut de FORME de tout le
+// fichier, pas un cas isolé (« veste » dans « vestiaire », « botte » dans
+// « bottega »…). Plutôt que 169 retouches, la borne est posée ICI, une fois,
+// à la compilation : un mot-objet commence toujours au début d'un mot.
+// Exceptions ASSUMÉES (préfixes soudés du vêtement) : mini-/maxi-/midi-
+// (minijupe), sous- (sous-pull), sur- (surchemise), demi- — écrits collés,
+// ils restent reconnus. Le texte comparé est déjà sans accents (SANS_ACCENTS),
+// donc [A-Za-z0-9] suffit comme classe de lettre.
+const BORNE_GAUCHE = "(?:(?<![A-Za-z0-9])|(?<=\\b(?:mini|maxi|midi|sous|sur|demi)))";
 function reglesComparables() {
   if (!_reglesSansAccents) {
     _reglesSansAccents = OBJECT_ICON_RULES.map(([re, icon]) =>
-      [new RegExp(SANS_ACCENTS(re.source), re.flags), icon]);
+      [new RegExp(BORNE_GAUCHE + "(?:" + SANS_ACCENTS(re.source) + ")", re.flags), icon]);
   }
   return _reglesSansAccents;
 }
@@ -1353,11 +1382,25 @@ function reglesComparables() {
 // resolveArticleIcon (front) : un « hoodie/sweat » nommé dans le titre FR prime
 // sur une estimation Haiku (category_icon) qui, elle, peut confondre 🧶 et 🧥.
 export function detectObjectIconKeyword(titre, description){
+  return detectObjectKeywordDetail(titre, description)?.icon ?? null;
+}
+
+// LE MOT QUI A MATCHÉ, EN PLUS DE L'ICÔNE (2026-09-10). Jusqu'ici la détection
+// ne rendait que l'emoji : « jupe » devenait 👗, et 👗 = « Robes » — l'emoji
+// est le dernier endroit où l'information se perdait. Le mot, lui, se compare
+// à l'arbre relevé de chaque plateforme (categorieParMot) : « jupe » → feuille
+// « Jupes ». `passe` dit d'où il vient : 1 = le TITRE (source du vendeur,
+// fiable), 2 = titre + description (filet, moins sûr). `mot` est le texte
+// matché sur la forme comparable (sans accents, minuscules), débarrassé d'un
+// éventuel caractère de contexte en tête (filet : une règle qui consommerait
+// son contexte gauche rendrait « robe » précédé d'un espace).
+export function detectObjectKeywordDetail(titre, description){
   // Dé-bruitage : accessoires inclus + négations de fragrance.
   const denoise=(s)=>String(s||'')
     .replace(INCLUDED_ACCESSORY_CLAUSE,' ')
     .replace(FRAGRANCE_NEGATION,' ')
     .toLowerCase();
+  const motDe=(m)=>String(m?.[0]??'').replace(/^[^a-z0-9]+/i,'').trim()||null;
   // Passe 1 — le TITRE seul : c'est lui qui NOMME l'objet (même règle produit
   // que le ciblage par titre des pages de liste). Sans cette passe, un mot-clé
   // de la DESCRIPTION porté par une règle plus haute dans OBJECT_ICON_RULES
@@ -1366,11 +1409,11 @@ export function detectObjectIconKeyword(titre, description){
   // priorité, pas la position du mot dans le texte).
   const regles=reglesComparables();
   const tTitre=SANS_ACCENTS(denoise(titre));
-  for(const [re,icon] of regles){ if(re.test(tTitre)) return icon; }
+  for(const [re,icon] of regles){ const m=re.exec(tTitre); if(m) return { icon, mot: motDe(m), passe: 1 }; }
   // Passe 2 — titre + description (comportement historique, filet pour les
   // titres sans mot-objet : « Medik8 Crystal Retinal 6 » + desc « crème… »).
   const t=SANS_ACCENTS(denoise((titre||'')+' '+(description||'')));
-  for(const [re,icon] of regles){ if(re.test(t)) return icon; }
+  for(const [re,icon] of regles){ const m=re.exec(t); if(m) return { icon, mot: motDe(m), passe: 2 }; }
   return null;
 }
 
