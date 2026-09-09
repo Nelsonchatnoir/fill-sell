@@ -16,7 +16,7 @@ import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee } from "../utils
 import { texteComparable } from "../utils/texteComparable";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
-import { detectObjectIcon, detectObjectIconKeyword, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre } from "../utils/shared";
+import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
@@ -6639,21 +6639,50 @@ export default function ListingPreviewScreen({
       //    l'IA ne peut pas produire une catégorie qui n'existe pas chez nous.
       // Index chargés en import() dynamique, une seule fois, ici — au clic
       // Publier, jamais au démarrage de l'app.
+      //
+      // ── LE MOT QUI NOURRIT L'ARBRE (2026-09-10, GO Nico) ────────────────
+      // Jusqu'ici seul le mot de l'IA entrait ici. Sans lui (scan Lens avant
+      // la v90, IA muette), on retombait DIRECTEMENT sur l'icône du repli
+      // mot-clé — le dernier endroit où l'emoji décidait seul : « jupe » →
+      // 👗 → « Robes > Midi ». Désormais le mot-clé du TITRE (passe 1 de
+      // detectObjectKeywordDetail, la source du vendeur) prend le relais du
+      // mot de l'IA et se compare aux arbres exactement comme lui.
+      // ⛔ Le titre SEUL : un mot-clé lu dans la description est un filet
+      //    trop lâche pour poser une catégorie (« coton côtelé » → « télé »).
+      // ── RÈGLE (a) : SANS MOT, ON NE PUBLIE PAS DANS UNE CATÉGORIE DEVINÉE ─
+      // Ni mot de l'IA, ni mot-clé au titre, ni catalogue Vinted d'origine,
+      // ni famille livres : on s'arrête et on demande, comme sur Beebs (« on
+      // ne publie jamais une catégorie que le pont n'a pas confirmée »).
+      // Mesuré le 10/09 sur 60 j : 2 articles sur 12 sans mot IA auraient été
+      // retenus (combinaison → Téléviseurs, dessous de plat → Assiettes) ;
+      // avec la v90 de lens-analysis (objet joint), quelques-uns par mois.
+      const frTitrePublication = initialListing?.titre ?? edited?.leboncoin?.title ?? edited?.vinted?.title ?? edited?.beebs?.title ?? "";
+      const motCleTitre = detectObjectKeywordDetail(frTitrePublication, "")?.mot ?? null;
+      const catalogVintedFiche = initialListing?.vinted_catalog_id ?? null;
+      const familleLivresFiche = initialListing?.famille === "livres_medias" || /^livres?$/i.test(String(initialListing?.categorie ?? ""));
+      if (!activeAiObjet && !motCleTitre && !catalogVintedFiche && !familleLivresFiche) {
+        console.warn(`[publish] catégorie NON reconnue pour « ${frTitrePublication} » (ni mot IA, ni mot-clé au titre) — publication retenue, on demande`);
+        throw new Error(lang === "en"
+          ? `We couldn't recognise what this item is from « ${frTitrePublication} », so we won't guess its category. Name the object in the title (e.g. "jumpsuit", "trivet", "jacket") or regenerate the listing, then publish again. Nothing was charged.`
+          : `On n'a pas reconnu l'objet dans « ${frTitrePublication} » : on ne devine pas sa catégorie. Nomme l'objet dans le titre (« combinaison », « dessous de plat », « veste »…) ou régénère l'annonce, puis republie. Rien n'a été débité.`);
+      }
+      const motCategorie = activeAiObjet ?? motCleTitre ?? null;
+      const motCategorieSource = activeAiObjet ? "ia" : (motCleTitre ? "mot_cle" : null);
       const categorieParMotParPf = {};
-      if (activeAiObjet) {
+      if (motCategorie) {
         await Promise.all(plateformesAPublier.map(async (platform) => {
           const pfE = edited[platform]?.platform_fields ?? {};
           const genrePf = pfE.genre || pfE.univers || autoGenre || "";
           try {
-            const r = await resoudreParMot(activeAiObjet, platform, { genre: genrePf });
+            const r = await resoudreParMot(motCategorie, platform, { genre: genrePf });
             if (r.certitude === "exact") categorieParMotParPf[platform] = r;
           } catch (e) {
-            console.warn(`[publish] ${platform} — arbre indisponible pour « ${activeAiObjet} » :`, e?.message ?? e);
+            console.warn(`[publish] ${platform} — arbre indisponible pour « ${motCategorie} » :`, e?.message ?? e);
           }
         }));
         const poses = Object.keys(categorieParMotParPf);
         console.log(
-          `[publish] mot « ${activeAiObjet} » → catégorie EXACTE sur ${poses.length ? poses.join(", ") : "aucune plateforme"}`
+          `[publish] mot « ${motCategorie} » → catégorie EXACTE sur ${poses.length ? poses.join(", ") : "aucune plateforme"}`
         );
       }
 
@@ -6677,13 +6706,13 @@ export default function ListingPreviewScreen({
       // ⛔ L'IA a le droit de répondre « aucune » : on ne pose alors rien.
       // ⛔ Une source CERTAINE n'est jamais écrasée : on ne ratisse que pour
       //    les plateformes sans correspondance exacte.
-      if (activeAiObjet) {
+      if (motCategorie) {
         const aRatisser = plateformesAPublier.filter(p => !categorieParMotParPf[p]);
         const candidats = candidatsRatisses;
         await Promise.all(aRatisser.map(async (platform) => {
           const pfE = edited[platform]?.platform_fields ?? {};
           try {
-            const liste = await candidatsParMot(activeAiObjet, platform, {
+            const liste = await candidatsParMot(motCategorie, platform, {
               genre: pfE.genre || pfE.univers || autoGenre || "",
               titre: edited[platform]?.title || initialListing?.titre || "",
             });
@@ -6699,7 +6728,7 @@ export default function ListingPreviewScreen({
                   genre: sharedFields.genre || autoGenre || "",
                   taille: sharedFields.taille || initialListing?.taille || "",
                   marque: sharedFields.marque || initialListing?.marque || "",
-                  objet: activeAiObjet,
+                  objet: motCategorie,
                 },
                 candidats,
               },
@@ -6710,7 +6739,7 @@ export default function ListingPreviewScreen({
             }
             const retenus = Object.keys(choixIa?.choix ?? {});
             console.log(
-              `[publish] mot « ${activeAiObjet} » — l'IA a choisi dans nos candidats sur ` +
+              `[publish] mot « ${motCategorie} » — l'IA a choisi dans nos candidats sur ` +
               `${retenus.length ? retenus.join(", ") : "aucune plateforme"}` +
               (choixIa?.refuses?.length ? ` (réponses hors liste ignorées : ${choixIa.refuses.join(", ")})` : "")
             );
@@ -6779,6 +6808,9 @@ export default function ListingPreviewScreen({
         // « qu'est-ce que l'IA a compris ? » sans reconstituer à rebours trois
         // transformations — la question posée le 07/09 sur la chapka.
         pf.categorie_objet_ia = activeAiObjet ?? null;
+        // Le mot-clé lu au TITRE (2026-09-10) : c'est lui qui a nourri l'arbre
+        // quand l'IA n'avait rien dit — la trace doit pouvoir le dire.
+        pf.categorie_mot_cle_titre = motCleTitre ?? null;
         pf.categorie_source = garde.source;
         if (garde.corrige) {
           pf.categorie_garde_fou = {
@@ -6806,9 +6838,9 @@ export default function ListingPreviewScreen({
         // vient du libellé exact d'une feuille relevée, pas d'un emoji.
         const parMot = categorieParMotParPf[platform] ?? null;
         if (parMot) {
-          pf.categorie_source = parMot.choisiParIa ? "ia_parmi_candidats" : "mot_objet_arbre";
+          pf.categorie_source = parMot.choisiParIa ? "ia_parmi_candidats" : (motCategorieSource === "ia" ? "mot_objet_arbre" : "mot_cle_arbre");
           pf.categorie_par_mot = {
-            mot: activeAiObjet, chemin: parMot.chemin, id: parMot.id ?? null,
+            mot: motCategorie, mot_source: motCategorieSource, chemin: parMot.chemin, id: parMot.id ?? null,
             ...(parMot.choisiParIa ? { choisi_par_ia: true } : {}),
           };
           delete pf.categorie_incertaine;
@@ -7106,7 +7138,7 @@ export default function ListingPreviewScreen({
       //    sur une panne, on le trace (categorie_verification absent).
       // Coût : un appel Haiku de plus par publication concernée (≈ 0,0013 $,
       // mesuré le 07/09), soit au pire quelques centimes par jour.
-      if (activeAiObjet && Object.keys(poseParIcone).length) {
+      if (motCategorie && Object.keys(poseParIcone).length) {
         const cle = (chemin) => (Array.isArray(chemin) ? chemin : [chemin])
           .map(s => texteComparable(String(s ?? ""))).join(" > ");
         const memeChemin = (a, b) => cle(a) === cle(b);
@@ -7124,7 +7156,7 @@ export default function ListingPreviewScreen({
                 genre: sharedFields.genre || autoGenre || "",
                 taille: sharedFields.taille || initialListing?.taille || "",
                 marque: sharedFields.marque || initialListing?.marque || "",
-                objet: activeAiObjet,
+                objet: motCategorie,
               },
               candidats: candidatsVerif,
             },
@@ -7150,7 +7182,7 @@ export default function ListingPreviewScreen({
             const pf = row.platform_fields;
             const choix = choixVerif[row.platform] ?? null;
             const cheminChoisi = Array.isArray(choix?.chemin) && choix.chemin.length ? choix.chemin : null;
-            const trace = { objet: activeAiObjet, chemin_icone: pose.chemin, source_avant: pf.categorie_source ?? null };
+            const trace = { objet: motCategorie, chemin_icone: pose.chemin, source_avant: pf.categorie_source ?? null };
             if (cheminChoisi && memeChemin(cheminChoisi, pose.chemin)) {
               pf.categorie_verification = { ...trace, verdict: "confirme" };
               continue;
@@ -7158,21 +7190,21 @@ export default function ListingPreviewScreen({
             if (cheminChoisi && poserChemin(row.platform, pf, cheminChoisi, choix.id ?? null)) {
               pf.categorie_source = "ia_parmi_candidats";
               pf.categorie_par_mot = {
-                mot: activeAiObjet, chemin: cheminChoisi, id: choix.id ?? null, choisi_par_ia: true, apres_verification: true,
+                mot: motCategorie, mot_source: motCategorieSource, chemin: cheminChoisi, id: choix.id ?? null, choisi_par_ia: true, apres_verification: true,
               };
               delete pf.categorie_incertaine;
               delete pf.lbcCategorieIncertaine;
               pf.categorie_verification = { ...trace, verdict: "remplace", chemin_retenu: cheminChoisi };
-              console.log(`[publish] ${row.platform} — « ${activeAiObjet} » : l'IA préfère « ${cheminChoisi.join(" > ")} » au chemin de l'icône « ${pose.chemin.join(" > ")} »`);
+              console.log(`[publish] ${row.platform} — « ${motCategorie} » : l'IA préfère « ${cheminChoisi.join(" > ")} » au chemin de l'icône « ${pose.chemin.join(" > ")} »`);
               continue;
             }
             // INCOHÉRENCE : l'IA refuse le chemin de l'icône et n'en retient aucun autre.
             pf.categorie_verification = { ...trace, verdict: "incoherent" };
             pf.categorie_source = "icone_non_confirmee";
-            console.warn(`[publish] ${row.platform} — « ${activeAiObjet} » : le chemin de l'icône « ${pose.chemin.join(" > ")} » est INCOHÉRENT avec le mot — il ne part pas tel quel`);
+            console.warn(`[publish] ${row.platform} — « ${motCategorie} » : le chemin de l'icône « ${pose.chemin.join(" > ")} » est INCOHÉRENT avec le mot — il ne part pas tel quel`);
             if (row.platform === "beebs") {
               delete pf.beebsCategoryPath;
-              pf.categorie_a_choisir = { objet: activeAiObjet, chemin_ecarte: pose.chemin };
+              pf.categorie_a_choisir = { objet: motCategorie, chemin_ecarte: pose.chemin };
             } else {
               pf.categorie_incertaine = true;
               if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
