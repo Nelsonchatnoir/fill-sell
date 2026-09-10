@@ -41,7 +41,7 @@ const nico = "Je vends un sweat Tommy Jeans bleu marine, taille M.\n\nCoupe clas
   egal("1 retrait", r.retires, 1);
   check("#VintedStyle absent", !/vinted/i.test(r.texte));
   check("le défaut est intact", r.texte.includes("⚠️ Attention léger petit accroc devant voir photos"));
-  check("les autres hashtags sont intacts", r.texte.includes("#BasicPremium") && r.texte.includes("#TommyJeans"));
+  check("les autres hashtags : plafonnés à 5 (règle du 10/09), #VintedStyle parti", (r.texte.match(/#[^\s#]+/g) ?? []).length === 5 && !/VintedStyle/.test(r.texte), r.texte);
   check("le drapeau 🔴⚪🔵 est intact", r.texte.includes("🔴⚪🔵"));
   egal("idempotent", n(r.texte).texte, r.texte);
 }
@@ -71,13 +71,32 @@ check("Shein (marque) intact", !n("Robe Shein en très bon état, taille M, envo
 check("« vide dressing » en deux mots intact", !n("Vide dressing personnel, articles bien entretenus.").modifiee);
 check("Mondial Relay intact (transporteur, pas un site)", !n("Envoi via Mondial Relay ou point relais.").modifiee);
 check("« mon dressing » intact (rien à voir avec un site)", !n("Voir mon dressing pour d'autres articles.").modifiee);
-check("texte sans mention : identique, modifiee=false", !n(nico.replace("\n#VintedStyle", "")).modifiee);
+check("texte sans mention et ≤ 5 hashtags : identique, modifiee=false", !n("Jolie robe, taille 38.\n#robe #ete #zara #mango #occasion").modifiee);
 
 console.log("▸ fail-safe");
 {
   const r = n("Marque Vintedo, taille M.");
   check("tout effacé → original rendu", r.texte === "Marque Vintedo, taille M." && r.vide === true && r.modifiee === false);
   check("null/undefined → chaîne vide, sans exception", n(null).texte === "" && n(undefined).modifiee === false);
+}
+
+console.log("▸ marque tierce + plafond de 5 (page de correction Leboncoin, 10/09)");
+{
+  const tommy = "Sweat Tommy Jeans bleu marine, très bon état.\n#TommyJeans #TommyHilfiger #SweatHomme #TailleM #Streetwear #CasualStyle #LookUrbain #VetementHomme #BleuMarine #ModeHomme #BasicPremium #VintedStyle";
+  const ctx = { titre: "Sweat Tommy Jeans bleu marine – Taille M", marque: "Tommy Jeans" };
+  const r = n(tommy, ctx);
+  const tags = r.texte.match(/#[^\s#]+/g) ?? [];
+  check("12 hashtags → 5 au plus", tags.length <= 5, tags.join(" "));
+  check("#TommyHilfiger (marque tierce) parti, #TommyJeans (marque de l'article) resté", !tags.includes("#TommyHilfiger") && tags.includes("#TommyJeans"), tags.join(" "));
+  check("#VintedStyle parti (règle des sites, indépendante du compte)", !tags.includes("#VintedStyle"));
+  check("les spécifiques du titre gardés avant les génériques", tags.includes("#SweatHomme") && tags.includes("#TailleM") && tags.includes("#BleuMarine") && !tags.includes("#ModeHomme") && !tags.includes("#BasicPremium"), tags.join(" "));
+  check("le texte vendeur est intact", r.texte.startsWith("Sweat Tommy Jeans bleu marine, très bon état."));
+  check("trace : marques + plafonnés", r.marques.includes("tommyhilfiger") && r.plafonnes >= 1);
+  check("conforme (≤ 5, aucune tierce) → IDENTIQUE", !n("Jolie robe.\n#Zara #RobeEte #TailleM", { titre: "Robe Zara", marque: "Zara" }).modifiee);
+  check("#ZaraKids sur un article Zara reste (dérivé de la marque)", !n("Tee-shirt.\n#ZaraKids", { titre: "Tee-shirt Zara Kids", marque: "Zara" }).modifiee);
+  check("#Zara sur un article Mango part", n("Robe.\n#Mango #Zara", { titre: "Robe Mango", marque: "Mango" }).texte === "Robe.\n#Mango");
+  check("« façon Zara » en texte libre reste", !n("Robe façon Zara, taille M.", { titre: "Robe", marque: "H&M" }).modifiee);
+  check("sans contexte : plafond seul, aucune marque devinée", (n("#a #b #c #d #e #f #g").texte.match(/#/g) ?? []).length === 5);
 }
 
 if (echecs) { console.error(`\n[selftest:description-leboncoin] ÉCHEC — ${echecs} cas.`); process.exit(1); }

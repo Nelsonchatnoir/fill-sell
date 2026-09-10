@@ -1603,11 +1603,18 @@ serve(async (req) => {
     try {
       for (const j of out as unknown as Array<Record<string, unknown>>) {
         if (j.platform !== "leboncoin" || j.action !== "publish" || typeof j.description !== "string") continue;
-        const r = nettoyerDescriptionLeboncoin(j.description);
+        // Contexte (2026-09-10) : la marque de l'article et le titre — les deux
+        // règles de la page de correction Leboncoin (5 hashtags max, aucune
+        // marque tierce) en ont besoin ; cf. _shared/description-leboncoin.ts.
+        const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const r = nettoyerDescriptionLeboncoin(j.description, {
+          titre: typeof j.title === "string" ? j.title : "",
+          marque: typeof pfJ["marque"] === "string" ? (pfJ["marque"] as string) : "",
+        });
         if (r.vide) console.warn(`[get-pending-jobs] description Leboncoin ${String(j.id).slice(0, 8)} : le nettoyage aurait tout effacé — servie telle quelle`);
         if (!r.modifiee) continue;
         j.description = r.texte;
-        j.description_nettoyage = { termes: r.termes, retires: r.retires };
+        j.description_nettoyage = { termes: r.termes, retires: r.retires, marques: r.marques, plafonnes: r.plafonnes };
         nettoyagesLbc++;
       }
       if (nettoyagesLbc) console.log(`[get-pending-jobs] user=${user.id} descriptions Leboncoin nettoyées : ${nettoyagesLbc}`);
