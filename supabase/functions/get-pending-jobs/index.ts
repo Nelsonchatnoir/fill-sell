@@ -1383,6 +1383,100 @@ serve(async (req) => {
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
 
+    // ══ DÉSARMER LA BOUCLE ONGLET-PAR-ONGLET DE LA 0.6.25 SANS PAQUET
+    //    (2026-09-10 soir, GO Nico — 5 annonces hors ligne, refus 400 Couleur) ══
+    // La 0.6.25 (selectTailleVinted) cherche d'abord la taille PAR ID : les ids
+    // capturés sont ceux de la grille COMBINÉE d'origine (3 = « S / 36 / 8 »,
+    // 5 = « L / 40 / 12 ») alors que le formulaire de 2026 n'offre que les ids
+    // des grilles séparées (1735-1751 sur l'onglet S/M/L, relevé en direct le
+    // 10/09 à 19:5x). trouverParId ne trouve donc JAMAIS → boucle sur les 6
+    // onglets (S/M/L, EU, UK, FR, IT, US ; 1,5 s chacun, ré-ouvertures du
+    // panneau modal) avant la cascade par libellé — parcours propre à la
+    // 0.6.25 ; la 0.6.24 allait droit à la cascade (131 recréations, 0 refus
+    // le même jour). Les ids ne voyagent PAS dans ce payload : l'extension les
+    // reconstruit depuis la CAPTURE relue en base (construireJobRecreation :
+    // natif.size_id + item_attributes[code=size].ids). On les retire donc de
+    // la capture du job, pour ce client, quand il déclare « taille_par_id » :
+    // sans ids, selectTailleVinted saute la boucle et pose par libellé.
+    // ⛔ Seulement si libelles.taille est présent (sans libellé, les ids sont
+    //    la seule source : on ne touche pas).
+    // ⛔ RÉVERSIBLE : les valeurs retirées sont conservées dans
+    //    payload.taille_ids_retires (size_id, entrée item_attributes, at).
+    // ⛔ Interrupteur coin_config 'republish_taille_ids_retires_taille_par_id'
+    //    = 1 ; absent, 0 ou illisible → rien. Poll d'exécution seul.
+    // Périmètre : republish Vinted, étapes 'captured' (une-passe, capture relue
+    // avant tout retrait) et 'deleted' (recréation) — 'a_capturer' n'a pas
+    // encore de capture, elle sera traitée au poll suivant.
+    let idsRetires = 0;
+    if (!includeProcessing && !includeNeedsUser && tailleParId) {
+      try {
+        const cibles = out.filter((j) => {
+          if (j.action !== "republish" || j.platform !== "vinted") return false;
+          const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+          const step = String(pf["republish_step"] ?? "");
+          return (step === "captured" || step === "deleted") && Number.isFinite(Number(pf["capture_id"]));
+        });
+        if (cibles.length) {
+          const { data: cfgIds } = await userClient
+            .from("coin_config").select("value").eq("key", "republish_taille_ids_retires_taille_par_id").maybeSingle();
+          if (Number((cfgIds as Record<string, unknown> | null)?.value) === 1) {
+            const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            for (const j of cibles) {
+              const pf = (j.platform_fields as Record<string, unknown>) ?? {};
+              const capId = Number(pf["capture_id"]);
+              const { data: cap } = await admin
+                .from("vinted_republish_captures")
+                .select("id, libelles, payload")
+                .eq("id", capId)
+                .eq("user_id", user.id)
+                .maybeSingle();
+              if (!cap) continue;
+              const lib = (cap.libelles ?? {}) as Record<string, unknown>;
+              if (!String(lib["taille"] ?? "").trim()) continue; // sans libellé : les ids sont la seule source
+              const payload = (cap.payload ?? {}) as Record<string, unknown>;
+              if (payload["taille_ids_retires"]) continue;      // déjà fait
+              const natif = (payload["natif"] ?? null) as Record<string, unknown> | null;
+              if (!natif || typeof natif !== "object") continue;
+              const attrs = Array.isArray(natif["item_attributes"]) ? natif["item_attributes"] as Array<Record<string, unknown>> : [];
+              const attrSize = attrs.find((a) => String(a?.["code"] ?? "").trim().toLowerCase() === "size") ?? null;
+              const sizeId = natif["size_id"] ?? null;
+              if (sizeId == null && !attrSize) continue;         // rien à retirer
+              const natifNeuf = {
+                ...natif,
+                size_id: null,
+                item_attributes: attrs.filter((a) => a !== attrSize),
+              };
+              const payloadNeuf = {
+                ...payload,
+                natif: natifNeuf,
+                taille_ids_retires: {
+                  size_id: sizeId, item_attributes_size: attrSize, at: new Date().toISOString(),
+                  motif: "0.6.25 : ids de la grille combinée absents du formulaire → boucle 6 onglets ; pose par libellé (chemin 0.6.24)",
+                  libelle_conserve: String(lib["taille"]),
+                },
+              };
+              const { error: uErr } = await admin
+                .from("vinted_republish_captures")
+                .update({ payload: payloadNeuf })
+                .eq("id", capId)
+                .eq("user_id", user.id);
+              if (uErr) {
+                console.warn(`[get-pending-jobs] job ${j.id} : taille_ids NON retirés de la capture ${capId} — ${uErr.message}`);
+                continue;
+              }
+              j.platform_fields = {
+                ...pf,
+                republish_taille_ids_retires: { capture_id: capId, size_id: sizeId, at: new Date().toISOString() },
+              };
+              idsRetires++;
+              console.log(`[get-pending-jobs] job ${j.id} : taille_ids retirés de la capture ${capId} (size_id ${String(sizeId)}, libellé « ${String(lib["taille"])} » conservé) — la 0.6.25 posera la taille par libellé, sans boucle d'onglets`);
+            }
+          }
+        }
+      } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
+    }
+    if (idsRetires) console.log(`[get-pending-jobs] userId=${user.id} : taille_ids retirés sur ${idsRetires} capture(s) (client taille_par_id)`);
+
     // ══ TAILLE « EU 38 » / « FR 40 » : LE LIBELLÉ DE LA GRILLE SERVI À LA
     //    RECAPTURE (2026-09-10, v3 — capture préfixée : lettre → exact → jeton) ══
     // Pour les size_id 1943→1965, le référentiel size_groups lu par
