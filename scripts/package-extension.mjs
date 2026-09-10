@@ -148,7 +148,19 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // beebs.js — le parc Beebs était à l'arrêt en 0.6.22 —, re-capture non
 // affamée, retrait Leboncoin qui reprend + interstitiel DataDome nommé, 2e
 // passage « Mes annonces »).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24'];
+// 0.6.24 ajoutée le 10/09 au bump 0.6.25 : PUBLIÉE, ACCEPTÉE et SERVIE par le
+// CWS — preuve en base au moment de l'inscription (heartbeats profiles, 7 j) :
+// 19 comptes sur extension_version='0.6.24' / build
+// 2026-09-09T22:15:49Z+66d9953, dernier vu le 10/09 à 11 h 38. C'est le même
+// build que le zip build/CWS-0.6.24-A-TELEVERSER/…-66d9953-cws.zip.
+// ⚠️ OBSERVATION, PAS UNE INSCRIPTION : la 0.6.15 remonte elle aussi 11 comptes
+// (build 2026-09-02T20:43:08Z+adc7a6d, vu le 04/09) alors qu'elle est
+// volontairement absente de cette liste depuis le 06/09. Si ces 11 comptes sont
+// des installs CWS et non des unpacked, la liste laisse encore passer un
+// re-packaging en 0.6.15 que le Web Store refuserait. À trancher à froid — on
+// n'inscrit ici que ce qui est établi, et rien n'est urgent : le numéro courant
+// est bien plus haut.
 // 0.6.14, 0.6.17 et 0.6.19 ajoutées le 06/09 au bump 0.6.20 : la liste était
 // restée à 0.6.13 alors que ces trois-là ont bel et bien été téléversées —
 // 0.6.14 (paquet CWS courant noté le 31/08), 0.6.17 (elle TOURNE en prod :
