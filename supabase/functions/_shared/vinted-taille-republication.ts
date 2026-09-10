@@ -1,6 +1,7 @@
 // ══════════════════════════════════════════════════════════════════════════
 // LA TAILLE SERVIE À LA REPUBLICATION VINTED — LE LIBELLÉ EXACT DE LA GRILLE
-// (2026-09-10 ; v1 = 95048ab « lettre seule », v2 = résolution en 4 étapes)
+// (2026-09-10 ; v1 = 95048ab « lettre seule », v2 = c312e7f 4 étapes,
+//  v3 = la LETTRE passe devant l'exact quand la capture est préfixée)
 // ══════════════════════════════════════════════════════════════════════════
 // CE QUI SE PASSE (mesuré en base) : pour les size_id 1943→1965, le
 // référentiel /api/v2/size_groups lu par l'extension à la capture rend une
@@ -13,7 +14,7 @@
 //
 // VINTED A UNE GRILLE PAR CATÉGORIE, et le libellé de l'option n'est presque
 // jamais la valeur nue (relevé platform_category_aspects vinted/size, 26
-// grilles relevées le 10/09) :
+// grilles relevées le 10/09 = 14,7 % des articles capturés) :
 //   · Femmes > Hauts > T-shirts ............ « M / 38 / 10 » (17 options combinées)
 //   · Femmes > Jupes / Robes / Sweats ...... « M » + « EU 38 » + « UK 12 » + « FR 40 » (60 séparées)
 //   · Hommes > Pantalons > Autres pantalons  « W30 | FR 40 » … « W48 | FR 58 » (36)
@@ -22,21 +23,31 @@
 // Donc : quand le serveur connaît la grille cible ET la taille capturée, il
 // sert le LIBELLÉ EXACT de l'option — jamais une valeur à faire deviner.
 //
-// RÉSOLUTION, DANS CET ORDRE (Nico, 10/09) :
+// LES ÉTAPES :
 //   1. le libellé exact s'il existe tel quel dans la grille relevée ;
-//   2. sinon l'option de la grille qui CONTIENT la taille capturée comme
-//      JETON COMPLET (« FR 52 » → « W42 | FR 52 ») — « FR 4 » ne matche jamais
-//      « FR 46 », « 38 » jamais « 38.5 » ni « 138 » ; une seule candidate,
-//      sinon on passe à l'étape 3 ;
-//   3. sinon la lettre déduite de inventaire.attributs.taille (règle de
-//      95048ab : source vinted_liste STRICTE, cohérence obligatoire, grille
-//      relevée en chiffres → le chiffre s'il y figure, lettre présente dans la
-//      grille si elle est relevée) ;
-//   4. sinon on ne sert RIEN et le job reste en needs_user.
+//   2. l'option de la grille qui CONTIENT la taille capturée comme JETON
+//      COMPLET (« FR 52 » → « W42 | FR 52 ») — « FR 4 » ne matche jamais
+//      « FR 46 », « 38 » jamais « 38.5 » ni « 138 » ; une seule candidate ;
+//   3. la lettre déduite de inventaire.attributs.taille (règle de 95048ab :
+//      source vinted_liste STRICTE, cohérence obligatoire, grille relevée en
+//      chiffres → le chiffre s'il y figure, lettre présente dans la grille si
+//      elle est relevée) ;
+//   puis rien : le job reste en needs_user.
 //   ⚠️ EXCEPTION OBLIGATOIRE : jamais un libellé qui commence par « EU  » —
 //   vinted.js coupe ce préfixe (replace(/^EU\s*/i, "")), « EU 38 » servi
-//   arriverait en « 38 » et ne matcherait rien → on passe directement à
-//   l'étape 3. À retirer quand la coupure aura disparu de l'extension.
+//   arriverait en « 38 » et ne matcherait rien → le candidat est ignoré, on
+//   passe à l'étape suivante. À retirer quand la coupure aura disparu.
+//
+// L'ORDRE (Nico, 10/09, v3) :
+//   · capture PRÉFIXÉE (EU/FR/UK + nombre) : 3 → 1 → 2 → rien. Motif : sur
+//     f095c37f (Doudounes, « FR 40 »), l'étape 1 aurait servi la valeur
+//     EXACTE avec laquelle l'extension avait DÉJÀ échoué le 09/09 — on ne
+//     rejoue pas un échec mesuré. La voie lettre est prouvée en prod le 10/09
+//     au matin : 3 republications abouties (f1f37218 → M, ff234934 → S,
+//     75875cb5 → M).
+//   · capture NON préfixée : 1 → 2 → 3 → rien, inchangé. Cet ordre n'est
+//     atteignable que si le PÉRIMÈTRE ci-dessous est un jour élargi : tant
+//     qu'il tient, une capture non préfixée sort avant toute résolution.
 //
 // ⛔ GARDE-FOUS :
 //   · PÉRIMÈTRE = la capture de l'article rend une forme préfixée EU/FR/UK.
@@ -50,9 +61,10 @@
 //     ×3 sous cette source : ce serait une taille FAUSSE).
 //   · COHÉRENCE capture ↔ garde-robe avant toute lettre, relevée sur 37
 //     captures : « EU N » ↔ N, « FR N » ↔ N-2 (FR 40 ↔ M/38/10), « UK N » ↔
-//     3ᵉ segment. Couple incohérent → rien. Témoin de non-régression : job
-//     e0c2cb04 (« FR 40 » contre « XL / 42 / 14 ») DOIT rester bloqué.
-//   · Grille NON relevée → étape 3 puis 4 : on n'invente pas de libellé.
+//     3ᵉ segment. Couple incohérent → pas de lettre. Témoin de non-régression :
+//     job e0c2cb04 (« FR 40 » contre « XL / 42 / 14 », source capture, grille
+//     non relevée) DOIT rester bloqué.
+//   · Grille NON relevée → la lettre ou rien : on n'invente pas de libellé.
 //   · Comparaison en normalisant les espaces (insécables compris — la grille
 //     relevée écrit « EU 38 » avec U+00A0) et la casse, rien d'autre.
 //   · Une taille déjà saisie dans republish_user_fields n'est jamais écrasée
@@ -69,6 +81,10 @@ const NOMBRE_RE = /^\d{1,3}$/;
 const OPTIONS_NEUTRES = new Set(["AUTRE", "TAILLE UNIQUE"]);
 /** Le préfixe que vinted.js coupe : un libellé qui commence ainsi ne doit jamais être servi. */
 const EU_COUPE_RE = /^EU /;
+
+/** Ordre des étapes selon la forme de la capture (v3). */
+export const ORDRE_CAPTURE_PREFIXEE: ReadonlyArray<Etape> = [3, 1, 2];
+export const ORDRE_CAPTURE_NON_PREFIXEE: ReadonlyArray<Etape> = [1, 2, 3];
 
 /** Forme comparable d'un libellé : espaces (U+00A0, U+202F… compris) réduits
  *  à un simple, bornes retirées, majuscules. Rien d'autre. */
@@ -100,8 +116,9 @@ export function contientJeton(optionNorm: string, valeurNorm: string): boolean {
   return new RegExp(`(^|[^A-Z0-9.])${esc}([^A-Z0-9.]|$)`).test(optionNorm);
 }
 
-export type TailleServie = { valeur: string; etape: 1 | 2 | 3; detail: string; motif?: undefined };
-export type TailleRefusee = { valeur: null; etape: null; motif: string };
+export type Etape = 1 | 2 | 3;
+export type TailleServie = { valeur: string; etape: Etape; ordre: string; detail: string; motif?: undefined };
+export type TailleRefusee = { valeur: null; etape: null; ordre: string; motif: string };
 
 /**
  * La valeur à servir dans republish_user_fields.taille, ou le motif du refus.
@@ -118,7 +135,10 @@ export function tailleAServir(args: {
 }): TailleServie | TailleRefusee {
   const nt = normaliserTaille(args.captureTaille);
   const m = TAILLE_PREFIXEE_RE.exec(nt);
-  if (!m) return { valeur: null, etape: null, motif: "capture non préfixée (hors périmètre)" };
+  // ── PÉRIMÈTRE : capture préfixée seulement (cf. bandeau) ──────────────────
+  if (!m) return { valeur: null, etape: null, ordre: ORDRE_CAPTURE_NON_PREFIXEE.join("→"), motif: "capture non préfixée (hors périmètre)" };
+  const ordre = ORDRE_CAPTURE_PREFIXEE;
+  const ordreTexte = ordre.join("→");
   const prefixe = m[1].toUpperCase();
   const n = Number(m[2]);
 
@@ -126,51 +146,57 @@ export function tailleAServir(args: {
     .map((o) => ({ brut: String(o), norm: normaliserTaille(o) }))
     .filter((o) => o.norm);
   const relevee = grille.length > 0;
-  let motifGrille = "grille non relevée";
-  if (relevee) {
-    // ── 1. le libellé exact ───────────────────────────────────────────────
-    const exact = grille.find((o) => o.norm === nt);
-    if (exact) {
-      if (!EU_COUPE_RE.test(exact.norm)) return { valeur: exact.brut, etape: 1, detail: "libellé exact de la grille" };
-      motifGrille = `exact « ${exact.brut} » commence par EU (préfixe coupé par l'extension)`;
-    } else {
-      // ── 2. l'option qui contient la taille capturée comme jeton complet ──
-      const cands = grille.filter((o) => contientJeton(o.norm, nt));
-      if (cands.length === 1) {
-        if (!EU_COUPE_RE.test(cands[0].norm)) {
-          return { valeur: cands[0].brut, etape: 2, detail: `option contenant « ${nt} » en jeton complet` };
-        }
-        motifGrille = `jeton « ${cands[0].brut} » commence par EU (préfixe coupé par l'extension)`;
-      } else if (cands.length > 1) {
-        motifGrille = `jeton ambigu (${cands.length} options : ${cands.slice(0, 4).map((c) => c.brut).join(" · ")})`;
-      } else {
-        motifGrille = "aucune option exacte ni par jeton dans la grille relevée";
-      }
-    }
-  }
+  const motifs: string[] = [];
+  const servi = (valeur: string, etape: Etape, detail: string): TailleServie => ({ valeur, etape, ordre: ordreTexte, detail });
 
-  // ── 3. la lettre de la garde-robe (règle de 95048ab, inchangée) ──────────
-  const source = String(args.inventaireTaille?.source ?? "").trim();
-  if (source !== "vinted_liste") {
-    return { valeur: null, etape: null, motif: `${motifGrille} ; lettre impossible : source inventaire « ${source || "absente"} » ≠ vinted_liste` };
+  // ── 1. le libellé exact ───────────────────────────────────────────────────
+  const etape1 = (): TailleServie | null => {
+    if (!relevee) { motifs.push("1 : grille non relevée"); return null; }
+    const exact = grille.find((o) => o.norm === nt);
+    if (!exact) { motifs.push("1 : aucune option exacte"); return null; }
+    if (EU_COUPE_RE.test(exact.norm)) { motifs.push(`1 : exact « ${exact.brut} » commence par EU (préfixe coupé par l'extension)`); return null; }
+    return servi(exact.brut, 1, "libellé exact de la grille");
+  };
+
+  // ── 2. l'option qui contient la taille capturée comme jeton complet ───────
+  const etape2 = (): TailleServie | null => {
+    if (!relevee) { motifs.push("2 : grille non relevée"); return null; }
+    const cands = grille.filter((o) => o.norm !== nt && contientJeton(o.norm, nt));
+    if (cands.length === 0) { motifs.push("2 : aucune option par jeton"); return null; }
+    if (cands.length > 1) { motifs.push(`2 : jeton ambigu (${cands.length} options : ${cands.slice(0, 4).map((c) => c.brut).join(" · ")})`); return null; }
+    if (EU_COUPE_RE.test(cands[0].norm)) { motifs.push(`2 : jeton « ${cands[0].brut} » commence par EU (préfixe coupé par l'extension)`); return null; }
+    return servi(cands[0].brut, 2, `option contenant « ${nt} » en jeton complet`);
+  };
+
+  // ── 3. la lettre de la garde-robe (règle de 95048ab, inchangée) ───────────
+  const etape3 = (): TailleServie | null => {
+    const source = String(args.inventaireTaille?.source ?? "").trim();
+    if (source !== "vinted_liste") { motifs.push(`3 : source inventaire « ${source || "absente"} » ≠ vinted_liste`); return null; }
+    const gardeRobe = normaliserTaille(args.inventaireTaille?.v);
+    const { lettre, eu, uk } = decomposerTailleVinted(gardeRobe);
+    if (!lettre) { motifs.push(`3 : aucune lettre exploitable dans « ${gardeRobe} »`); return null; }
+    const coherent =
+      (prefixe === "EU" && eu != null && eu === n) ||
+      (prefixe === "FR" && eu != null && eu + 2 === n) ||
+      (prefixe === "UK" && uk != null && uk === n);
+    if (!coherent) { motifs.push(`3 : incohérence capture « ${prefixe} ${n} » ↔ garde-robe « ${gardeRobe} »`); return null; }
+    if (!relevee) return servi(lettre, 3, "lettre de la garde-robe (grille non relevée)");
+    if (grilleEnChiffres(grille.map((o) => o.norm))) {
+      const opt = eu != null ? grille.find((o) => o.norm === String(eu)) : undefined;
+      if (opt) return servi(opt.brut, 3, "chiffre de la garde-robe (grille en chiffres)");
+      motifs.push(`3 : grille en chiffres sans « ${eu ?? "?"} »`);
+      return null;
+    }
+    const optLettre = grille.find((o) => o.norm === lettre);
+    if (optLettre) return servi(optLettre.brut, 3, "lettre de la garde-robe, présente dans la grille relevée");
+    motifs.push(`3 : lettre « ${lettre} » absente de la grille relevée`);
+    return null;
+  };
+
+  const etapes: Record<Etape, () => TailleServie | null> = { 1: etape1, 2: etape2, 3: etape3 };
+  for (const e of ordre) {
+    const r = etapes[e]();
+    if (r) return r;
   }
-  const gardeRobe = normaliserTaille(args.inventaireTaille?.v);
-  const { lettre, eu, uk } = decomposerTailleVinted(gardeRobe);
-  if (!lettre) return { valeur: null, etape: null, motif: `${motifGrille} ; aucune lettre exploitable dans « ${gardeRobe} »` };
-  const coherent =
-    (prefixe === "EU" && eu != null && eu === n) ||
-    (prefixe === "FR" && eu != null && eu + 2 === n) ||
-    (prefixe === "UK" && uk != null && uk === n);
-  if (!coherent) {
-    return { valeur: null, etape: null, motif: `${motifGrille} ; incohérence capture « ${prefixe} ${n} » ↔ garde-robe « ${gardeRobe} »` };
-  }
-  if (!relevee) return { valeur: lettre, etape: 3, detail: "lettre de la garde-robe (grille non relevée)" };
-  if (grilleEnChiffres(grille.map((o) => o.norm))) {
-    const opt = eu != null ? grille.find((o) => o.norm === String(eu)) : undefined;
-    if (opt) return { valeur: opt.brut, etape: 3, detail: `chiffre de la garde-robe (grille en chiffres) — ${motifGrille}` };
-    return { valeur: null, etape: null, motif: `${motifGrille} ; grille en chiffres sans « ${eu ?? "?"} »` };
-  }
-  const optLettre = grille.find((o) => o.norm === lettre);
-  if (optLettre) return { valeur: optLettre.brut, etape: 3, detail: `lettre de la garde-robe, présente dans la grille — ${motifGrille}` };
-  return { valeur: null, etape: null, motif: `${motifGrille} ; lettre « ${lettre} » absente de la grille relevée` };
+  return { valeur: null, etape: null, ordre: ordreTexte, motif: motifs.join(" ; ") };
 }

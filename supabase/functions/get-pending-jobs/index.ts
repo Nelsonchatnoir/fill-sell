@@ -1149,7 +1149,7 @@ serve(async (req) => {
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
 
     // ══ TAILLE « EU 38 » / « FR 40 » : LE LIBELLÉ DE LA GRILLE SERVI À LA
-    //    RECAPTURE (2026-09-10, v2 — 4 étapes) ═══════════════════════════════
+    //    RECAPTURE (2026-09-10, v3 — capture préfixée : lettre → exact → jeton) ══
     // Pour les size_id 1943→1965, le référentiel size_groups lu par
     // l'extension à la capture rend « EU 38 » / « FR 40 » là où la garde-robe
     // Vinted (inventaire.attributs.taille, source vinted_liste) affiche le
@@ -1234,7 +1234,7 @@ serve(async (req) => {
             // valeur servie ou motif. C'est ce que Nico lit en SQL.
             const trace = {
               capture: captureTaille, categorie: chemin || null, grille_relevee: grilles.has(chemin),
-              etape: r.etape, valeur: r.valeur,
+              etape: r.etape, ordre: r.ordre, valeur: r.valeur,
               ...(r.valeur === null ? { motif: r.motif } : { detail: r.detail }),
               ...(r.etape === 3 ? { source: "inventaire.attributs.taille (vinted_liste)" } : {}),
               at: new Date().toISOString(),
@@ -1250,7 +1250,7 @@ serve(async (req) => {
               republish_taille_fournie: trace,
             };
             fournis++;
-            console.log(`[get-pending-jobs] job ${j.id} : taille « ${captureTaille} » → « ${r.valeur} » (étape ${r.etape}, ${r.detail})`);
+            console.log(`[get-pending-jobs] job ${j.id} : taille « ${captureTaille} » → « ${r.valeur} » (étape ${r.etape}, ordre ${r.ordre}, ${r.detail})`);
           }
           if (fournis) {
             console.log(
