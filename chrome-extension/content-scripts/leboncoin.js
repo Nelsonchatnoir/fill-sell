@@ -3590,7 +3590,12 @@ function photoPreviewCount() {
 //      6-10 photos ...  4,5 %       16-20 photos ... 54,5 %
 // La rupture est nette à 10. Sur le costume de Victor (job bfe7d7a0, 20 photos)
 // 10 vignettes seulement étaient rendues au bout des 30 s, soit ~3 s par photo.
-// D'où le palier : 1500 ms/photo jusqu'à 10, 3000 ms au-delà (20 photos → 45 s).
+// D'où le budget : 3000 ms PAR PHOTO, partout (20 photos → 60 s).
+// Arbitrage Nico du 10/09, contre ma première proposition (palier 1500/3000,
+// soit 45 s à 20 photos) : 45 s restait SOUS les ~3 s/photo mesurés, donc le
+// budget serait retombé court sur le cas même qui l'a motivé. Et la marge ne
+// coûte rien, parce que la sortie anticipée ci-dessous rend la main dès que
+// les vignettes cessent d'arriver — on n'attend jamais 60 s pour rien.
 // ⚠️ CE N'EST PAS UN CORRECTIF DE PUBLICATION, et il ne faut pas le vendre
 // comme tel : sur les mêmes 575 dépôts, le Continuer final est avalé dans
 // 1,4 % des cas quand le budget est épuisé, contre 2,6 % quand il ne l'est pas
@@ -3599,7 +3604,7 @@ function photoPreviewCount() {
 // qui salissait un warning sur deux des grosses annonces, et le risque
 // résiduel de conclure pendant que l'upload court encore.
 function budgetPhotosMs(n) {
-  return 1500 * Math.min(n, 10) + 3000 * Math.max(0, n - 10);
+  return 3000 * Math.max(1, n);
 }
 
 async function waitPhotosUploaded(attendues, avant, budgetMs, tag) {
