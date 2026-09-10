@@ -1148,22 +1148,25 @@ serve(async (req) => {
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
 
-    // ══ TAILLE « EU 38 » / « FR 40 » : LA LETTRE SERVIE À LA RECAPTURE ══════
-    // (2026-09-10 — 11 jobs en needs_user sur 45 j, 4 comptes, annonces
-    // intactes.) Pour les size_id 1943→1965, le référentiel size_groups lu par
+    // ══ TAILLE « EU 38 » / « FR 40 » : LE LIBELLÉ DE LA GRILLE SERVI À LA
+    //    RECAPTURE (2026-09-10, v2 — 4 étapes) ═══════════════════════════════
+    // Pour les size_id 1943→1965, le référentiel size_groups lu par
     // l'extension à la capture rend « EU 38 » / « FR 40 » là où la garde-robe
     // Vinted (inventaire.attributs.taille, source vinted_liste) affiche le
     // même article « M / 38 / 10 » ; le formulaire de recréation refuse la
-    // forme préfixée (vinted.js retire « EU », et le « 38 » nu ne matche plus
-    // rien). Le correctif d'extension part dans le prochain zip ; ICI, le
-    // chemin serveur : la LETTRE est servie dans republish_user_fields.taille,
-    // le canal que l'extension fusionne déjà dans la capture (même mécanisme
-    // que l'état ci-dessus). Elle n'atteint un job qu'à une (re)capture : les
-    // captures > 24 h sont refaites automatiquement à la relance, avec fusion.
-    // Règles, garde-fous et relevés : _shared/vinted-taille-republication.ts.
-    // Périmètre STRICT = la dernière capture de l'article rend une forme
-    // préfixée : un article dont la capture rend « M / 38 / 10 » (la voie qui
-    // aboutit) n'est jamais touché. Rien n'est réécrit en base ici.
+    // forme préfixée (vinted.js retire « EU », le « 38 » nu ne matche plus
+    // rien). Vinted a une GRILLE PAR CATÉGORIE et le libellé de l'option n'est
+    // presque jamais la valeur nue (« W42 | FR 52 », « M / 38 / 10 »…) : le
+    // serveur, qui connaît la grille relevée ET la taille capturée, sert le
+    // LIBELLÉ EXACT de l'option dans republish_user_fields.taille — le canal
+    // que l'extension fusionne déjà dans la capture (même mécanisme que l'état
+    // ci-dessus). Il n'atteint un job qu'à une (re)capture. Preuve : 3 jobs
+    // republiés dans la nuit du 10/09 par la voie lettre (f1f37218 → « M »).
+    // Ordre, exception « EU  », garde-fous et relevés :
+    // _shared/vinted-taille-republication.ts. Périmètre STRICT = la dernière
+    // capture de l'article rend une forme préfixée (0 des 590 abouties/7 j) ;
+    // le déclencheur « forme absente de la grille » a été REFUSÉ (il toucherait
+    // 8 abouties/7 j). Rien n'est réécrit en base ici.
     try {
       const republishTaille = out.filter((j) =>
         j.action === "republish" && j.platform === "vinted" && j.inventaire_id != null
@@ -1199,6 +1202,7 @@ serve(async (req) => {
             return Array.isArray(p) ? p.map((s) => String(s)).join(" > ") : "";
           };
           const chemins = [...new Set(aTraiter.map(cheminDe).filter(Boolean))];
+          // Libellés BRUTS de la grille relevée : c'est l'un d'eux qui sera servi.
           const grilles = new Map<string, string[]>();
           if (chemins.length) {
             const { data: rows } = await userClient
@@ -1218,34 +1222,39 @@ serve(async (req) => {
             const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
             const uf = (pf["republish_user_fields"] as Record<string, unknown> | null) ?? {};
             if (String(uf["taille"] ?? "").trim()) continue; // saisie de l'utilisateur : intouchable
-            const captureTaille = derniereCapture.get(String(j.inventaire_id))?.["taille"];
+            const captureTaille = String(derniereCapture.get(String(j.inventaire_id))?.["taille"] ?? "");
             const chemin = cheminDe(j);
             const r = tailleAServir({
               captureTaille,
               inventaireTaille: tailleInventaire.get(String(j.inventaire_id)) ?? null,
               options: grilles.get(chemin) ?? null,
             });
+            // Trace OBLIGATOIRE, servie aussi quand rien n'est servi : capture,
+            // catégorie, grille relevée oui/non, étape retenue (1/2/3 ou null),
+            // valeur servie ou motif. C'est ce que Nico lit en SQL.
+            const trace = {
+              capture: captureTaille, categorie: chemin || null, grille_relevee: grilles.has(chemin),
+              etape: r.etape, valeur: r.valeur,
+              ...(r.valeur === null ? { motif: r.motif } : { detail: r.detail }),
+              ...(r.etape === 3 ? { source: "inventaire.attributs.taille (vinted_liste)" } : {}),
+              at: new Date().toISOString(),
+            };
             if (r.valeur === null) {
-              console.log(`[get-pending-jobs] job ${j.id} : taille « ${String(captureTaille)} » NON servie — ${r.motif}`);
+              console.log(`[get-pending-jobs] job ${j.id} : taille « ${captureTaille} » NON servie — ${r.motif}`);
+              j.platform_fields = { ...pf, republish_taille_fournie: trace };
               continue;
             }
             j.platform_fields = {
               ...pf,
               republish_user_fields: { ...uf, taille: r.valeur },
-              // Trace : d'où vient la valeur, par quelle règle, face à quelle
-              // capture et quelle grille. Auditable en SQL après coup.
-              republish_taille_fournie: {
-                source: "inventaire.attributs.taille (vinted_liste)",
-                valeur: r.valeur, methode: r.methode,
-                capture_taille: String(captureTaille), categorie: chemin || null,
-                grille_relevee: grilles.has(chemin), at: new Date().toISOString(),
-              },
+              republish_taille_fournie: trace,
             };
             fournis++;
+            console.log(`[get-pending-jobs] job ${j.id} : taille « ${captureTaille} » → « ${r.valeur} » (étape ${r.etape}, ${r.detail})`);
           }
           if (fournis) {
             console.log(
-              `[get-pending-jobs] userId=${user.id} : taille (lettre de la garde-robe) servie sur ${fournis} republication(s) ` +
+              `[get-pending-jobs] userId=${user.id} : taille servie sur ${fournis} republication(s) ` +
               `à capture préfixée EU/FR/UK (${aTraiter.length} dans le périmètre)`,
             );
           }

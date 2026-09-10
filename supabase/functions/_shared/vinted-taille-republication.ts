@@ -1,72 +1,79 @@
 // ══════════════════════════════════════════════════════════════════════════
-// LA TAILLE SERVIE À LA REPUBLICATION VINTED — « EU 38 » DEVIENT « M »
-// (2026-09-10, jobs f1f37218 / b1ad790c / 75875cb5 / ff234934 et 7 « FR NN »)
+// LA TAILLE SERVIE À LA REPUBLICATION VINTED — LE LIBELLÉ EXACT DE LA GRILLE
+// (2026-09-10 ; v1 = 95048ab « lettre seule », v2 = résolution en 4 étapes)
 // ══════════════════════════════════════════════════════════════════════════
-// CE QUI SE PASSE (mesuré en base, 45 jours) : pour les size_id 1943→1965, le
+// CE QUI SE PASSE (mesuré en base) : pour les size_id 1943→1965, le
 // référentiel /api/v2/size_groups lu par l'extension à la capture rend une
 // forme PRÉFIXÉE — « EU 36 », « EU 38 », « FR 34 »… « FR 52 » — alors que la
 // garde-robe Vinted (inventaire.attributs.taille, source vinted_liste) affiche
 // le MÊME article « S / 36 / 8 », « M / 38 / 10 », « XL / 42 / 14 ». Les deux
-// sont de Vinted ; personne n'a « perdu » la lettre, deux orthographes du
-// même id. Le formulaire de recréation, lui, refuse la forme préfixée :
-// l'extension (vinted.js) retire le préfixe « EU » (→ « 38 », que la garde
-// anti-nombre-nu refuse ensuite de matcher par contenance dans « EU 38 »), et
-// les « FR NN » échouent aussi sans que la cause soit relevée sur un
-// formulaire réel. 11 jobs en needs_user sur 45 jours, annonces INTACTES
-// (garde-fou « pause AVANT toute suppression »).
+// sont de Vinted. Le formulaire de recréation, lui, refuse la forme préfixée :
+// l'extension (vinted.js) retire « EU » (→ « 38 », que la garde anti-nombre-nu
+// refuse ensuite de matcher par contenance), et les « FR NN » échouent aussi.
 //
-// LE CORRECTIF D'EXTENSION (ne plus retirer « EU », relever le cas FR) part
-// dans le prochain zip. ICI, le chemin SERVEUR disponible tout de suite : la
-// LETTRE de la garde-robe est servie dans `republish_user_fields.taille`, le
-// canal que l'extension fusionne DÉJÀ dans la capture (background.js, liste
-// blanche taille/marque/etat/isbn, valeurs fournies > libellés capturés). À
-// la (re)capture, libelles.taille devient « M » et le formulaire le trouve en
-// exact sur la grille lettrée. Décision Nico (10/09) : le size_id posé ne sera
-// plus 1944 — l'affichage garde-robe est identique, c'est assumé.
+// VINTED A UNE GRILLE PAR CATÉGORIE, et le libellé de l'option n'est presque
+// jamais la valeur nue (relevé platform_category_aspects vinted/size, 26
+// grilles relevées le 10/09) :
+//   · Femmes > Hauts > T-shirts ............ « M / 38 / 10 » (17 options combinées)
+//   · Femmes > Jupes / Robes / Sweats ...... « M » + « EU 38 » + « UK 12 » + « FR 40 » (60 séparées)
+//   · Hommes > Pantalons > Autres pantalons  « W30 | FR 40 » … « W48 | FR 58 » (36)
+//   · Hommes > T-shirts / Sweats / Doudounes « XS » … « 8XL » (lettres seules)
+//   · Femmes > Chaussures > Baskets ........ « 38 », « 38.5 » (chiffres nus)
+// Donc : quand le serveur connaît la grille cible ET la taille capturée, il
+// sert le LIBELLÉ EXACT de l'option — jamais une valeur à faire deviner.
 //
-// ⛔ GARDE-FOUS (ils comptent plus que le correctif) :
+// RÉSOLUTION, DANS CET ORDRE (Nico, 10/09) :
+//   1. le libellé exact s'il existe tel quel dans la grille relevée ;
+//   2. sinon l'option de la grille qui CONTIENT la taille capturée comme
+//      JETON COMPLET (« FR 52 » → « W42 | FR 52 ») — « FR 4 » ne matche jamais
+//      « FR 46 », « 38 » jamais « 38.5 » ni « 138 » ; une seule candidate,
+//      sinon on passe à l'étape 3 ;
+//   3. sinon la lettre déduite de inventaire.attributs.taille (règle de
+//      95048ab : source vinted_liste STRICTE, cohérence obligatoire, grille
+//      relevée en chiffres → le chiffre s'il y figure, lettre présente dans la
+//      grille si elle est relevée) ;
+//   4. sinon on ne sert RIEN et le job reste en needs_user.
+//   ⚠️ EXCEPTION OBLIGATOIRE : jamais un libellé qui commence par « EU  » —
+//   vinted.js coupe ce préfixe (replace(/^EU\s*/i, "")), « EU 38 » servi
+//   arriverait en « 38 » et ne matcherait rien → on passe directement à
+//   l'étape 3. À retirer quand la coupure aura disparu de l'extension.
+//
+// ⛔ GARDE-FOUS :
 //   · PÉRIMÈTRE = la capture de l'article rend une forme préfixée EU/FR/UK.
-//     Un article dont la capture rend « M / 38 / 10 » (1 429 captures sur
-//     45 j, la voie qui ABOUTIT) n'est jamais touché : 535 republications
-//     abouties sur 7 jours, ce chiffre ne doit pas bouger.
-//   · SOURCE STRICTE : attributs.taille.source = 'vinted_liste' SEULEMENT.
-//     Jamais 'capture' — relevé : id 1959 « FR 40 » avec un inventaire
-//     « XL / 42 / 14 » ×3 sous cette source, servir ça poserait une taille
-//     FAUSSE. Sans source sûre, on ne sert RIEN et le job reste en needs_user
-//     comme aujourd'hui. Un blocage vaut mieux qu'une taille fausse.
-//   · COHÉRENCE capture ↔ garde-robe, relevée sur 37 captures (jamais
-//     déduite) : « EU N » ↔ « X / N / Y » (13 cas), « FR N » ↔ « X / N-2 / Y »
-//     (37 cas : FR 38 ↔ S/36, FR 40 ↔ M/38, FR 44 ↔ XL/42), « UK N » ↔ le
-//     3ᵉ segment. Un couple qui ne colle pas = garde-robe périmée ou autre
-//     article : rien n'est servi.
-//   · Pas de lettre exploitable dans la valeur garde-robe → rien.
-//   · Grille cible RELEVÉE (platform_category_aspects vinted/size) : si elle
-//     est EN CHIFFRES, on sert le chiffre (et seulement s'il y figure) ; sinon
-//     la lettre (et seulement si elle y figure). Grille NON relevée → la
-//     lettre, cas majoritaire.
-//   · Une taille déjà présente dans republish_user_fields (saisie de
-//     l'utilisateur) n'est JAMAIS écrasée — c'est l'appelant qui le garantit.
+//     Mesuré le 10/09 : 0 des 590 republications abouties sur 7 jours. Le
+//     déclencheur « forme absente de la grille » a été REFUSÉ : il toucherait
+//     8 abouties sur 7 j (27 sur 45 j — « M / 38 / 10 » sur les grilles
+//     séparées, « M » sur la grille combinée, que la cascade de l'extension
+//     résout déjà). Une taille qui passe aujourd'hui, on n'y touche pas.
+//   · SOURCE STRICTE pour la lettre : attributs.taille.source = 'vinted_liste'.
+//     Jamais 'capture' (id 1959 « FR 40 » avec un inventaire « XL / 42 / 14 »
+//     ×3 sous cette source : ce serait une taille FAUSSE).
+//   · COHÉRENCE capture ↔ garde-robe avant toute lettre, relevée sur 37
+//     captures : « EU N » ↔ N, « FR N » ↔ N-2 (FR 40 ↔ M/38/10), « UK N » ↔
+//     3ᵉ segment. Couple incohérent → rien. Témoin de non-régression : job
+//     e0c2cb04 (« FR 40 » contre « XL / 42 / 14 ») DOIT rester bloqué.
+//   · Grille NON relevée → étape 3 puis 4 : on n'invente pas de libellé.
+//   · Comparaison en normalisant les espaces (insécables compris — la grille
+//     relevée écrit « EU 38 » avec U+00A0) et la casse, rien d'autre.
+//   · Une taille déjà saisie dans republish_user_fields n'est jamais écrasée
+//     (garanti par l'appelant).
 // Rien n'est réécrit en base par ce module : il ne fait que calculer la valeur
 // à SERVIR. inventaire.attributs et vinted_republish_captures restent intacts.
 
-/** Forme préfixée rendue par le référentiel pour les ids 1943→1965. */
-export const TAILLE_PREFIXEE_RE = /^(EU|FR|UK)\s*(\d{1,3})$/i;
+/** Forme préfixée rendue par le référentiel pour les ids 1943→1965 (après normalisation). */
+export const TAILLE_PREFIXEE_RE = /^(EU|FR|UK) ?(\d{1,3})$/i;
 /** Les lettres de la grille Femme/Homme Vinted : XXXS…S, M, L…XXXL, 4XL…9XL. */
 const LETTRE_RE = /^(?:X{0,3}S|X{0,3}L|M|\dXL)$/i;
 const NOMBRE_RE = /^\d{1,3}$/;
 /** Options présentes dans TOUTES les grilles : elles ne disent rien de sa forme. */
 const OPTIONS_NEUTRES = new Set(["AUTRE", "TAILLE UNIQUE"]);
+/** Le préfixe que vinted.js coupe : un libellé qui commence ainsi ne doit jamais être servi. */
+const EU_COUPE_RE = /^EU /;
 
-/** Forme comparable d'un libellé de taille : sans accent, espaces (insécables
- *  compris — la grille relevée écrit « EU 38 » avec U+00A0) réduits à un
- *  simple, majuscules. */
+/** Forme comparable d'un libellé : espaces (U+00A0, U+202F… compris) réduits
+ *  à un simple, bornes retirées, majuscules. Rien d'autre. */
 export function normaliserTaille(s: unknown): string {
-  return String(s ?? "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
+  return String(s ?? "").replace(/\s+/g, " ").trim().toUpperCase();
 }
 
 /** « M / 38 / 10 » → { lettre: "M", eu: 38, uk: 10 }. Segments absents → null. */
@@ -83,48 +90,87 @@ export function grilleEnChiffres(options: string[]): boolean {
   return utiles.length > 0 && utiles.every((o) => /^\d+(?:[.,]\d+)?$/.test(o));
 }
 
-export type TailleServie = { valeur: string; methode: "lettre" | "chiffre"; motif?: undefined };
-export type TailleRefusee = { valeur: null; motif: string };
+/** L'option (normalisée) contient la valeur (normalisée) comme JETON COMPLET :
+ *  bornée par un caractère qui n'est ni lettre, ni chiffre, ni point — ou par
+ *  un bord. « FR 52 » ⊂ « W42 | FR 52 » ; « 38 » ⊄ « 38.5 », ⊄ « 138 » ;
+ *  « FR 4 » ⊄ « FR 46 ». */
+export function contientJeton(optionNorm: string, valeurNorm: string): boolean {
+  if (!valeurNorm) return false;
+  const esc = valeurNorm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^A-Z0-9.])${esc}([^A-Z0-9.]|$)`).test(optionNorm);
+}
+
+export type TailleServie = { valeur: string; etape: 1 | 2 | 3; detail: string; motif?: undefined };
+export type TailleRefusee = { valeur: null; etape: null; motif: string };
 
 /**
  * La valeur à servir dans republish_user_fields.taille, ou le motif du refus.
- * @param captureTaille   libelles.taille de la DERNIÈRE capture de l'article
+ * @param captureTaille    libelles.taille de la DERNIÈRE capture de l'article
  * @param inventaireTaille inventaire.attributs.taille ({ v, source })
- * @param options         allowed_values de la grille relevée pour la catégorie
- *                        de la capture, ou null si la catégorie n'est pas relevée
+ * @param options          allowed_values (libellés BRUTS) de la grille relevée
+ *                         pour la catégorie de la capture ; null/vide si la
+ *                         catégorie n'est pas relevée
  */
 export function tailleAServir(args: {
   captureTaille: unknown;
   inventaireTaille: { v?: unknown; source?: unknown } | null | undefined;
   options: string[] | null | undefined;
 }): TailleServie | TailleRefusee {
-  const m = TAILLE_PREFIXEE_RE.exec(normaliserTaille(args.captureTaille));
-  if (!m) return { valeur: null, motif: "capture non préfixée (hors périmètre)" };
+  const nt = normaliserTaille(args.captureTaille);
+  const m = TAILLE_PREFIXEE_RE.exec(nt);
+  if (!m) return { valeur: null, etape: null, motif: "capture non préfixée (hors périmètre)" };
   const prefixe = m[1].toUpperCase();
   const n = Number(m[2]);
 
+  const grille = (Array.isArray(args.options) ? args.options : [])
+    .map((o) => ({ brut: String(o), norm: normaliserTaille(o) }))
+    .filter((o) => o.norm);
+  const relevee = grille.length > 0;
+  let motifGrille = "grille non relevée";
+  if (relevee) {
+    // ── 1. le libellé exact ───────────────────────────────────────────────
+    const exact = grille.find((o) => o.norm === nt);
+    if (exact) {
+      if (!EU_COUPE_RE.test(exact.norm)) return { valeur: exact.brut, etape: 1, detail: "libellé exact de la grille" };
+      motifGrille = `exact « ${exact.brut} » commence par EU (préfixe coupé par l'extension)`;
+    } else {
+      // ── 2. l'option qui contient la taille capturée comme jeton complet ──
+      const cands = grille.filter((o) => contientJeton(o.norm, nt));
+      if (cands.length === 1) {
+        if (!EU_COUPE_RE.test(cands[0].norm)) {
+          return { valeur: cands[0].brut, etape: 2, detail: `option contenant « ${nt} » en jeton complet` };
+        }
+        motifGrille = `jeton « ${cands[0].brut} » commence par EU (préfixe coupé par l'extension)`;
+      } else if (cands.length > 1) {
+        motifGrille = `jeton ambigu (${cands.length} options : ${cands.slice(0, 4).map((c) => c.brut).join(" · ")})`;
+      } else {
+        motifGrille = "aucune option exacte ni par jeton dans la grille relevée";
+      }
+    }
+  }
+
+  // ── 3. la lettre de la garde-robe (règle de 95048ab, inchangée) ──────────
   const source = String(args.inventaireTaille?.source ?? "").trim();
   if (source !== "vinted_liste") {
-    return { valeur: null, motif: `source inventaire « ${source || "absente"} » ≠ vinted_liste` };
+    return { valeur: null, etape: null, motif: `${motifGrille} ; lettre impossible : source inventaire « ${source || "absente"} » ≠ vinted_liste` };
   }
-  const { lettre, eu, uk } = decomposerTailleVinted(args.inventaireTaille?.v);
-  if (!lettre) return { valeur: null, motif: "aucune lettre exploitable dans la taille garde-robe" };
-
+  const gardeRobe = normaliserTaille(args.inventaireTaille?.v);
+  const { lettre, eu, uk } = decomposerTailleVinted(gardeRobe);
+  if (!lettre) return { valeur: null, etape: null, motif: `${motifGrille} ; aucune lettre exploitable dans « ${gardeRobe} »` };
   const coherent =
     (prefixe === "EU" && eu != null && eu === n) ||
     (prefixe === "FR" && eu != null && eu + 2 === n) ||
     (prefixe === "UK" && uk != null && uk === n);
   if (!coherent) {
-    return { valeur: null, motif: `incohérence capture « ${prefixe} ${n} » ↔ garde-robe « ${normaliserTaille(args.inventaireTaille?.v)} »` };
+    return { valeur: null, etape: null, motif: `${motifGrille} ; incohérence capture « ${prefixe} ${n} » ↔ garde-robe « ${gardeRobe} »` };
   }
-
-  const options = Array.isArray(args.options) ? args.options.map(normaliserTaille).filter(Boolean) : [];
-  if (!options.length) return { valeur: lettre, methode: "lettre" }; // grille non relevée : la lettre
-  const relevees = new Set(options);
-  if (grilleEnChiffres(options)) {
-    if (eu != null && relevees.has(String(eu))) return { valeur: String(eu), methode: "chiffre" };
-    return { valeur: null, motif: `grille en chiffres sans « ${eu ?? "?"} »` };
+  if (!relevee) return { valeur: lettre, etape: 3, detail: "lettre de la garde-robe (grille non relevée)" };
+  if (grilleEnChiffres(grille.map((o) => o.norm))) {
+    const opt = eu != null ? grille.find((o) => o.norm === String(eu)) : undefined;
+    if (opt) return { valeur: opt.brut, etape: 3, detail: `chiffre de la garde-robe (grille en chiffres) — ${motifGrille}` };
+    return { valeur: null, etape: null, motif: `${motifGrille} ; grille en chiffres sans « ${eu ?? "?"} »` };
   }
-  if (relevees.has(lettre)) return { valeur: lettre, methode: "lettre" };
-  return { valeur: null, motif: `lettre « ${lettre} » absente de la grille relevée` };
+  const optLettre = grille.find((o) => o.norm === lettre);
+  if (optLettre) return { valeur: optLettre.brut, etape: 3, detail: `lettre de la garde-robe, présente dans la grille — ${motifGrille}` };
+  return { valeur: null, etape: null, motif: `${motifGrille} ; lettre « ${lettre} » absente de la grille relevée` };
 }
