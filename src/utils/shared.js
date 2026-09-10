@@ -921,10 +921,12 @@ const OBJECT_ICON_RULES = [
   // descriptions cosmétiques générées par l'IA : une crème Medik8 partait en
   // Sandales eBay (62107, « Pointure EU » obligatoire). Même piège déjà vu
   // sur gants (élégant) et montres (démontre) plus bas.
-  [/sandale|tongs?\b|claquette|(?<![\p{L}\p{N}])mules?(?![\p{L}\p{N}])/iu, '🩴'],
+  // sandalettes? (2026-09-10) : mot-clé à part entière depuis la borne à DROITE —
+  // « sandale » ne matche plus le préfixe de « sandalettes ».
+  [/sandalettes?|sandale|tongs?\b|claquette|(?<![\p{L}\p{N}])mules?(?![\p{L}\p{N}])/iu, '🩴'],
   [/\bsacs?\b(?!\s*(?:de.?couchage|de.?frappe|poubelle|congélation|aspirateur))|handbag|pochette|cabas|besace|bandoulière|birkin|kelly|speedy|neverfull/i, '👜'],
   [/portefeuille|porte[sx]?.?monnaie|porte[sx]?.?carte/i, '👛'],
-  [/valise|bagage/i, '🧳'],
+  [/valisettes?|valise|bagage/i, '🧳'],   // valisettes? (2026-09-10, borne droite)
   // ── Vêtement BÉBÉ à contexte OBLIGATOIRE (2026-08-08, chantier détection
   // bébé — corpus réel : 145 titres enfant en prod, ensemble ×10,
   // bodysuit/grenouillère/sarouel ×1 chacun, tous en 📦 ou dépendants de
@@ -976,12 +978,14 @@ const OBJECT_ICON_RULES = [
   [/coupe[sx]?.?vents?\b|(?<![\p{L}\p{N}])k.?ways?(?![\p{L}\p{N}])|\bbombers?\b|softshell/iu, '🧥'],
   [/cravate|n[œo]e?ud.?papillon/i, '🎀'],
   [/costume|smoking\b/i, '🤵'],
-  [/chemise|chemisiers?\b|blouse\b/i, '👔'],   // « chemisier » n'est PAS « chemise » : chemis-IER (82 articles du parc)
+  [/chemisettes?|chemise|chemisiers?\b|blouse\b/i, '👔'],   // chemisettes? (2026-09-10, borne droite) ;   // « chemisier » n'est PAS « chemise » : chemis-IER (82 articles du parc)
   // Scindé de 👕 : pull/sweat/hoodie/cardigan vivent chez Vinted sous une
   // branche "Sweats et pulls" entièrement différente de "Hauts et t-shirts"
   // (voir vintedCategories.js) — un seul et même mot-clé ne peut plus servir
   // de proxy fiable au chemin catalogue, d'où l'icône dédiée.
-  [/pull|sweat|hoodie|cardigan|gilet(?!.{0,4}(?:de.?costume|jaune|de.?sécurité))/i, '🧶'],
+  // pullovers? / sweatshirts? / sweaters? (2026-09-10) : mots-clés à part entière
+  // depuis la borne à DROITE — « pull » et « sweat » ne matchent plus un préfixe.
+  [/pullovers?|sweatshirts?|sweaters?|pull|sweat|hoodie|cardigan|gilet(?!.{0,4}(?:de.?costume|jaune|de.?sécurité))/i, '🧶'],
   // polo/top gardés contre leurs homonymes (audit 2026-07-19) : « Volkswagen
   // Polo 1.2 TSI » partait en T-shirts (même famille que golf GTI, déjà gardé
   // plus bas), et « top qualité/état/prix » — tournure quasi systématique des
@@ -1184,7 +1188,7 @@ const OBJECT_ICON_RULES = [
   // Sport
   [/\bvélos?\b|\bvtt\b|bicyclette/i, '🚲'],
   [/trottinette/i, '🛴'],
-  [/skate|longboard/i, '🛹'],
+  [/skateboards?|skate|longboard/i, '🛹'],   // skateboards? (2026-09-10, borne droite)
   [/roller|\bpatins?(?![a-zà-ÿ])/i, '⛸️'],  // \b ASCII : "patinée" (é) forçait un match → garde accents
   [/\bskis?\b|snowboard/i, '🎿'],
   [/\bgourde\b|bidon.?(?:sport|vélo)|bouteille.?(?:isotherme|inox|sport)/i, '📦'],  // gourde ≠ ballon (défaut Sport ⚽), pas de feuille dédiée → filet
@@ -1202,7 +1206,7 @@ const OBJECT_ICON_RULES = [
   [/pneu|jante|\broue\b/i, '🛞'],
   [/voiture|automobile|autoradio|pare[sx]?.?choc|rétroviseur/i, '🚗'],
   // Beauté
-  [/parfum|eau[sx]?.?de.?(?:toilette|parfum)|cologne/i, '🌸'],
+  [/parfumee?s?|parfum|eau[sx]?.?de.?(?:toilette|parfum)|cologne/i, '🌸'],   // parfumé·e·s (2026-09-10, borne droite ; comparé sans accents)
   // « palette de couleurs » = prose IA omniprésente (vêtements, déco…), pas
   // une palette de fards (audit 2026-07-19).
   // ⚠️ `mascara` BORNÉ (2026-08-11). Sans borne il matchait « MASCARADE » :
@@ -1255,7 +1259,7 @@ const OBJECT_ICON_RULES = [
   [/figurine|funko|playmobil/i, '🦸'],
   // Livres
   [/manga|\bbd\b|bande[sx]?.?dessinée|comics/i, '📖'],
-  [/livre|romans?(?![\p{L}\p{N}])|encyclopédie|dictionnaire/iu, '📚'],  // « romantique » contenait roman (audit 2026-07-19)
+  [/livrets?|livre|romans?(?![\p{L}\p{N}])|encyclopédie|dictionnaire/iu, '📚'],   // livrets? (2026-09-10, borne droite) ;  // « romantique » contenait roman (audit 2026-07-19)
   [/magazine|revue\b/i, '📰'],
   // Collection
   // ── Cartes à collectionner (2026-08-11) ───────────────────────────────────
@@ -1406,10 +1410,31 @@ let _reglesSansAccents = null;
 // ils restent reconnus. Le texte comparé est déjà sans accents (SANS_ACCENTS),
 // donc [A-Za-z0-9] suffit comme classe de lettre.
 const BORNE_GAUCHE = "(?:(?<![A-Za-z0-9])|(?<=\\b(?:mini|maxi|midi|sous|sur|demi)))";
+// ── BORNE DE MOT À DROITE, POUR TOUTES LES RÈGLES (2026-09-10, GO Nico) ─────
+// Mesure du 09/09 : 152 des 178 règles ont une alternative qui finit par une
+// lettre sans \b ni (?!…) — « botte » matchait « Bottega », « synthé »
+// matchait « synthétique » (14 titres classés 🎹), « chale » « chaleur ».
+// Symétrique de BORNE_GAUCHE, posée ICI, une fois, à la compilation, SANS
+// liste d'exceptions par règle (décision Nico : un mécanisme qu'on comprend
+// encore dans six mois). Passe large du 10/09 sur 44 303 titres de
+// l'inventaire : 99,7 % identiques ; les 9 vrais dérivés soudés perdus
+// (livret, chemisette, sweater, valisette, parfumée, skateboard, pullover,
+// sweatshirt, sandalettes) sont devenus des mots-clés à part entière dans
+// leurs règles ; les 57 changements d'icône restants sont des corrections.
+//   · (?:s|x|es)? : le pluriel reste reconnu pour les règles écrites au
+//     singulier (« bottes », « sandales », « pulls ») ;
+//   · puis fin de mot : le caractère suivant n'est pas alphanumérique — OU le
+//     caractère précédent ne l'est pas, ce qui rend la borne INERTE pour les
+//     règles à largeur nulle (^(?=…)(?=…) des vêtements bébé, qui matchent en
+//     position 0 sans rien consommer) et pour un motif qui finit déjà sur un
+//     séparateur. Un mot-objet s'arrête toujours à la fin d'un mot.
+// Non-régression figée : scripts/mot-objet-borne-droite-selftest.mjs (corpus
+// scripts/corpus-mot-objet-2026-09-10.json, 1 153 titres réels de jobs).
+const BORNE_DROITE = "(?:s|x|es)?(?:(?![A-Za-z0-9])|(?<![A-Za-z0-9]))";
 function reglesComparables() {
   if (!_reglesSansAccents) {
     _reglesSansAccents = OBJECT_ICON_RULES.map(([re, icon]) =>
-      [new RegExp(BORNE_GAUCHE + "(?:" + SANS_ACCENTS(re.source) + ")", re.flags), icon]);
+      [new RegExp(BORNE_GAUCHE + "(?:" + SANS_ACCENTS(re.source) + ")" + BORNE_DROITE, re.flags), icon]);
   }
   return _reglesSansAccents;
 }
