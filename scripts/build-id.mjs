@@ -1324,7 +1324,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ⚠️ EXTENSION_MIN_BUILD ne se deduit TOUJOURS PAS d'ici : apres acceptation de
 // la 0.6.25, il vaut le BUILD_ID DU ZIP — 2026-09-10T09:41:28Z — jamais cette
 // constante (cf. bandeau du 09/08, incident 0.5.6).
-export const EXTENSION_LAST_COMMIT = '2026-09-10T13:34:13Z'; // recale f43d345 (adsubmit fait foi + MAJ Chrome + grilles LBC + photos, prepare 0.6.26) - MIN_BUILD inchange
+export const EXTENSION_LAST_COMMIT = '2026-09-10T14:12:14Z'; // recale 005c8b0 (apercu vs formulaire + validations natives, 0.6.26) - MIN_BUILD inchange
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
