@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
-import { TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir } from "../_shared/vinted-taille-republication.ts";
+import { ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir } from "../_shared/vinted-taille-republication.ts";
 import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
 import {
   type AspectRow,
@@ -368,6 +368,13 @@ serve(async (req) => {
     // doivent pas dépendre de la policy UPDATE client. Best-effort : un échec
     // n'empêche JAMAIS la distribution des jobs.
     const version = typeof body?.version === "string" ? body.version.slice(0, 20) : "";
+    // Capacités DÉCLARÉES par le build (2026-09-10) — jamais déduites d’un
+    // numéro de version : « taille_par_id » = ce client pose la taille Vinted
+    // par id et par onglet sans retirer « EU » (selectTailleVinted). Un build
+    // qui ne le dit pas n’est pas capable, quel que soit son numéro.
+    const capacites: string[] = Array.isArray(body?.capacites)
+      ? body.capacites.map((c: unknown) => String(c)).slice(0, 20) : [];
+    const tailleParId = capacites.includes("taille_par_id");
     try {
       const admin = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -1228,7 +1235,7 @@ serve(async (req) => {
               captureTaille,
               inventaireTaille: tailleInventaire.get(String(j.inventaire_id)) ?? null,
               options: grilles.get(chemin) ?? null,
-            });
+            }, tailleParId ? { ordrePrefixe: ORDRE_EXACT_D_ABORD, euCoupe: false } : {});
             // Trace OBLIGATOIRE, servie aussi quand rien n'est servi : capture,
             // catégorie, grille relevée oui/non, étape retenue (1/2/3 ou null),
             // valeur servie ou motif. C'est ce que Nico lit en SQL.

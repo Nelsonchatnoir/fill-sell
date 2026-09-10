@@ -2255,19 +2255,27 @@ async function fillListingForm(job) {
     );
   }
 
-  if (fields.taille) {
-    // La grille Vinted affiche "42", pas "EU 42" (préfixe côté FillSell) —
-    // on retire le préfixe, le match exact-par-segment fait le reste.
-    const taillePosee = await selectClosedOptionSafe(
-      "taille",
-      '#size, [data-testid="category-size-single-grid-input"]',
-      '[data-testid^="size-group-"]',
-      String(fields.taille).replace(/^EU\s*/i, ""),
-      warnings,
-      // Garde anti-nombre-nu : un « 3 » ne doit jamais matcher « 3 ans /
-      // 98 cm » par contenance, ni « 36 mois » l'option adulte « 36 ».
-      { sizeField: true }
-    );
+  if (fields.taille || (Array.isArray(fields.taille_ids) && fields.taille_ids.length)) {
+    // ── TAILLE : PAR ID D'ABORD, PAR ONGLET ENSUITE (relevé réel du 10/09) ──
+    // Relevé sur /items/new (Femmes > Vêtements > Jeans > Jeans droits) : le
+    // panneau Taille porte SIX ONGLETS — S/M/L (groupe 80), EU (82), UK (81),
+    // FR (83), IT (84), US (85) — et SEUL l'onglet actif est dans le DOM
+    // (17-18 options, jamais les 103 de la config attributes). Chaque option
+    // porte data-testid="size-group-<groupe>-grid-option-<size_id>" : le
+    // suffixe est bien l'id de la TAILLE (1944 = « EU 38 » sous EU, 1962 =
+    // « FR 46 » sous FR) — question ouverte depuis le 13/08, tranchée ici.
+    // C'est ce qui expliquait les 11 échecs « EU 38 » / « FR NN » de
+    // septembre : la cascade ne regardait que l'onglet lettré, et le préfixe
+    // « EU » était en plus retiré (« la grille affiche 42, pas EU 42 » — faux
+    // depuis que les grilles sont séparées). Désormais, cf. selectTailleVinted :
+    //   1. l'ID capturé (taille_ids, republication) est cherché onglet par
+    //      onglet — c'est la VRAIE taille de l'annonce d'origine, pas un
+    //      équivalent (décision Nico, 10/09) ;
+    //   2. sinon le LIBELLÉ, tel quel, sans retirer de préfixe : EU/UK/FR/IT/US
+    //      désigne son onglet, puis la cascade habituelle sur cet onglet.
+    // Une grille sans onglets ne change pas d'un octet : même openDropdown,
+    // même cascade, même clic, même garde anti-nombre-nu.
+    const taillePosee = await selectTailleVinted(fields, warnings);
     // ── Grille de tailles SANS AUCUNE correspondance = catégorie suspecte
     // (point 8, 2026-08-15 — robe Shein « col drapé » de Carla) ──────────────
     // Le job portait categoryPath « Maison > Textiles > Linge de lit » (icône
@@ -2325,13 +2333,11 @@ async function fillListingForm(job) {
       };
     }
   }
-  // taille_ids (captures 0.6.1 sans libellé) : le résolveur selectSizeByIds
-  // (a426979) est HORS PAQUET — consigne du 13/08 maintenue au merge du 14/08,
-  // le suffixe numérique de size-group-<n> n'étant pas prouvé être l'id de la
-  // TAILLE (et non du groupe). La capture des ids (background,
-  // construireJobRecreation) reste : les données sont conservées pour le jour
-  // où le référentiel sera prouvé. Sans résolveur : champ vide → constat des
-  // requis → needs_user (mini-éditeur), comme la 0.6.2.
+  // taille_ids : résolus PAR ID dans selectTailleVinted depuis le 10/09 (le
+  // suffixe de size-group-<groupe>-grid-option-<n> est l'id de la TAILLE,
+  // relevé sur formulaire réel). Sans correspondance dans aucun onglet, le
+  // libellé prend le relais ; sans libellé : champ vide → constat des requis →
+  // needs_user (mini-éditeur), comme avant.
   if (fields.etat) {
     await selectClosedOptionSafe(
       "état",
@@ -4412,6 +4418,133 @@ async function selectVintedModel(wanted, warnings) {
 //     formulaire réel et plus jamais la config catalogue (qui listait les
 //     tailles vêtement pendant que le DOM affichait des dimensions de literie).
 const optionsRelevees = new Map(); // fieldName (minuscule) → string[]
+
+// ── TAILLE VINTED : PAR ID, PUIS PAR ONGLET, PUIS CASCADE (2026-09-10) ─────
+// Relevé réel du 10/09 sur /items/new : le panneau Taille des grilles séparées
+// porte des ONGLETS (boutons courts « S/M/L », « EU », « UK », « FR », « IT »,
+// « US ») et seul l'onglet actif rend ses options ; chaque option porte
+// data-testid="size-group-<groupe>-grid-option-<size_id>". Sur une grille à
+// liste unique il n'y a pas d'onglet : releverOngletsTaille rend [] et tout se
+// passe comme avant (cascade sur les options rendues).
+// Ordre : (1) l'id capturé, onglet par onglet — la taille EXACTE de l'annonce
+// d'origine ; (2) le libellé, sans jamais retirer son préfixe : EU/UK/FR/IT/US
+// désigne l'onglet, la cascade fait le reste sur cet onglet ; sans préfixe,
+// retour à l'onglet par défaut (le premier) avant la cascade.
+// Échec : même relevé que selectClosedOptionSafe (options AFFICHÉES de
+// l'onglet courant dans optionsRelevees, warning, panneau refermé) — le
+// message needs_user en aval ne change pas de forme.
+const TAILLE_TRIGGER_SEL = '#size, [data-testid="category-size-single-grid-input"]';
+const TAILLE_OPTIONS_SEL = '[data-testid^="size-group-"]';
+const TAILLE_PREFIXE_ONGLET_RE = /^(EU|UK|FR|IT|US)\s+\S/i;
+
+function releverOngletsTaille() {
+  let noeud = document.querySelector(TAILLE_OPTIONS_SEL);
+  for (let i = 0; i < 8 && noeud; i++) {
+    noeud = noeud.parentElement;
+    if (!noeud) break;
+    const boutons = [...noeud.querySelectorAll("button")]
+      .map((el) => ({ el, texte: String(el.textContent ?? "").replace(/\s+/g, " ").trim() }))
+      .filter((b) => b.texte && b.texte.length <= 8);
+    if (boutons.length >= 2) return boutons;
+  }
+  return [];
+}
+
+function groupeTailleAffiche() {
+  const el = document.querySelector(TAILLE_OPTIONS_SEL);
+  return el ? (String(el.getAttribute("data-testid")).match(/^size-group-(\d+)/)?.[1] ?? null) : null;
+}
+
+async function attendreOptionsTaille(timeoutMs = 5000) {
+  const debut = Date.now();
+  while (Date.now() - debut < timeoutMs) {
+    if (document.querySelector(TAILLE_OPTIONS_SEL)) return true;
+    await sleep(100);
+  }
+  return false;
+}
+
+async function activerOngletTaille(onglet) {
+  const avant = groupeTailleAffiche();
+  onglet.el.click();
+  const debut = Date.now();
+  while (Date.now() - debut < 1500) {
+    await sleep(100);
+    const g = groupeTailleAffiche();
+    if (g && g !== avant) return true;
+  }
+  return false; // déjà actif, ou onglet sans effet : les options courantes font foi
+}
+
+async function selectTailleVinted(fields, warnings) {
+  const ids = (Array.isArray(fields.taille_ids) ? fields.taille_ids : []).map(Number).filter(Number.isFinite);
+  const libelle = String(fields.taille ?? "").trim();
+  try {
+    await openDropdown(TAILLE_TRIGGER_SEL);
+    await attendreOptionsTaille();
+    const onglets = releverOngletsTaille();
+    // ── 1. par id ────────────────────────────────────────────────────────
+    const trouverParId = () =>
+      ids.map((id) => document.querySelector(`[data-testid$="-grid-option-${id}"]`)).find(Boolean) || null;
+    let cible = trouverParId();
+    let ongletRetenu = null;
+    if (!cible && ids.length && onglets.length) {
+      for (const o of onglets) {
+        await humanPause();
+        await activerOngletTaille(o);
+        cible = trouverParId();
+        if (cible) { ongletRetenu = o.texte; break; }
+      }
+    }
+    if (cible) {
+      await humanPause();
+      cible.click();
+      await humanPause();
+      await confirmDropdownIfNeeded();
+      const idPose = String(cible.getAttribute("data-testid") ?? "").match(/-grid-option-(\d+)$/)?.[1] ?? "?";
+      const note = `taille: posée par id ${idPose} → option Vinted "${cible.textContent.trim()}"` +
+        (ongletRetenu ? ` (onglet ${ongletRetenu})` : "") + (libelle ? ` — libellé capturé "${libelle}"` : "");
+      console.log(`[vinted] ${note}`);
+      warnings.push(note);
+      return true;
+    }
+    // ── 2. par libellé, tel quel ─────────────────────────────────────────
+    if (!libelle) throw new Error(`aucun des ids ${JSON.stringify(ids)} dans les onglets ${JSON.stringify(onglets.map((o) => o.texte))}`);
+    if (onglets.length) {
+      const m = libelle.match(TAILLE_PREFIXE_ONGLET_RE);
+      const voulu = m ? m[1].toUpperCase() : null;
+      const onglet = voulu ? onglets.find((o) => o.texte.toUpperCase() === voulu) : onglets[0];
+      if (onglet) {
+        await humanPause();
+        await activerOngletTaille(onglet);
+      }
+    }
+    const match = await waitForOptionCascade(TAILLE_OPTIONS_SEL, libelle, 5000, { sizeField: true });
+    await humanPause();
+    match.el.click();
+    await humanPause();
+    await confirmDropdownIfNeeded();
+    if (match.stage !== "exact") {
+      const note = `taille: "${libelle}" → option Vinted "${match.label}" (match ${match.stage})`;
+      console.warn(`[vinted] ≈ ${note}`);
+      warnings.push(note);
+    }
+    return true;
+  } catch (e) {
+    const visible = Array.from(document.querySelectorAll(TAILLE_OPTIONS_SEL))
+      .map((el) => el.textContent.trim())
+      .filter(Boolean)
+      .slice(0, 12);
+    if (visible.length) optionsRelevees.set("taille", visible);
+    else optionsRelevees.delete("taille");
+    const note = `taille: champ sauté — ${e.message}` +
+      (visible.length ? ` — options affichées: ${JSON.stringify(visible)}` : "");
+    console.warn(`[vinted] ⚠️ ${note}`);
+    warnings.push(note);
+    await closeAnyOpenDropdown();
+    return false;
+  }
+}
 
 async function selectClosedOptionSafe(fieldName, triggerSelector, optionSelector, rawText, warnings, opts = {}) {
   try {

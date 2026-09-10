@@ -956,6 +956,12 @@ async function publishSelectedUnlocked(jobIds) {
     ({ jobs } = await callEdgeFunction("get-pending-jobs", session.access_token, {
       build: FILLSELL_BUILD_ID,
       version: chrome.runtime.getManifest().version,
+      // Capacités DÉCLARÉES (2026-09-10) : « taille_par_id » = ce build pose la
+      // taille Vinted par son id et par onglet (selectTailleVinted), sans
+      // retirer le préfixe « EU ». get-pending-jobs s'en sert pour remettre le
+      // libellé exact DEVANT la lettre de la garde-robe — pour CE client
+      // seulement, au moment où il tourne ce code : jamais « entre deux ».
+      capacites: ["taille_par_id"],
     }));
   } catch (e) {
     // 401 : même invalidation que le poll — et « no_session » plutôt que
@@ -2002,6 +2008,12 @@ async function pollAndProcessJobsUnlocked() {
     const rep = await callEdgeFunction("get-pending-jobs", session.access_token, {
       build: FILLSELL_BUILD_ID,
       version: chrome.runtime.getManifest().version,
+      // Capacités DÉCLARÉES (2026-09-10) : « taille_par_id » = ce build pose la
+      // taille Vinted par son id et par onglet (selectTailleVinted), sans
+      // retirer le préfixe « EU ». get-pending-jobs s'en sert pour remettre le
+      // libellé exact DEVANT la lettre de la garde-robe — pour CE client
+      // seulement, au moment où il tourne ce code : jamais « entre deux ».
+      capacites: ["taille_par_id"],
     });
     jobs = rep.jobs;
     commandeSyncEnAttente = rep.sync_command ?? null;
@@ -5982,7 +5994,11 @@ async function installNetworkProbe(tabId, platform) {
                     .flatMap((g) => (g?.type === "group" ? g.options ?? [] : [g]))
                     .map((o) => o?.title)
                     .filter(Boolean)
-                    .slice(0, 60),
+                    // 200 (2026-09-10, ex-60) : la config `size` d'une catégorie
+                    // Femmes porte 103 options (6 onglets) — à 60, les grilles
+                    // relevées étaient TRONQUÉES (Doudounes s'arrêtait à « FR 46 »).
+                    // Aligné sur le plafond de persistDiscoveredAspects.
+                    .slice(0, 200),
                   // ── optionsBrutes (2026-09-04) ───────────────────────────
                   // `options` ci-dessus ne garde que les TITRES : c'est là que
                   // se perdait la correspondance id → libellé, alors qu'elle
@@ -5999,7 +6015,7 @@ async function installNetworkProbe(tabId, platform) {
                   optionsBrutes: (a?.configuration?.options ?? [])
                     .flatMap((g) => (g?.type === "group" ? g.options ?? [] : [g]))
                     .filter((o) => o && typeof o === "object")
-                    .slice(0, 60),
+                    .slice(0, 200),
                 })).filter((a) => a.code);
               }
             }
@@ -11842,7 +11858,10 @@ function construireJobRecreation(job, pf, cap, prix) {
       categoryPath: cap.libelles?.categoryPath ?? null,
       etat: cap.libelles?.etat ?? null,
       taille: cap.libelles?.taille ?? null,
-      ...(!cap.libelles?.taille && tailleIds.length ? { taille_ids: tailleIds } : {}),
+      // Ids TOUJOURS transmis avec le libellé (2026-09-10) : le formulaire les
+      // résout en premier (selectTailleVinted, onglet par onglet) — c'est la
+      // taille EXACTE de l'annonce d'origine ; le libellé n'est que le repli.
+      ...(tailleIds.length ? { taille_ids: tailleIds } : {}),
       marque: cap.libelles?.marque ?? null,
       colors: cap.libelles?.couleurs ?? null,
       packageSize: cap.libelles?.colis ?? null,
@@ -12075,6 +12094,18 @@ async function replanifierRestrictionVinted(accessToken, job, pf, result) {
 // peuvent pas diverger : mêmes filets (sonde réseau, ceinture dressing), même
 // rattachement, mêmes retentatives.
 async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecreation, tabId, result) {
+  // ── Catalogue des requis : les RECRÉATIONS écrivent aussi (2026-09-10) ──
+  // Mesuré : 0 job republish ne porte categoryPath au niveau du job, donc
+  // ~1 600 recréations/45 j n'alimentaient JAMAIS platform_category_aspects
+  // (26 grilles de tailles relevées pour 474 catégories traversées). Le job
+  // de recréation, lui, porte la catégorie de la capture : c'est lui qu'on
+  // passe. Fire-and-forget, avant tout verdict — jamais bloquant.
+  if (result?.discoveredRequired?.length || result?.serverRequired?.length) {
+    persistDiscoveredAspects(accessToken, jobRecreation, [
+      ...(result.discoveredRequired ?? []),
+      ...(result.serverRequired ?? []).map((f) => ({ ...f, required: true, source: "server_400" })),
+    ]).catch(() => {});
+  }
   // ── VOLET (a) : le canal coupé peut être la SIGNATURE D'UN SUCCÈS ─────────
   // Vinted REDIRIGE vers la nouvelle annonce dès qu'elle est créée : la
   // redirection détruit le content script AVANT sa réponse. La publication

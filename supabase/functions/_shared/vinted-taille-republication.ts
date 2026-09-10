@@ -36,7 +36,8 @@
 //   ⚠️ EXCEPTION OBLIGATOIRE : jamais un libellé qui commence par « EU  » —
 //   vinted.js coupe ce préfixe (replace(/^EU\s*/i, "")), « EU 38 » servi
 //   arriverait en « 38 » et ne matcherait rien → le candidat est ignoré, on
-//   passe à l'étape suivante. À retirer quand la coupure aura disparu.
+//   passe à l'étape suivante. Levée PAR CLIENT quand le build déclare la
+//   capacité « taille_par_id » (opts.euCoupe = false) : ce build ne coupe plus.
 //
 // L'ORDRE (Nico, 10/09, v3) :
 //   · capture PRÉFIXÉE (EU/FR/UK + nombre) : 3 → 1 → 2 → rien. Motif : sur
@@ -85,6 +86,12 @@ const EU_COUPE_RE = /^EU /;
 /** Ordre des étapes selon la forme de la capture (v3). */
 export const ORDRE_CAPTURE_PREFIXEE: ReadonlyArray<Etape> = [3, 1, 2];
 export const ORDRE_CAPTURE_NON_PREFIXEE: ReadonlyArray<Etape> = [1, 2, 3];
+/** Ordre pour un client qui DÉCLARE la capacité « taille_par_id » (build qui pose
+ *  la taille par id et par onglet, sans retirer « EU ») : le libellé exact
+ *  redevient premier, la lettre n’est plus qu’un filet. C’est le retour à
+ *  1 → 2 → 3 voulu par Nico « dans le même zip » — obtenu PAR CLIENT, au
+ *  moment où il tourne ce code, sans commit à synchroniser. */
+export const ORDRE_EXACT_D_ABORD: ReadonlyArray<Etape> = [1, 2, 3];
 
 /** Forme comparable d'un libellé : espaces (U+00A0, U+202F… compris) réduits
  *  à un simple, bornes retirées, majuscules. Rien d'autre. */
@@ -132,12 +139,15 @@ export function tailleAServir(args: {
   captureTaille: unknown;
   inventaireTaille: { v?: unknown; source?: unknown } | null | undefined;
   options: string[] | null | undefined;
-}): TailleServie | TailleRefusee {
+}, opts: { ordrePrefixe?: ReadonlyArray<Etape>; euCoupe?: boolean } = {}): TailleServie | TailleRefusee {
   const nt = normaliserTaille(args.captureTaille);
   const m = TAILLE_PREFIXEE_RE.exec(nt);
   // ── PÉRIMÈTRE : capture préfixée seulement (cf. bandeau) ──────────────────
   if (!m) return { valeur: null, etape: null, ordre: ORDRE_CAPTURE_NON_PREFIXEE.join("→"), motif: "capture non préfixée (hors périmètre)" };
-  const ordre = ORDRE_CAPTURE_PREFIXEE;
+  const ordre = opts.ordrePrefixe ?? ORDRE_CAPTURE_PREFIXEE;
+  // euCoupe = le client retire encore le préfixe « EU » (builds sans la
+  // capacité « taille_par_id ») : un libellé « EU … » servi serait perdu.
+  const euCoupe = opts.euCoupe ?? true;
   const ordreTexte = ordre.join("→");
   const prefixe = m[1].toUpperCase();
   const n = Number(m[2]);
@@ -154,7 +164,7 @@ export function tailleAServir(args: {
     if (!relevee) { motifs.push("1 : grille non relevée"); return null; }
     const exact = grille.find((o) => o.norm === nt);
     if (!exact) { motifs.push("1 : aucune option exacte"); return null; }
-    if (EU_COUPE_RE.test(exact.norm)) { motifs.push(`1 : exact « ${exact.brut} » commence par EU (préfixe coupé par l'extension)`); return null; }
+    if (euCoupe && EU_COUPE_RE.test(exact.norm)) { motifs.push(`1 : exact « ${exact.brut} » commence par EU (préfixe coupé par l'extension)`); return null; }
     return servi(exact.brut, 1, "libellé exact de la grille");
   };
 
@@ -164,7 +174,7 @@ export function tailleAServir(args: {
     const cands = grille.filter((o) => o.norm !== nt && contientJeton(o.norm, nt));
     if (cands.length === 0) { motifs.push("2 : aucune option par jeton"); return null; }
     if (cands.length > 1) { motifs.push(`2 : jeton ambigu (${cands.length} options : ${cands.slice(0, 4).map((c) => c.brut).join(" · ")})`); return null; }
-    if (EU_COUPE_RE.test(cands[0].norm)) { motifs.push(`2 : jeton « ${cands[0].brut} » commence par EU (préfixe coupé par l'extension)`); return null; }
+    if (euCoupe && EU_COUPE_RE.test(cands[0].norm)) { motifs.push(`2 : jeton « ${cands[0].brut} » commence par EU (préfixe coupé par l'extension)`); return null; }
     return servi(cands[0].brut, 2, `option contenant « ${nt} » en jeton complet`);
   };
 
