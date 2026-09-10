@@ -35,7 +35,7 @@ import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
 import { supabase } from '../lib/supabase';
-import { natureNeedsUser, texteEnCoursConfirmation,
+import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
   getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType,
   getRotatingExamples, SKELETON_SOLD,
@@ -1376,6 +1376,31 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
                     Soit le bouton est là, soit le message ne le promet pas —
                     il est là. Mode 'repend' seul : le job repart tel quel,
                     ZÉRO unité (sa réservation n'a jamais été soldée). */}
+                {/* ── Vérification vendeur eBay (2026-09-10) : le seul geste qui
+                    débloque est CHEZ eBay. Le lien n'apparaît que sur un motif
+                    KYC_* NOMMÉ par le serveur ; sur tout autre refus, rien ne
+                    change. Libellé volontairement modeste : les URLs de
+                    vérification testées le 10/09 sont mortes, le Seller Hub est
+                    la seule porte vivante — on ne promet donc pas la page. */}
+                {(() => {
+                  const lien = lienVerificationEbay(j, lang);
+                  if (!lien) return null;
+                  return (
+                    <div style={{ marginTop:8 }}>
+                      <a
+                        href={lien.url} target="_blank" rel="noopener noreferrer"
+                        style={{ display:"block", textAlign:"center", padding:"8px 12px", borderRadius:10,
+                          border:`1px solid ${NU_T.mute}`, color:NU_T.mute, background:"transparent",
+                          fontSize:12.5, fontWeight:700, textDecoration:"none", fontFamily:"inherit" }}
+                      >
+                        {lien.libelle} ↗
+                      </a>
+                      <div style={{ fontSize:11, lineHeight:1.35, color:NU_T.mute, marginTop:4, textAlign:"center" }}>
+                        {lien.aide}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {(() => {
                   const info = onRelancer ? relanceManuelleInfo(j, jobs) : null;
                   if (!info || info.mode !== "repend") return null;

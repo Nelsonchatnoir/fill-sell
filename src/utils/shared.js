@@ -160,6 +160,38 @@ export function natureNeedsUser(job) {
   if (pf.needsUserField?.field_key || champs.length || server.length) return 'a_completer';
   return 'action';
 }
+// ── Refus eBay pour VÉRIFICATION VENDEUR (2026-09-10, costume de Victor) ─────
+// eBay refuse la mise en vente tant que l'identité du vendeur n'est pas
+// vérifiée (DSA / B2C européen). Le serveur nomme ce motif dans
+// last_diagnostic.motif_ebay (ebay-api-worker v33+, famille KYC_*) — c'est le
+// SEUL déclencheur accepté ici : sur un code inconnu, ou sur un motif non
+// nommé, cette fonction rend null et l'écran ne change pas d'un pixel.
+//
+// ⛔ LE LIBELLÉ NE PROMET PAS UNE PAGE QUI N'EXISTE PAS. Relevé du 10/09 :
+// ebay.fr/verifyidentity, /sellerregistration, accountsettings/regulatory et
+// /sh/acc/verification redirigent TOUTES vers une page d'erreur. La seule
+// porte vivante est le Seller Hub (/sh/ovw), où eBay affiche lui-même sa
+// bannière de vérification. On dit donc « Ouvrir mon compte vendeur eBay »,
+// pas « Vérifier mon identité » : un demi-mensonge dans un bouton coûte plus
+// cher qu'un mot de plus.
+//
+// Rien à remplir chez nous : aucun needsUserField n'est posé sur ce refus,
+// donc aucun bouton « Compléter » n'apparaît (règle du 09/09). Le geste qui
+// débloque est chez eBay, puis « Relancer » — que l'utilisateur déclenche
+// lui-même, parce que lui seul sait s'il a fait sa vérification.
+export const EBAY_SELLER_HUB_URL = 'https://www.ebay.fr/sh/ovw';
+export function lienVerificationEbay(job, lang = 'fr') {
+  if (job?.platform !== 'ebay' || job?.status !== 'needs_user') return null;
+  const motif = String(job?.platform_fields?.last_diagnostic?.motif_ebay ?? '');
+  if (!/^KYC_/i.test(motif)) return null;
+  return {
+    url: EBAY_SELLER_HUB_URL,
+    libelle: lang === 'en' ? 'Open my eBay seller account' : 'Ouvrir mon compte vendeur eBay',
+    aide: lang === 'en'
+      ? 'eBay shows the verification banner there. Once verified, come back and relaunch.'
+      : "eBay y affiche sa bannière de vérification. Une fois vérifié, reviens et relance.",
+  };
+}
 export function texteEnCoursConfirmation(job, lang = 'fr') {
   const en = lang === 'en';
   const name = HUMANIZE_PLATFORM_LABELS[job?.platform] || job?.platform || (en ? 'the platform' : 'la plateforme');
