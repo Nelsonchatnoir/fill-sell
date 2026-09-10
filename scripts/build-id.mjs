@@ -1294,7 +1294,22 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // Le zip embarque aussi 7146f5b (re-capture non affamee, Beebs 7 j, retrait
 // Leboncoin qui reprend + DataDome nomme, 2e passage Mes annonces).
 // MIN_BUILD INCHANGE — la banniere n'attend que l'acceptation CWS.
-export const EXTENSION_LAST_COMMIT = '2026-09-09T22:15:46Z'; // recale 21a61c3 (0.6.24 : textes en-cours-de-verification, jamais « verifie Mes annonces ») - MIN_BUILD inchange
+// 2026-09-10T09:40:52Z (11h40 Paris, commit 6cd8359, paquet 0.6.25) : LA TAILLE
+// VINTED POSEE PAR ID ET PAR ONGLET. Le zip embarque bc9b95a (selectTailleVinted :
+// l'id capture cherche onglet par onglet, puis le libelle SANS retirer son
+// prefixe ; taille_ids toujours transmis a la recreation ; sonde attributes
+// 60 -> 200 ; les recreations ecrivent enfin platform_category_aspects ; le poll
+// declare capacites:["taille_par_id"]) et 6fd87a2 (trois gardes anti-regression :
+// un ONGLET n'est jamais une OPTION, selecteur d'id ancre aux deux bouts, filet
+// sur le libelle sans prefixe = comportement d'avant).
+// Cause tranchee sur piece : les 3 echecs « FR NN » du parc (1956/1959/1962,
+// groupe 83) voyaient un DOM ne portant que le groupe 80 — les 12 libelles
+// lettres de leur message d'erreur sont exactement les 12 premiers de ce groupe.
+// Serveur DEJA EN PLACE, rien a synchroniser : get-pending-jobs v49 sert
+// 1 -> 2 -> 3 sans exception « EU » aux clients qui DECLARENT la capacite, et
+// garde 3 -> 1 -> 2 pour les autres. La bascule est PAR CLIENT.
+// MIN_BUILD INCHANGE — la banniere n'attend que l'acceptation CWS.
+export const EXTENSION_LAST_COMMIT = '2026-09-10T09:40:52Z'; // recale 6cd8359 (0.6.25 : taille par id et par onglet) - MIN_BUILD inchange
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
