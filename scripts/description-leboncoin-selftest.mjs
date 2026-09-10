@@ -18,7 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mod = await import(pathToFileURL(join(ROOT, "supabase/functions/_shared/description-leboncoin.ts")).href);
-const { nettoyerDescriptionLeboncoin: n, TERMES_SITES_LEBONCOIN } = mod;
+const { nettoyerDescriptionLeboncoin: n, nettoyerSeulement: propre, TERMES_SITES_LEBONCOIN } = mod;
 
 let echecs = 0;
 const check = (nom, ok, extra = "") => {
@@ -58,7 +58,11 @@ egal("phrase au milieu d'une ligne à points", n("Envoi soigné. Paiement sécur
 egal("« Prix dégressifs » reste, seule la dernière phrase part", n("Prix dégressifs activés 🎁 Plus tu prends d'articles, plus le prix baisse 😉 Envoi rapide, je privilégie Mondial Relay 📦\n\nTrès bon état ✨\n\n❌ Je n'envoie pas via Vinted Go.").texte, "Prix dégressifs activés 🎁 Plus tu prends d'articles, plus le prix baisse 😉 Envoi rapide, je privilégie Mondial Relay 📦\n\nTrès bon état ✨");
 egal("« 📲 Mon profil Vinted : X » : la ligne part", n("Top en soie.\n📲 Mon profil Vinted : Ornella-vend\nEnvoi rapide.").texte, "Top en soie.\nEnvoi rapide.");
 egal("⚠️ … ✨ : les deux pictogrammes partent avec la phrase", n("Jolie robe.\n⚠️ Évite Vinted GO si possible, pour une livraison plus fiable ✨\nTaille 38.").texte, "Jolie robe.\nTaille 38.");
-egal("sous-chaîne : « VintedStyle » sans hashtag part avec sa phrase", n("Look VintedStyle assuré. Taille M.").texte, "Taille M.");
+// Jugé sur le NETTOYAGE SEUL : ce qu'il reste (« Taille M. ») fait 9
+// caractères, donc le minimum de 10 le viderait. Ce sont deux règles
+// distinctes — ici on juge la PROPRETÉ du texte, pas sa longueur (le minimum
+// a sa propre section plus bas).
+egal("sous-chaîne : « VintedStyle » sans hashtag part avec sa phrase", propre("Look VintedStyle assuré. Taille M.").texte, "Taille M.");
 
 console.log("▸ adresses web");
 egal("domaine seul retiré, la phrase reste", n("Voir monsite.fr pour plus de photos.").texte, "Voir pour plus de photos.");
@@ -99,5 +103,80 @@ console.log("▸ marque tierce + plafond de 5 (page de correction Leboncoin, 10/
   check("sans contexte : plafond seul, aucune marque devinée", (n("#a #b #c #d #e #f #g").texte.match(/#/g) ?? []).length === 5);
 }
 
+// ⚠️ LE VERDICT EST TOUT EN BAS DU FICHIER, jamais ici. Il y était, et les
+// sections ajoutées ensuite (le minimum de 10 caractères, 2026-09-10) ne
+// pouvaient donc PAS faire échouer le script : elles s'exécutaient après le
+// process.exit(1) conditionnel, leurs échecs n'étaient plus lus. Un test qui
+// ne peut pas échouer ne protège rien. Toute section future s'ajoute AVANT le
+// verdict final.
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LE MINIMUM DE 10 CARACTÈRES (2026-09-10, Pantalon de Choupette)
+// ═══════════════════════════════════════════════════════════════════════════
+// MESURE, 45 j, tout le parc — la coupure ne souffre aucune exception :
+//    0 caractère ....  8 jobs, 8 PUBLIÉS   (champ vide = facultatif, accepté)
+//    9 caractères ... 11 jobs, 0 publié    (« Peu porté » ×10, « Taille 44 » ×1)
+//   10 et plus ...... 15 jobs, 15 PUBLIÉS
+// Leboncoin refuse CÔTÉ NAVIGATEUR : aucune requête, aucun message dans nos
+// sélecteurs, l'aperçu reste affiché. C'est le « clic avalé » qui a coûté une
+// journée — le Pantalon a échoué 3 fois pendant que le Jean (534 caractères)
+// passait ENTRE deux de ses tentatives, même compte, même session, même build.
+console.log("▸ minimum de 10 caractères — les deux cas RÉELS");
+{
+  // Choupette, job 658fbe73 : « Taille 44 » (9), état « Très bon état ».
+  const r = n("Taille 44", { titre: "Camaïeu Pantalon rose pâle 7/8ème zips chevilles taille 44",
+                             marque: "Camaïeu", etat: "Très bon état", taille: "XL" });
+  check("« Taille 44 » (9) passe la barre des 10", r.texte.length >= 10, `→ ${r.texte.length} : « ${r.texte} »`);
+  check("le texte de la vendeuse est CONSERVÉ en tête", r.texte.startsWith("Taille 44"), `→ « ${r.texte} »`);
+  check("ce qui est ajouté est VRAI (un champ du job)", r.texte.includes("Très bon état"), `→ « ${r.texte} »`);
+  check("la trace dit ce qui a été ajouté", Array.isArray(r.complete) && r.complete.length > 0, JSON.stringify(r.complete));
+  check("le champ n'est pas vidé", r.videe_trop_courte !== true);
+
+  // Joséphine, 10 jobs : « Peu porté » (9).
+  const j = n("Peu porté", { titre: "Pull La Halle fille rose 10 ans", marque: "La Halle",
+                             etat: "Très bon état", taille: "10 ans" });
+  check("« Peu porté » (9) passe la barre des 10", j.texte.length >= 10, `→ ${j.texte.length} : « ${j.texte} »`);
+  check("« Peu porté » conservé", j.texte.startsWith("Peu porté"), `→ « ${j.texte} »`);
+}
+
+console.log("▸ ce qu'on ne touche PAS");
+{
+  check("0 caractère : servi tel quel (prouvé 8/8 publiés)", n("").texte === "" && n("").videe_trop_courte !== true);
+  check("exactement 10 : intact", n("Très léger").texte === "Très léger");
+  check("11 : intact", n("Assez léger").texte === "Assez léger");
+  check("une longue description : intacte",
+    n("Je vends ce jean brut neuf, jamais porté car la coupe ne me convient pas.").texte
+      === "Je vends ce jean brut neuf, jamais porté car la coupe ne me convient pas.");
+}
+
+console.log("▸ on n'invente RIEN — sans faits connus, champ VIDE");
+{
+  const r = n("Peu porté", {});
+  check("aucun fait sur le job → champ servi VIDE", r.texte === "" && r.videe_trop_courte === true, `→ « ${r.texte} »`);
+  const c = n("Peu porté", { etat: "", marque: "   ", taille: "" });
+  check("faits vides ou blancs → champ servi VIDE", c.texte === "" && c.videe_trop_courte === true);
+  const t = n("Court", { titre: "Un titre qui ne doit RIEN apporter à la description" });
+  check("le TITRE n'est jamais recopié dans la description", t.texte === "" && t.videe_trop_courte === true, `→ « ${t.texte} »`);
+}
+
+console.log("▸ jamais de répétition d'un fait déjà écrit");
+{
+  const r = n("Très bon", { etat: "Très bon état", marque: "Kiabi" });
+  check("un état déjà présent n'est pas répété tel quel",
+    (r.texte.match(/Très bon état/g) ?? []).length <= 1, `→ « ${r.texte} »`);
+  const m = n("Kiabi !", { marque: "Kiabi", etat: "Bon état" });
+  check("la marque déjà écrite n'est pas répétée", (m.texte.match(/Kiabi/gi) ?? []).length === 1, `→ « ${m.texte} »`);
+}
+
+console.log("▸ le minimum s'applique APRÈS le nettoyage, pas avant");
+{
+  // 30 caractères AVANT nettoyage, mais tout part avec les hashtags de sites :
+  // c'est le texte SERVI qui doit passer la barre.
+  const r = n("Top #Vinted #VintedStyle", { etat: "Bon état", marque: "Zara" });
+  check("une description vidée par le nettoyage est reprise par le minimum",
+    r.texte === "" || r.texte.length >= 10, `→ ${r.texte.length} : « ${r.texte} »`);
+}
+
+// ── VERDICT (toujours en dernier, cf. la note plus haut) ────────────────────
 if (echecs) { console.error(`\n[selftest:description-leboncoin] ÉCHEC — ${echecs} cas.`); process.exit(1); }
-console.log("\n[selftest:description-leboncoin] OK — ce qui part, ce qui reste et le fail-safe sont verrouillés.");
+console.log("\n[selftest:description-leboncoin] OK — nettoyage, plafond, marques tierces ET minimum de 10 caractères verrouillés.");

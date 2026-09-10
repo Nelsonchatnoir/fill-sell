@@ -1638,11 +1638,28 @@ serve(async (req) => {
         const r = nettoyerDescriptionLeboncoin(j.description, {
           titre: typeof j.title === "string" ? j.title : "",
           marque: typeof pfJ["marque"] === "string" ? (pfJ["marque"] as string) : "",
+          // Faits DÉJÀ sur le job, pour atteindre le minimum de 10 caractères
+          // que Leboncoin impose à une description non vide (2026-09-10).
+          // On ne lit rien d'autre : ce qui n'est pas là n'est pas inventé.
+          etat: typeof pfJ["etat"] === "string" ? (pfJ["etat"] as string) : "",
+          taille: typeof pfJ["taille"] === "string" ? (pfJ["taille"] as string) : "",
         });
         if (r.vide) console.warn(`[get-pending-jobs] description Leboncoin ${String(j.id).slice(0, 8)} : le nettoyage aurait tout effacé — servie telle quelle`);
         if (!r.modifiee) continue;
         j.description = r.texte;
-        j.description_nettoyage = { termes: r.termes, retires: r.retires, marques: r.marques, plafonnes: r.plafonnes };
+        j.description_nettoyage = {
+          termes: r.termes, retires: r.retires, marques: r.marques, plafonnes: r.plafonnes,
+          // Trace du minimum de 10 caractères, même forme que le nettoyage :
+          // ce qui a été ajouté, ou le fait qu'on ait servi le champ vide.
+          ...(r.complete?.length ? { complete: r.complete } : {}),
+          ...(r.videe_trop_courte ? { videe_trop_courte: true } : {}),
+        };
+        if (r.complete?.length) {
+          console.log(`[get-pending-jobs] description Leboncoin ${String(j.id).slice(0, 8)} : ${r.texte.length} car. après complément (${r.complete.join(" + ")}) — minimum Leboncoin de 10`);
+        }
+        if (r.videe_trop_courte) {
+          console.warn(`[get-pending-jobs] description Leboncoin ${String(j.id).slice(0, 8)} : trop courte et rien de connu à ajouter — champ SERVI VIDE (accepté par Leboncoin) plutôt qu'un Continuer inerte`);
+        }
         nettoyagesLbc++;
       }
       if (nettoyagesLbc) console.log(`[get-pending-jobs] user=${user.id} descriptions Leboncoin nettoyées : ${nettoyagesLbc}`);

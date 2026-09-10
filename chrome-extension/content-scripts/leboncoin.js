@@ -1194,9 +1194,43 @@ async function fillListingForm(job) {
       .find((el) => el.type !== "hidden" && estVisibleParStyles(el)) ?? null;
   // Marqueurs de l'aperçu : tant qu'ils sont là, Leboncoin n'a pas accepté le
   // dépôt (prix/adresse de l'aperçu, ou son titre — celui des relevés).
-  const estEncoreApercu = () =>
-    Boolean(document.querySelector('#price_cents, input[name="location"], label[for="location"]')) ||
-    /dernier aperçu avant de publier/i.test(document.body?.textContent ?? "");
+  // ── APERÇU ou FORMULAIRE ? (2026-09-10) ───────────────────────────────────
+  // CE QUE ÇA A COÛTÉ : deux causes RADICALEMENT différentes se sont
+  // retrouvées sous le même message « l'aperçu est resté affiché », et il a
+  // fallu six heures pour les séparer.
+  //   · Choupette, Pantalon : titres [… « Un dernier aperçu avant de publier
+  //     votre annonce ! », « Galerie », « Présentation »] → elle EST sur
+  //     l'aperçu, tout est rempli, le Continuer est inerte (description de
+  //     9 caractères, minimum 10 chez Leboncoin).
+  //   · Victor, costume : titres [« Ajoutez des photos », « Décrivez votre
+  //     bien ! », « Dites-nous en plus », « Quel est votre prix ? »] → il n'a
+  //     JAMAIS atteint l'aperçu, son formulaire n'est pas fini (« Vos
+  //     conditions générales de vente », « Référence », « Prix neuf » vides).
+  // Le détecteur disait « aperçu » aux deux, parce que #price_cents et
+  // location existent AUSSI dans le formulaire.
+  // La règle est désormais : une PREUVE POSITIVE l'emporte sur l'indice.
+  // Titre d'aperçu présent → aperçu. Titres d'étapes du formulaire présents
+  // SANS titre d'aperçu → ce n'est pas l'aperçu, et on le dit. Sinon,
+  // comportement d'avant (les marqueurs de champs), inchangé.
+  const TITRE_APERCU_RE = /dernier aperçu avant de publier/i;
+  const TITRES_FORMULAIRE_RE = /(ajoutez des photos|décrivez votre bien|dites-nous en plus|quel est votre prix)/i;
+  const titresVisiblesLbc = () =>
+    [...document.querySelectorAll("h1, h2, h3")]
+      .filter((el) => estVisibleParStyles(el))
+      .map((el) => (el.textContent || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean).join(" · ");
+  const estEncoreApercu = () => {
+    const titres = titresVisiblesLbc();
+    if (TITRE_APERCU_RE.test(titres)) return true;         // preuve positive
+    if (TITRES_FORMULAIRE_RE.test(titres)) return false;    // preuve du contraire
+    return Boolean(document.querySelector('#price_cents, input[name="location"], label[for="location"]')) ||
+      TITRE_APERCU_RE.test(document.body?.textContent ?? "");
+  };
+  /** Le formulaire n'est pas fini : ses étapes sont à l'écran, l'aperçu non. */
+  const estEncoreFormulaire = () => {
+    const titres = titresVisiblesLbc();
+    return TITRES_FORMULAIRE_RE.test(titres) && !TITRE_APERCU_RE.test(titres);
+  };
   // Champs de l'aperçu visibles et VIDES, par name/id — ceux de la Transaction
   // sécurisée commencent par escrow_.
   const champsVidesApercu = () =>
@@ -1525,6 +1559,22 @@ async function fillListingForm(job) {
       // qu'on retente — c'est un dépôt peut-être abouti. Aucune reprise.
       const sondeFinale = await depotRequeteVue();
       if (sondeFinale.seen) return succesModerationEnCours(sondeFinale);
+      // ── LE FORMULAIRE N'EST PAS FINI (2026-09-10) ────────────────────────
+      // On ne dit plus « l'aperçu est resté affiché » à quelqu'un qui n'a
+      // jamais atteint l'aperçu (cas Victor). On nomme l'étape et les champs
+      // vides — c'est ce qui manquait pour distinguer deux causes que le même
+      // message confondait.
+      if (estEncoreFormulaire()) {
+        const vides = champsVidesApercu().map((c) => c.libelle || c.cle).filter(Boolean).slice(0, 6);
+        return {
+          success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+          error:
+            "LIVE : le formulaire Leboncoin n'est pas terminé — l'aperçu n'a jamais été atteint" +
+            (vides.length ? `, il reste à remplir : ${vides.map((v) => `« ${v} »`).join(", ")}` : "") +
+            ". Complète ces champs sur l'onglet resté ouvert, puis relance. " +
+            `— Observabilité: ${dumpEcranVisible()}`,
+        };
+      }
       return {
         success: false, needsUser: true, warnings, unfilledRequired,
         error: `LIVE : écran post-aperçu non reconnu, aucune requête de dépôt partie — nouvel essai automatique un peu plus tard. Relevé de l'écran : ${dumpEcranVisible()}`,
@@ -2176,6 +2226,31 @@ function libelleDuChamp(el) {
 // visibles par styles, au texte humain (jamais une clé i18n brute — cf.
 // isHumanMessageNode, « localisationLocation »), les plus internes seulement,
 // dédoublonnés, 4 au plus.
+// ── VALIDATIONS NATIVES DU NAVIGATEUR (2026-09-10) ──────────────────────────
+// Ce qui a coûté une journée : le Pantalon de Choupette portait une
+// description de 9 caractères, or Leboncoin en exige 10. Le refus est une
+// validation de FORMULAIRE — le clic sur Continuer n'émet aucune requête, et
+// le message ne vit dans AUCUN des sélecteurs ci-dessous : il est porté par le
+// champ lui-même (validationMessage), pas par un nœud [role=alert]. On a donc
+// re-cliqué trois fois sur un bouton qui ne pouvait pas partir, et conclu
+// « aucun refus visible » alors que le navigateur, lui, savait pourquoi.
+// ⚠️ Lecture PURE : on lit `el.validity.valid`, jamais checkValidity(), qui
+// déclencherait un événement `invalid` sur le champ.
+function messagesValidationNative() {
+  const out = [];
+  for (const el of document.querySelectorAll("input, textarea, select")) {
+    if (el.type === "hidden" || !estVisibleParStyles(el)) continue;
+    const invalide = el.getAttribute("aria-invalid") === "true"
+      || (el.validity && el.validity.valid === false);
+    if (!invalide) continue;
+    const msg = String(el.validationMessage ?? "").replace(/\s+/g, " ").trim();
+    const nom = libelleDuChamp(el) || el.name || el.id || "champ";
+    out.push(`${nom} : ${msg || "valeur refusée par le formulaire"}`.slice(0, 160));
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
 function messagesErreurVisibles() {
   const SEL = '[role="alert"], [aria-live="assertive"], [class*="error" i]';
   const vus = new Set();
@@ -2188,6 +2263,16 @@ function messagesErreurVisibles() {
     vus.add(txt);
     out.push(txt.slice(0, 160));
     if (out.length >= 4) break;
+  }
+  // Les validations natives EN PLUS, jamais à la place : un refus affiché par
+  // Leboncoin reste prioritaire dans la liste. Conséquence assumée et voulue :
+  // la boucle de re-clics s'arrête dès qu'un champ est invalide (elle teste
+  // `!messagesErreurVisibles().length`) — on cesse de frapper un bouton qui ne
+  // peut pas partir, et le verdict nomme le champ au lieu de « aucun refus
+  // visible ».
+  for (const m of messagesValidationNative()) {
+    if (out.length >= 4) break;
+    if (!vus.has(m)) { vus.add(m); out.push(m); }
   }
   return out;
 }

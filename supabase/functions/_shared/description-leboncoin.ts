@@ -69,6 +69,9 @@ export interface NettoyageLeboncoin {
   vide: boolean;     // le nettoyage aurait tout effacé → original rendu
   marques: string[]; // hashtags de marque TIERCE retirés (2026-09-10)
   plafonnes: number; // hashtags retirés par le plafond de 5 (2026-09-10)
+  // Minimum de 10 caractères de Leboncoin (2026-09-10) :
+  complete?: string[];        // faits ajoutés pour atteindre le minimum
+  videe_trop_courte?: boolean; // rien à ajouter → champ servi VIDE
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -137,7 +140,14 @@ const motsDuHashtag = (h: string): string[] => String(h).replace(/^#/, "")
   .replace(/([a-z\u00e0-\u00ff0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
   .split(/[^\p{L}\p{N}]+/u).map((m) => replier(m)).filter(Boolean);
 
-export interface ContexteLeboncoin { titre?: string; marque?: string }
+export interface ContexteLeboncoin {
+  titre?: string;
+  marque?: string;
+  /** Faits DÉJÀ présents sur le job, servant à atteindre le minimum de 10
+   *  caractères de Leboncoin. Rien n'est jamais inventé à partir d'eux. */
+  etat?: string;
+  taille?: string;
+}
 
 /** Les hashtags à RETIRER d'une description, avec le motif de chacun.
  *  Pur : rien n'est modifié ici, le retrait est fait ligne par ligne par
@@ -219,7 +229,81 @@ function nettoyerLigne(ligne: string, termes: Set<string>): { ligne: string; ret
   return { ligne: l, retires };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LE MINIMUM DE 10 CARACTÈRES (2026-09-10, Pantalon de Choupette)
+// ═══════════════════════════════════════════════════════════════════════════
+// MESURÉ sur 45 jours et tout le parc, la coupure ne souffre aucune exception :
+//     0 caractère ....  8 jobs, 8 PUBLIÉS   (champ vide = facultatif, accepté)
+//     9 caractères ... 11 jobs, 0 publié    (« Peu porté » ×10, « Taille 44 » ×1)
+//    10 et plus ...... 15 jobs, 15 PUBLIÉS
+// Leboncoin impose donc un minimum de 10 caractères à une description NON
+// VIDE, et le refuse CÔTÉ NAVIGATEUR : le clic sur Continuer n'émet aucune
+// requête, aucun message n'apparaît dans nos sélecteurs, l'aperçu reste
+// affiché. D'où le diagnostic « clic avalé » qui a coûté une journée — le
+// Pantalon de Choupette a échoué trois fois pendant que son Jean (534
+// caractères) passait entre deux de ses tentatives, même compte, même session.
+//
+// CE QU'ON FAIT : on complète jusqu'à 10 avec des faits DÉJÀ PRÉSENTS sur le
+// job — état, marque, taille. Rien n'est inventé, rien n'est deviné : un fait
+// absent du job n'est jamais fabriqué. Si on ne sait rien ajouter, on sert le
+// champ VIDE, qui est prouvé passer (8 sur 8).
+// ⛔ Une description de 0 caractère n'est PAS touchée : elle passe déjà.
+// ⛔ Une description de 10 caractères ou plus n'est PAS touchée.
+const LBC_DESCRIPTION_MIN = 10;
+
+/** Les faits ajoutables, dans l'ordre où ils se lisent le mieux. Un fait déjà
+ *  présent dans le texte (à la casse près) n'est jamais répété. */
+function faitsAjoutables(texte: string, c: ContexteLeboncoin): string[] {
+  const deja = texte.toLowerCase();
+  const propose = [
+    String(c.etat ?? "").trim(),
+    String(c.marque ?? "").trim(),
+    String(c.taille ?? "").trim() ? `Taille ${String(c.taille).trim()}` : "",
+  ];
+  return propose.filter((f) => f && !deja.includes(f.toLowerCase()));
+}
+
+/** Complète une description de 1 à 9 caractères. Rend le texte servi et ce qui
+ *  a été ajouté (pour la trace). `vide: true` = on a renoncé et on sert "" . */
+export function completerSiTropCourte(
+  texte: string,
+  contexte: ContexteLeboncoin = {},
+): { texte: string; ajouts: string[]; vide: boolean } {
+  const t = String(texte ?? "");
+  // Hors périmètre : vide (accepté tel quel) ou déjà au-dessus du minimum.
+  if (t.trim().length === 0 || t.length >= LBC_DESCRIPTION_MIN) return { texte: t, ajouts: [], vide: false };
+  let sortie = t.trim();
+  const ajouts: string[] = [];
+  for (const fait of faitsAjoutables(sortie, contexte)) {
+    sortie = `${sortie} — ${fait}`;
+    ajouts.push(fait);
+    if (sortie.length >= LBC_DESCRIPTION_MIN) return { texte: sortie, ajouts, vide: false };
+  }
+  // Rien de connu à ajouter, ou pas assez : le champ VIDE plutôt qu'un refus
+  // silencieux. On perd le texte, on ne perd pas l'annonce.
+  return { texte: "", ajouts: [], vide: true };
+}
+
 export function nettoyerDescriptionLeboncoin(description: string, contexte: ContexteLeboncoin = {}): NettoyageLeboncoin {
+  // Le minimum s'applique APRÈS le nettoyage (consigne Nico) : c'est le texte
+  // RÉELLEMENT servi qui doit passer la barre, pas celui d'avant — un retrait
+  // de hashtags peut faire passer une description sous les 10 caractères.
+  const nettoye = nettoyerSeulement(description, contexte);
+  const min = completerSiTropCourte(nettoye.texte, contexte);
+  if (min.texte === nettoye.texte) return nettoye;
+  return {
+    ...nettoye,
+    texte: min.texte,
+    modifiee: true,
+    complete: min.ajouts,
+    videe_trop_courte: min.vide,
+  };
+}
+
+/** Le NETTOYAGE seul (mentions de sites, marques tierces, plafond de 5), sans
+ *  le minimum de 10 caractères. Exporté pour que chaque règle se teste seule :
+ *  passer par le tout ferait juger la propreté d'un texte sur sa longueur. */
+export function nettoyerSeulement(description: string, contexte: ContexteLeboncoin = {}): NettoyageLeboncoin {
   const original = String(description ?? "");
   try {
     const aSites = termesDans(original).length > 0;
