@@ -34,6 +34,113 @@ export function lireErreurEbay(json: unknown, texte: string): ErreurEbay {
   return { errorId: null, message: texte.slice(0, 300) };
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// LE VRAI MOTIF D'UN REFUS eBAY — 2026-09-10, costume Hugo Boss de Victor
+// ══════════════════════════════════════════════════════════════════════════
+// CE QUI S'EST PASSÉ : refus 400 / errorId 25019 sur une première publication.
+// `longMessage` d'eBay, que nous relayions tel quel, dit :
+//   « Impossible de modifier l'annonce. […] Il est possible que le titre ou la
+//     description contienne des mots inappropriés ou que le vendeur enfreigne
+//     le règlement d'eBay. »
+// C'est un texte-parapluie, et il ACCUSE l'utilisateur. Le vrai motif était
+// dans `parameters` :
+//   parameters[2] = « KYC_DSAReq_EUB2C_SYI »
+//   parameters[1] = « Nous avons toujours besoin de vérifier vos informations.
+//                     […] seuls les vendeurs vérifiés peuvent mettre des
+//                     objets en vente. […] »
+// C'est la vérification d'identité vendeur (DSA / B2C européen). Le titre, la
+// description et l'article n'y sont pour rien.
+//
+// LA RÈGLE POSÉE ICI, VOLONTAIREMENT GÉNÉRALE : dès qu'eBay joint un code de
+// motif dans `parameters`, ce code fait FOI contre le `longMessage`. Mesure du
+// 10/09 : sur 90 jours, ce refus est le SEUL de la voie API (1 occurrence,
+// aucun autre errorId), donc aucun autre code n'a pu être relevé sur pièce —
+// on ne nomme donc QUE celui qu'on a vu, et tout code inconnu retombe sur la
+// PHRASE d'eBay (parameters, en clair) plutôt que sur son texte-parapluie.
+// Jamais l'inverse : on n'invente pas un diagnostic pour un code qu'on ne
+// connaît pas, on cite eBay mot pour mot.
+//
+// ⛔ Aucun de ces motifs ne se règle dans l'app : `champ` reste null, donc
+// aucun needsUserField n'est posé et l'app n'affiche AUCUN bouton
+// « Compléter » (règle du 10/09 : un bouton n'existe que s'il ouvre quelque
+// chose). Le message dit où aller et ce que ça débloque.
+
+/** Un code de motif eBay : au moins 3 segments soudés par « _ »
+ *  (KYC_DSAReq_EUB2C_SYI). Assez strict pour ne jamais attraper un mot ni une
+ *  phrase — un texte contient des espaces, ce motif n'en accepte aucun. */
+const CODE_MOTIF_EBAY_RE = /^[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+){2,}$/;
+
+/** Motifs NOMMÉS : uniquement ceux relevés sur un vrai refus, avec notre
+ *  propre phrase. Tout le reste passe par la phrase d'eBay. */
+const MOTIFS_EBAY_NOMMES: Array<{ re: RegExp; fr: string }> = [
+  {
+    // KYC_DSAReq_EUB2C_SYI (relevé 10/09). Le préfixe KYC_ couvre la famille
+    // « vérification du vendeur » : même cause, même geste, même impuissance
+    // de notre côté quel que soit le suffixe.
+    re: /^KYC_/i,
+    fr: "eBay demande de vérifier ton identité de vendeur avant d'autoriser une mise en vente "
+      + "(obligation européenne). C'est à faire une seule fois, directement sur eBay — nous ne "
+      + "pouvons pas le faire à ta place, et cela ne vient ni de ton article ni de ton annonce. "
+      + "Une fois la vérification faite, relance la publication.",
+  },
+];
+
+/** Entités HTML rencontrées dans les `parameters` d'eBay (il y sert du texte
+ *  HTML : « v&eacute;rifier », « <font …> »). Liste FERMÉE + entités
+ *  numériques : on ne construit pas un décodeur général pour trois accents. */
+const ENTITES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+  eacute: "é", egrave: "è", ecirc: "ê", agrave: "à", acirc: "â", ccedil: "ç",
+  ocirc: "ô", ugrave: "ù", ucirc: "û", icirc: "î", iuml: "ï", euml: "ë",
+};
+function enClair(s: string): string {
+  return String(s ?? "")
+    .replace(/<[^>]*>/g, " ")                                   // <font …>, <br>…
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&([a-z]+);/gi, (m, n) => ENTITES[String(n).toLowerCase()] ?? m)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export interface MotifEbay {
+  /** Le code technique d'eBay, pour la base et les rapports. */
+  code: string | null;
+  /** Ce qu'on AFFICHE à l'utilisateur — jamais un texte qui l'accuse à tort. */
+  message: string;
+  /** true = motif nommé par nous ; false = phrase d'eBay citée telle quelle. */
+  nomme: boolean;
+}
+
+/**
+ * Le vrai motif d'un refus, quand eBay en joint un — sinon `null` et
+ * l'appelant garde son comportement d'origine (message générique + détail).
+ */
+export function motifReelEbay(e: ErreurEbay): MotifEbay | null {
+  const params = (e.params ?? []).map((p) => String(p.value ?? "")).filter(Boolean);
+  if (!params.length) return null;
+
+  const code = params.find((v) => CODE_MOTIF_EBAY_RE.test(v.trim()))?.trim() ?? null;
+  if (code) {
+    const nomme = MOTIFS_EBAY_NOMMES.find((m) => m.re.test(code));
+    if (nomme) return { code, message: nomme.fr, nomme: true };
+  }
+
+  // Code inconnu (ou absent) : la PHRASE d'eBay, en clair, plutôt que son
+  // texte-parapluie. On retient la plus longue — les `parameters` servent la
+  // même phrase en HTML et en clair, et la version longue est la complète.
+  const phrase = params
+    .map(enClair)
+    .filter((t) => t.length >= 40 && /\s/.test(t) && !CODE_MOTIF_EBAY_RE.test(t))
+    .sort((a, b) => b.length - a.length)[0];
+  if (!phrase) return null;
+
+  return {
+    code,
+    message: `eBay a refusé la publication. Son motif, mot pour mot : « ${phrase.slice(0, 320)} »`,
+    nomme: false,
+  };
+}
+
 // ── Conditions ──────────────────────────────────────────────────────────────
 // conditionId (Metadata) → valeur de l'enum `condition` de l'Inventory API.
 // ⚠️ Correspondance à CONFIRMER par la réponse d'eBay au premier

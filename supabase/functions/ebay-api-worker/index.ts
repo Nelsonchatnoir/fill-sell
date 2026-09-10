@@ -41,7 +41,8 @@ import { estSupportNonLivre } from "../_shared/support-non-livre.ts";
 import { detectObjectIconKeyword } from "../../../src/utils/shared.js";
 import {
   aspectsCategorie, choisirCondition, conditionsCategorie, descriptionEbay, emplacementMarchand, enrichirDepuisAttributs, marquerAspectFerme,
-  lireErreurEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos, type AttributsInventaire, type PlatformFields,
+  lireErreurEbay, motifReelEbay, MARKETPLACE, remplirAspects, skuPour, suggererCategories, titreEbay, urlAnnonce, urlsPhotos,
+  type AttributsInventaire, type ErreurEbay, type PlatformFields,
 } from "../_shared/ebay-publication.ts";
 
 const HANDLER_BUILD = "ebay-api-worker 3-lens";
@@ -75,6 +76,32 @@ async function marquer(admin: SupabaseClient, job: Job, patch: Record<string, un
   if (ebayApi) pf.ebay_api = { ...((pf.ebay_api as Record<string, unknown>) ?? {}), ...ebayApi };
   const { error } = await admin.from("cross_post_jobs").update({ ...patch, platform_fields: pf, handler_build: HANDLER_BUILD }).eq("id", job.id);
   if (error) console.error(`[ebay-api-worker] job ${job.id} : écriture refusée — ${error.message}`);
+}
+
+// ── LE MESSAGE D'UN REFUS eBAY (2026-09-10, costume Hugo Boss de Victor) ────
+// eBay sert un `longMessage` PARAPLUIE qui accuse l'utilisateur (« le titre ou
+// la description contient des mots inappropriés ou le vendeur enfreint le
+// règlement ») alors que le vrai motif est dans `parameters` — sur ce refus,
+// KYC_DSAReq_EUB2C_SYI : la vérification d'identité vendeur, qui n'a RIEN à
+// voir avec l'article. On ne relaie donc plus le parapluie dès qu'eBay joint
+// un motif (cf. motifReelEbay, _shared/ebay-publication.ts).
+// Le texte générique n'est pas perdu : il reste dans last_diagnostic.message,
+// avec le code du motif — c'est la base qui garde la trace, pas l'utilisateur
+// qui encaisse l'accusation.
+function messageRefus(quoi: string, http: number, e: ErreurEbay) {
+  const motif = motifReelEbay(e);
+  if (motif) return { error: motif.message, motif };
+  return {
+    error: `eBay a refusé ${quoi} (${http}${e.errorId ? `, ${e.errorId}` : ""}) : ${e.message}${e.parametres ? ` [${e.parametres}]` : ""}`,
+    motif: null,
+  };
+}
+/** Ce que le refus ajoute au diagnostic : le motif nommé, et le texte
+ *  générique d'eBay qu'on a cessé d'afficher. */
+function diagRefus(e: ErreurEbay, motif: ReturnType<typeof messageRefus>["motif"]) {
+  return motif
+    ? { motif_ebay: motif.code, motif_nomme: motif.nomme, message_ebay_generique: e.message }
+    : {};
 }
 
 // 4xx eBay = faute de contenu ou de compte → needs_user (le message dit quoi) ;
@@ -247,8 +274,9 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const rItem = await appelEbay(env, token, `/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, { method: "PUT", body: item });
   if (rItem.http !== 200 && rItem.http !== 204 && rItem.http !== 201) {
     const e = lireErreurEbay(rItem.json, rItem.texte);
-    await marquer(admin, job, { status: verdictHttp(rItem.http, tentatives), error: `eBay a refusé la fiche produit (${rItem.http}${e.errorId ? `, ${e.errorId}` : ""}) : ${e.message}${e.parametres ? ` [${e.parametres}]` : ""}` },
-      { etape: "inventory_item", http: rItem.http, errorId: e.errorId, message: e.message, condition_envoyee: condition.enumValue, condition_id: condition.id }, { sku, tentatives });
+    const refusItem = messageRefus("la fiche produit", rItem.http, e);
+    await marquer(admin, job, { status: verdictHttp(rItem.http, tentatives), error: refusItem.error },
+      { etape: "inventory_item", http: rItem.http, errorId: e.errorId, message: e.message, condition_envoyee: condition.enumValue, condition_id: condition.id, ...diagRefus(e, refusItem.motif) }, { sku, tentatives });
     return { job: job.id, issue: "inventory_item", http: rItem.http, ebay: e, condition_envoyee: condition.enumValue };
   }
 
@@ -289,8 +317,9 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     const cre = await appelEbay(env, token, "/sell/inventory/v1/offer", { method: "POST", body: offre });
     if (cre.http !== 201 && cre.http !== 200) {
       const e = lireErreurEbay(cre.json, cre.texte);
-      await marquer(admin, job, { status: verdictHttp(cre.http, tentatives), error: `eBay a refusé la création de l'offre (${cre.http}${e.errorId ? `, ${e.errorId}` : ""}) : ${e.message}${e.parametres ? ` [${e.parametres}]` : ""}` }, { etape: "offre", http: cre.http, errorId: e.errorId, message: e.message }, { sku, tentatives });
-      return { job: job.id, issue: "offre", http: cre.http, ebay: e };
+      const refusOffre = messageRefus("la création de l'offre", cre.http, e);
+      await marquer(admin, job, { status: verdictHttp(cre.http, tentatives), error: refusOffre.error }, { etape: "offre", http: cre.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refusOffre.motif) }, { sku, tentatives });
+      return { job: job.id, issue: "offre", http: cre.http, motif: refusOffre.motif?.code ?? null, ebay: e };
     }
     offerId = String((cre.json as { offerId?: string } | null)?.offerId ?? "");
   }
@@ -345,8 +374,9 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
         return { job: job.id, issue: "aspects_rafraichis", http: pub.http, ebay: e };
       }
     }
-    await marquer(admin, job, { status: verdictHttp(pub.http, tentatives), error: `eBay a refusé la publication (${pub.http}${e.errorId ? `, ${e.errorId}` : ""}) : ${e.message}${e.parametres ? ` [${e.parametres}]` : ""}` }, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message }, { sku, offer_id: offerId, tentatives });
-    return { job: job.id, issue: "publish", http: pub.http, ebay: e };
+    const refus = messageRefus("la publication", pub.http, e);
+    await marquer(admin, job, { status: verdictHttp(pub.http, tentatives), error: refus.error }, { etape: "publish", http: pub.http, errorId: e.errorId, message: e.message, ...diagRefus(e, refus.motif) }, { sku, offer_id: offerId, tentatives });
+    return { job: job.id, issue: "publish", http: pub.http, motif: refus.motif?.code ?? null, ebay: e };
   }
   const listingId = String((pub.json as { listingId?: string } | null)?.listingId ?? "");
   const avertissements = ((pub.json as { warnings?: Array<{ message?: string }> } | null)?.warnings ?? []).map((w) => String(w.message ?? "")).slice(0, 5);
