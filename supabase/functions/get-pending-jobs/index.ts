@@ -1307,6 +1307,82 @@ serve(async (req) => {
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
 
+    // ══ COULEUR : republish_user_fields.couleur SERVIE À LA RECRÉATION
+    //    (2026-09-10 soir, GO Nico — 5 annonces hors ligne, refus 400 « Le
+    //    champ Couleur doit être renseigné ») ═══════════════════════════════
+    // POURQUOI ICI ET SOUS CETTE FORME. À l'étape 'deleted' (recréation après
+    // retrait) comme à 'captured' (une-passe), l'extension RELIT la capture EN
+    // BASE (vinted_republish_captures, par capture_id) et construit le job de
+    // recréation depuis `libelles` (construireJobRecreation : colors =
+    // libelles.couleurs). La liste blanche de la capture (taille, marque,
+    // etat, isbn) ne connaît pas la couleur, et à 'deleted' aucune fusion de
+    // republish_user_fields n'a lieu : une couleur saisie dans l'app n'atteint
+    // donc JAMAIS le formulaire de recréation, quel que soit le build. Le
+    // serveur la pose là où l'extension la lit : dans `libelles.couleurs` de
+    // la capture du job, et dans republish_snapshot (ceinture, affichage app).
+    // ⛔ JAMAIS D'ÉCRASEMENT : seulement si la capture ne porte AUCUNE couleur.
+    //    Une couleur relevée sur Vinted prime toujours sur une saisie.
+    // ⛔ Mesuré avant ce bloc : les 5 captures des annonces hors ligne portaient
+    //    DÉJÀ leur couleur (natif.color1 en clair, libelles.couleurs remplis) —
+    //    pour elles ce bloc ne change rien ; il sert aux annonces SANS couleur
+    //    d'origine, où la saisie de l'app est la seule source.
+    // Service role sur la capture (RLS : l'extension n'a besoin que d'INSERT),
+    // filtrée par user_id ET capture_id du job — jamais la ligne d'un autre.
+    try {
+      const avecCouleur = out.filter((j) => {
+        if (j.action !== "republish" || j.platform !== "vinted") return false;
+        const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+        const uf = (pf["republish_user_fields"] as Record<string, unknown> | null) ?? {};
+        return String(uf["couleur"] ?? "").trim() !== "" && Number.isFinite(Number(pf["capture_id"]));
+      });
+      if (avecCouleur.length) {
+        const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        let posees = 0;
+        for (const j of avecCouleur) {
+          const pf = (j.platform_fields as Record<string, unknown>) ?? {};
+          const uf = (pf["republish_user_fields"] as Record<string, unknown>) ?? {};
+          const couleurs = String(uf["couleur"]).split(/\s*(?:,|\/| et )\s*/i)
+            .map((s) => s.trim()).filter(Boolean).slice(0, 2);
+          if (!couleurs.length) continue;
+          const capId = Number(pf["capture_id"]);
+          const { data: cap } = await admin
+            .from("vinted_republish_captures")
+            .select("id, libelles")
+            .eq("id", capId)
+            .eq("user_id", user.id)
+            .maybeSingle();
+          if (!cap) continue;
+          const lib = ((cap.libelles ?? {}) as Record<string, unknown>);
+          const deja = Array.isArray(lib["couleurs"]) ? (lib["couleurs"] as unknown[]).filter(Boolean) : [];
+          if (deja.length) continue; // couleur relevée sur Vinted : intouchable
+          const { error: cErr } = await admin
+            .from("vinted_republish_captures")
+            .update({ libelles: { ...lib, couleurs: couleurs } })
+            .eq("id", capId)
+            .eq("user_id", user.id);
+          if (cErr) {
+            console.warn(`[get-pending-jobs] job ${j.id} : couleur non posée sur la capture ${capId} — ${cErr.message}`);
+            continue;
+          }
+          const snap = (pf["republish_snapshot"] as Record<string, unknown> | null) ?? null;
+          const trace = { couleurs, capture_id: capId, source: "republish_user_fields.couleur (app)", at: new Date().toISOString() };
+          const pfNeuf: Record<string, unknown> = {
+            ...pf,
+            ...(snap ? { republish_snapshot: { ...snap, couleurs } } : {}),
+            republish_couleur_fournie: trace,
+          };
+          // Persisté sur le job (ceinture + audit) ; échec d'écriture = la
+          // capture est déjà à jour, le job servi porte la trace en mémoire.
+          await admin.from("cross_post_jobs").update({ platform_fields: pfNeuf })
+            .eq("id", j.id).eq("user_id", user.id);
+          j.platform_fields = pfNeuf;
+          posees++;
+          console.log(`[get-pending-jobs] job ${j.id} : couleur « ${couleurs.join(", ")} » posée sur la capture ${capId} (aucune couleur relevée) — servie à la recréation`);
+        }
+        if (posees) console.log(`[get-pending-jobs] userId=${user.id} : couleur de l'app servie sur ${posees} republication(s) sans couleur relevée`);
+      }
+    } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
+
     // ══ TAILLE « EU 38 » / « FR 40 » : LE LIBELLÉ DE LA GRILLE SERVI À LA
     //    RECAPTURE (2026-09-10, v3 — capture préfixée : lettre → exact → jeton) ══
     // Pour les size_id 1943→1965, le référentiel size_groups lu par
