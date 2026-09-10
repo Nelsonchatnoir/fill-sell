@@ -1955,6 +1955,24 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   }
   for (const k of Object.keys(OPTIONS_VUES_AU_REMPLISSAGE)) delete OPTIONS_VUES_AU_REMPLISSAGE[k];
 
+  // ── Les grilles relevées partent au background (2026-09-10) ───────────────
+  // Canal FIRE-AND-FORGET, calqué sur FILLSELL_FILL_STEP et le relais de sonde :
+  // jamais d'await, jamais de throw, aucune requête vers Leboncoin. Un relevé
+  // perdu se re-relèvera au dépôt suivant ; un dépôt ne doit JAMAIS attendre
+  // ni échouer pour une observation.
+  try {
+    if (GRILLES_RELEVEES.length) {
+      chrome.runtime.sendMessage({
+        type: "FILLSELL_LBC_GRILLES",
+        job_id: job?.id ?? null,
+        category_key: Array.isArray(job?.platform_fields?.lbcCategoryPath)
+          ? job.platform_fields.lbcCategoryPath.join(" > ") : null,
+        grilles: GRILLES_RELEVEES.slice(0, 12),
+      }).catch(() => {});
+    }
+  } catch { /* extension rechargée : sans conséquence */ }
+  GRILLES_RELEVEES.length = 0;
+
   // Continuer → interstitiel "juste prix" → aperçu final
   const continueBtn = findButtonByExactText("Continuer");
   if (!continueBtn) throw new Error('Bouton "Continuer" introuvable après les critères.');
@@ -2386,6 +2404,32 @@ function findCriterionInput(labelSelector) {
 // aucune interaction ajoutée, pure lecture au passage. Consommée puis vidée à
 // l'énumération (fusion dans `enumerated`, cf. site d'appel).
 const OPTIONS_VUES_AU_REMPLISSAGE = {};
+// ── Grilles relevées AVEC leur contexte (2026-09-10) ────────────────────────
+// Une entrée par menu ouvert : la liste COMPLÈTE, la valeur qu'on cherchait à
+// poser, et l'état des autres critères à cet instant. Remontée au background
+// qui l'écrit en base (fire-and-forget), pour répondre à une question qu'on ne
+// peut pas trancher aujourd'hui : QUELLE grille Leboncoin sert, et pourquoi.
+// Vidée à chaque job, comme OPTIONS_VUES_AU_REMPLISSAGE.
+const GRILLES_RELEVEES = [];
+
+/** Photographie des AUTRES critères de l'étape 2 au moment où un menu est
+ *  ouvert : { <clé du critère>: "<valeur affichée>" }. Le critère en cours est
+ *  exclu (sa valeur est encore celle d'avant la sélection). Lecture pure du DOM
+ *  déjà rendu — aucun clic, aucune requête, jamais bloquant. */
+function contexteCriteresLbc(inputEnCours) {
+  const ctx = {};
+  try {
+    for (const label of document.querySelectorAll("label[for]")) {
+      const key = label.getAttribute("for") || "";
+      if (!key || /^:|^(subject|body|price_cents|location|photo-input)$/.test(key)) continue;
+      const inp = findCriterionInput(`label[for="${CSS.escape(key)}"]`);
+      if (!inp || inp === inputEnCours) continue;
+      const v = String(inp.value ?? "").trim();
+      if (v) ctx[key] = v.slice(0, 120);
+    }
+  } catch { /* observation seulement */ }
+  return ctx;
+}
 // Valeurs que la cascade n'a rapprochées d'AUCUNE option (2026-09-05) :
 // critère → valeur du job. Consommé par le routage needs_user pour dire la
 // vérité à l'utilisateur : « la valeur X n'a pas été reconnue », et non
@@ -2513,11 +2557,56 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
     // Restreint au menu IDENTIFIÉ (aria-controls) : le repli document
     // ramasserait tous les <button> de la page.
     try {
-      const cle = input.id || input.getAttribute("name") || null;
-      if (cle && menu && !OPTIONS_VUES_AU_REMPLISSAGE[cle]) {
+      // ── DEUX DÉFAUTS CORRIGÉS ICI (2026-09-10) ────────────────────────────
+      // Preuve en base avant correctif : la ligne `clothing_st` de
+      // « Mode > Vêtements » existait (donc l'énumération marchait) avec ZÉRO
+      // option, pendant que le warning du même job affichait les 14 options.
+      //
+      // 1. LA CLÉ. On enregistrait sous `input.id`, et le site d'appel relit
+      //    sous `label[for]` (enumerated[i].key). findCriterionInput remonte
+      //    jusqu'à 4 ancêtres pour trouver un input[role=combobox] : rien ne
+      //    garantit que son id soit le `for` du label. Dès qu'ils diffèrent,
+      //    les options relevées étaient jetées en silence. On enregistre
+      //    désormais sous LES DEUX clés — la relecture trouve dans tous les cas.
+      // 2. LE CAP `.slice(0, 60)`. `shoe_size` est en base avec EXACTEMENT
+      //    60 options : la grille pointures était donc tronquée, comme la
+      //    sonde Vinted l'avait été à 60. Une option absente d'un catalogue
+      //    fait croire qu'elle n'existe pas — c'est de la fausse donnée. Plus
+      //    aucun cap ici ; le seul plafond restant est celui de
+      //    persistDiscoveredAspects (200), côté écriture.
+      const cles = [
+        input.id || null,
+        input.getAttribute("name") || null,
+        document.querySelector(labelSelector)?.getAttribute("for") || null,
+      ].filter(Boolean);
+      if (cles.length && menu) {
         const opts = [...menu.querySelectorAll(optionSelector)]
-          .map((o) => o.textContent.trim()).filter(Boolean).slice(0, 60);
-        if (opts.length) OPTIONS_VUES_AU_REMPLISSAGE[cle] = opts;
+          .map((o) => o.textContent.trim()).filter(Boolean);
+        if (opts.length) {
+          for (const cle of cles) if (!OPTIONS_VUES_AU_REMPLISSAGE[cle]) OPTIONS_VUES_AU_REMPLISSAGE[cle] = opts;
+          // ── LE DISCRIMINANT (2026-09-10, demande de Nico) ────────────────
+          // Sous la SEULE clé « Mode > Vêtements », quatre grilles ont été
+          // relevées en 45 j : lettres seules (×27), « 38 - M » (×6), enfant
+          // (×1), vide (×4) — et les deux premières sortent toutes les deux
+          // sous univers « Femme ». Ce qui les sépare est donc PLUS LOIN dans
+          // le wizard, et n'est nulle part dans nos données. On photographie
+          // ici l'état des AUTRES critères au moment précis où ce menu est
+          // ouvert : c'est la seule chose qui puisse expliquer, après coup,
+          // pourquoi Leboncoin a servi cette grille-là. Pure lecture du DOM
+          // déjà rendu, aucune requête, aucun clic.
+          // ⚠️ platform_category_aspects ne peut PAS porter ça : sa clé unique
+          // est (platform, category_key, field_key) — deux grilles pour la
+          // même catégorie s'y écraseraient l'une l'autre, et on ne verrait
+          // jamais qu'il y en a deux. D'où la table d'observation dédiée.
+          GRILLES_RELEVEES.push({
+            champ: fieldName,
+            field_key: cles[cles.length - 1],
+            options: opts,
+            valeur_demandee: String(rawValue ?? ""),
+            contexte: contexteCriteresLbc(input),
+            at: new Date().toISOString(),
+          });
+        }
       }
     } catch { /* observation seulement — jamais bloquant */ }
 

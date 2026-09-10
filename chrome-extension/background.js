@@ -691,6 +691,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({ ok: true });
     return; // réponse synchrone
   }
+  // ── Grilles Leboncoin relevées pendant le dépôt (2026-09-10) ──────────────
+  // Table d'ENQUÊTE, append-only : sous la seule clé « Mode > Vêtements »,
+  // QUATRE grilles différentes ont été relevées en 45 j, et les deux plus
+  // fréquentes sortent toutes les deux sous univers « Femme ». Le discriminant
+  // est ailleurs dans le wizard — c'est ce qu'on cherche ici, avant d'écrire
+  // la moindre règle de conversion de taille (consigne Nico : « on décidera
+  // sur des preuves, pas sur 3 jobs »).
+  // Fire-and-forget intégral : réponse immédiate, écriture détachée, échec
+  // avalé. Un dépôt ne doit JAMAIS attendre ni échouer pour une observation.
+  if (msg?.type === "FILLSELL_LBC_GRILLES") {
+    enregistrerGrillesLbc(msg).catch((e) =>
+      console.warn("[background] grilles Leboncoin non écrites (sans conséquence) :", String(e?.message ?? e)));
+    sendResponse({ ok: true });
+    return; // réponse synchrone
+  }
   // Preuve réseau de la soumission eBay (2026-08-14, famille B) : le content
   // script ne décide plus de re-cliquer « Mettre en vente » sur des signaux
   // DOM (bandeau menteur mesuré en direct : notice de validation rendue ~4 s
@@ -10322,6 +10337,43 @@ function categoryKeyOf(job) {
 // Une valeur haute gagne. À poids égal, `required: true` gagne.
 const ASPECT_SOURCE_POIDS = { server_400: 3, manual: 2, dom: 1 };
 
+// ── Écriture des grilles Leboncoin relevées (2026-09-10) ────────────────────
+// APPEND-ONLY dans lbc_grilles_relevees : chaque relevé est un fait daté, avec
+// la grille COMPLÈTE (aucun cap) et le contexte des autres critères. Rien ne
+// lit cette table pour décider : elle existe pour trancher, sur preuves,
+// quelle grille Leboncoin sert et pourquoi.
+// Best-effort de bout en bout : pas de session → on abandonne en silence, une
+// erreur REST → un log, jamais une exception qui remonterait au dépôt.
+async function enregistrerGrillesLbc(msg) {
+  const grilles = Array.isArray(msg?.grilles) ? msg.grilles : [];
+  if (!grilles.length) return;
+  const session = await getValidSession().catch(() => null);
+  const userId = session?.access_token ? decodeJwtSub(session.access_token) : null;
+  if (!userId) return;
+  const lignes = grilles.slice(0, 12).map((g) => {
+    const options = (Array.isArray(g?.options) ? g.options : []).map((o) => String(o).slice(0, 200));
+    return {
+      user_id: userId,
+      job_id: msg.job_id ?? null,
+      category_key: msg.category_key ? String(msg.category_key).slice(0, 300) : null,
+      field_key: g?.field_key ? String(g.field_key).slice(0, 120) : null,
+      champ: g?.champ ? String(g.champ).slice(0, 60) : null,
+      valeur_demandee: g?.valeur_demandee ? String(g.valeur_demandee).slice(0, 200) : null,
+      options,
+      n_options: options.length,
+      contexte: g?.contexte && typeof g.contexte === "object" ? g.contexte : {},
+      handler_build: FILLSELL_BUILD_ID,
+    };
+  }).filter((l) => l.n_options > 0);
+  if (!lignes.length) return;
+  await restRequest("lbc_grilles_relevees", session.access_token, {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify(lignes),
+  });
+  console.log(`[background] grilles Leboncoin relevées : ${lignes.length} (${lignes.map((l) => `${l.field_key}:${l.n_options}`).join(", ")})`);
+}
+
 async function persistDiscoveredAspects(accessToken, job, discovered) {
   const rows = [];
   const seen = new Map(); // key → index dans rows
@@ -10378,8 +10430,47 @@ async function persistDiscoveredAspects(accessToken, job, discovered) {
     // côté app). Les lignes SANS options partent donc dans un lot séparé où la
     // colonne est OMISE : l'upsert laisse alors la valeur existante intacte.
     // (Deux lots parce que PostgREST exige des clés uniformes par tableau.)
-    const avecValeurs = rows.filter((r) => r.allowed_values);
-    const sansValeurs = rows.filter((r) => !r.allowed_values)
+    // ── JAMAIS UNE LISTE PARTIELLE PAR-DESSUS UNE LISTE COMPLÈTE ────────────
+    // (2026-09-10, consigne Nico). merge-duplicates REMPLACE allowed_values :
+    // un relevé tronqué — menu pas fini de rendre, panneau à onglets dont un
+    // seul est dans le DOM, cap oublié — écrasait une grille complète apprise
+    // la veille. Le cas type mesuré : la grille Chaussures relevée à 30
+    // options contre 60 déjà en base. Une option disparue du catalogue fait
+    // croire à l'app qu'elle n'existe pas, et c'est indétectable ensuite.
+    // On relit donc les lignes visées et on DÉGRADE en « sans valeurs » (donc
+    // colonne OMISE, valeur existante préservée) tout relevé plus court que ce
+    // qui est déjà connu. Lecture best-effort : illisible → comportement
+    // d'avant, on écrit comme avant.
+    const plusCourtes = new Set();
+    try {
+      const cles = rows.filter((r) => r.allowed_values).map((r) => r.field_key);
+      if (cles.length) {
+        const connues = await restRequest(
+          `platform_category_aspects?platform=eq.${encodeURIComponent(job.platform)}` +
+          `&category_key=eq.${encodeURIComponent(categoryKeyOf(job).slice(0, 300))}` +
+          `&field_key=in.(${cles.map((k) => `"${String(k).replace(/"/g, "")}"`).join(",")})` +
+          "&select=field_key,allowed_values",
+          accessToken
+        );
+        const nConnues = new Map((connues ?? []).map((r) => [r.field_key, Array.isArray(r.allowed_values) ? r.allowed_values.length : 0]));
+        for (const r of rows) {
+          if (!r.allowed_values) continue;
+          const avant = nConnues.get(r.field_key) ?? 0;
+          if (avant > r.allowed_values.length) {
+            plusCourtes.add(r.field_key);
+            console.warn(
+              `[background] catalogue ${job.platform}/${categoryKeyOf(job)}/${r.field_key} : relevé de ` +
+              `${r.allowed_values.length} option(s) IGNORÉ — ${avant} déjà connues. La liste en base est conservée.`
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[background] relecture du catalogue impossible (on écrit comme avant) :", String(e?.message ?? e));
+    }
+
+    const avecValeurs = rows.filter((r) => r.allowed_values && !plusCourtes.has(r.field_key));
+    const sansValeurs = rows.filter((r) => !r.allowed_values || plusCourtes.has(r.field_key))
       .map(({ allowed_values: _av, ...reste }) => reste);
     for (const lot of [avecValeurs, sansValeurs]) {
       if (!lot.length) continue;
