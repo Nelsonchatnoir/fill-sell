@@ -4443,6 +4443,14 @@ function releverOngletsTaille() {
     noeud = noeud.parentElement;
     if (!noeud) break;
     const boutons = [...noeud.querySelectorAll("button")]
+      // ⛔ UN ONGLET N'EST JAMAIS UNE OPTION (garde posée avant paquet, 10/09).
+      // Sans ce filtre, une grille dont les options sont elles-mêmes des
+      // <button> au texte court (« XXXS », « S », « M »… : 12 des 17 options
+      // du groupe 80 font ≤ 8 caractères) verrait ses PROPRES OPTIONS rendues
+      // comme onglets — et activerOngletTaille en CLIQUERAIT une, posant une
+      // taille FAUSSE sur une grille qui marche aujourd'hui. On écarte donc
+      // tout bouton qui EST une option, en CONTIENT une, ou VIT dans une.
+      .filter((el) => !el.closest(TAILLE_OPTIONS_SEL) && !el.querySelector(TAILLE_OPTIONS_SEL))
       .map((el) => ({ el, texte: String(el.textContent ?? "").replace(/\s+/g, " ").trim() }))
       .filter((b) => b.texte && b.texte.length <= 8);
     if (boutons.length >= 2) return boutons;
@@ -4473,6 +4481,21 @@ async function activerOngletTaille(onglet) {
     const g = groupeTailleAffiche();
     if (g && g !== avant) return true;
   }
+  // ── LE CLIC A REFERMÉ LE PANNEAU : on le ROUVRE (garde posée avant paquet,
+  // 10/09) ─────────────────────────────────────────────────────────────────
+  // releverOngletsTaille reste une heuristique de forme : si un jour un
+  // « Annuler », un « OK » ou une croix se trouve à portée dans le panneau, il
+  // sera pris pour un onglet et son clic FERMERA la liste. La suite (recherche
+  // par id, cascade par libellé) travaillerait alors sur un DOM vide et
+  // sauterait un champ qu'elle savait poser. On ne rouvre QUE si les options
+  // ont réellement disparu — openDropdown n'est pas idempotent (panneau déjà
+  // ouvert = clic sur le trigger = fermeture).
+  if (!document.querySelector(TAILLE_OPTIONS_SEL)) {
+    try {
+      await openDropdown(TAILLE_TRIGGER_SEL);
+      await attendreOptionsTaille(2000);
+    } catch { /* la cascade en aval rendra le verdict, comme avant */ }
+  }
   return false; // déjà actif, ou onglet sans effet : les options courantes font foi
 }
 
@@ -4484,8 +4507,14 @@ async function selectTailleVinted(fields, warnings) {
     await attendreOptionsTaille();
     const onglets = releverOngletsTaille();
     // ── 1. par id ────────────────────────────────────────────────────────
+    // Sélecteur ANCRÉ AUX DEUX BOUTS (garde posée avant paquet, 10/09) : le
+    // suffixe seul (`[data-testid$="-grid-option-<id>"]`) cherchait dans TOUT
+    // le document — n'importe quel autre champ en grille dont l'option finirait
+    // par le même nombre aurait été cliqué à la place de la taille. On exige
+    // donc AUSSI le préfixe « size-group- », c'est-à-dire TAILLE_OPTIONS_SEL.
+    // (`ids` est déjà passé par Number.isFinite : rien d'injectable ici.)
     const trouverParId = () =>
-      ids.map((id) => document.querySelector(`[data-testid$="-grid-option-${id}"]`)).find(Boolean) || null;
+      ids.map((id) => document.querySelector(`${TAILLE_OPTIONS_SEL}[data-testid$="-grid-option-${id}"]`)).find(Boolean) || null;
     let cible = trouverParId();
     let ongletRetenu = null;
     if (!cible && ids.length && onglets.length) {
@@ -4519,7 +4548,27 @@ async function selectTailleVinted(fields, warnings) {
         await activerOngletTaille(onglet);
       }
     }
-    const match = await waitForOptionCascade(TAILLE_OPTIONS_SEL, libelle, 5000, { sizeField: true });
+    // ── 3. FILET : le libellé SANS son préfixe (le comportement d'avant) ─────
+    // Le strip « EU » était la VOIE PRINCIPALE jusqu'à la 0.6.24 incluse, et il
+    // posait JUSTE sur les grilles COMBINÉES (« M / 38 / 10 » : le segment
+    // « 38 » matchait par cascade). Le retirer sans filet ferait régresser une
+    // capture préfixée qui tomberait sur une grille combinée — cas non mesuré
+    // dans le parc (les libellés préfixés viennent des groupes 81-85, qui sont
+    // précisément les grilles SÉPARÉES), mais on ne parie pas là-dessus : il
+    // redevient ce qu'il aurait toujours dû être, un DERNIER recours, tenté
+    // seulement quand l'id ET le libellé entier ont échoué. Court : la cascade
+    // rend la main dès que les options sont rendues sans correspondance.
+    const nu = libelle.replace(/^(EU|UK|FR|IT|US)\s+/i, "");
+    let match;
+    try {
+      match = await waitForOptionCascade(TAILLE_OPTIONS_SEL, libelle, 5000, { sizeField: true });
+    } catch (e) {
+      if (nu === libelle) throw e; // pas de préfixe à retirer : l'échec est l'échec
+      match = await waitForOptionCascade(TAILLE_OPTIONS_SEL, nu, 2000, { sizeField: true });
+      const note = `taille: « ${libelle} » absent de la grille — repli sans préfixe sur « ${nu} »`;
+      console.warn(`[vinted] ≈ ${note}`);
+      warnings.push(note);
+    }
     await humanPause();
     match.el.click();
     await humanPause();
