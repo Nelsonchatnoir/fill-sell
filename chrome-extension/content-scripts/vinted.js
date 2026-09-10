@@ -2504,8 +2504,19 @@ async function fillListingForm(job) {
   // l'annonce d'origine) — prime sur le libellé, qui est ambigu hors Mode
   // (« 5 kg » = id 8 ou 11 selon le groupe de catégories, cf. la table).
   const wantedPackageId = Number(fields.packageSizeId);
-  if (wantedPackage || (Number.isFinite(wantedPackageId) && wantedPackageId > 0)) {
-    await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
+  const colisVoulu = Boolean(wantedPackage || (Number.isFinite(wantedPackageId) && wantedPackageId > 0));
+  // Section colis non rendue à cet instant (cf. selectPackageSize) : mémorisé
+  // pour la DERNIÈRE PASSE, juste avant le dépôt.
+  let colisSectionAbsente = false;
+  if (colisVoulu) {
+    const verdictColis = await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
+    if (verdictColis === "section_absente") {
+      colisSectionAbsente = true;
+      warnings.push(
+        "format de colis : section non rendue par Vinted à cet instant (un attribut requis de la " +
+        "catégorie manque probablement, ex. « Longueur de la jupe ») — laissée à Vinted, reprise avant le dépôt"
+      );
+    }
   }
 
   // ── Constat des REQUIS avant tout verdict (chantier 2026-07-16, 1.C) ───────
@@ -2706,6 +2717,27 @@ async function fillListingForm(job) {
     // « remonte » son annonce enchaîne les deux gestes, mais pas dans la même
     // seconde.
     await sleep(5000 + Math.floor(Math.random() * 15000));
+  }
+
+  // ── Format de colis, DERNIÈRE PASSE (2026-09-10, jupe 571ad7e5) ──────────
+  // La section était absente au passage de l'étape colis (attribut requis de
+  // la catégorie pas encore posé). Si elle est apparue depuis — la gate des
+  // requis vient de passer, donc les attributs sont là — on repose le format
+  // voulu (règle Mode = « Petit »). Un radio ne se décoche pas au clic, et
+  // selectPackageSize ne clique que s'il n'est pas déjà coché : aucune
+  // bascule possible. Toujours absente → Vinted décide, tracé en warning.
+  if (colisSectionAbsente && colisVoulu) {
+    const radiosColis = document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]');
+    if (radiosColis.length) {
+      try {
+        await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
+        warnings.push(`format de colis : section apparue après les attributs — « ${wantedPackage ?? "Petit"} » reposé avant le dépôt`);
+      } catch (e) {
+        warnings.push(`format de colis : section apparue mais format non posé (${String(e?.message ?? e).slice(0, 120)}) — choix Vinted conservé`);
+      }
+    } else {
+      warnings.push("format de colis : section toujours absente au dépôt — format laissé à Vinted");
+    }
   }
 
   // publish.submit (migré au registre — criticité red, clé SANS fallback, §8
@@ -5591,7 +5623,28 @@ async function selectPackageSize(size = "Petit", packageSizeId = null) {
     //      invention de notre part ;
     //   3. ni offert, ni pré-coché → l'échec d'origine reste (visible).
     const offerts = [...document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]')];
-    if (!offerts.length) throw e;
+    // ── SECTION COLIS NON RENDUE (2026-09-10, jupe 571ad7e5 d'Ornella, 4 échecs
+    // « aucun des 3 maillons n'a résolu ») — RELEVÉ LIVE sur /items/new,
+    // catégorie Femmes > Vêtements > Jupes (5523) : la section « Format du
+    // colis » n'existe PAS dans le DOM (aucun radio, aucun nœud caché) tant
+    // que l'attribut REQUIS de la catégorie « Longueur de la jupe »
+    // (skirt_length, jamais pré-rempli par Vinted d'après les photos) n'est
+    // pas renseigné ; elle apparaît dès qu'il l'est, avec « Recommandé Petit »
+    // pré-coché (ids 1/2/3, mêmes sélecteurs qu'ailleurs). Sur Robes > Mini,
+    // sans attribut requis, elle est là dès la catégorie. Ce n'est donc ni un
+    // sélecteur cassé ni un id absent : c'est un formulaire pas encore fini —
+    // et l'échec ici empêchait la gate des requis de NOMMER l'attribut
+    // manquant. On ne bloque plus : on rend la main, la gate des requis fera
+    // son travail, et la dernière passe avant le dépôt reposera le format si
+    // la section est apparue entre-temps.
+    if (!offerts.length) {
+      console.warn(
+        "[vinted] ⚠️ format de colis : section non rendue par Vinted à cet instant (aucun radio " +
+        "package_type_selector_*) — un attribut requis de la catégorie manque probablement ; " +
+        "laissée à Vinted (« Recommandé » pré-coché dès qu'elle apparaît), reprise avant le dépôt"
+      );
+      return "section_absente";
+    }
     const libelleVoulu = VINTED_PACKAGE_SIZES_PAR_ID[n] ?? String(size);
     const titreDe = (r) => (r.closest('[id^="package-size-"]')
       ?.querySelector('[data-testid$="--cell--title"]')?.textContent ?? "")
