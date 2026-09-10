@@ -3460,7 +3460,7 @@ async function uploadPhotos(input, photos) {
   input.files = dataTransfer.files;
   await humanPause(); // temps de "sélection des fichiers" avant le dépôt
   input.dispatchEvent(new Event("change", { bubbles: true }));
-  const signal = await waitPhotosUploaded(files.length, vignettesAvant, 1500 * files.length, "leboncoin");
+  const signal = await waitPhotosUploaded(files.length, vignettesAvant, budgetPhotosMs(files.length), "leboncoin");
   return signal.note; // null si le signal est confirmé — sinon note à remonter dans les warnings du job
 }
 
@@ -3583,20 +3583,56 @@ function photoPreviewCount() {
   // (vues - avant), les images fixes de la page s'annulent d'elles-mêmes.
   return document.querySelectorAll('img[src^="blob:"], img[src^="data:"], img[src^="https://img.leboncoin.fr/api/"]').length;
 }
+// ── BUDGET D'ATTENTE DES PHOTOS (2026-09-10, mesure sur 45 j / 575 dépôts) ──
+// L'ancien budget valait 1500 ms × nombre de photos. Il tenait jusqu'à 10
+// photos et décrochait au-delà — part des dépôts où il était épuisé :
+//      0-5 photos ....  5,9 %       11-15 photos ... 32,4 %
+//      6-10 photos ...  4,5 %       16-20 photos ... 54,5 %
+// La rupture est nette à 10. Sur le costume de Victor (job bfe7d7a0, 20 photos)
+// 10 vignettes seulement étaient rendues au bout des 30 s, soit ~3 s par photo.
+// D'où le palier : 1500 ms/photo jusqu'à 10, 3000 ms au-delà (20 photos → 45 s).
+// ⚠️ CE N'EST PAS UN CORRECTIF DE PUBLICATION, et il ne faut pas le vendre
+// comme tel : sur les mêmes 575 dépôts, le Continuer final est avalé dans
+// 1,4 % des cas quand le budget est épuisé, contre 2,6 % quand il ne l'est pas
+// — et le taux de publication est MEILLEUR (81,9 % contre 78,5 %). Les deux
+// phénomènes sont indépendants. Ce qu'on corrige ici, c'est une FAUSSE ALERTE
+// qui salissait un warning sur deux des grosses annonces, et le risque
+// résiduel de conclure pendant que l'upload court encore.
+function budgetPhotosMs(n) {
+  return 1500 * Math.min(n, 10) + 3000 * Math.max(0, n - 10);
+}
+
 async function waitPhotosUploaded(attendues, avant, budgetMs, tag) {
   const t0 = Date.now();
+  // ── SORTIE ANTICIPÉE SUR STAGNATION ────────────────────────────────────────
+  // Attendre 45 s pour rien quand l'upload est fini (ou mort) n'aide personne :
+  // dès que le compte de vignettes cesse de bouger assez longtemps, on conclut.
+  // Le seuil est calé sur les ~3 s/photo mesurés, avec de la marge.
+  const STAGNATION_MS = 9000;
+  let meilleur = -1;
+  let dernierProgres = t0;
   while (Date.now() - t0 < budgetMs) {
     const vues = photoPreviewCount() - avant;
     if (vues >= attendues) {
-      console.log(`[${tag}] photos: ${vues}/${attendues} prévisualisation(s) blob:/data: en ${Date.now() - t0} ms — signal confirmé`);
+      console.log(`[${tag}] photos: ${vues}/${attendues} prévisualisation(s) en ${Date.now() - t0} ms — signal confirmé`);
       return { confirmed: true, seen: vues, note: null };
+    }
+    if (vues > meilleur) { meilleur = vues; dernierProgres = Date.now(); }
+    // On ne conclut à la stagnation qu'APRÈS avoir vu au moins une vignette :
+    // sinon un formulaire lent à démarrer serait pris pour un upload à l'arrêt.
+    else if (meilleur > 0 && Date.now() - dernierProgres >= STAGNATION_MS) {
+      const note =
+        `photos: signal non confirmé, ${attendues} attendue(s), ${Math.max(0, vues)} détectée(s) ` +
+        `(plus aucune vignette nouvelle depuis ${STAGNATION_MS} ms — flux poursuivi comme avant)`;
+      console.warn(`[${tag}] ${note}`);
+      return { confirmed: false, seen: vues, note };
     }
     await sleep(250);
   }
   const vues = photoPreviewCount() - avant;
   const note =
     `photos: signal non confirmé, ${attendues} attendue(s), ${Math.max(0, vues)} détectée(s) ` +
-    `(budget historique ${budgetMs} ms épuisé — flux poursuivi comme avant)`;
+    `(budget ${budgetMs} ms épuisé — flux poursuivi comme avant)`;
   console.warn(`[${tag}] ${note}`);
   return { confirmed: false, seen: vues, note };
 }
