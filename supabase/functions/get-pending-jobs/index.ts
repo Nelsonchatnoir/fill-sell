@@ -383,6 +383,34 @@ serve(async (req) => {
       const patch: Record<string, unknown> = { extension_last_seen_at: new Date().toISOString() };
       const build = typeof body?.build === "string" ? body.build.slice(0, 120) : "";
       if (build) patch.extension_build = build;
+      // ── Mise à jour d'extension EN ATTENTE (2026-09-10) ───────────────────
+      // Chrome télécharge la nouvelle version puis attend, pour l'installer,
+      // que l'extension soit au repos. Le background nous dit ici ce que Chrome
+      // garde sous le coude (chrome.runtime.onUpdateAvailable) — c'est la seule
+      // façon de SAVOIR qui est bloqué et depuis quand, au lieu de le déduire
+      // d'un numéro de version qui traîne.
+      // `maj_en_attente` absent du corps = build trop ancien pour le dire : on
+      // ne touche à rien (surtout pas effacer une mesure qu'il ne sait pas
+      // produire). Chaîne vide = ce build DIT qu'il n'a rien en attente.
+      const majAttente = typeof body?.maj_en_attente === "string" ? body.maj_en_attente.slice(0, 20) : null;
+      if (majAttente !== null) {
+        if (majAttente) {
+          patch.extension_maj_en_attente = majAttente;
+          // vue_at ne se recale PAS à chaque poll : il mesure l'ANCIENNETÉ du
+          // blocage. Posé seulement si la colonne est vide ou si la version en
+          // attente a changé (relecture ciblée, best-effort).
+          try {
+            const { data: avant } = await admin.from("profiles")
+              .select("extension_maj_en_attente, extension_maj_vue_at").eq("id", user.id).maybeSingle();
+            if (!avant?.extension_maj_vue_at || avant?.extension_maj_en_attente !== majAttente) {
+              patch.extension_maj_vue_at = new Date().toISOString();
+            }
+          } catch { patch.extension_maj_vue_at = new Date().toISOString(); }
+        } else {
+          patch.extension_maj_en_attente = null;
+          patch.extension_maj_vue_at = null;
+        }
+      }
       await admin.from("profiles").update(patch).eq("id", user.id);
       // Version du manifest (2026-08-05) : rangée en MAX, pas en dernière vue —
       // un compte à deux machines (portable 0.4.x, fixe 0.5.0) ne doit pas

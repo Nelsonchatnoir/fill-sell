@@ -504,6 +504,165 @@ const planifierAlarmes = () => scheduleAlarm().catch((e) =>
 chrome.runtime.onInstalled.addListener(planifierAlarmes);
 chrome.runtime.onStartup.addListener(planifierAlarmes);
 
+// La mise à jour a été prise : le marqueur ne doit pas survivre à l'ancienne
+// version, sinon le prochain poll déclarerait encore une attente qui n'existe
+// plus et la mesure en base mentirait. chrome.storage.session est censé être
+// vidé au rechargement — on ne s'en remet pas à « censé ».
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details?.reason !== "update" && details?.reason !== "install") return;
+  chrome.storage.session.remove(MAJ_ATTENTE_KEY).catch(() => {});
+  console.log(`[background] installée en ${chrome.runtime.getManifest().version} (${details.reason}) — plus aucune mise à jour en attente.`);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MISE À JOUR DE L'EXTENSION — ON LA PREND QUAND C'EST SÛR, PAS AU HASARD
+// (2026-09-10)
+// ═════════════════════════════════════════════════════════════════════════════
+// CE QUI SE PASSE AUJOURD'HUI. Chrome télécharge la nouvelle version puis
+// attend, pour l'installer, que l'extension soit au repos — doc chrome.runtime,
+// mot pour mot : « isn't installed immediately because the app is currently
+// running […] the update will be installed the next time the background page
+// gets unloaded ». Or notre poll pose une alarme toutes les 2 minutes
+// (POLL_INTERVAL_MINUTES) : en MV3 tout événement remet à zéro le compteur
+// d'inactivité de 30 s, donc notre service worker n'est quasiment jamais
+// déchargé et la mise à jour peut attendre INDÉFINIMENT.
+// Mesuré le 10/09 : 5 comptes vus dans les 12 h tournaient encore sous 0.6.24,
+// dont josephinecerni en 0.6.22 — le build qui casse Beebs — avec 184 jobs sur
+// 72 h et 20 jobs bloqués. Et deux comptes SANS AUCUN job (ibahlife529,
+// anaisb56) étaient tout aussi en retard : ce n'est donc pas la charge de
+// travail, c'est le poll, et il concerne tout le monde.
+//
+// ⛔ CE QU'UN reload() MAL PLACÉ COÛTE — c'est tout le sujet, pas un détail.
+// chrome.runtime.reload() tue le service worker SUR-LE-CHAMP. En plein dépôt,
+// le job en vol meurt. Sur une REPUBLICATION Vinted, l'étape 'captured' fait le
+// chemin critique EN UNE PASSE (formulaire rempli → suppression par l'API →
+// étape 'deleted' → soumission du MÊME formulaire) : un reload entre la
+// suppression et la soumission, et l'annonce est PERDUE, sans recréation
+// possible. C'est exactement l'accident du 12/08 (2 annonces perdues), qu'on ne
+// rejouera pas pour gagner quelques heures de fraîcheur.
+// D'où la règle, sans nuance : au MOINDRE doute sur un état, on ne recharge
+// pas. Attendre une heure de plus ne coûte rien.
+//
+// COMMENT LE DOUTE EST ÉLIMINÉ :
+//   · tout se passe SOUS withJobFlowLock — pendant qu'on vérifie et qu'on
+//     recharge, aucun autre flux ne peut démarrer. C'est ce qui supprime la
+//     course « je vérifie, puis un job démarre, puis je recharge » ;
+//   · republishSupprimes (mémoire) : une suppression actée dont la recréation
+//     n'est pas conclue ;
+//   · la BASE, parce que la mémoire ment après un redémarrage du worker : un
+//     job 'processing' ou une republication arrêtée à une étape du chemin
+//     critique sont invisibles en mémoire mais bien réels ;
+//   · les fenêtres de travail ouvertes ;
+//   · toute lecture qui échoue = doute = on ne recharge pas.
+// Si tout est clair, on recharge : Chrome pose alors la version en attente.
+// Les jobs 'pending' ne sont pas un obstacle — ils ne peuvent pas démarrer
+// tant qu'on tient le verrou, et la nouvelle version les reprendra.
+
+/** La version que Chrome garde sous le coude, ou "" si rien n'attend.
+ *  Vit en storage.session : le service worker meurt et renaît sans arrêt, une
+ *  variable de module ne survivrait pas d'un réveil à l'autre. */
+const MAJ_ATTENTE_KEY = "fillsell_maj_en_attente";
+
+async function lireMajEnAttente() {
+  try {
+    const s = await chrome.storage.session.get(MAJ_ATTENTE_KEY);
+    const v = s?.[MAJ_ATTENTE_KEY];
+    return typeof v === "string" ? v : "";
+  } catch { return ""; }
+}
+
+chrome.runtime.onUpdateAvailable.addListener((details) => {
+  const version = String(details?.version ?? "").slice(0, 20);
+  console.warn(
+    `[background] MISE À JOUR ${version} EN ATTENTE — Chrome ne l'installera pas ` +
+    "tant que le service worker ne sera pas déchargé. Elle sera prise au premier " +
+    "moment sûr (aucun job en vol, aucune fenêtre de travail)."
+  );
+  chrome.storage.session.set({ [MAJ_ATTENTE_KEY]: version }).catch(() => {});
+  // On tente tout de suite : si rien ne tourne, la mise à jour est prise en
+  // quelques secondes au lieu d'attendre le prochain cycle.
+  appliquerMajSiSansRisque("onUpdateAvailable").catch(() => {});
+});
+
+/** Les raisons de NE PAS recharger, en clair. Tableau vide = c'est sûr. */
+async function raisonsDeNePasRecharger() {
+  const raisons = [];
+  if (republishSupprimes.size) {
+    raisons.push(`${republishSupprimes.size} republication(s) supprimée(s) dont la recréation n'est pas conclue`);
+  }
+  // Fenêtres de travail : illisibles = doute, donc refus.
+  try {
+    const fen = await fenetresCreeesVivantes();
+    if (fen.length) raisons.push(`${fen.length} fenêtre(s) de travail ouverte(s)`);
+  } catch (e) {
+    raisons.push(`fenêtres de travail illisibles (${String(e?.message ?? e).slice(0, 60)})`);
+  }
+  // La base : seule source qui survit à un redémarrage du service worker.
+  try {
+    const session = await getValidSession();
+    if (!session?.access_token) {
+      raisons.push("session FillSell absente — impossible de vérifier l'état des jobs");
+      return raisons;
+    }
+    const token = session.access_token;
+    // (1) un job RÉELLEMENT en vol, quelle que soit la plateforme.
+    const enVol = await restRequest("cross_post_jobs?status=eq.processing&select=id,platform,action&limit=3", token);
+    if (Array.isArray(enVol) && enVol.length) {
+      raisons.push(`${enVol.length} job(s) en 'processing' (${enVol.map((j) => `${j.platform}/${j.action}`).join(", ")})`);
+    }
+    // (2) une republication dont l'ANNONCE EST HORS LIGNE : étape 'deleted',
+    // suppression faite, recréation pas conclue. C'est le seul état à l'arrêt
+    // où quelque chose est réellement en jeu.
+    // ⚠️ NE PAS ÉLARGIR AUX AUTRES ÉTAPES, c'est mesuré : sur les 381
+    // republications pending du parc, 234 sont à 'captured' et 139 à
+    // 'a_capturer' — soit 98 %. Or à ces deux étapes l'annonce d'origine est
+    // INTACTE : 'a_capturer' n'a rien fait, et 'captured' n'a que capturé (la
+    // suppression, elle, fait passer à 'deleted'). Les bloquer reviendrait à
+    // ne JAMAIS recharger chez les comptes qui republient — précisément
+    // Joséphine et Ornella, ceux que ce chantier doit débloquer. Le chemin
+    // critique quand il TOURNE est déjà couvert par 'processing' ci-dessus, et
+    // rien ne peut démarrer tant qu'on tient le verrou de flux.
+    // À l'inverse 'deleted' est rare (8 jobs, 4 comptes sur tout le parc au
+    // 10/09) : le coûter ne bloque personne en pratique.
+    const repub = await restRequest(
+      "cross_post_jobs?action=eq.republish&status=in.(pending,processing)" +
+      "&platform_fields->>republish_step=eq.deleted&select=id,status&limit=3",
+      token
+    );
+    if (Array.isArray(repub) && repub.length) {
+      raisons.push(`${repub.length} republication(s) à l'étape 'deleted' (annonce hors ligne, recréation non conclue)`);
+    }
+  } catch (e) {
+    raisons.push(`état des jobs illisible (${String(e?.message ?? e).slice(0, 60)})`);
+  }
+  return raisons;
+}
+
+/** Applique la mise à jour en attente si — et seulement si — plus rien ne
+ *  tourne. Sous le verrou de flux : rien ne peut démarrer entre la
+ *  vérification et le reload. Ne rend jamais d'exception. */
+async function appliquerMajSiSansRisque(declencheur) {
+  const version = await lireMajEnAttente();
+  if (!version) return false;
+  return withJobFlowLock("maj-extension", async () => {
+    const raisons = await raisonsDeNePasRecharger();
+    if (raisons.length) {
+      console.log(
+        `[background] mise à jour ${version} REPORTÉE (${declencheur}) — ${raisons.join(" ; ")}. ` +
+        "Rien n'est perdu : elle sera reprise au prochain moment sûr."
+      );
+      return false;
+    }
+    console.warn(`[background] mise à jour ${version} APPLIQUÉE (${declencheur}) — aucun job en vol, aucune fenêtre de travail. Rechargement.`);
+    // Dernier geste : après reload(), plus rien de ce worker ne s'exécute.
+    chrome.runtime.reload();
+    return true;
+  }).catch((e) => {
+    console.warn("[background] application de la mise à jour abandonnée (sans conséquence) :", String(e?.message ?? e));
+    return false;
+  });
+}
+
 // ⚠️ chrome.alarms.create sur un nom EXISTANT ne « met pas à jour » l'alarme :
 // il la REMPLACE et redémarre son cycle à zéro, delayInMinutes compris. Or
 // scheduleAlarm() est appelé sur onInstalled ET onStartup — donc à CHAQUE
@@ -977,6 +1136,10 @@ async function publishSelectedUnlocked(jobIds) {
       // libellé exact DEVANT la lettre de la garde-robe — pour CE client
       // seulement, au moment où il tourne ce code : jamais « entre deux ».
       capacites: ["taille_par_id"],
+      // Mise a jour que Chrome garde sous le coude (2026-09-10) : "" = rien en
+      // attente, absent = build trop vieux pour le dire. Sert a MESURER qui est
+      // bloque et depuis quand, jamais a decider.
+      maj_en_attente: await lireMajEnAttente(),
     }));
   } catch (e) {
     // 401 : même invalidation que le poll — et « no_session » plutôt que
@@ -1605,6 +1768,14 @@ function pollAndProcessJobs() {
   return p.finally(() => {
     const cmd = commandeSyncEnAttente;
     commandeSyncEnAttente = null;
+    // ── Mise à jour en attente : on retente à CHAQUE fin de cycle ───────────
+    // (2026-09-10) C'est le moment le plus favorable de tout le cycle : le
+    // poll vient de rendre le verrou, et si la file était vide, plus rien ne
+    // tourne. Sans ce rendez-vous régulier, une mise à jour signalée pendant
+    // un job ne serait jamais reprise — onUpdateAvailable ne se répète pas.
+    // Fire-and-forget, et lui-même reprend le verrou : il ne peut pas
+    // s'exécuter pendant la sync distante lancée juste après.
+    appliquerMajSiSansRisque("fin de cycle").catch(() => {});
     if (!cmd) return;
     traiterCommandeSyncDistante(cmd).catch((e) =>
       console.error("[sync-dressing][distant]", e?.message ?? e));
@@ -2029,6 +2200,10 @@ async function pollAndProcessJobsUnlocked() {
       // libellé exact DEVANT la lettre de la garde-robe — pour CE client
       // seulement, au moment où il tourne ce code : jamais « entre deux ».
       capacites: ["taille_par_id"],
+      // Mise a jour que Chrome garde sous le coude (2026-09-10) : "" = rien en
+      // attente, absent = build trop vieux pour le dire. Sert a MESURER qui est
+      // bloque et depuis quand, jamais a decider.
+      maj_en_attente: await lireMajEnAttente(),
     });
     jobs = rep.jobs;
     commandeSyncEnAttente = rep.sync_command ?? null;
