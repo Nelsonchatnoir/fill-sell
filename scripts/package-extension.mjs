@@ -148,7 +148,11 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // beebs.js — le parc Beebs était à l'arrêt en 0.6.22 —, re-capture non
 // affamée, retrait Leboncoin qui reprend + interstitiel DataDome nommé, 2e
 // passage « Mes annonces »).
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24'];
+// 0.6.25 ajoutée le 10/09 soir au bump 0.6.26 : PUBLIÉE, ACCEPTÉE et SERVIE par
+// le CWS le 10/09 (handler_build « 2026-09-10T09:41:28Z+3696da6 · v0.6.25 » sur
+// les jobs de 4 comptes le soir même). La 0.6.26 la remplace : re-packager la
+// 0.6.25 se ferait rejeter.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25'];
 // 0.6.24 ajoutée le 10/09 au bump 0.6.25 : PUBLIÉE, ACCEPTÉE et SERVIE par le
 // CWS — preuve en base au moment de l'inscription (heartbeats profiles, 7 j) :
 // 19 comptes sur extension_version='0.6.24' / build

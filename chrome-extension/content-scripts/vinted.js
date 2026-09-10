@@ -4670,8 +4670,10 @@ async function selectMaterialByIds(ids, warnings) {
         continue;
       }
       await humanPause();
-      cible.el.click();
-      console.log(`[vinted] matière posée par id : ${id} → « ${cible.libelle} »`);
+      // Même garde que la couleur (2026-09-10) : une matière déjà cochée
+      // (pré-remplie) serait DÉCOCHÉE par un re-clic.
+      const etat = cocherOptionSansBasculer(cible.el);
+      console.log(`[vinted] matière posée par id : ${id} → « ${cible.libelle} »${etat === "deja" ? " (déjà cochée, conservée)" : ""}`);
       posees++;
     }
     await humanPause();
@@ -5254,6 +5256,29 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
 // d'allowed_values — l'app ne pouvait pas proposer une liste fermée.
 let paletteCouleursRelevee = null;
 
+// ── UNE OPTION DÉJÀ COCHÉE NE SE RE-CLIQUE PAS (2026-09-10 soir, PROUVÉ) ────
+// Relevé en direct sur /items/new (compte Nico, 21:0x) : sur une option
+// role="checkbox" du picker Couleur, `.click()` BASCULE l'état — cochée →
+// décochée, aria-checked true → false, champ « Noir » → vide. Or depuis
+// ~17:00 ce jour, Vinted PRÉ-REMPLIT la couleur d'après les photos
+// (/api/v2/item_upload/suggestions/attributes → dynamic_attributes
+// [{code:"color", prefill_option_ids:[…]}], vu dans le diagnostic de la jupe
+// 571ad7e5). Quand la couleur pré-remplie est celle de l'annonce, selectColors
+// la cliquait… et l'EFFAÇAIT : POST sans color_ids, refus 400 « Le champ
+// Couleur doit être renseigné », annonce déjà retirée jamais recréée. Mesuré :
+// 7 recréations refusées de 17:58 à 20:50 sur 0.6.22, 0.6.23 ET 0.6.25 (le
+// build n'y est pour rien), 0 sur 131 avant 17:00 ; le même article (44215a3d)
+// a échoué trois fois puis abouti — la suggestion n'arrive pas toujours avant
+// notre clic. Règle : une option déjà cochée est CONSERVÉE, jamais re-cliquée.
+// Rend "deja" (cochée, non touchée) | "cliquee" | "inconnue" (pas de rôle
+// checkbox lisible : clic historique, inchangé).
+function cocherOptionSansBasculer(el) {
+  const cell = el?.closest?.('[role="checkbox"]') ?? null;
+  if (cell && cell.getAttribute("aria-checked") === "true") return "deja";
+  el.click();
+  return cell ? "cliquee" : "inconnue";
+}
+
 // Retourne true si AU MOINS une couleur a été posée (ou s'il n'y avait rien à
 // poser / champ absent) ; false si des couleurs étaient demandées et
 // qu'AUCUNE n'a matché — le caller échoue alors AVANT le dépôt, avec la
@@ -5290,6 +5315,8 @@ async function selectColors(colorNames, warnings = []) {
     .slice(0, 40);
   if (options.length) paletteCouleursRelevee = options;
   let posees = 0;
+  // Libellés RETENUS (normalisés) : ce qui doit rester coché à la fermeture.
+  const retenues = new Set();
   for (const name of colorNames.slice(0, 2)) {
     // :not(...) — même exclusion que le relevé de palette ci-dessus, sinon la
     // cascade peut retenir le PANNEAU (color-select-dropdown-content) dont le
@@ -5301,9 +5328,18 @@ async function selectColors(colorNames, warnings = []) {
     );
     if (match) {
       await humanPause();
-      match.el.click();
+      // Déjà cochée (pré-remplie par Vinted depuis les photos) : conservée,
+      // jamais re-cliquée — cf. cocherOptionSansBasculer. C'est LE défaut du
+      // 10/09 : le re-clic décochait la couleur et le POST partait sans elle.
+      const etat = cocherOptionSansBasculer(match.el);
       await humanPause();
       posees++;
+      retenues.add(normalizeFuzzy(match.label));
+      if (etat === "deja") {
+        const note = `couleur: « ${match.label} » déjà cochée (pré-remplie par Vinted depuis les photos) — conservée, aucun re-clic`;
+        console.log(`[vinted] ${note}`);
+        warnings.push(note);
+      }
       if (match.stage !== "exact") {
         const note = `couleur: "${name}" → option Vinted "${match.label}" (match ${match.stage})`;
         console.warn(`[vinted] ≈ ${note}`);
@@ -5355,9 +5391,10 @@ async function selectColors(colorNames, warnings = []) {
         );
         if (match && normalizeFuzzy(match.label) === normalizeFuzzy(choisi)) {
           await humanPause();
-          match.el.click();
+          cocherOptionSansBasculer(match.el); // déjà cochée = conservée, jamais décochée
           await humanPause();
           posees++;
+          retenues.add(normalizeFuzzy(match.label));
           const note = `couleur: ${JSON.stringify(colorNames)} absent de la palette — l'IA a retenu "${choisi}" PARMI les ${paletteCouleursRelevee.length} couleurs affichées par Vinted`;
           console.log(`[vinted] ${note}`);
           warnings.push(note);
@@ -5373,10 +5410,62 @@ async function selectColors(colorNames, warnings = []) {
       console.warn("[vinted] arbitrage de couleur indisponible :", e?.message ?? e);
     }
   }
+  // ── Couleurs pré-remplies par Vinted mais ABSENTES de l'annonce (2026-09-10) ──
+  // Le pré-remplissage peut ajouter une couleur que le vendeur n'avait pas
+  // mise (photo lue de travers). Quand au moins une des NÔTRES est posée, on
+  // décoche les autres : l'annonce recréée porte les couleurs d'origine, pas
+  // celles devinées. Sans aucune des nôtres (posees = 0), on ne touche à rien :
+  // une couleur devinée vaut mieux qu'un champ vide et un 400.
+  if (posees > 0) {
+    for (const cell of document.querySelectorAll('[data-testid^="color-"][role="checkbox"][aria-checked="true"]')) {
+      const label = cell.textContent.trim();
+      if (!label || retenues.has(normalizeFuzzy(label))) continue;
+      await humanPause();
+      cell.click();
+      const note = `couleur: « ${label} » pré-remplie par Vinted mais absente de l'annonce — retirée`;
+      console.log(`[vinted] ${note}`);
+      warnings.push(note);
+    }
+  }
   // Multi-sélection sans bouton "valider" : le clic body NE FERME PAS le
   // panneau (constaté en réel le 2026-07-11, même famille que Matière) — on
   // passe par le clic extérieur complet de closeAnyOpenDropdown.
   await closeAnyOpenDropdown();
+  // ── RELECTURE de l'état commité (2026-09-10) : le champ déclencheur porte les
+  // libellés cochés (« Noir », « Noir, Gris »). Vide alors qu'on a posé = la
+  // pose n'a pas été retenue → UNE nouvelle passe (les options déjà cochées
+  // sont conservées, les manquantes cliquées), puis verdict honnête : encore
+  // vide → false, le caller s'arrête AVANT le dépôt avec la palette dans
+  // l'erreur — jamais plus un 400 « Couleur » découvert après coup.
+  if (posees > 0) {
+    const lireTrigger = () => {
+      const t = document.querySelector('#color, [data-testid="color-select-dropdown-input"]');
+      return t ? String(readCommittedValue(t) ?? "").trim() : "";
+    };
+    if (!lireTrigger()) {
+      const note = "couleur: cliquée(s) mais champ relu VIDE après fermeture — nouvelle passe";
+      console.warn(`[vinted] ⚠️ ${note}`);
+      warnings.push(note);
+      try {
+        await openDropdown('#color, [data-testid="color-select-dropdown-input"]');
+        for (const name of colorNames.slice(0, 2)) {
+          const m = findOptionCascade(
+            document,
+            '[data-testid^="color-"]:not([data-testid$="-dropdown-content"]):not([data-testid$="-dropdown-input"])',
+            name,
+          );
+          if (m) { await humanPause(); cocherOptionSansBasculer(m.el); await humanPause(); }
+        }
+      } catch (e) {
+        console.warn("[vinted] ⚠️ couleur: nouvelle passe impossible —", String(e?.message ?? e));
+      }
+      await closeAnyOpenDropdown();
+      if (!lireTrigger()) {
+        warnings.push("couleur: champ toujours VIDE après la nouvelle passe — pose non retenue par le formulaire");
+        return false;
+      }
+    }
+  }
   return posees > 0 || !colorNames.length;
 }
 
@@ -5438,9 +5527,12 @@ async function reposerCouleurRepublication(fields, titre, warnings) {
         .slice(0, 2);
       for (const { el, label } of trouvees) {
         await humanPause();
-        el.click();
+        // Déjà cochée (pré-remplie par Vinted) : conservée, jamais décochée.
+        const etat = cocherOptionSansBasculer(el);
         await humanPause();
-        warnings.push(`couleur: « ${label} » lue dans le titre de l'annonce`);
+        warnings.push(etat === "deja"
+          ? `couleur: « ${label} » lue dans le titre — déjà cochée (pré-remplie par Vinted), conservée`
+          : `couleur: « ${label} » lue dans le titre de l'annonce`);
         clique = true;
       }
       await closeAnyOpenDropdown();
