@@ -377,11 +377,32 @@ serve(async (req) => {
       .eq("status", "processing")
       .in("action", ["publish", "republish"]);
     // deno-lint-ignore no-explicit-any
-    const ageProcessing = (j: { platform_fields?: Record<string, unknown> | null; created_at?: string }) =>
-      now - Date.parse(String(j.platform_fields?.processing_since ?? j.created_at ?? ""));
-    // Seuil applicable au job : 45 min pour une publication, 24 h sinon.
-    const seuilDe = (j: { action?: string }) =>
-      j.action === "publish" ? SEUIL_ABANDON_RAPIDE_MS : SEUIL_ABANDON_MS;
+    // processing_since ILLISIBLE (vide, malformé) → created_at, jamais NaN
+    // (2026-09-10) : un NaN sortait le job des DEUX filets pour toujours —
+    // celui-ci ET recoverStaleProcessingJobs côté extension font le même test
+    // Number.isFinite et « continue » dessus. C'est le seul chemin trouvé par
+    // lequel un 'processing' survit aux deux reprises avec une extension
+    // vivante ; il est fermé des deux côtés.
+    const ageProcessing = (j: { platform_fields?: Record<string, unknown> | null; created_at?: string }) => {
+      const t = Date.parse(String(j.platform_fields?.processing_since ?? ""));
+      const c = Date.parse(String(j.created_at ?? ""));
+      return now - (Number.isFinite(t) ? t : c);
+    };
+    // Étape d'une republication — miroir de repubStepDe (background.js) :
+    // absente ou inconnue = a_capturer, le défaut qui ne touche à rien.
+    const etapeRepublish = (j: { platform_fields?: Record<string, unknown> | null }) => {
+      const s = String(j.platform_fields?.republish_step ?? "");
+      return s === "captured" || s === "deleted" ? s : "a_capturer";
+    };
+    // Reprise RAPIDE (45 min) : les publications, ET (2026-09-10) les
+    // republications encore à l'étape 'a_capturer' — rien n'a été touché sur
+    // Vinted (au pire une capture en lecture seule) ; les 24 h restent réservées
+    // aux étapes qui SUPPRIMENT ('captured') ou ont supprimé ('deleted', qui a
+    // par ailleurs sa reprise à 30 min plus bas).
+    const repriseRapideApplicable = (j: { action?: string; platform_fields?: Record<string, unknown> | null }) =>
+      j.action === "publish" || (j.action === "republish" && etapeRepublish(j) === "a_capturer");
+    const seuilDe = (j: { action?: string; platform_fields?: Record<string, unknown> | null }) =>
+      repriseRapideApplicable(j) ? SEUIL_ABANDON_RAPIDE_MS : SEUIL_ABANDON_MS;
     // deno-lint-ignore no-explicit-any
     const candidats = ((bloques ?? []) as any[]).filter((j) => {
       const age = ageProcessing(j);
@@ -397,16 +418,17 @@ serve(async (req) => {
         const seen = lastSeen.get(j.user_id);
         // Silence exigé de l'extension : 30 min sur la reprise rapide (une
         // extension vivante aurait repris le job à 15 min), 24 h sinon.
-        const seuilMuet = j.action === "publish" ? SEUIL_MUET_RAPIDE_MS : SEUIL_ABANDON_MS;
+        const seuilMuet = repriseRapideApplicable(j) ? SEUIL_MUET_RAPIDE_MS : SEUIL_ABANDON_MS;
         if (Number.isFinite(seen as number) && now - (seen as number) < seuilMuet) continue;
-        const repriseRapide = j.action === "publish" && ageProcessing(j) < SEUIL_ABANDON_MS;
+        const repriseRapide = repriseRapideApplicable(j) && ageProcessing(j) < SEUIL_ABANDON_MS;
         const pf = { ...(j.platform_fields ?? {}) };
         delete pf.processing_since;
         delete pf.stale_recoveries;
         // Le serveur ne sait pas demander à la plateforme si l'annonce existe
         // déjà (le worker est mort peut-être APRÈS l'acceptation du dépôt) :
         // on le demande à l'extension, qui a ce filet depuis le 19/07.
-        if (repriseRapide) pf.verifier_doublon_avant_publication = true;
+        // Publication seule : une republication 'a_capturer' n'a rien déposé.
+        if (repriseRapide && j.action === "publish") pf.verifier_doublon_avant_publication = true;
 
         if (j.action === "republish" && pf.republish_step === "captured") {
           // Capture à vérifier EN BASE (platform_fields ne porte que capture_id).
@@ -444,7 +466,12 @@ serve(async (req) => {
 
         // Le message dit la VRAIE durée : promettre « 24 h » sur une reprise
         // déclenchée à 45 min ferait mentir l'écran dans l'autre sens.
-        const msg = repriseRapide
+        const msg = repriseRapide && j.action === "republish"
+          ? "Reprise après interruption : l'ordinateur qui portait cette republication ne s'est plus " +
+            "manifesté depuis une demi-heure. Rien n'a été touché sur Vinted (ton annonce est en ligne) ; " +
+            "la republication est remise en file et repartira automatiquement dès qu'une extension " +
+            "connectée se réveille — rien à faire de ton côté."
+          : repriseRapide
           ? "Reprise après interruption : l'ordinateur qui portait cette publication ne s'est plus " +
             "manifesté depuis une demi-heure. La publication est remise en file et repartira " +
             "automatiquement dès qu'une extension connectée se réveille — rien à faire de ton côté."
@@ -841,24 +868,68 @@ serve(async (req) => {
     "Republication mise en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : blocage connu sur la catégorie Livres";
   let needsUserVus = 0;
   let needsUserSoldes = 0;
+  let needsUserTicks = 0;
   try {
-    const ECHEANCE_NEEDS_USER_MS = 72 * 3600_000;
+    // ── REFONTE 2026-09-10 : 72 h D'EXTENSION OUVERTE, pas 72 h d'horloge ─────
+    // Cas Ornella : 18 jobs tués « Resté en attente de ton geste plus de 3
+    // jours » pendant que son ordinateur était fermé une partie du temps — et
+    // 4 d'entre eux re-tués DANS LA MINUTE après leur relance du 10/09 16:32,
+    // parce que le tampon de première observation (needs_user_vu_le) survit à
+    // la relance et que « même erreur au retour » ne rouvrait pas d'épisode.
+    // Le décompte ne court désormais QUE sur du temps où l'extension a
+    // effectivement pollé : à chaque passage (3 min), pour chaque job
+    // needs_user, on regarde si profiles.extension_last_seen_at a bougé depuis
+    // le dernier tick ; si oui on crédite la fenêtre (bornée à 45 min : deux
+    // passages manqués ne font jamais gonfler le crédit), sinon rien. Un tick
+    // toutes les 30 min par job — 21 needs_user dans le parc, une écriture par
+    // demi-heure chacun. Le job est soldé quand le crédit atteint 72 h.
+    //   · needs_user_tick_le / needs_user_actif_ms : le compteur. Absents (jobs
+    //     d'avant, ou retour en needs_user — update-job-status et la relance de
+    //     l'app les retirent) → posés à zéro : tout retour dans l'état repart
+    //     d'un budget neuf, une relance EST un geste.
+    //   · needs_user_vu_le / needs_user_vu_erreur : conservés pour l'épisode
+    //     (erreur changée = nouvel épisode = compteur remis à zéro), et pour la
+    //     traçabilité.
+    //   · Mesuré sur les 18 jobs d'Ornella AVANT ce correctif : son extension
+    //     a pollé chaque jour du 06 au 10/09 — ce décompte les aurait retardés
+    //     (nuits non comptées), pas sauvés. Ce qui les sauve, c'est le budget
+    //     neuf à chaque relance et la fin des passages fantômes.
+    const TICK_NEEDS_USER_MS = 30 * 60_000;
+    const CREDIT_MAX_PAR_TICK_MS = 45 * 60_000;
+    const ECHEANCE_NEEDS_USER_ACTIF_MS = 72 * 3600_000;
     const { data: attente } = await supabase
       .from("cross_post_jobs")
       .select("id, user_id, platform, action, error, created_at, platform_fields")
       .eq("status", "needs_user");
     // deno-lint-ignore no-explicit-any
-    for (const j of ((attente ?? []) as any[])) {
-      if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") continue;
+    const lignes = ((attente ?? []) as any[]).filter((j) => {
+      if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") return false;
       if (j.platform_fields?.needs_user_source === "livres_isbn_garde" ||
-          String(j.error ?? "").startsWith(PREFIXE_GARDE_LIVRES)) continue;
+          String(j.error ?? "").startsWith(PREFIXE_GARDE_LIVRES)) return false;
+      return true;
+    });
+    const lastSeen = new Map<string, number>();
+    const userIds = [...new Set(lignes.map((j) => String(j.user_id)))];
+    for (let i = 0; i < userIds.length; i += 200) {
+      const { data: profs } = await supabase
+        .from("profiles").select("id, extension_last_seen_at").in("id", userIds.slice(i, i + 200));
+      // deno-lint-ignore no-explicit-any
+      for (const p of (profs ?? []) as any[]) lastSeen.set(String(p.id), Date.parse(p.extension_last_seen_at ?? ""));
+    }
+    const nowIso = new Date(now).toISOString();
+    for (const j of lignes) {
       const pf = { ...(j.platform_fields ?? {}) };
       const erreurCourante = String(j.error ?? "").slice(0, 200);
       const vuLe = Date.parse(pf.needs_user_vu_le ?? "");
       const nouvelEpisode = !Number.isFinite(vuLe) || String(pf.needs_user_vu_erreur ?? "") !== erreurCourante;
-      if (nouvelEpisode) {
-        pf.needs_user_vu_le = new Date(now).toISOString();
+      const tick = Date.parse(pf.needs_user_tick_le ?? "");
+      if (nouvelEpisode || !Number.isFinite(tick)) {
+        // Première observation, nouvel épisode ou retour en needs_user : on
+        // POSE le compteur à zéro, on ne solde jamais à ce passage.
+        pf.needs_user_vu_le = nowIso;
         pf.needs_user_vu_erreur = erreurCourante;
+        pf.needs_user_tick_le = nowIso;
+        pf.needs_user_actif_ms = 0;
         const { error: sErr } = await supabase
           .from("cross_post_jobs")
           .update({ platform_fields: pf })
@@ -867,17 +938,33 @@ serve(async (req) => {
         if (!sErr) needsUserVus++;
         continue;
       }
-      if (now - vuLe < ECHEANCE_NEEDS_USER_MS) continue;
+      if (now - tick < TICK_NEEDS_USER_MS) continue;
+      const seen = lastSeen.get(String(j.user_id));
+      // Vivante = l'extension a pollé au moins une fois depuis le dernier tick.
+      const vivante = Number.isFinite(seen as number) && (seen as number) >= tick;
+      const credit = vivante ? Math.min(now - tick, CREDIT_MAX_PAR_TICK_MS) : 0;
+      const actif = (Number(pf.needs_user_actif_ms) || 0) + credit;
+      pf.needs_user_actif_ms = actif;
+      pf.needs_user_tick_le = nowIso;
+      if (actif < ECHEANCE_NEEDS_USER_ACTIF_MS) {
+        const { error: tErr } = await supabase
+          .from("cross_post_jobs")
+          .update({ platform_fields: pf })
+          .eq("id", j.id)
+          .eq("status", "needs_user");
+        if (!tErr) needsUserTicks++;
+        continue;
+      }
       // Nettoyage unités, 2e passe (03/09) : même « rien décompté » est une
       // mention de décompte — la monnaie interne n'existe plus, les messages
-      // n'en parlent plus du tout.
+      // n'en parlent plus du tout. Le préfixe reste cherchable en base.
       const msg = j.action === "republish"
-        ? "Resté en attente de ton geste plus de 3 jours : le job est arrêté et ton annonce est intacte " +
+        ? "Resté en attente de ton geste plus de 3 jours d'extension ouverte : le job est arrêté et ton annonce est intacte " +
           "sur Vinted. Relance la republication depuis la fiche de l'article quand tu veux."
         : j.action === "delete"
-          ? "Resté en attente de ton geste plus de 3 jours : le job est arrêté. Si l'annonce est encore " +
+          ? "Resté en attente de ton geste plus de 3 jours d'extension ouverte : le job est arrêté. Si l'annonce est encore " +
             "en ligne, retire-la toi-même sur la plateforme."
-          : "Resté en attente de ton geste plus de 3 jours : le job est arrêté. " +
+          : "Resté en attente de ton geste plus de 3 jours d'extension ouverte : le job est arrêté. " +
             "Relance la publication depuis la fiche de l'article quand tu veux.";
       const { error: fErr } = await supabase
         .from("cross_post_jobs")
@@ -886,7 +973,7 @@ serve(async (req) => {
         .eq("status", "needs_user");
       if (!fErr) {
         needsUserSoldes++;
-        console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) needs_user > 72 h → failed, solde par triggers`);
+        console.log(`[handler-watch] job ${j.id} (${j.platform}/${j.action}) needs_user > 72 h d'extension ouverte (${Math.round(actif / 3600_000)} h créditées) → failed, solde par triggers`);
       }
     }
   } catch (e) {
@@ -1217,7 +1304,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1272,7 +1359,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1326,7 +1413,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
     headers: { "Content-Type": "application/json" },
   });
 });

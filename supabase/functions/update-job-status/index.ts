@@ -769,6 +769,99 @@ serve(async (req) => {
       }
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    // SESSION PLATEFORME MORTE = ATTENTE, JAMAIS UNE TENTATIVE (2026-09-10)
+    // ══════════════════════════════════════════════════════════════════════
+    // Cas Ornella : 17 jobs Beebs morts sur beebs.app/fr/auth — chaque passage
+    // sur la page de connexion comptait pour une « tentative automatique
+    // espacée » (5, 15, 30, 60 min), et au bout de cinq le job passait en
+    // 'failed' « Corrige la cause ci-dessus » alors que la seule cause est une
+    // session à rouvrir, et que l'utilisateur n'a rien fait de mal. Un job qui
+    // tombe sur la page de connexion n'a rien tenté : il ATTEND.
+    // Ici, SERVEUR, sans zip (les 0.6.25 et antérieures continuent d'appeler
+    // rearmBounded) : le verdict « Connexion X requise » / « Reconnexion X
+    // requise » (garde d'entrée du handler, detectReauth) et « Page inattendue
+    // pour une suppression X : <URL de connexion> » (suppression Beebs) sont
+    // requalifiés en 'pending' :
+    //   · needsUserAttempts REMIS à sa valeur d'avant ce passage (celle en
+    //     base) : aucune tentative consommée, jamais de failed sur ce motif ;
+    //   · next_action_after = +60 min : le job re-sonde la session une fois
+    //     par heure au plus (get-pending-jobs retient le reste derrière la
+    //     session observée morte, cf. SESSION_MORTE_TTL_MS) ;
+    //   · marqueur attente_session {platform, depuis, observations, derniere,
+    //     motif} — l'app et le popup peuvent dire « en attente de ta connexion »
+    //     sans re-parser le message.
+    // La 0.6.26 fait la même chose d'elle-même (marquerAttenteSession) ; ce
+    // bloc est le filet pour tout build qui ne le fait pas encore. Idempotent :
+    // un message déjà « En attente de ta connexion… » ne matche pas.
+    // ⛔ eBay : « Connexion eBay requise » n'est écrit par l'extension que sur
+    //    verdict CONFIRMÉ par la sonde (0.6.13+, 05/09) — le mur signin seul ne
+    //    passe plus ici, la règle du 11/08 est respectée telle quelle.
+    const SESSION_REQUISE_RE = /^(?:Connexion|Reconnexion)\s+\S+\s+requise/i;
+    const PAGE_AUTH_SUPPRESSION_RE = /^Page inattendue pour une suppression \S+ : (\S+)/i;
+    const estUrlDeConnexion = (u: string): boolean => {
+      try {
+        const url = new URL(u);
+        const h = url.hostname, p = url.pathname;
+        if (/(^|\.)beebs\.app$/i.test(h)) return /\/(login|signin|connexion)|\/auth(\/|$)/i.test(p);
+        if (/(^|\.)signin\.ebay\.(fr|com)$/i.test(h)) return true;
+        if (/(^|\.)auth\.leboncoin\.fr$/i.test(h)) return true;
+        if (/(^|\.)leboncoin\.fr$/i.test(h)) return p.startsWith("/connexion");
+        if (/(^|\.)vinted\.(fr|com)$/i.test(h)) return /\/(auth|login|member\/signup_login)/i.test(p);
+      } catch { /* pas une URL : pas une page de connexion */ }
+      return false;
+    };
+    const SESSION_ATTENTE_MIN = 60;
+    let pfAttenteSession: Record<string, unknown> | null = null;
+    if ((statutEffectif === "pending" || statutEffectif === "failed") && typeof body.error === "string") {
+      const mPage = body.error.match(PAGE_AUTH_SUPPRESSION_RE);
+      const sessionMorte = SESSION_REQUISE_RE.test(body.error) || (mPage != null && estUrlDeConnexion(mPage[1]));
+      if (sessionMorte) {
+        try {
+          const { data: jrow } = await userClient
+            .from("cross_post_jobs")
+            .select("platform, action, platform_fields")
+            .eq("id", jobId)
+            .maybeSingle();
+          if (jrow?.platform) {
+            const pfBase = (jrow.platform_fields ?? {}) as Record<string, unknown>;
+            const pfBody = ((body.platform_fields && typeof body.platform_fields === "object")
+              ? body.platform_fields : pfBase) as Record<string, unknown>;
+            const attentePrec = (pfBody.attente_session ?? pfBase.attente_session ?? null) as Record<string, unknown> | null;
+            const maintenant = new Date().toISOString();
+            const { next_action_after: _nao, ...pfSans } = pfBody;
+            pfAttenteSession = {
+              ...pfSans,
+              // La valeur EN BASE, jamais celle que l'extension vient
+              // d'incrémenter : ce passage n'est pas une tentative.
+              needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+              next_action_after: new Date(Date.now() + SESSION_ATTENTE_MIN * 60_000).toISOString(),
+              attente_session: {
+                platform: jrow.platform,
+                depuis: typeof attentePrec?.depuis === "string" ? attentePrec.depuis : maintenant,
+                observations: (Number(attentePrec?.observations ?? 0) || 0) + 1,
+                derniere: maintenant,
+                motif: body.error.slice(0, 300),
+                pose_par: "update-job-status (session morte = attente)",
+              },
+            };
+            const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+            const quoi = jrow.action === "delete" ? "le retrait de l'annonce"
+              : jrow.action === "republish" ? "la republication" : "la publication";
+            statutEffectif = "pending";
+            messageEffectif =
+              `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
+              `dès que tu seras reconnecté(e) (vérification toutes les heures). Aucune tentative consommée.`;
+            raisonRequalif = `session ${jrow.platform} morte : attente sans tentative (observation ${pfAttenteSession.attente_session && (pfAttenteSession.attente_session as Record<string, unknown>).observations})`;
+          }
+        } catch (e) {
+          // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+          console.error("[update-job-status] attente de session:", (e as Error)?.message ?? e);
+          pfAttenteSession = null;
+        }
+      }
+    }
+
     // ═════════════════════════════════════════════════════════════
     // ÉCRAN /deposer-une-annonce/options = DÉPÔT ACCEPTÉ, JAMAIS UN ÉCHEC
     // (2026-09-09 soir, Nico — job a2849f53, deux annonces en vérification)
@@ -959,6 +1052,19 @@ serve(async (req) => {
       };
     }
 
+    // Attente de session (session morte = attente, jamais une tentative) :
+    // platform_fields SANS tentative consommée, AVEC l'échéance d'une heure et
+    // le marqueur attente_session.
+    if (pfAttenteSession) patch.platform_fields = pfAttenteSession;
+    // Compteur « 72 h d'extension ouverte » (handler-watch, 2026-09-10) : une
+    // ENTRÉE en needs_user ouvre un budget neuf — les compteurs d'un épisode
+    // précédent (job relancé, réparé, repris) ne doivent jamais solder le
+    // nouveau à la minute. Retirés ici, au point de passage unique.
+    if (statutEffectif === "needs_user" && patch.platform_fields && typeof patch.platform_fields === "object") {
+      const pfN = { ...(patch.platform_fields as Record<string, unknown>) };
+      for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete pfN[k];
+      patch.platform_fields = pfN;
+    }
     // Réparation d'état : elle écrase les blocs ci-dessus (elle a retiré
     // champs_a_completer et needs_user_source — le job n'attend plus personne).
     if (pfRepareEtat) patch.platform_fields = pfRepareEtat;

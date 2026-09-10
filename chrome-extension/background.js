@@ -1820,7 +1820,13 @@ async function recoverStaleProcessingJobs(session) {
     // processing_since est posé au passage en 'processing'. Les jobs d'AVANT ce
     // correctif ne l'ont pas : on retombe sur created_at (majorant sûr — le job
     // ne peut pas avoir commencé avant d'exister).
-    const since = Date.parse(pf.processing_since ?? job.created_at ?? "");
+    // processing_since ILLISIBLE (vide, malformé) → created_at, jamais NaN
+    // (2026-09-10) : `Date.parse(pf.processing_since ?? created_at)` rendait
+    // NaN dès que processing_since existait mais ne se lisait pas, et le
+    // `continue` ci-dessous sortait le job de CE filet pour toujours — comme
+    // du filet serveur (handler-watch faisait le même test). Fermé des deux côtés.
+    const sinceProc = Date.parse(String(pf.processing_since ?? ""));
+    const since = Number.isFinite(sinceProc) ? sinceProc : Date.parse(String(job.created_at ?? ""));
     if (!Number.isFinite(since) || now - since < STALE_PROCESSING_MS) continue;
 
     const minutes = Math.round((now - since) / 60000);
@@ -3052,6 +3058,12 @@ async function processJob(rawJob, accessToken) {
       if (verdictSessionEcrivable && /^Connexion\s+\S+\s+requise/i.test(String(result.error ?? ""))) {
         noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
           console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
+        // Session morte = ATTENTE, jamais une tentative (2026-09-10) : le job
+        // reste pending, needsUserAttempts intact, re-sonde dans une heure.
+        // Même condition d'écriture que la sonde de session (eBay : verdict
+        // confirmé seulement) — un soupçon de page ne met personne en attente.
+        await marquerAttenteSession(accessToken, job, result.error);
+        return { status: "needsUser", error: result.error };
       }
       await rearmBounded(accessToken, job, result.error);
       return { status: "needsUser", error: result.error };
@@ -3067,7 +3079,12 @@ async function processJob(rawJob, accessToken) {
       const reauth = await detectReauth(tabId, job.platform);
       if (reauth) {
         console.warn(`[background] Job ${job.id} : ${reauth}`);
-        await rearmBounded(accessToken, job, reauth);
+        // Page de connexion VUE sur l'onglet (URL, pas un soupçon) : attente
+        // de session, aucune tentative consommée (2026-09-10). eBay compris —
+        // l'URL signin.ebay.* est un fait, contrairement au verdict de page
+        // du 11/08 ; extension_sessions n'est PAS écrit ici pour eBay (règle
+        // inchangée), seule l'échéance du job porte l'attente.
+        await marquerAttenteSession(accessToken, job, reauth);
         return { status: "needsUser", error: reauth };
       }
 
@@ -3888,6 +3905,54 @@ async function rearmBounded(accessToken, job, errorMsg) {
       },
     });
   }
+}
+
+// ── Attente de SESSION (2026-09-10) : la page de connexion vue par le handler
+// n'est pas une tentative ─────────────────────────────────────────────────────
+// Le job reste 'pending' (jamais needs_user : il n'attend aucun champ, et le
+// balayage 72 h n'a rien à y faire), needsUserAttempts INTACT, échéance
+// ATTENTE_SESSION_MIN : la porte de processJob / processRepublishJob le saute
+// jusque-là, puis il re-sonde la session — s'il retombe sur la page de
+// connexion, on repasse ici (observations++), sinon il passe. Côté serveur,
+// get-pending-jobs retient les AUTRES jobs de la plateforme derrière la
+// déconnexion observée (noterSessionDeconnectee), et update-job-status
+// requalifie de la même façon les builds antérieurs : même état, deux
+// écrivains, aucun chemin où une session morte coûte une tentative.
+async function marquerAttenteSession(accessToken, job, errorMsg) {
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(
+      `[background] Job ${job.id} : statut devenu "${actuel}" pendant le traitement — ` +
+      `attente de session ABANDONNÉE (on ne réécrit pas par-dessus). Cause : ${errorMsg}`
+    );
+    return;
+  }
+  stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+  const pf = { ...(job.platform_fields ?? {}) };
+  const prec = pf.attente_session && typeof pf.attente_session === "object" ? pf.attente_session : null;
+  const maintenant = new Date().toISOString();
+  pf.attente_session = {
+    platform: job.platform,
+    depuis: typeof prec?.depuis === "string" ? prec.depuis : maintenant,
+    observations: (Number(prec?.observations) || 0) + 1,
+    derniere: maintenant,
+    motif: String(errorMsg ?? "").slice(0, 300),
+    pose_par: "extension",
+  };
+  pf.next_action_after = new Date(Date.now() + ATTENTE_SESSION_MIN * 60_000).toISOString();
+  const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
+  const quoi = job.action === "delete" ? "le retrait de l'annonce"
+    : job.action === "republish" ? "la republication" : "la publication";
+  console.warn(
+    `[background] Job ${job.id} : session ${job.platform} morte (observation ${pf.attente_session.observations}) → ` +
+    `attente, aucune tentative consommée, re-sonde dans ${ATTENTE_SESSION_MIN} min — ${errorMsg}`
+  );
+  await updateJobStatus(accessToken, job.id, "pending", {
+    error:
+      `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
+      `dès que tu seras reconnecté(e) (vérification toutes les heures). Aucune tentative consommée.`,
+    platform_fields: pf,
+  });
 }
 
 // ── Trace « taille eBay » → usage_logs (2026-09-04, job 58be2b6d) ────────────
@@ -5298,6 +5363,38 @@ const REAUTH_PATHS = {
   // 03 et 05/08) — les trois libellés historiques ne matchaient rien de réel.
   beebs: /\/(login|signin|connexion)|\/auth(\/|$)/i,
 };
+
+// ── SESSION PLATEFORME MORTE = ATTENTE, JAMAIS UNE TENTATIVE (2026-09-10) ───
+// Cas Ornella : 17 jobs Beebs morts sur beebs.app/fr/auth en brûlant leurs
+// 5 tentatives espacées (5, 15, 30, 60 min) pendant que extension_sessions
+// disait DÉJÀ beebs=false. Un job qui tombe sur la page de connexion n'a rien
+// tenté : il attend la reconnexion, sans consommer une tentative, et re-sonde
+// la session au plus une fois par heure (get-pending-jobs retient le reste
+// derrière l'observation, cf. SESSION_MORTE_TTL_MS côté serveur).
+// L'URL de la page de connexion est reconnue par les MÊMES tables que
+// detectReauth (REAUTH_HOSTS / REAUTH_PATHS) : une seule définition.
+const ATTENTE_SESSION_MIN = 60;
+const LABEL_PLATEFORME = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs" };
+function estUrlDeConnexionPlateforme(platform, url) {
+  const hostRe = REAUTH_HOSTS[platform];
+  if (!hostRe) return false;
+  try {
+    const u = new URL(String(url));
+    const pathRe = REAUTH_PATHS[platform];
+    return hostRe.test(u.hostname) && (!pathRe || pathRe.test(u.pathname));
+  } catch { return false; }
+}
+// Un verdict de handler qui dit « session morte » : « Connexion X requise »
+// (garde d'entrée), « Reconnexion X requise » (detectReauth), ou « Page
+// inattendue pour une suppression X : <URL> » quand l'URL est celle de la
+// page de connexion (suppression Beebs). Rien d'autre : un « introuvable »,
+// un timeout, un refus restent ce qu'ils sont.
+function motifSessionMorte(platform, error) {
+  const e = String(error ?? "");
+  if (/^(?:Connexion|Reconnexion)\s+\S+\s+requise/i.test(e)) return true;
+  const m = e.match(/^Page inattendue pour une suppression \S+ : (\S+)/i);
+  return Boolean(m && estUrlDeConnexionPlateforme(platform, m[1]));
+}
 
 // Polling court : la redirection de ré-authentification peut arriver une
 // poignée de secondes après le clic (le handler ne rend la main qu'après son
@@ -12613,6 +12710,115 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
   return await replanifierOuArreterRecreation(accessToken, job, pf, result);
 }
 
+// ── HTTP 404 À LA CAPTURE D'UNE REPUBLICATION : DEUX CAS, JAMAIS UN FAILED MUET
+// (2026-09-10, points 1 et 2 du dossier Ornella) ─────────────────────────────
+// GET /api/v2/item_upload/items/{id} est l'endpoint d'ÉDITION du propriétaire :
+// son 404 dit « pas d'annonce à cet id SOUS CE COMPTE ». Deux lectures :
+//   · Chrome est connecté à une AUTRE boutique que celle de l'article
+//     (inventaire.vinted_account_id) : l'annonce existe, ailleurs. Le job
+//     ATTEND cette boutique (attente_boutique, échéance 15 min, libéré par la
+//     sonde dès qu'elle est vue connectée) — aucune tentative consommée ;
+//   · l'identité connectée EST celle de l'article (ou le compte n'a qu'une
+//     boutique) : l'annonce a réellement disparu — vendue, retirée, supprimée
+//     par Vinted. L'article est daté disparu_le (le flux « plus en ligne —
+//     vendue ? » de l'app prend le relais) et le job s'arrête en le disant ;
+//   · identité illisible (401 ambigu, réseau) ou article sans boutique
+//     d'origine chez un compte multi-boutiques : on ne tranche PAS — attente
+//     bornée (15 min, 4 fois), puis needs_user avec la marche à suivre.
+// Mesuré avant ce correctif (Ornella, 14 j) : 6 républications tombées en
+// failed « annonce introuvable (HTTP 404) » — les 6 visaient des annonces
+// vendues (3) ou retirées (Robe paysanne, ×3), et l'article restait « en
+// ligne » dans le Stock, republiable à l'infini contre le même mur. Un
+// article dont vinted_account_id est NULL n'est jamais bloqué par la règle de
+// boutique (garde-fou Nico) : mono-boutique → disparue, multi → indéterminé.
+// ⛔ Aucune requête réseau nouvelle vers Vinted : l'identité vient de
+//    identiteVintedDuCycle (déjà relevée à la porte de la boutique, cache
+//    90 s) ; à l'étape 'captured' seul le cache est lu, jamais re-frappé.
+async function traiterIntrouvable404Republication({ accessToken, job, pf, userId, etape, boutiqueArticle = null, identCourante = undefined }) {
+  let boutique = boutiqueArticle;
+  if (boutique == null) {
+    boutique = "";
+    if (job.inventaire_id != null) {
+      try {
+        const inv = await restRequest(`inventaire?id=eq.${job.inventaire_id}&select=vinted_account_id`, accessToken);
+        boutique = String(inv?.[0]?.vinted_account_id ?? "").trim();
+      } catch { /* inconnue */ }
+    }
+  }
+  const ident = identCourante === undefined
+    ? (Date.now() - identiteVintedCache.at < 90_000 ? identiteVintedCache.val : null)
+    : identCourante;
+  const identId = ident?.user_id ? String(ident.user_id) : "";
+  let boutiques = [];
+  try {
+    const prof = await restRequest(`profiles?id=eq.${userId}&select=vinted_sync_pin`, accessToken);
+    boutiques = lireBoutiquesPin(prof?.[0]?.vinted_sync_pin).boutiques;
+  } catch { /* liste inconnue = mono-boutique présumée */ }
+  const multiBoutiques = boutiques.length >= 2;
+  const verdict =
+    boutique && identId && identId !== boutique ? "mauvaise_boutique"
+    : boutique && !identId ? "identite_inconnue"
+    : !boutique && multiBoutiques ? "boutique_inconnue"
+    : "disparue";
+  const maintenant = new Date().toISOString();
+  pf.introuvable_404 = { at: maintenant, etape, verdict, identite: identId || null, boutique_article: boutique || null };
+
+  if (verdict === "mauvaise_boutique") {
+    const loginAttendu = boutiques.find((b) => String(b.user_id) === boutique)?.login ?? pf.attente_boutique?.login ?? null;
+    pf.attente_boutique = { user_id: boutique, login: loginAttendu, depuis: pf.attente_boutique?.depuis ?? maintenant };
+    pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
+    await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+    const qui = loginAttendu ? `@${loginAttendu}` : `la boutique ${boutique}`;
+    console.log(`[republish] job ${job.id} : 404 de capture sous @${ident.login ?? identId} — l'annonce vit sur ${qui}, en attente de ce dressing (aucune tentative consommée)`);
+    return { status: "skipped", error: `404 sous une autre boutique — en attente du dressing ${qui}` };
+  }
+  if (verdict === "identite_inconnue" || verdict === "boutique_inconnue") {
+    const n = (Number(pf.introuvable_indetermine?.n) || 0) + 1;
+    if (n <= 4) {
+      pf.introuvable_indetermine = { n, depuis: pf.introuvable_indetermine?.depuis ?? maintenant, dernier: maintenant, verdict };
+      pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
+      await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+      console.log(`[republish] job ${job.id} : 404 de capture, ${verdict} (${n}/4) — nouvel essai dans 15 min, aucune tentative consommée`);
+      return { status: "skipped", error: `404 de capture, ${verdict} (${n}/4)` };
+    }
+    pf.needs_user_source = "introuvable_indetermine";
+    const msg = verdict === "identite_inconnue"
+      ? "Republication en pause AVANT toute suppression : Vinted répond « annonce introuvable » et FillSell n'a pas pu lire quelle boutique est connectée dans Chrome. " +
+        "Ton annonce est intacte si elle existe encore. Connecte-toi sur vinted.fr à la boutique qui porte cette annonce, puis relance la republication."
+      : "Republication en pause AVANT toute suppression : Vinted répond « annonce introuvable » et cet article n'a pas de boutique d'origine connue alors que ton compte en a plusieurs. " +
+        "Ton annonce est intacte si elle existe encore. Connecte-toi sur vinted.fr à la boutique qui porte cette annonce, synchronise ton dressing, puis relance la republication.";
+    await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+    return { status: "needsUser", error: `404 de capture, ${verdict} — 4 essais sans pouvoir trancher` };
+  }
+  // Disparue : l'article est daté (disparu_le), jamais supprimé — le flux
+  // « plus en ligne — vendue ? » de l'app fait le reste. Écriture RLS (la
+  // ligne appartient à l'utilisateur), bornée à disparu_le encore vide : une
+  // date déjà posée par la sync n'est pas réécrite.
+  let articleDate = false;
+  if (job.inventaire_id != null) {
+    try {
+      await restRequest(
+        `inventaire?id=eq.${job.inventaire_id}&user_id=eq.${userId}&disparu_le=is.null`, accessToken,
+        { method: "PATCH", body: JSON.stringify({ disparu_le: maintenant }) },
+      );
+      articleDate = true;
+    } catch (e) {
+      console.warn(`[republish] job ${job.id} : inventaire ${job.inventaire_id} non daté disparu_le —`, String(e?.message ?? e));
+    }
+  }
+  pf.introuvable_404.article_date = articleDate;
+  const msg =
+    "Republication impossible : cette annonce n'est plus en ligne sur Vinted (vendue, retirée ou supprimée depuis sa dernière lecture). " +
+    "FillSell n'a rien supprimé. " +
+    (articleDate
+      ? "L'article est marqué « plus en ligne » dans ton Stock : si tu l'as vendu, marque-le vendu ; sinon remets-le en ligne depuis Vinted puis synchronise ton dressing."
+      : "Si tu l'as vendu, marque-le vendu dans l'app ; sinon remets-le en ligne depuis Vinted puis synchronise ton dressing.");
+  await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
+  await recordRecentResult(job, "failed", msg).catch(() => {});
+  console.warn(`[republish] job ${job.id} : 404 de capture sous la boutique de l'article (${identId || "mono-boutique"}) — annonce disparue, article ${articleDate ? "daté disparu_le" : "NON daté"}`);
+  return { status: "failed", error: msg };
+}
+
 async function processRepublishJob(job, accessToken) {
   const pf = { ...(job.platform_fields ?? {}) };
   // Défaut = 'a_capturer', PREMIÈRE étape de la machine (corrigé le 2026-08-05,
@@ -12669,14 +12875,19 @@ async function processRepublishJob(job, accessToken) {
     // 15 min re-vérifie de toute façon. Lignes héritées (NULL) et identité
     // inconnue (401 ambigu, réseau) : FAIL-OPEN, flux strictement inchangé —
     // le parc mono-boutique ne passe jamais ici.
+    // Boutique d'origine et identité connectée, HISSÉES (2026-09-10) : le
+    // verdict d'un 404 de capture (traiterIntrouvable404Republication) en a
+    // besoin plus bas — aucune requête de plus, on relit ce qui est déjà lu.
+    let boutiqueArticle = "";
+    let identCourante = null;
     if (job.inventaire_id != null) {
       try {
         const inv = await restRequest(
           `inventaire?id=eq.${job.inventaire_id}&select=vinted_account_id`, accessToken,
         );
-        const boutiqueArticle = String(inv?.[0]?.vinted_account_id ?? "").trim();
+        boutiqueArticle = String(inv?.[0]?.vinted_account_id ?? "").trim();
         if (boutiqueArticle) {
-          const identCourante = await identiteVintedDuCycle();
+          identCourante = await identiteVintedDuCycle();
           if (identCourante?.user_id && identCourante.user_id !== boutiqueArticle) {
             // Le pseudo attendu se lit dans la liste des boutiques confirmées
             // — sinon libellé générique, jamais un identifiant à l'écran.
@@ -12733,8 +12944,21 @@ async function processRepublishJob(job, accessToken) {
         await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
         return { status: "needsUser", error: `capture reportée : ${cap.error}` };
       }
-      // Autres causes (annonce introuvable, réseau…) : 'failed' — un statut
-      // terminal déclenche republish_refund_on_terminal (mécanique d'époque).
+      // ── HTTP 404 sur l'endpoint d'ÉDITION du propriétaire (2026-09-10) ────
+      // Deux cas seulement, et il faut les distinguer : Chrome est connecté à
+      // une AUTRE boutique (l'annonce existe, mais pas sous ce compte) → le job
+      // ATTEND ; l'annonce a réellement disparu de Vinted (vendue, retirée,
+      // supprimée) → l'article est daté disparu_le et on le DIT. Avant : un
+      // failed « annonce introuvable » dans les deux cas, article laissé
+      // « en ligne » pour toujours (Robe paysanne d'Ornella : 3 relances, 3
+      // fois le même mur).
+      if (/introuvable sur Vinted \(HTTP 404\)/i.test(String(cap.error ?? ""))) {
+        return await traiterIntrouvable404Republication({
+          accessToken, job, pf, userId, etape: "a_capturer", boutiqueArticle, identCourante,
+        });
+      }
+      // Autres causes (réseau…) : 'failed' — un statut terminal déclenche
+      // republish_refund_on_terminal (mécanique d'époque).
       const msg = `Republication annulée avant toute suppression : ${cap.error}. Ton annonce est intacte.`;
       await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
       return { status: "failed", error: msg };
@@ -12941,12 +13165,16 @@ async function processRepublishJob(job, accessToken) {
           // dit bien que l'annonce n'existe plus (rien à voir avec le 404
           // systématique de /api/v2/items/{id}, endpoint mort). Vendue ou
           // supprimée entre-temps : recapturer n'a pas de sens, on le DIT.
-          const absente = /introuvable sur Vinted/i.test(String(recap.error ?? ""));
-          const msg = absente
-            ? "Republication impossible : cette annonce n'est plus en ligne sur Vinted (vendue ou supprimée entre-temps). " +
-              "FillSell n'a rien supprimé. Si l'article est vendu, marque-le vendu dans l'app ; sinon, republie-le depuis Vinted puis relance."
-            : `Republication en pause AVANT toute suppression : ta capture datait de plus de 24 h et la nouvelle capture a échoué : ${motifLisible(recap.error, 160)}. ` +
-              "Rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app, Chrome ouvert.";
+          if (/introuvable sur Vinted \(HTTP 404\)/i.test(String(recap.error ?? ""))) {
+            // Même verdict que l'étape a_capturer (2026-09-10) : mauvaise
+            // boutique → attente ; indéterminé → attente bornée ; disparue →
+            // article daté disparu_le et job arrêté avec le mot juste. Rien
+            // n'a été supprimé : la recapture précède tout retrait.
+            return await traiterIntrouvable404Republication({ accessToken, job, pf, userId, etape: "captured" });
+          }
+          const msg =
+            `Republication en pause AVANT toute suppression : ta capture datait de plus de 24 h et la nouvelle capture a échoué : ${motifLisible(recap.error, 160)}. ` +
+            "Rien n'a été touché, ton annonce est intacte. Relance la republication depuis l'app, Chrome ouvert.";
           await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
           return { status: "needsUser", error: `recapture en échec : ${recap.error}` };
         }
@@ -14061,6 +14289,16 @@ async function processDeleteJob(job, accessToken) {
       await recordRecentResult(job, "dry_run_completed");
       return { status: "dry_run_completed", trace };
     } else if (result?.needsUser) {
+      if (motifSessionMorte(job.platform, result.error) && job.platform !== "ebay") {
+        // Session morte = attente, jamais une tentative (2026-09-10) — cf.
+        // marquerAttenteSession. Signal sûr (page de connexion vue par le
+        // handler) : répercuté dans extension_sessions pour que le serveur
+        // retienne les autres jobs de la plateforme derrière lui.
+        noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
+          console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
+        await marquerAttenteSession(accessToken, job, result.error);
+        return { status: "needsUser", error: result.error };
+      }
       await rearmBounded(accessToken, job, result.error);
       return { status: "needsUser", error: result.error };
     } else if (result?.success) {
@@ -14071,6 +14309,15 @@ async function processDeleteJob(job, accessToken) {
       await cancelPublishAfterDelete(accessToken, job);
       await recordRecentResult(job, "deleted");
       return { status: "deleted" };
+    } else if (result && !result.success && motifSessionMorte(job.platform, result.error) && job.platform !== "ebay") {
+      // « Page inattendue pour une suppression Beebs : …/fr/auth?… » (deleteListing,
+      // beebs.js) tombait dans le throw → catch → 'failed' SEC, sans même une
+      // reprise (Ornella, jobs f2fc524a et 2f41e4dd du 09/09). C'est une
+      // session morte comme les autres : observation + attente (2026-09-10).
+      noterSessionDeconnectee(accessToken, job.platform).catch((e) =>
+        console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
+      await marquerAttenteSession(accessToken, job, result.error);
+      return { status: "needsUser", error: result.error };
     } else {
       throw new Error(result?.error || "Le content script n'a pas retourné de résultat");
     }

@@ -1016,6 +1016,11 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
         : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: f.field_key };
       const newPf = { ...pf, needsUserAttempts: 0 };
       delete newPf.needsUserField;
+      // Compteur « 72 h d'extension ouverte » (handler-watch, 2026-09-10) :
+      // une relance est un geste — le budget repart de zéro si le job revient
+      // en needs_user. Sans ce retrait, un job relancé puis re-bloqué sur la
+      // même erreur était soldé DANS LA MINUTE (cas Ornella, 4 jobs le 10/09).
+      for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete newPf[k];
       if (!sansValeur) {
         if (target.root) newPf[target.root] = { ...(pf[target.root] ?? {}), [target.key]: v };
         else newPf[target.key] = v;
@@ -5233,6 +5238,12 @@ const StockTab = memo(function StockTab({
       // l'extension repart de zéro sur le budget dd85a95 (5 essais, 5/15/30/60).
       delete pf.next_action_after;
       pf.needsUserAttempts = 0;
+      // Même retrait que le mini-éditeur : le budget « 72 h d'extension
+      // ouverte » repart de zéro à chaque relance (handler-watch, 2026-09-10).
+      for (const k of ['needs_user_tick_le', 'needs_user_actif_ms', 'needs_user_vu_le', 'needs_user_vu_erreur']) delete pf[k];
+      // Une attente de session (session plateforme morte) est levée par la
+      // relance : l'utilisateur dit « j'ai rouvert », on re-sonde tout de suite.
+      delete pf.attente_session;
       pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
       pf.derniere_relance_manuelle = new Date().toISOString();
       // CAS sur le statut : on relance depuis l'état LU (failed, cancelled ou

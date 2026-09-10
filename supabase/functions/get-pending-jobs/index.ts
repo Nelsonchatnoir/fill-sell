@@ -524,6 +524,87 @@ serve(async (req) => {
     let out = (jobs ?? []).filter((j) => !paused.has(j.platform));
     const heldBack = (jobs?.length ?? 0) - out.length;
 
+    // ── SESSION PLATEFORME CONNUE MORTE = ATTENTE, JAMAIS UNE TENTATIVE ─────
+    // (2026-09-10 soir, cas Ornella.) 17 jobs Beebs sont morts sur
+    // beebs.app/fr/auth en brûlant leurs 5 tentatives espacées, alors que
+    // `extension_sessions.beebs = false` et `http.beebs =
+    // 'login_redirect_observee'` étaient EN BASE avant le premier lancement :
+    // on SAVAIT que la session était morte, et on a lancé quand même.
+    //
+    // RÈGLE. Une plateforme dont la session est connue morte (le handler a VU la
+    // page de connexion après une navigation réelle, ou la sonde a vu la
+    // redirection d'auth) ne se voit plus distribuer ses jobs tant que
+    // l'observation est RÉCENTE (< SESSION_MORTE_TTL_MS). Ils RESTENT 'pending',
+    // intacts, aucune tentative consommée, aucune écriture.
+    //
+    // COMMENT ILS REPARTENT. Vinted : la sonde de session (10 min, à chaque
+    // poll) réécrit `vinted` à true/null dès que la session revit — le verrou
+    // tombe seul. Leboncoin, eBay, Beebs : la sonde ne tourne qu'AVANT un job
+    // de la plateforme (et celle de Beebs ne sait pas dire « vivante », SPA
+    // oblige) — retenir sans échéance retiendrait pour toujours. Passé le TTL,
+    // UN SEUL job (le plus ancien) est servi : c'est la sonde. S'il retombe sur
+    // la page de connexion, le handler ré-observe la déconnexion (horodatage
+    // neuf → nouveau TTL) et update-job-status le remet en attente sans
+    // consommer de tentative ; s'il passe, la session est revenue et le reste
+    // suit au poll suivant. Coût maximal d'une session morte : une navigation
+    // par heure, au lieu de cinq tentatives brûlées en deux heures.
+    //
+    // Périmètre : le poll d'EXÉCUTION seul (le popup voit la file entière),
+    // toutes les actions (publier, retirer, republier : aucune ne passe sans
+    // session). Best-effort : lecture illisible → on distribue normalement.
+    const SESSION_MORTE_TTL_MS = 60 * 60 * 1000;
+    let heldSession = 0;
+    type SessionPauseDetail = Record<string, { retenus: number; observee_le: string | null; sonde: string | null }>;
+    let sessionsPause: SessionPauseDetail | null = null;
+    if (!includeProcessing && !includeNeedsUser && out.length) {
+      try {
+        const { data: profS } = await userClient
+          .from("profiles").select("extension_sessions").eq("id", user.id).maybeSingle();
+        const s = (profS?.extension_sessions ?? null) as Record<string, unknown> | null;
+        if (s && typeof s === "object") {
+          const parPf = (s["checked_at_par_plateforme"] ?? {}) as Record<string, unknown>;
+          const mortes = new Map<string, { observeeLe: number; fraiche: boolean }>();
+          for (const pf of ["vinted", "leboncoin", "ebay", "beebs"]) {
+            if (s[pf] !== false) continue; // null = inconnu, true = vivante : jamais retenu
+            const observeeLe = Date.parse(String(parPf[pf] ?? s["checked_at"] ?? ""));
+            // Observation sans horodatage lisible : on ne retient pas sur une
+            // date qu'on n'a pas — on laisse passer, comme avant.
+            if (!Number.isFinite(observeeLe)) continue;
+            mortes.set(pf, { observeeLe, fraiche: Date.now() - observeeLe < SESSION_MORTE_TTL_MS });
+          }
+          if (mortes.size) {
+            const aRetenir = new Set<string>();
+            const detail: SessionPauseDetail = {};
+            for (const [pf, m] of mortes) {
+              const files = out.filter((j) => j.platform === pf);
+              if (!files.length) continue;
+              // `out` est trié par created_at croissant : files[0] est le plus
+              // ancien — c'est lui la sonde quand l'observation a vieilli.
+              const sonde = m.fraiche ? null : files[0];
+              for (const j of files) if (j !== sonde) aRetenir.add(String(j.id));
+              detail[pf] = {
+                retenus: files.length - (sonde ? 1 : 0),
+                observee_le: new Date(m.observeeLe).toISOString(),
+                sonde: sonde ? String(sonde.id) : null,
+              };
+            }
+            heldSession = aRetenir.size;
+            if (heldSession) {
+              out = out.filter((j) => !aRetenir.has(String(j.id)));
+              sessionsPause = detail;
+              console.log(
+                `[get-pending-jobs] userId=${user.id} : session(s) connue(s) morte(s) — ` +
+                Object.entries(detail).map(([pf, d]) =>
+                  `${pf}: ${d.retenus} retenu(s), observée le ${d.observee_le}${d.sonde ? `, sonde = job ${d.sonde.slice(0, 8)}` : ""}`,
+                ).join(" ; ") +
+                ` — jobs laissés en pending, aucune tentative consommée`,
+              );
+            }
+          }
+        }
+      } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+
     // ── UNE REPUBLICATION ORPHELINE N'EST JAMAIS SERVIE (2026-09-06) ────────
     // Supprimer un article n'annulait pas ses REPUBLICATIONS (App.jsx,
     // buildDeletePlan, corrigé le même jour). La FK
@@ -647,6 +728,47 @@ serve(async (req) => {
               `jour ${p.faits}/${p.limite} Paris, séquence ${p.sequence}` +
               (p.pause_apres !== null ? `/${p.pause_apres}` : "") +
               `) → ${heldRepublish} republish retenu(s) en pending jusqu'à ${p.reprise} (étape 'deleted' exemptée)`,
+            );
+          }
+        }
+      } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+
+    // ── COUPE-CIRCUIT : LE RETRAIT VINTED EST RETENU POUR LES CLIENTS
+    // « taille_par_id » (2026-09-10 soir, mesure sur pièces) ───────────────
+    // Sur les recréations jouées par la 0.6.25 (capacité « taille_par_id »)
+    // entre 17:58 et 18:58 Paris : 5 refus « Le champ Couleur doit être
+    // renseigné » (HTTP 400 à la recréation, annonce DÉJÀ retirée) pour 3
+    // abouties, chez 3 comptes — contre 0 refus pour 131 recréations abouties
+    // le même jour sur 0.6.22 → 0.6.24. Cause NON établie (régression du
+    // chantier taille, ou changement Vinted survenu à la même heure : aucune
+    // recréation d'un build antérieur n'a tourné après 16:51). Ce qui est
+    // établi : 5 annonces sont HORS LIGNE et leurs retentatives échouent.
+    // Doctrine « pause AVANT toute suppression » : tant que la cause n'est pas
+    // tranchée, un client qui déclare cette capacité ne se voit plus servir
+    // l'étape 'captured' (celle qui SUPPRIME). 'a_capturer' (lecture seule) et
+    // 'deleted' (annonce déjà hors ligne : la recréation doit toujours pouvoir
+    // se tenter) passent. Interrupteur : coin_config
+    // 'republish_pause_retrait_taille_par_id' = 1 → retenue ; 0, absente ou
+    // illisible → rien de retenu (jamais une retenue sur une panne de lecture).
+    // ⛔ RIEN N'EST REFUSÉ, RIEN N'EST ÉCRIT : les jobs restent 'pending'.
+    let heldRetrait0625 = 0;
+    if (!includeProcessing && !includeNeedsUser && tailleParId &&
+        out.some((j) => j.action === "republish" && j.platform === "vinted" &&
+          (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "captured")) {
+      try {
+        const { data: cfgRetrait } = await userClient
+          .from("coin_config").select("value").eq("key", "republish_pause_retrait_taille_par_id").maybeSingle();
+        if (Number((cfgRetrait as Record<string, unknown> | null)?.value) === 1) {
+          const avant = out.length;
+          out = out.filter((j) =>
+            !(j.action === "republish" && j.platform === "vinted" &&
+              (j.platform_fields as Record<string, unknown> | null)?.["republish_step"] === "captured"));
+          heldRetrait0625 = avant - out.length;
+          if (heldRetrait0625) {
+            console.log(
+              `[get-pending-jobs] userId=${user.id} : coupe-circuit retrait Vinted (client taille_par_id) — ` +
+              `${heldRetrait0625} republish à l'étape 'captured' retenu(s) en pending, aucune suppression servie`,
             );
           }
         }
@@ -1001,7 +1123,9 @@ serve(async (req) => {
       (heldRepublish ? `, ${heldRepublish} republish retenu(s) (${plafondRepublish?.motif ?? "retenue"})` : "") +
       (heldBoutique ? `, ${heldBoutique} job(s) retenu(s) (boutique Vinted non connectée)` : "") +
       (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : "") +
-      (heldLbc ? `, ${heldLbc} leboncoin retenu(s) (un seul dépôt à la fois)` : ""),
+      (heldLbc ? `, ${heldLbc} leboncoin retenu(s) (un seul dépôt à la fois)` : "") +
+      (heldSession ? `, ${heldSession} job(s) retenu(s) (session plateforme connue morte)` : "") +
+      (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : ""),
     );
 
     // ── Contexte du popup (2026-08-04) ──────────────────────────────────────
@@ -1729,6 +1853,9 @@ serve(async (req) => {
       sync_prioritaire: heldSync > 0,
       jobs_retenus_sync: heldSync,
       boutique_pause: boutiquePause,
+      // sessions_pause (2026-09-10) : par plateforme connue morte, combien de
+      // jobs attendent, depuis quelle observation, et quel job sert de sonde.
+      sessions_pause: sessionsPause,
       deja_en_ligne: dejaEnLigne,
       deja_en_file: enFileParPlateforme,
       contexte,
