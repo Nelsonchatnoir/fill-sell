@@ -19,6 +19,7 @@
     "selftest:categorie-garde-fou": "node scripts/categorie-garde-fou-selftest.mjs",
     "selftest:mot-objet-pluriel": "node scripts/mot-objet-pluriel-selftest.mjs",
     "selftest:categorie-par-mot": "node scripts/categorie-par-mot-selftest.mjs",
+    "selftest:famille-categorie": "node scripts/famille-categorie-selftest.mjs",
     "gen:arbres": "node scripts/gen-arbres-feuilles.mjs",
     "selftest:vinted-couleurs": "node scripts/vinted-couleurs-selftest.mjs",
     "selftest:content-scripts": "node scripts/content-scripts-selftest.mjs",

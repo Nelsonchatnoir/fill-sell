@@ -36,8 +36,22 @@ function copieImportable(rel, nomTmp, remplacements = []) {
   tmps.push(p);
   return p;
 }
+// Depuis le 10/09, categorieParMot lit la FAMILLE des feuilles (familleCategorie),
+// qui s'appuie sur le catalogue Vinted, l'arbre Leboncoin et le garde-fou.
+copieImportable("src/utils/vintedCatalogMode.js", ".vintedCatalogMode.selftest.tmp.mjs");
+copieImportable("src/utils/lbcCategories.js", ".lbcCategories.selftest.tmp.mjs");
+copieImportable("src/utils/categorieGardeFou.js", ".categorieGardeFou.selftest.tmp.mjs", [
+  ['from "./vintedCatalogMode"', 'from "./.vintedCatalogMode.selftest.tmp.mjs"'],
+  ['from "./lbcCategories"', 'from "./.lbcCategories.selftest.tmp.mjs"'],
+]);
+copieImportable("src/utils/familleCategorie.js", ".familleCategorie.selftest.tmp.mjs", [
+  ['from "./vintedCatalogMode"', 'from "./.vintedCatalogMode.selftest.tmp.mjs"'],
+  ['from "./lbcCategories"', 'from "./.lbcCategories.selftest.tmp.mjs"'],
+  ['from "./categorieGardeFou"', 'from "./.categorieGardeFou.selftest.tmp.mjs"'],
+]);
 const pMot = copieImportable("src/utils/categorieParMot.js", ".categorieParMot.selftest.tmp.mjs", [
   ['from "./texteComparable"', 'from "./texteComparable.js"'],
+  ['from "./familleCategorie"', 'from "./.familleCategorie.selftest.tmp.mjs"'],
 ]);
 const mot = await import(pathToFileURL(pMot).href);
 
@@ -95,6 +109,30 @@ check("« Taies d'oreiller » et « taie d'oreiller » donnent les mêmes jetons
 check("« de / des / autres » ne comptent pas",
   mot.jetons("Autres accessoires de la maison").join(" ") === "maison",
   `(${JSON.stringify(mot.jetons("Autres accessoires de la maison"))})`);
+
+console.log("\n6. La FAMILLE filtre comme le genre (cas dddc7f2a du 10/09, salopette de mode) :");
+// Sans famille : la seule feuille eBay contenant « salopette » est celle des
+// vêtements de mécanicien (Auto, moto) — elle devenait l'unique candidate, donc
+// le choix de l'IA, pour une salopette d'homme.
+const salopetteSansFamille = await mot.candidatsParMot("salopette", "ebay", { genre: "Homme" });
+check("sans famille : « Combinaisons, salopettes » (Auto, moto) est candidate",
+  salopetteSansFamille.some((c) => /auto, moto/i.test(c.chemin[0]) && /salopette/i.test(c.chemin.at(-1))),
+  `(${salopetteSansFamille.map((c) => c.chemin.join(" > ")).join(" | ") || "aucune"})`);
+const salopetteMode = await mot.candidatsParMot("salopette", "ebay", { genre: "Homme", famille: "mode" });
+check("famille mode : plus AUCUNE candidate Auto, moto",
+  !salopetteMode.some((c) => /auto, moto/i.test(c.chemin[0])),
+  `(${salopetteMode.map((c) => c.chemin.join(" > ")).join(" | ") || "aucune"})`);
+const salopetteResolue = await mot.resoudreParMot("salopette", "ebay", { genre: "Homme", famille: "mode" });
+check("resoudreParMot : rien de posé, et le motif dit qu'une feuille d'une autre famille a été écartée",
+  salopetteResolue.chemin === null && /autre famille/.test(salopetteResolue.motif), `(${salopetteResolue.motif})`);
+// Une feuille de la BONNE famille n'est jamais écartée par le filtre.
+const taieMaison = await mot.resoudreParMot("taie d'oreiller", "ebay", { famille: "maison" });
+check("« taie d'oreiller » + famille maison → toujours la feuille eBay exacte",
+  taieMaison.certitude === "exact", `(${taieMaison.motif})`);
+// Une famille inconnue (null) ne filtre rien : comportement d'avant.
+const salopetteNull = await mot.candidatsParMot("salopette", "ebay", { genre: "Homme", famille: null });
+check("famille inconnue → liste identique à « sans famille »",
+  JSON.stringify(salopetteNull) === JSON.stringify(salopetteSansFamille));
 
 for (const p of tmps) fs.unlinkSync(p);
 console.log(echecs ? `\n${echecs} ÉCHEC(S)` : "\nTout est vert.");

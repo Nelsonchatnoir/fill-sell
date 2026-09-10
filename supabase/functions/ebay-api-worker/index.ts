@@ -185,14 +185,24 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     // ≤ 300 caractères, sans identifiant ni marqueur technique : au-delà,
     // l'app remplace le message par « un imprévu technique » (humanizeJobError)
     // et le choix n'est jamais vu. Le détail complet est dans last_diagnostic.
-    const msg = mappee
-      ? `Catégorie eBay à confirmer : l'app classe cet article en « ${feuille(cheminMappe)} » (${racine(cheminMappe)}), eBay le voit plutôt en « ${feuille(topChemin)} » (${racine(topChemin)}). Relance pour garder la catégorie de l'app, ou change l'icône / le genre de l'article pour en choisir une autre.`
-      : `Aucune catégorie eBay n'a pu être posée pour cet article. Change l'icône / le genre de l'article depuis la fiche, puis relance.`;
+    // ── LE MESSAGE (2026-09-10, décision Nico) : quand eBay contredit notre
+    // catégorie, on ne défend plus la nôtre par défaut. Le message dit que
+    // celle d'eBay est probablement la bonne, et relancer = la prendre
+    // (resoudreCategorie, branche « relance après à confirmer »). Un mapping
+    // refusé par le contrôle de famille de l'app (sansMapping) n'est jamais
+    // présenté comme une option.
+    const sansMapping = !mappee || Boolean((categorie as { sansMapping?: boolean }).sansMapping);
+    const msg = !sansMapping
+      ? `Catégorie eBay à confirmer : eBay classe cet article en « ${feuille(topChemin)} » (${racine(topChemin)}), l'app en « ${feuille(cheminMappe)} », probablement à tort. Relance pour publier dans la catégorie d'eBay ; pour une autre catégorie, change l'icône ou le genre de l'article avant de relancer.`
+      : mappee
+        ? `Aucune catégorie eBay sûre pour cet article : celle de l'app (« ${feuille(cheminMappe)} ») est hors du rayon de l'objet et eBay n'en propose pas de meilleure. Change l'icône ou le genre de l'article depuis la fiche, puis relance.`
+        : `Aucune catégorie eBay n'a pu être posée pour cet article. Change l'icône / le genre de l'article depuis la fiche, puis relance.`;
     // ebayCategorieAttente : posé ICI, lu à la relance — relancer sans rien
-    // changer vaut confirmation du mapping de l'app (jamais une boucle).
+    // changer = prendre la proposition d'eBay (jamais une boucle automatique).
     job.platform_fields = { ...(job.platform_fields ?? {}), ebayCategorieAttente: { mapping: mappee || null, choix: categorie.choix, at: new Date().toISOString() } };
-    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "categorie", quoi: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, motif: categorie.motif, suggestions: categorie.suggestions, ...diagAttributs });
-    return { job: job.id, issue: "needs_user", motif: mappee ? "categorie_a_confirmer" : "categorie_a_choisir", choix: categorie.choix, detail: categorie.motif };
+    const quoi = !sansMapping ? "categorie_a_confirmer" : "categorie_a_choisir";
+    await marquer(admin, job, { status: "needs_user", error: msg }, { etape: "categorie", quoi, choix: categorie.choix, motif: categorie.motif, suggestions: categorie.suggestions, ...diagAttributs });
+    return { job: job.id, issue: "needs_user", motif: quoi, choix: categorie.choix, detail: categorie.motif };
   }
   const categoryId = categorie.id;
   if (categorie.source !== "mapping" && categorie.source !== "mapping_confirme_par_relance") {
@@ -419,7 +429,7 @@ const CONTROLE_CATEGORIE_PAR_SUGGESTION = true;
 // résolution — « jamais en silence » : on doit pouvoir relire pourquoi la
 // règle a gardé le mapping ou demandé un choix.
 interface ResumeSuggestions { titre_interroge: string; n: number; racine_top: string | null; meme_racine_que_top: number; mapping_dans_liste: boolean; liste: string[] }
-type Categorie = { id: string; chemin: string[]; source: string; detail?: string; suggestions: ResumeSuggestions } | { choix: Array<{ id: string; chemin: string }>; motif: string; suggestions: ResumeSuggestions };
+type Categorie = { id: string; chemin: string[]; source: string; detail?: string; suggestions: ResumeSuggestions } | { choix: Array<{ id: string; chemin: string }>; motif: string; suggestions: ResumeSuggestions; sansMapping?: boolean };
 // ⚠️ 06/09 : le titre du job est le titre eBay RACCOURCI (« La Méthode
 // Delavier de Musculation pour la Femme ») ; interrogé tel quel, eBay
 // répondait 3 Livres / 6 Sports et la règle gardait Haltères — publié deux
@@ -613,6 +623,23 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
     //     mapping.
     //   Relevé : Adidas (mapping 3e des 10) → gardé ; Delavier (6/9 Livres,
     //   mapping Haltères absent) → needs_user ; sweat (1 seule) → gardé.
+    // ── HORS FAMILLE (2026-09-10, cas dddc7f2a « Salopette » → Vêtements
+    // mécanicien) : le contrôle de plausibilité de l'app a REFUSÉ notre
+    // mapping (famille du chemin ≠ famille certaine de l'objet) et l'a flagué
+    // incertain — la règle n°2 ci-dessus vient donc de tenter la suggestion
+    // d'eBay. Aucune retenue : on ne publie JAMAIS dans une famille fausse, on
+    // demande. Relancer sans rien changer redemande — c'est un geste, pas une
+    // boucle automatique.
+    const plausibilite = (pf as Record<string, unknown>).categorie_plausibilite as Record<string, unknown> | undefined;
+    const horsFamille = Boolean(plausibilite && typeof plausibilite === "object" && plausibilite.verdict === "hors_famille");
+    if (horsFamille) {
+      return {
+        choix: suggestions.slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
+        motif: `classé par l'app en « ${cheminMappe.join(" > ")} » (${mappee}) — hors de la famille de l'objet (${String(plausibilite?.famille_objet ?? "?")}, source ${String(plausibilite?.source_famille ?? "?")}) ; aucune suggestion eBay retenue (${suggestions.length} reçues)`,
+        suggestions: resume,
+        sansMapping: true,
+      };
+    }
     if (CONTROLE_CATEGORIE_PAR_SUGGESTION && top && top.id !== mappee) {
       const n = suggestions.length;
       const mappeeDansLaListe = suggestions.some((x) => x.id === mappee);
@@ -620,12 +647,32 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
       const racineTop = String(top.chemin[0] ?? "");
       const memeRacineQueTop = suggestions.filter((x) => (x.chemin[0] ?? "") === racineTop).length;
       const dejaTranche = Boolean((pf as Record<string, unknown>).ebayCategorieAttente);
-      if (!dejaTranche && n >= 3 && !mappeeDansLaListe && racineTop && racineTop !== racineMappee) {
+      const racineContestee = n >= 3 && !mappeeDansLaListe && Boolean(racineTop) && racineTop !== racineMappee;
+      if (racineContestee && !dejaTranche) {
         return {
           choix: suggestions.slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
           motif: `classé par l'app en « ${cheminMappe.join(" > ")} » (${mappee}) ; eBay le voit plutôt en « ${racineTop} » (${memeRacineQueTop} suggestions sur ${n}, la 1re : ${top.chemin.join(" > ")})`,
           suggestions: resume,
         };
+      }
+      // ── RELANCE APRÈS « à confirmer » (2026-09-10, décision Nico) : on ne
+      // défend plus notre catégorie par défaut. eBay a contredit la racine,
+      // l'utilisateur a relancé sans rien changer = il prend la proposition
+      // d'eBay, choisie DANS ses suggestions par l'IA (jamais la n°1 aveugle :
+      // fausse 4 fois sur 8, mesuré). Rien de retenu → ancien comportement
+      // (mapping confirmé par la relance), tracé comme tel.
+      if (racineContestee && dejaTranche) {
+        const retenu = await choisirParmiSuggestions(suggestions, {
+          titre, genre: pf.genre as string | null, taille: pf.taille as string | null,
+          marque: pf.marque as string | null, userId: (pf as Record<string, unknown>).__userId as string | null,
+        }, (pf as Record<string, unknown>).__admin as SupabaseClient | undefined);
+        if (retenu) {
+          return {
+            id: retenu.id, chemin: retenu.chemin, source: "suggestion_apres_confirmation",
+            detail: `racine contestée par eBay ; relance sans changement = proposition d'eBay retenue « ${retenu.chemin.join(" > ")} » (${retenu.id}) à la place de « ${cheminMappe.join(" > ")} » (${mappee})`,
+            suggestions: resume,
+          };
+        }
       }
     }
     // Garde famille livres (lot 1) : la fiche Lens dit « livres_medias » et le

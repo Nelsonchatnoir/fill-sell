@@ -23,6 +23,7 @@ import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, get
 import { lbcProduitsDependants, lbcClePremierCombobox } from "../utils/lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "../utils/categorieGardeFou";
 import { resoudreParMot, candidatsParMot } from "../utils/categorieParMot";
+import { familleDeLObjet, plausibiliteDuChemin } from "../utils/familleCategorie";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
@@ -6668,13 +6669,32 @@ export default function ListingPreviewScreen({
       }
       const motCategorie = activeAiObjet ?? motCleTitre ?? null;
       const motCategorieSource = activeAiObjet ? "ia" : (motCleTitre ? "mot_cle" : null);
+      // ══ LA FAMILLE DE L'OBJET — SOURCES CERTAINES SEULEMENT (2026-09-10) ══
+      // Cas fondateur : « Salopette Le Mont Saint Michel » (Victor, dddc7f2a),
+      // catalogue Vinted Hommes > Vêtements, partie sur eBay en « Auto, moto >
+      // Vêtements mécanicien > Combinaisons, salopettes » : la seule feuille
+      // eBay qui contient « salopette », passée au genre (aucune branche
+      // genrée), retenue par l'IA faute d'autre candidate. Rien ne comparait
+      // la FAMILLE du chemin à celle de l'objet. Désormais la famille de l'objet
+      // (catalogue Vinted, icône d'autorité, taille de vêtement — jamais un
+      // mot ou une icône devinés) filtre les feuilles candidates comme le genre
+      // le fait déjà, et contrôle le chemin final avant l'insert (bloc
+      // PLAUSIBILITÉ plus bas). Famille inconnue → rien ne change.
+      const pfFamille = edited[plateformesAPublier[0]]?.platform_fields ?? {};
+      const detIconeFamille = resolveArticleIconDetail({ initialListing, edited, pf: pfFamille, aiIcon: activeAiIcon, aiObjet: activeAiObjet });
+      const familleObjetDetail = familleDeLObjet({
+        catalogId: catalogVintedFiche, icone: detIconeFamille.icon, sourceIcone: detIconeFamille.source,
+        taille: sharedFields.taille || initialListing?.taille || "",
+      });
+      const familleObjet = familleObjetDetail.famille;
+      if (familleObjet) console.log(`[publish] famille de l'objet : ${familleObjet} (source ${familleObjetDetail.source})`);
       const categorieParMotParPf = {};
       if (motCategorie) {
         await Promise.all(plateformesAPublier.map(async (platform) => {
           const pfE = edited[platform]?.platform_fields ?? {};
           const genrePf = pfE.genre || pfE.univers || autoGenre || "";
           try {
-            const r = await resoudreParMot(motCategorie, platform, { genre: genrePf });
+            const r = await resoudreParMot(motCategorie, platform, { genre: genrePf, famille: familleObjet });
             if (r.certitude === "exact") categorieParMotParPf[platform] = r;
           } catch (e) {
             console.warn(`[publish] ${platform} — arbre indisponible pour « ${motCategorie} » :`, e?.message ?? e);
@@ -6715,6 +6735,7 @@ export default function ListingPreviewScreen({
             const liste = await candidatsParMot(motCategorie, platform, {
               genre: pfE.genre || pfE.univers || autoGenre || "",
               titre: edited[platform]?.title || initialListing?.titre || "",
+              famille: familleObjet,
             });
             if (liste.length) candidats[platform] = liste.map(c => ({ chemin: c.chemin, id: c.id }));
           } catch { /* arbre indisponible : on garde l'icône */ }
@@ -7209,6 +7230,46 @@ export default function ListingPreviewScreen({
               pf.categorie_incertaine = true;
               if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
             }
+          }
+        }
+      }
+      // ══ PLAUSIBILITÉ DU CHEMIN FINAL — LA FAMILLE (2026-09-10) ══════════
+      // Dernier contrôle avant l'insert, sur les quatre plateformes, quelle
+      // que soit l'origine du chemin (mot, IA parmi candidats, icône, garde-
+      // fou, vérification) : un chemin dont la famille est CONNUE et
+      // INCOMPATIBLE avec la famille CERTAINE de l'objet ne part pas tel quel.
+      //   · Beebs : aucune suggestion de plateforme → le job part SANS chemin
+      //     et l'extension demande (categorie_a_choisir), comme pour une
+      //     incohérence de mot.
+      //   · Vinted, Leboncoin, eBay : chemin gardé mais FLAGUÉ incertain → la
+      //     suggestion de la plateforme gagne (règle n°2, déjà câblée) ; le
+      //     worker eBay, sans suggestion retenue, DEMANDE au lieu de publier
+      //     dans une famille fausse (jamais une catégorie approchée en silence).
+      // ⛔ Famille de l'objet inconnue → rien à contrôler, rien ne change.
+      if (familleObjet) {
+        const cheminDe = (platform, pf) =>
+          platform === "vinted" ? pf.categoryPath
+            : platform === "beebs" ? pf.beebsCategoryPath
+              : platform === "leboncoin" ? pf.lbcCategoryPath
+                : pf.ebayCategoryPath;
+        for (const row of rows) {
+          const pf = row.platform_fields;
+          const chemin = cheminDe(row.platform, pf);
+          if (!Array.isArray(chemin) || !chemin.length) continue;
+          const verdict = plausibiliteDuChemin(row.platform, chemin, familleObjet);
+          if (verdict.ok) continue;
+          pf.categorie_plausibilite = {
+            verdict: "hors_famille", famille_objet: familleObjet, source_famille: familleObjetDetail.source,
+            famille_chemin: verdict.familleChemin, chemin_ecarte: chemin, source_avant: pf.categorie_source ?? null,
+          };
+          pf.categorie_source = "hors_famille";
+          console.warn(`[publish] ${row.platform} — chemin « ${chemin.join(" > ")} » (famille ${verdict.familleChemin}) HORS de la famille de l'objet (${familleObjet}, ${familleObjetDetail.source}) — il ne part pas tel quel`);
+          if (row.platform === "beebs") {
+            delete pf.beebsCategoryPath;
+            pf.categorie_a_choisir = { objet: motCategorie ?? null, chemin_ecarte: chemin, motif: "hors_famille" };
+          } else {
+            pf.categorie_incertaine = true;
+            if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
           }
         }
       }

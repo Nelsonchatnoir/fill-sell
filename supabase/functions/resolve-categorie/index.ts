@@ -64,6 +64,7 @@ RÈGLES ABSOLUES :
 - Tu ne peux répondre QUE par une clé présente dans la liste de cette plateforme. Jamais un libellé, jamais une catégorie inventée, jamais une clé d'une autre plateforme.
 - Si AUCUNE catégorie de la liste ne convient vraiment, réponds null pour cette plateforme. C'est une bonne réponse, pas un échec : mieux vaut rien qu'un rayon faux.
 - Juge l'OBJET, pas les mots. Un bonnet de bébé n'est ni un bonnet de bain (natation) ni un bonnet de douche (salle de bain). Une chapka est un chapeau. Une taie d'oreiller est du linge de lit, pas un soin du visage.
+- Le RAYON doit être celui de l'objet, même quand le nom de la catégorie contient le bon mot : une salopette de mode n'est pas une « combinaison, salopette » de mécanicien (Auto, moto), un robot cuiseur n'est pas un ordinateur, une voiture miniature n'est pas un pinceau. Si toutes les catégories proposées pour une plateforme sont dans un rayon qui n'est pas celui de l'objet, réponds null pour cette plateforme.
 - Respecte le genre et l'âge indiqués : un article de bébé ne va pas dans un rayon adulte.
 
 Réponds UNIQUEMENT du JSON valide, de la forme :

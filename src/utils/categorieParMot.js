@@ -22,6 +22,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { texteComparable } from "./texteComparable";
+import { familleDeChemin, famillesCompatibles } from "./familleCategorie";
 
 const CACHE = new Map();
 
@@ -127,11 +128,16 @@ function genreNormalise(genre) {
  * @param {string} mot        le nom rendu par l'IA (« taie d'oreiller »)
  * @param {string} plateforme "vinted" | "ebay" | "beebs" | "leboncoin"
  * @param {object} [opts]
- * @param {string} [opts.genre] genre de la fiche, s'il est connu
+ * @param {string} [opts.genre]   genre de la fiche, s'il est connu
+ * @param {string} [opts.famille] famille CERTAINE de l'objet (familleDeLObjet),
+ *                                s'il en a une — une feuille d'une autre
+ *                                famille est écartée comme une branche d'un
+ *                                autre genre (salopette de mode ≠ combinaison
+ *                                de mécanicien, cas dddc7f2a du 10/09)
  * @returns {Promise<{chemin: string[]|null, id: string|null, certitude: "exact"|null,
  *                    candidats: Array<{chemin: string[], id: string|null}>, motif: string}>}
  */
-export async function resoudreParMot(mot, plateforme, { genre = "" } = {}) {
+export async function resoudreParMot(mot, plateforme, { genre = "", famille = null } = {}) {
   const vide = { chemin: null, id: null, certitude: null, candidats: [], motif: "" };
   const jm = jetons(mot);
   if (!jm.length) return { ...vide, motif: "aucun mot exploitable" };
@@ -143,8 +149,12 @@ export async function resoudreParMot(mot, plateforme, { genre = "" } = {}) {
   const accepte = g ? new Set(ACCEPTE[g] ?? [g]) : null;
   // Une feuille GENRÉE est écartée quand la fiche dit un autre genre. Une
   // feuille SANS genre (Maison, Électronique…) passe toujours : le genre n'y
-  // veut rien dire.
+  // veut rien dire. Même règle pour la FAMILLE : une feuille dont la famille
+  // est connue et incompatible avec celle de l'objet est écartée ; une feuille
+  // de famille inconnue passe.
+  let horsFamille = 0;
   const compatible = (f) => {
+    if (famille && !famillesCompatibles(famille, familleDeChemin(plateforme, f.chemin))) { horsFamille++; return false; }
     if (!accepte) return true;
     const b = brancheGenre(f.chemin);
     return b === null || accepte.has(b);
@@ -172,14 +182,15 @@ export async function resoudreParMot(mot, plateforme, { genre = "" } = {}) {
   // seulement des voisins : AUCUNE décision ici. On rend les candidats — au
   // plus 20, l'ordre des relevés — et l'appelant tranche par l'étape 3 ou 4.
   const candidats = (exactsOk.length ? exactsOk : proches.filter(compatible)).slice(0, 20);
+  const noteFamille = horsFamille ? ` (${horsFamille} feuille(s) d'une autre famille que « ${famille} » écartée(s))` : "";
   return {
     ...vide,
     candidats,
-    motif: exactsOk.length
+    motif: (exactsOk.length
       ? `« ${mot} » correspond à ${exactsOk.length} feuilles ${plateforme} — genre insuffisant pour trancher`
       : candidats.length
         ? `« ${mot} » n'a aucune feuille exacte dans l'arbre ${plateforme} — ${candidats.length} voisines`
-        : `« ${mot} » est inconnu de l'arbre ${plateforme}`,
+        : `« ${mot} » est inconnu de l'arbre ${plateforme}`) + noteFamille,
   };
 }
 
@@ -202,7 +213,7 @@ export async function resoudreParMot(mot, plateforme, { genre = "" } = {}) {
  *    Les suggestions de la plateforme, elles, sont ajoutées par l'appelant qui
  *    les possède (le worker eBay les a ; l'app ne les a pas).
  */
-export async function candidatsParMot(mot, plateforme, { genre = "", titre = "", max = 20 } = {}) {
+export async function candidatsParMot(mot, plateforme, { genre = "", titre = "", max = 20, famille = null } = {}) {
   const jm = jetons(mot);
   if (!jm.length) return [];
   const feuilles = await feuillesDe(plateforme);
@@ -215,6 +226,11 @@ export async function candidatsParMot(mot, plateforme, { genre = "", titre = "",
 
   const notes = [];
   for (const f of feuilles) {
+    // ⛔ La FAMILLE filtre comme le genre : une feuille d'une autre famille que
+    //    l'objet n'entre jamais dans la liste soumise à l'IA — c'est ainsi que
+    //    « Combinaisons, salopettes » (Auto, moto) était devenue la seule
+    //    candidate d'une salopette de mode, et donc son choix (10/09).
+    if (famille && !famillesCompatibles(famille, familleDeChemin(plateforme, f.chemin))) continue;
     if (accepte) {
       const b = brancheGenre(f.chemin);
       if (b !== null && !accepte.has(b)) continue;
