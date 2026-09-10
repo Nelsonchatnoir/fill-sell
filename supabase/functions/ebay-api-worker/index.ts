@@ -96,12 +96,19 @@ function messageRefus(quoi: string, http: number, e: ErreurEbay) {
     motif: null,
   };
 }
-/** Ce que le refus ajoute au diagnostic : le motif nommé, et le texte
- *  générique d'eBay qu'on a cessé d'afficher. */
+/** Ce que le refus ajoute au diagnostic : le motif nommé, le texte générique
+ *  d'eBay qu'on a cessé d'afficher, et le CORPS BRUT de sa réponse.
+ *  Le brut est là depuis le 10/09 parce qu'on a cherché en vain, sur le refus
+ *  KYC de Victor, si eBay joignait un lien vers la page de vérification :
+ *  `lireErreurEbay` ne gardait que `errors[0]`, tout le reste était jeté sans
+ *  trace. À la prochaine occurrence, la question se tranchera en une requête.
+ *  ⛔ Ce champ ne s'affiche JAMAIS : il vit dans last_diagnostic, pas à l'écran
+ *  (règle du 02/09 — aucun diagnostic sous les yeux de l'utilisateur). */
 function diagRefus(e: ErreurEbay, motif: ReturnType<typeof messageRefus>["motif"]) {
-  return motif
-    ? { motif_ebay: motif.code, motif_nomme: motif.nomme, message_ebay_generique: e.message }
-    : {};
+  return {
+    ...(motif ? { motif_ebay: motif.code, motif_nomme: motif.nomme, message_ebay_generique: e.message } : {}),
+    ...(e.brut ? { brut: e.brut } : {}),
+  };
 }
 
 // 4xx eBay = faute de contenu ou de compte → needs_user (le message dit quoi) ;

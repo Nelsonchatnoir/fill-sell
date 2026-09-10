@@ -21,17 +21,37 @@ export const MARKETPLACE = "EBAY_FR";
 export const ARBRE_FR = "71";
 
 // ── Erreurs eBay REST : premier message lisible + errorId ───────────────────
-export interface ErreurEbay { errorId: number | null; message: string; parametres?: string; params?: Array<{ name: string; value: string }>; }
+export interface ErreurEbay {
+  errorId: number | null;
+  message: string;
+  parametres?: string;
+  params?: Array<{ name: string; value: string }>;
+  /** Le CORPS BRUT de la réponse eBay, tronqué (2026-09-10). Jusqu'ici
+   *  lireErreurEbay ne gardait que `errors[0]` et ses `parameters` : une URL de
+   *  redirection, une seconde entrée d'`errors` ou un champ de premier niveau
+   *  étaient JETÉS sans que personne le sache — c'est précisément ce qui a
+   *  empêché de répondre « eBay donne-t-il un lien vers la vérification ? » sur
+   *  le refus KYC de Victor. Il part dans `last_diagnostic.brut`, jamais à
+   *  l'écran : c'est de la matière d'enquête, pas un message. */
+  brut?: string;
+}
+
+/** Le corps brut, tronqué à 2 000 caractères : `texte` quand il existe (c'est
+ *  la réponse telle qu'eBay l'a écrite), sinon la re-sérialisation du json. */
+function brutEbay(texte: string, json: unknown): string | undefined {
+  const t = texte && texte.trim() ? texte : (json == null ? "" : JSON.stringify(json));
+  return t ? t.slice(0, 2000) : undefined;
+}
 export function lireErreurEbay(json: unknown, texte: string): ErreurEbay {
   const errs = (json as { errors?: Array<{ errorId?: number; message?: string; longMessage?: string; parameters?: Array<{ name?: string; value?: string }> }> } | null)?.errors;
   if (Array.isArray(errs) && errs.length) {
     const e = errs[0];
     const params = (e.parameters ?? []).map((p) => `${p.name ?? "?"}=${p.value ?? ""}`).join(", ");
-    return { errorId: e.errorId ?? null, message: String(e.longMessage ?? e.message ?? "").slice(0, 400), parametres: params || undefined, params: (e.parameters ?? []).map((p) => ({ name: String(p.name ?? ""), value: String(p.value ?? "") })) };
+    return { errorId: e.errorId ?? null, message: String(e.longMessage ?? e.message ?? "").slice(0, 400), parametres: params || undefined, params: (e.parameters ?? []).map((p) => ({ name: String(p.name ?? ""), value: String(p.value ?? "") })), brut: brutEbay(texte, json) };
   }
   const warns = (json as { warnings?: Array<{ message?: string }> } | null)?.warnings;
-  if (Array.isArray(warns) && warns.length) return { errorId: null, message: String(warns[0].message ?? "").slice(0, 400) };
-  return { errorId: null, message: texte.slice(0, 300) };
+  if (Array.isArray(warns) && warns.length) return { errorId: null, message: String(warns[0].message ?? "").slice(0, 400), brut: brutEbay(texte, json) };
+  return { errorId: null, message: texte.slice(0, 300), brut: brutEbay(texte, json) };
 }
 
 // ══════════════════════════════════════════════════════════════════════════
