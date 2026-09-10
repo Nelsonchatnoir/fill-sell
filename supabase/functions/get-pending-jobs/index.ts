@@ -1567,6 +1567,9 @@ serve(async (req) => {
     // ⛔ PUREMENT INFORMATIF : rien ici ne filtre, ne retient ni ne décale un
     // job. La file servie (`out`) est la même, ligne pour ligne.
     let dejaEnLigne: { inventaire_id: string; plateformes: Record<string, boolean> } | null = null;
+    // « Déjà en file » (2026-09-10) : plateformes ou un job VIVANT existe deja
+    // pour ce meme article. Sœur de dejaEnLigne, jamais melangee avec elle.
+    let enFileParPlateforme: Record<string, boolean> | null = null;
     if (includeNeedsUser) {
       try {
         // Le MÊME choix d'article que le popup (firstAnnonce) : jobs de dépôt
@@ -1609,6 +1612,58 @@ serve(async (req) => {
           } else {
             console.warn(`[get-pending-jobs] déjà en ligne : lecture cross_post_jobs refusée (${pubsErr.message}) — cases inchangées`);
           }
+
+          // ── « DÉJÀ EN FILE » (2026-09-10, boardshort de geronimo) ──────────
+          // CE QUI S'EST PASSÉ : son job Leboncoin du 05/09 est resté PENDING
+          // QUATRE JOURS (extension éteinte). Le 06/09 il a regénéré l'annonce
+          // — nouveau titre — et un SECOND job est né pour le même article. Le
+          // 09/09 l'extension a vidé la file : les deux sont partis, à onze
+          // minutes d'écart, et il a aujourd'hui le même boardshort en vente
+          // deux fois sur Leboncoin (3266347704 et 3266354336, 25 € chacun).
+          // La case « déjà en ligne » ci-dessus ne pouvait rien y faire : elle
+          // n'interroge que `status = 'published'`, et le premier job n'était
+          // pas publié — il ATTENDAIT. On mesure donc aussi les jobs VIVANTS.
+          // DÉCLENCHEUR RÉEL : une file longue. Tant qu'il y a des comptes dont
+          // l'extension ne tourne pas, le cas se reproduira — mesuré sur tout
+          // le parc au 10/09 : 2 articles concernés (geronimo, Carla), pas plus.
+          //
+          // ⛔ INFORMATIF, comme la case ci-dessus : rien ici ne filtre, ne
+          // retient ni ne décale un job. La file servie est la même, ligne pour
+          // ligne. L'utilisateur VOIT « déjà en file » et ne recrée pas le job —
+          // c'est l'information qui évite le doublon, jamais un mur silencieux.
+          // ⛔ NI republish NI delete : une republication est un cycle NORMAL,
+          //    pas un doublon. `action = 'publish'` strictement.
+          // ⛔ Ni 'cancelled' ni 'failed' : un job mort ne retient rien. Une
+          //    relance manuelle repasse en 'pending' et compte alors comme
+          //    vivante, ce qui est vrai — et reste informatif, donc elle n'est
+          //    jamais empêchée.
+          // ⛔ Les jobs SERVIS dans ce même cycle sont exclus : ils sont déjà
+          //    représentés par leur propre état dans le popup, se compter
+          //    soi-même afficherait « déjà en file » sur l'envoi en cours.
+          const enFile: Record<string, boolean> = {};
+          const { data: vivants, error: vivErr } = await userClient
+            .from("cross_post_jobs")
+            .select("id, platform")
+            .eq("inventaire_id", tete.inventaire_id)
+            .in("platform", ["vinted", "leboncoin", "ebay", "beebs"])
+            .eq("action", "publish")
+            .in("status", ["pending", "processing", "needs_user"]);
+          if (!vivErr) {
+            const servis = new Set(out.filter((j) => j.inventaire_id === tete.inventaire_id).map((j) => String(j.id)));
+            const enCours = new Set(
+              (vivants ?? []).filter((v) => !servis.has(String(v.id))).map((v) => String(v.platform)),
+            );
+            for (const pf of ["vinted", "leboncoin", "ebay", "beebs"]) {
+              if (enCours.has(pf)) enFile[pf] = true;
+            }
+          } else {
+            console.warn(`[get-pending-jobs] déjà en file : lecture refusée (${vivErr.message}) — clé absente, aucune case par défaut`);
+          }
+          // Champ SŒUR de `plateformes`, jamais une clé DANS lui : le popup
+          // actuel lit `plateformes[<clé plateforme>]` et ignore ce qu'il ne
+          // connaît pas. Une 0.6.25 n'en verra donc rien changer — c'est la
+          // 0.6.26 qui affichera « déjà en file ». Aucune régression possible.
+          if (Object.keys(enFile).length) enFileParPlateforme = enFile;
           if (Object.keys(plateformes).length) {
             dejaEnLigne = { inventaire_id: String(tete.inventaire_id), plateformes };
           }
@@ -1675,6 +1730,7 @@ serve(async (req) => {
       jobs_retenus_sync: heldSync,
       boutique_pause: boutiquePause,
       deja_en_ligne: dejaEnLigne,
+      deja_en_file: enFileParPlateforme,
       contexte,
       plafond_republish: plafondRepublish,
     });

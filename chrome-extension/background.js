@@ -3315,6 +3315,13 @@ async function processJob(rawJob, accessToken) {
       let beebsProductId = null;
       if (job.platform === "beebs") {
         beebsProductId = await beebsCapturedProductId(tabId, accessToken, job).catch(() => null);
+        // Identité du vendeur Beebs (2026-09-10) : relue dans les MÊMES
+        // captures, écrite à côté. Fire-and-forget — le dépôt n'attend pas et
+        // ne peut pas échouer pour ça. C'est elle qui permettra, plus tard, de
+        // retrouver SES annonces sans risquer celles d'un autre vendeur.
+        beebsCapturedIdentite(tabId)
+          .then((ident) => (ident ? noterIdentiteBeebs(accessToken, ident) : null))
+          .catch(() => {});
       }
 
       // Beebs : dépôt CONFIRMÉ mais annonce en MODÉRATION (« il sera mis en
@@ -6484,6 +6491,72 @@ async function beebsCapturedProductId(tabId, accessToken, job) {
     console.log("[background] Beebs : sonde réseau sans aucune capture — rien à apprendre sur ce dépôt");
   }
   return null;
+}
+
+// ── IDENTITÉ BEEBS DU VENDEUR (2026-09-10) ───────────────────────────────────
+// POURQUOI. 13 jobs Beebs du parc sont « publiés sans lien » ou « publication
+// non confirmée » : l'annonce existe peut-être, on ne sait pas où. Le seul
+// moyen de retrouver LES SIENNES sans risquer d'attraper celles d'un autre
+// vendeur est de filtrer par son identifiant Beebs — que nous n'avons NULLE
+// PART (vérifié le 10/09 sur tout le parc : extension_sessions.beebs ne porte
+// qu'un booléen, les URLs /fr/p/<id> portent l'id du PRODUIT, et les pages
+// publiques n'exposent aucun vendeur). Sans lui, un « Polo Scott homme L »
+// trouvé chez quelqu'un d'autre et rattaché serait le jean de Choupette en
+// pire, avec un retrait à la clé sur le compte d'un inconnu.
+//
+// COMMENT, SANS RIEN INVENTER. On ne devine aucun endpoint et on n'appelle
+// rien de neuf : on RELIT les réponses que Beebs nous a déjà envoyées pendant
+// le dépôt, captées par la sonde réseau — exactement le canal et le geste de
+// beebsCapturedProductId juste au-dessus. Liste FERMÉE de clés candidates ; ce
+// qui est trouvé est journalisé AVEC la clé qui l'a produit, pour qu'on sache
+// d'où il vient. Rien trouvé → rien écrit, et un échantillon part au log.
+// ⛔ Fire-and-forget absolu : aucune valeur ici ne change l'issue d'un dépôt.
+const BEEBS_CLES_IDENTITE = ["user_id", "userId", "seller_id", "sellerId", "owner_id", "ownerId"];
+async function beebsCapturedIdentite(tabId) {
+  try {
+    const { captures } = await readProbeCaptures(tabId);
+    for (let i = captures.length - 1; i >= 0; i--) {
+      const corps = String(captures[i]?.reponse ?? "");
+      if (!corps) continue;
+      for (const cle of BEEBS_CLES_IDENTITE) {
+        const m = corps.match(new RegExp(`"${cle}"\\s*:\\s*"?([A-Za-z0-9][A-Za-z0-9_-]{3,63})"?`));
+        if (m) {
+          console.log(`[background] Beebs : identité vendeur captée par la sonde — ${cle}=${m[1]}`);
+          return { user_id: String(m[1]), cle, at: new Date().toISOString() };
+        }
+      }
+    }
+    if (captures.length) {
+      console.log(
+        `[background] Beebs : aucune identité vendeur dans ${captures.length} capture(s) — ` +
+        `clés cherchées ${BEEBS_CLES_IDENTITE.join(", ")}`
+      );
+    }
+  } catch (e) {
+    console.warn("[background] Beebs : lecture des captures pour l'identité (sans conséquence) :", String(e?.message ?? e));
+  }
+  return null;
+}
+
+/** Écrit l'identité Beebs dans extension_sessions.beebs_identite, sans toucher
+ *  au reste. Best-effort, jamais bloquant, et jamais réécrite si elle n'a pas
+ *  changé (le champ mesure aussi depuis QUAND on la connaît). */
+async function noterIdentiteBeebs(accessToken, identite) {
+  if (!identite?.user_id) return;
+  const sub = decodeJwtSub(accessToken);
+  if (!sub) return;
+  try {
+    const rows = await restRequest(`profiles?id=eq.${sub}&select=extension_sessions`, accessToken);
+    const base = rows?.[0]?.extension_sessions ?? {};
+    if (base?.beebs_identite?.user_id === identite.user_id) return; // déjà connue
+    await restRequest(`profiles?id=eq.${sub}`, accessToken, {
+      method: "PATCH",
+      body: JSON.stringify({ extension_sessions: { ...base, beebs_identite: identite } }),
+    });
+    console.log(`[background] Beebs : identité vendeur ${identite.user_id} écrite (clé ${identite.cle})`);
+  } catch (e) {
+    console.warn("[background] Beebs : identité non écrite (sans conséquence) :", String(e?.message ?? e));
+  }
 }
 
 // ── PONT MONDE MAIN BEEBS PAR chrome.scripting (2026-09-08) ──────────────────
