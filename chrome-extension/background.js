@@ -2990,7 +2990,11 @@ async function processJob(rawJob, accessToken) {
       // depotPeutEtreParti (2026-09-08) : l'aperçu est resté affiché mais la
       // sonde a vu partir une requête — même filet « Mes annonces » AVANT de
       // persister l'attente utilisateur.
-      if (job.platform === "leboncoin" && (result.depositUnconfirmed || result.depotPeutEtreParti) && job.title && tabId != null) {
+      // ⛔ Sauf si l'adsubmit a rendu un id (2026-09-10) : dans ce cas le dépôt
+      // est PROUVÉ et son annonce NOMMÉE — chercher par titre ne pourrait
+      // qu'attraper une annonce voisine du même vendeur (jean de Choupette).
+      if (job.platform === "leboncoin" && (result.depositUnconfirmed || result.depotPeutEtreParti)
+          && job.title && tabId != null && !idAdsubmitLbc("leboncoin", job, result)) {
         const url = await captureFromMyListings(
           tabId, "leboncoin", LISTING_URL_PATTERNS.leboncoin, MY_LISTINGS_URL.leboncoin, job.title
         ).catch(() => null);
@@ -3320,7 +3324,9 @@ async function processJob(rawJob, accessToken) {
       // job 16f10f4a). On ne le tente même plus : le job est publié, l'URL
       // viendra plus tard, par la re-capture différée.
       if (!listingUrl && !PLATFORMS_WITH_DEFERRED_URL.has(job.platform)) {
-        listingUrl = await captureListingUrl(tabId, job.platform, job);
+        // `result` passe le relais : l id adsubmit peut n etre encore QUE dans
+        // le resultat du handler, pas encore relu depuis platform_fields.
+        listingUrl = await captureListingUrl(tabId, job.platform, job, 25_000, result);
       }
       if (!listingUrl) {
         console.log(
@@ -7139,9 +7145,59 @@ const MY_LISTINGS_URL = {
   ebay: "https://www.ebay.fr/sh/lst/active",
 };
 
-async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000) {
+// ── L'ADSUBMIT FAIT FOI (2026-09-10, jean de Choupette) ──────────────────────
+// CE QUI S'EST PASSÉ. Le job 718eed78 (« Jean brut Bleu Bonheur Taille 46 »,
+// 11 €, déposé le 10/09 à 15 h 13) a reçu listing_url =
+// leboncoin.fr/ad/vetements/3256587082. Or 3256587082 est l'annonce PERSONNELLE
+// de la vendeuse, déposée à la main le 25 août, à 15 €, toujours en vente — le
+// MÊME jean, publié deux fois. Notre annonce, elle, portait l'id 3267008305,
+// rendu par Leboncoin lui-même dans la réponse 201 de l'adsubmit
+// ({"status":"created","ad_id":3267008305,…}) et rangé dans
+// platform_fields.lbc_depot.adsubmit.id — présent, exact, et inutilisé.
+// Cause : le handler LBC ne rend jamais d'URL, donc on la cherchait dans « Mes
+// annonces » PAR TITRE. Les deux annonces y portaient tous les mots du titre
+// visé ; l'appariement a pris l'ancienne.
+// CE QUE ÇA COÛTAIT : le retrait à la vente supprime listing_url. Le jour où le
+// jean se vendait, on supprimait l'annonce À ELLE et on laissait la nôtre en
+// ligne. La garde anti-mauvaise-suppression de leboncoin.js n'aurait rien vu :
+// elle compare les mots du titre, et ils sont tous là.
+// DÉSORMAIS : quand l'adsubmit a rendu un id, il fait FOI et on ne va PAS dans
+// « Mes annonces ». L'appariement par titre redevient ce qu'il aurait dû rester
+// — le repli quand la sonde n'a pas capté l'adsubmit.
+// ⚠️ ON NE FABRIQUE PAS L'URL À PARTIR DE L'ID, et c'est délibéré : au moment
+// du dépôt l'annonce est EN VÉRIFICATION, sa page publique rend 404, et le
+// veilleur de vente lit un 404 comme « annonce morte » (même règle que Beebs).
+// On rend donc `null` — pas d'URL pour l'instant — et c'est la re-capture
+// différée qui la posera, en cherchant PAR ID (elle sait déjà le faire depuis
+// la 0.6.24 : cf. `urlParId` dans recoverMissingListingUrls). L'id, lui, est
+// déjà écrit en platform_listing_id depuis la réponse adsubmit.
+function idAdsubmitLbc(platform, job, result = null) {
+  if (platform !== "leboncoin") return null;
+  const id = String(
+    result?.lbcAdId
+    ?? result?.lbcDepot?.adsubmit?.id
+    ?? job?.platform_fields?.lbc_depot?.adsubmit?.id
+    ?? ""
+  ).trim();
+  return /^\d{6,}$/.test(id) ? id : null;
+}
+
+async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000, result = null) {
   const pattern = LISTING_URL_PATTERNS[platform];
   if (!pattern) return null;
+
+  // ── L'ADSUBMIT FAIT FOI : on ne cherche PAS par titre (2026-09-10) ─────────
+  // Quand Leboncoin a répondu 201 avec l'id de NOTRE annonce, aucune recherche
+  // dans « Mes annonces » ne peut faire mieux — et elle peut faire bien pire.
+  const idSur = idAdsubmitLbc(platform, job, result);
+  if (idSur) {
+    console.log(
+      `[background] captureListingUrl(leboncoin) : l'adsubmit a rendu l'id ${idSur} — ` +
+      "aucune recherche par titre. L'URL sera posée PAR ID à la re-capture, " +
+      "quand l'annonce sortira de vérification."
+    );
+    return null;
+  }
 
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
