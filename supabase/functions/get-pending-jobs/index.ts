@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
+import { TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir } from "../_shared/vinted-taille-republication.ts";
 import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
 import {
   type AspectRow,
@@ -1143,6 +1144,111 @@ serve(async (req) => {
           // sa première capture qui fournit son propre état.
           // Le garde-fou, lui, n'a pas bougé : sans état certain, rien n'est
           // supprimé — la capture reste 'incomplet' et le job attend.
+        }
+      }
+    } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
+
+    // ══ TAILLE « EU 38 » / « FR 40 » : LA LETTRE SERVIE À LA RECAPTURE ══════
+    // (2026-09-10 — 11 jobs en needs_user sur 45 j, 4 comptes, annonces
+    // intactes.) Pour les size_id 1943→1965, le référentiel size_groups lu par
+    // l'extension à la capture rend « EU 38 » / « FR 40 » là où la garde-robe
+    // Vinted (inventaire.attributs.taille, source vinted_liste) affiche le
+    // même article « M / 38 / 10 » ; le formulaire de recréation refuse la
+    // forme préfixée (vinted.js retire « EU », et le « 38 » nu ne matche plus
+    // rien). Le correctif d'extension part dans le prochain zip ; ICI, le
+    // chemin serveur : la LETTRE est servie dans republish_user_fields.taille,
+    // le canal que l'extension fusionne déjà dans la capture (même mécanisme
+    // que l'état ci-dessus). Elle n'atteint un job qu'à une (re)capture : les
+    // captures > 24 h sont refaites automatiquement à la relance, avec fusion.
+    // Règles, garde-fous et relevés : _shared/vinted-taille-republication.ts.
+    // Périmètre STRICT = la dernière capture de l'article rend une forme
+    // préfixée : un article dont la capture rend « M / 38 / 10 » (la voie qui
+    // aboutit) n'est jamais touché. Rien n'est réécrit en base ici.
+    try {
+      const republishTaille = out.filter((j) =>
+        j.action === "republish" && j.platform === "vinted" && j.inventaire_id != null
+      );
+      if (republishTaille.length) {
+        const ids = [...new Set(republishTaille.map((j) => j.inventaire_id))];
+        const { data: caps } = await userClient
+          .from("vinted_republish_captures")
+          .select("inventaire_id, libelles, captured_at")
+          .eq("user_id", user.id)
+          .in("inventaire_id", ids)
+          .order("captured_at", { ascending: false });
+        const derniereCapture = new Map<string, Record<string, unknown>>();
+        for (const c of (caps ?? []) as Array<Record<string, unknown>>) {
+          const cle = String(c.inventaire_id);
+          if (!derniereCapture.has(cle)) derniereCapture.set(cle, (c.libelles ?? {}) as Record<string, unknown>);
+        }
+        const aTraiter = republishTaille.filter((j) =>
+          TAILLE_PREFIXEE_RE.test(normaliserTaille(derniereCapture.get(String(j.inventaire_id))?.["taille"]))
+        );
+        if (aTraiter.length) {
+          const { data: invs } = await userClient
+            .from("inventaire")
+            .select("id, attributs")
+            .in("id", [...new Set(aTraiter.map((j) => j.inventaire_id))]);
+          const tailleInventaire = new Map<string, { v?: unknown; source?: unknown } | null>();
+          for (const i of (invs ?? []) as Array<Record<string, unknown>>) {
+            const t = ((i.attributs ?? {}) as Record<string, unknown>)["taille"];
+            tailleInventaire.set(String(i.id), t && typeof t === "object" ? (t as { v?: unknown; source?: unknown }) : null);
+          }
+          const cheminDe = (j: (typeof aTraiter)[number]): string => {
+            const p = derniereCapture.get(String(j.inventaire_id))?.["categoryPath"];
+            return Array.isArray(p) ? p.map((s) => String(s)).join(" > ") : "";
+          };
+          const chemins = [...new Set(aTraiter.map(cheminDe).filter(Boolean))];
+          const grilles = new Map<string, string[]>();
+          if (chemins.length) {
+            const { data: rows } = await userClient
+              .from("platform_category_aspects")
+              .select("category_key, allowed_values")
+              .eq("platform", "vinted")
+              .eq("field_key", "size")
+              .in("category_key", chemins);
+            for (const r of (rows ?? []) as Array<Record<string, unknown>>) {
+              if (Array.isArray(r.allowed_values) && r.allowed_values.length) {
+                grilles.set(String(r.category_key), r.allowed_values.map((v) => String(v)));
+              }
+            }
+          }
+          let fournis = 0;
+          for (const j of aTraiter) {
+            const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+            const uf = (pf["republish_user_fields"] as Record<string, unknown> | null) ?? {};
+            if (String(uf["taille"] ?? "").trim()) continue; // saisie de l'utilisateur : intouchable
+            const captureTaille = derniereCapture.get(String(j.inventaire_id))?.["taille"];
+            const chemin = cheminDe(j);
+            const r = tailleAServir({
+              captureTaille,
+              inventaireTaille: tailleInventaire.get(String(j.inventaire_id)) ?? null,
+              options: grilles.get(chemin) ?? null,
+            });
+            if (r.valeur === null) {
+              console.log(`[get-pending-jobs] job ${j.id} : taille « ${String(captureTaille)} » NON servie — ${r.motif}`);
+              continue;
+            }
+            j.platform_fields = {
+              ...pf,
+              republish_user_fields: { ...uf, taille: r.valeur },
+              // Trace : d'où vient la valeur, par quelle règle, face à quelle
+              // capture et quelle grille. Auditable en SQL après coup.
+              republish_taille_fournie: {
+                source: "inventaire.attributs.taille (vinted_liste)",
+                valeur: r.valeur, methode: r.methode,
+                capture_taille: String(captureTaille), categorie: chemin || null,
+                grille_relevee: grilles.has(chemin), at: new Date().toISOString(),
+              },
+            };
+            fournis++;
+          }
+          if (fournis) {
+            console.log(
+              `[get-pending-jobs] userId=${user.id} : taille (lettre de la garde-robe) servie sur ${fournis} republication(s) ` +
+              `à capture préfixée EU/FR/UK (${aTraiter.length} dans le périmètre)`,
+            );
+          }
         }
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
