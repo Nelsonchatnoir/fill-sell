@@ -1309,7 +1309,22 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // 1 -> 2 -> 3 sans exception « EU » aux clients qui DECLARENT la capacite, et
 // garde 3 -> 1 -> 2 pour les autres. La bascule est PAR CLIENT.
 // MIN_BUILD INCHANGE — la banniere n'attend que l'acceptation CWS.
-export const EXTENSION_LAST_COMMIT = '2026-09-10T09:40:52Z'; // recale 6cd8359 (0.6.25 : taille par id et par onglet) - MIN_BUILD inchange
+// 2026-09-10T11:34:06Z (13h34 Paris, commit 27bd284) : budget photos Leboncoin
+// par PALIER + sortie anticipee sur stagnation — PREPARE POUR LA 0.6.26, PAS
+// DANS LE ZIP 0.6.25. Ce recalage n'est PAS un bump de paquet : il repare la
+// garde assertExtensionMinBuildCurrent, qui refusait `npm run build` des qu'un
+// commit touche chrome-extension/ sans produire d'artefact (exactement le cas
+// prevu par le bandeau du 09/08).
+// ⚠️ CONSEQUENCE ASSUMEE : LAST_COMMIT est desormais POSTERIEUR au BUILD_ID du
+// zip 0.6.25 (2026-09-10T09:41:28Z+3696da6). `npm run package:extension`
+// refusera donc de re-produire un paquet tant qu'un nouveau build n'est pas
+// fait — c'est VOULU : le code 0.6.26 n'est pas dans le zip 0.6.25, et le
+// packager a raison de le dire. Le zip deja produit reste valide et complet
+// pour ce qu'il embarque.
+// ⚠️ EXTENSION_MIN_BUILD ne se deduit TOUJOURS PAS d'ici : apres acceptation de
+// la 0.6.25, il vaut le BUILD_ID DU ZIP — 2026-09-10T09:41:28Z — jamais cette
+// constante (cf. bandeau du 09/08, incident 0.5.6).
+export const EXTENSION_LAST_COMMIT = '2026-09-10T11:34:06Z'; // recale 27bd284 (photos LBC, prepare 0.6.26) - MIN_BUILD inchange
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
