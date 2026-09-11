@@ -770,6 +770,106 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // CANAL COUPÉ À L'ÉTAPE 'captured' = REPRISE, PAS UNE QUESTION (2026-09-11)
+    // ══════════════════════════════════════════════════════════════════════
+    // Nuit du 10→11/09 (2 jobs sur 42, compte anthony.smhb) : le pont entre le
+    // service worker et l'onglet Vinted s'est coupé PENDANT le pré-vol de la
+    // republication (sendMessageToTab FILL_LISTING, background.js ~13257) :
+    //   · « Could not establish connection. Receiving end does not exist. »
+    //   · « A listener indicated an asynchronous response by returning true,
+    //     but the message channel closed before a response was received. »
+    // L'extension conclut honnêtement « rien n'a été supprimé » et pose
+    // needs_user « Corrige puis relance depuis l'app » — mais l'utilisateur n'a
+    // RIEN à corriger : l'annonce est intacte, l'étape est restée 'captured',
+    // et la relance manuelle rejoue exactement le même pré-vol. Un canal coupé
+    // est un accident de Chrome, pas un verdict sur l'annonce.
+    // Ici, SERVEUR, sans zip : CE needs_user-là repasse 'pending', étape
+    // 'captured' CONSERVÉE — le poll suivant rejoue le pré-vol entier (capture
+    // relue, gates strictes, suppression seulement si tout passe).
+    // ⛔ UNIQUEMENT l'étape 'captured', lue sur le body ET en base, sans
+    //    deleted_at nulle part : à l'étape 'deleted' l'annonce est hors ligne,
+    //    un canal coupé y reste needs_user — jamais de reprise automatique
+    //    après une suppression. Un désaccord body/base vaut « pas sûr » → rien.
+    // ⛔ UNIQUEMENT ces deux signatures chrome.runtime, derrière le préfixe
+    //    « canal coupé pendant la republication » posé par background.js.
+    //    Timeouts, refus Vinted, DataDome, « sonde injoignable », bfcache
+    //    (« message channel is closed », bloc dédié ci-dessus) : pas ce bloc.
+    // ⛔ needsUserAttempts : REMIS à sa valeur en base — ce n'est pas un refus
+    //    plateforme, aucune tentative consommée.
+    // ⛔ Borné : MAX_CANAL_COUPE_REPRISES reprises, compteur
+    //    platform_fields.canal_coupe_rejoue porté par le job (relu au poll,
+    //    renvoyé par l'extension) ; à la suivante, le needs_user de
+    //    l'extension passe TEL QUEL (message, platform_fields, compteur figé).
+    // Rien ne change au chemin suppression/recréation ni aux gardes « pause
+    // AVANT toute suppression » : elles interceptent l'écriture processing, en
+    // amont ; ce bloc ne relit qu'un needs_user déjà rendu par l'extension.
+    // ⚠️ unité : needs_user → pending, aucun statut terminal traversé, aucun
+    // trigger de solde ne tire.
+    const CANAL_COUPE_PREFIXE_RE = /canal coupé pendant la republication\s*:/i;
+    const CANAL_COUPE_CHROME_RE =
+      /Receiving end does not exist|A listener indicated an asynchronous response by returning true, but the message channel closed/i;
+    const MAX_CANAL_COUPE_REPRISES = 3;
+    let pfCanalCoupe: Record<string, unknown> | null = null;
+    if (statutEffectif === "needs_user" && typeof body.error === "string" &&
+        CANAL_COUPE_PREFIXE_RE.test(body.error) && CANAL_COUPE_CHROME_RE.test(body.error)) {
+      try {
+        const { data: jrow } = await userClient
+          .from("cross_post_jobs")
+          .select("action, platform, platform_fields")
+          .eq("id", jobId)
+          .maybeSingle();
+        const pfBase = (jrow?.platform_fields ?? {}) as Record<string, unknown>;
+        const pfBody = ((body.platform_fields && typeof body.platform_fields === "object")
+          ? body.platform_fields : pfBase) as Record<string, unknown>;
+        // La base est ce que l'extension a écrit au claim processing (snapshot,
+        // étape 'captured') ; si REPUBLISH_MARK_DELETED a acté 'deleted' entre-
+        // temps, c'est la base qui le sait — et on ne reprend pas.
+        const etapeCaptured =
+          pfBody.republish_step === "captured" && !pfBody.deleted_at &&
+          pfBase.republish_step === "captured" && !pfBase.deleted_at;
+        if (jrow?.action === "republish" && jrow.platform === "vinted" && etapeCaptured) {
+          // max(base, body) : le body vient de la lecture du poll, qui peut
+          // être antérieure au dernier incrément écrit ici.
+          const deja = Math.max(
+            Number(pfBase.canal_coupe_rejoue ?? 0) || 0,
+            Number(pfBody.canal_coupe_rejoue ?? 0) || 0,
+          );
+          if (deja < MAX_CANAL_COUPE_REPRISES) {
+            const reprise = deja + 1;
+            const { next_action_after: _nao, ...pfSans } = pfBody;
+            pfCanalCoupe = {
+              ...pfSans,
+              // La valeur EN BASE, jamais celle du body : ce passage n'est pas
+              // une tentative.
+              needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+              canal_coupe_rejoue: reprise,
+              canal_coupe_derniere: {
+                le: new Date().toISOString(),
+                motif: body.error.slice(0, 300),
+                pose_par: "update-job-status (canal coupé à l'étape captured = reprise)",
+              },
+            };
+            statutEffectif = "pending";
+            messageEffectif =
+              "Le pont entre l'extension et l'onglet Vinted s'est coupé pendant la republication, AVANT toute suppression — " +
+              `ton annonce est intacte. Reprise automatique au prochain passage de l'extension (${reprise}/${MAX_CANAL_COUPE_REPRISES}). ` +
+              "Rien à faire de ton côté.";
+            raisonRequalif = `canal coupé à l'étape captured, reprise ${reprise}/${MAX_CANAL_COUPE_REPRISES}`;
+          } else {
+            console.log(
+              `[update-job-status] userId=${user.id} job=${jobId} — canal coupé à l'étape captured : ` +
+              `${MAX_CANAL_COUPE_REPRISES} reprises épuisées, needs_user de l'extension conservé`,
+            );
+          }
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] reprise canal coupé:", (e as Error)?.message ?? e);
+        pfCanalCoupe = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // SESSION PLATEFORME MORTE = ATTENTE, JAMAIS UNE TENTATIVE (2026-09-10)
     // ══════════════════════════════════════════════════════════════════════
     // Cas Ornella : 17 jobs Beebs morts sur beebs.app/fr/auth — chaque passage
@@ -1052,6 +1152,10 @@ serve(async (req) => {
       };
     }
 
+    // Canal coupé à l'étape 'captured' (reprise) : platform_fields de
+    // l'extension, étape conservée, needsUserAttempts de la base, compteur
+    // canal_coupe_rejoue incrémenté.
+    if (pfCanalCoupe) patch.platform_fields = pfCanalCoupe;
     // Attente de session (session morte = attente, jamais une tentative) :
     // platform_fields SANS tentative consommée, AVEC l'échéance d'une heure et
     // le marqueur attente_session.
