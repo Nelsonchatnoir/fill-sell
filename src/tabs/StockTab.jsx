@@ -1523,7 +1523,7 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
             return (
               <div key={p} style={{ display:"flex", alignItems:"center", gap:10, background:"#fff", border:`1px solid ${armed ? "#EFC2BE" : NU_T.border}`, borderRadius:12, padding:"10px 12px", minHeight:52 }}>
                 <span style={{ display:"flex", flex:"0 0 auto", lineHeight:0, opacity:dimmed ? 0.3 : state === "removing" ? 0.45 : 1 }}>
-                  <PlatformLogo platform={p} size={22}/>
+                  <PlatformLogo platform={p} size={22} desature={noUrl && (p === "beebs" || p === "leboncoin")}/>
                 </span>
                 <div style={{ flex:1, minWidth:0 }}>
                   <div style={{ fontSize:13, fontWeight:600, color:dimmed ? NU_T.mute : NU_T.ink }}>{label}</div>
@@ -7592,7 +7592,7 @@ const StockTab = memo(function StockTab({
                   // État de retrait par plateforme : calcul partagé avec le
                   // modal de retrait (computeRemovalInfo, en tête de fichier) —
                   // un seul calcul, jamais deux vérités carte/modal.
-                  const {removalState,publishedActive}=computeRemovalInfo(jobsAll);
+                  const {removalState,publishedActive,latestPubByPlatform}=computeRemovalInfo(jobsAll);
                   // ── Article DISPARU de Vinted (2026-08-05) ────────────────
                   // `disparu_le` = la sync du dressing n'a pas retrouvé
                   // l'annonce sur Vinted (vérifié en réel : l'id Vinted rend
@@ -7862,6 +7862,27 @@ const StockTab = memo(function StockTab({
                               // l'annonce existe (masquée ≠ disparue) et le tap
                               // vers le modal de retrait reste le bon geste.
                               const masque=vintedMasquee&&p==="vinted";
+                              // ── EN ATTENTE DE MODÉRATION (2026-09-11) — Beebs et
+                              // Leboncoin SEULEMENT. Sur ces deux plateformes,
+                              // l'annonce est déposée puis VÉRIFIÉE avant d'être
+                              // visible, et c'est à la mise en ligne seulement
+                              // qu'on obtient son lien (Beebs : écran « il sera
+                              // mis en ligne dès qu'il aura été vérifié par notre
+                              // équipe », lien dans « Mes annonces » après
+                              // modération — médiane 7 min sur 10 cas datés).
+                              // Un job `published` SANS listing_url = pas encore
+                              // prouvée en ligne : le logo passe en NOIR ET BLANC
+                              // (prop desature), sans anneau — la grammaire du
+                              // 08/09 : couleur = en ligne, noir et blanc = pas
+                              // en ligne. Il redevient couleur dès que l'URL
+                              // arrive (recoverMissingListingUrls, à chaque poll).
+                              // Même source que la popup de retrait
+                              // (latestPubByPlatform, computeRemovalInfo) : une
+                              // seule vérité carte/popup. Vinted et eBay donnent
+                              // l'URL au dépôt : rien ne change pour eux, ni pour
+                              // logosEnLigne, la pastille et les compteurs.
+                              const attenteModeration=(p==="beebs"||p==="leboncoin")
+                                &&!!latestPubByPlatform?.[p]&&!latestPubByPlatform[p].listing_url;
                               // ── L'ANNEAU SIGNALE, IL N'AGIT PAS (08/09) ────────
                               // Ambre : cette plateforme réclame une information.
                               // Rouge : sa publication a échoué. Le tap reste
@@ -7893,6 +7914,13 @@ const StockTab = memo(function StockTab({
                                     :masque?(lang==="en"
                                       ?`${item.vinted_status==='draft'?'Draft':'Hidden'} on Vinted — the listing exists but buyers can't see it. Tap to manage.`
                                       :`${item.vinted_status==='draft'?'Brouillon':'Masquée'} sur Vinted — l'annonce existe mais les acheteurs ne la voient pas. Toucher pour gérer.`)
+                                    :attenteModeration?(p==="beebs"
+                                      ?(lang==="en"
+                                        ?"Beebs is reviewing your listing before putting it online. Hang tight."
+                                        :"Beebs vérifie ton annonce avant de la mettre en ligne. Patiente un peu.")
+                                      :(lang==="en"
+                                        ?"Your listing went through to Leboncoin and is awaiting their review. It will show up within a few minutes. Don't repost it — you would create a duplicate."
+                                        :"Ton annonce est partie sur Leboncoin et attend leur vérification. Elle apparaîtra d'ici quelques minutes. Ne la republie pas, tu créerais un doublon."))
                                     :(lang==="en"?`${PLATFORM_LABELS[p]||p} — tap to manage`:`${PLATFORM_LABELS[p]||p} — toucher pour gérer`)}
                                   style={{cursor:"pointer",
                                     ...(teinte?LOGO_TEINTE(teinte):{}),
@@ -7900,8 +7928,10 @@ const StockTab = memo(function StockTab({
                                   onClick={e=>{e.stopPropagation();setRemoveModalItem(item);}}>
                                   {/* Le logo est rendu TEL QUEL, sans rien lui
                                       passer : il est simplement posé sur une
-                                      mini-carte devenue colorée. */}
-                                  <PlatformLogo platform={p} size={20}/>
+                                      mini-carte devenue colorée. En attente de
+                                      modération (Beebs/Leboncoin sans lien) : noir
+                                      et blanc, cf. attenteModeration. */}
+                                  <PlatformLogo platform={p} size={20} desature={attenteModeration}/>
                                 </span>
                               );
                             })}
