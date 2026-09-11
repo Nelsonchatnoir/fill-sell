@@ -392,13 +392,18 @@ export function humanizeJobError(job, lang = 'fr') {
     }
     if (/^Republication annulée/i.test(raw) && /introuvable/i.test(raw)) {
       return en
-        ? `The relisting was cancelled before anything was deleted: the listing could not be found on ${name} (it may have been removed or sold in the meantime). FillSell deleted nothing. Check the listing on ${name}, then relaunch from the item if needed.`
-        : `Republication annulée avant toute suppression : l'annonce n'a pas été retrouvée en ligne sur ${name} (elle a peut-être été supprimée ou vendue entre-temps). FillSell n'a rien supprimé. Vérifie l'annonce sur ${name}, puis relance depuis la fiche de l'article si besoin.`;
+        ? `The relisting was cancelled before anything was deleted: the listing could not be found on ${name} (removed or sold in the meantime). FillSell deleted nothing. If the item is sold, mark it sold; otherwise check the listing on ${name}, then relaunch from the item if needed.`
+        // (2026-09-11) 3 cas sur 6 en 30 j étaient des articles VENDUS : on
+        // nomme d'abord ce geste-là, avant « vérifie sur Vinted ».
+        : `Republication annulée avant toute suppression : l'annonce n'a pas été retrouvée en ligne sur ${name} (retirée ou vendue entre-temps). FillSell n'a rien supprimé. Si l'article est vendu, marque-le vendu ; sinon vérifie l'annonce sur ${name}, puis relance depuis la fiche de l'article si besoin.`;
     }
     if (/^Republication en pause/i.test(raw)) {
+      // (2026-09-11) « corrige si besoin » ne nommait aucun geste : il n'y a
+      // rien à corriger sur l'annonce, seulement relancer — et nous écrire si
+      // ça se répète. On ne promet plus « intacte » (la feuille lit l'article).
       return en
-        ? `Relisting paused before anything was deleted — your listing is untouched on ${name}. A technical exchange with ${name} failed; fix what's needed then relaunch the relisting from the item.`
-        : `Republication mise en pause avant toute suppression — ton annonce est intacte sur ${name}. Un échange technique avec ${name} a échoué ; corrige si besoin puis relance la republication depuis la fiche de l'article.`;
+        ? `Relisting paused before anything was deleted. ${name} did not respond as expected; relaunch the relisting from the item, and write to us if it happens again.`
+        : `Republication mise en pause avant toute suppression. ${name} n'a pas répondu comme prévu ; relance la republication depuis la fiche de l'article, et écris-nous si ça se répète.`;
     }
     // Variante non répertoriée : circuit normal (générique par défaut).
   }

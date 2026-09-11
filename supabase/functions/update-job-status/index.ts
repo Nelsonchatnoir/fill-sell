@@ -691,8 +691,8 @@ serve(async (req) => {
               // dans le paquet extension suivant : rien à corriger sur Vinted,
               // le message ne doit pas envoyer l'utilisateur chercher un champ.
               messageEffectif = cles.length && cles.every((c) => c === "colis")
-                ? "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
-                  "Le blocage vient d'un défaut de l'extension (format de colis non reconnu), corrigé dans la prochaine mise à jour : " +
+                ? "Republication en pause avant toute suppression — ton annonce est toujours en ligne sur Vinted. " +
+                  "Le blocage vient de chez nous et sera corrigé par la prochaine mise à jour de l'extension : " +
                   "rien à corriger de ton côté, relance la republication depuis l'app d'ici quelques jours."
                 : "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
                   `Il manque : ${cles.length ? cles.map((c) => LIBELLES[c]).join(", ") : "des informations"} — ` +
@@ -756,16 +756,18 @@ serve(async (req) => {
         bfcacheRearms = deja + 1;
         statutEffectif = "pending";
         raisonRequalif = `bfcache, reprise ${bfcacheRearms}/${MAX_BFCACHE_REARMS}`;
+        // Formulation (2026-09-11, audit des messages) : ni jargon (« back/
+        // forward cache »), ni compteur — le compteur vit dans platform_fields.
         messageEffectif =
-          "Onglet suspendu par Chrome (back/forward cache) pendant l'opération — " +
-          `reprise automatique au prochain passage de l'extension (tentative ${bfcacheRearms}/${MAX_BFCACHE_REARMS}).`;
+          "L'onglet de travail a été mis en veille par Chrome pendant l'opération. " +
+          "On réessaie automatiquement au prochain passage de l'extension, rien à faire de ton côté.";
       } else {
         // Limite atteinte : failed assumé, mais avec un message clair — le brut
-        // de Chrome ne dit rien d'actionnable. « back/forward cache » reste
-        // dans le texte, cherchable en base.
+        // de Chrome ne dit rien d'actionnable. Le motif reste cherchable en
+        // base par bfcache_rearms.
         messageEffectif =
-          "Publication interrompue par Chrome (onglet suspendu en back/forward cache) à chaque tentative — " +
-          `${MAX_BFCACHE_REARMS} reprises automatiques épuisées. Relance depuis l'app.`;
+          "L'onglet de travail a été mis en veille par Chrome à chaque essai. " +
+          "Relance depuis l'app en laissant Chrome au premier plan.";
       }
     }
 
@@ -850,10 +852,13 @@ serve(async (req) => {
               },
             };
             statutEffectif = "pending";
+            // Formulation (2026-09-11, audit des messages) : sans « pont »,
+            // sans compteur, et sans affirmer « intacte » — la reprise
+            // re-vérifie l'annonce avant tout geste, c'est ça qu'on dit.
             messageEffectif =
-              "Le pont entre l'extension et l'onglet Vinted s'est coupé pendant la republication, AVANT toute suppression — " +
-              `ton annonce est intacte. Reprise automatique au prochain passage de l'extension (${reprise}/${MAX_CANAL_COUPE_REPRISES}). ` +
-              "Rien à faire de ton côté.";
+              "La communication avec l'onglet Vinted s'est interrompue pendant la republication. " +
+              "Elle reprend toute seule au prochain passage de l'extension, après vérification de l'état de ton annonce — " +
+              "rien à faire de ton côté.";
             raisonRequalif = `canal coupé à l'étape captured, reprise ${reprise}/${MAX_CANAL_COUPE_REPRISES}`;
           } else {
             console.log(
@@ -949,9 +954,11 @@ serve(async (req) => {
             const quoi = jrow.action === "delete" ? "le retrait de l'annonce"
               : jrow.action === "republish" ? "la republication" : "la publication";
             statutEffectif = "pending";
+            // Formulation (2026-09-11) : la cadence de vérification et la
+            // « tentative consommée » sont notre mécanique, pas son affaire.
             messageEffectif =
               `En attente de ta connexion à ${label} dans Chrome : ${quoi} repartira toute seule ` +
-              `dès que tu seras reconnecté(e) (vérification toutes les heures). Aucune tentative consommée.`;
+              `dès que tu seras reconnecté(e).`;
             raisonRequalif = `session ${jrow.platform} morte : attente sans tentative (observation ${pfAttenteSession.attente_session && (pfAttenteSession.attente_session as Record<string, unknown>).observations})`;
           }
         } catch (e) {

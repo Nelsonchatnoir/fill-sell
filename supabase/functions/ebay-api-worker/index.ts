@@ -226,7 +226,19 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const conditions = await conditionsCategorie(env, token, categoryId);
   const condition = choisirCondition(pf.etat as string, conditions);
   if (!condition) {
-    await marquer(admin, job, { status: "needs_user", error: `Aucun état eBay ne correspond à « ${pf.etat ?? ""} » pour la catégorie ${categoryId} (états eBay : ${(conditions ?? []).map((c) => c.libelle).join(", ") || "inconnus"}).` }, { etape: "condition", quoi: "etat_sans_correspondance" });
+    // Formulation (2026-09-11, audit des messages) : l'état de l'article est
+    // bon, c'est la CATÉGORIE qui n'en veut pas (cas 21205, cosmétiques =
+    // neuf seulement, pour des taies d'oreiller classées Beauté par nous).
+    // Ni numéro de catégorie ni liste brute à l'écran — ils restent dans
+    // last_diagnostic. Le geste : relancer, eBay propose sa catégorie
+    // (branche « relance après à confirmer »).
+    const neufSeulement = (conditions ?? []).length > 0 && (conditions ?? []).every((c) => /^(1000|1500|1750)$/.test(String(c.id ?? "")));
+    await marquer(admin, job, {
+      status: "needs_user",
+      error: neufSeulement
+        ? `La catégorie eBay choisie pour cet article n'accepte que des objets neufs : elle n'est probablement pas la bonne. Relance la publication, eBay proposera sa propre catégorie.`
+        : `L'état « ${pf.etat ?? ""} » n'existe pas dans la catégorie eBay choisie pour cet article : elle n'est probablement pas la bonne. Relance la publication, eBay proposera sa propre catégorie.`,
+    }, { etape: "condition", quoi: "etat_sans_correspondance", categoryId, etats_ebay: (conditions ?? []).map((c) => c.libelle) });
     return { job: job.id, issue: "needs_user", motif: "condition" };
   }
 
@@ -326,7 +338,9 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     const maj = await appelEbay(env, token, `/sell/inventory/v1/offer/${brouillon.offerId}`, { method: "PUT", body: offre });
     if (maj.http !== 200 && maj.http !== 204) {
       const e = lireErreurEbay(maj.json, maj.texte);
-      await marquer(admin, job, { status: verdictHttp(maj.http, tentatives), error: `eBay a refusé la mise à jour de l'offre (${maj.http}) : ${e.message}` }, { etape: "offre_maj", http: maj.http, errorId: e.errorId, message: e.message }, { sku, offer_id: brouillon.offerId, tentatives });
+      // (2026-09-11) Même filtre que la publication : un motif nommé prime sur
+      // le longMessage parapluie d'eBay, qui accuse l'utilisateur.
+      await marquer(admin, job, { status: verdictHttp(maj.http, tentatives), error: messageRefus("la mise à jour de l'offre", maj.http, e).error }, { etape: "offre_maj", http: maj.http, errorId: e.errorId, message: e.message }, { sku, offer_id: brouillon.offerId, tentatives });
       return { job: job.id, issue: "offre_maj", http: maj.http, ebay: e };
     }
     offerId = brouillon.offerId;
@@ -1064,7 +1078,7 @@ async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: 
   const w = await appelEbay(env, token, `/sell/inventory/v1/offer/${offerId}/withdraw`, { method: "POST" });
   if (w.http !== 200) {
     const e = lireErreurEbay(w.json, w.texte);
-    await marquer(admin, job, { status: "failed", error: `eBay a refusé le retrait (${w.http}${e.errorId ? `, ${e.errorId}` : ""}) : ${e.message}` }, { etape: "withdraw", http: w.http, errorId: e.errorId, message: e.message }, { sku, offer_id: offerId });
+    await marquer(admin, job, { status: "failed", error: messageRefus("le retrait", w.http, e).error }, { etape: "withdraw", http: w.http, errorId: e.errorId, message: e.message }, { sku, offer_id: offerId });
     return { job: job.id, issue: "withdraw", http: w.http, ebay: e };
   }
   const listingId = String((w.json as { listingId?: string } | null)?.listingId ?? "");
@@ -1092,7 +1106,7 @@ async function republier(admin: SupabaseClient, env: EbayEnv, token: string, job
     const w = await appelEbay(env, token, `/sell/inventory/v1/offer/${publiee.offerId}/withdraw`, { method: "POST" });
     if (w.http !== 200) {
       const e = lireErreurEbay(w.json, w.texte);
-      await marquer(admin, job, { status: "failed", error: `eBay a refusé le retrait avant republication (${w.http}) : ${e.message}` }, { etape: "withdraw", http: w.http, errorId: e.errorId }, { sku, offer_id: publiee.offerId });
+      await marquer(admin, job, { status: "failed", error: messageRefus("le retrait avant republication", w.http, e).error }, { etape: "withdraw", http: w.http, errorId: e.errorId }, { sku, offer_id: publiee.offerId });
       return { job: job.id, issue: "withdraw", http: w.http, ebay: e };
     }
     job.platform_fields = { ...(job.platform_fields ?? {}), republish_step: "deleted" };

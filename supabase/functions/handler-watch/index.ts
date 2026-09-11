@@ -958,14 +958,24 @@ serve(async (req) => {
       // Nettoyage unités, 2e passe (03/09) : même « rien décompté » est une
       // mention de décompte — la monnaie interne n'existe plus, les messages
       // n'en parlent plus du tout. Le préfixe reste cherchable en base.
+      // Formulation (2026-09-11, audit des messages) : « 3 jours d'extension
+      // ouverte » est notre mécanique, « ton geste » culpabilise, et « ton
+      // annonce est intacte » était FAUX pour une republication arrêtée à
+      // l'étape 'deleted' (annonce retirée, pas recréée). On dit ce que CE job
+      // a fait ou non — jamais l'état de l'annonce, qu'un autre job a pu
+      // changer (cas Ritthik du 10/09).
+      const etapeRepub = String((pf as Record<string, unknown> | null)?.republish_step ?? "");
       const msg = j.action === "republish"
-        ? "Resté en attente de ton geste plus de 3 jours d'extension ouverte : le job est arrêté et ton annonce est intacte " +
-          "sur Vinted. Relance la republication depuis la fiche de l'article quand tu veux."
+        ? (etapeRepub === "deleted"
+          ? "Cette republication attendait une réponse depuis plusieurs jours : nous l'avons arrêtée. L'annonce avait déjà " +
+            "été retirée de Vinted et pas encore recréée : relance-la depuis la fiche de l'article pour la recréer, tout est sauvegardé."
+          : "Cette republication attendait une réponse depuis plusieurs jours : nous l'avons arrêtée. Elle n'a rien retiré " +
+            "sur Vinted. Relance-la depuis la fiche de l'article quand tu veux.")
         : j.action === "delete"
-          ? "Resté en attente de ton geste plus de 3 jours d'extension ouverte : le job est arrêté. Si l'annonce est encore " +
-            "en ligne, retire-la toi-même sur la plateforme."
-          : "Resté en attente de ton geste plus de 3 jours d'extension ouverte : le job est arrêté. " +
-            "Relance la publication depuis la fiche de l'article quand tu veux.";
+          ? "Ce retrait attendait une réponse depuis plusieurs jours : nous l'avons arrêté. Si l'annonce est encore " +
+            "en ligne, retire-la sur la plateforme."
+          : "Cette publication attendait une réponse depuis plusieurs jours : nous l'avons arrêtée. " +
+            "Relance-la depuis la fiche de l'article quand tu veux.";
       const { error: fErr } = await supabase
         .from("cross_post_jobs")
         .update({ status: "failed", error: msg, platform_fields: pf })

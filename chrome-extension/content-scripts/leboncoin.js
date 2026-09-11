@@ -1337,10 +1337,14 @@ async function fillListingForm(job) {
     const vides = champsVidesApercu().map((c) => c.libelle || c.cle).filter(Boolean);
     return {
       success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+      // Formulation (2026-09-11, audit des messages) : ce « clic avalé » est
+      // presque toujours une validation du formulaire que NOUS n'avons pas
+      // satisfaite (description < 10 caractères, mesuré le 10/09) — le texte
+      // ne décrit plus l'écran à l'utilisateur, il dit d'où ça vient. Le
+      // relevé reste après « Observabilité: » pour la base, jamais à l'écran.
       error:
-        "LIVE : l'aperçu Leboncoin est resté affiché après le Continuer final (deux clics), sans message " +
-        "d'erreur visible et sans qu'aucune requête de dépôt ne parte (clic avalé) — nouvel essai automatique " +
-        "un peu plus tard." +
+        "Le dépôt n'est pas parti : Leboncoin n'a pas accepté le formulaire tel que nous l'avons rempli. " +
+        "Nouvel essai automatique un peu plus tard, rien à faire de ton côté." +
         ` — Observabilité: clic avalé (0 requête non-GET api.leboncoin.fr après le clic) ; ${vides.length ? `champs vides ${JSON.stringify(vides.slice(0, 5))} ; ` : ""}${dumpEcranVisible()}`,
     };
   };
@@ -1568,11 +1572,18 @@ async function fillListingForm(job) {
         const vides = champsVidesApercu().map((c) => c.libelle || c.cle).filter(Boolean).slice(0, 6);
         return {
           success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+          // Formulation (2026-09-11, audit des messages) : « sur l'onglet
+          // resté ouvert » désignait une fenêtre de travail que l'utilisateur
+          // ne voit pas. Champs nommés → le geste est dans FillSell ; aucun
+          // champ nommé (compte PRO, cas Victor) → c'est à nous de regarder,
+          // on ne lui demande rien.
           error:
-            "LIVE : le formulaire Leboncoin n'est pas terminé — l'aperçu n'a jamais été atteint" +
-            (vides.length ? `, il reste à remplir : ${vides.map((v) => `« ${v} »`).join(", ")}` : "") +
-            ". Complète ces champs sur l'onglet resté ouvert, puis relance. " +
-            `— Observabilité: ${dumpEcranVisible()}`,
+            (vides.length
+              ? `Leboncoin demande encore ${vides.map((v) => `« ${v} »`).join(", ")} pour cette annonce. ` +
+                "Renseigne-le dans FillSell (fiche de l'article), puis relance la publication."
+              : "Le formulaire Leboncoin de ton compte demande une information que nous n'avons pas reconnue. " +
+                "Nous regardons de notre côté ; l'annonce reste à publier, rien à corriger sur ton annonce.") +
+            ` — Observabilité: ${dumpEcranVisible()}`,
         };
       }
       return {
@@ -2104,11 +2115,19 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
         ? `${f.label} (la valeur « ${nr} » n'a pas été reconnue parmi les options Leboncoin)`
         : `${f.label} (« ${f.message} »)`;
     };
+    // ── LE GESTE QUI EXISTE VRAIMENT (2026-09-11, audit des messages) ─────
+    // « Compléter ces champs dans l'app (copie Leboncoin) » envoyait vers un
+    // écran où ces champs n'existent pas. Le geste réel est le mini-éditeur du
+    // socle needs_user : fiche de l'article, bouton « ✋ Compléter », qui
+    // propose les valeurs relevées ici (needsUserField.allowed_values). Et
+    // depuis le 11/09, « Univers » (Mode) et « Produit » (Décoration) sont
+    // posés par le serveur quand ils se déduisent (get-pending-jobs) : ce qui
+    // arrive encore ici est un vrai choix à faire.
     const details = blockedFields.length
-      ? `Leboncoin exige : ${blockedFields.map(decrireBloque).join(", ")}. ` +
+      ? `Leboncoin demande : ${blockedFields.map(decrireBloque).join(", ")}. ` +
         (blockedFields.some((f) => valeurNonReconnuePour(f))
-          ? "Choisir une des options proposées dans l'app (copie Leboncoin), puis relancer la publication."
-          : "Compléter ces champs dans l'app (copie Leboncoin), puis relancer la publication.")
+          ? "La valeur de l'annonce n'est pas dans ses choix : choisis-en une dans FillSell (fiche de l'article, bouton « ✋ Compléter »), puis relance la publication."
+          : "Renseigne-le dans FillSell (fiche de l'article, bouton « ✋ Compléter »), puis relance la publication.")
       : "Le wizard n'est pas passé à l'aperçu après Continuer" +
         (validationMsgs.length
           ? ` — messages de validation LBC: ${JSON.stringify(validationMsgs)}`

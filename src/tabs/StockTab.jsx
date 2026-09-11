@@ -3293,7 +3293,26 @@ const estimationRepub = (n) => n * 5 >= 60 ? `~${Math.ceil(n * 5 / 60)} h` : `~$
 // dans Chrome — LE MÊME calcul que l'en-tête et la feuille de masse. Il couvre
 // les jobs déjà 'captured' que le marqueur de l'extension ne voit pas ; le
 // marqueur reste le repli quand la sonde n'a rien relevé (fail-open).
-function etapeRepublication(job, fr, reprise = null, attente = null) {
+// ── « Ton annonce est intacte » lit l'ARTICLE, pas l'étape (2026-09-11) ──────
+// Cas Ritthik du 10/09 : un RETRAIT ciblé avait supprimé l'annonce, une
+// republication du même article restait en file ; sa feuille disait « Ton
+// annonce est intacte, rien n'a été retiré » — vrai de CE job, faux de
+// l'annonce. Désormais : si l'article est passé (`item`), on lit disparu_le /
+// statut vendu / vinted_status sold ; sans article, on ne parle que du job.
+const ANNONCE_DISPARUE = (item) => Boolean(item && (item.disparu_le || item.statut === 'vendu' || item.vinted_status === 'sold'));
+const phraseRienRetire = (item, fr) => {
+  if (ANNONCE_DISPARUE(item)) {
+    return fr ? "L'annonce n'est plus en ligne sur Vinted (retirée ou vendue) : cette republication n'a plus d'objet."
+              : 'The listing is no longer on Vinted (removed or sold): this repost no longer applies.';
+  }
+  if (item) {
+    return fr ? "Cette republication n'a rien retiré : ton annonce est toujours en ligne sur Vinted."
+              : 'This repost removed nothing: your listing is still live on Vinted.';
+  }
+  return fr ? "Cette republication n'a rien retiré sur Vinted." : 'This repost removed nothing on Vinted.';
+};
+
+function etapeRepublication(job, fr, reprise = null, attente = null, item = null) {
   if (!job) return null;
   // ── Arrêt DEMANDÉ par l'utilisateur (07/09/2026) ────────────────────────
   // Rien n'a été touché sur la plateforme : l'annonce est en ligne, telle
@@ -3399,12 +3418,11 @@ function etapeRepublication(job, fr, reprise = null, attente = null) {
       court: apres ? (fr ? 'Hors ligne — arrêtée' : 'Offline — stopped') : T.arretee,
       ...(apres ? rouge : bleu), fini: true, apresSuppression: apres,
       titre: apres ? (fr ? 'Interrompue après la suppression' : 'Stopped after deletion')
-                   : (fr ? 'Interrompue — annonce intacte' : 'Stopped — listing untouched'),
+                   : (fr ? 'Interrompue avant tout retrait' : 'Stopped before any removal'),
       detail: apres
         ? (fr ? "Rien n'est perdu : ton annonce a été lue et sauvegardée avant d'être retirée. La reprise repart directement à la recréation."
               : 'Nothing is lost: your listing was read and saved before removal. Retrying resumes straight at recreation.')
-        : (fr ? "Ton annonce est intacte — elle n'a jamais été retirée de Vinted."
-              : 'Your listing is untouched — it was never removed from Vinted.'),
+        : phraseRienRetire(item, fr),
     };
   }
   if (st === 'needs_user') {
@@ -3443,8 +3461,7 @@ function etapeRepublication(job, fr, reprise = null, attente = null) {
       detail: apres
         ? (fr ? "Ton annonce a été retirée de Vinted et n'a pas pu être recréée automatiquement. Rien n'est perdu : toutes ses données (photos comprises) sont sauvegardées. Clique « Republier maintenant » — si un champ manque, il te sera demandé."
               : 'Your listing was removed from Vinted and could not be recreated automatically. Nothing is lost: all its data (photos included) is saved. Tap "Republish now" — if a field is missing, you will be asked for it.')
-        : (fr ? "Ton annonce est intacte, rien n'a été retiré. Tu peux relancer."
-              : 'Your listing is untouched, nothing was removed. You can relaunch.'),
+        : `${phraseRienRetire(item, fr)} ${fr ? 'Tu peux relancer.' : 'You can relaunch.'}`,
     };
   }
   if (!encours) return null;
@@ -3472,11 +3489,11 @@ function etapeRepublication(job, fr, reprise = null, attente = null) {
       : (fr ? `Republication étalée — reprend ${reprise.quand}` : `Repost paced — resumes ${reprise.quand}`),
     detail: reprise.motif === 'pause'
       ? (fr
-        ? `Tes annonces viennent d'enchaîner une longue série. FillSell laisse souffler ton compte Vinted avant de reprendre : celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. Ton annonce est intacte, rien n'a été retiré.`
-        : `Your listings just ran a long streak. FillSell lets your Vinted account breathe before resuming: this one restarts on its own ${reprise.quand}, nothing to do on your side. Your listing is untouched, nothing was removed.`)
+        ? `Tes annonces viennent d'enchaîner une longue série. FillSell laisse souffler ton compte Vinted avant de reprendre : celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. ${phraseRienRetire(item, fr)}`
+        : `Your listings just ran a long streak. FillSell lets your Vinted account breathe before resuming: this one restarts on its own ${reprise.quand}, nothing to do on your side. ${phraseRienRetire(item, fr)}`)
       : (fr
-        ? `FillSell étale tes republications sur plusieurs jours pour protéger ton compte Vinted. Celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. Ton annonce est intacte, rien n'a été retiré.`
-        : `FillSell spreads your reposts over several days to protect your Vinted account. This one resumes on its own ${reprise.quand}, nothing to do on your side. Your listing is untouched, nothing was removed.`),
+        ? `FillSell étale tes republications sur plusieurs jours pour protéger ton compte Vinted. Celle-ci repart toute seule ${reprise.quand}, rien à faire de ton côté. ${phraseRienRetire(item, fr)}`
+        : `FillSell spreads your reposts over several days to protect your Vinted account. This one resumes on its own ${reprise.quand}, nothing to do on your side. ${phraseRienRetire(item, fr)}`),
   };
 
   if (step === 'deleted') return {
@@ -3512,8 +3529,8 @@ function etapeRepublication(job, fr, reprise = null, attente = null) {
   return {
     cle: 'file', court: T.file, ...bleu, enFile: true,
     titre: fr ? 'En attente de ton Chrome' : 'Waiting for your Chrome',
-    detail: fr ? "La republication part dès que ton ordinateur reprend la main — environ 2 minutes si Chrome est déjà ouvert. Rien n'est touché d'ici là."
-               : 'The repost starts as soon as your computer picks it up — about 2 minutes if Chrome is already open. Nothing is touched until then.',
+    detail: fr ? `La republication part dès que ton ordinateur reprend la main — environ 2 minutes si Chrome est déjà ouvert. ${ANNONCE_DISPARUE(item) ? "L'annonce n'est plus en ligne sur Vinted (retirée ou vendue) : cette republication n'a plus d'objet." : "Cette republication n'a encore rien touché."}`
+               : `The repost starts as soon as your computer picks it up — about 2 minutes if Chrome is already open. ${ANNONCE_DISPARUE(item) ? 'The listing is no longer on Vinted (removed or sold): this repost no longer applies.' : 'This repost has not touched anything yet.'}`,
   };
 }
 
@@ -7431,7 +7448,7 @@ const StockTab = memo(function StockTab({
                   // l'en-tête (utils/attenteBoutique) : plus jamais un
                   // « en attente » muet sur la fiche (07/09).
                   const attenteFiche=repubLatest?messageFicheAttenteBoutique({connectee:boutiqueConnectee,origine:item.vinted_account_id,boutiques:boutiquesVinted,action:repubLatest.action==='delete'?'delete':'republish',lang}):null;
-                  const repubEtape=republishActif?etapeRepublication(repubLatest,lang!=='en',repubPlafondReprise,attenteFiche):null;
+                  const repubEtape=republishActif?etapeRepublication(repubLatest,lang!=='en',repubPlafondReprise,attenteFiche,item):null;
                   // La pastille dit déjà l'état : le message transitoire ne le
                   // répète pas. Il ne reste affiché que quand il apporte autre
                   // chose (refus, échec de relance).

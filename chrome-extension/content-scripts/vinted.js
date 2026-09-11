@@ -2710,9 +2710,16 @@ async function fillListingForm(job) {
     // en ligne vaut mieux que la cohérence de la base (la sonde réseau et la
     // ceinture dressing réconcilieront le job). Le verdict voyage avec le
     // message : c'est le SEUL moment où il peut être écrit avant la coupure.
-    const marque = await askBackground({ type: "REPUBLISH_MARK_DELETED", jobId: job.id, verdict: del.verdict ?? null })
-      .catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
-    if (!marque?.ok) console.warn("[vinted][republish-onepass] étape 'deleted' non écrite:", marque?.error);
+    // Trois essais espacés (2026-09-11) : c'est CETTE marque qui empêche le
+    // background de conclure « annonce intacte » sur une annonce retirée si
+    // le canal FILL_LISTING se coupe ensuite — un seul envoi perdu suffisait.
+    let marque = null;
+    for (let essai = 0; essai < 3 && !marque?.ok; essai++) {
+      if (essai) await sleep(1500);
+      marque = await askBackground({ type: "REPUBLISH_MARK_DELETED", jobId: job.id, verdict: del.verdict ?? null })
+        .catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+    }
+    if (!marque?.ok) console.warn("[vinted][republish-onepass] étape 'deleted' non écrite après 3 essais:", marque?.error);
     // Pause humaine courte entre la suppression et le dépôt : un vendeur qui
     // « remonte » son annonce enchaîne les deux gestes, mais pas dans la même
     // seconde.

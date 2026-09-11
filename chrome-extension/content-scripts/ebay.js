@@ -1106,7 +1106,9 @@ async function fillListingForm(job) {
     return {
       success: false,
       needsUser: true,
-      error: "LIVE : bouton « Mettre en vente » introuvable sur le formulaire — publier à la main puis vérifier le sélecteur.",
+      // Formulation (2026-09-11) : un sélecteur qui ne trouve plus le bouton,
+      // c'est chez nous — pas un geste à demander à l'utilisateur.
+      error: "Le bouton de mise en vente n'a pas été trouvé sur le formulaire eBay : le problème vient de notre côté. Aucune annonce n'a été créée, on s'en occupe.",
       warnings,
       unfilledRequired,
     };

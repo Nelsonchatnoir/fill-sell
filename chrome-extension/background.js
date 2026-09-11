@@ -2487,11 +2487,13 @@ const MSG_FPA_EBAY =
 // itemId null, manquants ["Photos"] } écrit à 10:32, puis « Connexion eBay
 // requise » écrit à 10:40 par le mur — la vraie cause, connue 8 minutes avant,
 // disparaissait sous un message faux (la sonde disait 200).
+// Formulation (2026-09-11, audit des messages) : la bascule « Achat immédiat »
+// ratée est de notre côté ; on ne demande plus à l'utilisateur de la faire à
+// la main — on le dit, et on indique seulement où est le brouillon.
 const MSG_EBAY_BROUILLON_ENCHERES =
-  "Brouillon eBay resté au format « Enchères » : " +
-  "eBay refuse de le publier sans prix de départ. Aucune annonce n'a été créée. " +
-  "Pour le publier à la main (« Vendre > Brouillons »), passe d'abord le format " +
-  "sur « Achat immédiat » et vérifie le prix.";
+  "Le brouillon eBay est resté au format « Enchères » par notre faute et eBay refuse de le publier. " +
+  "Aucune annonce n'a été créée. On corrige de notre côté ; si tu préfères le publier toi-même, " +
+  "le brouillon est dans « Vendre > Brouillons » sur ebay.fr.";
 const msgEbayPublishRefuse = (champs) =>
   "Publication eBay bloquée : le clic « Mettre en vente » n'a produit aucune requête, " +
   "et la soumission directe du brouillon a été REFUSÉE par eBay" +
@@ -3875,12 +3877,17 @@ async function rearmBounded(accessToken, job, errorMsg) {
     // remplacerait par son générique — et reste court (< 300 c.). Le trigger
     // settle_reservation rend l'unité ICI, une seule fois (statut terminal).
     const cause = causeHumaineConnue(job) ?? sansPromesseDeReprise(errorMsg);
+    // Formulation (2026-09-11, audit des messages) : plus de compteur, et plus
+    // de « Corrige la cause ci-dessus » — la cause est le plus souvent de notre
+    // côté (DataDome, clic avalé, canal coupé, panneau non rendu) et le texte
+    // accusait l'utilisateur d'un défaut de chez nous. On dit ce qui est
+    // arrêté et le seul geste qui existe : relancer, et nous écrire si ça
+    // se reproduit.
     const msgFinal =
       cause + (/[.!?…]$/.test(cause) ? "" : ".") +
-      ` ${attempts} tentatives automatiques espacées ont échoué : le job est arrêté.` +
       (job.action === "delete"
-        ? " Si l'annonce est encore en ligne, retire-la à la main sur la plateforme."
-        : " Corrige la cause ci-dessus, puis relance depuis la fiche de l'article.");
+        ? " Plusieurs essais automatiques n'ont pas abouti : le retrait est arrêté. Si l'annonce est encore en ligne, retire-la à la main sur la plateforme."
+        : " Plusieurs essais automatiques n'ont pas abouti : la publication est arrêtée. Relance depuis la fiche de l'article ; si ça se reproduit, écris-nous.");
     console.warn(`[background] Job ${job.id} : ${attempts} essais épuisés → failed (arrêt assumé) — ${errorMsg}`);
     // platform_fields joint depuis le 2026-07-30 : porte le relevé fenêtre
     // (work_window_state.at_end) sur la ligne failed, comme la branche pending.
@@ -8722,6 +8729,28 @@ async function restRequest(path, accessToken, init = {}) {
   return res.status === 204 ? null : res.json();
 }
 
+// ── Étape de republication telle qu'elle est EN BASE (2026-09-11) ────────────
+// Sert à la conclusion d'une passe « captured » : la marque 'deleted' peut avoir
+// été écrite par marquerRepublishSupprime sans que CE service worker s'en
+// souvienne (redémarrage, canal coupé). Trois issues, jamais confondues :
+//   { step, deletedAt, illisible:false } — la base a répondu ;
+//   { step:null, …, illisible:true }     — lecture impossible : on ne SAIT pas.
+async function etapeRepublishEnBase(accessToken, jobId) {
+  try {
+    const rows = await restRequest(
+      `cross_post_jobs?id=eq.${encodeURIComponent(String(jobId))}&select=platform_fields`,
+      accessToken,
+      { method: "GET" },
+    );
+    const pf = Array.isArray(rows) ? rows[0]?.platform_fields : null;
+    if (!pf || typeof pf !== "object") return { step: null, deletedAt: null, illisible: true };
+    return { step: pf.republish_step ?? null, deletedAt: pf.deleted_at ?? null, illisible: false };
+  } catch (e) {
+    console.warn(`[background] étape de republication en base illisible (${jobId}) : ${String(e?.message ?? e)}`);
+    return { step: null, deletedAt: null, illisible: true };
+  }
+}
+
 // ── Sync du dressing Vinted (2026-08-03) ─────────────────────────────────────
 // Objectif : remplir FillSell en une action avec les annonces qui appartiennent
 // déjà à l'utilisateur, et commencer à mesurer ce qu'elles deviennent (vues,
@@ -13265,7 +13294,15 @@ async function processRepublishJob(job, accessToken) {
       const marque = republishSupprimes.get(job.id) ?? null;
       republishSupprimes.delete(job.id);
       const marqueDeletedAt = marque?.deletedAt ?? null;
-      const aSupprime = result?.deleted === true || marqueDeletedAt != null;
+      // ── LA BASE TRANCHE (2026-09-11, audit des messages) ─────────────────
+      // Si la marque a bien été ÉCRITE en base (marquerRepublishSupprime) mais
+      // que ce service worker ne la voit plus (redémarré entre les deux, canal
+      // coupé), le pf LOCAL — étape 'captured' — écraserait 'deleted' plus
+      // bas, et le message dirait « intacte » sur une annonce retirée. On relit
+      // donc l'étape EN BASE avant de conclure. Illisible = on ne SAIT pas :
+      // le texte ne prétendra pas que l'annonce est intacte.
+      const enBase = await etapeRepublishEnBase(accessToken, job.id);
+      const aSupprime = result?.deleted === true || marqueDeletedAt != null || enBase?.step === "deleted";
 
       // VERDICT DE SUPPRESSION (2026-09-05) : quoi qu'il arrive, ce que l'API
       // de suppression a répondu est écrit dans platform_fields — la marque
@@ -13303,9 +13340,14 @@ async function processRepublishJob(job, accessToken) {
             await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
             return { status: "retry", error: "annonce déjà absente — recréation à la prochaine passe" };
           }
+          // Formulation (2026-09-11) : « intacte » seulement si l'état réel
+          // vient d'être relevé « active » ; sinon on dit qu'on n'a pas pu
+          // vérifier — jamais rassurant à tort.
           await updateJobStatus(accessToken, job.id, "needs_user", {
             platform_fields: pf,
-            error: `Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Corrige puis relance depuis l'app.`,
+            error: state === "active"
+              ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Relance depuis l'app quand tu veux.`
+              : `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
           });
           return { status: "needsUser", error: result?.error };
         }
@@ -13393,16 +13435,25 @@ async function processRepublishJob(job, accessToken) {
         // coupé avant la suppression) : needs_user honnête, annonce intacte —
         // l'étape reste 'captured', la relance rejouera le pré-vol en entier.
         if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
+        // Formulation (2026-09-11, audit des messages) : « ton annonce est
+        // intacte » n'est affirmé que si la base a pu être relue (étape non
+        // 'deleted') ; base illisible → « nous n'avons pas pu vérifier ». Et
+        // plus de « Corrige » : rien à corriger sur l'annonce, c'est un
+        // accident de parcours (canal, session, photos) — le serveur
+        // (update-job-status v37) relance d'ailleurs seul les canaux coupés.
+        const baseRelue = Boolean(enBase && !enBase.illisible);
         await updateJobStatus(accessToken, job.id, "needs_user", {
           platform_fields: pf,
-          error: `Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Corrige puis relance depuis l'app.`,
+          error: baseRelue
+            ? `Republication en pause avant toute suppression : ton annonce est toujours en ligne sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Rien à corriger sur l'annonce — relance depuis l'app quand tu veux.`
+            : `Republication interrompue : nous n'avons pas pu vérifier l'état de ton annonce sur Vinted. Motif : ${motifLisible(result?.error ?? "inconnu", 200)}. Relance depuis l'app : l'état réel sera re-vérifié avant tout geste.`,
         });
         return { status: "needsUser", error: result?.error };
       }
 
       // ── SUPPRIMÉE : étape actée, puis MÊME conclusion que la reprise ───────
       pf.republish_step = "deleted";
-      pf.deleted_at = pf.deleted_at ?? marqueDeletedAt ?? new Date().toISOString();
+      pf.deleted_at = pf.deleted_at ?? marqueDeletedAt ?? enBase?.deletedAt ?? new Date().toISOString();
       // É4 : les publish de l'ANCIENNE annonce sont clos MAINTENANT — le
       // veilleur quotidien scannerait sinon l'ancienne URL, la trouverait
       // morte, et poserait le faux « plus en ligne — vendue ? ».

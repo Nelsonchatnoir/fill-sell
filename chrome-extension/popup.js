@@ -407,7 +407,9 @@ const FAMILLES = {
   repub_pause: {
     court: (n) => pl(n, "republication en pause", "republications en pause"),
     titre: (n) => `${n} ${pl(n, "republication en pause", "republications en pause")}`,
-    sous: () => "Rien n'a été supprimé : l'annonce est intacte sur Vinted. La fiche dans l'appli dit le motif et porte le bouton pour relancer.",
+    // (2026-09-11) Le popup ne peut pas garantir l'intégrité de l'annonce : il
+    // ne lit ni l'article ni l'étape en base — il renvoie à la fiche.
+    sous: () => "La republication est en pause. La fiche dans l'appli dit ce qui l'attend et porte le bouton pour relancer.",
     lien: "app",
   },
   fiche: {
@@ -1036,10 +1038,10 @@ function renderQueueExtra() {
   }
   if (prochaine) {
     const h = new Date(prochaine).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-    lignes.push(`⏱️ <b>Prochaine recréation vers ${escapeHtml(h)}</b> — j'espace volontairement mes gestes de quelques minutes, comme le ferait une vraie personne`);
+    lignes.push(`⏱️ <b>Prochaine recréation vers ${escapeHtml(h)}</b> — les gestes sont espacés de quelques minutes, comme le ferait une vraie personne`);
   }
   if (state.sync?.status === "queued") {
-    lignes.push(`🔄 <b>Synchronisation demandée</b> — elle part à mon prochain passage`);
+    lignes.push(`🔄 <b>Synchronisation demandée</b> — elle part au prochain passage de l'extension`);
   }
   // Dernier résultat de republication (< 30 min) quand plus rien n'est en file.
   if (!state.repub.length && state.recentRepub) {
