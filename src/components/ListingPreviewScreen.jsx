@@ -29,6 +29,9 @@ import { normalizeVintedTitle } from "../utils/vintedTitle";
 import { getEbayCategoryPath, getEbayCategoryId, ebayGenreRequired } from "../utils/ebayCategories";
 import { getBeebsCategoryPath, beebsGenreRequired } from "../utils/beebsCategories";
 import { getPlatformSupport } from "../utils/platformCompat";
+// Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que le filet serveur
+// (get-pending-jobs) — verdict sur source certaine, motif écrit sous la case.
+import { verdictBeebsInterdit, messageBeebsInterdit } from "../../supabase/functions/_shared/beebs-interdits.js";
 import { computeRemovalInfo } from "../utils/publicationState";
 import { FREE_STOCK_LIMIT_FALLBACK, quotaStockAtteint } from "../utils/stockLimit";
 import { versImageDecodable, chargerImage, messageDecodage } from "../utils/imageDecode";
@@ -1380,7 +1383,7 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, publishedSet, queuedSet, lang, ebayVoieApi = false,
+function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, motifSupport = null, publishedSet, queuedSet, lang, ebayVoieApi = false,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisHidden,
   // Compte eBay pas encore utilisable (07/09/2026, demande Joséphine). Vaut
@@ -1802,7 +1805,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
                 : compteAbsent
                 ? messageCompteEbay(ebayMotif, lang)
                 : support !== "supported"
-                ? supportMessage(t, support, PLATFORM_LABELS[p])
+                ? (motifSupport ? motifSupport(p, support) : supportMessage(t, support, PLATFORM_LABELS[p]))
                 : enPause
                 ? messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p])
                 : undefined}
@@ -1873,7 +1876,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
       )}
       {PLATFORMS_DEFAULT.filter(p => (platformSupport?.[p] ?? "supported") !== "supported").map(p => (
         <p key={p} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
-          {supportMessage(t, platformSupport[p], PLATFORM_LABELS[p])}
+          {motifSupport ? motifSupport(p, platformSupport[p]) : supportMessage(t, platformSupport[p], PLATFORM_LABELS[p])}
         </p>
       ))}
       {/* Plateforme en pause (platform_health) : UNE phrase sous la rangée,
@@ -3694,6 +3697,26 @@ export default function ListingPreviewScreen({
   // porte pas le champ — un article importé de Vinted arrive alors avec sa
   // taille, son état et sa couleur au lieu de les faire deviner au texte.
   const [attributsBase, setAttributsBase] = useState(null);
+  // ── Ligne inventaire pour les règles du catalogue Beebs (2026-09-11) ──────
+  // Lue à part, hors du chemin des brouillons : état et marque RELEVÉS sur
+  // Vinted (attributs, avec leur source) et vinted_catalog_id. C'est la SEULE
+  // matière du verdict Beebs (_shared/beebs-interdits.js) — ni le titre, ni la
+  // marque du formulaire (pré-remplie par l'IA). Pas encore en stock (parcours
+  // Lens) ou requête refusée = aucun blocage, c'est voulu : doute = on laisse
+  // passer, et le serveur tend le même filet.
+  const [articleBase, setArticleBase] = useState(null);
+  useEffect(() => {
+    if (!inventaireId) { setArticleBase(null); return undefined; }
+    let vivant = true;
+    supabase
+      .from("inventaire")
+      .select("vinted_catalog_id,attributs")
+      .eq("id", inventaireId)
+      .maybeSingle()
+      .then(({ data }) => { if (vivant && data) setArticleBase(data); })
+      .catch(() => {});
+    return () => { vivant = false; };
+  }, [inventaireId, supabase]);
   const attributV = (cle) => {
     const champ = attributsBase && typeof attributsBase === "object" ? attributsBase[cle] : null;
     const v = champ && typeof champ === "object" ? champ.v : null;
@@ -4004,6 +4027,28 @@ export default function ListingPreviewScreen({
   // checkboxes des plateformes qui ne peuvent pas vendre cette catégorie
   // (StepPhotos) et les retire de la sélection — un job qui échouerait au
   // pré-check de l'extension ne doit jamais pouvoir partir.
+  // Article tel que le lisent les règles de compat (2026-09-11) : titre / type
+  // pour Leboncoin (cosmétiques, cf. estCosmetiqueInterditeLbc) ; pour Beebs,
+  // la ligne inventaire (attributs relevés sur Vinted, catalogue Vinted) — le
+  // vinted_catalog_id que le Stock passe déjà sert de premier relevé, synchrone,
+  // la ligne lue en base le confirme ensuite. Jamais le titre pour Beebs.
+  const articlePourCompat = useMemo(() => ({
+    titre: initialListing?.titre,
+    description: initialListing?.description,
+    type: initialListing?.categorie,
+    attributs: articleBase?.attributs ?? null,
+    vinted_catalog_id: articleBase?.vinted_catalog_id ?? initialListing?.vinted_catalog_id ?? null,
+  }), [initialListing, articleBase]);
+  // Verdict Beebs (même fichier de règles que le serveur) : nourrit le motif
+  // écrit sous la case quand platformSupport.beebs vaut "prohibited".
+  const beebsInterdit = useMemo(() => verdictBeebsInterdit(articlePourCompat), [articlePourCompat]);
+  // Motif d'une case grisée, par plateforme : Beebs a SON texte (marque ou
+  // catégorie nommée, « règle de Beebs », jamais culpabilisant), les autres
+  // gardent le motif générique par statut.
+  const motifSupport = (p, support) =>
+    p === "beebs" && support === "prohibited" && beebsInterdit
+      ? messageBeebsInterdit(beebsInterdit, lang)
+      : supportMessage(t, support, PLATFORM_LABELS[p]);
   const platformSupport = useMemo(() => {
     const icon = detectObjectIcon(
       initialListing?.titre,
@@ -4015,12 +4060,8 @@ export default function ListingPreviewScreen({
     // soins), et cette interdiction ne se déduit pas de l'icône seule — 81 %
     // des lignes à icône cosmétique de la base n'en sont pas (cartes Pokémon
     // « Mascarade », couleur « crème »). Cf. estCosmetiqueInterditeLbc.
-    return getPlatformSupport(icon, {
-      titre: initialListing?.titre,
-      description: initialListing?.description,
-      type: initialListing?.categorie,
-    });
-  }, [initialListing]);
+    return getPlatformSupport(icon, articlePourCompat);
+  }, [initialListing, articlePourCompat]);
   useEffect(() => {
     setSelected(prev => {
       const next = new Set([...prev].filter(p => platformSupport[p] === "supported"));
@@ -6591,7 +6632,7 @@ export default function ListingPreviewScreen({
         // (publishChips), ce re-check attrape un état périmé ou une course.
         // Aucune unité engagée.
         if (plateformesInterdites.length) {
-          throw new Error(supportMessage(t, "prohibited", plateformesInterdites.map(p => PLATFORM_LABELS[p]).join(", ")));
+          throw new Error(plateformesInterdites.map(p => motifSupport(p, "prohibited")).join(" "));
         }
         // Seules des plateformes à champ obligatoire manquant : INVITATION à
         // compléter (le champ vit dans l'encart rouge juste au-dessus), plus
@@ -7961,6 +8002,7 @@ export default function ListingPreviewScreen({
               ? photos.filter(u => !initialPhotos.includes(u)).length
               : 0}
             platformSupport={platformSupport}
+            motifSupport={motifSupport}
             publishedSet={publishedSet}
             queuedSet={queuedSet}
             ebayBloque={ebayBloque}

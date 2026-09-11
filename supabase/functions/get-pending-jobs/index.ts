@@ -4,6 +4,9 @@ import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir } from "../_shared/vinted-taille-republication.ts";
 import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
+// Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
+// (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
+import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-interdits.js";
 import {
   type AspectRow,
   BEEBS_CHAMPS_DEDIES,
@@ -1203,6 +1206,58 @@ serve(async (req) => {
       }
     }
 
+    // ── ARTICLES QUE BEEBS N'ACCEPTE PAS (2026-09-11, GO Nico) ──────────────
+    // Filet serveur de la case grisée dans l'app (platformCompat.js) : MÊME
+    // fichier de règles (_shared/beebs-interdits.js), MÊME matière — la ligne
+    // inventaire seule : marque et état relevés sur Vinted (attributs, avec
+    // leur source), vinted_catalog_id. Jamais le titre, jamais l'IA, jamais
+    // platform_fields du job (rédigé depuis le formulaire, pré-rempli par
+    // l'IA) ; doute = servi. Un dépôt touché passe en needs_user avec le motif
+    // écrit à la personne : rien n'est annulé, rien de plus n'est débité, et
+    // l'annonce ne part pas se faire retirer à la modération Beebs. Poll
+    // d'exécution seul, comme les autres filets ; best-effort, jamais un point
+    // de panne. Mesuré le 11/09 : 0 job en file concerné, 1 article sur 265
+    // déjà publiés sur Beebs (marque Shein).
+    let heldBeebsInterdit = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const depotsBeebs = out.filter((j) =>
+        j.platform === "beebs" && (j.action === "publish" || j.action === "republish") && j.inventaire_id != null);
+      if (depotsBeebs.length) {
+        try {
+          const ids = [...new Set(depotsBeebs.map((j) => j.inventaire_id))];
+          const { data: arts } = await userClient
+            .from("inventaire").select("id, vinted_catalog_id, attributs").in("id", ids);
+          const parArticle = new Map<string, Record<string, unknown>>();
+          for (const a of (arts ?? []) as Record<string, unknown>[]) parArticle.set(String(a.id), a);
+          const aRetenir = new Set<string>();
+          for (const j of depotsBeebs) {
+            const art = parArticle.get(String(j.inventaire_id));
+            if (!art) continue; // article absent = inconnu = servi
+            const verdict = verdictBeebsInterdit(art);
+            if (!verdict) continue;
+            const pf = ((j.platform_fields as Record<string, unknown> | null) ?? {});
+            const { data: maj } = await userClient.from("cross_post_jobs")
+              .update({
+                status: "needs_user",
+                error: messageBeebsInterdit(verdict, "fr"),
+                platform_fields: { ...pf, beebs_interdit: { ...verdict, depuis: new Date().toISOString(), source: "get-pending-jobs" } },
+              })
+              .eq("id", j.id).eq("status", "pending").select("id");
+            aRetenir.add(String(j.id));
+            const detail = verdict.motif === "marque"
+              ? `marque ${verdict.marque}`
+              : `catalogue ${verdict.vinted_catalog_id}${verdict.motif === "usage" ? ` en « ${verdict.etat} »` : ""}`;
+            console.log(`[get-pending-jobs] dépôt beebs ${String(j.id).slice(0, 8)} : article refusé par le catalogue Beebs (${detail}) — needs_user${(maj ?? []).length ? "" : " (déjà sorti de pending)"}`);
+          }
+          if (aRetenir.size) {
+            const avant = out.length;
+            out = out.filter((j) => !aRetenir.has(String(j.id)));
+            heldBeebsInterdit = avant - out.length;
+          }
+        } catch (_e) { /* best-effort : jamais un point de panne — le job est servi */ }
+      }
+    }
+
     let heldPipeline = 0;
     if (!includeProcessing && !includeNeedsUser) {
       const pfOf = (j: { platform_fields: unknown }) =>
@@ -1241,6 +1296,7 @@ serve(async (req) => {
       (heldLbc ? `, ${heldLbc} leboncoin retenu(s) (un seul dépôt à la fois)` : "") +
       (heldSession ? `, ${heldSession} job(s) retenu(s) (session plateforme connue morte)` : "") +
       (heldRetraitBeebs ? `, ${heldRetraitBeebs} retrait(s) beebs retenu(s) (sans lien : attente, jamais par titre)` : "") +
+      (heldBeebsInterdit ? `, ${heldBeebsInterdit} dépôt(s) beebs → needs_user (article refusé par le catalogue Beebs)` : "") +
       (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : ""),
     );
 
@@ -2290,6 +2346,9 @@ serve(async (req) => {
       sync_prioritaire: heldSync > 0,
       jobs_retenus_sync: heldSync,
       boutique_pause: boutiquePause,
+      // beebs_interdits (2026-09-11) : dépôts passés en needs_user à ce poll
+      // parce que l'article tombe sous les règles du catalogue Beebs.
+      beebs_interdits: heldBeebsInterdit,
       // sessions_pause (2026-09-10) : par plateforme connue morte, combien de
       // jobs attendent, depuis quelle observation, et quel job sert de sonde.
       sessions_pause: sessionsPause,
