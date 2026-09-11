@@ -802,7 +802,11 @@ async function fillListingForm(job) {
       const v = valeurJobPour(cle);
       return v
         ? `« ${nomLisible(cle)} » : la fiche porte « ${v} » mais la valeur n'a pas pu être posée sur la page — panne de remplissage, PAS une donnée manquante (relancer, ou attendre le correctif)`
-        : `« ${nomLisible(cle)} » : la fiche FillSell de l'article ne le renseigne pas (vide dans l'inventaire) — Beebs a raison de le réclamer, rien n'est en panne : à compléter`;
+        // ⚠️ Le handler ne voit que la COPIE Beebs du job, jamais la fiche :
+        // une fiche complétée APRÈS la création de l'annonce ne se propage pas
+        // (chaussettes Alo d'Ornella, 11/09 : fiche « Alo », copie vide — le
+        // message accusait la fiche). On nomme ce qu'on lit vraiment.
+        : `« ${nomLisible(cle)} » : la copie Beebs de cette annonce ne le renseigne pas — Beebs a raison de le réclamer, rien n'est en panne : à compléter ici, même si la fiche de l'article le porte déjà (la copie ne suit pas les modifications de la fiche)`;
     }).join(" ; ");
 
     // ── RELEVÉ DE SECOURS (2026-07-26, cas Casio « Taille » vide) ────────────
@@ -1026,7 +1030,10 @@ async function fillListingForm(job) {
   }
 
   console.log(`[beebs] dépôt CONFIRMÉ (${proof.preuve}) — annonce en modération, listing_url différé`);
-  warnings.push(`observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}`);
+  // La preuve retenue part dans les warnings (2026-09-11) : jusqu'ici seul le
+  // console.log la portait, et aucune enquête en base ne pouvait dire par quoi
+  // un dépôt avait été « confirmé ».
+  warnings.push(`observabilité: dépôt confirmé par ${proof.preuve} ; catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}`);
   return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
 }
 
@@ -1089,9 +1096,62 @@ let etatChampsFiber = "(non tenté)";
 // Confirmation de dépôt Beebs : page de succès OU message de confirmation.
 // ⚠️ Aucun filtre par getClientRects()/offsetParent : l'onglet de travail vit
 // dans une fenêtre minimisée, donc SANS LAYOUT — tous les rects y valent 0, même
-// pour du texte bel et bien affiché (leçon du 2026-07-13). textContent, lui,
-// est fiable sans rendu.
-async function waitForBeebsDeposit(timeoutMs = 30_000) {
+// pour du texte bel et bien affiché (leçon du 2026-07-13). Les nœuds texte du
+// DOM, eux, sont fiables sans rendu.
+//
+// ⛔ JAMAIS body.textContent (2026-09-11, relevé live sur /fr/listing, compte
+// Nico, AUCUN dépôt) : la page Next.js de Beebs embarque ses libellés i18n dans
+// un <script> (self.__next_f.push … listing_completed.confirmation_message =
+// « Votre article a bien été ajouté à votre dressing Beebs. Il sera mis en
+// ligne dès qu'il aura été vérifié par notre équipe »), et textContent inclut
+// le texte des scripts. La regex matchait donc DÈS LE CHARGEMENT DU FORMULAIRE,
+// avant tout clic : la « preuve » était un faux positif permanent — mesuré :
+// published_at − processing_since ≈ 34 s en moyenne, succès ou non, la
+// confirmation n'a jamais été attendue. Tout clic « Publier » refusé sur place
+// par Beebs partait donc en `published` sans URL, puis « publication non
+// confirmée » 48 h plus tard (parc 20/07→01/09 : 10 dépôts « confirmés » sur
+// 83 jamais retrouvés en ligne ; Ornella ×5 requalifiés le 09/09). On ne lit
+// désormais que le texte RENDU (nœuds texte hors script/style/noscript/
+// template) ; la route /fr/listing/success existe toujours (HTTP 200 relevé le
+// 11/09) et reste la première preuve. Le message d'échec ne promet plus de
+// reprise : côté background ce résultat devient un `failed` final (aucun
+// re-dépôt automatique — voulu : un second clic créerait un doublon si la
+// confirmation avait simplement tardé).
+function texteRenduHorsScripts() {
+  const racine = document.body;
+  if (!racine) return "";
+  const walker = document.createTreeWalker(racine, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => {
+      const p = n.parentElement;
+      if (!p || p.closest("script, style, noscript, template")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const morceaux = [];
+  let n;
+  while ((n = walker.nextNode())) {
+    const t = n.textContent;
+    if (t && t.trim()) morceaux.push(t);
+  }
+  return morceaux.join(" ").replace(/\s+/g, " ");
+}
+
+// Erreurs de validation AFFICHÉES par le formulaire après le clic (rôle alert,
+// champs invalides, classes « error/invalid ») — pure observabilité, jointe au
+// message d'échec pour que la cause d'un refus sur place soit lisible depuis
+// la base au lieu d'être devinée. Sélecteurs génériques : le balisage des
+// erreurs Beebs n'a pas été relevé — une liste vide ne prouve rien.
+function erreursFormulaireVisibles() {
+  const textes = new Set();
+  for (const el of document.querySelectorAll('[role="alert"], [aria-invalid="true"], [class*="error" i], [class*="invalid" i]')) {
+    const t = (el.getAttribute("aria-label") || el.textContent || "").replace(/\s+/g, " ").trim();
+    if (t && t.length <= 160) textes.add(t);
+    if (textes.size >= 5) break;
+  }
+  return [...textes];
+}
+
+async function waitForBeebsDeposit(timeoutMs = 45_000) {
   const CONFIRME = /bien été ajouté à (?:votre|ton) dressing|sera mis en ligne dès qu|en cours de vérification/i;
   const deadline = Date.now() + timeoutMs;
 
@@ -1099,18 +1159,20 @@ async function waitForBeebsDeposit(timeoutMs = 30_000) {
     if (/\/listing\/success/i.test(location.pathname)) {
       return { ok: true, preuve: `redirection vers ${location.pathname}` };
     }
-    const txt = (document.body?.textContent || "").replace(/\s+/g, " ");
-    const m = txt.match(CONFIRME);
-    if (m) return { ok: true, preuve: `message « ${m[0]} »` };
+    const m = texteRenduHorsScripts().match(CONFIRME);
+    if (m) return { ok: true, preuve: `message rendu « ${m[0]} »` };
     await sleep(1000);
   }
 
+  const erreurs = erreursFormulaireVisibles();
   return {
     ok: false,
     error:
-      "Dépôt Beebs non confirmé : ni redirection vers /listing/success, ni message de confirmation " +
-      `après ${timeoutMs / 1000} s. L'annonce n'a PAS été considérée comme déposée (jamais de ` +
-      "« published » sans preuve) — le job repartira au prochain passage.",
+      "Dépôt Beebs non confirmé : ni page de succès, ni message de confirmation affiché " +
+      `${timeoutMs / 1000} s après le clic « Publier »` +
+      (erreurs.length ? ` — le formulaire affiche : ${erreurs.join(" | ")}` : " — aucune erreur affichée n'a pu être lue") +
+      ". L'annonce n'est PAS considérée comme déposée. Vérifie « Mes annonces » sur Beebs avant de relancer : " +
+      "si elle y est déjà, republier en créerait une deuxième.",
   };
 }
 
