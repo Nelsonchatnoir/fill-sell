@@ -2361,13 +2361,22 @@ async function fillListingForm(job) {
     const couleurPosee = await selectColors(fields.colors, warnings);
     if (!couleurPosee) {
       const requiredState = await computeVintedRequiredState().catch(() => ({ discovered: [] }));
+      // ── DEUX CAS, DEUX MESSAGES (2026-09-11, audit des messages) ─────────
+      // « Corriger la couleur dans l'app » n'est juste que si la couleur est
+      // ABSENTE de la palette Vinted. Si elle y figure (cas 0179dfda : « Rose »
+      // dans une palette qui contient « Rose »), la pose a échoué de NOTRE
+      // côté — on le dit, sans envoyer l'utilisateur corriger un article juste.
+      const palette = paletteCouleursRelevee ?? [];
+      const dansPalette = fields.colors.filter((c) => palette.some((p) => normalizeFuzzy(p) === normalizeFuzzy(c)));
       return {
         success: false,
-        error:
-          `COULEUR INTROUVABLE : aucune option du picker Vinted ne correspond à ` +
-          `${JSON.stringify(fields.colors)}. Palette affichée par Vinted: ` +
-          `${JSON.stringify(paletteCouleursRelevee ?? [])}. Corriger la couleur de ` +
-          `l'article dans l'app puis relancer la publication.`,
+        error: dansPalette.length
+          ? `COULEUR INTROUVABLE : la couleur ${JSON.stringify(dansPalette)} existe bien chez Vinted mais n'a pas pu ` +
+            `être posée sur le formulaire — le problème vient de notre côté, rien à corriger sur l'article. ` +
+            `Palette affichée par Vinted: ${JSON.stringify(palette)}.`
+          : `COULEUR INTROUVABLE : Vinted ne propose pas la couleur ${JSON.stringify(fields.colors)}. ` +
+            `Choisis une couleur de sa palette dans FillSell (fiche de l'article), puis relance la publication. ` +
+            `Palette affichée par Vinted: ${JSON.stringify(palette)}.`,
         warnings,
         discoveredRequired: requiredState.discovered,
       };
@@ -5481,12 +5490,51 @@ async function selectColors(colorNames, warnings = []) {
       const t = document.querySelector('#color, [data-testid="color-select-dropdown-input"]');
       return t ? String(readCommittedValue(t) ?? "").trim() : "";
     };
+    // ── LA VÉRITÉ DU CHAMP, C'EST L'ÉTAT DES CASES (2026-09-11, job 0179dfda) ──
+    // Une couleur PRÉ-REMPLIE par Vinted (conservée, jamais re-cliquée — cf.
+    // cocherOptionSansBasculer, inchangé) laisse le champ déclencheur avec un
+    // `value` React VIDE : readCommittedValue rend "" (props.value prime sur
+    // el.value, et c'est voulu pour le prix et l'ISBN). La relecture disait
+    // « champ relu VIDE », la nouvelle passe ne changeait rien (déjà cochée =
+    // pas de clic), et le job échouait « COULEUR INTROUVABLE » alors que
+    // « Rose » était cochée et que le POST serait parti avec. Mesuré : 1 job /
+    // 1 compte / 0.6.26 seulement — la relecture n'existait pas avant.
+    // Désormais, avant tout verdict, on rouvre le panneau et on lit
+    // aria-checked des options RETENUES : cochées = posées, quoi que dise le
+    // déclencheur. Panneau irréouvrable → null : on retombe sur l'ancien
+    // chemin, jamais moins bon qu'avant.
+    const SEL_OPTION_COCHEE = '[data-testid^="color-"][role="checkbox"][aria-checked="true"]';
+    const casesRetenuesCochees = () => {
+      const cochees = new Set(
+        Array.from(document.querySelectorAll(SEL_OPTION_COCHEE))
+          .map((c) => normalizeFuzzy(c.textContent.trim()))
+          .filter(Boolean),
+      );
+      return retenues.size > 0 && [...retenues].every((r) => cochees.has(r));
+    };
     if (!lireTrigger()) {
+      let panneauOuvert = false;
+      try {
+        await openDropdown('#color, [data-testid="color-select-dropdown-input"]');
+        panneauOuvert = true;
+      } catch (e) {
+        console.warn("[vinted] ⚠️ couleur: relecture des cases impossible —", String(e?.message ?? e));
+      }
+      if (panneauOuvert && casesRetenuesCochees()) {
+        const note = "couleur: champ déclencheur relu vide, mais case(s) cochée(s) dans le picker — posée(s), conservée(s), aucun re-clic";
+        console.log(`[vinted] ${note}`);
+        warnings.push(note);
+        await closeAnyOpenDropdown();
+        return true;
+      }
       const note = "couleur: cliquée(s) mais champ relu VIDE après fermeture — nouvelle passe";
       console.warn(`[vinted] ⚠️ ${note}`);
       warnings.push(note);
       try {
-        await openDropdown('#color, [data-testid="color-select-dropdown-input"]');
+        if (!panneauOuvert) {
+          await openDropdown('#color, [data-testid="color-select-dropdown-input"]');
+          panneauOuvert = true;
+        }
         for (const name of colorNames.slice(0, 2)) {
           const m = findOptionCascade(
             document,
@@ -5498,11 +5546,15 @@ async function selectColors(colorNames, warnings = []) {
       } catch (e) {
         console.warn("[vinted] ⚠️ couleur: nouvelle passe impossible —", String(e?.message ?? e));
       }
+      // Verdict AVANT de fermer : les cases sont la source ; le déclencheur,
+      // relu après fermeture, n'est qu'un second témoin.
+      const casesOk = panneauOuvert && casesRetenuesCochees();
       await closeAnyOpenDropdown();
-      if (!lireTrigger()) {
-        warnings.push("couleur: champ toujours VIDE après la nouvelle passe — pose non retenue par le formulaire");
+      if (!casesOk && !lireTrigger()) {
+        warnings.push("couleur: aucune case cochée et champ toujours VIDE après la nouvelle passe — pose non retenue par le formulaire");
         return false;
       }
+      if (casesOk) warnings.push("couleur: case(s) cochée(s) après la nouvelle passe — posée(s)");
     }
   }
   return posees > 0 || !colorNames.length;

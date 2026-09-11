@@ -471,9 +471,17 @@ export function humanizeJobError(job, lang = 'fr') {
   // le détail embarque la palette relevée — l'utilisateur doit juste
   // corriger la couleur de l'article.
   if (/^COULEUR INTROUVABLE/i.test(raw)) {
+    // (2026-09-11, job 0179dfda) Deux cas sous le même préfixe : la couleur
+    // EXISTE chez Vinted et n'a pas pu être posée (notre côté — rien à corriger
+    // sur l'article), ou elle est vraiment hors palette (geste utilisateur).
+    if (/existe bien chez Vinted|n'a pas pu être posée/i.test(raw)) {
+      return en
+        ? `${name} offers this color but we could not set it on the form: the problem is on our side, nothing to fix on the item. Relaunch from the item; write to us if it happens again.`
+        : `${name} propose bien cette couleur mais nous n'avons pas pu la poser sur le formulaire : le problème vient de notre côté, rien à corriger sur l'article. Relance depuis la fiche de l'article ; écris-nous si ça se reproduit.`;
+    }
     return en
-      ? `The item's color does not match any color offered by ${name}. Fix the color on the item, then retry publishing.`
-      : `La couleur de l'article ne correspond à aucune couleur proposée par ${name}. Corriger la couleur dans la fiche de l'article puis relancer la publication.`;
+      ? `The item's color is not one ${name} offers. Pick a color from its palette on the item, then relaunch publishing.`
+      : `La couleur de l'article n'est pas dans la palette de ${name}. Choisis une couleur de sa palette dans la fiche de l'article, puis relance la publication.`;
   }
 
   // Catégorie non posée (sélection en cascade échouée) : le diagnostic liste
