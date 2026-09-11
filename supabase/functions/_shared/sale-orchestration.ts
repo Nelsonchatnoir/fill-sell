@@ -227,7 +227,7 @@ export async function orchestrateSale(
   if (job.inventaire_id != null) {
     const { data: siblings } = await admin
       .from("cross_post_jobs")
-      .select("id, status, listing_url, platform_fields")
+      .select("id, status, listing_url, platform_fields, platform")
       .eq("user_id", userId)
       .eq("inventaire_id", job.inventaire_id)
       // republish inclus (2026-08-09) : un frère republié encore en ligne est
@@ -257,12 +257,25 @@ export async function orchestrateSale(
       // l'annonce par son TITRE (les handlers savent le faire) au lieu de
       // suivre un lien direct.
       const wasLive = sib.status === "published";
-      const patch: Record<string, unknown> = { status: "cancelled" };
+      // ── BEEBS SANS LIEN : ON N'ANNULE PAS LE DÉPÔT (2026-09-11, décision Nico)
+      // Un dépôt Beebs 'published' sans listing_url est en VÉRIFICATION Beebs
+      // (lien seulement à la mise en ligne). Le passer en 'cancelled' sortait
+      // le job de la re-capture (recoverMissingListingUrls ne lit que
+      // 'published') : le lien n'arrivait jamais, le retrait armé à la vente
+      // partait sans lien et beebs.js visait la carte par TITRE — sur un titre
+      // en double, la mauvaise annonce. Désormais le dépôt RESTE 'published'
+      // (marqué pending_removal + removal_url_missing + retrait_attend_lien) :
+      // la re-capture continue, get-pending-jobs sert le retrait dès que le
+      // lien est là, le cron 7 j requalifie le dépôt s'il n'arrive jamais.
+      // Leboncoin, Vinted, eBay : inchangés.
+      const beebsSansLien = wasLive && sib.platform === "beebs" && !sib.listing_url;
+      const patch: Record<string, unknown> = beebsSansLien ? {} : { status: "cancelled" };
       if (wasLive) {
         patch.platform_fields = {
           ...(sib.platform_fields ?? {}),
           pending_removal: true,
           ...(sib.listing_url ? {} : { removal_url_missing: true }),
+          ...(beebsSansLien ? { retrait_attend_lien: { depuis: new Date().toISOString(), motif: "depot_beebs_en_verification_a_la_vente" } } : {}),
         };
       }
       const { error: sibErr } = await admin.from("cross_post_jobs").update(patch).eq("id", sib.id);

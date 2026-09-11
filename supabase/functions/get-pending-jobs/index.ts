@@ -1089,6 +1089,120 @@ serve(async (req) => {
     // ne doit jamais bloquer les autres. Jobs retenus : ils RESTENT pending,
     // rien n'est perdu ni annulé. Popup non concerné (mêmes flags opt-in que
     // le plafond : il continue de voir la file complète).
+    // ── RETRAIT BEEBS SANS LIEN = ATTENTE, JAMAIS UN CIBLAGE PAR TITRE ──────
+    // (2026-09-11, décision Nico.) Un job action='delete' Beebs sans listing_url
+    // (armé à la vente pendant que l'annonce est encore en vérification Beebs)
+    // était servi tel quel, et beebs.js retrouvait la carte par TITRE EXACT
+    // dans « Mes annonces » : sur deux annonces au même titre (Joséphine :
+    // « Jean ONLY taille M » ×2), c'est l'AUTRE annonce qui partait — l'article
+    // vendu restait en ligne, celui encore à vendre disparaissait, et rien
+    // n'échouait. Mesuré 30 j : 5 retraits sans lien (Ornella), 0 titre en
+    // double, aucune mauvaise suppression — le défaut est dans le code, pas
+    // encore dans les faits. Désormais, SANS LIEN ON NE RETIRE RIEN :
+    //   · le lien est déjà sur le job de dépôt (recoverMissingListingUrls
+    //     l'a retrouvé depuis) → on le RECOPIE sur le retrait et on le sert ;
+    //   · sinon → RETENU en pending (marqueur retrait_attend_lien, aucune
+    //     tentative consommée) : le dépôt reste 'published' à la vente
+    //     (sale-orchestration) pour que la re-capture continue de chercher ;
+    //   · dépôt requalifié « non confirmé » par le cron (jamais en ligne) →
+    //     retrait ANNULÉ : rien à retirer ;
+    //   · 7 jours d'attente (la fenêtre de la re-capture) → failed honnête.
+    // Leboncoin n'est pas concerné (cible par l'id de l'URL, échec propre
+    // sans lien) ; Vinted/eBay non plus.
+    let heldRetraitBeebs = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const retraitsSansLien = out.filter((j) =>
+        j.platform === "beebs" && j.action === "delete" && !String(j.listing_url ?? "").trim());
+      if (retraitsSansLien.length) {
+        const aRetenir = new Set<string>();
+        const ATTENTE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+        for (const d of retraitsSansLien) {
+          const pf = ((d.platform_fields as Record<string, unknown> | null) ?? {});
+          const attente = (pf["retrait_attend_lien"] as Record<string, unknown> | undefined) ?? {};
+          const depuisMs = Date.parse(String(attente["depuis"] ?? "")) || Date.now();
+          const nowIso = new Date().toISOString();
+          try {
+            let url: string | null = null;
+            let depotJamaisEnLigne = false;
+            if (d.inventaire_id != null) {
+              const { data: depots } = await userClient
+                .from("cross_post_jobs")
+                .select("id, status, listing_url, platform_fields")
+                .eq("platform", "beebs")
+                .eq("inventaire_id", d.inventaire_id)
+                .in("action", ["publish", "republish"])
+                .order("created_at", { ascending: false })
+                .limit(5);
+              for (const p of (depots ?? []) as Array<{ status: string; listing_url: string | null; platform_fields: unknown }>) {
+                if (String(p.listing_url ?? "").trim()) { url = String(p.listing_url); break; }
+              }
+              const liste = (depots ?? []) as Array<{ status: string; platform_fields: unknown }>;
+              depotJamaisEnLigne = !url && liste.length > 0 && liste.every((p) =>
+                p.status === "failed" && Boolean(((p.platform_fields as Record<string, unknown> | null) ?? {})["listing_url_abandon"]));
+            }
+            if (url) {
+              const pfNeuf: Record<string, unknown> = {
+                ...pf,
+                retrait_attend_lien: { ...attente, resolu_le: nowIso, url },
+              };
+              delete pfNeuf["removal_url_missing"];
+              await userClient.from("cross_post_jobs")
+                .update({ listing_url: url, platform_fields: pfNeuf })
+                .eq("id", d.id).eq("status", "pending");
+              (d as { listing_url: string | null }).listing_url = url;
+              (d as { platform_fields: unknown }).platform_fields = pfNeuf;
+              console.log(`[get-pending-jobs] retrait beebs ${String(d.id).slice(0, 8)} : lien du dépôt recopié (${url}) — servi`);
+              continue;
+            }
+            if (depotJamaisEnLigne) {
+              await userClient.from("cross_post_jobs")
+                .update({
+                  status: "cancelled",
+                  error: "Rien à retirer sur Beebs : l'annonce n'a jamais été mise en ligne (dépôt non confirmé).",
+                  platform_fields: { ...pf, retrait_attend_lien: { ...attente, annule_le: nowIso, motif: "depot_jamais_en_ligne" } },
+                })
+                .eq("id", d.id).eq("status", "pending");
+              aRetenir.add(String(d.id));
+              continue;
+            }
+            if (Date.now() - depuisMs > ATTENTE_MAX_MS) {
+              await userClient.from("cross_post_jobs")
+                .update({
+                  status: "failed",
+                  error: "Retrait Beebs non fait : le lien de l'annonce n'a pas été obtenu en 7 jours (annonce jamais mise en ligne, ou lien introuvable). Vérifie ton dressing Beebs et retire-la à la main si elle y est.",
+                  platform_fields: { ...pf, retrait_attend_lien: { ...attente, expire_le: nowIso } },
+                })
+                .eq("id", d.id).eq("status", "pending");
+              aRetenir.add(String(d.id));
+              continue;
+            }
+            await userClient.from("cross_post_jobs")
+              .update({
+                platform_fields: {
+                  ...pf,
+                  retrait_attend_lien: {
+                    depuis: new Date(depuisMs).toISOString(),
+                    derniere: nowIso,
+                    observations: (Number(attente["observations"]) || 0) + 1,
+                    motif: "sans_lien_jamais_par_titre",
+                  },
+                },
+              })
+              .eq("id", d.id).eq("status", "pending");
+            aRetenir.add(String(d.id));
+          } catch (e) {
+            console.warn(`[get-pending-jobs] retrait beebs ${String(d.id).slice(0, 8)} : attente illisible (${String((e as Error)?.message ?? e)}) — retenu`);
+            aRetenir.add(String(d.id));
+          }
+        }
+        if (aRetenir.size) {
+          const avant = out.length;
+          out = out.filter((j) => !aRetenir.has(String(j.id)));
+          heldRetraitBeebs = avant - out.length;
+        }
+      }
+    }
+
     let heldPipeline = 0;
     if (!includeProcessing && !includeNeedsUser) {
       const pfOf = (j: { platform_fields: unknown }) =>
@@ -1126,6 +1240,7 @@ serve(async (req) => {
       (heldPipeline ? `, ${heldPipeline} republish retenu(s) (article par article — capture/retrait au compte-gouttes)` : "") +
       (heldLbc ? `, ${heldLbc} leboncoin retenu(s) (un seul dépôt à la fois)` : "") +
       (heldSession ? `, ${heldSession} job(s) retenu(s) (session plateforme connue morte)` : "") +
+      (heldRetraitBeebs ? `, ${heldRetraitBeebs} retrait(s) beebs retenu(s) (sans lien : attente, jamais par titre)` : "") +
       (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : ""),
     );
 

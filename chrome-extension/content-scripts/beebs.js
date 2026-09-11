@@ -180,16 +180,34 @@ async function deleteListing(job) {
 
   // Repère l'annonce par son titre (le champ Rechercher observé filtrerait
   // aussi, mais un match direct suffit tant que la liste tient sur une page).
+  // ── CIBLAGE PAR LE LIEN SEULEMENT (2026-09-11, décision Nico) ─────────────
+  // Avant : la carte était cherchée par TITRE EXACT d'abord, le slug de l'URL
+  // ensuite. Sur deux annonces au même titre (Joséphine : « Jean ONLY taille
+  // M » ×2) le titre désigne l'AUTRE annonce, le retrait la supprime, le job
+  // dit « retiré » et personne ne le voit. Le titre ne désigne rien : seul le
+  // slug du listing_url identifie l'annonce. Sans lien → retrait NON tenté
+  // (le serveur ne sert plus un retrait Beebs sans lien ; ceci est le filet
+  // côté page). Le titre n'est plus qu'un TÉMOIN journalisé sur la carte
+  // trouvée, jamais un critère de choix.
   let anchor = null;
-  if (job.title) {
-    anchor = Array.from(document.querySelectorAll("a, h2, h3, p, span"))
-      .find((el) => el.textContent.trim() === job.title.trim()) ?? null;
-    if (anchor) t(`annonce trouvée par titre exact : "${job.title}"`);
+  const slug = job.listing_url ? String(job.listing_url).split("/").filter(Boolean).pop() : "";
+  if (!slug) {
+    t(`retrait NON tenté : aucun lien d'annonce (titre="${job.title ?? "?"}") — jamais de ciblage par titre`);
+    return {
+      success: false,
+      error: "Annonce introuvable : aucun lien d'annonce connu pour ce retrait Beebs — retrait non tenté (jamais par titre : une annonce au même titre pourrait être retirée à la place). Il repartira quand le lien sera connu.",
+      trace,
+    };
   }
-  if (!anchor && job.listing_url) {
-    const slug = String(job.listing_url).split("/").filter(Boolean).pop();
-    if (slug) anchor = document.querySelector(`a[href*="${slug}"]`);
-    if (anchor) t(`annonce trouvée par slug d'URL : ${slug}`);
+  anchor = document.querySelector(`a[href*="${slug}"]`);
+  if (anchor) {
+    t(`annonce trouvée par slug d'URL : ${slug}`);
+    if (job.title) {
+      const carteTxt = texteDe(findBeebsCard(anchor) ?? anchor);
+      t(carteTxt.includes(job.title.trim())
+        ? `témoin titre : « ${job.title} » lu sur la carte du slug`
+        : `témoin titre : « ${job.title} » NON lu sur la carte du slug (titre Beebs peut-être tronqué) — le slug fait foi`);
+    }
   }
   if (!anchor) {
     t(`annonce INTROUVABLE dans Mes annonces (titre="${job.title ?? "?"}")`);
