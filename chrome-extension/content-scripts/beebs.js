@@ -1141,8 +1141,16 @@ function texteRenduHorsScripts() {
 // message d'échec pour que la cause d'un refus sur place soit lisible depuis
 // la base au lieu d'être devinée. Sélecteurs génériques : le balisage des
 // erreurs Beebs n'a pas été relevé — une liste vide ne prouve rien.
+// Textes de validation du formulaire Beebs, relevés le 11/09 dans son bundle
+// (listing_form.*) : ce sont eux qu'un clic « Mettre en vente » refusé rend.
+const BEEBS_ERREURS_FORMULAIRE_RE =
+  /Ajouter au moins une photo|Sélectionner une valeur|Sélectionner une catégorie|Renseigner le prix de vente|Sélectionner un format de colis|Renseigner votre adresse|Renseigner une date valide|Veuillez certifier|Une erreur est survenue lors de l[’']enregistrement de votre annonce/g;
 function erreursFormulaireVisibles() {
   const textes = new Set();
+  for (const m of texteRenduHorsScripts().matchAll(BEEBS_ERREURS_FORMULAIRE_RE)) {
+    textes.add(m[0]);
+    if (textes.size >= 5) break;
+  }
   for (const el of document.querySelectorAll('[role="alert"], [aria-invalid="true"], [class*="error" i], [class*="invalid" i]')) {
     const t = (el.getAttribute("aria-label") || el.textContent || "").replace(/\s+/g, " ").trim();
     if (t && t.length <= 160) textes.add(t);
@@ -2162,7 +2170,7 @@ async function poserValeurSurChamp(
     const note = `${labelText}${situe}: panneau d'options resté vide (recherche "${rawText}" sans résultat, repli "Autre" introuvable), champ laissé vide`;
     console.warn(`[beebs] ⚠️ ${note}`);
     warnings.push(note);
-    if (required) unfilledRequired.push(labelText);
+    if (required && total === 1) unfilledRequired.push(labelText);
     await closePanel(trigger);
     return;
   }
@@ -2313,7 +2321,15 @@ async function poserValeurSurChamp(
       `de CE champ, laissé vide. Options affichées: ${JSON.stringify(available)}`;
     console.warn(`[beebs] ⚠️ ${note}`);
     warnings.push(note);
-    if (required) unfilledRequired.push(labelText);
+    // ── HOMONYMES (2026-09-11, chantier Beebs) : sur un libellé dupliqué, la
+    // valeur du canal dédié est essayée sur CHAQUE champ contre SA liste. Un
+    // échec sur l'un d'eux n'est PAS un « requis laissé vide » : c'est la liste
+    // d'un autre champ (« S / 36 » ne vaut rien sur la grille des soutiens-
+    // gorge). Le pousser ici, c'est faire échouer le gate pré-clic même quand
+    // la boucle beebsAspects remplit ce champ juste après (unfilledRequired
+    // n'était jamais réconcilié). L'énumération finale (enumerateBeebsFields)
+    // ajoute de toute façon tout requis resté vide sur la page.
+    if (required && total === 1) unfilledRequired.push(labelText);
     await closePanel(trigger);
     return;
   }
@@ -2321,6 +2337,11 @@ async function poserValeurSurChamp(
   await humanPause(); // temps de "lecture" de la liste avant le clic
   match.el.click();
   await humanPause();
+  // Champ servi : s'il avait été compté vide par un passage antérieur (autre
+  // canal, autre valeur), il ne l'est plus — le gate pré-clic lit cette liste.
+  for (let i = unfilledRequired.length - 1; i >= 0; i--) {
+    if (unfilledRequired[i] === labelText) unfilledRequired.splice(i, 1);
+  }
 
   // Sélectionner une option ferme le panneau (relevé) ; si ce n'était pas le
   // cas, la fermeture par bascule ci-dessous éviterait de polluer le champ

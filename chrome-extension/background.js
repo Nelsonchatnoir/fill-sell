@@ -11579,7 +11579,57 @@ async function patchPlatformFields(session, job, patch) {
   job.platform_fields = pf;
 }
 
+// ── URL Beebs HÉRITÉE (2026-09-11, chantier Beebs) ────────────────────────────
+// La récupération par TITRE dans « Mes annonces » attrape aussi une annonce
+// PLUS ANCIENNE du même article (déjà en ligne avant le dépôt : dépôt manuel,
+// ou dépôt FillSell antérieur). Mesuré sur 30 j : 6 URL sur 252 portent un
+// identifiant Beebs INFÉRIEUR à celui d'un dépôt publié plus de 2 h avant
+// (chino Inesis 33909468 attaché au dépôt du 10/09 22:49 alors que les
+// dépôts du 07/09 portent 3392xxxx). Les identifiants Beebs sont monotones :
+// une annonce créée par CE dépôt a forcément un id supérieur à ceux des
+// dépôts antérieurs du même compte. On lit une fois les URL Beebs déjà
+// connues du compte (RLS utilisateur) et on refuse tout candidat plus ancien.
+// Refus = le job reste sans URL (la vraie annonce, si elle existe, sera
+// trouvée plus tard ou par le cron), jamais une URL fausse.
+let beebsIdsConnusCache = null;
+async function beebsIdsConnus(session) {
+  if (beebsIdsConnusCache) return beebsIdsConnusCache;
+  try {
+    const rows = await restRequest(
+      "cross_post_jobs?platform=eq.beebs&action=eq.publish&listing_url=not.is.null" +
+        "&select=listing_url,published_at,created_at&order=published_at.desc.nullslast&limit=300",
+      session.access_token
+    );
+    beebsIdsConnusCache = (rows ?? [])
+      .map((r) => ({
+        id: Number((String(r.listing_url ?? "").match(/\/fr\/p\/(\d+)/) ?? [])[1]),
+        at: Date.parse(r.published_at ?? r.created_at ?? ""),
+      }))
+      .filter((r) => Number.isFinite(r.id) && Number.isFinite(r.at));
+  } catch (e) {
+    console.warn("[background] recover(beebs) : ids connus illisibles —", String(e?.message ?? e));
+    beebsIdsConnusCache = [];
+  }
+  return beebsIdsConnusCache;
+}
+async function beebsUrlAnterieureAuDepot(session, job, url) {
+  const id = Number((String(url ?? "").match(/\/fr\/p\/(\d+)/) ?? [])[1]);
+  const repere = Date.parse(job.published_at ?? job.created_at ?? "");
+  if (!Number.isFinite(id) || !Number.isFinite(repere)) return null;
+  const connus = await beebsIdsConnus(session);
+  const anterieurs = connus.filter((r) => r.at < repere - 2 * 60 * 60 * 1000);
+  const plafond = anterieurs.reduce((m, r) => Math.max(m, r.id), 0);
+  if (plafond && id <= plafond) {
+    return `annonce ${id} antérieure à un dépôt publié plus de 2 h avant celui-ci (id ${plafond}) — URL héritée d'une annonce déjà en ligne, refusée`;
+  }
+  if (connus.some((r) => r.id === id)) {
+    return `annonce ${id} déjà rattachée à un autre job de ce compte — URL non attribuée deux fois`;
+  }
+  return null;
+}
+
 async function recoverMissingListingUrls(session) {
+  beebsIdsConnusCache = null;
   let jobs;
   try {
     jobs = await restRequest(
@@ -11749,6 +11799,15 @@ async function recoverMissingListingUrls(session) {
         const { url, diag } = urlParId
           ? { url: urlParId, diag: null }
           : await findListingLinkInPage(tabId, pattern.source, job.title, { requireTitle: true });
+        const refusBeebs = url && platform === "beebs" ? await beebsUrlAnterieureAuDepot(session, job, url) : null;
+        if (refusBeebs) {
+          console.warn(`[background] recover(beebs) job ${job.id} : ${refusBeebs}`);
+          await patchPlatformFields(session, job, {
+            listing_url_recovery_refus: { at: new Date().toISOString(), url, motif: refusBeebs },
+          }).catch(() => {});
+          stillMissing.push(job);
+          continue;
+        }
         if (url) {
           console.log(`[background] listing_url récupéré (${platform}, job ${job.id}) : ${url}`);
           // platform_listing_id accompagne l'URL (même règle que

@@ -329,6 +329,17 @@ const RELANCE_COPIE_CLES_RETIREES = [
   'work_window_state', 'publish_proof', 'ebay_api_publish', 'warnings',
   'server_required_fields', 'champs_a_completer', 'needs_user_source',
   'relances_manuelles', 'derniere_relance_manuelle', 'ebay_format_trace',
+  // Mémoire needs_user du job SOURCE (2026-09-11, chantier Beebs) : copiée,
+  // elle faisait échouer la copie à sa PREMIÈRE question — gardeAntiBoucle
+  // comparait la réponse héritée (needsUserResolved) à la mémoire héritée
+  // (needsUserBoucle, n déjà à 2-3) et concluait « valeur_inchangee » en
+  // disant « ta réponse a bien été enregistrée » à quelqu'un qui n'avait
+  // rien répondu (94fa18aa de Joe0410, 0893d8ee/2df7a6b3 de Marie-Pierre).
+  // needsUserResolved reste : ce sont les CHOIX de l'utilisateur, que les
+  // handlers respectent (« déjà rempli → conservé »).
+  'needsUserBoucle', 'boucle_needs_user', 'needsUserField',
+  'needs_user_tick_le', 'needs_user_actif_ms', 'needs_user_vu_le', 'needs_user_vu_erreur',
+  'beebs_valeurs_posees', 'listing_url_recovery', 'beebs_moderation',
 ];
 
 // ── Design 2026 (Lens / navbar) — liste des articles en stock ──

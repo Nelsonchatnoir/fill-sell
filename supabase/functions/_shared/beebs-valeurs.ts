@@ -90,6 +90,16 @@ export const libelleDeCle = (cle: string): string =>
 export const cleADiscriminant = (cle: string): boolean =>
   /\[[^\]]+\]\s*$/.test(String(cle ?? ""));
 
+/** Clé POSITIONNELLE (« Taille [#2] ») : née d'un relevé où le pont MAIN
+ *  était muet. L'extension REFUSE d'écrire sur une telle clé depuis le 08/09
+ *  (décision Nico : jamais d'écriture à l'aveugle sur un homonyme) — le
+ *  serveur ne doit donc ni en fabriquer ni en servir (chantier Beebs du
+ *  11/09 : c'est cette contradiction qui faisait boucler la « Taille » des
+ *  soutiens-gorge de Marie-Pierre, 4 jobs). Copie de la règle de
+ *  resoudreChamps (beebs.js). */
+export const clePositionnelle = (cle: string): boolean =>
+  /\[#\d+\]\s*$/.test(String(cle ?? ""));
+
 /** Forme COMPARABLE d'un libellé pour CE rapprochement : la forme comparable
  *  canonique du parc (texteComparable — accents, apostrophes, tirets,
  *  guillemets, invisibles, casse) DÉBARRASSÉE en plus de tout ce qui n'est ni
@@ -178,7 +188,7 @@ export function rapprocherValeursBeebs(
 
     // Champs de la catégorie portant l'un de ces libellés, principal d'abord.
     const champs = aspects
-      .filter((a) => libelles.includes(libelleDeCle(a.field_key)) && valeursDe(a).length)
+      .filter((a) => libelles.includes(libelleDeCle(a.field_key)) && valeursDe(a).length && !clePositionnelle(a.field_key))
       .sort((a, b) => Number(cleADiscriminant(a.field_key)) - Number(cleADiscriminant(b.field_key)));
     if (!champs.length) continue;
 
@@ -210,39 +220,61 @@ export function rapprocherValeursBeebs(
       ? [...parLibelle.entries()][0]
       : null;
     if (duplique) {
+      // ── Libellé DUPLIQUÉ (2026-09-11, chantier Beebs) ─────────────────────
+      // Le 1er champ garde le libellé NU : c'est le canal DÉDIÉ de l'extension
+      // (platform_fields.taille → selectDropdownValue("Taille") sur chaque
+      // champ « Taille », chacun contre SA liste) qui le sert. On ne lui
+      // fabrique plus de clé positionnelle « Taille [#1] » : l'extension la
+      // refusait, la valeur n'était jamais posée, et le canal dédié était
+      // coupé (« canal_dedie_coupe ») — la réponse de l'utilisatrice, écrite
+      // dans platform_fields.taille par le mini-éditeur, était effacée à
+      // chaque passage (boucle « valeur_inchangee », 0432fc43/500c04c6 et
+      // leurs copies du 11/09). Les homonymes SUIVANTS ne sont servis que par
+      // une clé NOMINATIVE (« Taille [attributes.women_bras] ») que
+      // resoudreChamps sait retrouver ; les lignes positionnelles du catalogue
+      // sont écartées en amont (clePositionnelle).
       const [label, rangs] = duplique;
-      let servis = 0;
-      rangs.forEach((a, i) => {
-        // Clé positionnelle : le 1er champ n'a pas de clé à discriminant dans
-        // le catalogue (il porte le libellé nu) — on lui en fabrique une, sans
-        // quoi la boucle beebsAspects le sauterait (handledLabels).
-        const clePosee = i === 0 ? `${label} [#1]` : a.field_key;
-        // Réponse déjà donnée par l'utilisateur, sous l'une ou l'autre clé :
-        // intouchable, et elle sera posée par la boucle générique.
-        if (String(dejaSaisi[a.field_key] ?? "").trim() || String(dejaSaisi[clePosee] ?? "").trim()) {
-          servis++;
-          return;
-        }
-        const exacte = valeursDe(a).includes(valeur) ? valeur : valeurComparableUnique(a, cible);
-        if (!exacte) return;
-        res.aspects[clePosee] = exacte;
-        res.posees.push({
-          cle_source: cleRacine, champ: clePosee,
-          valeur_source: valeur, valeur_posee: exacte,
-          methode: i === 0 ? "homonyme_champ_1" : "homonyme_champ_n",
-        });
-        servis++;
-      });
-      // Le canal dédié n'est coupé que si quelqu'un prend le relais : sans
-      // cela on perdrait la valeur sans rien gagner.
-      if (servis) {
-        res.racines[cleRacine] = "";
-        if (!res.posees.some((p) => p.cle_source === cleRacine)) {
+      const premier = rangs.find((a) => !cleADiscriminant(a.field_key)) ?? null;
+      const suivants = rangs.filter((a) => a !== premier);
+      const dansPremier = premier
+        ? (valeursDe(premier).includes(valeur) ? valeur : valeurComparableUnique(premier, cible))
+        : null;
+      if (dansPremier) {
+        // La valeur appartient au 1er champ : le canal dédié la pose (ré-épelée
+        // si besoin). Rien à router ailleurs.
+        if (dansPremier !== valeur) {
+          res.racines[cleRacine] = dansPremier;
           res.posees.push({
-            cle_source: cleRacine, champ: label,
-            valeur_source: valeur, valeur_posee: "", methode: "canal_dedie_coupe",
+            cle_source: cleRacine, champ: premier!.field_key,
+            valeur_source: valeur, valeur_posee: dansPremier, methode: "normalisee",
           });
         }
+        continue;
+      }
+      let route = 0;
+      for (const a of suivants) {
+        if (String(dejaSaisi[a.field_key] ?? "").trim()) { route++; continue; }
+        const exacte = valeursDe(a).includes(valeur) ? valeur : valeurComparableUnique(a, cible);
+        if (!exacte) continue;
+        res.aspects[a.field_key] = exacte;
+        res.posees.push({
+          cle_source: cleRacine, champ: a.field_key,
+          valeur_source: valeur, valeur_posee: exacte, methode: "homonyme_champ_n",
+        });
+        route++;
+      }
+      // Routée vers un homonyme NOMINATIF et absente de la liste du 1er champ :
+      // la racine est vidée pour que le canal dédié n'aille pas la refrapper
+      // sur le 1er champ (elle n'y existe pas) — le 1er champ, resté vide,
+      // sera DEMANDÉ, et la réponse (platform_fields.<racine>) sera posée par
+      // le canal dédié au passage suivant, sans jamais être effacée ici : elle
+      // appartient alors à la liste du 1er champ, branche dansPremier.
+      if (route) {
+        res.racines[cleRacine] = "";
+        res.posees.push({
+          cle_source: cleRacine, champ: label,
+          valeur_source: valeur, valeur_posee: "", methode: "canal_dedie_route_homonyme",
+        });
       }
       continue;
     }
@@ -300,11 +332,15 @@ export function rapprocherValeursBeebs(
   // le warning est périmé et on ne touche à rien.
   if (!String(res.racines["marque"] ?? "").trim()) {
     const marqueKo = marqueIntrouvableBeebs(pf, aspects);
-    if (marqueKo && !res.aspects[marqueKo.aspect]) {
-      res.aspects[marqueKo.aspect] = marqueKo.valeur;
-      res.racines["marque"] = ""; // sinon la passe « Marque » refrappe la marque refusée
+    if (marqueKo && !(marqueKo.aspect && res.aspects[marqueKo.aspect])) {
+      if (marqueKo.aspect) {
+        res.aspects[marqueKo.aspect] = marqueKo.valeur;
+        res.racines["marque"] = ""; // routée vers l'homonyme nominatif : la passe « Marque » ne refrappe pas la marque refusée
+      } else {
+        res.racines["marque"] = marqueKo.valeur; // champ nu : le canal dédié pose « Autre » en exact
+      }
       res.posees.push({
-        cle_source: "marque", champ: marqueKo.aspect,
+        cle_source: "marque", champ: marqueKo.aspect ?? "Marque",
         valeur_source: marqueKo.valeur_source, valeur_posee: marqueKo.valeur,
         methode: "marque_introuvable_bac_autre",
       });
@@ -382,7 +418,7 @@ function messageWarning(w: unknown): string {
 export function marqueIntrouvableBeebs(
   pf: Record<string, unknown>,
   aspects: AspectRow[],
-): { aspect: string; valeur: string; valeur_source: string } | null {
+): { aspect: string | null; valeur: string; valeur_source: string } | null {
   const marque = String(pf["marque"] ?? "").trim();
   if (!marque) return null;
   const dejaSaisi = (pf["beebsAspects"] ?? {}) as Record<string, unknown>;
@@ -408,8 +444,13 @@ export function marqueIntrouvableBeebs(
 
   const champsMarque = aspects.filter((a) => libelleDeCle(a.field_key) === "Marque");
   if (!champsMarque.length) return null;
-  const cle = cleADiscriminant(champsMarque[0].field_key) ? champsMarque[0].field_key : "Marque [#1]";
-  if (String(dejaSaisi[cle] ?? "").trim() || String(dejaSaisi["Marque"] ?? "").trim()) return null;
+  // Champ « Marque » nu → la racine platform_fields.marque reçoit « Autre »
+  // (le canal dédié la pose en exact) ; jamais plus de clé positionnelle
+  // « Marque [#1] », refusée par l'extension (chaussettes Alo, 11/09).
+  const nominatif = champsMarque.find((a) => cleADiscriminant(a.field_key) && !clePositionnelle(a.field_key));
+  const cle = nominatif ? nominatif.field_key : null;
+  if (cle && String(dejaSaisi[cle] ?? "").trim()) return null;
+  if (String(dejaSaisi["Marque"] ?? "").trim()) return null;
   return { aspect: cle, valeur: "Autre", valeur_source: marque };
 }
 
@@ -460,12 +501,11 @@ export function champsArbitrablesBeebs(
     const options = valeursDe(a);
     if (!options.length || options.length >= BEEBS_LISTE_FERMEE_MAX) continue;
 
-    const rangs = parLibelle.get(label) ?? [a];
-    const homonyme = rangs.length > 1;
-    const rang = rangs.findIndex((r) => r.field_key === a.field_key);
-    // Clé positionnelle sur un libellé dupliqué, sinon la clé du catalogue.
-    const clePosee = homonyme && rang === 0 ? `${label} [#1]` : a.field_key;
-    const racine = homonyme ? null : (BEEBS_CHAMPS_DEDIES[label] ?? null);
+    if (clePositionnelle(a.field_key)) continue;            // relevé sans nom : jamais servi
+    // 1er champ d'un libellé (clé nue) → racine dédiée, comme l'extension ;
+    // homonymes suivants → leur clé NOMINATIVE du catalogue. Plus de « [#1] ».
+    const clePosee = a.field_key;
+    const racine = cleADiscriminant(a.field_key) ? null : (BEEBS_CHAMPS_DEDIES[label] ?? null);
 
     // Déjà servi ? (réponse de l'utilisateur, pose déterministe, ré-épellation)
     if (String(dejaSaisi[a.field_key] ?? "").trim()) continue;
