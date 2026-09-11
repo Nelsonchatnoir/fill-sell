@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir } from "../_shared/vinted-taille-republication.ts";
 import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
+import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 import {
   type AspectRow,
   BEEBS_CHAMPS_DEDIES,
@@ -2014,6 +2015,36 @@ serve(async (req) => {
       if (nettoyagesLbc) console.log(`[get-pending-jobs] user=${user.id} descriptions Leboncoin nettoyées : ${nettoyagesLbc}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] nettoyage description Leboncoin : ${String((e as Error)?.message ?? e)} — descriptions servies telles quelles`);
+    }
+
+    // ── TITRE VINTED : TROP DE MAJUSCULES (2026-09-11, job f3a5dce8 Ornella) ──
+    // Vinted refuse en 400 « Le titre contient trop de lettres majuscules » —
+    // un seul mot en capitales suffit (« BOURSIC », 25 % de l'ensemble). La
+    // génération tempère depuis le 08/09 22:21 (78a185a, redaction-plateformes)
+    // mais un job créé AVANT garde son titre tel quel : le relancer refait le
+    // 400, quel que soit le build. Même règle, même fonction
+    // (_shared/titre-majuscules.ts), appliquée ICI au titre SERVI — le job en
+    // base n'est pas modifié, comme la description Leboncoin ci-dessus.
+    // Périmètre : publish Vinted seulement. Une REPUBLICATION porte le titre
+    // CAPTURÉ sur l'annonce (accepté par Vinted à l'époque) : on n'y touche pas.
+    // Idempotent (un titre déjà tempéré ressort identique), best-effort (une
+    // exception laisse les titres tels quels). `title_servi_tempere` dit à
+    // l'extension ce qui est parti — informatif, ignoré par qui ne le lit pas.
+    let titresTemperes = 0;
+    try {
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (j.platform !== "vinted" || j.action !== "publish" || typeof j.title !== "string") continue;
+        const pfJ = (j.platform_fields ?? {}) as Record<string, unknown>;
+        const tempere = tempererMajuscules(j.title, typeof pfJ["marque"] === "string" ? (pfJ["marque"] as string) : null);
+        if (tempere === j.title) continue;
+        console.log(`[get-pending-jobs] titre Vinted ${String(j.id).slice(0, 8)} tempéré (majuscules) : « ${j.title} » → « ${tempere} »`);
+        j.title_servi_tempere = { avant: j.title, apres: tempere, motif: "majuscules" };
+        j.title = tempere;
+        titresTemperes++;
+      }
+      if (titresTemperes) console.log(`[get-pending-jobs] user=${user.id} titres Vinted tempérés (majuscules) : ${titresTemperes}`);
+    } catch (e) {
+      console.warn(`[get-pending-jobs] tempérage des titres Vinted : ${String((e as Error)?.message ?? e)} — titres servis tels quels`);
     }
 
     return json({
