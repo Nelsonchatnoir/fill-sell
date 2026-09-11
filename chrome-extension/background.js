@@ -12013,7 +12013,17 @@ const DELETE_TARGETS = {
   vinted: (job) => job.listing_url,
   leboncoin: (job) => job.listing_url || "https://www.leboncoin.fr/compte/part/mes-annonces",
   ebay: () => "https://www.ebay.fr/sh/lst/active",
-  beebs: () => "https://www.beebs.app/fr/account/my-adverts",
+  // Beebs (2026-09-11, GO Nico) : la PAGE DE L'ANNONCE, dont l'URL EST
+  // l'identifiant. « Mes annonces » ne rend que sa première page (Joe0410,
+  // 189 annonces : rang 9 trouvé, rangs 66-175 introuvables, 6 retraits en
+  // échec) ; la page de l'annonce porte pour le propriétaire « Modifier /
+  // Dupliquer / Supprimer l'annonce » (relevé onglet caché). Repli si cette
+  // page n'a pas le bouton : « Mes annonces » filtrée par ?searchText=<titre>
+  // — le titre filtre la liste, la carte retenue porte l'identifiant (cf.
+  // processDeleteJob). Sans identifiant dans le lien : « Mes annonces », où le
+  // handler refuse tout retrait sans identifiant (jamais par titre).
+  beebs: (job) =>
+    (/\/p\/\d+(?:[-/?#]|$)/.test(String(job.listing_url ?? "")) ? job.listing_url : "https://www.beebs.app/fr/account/my-adverts"),
 };
 
 // ── Clôture du publish après un retrait ciblé réussi (2026-07-19) ─────────────
@@ -14293,10 +14303,12 @@ async function processDeleteJob(job, accessToken) {
   //               2026-07-22 : la page de l'annonce porte son propre panneau de
   //               suppression), SINON « Mes annonces » et ciblage par titre —
   //               d'où un titre non vide exigé dans ce seul cas ;
-  //   ebay / beebs → une CONSTANTE (Hub vendeur, « Mes annonces »). L'URL n'y
-  //               sert à rien pour naviguer : c'est le content script qui
-  //               localise la carte dans la liste, et il sait le faire par
-  //               TITRE (garde d'identité à l'appui).
+  //   ebay      → une CONSTANTE (Hub vendeur). L'URL n'y sert à rien pour
+  //               naviguer : c'est le content script qui localise la carte
+  //               dans la liste, par TITRE (garde d'identité à l'appui) ;
+  //   beebs     → job.listing_url (page de l'annonce, 2026-09-11) ; sans
+  //               identifiant, « Mes annonces » où le handler refuse tout
+  //               retrait sans identifiant — jamais par titre.
   // On exige donc la bonne preuve pour chacun : l'URL là où elle est
   // indispensable, un titre non vide partout ailleurs — sans titre, le content
   // script ne peut rien identifier, et le refus reste le bon comportement.
@@ -14354,6 +14366,35 @@ async function processDeleteJob(job, accessToken) {
       result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
     } finally {
       await restore();
+    }
+
+    // ── BEEBS : REPLI PAR « MES ANNONCES » FILTRÉE PAR LE TITRE (2026-09-11) ─
+    // La page de l'annonce n'a pas montré son bouton propriétaire (annonce déjà
+    // retirée, autre compte connecté, page non rendue) : on ouvre « Mes
+    // annonces » filtrée côté serveur par ?searchText=<titre> — mesuré : la
+    // liste ne contient alors que les annonces dont le TITRE contient les mots
+    // — et le handler y cherche la carte par IDENTIFIANT (case name=<id>,
+    // lien /p/<id>-). Le titre filtre, l'identifiant décide ; sans carte
+    // portant l'identifiant, « introuvable » → attente (règle du 11/09), jamais
+    // une autre carte. Sans titre, la liste non filtrée (première page).
+    if (job.platform === "beebs" && result && !result.success && result.pageAnnonceSansControle) {
+      const titre = String(job.title ?? "").trim();
+      const urlRepli = "https://www.beebs.app/fr/account/my-adverts" + (titre ? `?searchText=${encodeURIComponent(titre)}` : "");
+      console.log(
+        `[background] Job ${job.id} : page de l'annonce sans bouton propriétaire — repli « Mes annonces »` +
+        `${titre ? " filtrée par le titre" : ""}, carte par identifiant`,
+      );
+      const tracePage = Array.isArray(result.trace) ? result.trace : [];
+      const tabRepli = await getOrCreateWorkTab("beebs", urlRepli);
+      const restoreRepli = await paintTab(tabRepli);
+      try {
+        result = await sendMessageToTab(tabRepli, { type: "DELETE_LISTING", job });
+      } finally {
+        await restoreRepli();
+      }
+      if (result && typeof result === "object") {
+        result.trace = [...tracePage, "— repli « Mes annonces » —", ...(Array.isArray(result.trace) ? result.trace : [])];
+      }
     }
 
     // ⚠️ « ANNONCE INTROUVABLE » PEUT VOULOIR DIRE « DÉJÀ SUPPRIMÉE » (2026-07-13,
@@ -14467,6 +14508,13 @@ async function processDeleteJob(job, accessToken) {
         console.warn("[background] noterSessionDeconnectee (non bloquant) :", String(e?.message ?? e)));
       await marquerAttenteSession(accessToken, job, result.error);
       return { status: "needsUser", error: result.error };
+    } else if (result && !result.success && result.reprise) {
+      // Le handler a REFUSÉ de confirmer (motif de suppression non certain,
+      // dialogue absent, mauvaise annonce affichée) : rien n'a été touché sur
+      // la plateforme, le retrait attend et se reprend — jamais un failed sec,
+      // jamais une confirmation au hasard (Beebs, 2026-09-11).
+      await rearmBounded(accessToken, job, String(result.error ?? "retrait non confirmé, à reprendre"));
+      return { status: "retry", error: result.error };
     } else {
       throw new Error(result?.error || "Le content script n'a pas retourné de résultat");
     }

@@ -163,60 +163,185 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 // annonces », page publique en 404).
 const DELETE_DRY_RUN = false;
 
+// ── Identifiant d'annonce Beebs depuis une URL (2026-09-11) ──────────────────
+// Le SEUL identifiant certain : le nombre après /p/ dans l'URL de l'annonce
+// (https://www.beebs.app/fr/p/33894364-veste-costume-bragard-taille-48). Le
+// titre ne désigne rien (homonymes), le slug peut être tronqué ou réécrit.
+function idAnnonceBeebs(url) {
+  const m = String(url ?? "").match(/\/p\/(\d+)(?:[-/?#]|$)/);
+  return m ? m[1] : null;
+}
+
+// ── Dialogue « Supprimer mon annonce » : motif CERTAIN ou rien ───────────────
+// Relevé sur annonce réelle (11/09 20h), IDENTIQUE depuis la page de
+// l'annonce et depuis la carte de Mes annonces : role=dialog, titre
+// « Supprimer mon annonce », radios name=reason — radio_reason-0 « Vendu via
+// Beebs » PRÉ-COCHÉ, radio_reason-1 « Vendu via une autre plateforme »,
+// radio_reason-2 « Je ne veux plus vendre » — boutons « Supprimer l'annonce »
+// et « Annuler ». Un clic (séquence pointer) + change sur radio_reason-1 le
+// coche ET décoche radio_reason-0 (relu 1,2 s après : cochés = [radio_reason-1]).
+// RÈGLE (Nico, 11/09) : on ne déclare JAMAIS à Beebs une vente faite ailleurs.
+// Le motif doit être « Vendu via une autre plateforme », RELU coché, ET
+// « Vendu via Beebs » RELU décoché, seul coché de la liste — sinon AUCUNE
+// confirmation n'est envoyée et le job attend (reprise). Jamais au hasard.
+async function supprimerDansLeDialogue(dialog, t) {
+  const reasonLabel = "Vendu via une autre plateforme";
+  const defautLabel = "Vendu via Beebs";
+  const radios = Array.from(dialog.querySelectorAll('input[type="radio"]'));
+  const labelDe = (r) => texteDe(dialog.querySelector(`label[for="${r.id}"]`) ?? r.closest("label"));
+  const cible = radios.find((r) => labelDe(r) === reasonLabel);
+  const defaut = radios.find((r) => labelDe(r) === defautLabel);
+  if (!cible) {
+    const dispo = radios.map(labelDe).filter(Boolean);
+    t(`motif « ${reasonLabel} » INTROUVABLE (motifs : ${dispo.join(" | ") || "aucun"}) — aucune confirmation`);
+    return {
+      success: false, reprise: true,
+      error: `Motif « ${reasonLabel} » introuvable dans le dialogue de suppression (motifs : ${dispo.join(" | ") || "aucun"}) — retrait non confirmé, à reprendre`,
+    };
+  }
+  // Deux essais : le premier clic peut précéder l'hydratation du dialogue.
+  let certain = false;
+  for (let essai = 0; essai < 2 && !certain; essai++) {
+    if (essai) await humanPause(700, 1200);
+    realClick(cible);
+    cible.dispatchEvent(new Event("change", { bubbles: true }));
+    await humanPause(1000, 1600);
+    const coches = radios.filter((r) => r.checked).map((r) => r.id);
+    certain = cible.checked === true && (!defaut || defaut.checked === false) && coches.length === 1;
+    t(
+      `motif : « ${reasonLabel} » ${cible.checked ? "coché" : "NON coché"}, « ${defautLabel} » ` +
+      `${defaut ? (defaut.checked ? "ENCORE coché" : "décoché") : "absent"} (cochés : ${coches.join(",") || "aucun"})` +
+      (certain ? " — certain" : " — NON certain"),
+    );
+  }
+  if (!certain) {
+    return {
+      success: false, reprise: true,
+      error: `Motif de suppression non enregistré de façon certaine (« ${reasonLabel} » doit être coché et « ${defautLabel} » décoché) — aucune confirmation envoyée, retrait à reprendre`,
+    };
+  }
+  const confirmBtn = Array.from(dialog.querySelectorAll("button"))
+    .filter(estVisibleSansLayout)
+    .find((b) => /^supprimer l['’]annonce$/i.test(texteDe(b)));
+  if (!confirmBtn) {
+    return { success: false, reprise: true, error: "Bouton « Supprimer l'annonce » introuvable dans le dialogue — aucune confirmation envoyée, retrait à reprendre" };
+  }
+  await humanPause(800, 1600);
+  realClick(confirmBtn);
+  // La suppression Beebs est ASYNCHRONE : le dialogue se ferme, mais la liste
+  // et la page publique restent obsolètes quelques secondes (constaté en réel).
+  await sleep(6000);
+  t("confirmation envoyée — propagation Beebs asynchrone (liste et page publique peuvent rester obsolètes quelques secondes)");
+  return { success: true };
+}
+
 async function deleteListing(job) {
   const trace = [];
   const t = (line) => { trace.push(line); console.log(`[beebs][delete] ${line}`); };
 
-  // Même stabilisation que la garde de session du dépôt (2026-08-06) : la SPA
-  // peut transiter par /fr/auth pendant l'hydratation de l'auth — les échecs
-  // « Page inattendue … /fr/auth?from=%2Faccount%2Fmy-adverts&step=sign-in »
-  // des 03 et 05/08 en sont la trace. On laisse 15 s à la page de revenir sur
-  // Mes annonces avant de conclure.
-  if (!(await waitFor(() => /my-adverts/.test(location.pathname), 15_000))) {
-    return { success: false, error: `Page inattendue pour une suppression Beebs : ${location.href}`, trace };
-  }
-  t(`page Mes annonces ok : ${location.pathname}`);
-  await humanPause(1000, 2200);
-
-  // Repère l'annonce par son titre (le champ Rechercher observé filtrerait
-  // aussi, mais un match direct suffit tant que la liste tient sur une page).
-  // ── CIBLAGE PAR LE LIEN SEULEMENT (2026-09-11, décision Nico) ─────────────
-  // Avant : la carte était cherchée par TITRE EXACT d'abord, le slug de l'URL
-  // ensuite. Sur deux annonces au même titre (Joséphine : « Jean ONLY taille
-  // M » ×2) le titre désigne l'AUTRE annonce, le retrait la supprime, le job
-  // dit « retiré » et personne ne le voit. Le titre ne désigne rien : seul le
-  // slug du listing_url identifie l'annonce. Sans lien → retrait NON tenté
-  // (le serveur ne sert plus un retrait Beebs sans lien ; ceci est le filet
-  // côté page). Le titre n'est plus qu'un TÉMOIN journalisé sur la carte
-  // trouvée, jamais un critère de choix.
-  let anchor = null;
-  const slug = job.listing_url ? String(job.listing_url).split("/").filter(Boolean).pop() : "";
-  if (!slug) {
-    t(`retrait NON tenté : aucun lien d'annonce (titre="${job.title ?? "?"}") — jamais de ciblage par titre`);
+  // ── L'IDENTIFIANT DÉCIDE, JAMAIS LE TITRE (2026-09-11, décision Nico) ──────
+  // Sans identifiant dans le lien → retrait NON tenté : le serveur ne sert
+  // plus un retrait Beebs sans lien (get-pending-jobs), ceci est le filet côté
+  // page. Le titre n'est plus qu'un TÉMOIN journalisé, jamais un critère.
+  const idCible = idAnnonceBeebs(job.listing_url);
+  if (!idCible) {
+    t(`retrait NON tenté : aucun identifiant d'annonce dans le lien (titre="${job.title ?? "?"}") — jamais de ciblage par titre`);
     return {
       success: false,
       error: "Annonce introuvable : aucun lien d'annonce connu pour ce retrait Beebs — retrait non tenté (jamais par titre : une annonce au même titre pourrait être retirée à la place). Il repartira quand le lien sera connu.",
       trace,
     };
   }
-  anchor = document.querySelector(`a[href*="${slug}"]`);
+
+  // Même stabilisation que la garde de session du dépôt (2026-08-06) : la SPA
+  // peut transiter par /fr/auth pendant l'hydratation de l'auth — les échecs
+  // « Page inattendue … /fr/auth?from=%2Faccount%2Fmy-adverts&step=sign-in »
+  // des 03 et 05/08 en sont la trace. On laisse 15 s à la page de revenir sur
+  // l'annonce ou sur Mes annonces avant de conclure.
+  const surAnnonce = () => idAnnonceBeebs(location.pathname) != null;
+  const surListe = () => /my-adverts/.test(location.pathname);
+  if (!(await waitFor(() => surAnnonce() || surListe(), 15_000))) {
+    return { success: false, error: `Page inattendue pour une suppression Beebs : ${location.href}`, trace };
+  }
+  await humanPause(1000, 2200);
+
+  // ── CHEMIN 1 (nominal depuis le 11/09) : LA PAGE DE L'ANNONCE ─────────────
+  // Relevé (Joe0410, 189 annonces) : « Mes annonces » ne rend que sa première
+  // page — annonce au rang 9 trouvée, rangs 66 à 175 introuvables — et rien
+  // n'y charge la suite dans une fenêtre minimisée. La page de l'annonce, elle,
+  // porte pour le propriétaire « Modifier / Dupliquer / Supprimer l'annonce »
+  // (relevé onglet caché, 11/09) et son URL EST l'identifiant : aucune liste,
+  // aucune pagination, aucun titre. Le background y navigue (DELETE_TARGETS).
+  if (surAnnonce()) {
+    const idPage = idAnnonceBeebs(location.pathname);
+    if (idPage !== idCible) {
+      t(`page de l'annonce ${idPage} ≠ annonce du retrait ${idCible} — rien fait`);
+      return {
+        success: false, reprise: true,
+        error: `Page inattendue : l'annonce affichée (${idPage}) n'est pas celle du retrait (${idCible}) — rien n'a été touché, retrait à reprendre`,
+        trace,
+      };
+    }
+    t(`page de l'annonce ${idCible} ok : ${location.pathname}`);
+    const btn = await waitFor(() =>
+      Array.from(document.querySelectorAll("button"))
+        .filter(estVisibleSansLayout)
+        .find((b) => /^supprimer l['’]annonce$/i.test(texteDe(b))) ?? null, 15_000);
+    if (!btn) {
+      t("bouton propriétaire « Supprimer l'annonce » ABSENT de la page (annonce déjà retirée, autre compte connecté ou page non rendue) — repli par Mes annonces");
+      return {
+        success: false, pageAnnonceSansControle: true,
+        error: "Page de l'annonce sans bouton « Supprimer l'annonce » (annonce déjà retirée, autre compte connecté ou page non rendue) — repli par Mes annonces",
+        trace,
+      };
+    }
+    t("contrôle localisé : « Supprimer l'annonce » de la page de l'annonce (identifiant vérifié dans l'URL)");
+    if (DELETE_DRY_RUN) {
+      t("🧪 DELETE_DRY_RUN actif — contrôle localisé, AUCUN clic effectué.");
+      return { success: true, dryRun: true, found: true, trace };
+    }
+    await humanPause(800, 1500);
+    realClick(btn);
+    const dialog = await waitFor(() => {
+      return Array.from(document.querySelectorAll('[role="dialog"], [class*="modal" i]'))
+        .filter(estVisibleSansLayout)
+        .find((d) => /supprimer mon annonce/i.test(texteDe(d))) ?? null;
+    }, 10000);
+    if (!dialog) return { success: false, reprise: true, error: "Dialogue « Supprimer mon annonce » introuvable après le clic — aucune confirmation envoyée, retrait à reprendre", trace };
+    const verdict = await supprimerDansLeDialogue(dialog, t);
+    return { ...verdict, trace };
+  }
+
+  // ── CHEMIN 2 (repli) : « MES ANNONCES », CARTE PAR IDENTIFIANT ────────────
+  // La liste peut être FILTRÉE côté serveur par ?searchText=<titre> (le
+  // background y navigue en repli) : le titre ne sert qu'à filtrer la liste
+  // rendue, la carte retenue est UNIQUEMENT celle qui porte l'identifiant
+  // (case à cocher name=<id>, ou lien /p/<id>-). Sans elle : introuvable —
+  // jamais une autre carte, jamais le titre.
+  t(`page Mes annonces ok : ${location.pathname}${location.search ? " (liste filtrée par le titre)" : ""}`);
+  let anchor = document.querySelector(`input[type="checkbox"][name="${idCible}"]`)
+    ?? document.querySelector(`a[href*="/p/${idCible}-"]`);
   if (anchor) {
-    t(`annonce trouvée par slug d'URL : ${slug}`);
+    t(`carte trouvée par identifiant ${idCible}`);
     if (job.title) {
       const carteTxt = texteDe(findBeebsCard(anchor) ?? anchor);
       t(carteTxt.includes(job.title.trim())
-        ? `témoin titre : « ${job.title} » lu sur la carte du slug`
-        : `témoin titre : « ${job.title} » NON lu sur la carte du slug (titre Beebs peut-être tronqué) — le slug fait foi`);
+        ? `témoin titre : « ${job.title} » lu sur la carte`
+        : `témoin titre : « ${job.title} » NON lu sur la carte (titre Beebs peut-être tronqué) — l'identifiant fait foi`);
     }
   }
   if (!anchor) {
-    t(`annonce INTROUVABLE dans Mes annonces (titre="${job.title ?? "?"}")`);
+    t(`annonce INTROUVABLE dans Mes annonces (identifiant ${idCible}${location.search ? ", liste filtrée par le titre" : ", première page seulement"})`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
-    return { success: false, error: "Annonce introuvable dans Mes annonces Beebs", trace };
+    return {
+      success: false,
+      error: `Annonce introuvable dans Mes annonces Beebs (identifiant ${idCible}${location.search ? ", liste filtrée par le titre" : ""})`,
+      trace,
+    };
   }
 
-  // Carte = ancêtre qui contient à la fois le titre et la barre d'actions
-  // « Modifier | Dupliquer | Supprimer » de CETTE annonce.
+  // Carte = ancêtre qui contient à la fois la case/le lien et la barre
+  // d'actions « Modifier | Dupliquer | Supprimer » de CETTE annonce.
   const card = findBeebsCard(anchor);
   if (!card) {
     t("carte englobante (avec sa barre Modifier/Dupliquer/Supprimer) INTROUVABLE");
@@ -251,44 +376,11 @@ async function deleteListing(job) {
       .filter(estVisibleSansLayout)
       .find((d) => /supprimer mon annonce/i.test(texteDe(d))) ?? null;
   }, 10000);
-  if (!dialog) return { success: false, error: "Dialogue « Supprimer mon annonce » introuvable", trace };
-
-  // ⚠️ MOTIF OBLIGATOIRE, et « Vendu via Beebs » est PRÉ-COCHÉ par défaut
-  // (radio_reason-0) : le laisser tel quel déclarerait à Beebs une vente
-  // réalisée CHEZ EUX — faux, et potentiellement facturable. Un job delete
-  // n'est armé qu'après une vente RÉELLE sur une AUTRE plateforme (bandeau
-  // semi-auto de l'app) : le motif exact est donc radio_reason-1.
-  const reasonLabel = "Vendu via une autre plateforme";
-  const radio = Array.from(dialog.querySelectorAll('input[type="radio"]')).find((r) => {
-    const lab = dialog.querySelector(`label[for="${r.id}"]`);
-    return (lab?.textContent || "").trim() === reasonLabel;
-  });
-  if (!radio) {
-    const dispo = Array.from(dialog.querySelectorAll("label")).map((l) => l.textContent.trim());
-    return { success: false, error: `Motif « ${reasonLabel} » introuvable (motifs : ${dispo.join(" | ")})`, trace };
-  }
-  realClick(radio);
-  radio.dispatchEvent(new Event("change", { bubbles: true }));
-  await humanPause(800, 1500);
-  if (!radio.checked) {
-    return { success: false, error: "Motif de suppression non sélectionné (état non commité) — abandon", trace };
-  }
-  t(`motif sélectionné : « ${reasonLabel} » (défaut « Vendu via Beebs » écarté)`);
-
-  const confirmBtn = Array.from(dialog.querySelectorAll("button"))
-    .filter(estVisibleSansLayout)
-    .find((b) => /^supprimer l['’]annonce$/i.test(texteDe(b)));
-  if (!confirmBtn) return { success: false, error: "Bouton « Supprimer l'annonce » introuvable dans le dialogue", trace };
-
-  await humanPause(800, 1600);
-  realClick(confirmBtn);
-  // La suppression Beebs est ASYNCHRONE : le dialogue se ferme, mais la liste
-  // continue d'afficher l'annonce pendant plusieurs secondes (constaté en réel
-  // — une première vérification trop rapide conclut à tort à un échec).
-  await sleep(6000);
-  t("confirmation envoyée — propagation Beebs asynchrone (la liste peut rester obsolète quelques secondes)");
-  return { success: true, trace };
+  if (!dialog) return { success: false, reprise: true, error: "Dialogue « Supprimer mon annonce » introuvable après le clic — aucune confirmation envoyée, retrait à reprendre", trace };
+  const verdict = await supprimerDansLeDialogue(dialog, t);
+  return { ...verdict, trace };
 }
+
 
 // ⚠️⚠️ AUCUNE MESURE DE LAYOUT DANS CE FICHIER (2026-07-13, règle produit).
 // L'onglet de travail vit dans une fenêtre MINIMISÉE, donc JAMAIS rendue :
