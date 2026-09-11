@@ -1257,14 +1257,27 @@ serve(async (req) => {
       // Mesure parc, à la prise en charge seulement (processing_since vient
       // d'être posé par le client) : |écart| < 24 h pour ignorer les valeurs
       // absurdes ; jamais bloquant.
+      // Seulement quand processing_since CHANGE (la prise en charge elle-même) :
+      // les écritures 'processing' suivantes (marque 'deleted', snapshot)
+      // renvoient l'ancienne valeur et mesureraient le temps écoulé, pas l'horloge.
       if (statutEffectif === "processing" && typeof pfW.processing_since === "string") {
         const ps = Date.parse(pfW.processing_since);
         if (Number.isFinite(ps)) {
-          const ecart = Math.round((ps - Date.now()) / 1000);
-          if (Math.abs(ecart) < 86_400 && pfW.horloge_client_ecart_s !== ecart) {
-            pfW.horloge_client_ecart_s = ecart;
-            touche = true;
-          }
+          try {
+            const { data: jrowP } = await userClient
+              .from("cross_post_jobs")
+              .select("platform_fields")
+              .eq("id", jobId)
+              .maybeSingle();
+            const pfP = (jrowP?.platform_fields ?? {}) as Record<string, unknown>;
+            if (pfP.processing_since !== pfW.processing_since) {
+              const ecart = Math.round((ps - Date.now()) / 1000);
+              if (Math.abs(ecart) < 86_400 && pfW.horloge_client_ecart_s !== ecart) {
+                pfW.horloge_client_ecart_s = ecart;
+                touche = true;
+              }
+            }
+          } catch { /* mesure seulement, jamais bloquante */ }
         }
       }
       if (touche) patch.platform_fields = pfW;
