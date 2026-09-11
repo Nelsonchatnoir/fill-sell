@@ -1183,6 +1183,93 @@ serve(async (req) => {
     // reprise programmée, AVEC la trace du relevé.
     if (pfDepotOptions) patch.platform_fields = pfDepotOptions;
 
+    // ── HORLOGE DU CLIENT RECALÉE SUR CELLE DU SERVEUR (2026-09-11) ─────────
+    // deleted_at (republish Vinted) est le SEUIL de reconnaissance de
+    // l'annonce recréée : photo_ts (horloge Vinted) doit lui être postérieur.
+    // L'extension le posait avec l'horloge du PC — +146 s chez CASH34, +135 s
+    // chez Adam : la recréation paraissait antérieure à la suppression, n'était
+    // jamais reconnue, était retentée, et doublée (12 annonces en 30 j).
+    // Ici, à l'unique point de passage des écritures :
+    //   · PREMIER deleted_at reçu → deleted_at_serveur = now() du serveur (ou la
+    //     valeur du client si elle est déjà à l'heure Vinted, 0.6.29+ : marquée
+    //     par deleted_at_client), deleted_at recalé dessus, valeur brute du
+    //     client conservée (deleted_at_client) et écart mesuré ;
+    //   · réécritures suivantes (l'extension renvoie le pf ENTIER, relu au
+    //     poll) → deleted_at re-forcé sur deleted_at_serveur.
+    // Vaut pour TOUS les clients, 0.6.28 compris : la reprise à +5 min relit
+    // deleted_at en base et reconnaît la première copie au lieu d'en créer une
+    // seconde. Périmètre : action='republish'. Rien d'autre du pf n'est touché ;
+    // la garde « pause avant toute suppression » est en amont et intacte.
+    // Mesure PARC : à chaque prise en charge (processing_since posé par le
+    // client), l'écart client − serveur est estampillé (horloge_client_ecart_s).
+    if (patch.platform_fields && typeof patch.platform_fields === "object") {
+      const pfW = { ...(patch.platform_fields as Record<string, unknown>) };
+      let touche = false;
+      if (typeof pfW.deleted_at === "string" && pfW.deleted_at) {
+        try {
+          const { data: jrowH } = await userClient
+            .from("cross_post_jobs")
+            .select("action, platform_fields")
+            .eq("id", jobId)
+            .maybeSingle();
+          if (jrowH?.action === "republish") {
+            const pfH = (jrowH.platform_fields ?? {}) as Record<string, unknown>;
+            const serveurDeja = typeof pfH.deleted_at_serveur === "string" && pfH.deleted_at_serveur
+              ? pfH.deleted_at_serveur : null;
+            if (serveurDeja) {
+              if (pfW.deleted_at !== serveurDeja) {
+                pfW.deleted_at = serveurDeja;
+                touche = true;
+              }
+              pfW.deleted_at_serveur = serveurDeja;
+              if (pfW.deleted_at_client == null && pfH.deleted_at_client != null) pfW.deleted_at_client = pfH.deleted_at_client;
+              if (pfW.horloge_client_ecart_s == null && pfH.horloge_client_ecart_s != null) pfW.horloge_client_ecart_s = pfH.horloge_client_ecart_s;
+            } else {
+              const nowMs = Date.now();
+              const brutClient = String(pfW.deleted_at_client ?? pfW.deleted_at);
+              const clientMs = Date.parse(brutClient);
+              const ecartS = Number.isFinite(clientMs) ? Math.round((clientMs - nowMs) / 1000) : null;
+              // 0.6.29+ : deleted_at porte déjà l'heure Vinted (en-tête Date) et
+              // deleted_at_client la valeur brute — on garde l'heure Vinted si
+              // elle est cohérente (pas dans le futur, pas plus vieille que 10 min).
+              const vintedMs = Date.parse(String(pfW.deleted_at));
+              const clientDejaVinted = pfW.deleted_at_client != null && Number.isFinite(vintedMs)
+                && vintedMs <= nowMs + 2_000 && nowMs - vintedMs < 10 * 60_000;
+              const serveurIso = clientDejaVinted ? new Date(vintedMs).toISOString() : new Date(nowMs).toISOString();
+              pfW.deleted_at = serveurIso;
+              pfW.deleted_at_serveur = serveurIso;
+              pfW.deleted_at_client = brutClient;
+              if (ecartS != null) pfW.horloge_client_ecart_s = ecartS;
+              touche = true;
+              if (ecartS != null && Math.abs(ecartS) > 10) {
+                console.warn(
+                  `[update-job-status] userId=${user.id} job=${jobId} — horloge du client à ${ecartS > 0 ? "+" : ""}${ecartS} s ` +
+                  `du serveur : deleted_at recalé sur ${serveurIso}${clientDejaVinted ? " (heure Vinted du client)" : " (now() serveur)"}`,
+                );
+              }
+            }
+          }
+        } catch (e) {
+          // Le recalage est un filet : jamais il n'empêche d'écrire le statut.
+          console.error("[update-job-status] recalage deleted_at :", (e as Error)?.message ?? e);
+        }
+      }
+      // Mesure parc, à la prise en charge seulement (processing_since vient
+      // d'être posé par le client) : |écart| < 24 h pour ignorer les valeurs
+      // absurdes ; jamais bloquant.
+      if (statutEffectif === "processing" && typeof pfW.processing_since === "string") {
+        const ps = Date.parse(pfW.processing_since);
+        if (Number.isFinite(ps)) {
+          const ecart = Math.round((ps - Date.now()) / 1000);
+          if (Math.abs(ecart) < 86_400 && pfW.horloge_client_ecart_s !== ecart) {
+            pfW.horloge_client_ecart_s = ecart;
+            touche = true;
+          }
+        }
+      }
+      if (touche) patch.platform_fields = pfW;
+    }
+
     // Estampille de version du build extension (handler-watch, 2026-07-16) :
     // colonne dédiée, purement diagnostique, jamais bloquante.
     if (typeof body.handler_build === "string" && body.handler_build) {

@@ -1494,6 +1494,14 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
       },
     });
     verdict.http = resp.status;
+    // ── HORLOGE VINTED (2026-09-11, doublons CASH34 / Adam) ─────────────────
+    // L'en-tête Date de la réponse est l'heure du serveur qui vient de
+    // supprimer. C'est ELLE qui date la suppression (deleted_at), jamais
+    // l'horloge du PC : à +146 s chez CASH34, la recréation paraissait
+    // ANTÉRIEURE à la suppression, n'était jamais reconnue dans le dressing,
+    // et une seconde annonce partait à chaque republication.
+    const dateVinted = Date.parse(resp.headers.get("date") ?? "");
+    if (Number.isFinite(dateVinted)) verdict.date_serveur = new Date(dateVinted).toISOString();
     // Le corps est lu sur TOUTE réponse (≤ 160 caractères) : c'est lui qui
     // dira, la prochaine fois, ce qu'un 200 ou un 404 contenait vraiment.
     const corps = (await resp.text().catch(() => "")).replace(/\s+/g, " ").trim().slice(0, 160);
@@ -2786,6 +2794,8 @@ async function fillListingForm(job) {
         "Vinted refuse la publication : « Ajoute des photos à cette annonce » (minimum imposé sur " +
         "les marques premium). Ajouter des photos à l'annonce dans l'app, puis régénérer le job.",
       warnings,
+      // La modale a remplacé la publication : rien n'a été créé, c'est prouvé.
+      preuveEchec: "modale_vinted",
       ...(onePassDeleted ? { deleted: true } : {}),
     };
   }
@@ -2905,6 +2915,9 @@ async function fillListingForm(job) {
         error: `${messageEchec} Champ${serverRequired.length > 1 ? "s" : ""} exigé${serverRequired.length > 1 ? "s" : ""} par Vinted : ${serverRequired.map((f) => f.label).join(", ")}. À faire : ${conseils}, puis relance la publication.`,
         warnings,
         serverRequired,
+        // Preuve d'échec NOMMÉE (2026-09-11) : Vinted a répondu un refus,
+        // l'annonce n'existe pas — une recréation peut être retentée.
+        preuveEchec: "refus_serveur",
         diagnostic: diagRefus,
         discoveredRequired: requiredState.discovered,
         ...(onePassDeleted ? { deleted: true } : {}),
@@ -2917,7 +2930,15 @@ async function fillListingForm(job) {
         diagnostic: [diagEchecBase, annexeRecreation().diagnostic].filter(Boolean).join(" || ").slice(0, 2000),
       };
     }
-    return { success: false, error: messageEchec, warnings, ...annexeRecreation(), diagnostic: [diagEchecBase, annexeRecreation().diagnostic].filter(Boolean).join(" || ").slice(0, 2000), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
+    // Preuve d'échec NOMMÉE (2026-09-11, doublons de recréation) : un refus
+    // serveur lu (HTTP ≥ 400) ou un formulaire qui a bloqué l'envoi (aucune
+    // requête de création) prouvent que l'annonce n'existe pas. Sans l'un des
+    // deux (page partie avant la réponse, sonde muette), la recréation a
+    // PEUT-ÊTRE abouti : le background ne redépose pas, il vérifie.
+    const preuveEchec = sonde.refus || (sonde.last && Number(sonde.last.status) >= 400)
+      ? "refus_serveur"
+      : (!sonde.envoi && !sonde.last ? "formulaire_bloque" : null);
+    return { success: false, error: messageEchec, warnings, ...annexeRecreation(), preuveEchec, diagnostic: [diagEchecBase, annexeRecreation().diagnostic].filter(Boolean).join(" || ").slice(0, 2000), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
   }
   return { success: true, listingUrl: proof.listingUrl, warnings, ...annexeRecreation(), discoveredRequired: requiredState.discovered, ...(onePassDeleted ? { deleted: true } : {}) };
 
