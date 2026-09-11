@@ -2234,6 +2234,28 @@ async function poserValeurSurChamp(
       usedFallback = true;
     }
   }
+  // ── Liste FILTRÉE non vide, sans « Autre » (2026-09-11, chaussettes Alo,
+  // job e5f68f81) : la recherche « Alo » rend 5 marques qui CONTIENNENT
+  // « alo » (Kaloo, Kimbaloo, Lunaloop, Palomino, Salomon) — liste non vide,
+  // donc la re-recherche « Autre » de l'entrée (réservée à la liste VIDE) ne
+  // joue pas, et le bac générique n'est pas dans ce qui est affiché : le
+  // champ restait vide et le job partait en needs_user sur une marque que
+  // Beebs n'a de toute façon pas. Même geste que la liste vide : on re-cherche
+  // « Autre » — seulement s'il y a une barre de recherche (sinon la liste
+  // affichée EST la liste complète) et jamais pour une taille. Introuvable →
+  // on remet la recherche d'origine pour que l'arbitrage IA ci-dessous
+  // travaille sur des éléments encore montés. Mesuré 30 j : 1 job, 1 compte.
+  if (!match && !sizeField && !researchedFallback && panelSearchInput(trigger)) {
+    const relues = await researchPanelFor(trigger, "Autre");
+    const autre = relues.find((el) => normalizeFuzzy(optionLabel(el)) === "autre");
+    if (autre) {
+      match = { el: autre, label: optionLabel(autre), stage: "repli-autre" };
+      usedFallback = true;
+    } else {
+      const retour = await researchPanelFor(trigger, rawText);
+      if (retour.length) options = retour;
+    }
+  }
 
   // ── L'IA CHOISIT DANS LA LISTE RÉELLEMENT AFFICHÉE (2026-09-07 soir) ──────
   // Dernier recours AVANT de laisser le champ vide. Toutes les tentatives
