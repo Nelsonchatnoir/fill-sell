@@ -23,9 +23,19 @@
 // on annoncerait « 134 absents de Leboncoin » sur un critère que l'écran
 // n'applique pas — un compteur qui ment, exactement le piège déjà pris avec le
 // bloc de republication automatique (cf. RepublishAutoBlock).
+// ⛔ SAUF VINTED (2026-09-11, signalement Joséphine) : une annonce Vinted peut
+// exister SANS job FillSell (import du dressing), et pendant une republication
+// en vol aucun job n'est 'published'. Pour Vinted, la vérité est portée par
+// l'ARTICLE — vintedPresenceArticle (publicationState), la MÊME expression que
+// la carte et que le bandeau « encore en ligne » avant une vente :
+//   « En ligne sur Vinted »   = visible d'un acheteur (pastille verte) ;
+//   « Pas encore sur Vinted » = AUCUNE annonce Vinted, visible ou masquée
+//                               (publier ferait doublon sinon).
+// Une annonce masquée/brouillon n'est donc ni l'une ni l'autre : les deux
+// compteurs ne s'additionnent plus forcément au total, c'est voulu.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { computeRemovalInfo } from './publicationState';
+import { computeRemovalInfo, vintedPresenceArticle } from './publicationState';
 import { natureNeedsUser } from './shared';
 
 export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay'];
@@ -91,13 +101,31 @@ export function champManquant(job, lang = 'fr') {
 /**
  * L'état d'un article, plateforme par plateforme.
  * @param {object[]} jobs  tous les jobs de l'article (jobsByInventaire[id])
- * @returns {{enLigne:string[], aCompleter:object[], enEchec:object[]}}
+ * @param {object|null} item  l'article lui-même (vinted_item_id, disparu_le,
+ *   vinted_status, last_synced_at) : SANS lui, Vinted est lu sur les jobs
+ *   seuls, comme les autres plateformes (appel depuis la modale de retrait, qui
+ *   ne lit que aCompleter / enEchec / enConfirmation).
+ * @returns {{enLigne:string[], occupees:string[], aCompleter:object[], enEchec:object[]}}
+ *   enLigne  : plateformes où un acheteur voit l'annonce ;
+ *   occupees : plateformes où une annonce EXISTE (⊇ enLigne — l'écart, c'est
+ *              Vinted masquée/brouillon) ; c'est elle que lit « Pas encore ».
  *   aCompleter / enEchec : [{ platform, job, champ }] — UNE entrée par
  *   plateforme, la plus récente gagnant si plusieurs jobs se répondent.
  */
-export function etatPlateformes(jobs, lang = 'fr') {
+export function etatPlateformes(jobs, lang = 'fr', item = null) {
   const liste = Array.isArray(jobs) ? jobs : [];
   const { publishedActive } = computeRemovalInfo(liste);
+  let enLigne = Array.isArray(publishedActive) ? publishedActive.slice() : [];
+  let occupees = enLigne.slice();
+  if (item) {
+    // Vinted sur l'ARTICLE (cf. bandeau de tête) — les trois autres
+    // plateformes restent strictement computeRemovalInfo.
+    const { occupee, visible } = vintedPresenceArticle(item, liste);
+    enLigne = enLigne.filter((p) => p !== 'vinted');
+    occupees = occupees.filter((p) => p !== 'vinted');
+    if (visible) enLigne.push('vinted');
+    if (occupee) occupees.push('vinted');
+  }
   const aCompleter = new Map();
   const enEchec = new Map();
   // needs_user EN COURS chez la plateforme (2026-09-10) : ni « à compléter »
@@ -133,19 +161,26 @@ export function etatPlateformes(jobs, lang = 'fr') {
     }
   }
   return {
-    enLigne: Array.isArray(publishedActive) ? publishedActive : [],
+    enLigne,
+    occupees,
     aCompleter: [...aCompleter.values()],
     enEchec: [...enEchec.values()],
     enConfirmation: [...enConfirmation.values()],
   };
 }
 
+// Un index calculé sans `occupees` (ancien appelant) retombe sur enLigne :
+// jamais un filtre qui casse sur une forme d'état plus ancienne.
+const occupeesDe = (e) => (Array.isArray(e?.occupees) ? e.occupees : (e?.enLigne ?? []));
+
 /** Index { id → état } pour toute une liste. Un seul passage. */
 export function indexEtatStock(items, jobsByInventaire, lang = 'fr') {
   const index = new Map();
   for (const it of items ?? []) {
     if (!it?.id) continue;
-    index.set(String(it.id), etatPlateformes(jobsByInventaire?.[it.id], lang));
+    // L'article est passé : Vinted se lit sur lui (vinted_item_id, disparu_le,
+    // vinted_status), pas seulement sur ses jobs.
+    index.set(String(it.id), etatPlateformes(jobsByInventaire?.[it.id], lang, it));
   }
   return index;
 }
@@ -153,6 +188,8 @@ export function indexEtatStock(items, jobsByInventaire, lang = 'fr') {
 // ── Compteurs ───────────────────────────────────────────────────────────────
 // ⛔ Un filtre à zéro ne s'affiche pas : c'est la règle produit (« le nombre
 // avant le clic »), et un chip qui promet 0 article est une porte fermée.
+// « En ligne » compte le VISIBLE (enLigne) ; « Pas encore » et « Jamais
+// publié » comptent l'ABSENCE d'annonce (occupees) — cf. bandeau de tête.
 export function compteursStock(items, index) {
   const enLigne = {}; const pasEncore = {};
   for (const p of PLATEFORMES_STOCK) { enLigne[p] = 0; pasEncore[p] = 0; }
@@ -160,10 +197,12 @@ export function compteursStock(items, index) {
   for (const it of items ?? []) {
     const e = index.get(String(it?.id));
     if (!e) continue;
+    const occupees = occupeesDe(e);
     for (const p of PLATEFORMES_STOCK) {
-      if (e.enLigne.includes(p)) enLigne[p] += 1; else pasEncore[p] += 1;
+      if (e.enLigne.includes(p)) enLigne[p] += 1;
+      if (!occupees.includes(p)) pasEncore[p] += 1;
     }
-    if (!e.enLigne.length) jamais += 1;
+    if (!occupees.length) jamais += 1;
     if (e.aCompleter.length) aCompleter += 1;
     if (e.enEchec.length) enEchec += 1;
   }
@@ -175,17 +214,19 @@ export function compteursStock(items, index) {
 // `probleme`  : 'a_completer' | 'en_echec' | null
 // Ils se COMBINENT, et se combinent aussi avec les filtres existants (type,
 // marque, boutique, recherche) puisqu'on reçoit déjà leur résultat.
+// 'en_ligne' lit enLigne (visible) ; 'pas_encore' et 'jamais' lisent occupees
+// (aucune annonce, visible ou masquée) — même règle que les compteurs.
 export function filtrerStock(items, index, { diffusion = null, probleme = null } = {}) {
   let out = items ?? [];
   if (diffusion?.mode === 'jamais') {
-    out = out.filter((it) => !(index.get(String(it?.id))?.enLigne.length));
+    out = out.filter((it) => !occupeesDe(index.get(String(it?.id))).length);
   } else if (diffusion?.mode && diffusion.platform) {
     const p = diffusion.platform;
     const veutEnLigne = diffusion.mode === 'en_ligne';
     out = out.filter((it) => {
       const e = index.get(String(it?.id));
       if (!e) return false;
-      return e.enLigne.includes(p) === veutEnLigne;
+      return veutEnLigne ? e.enLigne.includes(p) : !occupeesDe(e).includes(p);
     });
   }
   if (probleme === 'a_completer') {

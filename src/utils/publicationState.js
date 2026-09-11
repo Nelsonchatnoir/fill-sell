@@ -192,6 +192,30 @@ export function annoncesEncoreEnLigne(item, jobsAll) {
   return enLigne.sort((a, b) => rangPlateforme(a.platform) - rangPlateforme(b.platform));
 }
 
+// ── Vinted lu sur l'ARTICLE — source unique filtre Diffusion + carte (2026-09-11)
+// Signalement Joséphine (Pro, mail du 10/09) : le filtre « Pas encore sur
+// Vinted » listait des articles dont la carte disait « En ligne ». Deux causes :
+// les jobs tronqués à 1 000 par PostgREST (corrigé dans StockTab, lecture
+// paginée) et DEUX expressions différentes — le filtre ne lisait que les jobs
+// 'published', la carte y ajoutait Vinted quand une republication était en vol.
+// Vinted est la seule plateforme où une annonce peut exister SANS job FillSell
+// (import du dressing) : la vérité est portée par l'ARTICLE, même expression
+// que annoncesEncoreEnLigne ci-dessus, les jobs ne font que la confirmer.
+//   occupee : une annonce Vinted existe, visible ou non → « Publier sur
+//             Vinted » ferait doublon ; l'article n'est PAS « pas encore ».
+//   visible : un acheteur la voit → pastille verte, chip « En ligne sur Vinted ».
+// Masquée/brouillon (vinted_status, garde de fraîcheur du helper) = occupée
+// mais pas visible. disparu_le = ni l'une ni l'autre (l'annonce n'existe plus).
+// Les trois autres plateformes ne changent pas : jobs 'published' seuls.
+export function vintedPresenceArticle(item, jobsAll) {
+  const jobs = jobsAll ?? [];
+  if (item?.disparu_le) return { occupee: false, visible: false };
+  const { publishedActive } = computeRemovalInfo(jobs);
+  const occupee = Boolean(item?.vinted_item_id) || publishedActive.includes("vinted");
+  const visible = occupee && !vintedMasqueeMalgreJobs(item, jobs);
+  return { occupee, visible };
+}
+
 // ── ARRÊT D'UNE VAGUE DE REPUBLICATIONS — qui peut être annulé ? ────────────
 // (07/09/2026, demande Ornella : une vague lancée ne pouvait plus s'arrêter.)
 //

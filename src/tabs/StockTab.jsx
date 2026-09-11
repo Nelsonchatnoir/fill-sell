@@ -25,7 +25,7 @@ import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 // Photos : lecture des deux formes, écriture en objets { type, url } — le
 // normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
 import { urlsPhotos, entreesPhotos } from '../utils/photos';
-import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
+import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
 import { useFondFige } from '../utils/modale';
 import {
   PLATEFORMES_STOCK, LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
@@ -5412,35 +5412,56 @@ const StockTab = memo(function StockTab({
       // listing_url + title servent à armer un delete depuis le logo — jamais
       // de delete sans le listing_url du job publish LUI-MÊME (leçon
       // listing_url croisée : tout repli supprime l'annonce d'un autre article).
-      const { data } = await supabase
-        .from("cross_post_jobs")
-        // ⛔ NE JAMAIS ajouter une colonne ici sans l'avoir vérifiée dans le
-        // schéma réel. cross_post_jobs n'a PAS d'`updated_at` — l'y avoir mis
-        // (2de66f1) a fait échouer la requête ENTIÈRE côté PostgREST : `data`
-        // revenait null, le garde-fou `if (!data) return` laissait
-        // jobsByInventaire vide, et TOUTES les cartes de TOUS les comptes
-        // perdaient d'un coup leurs logos de plateforme, leur pastille
-        // « En ligne » et leurs badges de job — remplacés par le repli
-        // textuel « 🏪 <plateforme> ». Un select PostgREST est tout ou rien :
-        // une colonne inconnue ne dégrade pas, elle annule.
-        // bulk_batch_id : VÉRIFIÉE dans le schéma prod le 28/08 (uuid,
-        // information_schema) — sert au périmètre du lot de republications.
-        // published_at : VÉRIFIÉE dans le schéma prod le 29/08 (timestamptz,
-        // information_schema). Le compteur du plafond quotidien est passé
-        // côté SERVEUR le soir même (get-pending-jobs plafond_only) — la
-        // colonne reste lue, prête pour tout affichage horodaté des jobs.
-        .select("id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id, voie")
-        .eq("user_id", user.id)
-        // 'cancelled' et 'dry_run_completed' AJOUTÉS le 2026-08-05 : sans eux,
-        // un republish qui se terminait DISPARAISSAIT de l'écran et la carte
-        // retombait sur le job précédent — un dry run réussi à 10:01 s'affichait
-        // comme l'échec de 08:01, message rouge compris. Un job terminé ne doit
-        // jamais être masqué au profit d'un plus ancien.
-        .in("status", ["pending", "processing", "published", "failed", "needs_user", "deleted", "cancelled", "dry_run_completed"])
-        // Le plus récent d'abord : tout ce qui lit « le dernier job » lit la
-        // même chose, sans dépendre de l'ordre de retour de PostgREST.
-        .order("created_at", { ascending: false });
-      if (annule || !data) return;
+      // ── LECTURE PAGINÉE (2026-09-11, signalement Joséphine) ─────────────
+      // PostgREST tronque à 1 000 lignes SANS le dire. Joe0410 (352 articles)
+      // avait 1 110 jobs dans ces statuts : les 110 plus anciens — les imports
+      // du dressing du 23/08, 'published' — n'arrivaient plus. Résultat : 56
+      // articles listés « Pas encore sur Vinted » alors qu'ils y sont, logos
+      // et pastilles faux sur toute la zone coupée, et le nombre montait à
+      // chaque nuit de republications (chaque job neuf en poussait un ancien
+      // hors des 1 000). Lecture par pages jusqu'à la page incomplète, modèle
+      // App.jsx (vinted_listing_snapshots). Tri (created_at, id) : une égalité
+      // de created_at à cheval sur deux pages ne fait ni doublon ni trou.
+      // Une page en erreur = on ne pose RIEN (tout ou rien, comme avant) :
+      // un état partiel ferait exactement les faux « pas encore » qu'on corrige.
+      const PAGE_JOBS = 1000;
+      const data = [];
+      for (let from = 0; ; from += PAGE_JOBS) {
+        const { data: page, error } = await supabase
+          .from("cross_post_jobs")
+          // ⛔ NE JAMAIS ajouter une colonne ici sans l'avoir vérifiée dans le
+          // schéma réel. cross_post_jobs n'a PAS d'`updated_at` — l'y avoir mis
+          // (2de66f1) a fait échouer la requête ENTIÈRE côté PostgREST : `data`
+          // revenait null, le garde-fou `if (!data) return` laissait
+          // jobsByInventaire vide, et TOUTES les cartes de TOUS les comptes
+          // perdaient d'un coup leurs logos de plateforme, leur pastille
+          // « En ligne » et leurs badges de job — remplacés par le repli
+          // textuel « 🏪 <plateforme> ». Un select PostgREST est tout ou rien :
+          // une colonne inconnue ne dégrade pas, elle annule.
+          // bulk_batch_id : VÉRIFIÉE dans le schéma prod le 28/08 (uuid,
+          // information_schema) — sert au périmètre du lot de republications.
+          // published_at : VÉRIFIÉE dans le schéma prod le 29/08 (timestamptz,
+          // information_schema). Le compteur du plafond quotidien est passé
+          // côté SERVEUR le soir même (get-pending-jobs plafond_only) — la
+          // colonne reste lue, prête pour tout affichage horodaté des jobs.
+          .select("id, inventaire_id, platform, status, error, created_at, published_at, platform_fields, action, listing_url, title, bulk_batch_id, voie")
+          .eq("user_id", user.id)
+          // 'cancelled' et 'dry_run_completed' AJOUTÉS le 2026-08-05 : sans eux,
+          // un republish qui se terminait DISPARAISSAIT de l'écran et la carte
+          // retombait sur le job précédent — un dry run réussi à 10:01 s'affichait
+          // comme l'échec de 08:01, message rouge compris. Un job terminé ne doit
+          // jamais être masqué au profit d'un plus ancien.
+          .in("status", ["pending", "processing", "published", "failed", "needs_user", "deleted", "cancelled", "dry_run_completed"])
+          // Le plus récent d'abord : tout ce qui lit « le dernier job » lit la
+          // même chose, sans dépendre de l'ordre de retour de PostgREST.
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, from + PAGE_JOBS - 1);
+        if (annule) return;
+        if (error || !page) return;
+        data.push(...page);
+        if (page.length < PAGE_JOBS) break;
+      }
       const map = {};
       for (const job of data) {
         if (!map[job.inventaire_id]) map[job.inventaire_id] = [];
@@ -7578,9 +7599,17 @@ const StockTab = memo(function StockTab({
                   // slot anime. Affichage pur : publishedActive lui-même ne
                   // change pas, les gardes métier restent intactes.
                   const vintedGeleParRepub=repubOccupeSlot&&!!item.vinted_item_id&&!publishedActive.includes("vinted");
-                  const logosEnLigne=disparuDeVinted
-                    ?publishedActive.filter(p=>p!=="vinted")
-                    :(vintedGeleParRepub?[...publishedActive,"vinted"]:publishedActive);
+                  // ── Vinted lu sur l'ARTICLE (2026-09-11, signalement
+                  // Joséphine) : MÊME source que le filtre Diffusion et le
+                  // bandeau vente — vintedPresenceArticle (publicationState).
+                  // Un import du dressing dont le job de sync n'est pas (ou
+                  // plus) chargé garde son logo ; « disparue » le retire ; le
+                  // gel de republication ci-dessus en est un sous-cas et
+                  // garde son style grisé (vintedGeleParRepub, plus bas).
+                  const vintedOccupee=vintedPresenceArticle(item,jobsAll).occupee;
+                  const logosEnLigne=vintedOccupee
+                    ?(publishedActive.includes("vinted")?publishedActive:[...publishedActive,"vinted"])
+                    :publishedActive.filter(p=>p!=="vinted");
                   // ── vinted_status PRIME sur les jobs (2026-08-28, complément
                   // Nico) : masquée/brouillon malgré un job 'published' (44 cas
                   // au relevé) ⇒ la pastille verte ne compte plus Vinted, le
