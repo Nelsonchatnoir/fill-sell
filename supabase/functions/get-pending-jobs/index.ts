@@ -2047,6 +2047,127 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] tempérage des titres Vinted : ${String((e as Error)?.message ?? e)} — titres servis tels quels`);
     }
 
+    // ── « UNIVERS » ET « PRODUIT » LEBONCOIN : À NOUS DE LES POSER (2026-09-11) ──
+    // Relevé live du formulaire (/deposer-une-annonce, compte Nico, rien
+    // déposé) : « Univers » est un combobox REQUIS de l'étape « Dites-nous en
+    // plus », liste RENDUE DANS LE DOM (aucune réponse réseau ne la sert ; la
+    // seule requête, ad-prediction/v2/public/adparams, PRÉDIT le type de
+    // vêtement d'après le titre, pas l'univers) :
+    //   Mode > Vêtements   clothing_type  → Femme · Maternité · Homme · Enfant
+    //   Mode > Chaussures  shoe_type      → Femme · Homme · Enfant
+    // Les autres « Univers » (Sport & Plein air = discipline, Décoration =
+    // famille d'objet, Équipement bébé…) NE SONT PAS des genres : on n'y
+    // touche pas. « Produit » (Décoration, decoration_type) DÉPEND de l'univers
+    // choisi ; relevé du 07/09 (lbcMaisonJardin) : univers « Autre » → la liste
+    // ne contient QUE « Autre ».
+    // Le mal (4 jobs, 16 sur 30 j / 8 comptes) : l'app pose l'univers de l'IA
+    // (« Mixte », « Fille », « Garçon ») ou rien, le handler ne trouve pas
+    // l'option, needs_user « Compléter ces champs dans l'app » — pour une
+    // valeur qu'on SAIT. Ici, SERVEUR, sans zip, sur le job SERVI (jamais
+    // d'écriture en base : l'extension renvoie le pf au statut suivant, comme
+    // pour la description) — même point de passage que le nettoyage LBC.
+    // ⛔ SOURCES CERTAINES SEULEMENT (même doctrine que familleCategorie.js) :
+    //   1. valeur déjà posée si elle est dans la liste (Fille/Garçon/Bébé/
+    //      Junior → Enfant, Femmes → Femme, Hommes → Homme : des synonymes
+    //      exacts, pas une devinette) ;
+    //   2. la RACINE du chemin Vinted du même article (job Vinted publié en
+    //      priorité, sinon capturé/en file) : Femmes → Femme, Hommes → Homme,
+    //      Enfants → Enfant — c'est la catégorie que Vinted a acceptée ;
+    //   3. une taille d'ÂGE (« 3 ans », « 6 mois », « 92 cm ») → Enfant.
+    //   Jamais le titre, jamais l'icône IA, jamais le genre de l'IA. Rien de
+    //   certain → on ne pose RIEN, le needs_user reste avec la liste relevée.
+    // ⛔ « Produit » : posé UNIQUEMENT quand la liste dépendante ne contient
+    //   qu'une valeur (Décoration + univers « Autre » → « Autre »). Toute liste
+    //   à choix réel = incertain = rien.
+    // ⛔ Le chemin de dépôt, le plafond de 5 mots-clés et le nettoyage de
+    //   description ne bougent pas.
+    let lbcDeduits = 0;
+    try {
+      const UNIVERS_PAR_FEUILLE: Record<string, string[]> = {
+        "Mode > Vêtements": ["Femme", "Maternité", "Homme", "Enfant"],
+        "Mode > Chaussures": ["Femme", "Homme", "Enfant"],
+      };
+      const SYNONYMES_UNIVERS: Record<string, string> = {
+        femme: "Femme", femmes: "Femme", homme: "Homme", hommes: "Homme",
+        enfant: "Enfant", enfants: "Enfant", fille: "Enfant", garçon: "Enfant", garcon: "Enfant",
+        bébé: "Enfant", bebe: "Enfant", junior: "Enfant", maternité: "Maternité", maternite: "Maternité",
+      };
+      const RACINE_VINTED: Record<string, string> = { femmes: "Femme", hommes: "Homme", enfants: "Enfant" };
+      const TAILLE_AGE_RE = /^\s*\d{1,2}\s*(ans?|mois)\b|^\s*\d{2,3}\s*cm\b/i;
+      const normaliser = (v: unknown): string | null => {
+        const s = String(v ?? "").trim().toLowerCase();
+        return s ? (SYNONYMES_UNIVERS[s] ?? null) : null;
+      };
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (j.platform !== "leboncoin" || j.action !== "publish") continue;
+        const pf = (j.platform_fields && typeof j.platform_fields === "object")
+          ? (j.platform_fields as Record<string, unknown>) : null;
+        if (!pf) continue;
+        const chemin = Array.isArray(pf.lbcCategoryPath) ? (pf.lbcCategoryPath as unknown[]).map((s) => String(s)).join(" > ") : "";
+        const trace: Record<string, unknown> = {};
+
+        // ── Univers (Mode > Vêtements / Mode > Chaussures seulement) ──────
+        const liste = UNIVERS_PAR_FEUILLE[chemin];
+        if (liste) {
+          const actuel = String(pf.univers ?? "").trim();
+          if (!liste.includes(actuel)) {
+            let valeur: string | null = null;
+            let source: string | null = null;
+            const synonyme = normaliser(pf.univers) ?? normaliser(pf.genre);
+            if (synonyme && liste.includes(synonyme)) {
+              valeur = synonyme; source = `synonyme exact de « ${actuel || String(pf.genre ?? "")} »`;
+            }
+            if (!valeur && j.inventaire_id != null) {
+              const { data: freres } = await userClient
+                .from("cross_post_jobs")
+                .select("status, platform_fields")
+                .eq("inventaire_id", j.inventaire_id as number)
+                .eq("platform", "vinted")
+                .eq("action", "publish")
+                .order("created_at", { ascending: false })
+                .limit(10);
+              const ordre = ["published", "sold", "cancelled", "processing", "pending", "needs_user", "failed"];
+              const tries = (freres ?? []).slice().sort((a, b) => ordre.indexOf(String(a.status)) - ordre.indexOf(String(b.status)));
+              for (const f of tries) {
+                const chemV = (f.platform_fields as Record<string, unknown> | null)?.categoryPath;
+                const racine = Array.isArray(chemV) && chemV.length ? String(chemV[0]).trim().toLowerCase() : "";
+                const v = RACINE_VINTED[racine];
+                if (v && liste.includes(v)) { valeur = v; source = `racine du chemin Vinted du même article (${(chemV as unknown[]).join(" > ")}, job ${f.status})`; break; }
+              }
+            }
+            if (!valeur && TAILLE_AGE_RE.test(String(pf.taille ?? "")) && liste.includes("Enfant")) {
+              valeur = "Enfant"; source = `taille d'âge « ${String(pf.taille).trim()} »`;
+            }
+            if (valeur) {
+              trace.univers = { valeur, avant: actuel || null, source };
+              pf.univers = valeur;
+            } else {
+              console.log(`[get-pending-jobs] univers Leboncoin ${String(j.id).slice(0, 8)} (${chemin}) : « ${actuel || "vide"} » hors liste et aucune source certaine — rien posé`);
+            }
+          }
+        }
+
+        // ── Produit (Maison & Jardin > Décoration, univers « Autre » → « Autre ») ──
+        if (chemin === "Maison & Jardin > Décoration" && String(pf.univers ?? "").trim() === "Autre") {
+          const aspects = (pf.lbcAspects && typeof pf.lbcAspects === "object") ? (pf.lbcAspects as Record<string, unknown>) : {};
+          if (!String(aspects.decoration_type ?? "").trim()) {
+            pf.lbcAspects = { ...aspects, decoration_type: "Autre" };
+            if (!String(pf.lbcProduit ?? "").trim()) pf.lbcProduit = "Autre";
+            trace.produit = { valeur: "Autre", source: "liste dépendante à une seule valeur (Décoration, univers « Autre »)" };
+          }
+        }
+
+        if (Object.keys(trace).length) {
+          pf.lbc_deduit = { ...trace, le: new Date().toISOString(), pose_par: "get-pending-jobs (sources certaines)" };
+          lbcDeduits++;
+          console.log(`[get-pending-jobs] Leboncoin ${String(j.id).slice(0, 8)} (${chemin}) : ${Object.entries(trace).map(([k, v]) => `${k} ← « ${(v as Record<string, unknown>).valeur} » (${(v as Record<string, unknown>).source})`).join(" ; ")}`);
+        }
+      }
+      if (lbcDeduits) console.log(`[get-pending-jobs] user=${user.id} Univers/Produit Leboncoin posés par déduction : ${lbcDeduits}`);
+    } catch (e) {
+      console.warn(`[get-pending-jobs] déduction Univers/Produit Leboncoin : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+    }
+
     return json({
       jobs: out,
       annonces_en_attente: annoncesAttente,
