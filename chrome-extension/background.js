@@ -13301,7 +13301,12 @@ async function processRepublishJob(job, accessToken) {
       // bas, et le message dirait « intacte » sur une annonce retirée. On relit
       // donc l'étape EN BASE avant de conclure. Illisible = on ne SAIT pas :
       // le texte ne prétendra pas que l'annonce est intacte.
-      const enBase = await etapeRepublishEnBase(accessToken, job.id);
+      // Relue SEULEMENT quand on s'apprête à conclure « rien supprimé » : une
+      // passe qui tient la preuve (deleted:true ou marque mémoire) n'a rien à
+      // demander à la base — aucune requête de plus sur le chemin qui aboutit.
+      const enBase = (result?.deleted === true || marqueDeletedAt != null)
+        ? null
+        : await etapeRepublishEnBase(accessToken, job.id);
       const aSupprime = result?.deleted === true || marqueDeletedAt != null || enBase?.step === "deleted";
 
       // VERDICT DE SUPPRESSION (2026-09-05) : quoi qu'il arrive, ce que l'API
