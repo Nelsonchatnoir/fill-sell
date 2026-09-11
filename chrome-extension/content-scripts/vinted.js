@@ -2934,7 +2934,10 @@ async function fillListingForm(job) {
     // serveur lu (HTTP ≥ 400) ou un formulaire qui a bloqué l'envoi (aucune
     // requête de création) prouvent que l'annonce n'existe pas. Sans l'un des
     // deux (page partie avant la réponse, sonde muette), la recréation a
-    // PEUT-ÊTRE abouti : le background ne redépose pas, il vérifie.
+    // PEUT-ÊTRE abouti. Champ INERTE en 0.6.29 (relevé seulement) : la règle
+    // « aucun redépôt sans preuve » est écartée tant que la vérification ne
+    // sait pas réveiller l'onglet de travail ni recréer quand même au bout du
+    // compte (décision Nico, 11/09).
     const preuveEchec = sonde.refus || (sonde.last && Number(sonde.last.status) >= 400)
       ? "refus_serveur"
       : (!sonde.envoi && !sonde.last ? "formulaire_bloque" : null);

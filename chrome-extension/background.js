@@ -12281,7 +12281,6 @@ async function cloreRepublishSurAnnonceExistante(accessToken, job, pf, nouvelId,
   delete pf.next_action_after;
   delete pf.recaptures_perimees;
   delete pf.recreation_retries;
-  delete pf.recreation_a_verifier;
   if (job.inventaire_id != null) {
     await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
       method: "PATCH",
@@ -12799,7 +12798,6 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
     // Republication aboutie : les diagnostics repartent de zéro.
     delete pf.recaptures_perimees;
     delete pf.recreation_retries;
-    delete pf.recreation_a_verifier;
     if (nouvelId && job.inventaire_id != null) {
       await restRequest(`inventaire?id=eq.${job.inventaire_id}`, accessToken, {
         method: "PATCH",
@@ -12831,86 +12829,7 @@ async function conclureRecreationApresSoumission(accessToken, job, pf, jobRecrea
   // et abandonnerait un article dont l'annonce n'existe plus), et plus JAMAIS
   // un arrêt à la première tentative : retentatives automatiques espacées,
   // puis needs_user avec le snapshot au chaud (replanifierOuArreterRecreation).
-  // ── PAS DE REDÉPÔT SANS PREUVE D'ÉCHEC (2026-09-11) ───────────────────────
-  // « Je ne reconnais pas l'annonce » n'a jamais voulu dire « l'annonce
-  // n'existe pas ». Chez CASH34 la 1re recréation existait, invisible au
-  // critère photo_ts (horloge du PC) ; la retentative en a créé une seconde —
-  // quatre fois sur quatre. Sans refus Vinted PROUVÉ (réponse ≥ 400 sur
-  // item_upload/items, formulaire bloqué sans requête, modale, restriction),
-  // le job ne redépose pas : il attend et relit le dressing au poll suivant
-  // (recreation_a_verifier), jusqu'à PREUVE D'ABSENCE — deux lectures propres
-  // à ≥ 5 min d'écart — et recrée seulement alors. Vérification impossible
-  // (onglet muet, session) = on attend encore ; 6 attentes → needs_user qui
-  // demande de regarder le dressing AVANT de relancer.
-  const preuve = await echecRecreationProuve(tabId, result);
-  if (!preuve.prouve) {
-    return await mettreEnVerificationRecreation(accessToken, job, pf, result, preuve.motif);
-  }
   return await replanifierOuArreterRecreation(accessToken, job, pf, result);
-}
-
-// Preuve qu'une RECRÉATION a échoué — c'est-à-dire que Vinted n'a PAS créé
-// l'annonce. Quatre preuves reconnues, toutes positives : le content script
-// a lu un refus serveur / un formulaire bloqué / une modale (preuveEchec), un
-// refus nommé avec champs (serverRequired), une page /listing-restriction ou
-// un needs_user explicite du content script (rien soumis), ou la sonde réseau
-// du background a capturé une réponse ≥ 400 sur item_upload/items sans 200.
-// Tout le reste — canal coupé, délai, sonde muette — n'est PAS une preuve.
-async function echecRecreationProuve(tabId, result) {
-  if (result?.preuveEchec) return { prouve: true, motif: `preuve du content script : ${result.preuveEchec}` };
-  if (result?.serverRequired?.length) return { prouve: true, motif: "refus serveur nommé (champs exigés)" };
-  if (result?.listingRestriction) return { prouve: true, motif: "page /listing-restriction, rien soumis" };
-  if (result?.needsUser === true) return { prouve: true, motif: "arrêt explicite du content script, rien créé" };
-  try {
-    const { captures } = await readProbeCaptures(tabId);
-    let refus = null, succes = false;
-    for (const c of captures ?? []) {
-      if (!/item_upload\/items/i.test(String(c?.url ?? ""))) continue;
-      const st = Number(c?.status);
-      if (st === 200) succes = true;
-      else if (st >= 400) refus = st;
-    }
-    if (refus != null && !succes) return { prouve: true, motif: `refus Vinted HTTP ${refus} vu par la sonde` };
-  } catch { /* sonde illisible : pas une preuve */ }
-  return { prouve: false, motif: String(result?.error ?? "canal coupé ou réponse illisible").slice(0, 160) };
-}
-
-// Le job ATTEND au lieu de redéposer : pending + next_action_after, le
-// compteur recreation_a_verifier porte l'historique (depuis, attentes,
-// lectures propres du dressing). Chaque passage par ici est une attente de
-// plus ; au-delà de RECREATION_VERIF_MAX_ATTENTES, needs_user honnête —
-// l'utilisateur regarde son dressing avant de cliquer « Republier maintenant ».
-const RECREATION_VERIF_ATTENTE_MIN = 3;
-const RECREATION_VERIF_PREUVE_MIN = 5;
-const RECREATION_VERIF_MAX_ATTENTES = 6;
-async function mettreEnVerificationRecreation(accessToken, job, pf, result, motif) {
-  if (result?.diagnostic) pf.last_diagnostic = String(result.diagnostic).slice(0, 2000);
-  const v = (pf.recreation_a_verifier && typeof pf.recreation_a_verifier === "object")
-    ? { ...pf.recreation_a_verifier }
-    : { depuis: new Date().toISOString(), lectures_propres: 0, attentes: 0 };
-  v.attentes = (Number(v.attentes) || 0) + 1;
-  v.derniere = new Date().toISOString();
-  v.motif = String(motif ?? "").slice(0, 200);
-  pf.recreation_a_verifier = v;
-  if (v.attentes > RECREATION_VERIF_MAX_ATTENTES) {
-    delete pf.next_action_after;
-    await updateJobStatus(accessToken, job.id, "needs_user", {
-      platform_fields: pf,
-      error:
-        "Ton annonce a été retirée de Vinted et nous n'avons pas pu confirmer sa recréation. " +
-        "Regarde ton dressing Vinted : si l'annonce y est déjà, la prochaine synchronisation la rattachera d'elle-même ; " +
-        "si elle n'y est pas, clique « Republier maintenant ».",
-    });
-    console.warn(`[republish] job ${job.id} : recréation non confirmée après ${RECREATION_VERIF_MAX_ATTENTES} vérifications — needs_user, aucun redépôt automatique`);
-    return { status: "needsUser", error: "recréation non confirmée, aucun redépôt sans preuve" };
-  }
-  pf.next_action_after = new Date(Date.now() + RECREATION_VERIF_ATTENTE_MIN * 60_000).toISOString();
-  await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
-  console.warn(
-    `[republish] job ${job.id} : recréation sans preuve d'échec (${v.motif}) — ` +
-    `vérification du dressing dans ${RECREATION_VERIF_ATTENTE_MIN} min (${v.attentes}/${RECREATION_VERIF_MAX_ATTENTES}), aucun redépôt`,
-  );
-  return { status: "retry", error: `recréation non prouvée en échec — vérification dans ${RECREATION_VERIF_ATTENTE_MIN} min` };
 }
 
 // ── HTTP 404 À LA CAPTURE D'UNE REPUBLICATION : DEUX CAS, JAMAIS UN FAILED MUET
@@ -13780,7 +13699,6 @@ async function processRepublishJob(job, accessToken) {
           tabVerif = null;
         }
       }
-      let dressingLu = false;
       try {
         // tabVerif null = abstention décidée juste au-dessus : on ne parle à
         // personne et on enchaîne sur la recréation.
@@ -13792,7 +13710,6 @@ async function processRepublishJob(job, accessToken) {
             type: "SYNC_DRESSING_PAGE", page: 1, userId: ident.userId,
           }).catch(() => null);
           if (page?.success) {
-            dressingLu = true;
             const connus = await restRequest(
               `inventaire?user_id=eq.${decodeJwtSub(accessToken)}&vinted_item_id=not.is.null&select=vinted_item_id`,
               accessToken,
@@ -13815,35 +13732,6 @@ async function processRepublishJob(job, accessToken) {
         }
       } catch (e) {
         console.warn("[republish] vérification du dressing impossible (on recrée):", e?.message ?? e);
-      }
-
-      // ── PREUVE D'ABSENCE AVANT TOUT REDÉPÔT (2026-09-11) ──────────────────
-      // La tentative précédente s'est conclue SANS preuve d'échec (canal coupé,
-      // sonde muette) : l'annonce existe peut-être. Ici, on ne recrée que sur
-      // preuve d'absence — deux lectures propres du dressing à ≥ 5 min
-      // d'écart. Dressing illisible (onglet muet, session) = on attend encore,
-      // jamais « on recrée » : c'est exactement le pari qui a doublé les
-      // annonces de CASH34 et d'Adam.
-      if (pf.recreation_a_verifier && typeof pf.recreation_a_verifier === "object") {
-        const v = { ...pf.recreation_a_verifier };
-        if (!dressingLu) {
-          return await mettreEnVerificationRecreation(
-            accessToken, job, pf, null, "dressing illisible — onglet de travail muet ou session Vinted absente",
-          );
-        }
-        v.lectures_propres = (Number(v.lectures_propres) || 0) + 1;
-        const depuisMs = Date.parse(String(v.depuis ?? "")) || Date.now();
-        const assezAncien = Date.now() - depuisMs >= RECREATION_VERIF_PREUVE_MIN * 60_000;
-        if (v.lectures_propres < 2 || !assezAncien) {
-          pf.recreation_a_verifier = v;
-          return await mettreEnVerificationRecreation(
-            accessToken, job, pf, null,
-            `dressing lu sans l'annonce (${v.lectures_propres} lecture(s) propre(s)) — relecture avant tout redépôt`,
-          );
-        }
-        pf.recreation_absence_prouvee = { ...v, conclu_le: new Date().toISOString() };
-        delete pf.recreation_a_verifier;
-        console.log(`[republish] job ${job.id} : absence de l'annonce prouvée (${v.lectures_propres} lectures propres du dressing) — recréation`);
       }
 
       // ── LA PAGE DE DÉPÔT S'OUVRE ICI, ET LE REMPLISSAGE PART TOUT DE SUITE ──
