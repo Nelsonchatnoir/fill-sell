@@ -22,7 +22,7 @@ import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
 import { lbcProduitsDependants, lbcClePremierCombobox } from "../utils/lbcMaisonJardin";
 import { gardeFouCategorie, categorieIncertaine } from "../utils/categorieGardeFou";
-import { resoudreParMot, candidatsParMot } from "../utils/categorieParMot";
+import { resoudreParMot, candidatsParMot, valeurDecritLObjet } from "../utils/categorieParMot";
 import { familleDeLObjet, plausibiliteDuChemin } from "../utils/familleCategorie";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
@@ -6766,6 +6766,12 @@ export default function ListingPreviewScreen({
       const familleObjet = familleObjetDetail.famille;
       if (familleObjet) console.log(`[publish] famille de l'objet : ${familleObjet} (source ${familleObjetDetail.source})`);
       const categorieParMotParPf = {};
+      // Feuilles écartées par le garde-fou d'escamotage (2026-09-12) : une
+      // correspondance exacte qui ne tenait que parce que des mots étaient
+      // escamotés. On ne pose RIEN à sa place ici — l'étape 3 tranche — mais on
+      // garde la trace sur le job : sans elle, « pourquoi cette catégorie n'a
+      // pas été posée ? » redevient une reconstitution à rebours.
+      const escamotageParPf = {};
       if (motCategorie) {
         await Promise.all(plateformesAPublier.map(async (platform) => {
           const pfE = edited[platform]?.platform_fields ?? {};
@@ -6773,6 +6779,10 @@ export default function ListingPreviewScreen({
           try {
             const r = await resoudreParMot(motCategorie, platform, { genre: genrePf, famille: familleObjet });
             if (r.certitude === "exact") categorieParMotParPf[platform] = r;
+            if (r.escamotage) {
+              escamotageParPf[platform] = r.escamotage;
+              console.warn(`[publish] ${platform} — ${r.escamotage.motif}`);
+            }
           } catch (e) {
             console.warn(`[publish] ${platform} — arbre indisponible pour « ${motCategorie} » :`, e?.message ?? e);
           }
@@ -6934,6 +6944,7 @@ export default function ListingPreviewScreen({
         }
         // La catégorie tirée du MOT prime sur celle tirée de l'icône : elle
         // vient du libellé exact d'une feuille relevée, pas d'un emoji.
+        if (escamotageParPf[platform]) pf.categorie_escamotage_ecarte = escamotageParPf[platform];
         const parMot = categorieParMotParPf[platform] ?? null;
         if (parMot) {
           pf.categorie_source = parMot.choisiParIa ? "ia_parmi_candidats" : (motCategorieSource === "ia" ? "mot_objet_arbre" : "mot_cle_arbre");
@@ -7436,6 +7447,51 @@ export default function ListingPreviewScreen({
       // ce patch — jamais moins stricte qu'avant.
       if (!ebayRequiredFull && ebayRow?.platform_fields?.ebayRequiredAspects) {
         ebayRequiredFull = ebayRow.platform_fields.ebayRequiredAspects.map(name => ({ name, allowedValues: [] }));
+      }
+      // ── PREUVE PAR LES VALEURS OFFERTES (2026-09-12, GO Nico) ─────────────
+      // Le pendant du garde-fou d'escamotage, côté eBay : quand AUCUN aspect
+      // obligatoire de la catégorie ne peut décrire l'objet — pas même par son
+      // nom de tête, ni via le libellé de la feuille — c'est un signe que la
+      // CATÉGORIE est fausse, pas qu'il manque une information. Cas fondateur :
+      // le sac doré de sandrine_mimi en 163570, dont l'aspect « Type » ne
+      // proposait que Sangle/poignée, Charme, Porte-clés…
+      // ⛔ ÇA NE BLOQUE RIEN, ET ÇA NE CORRIGE RIEN. On dépose une trace sur le
+      //    job, avec les valeurs qui la prouvent — c'est elle qui permettra à un
+      //    needs_user de dire « ta catégorie est douteuse » au lieu de « remplis
+      //    ce champ ». Un throw ici bloquerait des articles légitimes, ce qui
+      //    est exactement l'erreur qu'on corrige.
+      // ⚠️ Le verdict lu est le plus LÂCHE (cf. valeurDecritLObjet) : une seule
+      //    description, même approximative, suffit à se taire. Mesuré sur les 21
+      //    couples (mot, catégorie) des publications eBay réussies du parc :
+      //    0 faux positif.
+      if (ebayRow && motCategorie && Array.isArray(ebayRequiredFull) && ebayRequiredFull.length) {
+        try {
+          const cheminE = ebayRow.platform_fields.ebayCategoryPath;
+          const feuilleE = Array.isArray(cheminE) && cheminE.length ? cheminE[cheminE.length - 1] : null;
+          const verdicts = ebayRequiredFull
+            .map(a => ({ aspect: a.name, r: valeurDecritLObjet(motCategorie, a.allowedValues, feuilleE) }))
+            .filter(v => v.r);
+          if (verdicts.length && !verdicts.some(v => v.r.niveau !== "aucun")) {
+            ebayRow.platform_fields.categorie_preuve_aspects = {
+              mot: motCategorie,
+              feuille: feuilleE,
+              categorie_id: ebayRow.platform_fields.ebayCategoryId ?? null,
+              aspects_sans_valeur_descriptive: verdicts.map(v => v.aspect),
+              // La liste qui PROUVE, tronquée : elle doit tenir dans un message.
+              valeurs_offertes: Object.fromEntries(
+                ebayRequiredFull
+                  .filter(a => Array.isArray(a.allowedValues) && a.allowedValues.length)
+                  .slice(0, 3)
+                  .map(a => [a.name, a.allowedValues.slice(0, 12)])
+              ),
+              motif: `aucun aspect obligatoire de « ${feuilleE ?? ebayRow.platform_fields.ebayCategoryId} » ` +
+                `ne peut décrire « ${motCategorie} » — catégorie à vérifier avant de demander quoi que ce soit`,
+            };
+            console.warn(`[publish] ebay — ${ebayRow.platform_fields.categorie_preuve_aspects.motif}`);
+          }
+        } catch (e) {
+          console.warn("[publish] ebay — preuve par les valeurs offertes indisponible :", e?.message ?? e);
+        }
       }
       // ── Garde pré-publication eBay (2026-07-11, décision produit) ──────
       // Un aspect OBLIGATOIRE de la catégorie qui correspond à un de nos 4
