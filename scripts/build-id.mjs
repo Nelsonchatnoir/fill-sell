@@ -1368,7 +1368,21 @@ export const EXTENSION_LAST_COMMIT = '2026-09-12T08:28:55Z'; // recale 09ed9c9 (
 // le 27/08 (App.jsx : bandeau + dismiss ; StockTab : deux messages d'état).
 // Ancienne valeur : 2026-08-09T14:16:20Z (0.5.6) — les promotions 0.6.x
 // intermédiaires n'ont jamais été faites, le parc n'était plus prévenu.
-export const EXTENSION_MIN_BUILD = '2026-08-26T19:48:07Z';
+// 2026-09-12T08:29:11Z = BUILD_ID du paquet 0.6.32 (zip
+// build/CWS-0.6.32-A-TELEVERSER/fillsell-extension-0.6.32-2417097-cws.zip,
+// BUILD_ID '2026-09-12T08:29:11Z+2417097'), PUBLIÉE par le Chrome Web Store le
+// 12/09. Seul le PRÉFIXE ISO est stocké ici : App.jsx fait Date.parse() dessus,
+// un '+hash' rendrait le seuil NaN et la bannière muette.
+// ⚠️ CE N'EST PAS EXTENSION_LAST_COMMIT (08:28:55Z, commit 09ed9c9) : le zip est
+// construit 16 s APRÈS le commit, et c'est le BUILD_ID DU ZIP qui fait foi —
+// cf. bandeau du 09/08 (incident 0.5.6). Le printout de package-extension.mjs,
+// lui, propose LAST_COMMIT : il se trompe, ne pas le recopier.
+// ⚠️ 0.6.29, 0.6.30 et 0.6.31 n'ont JAMAIS été téléversées au Chrome Web Store.
+// Leur contenu est sur main et intégralement inclus dans la 0.6.32. Elles ne
+// sont donc inscrites NULLE PART — ni ici, ni dans ALREADY_PUBLISHED : les
+// inscrire ferait croire à des versions servies qui n'existent pas.
+// Ancienne valeur : 2026-08-26T19:48:07Z (0.6.9, servie depuis le 27/08).
+export const EXTENSION_MIN_BUILD = '2026-09-12T08:29:11Z';
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
 // postérieur à EXTENSION_LAST_COMMIT (constante pas bumpée → le paquet publié
