@@ -15,12 +15,31 @@
 --   file retenue jusqu'à minuit Paris — c'est le régime voulu.
 --
 -- · republish_espacement_parc_sec : espacement médian mesuré sur le PARC
---   entre deux republications abouties consécutives (mesure du 12/09 sur
---   30 jours : 1 752 intervalles < 2 h, médiane 5,9 min = 354 s). C'est le
---   REPLI de la formule de capacité (republish_planifiee_espacement, 3/5)
---   quand le compte n'a pas assez d'historique propre (< 10 intervalles).
---   Jamais une constante optimiste dans le code : à recaler ici, à la main,
---   quand la cadence du parc bouge.
+--   entre deux republications abouties consécutives. C'est le REPLI de la
+--   formule de capacité (republish_planifiee_espacement, 3/5) quand le
+--   compte n'a pas assez d'historique propre (< 10 intervalles).
+--   ⚠️ MESURE FIGÉE À LA MAIN — D'OÙ VIENT 354 :
+--     date de la mesure : 2026-09-12, 11h Paris ;
+--     fenêtre : 30 jours glissants, jobs republish 'published' du parc
+--     entier, intervalles entre deux aboutis consécutifs d'un même compte,
+--     < 2 h (au-delà : nuit ou pause), 1 752 intervalles ;
+--     résultat : médiane 5,9 min = 354 s (p10 3,1 min, p90 18,1 min).
+--   À RECALER : une fois par mois (le 1er, avec les autres relevés du
+--   digest), ET après tout changement de cadence de l'extension
+--   (POLL_INTERVAL_MINUTES, JOB_DELAY_MS, REPUBLISH_ESPACEMENT_MS,
+--   l'attente retrait → recréation) — c'est la cadence de l'extension qui
+--   fait ce nombre, pas Vinted. La requête de recalage, à rejouer telle
+--   quelle et à poser par UPDATE (updated_at = now()) :
+--     WITH s AS (
+--       SELECT extract(epoch FROM (published_at - lag(published_at)
+--                OVER (PARTITION BY user_id ORDER BY published_at))) AS ecart
+--       FROM public.cross_post_jobs
+--       WHERE action = 'republish' AND status = 'published'
+--         AND published_at > now() - interval '30 days')
+--     SELECT round(percentile_cont(0.5) WITHIN GROUP (ORDER BY ecart)), count(*)
+--     FROM s WHERE ecart > 0 AND ecart < 7200;
+--   Jamais une constante optimiste dans le code : la clé est le seul
+--   endroit où ce nombre vit.
 --
 -- · republish_planifiee_actif : interrupteur GLOBAL de la branche planifiée
 --   du sweep serveur (5/5). 0 = la branche ne crée AUCUN job (les réglages
