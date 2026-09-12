@@ -2318,7 +2318,61 @@ async function fillListingForm(job) {
         discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
       };
     }
-    if (!taillePosee && optionsTaille.length && !recreation) {
+    // ── TAILLE FACULTATIVE SUR UNE CATÉGORIE CERTAINE : on part SANS (2026-09-12) ─
+    // Job 0259e920 (ornellaracano) : « Disney Poupée peluche Anna … 59 cm »,
+    // catégorie Enfants > Jeux et jouets > Peluches posée par le MOT du titre
+    // (mot_objet_arbre), grille Vinted = tailles d'enfant (44 cm → 12 ans) :
+    // « 59 cm » (la longueur de la peluche) ne matchait rien → arrêt AVANT
+    // publication, 5 reprises identiques, jamais publié — alors que la
+    // catégorie était JUSTE et que la taille n'est pas exigée (b21e89d4,
+    // même catégorie, publié sans taille). L'ANNONCE DOIT PARTIR : quand la
+    // catégorie vient d'une source CERTAINE et que la config Vinted ne marque
+    // pas la taille requise, on la laisse VIDE, on le dit (warning structuré,
+    // mesurable) et on continue ; si Vinted l'exige quand même, le 400 du
+    // dépôt la nommera (serverRequired → needs_user, dernier recours).
+    // Périmètre STRICT : source certaine ET taille non requise — une catégorie
+    // déduite d'une icône ou choisie par l'IA parmi des candidats (point 8 du
+    // 15/08, housse de couette de Carla) garde l'arrêt d'aujourd'hui.
+    const SOURCES_CATEGORIE_CERTAINES = new Set(["mot_objet_arbre", "mot_cle_arbre", "catalog_vinted", "correction_manuelle"]);
+    const categorieCertaine = SOURCES_CATEGORIE_CERTAINES.has(String(fields.categorie_source ?? ""));
+    if (!taillePosee && optionsTaille.length && !recreation && categorieCertaine) {
+      const requis = await computeVintedRequiredState().catch(() => null);
+      const tailleRequise = !requis || !requis.hadConfig
+        ? null
+        : requis.discovered.some((d) => (d.key === "size" || d.key === "size_id" || /^taille$/i.test(String(d.label ?? ""))) && d.required === true);
+      if (tailleRequise === false) {
+        const note = {
+          code: "taille_non_posee_grille", champ: "taille", valeur: String(fields.taille),
+          categorie: (fields.categoryPath ?? []).join(" > ") || null, source_categorie: String(fields.categorie_source),
+          options: optionsTaille.slice(0, 12),
+          message: `taille « ${fields.taille} » laissée VIDE : aucune option de la grille Vinted ne correspond (${optionsTaille.length} proposées), ` +
+            `catégorie certaine (${fields.categorie_source}) et taille non requise par Vinted — l'annonce part sans taille`,
+        };
+        console.warn(`[vinted] ${note.message}`);
+        warnings.push(note);
+      } else if (tailleRequise === true) {
+        console.log(`[vinted] taille « ${fields.taille} » sans correspondance et REQUISE par Vinted sur cette catégorie — arrêt avant publication (inchangé)`);
+      } else {
+        console.log(`[vinted] taille « ${fields.taille} » sans correspondance, config Vinted illisible — arrêt avant publication (inchangé)`);
+      }
+      if (tailleRequise === false) {
+        // On continue : le champ reste vide, la suite du formulaire est remplie.
+      } else {
+        return {
+          success: false,
+          needsUser: true,
+          error:
+            `La taille « ${fields.taille} » ne correspond à aucune option du formulaire Vinted pour la ` +
+            `catégorie posée (${(fields.categoryPath ?? []).join(" > ") || "inconnue"}). Tailles proposées : ` +
+            `${optionsTaille.slice(0, 12).map((o) => `« ${o} »`).join(", ")}` +
+            (optionsTaille.length > 12 ? ` … (+${optionsTaille.length - 12} autres)` : "") +
+            `. Si la catégorie est la bonne, corrige la taille de l'article depuis l'app ; sinon regénère ` +
+            `l'annonce pour corriger sa catégorie. Puis relance la publication.`,
+          warnings,
+          discoveredRequired: requis?.discovered ?? [],
+        };
+      }
+    } else if (!taillePosee && optionsTaille.length && !recreation) {
       // Message HONNÊTE (2026-08-28, cardigan de Laurence) : l'ancien texte
       // AFFIRMAIT « la catégorie ne correspond pas » et tronquait la liste à
       // 6 options — sur son job, « 3 ans / 98 cm » (la bonne option, 11e de

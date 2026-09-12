@@ -2302,6 +2302,56 @@ function messagesErreurVisibles() {
 // feuille mappée → un seul clic ; 2) sinon sélecteur manuel 2 panneaux ;
 // 3) sinon erreur listant ce que Leboncoin affiche (même philosophie que le
 // selectCategory Vinted : l'erreur du job sert de relevé correctif).
+// ── Suggestions Leboncoin arbitrées (2026-09-12, extraites de selectCategory) ─
+// Les radios de suggestion affichées après la frappe du titre, arbitrées par
+// l'IA quand il y en a plusieurs, la 1re sinon. Rendu : { etiquette, n,
+// motifArbitrage, arbitre } après le clic, ou null si Leboncoin n'a rien
+// proposé. Servi par le chemin « catégorie incertaine » (inchangé) et, depuis
+// le 12/09, par le repli « racine introuvable » (job 35bd3f1c).
+async function choisirSuggestionLeboncoin({ job = null, fields = {} } = {}) {
+  // Toutes les suggestions affichées, pas seulement la première (correctif
+  // du 07/09 soir). L'écran « Type d'annonce » porte aussi des radios, mais
+  // il n'apparaît qu'APRÈS la catégorie : ici la page n'a que celles-ci. On
+  // écarte quand même Offre/Demande par prudence.
+  const propositions = [...document.querySelectorAll('input[type="radio"]')]
+    .map((el) => ({ el, etiquette: el.closest("li, label, div")?.textContent?.trim() ?? "" }))
+    .filter((p) => p.etiquette && !/^offre|^demande/i.test(p.etiquette))
+    .slice(0, 10);
+  if (!propositions.length) return null;
+  // ⚠️ PAS « la première » : rien ne dit que la bonne est en tête —
+  // mesuré chez eBay, la bonne était TROISIÈME sur cinq. L'IA tranche
+  // DANS la liste relevée (resolve-categorie vérifie côté serveur que sa
+  // réponse en fait partie). Sans réponse — pas de session, délai dépassé,
+  // erreur — on garde la première : le comportement d'avant.
+  let choisie = propositions[0];
+  let arbitre = false;
+  // Instrumentation (point 2) : le motif du repli, compté en SQL.
+  let motifArbitrage = "suggestion_unique";
+  if (propositions.length > 1) {
+    motifArbitrage = "erreur";
+    try {
+      const rep = await chrome.runtime.sendMessage({
+        type: "CATEGORIE_CHOISIR",
+        titre: job?.title ?? "",
+        attributs: { genre: fields.univers ?? fields.genre ?? null, taille: fields.taille ?? null, marque: fields.marque ?? null },
+        candidats: { leboncoin: propositions.map((p, i) => ({ chemin: [p.etiquette], id: String(i) })) },
+      });
+      const idx = Number(rep?.choix?.leboncoin?.id);
+      if (Number.isInteger(idx) && propositions[idx]) {
+        choisie = propositions[idx]; arbitre = true; motifArbitrage = "choisi";
+      } else if (rep?.motif) { motifArbitrage = String(rep.motif); }
+      else { motifArbitrage = "aucune"; }
+    } catch (e) {
+      console.warn("[leboncoin] arbitrage de catégorie indisponible :", e?.message ?? e);
+      motifArbitrage = "erreur";
+    }
+  }
+  await humanPause();
+  choisie.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await humanPause();
+  return { etiquette: choisie.etiquette, n: propositions.length, motifArbitrage, arbitre };
+}
+
 async function selectCategory(root, leaf, { incertaine = false, warnings = [], job = null, fields = {} } = {}) {
   // Les suggestions arrivent en asynchrone après la frappe du titre.
   await sleep(1500);
@@ -2316,55 +2366,17 @@ async function selectCategory(root, leaf, { incertaine = false, warnings = [], j
   // ⛔ Jamais quand notre catégorie est confirmée (mot-objet, catalogue Vinted,
   // garde-fou) : l'app ne pose alors pas le drapeau.
   if (incertaine) {
-    // Toutes les suggestions affichées, pas seulement la première (correctif
-    // du 07/09 soir). L'écran « Type d'annonce » porte aussi des radios, mais
-    // il n'apparaît qu'APRÈS la catégorie : ici la page n'a que celles-ci. On
-    // écarte quand même Offre/Demande par prudence.
-    const propositions = [...document.querySelectorAll('input[type="radio"]')]
-      .map((el) => ({ el, etiquette: el.closest("li, label, div")?.textContent?.trim() ?? "" }))
-      .filter((p) => p.etiquette && !/^offre|^demande/i.test(p.etiquette))
-      .slice(0, 10);
-    if (propositions.length) {
-      // ⚠️ PAS « la première » : rien ne dit que la bonne est en tête —
-      // mesuré chez eBay, la bonne était TROISIÈME sur cinq. L'IA tranche
-      // DANS la liste relevée (resolve-categorie vérifie côté serveur que sa
-      // réponse en fait partie). Sans réponse — pas de session, délai dépassé,
-      // erreur — on garde la première : le comportement d'avant.
-      let choisie = propositions[0];
-      let arbitre = false;
-      // Instrumentation (point 2) : le motif du repli, compté en SQL.
-      let motifArbitrage = "suggestion_unique";
-      if (propositions.length > 1) {
-        motifArbitrage = "erreur";
-        try {
-          const rep = await chrome.runtime.sendMessage({
-            type: "CATEGORIE_CHOISIR",
-            titre: job?.title ?? "",
-            attributs: { genre: fields.univers ?? fields.genre ?? null, taille: fields.taille ?? null, marque: fields.marque ?? null },
-            candidats: { leboncoin: propositions.map((p, i) => ({ chemin: [p.etiquette], id: String(i) })) },
-          });
-          const idx = Number(rep?.choix?.leboncoin?.id);
-          if (Number.isInteger(idx) && propositions[idx]) {
-            choisie = propositions[idx]; arbitre = true; motifArbitrage = "choisi";
-          } else if (rep?.motif) { motifArbitrage = String(rep.motif); }
-          else { motifArbitrage = "aucune"; }
-        } catch (e) {
-          console.warn("[leboncoin] arbitrage de catégorie indisponible :", e?.message ?? e);
-          motifArbitrage = "erreur";
-        }
-      }
-      await humanPause();
-      choisie.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await humanPause();
-      const note = `catégorie: notre valeur « ${root} > ${leaf} » n'était qu'une supposition (aucun mot-objet, aucun catalogue Vinted) — suggestion Leboncoin « ${choisie.etiquette} » retenue`
-        + (arbitre ? ` (choisie par l'IA parmi ${propositions.length} suggestions)`
-                   : propositions.length > 1 ? ` (1re des ${propositions.length} — arbitrage indisponible)` : "");
+    const choix = await choisirSuggestionLeboncoin({ job, fields });
+    if (choix) {
+      const note = `catégorie: notre valeur « ${root} > ${leaf} » n'était qu'une supposition (aucun mot-objet, aucun catalogue Vinted) — suggestion Leboncoin « ${choix.etiquette} » retenue`
+        + (choix.arbitre ? ` (choisie par l'IA parmi ${choix.n} suggestions)`
+                   : choix.n > 1 ? ` (1re des ${choix.n} — arbitrage indisponible)` : "");
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
       warnings.push({
         code: "categorie_arbitrage", plateforme: "leboncoin",
-        motif: motifArbitrage, n_candidats: propositions.length,
-        message: `catégorie Leboncoin — arbitrage : ${motifArbitrage} (${propositions.length} suggestion(s))`,
+        motif: choix.motifArbitrage, n_candidats: choix.n,
+        message: `catégorie Leboncoin — arbitrage : ${choix.motifArbitrage} (${choix.n} suggestion(s))`,
       });
       return;
     }
@@ -2400,9 +2412,39 @@ async function selectCategory(root, leaf, { incertaine = false, warnings = [], j
   const rootLi = [...leftUl.children].find((li) => li.textContent.trim() === root)
     ?? [...leftUl.children].find((li) => memeLibelle(li.textContent, root));
   if (!rootLi) {
+    // ── RACINE HORS DE L'ARBRE = notre chemin est FAUX, pas le formulaire ──
+    // (2026-09-12, job 35bd3f1c, ornellaracano : chemin « **Univers**
+    // (`accessories_univers`) > Enfant », une ligne de relevé prise pour une
+    // catégorie ; l'article était parti sur eBay et Beebs, seul Leboncoin
+    // échouait en dur). L'ANNONCE DOIT PARTIR : on referme le sélecteur et on
+    // s'en remet aux suggestions que Leboncoin a déduites du TITRE, arbitrées
+    // par l'IA — exactement le chemin « catégorie incertaine ». Le
+    // remplacement est TRACÉ (categorie_chemin_invalide). Sans suggestion, il
+    // n'existe aucun moyen de choisir une catégorie juste : même échec
+    // qu'avant, avec son message. Périmètre strict : racine absente du
+    // panneau des 13 — une feuille introuvable garde son échec.
+    const racines = [...leftUl.children].map((li) => li.textContent.trim());
+    const fermer = [...document.querySelectorAll("button")]
+      .find((b) => /^(fermer|annuler|retour)$/i.test((b.textContent || b.getAttribute("aria-label") || "").trim()));
+    if (fermer) { fermer.dispatchEvent(new MouseEvent("click", { bubbles: true })); await sleep(600); }
+    const choix = await choisirSuggestionLeboncoin({ job, fields });
+    if (choix) {
+      const note = `catégorie: notre chemin « ${root} > ${leaf} » est INVALIDE (racine absente de l'arbre Leboncoin) — suggestion Leboncoin « ${choix.etiquette} » retenue`
+        + (choix.arbitre ? ` (choisie par l'IA parmi ${choix.n} suggestions)`
+                   : choix.n > 1 ? ` (1re des ${choix.n} — arbitrage indisponible)` : "");
+      console.warn(`[leboncoin] ${note}`);
+      warnings.push(note);
+      warnings.push({
+        code: "categorie_chemin_invalide", plateforme: "leboncoin",
+        chemin_ecarte: [root, leaf], retenue: choix.etiquette,
+        motif: choix.motifArbitrage, n_candidats: choix.n,
+        message: `catégorie Leboncoin — chemin invalide « ${root} > ${leaf} » remplacé par la suggestion « ${choix.etiquette} » (arbitrage : ${choix.motifArbitrage}, ${choix.n} suggestion(s))`,
+      });
+      return;
+    }
     throw new Error(
       `Catégorie: racine "${root}" introuvable. Racines Leboncoin: ` +
-      JSON.stringify([...leftUl.children].map((li) => li.textContent.trim()))
+      JSON.stringify(racines) + " — et Leboncoin n'a proposé aucune suggestion pour ce titre."
     );
   }
   await humanPause(); // temps de "lecture" des racines avant le clic
