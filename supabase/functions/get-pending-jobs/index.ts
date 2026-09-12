@@ -2366,57 +2366,153 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] déduction Univers/Produit Leboncoin : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }
 
-    // ── TAILLE VINTED SANS CORRESPONDANCE SUR « JEUX ET JOUETS » : SERVIE VIDE ──
-    // (2026-09-12, job 0259e920, ornellaracano, 0.6.26) : « Disney Poupée
-    // peluche Anna … 59 cm », catégorie Enfants > Jeux et jouets > Peluches
-    // posée par le mot du titre, grille Vinted = tailles d'enfant : « 59 cm »
-    // ne matchait rien → arrêt avant publication, 5 reprises identiques,
-    // jamais publié — la taille n'est pas exigée sur cette branche (b21e89d4,
-    // Peluches, publié sans taille). La 0.6.31 laisse la taille vide quand
-    // elle n'est pas requise ; pour les versions installées AVANT, ce filet
-    // retire `taille` du job SERVI (jamais d'écriture en base ici : le pf
-    // revient au statut suivant) quand TOUT est réuni :
-    //   · publish Vinted, categoryPath sous « Jeux et jouets », taille présente ;
-    //   · une tentative précédente s'est arrêtée sur cette taille (warning
-    //     « taille: champ sauté — Option « … » sans correspondance ») et le job
-    //     est déjà en reprise (needsUserAttempts ≥ 1).
-    // La valeur retirée et le motif sont ÉCRITS (taille_retiree_serveur +
-    // warning structuré) pour être mesurés. Rien d'autre du job ne bouge ; si
-    // Vinted exigeait la taille, le 400 du dépôt la nommerait (needs_user).
+    // ── TAILLE VINTED SANS CORRESPONDANCE : OPTION NEUTRE, EN REPRISE ───────
+    // (2026-09-12, LOT A — remplace le filet du même matin qui RETIRAIT la
+    // taille sous « Jeux et jouets ».)
+    //
+    // a1 — LE POSTULAT EST RETIRÉ. Le filet précédent supprimait `taille` de
+    // tout job Vinted en reprise sous « Jeux et jouets », au motif « la taille
+    // n'est pas requise sur cette branche » (b21e89d4, 14/08, 0.6.2). DÉMENTI
+    // EN RÉEL le 12/09 sur le job 0259e920 (ornellaracano, « Disney Poupée
+    // peluche Anna … 59 cm », Enfants > Jeux et jouets > Peluches) : servi
+    // SANS taille à 10:46, Vinted l'a EXIGÉE quand même et le job est reparti
+    // en needs_user. Le catalogue d'aspects relevé en live le confirme : sur
+    // les 37 feuilles Vinted où un champ Taille a été observé, 36 sont
+    // `required = true`, « Peluches » comprise (relevé du 12/09) ; le « non
+    // requis » venait de « Jeux de construction », relevé le 20/07 — le
+    // formulaire a changé depuis. Retirer la taille ne faisait que changer le
+    // message d'échec, jamais publier. Plus rien n'est retiré ici : sans
+    // correspondance, l'extension s'arrête et nomme la cause (point 8 du
+    // 15/08, intact — c'est lui qui protège les robes servies en « Housses de
+    // couette »).
+    //
+    // a2 — OPTION NEUTRE, LUE DANS LA LISTE SERVIE, EN REPRISE SEULEMENT.
+    // Quand aucune option ne correspond même approximativement, la bonne
+    // valeur n'est ni le champ vide (refusé par Vinted, mesuré le 12/09) ni le
+    // cm le plus proche (« 59 cm » → « 1-3 mois / 56 cm » : une taille de bébé
+    // affichée sur une peluche, publiée et visible par l'acheteur) : c'est
+    // l'option NEUTRE que Vinted propose lui-même. Prouvé sur cette feuille —
+    // 0259e920 publié à 11:09 avec « Taille unique », comme b58d53a5,
+    // 70e3f02e et 6e8cea7a avant lui.
+    //
+    // ⚠️ LE PREMIER PASSAGE RESTE UN ALLER-RETOUR, ET C'EST ASSUMÉ : la liste
+    // réellement servie n'existe qu'au remplissage, dans le DOM (panneau à SIX
+    // onglets — S/M/L, EU, UK, FR, IT, US — dont seul l'actif est présent :
+    // 17-18 options, jamais les 103 de la config). Le serveur ne la connaît
+    // qu'en REPRISE, par `needsUserField.allowed_values` écrit au passage
+    // précédent. Le premier dépôt d'un article neuf repassera donc par
+    // needs_user (lot B, côté extension, gelé tant que la 0.6.32 est en review).
+    //
+    // LA PORTE — mesurée sur les 11 jobs de 30 jours tombés sur ce motif :
+    // 4 doivent passer, 7 doivent CONTINUER de bloquer. Quatre verrous :
+    //   1. reprise : needsUserField.field_key === 'size' ET allowed_values ;
+    //   2. catégorie CERTAINE (même liste que vinted.js) — une catégorie
+    //      déduite d'une icône ou choisie par l'IA parmi des candidats n'ouvre
+    //      jamais cette porte : sur ces cas-là le problème est la CATÉGORIE,
+    //      pas la valeur, et la masquer publierait une annonce fausse ;
+    //   3. feuille HORS branche vestimentaire — jupe « 42 » (Femmes >
+    //      Vêtements > Jupes), pull Lacoste « FR 6 » (Hommes > Vêtements) :
+    //      l'article a une taille RÉELLE, une valeur neutre y mentirait et
+    //      l'acheteur filtre dessus ;
+    //   4. l'article n'a pas de taille de vêtement : `taille` vide, ou
+    //      dimension BRUTE (nombre + unité de longueur — « 59 cm » oui,
+    //      « 42 » non, « S / 36 / 8 » non).
+    // Aucune écriture en base : seul le job SERVI est modifié, comme le filet
+    // précédent. La valeur posée est TOUJOURS celle lue dans la liste, jamais
+    // une chaîne écrite ici — si aucune option neutre n'y figure, on ne pose
+    // rien et le job part inchangé (feuille « Maison > Textiles > Linge de lit
+    // > Taies d'oreiller », 14 options toutes en cm, est le cas connu).
+    //
+    // Libellés neutres reconnus, comparés en ÉGALITÉ STRICTE après
+    // normalisation (accents retirés, casse et espaces réduits). Ils servent à
+    // RECONNAÎTRE une option dans la liste, jamais à en fabriquer une.
+    const LIBELLES_NEUTRES = new Set(["taille unique", "one size", "unique", "taille u"]);
+    const normaliseLibelle = (s: string) =>
+      s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+    // Sources de catégorie CERTAINES — copie de la liste de vinted.js.
+    const SOURCES_CATEGORIE_CERTAINES = new Set([
+      "mot_objet_arbre", "mot_cle_arbre", "catalog_vinted", "correction_manuelle",
+    ]);
+    // Segments d'arbre où l'article porte une taille de vêtement réelle.
+    const estSegmentVestimentaire = (seg: string) => {
+      const s = normaliseLibelle(seg);
+      return s.startsWith("vetements") || s === "chaussures"
+        || s.startsWith("lingerie") || s.startsWith("maillots de bain");
+    };
+    // Dimension BRUTE : un nombre suivi d'une unité de longueur, rien d'autre.
+    const DIMENSION_BRUTE = /^\d+([.,]\d+)?\s*(cm|mm|m)$/i;
     try {
-      let taillesRetirees = 0;
+      let neutresPosees = 0;
       for (const j of out as unknown as Array<Record<string, unknown>>) {
         if (j.platform !== "vinted" || j.action !== "publish") continue;
         const pf = (j.platform_fields && typeof j.platform_fields === "object")
           ? (j.platform_fields as Record<string, unknown>) : null;
         if (!pf) continue;
+
+        // 1. REPRISE : Vinted a exigé la taille au passage précédent et nous a
+        //    servi sa liste. Au premier passage, `needsUserField` est absent.
+        const nuf = (pf.needsUserField && typeof pf.needsUserField === "object")
+          ? (pf.needsUserField as Record<string, unknown>) : null;
+        if (!nuf || String(nuf.field_key ?? "") !== "size") continue;
+        const liste = Array.isArray(nuf.allowed_values)
+          ? (nuf.allowed_values as unknown[]).map((v) => String(v)).filter((v) => v.trim()) : [];
+        if (!liste.length) continue;
+
+        // 2. CATÉGORIE CERTAINE (point 8 du 15/08 : on ne masque jamais un
+        //    doute de catégorie par une valeur de repli).
+        const source = String(pf.categorie_source ?? "");
+        if (!SOURCES_CATEGORIE_CERTAINES.has(source)) continue;
+
+        // 3. FEUILLE HORS BRANCHE VESTIMENTAIRE.
+        const chemin = Array.isArray(pf.categoryPath)
+          ? (pf.categoryPath as unknown[]).map((s) => String(s)) : [];
+        if (!chemin.length) continue;
+        if (chemin.some(estSegmentVestimentaire)) continue;
+
+        // 4. PAS DE TAILLE DE VÊTEMENT : vide, ou dimension brute.
         const taille = String(pf.taille ?? "").trim();
-        if (!taille) continue;
-        const chemin = Array.isArray(pf.categoryPath) ? (pf.categoryPath as unknown[]).map((s) => String(s)) : [];
-        if (!chemin.includes("Jeux et jouets")) continue;
-        if ((Number(pf.needsUserAttempts) || 0) < 1) continue;
-        const warnings = Array.isArray(pf.warnings) ? (pf.warnings as unknown[]) : [];
-        const dejaButee = warnings.some((w) => {
-          const msg = typeof w === "string" ? w : String((w as Record<string, unknown>)?.message ?? "");
-          return /^taille: champ sauté — Option ".*" sans correspondance/.test(msg);
-        });
-        if (!dejaButee) continue;
+        if (taille && !DIMENSION_BRUTE.test(taille)) continue;
+
+        // L'option neutre doit EXISTER dans la liste servie ; c'est elle,
+        // telle quelle, qui est posée.
+        const neutre = liste.find((opt) => LIBELLES_NEUTRES.has(normaliseLibelle(opt)));
+        if (!neutre) continue;
+        if (taille && normaliseLibelle(taille) === normaliseLibelle(neutre)) continue;
+
         const nowIso = new Date().toISOString();
-        pf.taille_retiree_serveur = {
-          valeur: taille, categorie: chemin.join(" > "), le: nowIso, pose_par: "get-pending-jobs",
-          motif: "aucune option de la grille ne correspondait à la tentative précédente ; taille non requise sur « Jeux et jouets » — l'annonce part sans taille",
+        const warnings = Array.isArray(pf.warnings) ? (pf.warnings as unknown[]) : [];
+        pf.taille = neutre;
+        pf.taille_neutre_serveur = {
+          valeur: neutre,
+          remplace: taille || null,
+          etape: "1_option_neutre",
+          categorie: chemin.join(" > "),
+          source_categorie: source,
+          origine_liste: "needsUserField.allowed_values (liste servie par Vinted au passage précédent)",
+          options: liste.length,
+          le: nowIso,
+          pose_par: "get-pending-jobs",
         };
         pf.warnings = [...warnings, {
-          at: nowIso, code: "taille_retiree_serveur", champ: "taille", valeur: taille,
-          message: `taille « ${taille} » retirée du dépôt Vinted par le serveur : aucune option de la grille ne correspondait à la tentative précédente, la taille n'est pas requise sur « Jeux et jouets » — l'annonce part sans taille`,
+          at: nowIso,
+          code: "taille_neutre_serveur",
+          champ: "taille",
+          valeur: neutre,
+          etape: "1_option_neutre",
+          categorie: chemin.join(" > "),
+          source_categorie: source,
+          origine_liste: "needsUserField.allowed_values",
+          message: `taille « ${neutre} » posée par le serveur (étape 1, option neutre) : `
+            + `${taille ? `« ${taille} » ne correspond à aucune option de la grille` : "l'article ne porte aucune taille"}`
+            + `, « ${chemin.join(" > ")} » n'est pas une branche vestimentaire et la catégorie est certaine (${source})`
+            + ` — valeur LUE dans la liste servie par Vinted (${liste.length} options), jamais écrite en dur`,
         }];
-        delete pf.taille;
-        taillesRetirees++;
-        console.log(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} (${chemin.join(" > ")}) : taille « ${taille} » retirée du job servi (sans correspondance dans la grille, non requise) — l'annonce part sans taille`);
+        neutresPosees++;
+        console.log(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} (${chemin.join(" > ")}) : taille ${taille ? `« ${taille} » → ` : "absente → "}« ${neutre} » (option neutre lue dans les ${liste.length} options servies)`);
       }
-      if (taillesRetirees) console.log(`[get-pending-jobs] user=${user.id} tailles Vinted retirées (Jeux et jouets) : ${taillesRetirees}`);
+      if (neutresPosees) console.log(`[get-pending-jobs] user=${user.id} tailles Vinted posées à l'option neutre : ${neutresPosees}`);
     } catch (e) {
-      console.warn(`[get-pending-jobs] retrait de taille Vinted : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+      console.warn(`[get-pending-jobs] option neutre de taille Vinted : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }
 
     return json({
