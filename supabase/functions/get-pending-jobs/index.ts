@@ -356,11 +356,27 @@ serve(async (req) => {
       // du bandeau de plafond, et inversement.
       let attente: { total: number; inventaire_ids: string[] } | null = null;
       try { attente = await annoncesEnAttente(); } catch (_e) { /* null = l'app garde son affichage précédent */ }
+      // creneau_republish (2026-09-12) : la fenêtre du module planifié, pour
+      // que les cartes des jobs auto retenus hors créneau disent « Dès 08h00 »
+      // avec le MÊME instant que celui qui retient. RPC absente → null.
+      let creneau: Record<string, unknown> | null = null;
       try {
-        return json({ plafond_republish: await etatPlafondRepublish(), annonces_en_attente: attente });
+        const { data: fen } = await userClient.rpc("republish_planifiee_fenetre_courante");
+        const f = (fen ?? null) as Record<string, unknown> | null;
+        if (f && f.actif === true) {
+          creneau = {
+            actif: true,
+            dans_creneau: f.dans_creneau === true,
+            reprise: (f.prochaine_tentative as string | null) ?? null,
+            fin: (f.courant_fin as string | null) ?? null,
+          };
+        }
+      } catch (_e) { /* null = pas de module, ou migration pas encore jouée */ }
+      try {
+        return json({ plafond_republish: await etatPlafondRepublish(), annonces_en_attente: attente, creneau_republish: creneau });
       } catch (_e) {
         // L'app masque le bandeau sur null : jamais un bandeau sur une panne.
-        return json({ plafond_republish: null, annonces_en_attente: attente });
+        return json({ plafond_republish: null, annonces_en_attente: attente, creneau_republish: creneau });
       }
     }
 
@@ -774,6 +790,59 @@ serve(async (req) => {
               `[get-pending-jobs] userId=${user.id} : coupe-circuit retrait Vinted (client taille_par_id) — ` +
               `${heldRetrait0625} republish à l'étape 'captured' retenu(s) en pending, aucune suppression servie`,
             );
+          }
+        }
+      } catch (_e) { /* filet best-effort : jamais un point de panne */ }
+    }
+
+    // ── CRÉNEAU DE REPUBLICATION PLANIFIÉE (2026-09-12) ─────────────────────
+    // Module « Republication automatique » à créneaux (réglage
+    // platform_settings.vinted.republish_planifiee, fonctions SQL de la
+    // migration 20260912130200). Règle absolue : AUCUNE republication
+    // AUTOMATIQUE ne part HORS du créneau choisi. Le sweep serveur ne CRÉE
+    // que dans le créneau ; ici, à l'EXÉCUTION, un job auto encore en attente
+    // (créé en fin de créneau, ou par l'ancien moteur avant la bascule) est
+    // RETENU en pending jusqu'au prochain créneau. Étape 'deleted' EXEMPTÉE,
+    // comme pour le plafond et la pause : une annonce déjà retirée doit
+    // toujours pouvoir être recréée.
+    // Le MANUEL n'est pas concerné (décision Nico, point 7) : seuls les jobs
+    // republish_source = 'auto'. Un créneau manqué n'est jamais rattrapé : le
+    // job attend le suivant, avec le plafond du jour suivant.
+    // La fenêtre vient du SERVEUR SQL (republish_planifiee_fenetre_courante,
+    // auth.uid()) — une seule définition ; l'app formate `reprise` sans la
+    // redéduire (même doctrine que `reprise` du plafond, 04/09).
+    // Best-effort : RPC absente (migration pas encore jouée) ou illisible →
+    // rien de retenu, jamais un point de panne. Périmètre : le poll
+    // d'exécution seul (le popup continue de voir la file complète).
+    let heldCreneau = 0;
+    let creneauRepublish: Record<string, unknown> | null = null;
+    const autoHorsDeleted = (j: { action: string; platform_fields: unknown }) => {
+      const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+      return j.action === "republish" && pf["republish_source"] === "auto" && pf["republish_step"] !== "deleted";
+    };
+    if (!includeProcessing && !includeNeedsUser && out.some(autoHorsDeleted)) {
+      try {
+        const { data: fen } = await userClient.rpc("republish_planifiee_fenetre_courante");
+        const f = (fen ?? null) as Record<string, unknown> | null;
+        if (f && f.actif === true) {
+          const dans = f.dans_creneau === true;
+          creneauRepublish = {
+            actif: true,
+            dans_creneau: dans,
+            reprise: (f.prochaine_tentative as string | null) ?? null,
+            fin: (f.courant_fin as string | null) ?? null,
+          };
+          if (!dans) {
+            const avant = out.length;
+            out = out.filter((j) => !autoHorsDeleted(j));
+            heldCreneau = avant - out.length;
+            if (heldCreneau) {
+              console.log(
+                `[get-pending-jobs] userId=${user.id} : hors créneau de republication planifiée — ` +
+                `${heldCreneau} republication(s) auto retenue(s) en pending jusqu'à ${String(f.prochaine_tentative ?? "?")} ` +
+                `(étape 'deleted' exemptée, manuel non concerné)`,
+              );
+            }
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
@@ -2532,6 +2601,10 @@ serve(async (req) => {
       deja_en_file: enFileParPlateforme,
       contexte,
       plafond_republish: plafondRepublish,
+      // creneau_republish (2026-09-12) : module planifié actif ? dans le
+      // créneau ? sinon `reprise` = prochaine tentative (instant serveur).
+      creneau_republish: creneauRepublish,
+      jobs_retenus_creneau: heldCreneau,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
