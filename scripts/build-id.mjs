@@ -1384,6 +1384,34 @@ export const EXTENSION_LAST_COMMIT = '2026-09-12T08:28:55Z'; // recale 09ed9c9 (
 // Ancienne valeur : 2026-08-26T19:48:07Z (0.6.9, servie depuis le 27/08).
 export const EXTENSION_MIN_BUILD = '2026-09-12T08:29:11Z';
 
+// ── Registre des BUILD_ID RÉELLEMENT PUBLIÉS (2026-09-12) ──────────────────
+// Pourquoi il existe : l'invariant « MIN_BUILD <= EXTENSION_LAST_COMMIT » est
+// structurellement faux le JOUR d'une acceptation. Un zip est TOUJOURS
+// horodaté APRÈS le commit qu'il embarque — la 0.6.32 : 2026-09-12T08:29:11Z
+// contre 08:28:55Z pour le commit 09ed9c9, soit 16 secondes — et c'est le
+// BUILD_ID DU ZIP qui doit aller dans EXTENSION_MIN_BUILD, jamais LAST_COMMIT
+// (cf. bandeau du 09/08, incident 0.5.6). Les promotions 0.5.6 et 0.6.9 n'ont
+// échappé à l'échec que parce que LAST_COMMIT avait déjà été rebumpé par un
+// commit ultérieur ; la 0.6.32, promue le jour même, l'a déclenché. Le cas se
+// représentera à CHAQUE acceptation : on ne rebumpe pas une constante à la
+// main pour contourner ça, et surtout pas EXTENSION_LAST_COMMIT, qui doit
+// continuer à désigner un commit RÉEL.
+// ⚠️ CE REGISTRE NE DÉSARME RIEN. Il borne la tolérance, il ne la généralise
+// pas : un MIN_BUILD postérieur à LAST_COMMIT et ABSENT d'ici fait toujours
+// échouer le build, fût-ce d'une seconde d'écart. C'est exactement le bug du
+// 29/07 qu'on continue d'attraper — une bannière qui réclame une version que
+// personne ne peut installer.
+// L'inscription est un geste EXPLICITE, de même discipline qu'ALREADY_PUBLISHED
+// dans package-extension.mjs : on n'écrit ici qu'un paquet dont la publication
+// au Chrome Web Store est ÉTABLIE — jamais une version « en examen », jamais
+// une version au jugé. Clé = PRÉFIXE ISO du BUILD_ID (sans '+hash'), valeur =
+// numéro de version du paquet.
+export const PUBLISHED_BUILD_IDS = {
+  '2026-08-09T14:16:20Z': '0.5.6',  // relu dans le zip + endpoint CRX du CWS
+  '2026-08-26T19:48:07Z': '0.6.9',  // publié par le CWS le 27/08 vers midi
+  '2026-09-12T08:29:11Z': '0.6.32', // publié par le CWS le 12/09
+};
+
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
 // postérieur à EXTENSION_LAST_COMMIT (constante pas bumpée → le paquet publié
 // pourrait ne pas contenir le dernier code, et le jour de la promotion vers
@@ -1399,12 +1427,25 @@ export function assertExtensionMinBuildCurrent(cwd = process.cwd()) {
   const lastCommit = Date.parse(EXTENSION_LAST_COMMIT);
   const min = Date.parse(EXTENSION_MIN_BUILD);
   if (Number.isFinite(lastCommit) && Number.isFinite(min) && min > lastCommit) {
-    throw new Error(
-      `EXTENSION_MIN_BUILD (${EXTENSION_MIN_BUILD}) est POSTÉRIEUR à ` +
-      `EXTENSION_LAST_COMMIT (${EXTENSION_LAST_COMMIT}) : la bannière ` +
-      `« extension obsolète » exigerait un build qui n'existe dans aucun ` +
-      `commit, donc dans aucun paquet installable. Corriger scripts/build-id.mjs.`
-    );
+    // Tolérance BORNÉE AU REGISTRE (cf. PUBLISHED_BUILD_IDS) : un MIN_BUILD
+    // postérieur au dernier commit n'est acceptable que s'il désigne un paquet
+    // dont la publication est établie — le zip étant toujours horodaté après le
+    // commit qu'il embarque. Absent du registre = échec, le contrôle reste armé.
+    const paquetPublie = PUBLISHED_BUILD_IDS[EXTENSION_MIN_BUILD];
+    if (!paquetPublie) {
+      throw new Error(
+        `EXTENSION_MIN_BUILD (${EXTENSION_MIN_BUILD}) est POSTÉRIEUR à ` +
+        `EXTENSION_LAST_COMMIT (${EXTENSION_LAST_COMMIT}) et ne correspond à ` +
+        `AUCUN paquet publié : la bannière « extension obsolète » exigerait un ` +
+        `build que personne ne peut installer (le bug du 29/07). Deux cas : soit ` +
+        `la valeur est fautive, soit le paquet n'est pas encore ACCEPTÉ par le ` +
+        `Chrome Web Store — et alors on ne promeut PAS MIN_BUILD, on attend. Si ` +
+        `la publication est bien ÉTABLIE, inscrire '${EXTENSION_MIN_BUILD}' dans ` +
+        `PUBLISHED_BUILD_IDS (scripts/build-id.mjs) avec son numéro de version. ` +
+        `Ne JAMAIS rebumper EXTENSION_LAST_COMMIT pour contourner : elle doit ` +
+        `continuer à désigner un commit réel.`
+      );
+    }
   }
   let lastIso;
   try {
