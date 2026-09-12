@@ -9,11 +9,11 @@
 -- republish_en_cours, cadence_24h, article_sans_photo, branche monétaire
 -- inerte à prix 0, trigger de maintenance).
 --
--- 1. L'AUTO S'OUVRE À PREMIUM (point 6). Avant : is_pro seul. Maintenant :
---    premium, pro, business — c'est-à-dire tout ABONNÉ. Le code de refus
---    reste 'auto_reserve_pro' : le parc d'extensions 0.6.x le classe
---    « portée compte » (REPUBLISH_AUTO_REFUS_COMPTE) ; un code neuf serait
---    ré-essayé article par article, bruyant. Le libellé est côté app.
+-- 1. ⚠️ ANNULÉ le 12/09 15h30 (correction Nico, appliquée par la 4bis
+--    20260912130310) : l'ouverture de l'auto aux abonnés Premium était une
+--    erreur d'orientation. L'auto RESTE RÉSERVÉE AU PRO (is_pro), gate et
+--    code de refus 'auto_reserve_pro' identiques à ceux d'avant la 4/5. Ce
+--    fichier est corrigé pour qu'un rejeu reproduise l'état de prod.
 --
 -- 2. VOIE PLANIFIÉE (réglage republish_planifiee actif) : le plafond du jour
 --    est celui du RÉGLAGE NORMALISÉ (republish_planifiee_reglage, 3/5),
@@ -115,9 +115,10 @@ BEGIN
     ELSE 'free' END;
 
   IF p_source = 'auto' THEN
-    -- (1) Ouverture à Premium (12/09) : l'auto est réservée aux ABONNÉS.
-    -- Code de refus CONSERVÉ ('auto_reserve_pro') — cf. bandeau.
-    IF v_tier NOT IN ('premium', 'pro', 'business') THEN
+    -- (1) L'auto RESTE RÉSERVÉE AU PRO (correction Nico 12/09 15h30 : l'ouverture
+    -- aux abonnés de la 4/5 était une erreur d'orientation). Gate IDENTIQUE à
+    -- celui d'avant la 4/5 ; code de refus inchangé.
+    IF v_prof.is_pro IS NOT TRUE THEN
       RETURN jsonb_build_object('allowed', false, 'reason', 'auto_reserve_pro');
     END IF;
 
