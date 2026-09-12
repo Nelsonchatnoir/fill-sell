@@ -68,6 +68,12 @@ CREATE INDEX IF NOT EXISTS republish_creneaux_user_debut_idx
   ON public.republish_creneaux (user_id, debut DESC);
 
 ALTER TABLE public.republish_creneaux ENABLE ROW LEVEL SECURITY;
+-- ⚠️ Relevé à l'application (12/09, contrôle) : les PRIVILÈGES PAR DÉFAUT du
+-- schéma public donnent ALL à anon/authenticated/service_role sur toute table
+-- neuve — un GRANT SELECT seul ne retire donc rien. Sans ce REVOKE, RLS
+-- protège quand même (aucune policy d'écriture → refus), mais le contrat
+-- « lecture seule » doit se lire dans les grants, pas seulement dans RLS.
+REVOKE ALL ON public.republish_creneaux FROM anon, authenticated;
 GRANT SELECT ON public.republish_creneaux TO authenticated;
 
 DROP POLICY IF EXISTS republish_creneaux_lecture_propre ON public.republish_creneaux;
