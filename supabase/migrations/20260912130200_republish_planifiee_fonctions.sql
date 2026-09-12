@@ -163,7 +163,9 @@ BEGIN
 
   v_palier := republish_palier(p_user);
   v_plafond_palier := republish_plafond_palier(v_palier);
-  IF v_palier NOT IN ('premium', 'pro', 'business') THEN v_invalide := 'palier'; END IF;
+  -- Module = fonctionnalité PRO (correction Nico 12/09 15h30, 3bis) ; business
+  -- porte is_pro (flags cumulatifs). Un non-Pro a un réglage INVALIDE.
+  IF v_palier NOT IN ('pro', 'business') THEN v_invalide := 'palier'; END IF;
 
   -- Fuseau : validé par usage ; illisible → Europe/Paris (tout le parc).
   v_fuseau := COALESCE(NULLIF(v_brut ->> 'fuseau', ''), 'Europe/Paris');
@@ -520,7 +522,7 @@ BEGIN
       'actif', false,
       'reglage', v_regl,
       'palier', v_palier, 'plafond_palier', v_plafond_palier,
-      'autorise', v_palier IN ('premium', 'pro', 'business'),
+      'autorise', v_palier IN ('pro', 'business'),
       'quota_mensuel', v_quota, 'faits_mois', v_faits_mois,
       'boutiques', v_boutiques, 'boutique_connectee', v_ident, 'multi_boutiques', v_multi,
       'legacy', v_legacy,
@@ -651,7 +653,8 @@ BEGIN
   IF v_user IS NULL THEN RETURN jsonb_build_object('ok', false, 'reason', 'unauthorized'); END IF;
   v_palier := republish_palier(v_user);
   -- Même code que le RPC : le parc d'extensions le classe « portée compte ».
-  IF v_palier NOT IN ('premium', 'pro', 'business') THEN
+  -- PRO seul (+ business, qui porte is_pro) — correction Nico 12/09, 3bis.
+  IF v_palier NOT IN ('pro', 'business') THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'auto_reserve_pro');
   END IF;
   v_plafond_palier := republish_plafond_palier(v_palier);
