@@ -25,6 +25,10 @@ import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 // Photos : lecture des deux formes, écriture en objets { type, url } — le
 // normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
 import { urlsPhotos, entreesPhotos } from '../utils/photos';
+// Archive des erreurs remplacées à la relance (2026-09-12) : le MÊME fichier
+// que update-job-status et handler-watch — le motif de l'arrêt précédent ne
+// disparaît plus quand on relance (platform_fields.erreurs_archivees).
+import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
 import { useFondFige } from '../utils/modale';
 import {
@@ -1027,6 +1031,9 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
         : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: f.field_key };
       const newPf = { ...pf, needsUserAttempts: 0 };
       delete newPf.needsUserField;
+      // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12) —
+      // `error` repasse à null pour l'affichage, comme avant.
+      newPf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job.status, "relance_manuelle (✋ Compléter)");
       // Compteur « 72 h d'extension ouverte » (handler-watch, 2026-09-10) :
       // une relance est un geste — le budget repart de zéro si le job revient
       // en needs_user. Sans ce retrait, un job relancé puis re-bloqué sur la
@@ -5274,6 +5281,9 @@ const StockTab = memo(function StockTab({
       delete pf.attente_session;
       pf.relances_manuelles = (Number(pf.relances_manuelles) || 0) + 1;
       pf.derniere_relance_manuelle = new Date().toISOString();
+      // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12) —
+      // `error` repasse à null pour l'affichage, comme avant.
+      pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, job.error, job.status, 'relance_manuelle');
       // CAS sur le statut : on relance depuis l'état LU (failed, cancelled ou
       // needs_user depuis le 31/08) — si le job a bougé entre-temps (régénéré,
       // reparti), 0 ligne et on le dit. Le garde-fou d'origine était écrit

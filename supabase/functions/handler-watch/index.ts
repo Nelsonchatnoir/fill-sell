@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
+// Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
+// update-job-status — une remise en pending automatique n'efface plus le motif.
+import { archiverErreur } from "../_shared/erreurs-archivees.js";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -521,7 +524,7 @@ serve(async (req) => {
   try {
     const { data: bloques } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, inventaire_id, platform_fields")
+      .select("id, user_id, inventaire_id, platform_fields, error")
       .eq("action", "republish").eq("platform", "vinted").eq("status", "needs_user")
       .range(0, 499);
     // deno-lint-ignore no-explicit-any
@@ -573,6 +576,8 @@ serve(async (req) => {
           etat: resolu.etat,
           motif: "status retiré du payload Vinted le 07/09 — état lu dans item_attributes[condition]",
         };
+        // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12).
+        pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (état réparé depuis la capture)");
         const { error: uErr } = await supabase
           .from("cross_post_jobs")
           .update({ status: "pending", error: null, platform_fields: pf })
@@ -1055,7 +1060,7 @@ serve(async (req) => {
     const exemptionArmee = Number((cfgExo as Record<string, unknown> | null)?.value) === 1;
     const { data: bloques } = !exemptionArmee ? { data: [] } : await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, platform_fields")
+      .select("id, user_id, platform_fields, error")
       .eq("status", "needs_user")
       .eq("action", "republish")
       .eq("platform", "vinted")
@@ -1078,6 +1083,8 @@ serve(async (req) => {
         if (!buildOk.get(j.user_id)) continue;
         const pf = { ...(j.platform_fields ?? {}) };
         delete pf.needs_user_source; // le job n'attend plus personne
+        // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12).
+        pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (levée de la garde Livres ISBN)");
         const { data: maj } = await supabase
           .from("cross_post_jobs")
           .update({ status: "pending", error: null, platform_fields: pf })
@@ -1121,7 +1128,7 @@ serve(async (req) => {
   try {
     const { data: bloquesCouleur } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, platform_fields")
+      .select("id, user_id, platform_fields, error")
       .eq("status", "needs_user")
       .eq("action", "republish")
       .eq("platform", "vinted")
@@ -1143,6 +1150,8 @@ serve(async (req) => {
         if (!buildOk.get(j.user_id)) continue;
         const pf = { ...(j.platform_fields ?? {}) };
         delete pf.needs_user_source; // le job n'attend plus personne
+        // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12).
+        pf.erreurs_archivees = archiverErreur(pf.erreurs_archivees, j.error, "needs_user", "handler-watch (levée de la garde Couleur)");
         const { data: maj } = await supabase
           .from("cross_post_jobs")
           .update({ status: "pending", error: null, platform_fields: pf })

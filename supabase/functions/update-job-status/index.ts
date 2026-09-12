@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
+// Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
+// handler-watch — module JS sans import, chargé tel quel par Deno.
+import { archiverErreur } from "../_shared/erreurs-archivees.js";
 
 // Appelée par l'extension Chrome après chaque tentative de publication.
 // Auth : JWT utilisateur (Bearer). L'update passe par un client scoped user
@@ -293,6 +296,22 @@ const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https
 
 function isAllowedOrigin(origin: string): boolean {
   return ALLOWED_ORIGINS.includes(origin) || origin.startsWith("chrome-extension://");
+}
+
+// Chemin d'objet dans le bucket listing-photos, depuis une URL publique de
+// NOTRE storage — null pour toute autre origine (aucune vérification possible,
+// donc aucune reprise). Le paramètre de cache (?v=…, ?r=…) est ignoré.
+function cheminListingPhotos(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const marque = "/storage/v1/object/public/listing-photos/";
+    const i = u.pathname.indexOf(marque);
+    if (i < 0) return null;
+    const chemin = decodeURIComponent(u.pathname.slice(i + marque.length));
+    return chemin && !chemin.includes("..") ? chemin : null;
+  } catch {
+    return null;
+  }
 }
 
 serve(async (req) => {
@@ -875,6 +894,126 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // PHOTO « INDISPONIBLE » AU PRÉ-VOL = REPRISE SI LE FICHIER EST EN BASE
+    // (2026-09-12, chantier « photo indisponible à la recréation »)
+    // ══════════════════════════════════════════════════════════════════════
+    // Job 053a9658 (Deborah, 12/09) : 9 photos re-hébergées, relues 2 min plus
+    // tard au pré-vol ; UNE des neuf répondue « HTTP 502 » par la passerelle,
+    // le fichier étant en place (appel « info » 200 à la même seconde) →
+    // needs_user, republication arrêtée sur une photo qui existait. Mesuré :
+    // 5 épisodes en 30 jours, 4 comptes, toujours au pré-vol, 502/504/544,
+    // jamais 404. L'extension retente désormais 36 s (0.6.31) ; ce filet
+    // couvre TOUTES les versions installées (0.6.25, 0.6.28…) sans attendre
+    // un téléversement :
+    //   · le motif EXACT « La photo N de l'annonce est indisponible (HTTP …) »
+    //     sur une republication Vinted, à l'étape 'captured' SANS deleted_at
+    //     (= pré-vol : l'annonce d'origine n'a pas été supprimée) ;
+    //   · la photo N du snapshot est cherchée dans le bucket par l'API storage
+    //     (service role), jamais par le CDN — PRÉSENTE est la SEULE preuve
+    //     acceptée que l'échec était transitoire → needs_user REFUSÉ, job
+    //     remis pending avec next_action_after +2 min, étape inchangée (le
+    //     pré-vol est rejoué en entier), compteur photo_reprise (3 max) ;
+    //   · ABSENTE, vérification en échec, compteur épuisé, ou étape au-delà du
+    //     pré-vol (après suppression, replanifierOuArreterRecreation reprend
+    //     déjà 2 fois — on n'empile pas) → needs_user accepté tel quel.
+    // Aucune suppression ni dépôt déclenché ici : un pending, rien d'autre. La
+    // garde « pause avant toute suppression » reste en amont, intacte.
+    // ⛔ photo_reprise est PROPRE à ce filet : needsUserAttempts (compteur eBay,
+    //    plafond 5) n'est ni lu pour décider, ni incrémenté — remis à sa
+    //    valeur en base. Le motif refusé est archivé (erreurs_archivees).
+    const PHOTO_INDISPO_RE = /La photo (\d+) de l'annonce est indisponible \(HTTP (\d+)\)/;
+    const MAX_PHOTO_REPRISES = 3;
+    const PHOTO_REPRISE_DELAI_MS = 2 * 60_000;
+    let pfPhotoReprise: Record<string, unknown> | null = null;
+    let erreurRefuseeFiletPhoto: string | null = null;
+    if (statutEffectif === "needs_user" && typeof body.error === "string" && PHOTO_INDISPO_RE.test(body.error)) {
+      try {
+        const m = body.error.match(PHOTO_INDISPO_RE)!;
+        const numero = Number(m[1]);
+        const http = m[2];
+        const { data: jrow } = await userClient
+          .from("cross_post_jobs")
+          .select("action, platform, platform_fields")
+          .eq("id", jobId)
+          .maybeSingle();
+        const pfBase = (jrow?.platform_fields ?? {}) as Record<string, unknown>;
+        const pfBody = ((body.platform_fields && typeof body.platform_fields === "object")
+          ? body.platform_fields : pfBase) as Record<string, unknown>;
+        // Pré-vol = étape 'captured' sans deleted_at, en base ET dans le body
+        // (si REPUBLISH_MARK_DELETED a acté 'deleted' entre-temps, c'est la
+        // base qui le sait — et on ne reprend pas).
+        const etapePrevol =
+          pfBody.republish_step === "captured" && !pfBody.deleted_at &&
+          pfBase.republish_step === "captured" && !pfBase.deleted_at;
+        if (jrow?.action === "republish" && jrow.platform === "vinted" && etapePrevol) {
+          const deja = Math.max(Number(pfBase.photo_reprise ?? 0) || 0, Number(pfBody.photo_reprise ?? 0) || 0);
+          if (deja >= MAX_PHOTO_REPRISES) {
+            console.log(
+              `[update-job-status] userId=${user.id} job=${jobId} — photo ${numero} indisponible (HTTP ${http}) : ` +
+              `${MAX_PHOTO_REPRISES} reprises épuisées, needs_user de l'extension conservé`,
+            );
+          } else {
+            // La photo N du snapshot (uploadPhotos complète à 3 par duplication
+            // de la dernière : un numéro au-delà de la liste = la dernière).
+            const snap = ((pfBody.republish_snapshot ?? pfBase.republish_snapshot) ?? {}) as { photos?: unknown };
+            const photos = Array.isArray(snap.photos) ? snap.photos.map((p) => String(p)) : [];
+            const url = photos.length ? photos[Math.min(Math.max(numero - 1, 0), photos.length - 1)] : "";
+            const chemin = cheminListingPhotos(url);
+            const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+            let present: boolean | null = null; // null = vérification impossible
+            if (chemin && serviceKey) {
+              const sc = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
+              const coupe = chemin.lastIndexOf("/");
+              const dossier = chemin.slice(0, coupe);
+              const nom = chemin.slice(coupe + 1);
+              const { data: objets, error: listErr } = await sc.storage
+                .from("listing-photos")
+                .list(dossier, { limit: 100, search: nom });
+              if (!listErr && Array.isArray(objets)) {
+                present = objets.some((o) => o && o.name === nom && o.id != null);
+              }
+            }
+            if (present === true) {
+              const { next_action_after: _nao, ...pfSans } = pfBody;
+              const nowIso = new Date().toISOString();
+              pfPhotoReprise = {
+                ...pfSans,
+                // La valeur EN BASE, jamais celle du body : ce passage n'est
+                // pas une tentative eBay-style.
+                needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+                photo_reprise: deja + 1,
+                photo_reprise_derniere: {
+                  le: nowIso,
+                  photo: chemin,
+                  http,
+                  motif: body.error.slice(0, 300),
+                  pose_par: "update-job-status (photo présente dans le bucket = échec transitoire)",
+                },
+                next_action_after: new Date(Date.now() + PHOTO_REPRISE_DELAI_MS).toISOString(),
+              };
+              erreurRefuseeFiletPhoto = body.error;
+              statutEffectif = "pending";
+              messageEffectif =
+                `La lecture de la photo ${numero} de ton annonce a échoué de façon passagère (HTTP ${http}) — elle est bien en place. ` +
+                "Nouvel essai automatique dans 2 minutes, avant toute suppression : rien à faire de ton côté.";
+              raisonRequalif = `photo ${numero} présente dans le bucket, reprise ${deja + 1}/${MAX_PHOTO_REPRISES}`;
+            } else {
+              console.log(
+                `[update-job-status] userId=${user.id} job=${jobId} — photo ${numero} indisponible (HTTP ${http}) : ` +
+                `${present === false ? "ABSENTE du bucket" : "vérification storage impossible"} (${chemin ?? "URL hors bucket"}), needs_user conservé`,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] filet photo indisponible:", (e as Error)?.message ?? e);
+        pfPhotoReprise = null;
+        erreurRefuseeFiletPhoto = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // SESSION PLATEFORME MORTE = ATTENTE, JAMAIS UNE TENTATIVE (2026-09-10)
     // ══════════════════════════════════════════════════════════════════════
     // Cas Ornella : 17 jobs Beebs morts sur beebs.app/fr/auth — chaque passage
@@ -1163,6 +1302,10 @@ serve(async (req) => {
     // l'extension, étape conservée, needsUserAttempts de la base, compteur
     // canal_coupe_rejoue incrémenté.
     if (pfCanalCoupe) patch.platform_fields = pfCanalCoupe;
+    // Photo présente dans le bucket (pré-vol) : platform_fields de l'extension,
+    // étape conservée, needsUserAttempts de la base, compteur photo_reprise
+    // incrémenté, échéance +2 min.
+    if (pfPhotoReprise) patch.platform_fields = pfPhotoReprise;
     // Attente de session (session morte = attente, jamais une tentative) :
     // platform_fields SANS tentative consommée, AVEC l'échéance d'une heure et
     // le marqueur attente_session.
@@ -1336,6 +1479,42 @@ serve(async (req) => {
     } else if (statutEffectif === "deleted") {
       // Terminal : annonce réellement supprimée de la plateforme.
       patch.error = null;
+    }
+
+    // ── ARCHIVE DE L'ERREUR REMPLACÉE (2026-09-12, point 3 du chantier photo) ─
+    // Toute écriture qui remplace ou efface `error` archive d'abord la valeur
+    // en base dans platform_fields.erreurs_archivees (cumulative, horodatée,
+    // 20 entrées max) : une relance ne fait plus disparaître le motif de
+    // l'arrêt précédent — 4 épisodes sur 5 du chantier photo n'étaient
+    // visibles que par la mémoire de handler-watch, le 5e n'avait laissé
+    // aucune trace. Le motif REFUSÉ par le filet photo est archivé lui aussi
+    // (il n'atteint jamais `error`). `error` garde son rôle d'affichage ;
+    // purement additif, jamais bloquant.
+    if ("error" in patch || erreurRefuseeFiletPhoto) {
+      try {
+        const { data: jrowE } = await userClient
+          .from("cross_post_jobs")
+          .select("status, error, platform_fields")
+          .eq("id", jobId)
+          .maybeSingle();
+        const pfE = ((patch.platform_fields && typeof patch.platform_fields === "object")
+          ? patch.platform_fields : (jrowE?.platform_fields ?? {})) as Record<string, unknown>;
+        const existant = Array.isArray(pfE.erreurs_archivees) ? pfE.erreurs_archivees : null;
+        let archive: unknown[] = existant ?? [];
+        const enBase = typeof jrowE?.error === "string" ? jrowE.error : "";
+        const nouvelle = "error" in patch ? (patch.error == null ? "" : String(patch.error)) : enBase;
+        if (enBase && nouvelle !== enBase) {
+          archive = archiverErreur(archive, enBase, jrowE?.status ?? null,
+            `update-job-status → ${statutEffectif}${raisonRequalif ? ` (${raisonRequalif})` : ""}`);
+        }
+        if (erreurRefuseeFiletPhoto) {
+          archive = archiverErreur(archive, erreurRefuseeFiletPhoto, "needs_user (refusé)", "filet_photo");
+        }
+        const change = existant ? archive !== existant : archive.length > 0;
+        if (change) patch.platform_fields = { ...pfE, erreurs_archivees: archive };
+      } catch (e) {
+        console.error("[update-job-status] archive d'erreur:", (e as Error)?.message ?? e);
+      }
     }
 
     const { data: updated, error: updateErr } = await userClient
