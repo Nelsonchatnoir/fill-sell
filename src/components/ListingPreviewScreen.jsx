@@ -7304,7 +7304,38 @@ export default function ListingPreviewScreen({
             famille_chemin: verdict.familleChemin, chemin_ecarte: chemin, source_avant: pf.categorie_source ?? null,
           };
           pf.categorie_source = "hors_famille";
-          console.warn(`[publish] ${row.platform} — chemin « ${chemin.join(" > ")} » (famille ${verdict.familleChemin}) HORS de la famille de l'objet (${familleObjet}, ${familleObjetDetail.source}) — il ne part pas tel quel`);
+          // ── Une confirmation IA ne survit pas à un « hors_famille » sur le
+          // MÊME chemin (2026-09-12, job 1f9d4c82, ornellaracano : « Jouet
+          // VTech – Trompette, mon éléphant des découvertes » → mot « trompette »
+          // → Loisirs > Instruments de musique, CONFIRMÉ par la vérification du
+          // chemin, puis jugé hors famille ici — deux verdicts contraires sur
+          // un même job, et c'est le « confirme » qui se lisait). Le
+          // « confirme » est RETIRÉ : verdict « refuse_hors_famille », l'avis
+          // de l'IA conservé dans la trace (verdict_ia). Le chemin reste
+          // flagué incertain ci-dessous, exactement comme pour tout autre
+          // hors_famille, et l'arbitrage sur les suggestions de la plateforme
+          // tranche. Rien d'autre ne bouge : ni la plausibilité (on ne fait que
+          // lire son verdict), ni l'arbitrage, ni le mot du titre ; aucun
+          // needs_user nouveau. Périmètre STRICT : verdict « confirme » ET même
+          // chemin — « remplace », « incoherent » ou un autre chemin gardent
+          // leur comportement.
+          const verif = pf.categorie_verification;
+          const cheminConfirme = verif && verif.verdict === "confirme" && Array.isArray(verif.chemin_icone) ? verif.chemin_icone : null;
+          const cleChemin = (c) => c.map(s => texteComparable(String(s ?? ""))).join(" > ");
+          const confirmationRefusee = Boolean(cheminConfirme && cleChemin(cheminConfirme) === cleChemin(chemin));
+          if (confirmationRefusee) {
+            pf.categorie_verification = {
+              ...verif,
+              verdict: "refuse_hors_famille",
+              verdict_ia: "confirme",
+              refuse_par: "categorie_plausibilite",
+              refuse_le: new Date().toISOString(),
+            };
+          }
+          console.warn(
+            `[publish] ${row.platform} — chemin « ${chemin.join(" > ")} » (famille ${verdict.familleChemin}) HORS de la famille de l'objet (${familleObjet}, ${familleObjetDetail.source}) — il ne part pas tel quel` +
+            (confirmationRefusee ? " ; la confirmation IA de ce même chemin (categorie_verification « confirme ») est REFUSÉE, l'arbitrage sur les suggestions de la plateforme tranche" : "")
+          );
           if (row.platform === "beebs") {
             delete pf.beebsCategoryPath;
             pf.categorie_a_choisir = { objet: motCategorie ?? null, chemin_ecarte: chemin, motif: "hors_famille" };
