@@ -3609,30 +3609,49 @@ async function urlToFile(url, index) {
   // Cette chaîne brute du navigateur ne doit plus JAMAIS finir dans
   // cross_post_jobs.error (job du 06/08, espadrilles MOA) — message FR
   // actionnable, et garde res.ok : un 404 fabriquait un File de page d'erreur.
-  let res;
-  try {
-    res = await fetch(url);
-  } catch {
+  //
+  // ── REPRISES SUR TOUT ÉCHEC (2026-09-12, chantier « photo indisponible ») ──
+  // Mesuré sur 30 jours : 5 republications Vinted arrêtées au pré-vol parce
+  // qu'UNE lecture de photo sur neuf a répondu 502/504/544 (passerelle/CDN),
+  // le fichier étant bien en place (appel « info » 200 à la même seconde).
+  // L'ancienne reprise ne couvrait que 404/410 (2 essais, 7,5 s — le 404 mis
+  // en cache de l'incident Delavier, 02/09) : un 502 échouait au premier coup.
+  // Désormais : 1 lecture + 5 reprises espacées 3 / 5 / 8 / 10 / 10 s
+  // (≈ 36 s), sur TOUT statut non-2xx ET sur exception réseau, avec une clé
+  // de cache NEUVE à chaque reprise (r=… : le CDN indexe par URL complète,
+  // une réponse d'erreur mise en cache n'est jamais resservie ; le 404 reste
+  // donc couvert, selon ce barème). L'échec n'est conclu qu'après épuisement,
+  // et ses deux messages gardent leur forme exacte — le filet serveur
+  // d'update-job-status lit « La photo N de l'annonce est indisponible
+  // (HTTP …) ». Rien d'autre ne change : toutes les photos restent demandées
+  // en parallèle, et uploadPhotos lève toujours si l'une d'elles manque.
+  const DELAIS_MS = [3000, 5000, 8000, 10000, 10000];
+  let res = null;
+  let exception = null;
+  for (let essai = 0; essai <= DELAIS_MS.length; essai++) {
+    if (essai > 0) await new Promise((r) => setTimeout(r, DELAIS_MS[essai - 1]));
+    const cible = essai === 0 ? url : `${url}${url.includes("?") ? "&" : "?"}r=${Date.now()}_${essai}`;
+    try {
+      exception = null;
+      res = await fetch(cible);
+    } catch (e) {
+      exception = e;
+      res = null;
+    }
+    if (res && res.ok) break;
+    console.warn(
+      `[leboncoin] photo ${index + 1} : lecture ${essai + 1}/${DELAIS_MS.length + 1} en échec ` +
+      `(${res ? `HTTP ${res.status}` : String(exception?.message ?? exception)})` +
+      (essai < DELAIS_MS.length ? ` — nouvel essai dans ${DELAIS_MS[essai] / 1000} s` : " — abandon")
+    );
+  }
+  if (!res) {
     throw new Error(
       `La photo ${index + 1} de l'annonce n'a pas pu être téléchargée depuis la page de dépôt ` +
       "(photo hébergée hors FillSell — article importé du dressing ? — ou réseau coupé). " +
       "FillSell la rapatrie automatiquement et relance la publication sous quelques minutes — rien à payer, rien à refaire. " +
       "Si rien ne repart, vérifie la connexion internet puis relance la publication depuis l'app."
     );
-  }
-  // ── Retentative sur 404/410 (2026-09-02, incident Delavier) ───────────────
-  // Le CDN Supabase peut servir un 404 MIS EN CACHE sur un fichier bien
-  // présent (une requête a précédé la fin de l'upload, l'absence a été
-  // mémorisée — les 3 plateformes ont refusé un livre dont les photos
-  // existaient en base). Un 404 sur une photo FillSell est transitoire par
-  // nature : on retente 2 fois (2,5 s puis 5 s) avec une clé de cache NEUVE
-  // (paramètre r=… : le CDN indexe par URL complète, la réponse empoisonnée
-  // n'est jamais resservie) avant d'échouer. Les autres statuts (403, 5xx…)
-  // gardent l'échec immédiat d'avant.
-  for (let tentative = 1; res && (res.status === 404 || res.status === 410) && tentative <= 2; tentative++) {
-    await new Promise((r) => setTimeout(r, tentative * 2500));
-    const sep = url.includes("?") ? "&" : "?";
-    try { res = await fetch(`${url}${sep}r=${Date.now()}`); } catch { break; }
   }
   if (!res.ok) {
     throw new Error(
