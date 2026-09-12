@@ -36,7 +36,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { computeRemovalInfo, vintedPresenceArticle } from './publicationState';
-import { natureNeedsUser } from './shared';
+import { natureNeedsUser, republicationAnnonceDisparue } from './shared';
 
 export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay'];
 
@@ -148,6 +148,12 @@ export function etatPlateformes(jobs, lang = 'fr', item = null) {
       aCompleter.set(p, { platform: p, job: j, champ: champManquant(j, lang) });
       enEchec.delete(p);
       enConfirmation.delete(p);
+    } else if (j.status === 'failed' && republicationAnnonceDisparue(j)) {
+      // Annonce disparue côté Vinted (404 à la capture, 2026-09-12) : pas un
+      // échec FillSell — ni « La publication a échoué », ni bouton Relancer.
+      // L'ardoise de la plateforme n'est pas touchée non plus : l'annonce
+      // n'existe plus, il n'y a rien à relancer.
+      continue;
     } else if (j.status === 'failed') {
       enEchec.set(p, { platform: p, job: j, champ: null });
       aCompleter.delete(p);

@@ -160,6 +160,56 @@ export function natureNeedsUser(job) {
   if (pf.needsUserField?.field_key || champs.length || server.length) return 'a_completer';
   return 'action';
 }
+// ── Champs exigés par le SERVEUR de la plateforme que l'app sait SAISIR ─────
+// (2026-09-12, dossier Anaïs.) Refus Vinted HTTP 400 « Description » +
+// « Couleur » sur une nouvelle publication : la couleur avait un
+// needsUserField (liste relevée, modale « Compléter »), la DESCRIPTION n'avait
+// AUCUN chemin dans l'app — pas de needsUserField, pas dans REPUB_SAISISSABLES,
+// le textarea de la copie Vinted n'existe qu'au stepper de création, et la
+// relance renvoyait le job tel quel (description vide) — alors que le message
+// disait « renseigne « Description » dans la copie Vinted de l'app » : un
+// geste impossible, la classe de défaut de l'audit du 11/09.
+// Ces champs-là ne sont pas des aspects de plateforme mais des COLONNES DU
+// JOB : la modale « Compléter » les propose en texte libre, avec les mots de
+// l'utilisateur (jamais un texte inventé), et les écrit sur le job ET sur
+// l'article. Liste FERMÉE : un champ hors liste reste non saisissable et
+// l'écran le dit, sans promesse.
+export const CHAMPS_SERVEUR_SAISISSABLES = {
+  description: { fr: 'Description', en: 'Description' },
+};
+export function champsServeurSaisissables(job) {
+  const pf = job?.platform_fields ?? {};
+  const server = Array.isArray(pf.serverRequired) ? pf.serverRequired
+    : (Array.isArray(pf.server_required_fields) ? pf.server_required_fields : []);
+  const cles = [];
+  for (const f of server) {
+    const k = String((f && typeof f === 'object') ? f.key : f ?? '').toLowerCase().trim();
+    if (k in CHAMPS_SERVEUR_SAISISSABLES && !cles.includes(k)) cles.push(k);
+  }
+  return cles;
+}
+// La modale « Compléter » a quelque chose à OUVRIR : un needsUserField (aspect
+// à trancher, liste relevée) ou un champ serveur saisissable (description).
+// Règle du 09/09 : un bouton « Compléter » qui n'ouvre rien n'existe pas.
+export function needsUserOuvrable(job) {
+  if (job?.status !== 'needs_user') return false;
+  return Boolean(job?.platform_fields?.needsUserField) || champsServeurSaisissables(job).length > 0;
+}
+// ── Republication arrêtée parce que l'ANNONCE N'EXISTE PLUS (2026-09-12) ────
+// 404 constaté à la CAPTURE, avant toute suppression (verdict 'disparue' posé
+// par l'extension quand l'identité connectée est bien celle de l'article, ou
+// marqueur annonce_disparue posé par update-job-status). Ce n'est pas un
+// échec FillSell : rien n'a été retiré, l'annonce a disparu côté Vinted. Les
+// lecteurs de « échec » (pastille rouge de la carte, modale de statut)
+// l'écartent ; la carte dit « Plus en ligne » par disparu_le, et la revue
+// « vendue ? » prend le relais. Jamais après une suppression (étape
+// 'deleted') : là, un 404 est un tout autre sujet.
+export function republicationAnnonceDisparue(job) {
+  if (!job || job.action !== 'republish') return false;
+  const pf = job.platform_fields ?? {};
+  if (pf.republish_step === 'deleted' || pf.deleted_at) return false;
+  return pf.introuvable_404?.verdict === 'disparue' || Boolean(pf.annonce_disparue);
+}
 // ── Refus eBay pour VÉRIFICATION VENDEUR (2026-09-10, costume de Victor) ─────
 // eBay refuse la mise en vente tant que l'identité du vendeur n'est pas
 // vérifiée (DSA / B2C européen). Le serveur nomme ce motif dans

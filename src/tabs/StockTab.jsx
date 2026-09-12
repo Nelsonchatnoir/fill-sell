@@ -40,6 +40,7 @@ import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
 import { supabase } from '../lib/supabase';
 import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
+  champsServeurSaisissables, needsUserOuvrable, republicationAnnonceDisparue,
   C, formatCurrency, fmtp, getMargeColor, getCatBorder,
   getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType,
   getRotatingExamples, SKELETON_SOLD,
@@ -834,6 +835,31 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState(null);
+  // ── Champs SERVEUR saisissables en texte libre (2026-09-12, dossier Anaïs) ──
+  // Refus Vinted « Description » + « Couleur » : la couleur passait par
+  // needsUserField, la description n'avait AUCUN chemin (cf.
+  // champsServeurSaisissables, shared.js). Ici : un textarea par champ de la
+  // liste fermée, SES mots, écrits sur le job (colonne) ET sur l'article.
+  // La liste en mémoire du Stock ne porte pas la description du job : on la
+  // relit à l'ouverture pour pré-remplir si l'utilisateur en avait écrit une.
+  const champsTexte = champsServeurSaisissables(job);
+  const descriptionRequise = champsTexte.includes("description");
+  const [texte, setTexte] = useState({ description: "" });
+  useEffect(() => {
+    let alive = true;
+    if (!descriptionRequise) return;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("cross_post_jobs").select("description").eq("id", job.id).maybeSingle();
+        if (alive && typeof data?.description === "string" && data.description.trim()) {
+          setTexte((t) => ({ ...t, description: data.description }));
+        }
+      } catch { /* pré-remplissage best-effort : le champ reste vide */ }
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
   // eBay : les allowed_values ne transitent jamais par le job (référentiel
   // Taxonomy trop volumineux, cf. ListingPreviewScreen l.3912) — on les relit
   // d'ebay_item_aspects ici, best-effort. SELECTION_ONLY → strict de toute façon.
@@ -969,18 +995,27 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.id]);
 
-  if (!f) return null;
+  // Rien à ouvrir : ni aspect à trancher, ni champ serveur saisissable.
+  if (!f && !descriptionRequise) return null;
 
   // Chaque source est filtrée par listeDeChoixExploitable : une liste
   // d'identifiants opaques compte comme ABSENTE, et on passe à la source
   // suivante (catalogue, warnings…) au lieu d'afficher l'illisible.
-  const listeRelevee = [f.allowed_values, ebayAllowed, warningsAllowed, catalogueAllowed]
-    .find(listeDeChoixExploitable) ?? null;
+  const listeRelevee = f
+    ? ([f.allowed_values, ebayAllowed, warningsAllowed, catalogueAllowed].find(listeDeChoixExploitable) ?? null)
+    : null;
+  // La liste affichée est-elle CELLE du handler ? (lu AVANT dédoublonnage :
+  // l'identité ne survivrait pas à une copie).
+  const listeEstCelleDuHandler = !!f && listeRelevee === f.allowed_values;
   // Le pré-rempli LBC passe en TÊTE des suggestions (c'est la déduction de la
   // plateforme pour cet article précis), la liste relevée suit, dédupliquée.
-  const allowed = prefillAllowed
+  // DÉDOUBLONNÉE tout court (2026-09-12) : la palette de couleurs Vinted arrive
+  // en double (« Noir, Noir, Gris, Gris… », relevé job ad0c4aa2) — un select
+  // qui répète chaque valeur se lit comme un bug.
+  const dedoublonne = (l) => (Array.isArray(l) ? [...new Set(l)] : l);
+  const allowed = dedoublonne(prefillAllowed
     ? [...prefillAllowed, ...(listeRelevee ?? []).filter(v => !prefillAllowed.includes(v))]
-    : listeRelevee;
+    : listeRelevee);
   const platformLabel = PLATFORM_LABELS[job.platform] || job.platform;
 
   // ── RÈGLE DU 19/07 RENDUE INCONTOURNABLE (2026-07-22) ──────────────────────
@@ -999,7 +1034,7 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   // doivent rester saisissables, et un job d'avant ce correctif ne porte pas
   // la clé — on ne bloque jamais sur une absence d'information.
   const CLOSED_INPUT_TYPES = new Set(["dropdown", "select", "radio", "selection_only"]);
-  const champFerme = CLOSED_INPUT_TYPES.has(String(f.input_type ?? "").toLowerCase());
+  const champFerme = !!f && CLOSED_INPUT_TYPES.has(String(f.input_type ?? "").toLowerCase());
   const valeursIndisponibles = champFerme && !(allowed?.length);
 
   // ── Exception NOMMÉE à la doctrine du 29/07 (2026-09-04, tailles eBay) ─────
@@ -1012,8 +1047,13 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   // select se ferme alors — uniquement sur ce drapeau, et uniquement si la
   // liste affichée est bien CELLE du handler (pas le catalogue, pas un relevé
   // de warnings, pas un pré-rempli LBC).
-  const listeCertifieeComplete = f.options_completes === true
-    && Array.isArray(f.allowed_values) && allowed === f.allowed_values;
+  const listeCertifieeComplete = !!f && f.options_completes === true
+    && Array.isArray(f.allowed_values) && listeEstCelleDuHandler && !prefillAllowed;
+
+  // Texte libre requis : la description, quand Vinted l'exige et que l'app
+  // peut la saisir. Vide = bouton grisé, jamais un envoi à vide.
+  const descriptionSaisie = String(texte.description ?? "").trim();
+  const descriptionManquante = descriptionRequise && !descriptionSaisie;
 
   // `sansValeur` (2026-07-22) : relance SANS rien écrire, pour le cas
   // « valeurs indisponibles ». Le job repart en pending avec un budget de
@@ -1022,13 +1062,15 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   const valider = async ({ sansValeur = false } = {}) => {
     if (saving) return;
     const v = String(value ?? "").trim();
-    if (!v && !sansValeur) return;
+    if (f && !v && !sansValeur) return;
+    if (descriptionManquante) return;
     setSaving(true); setErrMsg(null);
     try {
       const pf = job.platform_fields ?? {};
-      const target = (f.target && f.target.key)
-        ? f.target
-        : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: f.field_key };
+      const target = !f ? null
+        : (f.target && f.target.key)
+          ? f.target
+          : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: f.field_key };
       const newPf = { ...pf, needsUserAttempts: 0 };
       delete newPf.needsUserField;
       // Le motif de l'arrêt est archivé avant d'être effacé (2026-09-12) —
@@ -1039,7 +1081,7 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
       // en needs_user. Sans ce retrait, un job relancé puis re-bloqué sur la
       // même erreur était soldé DANS LA MINUTE (cas Ornella, 4 jobs le 10/09).
       for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete newPf[k];
-      if (!sansValeur) {
+      if (target && !sansValeur) {
         if (target.root) newPf[target.root] = { ...(pf[target.root] ?? {}), [target.key]: v };
         else newPf[target.key] = v;
       }
@@ -1053,13 +1095,21 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
       // Rien à marquer quand on relance sans valeur : l'utilisateur n'a tranché
       // aucun champ, poser un needsUserResolved vide ferait primer une chaîne
       // vide sur la valeur d'origine du job dans les handlers.
-      if (!sansValeur) {
+      if (target && !sansValeur) {
         const resolvedKey = target.root ? `${target.root}.${target.key}` : String(target.key);
         newPf.needsUserResolved = { ...(pf.needsUserResolved ?? {}), [resolvedKey]: v };
       }
+      // Description : colonne du JOB (c'est elle que l'extension envoie à
+      // Vinted), et trace « tranché par l'utilisateur ».
+      if (descriptionRequise) {
+        newPf.needsUserResolved = { ...(newPf.needsUserResolved ?? {}), description: true };
+      }
       const { data, error } = await supabase
         .from("cross_post_jobs")
-        .update({ status: "pending", error: null, platform_fields: newPf })
+        .update({
+          status: "pending", error: null, platform_fields: newPf,
+          ...(descriptionRequise ? { description: descriptionSaisie } : {}),
+        })
         .eq("id", job.id)
         .eq("status", "needs_user")
         .select("id");
@@ -1072,6 +1122,17 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
           : "Ce job n'est plus en attente (déjà repris ou annulé).");
         onDone?.(null);
         return;
+      }
+      // L'article aussi (décision Nico 12/09) — SES mots, sans écraser une
+      // description qu'il aurait déjà écrite. Best-effort : le job est déjà
+      // reparti, un échec ici ne doit pas le dire.
+      if (descriptionRequise && job.inventaire_id != null) {
+        try {
+          await supabase.from("inventaire")
+            .update({ description: descriptionSaisie })
+            .eq("id", job.inventaire_id)
+            .or("description.is.null,description.eq.");
+        } catch { /* l'article garde son texte, le job a le sien */ }
       }
       onDone?.(job.id);
     } catch (e) {
@@ -1093,6 +1154,7 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
         <div style={{ fontSize:11, fontWeight:600, letterSpacing:"0.08em", textTransform:"uppercase", color:"#8A6100", marginBottom:6 }}>
           ✋ {lang === "en" ? "Action needed" : "À compléter"} — {platformLabel}
         </div>
+        {f && (<>
         <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink, marginBottom:4 }}>
           {f.field_label}
         </div>
@@ -1105,7 +1167,8 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
               ? `${platformLabel} requires this field for this category. Pick a value — the listing will then resume automatically, nothing to do on ${platformLabel}.`
               : `${platformLabel} exige ce champ pour cette catégorie. Choisis une valeur — la publication repartira automatiquement, rien à faire sur ${platformLabel}.`)}
         </div>
-        {valeursIndisponibles ? (
+        </>)}
+        {f && (valeursIndisponibles ? (
           <div style={{ fontSize:12.5, lineHeight:1.55, color:"#8A6100", background:"#FDF6E3", border:"1px solid #EBD9A8", borderRadius:12, padding:"11px 12px" }}>
             {lang === "en"
               ? "Values unavailable — a new attempt is needed. Typing free text here would be rejected by the platform, so we don't offer it. Relaunch the publication: the next attempt reads the list and will offer you the real choices."
@@ -1135,6 +1198,25 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
             T={NU_T}
             idBase={`nu-${job.id}`}
           />
+        ))}
+        {descriptionRequise && (
+          <div style={{ marginTop: f ? 16 : 0 }}>
+            <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink, marginBottom:4 }}>
+              {lang === "en" ? "Description" : "Description"}
+            </div>
+            <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75", marginBottom:8 }}>
+              {lang === "en"
+                ? `${platformLabel} requires a description. Write it in your own words — material, cut, condition, size, any flaws. It is saved on the item too.`
+                : `${platformLabel} exige une description. Écris-la avec tes mots — matière, coupe, état, dimensions, défauts éventuels. Elle sera aussi enregistrée sur l'article.`}
+            </div>
+            <textarea
+              value={texte.description}
+              onChange={(e) => setTexte((t) => ({ ...t, description: e.target.value }))}
+              rows={5}
+              placeholder={lang === "en" ? "E.g. Black blazer, lined, worn twice, no flaws." : "Ex. Blazer noir doublé, porté deux fois, aucun défaut."}
+              style={{ width:"100%", padding:"10px 12px", borderRadius:12, border:`1px solid ${NU_T.border}`, fontSize:13, fontFamily:"inherit", outline:"none", background:"#fff", color:NU_T.ink, resize:"vertical", boxSizing:"border-box", lineHeight:1.5 }}
+            />
+          </div>
         )}
         {errMsg && (
           <div style={{ marginTop:10, fontSize:12, color:"#8C2F28", background:"#FBEDEC", border:"1px solid #EFC2BE", borderRadius:10, padding:"8px 10px" }}>
@@ -1152,8 +1234,8 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
           </button>
           <button
             onClick={() => valider({ sansValeur: valeursIndisponibles })}
-            disabled={saving || (!valeursIndisponibles && !String(value ?? "").trim())}
-            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!valeursIndisponibles && !String(value ?? "").trim()) ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
+            disabled={saving || (!!f && !valeursIndisponibles && !String(value ?? "").trim()) || descriptionManquante}
+            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value ?? "").trim()) || descriptionManquante ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
           >
             {saving
               ? (lang === "en" ? "Saving…" : "Enregistrement…")
@@ -1575,7 +1657,7 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                       C'était un `title` : sur un téléphone, le survol n'existe
                       pas — le motif était donc invisible pour la moitié du
                       parc. Il vit maintenant dans la ligne, sans interaction. */}
-                  {aCompleterPar.has(p) && !aCompleterPar.get(p)?.job?.platform_fields?.needsUserField && (
+                  {aCompleterPar.has(p) && !needsUserOuvrable(aCompleterPar.get(p)?.job) && (
                     <div style={{ fontSize:11, lineHeight:1.35, color:"#8A6100", marginTop:3 }}>
                       {fr
                         ? "À renseigner sur l'annonce, chez la plateforme — l'app ne peut pas le saisir à ta place. Puis relance."
@@ -1598,19 +1680,15 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
                     (2026-09-10) : sans needsUserField, il était rendu grisé —
                     un bouton qui ne mène nulle part, exactement le bug vu la
                     veille sur Leboncoin. La ligne d'explication reste. */}
-                {aCompleterPar.has(p) && !armed && !!aCompleterPar.get(p)?.job?.platform_fields?.needsUserField && (
+                {/* (2026-09-12) « ouvre quelque chose » = needsUserField OU un
+                    champ serveur saisissable (description) — needsUserOuvrable. */}
+                {aCompleterPar.has(p) && !armed && needsUserOuvrable(aCompleterPar.get(p)?.job) && (
                   <button
                     onClick={() => { const e = aCompleterPar.get(p); if (e?.job) { onClose(); onCompleter?.(e.job); } }}
-                    disabled={!aCompleterPar.get(p)?.job?.platform_fields?.needsUserField}
-                    title={!aCompleterPar.get(p)?.job?.platform_fields?.needsUserField
-                      ? (fr ? "Cette information ne peut pas être saisie ici — ouvre l'annonce sur la plateforme, puis relance."
-                            : "This cannot be filled in here — open the listing on the platform, then relaunch.")
-                      : undefined}
                     style={{ flex:"0 0 auto", padding:"7px 14px", borderRadius:10, border:"1px solid #EED9A6",
-                      background: aCompleterPar.get(p)?.job?.platform_fields?.needsUserField ? "#8A6100" : "#FFF6E3",
-                      color: aCompleterPar.get(p)?.job?.platform_fields?.needsUserField ? "#fff" : "#B79355",
+                      background: "#8A6100", color: "#fff",
                       fontSize:12, fontWeight:700,
-                      cursor: aCompleterPar.get(p)?.job?.platform_fields?.needsUserField ? "pointer" : "default", fontFamily:"inherit" }}
+                      cursor: "pointer", fontFamily:"inherit" }}
                   >
                     {fr ? "Compléter" : "Complete"}
                   </button>
@@ -3429,6 +3507,22 @@ function etapeRepublication(job, fr, reprise = null, attente = null, item = null
   };
   if (st === 'failed' || st === 'cancelled') {
     const apres = step === 'deleted';
+    // ── ANNONCE PLUS EN LIGNE (2026-09-12, dossier Anaïs) ──────────────────
+    // Le 404 constaté à la CAPTURE (avant toute suppression) n'est pas un
+    // échec FillSell : l'annonce n'existe plus sur Vinted, c'est tout. Le
+    // serveur requalifie ces jobs en 'cancelled' (update-job-status) ; les
+    // jobs d'avant restent 'failed' avec le même verdict. Dans les deux cas :
+    // bleu (rien n'a été retiré), le mot juste, et le geste qui suit.
+    const disparue = !apres && (pf.introuvable_404?.verdict === 'disparue' || !!pf.annonce_disparue);
+    if (disparue) {
+      return {
+        cle: 'arret', court: fr ? 'Plus en ligne' : 'Not online', ...bleu, fini: true, apresSuppression: false,
+        titre: fr ? 'Annonce plus en ligne sur Vinted' : 'Listing no longer on Vinted',
+        detail: fr
+          ? "Cette annonce n'existe plus sur Vinted (vendue, retirée ou supprimée depuis sa dernière lecture). FillSell n'a rien retiré. Si tu l'as vendue, marque-la vendue ; sinon remets-la en ligne sur Vinted, puis synchronise ton dressing."
+          : 'This listing no longer exists on Vinted (sold, removed or deleted since it was last read). FillSell removed nothing. If you sold it, mark it sold; otherwise put it back online on Vinted, then sync your wardrobe.',
+      };
+    }
     return {
       cle: 'arret',
       // Deux gravités distinctes (2026-08-07) : après suppression, l'article
@@ -7532,7 +7626,9 @@ const StockTab = memo(function StockTab({
                     const cur=latestByPlatform[j.platform];
                     if(!cur||Date.parse(j.created_at||0)>Date.parse(cur.created_at||0)) latestByPlatform[j.platform]=j;
                   }
-                  const failedJobs=Object.values(latestByPlatform).filter(j=>j.status==="failed");
+                  // Un 404 « annonce disparue » à la capture n'est pas un échec
+                  // (2026-09-12) : pas de rouge, la carte dit « Plus en ligne ».
+                  const failedJobs=Object.values(latestByPlatform).filter(j=>j.status==="failed"&&!republicationAnnonceDisparue(j));
                   // « À compléter » (socle needs_user, 2026-07-19) : même règle
                   // que l'Échec — seul le job LE PLUS RÉCENT de la plateforme
                   // compte. Dès que le job repart en pending (valeur fournie)
@@ -7797,7 +7893,7 @@ const StockTab = memo(function StockTab({
                             titre=j.error?humanizeJobError(j,lang):undefined;
                             onTap=needsUserJobs.length>1
                               ?()=>setJobStatusItem(item)
-                              :()=>{if(j.platform_fields?.needsUserField)setNeedsUserJob(j);else if(j.error)setFailJobModal(j);};
+                              :()=>{if(needsUserOuvrable(j))setNeedsUserJob(j);else if(j.error)setFailJobModal(j);};
                           }else if(enConfirmationJobs.length>0){
                             // EN COURS chez la plateforme : gris, sans tap, sans
                             // action attendue — « en cours », pas « incertain ».

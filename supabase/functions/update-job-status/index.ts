@@ -732,6 +732,71 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════════════════
+    // ANNONCE PLUS EN LIGNE (404 CONFIRMÉ) = ANNULATION NEUTRE, PAS UN ÉCHEC
+    // (2026-09-12, dossier Anaïs — décision Nico : « un 404 côté Vinted n'est
+    // pas un échec FillSell »)
+    // ══════════════════════════════════════════════════════════════════════
+    // Cas réel : nouvelle inscrite, dressing importé 13:24, 39 republications
+    // lancées 13:27 ; 15 annonces avaient DISPARU de Vinted entre-temps (la
+    // 2e sync les date disparu_le à 13:43). L'extension 0.6.32 exécute les
+    // jobs à 13:45-14:06, trouve le 404 à la CAPTURE (rien n'a été supprimé),
+    // pose introuvable_404.verdict = 'disparue', date l'article et conclut
+    // 'failed' → 4 lignes ROUGES « Échec Vinted » sur son premier lot, alors
+    // que rien n'est cassé chez nous : l'annonce n'existe plus, c'est tout.
+    // Ici, SERVEUR, sans zip : CE failed-là devient 'cancelled' avec un
+    // message neutre. Les 'cancelled' ne comptent pas dans les échecs de la
+    // carte (failedJobs = status 'failed' seul), l'article garde son
+    // « Plus en ligne » et la revue « vendue ? » fait le reste.
+    // ⛔ PÉRIMÈTRE STRICT : action='republish', platform='vinted', verdict
+    //    'disparue' posé par l'extension (identité connectée = boutique de
+    //    l'article, ou mono-boutique : jamais un « mauvaise boutique » ni un
+    //    « indéterminé »), étape AVANT toute suppression (pas 'deleted', pas
+    //    de deleted_at, ni dans le body ni en base). Après une suppression,
+    //    un 404 est un tout autre sujet — rien ne change.
+    // ⚠️ unité : 'cancelled' est terminal comme 'failed' — mêmes triggers de
+    //    solde, rien de plus, rien de moins.
+    let pfDisparue: Record<string, unknown> | null = null;
+    if (statutEffectif === "failed") {
+      try {
+        const pfBody0 = ((body.platform_fields && typeof body.platform_fields === "object")
+          ? body.platform_fields : null) as Record<string, unknown> | null;
+        const verdictBody = String((pfBody0?.introuvable_404 as Record<string, unknown> | undefined)?.verdict ?? "");
+        if (verdictBody === "disparue") {
+          const { data: jrow } = await userClient
+            .from("cross_post_jobs")
+            .select("action, platform, platform_fields")
+            .eq("id", jobId)
+            .maybeSingle();
+          const pfBase = (jrow?.platform_fields ?? {}) as Record<string, unknown>;
+          const pfBody = pfBody0 ?? pfBase;
+          const avantSuppression =
+            pfBody.republish_step !== "deleted" && !pfBody.deleted_at &&
+            pfBase.republish_step !== "deleted" && !pfBase.deleted_at;
+          if (jrow?.action === "republish" && jrow.platform === "vinted" && avantSuppression) {
+            pfDisparue = {
+              ...pfBody,
+              annonce_disparue: {
+                at: new Date().toISOString(),
+                motif: typeof body.error === "string" ? body.error.slice(0, 300) : null,
+                pose_par: "update-job-status (404 confirmé à la capture = annonce plus en ligne, pas un échec)",
+              },
+            };
+            statutEffectif = "cancelled";
+            messageEffectif =
+              "Cette annonce n'est plus en ligne sur Vinted (vendue, retirée ou supprimée depuis sa dernière lecture). " +
+              "FillSell n'a rien retiré. Si tu l'as vendue, marque-la vendue ; sinon remets-la en ligne sur Vinted, " +
+              "puis synchronise ton dressing.";
+            raisonRequalif = "annonce disparue (404 confirmé avant toute suppression) : cancelled neutre";
+          }
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] annonce disparue (404) :", (e as Error)?.message ?? e);
+        pfDisparue = null;
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     // PALLIATIF « back/forward cache » (2026-08-21) — SERVEUR SEUL
     // ══════════════════════════════════════════════════════════════════════
     // Chrome peut suspendre la page qui tient le canal de l'extension (bfcache :
@@ -1302,6 +1367,10 @@ serve(async (req) => {
     // l'extension, étape conservée, needsUserAttempts de la base, compteur
     // canal_coupe_rejoue incrémenté.
     if (pfCanalCoupe) patch.platform_fields = pfCanalCoupe;
+    // Annonce plus en ligne (404 confirmé avant toute suppression) :
+    // platform_fields de l'extension + marqueur annonce_disparue, statut
+    // 'cancelled' neutre.
+    if (pfDisparue) patch.platform_fields = pfDisparue;
     // Photo présente dans le bucket (pré-vol) : platform_fields de l'extension,
     // étape conservée, needsUserAttempts de la base, compteur photo_reprise
     // incrémenté, échéance +2 min.
