@@ -1335,6 +1335,160 @@ serve(async (req) => {
       }
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    // PRÉ-VOL NÉGATIF SUR UNE VALEUR QUE LA CAPTURE PORTE = REPRISE, PAS UNE
+    // QUESTION (2026-09-12, Pantalon f3407ada — GO Nico)
+    // ══════════════════════════════════════════════════════════════════════
+    // Cas mesuré : capture 5194 VALIDE (Enfants > Vêtements pour filles >
+    // Pantalons et shorts > Jeans slim = catalogue 1560, taille « 12 ans /
+    // 152 cm », état « Très bon état »), et le pré-vol de l'extension a
+    // conclu « Taille et État manquants » en servant la grille FEMME à six
+    // onglets (XXXS…XXL, EU, UK, FR, IT, US) — un panneau qui n'est pas celui
+    // de la catégorie posée (lu trop tôt, avant son rafraîchissement). Le
+    // message demandait de saisir des valeurs qu'il affichait deux lignes
+    // plus bas. Relancé TEL QUEL par Nico : second passage, bon panneau,
+    // published. Sur 30 jours : 3 needs_user de ce type, 3 comptes, 3
+    // relancés sans rien modifier, 3 publiés — 100 % de faux blocages.
+    // Ici, SERVEUR, sans zip, même patron que le filet photo : ce needs_user
+    // devient une REPRISE automatique, étape 'captured' CONSERVÉE (le pré-vol
+    // est rejoué en entier, aucune suppression n'est déclenchée par ce bloc),
+    // échéance +2 min, compteur taille_grille_reprise (2 max, PROPRE au job —
+    // needsUserAttempts, le compteur eBay, est remis à sa valeur en base et
+    // jamais incrémenté). Au 3e refus, needs_user ACCEPTÉ mais avec le VRAI
+    // message : la grille lue ne correspond pas à l'annonce ; jamais
+    // « renseigne la Taille » avec la valeur à côté, et plus aucun champ
+    // demandé (needsUserField et champs_a_completer retirés — la liste
+    // servie est celle d'une autre grille, la proposer ferait choisir faux).
+    // ⛔ NE S'APPLIQUE QUE si la capture du job PORTE réellement CHAQUE valeur
+    //    réclamée (liste fermée : taille, état, marque, couleur). Un champ
+    //    réellement absent de l'annonce suit son chemin : needs_user tel quel.
+    // ⛔ Périmètre : republish Vinted, needs_user_source 'prevol_negatif',
+    //    étape 'captured' sans deleted_at (body ET base).
+    // ⚠️ unité : needs_user → pending, aucun statut terminal traversé.
+    const GRILLE_MAX_REPRISES = 2;
+    const GRILLE_REPRISE_DELAI_MS = 2 * 60_000;
+    const GRILLE_CHAMPS_CAPTURE: Record<string, string> = { taille: "taille", etat: "etat", marque: "marque", couleur: "couleurs" };
+    const GRILLE_LIBELLES: Record<string, string> = { taille: "Taille", etat: "État", marque: "Marque", couleur: "Couleur" };
+    const normaliseCleChamp = (c: unknown) =>
+      String(c ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    const TAILLE_ENFANT_RE = /(\d+\s?(ans|mois)\b|\bcm\b)/i;
+    let pfGrilleReprise: Record<string, unknown> | null = null;
+    let pfGrilleRefus: Record<string, unknown> | null = null;
+    if (statutEffectif === "needs_user") {
+      try {
+        const pfCourant = (pfIn ?? {}) as Record<string, unknown>;
+        const cles = [...new Set(
+          (Array.isArray(pfCourant.champs_a_completer) ? pfCourant.champs_a_completer as unknown[] : [])
+            .map(normaliseCleChamp).filter(Boolean),
+        )];
+        const prevolNegatif = String(pfCourant.needs_user_source ?? "") === "prevol_negatif"
+          && pfCourant.republish_step === "captured" && !pfCourant.deleted_at
+          && cles.length > 0 && cles.every((c) => c in GRILLE_CHAMPS_CAPTURE);
+        if (prevolNegatif) {
+          const { data: jrow } = await userClient
+            .from("cross_post_jobs")
+            .select("action, platform, platform_fields")
+            .eq("id", jobId)
+            .maybeSingle();
+          const pfBase = (jrow?.platform_fields ?? {}) as Record<string, unknown>;
+          const itemId = String(pfCourant.vinted_item_id ?? pfBase.vinted_item_id ?? "").trim();
+          if (jrow?.action === "republish" && jrow.platform === "vinted" && itemId
+              && pfBase.republish_step === "captured" && !pfBase.deleted_at) {
+            // La capture DU JOB (capture_id), sinon la plus récente de l'article.
+            let libelles: Record<string, unknown> | null = null;
+            const capId = Number(pfCourant.capture_id ?? pfBase.capture_id);
+            if (Number.isFinite(capId) && capId > 0) {
+              const { data: cap } = await userClient
+                .from("vinted_republish_captures").select("libelles").eq("id", capId).maybeSingle();
+              libelles = (cap?.libelles ?? null) as Record<string, unknown> | null;
+            }
+            if (!libelles) {
+              const { data: caps } = await userClient
+                .from("vinted_republish_captures").select("libelles")
+                .eq("user_id", user.id).eq("vinted_item_id", itemId)
+                .order("captured_at", { ascending: false }).limit(1);
+              libelles = (((caps ?? [])[0] as { libelles?: unknown } | undefined)?.libelles ?? null) as Record<string, unknown> | null;
+            }
+            const valeurs: Record<string, string> = {};
+            for (const c of cles) {
+              const v = libelles?.[GRILLE_CHAMPS_CAPTURE[c]];
+              const texte = Array.isArray(v) ? v.filter(Boolean).map(String).join(", ") : String(v ?? "").trim();
+              if (texte) valeurs[c] = texte;
+            }
+            const toutesPortees = cles.every((c) => Boolean(valeurs[c]));
+            if (toutesPortees) {
+              const deja = Math.max(
+                Number(pfBase.taille_grille_reprise ?? 0) || 0,
+                Number(pfCourant.taille_grille_reprise ?? 0) || 0,
+              );
+              const nuf = (pfCourant.needsUserField ?? null) as Record<string, unknown> | null;
+              const listeServie = Array.isArray(nuf?.allowed_values) ? (nuf!.allowed_values as unknown[]).map(String) : [];
+              const tailleEnfant = TAILLE_ENFANT_RE.test(valeurs.taille ?? "");
+              const listeSansEnfant = listeServie.length > 0 && !listeServie.some((v) => TAILLE_ENFANT_RE.test(v));
+              const grilleAdulteEnfant = tailleEnfant && listeSansEnfant;
+              const resume = cles.map((c) => `${GRILLE_LIBELLES[c]} « ${valeurs[c]} »`).join(", ");
+              const nowIso = new Date().toISOString();
+              const motifBrut = typeof body.error === "string" ? body.error.slice(0, 300) : null;
+              if (deja < GRILLE_MAX_REPRISES) {
+                const { next_action_after: _nao, needsUserField: _nuf, champs_a_completer: _cac, needs_user_source: _nus, ...pfSans } = pfCourant;
+                for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete (pfSans as Record<string, unknown>)[k];
+                pfGrilleReprise = {
+                  ...pfSans,
+                  // La valeur EN BASE, jamais celle du body : ce passage n'est pas une tentative.
+                  needsUserAttempts: Number(pfBase.needsUserAttempts ?? 0) || 0,
+                  taille_grille_reprise: deja + 1,
+                  taille_grille_reprise_derniere: {
+                    le: nowIso, champs: cles, valeurs, grille_adulte_taille_enfant: grilleAdulteEnfant,
+                    motif: motifBrut,
+                    pose_par: "update-job-status (pré-vol négatif sur une valeur portée par la capture = reprise)",
+                  },
+                  next_action_after: new Date(Date.now() + GRILLE_REPRISE_DELAI_MS).toISOString(),
+                };
+                statutEffectif = "pending";
+                messageEffectif =
+                  `Le formulaire Vinted n'a pas reconnu ${cles.length > 1 ? "des informations" : "une information"} que ton annonce porte pourtant (${resume})` +
+                  `${grilleAdulteEnfant ? " — la grille de tailles lue était une grille adulte" : ""}. ` +
+                  "Nouvel essai automatique dans 2 minutes, avant toute suppression : rien à faire de ton côté.";
+                raisonRequalif = `pré-vol négatif sur valeur portée par la capture (${cles.join(", ")}), reprise ${deja + 1}/${GRILLE_MAX_REPRISES}`;
+                console.log(
+                  `[update-job-status] userId=${user.id} job=${jobId} — pré-vol négatif (${cles.join(", ")}) alors que la capture porte ${resume}` +
+                  `${grilleAdulteEnfant ? " [grille adulte / taille enfant]" : ""} : reprise ${deja + 1}/${GRILLE_MAX_REPRISES}, étape captured conservée`,
+                );
+              } else {
+                const { needsUserField: _nuf, champs_a_completer: _cac, ...pfSans } = pfCourant;
+                for (const k of ["needs_user_tick_le", "needs_user_actif_ms", "needs_user_vu_le", "needs_user_vu_erreur"]) delete (pfSans as Record<string, unknown>)[k];
+                pfGrilleRefus = {
+                  ...pfSans,
+                  needs_user_source: "grille_incoherente",
+                  taille_grille_reprise: deja,
+                  taille_grille_refus: {
+                    le: nowIso, champs: cles, valeurs, grille_adulte_taille_enfant: grilleAdulteEnfant, motif: motifBrut,
+                    pose_par: "update-job-status (reprises épuisées : la grille lue ne correspond pas à l'annonce)",
+                  },
+                };
+                messageEffectif =
+                  "Republication en pause AVANT toute suppression — ton annonce est intacte sur Vinted. " +
+                  `Le formulaire Vinted n'a pas accepté ${resume}` +
+                  `${grilleAdulteEnfant ? " : la grille de tailles proposée était une grille adulte, alors que ton annonce est en catégorie enfant" : ""}. ` +
+                  "Ce n'est pas une information manquante, ton annonce la porte déjà. " +
+                  "Relance depuis l'app ; si ça se reproduit, écris-nous et on regarde la catégorie de l'annonce.";
+                raisonRequalif = `pré-vol négatif sur valeur portée par la capture (${cles.join(", ")}) : ${GRILLE_MAX_REPRISES} reprises épuisées, needs_user avec le vrai motif`;
+                console.log(
+                  `[update-job-status] userId=${user.id} job=${jobId} — pré-vol négatif (${cles.join(", ")}) malgré ${GRILLE_MAX_REPRISES} reprises : ` +
+                  `needs_user conservé, message « grille incohérente », plus aucun champ demandé`,
+                );
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] reprise pré-vol négatif (valeur portée) :", (e as Error)?.message ?? e);
+        pfGrilleReprise = null;
+        pfGrilleRefus = null;
+      }
+    }
+
     const patch: Record<string, unknown> = { status: statutEffectif };
 
     // platform_fields optionnel : l'extension envoie l'objet DÉJÀ fusionné
@@ -1391,6 +1545,11 @@ serve(async (req) => {
     // Réparation d'état : elle écrase les blocs ci-dessus (elle a retiré
     // champs_a_completer et needs_user_source — le job n'attend plus personne).
     if (pfRepareEtat) patch.platform_fields = pfRepareEtat;
+    // Pré-vol négatif sur une valeur portée par la capture (2026-09-12) :
+    // reprise (pending, étape conservée, échéance +2 min, compteur propre) ou,
+    // reprises épuisées, needs_user avec le vrai motif et plus aucun champ.
+    if (pfGrilleReprise) patch.platform_fields = pfGrilleReprise;
+    if (pfGrilleRefus) patch.platform_fields = pfGrilleRefus;
     // Dépôt Leboncoin accepté (écran /options) : platform_fields SANS la
     // reprise programmée, AVEC la trace du relevé.
     if (pfDepotOptions) patch.platform_fields = pfDepotOptions;
