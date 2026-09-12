@@ -2277,6 +2277,33 @@ serve(async (req) => {
         const chemin = Array.isArray(pf.lbcCategoryPath) ? (pf.lbcCategoryPath as unknown[]).map((s) => String(s)).join(" > ") : "";
         const trace: Record<string, unknown> = {};
 
+        // ── Racine HORS de l'arbre Leboncoin = chemin invalide → incertain ──
+        // (2026-09-12, job 35bd3f1c, ornellaracano : « **Univers**
+        // (`accessories_univers`) > Enfant », une ligne de relevé prise pour une
+        // catégorie par l'arbre généré ; le handler échouait en dur « racine
+        // introuvable »). Sur le job SERVI : le chemin est flagué INCERTAIN,
+        // et le handler (0.6.26+) prend la suggestion que Leboncoin déduit du
+        // titre, arbitrée par l'IA — le chemin existant pour une catégorie
+        // incertaine. Le chemin n'est pas réécrit (rien d'inventé) ; la trace
+        // lbc_chemin_invalide est persistée par l'extension au statut suivant.
+        // L'arbre est corrigé à la source (gen-arbres-feuilles.mjs) : ce filet
+        // ne joue que sur un job déjà en file ou une régression future.
+        const RACINES_LBC = new Set(["Immobilier", "Véhicules", "Matériel professionnel", "Électronique", "Maison & Jardin", "Famille", "Mode", "Loisirs", "Animaux", "Locations de vacances", "Emploi", "Services", "Divers"]);
+        const racineLbc = Array.isArray(pf.lbcCategoryPath) && (pf.lbcCategoryPath as unknown[]).length
+          ? String((pf.lbcCategoryPath as unknown[])[0]).trim() : "";
+        if (racineLbc && !RACINES_LBC.has(racineLbc) && pf.lbcCategorieIncertaine !== true) {
+          pf.lbcCategorieIncertaine = true;
+          pf.categorie_incertaine = true;
+          pf.lbc_chemin_invalide = {
+            chemin: pf.lbcCategoryPath,
+            motif: `racine « ${racineLbc} » absente de l'arbre Leboncoin (13 racines)`,
+            effet: "catégorie flaguée incertaine : la suggestion Leboncoin arbitrée par l'IA prime",
+            le: new Date().toISOString(),
+            pose_par: "get-pending-jobs",
+          };
+          trace.chemin_invalide = { valeur: "incertaine", source: `racine « ${racineLbc} » hors des 13 racines Leboncoin` };
+        }
+
         // ── Univers (Mode > Vêtements / Mode > Chaussures seulement) ──────
         const liste = UNIVERS_PAR_FEUILLE[chemin];
         if (liste) {
@@ -2337,6 +2364,59 @@ serve(async (req) => {
       if (lbcDeduits) console.log(`[get-pending-jobs] user=${user.id} Univers/Produit Leboncoin posés par déduction : ${lbcDeduits}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] déduction Univers/Produit Leboncoin : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+    }
+
+    // ── TAILLE VINTED SANS CORRESPONDANCE SUR « JEUX ET JOUETS » : SERVIE VIDE ──
+    // (2026-09-12, job 0259e920, ornellaracano, 0.6.26) : « Disney Poupée
+    // peluche Anna … 59 cm », catégorie Enfants > Jeux et jouets > Peluches
+    // posée par le mot du titre, grille Vinted = tailles d'enfant : « 59 cm »
+    // ne matchait rien → arrêt avant publication, 5 reprises identiques,
+    // jamais publié — la taille n'est pas exigée sur cette branche (b21e89d4,
+    // Peluches, publié sans taille). La 0.6.31 laisse la taille vide quand
+    // elle n'est pas requise ; pour les versions installées AVANT, ce filet
+    // retire `taille` du job SERVI (jamais d'écriture en base ici : le pf
+    // revient au statut suivant) quand TOUT est réuni :
+    //   · publish Vinted, categoryPath sous « Jeux et jouets », taille présente ;
+    //   · une tentative précédente s'est arrêtée sur cette taille (warning
+    //     « taille: champ sauté — Option « … » sans correspondance ») et le job
+    //     est déjà en reprise (needsUserAttempts ≥ 1).
+    // La valeur retirée et le motif sont ÉCRITS (taille_retiree_serveur +
+    // warning structuré) pour être mesurés. Rien d'autre du job ne bouge ; si
+    // Vinted exigeait la taille, le 400 du dépôt la nommerait (needs_user).
+    try {
+      let taillesRetirees = 0;
+      for (const j of out as unknown as Array<Record<string, unknown>>) {
+        if (j.platform !== "vinted" || j.action !== "publish") continue;
+        const pf = (j.platform_fields && typeof j.platform_fields === "object")
+          ? (j.platform_fields as Record<string, unknown>) : null;
+        if (!pf) continue;
+        const taille = String(pf.taille ?? "").trim();
+        if (!taille) continue;
+        const chemin = Array.isArray(pf.categoryPath) ? (pf.categoryPath as unknown[]).map((s) => String(s)) : [];
+        if (!chemin.includes("Jeux et jouets")) continue;
+        if ((Number(pf.needsUserAttempts) || 0) < 1) continue;
+        const warnings = Array.isArray(pf.warnings) ? (pf.warnings as unknown[]) : [];
+        const dejaButee = warnings.some((w) => {
+          const msg = typeof w === "string" ? w : String((w as Record<string, unknown>)?.message ?? "");
+          return /^taille: champ sauté — Option ".*" sans correspondance/.test(msg);
+        });
+        if (!dejaButee) continue;
+        const nowIso = new Date().toISOString();
+        pf.taille_retiree_serveur = {
+          valeur: taille, categorie: chemin.join(" > "), le: nowIso, pose_par: "get-pending-jobs",
+          motif: "aucune option de la grille ne correspondait à la tentative précédente ; taille non requise sur « Jeux et jouets » — l'annonce part sans taille",
+        };
+        pf.warnings = [...warnings, {
+          at: nowIso, code: "taille_retiree_serveur", champ: "taille", valeur: taille,
+          message: `taille « ${taille} » retirée du dépôt Vinted par le serveur : aucune option de la grille ne correspondait à la tentative précédente, la taille n'est pas requise sur « Jeux et jouets » — l'annonce part sans taille`,
+        }];
+        delete pf.taille;
+        taillesRetirees++;
+        console.log(`[get-pending-jobs] Vinted ${String(j.id).slice(0, 8)} (${chemin.join(" > ")}) : taille « ${taille} » retirée du job servi (sans correspondance dans la grille, non requise) — l'annonce part sans taille`);
+      }
+      if (taillesRetirees) console.log(`[get-pending-jobs] user=${user.id} tailles Vinted retirées (Jeux et jouets) : ${taillesRetirees}`);
+    } catch (e) {
+      console.warn(`[get-pending-jobs] retrait de taille Vinted : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }
 
     return json({

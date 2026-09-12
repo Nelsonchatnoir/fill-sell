@@ -65,12 +65,21 @@ function parseIndente(texte, { marqueurFeuille, tiret }) {
 /** Leboncoin : arbre à 2 niveaux décrit en markdown, « - Racine : A | B | C ». */
 function parseLeboncoin(texte) {
   const feuilles = [];
-  const bloc = texte.slice(texte.indexOf("## Arbre catégories"));
+  // La section « ## Arbre catégories » SEULE (2026-09-12, job 35bd3f1c) : le
+  // slice courait jusqu'à la fin du fichier et avalait « ## Listes fermées »,
+  // dont la ligne « - **Univers** (`accessories_univers`) : `Femme | Homme |
+  // Enfant | Mixte` » devenait une racine à 4 feuilles. L'IA a choisi
+  // « **Univers** > Enfant » pour un peignoir enfant, et Leboncoin a répondu
+  // « racine introuvable ». On s'arrête au titre suivant, et une racine qui
+  // porte du markdown (*, `) n'est jamais une racine.
+  const debut = texte.indexOf("## Arbre catégories");
+  const suite = texte.slice(debut + 1).search(/\n## /);
+  const bloc = suite >= 0 ? texte.slice(debut, debut + 1 + suite) : texte.slice(debut);
   for (const l of bloc.split(/\r?\n/)) {
     const m = l.match(/^-\s+([^:]+?)\s*:\s*(.+)$/);
     if (!m) continue;
     const racine = m[1].trim();
-    if (!racine || racine.length > 40) continue;
+    if (!racine || racine.length > 40 || /[*`]/.test(racine)) continue;
     for (const f of m[2].split("|").map((s) => s.trim()).filter(Boolean)) {
       feuilles.push({ chemin: [racine, f], id: null });
     }
