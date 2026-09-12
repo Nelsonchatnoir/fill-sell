@@ -672,6 +672,81 @@ serve(async (req) => {
       );
     }
 
+    // ── ARTICLE DISPARU AVANT L'EXÉCUTION = REPUBLICATION ANNULÉE, JAMAIS
+    // UN 404 (2026-09-12, dossier Anaïs, GO Nico) ───────────────────────────
+    // Chronologie mesurée : republications mises en file à 13:27 ; la 2e
+    // sync date les articles `disparu_le` à 13:43:31 ; l'extension exécute
+    // les jobs à 13:45, 14:02, 14:04, 14:06 et frappe le 404 à la capture →
+    // quatre lignes rouges sur le premier lot d'une nouvelle inscrite, alors
+    // que la base SAVAIT avant chaque exécution. La revue « plus en ligne —
+    // vendue ? » de l'app annule désormais ces republications au moment du
+    // geste (App.jsx, annulerRepublicationsDisparues) ; ici c'est le FILET
+    // pour la fenêtre que l'app ne couvre pas (le marquage de la sync arrive
+    // sans geste utilisateur, et l'extension peut passer 2 minutes plus tard).
+    // Une capture sur une annonce disparue ne peut que frapper un 404 : on
+    // n'envoie pas l'extension le constater.
+    // ⛔ PÉRIMÈTRE STRICT : republish Vinted, statut 'pending', étape absente
+    //    ou 'a_capturer' (rien capturé, rien supprimé, personne dessus —
+    //    même frontière que republishAnnulable côté app), article porteur
+    //    d'un disparu_le. Une étape 'captured' ou 'deleted' passe : après une
+    //    suppression, l'annonce DOIT être recréée quoi qu'en dise disparu_le.
+    // ÉCRITURE DÉFINITIVE (comme beebs_interdits, contrairement aux retenues
+    // transitoires) : 'cancelled' + message neutre + marqueur
+    // annonce_disparue — l'app affiche « Annonce plus en ligne », jamais un
+    // échec. Un faux disparu_le se répare par la sync (l'annonce revue au
+    // dressing efface disparu_le et l'article redevient republiable) : rien
+    // n'a été supprimé, l'utilisateur ne perd rien.
+    // TOUS LES MODES (popup compris) : l'état est définitif, comme les
+    // orphelines. Best-effort : lecture ratée → le job est servi comme avant.
+    let annuleesDisparues = 0;
+    {
+      const stepOfJob = (j: { platform_fields: unknown }) =>
+        String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_step"] ?? "");
+      const candidatsDisparus = out.filter((j) =>
+        j.action === "republish" && j.platform === "vinted" && j.status === "pending" &&
+        j.inventaire_id != null && (stepOfJob(j) === "" || stepOfJob(j) === "a_capturer"));
+      if (candidatsDisparus.length) {
+        try {
+          const ids = [...new Set(candidatsDisparus.map((j) => j.inventaire_id))];
+          const { data: arts } = await userClient
+            .from("inventaire").select("id, disparu_le").in("id", ids);
+          const disparus = new Set(
+            ((arts ?? []) as { id: unknown; disparu_le: unknown }[])
+              .filter((a) => a.disparu_le != null).map((a) => String(a.id)),
+          );
+          if (disparus.size) {
+            const aRetirer = new Set<string>();
+            for (const j of candidatsDisparus) {
+              if (!disparus.has(String(j.inventaire_id))) continue;
+              const pf = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
+              delete pf["next_action_after"];
+              pf["annonce_disparue"] = {
+                at: new Date().toISOString(),
+                pose_par: "get-pending-jobs (article disparu_le avant exécution — capture inutile, rien à supprimer)",
+              };
+              const { data: maj } = await userClient.from("cross_post_jobs")
+                .update({
+                  status: "cancelled",
+                  error: "Cette annonce n'est plus en ligne sur Vinted — republication annulée avant tout geste, rien n'a été supprimé.",
+                  platform_fields: pf,
+                })
+                .eq("id", j.id).eq("status", "pending").select("id");
+              if ((maj ?? []).length) aRetirer.add(String(j.id));
+            }
+            if (aRetirer.size) {
+              out = out.filter((j) => !aRetirer.has(String(j.id)));
+              annuleesDisparues = aRetirer.size;
+              console.log(
+                `[get-pending-jobs] userId=${user.id} : ${annuleesDisparues} republication(s) annulée(s) AVANT exécution — ` +
+                `article(s) disparu_le (${[...aRetirer].map((id) => id.slice(0, 8)).join(", ")}) : rien capturé, rien supprimé, ` +
+                `statut cancelled + annonce_disparue`,
+              );
+            }
+          }
+        } catch (_e) { /* filet best-effort : jamais un point de panne — le job est servi comme avant */ }
+      }
+    }
+
     // ── LA SYNC PASSE DEVANT LA FILE (2026-09-04, cas ornellaracano) ────────
     // Constaté en réel : 189 republications en file, une demande de sync
     // derrière, et l'app annonçait « environ 16 h ». Quatre clics en deux

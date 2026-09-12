@@ -1945,11 +1945,19 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
 function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang, generatePrice = null,
   price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
   onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null,
-  prixAchat = null }) {
+  prixAchat = null, carteAOuvrir = null, onCarteOuverte = null }) {
   const { t, tpl } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
   const [openCards, setOpenCards] = useState(new Set());
+  // Ouverture DEMANDÉE par le step Publier (garde « description Vinted
+  // vide », 2026-09-12) : la carte de cette copie s'ouvre, une fois.
+  useEffect(() => {
+    if (!carteAOuvrir) return;
+    setOpenCards(prev => { const n = new Set(prev); n.add(carteAOuvrir); return n; });
+    onCarteOuverte?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carteAOuvrir]);
   // (Le repli des sources de l'estimation vit désormais dans AnalyseMarche,
   // partagé avec l'écran Lens — plus d'état local ici.)
 
@@ -2536,7 +2544,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -2997,6 +3005,30 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
         );
       })}
 
+      {descriptionVideVinted && (
+        // ── DESCRIPTION VINTED VIDE (2026-09-12, dossier Anaïs) ──────────────
+        // Pas un champ de l'encart rouge (ce n'est ni un champ partagé ni un
+        // aspect) mais un TEXTE de la copie : on nomme le champ, l'endroit,
+        // et on y mène. Jamais de description inventée ici.
+        <div style={{ padding:14, background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:14, marginBottom:12, display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
+          <div style={{ flex:1, minWidth:200 }}>
+            <div style={{ fontSize:13, color:"#B91C1C", fontWeight:700 }}>
+              {lang === "en" ? "Vinted requires a description" : "Vinted exige une description"}
+            </div>
+            <div style={{ fontSize:12, color:"#7F1D1D", lineHeight:1.45, marginTop:3 }}>
+              {lang === "en"
+                ? "Your Vinted copy has none: Vinted would refuse the listing. Write it in your own words in the Vinted card."
+                : "Ta copie Vinted n'en a pas : Vinted refuserait l'annonce. Écris-la avec tes mots dans la carte Vinted."}
+            </div>
+          </div>
+          <button
+            onClick={() => onOuvrirCopie?.("vinted")}
+            style={{ flex:"0 0 auto", padding:"9px 14px", borderRadius:10, border:"none", background:"#B91C1C", color:"#fff", fontSize:12.5, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}
+          >
+            {lang === "en" ? "Open the Vinted card" : "Ouvrir la carte Vinted"}
+          </button>
+        </div>
+      )}
       {redTotal > 0 && (
         // ── ENCART ROUGE UNIQUE (refonte 2026-08-28) ─────────────────────────
         // UN SEUL endroit de saisie pour TOUT champ bloquant : champs partagés
@@ -3517,6 +3549,10 @@ export default function ListingPreviewScreen({
   const photosAnalyseesRef = useRef(draft?.photosAnalysees ?? null);
 
   const [step, setStep]         = useState(draft?.step ?? 0);
+  // Carte de copie à ouvrir en revenant au step Génération (garde
+  // « description Vinted vide », 2026-09-12) : consommée par StepGeneration.
+  const [carteAOuvrir, setCarteAOuvrir] = useState(null);
+  const ouvrirCopie = (p) => { setCarteAOuvrir(p); setStep(2); };
   const [initializing, setInit] = useState(true);
 
   // Sessions plateformes relevées par l'extension (profiles.extension_sessions,
@@ -7735,12 +7771,26 @@ export default function ListingPreviewScreen({
   // nommés, comme avant. Les bloqueurs de l'ARTICLE (champs partagés, prix
   // d'achat) et eBay (garde au clic non refondue, signalée à Nico) restent
   // globaux.
+  // ── GARDE « DESCRIPTION VINTED VIDE » (2026-09-12, dossier Anaïs) ────────
+  // Vinted refuse toute création d'annonce sans description (HTTP 400 « Le
+  // champ Description doit être renseigné ») ; on le sait AVANT le clic.
+  // BORNÉE au stepper, sur la COPIE Vinted qui part dans le job
+  // (edited.vinted.description) — JAMAIS sur la colonne inventaire : un
+  // article importé du dressing n'a pas de description en base et c'est
+  // normal (la republication la capture live). Ici il n'y a pas de capture,
+  // c'est une NOUVELLE annonce : la copie vide partirait au refus certain.
+  // Rien n'est inventé, rien n'est généré : Publier grisé, la ligne dit où
+  // l'écrire et la carte Vinted s'ouvre au tap (onOuvrirCopie).
+  const descriptionVideVinted =
+    selected.has("vinted") && !String(edited?.vinted?.description ?? "").trim();
+
   const requiredBlocking =
     (ebayRequiredStatus ?? []).some(aspectBloquant) ||
     missingSharedFields.length > 0 ||
     prixAchatManquant ||
     vintedGenreBlocked ||
-    beebsGenreBlocked;
+    beebsGenreBlocked ||
+    descriptionVideVinted;
 
   // SOURCE UNIQUE de « le bouton Publier est gris pour une raison que
   // l'utilisateur doit lire » : ctaDisabled ET motifsCtaGris en dérivent tous
@@ -7797,6 +7847,7 @@ export default function ListingPreviewScreen({
     if (prixAchatManquant) m.push(lang === "en" ? "Purchase price to fill in" : "Prix d'achat à renseigner");
     if (vintedGenreBlocked) m.push(lang === "en" ? "Vinted section to choose" : "Rayon Vinted à choisir");
     if (beebsGenreBlocked) m.push(lang === "en" ? "Beebs section to choose" : "Rayon Beebs à choisir");
+    if (descriptionVideVinted) m.push(lang === "en" ? "Vinted description to write" : "Description Vinted à écrire");
     if (publishChips.length === 0) {
       m.push(lang === "en" ? "No platform ready to publish" : "Aucune plateforme prête à publier");
     }
@@ -8089,6 +8140,8 @@ export default function ListingPreviewScreen({
             // sinon celui déjà porté par l'article. Absent = mode chine, et
             // AnalyseMarche rend le prix plafond au lieu d'un verdict.
             prixAchat={prixAchatSaisi || initialListing?.prix_achat || null}
+            carteAOuvrir={carteAOuvrir}
+            onCarteOuverte={() => setCarteAOuvrir(null)}
           />
         )}
         {step === 3 && (
@@ -8127,6 +8180,8 @@ export default function ListingPreviewScreen({
             lbcAdresseManquante={lbcAdresseManquante}
             descriptionMentions={descriptionMentions}
             ebayVoieApiReelle={ebayVoieApiReelle}
+            descriptionVideVinted={descriptionVideVinted}
+            onOuvrirCopie={ouvrirCopie}
           />
         )}
       </div>

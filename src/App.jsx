@@ -3703,8 +3703,39 @@ export default function App({ loginOnly = false }){
                error:'Annonce retirée par le vendeur (confirmé dans l\'app) — pas une vente'})
       .eq('id',job.id).select('id');
     if(error){console.error('[dismissUnavailable]',error.message);return;}
+    // Même geste que la revue en lot (2026-09-12) : une annonce déclarée
+    // retirée n'a plus de republication à faire — celles encore en file, et
+    // qui n'ont rien touché, sont annulées avec elle.
+    if(job.platform==='vinted'&&job.inventaire_id!=null) await annulerRepublicationsDisparues([job.inventaire_id]);
     setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
     track('dismiss_unavailable',{platform:job.platform});
+  }
+
+  // Republications EN FILE d'articles que l'utilisateur vient de déclarer
+  // « plus en ligne » (2026-09-12, dossier Anaïs : 4 republications mises en
+  // file à 13:27, articles disparus à 13:43, exécutées contre un 404 à
+  // 13:45-14:06 — quatre lignes rouges sur un premier lot). Frontière =
+  // republishAnnulable : pending/needs_user à l'étape a_capturer (rien capturé,
+  // rien supprimé, personne dessus). Statut 'cancelled' + marqueur
+  // annonce_disparue → l'app affiche « Annonce plus en ligne », jamais un échec.
+  // Best-effort : un échec ici ne doit pas empêcher le geste principal.
+  async function annulerRepublicationsDisparues(inventaireIds){
+    if(!user?.id||!inventaireIds?.length)return;
+    try{
+      const{data:enFile}=await supabase.from('cross_post_jobs')
+        .select('id,platform_fields').eq('user_id',user.id).eq('platform','vinted').eq('action','republish')
+        .in('status',['pending','needs_user']).in('inventaire_id',inventaireIds)
+        .or('platform_fields->>republish_step.is.null,platform_fields->>republish_step.eq.a_capturer');
+      for(const j of enFile||[]){
+        const pf={...(j.platform_fields||{}),annonce_disparue:{at:new Date().toISOString(),pose_par:'app (annonce déclarée retirée par l\'utilisateur)'}};
+        delete pf.next_action_after;
+        await supabase.from('cross_post_jobs')
+          .update({status:'cancelled',platform_fields:pf,
+                   error:'Cette annonce n\'est plus en ligne sur Vinted — republication annulée avant tout geste, rien n\'a été supprimé.'})
+          .eq('id',j.id).eq('user_id',user.id).in('status',['pending','needs_user']);
+      }
+      if((enFile||[]).length)track('republish_annule_disparue',{count:enFile.length});
+    }catch(e){console.warn('[annulerRepublicationsDisparues]',e?.message??e);}
   }
 
   // ── Revue des DISPARUS du dressing (2026-08-24, chantier détection des ventes) ──
@@ -3867,6 +3898,16 @@ export default function App({ loginOnly = false }){
                    error:'Annonce retirée par le vendeur (confirmé dans l\'app) — pas une vente'})
           .eq('id',j.id);
       }
+      // ── Les REPUBLICATIONS encore en file de ces articles (2026-09-12, dossier
+      // Anaïs) : une annonce que l'utilisateur vient de déclarer retirée n'a plus
+      // rien à republier — la capture ne peut que frapper un 404. Annulées ICI,
+      // au moment du geste, et SEULEMENT celles qui n'ont encore rien touché
+      // (même frontière que republishAnnulable : pending/needs_user à l'étape
+      // a_capturer — jamais 'captured', 'deleted' ni 'processing'). Marqueur
+      // annonce_disparue : l'app dit « Annonce plus en ligne », pas un échec.
+      // platform_fields se pose job par job sur la valeur relue (une update de
+      // masse l'écraserait en entier).
+      await annulerRepublicationsDisparues(ids);
       setItems(prev=>prev.map(i=>ids.includes(i.id)?{...i,vinted_status:'closed'}:i));
       setDisparusSel(new Set());
       track('dismiss_disparus',{count:ids.length});
