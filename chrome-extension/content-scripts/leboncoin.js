@@ -1487,6 +1487,40 @@ async function fillListingForm(job) {
       lbcDepot: { preuve, note: String(note).slice(0, 400), adsubmit: depotAccepte, at: new Date().toISOString() },
     };
   };
+  // ── /options SANS L'OPTION GRATUITE = DÉPÔT NON FINALISÉ (2026-09-13) ─────
+  // CE QUI S'EST PASSÉ (dossier Joséphine, relevé sur 30 jours) : 13 dépôts
+  // avaient conclu « écran /options rendu (« Boostez votre annonce ! »), sans
+  // CTA gratuit — dépôt accepté ». Leurs 12 annonces à id connu, relues le
+  // 13/09 sur leboncoin.fr : 12 « Cette annonce est désactivée », 0 en ligne,
+  // 0 lien jamais récupéré. Les 14 dépôts passés par le CTA « Déposer sans
+  // booster » + confirmation : 13 en ligne avec lien. Leboncoin CRÉE l'annonce
+  // à l'adsubmit (201), mais ne la met en ligne qu'une fois l'option (gratuite
+  // ou payante) choisie sur /options ; sans ce choix elle reste inachevée puis
+  // est désactivée. Le point 3 du 09/09 (« /options = dépôt accepté ») était
+  // vrai de l'ADSUBMIT, faux de la PUBLICATION.
+  // LA COURSE : waitFor(findFreeCta() ?? h1) rend « h1 » dès que le titre est
+  // peint — AVANT les boutons, qui arrivent après (mêmes comptes, mêmes
+  // minutes : 4 « sans CTA » et 1 « confirmation » chez olivier.mariep le 11/09
+  // entre 12:00 et 12:08). Désormais le titre ne suffit pas : on attend le CTA
+  // lui-même LBC_OPTIONS_CTA_ATTENTE_MS de plus, et sans lui le verdict est un
+  // ÉCHEC honnête, jamais un « publié ». Le dépôt inachevé ne fait pas de
+  // doublon (12/12 désactivées, jamais en ligne) : depositUnconfirmed laisse
+  // le background relire « Mes annonces » puis ré-armer, borné.
+  const LBC_OPTIONS_CTA_ATTENTE_MS = 30_000;
+  const MSG_LBC_NON_FINALISE =
+    "Leboncoin a reçu l'annonce, mais l'option gratuite « Déposer sans booster mon annonce » n'a pas pu être " +
+    "choisie — sans ce choix, Leboncoin ne met pas l'annonce en ligne. Relance la publication depuis le Stock : " +
+    "le dépôt inachevé s'efface de lui-même, il ne fait pas de doublon.";
+  const depotNonFinalise = (preuve, note) => {
+    console.warn(`[leboncoin] dépôt NON FINALISÉ (${preuve}) — ${note}`);
+    return {
+      success: false, needsUser: true, depositUnconfirmed: true,
+      warnings, unfilledRequired, discoveredRequired: enumerated,
+      lbcAdId: depotAccepte?.id ?? null,
+      lbcDepot: { preuve, note: String(note).slice(0, 400), adsubmit: depotAccepte, at: new Date().toISOString() },
+      error: `${MSG_LBC_NON_FINALISE} — Observabilité: ${dumpEcranVisible()}`,
+    };
+  };
 
   for (let ecran = 0; ecran < 3 && !freeCta; ecran++) {
     let etape = await attendreEcranSuivant(ecran === 0 ? 600 : 15_000);
@@ -1547,16 +1581,22 @@ async function fillListingForm(job) {
       }
       if (estEncoreApercu() && !depotAccepte) return await refusApercu();
       if (surEcranOptions() || depotAccepte) {
-        const rendu = await waitFor(
+        let rendu = await waitFor(
           () => findFreeCta() ?? (/boostez votre annonce/i.test(document.body?.textContent ?? "") ? "h1" : null),
           20_000
         );
+        if (rendu === "h1") {
+          // Le titre est peint AVANT les boutons : c'est le CTA qu'on attend,
+          // pas le titre (la course du 13/09, cf. depotNonFinalise).
+          const tard = await waitFor(() => findFreeCta(), LBC_OPTIONS_CTA_ATTENTE_MS);
+          if (tard) rendu = tard;
+        }
         if (rendu && rendu !== "h1") { freeCta = rendu; break; }
-        return succesDepotAccepte(
-          surEcranOptions() ? "ecran_options" : "adsubmit_2xx",
+        return depotNonFinalise(
+          surEcranOptions() ? "ecran_options_sans_cta" : "adsubmit_sans_ecran",
           surEcranOptions()
-            ? `écran /options ${rendu === "h1" ? "rendu (« Boostez votre annonce ! »), sans CTA gratuit" : "resté vide après 20 s"} — dépôt accepté par Leboncoin, annonce en vérification`
-            : "adsubmit 2xx sans écran reconnu ensuite — dépôt accepté par Leboncoin, annonce en vérification"
+            ? `écran /options ${rendu === "h1" ? `rendu (« Boostez votre annonce ! ») mais CTA gratuit absent après ${Math.round((20_000 + LBC_OPTIONS_CTA_ATTENTE_MS) / 1000)} s` : "resté vide après 20 s"} — option gratuite jamais choisie, annonce NON finalisée`
+            : "adsubmit 2xx sans écran /options ni CTA gratuit ensuite — option gratuite jamais choisie, annonce NON finalisée"
         );
       }
       // Écran inconnu : si un adsubmit est parti, ce n'est pas un écran inconnu
@@ -1617,7 +1657,7 @@ async function fillListingForm(job) {
     await sleep(2000); // laisse l'écran suivant arriver avant de re-sonder
   }
   if (!freeCta && (depotAccepte || surEcranOptions())) {
-    return succesDepotAccepte(surEcranOptions() ? "ecran_options" : "adsubmit_2xx", "chemin gratuit introuvable après les écrans intermédiaires, mais le dépôt est accepté (adsubmit 2xx / écran /options) — annonce en vérification");
+    return depotNonFinalise(surEcranOptions() ? "ecran_options_sans_cta" : "adsubmit_sans_ecran", "chemin gratuit introuvable après les écrans intermédiaires (adsubmit 2xx / écran /options) — option gratuite jamais choisie, annonce NON finalisée");
   }
   if (!freeCta) {
     return {

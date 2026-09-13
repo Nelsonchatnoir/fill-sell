@@ -1239,6 +1239,71 @@ serve(async (req) => {
       }
     }
 
+    // ═════════════════════════════════════════════════════════════
+    // /options SANS L'OPTION GRATUITE = DÉPÔT NON FINALISÉ, PAS UNE PUBLICATION
+    // (2026-09-13, dossier Joséphine — 12 dépôts relus : 12 « désactivés »)
+    // ═════════════════════════════════════════════════════════════
+    // Les extensions 0.6.24 → 0.6.32 concluent « publié » quand l'écran
+    // /options est rendu même sans avoir trouvé le CTA « Déposer sans booster
+    // mon annonce » (note « sans CTA gratuit » / « resté vide » / « chemin
+    // gratuit introuvable » dans lbc_depot). Relevé du 13/09 sur 30 jours :
+    // 13 dépôts dans ce cas → 0 lien jamais récupéré, 12 pages d'annonce
+    // « Cette annonce est désactivée » (Joséphine, Ornella, olivier.mariep,
+    // daekizz, camille) ; 14 dépôts passés par le CTA + confirmation → 13 en
+    // ligne. Leboncoin crée l'annonce à l'adsubmit mais ne la publie qu'une
+    // fois l'option choisie : sans ce choix elle reste inachevée puis est
+    // désactivée. Un « published » sans lien ici, c'est 48 h de « récupération
+    // du lien en cours » puis un échec du cron au mauvais motif.
+    // ICI, SERVEUR, sans zip : ce rapport devient un ÉCHEC honnête, tout de
+    // suite, avec la vraie cause — et « Relancer » est le bon geste (le dépôt
+    // inachevé ne fait pas de doublon : 12/12 jamais en ligne). Le paquet
+    // suivant de l'extension (leboncoin.js, depotNonFinalise) ne conclut plus
+    // « publié » dans ce cas ; ce bloc reste le filet du parc.
+    // ⛔ Périmètre STRICT : Leboncoin, action publish, statut « published »
+    //    rapporté SANS listing_url, lbc_depot.preuve = 'ecran_options' avec une
+    //    note « sans CTA gratuit » / « resté vide » / « chemin gratuit
+    //    introuvable ». Une preuve « confirmation » ou « adsubmit_2xx » ne bouge pas.
+    let pfDepotNonFinalise: Record<string, unknown> | null = null;
+    if (statutEffectif === "published" && !(typeof body.listing_url === "string" && body.listing_url)
+        && body.platform_fields && typeof body.platform_fields === "object") {
+      const pfB = body.platform_fields as Record<string, unknown>;
+      const depot = (pfB["lbc_depot"] && typeof pfB["lbc_depot"] === "object") ? pfB["lbc_depot"] as Record<string, unknown> : null;
+      const note = String(depot?.note ?? "");
+      if (depot && depot.preuve === "ecran_options" && /sans CTA gratuit|rest[ée] vide après|chemin gratuit introuvable/i.test(note)) {
+        try {
+          const { data: jrow } = await userClient
+            .from("cross_post_jobs").select("platform, action").eq("id", jobId).maybeSingle();
+          if (jrow?.platform === "leboncoin" && jrow?.action === "publish") {
+            const { next_action_after: _nao2, ...pfSans2 } = pfB;
+            const adsubmit = (depot.adsubmit && typeof depot.adsubmit === "object") ? depot.adsubmit as Record<string, unknown> : null;
+            pfDepotNonFinalise = {
+              ...pfSans2,
+              lbc_depot_non_finalise: {
+                preuve: depot.preuve, note: note.slice(0, 300),
+                adsubmit_id: adsubmit?.id ?? null,
+                at: new Date().toISOString(),
+                pose_par: "update-job-status (option gratuite jamais choisie sur /options)",
+              },
+            };
+            statutEffectif = "failed";
+            messageEffectif =
+              "Leboncoin a reçu l'annonce, mais l'option gratuite « Déposer sans booster mon annonce » n'a pas pu être " +
+              "choisie — sans ce choix, Leboncoin ne met pas l'annonce en ligne. Relance la publication depuis le Stock : " +
+              "le dépôt inachevé s'efface de lui-même, il ne fait pas de doublon.";
+            raisonRequalif = "écran /options sans CTA gratuit : option jamais choisie, Leboncoin ne publie pas (12/12 désactivées, relevé 13/09)";
+            console.log(
+              `[update-job-status] userId=${user.id} job=${jobId} — « published » sans lien avec /options sans CTA gratuit : ` +
+              `dépôt NON finalisé (adsubmit ${adsubmit?.id ?? "?"}) → failed avec la vraie cause`,
+            );
+          }
+        } catch (e) {
+          // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+          console.error("[update-job-status] requalification /options sans CTA:", (e as Error)?.message ?? e);
+          pfDepotNonFinalise = null;
+        }
+      }
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // RÉPARATION AUTOMATIQUE DE L'ÉTAT (incident Vinted du 07/09) — SERVEUR
     // ══════════════════════════════════════════════════════════════════════
@@ -1553,6 +1618,9 @@ serve(async (req) => {
     // Dépôt Leboncoin accepté (écran /options) : platform_fields SANS la
     // reprise programmée, AVEC la trace du relevé.
     if (pfDepotOptions) patch.platform_fields = pfDepotOptions;
+    // Dépôt Leboncoin NON finalisé (/options sans CTA gratuit, 2026-09-13) :
+    // platform_fields SANS la reprise programmée, AVEC le marqueur.
+    if (pfDepotNonFinalise) patch.platform_fields = pfDepotNonFinalise;
 
     // ── HORLOGE DU CLIENT RECALÉE SUR CELLE DU SERVEUR (2026-09-11) ─────────
     // deleted_at (republish Vinted) est le SEUIL de reconnaissance de
