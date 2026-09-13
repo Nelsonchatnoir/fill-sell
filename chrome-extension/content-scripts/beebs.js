@@ -1253,8 +1253,15 @@ function texteRenduHorsScripts() {
 // erreurs Beebs n'a pas été relevé — une liste vide ne prouve rien.
 // Textes de validation du formulaire Beebs, relevés le 11/09 dans son bundle
 // (listing_form.*) : ce sont eux qu'un clic « Mettre en vente » refusé rend.
+// ⚠️ « Sélectionner une valeur » RETIRÉ le 13/09 (dossier Joséphine) : c'est
+// le PLACEHOLDER de tout sélecteur d'attribut laissé vide (i18n
+// `attribute_drop_down`), Couleur ou Matière facultatives comprises — il est
+// dans le texte rendu d'un formulaire qui va passer, et il a fait chercher
+// un « menu obligatoire jamais rempli » qui n'existait pas. Le vrai motif
+// des 4 refus était « Ajouter au moins 5 caractères » (i18n
+// `description_min_length`, aussi `title_min_length`), AJOUTÉ ici.
 const BEEBS_ERREURS_FORMULAIRE_RE =
-  /Ajouter au moins une photo|Sélectionner une valeur|Sélectionner une catégorie|Renseigner le prix de vente|Sélectionner un format de colis|Renseigner votre adresse|Renseigner une date valide|Veuillez certifier|Une erreur est survenue lors de l[’']enregistrement de votre annonce/g;
+  /Ajouter au moins une photo|Ajouter au moins 5 caractères|Sélectionner une catégorie|Renseigner le prix de vente|Sélectionner un format de colis|Renseigner votre adresse|Renseigner une date valide|Veuillez certifier|Une erreur est survenue lors de l[’']enregistrement de votre annonce/g;
 function erreursFormulaireVisibles() {
   const textes = new Set();
   for (const m of texteRenduHorsScripts().matchAll(BEEBS_ERREURS_FORMULAIRE_RE)) {

@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 import { ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir } from "../_shared/vinted-taille-republication.ts";
 import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
+import { completerDescriptionBeebs } from "../_shared/description-beebs.ts";
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
 // (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
@@ -2330,6 +2331,89 @@ serve(async (req) => {
       if (nettoyagesLbc) console.log(`[get-pending-jobs] user=${user.id} descriptions Leboncoin nettoyées : ${nettoyagesLbc}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] nettoyage description Leboncoin : ${String((e as Error)?.message ?? e)} — descriptions servies telles quelles`);
+    }
+
+    // ── DÉPÔT BEEBS : DESCRIPTION D'AU MOINS 5 CARACTÈRES, COULEUR ET MATIÈRE
+    // DEPUIS L'ARTICLE (2026-09-13, dossier Joséphine) ─────────────────────
+    // Le formulaire Beebs REFUSE côté navigateur une description de moins de
+    // 5 caractères (i18n `description_min_length` = « Ajouter au moins
+    // 5 caractères », relevé dans son bundle) : le clic n'émet rien, rien
+    // n'est créé, le job tombe en « Dépôt Beebs non confirmé ». 4 dépôts en
+    // 0.6.32 le 13/09, tous avec `description` VIDE (articles importés de
+    // Vinted, la sync ne rapporte pas la description) ; le 5e du même lot,
+    // avec 135 car., est parti. On complète ICI le texte SERVI avec des faits
+    // DÉJÀ sur le job (titre, état, marque, taille — _shared/description-
+    // beebs.ts), jamais une invention ; le job en base n'est pas modifié,
+    // comme pour Leboncoin ci-dessus.
+    // Couleur / Matière : sélecteurs OPTIONNELS sur Beebs (required=false
+    // dans platform_category_aspects) — leur placeholder « Sélectionner une
+    // valeur » n'est PAS une erreur. Mais l'annonce vaut mieux avec : quand le
+    // job n'en porte pas, on sert la valeur relevée sur l'ANNONCE VINTED de la
+    // vendeuse (inventaire.attributs, sources `capture` / `vinted_*` seules —
+    // jamais backfill_job ni IA). L'extension la pose si elle est dans la
+    // liste Beebs, sinon avertit et continue (champ facultatif). L'extension
+    // renvoie le pf au statut suivant, la valeur se retrouve en base par ce
+    // seul chemin. Best-effort : jamais un point de panne.
+    let beebsDescriptions = 0; let beebsValeurs = 0;
+    try {
+      const depotsBeebs = (out as unknown as Array<Record<string, unknown>>)
+        .filter((j) => j.platform === "beebs" && j.action === "publish");
+      if (depotsBeebs.length) {
+        const ids = [...new Set(depotsBeebs.map((j) => j.inventaire_id).filter((x) => x != null))];
+        const attrsParArticle = new Map<string, Record<string, unknown>>();
+        if (ids.length) {
+          const { data: arts } = await userClient.from("inventaire").select("id, attributs").in("id", ids);
+          for (const a of (arts ?? []) as Record<string, unknown>[]) {
+            const at = a.attributs;
+            if (at && typeof at === "object") attrsParArticle.set(String(a.id), at as Record<string, unknown>);
+          }
+        }
+        const valeurCertaine = (attrs: Record<string, unknown> | undefined, cle: string): { v: string; source: string } | null => {
+          const e = attrs?.[cle] as Record<string, unknown> | undefined;
+          if (!e || typeof e !== "object") return null;
+          const v = typeof e.v === "string" ? e.v.trim() : "";
+          const source = typeof e.source === "string" ? e.source : "";
+          if (!v || !/^(capture|vinted)/.test(source)) return null;
+          return { v, source };
+        };
+        for (const j of depotsBeebs) {
+          const pfJ = ((j.platform_fields ?? {}) as Record<string, unknown>);
+          const complements: Record<string, unknown> = {};
+          // 1. Description : minimum de 5 caractères.
+          const r = completerDescriptionBeebs(typeof j.description === "string" ? j.description : "", {
+            titre: typeof j.title === "string" ? j.title : "",
+            etat: typeof pfJ["etat"] === "string" ? (pfJ["etat"] as string) : "",
+            marque: typeof pfJ["marque"] === "string" ? (pfJ["marque"] as string) : "",
+            taille: typeof pfJ["taille"] === "string" ? (pfJ["taille"] as string) : "",
+          });
+          if (r.modifiee) {
+            j.description = r.texte;
+            complements.description = { motif: "minimum_beebs_5", ajouts: r.ajouts };
+            beebsDescriptions++;
+            console.log(`[get-pending-jobs] description Beebs ${String(j.id).slice(0, 8)} : vide ou < 5 car. → ${r.texte.length} car. depuis les faits du job (${r.ajouts.join(" + ")})`);
+          }
+          // 2. Couleur / Matière depuis l'annonce Vinted de la vendeuse.
+          const attrs = attrsParArticle.get(String(j.inventaire_id));
+          const colors = Array.isArray(pfJ["colors"]) ? (pfJ["colors"] as unknown[]).filter((c) => typeof c === "string" && c.trim()) : [];
+          const pfSuite: Record<string, unknown> = { ...pfJ };
+          let touche = false;
+          for (const [cle, libelle] of [["couleur", "Couleur"], ["matiere", "Matière"]] as const) {
+            const deja = typeof pfJ[cle] === "string" && (pfJ[cle] as string).trim();
+            if (deja || (cle === "couleur" && colors.length)) continue;
+            const val = valeurCertaine(attrs, cle);
+            if (!val) continue;
+            pfSuite[cle] = val.v;
+            complements[cle] = { valeur: val.v, source: `inventaire.attributs.${cle} (${val.source})` };
+            touche = true;
+            console.log(`[get-pending-jobs] ${libelle} Beebs ${String(j.id).slice(0, 8)} : servie depuis l'annonce Vinted (« ${val.v} », ${val.source})`);
+          }
+          if (touche) { j.platform_fields = pfSuite; beebsValeurs++; }
+          if (Object.keys(complements).length) j.beebs_complements_serveur = complements;
+        }
+      }
+      if (beebsDescriptions || beebsValeurs) console.log(`[get-pending-jobs] user=${user.id} dépôts Beebs complétés : ${beebsDescriptions} description(s), ${beebsValeurs} couleur/matière`);
+    } catch (e) {
+      console.warn(`[get-pending-jobs] complément Beebs : ${String((e as Error)?.message ?? e)} — dépôts servis tels quels`);
     }
 
     // ── TITRE VINTED : TROP DE MAJUSCULES (2026-09-11, job f3a5dce8 Ornella) ──
