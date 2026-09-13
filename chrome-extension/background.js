@@ -477,6 +477,29 @@ function precheckJob(job) {
   const resolved = Array.isArray(value) ? value.length > 0 : Boolean(value);
   if (resolved) return null;
 
+  // ── Chemin ÉCARTÉ par l'app, EXPRÈS (2026-09-13) ─────────────────────────
+  // L'app a retiré le chemin après vérification (rayon jugé incohérent avec
+  // l'objet, ou hors de sa famille) et l'a dit dans categorie_a_choisir :
+  // l'objet et le rayon écarté y sont. Ce n'est ni un genre manquant ni une
+  // icône hors mapping — les deux messages ci-dessous accusaient l'un ou
+  // l'autre à tort (Funko Pop meminiandmove, 6 échecs « beebsCategoryPath
+  // absent … compléter le mapping côté src/utils/ » ; polo ericfurina,
+  // « genre = "Homme" » alors que le genre était bon). beebs.js sait déjà
+  // le dire (même texte) — mais ce pré-vol passe AVANT lui et le court-
+  // circuitait. Même verdict ici, avec les mots de l'utilisateur.
+  const aChoisir = fields.categorie_a_choisir;
+  if (aChoisir && typeof aChoisir === "object" && aChoisir.objet) {
+    const ecarte = Array.isArray(aChoisir.chemin_ecarte) ? aChoisir.chemin_ecarte.join(" > ") : "";
+    const label = { vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs" }[job.platform] ?? job.platform;
+    const site = { vinted: "vinted.fr", leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app" }[job.platform] ?? job.platform;
+    return (
+      `${label} n'a pas de rayon reconnu pour « ${aChoisir.objet} »` +
+      (ecarte ? ` (le rayon « ${ecarte} » a été écarté après vérification : il ne correspond pas à l'objet)` : "") +
+      `. Cet article n'est pas publiable sur ${label} tel quel — publie-le à la main sur ${site} ` +
+      `si tu y tiens, ou retire ${label} de cet envoi. Aucun onglet n'a été ouvert.`
+    );
+  }
+
   const genreRequired =
     fields.vintedGenreRequired || fields.ebayGenreRequired || fields.beebsGenreRequired;
   if (genreRequired) {

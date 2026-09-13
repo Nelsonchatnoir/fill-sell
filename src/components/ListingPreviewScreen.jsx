@@ -6753,15 +6753,16 @@ export default function ListingPreviewScreen({
       // eBay qui contient « salopette », passée au genre (aucune branche
       // genrée), retenue par l'IA faute d'autre candidate. Rien ne comparait
       // la FAMILLE du chemin à celle de l'objet. Désormais la famille de l'objet
-      // (catalogue Vinted, icône d'autorité, taille de vêtement — jamais un
-      // mot ou une icône devinés) filtre les feuilles candidates comme le genre
-      // le fait déjà, et contrôle le chemin final avant l'insert (bloc
+      // (catalogue Vinted, icône d'autorité — jamais un mot ou une icône
+      // devinés, et plus jamais la taille depuis le 13/09 : elle rangeait les
+      // jouets importés de Vinted en « mode » et faisait écarter leur rayon
+      // Jeux, cf. familleCategorie.js) filtre les feuilles candidates comme le
+      // genre le fait déjà, et contrôle le chemin final avant l'insert (bloc
       // PLAUSIBILITÉ plus bas). Famille inconnue → rien ne change.
       const pfFamille = edited[plateformesAPublier[0]]?.platform_fields ?? {};
       const detIconeFamille = resolveArticleIconDetail({ initialListing, edited, pf: pfFamille, aiIcon: activeAiIcon, aiObjet: activeAiObjet });
       const familleObjetDetail = familleDeLObjet({
         catalogId: catalogVintedFiche, icone: detIconeFamille.icon, sourceIcone: detIconeFamille.source,
-        taille: sharedFields.taille || initialListing?.taille || "",
       });
       const familleObjet = familleObjetDetail.famille;
       if (familleObjet) console.log(`[publish] famille de l'objet : ${familleObjet} (source ${familleObjetDetail.source})`);

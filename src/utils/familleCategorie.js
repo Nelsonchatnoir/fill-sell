@@ -19,12 +19,26 @@
 //   1. le catalog_id Vinted d'origine (branche mode relevée en direct) → mode ;
 //   2. une icône dont la source est une AUTORITÉ (catalogue Vinted, famille
 //      livres, pointure, signaux de la fiche) → la famille de sa racine
-//      Leboncoin, la taxonomie que le garde-fou utilise déjà ;
-//   3. une taille de vêtement / pointure / âge sur la fiche → mode.
+//      Leboncoin, la taxonomie que le garde-fou utilise déjà.
 //   ⛔ Le mot-clé du titre (source « mot_cle ») n'en fait PAS partie : il
 //      vient du même titre que le mot-objet et peut le contredire (« chaussures
 //      de basketball » : 🏀 contre « chaussures ») — un signal ne peut pas
 //      arbitrer un autre signal de même rang.
+//   ⛔ La TAILLE de la fiche n'en fait PLUS partie (retirée le 13/09). Elle
+//      était la règle 3 (« taille de vêtement / pointure / âge → mode ») et
+//      c'est la seule règle qui ait jamais produit un verdict « hors_famille »
+//      en prod : 10 jobs, 2 comptes, 3 articles sur 30 jours (relevé du 13/09
+//      sur cross_post_jobs.platform_fields.categorie_plausibilite), TOUS
+//      source_famille = « taille », TOUS des jouets correctement rangés en
+//      Jeux/Loisirs — peluche Anna « Unique », trompette VTech « Unique »,
+//      Funko Pop « 3 ans / 98 cm » (6 échecs Beebs en 13 minutes sur ce seul
+//      article, l'utilisatrice relançant à chaque fois). Zéro vrai positif.
+//      La raison est structurelle : Vinted EXIGE une taille sur 36 des 37
+//      feuilles « Jeux et jouets » (relevé du 12/09), donc tout jouet importé
+//      porte une taille d'âge ; et hors jouets, un vélo ou un casque de sport
+//      portent « M »/« L ». Une taille n'est pas une source certaine de la
+//      famille — elle ne l'était que par supposition. Le cas fondateur
+//      (salopette, catalogue Vinted 83) reste couvert par la règle 1.
 // Famille inconnue → AUCUNE contrainte : comportement d'avant, à l'identique.
 //
 // Les familles sont un jeu FERMÉ et grossier, volontairement : on refuse un
@@ -36,7 +50,6 @@
 
 import { brancheModeDuCatalogue } from "./vintedCatalogMode";
 import { getLbcCategoryPath } from "./lbcCategories";
-import { _internes as gardeFouInternes } from "./categorieGardeFou";
 
 export const FAMILLES = Object.freeze([
   "mode", "bebe", "maison", "electronique", "loisirs", "beaute", "animaux", "vehicules",
@@ -124,16 +137,19 @@ export function famillesCompatibles(a, b) {
  * @param {number|string|null} p.catalogId  inventaire.vinted_catalog_id
  * @param {string|null} p.icone             icône résolue (resolveArticleIconDetail)
  * @param {string} p.sourceIcone            sa source ("mot_cle" | "ia" | "catalog_vinted" | …)
- * @param {string} p.taille                 taille de la fiche
  * @returns {{famille: string|null, source: string|null}}
+ *
+ * La taille de la fiche n'est PAS lue (cf. en-tête, règle retirée le 13/09) :
+ * un jouet importé de Vinted porte une taille d'âge, un vélo une taille de
+ * cadre — la lire rangeait des jouets en « mode » et faisait écarter leur
+ * rayon Jeux, le bon.
  */
-export function familleDeLObjet({ catalogId = null, icone = null, sourceIcone = "", taille = "" } = {}) {
+export function familleDeLObjet({ catalogId = null, icone = null, sourceIcone = "" } = {}) {
   if (brancheModeDuCatalogue(catalogId)) return { famille: "mode", source: "catalog_vinted" };
   if (icone && SOURCES_ICONE_AUTORITE.has(String(sourceIcone))) {
     const f = familleDeChemin("leboncoin", getLbcCategoryPath(icone) ?? []);
     if (f) return { famille: f, source: `icone_${sourceIcone}` };
   }
-  if (gardeFouInternes.estTailleMode(taille)) return { famille: "mode", source: "taille" };
   return { famille: null, source: null };
 }
 

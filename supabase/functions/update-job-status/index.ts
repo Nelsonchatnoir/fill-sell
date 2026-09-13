@@ -1106,6 +1106,43 @@ serve(async (req) => {
     // ⛔ eBay : « Connexion eBay requise » n'est écrit par l'extension que sur
     //    verdict CONFIRMÉ par la sonde (0.6.13+, 05/09) — le mur signin seul ne
     //    passe plus ici, la règle du 11/08 est respectée telle quelle.
+    //
+    // ── « BROUILLON LEBONCOIN » QUI EST UN MUR DE CONNEXION (2026-09-13) ─────
+    // leboncoin.js (jusqu'à 0.6.33 incluse) range dans la branche « brouillon »
+    // toute page de dépôt qui n'est ni vierge ni un brouillon — dont le mur
+    // de connexion de Leboncoin sur /deposer-une-annonce (URL conservée, pas
+    // d'input password : la garde de session ne le voit pas). Le relevé des
+    // boutons part dans last_diagnostic : [« Me connecter », « Créer un
+    // compte »] (ericfurina, 4 jobs, 3 tentatives brûlées chacun le 13/09) ou
+    // [« Se connecter », …] (choupette06, 08/09). Sur 30 jours, 16 jobs
+    // « brouillon serveur non retirable » et pas un brouillon parmi eux.
+    // Ici, SERVEUR, sans zip : quand le diagnostic montre le mur, le rapport
+    // DEVIENT « Connexion Leboncoin requise » et tombe dans le bloc d'attente
+    // de session ci-dessous — pending, aucune tentative consommée, re-sonde
+    // dans une heure. Le paquet suivant de l'extension le dit lui-même
+    // (leboncoin.js, entryState null → mur de connexion) ; ce bloc reste le
+    // filet du parc 0.6.33. Périmètre STRICT : message « brouillon Leboncoin
+    // non terminé » ET diagnostic avec un bouton de connexion — un vrai
+    // brouillon (titre restauré, boutons Quitter/Continuer) ne matche pas.
+    if (typeof body.error === "string" && /brouillon Leboncoin non terminé/i.test(body.error)
+        && body.platform_fields && typeof body.platform_fields === "object") {
+      const diagBrut = (body.platform_fields as Record<string, unknown>)["last_diagnostic"];
+      const diag = typeof diagBrut === "string" ? diagBrut : (diagBrut ? JSON.stringify(diagBrut) : "");
+      if (/brouillon serveur non retirable/i.test(diag) && /"(?:Me connecter|Se connecter|Connexion|Créer un compte)"/i.test(diag)) {
+        console.log(
+          `[update-job-status] userId=${user.id} job=${jobId} — « brouillon Leboncoin » rapporté sur un MUR DE CONNEXION ` +
+          `(${diag.slice(0, 160)}) → requalifié « Connexion Leboncoin requise » (attente de session, aucune tentative)`,
+        );
+        body.error =
+          "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome " +
+          "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.";
+        (body.platform_fields as Record<string, unknown>)["mur_connexion_lbc_requalifie"] = {
+          at: new Date().toISOString(),
+          diagnostic: diag.slice(0, 300),
+          pose_par: "update-job-status (« brouillon » = mur de connexion Leboncoin)",
+        };
+      }
+    }
     const SESSION_REQUISE_RE = /^(?:Connexion|Reconnexion)\s+\S+\s+requise/i;
     const PAGE_AUTH_SUPPRESSION_RE = /^Page inattendue pour une suppression \S+ : (\S+)/i;
     const estUrlDeConnexion = (u: string): boolean => {
@@ -1170,6 +1207,51 @@ serve(async (req) => {
           console.error("[update-job-status] attente de session:", (e as Error)?.message ?? e);
           pfAttenteSession = null;
         }
+      }
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    // PRÉ-VOL « CATÉGORIE ABSENTE » SUR UN CHEMIN ÉCARTÉ EXPRÈS PAR L'APP
+    // (2026-09-13 — Funko Pop meminiandmove ×6, polo ericfurina)
+    // ═════════════════════════════════════════════════════════════
+    // Le pré-vol de l'extension (precheckJob, jusqu'à 0.6.33 incluse) refuse
+    // un job sans chemin de catégorie avec l'un de deux messages techniques :
+    // « platform_fields.X absent — article non mappé … compléter le mapping
+    // côté src/utils/ » ou « Catégorie X non résolue pour cet article de mode
+    // (genre = "Homme") ». Or quand l'app a ÉCARTÉ le chemin elle-même après
+    // vérification (categorie_a_choisir : objet + rayon écarté), ni le genre
+    // ni le mapping ne sont en cause — et l'utilisatrice, lisant « régénérer »,
+    // relance six fois le même job en treize minutes. Ici, SERVEUR, sans zip :
+    // le statut reste 'failed' (rien à retenter automatiquement : le rayon
+    // n'existe pas ou a été refusé), mais le message dit l'objet, le rayon
+    // écarté et le geste possible — le même texte que beebs.js aurait rendu
+    // si le pré-vol ne l'avait pas court-circuité. Le paquet suivant de
+    // l'extension le dit lui-même (precheckJob) ; ce bloc reste le filet.
+    if (statutEffectif === "failed" && typeof body.error === "string"
+        && /^(?:platform_fields\.\w+ absent — article non mappé|Catégorie \w+ non résolue pour cet article de mode)/i.test(body.error)) {
+      try {
+        const { data: jrow } = await userClient
+          .from("cross_post_jobs").select("platform, platform_fields").eq("id", jobId).maybeSingle();
+        const pfBase = ((body.platform_fields && typeof body.platform_fields === "object")
+          ? body.platform_fields : (jrow?.platform_fields ?? {})) as Record<string, unknown>;
+        const aChoisir = (pfBase["categorie_a_choisir"] && typeof pfBase["categorie_a_choisir"] === "object")
+          ? pfBase["categorie_a_choisir"] as Record<string, unknown> : null;
+        const objet = typeof aChoisir?.objet === "string" ? aChoisir.objet.trim() : "";
+        if (jrow?.platform && objet) {
+          const ecarte = Array.isArray(aChoisir?.chemin_ecarte) ? (aChoisir!.chemin_ecarte as unknown[]).map(String).join(" > ") : "";
+          const label = ({ vinted: "Vinted", leboncoin: "Leboncoin", ebay: "eBay", beebs: "Beebs" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+          const site = ({ vinted: "vinted.fr", leboncoin: "leboncoin.fr", ebay: "ebay.fr", beebs: "beebs.app" } as Record<string, string>)[jrow.platform] ?? jrow.platform;
+          messageEffectif =
+            `${label} n'a pas de rayon reconnu pour « ${objet} »` +
+            (ecarte ? ` (le rayon « ${ecarte} » a été écarté après vérification : il ne correspond pas à l'objet)` : "") +
+            `. Cet article n'est pas publiable sur ${label} tel quel — publie-le à la main sur ${site} ` +
+            `si tu y tiens, ou retire ${label} de cet envoi.`;
+          raisonRequalif = `pré-vol « catégorie absente » sur un chemin écarté exprès par l'app (categorie_a_choisir « ${objet} »${ecarte ? `, rayon écarté « ${ecarte} »` : ""})`;
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — ${raisonRequalif} → message humain, statut inchangé (failed)`);
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] requalification pré-vol categorie_a_choisir:", (e as Error)?.message ?? e);
       }
     }
 

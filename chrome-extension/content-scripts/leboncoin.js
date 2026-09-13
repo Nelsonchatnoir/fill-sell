@@ -838,6 +838,53 @@ async function fillListingForm(job) {
     await sleep(800);
     if (draftMarker()) entryState = "draft";
   }
+  // ── NI vierge NI brouillon = une page qu'on ne connaît pas, JAMAIS un
+  // brouillon (2026-09-13) ──────────────────────────────────────────────────
+  // Avant : tout ce qui n'était pas « step1 » tombait dans la branche
+  // brouillon — y compris une page SANS AUCUN marqueur de wizard. Mesuré sur
+  // 30 jours (last_diagnostic « brouillon serveur non retirable ») : 16 jobs,
+  // 5 comptes, et pas UN SEUL brouillon — 11 fois le bandeau Didomi
+  // (« Refuser/Accepter », corrigé le 08/09 par fsConsentRefuser) et 5 fois
+  // le MUR DE CONNEXION de Leboncoin sur /deposer-une-annonce : boutons
+  // visibles [« Me connecter », « Créer un compte »] (ericfurina, 4 jobs le
+  // 13/09, inscrit le jour même, 3 tentatives brûlées chacun) ou
+  // [« Se connecter », Immobilier, Véhicules…] (choupette06, 08/09). Ce mur
+  // garde l'URL /deposer-une-annonce et n'a PAS d'input password (la saisie
+  // vit sur auth.leboncoin.fr) : la garde de session plus haut ne le voit pas.
+  // Le mur = « Connexion Leboncoin requise » (le background note la session
+  // morte, le job ATTEND sans consommer de tentative) ; toute autre page
+  // inconnue = needsUser borné, avec les boutons relevés, sans jamais
+  // prononcer « brouillon » (StockTab afficherait « Ouvrir le brouillon »).
+  if (entryState === null) {
+    const boutons = [...document.querySelectorAll("button, a[role='button']")]
+      .filter((b) => b.offsetParent !== null)
+      .map((b) => (b.textContent ?? "").replace(/\s+/g, " ").trim())
+      .filter(Boolean).slice(0, 15);
+    const murDeConnexion = boutons.some((b) => /^(me connecter|se connecter|connexion|créer un compte)$/i.test(b));
+    if (murDeConnexion) {
+      t(`mur de connexion Leboncoin sur ${location.pathname} — boutons visibles: ${JSON.stringify(boutons)}`);
+      return {
+        success: false,
+        needsUser: true,
+        error:
+          "Connexion Leboncoin requise : se connecter sur leboncoin.fr dans Chrome " +
+          "(l'onglet de travail est resté ouvert), le job repartira au prochain passage.",
+        diagnostic: `mur de connexion sur /deposer-une-annonce — boutons visibles: ${JSON.stringify(boutons)}`,
+        trace,
+      };
+    }
+    t(`page de dépôt non reconnue (ni #subject ni marqueur de brouillon) — boutons visibles: ${JSON.stringify(boutons)}`);
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "La page de dépôt Leboncoin ne s'est pas affichée comme attendu (ni formulaire vierge, " +
+        "ni dépôt en cours). Ouvre leboncoin.fr/deposer-une-annonce dans Chrome pour voir ce " +
+        "qu'elle montre, puis relance la publication.",
+      diagnostic: `page de dépôt non reconnue — boutons visibles: ${JSON.stringify(boutons)}`,
+      trace,
+    };
+  }
   let repriseBrouillon = false;
   if (entryState !== "step1") {
     // ── Le brouillon correspond-il au job en cours ? (2026-07-30) ───────────
