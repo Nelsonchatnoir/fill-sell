@@ -61,6 +61,12 @@ verify_jwt = false
 [functions.check-listing-status]
 verify_jwt = false
 
+# Désinscription publique : appelée depuis la page /desinscription par
+# quelqu'un qui n'est PAS connecté — c'est tout l'intérêt. L'authentification
+# est la détention du jeton, vérifiée dans le code.
+[functions.email-desinscription]
+verify_jwt = false
+
 # Envois d'e-mails déclenchés côté serveur / outils ponctuels.
 [functions.send-relance]
 verify_jwt = false

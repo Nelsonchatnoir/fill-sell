@@ -547,8 +547,23 @@ export default function Legal() {
           </ul>
           <p className="legal-p" style={{ marginTop: 10 }}>
             {en
-              ? <>FillSell also uses <span className="legal-strong">Google Tag Manager</span> for <span className="legal-strong">audience measurement</span>: understanding how the site is used and which pages are viewed. <span className="legal-strong">No data is used for advertising purposes</span>, and <span className="legal-strong">no data is sold or transferred to any third party</span>. No explicit consent is required for strictly necessary cookies, in accordance with the ePrivacy Directive.</>
-              : <>FillSell utilise par ailleurs <span className="legal-strong">Google Tag Manager</span> à des fins de <span className="legal-strong">mesure d'audience</span> : comprendre comment le site est utilisé et quelles pages sont consultées. <span className="legal-strong">Aucune donnée n'est utilisée à des fins publicitaires</span>, et <span className="legal-strong">aucune donnée n'est vendue ni cédée à un tiers</span>. Aucun consentement explicite n'est requis pour les cookies strictement nécessaires, conformément à la directive ePrivacy.</>}
+              ? <>FillSell also uses <span className="legal-strong">Google Tag Manager</span> for <span className="legal-strong">audience measurement</span>: understanding how the site is used and which pages are viewed. No explicit consent is required for strictly necessary cookies, in accordance with the ePrivacy Directive.</>
+              : <>FillSell utilise par ailleurs <span className="legal-strong">Google Tag Manager</span> à des fins de <span className="legal-strong">mesure d'audience</span> : comprendre comment le site est utilisé et quelles pages sont consultées. Aucun consentement explicite n'est requis pour les cookies strictement nécessaires, conformément à la directive ePrivacy.</>}
+          </p>
+          {/* ⚠️ 13/09/2026 — ce paragraphe REMPLACE la phrase « Aucune donnée
+              n'est utilisée à des fins publicitaires » : elle est devenue
+              fausse avec l'installation du pixel Meta. Si le pixel est un jour
+              retiré, c'est ce bloc qu'il faut retirer, et l'ancienne phrase
+              qu'il faut remettre. */}
+          <p className="legal-p" style={{ marginTop: 10 }}>
+            {en
+              ? <>FillSell also uses the <span className="legal-strong">Meta pixel</span> to measure the effectiveness of its advertising campaigns. It is an <span className="legal-strong">advertising tracker</span>, loaded <span className="legal-strong">only after your explicit consent</span> given via the banner shown on your first visit — refusing changes nothing about how the site works. No personal data (email, account identifier) is sent to Meta. You can change your mind at any time by clearing your browser's site data.</>
+              : <>FillSell utilise également le <span className="legal-strong">pixel Meta</span> pour mesurer l'efficacité de ses campagnes publicitaires. Il s'agit d'un <span className="legal-strong">traceur publicitaire</span>, chargé <span className="legal-strong">uniquement après ton consentement explicite</span>, donné via le bandeau affiché à la première visite — refuser ne change rien au fonctionnement du site. <span className="legal-strong">Aucune donnée personnelle</span> (email, identifiant de compte) n'est transmise à Meta. Tu peux revenir sur ton choix à tout moment en effaçant les données de site de ton navigateur.</>}
+          </p>
+          <p className="legal-p" style={{ marginTop: 10 }}>
+            {en
+              ? <>Finally, FillSell records the <span className="legal-strong">acquisition source</span> of each account at sign-up (campaign parameters in the URL, or the referring domain). This is <span className="legal-strong">internal first-party measurement</span>: the data is stored on your own profile in our database and <span className="legal-strong">is never sold or transferred to any third party</span>.</>
+              : <>Enfin, FillSell enregistre la <span className="legal-strong">source d'acquisition</span> de chaque compte au moment de l'inscription (paramètres de campagne présents dans l'URL, ou domaine du site référent). Il s'agit d'une <span className="legal-strong">mesure interne first-party</span> : la donnée est stockée sur ton propre profil dans notre base et <span className="legal-strong">n'est ni vendue ni cédée à un tiers</span>.</>}
           </p>
         </Section>
 

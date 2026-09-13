@@ -3,6 +3,8 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "../lib/supabase";
 import { rememberPostLoginTarget } from "../lib/postLoginRedirect";
+import { capterSource } from "../utils/acquisition";
+import BandeauConsentement from "../components/BandeauConsentement";
 import LandingPage from "../pages/LandingPage";
 import Success from "../pages/Success";
 import Cancel from "../pages/Cancel";
@@ -22,6 +24,7 @@ const BlogList = lazy(() => import("../pages/BlogList"));
 const BlogPost = lazy(() => import("../pages/BlogPost"));
 const ExtensionPage = lazy(() => import("../pages/ExtensionPage"));
 const EbayRetour = lazy(() => import("../pages/EbayRetour"));
+const Desinscription = lazy(() => import("../pages/Desinscription"));
 
 // Bloque /login et / si déjà connecté
 function RedirectIfLoggedIn({ children }) {
@@ -64,8 +67,18 @@ export default function AppRouter() {
   // garde la landing sur « / » : c'est la page publique de fillsell.app
   // (campagnes TikTok, badges stores, SEO) — ne pas la retirer du routing web.
   const isNative = Capacitor.isNativePlatform();
+
+  // Source d'acquisition : relevée le plus tôt possible, avant toute
+  // navigation interne qui effacerait les paramètres d'URL. Idempotent — seul
+  // le PREMIER contact est retenu, les visites suivantes ne l'écrasent pas.
+  // Ne lève jamais : une capture impossible n'empêche rien.
+  useEffect(() => { capterSource(); }, []);
+
   return (
     <BrowserRouter>
+      {/* Bandeau de consentement publicitaire — web uniquement. Tant qu'il n'a
+          pas de réponse, aucun traceur publicitaire ne se charge. */}
+      {!isNative && <BandeauConsentement />}
       <Suspense fallback={null}>
       <Routes>
         <Route path="/" element={isNative
@@ -76,6 +89,9 @@ export default function AppRouter() {
         <Route path="/success" element={<Success />} />
         <Route path="/cancel" element={<Cancel />} />
         <Route path="/legal" element={<Legal />} />
+        {/* Désinscription : PUBLIQUE, hors RequireAuth. Se retirer de nos
+            emails ne doit jamais exiger de se connecter. */}
+        <Route path="/desinscription" element={<Desinscription />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         {/* Atterrissage OAuth web (Apple/Google) — pas de garde : la page gère
             elle-même session présente / code à échanger / erreur provider. */}
