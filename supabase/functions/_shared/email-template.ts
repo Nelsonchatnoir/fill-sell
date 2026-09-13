@@ -522,6 +522,41 @@ export function renderEmail(opts: OptionsEmail): string {
     .fs-bar, .fs-live { animation:none !important; }
   }
 
+  /* ── WORDMARK : lisible en clair ET en sombre ────────────────────────────
+     Bug du 13/09/2026 (iPhone, Gmail en thème sombre) : le corps du mail
+     basculait en sombre mais le fond de l'en-tête restait CLAIR, pendant que
+     le client éclaircissait la couleur du texte → gris clair sur fond clair,
+     marque illisible.
+     CAUSE : l'en-tête portait un dégradé BLANC en background-image
+     (rgba(255,255,255,…)). Une image de fond n'est pas inversée par les
+     clients sombres : elle épinglait le fond en clair alors que le texte,
+     lui, était éclairci. Ce dégradé — invisible en clair, puisque du blanc
+     translucide sur #FCFBF9 — a été retiré : le fond suit désormais le même
+     sort que le reste du mail.
+     COULEURS lues dans l'app, pas inventées :
+       #2F9E90  --teal de l'app, et theme-color du site — le wordmark
+       #10201B  encre de l'app — fond d'en-tête en mode sombre
+
+     UNE SEULE COULEUR DE TEXTE, DANS LES DEUX MODES. C'est délibéré.
+     Gmail n'applique PAS prefers-color-scheme : il assombrit le fond
+     lui-même et conserve la couleur inline. Une couleur de texte qui
+     changerait avec la media query pourrait donc se retrouver appliquée
+     sur le MAUVAIS fond dès qu'un client suit une règle sans l'autre.
+     #2F9E90 est un teal moyen : il tient sur les deux fonds, donc aucun
+     dépareillage n'est possible, quel que soit le client. Mesuré :
+       #2F9E90 sur #FCFBF9 (clair)  = 3,17:1 — seuil « texte large » 3:1
+                                              atteint (19 px, graisse 700)
+       #2F9E90 sur #10201B (sombre) = 5,15:1
+     Le --teal-deep #1B6E62 donnait 5,88:1 en clair mais 2,77:1 sur fond
+     sombre : il rejouait le bug chez Gmail, précisément le client où il a
+     été constaté. La media query ne touche donc QUE le fond. */
+  @media (prefers-color-scheme: dark) {
+    .fs-entete { background-color:#10201B !important; }
+  }
+  /* Outlook.com marque le mode sombre par cet attribut plutôt que par la
+     media query. */
+  [data-ogsc] .fs-entete { background-color:#10201B !important; }
+
   @media only screen and (max-width:620px) {
     .fs-card { width:100% !important; }
     .fs-pad { padding-left:22px !important; padding-right:22px !important; }
@@ -544,7 +579,7 @@ ${blocLigneService}
 
         <!-- 1. EN-TÊTE DE MARQUE — topbar de l'app (dégradé vert → teal) -->
         <tr>
-          <td class="fs-pad" align="left" bgcolor="#FCFBF9" style="padding:18px 34px 17px 34px; background-color:#FCFBF9; background-image:linear-gradient(180deg,rgba(255,255,255,0.92) 0%,rgba(255,255,255,0.58) 100%); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); border-radius:18px 18px 0 0;">
+          <td class="fs-pad fs-entete" align="left" bgcolor="#FCFBF9" style="padding:18px 34px 17px 34px; background-color:#FCFBF9; border-radius:18px 18px 0 0;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="width:100%;">
               <tr>
                 <td align="left" valign="middle" style="padding:0;">
@@ -552,7 +587,7 @@ ${blocLigneService}
                     <tr>
                       ${celluleIcone}
                       <td valign="middle" style="padding:0;">
-                        <div style="font-family:${POLICE_MARQUE}; font-size:19px; font-style:italic; font-weight:700; letter-spacing:-0.02em; color:#4A5A52; line-height:24px; mso-line-height-rule:exactly;">FillSell</div>
+                        <div class="fs-wordmark" style="font-family:${POLICE_MARQUE}; font-size:19px; font-style:italic; font-weight:700; letter-spacing:-0.02em; color:#2F9E90; line-height:24px; mso-line-height-rule:exactly;">FillSell</div>
                       </td>
                     </tr>
                   </table>
