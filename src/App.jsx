@@ -5144,6 +5144,12 @@ export default function App({ loginOnly = false }){
     if(!user?.id)return;
     const m=lireMarqueurLens();
     if(!m||!m.scan_id||m.etape==='rendu')return;
+    const age=Date.now()-(m.debut??0);
+    // Passé 6 h, on ne reprend plus rien : le sweep de 04:15 a requalifié la
+    // ligne, les photos lens-temp peuvent avoir disparu, et faire patienter
+    // quelqu'un qui rouvre l'app le lendemain pour un scan oublié n'a aucun
+    // sens. On classe le marqueur et on rend la main immédiatement.
+    if(age>6*3600*1000){ ecrireMarqueurLens({...m,etape:'rendu'}); return; }
     let vivant=true;
     // Le marqueur n'est classé 'rendu' que quand il n'y a plus rien à
     // reprendre. Sur une montée inachevée on le GARDE : l'utilisateur a ses
@@ -5194,7 +5200,13 @@ export default function App({ loginOnly = false }){
               const photos=duServeur.length>photosSauvees.length?duServeur:photosSauvees;
               if(photos.length)setLensPhotos(prev=>prev.length?prev:photos.map(u=>({preview:u,mime:'image/jpeg'})));
               const attendues=m.nb_prevu??photos.length;
-              if(photos.length>0&&photos.length>=attendues){
+              // Relance AUTOMATIQUE seulement si le scan est frais (30 min, la
+              // même borne que le rattrapage du sweep). Au-delà, on ne relance
+              // pas tout seul : rouvrir l'app le soir et déclencher — donc
+              // facturer — un scan lancé le matin serait une surprise, pas un
+              // service. Les photos reviennent, le geste reste à l'utilisateur.
+              const frais=age<30*60*1000;
+              if(frais&&photos.length>0&&photos.length>=attendues){
                 // Toutes les photos étaient arrivées : il ne manquait que
                 // l'envoi. On le fait, avec le MÊME scan_id — donc sans
                 // seconde unité. L'utilisateur n'a rien à retoucher.
@@ -5214,13 +5226,18 @@ export default function App({ loginOnly = false }){
               // seul geste suffit pour relancer, ou pour en rajouter une.
               if(!vivant)return;
               garderMarqueur=true;
-              setInfoRepriseLens(photos.length
-                ?(lang==='en'
-                  ?`Your scan was interrupted while uploading: ${photos.length} of ${attendues} photos were saved. Nothing has been charged. Relaunch it, or add the missing one first.`
-                  :`Ton scan a été coupé pendant l'envoi des photos : ${photos.length} sur ${attendues} ont été sauvegardées. Rien ne t'a été décompté. Relance-le, ou rajoute d'abord celle qui manque.`)
-                :(lang==='en'
-                  ?'Your scan was interrupted before any photo was uploaded. Nothing has been charged — take the photos again.'
-                  :"Ton scan a été coupé avant qu'aucune photo ne parte. Rien ne t'a été décompté — reprends les photos."));
+              setInfoRepriseLens(
+                photos.length===0
+                  ?(lang==='en'
+                    ?'Your scan was interrupted before any photo was uploaded. Nothing has been charged — take the photos again.'
+                    :"Ton scan a été coupé avant qu'aucune photo ne parte. Rien ne t'a été décompté — reprends les photos.")
+                :photos.length>=attendues
+                  ?(lang==='en'
+                    ?'Your interrupted scan is back, with all its photos. Nothing has been charged — relaunch it whenever you want.'
+                    :"Ton scan interrompu est retrouvé, avec toutes ses photos. Rien ne t'a été décompté — relance-le quand tu veux.")
+                  :(lang==='en'
+                    ?`Your scan was interrupted while uploading: ${photos.length} of ${attendues} photos were saved. Nothing has been charged. Relaunch it, or add the missing one first.`
+                    :`Ton scan a été coupé pendant l'envoi des photos : ${photos.length} sur ${attendues} ont été sauvegardées. Rien ne t'a été décompté. Relance-le, ou rajoute d'abord celle qui manque.`));
               return;
             }
           }else if(!vueUneFois&&Date.now()-(m.debut??0)>90000){
