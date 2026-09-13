@@ -1324,7 +1324,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ⚠️ EXTENSION_MIN_BUILD ne se deduit TOUJOURS PAS d'ici : apres acceptation de
 // la 0.6.25, il vaut le BUILD_ID DU ZIP — 2026-09-10T09:41:28Z — jamais cette
 // constante (cf. bandeau du 09/08, incident 0.5.6).
-export const EXTENSION_LAST_COMMIT = '2026-09-13T10:16:02Z'; // recale 31ac8b6 (manifest 0.6.33 : attente CTA /options Leboncoin a59e1b9 + lecteur d'erreurs Beebs 8caaa54) - MIN_BUILD inchange (0.6.32 reste la derniere publiee)
+export const EXTENSION_LAST_COMMIT = '2026-09-13T14:28:32Z'; // recale 59401b4 (manifest 0.6.34 : mur de connexion Leboncoin + pre-vol Beebs humain, code dans d3dadbf) - MIN_BUILD inchange (0.6.32 reste le seuil servi ; 0.6.33 inscrite dans PUBLISHED_BUILD_IDS)
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
@@ -1410,6 +1410,7 @@ export const PUBLISHED_BUILD_IDS = {
   '2026-08-09T14:16:20Z': '0.5.6',  // relu dans le zip + endpoint CRX du CWS
   '2026-08-26T19:48:07Z': '0.6.9',  // publié par le CWS le 27/08 vers midi
   '2026-09-12T08:29:11Z': '0.6.32', // publié par le CWS le 12/09
+  '2026-09-13T10:16:27Z': '0.6.33', // publié par le CWS le 13/09 (15 comptes servis le jour même, relu en base)
 };
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
