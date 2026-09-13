@@ -710,25 +710,57 @@ serve(async (req) => {
         try {
           const ids = [...new Set(candidatsDisparus.map((j) => j.inventaire_id))];
           const { data: arts } = await userClient
-            .from("inventaire").select("id, disparu_le").in("id", ids);
+            .from("inventaire").select("id, disparu_le, statut, quantite").in("id", ids);
           const disparus = new Set(
             ((arts ?? []) as { id: unknown; disparu_le: unknown }[])
               .filter((a) => a.disparu_le != null).map((a) => String(a.id)),
           );
-          if (disparus.size) {
+          // ── ARTICLE MARQUÉ VENDU DANS FILLSELL = REPUBLICATION AUTOMATIQUE
+          // ANNULÉE (2026-09-13, vérification de bout en bout du module planifié)
+          // Le sweep serveur ne sélectionne que des articles en stock ; mais
+          // entre la création du job (dans le créneau) et son exécution — au
+          // pire le créneau suivant, si l'extension n'a pas pris le job à
+          // temps — la vendeuse peut marquer l'article vendu dans l'app (vente
+          // hors Vinted : Leboncoin, Beebs…). Republier alors, c'est supprimer
+          // et recréer l'annonce Vinted d'un article qui n'est plus à vendre.
+          // ⛔ PÉRIMÈTRE : republish_source = 'auto' SEUL (planifié ou moteur
+          //    historique) — le chemin MANUEL n'est pas touché : l'app ne
+          //    propose pas « Republier » sur un article vendu, et un job
+          //    manuel en file reste la décision de la vendeuse.
+          // Même frontière d'étape que disparu_le (rien capturé, rien supprimé).
+          const vendus = new Set(
+            ((arts ?? []) as { id: unknown; statut: unknown; quantite: unknown }[])
+              .filter((a) => a.statut === "vendu" || (typeof a.quantite === "number" && a.quantite <= 0))
+              .map((a) => String(a.id)),
+          );
+          const estAuto = (j: { platform_fields: unknown }) =>
+            String(((j.platform_fields as Record<string, unknown> | null) ?? {})["republish_source"] ?? "") === "auto";
+          if (disparus.size || vendus.size) {
             const aRetirer = new Set<string>();
             for (const j of candidatsDisparus) {
-              if (!disparus.has(String(j.inventaire_id))) continue;
+              const idArt = String(j.inventaire_id);
+              const disparu = disparus.has(idArt);
+              const venduAuto = !disparu && vendus.has(idArt) && estAuto(j);
+              if (!disparu && !venduAuto) continue;
               const pf = { ...((j.platform_fields as Record<string, unknown> | null) ?? {}) };
               delete pf["next_action_after"];
-              pf["annonce_disparue"] = {
-                at: new Date().toISOString(),
-                pose_par: "get-pending-jobs (article disparu_le avant exécution — capture inutile, rien à supprimer)",
-              };
+              if (disparu) {
+                pf["annonce_disparue"] = {
+                  at: new Date().toISOString(),
+                  pose_par: "get-pending-jobs (article disparu_le avant exécution — capture inutile, rien à supprimer)",
+                };
+              } else {
+                pf["article_vendu"] = {
+                  at: new Date().toISOString(),
+                  pose_par: "get-pending-jobs (article marqué vendu dans FillSell avant l'exécution d'une republication automatique — rien capturé, rien supprimé)",
+                };
+              }
               const { data: maj } = await userClient.from("cross_post_jobs")
                 .update({
                   status: "cancelled",
-                  error: "Cette annonce n'est plus en ligne sur Vinted — republication annulée avant tout geste, rien n'a été supprimé.",
+                  error: disparu
+                    ? "Cette annonce n'est plus en ligne sur Vinted — republication annulée avant tout geste, rien n'a été supprimé."
+                    : "Cet article est marqué vendu dans FillSell — republication automatique annulée avant tout geste, rien n'a été supprimé.",
                   platform_fields: pf,
                 })
                 .eq("id", j.id).eq("status", "pending").select("id");

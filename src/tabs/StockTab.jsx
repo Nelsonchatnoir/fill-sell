@@ -4402,7 +4402,19 @@ const StockTab = memo(function StockTab({
   // l'état RENDU par le serveur — le nombre affiché est le sien, pas le nôtre.
   const planifieeActiver = async () => {
     track('republication_planifiee', { action: 'activer', depuis: 'bloc_stock' });
-    const r = await planifiee.regler({ actif: true });
+    // Un compte qui vient de l'ancien moteur garde SES réglages (ancienneté,
+    // plafond du jour) : les défauts serveur (30 j, plafond du palier)
+    // changeraient sa cadence sans qu'il ait rien demandé — Joséphine (20 j /
+    // 20 par jour) verrait « 0 vont partir » à 30 j. Le serveur borne
+    // (7..365, ≤ palier) ; le réglage reste modifiable dans l'écran.
+    const legacy = planifiee.etat?.legacy;
+    const repris = {};
+    if (legacy && typeof legacy === 'object') {
+      const age = Number(legacy.age_jours); const plafond = Number(legacy.plafond_jour);
+      if (Number.isFinite(age) && age > 0) repris.age_jours = age;
+      if (Number.isFinite(plafond) && plafond > 0) repris.plafond_jour = plafond;
+    }
+    const r = await planifiee.regler({ actif: true, ...repris });
     if (r?.ok) setPlanifieeEcran('reglages');
     else if (r?.reason === 'auto_reserve_pro') planifieeActiverNonPro();
     else setPlanifieeEcran('reglages');

@@ -535,20 +535,24 @@ export function RepublicationPlanifieeReglages({ lang, etat, interrupteur, exten
   const plafondPalier = Number(etat?.plafond_palier) || 0;
   const illimite = plafondPalier >= PLAFOND_ILLIMITE;
   const palierNom = etat?.palier === 'business' ? 'Business' : 'Pro';
+  // Réglages de l'ancien moteur (republish_auto) : repris comme point de départ
+  // quand le module n'a pas encore de réglage — même cadence qu'avant, pas les
+  // défauts serveur (30 j / plafond du palier). Le serveur borne.
+  const legacy = etat?.legacy && typeof etat.legacy === 'object' ? etat.legacy : null;
 
   // Brouillon local (réponse immédiate au doigt), ré-aligné sur l'état serveur
   // à chaque retour ; les écritures sont regroupées 500 ms.
   const [brouillon, setBrouillon] = useState(() => ({
     creneau: s.creneau, de: s.de, a: s.a, jours: s.jours,
-    plafond_jour: Number(r?.plafond_jour) || plafondPalier || 1,
-    age_jours: Number(r?.age_jours) || 30, ordre: r?.ordre ?? 'anciennes',
+    plafond_jour: Number(r?.plafond_jour) || Number(legacy?.plafond_jour) || plafondPalier || 1,
+    age_jours: Number(r?.age_jours) || Number(legacy?.age_jours) || 30, ordre: r?.ordre ?? 'anciennes',
     plafond_boutique: r?.plafond_boutique ?? {},
   }));
   useEffect(() => {
     setBrouillon({
       creneau: s.creneau, de: s.de, a: s.a, jours: s.jours,
-      plafond_jour: Number(r?.plafond_jour) || plafondPalier || 1,
-      age_jours: Number(r?.age_jours) || 30, ordre: r?.ordre ?? 'anciennes',
+      plafond_jour: Number(r?.plafond_jour) || Number(legacy?.plafond_jour) || plafondPalier || 1,
+      age_jours: Number(r?.age_jours) || Number(legacy?.age_jours) || 30, ordre: r?.ordre ?? 'anciennes',
       plafond_boutique: r?.plafond_boutique ?? {},
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
