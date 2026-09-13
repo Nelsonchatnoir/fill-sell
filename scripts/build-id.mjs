@@ -1332,7 +1332,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // lecteur d'erreurs debarrasse de « Retour » et de grecaptcha-error, et resume
 // de la sonde reseau en last_diagnostic sur un depot non confirme.
 // MIN_BUILD INCHANGE : la 0.6.34 n'est pas encore acceptee.
-export const EXTENSION_LAST_COMMIT = '2026-09-13T16:26:14Z'; // recale 78a891d (0.6.34 enrichie : purge, garde de session anonyme, lecteur d'erreurs) - MIN_BUILD inchange (0.6.32 reste le seuil servi)
+export const EXTENSION_LAST_COMMIT = '2026-09-13T20:02:49Z'; // recale 3791f9f (sync : page vide menteuse, relecture bornee, statut incomplete) - 0.6.34 REPACKAGEE, jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
