@@ -1143,6 +1143,136 @@ serve(async (req) => {
         };
       }
     }
+    // ── « DÉPÔT BEEBS NON CONFIRMÉ » SUR UNE SESSION BEEBS ABSENTE (2026-09-13) ──
+    // Mesuré le 13/09 (ericfurina, 2 jobs, 0.6.33) : Beebs connecte tout
+    // visiteur en ANONYME (Firebase signInAnonymously) et pose le cookie
+    // access_token — la garde serveur de /fr/listing s'ouvre et le formulaire
+    // se rend même pour quelqu'un SANS compte. L'extension le remplit, clique,
+    // et addProductAction refuse la session EN SILENCE (le throw part dans un
+    // handler async, le texte i18n n'est jamais rendu). La même cause donne
+    // donc deux verdicts selon ce que Beebs renvoie : page de connexion →
+    // « Connexion Beebs requise » (pending, juste) ; formulaire servi en
+    // anonyme → « Dépôt Beebs non confirmé » (failed, faux). Ici, SERVEUR, sans
+    // zip, sur le modèle du mur Leboncoin ci-dessus : quand les TROIS
+    // conditions tiennent — plateforme beebs, ce motif précis, session Beebs
+    // CONNUE absente — le rapport DEVIENT « Connexion Beebs requise » et tombe
+    // dans le bloc d'attente de session (pending, needsUserAttempts remis à sa
+    // valeur en base, re-sonde dans une heure) ; le message écrit est celui
+    // que l'extension sert déjà à ce cas (BEEBS_ATTENTE_MESSAGE).
+    // Session CONNUE absente = extension_sessions.beebs === false, OU une
+    // redirection de connexion Beebs observée sur ce compte dans l'heure (sonde
+    // http = login_redirect_observee datée, ou attente_session.derniere d'un
+    // autre job Beebs du compte). true ou INCONNUE → on ne touche à rien : le
+    // doute ne requalifie pas.
+    // Garde-fous bloquants : jamais un job qui porte une listing_url (une
+    // annonce créée ne se requalifie pas) ; jamais une autre plateforme ;
+    // jamais un autre motif d'échec Beebs (catégorie, description, marque,
+    // timeout, pré-vol restent failed tels quels) ; anti-boucle : au plus
+    // MAX_BEEBS_NON_CONFIRME_REQUALIFS requalifications par job (marqueur
+    // depot_non_confirme_requalifie.fois), au-delà le verdict de l'extension
+    // reste failed tel quel. Le chemin de publication normal n'est pas touché.
+    const BEEBS_NON_CONFIRME_RE = /^Dépôt Beebs non confirmé/i;
+    const BEEBS_ATTENTE_MESSAGE =
+      "En attente de ta connexion à Beebs dans Chrome : la publication repartira toute seule " +
+      "dès que tu seras reconnecté(e) (vérification toutes les heures). Aucune tentative consommée.";
+    const MAX_BEEBS_NON_CONFIRME_REQUALIFS = 3;
+    const UNE_HEURE_MS = 60 * 60_000;
+    let beebsNonConfirmeRequalifie = false;
+    let beebsErreurOriginale: string | null = null;
+    if (statutEffectif === "failed" && typeof body.error === "string" && BEEBS_NON_CONFIRME_RE.test(body.error)
+        && !(typeof body.listing_url === "string" && body.listing_url)) {
+      try {
+        const { data: jrowB } = await userClient
+          .from("cross_post_jobs")
+          .select("platform, action, listing_url, platform_fields")
+          .eq("id", jobId)
+          .maybeSingle();
+        if (jrowB?.platform === "beebs" && !jrowB.listing_url) {
+          const pfBaseB = (jrowB.platform_fields ?? {}) as Record<string, unknown>;
+          const marqueurPrec = (pfBaseB.depot_non_confirme_requalifie && typeof pfBaseB.depot_non_confirme_requalifie === "object")
+            ? pfBaseB.depot_non_confirme_requalifie as Record<string, unknown> : null;
+          const fois = Number(marqueurPrec?.fois ?? 0) || 0;
+          const recent = (iso: unknown): boolean =>
+            typeof iso === "string" && Number.isFinite(Date.parse(iso)) && Date.now() - Date.parse(iso) <= UNE_HEURE_MS;
+          const { data: prof } = await userClient
+            .from("profiles")
+            .select("extension_sessions")
+            .eq("id", user.id)
+            .maybeSingle();
+          const sessions = (prof?.extension_sessions && typeof prof.extension_sessions === "object")
+            ? prof.extension_sessions as Record<string, unknown> : null;
+          const etatBeebs = sessions?.beebs;
+          const httpBeebs = (sessions?.http && typeof sessions.http === "object")
+            ? (sessions.http as Record<string, unknown>).beebs : null;
+          const parPf = (sessions?.checked_at_par_plateforme && typeof sessions.checked_at_par_plateforme === "object")
+            ? sessions.checked_at_par_plateforme as Record<string, unknown> : null;
+          const vuLe = parPf?.beebs ?? sessions?.checked_at ?? null;
+          let preuve: string | null = null;
+          if (etatBeebs === true) {
+            preuve = null;
+          } else if (etatBeebs === false) {
+            preuve = `extension_sessions.beebs = false (relevé ${typeof vuLe === "string" ? vuLe : "non daté"})`;
+          } else if (httpBeebs === "login_redirect_observee" && recent(vuLe)) {
+            preuve = `redirection de connexion Beebs observée par la sonde le ${vuLe}`;
+          } else {
+            // Un autre job Beebs du compte vient d'observer la page de connexion
+            // (attente_session.derniere dans l'heure) : preuve positive aussi.
+            const depuis = new Date(Date.now() - UNE_HEURE_MS).toISOString();
+            const { data: freres } = await userClient
+              .from("cross_post_jobs")
+              .select("id, derniere:platform_fields->attente_session->>derniere")
+              .eq("user_id", user.id)
+              .eq("platform", "beebs")
+              .neq("id", jobId)
+              .gt("platform_fields->attente_session->>derniere", depuis)
+              .limit(1);
+            const frere = Array.isArray(freres) && freres.length ? freres[0] as Record<string, unknown> : null;
+            if (frere) preuve = `page de connexion Beebs observée par le job ${String(frere.id).slice(0, 8)} le ${String(frere.derniere ?? "")}`;
+          }
+          if (!preuve) {
+            console.log(
+              `[update-job-status] userId=${user.id} job=${jobId} — « Dépôt Beebs non confirmé » avec session Beebs ` +
+              `${etatBeebs === true ? "confirmée" : "inconnue"} → laissé failed tel quel`,
+            );
+          } else if (fois >= MAX_BEEBS_NON_CONFIRME_REQUALIFS) {
+            console.log(
+              `[update-job-status] userId=${user.id} job=${jobId} — « Dépôt Beebs non confirmé » avec session absente (${preuve}) ` +
+              `mais plafond atteint (${fois}/${MAX_BEEBS_NON_CONFIRME_REQUALIFS} requalifications) → laissé failed tel quel`,
+            );
+            if (!(body.platform_fields && typeof body.platform_fields === "object")) body.platform_fields = { ...pfBaseB };
+            (body.platform_fields as Record<string, unknown>)["depot_non_confirme_requalifie"] = {
+              ...(marqueurPrec ?? {}),
+              plafond_atteint_le: new Date().toISOString(),
+              plafond: MAX_BEEBS_NON_CONFIRME_REQUALIFS,
+            };
+          } else {
+            console.log(
+              `[update-job-status] userId=${user.id} job=${jobId} — « Dépôt Beebs non confirmé » sur une session Beebs ABSENTE ` +
+              `(${preuve}) → requalifié « Connexion Beebs requise » (attente de session, aucune tentative, ${fois + 1}/${MAX_BEEBS_NON_CONFIRME_REQUALIFS})`,
+            );
+            beebsErreurOriginale = body.error;
+            body.error =
+              "Connexion Beebs requise : le formulaire a été servi sur une session Beebs sans compte (visiteur anonyme) " +
+              "et le dépôt refusé en silence — se connecter à ton compte sur beebs.app dans Chrome, le job repartira au prochain passage.";
+            if (!(body.platform_fields && typeof body.platform_fields === "object")) body.platform_fields = { ...pfBaseB };
+            (body.platform_fields as Record<string, unknown>)["depot_non_confirme_requalifie"] = {
+              at: new Date().toISOString(),
+              fois: fois + 1,
+              plafond: MAX_BEEBS_NON_CONFIRME_REQUALIFS,
+              preuve,
+              verdict_extension: beebsErreurOriginale.slice(0, 600),
+              pose_par: "update-job-status (dépôt non confirmé = session Beebs absente)",
+            };
+            beebsNonConfirmeRequalifie = true;
+          }
+        }
+      } catch (e) {
+        // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
+        console.error("[update-job-status] filet dépôt Beebs non confirmé :", (e as Error)?.message ?? e);
+        beebsNonConfirmeRequalifie = false;
+        if (beebsErreurOriginale) body.error = beebsErreurOriginale;
+      }
+    }
     const SESSION_REQUISE_RE = /^(?:Connexion|Reconnexion)\s+\S+\s+requise/i;
     const PAGE_AUTH_SUPPRESSION_RE = /^Page inattendue pour une suppression \S+ : (\S+)/i;
     const estUrlDeConnexion = (u: string): boolean => {
@@ -1206,6 +1336,21 @@ serve(async (req) => {
           // Filet de confort : jamais il n'empêche d'écrire le statut de l'extension.
           console.error("[update-job-status] attente de session:", (e as Error)?.message ?? e);
           pfAttenteSession = null;
+        }
+      }
+    }
+
+    // Requalification « dépôt Beebs non confirmé » : le message écrit est
+    // EXACTEMENT celui que l'extension sert déjà à ce cas ; si le bloc
+    // d'attente n'a pas pu s'appliquer, le verdict de l'extension est rétabli
+    // tel quel (jamais un « Connexion requise » écrit en failed).
+    if (beebsNonConfirmeRequalifie) {
+      if (pfAttenteSession && statutEffectif === "pending") {
+        messageEffectif = BEEBS_ATTENTE_MESSAGE;
+      } else if (beebsErreurOriginale) {
+        body.error = beebsErreurOriginale;
+        if (body.platform_fields && typeof body.platform_fields === "object") {
+          delete (body.platform_fields as Record<string, unknown>)["depot_non_confirme_requalifie"];
         }
       }
     }
