@@ -50,7 +50,7 @@ import { Bar, Line } from 'react-chartjs-2';
 import { executeVoiceTasks, groupSellLots } from './utils/voiceEngine';
 // detectType + normalizeMarque : source de vérité UNIQUE dans utils/shared.js
 // (l'ancienne copie locale a fait survivre le bug Ralph Lauren→Luxe ; unifié 2026-07-17).
-import { detectType, normalizeMarque, marqueKey } from './utils/shared';
+import { detectType, normalizeMarque, marqueKey, uuidV4 } from './utils/shared';
 import { prixAchatConnu, comptabilisables, nbSansPrixAchat, totalInvesti, totalMarge, totalCA, margeUnitaire } from './utils/comptabilite';
 import StockTab from './tabs/StockTab';
 import LensTab from './tabs/LensTab';
@@ -1835,6 +1835,38 @@ function VoiceAssistant({items,sales,lang,currency='EUR',userCountry,actions,vaS
   );
 }
 
+// ── MARQUEUR DE SCAN LENS (2026-09-13) ──────────────────────────────────────
+// Le résultat d'un scan payant ne survivait NULLE PART : useState, recopié en
+// sessionStorage seulement à l'ouverture du stepper. Basculer d'appli pendant
+// l'analyse (21 s de médiane) suffisait à tout perdre — et le re-scan coûtait
+// une unité de plus (8,9 % des scans mesurés sur 60 jours).
+//
+// localStorage et PAS sessionStorage : sessionStorage meurt avec la webview,
+// c'est-à-dire exactement dans le cas qu'on répare.
+//
+// Ce que le marqueur porte :
+//   · scan_id — l'identifiant que le serveur a réservé (clé de lens_scans), la
+//     poignée qui permet de retrouver le scan. Généré AVANT l'upload ;
+//   · urls / paths — les photos lens-temp du scan. Sans elles, un résultat
+//     restauré s'afficherait sans ses photos (les lensPhotos sont des data:
+//     URL en mémoire, mortes avec la webview) et ne pourrait pas partir en
+//     annonce ;
+//   · statut — 'en_cours' tant qu'aucune réponse serveur n'est parvenue à
+//     l'app, 'rendu' dès qu'elle en a une. Seul 'en_cours' déclenche la
+//     reprise au démarrage.
+// UN seul marqueur à la fois : les photos du scan précédent sont jetées au
+// lancement du suivant, pas dans le `finally` du scan courant — un `finally`
+// ne tourne pas quand la webview est tuée (384 Mo d'orphelins dans lens-temp
+// le disent).
+const LENS_SCAN_KEY = 'fs_lens_scan';
+function lireMarqueurLens(){
+  try{ const brut=localStorage.getItem(LENS_SCAN_KEY); return brut?JSON.parse(brut):null; }
+  catch{ return null; }
+}
+function ecrireMarqueurLens(m){
+  try{ localStorage.setItem(LENS_SCAN_KEY,JSON.stringify(m)); }catch{ /* stockage indisponible : pas de reprise, rien de cassé */ }
+}
+
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -2275,6 +2307,10 @@ export default function App({ loginOnly = false }){
   const [lensBuy,setLensBuy]=useState("");
   const [lensResult,setLensResult]=useState(null); // {analysis, itemData}
   const [lensLoading,setLensLoading]=useState(false);
+  // Vrai pendant la REPRISE d'un scan interrompu (2026-09-13) : cette attente
+  // n'est pas un scan qui démarre, c'est un scan qu'on retrouve — et ça se dit
+  // à l'écran, sinon l'utilisateur croit qu'il repaie.
+  const [lensReprise,setLensReprise]=useState(false);
   const [lensAdded,setLensAdded]=useState(false);
   const [lensMicActive,setLensMicActive]=useState(false);
   const [lensMicLoading,setLensMicLoading]=useState(false);
@@ -5086,6 +5122,75 @@ export default function App({ loginOnly = false }){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── REPRISE D'UN SCAN LENS INTERROMPU (2026-09-13) ────────────────────────
+  // Au démarrage, si un marqueur dit qu'un scan était en cours quand l'app est
+  // morte, on va LIRE son issue dans lens_scans. Lecture seule, jamais un
+  // nouvel appel à lens-analysis : relancer la fonction, c'est risquer de
+  // refacturer, et c'est justement ce que ce lot supprime. La RLS de la table
+  // ne rend que les lignes de l'utilisateur.
+  // Trois issues :
+  //   · 'termine' → le résultat s'affiche, l'utilisateur reprend où il en
+  //     était, rien n'est consommé de plus ;
+  //   · 'echec'   → le motif s'affiche, la relance est gratuite de fait (un
+  //     scan raté ne pose aucune ligne generate_listing) ;
+  //   · rien après 90 s (serveur d'une version antérieure, écriture en panne)
+  //     → on rend la main avec les photos restaurées : un tap pour relancer,
+  //     jamais un écran vide qui oblige à tout refaire.
+  useEffect(()=>{
+    if(!user?.id)return;
+    const m=lireMarqueurLens();
+    if(!m||m.statut!=='en_cours'||!m.scan_id)return;
+    let vivant=true;
+    (async()=>{
+      // Photos rendues tout de suite : l'attente montre l'article scanné, pas
+      // un viseur vide. Jamais par-dessus des photos déjà reprises à la main.
+      if(m.urls?.length)setLensPhotos(prev=>prev.length?prev:m.urls.map(u=>({preview:u,mime:'image/jpeg'})));
+      setLensLoading(true);
+      setLensReprise(true);
+      const fin=Date.now()+6*60*1000;   // borne dure : au-delà, plus rien à attendre
+      let vueUneFois=false;
+      try{
+        while(vivant&&Date.now()<fin){
+          const{data,error}=await supabase.from('lens_scans')
+            .select('statut,resultat,motif').eq('scan_id',m.scan_id).maybeSingle();
+          if(error)break;
+          if(data){
+            vueUneFois=true;
+            if(data.statut==='termine'&&data.resultat){
+              if(!vivant)return;
+              ecrireMarqueurLens({...m,statut:'rendu'});
+              setLensResult(data.resultat);
+              return;
+            }
+            if(data.statut==='echec'){
+              if(!vivant)return;
+              ecrireMarqueurLens({...m,statut:'rendu'});
+              setLensResult({error:lang==='en'
+                ?'❌ The analysis did not finish. Relaunch it — this attempt cost you nothing.'
+                :"❌ L'analyse n'est pas allée au bout. Relance-la — cette tentative ne t'a rien coûté."});
+              return;
+            }
+          }else if(!vueUneFois&&Date.now()-(m.debut??0)>90000){
+            // Aucune ligne 90 s après le lancement : le scan n'a jamais été
+            // réservé. Rien ne viendra, on ne fait pas patienter pour rien.
+            break;
+          }
+          await new Promise(r=>setTimeout(r,3000));
+        }
+      }catch(e){
+        console.warn('[lens][reprise] lecture impossible :',e?.message??e);
+      }finally{
+        if(vivant){
+          setLensLoading(false);
+          setLensReprise(false);
+          ecrireMarqueurLens({...m,statut:'rendu'});
+        }
+      }
+    })();
+    return()=>{vivant=false;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id]);
+
   async function handleLogin(){
     if(isSigningIn||isSigningUp)return;
     setLoginError("");
@@ -5744,6 +5849,29 @@ export default function App({ loginOnly = false }){
 
   async function analyzeLens(){
     if(!lensPhotos.length)return;
+    // Photos du scan PRÉCÉDENT : c'est ici qu'on les jette, au lancement du
+    // suivant — plus dans le `finally` de leur propre scan. Un `finally` ne
+    // tourne pas quand la webview meurt, et il supprimait les photos dont la
+    // reprise a besoin. Au plus un jeu de photos par utilisateur survit.
+    const precedent=lireMarqueurLens();
+    if(precedent?.paths?.length){
+      supabase.storage.from('lens-temp').remove(precedent.paths).catch(()=>{});
+    }
+    // Réservé côté serveur par lens-analysis : c'est CE identifiant, et lui
+    // seul, qui fait du prélèvement un geste unique. Un second envoi du même
+    // scan_id ne débite rien et se fait resservir le résultat déjà produit.
+    const scanId=uuidV4();
+    // Le marqueur précédent est remplacé TOUT DE SUITE, avant l'upload : ses
+    // photos viennent d'être supprimées, et s'il était resté à 'en_cours' (deux
+    // scans interrompus de suite) la reprise irait chercher un scan mort et
+    // restaurerait des vignettes qui n'existent plus. 'prepare' n'est pas
+    // 'en_cours' : rien n'est repris tant que le serveur n'a rien réservé.
+    ecrireMarqueurLens({scan_id:scanId,urls:[],paths:[],statut:'prepare',debut:Date.now()});
+    // Le marqueur passe à 'rendu' dès que le SERVEUR a répondu — résultat comme
+    // refus. Une panne réseau, elle, le laisse à 'en_cours' : l'analyse, elle,
+    // continue côté serveur (elle est ancrée au runtime, plus à la socket), et
+    // la reprise au prochain démarrage ira la chercher.
+    const marquerRendu=()=>{const m=lireMarqueurLens();if(m?.scan_id===scanId)ecrireMarqueurLens({...m,statut:'rendu'});};
     // Facturation (payant-par-scan 2026-07-23) : le serveur débite 6 unités
     // par analyse (spend_coins_for_lens, grant mensuel lazy inclus) et
     // rembourse si l'analyse n'est pas livrée. Seul le 402 insufficient_coins
@@ -5779,12 +5907,17 @@ export default function App({ loginOnly = false }){
         const{data:{publicUrl}}=supabase.storage.from('lens-temp').getPublicUrl(path);
         urls.push(publicUrl);
       }
+      // Marqueur posé AVANT l'appel, jamais après : si la webview meurt
+      // pendant l'analyse, c'est la SEULE trace qui permettra de la retrouver
+      // au retour. Posé après, il ne couvrirait rien.
+      ecrireMarqueurLens({scan_id:scanId,urls,paths:uploadedPaths,statut:'en_cours',debut:Date.now()});
       const{data:{session:lnSess}}=await supabase.auth.getSession();
       const lnToken=lnSess?.access_token;
       const r=await fetch(`${supabaseUrl}/functions/v1/lens-analysis`,{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${lnToken}`,"apikey":supabaseAnonKey},
         body:JSON.stringify({
+          scan_id:scanId,
           urls,
           description:lensDesc.trim()||null,
           prixAchat:parseFloat(lensBuy)||null,
@@ -5804,6 +5937,9 @@ export default function App({ loginOnly = false }){
       });
       if(!r.ok){
         const errBody=await r.json().catch(()=>({}));
+        // Le serveur a tranché (refus compris) : plus rien à attendre, donc
+        // rien à reprendre au prochain démarrage.
+        marquerRendu();
         // Bascule quotas (02/09) : le refus est le quota de scans du cycle —
         // insufficient_coins ne peut plus arriver (prix à 0), la branche
         // unités est morte. Modale de conversion, origine dédiée.
@@ -5825,14 +5961,22 @@ export default function App({ loginOnly = false }){
       }
       const result=await r.json();
       if(result.error)throw new Error(result.error);
+      marquerRendu();
       setLensResult(result);
     }catch(e){
       setLensResult({error:`❌ ${e.message}`});
     }finally{
       setLensLoading(false);
-      if(uploadedPaths.length){
-        supabase.storage.from('lens-temp').remove(uploadedPaths).catch(()=>{});
-      }
+      // ⚠️ Les photos lens-temp NE SONT PLUS supprimées ici (2026-09-13).
+      // Deux raisons, la seconde étant la vraie :
+      //   · ce `finally` ne tourne pas quand la webview est tuée — c'est
+      //     précisément le cas qu'on répare, et il a laissé 384 Mo d'orphelins
+      //     dans le bucket depuis mai ;
+      //   · un résultat repris a besoin de ses photos : les lensPhotos sont
+      //     des data: URL en mémoire, mortes avec la webview. Sans ces URLs,
+      //     on restaurerait une analyse sans son article, impossible à publier.
+      // Elles sont jetées au lancement du scan SUIVANT (début d'analyzeLens) :
+      // au plus un jeu survit par utilisateur.
     }
   }
 
@@ -6532,7 +6676,7 @@ export default function App({ loginOnly = false }){
             lensAdded={lensAdded} setLensAdded={setLensAdded}
             lensDesc={lensDesc} setLensDesc={setLensDesc}
             lensBuy={lensBuy} setLensBuy={setLensBuy}
-            lensLoading={lensLoading} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
+            lensLoading={lensLoading} lensReprise={lensReprise} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
             lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
             lensFileRef={lensFileRef} toggleLensMic={toggleLensMic}
             handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative} analyzeLens={analyzeLens} addLensItem={addLensItem} openLensEditModal={openLensEditModal}

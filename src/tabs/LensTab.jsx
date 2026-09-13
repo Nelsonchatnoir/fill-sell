@@ -112,7 +112,7 @@ function LensScanHome({
   lensDesc, setLensDesc, lensMicActive, lensMicLoading, toggleLensMic,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative,
-  analyzeLens, lensLoading,
+  analyzeLens, lensLoading, lensReprise,
   // (lensPrice retiré au nettoyage unités du 02/09 soir ;
   // onCreateListing/creatingListing retirés à la fusion des CTA du même
   // soir — le viseur n'a plus qu'UN bouton, le scan unifié.)
@@ -256,6 +256,23 @@ function LensScanHome({
               <HelpCircle size={20} color={TEAL_DEEP} strokeWidth={2} />
             </button>
           </div>
+
+          {/* ── REPRISE D'UN SCAN INTERROMPU (2026-09-13) ──────────────────
+              Quitter l'app pendant l'analyse ne la perd plus : elle va au bout
+              côté serveur et son résultat est retrouvé au retour. Le dire
+              explicitement, sinon cette attente ressemble à un nouveau scan —
+              donc à une facturation de plus. « Rien de plus ne t'est
+              décompté » n'est pas une formule de politesse : c'est le fait,
+              et c'est la question que l'utilisateur se pose. */}
+          {lensReprise && (
+            <div style={{ marginTop:10, padding:'10px 14px', borderRadius:14, background:'#E7F3F0', border:'1px solid #BFE0D9' }}>
+              <span style={{ fontSize:12.5, lineHeight:1.4, color:TEAL_DEEP }}>
+                {lang === 'en'
+                  ? 'Picking your scan back up where it was — nothing extra is charged.'
+                  : "On reprend ton scan là où il en était — rien de plus ne t'est décompté."}
+              </span>
+            </div>
+          )}
 
           {/* ⚠️ CE COMPOSANT EST CELUI QUI S'AFFICHE. LensTab rend
               <LensScanHome/> et RETOURNE (`if (!lensResult) return`) : tout ce
@@ -491,7 +508,7 @@ const LensTab = memo(function LensTab({
   lang, currency, userCountry, isPremium, isPro, isBusiness, isNative, user,
   lensPhotos, setLensPhotos, lensResult, setLensResult,
   lensAdded, setLensAdded, lensDesc, setLensDesc,
-  lensBuy, setLensBuy, lensLoading, lensMicActive, lensMicLoading,
+  lensBuy, setLensBuy, lensLoading, lensReprise, lensMicActive, lensMicLoading,
   lensPlaceholderFade, lensPlaceholderIdx,
   lensFileRef, toggleLensMic, handleLensPhoto, handleLensPhotoNative, handleLensCameraNative, analyzeLens, addLensItem, openLensEditModal,
   openUpgradeModal,
@@ -732,7 +749,7 @@ const LensTab = memo(function LensTab({
           lensDesc={lensDesc} setLensDesc={setLensDesc} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
           lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
           lensFileRef={lensFileRef} handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative}
-          analyzeLens={analyzeLens} lensLoading={lensLoading}
+          analyzeLens={analyzeLens} lensLoading={lensLoading} lensReprise={lensReprise}
         />
         {/* (onCreateListing/creatingListing retirés à la fusion des CTA du
             02/09 soir : le viseur n'a plus qu'UN bouton — le scan unifié —

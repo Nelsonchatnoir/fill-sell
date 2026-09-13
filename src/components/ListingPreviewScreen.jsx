@@ -16,7 +16,7 @@ import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee } from "../utils
 import { texteComparable } from "../utils/texteComparable";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
-import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre } from "../utils/shared";
+import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4 } from "../utils/shared";
 import { getVintedCategoryPath, vintedGenreRequired } from "../utils/vintedCategories";
 import { normalizeVintedColors } from "../utils/vintedColors";
 import { getLbcCategoryPath, getLbcBabyEquipment, getLbcBabyClothingProduct, getLbcFreePhotoQuota } from "../utils/lbcCategories";
@@ -4451,8 +4451,18 @@ export default function ListingPreviewScreen({
       // Même client supabase que le reste du stepper (prop), donc mêmes en-têtes
       // d'auth. Le 402 arrive dans fnErr.context (FunctionsHttpError) — comme
       // pour le 402 de generate-listing, functions.invoke ne lit pas le body.
+      // scan_id (2026-09-13) : cette analyse-ci est payante elle aussi, elle se
+      // réserve donc dans lens_scans comme celle de l'onglet Lens. Deux effets
+      // immédiats — un double envoi ne peut plus débiter deux fois, et le
+      // résultat servi est enregistré (audit qualité : on ne savait pas ce que
+      // l'utilisateur avait vu). Elle profite aussi de l'ancrage au runtime :
+      // l'analyse va au bout même si l'app passe en arrière-plan.
+      // ⚠️ Ce qu'elle n'a PAS, contrairement à l'onglet Lens : l'écran de
+      // reprise. Le brouillon du stepper vit en sessionStorage, qui meurt avec
+      // la webview — un scan retrouvé ici n'est pas encore re-affiché.
       const { data: res, error: fnErr } = await supabase.functions.invoke("lens-analysis", {
         body: {
+          scan_id: uuidV4(),
           urls: photos,
           description: initialListing?.description || initialListing?.titre || null,
           prixAchat: initialListing?.prix_achat ?? null,

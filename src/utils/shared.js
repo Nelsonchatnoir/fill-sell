@@ -2214,3 +2214,23 @@ export function fraicheurExtension(lastSeenAt, sessionRejeteeAt = null) {
   const jours = Math.max(1, Math.floor(age / 86400000));
   return { etat: age > EXT_INACTIF_MS ? "inactive" : "eteinte", jours };
 }
+
+// ── UUID v4 conforme (2026-09-13, lot « le scan survit à l'app ») ────────────
+// Utilisé pour le scan_id que l'app réserve auprès de lens-analysis AVANT
+// d'uploader les photos : c'est la clé primaire de lens_scans, donc la garde
+// de non-double-facturation et la poignée de la reprise.
+// Le serveur ne l'accepte que sous la forme UUID canonique — une chaîne
+// « presque UUID » serait ignorée en silence, sans persistance ni reprise, et
+// rien ne le signalerait. D'où le repli manuel quand crypto.randomUUID manque
+// (contexte non sécurisé, vieille webview) plutôt qu'un Date.now() bricolé.
+export function uuidV4() {
+  try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID(); }
+  catch { /* contexte non sécurisé : repli ci-dessous */ }
+  const o = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(o);
+  else for (let i = 0; i < 16; i++) o[i] = Math.floor(Math.random() * 256);
+  o[6] = (o[6] & 0x0f) | 0x40;
+  o[8] = (o[8] & 0x3f) | 0x80;
+  const h = [...o].map(b => b.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}

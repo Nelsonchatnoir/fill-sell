@@ -1898,6 +1898,54 @@ serve(async (req) => {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
+  // LE SCAN SURVIT À L'APP (2026-09-13) — registre lens_scans
+  // ══════════════════════════════════════════════════════════════════════════
+  // Le résultat d'un scan payant ne survivait NULLE PART : useState dans l'app,
+  // recopié en sessionStorage seulement à l'ouverture du stepper. Basculer
+  // d'appli pendant les 21 s de médiane suffisait à tout perdre — et à refaire
+  // payer une unité au re-scan (8,9 % des scans mesurés sur 60 j).
+  // `scanId` est l'identifiant que l'APP génère avant l'upload : il est la clé
+  // primaire de lens_scans, donc la garde de non-double-facturation, et la
+  // poignée de la reprise. null = client d'une version antérieure → tout se
+  // comporte exactement comme avant ce lot.
+  let scanId: string | null = null;
+
+  // Écrit l'issue du scan dans son registre. Best-effort de bout en bout : une
+  // panne d'écriture ne change ni la réponse rendue, ni la facturation — elle
+  // coûte seulement la reprise (le sweep de 04:15 requalifiera la ligne restée
+  // en_cours, et remboursera si elle avait coûté des unités).
+  async function memoriserScan(
+    statut: "termine" | "echec",
+    resultat: Record<string, unknown> | null,
+    motif?: Record<string, unknown>,
+  ) {
+    if (!scanId) return;
+    try {
+      const { error } = await adminClient.from("lens_scans").update({
+        statut,
+        resultat: resultat ?? null,
+        motif: motif ?? null,
+        termine_le: new Date().toISOString(),
+      }).eq("scan_id", scanId);
+      if (error) console.error("[lens-analysis] memoriserScan:", error.message);
+    } catch (e) {
+      console.error("[lens-analysis] memoriserScan:", (e as Error)?.message);
+    }
+  }
+
+  // Réservation annulée : le débit a été REFUSÉ après la réservation (quota
+  // atteint, solde insuffisant, panne du RPC). La ligne doit disparaître, sinon
+  // le même scan_id serait vu comme « déjà en cours » à la reprise et
+  // l'utilisateur ne pourrait plus relancer après avoir levé son plafond.
+  async function annulerReservation() {
+    if (!scanId) return;
+    try {
+      await adminClient.from("lens_scans").delete().eq("scan_id", scanId);
+    } catch { /* sans conséquence : le sweep requalifiera la ligne */ }
+    scanId = null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
   // CORPS DE LA REQUÊTE — LU AVANT TOUT DÉBIT (2026-07-28)
   // ══════════════════════════════════════════════════════════════════════════
   // Il était lu APRÈS spend_coins_for_lens. Ajouter un paramètre `mode` sans
@@ -2031,6 +2079,47 @@ serve(async (req) => {
     }
   }
 
+  // ── RÉSERVATION DU SCAN, AVANT TOUT DÉBIT (2026-09-13) ───────────────────
+  // L'ordre compte, et c'est tout le lot : réserver → débiter → analyser.
+  // La réservation est un INSERT sur une clé primaire fournie par l'app. Elle
+  // ne peut réussir qu'UNE fois par scan_id — c'est elle, et rien d'autre, qui
+  // fait du prélèvement un geste unique et identifiable. Un second POST (double
+  // tap, reprise mal câblée, retry réseau) tombe sur la violation d'unicité,
+  // ne débite RIEN et se voit resservir le résultat déjà produit s'il existe.
+  // Le mode identify ne réserve pas : il ne débite rien et possède déjà sa
+  // propre idempotence (lens_identify_cache).
+  if (!estIdentify
+      && typeof body?.scan_id === "string"
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.scan_id)) {
+    const candidat = (body.scan_id as string).toLowerCase();
+    const { error: resErr } = await adminClient.from("lens_scans").insert({
+      scan_id: candidat, user_id: userId, mode, photos: photoUrls,
+    });
+    if (!resErr) {
+      scanId = candidat;
+    } else if (resErr.code === "23505") {
+      // Déjà réservé : on ne rejoue rien, on ne débite rien.
+      const { data: deja } = await adminClient.from("lens_scans")
+        .select("statut, resultat, motif").eq("scan_id", candidat).maybeSingle();
+      if (deja?.statut === "termine" && deja.resultat) {
+        console.log(`[lens-analysis] scan ${candidat} déjà terminé — resservi sans débit`);
+        return new Response(JSON.stringify(deja.resultat), {
+          headers: { "Content-Type": "application/json", ...CORS },
+        });
+      }
+      console.warn(`[lens-analysis] scan ${candidat} déjà réservé (statut=${deja?.statut ?? "?"}) — rien rejoué`);
+      return new Response(
+        JSON.stringify({ error: "scan_deja_en_cours", statut: deja?.statut ?? "en_cours" }),
+        { status: 409, headers: { "Content-Type": "application/json", ...CORS } }
+      );
+    } else {
+      // Toute autre panne d'écriture : le scan CONTINUE, sans reprise possible.
+      // La persistance est un filet, jamais une condition de service — refuser
+      // ici transformerait une panne de table en panne de Lens.
+      console.error("[lens-analysis] réservation impossible:", resErr.message);
+    }
+  }
+
   const { data: spend, error: spendErr } = estIdentify
     // Identify ne débite RIEN : l'identification est incluse dans le prix de
     // publication (parcours minimum = 3 unités AU TOTAL, jamais 3 + 3).
@@ -2046,6 +2135,7 @@ serve(async (req) => {
     // consommé, la génération de secours (porte B) comptera la sienne.
     : await adminClient.rpc("spend_coins_for_lens", { p_user_id: userId, p_unifie: estAnnonce });
   if (spendErr || !spend) {
+    await annulerReservation();
     console.error("[lens-analysis] spend_coins_for_lens:", spendErr?.message);
     return new Response(
       JSON.stringify({ error: "coin_debit_failed" }),
@@ -2053,6 +2143,9 @@ serve(async (req) => {
     );
   }
   if (spend.allowed === false) {
+    // Débit refusé APRÈS la réservation : la ligne doit partir, sinon l'app ne
+    // pourrait plus relancer ce scan une fois son plafond levé.
+    await annulerReservation();
     if (spend.reason === "insufficient_coins") {
       // 402 → le client ouvre la ConversionModal (trigger lens) avec le prix
       // et le solde réels — chemin déjà câblé côté App.jsx et
@@ -2090,6 +2183,16 @@ serve(async (req) => {
     );
   }
   paidWithCoins = spend.price ?? 0;
+
+  // Ce que ce scan a coûté en unités, inscrit sur sa réservation pour que le
+  // rattrapage du sweep sache quoi rendre si le runtime ne revient jamais.
+  // Conditionné à `> 0` : à price_lens_overflow = 0 (modèle quota actuel), cet
+  // aller-retour n'a JAMAIS lieu — le cas normal ne paie pas une écriture pour
+  // enregistrer un zéro.
+  if (scanId && paidWithCoins > 0) {
+    await adminClient.from("lens_scans")
+      .update({ coins_debites: paidWithCoins }).eq("scan_id", scanId);
+  }
 
   // Ligne usage_logs que spend_coins_for_lens vient de poser : on la retient
   // pour y écrire la télémétrie du scan une fois les appels API terminés. Le
@@ -2164,6 +2267,22 @@ serve(async (req) => {
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // L'ANALYSE EST ANCRÉE AU RUNTIME, PAS À LA SOCKET (2026-09-13)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Le travail est sorti du chemin de réponse pour devenir une promesse
+  // enregistrée auprès du runtime (EdgeRuntime.waitUntil). Conséquence :
+  //   · l'app au premier plan est servie EXACTEMENT comme avant — on attend la
+  //     même promesse et on rend la même réponse, aucun polling, aucun 202 ;
+  //   · l'app qui meurt en cours de route (bascule d'appli, webview tuée) ne
+  //     tue plus l'analyse : le runtime la mène à son terme, elle écrit son
+  //     résultat dans lens_scans, et la reprise est une simple LECTURE.
+  // Appel défensif `?.` comme dans voice-transcribe : si la plateforme n'expose
+  // pas waitUntil, on retombe sur le comportement d'avant, sans rien casser.
+  // Expression fléchée et non déclaration `function` : une déclaration est
+  // HISSÉE, et TypeScript perd alors le narrowing des const de la portée
+  // englobante (apiKey, déjà gardé plus haut) — 4 erreurs de type pour rien.
+  const executerScan = async (): Promise<Response> => {
   try {
     // Corps, urls et clé API : déjà lus et validés PLUS HAUT, avant le débit.
     const _lang = lang === "en" ? "en" : "fr";
@@ -2929,7 +3048,14 @@ serve(async (req) => {
       + ` recherches=${stats.recherches} ms=${Date.now() - debutMs}`
     );
 
-    return new Response(JSON.stringify(annonce ? { ...itemData, annonce } : itemData), {
+    // La réponse est écrite dans le registre AVANT d'être rendue, jamais après :
+    // c'est le seul ordre qui garantit qu'un utilisateur parti entre-temps la
+    // retrouvera. Coût pour celui qui est resté : un UPDATE jsonb, ~10 ms sur
+    // un scan de 21 000 ms.
+    const charge = annonce ? { ...itemData, annonce } : itemData;
+    await memoriserScan("termine", charge);
+
+    return new Response(JSON.stringify(charge), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
   } catch (err: any) {
@@ -2956,6 +3082,12 @@ serve(async (req) => {
       await enregistrerTelemetrie("echec", undefined, motifEchec(err));
     }
     await releaseAttempt("lens_analysis_failed");
+    // L'échec est inscrit sur la réservation, avec son motif : un utilisateur
+    // revenu après coup doit lire « ça n'a pas marché, relance » plutôt
+    // qu'attendre indéfiniment un résultat qui ne viendra pas. La relance est
+    // gratuite de fait — le geste raté n'a rien consommé (aucune ligne
+    // generate_listing en mode unifié, unités rendues sinon).
+    await memoriserScan("echec", null, motifEchec(err));
     if (err?.isAiUnavailable) {
       return new Response(JSON.stringify({ error: "ai_unavailable", retry_after: 30 }), {
         status: 503, headers: { "Content-Type": "application/json", ...CORS },
@@ -2965,4 +3097,9 @@ serve(async (req) => {
       status: 500, headers: { "Content-Type": "application/json", ...CORS },
     });
   }
+  };
+
+  const travail = executerScan();
+  (globalThis as any).EdgeRuntime?.waitUntil?.(travail);
+  return await travail;
 });
