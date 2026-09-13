@@ -2541,6 +2541,21 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         ? `Dressing synchronisé — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour.`
         : `Closet synced — ${run.items_crees ?? 0} item${(run.items_crees ?? 0) === 1 ? '' : 's'} imported, ${run.items_maj ?? 0} updated.` };
     }
+    // ── RELEVÉ INCOMPLET (2026-09-13) ────────────────────────────────────────
+    // Une sync qui a lu moins d'articles que Vinted n'en annonce ne se clôt
+    // plus en 'done' : elle sort en 'incomplete'. Ni échec ni succès — ce qui
+    // a été lu est importé et à jour, rien n'a été marqué « plus en ligne »
+    // (garde (b), côté extension), et le curseur est resté sur la page qui a
+    // manqué. Ton ORANGE : il y a bien quelque chose à faire (relancer), mais
+    // rien n'est cassé ni perdu. Le nombre est dit — c'est lui qui rend le
+    // « incomplet » crédible au lieu d'inquiéter dans le vide.
+    if (run.status === 'incomplete') {
+      const lus = run.items_vus ?? 0;
+      const annonces = run.total_entries ?? null;
+      return { ton: 'orange', texte: fr
+        ? `Synchronisation incomplète : ${lus} article${lus > 1 ? 's' : ''} lu${lus > 1 ? 's' : ''}${annonces ? ` sur les ${annonces} annoncés par Vinted` : ''}. Vinted a cessé de répondre en cours de lecture. Ce qui a été lu est bien à jour et rien n'a été marqué « plus en ligne » — relance la synchronisation, elle repartira là où elle s'est arrêtée.`
+        : `Sync incomplete: ${lus} item${lus === 1 ? '' : 's'} read${annonces ? ` out of the ${annonces} Vinted reports` : ''}. Vinted stopped answering mid-read. What was read is up to date and nothing was marked "no longer online" — run the sync again, it will resume where it stopped.` };
+    }
     if (run.status === 'interrupted') {
       // Vinted a bloqué (DataDome) ou la session Vinted a expiré. Ni alarme ni
       // faute de l'utilisateur : la reprise repartira de la page courante.

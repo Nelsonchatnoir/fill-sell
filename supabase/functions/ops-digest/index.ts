@@ -334,10 +334,16 @@ serve(async (req) => {
   try {
     const { data: runsNotes, error: e10 } = await supabase
       .from("vinted_sync_runs")
-      .select("id, user_id, started_at, items_vus, items_crees, items_maj, vinted_login, erreur")
-      .eq("status", "done")
+      .select("id, user_id, status, started_at, items_vus, items_crees, items_maj, total_entries, vinted_login, erreur")
+      // 'incomplete' (2026-09-13) : une sync trop courte ne se clôt PLUS en
+      // 'done' — sans ces deux lignes, les runs que ce balayage existe
+      // justement pour voir sortiraient du digest le jour même où on a
+      // commencé à les nommer. Le `.or` attrape aussi le run REPRIS qui reste
+      // court : sa note de disparitions dit « run repris » (gravité 'info',
+      // jamais remontée), et seule la note « relevé incomplet » le signale.
+      .in("status", ["done", "incomplete"])
       .gte("started_at", iso7d)
-      .like("erreur", "%disparitions non marquées%")
+      .or("erreur.like.%disparitions non marquées%,erreur.like.%relevé incomplet%")
       .order("started_at", { ascending: false })
       .range(0, 499);
     if (e10) throw new Error(e10.message);
@@ -350,6 +356,7 @@ serve(async (req) => {
       // même, jamais silencieux.
       const m = /disparitions non marquées — (.*?)(?: \| |$)/.exec(String(r.erreur ?? ""));
       const motif = (m?.[1] ?? "").trim();
+      let motifFinal = motif;
       let garde = "autre", gravite = "anomalie";
       let disparus: number | null = null, connus: number | null = null, plafond: number | null = null;
       if (motif.startsWith("effondrement suspect")) {
@@ -367,9 +374,21 @@ serve(async (req) => {
       } else if (motif.startsWith("run repris")) {
         garde = "run_repris"; gravite = "info";
       }
+      // ── Le STATUT prime sur la note (2026-09-13) ──────────────────────────
+      // Un run clos 'incomplete' EST un relevé incomplet, quoi que dise sa
+      // note de disparitions. Cas qui l'exige : un run REPRIS qui reste court
+      // — sa note dit « run repris », classée 'info' et jamais remontée, alors
+      // que c'est précisément le cas qu'on veut voir (la reprise n'a pas
+      // suffi). On re-classe, et on prend pour motif la note dédiée.
+      if (String(r.status ?? "") === "incomplete") {
+        const mi = /relevé incomplet — (.*?)(?: \| |$)/.exec(String(r.erreur ?? ""));
+        garde = "releve_incomplet"; gravite = "anomalie";
+        motifFinal = (mi?.[1] ?? "").trim()
+          || `${r.items_vus ?? "?"} article(s) lu(s) sur ${r.total_entries ?? "?"} annoncé(s)`;
+      }
       return {
         run_id: String(r.id), user_id: String(r.user_id), platform: "vinted",
-        garde, gravite, motif, disparus, connus, plafond,
+        garde, gravite, motif: motifFinal, disparus, connus, plafond,
         run_started_at: String(r.started_at), source: "digest_scan",
       };
     });

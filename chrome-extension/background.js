@@ -8825,6 +8825,31 @@ async function etapeRepublishEnBase(accessToken, jobId) {
 const SYNC_PAUSE_MIN_MS = 4000;
 const SYNC_PAUSE_MAX_MS = 9000;
 const SYNC_MAX_PAGES = 40; // 40 × 96 = 3840 articles : garde-fou anti-boucle
+// ── UNE PAGE VIDE N'EST PAS UNE FIN DE DRESSING (2026-09-13) ────────────────
+// Relevé prod, 7 jours : 2 runs se sont arrêtés en 'done' à la page 4 avec
+// 192 articles vus (= 2 pages PLEINES de 96) pour 2684 et 223 annoncés.
+// Signature identique, deux comptes, deux builds. Reconstitution :
+//   · pages 1 et 2 rendent 96 articles chacune ;
+//   · page 3 rend HTTP 200, JSON valide, `items` VIDE et une pagination sans
+//     `total_pages` — d'où la colonne total_pages perdue alors que
+//     total_entries, lui, survit (il est reporté de page en page, pas
+//     total_pages : la vraie asymétrie, corrigée plus bas) ;
+//   · `if (articles.length === 0) break` lit ça comme « fin du dressing ».
+// Ce n'est PAS une fin : chez nanavl, 223 annoncés sur 3 pages, la page 3
+// DOIT contenir 31 articles — et 19 min plus tard le même compte relisait ses
+// 223 articles sans incident. Une page vide qu'on peut PROUVER prématurée est
+// une réponse dégradée : on relit la MÊME page, sans avancer le curseur.
+// Deux plafonds, parce qu'un seul ne suffit pas :
+//   · par page — une page peut mentir deux fois de suite ;
+//   · par run — sinon un dressing de 28 pages mal servi ferait 84 relectures,
+//     soit exactement le martèlement qu'on refuse de présenter à DataDome.
+// Au-delà, le run se clôt 'incomplete' avec le curseur SUR la page fautive.
+const SYNC_RELECTURES_PAGE_MAX = 3;
+const SYNC_RELECTURES_RUN_MAX = 6;
+// Âge au-delà duquel un run 'incomplete' n'est PLUS repris : la pagination
+// Vinted se décale à chaque ajout/retrait, la page 3 d'hier n'est pas celle
+// d'aujourd'hui. Passé ce délai, on repart d'une lecture complète.
+const SYNC_REPRISE_INCOMPLETE_MAX_MS = 2 * 60 * 60 * 1000;
 // Écriture par tranches : la progression (items_vus, updated_at) bouge
 // PENDANT la page, pas seulement entre deux pages — un dressing d'une seule
 // page (96 max) n'affichait RIEN avant la fin. Les tranches n'écrivent que
@@ -9560,6 +9585,47 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   } catch (e) {
     console.warn("[sync-dressing] lecture du run en cours impossible:", e?.message ?? e);
   }
+  // ── Reprise d'un relevé INCOMPLET (2026-09-13) ────────────────────────────
+  // Cherché SEULEMENT si aucun run 'running' n'attend : un run en cours (dont
+  // celui que la commande mobile vient de réclamer) prime toujours, et cette
+  // requête-ci ne s'exécute même pas — le chemin 'running' reste identique au
+  // mot près. Un run clos 'incomplete' porte son curseur sur la page qui a
+  // menti : on le RÉ-OUVRE au lieu d'en créer un neuf qui relirait tout depuis
+  // la page 1. Borné dans le temps : au-delà, la pagination Vinted a bougé et
+  // reprendre à la page 3 d'hier lirait autre chose que ce qui manque.
+  if (!run) {
+    try {
+      const limiteIso = new Date(Date.now() - SYNC_REPRISE_INCOMPLETE_MAX_MS).toISOString();
+      const incomplets = await restRequest(
+        `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.incomplete` +
+        `&started_at=gte.${limiteIso}&page_suivante=lte.${SYNC_MAX_PAGES}` +
+        `&order=started_at.desc&limit=1&select=id,page_suivante,items_vus,items_crees,items_maj`,
+        token, { headers: { Prefer: "return=representation" } },
+      );
+      const candidat = Array.isArray(incomplets) && incomplets.length ? incomplets[0] : null;
+      if (candidat) {
+        // Ré-ouverture ATOMIQUE (filtre status=eq.incomplete) : deux Chrome sur
+        // le même compte ne peuvent pas reprendre le même run. `finished_at`
+        // remis à null — la ligne redevient un run vivant, et le watchdog de
+        // handler-watch la reprendra en charge si Chrome meurt en route.
+        // Échec (index un_seul_actif, RLS, réseau) : on n'insiste pas, le run
+        // neuf créé plus bas relira le dressing en entier — plus long, jamais
+        // faux.
+        const rouvert = await restRequest(`vinted_sync_runs?id=eq.${candidat.id}&status=eq.incomplete`, token, {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify({
+            status: "running", finished_at: null, updated_at: new Date().toISOString(),
+            extension_build: FILLSELL_BUILD_ID,
+          }),
+        });
+        if (Array.isArray(rouvert) && rouvert.length) run = candidat;
+        else console.log(`[sync-dressing] run incomplet ${candidat.id} déjà repris ailleurs — on repart d'un run neuf`);
+      }
+    } catch (e) {
+      console.warn("[sync-dressing] reprise d'un relevé incomplet impossible (run neuf):", e?.message ?? e);
+    }
+  }
   // Repris ou neuf ? Capté ICI, avant que `run` soit réaffecté par la création
   // d'une nouvelle ligne : c'est ce drapeau qui interdira le marquage des
   // disparitions plus bas (garde (a), 2026-08-05).
@@ -9967,6 +10033,15 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   let items_crees = run.items_crees || 0;
   let items_maj = run.items_maj || 0;
   let totalEntries = null;
+  // ⚠️ REPORTÉ de page en page, comme totalEntries — surtout pas re-dérivé à
+  // chaque tour. Une page dégradée rend une pagination sans `total_pages` :
+  // re-dériver écrivait `null` par-dessus la valeur connue (28 chez
+  // vestiaires), et la ligne du run perdait le seul repère qui dit combien il
+  // restait à lire. C'est ce qui rendait les deux runs du relevé illisibles.
+  let totalPages = null;
+  let relecturesPage = 0;  // relectures de la page COURANTE
+  let relecturesRun = 0;   // relectures cumulées de ce run
+  let motifArretIncomplet = null;
 
   while (page <= SYNC_MAX_PAGES) {
     // Point de coupe du harnais : la boucle, les pauses, le curseur et les
@@ -10001,11 +10076,45 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
 
     const articles = Array.isArray(res.articles) ? res.articles : [];
     totalEntries = res.pagination?.total_entries ?? totalEntries;
-    const totalPages = res.pagination?.total_pages ?? null;
+    totalPages = res.pagination?.total_pages ?? totalPages;
 
     // Périmètre annoncé DÈS la lecture de la page : l'UI peut afficher
     // « 0 sur 32 » avant la première écriture, au lieu d'un compteur muet.
     await majRun({ total_pages: totalPages, total_entries: totalEntries, items_vus });
+
+    // ── Page vide : fin du dressing, ou réponse dégradée ? ──────────────────
+    // On ne conclut « fin » que si RIEN ne prouve le contraire. Deux preuves,
+    // l'une ou l'autre suffit :
+    //   · il reste des pages annoncées (page < total_pages) ;
+    //   · il reste des articles annoncés (items_vus < total_entries) — c'est
+    //     CELLE-CI qui attrape le cas nanavl, où la page menteuse était la
+    //     DERNIÈRE (3 sur 3) et où la première preuve ne disait rien.
+    // `page <= totalPages` borne la relecture aux pages qui DOIVENT exister :
+    // un curseur déjà au-delà du dernier feuillet ne signale pas une page
+    // coincée mais un compte court, et le relire ne rendrait jamais rien.
+    if (articles.length === 0) {
+      const pageDoitExister = totalPages == null || page <= totalPages;
+      const resteAAlire = (totalPages != null && page < totalPages)
+        || (totalEntries != null && items_vus < totalEntries);
+      if (pageDoitExister && resteAAlire) {
+        if (relecturesPage < SYNC_RELECTURES_PAGE_MAX && relecturesRun < SYNC_RELECTURES_RUN_MAX) {
+          relecturesPage += 1;
+          relecturesRun += 1;
+          // Attente CROISSANTE, jamais plus courte que l'espacement normal
+          // entre deux pages : on relit une plateforme qui vient de nous
+          // servir du vide, on ne la bouscule pas.
+          const attente = syncPauseMs() * relecturesPage;
+          console.warn(`[sync-dressing] page ${page} vide alors que ${items_vus}/${totalEntries ?? "?"} articles sont lus — relecture ${relecturesPage}/${SYNC_RELECTURES_PAGE_MAX} dans ${Math.round(attente / 1000)} s`);
+          await sleep(attente);
+          continue; // MÊME page, curseur intact
+        }
+        // Plafond atteint : on s'arrête ICI, curseur laissé SUR la page
+        // fautive — c'est lui qui permettra à la reprise de la relire.
+        motifArretIncomplet = `page ${page} restée vide après ${relecturesPage} relecture(s) alors que Vinted en annonce ${totalEntries ?? "?"}`;
+        break;
+      }
+    }
+    relecturesPage = 0;
 
     // ⚠️ page_suivante n'avance qu'une fois la page ENTIÈRE écrite : un
     // curseur avancé en milieu de page ferait sauter, à la reprise, les
@@ -10035,10 +10144,18 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     await majRun({ page_suivante: page + 1, items_vus, items_crees, items_maj });
     console.log(`[sync-dressing] page ${page}/${totalPages ?? "?"} — ${articles.length} articles (${items_vus} au total)`);
 
+    // Page vide arrivée jusqu'ici = fin LÉGITIME (rien ne prouvait qu'il
+    // restait à lire, cf. le bloc plus haut) : curseur avancé, comme avant.
     if (articles.length === 0) break;
     if (totalPages != null && page >= totalPages) break;
     page += 1;
     await sleep(syncPauseMs());
+  }
+  // Garde-fou anti-boucle atteint : la lecture n'est pas allée au bout non
+  // plus, et il faut le DIRE — un dressing de plus de 3840 articles ne peut
+  // pas se solder par un « terminé » silencieux.
+  if (page > SYNC_MAX_PAGES && !motifArretIncomplet) {
+    motifArretIncomplet = `garde-fou anti-boucle atteint (${SYNC_MAX_PAGES} pages)`;
   }
 
   // ── Disparitions : datées, JAMAIS supprimées ─────────────────────────────
@@ -10295,14 +10412,51 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       echecsEcriture.map((f) => `${f.vinted_item_id} (${f.erreur})`).join(" ; "));
   }
   if (motifSautDisparitions) notes.push(`${NOTE}disparitions non marquées — ${motifSautDisparitions}`);
+
+  // ── UNE SYNC COURTE NE SE DÉCLARE PAS TERMINÉE (2026-09-13) ──────────────
+  // Jusqu'ici le run écrivait LUI-MÊME « vu 192 article(s) pour 2684
+  // annoncé(s) : relevé incomplet » dans son champ erreur… et se clôturait en
+  // 'done'. La garde (b) ci-dessus ne protège QUE le marquage des
+  // disparitions ; personne n'avait branché le même constat sur le STATUT du
+  // run. Deux questions distinctes, deux signaux distincts :
+  //   · « puis-je marquer les disparitions ? » → `vusCetteSync`, reconstruit à
+  //     chaque exécution, donc légitimement petit sur une reprise. INCHANGÉ ;
+  //   · « le dressing a-t-il été lu en entier ? » → `items_vus`, CUMULÉ sur
+  //     les reprises (restauré depuis la ligne du run). C'est lui qu'il faut,
+  //     sinon une reprise réussie se déclarerait incomplète.
+  // Strict, sans tolérance, même raisonnement que la garde (b) : total_entries
+  // est relu à chaque page et BAISSE quand un article est retiré pendant le
+  // run — l'écart ne peut donc se creuser que s'il MANQUE des articles à
+  // l'appel. Relevé prod : les runs complets sortent à l'unité près
+  // (2684/2684, 223/223). total_entries absent = on ne sait pas = on ne
+  // dégrade pas (c'est le cas d'un dressing vraiment vide).
+  const releveIncomplet = totalEntries != null && items_vus < totalEntries;
+  if (releveIncomplet) {
+    notes.push(`${NOTE}relevé incomplet — ${items_vus} article(s) lu(s) sur ${totalEntries} annoncé(s) par Vinted` +
+      (motifArretIncomplet ? ` ; arrêt : ${motifArretIncomplet}` : "") +
+      ` ; reprise à la page ${page}`);
+  }
   await clore({
-    status: "done", items_vus, items_crees, items_maj,
+    // 'incomplete' est un état TERMINAL, distinct de 'done' : la cadence de
+    // 15 min / 20 h ne s'arme pas dessus (trigger et gardes lisent 'done'),
+    // donc l'utilisateur peut relancer tout de suite, et la reprise repartira
+    // de `page_suivante` — la page fautive, pas la page 1.
+    status: releveIncomplet ? "incomplete" : "done",
+    items_vus, items_crees, items_maj,
     total_entries: totalEntries,
+    // Le curseur n'est PAS avancé au-delà d'une page restée vide (cf. boucle) :
+    // on le ré-affirme ici pour que la clôture ne puisse pas le contredire.
+    ...(releveIncomplet ? { page_suivante: page } : {}),
     ...(notes.length ? { erreur: notes.join(" | ").slice(0, 500) } : {}),
   });
   if (echecsEcriture.length) console.error(`[sync-dressing] ${echecsEcriture.length} article(s) non écrit(s) — détail dans vinted_sync_runs.erreur`);
-  console.log(`[sync-dressing] terminée : ${items_vus} articles (${items_crees} créés, ${items_maj} mis à jour)`);
-  return { ok: true, items_vus, items_crees, items_maj, echecs: echecsEcriture.length };
+  if (releveIncomplet) {
+    console.warn(`[sync-dressing] INCOMPLÈTE : ${items_vus}/${totalEntries} articles — reprise à la page ${page}`);
+  } else {
+    console.log(`[sync-dressing] terminée : ${items_vus} articles (${items_crees} créés, ${items_maj} mis à jour)`);
+  }
+  return { ok: true, incomplet: releveIncomplet, page_reprise: releveIncomplet ? page : null,
+    items_vus, items_crees, items_maj, echecs: echecsEcriture.length };
 
   } catch (e) {
     // Filet général : c'est CE catch qui garantit qu'aucune fin d'exécution ne
