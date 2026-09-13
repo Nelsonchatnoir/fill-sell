@@ -1867,6 +1867,31 @@ function ecrireMarqueurLens(m){
   try{ localStorage.setItem(LENS_SCAN_KEY,JSON.stringify(m)); }catch{ /* stockage indisponible : pas de reprise, rien de cassé */ }
 }
 
+// ── SCANS DÉJÀ RENDUS À L'ÉCRAN (2026-09-13, 3e passe) ──────────────────────
+// La reprise ne DÉCIDE plus sur la foi du marqueur : elle interroge le serveur.
+// Mesuré sur l'échec du cas C — au rechargement de 20:36:22, aucune requête
+// lens_scans n'est partie : la reprise était sortie avant, sur un marqueur qui
+// ne disait pas ce qu'il fallait. Le scan était pourtant en base, terminé, avec
+// son résultat, et décompté. Un résultat payé et invisible.
+// Le marqueur ne porte donc plus la question « y a-t-il quelque chose à
+// reprendre ? » (c'est le serveur qui répond) mais seulement « l'ai-je déjà
+// montré ? ». Se tromper sur cette liste-là est sans gravité : au pire on
+// réaffiche un résultat déjà vu, jamais on ne le perd, et jamais on ne
+// redécompte — un résultat mémorisé est resservi sans le moindre débit.
+const LENS_VUS_KEY = 'fs_lens_vus';
+function lireScansVus(){
+  try{ const b=localStorage.getItem(LENS_VUS_KEY); const a=b?JSON.parse(b):[]; return Array.isArray(a)?a:[]; }
+  catch{ return []; }
+}
+function marquerScanVu(id){
+  if(!id)return;
+  try{
+    const a=lireScansVus().filter(x=>x!==id);
+    a.push(id);
+    localStorage.setItem(LENS_VUS_KEY,JSON.stringify(a.slice(-10)));
+  }catch{ /* stockage indisponible : au pire un résultat réaffiché */ }
+}
+
 export default function App({ loginOnly = false }){
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -5126,133 +5151,156 @@ export default function App({ loginOnly = false }){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── REPRISE D'UN SCAN LENS INTERROMPU (2026-09-13) ────────────────────────
-  // Au démarrage, si un marqueur dit qu'un scan était en cours quand l'app est
-  // morte, on va LIRE son issue dans lens_scans. Lecture seule, jamais un
-  // nouvel appel à lens-analysis : relancer la fonction, c'est risquer de
-  // refacturer, et c'est justement ce que ce lot supprime. La RLS de la table
-  // ne rend que les lignes de l'utilisateur.
-  // Trois issues :
-  //   · 'termine' → le résultat s'affiche, l'utilisateur reprend où il en
-  //     était, rien n'est consommé de plus ;
-  //   · 'echec'   → le motif s'affiche, la relance est gratuite de fait (un
-  //     scan raté ne pose aucune ligne generate_listing) ;
-  //   · rien après 90 s (serveur d'une version antérieure, écriture en panne)
-  //     → on rend la main avec les photos restaurées : un tap pour relancer,
-  //     jamais un écran vide qui oblige à tout refaire.
+  // ── REPRISE D'UN SCAN LENS — C'EST LE SERVEUR QUI RÉPOND (2026-09-13) ─────
+  // POURQUOI CETTE RÉÉCRITURE. La version précédente demandait d'abord au
+  // marqueur localStorage s'il y avait quelque chose à reprendre, et n'allait
+  // lire la base que s'il disait oui. Mesuré sur l'échec du 20:36 : au
+  // rechargement pendant l'analyse, AUCUNE requête lens_scans n'est partie —
+  // la reprise était sortie sur ce test-là. Le scan était pourtant en base,
+  // terminé, avec son résultat, et décompté d'une unité. Un résultat payé et
+  // invisible : exactement le bug de départ, déplacé d'un cran.
+  //
+  // Un drapeau local ne peut pas être l'autorité sur ce qui existe côté
+  // serveur. La question « ai-je un scan à reprendre ? » est désormais posée à
+  // la BASE, à chaque démarrage, sans condition préalable. Le marqueur ne
+  // répond plus qu'à « l'ai-je déjà montré à l'écran ? », et se tromper là-dessus
+  // est sans gravité : au pire un résultat déjà vu se réaffiche, jamais il ne
+  // se perd. Rien n'est redébité dans aucun cas — un résultat mémorisé est
+  // resservi tel quel, et une relance garde le MÊME scan_id.
+  //
+  // Fenêtre de 2 h et non 30 min : un résultat PAYÉ que l'utilisateur n'a
+  // jamais vu reste dû, même une heure plus tard. Au-delà, la purge prend le
+  // relais. Coût pour le cas normal : une requête indexée (user_id + created_at,
+  // 2 h, limit 1) au démarrage de l'app, en parallèle du reste. Elle ne
+  // retarde aucun écran et ne touche pas au déroulé d'un scan.
   useEffect(()=>{
     if(!user?.id)return;
-    const m=lireMarqueurLens();
-    if(!m||!m.scan_id||m.etape==='rendu')return;
-    const age=Date.now()-(m.debut??0);
-    // Passé 6 h, on ne reprend plus rien : le sweep de 04:15 a requalifié la
-    // ligne, les photos lens-temp peuvent avoir disparu, et faire patienter
-    // quelqu'un qui rouvre l'app le lendemain pour un scan oublié n'a aucun
-    // sens. On classe le marqueur et on rend la main immédiatement.
-    if(age>6*3600*1000){ ecrireMarqueurLens({...m,etape:'rendu'}); return; }
     let vivant=true;
-    // Le marqueur n'est classé 'rendu' que quand il n'y a plus rien à
-    // reprendre. Sur une montée inachevée on le GARDE : l'utilisateur a ses
-    // photos à l'écran mais peut très bien recharger encore une fois avant de
-    // relancer — les lui reperdre à ce moment-là serait le même bug, déplacé.
-    let garderMarqueur=false;
-    const clore=()=>{ if(!vivant)return; setLensLoading(false); setLensReprise(false);
-                      if(!garderMarqueur)ecrireMarqueurLens({...m,etape:'rendu'}); };
+    const clore=()=>{ if(!vivant)return; setLensLoading(false); setLensReprise(false); };
+
+    // Lecture unique : le scan le plus récent encore vivant ou tout juste
+    // terminé. La RLS ne rend que les lignes de l'utilisateur.
+    const lireScan=async()=>{
+      const depuis=new Date(Date.now()-2*3600*1000).toISOString();
+      const{data,error}=await supabase.from('lens_scans')
+        .select('scan_id,statut,resultat,motif,photos,created_at')
+        .in('statut',['preparation','en_cours','termine'])
+        .gte('created_at',depuis)
+        .order('created_at',{ascending:false})
+        .limit(1).maybeSingle();
+      if(error)throw new Error(error.message);
+      return data;
+    };
+
+    const rendrePhotos=(liste)=>{
+      if(!liste?.length)return;
+      setLensPhotos(prev=>prev.length?prev:liste.map(u=>({preview:u,mime:'image/jpeg'})));
+    };
+
     (async()=>{
-      // Photos rendues tout de suite : l'attente montre l'article scanné, pas
-      // un viseur vide. Jamais par-dessus des photos déjà reprises à la main.
-      const photosSauvees=Array.isArray(m.urls)?m.urls:[];
-      if(photosSauvees.length)setLensPhotos(prev=>prev.length?prev:photosSauvees.map(u=>({preview:u,mime:'image/jpeg'})));
-      setLensLoading(true);
-      setLensReprise(true);
-      const fin=Date.now()+6*60*1000;   // borne dure : au-delà, plus rien à attendre
-      let vueUneFois=false;
-      try{
-        while(vivant&&Date.now()<fin){
-          const{data,error}=await supabase.from('lens_scans')
-            .select('statut,resultat,motif,photos').eq('scan_id',m.scan_id).maybeSingle();
-          if(error)break;
-          if(data){
-            vueUneFois=true;
-            if(data.statut==='termine'&&data.resultat){
+      let scan=null;
+      try{ scan=await lireScan(); }
+      catch(e){ console.warn('[lens][reprise] lecture impossible :',e?.message??e); return; }
+      if(!vivant||!scan)return;
+
+      const marqueur=lireMarqueurLens();
+      const dejaVus=lireScansVus();
+
+      // ── 1. TERMINÉ : le résultat existe, il est payé, on le rend ──────────
+      // C'est le cas qui manquait. Aucun appel à lens-analysis, aucun débit :
+      // une simple lecture de la ligne.
+      if(scan.statut==='termine'){
+        if(dejaVus.includes(scan.scan_id))return;   // déjà rendu à l'écran
+        rendrePhotos(Array.isArray(scan.photos)?scan.photos:[]);
+        marquerScanVu(scan.scan_id);
+        if(scan.resultat)setLensResult(scan.resultat);
+        return;
+      }
+
+      // ── 2. ÉCHEC : on le dit, la relance est gratuite de fait ─────────────
+      if(scan.statut==='echec'){
+        if(dejaVus.includes(scan.scan_id))return;
+        rendrePhotos(Array.isArray(scan.photos)?scan.photos:[]);
+        marquerScanVu(scan.scan_id);
+        setLensResult({error:lang==='en'
+          ?'❌ The analysis did not finish. Relaunch it — this attempt cost you nothing.'
+          :"❌ L'analyse n'est pas allée au bout. Relance-la — cette tentative ne t'a rien coûté."});
+        return;
+      }
+
+      // ── 3. EN COURS : l'analyse tourne côté serveur, on l'attend ──────────
+      if(scan.statut==='en_cours'){
+        rendrePhotos(Array.isArray(scan.photos)?scan.photos:[]);
+        setLensLoading(true); setLensReprise(true);
+        const fin=Date.now()+6*60*1000;
+        let echecs=0;
+        try{
+          while(vivant&&Date.now()<fin){
+            await new Promise(r=>setTimeout(r,2500));
+            if(!vivant)return;
+            let a=null;
+            // Une lecture ratée ne CLÔT plus la reprise : trois essais avant
+            // d'abandonner. La version précédente sortait de la boucle au
+            // premier accroc réseau, et le résultat n'arrivait jamais.
+            try{ a=await lireScan(); echecs=0; }
+            catch{ if(++echecs>=3)break; continue; }
+            if(!a||a.scan_id!==scan.scan_id)break;
+            if(a.statut==='termine'){
               if(!vivant)return;
-              ecrireMarqueurLens({...m,etape:'rendu'});
-              setLensResult(data.resultat);
+              marquerScanVu(a.scan_id);
+              if(a.resultat)setLensResult(a.resultat);
               return;
             }
-            if(data.statut==='echec'){
+            if(a.statut==='echec'){
               if(!vivant)return;
-              ecrireMarqueurLens({...m,etape:'rendu'});
+              marquerScanVu(a.scan_id);
               setLensResult({error:lang==='en'
                 ?'❌ The analysis did not finish. Relaunch it — this attempt cost you nothing.'
                 :"❌ L'analyse n'est pas allée au bout. Relance-la — cette tentative ne t'a rien coûté."});
               return;
             }
-            // ── La requête n'était jamais partie (2026-09-13 soir) ──────────
-            // Le scan a été réservé, mais l'app est morte pendant la montée
-            // des photos ou juste avant l'envoi. RIEN n'a été débité : le
-            // prélèvement est la transition preparation → en_cours, et elle
-            // n'a pas eu lieu. On reprend donc SANS repayer.
-            if(data.statut==='preparation'){
-              // Le serveur peut avoir reçu des URLs que le marqueur local n'a
-              // pas (localStorage vidé) : on prend la liste la plus complète.
-              const duServeur=Array.isArray(data.photos)?data.photos:[];
-              const photos=duServeur.length>photosSauvees.length?duServeur:photosSauvees;
-              if(photos.length)setLensPhotos(prev=>prev.length?prev:photos.map(u=>({preview:u,mime:'image/jpeg'})));
-              const attendues=m.nb_prevu??photos.length;
-              // Relance AUTOMATIQUE seulement si le scan est frais (30 min, la
-              // même borne que le rattrapage du sweep). Au-delà, on ne relance
-              // pas tout seul : rouvrir l'app le soir et déclencher — donc
-              // facturer — un scan lancé le matin serait une surprise, pas un
-              // service. Les photos reviennent, le geste reste à l'utilisateur.
-              const frais=age<30*60*1000;
-              if(frais&&photos.length>0&&photos.length>=attendues){
-                // Toutes les photos étaient arrivées : il ne manquait que
-                // l'envoi. On le fait, avec le MÊME scan_id — donc sans
-                // seconde unité. L'utilisateur n'a rien à retoucher.
-                if(!vivant)return;
-                try{
-                  await envoyerAnalyseLens({scanId:m.scan_id,urls:photos,
-                                            onRendu:()=>ecrireMarqueurLens({...m,etape:'rendu'})});
-                }catch(e){
-                  if(vivant)setLensResult({error:`❌ ${e.message}`});
-                }
-                return;
-              }
-              // Montée inachevée : les photos manquantes vivaient en mémoire,
-              // elles sont mortes avec la page — on ne peut pas les remonter.
-              // On le DIT, plutôt que d'analyser un lot tronqué et de le
-              // facturer. Les photos sauvées sont déjà dans le viseur : un
-              // seul geste suffit pour relancer, ou pour en rajouter une.
-              if(!vivant)return;
-              garderMarqueur=true;
-              setInfoRepriseLens(
-                photos.length===0
-                  ?(lang==='en'
-                    ?'Your scan was interrupted before any photo was uploaded. Nothing has been charged — take the photos again.'
-                    :"Ton scan a été coupé avant qu'aucune photo ne parte. Rien ne t'a été décompté — reprends les photos.")
-                :photos.length>=attendues
-                  ?(lang==='en'
-                    ?'Your interrupted scan is back, with all its photos. Nothing has been charged — relaunch it whenever you want.'
-                    :"Ton scan interrompu est retrouvé, avec toutes ses photos. Rien ne t'a été décompté — relance-le quand tu veux.")
-                  :(lang==='en'
-                    ?`Your scan was interrupted while uploading: ${photos.length} of ${attendues} photos were saved. Nothing has been charged. Relaunch it, or add the missing one first.`
-                    :`Ton scan a été coupé pendant l'envoi des photos : ${photos.length} sur ${attendues} ont été sauvegardées. Rien ne t'a été décompté. Relance-le, ou rajoute d'abord celle qui manque.`));
-              return;
-            }
-          }else if(!vueUneFois&&Date.now()-(m.debut??0)>90000){
-            // Aucune ligne 90 s après le lancement : le scan n'a jamais été
-            // réservé (réservation refusée, ou app d'une version antérieure).
-            // Rien ne viendra, on ne fait pas patienter pour rien.
-            break;
           }
-          await new Promise(r=>setTimeout(r,3000));
-        }
-      }catch(e){
-        console.warn('[lens][reprise] lecture impossible :',e?.message??e);
-      }finally{
-        clore();
+        }finally{ clore(); }
+        return;
       }
+
+      // ── 4. PRÉPARATION : la requête n'est jamais partie ───────────────────
+      // Rien n'a été débité — le prélèvement est la transition preparation →
+      // en_cours, et elle n'a pas eu lieu.
+      const photosServeur=Array.isArray(scan.photos)?scan.photos:[];
+      const photosLocales=Array.isArray(marqueur?.urls)?marqueur.urls:[];
+      const photos=photosServeur.length>=photosLocales.length?photosServeur:photosLocales;
+      rendrePhotos(photos);
+      const memeScan=marqueur?.scan_id===scan.scan_id;
+      const attendues=memeScan?(marqueur?.nb_prevu??photos.length):photos.length;
+      const frais=Date.now()-new Date(scan.created_at).getTime()<30*60*1000;
+      // Relance automatique SEULEMENT si l'on sait que le lot est complet
+      // (marqueur du même scan) et qu'il est frais. Sans cette certitude on ne
+      // lance rien : analyser un lot tronqué et le facturer serait pire que de
+      // demander un geste.
+      if(memeScan&&frais&&photos.length>0&&photos.length>=attendues){
+        setLensLoading(true); setLensReprise(true);
+        try{
+          await envoyerAnalyseLens({scanId:scan.scan_id,urls:photos,
+            onRendu:()=>{ marquerScanVu(scan.scan_id);
+                          ecrireMarqueurLens({...(marqueur||{}),etape:'rendu'}); }});
+        }catch(e){ if(vivant)setLensResult({error:`❌ ${e.message}`}); }
+        finally{ clore(); }
+        return;
+      }
+      setInfoRepriseLens(
+        photos.length===0
+          ?(lang==='en'
+            ?'Your scan was interrupted before any photo was uploaded. Nothing has been charged — take the photos again.'
+            :"Ton scan a été coupé avant qu'aucune photo ne parte. Rien ne t'a été décompté — reprends les photos.")
+        :photos.length>=attendues
+          ?(lang==='en'
+            ?'Your interrupted scan is back, with all its photos. Nothing has been charged — relaunch it whenever you want.'
+            :"Ton scan interrompu est retrouvé, avec toutes ses photos. Rien ne t'a été décompté — relance-le quand tu veux.")
+          :(lang==='en'
+            ?`Your scan was interrupted while uploading: ${photos.length} of ${attendues} photos were saved. Nothing has been charged. Relaunch it, or add the missing one first.`
+            :`Ton scan a été coupé pendant l'envoi des photos : ${photos.length} sur ${attendues} ont été sauvegardées. Rien ne t'a été décompté. Relance-le, ou rajoute d'abord celle qui manque.`));
+      clore();
     })();
     return()=>{vivant=false;};
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6012,7 +6060,14 @@ export default function App({ loginOnly = false }){
     // refus. Une panne réseau, elle, le laisse en l'état : l'analyse, elle,
     // continue côté serveur (elle est ancrée au runtime, plus à la socket), et
     // la reprise au prochain démarrage ira la chercher.
-    const marquerRendu=()=>{const m=lireMarqueurLens();if(m?.scan_id===scanId)ecrireMarqueurLens({...m,etape:'rendu'});};
+    // Rendu à l'écran = vu. Sans cette marque, la reprise du prochain
+    // démarrage retrouverait ce scan terminé en base et le réafficherait
+    // par-dessus l'écran en cours — sans rien débiter, mais sans raison.
+    const marquerRendu=()=>{
+      marquerScanVu(scanId);
+      const m=lireMarqueurLens();
+      if(m?.scan_id===scanId)ecrireMarqueurLens({...m,etape:'rendu'});
+    };
     // Facturation (payant-par-scan 2026-07-23) : le serveur débite 6 unités
     // par analyse (spend_coins_for_lens, grant mensuel lazy inclus) et
     // rembourse si l'analyse n'est pas livrée. Seul le 402 insufficient_coins
