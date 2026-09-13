@@ -178,7 +178,7 @@ begin
     select p.id,
            case
              when p.is_business = true then 'business'
-             when p.is_pro = true then 'pro'
+          when p.is_pro = true then 'pro'
              when p.is_premium = true or p.is_comped = true then 'premium'
              else 'free'
            end as tier
@@ -206,3 +206,11 @@ begin
                             'ran_at', now());
 end;
 $function$;
+
+-- ── APPLIQUÉE EN PROD LE 2026-09-13 ────────────────────────────────────────
+-- Version distante enregistrée : 20260913170117 (nom lens_scans_persistance).
+-- L'indentation de `when p.is_pro` (10 espaces, pas 13) n'est PAS une coquille :
+-- c'est celle du corps qui tournait en prod. La recopier à l'identique est la
+-- seule façon de pouvoir affirmer que la boucle de grants n'a pas bougé —
+-- vérifié après application : md5 de la boucle 3139d598f0a7cfb1b87855512073a86a
+-- et 869 caractères, avant comme après.
