@@ -163,6 +163,44 @@ function genreNormalise(genre) {
   return null;
 }
 
+// ── SYNONYMES DIRIGÉS : l'arbre n'a PAS le mot, et on a DÉCIDÉ où il va ─────
+// Règle du 13/09 (décision Nico) : Beebs n'a aucun rayon « Polos » côté Homme
+// — relu dans docs/beebs-categories-raw.txt, le mot n'apparaît que dans
+// « Chemises et polos (garçon) ». Un polo homme partait donc de l'icône 👕
+// vers « T-shirts (homme) », puis la vérification IA du chemin le jugeait
+// incohérent et le job partait SANS chemin (polo ericfurina, 13/09). Mesure
+// avant la règle : les 6 publications Beebs de polos homme du parc (2 comptes)
+// sont DÉJÀ en « T-shirts (homme) » — la règle écrit ce que le parc fait, elle
+// ne reclasse rien, et elle ne s'applique qu'à la création d'un job.
+// Périmètre STRICT : ce mot, ce genre, cette plateforme. Rien d'autre n'entre
+// ici sans décision explicite. La feuille visée doit EXISTER dans l'arbre
+// relevé, sinon la règle est ignorée : jamais une catégorie non relevée.
+const SYNONYMES_DIRIGES = [
+  {
+    plateforme: "beebs", mot: "polo", genre: "homme",
+    chemin: ["Mode", "Homme", "Vêtements (homme)", "T-shirts (homme)"],
+    regle: "polo_homme_beebs_1309",
+    motif: "Beebs n'a pas de rayon Polos homme : un polo homme se range en « T-shirts (homme) » (décision 13/09)",
+  },
+];
+
+function synonymeDirige(mot, plateforme, g, feuilles) {
+  const jm = jetons(mot);
+  for (const s of SYNONYMES_DIRIGES) {
+    if (s.plateforme !== plateforme || s.genre !== g) continue;
+    if (!memeEnsemble(jm, jetons(s.mot))) continue;
+    const cle = s.chemin.map((x) => texteComparable(x)).join(" > ");
+    const feuille = feuilles.find((f) => f.chemin.map((x) => texteComparable(x)).join(" > ") === cle);
+    if (!feuille) continue; // feuille absente du relevé : la règle ne s'applique pas
+    return {
+      chemin: feuille.chemin, id: feuille.id, certitude: "exact", candidats: [], escamotage: null,
+      regle: s.regle,
+      motif: `« ${mot} » → « ${feuille.chemin[feuille.chemin.length - 1]} » par la règle ${s.regle} : ${s.motif}`,
+    };
+  }
+  return null;
+}
+
 /**
  * Résout un mot-objet contre l'arbre relevé d'une plateforme.
  *
@@ -187,6 +225,10 @@ export async function resoudreParMot(mot, plateforme, { genre = "", famille = nu
   if (!feuilles.length) return { ...vide, motif: `arbre ${plateforme} indisponible` };
 
   const g = genreNormalise(genre);
+  // Synonyme dirigé AVANT la recherche : le mot n'est pas dans l'arbre pour ce
+  // genre, et la feuille où il va a été décidée (cf. SYNONYMES_DIRIGES).
+  const dirige = synonymeDirige(mot, plateforme, g, feuilles);
+  if (dirige) return dirige;
   const accepte = g ? new Set(ACCEPTE[g] ?? [g]) : null;
   // Une feuille GENRÉE est écartée quand la fiche dit un autre genre. Une
   // feuille SANS genre (Maison, Électronique…) passe toujours : le genre n'y

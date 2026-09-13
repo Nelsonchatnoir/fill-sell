@@ -6952,6 +6952,9 @@ export default function ListingPreviewScreen({
           pf.categorie_par_mot = {
             mot: motCategorie, mot_source: motCategorieSource, chemin: parMot.chemin, id: parMot.id ?? null,
             ...(parMot.choisiParIa ? { choisi_par_ia: true } : {}),
+            // Synonyme dirigé (categorieParMot.js, SYNONYMES_DIRIGES) : la
+            // règle qui a posé le chemin reste lisible sur le job.
+            ...(parMot.regle ? { regle: parMot.regle } : {}),
           };
           delete pf.categorie_incertaine;
         }

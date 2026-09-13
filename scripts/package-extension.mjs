@@ -152,7 +152,11 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // le CWS le 10/09 (handler_build « 2026-09-10T09:41:28Z+3696da6 · v0.6.25 » sur
 // les jobs de 4 comptes le soir même). La 0.6.26 la remplace : re-packager la
 // 0.6.25 se ferait rejeter.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33'];
+// 0.6.33 ajoutée le 13/09 au bump 0.6.34 : zip fillsell-extension-0.6.33-dbe8d1b-cws.zip
+// (BUILD_ID 2026-09-13T10:16:27Z+dbe8d1b) TÉLÉVERSÉ et PUBLIÉ au Chrome Web
+// Store le 13/09 — relu en base : 15 comptes en 0.6.33 (extension_version) dans
+// les 24 h au 13/09 16h20. Plus jamais re-packagée sous ce numéro.
 // 0.6.32 ajoutée le 12/09 : zip build/CWS-0.6.32-A-TELEVERSER/
 // fillsell-extension-0.6.32-2417097-cws.zip TÉLÉVERSÉ et PUBLIÉ au Chrome Web
 // Store le 12/09 — plus jamais re-packagée sous ce numéro.
