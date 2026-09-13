@@ -1324,7 +1324,15 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // ⚠️ EXTENSION_MIN_BUILD ne se deduit TOUJOURS PAS d'ici : apres acceptation de
 // la 0.6.25, il vaut le BUILD_ID DU ZIP — 2026-09-10T09:41:28Z — jamais cette
 // constante (cf. bandeau du 09/08, incident 0.5.6).
-export const EXTENSION_LAST_COMMIT = '2026-09-13T14:28:32Z'; // recale 59401b4 (manifest 0.6.34 : mur de connexion Leboncoin + pre-vol Beebs humain, code dans d3dadbf) - MIN_BUILD inchange (0.6.32 reste le seuil servi ; 0.6.33 inscrite dans PUBLISHED_BUILD_IDS)
+// 2026-09-13T16:26:14Z (18h26 Paris, commit 78a891d) : trois correctifs Beebs
+// ENRICHISSANT la 0.6.34 avant tout televersement (le zip bb11c34 n'est jamais
+// parti au CWS, la version ne bouge donc pas) — purge d'interstitiel qui
+// n'efface plus la page (modale « Activer les notifications » non portee),
+// garde de session anonyme lue dans IndexedDB (firebase:authUser.isAnonymous),
+// lecteur d'erreurs debarrasse de « Retour » et de grecaptcha-error, et resume
+// de la sonde reseau en last_diagnostic sur un depot non confirme.
+// MIN_BUILD INCHANGE : la 0.6.34 n'est pas encore acceptee.
+export const EXTENSION_LAST_COMMIT = '2026-09-13T16:26:14Z'; // recale 78a891d (0.6.34 enrichie : purge, garde de session anonyme, lecteur d'erreurs) - MIN_BUILD inchange (0.6.32 reste le seuil servi)
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
