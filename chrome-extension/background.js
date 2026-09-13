@@ -2892,6 +2892,34 @@ async function processJob(rawJob, accessToken) {
       if (release) await release().catch(() => {});
     }
 
+    // ── Dépôt Beebs non confirmé : la sonde réseau en last_diagnostic (2026-09-13) ──
+    // Jusqu'ici les captures de la sonde (réponse RSC de la Server Action
+    // POST /fr/listing) n'étaient relues qu'au verdict published
+    // (beebsCapturedProductId) : sur un « Dépôt Beebs non confirmé », on ne
+    // pouvait pas dire après coup si la requête était partie ni ce que Beebs
+    // avait répondu (ericfurina ×2, 13/09). Résumé BORNÉ, hors du message
+    // (SQL seulement), même forme que readEbayFailureDiagnostics — fire-and-
+    // forget, jamais bloquant, ne change pas le verdict.
+    if (job.platform === "beebs" && result && result.success === false
+        && /^Dépôt Beebs non confirmé/i.test(String(result.error ?? ""))) {
+      try {
+        const { captures } = await readProbeCaptures(tabId);
+        const resume = captures.length
+          ? `${captures.length} capture(s) non-GET : ` + captures.slice(-4).map((c) =>
+              `${String(c?.url ?? "?").slice(0, 120)} → HTTP ${c?.status ?? "?"} · corps: ` +
+              texteSain(String(c?.reponse ?? "")).replace(/\s+/g, " ").slice(0, 160)
+            ).join(" ; ")
+          : "AUCUNE capture — la soumission n'est jamais partie, ou est partie hors fetch/XHR du top frame";
+        job.platform_fields = {
+          ...(job.platform_fields ?? {}),
+          last_diagnostic: `[sonde beebs, dépôt non confirmé : ${resume}]`.slice(0, 2000),
+        };
+        console.log(`[background] Job ${job.id} : dépôt Beebs non confirmé — ${resume.slice(0, 300)}`);
+      } catch (e) {
+        console.warn(`[background] Job ${job.id} : sonde Beebs illisible sur dépôt non confirmé — ${String(e?.message ?? e)}`);
+      }
+    }
+
     // ── Brouillon LBC JETÉ via le chemin officiel (2026-09-03, prouvé live) ──
     // Le content script vient de cliquer « Quitter » → « Quitter sans
     // enregistrer » : l'état en cours est abandonné côté LBC et l'onglet a

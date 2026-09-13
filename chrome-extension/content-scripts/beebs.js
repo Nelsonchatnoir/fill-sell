@@ -562,6 +562,37 @@ async function fillListingForm(job) {
     };
   }
 
+  // ── Session Beebs RÉELLE, lue dans IndexedDB (2026-09-13, ericfurina ×2) ──
+  // La garde ci-dessus ne prouve pas un compte : Beebs connecte tout visiteur
+  // en ANONYME (Firebase signInAnonymously) et pose le cookie access_token —
+  // la garde serveur de /fr/listing s'ouvre et le formulaire se rend même
+  // pour quelqu'un SANS compte. On le remplissait, on cliquait, et
+  // addProductAction refusait la session EN SILENCE (throw dans un handler
+  // async, texte i18n jamais rendu) : « Dépôt Beebs non confirmé » 45 s plus
+  // tard, tentative brûlée, alors que la seule cause est une session à
+  // ouvrir. La vérité vit dans l'IndexedDB de la page (même origine, lisible
+  // d'ici) : firebaseLocalStorageDb / firebaseLocalStorage / clé
+  // firebase:authUser:<apiKey>:[DEFAULT] → value.isAnonymous.
+  // Règle : isAnonymous === true → « Connexion Beebs requise » (attente de
+  // session côté background, AUCUNE tentative consommée), AVANT toute
+  // interaction. Tout DOUTE (IndexedDB illisible, base ou store absents, clé
+  // introuvable après deux lectures, valeur illisible) laisse le dépôt suivre
+  // le chemin normal : ce garde ne doit jamais empêcher un vrai compte de
+  // publier. L'état lu part dans l'observabilité du verdict.
+  const sessionFirebase = await lireSessionFirebaseBeebs();
+  etatSessionFirebase = sessionFirebase.resume;
+  console.log(`[beebs] session Firebase : ${sessionFirebase.etat} — ${sessionFirebase.resume}`);
+  if (sessionFirebase.etat === "anonyme") {
+    return {
+      success: false,
+      needsUser: true,
+      error:
+        "Connexion Beebs requise : la session Beebs de Chrome est celle d'un visiteur anonyme " +
+        "(aucun compte connecté) — se connecter à ton compte sur beebs.app dans Chrome, " +
+        "le job repartira au prochain passage.",
+    };
+  }
+
   const fields = job.platform_fields || {};
 
   // Interstitiel à l'arrivée (2026-07-26) : la modale promo peut être déjà
@@ -1134,7 +1165,7 @@ async function fillListingForm(job) {
   if (!proof.ok) {
     return {
       success: false,
-      error: `${proof.error} — observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}`,
+      error: `${proof.error} — observabilité: catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; session Firebase: ${etatSessionFirebase}`,
       warnings, unfilledRequired, discoveredRequired: enumerated,
     };
   }
@@ -1143,7 +1174,7 @@ async function fillListingForm(job) {
   // La preuve retenue part dans les warnings (2026-09-11) : jusqu'ici seul le
   // console.log la portait, et aucune enquête en base ne pouvait dire par quoi
   // un dépôt avait été « confirmé ».
-  warnings.push(`observabilité: dépôt confirmé par ${proof.preuve} ; catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel}`);
+  warnings.push(`observabilité: dépôt confirmé par ${proof.preuve} ; catégorie via ${cheminCategorie} ; interstitiel: ${etatInterstitiel} ; session Firebase: ${etatSessionFirebase}`);
   return { success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated };
 }
 
@@ -1268,9 +1299,17 @@ function erreursFormulaireVisibles() {
     textes.add(m[0]);
     if (textes.size >= 5) break;
   }
+  // ⚠️ BRUIT RETIRÉ le 13/09 (dossier ericfurina) : « Retour » est le bouton
+  // « ‹ Retour » en haut du formulaire — ses classes Tailwind matchent
+  // [class*="error"] — et div.grecaptcha-error (reCAPTCHA Enterprise, vide)
+  // matche aussi. Tous deux sont dans TOUS les relevés, y compris ceux des
+  // refus qui avaient une vraie cause : deuxième fausse piste de ce lecteur
+  // après « Sélectionner une valeur ».
+  const BRUIT_RE = /^Retour$/i;
   for (const el of document.querySelectorAll('[role="alert"], [aria-invalid="true"], [class*="error" i], [class*="invalid" i]')) {
+    if (el.matches?.(".grecaptcha-error")) continue;
     const t = (el.getAttribute("aria-label") || el.textContent || "").replace(/\s+/g, " ").trim();
-    if (t && t.length <= 160) textes.add(t);
+    if (t && t.length <= 160 && !BRUIT_RE.test(t)) textes.add(t);
     if (textes.size >= 5) break;
   }
   return [...textes];
@@ -1299,6 +1338,87 @@ async function waitForBeebsDeposit(timeoutMs = 45_000) {
       ". L'annonce n'est PAS considérée comme déposée. Vérifie « Mes annonces » sur Beebs avant de relancer : " +
       "si elle y est déjà, republier en créerait une deuxième.",
   };
+}
+
+// ── Session Firebase de Beebs, lue dans IndexedDB (2026-09-13) ───────────────
+// Beebs authentifie par Firebase Auth ; la persistance vit dans l'IndexedDB
+// de la page (firebaseLocalStorageDb, store firebaseLocalStorage, une ligne
+// { fbase_key: "firebase:authUser:<apiKey>:[DEFAULT]", value: <user> }) —
+// relevé live le 13/09 sur beebs.app/fr/listing : value.isAnonymous,
+// value.providerData[].providerId, value.email. Même origine : le content
+// script la lit tel quel, sans pont MAIN. Quatre états :
+//   · "anonyme"  → isAnonymous === true : visiteur sans compte (Beebs le
+//                  connecte ainsi d'office) — le SEUL état qui bloque ;
+//   · "connecte" → un utilisateur persisté non anonyme ;
+//   · "absent"   → base et store présents, aucune clé authUser (Firebase n'a
+//                  encore rien persisté) — relu une 2e fois après 2 s, puis
+//                  rendu "inconnu" : l'absence n'est pas une preuve ;
+//   · "inconnu"  → IndexedDB indisponible, base/store absents, délai dépassé,
+//                  valeur illisible — jamais bloquant.
+// La base n'est JAMAIS créée par cette lecture : indexedDB.open sans version
+// la créerait si elle manquait — onupgradeneeded annule la transaction.
+// Rien de personnel ne sort : ni jeton, ni email (seule sa présence).
+async function lireSessionFirebaseBeebs({ essais = 2, attenteMs = 2000, delaiMs = 3000 } = {}) {
+  const lire = () => new Promise((resolve) => {
+    let fini = false;
+    const done = (v) => { if (!fini) { fini = true; resolve(v); } };
+    const garde = setTimeout(() => done({ etat: "inconnu", resume: "IndexedDB : délai dépassé" }), delaiMs);
+    const fin = (v) => { clearTimeout(garde); done(v); };
+    try {
+      if (typeof indexedDB === "undefined") return fin({ etat: "inconnu", resume: "IndexedDB : indisponible" });
+      const req = indexedDB.open("firebaseLocalStorageDb");
+      req.onupgradeneeded = (e) => {
+        try { e.target?.transaction?.abort(); } catch { /* déjà abandonnée */ }
+        fin({ etat: "inconnu", resume: "IndexedDB : base firebaseLocalStorageDb absente" });
+      };
+      req.onerror = () => fin({ etat: "inconnu", resume: `IndexedDB : ouverture refusée (${String(req.error?.name ?? "?")})` });
+      req.onblocked = () => fin({ etat: "inconnu", resume: "IndexedDB : ouverture bloquée" });
+      req.onsuccess = () => {
+        const db = req.result;
+        try {
+          if (!db.objectStoreNames.contains("firebaseLocalStorage")) {
+            db.close();
+            return fin({ etat: "inconnu", resume: "IndexedDB : store firebaseLocalStorage absent" });
+          }
+          const tx = db.transaction("firebaseLocalStorage", "readonly");
+          const store = tx.objectStore("firebaseLocalStorage");
+          const cles = store.getAllKeys();
+          const valeurs = store.getAll();
+          tx.onerror = () => { db.close(); fin({ etat: "inconnu", resume: `IndexedDB : lecture refusée (${String(tx.error?.name ?? "?")})` }); };
+          tx.oncomplete = () => {
+            db.close();
+            const ks = Array.isArray(cles.result) ? cles.result : [];
+            const vs = Array.isArray(valeurs.result) ? valeurs.result : [];
+            const idx = ks.findIndex((k) => /^firebase:authUser:/.test(String(k)));
+            if (idx === -1) return fin({ etat: "absent", resume: "IndexedDB : aucune clé firebase:authUser (aucun utilisateur persisté)" });
+            const ligne = vs[idx];
+            const user = ligne && typeof ligne === "object" && ligne.value && typeof ligne.value === "object" ? ligne.value : null;
+            if (!user) return fin({ etat: "inconnu", resume: "IndexedDB : valeur authUser illisible" });
+            const fournisseurs = Array.isArray(user.providerData)
+              ? user.providerData.map((p) => String(p?.providerId ?? "?")).join("/") : "";
+            if (user.isAnonymous === true) {
+              return fin({ etat: "anonyme", resume: `IndexedDB : authUser ANONYME (isAnonymous=true, fournisseurs=${fournisseurs || "aucun"})` });
+            }
+            return fin({ etat: "connecte", resume: `IndexedDB : authUser connecté (fournisseurs=${fournisseurs || "aucun"}, email=${user.email ? "présent" : "absent"})` });
+          };
+        } catch (e) {
+          try { db.close(); } catch { /* déjà fermée */ }
+          fin({ etat: "inconnu", resume: `IndexedDB : lecture impossible (${String(e?.message ?? e)})` });
+        }
+      };
+    } catch (e) {
+      fin({ etat: "inconnu", resume: `IndexedDB : indisponible (${String(e?.message ?? e)})` });
+    }
+  });
+  let dernier = null;
+  for (let i = 0; i < essais; i++) {
+    dernier = await lire();
+    if (dernier.etat !== "absent") return dernier;
+    await sleep(attenteMs);
+  }
+  // Clé toujours absente : DOUTE (Firebase peut ne pas avoir encore écrit),
+  // jamais un blocage — on le dit tel quel dans l'observabilité.
+  return { etat: "inconnu", resume: `${dernier?.resume ?? "IndexedDB : clé authUser absente"} après ${essais} lectures` };
 }
 
 // ── Helpers génériques ───────────────────────────────────────────────────────
@@ -1929,14 +2049,30 @@ function findGhostDialogs() {
 function purgeInterstitielResidus(d) {
   const retraits = [];
   try {
+    // ⛔ JAMAIS retirer un nœud qui porte le formulaire (2026-09-13, mesuré
+    // live) : la modale « Activer les notifications » (optin-modal-open,
+    // div.z-modal) n'est PAS portée par un portail Radix — elle vit DANS la
+    // racine de l'app, et [class*="modal"] la matche. La remontée de parent en
+    // parent ne trouvait rien de portable et atteignait l'enfant direct de
+    // <body> = la racine de l'app : page entièrement vidée (plus de #title,
+    // plus de form). Règle en négatif : un conteneur qui porte <form> ou
+    // #input-pictures n'est jamais retiré — on retire alors le dialogue seul ;
+    // un dialogue qui porterait lui-même le formulaire n'est pas touché. Les
+    // portails Radix (enfant direct de <body>, sans formulaire) sont retirés
+    // comme avant : 262 dépôts publiés sur 16 comptes ont suivi ce chemin.
+    const porteLeFormulaire = (el) => !!el?.querySelector?.("form, #input-pictures");
     let portail = d;
     while (portail.parentElement && portail.parentElement !== document.body) portail = portail.parentElement;
-    if (portail && portail.parentElement === document.body) {
+    if (porteLeFormulaire(d)) {
+      retraits.push("dialogue CONSERVÉ (il porte le formulaire — rien retiré)");
+    } else if (portail && portail.parentElement === document.body && !porteLeFormulaire(portail)) {
       portail.remove();
       retraits.push("portail du dialogue retiré");
     } else if (d.isConnected) {
       d.remove();
-      retraits.push("dialogue retiré (portail non identifié)");
+      retraits.push(portail && portail.parentElement === document.body
+        ? "dialogue seul retiré (son conteneur porte le formulaire)"
+        : "dialogue retiré (portail non identifié)");
     }
     for (const el of Array.from(document.body.children)) {
       if (el.querySelector?.('div[class*="__options"]') || el.querySelector?.("form")) continue;
@@ -1995,6 +2131,7 @@ function probeClicLibre() {
 // minimisée n'est jamais lue, ces deux variables sont le seul canal fiable.
 let etatInterstitiel = "aucune";
 let cheminCategorie = "(non tentée)";
+let etatSessionFirebase = "(non lue)";
 
 function decrisDialog(d) {
   const boutons = Array.from(d.querySelectorAll('button, [role="button"]'))
