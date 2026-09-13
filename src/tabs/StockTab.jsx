@@ -17,6 +17,8 @@ import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import InstallExtensionCta from '../components/InstallExtensionCta';
+import { useRepublicationPlanifiee, republicationPlanifieeExposee } from '../hooks/useRepublicationPlanifiee';
+import { RepublicationPlanifieeBloc, RepublicationPlanifieeReglages, RepublicationPlanifieeHistorique } from '../components/RepublicationPlanifiee';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
@@ -4379,6 +4381,32 @@ const StockTab = memo(function StockTab({
   }, [user?.id]);
   const republishActif = republishVisiblePour(user?.email)
     && (capaciteExt?.inconnu === false ? capaciteExt.capable === true : !isNative);
+  // ── Republication automatique PAR CRÉNEAUX (lot app du 13/09) ─────────────
+  // État lu au serveur (republish_planifiee_etat, poll 2 min onglet visible)
+  // et interrupteur global coin_config.republish_planifiee_actif. EXPOSÉ si
+  // l'interrupteur vaut 1 ou si le compte porte déjà un réglage (test) ;
+  // sinon l'écran garde l'ancien bloc É6 tel quel — personne ne change de
+  // module par accident. Le bloc compact vit EN TÊTE du Stock ; les deux
+  // écrans (réglages, historique) sont des portails plein écran.
+  const planifiee = useRepublicationPlanifiee({ userId: user?.id });
+  const planifieeExposee = republicationPlanifieeExposee(planifiee);
+  const [planifieeEcran, setPlanifieeEcran] = useState(null); // null | 'reglages' | 'historique'
+  // Non-Pro : « Activer » ouvre la modale de conversion existante — le
+  // serveur (`autorise`) fait foi, exactement le geste de l'accroche É6.
+  const planifieeActiverNonPro = () => {
+    track('premium_click', { source: 'stock_republication_planifiee' });
+    openUpgradeModal?.(null, 'stock_republication_planifiee');
+  };
+  // Pro, module inactif : « Activer » écrit {actif:true} (défauts serveur :
+  // matin 8h–10h, plafond du palier, 7 jours) puis ouvre les réglages sur
+  // l'état RENDU par le serveur — le nombre affiché est le sien, pas le nôtre.
+  const planifieeActiver = async () => {
+    track('republication_planifiee', { action: 'activer', depuis: 'bloc_stock' });
+    const r = await planifiee.regler({ actif: true });
+    if (r?.ok) setPlanifieeEcran('reglages');
+    else if (r?.reason === 'auto_reserve_pro') planifieeActiverNonPro();
+    else setPlanifieeEcran('reglages');
+  };
   const [republishPrice, setRepublishPrice] = useState(null);
   const [repubBusy, setRepubBusy] = useState(null);          // inventaire_id en cours
   const [repubMsgs, setRepubMsgs] = useState({});            // inventaire_id → {ton, texte}
@@ -6014,6 +6042,25 @@ const StockTab = memo(function StockTab({
           est monté par le <style> de la liste plus bas — les classes portent,
           l'ordre DOM d'un <style> est sans effet. */}
       <div className="stock-v2" style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+        {/* ── Republication automatique par créneaux — EN TÊTE (13/09) ─────
+            La première chose qu'un Pro voit en ouvrant l'app : l'état, le
+            créneau, le nombre qui va RÉELLEMENT partir (serveur, jamais le
+            plafond du palier). Tap → réglages ; « Activer » → activation
+            (Pro) ou modale de conversion (autres). Monté seulement si le
+            module est exposé (cf. planifieeExposee) — sinon l'ancien bloc É6
+            reste en bas de liste, intact. */}
+        {planifieeExposee&&(
+          <RepublicationPlanifieeBloc
+            lang={lang}
+            etat={planifiee.etat}
+            interrupteur={planifiee.interrupteur}
+            extensionStatus={extensionStatus}
+            busy={planifiee.busy}
+            onOuvrirReglages={()=>setPlanifieeEcran('reglages')}
+            onActiver={planifieeActiver}
+            onActiverNonPro={planifieeActiverNonPro}
+          />
+        )}
         {/* ── Écran de progression des republications (v3 du 28/08 soir) :
             UN actif, une file, un repli — le traitement réel est SÉQUENTIEL
             (une republication toutes les ~3 min) ; les barres par job de
@@ -8852,7 +8899,10 @@ const StockTab = memo(function StockTab({
                 n'exécute rien et n'écrit rien. Le bloc RÉGLABLE, lui, reste
                 derrière `republishActif` : on ne laisse jamais activer une
                 automatisation que rien ne pourrait exécuter. */}
-            {(republishActif||!isPro)&&(
+            {/* Module par créneaux EXPOSÉ (13/09) → ce bloc s'efface : le
+                bloc compact en tête du Stock le remplace (réglages et accroche
+                non-Pro compris). Non exposé → rien ne change ici. */}
+            {!planifieeExposee&&(republishActif||!isPro)&&(
               <div style={{marginTop:12}}>
                 <RepublishAutoBlock lang={lang} user={user} isPro={isPro} openUpgradeModal={openUpgradeModal}/>
               </div>
@@ -8924,6 +8974,31 @@ const StockTab = memo(function StockTab({
           <RepublishProgressSheet lang={lang} job={frais} reprise={repubPlafondReprise} onClose={()=>setRepubProgress(null)} onSaisieRelance={validerSaisieRelance}/>
         );
       })()}
+      {/* ── Republication par créneaux : les deux écrans plein (13/09) ────
+          Réglages (ouvert par le bloc compact) et historique (ouvert depuis
+          le pied des réglages). Portails ; l'historique revient aux
+          réglages à la fermeture. */}
+      {planifieeEcran==='reglages'&&(
+        <RepublicationPlanifieeReglages
+          lang={lang}
+          etat={planifiee.etat}
+          interrupteur={planifiee.interrupteur}
+          extensionStatus={extensionStatus}
+          busy={planifiee.busy}
+          erreur={planifiee.erreur}
+          regler={planifiee.regler}
+          onClose={()=>setPlanifieeEcran(null)}
+          onOuvrirHistorique={()=>setPlanifieeEcran('historique')}
+        />
+      )}
+      {planifieeEcran==='historique'&&(
+        <RepublicationPlanifieeHistorique
+          lang={lang}
+          userId={user?.id}
+          etat={planifiee.etat}
+          onClose={()=>setPlanifieeEcran('reglages')}
+        />
+      )}
       {/* Mini-éditeur « À compléter » (socle needs_user, 2026-07-19).
           Fermeture sans valider → aucun écrit, le job reste needs_user et le
           badge reste. Après validation : patch LOCAL immédiat (le badge
