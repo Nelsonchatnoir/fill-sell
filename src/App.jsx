@@ -10,6 +10,9 @@ import { initIAP, purchasePremium, restorePurchases, listenCoinTransactionUpdate
 import { paiementsAndroidCoupes, messagePaiementAndroidCoupe } from './utils/androidPayments';
 import { track } from './analytics/analytics';
 import { poserSourceSurProfil } from './utils/acquisition';
+// ⚠️ PAS track() : celui-ci n'écrit que dans le dataLayer GTM. Les gestes
+// irréversibles (retrait, suppression) vont en BASE — cf. journalRetraits.js.
+import { logRetrait, CHEMINS_RETRAIT } from './utils/journalRetraits';
 import { pixelInscription } from './utils/metaPixel';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
@@ -3682,8 +3685,16 @@ export default function App({ loginOnly = false }){
       title:j.title,listing_url:j.listing_url,
       platform_fields:j.listing_url?{}:{removal_url_missing:true},
     }));
-    const{error}=await supabase.from('cross_post_jobs').insert(rows);
+    const{data:armes,error}=await supabase.from('cross_post_jobs').insert(rows).select('id,platform');
     if(error){console.error('[armRemovals] insert:',error.message);return;}
+    // Journal d'audit (13/09) : APRÈS l'insert, sur les lignes RÉELLEMENT
+    // écrites. Cf. src/utils/journalRetraits.js — un retrait sans trace en base
+    // a coûté une soirée d'enquête sur 30 suppressions.
+    logRetrait(user.id,CHEMINS_RETRAIT.BANDEAU,{
+      plateformes:(armes??[]).map(j=>j.platform),
+      nAnnonces:(armes??[]).length,
+      nArticles:group.length,
+    });
     for(const j of group){
       // .select() après update : les updates silencieusement bloqués par RLS
       // ont déjà été vécus sur profiles — on vérifie que la ligne revient.
@@ -4141,14 +4152,18 @@ export default function App({ loginOnly = false }){
     //    lui-même. Ces jobs delete perdront leur inventaire_id au delete
     //    (SET NULL) : sans conséquence, l'extension ne lit que platform +
     //    listing_url (DELETE_TARGETS, background.js).
+    // `armes` sort de la portée du if : il sert au journal d'audit en fin de
+    // fonction, une fois la suppression RÉELLEMENT faite.
+    let armes=[];
     if(p.online.length){
       const rows=p.online.map(pub=>({
         user_id:user.id,inventaire_id:item.id,platform:pub.platform,
         action:'delete',status:'pending',photo_option:'original',
         title:pub.title||item.title,listing_url:pub.listing_url,platform_fields:{},
       }));
-      const{error}=await supabase.from('cross_post_jobs').insert(rows);
+      const{data,error}=await supabase.from('cross_post_jobs').insert(rows).select('id,platform');
       if(error)throw new Error(error.message);
+      armes=data??[];
     }
     // 2. Annuler les publish encore actifs. 'cancelled' = statut d'annulation
     //    déjà utilisé ailleurs (cancelPublishAfterDelete, flux vente) — pas un
@@ -4188,6 +4203,20 @@ export default function App({ loginOnly = false }){
     }
     const{error:iErr}=await supabase.from('inventaire').delete().eq('id',item.id);
     if(iErr)throw new Error(iErr.message);
+    // ── Journal d'audit (13/09) — APRÈS le point de non-retour ──────────────
+    // Posé ICI, une fois la ligne inventaire réellement supprimée : avant, on
+    // journaliserait une suppression qu'une FK peut encore refuser (la vente
+    // liée, NO ACTION, cf. plus haut). ÉMIS MÊME À ZÉRO ANNONCE — c'est
+    // précisément ce qui manquait le 13/09 : savoir que des ARTICLES avaient
+    // été supprimés. `vente` dit lequel des deux boutons de la modale a été
+    // pris, la question s'était posée pendant l'enquête.
+    logRetrait(user.id,CHEMINS_RETRAIT.SUPPRESSION_ARTICLE,{
+      plateformes:armes.map(j=>j.platform),
+      nAnnonces:armes.length,
+      nArticles:1,
+      articleId:item.id,
+      extra:{vente:alsoDeleteSale?'supprimee':'conservee',publications_annulees:p.aAnnuler?.length??0},
+    });
     await fetchAll(user.id);
   }
 

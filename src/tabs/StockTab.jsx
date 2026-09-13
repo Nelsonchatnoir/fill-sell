@@ -12,6 +12,7 @@ import Field from '../components/Field';
 import SwipeRow from '../components/SwipeRow';
 import ListingPreviewScreen, { PLATFORM_LABELS, AspectValueInput, clearStepperPersistence, readStepperHost, writeStepperHost, isRetouchedPhotoEntry } from '../components/ListingPreviewScreen';
 import { repartirParVoie } from '../utils/ebayCompte';
+import { logRetrait, CHEMINS_RETRAIT } from '../utils/journalRetraits';
 import { lbcProduitsDependants } from '../utils/lbcMaisonJardin';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, STOCK_ILLIMITE } from '../utils/stockLimit';
 import ExtensionReminderModal, { shouldShowExtensionReminder } from '../components/ExtensionReminderModal';
@@ -5781,6 +5782,15 @@ const StockTab = memo(function StockTab({
       // en « retrait… » sans attendre le prochain poll (20 s).
       setJobsByInventaire(prev => ({ ...prev, [item.id]: [...(prev[item.id] || []), data] }));
       track('remove_single_platform', { platform });
+      // Journal d'audit (13/09) : track() ne part QUE dans le dataLayer GTM —
+      // rien en base. Un retrait est irréversible, il lui faut une ligne
+      // relisible en SQL. Cf. src/utils/journalRetraits.js.
+      logRetrait(user.id, CHEMINS_RETRAIT.LOGO_STOCK, {
+        plateformes: [data.platform ?? platform],
+        nAnnonces: 1,
+        nArticles: 1,
+        articleId: item.id,
+      });
       return null;
     } finally {
       setRemoveBusy(null);
