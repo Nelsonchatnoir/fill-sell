@@ -8846,6 +8846,28 @@ const SYNC_MAX_PAGES = 40; // 40 × 96 = 3840 articles : garde-fou anti-boucle
 // Au-delà, le run se clôt 'incomplete' avec le curseur SUR la page fautive.
 const SYNC_RELECTURES_PAGE_MAX = 3;
 const SYNC_RELECTURES_RUN_MAX = 6;
+// ── CANAL COUPÉ PENDANT LA SYNC (2026-09-13, nuit) ──────────────────────────
+// Relevé prod 30 jours : 59 syncs meurent d'une coupure de canal, et 100 %
+// finissent en 'failed' — le statut 'interrupted', qui garde le curseur,
+// n'a JAMAIS été écrit une seule fois de toute la table. Deux populations :
+//   · LA SONDE — 42/59 (71 %), « sonde injoignable : Receiving end does not
+//     exist ». Dont 30 sur UN SEUL compte (zenpulse947 : 30 runs, 0 réussite,
+//     17 builds d'affilée) — un poste où le content script ne monte jamais ;
+//   · LA BOUCLE DE PAGES — 11/59, concentrée sur les GROS dressings (médiane
+//     489 articles contre 99 pour le parc) : plus de pages, plus d'allers-
+//     retours, plus d'occasions de se faire couper.
+// Le remède est DÉJÀ dans ce fichier, écrit deux fois pour la capture
+// (captureVintedItemUnlocked) : re-naviguer l'onglet puis réessayer UNE fois.
+// « C'est la navigation fraîche qui répare, pas l'attente » — les 20 s de
+// relance de sendMessageToTab renvoient au MÊME onglet mort et ne servent à
+// rien contre cette famille. La sync n'avait ni l'un ni l'autre.
+// ⛔ RÉSERVÉ AUX LECTURES. La sonde d'identité et la lecture d'une page de
+// dressing sont des GET : les rejouer ne peut rien dupliquer. Les écritures
+// (FILL_LISTING, suppression, republication) ne passent PAS par ici et ne
+// doivent jamais y passer — sur un canal incertain on ne sait pas si l'action
+// est partie, et c'est précisément la garde qui a sauvé l'annonce de ltouze.
+const SYNC_CANAL_TENTATIVES = 2;     // 1 essai + 1 reprise après navigation neuve
+const SYNC_CANAL_ATTENTE_MS = 5000;  // même espacement que la capture (07/08)
 // Âge au-delà duquel un run 'incomplete' n'est PLUS repris : la pagination
 // Vinted se décale à chaque ajout/retrait, la page 3 d'hier n'est pas celle
 // d'aujourd'hui. Passé ce délai, on repart d'une lecture complète.
@@ -9118,6 +9140,59 @@ let syncDressingEnCours = false;
 
 function syncPauseMs() {
   return SYNC_PAUSE_MIN_MS + Math.floor(Math.random() * (SYNC_PAUSE_MAX_MS - SYNC_PAUSE_MIN_MS));
+}
+
+// ── Une LECTURE Vinted qui survit à une coupure de canal ────────────────────
+// Décalque de captureVintedItemUnlocked (2026-08-07, élargi le 07/09), pour la
+// sync cette fois. `envoyer(tabId)` doit être une LECTURE PURE — cf. le bandeau
+// SYNC_CANAL_TENTATIVES : c'est cette propriété, et elle seule, qui autorise le
+// rejeu. On ne rejoue QUE la famille « canal coupé » (CANAL_COUPE_RE + « Could
+// not establish connection ») : une vraie réponse du content script, même en
+// échec, et le timeout de 5 min ne sont JAMAIS rejoués — sur un timeout on ne
+// sait pas ce qui a été fait, et le savoir est la condition du rejeu.
+// getOrCreateWorkTab est rappelé à CHAQUE tentative : il re-navigue l'onglet
+// (navigateWorkTab), ce qui remonte un content script neuf, et il peut rendre
+// un id différent — d'où le tabId retourné, que l'appelant doit ré-adopter.
+// ⚠️ `tabIdInitial` n'est PAS un détail : la première tentative réutilise
+// l'onglet DÉJÀ navigué par l'appelant. Rappeler getOrCreateWorkTab dès le
+// premier essai re-naviguerait l'onglet une seconde fois à CHAQUE sync, y
+// compris les syncs saines — deux chargements de vinted.fr au lieu d'un, sur
+// un chemin qui marche. La navigation neuve est le REMÈDE, elle ne doit
+// coûter que quand il y a quelque chose à soigner.
+async function lireVintedAvecCanalRejoue(tabIdInitial, envoyer, etiquette) {
+  let derniere = null;
+  let tabId = tabIdInitial;
+  for (let tentative = 1; tentative <= SYNC_CANAL_TENTATIVES; tentative++) {
+    if (tentative > 1 || tabId == null) {
+      try {
+        tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+      } catch (e) {
+        return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}`, tabId: null, transport: true };
+      }
+    }
+    let canalCoupe = false;
+    let transport = false; // l'échec vient du TUYAU, pas d'une réponse du script
+    const res = await envoyer(tabId).catch((e) => {
+      const msg = String(e?.message ?? e);
+      transport = true;
+      canalCoupe = CANAL_COUPE_RE.test(msg) || msg.includes("Could not establish connection");
+      return { success: false, error: msg };
+    });
+    // Réponse reçue (succès OU échec métier : 403, session morte…) : on rend
+    // TELLE QUELLE, sans rejouer et sans rien réécrire. `transport` permet à
+    // l'appelant de ne re-libeller que les échecs de tuyau — un vrai 403 du
+    // content script ne doit surtout pas devenir « sonde injoignable », c'est
+    // ce texte qui sert de clé aux relevés SQL et à l'écran d'aide 403.
+    if (!canalCoupe) {
+      return { ...(res ?? { success: false, error: "réponse vide du content script" }), tabId, transport };
+    }
+    derniere = { ...(res ?? {}), success: false, tabId, transport: true, canalCoupe: true };
+    if (tentative < SYNC_CANAL_TENTATIVES) {
+      console.warn(`[sync-dressing] ${etiquette} : canal coupé (tentative ${tentative}/${SYNC_CANAL_TENTATIVES}) — navigation neuve puis nouvel essai dans ${SYNC_CANAL_ATTENTE_MS / 1000} s`);
+      await sleep(SYNC_CANAL_ATTENTE_MS);
+    }
+  }
+  return derniere;
 }
 
 // ── Harnais de pagination (2026-08-07) — UNPACKED SEULEMENT ──────────────────
@@ -9787,9 +9862,25 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       return await echec(`onglet de travail Vinted : ${e?.message ?? e}`);
     }
 
-    const sonder = () => sendMessageToTab(tabId, { type: "VINTED_CURRENT_USER" }).catch((e) => ({
-      success: false, error: `sonde injoignable : ${String(e?.message ?? e)}`,
-    }));
+    // Sonde d'identité = LECTURE PURE (GET du compte courant) : elle a donc
+    // droit au rejeu sur navigation neuve (cf. lireVintedAvecCanalRejoue).
+    // C'est LE chemin qui casse : 42 des 59 coupures de sync relevées sur
+    // 30 jours sont « sonde injoignable », dont 30 sur un seul poste.
+    const sonder = async () => {
+      const r = await lireVintedAvecCanalRejoue(
+        tabId,
+        (id) => sendMessageToTab(id, { type: "VINTED_CURRENT_USER" }),
+        "sonde de session",
+      );
+      // L'onglet a pu changer d'id pendant la reprise : l'appelant travaille
+      // ensuite avec `tabId`, il doit adopter celui qui a effectivement répondu.
+      if (r?.tabId != null) tabId = r.tabId;
+      if (r?.success || !r?.transport) return r;
+      // Préfixe conservé au mot près, et RÉSERVÉ aux échecs de tuyau — comme
+      // avant, où seul le .catch() du sendMessageToTab le posait. Une réponse
+      // du content script (403, session morte) ressort intacte.
+      return { ...r, success: false, error: `sonde injoignable : ${String(r?.error ?? "échec inconnu")}` };
+    };
     // Cause d'un éventuel 403, lue AVANT la sonde : le 403 tombe avant que
     // Vinted regarde la session, c'est donc au navigateur qu'on la demande
     // (classifierCause403 — cookie v_uid). Lecture pure, quelques ms.
@@ -10046,11 +10137,23 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   while (page <= SYNC_MAX_PAGES) {
     // Point de coupe du harnais : la boucle, les pauses, le curseur et les
     // gardes tournent À L'IDENTIQUE — seule la provenance de la page change.
+    // Lecture d'une page = GET du dressing : rejouable sans rien dupliquer,
+    // donc passée par lireVintedAvecCanalRejoue (navigation neuve + 1 reprise).
+    // C'est ce qui manquait aux gros dressings : médiane 489 articles chez les
+    // comptes qui se font couper, contre 99 sur le parc — plus il y a de pages,
+    // plus il y a d'occasions de perdre le canal, et une seule suffisait à
+    // jeter tout le relevé.
     const res = mock
       ? pageDressingMock(mock, page)
-      : await sendMessageToTab(tabId, {
-          type: "SYNC_DRESSING_PAGE", page, userId: ident.userId,
-        }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+      : await (async () => {
+          const r = await lireVintedAvecCanalRejoue(
+            tabId,
+            (id) => sendMessageToTab(id, { type: "SYNC_DRESSING_PAGE", page, userId: ident.userId }),
+            `page ${page}`,
+          );
+          if (r?.tabId != null) tabId = r.tabId; // l'onglet a pu changer d'id
+          return r;
+        })();
 
     if (!res?.success) {
       // Bot-shield ou session morte : on s'arrête PROPREMENT et on garde le
@@ -10070,6 +10173,32 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
           reason: res.botShield ? "bot_shield" : res.accesRefuse ? "acces_refuse" : "session_vinted",
           page,
         };
+      }
+      // ── CANAL COUPÉ MALGRÉ LA REPRISE, MAIS DU TRAVAIL EST FAIT ───────────
+      // Relevé 30 j : 12 des 59 coupures de sync survenaient APRÈS au moins une
+      // page lue, et partaient quand même en 'failed' — statut terminal que
+      // rien ne reprend. Résultat vécu (cynthiabuterne, 13/09) : trois syncs de
+      // suite reparties de la PAGE 1, re-lisant 96 puis 192 articles déjà lus,
+      // sans jamais atteindre la 3e page. Le curseur était en base, personne ne
+      // s'en servait.
+      // On clôt donc en 'incomplete' — le même état terminal-mais-repris que
+      // le relevé court, avec le curseur SUR la page qui a cassé. Rien de neuf
+      // à inventer : la reprise (< 2 h) et l'encart orange existent déjà.
+      // ⛔ items_vus === 0 (sonde morte, page 1 cassée) reste 'failed', au mot
+      // près comme aujourd'hui : il n'y a aucun travail à reprendre, et c'est
+      // le cas de 47 des 59 coupures.
+      if (res?.canalCoupe && items_vus > 0) {
+        motifArretIncomplet = `canal coupé en lisant la page ${page} (reprise sur navigation neuve tentée)`;
+        await clore({
+          status: "incomplete", page_suivante: page, items_vus, items_crees, items_maj,
+          total_entries: totalEntries,
+          // « [note] » littéral : la constante NOTE est déclarée plus bas, dans
+          // le bloc de clôture, et n'est pas en portée ici. Même préfixe au
+          // caractère près — c'est la clé que lit le balayage d'ops-digest.
+          erreur: `[note] relevé incomplet — canal coupé page ${page} après ${items_vus} article(s) lu(s) ; reprise à la page ${page}`.slice(0, 500),
+        });
+        console.warn(`[sync-dressing] canal coupé page ${page} — run clos 'incomplete', reprise possible à la page ${page}`);
+        return { ok: false, reason: "canal_coupe", incomplet: true, page, items_vus };
       }
       return await echec(`page ${page} : ${res?.error ?? "erreur inconnue"}`);
     }
