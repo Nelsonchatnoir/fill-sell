@@ -2311,6 +2311,10 @@ export default function App({ loginOnly = false }){
   // n'est pas un scan qui démarre, c'est un scan qu'on retrouve — et ça se dit
   // à l'écran, sinon l'utilisateur croit qu'il repaie.
   const [lensReprise,setLensReprise]=useState(false);
+  // Message de reprise quand la montée des photos n'était pas finie : il dit
+  // ce qui a été sauvé, ce qui manque, et que rien n'a été décompté. Effacé au
+  // lancement du scan suivant.
+  const [infoRepriseLens,setInfoRepriseLens]=useState(null);
   const [lensAdded,setLensAdded]=useState(false);
   const [lensMicActive,setLensMicActive]=useState(false);
   const [lensMicLoading,setLensMicLoading]=useState(false);
@@ -5139,12 +5143,20 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{
     if(!user?.id)return;
     const m=lireMarqueurLens();
-    if(!m||m.statut!=='en_cours'||!m.scan_id)return;
+    if(!m||!m.scan_id||m.etape==='rendu')return;
     let vivant=true;
+    // Le marqueur n'est classé 'rendu' que quand il n'y a plus rien à
+    // reprendre. Sur une montée inachevée on le GARDE : l'utilisateur a ses
+    // photos à l'écran mais peut très bien recharger encore une fois avant de
+    // relancer — les lui reperdre à ce moment-là serait le même bug, déplacé.
+    let garderMarqueur=false;
+    const clore=()=>{ if(!vivant)return; setLensLoading(false); setLensReprise(false);
+                      if(!garderMarqueur)ecrireMarqueurLens({...m,etape:'rendu'}); };
     (async()=>{
       // Photos rendues tout de suite : l'attente montre l'article scanné, pas
       // un viseur vide. Jamais par-dessus des photos déjà reprises à la main.
-      if(m.urls?.length)setLensPhotos(prev=>prev.length?prev:m.urls.map(u=>({preview:u,mime:'image/jpeg'})));
+      const photosSauvees=Array.isArray(m.urls)?m.urls:[];
+      if(photosSauvees.length)setLensPhotos(prev=>prev.length?prev:photosSauvees.map(u=>({preview:u,mime:'image/jpeg'})));
       setLensLoading(true);
       setLensReprise(true);
       const fin=Date.now()+6*60*1000;   // borne dure : au-delà, plus rien à attendre
@@ -5152,27 +5164,69 @@ export default function App({ loginOnly = false }){
       try{
         while(vivant&&Date.now()<fin){
           const{data,error}=await supabase.from('lens_scans')
-            .select('statut,resultat,motif').eq('scan_id',m.scan_id).maybeSingle();
+            .select('statut,resultat,motif,photos').eq('scan_id',m.scan_id).maybeSingle();
           if(error)break;
           if(data){
             vueUneFois=true;
             if(data.statut==='termine'&&data.resultat){
               if(!vivant)return;
-              ecrireMarqueurLens({...m,statut:'rendu'});
+              ecrireMarqueurLens({...m,etape:'rendu'});
               setLensResult(data.resultat);
               return;
             }
             if(data.statut==='echec'){
               if(!vivant)return;
-              ecrireMarqueurLens({...m,statut:'rendu'});
+              ecrireMarqueurLens({...m,etape:'rendu'});
               setLensResult({error:lang==='en'
                 ?'❌ The analysis did not finish. Relaunch it — this attempt cost you nothing.'
                 :"❌ L'analyse n'est pas allée au bout. Relance-la — cette tentative ne t'a rien coûté."});
               return;
             }
+            // ── La requête n'était jamais partie (2026-09-13 soir) ──────────
+            // Le scan a été réservé, mais l'app est morte pendant la montée
+            // des photos ou juste avant l'envoi. RIEN n'a été débité : le
+            // prélèvement est la transition preparation → en_cours, et elle
+            // n'a pas eu lieu. On reprend donc SANS repayer.
+            if(data.statut==='preparation'){
+              // Le serveur peut avoir reçu des URLs que le marqueur local n'a
+              // pas (localStorage vidé) : on prend la liste la plus complète.
+              const duServeur=Array.isArray(data.photos)?data.photos:[];
+              const photos=duServeur.length>photosSauvees.length?duServeur:photosSauvees;
+              if(photos.length)setLensPhotos(prev=>prev.length?prev:photos.map(u=>({preview:u,mime:'image/jpeg'})));
+              const attendues=m.nb_prevu??photos.length;
+              if(photos.length>0&&photos.length>=attendues){
+                // Toutes les photos étaient arrivées : il ne manquait que
+                // l'envoi. On le fait, avec le MÊME scan_id — donc sans
+                // seconde unité. L'utilisateur n'a rien à retoucher.
+                if(!vivant)return;
+                try{
+                  await envoyerAnalyseLens({scanId:m.scan_id,urls:photos,
+                                            onRendu:()=>ecrireMarqueurLens({...m,etape:'rendu'})});
+                }catch(e){
+                  if(vivant)setLensResult({error:`❌ ${e.message}`});
+                }
+                return;
+              }
+              // Montée inachevée : les photos manquantes vivaient en mémoire,
+              // elles sont mortes avec la page — on ne peut pas les remonter.
+              // On le DIT, plutôt que d'analyser un lot tronqué et de le
+              // facturer. Les photos sauvées sont déjà dans le viseur : un
+              // seul geste suffit pour relancer, ou pour en rajouter une.
+              if(!vivant)return;
+              garderMarqueur=true;
+              setInfoRepriseLens(photos.length
+                ?(lang==='en'
+                  ?`Your scan was interrupted while uploading: ${photos.length} of ${attendues} photos were saved. Nothing has been charged. Relaunch it, or add the missing one first.`
+                  :`Ton scan a été coupé pendant l'envoi des photos : ${photos.length} sur ${attendues} ont été sauvegardées. Rien ne t'a été décompté. Relance-le, ou rajoute d'abord celle qui manque.`)
+                :(lang==='en'
+                  ?'Your scan was interrupted before any photo was uploaded. Nothing has been charged — take the photos again.'
+                  :"Ton scan a été coupé avant qu'aucune photo ne parte. Rien ne t'a été décompté — reprends les photos."));
+              return;
+            }
           }else if(!vueUneFois&&Date.now()-(m.debut??0)>90000){
             // Aucune ligne 90 s après le lancement : le scan n'a jamais été
-            // réservé. Rien ne viendra, on ne fait pas patienter pour rien.
+            // réservé (réservation refusée, ou app d'une version antérieure).
+            // Rien ne viendra, on ne fait pas patienter pour rien.
             break;
           }
           await new Promise(r=>setTimeout(r,3000));
@@ -5180,11 +5234,7 @@ export default function App({ loginOnly = false }){
       }catch(e){
         console.warn('[lens][reprise] lecture impossible :',e?.message??e);
       }finally{
-        if(vivant){
-          setLensLoading(false);
-          setLensReprise(false);
-          ecrireMarqueurLens({...m,statut:'rendu'});
-        }
+        clore();
       }
     })();
     return()=>{vivant=false;};
@@ -5847,8 +5897,72 @@ export default function App({ loginOnly = false }){
     }
   }
 
+  // ── L'ENVOI DE L'ANALYSE, EXTRAIT POUR ÊTRE REJOUABLE (2026-09-13 soir) ───
+  // Deux appelants : le scan normal (analyzeLens, après la montée des photos)
+  // et la REPRISE d'un scan dont la requête n'était jamais partie. Un seul
+  // corps, donc une seule façon de traiter les refus de quota — dupliquer du
+  // code de facturation, c'est programmer sa divergence.
+  // Le même scan_id est renvoyé tel quel : c'est lui qui garantit qu'un scan
+  // repris ne se paie pas deux fois (le serveur ne débite qu'à la transition
+  // preparation → en_cours, et elle n'a lieu qu'une fois).
+  async function envoyerAnalyseLens({scanId,urls,avgMargin=null,onRendu}){
+    const{data:{session:lnSess}}=await supabase.auth.getSession();
+    const lnToken=lnSess?.access_token;
+    const r=await fetch(`${supabaseUrl}/functions/v1/lens-analysis`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${lnToken}`,"apikey":supabaseAnonKey},
+      body:JSON.stringify({
+        scan_id:scanId,
+        urls,
+        description:lensDesc.trim()||null,
+        prixAchat:parseFloat(lensBuy)||null,
+        lang,
+        userCountry,
+        userStats:{avgMargin},
+        // Lens unifié (02/09 soir) : le scan demande AUSSI la rédaction des
+        // annonces (module partagé avec generate-listing, côté serveur). Un
+        // geste = une unité. Serveur derrière le flag coin_config
+        // lens_unifie : éteint → il répond comme un scan classique (aucun
+        // champ `annonce`) et le stepper génère comme avant. Les 4
+        // plateformes par défaut du stepper (PLATFORMS_DEFAULT) — une
+        // plateforme décochée ensuite laisse juste son annonce inutilisée.
+        mode:'annonce',
+        platforms:['vinted','leboncoin','beebs','ebay'],
+      }),
+    });
+    if(!r.ok){
+      const errBody=await r.json().catch(()=>({}));
+      // Le serveur a tranché (refus compris) : plus rien à attendre, donc
+      // rien à reprendre au prochain démarrage.
+      onRendu?.();
+      // Bascule quotas (02/09) : le refus est le quota de scans du cycle —
+      // insufficient_coins ne peut plus arriver (prix à 0), la branche
+      // unités est morte. Modale de conversion, origine dédiée.
+      if(errBody.error==='quota_scan_atteint'){
+        // Fenêtre de déploiement seulement (serveur pas encore migré) : la
+        // variante 'scans' de la modale n'existe plus, on parle annonces.
+        ouvrirModalePlafond('quota_scan',{trigger:'quota_geste',quotaInfo:{geste:'annonces',plafond:errBody.plafond,consommes:errBody.consommes}});
+        return;
+      }
+      // Fusion scans+annonces (02/09 soir) : le serveur garde désormais sur
+      // le compteur UNIQUE et refuse sous le même code que la génération —
+      // même modale, geste « annonces ». quota_scan_atteint ci-dessus est
+      // conservé pour la fenêtre de déploiement.
+      if(errBody.error==='quota_annonces_atteint'){
+        ouvrirModalePlafond('quota_annonces',{trigger:'quota_geste',quotaInfo:{geste:'annonces',plafond:errBody.plafond,consommes:errBody.consommes}});
+        return;
+      }
+      throw new Error(errBody.error||`HTTP ${r.status}`);
+    }
+    const result=await r.json();
+    if(result.error)throw new Error(result.error);
+    onRendu?.();
+    setLensResult(result);
+  }
+
   async function analyzeLens(){
     if(!lensPhotos.length)return;
+    setInfoRepriseLens(null);
     // Photos du scan PRÉCÉDENT : c'est ici qu'on les jette, au lancement du
     // suivant — plus dans le `finally` de leur propre scan. Un `finally` ne
     // tourne pas quand la webview meurt, et il supprimait les photos dont la
@@ -5861,17 +5975,27 @@ export default function App({ loginOnly = false }){
     // seul, qui fait du prélèvement un geste unique. Un second envoi du même
     // scan_id ne débite rien et se fait resservir le résultat déjà produit.
     const scanId=uuidV4();
-    // Le marqueur précédent est remplacé TOUT DE SUITE, avant l'upload : ses
-    // photos viennent d'être supprimées, et s'il était resté à 'en_cours' (deux
-    // scans interrompus de suite) la reprise irait chercher un scan mort et
-    // restaurerait des vignettes qui n'existent plus. 'prepare' n'est pas
-    // 'en_cours' : rien n'est repris tant que le serveur n'a rien réservé.
-    ecrireMarqueurLens({scan_id:scanId,urls:[],paths:[],statut:'prepare',debut:Date.now()});
+    // ── LA RÉSERVATION PART AVANT LA PREMIÈRE PHOTO (2026-09-13 soir) ───────
+    // Elle était posée par lens-analysis, donc seulement une fois TOUTES les
+    // photos montées et la requête partie : plusieurs secondes pendant
+    // lesquelles quitter l'app perdait tout, exactement comme avant le lot
+    // (mesuré : ni ligne lens_scans, ni appel dans les edge logs, écran vide
+    // au retour). Elle part maintenant AVANT la moindre lecture de fichier.
+    // Volontairement NON attendue : c'est un aller-retour réseau (~100 ms) et
+    // le cas normal ne doit pas le payer. La montée démarre pendant ce
+    // temps-là ; la fenêtre aveugle passe de plusieurs secondes à la latence
+    // d'une requête, et la suite ne dépend jamais de son succès.
+    const marqueurInitial={scan_id:scanId,urls:[],paths:[],nb_prevu:lensPhotos.length,
+                           etape:'preparation',debut:Date.now()};
+    ecrireMarqueurLens(marqueurInitial);
+    supabase.rpc('reserver_scan_lens',{p_scan_id:scanId,p_photos:[]})
+      .then(({error})=>{ if(error)console.warn('[lens] réservation refusée :',error.message); },
+            ()=>{});
     // Le marqueur passe à 'rendu' dès que le SERVEUR a répondu — résultat comme
-    // refus. Une panne réseau, elle, le laisse à 'en_cours' : l'analyse, elle,
+    // refus. Une panne réseau, elle, le laisse en l'état : l'analyse, elle,
     // continue côté serveur (elle est ancrée au runtime, plus à la socket), et
     // la reprise au prochain démarrage ira la chercher.
-    const marquerRendu=()=>{const m=lireMarqueurLens();if(m?.scan_id===scanId)ecrireMarqueurLens({...m,statut:'rendu'});};
+    const marquerRendu=()=>{const m=lireMarqueurLens();if(m?.scan_id===scanId)ecrireMarqueurLens({...m,etape:'rendu'});};
     // Facturation (payant-par-scan 2026-07-23) : le serveur débite 6 unités
     // par analyse (spend_coins_for_lens, grant mensuel lazy inclus) et
     // rembourse si l'analyse n'est pas livrée. Seul le 402 insufficient_coins
@@ -5906,63 +6030,18 @@ export default function App({ loginOnly = false }){
         uploadedPaths.push(path);
         const{data:{publicUrl}}=supabase.storage.from('lens-temp').getPublicUrl(path);
         urls.push(publicUrl);
+        // Marqueur mis à jour APRÈS CHAQUE photo, pas à la fin : si l'app meurt
+        // au milieu de la montée, la reprise retrouve celles qui SONT arrivées
+        // au lieu de tout jeter. Écriture localStorage, synchrone, gratuite —
+        // elle n'ajoute aucune attente réseau au cas normal.
+        ecrireMarqueurLens({...marqueurInitial,urls:[...urls],paths:[...uploadedPaths],etape:'preparation'});
       }
-      // Marqueur posé AVANT l'appel, jamais après : si la webview meurt
-      // pendant l'analyse, c'est la SEULE trace qui permettra de la retrouver
-      // au retour. Posé après, il ne couvrirait rien.
-      ecrireMarqueurLens({scan_id:scanId,urls,paths:uploadedPaths,statut:'en_cours',debut:Date.now()});
-      const{data:{session:lnSess}}=await supabase.auth.getSession();
-      const lnToken=lnSess?.access_token;
-      const r=await fetch(`${supabaseUrl}/functions/v1/lens-analysis`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json","Authorization":`Bearer ${lnToken}`,"apikey":supabaseAnonKey},
-        body:JSON.stringify({
-          scan_id:scanId,
-          urls,
-          description:lensDesc.trim()||null,
-          prixAchat:parseFloat(lensBuy)||null,
-          lang,
-          userCountry,
-          userStats:{avgMargin},
-          // Lens unifié (02/09 soir) : le scan demande AUSSI la rédaction des
-          // annonces (module partagé avec generate-listing, côté serveur). Un
-          // geste = une unité. Serveur derrière le flag coin_config
-          // lens_unifie : éteint → il répond comme un scan classique (aucun
-          // champ `annonce`) et le stepper génère comme avant. Les 4
-          // plateformes par défaut du stepper (PLATFORMS_DEFAULT) — une
-          // plateforme décochée ensuite laisse juste son annonce inutilisée.
-          mode:'annonce',
-          platforms:['vinted','leboncoin','beebs','ebay'],
-        }),
-      });
-      if(!r.ok){
-        const errBody=await r.json().catch(()=>({}));
-        // Le serveur a tranché (refus compris) : plus rien à attendre, donc
-        // rien à reprendre au prochain démarrage.
-        marquerRendu();
-        // Bascule quotas (02/09) : le refus est le quota de scans du cycle —
-        // insufficient_coins ne peut plus arriver (prix à 0), la branche
-        // unités est morte. Modale de conversion, origine dédiée.
-        if(errBody.error==='quota_scan_atteint'){
-          // Fenêtre de déploiement seulement (serveur pas encore migré) : la
-          // variante 'scans' de la modale n'existe plus, on parle annonces.
-          ouvrirModalePlafond('quota_scan',{trigger:'quota_geste',quotaInfo:{geste:'annonces',plafond:errBody.plafond,consommes:errBody.consommes}});
-          return;
-        }
-        // Fusion scans+annonces (02/09 soir) : le serveur garde désormais sur
-        // le compteur UNIQUE et refuse sous le même code que la génération —
-        // même modale, geste « annonces ». quota_scan_atteint ci-dessus est
-        // conservé pour la fenêtre de déploiement.
-        if(errBody.error==='quota_annonces_atteint'){
-          ouvrirModalePlafond('quota_annonces',{trigger:'quota_geste',quotaInfo:{geste:'annonces',plafond:errBody.plafond,consommes:errBody.consommes}});
-          return;
-        }
-        throw new Error(errBody.error||`HTTP ${r.status}`);
-      }
-      const result=await r.json();
-      if(result.error)throw new Error(result.error);
-      marquerRendu();
-      setLensResult(result);
+      // La liste complète rejoint la réservation côté serveur. Non attendue :
+      // le marqueur local fait déjà foi pour la reprise, cette écriture-ci sert
+      // l'audit et le cas où le localStorage aurait été vidé.
+      supabase.rpc('reserver_scan_lens',{p_scan_id:scanId,p_photos:urls}).then(()=>{},()=>{});
+      ecrireMarqueurLens({...marqueurInitial,urls:[...urls],paths:[...uploadedPaths],etape:'envoye'});
+      await envoyerAnalyseLens({scanId,urls,avgMargin,onRendu:marquerRendu});
     }catch(e){
       setLensResult({error:`❌ ${e.message}`});
     }finally{
@@ -6676,7 +6755,7 @@ export default function App({ loginOnly = false }){
             lensAdded={lensAdded} setLensAdded={setLensAdded}
             lensDesc={lensDesc} setLensDesc={setLensDesc}
             lensBuy={lensBuy} setLensBuy={setLensBuy}
-            lensLoading={lensLoading} lensReprise={lensReprise} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
+            lensLoading={lensLoading} lensReprise={lensReprise} infoRepriseLens={infoRepriseLens} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading}
             lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}
             lensFileRef={lensFileRef} toggleLensMic={toggleLensMic}
             handleLensPhoto={handleLensPhoto} handleLensPhotoNative={handleLensPhotoNative} handleLensCameraNative={handleLensCameraNative} analyzeLens={analyzeLens} addLensItem={addLensItem} openLensEditModal={openLensEditModal}

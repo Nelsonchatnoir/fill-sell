@@ -2092,6 +2092,28 @@ serve(async (req) => {
       && typeof body?.scan_id === "string"
       && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.scan_id)) {
     const candidat = (body.scan_id as string).toLowerCase();
+
+    // ── LA MARCHE PAYANTE : 'preparation' → 'en_cours' (2026-09-13 soir) ────
+    // L'app a réservé son scan AVANT de téléverser (RPC reserver_scan_lens) :
+    // la ligne existe donc déjà, en 'preparation'. La réclamer, c'est cet
+    // UPDATE conditionnel — atomique, donc gagné par UN SEUL appel, même si
+    // deux partent en même temps. C'est lui, désormais, le point unique de
+    // prélèvement : le perdant ne débite rien.
+    // `eq("user_id", userId)` n'est pas décoratif : sans lui, connaître un
+    // scan_id suffirait à réclamer la réservation de quelqu'un d'autre.
+    const { data: reclame } = await adminClient.from("lens_scans")
+      .update({ statut: "en_cours", mode, photos: photoUrls })
+      .eq("scan_id", candidat).eq("user_id", userId).eq("statut", "preparation")
+      .select("scan_id").maybeSingle();
+    if (reclame) {
+      scanId = candidat;
+      console.log(`[lens-analysis] réservation ${candidat} réclamée (preparation → en_cours)`);
+    } else {
+    // Pas de réservation à réclamer : soit l'app est d'une version antérieure
+    // (elle envoie un scan_id sans avoir réservé), soit la ligne est déjà
+    // sortie de 'preparation'. On retombe sur l'INSERT : il réussit dans le
+    // premier cas, et heurte l'unicité dans le second — où il ne faut
+    // justement RIEN rejouer.
     const { error: resErr } = await adminClient.from("lens_scans").insert({
       scan_id: candidat, user_id: userId, mode, photos: photoUrls,
     });
@@ -2117,6 +2139,7 @@ serve(async (req) => {
       // La persistance est un filet, jamais une condition de service — refuser
       // ici transformerait une panne de table en panne de Lens.
       console.error("[lens-analysis] réservation impossible:", resErr.message);
+    }
     }
   }
 
