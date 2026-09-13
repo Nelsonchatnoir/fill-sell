@@ -5151,76 +5151,129 @@ export default function App({ loginOnly = false }){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── REPRISE D'UN SCAN LENS — C'EST LE SERVEUR QUI RÉPOND (2026-09-13) ─────
-  // POURQUOI CETTE RÉÉCRITURE. La version précédente demandait d'abord au
-  // marqueur localStorage s'il y avait quelque chose à reprendre, et n'allait
-  // lire la base que s'il disait oui. Mesuré sur l'échec du 20:36 : au
-  // rechargement pendant l'analyse, AUCUNE requête lens_scans n'est partie —
-  // la reprise était sortie sur ce test-là. Le scan était pourtant en base,
-  // terminé, avec son résultat, et décompté d'une unité. Un résultat payé et
-  // invisible : exactement le bug de départ, déplacé d'un cran.
+  // ══════════════════════════════════════════════════════════════════════════
+  // REPRISE D'UN SCAN LENS (2026-09-13, 4e passe — incident natif de 21:28)
+  // ══════════════════════════════════════════════════════════════════════════
+  // CE QUI S'EST PASSÉ. Sur l'app native, passer en arrière-plan tue le fetch
+  // en vol : l'écran affichait « Load failed » (le message brut de WebKit) et
+  // RÉARMAIT le bouton. L'analyse, elle, allait au bout côté serveur et
+  // s'écrivait en base. Le seul geste offert étant « relancer », un second
+  // appui créait un second scan — et un second décompte. Trois scans du même
+  // objet en 2 min 30, trois unités, le 13/09 à 21:28.
+  // La reprise existait pourtant : elle ne tournait qu'au DÉMARRAGE de l'app.
+  // Sur le web, quitter = recharger = remontage = reprise. Sur natif, revenir
+  // d'arrière-plan ne remonte RIEN : le filet n'était jamais déclenché.
   //
-  // Un drapeau local ne peut pas être l'autorité sur ce qui existe côté
-  // serveur. La question « ai-je un scan à reprendre ? » est désormais posée à
-  // la BASE, à chaque démarrage, sans condition préalable. Le marqueur ne
-  // répond plus qu'à « l'ai-je déjà montré à l'écran ? », et se tromper là-dessus
-  // est sans gravité : au pire un résultat déjà vu se réaffiche, jamais il ne
-  // se perd. Rien n'est redébité dans aucun cas — un résultat mémorisé est
-  // resservi tel quel, et une relance garde le MÊME scan_id.
-  //
-  // Fenêtre de 2 h et non 30 min : un résultat PAYÉ que l'utilisateur n'a
-  // jamais vu reste dû, même une heure plus tard. Au-delà, la purge prend le
-  // relais. Coût pour le cas normal : une requête indexée (user_id + created_at,
-  // 2 h, limit 1) au démarrage de l'app, en parallèle du reste. Elle ne
-  // retarde aucun écran et ne touche pas au déroulé d'un scan.
-  useEffect(()=>{
-    if(!user?.id)return;
-    let vivant=true;
-    const clore=()=>{ if(!vivant)return; setLensLoading(false); setLensReprise(false); };
+  // TROIS CHANGEMENTS, du plus structurel au plus visible :
+  //  (c) un nouvel appui ne peut plus créer un second scan tant qu'un scan
+  //      récent est vivant — il REPREND celui-là. Garantie qui ne dépend ni du
+  //      réseau ni du système : elle tient même si l'utilisateur appuie dix
+  //      fois (voir analyzeLens).
+  //  (b) un fetch tué n'est plus une fin : on bascule sur le suivi de la ligne
+  //      au lieu d'afficher une erreur. « Load failed » ne remonte plus jamais
+  //      à l'écran — une connexion coupée n'est pas une analyse ratée.
+  //  (a) la reprise est réveillée au RETOUR au premier plan (appStateChange
+  //      natif + visibilitychange web), pas seulement au démarrage.
 
-    // Lecture unique : le scan le plus récent encore vivant ou tout juste
-    // terminé. La RLS ne rend que les lignes de l'utilisateur.
-    const lireScan=async()=>{
+  // Un seul parcours de reprise à la fois : le retour au premier plan et le
+  // démarrage peuvent tomber ensemble, et deux boucles de suivi sur la même
+  // ligne ne serviraient à rien.
+  const repriseLensRef = useRef(false);
+
+  // Le scan le plus récent encore VIVANT (réservé ou en analyse). Sert la
+  // garde (c) : tant qu'il existe, aucun nouveau scan ne peut naître.
+  // 10 minutes : très au-dessus d'une analyse (20-25 s), bien en deçà des
+  // 30 min après lesquelles le sweep requalifie une réservation morte.
+  async function chercherScanVivantLens(){
+    const depuis=new Date(Date.now()-10*60*1000).toISOString();
+    const{data,error}=await supabase.from('lens_scans')
+      .select('scan_id,statut,photos,created_at')
+      .in('statut',['preparation','en_cours'])
+      .gte('created_at',depuis)
+      .order('created_at',{ascending:false})
+      .limit(1).maybeSingle();
+    if(error)throw new Error(error.message);
+    return data;
+  }
+
+  // Suit une analyse déjà lancée jusqu'à son issue, et la rend à l'écran.
+  // AUCUN appel à lens-analysis : c'est une lecture, donc aucun débit possible.
+  // Appelée par la reprise ET par envoyerAnalyseLens quand le fetch est tué.
+  async function suivreScanLens(scanId){
+    if(!scanId)return;
+    setLensLoading(true); setLensReprise(true);
+    const fin=Date.now()+6*60*1000;
+    let echecs=0;
+    try{
+      while(Date.now()<fin){
+        const{data,error}=await supabase.from('lens_scans')
+          .select('statut,resultat,motif').eq('scan_id',scanId).maybeSingle();
+        // Une lecture ratée ne clôt pas le suivi : trois essais avant de
+        // renoncer. Le réseau d'un téléphone qui se réveille est rarement
+        // disponible à la première milliseconde.
+        if(error){ if(++echecs>=3)return; }
+        else{
+          echecs=0;
+          if(data?.statut==='termine'){
+            marquerScanVu(scanId);
+            if(data.resultat)setLensResult(data.resultat);
+            return;
+          }
+          if(data?.statut==='echec'){
+            marquerScanVu(scanId);
+            setLensResult({error:lang==='en'
+              ?'❌ The analysis did not finish. Relaunch it — this attempt cost you nothing.'
+              :"❌ L'analyse n'est pas allée au bout. Relance-la — cette tentative ne t'a rien coûté."});
+            return;
+          }
+        }
+        await new Promise(r=>setTimeout(r,2500));
+      }
+    }finally{ setLensLoading(false); setLensReprise(false); }
+  }
+
+  // Le parcours complet, appelé au démarrage ET à chaque retour au premier
+  // plan. C'est le serveur qui dit s'il y a quelque chose à reprendre : le
+  // marqueur local ne répond qu'à « l'ai-je déjà montré ? ».
+  async function reprendreScanLens(){
+    if(repriseLensRef.current)return;
+    repriseLensRef.current=true;
+    try{
       const depuis=new Date(Date.now()-2*3600*1000).toISOString();
-      const{data,error}=await supabase.from('lens_scans')
-        .select('scan_id,statut,resultat,motif,photos,created_at')
-        .in('statut',['preparation','en_cours','termine'])
-        .gte('created_at',depuis)
-        .order('created_at',{ascending:false})
-        .limit(1).maybeSingle();
-      if(error)throw new Error(error.message);
-      return data;
-    };
-
-    const rendrePhotos=(liste)=>{
-      if(!liste?.length)return;
-      setLensPhotos(prev=>prev.length?prev:liste.map(u=>({preview:u,mime:'image/jpeg'})));
-    };
-
-    (async()=>{
       let scan=null;
-      try{ scan=await lireScan(); }
-      catch(e){ console.warn('[lens][reprise] lecture impossible :',e?.message??e); return; }
-      if(!vivant||!scan)return;
+      try{
+        const{data,error}=await supabase.from('lens_scans')
+          .select('scan_id,statut,resultat,motif,photos,created_at')
+          .in('statut',['preparation','en_cours','termine'])
+          .gte('created_at',depuis)
+          .order('created_at',{ascending:false})
+          .limit(1).maybeSingle();
+        if(error)throw new Error(error.message);
+        scan=data;
+      }catch(e){ console.warn('[lens][reprise] lecture impossible :',e?.message??e); return; }
+      if(!scan)return;
 
       const marqueur=lireMarqueurLens();
       const dejaVus=lireScansVus();
+      const photosServeur=Array.isArray(scan.photos)?scan.photos:[];
+      const rendrePhotos=(liste)=>{
+        if(!liste?.length)return;
+        setLensPhotos(prev=>prev.length?prev:liste.map(u=>({preview:u,mime:'image/jpeg'})));
+      };
 
-      // ── 1. TERMINÉ : le résultat existe, il est payé, on le rend ──────────
-      // C'est le cas qui manquait. Aucun appel à lens-analysis, aucun débit :
-      // une simple lecture de la ligne.
+      // 1. TERMINÉ — le résultat est là, payé. Simple lecture, aucun débit.
       if(scan.statut==='termine'){
-        if(dejaVus.includes(scan.scan_id))return;   // déjà rendu à l'écran
-        rendrePhotos(Array.isArray(scan.photos)?scan.photos:[]);
+        if(dejaVus.includes(scan.scan_id))return;
+        rendrePhotos(photosServeur);
         marquerScanVu(scan.scan_id);
         if(scan.resultat)setLensResult(scan.resultat);
         return;
       }
 
-      // ── 2. ÉCHEC : on le dit, la relance est gratuite de fait ─────────────
+      // 2. ÉCHEC — motif à l'écran, relance gratuite de fait.
       if(scan.statut==='echec'){
         if(dejaVus.includes(scan.scan_id))return;
-        rendrePhotos(Array.isArray(scan.photos)?scan.photos:[]);
+        rendrePhotos(photosServeur);
         marquerScanVu(scan.scan_id);
         setLensResult({error:lang==='en'
           ?'❌ The analysis did not finish. Relaunch it — this attempt cost you nothing.'
@@ -5228,64 +5281,32 @@ export default function App({ loginOnly = false }){
         return;
       }
 
-      // ── 3. EN COURS : l'analyse tourne côté serveur, on l'attend ──────────
+      // 3. EN COURS — l'analyse tourne, on l'attend. C'est le cas du retour
+      //    d'arrière-plan : le fetch est mort, l'analyse non.
       if(scan.statut==='en_cours'){
-        rendrePhotos(Array.isArray(scan.photos)?scan.photos:[]);
-        setLensLoading(true); setLensReprise(true);
-        const fin=Date.now()+6*60*1000;
-        let echecs=0;
-        try{
-          while(vivant&&Date.now()<fin){
-            await new Promise(r=>setTimeout(r,2500));
-            if(!vivant)return;
-            let a=null;
-            // Une lecture ratée ne CLÔT plus la reprise : trois essais avant
-            // d'abandonner. La version précédente sortait de la boucle au
-            // premier accroc réseau, et le résultat n'arrivait jamais.
-            try{ a=await lireScan(); echecs=0; }
-            catch{ if(++echecs>=3)break; continue; }
-            if(!a||a.scan_id!==scan.scan_id)break;
-            if(a.statut==='termine'){
-              if(!vivant)return;
-              marquerScanVu(a.scan_id);
-              if(a.resultat)setLensResult(a.resultat);
-              return;
-            }
-            if(a.statut==='echec'){
-              if(!vivant)return;
-              marquerScanVu(a.scan_id);
-              setLensResult({error:lang==='en'
-                ?'❌ The analysis did not finish. Relaunch it — this attempt cost you nothing.'
-                :"❌ L'analyse n'est pas allée au bout. Relance-la — cette tentative ne t'a rien coûté."});
-              return;
-            }
-          }
-        }finally{ clore(); }
+        rendrePhotos(photosServeur);
+        await suivreScanLens(scan.scan_id);
         return;
       }
 
-      // ── 4. PRÉPARATION : la requête n'est jamais partie ───────────────────
-      // Rien n'a été débité — le prélèvement est la transition preparation →
-      // en_cours, et elle n'a pas eu lieu.
-      const photosServeur=Array.isArray(scan.photos)?scan.photos:[];
+      // 4. PRÉPARATION — la requête n'est jamais partie. Rien n'a été débité :
+      //    le prélèvement est la transition preparation → en_cours.
       const photosLocales=Array.isArray(marqueur?.urls)?marqueur.urls:[];
       const photos=photosServeur.length>=photosLocales.length?photosServeur:photosLocales;
       rendrePhotos(photos);
       const memeScan=marqueur?.scan_id===scan.scan_id;
       const attendues=memeScan?(marqueur?.nb_prevu??photos.length):photos.length;
       const frais=Date.now()-new Date(scan.created_at).getTime()<30*60*1000;
-      // Relance automatique SEULEMENT si l'on sait que le lot est complet
-      // (marqueur du même scan) et qu'il est frais. Sans cette certitude on ne
-      // lance rien : analyser un lot tronqué et le facturer serait pire que de
-      // demander un geste.
+      // Relance automatique seulement si le lot est certifié complet et frais.
+      // Elle garde le MÊME scan_id : le débit reste unique par construction.
       if(memeScan&&frais&&photos.length>0&&photos.length>=attendues){
         setLensLoading(true); setLensReprise(true);
         try{
           await envoyerAnalyseLens({scanId:scan.scan_id,urls:photos,
             onRendu:()=>{ marquerScanVu(scan.scan_id);
                           ecrireMarqueurLens({...(marqueur||{}),etape:'rendu'}); }});
-        }catch(e){ if(vivant)setLensResult({error:`❌ ${e.message}`}); }
-        finally{ clore(); }
+        }catch(e){ setLensResult({error:`❌ ${e.message}`}); }
+        finally{ setLensLoading(false); setLensReprise(false); }
         return;
       }
       setInfoRepriseLens(
@@ -5300,9 +5321,29 @@ export default function App({ loginOnly = false }){
           :(lang==='en'
             ?`Your scan was interrupted while uploading: ${photos.length} of ${attendues} photos were saved. Nothing has been charged. Relaunch it, or add the missing one first.`
             :`Ton scan a été coupé pendant l'envoi des photos : ${photos.length} sur ${attendues} ont été sauvegardées. Rien ne t'a été décompté. Relance-le, ou rajoute d'abord celle qui manque.`));
-      clore();
-    })();
-    return()=>{vivant=false;};
+    }finally{ repriseLensRef.current=false; }
+  }
+
+  // (a) Démarrage ET retour au premier plan. Sur natif, revenir d'arrière-plan
+  // ne remonte aucun composant : sans ces écouteurs, le filet ne se déclenche
+  // jamais dans le cas le plus fréquent — celui qui a coûté 2 unités à 21:28.
+  useEffect(()=>{
+    if(!user?.id)return;
+    let annule=false;
+    const reprendre=()=>{ if(!annule)reprendreScanLens(); };
+    reprendre();
+    const surVisibilite=()=>{ if(document.visibilityState==='visible')reprendre(); };
+    document.addEventListener('visibilitychange',surVisibilite);
+    let sub=null;
+    if(isNative){
+      try{ sub=CapacitorApp.addListener('appStateChange',({isActive})=>{ if(isActive)reprendre(); }); }
+      catch(e){ console.warn('[lens][reprise] appStateChange indisponible :',e?.message??e); }
+    }
+    return()=>{
+      annule=true;
+      document.removeEventListener('visibilitychange',surVisibilite);
+      if(sub)Promise.resolve(sub).then(s=>s?.remove?.()).catch(()=>{});
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id]);
 
@@ -5970,10 +6011,11 @@ export default function App({ loginOnly = false }){
   // Le même scan_id est renvoyé tel quel : c'est lui qui garantit qu'un scan
   // repris ne se paie pas deux fois (le serveur ne débite qu'à la transition
   // preparation → en_cours, et elle n'a lieu qu'une fois).
-  async function envoyerAnalyseLens({scanId,urls,avgMargin=null,onRendu}){
-    const{data:{session:lnSess}}=await supabase.auth.getSession();
-    const lnToken=lnSess?.access_token;
-    const r=await fetch(`${supabaseUrl}/functions/v1/lens-analysis`,{
+  // La requête elle-même, isolée pour que l'appelant puisse distinguer « le
+  // serveur a répondu » de « la connexion est tombée ». Ces deux cas n'ont
+  // rien à voir : le second laisse l'analyse tourner côté serveur.
+  function envoyerRequeteLens({scanId,urls,avgMargin,lnToken}){
+    return fetch(`${supabaseUrl}/functions/v1/lens-analysis`,{
       method:"POST",
       headers:{"Content-Type":"application/json","Authorization":`Bearer ${lnToken}`,"apikey":supabaseAnonKey},
       body:JSON.stringify({
@@ -5995,6 +6037,27 @@ export default function App({ loginOnly = false }){
         platforms:['vinted','leboncoin','beebs','ebay'],
       }),
     });
+  }
+
+  async function envoyerAnalyseLens({scanId,urls,avgMargin=null,onRendu}){
+    const{data:{session:lnSess}}=await supabase.auth.getSession();
+    const lnToken=lnSess?.access_token;
+    let r;
+    try{
+      r=await envoyerRequeteLens({scanId,urls,avgMargin,lnToken});
+    }catch(e){
+      // ── (b) UN FETCH TUÉ N'EST PAS UNE ANALYSE RATÉE (2026-09-13 soir) ────
+      // Passer en arrière-plan sur iOS tue la requête en vol : le navigateur
+      // rend « Load failed ». L'analyse, elle, tourne toujours côté serveur —
+      // elle est ancrée au runtime, pas à la socket. Afficher une erreur ici,
+      // c'est mentir à l'utilisateur ET lui tendre un bouton qui relance un
+      // scan payant : c'est exactement ce qui a coûté 2 unités le 13/09 à
+      // 21:28. On bascule donc sur le SUIVI de la ligne.
+      console.warn('[lens] requête interrompue, bascule sur le suivi :',e?.message??e);
+      await suivreScanLens(scanId);
+      onRendu?.();
+      return;
+    }
     if(!r.ok){
       const errBody=await r.json().catch(()=>({}));
       // Le serveur a tranché (refus compris) : plus rien à attendre, donc
@@ -6028,6 +6091,27 @@ export default function App({ loginOnly = false }){
   async function analyzeLens(){
     if(!lensPhotos.length)return;
     setInfoRepriseLens(null);
+    // ── (c) UN APPUI NE PEUT PLUS CRÉER UN SECOND SCAN (2026-09-13 soir) ────
+    // La garantie que Nico veut, et la seule qui ne dépende ni du réseau ni du
+    // système : avant de créer quoi que ce soit, on demande au SERVEUR s'il
+    // existe déjà un scan vivant de cet utilisateur.
+    //   · en_cours   → l'analyse tourne ET elle est déjà payée. On la reprend,
+    //                  on n'en lance pas une seconde. Dix appuis = un débit.
+    //   · preparation→ une réservation existe et n'a RIEN débité : on réutilise
+    //                  sa place au lieu d'en ouvrir une nouvelle. Le slot est
+    //                  remis à zéro juste après (réservation avec photos=[]).
+    // Coût : une requête indexée avant le scan — ~50 ms sur un geste qui en
+    // dure 20 000. Si elle échoue, on continue avec un scan neuf : une lecture
+    // en panne ne doit jamais empêcher de scanner.
+    let scanId=null;
+    try{
+      const vivant=await chercherScanVivantLens();
+      if(vivant?.statut==='en_cours'){
+        await suivreScanLens(vivant.scan_id);
+        return;
+      }
+      if(vivant?.statut==='preparation')scanId=vivant.scan_id;
+    }catch(e){ console.warn('[lens] recherche de scan vivant impossible :',e?.message??e); }
     // Photos du scan PRÉCÉDENT : c'est ici qu'on les jette, au lancement du
     // suivant — plus dans le `finally` de leur propre scan. Un `finally` ne
     // tourne pas quand la webview meurt, et il supprimait les photos dont la
@@ -6039,7 +6123,8 @@ export default function App({ loginOnly = false }){
     // Réservé côté serveur par lens-analysis : c'est CE identifiant, et lui
     // seul, qui fait du prélèvement un geste unique. Un second envoi du même
     // scan_id ne débite rien et se fait resservir le résultat déjà produit.
-    const scanId=uuidV4();
+    // Neuf seulement si aucune réservation vivante n'a été reprise ci-dessus.
+    if(!scanId)scanId=uuidV4();
     // ── LA RÉSERVATION PART AVANT LA PREMIÈRE PHOTO (2026-09-13 soir) ───────
     // Elle était posée par lens-analysis, donc seulement une fois TOUTES les
     // photos montées et la requête partie : plusieurs secondes pendant
