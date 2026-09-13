@@ -60,6 +60,9 @@ Toutes les fonctions webhook et cron doivent être déployées avec `--no-verify
 - ops-digest
 - handler-watch
 - republish-purge
+- email-desinscription (page publique de désinscription : l'appelant n'est PAS
+  connecté, c'est tout l'intérêt — un verify_jwt à true rendrait le lien des
+  emails inopérant et bloquerait toute campagne)
 
 (`send-merine-reply` a été supprimée en prod le 28/07/2026 — un one-shot en
 `verify_jwt = false` que plus rien n'appelait.)
