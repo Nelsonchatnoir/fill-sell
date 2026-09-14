@@ -527,6 +527,16 @@ const planifierAlarmes = () => scheduleAlarm().catch((e) =>
 chrome.runtime.onInstalled.addListener(planifierAlarmes);
 chrome.runtime.onStartup.addListener(planifierAlarmes);
 
+// Chrome vient de démarrer (ou l'extension d'être installée/mise à jour) : si
+// un run de sync est mort pendant que la machine dormait — expiré par le chien
+// de garde SERVEUR, donc sans personne ici pour armer sa reprise — c'est
+// maintenant qu'on le rattrape. Cf. rattraperRepriseAuto : lecture d'une seule
+// ligne, jamais bloquante, et elle ne fait rien s'il n'y a rien à reprendre.
+const rattrapageSyncAuDemarrage = () => rattraperRepriseAuto().catch((e) =>
+  console.warn("[sync-dressing][reprise-auto] rattrapage au démarrage:", e?.message ?? e));
+chrome.runtime.onStartup.addListener(rattrapageSyncAuDemarrage);
+chrome.runtime.onInstalled.addListener(rattrapageSyncAuDemarrage);
+
 // La mise à jour a été prise : le marqueur ne doit pas survivre à l'ancienne
 // version, sinon le prochain poll déclarerait encore une attente qui n'existe
 // plus et la mesure en base mentirait. chrome.storage.session est censé être
@@ -733,7 +743,15 @@ async function scheduleAlarm() {
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === ALARM_NAME) pollAndProcessJobs();
+  if (alarm.name === ALARM_NAME) {
+    pollAndProcessJobs();
+    // Rattrapage des runs de sync tués pendant que Chrome dormait (le chien de
+    // garde des 32 min vit côté serveur : aucune alarme locale n'a pu être
+    // armée). Auto-borné à un balayage toutes les 10 min, et JAMAIS bloquant
+    // pour le poll — cf. rattraperRepriseAuto.
+    rattraperRepriseAuto().catch((e) =>
+      console.warn("[sync-dressing][reprise-auto]", e?.message ?? e));
+  }
   if (alarm.name === SYNC_DRESSING_ALARM) {
     syncDressingVinted({ declencheur: "cron" }).catch((e) =>
       console.error("[sync-dressing][cron]", e?.message ?? e));
@@ -743,6 +761,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name.startsWith(SYNC_RETRY403_ALARM_PREFIX)) {
     reprendreSyncApresRetry403(alarm.name.slice(SYNC_RETRY403_ALARM_PREFIX.length)).catch((e) =>
       console.error("[sync-dressing][retry403]", e?.message ?? e));
+  }
+  // Reprise de sync après un échec TECHNIQUE (onglet de travail qui n'ouvre
+  // pas, canal coupé, content script muet, réseau, expiration du chien de
+  // garde). Une alarme PAR user, même convention que ci-dessus.
+  if (alarm.name.startsWith(SYNC_REPRISE_AUTO_ALARM_PREFIX)) {
+    reprendreSyncApresRepriseAuto(alarm.name.slice(SYNC_REPRISE_AUTO_ALARM_PREFIX.length)).catch((e) =>
+      console.error("[sync-dressing][reprise-auto]", e?.message ?? e));
   }
 });
 
@@ -9108,6 +9133,330 @@ async function reprendreSyncApresRetry403(userIdAlarme) {
   console.log(`[sync-dressing][retry403] run ${etat.runId} ré-ouvert — tentative ${etat.tentative}/${SYNC_RETRY403_DELAIS_MIN.length}`);
   await syncDressingVinted({ declencheur: etat.declencheur ?? "bouton", repriseRetry403: true });
 }
+// ═════════════════════════════════════════════════════════════════════════════
+// REPRISE AUTOMATIQUE DES ÉCHECS TECHNIQUES DE SYNC (2026-09-14)
+// ═════════════════════════════════════════════════════════════════════════════
+// CE QU'ON A MESURÉ (48 h, vinted_sync_runs). Douze runs morts sans que rien
+// ne les reprenne, tous sur du TUYAU, jamais sur le dressing :
+//   · 6 « onglet de travail Vinted : Timeout: la page de dépôt n'a pas fini de
+//     charger » — 5 comptes, 4 builds DIFFÉRENTS (fa9f9c2, d994e33, 2417097,
+//     dbe8d1b) : ce n'est pas une régression, c'est une fragilité de fond.
+//     TOUJOURS items_vus=0, page_suivante=1 : ça meurt à l'ouverture ;
+//   · 3 « message channel closed before a response was received » — dont deux
+//     EN PLEIN MILIEU (96 puis 192 articles déjà lus) ;
+//   · 1 « Could not establish connection. Receiving end does not exist. » ;
+//   · 1 « sonde injoignable : Timeout: pas de réponse du content script » ;
+//   · 2 expirations du chien de garde serveur (32 min sans progrès).
+// Le cas qui a tranché : cynthiabuterne a recliqué QUATRE fois le 13/09 entre
+// 17:11 et 17:42, chaque run mourant sur une erreur de canal, pour n'avancer
+// que d'une page à chaque fois. C'est ce geste-là qu'on supprime.
+//
+// CE QUE FAIT CE MÉCANISME. Un échec TECHNIQUE ne clôt plus l'affaire : le
+// MÊME run est ré-ouvert par une alarme quelques minutes plus tard et repart
+// de son `page_suivante` — jamais de la page 1. Trois reprises au plus, puis
+// l'échec reste, avec son message actuel, inchangé.
+//
+// ⛔ CE QU'IL NE FAIT PAS, ET NE DOIT JAMAIS FAIRE :
+//   · reprendre une cause qui appelle un GESTE de l'utilisateur. Les deux
+//     nommées ci-dessous — pas de session Vinted ([cause403] session_absente),
+//     boutique non confirmée ([boutique_a_confirmer]) — échouent IMMÉDIATEMENT
+//     avec leur message actuel. Les relancer en boucle n'apprendrait rien à
+//     personne : l'écran porte déjà la décision à prendre ;
+//   · masquer un échec. Un run repris qui échoue encore reste en échec ;
+//   · toucher au marquage des disparitions. Un run repris porte déjà
+//     `runRepris = true` (garde (a)) : il ne marque RIEN comme disparu, au mot
+//     près comme avant ce chantier ;
+//   · consommer le quota du cron (fenêtre de 20 h). Une reprise ré-ouvre une
+//     ligne existante par PATCH : ni INSERT, ni garde de cadence — les deux
+//     branches de cadence vivent dans le chemin « run neuf », que la reprise ne
+//     prend pas. Le `declencheur` d'origine du run est CONSERVÉ tel quel.
+//
+// LE PLAFOND EST DUR (3). Le compteur ne vit pas dans `erreur` seul — le chien
+// de garde serveur RÉÉCRIT ce champ quand il expire un run, et le compteur
+// serait perdu à chaque tour, donc infini. Il vit dans chrome.storage.local,
+// attaché au runId, et on prend le MAXIMUM des deux lectures (storage et
+// marqueur) : un run repris ne peut pas réarmer son propre compteur.
+const SYNC_REPRISE_AUTO_DELAIS_MIN = [3, 7, 15];
+const SYNC_REPRISE_AUTO_ALARM_PREFIX = "fillsell-sync-reprise-auto:"; // + userId
+const SYNC_REPRISE_AUTO_STORAGE_KEY = "FILLSELL_SYNC_REPRISE_AUTO";
+// Statuts terminaux qu'une reprise a le droit de ré-ouvrir. 'interrupted' n'y
+// est PAS : c'est le bot-shield ou la session Vinted morte, une pause voulue
+// qu'on ne bouscule pas (et elle n'est pas dans la liste du chantier).
+const SYNC_REPRISE_AUTO_STATUTS = ["failed", "incomplete", "expired"];
+
+// ── La liste des échecs techniques est FERMÉE ────────────────────────────────
+// Tout ce qui n'est pas nommé ici reste un échec immédiat. On n'ouvre pas cette
+// liste « au cas où » : une reprise sur une cause mal comprise, c'est du trafic
+// Vinted en plus sans personne pour le lire.
+const SYNC_CAUSE_UTILISATEUR_RE = /\[cause403\]\s*session_absente|\[boutique_a_confirmer\]|HTTP 401/i;
+const SYNC_ERREUR_TECHNIQUE_RE = new RegExp([
+  "la page de dépôt n'a pas fini de charger",      // ouverture de l'onglet de travail
+  "Onglet de travail fermé pendant le chargement",
+  "Onglet bloqué",
+  "le content script ne répond pas",               // muet même après réinjection (lot 3)
+  "pas de réponse du content script",
+  "sonde injoignable",
+  "message channel (?:is )?closed",
+  "back/forward cache",
+  "Could not establish connection",
+  "Receiving end does not exist",
+  "canal coupé",
+  "Failed to fetch",
+  "NetworkError",
+  "\\[watchdog\\]",                                 // expiré par le chien de garde 32 min
+].join("|"), "i");
+
+// ⚠️ L'ORDRE COMPTE : la cause utilisateur est regardée EN PREMIER et ferme la
+// porte. « sonde de session Vinted : session Vinted absente ou expirée
+// [HTTP 401] » et « sonde de session Vinted : sonde injoignable : Timeout… »
+// se ressemblent à l'œil — le premier appelle une connexion, le second un
+// nouvel essai. Un test large sur « session Vinted » les confondrait.
+function estEchecTechniqueSync(message) {
+  const m = String(message ?? "");
+  if (!m.trim()) return false;
+  if (SYNC_CAUSE_UTILISATEUR_RE.test(m)) return false;
+  return SYNC_ERREUR_TECHNIQUE_RE.test(m);
+}
+
+function alarmeRepriseAuto(userId) {
+  return `${SYNC_REPRISE_AUTO_ALARM_PREFIX}${userId}`;
+}
+
+// Marqueur écrit dans `erreur` tant qu'une reprise est armée : compteur ET
+// échéance, POUR ÊTRE LUS EN BASE (demande explicite du chantier) et par
+// StockTab (REPRISE_AUTO_RE, ancrée en DÉBUT de chaîne — contrat d'affichage,
+// à faire évoluer ENSEMBLE). Le motif d'origine suit le tiret : c'est lui qui
+// restera, NU, si les reprises s'épuisent.
+function marqueurRepriseAuto(tentative, prochaineA, motif) {
+  return `[reprise-auto] tentative ${tentative}/${SYNC_REPRISE_AUTO_DELAIS_MIN.length} prevue ${prochaineA} — ${motif}`;
+}
+// Même préfixe pendant l'exécution (le statut 'running' lève toute ambiguïté) :
+// le compteur reste lisible en base pendant la reprise elle-même.
+function marqueurRepriseAutoEnCours(tentative, motif) {
+  return `[reprise-auto] tentative ${tentative}/${SYNC_REPRISE_AUTO_DELAIS_MIN.length} demarree ${new Date().toISOString()} — ${motif}`;
+}
+const REPRISE_AUTO_COMPTEUR_RE = /\[reprise-auto\] tentative (\d+)\//;
+
+async function lireEtatsRepriseAuto() {
+  try {
+    const st = await chrome.storage.local.get(SYNC_REPRISE_AUTO_STORAGE_KEY);
+    const v = st?.[SYNC_REPRISE_AUTO_STORAGE_KEY];
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+async function lireEtatRepriseAuto(userId) {
+  const etats = await lireEtatsRepriseAuto();
+  return etats[userId] ?? null;
+}
+
+async function poserEtatRepriseAuto(userId, etat) {
+  const etats = await lireEtatsRepriseAuto();
+  etats[userId] = etat;
+  await chrome.storage.local.set({ [SYNC_REPRISE_AUTO_STORAGE_KEY]: etats });
+}
+
+// Désarme (alarme + état). Sans effet et sans bruit si rien n'est armé.
+// ⚠️ L'état EFFACÉ, c'est le compteur remis à zéro : à n'appeler que sur un
+// geste qui légitime le redémarrage du cycle (nouveau déclenchement humain ou
+// cron, run allé au bout, reprise devenue impossible), JAMAIS depuis le chemin
+// d'échec — ce serait rendre le plafond franchissable.
+async function annulerRepriseAuto(userId, motif) {
+  try {
+    const alarmeEffacee = await chrome.alarms.clear(alarmeRepriseAuto(userId));
+    const etats = await lireEtatsRepriseAuto();
+    if (etats[userId]) {
+      delete etats[userId];
+      await chrome.storage.local.set({ [SYNC_REPRISE_AUTO_STORAGE_KEY]: etats });
+      console.log(`[sync-dressing][reprise-auto] reprise désarmée — ${motif}`);
+    } else if (alarmeEffacee) {
+      console.log(`[sync-dressing][reprise-auto] alarme orpheline effacée — ${motif}`);
+    }
+  } catch (e) {
+    console.warn("[sync-dressing][reprise-auto] désarmement impossible:", e?.message ?? e);
+  }
+}
+
+// Combien de reprises ont DÉJÀ été armées pour CE run ? Deux sources, on garde
+// la plus haute : le storage (qui survit au chien de garde, lequel réécrit
+// `erreur`) et le marqueur (qui survit à un profil Chrome remis à neuf).
+// C'est cette fonction, et elle seule, qui rend le plafond de 3 infranchissable.
+async function tentativesRepriseAutoFaites(userId, runId, erreur) {
+  const etat = await lireEtatRepriseAuto(userId);
+  const depuisEtat = String(etat?.runId ?? "") === String(runId) ? (Number(etat.tentative) || 0) : 0;
+  const depuisMarqueur = Number(String(erreur ?? "").match(REPRISE_AUTO_COMPTEUR_RE)?.[1]) || 0;
+  return Math.max(depuisEtat, depuisMarqueur);
+}
+
+// Arme la tentative N (1-indexée). Rend l'échéance ISO, ou null si rien n'a pu
+// être armé — auquel cas l'appelant doit écrire un échec NU, jamais promettre
+// une reprise qui n'existe pas. On ne REMPLACE jamais une alarme déjà armée :
+// chrome.alarms.create sur un nom existant redémarre son délai à zéro.
+async function programmerRepriseAuto(userId, { runId, tentative, declencheur, motif }) {
+  const nom = alarmeRepriseAuto(userId);
+  const delaiMin = SYNC_REPRISE_AUTO_DELAIS_MIN[tentative - 1];
+  if (!Number.isFinite(delaiMin)) return null;
+  try {
+    const existante = await chrome.alarms.get(nom);
+    if (existante) {
+      console.warn("[sync-dressing][reprise-auto] alarme déjà armée pour ce compte — pas de remplacement");
+      return null;
+    }
+  } catch { /* API muette : on tente la création, mieux vaut une reprise que rien */ }
+  const prochaineA = new Date(Date.now() + delaiMin * 60000).toISOString();
+  try {
+    await poserEtatRepriseAuto(userId, {
+      runId, tentative, prochaineA, declencheur, motif: String(motif ?? "").slice(0, 200),
+    });
+  } catch (e) {
+    // Sans état, l'alarme ne saurait pas quoi ré-ouvrir ET le compteur serait
+    // perdu : on préfère l'échec net à une reprise non bornée.
+    console.warn("[sync-dressing][reprise-auto] état non écrit — reprise abandonnée:", e?.message ?? e);
+    return null;
+  }
+  chrome.alarms.create(nom, { delayInMinutes: delaiMin });
+  console.log(`[sync-dressing][reprise-auto] tentative ${tentative}/${SYNC_REPRISE_AUTO_DELAIS_MIN.length} armée dans ${delaiMin} min (run ${runId})`);
+  return prochaineA;
+}
+
+// Arme une reprise pour le run courant SI la cause est technique et qu'il reste
+// des tentatives. Rend le texte à écrire dans `erreur` : le marqueur quand une
+// reprise est armée, le message NU sinon (plafond atteint, cause légitime,
+// armement impossible) — dans ce dernier cas le run reste en échec avec son
+// message actuel, exactement comme avant ce chantier.
+async function armerRepriseAutoSiTechnique({ userId, runId, declencheur, message, erreurCourante }) {
+  const motif = String(message ?? "");
+  try {
+    if (!estEchecTechniqueSync(motif)) return motif;
+    const faites = await tentativesRepriseAutoFaites(userId, runId, erreurCourante);
+    if (faites >= SYNC_REPRISE_AUTO_DELAIS_MIN.length) {
+      console.warn(`[sync-dressing][reprise-auto] plafond de ${SYNC_REPRISE_AUTO_DELAIS_MIN.length} reprises atteint — échec définitif`);
+      return motif;
+    }
+    const prochaineA = await programmerRepriseAuto(userId, { runId, tentative: faites + 1, declencheur, motif });
+    if (!prochaineA) return motif;
+    return marqueurRepriseAuto(faites + 1, prochaineA, motif);
+  } catch (e) {
+    // Une reprise est un CONFORT : si on n'arrive pas à l'armer, le run part en
+    // échec avec son message d'origine — jamais une promesse en l'air.
+    console.warn("[sync-dressing][reprise-auto] armement impossible:", e?.message ?? e);
+    return motif;
+  }
+}
+
+// ── Tir de l'alarme : on ré-ouvre LE MÊME run et on relance ──────────────────
+// Décalque de reprendreSyncApresRetry403, et pour les mêmes raisons : PATCH
+// atomique filtré sur les statuts terminaux repris (si un autre run est déjà
+// actif, l'index un_seul_actif refuse en 409), jamais un INSERT — donc ni
+// ligne en plus, ni garde de cadence, ni quota cron consommé. `declencheur`
+// n'est pas réécrit : le run reste ce qu'il était.
+async function reprendreSyncApresRepriseAuto(userIdAlarme) {
+  const etat = await lireEtatRepriseAuto(userIdAlarme);
+  if (!etat?.runId) {
+    console.log("[sync-dressing][reprise-auto] alarme sans état (désarmée entre-temps ?) — reprise abandonnée");
+    return;
+  }
+  const session = await getValidSession();
+  const token = session?.access_token ?? null;
+  const userId = token ? decodeJwtSub(token) : null;
+  if (!userId || userId !== userIdAlarme) {
+    await annulerRepriseAuto(userIdAlarme, userId ? "compte FillSell changé" : "session FillSell absente");
+    return;
+  }
+  if (syncDressingEnCours) {
+    // On ne ré-ouvre JAMAIS un run pendant qu'une sync tourne. L'état est
+    // GARDÉ (le compteur avec) : c'est la sync en cours qui tranchera.
+    console.log("[sync-dressing][reprise-auto] une sync est déjà en cours — reprise de ce tour abandonnée");
+    return;
+  }
+  let rouverte = null;
+  try {
+    rouverte = await restRequest(
+      `vinted_sync_runs?id=eq.${etat.runId}&status=in.(${SYNC_REPRISE_AUTO_STATUTS.join(",")})`,
+      token,
+      {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          status: "running", finished_at: null,
+          erreur: marqueurRepriseAutoEnCours(etat.tentative, etat.motif ?? "échec technique").slice(0, 500),
+          updated_at: new Date().toISOString(), extension_build: FILLSELL_BUILD_ID,
+        }),
+      },
+    );
+  } catch (e) {
+    // 409 = un autre run est 'running' (index un_seul_actif) : supplantés.
+    await annulerRepriseAuto(userIdAlarme, `ré-ouverture refusée (${String(e?.message ?? e).slice(0, 80)})`);
+    return;
+  }
+  if (!Array.isArray(rouverte) || !rouverte.length) {
+    await annulerRepriseAuto(userIdAlarme, "run introuvable ou déjà repris ailleurs — supplanté");
+    return;
+  }
+  console.log(`[sync-dressing][reprise-auto] run ${etat.runId} ré-ouvert — tentative ${etat.tentative}/${SYNC_REPRISE_AUTO_DELAIS_MIN.length}`);
+  await syncDressingVinted({ declencheur: etat.declencheur ?? "bouton", repriseAuto: true });
+}
+
+// ── Rattrapage au réveil : le run tué pendant que Chrome dormait ─────────────
+// Le chien de garde des 32 min vit côté SERVEUR (handler-watch) : quand il
+// expire un run, l'extension n'est par définition pas là pour armer quoi que ce
+// soit. Personne ne reprendrait jamais ces runs-là — d'où ce balayage, au
+// démarrage puis au fil des polls (au plus une fois par 10 min ; le compteur
+// vit en storage.session, donc un démarrage de Chrome rouvre la porte tout de
+// suite). Lecture d'UNE ligne, la dernière : ni boucle, ni rafale.
+const RATTRAPAGE_REPRISE_AUTO_KEY = "fillsell_rattrapage_reprise_auto";
+const RATTRAPAGE_REPRISE_AUTO_MS = 10 * 60 * 1000;
+
+async function rattraperRepriseAuto() {
+  try {
+    if (syncDressingEnCours) return;
+    const st = await chrome.storage.session.get(RATTRAPAGE_REPRISE_AUTO_KEY).catch(() => ({}));
+    const dernierBalayage = Number(st?.[RATTRAPAGE_REPRISE_AUTO_KEY]) || 0;
+    if (Date.now() - dernierBalayage < RATTRAPAGE_REPRISE_AUTO_MS) return;
+    await chrome.storage.session.set({ [RATTRAPAGE_REPRISE_AUTO_KEY]: Date.now() }).catch(() => {});
+
+    const session = await getValidSession();
+    const token = session?.access_token ?? null;
+    const userId = token ? decodeJwtSub(token) : null;
+    if (!userId) return;
+    // Une alarme déjà armée fait le travail : on ne double jamais.
+    const dejaArmee = await chrome.alarms.get(alarmeRepriseAuto(userId)).catch(() => null);
+    if (dejaArmee) return;
+
+    // Même fenêtre que la reprise d'un relevé incomplet, et pour la même
+    // raison : au-delà, la pagination Vinted a bougé et reprendre à la page 3
+    // d'hier lirait autre chose que ce qui manque.
+    const limiteIso = new Date(Date.now() - SYNC_REPRISE_INCOMPLETE_MAX_MS).toISOString();
+    const derniers = await restRequest(
+      `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&started_at=gte.${limiteIso}` +
+      `&order=started_at.desc&limit=1&select=id,status,erreur,declencheur,page_suivante`,
+      token, { headers: { Prefer: "return=representation" } },
+    );
+    const dernier = Array.isArray(derniers) && derniers.length ? derniers[0] : null;
+    if (!dernier || !SYNC_REPRISE_AUTO_STATUTS.includes(String(dernier.status))) return;
+    if (!estEchecTechniqueSync(dernier.erreur)) return;
+    const faites = await tentativesRepriseAutoFaites(userId, dernier.id, dernier.erreur);
+    if (faites >= SYNC_REPRISE_AUTO_DELAIS_MIN.length) return;
+
+    const motif = String(dernier.erreur ?? "").replace(REPRISE_AUTO_COMPTEUR_RE, "").trim().slice(0, 200);
+    const prochaineA = await programmerRepriseAuto(userId, {
+      runId: dernier.id, tentative: faites + 1, declencheur: dernier.declencheur ?? "bouton", motif,
+    });
+    if (!prochaineA) return;
+    console.warn(`[sync-dressing][reprise-auto] rattrapage : run ${dernier.id} (${dernier.status}) sera repris à la page ${dernier.page_suivante ?? 1} le ${prochaineA}`);
+    // Le marqueur est posé sur la ligne pour que le compteur et l'échéance se
+    // lisent en base — best-effort, l'alarme est déjà armée quoi qu'il arrive.
+    await restRequest(`vinted_sync_runs?id=eq.${dernier.id}&status=eq.${dernier.status}`, token, {
+      method: "PATCH",
+      body: JSON.stringify({ erreur: marqueurRepriseAuto(faites + 1, prochaineA, motif).slice(0, 500) }),
+    }).catch((e) => console.warn("[sync-dressing][reprise-auto] marqueur non écrit:", e?.message ?? e));
+  } catch (e) {
+    console.warn("[sync-dressing][reprise-auto] rattrapage impossible:", e?.message ?? e);
+  }
+}
+
 // Cadence CRON : 20 h et non 24 h — cf. la garde dans syncDressingVinted.
 const SYNC_CRON_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 
@@ -9142,6 +9491,146 @@ function syncPauseMs() {
   return SYNC_PAUSE_MIN_MS + Math.floor(Math.random() * (SYNC_PAUSE_MAX_MS - SYNC_PAUSE_MIN_MS));
 }
 
+// ── L'ONGLET DE TRAVAIL EST PRÊT QUAND LE CONTENT SCRIPT RÉPOND (2026-09-14) ─
+// CAUSE N°1 DES SYNCS MORTES : 6 runs sur 48 h, 5 comptes, 4 builds différents,
+// tous avec items_vus=0 et page_suivante=1 — « onglet de travail Vinted :
+// Timeout: la page de dépôt n'a pas fini de charger ». Ça meurt à l'ouverture,
+// avant d'avoir lu quoi que ce soit.
+// Or ce Timeout ne dit PAS que la page est absente : il dit que l'événement
+// « complete » n'est pas arrivé dans le budget (30 s). C'est exactement la race
+// documentée sur waitForTabComplete — événement manqué, onglet restauré après
+// discard, SPA qui renavigue — et vinted.fr est lourd. On concluait « échec »
+// sur une page souvent bel et bien chargée.
+// LE SEUL VERDICT QUI VAUT, c'est la réponse du content script. D'où, dans cet
+// ordre :
+//   1. ouverture normale (getOrCreateWorkTab). Si elle lève, on ne rend PAS la
+//      main : on retrouve l'onglet de travail et on lui parle quand même ;
+//   2. PING. Il répond ⇒ l'onglet est prêt, quoi qu'ait dit le chargement ;
+//   3. muet ⇒ RÉINJECTION du content script (une seule fois) puis nouveau PING
+//      — c'est la parade au « Receiving end does not exist » : le script du
+//      manifest s'injecte à document_idle, une navigation interne juste après
+//      peut le laisser sur le carreau ;
+//   4. toujours muet ⇒ ALORS seulement on lève. L'échec partira en reprise
+//      automatique (liste technique fermée, cf. armerRepriseAutoSiTechnique).
+// ⛔ LECTURE PURE : le PING ne touche à rien et la réinjection est idempotente
+// (vinted.js pose un drapeau de monde isolé et n'enregistre son écouteur
+// qu'une fois) — aucun risque de double remplissage, aucune écriture.
+const SYNC_PING_TIMEOUT_MS = 8000;
+const SYNC_PING_APRES_INJECTION_MS = 1500;
+
+async function contentScriptVintedRepond(tabId) {
+  if (!Number.isInteger(tabId)) return false;
+  try {
+    // sendMessageToTabOnce (et non sendMessageToTab) : on veut UN verdict
+    // franc, pas la fenêtre de relance de 20 s — c'est nous qui décidons de la
+    // suite (réinjecter), et vite.
+    const r = await sendMessageToTabOnce(tabId, { type: "VINTED_PING" }, SYNC_PING_TIMEOUT_MS);
+    return r?.pong === true;
+  } catch {
+    return false;
+  }
+}
+
+// ⛔ ON N'INJECTE JAMAIS DEUX FOIS LE MÊME FICHIER DANS LE MÊME DOCUMENT.
+// vinted.js déclare des `const` au premier niveau : une seconde exécution dans
+// le même monde isolé lèverait « Identifier 'VINTED_BUILD' has already been
+// declared » et laisserait l'onglet dans un état pire qu'avant. On demande donc
+// D'ABORD à la page si le fichier y a déjà tourné (drapeau
+// __fillsellVintedCharge, posé à sa toute première instruction) :
+//   · déjà chargé mais muet ⇒ on ne réinjecte pas. Le script est là, il est
+//     coincé : c'est un échec franc, et la reprise automatique le reprendra
+//     sur un onglet NEUF ;
+//   · absent ⇒ le document n'a jamais reçu le script (injection à document_idle
+//     manquée, navigation interne de la SPA juste après) : on l'injecte.
+// La sonde tourne dans le monde ISOLÉ par défaut — le même que les content
+// scripts —, donc elle lit bien le globalThis qui nous intéresse.
+async function reinjecterContentScriptVinted(tabId) {
+  try {
+    const [sonde] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => globalThis.__fillsellVintedCharge === true,
+    });
+    if (sonde?.result === true) {
+      console.warn("[sync-dressing] content script déjà chargé sur cet onglet mais muet — pas de réinjection (redéclaration interdite)");
+      return false;
+    }
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["content-scripts/vinted.js"],
+    });
+    return true;
+  } catch (e) {
+    // Page non scriptable (onglet déchargé, chrome-error://, hors manifest) :
+    // rien à réparer ici, l'appelant lèvera et la reprise fera le reste.
+    console.warn("[sync-dressing] réinjection du content script impossible:", e?.message ?? e);
+    return false;
+  }
+}
+
+// Retrouve l'onglet de travail Vinted quand getOrCreateWorkTab a levé AVANT de
+// le mémoriser. Deux pistes, dans l'ordre de fiabilité : le storage de session,
+// puis un onglet vinted.fr portant NOTRE fragment — jamais un onglet
+// quelconque de l'utilisateur.
+async function retrouverOngletTravailVinted() {
+  try {
+    const key = workTabKey("vinted");
+    const store = await chrome.storage.session.get(key);
+    const memo = store?.[key];
+    if (Number.isInteger(memo) && (await chrome.tabs.get(memo).catch(() => null))) return memo;
+  } catch { /* storage muet : on tente la seconde piste */ }
+  try {
+    const candidats = await chrome.tabs.query({ url: "*://*.vinted.fr/*" });
+    const marque = (candidats ?? []).find((t) => (t.url || "").includes(WORK_TAB_FRAGMENT));
+    return Number.isInteger(marque?.id) ? marque.id : null;
+  } catch {
+    return null;
+  }
+}
+
+// Rend l'id d'un onglet Vinted DONT LE CONTENT SCRIPT A RÉPONDU, ou lève avec
+// un message déjà préfixé « onglet de travail Vinted : » (les appelants
+// l'écrivent tel quel dans le run).
+async function ouvrirOngletVintedPret() {
+  let tabId = null;
+  let erreurOuverture = null;
+  try {
+    tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+  } catch (e) {
+    erreurOuverture = String(e?.message ?? e);
+    tabId = await retrouverOngletTravailVinted();
+    if (tabId == null) throw new Error(`onglet de travail Vinted : ${erreurOuverture}`);
+    console.warn(`[sync-dressing] chargement non confirmé (${erreurOuverture}) — on demande au content script de l'onglet ${tabId} s'il est là`);
+  }
+  if (await contentScriptVintedRepond(tabId)) {
+    if (erreurOuverture) console.log("[sync-dressing] content script Vinted présent malgré le chargement non confirmé — on continue");
+    return tabId;
+  }
+  console.warn(`[sync-dressing] content script Vinted muet sur l'onglet ${tabId} — réinjection puis nouvel essai`);
+  // UNE seule réinjection, et seulement si le fichier n'a jamais tourné dans ce
+  // document (cf. le bandeau de reinjecterContentScriptVinted). Rien injecté =
+  // rien de neuf à interroger : on ne repingue pas pour la forme.
+  const reinjecte = await reinjecterContentScriptVinted(tabId);
+  if (reinjecte) {
+    await sleep(SYNC_PING_APRES_INJECTION_MS);
+    if (await contentScriptVintedRepond(tabId)) {
+      console.log("[sync-dressing] content script Vinted réinjecté et joignable — on continue");
+      return tabId;
+    }
+  }
+  // Message HONNÊTE sur ce qui a été tenté : « après réinjection » seulement si
+  // on a réellement réinjecté. Il part tel quel dans `erreur` — et il porte,
+  // dans les deux formes, un motif de la liste technique fermée : c'est lui qui
+  // déclenche la reprise automatique.
+  const finMuet = reinjecte
+    ? "le content script ne répond pas, même après réinjection"
+    : "le content script ne répond pas (déjà chargé sur cet onglet, donc non réinjecté)";
+  throw new Error(
+    erreurOuverture
+      ? `onglet de travail Vinted : ${erreurOuverture} — ${finMuet}`
+      : `onglet de travail Vinted : ${finMuet}`,
+  );
+}
+
 // ── Une LECTURE Vinted qui survit à une coupure de canal ────────────────────
 // Décalque de captureVintedItemUnlocked (2026-08-07, élargi le 07/09), pour la
 // sync cette fois. `envoyer(tabId)` doit être une LECTURE PURE — cf. le bandeau
@@ -9165,9 +9654,12 @@ async function lireVintedAvecCanalRejoue(tabIdInitial, envoyer, etiquette) {
   for (let tentative = 1; tentative <= SYNC_CANAL_TENTATIVES; tentative++) {
     if (tentative > 1 || tabId == null) {
       try {
-        tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+        // ouvrirOngletVintedPret et non getOrCreateWorkTab : la navigation
+        // neuve ne sert à rien si le content script n'est pas remonté derrière
+        // — c'est lui qu'on vient rejoindre. Le message est déjà préfixé.
+        tabId = await ouvrirOngletVintedPret();
       } catch (e) {
-        return { success: false, error: `onglet de travail Vinted : ${String(e?.message ?? e)}`, tabId: null, transport: true };
+        return { success: false, error: String(e?.message ?? e), tabId: null, transport: true };
       }
     }
     let canalCoupe = false;
@@ -9617,7 +10109,7 @@ async function traiterCommandeSyncDistante(cmd) {
   await syncDressingVinted({ declencheur: "bouton_distant" });
 }
 
-async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = false } = {}) {
+async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = false, repriseAuto = false } = {}) {
   // Garde mémoire : deux déclenchements rapprochés (double-clic, alarme qui
   // tombe pendant un clic) ne doivent pas lire le dressing deux fois. La base
   // porte la même garantie (index unique WHERE status='running'), celle-ci
@@ -9631,13 +10123,13 @@ async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = fa
   // le même que celui d'une publication en cours. Sans ce verrou on rejouerait
   // l'incident du 2026-07-12 (deux flux se disputant le même onglet).
   try {
-    return await withJobFlowLock("sync-dressing", () => syncDressingUnlocked(declencheur, repriseRetry403));
+    return await withJobFlowLock("sync-dressing", () => syncDressingUnlocked(declencheur, repriseRetry403, repriseAuto));
   } finally {
     syncDressingEnCours = false;
   }
 }
 
-async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
+async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repriseAuto = false) {
   const session = await getValidSession();
   if (!session?.access_token) {
     console.log("[sync-dressing] pas de session FillSell — abandon silencieux");
@@ -9653,7 +10145,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   let run = null;
   try {
     const enCours = await restRequest(
-      `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.running&select=id,page_suivante,items_vus,items_crees,items_maj&limit=1`,
+      `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.running&select=id,page_suivante,items_vus,items_crees,items_maj,erreur&limit=1`,
       token, { headers: { Prefer: "return=representation" } },
     );
     run = Array.isArray(enCours) && enCours.length ? enCours[0] : null;
@@ -9674,7 +10166,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       const incomplets = await restRequest(
         `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.incomplete` +
         `&started_at=gte.${limiteIso}&page_suivante=lte.${SYNC_MAX_PAGES}` +
-        `&order=started_at.desc&limit=1&select=id,page_suivante,items_vus,items_crees,items_maj`,
+        `&order=started_at.desc&limit=1&select=id,page_suivante,items_vus,items_crees,items_maj,erreur`,
         token, { headers: { Prefer: "return=representation" } },
       );
       const candidat = Array.isArray(incomplets) && incomplets.length ? incomplets[0] : null;
@@ -9797,6 +10289,27 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   // compris). Placé APRÈS les gardes de cadence : un cron refusé par la
   // cadence ne doit pas désarmer une reprise promise à l'utilisateur.
   if (!repriseRetry403) await annulerRetry403(userId, "supplanté par un nouveau déclenchement");
+  // Même règle pour la reprise des échecs TECHNIQUES : un clic, un cron ou une
+  // commande mobile repart à zéro (compteur de tentatives compris) et désarme
+  // l'alarme en attente — sinon celle-ci ré-ouvrirait l'ancien run pendant que
+  // celui-ci tourne. Un geste humain n'est pas une boucle : le plafond de 3 ne
+  // protège que de l'automatisme, pas de l'utilisateur.
+  if (!repriseAuto) await annulerRepriseAuto(userId, "supplanté par un nouveau déclenchement");
+
+  // Note « reprise auto technique » : captée AVANT tout travail (la cause peut
+  // frapper de nouveau dès l'ouverture de l'onglet) et re-écrite à la clôture
+  // 'done', pour que le compteur survive jusqu'au bout — c'est la seule mesure
+  // du phénomène disponible en base, même doctrine que la reprise 403.
+  // ⚠️ L'état n'est PAS effacé ici : c'est lui qui porte le compteur si ce
+  // passage-ci échoue encore.
+  let noteRepriseAuto = null;
+  if (repriseAuto) {
+    const etatA = await lireEtatRepriseAuto(userId);
+    if (String(etatA?.runId ?? "") === String(run.id) && etatA?.tentative) {
+      noteRepriseAuto = `[note] reprise auto technique : tentative ${etatA.tentative}/${SYNC_REPRISE_AUTO_DELAIS_MIN.length}` +
+        (etatA.motif ? ` après « ${String(etatA.motif).slice(0, 120)} »` : "");
+    }
+  }
 
   // Progression : best-effort, un raté se rattrape à la page suivante.
   const majRun = (champs) => restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
@@ -9827,8 +10340,25 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     // Message NU, sans préfixe : c'est un VRAI échec de run. Cf. la convention
     // du champ `erreur` détaillée à la clôture 'done' (les notes de journal,
     // elles, partent avec « [note] »).
+    // ── REPRISE AUTOMATIQUE (2026-09-14) ──────────────────────────────────
+    // SEULE exception au message nu : une cause TECHNIQUE nommée dans la liste
+    // fermée (onglet de travail qui n'ouvre pas, canal coupé, content script
+    // muet, réseau) part avec le marqueur « [reprise-auto] tentative N/3
+    // prevue <ISO> — <message> », et une alarme ré-ouvrira CE run à sa page
+    // courante. Plafond atteint, cause légitime (pas de session Vinted,
+    // boutique à confirmer) ou armement impossible ⇒ message NU, au mot près
+    // comme avant. Le statut, lui, reste 'failed' dans tous les cas : on
+    // n'invente pas un succès.
     console.error("[sync-dressing] échec:", message);
-    await clore({ status: "failed", erreur: String(message).slice(0, 500) });
+    const erreurEcrite = await armerRepriseAutoSiTechnique({
+      userId, runId: run.id, declencheur, message,
+      // `run.erreur` = ce que portait la ligne à l'ouverture de ce passage —
+      // pour un run repris, le marqueur « [reprise-auto] tentative N/… » posé
+      // à la ré-ouverture. C'est la CEINTURE du compteur, celle qui survit à un
+      // chrome.storage vidé.
+      erreurCourante: run.erreur,
+    });
+    await clore({ status: "failed", erreur: String(erreurEcrite).slice(0, 500) });
     return { ok: false, reason: "echec", error: message };
   };
 
@@ -9857,9 +10387,12 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     console.warn(`[sync-dressing] ⚠️ HARNAIS MOCK ACTIF — ${mock.totalArticles} articles fabriqués, aucun appel Vinted (compte QA uniquement)`);
   } else {
     try {
-      tabId = await getOrCreateWorkTab("vinted", "https://www.vinted.fr/");
+      // ⚠️ On n'ouvre plus « un onglet », on ouvre un onglet QUI RÉPOND : le
+      // Timeout de chargement ne prouvait pas que la page était absente, et
+      // c'est ce raccourci qui tuait 6 syncs sur 48 h (cf. ouvrirOngletVintedPret).
+      tabId = await ouvrirOngletVintedPret();
     } catch (e) {
-      return await echec(`onglet de travail Vinted : ${e?.message ?? e}`);
+      return await echec(String(e?.message ?? e));
     }
 
     // Sonde d'identité = LECTURE PURE (GET du compte courant) : elle a donc
@@ -10189,15 +10722,29 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
       // le cas de 47 des 59 coupures.
       if (res?.canalCoupe && items_vus > 0) {
         motifArretIncomplet = `canal coupé en lisant la page ${page} (reprise sur navigation neuve tentée)`;
+        // « [note] » littéral : la constante NOTE est déclarée plus bas, dans
+        // le bloc de clôture, et n'est pas en portée ici. Même préfixe au
+        // caractère près — c'est la clé que lit le balayage d'ops-digest.
+        const noteIncomplet =
+          `[note] relevé incomplet — canal coupé page ${page} après ${items_vus} article(s) lu(s) ; reprise à la page ${page}`;
+        // ── LA REPRISE N'ATTEND PLUS UN CLIC (2026-09-14) ────────────────────
+        // C'est LE cas cynthiabuterne : trois runs de suite coupés en cours de
+        // lecture, chacun repris à la main. Le curseur était déjà en base, la
+        // reprise déjà écrite — il manquait juste quelqu'un pour la déclencher.
+        // Le marqueur [reprise-auto] passe DEVANT la note : il est ancré en
+        // début de chaîne (contrat de lecture), la note le suit.
+        const erreurEcrite = await armerRepriseAutoSiTechnique({
+          userId, runId: run.id, declencheur,
+          message: `canal coupé page ${page} après ${items_vus} article(s) lu(s)`,
+          erreurCourante: run.erreur,
+        });
+        const marqueurPose = erreurEcrite.startsWith("[reprise-auto]");
         await clore({
           status: "incomplete", page_suivante: page, items_vus, items_crees, items_maj,
           total_entries: totalEntries,
-          // « [note] » littéral : la constante NOTE est déclarée plus bas, dans
-          // le bloc de clôture, et n'est pas en portée ici. Même préfixe au
-          // caractère près — c'est la clé que lit le balayage d'ops-digest.
-          erreur: `[note] relevé incomplet — canal coupé page ${page} après ${items_vus} article(s) lu(s) ; reprise à la page ${page}`.slice(0, 500),
+          erreur: (marqueurPose ? `${erreurEcrite} | ${noteIncomplet}` : noteIncomplet).slice(0, 500),
         });
-        console.warn(`[sync-dressing] canal coupé page ${page} — run clos 'incomplete', reprise possible à la page ${page}`);
+        console.warn(`[sync-dressing] canal coupé page ${page} — run clos 'incomplete', reprise ${marqueurPose ? "automatique armée" : "possible"} à la page ${page}`);
         return { ok: false, reason: "canal_coupe", incomplet: true, page, items_vus };
       }
       return await echec(`page ${page} : ${res?.error ?? "erreur inconnue"}`);
@@ -10519,6 +11066,9 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
   // La note de reprise 403 survit à la clôture 'done' : sans cette ré-écriture,
   // les notes ci-dessous l'écraseraient (consigne Nico 12/08).
   if (noteReprise403) notes.push(noteReprise403);
+  // Idem pour la reprise des échecs techniques : c'est cette ligne qui dira, en
+  // base, combien de reprises il a fallu pour que ce dressing soit lu en entier.
+  if (noteRepriseAuto) notes.push(noteRepriseAuto);
   // Un run mocké doit se lire comme tel en base : personne ne doit prendre 289
   // articles fabriqués pour un dressing réel en analysant vinted_sync_runs.
   if (mock) notes.push(`${NOTE}HARNAIS MOCK pagination (unpacked) — ${mock.totalArticles} articles fabriqués, aucun appel Vinted`);
@@ -10578,6 +11128,12 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false) {
     ...(releveIncomplet ? { page_suivante: page } : {}),
     ...(notes.length ? { erreur: notes.join(" | ").slice(0, 500) } : {}),
   });
+  // Le run est allé au bout : le cycle de reprise de CE run est terminé, l'état
+  // n'a plus rien à porter. Sur un relevé encore incomplet, en revanche, on
+  // GARDE le compteur — la cause n'est pas dans la liste technique (page restée
+  // vide, garde-fou anti-boucle), donc rien ne sera armé, mais l'effacer
+  // rouvrirait le plafond si une vraie coupure survenait ensuite sur ce run.
+  if (!releveIncomplet) await annulerRepriseAuto(userId, "run allé au bout").catch(() => {});
   if (echecsEcriture.length) console.error(`[sync-dressing] ${echecsEcriture.length} article(s) non écrit(s) — détail dans vinted_sync_runs.erreur`);
   if (releveIncomplet) {
     console.warn(`[sync-dressing] INCOMPLÈTE : ${items_vus}/${totalEntries} articles — reprise à la page ${page}`);

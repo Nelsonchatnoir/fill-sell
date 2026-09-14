@@ -1,7 +1,16 @@
 ﻿// Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const VINTED_BUILD = "2026-09-09-envoi-journalise-et-taille-lettree (0.6.24 : l'ENVOI de la création est journalisé avant la réponse — sans réponse en 30 s le job attend une vérification, il n'accuse plus « Vinted n'a pas été interrogé » ; 42 → XL sur une grille purement lettrée ; grille lettrée + taille numérique = catégorie probablement fausse) — précédent : 2026-08-09-photos-endpoint-reel (upload = POST /api/v2/photos, PAS /api/v2/images ; preuve croisée r";
+// ⚠️ PREMIÈRE INSTRUCTION DU FICHIER, avant toute déclaration (2026-09-14).
+// La sync peut RÉINJECTER ce fichier quand le content script du manifest n'a
+// pas répondu, et le background regarde ce drapeau AVANT d'injecter : un
+// fichier déjà exécuté ici ne doit jamais l'être une seconde fois — les
+// déclarations top-level (`const VINTED_BUILD` dès la ligne suivante) lèveraient
+// « Identifier has already been declared » et casseraient l'onglet. Posé au tout
+// début pour couvrir même une exécution qui échouerait en cours de route.
+globalThis.__fillsellVintedCharge = true;
+
+const VINTED_BUILD = "2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -401,8 +410,22 @@ async function waitForKey(key, { timeoutMs = 10_000, params } = {}) {
 // typeof guard : permet d'injecter ce fichier tel quel dans une page pour un
 // dry-run piloté (hors extension), où chrome.runtime n'existe pas — même
 // pattern que ebay.js/beebs.js.
-if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+// ── DRAPEAU D'ENREGISTREMENT (2026-09-14) ────────────────────────────────────
+// La sync réinjecte ce fichier quand le content script du manifest n'a pas
+// répondu (cf. ouvrirOngletVintedPret côté background). `globalThis` est le
+// monde ISOLÉ de ce document : le drapeau survit à l'injection suivante et
+// garantit UN SEUL écouteur par page. Sans lui, deux écouteurs répondraient au
+// même message — le premier gagne, mais les deux travailleraient.
+if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__fillsellVintedEcouteur) {
+  globalThis.__fillsellVintedEcouteur = true;
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    // Le « es-tu là ? » de la sync : réponse SYNCHRONE, aucune lecture de la
+    // page, aucun effet. C'est le seul verdict fiable de « l'onglet est prêt »
+    // — l'événement de chargement de l'onglet, lui, se manque.
+    if (msg?.type === "VINTED_PING") {
+      sendResponse({ success: true, pong: true });
+      return true;
+    }
     if (msg?.type === "DELETE_LISTING") {
       deleteListing(msg.job)
         .then((result) => sendResponse(result))

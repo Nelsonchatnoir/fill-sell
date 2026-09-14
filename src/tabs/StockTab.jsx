@@ -1878,6 +1878,17 @@ const RETRY403_RE = /^\[retry403\] tentative (\d+)\/(\d+) prevue (\S+) — /;
 // reprise armée tire en général à l'heure : 5 min absorbent l'ordinaire sans
 // laisser l'écran promettre une tentative fantôme pendant des heures.
 const RETRY403_GRACE_MS = 5 * 60 * 1000;
+// ── Reprise automatique après un échec TECHNIQUE (2026-09-14) ───────────────
+// Même mécanique, cause différente : l'onglet de travail qui n'ouvre pas, un
+// canal coupé en pleine lecture, le content script muet, le réseau, ou
+// l'expiration par le chien de garde. L'extension clôt le run (failed,
+// incomplete ou expired selon ce qui a été lu), écrit ce marqueur et arme une
+// alarme (3/7/15 min) qui ré-ouvre LE MÊME run à sa page courante.
+// CONTRAT avec marqueurRepriseAuto (chrome-extension/background.js) : préfixe,
+// compteur « tentative N/M » et échéance ISO — à faire évoluer ENSEMBLE.
+// Ancré en DÉBUT de chaîne : tout autre segment (une [note] de relevé
+// incomplet) s'ajoute APRÈS, jamais devant.
+const REPRISE_AUTO_RE = /^\[reprise-auto\] tentative (\d+)\/(\d+) prevue (\S+) — /;
 // (Le contrat [pin_mismatch] et son bouton de bascule ont été RETIRÉS le
 // 27/08 avec l'abandon de l'épinglage : FillSell ne gère pas de comptes
 // Vinted, il reflète celui connecté dans Chrome — le « switch », c'est
@@ -2227,11 +2238,25 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // progression reprend, et un 'done' met la carte et la liste à jour comme
   // une sync normale. Borné par construction : l'échéance + marge passe en
   // ~25 min au pire, et l'effet se démonte dès que le run change d'état.
+  // (2026-09-14 : la reprise des échecs TECHNIQUES emprunte ce même suivi. Elle
+  // clôt le run selon ce qui a été lu — 'failed' si rien, 'incomplete' si le
+  // canal a cassé en route, 'expired' si le chien de garde est passé — donc
+  // trois statuts pour une seule et même attente. Même marge, même cadence de
+  // 30 s, même sortie : dès que l'alarme ré-ouvre le run, le suivi reprend.)
   const retryProchaineA = (() => {
-    if (run?.status !== 'failed') return 0;
-    const m = String(run.erreur ?? '').match(RETRY403_RE);
-    const t = m ? Date.parse(m[3]) : NaN;
-    return Number.isFinite(t) && Date.now() < t + RETRY403_GRACE_MS ? t : 0;
+    const brut = String(run?.erreur ?? '');
+    const echeance = (m) => {
+      const t = m ? Date.parse(m[3]) : NaN;
+      return Number.isFinite(t) && Date.now() < t + RETRY403_GRACE_MS ? t : 0;
+    };
+    if (run?.status === 'failed') {
+      const t403 = echeance(brut.match(RETRY403_RE));
+      if (t403) return t403;
+    }
+    if (run?.status === 'failed' || run?.status === 'incomplete' || run?.status === 'expired') {
+      return echeance(brut.match(REPRISE_AUTO_RE));
+    }
+    return 0;
   })();
   useEffect(() => {
     if (!retryProchaineA || !user?.id) return;
@@ -2514,6 +2539,27 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // cours (sinon deux états concurrents à l'écran).
   const bilan = (() => {
     if (enCours || !run || run.status === 'running' || run.status === 'queued') return null;
+    // ── UNE REPRISE EST ARMÉE : ce n'est pas un échec, c'est une attente ─────
+    // (2026-09-14.) Testé AVANT toute branche de statut, parce que le marqueur
+    // peut vivre sur un 'failed' (rien n'a été lu), un 'incomplete' (canal
+    // coupé en cours de route) ou un 'expired' (chien de garde) : c'est la
+    // même situation vue de l'utilisateur, et le même geste — aucun.
+    // C'est le silence qui fait marteler le bouton (cynthiabuterne, 4 clics en
+    // 31 min le 13/09), et chaque clic repartait de la page 1.
+    // Échéance dépassée (+ marge) : Chrome était fermé, l'alarme n'a pas tiré
+    // — on laisse les branches normales rendre leur verdict, sans jamais
+    // montrer le marqueur brut.
+    const repriseAuto = String(run.erreur ?? '').match(REPRISE_AUTO_RE);
+    if (repriseAuto) {
+      const prochaine = Date.parse(repriseAuto[3]);
+      if (Number.isFinite(prochaine) && Date.now() < prochaine + RETRY403_GRACE_MS) {
+        const min = Math.max(1, Math.ceil((prochaine - Date.now()) / 60000));
+        const lus = run.items_vus ?? 0;
+        return { ton: 'orange', texte: fr
+          ? `La lecture de ton dressing a été coupée${lus > 0 ? ` après ${lus} article${lus > 1 ? 's' : ''}` : ''}. Elle reprend toute seule dans ~${min} min (tentative ${repriseAuto[1]}/${repriseAuto[2]}), là où elle s'est arrêtée — laisse Chrome ouvert, rien d'autre à faire.`
+          : `Reading your closet was cut off${lus > 0 ? ` after ${lus} item${lus > 1 ? 's' : ''}` : ''}. It resumes on its own in ~${min} min (attempt ${repriseAuto[1]}/${repriseAuto[2]}), right where it stopped — keep Chrome open, nothing else to do.` };
+      }
+    }
     if (run.status === 'done') {
       // ── « done 0 » ≠ succès muet (2026-08-07, cas Sam, jour du blast) ────
       // Un run propre à 0 article lu a DEUX lectures que l'utilisateur ne
@@ -2569,7 +2615,11 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // et renvoie relancer depuis la fiche article — un contresens pour une
       // sync. Les messages posés par l'extension sont déjà lisibles ; on ne
       // masque que les pavés techniques (URL, JSON, traces).
-      const brut = String(run.erreur ?? '').trim();
+      // Marqueur de reprise RETIRÉ avant lecture : arrivé ici, l'échéance est
+      // passée sans que l'alarme tire (Chrome fermé). Le motif d'origine, lui,
+      // suit le marqueur et reste entier — c'est lui qu'on rend, jamais la
+      // plomberie du compteur.
+      const brut = String(run.erreur ?? '').replace(REPRISE_AUTO_RE, '').trim();
       // ── Boutique à confirmer (multi-boutiques, 2026-09-03) : pas un échec,
       // une QUESTION — l'encart porte les deux réponses (boutons plus bas).
       if (brut.includes('[boutique_a_confirmer]')) {
@@ -2637,7 +2687,11 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     // 'expired' = personne ne l'a réclamée dans les 6 h. Le motif écrit en base
     // est déjà rédigé pour être lu — on le montre tel quel s'il est propre.
     if (run.status === 'cancelled' || run.status === 'expired') {
-      const brut = String(run.erreur ?? '').trim();
+      // Marqueur de reprise RETIRÉ avant lecture : arrivé ici, l'échéance est
+      // passée sans que l'alarme tire (Chrome fermé). Le motif d'origine, lui,
+      // suit le marqueur et reste entier — c'est lui qu'on rend, jamais la
+      // plomberie du compteur.
+      const brut = String(run.erreur ?? '').replace(REPRISE_AUTO_RE, '').trim();
       const propre = brut && brut.length <= 200 && !/[{}<>]|https?:\/\//.test(brut);
       return { ton: 'orange', texte: propre
         ? (fr ? `Demande de synchronisation non exécutée : ${brut}.` : `Sync request not run: ${brut}.`)
