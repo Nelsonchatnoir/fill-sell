@@ -775,11 +775,58 @@ serve(async (req) => {
       .select("id, user_id, page_suivante, items_vus, updated_at, started_at")
       .eq("status", "running")
       .lt("updated_at", muetIso);
-    for (const r of ((figes ?? []) as Array<Record<string, unknown>>)) {
+    // ── LA SONDE D'EXTENSION EST CONSULTÉE AVANT DE NOMMER LA CAUSE ─────────
+    // (2026-09-14) Ce bloc énonçait « L'ordinateur s'est mis en veille ou
+    // Chrome a été fermé » SANS RIEN VÉRIFIER. Démenti sur pièces le 14/09
+    // (run 3bf812dd, seghird711) : pendant les 32 minutes de gel, l'extension
+    // a vérifié une cinquantaine d'annonces (cross_post_jobs.last_checked_at,
+    // 15:02→15:14) et son extension_last_seen_at battait encore à 15:39, six
+    // minutes APRÈS le verdict. Chrome tournait ; c'est notre boucle de
+    // lecture qui avait disparu avec son service worker.
+    // Le message a égaré le diagnostic une journée entière et envoyait
+    // l'utilisatrice chercher une panne qui n'existait pas chez elle.
+    // profiles.extension_last_seen_at est DÉJÀ lu trois fois dans cette même
+    // fonction (orphelins de republication, relances, builds) avec le même
+    // client service_role : aucune permission nouvelle, une lecture bornée aux
+    // seuls comptes qui ont un run figé — la plupart du temps, aucune.
+    // ⛔ NI LE DÉCLENCHEMENT NI LE SEUIL DE 30 MIN NE CHANGENT : le run EST
+    //    bien mort, l'expiration reste juste. Seul le TEXTE change.
+    const figesListe = (figes ?? []) as Array<Record<string, unknown>>;
+    // 10 min : le poll de l'extension tourne toutes les 2 min
+    // (POLL_INTERVAL_MINUTES). Une sonde de moins de 10 min au moment du
+    // verdict, c'est cinq cycles de marge — Chrome répondait, sans ambiguïté.
+    const SONDE_VIVANTE_MIN = 10;
+    const sondeParUser = new Map<string, number>();
+    if (figesListe.length) {
+      const idsFiges = [...new Set(figesListe.map((r) => String(r.user_id ?? "")).filter(Boolean))];
+      try {
+        const { data: profs } = await supabase
+          .from("profiles").select("id, extension_last_seen_at").in("id", idsFiges);
+        // deno-lint-ignore no-explicit-any
+        for (const p of ((profs ?? []) as any[])) {
+          const t = Date.parse(p.extension_last_seen_at ?? "");
+          if (Number.isFinite(t)) sondeParUser.set(String(p.id), t);
+        }
+      } catch (e) {
+        // Sonde illisible = on ne sait pas = on garde le texte d'avant, mot
+        // pour mot. Jamais d'accusation neuve sur une lecture ratée.
+        console.warn("[handler-watch] sonde d'extension illisible (message d'origine conservé):", (e as Error)?.message ?? e);
+      }
+    }
+    for (const r of figesListe) {
       const muetDepuis = Math.round((now - Date.parse(String(r.updated_at ?? ""))) / 60_000);
       if (!Number.isFinite(muetDepuis)) continue;
       const page = Number(r.page_suivante) || 1;
       const vus = Number(r.items_vus) || 0;
+      const sonde = sondeParUser.get(String(r.user_id ?? ""));
+      const sondeMin = sonde != null ? Math.round((now - sonde) / 60_000) : null;
+      // Deux pannes OPPOSÉES, deux textes. Par défaut (sonde inconnue), le
+      // texte historique : on n'invente pas un défaut de notre côté sans
+      // preuve, pas plus que l'inverse.
+      const cause = sondeMin != null && sondeMin <= SONDE_VIVANTE_MIN
+        ? "Chrome tournait bien de ton côté (ton extension nous a encore parlé il y a " +
+          `${sondeMin} min) : c'est la lecture qui s'est arrêtée toute seule. Le défaut est chez nous, pas chez toi. `
+        : "L'ordinateur s'est mis en veille ou Chrome a été fermé pendant la lecture. ";
       const { data: maj } = await supabase
         .from("vinted_sync_runs")
         .update({
@@ -789,7 +836,7 @@ serve(async (req) => {
           erreur:
             `[watchdog] synchronisation arrêtée en cours de route : aucune progression depuis ${muetDepuis} min ` +
             `(page ${page}, ${vus} article${vus > 1 ? "s" : ""} lu${vus > 1 ? "s" : ""}). ` +
-            "L'ordinateur s'est mis en veille ou Chrome a été fermé pendant la lecture. " +
+            cause +
             "Rien n'est perdu : relance la synchronisation, elle reprendra là où elle s'est arrêtée.",
         })
         .eq("id", r.id as string)
@@ -798,7 +845,11 @@ serve(async (req) => {
         .select("id");
       if (maj?.length) {
         syncRunsExpires++;
-        console.log(`[handler-watch] run de sync ${r.id} (user ${r.user_id}) figé depuis ${muetDepuis} min à la page ${page} → expiré`);
+        console.log(
+          `[handler-watch] run de sync ${r.id} (user ${r.user_id}) figé depuis ${muetDepuis} min à la page ${page} → expiré` +
+          ` — extension vue il y a ${sondeMin != null ? `${sondeMin} min` : "jamais / inconnu"}` +
+          `${sondeMin != null && sondeMin <= SONDE_VIVANTE_MIN ? " (CHROME VIVANT : gel de notre côté)" : ""}`,
+        );
       }
     }
   } catch (e) {
