@@ -1,0 +1,887 @@
+code	titre	grille
+LIVRES_POUR_BEBE	Livres pour bébé	G0
+LIVRES_SONORES	Livres sonores	G0
+ROMANS_POUR_ENFANTS	Romans pour enfants	G0
+BANDES_DESSINEES	Bandes dessinées	G0
+ROMANS_POUR_ADULTES	Romans pour adultes	G0
+MANGAS	Mangas	G0
+MANUELS_SCOLAIRES	Manuels scolaires	G0
+FICTIONS	Fictions	G0
+NON_FICTION	Non-fiction	G0
+LIVRES_CUISINE	Cuisine	G0
+LIVRES_MAGAZINES	Magazines et revues	G0
+VINYLES	Vinyles	G0
+CD	CD	G0
+CASSETTES_AUDIO	Cassettes audio	G0
+DVD	DVD	G0
+BLURAY	Blu-ray	G0
+CARTE_A_L_UNITE	Carte à l'unité	G0
+LOT_DE_CARTES	Lot de cartes	G0
+BOOSTER	Booster	G0
+CONSOLES_PORTABLES	Consoles portables	G0
+CONSOLES_DE_SALON	Consoles de salon	G0
+JEUX_VIDEO_PLAYSTATION	Jeux PlayStation	G0
+JEUX_VIDEO_XBOX	Jeux Xbox	G0
+JEUX_VIDEO_NINTENDO	Jeux Nintendo	G0
+JEUX_VIDEO_PC	Jeux PC	G0
+JEUX_VIDEO_RETRO	Jeux rétro	G0
+HOUSSES_ORDINATEUR_PORTABLE	Housses pour ordinateur portable	G0
+HIGHTECH_COQUES_TELEPHONE	Coques et étuis de téléphone	G0
+HIGHTECH_PROTECTIONS_ECRAN	Protections d’écran	G0
+HIGHTECH_SUPPORTS_GRIPS	Supports, anneaux et bijoux de téléphone	G0
+HIGHTECH_CHARGEURS_CABLES	Chargeurs, câbles et batteries externes	G0
+HIGHTECH_AUDIO_CASQUES	Casques et écouteurs	G0
+HIGHTECH_MONTRES_ACCESSOIRES	Bracelets et coques de montre connectée	G0
+HIGHTECH_HOUSSES_TABLETTE	Housses de tablette et liseuse	G0
+HIGHTECH_AUTRES	Autres accessoires high-tech	G0
+LOISIRS_COUTURE	Couture et mercerie	G0
+LOISIRS_TRICOT_CROCHET	Tricot et crochet	G0
+LOISIRS_PEINTURE_DESSIN	Peinture et dessin	G0
+LOISIRS_BRODERIE	Broderie et point de croix	G0
+LOISIRS_SCRAPBOOKING	Scrapbooking et papeterie créative	G0
+LOISIRS_BIJOUX_DIY	Bijoux DIY	G0
+LOISIRS_MODELISME	Modélisme et maquettes	G0
+LOISIRS_CREATIFS_ENFANTS	Loisirs créatifs enfants	G0
+LOISIRS_FILAMENT_3D	Filament pour impression 3D	G0
+LOISIRS_AUTRES	Autres loisirs créatifs	G0
+HC_MEMORABILIA_SPORTS	Souvenirs de sport	G0
+HC_MEMORABILIA_MUSIC	Souvenirs de musique	G0
+HC_MEMORABILIA_FILMTV	Souvenirs TV et cinéma	G0
+HC_MEMORABILIA_OTHER	Autres souvenirs	G0
+HC_NUMISMATICS_BANKNOTES	Billets	G0
+HC_NUMISMATICS_COINS	Pièces de monnaie	G0
+HC_NUMISMATICS_LOTS	Lots de monnaies	G0
+HC_NUMISMATICS_MEDALSTOKENS	Médailles et jetons	G0
+HC_NUMISMATICS_SHARES	Titres et actions	G0
+HC_PHILATELY_SINGLES	Timbres à l'unité	G0
+HC_PHILATELY_LOTS	Lots de timbres	G0
+HC_PHILATELY_FDC	Enveloppes premier jour	G0
+HC_PHILATELY_GUIDES	Catalogues et guides de timbres	G0
+HC_PHILATELY_TOOLS	Outils et matériel pour timbres	G0
+HC_POSTCARDS	Cartes postales	G0
+HC_STORAGE_ALBUMS	Albums et classeurs	G0
+HC_STORAGE_BOXES	Boîtes de rangement	G0
+HC_STORAGE_SLEEVES	Protège-cartes souples	G0
+HC_STORAGE_SCREWDOWNS	Protège-cartes rigides	G0
+HC_STORAGE_DECKBOXES	Boîtes pour jeux de cartes	G0
+HC_STORAGE_ALBUMDIVIDERS	Intercalaires	G0
+HC_STORAGE_ALBUMREFILLS	Recharges pour albums	G0
+HC_STORAGE_PUZZLEMATS	Tapis de puzzle	G0
+HC_STORAGE_OTHER	Autres rangements	G0
+HC_GAMING_ACC_DICE	Dés	G0
+HC_GAMING_ACC_TOKENS	Jetons et marqueurs	G0
+HC_GAMING_ACC_PLAYMATS	Tapis de jeu	G0
+HC_GAMING_ACC_OTHER	Autres accessoires de jeux	G0
+TOY_FIGURES	Figurines	G0
+TOY_FIGURE_ACCESSORIES	Accessoires	G0
+TOY_FIGURE_PLAYSET	Sets de jeux	G0
+BOARD_GAMES	Jeux de société	G0
+KID_SMOCKS	Tabliers et blouses	G0
+KID_BEADS	Perles et fabrication de bijoux	G0
+KID_CLAY	Argile et pâte à modeler	G0
+KID_CRAFT_KIT	Kits créatifs	G0
+KID_DRAW_PAINT	Peinture et dessin	G0
+KID_EASELS	Tableaux et ardoises	G0
+KID_PRINT_STAMP	Pochoirs et tampons	G0
+KID_STICKER_STATIONERY	Gommettes et accessoires de papeterie	G0
+BABY_ACTIVITY_CENTER	Centres d'activités et trotteurs	G0
+BABY_GYMS	Tapis d'éveil et d'activités	G0
+BATH_TOYS	Jouets de bain	G0
+PUSH_PULL_TOYS	Jouets à pousser et à tirer	G0
+RATTLES_TOYS	Hochets	G0
+SORT_STACK_TOYS	Jouets de tri et d'empilement	G0
+TEETHERS	Jouets de dentition	G0
+CONSTRUCTION_NEW	Jeux de construction	G0
+DOLLS	Poupées et poupons	G0
+DOLL_CLOTHES_ACC	Accessoires pour poupée et poupon	G0
+DOLL_FURNITURE	Meubles et accessoires pour maison de poupée	G0
+DOLLHOUSE	Maisons de poupées	G0
+DOLL_PLAYSET	Kits de jeu pour poupée et poupon	G0
+TOY_PRETEND_PLAY	Déguisements	G0
+FLASH_CARDS	Cartes flash	G0
+PRISM_TOYS	Kaléidoscopes et prismes	G0
+PHONICS_TOYS	Jeux de lecture et d'écriture	G0
+STEM_TOYS	Jeux scientifiques et STEM	G0
+OTHER_EDU_TOYS	Autres jeux éducatifs	G0
+AUDIOPLAYER_MEDIA	Musiques et histoires	G0
+ELEC_PET	Peluches interactives	G0
+KARAOKE_TOY	Équipements de karaoké pour enfants	G0
+AUDIOPLAYER_TOY	Boîtes à musique et histoires	G0
+RC_TOY	Jouets télécommandés	G0
+KID_CAMERA	Appareils photo pour enfant	G0
+WALKIE_TALKIE_TOY	Talkies-walkies	G0
+OTHER_ELEC_TOY	Autres jeux et jouets électroniques	G0
+MUSICAL_NEW	Jeux/jouets musicaux et instruments	G0
+NOVELTY_FIDGET_TOYS	Jeux de cirque, fidgets et gadgets	G0
+BALLPIT_TOYS	Piscines à balles et accessoires	G0
+BEACH_WATER_TOYS	Jeux d'eau et de plage	G0
+BUBBLE_TOYS	Machines et flacons à bulles	G0
+FOAMBLASTER_TOYS	Pistolets à projectiles en mousse et accessoires	G0
+GARDEN_GAMES	Autres jeux de plein air	G0
+KITE_ROCKET_TOY	Cerfs-volants et fusées	G0
+SANDPIT_WATERTABLE_TOY	Jeux de sable et d'eau	G0
+SPORTS_TOYS	Jeux de sport	G0
+STUFFED_ANIMALS_NEW	Peluches	G0
+TOY_PLANES	Avions	G0
+TOY_CARS	Voitures	G0
+TOY_TRAINS	Trains	G0
+TRUCKS	Camions	G0
+TOY_TRACK_GARAGE	Circuits et garages	G0
+OTHER_TOY_VEHICLES	Autres véhicules	G0
+PUZZLES	Puzzles	G0
+TABLETOP_GAMES	Jeux de plateau	G0
+CAPES_PONCHOS	Capes et ponchos	G1
+W_COATS	Manteaux	G1
+WOMEN_OUTERWEAR_VESTS	Vestes sans manches	G1
+W_JACKETS	Vestes	G1
+W_BOMBERS	Blousons mi-saison	G1
+W_RAINCOATS	Imperméables et coupe-vent	G1
+HOODIES_JUMPERS	Sweats & sweats à capuche	G1
+PULLS_SWEATERS_VESTS	Pulls	G1
+WOMEN_WAISTCOAT_SWEATER	Gilets	G1
+W_NEW_SWEATERS	Sweats	G1
+CARDIGANS	Cardigans	G1
+WOM_PUL_OTHER	Autres pull-overs & sweat-shirts	G1
+WOM_BLA_BLAZERS	Blazers	G1
+W_PANTSUITS	Ensembles tailleur/pantalon	G1
+W_SKIRT_SUITS	Jupes et robes tailleurs	G1
+W_SUIT_SEPARATES	Tailleurs pièces séparées	G1
+W_OTHER_SUITS_BLAZERS	Autres ensembles & tailleurs	G1
+MAXI_DRESSES	Robes longues	G1
+OCCASIONAL_DRESSES	Robes pour occasions	G1
+SUMMER_DRESSES	Robes d'été	G1
+WINTER_DRESSES	Robes d'hiver	G1
+FORMAL_DRESSES	Robes chics	G1
+CASUAL_DRESSES	Robes casual	G1
+STRAPLESS_DRESSES	Robes sans bretelles	G1
+LITTLE_BLACK_DRESSES	Petites robes noires	G1
+JEANS_DRESSES_TUNICS	Robes en jean	G1
+WOM_DRE_OTHER	Autres robes	G1
+MINI_SKIRTS	Minijupes	G1
+WOMEN_KNEE_LENGTH_SKIRTS_REAL	Jupes longueur genou	G1
+KNEE_LENGTH_SKIRTS	Jupes midi	G1
+MAXI_SKIRTS	Jupes longues	G1
+WOMEN_ASYMMETRIC_SKIRTS	Jupes asymétriques	G1
+WOMEN_SKORTS	Jupes-shorts	G1
+SHIRTS	Chemises	G1
+BLOUSES	Blouses	G1
+VESTS	Vestes	G1
+WOM_TOP_T_SHIRTS	T-shirts	G1
+WOM_TOP_T_SHIRTS_LONG_SLEEVE	T-shirts manches longues	G1
+TANK_TOPS	Débardeurs	G1
+TUNICS	Tuniques ou blouses	G1
+CROP_TOPS	Tops courts	G1
+SHORT_SLEEVE_BLOUSES	Blouses manches courtes	G1
+MIDDLE_SLEEVE_BLOUSES	Blouses ¾	G1
+LONG_SLEEVE_BLOUSES	Blouses manches longues	G1
+TOPS_BODIES	Bodies	G1
+TUBE_TOPS	Tops épaules dénudées	G1
+W_TURTLENECKS	Cols roulés	G1
+PEPLUM_TOPS	Tops peplum	G1
+HALTER_TOPS	Tops dos nu	G1
+WOM_TOP_OTHER	Autres hauts	G1
+W_CROPPED_JEANS	Jeans courts	G1
+FLARED_JEANS	Jeans évasés	G1
+W_HIGH_WAIST_JEANS	Jeans taille haute	G1
+W_RIPPED_JEANS	Jeans troués	G1
+W_SKINNY_JEANS	Jeans skinny	G1
+W_STRAIGHT_JEANS	Jeans droits	G1
+JEANS_OTHER	Autre	G1
+W_REGULAR_PANTS	Pantalons	G1
+CROPPED_PANTS	Pantalons courts & chinos	G1
+WIDE_LEG_PANTS	Pantalons à jambes larges	G1
+SKINNY_TROUSERS	Pantalons skinny	G1
+TAILORED_TROUSERS	Pantalons ajustés	G1
+W_SLIM_STRAIGHT_PANTS	Pantalons droits	G1
+LEATHER_TROUSERS	Pantalons en cuir	G1
+LEGGINGS	Leggings	G1
+JOGGINGS	Joggings	G1
+HAREMS	Sarouels	G1
+WOM_TRO_OTHER	Autres pantalons	G1
+LOW_WAIST_SHORTS	Shorts taille basse	G1
+HIGH_WASTED_SHORTS	Shorts taille haute	G1
+MEDIUM_LENGTH_SHORTS	Shorts longueur genou	G1
+JEANS_SHORTS	Short en jean	G1
+LEATHER_SHORTS	Shorts en cuir	G1
+CARGO_SHORTS	Shorts cargo	G1
+CAPRI_TROUSERS	Pantacourts	G1
+WOM_SHO_OTHER	Autres shorts	G1
+W_JUMPSUITS	Combinaisons	G1
+W_ROMPERS	Combi Shorts	G1
+W_OTHER_ROMPERS_JUMPSUITS	Autres combinaisons & combishorts	G1
+ONE_PIECES	Une pièce	G1
+TWO_PIECE_SWIMWEAR	Deux pièces	G1
+COVERUP_SWIMWEAR	Paréos et sarongs	G1
+WOM_SWI_OTHER	Autres	G1
+BRAS	Soutiens-gorge	G4
+PANTIES_THONGS	Culottes	G1
+WOM_LIN_SETS	Ensembles	G1
+NIGHTWEAR	Pyjamas et tenues de nuit	G1
+DRESSING_GOWNS	Peignoirs	G1
+INTIMATES_TIGHTS	Collants	G1
+INTIMATES_SOCKS	Chaussettes	G1
+LINGERIE_ACC	Accessoires de lingerie	G1
+WOM_LIN_OTHER	Autres	G1
+MATERNITY_TOPS	Tops maternité	G1
+MATERNITY_DRESSES	Robes maternité	G1
+MATERNITY_SKIRTS	Jupes maternité	G1
+MATERNITY_PANTS	Pantalons maternité	G1
+MATERNITY_SHORTS	Shorts maternité	G1
+MATERNITY_ROMPERS_JUMPSUITS	Combinaisons & combi shorts maternité	G1
+MATERNITY_HOODIES_SWEATERS	Pulls à capuche & pulls maternité	G1
+MATERNITY_COATS_JACKETS	Manteaux & vestes maternité	G1
+MATERNITY_SWIMWEAR_BEACHWEAR	Maillots & tenues de plage maternité	G1
+MATERNITY_UNDERWEAR	Sous-vêtements maternité	G1
+MATERNITY_SPORT	Vêtements de sport	G1
+WOM_SPO_OUTERWEAR	Vêtements d'extérieur	G1
+TRAINING_COSTUMES	Survêtements	G1
+WOM_SPO_TROUSERS	Pantalons & leggings	G1
+WOM_SPO_SHORTS	Shorts	G1
+WOM_SPO_DRESSES	Robes	G1
+WOM_SPO_SKIRTS	Jupes	G1
+WOM_SPO_TOPS_T_SHIRTS	Hauts & t-shirts	G1
+WOM_JERSEYS	Maillots	G1
+WOM_SPO_PULLOVERS_SWEATERS	Sweats et sweats à capuche	G1
+WOM_SPO_ACCESSORIES	Accessoires de sports	G1
+SPORTS_BRA	Brassières	G1
+WOM_SPO_OTHER	Autres	G1
+SPECIAL_OUTFITS_COSTUMES_W	Costumes et tenues particulières	G1
+OTHER_CLOTHES	Autres	G1
+WOMEN_BALLERINAS	Ballerines	G3
+WOMEN_BOAT_SHOES_LOAFERS_MOCCASINS	Mocassins et chaussures bateau	G3
+WOMEN_ANKLE_BOOTS	Bottines	G3
+WOMEN_MID_CALF_BOOTS	Bottes mi-hautes	G3
+KNEE_LENGHT_BOOTS	Bottes hautes	G3
+WOMEN_OVER_KNEE_BOOTS	Cuissardes	G3
+WOMEN_SNOW_BOOTS	Bottes de neige	G3
+WELLINGTON_BOOTS	Bottes de pluie	G3
+WOMEN_WORK_BOOTS	Bottes de travail	G3
+WOMEN_CLOGS_MULES	Mules et sabots	G3
+WOMEN_ESPADRILLES	Espadrilles	G3
+WOMEN_FLIPFLOPS_SLIDES	Claquettes et tongs	G3
+HIGH_HEELS	Chaussures à talons	G3
+WOMEN_LACE_UP_SHOES	Chaussures à lacets	G3
+WOMEN_SANDALS	Sandales	G3
+SLIPPERS	Chaussons et pantoufles	G3
+WOMEN_BASKETBALL_SHOES	Chaussures de basket	G3
+WOMEN_CLIMBING_BOULDERING_SHOES	Chaussures d'escalade	G3
+WOMEN_CYCLING_SHOES	Chaussures de cyclisme	G3
+WOMEN_DANCE_SHOES	Chaussures de danse	G3
+WOMEN_FOOTBALL_BOOTS	Chaussures de foot	G3
+WOMEN_GOLF_SHOES	Chaussures de golf	G3
+WOMEN_HIKING_BOOTS_SHOES	Chaussures et bottes de randonnée	G3
+WOMEN_ICE_SKATES	Patins à glace	G3
+WOMEN_INDOOR_FOOTBALL_SHOES	Chaussures de foot en salle	G3
+WOMEN_INDOOR_TRAINING_SHOES	Chaussures de fitness	G3
+WOMEN_MOTORBIKE_BOOTS	Bottes de moto	G3
+WOMEN_ROLLER_SKATES_BLADES	Patins à roulettes et rollers	G3
+WOMEN_RUNNING_SHOES	Chaussures de course	G3
+WOMEN_SKI_BOOTS	Chaussures de ski	G3
+WOMEN_SNOWBOARD_BOOTS	Bottes de snowboard	G3
+WOMEN_SWIMMING_WATER_SHOES	Chaussures aquatiques	G3
+WOMEN_TENNIS_SHOES	Chaussures de tennis	G3
+WOMEN_TRAINERS	Baskets	G3
+BACKPACKS	Sacs à dos	G0
+WOMEN_BASKET_BAGS	Sacs panier	G0
+WOMEN_BEACH_BAGS	Sacs de plage	G0
+WOMEN_BRIEFCASES	Mallettes	G0
+W_BUM_BAGS	Sacs banane	G0
+CLUTCHES	Pochettes	G0
+WOMEN_GARMENT_BAGS	Housses pour vêtements	G0
+WOMEN_GYM_BAGS	Sacs de sport	G0
+HANDBAGS	Sacs à main	G0
+W_HOLDALLS	Fourre-tout et sacs marins	G0
+W_LUGGAGE	Sacs de voyage	G0
+MAKE_UP_BAGS	Trousses à maquillage	G0
+SATCHELS_NEW	Cartables et sacoches	G0
+SHOULDER_BAGS	Sacs à bandoulière	G0
+TOTE_BAGS	Sacs fourre-tout	G0
+PURSES	Porte-monnaie	G0
+WOMEN_WRISTLETS	Bracelets	G0
+WASH_BAGS	Trousses de toilette	G0
+WOMEN_BUCKET_BAGS	Sacs seau	G0
+WOMEN_HOBO_BAGS	Besaces	G0
+WOMEN_BANDANAS_HEADSCARVES	Bandanas et foulards pour cheveux	G0
+BELTS	Ceintures	G1
+GLOVES	Gants	G1
+W_HAIR_ACCESSORIES	Accessoires pour cheveux	G0
+ANKLETS_NEW	Bracelets de cheville	G0
+WOMEN_BODY_JEWELLERY	Bijoux de corps	G0
+BRACELETS	Bracelets	G0
+BROOCHES	Broches	G0
+WOMEN_CHARMS_PENDANTS	Breloques et pendentifs	G0
+EARRINGS	Boucles d'oreilles	G0
+WOM_ACC_JEW_SETS	Ensembles de bijoux	G0
+NECKLACES_BEADS_PENDANTS	Colliers	G0
+WOM_ACC_JEW_RINGS	Bagues	G0
+WOM_ACC_JEW_OTHER	Autres bijoux	G0
+WOMEN_BALACLAVAS	Cagoules	G0
+WOMEN_BEANIES	Bonnets	G0
+CAPS	Casquettes	G0
+WOMEN_EARMUFFS	Cache-oreilles	G0
+HATS	Chapeaux	G0
+HEADBANDS	Bandeaux	G0
+KEY_RINGS	Porte-clés	G0
+WOM_ACC_SCARVES_SHAWLS	Écharpes et châles	G0
+SUNGLASSES	Lunettes de soleil	G0
+W_ACC_UMBRELLAS	Parapluies	G0
+WATCHES	Montres	G0
+W_OTHER_ACCESSORIES	Autres accessoires	G1
+BEAUTY_PERFUMES	Parfums	G0
+BEAUTY_MAKEUP	Maquillage	G0
+BEAUTY_SKINCARE_FACE	Soins visage	G0
+BEAUTY_BODYCARE	Soins corps et douche	G0
+BEAUTY_HAIRCARE	Soins cheveux	G0
+BEAUTY_TOOLS	Outils et accessoires beauté	G0
+BEAUTY_BATH_SPA	Bain et spa	G0
+MEN_RIPPED_JEANS	Jeans troués	G1
+MEN_SKINNY_JEANS	Jeans skinny	G1
+MEN_SLIMFIT_JEANS	Jeans slim	G1
+MEN_STRAIGHTFIT_JEANS	Jeans coupe droite	G1
+MEN_COATS	Manteaux	G1
+MEN_OUTERWEAR_VESTS	Vestes sans manches	G1
+MEN_JACKETS	Vestes	G1
+MEN_PONCHOS	Ponchos	G1
+MEN_TOP_SHIRTS	Chemises	G1
+MEN_TOP_POLOS	Polos	G1
+MEN_TOP_T_SHIRTS	T-shirts	G1
+MEN_TOP_VESTS	T-shirts sans manches	G1
+BLAZERS_MEN	Blazers	G1
+SUIT_PANTS	Pantalons de costume	G1
+SUIT_WAISTCOAT	Gilets de costume	G1
+SUIT_SET_MEN	Ensembles costume	G1
+WEDDING_SUIT	Costumes de mariage	G1
+SUITS_BLAZERS_OTHER	Autres	G1
+MEN_SWEATERS	Sweats	G1
+MEN_PUL_HOODIES_PULLOVERS	Pulls et pulls à capuche	G1
+MEN_ZIPHOODIES	Pulls à capuche avec zip	G1
+MEN_PUL_CARDIGANS	Cardigans	G1
+MEN_CREWNECK_JUMPER	Pulls ras de cou	G1
+MEN_PUL_V_NECK_SWEATERS	Sweats à col V	G1
+MEN_PUL_TURTLENECK_SWEATERS	Pulls à col roulé	G1
+MEN_LONG_SWEATER	Sweats longs	G1
+MEN_KNITTED_SWEATER	Pulls d'hiver	G1
+OUTDOOR_VEST	Vestes	G1
+MEN_PUL_OTHER	Autres	G1
+MEN_CHINOS	Chinos	G1
+MEN_JOGGERS	Jogging	G1
+MEN_TRO_SKINNY_TROUSERS	Pantalons skinny	G1
+MEN_SHO_CAPRI_TROUSERS	Pantacourts	G1
+MEN_TRO_TAILORED_TROUSERS	Pantalons de costume	G1
+MEN_TRO_WIDE_LEGGED_TROUSERS	Pantalons à jambes larges	G1
+MEN_TRO_OTHER	Autres pantalons	G1
+MEN_CARGO_SHORTS	Shorts cargo	G1
+MEN_CHINO_SHORTS	Shorts chino	G1
+MEN_DENIM_SHORTS	Shorts en jean	G1
+MEN_SHO_OTHER	Autres shorts	G1
+MEN_UNDERWEAR	Sous-vêtements	G1
+MEN_SOCKS	Chaussettes	G1
+MEN_ROBES	Peignoirs	G1
+OTHER_MEN_UNDERWEAR	Autres	G1
+MEN_ONE_PIECE_PYJAMAS	Pyjamas une-pièce	G1
+MEN_PYJAMA_BOTTOMS	Bas de pyjama	G1
+MEN_PYJAMA_SETS	Ensembles de pyjamas	G1
+MEN_PYJAMA_TOPS	Hauts de pyjama	G1
+MEN_SWIMWEAR	Maillots de bain	G1
+MEN_SPO_OUTERWEAR	Vêtements d'extérieur	G1
+MEN_SPO_TRAINING_COSTUMES	Survêtements	G1
+MEN_SPO_TROUSERS	Pantalons	G1
+MEN_SPO_SHORTS	Shorts	G1
+MEN_SPO_TOPS_T_SHIRTS	Hauts et t-shirts	G1
+MEN_JERSEYS	Maillots	G1
+MEN_SPO_PULLOVERS_SWEATERS	Pulls & sweats	G1
+MEN_SPO_ACCESSORIES	Accessoires de sports	G1
+MEN_SPO_OTHER	Autres	G1
+SPECIALISED_CLOTHING_COSTUMES	Vêtements spécialisés et costumes	G1
+MEN_OTHER	Autres	G1
+MEN_BOAT_LOAFERS_MOCCASINS	Mocassins et chaussures bateau	G3
+MEN_CHELSEA_SLIP_ON_BOOTS	Bottines Chelsea et sans lacets	G3
+MEN_DESERT_LACE_UP_BOOTS	Bottines à lacets	G3
+MEN_SNOW_BOOTS	Bottes de neige	G3
+MEN_WELLINGTON	Bottes de pluie	G3
+MEN_WORK_BOOTS	Bottes de travail	G3
+MEN_ESPADRILLES	Espadrilles	G3
+MEN_FLIPFLOPS_SLIDES	Claquettes et tongs	G3
+MEN_FORMAL	Chaussures habillées	G3
+MEN_SANDALS_NEW	Sandales	G3
+MEN_SLIPPERS_2	Chaussons et pantoufles	G3
+MEN_BASKETBALL_SHOES	Chaussures de basket	G3
+MEN_CLIMBING_BOULDERING_SHOES	Chaussures d'escalade	G3
+MEN_CYCLING_SHOES	Chaussures de cyclisme	G3
+MEN_DANCE_SHOES	Chaussures de danse	G3
+MEN_FOOTBALL_BOOTS	Chaussures de foot	G3
+MEN_GOLF_SHOES	Chaussures de golf	G3
+MEN_HIKING_BOOTS_SHOES	Chaussures et bottes de randonnée	G3
+MEN_ICE_SKATES	Patins à glace	G3
+MEN_INDOOR_FOOTBALL_SHOES	Chaussures de foot en salle	G3
+SPORT_SHOES_INDOOR_MEN	Chaussures de fitness	G3
+MEN_MOTORBIKE_BOOTS	Bottes de moto	G3
+MEN_ROLLER_SKATES_BLADES	Patins à roulettes et rollers	G3
+SPORT_SHOES_RUNNING_MEN	Chaussures de course	G3
+MEN_SKI_BOOTS	Bottes de ski	G3
+MEN_SNOWBOARD_BOOTS	Bottes de snowboard	G3
+MEN_SWIMMING_WATER_SHOES	Chaussures aquatiques	G3
+MEN_TENNIS_SHOES	Chaussures de tennis	G3
+MEN_SNEAKERS	Baskets	G3
+MEN_ACC_BAG_BACKPACKS	Sacs à dos	G1
+MEN_BRIEFCASES	Mallettes	G1
+MEN_ACC_BUMBAGS	Sacs banane	G1
+MEN_GYM_BAGS	Sacs de sport	G1
+MEN_HOLDALLS	Fourre-tout et sacs marins	G1
+MEN_LUGGAGE	Bagages et valises	G1
+MEN_ACC_SATCHELS	Cartables et sacoches	G1
+MEN_ACC_BAG_SHOULDER_BAGS	Sacs à bandoulière	G1
+WALLETS	Porte-monnaie	G1
+MEN_WASH_BAGS	Trousses de toilette	G1
+MEN_BANDANAS_HEADSCARVES	Bandanas et foulards pour cheveux	G1
+MEN_ACC_BELTS	Ceintures	G1
+MEN_BRACES	Bretelles	G1
+MEN_ACC_GLOVES	Gants	G1
+MEN_HANDKERCHIEFS	Mouchoirs de poche	G1
+MEN_BALACLAVAS	Cagoules	G1
+MEN_BEANIES	Bonnets	G1
+MEN_ACC_HAT_CAPS	Casquettes	G1
+MEN_ACC_HAT_HATS	Chapeaux	G1
+MEN_POCKET_SQUARES	Pochettes de costume	G1
+SCARVES_SHAWLS	Écharpes et châles	G1
+MEN_ACC_SUNGLASSES	Lunettes de soleil	G1
+MEN_TIES_BOWTIES	Cravates et nœuds papillons	G1
+MEN_ACC_WATCHES	Montres	G1
+MEN_ANKLETS	Bracelets de cheville	G0
+MEN_BODY_JEWELLERY	Bijoux de corps	G0
+MEN_BRACELETS	Bracelets	G0
+MEN_BROOCHES	Broches	G0
+MEN_CHARMS_PENDANTS	Breloques et pendentifs	G0
+MEN_EARRINGS	Boucles d'oreilles	G0
+MEN_JEW_SETS	Ensembles de bijoux	G0
+MEN_NECKLACES	Colliers	G0
+MEN_JEW_RINGS	Bagues	G0
+MEN_JEW_OTHER	Autres bijoux	G0
+MEN_ACC_OTHER	Autres	G1
+GIRLS_CLOTHING_BUNDLE	Lot de vêtements	G0
+FULL_ROMPERS_GIRLS_NEW	Combinaisons	G2
+GIRLS_COMBI_PILOTES_NEW	Combi-pilotes	G2
+KID_SLEEPSACK	Gigoteuses et turbulettes	G2
+GIRLS_BODIES_NEW	Bodies	G2
+ROMPERS_GIRLS_NEW	Grenouillères	G2
+SETS_GIRLS_NEW	Ensembles	G2
+GIRLS_BABIES_OTHERS	Autre	G2
+BABY_GIRLS_SHOES_NEW	Chaussures bébé	G3
+BOOTS_GIRLS_NEW	Bottes	G3
+FLAT_GIRLS_NEW	Chaussures plates	G3
+GIRLS_FLIP_FLOPS_SANDALS_SLIDES	Sandales, claquettes et tongs	G3
+SHOES_OCC_GIRLS_NEW	Chaussures habillées	G3
+GIRLS_HEELS	Chaussures à talons	G3
+SLIPPERS_GIRLS_NEW	Chaussons et pantoufles	G3
+GIRLS_SPORT_SHOES	Chaussures de sport	G3
+SNEAKERS_GIRLS_NEW	Baskets	G3
+COATS_GIRLS_NEW	Manteaux	G2
+OUT_VESTS_GIRLS_NEW	Vestes sans manches	G2
+JACKETS_GIRLS_NEW	Vestes	G2
+GIRLS_RAIN_GEAR	Vêtements de pluie	G2
+GIRLS_SNOW_GEAR	Vêtements de ski	G2
+SWEATERS_GIRLS_NEW	Pulls	G2
+VNECK_SWEATERS_GIRLS_NEW	Pulls col V	G2
+TURLENECK_GRILS_NEW	Pulls à col roulé	G2
+ZIPP_SWEATERS_GIRLS_NEW	Gilets zippés	G2
+BOLEROS_GIRLS_NEW	Boléros	G2
+HOODIES_GIRLS_NEW	Pulls à capuche & sweatshirts	G2
+VESTS_GIRLS_NEW	Gilets	G2
+OTHER_SWEATERS_GIRLS	Autre	G2
+TOPS_GIRLS_NEW	T-shirts	G2
+POLOSHIRTS_GIRLS_NEW	Polos	G2
+SHIRTS_GIRLS_NEW	Chemises	G2
+SHORTSLEEVE_SHIRTS_GIRLS_NEW	Chemises manches courtes	G2
+LOGSLEEVE_SHIRTS_GIRLS_NEW	Chemises manches longues	G2
+SLEEVELESS_SHIRTS_GIRLS_NEW	Chemises sans manches	G2
+TUNICS_GIRLS_NEW	Tuniques ou blouses	G2
+OTHER_TOPS_GIRLS	Autre	G2
+SHORTDRESSES_GIRLS_NEW	Robes courtes	G2
+LONGDRESSES_GIRLS_NEW	Robes longues	G2
+GIRLS_SKIRTS	Jupes	G2
+JEANS_GIRLS_NEW	Jeans	G2
+SKINNYPANTS_GIRLS_NEW	Jeans slim	G2
+BELLBOTTOMPANTS_GIRLS_NEW	Pantalons pattes d'éléphant	G2
+LEGGINGS_GIRLS_NEW	Leggings	G2
+JOGGINGS_GIRLS_NEW	Joggings	G2
+OVERALLS_ROMPERS_GIRLS_NEW	Salopettes	G2
+GIRLS_SHORTS	Shorts et pantacourts	G2
+HAREM_GIRLS_NEW	Sarouels	G2
+OTHER_PANTS_GIRLS	Autres	G2
+GIRLS_BAGS	Sacs et sacs à dos	G0
+HATS_GIRLS_NEW	Casquettes, chapeaux et bonnets	G2
+GLOVES_GIRLS_NEW	Gants	G0
+SCARVES_GIRLS_NEW	Écharpes et châles	G0
+BELTS_GIRLS_NEW	Ceintures	G0
+HAIR_ACC_GIRLS_NEW	Bandeaux et barrettes cheveux	G0
+BRACELETS_GIRLS_NEW	Bracelets	G0
+EARRINGS_GIRLS_NEW	Boucles d'oreilles	G0
+NECKLACES_GIRLS_NEW	Colliers	G0
+RINGS_GIRLS_NEW	Bagues	G0
+JEW_SETS_GIRLS_NEW	Ensembles de bijoux	G0
+CHARMS_GIRLS_NEW	Breloques et pendentifs	G0
+JEW_OTHER_GIRLS_NEW	Autres bijoux	G0
+KIDS_WALLETS_NEW	Porte-monnaie	G0
+OTHERS_ACC_GIRLS	Autres accessoires	G0
+SWIMSUITS_GIRLS_NEW	Maillot de bain 1 pièce	G2
+BIKINIS_GIRLS_NEW	Maillot de bain 2 pièces	G2
+BATHROBES_GIRLS_NEW	Peignoirs	G2
+SOCKS_GIRLS_NEW	Chaussettes	G3
+TIGHTS_GIRLS_NEW	Collants	G3
+PANTIES_GIRLS_NEW	Culottes	G2
+ONEPIECE_PAJAMAS_GIRLS	Pyjamas une pièce	G2
+TWOPIECE_PAJAMAS_GIRLS_NEW	Pyjamas deux pièces	G2
+NIGHTGOWNS_GIRLS_NEW	Chemises de nuit	G2
+GIRLS_SPORTS	Vêtements de sport	G2
+CLOTHING_PACKAGES_NEW	Lots de vêtements	G2
+COSTUMES_GIRLS_NEW	Déguisements	G2
+THEMED_COSTUMES_NEW	Tenues de soirée	G2
+GIRLS_OTHER	Autres	G2
+BOYS_CLOTHING_BUNDLE	Lot de vêtements	G0
+FULL_ROMPERS_BOYS_NEW	Combinaisons	G2
+BOYS_COMBI_PILOTES_NEW	Combi-pilotes	G2
+KID_SLEEPSACK_BOYS_NEW	Gigoteuses et turbulettes	G2
+BOYS_BODIES_NEW	Bodies	G2
+ROMPERS_BOYS_NEW	Grenouillères	G2
+BOYS_SETS_NEW	Ensembles	G2
+OTHER_BABY_BOYS	Autre	G2
+BOY_BABYSHOES_NEW	Chaussures bébé	G3
+BOYS_BOAT_LOAFERS_MOCCASINS	Mocassins et chaussures bateau	G3
+BOOTS_BOYS_NEW	Bottes	G3
+BOYS_ESPADRILLES	Espadrilles	G3
+BOYS_FLIP_FLOPS_SANDALS_SLIDES	Sandales, claquettes et tongs	G3
+SHOES_OCC_BOYS_NEW	Chaussures habillées	G3
+SLIPPERS_BOYS_NEW	Chaussons et pantoufles	G3
+BOYS_SPORT_SHOES	Chaussures de sport	G3
+SNEAKERS_BOYS_NEW	Baskets	G3
+BOYS_COATS_NEW	Manteaux	G2
+BOYS_OUTVESTS_NEW	Vestes sans manches	G2
+BOYS_JACKETS_NEW	Vestes	G2
+BOYS_RAIN_GEAR	Vêtements de pluie	G2
+BOYS_SNOW_GEAR	Vêtements de ski	G2
+SWEATERS_BOYS_NEW	Pulls	G2
+VNECK_SWEATERS_BOYS_NEW	Pulls col V	G2
+TURLENECK_BOYS_NEW	Pulls à col roulé	G2
+ZIPP_SWEATERS_BOYS_NEW	Gilets zippés	G2
+HOODIES_BOYS_NEW	Pulls à capuche et sweatshirts	G2
+VESTS_BOYS_NEW	Gilets	G2
+OTHER_SWEATERS_BOYS	Autre	G2
+TSHIRTS_BOYS_NEW	T-shirts	G2
+POLOSHIRTS_BOYS_NEW	Polos	G2
+SHIRTS_BOYS_NEW	Chemises	G2
+SHORTSLEEVE_SHIRTS_BOYS_NEW	Chemises manches courtes	G2
+LONGSLEEVE_BOYS_NEW	Chemises manches longues	G2
+SLEEVELESS_SHIRTS_BOYS_NEW	Chemises sans manches	G2
+OTHER_TOPS_BOYS	Autre	G2
+JEANS_BOYS_NEW	Jeans	G2
+SKINNYPANTS_BOYS_NEW	Jeans slim	G2
+BELLBOTTOMPANTS_BOYS_NEW	Pantalons pattes d'éléphant	G2
+BOYS_LEGGINGS_NEW	Leggings	G2
+BOYS_JOGGINGS_NEW	Joggings	G2
+OVERALLS_ROMPERS_BOYS_NEW	Salopettes	G2
+BOYS_SHORTS	Shorts et pantacourts	G2
+BOYS_PANTS_HAREM	Sarouels	G2
+BOYS_OTH_PANTS	Autres	G2
+BOYS_BAGS	Sacs et sacs à dos	G0
+CAPS_BOYS_NEW	Casquettes, chapeaux et bonnets	G2
+GLOVES_BOYS_NEW	Gants	G0
+SCARVES_BOYS_NEW	Écharpes et châles	G0
+BELTS_BOYS_NEW	Ceintures	G0
+WALLETS_BOYS_NEW	Porte-monnaie	G0
+BOWS_BOYS_NEW	Nœuds papillon et cravattes	G0
+BOYS_ACC_NEW	Autres accessoires	G0
+BATHSHORTS_BOYS_NEW	Maillots de bain	G2
+BATHROBES_BOYS_NEW	Peignoirs	G2
+SOCKS_BOYS_NEW	Chaussettes	G3
+TIGHTS_BOYS_NEW	Collants	G3
+PANTIES_BOYS_NEW	Culottes	G2
+OTHER_UNDER_BOYS	Autre	G2
+ONEPIECE_PAJAMAS_BOYS	Pyjamas une pièce	G2
+TWOPIECE_PAJAMAS_BOYS	Pyjamas deux pièces	G2
+BOYS_SPORTS	Vêtements de sport	G2
+BOYS_PACKAGES	Lots de vêtements	G2
+TWINS_BOYS_NEW	Jumeaux et plus	G2
+OCC_BOYS_NEW	Déguisements	G2
+BOYS_THEMED_COSTUMES	Tenues de soirée	G2
+BOYS_OTHER	Autres	G2
+KID_CHANGING_BAG	Sacs à langer	G0
+BABY_BATHTUB	Baignoires et sièges de bain	G0
+BABY_BATH_ACC	Accessoires de bain	G2
+BABY_BATH_TOWEL	Serviettes de bain	G0
+CHANGING_MATS	Matelas à langer	G0
+CHANGING_MAT_COVER	Housses de matelas à langer	G0
+CHANGING_MAT_PORTABLE	Matelas à langer nomades	G0
+BABY_POTTIES	Pots et réducteurs	G0
+KID_STEPSTOOL	Marchepieds	G0
+BABY_BIBS	Bavoirs	G0
+BABY_BOTTLE	Biberons	G0
+BABY_BOTTLE_TEAT	Tétines	G0
+BOTTLE_DRYING_RACK	Séchoirs à linge	G0
+BOTTLE_BRUSHES	Goupillons	G0
+BOTTLE_WARMERS	Chauffe-biberon	G0
+BABY_FORMULA_MAKER	Préparateurs de biberons	G0
+BABY_FORMULA_STORAGE	Boîtes doseuses	G0
+BREASTPUMPS	Tire-lait	G0
+BREASTPUMP_ACC	Accessoires pour tire-lait	G0
+BREASTFEEDING_COVER	Couvertures d'allaitement	G0
+NIPPLE_SHIELD	Coussinets d'allaitement et protège-mamelon	G0
+BABY_CUTLERY	Couverts	G0
+BABY_PLATE_BOWL	Assiettes et bols	G0
+BABY_DINNER_SETS	Coffrets repas	G0
+BABY_SIPPY_CUPS	Tasses d'apprentissage	G0
+BABY_WATER_BOTTLES	Gourdes	G0
+BABY_FEEDING_PILLOW	Coussins et couvertures d'allaitement	G0
+DUMMIES_PACIFIERS	Sucettes	G0
+KID_BABY_MONITOR	Babyphones	G0
+KID_BLANKETS	Couvertures et plaids	G0
+KID_MATTRESS_COVER	Draps-housses et alèses	G0
+KID_PILLOW	Oreillers	G0
+KID_SHEETS	Draps	G0
+KID_HEATINGPADS	Coussins chauffants et bouillottes	G0
+KIDS_NIGHT_LIGHTS	Veilleuses	G0
+KID_SLEEPINGBAG	Sacs de couchage	G0
+KID_SWADDLE	Couvertures d'emmaillotage	G0
+KID_WHITENOISE_MACHINE	Générateurs de bruits blancs	G0
+KID_SCHOOL_BAGS	Cartables et sacs à dos	G0
+KID_SCHOOL_PENCIL_CASES	Trousses	G0
+KID_SCHOOL_SUPPLIES_GENERAL	Fournitures scolaires	G0
+KID_SCHOOL_CALCULATORS_GEOMETRY	Calculatrices et matériel de géométrie	G0
+KID_SCHOOL_LUNCH	Boîtes à goûter et gourdes	G0
+ALL_OTHER_NEW	Autres articles pour bébé et enfant	G0
+BABY_SLINGS	Écharpes et slings	G0
+BABY_SOFT_CARRIERS	Porte-bébé souples	G0
+BABY_HIP_CARRIERS	Porte-bébé de hanche	G0
+BUGGY_COVERS	Habillages pluie et ombrelles	G0
+BUGGY_CUPHOLDER	Porte-gobelets et plateaux	G0
+BUGGY_FOOTMUFF	Chancelières de poussette	G0
+BUGGY_ORGANISER	Organisateurs et filets	G0
+BUGGY_PARTS	Pièces détachées de poussette	G0
+BABY_CAR_MIRROR	Miroirs de voiture	G0
+BABY_CAR_SUNSHADE	Pare-soleil de voiture	G0
+CARSEAT_INSERTS	Réducteurs pour siège auto	G0
+CARSEAT_TRAVELBAG	Housses de siège auto	G0
+CARSEAT_FOOTMUFF	Chancelières de siège auto	G0
+CARSEAT_ACC_OTHER	Autres accessoires voiture	G0
+KID_NESTS	Réducteurs de lit	G0
+CHILDPROOFING_ACC	Accessoires de sécurité	G0
+KID_HEARING_PROTECTION	Protections auditives	G0
+KID_SAFETY_HARNESS	Laisses et harnais	G0
+KID_HUMIDIFIERS	Humidificateurs	G0
+NASAL_ASPIRATOR	Mouche-bébés	G0
+POSTPARTUM_CARE	Soins post-partum	G0
+PREGNANCY_PILLOW	Coussins de grossesse	G0
+PREGNANCY_BELT	Ceintures de grossesse	G0
+KID_SCALES	Pèse-bébés	G0
+KID_THERMOMETERS	Thermomètres bébé	G0
+KID_BABY_ALBUM	Albums photo	G0
+KID_GROWTH_CHART	Toises	G0
+BABY_MOBILE	Mobiles	G0
+BABY_MILESTONE_CARD	Cartes étapes et accessoires photo	G0
+KID_MONEY_BOX	Tirelires	G0
+KID_PHOTO_FRAME	Cadres photo	G0
+KID_WALL_DECOR	Décorations murales	G0
+MAISON_DECO_ACCESSORIES	Accessoires décoratifs	G0
+MAISON_DECO_STORAGE	Rangement et organisation	G0
+MAISON_DECO_WALL_ART	Décorations murales	G0
+MAISON_DECO_CANDLES	Bougies et parfums d'ambiance	G0
+MAISON_DECO_LIGHTING	Éclairage	G0
+MAISON_DECO_SCULPTURES	Sculptures et figurines	G0
+MAISON_DECO_FRAMES	Encadrements	G0
+MAISON_DECO_VASES	Vases	G0
+MAISON_DECO_SHELVES	Étagères murales	G0
+MAISON_DECO_CLOCKS	Horloges	G0
+MAISON_DECO_ARTIFICIAL_PLANTS	Plantes et fleurs artificielles	G0
+MAISON_DECO_MIRRORS	Miroirs	G0
+MAISON_DECO_FIREPLACE	Accessoires pour cheminées	G0
+MAISON_TABLE_DRINKWARE	Verres	G0
+MAISON_TABLE_SERVEWARE	Vaisselle de service	G0
+MAISON_TABLE_DINNERWARE	Vaisselle	G0
+MAISON_TABLE_CUTLERY	Couverts	G0
+MAISON_TEXTILE_BEDDING	Linge de lit	G0
+MAISON_TEXTILE_TABLE_LINEN	Linge de table	G0
+MAISON_TEXTILE_CUSHIONS	Coussins décoratifs	G0
+MAISON_TEXTILE_CURTAINS	Rideaux et stores	G0
+MAISON_TEXTILE_TOWELS	Serviettes	G0
+MAISON_TEXTILE_BLANKETS	Couvertures	G0
+MAISON_TEXTILE_RUGS	Tapis	G0
+MAISON_TEXTILE_COVERS	Housses	G0
+MAISON_TEXTILE_TAPESTRIES	Tapisseries	G0
+MAISON_PETS_DOGS	Chiens	G0
+MAISON_PETS_CATS	Chats	G0
+MAISON_PETS_REPTILES	Reptiles	G0
+MAISON_PETS_BIRDS	Oiseaux	G0
+MAISON_PETS_RODENTS	Rongeurs & co	G0
+MAISON_PETS_FISH	Poissons	G0
+MAISON_PARTY_SEASONAL	Décorations saisonnières	G0
+MAISON_PARTY_TABLE_DECO	Décorations de table	G0
+MAISON_PARTY_ACCESSORIES	Accessoires de fête	G0
+MAISON_PARTY_TREE_DECO	Décorations pour le sapin	G0
+MAISON_PARTY_CARDS	Cartes et enveloppes	G0
+MAISON_PARTY_GIFT_WRAP	Papier cadeau et sacs	G0
+MAISON_PARTY_BANNERS	Banderoles, drapeaux et guirlandes	G0
+MAISON_PARTY_WREATHS	Couronnes	G0
+MAISON_DIY_HARDWARE	Quincaillerie	G0
+MAISON_DIY_SMART_HOME	Maisons connectées et sécurité	G0
+MAISON_DIY_PROTECTION	Équipement de protection	G0
+MAISON_DIY_HAND_TOOLS	Outils à main	G0
+MAISON_DIY_POWER_TOOLS	Outils électriques	G0
+MAISON_DIY_TOOL_ACCESSORIES	Accessoires pour outils	G0
+MAISON_DIY_PAINT_TOOLS	Outils et accessoires de peinture	G0
+MAISON_DIY_TOOL_STORAGE	Transport et rangement des outils	G0
+MAISON_DIY_MEASURING	Outils de mesure	G0
+MAISON_DIY_PLUMBING	Outils de plomberie	G0
+MAISON_DIY_WORKSHOP	Équipement d'atelier et de chantier	G0
+MAISON_DIY_ELECTRICAL	Outils d'électricien	G0
+MAISON_DIY_MASONRY	Outils de maçonnerie	G0
+MAISON_KT_FOOD_STORAGE	Stockage alimentaire	G0
+MAISON_KT_UTENSILS	Ustensiles de cuisine	G0
+MAISON_KT_SPECIALTY_UTENSILS	Ustensiles de cuisine spécialisés	G0
+MAISON_KT_BAR	Accessoires de bar	G0
+MAISON_KT_MIXING_BOWLS	Bols à mélanger	G0
+MAISON_KT_STRAINERS	Passoires, tamis et chinois	G0
+MAISON_KT_CUTTING_BOARDS	Planches à découper	G0
+MAISON_KT_MEASURING	Tasses et cuillères à mesurer	G0
+MAISON_KT_SCALES	Balances de cuisine	G0
+MAISON_KT_THERMOMETERS	Thermomètres alimentaires	G0
+MAISON_SA_COFFEE	Préparation du café, du thé et de l'expresso	G0
+MAISON_SA_BLENDERS	Blenders, mixeurs et robots de cuisine	G0
+MAISON_SA_SPECIALTY	Appareils spécialisés	G0
+MAISON_SA_ACCESSORIES	Accessoires pour petits appareils de cuisine	G0
+MAISON_SA_FRYERS	Friteuses	G0
+MAISON_SA_GRILLS	Grils et planchas	G0
+MAISON_SA_JUICERS	Extracteurs de jus	G0
+MAISON_SA_SPARE_PARTS	Pièces détachées pour petits appareils de cuisine	G0
+MAISON_SA_KETTLES	Bouilloires	G0
+MAISON_SA_TOASTERS	Grille-pain	G0
+MAISON_SA_WATER_DISPENSERS	Distributeurs d'eau et de boissons	G0
+MAISON_OFFICE_WRITING	Fournitures d'écriture	G0
+MAISON_OFFICE_PLANNERS	Agendas et organiseurs	G0
+MAISON_OFFICE_PENCIL_CASES	Trousses	G0
+MAISON_OFFICE_NOTEBOOKS	Carnets et blocs-notes	G0
+MAISON_OFFICE_ACCESSORIES	Accessoires de bureau	G0
+MAISON_OFFICE_ELECTRONICS	Matériel électronique de bureau	G0
+MAISON_OFFICE_CALCULATORS	Calculatrices	G0
+MAISON_OFFICE_BOOKMARKS	Marque-pages	G0
+MAISON_OFFICE_DOC_ORG	Organiseurs de documents	G0
+MAISON_OFFICE_TAPE	Rubans adhésifs, pinces et attaches	G0
+MAISON_OFFICE_STAPLERS	Agrafeuses et perforatrices	G0
+MAISON_OFFICE_DRAWING	Outils de dessin technique	G0
+MAISON_OFFICE_PRESENTATION	Matériel de présentation	G0
+MAISON_BAKING_ACCESSORIES	Accessoires pour la cuisine et la pâtisserie	G0
+MAISON_BAKING_MOLDS	Moules de cuisson	G0
+MAISON_BAKING_SPECIALTY	Matériel de cuisson et de pâtisserie spécialisé	G0
+MAISON_BAKING_POTS	Casseroles	G0
+MAISON_BAKING_OVEN_DISHES	Plats pour le four	G0
+MAISON_BAKING_PANS	Poêles	G0
+MAISON_OUTDOOR_POTS	Pots, jardinières et accessoires	G0
+MAISON_OUTDOOR_GARDEN_DECO	Décorations de jardin et d'extérieur	G0
+MAISON_OUTDOOR_POWER_ACCESSORIES	Accessoires pour outils électriques d'extérieur	G0
+MAISON_OUTDOOR_POOLS	Spas, piscines et équipements	G0
+MAISON_OUTDOOR_WATERING	Équipement d'arrosage	G0
+MAISON_OUTDOOR_HAND_TOOLS	Outils manuels de jardin	G0
+MAISON_OUTDOOR_GRILLING	Cuisine et grillade d'extérieur	G0
+MAISON_OUTDOOR_POWER_TOOLS	Outils électriques d'extérieur	G0
+MAISON_OUTDOOR_WEATHER	Instruments météorologiques	G0
+MAISON_OUTDOOR_SNOW_TOOLS	Outils de déneigement	G0
+MAISON_MAINT_VACUUMS	Aspirateurs et nettoyage	G0
+MAISON_MAINT_HEATING	Chauffage, climatisation et ventilation	G0
+MAISON_MAINT_IRONS	Fers à repasser et entretien du linge	G0
+SPORT_BIKE_HELMETS	Casques de vélo	G0
+SPORT_BIKE_KIDS	Vélos pour enfant	G0
+SPORT_BIKE_ACCESSORIES	Accessoires et outils pour vélo	G0
+SPORT_BIKE_PARTS	Pièces pour vélo	G0
+SPORT_BIKE_KID_SEATS	Sièges enfants pour vélo	G0
+SPORT_BIKE_TRAILERS	Remorques pour vélo	G0
+SPORT_HORSE_SADDLES	Selles et harnachement	G0
+SPORT_HORSE_PROTECTION	Protections d'équitation	G0
+SPORT_HORSE_HELMETS	Bombes d'équitation	G0
+SPORT_HORSE_GLOVES	Gants d'équitation	G1
+SPORT_HORSE_HELMET_COVERS	Couvre-casques d'équitation	G0
+SPORT_OUTDOOR_FISHING_HUNTING	Pêche et chasse	G0
+SPORT_OUTDOOR_OTHER_ACCESSORIES	Autres accessoires de sports de plein air	G0
+SPORT_OUTDOOR_HIKING_BAGS	Sacs de randonnée	G0
+SPORT_OUTDOOR_TENTS	Tentes et matériel de couchage	G0
+SPORT_OUTDOOR_BINOCULARS	Jumelles et longues-vues	G0
+SPORT_OUTDOOR_LANTERNS	Torches, lampes frontales et lanternes	G0
+SPORT_OUTDOOR_CLIMBING	Escalade et escalade de bloc	G0
+SPORT_OUTDOOR_CAMP_COOKING	Réchauds et ustensiles de cuisine de camping	G0
+SPORT_OUTDOOR_CAMP_FURNITURE	Meubles de camping	G0
+SPORT_OUTDOOR_COOLERS	Glacières	G0
+SPORT_OUTDOOR_HYDRATION	Systèmes et kits d'hydratation	G0
+SPORT_OUTDOOR_COMPASSES	Boussoles	G0
+SPORT_OUTDOOR_TREKKING_POLES	Bâtons de randonnée	G0
+SPORT_FITNESS_HOME	Accessoires de fitness à domicile	G0
+SPORT_FITNESS_BOTTLES	Gourdes	G0
+SPORT_FITNESS_RUNNING	Course à pied	G0
+SPORT_FITNESS_STRENGTH	Musculation	G0
+SPORT_FITNESS_YOGA	Matériel de yoga et de pilates	G0
+SPORT_WATER_SWIMMING	Natation	G0
+SPORT_WATER_WETSUITS	Combinaisons, gants et chaussons	G1
+SPORT_WATER_ACCESSORIES	Accessoires pour sports nautiques	G0
+SPORT_WATER_PFD	Gilets de flottaison	G1
+SPORT_WATER_INFLATABLES	Bateaux gonflables	G0
+SPORT_WATER_HELMETS	Casques pour sports nautiques	G0
+SPORT_WATER_TOWABLES	Bouées tractées	G0
+SPORT_WATER_SKIMBOARDS	Skimboards	G0
+SPORT_TEAM_FOOTBALL	Football	G0
+SPORT_TEAM_HANDBALL	Handball	G0
+SPORT_TEAM_VOLLEYBALL	Volley-ball	G0
+SPORT_TEAM_RUGBY	Rugby	G0
+SPORT_TEAM_AMERICAN_FOOTBALL	Football américain	G0
+SPORT_TEAM_BASEBALL	Baseball et softball	G0
+SPORT_TEAM_CRICKET	Cricket	G0
+SPORT_TEAM_FIELD_HOCKEY	Hockey sur gazon	G0
+SPORT_TEAM_FLOORBALL	Floorball	G0
+SPORT_TEAM_GAELIC	Sports gaéliques	G0
+SPORT_TEAM_LACROSSE	Lacrosse	G0
+SPORT_TEAM_NETBALL	Netball	G0
+SPORT_TEAM_OTHER	Autres équipements pour sports d'équipe	G0
+SPORT_TEAM_TRAINING	Matériel d'entraînement et d'arbitrage	G0
+SPORT_TEAM_BASKETBALL	Basketball	G0
+SPORT_WINTER_SKI_GEAR	Matériel de ski	G0
+SPORT_WINTER_HELMETS	Casques pour sports d'hiver	G0
+SPORT_WINTER_GOGGLES	Masques et lunettes de ski	G0
+SPORT_WINTER_SNOWBOARD_GEAR	Matériel de snowboard	G0
+SPORT_WINTER_ICE_HOCKEY	Hockey sur glace	G0
+SPORT_WINTER_FIGURE_SKATING	Accessoires de patinage artistique	G0
+SPORT_WINTER_SNOWSHOES	Raquettes à neige	G0
+SPORT_WINTER_GAITERS	Guêtres	G0
+SPORT_SKATE_PROTECTION	Protections de skate	G0
+SPORT_SKATE_SKATEBOARD_PARTS	Pièces et accessoires pour skateboard	G0
+SPORT_SKATE_SKATING_PARTS	Pièces et accessoires pour skating	G0
+SPORT_SKATE_HELMETS	Casques de skate	G0
+SPORT_RACKET_TENNIS	Tennis	G0
+SPORT_RACKET_PADEL	Padel	G0
+SPORT_RACKET_TABLE_TENNIS	Tennis de table	G0
+SPORT_RACKET_BADMINTON	Badminton	G0
+SPORT_RACKET_SQUASH	Squash	G0
+SPORT_RACKET_EYE_PROTECTION	Protections pour les yeux	G0
+SPORT_RACKET_PICKLEBALL	Pickleball	G0
+SPORT_RACKET_RACQUETBALL	Racquetball	G0
+SPORT_MARTIAL_GLOVES	Gants de boxe et d'arts martiaux	G1
+SPORT_MARTIAL_OTHER	Autres équipements pour arts martiaux	G0
+SPORT_MARTIAL_BODY_PROTECTION	Protections pour le corps	G0
+SPORT_MARTIAL_BELTS	Ceintures d'arts martiaux	G0
+SPORT_MARTIAL_HEAD_PROTECTION	Protections pour la tête	G0
+SPORT_MARTIAL_HAND_WRAPS	Bandes de boxe	G0
+SPORT_MARTIAL_PUNCHING_BAGS	Sacs de frappe	G0
+SPORT_MARTIAL_PADS	Pattes d'ours, pao et boucliers	G0
+SPORT_MARTIAL_SPEED_BAGS	Poires de vitesse	G0
+SPORT_GOLF_BALLS	Balles de golf	G0
+SPORT_GOLF_ACCESSORIES	Accessoires de golf	G0
+SPORT_GOLF_CLUBS	Clubs de golf	G0
+SPORT_GOLF_BAGS	Sacs de golf	G0
+SPORT_GOLF_TRAINING	Matériel d'entraînement pour le golf	G0
+SPORT_GOLF_GLOVES	Gants de golf	G1
+SPORT_LEISURE_DARTS	Matériel pour fléchettes	G0
+SPORT_LEISURE_BOULES	Pétanque et autres jeux	G0
+SPORT_LEISURE_BALLS	Balles et ballons	G0
+SPORT_LEISURE_BILLIARDS	Billard et snooker	G0
+SPORT_LEISURE_FRISBEE	Frisbee et disc golf	G0
+SPORT_LEISURE_BOWLING	Bowling	G0
+SPORT_LEISURE_SPIKEBALL	Roundnet et spikeball	G0
+FAIT_MAIN_BIJOUX	Bijoux (fait main)	G0
+FAIT_MAIN_VETEMENTS	Vêtements & accessoires (fait main)	G0
+FAIT_MAIN_MAISON_DECO	Maison & déco (fait main)	G0
+FAIT_MAIN_PAPETERIE	Papeterie & cartes (fait main)	G0
+FAIT_MAIN_BOIS	Bois & gravure (fait main)	G0

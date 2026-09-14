@@ -1,0 +1,5 @@
+new-with-tags|Neuf avec étiquette|Jamais porté ni utilisé, avec étiquette ou emballage d’origine.
+new|Neuf sans étiquette|Jamais porté ni utilisé, sans défaut, mais sans étiquette ni emballage d’origine.
+like-new|Très bon état|Porté très peu, aucun défaut visible, propre.
+good|Bon état|Utilisation visible mais article bien entretenu ; légères traces d'usure possibles.
+fair|Correct|Usure visible, petites taches ou défauts ; encore portable.

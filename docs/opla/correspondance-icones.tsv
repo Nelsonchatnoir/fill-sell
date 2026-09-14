@@ -1,0 +1,181 @@
+icone	nb_feuilles_opla	classe	regle_source	feuilles_candidates
+🦸	2	NET	figurines?|\bfunko\b|nendoroid|\bamiibo\b|\bbandai\b|banpres	TOY_FIGURES (Figurines) ; MAISON_DECO_SCULPTURES (Sculptures et figurines)
+🏀	1	NET	basket[sx]?.?ball|ballon.?(?:de.?)?basket|panier[sx]?.?de.?b	SPORT_TEAM_BASKETBALL (Basketball)
+🪖	0	SANS_EQUIVALENT	casque.?(?:moto|scooter|cross|intégral|jet)	
+👕	1	NET	maillot.?(?:de.?)?(?:foot|rugby|basket|hand|volley|cyclis|sp	SPORTS_BRA (Brassières)
+🧥	0	SANS_EQUIVALENT	combinaison.?(?:de.?)?(?:ski|surf|snowboard|moto|plong[ée]e)	
+⛑️	0	SANS_EQUIVALENT	casque.?(?:vélo|ski|snow)	
+🪒	0	SANS_EQUIVALENT	tondeuse.?(?:à.?)?(?:barbe|cheveux)|rasoir|épilateur	
+🎽	2	NET	sac[sx]?.?de.?(?:sport|gym|fitness)	WOMEN_GYM_BAGS (Sacs de sport) ; MEN_GYM_BAGS (Sacs de sport)
+🥽	0	SANS_EQUIVALENT	lunettes?.?de.?(?:natation|piscine)	
+🎒	7	AMBIGU	sac[sx]?.?à.?dos|backpack|cartable	BACKPACKS (Sacs à dos) ; SATCHELS_NEW (Cartables et sacoches) ; MEN_ACC_BAG_BACKPACKS (Sacs à dos) ; MEN_ACC_SATCHELS (Cartables et sacoches) ; GIRLS_BAGS (Sacs et sacs à dos) ; BOYS_BAGS (Sacs et sacs à dos) ; KID_SCHOOL_BAGS (Cartables et sacs à dos)
+🔌	1	NET	batterie[sx]?.?externe|powerbank|chargeur|câble|adaptateur|\	HIGHTECH_CHARGEURS_CABLES (Chargeurs, câbles et batteries externes)
+🏃	0	SANS_EQUIVALENT	tapis[sx]?.?de.?course|vélo[sx]?.?d.?appartement|rameur|elli	
+🎹	0	SANS_EQUIVALENT	clavier.?(?:midi|maître|maitre|arrangeur)|piano(?!\s*de\s*cu	
+🏎️	0	SANS_EQUIVALENT	voiture[sx]?.?miniature|hot[sx]?.?wheels|majorette	
+🧺	0	SANS_EQUIVALENT	machine[sx]?.?à.?laver|lave[sx]?.?linge|sèche[sx]?.?linge|la	
+☕	1	NET	machine[sx]?.?à.?café|cafetière|nespresso|senseo|dolce[sx]?.	MAISON_SA_COFFEE (Préparation du café, du thé et de l'expresso)
+🃏	1	NET	cartes?\s*(?:pokémon|pokemon|magic|yu.?gi.?oh|panini|à.?coll	BOOSTER (Booster)
+👙	4	NET	maillot[sx]?.?de.?bain|bikini|monokini	MEN_SWIMWEAR (Maillots de bain) ; SWIMSUITS_GIRLS_NEW (Maillot de bain 1 pièce) ; BIKINIS_GIRLS_NEW (Maillot de bain 2 pièces) ; BATHSHORTS_BOYS_NEW (Maillots de bain)
+🎲	1	NET	jeu[sx]?.?de.?société|monopoly|\buno\b	BOARD_GAMES (Jeux de société)
+🧸	2	NET	peluche|doudous?(?![\p{L}\p{N}])	ELEC_PET (Peluches interactives) ; STUFFED_ANIMALS_NEW (Peluches)
+🚁	1	NET	télécommandé|voiture[sx]?.?rc\b	RC_TOY (Jouets télécommandés)
+🎭	3	NET	déguisement|panoplie\b|costume[sx]?.?de.?(?:pirate|princesse	TOY_PRETEND_PLAY (Déguisements) ; COSTUMES_GIRLS_NEW (Déguisements) ; OCC_BOYS_NEW (Déguisements)
+⏱️	1	NET	montre[sx]?.?connectée|smart[sx]?.?watch|apple[sx]?.?watch|g	HIGHTECH_MONTRES_ACCESSOIRES (Bracelets et coques de montre connectée)
+📡	0	SANS_EQUIVALENT	enceinte[sx]?.?connectée|google[sx]?.?home|amazon[sx]?.?echo	
+📇	1	NET	liseuse|kindle|\bkobo\b	HIGHTECH_HOUSSES_TABLETTE (Housses de tablette et liseuse)
+🐕	0	SANS_EQUIVALENT	collier.?(?:pour.?)?(?:chien|chat)|gamelle|croquettes?\b|lit	
+🥿	5	NET	chausson|pantoufle|charentaise	SLIPPERS (Chaussons et pantoufles) ; MEN_SLIPPERS_2 (Chaussons et pantoufles) ; SLIPPERS_GIRLS_NEW (Chaussons et pantoufles) ; SLIPPERS_BOYS_NEW (Chaussons et pantoufles) ; SPORT_WATER_WETSUITS (Combinaisons, gants et chaussons)
+👝	2	NET	sac[sx]?.?banane|banane.?(?:eastpak|nike|adidas)|fanny[sx]?.	W_BUM_BAGS (Sacs banane) ; MEN_ACC_BUMBAGS (Sacs banane)
+🛌	2	NET	housse[sx]?.?de.?couette|parure[sx]?.?de.?lit|taie[sx]?.?d.?	KID_MATTRESS_COVER (Draps-housses et alèses) ; KID_SHEETS (Draps)
+🚼	1	NET	lit[sx]?.?parapluie|lit[sx]?.?à.?barreaux|berceau|cododo|tab	KID_NESTS (Réducteurs de lit)
+🧼	1	NET	fer[sx]?.?à.?repasser|défroisseur|centrale[sx]?.?vapeur|tabl	MAISON_MAINT_IRONS (Fers à repasser et entretien du linge)
+🧵	0	SANS_EQUIVALENT	machine[sx]?.?à.?coudre|surjeteuse	
+🤿	0	SANS_EQUIVALENT	plongée|\btuba\b|\bpalmes\b	
+🏄	1	NET	paddle|kayak|wakeboard|kitesurf|skimboard|ski[sx]?.?nautique	SPORT_WATER_SKIMBOARDS (Skimboards)
+🐴	4	NET	équitation|équestre|cravache|licol|tapis[sx]?.?de.?selle|étr	SPORT_HORSE_PROTECTION (Protections d'équitation) ; SPORT_HORSE_HELMETS (Bombes d'équitation) ; SPORT_HORSE_GLOVES (Gants d'équitation) ; SPORT_HORSE_HELMET_COVERS (Couvre-casques d'équitation)
+🎱	5	NET	billard|snooker|pétanque|fléchette|bowling|frisbee	SPORT_LEISURE_DARTS (Matériel pour fléchettes) ; SPORT_LEISURE_BOULES (Pétanque et autres jeux) ; SPORT_LEISURE_BILLIARDS (Billard et snooker) ; SPORT_LEISURE_FRISBEE (Frisbee et disc golf) ; SPORT_LEISURE_BOWLING (Bowling)
+🧢	8	AMBIGU	casquette|chapeau|bonnet|\bbob\b|béret|beret	WOMEN_BEANIES (Bonnets) ; CAPS (Casquettes) ; HATS (Chapeaux) ; MEN_BEANIES (Bonnets) ; MEN_ACC_HAT_CAPS (Casquettes) ; MEN_ACC_HAT_HATS (Chapeaux) ; HATS_GIRLS_NEW (Casquettes, chapeaux et bonnets) ; CAPS_BOYS_NEW (Casquettes, chapeaux et bonnets)
+👟	47	AMBIGU	basket|sneaker|chaussure|jordan|air[sx]?.?max|air[sx]?.?forc	WOMEN_BOAT_SHOES_LOAFERS_MOCCASINS (Mocassins et chaussures bateau) ; WOMEN_ESPADRILLES (Espadrilles) ; HIGH_HEELS (Chaussures à talons) ; WOMEN_LACE_UP_SHOES (Chaussures à lacets) ; WOMEN_BASKETBALL_SHOES (Chaussures de basket) ; WOMEN_CLIMBING_BOULDERING_SHOES (Chaussures d'escalade) ; WOMEN_CYCLING_SHOES (Chaussures de cyclisme) ; WOMEN_DANCE_SHOES (Chaussures de danse)
+👢	20	AMBIGU	botte|bottine|\bboots?\b	WOMEN_ANKLE_BOOTS (Bottines) ; WOMEN_MID_CALF_BOOTS (Bottes mi-hautes) ; KNEE_LENGHT_BOOTS (Bottes hautes) ; WOMEN_SNOW_BOOTS (Bottes de neige) ; WELLINGTON_BOOTS (Bottes de pluie) ; WOMEN_WORK_BOOTS (Bottes de travail) ; WOMEN_HIKING_BOOTS_SHOES (Chaussures et bottes de randonnée) ; WOMEN_MOTORBIKE_BOOTS (Bottes de moto)
+👠	3	NET	\btalons?\b|escarpin|ballerine|compensée|louboutin	WOMEN_BALLERINAS (Ballerines) ; HIGH_HEELS (Chaussures à talons) ; GIRLS_HEELS (Chaussures à talons)
+🩴	7	AMBIGU	sandalettes?|sandale|tongs?\b|claquette|(?<![\p{L}\p{N}])mul	WOMEN_CLOGS_MULES (Mules et sabots) ; WOMEN_FLIPFLOPS_SLIDES (Claquettes et tongs) ; WOMEN_SANDALS (Sandales) ; MEN_FLIPFLOPS_SLIDES (Claquettes et tongs) ; MEN_SANDALS_NEW (Sandales) ; GIRLS_FLIP_FLOPS_SANDALS_SLIDES (Sandales, claquettes et tongs) ; BOYS_FLIP_FLOPS_SANDALS_SLIDES (Sandales, claquettes et tongs)
+👜	26	AMBIGU	\bsacs?\b(?!\s*(?:de.?couchage|de.?frappe|poubelle|congélati	BACKPACKS (Sacs à dos) ; WOMEN_BASKET_BAGS (Sacs panier) ; WOMEN_BEACH_BAGS (Sacs de plage) ; W_BUM_BAGS (Sacs banane) ; CLUTCHES (Pochettes) ; WOMEN_GYM_BAGS (Sacs de sport) ; HANDBAGS (Sacs à main) ; W_HOLDALLS (Fourre-tout et sacs marins)
+👛	4	NET	portefeuille|porte[sx]?.?monnaie|porte[sx]?.?carte	PURSES (Porte-monnaie) ; WALLETS (Porte-monnaie) ; KIDS_WALLETS_NEW (Porte-monnaie) ; WALLETS_BOYS_NEW (Porte-monnaie)
+🧳	1	NET	valisettes?|valise|bagage	MEN_LUGGAGE (Bagages et valises)
+👕	0	SANS_EQUIVALENT	^(?=[\s\S]*\b(?:ensembles?|bodysuits?)\b)(?=[\s\S]*(?:bébé|b	
+🩲	0	SANS_EQUIVALENT	^(?=[\s\S]*grenouillères?)(?=[\s\S]*(?:bébé|bebe|\b\d+\s?moi	
+👖	0	SANS_EQUIVALENT	^(?=[\s\S]*\bsarouels?\b)(?=[\s\S]*(?:bébé|bebe|\b\d+\s?mois	
+👗	24	AMBIGU	(?<![-\w])robes?\b|jupes?\b	W_SKIRT_SUITS (Jupes et robes tailleurs) ; MAXI_DRESSES (Robes longues) ; OCCASIONAL_DRESSES (Robes pour occasions) ; SUMMER_DRESSES (Robes d'été) ; WINTER_DRESSES (Robes d'hiver) ; FORMAL_DRESSES (Robes chics) ; CASUAL_DRESSES (Robes casual) ; STRAPLESS_DRESSES (Robes sans bretelles)
+👗	8	AMBIGU	combinaisons?\b|\bcombis?\b(?![\s-]*shorts?\b)	W_JUMPSUITS (Combinaisons) ; W_OTHER_ROMPERS_JUMPSUITS (Autres combinaisons & combishorts) ; MATERNITY_ROMPERS_JUMPSUITS (Combinaisons & combi shorts maternité) ; FULL_ROMPERS_GIRLS_NEW (Combinaisons) ; GIRLS_COMBI_PILOTES_NEW (Combi-pilotes) ; FULL_ROMPERS_BOYS_NEW (Combinaisons) ; BOYS_COMBI_PILOTES_NEW (Combi-pilotes) ; SPORT_WATER_WETSUITS (Combinaisons, gants et chaussons)
+🥼	3	NET	blazer|tailleur\b	WOM_BLA_BLAZERS (Blazers) ; W_PANTSUITS (Ensembles tailleur/pantalon) ; BLAZERS_MEN (Blazers)
+🧥	19	AMBIGU	(?<!porte.)manteau|veste|blouson|parka|doudoune|trench|imper	CAPES_PONCHOS (Capes et ponchos) ; W_COATS (Manteaux) ; WOMEN_OUTERWEAR_VESTS (Vestes sans manches) ; W_JACKETS (Vestes) ; W_BOMBERS (Blousons mi-saison) ; W_RAINCOATS (Imperméables et coupe-vent) ; VESTS (Vestes) ; MATERNITY_COATS_JACKETS (Manteaux & vestes maternité)
+🧥	1	NET	coupe[sx]?.?vents?\b|(?<![\p{L}\p{N}])k.?ways?(?![\p{L}\p{N}	W_RAINCOATS (Imperméables et coupe-vent)
+🎀	1	NET	cravate|n[œo]e?ud.?papillon	MEN_TIES_BOWTIES (Cravates et nœuds papillons)
+🤵	8	AMBIGU	costume|smoking\b	SPECIAL_OUTFITS_COSTUMES_W (Costumes et tenues particulières) ; SUIT_PANTS (Pantalons de costume) ; SUIT_WAISTCOAT (Gilets de costume) ; SUIT_SET_MEN (Ensembles costume) ; WEDDING_SUIT (Costumes de mariage) ; MEN_TRO_TAILORED_TROUSERS (Pantalons de costume) ; SPECIALISED_CLOTHING_COSTUMES (Vêtements spécialisés et costumes) ; MEN_POCKET_SQUARES (Pochettes de costume)
+👔	11	AMBIGU	chemisettes?|chemise|chemisiers?\b|blouse\b	SHIRTS (Chemises) ; MEN_TOP_SHIRTS (Chemises) ; SHIRTS_GIRLS_NEW (Chemises) ; SHORTSLEEVE_SHIRTS_GIRLS_NEW (Chemises manches courtes) ; LOGSLEEVE_SHIRTS_GIRLS_NEW (Chemises manches longues) ; SLEEVELESS_SHIRTS_GIRLS_NEW (Chemises sans manches) ; NIGHTGOWNS_GIRLS_NEW (Chemises de nuit) ; SHIRTS_BOYS_NEW (Chemises)
+🧶	31	AMBIGU	pullovers?|sweatshirts?|sweaters?|pull|sweat|hoodie|cardigan	HOODIES_JUMPERS (Sweats & sweats à capuche) ; PULLS_SWEATERS_VESTS (Pulls) ; WOMEN_WAISTCOAT_SWEATER (Gilets) ; W_NEW_SWEATERS (Sweats) ; CARDIGANS (Cardigans) ; WOM_PUL_OTHER (Autres pull-overs & sweat-shirts) ; MATERNITY_HOODIES_SWEATERS (Pulls à capuche & pulls maternité) ; WOM_SPO_PULLOVERS_SWEATERS (Sweats et sweats à capuche)
+👕	25	AMBIGU	t.?shirt|tee[sx]?.?shirt|débardeur|caracos?\b|marinieres?\b|	WOM_PUL_OTHER (Autres pull-overs & sweat-shirts) ; WOM_TOP_T_SHIRTS (T-shirts) ; WOM_TOP_T_SHIRTS_LONG_SLEEVE (T-shirts manches longues) ; TANK_TOPS (Débardeurs) ; TUNICS (Tuniques ou blouses) ; CROP_TOPS (Tops courts) ; TOPS_BODIES (Bodies) ; TUBE_TOPS (Tops épaules dénudées)
+👕	7	AMBIGU	(?<![\p{L}\p{N}])maillots?(?![\p{L}\p{N}])	MATERNITY_SWIMWEAR_BEACHWEAR (Maillots & tenues de plage maternité) ; WOM_JERSEYS (Maillots) ; MEN_SWIMWEAR (Maillots de bain) ; MEN_JERSEYS (Maillots) ; SWIMSUITS_GIRLS_NEW (Maillot de bain 1 pièce) ; BIKINIS_GIRLS_NEW (Maillot de bain 2 pièces) ; BATHSHORTS_BOYS_NEW (Maillots de bain)
+🩳	19	AMBIGU	\bshorts?\b|\bbermudas?\b	WOMEN_SKORTS (Jupes-shorts) ; LOW_WAIST_SHORTS (Shorts taille basse) ; HIGH_WASTED_SHORTS (Shorts taille haute) ; MEDIUM_LENGTH_SHORTS (Shorts longueur genou) ; JEANS_SHORTS (Short en jean) ; LEATHER_SHORTS (Shorts en cuir) ; CARGO_SHORTS (Shorts cargo) ; WOM_SHO_OTHER (Autres shorts)
+👖	53	AMBIGU	jean(?!\W(?:paul|patou|jacques|claude|charles|louis|pierre|m	W_PANTSUITS (Ensembles tailleur/pantalon) ; JEANS_DRESSES_TUNICS (Robes en jean) ; W_CROPPED_JEANS (Jeans courts) ; FLARED_JEANS (Jeans évasés) ; W_HIGH_WAIST_JEANS (Jeans taille haute) ; W_RIPPED_JEANS (Jeans troués) ; W_SKINNY_JEANS (Jeans skinny) ; W_STRAIGHT_JEANS (Jeans droits)
+👖	0	SANS_EQUIVALENT	\bsurvets?\b	
+🩲	18	AMBIGU	lingerie|soutien[sx]?.?gorge|nuisette|pyjama|peignoir|tenue[	BRAS (Soutiens-gorge) ; PANTIES_THONGS (Culottes) ; NIGHTWEAR (Pyjamas et tenues de nuit) ; DRESSING_GOWNS (Peignoirs) ; LINGERIE_ACC (Accessoires de lingerie) ; MEN_ROBES (Peignoirs) ; MEN_ONE_PIECE_PYJAMAS (Pyjamas une-pièce) ; MEN_PYJAMA_BOTTOMS (Bas de pyjama)
+🧦	7	AMBIGU	chaussette|collant	INTIMATES_TIGHTS (Collants) ; INTIMATES_SOCKS (Chaussettes) ; MEN_SOCKS (Chaussettes) ; SOCKS_GIRLS_NEW (Chaussettes) ; TIGHTS_GIRLS_NEW (Collants) ; SOCKS_BOYS_NEW (Chaussettes) ; TIGHTS_BOYS_NEW (Collants)
+🧣	7	AMBIGU	écharpe|foulard|châle|snood	WOMEN_BANDANAS_HEADSCARVES (Bandanas et foulards pour cheveux) ; WOM_ACC_SCARVES_SHAWLS (Écharpes et châles) ; MEN_BANDANAS_HEADSCARVES (Bandanas et foulards pour cheveux) ; SCARVES_SHAWLS (Écharpes et châles) ; SCARVES_GIRLS_NEW (Écharpes et châles) ; SCARVES_BOYS_NEW (Écharpes et châles) ; BABY_SLINGS (Écharpes et slings)
+🧤	7	AMBIGU	(?<![\p{L}\p{N}])gants?(?![\p{L}\p{N}])(?!\s*de\s*boxe)|(?<!	GLOVES (Gants) ; MEN_ACC_GLOVES (Gants) ; GLOVES_GIRLS_NEW (Gants) ; GLOVES_BOYS_NEW (Gants) ; SPORT_HORSE_GLOVES (Gants d'équitation) ; SPORT_WATER_WETSUITS (Combinaisons, gants et chaussons) ; SPORT_GOLF_GLOVES (Gants de golf)
+⌚	3	NET	(?<![\p{L}\p{N}])montres?(?![\p{L}\p{N}])(?!\s+(?:qu|que|com	HIGHTECH_MONTRES_ACCESSOIRES (Bracelets et coques de montre connectée) ; WATCHES (Montres) ; MEN_ACC_WATCHES (Montres)
+⌚	0	SANS_EQUIVALENT	(?<![\p{L}\p{N}])cadrans?(?![\p{L}\p{N}])|remontoir|montre[s	
+🕶️	3	NET	(?<![\p{L}\p{N}])lunettes(?![\p{L}\p{N}])|lunettes?.?de.?(?:	SUNGLASSES (Lunettes de soleil) ; MEN_ACC_SUNGLASSES (Lunettes de soleil) ; SPORT_WINTER_GOGGLES (Masques et lunettes de ski)
+💍	33	AMBIGU	bijou|collier|bracelet|(?<![\p{L}\p{N}])bagues?(?![\p{L}\p{N	HIGHTECH_SUPPORTS_GRIPS (Supports, anneaux et bijoux de téléphone) ; HIGHTECH_MONTRES_ACCESSOIRES (Bracelets et coques de montre connectée) ; LOISIRS_BIJOUX_DIY (Bijoux DIY) ; KID_BEADS (Perles et fabrication de bijoux) ; WOMEN_WRISTLETS (Bracelets) ; ANKLETS_NEW (Bracelets de cheville) ; WOMEN_BODY_JEWELLERY (Bijoux de corps) ; BRACELETS (Bracelets)
+🪢	6	NET	ceinture(?!.{0,10}(?:lombaire|à.?outils|de.?sécurité))	BELTS (Ceintures) ; MEN_ACC_BELTS (Ceintures) ; BELTS_GIRLS_NEW (Ceintures) ; BELTS_BOYS_NEW (Ceintures) ; PREGNANCY_BELT (Ceintures de grossesse) ; SPORT_MARTIAL_BELTS (Ceintures d'arts martiaux)
+☂️	2	NET	parapluie|ombrelle	W_ACC_UMBRELLAS (Parapluies) ; BUGGY_COVERS (Habillages pluie et ombrelles)
+🗝️	1	NET	porte[sx]?.?cl[ée]s?\b	KEY_RINGS (Porte-clés)
+🛴	0	SANS_EQUIVALENT	trottinette|hoverboard|gyroroue|monoroue	
+📱	2	NET	iphone|smartphone|téléphone|galaxy|\bpixel\b|xiaomi|oneplus	HIGHTECH_COQUES_TELEPHONE (Coques et étuis de téléphone) ; HIGHTECH_SUPPORTS_GRIPS (Supports, anneaux et bijoux de téléphone)
+🖥️	0	SANS_EQUIVALENT	carte[sx]?.?graphique|carte.?m[èe]re|\bgpu\b|\brtx\b|geforce	
+💻	1	NET	macbook|laptop|ordinateur[sx]?.?portable|notebook|chromebook	HOUSSES_ORDINATEUR_PORTABLE (Housses pour ordinateur portable)
+🖥️	3	NET	\bpc\b|imac|ordinateur|écran|moniteur	JEUX_VIDEO_PC (Jeux PC) ; HOUSSES_ORDINATEUR_PORTABLE (Housses pour ordinateur portable) ; HIGHTECH_PROTECTIONS_ECRAN (Protections d’écran)
+📲	1	NET	tablette(?!.{0,4}de.?chocolat)|ipad|galaxy[sx]?.?tab	HIGHTECH_HOUSSES_TABLETTE (Housses de tablette et liseuse)
+🎧	10	AMBIGU	écouteur|airpods?|earbud|casque|headphone	HIGHTECH_AUDIO_CASQUES (Casques et écouteurs) ; CAPS (Casquettes) ; MEN_ACC_HAT_CAPS (Casquettes) ; HATS_GIRLS_NEW (Casquettes, chapeaux et bonnets) ; CAPS_BOYS_NEW (Casquettes, chapeaux et bonnets) ; SPORT_BIKE_HELMETS (Casques de vélo) ; SPORT_HORSE_HELMET_COVERS (Couvre-casques d'équitation) ; SPORT_WATER_HELMETS (Casques pour sports nautiques)
+🔊	0	SANS_EQUIVALENT	(?<!femmes?\s)enceinte|haut[sx]?.?parleur|speaker|barre[sx]?	
+🎮	5	NET	console(?!s?\s*(?:de\s*mixage|d['’]entrée|murale|extensible)	CONSOLES_PORTABLES (Consoles portables) ; CONSOLES_DE_SALON (Consoles de salon) ; JEUX_VIDEO_PLAYSTATION (Jeux PlayStation) ; JEUX_VIDEO_XBOX (Jeux Xbox) ; JEUX_VIDEO_NINTENDO (Jeux Nintendo)
+🛋️	0	SANS_EQUIVALENT	meuble.?(?:tv|t[ée]l[ée]|hi.?fi)	
+📦	1	NET	veilleuse	KIDS_NIGHT_LIGHTS (Veilleuses)
+📺	1	NET	\btv\b|télé(?![a-zà-ÿ])|téléviseur|télévision|projecteur|vid	HC_MEMORABILIA_FILMTV (Souvenirs TV et cinéma)
+📷	1	NET	appareil[sx]?.?photo|caméra|camera|reflex|gopro|objectif(?!s	KID_CAMERA (Appareils photo pour enfant)
+🛸	0	SANS_EQUIVALENT	drone	
+🖨️	0	SANS_EQUIVALENT	imprimante|scanner	
+⌨️	0	SANS_EQUIVALENT	clavier	
+🖱️	0	SANS_EQUIVALENT	souris	
+🛋️	0	SANS_EQUIVALENT	canapé|sofa|fauteuil|banquette|pouf	
+🏋️	0	SANS_EQUIVALENT	banc.?(?:de.?)?(?:muscu|gym|fitness|abdo|développé)|banc[sx]	
+🪑	0	SANS_EQUIVALENT	chaise|tabouret|\bbanc\b	
+🛏️	7	AMBIGU	\blit\b|matelas|sommier|couette|(?<![\p{L}\p{N}])draps?(?![\	CHANGING_MATS (Matelas à langer) ; CHANGING_MAT_COVER (Housses de matelas à langer) ; CHANGING_MAT_PORTABLE (Matelas à langer nomades) ; KID_MATTRESS_COVER (Draps-housses et alèses) ; KID_SHEETS (Draps) ; KID_NESTS (Réducteurs de lit) ; MAISON_TEXTILE_BEDDING (Linge de lit)
+💡	2	NET	lampe|luminaire|applique|suspension|lampadaire|(?<![\p{L}\p{	MAISON_PARTY_BANNERS (Banderoles, drapeaux et guirlandes) ; SPORT_OUTDOOR_LANTERNS (Torches, lampes frontales et lanternes)
+🪞	2	NET	miroir	BABY_CAR_MIRROR (Miroirs de voiture) ; MAISON_DECO_MIRRORS (Miroirs)
+🕯️	1	NET	bougie(?!s?\s*(?:d['’]allumage|de\s*préchauffage))|photophor	MAISON_DECO_CANDLES (Bougies et parfums d'ambiance)
+🖼️	3	NET	cadres?\b(?!\s*(?:de\s*)?(?:vélo|vtt|route\b|carbone|alu\b|l	KID_EASELS (Tableaux et ardoises) ; KID_PHOTO_FRAME (Cadres photo) ; FAIT_MAIN_BOIS (Bois & gravure (fait main))
+🪴	2	NET	plante|cache[sx]?.?pot|jardinière	MAISON_DECO_ARTIFICIAL_PLANTS (Plantes et fleurs artificielles) ; MAISON_OUTDOOR_POTS (Pots, jardinières et accessoires)
+🏺	0	SANS_EQUIVALENT	vase\b	
+🍽️	7	AMBIGU	assiette|\bbol\b|tasse|\bmug\b|verres?\b(?!\s*tremp)|carafe|	BOLEROS_GIRLS_NEW (Boléros) ; BABY_PLATE_BOWL (Assiettes et bols) ; BABY_SIPPY_CUPS (Tasses d'apprentissage) ; MAISON_TABLE_DRINKWARE (Verres) ; MAISON_TABLE_SERVEWARE (Vaisselle de service) ; MAISON_TABLE_DINNERWARE (Vaisselle) ; MAISON_KT_MEASURING (Tasses et cuillères à mesurer)
+🍳	5	NET	casserole|poêle(?!s?\s*à\s*(?:bois|granulés?|pétrole))|cocot	MAISON_KT_UTENSILS (Ustensiles de cuisine) ; MAISON_KT_SPECIALTY_UTENSILS (Ustensiles de cuisine spécialisés) ; MAISON_BAKING_POTS (Casseroles) ; MAISON_BAKING_PANS (Poêles) ; SPORT_OUTDOOR_CAMP_COOKING (Réchauds et ustensiles de cuisine de camping)
+🖼️	1	NET	(?<!\b(?:au|du|de)\s)bustes?\b(?!\s*de\s*couture)(?!\s+(?:sm	MAISON_DECO_SCULPTURES (Sculptures et figurines)
+🪟	1	NET	rideau|voilage|\bstores?\b	MAISON_TEXTILE_CURTAINS (Rideaux et stores)
+🪶	3	NET	coussin(?!.{0,14}(?:allaitement|grossesse))|plaid\b|jeté[sx]	BABY_FEEDING_PILLOW (Coussins et couvertures d'allaitement) ; KID_HEATINGPADS (Coussins chauffants et bouillottes) ; MAISON_TEXTILE_CUSHIONS (Coussins décoratifs)
+🟫	3	NET	\btapis\b(?!.?(?:de.?)?(?:course|yoga|souris|selle|sol|éveil	HC_STORAGE_PUZZLEMATS (Tapis de puzzle) ; BABY_GYMS (Tapis d'éveil et d'activités) ; MAISON_TEXTILE_RUGS (Tapis)
+📜	1	NET	nappe\b|napperon|linge[sx]?.?de.?table	MAISON_TEXTILE_TABLE_LINEN (Linge de table)
+🕰️	1	NET	horloge|pendule\b|réveil	MAISON_DECO_CLOCKS (Horloges)
+🎄	0	SANS_EQUIVALENT	no[eë]l|guirlande[sx]?.?de.?sapin|boule[sx]?.?de.?sapin|crèc	
+🖋️	9	AMBIGU	stylo|papeterie|carnet|bloc[sx]?.?notes?|surligneur|crayon(?	LOISIRS_SCRAPBOOKING (Scrapbooking et papeterie créative) ; KID_STICKER_STATIONERY (Gommettes et accessoires de papeterie) ; MAKE_UP_BAGS (Trousses à maquillage) ; KID_SCHOOL_PENCIL_CASES (Trousses) ; KID_SCHOOL_CALCULATORS_GEOMETRY (Calculatrices et matériel de géométrie) ; MAISON_OFFICE_PENCIL_CASES (Trousses) ; MAISON_OFFICE_NOTEBOOKS (Carnets et blocs-notes) ; MAISON_OFFICE_CALCULATORS (Calculatrices)
+🫖	1	NET	bouilloire|théière	MAISON_SA_KETTLES (Bouilloires)
+🧹	1	NET	aspirateur|roomba|nettoyeur[sx]?.?vapeur	MAISON_MAINT_VACUUMS (Aspirateurs et nettoyage)
+🧊	0	SANS_EQUIVALENT	frigo|réfrigérateur|congélateur	
+♨️	1	NET	\bfour\b|micro[sx]?.?onde	MAISON_BAKING_OVEN_DISHES (Plats pour le four)
+🥣	1	NET	mixeur|blender|robot.?(?:cuisine|pâtissier)|thermomix|batteu	MAISON_SA_BLENDERS (Blenders, mixeurs et robots de cuisine)
+🍞	1	NET	grille[sx]?.?pain|toaster	MAISON_SA_TOASTERS (Grille-pain)
+🍟	1	NET	friteuse|airfryer	MAISON_SA_FRYERS (Friteuses)
+💇	0	SANS_EQUIVALENT	sèche[sx]?.?cheveux|lisseur|boucleur|airwrap|supersonic|mult	
+🌀	1	NET	ventilateur|climatiseur|purificateur[sx]?.?d.?air|humidifica	KID_HUMIDIFIERS (Humidificateurs)
+🌡️	0	SANS_EQUIVALENT	radiateur|chauffage[sx]?.?d.?appoint|convecteur|bain[sx]?.?d	
+🪛	0	SANS_EQUIVALENT	perceuse|visseuse|tournevis|perforateur	
+🪚	0	SANS_EQUIVALENT	\bscies?\b|tronçonneuse|élagueuse	
+🔨	0	SANS_EQUIVALENT	marteau|maillet|\bmasses?\b(?!\s*(?:musculaire|corporelle|gr	
+🪜	0	SANS_EQUIVALENT	échelle(?!s?\s*(?:1\s*[:/]\s*\d|\d|réduite))|escabeau	
+🖌️	3	NET	peinture|rouleau[sx]?.?peinture|pinceaux?\b(?!\s*(?:de\s*|à\	LOISIRS_PEINTURE_DESSIN (Peinture et dessin) ; KID_DRAW_PAINT (Peinture et dessin) ; MAISON_DIY_PAINT_TOOLS (Outils et accessoires de peinture)
+🔩	2	NET	\bvis\b|boulon|cheville|clou\b	ANKLETS_NEW (Bracelets de cheville) ; MEN_ANKLETS (Bracelets de cheville)
+📏	0	SANS_EQUIVALENT	mètre[sx]?.?ruban|niveau.?(?:laser|à.?bulle)	
+🔧	1	NET	clé.?(?:plate|allen|molette|mixte|dynamométrique)|pinces?(?!	MAISON_OFFICE_TAPE (Rubans adhésifs, pinces et attaches)
+🌱	0	SANS_EQUIVALENT	tondeuse|débroussailleuse|scarificateur	
+✂️	0	SANS_EQUIVALENT	taille[sx]?.?haie|sécateur|cisaille	
+🔥	1	NET	barbecue|plancha|\bbbq\b	MAISON_SA_GRILLS (Grils et planchas)
+⛱️	0	SANS_EQUIVALENT	salon[sx]?.?de.?jardin|parasol|transat(?!.{0,10}(?:b[ée]b[ée	
+🚲	6	NET	\bvélos?\b|\bvtt\b|bicyclette	SPORT_BIKE_HELMETS (Casques de vélo) ; SPORT_BIKE_KIDS (Vélos pour enfant) ; SPORT_BIKE_ACCESSORIES (Accessoires et outils pour vélo) ; SPORT_BIKE_PARTS (Pièces pour vélo) ; SPORT_BIKE_KID_SEATS (Sièges enfants pour vélo) ; SPORT_BIKE_TRAILERS (Remorques pour vélo)
+🛴	0	SANS_EQUIVALENT	trottinette	
+🛹	3	NET	skateboards?|skate|longboard	SPORT_SKATE_PROTECTION (Protections de skate) ; SPORT_SKATE_SKATEBOARD_PARTS (Pièces et accessoires pour skateboard) ; SPORT_SKATE_HELMETS (Casques de skate)
+⛸️	4	NET	roller|\bpatins?(?![a-zà-ÿ])	WOMEN_ICE_SKATES (Patins à glace) ; WOMEN_ROLLER_SKATES_BLADES (Patins à roulettes et rollers) ; MEN_ICE_SKATES (Patins à glace) ; MEN_ROLLER_SKATES_BLADES (Patins à roulettes et rollers)
+🎿	9	AMBIGU	\bskis?\b|snowboard	WOMEN_SKI_BOOTS (Chaussures de ski) ; WOMEN_SNOWBOARD_BOOTS (Bottes de snowboard) ; MEN_SKI_BOOTS (Bottes de ski) ; MEN_SNOWBOARD_BOOTS (Bottes de snowboard) ; GIRLS_SNOW_GEAR (Vêtements de ski) ; BOYS_SNOW_GEAR (Vêtements de ski) ; SPORT_WINTER_SKI_GEAR (Matériel de ski) ; SPORT_WINTER_GOGGLES (Masques et lunettes de ski)
+📦	0	SANS_EQUIVALENT	\bgourde\b|bidon.?(?:sport|vélo)|bouteille.?(?:isotherme|ino	
+⚽	3	NET	ballon|football	SPORT_TEAM_FOOTBALL (Football) ; SPORT_TEAM_AMERICAN_FOOTBALL (Football américain) ; SPORT_LEISURE_BALLS (Balles et ballons)
+🎾	7	AMBIGU	tennis|raquette|badminton|squash	WOMEN_TENNIS_SHOES (Chaussures de tennis) ; MEN_TENNIS_SHOES (Chaussures de tennis) ; SPORT_WINTER_SNOWSHOES (Raquettes à neige) ; SPORT_RACKET_TENNIS (Tennis) ; SPORT_RACKET_TABLE_TENNIS (Tennis de table) ; SPORT_RACKET_BADMINTON (Badminton) ; SPORT_RACKET_SQUASH (Squash)
+⛳	9	AMBIGU	golf(?!\s*(?:gti|tdi|tsi|gtd|\d|plus|r32|variant|sportsvan))	WOMEN_GOLF_SHOES (Chaussures de golf) ; MEN_GOLF_SHOES (Chaussures de golf) ; SPORT_GOLF_BALLS (Balles de golf) ; SPORT_GOLF_ACCESSORIES (Accessoires de golf) ; SPORT_GOLF_CLUBS (Clubs de golf) ; SPORT_GOLF_BAGS (Sacs de golf) ; SPORT_GOLF_TRAINING (Matériel d'entraînement pour le golf) ; SPORT_GOLF_GLOVES (Gants de golf)
+🏋️	4	NET	haltère|kettlebell|musculation|fitness	WOMEN_INDOOR_TRAINING_SHOES (Chaussures de fitness) ; SPORT_SHOES_INDOOR_MEN (Chaussures de fitness) ; SPORT_FITNESS_HOME (Accessoires de fitness à domicile) ; SPORT_FITNESS_STRENGTH (Musculation)
+🥊	2	NET	boxe|\bmma\b	SPORT_MARTIAL_GLOVES (Gants de boxe et d'arts martiaux) ; SPORT_MARTIAL_HAND_WRAPS (Bandes de boxe)
+⛺	4	NET	tente|camping|sac[sx]?.?de.?couchage|duvet	KID_SLEEPINGBAG (Sacs de couchage) ; SPORT_OUTDOOR_TENTS (Tentes et matériel de couchage) ; SPORT_OUTDOOR_CAMP_COOKING (Réchauds et ustensiles de cuisine de camping) ; SPORT_OUTDOOR_CAMP_FURNITURE (Meubles de camping)
+🎣	1	NET	pêche|moulinet|waders	SPORT_OUTDOOR_FISHING_HUNTING (Pêche et chasse)
+🧘	1	NET	yoga|pilates	SPORT_FITNESS_YOGA (Matériel de yoga et de pilates)
+🏍️	2	NET	moto\b	WOMEN_MOTORBIKE_BOOTS (Bottes de moto) ; MEN_MOTORBIKE_BOOTS (Bottes de moto)
+🛵	0	SANS_EQUIVALENT	scooter	
+🛞	0	SANS_EQUIVALENT	pneu|jante|\broue\b	
+🚗	4	NET	voiture|automobile|autoradio|pare[sx]?.?choc|rétroviseur	TOY_CARS (Voitures) ; BABY_CAR_MIRROR (Miroirs de voiture) ; BABY_CAR_SUNSHADE (Pare-soleil de voiture) ; CARSEAT_ACC_OTHER (Autres accessoires voiture)
+🌸	2	NET	parfumee?s?|parfum|eau[sx]?.?de.?(?:toilette|parfum)|cologne	BEAUTY_PERFUMES (Parfums) ; MAISON_DECO_CANDLES (Bougies et parfums d'ambiance)
+💄	2	NET	rouge[sx]?.?à.?lèvre|gloss|lipstick|mascaras?(?![\p{L}\p{N}]	MAKE_UP_BAGS (Trousses à maquillage) ; BEAUTY_MAKEUP (Maquillage)
+💅	0	SANS_EQUIVALENT	vernis|manucure	
+🧴	2	NET	crème|sérum|lotion|shampooing|gel[sx]?.?douche|savon|soins?\	BEAUTY_SKINCARE_FACE (Soins visage) ; BEAUTY_BODYCARE (Soins corps et douche)
+🧴	0	SANS_EQUIVALENT	huiles?\s+(?:pour\s+)?(?:l[ea]s?\s+)?(?:visage|corps|cheveux	
+🧴	0	SANS_EQUIVALENT	masques?\s+(?:pour\s+)?(?:l[ea]s?\s+)?(?:visage|corps|cheveu	
+🧴	0	SANS_EQUIVALENT	déodorant|gommage|exfoliant|démaquillant|\btoniques?\b|\bbau	
+🎸	0	SANS_EQUIVALENT	guitare|stratocaster|telecaster|les[sx]?.?paul|ukulélé	
+🎻	0	SANS_EQUIVALENT	violon|violoncelle|contrebasse	
+🥁	0	SANS_EQUIVALENT	batterie(?!.{0,15}(?:voiture|moto|vélo|externe|cuisine|télép	
+🎺	0	SANS_EQUIVALENT	trompette|saxophone|clarinette|flûte(?!s?\s*(?:à\s*)?champag	
+💿	1	NET	(?<!sol\s)(?<!stickers?\s)(?<!autocollants?\s)vinyle?s?\b(?!	VINYLES (Vinyles)
+📀	2	NET	\bdvd\b|blu[sx]?.?ray|\bvhs\b|cassette[sx]?.?vidéo|laserdisc	DVD (DVD) ; BLURAY (Blu-ray)
+💽	2	NET	\bcd\b|\bk7\b|cassette|minidisc	CD (CD) ; CASSETTES_AUDIO (Cassettes audio)
+🎼	0	SANS_EQUIVALENT	harmonica	
+🎤	0	SANS_EQUIVALENT	micro(?:phone)?\b(?![\s-]*(?:sd\b|usb|hdmi|ondes?))	
+🧱	1	NET	(?<![\p{L}\p{N}])legos?(?![\p{L}\p{N}])|duplo|kapla|jeu[sx]?	CONSTRUCTION_NEW (Jeux de construction)
+🪆	5	NET	poupée|barbie|poupon	DOLLS (Poupées et poupons) ; DOLL_CLOTHES_ACC (Accessoires pour poupée et poupon) ; DOLL_FURNITURE (Meubles et accessoires pour maison de poupée) ; DOLLHOUSE (Maisons de poupées) ; DOLL_PLAYSET (Kits de jeu pour poupée et poupon)
+🧩	2	NET	puzzle	HC_STORAGE_PUZZLEMATS (Tapis de puzzle) ; PUZZLES (Puzzles)
+🦸	2	NET	figurine|funko|playmobil	TOY_FIGURES (Figurines) ; MAISON_DECO_SCULPTURES (Sculptures et figurines)
+📖	2	NET	manga|\bbd\b|bande[sx]?.?dessinée|comics	BANDES_DESSINEES (Bandes dessinées) ; MANGAS (Mangas)
+📚	4	NET	livrets?|livre|romans?(?![\p{L}\p{N}])|encyclopédie|dictionn	LIVRES_POUR_BEBE (Livres pour bébé) ; LIVRES_SONORES (Livres sonores) ; ROMANS_POUR_ENFANTS (Romans pour enfants) ; ROMANS_POUR_ADULTES (Romans pour adultes)
+📰	1	NET	magazine|revue\b	LIVRES_MAGAZINES (Magazines et revues)
+🃏	0	SANS_EQUIVALENT	cartes?\s+(?:à\s+)?collectionner|\bjcc\b|trading\s+cards?|\b	
+📮	4	NET	timbre	HC_PHILATELY_SINGLES (Timbres à l'unité) ; HC_PHILATELY_LOTS (Lots de timbres) ; HC_PHILATELY_GUIDES (Catalogues et guides de timbres) ; HC_PHILATELY_TOOLS (Outils et matériel pour timbres)
+🪙	6	NET	monnaie|numismat|pièce[sx]?.?de.?monnaie	HC_NUMISMATICS_COINS (Pièces de monnaie) ; HC_NUMISMATICS_LOTS (Lots de monnaies) ; PURSES (Porte-monnaie) ; WALLETS (Porte-monnaie) ; KIDS_WALLETS_NEW (Porte-monnaie) ; WALLETS_BOYS_NEW (Porte-monnaie)
+👶	2	NET	poussette|landaus?\b	BUGGY_FOOTMUFF (Chancelières de poussette) ; BUGGY_PARTS (Pièces détachées de poussette)
+💺	3	NET	siège[sx]?.?auto	CARSEAT_INSERTS (Réducteurs pour siège auto) ; CARSEAT_TRAVELBAG (Housses de siège auto) ; CARSEAT_FOOTMUFF (Chancelières de siège auto)
+🍼	3	NET	biberon	BABY_BOTTLE (Biberons) ; BOTTLE_WARMERS (Chauffe-biberon) ; BABY_FORMULA_MAKER (Préparateurs de biberons)
+📟	1	NET	babyphone|baby[sx]?.?phone|écoute[sx]?.?bébé	KID_BABY_MONITOR (Babyphones)
+🃏	0	SANS_EQUIVALENT	(?<![\p{L}\p{N}/.,])\d{1,3}\s*\/\s*\d{2,3}(?![\p{L}\p{N}/.,]	

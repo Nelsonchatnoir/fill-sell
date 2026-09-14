@@ -1,0 +1,65 @@
+steel|Acier
+stainless-steel|Acier inoxydable
+acrylic|Acrylique
+alpaca|Alpaga
+angora|Angora
+silver|Argent
+bamboo|Bambou
+wood|Bois
+bronze|Bronze
+cashmere|Cachemire
+rubber|Caoutchouc
+cardboard|Carton
+ceramic|Céramique
+cotton|Coton
+leather|Cuir
+synthetic-leather|Cuir synthétique
+patent-leather|Cuir verni
+suede|Daim
+denim|Denim
+lace|Dentelle
+down|Duvet
+elastane|Élasthanne (Spandex)
+faux-fur|Fausse fourrure
+felt|Feutre
+metal-fibers|Fibres métalliques
+mesh|Filet
+flannel|Flanelle
+jute|Jute
+wool|Laine
+brass|Laiton
+latex|Latex
+linen|Lin
+lyocell|Lyocell
+knit|Maille
+merino|Mérinos
+metal|Métal
+modal|Modal
+mohair|Mohair
+foam|Mousse
+muslin|Mousseline
+neoprene|Néoprène
+nylon|Nylon
+gold|Or
+straw|Paille
+paper|Papier
+stone|Pierre
+plastic|Plastique
+fleece|Polaire
+polyamide|Polyamide
+polyester|Polyester
+polyurethane|Polyuréthane
+porcelain|Porcelaine
+resin|Résine
+rattan|Rotin
+satin|Satin
+sequin|Sequin
+silicone|Silicone
+silk|Soie
+canvas|Toile
+tulle|Tulle
+tweed|Tweed
+velvet|Velours
+corduroy|Velours côtelé
+glass|Verre
+viscose|Viscose
