@@ -1350,7 +1350,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // tout run repris, le chien de garde des 32 min tue toujours les runs figes, et
 // la cadence cron de 20 h n'est pas consommee (reprise = PATCH, jamais INSERT).
 // MIN_BUILD INCHANGE : la 0.6.34 n'est toujours pas acceptee.
-export const EXTENSION_LAST_COMMIT = '2026-09-14T08:18:56Z'; // recale d4ce4cb (mur de cookies Leboncoin enfin detecte : detection par le controle de refus, l'opacite ne sert plus de verdict) - UTC VRAI lu dans %cI (10:18:56+02:00), PAS le 10:18:56Z que rend un TZ=UTC git log sur ce depot ; 0.6.34 TELEVERSEE, le correctif part en 0.6.35 ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
+export const EXTENSION_LAST_COMMIT = '2026-09-14T08:29:35Z'; // recale 28c3f21 (Beebs : widget Axeptio detecte et refuse, present != bloquant) - UTC VRAI lu dans %cI, PAS ce que rend un TZ=UTC git log sur ce depot ; toujours la 0.6.35, jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
