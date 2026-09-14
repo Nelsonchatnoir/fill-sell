@@ -1369,7 +1369,24 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // INTOUCHES : retraits Beebs/eBay/Vinted, publication LBC, correctif de
 // consentement de la 0.6.35 en review, regle « active = preuve positive ».
 // MIN_BUILD INCHANGE : la 0.6.36 n'est meme pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-14T10:07:07Z'; // recale a8b7af9 (retrait LBC : challenge gratuit et borne, releve persiste) - UTC VRAI lu dans %cI, PAS ce que rend un TZ=UTC git log sur ce depot ; 0.6.36, jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
+// 2026-09-14T15:22:40Z = 0.6.37, le trou du PASSAGE DE PAGE de la sync
+// dressing. Trois points, aucun ne touche au chemin nominal d'une sync qui
+// reussit :
+//   · VEILLEUR DU RUN FIGE — la ronde s'accroche a l'alarme de poll (2 min),
+//     seul minuteur qui survit a la mort du service worker. Ne regarde que les
+//     runs 'running' ; ne reprend que sur curseur immobile + 12 min de silence
+//     (deux mesures) + compare-and-swap gagne en base sur (id, status,
+//     updated_at) + plafond de 3 reprises. La reprise ADOPTE la ligne, donc
+//     repart de page_suivante et ne marque aucune disparition ;
+//   · PASSAGE DE PAGE TRACE AVANT D'ETRE TENTE — une ligne usage_logs
+//     ('sync_page') par PAGE, jamais attendue, que personne ne lit ;
+//   · EVEIL PLUS RENDU PENDANT UNE SYNC — un run en cours compte comme du
+//     travail, et la sync demande l'eveil au depart.
+// INTOUCHES : retrait Leboncoin (0.6.36), consentement (0.6.35), reprise auto
+// des syncs (0.6.34), jobs de publication/republication/suppression, partage
+// d'onglet, marquage des disparitions.
+// MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
+export const EXTENSION_LAST_COMMIT = '2026-09-14T15:22:40Z'; // recale 7a58a7e (veilleur du run fige + trace de page + eveil) - UTC VRAI lu dans %cI, PAS ce que rend un TZ=UTC git log sur ce depot ; 0.6.37, jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
