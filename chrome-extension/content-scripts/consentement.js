@@ -190,26 +190,49 @@ function fsConsentSurface(el) {
   for (const sel of FS_CONSENT_CONTENEURS) {
     let hote = null;
     try { hote = el.closest(sel); } catch { continue; }
-    if (hote) return { preuve: `conteneur ${sel}`, hote };
+    if (hote) return { preuve: `conteneur ${sel}`, hote, certaine: true };
   }
   const aire = Math.max(1, window.innerWidth * window.innerHeight);
   let p = el;
   while (p && p !== document.body && p !== document.documentElement) {
     const role = p.getAttribute?.('role');
     if (role === 'dialog' || role === 'alertdialog' || p.getAttribute?.('aria-modal') === 'true') {
-      return { preuve: `dialogue ${role ?? 'aria-modal'}`, hote: p };
+      return { preuve: `dialogue ${role ?? 'aria-modal'}`, hote: p, certaine: true };
     }
     let cs = null;
     try { cs = window.getComputedStyle(p); } catch { cs = null; }
     if (cs && cs.position === 'fixed') {
       const r = p.getBoundingClientRect();
       if ((r.width * r.height) / aire >= 0.25) {
-        return { preuve: `calque fixe ${Math.round(r.width)}×${Math.round(r.height)}`, hote: p };
+        // Preuve FAIBLE : un calque plein écran n'est pas forcément un écran de
+        // consentement. C'est la seule branche qui exige, en plus, que le
+        // contrôle soit atteignable (cf. fsConsentIdentifie).
+        return { preuve: `calque fixe ${Math.round(r.width)}×${Math.round(r.height)}`, hote: p, certaine: false };
       }
     }
     p = p.parentElement;
   }
   return null;
+}
+
+/**
+ * Le contrôle est-il identifié de façon SÛRE ? Deux niveaux de preuve, et
+ * l'atteignabilité n'est exigée que sur le plus faible des deux.
+ *
+ * Pourquoi (mesuré le 14/09 sur Beebs, onglet d'arrière-plan) : le bouton
+ * « Tout refuser » d'Axeptio y siège à x = -180, hors écran, faute d'animation
+ * d'entrée — `elementFromPoint` ne le rend donc jamais. Exiger
+ * l'atteignabilité partout reviendrait à ne jamais refuser sur Beebs. Or son
+ * identité n'a rien d'incertain : id `#axeptio_btn_dismiss`, libellé
+ * « Tout refuser », à l'intérieur de `.axeptio_widget`. Quand la surface est
+ * CERTAINE (conteneur de CMP connu ou dialogue déclaré), l'identité suffit —
+ * et le clic est un `click()` DOM, qui n'a que faire de la position.
+ * Quand elle ne l'est pas (simple calque plein écran), on exige que le
+ * contrôle soit réellement au-dessus : c'est la garde anti-faux-positif.
+ */
+function fsConsentIdentifie(el, surface) {
+  if (!surface) return false;
+  return surface.certaine === true || fsConsentAtteignable(el);
 }
 
 /**
@@ -220,9 +243,9 @@ function fsConsentTrouverRefus() {
   for (const sel of FS_CONSENT_REFUS_SELECTEURS) {
     let el = null;
     try { el = document.querySelector(sel); } catch { continue; }
-    if (!el || !fsConsentVisible(el) || !fsConsentAtteignable(el)) continue;
+    if (!el || !fsConsentVisible(el)) continue;
     const surface = fsConsentSurface(el);
-    if (surface) return { bouton: el, libelle: fsConsentTexte(el) || el.id || sel, preuve: `${sel} · ${surface.preuve}` };
+    if (fsConsentIdentifie(el, surface)) return { bouton: el, libelle: fsConsentTexte(el) || el.id || sel, preuve: `${sel} · ${surface.preuve}` };
   }
   // Repli par libellé. L'ensemble balayé inclut les <a> NUS et les
   // [role="button"] : l'ancienne version ne regardait que « button,
@@ -231,9 +254,9 @@ function fsConsentTrouverRefus() {
   for (const b of candidats) {
     const t = fsConsentTexte(b);
     if (!t || !FS_CONSENT_REFUS_TEXTES.some((re) => re.test(t))) continue;
-    if (!fsConsentVisible(b) || !fsConsentAtteignable(b)) continue;
+    if (!fsConsentVisible(b)) continue;
     const surface = fsConsentSurface(b);
-    if (surface) return { bouton: b, libelle: t, preuve: `libellé « ${t} » · ${surface.preuve}` };
+    if (fsConsentIdentifie(b, surface)) return { bouton: b, libelle: t, preuve: `libellé « ${t} » · ${surface.preuve}` };
   }
   return null;
 }
@@ -258,6 +281,36 @@ function fsConsentPresent() {
 }
 
 /**
+ * L'écran de consentement MURE-T-IL la page, ou traîne-t-il simplement sur le
+ * côté ? (ajouté le 14/09 pour Beebs — Leboncoin ne l'appelle pas.)
+ *
+ * « Présent » et « bloquant » ne sont pas la même chose, et les confondre
+ * ferait échouer des publications qui marchent. Mesuré le 14/09 sur
+ * beebs.app/fr/listing, consentement purgé, dans un onglet d'ARRIÈRE-PLAN —
+ * c'est-à-dire dans les conditions réelles de la fenêtre de travail de
+ * FillSell : le widget Axeptio reste coincé à `opacity:0`,
+ * `transform: translateX(-200px)`, rect 420 × 472 à x = -180. Il n'entre
+ * jamais : son animation d'apparition ne tourne pas faute de repeint. Le
+ * formulaire de dépôt, lui, est entièrement rendu et lisible derrière.
+ * Le widget n'avale que la bande invisible qu'il recouvre à gauche.
+ *
+ * À l'inverse, le modal Leboncoin est posé d'emblée au CENTRE, en fixed : là,
+ * la page est réellement murée.
+ *
+ * D'où ce test : c'est le CENTRE de la fenêtre qui tranche. S'il appartient à
+ * une surface de consentement, rien ne peut être rempli et l'échec est
+ * légitime ; sinon le travail peut continuer, et transformer ça en échec
+ * serait inventer un blocage — exactement ce qu'on reproche au « brouillon ».
+ */
+function fsConsentBloqueLaPage() {
+  let dessus = null;
+  try { dessus = document.elementFromPoint(Math.round(window.innerWidth / 2), Math.round(window.innerHeight / 2)); }
+  catch { return false; }
+  if (!dessus) return false;
+  return !!fsConsentSurface(dessus);
+}
+
+/**
  * Le relevé des boutons réellement affichés — la mesure qui a permis de
  * trancher le 08/09 ET le 14/09. Elle ne disparaît jamais d'un diagnostic.
  */
@@ -274,6 +327,12 @@ function fsConsentReleveBoutons(max = 15) {
  *
  * @param {object} [opts]
  * @param {number} [opts.attenteMs=8000]  attente de la DISPARITION après le clic.
+ * @param {boolean} [opts.sortieSiNonBloquant=false] rendre la main dès que
+ *        l'écran ne mure plus la page, même s'il traîne encore dans le DOM.
+ *        Défaut false : le chemin Leboncoin garde EXACTEMENT sa sémantique.
+ *        Beebs l'arme, parce que son widget Axeptio ne quitte JAMAIS le DOM,
+ *        même après un refus enregistré (mesuré le 14/09) : sans cette sortie,
+ *        chaque job neuf paierait les 8 s d'attente pour rien.
  * @param {number} [opts.apparitionMs=0]  attente de l'APPARITION avant de conclure
  *        « pas de bandeau ». 0 par défaut : un compte qui a déjà répondu à la
  *        fenêtre ne paie aucune milliseconde et ne voit AUCUN changement de
@@ -285,7 +344,7 @@ function fsConsentReleveBoutons(max = 15) {
  *   restant : il est TOUJOURS là — c'est ce cas, et lui seul, qui doit
  *             remonter un message à l'utilisateur.
  */
-async function fsConsentRefuser({ attenteMs = 8000, apparitionMs = 0 } = {}) {
+async function fsConsentRefuser({ attenteMs = 8000, apparitionMs = 0, sortieSiNonBloquant = false } = {}) {
   let cible = fsConsentTrouverRefus();
   let conteneur = cible ? null : fsConsentConteneurVisible();
 
@@ -333,6 +392,10 @@ async function fsConsentRefuser({ attenteMs = 8000, apparitionMs = 0 } = {}) {
     await new Promise((r) => setTimeout(r, 200));
     if (!fsConsentPresent()) {
       console.log('[consentement] refus enregistré, écran disparu — la page est utilisable');
+      return { present: true, refuse: true, restant: false, libelle, preuve, boutons };
+    }
+    if (sortieSiNonBloquant && !fsConsentBloqueLaPage()) {
+      console.log('[consentement] refus enregistré ; le bandeau traîne encore dans le DOM mais ne mure plus la page');
       return { present: true, refuse: true, restant: false, libelle, preuve, boutons };
     }
   }

@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const BEEBS_BUILD = "2026-09-09-askBackground-defini-ici (la 0.6.22 appelait askBackground sans le définir dans ce fichier — défini seulement dans vinted.js — ReferenceError, canal executeScript « indisponible », pont inline muet, refus « pas de catégorie sans pont » : 0 publication Beebs pour tout le parc depuis le 08/09 23:47 ; désormais défini ici, le refus ne s'applique que si le canal a été RÉELLEMENT tenté, sinon repli clic+panneau, et le message porte canalPontMain) + 2026-09-07-le-vide-dit-sa-cause (needs_user « champs encore vides » : champ par champ, la fiche NE PORTE PAS la donnée — Beebs a raison, à compléter — ou la fiche la porte et elle n'a pas pu être posée — panne de remplissage ; fin de la confusion Short/bonnets vs Chemisette Celio) + 2026-07-26-interstitiel-et-parite (trois causes du « panneau jamais ouvert » traitées ensemble : 1. la modale « Toujours plus sur l'appli » avale le clic d'ouverture — détection structurelle role=dialog/aria-modal/modal + fermeture par bouton NON-store avant toute interaction ; 2. la boucle d'ouverture re-cliquait sans regarder alors que le clic BASCULE — on ne re-clique plus que panneau constaté fermé ; 3. panelOf repli sur l'unique panneau visible du document quand la lecture scopée ne voit rien — c'était le cas capture du 26/07 : panneau OUVERT avec 5 options, lecture vide ; diagnostic DOM complet dans l'erreur)";
+const BEEBS_BUILD = "2026-09-14-consentement-axeptio-vu-enfin (0.6.35 : le widget de cookies AXEPTIO est enfin detecte — #axeptio_btn_dismiss / « Tout refuser », dans .axeptio_widget ; attente d'apparition 4 s uniquement si $completed est faux, refus clique meme hors ecran, et un widget qui traine sans murer la page ne fait JAMAIS echouer le job) — precedent : 2026-09-09-askBackground-defini-ici (la 0.6.22 appelait askBackground sans le définir dans ce fichier — défini seulement dans vinted.js — ReferenceError, canal executeScript « indisponible », pont inline muet, refus « pas de catégorie sans ";
 console.log(`[beebs.js] build ${BEEBS_BUILD}`);
 
 // Content script Beebs — remplit le formulaire de dépôt d'annonce.
@@ -496,17 +496,75 @@ async function fillListingForm(job) {
   titreArticleCourant = String(job?.title ?? "");
   console.log("[beebs] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
-  // ── Bandeau de consentement, AVANT tout le reste (2026-09-08) ────────────
-  // Même garde que sur Leboncoin, pour la même raison : un compte neuf voit le
-  // bandeau, et tant qu'il est là aucune des gardes suivantes ne peut lire ce
-  // qu'elle cherche. On REFUSE (jamais accepter) ; si le refus ne se trouve
-  // pas, on ne clique rien et on le dit.
-  const consentB = await fsConsentRefuser();
-  if (consentB.restant) {
+  // ── Le bandeau de consentement, AVANT tout le reste ──────────────────────
+  // Posé le 08/09, RENDU OPÉRANT le 14/09 : jusque-là l'appel ne trouvait rien,
+  // pour la même cause que sur Leboncoin (détection partant du conteneur).
+  // Beebs n'est PAS Didomi mais AXEPTIO — relevé en direct le 14/09 sur
+  // beebs.app/fr/listing, consentement purgé : le refus global porte l'id
+  // `#axeptio_btn_dismiss` et le libellé « Tout refuser », dans `.axeptio_widget`.
+  // ⛔ On REFUSE, jamais on n'accepte (« Tout accepter » et « Choisir » sont à
+  // côté, aucune branche ne peut les atteindre). Refus non reconnu = on ne
+  // clique RIEN et on le dit, sans inventer de motif.
+  //
+  // DEUX CHOSES MESURÉES CE JOUR-LÀ COMMANDENT LA FORME DE CET APPEL :
+  //
+  // 1. L'ATTENTE D'APPARITION. Le widget Axeptio ne se pose qu'entre 1,9 s et
+  //    3,0 s après le chargement — bien après que le formulaire de dépôt soit
+  //    rendu. Un seul regard à l'entrée le raterait systématiquement. On attend
+  //    donc son apparition, mais SEULEMENT pour qui n'a jamais tranché.
+  //    ⛔ Et « n'a jamais tranché » NE SE LIT PAS dans la présence du cookie
+  //    `axeptio_cookies` : Axeptio le pose AUSSI à l'arrivée d'un visiteur qui
+  //    n'a rien choisi (mesuré : purge → rechargement → le cookie est là, et le
+  //    widget s'affiche quand même). Le marqueur de décision, c'est le champ
+  //    `$$completed` à l'intérieur : false tant que rien n'est tranché, true
+  //    après le choix. Un compte déjà consenti sort donc en present:false, sans
+  //    une milliseconde de plus — le chemin qui marche ne bouge pas.
+  //
+  // 2. PRÉSENT N'EST PAS BLOQUANT. Dans la fenêtre de travail de FillSell, qui
+  //    est volontairement INVISIBLE, l'animation d'entrée du widget ne tourne
+  //    pas : il reste coincé à opacity:0, translateX(-200px), rect 420 × 472 à
+  //    x = -180. Il n'avale qu'une bande invisible sur le bord gauche ; le
+  //    formulaire de dépôt, lui, est entièrement rendu et remplissable. Faire
+  //    échouer le job là-dessus casserait des publications qui aboutissent.
+  //    On ne déclare donc un échec QUE si l'écran mure réellement la page
+  //    (fsConsentBloqueLaPage : le centre de la fenêtre lui appartient) — ce
+  //    qui est le cas du modal Leboncoin, et pas celui du widget Beebs.
+  const beebsDecisionPrise = (() => {
+    const m = document.cookie.match(/(?:^|;\s*)axeptio_cookies=([^;]*)/);
+    if (!m) return false;
+    try { return JSON.parse(decodeURIComponent(m[1]))?.$$completed === true; }
+    catch { return false; } // cookie illisible : on traite comme « pas tranché »
+  })();
+  const consentB = await fsConsentRefuser({
+    apparitionMs: beebsDecisionPrise ? 0 : 4000,
+    sortieSiNonBloquant: true,
+  });
+  if (consentB.present) {
+    console.log(
+      `[beebs] écran de consentement : ${consentB.refuse ? `refusé via « ${consentB.libelle} »` : "refus non reconnu, rien cliqué"}` +
+      `${consentB.preuve ? ` (${consentB.preuve})` : ""}${consentB.motif ? ` — ${consentB.motif}` : ""}` +
+      ` — boutons visibles: ${JSON.stringify(consentB.boutons ?? [])}`
+    );
+  }
+  if (consentB.restant && fsConsentBloqueLaPage()) {
+    // Le mur tient et il couvre la page : aucune tentative consommée
+    // (attenteUtilisateur → needs_user PERSISTÉ, Relancer depuis le Stock),
+    // et un message qui dit ce qui se passe, sans motif inventé.
     return {
       success: false,
       needsUser: true,
-      error: fsConsentMessage("Beebs", "beebs.app"),
+      attenteUtilisateur: true,
+      attenteMotif: "beebs_consentement",
+      error: consentB.refuse
+        ? fsConsentMessage("Beebs", "beebs.app")
+        : "Beebs affiche sa fenêtre « cookies » par-dessus la page de vente, et FillSell n'a pas reconnu " +
+          "son bouton de refus : il n'a rien cliqué, pour ne pas accepter à ta place. Rien n'a été publié. " +
+          "Ouvre beebs.app dans Chrome, réponds à cette fenêtre en choisissant « Tout refuser », " +
+          "puis relance la publication depuis la fiche de l'article.",
+      diagnostic:
+        `écran de consentement non levé — ${consentB.motif ?? "toujours affiché après le refus"}` +
+        `${consentB.preuve ? ` [détecté par ${consentB.preuve}]` : ""}` +
+        ` — boutons visibles: ${JSON.stringify(consentB.boutons ?? fsConsentReleveBoutons())}`,
     };
   }
 
