@@ -1375,9 +1375,12 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 //   · VEILLEUR DU RUN FIGE — la ronde s'accroche a l'alarme de poll (2 min),
 //     seul minuteur qui survit a la mort du service worker. Ne regarde que les
 //     runs 'running' ; ne reprend que sur curseur immobile + 12 min de silence
-//     (deux mesures) + compare-and-swap gagne en base sur (id, status,
-//     updated_at) + plafond de 3 reprises. La reprise ADOPTE la ligne, donc
-//     repart de page_suivante et ne marque aucune disparition ;
+//     EN BASE + 4 min d'observation + compare-and-swap gagne en base sur
+//     (id, status, updated_at) + plafond de 3 reprises. La reprise ADOPTE la
+//     ligne, donc repart de page_suivante et ne marque aucune disparition.
+//     Un marqueur pose AVANT le verrou de flux couvre aussi le run tue au
+//     DEMARRAGE (6 des 12 expirations de 30 j : items_vus=0, page_suivante=1),
+//     par une requete de decouverte qui ne part que dans ce cas-la ;
 //   · PASSAGE DE PAGE TRACE AVANT D'ETRE TENTE — une ligne usage_logs
 //     ('sync_page') par PAGE, jamais attendue, que personne ne lit ;
 //   · EVEIL PLUS RENDU PENDANT UNE SYNC — un run en cours compte comme du
@@ -1386,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-14T15:22:40Z'; // recale 7a58a7e (veilleur du run fige + trace de page + eveil) - UTC VRAI lu dans %cI, PAS ce que rend un TZ=UTC git log sur ce depot ; 0.6.37, jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
+export const EXTENSION_LAST_COMMIT = '2026-09-14T15:26:38Z'; // recale 7e69290 (veilleur du run fige, decouverte comprise + trace de page + eveil) - UTC VRAI lu dans %cI, PAS ce que rend un TZ=UTC git log sur ce depot ; 0.6.37, jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
