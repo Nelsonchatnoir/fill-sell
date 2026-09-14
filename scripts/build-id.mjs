@@ -1332,7 +1332,25 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // lecteur d'erreurs debarrasse de « Retour » et de grecaptcha-error, et resume
 // de la sonde reseau en last_diagnostic sur un depot non confirme.
 // MIN_BUILD INCHANGE : la 0.6.34 n'est pas encore acceptee.
-export const EXTENSION_LAST_COMMIT = '2026-09-13T21:06:19Z'; // recale 52b5c66 (canal coupe : rejeu sur navigation neuve, LECTURES seules) - 0.6.34 REPACKAGEE 2e fois, toujours jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
+// 2026-09-14T06:54:02Z (08h54 Paris, commit 447be05) : FIABILISATION DE LA SYNC
+// DRESSING, toujours DANS la 0.6.34 (le zip c56fad5 n'est jamais parti au CWS,
+// la version ne bouge donc pas — pas de 0.6.35).
+//   · un echec TECHNIQUE (timeout d'ouverture de l'onglet, canal coupe, content
+//     script muet, reseau, expiration du chien de garde) ne meurt plus : meme
+//     run re-ouvert par alarme a 3/7/15 min, plafond DUR de 3, compteur lu au
+//     maximum de chrome.storage et du marqueur [reprise-auto] ecrit dans
+//     vinted_sync_runs.erreur ;
+//   · un run repris repart de son page_suivante, jamais de la page 1 ;
+//   · l'onglet de travail est pret quand le CONTENT SCRIPT repond (VINTED_PING),
+//     pas quand la page dit « complete » — c'etait la cause n°1 (6 runs/48 h) ;
+//     reinjection UNE fois, jamais deux (vinted.js pose __fillsellVintedCharge
+//     en premiere instruction : une seconde execution redeclarerait ses const).
+// INTOUCHES, verifies : [cause403] session_absente et [boutique_a_confirmer]
+// echouent toujours IMMEDIATEMENT, le marquage des disparitions reste saute sur
+// tout run repris, le chien de garde des 32 min tue toujours les runs figes, et
+// la cadence cron de 20 h n'est pas consommee (reprise = PATCH, jamais INSERT).
+// MIN_BUILD INCHANGE : la 0.6.34 n'est toujours pas acceptee.
+export const EXTENSION_LAST_COMMIT = '2026-09-14T06:54:02Z'; // recale 447be05 (reprise auto des echecs techniques de sync + onglet pret au PING) - 0.6.34 REPACKAGEE 3e fois, toujours jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
