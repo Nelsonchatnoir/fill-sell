@@ -1350,7 +1350,26 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // tout run repris, le chien de garde des 32 min tue toujours les runs figes, et
 // la cadence cron de 20 h n'est pas consommee (reprise = PATCH, jamais INSERT).
 // MIN_BUILD INCHANGE : la 0.6.34 n'est toujours pas acceptee.
-export const EXTENSION_LAST_COMMIT = '2026-09-14T08:29:35Z'; // recale 28c3f21 (Beebs : widget Axeptio detecte et refuse, present != bloquant) - UTC VRAI lu dans %cI, PAS ce que rend un TZ=UTC git log sur ce depot ; toujours la 0.6.35, jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
+// 0.6.36 (a8b7af9) - RETRAIT LEBONCOIN, deux points, chemin de suppression seul.
+// Mesure : 43 retraits LBC sur 30 j, 40 aboutis, 3 non aboutis dont 1 verdict
+// correct -> 2 vrais rates, tous chez ornellaracano. Pas de refonte.
+//   · un CHALLENGE anti-robot ne consomme PLUS de tentative (il en avait brule
+//     2 sur 5 du job b01b37d0 en 16 min, sans qu'un geste soit tente) :
+//     marquerBlocageAntiRobot, reprise toutes les 20 min, BORNEE a 6 h par
+//     episode, puis retour au circuit ordinaire qui compte et finit par un
+//     failed assume ; le detecteur d'interstitiel est hisse au module et
+//     interroge AVANT de conclure « controle Supprimer introuvable » ;
+//     lireEtatAnnonce rend `raison`, donc un motif NOMME au lieu des trois
+//     causes recitees cote a cote ;
+//   · result.diagnostic du chemin delete est persiste dans
+//     platform_fields.last_diagnostic (chaine brute, jamais lue par
+//     causeHumaineConnue) : le releve des actions rendues survit a l'echec ;
+//   · le mur de cookies est refuse par fsConsentRefuser (detection 0.6.35) et
+//     non plus par dismissDidomi, aveugle depuis la 0.6.22.
+// INTOUCHES : retraits Beebs/eBay/Vinted, publication LBC, correctif de
+// consentement de la 0.6.35 en review, regle « active = preuve positive ».
+// MIN_BUILD INCHANGE : la 0.6.36 n'est meme pas encore televersee.
+export const EXTENSION_LAST_COMMIT = '2026-09-14T10:07:07Z'; // recale a8b7af9 (retrait LBC : challenge gratuit et borne, releve persiste) - UTC VRAI lu dans %cI, PAS ce que rend un TZ=UTC git log sur ce depot ; 0.6.36, jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
