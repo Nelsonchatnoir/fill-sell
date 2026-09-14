@@ -152,7 +152,15 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // le CWS le 10/09 (handler_build « 2026-09-10T09:41:28Z+3696da6 · v0.6.25 » sur
 // les jobs de 4 comptes le soir même). La 0.6.26 la remplace : re-packager la
 // 0.6.25 se ferait rejeter.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34'];
+// 0.6.34 ajoutée le 14/09 au bump 0.6.35 : TÉLÉVERSÉE au Chrome Web Store par
+// Nico le 14/09 (déclaré par lui en séance — « j'ai téléversé la 6.34 »). Le
+// numéro est mort : le Web Store refuse tout paquet inférieur ou égal au
+// dernier reçu, un second 0.6.34 serait de toute façon rejeté et, pire,
+// indiscernable du premier en base (doctrine 0.6.6). Le correctif du mur de
+// consentement Leboncoin part donc en 0.6.35 et PAS dans un re-paquet 0.6.34.
+// ⚠️ Téléversée ≠ acceptée : EXTENSION_MIN_BUILD reste à 2026-09-12T08:29:11Z
+// (0.6.32) tant que l'examen n'a pas rendu son verdict.
 // 0.6.33 ajoutée le 13/09 au bump 0.6.34 : zip fillsell-extension-0.6.33-dbe8d1b-cws.zip
 // (BUILD_ID 2026-09-13T10:16:27Z+dbe8d1b) TÉLÉVERSÉ et PUBLIÉ au Chrome Web
 // Store le 13/09 — relu en base : 15 comptes en 0.6.33 (extension_version) dans

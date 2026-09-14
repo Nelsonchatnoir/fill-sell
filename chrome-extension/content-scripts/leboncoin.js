@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti, réponse attendue ≤ 60 s ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin ; /options = succès, page vide attendue 20 s) — précédent : 2026-09-09-suppression-attend-le-titre (page d'annonce : le h1 est attendu jusqu'à 15 s au lieu d'être lu une fois ; l'i";
+const LEBONCOIN_BUILD = "2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -701,6 +701,32 @@ function estPageBotShieldLbc() {
 // { success:false, needsUser:true } : le background remet le job en PENDING
 // avec un message explicite (jamais failed) — le brouillon LBC persiste
 // (restauration automatique vérifiée), rien n'est perdu.
+// ── L'ISSUE D'UN ÉCRAN DE CONSENTEMENT NON LEVÉ (2026-09-14) ────────────────
+// Un seul endroit produit ce résultat, pour que les trois points d'appel
+// (entrée du dépôt, page non reconnue, page prise pour un brouillon) disent
+// exactement la même chose. Trois exigences y sont tenues ensemble :
+//   • le message ne parle pas de brouillon, et dit qu'il n'y en a pas ;
+//   • attenteUtilisateur ⇒ needs_user PERSISTÉ, AUCUNE tentative consommée
+//     (marquerAttenteUtilisateur, background.js) — la fenêtre de cookies n'est
+//     pas la faute de l'utilisateur et ne se lève pas avec le temps ;
+//   • le relevé des boutons réellement affichés reste dans le diagnostic :
+//     c'est cette mesure, et elle seule, qui a tranché le 08/09 et le 14/09.
+function lbcResultatConsentement(consent, trace) {
+  const boutons = Array.isArray(consent.boutons) ? consent.boutons : fsConsentReleveBoutons();
+  return {
+    success: false,
+    needsUser: true,
+    attenteUtilisateur: true,
+    attenteMotif: "lbc_consentement",
+    error: fsConsentMessage("Leboncoin", "leboncoin.fr"),
+    diagnostic:
+      `écran de consentement non levé — ${consent.motif ?? "toujours affiché après le refus"}` +
+      `${consent.preuve ? ` [détecté par ${consent.preuve}]` : ""}` +
+      ` — boutons visibles: ${JSON.stringify(boutons)}`,
+    trace,
+  };
+}
+
 async function fillListingForm(job) {
   console.log("[leboncoin] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
@@ -736,16 +762,33 @@ async function fillListingForm(job) {
   // ⛔ On REFUSE, on n'accepte jamais (décision Nico) : aucune donnée ne part
   // chez les partenaires. Et si le refus ne se trouve pas, on ne clique RIEN
   // et on le dit — sans jamais prononcer le mot « brouillon ».
-  const consent = await fsConsentRefuser();
-  if (consent.present) t(`bandeau de consentement : ${consent.refuse ? "refusé" : "non refusé"}${consent.motif ? ` (${consent.motif})` : ""}`);
+  // ⛔ 14/09 : ce garde-fou existait depuis la 0.6.22 et NE VOYAIT RIEN. Sa
+  // détection partait du conteneur (#didomi-host & co) ; or Leboncoin rend son
+  // PROPRE modal React et laisse #didomi-host vide à 0 × 0 (relevé live, cf.
+  // en-tête de consentement.js). Résultat : djibril.ziate06, inscrit la veille,
+  // a reçu DEUX fois « supprime ton brouillon » pour une fenêtre de cookies.
+  // La détection part désormais du CONTRÔLE DE REFUS. Deux réglages ici :
+  //   • apparitionMs : on laisse au CMP le temps de se poser, mais SEULEMENT
+  //     si la page n'est pas déjà le formulaire attendu — un compte qui a
+  //     répondu il y a des semaines ne paie pas une milliseconde de plus.
+  //   • le résultat bloquant part en attenteUtilisateur : needs_user PERSISTÉ,
+  //     AUCUNE tentative consommée (djibril était à 2/5 et 3/5 pour un mur qui
+  //     n'est pas de son fait), Relancer depuis le Stock une fois la fenêtre
+  //     traitée.
+  // Qui paie l'attente d'apparition ? PERSONNE, sauf celui qui n'a jamais
+  // répondu. Deux sorties gratuites, mesurées le 14/09 :
+  //   • la page de dépôt est déjà montée → il n'y a pas de mur devant ;
+  //   • euconsent-v2 est posé → cet utilisateur a DÉJÀ tranché (le cookie
+  //     n'apparaît qu'après un choix : après purge et rechargement, seul un
+  //     didomi_token nu revient ; après le refus, les deux sont là). Un compte
+  //     ancien ne perd donc pas une milliseconde, quel que soit l'état de la
+  //     page — c'est la transparence exigée pour le chemin qui marche.
+  const pageDejaPrete = !!document.querySelector('input[name="subject"], textarea#body, #body, #price_cents');
+  const decisionDejaPrise = /(^|;\s*)euconsent-v2=/.test(document.cookie);
+  const consent = await fsConsentRefuser({ apparitionMs: (pageDejaPrete || decisionDejaPrise) ? 0 : 3000 });
+  if (consent.present) t(`écran de consentement : ${consent.refuse ? `refusé via « ${consent.libelle} »` : "non refusé"}${consent.motif ? ` (${consent.motif})` : ""}`);
   if (consent.restant) {
-    return {
-      success: false,
-      needsUser: true,
-      error: fsConsentMessage("Leboncoin", "leboncoin.fr"),
-      diagnostic: `consentement non levé — ${consent.motif ?? "bandeau toujours affiché"}`,
-      trace,
-    };
+    return lbcResultatConsentement(consent, trace);
   }
 
   // Challenge anti-bot testé AVANT le test de connexion (2026-07-30) : une
@@ -855,6 +898,28 @@ async function fillListingForm(job) {
   // morte, le job ATTEND sans consommer de tentative) ; toute autre page
   // inconnue = needsUser borné, avec les boutons relevés, sans jamais
   // prononcer « brouillon » (StockTab afficherait « Ouvrir le brouillon »).
+  if (entryState === null) {
+    // ── LE CONSENTEMENT D'ABORD, ENCORE (2026-09-14) ────────────────────────
+    // Deuxième regard, ici et pas seulement à l'entrée : le CMP est un script
+    // tiers, il peut se poser APRÈS notre premier passage, et c'est justement
+    // sa fenêtre qui empêche le wizard de se monter — donc qui nous amène ici.
+    // Sans ce regard, l'écran de cookies ressortait en « page non reconnue »,
+    // c'est-à-dire encore un message qui envoie l'utilisateur chercher ce qui
+    // n'existe pas.
+    const consentTardif = await fsConsentRefuser({ apparitionMs: 0 });
+    if (consentTardif.present) {
+      t(`écran de consentement vu à l'entrée du wizard : ${consentTardif.refuse ? `refusé via « ${consentTardif.libelle} »` : "non refusé"}`);
+      if (consentTardif.restant) return lbcResultatConsentement(consentTardif, trace);
+      // Refus passé : le wizard peut enfin se monter, on lui laisse sa chance
+      // plutôt que de rendre un échec sur une page qui vient de se débloquer.
+      entryState = await waitFor(() => {
+        if (draftMarker()) return "draft";
+        if (document.querySelector('input[name="subject"]')) return "step1";
+        return null;
+      }, 8000);
+      t(`après refus du consentement, état d'entrée : ${entryState ?? "toujours inconnu"}`);
+    }
+  }
   if (entryState === null) {
     const boutons = [...document.querySelectorAll("button, a[role='button']")]
       .filter((b) => b.offsetParent !== null)
@@ -1015,6 +1080,27 @@ async function fillListingForm(job) {
         .filter((b) => b.offsetParent !== null)
         .map((b) => (b.textContent ?? "").replace(/\s+/g, " ").trim())
         .filter(Boolean).slice(0, 15);
+      // ── DERNIER VERROU AVANT DE PRONONCER LE MOT « BROUILLON » (2026-09-14)
+      // C'est PAR ICI que sont sortis les six messages de samira.460 (08/09) et
+      // les deux de djibril.ziate06 (14/09), avec pour tout contenu de page les
+      // 7 paires Refuser/Accepter de l'écran de consentement. Aucune ligne de
+      // ce fichier ne doit plus pouvoir envoyer quelqu'un supprimer un
+      // brouillon sans avoir d'abord écarté cette hypothèse-là.
+      const consentIci = await fsConsentRefuser({ apparitionMs: 0 });
+      if (consentIci.present) {
+        t(`écran de consentement pris pour un brouillon — ${consentIci.refuse ? `refusé via « ${consentIci.libelle} »` : "refus introuvable"}`);
+        if (consentIci.restant) return lbcResultatConsentement(consentIci, trace);
+        // Refusé à l'instant : rien n'est perdu, le dépôt repart au prochain
+        // passage sur un wizard enfin dégagé (pending court, pas un échec sec).
+        return {
+          success: false,
+          draftBlocked: true,
+          needsUser: true,
+          error: "Fenêtre « cookies » de Leboncoin fermée — nouveau dépôt dans quelques instants, rien à faire.",
+          diagnostic: `écran de consentement refusé sur place (${consentIci.preuve ?? "sans preuve"}) — boutons visibles: ${JSON.stringify(boutonsVisibles)}`,
+          trace,
+        };
+      }
       return {
         success: false,
         needsUser: true,
@@ -1023,6 +1109,7 @@ async function fillListingForm(job) {
           "Un brouillon Leboncoin non terminé bloque le dépôt : supprime-le sur " +
           "leboncoin.fr/deposer-une-annonce, puis relance la publication.",
         diagnostic: `brouillon serveur non retirable — boutons visibles: ${JSON.stringify(boutonsVisibles)}`,
+        trace,
       };
       }
     }
