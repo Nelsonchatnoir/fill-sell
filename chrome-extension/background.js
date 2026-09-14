@@ -17,7 +17,13 @@ importScripts("config.js");
 // pas de distinguer deux versions du même jour). À METTRE À JOUR à chaque
 // modification de ce fichier.
 const FILLSELL_BUILD =
-  "2026-09-05-lbc-attente-utilisateur-et-adresse-fraiche (Leboncoin, 2 points : [1] un résultat attenteUtilisateur du handler — nom et prénom exigés par la Transaction sécurisée, escrow_* vides sur l'aperçu — passe le job en needs_user PERSISTÉ, sans reprise espacée ni failed, Relancer depuis le Stock ; [2] l'adresse de remise est relue dans profiles.platform_settings.leboncoin juste avant FILL_LISTING — platform_fields.adresse n'est qu'une copie prise à la création du job, une correction dans les Réglages ne débloquait pas les jobs en attente) + 2026-09-01-canal-coupe-ebay (5 lots INDÉPENDANTS sur le décrochage « back/forward cache » d'eBay : [1] le relevé de fenêtre porte enfin l'URL de l'onglet et l'étape de remplissage en cours — observation pure ; [2] les trois murs eBay connus (signin, /splashui/, /fpa/) sont nommés à la coupure du canal et partent en needs_user, jamais retentés ; [3] content-scripts/ebay.js déclaré aussi sur ebay.com ; [4] le canal coupé interroge la sonde AVANT de conclure — une publication partie mais d'issue inconnue ne se relance plus (garde anti-doublon) ; [5] le PRIX repart SYSTEMATIQUEMENT par PUT delta du brouillon apres la pose DOM (mesure : setNativeValue+blur n'ecrit rien cote serveur), le FORMAT seulement si sa bascule DOM n'a pas pris)";
+  "2026-09-14-retrait-lbc-challenge-et-releve (suppression Leboncoin, 2 points : [1] un CHALLENGE anti-robot ne consomme " +
+  "PLUS de tentative — reprise gratuite toutes les 20 min, bornée à 6 h par ÉPISODE (marquerBlocageAntiRobot), au-delà " +
+  "retour au circuit ordinaire qui compte et finit par un failed assumé ; et le motif de l'indécision de lecture est " +
+  "NOMMÉ (lireEtatAnnonce rend `raison` : bot_shield / http_xxx / lecture_impossible), fini « protection anti-bot, " +
+  "onglet indisponible ou page inattendue » ; [2] result.diagnostic du chemin delete est persisté dans " +
+  "platform_fields.last_diagnostic comme le fait déjà la publication — le relevé des actions rendues survit à l'échec) " +
+  "— précédent : 2026-09-05-lbc-attente-utilisateur-et-adresse-fraiche (Leboncoin, 2 points : [1] un résultat attenteUtilisateur du handler — nom et prénom exigés par la Transaction sécurisée, escrow_* vides sur l'aperçu — passe le job en needs_user PERSISTÉ, sans reprise espacée ni failed, Relancer depuis le Stock ; [2] l'adresse de remise est relue dans profiles.platform_settings.leboncoin juste avant FILL_LISTING — platform_fields.adresse n'est qu'une copie prise à la création du job, une correction dans les Réglages ne débloquait pas les jobs en attente) + 2026-09-01-canal-coupe-ebay (5 lots INDÉPENDANTS sur le décrochage « back/forward cache » d'eBay : [1] le relevé de fenêtre porte enfin l'URL de l'onglet et l'étape de remplissage en cours — observation pure ; [2] les trois murs eBay connus (signin, /splashui/, /fpa/) sont nommés à la coupure du canal et partent en needs_user, jamais retentés ; [3] content-scripts/ebay.js déclaré aussi sur ebay.com ; [4] le canal coupé interroge la sonde AVANT de conclure — une publication partie mais d'issue inconnue ne se relance plus (garde anti-doublon) ; [5] le PRIX repart SYSTEMATIQUEMENT par PUT delta du brouillon apres la pose DOM (mesure : setNativeValue+blur n'ecrit rien cote serveur), le FORMAT seulement si sa bascule DOM n'a pas pris)";
 
 // ── BUILD_ID AUTOMATIQUE (2026-07-18) ─────────────────────────────────────────
 // FILLSELL_BUILD ci-dessus est une DESCRIPTION codée en dur que personne ne pense
@@ -4036,6 +4042,91 @@ async function marquerAttenteSession(accessToken, job, errorMsg) {
       `dès que tu seras reconnecté(e) (vérification toutes les heures). Aucune tentative consommée.`,
     platform_fields: pf,
   });
+}
+
+// ── BLOCAGE ANTI-ROBOT : la plateforme nous barre, ce n'est pas un essai raté ──
+// (2026-09-14) Un challenge DataDome partait jusqu'ici dans rearmBounded, qui
+// CONSOMME une tentative : le job b01b37d0 en a brûlé 2 sur 5 en 16 minutes
+// pour deux écrans de vérification, sans qu'un seul geste ait été tenté sur
+// l'annonce. Or un challenge ne dit rien du job — il dit que Leboncoin ne nous
+// a pas laissés lire la page. Le compteur ne doit pas bouger.
+//
+// Même forme que marquerAttenteSession (pending, tentative INTACTE, échéance) —
+// mais avec sa BORNE, parce qu'une reprise gratuite est une reprise infinie si
+// on n'en pose pas une, et qu'un retrait qui traîne, c'est une annonce vendue
+// qui reste achetable :
+//   · cadence : une reprise toutes les 20 min. En dessous on ne fait que
+//     re-solliciter le bouclier qui vient de nous refuser — et le service
+//     worker envoyait déjà trop de requêtes (mesure du 08/09) ;
+//   · plafond : 6 h depuis le PREMIER challenge observé (≈ 18 reprises). Même
+//     fraîcheur que causeHumaineConnue, et surtout : au-delà, le silence coûte
+//     plus cher que l'aveu. Le blocage est alors REMIS dans le circuit ordinaire
+//     (rearmBounded), qui consomme ses tentatives et finit par un failed assumé
+//     disant à l'utilisateur de retirer l'annonce à la main.
+// Aucun faux succès nulle part : le job reste en échec tant qu'il n'a pas
+// abouti, et rien n'est jamais marqué « retiré » sur cette voie.
+const BLOCAGE_ANTIROBOT_MIN = 20;
+const BLOCAGE_ANTIROBOT_PLAFOND_MS = 6 * 60 * 60 * 1000;
+async function marquerBlocageAntiRobot(accessToken, job, errorMsg) {
+  const actuel = await jobStatusNow(accessToken, job.id);
+  if (actuel && actuel !== "processing" && actuel !== "pending") {
+    console.warn(
+      `[background] Job ${job.id} : statut devenu "${actuel}" pendant le traitement — ` +
+      `blocage anti-robot ABANDONNÉ (on ne réécrit pas par-dessus). Cause : ${errorMsg}`
+    );
+    return { borne: false };
+  }
+  // Un ÉPISODE, pas un cumul à vie : si le dernier challenge remonte à plus
+  // d'un plafond, celui-ci en ouvre un nouveau. Sans ça, un blocage d'il y a
+  // trois semaines ferait démarrer le suivant déjà borné, sans une seule
+  // reprise gratuite.
+  const brut = job.platform_fields?.blocage_antirobot;
+  const derniereVue = Date.parse(String(brut?.derniere ?? ""));
+  const memeEpisode = Number.isFinite(derniereVue) && Date.now() - derniereVue <= BLOCAGE_ANTIROBOT_PLAFOND_MS;
+  const prec = memeEpisode ? brut : null;
+  const depuis = typeof prec?.depuis === "string" && Number.isFinite(Date.parse(prec.depuis))
+    ? prec.depuis
+    : new Date().toISOString();
+
+  // Plafond atteint : on rend la main au circuit ordinaire, qui reprendra à
+  // consommer des tentatives et finira par le dire franchement.
+  if (Date.now() - Date.parse(depuis) > BLOCAGE_ANTIROBOT_PLAFOND_MS) {
+    console.warn(
+      `[background] Job ${job.id} : blocage anti-robot ${job.platform} depuis ${depuis} — ` +
+      `plafond de ${BLOCAGE_ANTIROBOT_PLAFOND_MS / 3600000} h atteint, retour aux tentatives comptées`
+    );
+    return { borne: true };
+  }
+
+  stampEtatFenetre(job, "at_end", await releverEtatFenetreTravail(job.platform));
+  const maintenant = new Date().toISOString();
+  const pf = { ...(job.platform_fields ?? {}) };
+  pf.blocage_antirobot = {
+    platform: job.platform,
+    depuis,
+    observations: (Number(prec?.observations) || 0) + 1,
+    derniere: maintenant,
+    motif: String(errorMsg ?? "").slice(0, 300),
+  };
+  pf.next_action_after = new Date(Date.now() + BLOCAGE_ANTIROBOT_MIN * 60_000).toISOString();
+  const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
+  const quoi = job.action === "delete" ? "Le retrait de l'annonce"
+    : job.action === "republish" ? "La republication" : "La publication";
+  console.warn(
+    `[background] Job ${job.id} : vérification anti-robot ${job.platform} ` +
+    `(observation ${pf.blocage_antirobot.observations} depuis ${depuis}) → reprise dans ` +
+    `${BLOCAGE_ANTIROBOT_MIN} min, AUCUNE tentative consommée — ${errorMsg}`
+  );
+  // < 300 caractères : au-delà, l'app (humanizeJobError) remplace le message
+  // par son générique et le motif se perd. Ton d'équipe, aucun reproche : ce
+  // blocage ne vient pas de l'utilisateur.
+  await updateJobStatus(accessToken, job.id, "pending", {
+    error:
+      `${label} affiche une vérification anti-robot : la page n'a pas pu être lue et aucun geste n'a été fait. ` +
+      `${quoi} repart tout seul, nouvel essai dans ~${BLOCAGE_ANTIROBOT_MIN} min, sans consommer de tentative.`,
+    platform_fields: pf,
+  });
+  return { borne: false };
 }
 
 // ── Trace « taille eBay » → usage_logs (2026-09-04, job 58be2b6d) ────────────
@@ -8262,6 +8353,7 @@ async function checkListingState(url, platform) {
   }
 
   let vuActive = false;
+  const raisons = [];
   for (let tir = 1; tir <= LBC_CHECK_TIRS; tir++) {
     if (tir > 1) await sleep(randInt(700, 1600));
     const res = await lireEtatAnnonce(url, platform);
@@ -8271,13 +8363,28 @@ async function checkListingState(url, platform) {
       return res;
     }
     if (res.state === "active") vuActive = true;
-    console.log(`[background] leboncoin : tir ${tir}/${LBC_CHECK_TIRS} → ${res.state}`);
+    if (res.raison) raisons.push(res.raison);
+    console.log(`[background] leboncoin : tir ${tir}/${LBC_CHECK_TIRS} → ${res.state}${res.raison ? ` (${res.raison})` : ""}`);
   }
 
   // Aucun 410/404 en LBC_CHECK_TIRS lectures. Un "active" vient d'une preuve
   // POSITIVE (list_id présent) : on le retient. Si aucun tir n'a rien pu lire,
   // ça reste "unknown" — surtout pas "active" par défaut.
-  return { state: vuActive ? "active" : "unknown", price: null };
+  // Le motif retenu : un bot-shield d'abord (il explique tous les autres tirs),
+  // sinon le dernier rencontré. Aucun motif quand la lecture a abouti.
+  const raison = raisons.find((r) => String(r).startsWith("bot_shield")) ?? raisons[raisons.length - 1] ?? null;
+  return { state: vuActive ? "active" : "unknown", price: null, raison: vuActive ? null : raison };
+}
+
+// Le motif de l'indécision, en français, pour le seul message utilisateur qui
+// en a besoin (suppression non aboutie). Un motif NOMMÉ, jamais trois causes
+// possibles énumérées côte à côte : c'est exactement ce qu'on ne veut plus.
+function causeLectureImpossible(raison) {
+  const r = String(raison ?? "");
+  if (r.startsWith("bot_shield")) return "Leboncoin a bloqué notre lecture par une vérification anti-robot";
+  if (r.startsWith("http_")) return `la plateforme a répondu ${r.replace("http_", "HTTP ")}`;
+  if (r === "lecture_impossible") return "la page de l'annonce n'a pas pu être chargée";
+  return "la page a été lue mais l'annonce n'y a pas été reconnue";
 }
 
 // Une lecture, une conclusion (l'ancien checkListingState, inchangé).
@@ -8286,10 +8393,19 @@ async function lireEtatAnnonce(url, platform) {
     const res = await fetchListingHtml(url, platform);
     // 404/410 : l'annonce n'est plus là. Ce n'est PAS une vente — c'était la
     // guillotine qui fabriquait les ventes fantômes.
-    if (res.status === 404 || res.status === 410) return { state: "unavailable", price: null };
+    if (res.status === 404 || res.status === 410) return { state: "unavailable", price: null, raison: null };
     if (!res.ok) {
       console.warn(`[background] ${platform} : HTTP ${res.status} sur la page de l'annonce (bot-shield ?) — aucune conclusion`);
-      return { state: "unknown", price: null };
+      // ── La RAISON de l'indécision, pas seulement l'indécision (2026-09-14) ──
+      // Elle était déjà connue ICI — trois branches, trois console.warn — et
+      // écrasée en un seul "unknown" muet dès le retour. Le message utilisateur
+      // ré-énumérait alors les trois causes possibles (« protection anti-bot,
+      // onglet indisponible ou page inattendue ») sans jamais en nommer une,
+      // en ayant la réponse dans les logs. On la remonte, telle quelle : le
+      // verdict d'ÉTAT ne change pas d'un iota (règle intacte : "active" exige
+      // la preuve positive list_id, sinon "unknown", jamais "active" par
+      // défaut) — seul le MOTIF de l'indécision cesse d'être perdu.
+      return { state: "unknown", price: null, raison: res.status === 403 ? "bot_shield_403" : `http_${res.status}` };
     }
     const { html, finalUrl } = res;
     // ⚠️ Une page de bot-shield peut arriver en HTTP 200 (DataDome sert parfois
@@ -8300,21 +8416,24 @@ async function lireEtatAnnonce(url, platform) {
     // qu'on n'a pas vraiment reçue.
     if (estPageBotShield(html)) {
       console.warn(`[background] ${platform} : page de vérification anti-bot reçue (HTTP ${res.status}) — aucune conclusion`);
-      return { state: "unknown", price: null };
+      return { state: "unknown", price: null, raison: "bot_shield_200" };
     }
     // L'id vient de listing_url (la source de vérité), pas de finalUrl : une
     // redirection ne doit jamais changer QUELLE annonce on cherche dans la page.
+    // `raison: null` = la page a bel et bien été LUE. Un "unknown" qui en sort
+    // ne dit pas « lecture bloquée » mais « annonce non reconnue dans la page » :
+    // deux situations opposées, qu'il ne faut pas raconter pareil.
     const adId = extractListingId(url, platform);
     switch (platform) {
-      case "leboncoin": return { state: detectLeboncoinState(html, adId), price: null };
-      case "vinted":    return { state: detectVintedState(html, finalUrl, adId), price: vintedListedPrice(html, adId) };
-      case "ebay":      return { state: detectEbayState(html, finalUrl, adId), price: null };
-      case "beebs":     return { state: detectBeebsState(html, adId), price: null };
-      default:          return { state: "unknown", price: null };
+      case "leboncoin": return { state: detectLeboncoinState(html, adId), price: null, raison: null };
+      case "vinted":    return { state: detectVintedState(html, finalUrl, adId), price: vintedListedPrice(html, adId), raison: null };
+      case "ebay":      return { state: detectEbayState(html, finalUrl, adId), price: null, raison: null };
+      case "beebs":     return { state: detectBeebsState(html, adId), price: null, raison: null };
+      default:          return { state: "unknown", price: null, raison: null };
     }
   } catch (e) {
     console.warn(`[background] checkListingState(${url}):`, String(e?.message ?? e));
-    return { state: "unknown", price: null };
+    return { state: "unknown", price: null, raison: "lecture_impossible" };
   }
 }
 
@@ -15287,6 +15406,27 @@ async function processDeleteJob(job, accessToken) {
       }
     }
 
+    // ── LE RELEVÉ SURVIT À L'ÉCHEC (2026-09-14) ──────────────────────────────
+    // Le chemin de PUBLICATION range depuis toujours result.diagnostic dans
+    // platform_fields.last_diagnostic — c'est ce relevé, et lui seul, qui a
+    // tranché le mur Didomi deux fois. Le chemin de SUPPRESSION produisait la
+    // même ligne (« actions relevées : … », leboncoin.js) et la mettait dans
+    // `trace`, qui n'est écrite QUE sur succès : sur échec rearmBounded n'écrit
+    // que error / needsUserAttempts / next_action_after, et le relevé mourait
+    // avec le service worker. Le job b01b37d0 est ainsi arrivé en base avec un
+    // last_diagnostic VIDE, et trois hypothèses également plausibles.
+    // Mutation de la COPIE MÉMOIRE (même règle que processing_since :
+    // update-job-status écrase platform_fields en entier) — toutes les écritures
+    // en aval le portent alors sans avoir à le leur passer une par une.
+    // Chaîne BRUTE, jamais un objet {quoi}, donc jamais lue par
+    // causeHumaineConnue : un relevé technique ne doit pas atterrir à l'écran.
+    if (result?.diagnostic) {
+      job.platform_fields = {
+        ...(job.platform_fields ?? {}),
+        last_diagnostic: String(result.diagnostic).slice(0, 2000),
+      };
+    }
+
     // ⚠️ « ANNONCE INTROUVABLE » PEUT VOULOIR DIRE « DÉJÀ SUPPRIMÉE » (2026-07-13,
     // vécu sur les deux annonces eBay : elles étaient bel et bien retirées, et le
     // job s'acharnait en « introuvable dans le Hub — nouvelle tentative »).
@@ -15302,7 +15442,8 @@ async function processDeleteJob(job, accessToken) {
     // Le ré-armement, lui, reste réservé aux non-needsUser (le cas needsUser a
     // sa propre branche plus bas, avec son message d'origine).
     if (result && !result.success && !result.dryRun) {
-      const { state } = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
+      const { state, raison } = await checkListingState(job.listing_url, job.platform)
+        .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
       if (state === "unavailable" || state === "sold") {
         console.log(
           `[background] Job ${job.id} : le content script n'a pas abouti (${result.error}), MAIS l'annonce ` +
@@ -15332,14 +15473,19 @@ async function processDeleteJob(job, accessToken) {
       // l'utilisateur allait chercher sur la plateforme une annonce qui pouvait
       // très bien être déjà retirée.
       if (!result.needsUser && /introuvable|0×0|0x0|modale|non peinte/i.test(String(result.error ?? ""))) {
+        // ⚠️ « ELLE EST PEUT-ÊTRE DÉJÀ RETIRÉE » RETOURNÉ (2026-09-14). La
+        // phrase penchait du côté rassurant sur la seule issue qui peut coûter
+        // une DOUBLE VENTE : l'utilisateur lisait « c'est sans doute bon » et
+        // n'allait rien vérifier, alors que l'article est vendu et sa copie
+        // peut-être encore achetable. À lecture ratée, on penche désormais vers
+        // le risque — et le motif de l'échec de lecture est NOMMÉ, un seul.
         const msg =
           state === "active"
             ? `Suppression ${job.platform} non aboutie (${result.error}). L'annonce est TOUJOURS en ligne ` +
               "(vérifié). Nouvelle tentative au prochain passage ; sinon la retirer à la main sur la plateforme."
-            : `Suppression ${job.platform} non aboutie (${result.error}). Impossible de VÉRIFIER si l'annonce ` +
-              "est encore en ligne (lecture indéterminée : protection anti-bot, onglet indisponible ou page " +
-              "inattendue) — elle est peut-être déjà retirée. Nouvelle tentative au prochain passage ; sinon " +
-              "vérifier à la main sur la plateforme.";
+            : `Suppression ${job.platform} non aboutie (${result.error}). L'état de l'annonce n'a PAS pu être ` +
+              `vérifié : ${causeLectureImpossible(raison)} — elle est peut-être encore en ligne. Nouvelle ` +
+              "tentative au prochain passage ; sinon vérifier à la main sur la plateforme.";
         await rearmBounded(accessToken, job, msg);
         return { status: "needsUser", error: msg };
       }
@@ -15353,7 +15499,20 @@ async function processDeleteJob(job, accessToken) {
       // aucun mécanisme derrière. Même circuit que la publication désormais :
       // reprise espacée, jamais un failed sur une lecture ratée.
       const verdictBrut = String(result.error ?? "");
-      if (!result.needsUser && (TRANSIENT_JOB_ERROR_RE.test(verdictBrut) || /^CHALLENGE /i.test(verdictBrut))) {
+      // ── Un CHALLENGE ne consomme plus de tentative (2026-09-14) ────────────
+      // Il tombait dans rearmBounded avec les transitoires ordinaires : deux
+      // écrans de vérification anti-robot ont ainsi mangé 2 des 5 tentatives du
+      // job b01b37d0 sans qu'un seul geste ait été tenté sur l'annonce. Le
+      // blocage vient de la plateforme, pas du job — reprise gratuite, bornée
+      // à 6 h (marquerBlocageAntiRobot). Au-delà de la borne on retombe
+      // exprès sur le circuit ordinaire, qui consomme et finit par le dire.
+      if (!result.needsUser && /^CHALLENGE /i.test(verdictBrut)) {
+        const { borne } = await marquerBlocageAntiRobot(accessToken, job, verdictBrut);
+        if (!borne) return { status: "retry", error: verdictBrut };
+        await rearmBounded(accessToken, job, verdictBrut);
+        return { status: "retry", error: verdictBrut };
+      }
+      if (!result.needsUser && TRANSIENT_JOB_ERROR_RE.test(verdictBrut)) {
         await rearmBounded(accessToken, job, verdictBrut);
         return { status: "retry", error: verdictBrut };
       }

@@ -1,7 +1,7 @@
 // Empreinte de version (2026-07-12) : PREMIÈRE ligne de console à l'injection —
 // dit quelle version du code tourne RÉELLEMENT dans l'onglet. À METTRE À JOUR à
 // chaque modification de ce fichier.
-const LEBONCOIN_BUILD = "2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
+const LEBONCOIN_BUILD = "2026-09-14-retrait-challenge-et-releve (0.6.36, chemin de SUPPRESSION seul : le détecteur d'interstitiel anti-robot est hissé au module et interrogé AVANT de conclure « contrôle Supprimer introuvable » — sur les deux chemins, page d'annonce ET « Mes annonces » ; le relevé des actions réellement rendues part en `diagnostic` (donc en platform_fields.last_diagnostic) au lieu de mourir dans `trace` ; « Mes annonces » dit en plus combien de cartes ont été rendues ; le mur de cookies est refusé par fsConsentRefuser, la détection de la 0.6.35, et non plus par dismissDidomi qui ne voyait rien) — précédent : 2026-09-14-consentement-vu-enfin (0.6.35 : le mur de cookies Leboncoin est DÉTECTÉ — la détection part du contrôle de refus « Continuer sans accepter » et non plus du conteneur #didomi-host, qui existe à 0×0 et n'a jamais rien rendu ; refus cliqué, disparition ATTENDUE, trois points de sortie qui ne disent plus « brouillon » ; aucune tentative consommée) — précédent : 2026-09-09-adsubmit-est-la-preuve (0.6.24 : plus aucun re-clic du Continuer final dès qu'un adsubmit est parti ; 2xx = dépôt accepté, id lu ; 403 details[] = texte exact de Leboncoin)";
 console.log(`[leboncoin.js] build ${LEBONCOIN_BUILD}`);
 
 // Content script Leboncoin — pilote le WIZARD de dépôt d'annonce.
@@ -221,6 +221,68 @@ function annonceNommee(texte, job, adId) {
   return null;
 }
 
+// ── Une page de vérification anti-robot n'a pas de bouton « Supprimer » ──────
+// (2026-09-14) Le détecteur vivait en variable LOCALE du garde du h1, donc il
+// ne servait QUE tant que le titre restait vide. Dès qu'un titre était lu, plus
+// aucun chemin ne demandait « suis-je seulement sur la fiche ? » — et un
+// challenge servi plus tard sortait sous le motif « contrôle Supprimer
+// introuvable », qui accuse la page d'un défaut qui n'est pas le sien et
+// consomme une tentative (job b01b37d0 : 2 des 5 tentatives brûlées par deux
+// challenges horodatés à 16 min d'intervalle).
+// Hissé ici pour que les DEUX chemins de suppression s'en servent, au même
+// endroit : juste avant de conclure « introuvable ».
+// ⚠️ estPageBotShieldLbc() ne convient toujours pas : une fiche SAINE embarque
+// elle aussi l'iframe de contrôle DataDome (mesuré le 09/09, `captcha: true`
+// dès 2,5 s sur une page parfaitement normale). L'interstitiel, lui, n'a ni
+// en-tête, ni navigation, ni contenu : c'est cette ABSENCE qui le signe, et
+// c'est volontairement un détecteur ÉTROIT — un faux positif ici masquerait un
+// vrai échec derrière une reprise gratuite, donc pour toujours.
+function estInterstitielDataDomeLbc() {
+  const debut = String(document.documentElement?.innerHTML ?? "").slice(0, 4000);
+  return /geo\.captcha-delivery\.com|ct\.captcha-delivery\.com|\bAre you a human\b|Vérification que vous n/i.test(debut)
+    && !document.querySelector("header, nav, main");
+}
+
+// Le verdict CHALLENGE, dit d'un seul endroit pour les trois points de sortie —
+// le préfixe « CHALLENGE » est le contrat lu côté background (blocage
+// anti-robot : reprise gratuite et bornée, aucune tentative consommée).
+function resultatChallengeLbc(quoi, trace, t) {
+  t(`vérification anti-robot (DataDome) servie à la place de ${quoi} — aucun clic`);
+  return {
+    success: false,
+    error: `CHALLENGE DATADOME : Leboncoin affiche une vérification anti-robot à la place de ${quoi} — suppression reportée, aucun geste effectué`,
+    trace,
+  };
+}
+
+// ── Le relevé qui TRANCHE, et qui doit SURVIVRE à l'échec (2026-09-14) ───────
+// Trois situations produisent le même « contrôle Supprimer introuvable », et
+// une seule ligne les sépare — la liste des actions réellement rendues dans
+// l'<aside> de la fiche (relevé live du 14/09, sur une fiche propriétaire et
+// sur la même fiche vue en visiteur) :
+//     vue PROPRIÉTAIRE  … | Modifier l'annonce | Supprimer l'annonce | Mettre en pause
+//     vue VISITEUR      … | Acheter | Faire une offre | Contacter
+//     panneau non monté (aucune)
+// Cette ligne EXISTAIT DÉJÀ — dans `trace`, que rearmBounded jette : sur échec
+// il n'écrit que error / needsUserAttempts / next_action_after, et le relevé
+// meurt avec le service worker. Elle part désormais aussi en `diagnostic`,
+// exactement comme sur le chemin de publication, donc en
+// platform_fields.last_diagnostic.
+// ⚠️ On RELÈVE, on ne tranche pas : aucune de ces trois signatures n'est
+// convertie en verdict ici. C'est la mesure qui a réglé le mur Didomi deux
+// fois — pas une déduction faite sur place.
+// Chaque libellé est BORNÉ : sur « Mes annonces », le texte d'un lien de carte
+// porte toute la carte (titre + prix + livraison + ville + dates). Sans ça, un
+// relevé de 25 entrées dépasse les 2 000 caractères de last_diagnostic et se
+// fait tronquer au milieu — on perdrait la fin de la liste, qui est justement
+// ce qu'on cherche à lire.
+function releveActionsLbc(root, selecteur, max = 20, maxLen = 60) {
+  return Array.from((root ?? document).querySelectorAll(selecteur))
+    .map((b) => (b.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, maxLen))
+    .filter(Boolean)
+    .slice(0, max);
+}
+
 // ── Aiguillage : la PAGE DE L'ANNONCE d'abord (2026-07-22) ───────────────────
 // Relevé réel, compte de Nico, même session, deux chargements à la suite,
 // PENDANT la panne de « Mes annonces » :
@@ -246,6 +308,19 @@ function annonceNommee(texte, job, adId) {
 async function deleteListing(job) {
   const trace = [];
   const t = (line) => { trace.push(line); console.log(`[leboncoin][delete] ${line}`); };
+
+  // ── Mur de consentement : la détection de la 0.6.35, ici aussi (2026-09-14) ─
+  // dismissInterstitials n'appelle que dismissDidomi(), qui part du CONTENEUR
+  // (#didomi-host & co) — or Leboncoin rend son propre modal React et laisse
+  // #didomi-host vide à 0 × 0 : cette détection n'a rien vu depuis la 0.6.22.
+  // fsConsentRefuser part du CONTRÔLE DE REFUS, et consentement.js est injecté
+  // avant ce fichier sur tout leboncoin.fr (manifest) : une ligne suffit.
+  // Le flux de suppression, lui, CONTINUE même si le mur résiste — contrairement
+  // au dépôt, il n'y a rien à saisir et les gardes d'identité protègent le clic.
+  // (dismissInterstitials reste appelé juste après : il ferme les AUTRES
+  // interstitiels, et il n'est pas touché — il sert aussi à la publication.)
+  const consentSuppr = await fsConsentRefuser({ sortieSiNonBloquant: true });
+  if (consentSuppr.present) t(`écran de consentement : ${consentSuppr.refuse ? "refusé" : "NON refusé"}${consentSuppr.motif ? ` (${consentSuppr.motif})` : ""}`);
 
   // Didomi/interstitiel à l'arrivée (2026-07-26) : une bannière posée sur
   // « Mes annonces » ou la page d'annonce avalerait les clics du flux delete.
@@ -297,27 +372,14 @@ async function deleteDepuisPageAnnonce(job, adId, trace, t) {
   // vérification anti-robot est NOMMÉE (famille CHALLENGE, reprise espacée
   // côté background), et le titre est attendu jusqu'à 15 s avant de conclure
   // « pas fini de charger ». Aucun clic dans les deux cas.
-  // ⚠️ estPageBotShieldLbc() ne convient pas ici : une fiche NORMALE embarque
-  // elle aussi l'iframe de contrôle DataDome (mesuré le 09/09, `captcha: true`
-  // dès 2,5 s sur une page saine). L'interstitiel, lui, n'a ni en-tête, ni
-  // navigation, ni contenu : c'est cette ABSENCE qui le signe.
+  // ⚠️ Le détecteur est estInterstitielDataDomeLbc() (module), PAS
+  // estPageBotShieldLbc() : cf. son commentaire — une fiche saine embarque
+  // l'iframe DataDome.
   const lireH1 = () => (document.querySelector("h1")?.textContent ?? "").replace(/\s+/g, " ").trim();
-  const estInterstitielDataDome = () => {
-    const debut = String(document.documentElement?.innerHTML ?? "").slice(0, 4000);
-    return /geo\.captcha-delivery\.com|ct\.captcha-delivery\.com|\bAre you a human\b|Vérification que vous n/i.test(debut)
-      && !document.querySelector("header, nav, main");
-  };
   let h1 = lireH1();
   const limiteH1 = Date.now() + 15_000;
   while (!h1 && Date.now() < limiteH1) {
-    if (estInterstitielDataDome()) {
-      t("vérification anti-robot (DataDome) servie à la place de la fiche — aucun clic");
-      return {
-        success: false,
-        error: `CHALLENGE DATADOME : Leboncoin affiche une vérification anti-robot à la place de la page de l'annonce ${idPage} — suppression reportée, aucun geste effectué`,
-        trace,
-      };
-    }
+    if (estInterstitielDataDomeLbc()) return resultatChallengeLbc(`la page de l'annonce ${idPage}`, trace, t);
     await sleep(1000);
     h1 = lireH1();
   }
@@ -366,11 +428,21 @@ async function deleteDepuisPageAnnonce(job, adId, trace, t) {
   // Même href que depuis la liste — findLbcDelete le trouve donc tel quel.
   const control = findLbcDelete(document);
   if (!control) {
-    const visible = Array.from(document.querySelectorAll("aside a, aside button"))
-      .map((b) => b.textContent.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 20);
+    // Avant d'accuser la page d'un contrôle manquant : est-ce seulement la
+    // fiche ? Sur une vérification anti-robot il n'y a évidemment aucun bouton
+    // « Supprimer l'annonce », et ce n'est pas un échec de geste.
+    if (estInterstitielDataDomeLbc()) return resultatChallengeLbc(`la page de l'annonce ${idPage}`, trace, t);
+    const visible = releveActionsLbc(document, "aside a, aside button");
     t(`contrôle Supprimer INTROUVABLE sur la page de l'annonce — actions relevées : ${visible.join(" | ") || "(aucune)"}`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
-    return { success: false, error: "Contrôle « Supprimer l'annonce » introuvable sur la page de l'annonce", trace };
+    return {
+      success: false,
+      error: "Contrôle « Supprimer l'annonce » introuvable sur la page de l'annonce",
+      diagnostic:
+        `contrôle Supprimer introuvable sur la page de l'annonce ${idPage} — ` +
+        `${document.querySelectorAll("aside").length} <aside>, actions relevées: ${JSON.stringify(visible)}`,
+      trace,
+    };
   }
   t(`contrôle localisé : « ${control.textContent.replace(/\s+/g, " ").trim() || "(icône poubelle)"} » → ${control.getAttribute("href")}`);
 
@@ -442,9 +514,27 @@ async function deleteDepuisListe(job, adId, trace, t) {
   }
 
   if (!card) {
-    t(`annonce INTROUVABLE dans Mes annonces (id=${adId ?? "?"}, titre="${job.title ?? "?"}")`);
+    if (estInterstitielDataDomeLbc()) return resultatChallengeLbc("« Mes annonces »", trace, t);
+    // Le relevé qui sépare les deux « introuvable » que rien ne distinguait :
+    // 0 carte rendue (liste non servie, ou pas encore montée) contre N cartes
+    // dont aucune ne nomme l'annonce (liste servie, annonce réellement absente
+    // de CETTE page — ou reléguée sur une suivante, la liste n'étant pas
+    // paginée par ce flux). Sans ce compte, l'enquête du 12/09 n'avait rien à
+    // lire : 5 tentatives sur ce même motif, aucune trace conservée.
+    const cartesRendues = document.querySelectorAll(
+      'li[data-qa-id="ad_item_container"], [data-qa-id*="ad_item"], article'
+    ).length;
+    const titresVus = releveActionsLbc(document, 'a[href*="/ad/"]', 25);
+    t(`annonce INTROUVABLE dans Mes annonces (id=${adId ?? "?"}, titre="${job.title ?? "?"}") — ${cartesRendues} carte(s) rendue(s)`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
-    return { success: false, error: "Annonce introuvable dans Mes annonces", trace };
+    return {
+      success: false,
+      error: "Annonce introuvable dans Mes annonces",
+      diagnostic:
+        `annonce introuvable dans Mes annonces (id=${adId ?? "?"}, titre=${JSON.stringify(String(job.title ?? ""))}) — ` +
+        `${cartesRendues} carte(s) rendue(s), titres relevés: ${JSON.stringify(titresVus)}`,
+      trace,
+    };
   }
   t(`carte englobante : <${card?.tagName?.toLowerCase() ?? "?"}${card?.getAttribute?.("data-qa-id") ? ` data-qa-id="${card.getAttribute("data-qa-id")}"` : ""}>`);
 
@@ -477,11 +567,16 @@ async function deleteDepuisListe(job, adId, trace, t) {
   }
 
   if (!control) {
-    const visible = Array.from(card?.querySelectorAll("button, a") ?? [])
-      .map((b) => b.textContent.trim()).filter(Boolean).slice(0, 20);
+    if (estInterstitielDataDomeLbc()) return resultatChallengeLbc("« Mes annonces »", trace, t);
+    const visible = releveActionsLbc(card, "button, a");
     t(`contrôle Supprimer INTROUVABLE — actions visibles sur la carte : ${visible.join(" | ") || "(aucune)"}`);
     if (DELETE_DRY_RUN) return { success: true, dryRun: true, found: false, trace };
-    return { success: false, error: "Contrôle de suppression introuvable", trace };
+    return {
+      success: false,
+      error: "Contrôle de suppression introuvable",
+      diagnostic: `contrôle de suppression introuvable sur la carte de « Mes annonces » — actions relevées: ${JSON.stringify(visible)}`,
+      trace,
+    };
   }
   t(`contrôle Supprimer localisé : "${control.textContent.trim() || "(icône poubelle)"}"${control.getAttribute("data-qa-id") ? ` (data-qa-id="${control.getAttribute("data-qa-id")}")` : ""}`);
 
