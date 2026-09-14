@@ -24,7 +24,8 @@
     "selftest:vinted-couleurs": "node scripts/vinted-couleurs-selftest.mjs",
     "selftest:content-scripts": "node scripts/content-scripts-selftest.mjs",
     "selftest:description-leboncoin": "node scripts/description-leboncoin-selftest.mjs",
-    "selftest:description-beebs": "node scripts/description-beebs-selftest.mjs"
+    "selftest:description-beebs": "node scripts/description-beebs-selftest.mjs",
+    "selftest:sync-veille": "node scripts/sync-veille-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

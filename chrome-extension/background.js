@@ -105,7 +105,7 @@ const eveilDureeS = (ep) =>
 // Demande — idempotente à deux niveaux : `eveilArme` empêche de rappeler
 // requestKeepAwake dans CE service worker, l'épisode persisté empêche de
 // re-tracer une demande déjà ouverte après un redémarrage.
-async function demanderEveil(jobsEnFile, accessToken) {
+async function demanderEveil(jobsEnFile, accessToken, etiquette = "job(s) en file") {
   if (eveilPlafondAtteint) return;
   if (!eveilApiDispo()) {
     tracerEveilIndisponible(jobsEnFile, accessToken);
@@ -131,7 +131,7 @@ async function demanderEveil(jobsEnFile, accessToken) {
     return;
   }
   await ecrireEpisodeEveil({ depuis: maintenant, maj: maintenant, demarrage_trace: false });
-  console.log(`[background] éveil système demandé (${jobsEnFile} job(s) en file)`);
+  console.log(`[background] éveil système demandé (${jobsEnFile} ${etiquette})`);
   tracerEveil("demande", jobsEnFile, 0, accessToken);
 }
 
@@ -757,6 +757,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     // pour le poll — cf. rattraperRepriseAuto.
     rattraperRepriseAuto().catch((e) =>
       console.warn("[sync-dressing][reprise-auto]", e?.message ?? e));
+    // Ronde du veilleur : l'alarme de poll est le seul minuteur du projet qui
+    // SURVIT à la mort du service worker — et c'est exactement ce qu'il faut
+    // pour rattraper une boucle de sync morte avec le sien. Jamais bloquante
+    // pour le poll, aucune requête réseau tant qu'aucune sync n'est ouverte.
+    veillerRunFige().catch((e) =>
+      console.warn("[sync-dressing][veille]", e?.message ?? e));
   }
   if (alarm.name === SYNC_DRESSING_ALARM) {
     syncDressingVinted({ declencheur: "cron" }).catch((e) =>
@@ -2310,9 +2316,25 @@ async function pollAndProcessJobsUnlocked() {
   // chrome.storage.local, aucun appel réseau bloquant (la trace, elle, part en
   // fire-and-forget). Si quoi que ce soit échoue ici, la boucle de jobs
   // ci-dessous n'en sait rien et se déroule à l'identique.
+  // ── UNE SYNC QUI TOURNE EST DU TRAVAIL (2026-09-14) ─────────────────────
+  // La règle du 04/09 ne couvrait que la commande pas encore RÉCLAMÉE. Une
+  // fois la sync partie, elle ne valait plus rien : mesuré chez seghird711 le
+  // 14/09 — run démarré à 10:36:15, trace 'relache' à 10:36:25. DIX SECONDES.
+  // Le poll qui tenait le verrou de flux a lu une file vide et rendu la
+  // machine au sommeil pendant que la sync attendait son tour pour lire un
+  // dressing de trois pages.
+  // `syncDressingEnCours` est posé AVANT withJobFlowLock : il est donc déjà
+  // vrai pour le poll qui précède la sync dans la file — c'est exactement le
+  // cas mesuré.
+  // ⛔ BORNE : ce drapeau vit EN MÉMOIRE du service worker. S'il meurt (la
+  //    panne même qu'on corrige), le worker suivant le lit à false et le poll
+  //    relâche dans les 2 min. Une machine ne peut donc pas être tenue
+  //    éveillée par un run mort — en plus du plafond de 4 h et de la relâche
+  //    au démarrage, qui ne bougent pas.
   const travailDuCycle = jobs.length
     + (commandeSyncEnAttente ? 1 : 0)
-    + syncPrioritaireDuCycle;
+    + syncPrioritaireDuCycle
+    + (syncDressingEnCours ? 1 : 0);
   await arbitrerEveil(travailDuCycle, session.access_token).catch((e) =>
     console.warn("[background] éveil : arbitrage en échec (sans conséquence sur les jobs) :", String(e?.message ?? e)));
 
@@ -9610,6 +9632,252 @@ function syncPauseMs() {
   return SYNC_PAUSE_MIN_MS + Math.floor(Math.random() * (SYNC_PAUSE_MAX_MS - SYNC_PAUSE_MIN_MS));
 }
 
+// ── LE VEILLEUR DU RUN FIGÉ (2026-09-14) ─────────────────────────────────────
+// LE TROU, mesuré le 14/09 : au passage d'une page à la suivante, le service
+// worker MV3 est tué et la boucle de sync disparaît avec lui — son curseur en
+// mémoire, son verrou de flux (variable de module) et surtout son minuteur de
+// 5 min, qui n'a donc JAMAIS tiré. La ligne reste 'running' en base et plus
+// rien au monde ne la reprend avant le chien de garde serveur, 32 min plus
+// tard. Trois preuves convergentes sur le run 3bf812dd (seghird711) : les 96
+// articles de la page 1 écrits en une minute puis plus rien ; aucun 'failed' à
+// +5 min ; et le poll qui repart librement 60 s après, donc sans personne pour
+// tenir le verrou.
+// Ce veilleur ferme ce trou-là, et rien d'autre. Il ne touche pas au chemin
+// nominal : une sync qui avance n'entre jamais dans la branche de reprise.
+//
+// POURQUOI PAS UNE ALARME DÉDIÉE PAR PAGE : l'alarme de poll (2 min,
+// POLL_INTERVAL_MINUTES) EST déjà un minuteur qui survit au service worker, et
+// c'est la seule propriété qui compte ici. On s'y accroche, à côté de
+// rattraperRepriseAuto — pas une alarme de plus à armer, désarmer et fuiter.
+//
+// ⛔ SILENCE DE 12 MIN, ET PAS 2 — LE CALCUL, PARCE QU'IL EST CONTRE-INTUITIF.
+//    Reprendre un run qui vit encore, ce serait DEUX boucles sur le même
+//    dressing : curseurs qui se marchent dessus et marquage de disparitions
+//    faussé, c'est-à-dire l'inventaire des gens. Il faut donc un seuil
+//    supérieur à TOUT silence légitime de la boucle. Or une lecture de page a
+//    le droit de ne rien écrire pendant très longtemps : sendMessageToTab
+//    accorde 300 s, et lireVintedAvecCanalRejoue peut enchaîner une seconde
+//    tentative (20 s de fenêtre « pas de receveur » + 5 s + ouverture d'onglet
+//    + 300 s). Soit ~10 min de silence parfaitement sain. 12 min, c'est cette
+//    borne plus la marge. Un gel se répare donc en 12-14 min au lieu de 32,
+//    ET il se répare — au lieu d'être simplement constaté mort.
+// ⛔ PLAFOND DE 3 REPRISES PAR RUN, même chiffre que la reprise auto des
+//    échecs techniques et que le rejeu de canal coupé. Au-delà, on laisse la
+//    main au chien de garde : si trois reprises ne suffisent pas, ce n'est
+//    plus un accident de worker.
+// ⛔ AUCUN RECOUVREMENT AVEC LA REPRISE AUTO DE LA 0.6.34 : elle ne touche que
+//    les statuts TERMINAUX (failed/incomplete/expired, cf.
+//    SYNC_REPRISE_AUTO_STATUTS), ce veilleur ne touche QUE 'running'. Les deux
+//    ensembles sont disjoints à tout instant. Ceinture en plus : si une alarme
+//    de reprise (technique ou 403) est déjà armée pour ce compte, le veilleur
+//    se tait.
+const SYNC_VEILLE_STORAGE_KEY = "FILLSELL_SYNC_VEILLE";
+const SYNC_VEILLE_SILENCE_MS = 12 * 60 * 1000;
+const SYNC_VEILLE_REPRISES_MAX = 3;
+// Au-delà, un état oublié (compte changé, run effacé) ne doit pas faire lire la
+// base toutes les 2 min pour l'éternité.
+const SYNC_VEILLE_ETAT_PERIME_MS = 6 * 60 * 60 * 1000;
+
+async function lireEtatsVeille() {
+  try {
+    const st = await chrome.storage.local.get(SYNC_VEILLE_STORAGE_KEY);
+    const v = st?.[SYNC_VEILLE_STORAGE_KEY];
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+// Pose (ou rafraîchit) l'observation du run surveillé. `reprises` n'est JAMAIS
+// remis à zéro tant qu'on parle du même run : c'est lui, le plafond.
+async function poserVeilleSurRun(userId, run, { reprises } = {}) {
+  if (!userId || !run?.id) return;
+  try {
+    const etats = await lireEtatsVeille();
+    const ancien = etats[userId];
+    const memeRun = String(ancien?.runId ?? "") === String(run.id);
+    etats[userId] = {
+      runId: String(run.id),
+      page_suivante: run.page_suivante ?? null,
+      items_vus: run.items_vus ?? null,
+      // Absent à la pose (le run adopté n'est pas relu pour ça) : la première
+      // ronde le remplira en constatant « ça a bougé », et repartira de là.
+      updated_at: run.updated_at ?? null,
+      vuA: new Date().toISOString(),
+      reprises: Number.isFinite(reprises) ? reprises : (memeRun ? (Number(ancien?.reprises) || 0) : 0),
+    };
+    await chrome.storage.local.set({ [SYNC_VEILLE_STORAGE_KEY]: etats });
+  } catch (e) {
+    // Sans état, pas de veille — et c'est tout : on ne casse aucune sync pour ça.
+    console.warn("[sync-dressing][veille] état non écrit (sans conséquence) :", String(e?.message ?? e));
+  }
+}
+
+async function oublierVeille(userId, motif) {
+  if (!userId) return;
+  try {
+    const etats = await lireEtatsVeille();
+    if (!etats[userId]) return;
+    delete etats[userId];
+    await chrome.storage.local.set({ [SYNC_VEILLE_STORAGE_KEY]: etats });
+    console.log(`[sync-dressing][veille] surveillance levée — ${motif}`);
+  } catch (e) {
+    console.warn("[sync-dressing][veille] état non effacé (sans conséquence) :", String(e?.message ?? e));
+  }
+}
+
+// Trace de reprise — même contrat que les traces d'éveil : fire-and-forget,
+// jamais bloquante. C'est elle qui rendra le phénomène MESURABLE en prod.
+function tracerVeille(accessToken, ligne) {
+  if (!accessToken) return;
+  restRequest("usage_logs", accessToken, {
+    method: "POST",
+    body: JSON.stringify([{
+      user_id: decodeJwtSub(accessToken),
+      feature: "sync_veille",
+      metadata: { ...ligne, at: new Date().toISOString(), build: FILLSELL_BUILD_ID },
+    }]),
+  }).catch((e) =>
+    console.warn("[sync-dressing][veille] trace non écrite (sans conséquence) :", String(e?.message ?? e)));
+}
+
+// Une ronde, appelée à chaque alarme de poll. Ne fait RIEN — pas même une
+// requête réseau — tant qu'aucune sync n'a été ouverte par cette installation.
+async function veillerRunFige() {
+  try {
+    // Cette boucle-ci vit, dans CE worker : il n'y a rien à reprendre, et c'est
+    // le cas de l'immense majorité des rondes pendant une sync saine.
+    if (syncDressingEnCours) return;
+    const etats = await lireEtatsVeille();
+    const clefs = Object.keys(etats);
+    if (!clefs.length) return;
+    // Purge des états périmés AVANT toute lecture réseau.
+    const perimes = clefs.filter((k) => {
+      const t = Date.parse(etats[k]?.vuA ?? "");
+      return !Number.isFinite(t) || Date.now() - t > SYNC_VEILLE_ETAT_PERIME_MS;
+    });
+    if (perimes.length) {
+      for (const k of perimes) delete etats[k];
+      await chrome.storage.local.set({ [SYNC_VEILLE_STORAGE_KEY]: etats }).catch(() => {});
+      if (!Object.keys(etats).length) return;
+    }
+    const session = await getValidSession();
+    const token = session?.access_token ?? null;
+    const userId = token ? decodeJwtSub(token) : null;
+    if (!userId) return;
+    const etat = etats[userId];
+    if (!etat?.runId) return; // état d'un autre compte : pas notre affaire ici
+
+    // Ceinture anti-recouvrement : une reprise déjà armée fait le travail.
+    try {
+      const dejaArmee = (await chrome.alarms.get(alarmeRepriseAuto(userId)))
+        || (await chrome.alarms.get(alarmeRetry403(userId)));
+      if (dejaArmee) return;
+    } catch { /* API muette : on continue, les gardes suivantes suffisent */ }
+
+    let lignes = null;
+    try {
+      lignes = await restRequest(
+        `vinted_sync_runs?id=eq.${etat.runId}` +
+        "&select=id,status,page_suivante,items_vus,updated_at,declencheur&limit=1",
+        token, { headers: { Prefer: "return=representation" } },
+      );
+    } catch (e) {
+      // Lecture ratée = on ne sait rien = on ne conclut rien. Prochaine ronde.
+      console.warn("[sync-dressing][veille] lecture du run impossible:", String(e?.message ?? e));
+      return;
+    }
+    const run = Array.isArray(lignes) && lignes.length ? lignes[0] : null;
+    if (!run) { await oublierVeille(userId, "run introuvable"); return; }
+    if (String(run.status) !== "running") {
+      await oublierVeille(userId, `run passé en '${run.status}' — plus rien à surveiller`);
+      return;
+    }
+
+    // ── RÈGLE N°1 : LE CURSEUR A-T-IL BOUGÉ ? ────────────────────────────────
+    // Un seul article de plus, une seule page de plus, une seule écriture de
+    // plus : la boucle VIT. On ré-observe et on ne touche à rien.
+    const bouge = String(run.page_suivante ?? "") !== String(etat.page_suivante ?? "")
+      || String(run.items_vus ?? "") !== String(etat.items_vus ?? "")
+      || String(run.updated_at ?? "") !== String(etat.updated_at ?? "");
+    if (bouge) {
+      await poserVeilleSurRun(userId, run, { reprises: Number(etat.reprises) || 0 });
+      return;
+    }
+
+    // ── RÈGLE N°2 : DEUX SILENCES, PAS UN ────────────────────────────────────
+    // Celui de notre observation (rien n'a bougé depuis qu'on regarde) ET celui
+    // de la base (updated_at). Le second seul se laisserait tromper par une
+    // horloge de travers ; le premier seul ne saurait rien d'un run repris
+    // ailleurs.
+    const silenceObserve = Date.now() - Date.parse(etat.vuA ?? "");
+    const silenceBase = Date.now() - Date.parse(run.updated_at ?? "");
+    if (!(silenceObserve >= SYNC_VEILLE_SILENCE_MS && silenceBase >= SYNC_VEILLE_SILENCE_MS)) return;
+
+    const faites = Number(etat.reprises) || 0;
+    if (faites >= SYNC_VEILLE_REPRISES_MAX) {
+      console.warn(`[sync-dressing][veille] plafond de ${SYNC_VEILLE_REPRISES_MAX} reprises atteint sur le run ${etat.runId} — main laissée au chien de garde`);
+      return;
+    }
+
+    // ── RÈGLE N°3 : UNE SEULE BOUCLE, ET C'EST LA BASE QUI TRANCHE ───────────
+    // Compare-and-swap sur (id, status='running', updated_at lu) : le PATCH est
+    // un seul UPDATE ... WHERE, donc atomique. Deux Chrome sur le même compte
+    // partent du même updated_at, un seul ramène une ligne — l'autre voit zéro
+    // et se contente de ré-observer. C'est exactement le mécanisme du chien de
+    // garde serveur, qui s'en sert pour la même raison.
+    // (L'index un_seul_actif ne peut PAS servir ici : il interdit une seconde
+    // LIGNE 'running', pas deux boucles sur la MÊME ligne — et c'est bien ce
+    // second cas, l'adoption, qui nous menace.)
+    let gagne = null;
+    try {
+      gagne = await restRequest(
+        `vinted_sync_runs?id=eq.${etat.runId}&status=eq.running` +
+        `&updated_at=eq.${encodeURIComponent(String(run.updated_at))}`,
+        token,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify({ updated_at: new Date().toISOString(), extension_build: FILLSELL_BUILD_ID }),
+        },
+      );
+    } catch (e) {
+      console.warn("[sync-dressing][veille] revendication impossible:", String(e?.message ?? e));
+      return;
+    }
+    if (!Array.isArray(gagne) || !gagne.length) {
+      // Quelqu'un a écrit entre notre lecture et notre écriture : la boucle
+      // vient de se réveiller, ou un autre Chrome a repris. On ré-observe.
+      console.log("[sync-dressing][veille] run revendiqué ailleurs (ou boucle réveillée) — on ré-observe");
+      await poserVeilleSurRun(userId, { ...run, updated_at: null }, { reprises: faites });
+      return;
+    }
+
+    await poserVeilleSurRun(userId, gagne[0], { reprises: faites + 1 });
+    console.warn(
+      `[sync-dressing][veille] run ${etat.runId} figé depuis ${Math.round(silenceBase / 60000)} min ` +
+      `à la page ${run.page_suivante} (${run.items_vus} article(s) lus) — reprise ${faites + 1}/${SYNC_VEILLE_REPRISES_MAX}`,
+    );
+    tracerVeille(token, {
+      run_id: String(etat.runId),
+      page: Number(run.page_suivante) || null,
+      items_vus: Number(run.items_vus) || 0,
+      silence_min: Math.round(silenceBase / 60000),
+      reprise: faites + 1,
+    });
+    // La reprise passe par le chemin NORMAL : syncDressingUnlocked adopte le
+    // run 'running' et repart de `page_suivante` — jamais de la page 1. Et
+    // parce que le run est ADOPTÉ, runRepris vaut true : la garde (a) interdit
+    // tout marquage de disparition sur ce passage. Rien de neuf sur ce front.
+    await syncDressingVinted({
+      declencheur: run.declencheur ?? "bouton",
+      repriseVeille: true,
+    });
+  } catch (e) {
+    console.warn("[sync-dressing][veille] ronde impossible:", String(e?.message ?? e));
+  }
+}
+
 // ── L'ONGLET DE TRAVAIL EST PRÊT QUAND LE CONTENT SCRIPT RÉPOND (2026-09-14) ─
 // CAUSE N°1 DES SYNCS MORTES : 6 runs sur 48 h, 5 comptes, 4 builds différents,
 // tous avec items_vus=0 et page_suivante=1 — « onglet de travail Vinted :
@@ -9767,6 +10035,46 @@ async function ouvrirOngletVintedPret() {
 // compris les syncs saines — deux chargements de vinted.fr au lieu d'un, sur
 // un chemin qui marche. La navigation neuve est le REMÈDE, elle ne doit
 // coûter que quand il y a quelque chose à soigner.
+// ── LE PASSAGE DE PAGE EST ÉCRIT AVANT D'ÊTRE TENTÉ (2026-09-14) ─────────────
+// La ligne d'un run figé ne sait pas DIRE où elle s'est arrêtée : le premier
+// majRun d'un tour de boucle est POSTÉRIEUR à la réponse de la page. Un run
+// mort au passage 1→2 est donc indiscernable entre :
+//   · « la page 2 n'a jamais été demandée »  (worker mort pendant la pause) ;
+//   · « demandée, jamais revenue »           (worker mort pendant l'attente).
+// Les deux se soignent différemment, et c'est la question qu'on n'a pas pu
+// trancher sur les gels du 14/09. On écrit donc une ligne AVANT chaque demande
+// de page, avec l'horodatage pris juste avant l'envoi.
+//
+// ⛔ PERSONNE NE LIT CE QU'ON ÉCRIT ICI. Aucune décision, nulle part, ne
+//    dépend de cette trace dans cette livraison : on observe, on ne juge pas.
+// ⛔ UNE ÉCRITURE PAR PAGE, JAMAIS PAR ARTICLE, et JAMAIS attendue : le POST
+//    part et la boucle continue dans la foulée. La cadence des gros dressings
+//    (vestiaires : 28 pages) ne bouge pas d'une milliseconde.
+// usage_logs et pas une colonne neuve : la table existe, l'extension y écrit
+// déjà ses traces d'éveil, et une ligne PAR PAGE raconte toute la cadence du
+// run — une colonne ne garderait que la dernière page demandée. Aucune
+// migration, donc rien qui attende une validation de schéma pour servir.
+function tracerPageDemandee({ token, userId, runId, page, itemsVus, totalPages }) {
+  if (!token || !userId || !runId) return;
+  const at = new Date().toISOString(); // pris AVANT la demande, jamais après
+  restRequest("usage_logs", token, {
+    method: "POST",
+    body: JSON.stringify([{
+      user_id: userId,
+      feature: "sync_page",
+      metadata: {
+        run_id: String(runId),
+        page,
+        items_vus: Number(itemsVus) || 0,
+        total_pages: Number.isFinite(totalPages) ? totalPages : null,
+        at,
+        build: FILLSELL_BUILD_ID,
+      },
+    }]),
+  }).catch((e) =>
+    console.warn("[sync-dressing] trace de page non écrite (sans conséquence) :", String(e?.message ?? e)));
+}
+
 async function lireVintedAvecCanalRejoue(tabIdInitial, envoyer, etiquette) {
   let derniere = null;
   let tabId = tabIdInitial;
@@ -10228,7 +10536,7 @@ async function traiterCommandeSyncDistante(cmd) {
   await syncDressingVinted({ declencheur: "bouton_distant" });
 }
 
-async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = false, repriseAuto = false } = {}) {
+async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = false, repriseAuto = false, repriseVeille = false } = {}) {
   // Garde mémoire : deux déclenchements rapprochés (double-clic, alarme qui
   // tombe pendant un clic) ne doivent pas lire le dressing deux fois. La base
   // porte la même garantie (index unique WHERE status='running'), celle-ci
@@ -10238,17 +10546,30 @@ async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = fa
     return { ok: false, reason: "deja_en_cours" };
   }
   syncDressingEnCours = true;
+  // ── L'ÉVEIL EST DEMANDÉ DÈS LE DÉPART (2026-09-14) ───────────────────────
+  // Le point de décision du poll (arbitrerEveil) ne passe pas forcément par
+  // ici : une sync lancée au bouton ou par l'alarme quotidienne peut démarrer
+  // sans qu'aucun poll ne tombe à côté — c'est le cas du run de 14:59 chez
+  // seghird711, aucun épisode d'éveil ouvert de toute la fenêtre. On demande
+  // donc explicitement, une fois, au départ.
+  // On ne RELÂCHE pas à la fin : c'est le prochain poll qui tranche, avec sa
+  // règle inchangée (file vide ⇒ relâche). Un seul point de décision, comme
+  // avant — on ne fait qu'ajouter une demande.
+  // Jamais bloquant : deux lectures de chrome.storage, aucun réseau. Sans
+  // token la trace attend le prochain poll (chemin déjà prévu).
+  await demanderEveil(1, null, "sync du dressing").catch((e) =>
+    console.warn("[sync-dressing] éveil non demandé (sans conséquence) :", String(e?.message ?? e)));
   // withJobFlowLock est IMPÉRATIF : la sync navigue l'onglet de travail Vinted,
   // le même que celui d'une publication en cours. Sans ce verrou on rejouerait
   // l'incident du 2026-07-12 (deux flux se disputant le même onglet).
   try {
-    return await withJobFlowLock("sync-dressing", () => syncDressingUnlocked(declencheur, repriseRetry403, repriseAuto));
+    return await withJobFlowLock("sync-dressing", () => syncDressingUnlocked(declencheur, repriseRetry403, repriseAuto, repriseVeille));
   } finally {
     syncDressingEnCours = false;
   }
 }
 
-async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repriseAuto = false) {
+async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repriseAuto = false, repriseVeille = false) {
   const session = await getValidSession();
   if (!session?.access_token) {
     console.log("[sync-dressing] pas de session FillSell — abandon silencieux");
@@ -10407,13 +10728,26 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   // Un clic manuel repart donc toujours à zéro (compteur de tentatives
   // compris). Placé APRÈS les gardes de cadence : un cron refusé par la
   // cadence ne doit pas désarmer une reprise promise à l'utilisateur.
-  if (!repriseRetry403) await annulerRetry403(userId, "supplanté par un nouveau déclenchement");
+  // ⚠️ `repriseVeille` est exclu de ces deux désarmements (2026-09-14) : la
+  // reprise d'un run FIGÉ est un automatisme, pas un geste humain. Effacer
+  // l'état, ce serait remettre à zéro le compteur du plafond — « rendre le
+  // plafond franchissable », exactement ce que le bandeau d'annulerRepriseAuto
+  // interdit. Le veilleur ne reprend qu'un run 'running', que ces deux
+  // mécanismes-là ne touchent jamais : il n'a rien à supplanter.
+  if (!repriseRetry403 && !repriseVeille) await annulerRetry403(userId, "supplanté par un nouveau déclenchement");
   // Même règle pour la reprise des échecs TECHNIQUES : un clic, un cron ou une
   // commande mobile repart à zéro (compteur de tentatives compris) et désarme
   // l'alarme en attente — sinon celle-ci ré-ouvrirait l'ancien run pendant que
   // celui-ci tourne. Un geste humain n'est pas une boucle : le plafond de 3 ne
   // protège que de l'automatisme, pas de l'utilisateur.
-  if (!repriseAuto) await annulerRepriseAuto(userId, "supplanté par un nouveau déclenchement");
+  if (!repriseAuto && !repriseVeille) await annulerRepriseAuto(userId, "supplanté par un nouveau déclenchement");
+
+  // ── LE RUN PASSE SOUS SURVEILLANCE (2026-09-14) ──────────────────────────
+  // Une seule écriture en storage local, PAR RUN (jamais par page) : c'est
+  // elle qui permettra à un worker SUIVANT — celui qui naîtra après la mort de
+  // celui-ci — de savoir qu'un run est en cours et de le reprendre. Sans elle,
+  // la ronde du veilleur ne coûte pas même une requête réseau.
+  await poserVeilleSurRun(userId, run);
 
   // Note « reprise auto technique » : captée AVANT tout travail (la cause peut
   // frapper de nouveau dès l'ouverture de l'onglet) et re-écrite à la clôture
@@ -10445,14 +10779,22 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   const clore = async (champs) => {
     const corps = JSON.stringify({ ...champs, finished_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     const patch = () => restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, { method: "PATCH", body: corps });
+    let clos = false;
     try {
       await patch();
+      clos = true;
     } catch (e1) {
       console.error("[sync-dressing] clôture du run ratée, retry dans 2 s :", e1?.message ?? e1);
       await sleep(2000);
-      await patch().catch((e2) =>
-        console.error("[sync-dressing] CLÔTURE PERDUE — la ligne reste 'running' jusqu'à la prochaine reprise :", e2?.message ?? e2));
+      clos = await patch().then(() => true).catch((e2) => {
+        console.error("[sync-dressing] CLÔTURE PERDUE — la ligne reste 'running' jusqu'à la prochaine reprise :", e2?.message ?? e2);
+        return false;
+      });
     }
+    // Surveillance levée SEULEMENT si la ligne est vraiment close. Clôture
+    // perdue = la ligne reste 'running' : c'est précisément le cas où le
+    // veilleur doit continuer à la regarder.
+    if (clos) await oublierVeille(userId, "run clos");
   };
 
   const echec = async (message) => {
@@ -10795,6 +11137,12 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     // comptes qui se font couper, contre 99 sur le parc — plus il y a de pages,
     // plus il y a d'occasions de perdre le canal, et une seule suffisait à
     // jeter tout le relevé.
+    // Trace du passage de page — cf. le bandeau de tracerPageDemandee. Posée
+    // ICI, juste avant l'envoi, et jamais attendue. Le harnais mock n'est PAS
+    // exclu : tout son intérêt est que la boucle ne sache pas qu'elle est
+    // mockée, et c'est ce qui rend ce passage vérifiable hors production
+    // (scripts/sync-veille-selftest.mjs).
+    tracerPageDemandee({ token, userId, runId: run.id, page, itemsVus: items_vus, totalPages });
     const res = mock
       ? pageDressingMock(mock, page)
       : await (async () => {
