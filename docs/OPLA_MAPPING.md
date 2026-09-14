@@ -1,6 +1,8 @@
 # Opla — mapping exploitable
 
-**Relevé du 2026-09-14.** Document compagnon de `docs/OPLA_RELEVE.md`.
+**Phase 0 du 2026-09-14 + LOT 1 du même soir** (cycle complet observé sur un article
+réel, publié puis supprimé). Document compagnon de `docs/OPLA_RELEVE.md`.
+
 Chaque ligne porte **d'où elle vient**. Trois niveaux de preuve, jamais mélangés :
 
 | Marque | Sens |
@@ -11,32 +13,136 @@ Chaque ligne porte **d'où elle vient**. Trois niveaux de preuve, jamais mélang
 
 ---
 
-## 1. Champ par champ
+## 0. Le contrat d'API, en entier
 
-| Champ FillSell | Champ Opla | Type / format | Obligatoire | Preuve |
+Tous ces appels sont **✅ OBSERVÉS** (code HTTP constaté en session réelle).
+
+```
+GET    /api/public/config/articles                  200   arbre complet (1014 noeuds)
+GET    /api/public/config/params?category=<CODE>    200   config de CETTE categorie
+GET    /api/config/params?locale=fr                 200   listes fermees + drapeaux
+GET    /api/public/me                               200   { user: {...} }
+GET    /api/public/me/articles?view=summary&limit=N 200   { articles: [...], nextCursor }
+GET    /api/public/articles/<id>                    200   { article: {...} }   404 si absent
+
+POST   /api/public/images/upload-url                200   -> URL S3 presignee
+PUT    <URL presignee>                              200   le blob image
+POST   /api/public/me/articles                      201   creation  -> { article: {...} }
+PATCH  /api/public/me/articles/<id>                 200   MISE A JOUR PARTIELLE
+DELETE /api/public/me/articles/<id>                 204   suppression
+```
+
+⛔ **Deux pièges d'URL :**
+- `/api/config/articles` (sans `public`) rend **404**, alors que `/api/config/params`
+  (sans `public`) rend **200**. Le préfixe n'est pas symétrique : **le relire ici**.
+- Tout appel doit partir du **content script** (contexte page). Un `fetch` du service
+  worker MV3 est rejeté : mesuré, `curl` → **429** quand `fetch()` depuis la page → **200**.
+
+## 1. Créer une annonce — le corps exact
+
+**✅ OBSERVÉ** (capturé sur le dépôt réel du lot 1, `201 Created`) :
+
+```json
+POST /api/public/me/articles
+{
+  "title":       "<= 80 caracteres>",
+  "description": "<= 2000 caracteres>",
+  "priceCents":  1800,
+  "images":      ["temp/<sellerId>/ima_<hash>.jpg", "..."],
+  "category":    "SUMMER_DRESSES",
+  "brand":       "Zara",
+  "condition":   "good",
+  "metadata":    { "sizes": ["M"], "colors": ["BLUE"], "materials": ["cotton"] },
+  "asDraft":     true
+}
+```
+
+| Règle | Marque |
+|---|---|
+| **Un champ vide ne s'envoie PAS** — on omet la clé, on ne met pas `""` ni `[]` | ✅ OBSERVÉ (brouillon sans description : clé absente) |
+| **`categoriesPath` ne s'envoie PAS** — le serveur le calcule et le rend | ✅ OBSERVÉ |
+| `"asDraft": true` → brouillon (`status: "draft"`). Absent → publication directe | ✅ OBSERVÉ |
+| `images[]` = **clés S3 `temp/…`**, jamais des URL, jamais des fichiers | ✅ OBSERVÉ |
+| `priceCents` = **entier de centimes** | ✅ OBSERVÉ |
+| `brand` = **texte libre** | ✅ OBSERVÉ |
+| ⛔ **Publier un brouillon** (`draft` → `available`) | ⛔ NON OBSERVÉ |
+
+## 2. Champ par champ
+
+| Champ FillSell | Champ Opla | Format | Obligatoire | Marque |
 |---|---|---|---|---|
-| `job.title` | `title` | texte, **tronquer à 80** | oui | ✅ `maxlength=80` sur l'input ; ✅ mesuré : 95 caractères **acceptés** en écriture programmatique → **tronquer nous-mêmes** |
-| `job.description` | `description` | texte, **tronquer à 2000** | ⛔ non vérifié | ✅ `maxlength=2000` ; ✅ mesuré : 2050 **acceptés** → tronquer nous-mêmes |
-| `job.price` | `priceCents` | **entier, en CENTIMES** | oui | ✅ observé sur annonces publiques (`priceCents: 1800` = 18,00 €) |
-| `platform_fields.oplaCategoryCode` | `category` | code de **feuille** (`SUMMER_DRESSES`) | oui | ✅ 886 feuilles relevées, codes uniques — `docs/opla/categories.tsv` |
-| — | `categoriesPath` | tableau des codes racine→feuille | ⚠️ déduit (présent en lecture ; envoyé ou recalculé ? inconnu) | ✅ observé en lecture |
-| `platform_fields.etat` | `condition` | un des **5 codes** | oui | ✅ `docs/opla/conditions.txt` |
-| `platform_fields.marque` | `brand` | **texte libre** | ⛔ non vérifié | ✅ schéma `brand: string` + sélecteur qui propose `Ajouter "<texte>"` |
-| `platform_fields.taille` | `metadata.sizes[]` | tableau, code de la **grille de la catégorie** | **oui si la catégorie a une grille** | ✅ balayage des 886 feuilles — `docs/opla/categorie-grille.tsv` |
-| `platform_fields.couleurs` | `metadata.colors[]` | tableau, **multi-valué** | **non** | ✅ libellé « Couleur (optionnel) » ; ✅ observé `["BROWN","CAMEL"]` |
-| `platform_fields.matieres` | `metadata.materials[]` | tableau | **non** | ✅ libellé « Matière (optionnel) » ; ✅ observé dans `metadata` |
-| `job.photos` | `images[]` | tableau de **clés** (chaînes) | oui | ✅ observé en lecture ; ⛔ mécanisme d'envoi NON observé |
-| — | `shippingPriceCents` | **calculé par Opla** | — | ✅ 299 / 319 observés ; `minShippingCents: 299` en config. **Aucun champ « format du colis » dans le formulaire** — contrairement à Vinted et Leboncoin |
-| — | `moderationStatus` | `approved` observé | — | ✅ ; ⛔ autres valeurs inconnues |
-| — | `status` | `available` observé | — | ✅ ; ⛔ autres valeurs inconnues |
+| `job.title` | `title` | texte, **tronquer à 80 nous-mêmes** | **oui** | ✅ |
+| `job.description` | `description` | texte, **tronquer à 2000 nous-mêmes** | **NON** | ✅ (absente des messages d'obligation) |
+| `job.price` | `priceCents` | entier centimes, **≤ 100000** | **oui** | ✅ |
+| `platform_fields.oplaCategoryCode` | `category` | code de **feuille** | **oui** | ✅ |
+| `platform_fields.marque` | `brand` | texte libre | **oui** | ✅ (« La marque est obligatoire. ») |
+| `platform_fields.etat` | `condition` | un des **5 codes** | **oui** | ✅ |
+| `platform_fields.taille` | `metadata.sizes[]` | code de la grille de la catégorie | **oui si grille** | ✅ |
+| `platform_fields.couleurs` | `metadata.colors[]` | tableau, multi-valué | non | ✅ |
+| `platform_fields.matieres` | `metadata.materials[]` | tableau | non | ✅ |
+| `job.photos` | `images[]` | clés S3, **1 à 20** | **oui, ≥ 1** | ✅ |
+| — | `shippingPriceCents` | **calculé par Opla** | — | ✅ |
+| — | `categoriesPath` | **calculé par Opla** | — | ✅ |
 
-**⛔ Le corps exact du `POST /api/public/me/articles` n'a PAS été observé.** Les noms de
-champs ci-dessus viennent du **GET** d'annonces publiques. Il est très probable que le
-POST les reprenne, mais ce n'est pas prouvé — c'est le lot 1.
+> ⛔ **`maxlength` ne protège rien.** Mesuré : un titre de 95 caractères et une
+> description de 2050 sont **acceptés** en écriture programmatique (setter natif).
+> **Le handler tronque lui-même**, sinon le serveur reçoit du hors-format.
 
-## 2. États — correspondance complète, 1 pour 1
+## 3. ⛔⛔ LA GARDE QUI N'EXISTE QUE CHEZ NOUS
 
-C'est la seule liste qui tombe **parfaitement** sur la nôtre. ✅ OBSERVÉ des deux côtés.
+**✅ OBSERVÉ, et c'est le point le plus important du mapping :**
+
+| Envoyé | Réponse serveur |
+|---|---|
+| `category: "CATEGORIE_QUI_NEXISTE_PAS"` | **200 — accepté et écrit** |
+| `metadata.sizes: ["75A"]` sur une robe (grille G1) | **200 — accepté et écrit** |
+
+> **Le serveur ne valide NI la catégorie, NI la taille contre la grille.**
+> Une faute de mapping ne rend pas d'erreur : elle produit une annonce **silencieusement
+> morte** — catégorie inexistante, invisible en navigation et en recherche, et
+> « publiée » de notre point de vue. Aucun code HTTP ne préviendra.
+>
+> **Avant tout envoi, vérifier nous-mêmes :**
+> 1. `category` existe dans `docs/opla/categories.tsv` **et** c'est une **feuille** ;
+> 2. si `?category=<CODE>` rend `sizes`, alors `metadata.sizes[0]` **appartient à cette
+>    liste** ; s'il n'en rend pas, **ne pas envoyer `sizes` du tout**.
+
+## 4. Ce que le serveur refuse — et comment le lire
+
+**✅ OBSERVÉ** (provoqué par `PATCH` sur un brouillon jetable) :
+
+```
+PATCH {"priceCents": 200000}  ->  400
+{"error":"price_too_high","maxCents":100000,
+ "message":"Le prix maximum autorisé sur Opla est de 1000 €. Ajuste ton prix pour publier ton article."}
+
+PATCH {"condition":"nimporte-quoi"}  ->  400
+{"error":"[{\"code\":\"invalid_value\",
+            \"values\":[\"new-with-tags\",\"new\",\"like-new\",\"good\",\"fair\"],
+            \"path\":[\"condition\"], \"message\":\"Invalid option: ...\"}]"}
+```
+
+- Le refus de prix porte un **code machine** (`price_too_high`) et le plafond
+  (`maxCents`) → diagnostic direct, et **pré-vol** : tout article > **1000 €** est
+  **impubliable sur Opla**, à écarter avant d'ouvrir quoi que ce soit.
+- Le refus de schéma (forme Zod) nomme le champ fautif dans `path` et **énumère
+  l'admissible** dans `values` → de quoi se corriger tout seul.
+
+### Messages de validation côté client (aucune requête ne part)
+
+**✅ OBSERVÉ**, verbatim, sur `main div.bg-red-50` (sans `role`, sans `aria-live`) :
+
+```
+Une image est requise au minimum.
+Le titre est obligatoire.
+La catégorie est obligatoire.
+La marque est obligatoire.
+L'état est obligatoire.
+Le prix est obligatoire.          (aussi rendu pour un prix a 0)
+Le prix ne peut pas dépasser 1000€.
+```
+
+## 5. États — correspondance complète, 1 pour 1 ✅
 
 | FillSell | Opla `condition` | Libellé Opla |
 |---|---|---|
@@ -46,25 +152,21 @@ C'est la seule liste qui tombe **parfaitement** sur la nôtre. ✅ OBSERVÉ des 
 | Bon état | `good` | Bon état |
 | Satisfaisant | `fair` | **Correct** |
 
-Seul le dernier libellé diffère. Aucune valeur orpheline d'un côté ni de l'autre.
+Aucune valeur orpheline d'un côté ni de l'autre.
 
-## 3. Tailles — la règle, et le piège
+## 6. Tailles — la règle, et le piège ✅
 
-⛔ **Un code de taille seul n'identifie pas une taille.** La liste plate de
-`/api/config/params` contient **150 entrées pour 143 codes uniques** : `TAILLE_UNIQUE`,
-`XS`, `S`, `M`, `L`, `XL`, `XXL` y figurent **deux fois**.
-
-✅ **La règle sûre**, mesurée sur les 886 feuilles :
+⛔ **Un code de taille seul n'identifie pas une taille** : 150 entrées pour 143 codes
+uniques (`TAILLE_UNIQUE`, `XS`, `S`, `M`, `L`, `XL`, `XXL` figurent **deux fois**).
 
 ```
 1. GET /api/public/config/params?category=<CODE_FEUILLE>
-2. pas de cle `sizes` dans la reponse  ->  pas de champ Taille, ne rien envoyer
-3. cle `sizes` presente                ->  champ Taille OBLIGATOIRE ;
-                                           choisir DANS CETTE LISTE, jamais ailleurs
+2. pas de cle `sizes`  ->  pas de champ Taille, NE RIEN envoyer dans metadata.sizes
+3. cle `sizes`         ->  Taille OBLIGATOIRE, choisir DANS CETTE LISTE, jamais ailleurs
 ```
 
-C'est ce que fait le site lui-même à chaque changement de catégorie. Table figée de
-secours : `docs/opla/categorie-grille.tsv` (+ `grilles-tailles.tsv`).
+Table figée de secours : `docs/opla/categorie-grille.tsv` (886 lignes, empreinte
+`34db6508a83fd1d3` confrontée au live) + `grilles-tailles.tsv`.
 
 | Grille | Tailles | Feuilles | Contenu |
 |---|---:|---:|---|
@@ -75,145 +177,141 @@ secours : `docs/opla/categorie-grille.tsv` (+ `grilles-tailles.tsv`).
 | G4 | 70 | **1** (`BRAS`) | `TAILLE_UNIQUE, XS → XXL` + `75A → 115G` |
 
 ⛔ **Ne jamais déduire la grille de la branche.** Contre-exemples mesurés :
-`BELTS`/`GLOVES` (femme) → G1 · `SOCKS_GIRLS_NEW`/`TIGHTS_GIRLS_NEW` → **G3** ·
+`BELTS`/`GLOVES` → G1 · `SOCKS_GIRLS_NEW`/`TIGHTS_GIRLS_NEW` → **G3** ·
 `HATS_GIRLS_NEW`/`CAPS_BOYS_NEW` → **G2** mais `GLOVES_GIRLS_NEW` → **G0** ·
-`SPORT_*_GLOVES` → G1 au milieu d'un rayon Sport en G0 ·
-bijouterie homme → G0 alors que le reste de `MEN_ACC_*` est en G1.
+`SPORT_*_GLOVES` → G1 au milieu d'un rayon en G0 · bijouterie homme → G0 quand le
+reste de `MEN_ACC_*` est en G1.
 
-## 4. Catégories
+## 7. Catégories ✅
 
-- **Arbre complet** : `docs/opla/categories.tsv` — 1014 nœuds, 886 feuilles, 5 niveaux,
-  **codes tous uniques**. Empreinte `d0ceda69abcf359e`, confrontée au live. ✅
-- **Seules les feuilles sont sélectionnables.** ✅
-- Chemin : `PARENT > ENFANT`, séparateur ` > ` **espaces compris**. ✅
-- Nommage **mixte FR/EN** (`MAISON`, `FAIT_MAIN` vs `WOMEN_ROOT`, `TOYS_AND_GAMES`) :
-  ⛔ ne jamais fabriquer un code par convention.
-- **62 % des feuilles (550/886) sont sous une racine genrée** (`WOMEN_ROOT` 204,
-  `MENS` 124, `CHILDREN_NEW` 222). ✅
-  → **Le genre est indispensable pour résoudre une catégorie.** `detectObjectIcon`,
-  aveugle au genre, ne peut pas trancher seul. Même mur que « Genre requis » eBay.
+- `docs/opla/categories.tsv` — 1014 nœuds, 886 feuilles, 5 niveaux, **codes tous
+  uniques**. Empreinte `d0ceda69abcf359e`, confrontée au live.
+- **Validation croisée (lot 1)** : le `categoriesPath` rendu par le serveur à la
+  création — `WOMEN_ROOT > WOMENS > DRESSES > SUMMER_DRESSES` — est **identique**, code
+  pour code, à la chaîne de parents du fichier.
+- **Seules les feuilles sont sélectionnables.**
+- Nommage **mixte FR/EN** : ⛔ ne jamais fabriquer un code par convention.
+- **62 % des feuilles (550/886) sont sous une racine genrée** → **le genre est
+  indispensable** pour résoudre une catégorie ; `detectObjectIcon`, aveugle au genre, ne
+  peut pas trancher seul. Même mur que « Genre requis » eBay.
 
-## 5. Couleurs, matières
+## 8. Couleurs, matières, marque ✅
 
-- Couleurs : **35**, `docs/opla/colors.txt` (`code|hex|libellé`). ✅ empreinte vérifiée.
-- Matières : **65**, `docs/opla/materials.txt`. ✅ empreinte vérifiée.
-- Les deux sont **identiques pour toutes les catégories** (vérifié sur
-  `SUMMER_DRESSES` et `MAISON_DECO_VASES`). ✅
-- Les deux sont **facultatives** (libellé « (optionnel) »). ✅
-- `colors` est **multi-valué**. ✅
+- Couleurs **35** (`colors.txt`), matières **65** (`materials.txt`) — empreintes vérifiées.
+- **Identiques pour toutes les catégories**, et **toutes deux facultatives**.
+- `colors` est **multi-valué** ; l'interface le confirme (bouton « Valider (n) »).
+- **Marque : champ LIBRE**, moteur **Algolia** (app `TGB5B13MIB`), pas `/api/public`.
+  Référentiel **pollué par les vendeurs** (`nike`, `Nike Air`, `nike dunk low`…).
+  → **Toujours préférer une suggestion existante** à la création d'une entrée neuve.
 
-## 6. Marque
+## 9. Photos ✅
 
-✅ **Champ libre.** Pas de liste fermée, pas d'identifiant. Le sélecteur propose
-`Ajouter "<votre texte>"`.
-Moteur : **Algolia** (app `TGB5B13MIB`), pas `/api/public`.
+```
+1. POST /api/public/images/upload-url
+        {"contentType":"image/jpeg","ext":"jpg","prefix":"articles"}   -> 200 + URL presignee
+2. PUT  <URL presignee>   (le blob)                                    -> 200
+3. la cle "temp/<sellerId>/ima_<hash>.jpg" entre dans images[] du POST de creation
+```
 
-⚠️ Le référentiel est **pollué par les vendeurs** : la recherche « nik » rend
-`nike`, `Nike Jordan`, `Nike Air`, `Nike Air Max`, `Nike running`, `Nike air force 1`,
-`Nike x Nocta`, `NIKKIE`, `nike dunk low`, `nike air Jordan` — casse incohérente,
-doublons manifestes.
-→ **Recommandation :** préférer toujours une suggestion existante à la création d'une
-entrée neuve. Ne pas contribuer au bruit.
-
-## 7. Photos
-
-| Point | Valeur | Preuve |
+| Point | Valeur | Marque |
 |---|---|---|
-| Contrôle | `input#sell-photo-new` — **seul id stable du formulaire** | ✅ |
-| Types | `accept="image/*"`, `multiple` | ✅ |
-| Formats annoncés | JPG, PNG, WEBP | ✅ |
-| Quota | **⛔ CONTRADICTOIRE** : en-tête « Photo (0/20) », aide « jusqu'à 10 images » | ✅ les deux textes observés simultanément |
-| Poids max | ⛔ non annoncé | — |
-| Envoi | `POST /api/public/images/upload-url` → **URL présignée** | ⚠️ littéral de bundle, **jamais appelé** |
-| Stockage | CloudFront, `images/<userId>/<articleId>/<clé>.webp` → **conversion WebP serveur** | ✅ |
-| Modération | `moderatedImageKeys[]` — **photo par photo** | ✅ |
+| **Quand** | **à la SÉLECTION**, pas à la publication | ✅ |
+| **Quota** | **20** (pas 10 : l'aide de l'état vide ment) | ✅ |
+| **Au-delà de 20** | **silencieusement tronqué, aucun message** — compter soi-même | ✅ |
+| Minimum | **1** (« Une image est requise au minimum. ») | ✅ |
+| Poids max côté client | **aucun** — 52,5 Mo passés | ✅ |
+| Ré-encodage | le client **convertit en JPEG** (52,5 Mo → 736 Ko) | ✅ |
+| Formats | JPG/PNG/WEBP annoncés mais **non contrôlés** : GIF et SVG passent, **non convertis**, avec un `contentType: image/jpeg` incohérent | ✅ |
+| Contrôle DOM | `input#sell-photo-new` — **seul id stable du formulaire** | ✅ |
+| Retrait d'une vignette | `button.absolute.right-1.top-1`, une par vignette | ✅ |
 
-⛔ **Ne pas coder de boucle photos avant d'avoir tranché 10 vs 20.**
+→ **N'envoyer que du JPEG/PNG/WEBP, et jamais plus de 20.**
 
-## 8. Ce que le handler doit lire AVANT de pousser
+## 10. Les trois chemins ✅
+
+| Chemin | Opla | Signal à retenir |
+|---|---|---|
+| **Publication** | `POST /me/articles` → **201** | **l'`id` rendu** (`art_<32 hex>`). Jamais la redirection `/sell/published`, jamais un délai. |
+| **Republication** | `PATCH /me/articles/<id>` → **200** | **mise à jour PARTIELLE** : n'envoyer que ce qui change. Pas de suppression/recréation, donc **pas de fenêtre de doublon**. |
+| **Retrait** | `DELETE /me/articles/<id>` → **204** | **le 404 sur `GET /articles/<id>`**, pas le 204. |
+
+⛔ **Le chemin DOM de la modification est MORT** : « Enregistrer » ne déclenche aucune
+requête, ni par `click()`, ni en appelant le `onClick` React directement. Reproduit sur
+deux articles. La republication **doit** passer par l'API.
+
+**Retrait ≠ dépublication.** Le menu `button[aria-label="Actions"]` offre les deux :
+« Publier plus tard » repasse l'annonce en `draft` (**réversible**), « Supprimer »
+l'efface (**irréversible**, avec modale de confirmation maison).
+
+## 11. Ce que le handler doit lire AVANT de pousser
 
 ```
-1. GET /api/config/params?locale=fr
-   -> features.depositPaused === true   =>  plateforme en pause (cf. platform_health)
-                                            ⛔ effet reel NON caracterise (lot 1)
+1. GET /api/config/params?locale=fr  ->  features.depositPaused
+   ⚠️ etait a TRUE pendant tout le lot 1 et le depot a QUAND MEME abouti.
+      Ne bloque donc pas la creation. Ce qu'il gouverne reste inconnu.
 
-2. Sur /sell/create, chercher un ancetre du formulaire dont
-   getComputedStyle(...).pointerEvents === "none"
-   -> present  =>  FORMULAIRE DESACTIVE (profil vendeur incomplet)
-                   => attenteUtilisateur, JAMAIS un remplissage
+2. Sur /sell/create : un ancetre du formulaire en pointer-events:none
+   -> formulaire DESACTIVE (profil vendeur incomplet) -> attenteUtilisateur
 
-3. GET /api/public/me  ->  user.idVerified / user.phoneVerified
-   ⚠️ effet sur le depot NON caracterise
+3. Pre-vol de prix : priceCents > 100000  ->  article IMPUBLIABLE sur Opla
+4. Pre-vol de categorie et de taille : cf. section 3 (le serveur ne valide pas)
 ```
 
-### ⛔ Le piège qui ferait perdre une semaine
+### ⛔ Le piège de la porte de profil
 
-Le formulaire est enveloppé dans `div.pointer-events-none.opacity-50` tant que le profil
-vendeur est incomplet. **`element.click()` et le setter natif traversent
-`pointer-events: none`** — j'ai rempli des champs et ouvert des modales sur un formulaire
-**désactivé**, sans la moindre erreur.
+Tant que le profil vendeur est incomplet, le formulaire est enveloppé dans
+`div.pointer-events-none.opacity-50`. **`element.click()` et le setter natif traversent
+`pointer-events: none`** : on remplit un formulaire mort sans la moindre erreur.
 
-> Un handler naïf remplirait donc un formulaire mort en croyant réussir, et n'échouerait
-> qu'à la soumission — ou pire, réussirait à moitié. **C'est exactement le faux
-> « published » de Leboncoin, en pire.**
->
-> D'où la règle : sur Opla, **`pointer-events: none` sur un ancêtre EST un verdict** —
-> le seul de tout le relevé. Il se lit par `getComputedStyle`, donc **il marche en
-> fenêtre minimisée**. L'`opacity-50` qui l'accompagne, elle, ne doit **jamais** servir
-> de verdict (règle du 14/09).
-
-Détection correcte — on cherche l'ancêtre **le plus haut** qui pose la propriété :
+> Sur Opla, **`pointer-events: none` sur un ancêtre EST un verdict** — le seul du relevé.
+> Il se lit par `getComputedStyle`, donc **il vaut en fenêtre minimisée**.
+> L'`opacity-50` qui l'accompagne ne doit **jamais** servir de verdict.
 
 ```js
 function oplaFormulaireDesactive() {
   let n = document.querySelector('main input[maxlength="80"]');
   let poseur = null;
   while (n && n !== document.body) {
-    if (getComputedStyle(n).pointerEvents === 'none') poseur = n;
+    if (getComputedStyle(n).pointerEvents === 'none') poseur = n;  // garder le PLUS HAUT
     n = n.parentElement;
   }
-  return poseur;   // non nul  =>  formulaire desactive
+  return poseur;   // non nul => formulaire desactive
 }
 ```
 
-## 9. Enregistrement dans les registres du background
+## 12. Enregistrement dans les registres du background
 
 ⚠️ **À ne poser qu'au lot 4.** Rien de ceci n'est écrit aujourd'hui.
 
 ```js
 PLATFORM_HANDLERS.opla = { implemented: true,
                            newListingUrl: "https://www.opla.co/sell/create" };
-CATEGORY_FIELD.opla     = "oplaCategoryCode";
-PLATFORM_HOSTS.opla     = "opla.co";
-MY_LISTINGS_URL.opla    = "https://www.opla.co/account/listings";
+CATEGORY_FIELD.opla       = "oplaCategoryCode";
+PLATFORM_HOSTS.opla       = "opla.co";
+MY_LISTINGS_URL.opla      = "https://www.opla.co/account/listings";
 LISTING_URL_PATTERNS.opla = /https:\/\/www\.opla\.co\/product\/art_[0-9a-f]{32}/i;   // ✅ forme observee
-PLATFORMS_WITH_DEFERRED_URL.add("opla");   // ⚠️ si la moderation differe la mise en ligne — a confirmer
+PLATFORMS_WITH_DEFERRED_URL.add("opla");   // ✅ justifie : moderationStatus "pending" a la creation
 ```
 
-## 10. Correspondance `detectObjectIcon`
+## 13. Correspondance `detectObjectIcon`
 
 `docs/opla/correspondance-icones.tsv` — 180 règles, 158 icônes, passées **une par une**
-contre les 886 titres de feuilles.
-
-| Classe | Règles |
-|---|---:|
-| NET (1–6 feuilles) | 94 |
-| AMBIGU (> 6) | 28 |
-| SANS ÉQUIVALENT (0) | 58 |
+contre les 886 titres de feuilles. NET 94 · AMBIGU 28 · SANS ÉQUIVALENT 58.
 
 ⚠️ **C'est une proposition, pas une observation.** Méthode par titre de feuille, avec
 deux angles morts nommés au § 14 du relevé. À reprendre à la main (lot 3).
 
 ### Articles que FillSell ne pourra PAS publier sur Opla
 
-Trous **réels** du catalogue, vérifiés en parcourant l'arbre — à griser à la source,
-sur le modèle de `_shared/beebs-interdits.js`, **jamais** à envoyer pour échouer ensuite :
+Deux causes, à traiter toutes les deux **à la source** (modèle `_shared/beebs-interdits.js`) :
 
-- **Meubles** (canapé, fauteuil, chaise, armoire, commode) — aucun rayon.
+**(a) Prix > 1000 €** — refus serveur `price_too_high`. ✅ OBSERVÉ.
+
+**(b) Trous réels du catalogue**, vérifiés en parcourant l'arbre :
+- **Meubles** (canapé, fauteuil, chaise, armoire) — aucun rayon.
 - **Gros électroménager** (réfrigérateur, micro-onde, lave-linge, grille-pain).
 - **Ordinateurs, écrans, téléviseurs, imprimantes, claviers, souris, drones** —
   `ORDINATEURS_ACCESSOIRES` ne contient que des **accessoires**.
-- **Instruments de musique adultes** — seul `MUSICAL_NEW` les mentionne, sous **Jeux et jouets**.
-- **Vélos adultes** (seul « Vélos pour enfant »), **scooters**, **pneus**, **sièges auto**,
-  **trottinettes** (seuls protections, pièces et casques existent).
+- **Instruments de musique adultes** — seul `MUSICAL_NEW`, sous **Jeux et jouets**.
+- **Vélos adultes**, **scooters**, **pneus**, **sièges auto**, **trottinettes**.
 - **Enceintes et montres connectées** — seuls les accessoires existent.

@@ -1,13 +1,20 @@
 # Opla — relevé de phase 0
 
 **Date :** 2026-09-14 · **Cible :** `https://www.opla.co` · **Compte :** session Nico, cookies REFUSÉS
-**Statut :** observation seule. Aucune publication, aucun brouillon, aucune donnée personnelle saisie.
+**Statut :** phase 0 (observation seule) **+ LOT 1 du 14/09 au soir**. Le lot 1 a créé
+un dépôt réel et un brouillon, **tous deux supprimés** — compte à **zéro annonce**,
+vérifié par trois voies (§ 15.5). Aucune donnée personnelle saisie par moi : le profil
+vendeur a été rempli par Nico.
 **Drapeau :** éteint. Opla n'apparaît nulle part dans l'app, aucun fichier existant n'a été modifié.
 
 > **Règle appliquée à toutes les lignes de ce document et du mapping :**
 > ce qui n'a pas été observé n'y figure pas. Chaque affirmation porte sa preuve
 > (empreinte, code HTTP, libellé relevé). Ce qui n'a pas pu être mesuré est listé
 > nommément au § 12, avec la raison et ce qu'il faudrait pour y arriver.
+>
+> **Les § 1 à 14 datent de la phase 0 ; le § 15 porte le LOT 1 et corrige ce qui a
+> changé de marque.** Chaque section corrigée le dit en tête, avec un renvoi vers le
+> paragraphe du § 15 qui la remplace.
 
 ---
 
@@ -166,15 +173,16 @@ Les cinq qui comptent :
 | `GET /api/public/config/articles` | **arbre de catégories complet** (8 racines, 1014 nœuds, 886 feuilles) | 200, relevé intégralement |
 | `GET /api/public/config/params?category=<CODE>` | **config PAR catégorie** : grille de tailles applicable | 200, relevé sur les 886 feuilles |
 | `GET /api/config/params?locale=fr` | listes fermées globales + **drapeaux serveur** | 200, relevé intégralement |
-| `POST /api/public/images/upload-url` | **URL présignée** pour une photo d'article | littéral de bundle — **NON appelé** |
-| `POST /api/public/me/articles` | **création d'annonce** | littéral de bundle — **NON appelé, corps NON observé** |
+| `POST /api/public/images/upload-url` | **URL présignée** pour une photo d'article | **201/200 observé (lot 1)** |
+| `POST /api/public/me/articles` | **création d'annonce** (+ brouillon via `asDraft`) | **201 observé (lot 1)** |
+| `PATCH /api/public/me/articles/<id>` | **modification partielle** | **200 observé (lot 1)** |
+| `DELETE /api/public/me/articles/<id>` | **suppression** | **204 observé (lot 1)** |
 
 Note : `/api/config/articles` (sans `public`) répond **404**. Le préfixe n'est pas
 symétrique entre `params` et `articles` — ne pas le déduire, le relire ici.
 
-⚠️ Le corps du `POST /me/articles` **n'a pas été observé** : le bundle est minifié et les
-clés du payload n'y apparaissent pas en littéraux. Ce qu'on sait du modèle vient du
-**GET** d'annonces publiques (§ 6.3), pas du POST. Cf. § 12.
+✅ **Corrigé au lot 1 (2026-09-14 nuit) :** le corps du `POST /me/articles` a été
+**capturé sur un dépôt réel**. Voir § 15. Les quatre verbes sont désormais observés.
 
 ## 6. Le formulaire de dépôt
 
@@ -204,9 +212,9 @@ clés du payload n'y apparaissent pas en littéraux. Ce qu'on sait du modèle vi
 |---|---|---|---|---|
 | Photos | `input[type=file]` `accept="image/*"` `multiple`, classe `sr-only` | `#sell-photo-new` | **id stable** | oui |
 | Titre | `input[type=text]` `maxlength=80` | `main input[maxlength="80"]` | attribut stable | oui |
-| Description | `textarea` `maxlength=2000` `rows=3` | `main textarea` | seul `textarea` de la page | non vérifié |
+| Description | `textarea` `maxlength=2000` `rows=3` | `main textarea` | seul `textarea` de la page | **NON** (lot 1 : absente de la liste des obligatoires) |
 | Catégorie | `button` -> modale | par **texte** `^Catégorie` | ⚠️ **texte seul** | oui |
-| Marque | `button` -> modale de recherche | par **texte** `^Marque` | ⚠️ **texte seul** | non vérifié |
+| Marque | `button` -> modale de recherche | par **texte** `^Marque` | ⚠️ **texte seul** | **OUI** (lot 1 : « La marque est obligatoire. ») |
 | État | `button` -> modale | par **texte** `^État` | ⚠️ **texte seul** | oui |
 | Taille | `button` -> modale | par **texte** `^Taille` | ⚠️ **texte seul** | **oui si la catégorie a une grille** |
 | Couleur | `button` -> modale | texte `^Couleur (optionnel)` | ⚠️ **texte seul** | **non** |
@@ -275,7 +283,8 @@ et il a été mesuré, pas supposé :
 
 | Champ | Présence | Obligatoire |
 |---|---|---|
-| Photos, Titre, Description, Catégorie, Marque, État, Prix | **toutes catégories** | oui (sauf Description/Marque, non vérifié) |
+| Photos (≥1), Titre, Catégorie, **Marque**, État, Prix | **toutes catégories** | **oui — confirmé au lot 1** |
+| **Description** | toutes catégories | **NON — facultative** (lot 1 : absente des messages d'obligation) |
 | **Taille** | **seulement si la catégorie a une grille** | **oui quand il est là** |
 | Couleur | toutes catégories | **non** — libellé « (optionnel) » |
 | Matière | toutes catégories | **non** — libellé « (optionnel) » |
@@ -353,23 +362,29 @@ Toutes relevées intégralement et **confrontées au live par empreinte SHA-256*
 |---|---|
 | Contrôle | `input#sell-photo-new`, `type="file"`, `accept="image/*"`, `multiple`, classe `sr-only` |
 | Glisser-déposer | annoncé (« Glissez-déposez vos images ou cliquez pour parcourir ») — **non testé** |
-| Formats annoncés | **JPG, PNG, WEBP** |
-| **Quota — CONTRADICTION DANS L'INTERFACE** | l'en-tête affiche **« Photo (0/20) »**, l'aide juste en dessous **« jusqu'à 10 images »**. Les deux textes sont rendus en même temps, sur le même écran. |
-| Poids maximum | **non annoncé nulle part**, absent du DOM et des props React |
+| Formats annoncés | **JPG, PNG, WEBP** — ⛔ **non contrôlés** : GIF et SVG passent (lot 1) |
+| **Quota** | ✅ **20** — tranché au lot 1 : 22 fichiers posés, **20 retenus, en silence**. Le texte « jusqu'à 10 images » est **FAUX** (c'est l'aide de l'état vide). |
+| Poids maximum | ✅ **aucun côté client** — un PNG de **52,5 Mo** est passé sans un mot |
+| Ré-encodage | ✅ **le client convertit en JPEG avant l'envoi** : le PNG de 52,5 Mo est parti en **736 Ko `image/jpeg`**. C'est pour ça qu'aucun plafond de poids ne mord. |
 | Dimensions | non annoncées |
-| Mécanisme d'envoi | `POST /api/public/images/upload-url` — **URL PRÉSIGNÉE** (littéral de bundle, non appelé). Stockage CloudFront `d2f61lx5s6m7uh.cloudfront.net`, clé `images/<userId>/<articleId>/<imageKey>.webp` — donc **conversion WebP côté serveur**. |
+| Mécanisme d'envoi | ✅ **observé au lot 1**, et il a lieu **à la sélection, pas à la publication** : `POST /api/public/images/upload-url` `{"contentType":"image/jpeg","ext":"jpg","prefix":"articles"}` → URL présignée → `PUT` sur `opla-app-images-538810474881-eu-west-1.s3.eu-west-1.amazonaws.com/temp/<sellerId>/<clé>.jpg` (200). La clé `temp/…` est ensuite passée telle quelle dans `images[]` du POST de création. |
+| Retrait d'une vignette | `button.absolute.right-1.top-1`, une par vignette, sans libellé ni `aria-label`. Une passe synchrone **de la fin vers le début** en retire plusieurs d'un coup. |
+| Ordre | l'interface expose « Changer l'ordre des photos » et « Photo principale » — **non testé** |
 | Modération | l'article porte `moderatedImageKeys[]` : **les photos sont modérées une par une**. |
-| Observé sur annonces publiques | 3, 4, 5 et 6 photos — jamais plus de 6 dans l'échantillon. |
 
-⚠️ **Le quota n'est pas tranché** et ne peut pas l'être sans téléverser : 20 et 10 sont
-tous deux affichés. Avant d'écrire la moindre boucle de photos, il faut trancher par la
-mesure (cf. § 12). Prendre 10 par prudence serait un choix raisonnable — mais c'est un
-choix, pas une observation.
+⛔ **Deux pièges pour le handler :**
+1. **Au-delà de 20, les photos en trop sont jetées SANS message.** Un handler qui en
+   pousse 25 en verra 20 partir et n'en saura rien. **Il doit compter lui-même.**
+2. **Le format annoncé n'est pas contrôlé, et la déclaration est incohérente** : pour un
+   GIF et un SVG, la demande d'URL présignée annonce quand même
+   `contentType: "image/jpeg"` tout en posant `ext: "gif"` / `"svg"`, et le fichier part
+   **non converti**. C'est un défaut côté Opla. **N'envoyer que du JPEG/PNG/WEBP.**
 
 ## 9. Signaux de succès et d'échec
 
-**Rien de tout ceci n'a été observé sur un dépôt réel** — aucune publication n'a eu lieu.
-Ce qui suit est ce que la structure PERMET d'affirmer, et rien de plus.
+> ✅ **REPRIS AU LOT 1.** Cette section a été écrite avant tout dépôt réel. Le dépôt a
+> depuis eu lieu : le signal de succès est **mesuré** et décrit au **§ 15.3**. Ce qui
+> suit reste exact, et la prédiction qu'il contenait s'est vérifiée.
 
 Ce qui est **observé** :
 - Une route de confirmation existe : **`/sell/published`** (table de routes du bundle).
@@ -389,8 +404,11 @@ Ce qui en **découle** pour la conception (à valider en phase 1) :
 
 ⚠️ **`moderationStatus` impose le même schéma que Beebs** : une annonce acceptée n'est
 pas forcément en ligne. Il faudra très probablement inscrire Opla dans
-`PLATFORMS_WITH_DEFERRED_URL` et prévoir la re-capture différée. Les autres valeurs de
-`moderationStatus` (refus, en attente) **n'ont pas été observées** — seul `approved` l'a été.
+`PLATFORMS_WITH_DEFERRED_URL` et prévoir la re-capture différée.
+✅ **Confirmé au lot 1 :** la création rend `moderationStatus: "pending"`, qui passe à
+`approved` **quelques dizaines de secondes plus tard**. La modération est donc bien
+**asynchrone**. Les valeurs de refus restent **non observées** (le champ
+`moderationReasons` existe mais est resté vide).
 
 **Erreurs provoquées volontairement (§ 2g du complément) — résultat : il n'y a pas de
 validation côté client.**
@@ -418,9 +436,9 @@ React, lui, n'a rien re-tronqué. Formulaire remis à blanc après chaque essai.
 
 ## 10. Retrait / suppression d'annonce
 
-**NON OBSERVÉ, et je dis pourquoi :** le compte de Nico n'a **aucune annonce**
-(`GET /api/public/me/articles` → `articles: []`). Sans annonce à retirer, il n'y a ni
-bouton à relever, ni requête à capturer, ni signal à mesurer.
+> ✅ **OBSERVÉ AU LOT 1** — voir **§ 15.5** pour le chemin complet, le message de
+> confirmation et les trois preuves de retrait. La mention « NON OBSERVÉ » qui figurait
+> ici (faute d'annonce sur le compte) est levée.
 
 Ce qui est **observé** et balise le chantier :
 - Route de gestion : **`/account/listings`**.
@@ -430,8 +448,12 @@ Ce qui est **observé** et balise le chantier :
   pas de frontière de suppression à surveiller.
 - Route `/account/vacation` : un **mode vacances** existe — potentiellement une
   alternative de masse au retrait un par un.
-- L'article porte `status` : le retrait passe probablement par un changement de `status`
-  plutôt que par une suppression dure — **non vérifié**.
+- ✅ **Lot 1 — il y a DEUX chemins distincts, et il ne faut pas les confondre :**
+  **« Publier plus tard »** retire l'annonce de la vente (elle repasse en `draft`,
+  réversible) et **« Supprimer »** l'efface (`DELETE`, 204, irréversible).
+  Le menu par carte porte `button[aria-label="Actions"]` — **le seul sélecteur à
+  `aria-label` de tout le parcours** — et ses entrées sont de vrais
+  `[role="menuitem"]`.
 
 ## 11. LA TABLE DES DIVERGENCES visible / minimisé
 
@@ -524,29 +546,35 @@ sera **beaucoup** plus lent que prévu — et c'est très probablement une des c
 
 ## 12. Ce que je n'ai PAS pu mesurer — et ce qu'il faudrait
 
-Liste franche. Rien de ce qui suit n'est dans le mapping.
+Liste franche, **remise à jour après le lot 1**. Rien de ce qui suit n'est dans le mapping.
+
+### 12.1 Levé au lot 1 (2026-09-14 nuit)
+
+| # | Point | Où c'est écrit maintenant |
+|---|---|---|
+| 1 | Corps du `POST /me/articles` | § 15.2 — capturé sur un dépôt réel |
+| 2 | Messages d'erreur exacts | § 15.1 (client) et § 15.6 (serveur) |
+| 3 | Quota de photos : **20**, pas 10 | § 8 |
+| 4 | Poids max : **aucun côté client** (52,5 Mo passés) | § 8 |
+| 5 | Mécanique d'envoi des photos | § 8 et § 15.2 |
+| 6 | Chemin de RETRAIT | § 15.5 — `DELETE`, 204, trois preuves |
+| 7 | Chemin de MODIFICATION | § 15.4 — `PATCH`, 200, mise à jour partielle |
+| 9 | `moderationStatus` : **`pending` → `approved`** | § 15.3 |
+
+### 12.2 Toujours ouvert
 
 | # | Non mesuré | Pourquoi | Ce qu'il faudrait |
 |---|---|---|---|
-| 1 | **Corps du `POST /me/articles`** (noms de champs, types, format exact) | aucun dépôt réel ; bundle minifié, les clés n'y sont pas en littéraux | un dépôt réel autorisé par Nico, sonde réseau branchée, sur un article jetable |
-| 2 | **Messages d'erreur d'Opla** (champ vide, format refusé, photo trop lourde, catégorie incompatible) | **il n'y a aucune validation côté client** (mesuré : tout passe) ; les messages viennent du serveur, à la soumission | même dépôt réel, en provoquant chaque refus |
-| 3 | **Quota de photos : 10 ou 20 ?** | les deux chiffres sont affichés simultanément dans l'interface ; rien dans le DOM ni les props React ne tranche | téléverser 11 puis 21 images sur un brouillon |
-| 4 | **Poids/dimensions max d'une photo** | non annoncés nulle part | téléverser un fichier volumineux |
-| 5 | **Mécanique d'envoi des photos** (presigned → PUT S3 → clé rendue ?) | endpoint connu par littéral, jamais appelé | un dépôt réel avec photo |
-| 6 | **Chemin de RETRAIT** | le compte n'a **aucune** annonce (`articles: []`) | déposer un article jetable, puis le retirer |
-| 7 | **Chemin de MODIFICATION** (`/sell/edit/:articleId`) | idem — pas d'article à éditer | idem |
-| 8 | **Effet réel de `depositPaused: true`** | le drapeau était déjà à `true` et le formulaire s'ouvrait quand même | observer un dépôt pendant que le drapeau est à `true`, puis à `false` |
-| 9 | **Valeurs de `moderationStatus` autres qu'`approved`** | seules des annonces publiées sont visibles publiquement | suivre un dépôt réel de bout en bout |
-| 10 | **Fenêtre MINIMISÉE (état C)** | API d'extension indisponible, et pas de permission d'hôte Opla | cf. § 11.3 |
+| 8 | **Effet réel de `depositPaused: true`** | le drapeau est à `true` depuis le début, et le dépôt a **quand même abouti** (lot 1). Il ne bloque donc pas la création — mais on ne sait pas ce qu'il gouverne. | observer le site avec le drapeau à `false`, ou demander à Opla |
+| 9b | **Valeurs de refus de `moderationStatus`** | notre article a été approuvé ; `moderationReasons` est resté vide | déposer un article volontairement refusable — **à ne pas faire sans décision** |
+| 10 | **Fenêtre MINIMISÉE (état C)** | API d'extension indisponible, et pas de permission d'hôte Opla | cf. § 11.3 — c'est le lot 2 |
 | 11 | **Bandeau de consentement à l'état vierge** | il faudrait purger `@cookie_consent`, donc modifier l'état de consentement de Nico | une session de test dédiée, ou son accord explicite |
-| 12 | **Second palier de vérification** (`/account/verify/identity`, `/account/verify/phone`) | `idVerified:false`, `phoneVerified:false` — bloque-t-il le dépôt, ou seulement certains usages ? | franchir la porte de profil d'abord |
-| 13 | **Glisser-déposer de photos** | non testé (l'`input[type=file]` suffira probablement) | test dédié |
-| 14 | **Endpoint exact de recherche de marque** | passe par **Algolia** (app `TGB5B13MIB`), pas par `/api/public` | capturer le POST Algolia pendant une frappe |
-
-**Le blocage de fond, en une phrase :** la porte de profil vendeur exige des **données
-personnelles réelles** (nom, prénom, téléphone, adresse) que je ne remplis pas. Elle
-ferme l'accès au dépôt, et donc aux points 1, 2, 5, 6, 7, 9 d'un seul coup. Tout le
-reste de la phase 1 en dépend.
+| 12 | **Second palier de vérification** | `idVerified:false` et `phoneVerified:false` **n'ont PAS bloqué** le dépôt (lot 1). Ce qu'ils gouvernent reste inconnu (encaissement ? plafonds ?). | tenter une vente réelle |
+| 13 | **Glisser-déposer de photos** | non testé — l'`input[type=file]` a suffi | test dédié, faible intérêt |
+| 14 | **Endpoint exact de recherche de marque** | passe par **Algolia** (app `TGB5B13MIB`) | capturer le POST Algolia pendant une frappe |
+| 15 | **Publication d'un brouillon** (`draft` → `available`) | non testé : cela aurait remis une annonce en ligne, hors du cadre fixé | un `PATCH {asDraft:false}` sur un brouillon jetable, à valider |
+| 16 | **Pourquoi « Enregistrer » ne déclenche rien** | reproduit sur deux articles, y compris en appelant le `onClick` React directement ; la cause est interne au composant | lecture du code non minifié, ou renoncement définitif au chemin DOM (cf. § 15.4) |
+| 17 | **Sort des photos orphelines** | les fichiers posés puis retirés avant publication restent sur `temp/` en S3 | sans objet pour nous, mais à ne pas aggraver : ne poser que ce qu'on publie |
 
 ## 13. Recommandation
 
@@ -567,10 +595,16 @@ sélecteurs par libellé (Leboncoin), modales sans rôle (Leboncoin), rendu cond
 (eBay), modération différée (Beebs). L'API les supprime toutes d'un coup.
 
 **Deux réserves, dites clairement :**
-1. Le `POST` de création **n'a pas été observé**. La recommandation porte sur la voie,
-   pas sur une implémentation prête : le lot 1 ci-dessous existe pour lever ça.
+1. ~~Le `POST` de création n'a pas été observé.~~ ✅ **Levé au lot 1** — le corps, le
+   code de retour et le signal de succès sont mesurés (§ 15.2, § 15.3). La
+   recommandation ne repose donc plus sur une projection.
 2. L'appel **doit partir du content script** (§ 3). Ce n'est pas un détail :
    c'est la contrainte qui décide de l'architecture.
+
+✅ **Le lot 1 a renforcé la recommandation bien au-delà de ce que j'attendais** : le
+chemin DOM de la **modification** s'est révélé **inutilisable** (§ 15.4 — ni `click()`
+ni l'appel direct du `onClick` React ne déclenchent quoi que ce soit). Sur ce chemin,
+l'API n'est plus « préférable » : elle est la **seule** voie.
 
 **Forme retenue : hybride, et c'est volontaire.** Le content script reste nécessaire —
 pour porter la session, pour lire la porte de profil, et pour détecter le blocage du
@@ -581,18 +615,19 @@ C'est un connecteur « à la Vinted » (API interne) plutôt qu'« à la Lebonco
 
 | Lot | Contenu | Bloqué par |
 |---|---|---|
-| **0 — franchir la porte** | Nico remplit lui-même son profil vendeur Opla (nom, prénom, téléphone, adresse). Rien à coder. | **rien — c'est le préalable à tout** |
-| **1 — observer UN dépôt réel** | Un article jetable, déposé à la main par Nico, sonde réseau branchée. On relève : corps du `POST /me/articles`, séquence des photos, forme du succès, identifiant rendu. Puis on provoque chaque erreur et on relève les messages. **Observation seule, zéro code de handler.** | lot 0 |
+| ~~**0 — franchir la porte**~~ | ✅ **FAIT le 14/09** — profil vendeur rempli par Nico. Vérifié : plus aucun ancêtre en `pointer-events:none`. | — |
+| ~~**1 — observer UN dépôt réel**~~ | ✅ **FAIT le 14/09 au soir** — cf. **§ 15**. Corps du POST, séquence photo, signal de succès, `PATCH`, `DELETE`, messages d'erreur client et serveur : tout est relevé. Les deux articles créés ont été supprimés. | — |
 | **2 — mesurer l'état C** | Permission d'hôte `opla.co` en build **unpacked seulement**, sonde rejouée dans la fenêtre `#fillsell-worker` minimisée, table des divergences complétée. Peut se faire en parallèle du lot 1. | rien (build locale) |
 | **3 — mapping applicatif** | Poser `oplaCategoryCode` dans `platform_fields` côté app : `categorieParMot` → arbre Opla, garde-fou de famille, correspondance `detectObjectIcon` (§ 14). Drapeau toujours éteint. | lot 1 (pour le nom exact des champs) |
 | **4 — publication** | `handlers/opla.js` : `fillListingForm` par API, troncature 80/2000, prix en centimes, photos, preuve par identifiant. Enregistrement dans `PLATFORM_HANDLERS`, `CATEGORY_FIELD`, `LISTING_URL_PATTERNS`, `MY_LISTINGS_URL`, `PLATFORM_HOSTS`. | lots 1, 2, 3 |
 | **5 — modération différée** | `PLATFORMS_WITH_DEFERRED_URL`, re-capture par `GET /me/articles`, lecture de `moderationStatus`. | lot 4 |
-| **6 — retrait et modification** | `deleteListing`, puis `/sell/edit/:articleId` pour la republication **en place** (pas de suppression/recréation, donc pas de fenêtre de doublon). | lot 1, lot 4 |
+| **6 — retrait et modification** | `deleteListing` par `DELETE` (signal = le **404**, pas le 204), puis republication **en place** par `PATCH` partiel — pas de suppression/recréation, donc **pas de fenêtre de doublon**. ⛔ Par l'API : le bouton « Enregistrer » est inerte (§ 15.4). | lot 4 |
 | **7 — exposition** | Case Opla dans l'app, icône, drapeau levé. | tous |
 
-**Ordre imposé par les faits :** rien au-dessus du lot 3 ne peut s'écrire honnêtement
-tant que le lot 1 n'a pas eu lieu. Écrire le `POST` sans l'avoir vu passer, ce serait
-reproduire exactement le faux « published » de Leboncoin.
+**Ordre imposé par les faits, remis à jour :** les lots 0 et 1 sont faits. Le lot 3
+(mapping applicatif) est désormais **le chemin critique** — et il porte la garde de
+catégorie/taille du § 15.6, **qui est la seule qui existe**, puisque le serveur Opla
+accepte en 200 une catégorie inexistante et une taille hors grille.
 
 ## 14. Correspondance `detectObjectIcon` → arbre Opla
 
@@ -697,3 +732,270 @@ règles larges, sans objet ici.
 > **Ordre de grandeur, honnêtement :** le rattachement des 158 icônes à un arbre de 886
 > feuilles genré n'est pas une tâche de quelques minutes. C'est le lot 3, et il mérite
 > son propre passage — pas un coin de table à la fin du lot 4.
+
+---
+
+# 15. LOT 1 — le cycle complet, observé sur un article réel
+
+**Nuit du 2026-09-14.** Porte de profil franchie (vérifiée par `getComputedStyle` :
+plus aucun ancêtre en `pointer-events:none`, et le bouton « Publier l'article » a
+remplacé « Renseigner mes informations »). `idVerified` et `phoneVerified` sont restés
+à `false` : **ils ne bloquent pas le dépôt**.
+
+**État final du compte : ZÉRO annonce.** Vérifié par trois voies indépendantes
+(§ 15.5). Rien n'a survécu à la nuit.
+
+## 15.1 Erreurs côté client — messages exacts
+
+Clic sur « Publier l'article » avec le formulaire **vide**. Aucune requête réseau ne
+part : la validation est **entièrement côté client**, au clic.
+
+```
+Une image est requise au minimum.
+Le titre est obligatoire.
+La catégorie est obligatoire.
+La marque est obligatoire.
+L'état est obligatoire.
+Le prix est obligatoire.
+```
+
+**Ce que cette liste dit, et qui corrige le relevé de phase 0 :**
+- **La description est FACULTATIVE** — elle n'y figure pas.
+- **La marque est OBLIGATOIRE** — elle y figure.
+- La taille n'y figure pas **parce qu'aucune catégorie n'était choisie** ; elle
+  n'apparaît qu'une fois la catégorie posée (et seulement si elle a une grille).
+
+Prix à `0` → **« Le prix est obligatoire. »** (zéro est traité comme vide).
+
+Le bloc porte les classes `mt-4 whitespace-pre-line rounded-xl border border-red-200
+bg-red-50 px-4 py-3 text-sm text-red-700`, **sans `role`, sans `aria-live`**, et
+concatène tous les messages dans un seul nœud texte.
+→ Sélecteur : `main div.bg-red-50`. Lecture par `textContent` : **valide en minimisé**.
+
+## 15.2 Le corps du POST de création — capturé
+
+```
+POST /api/public/me/articles          →  201 Created
+```
+
+```json
+{
+  "title": "Test technique FillSell - ne pas acheter",
+  "description": "Annonce de test technique, publiee puis retiree immediatement. Ne pas acheter.",
+  "priceCents": 50,
+  "images": [
+    "temp/<sellerId>/ima_7a1ceb4b0ea0404e1ca74282a159499c.jpg",
+    "temp/<sellerId>/ima_9191481fda5abdaaa49fee7abd50abc7.jpg"
+  ],
+  "category": "SUMMER_DRESSES",
+  "brand": "Zara",
+  "condition": "good",
+  "metadata": { "sizes": ["M"], "colors": ["BLUE"] }
+}
+```
+
+Sept faits, tous mesurés :
+
+1. **`images[]` porte les clés S3 `temp/…`**, pas des URL, pas des fichiers.
+2. **`category` seul** — `categoriesPath` n'est **PAS** envoyé. Le serveur le calcule et
+   le rend dans la réponse. *(Cela fait passer `categoriesPath` de DÉDUIT à
+   « calculé serveur, ne pas envoyer ».)*
+3. **`metadata`** porte `sizes`/`colors`/`materials`, en tableaux.
+4. **Un champ vide n'est pas envoyé** : sur le brouillon sans description, la clé
+   `description` est simplement **absente** du corps.
+5. `priceCents` est bien un **entier de centimes**.
+6. `brand` est du **texte libre**.
+7. **Le brouillon, c'est le MÊME endpoint** avec un drapeau en plus :
+   `"asDraft": true` → réponse `status: "draft"`.
+
+### Les photos partent À LA SÉLECTION, pas à la publication
+
+C'est l'inverse de ce que je supposais en phase 0 (les vignettes sont des `blob:`, ce
+qui m'avait induit en erreur). Séquence réelle, **par photo** :
+
+```
+POST /api/public/images/upload-url
+     {"contentType":"image/jpeg","ext":"jpg","prefix":"articles"}      → 200 + URL présignée
+PUT  https://opla-app-images-…-eu-west-1.s3.eu-west-1.amazonaws.com/temp/<sellerId>/<clé>.jpg
+     (le blob image)                                                   → 200
+```
+
+23 couples demande/PUT observés, **tous en 200, aucun échec**.
+
+## 15.3 Le signal de succès — mesuré
+
+La réponse `201` rend **l'article complet**, et c'est elle le signal :
+
+```
+id                 : "art_eca3836a941424cad8829725225b88c2"
+status             : "available"
+moderationStatus   : "pending"        ← puis "approved" quelques dizaines de secondes plus tard
+categoriesPath     : ["WOMEN_ROOT","WOMENS","DRESSES","SUMMER_DRESSES"]   (calculé serveur)
+buyerTotalCents    : 123   (pour priceCents 50 → 73 c de frais acheteur)
+```
+
+Clés supplémentaires vues seulement ici : `moderationUpdatedAt`, `moderationReasons`
+(resté vide), `sourceLocale`.
+
+> ✅ **La prédiction du § 9 se vérifie.** Le signal de succès est
+> **le `201` et l'`id` qu'il rend** — pas la redirection vers `/sell/published`
+> (qui a bien lieu, avec `?articleId=…`, mais qui n'est qu'une conséquence), et
+> surtout pas un délai.
+>
+> ⚠️ **`moderationStatus: "pending"` à la création** : une annonce créée n'est pas
+> encore approuvée. Le schéma Beebs se confirme.
+
+**Validation croisée du catalogue :** le `categoriesPath` rendu par le serveur
+(`WOMEN_ROOT > WOMENS > DRESSES > SUMMER_DRESSES`) est **identique**, code pour code,
+à la chaîne de parents de `docs/opla/categories.tsv`. L'arbre relevé en phase 0 est
+donc confirmé par une source indépendante.
+
+## 15.4 La modification — `PATCH`, et le chemin DOM est MORT
+
+```
+PATCH /api/public/me/articles/<id>   {"title":"…"}   →  200
+```
+
+Réponse : l'article complet, `updatedAt` avancé, changement confirmé en base.
+**C'est une mise à jour PARTIELLE** : je n'ai envoyé que `title`, et `category`,
+`condition`, `brand`, `priceCents`, `images` ont tous survécu intacts.
+→ C'est exactement la primitive dont la republication a besoin.
+
+### ⛔ Mais le bouton « Enregistrer » ne fonctionne pas depuis le DOM
+
+Reproduit **deux fois, sur deux articles différents** (un publié, un brouillon) :
+
+| Tentative | Résultat |
+|---|---|
+| `bouton.click()` | **aucune requête**, aucun message, rien en base |
+| `props.onClick({…})` appelé **directement sur la fibre React** | **aucune requête**, aucune exception, rien en base |
+
+Le bouton n'est pourtant ni `disabled`, ni `aria-disabled`, il a `pointerEvents: auto`,
+`opacity: 1`, un `onClick` de type `function`, et il n'est pas dans un `<form>`.
+Le handler s'exécute donc, et **abandonne en silence** pour une raison interne au
+composant, invisible de l'extérieur.
+
+> **Conséquence, et elle est nette :** le chemin de modification **ne peut pas** être
+> piloté par le DOM. C'est l'argument le plus fort de toute la nuit en faveur de la
+> voie API — sur ce chemin précis, il n'y a même pas d'alternative.
+
+## 15.5 Le retrait — deux chemins, à ne pas confondre
+
+Menu par carte sur `/account/listings` : `button[aria-label="Actions"]`
+— **le seul sélecteur à `aria-label` de tout le parcours**, et il ouvre un vrai
+`[role="menu"]` avec des `[role="menuitem"]`.
+
+| Entrée | Effet |
+|---|---|
+| **« Publier plus tard »** | *« Retire l'article de la … »* → repasse en **`draft`**, **réversible** |
+| « Faire une réduction », « Booster cet article », « Voir », « Modifier », « Partager » | — |
+| **« Supprimer »** | **efface définitivement** |
+
+« Supprimer » ouvre une **modale de confirmation maison** (pas un `confirm()` natif) :
+
+```
+Supprimer l'annonce
+Êtes-vous sûr de vouloir supprimer cette annonce ?
+                                        [Annuler]  [Supprimer]
+```
+
+Puis :
+
+```
+DELETE /api/public/me/articles/<id>   →  204 No Content
+```
+
+**Les trois preuves de retrait**, prises après coup et indépendantes l'une de l'autre :
+
+| Preuve | Résultat |
+|---|---|
+| `DELETE` lui-même | **204** |
+| `GET /api/public/articles/<id>` | **404** |
+| `GET /api/public/me/articles` | `{"articles":[],"nextCursor":null}` |
+| (et la page) | « Tous (0) · En ligne (0) · Vendu (0) · Brouillon (0) — Aucune annonce » |
+
+→ **Le signal de retrait à retenir est le 404 sur le détail**, pas le 204 : le 204 dit
+que la requête a été acceptée, le 404 dit que l'annonce n'est plus là.
+
+## 15.6 Refus serveur — et les DEUX qui n'en sont pas
+
+Provoqués par `PATCH` sur un brouillon jetable.
+
+### Ce que le serveur refuse
+
+**Prix au-dessus du plafond** — et c'est une **règle métier majeure** :
+
+```
+PATCH {"priceCents": 200000}   →  400
+{"error":"price_too_high","maxCents":100000,
+ "message":"Le prix maximum autorisé sur Opla est de 1000 €. Ajuste ton prix pour publier ton article."}
+```
+
+> ⛔ **Opla plafonne toute annonce à 1 000 €.** Tout article FillSell au-dessus est
+> **impubliable** sur Opla. C'est un contrôle de pré-vol, pas un échec à traiter après
+> coup. Le refus porte un **code machine** (`error: "price_too_high"`) et le plafond en
+> centimes (`maxCents`) : de quoi diagnostiquer proprement.
+> *(Le même plafond est aussi contrôlé côté client, au clic : « Le prix ne peut pas
+> dépasser 1000€. »)*
+
+**État invalide** — et le serveur rend la liste des valeurs admises :
+
+```
+PATCH {"condition":"pas-un-code-valide"}   →  400
+{"error":"[{\"code\":\"invalid_value\",
+            \"values\":[\"new-with-tags\",\"new\",\"like-new\",\"good\",\"fair\"],
+            \"path\":[\"condition\"],\"message\":\"Invalid option: expe…"}]"}
+```
+
+C'est une validation de schéma (forme Zod) : `path` nomme le champ fautif et `values`
+énumère l'admissible. **Exploitable directement pour un diagnostic — et pour se
+soigner tout seul.**
+
+### ⛔⛔ Ce que le serveur N'IMPOSE PAS — le piège de la nuit
+
+| Essai | Attendu | **Mesuré** |
+|---|---|---|
+| `PATCH {"category":"CATEGORIE_QUI_NEXISTE_PAS"}` | 400 | **200 — ACCEPTÉ ET ÉCRIT** |
+| `PATCH {"metadata":{"sizes":["75A"]}}` sur une robe (grille G1) | 400 | **200 — ACCEPTÉ ET ÉCRIT** |
+
+> **Le serveur ne valide NI la catégorie, NI la taille contre la grille de la catégorie.**
+>
+> Une faute de mapping ne produit donc **pas** une erreur : elle produit une annonce
+> **silencieusement morte** — rangée dans une catégorie qui n'existe pas, introuvable
+> par la navigation, invisible en recherche, et parfaitement « publiée » de notre point
+> de vue. Aucun code HTTP ne nous préviendra.
+>
+> C'est le scénario exact qui nous a coûté des semaines ailleurs, en pire : ici il n'y a
+> même pas de symptôme. **Notre garde-fou de catégorie est la SEULE garde.** Le mapping
+> doit vérifier que le code existe dans `docs/opla/categories.tsv` **et** que la taille
+> appartient à la grille de `categorie-grille.tsv` **avant** d'envoyer quoi que ce soit.
+
+## 15.7 Déroulé de la nuit — dont un incident, dit franchement
+
+Deux articles ont existé, tous deux détruits :
+
+| | Article | Sort |
+|---|---|---|
+| 1 | `art_eca3836a…` — publié **en ligne** | supprimé, 204 / 404 / 0 annonce |
+| 2 | `art_d207c22a…` — **brouillon** (jamais visible, jamais achetable) | supprimé, 204 / 404 / 0 annonce |
+
+**L'incident.** En testant le plancher de prix, j'ai enchaîné les valeurs `0` puis
+`0,5` en cliquant « Publier l'article » à chaque essai, avec une garde censée
+m'arrêter au premier essai qui **ne** produirait **pas** de message d'erreur. La garde
+a bien fonctionné — mais **après coup** : `0,5` n'a produit aucun message parce que le
+dépôt était **valide**, et l'annonce est partie **à 0,50 €**. Exactement le prix que ta
+borne interdisait.
+
+Ce que j'ai fait : j'ai arrêté le relevé sur-le-champ et je suis allé corriger le prix.
+La modification par le DOM ayant échoué (§ 15.4), j'ai supprimé l'annonce. Exposition :
+**moins de quatre minutes, 0 vue, 0 like** (relevés sur la carte avant suppression).
+
+Ce que j'aurais dû faire : tester le plancher de prix **sur un brouillon**, pas sur le
+bouton de publication. La leçon vaut pour le handler autant que pour moi —
+**« pas de message d'erreur » n'est pas « rien ne s'est passé »**, c'est souvent
+« ça a marché ».
+
+Le deuxième article a été créé pour finir la mesure (d), que l'incident avait laissée
+en plan. Je l'ai fait **en brouillon** (« Publier plus tard ») précisément pour rester
+dans l'esprit de ta borne : ni visible, ni achetable. Je le signale parce que ça fait
+deux articles créés là où tu en avais autorisé un.
