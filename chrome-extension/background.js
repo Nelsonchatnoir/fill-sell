@@ -9672,7 +9672,24 @@ function syncPauseMs() {
 //    de reprise (technique ou 403) est déjà armée pour ce compte, le veilleur
 //    se tait.
 const SYNC_VEILLE_STORAGE_KEY = "FILLSELL_SYNC_VEILLE";
+// ⛔ LE MARQUEUR DE TENTATIVE, ET POURQUOI IL EXISTE (relevé 30 j : 6 des 12
+//    runs expirés par le chien de garde étaient figés AU DÉMARRAGE —
+//    items_vus=0, page_suivante=1). Une commande mobile passe la ligne en
+//    'running' AVANT de prendre le verrou de flux ; si le worker meurt dans
+//    cet intervalle, aucune surveillance n'a jamais été posée et le veilleur
+//    ne saurait même pas qu'un run existe. Ce marqueur-ci est posé AVANT le
+//    verrou, sans rien connaître du run, et il autorise une SEULE requête de
+//    découverte par ronde — uniquement quand une sync a été lancée et jamais
+//    close. Pendant une sync saine, la ronde s'arrête avant (la boucle vit
+//    dans ce worker) : zéro requête.
+const SYNC_VEILLE_TENTATIVE_KEY = "FILLSELL_SYNC_TENTATIVE";
 const SYNC_VEILLE_SILENCE_MS = 12 * 60 * 1000;
+// Fenêtre d'OBSERVATION minimale : il faut au moins deux rondes qui constatent
+// le même curseur. C'est la règle « le curseur n'a pas bougé depuis qu'on
+// regarde » ; le verdict de mort, lui, reste porté par les 12 min de silence
+// EN BASE. Sans cette distinction, un run découvert après coup (worker mort au
+// démarrage) devrait attendre 12 min de plus que nécessaire.
+const SYNC_VEILLE_OBSERVATION_MS = 4 * 60 * 1000;
 const SYNC_VEILLE_REPRISES_MAX = 3;
 // Au-delà, un état oublié (compte changé, run effacé) ne doit pas faire lire la
 // base toutes les 2 min pour l'éternité.
@@ -9713,6 +9730,20 @@ async function poserVeilleSurRun(userId, run, { reprises } = {}) {
   }
 }
 
+// Marqueur « une sync a été lancée ici et n'est pas close ». Posé AVANT le
+// verrou de flux, effacé à la clôture. Jamais bloquant.
+async function poserTentativeSync() {
+  try {
+    await chrome.storage.local.set({ [SYNC_VEILLE_TENTATIVE_KEY]: new Date().toISOString() });
+  } catch { /* storage muet : on perd la découverte, jamais la sync */ }
+}
+
+async function oublierTentativeSync() {
+  try {
+    await chrome.storage.local.remove(SYNC_VEILLE_TENTATIVE_KEY);
+  } catch { /* idem */ }
+}
+
 async function oublierVeille(userId, motif) {
   if (!userId) return;
   try {
@@ -9750,7 +9781,11 @@ async function veillerRunFige() {
     if (syncDressingEnCours) return;
     const etats = await lireEtatsVeille();
     const clefs = Object.keys(etats);
-    if (!clefs.length) return;
+    const tentative = (await chrome.storage.local.get(SYNC_VEILLE_TENTATIVE_KEY).catch(() => ({})))?.[SYNC_VEILLE_TENTATIVE_KEY];
+    const tentativeVivante = Number.isFinite(Date.parse(tentative ?? ""))
+      && Date.now() - Date.parse(tentative) <= SYNC_VEILLE_ETAT_PERIME_MS;
+    if (tentative && !tentativeVivante) await oublierTentativeSync();
+    if (!clefs.length && !tentativeVivante) return;
     // Purge des états périmés AVANT toute lecture réseau.
     const perimes = clefs.filter((k) => {
       const t = Date.parse(etats[k]?.vuA ?? "");
@@ -9759,13 +9794,36 @@ async function veillerRunFige() {
     if (perimes.length) {
       for (const k of perimes) delete etats[k];
       await chrome.storage.local.set({ [SYNC_VEILLE_STORAGE_KEY]: etats }).catch(() => {});
-      if (!Object.keys(etats).length) return;
+      if (!Object.keys(etats).length && !tentativeVivante) return;
     }
     const session = await getValidSession();
     const token = session?.access_token ?? null;
     const userId = token ? decodeJwtSub(token) : null;
     if (!userId) return;
-    const etat = etats[userId];
+    let etat = etats[userId];
+
+    // ── DÉCOUVERTE : le run figé AVANT que la surveillance soit posée ────────
+    // Une seule requête, et seulement si une sync a été lancée ici sans jamais
+    // être close. On ne fait que POSER l'observation : le verdict de mort et la
+    // reprise attendront les rondes suivantes, comme pour tout le monde.
+    if (!etat?.runId && tentativeVivante) {
+      let ouverts = null;
+      try {
+        ouverts = await restRequest(
+          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.dressing&status=eq.running` +
+          "&select=id,status,page_suivante,items_vus,updated_at,declencheur&limit=1",
+          token, { headers: { Prefer: "return=representation" } },
+        );
+      } catch (e) {
+        console.warn("[sync-dressing][veille] découverte impossible:", String(e?.message ?? e));
+        return;
+      }
+      const ouvert = Array.isArray(ouverts) && ouverts.length ? ouverts[0] : null;
+      if (!ouvert) { await oublierTentativeSync(); return; }
+      console.warn(`[sync-dressing][veille] run ${ouvert.id} trouvé 'running' sans surveillance (worker mort au démarrage ?) — mise sous observation`);
+      await poserVeilleSurRun(userId, ouvert, { reprises: 0 });
+      return;
+    }
     if (!etat?.runId) return; // état d'un autre compte : pas notre affaire ici
 
     // Ceinture anti-recouvrement : une reprise déjà armée fait le travail.
@@ -9812,7 +9870,7 @@ async function veillerRunFige() {
     // ailleurs.
     const silenceObserve = Date.now() - Date.parse(etat.vuA ?? "");
     const silenceBase = Date.now() - Date.parse(run.updated_at ?? "");
-    if (!(silenceObserve >= SYNC_VEILLE_SILENCE_MS && silenceBase >= SYNC_VEILLE_SILENCE_MS)) return;
+    if (!(silenceObserve >= SYNC_VEILLE_OBSERVATION_MS && silenceBase >= SYNC_VEILLE_SILENCE_MS)) return;
 
     const faites = Number(etat.reprises) || 0;
     if (faites >= SYNC_VEILLE_REPRISES_MAX) {
@@ -10559,6 +10617,10 @@ async function syncDressingVinted({ declencheur = "bouton", repriseRetry403 = fa
   // token la trace attend le prochain poll (chemin déjà prévu).
   await demanderEveil(1, null, "sync du dressing").catch((e) =>
     console.warn("[sync-dressing] éveil non demandé (sans conséquence) :", String(e?.message ?? e)));
+  // Marqueur posé ICI, AVANT le verrou de flux : c'est le seul endroit qui
+  // couvre le run tué entre le passage en 'running' (commande mobile) et
+  // l'entrée dans la boucle. Cf. le bandeau de SYNC_VEILLE_TENTATIVE_KEY.
+  await poserTentativeSync();
   // withJobFlowLock est IMPÉRATIF : la sync navigue l'onglet de travail Vinted,
   // le même que celui d'une publication en cours. Sans ce verrou on rejouerait
   // l'incident du 2026-07-12 (deux flux se disputant le même onglet).
@@ -10794,7 +10856,10 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     // Surveillance levée SEULEMENT si la ligne est vraiment close. Clôture
     // perdue = la ligne reste 'running' : c'est précisément le cas où le
     // veilleur doit continuer à la regarder.
-    if (clos) await oublierVeille(userId, "run clos");
+    if (clos) {
+      await oublierVeille(userId, "run clos");
+      await oublierTentativeSync();
+    }
   };
 
   const echec = async (message) => {

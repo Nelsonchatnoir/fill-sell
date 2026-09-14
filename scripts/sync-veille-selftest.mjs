@@ -260,10 +260,75 @@ console.log("\n── VEILLEUR DE RUN FIGÉ ────────────
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Le run tué AVANT que la surveillance soit posée : 6 des 12 runs expirés par
+// le chien de garde en 30 jours (items_vus=0, page_suivante=1). La commande
+// mobile passe la ligne en 'running' avant de prendre le verrou de flux ; si
+// le worker meurt là, aucun état n'a jamais été écrit.
+console.log("\n── DÉCOUVERTE D'UN RUN FIGÉ AU DÉMARRAGE ──────────────────────");
+
+const routeDecouverte = (run) => ({
+  quand: (m, c) => m === "GET" && c.includes("user_id=eq.") && c.includes("status=eq.running"),
+  rend: () => (run ? [run] : []),
+});
+const poserTentative = (ctx, iso) => ctx.chrome.storage.local.set({ FILLSELL_SYNC_TENTATIVE: iso });
+const lireTentative = async (ctx) =>
+  (await ctx.chrome.storage.local.get("FILLSELL_SYNC_TENTATIVE"))?.FILLSELL_SYNC_TENTATIVE ?? null;
+
+{
+  console.log("\n10. Marqueur de tentative + run 'running' inconnu : mise sous observation, RIEN de plus");
+  const run = { id: RUN, status: "running", page_suivante: 1, items_vus: 0, updated_at: ilYA(25), declencheur: "bouton_distant" };
+  const { ctx, journal } = charger({
+    routes: [
+      routeDecouverte(run), routeLectureRun(run),
+      { quand: (m, c) => m === "PATCH" && c.includes("status=eq.running"), rend: () => [{ ...run, updated_at: new Date().toISOString() }] },
+      routeUsageLogs,
+    ],
+  });
+  const reprises = [];
+  ctx.syncDressingVinted = async (o) => { reprises.push(o); return { ok: true }; };
+  await poserTentative(ctx, ilYA(25));
+  await ctx.veillerRunFige();
+  ok("une seule requête de découverte", journal.filter((l) => l.methode === "GET").length === 1, `${journal.filter((l) => l.methode === "GET").length}`);
+  ok("AUCUNE reprise à la ronde de découverte", reprises.length === 0);
+  ok("aucune revendication", patchsCas(journal).length === 0);
+  const etat = await lireEtat(ctx);
+  ok("observation posée sur le run trouvé", etat?.runId === RUN && etat?.page_suivante === 1 && etat?.reprises === 0);
+
+  // Ronde suivante, 5 min plus tard (observation ≥ 4 min, base silencieuse ≥ 12).
+  await ctx.chrome.storage.local.set({ FILLSELL_SYNC_VEILLE: { [USER]: { ...etat, vuA: ilYA(5) } } });
+  await ctx.veillerRunFige();
+  ok("reprise à la ronde suivante (observation tenue, base muette)", reprises.length === 1);
+  ok("repartie de la page 1 — rien n'avait été lu", reprises.length === 1 && (await lireEtat(ctx))?.page_suivante === 1);
+}
+
+{
+  console.log("\n11. Marqueur de tentative mais AUCUN run 'running' : le marqueur s'efface");
+  const { ctx, journal } = charger({ routes: [routeDecouverte(null)] });
+  const reprises = [];
+  ctx.syncDressingVinted = async (o) => { reprises.push(o); return { ok: true }; };
+  await poserTentative(ctx, ilYA(10));
+  await ctx.veillerRunFige();
+  ok("une requête, puis plus rien", journal.length === 1);
+  ok("aucune reprise", reprises.length === 0);
+  ok("marqueur effacé", (await lireTentative(ctx)) === null);
+  await ctx.veillerRunFige();
+  ok("la ronde suivante ne coûte plus rien", journal.length === 1, `${journal.length} appel(s)`);
+}
+
+{
+  console.log("\n12. Marqueur périmé (plus de 6 h) : effacé sans même lire la base");
+  const { ctx, journal } = charger({ routes: [routeDecouverte({ id: RUN, status: "running", page_suivante: 1, items_vus: 0, updated_at: ilYA(500), declencheur: "cron" })] });
+  await poserTentative(ctx, ilYA(7 * 60));
+  await ctx.veillerRunFige();
+  ok("zéro requête", journal.length === 0, `${journal.length}`);
+  ok("marqueur effacé", (await lireTentative(ctx)) === null);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 console.log("\n── LA REPRISE ELLE-MÊME (chemin réel, sans doublure) ──────────");
 
 {
-  console.log("\n10. Un run repris ADOPTE la ligne 'running' et ne marque aucune disparition");
+  console.log("\n13. Un run repris ADOPTE la ligne 'running' et ne marque aucune disparition");
   const maj = ilYA(20);
   const run = { id: RUN, status: "running", page_suivante: 2, items_vus: 96, updated_at: maj, declencheur: "bouton" };
   const { ctx, journal } = charger({
@@ -329,7 +394,7 @@ function bacNominal({ usageLogsPendJamais = false } = {}) {
 }
 
 {
-  console.log("\n11. La sync mockée va au bout, et trace UNE ligne par page");
+  console.log("\n14. La sync mockée va au bout, et trace UNE ligne par page");
   const { ctx, journal } = bacNominal();
   await ctx.chrome.storage.local.set({ FILLSELL_SYNC_MOCK: { actif: true, total_articles: 2682 } });
   const t0 = Date.now();
@@ -355,7 +420,7 @@ function bacNominal({ usageLogsPendJamais = false } = {}) {
 }
 
 {
-  console.log("\n12. Même sync, mais la trace de page NE RÉPOND JAMAIS : rien ne bloque");
+  console.log("\n15. Même sync, mais la trace de page NE RÉPOND JAMAIS : rien ne bloque");
   const { ctx, journal } = bacNominal({ usageLogsPendJamais: true });
   await ctx.chrome.storage.local.set({ FILLSELL_SYNC_MOCK: { actif: true, total_articles: 2682 } });
   const res = await Promise.race([
