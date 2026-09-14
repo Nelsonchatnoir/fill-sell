@@ -80,14 +80,12 @@ const OPLA_ENDPOINTS = {
 // /api/config/params (sans « public ») rend 200. Le préfixe n'est PAS
 // symétrique. Ne jamais le déduire de l'autre.
 
-// Plafond de prix — RÈGLE MÉTIER OPLA, refus serveur observé :
-//   400 {"error":"price_too_high","maxCents":100000,
-//        "message":"Le prix maximum autorisé sur Opla est de 1000 €. …"}
-const OPLA_PRIX_MAX_CENTIMES = 100000;
-const OPLA_TITRE_MAX = 80;
-const OPLA_DESCRIPTION_MAX = 2000;
-const OPLA_PHOTOS_MAX = 20; // mesuré : 22 posées → 20 retenues, EN SILENCE
-const OPLA_PHOTOS_MIN = 1;  // « Une image est requise au minimum. »
+// ⛔ Les bornes (prix max/min, titre, description, photos) NE SONT PAS
+// redéclarées ici : elles vivent dans `handlers/opla-prevol.js`, qui est
+// injecté dans le MÊME monde isolé que ce fichier. Les redéclarer en `const`
+// lèverait une SyntaxError au chargement du content script — et
+// scripts/content-scripts-selftest.mjs refuse déjà les noms déclarés deux fois
+// dans un même monde. On les lit dans `OPLA_BORNES`.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. DÉTECTION D'ÉTAT — getComputedStyle + textContent, RIEN D'AUTRE
@@ -160,69 +158,54 @@ const OPLA_SEL = {
 function oplaEstFacultatif(bouton) { return /\(optionnel\)/i.test(oplaTexte(bouton)); }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 4. PRÉ-VOL — LA SEULE GARDE QUI EXISTE, C'EST LA NÔTRE
+// 4. PRÉ-VOL — LA SEULE GARDE QUI EXISTE, ET ELLE VIT AILLEURS
 // ═══════════════════════════════════════════════════════════════════════════
-// ⛔⛔ MESURÉ : le serveur Opla accepte en 200 une catégorie INEXISTANTE et une
-// taille HORS de la grille de la catégorie. Une faute de mapping ne rend donc
-// pas d'erreur — elle produit une annonce SILENCIEUSEMENT MORTE (invisible en
-// navigation, introuvable en recherche) et parfaitement « publiée » de notre
-// point de vue. Aucun code HTTP ne préviendra.
-//   ⇒ Ces contrôles ne sont pas du confort. Ils sont la seule protection.
+// Le pré-vol (catégorie feuille, taille dans LA BONNE grille, marque, prix,
+// photos) est dans `handlers/opla-prevol.js`, déclaré AVANT ce fichier dans le
+// manifest. Il y est pour une raison : il est PUR, donc testable, et
+// `scripts/opla-prevol-selftest.mjs` le passe contre les cas qui nous ont
+// réellement piégés (catégorie inexistante, nœud intermédiaire, taille de la
+// mauvaise grille, code de taille partagé entre deux grilles, prix à 0,50 €,
+// 21 photos) — 30 contrôles.
 //
-// Fonctions PURES : aucun effet, aucune requête. Testables telles quelles.
+// ⛔ Ne PAS réimplémenter ces contrôles ici : deux sources de vérité, c'est la
+//    garantie qu'une des deux dérivera, et c'est la seule protection qu'on ait
+//    contre une annonce silencieusement morte.
+//
+// Il publie sur globalThis : `oplaPrevol(job, ref)`, `OPLA_PREVOL_MOTIFS`,
+// `OPLA_ETATS`, `OPLA_BORNES`. Le référentiel `ref` se charge par l'API —
+// c'est la seule partie non pure, et elle est ci-dessous.
 
-function oplaVerifierPrix(prixEuros) {
-  const cents = Math.round(Number(prixEuros) * 100);
-  if (!Number.isFinite(cents) || cents <= 0) return { ok: false, motif: "prix_absent" };
-  if (cents > OPLA_PRIX_MAX_CENTIMES) {
-    return { ok: false, motif: "price_too_high", maxCents: OPLA_PRIX_MAX_CENTIMES,
-             message: "Opla n'accepte pas les annonces au-dessus de 1000 €." };
-  }
-  return { ok: true, priceCents: cents };
-}
+/**
+ * Charge le référentiel que le pré-vol attend, depuis l'API (source de vérité).
+ * ⚠️ Non pur : fait des requêtes. À appeler depuis le content script, jamais
+ * depuis le service worker (cf. § 1).
+ */
+async function oplaChargerReferentiel() {
+  const arbre = await oplaJson(OPLA_ENDPOINTS.arbre);
+  if (!arbre.ok) throw new Error(`Arbre Opla indisponible (HTTP ${arbre.statut})`);
+  const noeuds = new Set();
+  const feuilles = new Set();
+  (function parcours(liste) {
+    for (const n of liste || []) {
+      noeuds.add(n.code);
+      if (n.categories && n.categories.length) parcours(n.categories);
+      else feuilles.add(n.code);
+    }
+  })(arbre.corps.categories);
 
-/** @param {Set<string>} feuilles codes de feuilles connus (docs/opla/categories.tsv) */
-function oplaVerifierCategorie(code, feuilles) {
-  if (!code) return { ok: false, motif: "categorie_absente" };
-  if (!feuilles.has(code)) return { ok: false, motif: "categorie_inconnue", code };
-  return { ok: true };
-}
-
-/** @param {string[]|null} grille `sizes` rendu par ?category=<CODE>, ou null si absent */
-function oplaVerifierTaille(taille, grille) {
-  if (!grille || !grille.length) {
-    // pas de grille ⇒ pas de champ Taille ⇒ NE RIEN envoyer
-    return taille ? { ok: true, omettre: true } : { ok: true, omettre: true };
-  }
-  if (!taille) return { ok: false, motif: "taille_requise" };
-  if (!grille.includes(taille)) return { ok: false, motif: "taille_hors_grille", taille, grille };
-  return { ok: true, omettre: false };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 5. LE CORPS DU POST — OBSERVÉ, pas déduit (lot 1, 201 Created)
-// ═══════════════════════════════════════════════════════════════════════════
-// ⛔ Un champ vide ne s'envoie PAS : on omet la clé (mesuré sur le brouillon
-//    sans description). Jamais "" ni [].
-// ⛔ categoriesPath ne s'envoie PAS : le serveur le calcule et le rend.
-// ⛔ maxlength ne protège rien contre une écriture programmatique : on tronque
-//    NOUS-MÊMES (95 caractères de titre et 2050 de description ont été acceptés).
-function oplaConstruireCorps({ titre, description, priceCents, images, category, brand, condition, sizes, colors, materials, brouillon }) {
-  const corps = { title: String(titre).slice(0, OPLA_TITRE_MAX) };
-  const d = String(description ?? "").slice(0, OPLA_DESCRIPTION_MAX);
-  if (d) corps.description = d;
-  corps.priceCents = priceCents;
-  corps.images = (images ?? []).slice(0, OPLA_PHOTOS_MAX);
-  corps.category = category;
-  if (brand) corps.brand = brand;
-  corps.condition = condition;
-  const meta = {};
-  if (sizes?.length) meta.sizes = sizes;
-  if (colors?.length) meta.colors = colors;
-  if (materials?.length) meta.materials = materials;
-  if (Object.keys(meta).length) corps.metadata = meta;
-  if (brouillon) corps.asDraft = true;
-  return corps;
+  // Grille par feuille : `sizes` présent ⇔ la catégorie a un champ Taille.
+  // Mémoïsé — une feuille par job, pas 886.
+  const cache = new Map();
+  const grillePour = (code) => cache.has(code) ? cache.get(code) : null;
+  const precharger = async (code) => {
+    if (cache.has(code)) return cache.get(code);
+    const r = await oplaJson(OPLA_ENDPOINTS.paramsCategorie(code));
+    const g = r.ok && r.corps && r.corps.sizes ? r.corps.sizes.map((s) => s.code) : null;
+    cache.set(code, g);
+    return g;
+  };
+  return { noeuds, feuilles, grillePour, precharger };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -243,10 +226,17 @@ const OPLA_REFUS = Object.freeze({
  */
 async function fillListingForm(job) {
   if (!OPLA_ACTIF) return { ...OPLA_REFUS };
-  // TODO(lot 4) — la publication n'est PAS écrite ici : le lot 1 était un lot
-  // d'observation. Tout ce qu'il faut pour l'écrire est désormais relevé
-  // (§ 15.2 du relevé) : POST /public/me/articles avec oplaConstruireCorps(),
-  // photos par URL présignée AVANT le POST, succès = l'id rendu par le 201.
+  // TODO(lot 4) — la publication n'est PAS écrite ici : les lots 1 et 2 étaient
+  // des lots d'observation. Tout ce qu'il faut est désormais relevé, et la
+  // séquence exacte est celle-ci :
+  //   1. ref = await oplaChargerReferentiel(); await ref.precharger(code)
+  //   2. verdict = oplaPrevol(job, ref)   ⛔ si !verdict.ok → needs_user,
+  //      le job NE PART PAS (motif dans verdict.motif, distinct d'un refus
+  //      plateforme). C'est la seule garde contre l'annonce morte.
+  //   3. photos : POST /public/images/upload-url puis PUT sur `uploadUrl`,
+  //      on garde `key` — c'est elle qui entre dans corps.images[]
+  //   4. POST /public/me/articles avec verdict.corps → 201
+  //   5. succès = l'`id` rendu par le 201. Jamais la redirection, jamais un délai.
   return { ...OPLA_REFUS, error: "Chemin de publication Opla non implémenté (lot 4)." };
 }
 

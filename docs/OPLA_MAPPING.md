@@ -25,12 +25,19 @@ GET    /api/public/me                               200   { user: {...} }
 GET    /api/public/me/articles?view=summary&limit=N 200   { articles: [...], nextCursor }
 GET    /api/public/articles/<id>                    200   { article: {...} }   404 si absent
 
-POST   /api/public/images/upload-url                200   -> URL S3 presignee
-PUT    <URL presignee>                              200   le blob image
+POST   /api/public/images/upload-url                200   -> { key, uploadUrl, method,
+                                                              headers, expiresInSeconds }
+PUT    <uploadUrl>                                  200   le blob image
 POST   /api/public/me/articles                      201   creation  -> { article: {...} }
 PATCH  /api/public/me/articles/<id>                 200   MISE A JOUR PARTIELLE
 DELETE /api/public/me/articles/<id>                 204   suppression
 ```
+
+⛔ C'est **`key`** (et pas `uploadUrl`) qui entre dans `images[]` du POST de création.
+
+✅ **Tout ce cycle a été rejoué EN FENÊTRE RÉDUITE** (lot 2) : GET, présignature, PUT S3,
+POST 201, PATCH 200, DELETE 204 — tous passés. **La voie API est insensible à l'état de
+la fenêtre.**
 
 ⛔ **Deux pièges d'URL :**
 - `/api/config/articles` (sans `public`) rend **404**, alors que `/api/config/params`
@@ -62,6 +69,8 @@ POST /api/public/me/articles
 | **Un champ vide ne s'envoie PAS** — on omet la clé, on ne met pas `""` ni `[]` | ✅ OBSERVÉ (brouillon sans description : clé absente) |
 | **`categoriesPath` ne s'envoie PAS** — le serveur le calcule et le rend | ✅ OBSERVÉ |
 | `"asDraft": true` → brouillon (`status: "draft"`). Absent → publication directe | ✅ OBSERVÉ |
+| ⛔ **`asDraft` est un drapeau de CRÉATION SEULEMENT** — `PATCH {asDraft:false}` rend **400 `empty_patch`** | ✅ OBSERVÉ (lot 2) |
+| ⛔ **`PATCH {status:"available"}` rend 403 `phone_verification_required`** — publier un brouillon exige un téléphone vérifié, alors que la création directe est passée sans | ✅ OBSERVÉ (lot 2) |
 | `images[]` = **clés S3 `temp/…`**, jamais des URL, jamais des fichiers | ✅ OBSERVÉ |
 | `priceCents` = **entier de centimes** | ✅ OBSERVÉ |
 | `brand` = **texte libre** | ✅ OBSERVÉ |
@@ -106,6 +115,22 @@ POST /api/public/me/articles
 > 1. `category` existe dans `docs/opla/categories.tsv` **et** c'est une **feuille** ;
 > 2. si `?category=<CODE>` rend `sizes`, alors `metadata.sizes[0]` **appartient à cette
 >    liste** ; s'il n'en rend pas, **ne pas envoyer `sizes` du tout**.
+
+✅ **C'EST ÉCRIT ET TESTÉ** — `chrome-extension/handlers/opla-prevol.js`, pur (aucune
+requête, aucun DOM), prouvé par `node scripts/opla-prevol-selftest.mjs` : **30 contrôles
+verts** contre le référentiel relevé, dont la catégorie inexistante, le nœud
+intermédiaire, la taille de la mauvaise grille et les **codes de taille partagés entre
+deux grilles** (`XS` valide sur une robe ET sur un soutien-gorge, `XXS` sur la robe
+seulement, `75A` sur le soutien-gorge seulement — un test naïf « le code existe-t-il
+dans la liste plate ? » accepterait les trois).
+
+Un pré-vol qui échoue ⇒ **le job NE PART PAS**, il remonte `needs_user` avec un motif
+distinct d'un refus plateforme (`opla_categorie_inconnue`, `opla_taille_hors_grille`,
+`opla_prix_trop_bas`…).
+
+⚠️ Une seule borne n'est pas observée : le **prix plancher à 1,00 €**. Opla accepte
+0,50 €. Ce plancher est à nous, pour qu'une erreur de conversion ne parte pas en ligne
+(c'est exactement ce qui est arrivé le 14/09). **Valeur à confirmer par Nico.**
 
 ## 4. Ce que le serveur refuse — et comment le lire
 

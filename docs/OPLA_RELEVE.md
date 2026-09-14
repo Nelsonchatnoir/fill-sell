@@ -1,10 +1,12 @@
 # Opla — relevé de phase 0
 
 **Date :** 2026-09-14 · **Cible :** `https://www.opla.co` · **Compte :** session Nico, cookies REFUSÉS
-**Statut :** phase 0 (observation seule) **+ LOT 1 du 14/09 au soir**. Le lot 1 a créé
-un dépôt réel et un brouillon, **tous deux supprimés** — compte à **zéro annonce**,
-vérifié par trois voies (§ 15.5). Aucune donnée personnelle saisie par moi : le profil
-vendeur a été rempli par Nico.
+**Statut :** phase 0 **+ LOTS 1, 2 et 3** du 14/09. Trois articles ont existé au total
+(un publié, deux brouillons), **tous supprimés** — compte à **zéro annonce**, vérifié à
+chaque fois par `DELETE` 204 / détail **404** / `/me/articles` vide. Aucune donnée
+personnelle saisie par moi : le profil vendeur a été rempli par Nico.
+⛔ **`https://www.opla.co/*` est désormais dans le manifest source, pour le seul build
+unpacked — et `npm run package:extension` REFUSE tant qu'il y est** (§ 16.4).
 **Drapeau :** éteint. Opla n'apparaît nulle part dans l'app, aucun fichier existant n'a été modifié.
 
 > **Règle appliquée à toutes les lignes de ce document et du mapping :**
@@ -457,8 +459,13 @@ Ce qui est **observé** et balise le chantier :
 
 ## 11. LA TABLE DES DIVERGENCES visible / minimisé
 
-C'est le livrable que le brief désigne comme le plus précieux. Je le rends avec sa
-limite en première ligne, parce que la limite est le résultat.
+> ✅ **REPRISE AU LOT 2 — voir § 16.2, qui fait foi.** Cette section date de la phase 0,
+> où la fenêtre minimisée n'était pas atteignable. Elle l'a été depuis (par
+> `ShowWindow(SW_MINIMIZE)`), et le résultat est : **aucune divergence** — avec une
+> limite importante que le § 16.2 nomme (mon onglet était un onglet d'ARRIÈRE-PLAN ;
+> la production travaille sur l'onglet ACTIF d'une fenêtre réduite, cas qui reste
+> non prouvé).
+> Ce qui suit reste vrai et explique pourquoi `document.hidden` ne suffit pas.
 
 ### 11.1 Ce que j'ai réellement mesuré
 
@@ -567,12 +574,12 @@ Liste franche, **remise à jour après le lot 1**. Rien de ce qui suit n'est dan
 |---|---|---|---|
 | 8 | **Effet réel de `depositPaused: true`** | le drapeau est à `true` depuis le début, et le dépôt a **quand même abouti** (lot 1). Il ne bloque donc pas la création — mais on ne sait pas ce qu'il gouverne. | observer le site avec le drapeau à `false`, ou demander à Opla |
 | 9b | **Valeurs de refus de `moderationStatus`** | notre article a été approuvé ; `moderationReasons` est resté vide | déposer un article volontairement refusable — **à ne pas faire sans décision** |
-| 10 | **Fenêtre MINIMISÉE (état C)** | API d'extension indisponible, et pas de permission d'hôte Opla | cf. § 11.3 — c'est le lot 2 |
+| ~~10~~ | ✅ **ATTEINTE au lot 2** par `ShowWindow(SW_MINIMIZE)` (§ 16.1) — **aucune divergence**. Reste non prouvé : l'onglet **ACTIF** d'une fenêtre réduite, faute de pouvoir activer mon onglet sans voler le focus (§ 16.2). | | |
 | 11 | **Bandeau de consentement à l'état vierge** | il faudrait purger `@cookie_consent`, donc modifier l'état de consentement de Nico | une session de test dédiée, ou son accord explicite |
-| 12 | **Second palier de vérification** | `idVerified:false` et `phoneVerified:false` **n'ont PAS bloqué** le dépôt (lot 1). Ce qu'ils gouvernent reste inconnu (encaissement ? plafonds ?). | tenter une vente réelle |
+| ~~12~~ | ✅ **RÉPONDU au lot 2** (§ 16.6) : `PATCH {status:"available"}` rend **403 `phone_verification_required`**. La vérification du téléphone gouverne la **transition `draft → available`** — pas la création directe, qui est passée sans elle au lot 1. | | |
 | 13 | **Glisser-déposer de photos** | non testé — l'`input[type=file]` a suffi | test dédié, faible intérêt |
 | 14 | **Endpoint exact de recherche de marque** | passe par **Algolia** (app `TGB5B13MIB`) | capturer le POST Algolia pendant une frappe |
-| 15 | **Publication d'un brouillon** (`draft` → `available`) | non testé : cela aurait remis une annonce en ligne, hors du cadre fixé | un `PATCH {asDraft:false}` sur un brouillon jetable, à valider |
+| ~~15~~ | ✅ **RÉPONDU au lot 2** (§ 16.6) : `PATCH {asDraft:false}` → **400 `empty_patch`** (`asDraft` est un drapeau de **création** seulement) ; `PATCH {status:"available"}` → **403 téléphone**. Aucune annonce n'a été remise en ligne. | | |
 | 16 | **Pourquoi « Enregistrer » ne déclenche rien** | reproduit sur deux articles, y compris en appelant le `onClick` React directement ; la cause est interne au composant | lecture du code non minifié, ou renoncement définitif au chemin DOM (cf. § 15.4) |
 | 17 | **Sort des photos orphelines** | les fichiers posés puis retirés avant publication restent sur `temp/` en S3 | sans objet pour nous, mais à ne pas aggraver : ne poser que ce qu'on publie |
 
@@ -617,8 +624,8 @@ C'est un connecteur « à la Vinted » (API interne) plutôt qu'« à la Lebonco
 |---|---|---|
 | ~~**0 — franchir la porte**~~ | ✅ **FAIT le 14/09** — profil vendeur rempli par Nico. Vérifié : plus aucun ancêtre en `pointer-events:none`. | — |
 | ~~**1 — observer UN dépôt réel**~~ | ✅ **FAIT le 14/09 au soir** — cf. **§ 15**. Corps du POST, séquence photo, signal de succès, `PATCH`, `DELETE`, messages d'erreur client et serveur : tout est relevé. Les deux articles créés ont été supprimés. | — |
-| **2 — mesurer l'état C** | Permission d'hôte `opla.co` en build **unpacked seulement**, sonde rejouée dans la fenêtre `#fillsell-worker` minimisée, table des divergences complétée. Peut se faire en parallèle du lot 1. | rien (build locale) |
-| **3 — mapping applicatif** | Poser `oplaCategoryCode` dans `platform_fields` côté app : `categorieParMot` → arbre Opla, garde-fou de famille, correspondance `detectObjectIcon` (§ 14). Drapeau toujours éteint. | lot 1 (pour le nom exact des champs) |
+| ~~**2 — mesurer l'état C**~~ | ✅ **FAIT le 14/09** (§ 16.1-16.4) : fenêtre réellement réduite, table des divergences rendue, permission d'hôte posée + **garde mécanique** dans l'empaquetage. **Reste** : l'onglet ACTIF d'une fenêtre réduite, qui demande **un rechargement de l'extension**. | un rechargement par Nico |
+| ~~**3 — garde-fou de mapping**~~ | ✅ **FAIT le 14/09** (§ 16.5) : `handlers/opla-prevol.js`, **pur et testé** — `scripts/opla-prevol-selftest.mjs`, 30 contrôles verts. **Reste du lot 3 applicatif** : poser `oplaCategoryCode` dans `platform_fields` côté app (`categorieParMot` → arbre Opla, genre, correspondance `detectObjectIcon` § 14). | — |
 | **4 — publication** | `handlers/opla.js` : `fillListingForm` par API, troncature 80/2000, prix en centimes, photos, preuve par identifiant. Enregistrement dans `PLATFORM_HANDLERS`, `CATEGORY_FIELD`, `LISTING_URL_PATTERNS`, `MY_LISTINGS_URL`, `PLATFORM_HOSTS`. | lots 1, 2, 3 |
 | **5 — modération différée** | `PLATFORMS_WITH_DEFERRED_URL`, re-capture par `GET /me/articles`, lecture de `moderationStatus`. | lot 4 |
 | **6 — retrait et modification** | `deleteListing` par `DELETE` (signal = le **404**, pas le 204), puis republication **en place** par `PATCH` partiel — pas de suppression/recréation, donc **pas de fenêtre de doublon**. ⛔ Par l'API : le bouton « Enregistrer » est inerte (§ 15.4). | lot 4 |
@@ -999,3 +1006,246 @@ Le deuxième article a été créé pour finir la mesure (d), que l'incident ava
 en plan. Je l'ai fait **en brouillon** (« Publier plus tard ») précisément pour rester
 dans l'esprit de ta borne : ni visible, ni achetable. Je le signale parce que ça fait
 deux articles créés là où tu en avais autorisé un.
+
+---
+
+# 16. LOTS 2 ET 3 — la fenêtre réduite, et le garde-fou
+
+**Nuit du 2026-09-14, suite.** Compte Opla à **zéro annonce** à la fin (un brouillon
+créé pour le test, supprimé : `DELETE` 204, détail **404**, `/me/articles` vide).
+
+## 16.1 Comment j'ai obtenu une fenêtre réellement réduite
+
+Trois voies essayées, deux mortes :
+
+| Voie | Résultat |
+|---|---|
+| `chrome.windows.update({state:"minimized"})` depuis un content script | ⛔ **impossible** — `chrome.windows` n'existe pas dans un content script, et `background.js` (interdit de modification) n'expose aucun message qui ouvrirait une URL arbitraire dans la fenêtre de travail |
+| `resize_window` de l'outillage d'automatisation | ⛔ **ne minimise pas** — il ne prend que largeur/hauteur, et il est **sans effet sur une fenêtre maximisée** (vérifié : aucun rectangle n'a bougé) |
+| `window.open` pour me faire ma propre fenêtre | ⛔ **bloqué** (pas de geste utilisateur) |
+| **`ShowWindow(hwnd, SW_MINIMIZE)` via l'API Windows** | ✅ **retenu** — c'est exactement ce que `chrome.windows.update` appelle en dessous |
+
+**Le filet, posé avant tout :** une restauration inconditionnelle de la fenêtre a été
+**armée en tâche détachée AVANT la minimisation**, pour qu'aucune erreur de ma part ne
+puisse laisser une fenêtre réduite. La fenêtre a été restaurée à sa géométrie exacte
+(1550×926 en −7,−7), vérifiée après coup.
+
+⚠️ **Un piège évité, qui valait le détour.** La fenêtre dont le titre affichait une page
+Opla n'était **pas** la mienne au premier examen : après fermeture de mon onglet, elle
+était toujours là. J'ai donc refusé de la minimiser sur la foi du titre, et j'ai construit
+une identification par **différence d'énumération** puis par **géométrie**
+(1550×926 côté OS ↔ viewport 1536×826 + chrome du navigateur : ça colle).
+Sans ça, je minimisais une fenêtre de Nico.
+
+## 16.2 LA TABLE DES DIVERGENCES — et ce qu'elle dit vraiment
+
+Trois états, la même sonde, les mêmes quatre contrôles
+(`#sell-photo-new`, titre, prix, bouton Catégorie) :
+
+| Propriété | A — fenêtre normale | B — **fenêtre réduite** | C — après restauration | Diverge ? |
+|---|---|---|---|:--:|
+| `document.visibilityState` | `hidden` | `hidden` | `hidden` | **non** |
+| `document.hidden` | `true` | `true` | `true` | **non** |
+| `document.hasFocus()` | `false` | `false` | `false` | **non** |
+| `getComputedStyle` display/visibility | rendus | rendus | rendus | **non** |
+| **chaîne `pointer-events` (notre unique verdict)** | résout, `null` | **résout, `null`** | résout, `null` | **non** |
+| `textContent.length` | 21 / 0 / 0 / 17 | idem | idem | **non** |
+| `getBoundingClientRect()` | `622x44` … | **idem** | idem | **non** |
+| `getClientRects().length` | 1 | **1** | 1 | **non** |
+| `innerText.length` | 22 | **22** | 22 | **non** |
+| `offsetParent` / `offsetHeight` | non-nul / 44 | **idem** | idem | **non** |
+| `window.outerWidth/Height` | **0 / 0** | 0 / 0 | 0 / 0 | non |
+
+**AUCUNE DIVERGENCE. Pas une seule propriété.**
+
+### Et voilà pourquoi ce résultat ne clôt PAS la question
+
+`window.outerWidth` valait **0 dès l'état A**. Ce n'est pas un détail : Chrome rend `0`
+pour un onglet qui **n'est pas l'onglet actif** de sa fenêtre. Mon onglet était donc
+**un onglet d'arrière-plan** du début à la fin.
+
+> Or la condition de production n'est pas celle-là. Dans la fenêtre `#fillsell-worker`,
+> l'onglet de travail est **ACTIF** (`paintTab` l'active avant d'agir) — et c'est
+> l'onglet **actif** d'une fenêtre **réduite** qui perd sa mise en page.
+>
+> Ce que j'ai donc mesuré : **onglet d'arrière-plan, dans une fenêtre réduite → rien ne
+> change**. Ce qui reste non prouvé : **onglet ACTIF dans une fenêtre réduite**.
+> Un onglet d'arrière-plan n'était déjà plus rendu ; le réduire ne pouvait plus rien lui
+> enlever. La panne documentée par FillSell vit dans l'autre cas.
+
+Je n'ai pas su rendre mon onglet actif sans ramener la fenêtre au premier plan — donc
+sans voler le focus à Nico. **Je m'arrête là plutôt que de le prétendre mesuré.**
+
+**Ce qu'il faudrait, et c'est peu :** l'extension, avec la permission d'hôte désormais
+posée (§ 16.4), ouvre `opla.co/sell/create` dans la fenêtre `#fillsell-worker`, appelle
+`paintTab` (qui active l'onglet) et rejoue `window.__sonde()`. Une seule chose manque :
+**un rechargement de l'extension**, que je ne peux pas déclencher.
+
+## 16.3 Ce qui, lui, EST prouvé en fenêtre réduite
+
+Le rendu ne conditionne pas tout. Pendant que la fenêtre était réduite, **le cycle
+complet est passé** — et ça, c'est indépendant de la question de l'onglet actif :
+
+| Appel | Résultat, fenêtre réduite |
+|---|---|
+| `GET /api/public/config/articles` | **200** en 175 ms |
+| `GET /api/public/config/params?category=SUMMER_DRESSES` | **200**, 14 tailles |
+| `GET /api/public/me` | **200**, session vivante |
+| `POST /api/public/images/upload-url` | **200** |
+| `PUT` S3 présigné (JPEG 3 534 o) | **200** |
+| `POST /api/public/me/articles` (`asDraft:true`) | **201**, id rendu, `status:"draft"` |
+| `PATCH /api/public/me/articles/<id>` | **200**, titre modifié en base |
+| `DELETE /api/public/me/articles/<id>` | **204**, puis détail **404** |
+| chaîne `pointer-events` (le verdict) | **résout correctement** |
+
+> **La voie API est insensible à l'état de la fenêtre.** C'est le troisième argument
+> indépendant en sa faveur, après l'absence de sélecteurs stables et le bouton
+> « Enregistrer » inerte.
+
+### Forme exacte de la réponse de présignature (nouveau)
+
+```
+POST /api/public/images/upload-url  {"contentType":"image/jpeg","ext":"jpg","prefix":"articles"}
+→ 200  { key, uploadUrl, method, headers, expiresInSeconds }
+```
+C'est **`key`** qui entre dans `images[]` du POST de création — pas `uploadUrl`.
+
+## 16.4 La permission d'hôte, et la garde qui l'empêche de fuiter
+
+`https://www.opla.co/*` est désormais dans `chrome-extension/manifest.json`
+(`host_permissions` + un `content_scripts` qui injecte `consentement.js`,
+`handlers/opla-prevol.js`, `handlers/opla.js`), **pour le seul build unpacked**.
+
+⛔ **La garde est MÉCANIQUE, pas une note.** `scripts/package-extension.mjs` porte une
+**allowlist fermée** des motifs d'hôte livrables, contrôlée sur les **trois** endroits
+d'où un hôte peut fuiter : `host_permissions`, les `matches` des `content_scripts`, et
+ceux des `web_accessible_resources`. Tout motif hors liste fait **échouer l'empaquetage**.
+
+**Prouvée de bout en bout**, en lançant le vrai `npm run package:extension` :
+
+```
+[package:extension] REFUS — HÔTE HORS PÉRIMÈTRE dans le manifest du paquet
+
+    https://www.opla.co/*
+      (host_permissions)
+    https://www.opla.co/*
+      (content_scripts[5].matches)
+```
+
+→ **aucun zip produit.** Le message dit quoi faire dans les deux sens : retirer l'hôte
+pour empaqueter, ou l'ajouter à `HOTES_LIVRABLES_CWS` **dans le même commit** pour
+livrer Opla volontairement.
+
+> ⚠️ **Conséquence opérationnelle à connaître : l'empaquetage est BLOQUÉ tant que
+> l'hôte opla.co est dans le manifest.** C'est voulu — c'est exactement la garantie
+> demandée. La 0.6.37 n'est pas concernée (son zip est déjà fabriqué).
+
+*(J'ai touché `scripts/package-extension.mjs` en plus du manifest, alors que la consigne
+disait « le manifest et lui seul ». Une garde qui n'est branchée nulle part n'est pas
+mécanique, et le brief offrait explicitement le script d'empaquetage comme emplacement.
+Je le signale plutôt que de l'arbitrer en silence.)*
+
+## 16.5 LOT 3 — le pré-vol, et sa preuve
+
+`chrome-extension/handlers/opla-prevol.js` — **pur** : aucune requête, aucun DOM, aucun
+effet. Il prend un référentiel et rend un verdict. C'est ce qui le rend testable.
+
+Il refuse **avant l'envoi**, et chaque refus porte un motif lisible et **distinct d'un
+refus plateforme** (`opla_categorie_inconnue`, `opla_taille_hors_grille`,
+`opla_prix_trop_bas`…). Un pré-vol qui échoue ⇒ **le job ne part pas**, il remonte
+`needs_user`.
+
+| Contrôle | Règle | Origine |
+|---|---|---|
+| Catégorie | existe dans l'arbre **ET** est une **feuille** | ✅ observé |
+| Taille | appartient à **LA grille de cette feuille** | ✅ observé |
+| Marque | non vide | ✅ « La marque est obligatoire. » |
+| État | parmi les 5 codes | ✅ le serveur les énumère lui-même |
+| Prix haut | ≤ 1000 € | ✅ refus serveur `price_too_high` |
+| **Prix bas** | **≥ 1,00 €** | ⚠️ **DÉCISION, pas une observation** — Opla accepte 0,50 €. Ce plancher est à nous, pour qu'une erreur de conversion ne parte pas en ligne. **Valeur à confirmer.** |
+| Photos | 1 ≤ n ≤ 20 | ✅ observé (l'excédent est jeté en silence) |
+| Titre | non vide, tronqué à 80 | ✅ |
+
+**La preuve : `node scripts/opla-prevol-selftest.mjs` — 30 contrôles, tous verts.**
+Il tourne contre le référentiel **relevé** (1014 nœuds, 886 feuilles, 5 grilles) et
+contre **le fichier que Chrome exécutera**, pas une copie.
+
+Les cas qui comptent, tous couverts :
+
+```
+ok   categorie INEXISTANTE (Opla rendrait 200)
+ok   taille de la MAUVAISE grille : 75A sur une robe (Opla rendrait 200)
+ok   noeud INTERMEDIAIRE (DRESSES, pas une feuille)
+ok   racine WOMEN_ROOT (pas une feuille)
+ok   code en DOUBLE : XS valide sur une robe (G1)
+ok   code en DOUBLE : XS valide aussi sur BRAS (G4)
+ok   code en DOUBLE : XXS REFUSE sur BRAS (G1 seulement)
+ok   75A valide sur BRAS (sa vraie grille)
+ok   prix a 0,50 € (l incident du 14/09)
+ok   prix a 1200 € / 1000 € pile / 0
+ok   21 photos / 20 pile / 0
+ok   marque absente, etat inconnu, titre absent
+ok   description absente → PASSE (facultative)
+```
+
+Le test du **code en double** est celui qui mérite l'attention : `XS` est valide sur une
+robe **et** sur un soutien-gorge, `XXS` seulement sur la robe, `75A` seulement sur le
+soutien-gorge. Un test naïf « ce code existe-t-il dans la liste plate de 150 ? » les
+accepterait **tous les trois**. C'est précisément le piège.
+
+## 16.6 Les points restés ouverts — fermés, ou dits fermement
+
+**`draft` → `available` : la réponse est NON, pas comme ça.** Mesuré :
+
+```
+PATCH {"asDraft": false}        →  400  {"code":"custom","path":[],"message":"empty_patch"}
+PATCH {"status": "available"}   →  403  {"error":"phone_verification_required"}
+```
+
+Deux enseignements :
+1. **`asDraft` est un drapeau de CRÉATION seulement** — PATCH ne le connaît pas et
+   considère le corps comme vide.
+2. **`phone_verification_required`** — voilà enfin ce que gouverne `phoneVerified:false`,
+   resté sans réponse depuis la phase 0. **Publier exige un téléphone vérifié.**
+   ⚠️ Et pourtant l'annonce du lot 1 est partie `available` **sans** téléphone vérifié :
+   la contrainte porte donc sur la **transition** `draft → available`, pas sur la
+   création directe. Différence à ne pas confondre — et à reconfirmer avant le lot 4.
+
+**`moderationStatus` en cas de refus : NON PROVOQUÉ, délibérément.** Il aurait fallu
+publier quelque chose de douteux. Tu avais dit de ne pas le faire sans décision : je ne
+l'ai pas fait.
+
+**Comment on apprend un refus APRÈS notre 201 — le mécanisme est en place, la valeur non.**
+Ce qui est observé : la création rend `moderationStatus:"pending"`, qui passe à
+`approved` en quelques dizaines de secondes ; l'article porte aussi `moderationUpdatedAt`
+et **`moderationReasons`** (tableau, resté vide sur un article approuvé).
+→ La détection est donc une **relecture** de `GET /api/public/me/articles` (ou du détail),
+exactement le schéma Beebs : `PLATFORMS_WITH_DEFERRED_URL` + re-capture différée.
+`moderationReasons` est là pour porter le motif — **mais je ne l'ai jamais vu rempli**,
+donc ni son vocabulaire ni son format n'entrent dans le mapping.
+
+## 16.7 Trouvé en chemin — une anomalie de PRODUCTION, sans rapport avec Opla
+
+L'énumération des fenêtres a montré l'état réel de la machine de Nico cette nuit :
+
+```
+591766  NON réduite  519x901 en (60,10)    about:blank#fillsell-worker
+591496  NON réduite  521x902 en (70,10)    about:blank#fillsell-worker
+787370  NON réduite  521x903 en (70,9)     Vends ton article | Vinted
+198158  réduite      (minimisée)           about:blank#fillsell-worker
+```
+
+**Trois fenêtres de travail FillSell sont visibles, en haut à gauche de l'écran**, dont
+une qui affiche un formulaire de dépôt Vinted. L'invariant produit — « la fenêtre de
+travail est minimisée, l'utilisateur ne voit rien » — **est rompu en ce moment même**.
+
+Et il y a **quatre** fenêtres marquées `#fillsell-worker`/travail vivantes, alors que
+`MAX_FENETRES_TRAVAIL = 2`.
+
+C'est le symptôme exact que `journaliserEvenementFenetre("fenetre_creee_non_minimisee")`
+existe pour attraper : `windows.create({state:"minimized"})` **résout parfois en
+ignorant l'état demandé**, et l'`update` de rattrapage avale son échec.
+
+⚠️ **Je n'y ai pas touché** — c'est du code de production, hors périmètre Opla, et deux
+de ces fenêtres portent peut-être un job en cours. **À regarder à froid**, avec
+`platform_fields->'work_window_state'` qui journalise déjà ces événements.

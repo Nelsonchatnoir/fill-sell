@@ -293,6 +293,60 @@ if (Date.parse(iso) < Date.parse(EXTENSION_LAST_COMMIT)) {
 // 5. version jamais publiée
 const manifest = JSON.parse(fs.readFileSync(path.join(OUT_DIR, 'manifest.json'), 'utf8'));
 
+// ── 5ter. PÉRIMÈTRE D'HÔTES — ALLOWLIST FERMÉE (2026-09-14, chantier Opla) ───
+// Un hôte de plus dans le manifest, c'est un AVERTISSEMENT DE PERMISSION chez
+// TOUS les utilisateurs à la mise à jour, et une nouvelle revue au Chrome Web
+// Store. Pour un chantier à drapeau éteint, c'est non.
+//
+// Le 14/09, `https://www.opla.co/*` a été ajouté au manifest SOURCE pour le
+// seul build unpacked (lot 2 : chrome.windows.update exige la permission
+// d'hôte). Nico charge l'extension depuis le dossier source — donc ce même
+// fichier sert de base à tous les paquets suivants, et l'oubli était
+// structurellement garanti.
+//
+// D'où cette garde, MÉCANIQUE et FAIL-CLOSED : tout motif d'hôte absent de la
+// liste ci-dessous fait ÉCHOUER l'empaquetage. Elle couvre host_permissions,
+// les `matches` des content_scripts ET ceux des web_accessible_resources —
+// les trois endroits d'où un hôte peut fuiter.
+//
+// ⚠️ Pour livrer un jour Opla pour de vrai : ajouter l'hôte ICI, dans le même
+// commit que le manifest, en connaissance de cause. C'est le seul geste qui
+// doit pouvoir lever la garde — jamais un oubli.
+const HOTES_LIVRABLES_CWS = [
+  'https://*.vinted.fr/*',
+  'https://*.vinted.com/*',
+  'https://*.leboncoin.fr/*',
+  'https://*.ebay.fr/*',
+  'https://*.ebay.com/*',
+  'https://*.beebs.app/*',
+  'https://fillsell.app/*',
+  'https://tojihnuawsoohlolangc.supabase.co/*',
+];
+const motifsDuManifest = [
+  ...(manifest.host_permissions ?? []).map(m => ({ m, ou: 'host_permissions' })),
+  ...(manifest.content_scripts ?? []).flatMap((cs, i) =>
+    (cs.matches ?? []).map(m => ({ m, ou: `content_scripts[${i}].matches` }))),
+  ...(manifest.web_accessible_resources ?? []).flatMap((w, i) =>
+    (w.matches ?? []).map(m => ({ m, ou: `web_accessible_resources[${i}].matches` }))),
+];
+const horsPerimetre = motifsDuManifest.filter(({ m }) => !HOTES_LIVRABLES_CWS.includes(m));
+if (horsPerimetre.length) {
+  die(`HÔTE HORS PÉRIMÈTRE dans le manifest du paquet — empaquetage REFUSÉ.
+
+${horsPerimetre.map(({ m, ou }) => `    ${m}\n      (${ou})`).join('\n')}
+
+  Ces motifs ne sont PAS dans l'allowlist livrable. Les téléverser ajouterait un
+  avertissement de permission chez TOUS les utilisateurs et déclencherait une
+  nouvelle revue du Chrome Web Store.
+
+  Cas connu : « https://www.opla.co/* » est posé dans chrome-extension/manifest.json
+  pour le seul build UNPACKED du chantier Opla (drapeau éteint). Il ne doit pas
+  partir en production.
+    → Pour empaqueter : retirer l'hôte du manifest source, puis relancer.
+    → Pour livrer Opla volontairement : l'ajouter à HOTES_LIVRABLES_CWS ici,
+      dans le MÊME commit, en sachant ce que ça déclenche.`);
+}
+
 // 5bis. intégrité du manifest — NOM vérifié AUX OCTETS (2026-08-24).
 // Le 16/08, la réécriture « sans BOM » du manifest (9d640bd) a double-encodé
 // le tiret cadratin du nom (« FillSell â€” Cross-post », octets C3 A2 E2 82
