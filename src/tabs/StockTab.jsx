@@ -4100,6 +4100,8 @@ const StockTab = memo(function StockTab({
   // voieApiReelle = la VOIE (miroir du trigger cross_post_jobs_voie_ebay), la
   // SEULE chose sur laquelle se règlent les textes qui parlent d'extension.
   ebayCompte = null,
+  // Drapeau d'affichage par profil (lot 7 Opla) : transmis au stepper tel quel.
+  plateformesVisibles = [],
   // (iapProduct retiré le 2026-08-09 : son seul lecteur était le sous-titre
   // d'IAPUpgradeBlock, qui annonçait le prix Premium sous un bouton menant à
   // trois tarifs.)
@@ -9324,6 +9326,7 @@ const StockTab = memo(function StockTab({
           inventaireId={publishItem.id}
           userId={user.id}
           ebayCompte={ebayCompte}
+          plateformesVisibles={plateformesVisibles}
           alreadyPublished={[...new Set([
             ...computeRemovalInfo(jobsByInventaire[publishItem.id]||[]).publishedActive,
             ...plateformesReserveesParRepublication(jobsByInventaire[publishItem.id]||[]),

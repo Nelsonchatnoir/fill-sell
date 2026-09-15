@@ -2126,6 +2126,15 @@ export default function App({ loginOnly = false }){
   // l'écran de publication pour arrêter un article sans photo AVANT le job
   // (la voie API n'accepte aucune annonce sans image).
   const [ebayVoieApi,setEbayVoieApi]=useState(false);
+  // ── Drapeau d'AFFICHAGE porté par le profil (2026-09-15, lot 7 Opla) ──────
+  // profiles.plateformes_visibles : les plateformes que CE compte voit AVANT
+  // leur ouverture générale. AFFICHAGE SEULEMENT — il n'autorise aucune
+  // publication (la case reste grisée côté stepper) et ne lève PAS OPLA_ACTIF,
+  // qui est un cran séparé, dans l'extension.
+  // Défaut [] : un profil sans la colonne, ou une lecture ratée, rend
+  // exactement l'app d'avant. La colonne n'a PAS d'UPDATE accordé à
+  // authenticated — personne ne peut s'ouvrir une plateforme depuis l'app.
+  const [plateformesVisibles,setPlateformesVisibles]=useState([]);
   // ── LA VOIE RÉELLE, lue UNE fois pour toute l'app (07/09/2026) ────────────
   // Le drapeau seul ne dit PAS par où part un job eBay : le trigger
   // cross_post_jobs_voie_ebay exige EN PLUS un compte relié, non révoqué, ses
@@ -2867,6 +2876,20 @@ export default function App({ loginOnly = false }){
         if(error)return;
         setNbAComplete(new Set((data||[]).map(r=>String(r.inventaire_id))).size);
       });
+    // ── Drapeau d'affichage par profil (2026-09-15, lot 7 Opla) ─────────────
+    // Lecture SÉPARÉE du gros chargement, et c'est le point important :
+    // `plateformes_visibles` n'existe PAS encore en base (migration
+    // 20260915140000 écrite, NON appliquée — validation Nico). Ajoutée au
+    // SELECT du profil ci-dessus, PostgREST ferait échouer la requête ENTIÈRE :
+    // plus de premium, plus de username, plus de réglages — l'app cassée pour
+    // tout le monde jusqu'au jour de l'application. Isolée ici, son échec ne
+    // coûte QUE le drapeau : le tableau reste vide, Opla ne s'affiche pas, et
+    // rien d'autre ne bouge. Même patron que le compteur juste au-dessus.
+    supabase.from('profiles').select('plateformes_visibles').eq('id',uid).maybeSingle()
+      .then(({data,error})=>{
+        if(error){setPlateformesVisibles([]);return;}
+        setPlateformesVisibles(Array.isArray(data?.plateformes_visibles)?data.plateformes_visibles:[]);
+      });
     // Expression premium canonique (2026-07-25, cf. CLAUDE.md) : is_premium/is_pro
     // = source de vérité maintenue par les flux de paiement (Stripe/Apple/Google),
     // is_comped = comptes offerts. is_founder et les ids Apple/Google résiduels
@@ -2889,6 +2912,7 @@ export default function App({ loginOnly = false }){
       setExtensionBuild(p.data?.extension_build??null);
       setExtensionLastSeenAt(p.data?.extension_last_seen_at??null);
       setEbayVoieApi(p.data?.ebay_voie_api===true);
+
       // Horodatage NULL ≠ jamais d'extension (05/09) : on cherche une trace
       // sur un job (handler_build) ou un run de sync (extension_build) AVANT
       // de déclarer le chargement fini — sinon l'étape 1 du Tableau vide
@@ -6872,6 +6896,7 @@ export default function App({ loginOnly = false }){
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
             ebayCompte={ebayCompte}
+            plateformesVisibles={plateformesVisibles}
             iapLoading={iapLoading}
             stock={stock} sold={sold}
             stockFiltre={stockFiltre} soldFiltre={soldFiltre}
@@ -6949,6 +6974,7 @@ export default function App({ loginOnly = false }){
             isPremium={isPremium} isNative={isNative} user={user}
             quotas={quotas}
             ebayCompte={ebayCompte}
+            plateformesVisibles={plateformesVisibles}
             iapLoading={iapLoading}
             lensPhotos={lensPhotos} setLensPhotos={setLensPhotos}
             lensResult={lensResult} setLensResult={setLensResult}

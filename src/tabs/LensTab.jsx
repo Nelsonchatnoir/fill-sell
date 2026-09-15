@@ -21,7 +21,15 @@ const TEAL      = '#2F9E90';
 const TEAL_DEEP = '#1B6E62';
 const MUTE      = '#6B7A75';
 
-const LENS_PLATFORMS = Object.keys(PLATFORM_LABELS);
+// ⛔ LISTE EXPLICITE, plus `Object.keys(PLATFORM_LABELS)` (2026-09-15).
+// Ce bandeau défilant est une PROMESSE COMMERCIALE : « voilà où FillSell
+// publie ». Il était dérivé de la table des LIBELLÉS, qui n'a jamais eu ce
+// sens — elle sert à nommer une plateforme quand on en croise une. Le jour où
+// 'opla' y est entrée (lot 7, affichage réservé à deux comptes), Opla se
+// serait mise à défiler sur l'écran d'accueil Lens de TOUT LE MONDE, en
+// promettant une publication qui n'existe pas. Une plateforme n'entre ici
+// qu'une fois réellement publiable.
+const LENS_PLATFORMS = ["vinted", "leboncoin", "beebs", "ebay"];
 
 // Feuille bas-écran « Prendre une photo / Choisir dans la photothèque »,
 // partagée entre l'écran de scan (viseur) et l'écran résultat (grille photos).
@@ -565,6 +573,8 @@ const LensTab = memo(function LensTab({
   // le stepper ouvert depuis un scan croyait donc TOUJOURS être en voie
   // extension, et servait les textes Chrome même à un compte en voie serveur.
   ebayCompte = null,
+  // Drapeau d'affichage par profil (lot 7 Opla) : transmis au stepper tel quel.
+  plateformesVisibles = [],
   extensionNeverSeen = null,
   // Battement serveur de l'extension — relayé au stepper pour la ligne
   // « ordinateur éteint » au-dessus du CTA Publier (2026-08-13).
@@ -754,6 +764,7 @@ const LensTab = memo(function LensTab({
           initialListing={listingSource}
           identifyFailed={identifyEchec}
           ebayCompte={ebayCompte}
+          plateformesVisibles={plateformesVisibles}
           // Lens unifié (02/09 soir) : le scan payé (mode "annonce") rapporte
           // les annonces déjà rédigées — le stepper les applique sans
           // régénérer. Le parcours identify n'en porte jamais (listingSource

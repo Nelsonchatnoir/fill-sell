@@ -56,7 +56,7 @@ const T = {
   chip:     "#F2F0E9",
 };
 
-export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
+export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay", opla:"Opla" };
 
 // ── Une photo est-elle une retouche PAYÉE, à nous ? ──────────────────────────
 // Source UNIQUE (StockTab l'importe, le RPC spend_coins_and_publish porte la
@@ -72,8 +72,25 @@ export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"
 export function isRetouchedPhotoEntry(p) {
   return estPhotoRetouchee(p);
 }
-const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2" };
+// opla #FE9D17 : relevé sur l'icône d'app officielle (512×512, cf.
+// platform-logos/OplaIcon) — la teinte qui occupe 20,7 % des pixels, le reste
+// étant blanc. ⚠️ Trois oranges voisins dans cette table désormais (leboncoin
+// #EA5B0C, beebs #FF6B35, opla #FE9D17) : signalé à Nico, rien décidé.
+const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B35", ebay:"#0064D2", opla:"#FE9D17" };
+// ⛔ PLATFORMS_DEFAULT reste à QUATRE, et ce n'est pas un oubli. Cette liste
+// n'est pas « les plateformes qu'on affiche » : elle initialise `selected`
+// (l. ~3975), elle filtre les annonces disponibles du scan, et tout ce qui y
+// entre part dans les jobs de publication. Y mettre Opla la cocherait par
+// défaut et enverrait un job opla — exactement ce que ce lot interdit.
+// L'affichage passe par PLATFORMS_A_VENIR, ci-dessous, et par lui seul.
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
+// ── Plateformes VISIBLES mais PAS ENCORE OUVERTES (2026-09-15, lot 7) ───────
+// Affichées aux seuls comptes qui les portent dans
+// profiles.plateformes_visibles, et TOUJOURS grisées : la case est `disabled`,
+// aucun job ne peut donc être créé pour elles. Le jour de l'ouverture, une
+// plateforme quitte cette liste pour PLATFORMS_DEFAULT — et ce jour-là il
+// faudra AUSSI un handler (`implemented: true`) et OPLA_ACTIF levé.
+const PLATFORMS_A_VENIR = ["opla"];
 
 // Minimum de photos exigé pour publier — c'est le minimum de VINTED sur les
 // marques premium (VINTED_MIN_PHOTOS, chrome-extension/content-scripts/vinted.js).
@@ -1383,7 +1400,10 @@ function StepUpload({ previews, removable, onAdd, onRemove, onReorder, notes, se
 
 // ── Step 1 — Photos + Retouche ────────────────────────────────────────────────
 
-function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, motifSupport = null, publishedSet, queuedSet, lang, ebayVoieApi = false,
+export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPhotoClick, photoOption, setPhotoOption, background, setBackground, selected, setSelected, coinPrices, reuseRetouched = false, retoucheNewCount = 0, platformSupport, motifSupport = null, publishedSet, queuedSet, lang, ebayVoieApi = false,
+  // Plateformes visibles mais pas encore ouvertes pour CE compte (lot 7 Opla).
+  // Defaut [] : un compte sans drapeau voit exactement les quatre d avant.
+  plateformesAVenir = [],
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisHidden,
   // Compte eBay pas encore utilisable (07/09/2026, demande Joséphine). Vaut
@@ -1767,7 +1787,7 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
 
       <Eyebrow>{t("stepPhotosPlatformsLabel")}</Eyebrow>
       <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:2 }}>
-        {PLATFORMS_DEFAULT.map(p => {
+        {[...PLATFORMS_DEFAULT, ...plateformesAVenir].map(p => {
           const isOn = selected.has(p);
           // Compat catégorie × plateforme (src/utils/platformCompat.js,
           // dérivée des 4 mappings) : une plateforme qui ne peut pas vendre
@@ -1793,12 +1813,24 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
           // sur pausedPlatforms) et le RPC refuse platform_paused en dernier
           // filet — trois verrous, aucun ne repose sur les deux autres.
           const enPause = pausedPlatforms.includes(p);
-          const disabled = support !== "supported" || dejaEnLigne || enCours || compteAbsent || enPause;
+          // ── Plateforme VISIBLE mais PAS ENCORE OUVERTE (2026-09-15, Opla) ──
+          // 6ᵉ motif de verrou, et le plus strict : celui-là n'est levé par
+          // aucun état de l'article ni du compte. Elle se voit, elle ne se
+          // coche pas. C'est ce qui garantit qu'aucun job ne peut naître pour
+          // une plateforme sans handler — la case `disabled` ne passe jamais
+          // par setSelected, donc la plateforme n'entre jamais dans `rows`,
+          // donc jamais dans spend_coins_and_publish.
+          const pasEncoreOuverte = plateformesAVenir.includes(p);
+          const disabled = pasEncoreOuverte || support !== "supported" || dejaEnLigne || enCours || compteAbsent || enPause;
           return (
             <button
               key={p}
               disabled={disabled}
-              title={dejaEnLigne
+              title={pasEncoreOuverte
+                ? (lang === 'en'
+                    ? `${PLATFORM_LABELS[p]} isn't open for publishing yet`
+                    : `${PLATFORM_LABELS[p]} n'est pas encore ouverte à la publication`)
+                : dejaEnLigne
                 ? (lang === 'en' ? `Already live on ${PLATFORM_LABELS[p]}` : `Déjà en ligne sur ${PLATFORM_LABELS[p]}`)
                 : enCours
                 ? (lang === 'en' ? `Already being published on ${PLATFORM_LABELS[p]}` : `Publication déjà en cours sur ${PLATFORM_LABELS[p]}`)
@@ -1829,6 +1861,11 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
             >
               <PlatformLogo platform={p} size={22} />
               {PLATFORM_LABELS[p]}
+              {pasEncoreOuverte && (
+                <span style={{ fontSize:11, fontWeight:600 }}>
+                  · {lang === 'en' ? 'soon' : 'bientôt'}
+                </span>
+              )}
               {dejaEnLigne && (
                 <span style={{ fontSize:11, fontWeight:600 }}>
                   · {lang === 'en' ? 'live' : 'en ligne'}
@@ -1867,6 +1904,16 @@ function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos, onPho
           </strong>
         </div>
       )}
+      {/* Plateforme visible mais pas encore ouverte : UNE phrase sous la
+          rangée, même forme que les cinq autres motifs. Elle dit le fait, pas
+          une date — on n'en promet aucune. */}
+      {plateformesAVenir.map(p => (
+        <p key={`avenir-${p}`} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
+          {lang === 'en'
+            ? `${PLATFORM_LABELS[p]} is being prepared — visible here, not open for publishing yet.`
+            : `${PLATFORM_LABELS[p]} est en préparation — visible ici, pas encore ouverte à la publication.`}
+        </p>
+      ))}
       {PLATFORMS_DEFAULT.filter(p => (publishedSet?.has(p) || queuedSet?.has(p))).length > 0 && (
         <p style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {lang === 'en'
@@ -3445,6 +3492,8 @@ function readStepperDraft(invKey) {
 const FREE_STOCK_LIMIT = FREE_STOCK_LIMIT_FALLBACK;
 
 export default function ListingPreviewScreen({
+  // profiles.plateformes_visibles, lu par App.jsx. AFFICHAGE SEULEMENT.
+  plateformesVisibles = [],
   inventaireId, userId, initialPhotos: initialPhotosProp = [], initialListing: initialListingProp = null, supabase, lang, onClose,
   // eBay par API (lot 2b, 06/09) : true = ce compte publie eBay par le worker
   // serveur (profiles.ebay_voie_api, posé par Nico). Un article SANS PHOTO ne
@@ -8179,6 +8228,9 @@ export default function ListingPreviewScreen({
             lang={lang}
           />
         )}
+        {/* plateformesAVenir : le filtre est fait ICI, pas dans StepPhotos —
+            un compte sans drapeau reçoit un tableau vide et rend exactement
+            l'écran d'avant, même liste, même ordre, même rangée. */}
         {step === 1 && (
           <StepPhotos
             photos={photos}
@@ -8199,6 +8251,7 @@ export default function ListingPreviewScreen({
               : 0}
             platformSupport={platformSupport}
             motifSupport={motifSupport}
+            plateformesAVenir={PLATFORMS_A_VENIR.filter(p => plateformesVisibles.includes(p))}
             publishedSet={publishedSet}
             queuedSet={queuedSet}
             ebayBloque={ebayBloque}
