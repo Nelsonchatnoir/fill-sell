@@ -24,6 +24,17 @@ import { formatCurrency } from "../utils/shared";
 //   supprimés : deal score ; prix d'achat conseillé quand l'achat est saisi ;
 //   « meilleures plateformes » comme section de plein droit.
 //
+// REFONTE 15/09/2026 (demande Nico) — hiérarchie seulement, aucun redessin :
+//   · le replié se REFERME par défaut sur l'écran Lens : la reconnaissance de
+//     l'objet et le prix passent devant, le détail attend qu'on le demande ;
+//   · le composant se rend en DEUX MOITIÉS (prop `section`) pour que l'écran
+//     Lens intercale ses boutons entre le prix et le détail du marché ;
+//   · UNE seule fourchette à l'écran, celle qui a des sources (les bornes des
+//     annonces réellement trouvées) — `fourchette_min/max` du modèle ne
+//     s'affiche plus en sous-titre du prix ;
+//   · la description descend de `details` vers l'en-tête d'identification
+//     (prop `masquerDescription`, posée par l'écran Lens seul).
+//
 // ⚠️ DEAL SCORE SUPPRIMÉ, définitivement. Le schéma de lens-analysis demande
 // `"score":number` SANS échelle, sans barème, sans exemple — un nombre demandé
 // à un modèle sans calibration régresse vers le centre, d'où le 4-6/10
@@ -110,18 +121,31 @@ export default function AnalyseMarche({
   lang = "fr",
   currency = "EUR",
   variant = "verdict",
-  // `notes` est aussi rendue par LensIdentite (11/08), en encart « une photo de
-  // plus affinerait l'analyse » — c'est là qu'elle est exploitable. Ce drapeau
-  // évite de l'écrire deux fois sur le même écran. Défaut `false` : tous les
-  // autres appelants, stepper compris, gardent le comportement d'origine.
+  // `notes` peut être rendue ailleurs sur le même écran (bandeau
+  // « identification incertaine » de LensIdentite) : ce drapeau évite de
+  // l'écrire deux fois. Défaut `false` : tous les autres appelants, stepper
+  // compris, gardent le comportement d'origine.
   masquerNotes = false,
+  // Idem pour la description : depuis le 15/09 l'écran Lens la rend EN TÊTE
+  // (LensIdentite), sous le titre — la laisser aussi dans le replié en ferait
+  // un doublon. Défaut `false` : le stepper est inchangé.
+  masquerDescription = false,
+  // ── Découpage prix / détails (15/09/2026, refonte de hiérarchie) ─────────
+  // L'écran Lens doit intercaler SES ACTIONS entre le prix et le détail du
+  // marché : publier vient avant les annonces comparables. Le composant sait
+  // donc rendre une moitié à la fois, sans que rien ne change pour qui
+  // n'en demande pas ("tout" = comportement historique, stepper inclus).
+  //   · "prix"    → montant, fourchette, verdict / seuil d'achat, fiabilité
+  //   · "details" → le pliant seul (détail du marché, annonces, conseils)
+  section = "tout",
 }) {
-  // Écran Lens (verdict) : détails OUVERTS par défaut (03/09, demande Nico) —
-  // annonces comparables, fourchette et conseils sont la preuve du travail du
-  // scan, les cacher derrière une flèche de 12px les faisait rater. Le stepper
-  // (publication) reste replié : là-bas l'analyse se signale, elle ne réclame
-  // pas l'écran.
-  const [ouvert, setOuvert] = useState(variant === "verdict");
+  // Détails REPLIÉS par défaut sur l'écran Lens (15/09, demande Nico) : la
+  // reconnaissance de l'objet et le prix passent devant, le détail du marché
+  // attend qu'on le demande. (Ils étaient ouverts depuis le 03/09 ; le
+  // découpage en sections a rendu cette ouverture coûteuse — elle repoussait
+  // les actions sous deux écrans d'annonces comparables.) Le stepper
+  // (publication) était déjà replié.
+  const [ouvert, setOuvert] = useState(false);
   if (!result || result.prix_vente_suggere == null) return null;
 
   const en = lang === "en";
@@ -221,9 +245,9 @@ export default function AnalyseMarche({
         </div>
       )}
 
-      {(result.description || (result.notes && !masquerNotes)) && (
+      {((result.description && !masquerDescription) || (result.notes && !masquerNotes)) && (
         <div style={{ borderTop: `1px solid ${C.rule}`, paddingTop: 9, display: "flex", flexDirection: "column", gap: 6 }}>
-          {result.description && <div style={{ fontSize: 12.5, color: "#374151", lineHeight: 1.55 }}>{result.description}</div>}
+          {result.description && !masquerDescription && <div style={{ fontSize: 12.5, color: "#374151", lineHeight: 1.55 }}>{result.description}</div>}
           {result.notes && !masquerNotes && <div style={{ fontSize: 11.5, color: C.mute2, fontStyle: "italic", lineHeight: 1.45 }}>{result.notes}</div>}
         </div>
       )}
@@ -311,18 +335,55 @@ export default function AnalyseMarche({
     && achatSuggere != null && Number.isFinite(Number(achatSuggere)) && Number(achatSuggere) > 0
     ? Number(achatSuggere) : null;
 
+  // Le pliant, isolé : l'écran Lens le rend APRÈS ses boutons (section
+  // "details"), le reste du monde le garde collé au prix (section "tout").
+  // Le filet de séparation n'a de sens que collé au prix : rendu seul dans sa
+  // propre carte (section "details"), la bordure de la carte le fait déjà et
+  // les deux traits se doublaient.
+  const pliant = (
+    <div style={section === "details" ? undefined : { borderTop: `1px solid ${C.rule}`, paddingTop: 10 }}>
+      <button
+        onClick={() => setOuvert((o) => !o)}
+        aria-expanded={ouvert}
+        style={{ width: "100%", background: "none", border: "none", padding: 0, fontFamily: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: ouvert ? C.ink : C.mute, textAlign: "left" }}
+      >
+        <span style={{ color: "#A3A9A6" }}>{ouvert ? "▾" : "▸"}</span>
+        {ouvert
+          ? (en ? "Market details" : "Le détail du marché")
+          : (en ? "Details" : "Détails")}
+        {!ouvert && (
+          <span style={{ fontWeight: 400, color: "#A3A9A6", fontSize: 12 }}>
+            {en ? "listings, range, sale speed, tips" : "annonces, fourchette, vitesse, conseils"}
+          </span>
+        )}
+        {ouvert && (
+          <span style={{ marginLeft: "auto", fontWeight: 500, color: "#A3A9A6", fontSize: 11.5 }}>
+            {en ? "hide" : "masquer"}
+          </span>
+        )}
+      </button>
+      {ouvert && details}
+    </div>
+  );
+
+  if (section === "details") return pliant;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         <div style={{ fontSize: taillePrix, fontWeight: 700, color: couleurPrix, letterSpacing: "-0.025em", lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>
           {niveau === "aucune" ? `≈ ${prixTxt}` : prixTxt}
         </div>
+        {/* ── UNE SEULE FOURCHETTE, CELLE DU MARCHÉ (15/09/2026) ──────────
+            L'écran en affichait deux : `fourchette_min – fourchette_max`
+            (produite par le modèle) ici même, puis « basé sur 3 annonces
+            (15,00 € – 20,00 €) » trois lignes plus bas — bornes des annonces
+            RÉELLEMENT trouvées. Deux fourchettes différentes pour le même
+            article, sans que rien ne dise laquelle fait foi. Celle qui reste
+            est celle qui a des sources : la ligne de fiabilité, plus bas. */}
         <div style={{ fontSize: 11.5, color: C.mute2 }}>
           {niveau === "solide"
-            ? (result.fourchette_min != null && result.fourchette_max != null
-                ? (en ? `range ${formatCurrency(result.fourchette_min, currency)} – ${formatCurrency(result.fourchette_max, currency)}`
-                      : `fourchette ${formatCurrency(result.fourchette_min, currency)} – ${formatCurrency(result.fourchette_max, currency)}`)
-                : (en ? "suggested sell price" : "prix de vente conseillé"))
+            ? (en ? "suggested sell price" : "prix de vente conseillé")
             : niveau === "fragile"
               ? (en ? "indicative price" : "prix indicatif")
               : (en ? "estimate with no market data" : "estimation sans donnée de marché")}
@@ -367,31 +428,7 @@ export default function AnalyseMarche({
         </div>
       )}
 
-      {/* Détails ouverts par défaut sur cet écran (cf. useState plus haut) :
-          l'en-tête devient un titre de section, le repli reste possible. */}
-      <div style={{ borderTop: `1px solid ${C.rule}`, paddingTop: 10 }}>
-        <button
-          onClick={() => setOuvert((o) => !o)}
-          aria-expanded={ouvert}
-          style={{ width: "100%", background: "none", border: "none", padding: 0, fontFamily: "inherit", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: ouvert ? C.ink : C.mute, textAlign: "left" }}
-        >
-          <span style={{ color: "#A3A9A6" }}>{ouvert ? "▾" : "▸"}</span>
-          {ouvert
-            ? (en ? "Market details" : "Le détail du marché")
-            : (en ? "Details" : "Détails")}
-          {!ouvert && (
-            <span style={{ fontWeight: 400, color: "#A3A9A6", fontSize: 12 }}>
-              {en ? "listings, range, sale speed, tips" : "annonces, fourchette, vitesse, conseils"}
-            </span>
-          )}
-          {ouvert && (
-            <span style={{ marginLeft: "auto", fontWeight: 500, color: "#A3A9A6", fontSize: 11.5 }}>
-              {en ? "hide" : "masquer"}
-            </span>
-          )}
-        </button>
-        {ouvert && details}
-      </div>
+      {section === "tout" && pliant}
     </div>
   );
 }

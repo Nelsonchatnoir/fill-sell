@@ -22,8 +22,23 @@ import { getTypeStyle, typeLabel, CAT_TILE_COLORS } from '../utils/shared';
 //  3. La note du modèle (« quelle photo trancherait ») devient une invitation
 //     visible, pas une ligne d'italique en bas de page. C'est la boucle : on sait
 //     quoi photographier ensuite, donc on recommence.
+//
+// ── REFONTE DE HIÉRARCHIE (15/09/2026, demande Nico) ──────────────────────
+// La description arrivait après deux écrans de défilement, tout en bas du
+// replié d'AnalyseMarche. Or c'est ELLE qui prouve que l'objet a été reconnu.
+// Trois gestes, aucun redessin (mêmes couleurs, mêmes composants, mêmes
+// polices, mêmes arrondis) :
+//  a. la DESCRIPTION COMPLÈTE remonte juste sous le titre, sans défilement ;
+//  b. la grille « Lu sur l'objet » devient UNE ligne, purgée de ce que le
+//     titre dit déjà (« Type d'outil : pistolet à colle thermofusible » sous
+//     « Pistolet à colle thermofusible Bosch IXO ») ;
+//  c. la jauge de confiance (« Identification partielle », orange, sur presque
+//     tous les scans) laisse place à LA photo qui trancherait — et seulement
+//     quand il y en a une. Cf. PHOTO_QUI_TRANCHE pour le critère exact.
+// L'encart « Une photo de plus affinerait l'analyse » disparaît : il faisait
+// doublon avec (c). `notes` n'est pas perdue — elle descend dans le détail du
+// marché, replié (cf. `masquerNotes` côté LensTab).
 
-const TEAL      = '#2F9E90';
 const TEAL_DEEP = '#1B6E62';
 const INK       = '#10201B';
 const MUTE      = '#6B7A75';
@@ -101,64 +116,97 @@ const TERNAIRE = {
 
 const aplatir = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
-function ChipAttribut({ cle, valeur, lang, index }) {
+// Une valeur d'attribut, rendue EN LIGNE (15/09/2026). Les tuiles d'origine
+// occupaient une grille entière pour répéter le titre ; ce qu'elles portaient
+// de neuf tient sur une ligne. Mêmes couleurs, même vocabulaire ternaire.
+function ValeurAttribut({ cle, valeur, lang }) {
   const t = TERNAIRE[aplatir(valeur)];
   return (
-    <div
-      className="lens-chip"
-      style={{
-        animationDelay: `${90 + index * 45}ms`,
-        background:'#FFFFFF',
-        border:'1px solid rgba(0,0,0,0.07)',
-        borderRadius:12,
-        padding:'8px 10px',
-        minWidth:0,
-      }}
-    >
-      <div style={{
-        fontSize:9.5, fontWeight:700, letterSpacing:'0.06em', textTransform:'uppercase',
-        color:MUTE, marginBottom:3, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-      }}>
-        {libelle(cle, lang)}
-      </div>
-      <div style={{
-        fontSize:13.5, fontWeight:700, lineHeight:1.25,
-        color: t ? t.couleur : INK,
-        overflowWrap:'anywhere',
-      }}>
+    <span style={{ whiteSpace:'nowrap' }}>
+      <span style={{ color:MUTE }}>{libelle(cle, lang)} : </span>
+      <span style={{ fontWeight:700, color: t ? t.couleur : INK }}>
         {t ? `${t.signe} ${t.texte[lang === 'en' ? 'en' : 'fr']}` : valeur}
-      </div>
-    </div>
+      </span>
+    </span>
   );
 }
 
-function JaugeConfiance({ confiance, lang }) {
-  const niveau = confiance === 'haute' ? 3 : confiance === 'moyenne' ? 2 : 1;
-  const couleur = niveau === 3 ? TEAL : niveau === 2 ? '#D9962A' : '#C2635C';
-  const texte = niveau === 3
-    ? (lang === 'en' ? 'Confident' : 'Identification sûre')
-    : niveau === 2
-      ? (lang === 'en' ? 'Partly identified' : 'Identification partielle')
-      : (lang === 'en' ? 'Uncertain' : 'Identification incertaine');
-  return (
-    <div style={{ display:'flex', alignItems:'center', gap:7, marginTop:6 }}>
-      <div style={{ display:'flex', gap:3 }}>
-        {[1, 2, 3].map(i => (
-          <span
-            key={i}
-            className={i <= niveau ? 'lens-seg' : undefined}
-            style={{
-              animationDelay:`${140 + i * 70}ms`,
-              width:16, height:4, borderRadius:99,
-              background: i <= niveau ? couleur : 'rgba(0,0,0,0.10)',
-              display:'block',
-            }}
-          />
-        ))}
-      </div>
-      <span style={{ fontSize:11, fontWeight:700, color:couleur }}>{texte}</span>
-    </div>
-  );
+// ══════════════════════════════════════════════════════════════════════════
+// LA PHOTO QUI TRANCHE — remplace « Identification partielle » (15/09/2026)
+// ══════════════════════════════════════════════════════════════════════════
+// L'ancienne jauge NOTAIT le résultat : trois segments et « Identification
+// partielle » en orange, affichés dès que confiance ≠ haute — c'est-à-dire sur
+// l'écrasante majorité des scans, y compris ceux où marque, modèle ET prix
+// étaient établis. Un badge qui inquiète sur un bon résultat, et qui s'affiche
+// tout le temps, ne dit rien : il se lit comme une note basse.
+//
+// CRITÈRE D'AFFICHAGE (le seul) : le modèle a LUI-MÊME déclaré un attribut
+// « non testé ». C'est la seule marque, dans toute la réponse, d'un point que
+// les photos n'ont pas pu trancher ET qu'une photo trancherait. Ce n'est pas
+// une déduction de notre part : la consigne serveur (étape 1bis) impose
+// « non testé » comme réponse honnête pour ce qu'aucune photo ne montre en
+// marche. Le geste demandé change donc réellement le résultat — il fait
+// passer l'attribut de « ? » à « oui », ce qui change ce que l'annonce a le
+// droit d'affirmer, et donc le prix.
+//
+// Ce qui n'est PAS un critère, et pourquoi :
+//  · confiance (haute/moyenne/basse) — une note, pas un manque nommé ;
+//  · marque absente — sur 15 scans en base, 4 sont sans marque et la plupart
+//    sont des objets qui n'en portent pas (lot de taies, blouse sans étiquette).
+//    Réclamer une photo du logo sur un objet sans logo, c'est du bruit ;
+//  · `notes` du modèle — texte libre, souvent générique, parfois jargonneux.
+// Mesure du 15/09 sur les 15 scans Lens en base : 1 déclencherait le badge
+// (la bouilloire du 29/08, `fonctionne: non testé`). Les 14 autres : rien.
+//
+// Table FERMÉE : une clé « non testé » sans phrase écrite ici n'affiche RIEN.
+// Mieux vaut pas de badge qu'un badge qui parle en noms de champs.
+const PHOTO_QUI_TRANCHE = {
+  fonctionne: {
+    fr: 'Photographie-le en marche pour confirmer qu’il fonctionne',
+    en: 'Photograph it running to confirm it works',
+  },
+  complet: {
+    fr: 'Photographie toutes les pièces ensemble pour confirmer que le lot est complet',
+    en: 'Photograph all the parts together to confirm the set is complete',
+  },
+  chargeur_inclus: {
+    fr: 'Photographie le chargeur s’il est fourni',
+    en: 'Photograph the charger if it comes with it',
+  },
+  boite_origine: {
+    fr: 'Photographie la boîte d’origine si tu l’as',
+    en: 'Photograph the original box if you have it',
+  },
+  entame: {
+    fr: 'Photographie le niveau du flacon pour montrer s’il est entamé',
+    en: 'Photograph the bottle level to show whether it has been opened',
+  },
+};
+
+/** Première clé « non testé » qui porte une phrase. Rien à dire → null. */
+function photoQuiTranche(attributs, lang) {
+  for (const [cle, valeur] of attributs) {
+    const t = TERNAIRE[aplatir(valeur)];
+    if (!t || t.signe !== '?') continue;
+    const phrase = PHOTO_QUI_TRANCHE[cle];
+    if (phrase) return phrase[lang === 'en' ? 'en' : 'fr'];
+  }
+  return null;
+}
+
+// ── Ce que le titre dit déjà ne se répète pas (15/09/2026) ─────────────────
+// « Type d'outil : pistolet à colle thermofusible » sous un titre qui dit
+// « Pistolet à colle thermofusible Bosch IXO » n'apprend rien et pousse la
+// description deux écrans plus bas. Une valeur déjà présente dans le titre —
+// ou déjà rendue par la marque, le modèle, la couleur, la matière ou l'état —
+// est RETIRÉE de la ligne. Comparaison sur les mots entiers : « 4 » de
+// `nb_pieces` disparaît sous « Lot de 4 taies », mais « 40 cm » survit.
+function dejaDit(valeur, titre, autres) {
+  const v = aplatir(valeur);
+  if (!v) return true;
+  if (autres.some(a => a && aplatir(a) === v)) return true;
+  const motif = new RegExp(`(^|[^\\p{L}\\p{N}])${v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}($|[^\\p{L}\\p{N}])`, 'u');
+  return motif.test(aplatir(titre || ''));
 }
 
 /**
@@ -200,10 +248,25 @@ export default function LensIdentite({ result, lang }) {
   // bandeau « incertaine », qui est plus grave et couvre déjà le cas.
   const objetDeduit = result.objet_source === 'deduit';
   const note = result.notes && String(result.notes).trim();
-  // La note ne devient une invitation que si elle apporte quelque chose : sur une
-  // identification sûre, le modèle n'a rien à réclamer et l'encart serait du bruit.
-  // Quand le bandeau ci-dessous s'affiche, il l'absorbe — jamais deux fois.
-  const noteUtile = !incertaine && result.confiance !== 'haute' && note;
+
+  // ── Ce que l'écran doit prouver en premier (15/09/2026) ──────────────────
+  // La description EST la preuve que l'objet a été reconnu. Elle vivait tout
+  // en bas, dans le replié d'AnalyseMarche, après deux écrans de défilement :
+  // elle remonte ici, sous le titre, sans défilement. (AnalyseMarche ne la
+  // rend plus sur cet écran — cf. `masquerDescription`.)
+  const description = result.description && String(result.description).trim();
+
+  // Le badge de confiance a laissé place à LA photo qui trancherait, et
+  // seulement quand il y en a une (cf. PHOTO_QUI_TRANCHE). Jamais en même
+  // temps que le bandeau « incertaine », qui nomme déjà la photo à prendre.
+  const aPhotographier = incertaine ? null : photoQuiTranche(attributs, lang);
+
+  // Les attributs que le titre, la marque, la couleur ou la matière disent
+  // déjà ne sont pas répétés : il ne reste que ce qui est NEUF.
+  const attributsNeufs = attributs.filter(([, v]) => !dejaDit(
+    v, result.titre,
+    [result.marque, result.modele, result.couleur, result.matiere, result.etat_estime],
+  ));
 
   return (
     <>
@@ -217,16 +280,10 @@ export default function LensIdentite({ result, lang }) {
           from { opacity:0; transform:translateY(7px); }
           to   { opacity:1; transform:translateY(0); }
         }
-        @keyframes lensSeg {
-          from { opacity:0; transform:scaleX(0.2); }
-          to   { opacity:1; transform:scaleX(1); }
-        }
         .lens-tuile { animation:lensTuile 0.5s cubic-bezier(0.34,1.56,0.64,1) both; }
-        .lens-chip  { animation:lensMonte 0.34s cubic-bezier(0.22,1,0.36,1) both; }
-        .lens-seg   { animation:lensSeg 0.3s ease-out both; transform-origin:left center; }
         .lens-note  { animation:lensMonte 0.34s cubic-bezier(0.22,1,0.36,1) both; }
         @media (prefers-reduced-motion: reduce) {
-          .lens-tuile, .lens-chip, .lens-seg, .lens-note { animation:none !important; }
+          .lens-tuile, .lens-note { animation:none !important; }
         }
       `}</style>
 
@@ -325,54 +382,39 @@ export default function LensIdentite({ result, lang }) {
               <span style={{ fontSize:12, fontWeight:600, color:MUTE }}>· {result.modele}</span>
             )}
           </div>
-          {result.confiance && <JaugeConfiance confiance={result.confiance} lang={lang} />}
+          {/* ── LA PHOTO QUI TRANCHE, à la place de la jauge ──
+              Le badge ne note plus le résultat : il donne le geste suivant, et
+              uniquement quand ce geste change quelque chose. Cf. le critère
+              détaillé au-dessus de PHOTO_QUI_TRANCHE. */}
+          {aPhotographier && (
+            <div
+              className="lens-note"
+              style={{
+                marginTop:7, display:'flex', gap:7, alignItems:'flex-start',
+                background:'rgba(47,158,144,0.07)', border:'1px solid rgba(47,158,144,0.20)',
+                borderRadius:10, padding:'7px 9px',
+              }}
+            >
+              <span style={{ fontSize:12.5, lineHeight:1.3, flexShrink:0 }}>📸</span>
+              <span style={{ fontSize:11.5, fontWeight:600, color:TEAL_DEEP, lineHeight:1.4 }}>
+                {aPhotographier}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── Fiche technique : ce qui a été LU sur l'objet ── */}
-      {attributs.length > 0 && (
-        <div style={{ marginBottom:12 }}>
-          <div style={{
-            fontSize:9.5, fontWeight:800, letterSpacing:'0.09em', textTransform:'uppercase',
-            color:MUTE, marginBottom:7,
-          }}>
-            {lang === 'en' ? 'Read on the item' : 'Lu sur l’objet'}
-          </div>
-          <div style={{
-            display:'grid',
-            gridTemplateColumns:'repeat(auto-fill, minmax(104px, 1fr))',
-            gap:6,
-          }}>
-            {attributs.map(([cle, valeur], i) => (
-              <ChipAttribut key={cle} cle={cle} valeur={String(valeur)} lang={lang} index={i} />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Ce qu'une photo de plus trancherait ──
-          Le prompt garantit depuis le 11/08 que `notes` nomme LA photo qui
-          lèverait le doute (plaque signalétique, dessous de l'objet, numéro de
-          série…). C'est exploitable : on l'affiche comme une piste, pas comme
-          une note de bas de page. */}
-      {noteUtile && (
-        <div
-          className="lens-note"
-          style={{
-            animationDelay:'240ms',
-            background:'rgba(47,158,144,0.07)',
-            border:'1px solid rgba(47,158,144,0.20)',
-            borderRadius:12, padding:'10px 12px', marginBottom:12,
-            display:'flex', gap:9, alignItems:'flex-start',
-          }}
-        >
-          <span style={{ fontSize:15, lineHeight:1.2, flexShrink:0 }}>📸</span>
-          <div style={{ minWidth:0 }}>
-            <div style={{ fontSize:11.5, fontWeight:800, color:TEAL_DEEP, marginBottom:2 }}>
-              {lang === 'en' ? 'One more photo would sharpen this' : 'Une photo de plus affinerait l’analyse'}
-            </div>
-            <div style={{ fontSize:11.5, color:MUTE, lineHeight:1.45 }}>{result.notes}</div>
-          </div>
+      {/* ── LA DESCRIPTION, juste sous le titre (15/09/2026) ──────────────
+          C'est ELLE qui prouve à l'utilisateur que son objet a été reconnu —
+          pas l'en-tête décoratif, pas la répétition du titre en pastilles.
+          Elle est rendue ENTIÈRE : pas de troncature, pas de « voir plus ».
+          Un extrait ne prouve rien. */}
+      {description && (
+        <div className="lens-note" style={{
+          animationDelay:'120ms',
+          fontSize:13, color:'#374151', lineHeight:1.55, marginBottom:12,
+        }}>
+          {description}
         </div>
       )}
 
@@ -399,6 +441,29 @@ export default function LensIdentite({ result, lang }) {
           </span>
         )}
       </div>
+
+      {/* ── Ce qui a été LU sur l'objet, en UNE ligne (15/09/2026) ─────────
+          La grille de tuiles est partie : elle répétait le titre sur un quart
+          d'écran. Ne reste que ce que le titre ne dit pas — l'alimentation,
+          le fonctionnement, une mesure — sur une ligne qui se lit d'un coup.
+          Le sac reste OUVERT : une clé inconnue passe par humaniserCle(),
+          jamais masquée. */}
+      {attributsNeufs.length > 0 && (
+        <div className="lens-note" style={{
+          animationDelay:'180ms',
+          display:'flex', flexWrap:'wrap', gap:'3px 10px', alignItems:'baseline',
+          fontSize:12, lineHeight:1.5, marginBottom:12,
+        }}>
+          <span style={{
+            fontSize:9.5, fontWeight:800, letterSpacing:'0.09em', textTransform:'uppercase', color:MUTE,
+          }}>
+            {lang === 'en' ? 'Read on the item' : 'Lu sur l’objet'}
+          </span>
+          {attributsNeufs.map(([cle, valeur]) => (
+            <ValeurAttribut key={cle} cle={cle} valeur={String(valeur)} lang={lang} />
+          ))}
+        </div>
+      )}
     </>
   );
 }

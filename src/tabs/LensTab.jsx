@@ -434,7 +434,7 @@ function LensHeroCta({ onClick, disabled, children, style }) {
   );
 }
 
-function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset, createCta }) {
+export function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLensItem, openLensEditModal, onReset, createCta }) {
   if (result.error) {
     return (
       <>
@@ -448,49 +448,57 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
     );
   }
 
+  // Les deux cartes et la pile de boutons partagent exactement le rendu
+  // d'origine (mêmes fonds, mêmes bordures, mêmes rayons, mêmes ombres) : la
+  // refonte du 15/09 ne déplace que l'ORDRE.
+  const carte = {background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.08)',marginBottom:10,boxShadow:'0 2px 8px rgba(0,0,0,0.04)'};
+
   return (
     <div style={{animation:'vrFadeSlide 0.35s cubic-bezier(0.22,1,0.36,1) both'}}>
-      <div style={{background:'#fff',borderRadius:14,padding:'16px',border:'1px solid rgba(0,0,0,0.08)',marginBottom:10,boxShadow:'0 2px 8px rgba(0,0,0,0.04)'}}>
 
-        {/* ── Identification (11/08/2026) ────────────────────────────────
-            Le titre et six pastilles de même poids ont laissé place à
-            LensIdentite : tuile de catégorie, marque mise en avant OU
-            « aucune marque lisible » assumée, jauge de confiance, et surtout
-            la fiche de ce qui a été LU sur l'objet — tension, capacité,
-            dimensions, référence. Ces attributs existaient déjà en base et
-            partaient directement dans les aspects eBay sans jamais passer
-            devant l'utilisateur. */}
+      {/* ══ 1. L'OBJET RECONNU (15/09/2026, demande Nico) ══════════════════
+          C'est le bloc le plus important de l'écran, et il est au-dessus de la
+          ligne de flottaison : titre, marque/modèle, puis la DESCRIPTION
+          COMPLÈTE — la seule chose qui prouve à l'utilisateur que l'IA a
+          reconnu SON objet. Les pastilles et la ligne « lu sur l'objet »
+          suivent, secondaires. (LensIdentite, 11/08 : la tuile de catégorie,
+          « aucune marque lisible » assumée, et ce qui a été LU sur l'objet —
+          des attributs qui partaient jusque-là directement dans les aspects
+          eBay sans jamais passer devant l'utilisateur.) */}
+      <div style={carte}>
         <LensIdentite result={result} lang={lang} />
+      </div>
 
-        {/* ── Analyse de marché — composant UNIQUE, partagé avec le stepper ──
-            Prix conseillé, verdict avec la marge, fiabilité, puis tout le
-            reste replié. Le prix d'achat SAISI (lensBuy) pilote la marge ;
-            sans lui on est en chine et le composant rend le prix plafond à la
-            place d'un verdict qui serait circulaire. */}
+      {/* ══ 2. LE PRIX ═════════════════════════════════════════════════════
+          Le montant, sa fourchette (celle du marché, la seule), le verdict ou
+          le seuil d'achat. Composant UNIQUE partagé avec le stepper. Le prix
+          d'achat SAISI (lensBuy) pilote la marge ; sans lui on est en chine et
+          le composant rend le prix plafond à la place d'un verdict qui serait
+          circulaire. */}
+      <div style={carte}>
         <AnalyseMarche
           result={result}
           prixAchat={lensBuy}
           lang={lang}
           currency={currency}
           variant="verdict"
-          // La note est déjà rendue plus haut, en encart « une photo de plus
-          // affinerait l'analyse » — là où elle sert à quelque chose.
+          section="prix"
           masquerNotes
+          masquerDescription
         />
-
-
       </div>
 
-      {/* ── Hiérarchie de la pile (03/09) ────────────────────────────────────
+      {/* ══ 3. LES ACTIONS ═════════════════════════════════════════════════
           1. createCta (encart « annonce prête » + bouton PRINCIPAL de création,
-             construits par LensTab qui porte handleCreateListing) — remonté en
-             tête : c'est l'action attendue, et l'encart qui l'explique la
-             précède.
-          2. « Modifier & ajouter au stock » passe en SECONDAIRE (contour) :
-             deux verts pleins empilés ne disaient pas lequel crée l'annonce.
-          3. « Nouvelle analyse » descend en dernier, avec la mention de son
-             coût : des utilisateurs relançaient l'analyse jusqu'à épuiser
-             leur quota sans que rien ne le dise. */}
+             construits par LensTab qui porte handleCreateListing) — en tête :
+             c'est l'action attendue, et l'encart qui l'explique la précède.
+          2. « Modifier & ajouter au stock » en SECONDAIRE (contour) : deux
+             verts pleins empilés ne disaient pas lequel crée l'annonce.
+          3. « Nouvelle analyse » en dernier, avec la mention de son coût : des
+             utilisateurs relançaient l'analyse jusqu'à épuiser leur quota sans
+             que rien ne le dise.
+          Elles sont désormais AU-DESSUS du détail du marché (15/09) : publier
+          passe avant les annonces comparables. */}
       {createCta}
 
       {result.titre&&(
@@ -514,6 +522,26 @@ function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded, addLen
         {lang==='en'
           ?'A new analysis uses one listing from your monthly quota.'
           :'Une nouvelle analyse consomme une annonce de ton quota mensuel.'}
+      </div>
+
+      {/* ══ 4. LE DÉTAIL DU MARCHÉ, REPLIÉ ═════════════════════════════════
+          Annonces comparables, fourchette bas/moyen/haut, vitesse de vente,
+          plateformes, conseils, et la note du modèle sur la façon dont le prix
+          a été établi. Tout ça reste accessible en un tap, et ne pousse plus
+          la reconnaissance de l'objet deux écrans plus bas. `masquerNotes` ne
+          reste armé que quand le bandeau « identification incertaine » de
+          LensIdentite rend déjà la note : sinon elle atterrit ici. */}
+      <div style={{...carte,marginTop:14,marginBottom:0}}>
+        <AnalyseMarche
+          result={result}
+          prixAchat={lensBuy}
+          lang={lang}
+          currency={currency}
+          variant="verdict"
+          section="details"
+          masquerNotes={result.identification_incertaine===true}
+          masquerDescription
+        />
       </div>
     </div>
   );
@@ -817,24 +845,13 @@ const LensTab = memo(function LensTab({
   return (
     <div style={{maxWidth:520,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}}>
 
-      {/* ── Header — repensé 03/09 soir (demande Nico) : une identité, pas un
-          titre gris. Tuile dégradée + wordmark + baseline qui dit le geste
-          entier (prix, verdict, annonce) plutôt qu'une périphrase. */}
-      <div style={{paddingTop:4,display:"flex",alignItems:"center",gap:12}}>
-        <span style={{flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:46,height:46,borderRadius:15,background:`linear-gradient(150deg,${TEAL} 0%,${TEAL_DEEP} 70%,#10201B 130%)`,boxShadow:"0 10px 22px -6px rgba(47,158,144,0.45)"}}>
-          <Sparkles size={21} color="#FFFFFF" strokeWidth={2.1}/>
-        </span>
-        <div style={{minWidth:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:7}}>
-            <span style={{fontSize:25,fontWeight:700,letterSpacing:"-0.02em",color:INK,lineHeight:1.1}}>Lens</span>
-            <span style={{background:"rgba(47,158,144,0.12)",color:TEAL_DEEP,border:"1px solid rgba(47,158,144,0.3)",borderRadius:99,padding:"2px 9px",fontSize:10.5,fontWeight:800,letterSpacing:"0.07em"}}>IA</span>
-          </div>
-          <div style={{fontSize:12.5,color:MUTE,fontWeight:500,marginTop:2,lineHeight:1.4}}>
-            {lang==="en"?"One scan: market price, verdict, ready listing":"Un scan : prix du marché, verdict, annonce prête"}
-            {userCountry&&<span style={{color:"#A3A9A6"}}> · 📍 {userCountry.name}</span>}
-          </div>
-        </div>
-      </div>
+      {/* ── En-tête « Lens » SUPPRIMÉ (15/09/2026, demande Nico) ──────────────
+          Tuile dégradée 46 px + wordmark 25 px + badge IA + baseline : un quart
+          de l'écran pour dire « Lens » à quelqu'un qui vient d'appuyer sur
+          Lens, et la reconnaissance de son objet repoussée d'autant. Ce que
+          l'en-tête portait d'utile — le pays qui sert à situer les prix — vit
+          maintenant sur la ligne de section ci-dessous, en un mot.
+          (L'écran de SCAN, lui, garde son hero : là-bas il annonce le geste.) */}
 
       <PhotoSourceSheet
         open={showPhotoSheet}
@@ -866,6 +883,12 @@ const LensTab = memo(function LensTab({
             <span style={{fontSize:10,fontWeight:800,letterSpacing:"0.11em",textTransform:"uppercase",color:MUTE}}>
               {lang==="en"?"Scan result":"Résultat du scan"}
             </span>
+            {/* Recueilli de l'en-tête supprimé : le pays situe les prix. */}
+            {userCountry&&(
+              <span style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",color:"#A3A9A6"}}>
+                · 📍 {userCountry.name}
+              </span>
+            )}
           </div>
           {/* (prop openUpgradeModal retirée le 2026-08-09 : LensAnalysisResult
               ne la destructure pas — elle n'a jamais rien ouvert.) */}
