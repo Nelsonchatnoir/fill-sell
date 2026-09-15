@@ -1,7 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
-import { ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir } from "../_shared/vinted-taille-republication.ts";
+import { ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServir, tailleAServirPublication } from "../_shared/vinted-taille-republication.ts";
+
+/** Taille d'article en NOMBRE NU (« 36 », « 42 ») : le seul périmètre de la
+ *  conversion nombre → lettre à la publication. Une forme préfixée (« EU 36 »)
+ *  est le domaine de la republication, une lettre n'a rien à convertir. */
+const NOMBRE_NU_TAILLE_RE = /^\d{1,3}$/;
 import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
 import { completerDescriptionBeebs } from "../_shared/description-beebs.ts";
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
@@ -1939,6 +1944,84 @@ serve(async (req) => {
         }
       }
     } catch (_e) { /* le dépannage ne doit jamais empêcher de servir la file */ }
+
+    // ── TAILLE VINTED À LA **PUBLICATION** : NOMBRE → LETTRE (2026-09-15) ────
+    // La republication ci-dessus servait déjà le libellé de la grille ; la
+    // PUBLICATION, elle, n'a jamais rien converti. La conversion existait dans
+    // l'extension (vinted.js, « 1ter », 0.6.24) derrière une condition
+    // « grille purement lettrée » = aucune option ne contient de chiffre —
+    // qu'AUCUNE grille Vinted ne satisfait, puisqu'elles finissent toutes par
+    // 4XL…9XL. Elle n'a donc jamais tourné : la jupe « 42 » d'Ornella a échoué
+    // les 11 et 13/09 sur une 0.6.36, et son blazer « 36 » le 15/09.
+    // Mesuré sur 25 j (publish vinted avec une taille, hors compte de test) :
+    // branche Femmes + nombre nu = 3 jobs, 3 NON publiés — 100 % de la classe.
+    // Hommes + nombre nu = 0, Enfants + nombre nu = 1, publié (la cascade
+    // « nombre ancré » de l'extension le résout déjà).
+    // Ici, côté serveur, ça atteint TOUS les builds sans passer par le Store.
+    // Table, branche Femmes seulement et garde-fous : _shared/vinted-taille-
+    // republication.ts (tailleAServirPublication) — le même fichier que la
+    // republication, la même normalisation de libellé. Rien n'est réécrit en
+    // base : on ne fait que servir la valeur.
+    try {
+      const publishTaille = out.filter((j) =>
+        j.platform === "vinted" && j.action !== "republish" &&
+        NOMBRE_NU_TAILLE_RE.test(String((j.platform_fields as Record<string, unknown> | null)?.["taille"] ?? "").trim())
+      );
+      if (publishTaille.length) {
+        const cheminDe = (j: (typeof publishTaille)[number]): string => {
+          const p = (j.platform_fields as Record<string, unknown> | null)?.["categoryPath"];
+          return Array.isArray(p) ? p.map((s) => String(s)).join(" > ") : "";
+        };
+        const chemins = [...new Set(publishTaille.map(cheminDe).filter(Boolean))];
+        const grilles = new Map<string, string[]>();
+        if (chemins.length) {
+          const { data: rows } = await userClient
+            .from("platform_category_aspects")
+            .select("category_key, allowed_values")
+            .eq("platform", "vinted")
+            .eq("field_key", "size")
+            .in("category_key", chemins);
+          for (const r of (rows ?? []) as Array<Record<string, unknown>>) {
+            if (Array.isArray(r.allowed_values) && r.allowed_values.length) {
+              grilles.set(String(r.category_key), r.allowed_values.map((v) => String(v)));
+            }
+          }
+        }
+        let convertis = 0;
+        for (const j of publishTaille) {
+          const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
+          const chemin = cheminDe(j);
+          const taille = String(pf["taille"] ?? "").trim();
+          const r = tailleAServirPublication({
+            taille,
+            cheminCategorie: chemin,
+            options: grilles.get(chemin) ?? null,
+          });
+          // Trace servie AUSSI quand rien n'est converti (même doctrine que la
+          // republication) : c'est ce qui se lit en SQL pour savoir si la
+          // conversion sert, ou si elle masque autre chose.
+          const trace = {
+            taille_article: taille, categorie: chemin || null, grille_relevee: grilles.has(chemin),
+            valeur: r.valeur, ordre: r.ordre,
+            ...(r.valeur === null ? { motif: r.motif } : { detail: r.detail }),
+            at: new Date().toISOString(),
+          };
+          if (r.valeur === null) {
+            j.platform_fields = { ...pf, publish_taille_convertie: trace };
+            continue;
+          }
+          j.platform_fields = { ...pf, taille: r.valeur, publish_taille_convertie: trace };
+          convertis++;
+          console.log(`[get-pending-jobs] job ${j.id} : taille « ${taille} » → « ${r.valeur} » (${chemin})`);
+        }
+        if (convertis) {
+          console.log(
+            `[get-pending-jobs] userId=${user.id} : taille convertie sur ${convertis} publication(s) vinted ` +
+            `(${publishTaille.length} à taille numérique)`,
+          );
+        }
+      }
+    } catch (_e) { /* la conversion est un confort : jamais un point de panne */ }
 
     // ── ADRESSE DE REMISE : LES RÉGLAGES FONT FOI AU MOMENT DE PUBLIER ──────
     // (2026-09-07, job 6b4e9f45 d'Hugo) L'adresse est COPIÉE dans le job au

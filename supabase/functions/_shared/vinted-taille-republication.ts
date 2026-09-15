@@ -78,6 +78,103 @@ export const TAILLE_PREFIXEE_RE = /^(EU|FR|UK) ?(\d{1,3})$/i;
 /** Les lettres de la grille Femme/Homme Vinted : XXXS…S, M, L…XXXL, 4XL…9XL. */
 const LETTRE_RE = /^(?:X{0,3}S|X{0,3}L|M|\dXL)$/i;
 const NOMBRE_RE = /^\d{1,3}$/;
+
+// ══════════════════════════════════════════════════════════════════════════
+// LA TAILLE SERVIE À LA **PUBLICATION** (2026-09-15) — MÊME FICHIER, MÊME
+// TABLE, MÊMES OUTILS DE COMPARAISON QUE LA REPUBLICATION CI-DESSUS
+// ══════════════════════════════════════════════════════════════════════════
+// LA CAUSE, mesurée le 15/09 (blazer « 36 » d'Ornella, job 6aefaa2b) : la
+// conversion nombre → lettre existait, mais DANS L'EXTENSION seulement
+// (content-scripts/vinted.js, étape « 1ter » de findOptionCascade, livrée en
+// 0.6.24), et derrière une condition qu'AUCUNE grille Vinted réelle ne
+// satisfait :
+//
+//     if (!options.some((o) => /\d/.test(o.norm)))   // « grille purement lettrée »
+//
+// Toute grille lettrée Vinted finit par 4XL, 5XL … 9XL — qui contiennent un
+// CHIFFRE. La condition est donc toujours fausse, et la conversion n'a jamais
+// tourné une seule fois en production. Preuve : la jupe « 42 » d'Ornella a
+// échoué DEUX FOIS (jobs 55d99d75 le 11/09, dab128c6 le 13/09) sur une
+// extension 0.6.36, donc bien après la 0.6.24 censée l'avoir corrigée. Même
+// condition morte dans le message « la catégorie est probablement fausse » de
+// vinted.js : lui non plus n'est jamais sorti.
+//
+// D'où la reprise ICI, côté serveur : ça atteint TOUS les builds (Ornella est
+// en 0.6.36) sans attendre un examen du Chrome Web Store, et ça met la table
+// au même endroit que le reste des règles de taille Vinted.
+//
+// ⛔ CE QUI N'EST **JAMAIS** CONVERTI (règle du 10/09 : jamais une taille
+//    approchée — mieux vaut le champ vide et un needs_user qu'une valeur
+//    fausse sur l'annonce de quelqu'un) :
+//   · une branche autre que FEMMES. La table est la grille FEMME de Vinted
+//     (relevée dans /api/v2/size_groups, « XL / 42 / 14 »). Un « 36 » d'homme
+//     n'est pas un S, un « 36 » d'enfant n'est pas une taille de vêtement, un
+//     « 36 » de chaussure est une pointure — aucun ne passe par ici ;
+//   · un nombre absent de la table (46, 48, 50…) : hors grille femme, on ne
+//     devine pas ;
+//   · une grille NON relevée : on n'invente pas un libellé qu'on n'a pas vu ;
+//   · une grille qui contient DÉJÀ le nombre nu en option : l'extension le
+//     matche par l'exact, on ne touche pas à ce qui marche ;
+//   · une lettre cible absente de la grille relevée.
+// Rien n'est réécrit en base : ce module calcule la valeur à SERVIR.
+
+/** Grille FEMME de Vinted, relevée dans /api/v2/size_groups (« XL / 42 / 14 »).
+ *  C'est la SEULE table de correspondance nombre → lettre du projet : la copie
+ *  qui vivait dans content-scripts/vinted.js (TAILLE_LETTREE_PAR_NUMERIQUE,
+ *  0.6.24) n'a jamais pu s'exécuter, et devient un filet pour les vieux builds. */
+export const TAILLE_FEMME_LETTRE_PAR_NOMBRE: Readonly<Record<string, string>> = {
+  "30": "XXXS", "32": "XXS", "34": "XS", "36": "S",
+  "38": "M", "40": "L", "42": "XL", "44": "XXL",
+};
+
+/** Racines de la branche Femmes, dans les deux langues où les chemins sont
+ *  relevés en base (category_key « Femmes > … » et « Women > … »). */
+const RACINES_FEMMES = new Set(["FEMMES", "WOMEN"]);
+
+/** La taille à servir dans platform_fields.taille d'un job vinted PUBLISH,
+ *  ou le motif du hors-périmètre. Mêmes outils de comparaison que
+ *  tailleAServir (normaliserTaille, options neutres) — une seule définition
+ *  de « même libellé » pour les deux chemins.
+ *  @param taille          platform_fields.taille du job (la taille de l'article)
+ *  @param cheminCategorie categoryPath du job, joint par « > »
+ *  @param options         allowed_values (libellés BRUTS) de la grille relevée
+ *                         pour cette catégorie ; null/vide si non relevée
+ */
+export function tailleAServirPublication(args: {
+  taille: unknown;
+  cheminCategorie: unknown;
+  options: string[] | null | undefined;
+}): TailleServie | TailleRefusee {
+  const ordre = "femme:nombre→lettre";
+  const refus = (motif: string): TailleRefusee => ({ valeur: null, etape: null, ordre, motif });
+  const nt = normaliserTaille(args.taille);
+  if (!NOMBRE_RE.test(nt)) return refus("taille non numérique (hors périmètre)");
+
+  const chemin = normaliserTaille(args.cheminCategorie);
+  const racine = chemin.split(">")[0]?.trim() ?? "";
+  if (!RACINES_FEMMES.has(racine)) return refus(`branche « ${racine || "inconnue"} » ≠ Femmes (table femme seulement)`);
+
+  const lettre = TAILLE_FEMME_LETTRE_PAR_NOMBRE[nt];
+  if (!lettre) return refus(`« ${nt} » absent de la grille femme (30→44)`);
+
+  const grille = (Array.isArray(args.options) ? args.options : [])
+    .map((o) => ({ brut: String(o), norm: normaliserTaille(o) }))
+    .filter((o) => o.norm);
+  if (!grille.length) return refus("grille non relevée");
+
+  // La grille propose déjà le nombre nu : l'extension le matche par l'exact.
+  if (grille.some((o) => o.norm === nt)) return refus(`« ${nt} » est déjà une option de la grille`);
+
+  const cible = grille.find((o) => o.norm === lettre);
+  if (!cible) return refus(`lettre « ${lettre} » absente de la grille relevée`);
+
+  return {
+    valeur: cible.brut,
+    etape: 3,
+    ordre,
+    detail: `« ${nt} » → « ${cible.brut} » (grille femme Vinted, lettre présente dans la grille relevée)`,
+  };
+}
 /** Options présentes dans TOUTES les grilles : elles ne disent rien de sa forme. */
 const OPTIONS_NEUTRES = new Set(["AUTRE", "TAILLE UNIQUE"]);
 /** Le préfixe que vinted.js coupe : un libellé qui commence ainsi ne doit jamais être servi. */

@@ -22,6 +22,7 @@
     "selftest:famille-categorie": "node scripts/famille-categorie-selftest.mjs",
     "gen:arbres": "node scripts/gen-arbres-feuilles.mjs",
     "selftest:vinted-couleurs": "node scripts/vinted-couleurs-selftest.mjs",
+    "selftest:vinted-taille-publication": "node scripts/vinted-taille-publication-selftest.mjs",
     "selftest:content-scripts": "node scripts/content-scripts-selftest.mjs",
     "selftest:description-leboncoin": "node scripts/description-leboncoin-selftest.mjs",
     "selftest:description-beebs": "node scripts/description-beebs-selftest.mjs",
