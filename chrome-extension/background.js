@@ -4649,26 +4649,114 @@ async function idsOngletsTravailConnus() {
 //      en produire cinq (2026-07-30).
 const WORK_WINDOWS_CREATED_KEY = "fillsell_work_windows_created";
 const MAX_FENETRES_TRAVAIL = 2;
+
+// ── LE REGISTRE VIT EN storage.local DEPUIS LE 2026-09-15 ────────────────────
+// Il était en storage.session, et c'est ce qui rendait le plafond inopérant :
+// storage.session est VIDÉ à chaque rechargement ou mise à jour de l'extension,
+// alors que les fenêtres Chrome, elles, y survivent. Après une mise à jour :
+// registre à zéro, deux fenêtres encore vivantes, le plafond réautorise deux
+// créations → QUATRE. Chaque version publiée déclenchait donc la multiplication
+// sur tout le parc, et le poste de Nico (rechargements unpacked à répétition) la
+// voyait en permanence : 4 fenêtres vivantes pour un plafond de 2, dont 3
+// visibles à l'écran.
+// Mesuré en prod sur 30 j (platform_fields.work_window_state) : plafond atteint
+// 101 fois sur 4 comptes, et jusqu'à 9 ids de fenêtres distincts en un jour chez
+// un compte.
+async function lireRegistreFenetres() {
+  const store = await chrome.storage.local.get(WORK_WINDOWS_CREATED_KEY).catch(() => ({}));
+  const liste = Array.isArray(store[WORK_WINDOWS_CREATED_KEY]) ? store[WORK_WINDOWS_CREATED_KEY] : [];
+  return liste.filter((v) => Number.isFinite(Number(v))).map(Number);
+}
 async function memoriserFenetreCreee(windowId) {
   try {
-    const store = await chrome.storage.session.get(WORK_WINDOWS_CREATED_KEY);
-    const list = Array.isArray(store[WORK_WINDOWS_CREATED_KEY]) ? store[WORK_WINDOWS_CREATED_KEY] : [];
-    list.push(windowId);
-    await chrome.storage.session.set({ [WORK_WINDOWS_CREATED_KEY]: list.slice(-6) });
+    const liste = await lireRegistreFenetres();
+    liste.push(windowId);
+    await chrome.storage.local.set({ [WORK_WINDOWS_CREATED_KEY]: liste.slice(-6) });
   } catch { /* best-effort */ }
 }
+// Ids du registre encore VIVANTS, et le registre est PURGÉ au passage : en
+// storage.local il survit au navigateur, donc les ids morts s'y accumuleraient
+// et finiraient par chasser les vivants de la fenêtre glissante des 6 derniers.
 async function fenetresCreeesVivantes() {
   try {
-    const store = await chrome.storage.session.get(WORK_WINDOWS_CREATED_KEY);
-    const list = Array.isArray(store[WORK_WINDOWS_CREATED_KEY]) ? store[WORK_WINDOWS_CREATED_KEY] : [];
+    const liste = await lireRegistreFenetres();
     const alive = [];
-    for (const id of list) {
+    for (const id of liste) {
       if (await chrome.windows.get(id).catch(() => null)) alive.push(id);
+    }
+    if (alive.length !== liste.length) {
+      await chrome.storage.local.set({ [WORK_WINDOWS_CREATED_KEY]: alive }).catch(() => {});
     }
     return alive; // ordre de création conservé
   } catch {
     return [];
   }
+}
+
+// ── BALAYAGE DE VÉRITÉ (2026-09-15) ──────────────────────────────────────────
+// Le registre ne connaît que ce que CETTE installation a créé. Or le correctif
+// ci-dessus doit tenir à travers SA PROPRE installation : à la première
+// exécution de la nouvelle version, le registre local est vide et jusqu'à deux
+// fenêtres de l'ancienne version vivent encore. Sans ce balayage, la mise à jour
+// qui corrige la multiplication la provoquerait une dernière fois.
+//
+// On ne croit donc pas le registre sur parole : on REGARDE les fenêtres. Une
+// fenêtre de travail se reconnaît à son PORTE-PAGE `about:blank#fillsell-worker`
+// — ouvert à la création, jamais navigué (un fragment sur about:blank survit à
+// tout), et que personne d'autre que nous ne produit. C'est le seul marqueur qui
+// ne se perd pas : le fragment des onglets de travail, lui, disparaît dès que la
+// plateforme réécrit l'URL (c'est la cause du cliquet, cf. bandeau du 30/07).
+//
+// ⚠️ CE QUI N'EST PAS GARANTI, ET QUI SE MESURERA EN BASE. L'extension ne
+// demande PAS la permission "tabs" (elle vaudrait un avertissement de permission
+// chez tous les utilisateurs) : Chrome ne renseigne `tab.url` que par les
+// permissions d'hôte, et `about:blank` n'en matche aucune. Le reste du fichier
+// lit déjà ce porte-page comme s'il était visible (consolidateWorkWindows,
+// compterOngletsFenetre, findExistingWorkWindow) — mais je n'en ai pas la PREUVE.
+// Donc : on ne suppose pas, on mesure. Les événements fenetre_creee et
+// plafond_fenetres_atteint emportent désormais `registre` ET `observees` ; une
+// requête sur platform_fields->'work_window_state'->'at_start'->'events' dira si
+// le balayage voit quelque chose. S'il ne voit rien, il rend [] et le plafond
+// retombe sur le registre seul — exactement le comportement d'aujourd'hui, jamais
+// pire.
+//
+// ⛔ CE BALAYAGE NE SERT QU'AU PLAFOND. Il ne donne AUCUN droit de fermeture :
+// il n'écrit pas dans le registre, et consolidateWorkWindows continue de décider
+// seule, sur ses propres règles (une fenêtre portant un onglet utilisateur n'est
+// jamais fermée, ses onglets marqués sont seulement rapatriés). Une fenêtre
+// portant le moindre onglet utilisateur est ignorée ici aussi : en cas de doute,
+// on la laisse — et on la COMPTE, ce qui ne peut que resserrer le plafond.
+async function fenetresDeTravailObservees() {
+  try {
+    const fenetres = await chrome.windows.getAll({ populate: true }).catch(() => []);
+    const vues = [];
+    for (const w of fenetres) {
+      let portePage = false;
+      let utilisateur = 0;
+      for (const t of w.tabs ?? []) {
+        const url = t.url || t.pendingUrl || "";
+        if (url.startsWith("about:blank") && url.includes(WORK_TAB_FRAGMENT)) { portePage = true; continue; }
+        if (url.includes(WORK_TAB_FRAGMENT) || url.includes(TEMP_TAB_FRAGMENT)) continue;
+        if (url === "" || url === "about:blank" || url.startsWith("chrome://newtab")) continue;
+        utilisateur++;
+      }
+      if (portePage && utilisateur === 0) vues.push(w.id);
+    }
+    return vues;
+  } catch {
+    return [];
+  }
+}
+
+// Ce que le plafond compte : l'union du registre et de ce qu'on VOIT. Le
+// registre seul est aveugle après une mise à jour ; le balayage seul raterait
+// une fenêtre créée à l'instant et pas encore peuplée.
+async function fenetresTravailVivantes() {
+  const registre = await fenetresCreeesVivantes();
+  const observees = await fenetresDeTravailObservees();
+  const union = [...registre];
+  for (const id of observees) if (!union.includes(id)) union.push(id);
+  return { union, registre, observees };
 }
 
 // ── Journal des événements fenêtre de travail (2026-07-30) ───────────────────
@@ -4755,12 +4843,16 @@ async function resolveWorkWindow() {
   // l'utilisateur, même si un défaut de classification l'a fait abandonner) et
   // on journalise. Aucun défaut de classification ne doit plus jamais pouvoir
   // produire cinq fenêtres.
-  const creees = await fenetresCreeesVivantes();
+  const { union: creees, registre, observees } = await fenetresTravailVivantes();
   if (creees.length >= MAX_FENETRES_TRAVAIL) {
     const reprise = creees[creees.length - 1];
     await chrome.storage.session.set({ [WORK_WINDOW_KEY]: reprise });
     await journaliserEvenementFenetre("plafond_fenetres_atteint", {
       alive: creees, reused: reprise,
+      // D'où vient le compte : registre (storage.local) et/ou balayage des
+      // porte-pages. Après une mise à jour, le registre est vide et c'est le
+      // balayage qui tient le plafond — on veut pouvoir le lire en base.
+      registre, observees,
     });
     await consolidateWorkWindows(reprise, idsConnus);
     return reprise;
@@ -4789,13 +4881,33 @@ async function resolveWorkWindow() {
   // échec — deux chemins muets. On relit donc l'état RÉEL et on journalise
   // s'il n'est pas celui demandé. Observation seule : pas de re-tentative en
   // boucle ici, l'état par job est déjà relevé par releverEtatFenetreTravail.
-  const etatReel = await chrome.windows.get(win.id).catch(() => null);
+  // ── UNE SEULE RE-TENTATIVE, BORNÉE (2026-09-15) ────────────────────────────
+  // Jusqu'ici on relisait l'état, on journalisait s'il n'était pas minimisé, et
+  // on s'arrêtait là : la fenêtre restait VISIBLE pour toujours. Mesuré en prod
+  // sur 30 j : fenetre_creee_non_minimisee 15 fois sur 9 comptes, et 144 relevés
+  // sur 1438 (10 %, 25 comptes sur 100) démarrent sur une fenêtre non minimisée.
+  // Une fenêtre qui surgit, c'est la promesse produit cassée — on retente.
+  // UNE fois, jamais en boucle : si Chrome refuse deux fois, il refusera
+  // toujours (comportement de plateforme), et une boucle coûterait un job.
+  let etatReel = await chrome.windows.get(win.id).catch(() => null);
   if (etatReel && etatReel.state !== "minimized") {
-    await journaliserEvenementFenetre("fenetre_creee_non_minimisee", {
-      window_id: win.id, state: etatReel.state, focused: etatReel.focused,
-    });
+    const etatAvantReprise = etatReel.state;
+    await chrome.windows.update(win.id, { state: "minimized", focused: false }).catch(() => {});
+    etatReel = await chrome.windows.get(win.id).catch(() => null);
+    if (etatReel && etatReel.state !== "minimized") {
+      await journaliserEvenementFenetre("fenetre_creee_non_minimisee", {
+        window_id: win.id, state: etatReel.state, focused: etatReel.focused,
+        retentee: true, etat_avant_reprise: etatAvantReprise, registre, observees,
+      });
+    } else {
+      await journaliserEvenementFenetre("fenetre_minimisee_a_la_reprise", {
+        window_id: win.id, etat_avant_reprise: etatAvantReprise, registre, observees,
+      });
+    }
   } else {
-    await journaliserEvenementFenetre("fenetre_creee", { window_id: win.id });
+    await journaliserEvenementFenetre("fenetre_creee", {
+      window_id: win.id, registre, observees,
+    });
   }
   console.log(`[background] Fenêtre de travail dédiée ${win.id} CRÉÉE (minimisée, jamais focus)`);
   // Rapatrie les onglets marqués égarés (repli d'un job précédent, fenêtre
