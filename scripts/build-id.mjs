@@ -1389,7 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-15T21:30:24Z'; // recale e3d1fd8 (opla.co REMIS apres l'empaquetage de la 0.6.39 - dernier commit touchant chrome-extension/) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches : la 0.6.39 n'est pas televersee.
+export const EXTENSION_LAST_COMMIT = '2026-09-15T21:36:44Z'; // recale 74f6e90 (lot sondes de session A/B/C/D, manifest 0.6.40) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches.
+// Historique de la valeur precedente : recale e3d1fd8 (opla.co REMIS apres l'empaquetage de la 0.6.39 - dernier commit touchant chrome-extension/) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches : la 0.6.39 n'est pas televersee.
 // ⚠️ Le commit de REMISE d'opla.co doit etre recale ICI, lui aussi : le laisser
 // de cote (ce que j'ai d'abord ecrit dans e3d1fd8) casse `npm run build` en
 // local via assertExtensionMinBuildCurrent, donc plus aucune verification avant
