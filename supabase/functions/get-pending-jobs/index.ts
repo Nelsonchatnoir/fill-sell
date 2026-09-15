@@ -2775,6 +2775,135 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] option neutre de taille Vinted : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }
 
+    // ── LANGUE DES LIVRES VINTED — enrichissement du job SERVI (2026-09-15) ───
+    // Vinted EXIGE `language_book` sur les Livres. Job 2286228e (carhoa,
+    // « Bretagne », catalog 2320) : annonce SUPPRIMÉE (delete HTTP 200) puis
+    //   POST /api/v2/item_upload/items → 400
+    //   errors:[{field:"language_book", value:"Sélectionne une langue pour continuer"}]
+    // — un orphelin. Et 101 captures de livres sur 310 (20 comptes) ne portent
+    // AUCUNE langue : chacune deviendra le même orphelin à sa republication.
+    //
+    // POURQUOI ICI, ET PAS DANS L'EXTENSION. Le correctif extension existe mais
+    // n'atteindra personne avant un passage au Chrome Web Store. Le chemin
+    // « champ réclamé → valeur fournie → le handler la pose » fonctionne, LUI,
+    // sur les extensions DÉJÀ INSTALLÉES : prouvé deux fois en prod —
+    //   · 446cabe8 « Les 3 petits cochons » (v0.6.23) : needs_user le 09/09
+    //     17:26, réponse « francais », RECRÉÉE à 17:34, item 9945441091 ;
+    //   · 0a8b3a19 « Lot de 26 livres de recettes » (v0.6.19) : « Français »,
+    //     item 9928944817.
+    // Les deux portaient « lookup livre JAMAIS vu » au diagnostic : le champ
+    // #language_book est donc atteignable SANS que le lookup ISBN retombe. On
+    // se contente de fournir la valeur que l'utilisateur aurait tapée.
+    //
+    // ⚠️ C'est un LIBELLÉ TEXTE qui part, jamais un id. La boucle générique de
+    // vinted.js compare la valeur au TEXTE des options du menu
+    // (findOptionCascade → normalizeFuzzy, accents et casse écrasés) : « 6436 »
+    // chercherait une option nommée « 6436 » et ferait sauter le champ.
+    //
+    // PÉRIMÈTRE, STRICT :
+    //   · republish Vinted seulement ;
+    //   · un segment de categoryPath vaut EXACTEMENT « Livres » — les deux
+    //     familles connues, « Livres et médias > Livres > … » et
+    //     « Divertissement > Livres > … ». Aucune autre branche, et aucun autre
+    //     champ exigé (isbn, color, brand… hors sujet ici) ;
+    //   · la capture de l'annonce d'origine est LUE et ne porte AUCUN
+    //     language_book. Si elle en porte un, on ne touche à rien : poser
+    //     « Français » sur un livre anglais serait pire que l'échec. Capture
+    //     absente ou illisible = on ne sait pas = on ne pose rien ;
+    //   · une valeur DÉJÀ dans vintedAspects prime toujours — c'est la réponse
+    //     de l'utilisateur, elle ne se fait jamais écraser.
+    //
+    // Aucune écriture en base : seul le job SERVI est enrichi, exactement comme
+    // le filet « option neutre de taille » juste au-dessus. Un échec de pose
+    // retombe en needs_user comme aujourd'hui, jamais pire.
+    //
+    // ⚠️ LIMITE CONNUE, laissée telle quelle (décision Nico) : le libellé part
+    // en français. Sur un compte Vinted en anglais l'option s'appelle
+    // « French », « Français » n'y matchera pas et le job repartira en
+    // needs_user — le comportement d'aujourd'hui, pas une régression.
+    const LANGUE_LIVRE_LIBELLE_DEFAUT = "Français";
+    try {
+      const estJobLivreSansLangue = (j: Record<string, unknown>) => {
+        if (j.platform !== "vinted" || j.action !== "republish") return false;
+        const pf = (j.platform_fields && typeof j.platform_fields === "object")
+          ? (j.platform_fields as Record<string, unknown>) : null;
+        if (!pf) return false;
+        const va = (pf.vintedAspects && typeof pf.vintedAspects === "object")
+          ? (pf.vintedAspects as Record<string, unknown>) : null;
+        if (String(va?.language_book ?? "").trim()) return false; // réponse déjà là
+        const snap = (pf.republish_snapshot && typeof pf.republish_snapshot === "object")
+          ? (pf.republish_snapshot as Record<string, unknown>) : null;
+        const chemin = Array.isArray(snap?.categoryPath)
+          ? (snap!.categoryPath as unknown[]).map((v) => normaliseLibelle(String(v))) : [];
+        return chemin.includes("livres");
+      };
+      const idCapture = (j: Record<string, unknown>) =>
+        Number((j.platform_fields as Record<string, unknown>).capture_id);
+      const candidats = (out as unknown as Array<Record<string, unknown>>).filter(estJobLivreSansLangue);
+      const capIds = [...new Set(candidats.map(idCapture).filter((n) => Number.isFinite(n) && n > 0))];
+      if (capIds.length) {
+        // Lecture SEULE, sous RLS (les captures appartiennent à l'utilisateur).
+        const { data: caps, error: errCaps } = await userClient
+          .from("vinted_republish_captures")
+          .select("id, payload")
+          .in("id", capIds);
+        if (errCaps) throw errCaps;
+        // capture LUE et sans language_book → le défaut est posable.
+        const posableParCapture = new Map<number, boolean>();
+        for (const c of (caps ?? []) as Array<Record<string, unknown>>) {
+          const natif = ((c.payload as Record<string, unknown> | null)?.natif ?? null) as Record<string, unknown> | null;
+          const attrs = Array.isArray(natif?.item_attributes) ? (natif!.item_attributes as unknown[]) : [];
+          const aLangue = attrs.some((a) => {
+            const o = (a && typeof a === "object") ? (a as Record<string, unknown>) : null;
+            return String(o?.code ?? "").trim().toLowerCase() === "language_book"
+              && Array.isArray(o?.ids) && (o!.ids as unknown[]).length > 0;
+          });
+          posableParCapture.set(Number(c.id), !aLangue);
+        }
+        let languesPosees = 0;
+        let capturesAvecLangue = 0;
+        let capturesIllisibles = 0;
+        for (const j of candidats) {
+          const pf = j.platform_fields as Record<string, unknown>;
+          const posable = posableParCapture.get(idCapture(j));
+          if (posable === undefined) { capturesIllisibles++; continue; }
+          if (!posable) { capturesAvecLangue++; continue; }
+          const nowIso = new Date().toISOString();
+          const warnings = Array.isArray(pf.warnings) ? (pf.warnings as unknown[]) : [];
+          const va = (pf.vintedAspects && typeof pf.vintedAspects === "object")
+            ? (pf.vintedAspects as Record<string, unknown>) : {};
+          pf.vintedAspects = { ...va, language_book: LANGUE_LIVRE_LIBELLE_DEFAUT };
+          pf.langue_livre_serveur = {
+            valeur: LANGUE_LIVRE_LIBELLE_DEFAUT,
+            le: nowIso,
+            pose_par: "get-pending-jobs",
+            capture_id: idCapture(j),
+            motif: "categorie Livres et annonce d'origine sans item_attributes[language_book]",
+          };
+          pf.warnings = [...warnings, {
+            at: nowIso,
+            code: "langue_livre_serveur",
+            champ: "language_book",
+            valeur: LANGUE_LIVRE_LIBELLE_DEFAUT,
+            message: "langue « " + LANGUE_LIVRE_LIBELLE_DEFAUT + " » posée par le serveur : Vinted l'exige"
+              + " sur les Livres et l'annonce d'origine n'en portait aucune (capture lue,"
+              + " item_attributes sans language_book) — défaut relevé sur 201 des 211 annonces"
+              + " de livres capturées, 17 comptes sur 20",
+          }];
+          languesPosees++;
+        }
+        if (languesPosees || capturesAvecLangue || capturesIllisibles) {
+          console.log("[get-pending-jobs] user=" + user.id + " langue Livres : " + languesPosees
+            + " posee(s), " + capturesAvecLangue + " laissee(s) (l'annonce d'origine porte deja une langue), "
+            + capturesIllisibles + " sans capture lisible");
+        }
+      }
+    } catch (e) {
+      console.warn("[get-pending-jobs] langue des Livres Vinted : "
+        + String((e as Error)?.message ?? e) + " — jobs servis tels quels");
+    }
+
+
     return json({
       jobs: out,
       annonces_en_attente: annoncesAttente,

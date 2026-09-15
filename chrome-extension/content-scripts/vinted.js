@@ -2260,34 +2260,58 @@ async function fillListingForm(job) {
 
 
   // ── LANGUE DU LIVRE — armement de la pose au POST (2026-09-15) ───────────
-  // Vinted EXIGE language_book sur les Livres (400 « Sélectionne une langue pour
-  // continuer », job 2286228e — annonce déjà supprimée, orpheline) et le champ
-  // n'est posable par clic QUE si son lookup ISBN est retombé : il n'existe pas
-  // dans le DOM autrement, et la config attributes de la catégorie ne le
-  // déclare même pas (relevé platform_category_aspects). La sonde le pose donc
-  // dans le corps du POST — et SEULEMENT si la page l'a laissé vide, si bien
-  // que le cas nominal (lookup retombé, langue pré-remplie par Vinted) n'est
-  // jamais touché.
+  // Vinted EXIGE language_book sur les Livres : 400 « Sélectionne une langue pour
+  // continuer », job 2286228e — annonce déjà supprimée, orpheline.
+  //
+  // TROIS SOURCES, DANS CET ORDRE, ET UNE SEULE GAGNE :
+  //   1. la réponse de l'utilisateur ou du serveur — fields.vintedAspects
+  //      .language_book, posée par le CANAL DOM (boucle générique plus bas).
+  //      On n'arme alors RIEN ici : voir le bandeau ci-dessous ;
+  //   2. la langue de l'annonce d'origine (item_attributes capturés) ;
+  //   3. à défaut, le français (VINTED_LANGUE_LIVRE_DEFAUT_ID).
+  // Et la PAGE prime sur les trois : la sonde n'écrit jamais par-dessus une
+  // langue que Vinted a déjà mise (lookup livre retombé, cas nominal).
+  //
+  // ⛔ POURQUOI ON N'ARME PAS QUAND LA RÉPONSE EST FOURNIE (correctif du 15/09,
+  // défaut introduit par 5becbe1 le matin même). La réponse arrive en LIBELLÉ
+  // (« Anglais ») ; la pose au POST exige un ID. Les deux ne se convertissent
+  // pas l'un dans l'autre sans un référentiel qu'on n'a pas. Armer le défaut
+  // « à tout hasard » publierait EN FRANÇAIS le livre de quelqu'un qui vient
+  // d'écrire « Anglais », en silence. Jamais. Si le canal DOM échoue sur cette
+  // réponse, on repart en needs_user comme aujourd'hui : moins bien que
+  // réussir, jamais faux.
+  //
+  // ⚠️ Le canal DOM FONCTIONNE — prouvé deux fois en prod : 446cabe8 (« Les 3
+  // petits cochons », v0.6.23, needs_user 09/09 17:26, réponse « francais »,
+  // recréée à 17:34, item 9945441091) et 0a8b3a19 (v0.6.19, « Français »,
+  // item 9928944817). Les DEUX portaient « lookup livre JAMAIS vu » au
+  // diagnostic : #language_book est donc atteignable SANS que le lookup
+  // retombe. D'où l'absence de language_book dans handledCodes.
   //
   // ⛔ LIVRES SEULEMENT. La porte est le champ #isbn PRÉSENT dans le formulaire
   // réel : relevé en base, `isbn` n'est déclaré que sur les feuilles Livres
-  // (« Livres et médias > Livres > Non-fiction », « … > Fiction », « Divertissement
-  // > Livres > … »). C'est un fait du DOM posé par la catégorie déjà
-  // sélectionnée, pas un nom de catégorie deviné : aucune autre branche ne peut
-  // l'ouvrir, et rien n'est armé si le champ n'est pas là.
-  //
-  // Ordre de préférence : la langue de l'annonce d'origine (republication) prime
-  // sur le défaut ; le lookup de Vinted prime sur les deux (non-écrasement).
+  // (« Livres et médias > Livres > Non-fiction », « … > Fiction »,
+  // « Divertissement > Livres > … »). C'est un fait du DOM posé par la
+  // catégorie déjà sélectionnée, pas un nom de catégorie deviné : aucune autre
+  // branche ne peut l'ouvrir, et rien n'est armé si le champ n'est pas là.
   if (document.querySelector(vintedFieldSelector("isbn"))) {
-    const idsCapture = langueLivreDeLaCapture(job);
-    const ids = idsCapture.length ? idsCapture : [VINTED_LANGUE_LIVRE_DEFAUT_ID];
-    armerLangueLivrePourPost(ids);
-    const note = idsCapture.length
-      ? `langue du livre armée au POST depuis l'annonce d'origine (ids ${idsCapture.join(", ")})`
-      : `langue du livre armée au POST : défaut français (id ${VINTED_LANGUE_LIVRE_DEFAUT_ID}) — aucune langue sur l'annonce d'origine`;
-    console.log(`[vinted] ${note}`);
-    diagnosticsRecreation.push(note);
+    const langueFournie = String(fields.vintedAspects?.language_book ?? "").trim();
+    if (langueFournie) {
+      const note = `langue du livre : « ${langueFournie} » fournie (utilisateur ou serveur) — posée par le formulaire, aucune pose au POST armée`;
+      console.log(`[vinted] ${note}`);
+      diagnosticsRecreation.push(note);
+    } else {
+      const idsCapture = langueLivreDeLaCapture(job);
+      const ids = idsCapture.length ? idsCapture : [VINTED_LANGUE_LIVRE_DEFAUT_ID];
+      armerLangueLivrePourPost(ids);
+      const note = idsCapture.length
+        ? `langue du livre armée au POST depuis l'annonce d'origine (ids ${idsCapture.join(", ")})`
+        : `langue du livre armée au POST : défaut français (id ${VINTED_LANGUE_LIVRE_DEFAUT_ID}) — aucune langue sur l'annonce d'origine`;
+      console.log(`[vinted] ${note}`);
+      diagnosticsRecreation.push(note);
+    }
   }
+
   // Marque : catalogue d'abord, CRÉATION de la marque en repli — et plus
   // jamais de champ sauté (2026-07-29, job « Mela & Adorna » : marque hors
   // catalogue → champ laissé vide → 400 code 99 au dépôt, maquillé en refus
@@ -2622,13 +2646,13 @@ async function fillListingForm(job) {
     // (selectClosedOptionSafe) alors que #isbn est une saisie libre : une
     // seconde pose, forcément en échec, et un warning trompeur.
     "isbn",
-    // language_book (2026-09-15) : servi par l'armement de la pose au POST
-    // ci-dessus. Le champ n'est PAS dans la config attributes de la catégorie
-    // (relevé platform_category_aspects) et n'existe dans le DOM qu'après le
-    // lookup ISBN — la boucle générique ne pourrait donc ni le résoudre en
-    // libellé ni le cliquer : elle ne produirait qu'un « attribut non résolu »
-    // trompeur sur un champ qui, lui, est bel et bien posé.
-    "language_book",
+    // ⛔ language_book N'EST PAS ICI, et ne doit pas y revenir (15/09).
+    // Je l'y avais mis le matin même (5becbe1), en croyant le champ
+    // inatteignable sans lookup ISBN. La prod dit le contraire : deux
+    // republications ont été recréées par CE canal, avec « lookup livre JAMAIS
+    // vu » au diagnostic (446cabe8 le 09/09, 0a8b3a19 le 08/09). L'y remettre
+    // couperait le seul chemin qui marche sur les extensions DÉJÀ INSTALLÉES,
+    // et publierait en français le livre de qui aurait répondu « Anglais ».
   ]);
   // ── Attributs de l'annonce d'origine versés DANS ce canal (2026-09-04) ─────
   // On ALIMENTE la boucle générique ci-dessous, on ne la modifie pas : c'est
