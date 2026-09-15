@@ -3216,34 +3216,23 @@ function EnTeteSection({ titre, compte, droite, ouvert, onToggle, lang }) {
   );
 }
 
-function BrouillonsSection({ lang, fmt, brouillons, onPublier, onRanger, onSupprimer, ouvert, onToggle }) {
+// ── LA LISTE DES BROUILLONS — le CONTENU d'un mode, pas une section ─────────
+// (2026-09-15 soir, correction de Nico sur pièce) Cette liste a d'abord été une
+// SECTION à part, avec son conteneur et son en-tête repliable. Vu sur un
+// iPhone : ça rajoutait au-dessus du stock exactement le pavé qu'on venait de
+// retirer en repliant les trois bandeaux. Un brouillon est de la même nature
+// que « 3 sans prix » ou « Republier 11 » — quelque chose en attente qu'on va
+// traiter, pas une catégorie permanente du stock.
+// Elle est donc devenue le contenu d'un MODE, ouvert par une pastille de la
+// rangée d'actions, sur la MÊME mécanique que les deux autres modes : un état,
+// un en-tête `pa-call` qui porte la sortie, et la liste qui bascule. Aucun
+// quatrième mécanisme.
+function BrouillonsListe({ lang, fmt, brouillons, onPublier, onRanger, onSupprimer }) {
   const fr = lang !== 'en';
   const [enCours, setEnCours] = useState(null); // id en cours de rangement
-  // Pas de section vide, jamais : elle n'existe que tant qu'il y a du travail
-  // en attente. C'est aussi ce qui la distingue d'un état permanent de l'app.
   if (!brouillons.length) return null;
   return (
-    // MÊME conteneur que « En stock » / « Vendus » : c'est une section, pas un
-    // encart. Même fond, même rayon, même bordure — aucune couleur d'alerte :
-    // rien n'a échoué ici.
-    <div style={{background:"#F6F5F1",borderRadius:16,padding:"6px 16px 16px",border:"1px solid #E7E3D8"}}>
-      {/* LE QUOTA SE DIT DANS L'EN-TÊTE, à droite, en 12px muet : il reste donc
-          LU même section repliée — ce que la ligne posée à l'intérieur ne
-          faisait pas. Les brouillons sont DÉJÀ décomptés (le débit a lieu à la
-          génération) et le taire laisserait croire qu'en supprimer récupère de
-          la limite.
-          ⛔ Jamais sur une carte : répétée douze fois, la phrase devient un
-             reproche. Ni bandeau, ni encadré, ni avertissement. */}
-      <EnTeteSection
-        lang={lang}
-        titre={fr ? 'Brouillons' : 'Drafts'}
-        compte={brouillons.length}
-        droite={fr ? 'déjà décomptés' : 'already counted'}
-        ouvert={ouvert}
-        onToggle={onToggle}
-      />
-      {!ouvert ? null : (
-      <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:6}}>
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {brouillons.map(({ item, fiche }) => {
           const manques = manquesDeLaFiche(fiche, fr ? 'fr' : 'en');
           const photo = urlsPhotos(item.photos)[0] ?? null;
@@ -3289,8 +3278,6 @@ function BrouillonsSection({ lang, fmt, brouillons, onPublier, onRanger, onSuppr
             </div>
           );
         })}
-      </div>
-      )}
     </div>
   );
 }
@@ -5178,6 +5165,13 @@ const StockTab = memo(function StockTab({
       .filter(b => !((jobsByInventaire[b.item.id] ?? []).length));
   }, [brouillonsBruts, stock, jobsByInventaire]);
 
+  // Le dernier brouillon traité (publié, rangé ou supprimé) ferme le mode : il
+  // n'a plus d'objet, et sa pastille vient de disparaître. L'écran redevient
+  // celui d'avant, à l'identique.
+  useEffect(() => {
+    if (modeBrouillons && !brouillons.length) setModeBrouillons(false);
+  }, [modeBrouillons, brouillons.length]);
+
   // LA SORTIE — un seul chemin de code (src/utils/brouillon.js), deux points
   // d'entrée : ce bouton-ci et la publication (ListingPreviewScreen).
   const rangerBrouillon = async (item) => {
@@ -5405,8 +5399,12 @@ const StockTab = memo(function StockTab({
     try { const v = localStorage.getItem(cle); return v == null ? defaut : v === '1'; }
     catch { return defaut; }
   };
-  const [sectionBrouillonsOuverte, setSectionBrouillonsOuverte] = useState(() => lirePref('fs_stock_brouillons_ouvert', true));
   const [sectionStockOuverte, setSectionStockOuverte] = useState(() => lirePref('fs_stock_en_stock_ouvert', true));
+  // Mode brouillons — MÊME mécanique que modePrixAchat et modeRepublish : une
+  // pastille l'arme, un en-tête `pa-call` porte la sortie, la liste bascule.
+  // (Il a été une section repliable pendant une heure : ça remettait un pavé
+  // au-dessus du stock, cf. BrouillonsListe.)
+  const [modeBrouillons, setModeBrouillons] = useState(false);
   const basculerSection = (cle, set) => set(v => {
     const suivant = !v;
     try { localStorage.setItem(cle, suivant ? '1' : '0'); } catch { /* stockage indisponible : le repli marche, il ne survit juste pas */ }
@@ -7171,27 +7169,13 @@ const StockTab = memo(function StockTab({
             )}
           </div>}
 
-          {/* ── BROUILLONS ─────────────────────────────────────────────────
-              SA PROPRE SECTION, au même rang qu'« En stock » et « Vendus » —
-              même conteneur, même en-tête, même pastille de compte. Ce n'est
-              pas un bandeau : un bandeau signale un incident passager, alors
-              qu'un brouillon est une catégorie d'articles, durable, avec ses
-              propres gestes. La séparation est le sujet : un article sur
-              lequel rien n'a été fait n'apparaît QUE dans cette section, et
-              jamais dans la liste du stock (cf. stockFiltre, plus haut).
-              Elle vit AU-DESSUS d'« En stock » parce qu'elle contient du
-              travail déjà payé qui attend, et disparaît entièrement dès qu'il
-              n'y a plus rien dedans. */}
-          <BrouillonsSection
-            lang={lang}
-            fmt={fmt}
-            brouillons={brouillons}
-            onPublier={ouvrirStepper}
-            onRanger={rangerBrouillon}
-            onSupprimer={(item)=>delItem(item.id)}
-            ouvert={sectionBrouillonsOuverte}
-            onToggle={()=>basculerSection('fs_stock_brouillons_ouvert',setSectionBrouillonsOuverte)}
-          />
+          {/* (La SECTION Brouillons vivait ici, avec son conteneur et son
+              en-tête repliable. Retirée le 15/09 au soir : elle remettait
+              au-dessus du stock le pavé qu'on venait justement d'enlever. Les
+              brouillons sont désormais une PASTILLE de la rangée d'actions et
+              un mode — même mécanique que « sans prix » et « Republier ».
+              La séparation des trois états, elle, ne bouge pas : un brouillon
+              reste hors de la liste du stock, cf. stockFiltre plus haut.) */}
 
           {/* ── EN STOCK ── */}
           <div style={{background:"#F6F5F1",borderRadius:16,padding:"6px 16px 16px",border:"1px solid #E7E3D8"}}>
@@ -7291,17 +7275,26 @@ const StockTab = memo(function StockTab({
                 libelle:String(comptesStock.enEchec),
                 onClick:()=>{setFiltreProbleme(filtreProbleme==='en_echec'?null:'en_echec');setShowAllStock(false);setMenuTri(false);},
               }));
-              // Prix d'achat et Republication : la pastille ARME le mode, et le
-              // mode ouvre son propre en-tête détaillé (pa-call) juste en
-              // dessous — celui qui porte l'explication et la sortie. On ne
-              // montre donc la pastille que MODE FERMÉ, sinon les deux se
+              // Brouillons, prix d'achat, republication : la pastille ARME le
+              // mode, et le mode ouvre son propre en-tête détaillé (pa-call)
+              // juste en dessous — celui qui porte l'explication et la sortie.
+              // On ne montre donc la pastille que MODE FERMÉ, sinon les deux se
               // répéteraient.
-              if(!modePrixAchat&&!modeRepublish&&nbSansPrix>0)p.push(pastille('sans_prix',{
+              // ⚠️ Brouillons : pastille NEUTRE, entre l'échec et « sans prix ».
+              //    Aucune couleur d'alerte, aucun mot de panne — un brouillon
+              //    n'a jamais été tenté. Aucun brouillon ⇒ pastille absente, et
+              //    l'écran redevient celui d'avant, à l'identique.
+              if(!modeBrouillons&&!modePrixAchat&&!modeRepublish&&brouillons.length>0)p.push(pastille('brouillons',{
+                actif:false,couleur:"#5C6560",fond:"#F7F5EF",bord:"#E7E3D8",emoji:"✏️",
+                libelle:`${brouillons.length} ${lang==='fr'?(brouillons.length>1?'brouillons':'brouillon'):(brouillons.length>1?'drafts':'draft')}`,
+                onClick:()=>{setModeBrouillons(true);setModePrixAchat(false);setModeRepublish(false);setShowAllStock(false);setMenuTri(false);},
+              }));
+              if(!modeBrouillons&&!modePrixAchat&&!modeRepublish&&nbSansPrix>0)p.push(pastille('sans_prix',{
                 actif:false,couleur:"#5C6560",fond:"#F7F5EF",bord:"#E7E3D8",emoji:"🏷",
                 libelle:`${nbSansPrix} ${lang==='fr'?'sans prix':'without price'}`,
-                onClick:()=>{setModePrixAchat(true);setPaSel(new Set());setPaOpenId(null);setPaErr(null);setMenuTri(false);},
+                onClick:()=>{setModePrixAchat(true);setModeBrouillons(false);setPaSel(new Set());setPaOpenId(null);setPaErr(null);setMenuTri(false);},
               }));
-              if(!modeRepublish&&!modePrixAchat&&republishActif&&repubActionnablesVue.length>0)p.push(pastille('republier',{
+              if(!modeBrouillons&&!modeRepublish&&!modePrixAchat&&republishActif&&repubActionnablesVue.length>0)p.push(pastille('republier',{
                 actif:false,couleur:"#5C6560",fond:"#F7F5EF",bord:"#E7E3D8",emoji:"🔁",
                 libelle:`${lang==='fr'?'Republier':'Repost'} ${repubActionnablesVue.length}`,
                 // Maintenance en cours : la pastille s'éteint au lieu de faire
@@ -7313,7 +7306,7 @@ const StockTab = memo(function StockTab({
                 onClick:()=>{
                   if(repubEnPause)return;
                   if(repubLotReserve){ouvrirModaleLotReserve();return;}
-                  setModeRepublish(true);setRepubSel(new Set());setRepubLot(null);setMenuTri(false);
+                  setModeRepublish(true);setModeBrouillons(false);setRepubSel(new Set());setRepubLot(null);setMenuTri(false);
                 },
               }));
               if(!p.length)return null;
@@ -7513,6 +7506,27 @@ const StockTab = memo(function StockTab({
             {/* ── Prix d'achat manquants : compteur-invitation cliquable ──
                 Même contrat que VentesTab : on n'oblige jamais, pas de rouge.
                 Reste affiché à 0 quand le mode est ouvert (sinon plus de sortie). */}
+            {/* ── EN-TÊTE DU MODE BROUILLONS ────────────────────────────────
+                Même composant `pa-call` que les deux autres modes : le titre
+                est la SORTIE, et le sous-titre gris porte la seule chose qu'il
+                faut dire — les brouillons sont DÉJÀ décomptés (le débit a lieu
+                à la génération), sinon on laisse croire qu'en supprimer récupère
+                de la limite. Une ligne, en haut de la liste, vue en entrant.
+                ⛔ Jamais sur une carte, jamais en bandeau. */}
+            {modeBrouillons&&(
+              <button className="pa-call on" onClick={()=>setModeBrouillons(false)}>
+                <span style={{fontSize:17,flexShrink:0}}>↩</span>
+                <span style={{flex:1,minWidth:0}}>
+                  <span className="n">{lang==='fr'?"Revenir à tout le stock":"Back to all stock"}</span>
+                  <span className="sub">
+                    {lang==='fr'
+                      ?"Annonces générées, pas encore publiées — déjà décomptées de ta limite."
+                      :"Listings generated, not published yet — already counted towards your limit."}
+                  </span>
+                </span>
+              </button>
+            )}
+
             {/* ⚠️ MODE OUVERT SEULEMENT (2026-09-15 soir) : au repos, c'est la
                 pastille « N sans prix » de la ligne unique qui arme le mode.
                 Cet en-tête-ci reste le DÉTAIL — il porte l'explication (« Vinted
@@ -7934,8 +7948,24 @@ const StockTab = memo(function StockTab({
                     sur mobile. Pagination inchangée (slice de 10 + « Voir
                     plus ») et photos en loading="lazy" : les gros comptes
                     (3 000+ articles) ne chargent jamais tout d'un coup. */}
+                {/* ── MODE BROUILLONS : la liste bascule, comme pour les deux
+                    autres modes. Ses cartes ont leur propre forme (photo,
+                    titre, ce qui manque, trois gestes) — ce ne sont pas des
+                    cartes de stock, et la galerie à deux colonnes ne leur va
+                    pas : elles s'empilent en pleine largeur, comme dans la
+                    section qu'elles remplacent. */}
+                {modeBrouillons&&(
+                  <BrouillonsListe
+                    lang={lang}
+                    fmt={fmt}
+                    brouillons={brouillons}
+                    onPublier={ouvrirStepper}
+                    onRanger={rangerBrouillon}
+                    onSupprimer={(item)=>delItem(item.id)}
+                  />
+                )}
                 <div className="ggrid" ref={galerieRef}>
-                {(modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:listeStock).map(item=>{
+                {(modeBrouillons?[]:modePrixAchat?stockFiltre.filter(paIncomplet):modeRepublish?repubActionnablesVue:listeStock).map(item=>{
                   const {loc:_itemLoc,rest:_itemDesc}=parseLocDesc(item.description);
                   // PIÈGE : `item.buy*qty+(purchaseCosts||0)` rendait NaN sur un
                   // prix d'achat absent et 0 € sur un null — la carte annonçait
@@ -9275,7 +9305,7 @@ const StockTab = memo(function StockTab({
                 {/* En mode republication, la liste montre déjà TOUS les
                     republiables (pas de slice) : un « Voir plus » compté sur
                     stockFiltre serait un bouton sans effet. */}
-                {!modeRepublish&&stockFiltre.length>10&&!showAllStock&&(
+                {!modeRepublish&&!modeBrouillons&&stockFiltre.length>10&&!showAllStock&&(
                   <button onClick={()=>setShowAllStock(true)} style={{width:"100%",padding:"10px",background:"#F2F0E9",border:"none",borderRadius:10,fontSize:12,fontWeight:700,color:"#6B7A75",cursor:"pointer",marginTop:4}}>
                     {lang==='fr'?`Voir plus (${stockFiltre.length-10} articles)`:`Show more (${stockFiltre.length-10} items)`}
                   </button>
