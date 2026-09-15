@@ -1468,9 +1468,55 @@ async function fillListingForm(job) {
       .filter((el) => estVisibleParStyles(el) && !String(el.value ?? "").trim())
       .map((el) => ({ cle: String(el.name || el.id || ""), libelle: libelleDuChamp(el) }));
   const champsEscrowVides = () => champsVidesApercu().filter((c) => /^escrow_/i.test(c.cle));
+  // ── CE QUE LE FORMULAIRE REFUSE, SANS TRONQUER (2026-09-15) ──────────────
+  // CE QUE ÇA A COÛTÉ : 10 jobs sur 2 comptes (Victor le 11/09, MeMiniandMove
+  // le 15/09 — les deux seuls du parc à porter text[custom_ref] et « Ajouter
+  // une déclinaison », donc des comptes Leboncoin PRO) morts sans qu'on
+  // sache QUEL champ bloquait. Le relevé d'écran ne pouvait pas le dire : il
+  // TRONQUE à 8 champs (dumpEcranVisible), et le formulaire pro tient sur un
+  // seul écran — le champ qui refuse vit souvent au-delà du 8e.
+  // Ici on ne tronque pas, et on lit les DEUX sources :
+  //   · ce que le navigateur sait déjà (validity/validationMessage) ;
+  //   · tous les champs visibles vides, requis d'abord.
+  // ⚠️ Lecture PURE : validity/valueMissing, jamais checkValidity() (qui
+  // émettrait un événement `invalid` sur le champ).
+  // ⚠️ Leboncoin valide surtout en React, sans attribut `required` : la liste
+  // « requis » peut rester VIDE alors que le formulaire refuse. C'est pour ça
+  // que la liste COMPLÈTE des champs vides part aussi — c'est elle qui
+  // distingue ce formulaire d'un formulaire qui passe.
+  const CHAMPS_FORMULAIRE_SEL = "input:not([type=hidden]), textarea, select";
+  const estChampSaisissable = (el) => !["submit", "button", "image", "reset"].includes(el.type);
+  const estVideRequis = (el) => {
+    if (el.validity?.valueMissing === true) return true;            // le navigateur le dit
+    const requis = el.required === true || el.getAttribute("aria-required") === "true";
+    if (!requis) return false;
+    if (el.type === "checkbox" || el.type === "radio") return el.checked !== true;
+    return !String(el.value ?? "").trim();
+  };
+  const nomDuChamp = (el) => libelleDuChamp(el) || el.name || el.id || "champ sans nom";
+  const releveRefusFormulaire = () => {
+    const champs = [...document.querySelectorAll(CHAMPS_FORMULAIRE_SEL)].filter(estChampSaisissable).filter(estVisibleParStyles);
+    const requisVides = champs.filter(estVideRequis).map(nomDuChamp);
+    const vides = champs
+      .filter((el) => !["checkbox", "radio", "file"].includes(el.type) && !String(el.value ?? "").trim())
+      .map((el) => `${nomDuChamp(el)}${el.name || el.id ? ` [${el.name || el.id}]` : ""}`);
+    return { requisVides, vides, refus: messagesErreurVisibles(), natifs: messagesValidationNative() };
+  };
   const attendreEcranSuivant = (budgetMs = 15_000) => waitFor(() => {
     const cta = findFreeCta();
     if (cta) return { cta };
+    // ── LE FORMULAIRE N'EST PAS L'ÉCRAN « VOS COORDONNÉES » (2026-09-15) ────
+    // Le formulaire des comptes PRO porte un téléphone Pro VISIBLE et REMPLI
+    // (Leboncoin l'exige au dépôt pro) et n'est pas l'aperçu : il cochait les
+    // deux seules conditions de la branche coordonnées ci-dessous. Résultat
+    // mesuré sur 10 jobs : le Continuer du FORMULAIRE recliqué trois fois,
+    // puis « chemin gratuit toujours introuvable » — un écran /options qu'on
+    // n'a jamais atteint, et un écran coordonnées qu'on n'a jamais vu.
+    // Même règle que le 10/09 : une PREUVE POSITIVE l'emporte sur l'indice.
+    // Les titres d'étapes du formulaire sans titre d'aperçu, c'est le
+    // formulaire — on ne le reclique pas, on laisse le verdict nommé plus bas
+    // (branche `if (!etape)`) faire son travail.
+    if (estEncoreFormulaire()) return null;
     const phone = findContactPhone();
     if (phone && !estEncoreApercu()) return { phone };
     return null;
@@ -1752,7 +1798,13 @@ async function fillListingForm(job) {
   };
 
   for (let ecran = 0; ecran < 3 && !freeCta; ecran++) {
-    let etape = await attendreEcranSuivant(ecran === 0 ? 600 : 15_000);
+    // 600 ms au premier tour : c'est le budget court qui fait tomber le cas
+    // « aperçu resté affiché » dans la boucle de re-clics ci-dessous, sans
+    // attendre. Sur le FORMULAIRE, ce budget devient malhonnête : il faut
+    // laisser à Leboncoin le temps de naviguer avant de déclarer que le
+    // formulaire n'est pas passé (2026-09-15). Le budget long ne coûte rien
+    // quand l'écran arrive : waitFor rend dès qu'il le voit.
+    let etape = await attendreEcranSuivant(ecran === 0 && !estEncoreFormulaire() ? 600 : 15_000);
     while (!etape && estEncoreApercu() && reclicsApercu < 3
            && !champsEscrowVides().length && !messagesErreurVisibles().length) {
       const encore = findButtonByExactText("Continuer");
@@ -1838,21 +1890,36 @@ async function fillListingForm(job) {
       // vides — c'est ce qui manquait pour distinguer deux causes que le même
       // message confondait.
       if (estEncoreFormulaire()) {
-        const vides = champsVidesApercu().map((c) => c.libelle || c.cle).filter(Boolean).slice(0, 6);
+        const { requisVides, vides, refus, natifs } = releveRefusFormulaire();
+        // Ce que l'utilisateur LIT : uniquement un refus que Leboncoin (ou le
+        // navigateur) formule lui-même. Une liste de champs est un
+        // DIAGNOSTIC — elle part en annexe, jamais à l'écran (règle du 02/09).
+        // Et on ne l'envoie plus « renseigner dans FillSell » : sur un compte
+        // PRO les champs qui manquent (Référence, déclinaison) n'existent pas
+        // dans sa fiche — l'ancienne phrase lui demandait un geste impossible.
+        const lisibles = [...new Set([...natifs, ...refus])].slice(0, 3);
+        // Annexe : TOUT, sans la troncature à 8 de dumpEcranVisible — c'est
+        // elle qui doit nommer le champ qui bloque. Bornée à 40 par liste
+        // pour que `error` reste lisible, avec le compte réel à côté.
+        const annexe = [
+          `champs REQUIS vides (${requisVides.length}) ${JSON.stringify(requisVides.slice(0, 40))}`,
+          `champs vides (${vides.length}) ${JSON.stringify(vides.slice(0, 40))}`,
+          natifs.length ? `validations natives ${JSON.stringify(natifs)}` : "validations natives []",
+          dumpEcranVisible(),
+        ].join(" ; ");
+        console.warn(`[leboncoin] formulaire NON accepté — requis vides: ${JSON.stringify(requisVides)} ; vides: ${JSON.stringify(vides)} ; refus: ${JSON.stringify(lisibles)}`);
         return {
+          // Pas de clé structurée en plus : sur le chemin d'ÉCHEC, background
+          // ne persiste que `error` (rearmBounded réécrit platform_fields
+          // depuis son propre snapshot) — une clé de résultat y mourrait
+          // silencieusement. L'annexe ci-dessous est ce qui arrive en base.
           success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
-          // Formulation (2026-09-11, audit des messages) : « sur l'onglet
-          // resté ouvert » désignait une fenêtre de travail que l'utilisateur
-          // ne voit pas. Champs nommés → le geste est dans FillSell ; aucun
-          // champ nommé (compte PRO, cas Victor) → c'est à nous de regarder,
-          // on ne lui demande rien.
           error:
-            (vides.length
-              ? `Leboncoin demande encore ${vides.map((v) => `« ${v} »`).join(", ")} pour cette annonce. ` +
-                "Renseigne-le dans FillSell (fiche de l'article), puis relance la publication."
-              : "Le formulaire Leboncoin de ton compte demande une information que nous n'avons pas reconnue. " +
-                "Nous regardons de notre côté ; l'annonce reste à publier, rien à corriger sur ton annonce.") +
-            ` — Observabilité: ${dumpEcranVisible()}`,
+            (lisibles.length
+              ? `Leboncoin refuse le formulaire : « ${lisibles.join(" » · « ")} » — corrige l'annonce dans FillSell, puis relance la publication.`
+              : "Le formulaire Leboncoin de ton compte n'a pas été accepté, et il n'indique pas pourquoi. " +
+                "Nous regardons de notre côté ; ton annonce est intacte, rien à corriger de ton côté.") +
+            ` — Observabilité: ${annexe}`,
         };
       }
       return {
