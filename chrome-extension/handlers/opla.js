@@ -218,6 +218,64 @@ const OPLA_REFUS = Object.freeze({
   diagnostic: "handlers/opla.js — OPLA_ACTIF=false (squelette, jamais branché).",
 });
 
+// ── LOT 4 (c) — CHEMIN DE PUBLICATION, VOIE API ─────────────────────────────
+// Écrit le 2026-09-15, DERRIÈRE OPLA_ACTIF. Rien ne s'exécute tant que le
+// drapeau est éteint : la première ligne de fillListingForm rend le refus.
+//
+// La séquence est celle RELEVÉE au lot 1, pas une conception :
+//   1. référentiel + préchargement de la feuille visée ;
+//   2. PRÉ-VOL (lot 3) — seule garde contre l'annonce morte. Un pré-vol qui
+//      échoue = le job NE PART PAS et remonte needs_user, avec un motif
+//      DISTINCT d'un refus plateforme ;
+//   3. photos : POST /public/images/upload-url → PUT S3 présigné → on garde
+//      `key`, c'est elle qui entre dans corps.images[] ;
+//   4. POST /public/me/articles → 201 ;
+//   5. succès = l'`id` rendu par le 201. JAMAIS la redirection, jamais un délai.
+//
+// ⛔ CE QUI N'EST PAS FAIT ICI, ET POURQUOI :
+//   · aucun dépôt réel n'a été tenté avec ce code — il n'a jamais tourné, le
+//     drapeau est éteint et handlers/ n'est injecté nulle part ;
+//   · le retrait reste au lot 6 ;
+//   · rien ne touche au manifest : la permission d'hôte opla.co n'entre pas
+//     dans un paquet CWS (avertissement de permission pour TOUT le parc), et
+//     son retrait du manifest source est le geste de Nico, pas le mien.
+
+// Monte UNE photo et rend sa `key` (celle attendue par corps.images[]).
+// ⚠️ Le PUT présigné part vers S3, PAS vers /api : il ne passe donc pas par
+// oplaJson (pas de credentials, pas de préfixe). Relevé au lot 1.
+async function oplaMonterPhoto(url, indice) {
+  const source = await fetch(url, { credentials: "omit" });
+  if (!source.ok) throw new Error(`photo ${indice + 1} illisible (HTTP ${source.status})`);
+  const blob = await source.blob();
+
+  const presigne = await oplaJson(OPLA_ENDPOINTS.urlPhotoPresignee, {
+    method: "POST",
+    body: JSON.stringify({ contentType: blob.type || "image/jpeg" }),
+  });
+  if (!presigne.ok || !presigne.corps?.uploadUrl || !presigne.corps?.key) {
+    throw new Error(`URL présignée refusée pour la photo ${indice + 1} (HTTP ${presigne.statut})`);
+  }
+
+  const envoi = await fetch(presigne.corps.uploadUrl, {
+    method: "PUT",
+    body: blob,
+    headers: { "Content-Type": blob.type || "image/jpeg" },
+  });
+  if (!envoi.ok) throw new Error(`envoi S3 refusé pour la photo ${indice + 1} (HTTP ${envoi.status})`);
+  return presigne.corps.key;
+}
+
+// Monte les photos DANS L'ORDRE (la première est la vignette) et s'arrête à la
+// première qui échoue : une annonce à trous ne vaut pas mieux qu'une absente,
+// et à ce stade RIEN n'a encore été créé côté Opla.
+async function oplaMonterPhotos(photos) {
+  const cles = [];
+  for (let i = 0; i < photos.length; i++) {
+    cles.push(await oplaMonterPhoto(photos[i], i));
+  }
+  return cles;
+}
+
 /**
  * @param {object} job — cross_post_jobs :
  *   { id, platform, title, description, price, photos, platform_fields }
@@ -226,18 +284,104 @@ const OPLA_REFUS = Object.freeze({
  */
 async function fillListingForm(job) {
   if (!OPLA_ACTIF) return { ...OPLA_REFUS };
-  // TODO(lot 4) — la publication n'est PAS écrite ici : les lots 1 et 2 étaient
-  // des lots d'observation. Tout ce qu'il faut est désormais relevé, et la
-  // séquence exacte est celle-ci :
-  //   1. ref = await oplaChargerReferentiel(); await ref.precharger(code)
-  //   2. verdict = oplaPrevol(job, ref)   ⛔ si !verdict.ok → needs_user,
-  //      le job NE PART PAS (motif dans verdict.motif, distinct d'un refus
-  //      plateforme). C'est la seule garde contre l'annonce morte.
-  //   3. photos : POST /public/images/upload-url puis PUT sur `uploadUrl`,
-  //      on garde `key` — c'est elle qui entre dans corps.images[]
-  //   4. POST /public/me/articles avec verdict.corps → 201
-  //   5. succès = l'`id` rendu par le 201. Jamais la redirection, jamais un délai.
-  return { ...OPLA_REFUS, error: "Chemin de publication Opla non implémenté (lot 4)." };
+  const t0 = Date.now();
+  oplaTracer("fillListingForm: entrée");
+  try {
+    // 1. RÉFÉRENTIEL + préchargement de la feuille visée.
+    oplaEtape("referentiel");
+    const code = String(job?.platform_fields?.oplaCategoryCode ?? "").trim();
+    const ref = await oplaChargerReferentiel();
+    if (code) await ref.precharger(code);
+    oplaTracer(`referentiel: ${ref.feuilles.size} feuilles, categorie « ${code || "(absente)"} »`);
+
+    // 2. PRÉ-VOL — LA GARDE. Un échec ici n'est PAS un refus de plateforme :
+    //    rien n'a été envoyé, l'annonce n'existe pas, et l'utilisateur peut
+    //    corriger. D'où needsUser et un motif nommé, jamais un message brut.
+    oplaEtape("prevol");
+    // globalThis.oplaPrevol, JAMAIS une liaison lexicale : opla-prevol.js publie
+    // sur globalThis et rien d'autre (son bandeau le dit). Écrit `oplaPrevol`
+    // nu, le fichier chargerait quand même et planterait au premier job réel —
+    // scripts/content-scripts-selftest.mjs l'a refusé, et il avait raison.
+    const verdict = globalThis.oplaPrevol(job, ref);
+    if (!verdict.ok) {
+      oplaTracer(`prevol REFUSE: ${verdict.motif}`);
+      return oplaSortie({
+        success: false,
+        needsUser: true,
+        error: verdict.message ?? `Opla refuserait cette annonce : ${verdict.motif}. Rien n'a été envoyé.`,
+        motif_prevol: verdict.motif,
+        champ: verdict.champ ?? null,
+        t0,
+      });
+    }
+    if (verdict.avertissement) oplaTracer(`prevol OK, avertissement: ${verdict.avertissement}`);
+
+    // 3. PHOTOS — avant la création : le corps de l'article porte leurs clés.
+    //    ⚠️ Quota RELEVÉ = 20, et au-delà Opla TRONQUE EN SILENCE. Le pré-vol
+    //    borne déjà 1..20 ; on ne re-tronque pas ici, on ferait mentir sa garde.
+    oplaEtape("photos");
+    const photos = (job?.photos ?? []).map((p) => p?.url).filter(Boolean);
+    const cles = await oplaMonterPhotos(photos);
+    oplaTracer(`photos: ${cles.length}/${photos.length} montées`);
+
+    // 4. CRÉATION.
+    oplaEtape("creation");
+    const corps = { ...verdict.corps, images: cles };
+    const creation = await oplaJson(OPLA_ENDPOINTS.creer, {
+      method: "POST",
+      body: JSON.stringify(corps),
+    });
+
+    // 5. LE SUCCÈS EST L'`id` DU 201 — jamais la redirection vers
+    //    /sell/published, jamais un délai. Et moderationStatus vaut "pending" à
+    //    la création puis "approved" : la modération est ASYNCHRONE, elle ne
+    //    conditionne pas le succès du dépôt (même doctrine que Beebs).
+    if (creation.statut !== 201 || !creation.corps?.id) {
+      oplaTracer(`creation REFUSEE: HTTP ${creation.statut}`);
+      return oplaSortie({
+        success: false,
+        error: `Opla a refusé le dépôt (HTTP ${creation.statut}).`,
+        http: creation.statut,
+        reponse: typeof creation.corps === "string"
+          ? creation.corps.slice(0, 300)
+          : JSON.stringify(creation.corps ?? null).slice(0, 300),
+        t0,
+      });
+    }
+    const id = String(creation.corps.id);
+    oplaTracer(`creation OK: id ${id}`);
+    return oplaSortie({
+      success: true,
+      platform_listing_id: id,
+      listing_url: `https://www.opla.co/article/${encodeURIComponent(id)}`,
+      moderation: creation.corps.moderationStatus ?? null,
+      ...(verdict.avertissement ? { warnings: [verdict.avertissement] } : {}),
+      t0,
+    });
+  } catch (e) {
+    // Toute panne technique (référentiel injoignable, photo illisible, S3 qui
+    // refuse) : échec NET, jamais une annonce à moitié créée — à ce stade le
+    // POST de création n'est pas parti.
+    oplaTracer(`exception: ${String(e?.message ?? e)}`);
+    return oplaSortie({
+      success: false,
+      error: `Opla : ${String(e?.message ?? e)}`,
+      t0,
+    });
+  }
+}
+
+// Point de sortie UNIQUE (union du contrat, emprunté à eBay) : la trace part
+// sur TOUTES les issues, réussites comprises — sans les réussites on ne mesure
+// pas une couverture, on collectionne des échecs.
+function oplaSortie(resultat) {
+  const { t0, ...reste } = resultat;
+  return {
+    ...reste,
+    diagnostic: oplaTrace.slice(-30).join(" | "),
+    etape: oplaEtapeCourante,
+    duree_ms: t0 ? Date.now() - t0 : null,
+  };
 }
 
 async function deleteListing(job) {
