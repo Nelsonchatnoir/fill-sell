@@ -36,7 +36,19 @@ const grillePour = (code) => {
   return grilles.get(g) || null;
 };
 
-const ref = { feuilles, noeuds, grillePour };
+// Couleurs et matières (lot 7) : mêmes fichiers relevés, même forme que
+// /public/config/params?category=<code> — { code, title }. La liste est servie
+// PAR FEUILLE côté Opla ; ici on rend la même pour toutes, ce que le pré-vol ne
+// distingue pas (il demande « la liste de CETTE feuille » et valide dedans).
+const COULEURS = fs.readFileSync(path.join(ROOT, 'docs/opla/colors.txt'), 'utf8').trim().split('\n')
+  .map(l => l.split('|')).map(([code, , title]) => ({ code, title }));
+const MATIERES = fs.readFileSync(path.join(ROOT, 'docs/opla/materials.txt'), 'utf8').trim().split('\n')
+  .map(l => l.split('|')).map(([code, title]) => ({ code, title }));
+
+const ref = { feuilles, noeuds, grillePour, couleursPour: () => COULEURS, matieresPour: () => MATIERES };
+// Référentiel HISTORIQUE, sans les deux listes : prouve qu'un pré-vol appelé
+// avec l'ancien contrat ne casse pas, et qu'il DIT qu'il n'a pas pu vérifier.
+const refSansListes = { feuilles, noeuds, grillePour };
 
 // ── Un job nominal, qui doit PASSER ──────────────────────────────────────────
 const nominal = () => ({
@@ -86,6 +98,22 @@ const cas = [
   ['etat inconnu', avec({ platform_fields: { etat: 'tres-bon-etat' } }), M.ETAT_INCONNU],
   ['titre absent', avec({ title: '   ' }), M.TITRE_ABSENT],
   ['description absente → PASSE (facultative sur Opla)', avec({ description: '' }), null],
+
+  // ── RÉGRESSION DU LOT 7 : la branche « pas de grille » rendait ok:true
+  // SUR-LE-CHAMP et sautait marque / état / prix. Un vase sans marque, avec un
+  // état inventé ou un prix à 0,50 €, passait le pré-vol sans un mot.
+  ['SANS grille + marque absente → REFUSE quand même (ne sort plus tôt)',
+    avec({ platform_fields: { oplaCategoryCode: 'MAISON_DECO_VASES', taille: 'M', marque: '' } }), M.MARQUE_ABSENTE],
+  ['SANS grille + prix à 0,50 € → REFUSE quand même',
+    avec({ price: 0.5, platform_fields: { oplaCategoryCode: 'MAISON_DECO_VASES', taille: 'M' } }), M.PRIX_TROP_BAS],
+  ['SANS grille + état inconnu → REFUSE quand même',
+    avec({ platform_fields: { oplaCategoryCode: 'MAISON_DECO_VASES', taille: 'M', etat: 'tres-bon-etat' } }), M.ETAT_INCONNU],
+
+  // ── Couleurs / matières : JAMAIS un refus, toujours un tri (lot 7) ────────
+  ['couleur INCONNUE → passe (la valeur est jetée, pas le job)',
+    avec({ platform_fields: { couleurs: ['Bleu pétrole'] } }), null],
+  ['matière INCONNUE → passe (la valeur est jetée, pas le job)',
+    avec({ platform_fields: { matieres: ['Tissu magique'] } }), null],
 ];
 
 // ── Exécution ────────────────────────────────────────────────────────────────
@@ -114,6 +142,43 @@ const vSansDesc = oplaPrevol(avec({ description: '' }), ref);
 verif.push(['description ABSENTE du corps si vide', !('description' in vSansDesc.corps)]);
 const vSansGrille = oplaPrevol(avec({ platform_fields: { oplaCategoryCode: 'MAISON_DECO_VASES', taille: 'M' } }), ref);
 verif.push(['metadata.sizes ABSENT si la catégorie n a pas de grille', !vSansGrille.corps.metadata || !('sizes' in vSansGrille.corps.metadata)]);
+verif.push(['taille omise → AVERTISSEMENT, pas un silence',
+  (vSansGrille.avertissements || []).some(a => String(a).includes(M.TAILLE_INATTENDUE))]);
+
+// ── COULEURS ET MATIÈRES — la garde ajoutée au lot 7 ─────────────────────────
+// Opla n'inspecte NI l'une NI l'autre : « Marine » partirait tel quel dans un
+// champ qui attend « NAVY », en 200, et l'annonce serait rangée nulle part.
+const vLibelle = oplaPrevol(avec({ platform_fields: { couleurs: ['Marine'], matieres: ['Coton'] } }), ref);
+verif.push(['libellé FR traduit en code : Marine → NAVY',
+  JSON.stringify(vLibelle.corps.metadata.colors) === '["NAVY"]']);
+verif.push(['libellé FR traduit en code : Coton → cotton',
+  JSON.stringify(vLibelle.corps.metadata.materials) === '["cotton"]']);
+verif.push(['aucun avertissement quand tout se traduit', !vLibelle.avertissements]);
+
+const vCasse = oplaPrevol(avec({ platform_fields: { couleurs: ['  marine  '] } }), ref);
+verif.push(['casse et espaces tolérés, le reste NON',
+  JSON.stringify(vCasse.corps.metadata.colors) === '["NAVY"]']);
+
+const vInconnue = oplaPrevol(avec({ platform_fields: { couleurs: ['NAVY', 'Bleu pétrole'] } }), ref);
+verif.push(['valeur inconnue JETÉE, les autres gardées',
+  JSON.stringify(vInconnue.corps.metadata.colors) === '["NAVY"]']);
+verif.push(['valeur jetée → avertissement qui la NOMME',
+  (vInconnue.avertissements || []).some(a => String(a).includes('Bleu pétrole'))]);
+
+const vToutInconnu = oplaPrevol(avec({ platform_fields: { couleurs: ['Bleu pétrole'] } }), ref);
+verif.push(['metadata.colors ABSENT si TOUT a été jeté (jamais un tableau vide)',
+  !vToutInconnu.corps.metadata || !('colors' in vToutInconnu.corps.metadata)]);
+
+const vApprochante = oplaPrevol(avec({ platform_fields: { couleurs: ['Creme'] } }), ref);
+verif.push(['JAMAIS la valeur la plus proche : « Creme » ne devient pas CREAM',
+  !vApprochante.corps.metadata || !('colors' in vApprochante.corps.metadata)]);
+
+// Référentiel sans les listes : on ne peut pas vérifier — on garde, et on le dit.
+const vSansListes = oplaPrevol(nominal(), refSansListes);
+verif.push(['liste indisponible → la valeur passe telle quelle',
+  JSON.stringify(vSansListes.corps.metadata.colors) === '["BLUE"]']);
+verif.push(['liste indisponible → le DOUTE est tracé',
+  (vSansListes.avertissements || []).some(a => String(a).includes(M.COULEURS_NON_VERIFIEES))]);
 
 console.log('');
 for (const [nom, ok] of verif) { if (!ok) ko++; console.log(`${ok ? '  ok  ' : '  KO  '} ${nom}`); }

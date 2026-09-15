@@ -110,6 +110,25 @@ const r2 = await del(job);
 verifier('deleteListing refuse (success:false)', r2?.success === false, JSON.stringify(r2));
 verifier('aucune requête pendant deleteListing', requetes.length === 0, JSON.stringify(requetes));
 
+// Lot 7 : deleteListing et republishListing ne sont plus des souches — ils
+// appellent l'API pour de vrai. Le drapeau doit donc les arrêter EUX AUSSI,
+// avant la première requête. C'est la seule chose qui ait changé de nature
+// depuis le lot 5, et c'est exactement ce que ce test existe pour tenir.
+const rep = vm.runInContext('republishListing', sandbox);
+const jobAvecLien = { ...job, listing_url: 'https://www.opla.co/product/art_0123456789abcdef0123456789abcdef' };
+const r3 = await rep(jobAvecLien);
+verifier('republishListing refuse (success:false)', r3?.success === false, JSON.stringify(r3));
+verifier('le refus de republishListing NOMME le drapeau',
+  /OPLA_ACTIF\s*=\s*false/.test(String(r3?.diagnostic ?? '')),
+  `diagnostic : ${JSON.stringify(r3?.diagnostic)}`);
+verifier('aucune requête pendant republishListing', requetes.length === 0, JSON.stringify(requetes));
+
+// Et avec un lien EXPLOITABLE, deleteListing non plus ne doit rien appeler :
+// la souche d'avant sortait avant d'avoir une cible, désormais il en a une.
+const r4 = await del(jobAvecLien);
+verifier('deleteListing refuse AUSSI avec un lien exploitable', r4?.success === false, JSON.stringify(r4));
+verifier('aucune requête pendant deleteListing (lien exploitable)', requetes.length === 0, JSON.stringify(requetes));
+
 console.log('\n▸ le handler est ATTEIGNABLE (canal de messages)');
 verifier('un écouteur de messages est posé', ecouteurs.length === 1, `écouteurs : ${ecouteurs.length}`);
 

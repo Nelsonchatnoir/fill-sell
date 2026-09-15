@@ -38,7 +38,7 @@
 // existant ne devait être modifié. À la remontée dans content-scripts/, cette
 // ligne devient inutile.
 
-const OPLA_ACTIF = false; // ⛔ NE PAS LEVER SANS DÉCISION EXPLICITE DE NICO
+const OPLA_ACTIF = false; // ⛔ NE PAS LEVER SANS DÉCISION EXPLICITE DE NICO — levé puis RÉÉTEINT le 15/09 après le lot 6 (dépôt réel fait, annonce retirée).
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. L'API — ET POURQUOI ELLE DOIT PARTIR D'ICI, JAMAIS DU SERVICE WORKER
@@ -79,6 +79,42 @@ const OPLA_ENDPOINTS = {
 // ⛔ PIÈGE : /api/config/articles (sans « public ») rend 404, alors que
 // /api/config/params (sans « public ») rend 200. Le préfixe n'est PAS
 // symétrique. Ne jamais le déduire de l'autre.
+
+// ═══ L'URL PUBLIQUE D'UNE ANNONCE — /product/, JAMAIS /article/ ════════════
+// ⛔⛔ CORRECTION B (lot 7). Ce fichier écrivait `/article/<id>`. MESURÉ le
+// 15/09 sur l'annonce réelle art_4382c407fb47b15d0060b7ce00dfaa58, en ligne
+// et approuvée à la seconde de la lecture :
+//     /article/<id vrai>  → 404, <title>Page introuvable | Opla</title>, 8,6 Ko
+//     /product/<id vrai>  → 200, <title>Sweat Tommy Jeans… | Opla</title>, 108 Ko
+// Contrôle avec un id INVENTÉ, qui dit lequel des deux 404 signifie quoi :
+//     /article/<id bidon> → 404   ⇒ la route /article/ N'EXISTE PAS
+//     /product/<id bidon> → 200   ⇒ la route existe et rend une page pour tout
+// Le dépôt réussissait donc et le lien enregistré était mort par construction.
+// docs/OPLA_RELEVE.md § 9 avait raison depuis le début : c'est /product/.
+//
+// ⚠️⚠️ ET SURTOUT — CETTE URL N'EST PAS UN ORACLE, NULLE PART :
+//   · elle rend 200 sur un identifiant inventé ;
+//   · elle rend 200, page COMPLÈTE, sur une annonce SUPPRIMÉE — mesuré juste
+//     après le DELETE du lot 6 : 108201 octets à l'octet près, en-têtes
+//     `x-…-cache: STALE`, `age: 26`. Ni `cache:'no-store'` ni un paramètre
+//     d'URL cassé ne la délogent (le cache ISR de Next.js ignore les query
+//     params inconnus). La page publique SURVIT au retrait.
+// Le seul oracle d'existence est GET /api/public/articles/<id> : 200 = là,
+// 404 = plus là. Tout ce fichier s'y tient.
+const oplaUrlPublique = (id) => `https://www.opla.co/product/${encodeURIComponent(id)}`;
+
+// L'identifiant repart de l'URL qu'on a nous-mêmes écrite en base — c'est le
+// seul endroit où il vit (get-pending-jobs ne sert pas platform_listing_id à
+// l'extension). Les deux formes sont acceptées : `/article/` n'a jamais été
+// une URL valide, mais un job écrit par un build antérieur à cette correction
+// porterait ce lien mort, et son identifiant, lui, est bon — refuser
+// l'extraction laisserait une annonce irretirable pour une faute qui est la
+// nôtre. Le préfixe `art_` reste exigé : on ne ramasse pas n'importe quel
+// segment d'URL.
+function oplaIdDepuisUrl(url) {
+  const m = String(url ?? "").match(/\/(?:product|article)\/(art_[^/?#\s]+)/i);
+  return m ? m[1] : null;
+}
 
 // ⛔ Les bornes (prix max/min, titre, description, photos) NE SONT PAS
 // redéclarées ici : elles vivent dans `handlers/opla-prevol.js`, qui est
@@ -194,18 +230,38 @@ async function oplaChargerReferentiel() {
     }
   })(arbre.corps.categories);
 
-  // Grille par feuille : `sizes` présent ⇔ la catégorie a un champ Taille.
+  // Paramètres par feuille : `sizes` présent ⇔ la catégorie a un champ Taille.
   // Mémoïsé — une feuille par job, pas 886.
+  //
+  // ── LOT 7 : LA MÊME RÉPONSE PORTE DÉJÀ COULEURS ET MATIÈRES ───────────────
+  // /public/config/params?category=<code> rend { conditions, sizes, colors,
+  // materials } — mesuré sur MEN_SWEATERS le 15/09 : 14 tailles, 35 couleurs,
+  // 65 matières, en UN appel. On ne gardait que les tailles et on jetait le
+  // reste, ce qui laissait le pré-vol aveugle sur deux champs que le serveur
+  // Opla n'inspecte pas davantage. Élargir le cache ne coûte AUCUNE requête
+  // de plus : c'est la même réponse, lue jusqu'au bout.
   const cache = new Map();
-  const grillePour = (code) => cache.has(code) ? cache.get(code) : null;
+  const params = (code) => (cache.has(code) ? cache.get(code) : null);
+  const grillePour = (code) => params(code)?.tailles ?? null;
+  const couleursPour = (code) => params(code)?.couleurs ?? null;
+  const matieresPour = (code) => params(code)?.matieres ?? null;
   const precharger = async (code) => {
     if (cache.has(code)) return cache.get(code);
     const r = await oplaJson(OPLA_ENDPOINTS.paramsCategorie(code));
-    const g = r.ok && r.corps && r.corps.sizes ? r.corps.sizes.map((s) => s.code) : null;
-    cache.set(code, g);
-    return g;
+    const corps = r.ok && r.corps && typeof r.corps === "object" ? r.corps : null;
+    // ⛔ null ≠ [] : une liste ABSENTE de la réponse (ou une réponse en échec)
+    //    veut dire « on ne sait pas », et le pré-vol doit pouvoir le distinguer
+    //    d'une liste vide. Jamais de repli statique (règle du 02/09).
+    const liste = (v) => (Array.isArray(v) ? v.map((e) => ({ code: e?.code, title: e?.title })) : null);
+    const p = {
+      tailles: Array.isArray(corps?.sizes) ? corps.sizes.map((s) => s.code) : null,
+      couleurs: liste(corps?.colors),
+      matieres: liste(corps?.materials),
+    };
+    cache.set(code, p);
+    return p.tailles;
   };
-  return { noeuds, feuilles, grillePour, precharger };
+  return { noeuds, feuilles, grillePour, couleursPour, matieresPour, precharger };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -217,6 +273,15 @@ const OPLA_REFUS = Object.freeze({
   error: "Opla n'est pas activé.",
   diagnostic: "handlers/opla.js — OPLA_ACTIF=false (squelette, jamais branché).",
 });
+
+// Session morte : la FORME du message compte autant que son contenu.
+// background.js (motifSessionMorte) reconnaît « Connexion <X> requise… » et
+// route alors le job vers l'ATTENTE de session — aucune tentative consommée,
+// re-sonde plus tard (règle du 10/09). Un autre libellé ferait brûler les
+// cinq reprises du job sur une session qui ne reviendra pas toute seule.
+const OPLA_MSG_SESSION =
+  "Connexion Opla requise : ouvre opla.co dans Chrome et reconnecte-toi, " +
+  "puis relance depuis la fiche de l'article.";
 
 // ── LOT 4 (c) — CHEMIN DE PUBLICATION, VOIE API ─────────────────────────────
 // Écrit le 2026-09-15, DERRIÈRE OPLA_ACTIF. Rien ne s'exécute tant que le
@@ -243,9 +308,47 @@ const OPLA_REFUS = Object.freeze({
 // Monte UNE photo et rend sa `key` (celle attendue par corps.images[]).
 // ⚠️ Le PUT présigné part vers S3, PAS vers /api : il ne passe donc pas par
 // oplaJson (pas de credentials, pas de préfixe). Relevé au lot 1.
+// ── LECTURE DE LA PHOTO : 1 essai + 5 REPRISES (lot 7, aligné sur urlToFile) ─
+// Barème REPRIS TEL QUEL des quatre connecteurs en service (3/5/8/10/10 s,
+// ≈ 36 s), et pour la même raison mesurée le 12/09 : 5 republications Vinted
+// arrêtées parce qu'UNE lecture sur neuf avait répondu 502/504 alors que le
+// fichier était en place. Opla n'avait aucune reprise — un hoquet de
+// passerelle Supabase coûtait le job entier.
+// Clé de cache NEUVE à chaque reprise (r=…) : le CDN indexe par URL complète,
+// une réponse d'erreur mise en cache n'est donc jamais resservie.
+// ⚠️ Reprise sur TOUT échec (statut non-2xx ET exception réseau), jamais sur
+//    les seuls 404/410 — c'est exactement la borne trop étroite qui avait été
+//    corrigée ailleurs le 12/09.
+const OPLA_PHOTO_REPRISES_MS = [3000, 5000, 8000, 10000, 10000];
+
+async function oplaLirePhoto(url, indice) {
+  let reponse = null;
+  let exception = null;
+  for (let essai = 0; essai <= OPLA_PHOTO_REPRISES_MS.length; essai++) {
+    if (essai > 0) await new Promise((r) => setTimeout(r, OPLA_PHOTO_REPRISES_MS[essai - 1]));
+    const cible = essai === 0 ? url : `${url}${url.includes("?") ? "&" : "?"}r=${Date.now()}_${essai}`;
+    try {
+      exception = null;
+      reponse = await fetch(cible, { credentials: "omit" });
+    } catch (e) {
+      exception = e;
+      reponse = null;
+    }
+    if (reponse && reponse.ok) return reponse;
+    oplaTracer(
+      `photo ${indice + 1} : lecture ${essai + 1}/${OPLA_PHOTO_REPRISES_MS.length + 1} en échec ` +
+      `(${reponse ? `HTTP ${reponse.status}` : String(exception?.message ?? exception)})`
+    );
+  }
+  throw new Error(
+    reponse
+      ? `photo ${indice + 1} illisible (HTTP ${reponse.status}) après ${OPLA_PHOTO_REPRISES_MS.length + 1} lectures sur ~36 s`
+      : `photo ${indice + 1} illisible (${String(exception?.message ?? exception)}) après ${OPLA_PHOTO_REPRISES_MS.length + 1} lectures sur ~36 s`
+  );
+}
+
 async function oplaMonterPhoto(url, indice) {
-  const source = await fetch(url, { credentials: "omit" });
-  if (!source.ok) throw new Error(`photo ${indice + 1} illisible (HTTP ${source.status})`);
+  const source = await oplaLirePhoto(url, indice);
   const blob = await source.blob();
 
   const presigne = await oplaJson(OPLA_ENDPOINTS.urlPhotoPresignee, {
@@ -314,7 +417,7 @@ async function fillListingForm(job) {
         t0,
       });
     }
-    if (verdict.avertissement) oplaTracer(`prevol OK, avertissement: ${verdict.avertissement}`);
+    for (const a of verdict.avertissements ?? []) oplaTracer(`prevol OK, avertissement: ${a}`);
 
     // 3. PHOTOS — avant la création : le corps de l'article porte leurs clés.
     //    ⚠️ Quota RELEVÉ = 20, et au-delà Opla TRONQUE EN SILENCE. Le pré-vol
@@ -353,26 +456,67 @@ async function fillListingForm(job) {
     //    /sell/published, jamais un délai. Et moderationStatus vaut "pending" à
     //    la création puis "approved" : la modération est ASYNCHRONE, elle ne
     //    conditionne pas le succès du dépôt (même doctrine que Beebs).
-    if (creation.statut !== 201 || !creation.corps?.id) {
-      oplaTracer(`creation REFUSEE: HTTP ${creation.statut}`);
+    //
+    // ⛔⛔ CORRECTION A (lot 7) — LE 201 ÉTAIT LU COMME UN REFUS.
+    // Ligne d'origine : `!creation.corps?.id`. Or TOUTE l'API Opla est
+    // ENVELOPPÉE, l'écriture comprise — mesuré le 15/09 sur une création
+    // brouillon, réponse recopiée telle quelle :
+    //     POST /api/public/me/articles → 201
+    //     { "article": { "id": "art_…", "status": "draft", … } }
+    //     corps.id → undefined      corps.article.id → "art_…"
+    // (les lectures le disaient déjà : {user}, {articles,nextCursor},
+    // {article} — le § 15.2 du relevé décrivait l'objet DANS l'enveloppe, et
+    // le handler l'a lu à plat.) Coût réel, mesuré au lot 6 : le dépôt du
+    // sweat Tommy Jeans a RÉUSSI (201, annonce en ligne, approved) et le job
+    // est parti en `failed` — « Opla a refusé le dépôt (HTTP 201). » Une
+    // annonce ORPHELINE, en ligne chez Opla, inexistante pour FillSell, dont
+    // l'identifiant ne vivait nulle part en base : la relancer aurait fait un
+    // doublon payant.
+    // ⚠️ On corrige la LECTURE, pas la sévérité : pas d'id ⇒ pas de succès.
+    //    Un 201 sans identifiant reste un refus, parce qu'une annonce qu'on ne
+    //    sait pas nommer ne peut être ni reliée, ni surveillée, ni retirée.
+    const id = String(creation.corps?.article?.id ?? "").trim();
+    if (creation.statut !== 201 || !id) {
+      // ── CORRECTION G (lot 7) : LE CORPS DU REFUS PART EN BASE ─────────────
+      // Le refus portait déjà un champ `reponse`… que background.js ne
+      // persiste pas (il ne retient que result.diagnostic, et oplaSortie
+      // écrase `diagnostic` avec la trace). Le corps était donc capturé puis
+      // jeté — c'est POUR ÇA que la cause A était invisible en base et qu'il a
+      // fallu une sonde live pour la voir. La trace, elle, EST persistée : on
+      // y met l'extrait. Borné à 300 caractères, comme l'annexe Beebs.
+      const extrait = typeof creation.corps === "string"
+        ? creation.corps.slice(0, 300)
+        : JSON.stringify(creation.corps ?? null).slice(0, 300);
+      oplaTracer(
+        `creation REFUSEE: HTTP ${creation.statut}` +
+        (creation.statut === 201 ? " (201 SANS id exploitable — vérifier l'enveloppe de la réponse)" : "") +
+        ` · corps: ${extrait}`
+      );
       return oplaSortie({
         success: false,
         error: `Opla a refusé le dépôt (HTTP ${creation.statut}).`,
         http: creation.statut,
-        reponse: typeof creation.corps === "string"
-          ? creation.corps.slice(0, 300)
-          : JSON.stringify(creation.corps ?? null).slice(0, 300),
+        reponse: extrait,
         t0,
       });
     }
-    const id = String(creation.corps.id);
-    oplaTracer(`creation OK: id ${id}`);
+    const moderation = creation.corps.article.moderationStatus ?? null;
+    // Modération TRACÉE, jamais un verdict : elle est asynchrone et ne
+    // conditionne pas le succès du dépôt (même doctrine que Beebs). Elle part
+    // dans la trace parce que la trace, elle, arrive en base.
+    oplaTracer(`creation OK: id ${id} · moderationStatus ${moderation ?? "(absent)"}`);
     return oplaSortie({
       success: true,
-      platform_listing_id: id,
-      listing_url: `https://www.opla.co/article/${encodeURIComponent(id)}`,
-      moderation: creation.corps.moderationStatus ?? null,
-      ...(verdict.avertissement ? { warnings: [verdict.avertissement] } : {}),
+      // ── CORRECTION C (lot 7) : LE CONTRAT DES QUATRE, PAS LE NÔTRE ────────
+      // On rendait `listing_url` / `platform_listing_id` (snake_case) quand
+      // background.js lit `result.listingUrl`, comme chez les quatre
+      // connecteurs EN SERVICE. Personne ne lisait donc rien : listing_url
+      // restait NULL, platform_listing_id aussi (update-job-status ne le
+      // dérive QUE d'un listing_url), et l'identifiant de l'annonce
+      // n'existait nulle part. C'est opla.js qui s'aligne — jamais l'inverse.
+      // L'identifiant voyage DANS l'URL, exactement comme chez les quatre.
+      listingUrl: oplaUrlPublique(id),
+      ...(verdict.avertissements?.length ? { warnings: verdict.avertissements } : {}),
       t0,
     });
   } catch (e) {
@@ -401,15 +545,224 @@ function oplaSortie(resultat) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RETRAIT (lot 7) — DELETE, ET LE 404 COMME SEULE PREUVE
+// ═══════════════════════════════════════════════════════════════════════════
+// ⛔ LE 204 N'EST PAS LA PREUVE. Il dit « requête acceptée », rien de plus.
+//    La preuve est le 404 sur GET /public/articles/<id> : 200 = encore là,
+//    404 = plus là. Mesuré au lot 6 : DELETE 204, puis fiche 404, puis liste
+//    vendeur vide — et pendant tout ce temps /product/<id> rendait 200 avec la
+//    page COMPLÈTE (cache ISR, `age: 26`, 108201 octets identiques). Conclure
+//    sur la page publique, c'est déclarer vivante une annonce supprimée.
+//
+// ⛔ DEUX CHEMINS À NE JAMAIS CONFONDRE, côté Opla :
+//      « Publier plus tard » → DÉPUBLIE (retour en draft). Réversible, et
+//        l'article existe toujours : la fiche répondrait encore.
+//      « Supprimer »         → EFFACE. C'est celui-ci, et lui seul : on
+//        n'appelle QUE DELETE /public/me/articles/<id>, jamais un PATCH de
+//        statut, qui rendrait un retrait réversible et invisible à la garde.
+//
+// Idempotent par construction : une annonce déjà absente AVANT notre geste est
+// un retrait RÉUSSI (même doctrine que le « déjà supprimée » d'eBay, 13/07),
+// pas un échec — et on ne lance alors aucun DELETE.
 async function deleteListing(job) {
   if (!OPLA_ACTIF) return { ...OPLA_REFUS };
-  // TODO(lot 6) — relevé : DELETE /public/me/articles/<id> → 204.
-  // ⛔ Le signal de retrait est le 404 sur GET /public/articles/<id>, PAS le 204 :
-  //    le 204 dit que la requête a été acceptée, le 404 dit que l'annonce n'est
-  //    plus là. C'est le 404 qu'on écrit en base.
-  // ⚠️ Ne pas confondre avec « Publier plus tard », qui DÉPUBLIE (retour en
-  //    draft, réversible) sans supprimer.
-  return { ...OPLA_REFUS, error: "Chemin de retrait Opla non implémenté (lot 6)." };
+  const t0 = Date.now();
+  oplaTracer("deleteListing: entrée");
+  try {
+    oplaEtape("cible");
+    const id = oplaIdDepuisUrl(job?.listing_url);
+    if (!id) {
+      // JAMAIS par titre (leçon Beebs du 11/09) : sans identifiant, on ne
+      // retire rien du tout plutôt que de risquer l'annonce d'à côté.
+      return oplaSortie({
+        success: false, needsUser: true,
+        error: "Retrait Opla impossible : aucun identifiant d'annonce dans le lien enregistré. " +
+               "Retirer l'annonce à la main sur opla.co.",
+        t0,
+      });
+    }
+    oplaTracer(`cible: ${id}`);
+
+    oplaEtape("etat_avant");
+    const avant = await oplaJson(OPLA_ENDPOINTS.article(id));
+    if (avant.statut === 401) return oplaSortie({ success: false, needsUser: true, error: OPLA_MSG_SESSION, t0 });
+    if (avant.statut === 404) {
+      oplaTracer("etat_avant: 404 — annonce déjà absente, aucun DELETE envoyé");
+      return oplaSortie({ success: true, deja_absente: true, t0 });
+    }
+    if (avant.statut !== 200) {
+      // Lecture non concluante : on ne supprime pas à l'aveugle, et on ne
+      // conclut pas non plus. Reprise, rien n'a été touché.
+      return oplaSortie({
+        success: false, reprise: true,
+        error: `État de l'annonce Opla illisible avant retrait (HTTP ${avant.statut}) — rien n'a été touché, reprise au prochain passage.`,
+        t0,
+      });
+    }
+
+    oplaEtape("suppression");
+    const sup = await oplaJson(OPLA_ENDPOINTS.supprimer(id), { method: "DELETE" });
+    oplaTracer(`DELETE: HTTP ${sup.statut}`);
+    if (sup.statut === 401) return oplaSortie({ success: false, needsUser: true, error: OPLA_MSG_SESSION, t0 });
+
+    // ── LA VÉRIFICATION, qui seule tranche ───────────────────────────────────
+    // Elle tourne MÊME sur un 204 (le 204 ne prouve rien) et MÊME sur un code
+    // d'erreur (une suppression peut aboutir et répondre mal).
+    oplaEtape("verification");
+    const apres = await oplaJson(OPLA_ENDPOINTS.article(id));
+    oplaTracer(`verification: GET fiche → HTTP ${apres.statut}`);
+    if (apres.statut === 404) return oplaSortie({ success: true, t0 });
+
+    return oplaSortie({
+      success: false, reprise: true,
+      error: `Retrait Opla NON confirmé : après DELETE (HTTP ${sup.statut}), la fiche répond encore HTTP ${apres.statut} ` +
+             "— l'annonce est probablement toujours en ligne. Reprise au prochain passage.",
+      t0,
+    });
+  } catch (e) {
+    oplaTracer(`exception: ${String(e?.message ?? e)}`);
+    return oplaSortie({ success: false, reprise: true, error: `Opla : ${String(e?.message ?? e)}`, t0 });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REPUBLICATION (lot 7) — UNE MODIFICATION EN PLACE, PAS UN RE-DÉPÔT
+// ═══════════════════════════════════════════════════════════════════════════
+// Chez les quatre, republier = SUPPRIMER puis RECRÉER, avec tout ce que ça
+// traîne : fenêtre de doublon, snapshot à garder, annonce détruite si la
+// recréation échoue (les 8 livres du 15-22/08). Chez Opla, rien de tout ça :
+// PATCH /public/me/articles/<id> modifie l'article EN PLACE. Aucune fenêtre,
+// aucune suppression, rien à recréer — donc rien à perdre.
+//
+// ⚠️ Ce n'est pas « l'API plutôt que le DOM » par préférence : le chemin DOM
+//    est MORT chez eux (bouton Enregistrer sans requête, relevé lot 1).
+// ⚠️ LE PATCH EST PARTIEL : ce qui n'est pas envoyé SURVIT. On n'envoie donc
+//    PAS `images` — les photos déjà en ligne restent en place, et on évite de
+//    re-monter 5 fichiers pour rien.
+// ⛔ DEUX CLÉS INTERDITES DANS UN PATCH, relevées au lot 1 :
+//      asDraft → 400 empty_patch (c'est un drapeau de CRÉATION, pas un levier
+//        de publication) ;
+//      status  → 403 phone_verification_required sur draft→available, alors
+//        que la création directe en available passe sans téléphone vérifié.
+//    Elles sont retirées ICI, par une garde, et pas seulement « pas ajoutées » :
+//    le corps vient du pré-vol, qui peut changer.
+async function republishListing(job) {
+  if (!OPLA_ACTIF) return { ...OPLA_REFUS };
+  const t0 = Date.now();
+  oplaTracer("republishListing: entrée");
+  try {
+    oplaEtape("cible");
+    const id = oplaIdDepuisUrl(job?.listing_url);
+    if (!id) {
+      return oplaSortie({
+        success: false, needsUser: true,
+        error: "Republication Opla impossible : aucun identifiant d'annonce dans le lien enregistré.",
+        t0,
+      });
+    }
+
+    // L'annonce doit EXISTER : l'oracle, encore lui. Une republication sur une
+    // annonce disparue n'a pas de sens ici — il n'y a rien à modifier, et on
+    // ne va SURTOUT pas en recréer une (ce serait le re-dépôt qu'on évite).
+    oplaEtape("etat_avant");
+    const avant = await oplaJson(OPLA_ENDPOINTS.article(id));
+    if (avant.statut === 401) return oplaSortie({ success: false, needsUser: true, error: OPLA_MSG_SESSION, t0 });
+    if (avant.statut === 404) {
+      return oplaSortie({
+        success: false, needsUser: true,
+        error: "Republication Opla impossible : l'annonce n'est plus en ligne (fiche introuvable). " +
+               "Rien n'a été modifié, et aucune nouvelle annonce n'a été créée.",
+        t0,
+      });
+    }
+    if (avant.statut !== 200) {
+      return oplaSortie({
+        success: false, reprise: true,
+        error: `État de l'annonce Opla illisible avant republication (HTTP ${avant.statut}) — rien n'a été touché.`,
+        t0,
+      });
+    }
+
+    // Même pré-vol que la publication : la republication écrit les mêmes
+    // champs, elle mérite les mêmes gardes (catégorie, taille, couleurs,
+    // matières, prix). Un pré-vol qui refuse ⇒ on ne touche pas à l'annonce
+    // existante, qui reste en ligne et intacte.
+    oplaEtape("referentiel");
+    const code = String(job?.platform_fields?.oplaCategoryCode ?? "").trim();
+    const ref = await oplaChargerReferentiel();
+    if (code) await ref.precharger(code);
+
+    oplaEtape("prevol");
+    const verdict = globalThis.oplaPrevol(job, ref);
+    if (!verdict.ok) {
+      oplaTracer(`prevol REFUSE: ${verdict.motif}`);
+      return oplaSortie({
+        success: false, needsUser: true,
+        error: verdict.message ?? `Opla refuserait cette modification : ${verdict.motif}. L'annonce en ligne n'a pas été touchée.`,
+        motif_prevol: verdict.motif,
+        champ: verdict.champ ?? null,
+        t0,
+      });
+    }
+    for (const a of verdict.avertissements ?? []) oplaTracer(`prevol OK, avertissement: ${a}`);
+
+    // Corps du PATCH : tout ce que le pré-vol a validé, SAUF les images (elles
+    // survivent) et SAUF les deux clés interdites.
+    const corps = { ...verdict.corps };
+    delete corps.images;
+    delete corps.asDraft;
+    delete corps.status;
+    if (!Object.keys(corps).length) {
+      throw new Error("corps de PATCH vide — Opla rendrait 400 empty_patch");
+    }
+
+    oplaEtape("modification");
+    const patch = await oplaJson(OPLA_ENDPOINTS.modifier(id), { method: "PATCH", body: JSON.stringify(corps) });
+    oplaTracer(`PATCH: HTTP ${patch.statut} · champs: ${Object.keys(corps).join(",")}`);
+    if (patch.statut === 401) return oplaSortie({ success: false, needsUser: true, error: OPLA_MSG_SESSION, t0 });
+    if (patch.statut !== 200) {
+      const extrait = typeof patch.corps === "string"
+        ? patch.corps.slice(0, 300)
+        : JSON.stringify(patch.corps ?? null).slice(0, 300);
+      oplaTracer(`modification REFUSEE · corps: ${extrait}`);
+      return oplaSortie({
+        success: false,
+        error: `Opla a refusé la modification (HTTP ${patch.statut}). L'annonce en ligne est inchangée.`,
+        http: patch.statut,
+        reponse: extrait,
+        t0,
+      });
+    }
+
+    // Preuve POSITIVE, relue sur la fiche : l'enveloppe, toujours (leçon A).
+    oplaEtape("verification");
+    const apres = await oplaJson(OPLA_ENDPOINTS.article(id));
+    const article = apres.corps?.article ?? null;
+    const titreVu = String(article?.title ?? "");
+    const prixVu = article?.priceCents ?? null;
+    oplaTracer(`verification: HTTP ${apres.statut} · title « ${titreVu} » · priceCents ${prixVu}`);
+    if (apres.statut !== 200 || titreVu !== corps.title || prixVu !== corps.priceCents) {
+      return oplaSortie({
+        success: false, reprise: true,
+        error: "Modification Opla non confirmée : la fiche relue ne porte pas les valeurs envoyées. " +
+               "Reprise au prochain passage.",
+        t0,
+      });
+    }
+
+    // L'URL ne change pas — c'est tout l'intérêt d'une modification en place :
+    // aucun lien à repointer, aucune annonce à clore, aucun doublon possible.
+    return oplaSortie({
+      success: true,
+      listingUrl: oplaUrlPublique(id),
+      ...(verdict.avertissements?.length ? { warnings: verdict.avertissements } : {}),
+      t0,
+    });
+  } catch (e) {
+    oplaTracer(`exception: ${String(e?.message ?? e)}`);
+    return oplaSortie({ success: false, reprise: true, error: `Opla : ${String(e?.message ?? e)}`, t0 });
+  }
 }
 
 // ── Relais d'étape (union du contrat) ───────────────────────────────────────
@@ -440,10 +793,23 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
       sendResponse({ success: true, pong: true, actif: OPLA_ACTIF });
       return true;
     }
-    if (msg?.type === "DELETE_LISTING") {
-      deleteListing(msg.job)
-        .then((r) => sendResponse({ ...r, trace: [...oplaTrace] }))
-        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err), trace: [...oplaTrace] }));
+    if (msg?.type === "DELETE_LISTING" || msg?.type === "REPUBLISH_LISTING") {
+      // ⚠️ REMISE À ZÉRO DE LA TRACE (lot 7). Elle n'existait que sur
+      // FILL_LISTING : un retrait héritait donc de la trace du dépôt précédent
+      // — le content script survit d'un job à l'autre sur l'onglet de travail
+      // persistant. Le diagnostic écrit en base aurait décrit un autre job.
+      oplaEtapeCourante = null;
+      oplaTrace.length = 0;
+      const action = msg.type === "DELETE_LISTING" ? deleteListing : republishListing;
+      action(msg.job)
+        .then((r) => sendResponse({ ...r, trace: [...oplaTrace], fill_step: oplaEtapeCourante }))
+        .catch((err) => sendResponse({
+          success: false,
+          error: String(err?.message ?? err),
+          ...(err?.needsUser === true ? { needsUser: true } : {}),
+          trace: [...oplaTrace],
+          fill_step: oplaEtapeCourante,
+        }));
       return true;
     }
     if (msg?.type !== "FILL_LISTING") return;

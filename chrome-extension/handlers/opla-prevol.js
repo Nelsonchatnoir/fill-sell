@@ -64,6 +64,20 @@
     TAILLE_REQUISE: "opla_taille_requise",
     TAILLE_HORS_GRILLE: "opla_taille_hors_grille",
     TAILLE_INATTENDUE: "opla_taille_inattendue",
+    // ── AVERTISSEMENTS (lot 7) — jamais des refus ──────────────────────────
+    // Couleur et matière sont FACULTATIVES chez Opla : une valeur qu'on ne sait
+    // pas traduire ne doit pas coûter l'annonce. Mais elle ne doit pas partir
+    // telle quelle non plus — le serveur l'écrirait en 200 sans broncher, et on
+    // se retrouverait avec « Marine » dans un champ qui attend « NAVY »,
+    // invisible partout. On JETTE la valeur et on le DIT, jamais la plus
+    // proche (même doctrine que la marque Leboncoin : champ vide plutôt que
+    // valeur approchée).
+    COULEUR_INCONNUE: "opla_couleur_inconnue",
+    MATIERE_INCONNUE: "opla_matiere_inconnue",
+    // Liste indisponible (params de la feuille injoignables) : on ne peut ni
+    // valider ni invalider. La valeur passe, et le doute est tracé.
+    COULEURS_NON_VERIFIEES: "opla_couleurs_non_verifiees",
+    MATIERES_NON_VERIFIEES: "opla_matieres_non_verifiees",
     MARQUE_ABSENTE: "opla_marque_absente",
     ETAT_ABSENT: "opla_etat_absent",
     ETAT_INCONNU: "opla_etat_inconnu",
@@ -90,11 +104,19 @@
    *     noeuds:   Set<string>,        TOUS les codes connus (1014) — pour distinguer
    *                                   « inconnue » de « nœud intermédiaire »
    *     grillePour: (code) => string[]|null   grille de CETTE feuille, ou null si la
-   *                                   catégorie n'a pas de champ Taille }
-   * @returns {{ok:true, corps:object} | {ok:false, motif, message, champ}}
+   *                                   catégorie n'a pas de champ Taille
+   *     couleursPour: (code) => {code,title}[]|null   liste de CETTE feuille (35 relevées)
+   *     matieresPour: (code) => {code,title}[]|null   liste de CETTE feuille (65 relevées)
+   *       ⚠️ les deux dernières sont FACULTATIVES : un référentiel qui ne les
+   *       expose pas (selftest historique, params injoignables) ne fait pas
+   *       échouer le pré-vol — il rend la vérification impossible, et on le dit.
+   * @returns {{ok:true, corps:object, avertissements?:string[]} | {ok:false, motif, message, champ}}
    */
   function oplaPrevol(job, ref) {
     const pf = (job && job.platform_fields) || {};
+    // Avertissements ACCUMULÉS, jamais un seul : depuis le lot 7 la taille
+    // omise, une couleur jetée et une matière jetée peuvent arriver ensemble.
+    const avertissements = [];
 
     // ── 1. TITRE ────────────────────────────────────────────────────────────
     const titre = String(job && job.title != null ? job.title : "").trim();
@@ -139,6 +161,7 @@
     //    partagés entre deux grilles (cf. bandeau).
     const grille = ref.grillePour(code);
     const taille = pf.taille ? String(pf.taille) : null;
+    let tailleRetenue = taille;
     if (grille && grille.length) {
       if (!taille) {
         return refus(MOTIFS.TAILLE_REQUISE, `La catégorie « ${code} » exige une taille.`, "size");
@@ -154,8 +177,19 @@
       }
     } else if (taille) {
       // grille absente ⇒ pas de champ Taille ⇒ on n'envoie RIEN (on ne refuse
-      // pas le job pour autant : on omet, et on le dit dans le verdict)
-      return { ok: true, avertissement: MOTIFS.TAILLE_INATTENDUE, corps: construire(job, pf, photos, titre, null) };
+      // pas le job pour autant : on omet, et on le dit dans le verdict).
+      //
+      // ⛔ CORRECTION DU LOT 7 — CETTE BRANCHE RENDAIT `ok:true` SUR-LE-CHAMP.
+      // Elle sautait donc les quatre gardes suivantes : MARQUE (obligatoire
+      // chez Opla), ÉTAT (obligatoire, liste fermée), PRIX (plafond 1000 € ET
+      // plancher 1 €, celui posé après l'annonce partie à 0,50 € le 14/09).
+      // Autrement dit : n'importe quel article d'une catégorie SANS grille de
+      // tailles — vases, décoration, loisirs, une bonne part du catalogue —
+      // partait sans marque, sans état valide et sans borne de prix, pourvu
+      // qu'une taille traîne dans platform_fields. On ne sort plus d'ici : on
+      // note, on omet la taille, et on continue le pré-vol jusqu'au bout.
+      avertissements.push(MOTIFS.TAILLE_INATTENDUE);
+      tailleRetenue = null;
     }
 
     // ── 5. MARQUE — obligatoire (« La marque est obligatoire. ») ────────────
@@ -191,13 +225,68 @@
       );
     }
 
-    return { ok: true, corps: construire(job, pf, photos, titre, taille) };
+    // ── 8. COULEURS ET MATIÈRES — la garde qui manquait (lot 7) ─────────────
+    // Le pré-vol gardait la catégorie et la taille, et laissait passer
+    // n'importe quelle chaîne en metadata.colors/materials. C'est le MÊME
+    // piège, une case plus loin : Opla ne valide rien, il écrit. Mesuré au
+    // lot 6 — l'article portait « NAVY »/« cotton » parce que je les avais
+    // traduits À LA MAIN ; l'app, elle, sert « Marine »/« Coton » (les
+    // libellés d'inventaire.attributs), qui seraient partis tels quels.
+    const couleurs = resoudreCodes(
+      pf.couleurs, listeDe(ref, "couleursPour", code),
+      MOTIFS.COULEUR_INCONNUE, MOTIFS.COULEURS_NON_VERIFIEES, avertissements,
+    );
+    const matieres = resoudreCodes(
+      pf.matieres, listeDe(ref, "matieresPour", code),
+      MOTIFS.MATIERE_INCONNUE, MOTIFS.MATIERES_NON_VERIFIEES, avertissements,
+    );
+
+    return {
+      ok: true,
+      ...(avertissements.length ? { avertissements } : {}),
+      corps: construire(job, pf, photos, titre, tailleRetenue, couleurs, matieres),
+    };
+  }
+
+  // Liste de référence d'une feuille, ou null si le référentiel ne l'expose pas.
+  // ⛔ Jamais de repli statique : une liste absente est un DOUTE, pas un vide
+  //    (règle du 02/09 sur les gardes permissives). Le doute est tracé plus bas.
+  function listeDe(ref, nom, code) {
+    if (!ref || typeof ref[nom] !== "function") return null;
+    const liste = ref[nom](code);
+    return Array.isArray(liste) && liste.length ? liste : null;
+  }
+
+  // Correspondance EXACTE, jamais approchée : le code lui-même, ou le libellé
+  // exact rendu par Opla pour CETTE feuille (à la casse et aux espaces près,
+  // rien d'autre — « Creme » ne vaut pas « Crème », et c'est voulu : une
+  // approximation qui passe est pire qu'une valeur jetée qui se voit).
+  function resoudreCodes(valeurs, liste, motifInconnu, motifNonVerifie, avertissements) {
+    const brutes = (Array.isArray(valeurs) ? valeurs : [])
+      .filter(Boolean).map((v) => String(v).trim()).filter(Boolean);
+    if (!brutes.length) return [];
+    if (!liste) {
+      avertissements.push(`${motifNonVerifie}: ${brutes.join(", ")}`);
+      return brutes; // liste injoignable : on n'invente pas de refus
+    }
+    const plat = (s) => String(s == null ? "" : s).trim().toLowerCase();
+    const retenus = [];
+    for (const brute of brutes) {
+      const trouve = liste.find((e) => plat(e && e.code) === plat(brute))
+                  ?? liste.find((e) => plat(e && e.title) === plat(brute));
+      if (trouve) {
+        if (retenus.indexOf(trouve.code) === -1) retenus.push(trouve.code);
+      } else {
+        avertissements.push(`${motifInconnu}: « ${brute} » sans correspondance exacte — valeur JETÉE, jamais la plus proche`);
+      }
+    }
+    return retenus;
   }
 
   // Corps du POST — forme OBSERVÉE au lot 1 (201 Created).
   // ⛔ un champ vide ne s'envoie PAS (on omet la clé) ; categoriesPath ne
   //    s'envoie PAS (le serveur le calcule).
-  function construire(job, pf, photos, titre, taille) {
+  function construire(job, pf, photos, titre, taille, couleurs, matieres) {
     const corps = { title: titre.slice(0, OPLA_TITRE_MAX) };
     const d = String(job.description == null ? "" : job.description).trim().slice(0, OPLA_DESCRIPTION_MAX);
     if (d) corps.description = d;
@@ -208,10 +297,10 @@
     corps.condition = pf.etat;
     const meta = {};
     if (taille) meta.sizes = [taille];
-    const couleurs = (pf.couleurs || []).filter(Boolean);
-    const matieres = (pf.matieres || []).filter(Boolean);
-    if (couleurs.length) meta.colors = couleurs;
-    if (matieres.length) meta.materials = matieres;
+    // ⛔ couleurs/matières arrivent RÉSOLUES (codes Opla validés contre la
+    //    feuille) — plus jamais lues à cru dans platform_fields.
+    if (couleurs && couleurs.length) meta.colors = couleurs;
+    if (matieres && matieres.length) meta.materials = matieres;
     if (Object.keys(meta).length) corps.metadata = meta;
     return corps;
   }

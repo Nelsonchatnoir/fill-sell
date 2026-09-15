@@ -8577,6 +8577,24 @@ async function checkVintedUnanime(url) {
 }
 
 async function checkListingState(url, platform) {
+  // ── OPLA : ON REFUSE DE CONCLURE, ET C'EST LE SEUL VERDICT HONNÊTE ────────
+  // (lot 7, additif — aucune des quatre plateformes en service ne passe ici.)
+  // lireEtatAnnonce lirait /product/<id>… qui rend 200, page COMPLÈTE, sur une
+  // annonce SUPPRIMÉE : mesuré le 15/09 juste après le DELETE (cache ISR,
+  // `age: 26`, 108201 octets identiques, insensible à no-store et au cassage
+  // d'URL). Elle rend même 200 sur un identifiant inventé. Laisser tourner la
+  // lecture générique ici, c'est écrire « annonce TOUJOURS en ligne (vérifié) »
+  // sur une annonce retirée — exactement le mensonge que ce fichier passe son
+  // temps à corriger ailleurs.
+  // Le seul oracle est GET /api/public/articles/<id>… et il n'est PAS
+  // appelable d'ici : un fetch du service worker se fait rejeter en 429 par
+  // Opla (clients sans empreinte de navigateur, mesuré au lot 1). Il faudrait
+  // un onglet et un aller-retour avec le content script — c'est un chantier, pas
+  // une ligne. En attendant, "unknown" avec un motif NOMMÉ : les appelants
+  // savent traiter l'indécision, ils ne savent pas se défendre d'un faux.
+  if (platform === "opla") {
+    return { state: "unknown", price: null, raison: "opla_oracle_indisponible" };
+  }
   if (platform === "vinted") return checkVintedUnanime(url);
   if (platform !== "leboncoin") return lireEtatAnnonce(url, platform);
 
@@ -8617,6 +8635,9 @@ function causeLectureImpossible(raison) {
   if (r.startsWith("bot_shield")) return "Leboncoin a bloqué notre lecture par une vérification anti-robot";
   if (r.startsWith("http_")) return `la plateforme a répondu ${r.replace("http_", "HTTP ")}`;
   if (r === "lecture_impossible") return "la page de l'annonce n'a pas pu être chargée";
+  // Opla (lot 7) : ce n'est pas une lecture ratée, c'est une lecture qu'on
+  // s'interdit — la page publique survit à la suppression, elle ne prouve rien.
+  if (r === "opla_oracle_indisponible") return "l'état d'une annonce Opla ne peut pas être vérifié depuis ici (sa page publique reste servie en cache après un retrait)";
   return "la page a été lue mais l'annonce n'y a pas été reconnue";
 }
 
@@ -13657,6 +13678,17 @@ const DELETE_TARGETS = {
   // handler refuse tout retrait sans identifiant (jamais par titre).
   beebs: (job) =>
     (/\/p\/\d+(?:[-/?#]|$)/.test(String(job.listing_url ?? "")) ? job.listing_url : "https://www.beebs.app/fr/account/my-adverts"),
+  // Opla (lot 7) : la cible n'est qu'un PORTE-SCRIPT. Le retrait est un DELETE
+  // d'API fait depuis le content script — il ne lit ni ne clique quoi que ce
+  // soit dans la page (et il le fait depuis la page parce qu'un fetch du
+  // service worker se fait rejeter en 429 : Opla refuse les clients sans
+  // empreinte de navigateur, mesuré au lot 1). N'importe quelle page opla.co
+  // conviendrait donc ; on prend celle de l'annonce quand on l'a, parce que
+  // c'est le trajet qu'un vendeur ferait, et la home sinon.
+  // ⚠️ Cette page rend 200 même sur une annonce supprimée (cache ISR) : elle
+  //    n'est JAMAIS une preuve d'existence, et rien ici ne la lit comme telle.
+  opla: (job) =>
+    (/\/(?:product|article)\/art_/i.test(String(job.listing_url ?? "")) ? job.listing_url : "https://www.opla.co/"),
 };
 
 // ── Clôture du publish après un retrait ciblé réussi (2026-07-19) ─────────────
@@ -14592,7 +14624,67 @@ async function traiterIntrouvable404Republication({ accessToken, job, pf, userId
   return { status: "failed", error: msg };
 }
 
+// ── OPLA : UNE MODIFICATION EN PLACE, DONC PAS CETTE MACHINE (lot 7) ────────
+// La machine ci-dessous est celle de Vinted : capture → SUPPRESSION → attente
+// → recréation. Elle existe parce que Vinted n'a pas d'autre moyen de remonter
+// une annonce, et tout son poids (snapshot, étapes persistées, fenêtre de
+// doublon, coupe-circuit livres) sert à survivre à cette suppression.
+// Opla n'a rien de tout ça : PATCH /public/me/articles/<id> modifie l'article
+// SUR PLACE. Pas de suppression, donc pas de fenêtre où l'annonce n'existe
+// plus, pas de recréation qui peut échouer, pas de snapshot à garder, et
+// l'URL ne bouge pas. Un aller simple : le content script fait le PATCH et
+// relit la fiche.
+// ⛔ Aucune ligne de la machine Vinted n'est touchée : on sort AVANT elle.
+async function processOplaRepublishJob(job, accessToken) {
+  console.log(`[background] Job ${job.id} → opla (REPUBLISH, modification en place)`);
+  if (!job.listing_url) {
+    const msg = "Republication Opla impossible : aucun lien d'annonce enregistré sur ce job.";
+    await updateJobStatus(accessToken, job.id, "failed", { error: msg });
+    return { status: "failed", error: msg };
+  }
+  try {
+    job.platform_fields = { ...(job.platform_fields ?? {}), processing_since: new Date().toISOString() };
+    delete job.platform_fields.next_action_after;
+    await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields });
+
+    const tabId = await getOrCreateWorkTab("opla", job.listing_url);
+    const result = await sendMessageToTab(tabId, { type: "REPUBLISH_LISTING", job });
+
+    if (result?.diagnostic) {
+      job.platform_fields = { ...(job.platform_fields ?? {}), last_diagnostic: String(result.diagnostic).slice(0, 2000) };
+    }
+    if (result?.success) {
+      const extras = completionExtras(job, result);
+      console.log(`[background] Job ${job.id} : annonce Opla modifiée en place — ${result.listingUrl}`);
+      await updateJobStatus(accessToken, job.id, "published", { listing_url: result.listingUrl, ...extras });
+      await recordRecentResult(job, "published").catch(() => {});
+      return { status: "published", listingUrl: result.listingUrl };
+    }
+    if (result?.needsUser) {
+      if (motifSessionMorte("opla", result.error)) {
+        noterSessionDeconnectee(accessToken, "opla").catch(() => {});
+        await marquerAttenteSession(accessToken, job, result.error);
+        return { status: "needsUser", error: result.error };
+      }
+      await rearmBounded(accessToken, job, result.error);
+      return { status: "needsUser", error: result.error };
+    }
+    // Rien n'a été modifié en ligne (le handler ne rend `reprise` que sur les
+    // chemins où l'annonce est restée intacte) : reprise bornée, jamais un
+    // failed sec sur une lecture ratée.
+    const msg = String(result?.error ?? "Republication Opla sans résultat exploitable.");
+    await rearmBounded(accessToken, job, msg);
+    return { status: "retry", error: msg };
+  } catch (e) {
+    const msg = `Republication Opla interrompue : ${String(e?.message ?? e)}`;
+    console.warn(`[background] Job ${job.id} : ${msg}`);
+    await rearmBounded(accessToken, job, msg);
+    return { status: "retry", error: msg };
+  }
+}
+
 async function processRepublishJob(job, accessToken) {
+  if (job.platform === "opla") return processOplaRepublishJob(job, accessToken);
   const pf = { ...(job.platform_fields ?? {}) };
   // Défaut = 'a_capturer', PREMIÈRE étape de la machine (corrigé le 2026-08-05,
   // il était resté à 'captured', l'ancienne première étape d'avant la migration

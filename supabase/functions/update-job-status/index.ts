@@ -72,6 +72,15 @@ const LISTING_ID_PATTERNS: Record<string, RegExp> = {
   leboncoin: /\/ad\/[^/]+\/(\d+)/,
   ebay: /\/itm\/[^?#]*?(\d{9,})/,
   beebs: /\/p\/(\d+)/,
+  // Opla (lot 7) : sans cette ligne, platform_listing_id restait NULL pour
+  // Opla — et comme get-pending-jobs ne sert pas cette colonne à l'extension,
+  // l'identifiant de l'annonce n'existait NULLE PART (mesuré au lot 6 : il ne
+  // vivait que dans le texte libre de last_diagnostic). Conséquence concrète :
+  // aucun retrait ne pouvait viser l'annonce, le handler tirant son id du
+  // listing_url. L'URL publique est /product/<id>, /article/ n'a jamais été
+  // une route valide — les deux formes sont reconnues ici pour qu'un lien
+  // écrit par un build antérieur rende quand même son identifiant.
+  opla: /\/(?:product|article)\/(art_[^/?#]+)/,
 };
 
 // ══════════════════════════════════════════════════════════════════════════
