@@ -1,9 +1,32 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- OPLA — LOT 7 : le drapeau d'AFFICHAGE, porté par le profil
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⛔ ÉCRITE, NON APPLIQUÉE. Validation et déclenchement par Nico, comme le lot
---    4 (a). À appliquer SEULE, jamais par `supabase db push` (interdit :
---    historiques divergents).
+-- ✅ APPLIQUÉE EN PROD LE 2026-09-15, sur validation explicite de Nico, qui avait
+--    lui-même recoupé les trois comptes « Ornella » avant de lever l'interdiction.
+--    Appliquée SEULE (jamais `supabase db push`, toujours interdit : historiques
+--    divergents), en DEUX passages — la colonne, puis les bénéficiaires — pour
+--    pouvoir lire l'état entre les deux. Le BEGIN/COMMIT externe a été omis,
+--    l'outil d'application gérant sa propre transaction ; il reste dans le
+--    fichier pour un passage manuel au psql.
+--
+--    ÉTAT LU APRÈS APPLICATION (information_schema, recopié tel quel) :
+--      plateformes_visibles | ARRAY (_text) | NOT NULL | DEFAULT '{}'::text[]
+--      commentaire : posé, complet.
+--
+--    DRAPEAU POSÉ, relu :
+--      nicolas.svobodny@gmail.com  {opla}
+--      ornellaracano@icloud.com    {opla}
+--    Sur 2 366 profils : 2 364 à '{}', 2 porteurs, 0 NULL. Seule valeur
+--    distincte présente dans toute la colonne : 'opla'.
+--
+--    DROITS DU CLIENT SUR LA COLONNE, relus : SELECT, INSERT. **Pas d'UPDATE** —
+--    la propriété annoncée plus bas est donc vérifiée, pas seulement espérée.
+--
+--    IDEMPOTENCE PROUVÉE, pas seulement annoncée : second passage du bloc DO,
+--    les deux tableaux valent toujours {opla} et leur longueur reste 1 —
+--    array_append n'a pas doublé la valeur.
+--
+-- ⛔ À appliquer SEULE, jamais par `supabase db push`.
 --
 -- POURQUOI UNE COLONNE, ET PAS UNE CONSTANTE DE BUILD.
 -- Nico veut voir Opla dans l'app avant l'ouverture, et pouvoir ouvrir le jour J
