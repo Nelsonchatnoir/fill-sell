@@ -236,9 +236,18 @@ export default function AnalyseMarche({
           <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.09em", textTransform: "uppercase", color: C.mute2, marginBottom: 2 }}>
             {en ? "Tips to sell better" : "Conseils pour mieux vendre"}
           </div>
+          {/* Numéroté À PARTIR DE DEUX (15/09/2026). La garde serveur
+              « conseils contredits » peut n'en laisser qu'un : une liste
+              numérotée d'un seul élément (« 1. »), ça se lit comme s'il en
+              manquait. Un seul conseil prend la puce teal de la ligne de
+              fiabilité — même couleur, même vocabulaire. Zéro conseil, le
+              serveur rend `null` et la section entière disparaît : jamais de
+              titre orphelin au-dessus du vide. */}
           {result.conseils.map((c, i) => (
             <div key={i} style={{ display: "flex", gap: 7, fontSize: 12, color: "#374151", lineHeight: 1.45 }}>
-              <span style={{ color: C.teal, fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
+              <span style={{ color: C.teal, fontWeight: 700, flexShrink: 0 }}>
+                {result.conseils.length > 1 ? `${i + 1}.` : "•"}
+              </span>
               <span>{c}</span>
             </div>
           ))}

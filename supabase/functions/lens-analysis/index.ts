@@ -11,6 +11,10 @@ import { construireContexteArticle, redigerAnnoncesPlateformes } from "../_share
 // Préparation des images (2026-09-05) : mesure, réduction sous la limite de
 // l'API, écartement tracé. Détail complet et raisons dans le module.
 import { preparerPhotos, tracePhoto, type PhotoPreparee } from "./images.ts";
+// Cohérence conseils / attributs (2026-09-15) : un attribut resté « non testé »
+// ne peut pas devenir un argument de vente. Module PARTAGÉ et sans dépendance
+// Deno, pour être rejouable par Node (scripts/conseils-coherents-selftest.mjs).
+import { retirerConseilsContredits } from "../_shared/conseils-coherents.ts";
 
 const ALLOWED_ORIGINS = ["https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173"];
 
@@ -419,7 +423,7 @@ ${tableauFamilles()}
 2ter. THE SEARCH MAY — AND MUST — CONTRADICT THE OBJECT. The lock above covers the BRAND only, because a brand is READ and a search cannot read. The object is a different matter: it was NAMED at step 0, possibly assumed, and the search is the only outside check it will ever get. So if the results are incompatible with the name you wrote in "objet" — the listings that come back describe something else, the prices or dimensions match nothing you can see, the reference points to an entirely different product — then it is YOUR "objet" that is wrong. Go back to it, correct it, set "objet_source" to "deduit", and redo the estimate on the corrected object, saying so in notes. NEVER bend the rest of the reply to agree with an object the search contradicts, and never keep an object simply because comparable listings for it were easy to find: finding listings for shears proves that shears exist, never that the item in the photo is a pair of shears.`);
     const etapesMarche = estIdentify ? "" : `3. PRICE ESTIMATION: Always base prices on a real web search. BUILD THE QUERY FROM WHAT YOU ACTUALLY READ, in this order of preference: (a) the manufacturer reference when you have one — it is the most discriminating term there is; (b) brand + commercial model; (c) failing both, the name you wrote in "objet" plus its price-setting attributes ("cordless drill 18V 2 batteries", "solid oak chest of drawers 4 drawers") — that name and no other, never a nearby object that would be easier to price. NEVER build a query on a brand you did not read on the item: a price estimate sourced from a hallucinated brand is the worst possible outcome — it is wrong AND it looks sourced. When marque is null, that is not a reason to skip the search: search the object type, and say so in notes ("price based on comparable listings for this type of X").
    Query: "[brand] [item type] Vinted price" or site:vinted.com. Fallback: eBay. Set fourchette_min/fourchette_max AND fourchette_marche.bas/moyen/haut from actual listings. Cite source in notes (e.g. "Based on 5 Vinted listings"). Also fill "annonces_marche": the INDIVIDUAL listings you actually based the range on — those only, never every raw result — each with titre (the title as it appears in the search results), prix (number, in euros) and plateforme ("Vinted", "eBay", "Leboncoin"…), 8 at most. INVENTING or completing a listing is FORBIDDEN: a listing whose title or price does not appear in the search results is LEFT OUT — omit rather than guess. No usable individual listing → annonces_marche=null, and the range stays set exactly as described above. If no data: confiance="basse".
-4. SPEED & PLATFORMS: Estimate vitesse_vente (rapide/moyen/lent) with vitesse_vente_explication. Order plateformes by best fit for this item. Provide exactly 2–3 concrete conseils to maximise the sale.
+4. SPEED & PLATFORMS: Estimate vitesse_vente (rapide/moyen/lent) with vitesse_vente_explication. Order plateformes by best fit for this item. Provide exactly 2–3 concrete conseils to maximise the sale. RE-READ attributs_visibles BEFORE writing them: an attribute you left at "non testé" is NOT a selling point — never write a conseil that claims it ("highlight the tested working order" while fonctionne is "non testé" contradicts your own reading on the same screen); advise photographing it instead, or say nothing about it.
 5. SCORE: Rate 0–10 based on potential margin, demand, and ease of resale.
 `;
     const etape8 = estIdentify
@@ -464,7 +468,7 @@ ${etape8}`;
 2ter. LA RECHERCHE PEUT — ET DOIT — CONTREDIRE L'OBJET. Le verrou ci-dessus vaut pour la MARQUE seule, parce qu'une marque se LIT et qu'une recherche ne sait pas lire. L'objet, c'est autre chose : il a été NOMMÉ à l'étape 0, peut-être supposé, et la recherche est le seul regard extérieur qu'il recevra jamais. Donc si les résultats sont incompatibles avec le nom que tu as écrit dans "objet" — les annonces qui reviennent décrivent autre chose, les prix ou les dimensions ne correspondent à rien de ce que tu vois, la référence renvoie à un tout autre produit — alors c'est TON "objet" qui est faux. Reviens dessus, corrige-le, remets "objet_source" à "deduit", refais l'estimation sur l'objet corrigé et dis-le dans notes. Ne plie JAMAIS le reste de la réponse pour qu'il s'accorde avec un objet que la recherche dément, et ne garde jamais un objet au motif qu'on lui a trouvé des annonces comparables facilement : trouver des annonces de cisailles prouve que les cisailles existent, jamais que l'objet en photo en est une.`);
   const etapesMarcheFr = estIdentify ? "" : `3. ESTIMATION PRIX : Toujours baser les prix sur une web search réelle. CONSTRUIS LA REQUÊTE À PARTIR DE CE QUE TU AS RÉELLEMENT LU, dans cet ordre de préférence : (a) la référence fabricant quand tu en as une — c'est le terme le plus discriminant qui existe ; (b) marque + modèle commercial ; (c) à défaut des deux, le nom que tu as écrit dans "objet" accompagné de ses attributs qui font le prix (« perceuse sans fil 18V 2 batteries », « commode chêne massif 4 tiroirs ») — ce nom-là et aucun autre, jamais un objet voisin qui serait plus facile à coter. NE JAMAIS construire une requête sur une marque que tu n'as pas lue sur l'objet : une estimation de prix fondée sur une marque hallucinée est le pire cas possible — elle est fausse ET elle a l'air sourcée. Une marque null n'est pas une raison de sauter la recherche : cherche le type d'objet, et dis-le dans notes (« prix établi à partir d'annonces comparables de X du même type »).
    Requête : "[marque] [type] Vinted prix" ou site:vinted.fr. Fallback : eBay.fr ou Leboncoin. Fixer fourchette_min/fourchette_max ET fourchette_marche.bas/moyen/haut à partir des annonces trouvées. Citer la source dans notes (ex : "Prix basé sur 5 annonces Vinted"). Remplis aussi "annonces_marche" : les annonces INDIVIDUELLES sur lesquelles tu as réellement fondé la fourchette — celles-là seulement, jamais tous les résultats bruts — chacune avec titre (le titre tel qu'il apparaît dans les résultats de recherche), prix (nombre, en euros) et plateforme (« Vinted », « eBay », « Leboncoin »…), 8 au maximum. INTERDIT d'inventer ou de compléter une annonce : une annonce dont le titre ou le prix n'apparaît pas dans les résultats de recherche est ÉCARTÉE — omets plutôt que deviner. Aucune annonce individuelle exploitable → annonces_marche=null, et la fourchette reste fixée exactement comme décrit ci-dessus. Si aucune donnée : confiance="basse".
-4. VITESSE ET PLATEFORMES : Estimer vitesse_vente (rapide/moyen/lent) avec vitesse_vente_explication. Ordonner les plateformes par pertinence pour cet article. Fournir exactement 2 à 3 conseils concrets dans le champ conseils pour maximiser la vente.
+4. VITESSE ET PLATEFORMES : Estimer vitesse_vente (rapide/moyen/lent) avec vitesse_vente_explication. Ordonner les plateformes par pertinence pour cet article. Fournir exactement 2 à 3 conseils concrets dans le champ conseils pour maximiser la vente. RELIS attributs_visibles AVANT de les écrire : un attribut que tu as laissé à « non testé » n'est PAS un argument de vente — n'écris jamais un conseil qui l'affirme (« mettre en avant le fonctionnement testé » alors que fonctionne vaut « non testé » contredit ta propre lecture sur le même écran) ; conseille plutôt de le photographier, ou n'en parle pas.
 5. SCORE : Note de 0 à 10 basée sur la marge potentielle, la demande et la facilité de revente.
 `;
   const etape8Fr = estIdentify
@@ -2903,6 +2907,28 @@ serve(async (req) => {
           + ` (achat=${prix.achat ?? "-"} vente=${prix.vente ?? "-"}) retirée(s)`,
         );
         logMeta = { ...logMeta, prix_texte_divergent: prixDivergents };
+      }
+    }
+
+    // ── UN ATTRIBUT « NON TESTÉ » N'EST PAS UN ARGUMENT (2026-09-15) ────────
+    // Hors des deux branches ci-dessus, et volontairement : elles traitent le
+    // PRIX, ce filtre-ci traite les ATTRIBUTS, et il doit s'appliquer que
+    // l'autorité de prix ait été retirée ou non.
+    // Placé ICI, tout à la fin, parce qu'il doit voir les attributs APRÈS
+    // assainirSortie : c'est elle qui réécrit `fonctionne: "oui"` en « non
+    // testé » (aucune photo ne montre un outil en marche), et donc elle qui
+    // crée l'essentiel des contradictions. Tourner avant elle ne verrait rien.
+    // La consigne de prompt (étape 4) ne peut pas couvrir ce cas : elle
+    // s'applique au modèle, avant la neutralisation.
+    if (!estIdentify) {
+      const coherence = retirerConseilsContredits(itemData.conseils, itemData.attributs_visibles);
+      if (coherence.retires) {
+        itemData.conseils = coherence.conseils;
+        console.warn(
+          `[lens-analysis] ${coherence.retires} conseil(s) affirmant un attribut « non testé » retiré(s)`
+          + ` : ${coherence.motifs.map((m) => `« ${m} »`).join(", ")}`,
+        );
+        logMeta = { ...logMeta, conseils_contredits: coherence.retires };
       }
     }
 

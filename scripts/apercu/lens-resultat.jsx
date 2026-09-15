@@ -23,6 +23,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { LensAnalysisResult } from '../../src/tabs/LensTab';
+// La VRAIE garde serveur, pas une imitation : la capture montre donc l'écran
+// réellement servi après déploiement, conseil contredit retiré compris.
+import { retirerConseilsContredits } from '../../supabase/functions/_shared/conseils-coherents.ts';
 import '../../src/base.css';
 import '../../src/App.redesign.css';
 
@@ -161,6 +164,11 @@ function Telephone({ legende, children }) {
   );
 }
 
+/** Ce que lens-analysis renverra désormais : la garde tourne avant l'envoi. */
+function servi(scan) {
+  return { ...scan, conseils: retirerConseilsContredits(scan.conseils, scan.attributs_visibles).conseils };
+}
+
 function Apercu() {
   const commun = {
     lang: 'fr', currency: 'EUR', lensAdded: false,
@@ -169,14 +177,14 @@ function Apercu() {
   };
   return (
     <div style={{ display: 'flex', gap: 24, padding: 24, alignItems: 'flex-start', background: '#F6F5F1', minHeight: '100vh' }}>
-      <Telephone legende="1 · Bosch IXO — « non testé » ⇒ le badge photo s'affiche">
+      <Telephone legende="1 · Bosch AVANT la garde — le conseil n°1 contredit « non testé »">
         <LensAnalysisResult result={BOSCH} lensBuy="" {...commun} />
       </Telephone>
-      <Telephone legende="2 · le même, prix d'achat saisi (12 €) ⇒ verdict et marge">
-        <LensAnalysisResult result={BOSCH} lensBuy="12" {...commun} />
+      <Telephone legende="2 · Bosch APRÈS la garde — conseil n°1 retiré, les 2 autres intacts">
+        <LensAnalysisResult result={servi(BOSCH)} lensBuy="12" {...commun} />
       </Telephone>
-      <Telephone legende="3 · Marc Cain — rien de « non testé » ⇒ AUCUN badge">
-        <LensAnalysisResult result={ROBE} lensBuy="" {...commun} />
+      <Telephone legende="3 · Marc Cain — rien de « non testé » ⇒ aucun badge, aucun retrait">
+        <LensAnalysisResult result={servi(ROBE)} lensBuy="" {...commun} />
       </Telephone>
     </div>
   );
