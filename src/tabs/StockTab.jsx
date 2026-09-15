@@ -3183,7 +3183,40 @@ const texteErreurRepublishAuto = (code, fr) => {
 //    laisse croire qu'en supprimer récupère de la limite. Mais répété sur
 //    chaque carte, ça devient un reproche : une ligne, pas douze.
 // ═══════════════════════════════════════════════════════════════════════════
-function BrouillonsSection({ lang, fmt, brouillons, onPublier, onRanger, onSupprimer }) {
+// ── EN-TÊTE DE SECTION REPLIABLE (2026-09-15 soir) ───────────────────────────
+// Une SEULE ligne d'environ 44 px : chevron, nom, pastille de compte, et à
+// droite ce que la section dit d'elle-même (sa valeur, sa mention). Partagé par
+// « Brouillons » et « En stock » — deux en-têtes recopiés divergeraient au
+// premier ajustement, et c'est précisément l'empilement qu'on retire.
+// ⚠️ Le repli est un état d'AFFICHAGE : il ne touche ni le filtrage, ni les
+//    compteurs, ni la base. La pastille et la valeur restent LUES replié.
+function EnTeteSection({ titre, compte, droite, ouvert, onToggle, lang }) {
+  return (
+    <button
+      onClick={onToggle}
+      aria-expanded={ouvert}
+      style={{width:"100%",display:"flex",alignItems:"center",gap:8,minHeight:44,padding:"0 2px",
+        background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+      <span aria-hidden="true" style={{fontSize:13,color:"#8A8578",width:12,flexShrink:0,
+        transform:ouvert?"rotate(90deg)":"none",transition:"transform .15s"}}>›</span>
+      <span style={{fontSize:13,fontWeight:700,color:"#10201B",flexShrink:0}}>{titre}</span>
+      {compte != null && (
+        <span style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700,flexShrink:0}}>
+          {compte}
+        </span>
+      )}
+      <span style={{flex:1}}/>
+      {droite && (
+        <span style={{fontSize:12,color:"#8A8578",fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>{droite}</span>
+      )}
+      <span className="sr-only" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>
+        {ouvert ? (lang === 'en' ? 'Collapse' : 'Replier') : (lang === 'en' ? 'Expand' : 'Déplier')}
+      </span>
+    </button>
+  );
+}
+
+function BrouillonsSection({ lang, fmt, brouillons, onPublier, onRanger, onSupprimer, ouvert, onToggle }) {
   const fr = lang !== 'en';
   const [enCours, setEnCours] = useState(null); // id en cours de rangement
   // Pas de section vide, jamais : elle n'existe que tant qu'il y a du travail
@@ -3193,27 +3226,24 @@ function BrouillonsSection({ lang, fmt, brouillons, onPublier, onRanger, onSuppr
     // MÊME conteneur que « En stock » / « Vendus » : c'est une section, pas un
     // encart. Même fond, même rayon, même bordure — aucune couleur d'alerte :
     // rien n'a échoué ici.
-    <div style={{background:"#F6F5F1",borderRadius:16,padding:16,border:"1px solid #E7E3D8"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
-          {fr ? 'Brouillons' : 'Drafts'}
-        </div>
-        {/* Même pastille de compte que la section En stock. */}
-        <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,flexShrink:0}}>
-          {brouillons.length} {fr ? (brouillons.length > 1 ? 'fiches' : 'fiche') : (brouillons.length > 1 ? 'drafts' : 'draft')}
-        </div>
-      </div>
-      {/* LA LIGNE DU QUOTA — discrète, intégrée, UNE fois pour toute la section.
-          Les brouillons sont DÉJÀ décomptés (le débit a lieu à la génération) :
-          le taire laisserait croire qu'en supprimer récupère de la limite.
-          ⛔ Jamais sur une carte : répétée douze fois, la même phrase devient un
-             reproche. Ni bandeau, ni encadré, ni avertissement — une ligne. */}
-      <div style={{fontSize:11,color:"#8A8578",lineHeight:1.45,marginBottom:12}}>
-        {fr
-          ? "Annonces générées, pas encore publiées — déjà décomptées de ta limite."
-          : "Listings generated, not published yet — already counted towards your limit."}
-      </div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{background:"#F6F5F1",borderRadius:16,padding:"6px 16px 16px",border:"1px solid #E7E3D8"}}>
+      {/* LE QUOTA SE DIT DANS L'EN-TÊTE, à droite, en 12px muet : il reste donc
+          LU même section repliée — ce que la ligne posée à l'intérieur ne
+          faisait pas. Les brouillons sont DÉJÀ décomptés (le débit a lieu à la
+          génération) et le taire laisserait croire qu'en supprimer récupère de
+          la limite.
+          ⛔ Jamais sur une carte : répétée douze fois, la phrase devient un
+             reproche. Ni bandeau, ni encadré, ni avertissement. */}
+      <EnTeteSection
+        lang={lang}
+        titre={fr ? 'Brouillons' : 'Drafts'}
+        compte={brouillons.length}
+        droite={fr ? 'déjà décomptés' : 'already counted'}
+        ouvert={ouvert}
+        onToggle={onToggle}
+      />
+      {!ouvert ? null : (
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:6}}>
         {brouillons.map(({ item, fiche }) => {
           const manques = manquesDeLaFiche(fiche, fr ? 'fr' : 'en');
           const photo = urlsPhotos(item.photos)[0] ?? null;
@@ -3260,6 +3290,7 @@ function BrouillonsSection({ lang, fmt, brouillons, onPublier, onRanger, onSuppr
           );
         })}
       </div>
+      )}
     </div>
   );
 }
@@ -5362,7 +5393,25 @@ const StockTab = memo(function StockTab({
   const [triStock, setTriStock] = useState('defaut');
   const [filtreDiffusion, setFiltreDiffusion] = useState(null); // {mode,platform}
   const [filtreProbleme, setFiltreProbleme] = useState(null);   // 'a_completer'|'en_echec'
-  const [panneauDiffusion, setPanneauDiffusion] = useState(false);
+  // ── REPLI DES SECTIONS, MÉMORISÉ (2026-09-15 soir) ───────────────────────
+  // Sur un iPhone, les articles commençaient aux deux tiers de l'écran. Les
+  // sections se replient donc, et on RESPECTE le choix : replié d'office on
+  // oublie que les brouillons existent, ouvert d'office pour toujours ça
+  // encombre. Première visite → ouvert.
+  // ⚠️ AFFICHAGE SEUL : ne touche ni le filtrage, ni les compteurs, ni la base.
+  // localStorage (pas sessionStorage) : une préférence de présentation survit à
+  // la fermeture de l'onglet, sinon elle n'est pas une préférence.
+  const lirePref = (cle, defaut) => {
+    try { const v = localStorage.getItem(cle); return v == null ? defaut : v === '1'; }
+    catch { return defaut; }
+  };
+  const [sectionBrouillonsOuverte, setSectionBrouillonsOuverte] = useState(() => lirePref('fs_stock_brouillons_ouvert', true));
+  const [sectionStockOuverte, setSectionStockOuverte] = useState(() => lirePref('fs_stock_en_stock_ouvert', true));
+  const basculerSection = (cle, set) => set(v => {
+    const suivant = !v;
+    try { localStorage.setItem(cle, suivant ? '1' : '0'); } catch { /* stockage indisponible : le repli marche, il ne survit juste pas */ }
+    return suivant;
+  });
   const [menuTri, setMenuTri] = useState(false);
   const aucunFiltreStock = () => { setFiltreDiffusion(null); setFiltreProbleme(null); };
   // Même dessin que le bouton « Marques (N) › » voisin : on n'introduit pas
@@ -7140,51 +7189,136 @@ const StockTab = memo(function StockTab({
             onPublier={ouvrirStepper}
             onRanger={rangerBrouillon}
             onSupprimer={(item)=>delItem(item.id)}
+            ouvert={sectionBrouillonsOuverte}
+            onToggle={()=>basculerSection('fs_stock_brouillons_ouvert',setSectionBrouillonsOuverte)}
           />
 
           {/* ── EN STOCK ── */}
-          <div style={{background:"#F6F5F1",borderRadius:16,padding:16,border:"1px solid #E7E3D8"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-              {/* flexWrap ajouté le 08/09 : deux boutons de plus dans cette
-                  ligne, elle doit pouvoir passer à la ligne sur un téléphone
-                  au lieu de pousser le compteur hors de l'écran. */}
-              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>{t('enStockLabel')}</div>
-                {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
-                {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterMarque==="Toutes"?"#1B6E62":"#F2F0E9",color:filterMarque==="Toutes"?"#fff":"#6B7A75"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{padding:"3px 9px",borderRadius:99,fontSize:10,fontWeight:700,cursor:"pointer",border:"1px solid rgba(0,0,0,0.1)",background:"transparent",color:"#6B7A75",lineHeight:1.4,fontFamily:"inherit"}}>{pillsExpandedStock?`‹ ${lang==='en'?'Close':'Fermer'}`:`${lang==='en'?'Brands':'Marques'} (${_b.length}) ›`}</button></>);})()}
-                {/* ── Diffusion et Tri (2026-09-08) ──────────────────────────
-                    Ils ENTRENT dans cette ligne au lieu de créer une rangée :
-                    « Toutes » et « Marques (N) » y sont déjà des filtres
-                    repliés, on réutilise leur patron plutôt que d'en inventer
-                    un second. Zéro hauteur ajoutée à l'écran au repos. */}
-                <button onClick={()=>{setPanneauDiffusion(v=>!v);setMenuTri(false);}}
-                  style={btnLigneStock(!!filtreDiffusion||panneauDiffusion)}>
-                  {lang==='fr'?'Diffusion':'Where'} {panneauDiffusion?'▴':'▾'}
-                </button>
-                <button onClick={()=>{setMenuTri(v=>!v);setPanneauDiffusion(false);}}
-                  style={btnLigneStock(triStock!=='defaut'||menuTri)}>
-                  {lang==='fr'?'Trier':'Sort'}{triStock!=='defaut'?` : ${libelleTri(triStock,lang)}`:''} {menuTri?'▴':'▾'}
-                </button>
-              </div>
-              {/* ── Filtre par boutique Vinted (multi-boutiques, 2026-09-03) —
-                  affiché UNIQUEMENT à partir de deux boutiques confirmées :
-                  le parc mono-boutique ne voit rien. Filtre sur
-                  vinted_account_id (estampillé à l'observation) ; les
-                  articles pas encore observés restent visibles sur
-                  « Toutes ». */}
-              {(()=>{
-                // Reflète le filtre actif (catégorie/marque/recherche) au lieu du total global :
-                // même formule que stockQty/stockVal (App.jsx) mais appliquée à stockFiltre.
-                const _fQty=stockFiltre.reduce((a,i)=>a+(i.quantite||1),0);
-                // PIÈGE : `a+i.buy*(i.quantite||1)` sans même un `||0` — un seul
-                // article au prix d'achat undefined produisait un NaN qui
-                // contaminait TOUT le total (« NaN € »), et un null valait 0 €.
-                // totalInvesti() écarte les articles au prix inconnu ; le compteur
-                // d'articles (_fQty), lui, continue de tous les compter.
-                const _fVal=totalInvesti(stockFiltre);
-                return <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700}}>{_fQty} {lang==='fr'?'art.':'items'} · {fmt(_fVal)}</div>;
-              })()}
+          <div style={{background:"#F6F5F1",borderRadius:16,padding:"6px 16px 16px",border:"1px solid #E7E3D8"}}>
+            {/* ── L'EN-TÊTE TIENT SUR UNE LIGNE (2026-09-15 soir) ───────────
+                Ici vivaient, sur la MÊME rangée : le titre, la pastille « Plan
+                gratuit », le filtre « Toutes », « Marques (7) › », « Diffusion »
+                et « Trier » — avec un flexWrap qui les faisait passer à deux ou
+                trois lignes sur un téléphone, puis la pastille de compte. Sur
+                l'iPhone de Nico, les articles commençaient aux deux tiers de
+                l'écran. L'en-tête ne porte plus que ce qu'une section dit
+                d'elle-même : son nom, son compte, sa valeur. Les filtres
+                descendent sur leur propre ligne, juste en dessous.
+                La valeur passe à DROITE de l'en-tête au lieu d'occuper sa propre
+                pastille flottante — même calcul, au centime près. */}
+            {(()=>{
+              // Reflète le filtre actif (catégorie/marque/recherche) au lieu du total global :
+              // même formule que stockQty/stockVal (App.jsx) mais appliquée à stockFiltre.
+              const _fQty=stockFiltre.reduce((a,i)=>a+(i.quantite||1),0);
+              // PIÈGE : `a+i.buy*(i.quantite||1)` sans même un `||0` — un seul
+              // article au prix d'achat undefined produisait un NaN qui
+              // contaminait TOUT le total (« NaN € »), et un null valait 0 €.
+              // totalInvesti() écarte les articles au prix inconnu ; le compteur
+              // d'articles (_fQty), lui, continue de tous les compter.
+              const _fVal=totalInvesti(stockFiltre);
+              return (
+                <EnTeteSection
+                  lang={lang}
+                  titre={t('enStockLabel')}
+                  compte={_fQty}
+                  droite={fmt(_fVal)}
+                  ouvert={sectionStockOuverte}
+                  onToggle={()=>basculerSection('fs_stock_en_stock_ouvert',setSectionStockOuverte)}
+                />
+              );
+            })()}
+
+            {!sectionStockOuverte?null:<>
+            {/* ── LES FILTRES, UNE SEULE LIGNE ──────────────────────────────
+                [Toutes] [Marques] [Trier ⌄] — et elle DÉFILE horizontalement
+                plutôt que de passer à deux lignes : repasser à deux lignes,
+                c'est exactement ce qu'on vient de retirer.
+                « Diffusion » a fusionné dans « Trier » : un seul bouton, un seul
+                panneau, aucune option perdue (cf. le panneau plus bas).
+                « Marques » perd son compte et son chevron — le nom suffit, le
+                détail est dans le menu. La pastille « Plan gratuit » reste ici :
+                c'est un état de compte, pas un filtre, et elle ne s'affiche que
+                sur un compte gratuit au plafond. */}
+            <div style={{display:"flex",alignItems:"center",gap:6,overflowX:"auto",flexWrap:"nowrap",padding:"2px 0 6px",WebkitOverflowScrolling:"touch"}}>
+              {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44",flexShrink:0,whiteSpace:"nowrap"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
+              {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"5px 12px",borderRadius:99,fontSize:11.5,fontWeight:700,cursor:"pointer",border:"none",flexShrink:0,whiteSpace:"nowrap",fontFamily:"inherit",background:filterMarque==="Toutes"?"#1B6E62":"#F2F0E9",color:filterMarque==="Toutes"?"#fff":"#6B7A75"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{...btnLigneStock(pillsExpandedStock||filterMarque!=="Toutes"),flexShrink:0,whiteSpace:"nowrap"}}>{lang==='en'?'Brands':'Marques'}{pillsExpandedStock?' ▴':''}</button></>);})()}
+              {/* Trier — porte AUSSI la diffusion depuis la fusion. Le libellé
+                  dit ce qui est actif, sinon on ne saurait pas pourquoi la
+                  liste est courte : tri nommé, et point vert si un filtre de
+                  diffusion est posé. */}
+              <button onClick={()=>{setMenuTri(v=>!v);}}
+                style={{...btnLigneStock(triStock!=='defaut'||!!filtreDiffusion||menuTri),flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:5}}>
+                {filtreDiffusion&&<span aria-hidden="true" style={{width:6,height:6,borderRadius:99,background:"currentColor",display:"inline-block"}}/>}
+                {lang==='fr'?'Trier':'Sort'}{triStock!=='defaut'?` : ${libelleTri(triStock,lang)}`:''} {menuTri?'▴':'▾'}
+              </button>
             </div>
+
+            {/* ── LES TROIS BANDEAUX SONT DEVENUS TROIS PASTILLES ───────────
+                (2026-09-15 soir) Ici s'empilaient, pleine largeur et tous les
+                jours : « 1 En échec », « 3 articles sans prix d'achat » avec sa
+                phrase d'explication, et « Republier en lot (11) » avec la
+                sienne (« Supprime puis recrée chaque annonce… 4983 restantes ce
+                mois-ci »). Trois blocs de deux lignes chacun, avant le premier
+                article.
+                Chaque pastille reste TAPABLE et ouvre EXACTEMENT le détail
+                existant : rien n'est retiré, le texte est replié. Les phrases
+                explicatives se lisent une fois, dans le détail ouvert — pas
+                tous les jours sur l'écran d'accueil.
+                ⛔ Une pastille dont le compte est à zéro n'existe pas.
+                ⛔ La ligne DÉFILE, elle ne passe jamais à deux lignes.
+                L'échec garde son fond rouge pâle — visible du coin de l'œil, il
+                ne crie plus ; les autres sont neutres. */}
+            {(()=>{
+              const pastille=(cle,{actif,couleur,fond,bord,point,emoji,libelle,onClick,eteinte})=>(
+                <button key={cle} onClick={onClick} disabled={!!eteinte}
+                  style={{display:"inline-flex",alignItems:"center",gap:6,minHeight:34,padding:"6px 12px",borderRadius:99,
+                    cursor:eteinte?"default":"pointer",opacity:eteinte?0.45:1,
+                    fontFamily:"inherit",fontSize:12,fontWeight:700,flexShrink:0,whiteSpace:"nowrap",
+                    background:actif?couleur:fond,border:`1px solid ${actif?couleur:bord}`,color:actif?"#fff":couleur}}>
+                  {point&&<span aria-hidden="true" style={{width:6,height:6,borderRadius:99,background:"currentColor",flex:"0 0 auto"}}/>}
+                  {emoji&&<span aria-hidden="true" style={{fontSize:13}}>{emoji}</span>}
+                  {libelle}
+                </button>
+              );
+              const p=[];
+              if(comptesStock.aCompleter>0)p.push(pastille('a_completer',{
+                actif:filtreProbleme==='a_completer',couleur:"#8A6100",fond:"#FFF6E3",bord:"#EED9A6",point:true,
+                libelle:`${comptesStock.aCompleter} ${lang==='fr'?'à compléter':'to complete'}`,
+                onClick:()=>{setFiltreProbleme(filtreProbleme==='a_completer'?null:'a_completer');setShowAllStock(false);setMenuTri(false);},
+              }));
+              if(comptesStock.enEchec>0)p.push(pastille('en_echec',{
+                actif:filtreProbleme==='en_echec',couleur:"#B91C1C",fond:"#FEF2F2",bord:"#FECACA",point:true,
+                libelle:String(comptesStock.enEchec),
+                onClick:()=>{setFiltreProbleme(filtreProbleme==='en_echec'?null:'en_echec');setShowAllStock(false);setMenuTri(false);},
+              }));
+              // Prix d'achat et Republication : la pastille ARME le mode, et le
+              // mode ouvre son propre en-tête détaillé (pa-call) juste en
+              // dessous — celui qui porte l'explication et la sortie. On ne
+              // montre donc la pastille que MODE FERMÉ, sinon les deux se
+              // répéteraient.
+              if(!modePrixAchat&&!modeRepublish&&nbSansPrix>0)p.push(pastille('sans_prix',{
+                actif:false,couleur:"#5C6560",fond:"#F7F5EF",bord:"#E7E3D8",emoji:"🏷",
+                libelle:`${nbSansPrix} ${lang==='fr'?'sans prix':'without price'}`,
+                onClick:()=>{setModePrixAchat(true);setPaSel(new Set());setPaOpenId(null);setPaErr(null);setMenuTri(false);},
+              }));
+              if(!modeRepublish&&!modePrixAchat&&republishActif&&repubActionnablesVue.length>0)p.push(pastille('republier',{
+                actif:false,couleur:"#5C6560",fond:"#F7F5EF",bord:"#E7E3D8",emoji:"🔁",
+                libelle:`${lang==='fr'?'Republier':'Repost'} ${repubActionnablesVue.length}`,
+                // Maintenance en cours : la pastille s'éteint au lieu de faire
+                // semblant de répondre — même règle que le bandeau qu'elle
+                // remplace. (Le palier Free, lui, garde une pastille PLEINEMENT
+                // active : c'est un geste réservé, pas un bouton cassé — le tap
+                // ouvre la modale de conversion.)
+                eteinte:repubEnPause,
+                onClick:()=>{
+                  if(repubEnPause)return;
+                  if(repubLotReserve){ouvrirModaleLotReserve();return;}
+                  setModeRepublish(true);setRepubSel(new Set());setRepubLot(null);setMenuTri(false);
+                },
+              }));
+              if(!p.length)return null;
+              return <div style={{display:"flex",alignItems:"center",gap:7,overflowX:"auto",flexWrap:"nowrap",marginBottom:10,paddingBottom:2,WebkitOverflowScrolling:"touch"}}>{p}</div>;
+            })()}
 
             {/* ── PANNEAU « DIFFUSION » (2026-09-08) ────────────────────────
                 Les deux rangées vivent ici, dépliées à la demande : hauteur
@@ -7195,16 +7329,33 @@ const StockTab = memo(function StockTab({
                 ⛔ « Pas encore sur X » sert à TROUVER les articles, jamais à en
                 envoyer un lot : la publication passe toujours par le stepper,
                 un article à la fois. Aucun bouton d'ensemble ici. */}
-            {panneauDiffusion&&(
+            {menuTri&&(
               <div style={{marginBottom:12,background:"#fff",border:"1px solid #E7E3D8",borderRadius:14,padding:"10px 10px 11px"}}>
+                {/* ── TRI ── (fusionné ici le 2026-09-15 soir : « Diffusion » et
+                    « Trier » étaient deux boutons et deux panneaux dans une
+                    ligne de filtres qui débordait. Un seul bouton, un seul
+                    panneau, AUCUNE option perdue — les trois jeux se suivent.) */}
                 <div style={{fontSize:9.5,fontWeight:700,letterSpacing:".09em",textTransform:"uppercase",color:"#8A8578",margin:"0 2px 6px"}}>
+                  {lang==='fr'?'Trier':'Sort'}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:2,marginBottom:4}}>
+                  {TRIS_STOCK.map(k=>(
+                    <button key={k} onClick={()=>{setTriStock(k);setMenuTri(false);setShowAllStock(false);}}
+                      style={{textAlign:"left",padding:"9px 11px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"inherit",
+                        fontSize:12.5,fontWeight:triStock===k?700:600,
+                        background:triStock===k?"#E7F3F0":"transparent",color:triStock===k?"#1B6E62":"#5C6560"}}>
+                      {triStock===k?'✓ ':''}{libelleTri(k,lang)}
+                    </button>
+                  ))}
+                </div>
+                <div style={{fontSize:9.5,fontWeight:700,letterSpacing:".09em",textTransform:"uppercase",color:"#8A8578",margin:"11px 2px 6px"}}>
                   {lang==='fr'?'En ligne sur':'Live on'}
                 </div>
                 <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:3}}>
                   {PLATEFORMES_STOCK.filter(p=>comptesStock.enLigne[p]>0).map(p=>{
                     const actif=filtreDiffusion?.mode==='en_ligne'&&filtreDiffusion.platform===p;
                     return (
-                      <button key={`el-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'en_ligne',platform:p});setPanneauDiffusion(false);setShowAllStock(false);}}
+                      <button key={`el-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'en_ligne',platform:p});setMenuTri(false);setShowAllStock(false);}}
                         style={chipDiffusion(actif,false)}>
                         {LIBELLE_PLATEFORME[p]} <span style={{color:actif?"rgba(255,255,255,.72)":"#8A8578"}}>{comptesStock.enLigne[p]}</span>
                       </button>
@@ -7218,7 +7369,7 @@ const StockTab = memo(function StockTab({
                   {PLATEFORMES_STOCK.filter(p=>comptesStock.pasEncore[p]>0).map(p=>{
                     const actif=filtreDiffusion?.mode==='pas_encore'&&filtreDiffusion.platform===p;
                     return (
-                      <button key={`pe-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'pas_encore',platform:p});setPanneauDiffusion(false);setShowAllStock(false);}}
+                      <button key={`pe-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'pas_encore',platform:p});setMenuTri(false);setShowAllStock(false);}}
                         style={chipDiffusion(actif,true)}>
                         {LIBELLE_PLATEFORME[p]} <span style={{color:actif?"rgba(255,255,255,.72)":"#8A8578"}}>{comptesStock.pasEncore[p]}</span>
                       </button>
@@ -7229,7 +7380,7 @@ const StockTab = memo(function StockTab({
                     // l'un n'est nulle part, l'autre est déjà en ligne ailleurs.
                     const actif=filtreDiffusion?.mode==='jamais';
                     return (
-                      <button onClick={()=>{setFiltreDiffusion(actif?null:{mode:'jamais'});setPanneauDiffusion(false);setShowAllStock(false);}}
+                      <button onClick={()=>{setFiltreDiffusion(actif?null:{mode:'jamais'});setMenuTri(false);setShowAllStock(false);}}
                         style={chipDiffusion(actif,true)}>
                         {lang==='fr'?'Jamais publié':'Never published'} <span style={{color:actif?"rgba(255,255,255,.72)":"#8A8578"}}>{comptesStock.jamais}</span>
                       </button>
@@ -7239,20 +7390,9 @@ const StockTab = memo(function StockTab({
               </div>
             )}
 
-            {/* ── MENU DE TRI — un bouton-menu, pas une rangée de chips de
-                plus : l'écran en porte déjà assez (décision Nico 08/09). */}
-            {menuTri&&(
-              <div style={{marginBottom:12,background:"#fff",border:"1px solid #E7E3D8",borderRadius:14,padding:6,display:"flex",flexDirection:"column",gap:2}}>
-                {TRIS_STOCK.map(k=>(
-                  <button key={k} onClick={()=>{setTriStock(k);setMenuTri(false);setShowAllStock(false);}}
-                    style={{textAlign:"left",padding:"9px 11px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"inherit",
-                      fontSize:12.5,fontWeight:triStock===k?700:600,
-                      background:triStock===k?"#E7F3F0":"transparent",color:triStock===k?"#1B6E62":"#5C6560"}}>
-                    {triStock===k?'✓ ':''}{libelleTri(k,lang)}
-                  </button>
-                ))}
-              </div>
-            )}
+            {/* (Le menu de tri du 08/09 vivait ici, dans son propre panneau.
+                Il a fusionné avec « Diffusion » juste au-dessus le 15/09 soir :
+                un bouton, un panneau, trois jeux d'options à la suite.) */}
 
             {/* ── FILTRES ACTIFS ────────────────────────────────────────────
                 Toujours sous les yeux dès qu'un filtre est posé : on ne doit
@@ -7287,44 +7427,10 @@ const StockTab = memo(function StockTab({
               </div>
             )}
 
-            {/* ── CE QUI APPELLE UNE ACTION ─────────────────────────────────
-                Deux chips PLEINS et colorés, contre les filtres creux et gris :
-                ce ne sont pas des filtres comme les autres, ce sont des choses
-                à traiter. Ambre = il manque une information à l'utilisatrice
-                (l'annonce est intacte) ; rouge = la publication a échoué de
-                NOTRE côté. Même registre de couleur que les pastilles de carte.
-                ⛔ La ligne s'efface entièrement à zéro : un compte sain ne la
-                voit jamais, et elle ne coûte alors aucune hauteur. */}
-            {(comptesStock.aCompleter>0||comptesStock.enEchec>0)&&(
-              <div style={{marginBottom:12,display:"flex",gap:7}}>
-                {comptesStock.aCompleter>0&&(()=>{
-                  const on=filtreProbleme==='a_completer';
-                  return (
-                    <button onClick={()=>{setFiltreProbleme(on?null:'a_completer');setShowAllStock(false);setPanneauDiffusion(false);setMenuTri(false);}}
-                      style={{flex:1,display:"flex",alignItems:"center",gap:7,minHeight:44,padding:"8px 10px",borderRadius:12,
-                        cursor:"pointer",fontFamily:"inherit",textAlign:"left",fontSize:12,
-                        background:on?"#8A6100":"#FFF6E3",border:`1px solid ${on?"#8A6100":"#EED9A6"}`,color:on?"#fff":"#8A6100"}}>
-                      <span style={{width:6,height:6,borderRadius:99,background:"currentColor",flex:"0 0 auto"}}/>
-                      <span style={{fontSize:16,fontWeight:700}}>{comptesStock.aCompleter}</span>
-                      <span style={{fontWeight:600,lineHeight:1.2}}>{lang==='fr'?'À compléter':'To complete'}</span>
-                    </button>
-                  );
-                })()}
-                {comptesStock.enEchec>0&&(()=>{
-                  const on=filtreProbleme==='en_echec';
-                  return (
-                    <button onClick={()=>{setFiltreProbleme(on?null:'en_echec');setShowAllStock(false);setPanneauDiffusion(false);setMenuTri(false);}}
-                      style={{flex:1,display:"flex",alignItems:"center",gap:7,minHeight:44,padding:"8px 10px",borderRadius:12,
-                        cursor:"pointer",fontFamily:"inherit",textAlign:"left",fontSize:12,
-                        background:on?"#B91C1C":"#FEF2F2",border:`1px solid ${on?"#B91C1C":"#FECACA"}`,color:on?"#fff":"#B91C1C"}}>
-                      <span style={{width:6,height:6,borderRadius:99,background:"currentColor",flex:"0 0 auto"}}/>
-                      <span style={{fontSize:16,fontWeight:700}}>{comptesStock.enEchec}</span>
-                      <span style={{fontWeight:600,lineHeight:1.2}}>{lang==='fr'?'En échec':'Failed'}</span>
-                    </button>
-                  );
-                })()}
-              </div>
-            )}
+            {/* (Les deux chips pleins « À compléter » et « En échec » du 08/09
+                vivaient ici, sur leur propre rangée pleine largeur. Ils sont
+                devenus deux pastilles de la ligne unique, plus haut — mêmes
+                couleurs, même filtre, même bascule au re-clic.) */}
 
             {boutiquesVinted.length>=2&&(
               <div style={{marginBottom:12}}>
@@ -7407,7 +7513,12 @@ const StockTab = memo(function StockTab({
             {/* ── Prix d'achat manquants : compteur-invitation cliquable ──
                 Même contrat que VentesTab : on n'oblige jamais, pas de rouge.
                 Reste affiché à 0 quand le mode est ouvert (sinon plus de sortie). */}
-            {(nbSansPrix>0||modePrixAchat)&&(
+            {/* ⚠️ MODE OUVERT SEULEMENT (2026-09-15 soir) : au repos, c'est la
+                pastille « N sans prix » de la ligne unique qui arme le mode.
+                Cet en-tête-ci reste le DÉTAIL — il porte l'explication (« Vinted
+                ne connaît pas ce que TU as payé… ») et la sortie. La phrase se
+                lit donc une fois, quand on ouvre, au lieu de tous les jours. */}
+            {modePrixAchat&&(
               <button className={`pa-call${modePrixAchat?" on":""}`}
                 onClick={()=>{setModePrixAchat(v=>!v);setPaSel(new Set());setPaOpenId(null);setPaErr(null);}}>
                 <span style={{fontSize:17,flexShrink:0}}>{modePrixAchat?"↩":"💡"}</span>
@@ -7500,7 +7611,12 @@ const StockTab = memo(function StockTab({
                 quelque chose à republier ; en mode, seuls les articles
                 ACTIONNABLES portent une case (bornes = pas de case, jamais un
                 échec post-clic). */}
-            {republishActif&&!modePrixAchat&&(repubActionnablesVue.length>0||modeRepublish)&&(
+            {/* ⚠️ MODE OUVERT SEULEMENT (2026-09-15 soir) : au repos, c'est la
+                pastille « Republier N » qui arme le mode. Cet en-tête-ci reste
+                le DÉTAIL, avec sa phrase (« Supprime puis recrée chaque
+                annonce… N restantes ce mois-ci ») et sa sortie — lue à
+                l'ouverture, plus tous les jours au-dessus du stock. */}
+            {republishActif&&!modePrixAchat&&modeRepublish&&(
               <button className={`pa-call${modeRepublish?" on":""}`}
                 /* Maintenance : on ne peut plus ENTRER en mode lot (grisé),
                    mais on peut toujours en SORTIR — sinon un utilisateur déjà
@@ -9167,6 +9283,10 @@ const StockTab = memo(function StockTab({
                 <div style={{height:24}}/>
               </div>
             )}
+            {/* Fin du repli : ce qui suit (l'automatisation de la
+                republication, É6) n'est PAS la liste du stock — le replier
+                avec elle retirerait une fonction, ce que ce lot s'interdit. */}
+            </>}
 
             {/* É6 : automatisation de la republication — avantage Pro,
                 réglable, arrêt propre affiché. La carte de sync du dressing,
