@@ -1,9 +1,23 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- OPLA — LOT 4 (a) : ouvrir la contrainte de plateforme
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⛔ ÉCRITE, PAS APPLIQUÉE. Nico valide et déclenche — comme toute migration
---    de ce projet. `supabase db push` reste INTERDIT (historiques divergents) :
---    cette migration s'applique SEULE, à la main, après relecture.
+-- ✅ APPLIQUÉE EN PROD LE 2026-09-15, sur validation explicite de Nico, qui avait
+--    relu l'état des deux contraintes avant de lever l'interdiction.
+--    Appliquée SEULE (jamais `supabase db push`, toujours interdit : historiques
+--    divergents). Les deux blocs DO ci-dessous ont été passés mot pour mot ; seul
+--    le BEGIN/COMMIT externe a été omis, l'outil d'application gérant sa propre
+--    transaction. Il reste dans le fichier pour un passage manuel au psql.
+--
+--    ÉTAT LU APRÈS APPLICATION (pg_get_constraintdef, recopié tel quel) :
+--      cross_post_jobs_platform_check
+--        CHECK ((platform = ANY (ARRAY['vinted'::text, 'leboncoin'::text,
+--               'beebs'::text, 'ebay'::text, 'vestiaire'::text, 'opla'::text])))
+--      platform_category_aspects_platform_check
+--        CHECK ((platform = ANY (ARRAY['vinted'::text, 'leboncoin'::text,
+--               'beebs'::text, 'ebay'::text, 'opla'::text])))
+--
+--    IDEMPOTENCE PROUVÉE, pas seulement annoncée : second passage des deux blocs,
+--    OID des contraintes INCHANGÉS (84342 et 84343) — rien n'a été recréé.
 --
 -- POURQUOI. Aujourd'hui un job Opla ne peut pas exister : la contrainte
 -- `cross_post_jobs_platform_check` n'accepte que vinted / leboncoin / beebs /
