@@ -36,6 +36,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 import { EXTENSION_LAST_COMMIT, EXTENSION_MIN_BUILD } from './build-id.mjs';
+import { estHoteDeChantier } from './hotes-livrables-cws.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, 'build', 'extension');
@@ -294,34 +295,16 @@ if (Date.parse(iso) < Date.parse(EXTENSION_LAST_COMMIT)) {
 const manifest = JSON.parse(fs.readFileSync(path.join(OUT_DIR, 'manifest.json'), 'utf8'));
 
 // ── 5ter. PÉRIMÈTRE D'HÔTES — ALLOWLIST FERMÉE (2026-09-14, chantier Opla) ───
-// Un hôte de plus dans le manifest, c'est un AVERTISSEMENT DE PERMISSION chez
-// TOUS les utilisateurs à la mise à jour, et une nouvelle revue au Chrome Web
-// Store. Pour un chantier à drapeau éteint, c'est non.
+// La liste vit dans scripts/hotes-livrables-cws.mjs : c'est la SOURCE DE VÉRITÉ
+// UNIQUE, partagée avec check:legal-permissions (qui n'exige sur
+// fillsell.app/legal que les hôtes livrables, et n'y tolère AUCUN hôte de
+// chantier). Le raisonnement complet et la marche à suivre pour livrer un
+// nouvel hôte y sont écrits.
 //
-// Le 14/09, `https://www.opla.co/*` a été ajouté au manifest SOURCE pour le
-// seul build unpacked (lot 2 : chrome.windows.update exige la permission
-// d'hôte). Nico charge l'extension depuis le dossier source — donc ce même
-// fichier sert de base à tous les paquets suivants, et l'oubli était
-// structurellement garanti.
-//
-// D'où cette garde, MÉCANIQUE et FAIL-CLOSED : tout motif d'hôte absent de la
-// liste ci-dessous fait ÉCHOUER l'empaquetage. Elle couvre host_permissions,
-// les `matches` des content_scripts ET ceux des web_accessible_resources —
-// les trois endroits d'où un hôte peut fuiter.
-//
-// ⚠️ Pour livrer un jour Opla pour de vrai : ajouter l'hôte ICI, dans le même
-// commit que le manifest, en connaissance de cause. C'est le seul geste qui
-// doit pouvoir lever la garde — jamais un oubli.
-const HOTES_LIVRABLES_CWS = [
-  'https://*.vinted.fr/*',
-  'https://*.vinted.com/*',
-  'https://*.leboncoin.fr/*',
-  'https://*.ebay.fr/*',
-  'https://*.ebay.com/*',
-  'https://*.beebs.app/*',
-  'https://fillsell.app/*',
-  'https://tojihnuawsoohlolangc.supabase.co/*',
-];
+// Garde MÉCANIQUE et FAIL-CLOSED : tout motif d'hôte absent de l'allowlist fait
+// ÉCHOUER l'empaquetage. Elle couvre host_permissions, les `matches` des
+// content_scripts ET ceux des web_accessible_resources — les trois endroits
+// d'où un hôte peut fuiter.
 const motifsDuManifest = [
   ...(manifest.host_permissions ?? []).map(m => ({ m, ou: 'host_permissions' })),
   ...(manifest.content_scripts ?? []).flatMap((cs, i) =>
@@ -329,7 +312,7 @@ const motifsDuManifest = [
   ...(manifest.web_accessible_resources ?? []).flatMap((w, i) =>
     (w.matches ?? []).map(m => ({ m, ou: `web_accessible_resources[${i}].matches` }))),
 ];
-const horsPerimetre = motifsDuManifest.filter(({ m }) => !HOTES_LIVRABLES_CWS.includes(m));
+const horsPerimetre = motifsDuManifest.filter(({ m }) => estHoteDeChantier(m));
 if (horsPerimetre.length) {
   die(`HÔTE HORS PÉRIMÈTRE dans le manifest du paquet — empaquetage REFUSÉ.
 
@@ -343,8 +326,10 @@ ${horsPerimetre.map(({ m, ou }) => `    ${m}\n      (${ou})`).join('\n')}
   pour le seul build UNPACKED du chantier Opla (drapeau éteint). Il ne doit pas
   partir en production.
     → Pour empaqueter : retirer l'hôte du manifest source, puis relancer.
-    → Pour livrer Opla volontairement : l'ajouter à HOTES_LIVRABLES_CWS ici,
-      dans le MÊME commit, en sachant ce que ça déclenche.`);
+    → Pour livrer Opla volontairement : l'ajouter à HOTES_LIVRABLES_CWS dans
+      scripts/hotes-livrables-cws.mjs, dans le MÊME commit, ET écrire sa ligne
+      de justification dans « extensionPermissions » (src/pages/Legal.jsx) — en
+      sachant ce que ça déclenche.`);
 }
 
 // 5bis. intégrité du manifest — NOM vérifié AUX OCTETS (2026-08-24).
