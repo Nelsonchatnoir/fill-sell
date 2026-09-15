@@ -6110,6 +6110,20 @@ export default function ListingPreviewScreen({
   //   publie_sans_plateforme→ le geste est parti SANS cette plateforme ;
   //   bloque_au_clic        → le clic n'a rien pu publier du tout.
   // Best-effort, jamais bloquant — une télémétrie ne coûte jamais une vente.
+  // ── TRACE DU MUR D'EXTENSION (2026-09-15) ─────────────────────────────────
+  // Jusqu'ici, une publication refusée faute d'extension ne laissait RIEN en
+  // base : ni log, ni colonne. Un mur et un abandon volontaire y étaient
+  // indistinguables — c'est ce qui a permis à la régression du 04/08 de durer
+  // six semaines sans que personne la voie. Même angle mort que les retraits du
+  // 13/09 (cf. src/utils/journalRetraits.js) : `track()` ne fait qu'un
+  // dataLayer.push côté navigateur, zéro écriture chez nous.
+  // Best-effort, jamais bloquant : une télémétrie ne coûte jamais une vente.
+  const logExtensionAbsente = (issue, info = {}) => {
+    if (!userId) return;
+    supabase.from("usage_logs")
+      .insert({ user_id: userId, feature: "extension_absente", metadata: { ...info, issue } })
+      .then(({ error }) => { if (error) console.warn("[stepper] extension_absente non journalisé :", error.message); });
+  };
   const logChampBloquant = (issue, info) => {
     if (!userId || !info) return;
     supabase.from("usage_logs")
@@ -6363,10 +6377,40 @@ export default function ListingPreviewScreen({
     // relecture des plateformes en ligne n'a pas répondu — on ne publie pas
     // sans connaître l'état publié de l'article.
     if (!publishedStateLoaded) return;
-    // Garde extension (2026-08-04) : extension jamais vue → écran d'accroche,
-    // AVANT toute création de ligne et tout appel réseau. handleNext route
-    // déjà ; ce re-check attrape un état périmé. Le RPC porte la même garde.
-    if (extensionBlocked && !exemptionEbayApi) { setShowExtGate(true); return; }
+    // ── LE MUR EST TOMBÉ (2026-09-15, décision Nico) ──────────────────────────
+    // Ici se trouvait : `if (extensionBlocked …) { setShowExtGate(true); return; }`
+    // Ce `return` était placé AVANT createStockItem : il jetait tout le travail
+    // de la personne — photos prises, quota d'annonce déjà consommé, prix
+    // d'achat saisi, stepper parcouru en entier. Rien n'était créé, rien n'était
+    // tracé, et elle recommençait de zéro le lendemain.
+    // Mesuré sur 30 jours : 194 comptes sans extension, 300 générations,
+    // ZÉRO job. Sur toute la vie de la garde : 286 comptes, 419 générations.
+    //
+    // La garde du 04/08 (commit df7a5d6) protégeait un DÉBIT — « on ne débite
+    // jamais pour quelque chose qui n'est pas livré », 23 jobs de 13 comptes
+    // dont 12 sur mobile, Pépites prises pour rien. Ce motif n'existe plus :
+    // price_generate vaut 0 et il n'y a aucun price_publish. Ce qui est
+    // consommé aujourd'hui, c'est le QUOTA D'ANNONCES — et il l'est à la
+    // GÉNÉRATION, donc bien avant ce point. La garde ne protégeait plus rien ;
+    // elle détruisait ce que le quota venait de facturer.
+    //
+    // COMPORTEMENT RÉTABLI (celui d'avant le 04/08) : l'article est créé, le job
+    // part en 'pending' et ATTEND — exactement comme le job de quelqu'un dont
+    // l'ordinateur est éteint. Le reste du système sait déjà le faire :
+    // email-tunnel a un cas 1 dédié à `extension_last_seen_at IS NULL`, écrit le
+    // 01/08 et devenu inatteignable le 04/08 (19 relances sur 12 comptes, puis
+    // plus une seule). get-pending-jobs ne filtre les jobs ni sur l'âge ni sur
+    // l'extension : le job repart au premier poll qui suit l'installation.
+    //
+    // L'accroche RESTE, comme INFORMATION : on dit que la publication attendra
+    // l'extension, on ne jette plus rien. Et on le journalise, pour ne plus
+    // jamais confondre un mur avec un abandon.
+    if (extensionBlocked && !exemptionEbayApi) {
+      logExtensionAbsente("publication_en_attente", {
+        plateformes: [...selected],
+        depuis: "clic_publier",
+      });
+    }
     // Garde-fou prix (2026-07-13, job 3d194668) : un job price=NULL a atteint
     // la base via « Republier » et n'a été refusé qu'en bout de chaîne, par
     // Vinted. AUCUN flux ne doit pouvoir publier sans prix valide — seuil à
