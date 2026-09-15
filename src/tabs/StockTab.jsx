@@ -5135,6 +5135,14 @@ const StockTab = memo(function StockTab({
   // ⚠️ Vit ICI, APRÈS jobsByInventaire : la liste visible le lit (règle É5, une
   //    dépendance posée plus haut lèverait une TDZ au montage).
   const [brouillonsBruts, setBrouillonsBruts] = useState([]);
+  // ⚠️ DÉCLARÉ ICI, ET PAS PLUS BAS AVEC LES AUTRES MODES (2026-09-15 soir).
+  // Il l'était, et l'effet de fermeture automatique quelques lignes plus bas le
+  // lisait dans son tableau de DÉPENDANCES — lequel est évalué AU RENDU, donc
+  // avant la déclaration : « Cannot access 'modeBrouillons' before
+  // initialization », écran blanc à l'ouverture du Stock. Exactement la TDZ
+  // documentée pour jobsByInventaire (règle É5). Un état doit vivre AVANT tout
+  // ce qui le lit, y compris dans un tableau de dépendances.
+  const [modeBrouillons, setModeBrouillons] = useState(false);
   const rechargerBrouillons = async (uid) => {
     if (!uid) return;
     const { data, error } = await supabase
@@ -5400,11 +5408,11 @@ const StockTab = memo(function StockTab({
     catch { return defaut; }
   };
   const [sectionStockOuverte, setSectionStockOuverte] = useState(() => lirePref('fs_stock_en_stock_ouvert', true));
-  // Mode brouillons — MÊME mécanique que modePrixAchat et modeRepublish : une
+  // (Mode brouillons — MÊME mécanique que modePrixAchat et modeRepublish : une
   // pastille l'arme, un en-tête `pa-call` porte la sortie, la liste bascule.
-  // (Il a été une section repliable pendant une heure : ça remettait un pavé
-  // au-dessus du stock, cf. BrouillonsListe.)
-  const [modeBrouillons, setModeBrouillons] = useState(false);
+  // Son état est déclaré plus HAUT, avec la lecture des brouillons : l'effet de
+  // fermeture automatique le lit dans ses dépendances, et un état déclaré ici
+  // lèverait une TDZ au rendu — c'était l'écran blanc du 15/09 au soir.)
   const basculerSection = (cle, set) => set(v => {
     const suivant = !v;
     try { localStorage.setItem(cle, suivant ? '1' : '0'); } catch { /* stockage indisponible : le repli marche, il ne survit juste pas */ }
