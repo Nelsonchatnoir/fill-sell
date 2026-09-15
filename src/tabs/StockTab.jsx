@@ -3183,19 +3183,32 @@ const texteErreurRepublishAuto = (code, fr) => {
 //    laisse croire qu'en supprimer récupère de la limite. Mais répété sur
 //    chaque carte, ça devient un reproche : une ligne, pas douze.
 // ═══════════════════════════════════════════════════════════════════════════
-function BrouillonsBloc({ lang, fmt, brouillons, onPublier, onRanger, onSupprimer }) {
+function BrouillonsSection({ lang, fmt, brouillons, onPublier, onRanger, onSupprimer }) {
   const fr = lang !== 'en';
   const [enCours, setEnCours] = useState(null); // id en cours de rangement
+  // Pas de section vide, jamais : elle n'existe que tant qu'il y a du travail
+  // en attente. C'est aussi ce qui la distingue d'un état permanent de l'app.
   if (!brouillons.length) return null;
   return (
-    <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:12,padding:"11px 12px"}}>
-      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,marginBottom:2}}>
-        <div style={{fontSize:13.5,fontWeight:700,color:"#10201B"}}>
-          {fr ? `Brouillons (${brouillons.length})` : `Drafts (${brouillons.length})`}
+    // MÊME conteneur que « En stock » / « Vendus » : c'est une section, pas un
+    // encart. Même fond, même rayon, même bordure — aucune couleur d'alerte :
+    // rien n'a échoué ici.
+    <div style={{background:"#F6F5F1",borderRadius:16,padding:16,border:"1px solid #E7E3D8"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
+          {fr ? 'Brouillons' : 'Drafts'}
+        </div>
+        {/* Même pastille de compte que la section En stock. */}
+        <div style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,flexShrink:0}}>
+          {brouillons.length} {fr ? (brouillons.length > 1 ? 'fiches' : 'fiche') : (brouillons.length > 1 ? 'drafts' : 'draft')}
         </div>
       </div>
-      {/* La ligne du quota : discrète, intégrée, UNE fois. */}
-      <div style={{fontSize:11,color:"#8A8578",lineHeight:1.45,marginBottom:10}}>
+      {/* LA LIGNE DU QUOTA — discrète, intégrée, UNE fois pour toute la section.
+          Les brouillons sont DÉJÀ décomptés (le débit a lieu à la génération) :
+          le taire laisserait croire qu'en supprimer récupère de la limite.
+          ⛔ Jamais sur une carte : répétée douze fois, la même phrase devient un
+             reproche. Ni bandeau, ni encadré, ni avertissement — une ligne. */}
+      <div style={{fontSize:11,color:"#8A8578",lineHeight:1.45,marginBottom:12}}>
         {fr
           ? "Annonces générées, pas encore publiées — déjà décomptées de ta limite."
           : "Listings generated, not published yet — already counted towards your limit."}
@@ -3207,7 +3220,7 @@ function BrouillonsBloc({ lang, fmt, brouillons, onPublier, onRanger, onSupprime
           const prix = Number(fiche?.price);
           const range = enCours === item.id;
           return (
-            <div key={item.id} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"9px 10px",borderRadius:10,background:"#FBFAF7",border:"1px solid #EFEBE0"}}>
+            <div key={item.id} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"9px 10px",borderRadius:10,background:"#fff",border:"1px solid #E7E3D8"}}>
               {photo
                 ? <img src={photo} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"#F2F0E9"}}/>
                 : <div style={{width:44,height:44,borderRadius:8,flexShrink:0,background:"#F2F0E9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📦</div>}
@@ -4193,7 +4206,12 @@ const StockTab = memo(function StockTab({
   // trois tarifs.)
   iapLoading, extensionStatus = null, extensionNeverSeen = null,
   // Computed lists
-  stock, sold, stockFiltre, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
+  // stockFiltre est RENOMMÉ (2026-09-15) : la liste rendue est la même MOINS
+  // les brouillons — un article sur lequel rien n'a été fait n'est pas encore
+  // du stock, il ne doit donc pas apparaître dans les deux endroits à la fois.
+  // Le `stockFiltre` que lit tout le reste du composant est recalculé plus bas,
+  // après la lecture des brouillons.
+  stock, sold, stockFiltre: stockFiltreComplet, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
   // Voice/AI state
   voiceStep, setVoiceStep, voiceParsed, setVoiceParsed,
   voiceZoneResults, setVoiceZoneResults, voiceZoneOpen, setVoiceZoneOpen,
@@ -5069,7 +5087,10 @@ const StockTab = memo(function StockTab({
       && Date.now() - Date.parse(last.platform_fields.recreated_at) < 24 * 3600 * 1000) return 'cadence';
     return 'ok';
   };
-  const repubActionnables = republishActif ? stockFiltre.filter(i => repubEtat(i) === 'ok') : [];
+  // Lit la liste COMPLÈTE (déclarée avant la lecture des brouillons) : sans
+  // conséquence, un brouillon n'a par définition aucun job et repubEtat le rend
+  // donc toujours 'ineligible' — il ne peut pas entrer dans un lot.
+  const repubActionnables = republishActif ? stockFiltreComplet.filter(i => repubEtat(i) === 'ok') : [];
 
   // ── Bandeau de lot + signalement hors-ligne (2026-08-07, validé Nico) ─────
   // ⚠️ TOUT ce bloc lit jobsByInventaire : il vit APRÈS sa déclaration (règle
@@ -5132,6 +5153,27 @@ const StockTab = memo(function StockTab({
     const ok = await sortirDuBrouillon(supabase, { userId: user?.id, inventaireId: item.id });
     if (ok) setBrouillonsBruts(prev => prev.filter(b => String(b.inventaire_id) !== String(item.id)));
   };
+
+  // ── LA LISTE DU STOCK, MOINS LES BROUILLONS (2026-09-15) ──────────────────
+  // « Tant que l'utilisateur n'a rien fait dessus, ce n'est pas un article de
+  // son stock » : un brouillon vit dans SON bloc, en tête, et nulle part
+  // ailleurs. L'afficher aux deux endroits rendrait les trois états
+  // indistinguables et ferait compter deux fois le même article.
+  // Point UNIQUE de filtrage : tout ce qui décrit la liste en aval — index
+  // d'état, compteurs de filtres, tris, cartes — en dérive, donc rien ne peut
+  // annoncer un nombre que l'écran n'applique pas.
+  // ⚠️ LIMITE ASSUMÉE : les totaux du bandeau (stockVal, stockQty) sont calculés
+  //    par App.jsx sur `items` et comptent encore les brouillons. Leur valeur
+  //    monétaire, elle, est juste : un brouillon a prix_achat NULL, donc il
+  //    n'entre dans aucun total investi (règle VIDE ≠ ZÉRO du 03/08).
+  const idsBrouillons = useMemo(
+    () => new Set(brouillons.map(b => String(b.item.id))),
+    [brouillons],
+  );
+  const stockFiltre = useMemo(
+    () => (idsBrouillons.size ? stockFiltreComplet.filter(i => !idsBrouillons.has(String(i.id))) : stockFiltreComplet),
+    [stockFiltreComplet, idsBrouillons],
+  );
   // ── Plafond quotidien d'exécution : état SERVEUR (2026-08-29 soir) ───────
   // La retenue vit dans get-pending-jobs (v18+) et elle est ACTIVE — la
   // première version de ce bloc recalculait localement (coin_config + jobs
@@ -6265,20 +6307,6 @@ const StockTab = memo(function StockTab({
           est monté par le <style> de la liste plus bas — les classes portent,
           l'ordre DOM d'un <style> est sans effet. */}
       <div className="stock-v2" style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
-        {/* ── Brouillons — EN TÊTE, et conditionnel (2026-09-15) ───────────
-            Du travail DÉJÀ PAYÉ qui attend un geste : ça passe avant tout le
-            reste, et ça disparaît complètement dès qu'il n'y en a plus. Placé
-            au rang 1 de l'ordre du 13/09, celui des bandeaux conditionnels —
-            le bloc republication reste la première chose VUE quand il n'y a
-            aucun brouillon, c'est-à-dire le cas normal. */}
-        <BrouillonsBloc
-          lang={lang}
-          fmt={fmt}
-          brouillons={brouillons}
-          onPublier={ouvrirStepper}
-          onRanger={rangerBrouillon}
-          onSupprimer={(item)=>delItem(item.id)}
-        />
         {/* ── Republication automatique par créneaux — EN TÊTE (13/09) ─────
             La première chose qu'un Pro voit en ouvrant l'app : l'état, le
             créneau, le nombre qui va RÉELLEMENT partir (serveur, jamais le
@@ -7093,6 +7121,26 @@ const StockTab = memo(function StockTab({
               </div>
             )}
           </div>}
+
+          {/* ── BROUILLONS ─────────────────────────────────────────────────
+              SA PROPRE SECTION, au même rang qu'« En stock » et « Vendus » —
+              même conteneur, même en-tête, même pastille de compte. Ce n'est
+              pas un bandeau : un bandeau signale un incident passager, alors
+              qu'un brouillon est une catégorie d'articles, durable, avec ses
+              propres gestes. La séparation est le sujet : un article sur
+              lequel rien n'a été fait n'apparaît QUE dans cette section, et
+              jamais dans la liste du stock (cf. stockFiltre, plus haut).
+              Elle vit AU-DESSUS d'« En stock » parce qu'elle contient du
+              travail déjà payé qui attend, et disparaît entièrement dès qu'il
+              n'y a plus rien dedans. */}
+          <BrouillonsSection
+            lang={lang}
+            fmt={fmt}
+            brouillons={brouillons}
+            onPublier={ouvrirStepper}
+            onRanger={rangerBrouillon}
+            onSupprimer={(item)=>delItem(item.id)}
+          />
 
           {/* ── EN STOCK ── */}
           <div style={{background:"#F6F5F1",borderRadius:16,padding:16,border:"1px solid #E7E3D8"}}>
