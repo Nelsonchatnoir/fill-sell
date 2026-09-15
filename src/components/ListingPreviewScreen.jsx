@@ -15,6 +15,7 @@ import AnalyseMarche from "./AnalyseMarche";
 import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee } from "../utils/photos";
 import { texteComparable } from "../utils/texteComparable";
 import { sortirDuBrouillon } from "../utils/brouillon";
+import { sessionsAffichables, PUBLICATION_PROUVE_MS } from "../utils/sessionsPlateformes";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4 } from "../utils/shared";
@@ -3675,15 +3676,36 @@ export default function ListingPreviewScreen({
   useEffect(() => {
     if (step !== 3 || !supabase || !userId) return;
     let stale = false;
-    const FRESH_MS = 12 * 60 * 1000;
-    const lire = () => {
-      supabase.from("profiles").select("extension_sessions").eq("id", userId).maybeSingle()
-        .then(({ data }) => {
-          if (stale) return;
-          const s = data?.extension_sessions;
-          const fresh = s?.checked_at && (Date.now() - Date.parse(s.checked_at)) < FRESH_MS;
-          setPlatformSessions(fresh ? s : null);
-        });
+    const lire = async () => {
+      // ── DEUX SOURCES, LE PLUS RÉCENT TRANCHE (2026-09-15) ────────────────
+      // (1) le relevé de l'extension, jugé PAR PLATEFORME — la fenêtre globale
+      //     de 12 min lisait `checked_at`, rafraîchi toutes les 10 min par la
+      //     seule sonde Vinted : une valeur eBay vieille de trois heures
+      //     passait pour fraîche, et une valeur non sondée était de toute façon
+      //     écrasée par null en amont (corrigé côté extension, 0.6.40) ;
+      // (2) une publication RÉUSSIE de moins de 72 h, qui PROUVE la session
+      //     sans aucune sonde. C'est le seul signal utilisable sur Leboncoin
+      //     (403 DataDome sur 92,6 % des relevés du parc) et sur Beebs (SPA
+      //     qui sert 200 même déconnectée).
+      // ⚠️ Cette moitié-ci du correctif ne dépend PAS de l'extension : elle
+      //    part par l'app et profite tout de suite au parc, sans attendre le
+      //    Chrome Web Store.
+      const depuisIso = new Date(Date.now() - PUBLICATION_PROUVE_MS).toISOString();
+      const [profil, publiees] = await Promise.all([
+        supabase.from("profiles").select("extension_sessions").eq("id", userId).maybeSingle(),
+        supabase.from("cross_post_jobs").select("platform, created_at")
+          .eq("user_id", userId).eq("status", "published")
+          .gte("created_at", depuisIso)
+          .order("created_at", { ascending: false }).limit(50),
+      ]);
+      if (stale) return;
+      const publicationsOk = {};
+      for (const j of publiees?.data ?? []) {
+        const t = Date.parse(j.created_at ?? "");
+        if (!Number.isFinite(t)) continue;
+        if (!publicationsOk[j.platform] || t > publicationsOk[j.platform]) publicationsOk[j.platform] = t;
+      }
+      setPlatformSessions(sessionsAffichables(profil?.data?.extension_sessions, publicationsOk));
     };
     lire();
     const timer = setInterval(lire, 60 * 1000);

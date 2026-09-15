@@ -1007,6 +1007,39 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // purgé si le refresh est mort) au lieu d'une relecture brute du storage
   // qui ne vérifiait que la présence d'un access_token — deux
   // implémentations qui divergeaient.
+  // ── (D) « VÉRIFIER » — sonde d'UNE plateforme, à la demande (2026-09-15) ──
+  // Réponse directe au « rien ne se passe » de John : sur une ligne jamais
+  // vérifiée, le popup offre un bouton, et ce bouton doit répondre tout de
+  // suite — pas au prochain cycle de 60 minutes.
+  // CE QUE LE CANAL TRANSPORTE, et rien d'autre :
+  //   requête  { type: "SONDER_SESSION", platform: "vinted"|"leboncoin"|"ebay"|"beebs" }
+  //   réponse  { ok: true } | { ok: false, motif: "..." }
+  // Aucune donnée, aucun jeton, aucun résultat de sonde ne transite : le
+  // relevé part en base par le chemin habituel (ecrireExtensionSessions) et le
+  // popup le relit comme il relit tout le reste. Une seule plateforme par
+  // appel, choisie dans une liste FERMÉE — le popup ne peut pas faire sonder
+  // autre chose que les quatre.
+  if (msg?.type === "SONDER_SESSION") {
+    (async () => {
+      const pf = String(msg.platform ?? "");
+      if (!["vinted", "leboncoin", "ebay", "beebs"].includes(pf)) {
+        return sendResponse({ ok: false, motif: "plateforme inconnue" });
+      }
+      try {
+        const session = await getValidSession();
+        if (!session) return sendResponse({ ok: false, motif: "pas_de_session" });
+        // `forcer` : geste explicite, il passe outre le throttle. Il ne touche
+        // PAS les horodatages des autres plateformes.
+        await reportPlatformSessions(session.access_token, {
+          plateformes: [pf], motif: `vérification demandée (${pf})`, forcer: true,
+        });
+        sendResponse({ ok: true });
+      } catch (e) {
+        sendResponse({ ok: false, motif: String(e?.message ?? e) });
+      }
+    })();
+    return true; // réponse asynchrone
+  }
   if (msg?.type === "GET_VALID_SESSION") {
     getValidSession().then(
       (session) => sendResponse({ session }),
@@ -1191,6 +1224,19 @@ async function recordRecentResult(job, status, error = null) {
       ts: now,
     };
     await chrome.storage.local.set({ [KEY]: entries });
+    // ── (B) UN DÉPÔT RÉUSSI PROUVE LA SESSION (2026-09-15) ────────────────
+    // Gardé À PART, sans TTL de 30 min et sans lien avec l'annonce affichée :
+    // `recent` ci-dessus est un état d'ÉCRAN (30 min, filtré sur l'annonce en
+    // cours), ce qu'il nous faut ici est un FAIT de compte qui survit.
+    // C'est le seul signal utilisable pour Leboncoin (403 DataDome sur 92,6 %
+    // des sondes du parc) et pour Beebs (SPA : 200 même déconnectée).
+    // ⛔ 'published' seulement : un dry_run ne prouve pas un dépôt réel.
+    if (status === "published" && job?.platform) {
+      const CLE_OK = FILLSELL_CONFIG.STORAGE_KEYS.DERNIERE_PUBLICATION_OK;
+      const st = await chrome.storage.local.get(CLE_OK);
+      const carte = (st?.[CLE_OK] && typeof st[CLE_OK] === "object") ? st[CLE_OK] : {};
+      await chrome.storage.local.set({ [CLE_OK]: { ...carte, [job.platform]: now } });
+    }
   } catch (e) {
     console.warn("[background] recordRecentResult:", e);
   }
@@ -2253,8 +2299,13 @@ async function pollAndProcessJobsUnlocked() {
     console.error("[background] recoverStaleProcessingJobs:", e)
   );
 
-  // Sondes de session plateformes (throttlées ~10 min) : fire-and-forget,
-  // le poll n'attend pas et un échec de sonde n'affecte jamais les jobs.
+  // Sondes de session des QUATRE plateformes (2026-09-15) — chacune à sa
+  // cadence (Vinted 10 min, les autres 60 min, cf. SESSION_PROBE_INTERVALS_MS),
+  // et toutes au premier poll après l'installation. Avant, seule Vinted était
+  // sondée ici : un compte qui ne publie que sur Vinted, ou qui vient de
+  // s'inscrire, ne voyait jamais rien des trois autres.
+  // Fire-and-forget : le poll n'attend pas et un échec de sonde n'affecte
+  // jamais les jobs.
   // console.error, pas warn : un échec ici veut dire que la détection de
   // connexion aux plateformes n'est JAMAIS remontée en base (vécu : 403
   // silencieux pendant que l'onboarding attendait extension_sessions).
@@ -8721,7 +8772,35 @@ async function lireEtatAnnonce(url, platform) {
 // RÉELLES ; Vinted seule au rythme régulier (identité de boutique →
 // cloisonnement serveur, reprise session_vinted) ; Leboncoin / eBay / Beebs
 // sondées UNIQUEMENT avant un job de leur plateforme (processJob).
-const SESSION_PROBE_INTERVAL_MS = 10 * 60 * 1000;
+// ── (C) CADENCE PAR PLATEFORME (2026-09-15, décision Nico) ──────────────────
+// Depuis le 08/09, seule Vinted était sondée au rythme régulier ; Leboncoin,
+// eBay et Beebs ne l'étaient QU'AVANT un job de leur plateforme. Conséquence
+// mesurée : quelqu'un qui ne publie que sur Vinted — ou qui vient de
+// s'inscrire et n'a lancé aucun job — ne voyait JAMAIS rien de connecté sur
+// les trois autres. 108 comptes actifs (extension vue < 7 j) avaient les trois
+// plateformes muettes ; 69 comptes n'ont jamais lancé un seul job.
+// Les quatre sont désormais sondées au rythme régulier, à deux cadences :
+//   · Vinted ... 10 min — inchangé (identité de boutique → cloisonnement
+//     serveur, reprise des republications session_vinted) ;
+//   · les 3 autres ... 60 min — elles n'alimentent aucun automatisme, seulement
+//     l'affichage.
+// COÛT, chiffré : 144 + 3×24 = 216 requêtes/jour/extension, contre 144
+// aujourd'hui et ≈ 2 880 avant le 08/09 — treize fois moins que ce que ce
+// fichier a longtemps fait. Le commentaire du 08/09 dit lui-même que le lien
+// entre ce volume et les 403 n'était PAS établi : c'est de l'hygiène de
+// volume, et 216/jour la respecte.
+// ⚠️ La carte d'horodatages démarre VIDE : au premier poll après installation,
+//    `maintenant - 0 >= intervalle` est vrai pour les quatre — le nouvel
+//    inscrit est donc sondé sur les quatre sans attendre le moindre job. C'est
+//    exactement le parcours qui a déclenché ce lot.
+const SESSION_PROBE_INTERVALS_MS = {
+  vinted: 10 * 60 * 1000,
+  leboncoin: 60 * 60 * 1000,
+  ebay: 60 * 60 * 1000,
+  beebs: 60 * 60 * 1000,
+};
+const SESSION_PROBE_INTERVAL_MS = SESSION_PROBE_INTERVALS_MS.vinted;
+const intervalleSonde = (pf) => SESSION_PROBE_INTERVALS_MS[pf] ?? SESSION_PROBE_INTERVAL_MS;
 const SESSION_PROBE_STORAGE_KEY = FILLSELL_CONFIG.STORAGE_KEYS.SESSION_PROBE_AT;
 async function lireHorodatagesSondes() {
   try {
@@ -9006,11 +9085,25 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
     };
     for (const pf of ["vinted", "leboncoin", "ebay", "beebs"]) {
       if (releve.sondees.includes(pf)) continue;
-      const observationHandler = typeof prevHttp[pf] === "string" && !/^\d+$/.test(prevHttp[pf]);
-      const conserver = pf === "vinted" || observationHandler;
-      fusion[pf] = conserver ? (prev[pf] ?? null) : null;
-      fusion.http[pf] = conserver ? (prevHttp[pf] ?? null) : null;
-      if (conserver) fusion.checked_at_par_plateforme[pf] = prevPar[pf] ?? prev.checked_at ?? null;
+      // ── (A) UNE PLATEFORME NON SONDÉE GARDE SA VALEUR (2026-09-15) ────────
+      // Ici vivait un verrou `conserver` qui n'acceptait que Vinted et les
+      // observations de handler (reconnues à un `http` NON numérique). Une
+      // valeur venue d'une SONDE a un http numérique (200, 403…) : elle était
+      // donc REMISE À NULL au premier relevé qui ne la sondait pas.
+      // Mesuré sur le compte de John le 15/09 :
+      //     22:57  sondees ["ebay"]    ebay true   http.ebay 200
+      //     22:59  sondees ["vinted"]  ebay null   http.ebay null
+      // Rien n'avait changé chez lui en deux minutes. On contredisait notre
+      // propre mesure, et l'écran redevenait muet. Sur tout le parc : 55,6 %
+      // des comptes ayant DÉJÀ publié sur eBay n'en montraient plus rien
+      // (54,1 % sur Leboncoin, 95,8 % sur Beebs).
+      // « Pas testé ce tour-ci » et « pas connecté » ne sont pas la même chose.
+      // La valeur est donc conservée AVEC SON HORODATAGE d'origine
+      // (checked_at_par_plateforme) : ce sont les lecteurs — popup et app — qui
+      // jugent la fraîcheur et affichent l'âge. Rien n'est affirmé sans date.
+      fusion[pf] = prev[pf] ?? null;
+      fusion.http[pf] = prevHttp[pf] ?? null;
+      fusion.checked_at_par_plateforme[pf] = prevPar[pf] ?? prev.checked_at ?? null;
       if (pf === "vinted") fusion.vinted_identite = prev.vinted_identite ?? null;
     }
     final = fusion;
@@ -9021,11 +9114,17 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
   });
 }
 
-async function reportPlatformSessions(accessToken, { plateformes = ["vinted"], motif = "poll" } = {}) {
-  // Throttle PERSISTÉ, par plateforme (cf. en-tête de SESSION_PROBE_INTERVAL_MS).
+async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "leboncoin", "ebay", "beebs"], motif = "poll", forcer = false } = {}) {
+  // Throttle PERSISTÉ, par plateforme et à la cadence de CHAQUE plateforme
+  // (cf. en-tête de SESSION_PROBE_INTERVALS_MS).
+  // `forcer` : le bouton « Vérifier » du popup passe outre — c'est un geste
+  // explicite de l'utilisateur, sur UNE plateforme, et il doit répondre tout
+  // de suite. Jamais utilisé par le poll.
   const horodatages = await lireHorodatagesSondes();
   const maintenant = Date.now();
-  const cibles = plateformes.filter((pf) => maintenant - (Number(horodatages[pf]) || 0) >= SESSION_PROBE_INTERVAL_MS);
+  const cibles = forcer
+    ? plateformes.slice()
+    : plateformes.filter((pf) => maintenant - (Number(horodatages[pf]) || 0) >= intervalleSonde(pf));
   if (!cibles.length) return;
   const sub = decodeJwtSub(accessToken);
   if (!sub) return;

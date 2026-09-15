@@ -12,7 +12,7 @@
 // La logique de lecture (motifs ancrés, ordre de preuve Beebs, fraîcheur de
 // la sonde) est celle des commits 340004c / d025e30 / c261fb3, inchangée.
 
-const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL, LAST_POLL, RECENT_RESULTS, KEEP_AWAKE } = FILLSELL_CONFIG.STORAGE_KEYS;
+const { SESSION, SESSION_OWN, BOOTSTRAP_LAST_FAIL, LAST_POLL, RECENT_RESULTS, KEEP_AWAKE, DERNIERE_PUBLICATION_OK } = FILLSELL_CONFIG.STORAGE_KEYS;
 // Le marqueur d'éveil est PERSISTÉ (le service worker MV3 meurt sans arrêt) :
 // il peut donc survivre à un Chrome fermé en plein lot. On ne l'affiche que
 // s'il a été rafraîchi récemment — sinon il ne prouve plus rien.
@@ -65,6 +65,10 @@ const state = {
   attenteTotal: null,   // total servi par get-pending-jobs (source unique, partagée avec l'app)
   sync: null,           // dernier run vinted_sync_runs (état + progression)
   sessions: null,       // profiles.extension_sessions (relevé de l'extension)
+  // { [platform]: ms } — dernière publication RÉUSSIE, écrite par le background
+  // (recordRecentResult). Sans TTL en stockage : c'est etatPlateforme qui borne
+  // à 72 h. Prouve la session là où la sonde ne peut rien prouver.
+  publicationsOk: {},
   // Republications retenues parce que Chrome est connecté à un AUTRE dressing.
   boutiquePause: null,  // { connectee:{login}, retenus, par_boutique, par_boutique_login }
   // « Déjà en ligne » pour l'article affiché (2026-09-08) : servi par
@@ -288,7 +292,15 @@ async function load() {
     } catch (e) {
       console.warn("[popup] recent results:", e);
     }
+    // (B) Dernière publication réussie PAR PLATEFORME — fait de compte, pas
+    // état d'écran : ni TTL de 30 min, ni filtre sur l'annonce affichée.
+    try {
+      const st = await chrome.storage.local.get(DERNIERE_PUBLICATION_OK);
+      const carte = st?.[DERNIERE_PUBLICATION_OK];
+      state.publicationsOk = carte && typeof carte === "object" ? carte : {};
+    } catch { state.publicationsOk = {}; }
   } else {
+    state.publicationsOk = {};
     state.jobs = [];
     state.repub = [];
     state.besoinGeste = [];
@@ -479,9 +491,24 @@ function motifsDominants(jobs) {
 // muette. On n'affiche que ce qu'on sait.
 const BEEBS_DECO_RE = /^Connexion Beebs requise/i;
 const CHALLENGE_RE = /^CHALLENGE /;
-// Fraîcheur exigée du relevé de sessions. Au-delà, on n'affiche RIEN : une
-// pastille verte sur un relevé de la semaine dernière est un mensonge.
-const SESSIONS_FRAICHEUR_MS = 60 * 60 * 1000;
+// Fraîcheur exigée d'une sonde, PAR PLATEFORME (2026-09-15) — six fois sa
+// cadence. Au-delà, la valeur n'est pas jetée : elle est DATÉE, et la ligne
+// affiche son âge au lieu d'une pastille. Une pastille verte sur un relevé de
+// la semaine dernière reste un mensonge ; « vérifié il y a 5 j » n'en est pas un.
+const SESSIONS_FRAICHEUR_MS = FILLSELL_CONFIG.SESSIONS.FRAICHEUR_MS;
+const fraicheurDe = (key) => SESSIONS_FRAICHEUR_MS[key] ?? 60 * 60 * 1000;
+const PUBLICATION_PROUVE_MS = FILLSELL_CONFIG.SESSIONS.PUBLICATION_PROUVE_MS;
+
+/** « il y a 4 min » / « il y a 3 h » / « il y a 2 j » — jamais une date nue. */
+function depuis(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 90) return "à l'instant";
+  const m = Math.round(s / 60);
+  if (m < 60) return `il y a ${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 36) return `il y a ${h} h`;
+  return `il y a ${Math.round(h / 24)} j`;
+}
 
 /** Tous les messages d'erreur connus du popup pour une plateforme, du plus
  *  récent au plus ancien. Jobs servis + résultats terminés (< 30 min). */
@@ -495,7 +522,12 @@ function messagesPlateforme(key) {
   return out;
 }
 
-/** { etat: 'ok'|'ko'|'bloquee'|null, sous } — null = on ne dit rien. */
+/**
+ * { etat: 'ok'|'ko'|'bloquee'|null, sous, vuLe } — null = JAMAIS VÉRIFIÉ, et
+ * la ligne le dit désormais avec un bouton (avant : muette et sans issue).
+ * `vuLe` = horodatage de ce qui fonde le verdict (sonde ou publication), pour
+ * que l'écran ne dise jamais « connectée » sans date.
+ */
 function etatPlateforme(p, sondeFraiche) {
   const msgs = messagesPlateforme(p.key);
   // Anti-robot : motif ANCRÉ en tête de message (jamais une recherche large),
@@ -511,25 +543,50 @@ function etatPlateforme(p, sondeFraiche) {
     // abouti. Un dépôt réussi PROUVE la session, là où la sonde ne peut rien
     // prouver — c'est lui qui passe devant.
     if (rec && (rec.status === "published" || rec.status === "dry_run_completed")) {
-      return { etat: "ok", sous: null };
+      return { etat: "ok", sous: null, vuLe: rec.ts ?? null };
     }
     if (rec?.error && BEEBS_DECO_RE.test(String(rec.error).trim())) {
-      return { etat: "ko", sous: "Session fermée" };
+      return { etat: "ko", sous: "Session fermée", vuLe: rec.ts ?? null };
     }
     // Aucun résultat frais : le verdict d'un job encore en attente fait foi.
     if (msgs.some((m) => BEEBS_DECO_RE.test(m.trim()))) {
-      return { etat: "ko", sous: "Session fermée" };
+      return { etat: "ko", sous: "Session fermée", vuLe: null };
     }
-    return { etat: null, sous: null };
+    // Pas de `return` sec ici depuis le 15/09 : Beebs tombe dans la règle
+    // commune ci-dessous (publication récente, puis sonde), au lieu de rester
+    // muette dans 95,8 % des cas mesurés.
   }
-  if (!sondeFraiche) return { etat: null, sous: null };
+
+  // ── (B) LA PREUVE PAR PUBLICATION, POUR LES QUATRE (2026-09-15) ───────────
+  // Un dépôt abouti prouve la session, sans aucune requête. C'est le SEUL
+  // signal utilisable sur Leboncoin (403 DataDome sur 92,6 % des sondes du
+  // parc) et sur Beebs (SPA : 200 même déconnectée).
+  // ⚠️ LE PLUS RÉCENT TRANCHE entre la sonde et la publication : une
+  //    déconnexion observée il y a dix minutes prime sur un dépôt d'hier, et
+  //    l'inverse aussi. On compare les DEUX horodatages, on n'ordonne pas les
+  //    sources par préférence.
+  const sondeVu = Date.parse(state.sessions?.checked_at_par_plateforme?.[p.key] ?? state.sessions?.checked_at ?? "");
+  const sondeValide = sondeFraiche && Number.isFinite(sondeVu);
+  const publieLe = Number(state.publicationsOk?.[p.key]) || 0;
+  const publiRecent = publieLe > 0 && Date.now() - publieLe < PUBLICATION_PROUVE_MS;
   const v = state.sessions?.[p.key];
-  if (v === true) {
-    const ident = p.key === "vinted" ? state.sessions?.vinted_identite : null;
-    return { etat: "ok", sous: ident?.login ? `Chrome connecté à @${ident.login}` : null };
+  const sondeDitQuelqueChose = sondeValide && (v === true || v === false);
+
+  if (publiRecent && (!sondeDitQuelqueChose || publieLe >= sondeVu)) {
+    return { etat: "ok", sous: `Dépôt réussi ${depuis(publieLe)}`, vuLe: publieLe };
   }
-  if (v === false) return { etat: "ko", sous: "Session fermée" };
-  return { etat: null, sous: null };
+  if (sondeDitQuelqueChose) {
+    if (v === true) {
+      const ident = p.key === "vinted" ? state.sessions?.vinted_identite : null;
+      return { etat: "ok", sous: ident?.login ? `Chrome connecté à @${ident.login}` : null, vuLe: sondeVu };
+    }
+    // ⛔ `false` UNIQUEMENT. Jamais un 401 (token Vinted à rafraîchir), jamais
+    //    un 403 (challenge DataDome), jamais un null : la décision du 08/09 ne
+    //    bouge pas, ces statuts rendent null en amont (probePlatformSessions).
+    return { etat: "ko", sous: "Session fermée", vuLe: sondeVu };
+  }
+  // JAMAIS VÉRIFIÉ — ou vérifié il y a trop longtemps. On le DIT (cf. rendu).
+  return { etat: null, sous: null, vuLe: Number.isFinite(sondeVu) ? sondeVu : null };
 }
 
 // Calculé UNE fois par rendu : la pastille du haut, la ligne d'alerte, le bloc
@@ -553,7 +610,10 @@ function sondeFraichePour(key) {
   const s = state.sessions;
   const propre = s?.checked_at_par_plateforme?.[key];
   const vu = Date.parse(propre ?? s?.checked_at ?? "");
-  return Number.isFinite(vu) && Date.now() - vu < SESSIONS_FRAICHEUR_MS;
+  // Fenêtre PROPRE à la plateforme depuis le 15/09 : Vinted est sondée toutes
+  // les 10 min, les trois autres toutes les 60 — une fenêtre unique de 60 min
+  // aurait fait clignoter les secondes à chaque cycle.
+  return Number.isFinite(vu) && Date.now() - vu < fraicheurDe(key);
 }
 const estKo = (key) => ["ko", "bloquee"].includes(state.etats[key]?.etat);
 const plateformesKo = () => PLATFORMS.filter((p) => estKo(p.key));
@@ -691,12 +751,16 @@ function renderPlateformes() {
   const lignes = [];
   let sues = 0;
   for (const p of PLATFORMS) {
-    const { etat, sous } = state.etats[p.key] ?? { etat: null, sous: null };
+    const { etat, sous, vuLe } = state.etats[p.key] ?? { etat: null, sous: null, vuLe: null };
     const nom = escapeHtml(p.name);
+    // (D) « Connectée » n'est JAMAIS une affirmation sans date : l'âge de ce
+    // qui fonde le verdict s'affiche sous le nom dès qu'il dépasse 10 minutes.
+    const dateSous = Number.isFinite(vuLe) && vuLe && Date.now() - vuLe > 10 * 60 * 1000
+      ? `<div class="plat-sous">Vérifié ${escapeHtml(depuis(vuLe))}</div>` : "";
     if (etat === "ok") {
       lignes.push(
         `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
-        `${sous ? `<div class="plat-sous">${escapeHtml(sous)}</div>` : ""}</div>` +
+        `${sous ? `<div class="plat-sous">${escapeHtml(sous)}</div>` : dateSous}</div>` +
         `<span class="etat ok"><i class="dot teal pulse"></i>Connectée</span></div>`,
       );
     } else if (etat === "ko") {
@@ -718,12 +782,28 @@ function renderPlateformes() {
         `</div></div>`,
       );
     } else {
-      lignes.push(`<div class="plat muette">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div></div></div>`);
+      // ── (D) JAMAIS VÉRIFIÉ — ON LE DIT, ET ON DONNE LE GESTE (15/09) ──────
+      // Cette ligne était muette : logo gris, nom gris, rien d'autre. C'est
+      // elle que John regardait en écrivant « quand je veux connecter mon
+      // compte leboncoin ou autre rien ne se passe » — il n'y avait
+      // effectivement rien à faire, et aucun retour possible.
+      // Deux cas, deux phrases VRAIES : jamais mesurée, ou mesurée il y a
+      // longtemps. On n'écrit « pas encore vérifié » que quand c'est le cas.
+      const jamais = !Number.isFinite(vuLe) || !vuLe;
+      lignes.push(
+        `<div class="plat muette">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${nom}</div>` +
+        `<div class="plat-sous">${jamais ? "Pas encore vérifié" : `Vérifié ${escapeHtml(depuis(vuLe))}`}</div></div>` +
+        `<button class="btn-outline" data-verifier="${p.key}" type="button">Vérifier</button></div>`,
+      );
     }
     if (etat) sues++;
   }
-  // Rien de mesuré sur AUCUNE des quatre : le bloc n'apprendrait rien.
-  if (!sues) { els.plateformes.classList.add("hidden"); return; }
+  // ⚠️ LE BLOC NE SE CACHE PLUS QUAND RIEN N'EST MESURÉ (2026-09-15). Il se
+  // cachait — et c'était le pire écran pour le nouvel inscrit : quatre
+  // plateformes connectées dans son navigateur, et pas même la liste à
+  // l'écran. Les quatre lignes portent maintenant chacune leur bouton
+  // « Vérifier », donc le bloc a toujours quelque chose à offrir.
+  void sues;
   const age = state.sondeFraiche
     ? `<div class="plat-vu">Vérifié ${escapeHtml(ilYA(Date.now() - state.sondeVu))}</div>`
     : "";
@@ -1151,6 +1231,33 @@ els.openApp.addEventListener("click", openApp);
 // « Ouvrir l'appli », « Se connecter » à FillSell. Aucune de ces actions ne
 // publie quoi que ce soit — elles ouvrent un onglet.
 document.body.addEventListener("click", (e) => {
+  // ── (D) « VÉRIFIER » — le seul bouton de ce popup qui déclenche du réseau ──
+  // Une sonde, sur UNE plateforme, parce que l'utilisateur l'a demandé. Le
+  // popup ne se ferme pas : il doit montrer le résultat, c'est tout l'objet du
+  // bouton. Pendant l'aller-retour, le bouton dit ce qu'il fait.
+  const verifier = e.target.closest("[data-verifier]");
+  if (verifier) {
+    const key = verifier.getAttribute("data-verifier");
+    if (!PLATFORMS.some((x) => x.key === key) || verifier.disabled) return;
+    verifier.disabled = true;
+    verifier.textContent = "…";
+    chrome.runtime.sendMessage({ type: "SONDER_SESSION", platform: key })
+      .then((r) => {
+        if (!r?.ok) {
+          // On ne prétend pas avoir vérifié : le bouton redevient cliquable et
+          // le dit. Pas de bandeau rouge — une sonde qui échoue n'est pas une
+          // déconnexion, c'est une mesure qui n'a pas abouti.
+          verifier.disabled = false;
+          verifier.textContent = "Réessayer";
+          return;
+        }
+        // Le relevé est en base ET dans le contexte : on recharge, le rendu
+        // suit. load() repasse par etatPlateforme, aucun chemin à part.
+        load();
+      })
+      .catch(() => { verifier.disabled = false; verifier.textContent = "Réessayer"; });
+    return;
+  }
   const connect = e.target.closest("[data-connect]");
   if (connect) {
     const p = PLATFORMS.find((x) => x.key === connect.getAttribute("data-connect"));

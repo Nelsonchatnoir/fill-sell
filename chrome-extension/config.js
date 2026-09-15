@@ -77,5 +77,50 @@ const FILLSELL_CONFIG = {
     // meurt entre deux polls : la sonde partait à chaque poll (mesuré :
     // médiane 2 min, ≈ 2 880 fetch/jour). Écrit par le background seul.
     SESSION_PROBE_AT: "fillsell_session_probe_at",
+    // ── Dernière publication RÉUSSIE par plateforme (2026-09-15) ────────────
+    // { vinted: ms, leboncoin: ms, ebay: ms, beebs: ms }. Un dépôt abouti
+    // PROUVE que la session marchait — c'est le signal le plus fort du
+    // système, et il ne coûte aucune requête. Indispensable là où la sonde ne
+    // peut rien prouver : Leboncoin rend 403 (DataDome) sur 92,6 % des relevés
+    // du parc, et Beebs est une SPA qui sert 200 même déconnectée.
+    // Écrit par le background à chaque job terminé 'published', lu par le
+    // popup. Pas d'expiration ici : c'est le LECTEUR qui borne (72 h).
+    DERNIERE_PUBLICATION_OK: "fillsell_derniere_publication_ok",
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ÉTAT DE SESSION D'UNE PLATEFORME — LA RÈGLE, UNE SEULE FOIS (2026-09-15)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Lue par le popup (popup.js) ET par le background. Son MIROIR côté app vit
+  // dans src/utils/sessionsPlateformes.js : deux bundles sans module commun
+  // (popup = <script> classique, app = ESM Vite), donc deux copies — toute
+  // modification ici doit être reportée là-bas, et les deux fichiers se citent.
+  //
+  // TROIS ÉTATS, et pas un de plus :
+  //   'ok'     connecté       — sonde `true` fraîche, OU publication réussie
+  //                             récente (< 72 h)
+  //   'ko'     pas connecté   — `false` UNIQUEMENT. Jamais un 401, jamais un
+  //                             403, jamais un null (décision du 08/09 : le
+  //                             401 Vinted est ambigu, le 403 Leboncoin est un
+  //                             challenge DataDome — ni l'un ni l'autre ne
+  //                             prouve une déconnexion).
+  //   null     jamais vérifié — on le DIT, avec un bouton. Avant ce lot, cet
+  //                             état était muet et sans issue : l'utilisateur
+  //                             n'avait aucun geste à faire.
+  //
+  // ⚠️ LE PLUS RÉCENT TRANCHE entre la sonde et la publication. Une
+  //    déconnexion observée il y a dix minutes prime sur un dépôt d'hier ; un
+  //    dépôt d'il y a dix minutes prime sur une sonde muette d'hier. C'est la
+  //    doctrine déjà écrite pour Beebs dans le popup, généralisée aux quatre.
+  SESSIONS: {
+    // Fraîcheur exigée d'une SONDE, par plateforme — six fois sa cadence.
+    // Au-delà, la valeur n'est pas fausse : elle est DATÉE, et l'écran affiche
+    // son âge au lieu d'une pastille.
+    FRAICHEUR_MS: { vinted: 60 * 60 * 1000, leboncoin: 3 * 60 * 60 * 1000, ebay: 3 * 60 * 60 * 1000, beebs: 3 * 60 * 60 * 1000 },
+    // Une publication prouve la session pendant 72 h. Borne ARBITRÉE : les
+    // cookies de ces quatre places tiennent des semaines, mais « il a publié
+    // il y a trois semaines » ne dit plus rien d'aujourd'hui. Trois jours, et
+    // la date reste affichée à côté.
+    PUBLICATION_PROUVE_MS: 72 * 60 * 60 * 1000,
   },
 };
