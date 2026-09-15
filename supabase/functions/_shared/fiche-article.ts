@@ -167,7 +167,19 @@ export async function creerArticlePourFiche(admin: Admin, a: ArticleACreer): Pro
  */
 export async function enregistrerFiche(
   admin: Admin,
-  p: { userId: string; inventaireId: number; fiche: Record<string, unknown>; source: string; scanId?: string | null },
+  p: {
+    userId: string; inventaireId: number; fiche: Record<string, unknown>;
+    source: string; scanId?: string | null;
+    /**
+     * ⚠️ À NE PASSER QUE QUAND CE GESTE VIENT DE CRÉER L'ARTICLE. Un article
+     * né d'une génération est un BROUILLON : il existe, mais l'utilisateur n'a
+     * encore rien fait dessus. Toute autre écriture de fiche — sauvegarde du
+     * stepper, régénération d'un article déjà au stock — OMET la clé : sur
+     * conflit, PostgREST ne met à jour que les colonnes présentes, donc l'état
+     * survit intact et un article déjà rangé ne peut pas y retomber.
+     */
+    brouillon?: boolean;
+  },
 ): Promise<boolean> {
   try {
     const { error } = await admin.from("fiches_annonce").upsert({
@@ -176,6 +188,7 @@ export async function enregistrerFiche(
       fiche: p.fiche ?? {},
       source: p.source,
       ...(p.scanId ? { scan_id: p.scanId } : {}),
+      ...(p.brouillon === undefined ? {} : { brouillon: p.brouillon }),
       updated_at: new Date().toISOString(),
     }, { onConflict: "inventaire_id" });
     if (error) {

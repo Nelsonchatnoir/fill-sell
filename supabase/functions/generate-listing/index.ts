@@ -1175,6 +1175,11 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
         .map(p => (typeof p === "string" ? p : p?.url))
         .filter((u): u is string => typeof u === "string" && !!u);
       const photosFiche = urlsPublier.length ? urlsPublier : (Array.isArray(photos) ? photos as string[] : []);
+      // L'article est-il NÉ de ce geste ? C'est la seule question qui décide de
+      // l'état brouillon — et elle ne se pose qu'ici, à la création. Une
+      // régénération d'un article déjà au stock ne doit JAMAIS le faire
+      // retomber en brouillon : la clé est alors omise (cf. enregistrerFiche).
+      const neDeCeGeste = inventaireIdFiche == null;
       if (!inventaireIdFiche) {
         // Corps item_data : l'article n'a pas encore de ligne. C'est ce geste-ci
         // qui la crée — pas le clic Publier, qui peut ne jamais venir.
@@ -1203,6 +1208,7 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
           userId: user.id,
           inventaireId: inventaireIdFiche,
           source: "generate_listing",
+          ...(neDeCeGeste ? { brouillon: true } : {}),
           fiche: {
             v: 1,
             photos: photosFiche,

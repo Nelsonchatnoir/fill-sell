@@ -14,6 +14,7 @@ import AnalyseMarche from "./AnalyseMarche";
 // de l'extension savent lire. Règle et incident dans utils/photos.js.
 import { urlPhoto, urlsPhotos, entreesPhotos, estPhotoRetouchee } from "../utils/photos";
 import { texteComparable } from "../utils/texteComparable";
+import { sortirDuBrouillon } from "../utils/brouillon";
 import { useTranslation } from "../i18n/useTranslation";
 import { Loader } from "./ui";
 import { detectObjectIcon, detectObjectIconKeyword, detectObjectKeywordDetail, ALL_OBJECT_ICONS, PLATFORM_LOGIN_URLS, fraicheurExtension, estSupportNonLivre, uuidV4 } from "../utils/shared";
@@ -4154,6 +4155,14 @@ export default function ListingPreviewScreen({
   // on n'ÉCRIT jamais : le premier rendu écraserait sinon la fiche du serveur
   // par l'état vide du composant, juste avant de la recevoir.
   const ficheChargeeRef = useRef(false);
+  // CE QUI EMPÊCHE CETTE FICHE DE PARTIR, rangé dans la fiche pour que la carte
+  // de brouillon puisse le DIRE sans rien recalculer (2026-09-15). Le stepper
+  // est la seule autorité : lui seul a les référentiels par plateforme. Tenu
+  // dans une ref parce que les trois valeurs sont déclarées bien plus bas dans
+  // le composant — les mettre dans les dépendances de l'effet de sauvegarde,
+  // déclaré ici, lèverait une TDZ (même piège que jobsByInventaire côté Stock).
+  // Mutation idempotente au rendu, aucun re-render déclenché.
+  const blocageFicheRef = useRef({});
   // La fiche relue en base a servi à hydrater ce stepper : l'article a déjà été
   // payé, aucune génération ne doit repartir. Lu par l'écran de l'étape 2 pour
   // le dire à l'utilisateur.
@@ -4166,11 +4175,14 @@ export default function ListingPreviewScreen({
   // reprenables côté client. Publication terminée → brouillon purgé.
   useEffect(() => {
     if (initializing) return undefined;
-    const charge = chargeFiche({
-      step, prixAchatSaisi, notes, photos, price, customPriced, photoAnalysis,
-      modeleConfirme, photoOption, background, platformListings, processedPhotos,
-      edited, sharedFields, sharedOverrides, selected,
-    });
+    const charge = {
+      ...chargeFiche({
+        step, prixAchatSaisi, notes, photos, price, customPriced, photoAnalysis,
+        modeleConfirme, photoOption, background, platformListings, processedPhotos,
+        edited, sharedFields, sharedOverrides, selected,
+      }),
+      ...blocageFicheRef.current,
+    };
     const enregistrerEnBase = () => supabase.from("fiches_annonce").upsert({
       inventaire_id: invId,
       user_id: userId,
@@ -8045,6 +8057,13 @@ export default function ListingPreviewScreen({
       // exclue de ce clic (champ manquant, adresse, interdite, sans annonce)
       // n'a AUCUN job — l'annoncer « En cours… » au Stock était un mensonge
       // optimiste que le poll suivant venait démentir.
+      // ── L'ARTICLE QUITTE LES BROUILLONS (2026-09-15) ────────────────────
+      // Publier EST le geste. Même fonction que le bouton « Ajouter au stock »
+      // de la carte de brouillon — un seul chemin de code, deux points
+      // d'entrée. Best-effort : la publication est partie, elle reste partie,
+      // et le filet « aucun job » sortirait l'article de la liste de toute
+      // façon si cette écriture-ci ratait.
+      if (currentInvId) sortirDuBrouillon(supabase, { userId, inventaireId: currentInvId });
       onJobsQueued?.(currentInvId ?? null, plateformesAPublier);
       // Photos : PLUS d'UPDATE client ici (2026-08-04). spend_coins_and_publish
       // écrit inventaire.photos DANS la transaction du débit (migration
@@ -8224,6 +8243,25 @@ export default function ListingPreviewScreen({
     vintedGenreBlocked ||
     beebsGenreBlocked ||
     descriptionVideVinted;
+
+  // ── CE QUI MANQUE, RANGÉ DANS LA FICHE (2026-09-15) ──────────────────────
+  // Sans ça, un brouillon rouvert trois jours plus tard ne redécouvre son champ
+  // requis qu'au moment de publier. La carte le dit AVANT — mais elle ne
+  // réinvente aucune règle : elle relit ce que le stepper, seul détenteur des
+  // référentiels par plateforme, a établi ici.
+  // ⚠️ Écrit à CHAQUE rendu, y compris quand les référentiels ne sont pas
+  //    encore chargés : dans ce cas la liste est vide, et la carte ne dit rien.
+  //    C'est la doctrine permissive du 02/09 — en cas de doute, on ne demande
+  //    rien. Une liste vide n'est jamais « tout va bien », c'est « on ne sait
+  //    pas encore », et la carte ne prétend pas le contraire.
+  blocageFicheRef.current = {
+    champsPartagesManquants: missingSharedFieldsDetailed.map(f => ({
+      key: f.key,
+      platforms: (f.platforms ?? []).map(p => PLATFORM_LABELS[p] ?? p),
+    })),
+    descriptionVideVinted,
+    prixAchatManquant,
+  };
 
   // SOURCE UNIQUE de « le bouton Publier est gris pour une raison que
   // l'utilisateur doit lire » : ctaDisabled ET motifsCtaGris en dérivent tous

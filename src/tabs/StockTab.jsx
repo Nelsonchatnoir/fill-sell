@@ -28,6 +28,7 @@ import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
 // Photos : lecture des deux formes, écriture en objets { type, url } — le
 // normaliseur unique (incident lecarnetdemercury du 05/09, cf. utils/photos.js).
 import { urlsPhotos, entreesPhotos } from '../utils/photos';
+import { sortirDuBrouillon, manquesDeLaFiche } from '../utils/brouillon';
 // Archive des erreurs remplacées à la relance (2026-09-12) : le MÊME fichier
 // que update-job-status et handler-watch — le motif de l'arrêt précédent ne
 // disparaît plus quand on relance (platform_fields.erreurs_archivees).
@@ -3165,6 +3166,91 @@ const texteErreurRepublishAuto = (code, fr) => {
   : `Automatic reposting is paused (${code}). Your listings are untouched. Contact us if it lasts.`));
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BROUILLONS — le travail payé qui attend (2026-09-15, décision Nico)
+//
+// Depuis que le scan crée l'article AU DÉBIT, le Stock se remplirait d'articles
+// sur lesquels l'utilisateur n'a encore rien fait. Ce ne sont pas des articles
+// de son stock : ce sont des brouillons. Ils sortent d'ici par un GESTE —
+// publier, ranger au stock, ou supprimer.
+//
+// ⚠️ CE BLOC NE DIT JAMAIS « ÉCHEC ». Rien n'a été tenté. Le rouge, les
+//    triangles et le vocabulaire de la panne appartiennent au bandeau des jobs
+//    ratés, qui est un autre écran et un autre problème. Ici : le beige calme
+//    du reste du Stock, et un verbe à l'infinitif.
+// ⚠️ LE QUOTA SE DIT UNE FOIS, EN TÊTE, EN GRIS. Les brouillons sont DÉJÀ
+//    décomptés (le débit a lieu à la génération) et il faut le dire, sinon on
+//    laisse croire qu'en supprimer récupère de la limite. Mais répété sur
+//    chaque carte, ça devient un reproche : une ligne, pas douze.
+// ═══════════════════════════════════════════════════════════════════════════
+function BrouillonsBloc({ lang, fmt, brouillons, onPublier, onRanger, onSupprimer }) {
+  const fr = lang !== 'en';
+  const [enCours, setEnCours] = useState(null); // id en cours de rangement
+  if (!brouillons.length) return null;
+  return (
+    <div style={{background:"#fff",border:"1px solid #E7E3D8",borderRadius:12,padding:"11px 12px"}}>
+      <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",gap:8,marginBottom:2}}>
+        <div style={{fontSize:13.5,fontWeight:700,color:"#10201B"}}>
+          {fr ? `Brouillons (${brouillons.length})` : `Drafts (${brouillons.length})`}
+        </div>
+      </div>
+      {/* La ligne du quota : discrète, intégrée, UNE fois. */}
+      <div style={{fontSize:11,color:"#8A8578",lineHeight:1.45,marginBottom:10}}>
+        {fr
+          ? "Annonces générées, pas encore publiées — déjà décomptées de ta limite."
+          : "Listings generated, not published yet — already counted towards your limit."}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {brouillons.map(({ item, fiche }) => {
+          const manques = manquesDeLaFiche(fiche, fr ? 'fr' : 'en');
+          const photo = urlsPhotos(item.photos)[0] ?? null;
+          const prix = Number(fiche?.price);
+          const range = enCours === item.id;
+          return (
+            <div key={item.id} style={{display:"flex",gap:10,alignItems:"flex-start",padding:"9px 10px",borderRadius:10,background:"#FBFAF7",border:"1px solid #EFEBE0"}}>
+              {photo
+                ? <img src={photo} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"#F2F0E9"}}/>
+                : <div style={{width:44,height:44,borderRadius:8,flexShrink:0,background:"#F2F0E9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>📦</div>}
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12.5,fontWeight:600,color:"#10201B",lineHeight:1.35,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>
+                  {item.title || (fr ? "Article" : "Item")}
+                </div>
+                {Number.isFinite(prix) && prix > 0 && (
+                  <div style={{fontSize:11.5,color:"#6B7A75",fontWeight:600,marginTop:1}}>{fmt(prix)}</div>
+                )}
+                {/* Ce qui manque — nommé, jamais « erreur ». Rien à l'écran
+                    quand on ne sait pas : la fiche jamais ouverte dans le
+                    stepper n'a pas encore de référentiel plateforme, et
+                    prétendre le contraire serait inventer une exigence. */}
+                {manques.length > 0 && (
+                  <div style={{fontSize:11,color:"#8A6100",lineHeight:1.45,marginTop:3}}>
+                    {(fr ? "À compléter : " : "To complete: ") + manques.join(" · ")}
+                  </div>
+                )}
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:7}}>
+                  <button onClick={()=>onPublier(item)}
+                    style={{padding:"5px 11px",borderRadius:99,border:"none",background:"#1B6E62",color:"#fff",fontSize:11.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {fr ? "Publier" : "Publish"}
+                  </button>
+                  <button disabled={range}
+                    onClick={async()=>{ setEnCours(item.id); await onRanger(item); setEnCours(null); }}
+                    style={{padding:"5px 11px",borderRadius:99,border:"1px solid #BFE0D9",background:"transparent",color:"#1B6E62",fontSize:11.5,fontWeight:700,cursor:range?"default":"pointer",opacity:range?0.6:1,fontFamily:"inherit"}}>
+                    {fr ? "Ajouter au stock" : "Add to stock"}
+                  </button>
+                  <button onClick={()=>onSupprimer(item)}
+                    style={{padding:"5px 11px",borderRadius:99,border:"1px solid rgba(0,0,0,0.12)",background:"transparent",color:"#8A8578",fontSize:11.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                    {fr ? "Supprimer" : "Delete"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RepublishAutoBlock({ lang, user, isPro, openUpgradeModal }) {
   const fr = lang !== 'en';
   const [cfg, setCfg] = useState(null);          // republish_auto de platform_settings
@@ -5002,6 +5088,50 @@ const StockTab = memo(function StockTab({
     }
     return m;
   }, [jobsByInventaire]);
+
+  // ── BROUILLONS (2026-09-15) ───────────────────────────────────────────────
+  // Les articles créés par une génération et sur lesquels rien n'a encore été
+  // fait. Lecture unique à l'ouverture du Stock, sur l'index partiel
+  // fiches_annonce_brouillon_idx — jamais de balayage du parc.
+  // ⚠️ Vit ICI, APRÈS jobsByInventaire : la liste visible le lit (règle É5, une
+  //    dépendance posée plus haut lèverait une TDZ au montage).
+  const [brouillonsBruts, setBrouillonsBruts] = useState([]);
+  const rechargerBrouillons = async (uid) => {
+    if (!uid) return;
+    const { data, error } = await supabase
+      .from('fiches_annonce')
+      .select('inventaire_id, fiche, updated_at')
+      .eq('user_id', uid)
+      .eq('brouillon', true)
+      .order('updated_at', { ascending: false })
+      .limit(200);
+    // Échec de lecture = AUCUN bloc, jamais un bloc vide alarmant : le Stock
+    // continue exactement comme avant.
+    if (error) { console.warn('[brouillons] lecture impossible :', error.message); return; }
+    setBrouillonsBruts(Array.isArray(data) ? data : []);
+  };
+  useEffect(() => { rechargerBrouillons(user?.id); }, [user?.id]);
+
+  const brouillons = useMemo(() => {
+    if (!brouillonsBruts.length) return [];
+    const parId = new Map((stock ?? []).map(i => [String(i.id), i]));
+    return brouillonsBruts
+      .map(b => ({ ...b, item: parId.get(String(b.inventaire_id)) ?? null }))
+      // Article supprimé (la fiche part en cascade, mais la liste locale peut
+      // être en retard) ou vendu : pas de carte sans article vivant.
+      .filter(b => b.item && b.item.statut !== 'vendu')
+      // FILET : un job existe ⇒ l'article est EN LIGNE, donc plus un brouillon,
+      // même si le drapeau n'a pas pu être levé (écriture best-effort). L'état
+      // affiché ne dépend jamais d'une seule écriture.
+      .filter(b => !((jobsByInventaire[b.item.id] ?? []).length));
+  }, [brouillonsBruts, stock, jobsByInventaire]);
+
+  // LA SORTIE — un seul chemin de code (src/utils/brouillon.js), deux points
+  // d'entrée : ce bouton-ci et la publication (ListingPreviewScreen).
+  const rangerBrouillon = async (item) => {
+    const ok = await sortirDuBrouillon(supabase, { userId: user?.id, inventaireId: item.id });
+    if (ok) setBrouillonsBruts(prev => prev.filter(b => String(b.inventaire_id) !== String(item.id)));
+  };
   // ── Plafond quotidien d'exécution : état SERVEUR (2026-08-29 soir) ───────
   // La retenue vit dans get-pending-jobs (v18+) et elle est ACTIVE — la
   // première version de ce bloc recalculait localement (coin_config + jobs
@@ -6135,6 +6265,20 @@ const StockTab = memo(function StockTab({
           est monté par le <style> de la liste plus bas — les classes portent,
           l'ordre DOM d'un <style> est sans effet. */}
       <div className="stock-v2" style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+        {/* ── Brouillons — EN TÊTE, et conditionnel (2026-09-15) ───────────
+            Du travail DÉJÀ PAYÉ qui attend un geste : ça passe avant tout le
+            reste, et ça disparaît complètement dès qu'il n'y en a plus. Placé
+            au rang 1 de l'ordre du 13/09, celui des bandeaux conditionnels —
+            le bloc republication reste la première chose VUE quand il n'y a
+            aucun brouillon, c'est-à-dire le cas normal. */}
+        <BrouillonsBloc
+          lang={lang}
+          fmt={fmt}
+          brouillons={brouillons}
+          onPublier={ouvrirStepper}
+          onRanger={rangerBrouillon}
+          onSupprimer={(item)=>delItem(item.id)}
+        />
         {/* ── Republication automatique par créneaux — EN TÊTE (13/09) ─────
             La première chose qu'un Pro voit en ouvrant l'app : l'état, le
             créneau, le nombre qui va RÉELLEMENT partir (serveur, jamais le

@@ -3139,6 +3139,10 @@ serve(async (req) => {
               const livrEes = Object.keys(platformListings ?? {}).filter(p => (platformListings as Record<string, unknown>)[p]);
               await enregistrerFiche(adminClient, {
                 userId, inventaireId: invId, source: "lens_unifie", scanId,
+                // Ce geste vient de créer l'article : c'est un BROUILLON tant
+                // que l'utilisateur n'a rien fait dessus (publier, ou le ranger
+                // au stock). Jamais un échec — rien n'a été tenté.
+                brouillon: true,
                 fiche: {
                   v: 1,
                   photos: photoUrls,
