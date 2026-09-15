@@ -8,6 +8,7 @@ import { appelAutorise, loggerAppelIA, coutHaikuUsd } from "../_shared/usage-gua
 // PARTAGÉ avec generate-listing — même code, mêmes prompts, mêmes traces. Ce
 // fichier n'en possède aucune copie.
 import { construireContexteArticle, redigerAnnoncesPlateformes } from "../_shared/redaction-plateformes.ts";
+import { creerArticlePourFiche, enregistrerFiche, attributsLus } from "../_shared/fiche-article.ts";
 // Préparation des images (2026-09-05) : mesure, réduction sous la limite de
 // l'API, écartement tracé. Détail complet et raisons dans le module.
 import { preparerPhotos, tracePhoto, type PhotoPreparee } from "./images.ts";
@@ -2993,6 +2994,10 @@ serve(async (req) => {
     // generate_listing n'est posée, donc le geste n'a rien consommé et la
     // porte B comptera la sienne — jamais 2 unités pour un article.
     let annonce: Record<string, unknown> | null = null;
+    // L'article créé au DÉBIT (2026-09-15) : rendu au client pour que le
+    // parcours Lens n'en recrée jamais un second, et que le stepper sache dès
+    // son ouverture sur QUELLE ligne il travaille.
+    let inventaireIdFiche: number | null = null;
     if (estAnnonce) {
       const redactionCost = { in: 0, out: 0, calls: 0 };
       try {
@@ -3079,6 +3084,99 @@ serve(async (req) => {
             },
           });
           if (logErr) console.error("[lens-analysis][annonce] usage_logs:", logErr.message);
+
+          // ── LA FICHE SURVIT AU DÉBIT (2026-09-15, décision Nico) ─────────
+          // L'unité vient d'être comptée : à partir de cette ligne, l'article
+          // EXISTE dans le stock et sa fiche est sauvegardée EN ENTIER. Avant
+          // ce lot, la ligne inventaire n'était créée qu'au clic Publier — et
+          // 654 générations facturées sur 1 697 (38,5 %, 405 comptes) n'en ont
+          // jamais vu la couleur : les gens payaient et il ne leur restait rien.
+          // ⛔ La ligne usage_logs ci-dessus reste INCHANGÉE. Y glisser le
+          //    nouvel inventaire_id activerait la dédup 24 h de
+          //    quota_annonces_consommees là où elle ne s'appliquait pas
+          //    (corps sans ligne inventaire) : ce serait modifier le décompte.
+          //    Interdit sans arbitrage explicite.
+          // ⛔ Best-effort de bout en bout : rien ici ne peut faire échouer un
+          //    scan déjà livré et déjà payé — au pire on retombe sur le
+          //    comportement d'avant ce lot.
+          try {
+            // ⛔ Article que le scan déclare DÉJÀ VENDU : on ne le met pas au
+            //    stock. L'écran de résultat propose « Enregistrer la vente »,
+            //    pas « publier » — lui créer une ligne en stock inventerait un
+            //    article que l'utilisateur ne possède pas. Chemin inchangé.
+            if (itemData.est_vendu === true) throw { ignorer: true };
+            const av = (itemData.attributs_visibles ?? null) as Record<string, unknown> | null;
+            const prixSuggere = Number(itemData.prix_vente_suggere);
+            const invId = await creerArticlePourFiche(adminClient, {
+              userId,
+              titre: String(itemData.titre ?? itemData.objet ?? "Article"),
+              marque: (itemData.marque as string) ?? null,
+              categorie: (itemData.categorie as string) ?? null,
+              description: (itemData.description as string) ?? null,
+              prixVente: Number.isFinite(prixSuggere) ? prixSuggere : null,
+              // Les photos DU SCAN : les seules qui existent à cet instant. Le
+              // bucket durable (listing-photos) n'est alimenté qu'à l'ouverture
+              // du stepper — l'app y remplace ces URLs par les copies
+              // compressées dès qu'elle les a. Sans ça, un utilisateur qui
+              // génère puis ferme se retrouve avec un article sans photo, alors
+              // que ses photos existent.
+              photos: photoUrls,
+              attributs: attributsLus({
+                taille:  itemData.taille_estimee ?? null,
+                couleur: itemData.couleur ?? null,
+                matiere: itemData.matiere ?? null,
+                etat:    itemData.etat_estime ?? null,
+                isbn:    av?.isbn_ean ?? null,
+                attributs_visibles: av,
+              }),
+            });
+            if (invId) {
+              inventaireIdFiche = invId;
+              const livrEes = Object.keys(platformListings ?? {}).filter(p => (platformListings as Record<string, unknown>)[p]);
+              await enregistrerFiche(adminClient, {
+                userId, inventaireId: invId, source: "lens_unifie", scanId,
+                fiche: {
+                  v: 1,
+                  photos: photoUrls,
+                  // MÊME forme que l'état `platformListings` du stepper (la
+                  // réponse de génération entière, `.platforms` à l'intérieur) :
+                  // le client la repasse telle quelle dans appliquerGeneration,
+                  // le chemin unique d'application. Une forme à part obligerait
+                  // à un second chemin de recopie, qui divergerait.
+                  platformListings: { ...annonce, lens_unifie: true },
+                  selected: livrEes,
+                  price: Number.isFinite(prixSuggere) ? prixSuggere : null,
+                  // La fiche canonique du scan, RECOPIÉE : lens_scans porte la
+                  // réponse complète mais se purge à 90 jours, alors que la
+                  // fiche vit aussi longtemps que l'article. Ce que le stepper
+                  // relit (initialListing) doit lui survivre.
+                  lens: {
+                    objet: objetAnnonce,
+                    objet_source: itemData.objet_source ?? null,
+                    titre: itemData.titre ?? null,
+                    marque: itemData.marque ?? null,
+                    modele: itemData.modele ?? null,
+                    categorie: itemData.categorie ?? null,
+                    famille: itemData.famille ?? null,
+                    description: itemData.description ?? null,
+                    taille_estimee: itemData.taille_estimee ?? null,
+                    couleur: itemData.couleur ?? null,
+                    matiere: itemData.matiere ?? null,
+                    etat_estime: itemData.etat_estime ?? null,
+                    attributs_visibles: av,
+                    prix_vente_suggere: Number.isFinite(prixSuggere) ? prixSuggere : null,
+                  },
+                },
+              });
+            }
+          } catch (e) {
+            if ((e as { ignorer?: boolean })?.ignorer) {
+              console.log("[lens-analysis][annonce] article déclaré vendu — aucune ligne de stock créée (voulu)");
+            } else {
+              console.error("[lens-analysis][annonce] fiche NON sauvegardée — scan livré quand même :", (e as Error)?.message ?? e);
+            }
+          }
+
           console.log(
             `[lens-analysis][annonce] user=${userId} plateformes=${livrees}/${platformsDemandees.length}`
             + ` redaction=${redactionCost.calls} appels ${redactionCost.in}in/${redactionCost.out}out usd=${redactionUsd.toFixed(4)}`
@@ -3101,7 +3199,12 @@ serve(async (req) => {
     // c'est le seul ordre qui garantit qu'un utilisateur parti entre-temps la
     // retrouvera. Coût pour celui qui est resté : un UPDATE jsonb, ~10 ms sur
     // un scan de 21 000 ms.
-    const charge = annonce ? { ...itemData, annonce } : itemData;
+    // inventaire_id : l'article créé au débit. Le client le pose sur le
+    // parcours Lens (lensInventaireId) — c'est lui qui empêche toute seconde
+    // ligne, au publish comme au bouton « Modifier la fiche ».
+    const charge = annonce
+      ? { ...itemData, annonce, ...(inventaireIdFiche ? { inventaire_id: inventaireIdFiche } : {}) }
+      : itemData;
     await memoriserScan("termine", charge);
 
     return new Response(JSON.stringify(charge), {

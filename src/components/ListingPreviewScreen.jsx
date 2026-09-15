@@ -1992,7 +1992,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
 function StepGeneration({ generating, generateError, platformListings, processedPhotos, selected, edited, setEdited, onPhotoClick, onRetry, noteOverride, lang, generatePrice = null,
   price, setPrice, customPriced, setCustomPriced, articleIcon = "📦", photoOption = null,
   onEstimatePrice = null, estimating = false, estimateCost = null, estimateError = "", estimateResult = null,
-  prixAchat = null, carteAOuvrir = null, onCarteOuverte = null }) {
+  prixAchat = null, carteAOuvrir = null, onCarteOuverte = null, ficheReprise = false }) {
   const { t, tpl } = useTranslation(lang);
   const platformFieldsConfig = getPlatformFieldsConfig(t);
   const [elapsed, setElapsed] = useState(0);
@@ -2126,6 +2126,18 @@ function StepGeneration({ generating, generateError, platformListings, processed
       <p style={{ margin:"0 0 16px", fontSize:12.5, color:T.mute2, lineHeight:1.5 }}>
         {t("stepGenReviewSubtitle")}
       </p>
+
+      {/* Fiche reprise (2026-09-15) : l'article rouvert porte des annonces déjà
+          payées. On le DIT — sans quoi l'écran est indistinguable d'une
+          génération neuve, et la question « est-ce qu'on vient de me
+          redécompter une annonce ? » n'a aucune réponse à l'écran. */}
+      {ficheReprise && (
+        <div style={{ marginBottom:16, padding:"9px 12px", borderRadius:12, background:T.chip, border:`1px solid ${T.border}`, fontSize:12, color:T.mute2, lineHeight:1.45 }}>
+          {lang === "en"
+            ? "Saved listing reopened — nothing was regenerated, no listing counted."
+            : "Fiche enregistrée, rouverte telle quelle — rien n'a été regénéré, aucune annonce décomptée."}
+        </div>
+      )}
 
       {processedPhotos?.length > 0 && (
         <div style={{ marginBottom:20 }}>
@@ -2591,7 +2603,7 @@ export function AspectValueInput({ value, allowedValues, strict = false, closedM
   );
 }
 
-function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, canToggleStock, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null }) {
+function StepPublish({ selected, setSelected, platformSessions = null, platformListings, publishError, lang, demanderPrixAchat = false, inventoryFull = false, stockCount = null, stockLimit = FREE_STOCK_LIMIT, prixAchatSaisi, setPrixAchatSaisi, missingSharedFields = [], missingSharedFieldPlatforms = {}, sharedFields = {}, onSharedFieldChange, sharedChildAxes = null, vintedGenreBlocked = false, beebsGenreBlocked = false, ebayRequiredStatus = null, onEbayAspectChange = null, onEbaySharedFieldChange = null, genericRequiredStatus = null, onPlatformAspectChange = null, onPlatformDedicatedChange = null, pausedPlatforms = [], pausedReasons = {}, lbcPhotoCap = null, lbcAdresseManquante = null, ebayVoieApiReelle = false, descriptionMentions = null, descriptionVideVinted = false, onOuvrirCopie = null }) {
   const { t, tpl } = useTranslation(lang);
   const chips = [...selected].filter(p => platformListings?.platforms?.[p]);
   // Voie API eBay (07/09/2026, prouvée sur le job d9463010) : le relevé de
@@ -2914,9 +2926,13 @@ function StepPublish({ selected, setSelected, platformSessions = null, platformL
           ⚠️ Le mécanisme anti-doublon reste ENTIER et distinct : un article
           DÉJÀ dans l'inventaire (invId posé par le Stock, ou alreadyInStock
           posé par le Lens) ne doit surtout PAS être recréé au publish —
-          canToggleStock = !invId && !alreadyInStock garde ce contrat. */}
+          canToggleStock = !invId && !alreadyInStock garde ce contrat.
+          ⚠️ 2026-09-15 : l'AFFICHAGE de la question « combien l'as-tu payé ? »
+          ne suit plus canToggleStock (faux dès l'ouverture, depuis que la ligne
+          naît au débit) mais demanderPrixAchat — un article né de CE parcours
+          dont le prix d'achat n'est pas encore connu. */}
 
-      {canToggleStock && (
+      {demanderPrixAchat && (
         <div style={{ marginBottom:20 }}>
           <div style={{ fontSize:11, color:T.mute2, fontWeight:600, marginBottom:4 }}>
             {t("stepPublishBuyPriceLabel")}
@@ -3468,6 +3484,37 @@ export function writeStepperHost(data) {
   catch { /* quota : le stepper marchera, il ne survivra juste pas au reload */ }
 }
 
+// ── LA FICHE EN BASE (2026-09-15, décision Nico) ─────────────────────────────
+// sessionStorage reste ce qu'il a toujours été : un cache de confort qui fait
+// survivre le stepper au déchargement d'onglet de Chrome. Il n'est plus la
+// SEULE copie de quoi que ce soit — il mourait à la fermeture de l'onglet, et
+// avec lui le texte qu'on venait de facturer (654 générations perdues sur
+// 1 697, mesure du 15/09). La copie de référence vit désormais dans
+// fiches_annonce, écrite au débit par le serveur puis tenue à jour ici.
+//
+// UNE SEULE FORME. La charge écrite en base est EXACTEMENT celle du brouillon
+// sessionStorage — même sérialiseur (chargeFiche ci-dessous), donc aucune
+// divergence possible au premier correctif appliqué d'un seul côté.
+// `invKey`, `invId`, `articleSourceMorte` et `photosAnalysees` restent
+// LOCAUX : ce sont des états de session (quel article ce composant-ci suit),
+// pas de la fiche.
+function chargeFiche(etat) {
+  const {
+    step, prixAchatSaisi, notes, photos, price, customPriced, photoAnalysis,
+    modeleConfirme, photoOption, background, platformListings, processedPhotos,
+    edited, sharedFields, sharedOverrides, selected,
+  } = etat;
+  return {
+    v: 1,
+    step, prixAchatSaisi, notes, photos, price,
+    customPriced: [...customPriced],
+    photoAnalysis, modeleConfirme, photoOption, background,
+    platformListings, processedPhotos, edited, sharedFields,
+    sharedOverrides: Object.fromEntries(Object.entries(sharedOverrides).map(([k, v]) => [k, [...v]])),
+    selected: [...selected],
+  };
+}
+
 function readStepperDraft(invKey) {
   try {
     const raw = sessionStorage.getItem(STEPPER_DRAFT_KEY);
@@ -3655,6 +3702,25 @@ export default function ListingPreviewScreen({
   // 2026-07-30 plus rien ne l'affiche (toggle retiré de StepPublish).
   const addToStock = true;
   const [prixAchatSaisi, setPrixAchatSaisi] = useState(draft?.prixAchatSaisi ?? "");
+  // Ce que la LIGNE dit du prix d'achat — { valeur, inconnu } — lu à l'init.
+  // null = pas encore lu (ou pas de ligne).
+  const [prixAchatBase, setPrixAchatBase] = useState(null);
+  // ── LE PRIX D'ACHAT RESTE DEMANDÉ SUR LE PARCOURS LENS (2026-09-15) ───────
+  // Il l'est depuis le 29/07, et la règle était portée par canToggleStock —
+  // « cette publication va créer la ligne inventaire ». Depuis que la ligne
+  // naît au DÉBIT, ce test est faux dès l'ouverture du stepper : la question ne
+  // serait plus jamais posée, et des articles neufs entreraient au stock sans
+  // qu'on sache ce qu'ils ont coûté (VIDE ≠ ZÉRO, règle du 03/08 : pas de marge
+  // calculée sur du vent). On la rattache donc à ce qu'elle a toujours voulu
+  // dire : un article NÉ de ce parcours, dont personne n'a encore dit le prix.
+  // ⚠️ JAMAIS sur le parcours Stock (createStockItem absent) : un article
+  // importé du dressing a légitimement un prix d'achat inconnu — lui réclamer
+  // un montant serait un mur tout neuf sur un chemin qui marche.
+  // ⚠️ Zéro reste une réponse valide (« c'était gratuit ») : seul un champ VIDE
+  // bloque, exactement comme avant.
+  const parcoursCreation = typeof createStockItem === "function";
+  const prixAchatARenseigner = parcoursCreation
+    && (prixAchatBase == null || (prixAchatBase.valeur == null && !prixAchatBase.inconnu));
 
   // ── Inventaire plein : blocage COHÉRENT, en écran de conversion (2026-07-30)
   // Avant : le compte Free à 20 articles voyait le CTA « Publier » vert et
@@ -4077,25 +4143,49 @@ export default function ListingPreviewScreen({
   // photos (retouchées si option IA). Jamais formulé en avertissement.
   const [createdThisRun, setCreatedThisRun] = useState(false);
 
+  // La fiche en base a été lue (ou son absence constatée). Tant que c'est faux,
+  // on n'ÉCRIT jamais : le premier rendu écraserait sinon la fiche du serveur
+  // par l'état vide du composant, juste avant de la recevoir.
+  const ficheChargeeRef = useRef(false);
+  // La fiche relue en base a servi à hydrater ce stepper : l'article a déjà été
+  // payé, aucune génération ne doit repartir. Lu par l'écran de l'étape 2 pour
+  // le dire à l'utilisateur.
+  const [ficheReprise, setFicheReprise] = useState(false);
+
   // Sauvegarde continue du brouillon : tout ce qui permet de reprendre le
   // stepper après un remount (reload d'onglet Chrome, changement d'onglet
   // interne). Les états transitoires (publishing, uploading, fichiers locaux
   // du step 0) ne sont volontairement PAS persistés — non sérialisables ou non
   // reprenables côté client. Publication terminée → brouillon purgé.
   useEffect(() => {
-    if (initializing) return;
-    if (done) { clearStepperPersistence(); return; }
+    if (initializing) return undefined;
+    const charge = chargeFiche({
+      step, prixAchatSaisi, notes, photos, price, customPriced, photoAnalysis,
+      modeleConfirme, photoOption, background, platformListings, processedPhotos,
+      edited, sharedFields, sharedOverrides, selected,
+    });
+    const enregistrerEnBase = () => supabase.from("fiches_annonce").upsert({
+      inventaire_id: invId,
+      user_id: userId,
+      fiche: charge,
+      source: "stepper",
+    }, { onConflict: "inventaire_id" })
+      .then(({ error }) => { if (error) console.warn("[stepper] fiche non sauvegardée :", error.message); })
+      .catch(() => {});
+    if (done) {
+      clearStepperPersistence();
+      // La publication est PARTIE : on fige la fiche telle qu'elle a servi —
+      // catégories résolues, tailles converties, aspects rapprochés compris.
+      // C'est cette version-là qu'une republication doit reprendre, sans
+      // refaire le chemin. Sans débrayage : il n'y aura pas d'autre occasion.
+      if (invId && platformListings && ficheChargeeRef.current) enregistrerEnBase();
+      return undefined;
+    }
     try {
       sessionStorage.setItem(STEPPER_DRAFT_KEY, JSON.stringify({
+        ...charge,
         invKey: invKeyRef.current,
-        step, invId, addToStock, prixAchatSaisi, notes,
-        photos, price, customPriced: [...customPriced], photoAnalysis,
-        modeleConfirme,
-        photoOption, background,
-        platformListings, processedPhotos, edited,
-        sharedFields,
-        sharedOverrides: Object.fromEntries(Object.entries(sharedOverrides).map(([k, v]) => [k, [...v]])),
-        selected: [...selected],
+        invId, addToStock,
         // Anti-contamination (2026-08-08) : la neutralisation de l'article
         // d'origine et l'identité de la dernière analyse survivent au reload —
         // sinon un remount ressusciterait la fiche morte via les props.
@@ -4103,9 +4193,24 @@ export default function ListingPreviewScreen({
         photosAnalysees: photosAnalyseesRef.current,
       }));
     } catch { /* quota plein : le stepper continue, seul le brouillon saute */ }
+    // ── LA MÊME CHARGE PART EN BASE (2026-09-15) ───────────────────────────
+    // Débrayée : le brouillon change à chaque frappe, la fiche n'a pas besoin
+    // d'être écrite à chaque frappe. 1,5 s après la dernière modification.
+    // Conditions, dans l'ordre :
+    //   · une ligne inventaire — sans elle il n'y a rien à rattacher ;
+    //   · une génération appliquée — la fiche n'a d'objet que si elle porte
+    //     du texte payé ; avant ça, le brouillon sessionStorage suffit ;
+    //   · la fiche déjà chargée — sinon le premier rendu écraserait en base la
+    //     fiche qu'on est justement en train d'aller chercher.
+    // Échec = silencieux et sans conséquence : la fiche en base reste celle
+    // que le serveur a écrite au débit, jamais rien de perdu.
+    if (!invId || !platformListings || !ficheChargeeRef.current) return undefined;
+    const minuteur = setTimeout(enregistrerEnBase, 1500);
+    return () => clearTimeout(minuteur);
   }, [initializing, done, step, invId, addToStock, prixAchatSaisi, notes, photos, price,
       customPriced, photoAnalysis, modeleConfirme, photoOption, background, platformListings,
-      processedPhotos, edited, sharedFields, sharedOverrides, selected, articleSourceMorte]);
+      processedPhotos, edited, sharedFields, sharedOverrides, selected, articleSourceMorte,
+      supabase, userId]);
 
   // Compat catégorie × plateforme (source de vérité = les 4 mappings, cf.
   // platformCompat.js) : calculée dès que l'article est connu, elle GRISE les
@@ -4260,22 +4365,138 @@ export default function ListingPreviewScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── LA FICHE DÉJÀ PAYÉE SE RÉAPPLIQUE, ELLE NE SE REGÉNÈRE PAS ────────────
+  // (2026-09-15) Le chemin « j'ouvre mon article trois jours plus tard » : tout
+  // revient — photos, 4 annonces, champs partagés, taille saisie, catégories —
+  // et RIEN ne repart vers l'IA. `platformListings` non nul suffit à désarmer
+  // l'auto-génération de l'étape 2 (elle ne se déclenche que sur un état vide) :
+  // c'est la même garde qui protège déjà le Lens unifié depuis le 02/09.
+  //
+  // Deux formes de fiche, un seul chemin d'application :
+  //   · fiche du SERVEUR (écrite au débit, sans `edited`) → appliquerGeneration,
+  //     exactement comme une génération fraîche ;
+  //   · fiche du STEPPER (l'utilisateur avait déjà corrigé) → on restaure ses
+  //     états tels quels, ses corrections priment sur la génération brute.
+  function appliquerFiche(f) {
+    if (!f || typeof f !== "object") return false;
+    const gen = f.platformListings;
+    const parPlateforme = gen?.platforms;
+    if (!parPlateforme || typeof parPlateforme !== "object") return false;
+    const dispo = PLATFORMS_DEFAULT.filter(p => parPlateforme[p]);
+    if (!dispo.length) return false;
+
+    // ⚠️ LES PHOTOS DE L'HÔTE PRIMENT SUR CELLES DE LA FICHE. L'hôte (Stock ou
+    // Lens) passe les photos À JOUR de l'article — notamment les copies
+    // compressées définitives que LensTab vient de monter et de rattacher,
+    // alors que la fiche écrite au débit porte encore les URLs du scan.
+    // Restaurer la fiche telle quelle ferait reculer les photos d'un cran.
+    const urlsFiche = Array.isArray(f.photos) ? f.photos.filter(u => typeof u === "string" && u) : [];
+    const urls = initialPhotos.length ? initialPhotos : urlsFiche;
+    if (urls.length) setPhotos(urls);
+    const memeJeu = urlsFiche.length === urls.length && urlsFiche.every((u, i) => u === urls[i]);
+    if (f.photoAnalysis) setPhotoAnalysis(f.photoAnalysis);
+    if (f.modeleConfirme != null) setModeleConfirme(f.modeleConfirme);
+    if (typeof f.notes === "string") setNotes(f.notes);
+    if (f.prixAchatSaisi != null && String(f.prixAchatSaisi) !== "") setPrixAchatSaisi(String(f.prixAchatSaisi));
+    if (Array.isArray(f.customPriced)) setCustomPriced(new Set(f.customPriced));
+    // Le gel de la retouche photo (photoOption) n'est PAS restauré : une fiche
+    // écrite avant le gel rouvrirait une option qui n'existe plus. L'effet de
+    // gel la ramènerait à "original" de toute façon — autant ne pas la poser.
+
+    // processedPhotos ne vaut QUE pour le jeu de photos qu'il décrit : si les
+    // URLs ont changé depuis, on le recalcule plutôt que de publier des photos
+    // qui ne sont plus celles de l'article.
+    const photosGeneration = memeJeu && Array.isArray(f.processedPhotos) && f.processedPhotos.length
+      ? f.processedPhotos
+      : entreesPhotos(urls);
+
+    if (f.edited && typeof f.edited === "object" && Object.keys(f.edited).length) {
+      // Reprise d'un travail déjà corrigé : ses valeurs font foi.
+      setProcessedPhotos(photosGeneration);
+      setPlatformListings(gen);
+      setEdited(f.edited);
+      if (f.sharedFields && typeof f.sharedFields === "object") setSharedFields(f.sharedFields);
+      if (f.sharedOverrides && typeof f.sharedOverrides === "object") {
+        setSharedOverrides(Object.fromEntries(
+          Object.entries(f.sharedOverrides).map(([k, v]) => [k, new Set(Array.isArray(v) ? v : [])])
+        ));
+      }
+      if (f.price != null) setPrice(f.price);
+    } else {
+      // Fiche fraîche du serveur : le chemin normal d'application, jamais une
+      // recopie parallèle.
+      appliquerGeneration({ ...gen, photos: photosGeneration, price: f.price ?? gen.price ?? null }, dispo);
+      if (f.price != null) setPrice(f.price);
+    }
+
+    const sel = (Array.isArray(f.selected) ? f.selected : dispo).filter(p => parPlateforme[p] && !lockedSet.has(p));
+    setSelected(new Set(sel.length ? sel : dispo.filter(p => !lockedSet.has(p))));
+    // On rouvre là où il en était, jamais avant l'étape des annonces : le
+    // renvoyer au viseur lui ferait croire que son travail est perdu.
+    const etape = Number(f.step);
+    setStep(Number.isFinite(etape) ? Math.min(Math.max(etape, 2), 3) : 2);
+    setFicheReprise(true);
+    return true;
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     // Reprise d'un brouillon : step/photos/prix déjà hydratés depuis
     // sessionStorage — surtout ne pas laisser l'init les écraser (le
     // setStep(1) ci-dessous renverrait l'utilisateur en arrière).
-    if (draft) { setInit(false); return; }
+    if (draft) { ficheChargeeRef.current = true; setInit(false); return undefined; }
+    // La fiche en base PASSE AVANT TOUT (2026-09-15) : si cet article en porte
+    // une, elle a été payée et elle se réapplique telle quelle. Lecture unique
+    // au mount, avant même le prix — c'est elle qui décide de l'étape d'arrivée.
+    let vivant = true;
+    if (invId) {
+      supabase
+        .from("fiches_annonce")
+        .select("fiche")
+        .eq("inventaire_id", invId)
+        .eq("user_id", userId)
+        .maybeSingle()
+        .then(({ data, error }) => {
+          if (!vivant) return;
+          if (error) console.warn("[stepper] fiche non relue :", error.message);
+          ficheChargeeRef.current = true;
+          if (!error && data?.fiche && appliquerFiche(data.fiche)) {
+            // Le prix d'achat et les attributs de la ligne restent utiles
+            // (bandeau prix d'achat, garde-fous de catégorie) : on les lit
+            // quand même, sans toucher à ce que la fiche vient de poser.
+            supabase.from("inventaire").select("prix_achat,prix_achat_inconnu,attributs")
+              .eq("id", invId).maybeSingle()
+              .then(({ data: art }) => {
+                if (!vivant || !art) return;
+                if (art.attributs && typeof art.attributs === "object") setAttributsBase(art.attributs);
+                setPrixAchatBase({ valeur: art.prix_achat ?? null, inconnu: art.prix_achat_inconnu === true });
+              });
+            setInit(false);
+            return;
+          }
+          initSansFiche();
+        });
+      return () => { vivant = false; };
+    }
+    ficheChargeeRef.current = true;
+    initSansFiche();
+    return () => { vivant = false; };
+
+    // Le parcours historique, inchangé — extrait pour que la fiche puisse le
+    // court-circuiter sans dupliquer une ligne de son contenu.
+    function initSansFiche() {
+    if (!vivant) return;
     // Pas encore de ligne inventaire (article pas encore en stock) : le prix vient
     // uniquement du résultat Lens, pas de lecture DB possible.
     if (invId) {
       supabase
         .from("inventaire")
-        .select("prix_vente,prix_achat,attributs")
+        .select("prix_vente,prix_achat,prix_achat_inconnu,attributs")
         .eq("id", invId)
         .single()
         .then(({ data }) => {
           if (data?.attributs && typeof data.attributs === "object") setAttributsBase(data.attributs);
+          setPrixAchatBase({ valeur: data?.prix_achat ?? null, inconnu: data?.prix_achat_inconnu === true });
           // ⚠️ Plus AUCUN repli sur prix_achat (2026-07-14) : un article ajouté
           // au stock sans prix de vente retombait sur son prix d'ACHAT, et
           // partait donc en ligne à marge nulle. Sans analyse et sans prix
@@ -4321,6 +4542,7 @@ export default function ListingPreviewScreen({
         }
         setInit(false);
       });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -6405,14 +6627,14 @@ export default function ListingPreviewScreen({
   // Prix d'achat OBLIGATOIRE (2026-07-29), et ZÉRO EST UNE RÉPONSE VALIDE :
   // beaucoup d'utilisateurs vident leur armoire et n'ont rien payé. On exige
   // un champ REMPLI, pas un montant > 0 — bloquer sur « 0 interdit » serait
-  // pire que le problème qu'on règle. Ne s'applique QUE quand on s'apprête à
-  // créer la ligne d'inventaire (canToggleStock) : un article déjà en stock
-  // porte déjà son prix d'achat, on ne le redemande pas.
+  // pire que le problème qu'on règle. Ne s'applique QUE sur un article né de ce
+  // parcours dont le prix d'achat n'est pas encore connu (prixAchatARenseigner,
+  // 2026-09-15) : un article déjà chiffré, ou venu du Stock, ne le redemande pas.
   // Déclaré AVANT handlePublish, qui le lit : la closure suffirait, mais le
   // garder au-dessus évite toute zone morte temporelle à la relecture.
   const prixAchatNum = Number(String(prixAchatSaisi ?? "").replace(",", "."));
   const prixAchatManquant =
-    canToggleStock &&
+    prixAchatARenseigner &&
     (String(prixAchatSaisi ?? "").trim() === "" || !Number.isFinite(prixAchatNum) || prixAchatNum < 0);
 
   // ── Publication ───────────────────────────────────────────────────────────
@@ -7729,6 +7951,25 @@ export default function ListingPreviewScreen({
         guardMessages.push(...invalidMessages);
         if (guardMessages.length) throw new Error(guardMessages.join(" "));
       }
+      // ── LA CATÉGORIE RÉSOLUE REVIENT DANS LA FICHE (2026-09-15) ──────────
+      // Tout ce qui vient d'être calculé pour partir — chemin de catégorie par
+      // plateforme, genre auto-résolu, couleurs éclatées, taille convertie au
+      // libellé de la plateforme, aspects eBay rapprochés — était jusqu'ici
+      // JETÉ avec la variable locale `rows` : la prochaine publication du même
+      // article refaisait tout le chemin, appel IA de vérification compris.
+      // On le recopie dans `edited`, donc dans le brouillon, donc dans la fiche
+      // en base. Aucune valeur écrasée : on fusionne par-dessus ce qui existe.
+      setEdited(prev => {
+        const suivant = { ...prev };
+        for (const row of rows) {
+          if (!suivant[row.platform]) continue;
+          suivant[row.platform] = {
+            ...suivant[row.platform],
+            platform_fields: { ...(suivant[row.platform].platform_fields ?? {}), ...(row.platform_fields ?? {}) },
+          };
+        }
+        return suivant;
+      });
       // Débit des pièces + insertion des jobs en UNE transaction serveur :
       // prix et user imposés côté serveur (coin_config + auth.uid()), insert
       // raté = zéro pièce débitée. Remplace check_publish_quota + insert +
@@ -7809,6 +8050,24 @@ export default function ListingPreviewScreen({
       // bloqué doit se VOIR, pas passer pour un succès. Policy « update own »
       // (auth.uid() = user_id) + GRANT UPDATE authenticated vérifiés en base
       // le 2026-07-13. Jamais bloquant : la publication, elle, a réussi.
+      // ── LE PRIX D'ACHAT SAISI ATTERRIT SUR LA LIGNE (2026-09-15) ─────────
+      // Avant ce lot, il n'existait qu'un chemin : createStockItem(prixAchat),
+      // qui CRÉAIT la ligne avec. Depuis que la ligne naît au débit, ce chemin
+      // ne passe plus — et sans ce bloc, le montant saisi au stepper serait
+      // simplement jeté. VIDE ≠ ZÉRO : un champ vide n'écrit rien (on ne
+      // remplace pas « je ne sais pas » par 0), un 0 tapé s'écrit et lève le
+      // drapeau « je ne sais plus ».
+      if (currentInvId && prixAchatARenseigner
+          && String(prixAchatSaisi ?? "").trim() !== "" && Number.isFinite(prixAchatNum) && prixAchatNum >= 0) {
+        const { error: paErr } = await supabase
+          .from("inventaire")
+          .update({ prix_achat: prixAchatNum, prix_achat_inconnu: false })
+          .eq("id", currentInvId)
+          .eq("user_id", userId)
+          .select("id");
+        if (paErr) console.error(`[FillSell] prix_achat NON persisté sur inventaire ${currentInvId} —`, paErr.message);
+        else setPrixAchatBase({ valeur: prixAchatNum, inconnu: false });
+      }
       if (currentInvId && price != null && Number(price) > 0) {
         const { data: prixMaj, error: prixErr } = await supabase
           .from("inventaire")
@@ -8130,7 +8389,11 @@ export default function ListingPreviewScreen({
           inventaire (1-bis) — on le dit comme un acquis (« ajouté à ton
           stock »), jamais comme un avertissement : la contrainte technique est
           la nôtre, pas la sienne, et il a payé. */}
-      {createdThisRun && (
+      {/* 2026-09-15 : `createdThisRun` ne se lève plus sur le parcours Lens —
+          la ligne inventaire y naît au DÉBIT, pas au publish. L'article est
+          quand même au stock, avec ses photos : la ligne reste vraie et doit
+          rester affichée, sinon on retire une information exacte. */}
+      {(createdThisRun || (parcoursCreation && invId)) && (
         <div style={{ fontSize:13, color:T.tealDeep, fontWeight:600, textAlign:"center", lineHeight:1.5, marginTop:12, maxWidth:300 }}>
           {/* « avec ses photos retouchées » seulement si la retouche a été
               LIVRÉE — sinon la ligne mentirait sur ce qui a été payé. */}
@@ -8288,6 +8551,7 @@ export default function ListingPreviewScreen({
             onRetry={handleGeneratePlatforms}
             generatePrice={coinPrices?.generate ?? null}
             noteOverride={noteSharedOverride}
+            ficheReprise={ficheReprise}
             lang={lang}
             price={price}
             setPrice={setPrice}
@@ -8319,7 +8583,7 @@ export default function ListingPreviewScreen({
             platformListings={platformListings}
             publishError={publishError}
             lang={lang}
-            canToggleStock={canToggleStock}
+            demanderPrixAchat={prixAchatARenseigner}
             inventoryFull={inventoryFull}
             stockCount={stockCount}
             stockLimit={stockLimitCfg}

@@ -1389,7 +1389,8 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-15T15:19:22Z'; // recale 0f39e85 (0.6.39 : opla.co retire du manifest, dernier commit touchant chrome-extension/) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale affichee par git log. Posee dans un commit qui ne touche PAS chrome-extension/ : la constante reste donc exacte au lieu d'etre perimee par son propre commit. MIN_BUILD (2026-09-12T08:29:11Z) et PUBLISHED_BUILD_IDS NON touches.
+export const EXTENSION_LAST_COMMIT = '2026-09-15T18:48:08Z'; // recale 9ff58da (fix opla : le 201 lu comme un refus, dernier commit touchant chrome-extension/) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches. La valeur precedente (15:19:22Z, 0f39e85) etait perimee depuis 9ff58da : `npm run build` echouait en local, donc plus aucune verification avant push.
+// Historique de la valeur precedente : recale 0f39e85 (0.6.39 : opla.co retire du manifest, dernier commit touchant chrome-extension/) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale affichee par git log. Posee dans un commit qui ne touche PAS chrome-extension/ : la constante reste donc exacte au lieu d'etre perimee par son propre commit. MIN_BUILD (2026-09-12T08:29:11Z) et PUBLISHED_BUILD_IDS NON touches.
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout

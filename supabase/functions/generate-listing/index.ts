@@ -36,6 +36,7 @@ import {
 // Forme comparable partagée (05/09) : une réponse IA qui se rapproche d'une
 // valeur de la liste transmise repart sous la forme EXACTE de cette valeur.
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
+import { creerArticlePourFiche, enregistrerFiche, attributsLus } from "../_shared/fiche-article.ts";
 
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
@@ -1150,11 +1151,97 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
       await refundGenerateFn?.("no_llm_output");
     }
 
-    // ── Return generated data (INSERT happens client-side in ListingPreviewScreen) ──
+    // ── LA FICHE SURVIT À LA GÉNÉRATION (2026-09-15, décision Nico) ─────────
+    // Ici se trouvait, pendant un an : « INSERT happens client-side in
+    // ListingPreviewScreen ». C'était vrai, et c'était le trou : le texte qu'on
+    // vient de facturer ne vivait qu'en mémoire du navigateur (sessionStorage
+    // fs_stepper_draft, mort à la fermeture de l'onglet), et la ligne inventaire
+    // n'était créée qu'au clic Publier. Mesuré le 15/09 : 654 générations
+    // facturées sur 1 697 (38,5 %), 405 comptes, sans le moindre job derrière.
+    // Désormais : l'article existe dès le débit, et sa fiche est en base.
+    // ⛔ La ligne usage_logs plus haut reste INCHANGÉE — y glisser le nouvel
+    //    inventaire_id activerait la dédup 24 h de quota_annonces_consommees
+    //    sur les corps item_data, où elle ne s'appliquait pas. Ce serait
+    //    modifier le décompte : interdit sans arbitrage explicite de Nico.
+    // ⛔ Best-effort : rien ici ne peut faire échouer une génération livrée.
+    let inventaireIdFiche: number | null = inventaire_id != null ? Number(inventaire_id) : null;
+    try {
+      const urlsPublier = (processedPhotos ?? [])
+        .map(p => (typeof p === "string" ? p : p?.url))
+        .filter((u): u is string => typeof u === "string" && !!u);
+      const photosFiche = urlsPublier.length ? urlsPublier : (Array.isArray(photos) ? photos as string[] : []);
+      if (!inventaireIdFiche) {
+        // Corps item_data : l'article n'a pas encore de ligne. C'est ce geste-ci
+        // qui la crée — pas le clic Publier, qui peut ne jamais venir.
+        inventaireIdFiche = await creerArticlePourFiche(adminClient, {
+          userId: user.id,
+          titre: item.titre ?? "Article",
+          marque: item.marque ?? null,
+          categorie: item.type ?? null,
+          description: item.description ?? null,
+          prixVente: item.prix_vente ?? body_price ?? null,
+          photos: photosFiche,
+          // Ce que le client a LU et transmis (Lens, analyse photo, saisie) :
+          // source 'lens', la plus faible de l'échelle — elle n'écrasera jamais
+          // une valeur Vinted ni une saisie ultérieure.
+          attributs: attributsLus({
+            taille:  canonicalProvided.taille  ?? null,
+            couleur: canonicalProvided.couleur ?? null,
+            matiere: canonicalProvided.matiere ?? null,
+            etat:    canonicalProvided.etat    ?? null,
+            isbn:    canonicalProvided.isbn    ?? null,
+          }),
+        });
+      }
+      if (inventaireIdFiche) {
+        await enregistrerFiche(adminClient, {
+          userId: user.id,
+          inventaireId: inventaireIdFiche,
+          source: "generate_listing",
+          fiche: {
+            v: 1,
+            photos: photosFiche,
+            processedPhotos,
+            // MÊME forme que l'état `platformListings` du stepper (la réponse
+            // de génération entière, `.platforms` à l'intérieur) : le client la
+            // repasse telle quelle dans appliquerGeneration, chemin unique.
+            platformListings: {
+              platforms: platformListings,
+              price: item.prix_vente ?? body_price ?? null,
+              ...(category_icon ? { category_icon } : {}),
+              ...(objet ? { objet } : {}),
+            },
+            selected: Object.keys(platformListings ?? {}).filter(p => (platformListings as Record<string, unknown>)[p]),
+            price: item.prix_vente ?? body_price ?? null,
+            ...(category_icon ? { category_icon } : {}),
+            ...(objet ? { objet } : {}),
+            // La fiche canonique telle que le stepper la relira : elle doit
+            // suffire à rouvrir l'article sans réinterroger quoi que ce soit.
+            lens: {
+              titre: item.titre ?? null,
+              marque: item.marque ?? null,
+              categorie: item.type ?? null,
+              description: item.description ?? null,
+              taille_estimee: canonicalProvided.taille ?? null,
+              couleur: canonicalProvided.couleur ?? null,
+              matiere: canonicalProvided.matiere ?? null,
+              etat_estime: canonicalProvided.etat ?? null,
+              prix_vente_suggere: item.prix_vente ?? body_price ?? null,
+            },
+          },
+        });
+      }
+    } catch (e) {
+      console.error("[generate-listing] fiche NON sauvegardée — génération livrée quand même :", (e as Error)?.message ?? e);
+    }
+
     return json({
       photos: processedPhotos,
       platforms: platformListings,
       price: item.prix_vente ?? body_price ?? null,
+      // L'article créé par CE geste : le stepper le pose pour ne jamais en
+      // recréer un second au clic Publier.
+      ...(inventaireIdFiche && inventaire_id == null ? { inventaire_id: inventaireIdFiche } : {}),
       ...(category_icon ? { category_icon } : {}),
       // Le NOM de l'objet en clair. UN SEUL appel, à la génération : l'objet ne
       // change pas d'une plateforme à l'autre — c'est sa traduction en rayon

@@ -509,17 +509,41 @@ export function LensAnalysisResult({ result, lensBuy, lang, currency, lensAdded,
           passe avant les annonces comparables. */}
       {createCta}
 
+      {/* ── LE BOUTON N'AJOUTE PLUS DEUX FOIS (2026-09-15) ──────────────────
+          Un article scanné est DÉJÀ dans le stock : le scan l'y a mis en même
+          temps qu'il débitait l'annonce. Ce bouton ouvrait toujours une
+          CRÉATION, donc posait une seconde ligne, vide, à côté de la vraie
+          fiche (cas Akld du 15/09 : 2 scans, 2 lignes vides, 0 job). Il ouvre
+          désormais la fiche EXISTANTE, et le dit.
+          Le cas « article vendu » est intact : rien n'entre au stock, c'est une
+          vente qu'on enregistre, et elle ne s'enregistre qu'une fois. */}
       {result.titre&&(
-        lensAdded ? (
-          <button disabled
-            style={{width:'100%',padding:'13px',background:'#E7F3F0',color:'#1B6E62',border:'1px solid #BFE0D9',borderRadius:999,fontSize:14,fontWeight:600,cursor:'default',fontFamily:'inherit',marginBottom:6}}>
-            {result.est_vendu?(lang==='en'?'✅ Sale recorded!':'✅ Vente enregistrée !'):(lang==='en'?'✅ Added to stock!':'✅ Ajouté au stock !')}
-          </button>
+        result.est_vendu ? (
+          lensAdded ? (
+            <button disabled
+              style={{width:'100%',padding:'13px',background:'#E7F3F0',color:'#1B6E62',border:'1px solid #BFE0D9',borderRadius:999,fontSize:14,fontWeight:600,cursor:'default',fontFamily:'inherit',marginBottom:6}}>
+              {lang==='en'?'✅ Sale recorded!':'✅ Vente enregistrée !'}
+            </button>
+          ) : (
+            <button onClick={addLensItem}
+              style={{width:'100%',padding:'12px',background:'transparent',color:'#1B6E62',border:'1.5px solid #1B6E62',borderRadius:999,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'inherit',marginBottom:6}}>
+              {lang==='en'?'💰 Record sale':'💰 Enregistrer la vente'}
+            </button>
+          )
         ) : (
-          <button onClick={result.est_vendu?addLensItem:openLensEditModal}
-            style={{width:'100%',padding:'12px',background:'transparent',color:'#1B6E62',border:'1.5px solid #1B6E62',borderRadius:999,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'inherit',marginBottom:6}}>
-            {result.est_vendu?(lang==='en'?'💰 Record sale':'💰 Enregistrer la vente'):(lang==='en'?'✏️ Edit & add to stock':'✏️ Modifier & ajouter au stock')}
-          </button>
+          <>
+            {lensAdded&&(
+              <div style={{textAlign:'center',fontSize:11.5,color:'#1B6E62',fontWeight:600,marginBottom:6}}>
+                {lang==='en'?'✅ Already in your stock — nothing gets added twice.':'✅ Déjà dans ton stock — rien n’est ajouté deux fois.'}
+              </div>
+            )}
+            <button onClick={openLensEditModal}
+              style={{width:'100%',padding:'12px',background:'transparent',color:'#1B6E62',border:'1.5px solid #1B6E62',borderRadius:999,fontSize:14,fontWeight:600,cursor:'pointer',fontFamily:'inherit',marginBottom:6}}>
+              {lensAdded
+                ?(lang==='en'?'✏️ Edit the item':'✏️ Modifier la fiche de l’article')
+                :(lang==='en'?'✏️ Edit & add to stock':'✏️ Modifier & ajouter au stock')}
+            </button>
+          </>
         )
       )}
       <button onClick={onReset}
@@ -672,6 +696,23 @@ const LensTab = memo(function LensTab({
     return uploadedUrls;
   }
 
+  // ── LES PHOTOS DÉFINITIVES REJOIGNENT L'ARTICLE (2026-09-15) ──────────────
+  // Le scan a créé la ligne inventaire au moment du débit, avec les URLs de son
+  // bucket d'analyse — pleine définition, les seules qui existent à cet
+  // instant. Les copies compressées qu'on vient de monter dans listing-photos
+  // sont celles qui partiront en ligne : elles REMPLACENT les premières sur la
+  // fiche. On remplace, on ne duplique pas, et on ne supprime rien du storage.
+  // Best-effort : un échec laisse l'article avec les photos du scan, qui
+  // marchent — jamais un article sans photo.
+  async function rattacherPhotosDurables(urls){
+    const cible=effectiveInvId;
+    if(!cible||!Array.isArray(urls)||!urls.length)return;
+    try{
+      const{error}=await supabase.from('inventaire').update({photos:urls}).eq('id',cible).eq('user_id',user.id);
+      if(error)console.warn('[lens] photos définitives non rattachées à l’article —',error.message);
+    }catch(e){console.warn('[lens] photos définitives non rattachées à l’article —',e?.message??e);}
+  }
+
   // ── « Créer l'annonce » — parcours GRATUIT (2026-07-28) ───────────────────
   // Photos → identify (aucune unité débitée) → stepper pré-rempli. L'identify
   // tourne sur les URLs listing-photos DÉFINITIVES, pas sur le bucket temporaire
@@ -690,6 +731,10 @@ const LensTab = memo(function LensTab({
     try{
       const uploadedUrls=await televerserPhotos();
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
+      // Parcours GRATUIT : il n'y a pas encore de ligne (aucun débit n'a eu
+      // lieu). L'appel est sans effet tant que effectiveInvId est absent — il
+      // sert la reprise d'un parcours dont la ligne existe déjà.
+      await rattacherPhotosDurables(uploadedUrls);
 
       let identification=null;
       let echec=false;
@@ -735,10 +780,13 @@ const LensTab = memo(function LensTab({
     setGeneratingListing(true);
     setListingError('');
     try{
-      // L'ajout au stock a lieu plus tard, au publish (systématique depuis le
-      // 2026-07-29) : on ne crée pas la ligne inventaire ici, on upload juste les photos.
+      // La ligne inventaire existe DÉJÀ depuis le 2026-09-15 : le scan l'a créée
+      // au moment du débit. Ici on monte les copies définitives et on les
+      // rattache à la fiche — l'article n'attend plus le clic Publier pour
+      // exister, ni pour avoir ses photos.
       const uploadedUrls=await televerserPhotos();
       if(!uploadedUrls.length)throw new Error(lang==='en'?'Photo upload failed.':'Échec upload des photos.');
+      await rattacherPhotosDurables(uploadedUrls);
 
       // Ouverture fraîche : on purge tout brouillon précédent avant d'écrire le
       // blob hôte de CETTE session de publication.

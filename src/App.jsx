@@ -6153,6 +6153,26 @@ export default function App({ loginOnly = false }){
     if(result.error)throw new Error(result.error);
     onRendu?.();
     setLensResult(result);
+    // ── L'ARTICLE EXISTE DÉJÀ (2026-09-15, décision Nico) ──────────────────
+    // Le scan unifié a débité une annonce ET créé la ligne inventaire, côté
+    // serveur, avec ses photos, ses attributs lus et ses 4 annonces rédigées.
+    // On pose son identifiant ici : c'est lui qui empêche, partout ensuite,
+    // qu'une SECONDE ligne pauvre soit créée — au clic Publier
+    // (saveLensItemForListing le rend tel quel) comme au bouton « Modifier la
+    // fiche » (qui édite au lieu d'ajouter).
+    // Absent = le serveur n'a pas pu créer la ligne (best-effort) : on retombe
+    // exactement sur le comportement d'avant ce lot, création au publish.
+    if(result.inventaire_id){
+      setLensInventaireId(result.inventaire_id);
+      setLensAdded(true);
+      // L'article vient d'être créé CÔTÉ SERVEUR : la liste locale ne le
+      // connaît pas encore, il serait donc invisible du Stock jusqu'au prochain
+      // chargement complet. On lit sa ligne — une seule — et on la pose en tête.
+      try{
+        const{data:ligne}=await supabase.from('inventaire').select('*').eq('id',result.inventaire_id).maybeSingle();
+        if(ligne)setItems(prev=>[mapItem(ligne),...prev.filter(i=>i.id!==ligne.id)]);
+      }catch(e){console.warn('[lens] article créé mais pas ajouté à la liste locale —',e?.message??e);}
+    }
   }
 
   async function analyzeLens(){
@@ -6179,14 +6199,18 @@ export default function App({ loginOnly = false }){
       }
       if(vivant?.statut==='preparation')scanId=vivant.scan_id;
     }catch(e){ console.warn('[lens] recherche de scan vivant impossible :',e?.message??e); }
-    // Photos du scan PRÉCÉDENT : c'est ici qu'on les jette, au lancement du
-    // suivant — plus dans le `finally` de leur propre scan. Un `finally` ne
-    // tourne pas quand la webview meurt, et il supprimait les photos dont la
-    // reprise a besoin. Au plus un jeu de photos par utilisateur survit.
-    const precedent=lireMarqueurLens();
-    if(precedent?.paths?.length){
-      supabase.storage.from('lens-temp').remove(precedent.paths).catch(()=>{});
-    }
+    // ── ON NE JETTE PLUS LES PHOTOS DU SCAN PRÉCÉDENT (2026-09-15) ─────────
+    // Ici se trouvait : `supabase.storage.from('lens-temp').remove(precedent.paths)`.
+    // Tant que le scan ne produisait rien de durable, jeter le jeu précédent au
+    // lancement du suivant était sain — « au plus un jeu par utilisateur ».
+    // Depuis que le scan CRÉE l'article au débit, ces URLs-là sont les photos
+    // de la fiche : tant que le stepper n'a pas monté les copies compressées
+    // définitives dans listing-photos, ce sont les SEULES que l'article ait.
+    // Les supprimer au scan suivant viderait la fiche d'un article que
+    // l'utilisateur garde dans son stock — exactement le dégât qu'on répare.
+    // Conséquence assumée : lens-temp grossit. Le ménage doit se faire côté
+    // serveur, sur les fichiers qu'AUCUNE ligne inventaire ne référence — une
+    // suppression, donc un geste de Nico, pas une décision prise ici.
     // Réservé côté serveur par lens-analysis : c'est CE identifiant, et lui
     // seul, qui fait du prélèvement un geste unique. Un second envoi du même
     // scan_id ne débite rien et se fait resservir le résultat déjà produit.
@@ -6285,6 +6309,35 @@ export default function App({ loginOnly = false }){
 
   function openLensEditModal(){
     if(!lensResult)return;
+    // ── ON ÉDITE L'ARTICLE, ON N'EN CRÉE PLUS UN SECOND (2026-09-15) ────────
+    // Ce bouton ouvrait TOUJOURS une création (_isNew). Depuis que le scan crée
+    // la ligne au débit, il posait une DEUXIÈME ligne à côté — pauvre, sans
+    // photos ni attributs ni annonces — pendant que la vraie fiche dormait
+    // ailleurs. C'est exactement le doublon relevé sur le compte Akld le 15/09
+    // (2 scans, 2 lignes vides, 0 job, 2 annonces débitées).
+    // La ligne existe → on ouvre la modale d'ÉDITION sur elle.
+    const existant=lensInventaireId?items.find(i=>i.id===lensInventaireId):null;
+    if(existant){
+      setEditItem({
+        _table:'inventaire',
+        id:existant.id,
+        title:existant.title||lensResult.titre||"",
+        marque:existant.marque||lensResult.marque||"",
+        type:existant.typeConnu?existant.type:(lensResult.categorie||existant.type||""),
+        // VIDE ≠ ZÉRO : un prix d'achat inconnu reste un champ VIDE dans la
+        // modale, jamais un 0 pré-rempli qui deviendrait « article gratuit ».
+        buy:existant.buy??"",
+        sell:existant.sell??"",
+        frais:existant.purchaseCosts||0,
+        quantite:existant.quantite||1,
+        description:existant.description||"",
+        emplacement:existant.emplacement||"",
+        priceMode:"unit",
+      });
+      return;
+    }
+    // Repli : le serveur n'a pas pu créer la ligne (best-effort). Comportement
+    // historique, inchangé.
     setEditItem({
       _isNew:true,
       _table:'inventaire',
