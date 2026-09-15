@@ -1332,13 +1332,27 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
           <span style={{position:"absolute",bottom:12,left:0,right:0,textAlign:"center",fontWeight:600,fontSize:11,color:"rgba(255,255,255,0.68)",letterSpacing:"0.03em"}}>{fr?"Vise un article à analyser":"Point at an item to analyze"}</span>
         </div>
         <div style={{padding:"20px 22px 22px"}}>
-          <h2 style={{margin:0,fontWeight:700,fontSize:20,letterSpacing:"-0.01em",color:UI.ink}}>{fr?"Bon deal ou pas ? Lens tranche.":"Good deal or not? Lens decides."}</h2>
+          {/* ── Texte réécrit le 15/09/2026 (demande Nico) ────────────────────
+              L'ancien texte vendait l'ACHAT (« Bon deal ou pas ? Lens tranche »,
+              « estime son prix de revente ») alors que ce que les gens font avec
+              Lens, c'est CRÉER LEUR ANNONCE. Le bloc promettait la mauvaise
+              chose.
+              Le nouveau nomme les quatre étapes dans leur ordre réel —
+              reconnaissance, prix, rédaction, publication — et dit
+              explicitement que c'est l'EXTENSION qui publie, DEPUIS
+              L'ORDINATEUR. Cette dernière phrase n'est pas décorative : un
+              nouvel utilisateur qui croit que tout se fait depuis son téléphone
+              se heurte au mur de l'extension à la fin du parcours, et ça s'est
+              payé cher ce mois-ci.
+              Mise en page, couleurs, composants et icônes : INCHANGÉS. Seules
+              les chaînes changent. Le liseré teal existait déjà et porte
+              toujours la promesse du bloc — elle a simplement changé de
+              « son prix de revente » à « rédige l'annonce ». */}
+          <h2 style={{margin:0,fontWeight:700,fontSize:20,letterSpacing:"-0.01em",color:UI.ink}}>{fr?"Photographie, l'annonce est écrite":"Photograph it, the listing is written"}</h2>
           <p style={{margin:"10px 0 0",fontSize:14.5,lineHeight:1.55,color:UI.mute,fontWeight:400}}>
             {fr
-              // Lot 2 : plus de « note sur 10 » — le deal score a été retiré de
-              // Lens (AnalyseMarche.jsx), le verdict réel est prix + plateforme.
-              ? <>Prends un article en photo : l'IA l'identifie, estime <span style={{color:UI.tealDeep,fontWeight:600}}>son prix de revente</span> et la meilleure plateforme pour le revendre.</>
-              : <>Snap a photo of an item: the AI identifies it, estimates <span style={{color:UI.tealDeep,fontWeight:600}}>its resale price</span> and the best marketplace to sell it on.</>
+              ? <>L'IA reconnaît ton article, estime son prix et <span style={{color:UI.tealDeep,fontWeight:600}}>rédige l'annonce</span> pour les quatre plateformes. L'extension la publie depuis ton ordinateur.</>
+              : <>The AI recognises your item, estimates its price and <span style={{color:UI.tealDeep,fontWeight:600}}>writes the listing</span> for all four marketplaces. The extension publishes it from your computer.</>
             }
           </p>
           <button
