@@ -1389,7 +1389,16 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-15T21:28:43Z'; // recale afdbc87 (retrait TEMPORAIRE d'opla.co pour empaqueter la 0.6.39 - dernier commit touchant chrome-extension/, apres 13e597a « formulaire pro ») - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches : la 0.6.39 n'est pas televersee.
+export const EXTENSION_LAST_COMMIT = '2026-09-15T21:30:24Z'; // recale e3d1fd8 (opla.co REMIS apres l'empaquetage de la 0.6.39 - dernier commit touchant chrome-extension/) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale de git log. Posee dans un commit qui ne touche PAS chrome-extension/. MIN_BUILD et PUBLISHED_BUILD_IDS NON touches : la 0.6.39 n'est pas televersee.
+// ⚠️ Le commit de REMISE d'opla.co doit etre recale ICI, lui aussi : le laisser
+// de cote (ce que j'ai d'abord ecrit dans e3d1fd8) casse `npm run build` en
+// local via assertExtensionMinBuildCurrent, donc plus aucune verification avant
+// push - exactement la panne decrite deux paragraphes plus haut. Le paquet deja
+// produit ne s'en trouve pas perime : LAST_COMMIT ne sert qu'aux gardes de
+// build, c'est MIN_BUILD (intouche) qui parle du paquet installable.
+// Valeur intermediaire de la sequence : 2026-09-15T21:28:43Z (afdbc87, retrait
+// temporaire d'opla.co) - c'est elle que portait HEAD au moment de
+// l'empaquetage, BUILD_ID 2026-09-15T21:29:11Z+89ef0b6.
 // Historique : recale 9ff58da (fix opla : le 201 lu comme un refus) - 2026-09-15T18:48:08Z. La valeur d'avant (15:19:22Z, 0f39e85) etait perimee depuis 9ff58da : `npm run build` echouait en local, donc plus aucune verification avant push.
 // Historique de la valeur precedente : recale 0f39e85 (0.6.39 : opla.co retire du manifest, dernier commit touchant chrome-extension/) - UTC VRAI lu par EPOCH (%ct -> toISOString), jamais la date locale affichee par git log. Posee dans un commit qui ne touche PAS chrome-extension/ : la constante reste donc exacte au lieu d'etre perimee par son propre commit. MIN_BUILD (2026-09-12T08:29:11Z) et PUBLISHED_BUILD_IDS NON touches.
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
