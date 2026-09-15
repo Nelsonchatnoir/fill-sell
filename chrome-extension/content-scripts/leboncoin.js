@@ -3296,16 +3296,41 @@ async function fillAddress(adresseBrute, warnings) {
     };
   }
 
-  // Tokens significatifs de l'adresse des Réglages (mots ≥ 3 lettres + nombres),
-  // en forme comparable d'ADRESSE (adresseComparable : apostrophes, points et
-  // traits d'union gommés — « dalger » retrouve « d'Alger », cas santanalily010
-  // du 05/09, où « 56b rue dalger » était refusé face à « 56B Rue d'Alger »).
-  const tokens = adresseComparable(adresse).split(/[^a-z0-9]+/)
+  // Tokens significatifs d'une adresse (mots ≥ 3 lettres + nombres), en forme
+  // comparable d'ADRESSE (adresseComparable : apostrophes, points et traits
+  // d'union gommés — « dalger » retrouve « d'Alger », cas santanalily010 du
+  // 05/09, où « 56b rue dalger » était refusé face à « 56B Rue d'Alger »).
+  const jetonsDe = (s) => adresseComparable(s).split(/[^a-z0-9]+/)
     .filter((t) => t.length >= 3 || /^\d+$/.test(t));
-  const missingTokens = (text) => {
+  const manquantsDe = (text, jetons) => {
     const n = adresseComparable(text);
-    return tokens.filter((t) => !n.includes(t));
+    return jetons.filter((t) => !n.includes(t));
   };
+  const tokens = jetonsDe(adresse);
+  const missingTokens = (text) => manquantsDe(text, tokens);
+
+  // ── L'INDEX DE LEBONCOIN EST PLUS GROSSIER QUE NOTRE CHAÎNE (2026-09-15) ──
+  // Trois refus mesurés en trois jours, trois comptes, une seule cause : on
+  // exige qu'une suggestion couvre TOUS les jetons d'une chaîne que NOUS avons
+  // composée (rue + code postal + ville), alors que l'autocomplete Leboncoin
+  // rend selon les cas le numéro, la voie seule, ou la commune seule.
+  //   · « 30 Rue de Puebla 71200 Le Creusot » → « Rue de Puebla, Le Creusot
+  //     (71200) » refusée pour un « 30 » absent du libellé : la BONNE voie,
+  //     dans la BONNE commune, rejetée. La garde ne protégeait personne ;
+  //   · « RUE DE RENNES 35000 RENNES » → deux « Rue de Rennes, Paris (75006) » :
+  //     là elle protège, et elle doit continuer (une annonce posée à Paris pour
+  //     une vendeuse rennaise, c'est l'acheteur qui se déplace pour rien) ;
+  //   · « Bellencombre 76680 Bellencombre » → aucune suggestion du tout.
+  // Les trois ont fini EN LIGNE quand la chaîne a été réduite à la main :
+  // « 35000 RENNES » → « Rennes (35000) », « 76680 Bellencombre » →
+  // « Bellencombre (76680) ». Leboncoin SERT des entrées de commune et les
+  // accepte — c'est le repli du barreau 3, reconstruit ici depuis la chaîne
+  // elle-même (le code postal, puis ce qui le suit ; à défaut ce qui le
+  // précède, et seulement si ce n'est pas une voie).
+  // ⛔ INVARIANT, VRAI SUR LES TROIS BARREAUX : jamais une suggestion à qui il
+  // manque le code postal OU la ville des Réglages. On perd de la précision
+  // dans la commune, jamais la commune.
+  const repli = replierSurCpVille(adresse);
 
   if (prefilled) {
     if (!missingTokens(prefilled).length) {
@@ -3323,7 +3348,9 @@ async function fillAddress(adresseBrute, warnings) {
   // Google Places) matche très bien "7 allée du saut du loup 91160 saulx les
   // chartreux" en minuscules, et tout reformatage "d'affichage" ajouterait
   // des virgules/parenthèses que le géocodeur peut ne pas comprendre.
-  await typeInto(input, adresse);
+  // (La frappe est faite par poserAdresse ci-dessous : le même champ sert au
+  // barreau 3, qui y retape « code postal ville ». typeInto sélectionne tout
+  // avant d'écrire, une seconde frappe remplace donc proprement la première.)
 
   // Leboncoin n'accepte une adresse que CHOISIE dans le dropdown de
   // l'autocomplete (type Google Places) : un texte collé, même correct
@@ -3387,8 +3414,165 @@ async function fillAddress(adresseBrute, warnings) {
     return last.length ? last : null;
   };
 
-  const candidates = await waitForStableSuggestions();
-  if (!candidates) {
+  // Une tentative complète sur UNE chaîne : frappe, attente de la liste
+  // stabilisée, choix de la suggestion, clic, contrôle que Leboncoin a reporté
+  // la sélection dans le champ. Appelée une fois avec l'adresse des Réglages
+  // (barreaux 1 et 2), puis, en cas d'échec de CORRESPONDANCE, avec
+  // « code postal ville » (barreau 3).
+  const poserAdresse = async (valeur, { toleranceNumero }) => {
+    const jetons = jetonsDe(valeur);
+    const manquants = (texte) => manquantsDe(texte, jetons);
+    // L'invariant géographique. C'est le CODE POSTAL qui tranche : « Rue de
+    // Rennes, Paris (75006) » contient bien « rennes », jamais « 35000 ».
+    const geoOk = (texte) => {
+      if (!repli) return true;
+      const n = adresseComparable(texte);
+      return n.includes(repli.cp) && jetonsDe(repli.ville).every((t) => n.includes(t));
+    };
+    // Barreau 1 : couverture totale (elle inclut le code postal et la ville,
+    // qui sont des jetons de la chaîne — l'invariant est acquis sans test).
+    // Barreau 2 : il ne manque QUE le numéro de voie, et la commune est bonne.
+    const accepte = (texte) => {
+      const restants = manquants(texte);
+      if (!restants.length) return true;
+      if (!toleranceNumero) return false;
+      return restants.every(estNumeroDeVoie) && geoOk(texte);
+    };
+
+    await typeInto(input, valeur);
+    const candidates = await waitForStableSuggestions();
+    if (!candidates) return { ok: false, motif: "sans_suggestion" };
+
+    // On FILTRE avant de trier : sinon une proposition d'une autre commune, à
+    // qui il manque moins de jetons que la bonne, gagnerait le tri et ferait
+    // échouer la tentative alors qu'une suggestion acceptable était affichée.
+    const retenue = candidates
+      .filter((el) => accepte(el.textContent))
+      .sort((a, b) => manquants(a.textContent).length - manquants(b.textContent).length)[0];
+    if (!retenue) {
+      // Des propositions existent mais aucune n'est acceptable : ne jamais
+      // forcer la suite avec une adresse approximative. La liste sert de relevé
+      // correctif pour ajuster l'adresse dans les Réglages.
+      const meilleure = [...candidates]
+        .sort((a, b) => manquants(a.textContent).length - manquants(b.textContent).length)[0];
+      return {
+        ok: false,
+        motif: "couverture",
+        meilleure: meilleure ? meilleure.textContent.trim() : null,
+        manque: meilleure ? manquants(meilleure.textContent) : jetons,
+        propositions: candidates.map((c) => c.textContent.trim()).slice(0, 5),
+      };
+    }
+
+    const chosen = retenue.textContent.trim();
+    const restants = manquants(chosen);
+    await humanPause(); // temps de "lecture" des suggestions avant le clic
+    realClick(retenue);
+    await humanPause();
+
+    // ⚠️ FAUX NÉGATIF DU 2026-07-09 — le job échouait en « Adresse non validée
+    // par Leboncoin après sélection de "7 Allée du Saut du Loup,
+    // Saulx-les-Chartreux (91160)" — message affiché: "localisationLocation" »
+    // alors que l'adresse BRUTE des Réglages avait bien été tapée telle quelle
+    // et la bonne suggestion cliquée (le libellé cité est celui de la
+    // suggestion LBC, pas une adresse que nous aurions reformatée). Deux leçons :
+    //   1. le signal FIABLE d'une sélection prise est la VALEUR DE L'INPUT
+    //      (React y reporte la suggestion choisie) — pas la fermeture du
+    //      dropdown, pas aria-invalid, pas un nœud d'erreur ;
+    //   2. "localisationLocation" est une clé i18n BRUTE de Leboncoin, portée
+    //      en permanence par un nœud [class*="error"]/aria-live du champ même
+    //      sans erreur affichée : scraper ces nœuds sans filtre de visibilité
+    //      ni de texte humain fabrique de fausses erreurs (cf. isHumanMessageNode).
+    // ⚠️ LE PIÈGE DE CE CORRECTIF (2026-09-15) : ce contrôle utilise LE MÊME
+    // prédicat que le choix (accepte), et surtout PAS la couverture totale.
+    // Sur le barreau 2 la suggestion retenue ne porte pas le numéro de voie ;
+    // un contrôle en couverture totale rejetterait la sélection qu'on vient
+    // d'accepter, et le job repartirait en needs_user juste après avoir réussi.
+    const selectionTaken = () =>
+      (input.value.trim() && accepte(input.value) ? true : null);
+
+    let taken = await waitFor(selectionTaken, 5000);
+    if (!taken) {
+      // Le clic n'a pas été pris par le composant React (famille de composants
+      // déjà capricieuse au clic, cf. realClick) : repli clavier — ArrowDown
+      // surligne la première suggestion, Enter la valide. Notre candidate
+      // acceptable est en tête de liste dans le cas nominal ; si LBC en valide
+      // une autre, le contrôle ci-dessus la rejettera (invariant compris).
+      input.focus();
+      dispatchKey(input, "keydown", "ArrowDown");
+      dispatchKey(input, "keyup", "ArrowDown");
+      await humanPause();
+      dispatchKey(input, "keydown", "Enter");
+      dispatchKey(input, "keyup", "Enter");
+      taken = await waitFor(selectionTaken, 4000);
+    }
+
+    if (!taken) {
+      return {
+        ok: false,
+        motif: "non_reportee",
+        chosen,
+        visibleError: findVisibleFieldError(input),
+      };
+    }
+    return { ok: true, chosen, restants };
+  };
+
+  // ── BARREAUX 1 et 2 : l'adresse des Réglages, tapée telle quelle ──────────
+  const essai = await poserAdresse(adresse, { toleranceNumero: Boolean(repli) });
+  if (essai.ok) {
+    if (essai.restants.length) {
+      // Barreau 2 — la voie et la commune sont les bonnes, Leboncoin n'indexe
+      // pas le numéro (cas eda_1967, « 30 Rue de Puebla 71200 Le Creusot »).
+      const note = `adresse: Leboncoin n'indexe pas le numéro (« ${essai.restants.join(" ")} » absent de son libellé) `
+        + `— « ${adresse} » posée au niveau de la voie : « ${essai.chosen} »`;
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push({ code: "adresse_barreau2_numero_absent", message: note });
+    } else if (adresseComparable(essai.chosen) !== adresseComparable(adresse)) {
+      const note = `adresse: "${adresse}" → suggestion LBC "${essai.chosen}"`;
+      console.log(`[leboncoin] ≈ ${note}`);
+      warnings.push(note);
+    }
+    return { ok: true };
+  }
+
+  // ── BARREAU 3 : Leboncoin ne résout pas cette voie → « code postal ville » ─
+  // Tenté sur les deux échecs de CORRESPONDANCE seulement (aucune suggestion,
+  // ou aucune acceptable) : « non_reportee » est un problème de composant
+  // React, pas de géocodage — retaper n'y répondrait pas et masquerait le vrai
+  // motif. Le repli n'est pas une hypothèse : « 35000 RENNES » → « Rennes
+  // (35000) » et « 76680 Bellencombre » → « Bellencombre (76680) » ont été
+  // joués à la main les 14 et 15/09, les deux annonces sont en ligne.
+  const repliUtile = Boolean(repli)
+    && (essai.motif === "sans_suggestion" || essai.motif === "couverture")
+    && adresseComparable(repli.valeur) !== adresseComparable(adresse);
+  if (repliUtile) {
+    console.log(`[leboncoin] adresse: « ${adresse} » refusée (${essai.motif}) — repli sur « ${repli.valeur} »`);
+    const essaiRepli = await poserAdresse(repli.valeur, { toleranceNumero: false });
+    if (essaiRepli.ok) {
+      const note = `adresse: Leboncoin ne connaît pas « ${adresse} » — annonce localisée à la commune `
+        + `(« ${repli.valeur} » → suggestion « ${essaiRepli.chosen} »)`;
+      console.warn(`[leboncoin] ⚠️ ${note}`);
+      warnings.push({ code: "adresse_barreau3_repli_commune", message: note });
+      return { ok: true };
+    }
+  }
+
+  // ── DERNIER RECOURS : le message needs_user ───────────────────────────────
+  const mentionRepli = repliUtile
+    ? ` Le repli sur « ${repli.valeur} » a été tenté ensuite, sans succès non plus.`
+    : "";
+  if (essai.motif === "non_reportee") {
+    return {
+      ok: false,
+      error:
+        `Adresse des Réglages tapée telle quelle ("${adresse}") et suggestion Leboncoin ` +
+        `"${essai.chosen}" sélectionnée, mais Leboncoin n'a pas reporté la sélection dans le champ` +
+        (essai.visibleError ? ` — message affiché: "${essai.visibleError.slice(0, 120)}"` : "") +
+        ". Vérifier l'adresse dans les Réglages FillSell. Le brouillon Leboncoin est conservé.",
+    };
+  }
+  if (essai.motif === "sans_suggestion") {
     return {
       ok: false,
       // ⚠️ MESSAGE RÉÉCRIT LE 2026-09-07 (job 6b4e9f45) : il envoyait dans les
@@ -3398,7 +3582,7 @@ async function fillAddress(adresseBrute, warnings) {
       // marche. (Depuis la même date, get-pending-jobs sert la valeur des
       // Réglages quand elle existe : corriger puis relancer a enfin un effet.)
       error:
-        `Adresse "${adresse}" sans suggestion dans l'autocomplete Leboncoin. ` +
+        `Adresse "${adresse}" sans suggestion dans l'autocomplete Leboncoin.${mentionRepli} ` +
         "Cette adresse est celle enregistrée avec cette publication ; si tes Réglages " +
         "FillSell portent une adresse, c'est elle qui est utilisée à chaque relance. " +
         "Corrige-la dans Réglages › « Adresse de remise Leboncoin » (format : numéro rue, " +
@@ -3407,83 +3591,16 @@ async function fillAddress(adresseBrute, warnings) {
         "Le brouillon Leboncoin est conservé.",
     };
   }
-
-  // Meilleure suggestion = celle à qui il manque le moins de tokens ; on
-  // n'accepte QUE la couverture totale.
-  const suggestion = [...candidates]
-    .sort((a, b) => missingTokens(a.textContent).length - missingTokens(b.textContent).length)[0];
-  const missing = suggestion ? missingTokens(suggestion.textContent) : tokens;
-  if (!suggestion || missing.length) {
-    // Des propositions existent mais aucune ne couvre l'adresse : ne jamais
-    // forcer la suite avec une adresse approximative. La liste sert de relevé
-    // correctif pour ajuster l'adresse dans les Réglages.
-    return {
-      ok: false,
-      error:
-        `Adresse "${adresse}" : aucune suggestion Leboncoin ne la couvre entièrement ` +
-        `(la meilleure, "${suggestion ? suggestion.textContent.trim() : "—"}", ne contient pas ` +
-        `${JSON.stringify(missing)}). Propositions affichées: ` +
-        `${JSON.stringify(candidates.map((c) => c.textContent.trim()).slice(0, 5))}. ` +
-        "Corriger l'adresse dans les Réglages FillSell (format : numéro rue, ville). " +
-        "Le brouillon Leboncoin est conservé.",
-    };
-  }
-
-  const chosen = suggestion.textContent.trim();
-  await humanPause(); // temps de "lecture" des suggestions avant le clic
-  realClick(suggestion);
-  await humanPause();
-
-  // ⚠️ FAUX NÉGATIF DU 2026-07-09 — le job échouait en « Adresse non validée
-  // par Leboncoin après sélection de "7 Allée du Saut du Loup,
-  // Saulx-les-Chartreux (91160)" — message affiché: "localisationLocation" »
-  // alors que l'adresse BRUTE des Réglages avait bien été tapée telle quelle
-  // et la bonne suggestion cliquée (le libellé cité est celui de la
-  // suggestion LBC, pas une adresse que nous aurions reformatée). Deux leçons :
-  //   1. le signal FIABLE d'une sélection prise est la VALEUR DE L'INPUT
-  //      (React y reporte la suggestion choisie) — pas la fermeture du
-  //      dropdown, pas aria-invalid, pas un nœud d'erreur ;
-  //   2. "localisationLocation" est une clé i18n BRUTE de Leboncoin, portée
-  //      en permanence par un nœud [class*="error"]/aria-live du champ même
-  //      sans erreur affichée : scraper ces nœuds sans filtre de visibilité
-  //      ni de texte humain fabrique de fausses erreurs (cf. isHumanMessageNode).
-  const selectionTaken = () =>
-    input.value.trim() && !missingTokens(input.value).length ? true : null;
-
-  let taken = await waitFor(selectionTaken, 5000);
-  if (!taken) {
-    // Le clic n'a pas été pris par le composant React (famille de composants
-    // déjà capricieuse au clic, cf. realClick) : repli clavier — ArrowDown
-    // surligne la première suggestion, Enter la valide. Notre candidate à
-    // couverture totale est en tête de liste dans le cas nominal ; si LBC en
-    // valide une autre, le contrôle de couverture ci-dessous la rejettera.
-    input.focus();
-    dispatchKey(input, "keydown", "ArrowDown");
-    dispatchKey(input, "keyup", "ArrowDown");
-    await humanPause();
-    dispatchKey(input, "keydown", "Enter");
-    dispatchKey(input, "keyup", "Enter");
-    taken = await waitFor(selectionTaken, 4000);
-  }
-
-  if (!taken) {
-    const visibleError = findVisibleFieldError(input);
-    return {
-      ok: false,
-      error:
-        `Adresse des Réglages tapée telle quelle ("${adresse}") et suggestion Leboncoin ` +
-        `"${chosen}" sélectionnée, mais Leboncoin n'a pas reporté la sélection dans le champ` +
-        (visibleError ? ` — message affiché: "${visibleError.slice(0, 120)}"` : "") +
-        ". Vérifier l'adresse dans les Réglages FillSell. Le brouillon Leboncoin est conservé.",
-    };
-  }
-
-  if (adresseComparable(chosen) !== adresseComparable(adresse)) {
-    const note = `adresse: "${adresse}" → suggestion LBC "${chosen}"`;
-    console.log(`[leboncoin] ≈ ${note}`);
-    warnings.push(note);
-  }
-  return { ok: true };
+  return {
+    ok: false,
+    error:
+      `Adresse "${adresse}" : aucune suggestion Leboncoin ne la couvre ` +
+      `(la meilleure, "${essai.meilleure ?? "—"}", ne contient pas ` +
+      `${JSON.stringify(essai.manque)}). Propositions affichées: ` +
+      `${JSON.stringify(essai.propositions)}.${mentionRepli} ` +
+      "Corriger l'adresse dans les Réglages FillSell (format : numéro rue, ville). " +
+      "Le brouillon Leboncoin est conservé.",
+  };
 }
 
 // Nœud de message réellement destiné à l'utilisateur : visible (les régions
@@ -3787,6 +3904,40 @@ function normaliserAdresseLbc(adresse) {
     .replace(/\s+/g, " ")
     .trim();
   return { valeur: propre, changee: propre !== brut.trim() };
+}
+
+// Jeton de NUMÉRO de voie — le seul qu'on accepte de voir manquer dans une
+// suggestion (barreau 2 de fillAddress) : « 30 », « 3 », « 56b », « 45a »,
+// « 8a », et les ordinaux que normaliserAdresseLbc a détachés du nombre
+// (« 3bis » → « 3 bis » → jetons « 3 » et « bis »). Aucun de ces jetons ne
+// peut appartenir au nom d'une commune : les laisser manquer ne déplace
+// jamais une annonce.
+const estNumeroDeVoie = (t) => /^(?:\d+(?:bis|ter|quater|[a-z])?|bis|ter|quater)$/.test(t);
+
+// ── REPLI « CODE POSTAL + VILLE » (2026-09-15) ──────────────────────────────
+// Reconstruit depuis la chaîne elle-même, et pas depuis les composantes
+// rue/code_postal/ville des Réglages : celles-ci ne quittent jamais le serveur
+// (get-pending-jobs ne sert que `.leboncoin.adresse`), et un compte au moins a
+// une `adresse` renseignée avec ces colonnes VIDES. La chaîne, elle, est
+// toujours là, et c'est nous qui l'avons composée ([rue, cp, ville].join(' ')).
+// Le code postal sert d'ancre : ce qui le SUIT est la ville ; s'il ne le suit
+// rien (« RENNES 35000 », forme posée à la main), ce qui le précède fait office
+// de ville — mais seulement si ce n'est pas une voie, sinon on rendrait
+// « 91160 7 allée du saut du loup », qui n'est l'adresse de personne.
+// Rend null quand rien de fiable ne peut être reconstruit : le repli ne devine
+// jamais une commune, il n'a pas lieu et le message needs_user reste.
+const VOIE_RE = /(^|[^a-z])(rue|avenue|bd|boulevard|chemin|allee|allees|impasse|route|place|square|quai|cours|lotissement|residence|hameau|voie|passage|sentier|faubourg|esplanade|traverse|montee|villa|clos|parc)([^a-z]|$)/;
+function replierSurCpVille(adresse) {
+  const brut = String(adresse ?? "");
+  const m = brut.match(/\b\d{5}\b/);
+  if (!m) return null;
+  const cp = m[0];
+  const propre = (s) => s.replace(/[,;]/g, " ").replace(/\s+/g, " ").trim();
+  const apres = propre(brut.slice(m.index + cp.length));
+  const avant = propre(brut.slice(0, m.index));
+  const ville = apres || (avant && !VOIE_RE.test(texteComparable(avant)) ? avant : "");
+  if (!ville) return null;
+  return { cp, ville, valeur: `${cp} ${ville}` };
 }
 
 function containsAsWords(hay, needle) {
