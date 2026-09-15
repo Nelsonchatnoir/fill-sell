@@ -1389,7 +1389,7 @@ export const BUILD_TOKEN = '__FILLSELL_BUILD_ID__';
 // des syncs (0.6.34), jobs de publication/republication/suppression, partage
 // d'onglet, marquage des disparitions.
 // MIN_BUILD INCHANGE : la 0.6.37 n'est pas encore televersee.
-export const EXTENSION_LAST_COMMIT = '2026-09-14T15:26:38Z'; // recale 7e69290 (veilleur du run fige, decouverte comprise + trace de page + eveil) - UTC VRAI lu dans %cI, PAS ce que rend un TZ=UTC git log sur ce depot ; 0.6.37, jamais televersee ; MIN_BUILD inchange (0.6.32 reste le seuil servi)
+export const EXTENSION_LAST_COMMIT = '2026-09-15T07:15:22Z'; // recale 58d8468 (0.6.38 : opla.co retire du manifest pour l'empaquetage) - UTC VRAI lu par EPOCH (%ct -> toISOString), pas par --date=format-local ; MIN_BUILD INCHANGE (0.6.32 reste le seuil servi, decision de Nico seule)
 // 2026-08-09T08:40:00Z = 0.5.4 : fin des faux « plus en ligne » Vinted
 // (cancelPublishAfterDelete clôt publish + republish de l'ancienne annonce ;
 // poll : ré-appariement listing_url vs inventaire.vinted_item_id avant tout
