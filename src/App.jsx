@@ -6102,6 +6102,11 @@ export default function App({ loginOnly = false }){
         // plateforme décochée ensuite laisse juste son annonce inutilisée.
         mode:'annonce',
         platforms:['vinted','leboncoin','beebs','ebay'],
+        // « Je sais qu'une ligne inventaire va être créée au débit, et je ne
+        // t'en ferai pas une seconde au publish » (2026-09-15). Le serveur ne
+        // crée RIEN sans ce drapeau : l'app native garde l'ancien client
+        // jusqu'à la prochaine OTA, et un vieux client doublonnerait.
+        fiche_serveur:true,
       }),
     });
   }

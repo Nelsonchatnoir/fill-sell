@@ -3434,9 +3434,16 @@ function stableStringify(v) {
 // SEULEMENT — le corps réellement envoyé n'est pas touché.
 function signatureGeneration({ userId, body, src }) {
   try {
+    // `fiche_serveur` est un marqueur de CAPACITÉ du client, pas une entrée de
+    // génération : il ne change pas un caractère du texte produit. Le laisser
+    // entrer dans la signature ferait rater le cache de tous ceux qui avaient
+    // une génération payée en session au moment du déploiement — donc une
+    // génération de trop, facturée, pour un drapeau. Retiré ICI et ICI
+    // SEULEMENT : le corps réellement envoyé le porte (2026-09-15).
+    const { fiche_serveur: _capacite, ...corpsSigne } = body ?? {};
     return stableStringify({
       u: userId ?? null,
-      body: { ...body, platforms: [...(body?.platforms ?? [])].sort() },
+      body: { ...corpsSigne, platforms: [...(body?.platforms ?? [])].sort() },
       src: src ?? null,
     });
   } catch { return null; }
@@ -4946,6 +4953,10 @@ export default function ListingPreviewScreen({
           },
           photos,
           platforms,
+          // « Je sais lire la fiche que tu vas écrire, et je ne recréerai pas
+          // de ligne au publish » (2026-09-15). Sans ce drapeau le serveur ne
+          // crée rien : l'app native garde l'ancien client jusqu'à l'OTA.
+          fiche_serveur: true,
           photo_option: photoOption,
           // Fond pris en compte uniquement en ia_advanced (le backend l'ignore
           // sinon, mais on n'envoie même pas une valeur trompeuse hors avancé).

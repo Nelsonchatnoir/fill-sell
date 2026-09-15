@@ -28,7 +28,25 @@
 // ⛔ TOUT EST BEST-EFFORT. Une création d'article ou une écriture de fiche qui
 // échoue ne fait JAMAIS tomber une génération déjà payée : on journalise et on
 // sert quand même le résultat. Le pire cas est le comportement d'avant ce lot.
+//
+// ⛔ INERTE TANT QUE LE CLIENT NE LE DEMANDE PAS (ficheDemandee ci-dessous).
+// Le web est déployé au push ; l'app NATIVE tourne sur le canal Capgo et ne
+// recevra ce client qu'à la prochaine OTA. Un vieux client ne sait pas qu'une
+// ligne existe déjà : il en recréerait une SECONDE au clic Publier
+// (saveLensItemForListing) — le doublon pauvre que ce lot supprime, réintroduit
+// pour les natifs. Le serveur ne crée donc RIEN tant que le client n'a pas
+// annoncé qu'il sait vivre avec : `fiche_serveur: true` dans le corps.
+// Sans le drapeau, comportement d'avant ce lot, à l'octet près.
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Le client sait-il lire la fiche que le serveur s'apprête à écrire ?
+ * Un `true` explicite et rien d'autre : un corps qui ne porte pas la clé vient
+ * d'un client antérieur au 2026-09-15.
+ */
+export function ficheDemandee(body: unknown): boolean {
+  return (body as { fiche_serveur?: unknown })?.fiche_serveur === true;
+}
 
 // deno-lint-ignore no-explicit-any
 type Admin = any;

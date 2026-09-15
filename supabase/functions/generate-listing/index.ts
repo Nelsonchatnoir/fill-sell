@@ -36,7 +36,7 @@ import {
 // Forme comparable partagée (05/09) : une réponse IA qui se rapproche d'une
 // valeur de la liste transmise repart sous la forme EXACTE de cette valeur.
 import { valeurDeListeCorrespondante } from "../_shared/texte-comparable.ts";
-import { creerArticlePourFiche, enregistrerFiche, attributsLus } from "../_shared/fiche-article.ts";
+import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } from "../_shared/fiche-article.ts";
 
 // ── Retouche photo (GPT Image 2) ───────────────────────────────────────────────
 // Niveau "ia_light" : un seul prompt générique (luminosité/balance des blancs
@@ -1164,8 +1164,13 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
     //    sur les corps item_data, où elle ne s'appliquait pas. Ce serait
     //    modifier le décompte : interdit sans arbitrage explicite de Nico.
     // ⛔ Best-effort : rien ici ne peut faire échouer une génération livrée.
+    // ⛔ INERTE tant que le client ne l'a pas demandé : l'app native tourne sur
+    //    le canal Capgo et gardera l'ancien client jusqu'à la prochaine OTA.
+    //    Sans le drapeau, il recréerait une SECONDE ligne au clic Publier —
+    //    le doublon que ce lot supprime. Comportement d'avant ce lot.
     let inventaireIdFiche: number | null = inventaire_id != null ? Number(inventaire_id) : null;
     try {
+      if (!ficheDemandee(body)) throw { ignorer: true };
       const urlsPublier = (processedPhotos ?? [])
         .map(p => (typeof p === "string" ? p : p?.url))
         .filter((u): u is string => typeof u === "string" && !!u);
@@ -1232,7 +1237,12 @@ Réponds UNIQUEMENT du JSON valide {"objet":"<nom commun ou null>","icon":"<un e
         });
       }
     } catch (e) {
-      console.error("[generate-listing] fiche NON sauvegardée — génération livrée quand même :", (e as Error)?.message ?? e);
+      if ((e as { ignorer?: boolean })?.ignorer) {
+        inventaireIdFiche = inventaire_id != null ? Number(inventaire_id) : null;
+        console.log("[generate-listing] client sans fiche_serveur — aucune ligne créée, aucune fiche écrite (voulu)");
+      } else {
+        console.error("[generate-listing] fiche NON sauvegardée — génération livrée quand même :", (e as Error)?.message ?? e);
+      }
     }
 
     return json({

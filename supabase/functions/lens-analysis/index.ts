@@ -8,7 +8,7 @@ import { appelAutorise, loggerAppelIA, coutHaikuUsd } from "../_shared/usage-gua
 // PARTAGÉ avec generate-listing — même code, mêmes prompts, mêmes traces. Ce
 // fichier n'en possède aucune copie.
 import { construireContexteArticle, redigerAnnoncesPlateformes } from "../_shared/redaction-plateformes.ts";
-import { creerArticlePourFiche, enregistrerFiche, attributsLus } from "../_shared/fiche-article.ts";
+import { creerArticlePourFiche, enregistrerFiche, attributsLus, ficheDemandee } from "../_shared/fiche-article.ts";
 // Préparation des images (2026-09-05) : mesure, réduction sous la limite de
 // l'API, écartement tracé. Détail complet et raisons dans le module.
 import { preparerPhotos, tracePhoto, type PhotoPreparee } from "./images.ts";
@@ -3100,6 +3100,10 @@ serve(async (req) => {
           //    scan déjà livré et déjà payé — au pire on retombe sur le
           //    comportement d'avant ce lot.
           try {
+            // ⛔ Client qui ne sait pas encore vivre avec une ligne créée par le
+            //    serveur (app native tant que l'OTA n'est pas partie) : il en
+            //    recréerait une seconde au publish. On ne crée rien.
+            if (!ficheDemandee(body)) throw { ignorer: true, motif: "client sans fiche_serveur" };
             // ⛔ Article que le scan déclare DÉJÀ VENDU : on ne le met pas au
             //    stock. L'écran de résultat propose « Enregistrer la vente »,
             //    pas « publier » — lui créer une ligne en stock inventerait un
@@ -3170,8 +3174,8 @@ serve(async (req) => {
               });
             }
           } catch (e) {
-            if ((e as { ignorer?: boolean })?.ignorer) {
-              console.log("[lens-analysis][annonce] article déclaré vendu — aucune ligne de stock créée (voulu)");
+            if ((e as { ignorer?: boolean; motif?: string })?.ignorer) {
+              console.log(`[lens-analysis][annonce] aucune ligne de stock créée (voulu) — ${(e as { motif?: string }).motif ?? "article déclaré vendu"}`);
             } else {
               console.error("[lens-analysis][annonce] fiche NON sauvegardée — scan livré quand même :", (e as Error)?.message ?? e);
             }
