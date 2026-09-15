@@ -350,6 +350,27 @@ function sansPromesseDeReprise(msg) {
 // `implemented: false` → le job est loggé et laissé en pending (le content
 // script n'existe pas encore). Passer à true quand le script est prêt.
 const PLATFORM_HANDLERS = {
+  // ── opla : DÉCLARÉE NON IMPLÉMENTÉE (2026-09-15, lot 5) ───────────────────
+  // Depuis que la contrainte de base accepte 'opla', un job Opla peut exister
+  // et get-pending-jobs le SERT (sa requête ne filtre pas par plateforme).
+  // Sans cette entrée, processJob l'écartait en « Plateforme inconnue » — un
+  // arrêt correct, mais accidentel : le même message qu'une faute de frappe.
+  // Avec elle, l'arrêt est un ÉTAT DÉCLARÉ (« Handler opla pas encore
+  // implémenté »), le job reste pending, et rien n'est tenté.
+  //
+  // ⚠️ AUCUN EFFET SUR LES QUATRE PLATEFORMES EN SERVICE, vérifié sur les 3
+  // lectures de Object.keys(PLATFORM_HANDLERS) :
+  //   · cleanupOrphanWorkTabs : `PLATFORM_HOSTS[opla]` est absent → continue ;
+  //   · idsOngletsTravailConnus : une clé storage.session de plus, toujours vide ;
+  //   · processJob : lecture par clé, jamais d'itération.
+  // Pas d'entrée dans PLATFORM_HOSTS : Opla n'a pas d'onglet de travail tant
+  // qu'il n'est pas livré, et lui en donner un ouvrirait des chemins (requête
+  // d'onglets, nettoyage d'orphelins) sur une plateforme qui ne tourne pas.
+  opla: {
+    implemented: false,
+    // Pas de newListingUrl : rien ne doit pouvoir construire une URL opla.co
+    // par ce registre. Le jour de la livraison, elle viendra avec le reste.
+  },
   vinted: {
     implemented: true,
     newListingUrl: "https://www.vinted.fr/items/new",

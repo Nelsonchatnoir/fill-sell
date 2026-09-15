@@ -326,7 +326,24 @@ async function fillListingForm(job) {
 
     // 4. CRÉATION.
     oplaEtape("creation");
+    // ⛔ GARDE POSÉE PAR LE PASSAGE À BLANC DU LOT 5 (2026-09-15).
+    // Le pré-vol construit un `corps` complet, `images` COMPRIS — mais il le
+    // remplit avec ce qu'il a sous la main : le tableau `photos` du job, qui
+    // porte des URL. Or l'API veut les CLÉS S3 rendues par /images/upload-url.
+    // Mesuré sur le job servi 8679f6e3 : le pré-vol rend
+    //   images: [{ type: "original", url: "https://…" }]
+    // là où le POST attend [ "<key>", … ]. Ce n'est pas un bug aujourd'hui —
+    // la ligne suivante écrase `images` — mais c'est un piège armé : le jour où
+    // quelqu'un fera confiance à verdict.corps tel quel, le dépôt partira avec
+    // des URL et Opla refusera, APRÈS que les photos aient été montées.
+    // On vérifie donc ce qu'on envoie, au lieu de compter sur l'ordre des clés.
     const corps = { ...verdict.corps, images: cles };
+    if (!Array.isArray(corps.images) || corps.images.some((k) => typeof k !== "string" || !k.trim())) {
+      throw new Error(
+        "images du POST mal formées : on attend des clés S3 (chaînes), reçu " +
+        JSON.stringify(corps.images).slice(0, 120)
+      );
+    }
     const creation = await oplaJson(OPLA_ENDPOINTS.creer, {
       method: "POST",
       body: JSON.stringify(corps),
