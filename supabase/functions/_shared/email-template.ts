@@ -208,15 +208,37 @@ export function statut(
   );
 }
 
-/** Bouton d'action principal (plein, vert). URL invalide = bloc absent. */
+/**
+ * Bouton d'action principal (plein, vert). URL invalide = bloc absent.
+ *
+ * LIBELLÉ BLANC, VERROUILLÉ — bug relevé le 14/09/2026 (iPhone, Gmail en
+ * thème sombre) : le texte du bouton ressortait SOMBRE sur le vert, donc à
+ * peine lisible, alors qu'il est écrit en #FFFFFF en inline. Le client
+ * réécrit la couleur des liens en mode sombre, et une couleur inline sans
+ * `!important` ne lui résiste pas.
+ * Trois ceintures, parce qu'aucune ne couvre tous les clients :
+ *   1. `color:#FFFFFF !important` sur le <a> ;
+ *   2. la même couleur re-posée sur un <span> intérieur — certains clients
+ *      ne réécrivent que le <a> et laissent ses descendants tranquilles ;
+ *   3. les règles [data-ogsc] / prefers-color-scheme du <style> (Outlook.com
+ *      et les clients qui suivent la media query).
+ * Le fond, lui, est porté par `bgcolor` ET `background-color` : un fond
+ * d'élément n'est pas inversé, contrairement au texte.
+ *
+ * Cible tactile : 56 px de haut au doigt (18 px de marge + 20 px de ligne),
+ * au-dessus des 44 px recommandés par Apple et des 48 px de Material.
+ */
 export function boutonPrincipal(texte: string, url: string): Html {
   const href = urlSure(url);
   if (!href) return brut("");
   return brut(
-    `<tr><td align="left" class="fs-pad" style="padding:28px 34px 2px 34px; background-color:#FFFFFF;">` +
-      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="fs-btn" style="border-radius:12px;">` +
-      `<tr><td align="center" bgcolor="#1D9E75" style="background-color:#1D9E75; background-image:linear-gradient(135deg,#1D9E75 0%,#17835F 100%); border-radius:12px; box-shadow:0 6px 18px rgba(29,158,117,0.28);">` +
-      `<a href="${href}" target="_blank" style="display:block; padding:16px 30px; font-family:${POLICE}; font-size:16px; font-weight:700; letter-spacing:-0.01em; color:#FFFFFF; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">${echapper(texte)}&nbsp;&nbsp;&#8594;</a>` +
+    `<tr><td align="left" class="fs-pad" style="padding:30px 34px 4px 34px; background-color:#FFFFFF;">` +
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="fs-btn" style="border-radius:14px;">` +
+      `<tr><td align="center" bgcolor="#1D9E75" style="background-color:#1D9E75; background-image:linear-gradient(135deg,#25B083 0%,#17835F 100%); border-radius:14px; box-shadow:0 10px 24px rgba(29,158,117,0.32);">` +
+      `<a href="${href}" target="_blank" class="fs-btn-txt" style="display:block; padding:18px 36px; font-family:${POLICE}; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#FFFFFF !important; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">` +
+      `<span style="color:#FFFFFF !important; text-decoration:none;">${echapper(texte)}` +
+      `<span style="display:inline-block; width:12px;">&nbsp;</span>&#8594;</span>` +
+      `</a>` +
       `</td></tr></table>` +
       `</td></tr>`,
   );
@@ -556,6 +578,20 @@ export function renderEmail(opts: OptionsEmail): string {
   /* Outlook.com marque le mode sombre par cet attribut plutôt que par la
      media query. */
   [data-ogsc] .fs-entete { background-color:#10201B !important; }
+
+  /* ── LIBELLÉ DE BOUTON : BLANC, QUOI QU'IL ARRIVE ───────────────────────
+     Bug du 14/09/2026 (iPhone, Gmail sombre) : le texte du bouton d'action
+     ressortait sombre sur le vert. En mode sombre, plusieurs clients
+     réécrivent la couleur des LIENS sans toucher au fond de l'élément — le
+     bouton gardait donc son vert et perdait son texte blanc.
+     Le fond reste #1D9E75 dans les deux modes : le contraste du blanc
+     dessus est de 3,6:1, au-dessus du seuil « texte large » (17 px, 700). */
+  .fs-btn-txt, .fs-btn-txt span { color:#FFFFFF !important; }
+  [data-ogsc] .fs-btn-txt, [data-ogsc] .fs-btn-txt span,
+  [data-ogsb] .fs-btn-txt, [data-ogsb] .fs-btn-txt span { color:#FFFFFF !important; }
+  @media (prefers-color-scheme: dark) {
+    .fs-btn-txt, .fs-btn-txt span { color:#FFFFFF !important; }
+  }
 
   @media only screen and (max-width:620px) {
     .fs-card { width:100% !important; }
