@@ -1,8 +1,28 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- PUBLIER SANS EXTENSION : le job attend, il n'est plus refusé
 -- ═══════════════════════════════════════════════════════════════════════════
--- ⛔ ÉCRITE, PAS APPLIQUÉE. Nico valide et déclenche, comme toute migration de
---    ce projet. `supabase db push` reste INTERDIT : celle-ci s'applique SEULE.
+-- ✅ APPLIQUÉE EN PROD LE 2026-09-15, sur GO explicite de Nico, après qu'il a
+--    relevé lui-même que DEUX fonctions portent 'extension_required' et demandé
+--    le périmètre exact. Appliquée SEULE (jamais `supabase db push`).
+--
+--    SAUVEGARDE PRISE AVANT : table sauvegarde_fn_spend_publish_1509 (définition
+--    d'origine, 12 710 caractères). Retour arrière en un geste :
+--      DO $ BEGIN EXECUTE (SELECT definition FROM sauvegarde_fn_spend_publish_1509); END $;
+--    Pas de GRANT dessus, volontairement : table technique, aucun accès
+--    applicatif — même patron que sauvegarde_fn_spend_republish_1209.
+--
+--    ÉTAT LU APRÈS APPLICATION :
+--      spend_coins_and_publish(p_photo_option text, p_jobs jsonb)
+--        extension_required : 0   extension_stale : 0
+--        taille 11 327 (avant : 12 710) — 1 383 octets retirés
+--        v_ext_seen toujours alimenté · exemption eBay API intacte
+--      spend_coins_and_republish(...)  INTACTE
+--        extension_required : présent (offset 1684) · extension_stale : présent (2163)
+--        taille 12 255, identique à avant
+--
+--    DÉCOUPE VÉRIFIÉE STRUCTURELLEMENT, pas seulement textuellement :
+--      END IF; 15 → 13   ·   IF  15 → 13   ·   RETURN 13 → 11
+--    Exactement deux blocs IF…END IF complets, avec leur RETURN. Rien de pendant.
 --
 -- POURQUOI. Le 04/08 (commit df7a5d6), une garde a été posée pour ne plus
 -- DÉBITER des Pépites au profit d'une publication que personne ne pouvait
@@ -67,16 +87,39 @@ DECLARE
   v_debut  int;
   v_fin    int;
   v_retire int := 0;
+  v_n      int;
   k_req    constant text := 'IF v_ext_seen IS NULL AND NOT v_ebay_api_seul THEN';
   k_stale  constant text := 'IF v_ext_seen < now() - interval ''7 days'' AND NOT v_ebay_api_seul THEN';
   k_end    constant text := 'END IF;';
 BEGIN
-  SELECT pg_get_functiondef(p.oid) INTO v_def
+  -- ⛔ PÉRIMÈTRE VERROUILLÉ SUR LA SIGNATURE (durci le 15/09, question de Nico).
+  -- DEUX fonctions portent 'extension_required' : spend_coins_and_publish et
+  -- spend_coins_and_republish. Cette migration ne touche QUE la PREMIÈRE — la
+  -- republication est un autre chemin (suppression puis recréation) et se
+  -- traitera à part, si elle se traite.
+  -- Et on épingle la signature : `SELECT … INTO` sur un proname prendrait
+  -- SILENCIEUSEMENT la première ligne si une surcharge apparaissait un jour.
+  -- Aujourd'hui il n'y en a qu'une (vérifié le 15/09) ; demain, on préfère un
+  -- refus net à une réécriture au hasard.
+  SELECT count(*) INTO v_n
     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = 'public' AND p.proname = 'spend_coins_and_publish';
+  IF v_n <> 1 THEN
+    RAISE EXCEPTION 'spend_coins_and_publish : % surcharge(s) trouvée(s), 1 attendue — migration refusée', v_n;
+  END IF;
+
+  SELECT pg_get_functiondef(p.oid) INTO v_def
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'spend_coins_and_publish'
+     AND pg_get_function_identity_arguments(p.oid) = 'p_photo_option text, p_jobs jsonb';
 
   IF v_def IS NULL THEN
-    RAISE EXCEPTION 'spend_coins_and_publish introuvable — migration refusée';
+    RAISE EXCEPTION 'spend_coins_and_publish(p_photo_option text, p_jobs jsonb) introuvable — migration refusée';
+  END IF;
+
+  -- Filet de périmètre : on ne touche jamais à la republication par mégarde.
+  IF position('spend_coins_and_republish' in v_def) > 0 THEN
+    RAISE EXCEPTION 'la définition lue mentionne la republication — migration refusée';
   END IF;
 
   -- ── 1. Refus 'extension_required' ─────────────────────────────────────────
