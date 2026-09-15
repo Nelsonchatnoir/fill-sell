@@ -6586,19 +6586,94 @@ async function installNetworkProbe(tabId, platform) {
           } catch { return null; }
         };
 
+        // ══ POSE DE LA LANGUE DU LIVRE DANS LE CORPS DU POST (2026-09-15) ══
+        // Mesuré sur le job 2286228e (carhoa, « Bretagne », catalog_id 2320) :
+        // l'annonce d'origine SUPPRIMÉE (delete HTTP 200, 14/09 20:49) puis
+        //   POST /api/v2/item_upload/items → 400, errors:[{field:
+        //   "language_book", value:"Sélectionne une langue pour continuer"}]
+        // — un ORPHELIN : l'article n'est plus en ligne et ne revient pas.
+        //
+        // Pourquoi le corps du POST et pas un clic. Deux relevés, pas une
+        // supposition :
+        //   · platform_category_aspects, « Livres et médias > Livres >
+        //     Non-fiction » : la config attributes du formulaire ne déclare que
+        //     `condition` et `isbn`. `language_book` n'y est JAMAIS apparu — il
+        //     n'est connu que par le 400 du serveur (source server_400) ;
+        //   · relevé live du 28/08 : #language_book porte le testid
+        //     isbn-language_book-single-list_search-input — c'est un ENFANT du
+        //     bloc ISBN. Il n'existe dans le DOM qu'une fois le lookup livre de
+        //     Vinted retombé, lequel le pré-remplit tout seul.
+        // Donc : lookup retombé → la page pose la langue et on ne touche à
+        // rien ; lookup jamais retombé (livre hors base, ISBN absent) → le
+        // champ n'existe pas, aucun clic n'est possible, et le corps du POST
+        // est le SEUL endroit où la langue peut encore être posée.
+        //
+        // Forme RELEVÉE : 211 payloads d'annonces réelles en base portent
+        // { code:"language_book", ids:[<id>] } dans `item_attributes` — la même
+        // forme {code, ids} que ce POST porte déjà pour l'ISBN (relevé du
+        // 24/08, annonce 9769001747). Aucune clé inventée, aucune autre clé
+        // touchée, et JAMAIS d'écrasement d'une langue déjà posée par la page.
+        window.__fsLangueLivreAPoser = null;
+        const LANGUE_ARME_TTL_MS = 15 * 60 * 1000; // même borne que l'ISBN
+        const langueLivreArmee = () => {
+          const a = window.__fsLangueLivreAPoser;
+          if (!Array.isArray(a?.ids) || !a.ids.length) return null;
+          return (Date.now() - (a.armeeA ?? 0)) < LANGUE_ARME_TTL_MS ? a.ids : null;
+        };
+        window.addEventListener("message", (e) => {
+          if (e.source !== window || !e.data?.__fillsellArmeLangueLivre) return;
+          const ids = Array.isArray(e.data.ids)
+            ? e.data.ids.map(Number).filter((n) => Number.isFinite(n) && n > 0)
+            : [];
+          window.__fsLangueLivreAPoser = ids.length ? { ids, armeeA: Date.now() } : null;
+        });
+        let dernierePoseLangue = null;
+        const corpsAvecLangueLivre = (url, body) => {
+          dernierePoseLangue = null;
+          const ids = langueLivreArmee();
+          if (!ids) return null;
+          if (!/item_upload\/items/i.test(String(url))) return null;
+          if (typeof body !== "string" || body.charAt(0) !== "{") return null;
+          let j;
+          try { j = JSON.parse(body); } catch { return null; }
+          if (!j || typeof j !== "object" || Array.isArray(j)) return null;
+          const cible = (j.item && typeof j.item === "object" && !Array.isArray(j.item)) ? j.item : j;
+          const attrs = Array.isArray(cible.item_attributes) ? cible.item_attributes : [];
+          const estLangue = (a) => String(a?.code ?? "").trim().toLowerCase() === "language_book";
+          // La page a déjà tranché (lookup retombé) : on ne touche à rien.
+          const deja = attrs.find(estLangue);
+          if (deja && Array.isArray(deja.ids) && deja.ids.length) return null;
+          cible.item_attributes = [...attrs.filter((a) => !estLangue(a)), { code: "language_book", ids }];
+          try {
+            const corrige = JSON.stringify(j);
+            dernierePoseLangue = ids.join(",");
+            return corrige;
+          } catch { return null; }
+        };
+        // Les deux poses s'enchaînent sur le MÊME corps : l'ISBN d'abord
+        // (chemin éprouvé, inchangé), la langue ensuite sur son résultat.
+        // Rend le corps final, ou null s'il n'y avait rien à faire.
+        const corpsPourDepot = (url, body) => {
+          const avecIsbn = corpsAvecIsbn(url, body);
+          const avecLangue = corpsAvecLangueLivre(url, avecIsbn ?? body);
+          return avecLangue ?? avecIsbn;
+        };
+
         const origFetch = window.fetch;
         window.fetch = async function (input, init) {
           const url = typeof input === "string" ? input : input?.url ?? "";
           let args = arguments;
           let corpsEnvoye = init?.body;
           let isbnPose = null;
+          let languePosee = null;
           try {
             // Corps lisible uniquement : un Request porteur d'un flux n'est pas
             // réécrit (angle mort assumé, jamais une publication cassée).
             if (String(init?.method ?? "GET").toUpperCase() !== "GET" && typeof init?.body === "string") {
-              const corrige = corpsAvecIsbn(url, init.body);
+              const corrige = corpsPourDepot(url, init.body);
               if (corrige != null) {
                 isbnPose = dernierePoseIsbn;
+                languePosee = dernierePoseLangue;
                 corpsEnvoye = corrige;
                 args = [input, { ...init, body: corrige }];
               }
@@ -6620,6 +6695,7 @@ async function installNetworkProbe(tabId, platform) {
                 // ce qui est parti, pas ce que la page avait préparé.
                 isbnEnvoye: isbnEnvoyeOf(url, corpsEnvoye),
                 isbnPose,
+                languePosee,
                 annonceId: annonceIdOf(txt),
                 succesVinted: succesVintedOf(txt),
                 reponse: extraitSain(txt),
@@ -6635,10 +6711,11 @@ async function installNetworkProbe(tabId, platform) {
         XMLHttpRequest.prototype.send = function (body) {
           let corpsEnvoye = body;
           let isbnPose = null;
+          let languePosee = null;
           try {
             if (String(this.__m).toUpperCase() !== "GET" && typeof body === "string") {
-              const corrige = corpsAvecIsbn(this.__u ?? "", body);
-              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; }
+              const corrige = corpsPourDepot(this.__u ?? "", body);
+              if (corrige != null) { corpsEnvoye = corrige; isbnPose = dernierePoseIsbn; languePosee = dernierePoseLangue; }
             }
           } catch { /* idem */ }
           try {
@@ -6654,6 +6731,7 @@ async function installNetworkProbe(tabId, platform) {
                   attrsCatalogId: attrsCatalogIdOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   isbnEnvoye: isbnEnvoyeOf(this.__u, typeof corpsEnvoye === "string" ? corpsEnvoye : null),
                   isbnPose,
+                  languePosee,
                   annonceId: annonceIdOf(corps),
                   succesVinted: succesVintedOf(corps),
                   reponse: extraitSain(corps),
@@ -13892,9 +13970,17 @@ function construireJobRecreation(job, pf, cap, prix) {
       // libellé de capture d'abord, natif.isbn en repli pour les captures
       // ANTÉRIEURES au correctif (l'annonce d'origine est parfois déjà
       // supprimée : le natif conservé est alors la seule source).
+      // ⛔ ISBN DE REMPLISSAGE ÉCARTÉ ICI AUSSI (2026-09-15) : l'annonce
+      // d'origine de « Bretagne » (carhoa, item 7131834740) porte
+      // natif.isbn = "0000000000000" — une valeur stockée par Vinted, de clé de
+      // contrôle valide, mais qui ne désigne aucun livre. Le content script la
+      // refuse déjà au point de pose ; on ne la laisse pas non plus entrer dans
+      // platform_fields, sinon elle ressort dans les messages et le
+      // mini-éditeur comme si c'était l'ISBN de l'article.
       ...(() => {
         const isbn = String(cap.libelles?.isbn ?? natifCap.isbn ?? "").trim();
-        return isbn ? { isbn } : {};
+        if (!isbn || /^(\d)\1{9,}$/.test(isbn.replace(/[\s-]/g, ""))) return {};
+        return { isbn };
       })(),
       // Matière (2026-08-13) — OPTIONNELLE, jamais bloquante : libellé si un
       // jour la capture en produit un, sinon les IDS (item_attributes),

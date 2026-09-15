@@ -332,6 +332,10 @@ async function readItemsProbeOutcome() {
         // corps parce que la page l'avait laissé vide ? Sans lui, un refus qui
         // persiste ne dirait pas si la pose a eu lieu.
         isbnPose: c?.isbnPose ?? null,
+        // languePosee (2026-09-15) : la sonde a-t-elle dû poser language_book
+        // dans le corps ? Sans lui, un 400 sur la langue qui persiste ne dirait
+        // pas si la pose a eu lieu — exactement le trou qu'avait l'ISBN.
+        languePosee: c?.languePosee ?? null,
       };
     }
     if (last && refus) break;
@@ -519,6 +523,44 @@ function armerIsbnPourPost(isbn) {
   try {
     window.postMessage({ __fillsellArmeIsbn: true, isbn: isbn ?? null }, window.location.origin);
   } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
+}
+
+// ── Langue du livre : armement de la pose au POST (2026-09-15) ──────────────
+// Même canal, même règle que l'ISBN : la sonde ne pose que si la page a laissé
+// `language_book` absent de `item_attributes`, et l'armement expire seul.
+// Passer un tableau vide (ou null) DÉSARME.
+function armerLangueLivrePourPost(ids) {
+  try {
+    const propres = Array.isArray(ids) ? ids.map(Number).filter((n) => Number.isFinite(n) && n > 0) : [];
+    window.postMessage({ __fillsellArmeLangueLivre: true, ids: propres }, window.location.origin);
+  } catch { /* l'armement ne doit JAMAIS casser le remplissage */ }
+}
+
+// ── LANGUE PAR DÉFAUT DES LIVRES — id 6436 « Français » ─────────────────────
+// RELEVÉ, pas supposé : sur les 211 annonces de livres capturées en base qui
+// portent item_attributes[language_book], 6436 en couvre 201 (95,3 %) chez 17
+// comptes sur 20. Les autres ids se lisent sur les titres et auteurs réels des
+// annonces et s'accordent avec un classement alphabétique anglais où le
+// français tombe entre l'anglais et l'allemand :
+//   6435 anglais  (« They Both Die at the End », « Animal Farm »)
+//   6436 FRANÇAIS (le reste — 201 annonces de vendeurs français)
+//   6437 allemand (« Säugetiere »)
+//   6440 polonais (« Wieliczka — Ancienne Mine De Sel », Janusz Podlecki)
+//   6442 portugais (« Criancas Francesas Dia A Dia, Em Portugues do Brasil »)
+//   6443 slovaque  (« Dinosaur, Written in Slovac »)
+// Ce défaut ne sert QUE de dernier recours : la langue de l'annonce d'origine
+// prime toujours quand la capture la porte, et le lookup livre de Vinted prime
+// sur les deux quand il retombe (on n'écrase jamais ce que la page a posé).
+const VINTED_LANGUE_LIVRE_DEFAUT_ID = 6436;
+
+// Ids de langue portés par l'annonce d'origine (republication). Les attributs
+// capturés arrivent bruts dans platform_fields.itemAttributesCaptures — c'est
+// le même tableau {code, ids} que Vinted renvoie sur l'annonce.
+function langueLivreDeLaCapture(job) {
+  const attrs = job?.platform_fields?.itemAttributesCaptures;
+  if (!Array.isArray(attrs)) return [];
+  const e = attrs.find((a) => String(a?.code ?? "").trim().toLowerCase() === "language_book");
+  return Array.isArray(e?.ids) ? e.ids.map(Number).filter((n) => Number.isFinite(n) && n > 0) : [];
 }
 
 // En-têtes des GET d'API Vinted (2026-08-12). X-Anon-Id (cookie anon_id) est
@@ -1929,6 +1971,9 @@ async function fillListingForm(job) {
   // qui traîne poserait l'ISBN d'un livre sur l'article suivant. Il sera ré-armé
   // par l'étape ISBN ci-dessous, et seulement pour cet article.
   armerIsbnPourPost(null);
+  // Langue du livre : même raison, même geste — un armement qui traîne poserait
+  // la langue d'un livre sur l'article suivant, y compris hors Livres.
+  armerLangueLivrePourPost(null);
 
   // ══ B.5 ÉTENDU À TOUT LE REMPLISSAGE (2026-08-09, 3 annonces d'Ornella) ═════
   // B.5 ne couvrait QUE ensurePhotosLanded — la toute dernière garde, juste
@@ -2042,6 +2087,16 @@ async function fillListingForm(job) {
   // (#title / title--input, relevée), déclinée sur le code serveur `isbn`
   // (VINTED_SERVER_FIELD_LABELS). En une-passe l'échec est BLOQUANT — il
   // arrive AVANT la suppression ; en recréation, non bloquant comme le reste.
+  // Un ISBN de remplissage (13 zéros, cf. estIsbnDeRemplissage) vaut ISBN
+  // ABSENT : l'étape ne tourne pas du tout, plutôt que d'échouer dessus. En
+  // une-passe l'échec de l'étape serait BLOQUANT — une publication par ailleurs
+  // valide s'arrêterait sur une valeur qui n'a jamais rien voulu dire.
+  if (fields.isbn && estIsbnDeRemplissage(fields.isbn)) {
+    const note = `isbn « ${String(fields.isbn).trim()} » : valeur de remplissage de l'annonce d'origine, traitée comme ISBN ABSENT (rien envoyé à Vinted)`;
+    console.warn(`[vinted] ⚠️ ${note}`);
+    warnings.push(note);
+    delete fields.isbn;
+  }
   if (fields.isbn) {
     // Pose DURCIE (2026-08-25, 5 annonces détruites 15-22/08 sur « Merci
     // d'entrer un numéro ISBN valide ») : normalisation/validation AVANT la
@@ -2203,6 +2258,36 @@ async function fillListingForm(job) {
     });
   }
 
+
+  // ── LANGUE DU LIVRE — armement de la pose au POST (2026-09-15) ───────────
+  // Vinted EXIGE language_book sur les Livres (400 « Sélectionne une langue pour
+  // continuer », job 2286228e — annonce déjà supprimée, orpheline) et le champ
+  // n'est posable par clic QUE si son lookup ISBN est retombé : il n'existe pas
+  // dans le DOM autrement, et la config attributes de la catégorie ne le
+  // déclare même pas (relevé platform_category_aspects). La sonde le pose donc
+  // dans le corps du POST — et SEULEMENT si la page l'a laissé vide, si bien
+  // que le cas nominal (lookup retombé, langue pré-remplie par Vinted) n'est
+  // jamais touché.
+  //
+  // ⛔ LIVRES SEULEMENT. La porte est le champ #isbn PRÉSENT dans le formulaire
+  // réel : relevé en base, `isbn` n'est déclaré que sur les feuilles Livres
+  // (« Livres et médias > Livres > Non-fiction », « … > Fiction », « Divertissement
+  // > Livres > … »). C'est un fait du DOM posé par la catégorie déjà
+  // sélectionnée, pas un nom de catégorie deviné : aucune autre branche ne peut
+  // l'ouvrir, et rien n'est armé si le champ n'est pas là.
+  //
+  // Ordre de préférence : la langue de l'annonce d'origine (republication) prime
+  // sur le défaut ; le lookup de Vinted prime sur les deux (non-écrasement).
+  if (document.querySelector(vintedFieldSelector("isbn"))) {
+    const idsCapture = langueLivreDeLaCapture(job);
+    const ids = idsCapture.length ? idsCapture : [VINTED_LANGUE_LIVRE_DEFAUT_ID];
+    armerLangueLivrePourPost(ids);
+    const note = idsCapture.length
+      ? `langue du livre armée au POST depuis l'annonce d'origine (ids ${idsCapture.join(", ")})`
+      : `langue du livre armée au POST : défaut français (id ${VINTED_LANGUE_LIVRE_DEFAUT_ID}) — aucune langue sur l'annonce d'origine`;
+    console.log(`[vinted] ${note}`);
+    diagnosticsRecreation.push(note);
+  }
   // Marque : catalogue d'abord, CRÉATION de la marque en repli — et plus
   // jamais de champ sauté (2026-07-29, job « Mela & Adorna » : marque hors
   // catalogue → champ laissé vide → 400 code 99 au dépôt, maquillé en refus
@@ -2537,6 +2622,13 @@ async function fillListingForm(job) {
     // (selectClosedOptionSafe) alors que #isbn est une saisie libre : une
     // seconde pose, forcément en échec, et un warning trompeur.
     "isbn",
+    // language_book (2026-09-15) : servi par l'armement de la pose au POST
+    // ci-dessus. Le champ n'est PAS dans la config attributes de la catégorie
+    // (relevé platform_category_aspects) et n'existe dans le DOM qu'après le
+    // lookup ISBN — la boucle générique ne pourrait donc ni le résoudre en
+    // libellé ni le cliquer : elle ne produirait qu'un « attribut non résolu »
+    // trompeur sur un champ qui, lui, est bel et bien posé.
+    "language_book",
   ]);
   // ── Attributs de l'annonce d'origine versés DANS ce canal (2026-09-04) ─────
   // On ALIMENTE la boucle générique ci-dessous, on ne la modifie pas : c'est
@@ -2978,6 +3070,7 @@ async function fillListingForm(job) {
         `refus serveur HTTP ${sonde.refus?.status ?? "?"} (${sonde.refus?.url ?? "?"})`,
         sonde.refus?.isbnEnvoye != null ? `isbn dans le corps du POST : ${sonde.refus.isbnEnvoye}` : null,
         sonde.refus?.isbnPose ? `isbn POSÉ dans le corps par la sonde (${sonde.refus.isbnPose}) — la page l'avait laissé vide` : null,
+        sonde.refus?.languePosee ? `language_book POSÉ dans le corps par la sonde (ids ${sonde.refus.languePosee}) — la page l'avait laissé vide` : null,
         sonde.refus?.reponse ? `réponse : ${sonde.refus.reponse}` : null,
         `champs exigés : ${details}`,
         serverRequired.map((f) => {
@@ -3449,8 +3542,28 @@ async function fillTextField(selector, value) {
 // ISBN-13 (préfixe 978 + clé RECALCULÉE) ; clé de contrôle vérifiée dans les
 // deux formats ; invalide → on ne pose RIEN et on le dit avec l'ISBN dans le
 // message (en une-passe le blocage arrive AVANT toute suppression).
+// ── ISBN DE REMPLISSAGE = ISBN INCONNU (2026-09-15) ─────────────────────────
+// Relevé sur le job 2286228e (carhoa, « Bretagne ») : l'annonce d'origine porte
+// natif.isbn = "0000000000000". Ce n'est PAS nous qui l'avons fabriqué — c'est
+// la valeur stockée par Vinted sur l'annonce — mais nous la propagions telle
+// quelle, et sa clé de contrôle est valide (somme de zéros → clé 0), donc la
+// validation la laissait passer intacte jusqu'au formulaire puis au POST.
+// Conséquence mesurée : le lookup livre de Vinted ne peut rien rendre pour
+// treize zéros, il ne retombe jamais, le champ language_book (son enfant)
+// n'apparaît pas, et le POST part sans langue → 400, annonce perdue.
+// Un chapelet du même chiffre n'est pas un ISBN, c'est « je ne sais pas » : on
+// ne l'envoie pas. Même règle que prix d'achat VIDE ≠ ZÉRO — un champ inconnu
+// ne se remplit pas de zéros.
+// Pris ici, au point de passage OBLIGÉ de toute pose d'ISBN, plutôt qu'au seul
+// endroit qui l'a produit : la valeur entre par la capture, par vintedAspects
+// et par le snapshot.
+function estIsbnDeRemplissage(brut) {
+  return /^(\d)\1{9,}$/.test(String(brut ?? "").replace(/[\s -]/g, ""));
+}
+
 function normalizeIsbn(brut) {
   const s = String(brut ?? "").replace(/[\s -]/g, "").toUpperCase();
+  if (estIsbnDeRemplissage(s)) return { ok: false, raison: `valeur de remplissage, pas un ISBN (« ${s} »)` };
   const cle13 = (douze) => {
     let somme = 0;
     for (let i = 0; i < 12; i++) somme += (i % 2 ? 3 : 1) * Number(douze[i]);
