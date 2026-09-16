@@ -2943,8 +2943,45 @@ async function fillListingForm(job) {
   // voulu (règle Mode = « Petit »). Un radio ne se décoche pas au clic, et
   // selectPackageSize ne clique que s'il n'est pas déjà coché : aucune
   // bascule possible. Toujours absente → Vinted décide, tracé en warning.
+  // ── CETTE LECTURE ÉTAIT INSTANTANÉE, ET ÇA A COÛTÉ UNE ANNONCE (2026-09-16) ─
+  // CE QUI S'EST PASSÉ : RoCotCot, « Uriage Huile Lavante pour Bébé »
+  // (job cc8b0a39). Annonce SUPPRIMÉE à 20:44:46 (verdict serveur HTTP 200
+  // « Ok »), puis recréation refusée — HTTP 400 `package_size` : « Sélectionne
+  // le format de ton colis ». L'annonce est perdue.
+  // Le format était pourtant CONNU : le snapshot portait colis « Petit » ET
+  // package_size_id = 1, capturés sur l'annonce d'origine, et le mapping
+  // background.js → fields.packageSizeId fonctionne.
+  // La cause est ici, et c'est une COURSE, pas une règle de catégorie : sur
+  // les QUATRE républications que RoCotCot a lancées à la même minute, dans la
+  // MÊME catégorie (Femmes > Beauté > Soins du visage), avec le même build et
+  // le même package_size_id, TROIS ont été recréées et une seule est tombée.
+  // La section « Format du colis » n'est rendue qu'une fois les attributs de
+  // la catégorie posés ; la dernière passe la cherchait par un
+  // querySelectorAll SYNCHRONE, une seule fois, juste avant le clic de dépôt.
+  // Si elle apparaissait 200 ms plus tard, on avait déjà renoncé — et on
+  // soumettait quand même, sur une annonce DÉJÀ supprimée.
+  // On attend donc qu'elle apparaisse, au lieu de la regarder une fois.
+  // ⛔ PÉRIMÈTRE VOLONTAIREMENT MINIMAL : l'attente ne vaut que pour les
+  // RÉPUBLICATIONS. Sur une publication neuve, l'annonce d'origine n'existe
+  // pas — un format laissé au défaut de Vinted n'a jamais rien détruit, et le
+  // comportement reste identique à la milliseconde près (lecture synchrone).
+  // On n'ajoute donc aucun délai à un chemin qui marche.
   if (colisSectionAbsente && colisVoulu) {
-    const radiosColis = document.querySelectorAll('input[type="radio"][id^="package_type_selector_"]');
+    const RADIOS_COLIS = 'input[type="radio"][id^="package_type_selector_"]';
+    // `recreation` (l.1990, platform_fields.republish_recreation) : le MÊME
+    // drapeau que la garde photos ci-dessous, celui qui fait déjà foi pour
+    // « l'annonce d'origine est déjà supprimée ». Une seule vérité, pas deux.
+    const estRepublication = recreation;
+    const t0 = Date.now();
+    const radiosColis = estRepublication
+      ? (await waitFor(() => {
+          const r = document.querySelectorAll(RADIOS_COLIS);
+          return r.length ? r : null;
+        }, 8000)) ?? []
+      : document.querySelectorAll(RADIOS_COLIS);
+    if (estRepublication && radiosColis.length) {
+      console.log(`[vinted] format de colis : section apparue après ${Date.now() - t0} ms d'attente (républication)`);
+    }
     if (radiosColis.length) {
       try {
         await selectPackageSize(wantedPackage ?? "Petit", wantedPackageId);
@@ -2953,7 +2990,15 @@ async function fillListingForm(job) {
         warnings.push(`format de colis : section apparue mais format non posé (${String(e?.message ?? e).slice(0, 120)}) — choix Vinted conservé`);
       }
     } else {
-      warnings.push("format de colis : section toujours absente au dépôt — format laissé à Vinted");
+      // Sur une républication, ce warning est un signal GRAVE : l'annonce
+      // d'origine est déjà supprimée, et si Vinted refuse le POST pour
+      // `package_size` elle est perdue. On le dit, avec le temps attendu.
+      warnings.push(
+        estRepublication
+          ? `format de colis : section toujours absente après ${Date.now() - t0} ms d'attente, sur une RÉPUBLICATION ` +
+            "(annonce d'origine déjà supprimée) — dépôt tenté avec le défaut Vinted"
+          : "format de colis : section toujours absente au dépôt — format laissé à Vinted"
+      );
     }
   }
 
