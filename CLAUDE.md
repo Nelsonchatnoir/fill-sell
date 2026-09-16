@@ -60,6 +60,9 @@ Toutes les fonctions webhook et cron doivent être déployées avec `--no-verify
 - ops-digest
 - handler-watch
 - republish-purge
+- lens-temp-purge (ménage quotidien du bucket lens-temp, 03:50 UTC — cron
+  pg_net, jamais de purge côté client : un client ne voit que SON scan, c'est
+  ce qui effaçait les photos d'articles avant le 15/09)
 - email-desinscription (page publique de désinscription : l'appelant n'est PAS
   connecté, c'est tout l'intérêt — un verify_jwt à true rendrait le lien des
   emails inopérant et bloquerait toute campagne)
