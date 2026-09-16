@@ -282,22 +282,65 @@ export function oplaOptionsNiveauEchoue(
 
 // ═══ ARTEFACT 2 : la migration ═════════════════════════════════════════════
 const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
-const lignes = [];
-// `category` : un nœud → ses enfants. Clé '' pour le niveau racine.
-for (const cle of [...enfants.keys()].sort()) {
+
+// `category` : un nœud → ses enfants. Clé 'ROOT' pour le niveau racine.
+const lignesCat = [...enfants.keys()].sort().map((cle) => {
   const opts = enfants.get(cle).map((c) => ({ code: c, title: parCode.get(c).titre }));
-  lignes.push(`(${q("opla")}, ${q(cle || "ROOT")}, ${q("category")}, ${q("Catégorie")}, true, ${q("select")}, ${q(JSON.stringify(opts))}::jsonb, ${q("releve_opla_phase0")})`);
-}
+  return `  (${q(cle || "ROOT")}, ${q(JSON.stringify(opts))}::jsonb)`;
+});
+
 // `size` : une feuille AVEC grille → sa grille. Les G0 n'ont pas de ligne :
 // une catégorie sans champ Taille ne doit pas en proposer une vide.
-let nbTaille = 0;
-for (const f of feuilles) {
-  const g = grillePourFeuille.get(f.code);
-  if (g === "G0") continue;
-  nbTaille += 1;
-  const opts = grilles[g].map((t) => ({ code: t, title: libelleTaille.get(t) ?? t }));
-  lignes.push(`(${q("opla")}, ${q(f.code)}, ${q("size")}, ${q("Taille")}, true, ${q("select")}, ${q(JSON.stringify(opts))}::jsonb, ${q("releve_opla_phase0")})`);
+// ⚠️ La GRILLE est écrite UNE FOIS et jointe, jamais recopiée par feuille :
+// 397 feuilles × la même liste de 14 tailles, c'était 350 Ko de répétition
+// pour 5 listes distinctes, illisible à la relecture comme au diff.
+const lignesGrille = Object.entries(grilles)
+  .filter(([nom]) => nom !== "G0")
+  .map(([nom, codes]) => {
+    const opts = codes.map((t) => ({ code: t, title: libelleTaille.get(t) ?? t }));
+    return `  (${q(nom)}, ${q(JSON.stringify(opts))}::jsonb)`;
+  });
+const feuillesAvecGrille = feuilles.filter((f) => grillePourFeuille.get(f.code) !== "G0");
+const nbTaille = feuillesAvecGrille.length;
+const lignesFeuille = feuillesAvecGrille.map((f) => `  (${q(f.code)}, ${q(grillePourFeuille.get(f.code))})`);
+
+// ── INSTRUCTIONS INDÉPENDANTES, et c'est délibéré (2026-09-16) ─────────────
+// La migration était UNE seule instruction de 80 Ko — impossible à appliquer
+// autrement que d'un bloc, donc impossible à reprendre si l'envoi casse en
+// chemin. Chaque INSERT ci-dessous se suffit à lui-même et porte son propre
+// ON CONFLICT : rejouable seul, dans n'importe quel ordre, autant de fois
+// qu'on veut. Le begin/commit du fichier reste là pour l'application nominale
+// (tout ou rien) ; une reprise à la main peut les rejouer un par un.
+const QUEUE = `on conflict (platform, category_key, field_key) do update
+  set allowed_values = excluded.allowed_values,
+      field_label    = excluded.field_label,
+      input_type     = excluded.input_type,
+      required       = excluded.required,
+      source         = excluded.source,
+      last_seen_at   = now();`;
+
+const TAILLE_BLOC = 45; // ~25 Ko par instruction
+const blocsCategory = [];
+for (let i = 0; i < lignesCat.length; i += TAILLE_BLOC) {
+  const tranche = lignesCat.slice(i, i + TAILLE_BLOC);
+  blocsCategory.push(
+    `\n-- niveaux de choix ${i + 1} à ${i + tranche.length} sur ${lignesCat.length}\n` +
+    `with niveaux (category_key, allowed_values) as (values\n${tranche.join(",\n")}\n)\n` +
+    `insert into public.platform_category_aspects\n` +
+    `  (platform, category_key, field_key, field_label, required, input_type, allowed_values, source)\n` +
+    `select 'opla', category_key, 'category', 'Catégorie', true, 'select', allowed_values, 'manual'\n` +
+    `  from niveaux\n${QUEUE}\n`,
+  );
 }
+
+const blocTaille =
+  `\n-- les ${nbTaille} feuilles qui ont une grille — la grille est écrite UNE fois, et jointe\n` +
+  `with grilles (nom, allowed_values) as (values\n${lignesGrille.join(",\n")}\n` +
+  `), feuilles (category_key, nom) as (values\n${lignesFeuille.join(",\n")}\n)\n` +
+  `insert into public.platform_category_aspects\n` +
+  `  (platform, category_key, field_key, field_label, required, input_type, allowed_values, source)\n` +
+  `select 'opla', f.category_key, 'size', 'Taille', true, 'select', g.allowed_values, 'manual'\n` +
+  `  from feuilles f join grilles g on g.nom = f.nom\n${QUEUE}\n`;
 
 const sql = `-- ⚠️ FICHIER GÉNÉRÉ — ne pas éditer à la main.
 --   node scripts/gen-opla-catalogue.mjs
@@ -318,28 +361,29 @@ const sql = `-- ⚠️ FICHIER GÉNÉRÉ — ne pas éditer à la main.
 -- ⛔ IDEMPOTENTE. Réappliquée, elle réécrit les mêmes valeurs et ne touche
 --    AUCUNE autre plateforme (le ON CONFLICT porte sur la clé complète, et
 --    tout est borné à platform='opla').
+-- ⛔ source='manual' : la colonne porte une CHECK fermée (dom / server_400 /
+--    manual) — lue en prod le 16/09, après un premier envoi refusé en 23514.
+--    Ces lignes ne sont ni un relevé DOM ni un refus serveur : elles sont
+--    posées délibérément depuis docs/opla/*.tsv. 'manual' est le seul des trois
+--    qui dise vrai, et l'ouvrir à une 4e valeur aurait demandé un DDL sur une
+--    table que quatre plateformes alimentent — hors du périmètre de ce lot.
 -- ⛔ N'ACTIVE RIEN : ce sont des données. OPLA_ACTIF et
 --    PLATFORM_HANDLERS.opla.implemented restent false.
 
+-- ⛔ AUCUN DDL ICI, ET C'EST UNE CORRECTION DU 16/09 AVANT APPLICATION.
+-- Cette migration créait \`platform_category_aspects_cle_unique\` en
+-- \`if not exists\`. Or l'unicité (platform, category_key, field_key) EXISTE
+-- DÉJÀ, sous le nom que Postgres a donné à la contrainte de table :
+-- \`platform_category_aspects_platform_category_key_field_key_key\` (lu en prod).
+-- \`if not exists\` ne teste que le NOM : un second index unique, identique
+-- colonne pour colonne, serait parti en prod pour rien — écriture ralentie sur
+-- une table que quatre plateformes alimentent en continu.
+-- Le ON CONFLICT ci-dessous vise par LISTE DE COLONNES, pas par nom : il
+-- s'appuie sur la contrainte existante, sans rien créer.
+
 begin;
-
--- Unicité de la clé métier — sans elle, un ON CONFLICT ne peut pas viser.
--- Créée seulement si elle manque : l'index peut déjà exister pour les 4 autres.
-create unique index if not exists platform_category_aspects_cle_unique
-  on public.platform_category_aspects (platform, category_key, field_key);
-
-insert into public.platform_category_aspects
-  (platform, category_key, field_key, field_label, required, input_type, allowed_values, source)
-values
-${lignes.join(",\n")}
-on conflict (platform, category_key, field_key) do update
-  set allowed_values = excluded.allowed_values,
-      field_label    = excluded.field_label,
-      input_type     = excluded.input_type,
-      required       = excluded.required,
-      source         = excluded.source,
-      last_seen_at   = now();
-
+${blocsCategory.join("\n")}
+${blocTaille}
 commit;
 `;
 
@@ -363,6 +407,6 @@ for (const [rel, contenu] of sorties) {
 }
 if (!VERIFIER) {
   console.log(`\n  ${noeuds.length} nœuds · ${feuilles.length} feuilles · ${enfants.size} niveaux de choix · ${nbTaille} feuilles avec grille`);
-  console.log(`  ${lignes.length} lignes en base · ${new Set(plates).size} codes de taille uniques pour ${plates.length} entrées`);
+  console.log(`  ${lignesCat.length + nbTaille} lignes en base (${lignesCat.length} category + ${nbTaille} size) · ${new Set(plates).size} codes de taille uniques pour ${plates.length} entrées`);
 }
 process.exit(divergent ? 1 : 0);

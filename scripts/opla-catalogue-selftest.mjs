@@ -149,25 +149,44 @@ console.log('\n3. ⛔ Les grilles : la branche ne dit rien, et les codes sont en
 console.log('\n4. La base dit la même chose que le module');
 {
   const sql = lire('supabase/migrations/20260916150000_opla_catalogue.sql');
-  const lignes = [...sql.matchAll(/\('opla', '([^']*)', '(category|size)'[\s\S]*?'(\[.*?\])'::jsonb/g)];
-  ok('la migration porte bien des lignes opla', lignes.length > 500, lignes.length);
-  ok('elle ne touche QUE opla', !/\('(?!opla')/.test(sql.replace(/--.*$/gm, '')));
+  const sansCommentaires = sql.replace(/^\s*--.*$/gm, '');
+  // La migration est écrite en CTE : `niveaux` (un nœud → ses enfants),
+  // `grilles` (les 4 grilles, écrites UNE fois) et `feuilles` (feuille → grille).
+  // On relit ces trois blocs et on les compare au module, ligne par ligne.
+  const bloc = (nom) => [...sansCommentaires.matchAll(new RegExp(`${nom} \\([^)]*\\) as \\(values\\n([\\s\\S]*?)\\n\\)`, 'g'))]
+    .map((m) => m[1]).join('\n');
+  const niveaux = [...bloc('niveaux').matchAll(/\('([^']*)', '(\[[\s\S]*?\])'::jsonb\)/g)];
+  const grillesSql = new Map([...bloc('grilles').matchAll(/\('(G\d)', '(\[[\s\S]*?\])'::jsonb\)/g)]
+    .map(([, nom, json]) => [nom, JSON.parse(json.replace(/''/g, "'")).map((o) => o.code).join(',')]));
+  const feuillesSql = [...bloc('feuilles').matchAll(/\('([A-Z0-9_]+)', '(G\d)'\)/g)];
+
+  ok('la migration porte les trois blocs', niveaux.length > 0 && grillesSql.size > 0 && feuillesSql.length > 0,
+    { niveaux: niveaux.length, grilles: grillesSql.size, feuilles: feuillesSql.length });
+  // ⛔ Chaque INSERT doit se suffire : rejouable seul, dans n'importe quel
+  // ordre. C'est ce qui rend l'application reprenable si l'envoi casse.
+  const inserts = (sansCommentaires.match(/insert into public\.platform_category_aspects/g) ?? []).length;
+  const conflits = (sansCommentaires.match(/on conflict \(platform, category_key, field_key\) do update/g) ?? []).length;
+  ok('chaque INSERT porte SON on conflict (rejouable seul)', inserts > 1 && inserts === conflits, { inserts, conflits });
+  ok('elle n insère QUE du opla', (sansCommentaires.match(/'(vinted|leboncoin|beebs|ebay|vestiaire)'/g) ?? []).length === 0);
   ok('elle est idempotente (on conflict … do update)', /on conflict[\s\S]*do update/i.test(sql));
+  ok('⛔ elle ne porte AUCUN DDL (l unicité existe déjà en prod)',
+    !/\b(create|alter|drop)\s+(unique\s+)?(index|table|constraint)/i.test(sansCommentaires));
 
   let divergentes = 0;
-  let vuCategory = 0;
-  let vuSize = 0;
-  for (const [, cle, champ, json] of lignes) {
-    const attendues = champ === 'category'
-      ? M.oplaEnfants(cle === 'ROOT' ? '' : cle).map((n) => n.code)
-      : M.oplaTaillesDe(cle).map((t) => t.code);
-    const enBase = JSON.parse(json.replace(/''/g, "'")).map((o) => o.code);
-    if (attendues.join(',') !== enBase.join(',')) divergentes += 1;
-    if (champ === 'category') vuCategory += 1; else vuSize += 1;
+  for (const [, cle, json] of niveaux) {
+    const attendues = M.oplaEnfants(cle === 'ROOT' ? '' : cle).map((n) => n.code).join(',');
+    const enBase = JSON.parse(json.replace(/''/g, "'")).map((o) => o.code).join(',');
+    if (attendues !== enBase) divergentes += 1;
+  }
+  for (const [, code, nom] of feuillesSql) {
+    const attendues = M.oplaTaillesDe(code).map((t) => t.code).join(',');
+    if (attendues !== grillesSql.get(nom)) divergentes += 1;
   }
   ok('CHAQUE ligne de la migration dit ce que dit le module', divergentes === 0, `${divergentes} divergentes`);
-  ok('129 niveaux de choix (128 nœuds + la racine)', vuCategory === 129, vuCategory);
-  ok('397 feuilles avec grille — les 489 en G0 n ont PAS de ligne', vuSize === 397, vuSize);
+  ok('129 niveaux de choix (128 nœuds + la racine)', niveaux.length === 129, niveaux.length);
+  ok('397 feuilles avec grille — les 489 en G0 n ont PAS de ligne', feuillesSql.length === 397, feuillesSql.length);
+  ok('les 4 grilles écrites UNE fois, pas 397 (G0 n existe pas en base)',
+    grillesSql.size === 4 && !grillesSql.has('G0'), [...grillesSql.keys()]);
 }
 
 console.log('\n5. Le handler et le module répondent PAREIL, sur les 1014 nœuds');
