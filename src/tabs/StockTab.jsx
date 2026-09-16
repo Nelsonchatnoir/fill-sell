@@ -6152,7 +6152,20 @@ const StockTab = memo(function StockTab({
     return Number.isFinite(n)&&n>=0?n:NaN;
   };
   const paIncomplet=(i)=>!paPatchs[i.id]&&i.statut==='stock'&&!prixAchatConnu(i)&&i.prix_achat_inconnu!==true;
-  const nbSansPrix=stock.filter(paIncomplet).length;
+  // ⛔ LES BROUILLONS N'ENTRENT PAS DANS CE COMPTE (2026-09-16) ──────────────
+  //    Ils ont TOUS prix_achat NULL — le Lens crée l'article au débit, sans
+  //    prix d'achat — donc ils tombaient tous dedans : la pastille annonçait
+  //    « 9 sans prix » (2 réels + 7 brouillons) pour un mode qui n'en montre
+  //    que 2, puisque sa liste dérive de `stockFiltre` depuis le 15/09.
+  //    Pire, elle serait devenue une PORTE MORTE : les 2 réels complétés, la
+  //    pastille aurait dit « 7 » et ouvert une liste vide, sans jamais
+  //    atteindre « Tout est complété 🎉 » qui tient sur `nbSansPrix===0`.
+  //    Un brouillon n'est visible que par SA pastille : même filet que la
+  //    liste et que le bandeau (9ef42fd), `idsBrouillons` — jamais un second.
+  //    ⚠️ LE PÉRIMÈTRE NE BOUGE PAS : on compte toujours TOUT le stock, sans
+  //       appliquer les filtres catégorie/marque/recherche. Seuls les
+  //       brouillons sortent.
+  const nbSansPrix=stock.filter(i=>!idsBrouillons.has(String(i.id))&&paIncomplet(i)).length;
   const paSelection=modePrixAchat?stockFiltre.filter(i=>paIncomplet(i)&&paSel.has(i.id)):[];
 
   async function ecrirePrixAchatStock(ids,pa){
