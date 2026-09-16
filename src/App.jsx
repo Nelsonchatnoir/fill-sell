@@ -17,6 +17,37 @@ import { pixelInscription } from './utils/metaPixel';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
 const platform = Capacitor.getPlatform();
+
+// ── INSCRIPTION EN COURS, PERSISTÉE (2026-09-17) ─────────────────────────────
+// Le bundle Capgo ('atBackground') s'applique au moment où la personne sort
+// vers sa boîte mail : le webview est rechargé et l'écran « saisis ton code »,
+// qui vivait en mémoire, disparaissait — retour sur un formulaire de connexion
+// sans issue. L'adresse servie par signUp est donc écrite ici, relue au boot
+// tant qu'il n'y a pas de session (24 h : le code d'un mail n'a pas plus de
+// vie utile), effacée dès que le compte est ouvert ou que la personne revient
+// à la connexion. Jamais autre chose que l'adresse et l'horodatage.
+const ATTENTE_CONFIRMATION_KEY='fs_attente_confirmation';
+const ATTENTE_CONFIRMATION_TTL_MS=24*60*60*1000;
+function lireAttenteConfirmation(){
+  try{
+    const brut=localStorage.getItem(ATTENTE_CONFIRMATION_KEY);
+    if(!brut)return null;
+    const v=JSON.parse(brut);
+    const depuis=Date.parse(v?.depuis??'');
+    if(!v?.email||!Number.isFinite(depuis)||Date.now()-depuis>ATTENTE_CONFIRMATION_TTL_MS){
+      localStorage.removeItem(ATTENTE_CONFIRMATION_KEY);
+      return null;
+    }
+    return {email:String(v.email),depuis:String(v.depuis),motif:'reprise'};
+  }catch{return null;}
+}
+function ecrireAttenteConfirmation(email){
+  try{localStorage.setItem(ATTENTE_CONFIRMATION_KEY,JSON.stringify({email:String(email||''),depuis:new Date().toISOString()}));}
+  catch{/* stockage indisponible : l'écran vit en mémoire, comme avant */}
+}
+function effacerAttenteConfirmation(){
+  try{localStorage.removeItem(ATTENTE_CONFIRMATION_KEY);}catch{/* idem */}
+}
 // BUILD_ID de CE build web, injecté par Vite (define, cf. vite.config.js) —
 // même computeBuildId que le zip public de l'extension. Sert à la bannière
 // « extension obsolète » : profiles.extension_build (stampé par get-pending-jobs
@@ -2014,11 +2045,18 @@ export default function App({ loginOnly = false }){
   // produit le moindre événement ensuite.
   // `attenteConfirmation` porte l'adresse RÉELLEMENT servie (celle que signUp
   // a acceptée), jamais une valeur ressaisie.
-  const [attenteConfirmation,setAttenteConfirmation]=useState(null); // {email} | null
+  // `motif` (2026-09-17) : 'inscription' (signUp vient d'aboutir), 'reprise'
+  // (relue depuis localStorage après un rechargement de bundle ou un kill),
+  // 'non_confirme' (connexion refusée email_not_confirmed), 'code' (« J'ai
+  // déjà reçu un code », l'adresse est saisie sur l'écran).
+  const [attenteConfirmation,setAttenteConfirmation]=useState(null); // {email, depuis, motif} | null
   const [renvoiA,setRenvoiA]=useState(0);          // horodatage du dernier envoi
   const [horlogeRenvoi,setHorlogeRenvoi]=useState(()=>Date.now());
   const [renvoiEnCours,setRenvoiEnCours]=useState(false);
   const [codeOtp,setCodeOtp]=useState("");
+  // Adresse SAISIE sur l'écran du code quand il ne la connaît pas (motif
+  // 'code') — jamais un repli silencieux sur une autre valeur.
+  const [emailOtp,setEmailOtp]=useState("");
   const [otpEnCours,setOtpEnCours]=useState(false);
   const [otpErreur,setOtpErreur]=useState("");
   const [resetStep,setResetStep]=useState(0);
@@ -5603,6 +5641,20 @@ export default function App({ loginOnly = false }){
     setIsSigningIn(true);
     try{
       const{error}=await supabase.auth.signInWithPassword({email:emailRef.current?.value,password:passwordRef.current?.value});
+      // ── (c) COMPTE NON CONFIRMÉ → L'ÉCRAN DU CODE, PAS UN TEXTE SANS ISSUE ──
+      // (2026-09-17) Le nouvel inscrit revenu de sa boîte mail sur un bundle
+      // rechargé retombe sur ce formulaire et tente le mot de passe : GoTrue
+      // refuse en email_not_confirmed. On ne lui dit plus « ouvre le mail puis
+      // reviens » : on ouvre l'écran d'attente avec SON adresse, où le code du
+      // premier mail se saisit et où « Renvoyer » existe. Le mot de passe
+      // reste le chemin de tous les comptes confirmés — inchangé.
+      if(error?.code==='email_not_confirmed'){
+        const adresse=String(emailRef.current?.value||'').trim();
+        ecrireAttenteConfirmation(adresse);
+        setAttenteConfirmation({email:adresse,depuis:new Date().toISOString(),motif:'non_confirme'});
+        setEmailOtp(adresse);setCodeOtp("");setOtpErreur("");
+        return;
+      }
       if(error){setLoginError(error.message);return;}
       track('login', { method: 'email' });
       // Splash jusqu'à la fin de fetchAll (lancé par SIGNED_IN) — évite le flash d'app vide
@@ -5682,14 +5734,38 @@ export default function App({ loginOnly = false }){
     return()=>clearInterval(id);
   },[attenteConfirmation,renvoiA]);
 
+  // ── (b) REPRISE D'UNE INSCRIPTION EN COURS (2026-09-17) ───────────────────
+  // Le bundle Capgo s'applique au moment où la personne sort vers sa boîte
+  // mail ('atBackground' : téléchargé au premier plan, appliqué à la sortie —
+  // lu dans le plugin 8.51.2). Elle revient donc sur un webview RECHARGÉ : la
+  // session Supabase et le code_verifier survivent (localStorage), mais pas
+  // cet écran, qui vivait en mémoire — elle retombait sur le formulaire de
+  // connexion, sans champ pour son code. L'inscription est donc persistée
+  // (fs_attente_confirmation, 24 h) et relue ici, dès que l'auth a tranché
+  // qu'il n'y a pas de session. Même reprise après un kill mémoire.
+  // Effacée : code validé, « Revenir à la connexion », ou session ouverte.
+  useEffect(()=>{
+    if(authLoading)return;
+    if(user){effacerAttenteConfirmation();return;}
+    if(attenteConfirmation)return;
+    const reprise=lireAttenteConfirmation();
+    if(!reprise)return;
+    setAttenteConfirmation(reprise);
+    setEmailOtp(reprise.email);setCodeOtp("");setOtpErreur("");
+  },[authLoading,user,attenteConfirmation]);
+
+  // Adresse EFFECTIVE de l'écran du code : celle que l'inscription a servie,
+  // sinon celle saisie sur l'écran (motif 'code'). Jamais une autre valeur.
+  const emailAttenteEffectif=String(attenteConfirmation?.email||emailOtp||'').trim();
+
   async function renvoyerConfirmation(){
-    if(renvoiEnCours||secondesAvantRenvoi>0||!attenteConfirmation?.email)return;
+    if(renvoiEnCours||secondesAvantRenvoi>0||!emailAttenteEffectif)return;
     const fr=(localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en'))!=='en';
     setRenvoiEnCours(true);setOtpErreur("");
     try{
       const{error}=await supabase.auth.resend({
         type:'signup',
-        email:attenteConfirmation.email,
+        email:emailAttenteEffectif,
         options:{emailRedirectTo:URL_CONFIRMATION},
       });
       // Un throttle n'est PAS un échec : le mail précédent est en route vers
@@ -5712,15 +5788,19 @@ export default function App({ loginOnly = false }){
   // c'est pour ça que le champ n'est proposé que comme SECOND chemin, sous le
   // lien, et jamais comme un passage obligé.
   async function validerCodeConfirmation(){
-    if(otpEnCours||!attenteConfirmation?.email)return;
+    if(otpEnCours)return;
     const fr=(localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en'))!=='en';
+    // (a) L'adresse peut venir de l'écran lui-même (« J'ai déjà reçu un
+    // code ») : on exige une adresse plausible avant tout appel.
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAttenteEffectif)){setOtpErreur(fr?"Saisis l'adresse e-mail de ton inscription.":"Enter the email address you signed up with.");return;}
     const token=codeOtp.replace(/\D/g,'');
     if(token.length!==6){setOtpErreur(fr?"Le code fait 6 chiffres.":"The code is 6 digits.");return;}
     setOtpEnCours(true);setOtpErreur("");
     try{
-      const{data,error}=await supabase.auth.verifyOtp({email:attenteConfirmation.email,token,type:'signup'});
+      const{data,error}=await supabase.auth.verifyOtp({email:emailAttenteEffectif,token,type:'signup'});
       if(error){setOtpErreur(messageAuth(error,fr));return;}
       if(data?.session){
+        effacerAttenteConfirmation();
         setAttenteConfirmation(null);
         setAppLoading(true);   // splash jusqu'à la fin de fetchAll
         navigate("/app");
@@ -5773,7 +5853,12 @@ export default function App({ loginOnly = false }){
         // L'adresse affichée est celle que signUp a ACCEPTÉE (data.user.email),
         // pas la valeur du champ : on ne dit jamais « envoyé à … » sur une
         // saisie locale qui pourrait viser une autre boîte.
-        setAttenteConfirmation({email:(data?.user?.email||emailVal).trim()});
+        const adresse=(data?.user?.email||emailVal).trim();
+        // (b) Persistée AVANT d'être affichée : si le bundle se recharge
+        // pendant que la personne lit son mail, l'écran se rouvre tout seul.
+        ecrireAttenteConfirmation(adresse);
+        setAttenteConfirmation({email:adresse,depuis:new Date().toISOString(),motif:'inscription'});
+        setEmailOtp(adresse);
         setRenvoiA(Date.now());setHorlogeRenvoi(Date.now());
         setCodeOtp("");setOtpErreur("");
       }
@@ -5855,12 +5940,12 @@ export default function App({ loginOnly = false }){
     subtitle:"Sign in to continue",login:"Sign in",signup:"Create my account",
     forgot:"Forgot your password?",forgotBtn:"Send reset link",
     forgotMsg:"Enter your email above.",back:"← Back",
-    confirmEmail:"Confirm your email"
+    confirmEmail:"Confirm your email",dejaCode:"I already have a code"
   }:{
     subtitle:"Connecte-toi pour continuer",login:"Se connecter",signup:"Créer mon compte",
     forgot:"Mot de passe oublié ?",forgotBtn:"Envoyer le lien de réinitialisation",
     forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour",
-    confirmEmail:"Confirme ton email"
+    confirmEmail:"Confirme ton email",dejaCode:"J'ai déjà reçu un code"
   };
 
   // ── ÉCRAN D'ATTENTE DE CONFIRMATION (2026-09-16) ──────────────────────────
@@ -5871,24 +5956,59 @@ export default function App({ loginOnly = false }){
   // Le bouton « Revenir » garde le repli qui fait entrer 9 personnes sur 10
   // aujourd'hui : retourner au formulaire et se connecter au mot de passe.
   const fr_=loginLang!=='en';
+  // Quatre entrées, quatre en-têtes VRAIS (2026-09-17) : on ne dit « on vient
+  // d'envoyer » qu'à l'instant où c'est vrai (motif 'inscription').
+  const motifAttente=attenteConfirmation?.motif||'inscription';
+  const adresseAttente=attenteConfirmation?.email||'';
+  const enTeteAttente=
+    motifAttente==='code'
+      ?{icone:"🔢",titre:fr_?"Saisis ton code":"Enter your code",
+        texte:fr_?<>Reprends l'adresse de ton inscription et le code à 6 chiffres reçu par mail. Le premier code envoyé reste valable.</>
+                 :<>Enter the email you signed up with and the 6-digit code from the email. The first code we sent is still valid.</>}
+    :motifAttente==='non_confirme'
+      ?{icone:"📬",titre:fr_?"Ton compte attend sa confirmation":"Your account is waiting for confirmation",
+        texte:fr_?<>On t'a envoyé un lien et un code à <strong style={{color:UI.ink}}>{adresseAttente}</strong>. Ouvre le mail, ou saisis le code ci-dessous.</>
+                 :<>We sent a link and a code to <strong style={{color:UI.ink}}>{adresseAttente}</strong>. Open the email, or enter the code below.</>}
+    :motifAttente==='reprise'
+      ?{icone:"📬",titre:fr_?"Ton inscription est en cours":"Your sign-up is in progress",
+        texte:fr_?<>Un lien et un code t'attendent à <strong style={{color:UI.ink}}>{adresseAttente}</strong>. Ouvre le mail, ou saisis le code ci-dessous.</>
+                 :<>A link and a code are waiting for you at <strong style={{color:UI.ink}}>{adresseAttente}</strong>. Open the email, or enter the code below.</>}
+      :{icone:"📬",titre:fr_?"Regarde ta boîte mail":"Check your inbox",
+        texte:fr_?<>On vient d'envoyer un lien de confirmation à <strong style={{color:UI.ink}}>{adresseAttente}</strong>. Ouvre-le pour activer ton compte.</>
+                 :<>We just sent a confirmation link to <strong style={{color:UI.ink}}>{adresseAttente}</strong>. Open it to activate your account.</>};
+  // Le champ du code : sur téléphone toujours (le lien part dans un autre
+  // navigateur) ; ailleurs, seulement quand l'écran a été ouvert POUR le code.
+  const champCodeVisible=isNative||motifAttente!=='inscription';
   if(!authLoading&&attenteConfirmation&&!user)return(
     <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:UI.canvas,overflowY:"auto",boxSizing:"border-box"}}>
       <div style={{background:UI.card,borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,border:`1px solid ${UI.border}`,boxShadow:"0 24px 64px rgba(16,32,27,0.10)",boxSizing:"border-box"}}>
-        <div style={{textAlign:"center",marginBottom:8,fontSize:34}}>📬</div>
+        <div style={{textAlign:"center",marginBottom:8,fontSize:34}}>{enTeteAttente.icone}</div>
         <h1 style={{margin:"0 0 10px",fontSize:22,fontWeight:700,letterSpacing:"-0.02em",color:UI.ink,textAlign:"center",lineHeight:1.25}}>
-          {fr_?"Regarde ta boîte mail":"Check your inbox"}
+          {enTeteAttente.titre}
         </h1>
         <p style={{margin:"0 0 22px",fontSize:14.5,lineHeight:1.5,color:UI.mute2,textAlign:"center"}}>
-          {fr_?<>On vient d'envoyer un lien de confirmation à <strong style={{color:UI.ink}}>{attenteConfirmation.email}</strong>. Ouvre-le pour activer ton compte.</>
-              :<>We just sent a confirmation link to <strong style={{color:UI.ink}}>{attenteConfirmation.email}</strong>. Open it to activate your account.</>}
+          {enTeteAttente.texte}
         </p>
+
+        {/* (a) L'adresse se saisit ICI quand l'écran ne la connaît pas :
+            « J'ai déjà reçu un code » arrive du formulaire de connexion. */}
+        {motifAttente==='code'&&(
+          <input
+            type="email" value={emailOtp} placeholder={fr_?"Adresse e-mail de l'inscription":"Email address used to sign up"}
+            onChange={e=>{setEmailOtp(e.target.value);setOtpErreur("");}}
+            autoComplete="email" inputMode="email"
+            style={{width:"100%",padding:"13px 16px",borderRadius:14,border:`1px solid ${UI.border}`,background:UI.chip,color:UI.ink,fontSize:16,fontFamily:"inherit",boxSizing:"border-box",marginBottom:14}}
+          />
+        )}
 
         {/* Code à 6 chiffres — proposé sur téléphone seulement : c'est là que
             le lien part forcément dans un AUTRE navigateur que l'app. */}
-        {isNative&&(
+        {champCodeVisible&&(
           <div style={{marginBottom:18,paddingTop:16,borderTop:`1px solid ${UI.border}`}}>
             <div style={{fontSize:13.5,color:UI.mute2,marginBottom:10,textAlign:"center"}}>
-              {fr_?"Ou saisis le code à 6 chiffres du mail :":"Or enter the 6-digit code from the email:"}
+              {motifAttente==='code'
+                ?(fr_?"Le code à 6 chiffres du mail :":"The 6-digit code from the email:")
+                :(fr_?"Ou saisis le code à 6 chiffres du mail :":"Or enter the 6-digit code from the email:")}
             </div>
             <input
               value={codeOtp}
@@ -5908,7 +6028,7 @@ export default function App({ loginOnly = false }){
         {otpErreur&&<div style={{fontSize:13,textAlign:"center",color:UI.negative,fontWeight:600,marginBottom:14}}>{otpErreur}</div>}
 
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <SecondaryButton onClick={renvoyerConfirmation} disabled={renvoiEnCours||secondesAvantRenvoi>0} style={{padding:14}}>
+          <SecondaryButton onClick={renvoyerConfirmation} disabled={renvoiEnCours||secondesAvantRenvoi>0||!emailAttenteEffectif} style={{padding:14}}>
             {renvoiEnCours
               ? <Loader size={19} thickness={2}/>
               : secondesAvantRenvoi>0
@@ -5916,7 +6036,7 @@ export default function App({ loginOnly = false }){
                 : (fr_?"Renvoyer l'e-mail":"Resend email")}
           </SecondaryButton>
           <span
-            onClick={()=>{setAttenteConfirmation(null);setCodeOtp("");setOtpErreur("");setAuthMode('login');}}
+            onClick={()=>{effacerAttenteConfirmation();setAttenteConfirmation(null);setCodeOtp("");setOtpErreur("");setAuthMode('login');}}
             style={{fontSize:13.5,color:UI.teal,cursor:"pointer",textAlign:"center",fontWeight:600,padding:"6px 0"}}
           >
             {fr_?"← Revenir à la connexion":"← Back to sign in"}
@@ -6014,6 +6134,25 @@ export default function App({ loginOnly = false }){
                   {loginTexts.forgot}
                 </span>
               </div>
+              {/* (a) « J'ai déjà reçu un code » (2026-09-17) — sur téléphone,
+                  là où le code est LA voie : le nouvel inscrit revenu de sa
+                  boîte mail sur un bundle rechargé retrouve l'écran du code,
+                  avec l'adresse du champ ci-dessus si elle est saisie. Le
+                  premier code reçu reste valable : aucun renvoi n'est fait. */}
+              {isNative&&(
+                <div style={{textAlign:"center"}}>
+                  <span
+                    onClick={()=>{
+                      const adresse=String(emailRef.current?.value||email||'').trim();
+                      setAttenteConfirmation({email:'',depuis:new Date().toISOString(),motif:'code'});
+                      setEmailOtp(adresse);setCodeOtp("");setOtpErreur("");setLoginError("");
+                    }}
+                    style={{fontSize:13,color:UI.teal,cursor:"pointer",textDecoration:"underline"}}
+                  >
+                    {loginTexts.dejaCode}
+                  </span>
+                </div>
+              )}
             </>
           )}
           {forgotMode&&(
