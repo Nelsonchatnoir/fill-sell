@@ -1487,6 +1487,7 @@ async function fillListingForm(job) {
   const CHAMPS_FORMULAIRE_SEL = "input:not([type=hidden]), textarea, select";
   const estChampSaisissable = (el) => !["submit", "button", "image", "reset"].includes(el.type);
   const estVideRequis = (el) => {
+    if (estChampPhotos(el)) return false;                           // cf. estChampPhotos
     if (el.validity?.valueMissing === true) return true;            // le navigateur le dit
     const requis = el.required === true || el.getAttribute("aria-required") === "true";
     if (!requis) return false;
@@ -1500,7 +1501,19 @@ async function fillListingForm(job) {
     const vides = champs
       .filter((el) => !["checkbox", "radio", "file"].includes(el.type) && !String(el.value ?? "").trim())
       .map((el) => `${nomDuChamp(el)}${el.name || el.id ? ` [${el.name || el.id}]` : ""}`);
-    return { requisVides, vides, refus: messagesErreurVisibles(), natifs: messagesValidationNative() };
+    // Les champs que LEBONCOIN a marqués invalides, en entier et en clair :
+    // c'est la seule liste qui désigne le champ qui bloque (les autres disent
+    // seulement « vide »). Non bornée à 4 comme la liste montrée à l'écran.
+    const bruts = champsInvalides(12);
+    const invalides = bruts.map((c) =>
+      `${c.nom}${c.cle ? ` [${c.cle}]` : ""}${c.section ? ` « ${c.section} »` : ""}` +
+      `${c.role ? ` (${c.role})` : ""} → ${c.msg || "aucun message du navigateur (refus React)"}`
+    );
+    // Un refus est ACTIONNABLE quand il porte un motif que l'utilisateur peut
+    // corriger dans sa fiche : un message du navigateur, ou un message affiché
+    // par Leboncoin. Un champ juste « marqué en erreur » ne l'est pas.
+    const actionnable = bruts.some((c) => c.actionnable);
+    return { requisVides, vides, invalides, actionnable, refus: messagesErreurVisibles(), natifs: messagesValidationNative() };
   };
   const attendreEcranSuivant = (budgetMs = 15_000) => waitFor(() => {
     const cta = findFreeCta();
@@ -1890,7 +1903,7 @@ async function fillListingForm(job) {
       // vides — c'est ce qui manquait pour distinguer deux causes que le même
       // message confondait.
       if (estEncoreFormulaire()) {
-        const { requisVides, vides, refus, natifs } = releveRefusFormulaire();
+        const { requisVides, vides, invalides, actionnable, refus, natifs } = releveRefusFormulaire();
         // Ce que l'utilisateur LIT : uniquement un refus que Leboncoin (ou le
         // navigateur) formule lui-même. Une liste de champs est un
         // DIAGNOSTIC — elle part en annexe, jamais à l'écran (règle du 02/09).
@@ -1905,6 +1918,11 @@ async function fillListingForm(job) {
           `champs REQUIS vides (${requisVides.length}) ${JSON.stringify(requisVides.slice(0, 40))}`,
           `champs vides (${vides.length}) ${JSON.stringify(vides.slice(0, 40))}`,
           natifs.length ? `validations natives ${JSON.stringify(natifs)}` : "validations natives []",
+          // La liste qui NOMME le champ bloquant : libellé résolu hors
+          // label[for] (aria-labelledby / label ancêtre / wrapper), sa clé, la
+          // section qui le coiffe, son rôle. Sans elle, le formulaire pro ne
+          // renvoyait que « Choisissez » — le placeholder.
+          `champs marqués invalides par Leboncoin (${invalides.length}) ${JSON.stringify(invalides)}`,
           dumpEcranVisible(),
         ].join(" ; ");
         console.warn(`[leboncoin] formulaire NON accepté — requis vides: ${JSON.stringify(requisVides)} ; vides: ${JSON.stringify(vides)} ; refus: ${JSON.stringify(lisibles)}`);
@@ -1916,7 +1934,17 @@ async function fillListingForm(job) {
           success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
           error:
             (lisibles.length
-              ? `Leboncoin refuse le formulaire : « ${lisibles.join(" » · « ")} » — corrige l'annonce dans FillSell, puis relance la publication.`
+              ? `Leboncoin refuse le formulaire : « ${lisibles.join(" » · « ")} » — ` +
+                // « corrige l'annonce dans FillSell » n'est vrai que si le refus
+                // porte un MOTIF (description trop courte…). Quand Leboncoin se
+                // contente de marquer un champ en erreur — le cas des comptes
+                // PRO, dont les champs n'existent pas dans la fiche FillSell —
+                // cette phrase demandait un geste impossible : 7 jobs envoyés
+                // corriger une annonce qui n'avait rien à corriger.
+                (actionnable || refus.length
+                  ? "corrige l'annonce dans FillSell, puis relance la publication."
+                  : "ce sont des champs du formulaire Leboncoin, pas de ta fiche FillSell. " +
+                    "Nous regardons de notre côté ; ton annonce est intacte, rien à corriger.")
               : "Le formulaire Leboncoin de ton compte n'a pas été accepté, et il n'indique pas pourquoi. " +
                 "Nous regardons de notre côté ; ton annonce est intacte, rien à corriger de ton côté.") +
             ` — Observabilité: ${annexe}`,
@@ -2569,13 +2597,65 @@ function estVisibleParStyles(el) {
   return true;
 }
 
-// Libellé humain d'un champ : label[for], aria-label, placeholder — sinon rien
-// (l'appelant retombe sur name/id).
+// Libellé humain d'un champ : label[for], aria-labelledby, <label> ancêtre,
+// label/legend du wrapper, aria-label, placeholder — sinon rien (l'appelant
+// retombe sur name/id).
+// ── POURQUOI UNE CASCADE, ET LE PLACEHOLDER EN DERNIER (2026-09-16) ─────────
+// CE QUE ÇA A COÛTÉ : les deux champs qui bloquent le dépôt PRO de
+// MeMiniandMove (7 jobs, 0 publication) sont sortis du relevé sous le nom
+// « Choisissez » — leur PLACEHOLDER. Ils n'ont pas de label[for] (leur seul id
+// est un id React `:form-field-_r_32_`), donc rien dans le handler ne pouvait
+// les nommer : ni ce relevé, ni enumerateLbcCriteria (qui exclut les clés
+// commençant par « : »). Un champ anonyme ne peut ni se remplir, ni se
+// demander à l'utilisateur, ni entrer au catalogue.
+// Le wrapper n'est accepté que s'il ne coiffe QU'UN SEUL champ : sinon on
+// collerait le libellé du voisin — un faux nom est pire qu'un nom absent.
 function libelleDuChamp(el) {
+  const propre = (t) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
   const viaFor = el.id ? document.querySelector(`label[for="${CSS.escape(el.id)}"]`) : null;
-  const txt = viaFor?.textContent ?? el.getAttribute("aria-label") ?? el.getAttribute("placeholder") ?? "";
-  return String(txt).replace(/\s+/g, " ").trim().slice(0, 80);
+  if (propre(viaFor?.textContent)) return propre(viaFor.textContent);
+  const parLabelledby = (el.getAttribute("aria-labelledby") || "")
+    .split(/\s+/).filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? "")
+    .join(" ");
+  if (propre(parLabelledby)) return propre(parLabelledby);
+  const ancetre = el.closest("label");
+  if (propre(ancetre?.textContent)) return propre(ancetre.textContent);
+  const CHAMPS = "input:not([type=hidden]), textarea, select";
+  for (let w = el.parentElement, i = 0; w && i < 4; w = w.parentElement, i++) {
+    if (w.querySelectorAll(CHAMPS).length !== 1) continue;  // wrapper partagé : on ne devine pas
+    const t = w.querySelector("label, legend");
+    if (t && !t.contains(el) && propre(t.textContent)) return propre(t.textContent);
+  }
+  return propre(el.getAttribute("aria-label") ?? el.getAttribute("placeholder") ?? "");
 }
+
+// Titre de section qui coiffe un champ : le h1/h2/h3/legend visible le plus
+// proche AVANT lui dans l'ordre du document. Sur le formulaire pro, qui tient
+// sur une seule page, c'est ce qui dit « Ajoutez des photos » ou « Quel est
+// votre prix ? » — la moitié du nom d'un champ que Leboncoin laisse anonyme.
+function sectionDuChamp(el) {
+  const titres = [...document.querySelectorAll("h1, h2, h3, legend")].filter(estVisibleParStyles);
+  let trouve = "";
+  for (const t of titres) {
+    if (t.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      trouve = (t.textContent || "").replace(/\s+/g, " ").trim();
+    } else break;
+  }
+  return trouve.slice(0, 60);
+}
+
+// ── LE CHAMP PHOTOS N'EST JAMAIS UNE PREUVE DE REFUS (2026-09-16) ───────────
+// CE QUE ÇA A COÛTÉ : 7 jobs de MeMiniandMove ont porté, EN TÊTE du message
+// qu'elle lit, « champ : Veuillez sélectionner un ou plusieurs fichiers » —
+// alors que ses 4 photos étaient bien montées (waitPhotosUploaded confirmé :
+// aucun warning photo sur ces jobs, vérifié en base). Leboncoin uploade les
+// photos CÔTÉ SERVEUR dès la sélection puis VIDE l'input[type=file] (c'est
+// pour ça que photoPreviewCount compte des vignettes CDN et jamais de blob:),
+// en lui laissant son `required` : valueMissing y reste vrai POUR TOUJOURS,
+// sur le formulaire pro comme sur le particulier. La preuve que les photos
+// sont là, ce sont les vignettes — jamais cet input.
+const estChampPhotos = (el) => el.type === "file";
 
 // Messages d'erreur RÉELLEMENT affichés (refus de formulaire) : nœuds d'alerte
 // visibles par styles, au texte humain (jamais une clé i18n brute — cf.
@@ -2591,19 +2671,39 @@ function libelleDuChamp(el) {
 // « aucun refus visible » alors que le navigateur, lui, savait pourquoi.
 // ⚠️ Lecture PURE : on lit `el.validity.valid`, jamais checkValidity(), qui
 // déclencherait un événement `invalid` sur le champ.
-function messagesValidationNative() {
+// ── « VALEUR REFUSÉE » MENTAIT (2026-09-16) ─────────────────────────────────
+// L'ancien texte de repli disait « valeur refusée par le formulaire » dès que
+// le navigateur n'avait pas de message. Sur les jobs pro de MeMiniandMove, les
+// deux champs ainsi désignés étaient VIDES : on n'y avait rien posé, et le
+// message a envoyé chercher une valeur fautive qui n'existait pas. Un champ
+// vide se dit vide ; seul un champ REMPLI peut voir sa valeur refusée.
+// `actionnable` = le navigateur a formulé un vrai motif (« 10 caractères
+// minimum ») : c'est le seul cas où l'utilisateur peut corriger son annonce.
+function champsInvalides(max = 4) {
   const out = [];
   for (const el of document.querySelectorAll("input, textarea, select")) {
-    if (el.type === "hidden" || !estVisibleParStyles(el)) continue;
+    if (el.type === "hidden" || estChampPhotos(el) || !estVisibleParStyles(el)) continue;
     const invalide = el.getAttribute("aria-invalid") === "true"
       || (el.validity && el.validity.valid === false);
     if (!invalide) continue;
     const msg = String(el.validationMessage ?? "").replace(/\s+/g, " ").trim();
-    const nom = libelleDuChamp(el) || el.name || el.id || "champ";
-    out.push(`${nom} : ${msg || "valeur refusée par le formulaire"}`.slice(0, 160));
-    if (out.length >= 4) break;
+    const valeur = String(el.value ?? "").trim();
+    out.push({
+      nom: libelleDuChamp(el) || el.name || el.id || "champ",
+      cle: el.name || el.id || "",
+      section: sectionDuChamp(el),
+      role: el.getAttribute("role") || "",
+      msg,
+      actionnable: Boolean(msg),
+      texte: msg || (valeur ? "valeur refusée par le formulaire" : "à renseigner (Leboncoin le marque en erreur)"),
+    });
+    if (out.length >= max) break;
   }
   return out;
+}
+
+function messagesValidationNative() {
+  return champsInvalides(4).map((c) => `${c.nom} : ${c.texte}`.slice(0, 160));
 }
 
 function messagesErreurVisibles() {
