@@ -1513,7 +1513,7 @@ async function fillListingForm(job) {
     // corriger dans sa fiche : un message du navigateur, ou un message affiché
     // par Leboncoin. Un champ juste « marqué en erreur » ne l'est pas.
     const actionnable = bruts.some((c) => c.actionnable);
-    return { requisVides, vides, invalides, actionnable, refus: messagesErreurVisibles(), natifs: messagesValidationNative() };
+    return { requisVides, vides, invalides, actionnable, bruts, refus: messagesErreurVisibles(), natifs: messagesValidationNative() };
   };
   const attendreEcranSuivant = (budgetMs = 15_000) => waitFor(() => {
     const cta = findFreeCta();
@@ -1903,7 +1903,43 @@ async function fillListingForm(job) {
       // vides — c'est ce qui manquait pour distinguer deux causes que le même
       // message confondait.
       if (estEncoreFormulaire()) {
-        const { requisVides, vides, invalides, actionnable, refus, natifs } = releveRefusFormulaire();
+        const { requisVides, vides, invalides, actionnable, refus, natifs, bruts } = releveRefusFormulaire();
+        // ── DE L'IMPASSE À UNE QUESTION (2026-09-16) ──────────────────────
+        // CE QUE ÇA A COÛTÉ : 7 jobs morts sans qu'on puisse rien demander.
+        // La branche qui sait fabriquer un needs_user NOMMÉ avec sa liste
+        // fermée est le `catch` de waitForElement("#body") dans
+        // lbcRemplirJusquAApercu. Elle ne peut PAS tirer sur un formulaire
+        // d'UNE SEULE PAGE (celui des comptes pro : ses 5 titres d'étapes
+        // sont co-visibles) — `#body` y est déjà rendu, le waitFor rend tout
+        // de suite, et le job vient mourir ici à la place.
+        // On refait donc le même geste depuis ce verdict, à partir de ce que
+        // LEBONCOIN a marqué invalide (aria-invalid) — jamais d'un requis
+        // qu'on aurait jugé nous-mêmes : sur le formulaire particulier, un
+        // critère vide non marqué passe et publie (mesuré le 16/09 : « État »
+        // vide est parti à l'aperçu sans un mot). On ne bloque rien de plus
+        // qu'aujourd'hui : cette branche ne rend QUE des échecs.
+        const bloqueurs = [];
+        for (const c of (bruts ?? []).slice(0, 3)) {
+          const cle = c.el ? cleSemantiqueDuChamp(c.el) : "";
+          if (!cle) continue;   // champ sans clé sémantique : rien où écrire la réponse
+          const f = { key: cle, label: c.nom, message: c.texte };
+          // Le menu est encore à l'écran : c'est LE moment de lire sa liste
+          // (même geste qu'au 13/08). Un relevé raté n'est jamais bloquant.
+          try {
+            const opts = await releverOptionsCritere(`label[for="${CSS.escape(cle)}"]`);
+            if (opts?.length) f.options = opts;
+          } catch { /* relevé best-effort */ }
+          bloqueurs.push(f);
+        }
+        const champBloquant = bloqueurs.length
+          ? {
+              field_key: bloqueurs[0].key,
+              field_label: bloqueurs[0].label,
+              target: cibleBloquee(bloqueurs[0]),
+              input_type: "dropdown",
+              ...(bloqueurs[0].options ? { allowed_values: bloqueurs[0].options } : {}),
+            }
+          : null;
         // Ce que l'utilisateur LIT : uniquement un refus que Leboncoin (ou le
         // navigateur) formule lui-même. Une liste de champs est un
         // DIAGNOSTIC — elle part en annexe, jamais à l'écran (règle du 02/09).
@@ -1927,13 +1963,26 @@ async function fillListingForm(job) {
         ].join(" ; ");
         console.warn(`[leboncoin] formulaire NON accepté — requis vides: ${JSON.stringify(requisVides)} ; vides: ${JSON.stringify(vides)} ; refus: ${JSON.stringify(lisibles)}`);
         return {
-          // Pas de clé structurée en plus : sur le chemin d'ÉCHEC, background
-          // ne persiste que `error` (rearmBounded réécrit platform_fields
-          // depuis son propre snapshot) — une clé de résultat y mourrait
-          // silencieusement. L'annexe ci-dessous est ce qui arrive en base.
+          // ⚠️ SANS needsUserField, ce verdict part en ré-armement borné
+          // (rearmBounded), qui réécrit platform_fields depuis son PROPRE
+          // snapshot : toute clé de résultat y meurt silencieusement, et le
+          // job se contente de remourir 5 fois. AVEC lui, le tri (a)/(b) du
+          // socle needs_user (background l.3216) l'envoie à markNeedsUser :
+          // statut PERSISTÉ, aucune re-tentative, mini-éditeur du Stock avec
+          // la liste fermée. C'est la seule différence entre « ça remeurt
+          // toutes les 5 min » et « on te demande ».
           success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
+          ...(champBloquant ? { needsUserField: champBloquant } : {}),
+          ...(bloqueurs.length ? { serverRequired: bloqueurs.map((f) => ({ key: f.key, label: f.label, message: f.message })) } : {}),
           error:
-            (lisibles.length
+            (champBloquant
+              // Un champ NOMMÉ et une liste : c'est une question, pas un
+              // échec. Le mini-éditeur du Stock prend le relais.
+              ? `Leboncoin demande « ${champBloquant.field_label} » pour ton compte, et ce champ n'est pas dans ta fiche FillSell. ` +
+                (champBloquant.allowed_values?.length
+                  ? "Choisis une valeur dans le Stock et la publication repart."
+                  : "Complète-le dans le Stock et la publication repart.")
+            : lisibles.length
               ? `Leboncoin refuse le formulaire : « ${lisibles.join(" » · « ")} » — ` +
                 // « corrige l'annonce dans FillSell » n'est vrai que si le refus
                 // porte un MOTIF (description trop courte…). Quand Leboncoin se
@@ -2507,19 +2556,10 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     // SAUTE, cf. handledForKeys l.407) ; sinon → lbcAspects.<clé for=>.
     // Aucun champ identifié (wizard bloqué sans message corrélé) → pas de
     // needsUserField : chemin transitoire (b) inchangé côté background.
-    const lbcTargetFor = (key) => {
-      if (/(_condition$|^condition$)/.test(key)) return { root: null, key: "etat" };
-      if (/(_univers$|_universe$)/.test(key)) return { root: null, key: "univers" };
-      // baby_clothing_category garde lbcProduit (route bébé de handlePublish).
-      // Tout autre _type (2026-09-07, un slot PAR CLÉ) tombe dans le défaut
-      // lbcAspects.<clé> : c'est là que l'app le relit (genericKnownSource) et
-      // que ce handler le pose, par clé et dans l'ordre du DOM.
-      if (key === "baby_clothing_category") return { root: null, key: "lbcProduit" };
-      if (/(_size$|^clothing_st$|^baby_age$)/.test(key)) return { root: null, key: "taille" };
-      if (/_brand$/.test(key)) return { root: null, key: "marque" };
-      if (/_material$/.test(key)) return { root: null, key: "matiere" };
-      return { root: "lbcAspects", key };
-    };
+    // lbcTargetFor / cibleBloquee : HISSÉS au module le 2026-09-16 (corps
+    // identique, aucun changement de logique) pour que le verdict « formulaire
+    // resté à l'écran » puisse router un needs_user avec la MÊME table que ce
+    // chemin-ci — une seule vérité de routage, pas deux.
     const LBC_PSEUDO_FIELDS = {
       univers: { field_key: "univers", field_label: "Univers", target: { root: null, key: "univers" } },
       produit: { field_key: "produit", field_label: "Produit", target: { root: null, key: "lbcProduit" } },
@@ -2531,10 +2571,6 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
     // lbcProduit, un champ que fillUnivers ne relit jamais : l'utilisateur
     // répondait, le job rebouclait. Le libellé affiché par LBC est la vérité
     // de CE que le champ demande ; la clé n'est qu'un identifiant technique.
-    const cibleBloquee = (f) =>
-      normalizeFuzzy(f.label ?? "") === "univers"
-        ? { root: null, key: "univers" }
-        : lbcTargetFor(f.key);
     const needsUserField = blockedFields.length
       ? {
           field_key: blockedFields[0].key,
@@ -2689,6 +2725,7 @@ function champsInvalides(max = 4) {
     const msg = String(el.validationMessage ?? "").replace(/\s+/g, " ").trim();
     const valeur = String(el.value ?? "").trim();
     out.push({
+      el,                                  // pour cleSemantiqueDuChamp — jamais sérialisé
       nom: libelleDuChamp(el) || el.name || el.id || "champ",
       cle: el.name || el.id || "",
       section: sectionDuChamp(el),
@@ -2954,6 +2991,51 @@ function enumerateLbcCriteria() {
     });
   }
   return out;
+}
+
+// ── OÙ ÉCRIRE LA RÉPONSE DE L'UTILISATEUR (hissé au module le 2026-09-16) ───
+// Corps INCHANGÉ depuis le 07/09 — simple déplacement pour que les DEUX
+// verdicts qui produisent un needsUserField (le wizard qui n'avance pas, et le
+// formulaire resté à l'écran) partagent la même table de routage.
+function lbcTargetFor(key) {
+  if (/(_condition$|^condition$)/.test(key)) return { root: null, key: "etat" };
+  if (/(_univers$|_universe$)/.test(key)) return { root: null, key: "univers" };
+  // baby_clothing_category garde lbcProduit (route bébé de handlePublish).
+  // Tout autre _type (2026-09-07, un slot PAR CLÉ) tombe dans le défaut
+  // lbcAspects.<clé> : c'est là que l'app le relit (genericKnownSource) et
+  // que ce handler le pose, par clé et dans l'ordre du DOM.
+  if (key === "baby_clothing_category") return { root: null, key: "lbcProduit" };
+  if (/(_size$|^clothing_st$|^baby_age$)/.test(key)) return { root: null, key: "taille" };
+  if (/_brand$/.test(key)) return { root: null, key: "marque" };
+  if (/_material$/.test(key)) return { root: null, key: "matiere" };
+  return { root: "lbcAspects", key };
+}
+// Routage par LIBELLÉ d'abord (2026-08-23, job b2a1870f de Bilel) : le critère
+// « Univers » de Mode > Vêtements porte la clé clothing_type — la règle par
+// suffixe routait la saisie vers lbcProduit, que fillUnivers ne relit jamais.
+function cibleBloquee(f) {
+  return normalizeFuzzy(f.label ?? "") === "univers"
+    ? { root: null, key: "univers" }
+    : lbcTargetFor(f.key);
+}
+
+// ── LA CLÉ SÉMANTIQUE D'UN CHAMP, QUAND SON id EST UN id REACT ──────────────
+// (2026-09-16, mesuré sur le formulaire réel.) Leboncoin écrit
+// `<label for="clothing_color">Couleur</label>` à côté d'un
+// `<input id=":form-field-_r_32_" role="combobox">` : le `for` du label NE
+// POINTE PAS vers l'input. C'est une clé SÉMANTIQUE posée à côté, pas une
+// association. On la lit donc par le wrapper, exactement comme
+// findCriterionInput fait le chemin inverse — et on refuse les ids React
+// (préfixe « : »), qui ne survivent pas à un remontage (vérifié : les mêmes
+// champs passent de _r_j_ à _r_4u_ après un simple Retour).
+function cleSemantiqueDuChamp(el) {
+  for (let w = el.parentElement, i = 0; w && i < 5; w = w.parentElement, i++) {
+    if (w.querySelectorAll("input:not([type=hidden]), textarea, select").length !== 1) continue;
+    const l = w.querySelector("label[for]");
+    const cle = l?.getAttribute("for") ?? "";
+    if (cle && !cle.startsWith(":")) return cle;
+  }
+  return "";
 }
 
 function findCriterionInput(labelSelector) {
