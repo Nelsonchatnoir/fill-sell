@@ -3031,13 +3031,20 @@ export default function App({ loginOnly = false }){
       }
     }
     // Annonces à retirer (article vendu, frères encore live) — voir le bandeau.
-    // ⚠️ REVERT 09/08 : l'élargissement à action='republish' (commit 7ace830)
-    // a affiché 5 FAUX bandeaux « plus en ligne » (jobs republish au
-    // platform_listing_id périmé, drapeautés à tort par le poll). Retour à
-    // publish seul tant que la cause racine n'est pas corrigée.
+    // ── publish ET republish (2026-09-16, GO Nico) ──────────────────────────
+    // Le REVERT du 09/08 (6882e78) répondait à 5 FAUX bandeaux « plus en
+    // ligne » posés par le POLL sur des jobs republish périmés : il visait les
+    // bandeaux `unavailable_since`, rouverts aux republish le 24/08 une fois la
+    // cause racine close (superseded_listing, 0.5.4). CE bandeau-ci était resté
+    // à `publish` seul par inertie — alors qu'il ne lit que des frères que
+    // orchestrateSale a annulés APRÈS une vente CONFIRMÉE : il ne peut pas
+    // mentir. Le prix de l'inertie, mesuré le 16/09 : 7 annonces Vinted
+    // republiées, annulées + pending_removal, jamais proposées au retrait,
+    // dont 5 d'articles vendus ailleurs et toujours actives. Une annonce en
+    // ligne est une annonce en ligne, republiée ou non.
     const{data:pendingRem}=await supabase.from('cross_post_jobs')
       .select('id, platform, title, inventaire_id, listing_url, platform_fields')
-      .eq('user_id',uid).eq('status','cancelled').eq('action','publish')
+      .eq('user_id',uid).eq('status','cancelled').in('action',['publish','republish'])
       .contains('platform_fields',{pending_removal:true})
       // « Plus tard » est DURABLE depuis le 07/09 : un report écrit en base
       // sort l'annonce du bandeau pour de bon. Sans ce filtre, le bandeau
@@ -4223,22 +4230,39 @@ export default function App({ loginOnly = false }){
     // défaut du champ « prix de vente » quand la sonde révèle une annonce hors
     // ligne (même repli que le bandeau, cf. confirmSaleFromBanner).
     const{data,error}=await supabase.from('cross_post_jobs')
-      .select('id, platform, action, status, listing_url, title, price, created_at, platform_fields')
+      .select('id, platform, action, status, listing_url, title, price, created_at, published_at, platform_fields')
       .eq('user_id',user.id).eq('inventaire_id',id);
     if(error)throw new Error(error.message);
     const jobs=data??[];
     // Un retrait déjà armé fait DÉJÀ le travail : ne pas le ré-armer, ne pas
     // l'annuler (l'annuler laisserait l'annonce en ligne).
     const retraitsEnCours=new Set(jobs.filter(j=>j.action==='delete'&&ACTIVE_JOB_STATUSES.includes(j.status)).map(j=>j.platform));
-    // Annonce en ligne = job publish 'published' LE PLUS RÉCENT de la
-    // plateforme, avec SON PROPRE listing_url (leçon listing_url croisée :
-    // jamais de delete sur l'URL d'un autre job).
+    // Annonce en ligne = job publish OU REPUBLISH 'published' le plus récemment
+    // MIS EN LIGNE de la plateforme, avec SON PROPRE listing_url (leçon
+    // listing_url croisée : jamais de delete sur l'URL d'un autre job).
+    // ── LES REPUBLISH N'ENTRAIENT PAS DANS « EN LIGNE » (2026-09-16, GO Nico)
+    // Le filtre disait `j.action!=='publish'` : une annonce dont la dernière
+    // mise en ligne vient d'une REPUBLICATION (job action='republish',
+    // status='published', listing_url à elle) n'était jamais dans p.online →
+    // aucun retrait armé, l'annonce restait en ligne après la suppression de
+    // l'article. Le correctif du 06/09 avait ajouté les republish à la liste
+    // « à ANNULER » (ci-dessous), pas à celle-ci. Cas mesuré : bouilloire
+    // 9880378302 supprimée le 16/09 19:16 — journal « plateformes:[ebay] »,
+    // la Vinted (republish 612b989e) jamais retirée, encore en ligne avec ses
+    // 2 vues et son favori. Le rang se prend sur la MISE EN LIGNE
+    // (published_at, repli created_at), comme computeRemovalInfo : c'est
+    // l'annonce vivante qu'on retire, pas la ligne créée en dernier.
+    // `action` null = ligne historique, donc un publish. Le filet serveur
+    // (trigger inventaire_arme_retraits_avant_suppression) refait ce calcul
+    // au DELETE pour tout client qui n'aurait pas encore ce code.
+    const miseEnLigne=j=>Date.parse(j.published_at||j.created_at||0);
     const parPlateforme={};
     for(const j of jobs){
-      if(j.action!=='publish'||j.status!=='published'||!j.listing_url)continue;
+      const act=j.action??'publish';
+      if((act!=='publish'&&act!=='republish')||j.status!=='published'||!j.listing_url)continue;
       if(retraitsEnCours.has(j.platform))continue;
       const prec=parPlateforme[j.platform];
-      if(!prec||Date.parse(j.created_at||0)>Date.parse(prec.created_at||0))parPlateforme[j.platform]=j;
+      if(!prec||miseEnLigne(j)>miseEnLigne(prec))parPlateforme[j.platform]=j;
     }
     // À annuler : les PUBLISH **ET LES REPUBLISH** non terminaux, needs_user
     // compris. Les delete actifs restent épargnés (cf. ci-dessus : les annuler
@@ -4626,10 +4650,15 @@ export default function App({ loginOnly = false }){
   async function handleReset(){
     if(resetStep===0){setResetStep(1);return;}
     if(resetStep===1){
-      await Promise.all([
-        supabase.from('ventes').delete().eq('user_id',user.id),
-        supabase.from('inventaire').delete().eq('user_id',user.id),
-      ]);
+      // ── UNE RPC, PAS DEUX DELETE (2026-09-16) ────────────────────────────
+      // Depuis le filet serveur inventaire_arme_retraits_avant_suppression,
+      // supprimer une ligne d'inventaire ARME le retrait de ses annonces en
+      // ligne. Réinitialiser n'a jamais retiré quoi que ce soit des plateformes
+      // et ne doit pas s'y mettre : la RPC pose la garde de session
+      // (fillsell.sans_retrait) dans la MÊME transaction que les deux DELETE.
+      // Même effet qu'avant — ventes puis inventaire du compte — aucun retrait.
+      const{error:rErr}=await supabase.rpc('supprimer_mon_stock_sans_retrait');
+      if(rErr){console.error('[handleReset]',rErr.message);setResetStep(0);return;}
       setSales([]);setItems([]);setResetStep(0);
     }
   }
@@ -5766,8 +5795,11 @@ export default function App({ loginOnly = false }){
     if(!user) return;
     setDeleteLoading(true);
     try {
-      await supabase.from("inventaire").delete().eq("user_id",user.id);
-      await supabase.from("ventes").delete().eq("user_id",user.id);
+      // Même RPC que handleReset (2026-09-16) : supprimer son compte ne retire
+      // rien des plateformes, le filet serveur ne doit pas s'y déclencher.
+      // (delete-account refait ce ménage sous la clé service, que le filet
+      // ignore aussi.) Ventes puis inventaire, dans l'ordre de la FK.
+      await supabase.rpc("supprimer_mon_stock_sans_retrait");
       await supabase.from("profiles").delete().eq("id",user.id);
       const { data: { session } } = await supabase.auth.getSession();
       const jwt = session?.access_token;
