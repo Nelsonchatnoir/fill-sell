@@ -2317,6 +2317,19 @@ export default function App({ loginOnly = false }){
   const [editItem,setEditItem]=useState(null);
   const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',sellingFees:'',rememberFees:false}
   const [deleteConfirm,setDeleteConfirm]=useState(null); // {type:'soldItem'|'sale', item?, sale?}
+  // ── VERROU DE SUPPRESSION (2026-09-16) ─────────────────────────────────────
+  // DEUX variables pour une seule idée, et ce n'est pas un doublon :
+  //   · le REF ferme la course. Il est écrit et lu SYNCHRONEMENT : deux appels
+  //     nés dans le même tick (deux taps, un tap qui rebondit) se voient l'un
+  //     l'autre. Un state ne le garantit pas — React le met à jour au rendu
+  //     suivant, et les deux appels liraient `null` tous les deux.
+  //   · le STATE peint l'écran. Un ref ne déclenche aucun rendu : sans lui, le
+  //     bouton resterait actif et l'utilisateur retaperait quand même, en
+  //     pensant que c'est cassé. Le verrou empêche le dégât, le retour visuel
+  //     empêche le geste — il faut les deux (cf. armRemoveJob, StockTab, qui
+  //     fait exactement ça avec `removeBusy` : 15 gestes, 15 lignes, 0 en trop).
+  const suppressionRef=useRef(false);
+  const [suppressionEnCours,setSuppressionEnCours]=useState(null); // inventaire.id en cours
   // ── FOND FIGÉ SOUS TOUTE MODALE (2026-09-08) ──────────────────────────────
   // Le défaut relevé sur « Retirer des plateformes » (le geste de défilement
   // partait dans la page derrière et emportait le bouton « Fermer » hors de
@@ -4226,6 +4239,34 @@ export default function App({ loginOnly = false }){
   // Exécute le plan PUIS supprime. Unique point d'écriture — les 4 chemins de
   // suppression passent tous par ici, aucune logique dupliquée.
   async function performItemDeletion(item,plan,{alsoDeleteSale=false}={}){
+    // ⛔ LE VERROU EST ICI, au POINT D'ÉCRITURE UNIQUE — pas sur chaque bouton.
+    // Les 4 chemins de suppression passent par cette fonction : le protéger ici
+    // les protège tous, y compris le chemin vocal et ceux qu'on ajoutera.
+    // Ce qu'il ferme vraiment : buildDeletePlan exclut les plateformes déjà en
+    // retrait (`retraitsEnCours`), mais c'est une garde LUE-PUIS-ÉCRITE — entre
+    // la lecture du plan et l'insert des jobs il y a un aller-retour réseau, et
+    // deux appels tombés dans cette fenêtre arment tous les deux le lot
+    // complet. C'est ce qui a produit 5 jobs de retrait exécutés en double les
+    // 17/08, 27/08 et 01/09 (Vinted ET Leboncoin retirés deux fois sur le même
+    // article). Le verrou côté geste est la seule chose qui ferme cette course.
+    if(suppressionRef.current)return;
+    suppressionRef.current=true;
+    setSuppressionEnCours(item?.id??true);
+    try{
+      return await executerSuppression(item,plan,{alsoDeleteSale});
+    }finally{
+      // `finally` et pas la fin du corps : une FK qui refuse (ventes, NO ACTION)
+      // lève, et un verrou qu'une erreur laisserait fermé condamnerait toutes
+      // les suppressions suivantes de la session.
+      suppressionRef.current=false;
+      setSuppressionEnCours(null);
+    }
+  }
+
+  // Le corps historique, inchangé — extrait pour que le verrou ci-dessus
+  // enveloppe TOUT, `return` compris, sans réindenter 60 lignes de logique
+  // irréversible (et sans en masquer la relecture dans le diff).
+  async function executerSuppression(item,plan,{alsoDeleteSale=false}={}){
     const p=plan??{online:[],aAnnuler:[]};
     // 1. Armer les retraits — MÊME insert que le retrait ciblé du Stock
     //    (StockTab.jsx:752-756), y compris listing_url venu du job publish
@@ -8125,11 +8166,13 @@ export default function App({ loginOnly = false }){
                   <div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{deleteConfirm.item?.title}</div>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <button onClick={async()=>{
+                  <button disabled={!!suppressionEnCours} onClick={async()=>{
                     await performItemDeletion(deleteConfirm.item,deleteConfirm.plan);
                     setDeleteConfirm(null);
-                  }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                    {lang==='fr'?'🗑️ Supprimer l\'article':'🗑️ Delete the item'}
+                  }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:suppressionEnCours?"default":"pointer",opacity:suppressionEnCours?0.6:1,fontFamily:"inherit",textAlign:"left"}}>
+                    {suppressionEnCours
+                      ?(lang==='fr'?'Suppression…':'Deleting…')
+                      :(lang==='fr'?'🗑️ Supprimer l\'article':'🗑️ Delete the item')}
                   </button>
                   <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{padding:10}}>
                     {lang==='fr'?'Annuler':'Cancel'}
@@ -8153,18 +8196,18 @@ export default function App({ loginOnly = false }){
                 </div>
                 {renderCrossPostConsequences(deleteConfirm.plan)}
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <button onClick={async()=>{
+                  <button disabled={!!suppressionEnCours} onClick={async()=>{
                     await performItemDeletion(deleteConfirm.item,deleteConfirm.plan);
                     setDeleteConfirm(null);
-                  }} style={{width:"100%",padding:"12px",background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.ink,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                    {lang==='fr'?'📦 Supprimer l\'article uniquement':'📦 Delete item only'}
+                  }} style={{width:"100%",padding:"12px",background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.ink,cursor:suppressionEnCours?"default":"pointer",opacity:suppressionEnCours?0.6:1,fontFamily:"inherit",textAlign:"left"}}>
+                    {suppressionEnCours?(lang==='fr'?'Suppression…':'Deleting…'):(lang==='fr'?'📦 Supprimer l\'article uniquement':'📦 Delete item only')}
                     <div style={{fontSize:11,fontWeight:400,color:UI.mute2,marginTop:2}}>{lang==='fr'?'La vente reste dans le tableau de bord':'The sale remains in the dashboard'}</div>
                   </button>
-                  <button onClick={async()=>{
+                  <button disabled={!!suppressionEnCours} onClick={async()=>{
                     await performItemDeletion(deleteConfirm.item,deleteConfirm.plan,{alsoDeleteSale:true});
                     setDeleteConfirm(null);
-                  }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                    {lang==='fr'?'🗑️ Supprimer et annuler le profit':'🗑️ Delete and remove profit'}
+                  }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:suppressionEnCours?"default":"pointer",opacity:suppressionEnCours?0.6:1,fontFamily:"inherit",textAlign:"left"}}>
+                    {suppressionEnCours?(lang==='fr'?'Suppression…':'Deleting…'):(lang==='fr'?'🗑️ Supprimer et annuler le profit':'🗑️ Delete and remove profit')}
                     <div style={{fontSize:11,fontWeight:400,color:UI.negative,opacity:0.8,marginTop:2}}>{lang==='fr'?'Supprime aussi la vente associée':'Also removes the associated sale'}</div>
                   </button>
                   <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{padding:10}}>
@@ -8182,7 +8225,11 @@ export default function App({ loginOnly = false }){
               const sonde=jobV&&sondeSuppression?.jobId===jobV.id?sondeSuppression:null;
               const horsLigne=sonde?.statut==='hors_ligne';
               const vendu=sonde?.signal==='sold';
-              const busy=venteSuppr.busy;
+              // `busy` couvre désormais les DEUX attentes de cet écran :
+              // l'enregistrement de la vente (venteSuppr) et la suppression
+              // elle-même (verrou du 16/09). Les trois boutons de la branche
+              // « hors ligne » le lisent déjà — un seul point à toucher.
+              const busy=venteSuppr.busy||!!suppressionEnCours;
               // Comportement d'avant, inchangé — sert à « Retirée », « Je ne sais
               // pas », et à tous les cas où la sonde ne dit rien.
               const supprimerCommeAvant=async()=>{
@@ -8300,8 +8347,8 @@ export default function App({ loginOnly = false }){
                       </button>
                     </>
                   ):(
-                    <button onClick={supprimerCommeAvant} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                      {lang==='fr'?'🗑️ Retirer les annonces et supprimer':'🗑️ Remove listings and delete'}
+                    <button disabled={!!suppressionEnCours} onClick={supprimerCommeAvant} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:suppressionEnCours?"default":"pointer",opacity:suppressionEnCours?0.6:1,fontFamily:"inherit",textAlign:"left"}}>
+                      {suppressionEnCours?(lang==='fr'?'Retrait en cours…':'Removing…'):(lang==='fr'?'🗑️ Retirer les annonces et supprimer':'🗑️ Remove listings and delete')}
                       <div style={{fontSize:11,fontWeight:400,color:UI.negative,opacity:0.8,marginTop:2}}>
                         {lang==='fr'?'Le retrait part en tâche de fond, puis l\'article est supprimé':'Removal runs in the background, then the item is deleted'}
                       </div>
