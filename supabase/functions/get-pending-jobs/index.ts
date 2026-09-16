@@ -2618,6 +2618,48 @@ serve(async (req) => {
         const s = String(v ?? "").trim().toLowerCase();
         return s ? (SYNONYMES_UNIVERS[s] ?? null) : null;
       };
+      // ── COULEUR : elle était DANS la fiche et n'arrivait pas au job ────────
+      // (2026-09-16, dossier MeMiniandMove.) Sur son compte PRO, « Couleur »
+      // (clothing_color) est un critère OBLIGATOIRE — relevé sur SA page :
+      // 6 requis contre 1 seul sur le formulaire particulier, mesuré le même
+      // soir sur le compte de Nico. Ses jobs partaient tous avec couleur nulle
+      // et Leboncoin refusait le formulaire sans jamais nommer le champ.
+      // Or la couleur EXISTE : `inventaire.attributs.couleur.v` = « Noir »,
+      // posée par la synchro Vinted (source `vinted_detail`). Elle n'était
+      // recopiée nulle part : generate-listing ne produit pas de couleur pour
+      // Leboncoin (son contrat JSON s'arrête à etat/format_colis/univers/
+      // marque/matiere, cf. _shared/redaction-plateformes.ts), et le bloc
+      // dédié de l'extension (leboncoin.js, `label[for$="_color"]`) attendait
+      // un `fields.couleur` que personne n'écrivait.
+      // ⚠️ Ce n'est PAS une déduction : c'est la valeur enregistrée de
+      // l'article, la même que celle servie à Vinted. Rien n'est inventé.
+      // L'extension, elle, ne TAPE jamais dans ce combobox : elle ouvre le
+      // menu et clique une option par composant exact (skipIfPrefilled +
+      // composants) — une couleur hors liste laisse le champ vide et part en
+      // needs_user avec la liste relevée. Poser une couleur ne peut donc pas
+      // produire une valeur fausse.
+      const couleurParArticle = new Map<number, string>();
+      try {
+        const ids = [...new Set((out as unknown as Array<Record<string, unknown>>)
+          .filter((j) => j.platform === "leboncoin" && j.action === "publish" && j.inventaire_id != null)
+          .map((j) => Number(j.inventaire_id)))];
+        if (ids.length) {
+          const { data: fiches } = await userClient
+            .from("inventaire").select("id, attributs").in("id", ids);
+          for (const f of (fiches ?? []) as Array<{ id: number; attributs: unknown }>) {
+            const a = (f.attributs && typeof f.attributs === "object") ? (f.attributs as Record<string, unknown>) : null;
+            const brut = a?.couleur;
+            // Deux formes en base : { v, at, source } (écriture actuelle) et la
+            // chaîne nue des lignes anciennes.
+            const v = (brut && typeof brut === "object")
+              ? String((brut as Record<string, unknown>).v ?? "").trim()
+              : String(brut ?? "").trim();
+            if (v) couleurParArticle.set(Number(f.id), v);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] couleur Leboncoin : lecture des fiches impossible (${String((e as Error)?.message ?? e)}) — jobs servis sans couleur, comme avant`);
+      }
       for (const j of out as unknown as Array<Record<string, unknown>>) {
         if (j.platform !== "leboncoin" || j.action !== "publish") continue;
         const pf = (j.platform_fields && typeof j.platform_fields === "object")
@@ -2691,6 +2733,15 @@ serve(async (req) => {
             } else {
               console.log(`[get-pending-jobs] univers Leboncoin ${String(j.id).slice(0, 8)} (${chemin}) : « ${actuel || "vide"} » hors liste et aucune source certaine — rien posé`);
             }
+          }
+        }
+
+        // ── Couleur (valeur enregistrée de l'article, jamais déduite) ─────
+        if (!String(pf.couleur ?? "").trim() && j.inventaire_id != null) {
+          const c = couleurParArticle.get(Number(j.inventaire_id));
+          if (c) {
+            pf.couleur = c;
+            trace.couleur = { valeur: c, avant: null, source: "inventaire.attributs.couleur (fiche de l'article)" };
           }
         }
 
