@@ -1012,17 +1012,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // vérifiée, le popup offre un bouton, et ce bouton doit répondre tout de
   // suite — pas au prochain cycle de 60 minutes.
   // CE QUE LE CANAL TRANSPORTE, et rien d'autre :
-  //   requête  { type: "SONDER_SESSION", platform: "vinted"|"leboncoin"|"ebay"|"beebs" }
+  //   requête  { type: "SONDER_SESSION", platform: "vinted"|"leboncoin"|"ebay"|"beebs"|"opla" }
   //   réponse  { ok: true } | { ok: false, motif: "..." }
   // Aucune donnée, aucun jeton, aucun résultat de sonde ne transite : le
   // relevé part en base par le chemin habituel (ecrireExtensionSessions) et le
   // popup le relit comme il relit tout le reste. Une seule plateforme par
   // appel, choisie dans une liste FERMÉE — le popup ne peut pas faire sonder
-  // autre chose que les quatre.
+  // autre chose que les cinq. `opla` (2026-09-16, câblage) : la même liste
+  // que probePlatformSessions ; sonderSessionOpla ne part pas sans la
+  // permission d'hôte, donc rien ne change pour le parc tant qu'Opla est fermée.
   if (msg?.type === "SONDER_SESSION") {
     (async () => {
       const pf = String(msg.platform ?? "");
-      if (!["vinted", "leboncoin", "ebay", "beebs"].includes(pf)) {
+      if (!["vinted", "leboncoin", "ebay", "beebs", "opla"].includes(pf)) {
         return sendResponse({ ok: false, motif: "plateforme inconnue" });
       }
       try {
@@ -9293,7 +9295,11 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
       http: { ...(releve.http ?? {}) },
       checked_at_par_plateforme: { ...(releve.checked_at_par_plateforme ?? {}) },
     };
-    for (const pf of ["vinted", "leboncoin", "ebay", "beebs"]) {
+    // `opla` (2026-09-16, câblage) : sans elle ici, tout relevé partiel (Vinted
+    // seule toutes les 10 min) ÉCRASAIT par null l'état Opla relevé l'heure
+    // d'avant — exactement le défaut (A) ci-dessous, sur la cinquième
+    // plateforme. Même liste que probePlatformSessions.
+    for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla"]) {
       if (releve.sondees.includes(pf)) continue;
       // ── (A) UNE PLATEFORME NON SONDÉE GARDE SA VALEUR (2026-09-15) ────────
       // Ici vivait un verrou `conserver` qui n'acceptait que Vinted et les
