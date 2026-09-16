@@ -19,7 +19,7 @@
 // sur quelles plateformes, combien d'annonces. C'est du journal d'audit, pas de
 // l'analytics — il ne part pas chez GTM, il reste chez nous.
 //
-// TROIS CHEMINS, FERMÉS (toute nouvelle voie de retrait DOIT s'ajouter ici) :
+// CINQ CHEMINS, FERMÉS (toute nouvelle voie de retrait DOIT s'ajouter ici) :
 //   bandeau_hors_ligne  — armRemovals (App.jsx), le bandeau « ces annonces ne
 //                         sont plus en ligne » : l'utilisateur confirme le
 //                         retrait d'un LOT ;
@@ -28,6 +28,16 @@
 //   suppression_article — performItemDeletion (App.jsx), suppression d'un
 //                         article du stock, qui arme le retrait de toutes ses
 //                         annonces en ligne.
+// Et deux chemins SERVEUR (2026-09-16), qui écrivent la MÊME ligne avec les
+// MÊMES clés de métadonnées — sans passer par ce module, mais nommés ici pour
+// que la liste reste fermée et lisible en un seul endroit :
+//   suppression_article_filet_serveur — trigger
+//                         inventaire_arme_retraits_avant_suppression : au
+//                         DELETE d'un article, arme les retraits que le plan
+//                         de l'app n'a pas armés (republish, chemins sans plan) ;
+//   vente_beebs_sans_lien — orchestrateSale (sale-orchestration.ts) : à la
+//                         vente, arme le retrait d'un dépôt Beebs encore en
+//                         vérification, que le bandeau ne peut pas proposer.
 //
 // ⚠️ ON JOURNALISE CE QUI EST FAIT, PAS CE QUI EST VOULU. L'appel se place
 // APRÈS l'écriture en base, et `nAnnonces` compte les lignes RÉELLEMENT
@@ -75,6 +85,11 @@ export const CHEMINS_RETRAIT = Object.freeze({
   BANDEAU: 'bandeau_hors_ligne',
   LOGO_STOCK: 'logo_stock',
   SUPPRESSION_ARTICLE: 'suppression_article',
+  // Chemins SERVEUR — jamais appelés d'ici, listés pour la lecture SQL
+  // (cf. en-tête). Les changer ici ne change rien en base : la valeur est
+  // écrite par le trigger / la fonction, c'est la doc qui doit suivre.
+  FILET_SERVEUR: 'suppression_article_filet_serveur',
+  VENTE_BEEBS_SANS_LIEN: 'vente_beebs_sans_lien',
 });
 
 /**
