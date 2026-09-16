@@ -6,15 +6,16 @@
 // ⛔ CE FICHIER EST INERTE, ET DOIT LE RESTER TANT QUE NICO N'A PAS DIT LE CONTRAIRE.
 //
 //   · OPLA_ACTIF = false  → toute entrée répond un refus net, sans toucher la page.
-//   · Aucun manifest ne déclare `handlers/` : ce fichier n'est injecté NULLE PART.
-//   · Aucun fichier existant n'a été modifié pour lui.
+//   · Injecté sur `https://www.opla.co/*` par le manifest SOURCE seulement :
+//     l'hôte opla.co est un « hôte de chantier » (scripts/hotes-livrables-cws.mjs),
+//     l'empaquetage CWS le REFUSE — le parc n'a donc ni la permission d'hôte,
+//     ni ce fichier. ⛔ Jamais la permission d'hôte opla.co dans le paquet :
+//     avertissement de permission pour TOUS les utilisateurs + nouvelle revue,
+//     pour un chantier à drapeau éteint.
 //
-// ⚠️ EMPLACEMENT PROVISOIRE. Les quatre connecteurs en service vivent dans
-// `chrome-extension/content-scripts/`. `handlers/` était vide. Le jour de
-// l'activation, ce fichier DESCEND dans `content-scripts/`, et c'est seulement
-// à ce moment-là qu'on touche au manifest (⛔ jamais la permission d'hôte
-// opla.co dans le paquet CWS : avertissement de permission pour TOUS les
-// utilisateurs + nouvelle revue, pour un chantier à drapeau éteint).
+// EMPLACEMENT (2026-09-16, câblage) : `chrome-extension/content-scripts/`, comme
+// les quatre connecteurs en service. Le squelette a vécu dans `handlers/` du
+// 14/09 au 16/09, à dessein non branché ; `handlers/` n'existe plus.
 //
 // ⚠️ CE QUI EST ÉCRIT ICI EST CE QUI A ÉTÉ OBSERVÉ, ET RIEN D'AUTRE.
 // Relevé complet : docs/OPLA_RELEVE.md (§ 15 = lot 1) + docs/OPLA_MAPPING.md
@@ -33,10 +34,6 @@
 
 /* eslint-disable no-unused-vars */
 /* global chrome */
-// `chrome` est déclaré ici et pas dans la config ESLint : le périmètre
-// content-scripts/ y est déjà couvert, handlers/ ne l'est pas, et aucun fichier
-// existant ne devait être modifié. À la remontée dans content-scripts/, cette
-// ligne devient inutile.
 
 const OPLA_ACTIF = false; // ⛔ NE PAS LEVER SANS DÉCISION EXPLICITE DE NICO — levé puis RÉÉTEINT le 15/09 après le lot 6 (dépôt réel fait, annonce retirée).
 
@@ -117,7 +114,7 @@ function oplaIdDepuisUrl(url) {
 }
 
 // ⛔ Les bornes (prix max/min, titre, description, photos) NE SONT PAS
-// redéclarées ici : elles vivent dans `handlers/opla-prevol.js`, qui est
+// redéclarées ici : elles vivent dans `content-scripts/opla-prevol.js`, qui est
 // injecté dans le MÊME monde isolé que ce fichier. Les redéclarer en `const`
 // lèverait une SyntaxError au chargement du content script — et
 // scripts/content-scripts-selftest.mjs refuse déjà les noms déclarés deux fois
@@ -197,7 +194,7 @@ function oplaEstFacultatif(bouton) { return /\(optionnel\)/i.test(oplaTexte(bout
 // 4. PRÉ-VOL — LA SEULE GARDE QUI EXISTE, ET ELLE VIT AILLEURS
 // ═══════════════════════════════════════════════════════════════════════════
 // Le pré-vol (catégorie feuille, taille dans LA BONNE grille, marque, prix,
-// photos) est dans `handlers/opla-prevol.js`, déclaré AVANT ce fichier dans le
+// photos) est dans `content-scripts/opla-prevol.js`, déclaré AVANT ce fichier dans le
 // manifest. Il y est pour une raison : il est PUR, donc testable, et
 // `scripts/opla-prevol-selftest.mjs` le passe contre les cas qui nous ont
 // réellement piégés (catégorie inexistante, nœud intermédiaire, taille de la
@@ -320,7 +317,7 @@ async function oplaChargerReferentiel() {
 const OPLA_REFUS = Object.freeze({
   success: false,
   error: "Opla n'est pas activé.",
-  diagnostic: "handlers/opla.js — OPLA_ACTIF=false (squelette, jamais branché).",
+  diagnostic: "content-scripts/opla.js — OPLA_ACTIF=false (câblé, drapeau éteint).",
 });
 
 // Session morte : la FORME du message compte autant que son contenu.

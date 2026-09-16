@@ -17,7 +17,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // n'existe pas. Le module de pré-vol le prévoit et se publie alors sur
 // globalThis (même chemin que dans le monde isolé d'un content script) — c'est
 // donc EXACTEMENT le code que Chrome exécutera qui est testé ici, pas une copie.
-await import(pathToFileURL(path.join(ROOT, 'chrome-extension/handlers/opla-prevol.js')).href);
+await import(pathToFileURL(path.join(ROOT, 'chrome-extension/content-scripts/opla-prevol.js')).href);
 const { oplaPrevol, OPLA_PREVOL_MOTIFS: M } = globalThis;
 if (typeof oplaPrevol !== 'function') { console.error('opla-prevol.js n a pas publié oplaPrevol'); process.exit(1); }
 

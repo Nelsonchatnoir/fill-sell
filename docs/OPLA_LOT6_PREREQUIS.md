@@ -21,7 +21,7 @@ retrait demandé pour l'empaquetage). Contrôlé **dans le zip lui-même** :
 |---|---|
 | `host_permissions` | 8, **aucun opla.co** |
 | entrée `content_scripts` pour opla | **absente** |
-| `handlers/opla.js` embarqué | oui — mais **injecté nulle part** |
+| `content-scripts/opla.js` embarqué | oui — injecté sur `https://www.opla.co/*` par le manifest SOURCE (build unpacked seulement, hôte refusé à l'empaquetage CWS) |
 | `PLATFORM_HANDLERS` connaît `opla` | **non** (le lot 5 est postérieur au zip) |
 
 ⇒ Trois blocages indépendants, tous physiques. Aucun drapeau ne les lève :
@@ -36,7 +36,7 @@ Et **aucun build unpacked ne tourne nulle part** : 52 postes actifs sur 24 h,
 
 Quatre changements de code sont nécessaires, pas un :
 
-1. `OPLA_ACTIF = true` — `chrome-extension/handlers/opla.js`
+1. `OPLA_ACTIF = true` — `chrome-extension/content-scripts/opla.js`
 2. `PLATFORM_HANDLERS.opla.implemented = true` — sinon `processJob` (background.js
    ~2648) rend `skipped` avant tout
 3. `PLATFORM_HANDLERS.opla.newListingUrl` — `processJob` (~2771) lit ce champ pour

@@ -10,7 +10,7 @@
 // `fetch` PIÉGÉ qui lève à la moindre requête.
 //
 // Ce que ce selftest établit, sans une seule requête réseau :
-//   1. handlers/opla.js se charge sans rien appeler ;
+//   1. content-scripts/opla.js se charge sans rien appeler ;
 //   2. OPLA_ACTIF vaut false ;
 //   3. fillListingForm rend un refus NET (success:false) qui NOMME le drapeau,
 //      et n'a touché ni au réseau ni au DOM ;
@@ -28,7 +28,7 @@ import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const FICHIER = path.join(ROOT, 'chrome-extension', 'handlers', 'opla.js');
+const FICHIER = path.join(ROOT, 'chrome-extension', 'content-scripts', 'opla.js');
 
 let echecs = 0;
 const ok = (nom) => console.log(`  ok   ${nom}`);
@@ -69,9 +69,9 @@ contexte.self = contexte;
 // Le pré-vol publie sur globalThis : opla.js l'y lit. On le charge d'abord,
 // dans le MÊME contexte — exactement comme le manifest les injecte ensemble.
 const sandbox = vm.createContext(contexte);
-vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome-extension', 'handlers', 'opla-prevol.js'), 'utf8'), sandbox, { filename: 'opla-prevol.js' });
+vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome-extension', 'content-scripts', 'opla-prevol.js'), 'utf8'), sandbox, { filename: 'opla-prevol.js' });
 
-console.log('\n▸ chargement de handlers/opla.js (fetch piégé)');
+console.log('\n▸ chargement de content-scripts/opla.js (fetch piégé)');
 try {
   vm.runInContext(fs.readFileSync(FICHIER, 'utf8'), sandbox, { filename: 'opla.js' });
   ok('le fichier se charge sans lever');

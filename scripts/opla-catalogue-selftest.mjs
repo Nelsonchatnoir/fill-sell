@@ -12,7 +12,7 @@
 //      racines — le défaut Blaf69 du 16/09, transposé sur Opla et refusé ;
 //   3. une taille n'est valide que dans la grille de SA feuille : « 90C » est un
 //      code Opla réel, et il est refusé sur un t-shirt ;
-//   4. le handler (chrome-extension/handlers/opla.js) et le module serveur
+//   4. le handler (chrome-extension/content-scripts/opla.js) et le module serveur
 //      répondent PAREIL sur les 1014 nœuds — deux implémentations, un verdict.
 //
 //   node scripts/opla-catalogue-selftest.mjs
@@ -224,7 +224,7 @@ console.log('\n5. Le handler et le module répondent PAREIL, sur les 1014 nœuds
   contexte.globalThis = contexte;
   contexte.self = contexte;
   vm.createContext(contexte);
-  vm.runInContext(lire('chrome-extension/handlers/opla.js'), contexte, { filename: 'opla.js' });
+  vm.runInContext(lire('chrome-extension/content-scripts/opla.js'), contexte, { filename: 'opla.js' });
   const ref = await vm.runInContext('oplaChargerReferentiel()', contexte);
 
   ok('le handler a lu les 886 feuilles et les 1014 nœuds',

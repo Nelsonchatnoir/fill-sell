@@ -116,7 +116,7 @@ POST /api/public/me/articles
 > 2. si `?category=<CODE>` rend `sizes`, alors `metadata.sizes[0]` **appartient à cette
 >    liste** ; s'il n'en rend pas, **ne pas envoyer `sizes` du tout**.
 
-✅ **C'EST ÉCRIT ET TESTÉ** — `chrome-extension/handlers/opla-prevol.js`, pur (aucune
+✅ **C'EST ÉCRIT ET TESTÉ** — `chrome-extension/content-scripts/opla-prevol.js`, pur (aucune
 requête, aucun DOM), prouvé par `node scripts/opla-prevol-selftest.mjs` : **30 contrôles
 verts** contre le référentiel relevé, dont la catégorie inexistante, le nœud
 intermédiaire, la taille de la mauvaise grille et les **codes de taille partagés entre

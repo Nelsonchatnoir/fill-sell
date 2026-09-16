@@ -112,8 +112,8 @@
       ],
       "js": [
         "content-scripts/consentement.js",
-        "handlers/opla-prevol.js",
-        "handlers/opla.js"
+        "content-scripts/opla-prevol.js",
+        "content-scripts/opla.js"
       ],
       "run_at": "document_idle"
     }

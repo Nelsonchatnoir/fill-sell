@@ -645,8 +645,8 @@ C'est un connecteur « à la Vinted » (API interne) plutôt qu'« à la Lebonco
 | ~~**0 — franchir la porte**~~ | ✅ **FAIT le 14/09** — profil vendeur rempli par Nico. Vérifié : plus aucun ancêtre en `pointer-events:none`. | — |
 | ~~**1 — observer UN dépôt réel**~~ | ✅ **FAIT le 14/09 au soir** — cf. **§ 15**. Corps du POST, séquence photo, signal de succès, `PATCH`, `DELETE`, messages d'erreur client et serveur : tout est relevé. Les deux articles créés ont été supprimés. | — |
 | ~~**2 — mesurer l'état C**~~ | ✅ **FAIT le 14/09** (§ 16.1-16.4) : fenêtre réellement réduite, table des divergences rendue, permission d'hôte posée + **garde mécanique** dans l'empaquetage. **Reste** : l'onglet ACTIF d'une fenêtre réduite, qui demande **un rechargement de l'extension**. | un rechargement par Nico |
-| ~~**3 — garde-fou de mapping**~~ | ✅ **FAIT le 14/09** (§ 16.5) : `handlers/opla-prevol.js`, **pur et testé** — `scripts/opla-prevol-selftest.mjs`, 30 contrôles verts. **Reste du lot 3 applicatif** : poser `oplaCategoryCode` dans `platform_fields` côté app (`categorieParMot` → arbre Opla, genre, correspondance `detectObjectIcon` § 14). | — |
-| **4 — publication** | `handlers/opla.js` : `fillListingForm` par API, troncature 80/2000, prix en centimes, photos, preuve par identifiant. Enregistrement dans `PLATFORM_HANDLERS`, `CATEGORY_FIELD`, `LISTING_URL_PATTERNS`, `MY_LISTINGS_URL`, `PLATFORM_HOSTS`. | lots 1, 2, 3 |
+| ~~**3 — garde-fou de mapping**~~ | ✅ **FAIT le 14/09** (§ 16.5) : `content-scripts/opla-prevol.js`, **pur et testé** — `scripts/opla-prevol-selftest.mjs`, 30 contrôles verts. **Reste du lot 3 applicatif** : poser `oplaCategoryCode` dans `platform_fields` côté app (`categorieParMot` → arbre Opla, genre, correspondance `detectObjectIcon` § 14). | — |
+| **4 — publication** | `content-scripts/opla.js` : `fillListingForm` par API, troncature 80/2000, prix en centimes, photos, preuve par identifiant. Enregistrement dans `PLATFORM_HANDLERS`, `CATEGORY_FIELD`, `LISTING_URL_PATTERNS`, `MY_LISTINGS_URL`, `PLATFORM_HOSTS`. | lots 1, 2, 3 |
 | **5 — modération différée** | `PLATFORMS_WITH_DEFERRED_URL`, re-capture par `GET /me/articles`, lecture de `moderationStatus`. | lot 4 |
 | **6 — retrait et modification** | `deleteListing` par `DELETE` (signal = le **404**, pas le 204), puis republication **en place** par `PATCH` partiel — pas de suppression/recréation, donc **pas de fenêtre de doublon**. ⛔ Par l'API : le bouton « Enregistrer » est inerte (§ 15.4). | lot 4 |
 | **7 — exposition** | Case Opla dans l'app, icône, drapeau levé. | tous |
@@ -1134,7 +1134,7 @@ C'est **`key`** qui entre dans `images[]` du POST de création — pas `uploadUr
 
 `https://www.opla.co/*` est désormais dans `chrome-extension/manifest.json`
 (`host_permissions` + un `content_scripts` qui injecte `consentement.js`,
-`handlers/opla-prevol.js`, `handlers/opla.js`), **pour le seul build unpacked**.
+`content-scripts/opla-prevol.js`, `content-scripts/opla.js`), **pour le seul build unpacked**.
 
 ⛔ **La garde est MÉCANIQUE, pas une note.** `scripts/package-extension.mjs` porte une
 **allowlist fermée** des motifs d'hôte livrables, contrôlée sur les **trois** endroits
@@ -1167,7 +1167,7 @@ Je le signale plutôt que de l'arbitrer en silence.)*
 
 ## 16.5 LOT 3 — le pré-vol, et sa preuve
 
-`chrome-extension/handlers/opla-prevol.js` — **pur** : aucune requête, aucun DOM, aucun
+`chrome-extension/content-scripts/opla-prevol.js` — **pur** : aucune requête, aucun DOM, aucun
 effet. Il prend un référentiel et rend un verdict. C'est ce qui le rend testable.
 
 Il refuse **avant l'envoi**, et chaque refus porte un motif lisible et **distinct d'un
