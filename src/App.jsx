@@ -2061,6 +2061,10 @@ export default function App({ loginOnly = false }){
   const [showOnboardingFlow,setShowOnboardingFlow]=useState(false);
   // Onboarding terminé dans CETTE session (cf. garde dans fetchAll).
   const onboardingFiniRef=useRef(false);
+  // Le marqueur de build ne part qu'UNE fois par chargement de page : fetchAll
+  // est rejoué à chaque retour de visibilité et à chaque changement de statut
+  // de job, et cette écriture-là n'a rien à y gagner.
+  const buildMarqueRef=useRef(false);
   // Accroche extension ouverte depuis les lignes discrètes des états vides
   // (« L'extension n'est pas encore installée… ») — même écran que partout.
   const [showExtensionInfo,setShowExtensionInfo]=useState(false);
@@ -2923,6 +2927,21 @@ export default function App({ loginOnly = false }){
         if(error){setPlateformesVisibles([]);return;}
         setPlateformesVisibles(Array.isArray(data?.plateformes_visibles)?data.plateformes_visibles:[]);
       });
+    // ── Quel bundle cette personne exécute-t-elle ? (2026-09-16) ────────────
+    // Rien ne le disait côté serveur : « zéro usage_logs » et « bundle trop
+    // vieux pour contenir l'écran d'onboarding » laissaient la MÊME trace
+    // (onboarded_at NULL, aucun événement). Les distinguer a demandé de lire
+    // la forme des SELECT dans les logs de la passerelle — 24 h de rétention.
+    // Une RPC, pas un UPDATE : `authenticated` n'a d'UPDATE que sur 13 colonnes
+    // nommées de profiles, une nouvelle colonne ne serait pas écrivable
+    // (cf. migration 20260916190000).
+    // Best-effort et UNE FOIS par chargement : la RPC n'existe pas tant que la
+    // migration n'est pas appliquée, l'appel part alors en 404 — avalé ici,
+    // comme le drapeau ci-dessus. Aucun autre état n'en dépend.
+    if(APP_BUILD_ID&&!buildMarqueRef.current){
+      buildMarqueRef.current=true;
+      supabase.rpc('set_app_build',{p_build:APP_BUILD_ID}).then(()=>{}).catch(()=>{});
+    }
     // Expression premium canonique (2026-07-25, cf. CLAUDE.md) : is_premium/is_pro
     // = source de vérité maintenue par les flux de paiement (Stripe/Apple/Google),
     // is_comped = comptes offerts. is_founder et les ids Apple/Google résiduels
