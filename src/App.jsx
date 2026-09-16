@@ -4471,6 +4471,18 @@ export default function App({ loginOnly = false }){
   async function delItem(id){
     const item=items.find(i=>i.id===id);
     if(!item){await supabase.from('inventaire').delete().eq('id',id);await fetchAll(user.id);return;}
+    // ── LA CONFIRMATION S'OUVRE AU TAP, PAS APRÈS LE SERVEUR (2026-09-16) ───
+    // buildDeletePlan est un aller-retour REST : 1 à 2 s sur mobile. Pendant
+    // ce temps, l'écran ne bougeait pas — ni modale, ni bouton grisé, ni
+    // carte retirée. L'utilisateur retapait, et CHAQUE tap relançait une
+    // suppression complète : 6 rafales relevées en base (jusqu'à 7 pour un
+    // geste), et 5 jobs de retrait RÉELLEMENT EXÉCUTÉS EN DOUBLE les 17/08,
+    // 27/08 et 01/09 (Vinted et Leboncoin retirés deux fois sur le même
+    // article). Cf. docs/DIAGNOSTIC_RETRAIT_ANNONCES_16-09.md.
+    // La modale s'ouvre donc MAINTENANT, en état « je vérifie », et se
+    // remplit quand le plan arrive. Elle couvre l'écran : le second tap ne
+    // peut plus atteindre la carte.
+    setDeleteConfirm({type:'verification',item});
     let plan=null;
     try{plan=await buildDeletePlan(id);}
     catch(e){
@@ -4493,7 +4505,13 @@ export default function App({ loginOnly = false }){
     const estVendu=item.statut==='vendu'||ventesInvIds.has(String(item.id));
     if(estVendu){setDeleteConfirm({type:'soldItem',item,plan});return;}
     if(aDesConsequences){setDeleteConfirm({type:'itemListings',item,plan});return;}
-    await performItemDeletion(item,plan);
+    // ⛔ PLUS DE SUPPRESSION DIRECTE (2026-09-16). Un article sans annonce en
+    // ligne partait sans un mot — c'est le cas le PLUS fréquent (34 des 54
+    // gestes relevés), et c'est aussi celui où l'utilisateur tapait plusieurs
+    // fois, puisque rien ne lui répondait. Il a maintenant sa confirmation,
+    // qui dit ce qu'elle sait : l'article n'est nulle part, rien ne sera
+    // retiré d'une plateforme.
+    setDeleteConfirm({type:'simple',item,plan});
   }
 
   async function addSale(){
@@ -8073,6 +8091,52 @@ export default function App({ loginOnly = false }){
             <div style={{fontSize:16,fontWeight:700,color:"#0D0D0D",marginBottom:8}}>
               {lang==='fr'?'🗑️ Supprimer':'🗑️ Delete'}
             </div>
+            {/* ── ÉTAT D'ATTENTE (2026-09-16) — la modale est déjà là ────────
+                Ouverte au tap, avant buildDeletePlan. Elle ne PROMET RIEN sur
+                les plateformes tant qu'elle ne sait pas : dire « aucune
+                annonce » puis se corriger serait pire que de faire attendre
+                une seconde. Aucun bouton de suppression ici — on ne peut pas
+                confirmer ce qui n'est pas encore énoncé. */}
+            {deleteConfirm.type==='verification'&&(
+              <>
+                <div style={{fontSize:13,color:"#6B7280",marginBottom:20,lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?'Je vérifie où cet article est en ligne…'
+                    :'Checking where this item is listed…'}
+                  <div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{deleteConfirm.item?.title}</div>
+                </div>
+                <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{padding:10,width:"100%"}}>
+                  {lang==='fr'?'Annuler':'Cancel'}
+                </SecondaryButton>
+              </>
+            )}
+            {/* ── AUCUNE ANNONCE EN LIGNE (2026-09-16) ───────────────────────
+                Le cas qui partait sans confirmation. Le texte dit les DEUX
+                choses : ce qui disparaît (l'article et son historique) et ce
+                qui ne se passera PAS (aucun retrait de plateforme) — c'est
+                cette seconde phrase qui manquait pour que l'utilisateur sache
+                sur quoi il appuie. */}
+            {deleteConfirm.type==='simple'&&(
+              <>
+                <div style={{fontSize:13,color:"#6B7280",marginBottom:20,lineHeight:1.5}}>
+                  {lang==='fr'
+                    ?"Cet article et son historique seront supprimés. Il n'est en ligne sur aucune plateforme : aucune annonce ne sera retirée."
+                    :"This item and its history will be deleted. It isn't listed anywhere: no listing will be removed."}
+                  <div style={{fontWeight:700,color:"#0D0D0D",marginTop:6}}>{deleteConfirm.item?.title}</div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <button onClick={async()=>{
+                    await performItemDeletion(deleteConfirm.item,deleteConfirm.plan);
+                    setDeleteConfirm(null);
+                  }} style={{width:"100%",padding:"12px",background:`${UI.negative}0F`,border:`1px solid ${UI.negative}66`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.negative,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                    {lang==='fr'?'🗑️ Supprimer l\'article':'🗑️ Delete the item'}
+                  </button>
+                  <SecondaryButton onClick={()=>setDeleteConfirm(null)} style={{padding:10}}>
+                    {lang==='fr'?'Annuler':'Cancel'}
+                  </SecondaryButton>
+                </div>
+              </>
+            )}
             {deleteConfirm.type==='soldItem'&&(
               <>
                 <div style={{fontSize:13,color:"#6B7280",marginBottom:20,lineHeight:1.5}}>
