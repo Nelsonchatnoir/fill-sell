@@ -10,6 +10,7 @@ import Success from "../pages/Success";
 import Cancel from "../pages/Cancel";
 import ResetPassword from "../pages/ResetPassword";
 import AuthCallback from "../pages/AuthCallback";
+import AuthConfirm from "../pages/AuthConfirm";
 
 // Code-splitting par route (2026-08-02, Lighthouse mobile : perf 56, LCP 12 s,
 // 721 Ko de JS inutilisé au premier rendu). La landing — première page servie
@@ -26,14 +27,39 @@ const ExtensionPage = lazy(() => import("../pages/ExtensionPage"));
 const EbayRetour = lazy(() => import("../pages/EbayRetour"));
 const Desinscription = lazy(() => import("../pages/Desinscription"));
 
+// ── Un jeton d'authentification n'atterrit JAMAIS sur la landing (16/09) ─────
+// Le lien de confirmation d'inscription part avec redirect_to = SITE_URL, donc
+// sur « / » : mesuré sur les 10 confirmations des 24 h, toutes portaient
+// `redirect_to=https://fillsell.app`. Là, deux issues, toutes deux mauvaises :
+// sans session la personne voyait la page marketing (et devait retrouver le
+// formulaire pour retaper son mot de passe) ; AVEC une session d'un autre
+// compte, RedirectIfLoggedIn l'envoyait sur /app — CONNECTÉE AU MAUVAIS COMPTE,
+// sans un mot (reproduit le 16/09 à 19:28 sur l'iPhone de Nico).
+// On dévie donc vers /auth/confirm, qui sait traiter les deux cas.
+// Volontairement SYNCHRONE et avant toute lecture de session : le paramètre est
+// dans l'URL au premier rendu, il n'y a rien à attendre.
+// Ce filet couvre aussi le cas où l'URL de redirection n'est pas encore
+// autorisée côté Supabase — GoTrue retombe alors sur SITE_URL, c'est-à-dire ici.
+const PARAMS_CONFIRMATION = ["code", "token_hash"];
+function cibleConfirmation() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (!PARAMS_CONFIRMATION.some((k) => params.get(k))) return null;
+    return `/auth/confirm${window.location.search}`;
+  } catch { return null; }
+}
+
 // Bloque /login et / si déjà connecté
 function RedirectIfLoggedIn({ children }) {
   const [user, setUser] = useState(undefined);
+  const versConfirmation = cibleConfirmation();
   useEffect(() => {
+    if (versConfirmation) return;   // /auth/confirm relit la session lui-même
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
-  }, []);
+  }, [versConfirmation]);
+  if (versConfirmation) return <Navigate to={versConfirmation} replace />;
   if (user === undefined) return null;
   if (user) return <Navigate to="/app" replace />;
   return children;
@@ -96,6 +122,12 @@ export default function AppRouter() {
         {/* Atterrissage OAuth web (Apple/Google) — pas de garde : la page gère
             elle-même session présente / code à échanger / erreur provider. */}
         <Route path="/auth/callback" element={<AuthCallback />} />
+        {/* Confirmation d'INSCRIPTION par e-mail — page distincte de
+            /auth/callback, et c'est le point : l'OAuth revient toujours dans le
+            navigateur qui l'a lancé (son échange PKCE est légitime), alors
+            qu'un lien d'e-mail s'ouvre où il veut. Mêler les deux, c'est ce qui
+            faisait entrer un nouvel inscrit sur la session d'un autre compte. */}
+        <Route path="/auth/confirm" element={<AuthConfirm />} />
         <Route path="/blog" element={<BlogList />} />
         <Route path="/blog/:slug" element={<BlogPost />} />
         {/* PUBLIQUE depuis le 2026-09-01 (audit onboarding) : le mail
