@@ -1060,36 +1060,87 @@ async function mesurerAspects(admin: SupabaseClient, env: EbayEnv, body: { ebay_
   return { mode: { ignorer_aspects_job: ignorerAspects, ignorer_champs_job: ignorerChamps }, articles: lignes.length, passent_sans_needs_user: passes, lignes };
 }
 
+// ── LE RETRAIT EST ADRESSÉ PAR L'ANNONCE, PAS PAR L'ARTICLE (2026-09-16) ────
+// AVANT : `if (!job.inventaire_id) → failed « inventaire_absent »`, puis l'offre
+// cherchée par le SKU fs-<inventaire_id>. Or le retrait armé par la suppression
+// d'un article perd son inventaire_id à l'instant même où l'article disparaît :
+// l'app insère le retrait PUIS supprime la ligne, et la FK
+// cross_post_jobs_inventaire_id_fkey est en ON DELETE SET NULL. Bouilloire
+// 820095628882, job 744b9553 : mort au contrôle deux minutes après, annonce
+// restée en ligne. Le postulat « l'extension ne lit que platform +
+// listing_url » ne valait pas pour la voie API.
+// Ce qui SURVIT au SET NULL : l'identifiant de l'annonce (listing_url du
+// retrait, platform_listing_id du job de publication) et
+// platform_fields.ebay_api {offer_id, sku} du job de publication. On part de là :
+//   1. job de publication API du MÊME compte qui porte l'id de l'annonce ;
+//   2. sinon, dernier job de publication API de l'article (quand le lien est là) ;
+//   3. sinon, l'offre du SKU chez eBay (quand le SKU est calculable).
+// Sans annonce identifiable ET sans article : failed, en le disant.
+function idAnnonceDe(job: Job): string {
+  const m = String(job.listing_url ?? "").match(/\/itm\/(\d+)/);
+  return m?.[1] ?? String(job.platform_listing_id ?? "").trim();
+}
+
+type JobPublicationApi = { id: string; inventaire_id: number | null; platform_fields: Record<string, unknown> | null };
+
 async function retirer(admin: SupabaseClient, env: EbayEnv, token: string, job: Job): Promise<Record<string, unknown>> {
-  if (!job.inventaire_id) { await marquer(admin, job, { status: "failed", error: "Job de retrait sans inventaire_id." }, { etape: "controle", quoi: "inventaire_absent" }); return { job: job.id, issue: "failed" }; }
-  const sku = skuPour(job.inventaire_id);
-  // L'offre : celle du dernier job API publié pour cet article, sinon celle du SKU chez eBay.
-  const { data: precedent } = await admin.from("cross_post_jobs").select("id, platform_fields").eq("inventaire_id", job.inventaire_id).eq("platform", "ebay").eq("voie", "api").eq("status", "published").order("created_at", { ascending: false }).limit(1).maybeSingle();
-  let offerId = String(((precedent?.platform_fields as Record<string, unknown> | null)?.ebay_api as Record<string, unknown> | undefined)?.offer_id ?? "");
-  if (!offerId) {
+  const idAnnonce = idAnnonceDe(job);
+  let precedent: JobPublicationApi | null = null;
+  let source = "";
+  if (idAnnonce) {
+    const { data } = await admin.from("cross_post_jobs").select("id, inventaire_id, platform_fields")
+      .eq("user_id", job.user_id).eq("platform", "ebay").eq("voie", "api").in("action", ["publish", "republish"])
+      .eq("status", "published").eq("platform_listing_id", idAnnonce)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    precedent = (data as JobPublicationApi | null) ?? null;
+    if (precedent) source = "annonce";
+  }
+  if (!precedent && job.inventaire_id) {
+    const { data } = await admin.from("cross_post_jobs").select("id, inventaire_id, platform_fields")
+      .eq("user_id", job.user_id).eq("inventaire_id", job.inventaire_id).eq("platform", "ebay").eq("voie", "api")
+      .eq("status", "published").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    precedent = (data as JobPublicationApi | null) ?? null;
+    if (precedent) source = "article";
+  }
+  const ebayApi = (precedent?.platform_fields ?? {}).ebay_api as Record<string, unknown> | undefined;
+  const inventaireId = job.inventaire_id ?? precedent?.inventaire_id ?? null;
+  const sku = String(ebayApi?.sku ?? (inventaireId ? skuPour(inventaireId) : "")).trim();
+  if (!idAnnonce && !inventaireId) {
+    await marquer(admin, job, { status: "failed", error: "Retrait impossible : ce job ne porte ni l'identifiant de l'annonce eBay ni l'article." }, { etape: "controle", quoi: "annonce_et_article_absents" });
+    return { job: job.id, issue: "failed", motif: "annonce_et_article_absents" };
+  }
+  let offerId = String(ebayApi?.offer_id ?? "");
+  if (!offerId && sku) {
     const r = await appelEbay(env, token, `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`);
     const offres = (r.json as { offers?: Array<{ offerId?: string; status?: string }> } | null)?.offers ?? [];
     offerId = String(offres.find((o) => o.status === "PUBLISHED")?.offerId ?? offres[0]?.offerId ?? "");
+    if (offerId && !source) source = "sku";
   }
   if (!offerId) {
+    if (!sku) {
+      // Annonce identifiée, mais aucune publication API de ce compte ne la porte :
+      // on ne sait pas quelle offre retirer, et on ne devine jamais.
+      await marquer(admin, job, { status: "failed", error: `Retrait impossible : aucune publication FillSell par API ne porte l'annonce eBay ${idAnnonce} — retire-la depuis eBay.` }, { etape: "controle", quoi: "offre_introuvable", annonce: idAnnonce });
+      return { job: job.id, issue: "failed", motif: "offre_introuvable", annonce: idAnnonce };
+    }
     await marquer(admin, job, { status: "deleted", error: null }, { etape: "retrait", quoi: "aucune_offre", note: "rien à retirer chez eBay (aucune offre pour ce SKU)" }, { sku });
     return { job: job.id, issue: "deleted", note: "aucune offre" };
   }
   const w = await appelEbay(env, token, `/sell/inventory/v1/offer/${offerId}/withdraw`, { method: "POST" });
   if (w.http !== 200) {
     const e = lireErreurEbay(w.json, w.texte);
-    await marquer(admin, job, { status: "failed", error: messageRefus("le retrait", w.http, e).error }, { etape: "withdraw", http: w.http, errorId: e.errorId, message: e.message }, { sku, offer_id: offerId });
+    await marquer(admin, job, { status: "failed", error: messageRefus("le retrait", w.http, e).error }, { etape: "withdraw", http: w.http, errorId: e.errorId, message: e.message, source }, { sku, offer_id: offerId });
     return { job: job.id, issue: "withdraw", http: w.http, ebay: e };
   }
   const listingId = String((w.json as { listingId?: string } | null)?.listingId ?? "");
   const withdrawnAt = new Date().toISOString();
-  await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: listingId || job.platform_listing_id }, { etape: "retire", http: 200 }, { sku, offer_id: offerId, listing_id: listingId || null, withdrawn_at: withdrawnAt });
+  await marquer(admin, job, { status: "deleted", error: null, platform_listing_id: listingId || job.platform_listing_id || idAnnonce || null }, { etape: "retire", http: 200, source }, { sku, offer_id: offerId, listing_id: listingId || idAnnonce || null, withdrawn_at: withdrawnAt });
   if (precedent?.id) {
     const pfPrec = { ...((precedent.platform_fields as Record<string, unknown>) ?? {}) };
     pfPrec.ebay_api = { ...((pfPrec.ebay_api as Record<string, unknown>) ?? {}), withdrawn_at: withdrawnAt };
     await admin.from("cross_post_jobs").update({ status: "cancelled", error: MSG_RETRAIT, platform_fields: pfPrec }).eq("id", precedent.id);
   }
-  return { job: job.id, issue: "deleted", sku, offer_id: offerId, listing_id: listingId };
+  return { job: job.id, issue: "deleted", sku, offer_id: offerId, listing_id: listingId, source };
 }
 
 // Republication par API = retrait de l'annonce en ligne (si elle l'est encore)
