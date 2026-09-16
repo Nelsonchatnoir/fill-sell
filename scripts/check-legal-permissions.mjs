@@ -37,7 +37,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { HOTES_LIVRABLES_CWS, estHoteDeChantier } from './hotes-livrables-cws.mjs';
+import { HOTES_LIVRABLES_CWS, HOTES_OPTIONNELS_CWS, estHoteDeChantier } from './hotes-livrables-cws.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST = path.join(ROOT, 'chrome-extension', 'manifest.json');
@@ -70,19 +70,30 @@ try {
 } catch (e) {
   fail(`Impossible de lire/parser ${path.relative(ROOT, MANIFEST)} : ${e.message}`);
 }
+// optional_host_permissions inclus (2026-09-16) : un hôte OPTIONNEL part dans
+// le paquet et le Web Store le lit — il se justifie sur /legal comme un hôte
+// obligatoire. Seule différence, dite dans sa ligne : accordé à la demande,
+// par un clic de la personne, jamais à l'installation ni à la mise à jour.
 const manifestKeys = [
   ...(manifest.permissions || []),
   ...(manifest.host_permissions || []),
+  ...(manifest.optional_host_permissions || []),
 ];
 if (manifestKeys.length === 0) {
   fail('Aucune permission trouvée dans le manifest — vérifie le fichier manifest.json.');
+}
+if (!Array.isArray(HOTES_OPTIONNELS_CWS)) {
+  fail('HOTES_OPTIONNELS_CWS (scripts/hotes-livrables-cws.mjs) est illisible. Build refusé.');
 }
 
 // 1bis) Partition : ce que l'extension LIVRE (exigible sur /legal) vs ce qui est
 // de CHANTIER (interdit sur /legal). L'exemption ne porte QUE sur des motifs
 // d'hôtes : une permission d'API n'est jamais exemptée, parce que l'empaquetage
 // ne la refuse jamais — le prédicat est le même des deux côtés.
-const hotesDeChantier = (manifest.host_permissions || []).filter(estHoteDeChantier);
+const hotesDeChantier = [
+  ...(manifest.host_permissions || []),
+  ...(manifest.optional_host_permissions || []),
+].filter(estHoteDeChantier);
 const chantierSet = new Set(hotesDeChantier);
 const manifestKeysLivrees = manifestKeys.filter((k) => !chantierSet.has(k));
 

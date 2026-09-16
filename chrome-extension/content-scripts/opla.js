@@ -3,15 +3,17 @@
 // phase 0 (2026-09-14) + LOT 1 (cycle complet observé le même soir)
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// ⛔ CE FICHIER EST INERTE, ET DOIT LE RESTER TANT QUE NICO N'A PAS DIT LE CONTRAIRE.
-//
-//   · OPLA_ACTIF = false  → toute entrée répond un refus net, sans toucher la page.
-//   · Injecté sur `https://www.opla.co/*` par le manifest SOURCE seulement :
-//     l'hôte opla.co est un « hôte de chantier » (scripts/hotes-livrables-cws.mjs),
-//     l'empaquetage CWS le REFUSE — le parc n'a donc ni la permission d'hôte,
-//     ni ce fichier. ⛔ Jamais la permission d'hôte opla.co dans le paquet :
-//     avertissement de permission pour TOUS les utilisateurs + nouvelle revue,
-//     pour un chantier à drapeau éteint.
+// ── ALLUMÉ LE 16/09 (décision Nico), DERRIÈRE UNE PERMISSION OPTIONNELLE ────
+//   · OPLA_ACTIF = true → les entrées font le vrai travail (API depuis la page).
+//   · Ce fichier n'est injecté NULLE PART par le manifest : opla.co est en
+//     `optional_host_permissions`, et les trois scripts Opla sont enregistrés
+//     par le background (chrome.scripting.registerContentScripts) SEULEMENT
+//     après que la personne a cliqué « Autoriser Opla » dans le popup. Sans ce
+//     clic, le parc n'a ni l'hôte, ni ce code en page — c'est ça,
+//     l'interrupteur, pas le drapeau ci-dessous.
+//   · OPLA_ACTIF = false reste possible (coupe-circuit) : toute entrée répond
+//     alors un refus net, sans toucher la page (scripts/opla-inerte-selftest.mjs
+//     le prouve sur une copie du fichier au drapeau forcé).
 //
 // EMPLACEMENT (2026-09-16, câblage) : `chrome-extension/content-scripts/`, comme
 // les quatre connecteurs en service. Le squelette a vécu dans `handlers/` du
@@ -35,7 +37,7 @@
 /* eslint-disable no-unused-vars */
 /* global chrome */
 
-const OPLA_ACTIF = false; // ⛔ NE PAS LEVER SANS DÉCISION EXPLICITE DE NICO — levé puis RÉÉTEINT le 15/09 après le lot 6 (dépôt réel fait, annonce retirée).
+const OPLA_ACTIF = true; // Levé le 16/09 (GO Nico, permission optionnelle) — levé puis rééteint le 15/09 après le lot 6 (dépôt réel fait, annonce retirée). L'accès réel reste conditionné au clic « Autoriser Opla » (cf. en-tête).
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. L'API — ET POURQUOI ELLE DOIT PARTIR D'ICI, JAMAIS DU SERVICE WORKER
@@ -317,7 +319,7 @@ async function oplaChargerReferentiel() {
 const OPLA_REFUS = Object.freeze({
   success: false,
   error: "Opla n'est pas activé.",
-  diagnostic: "content-scripts/opla.js — OPLA_ACTIF=false (câblé, drapeau éteint).",
+  diagnostic: "content-scripts/opla.js — OPLA_ACTIF=false (coupe-circuit : rien n'est tenté).",
 });
 
 // Session morte : la FORME du message compte autant que son contenu.

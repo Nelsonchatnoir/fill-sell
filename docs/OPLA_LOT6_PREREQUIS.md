@@ -21,7 +21,7 @@ retrait demandé pour l'empaquetage). Contrôlé **dans le zip lui-même** :
 |---|---|
 | `host_permissions` | 8, **aucun opla.co** |
 | entrée `content_scripts` pour opla | **absente** |
-| `content-scripts/opla.js` embarqué | oui — injecté sur `https://www.opla.co/*` par le manifest SOURCE (build unpacked seulement, hôte refusé à l'empaquetage CWS) |
+| `content-scripts/opla.js` embarqué | oui — dans le paquet, mais injecté NULLE PART par le manifest : opla.co est en `optional_host_permissions`, les trois scripts Opla s'enregistrent (chrome.scripting.registerContentScripts) après le clic « Autoriser Opla » dans le popup (16/09) |
 | `PLATFORM_HANDLERS` connaît `opla` | **non** (le lot 5 est postérieur au zip) |
 
 ⇒ Trois blocages indépendants, tous physiques. Aucun drapeau ne les lève :

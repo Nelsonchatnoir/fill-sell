@@ -26,7 +26,17 @@ const PLATFORMS = [
   { key: "leboncoin", name: "Leboncoin", supported: true, loginUrl: "https://www.leboncoin.fr/" },
   { key: "ebay",      name: "eBay",      supported: true, loginUrl: "https://www.ebay.fr/" },
   { key: "beebs",     name: "Beebs",     supported: true, loginUrl: "https://www.beebs.app/" },
+  // ── Opla : PERMISSION D'HÔTE OPTIONNELLE (2026-09-16, décision Nico) ──────
+  // `optionnel` : la ligne n'apparaît QUE quand elle a un sens pour cette
+  // personne — un job Opla dans sa file (en attente d'accès ou non) ou l'accès
+  // déjà accordé. Pour tout le monde d'autre la ligne n'existe pas : ni
+  // « Bientôt », ni annonce d'un chantier — Opla n'est ouverte qu'à quelques
+  // comptes. C'est ICI, et nulle part ailleurs, que l'accès à opla.co se
+  // demande : chrome.permissions.request exige un geste de la personne dans
+  // une page d'extension, et ce popup en est une (cf. [data-autoriser-opla]).
+  { key: "opla",      name: "Opla",      supported: true, loginUrl: "https://www.opla.co/", optionnel: true },
 ];
+const OPLA_ORIGINE = "https://www.opla.co/*";
 
 const CHECK_SVG = '<svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
@@ -88,6 +98,11 @@ const state = {
   etats: {},
   sondeFraiche: false,
   sondeVu: NaN,
+  // Opla (permission optionnelle, 2026-09-16) : l'accès est-il accordé dans CE
+  // navigateur (chrome.permissions.contains, relu à chaque ouverture), et quels
+  // jobs Opla sont dans la file — retraits compris, ils attendent le même accès.
+  oplaAcces: null,
+  oplaEnAttente: [],
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -196,6 +211,9 @@ async function fetchPendingJobs(accessToken) {
   // Les jobs action='delete' (retrait cross-plateforme, 2026-07-11) passent
   // par la même file mais ne sont PAS des annonces à publier.
   const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+  // Opla : TOUS ses jobs (retraits compris) — c'est la présence d'un job qui
+  // fait apparaître la ligne « Autoriser Opla » (cf. renderPlateformes).
+  state.oplaEnAttente = jobs.filter((j) => j.platform === "opla");
   return jobs.filter((j) => j.action !== "delete");
 }
 
@@ -226,6 +244,11 @@ async function load() {
     console.warn("[popup] GET_VALID_SESSION:", e);
   }
   state.session = session?.access_token ? session : null;
+
+  // Accès Opla : la réponse vient du navigateur, à chaque ouverture — jamais
+  // d'un cache. Indisponible (API absente) → null, la ligne reste muette.
+  try { state.oplaAcces = await chrome.permissions.contains({ origins: [OPLA_ORIGINE] }); }
+  catch { state.oplaAcces = null; }
 
   if (state.session) {
     try {
@@ -321,6 +344,9 @@ const PLATFORM_LOGO = {
   ebay:      { src: "assets/ebay.svg",      png: false },
   leboncoin: { src: "assets/leboncoin.png", png: true },
   beebs:     { src: "assets/beebs.png",     png: true },
+  // Opla (16/09) : icône App Store officielle (app id 6757612150), la même
+  // que l'app inline dans OplaIcon.jsx — extraite en PNG 512×512.
+  opla:      { src: "assets/opla.png",      png: true },
 };
 function logoHtml(key, size) {
   const l = PLATFORM_LOGO[key];
@@ -391,6 +417,9 @@ const MOTIFS_ANCRES = [
   { re: /^(Aucun état|\S+ exige|LIVE : aspect)/i, famille: "fiche" },
   { re: /^Un brouillon Leboncoin non terminé/i, famille: "brouillon_lbc" },
   { re: /^Publication non confirmée/i, famille: "a_verifier" },
+  // Opla en attente d'accès (2026-09-16) : le geste est en haut, sur la ligne
+  // Opla, avec son bouton — famille dite ailleurs, comme la reconnexion.
+  { re: /^Opla attend ton autorisation/i, famille: "opla_acces" },
 ];
 
 // ⛔ DEUX FAMILLES NE SONT PAS RÉPÉTÉES ICI (2026-09-08, correction Nico) :
@@ -401,7 +430,7 @@ const MOTIFS_ANCRES = [
 // Le TOTAL, lui, ne bouge pas : il vient du serveur et reste celui du bandeau
 // de l'app (source unique posée le 04/09). Cette liste n'a jamais été une
 // décomposition du total — c'est un dessus de pile, déjà borné à 4 lignes.
-const MOTIFS_DITS_AILLEURS = new Set(["reconnexion", "challenge"]);
+const MOTIFS_DITS_AILLEURS = new Set(["reconnexion", "challenge", "opla_acces"]);
 
 const pl = (n, un, des) => (n > 1 ? des : un);
 // Un message écrit pour être lu : on le montre tel quel s'il est propre, jamais
@@ -751,6 +780,21 @@ function renderPlateformes() {
   const lignes = [];
   let sues = 0;
   for (const p of PLATFORMS) {
+    // ── OPLA, PERMISSION OPTIONNELLE (2026-09-16) ─────────────────────────
+    // Sans job Opla ni accès accordé : pas de ligne (cf. PLATFORMS). Avec des
+    // jobs et sans accès : LA ligne qui porte le geste — c'est le seul endroit
+    // où chrome.permissions.request peut s'exécuter (clic, page d'extension).
+    // Accès accordé : ligne ordinaire, mêmes états et même « Vérifier ».
+    if (p.optionnel && state.oplaAcces !== true) {
+      const n = state.oplaEnAttente.length;
+      if (!n) continue;
+      lignes.push(
+        `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${escapeHtml(p.name)}</div>` +
+        `<div class="plat-sous">${n} annonce${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ton autorisation d'accès à ${escapeHtml(hostOf(p.key))}</div></div>` +
+        `<button class="btn-outline" data-autoriser-opla type="button">Autoriser Opla</button></div>`,
+      );
+      continue;
+    }
     const { etat, sous, vuLe } = state.etats[p.key] ?? { etat: null, sous: null, vuLe: null };
     const nom = escapeHtml(p.name);
     // (D) « Connectée » n'est JAMAIS une affirmation sans date : l'âge de ce
@@ -951,6 +995,9 @@ function renderFlow() {
   if (!flow) return;
   const cells = [];
   for (const p of PLATFORMS) {
+    // Opla (optionnelle) : une case SEULEMENT si l'annonce affichée a un job
+    // Opla — sinon la grille reste celle des quatre, pour tout le monde.
+    if (p.optionnel && !state.annonce?.byPlatform?.[p.key]) continue;
     const s = rowState(p);
     const st = state.status[p.key];
     const rec = state.recent[p.key];
@@ -1256,6 +1303,28 @@ document.body.addEventListener("click", (e) => {
         load();
       })
       .catch(() => { verifier.disabled = false; verifier.textContent = "Réessayer"; });
+    return;
+  }
+  // ── « AUTORISER OPLA » — LE geste utilisateur (2026-09-16) ───────────────
+  // chrome.permissions.request n'accepte de s'exécuter QUE dans un geste de la
+  // personne, dans une page d'extension : ce clic, ici. Le background ne peut
+  // pas le faire à sa place (le geste ne se transfère pas par message). Chrome
+  // affiche sa propre demande ; accordé → le background enregistre les
+  // scripts, relance les jobs en attente et sonde la session (OPLA_ACCES_
+  // ACCORDE). Refusé → le bouton revient, rien n'est écrit nulle part.
+  const autoriser = e.target.closest("[data-autoriser-opla]");
+  if (autoriser) {
+    if (autoriser.disabled) return;
+    autoriser.disabled = true;
+    autoriser.textContent = "…";
+    chrome.permissions.request({ origins: [OPLA_ORIGINE] })
+      .then(async (accorde) => {
+        if (!accorde) { autoriser.disabled = false; autoriser.textContent = "Autoriser Opla"; return; }
+        try { await chrome.runtime.sendMessage({ type: "OPLA_ACCES_ACCORDE" }); }
+        catch { /* le background relit la permission à son prochain passage */ }
+        load();
+      })
+      .catch(() => { autoriser.disabled = false; autoriser.textContent = "Réessayer"; });
     return;
   }
   const connect = e.target.closest("[data-connect]");

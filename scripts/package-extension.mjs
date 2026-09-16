@@ -36,7 +36,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 import { EXTENSION_LAST_COMMIT, EXTENSION_MIN_BUILD } from './build-id.mjs';
-import { estHoteDeChantier } from './hotes-livrables-cws.mjs';
+import { estHoteDeChantier, estHoteOptionnel } from './hotes-livrables-cws.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = path.join(ROOT, 'build', 'extension');
@@ -153,7 +153,14 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // le CWS le 10/09 (handler_build « 2026-09-10T09:41:28Z+3696da6 · v0.6.25 » sur
 // les jobs de 4 comptes le soir même). La 0.6.26 la remplace : re-packager la
 // 0.6.25 se ferait rejeter.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38'];
+// 0.6.39 ajoutée le 16/09 (geste de tenue de livre resté en suspens le matin) :
+// PUBLIÉE et SERVIE par le CWS — 19 comptes en extension_version='0.6.39',
+// build 2026-09-15T21:29:11Z+89ef0b6, relevé en base le 16/09.
+// 0.6.40 ajoutée le 16/09 au bump 0.6.41 : paquet 11d61cb PRÊT mais JAMAIS
+// téléversé, remplacé par la 0.6.41 (correctifs Leboncoin pro + Opla en
+// permission optionnelle). Même règle que 0.6.21 : le Web Store refuse tout
+// numéro inférieur à la dernière version publiée — numéro brûlé.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40'];
 // 0.6.38 ajoutée le 15/09 au bump 0.6.39 : PUBLIÉE, ACCEPTÉE et SERVIE par le
 // Chrome Web Store — relevé en base, pas déclaré : 27 comptes en
 // profiles.extension_version='0.6.38', extension_build
@@ -314,15 +321,38 @@ const manifest = JSON.parse(fs.readFileSync(path.join(OUT_DIR, 'manifest.json'),
 // Garde MÉCANIQUE et FAIL-CLOSED : tout motif d'hôte absent de l'allowlist fait
 // ÉCHOUER l'empaquetage. Elle couvre host_permissions, les `matches` des
 // content_scripts ET ceux des web_accessible_resources — les trois endroits
-// d'où un hôte peut fuiter.
-const motifsDuManifest = [
+// d'où un hôte OBLIGATOIRE peut fuiter.
+// ── OPTIONNEL (2026-09-16) : quatrième endroit, autre règle ─────────────────
+// `optional_host_permissions` n'accorde rien à l'installation ni à la mise à
+// jour : l'accès se demande par un clic de la personne (popup). Un hôte y est
+// accepté s'il est dans HOTES_OPTIONNELS_CWS — et REFUSÉ partout ailleurs :
+// le même hôte en host_permissions ou en `matches` redeviendrait un hôte
+// obligatoire, donc un privilège accru (extension désactivée chez tout le parc
+// jusqu'au clic « Réactiver »). C'est exactement ce que cette garde interdit.
+const motifsObligatoires = [
   ...(manifest.host_permissions ?? []).map(m => ({ m, ou: 'host_permissions' })),
   ...(manifest.content_scripts ?? []).flatMap((cs, i) =>
     (cs.matches ?? []).map(m => ({ m, ou: `content_scripts[${i}].matches` }))),
   ...(manifest.web_accessible_resources ?? []).flatMap((w, i) =>
     (w.matches ?? []).map(m => ({ m, ou: `web_accessible_resources[${i}].matches` }))),
 ];
-const horsPerimetre = motifsDuManifest.filter(({ m }) => estHoteDeChantier(m));
+const motifsOptionnels = (manifest.optional_host_permissions ?? []).map(m => ({ m, ou: 'optional_host_permissions' }));
+
+const optionnelDeclareObligatoire = motifsObligatoires.filter(({ m }) => estHoteOptionnel(m));
+if (optionnelDeclareObligatoire.length) {
+  die(`HÔTE OPTIONNEL déclaré en OBLIGATOIRE — empaquetage REFUSÉ.
+
+${optionnelDeclareObligatoire.map(({ m, ou }) => `    ${m}\n      (${ou})`).join('\n')}
+
+  Ces motifs ne sont livrables QU'en optional_host_permissions (scripts/
+  hotes-livrables-cws.mjs, HOTES_OPTIONNELS_CWS). En host_permissions ou en
+  \`matches\`, ils deviennent des hôtes obligatoires : privilège accru à la
+  mise à jour, extension DÉSACTIVÉE chez tous les utilisateurs jusqu'au clic
+  « Réactiver ». Les scripts d'un hôte optionnel s'enregistrent à l'octroi
+  (chrome.scripting.registerContentScripts, cf. background.js), jamais dans
+  le manifest.`);
+}
+const horsPerimetre = motifsObligatoires.filter(({ m }) => estHoteDeChantier(m));
 if (horsPerimetre.length) {
   die(`HÔTE HORS PÉRIMÈTRE dans le manifest du paquet — empaquetage REFUSÉ.
 
@@ -331,15 +361,22 @@ ${horsPerimetre.map(({ m, ou }) => `    ${m}\n      (${ou})`).join('\n')}
   Ces motifs ne sont PAS dans l'allowlist livrable. Les téléverser ajouterait un
   avertissement de permission chez TOUS les utilisateurs et déclencherait une
   nouvelle revue du Chrome Web Store.
-
-  Cas connu : « https://www.opla.co/* » est posé dans chrome-extension/manifest.json
-  pour le seul build UNPACKED du chantier Opla (drapeau éteint). Il ne doit pas
-  partir en production.
     → Pour empaqueter : retirer l'hôte du manifest source, puis relancer.
-    → Pour livrer Opla volontairement : l'ajouter à HOTES_LIVRABLES_CWS dans
+    → Pour livrer un hôte volontairement : l'ajouter à HOTES_LIVRABLES_CWS
+      (obligatoire) ou HOTES_OPTIONNELS_CWS (optionnel) dans
       scripts/hotes-livrables-cws.mjs, dans le MÊME commit, ET écrire sa ligne
       de justification dans « extensionPermissions » (src/pages/Legal.jsx) — en
       sachant ce que ça déclenche.`);
+}
+const optionnelsHorsListe = motifsOptionnels.filter(({ m }) => !estHoteOptionnel(m));
+if (optionnelsHorsListe.length) {
+  die(`HÔTE OPTIONNEL hors allowlist — empaquetage REFUSÉ.
+
+${optionnelsHorsListe.map(({ m, ou }) => `    ${m}\n      (${ou})`).join('\n')}
+
+  Un hôte en optional_host_permissions part dans le paquet et le Web Store le
+  lit : il doit figurer dans HOTES_OPTIONNELS_CWS (scripts/hotes-livrables-cws.mjs)
+  ET dans « extensionPermissions » (src/pages/Legal.jsx), dans le même commit.`);
 }
 
 // 5bis. intégrité du manifest — NOM vérifié AUX OCTETS (2026-08-24).

@@ -18,7 +18,9 @@
     "https://*.ebay.com/*",
     "https://*.beebs.app/*",
     "https://fillsell.app/*",
-    "https://tojihnuawsoohlolangc.supabase.co/*",
+    "https://tojihnuawsoohlolangc.supabase.co/*"
+  ],
+  "optional_host_permissions": [
     "https://www.opla.co/*"
   ],
   "icons": {
@@ -103,17 +105,6 @@
       "js": [
         "content-scripts/consentement.js",
         "content-scripts/beebs.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "https://www.opla.co/*"
-      ],
-      "js": [
-        "content-scripts/consentement.js",
-        "content-scripts/opla-prevol.js",
-        "content-scripts/opla.js"
       ],
       "run_at": "document_idle"
     }

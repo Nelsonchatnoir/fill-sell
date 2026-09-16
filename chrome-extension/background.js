@@ -350,26 +350,21 @@ function sansPromesseDeReprise(msg) {
 // `implemented: false` → le job est loggé et laissé en pending (le content
 // script n'existe pas encore). Passer à true quand le script est prêt.
 const PLATFORM_HANDLERS = {
-  // ── opla : DÉCLARÉE NON IMPLÉMENTÉE (2026-09-15, lot 5) ───────────────────
-  // Depuis que la contrainte de base accepte 'opla', un job Opla peut exister
-  // et get-pending-jobs le SERT (sa requête ne filtre pas par plateforme).
-  // Sans cette entrée, processJob l'écartait en « Plateforme inconnue » — un
-  // arrêt correct, mais accidentel : le même message qu'une faute de frappe.
-  // Avec elle, l'arrêt est un ÉTAT DÉCLARÉ (« Handler opla pas encore
-  // implémenté »), le job reste pending, et rien n'est tenté.
-  //
-  // ⚠️ AUCUN EFFET SUR LES QUATRE PLATEFORMES EN SERVICE, vérifié sur les 3
-  // lectures de Object.keys(PLATFORM_HANDLERS) :
-  //   · cleanupOrphanWorkTabs : `PLATFORM_HOSTS[opla]` est absent → continue ;
-  //   · idsOngletsTravailConnus : une clé storage.session de plus, toujours vide ;
-  //   · processJob : lecture par clé, jamais d'itération.
-  // Pas d'entrée dans PLATFORM_HOSTS : Opla n'a pas d'onglet de travail tant
-  // qu'il n'est pas livré, et lui en donner un ouvrirait des chemins (requête
-  // d'onglets, nettoyage d'orphelins) sur une plateforme qui ne tourne pas.
+  // ── opla : IMPLÉMENTÉE, DERRIÈRE UNE PERMISSION OPTIONNELLE (2026-09-16) ──
+  // Historique : déclarée non implémentée au lot 5 (15/09) pour que le job
+  // s'arrête en ÉTAT DÉCLARÉ plutôt qu'en « Plateforme inconnue ». Depuis la
+  // décision du 16/09, opla.co est en `optional_host_permissions` : le parc
+  // n'a ni l'hôte ni les scripts tant que la personne n'a pas cliqué
+  // « Autoriser Opla » dans le popup. Le VRAI interrupteur est donc la
+  // permission, lue à chaque job (porte Opla de processJob) — ce drapeau ne
+  // fait que router. Sans permission : needs_user NOMMÉ (OPLA_MSG_ACCES),
+  // jamais un pending à vie ni un failed muet. PLATFORM_HOSTS.opla existe
+  // depuis le lot B (onglet de travail dédié).
   opla: {
-    implemented: false,
-    // Pas de newListingUrl : rien ne doit pouvoir construire une URL opla.co
-    // par ce registre. Le jour de la livraison, elle viendra avec le reste.
+    implemented: true,
+    // Page de dépôt du relevé (docs/OPLA_RELEVE.md § 16) : le content script
+    // fait l'API depuis la page, la session est portée par les cookies.
+    newListingUrl: "https://www.opla.co/sell/create",
   },
   vinted: {
     implemented: true,
@@ -1021,6 +1016,29 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // autre chose que les cinq. `opla` (2026-09-16, câblage) : la même liste
   // que probePlatformSessions ; sonderSessionOpla ne part pas sans la
   // permission d'hôte, donc rien ne change pour le parc tant qu'Opla est fermée.
+  // ── OPLA : L'ACCÈS VIENT D'ÊTRE ACCORDÉ (popup, 2026-09-16) ──────────────
+  // Le popup a fait chrome.permissions.request dans SON clic — le geste
+  // utilisateur ne se transfère pas au service worker. Ici, la suite :
+  // scripts enregistrés, jobs en attente d'accès relancés, session sondée.
+  if (msg?.type === "OPLA_ACCES_ACCORDE") {
+    (async () => {
+      if (!(await oplaAccesAccorde())) return sendResponse({ ok: false, motif: "acces_non_accorde" });
+      await assurerScriptsOpla();
+      let relances = 0;
+      try {
+        const session = await getValidSession();
+        if (session?.access_token) {
+          relances = await rearmerJobsOplaEnAttente(session.access_token);
+          reportPlatformSessions(session.access_token, { plateformes: ["opla"], motif: "accès Opla accordé", forcer: true })
+            .catch(() => {});
+        }
+      } catch (e) {
+        console.warn("[background] opla : suite de l'octroi —", String(e?.message ?? e));
+      }
+      sendResponse({ ok: true, relances });
+    })();
+    return true;
+  }
   if (msg?.type === "SONDER_SESSION") {
     (async () => {
       const pf = String(msg.platform ?? "");
@@ -2725,6 +2743,25 @@ async function processJob(rawJob, accessToken) {
   if (!handler.implemented) {
     console.log(`[background] Handler ${job.platform} pas encore implémenté, job ${job.id} laissé en pending`);
     return { status: "skipped", error: `Handler ${job.platform} pas encore implémenté` };
+  }
+
+  // ── PORTE OPLA : LA PERMISSION D'HÔTE EST OPTIONNELLE (2026-09-16) ────────
+  // opla.co est en `optional_host_permissions` : rien n'est accordé à
+  // l'installation ni à la mise à jour, l'accès se demande dans le popup, par
+  // la personne concernée. Un job Opla (dépôt, retrait, republication) qui
+  // arrive avant l'octroi ne doit ni mourir en silence ni rester « en cours »
+  // à vie : needs_user NOMMÉ, qui dit le geste, et relevé (needs_user_source)
+  // pour repartir TOUT SEUL à l'octroi (rearmerJobsOplaEnAttente).
+  // `permissions.contains` se lit à CHAQUE job : la réponse vient du
+  // navigateur, jamais d'un cache du service worker.
+  if (job.platform === "opla") {
+    if (!(await oplaAccesAccorde())) {
+      await marquerAttenteAccesOpla(accessToken, job);
+      return { status: "needsUser", error: OPLA_MSG_ACCES };
+    }
+    // Les content scripts Opla sont ENREGISTRÉS dynamiquement (pas dans le
+    // manifest : un `matches` statique compterait comme hôte obligatoire).
+    await assurerScriptsOpla();
   }
 
   // ── Porte de reprise ESPACÉE (2026-08-31) ─────────────────────────────────
@@ -8949,6 +8986,118 @@ async function lireEtatAnnonce(url, platform) {
 //    `maintenant - 0 >= intervalle` est vrai pour les quatre — le nouvel
 //    inscrit est donc sondé sur les quatre sans attendre le moindre job. C'est
 //    exactement le parcours qui a déclenché ce lot.
+// ── OPLA : PERMISSION D'HÔTE OPTIONNELLE (2026-09-16, décision Nico) ────────
+// Livrer opla.co en hôte OBLIGATOIRE aurait été un privilège accru : Chrome
+// compare les ENSEMBLES d'hôtes, pas les messages (IsHostPrivilegeIncrease,
+// chrome_permission_message_provider.cc) → extension DÉSACTIVÉE chez tout le
+// parc jusqu'au clic « Réactiver », files gelées. Pour une plateforme ouverte
+// à deux comptes, non. D'où `optional_host_permissions` : rien à
+// l'installation ni à la mise à jour ; l'accès se demande par un GESTE de la
+// personne — un clic dans le popup, page d'extension, le seul contexte où
+// chrome.permissions.request s'exécute — et par elle seule.
+// Conséquences mécaniques, toutes tenues ici :
+//   · pas d'entrée `content_scripts` statique pour opla.co (un `matches`
+//     compte comme hôte obligatoire, doc Chrome « declare-permissions ») → les
+//     trois scripts sont ENREGISTRÉS à l'octroi (chrome.scripting.
+//     registerContentScripts, persistants), re-vérifiés au démarrage du
+//     service worker et avant chaque job ;
+//   · un job Opla sans accès → needs_user NOMMÉ (OPLA_MSG_ACCES) porteur de
+//     needs_user_source='opla_acces' ; à l'octroi, ces jobs repartent seuls ;
+//   · sonderSessionOpla ne part pas sans accès (elle rend null : indéterminé,
+//     jamais false, donc jamais une retenue de session morte) ;
+//   · accès retiré par la personne (chrome://extensions → accès aux sites) →
+//     scripts désenregistrés, et le prochain job redemande.
+const OPLA_ORIGINE = "https://www.opla.co/*";
+const OPLA_SCRIPTS_ID = "fillsell-opla";
+const OPLA_SCRIPTS = ["content-scripts/consentement.js", "content-scripts/opla-prevol.js", "content-scripts/opla.js"];
+const OPLA_MSG_ACCES =
+  "Opla attend ton autorisation : dans Chrome, ouvre le menu FillSell (icône de l'extension) " +
+  "et appuie sur « Autoriser Opla ». L'annonce repartira toute seule.";
+
+async function oplaAccesAccorde() {
+  try { return await chrome.permissions.contains({ origins: [OPLA_ORIGINE] }); }
+  catch { return false; }
+}
+
+async function assurerScriptsOpla() {
+  try {
+    const deja = await chrome.scripting.getRegisteredContentScripts({ ids: [OPLA_SCRIPTS_ID] });
+    if (deja?.length) return true;
+    await chrome.scripting.registerContentScripts([{
+      id: OPLA_SCRIPTS_ID, matches: [OPLA_ORIGINE], js: OPLA_SCRIPTS, runAt: "document_idle", persistAcrossSessions: true,
+    }]);
+    console.log("[background] opla : content scripts enregistrés (permission d'hôte accordée)");
+    return true;
+  } catch (e) {
+    console.warn("[background] opla : enregistrement des content scripts impossible —", String(e?.message ?? e));
+    return false;
+  }
+}
+
+async function retirerScriptsOpla() {
+  try {
+    const deja = await chrome.scripting.getRegisteredContentScripts({ ids: [OPLA_SCRIPTS_ID] });
+    if (deja?.length) await chrome.scripting.unregisterContentScripts({ ids: [OPLA_SCRIPTS_ID] });
+  } catch (e) { console.warn("[background] opla : désenregistrement —", String(e?.message ?? e)); }
+}
+
+async function marquerAttenteAccesOpla(accessToken, job) {
+  const pf = { ...(job.platform_fields ?? {}) };
+  delete pf.next_action_after;
+  delete pf.processing_since;
+  pf.needs_user_source = "opla_acces";
+  pf.opla_acces_attendu_le = new Date().toISOString();
+  console.log(`[background] Job ${job.id} → opla : accès opla.co non accordé — needs_user nommé`);
+  await updateJobStatus(accessToken, job.id, "needs_user", { error: OPLA_MSG_ACCES, platform_fields: pf });
+}
+
+// À l'octroi : les jobs mis en attente par la porte ci-dessus repartent seuls.
+// Un par un (platform_fields se réécrit en entier), erreurs isolées : la base
+// peut refuser UNE relance (article vendu, trigger du 16/09) sans bloquer les
+// autres.
+async function rearmerJobsOplaEnAttente(accessToken) {
+  let relances = 0;
+  try {
+    const rows = await restRequest(
+      "cross_post_jobs?select=id,platform_fields&platform=eq.opla&status=eq.needs_user" +
+      "&platform_fields->>needs_user_source=eq.opla_acces&limit=200",
+      accessToken,
+    );
+    for (const j of rows ?? []) {
+      const pf = { ...(j.platform_fields ?? {}) };
+      delete pf.needs_user_source;
+      delete pf.next_action_after;
+      pf.opla_acces_accorde_le = new Date().toISOString();
+      try {
+        await restRequest(`cross_post_jobs?id=eq.${j.id}&status=eq.needs_user`, accessToken, {
+          method: "PATCH", body: JSON.stringify({ status: "pending", error: null, platform_fields: pf }),
+        });
+        relances++;
+      } catch (e) {
+        console.warn(`[background] opla : job ${j.id} non relancé —`, String(e?.message ?? e));
+      }
+    }
+  } catch (e) {
+    console.warn("[background] opla : lecture des jobs en attente d'accès —", String(e?.message ?? e));
+  }
+  if (relances) console.log(`[background] opla : ${relances} job(s) relancé(s) après l'octroi de l'accès`);
+  return relances;
+}
+
+// Démarrage du service worker : si l'accès est déjà là (octroi antérieur, ou
+// accordé depuis chrome://extensions), les scripts doivent l'être aussi.
+oplaAccesAccorde().then((ok) => (ok ? assurerScriptsOpla() : undefined)).catch(() => {});
+if (chrome.permissions?.onAdded) {
+  chrome.permissions.onAdded.addListener((p) => {
+    if ((p?.origins ?? []).includes(OPLA_ORIGINE)) assurerScriptsOpla().catch(() => {});
+  });
+}
+if (chrome.permissions?.onRemoved) {
+  chrome.permissions.onRemoved.addListener((p) => {
+    if ((p?.origins ?? []).includes(OPLA_ORIGINE)) retirerScriptsOpla().catch(() => {});
+  });
+}
+
 const SESSION_PROBE_INTERVALS_MS = {
   vinted: 10 * 60 * 1000,
   leboncoin: 60 * 60 * 1000,

@@ -184,9 +184,13 @@ console.log("\n5. Les quatre plateformes en service ne passent pas par là");
   ok("les 4 hôtes en service sont intacts",
     hotes.vinted === "vinted.fr" && hotes.leboncoin === "leboncoin.fr"
     && hotes.ebay === "ebay.fr" && hotes.beebs === "beebs.app");
-  ok("⛔ opla reste NON implémentée (le levier n'est pas levé par ce lot)",
-    registre?.opla?.implemented === false, String(registre?.opla?.implemented));
-  ok("⛔ et sans newListingUrl", !("newListingUrl" in (registre?.opla ?? {})));
+  // 16/09 (GO Nico, permission d'hôte OPTIONNELLE) : le levier est levé —
+  // l'interrupteur réel est la permission, lue à chaque job par la porte Opla
+  // de processJob (sans accès : needs_user nommé, jamais un dépôt).
+  ok("opla est implémentée (16/09, permission optionnelle)",
+    registre?.opla?.implemented === true, String(registre?.opla?.implemented));
+  ok("et porte la page de dépôt du relevé (/sell/create)",
+    registre?.opla?.newListingUrl === "https://www.opla.co/sell/create", String(registre?.opla?.newListingUrl));
   ok("les 4 handlers en service restent implemented:true",
     ["vinted", "leboncoin", "ebay", "beebs"].every((p) => registre[p]?.implemented === true));
 }
