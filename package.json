@@ -27,7 +27,8 @@
     "selftest:description-leboncoin": "node scripts/description-leboncoin-selftest.mjs",
     "selftest:description-beebs": "node scripts/description-beebs-selftest.mjs",
     "selftest:sync-veille": "node scripts/sync-veille-selftest.mjs",
-    "selftest:conseils-coherents": "node scripts/conseils-coherents-selftest.mjs"
+    "selftest:conseils-coherents": "node scripts/conseils-coherents-selftest.mjs",
+    "selftest:opla-veilleur": "node scripts/opla-veilleur-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

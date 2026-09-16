@@ -8486,7 +8486,14 @@ async function workTabForFetch(platform) {
       // par le chemin de navigation existant (discard→navigate→complete,
       // beforeunload neutralisé). Vinted UNIQUEMENT : les vérifications
       // eBay/LBC/Beebs gardent leur comportement d'avant, à l'octet près.
-      if (platform === "vinted" && tab.discarded) {
+      //
+      // ✅ opla ajoutée au réveil (lot B, 2026-09-16), et pour la MÊME raison,
+      // pas par symétrie : l'oracle Opla n'est lisible QUE depuis un onglet
+      // vivant (le repli service worker rend 429, cf. lireEtatOpla). Un onglet
+      // déchargé ferait donc exactement la panne du 12-15/08 — 100 % de
+      // vérifications « unknown », indéfiniment. eBay/LBC/Beebs restent
+      // inchangés.
+      if ((platform === "vinted" || platform === "opla") && tab.discarded) {
         return getOrCreateWorkTab(platform, `https://www.${host}/`);
       }
       return tab.id;
@@ -8503,6 +8510,18 @@ const PLATFORM_HOSTS = {
   vinted: "vinted.fr",
   ebay: "ebay.fr",
   beebs: "beebs.app",
+  // ── opla : CÂBLAGE, PAS UN LEVIER D'ACTIVATION (lot B, 2026-09-16) ────────
+  // Le veilleur a besoin d'un ONGLET pour lire l'oracle (429 depuis le service
+  // worker, mesuré au lot 1) : sans cette entrée, workTabForFetch rend null et
+  // Opla resterait aveugle pour toujours. Elle n'allume rien pour autant —
+  // aucun job Opla ne peut être 'published' tant que PLATFORM_HANDLERS.opla
+  // porte implemented:false, et les deux seuls autres lecteurs sont inoffensifs :
+  //   · getOrCreateWorkTab : appelé seulement par un flux qui a déjà un job ;
+  //   · cleanupOrphanWorkTabs : ne regarde QUE les onglets portant
+  //     #fillsell-worker — il ne peut pas toucher un onglet opla.co de Nico.
+  // Et dans le paquet CWS, faute de permission d'hôte opla.co, tabs.query rend
+  // [] : le veilleur conclut "unknown" et ne touche à rien. Dégradation sûre.
+  opla: "opla.co",
 };
 
 // Page de vérification anti-bot (DataDome & co) : courte, sans le contenu de
@@ -8604,6 +8623,149 @@ async function memoriserLbcMorte(url) {
 // espacées de 2 h et le garde-fou superseded_listing sont inchangés.
 const VINTED_CHECK_TIRS = 3;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// OPLA — LE VEILLEUR DE VENTE (lot B, 2026-09-16)
+// ═══════════════════════════════════════════════════════════════════════════
+// Aucune cadence propre : Opla se greffe sur le passage du veilleur existant
+// (checkPublishedListings), au même moment que les quatre autres. Décision de
+// Nico : petite plateforme, volume de ventes minuscule, l'oracle coûte un onglet.
+//
+// ── CE QUI REND CE VEILLEUR POSSIBLE, ET QUI N'ÉTAIT PAS ACQUIS ────────────
+// Le lot A (docs/OPLA_VENTE.md) a mesuré que la vente SE NOMME chez Opla :
+//     GET /api/public/articles/<id>
+//        200 + status "sold"      → VENDUE       (preuve POSITIVE)
+//        200 + status "available" → en ligne
+//        200 + status "draft"     → dépubliée par le vendeur (« Publier plus tard »)
+//        200 + status "rejected"  → masquée par la modération
+//        404 {"error":"article_not_found"} → SUPPRIMÉE
+// Une vente ne se confond donc PAS avec un retrait — c'est ce qui autorise ce
+// fichier à conclure. Sur Leboncoin, où les deux rendent le même 410, il ne le
+// ferait pas (et il ne le fait pas).
+//
+// ⛔ LES TROIS RÈGLES, dans l'ordre où elles comptent :
+// 1. UN ÉCHEC DE LECTURE N'EST JAMAIS UNE VENTE. Réseau coupé, 429, onglet mort,
+//    session absente, statut jamais observé : "unknown", rien d'écrit, on
+//    repasse au tour suivant. Pire cas acceptable = vente vue en RETARD.
+// 2. ON NE CONCLUT À LA VENTE QUE SUR `status === "sold"`, À L'EXACT. Jamais sur
+//    « ≠ available », jamais sur une absence, JAMAIS sur un 404 — un 404 dit
+//    « effacée », et effacée peut vouloir dire retirée à la main.
+// 3. UN STATUT QU'ON N'A JAMAIS OBSERVÉ NE CONCLUT RIEN. `reserved` existe dans
+//    les libellés d'Opla et n'a été vu sur AUCUN des 1000 articles relevés : si
+//    Opla s'en sert entre l'achat et le paiement, on le verra passer en
+//    "unknown" avec sa valeur NOMMÉE dans les logs, et on décidera alors — au
+//    lieu de deviner aujourd'hui.
+//
+// ⛔ ET COMME AILLEURS : ce veilleur n'ÉCRIT AUCUNE VENTE et ne retire AUCUNE
+// copie. Il pose un drapeau (sale_signal), l'app pose la question, et c'est le
+// clic « Oui, enregistrer la vente » qui écrit — chemin commun aux 5, inchangé.
+const OPLA_STATUTS_LUS = Object.freeze({
+  sold: "sold",          // preuve POSITIVE de vente
+  available: "active",   // en ligne
+  draft: "unavailable",  // dépubliée par le vendeur — plus en ligne, pas une vente
+  rejected: "unavailable", // masquée par la modération — idem
+});
+
+async function lireEtatOpla(url) {
+  const id = String(url ?? "").match(/\/(?:product|article)\/(art_[^/?#\s]+)/i)?.[1] ?? null;
+  if (!id) {
+    console.warn(`[background] opla : aucun identifiant art_… dans ${url} — aucune conclusion`);
+    return { state: "unknown", price: null, raison: "opla_id_introuvable" };
+  }
+
+  // L'onglet est OBLIGATOIRE : `curl`/fetch du service worker rendent 429 là où
+  // la page rend 200 (rejet des clients sans empreinte de navigateur, mesuré au
+  // lot 1). On réutilise le chemin d'onglet du dépôt — jamais un second onglet.
+  // ⚠️ Aucun repli service worker ici, contrairement à fetchListingHtml : ce
+  // repli ne peut que rendre 429, donc mentir par omission.
+  const tabId = await workTabForFetch("opla").catch(() => null);
+  if (tabId == null) {
+    console.warn("[background] opla : aucun onglet opla.co exploitable (permission d'hôte ?) — aucune conclusion");
+    return { state: "unknown", price: null, raison: "opla_onglet_indisponible" };
+  }
+
+  let lu;
+  try {
+    const inject = chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      args: [id],
+      func: async (article) => {
+        try {
+          // Chemin RELATIF : la requête est same-origin, avec l'empreinte de la
+          // page. `credentials` est sans importance — l'oracle répond 200 même
+          // sans session (mesuré au lot A) ; on les envoie quand même, c'est le
+          // comportement naturel d'une page.
+          const r = await fetch(`/api/public/articles/${encodeURIComponent(article)}`, {
+            credentials: "include",
+            cache: "no-store",
+            headers: { "Accept-Language": "fr" },
+          });
+          const txt = await r.text();
+          let corps = null;
+          try { corps = txt ? JSON.parse(txt) : null; } catch { corps = null; }
+          return {
+            status: r.status,
+            etat: corps?.article?.status ?? null,
+            moderation: corps?.article?.moderationStatus ?? null,
+            erreurApi: typeof corps?.error === "string" ? corps.error : null,
+          };
+        } catch (e) {
+          return { erreur: String(e?.message ?? e) };
+        }
+      },
+    });
+    // Même garde que fetchListingHtml : un onglet figé par un beforeunload
+    // natif ne rendrait JAMAIS la main, et le veilleur attendrait indéfiniment.
+    let timer;
+    const guard = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("BLOCKED_TAB")), 20_000); });
+    let res;
+    try { [res] = await Promise.race([inject, guard]); } finally { clearTimeout(timer); }
+    lu = res?.result;
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    console.warn(`[background] opla : lecture via onglet impossible (${msg}) — aucune conclusion`);
+    return { state: "unknown", price: null, raison: msg.includes("BLOCKED_TAB") ? "opla_onglet_fige" : "opla_lecture_impossible" };
+  }
+
+  if (!lu || lu.erreur) {
+    console.warn(`[background] opla : oracle illisible (${lu?.erreur ?? "sans résultat"}) — aucune conclusion`);
+    return { state: "unknown", price: null, raison: "opla_lecture_impossible" };
+  }
+
+  // 404 = l'annonce n'existe plus. C'est une DISPARITION, pas une vente : le
+  // vendeur a pu la supprimer à la main. Bandeau interrogatif, jamais d'écriture.
+  if (lu.status === 404) {
+    console.log(`[background] opla ${id} : 404 ${lu.erreurApi ?? ""} — annonce effacée (PAS une preuve de vente)`);
+    return { state: "unavailable", price: null, raison: null };
+  }
+  if (lu.status !== 200) {
+    console.warn(`[background] opla ${id} : HTTP ${lu.status} sur l'oracle — aucune conclusion`);
+    return { state: "unknown", price: null, raison: `http_${lu.status}` };
+  }
+
+  const etat = String(lu.etat ?? "");
+  const verdict = Object.prototype.hasOwnProperty.call(OPLA_STATUTS_LUS, etat) ? OPLA_STATUTS_LUS[etat] : null;
+  if (!verdict) {
+    // Statut JAMAIS OBSERVÉ (`reserved`, ou une valeur qu'Opla ajouterait) : on
+    // le NOMME dans les logs et on ne conclut rien. C'est l'anti-Beebs : mieux
+    // vaut aucun verdict qu'un verdict lu sur une valeur qu'on n'a pas relevée.
+    console.warn(`[background] opla ${id} : status « ${etat || "(absent)"} » jamais observé au relevé — aucune conclusion`);
+    return { state: "unknown", price: null, raison: `opla_statut_inattendu_${etat || "absent"}` };
+  }
+
+  console.log(
+    `[background] opla ${id} : status ${etat}${lu.moderation ? ` (moderation ${lu.moderation})` : ""} → ${verdict}` +
+    (verdict === "sold" ? " — VENTE, preuve positive" : "")
+  );
+  // ⛔ AUCUN PRIX. Le lot A l'a vérifié clé par clé : le corps d'un article
+  // VENDU est identique à celui d'un disponible — ni `soldAt`, ni date, ni prix
+  // de vente. `priceCents` est le prix AFFICHÉ, pas le prix payé (une offre
+  // acceptée ne s'y lit pas). Le servir comme « prix détecté » pré-remplirait
+  // une comptabilité fausse dans le bandeau : on rend null, l'app propose alors
+  // le prix de publication, et le vendeur tranche.
+  return { state: verdict, price: null, raison: null };
+}
+
 async function checkVintedUnanime(url) {
   let dernier = { state: "unknown", price: null };
   for (let tir = 1; tir <= VINTED_CHECK_TIRS; tir++) {
@@ -8628,24 +8790,7 @@ async function checkVintedUnanime(url) {
 }
 
 async function checkListingState(url, platform) {
-  // ── OPLA : ON REFUSE DE CONCLURE, ET C'EST LE SEUL VERDICT HONNÊTE ────────
-  // (lot 7, additif — aucune des quatre plateformes en service ne passe ici.)
-  // lireEtatAnnonce lirait /product/<id>… qui rend 200, page COMPLÈTE, sur une
-  // annonce SUPPRIMÉE : mesuré le 15/09 juste après le DELETE (cache ISR,
-  // `age: 26`, 108201 octets identiques, insensible à no-store et au cassage
-  // d'URL). Elle rend même 200 sur un identifiant inventé. Laisser tourner la
-  // lecture générique ici, c'est écrire « annonce TOUJOURS en ligne (vérifié) »
-  // sur une annonce retirée — exactement le mensonge que ce fichier passe son
-  // temps à corriger ailleurs.
-  // Le seul oracle est GET /api/public/articles/<id>… et il n'est PAS
-  // appelable d'ici : un fetch du service worker se fait rejeter en 429 par
-  // Opla (clients sans empreinte de navigateur, mesuré au lot 1). Il faudrait
-  // un onglet et un aller-retour avec le content script — c'est un chantier, pas
-  // une ligne. En attendant, "unknown" avec un motif NOMMÉ : les appelants
-  // savent traiter l'indécision, ils ne savent pas se défendre d'un faux.
-  if (platform === "opla") {
-    return { state: "unknown", price: null, raison: "opla_oracle_indisponible" };
-  }
+  if (platform === "opla") return lireEtatOpla(url);
   if (platform === "vinted") return checkVintedUnanime(url);
   if (platform !== "leboncoin") return lireEtatAnnonce(url, platform);
 
@@ -8686,9 +8831,15 @@ function causeLectureImpossible(raison) {
   if (r.startsWith("bot_shield")) return "Leboncoin a bloqué notre lecture par une vérification anti-robot";
   if (r.startsWith("http_")) return `la plateforme a répondu ${r.replace("http_", "HTTP ")}`;
   if (r === "lecture_impossible") return "la page de l'annonce n'a pas pu être chargée";
-  // Opla (lot 7) : ce n'est pas une lecture ratée, c'est une lecture qu'on
-  // s'interdit — la page publique survit à la suppression, elle ne prouve rien.
-  if (r === "opla_oracle_indisponible") return "l'état d'une annonce Opla ne peut pas être vérifié depuis ici (sa page publique reste servie en cache après un retrait)";
+  // ── Opla : motifs du veilleur (lot B, 2026-09-16) ───────────────────────
+  // L'ancien `opla_oracle_indisponible` (« on s'interdit de conclure ») a
+  // disparu avec le lot B : l'oracle est désormais lu pour de bon. Ce qui reste
+  // ici, ce sont les vraies causes d'indécision, nommées une par une.
+  if (r === "opla_onglet_indisponible") return "aucun onglet Opla n'était disponible pour lire l'état de l'annonce";
+  if (r === "opla_onglet_fige") return "l'onglet Opla est resté figé sur une fenêtre de confirmation du navigateur";
+  if (r === "opla_lecture_impossible") return "l'état de l'annonce Opla n'a pas pu être lu";
+  if (r === "opla_id_introuvable") return "le lien enregistré ne porte pas d'identifiant d'annonce Opla";
+  if (r.startsWith("opla_statut_inattendu_")) return `Opla a rendu un état que nous n'avons jamais observé (${r.replace("opla_statut_inattendu_", "")})`;
   return "la page a été lue mais l'annonce n'y a pas été reconnue";
 }
 
@@ -12912,6 +13063,43 @@ async function checkPublishedListings(session) {
 
     if (state === "sold" || state === "unavailable") {
       const pf = patch.platform_fields ?? job.platform_fields ?? {}; // idem : ne pas écraser la remise à zéro
+
+      // ── OPLA : NE PAS DOUBLER UNE DÉTECTION DÉJÀ FAITE (lot B, 2026-09-16) ──
+      // Un article vendu sur Vinted disparaît aussi d'Opla — le vendeur y
+      // retire sa copie. Sans cette garde, le même article porterait DEUX
+      // drapeaux et l'app poserait DEUX fois la question de la même vente.
+      // On ne regarde donc que les frères du MÊME article, et seulement s'ils
+      // portent déjà un drapeau non traité.
+      // ⛔ Garde posée sur Opla SEULEMENT, et c'est délibéré : l'étendre aux
+      // quatre changerait le comportement de la détection en production pour
+      // tout le parc, ce qui n'est pas le sujet de ce lot. Opla arrive après,
+      // elle arrive avec la garde.
+      if (job.platform === "opla" && job.inventaire_id != null && !pf.unavailable_since) {
+        try {
+          const freres = await restRequest(
+            `cross_post_jobs?inventaire_id=eq.${job.inventaire_id}&id=neq.${job.id}` +
+            "&status=eq.published&select=id,platform,platform_fields&limit=20",
+            session.access_token,
+          ) ?? [];
+          const dejaVu = freres.find((f) => f?.platform_fields?.unavailable_since);
+          if (dejaVu) {
+            console.log(
+              `[background] opla ${job.id} : ${dejaVu.platform} ${dejaVu.id} porte déjà le drapeau de vente ` +
+              `sur le même article — aucun second drapeau, la question ne sera posée qu'une fois`
+            );
+            await restRequest(`cross_post_jobs?id=eq.${job.id}`, session.access_token, {
+              method: "PATCH",
+              body: JSON.stringify(patch), // last_checked_at seul : on a bien lu, on ne conclut rien de plus
+            }).catch((e) => console.warn("[background] PATCH job:", String(e?.message ?? e)));
+            if (i < due.length - 1) await sleep(randInt(SALE_CHECK_PAUSE_MIN_MS, SALE_CHECK_PAUSE_MAX_MS));
+            continue;
+          }
+        } catch (e) {
+          // Lecture des frères impossible : on ne bloque PAS la détection pour
+          // autant (un drapeau en double se corrige, une vente manquée non).
+          console.warn(`[background] opla ${job.id} : frères illisibles (${e?.message ?? e}) — on poursuit`);
+        }
+      }
 
       // ── VINTED : un 404 n'est PAS une preuve de disparition (2026-08-09) ────
       // 5 faux bandeaux « plus en ligne » le même jour, deux mensonges distincts :
