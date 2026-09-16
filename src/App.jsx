@@ -64,6 +64,10 @@ import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton,
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
 import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
+// Un seul verrou de renvoi dans l'app (60 s, aligné sur la fenêtre de GoTrue) :
+// l'écran d'attente de confirmation reprend celui du lien d'extension plutôt
+// que d'en inventer un second.
+import { RENVOI_LOCK_MS } from './hooks/useEnvoiLienExtension';
 import ExtensionPitchScreen from './components/ExtensionPitchScreen';
 import EbayCompteSection from './components/EbayCompteSection';
 import { extensionTraceeAilleurs } from './utils/extensionTrace';
@@ -2001,6 +2005,22 @@ export default function App({ loginOnly = false }){
   const [showPassword,setShowPassword]=useState(false);
   const [emailConfirm,setEmailConfirm]=useState("");
   const [loginError,setLoginError]=useState("");
+  // ── Après l'inscription : un ÉCRAN, plus une alerte (2026-09-16) ───────────
+  // Jusqu'ici handleSignup se terminait par alert('Vérifie ton email…'). On
+  // tapait OK et on retombait sur le formulaire EXACTEMENT comme avant :
+  // rien à l'écran ne prouvait qu'un mail était parti, ni à quelle adresse.
+  // Mesuré sur 24 h : 9 des 26 POST /signup sont des 429 de relimitation,
+  // chez 6 personnes qui ont recliqué entre 6 et 24 s après — et aucune n'a
+  // produit le moindre événement ensuite.
+  // `attenteConfirmation` porte l'adresse RÉELLEMENT servie (celle que signUp
+  // a acceptée), jamais une valeur ressaisie.
+  const [attenteConfirmation,setAttenteConfirmation]=useState(null); // {email} | null
+  const [renvoiA,setRenvoiA]=useState(0);          // horodatage du dernier envoi
+  const [horlogeRenvoi,setHorlogeRenvoi]=useState(()=>Date.now());
+  const [renvoiEnCours,setRenvoiEnCours]=useState(false);
+  const [codeOtp,setCodeOtp]=useState("");
+  const [otpEnCours,setOtpEnCours]=useState(false);
+  const [otpErreur,setOtpErreur]=useState("");
   const [resetStep,setResetStep]=useState(0);
   const [forgotMode,setForgotMode]=useState(false);
   const [forgotMsg,setForgotMsg]=useState("");
@@ -5560,6 +5580,107 @@ export default function App({ loginOnly = false }){
     }catch(e){setForgotMsg(_lt==='en'?`Error: ${e.message}`:`Erreur : ${e.message}`);}finally{setIsSendingReset(false);}
   }
 
+  // Cible d'atterrissage du lien de confirmation (cf. src/pages/AuthConfirm).
+  // En DUR, comme le lien de réinitialisation juste au-dessus : sur l'app
+  // native window.location.origin vaut « https://localhost », inutilisable
+  // dans un e-mail.
+  // ⚠️ Cette URL doit figurer dans les « Redirect URLs » autorisées du tableau
+  // de bord Supabase. Sinon GoTrue l'ignore et retombe sur SITE_URL — cas
+  // couvert par le filet d'AppRouter, qui dévie le ?code= de « / » vers
+  // /auth/confirm. Le correctif marche donc avant même ce réglage.
+  const URL_CONFIRMATION='https://fillsell.app/auth/confirm';
+
+  // Traduction des refus d'authentification (2026-09-16). Ils partaient tels
+  // quels dans un alert() : « For security purposes, you can only request this
+  // after 52 seconds » est illisible pour un francophone, et surtout
+  // INDISCERNABLE d'un échec d'inscription — c'est exactement ce texte qu'ont
+  // vu les 6 personnes relimitées du 16/09, dont aucune n'est jamais entrée.
+  // On ne traduit QUE les refus qu'on sait nommer ; tout autre message passe
+  // inchangé, un message anglais valant mieux qu'un message faux.
+  function messageAuth(error,fr){
+    const code=error?.code||'';
+    const msg=String(error?.message||'');
+    const secondes=Number(msg.match(/after (\d+) seconds/i)?.[1]||0);
+    if(code==='over_email_send_rate_limit'||secondes>0){
+      const s=secondes||60;
+      return fr
+        ? `Un e-mail vient de partir — regarde ta boîte. Tu pourras en redemander un dans ${s} s.`
+        : `An email was just sent — check your inbox. You can ask for another in ${s}s.`;
+    }
+    if(code==='email_not_confirmed') return fr
+      ? "Ton compte n'est pas encore confirmé. Ouvre le mail qu'on vient de t'envoyer, puis reviens ici."
+      : "Your account isn't confirmed yet. Open the email we just sent you, then come back.";
+    if(code==='invalid_credentials') return fr
+      ? "Adresse e-mail ou mot de passe incorrect."
+      : "Incorrect email address or password.";
+    if(code==='user_already_exists'||code==='email_exists') return fr
+      ? "Un compte existe déjà avec cette adresse — connecte-toi plutôt."
+      : "An account already exists with this address — sign in instead.";
+    return msg;
+  }
+
+  // Décompte du « Renvoyer », même mécanique que useEnvoiLienExtension : on ne
+  // fait tourner l'horloge que tant qu'il reste du temps.
+  const secondesAvantRenvoi=Math.max(0,Math.ceil((renvoiA+RENVOI_LOCK_MS-horlogeRenvoi)/1000));
+  useEffect(()=>{
+    if(!attenteConfirmation||!renvoiA)return;
+    const fin=renvoiA+RENVOI_LOCK_MS;
+    if(fin<=Date.now())return;
+    const id=setInterval(()=>{
+      const n=Date.now();
+      setHorlogeRenvoi(n);
+      if(n>=fin)clearInterval(id);
+    },1000);
+    return()=>clearInterval(id);
+  },[attenteConfirmation,renvoiA]);
+
+  async function renvoyerConfirmation(){
+    if(renvoiEnCours||secondesAvantRenvoi>0||!attenteConfirmation?.email)return;
+    const fr=(localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en'))!=='en';
+    setRenvoiEnCours(true);setOtpErreur("");
+    try{
+      const{error}=await supabase.auth.resend({
+        type:'signup',
+        email:attenteConfirmation.email,
+        options:{emailRedirectTo:URL_CONFIRMATION},
+      });
+      // Un throttle n'est PAS un échec : le mail précédent est en route vers
+      // la même adresse. On réarme le décompte et on le dit en français.
+      if(error){setOtpErreur(messageAuth(error,fr));return;}
+      setRenvoiA(Date.now());setHorlogeRenvoi(Date.now());
+    }catch(e){setOtpErreur(e.message);}
+    finally{setRenvoiEnCours(false);}
+  }
+
+  // ── Code à 6 chiffres : LA voie de l'app native ───────────────────────────
+  // Un lien d'e-mail ne peut pas revenir dans l'app : il n'existe aucun
+  // Universal Link (ni apple-app-site-association, ni associated-domains —
+  // vérifié le 16/09, Gmail ne propose même pas FillSell dans « Ouvrir avec »).
+  // Il s'ouvre donc forcément dans un navigateur, où le code_verifier PKCE de
+  // l'inscription n'est pas. Le code, lui, se tape ici : verifyOtp n'a besoin
+  // d'aucun verifier, et rend la session du BON compte quoi qu'il y ait eu
+  // avant dans ce navigateur.
+  // ⚠️ Inerte tant que le gabarit d'e-mail Supabase ne porte pas {{ .Token }} —
+  // c'est pour ça que le champ n'est proposé que comme SECOND chemin, sous le
+  // lien, et jamais comme un passage obligé.
+  async function validerCodeConfirmation(){
+    if(otpEnCours||!attenteConfirmation?.email)return;
+    const fr=(localStorage.getItem('fs_lang')||((navigator.language||'fr').startsWith('fr')?'fr':'en'))!=='en';
+    const token=codeOtp.replace(/\D/g,'');
+    if(token.length!==6){setOtpErreur(fr?"Le code fait 6 chiffres.":"The code is 6 digits.");return;}
+    setOtpEnCours(true);setOtpErreur("");
+    try{
+      const{data,error}=await supabase.auth.verifyOtp({email:attenteConfirmation.email,token,type:'signup'});
+      if(error){setOtpErreur(messageAuth(error,fr));return;}
+      if(data?.session){
+        setAttenteConfirmation(null);
+        setAppLoading(true);   // splash jusqu'à la fin de fetchAll
+        navigate("/app");
+      }
+    }catch(e){setOtpErreur(e.message);}
+    finally{setOtpEnCours(false);}
+  }
+
   async function handleSignup(){
     if(isSigningIn||isSigningUp)return;
     const emailVal=emailRef.current?.value;
@@ -5571,8 +5692,19 @@ export default function App({ loginOnly = false }){
     if(emailVal.trim()!==emailConfirm.trim()){setLoginError(_slt==='en'?"Emails don't match":"Les emails ne correspondent pas");return;}
     setIsSigningUp(true);
     try{
-      const{data,error}=await supabase.auth.signUp({email:emailVal,password:passwordVal});
-      if(error){alert(error.message);return;}
+      const{data,error}=await supabase.auth.signUp({
+        email:emailVal,password:passwordVal,
+        // Sans emailRedirectTo, GoTrue renvoie sur SITE_URL — c'est-à-dire la
+        // LANDING MARKETING : les 10 confirmations des 24 h portaient toutes
+        // `redirect_to=https://fillsell.app`. On nomme la page qui sait traiter
+        // un lien de confirmation, et elle seule.
+        options:{emailRedirectTo:URL_CONFIRMATION},
+      });
+      // Plus d'alert() : le refus s'affiche dans le formulaire, sous le bouton,
+      // en français (cf. messageAuth). Une modale système qu'on referme laisse
+      // un écran identique à celui d'avant le clic — c'est ce qui faisait
+      // recliquer, et prendre un 429.
+      if(error){setLoginError(messageAuth(error,_slt!=='en'));return;}
       track('sign_up', { method: 'email' });
       // ── Mesure de l'inscription (13/09/2026) ────────────────────────────
       // Greffé APRÈS le succès de signUp, et volontairement sans await : rien
@@ -5589,8 +5721,15 @@ export default function App({ loginOnly = false }){
         setAppLoading(true);
         navigate("/app");
       }
-      else alert(_slt==='en'?"Check your email to confirm your account!":"Vérifie ton email pour confirmer ton compte !");
-    }catch(e){alert(e.message);}finally{setIsSigningUp(false);}
+      else{
+        // L'adresse affichée est celle que signUp a ACCEPTÉE (data.user.email),
+        // pas la valeur du champ : on ne dit jamais « envoyé à … » sur une
+        // saisie locale qui pourrait viser une autre boîte.
+        setAttenteConfirmation({email:(data?.user?.email||emailVal).trim()});
+        setRenvoiA(Date.now());setHorlogeRenvoi(Date.now());
+        setCodeOtp("");setOtpErreur("");
+      }
+    }catch(e){setLoginError(e.message);}finally{setIsSigningUp(false);}
   }
 
   async function handleLogout(){
@@ -5672,6 +5811,69 @@ export default function App({ loginOnly = false }){
     forgotMsg:"Saisis ton email ci-dessus.",back:"← Retour",
     confirmEmail:"Confirme ton email"
   };
+
+  // ── ÉCRAN D'ATTENTE DE CONFIRMATION (2026-09-16) ──────────────────────────
+  // Remplace l'alert() « Vérifie ton email ». Il dit trois choses qu'aucune
+  // modale ne pouvait dire : à QUELLE adresse le mail est parti, qu'on peut en
+  // redemander un (verrouillé 60 s, la fenêtre de GoTrue), et — sur téléphone —
+  // qu'un code à 6 chiffres évite complètement le détour par le navigateur.
+  // Le bouton « Revenir » garde le repli qui fait entrer 9 personnes sur 10
+  // aujourd'hui : retourner au formulaire et se connecter au mot de passe.
+  const fr_=loginLang!=='en';
+  if(!authLoading&&attenteConfirmation&&!user)return(
+    <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:UI.canvas,overflowY:"auto",boxSizing:"border-box"}}>
+      <div style={{background:UI.card,borderRadius:24,padding:"36px 28px",width:"100%",maxWidth:400,border:`1px solid ${UI.border}`,boxShadow:"0 24px 64px rgba(16,32,27,0.10)",boxSizing:"border-box"}}>
+        <div style={{textAlign:"center",marginBottom:8,fontSize:34}}>📬</div>
+        <h1 style={{margin:"0 0 10px",fontSize:22,fontWeight:700,letterSpacing:"-0.02em",color:UI.ink,textAlign:"center",lineHeight:1.25}}>
+          {fr_?"Regarde ta boîte mail":"Check your inbox"}
+        </h1>
+        <p style={{margin:"0 0 22px",fontSize:14.5,lineHeight:1.5,color:UI.mute2,textAlign:"center"}}>
+          {fr_?<>On vient d'envoyer un lien de confirmation à <strong style={{color:UI.ink}}>{attenteConfirmation.email}</strong>. Ouvre-le pour activer ton compte.</>
+              :<>We just sent a confirmation link to <strong style={{color:UI.ink}}>{attenteConfirmation.email}</strong>. Open it to activate your account.</>}
+        </p>
+
+        {/* Code à 6 chiffres — proposé sur téléphone seulement : c'est là que
+            le lien part forcément dans un AUTRE navigateur que l'app. */}
+        {isNative&&(
+          <div style={{marginBottom:18,paddingTop:16,borderTop:`1px solid ${UI.border}`}}>
+            <div style={{fontSize:13.5,color:UI.mute2,marginBottom:10,textAlign:"center"}}>
+              {fr_?"Ou saisis le code à 6 chiffres du mail :":"Or enter the 6-digit code from the email:"}
+            </div>
+            <input
+              value={codeOtp}
+              onChange={e=>{setCodeOtp(e.target.value.replace(/\D/g,'').slice(0,6));setOtpErreur("");}}
+              onKeyDown={e=>e.key==='Enter'&&validerCodeConfirmation()}
+              inputMode="numeric" autoComplete="one-time-code" placeholder="123456" maxLength={6}
+              style={{width:"100%",padding:"14px 16px",borderRadius:14,border:`1px solid ${UI.border}`,background:UI.chip,color:UI.ink,fontSize:20,fontWeight:700,letterSpacing:"0.28em",textAlign:"center",fontFamily:"inherit",boxSizing:"border-box"}}
+            />
+            <div style={{marginTop:10}}>
+              <PrimaryButton onClick={validerCodeConfirmation} disabled={otpEnCours||codeOtp.length!==6} style={{padding:14}}>
+                {otpEnCours?<Loader size={19} thickness={2}/>:(fr_?"Valider le code":"Confirm code")}
+              </PrimaryButton>
+            </div>
+          </div>
+        )}
+
+        {otpErreur&&<div style={{fontSize:13,textAlign:"center",color:UI.negative,fontWeight:600,marginBottom:14}}>{otpErreur}</div>}
+
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <SecondaryButton onClick={renvoyerConfirmation} disabled={renvoiEnCours||secondesAvantRenvoi>0} style={{padding:14}}>
+            {renvoiEnCours
+              ? <Loader size={19} thickness={2}/>
+              : secondesAvantRenvoi>0
+                ? (fr_?`Renvoyer dans ${secondesAvantRenvoi} s`:`Resend in ${secondesAvantRenvoi}s`)
+                : (fr_?"Renvoyer l'e-mail":"Resend email")}
+          </SecondaryButton>
+          <span
+            onClick={()=>{setAttenteConfirmation(null);setCodeOtp("");setOtpErreur("");setAuthMode('login');}}
+            style={{fontSize:13.5,color:UI.teal,cursor:"pointer",textAlign:"center",fontWeight:600,padding:"6px 0"}}
+          >
+            {fr_?"← Revenir à la connexion":"← Back to sign in"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 
   if(!authLoading&&(!user||loginOnly))return(
     <div style={{position:"fixed",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:UI.canvas,overflow:"hidden",boxSizing:"border-box"}}>
