@@ -128,6 +128,13 @@ const privacyTexts = {
 // 02/09/2026 sans réintroduire la monnaie : droits acquis maintenus, aux
 // conditions en vigueur au moment de l'achat. Toute évolution des mécanismes
 // réels (quotas, extension requise, republication) doit être répercutée ici.
+// Article 3 étendu le 16/09/2026 (demande Nico) : mandat de l'utilisateur,
+// liste de plateformes ÉVOLUTIVE (ajout, accès anticipé, suspension à la
+// demande d'une plateforme), sanctions d'une plateforme à la charge de
+// l'utilisateur, garantie contre les réclamations de tiers. ⛔ Aucune
+// plateforme en chantier n'est nommée ici : un hôte non livré ne s'annonce
+// pas sur une page légale publique (règle du 15/09) — la formulation
+// générique couvre toute plateforme ajoutée plus tard.
 const cgvTexts = {
   fr: [
     { t: "Article 1 — Services payants et forfaits", ps: [
@@ -138,8 +145,11 @@ const cgvTexts = {
       "La publication, la republication et le retrait automatique d'annonces sur les plateformes tierces sont exécutés par l'extension Chrome FillSell, installée sur un ordinateur (navigateur Chrome ou compatible). Sans extension installée et active, ces actions ne peuvent pas aboutir — y compris lorsqu'elles sont commandées depuis l'application mobile. Avant d'engager une action, FillSell vérifie qu'une extension a été associée au compte ; à défaut, l'action est refusée.",
     ]},
     { t: "Article 3 — Plateformes tierces", ps: [
-      "FillSell n'est affilié à aucune des plateformes sur lesquelles les annonces sont publiées (Vinted, Leboncoin, eBay, Beebs) et n'est ni approuvé ni sponsorisé par elles. L'extension exécute les actions dans le navigateur de l'utilisateur, au sein de ses propres sessions, comme il le ferait manuellement ; l'utilisateur reste seul titulaire de ses comptes sur ces plateformes et seul responsable du respect de leurs conditions d'utilisation.",
-      "FillSell ne garantit ni la disponibilité, ni le maintien, ni le résultat de la publication sur ces plateformes : celles-ci peuvent modifier leur fonctionnement ou restreindre l'accès automatisé à tout moment et sans préavis, ce qui peut interrompre tout ou partie du service sans que la responsabilité de FillSell puisse être engagée.",
+      "FillSell n'est affilié à aucune des plateformes sur lesquelles les annonces sont publiées (à ce jour Vinted, Leboncoin, eBay et Beebs, ainsi que toute plateforme que FillSell viendrait à prendre en charge) et n'est ni approuvé, ni sponsorisé, ni partenaire de celles-ci. Leurs noms et marques appartiennent à leurs titulaires respectifs et ne sont cités qu'à des fins d'identification. L'extension exécute les actions dans le navigateur de l'utilisateur, au sein de ses propres sessions, comme il le ferait manuellement ; l'utilisateur reste seul titulaire de ses comptes sur ces plateformes et seul responsable du respect de leurs conditions d'utilisation.",
+      "Chaque publication, republication ou retrait d'annonce est déclenché par une instruction de l'utilisateur, FillSell agissant comme un outil technique en son nom et pour son compte. L'utilisateur est l'auteur et le seul responsable des annonces et des actions ainsi exécutées sur ces plateformes : contenu, photos, prix, exactitude, licéité, et conformité aux règles de la plateforme concernée. FillSell n'est pas partie aux ventes conclues entre l'utilisateur et ses acheteurs et n'intervient ni dans leur exécution, ni dans les paiements, ni dans les litiges qui en découlent.",
+      "La liste des plateformes prises en charge peut évoluer. FillSell peut ajouter une plateforme, la proposer d'abord à un nombre restreint d'utilisateurs (accès anticipé, sans garantie de fonctionnement), ou suspendre et retirer une plateforme à tout moment — notamment à la demande de celle-ci, en cas de modification de ses conditions ou de son fonctionnement — sans que cela constitue une modification substantielle du service ni n'ouvre droit à indemnisation. Les annonces déjà publiées restent sous le contrôle de l'utilisateur sur la plateforme concernée.",
+      "FillSell ne garantit ni la disponibilité, ni le maintien, ni le résultat de la publication sur ces plateformes : celles-ci peuvent modifier leur fonctionnement ou restreindre l'accès automatisé à tout moment et sans préavis, ce qui peut interrompre tout ou partie du service sans que la responsabilité de FillSell puisse être engagée. Une plateforme tierce peut également restreindre, suspendre ou fermer le compte d'un utilisateur dont elle estime l'usage contraire à ses conditions ; l'utilisateur en assume seul les conséquences.",
+      "L'utilisateur garantit FillSell contre toute réclamation, action ou demande d'un tiers — y compris d'une plateforme tierce — résultant de son utilisation du service, des contenus qu'il publie ou du non-respect des conditions d'une plateforme, et l'indemnisera des frais et condamnations qui en résulteraient, dans les limites permises par la loi.",
     ]},
     { t: "Article 4 — Republication d'annonces", ps: [
       "La republication d'une annonce Vinted consiste à supprimer l'annonce existante puis à en créer une nouvelle. Il s'agit d'une annonce distincte : les vues, les favoris et l'ancienneté de l'annonce d'origine sont définitivement perdus. Cet effet est irréversible : une annonce supprimée ne peut pas être restaurée par FillSell. Si une interruption survient après la suppression, l'opération est reprise à l'étape de recréation de l'annonce, le cas échéant avec l'intervention de l'utilisateur, sans que l'aboutissement de la recréation puisse être garanti ; l'annonce d'origine n'est en aucun cas rétablie. En demandant une republication — manuelle ou automatisée — l'utilisateur reconnaît et accepte cet effet.",
@@ -162,8 +172,11 @@ const cgvTexts = {
       "Publishing, reposting and automated withdrawal of listings on third-party marketplaces are performed by the FillSell Chrome extension, installed on a computer (Chrome or compatible browser). Without the extension installed and active, these actions cannot be completed — including when they are requested from the mobile app. Before starting an action, FillSell verifies that an extension has been linked to the account; failing that, the action is refused.",
     ]},
     { t: "Article 3 — Third-party marketplaces", ps: [
-      "FillSell is not affiliated with any of the marketplaces on which listings are published (Vinted, Leboncoin, eBay, Beebs), and is neither endorsed nor sponsored by them. The extension performs actions in the user's browser, within the user's own sessions, as the user would manually; the user remains the sole holder of their accounts on those marketplaces and solely responsible for complying with their terms of service.",
-      "FillSell does not guarantee the availability, continuity or outcome of publishing on these marketplaces: they may change how they operate or restrict automated access at any time and without notice, which may interrupt all or part of the service without FillSell incurring any liability.",
+      "FillSell is not affiliated with any of the marketplaces on which listings are published (currently Vinted, Leboncoin, eBay and Beebs, as well as any marketplace FillSell may support in the future), and is neither endorsed, sponsored by nor partnered with them. Their names and trademarks belong to their respective owners and are cited for identification purposes only. The extension performs actions in the user's browser, within the user's own sessions, as the user would manually; the user remains the sole holder of their accounts on those marketplaces and solely responsible for complying with their terms of service.",
+      "Every publication, reposting or withdrawal of a listing is triggered by an instruction from the user, FillSell acting as a technical tool in the user's name and on the user's behalf. The user is the author of, and solely responsible for, the listings and actions thus performed on these marketplaces: content, photos, price, accuracy, lawfulness, and compliance with the rules of the marketplace concerned. FillSell is not a party to the sales concluded between the user and their buyers and is involved neither in their performance, nor in payments, nor in any resulting disputes.",
+      "The list of supported marketplaces may change. FillSell may add a marketplace, offer it first to a limited number of users (early access, with no guarantee of operation), or suspend and withdraw a marketplace at any time — in particular at that marketplace's request, or if its terms or operation change — without this constituting a material change to the service or giving rise to any compensation. Listings already published remain under the user's control on the marketplace concerned.",
+      "FillSell does not guarantee the availability, continuity or outcome of publishing on these marketplaces: they may change how they operate or restrict automated access at any time and without notice, which may interrupt all or part of the service without FillSell incurring any liability. A third-party marketplace may also restrict, suspend or close the account of a user whose use it deems contrary to its terms; the user alone bears the consequences.",
+      "The user shall hold FillSell harmless against any claim, action or demand from a third party — including a third-party marketplace — arising from their use of the service, the content they publish or their non-compliance with a marketplace's terms, and shall indemnify FillSell for the resulting costs and awards, to the extent permitted by law.",
     ]},
     { t: "Article 4 — Reposting of listings", ps: [
       "Reposting a Vinted listing consists of deleting the existing listing and creating a new one. The new listing is a distinct listing: the views, favourites and seniority of the original listing are permanently lost. This effect is irreversible: a deleted listing cannot be restored by FillSell. If an interruption occurs after deletion, the operation is resumed at the re-creation step, where applicable with the user's involvement, and successful re-creation cannot be guaranteed; the original listing is in no event reinstated. By requesting a repost — whether manual or automated — the user acknowledges and accepts this effect.",
@@ -282,8 +295,10 @@ export default function Legal() {
             {/* Date à remettre à jour À CHAQUE modification d'une clause —
                 elle était restée à « août 2026 » alors que les CGV ont été
                 réécrites le 03/09 (bascule sans monnaie interne) puis le 04/09
-                (article 3.3, fin de la limite d'articles). */}
-            {en ? 'Last updated: September 4, 2026' : 'Dernière mise à jour : 4 septembre 2026'}
+                (article 3.3, fin de la limite d'articles), puis le 16/09
+                (CGU 3.9 + CGV article 3 : plateformes tierces, mandat de
+                l'utilisateur, évolution de la liste, garantie). */}
+            {en ? 'Last updated: September 16, 2026' : 'Dernière mise à jour : 16 septembre 2026'}
           </p>
         </div>
 
@@ -410,6 +425,18 @@ export default function Legal() {
             {en
               ? 'All elements of the website (logo, design, code, content) are the exclusive property of FillSell. Any reproduction, even partial, without prior written authorization is prohibited.'
               : "L'ensemble des éléments du site (logo, design, code, contenus) sont la propriété exclusive de FillSell. Toute reproduction, même partielle, sans autorisation écrite préalable est interdite."}
+          </p>
+
+          {/* 3.9 ajouté le 16/09/2026 : la responsabilité de l'utilisateur sur
+              les plateformes tierces vivait seulement dans les CGV (article 3),
+              donc hors du champ d'un utilisateur du plan gratuit. Formulation
+              GÉNÉRIQUE, sans nommer de plateforme en chantier (règle du 15/09 :
+              un hôte de chantier ne s'annonce pas sur une page légale). */}
+          <p className="legal-p">
+            <span className="legal-strong">{en ? '3.9 Third-party marketplaces and liability' : '3.9 Plateformes tierces et responsabilité'}</span><br />
+            {en
+              ? "FillSell is a technical tool: it prepares listings and, when the user so instructs, publishes, reposts or withdraws them on third-party marketplaces, in the user's browser and within the user's own sessions. The user remains the sole holder of their marketplace accounts, the sole author of the listings and actions performed there, and solely responsible for complying with each marketplace's terms. FillSell is not affiliated with any of these marketplaces, is not a party to the sales concluded on them, and cannot be held liable for their decisions (restriction, suspension or closure of an account, removal of a listing, change of operation). The list of supported marketplaces may change at any time, including by withdrawing one. These rules are detailed in Article 3 of the Terms of Sale below, which apply to every user, free or paying."
+              : "FillSell est un outil technique : il prépare des annonces et, sur instruction de l'utilisateur, les publie, les republie ou les retire sur des plateformes tierces, dans le navigateur de l'utilisateur et au sein de ses propres sessions. L'utilisateur reste seul titulaire de ses comptes sur ces plateformes, seul auteur des annonces et des actions qui y sont exécutées, et seul responsable du respect des conditions de chacune d'elles. FillSell n'est affilié à aucune de ces plateformes, n'est pas partie aux ventes qui y sont conclues, et ne saurait être tenu responsable de leurs décisions (restriction, suspension ou fermeture d'un compte, retrait d'une annonce, changement de fonctionnement). La liste des plateformes prises en charge peut évoluer à tout moment, y compris par le retrait de l'une d'elles. Ces règles sont détaillées à l'article 3 des CGV ci-dessous, qui s'appliquent à tout utilisateur, gratuit ou payant."}
           </p>
         </Section>
 
@@ -605,8 +632,8 @@ export default function Legal() {
         <Section icon="🧩" title={en ? '8. Chrome Extension (cross-post)' : '8. Extension Chrome (cross-post)'}>
           <p className="legal-p">
             {en
-              ? <>FillSell offers an optional <span className="legal-strong">Chrome extension</span> that publishes the listings you generate in FillSell onto the marketplaces where you sell (Vinted, Leboncoin, eBay, Beebs), checks their status, and can withdraw them after you confirm a sale (see 8.4). Installing and using it is entirely optional.</>
-              : <>FillSell propose une <span className="legal-strong">extension Chrome</span> optionnelle qui publie les annonces générées dans FillSell sur les plateformes de vente (Vinted, Leboncoin, eBay, Beebs), vérifie leur statut et peut les retirer après confirmation d'une vente (voir 8.4). Son installation et son utilisation sont entièrement facultatives.</>}
+              ? <>FillSell offers an optional <span className="legal-strong">Chrome extension</span> that publishes the listings you generate in FillSell onto the marketplaces where you sell (currently Vinted, Leboncoin, eBay and Beebs — the list of access requested below is authoritative), checks their status, and can withdraw them after you confirm a sale (see 8.4). Installing and using it is entirely optional. Every action it performs is triggered by you and executed in your own browser and sessions (see Article 3 of the Terms of Sale).</>
+              : <>FillSell propose une <span className="legal-strong">extension Chrome</span> optionnelle qui publie les annonces générées dans FillSell sur les plateformes de vente (à ce jour Vinted, Leboncoin, eBay et Beebs — la liste des accès demandés ci-dessous fait foi), vérifie leur statut et peut les retirer après confirmation d'une vente (voir 8.4). Son installation et son utilisation sont entièrement facultatives. Chaque action qu'elle exécute est déclenchée par vous, dans votre navigateur et vos propres sessions (voir l'article 3 des CGV).</>}
           </p>
 
           <p className="legal-p" style={{ marginTop: 12 }}><span className="legal-strong">{en ? '8.1 Access requested and purpose' : '8.1 Accès demandés et finalités'}</span></p>
