@@ -12,7 +12,7 @@ import { track } from './analytics/analytics';
 import { poserSourceSurProfil } from './utils/acquisition';
 // ⚠️ PAS track() : celui-ci n'écrit que dans le dataLayer GTM. Les gestes
 // irréversibles (retrait, suppression) vont en BASE — cf. journalRetraits.js.
-import { logRetrait, CHEMINS_RETRAIT } from './utils/journalRetraits';
+import { logRetrait, logSuppressionArticle, CHEMINS_RETRAIT } from './utils/journalRetraits';
 import { pixelInscription } from './utils/metaPixel';
 import { useNavigate, useSearchParams } from "react-router-dom";
 const isNative = Capacitor.isNativePlatform();
@@ -4331,12 +4331,25 @@ export default function App({ loginOnly = false }){
     // précisément ce qui manquait le 13/09 : savoir que des ARTICLES avaient
     // été supprimés. `vente` dit lequel des deux boutons de la modale a été
     // pris, la question s'était posée pendant l'enquête.
+    // ── DEUX COMPTEURS DEPUIS LE 16/09 ──────────────────────────────────────
+    // L'ATTRITION DU STOCK, toujours : un article supprimé compte, même s'il
+    // n'était nulle part. LE RETRAIT D'ANNONCES, seulement s'il y en a eu :
+    // `logRetrait` ne pose plus rien à zéro annonce. Un article publié sur 3
+    // plateformes émet donc les DEUX lignes ; un brouillon jamais publié, une
+    // seule — et sous un nom qui ne promet pas un retrait qui n'a pas eu lieu.
+    const extraJournal={vente:alsoDeleteSale?'supprimee':'conservee',publications_annulees:p.aAnnuler?.length??0};
+    logSuppressionArticle(user.id,{
+      chemin:CHEMINS_RETRAIT.SUPPRESSION_ARTICLE,
+      articleId:item.id,
+      nAnnonces:armes.length,
+      extra:extraJournal,
+    });
     logRetrait(user.id,CHEMINS_RETRAIT.SUPPRESSION_ARTICLE,{
       plateformes:armes.map(j=>j.platform),
       nAnnonces:armes.length,
       nArticles:1,
       articleId:item.id,
-      extra:{vente:alsoDeleteSale?'supprimee':'conservee',publications_annulees:p.aAnnuler?.length??0},
+      extra:extraJournal,
     });
     await fetchAll(user.id);
   }
