@@ -3426,7 +3426,49 @@ export default function App({ loginOnly = false }){
   const invested=useMemo(()=>totalInvesti(items),[items]);
   const stockVal=useMemo(()=>totalInvesti(stock),[stock]);
   const stockSansPrixAchat=useMemo(()=>nbSansPrixAchat(stock),[stock]);
-  const stockQty=useMemo(()=>stock.reduce((a,i)=>a+(i.quantite||1),0),[stock]);
+  // ── LE BANDEAU NE COMPTE PLUS LES BROUILLONS (2026-09-16) ─────────────────
+  // « Tant que l'utilisateur n'a rien fait dessus, ce n'est pas un article de
+  // son stock » : StockTab les sort déjà de la LISTE depuis le 15/09
+  // (stockFiltre), mais le NOMBRE du bandeau les comptait encore — l'écran
+  // annonçait « 12 art. » au-dessus d'une liste de 9. C'est la limite assumée
+  // en commentaire dans StockTab, levée ici.
+  // ⛔ LA VALEUR EN EUROS NE BOUGE PAS. `stockVal` reste totalInvesti(stock)
+  //    à l'identique, ligne du dessus : un brouillon a prix_achat NULL, il
+  //    n'entre donc déjà dans aucun total investi (VIDE ≠ ZÉRO, 03/08). Elle
+  //    était juste, elle le reste.
+  // ⛔ ON NE CACHE RIEN. Les brouillons gardent leur bloc et leur pastille dans
+  //    la rangée d'actions : on les retire d'un compteur, pas de l'écran.
+  // MÊME RÈGLE QU'EN AVAL, ses deux moitiés comprises (src/utils/brouillon.js) :
+  // `brouillon = true` ET AUCUN JOB. Le filet « un job existe ⇒ EN LIGNE » est
+  // relu ici aussi, parce que l'écriture du drapeau est best-effort et qu'un
+  // état affiché ne doit jamais dépendre d'une seule écriture.
+  // ⚠️ DÉCLARÉ ICI, AVANT stockQty qui le lit (règle É5 / TDZ) : un état lu au
+  //    rendu — y compris dans un tableau de dépendances — doit vivre avant tout
+  //    ce qui le lit. C'est ce qui a produit l'écran blanc de `modeBrouillons`.
+  const [idsBrouillons,setIdsBrouillons]=useState(()=>new Set());
+  useEffect(()=>{
+    if(!user?.id){setIdsBrouillons(new Set());return undefined;}
+    let vivant=true;
+    (async()=>{
+      // Index partiel fiches_annonce_brouillon_idx — jamais de balayage.
+      const {data,error}=await supabase.from('fiches_annonce')
+        .select('inventaire_id').eq('user_id',user.id).eq('brouillon',true).limit(200);
+      if(!vivant)return;
+      // Échec de lecture : on garde le compteur d'avant, jamais un nombre inventé.
+      if(error||!Array.isArray(data)){if(error)console.warn('[brouillons] compteur non ajusté :',error.message);return;}
+      const ids=data.map(d=>d.inventaire_id).filter(v=>v!=null);
+      if(!ids.length){setIdsBrouillons(new Set());return;}
+      const {data:avecJob}=await supabase.from('cross_post_jobs')
+        .select('inventaire_id').eq('user_id',user.id).in('inventaire_id',ids);
+      if(!vivant)return;
+      const enLigne=new Set((avecJob??[]).map(j=>String(j.inventaire_id)));
+      setIdsBrouillons(new Set(ids.map(String).filter(id=>!enLigne.has(id))));
+    })();
+    return()=>{vivant=false;};
+  },[user?.id,items]);
+  const stockQty=useMemo(
+    ()=>stock.reduce((a,i)=>a+(idsBrouillons.has(String(i.id))?0:(i.quantite||1)),0),
+    [stock,idsBrouillons]);
   const soldQty=useMemo(()=>sold.reduce((a,i)=>a+(i.quantite||1),0),[sold]);
   const recovered=sales.reduce((a,s)=>a+s.sell,0);
 
