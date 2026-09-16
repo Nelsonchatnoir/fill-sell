@@ -590,7 +590,13 @@ serve(async (req) => {
         if (s && typeof s === "object") {
           const parPf = (s["checked_at_par_plateforme"] ?? {}) as Record<string, unknown>;
           const mortes = new Map<string, { observeeLe: number; fraiche: boolean }>();
-          for (const pf of ["vinted", "leboncoin", "ebay", "beebs"]) {
+          // `opla` ajoutée au lot C (2026-09-16). STRICTEMENT INERTE tant
+          // qu'Opla est fermée : la boucle ne retient que les plateformes dont
+          // extension_sessions dit explicitement `false`, et la sonde Opla ne
+          // rend jamais `false` sans permission d'hôte (elle ne part même pas).
+          // Sans cette entrée, le jour de l'ouverture, une session Opla morte
+          // brûlerait les 5 tentatives de chaque job au lieu d'en retenir un.
+          for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla"]) {
             if (s[pf] !== false) continue; // null = inconnu, true = vivante : jamais retenu
             const observeeLe = Date.parse(String(parPf[pf] ?? s["checked_at"] ?? ""));
             // Observation sans horodatage lisible : on ne retient pas sur une
@@ -2371,7 +2377,7 @@ serve(async (req) => {
             .from("cross_post_jobs")
             .select("id, platform")
             .eq("inventaire_id", tete.inventaire_id)
-            .in("platform", ["vinted", "leboncoin", "ebay", "beebs"])
+            .in("platform", ["vinted", "leboncoin", "ebay", "beebs", "opla"])
             .eq("action", "publish")
             .in("status", ["pending", "processing", "needs_user"]);
           if (!vivErr) {
@@ -2379,7 +2385,7 @@ serve(async (req) => {
             const enCours = new Set(
               (vivants ?? []).filter((v) => !servis.has(String(v.id))).map((v) => String(v.platform)),
             );
-            for (const pf of ["vinted", "leboncoin", "ebay", "beebs"]) {
+            for (const pf of ["vinted", "leboncoin", "ebay", "beebs", "opla"]) {
               if (enCours.has(pf)) enFile[pf] = true;
             }
           } else {

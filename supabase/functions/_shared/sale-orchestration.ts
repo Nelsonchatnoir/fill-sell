@@ -33,6 +33,10 @@ export interface SaleOrchestration {
 
 const PLATFORM_LABELS: Record<string, string> = {
   vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", vestiaire: "Vestiaire",
+  // `opla` ajoutée au lot C : sans elle, une vente détectée sur Opla dirait
+  // « Vendue sur opla » — le code brut, dans un email et un bandeau lus par
+  // l'utilisateur. Pur libellé, aucune logique.
+  opla: "Opla",
 };
 
 // priceOverride (2026-07-12) : prix de vente RÉEL, quand on le connaît mieux que

@@ -36,7 +36,8 @@ import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archive
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
 import { useFondFige } from '../utils/modale';
 import {
-  PLATEFORMES_STOCK, LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
+  PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR,
+  LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
   filtrerStock, trierStock, TRIS_STOCK, libelleTri, pastillesEtat, etatPlateformes,
 } from '../utils/stockFiltres';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
@@ -742,7 +743,12 @@ function listeDeChoixExploitable(vals) {
 }
 
 const NU_T = { border:"#E7E3D8", chip:"#F2F0E9", ink:"#10201B", mute:"#8A8578" };
-const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects", beebs:"beebsAspects", ebay:"ebayAspects" };
+// ⚠️ MIROIR EXACT de NU_CHANNEL_BY_PLATFORM (chrome-extension/background.js).
+// Les deux doivent dire la même chose : c'est l'app qui choisit où atterrit la
+// réponse d'un needs_user, et c'est le background qui surveille cette clé pour
+// couper les boucles. Désaligner les deux, c'est surveiller une clé que
+// personne n'écrit. `opla` ajoutée au lot C, des DEUX côtés dans le même commit.
+const NU_CHANNEL_BY_PLATFORM = { vinted:"vintedAspects", leboncoin:"lbcAspects", beebs:"beebsAspects", ebay:"ebayAspects", opla:"oplaAspects" };
 
 // ── LA MINI-CARTE D'UN LOGO QUI APPELLE UNE ACTION (2026-09-08) ──────────────
 // UNE seule forme : un carré teinté, un contour, le glyphe posé dessus. Le
@@ -1257,6 +1263,12 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
 // computeRemovalInfo vit dans utils/publicationState.js depuis le 2026-07-25
 // (S7) : le stepper en a besoin aussi, et l'importer depuis StockTab aurait
 // créé un cycle (StockTab importe déjà ListingPreviewScreen).
+// ⛔ RESTE À QUATRE, et c'est volontaire. Cette popup rend UNE LIGNE PAR ENTRÉE,
+// publiée ou non (c'est tout son intérêt : un blocage Beebs y apparaît même sans
+// annonce). Y mettre Opla en dur afficherait donc « Opla — pas publiée ici » à
+// TOUS les utilisateurs, pour une plateforme fermée. Les plateformes pas encore
+// ouvertes arrivent par la prop `plateformesAVenir`, déjà filtrée par
+// profiles.plateformes_visibles — même mécanisme que PLATFORMS_A_VENIR au stepper.
 const RM_PLATFORMS = ["vinted", "leboncoin", "beebs", "ebay"];
 
 // ── listing_url manquant : transitoire ou définitif ? (2026-07-27) ───────────
@@ -1562,7 +1574,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
 // Bénéfice décisif : elle liste les QUATRE plateformes même quand l'annonce n'y
 // est pas publiée. Un blocage Beebs y apparaît donc toujours — là où le logo
 // sur la photo, lui, n'existe que pour les plateformes en ligne.
-function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer }) {
+function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer, plateformesAVenir = [] }) {
   useFermetureEchap(onClose);
   const [confirming, setConfirming] = useState(null);
   const [errMsg, setErrMsg] = useState(null);
@@ -1595,7 +1607,7 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
             : "Each removal deletes the listing on that platform only — the others are untouched."}
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {RM_PLATFORMS.map(p => {
+          {[...RM_PLATFORMS, ...plateformesAVenir].map(p => {
             const label = PLATFORM_LABELS[p] || p;
             const isPublished = published.includes(p);
             const state = removalState[p];
@@ -5561,6 +5573,15 @@ const StockTab = memo(function StockTab({
     [stockFiltre, jobsByInventaire, lang],
   );
   const comptesStock = useMemo(() => compteursStock(stockFiltre, indexEtat), [stockFiltre, indexEtat]);
+  // ⛔ Les chips de diffusion ne servent PAS PLATEFORMES_STOCK (qui porte
+  // désormais opla) : `pasEncore.opla` vaut TOUT le stock de tout le monde, et
+  // le chip « Pas encore sur Opla · 214 » partirait chez chaque utilisateur en
+  // promettant une publication qui n'existe pas. On affiche les quatre
+  // ouvertes, plus celles que CE compte porte dans plateformes_visibles.
+  const plateformesStockAffichees = useMemo(
+    () => [...PLATEFORMES_STOCK_OUVERTES, ...PLATEFORMES_STOCK_A_VENIR.filter(p => plateformesVisibles.includes(p))],
+    [plateformesVisibles],
+  );
 
   // Quand un filtre OU un tri est actif, on repart de la liste COMPLÈTE
   // (stockFiltre) et on recoupe ici : filtrer ou trier APRÈS le slice de
@@ -7400,7 +7421,7 @@ const StockTab = memo(function StockTab({
                   {lang==='fr'?'En ligne sur':'Live on'}
                 </div>
                 <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:3}}>
-                  {PLATEFORMES_STOCK.filter(p=>comptesStock.enLigne[p]>0).map(p=>{
+                  {plateformesStockAffichees.filter(p=>comptesStock.enLigne[p]>0).map(p=>{
                     const actif=filtreDiffusion?.mode==='en_ligne'&&filtreDiffusion.platform===p;
                     return (
                       <button key={`el-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'en_ligne',platform:p});setMenuTri(false);setShowAllStock(false);}}
@@ -7414,7 +7435,7 @@ const StockTab = memo(function StockTab({
                   {lang==='fr'?'Pas encore sur':'Not yet on'}
                 </div>
                 <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:3}}>
-                  {PLATEFORMES_STOCK.filter(p=>comptesStock.pasEncore[p]>0).map(p=>{
+                  {plateformesStockAffichees.filter(p=>comptesStock.pasEncore[p]>0).map(p=>{
                     const actif=filtreDiffusion?.mode==='pas_encore'&&filtreDiffusion.platform===p;
                     return (
                       <button key={`pe-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'pas_encore',platform:p});setMenuTri(false);setShowAllStock(false);}}
@@ -9687,6 +9708,7 @@ const StockTab = memo(function StockTab({
           onCompleter={(job)=>setNeedsUserJob(job)}
           onRelancer={(job,mode)=>relancerJobEchoue(job,mode)}
           onRemove={armRemoveJob}
+          plateformesAVenir={PLATEFORMES_STOCK_A_VENIR.filter(p=>plateformesVisibles.includes(p))}
         />
       )}
       {jobStatusItem&&(

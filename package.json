@@ -28,7 +28,8 @@
     "selftest:description-beebs": "node scripts/description-beebs-selftest.mjs",
     "selftest:sync-veille": "node scripts/sync-veille-selftest.mjs",
     "selftest:conseils-coherents": "node scripts/conseils-coherents-selftest.mjs",
-    "selftest:opla-veilleur": "node scripts/opla-veilleur-selftest.mjs"
+    "selftest:opla-veilleur": "node scripts/opla-veilleur-selftest.mjs",
+    "selftest:opla-cablage": "node scripts/opla-cablage-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

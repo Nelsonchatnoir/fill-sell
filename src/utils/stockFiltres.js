@@ -38,10 +38,27 @@
 import { computeRemovalInfo, vintedPresenceArticle } from './publicationState';
 import { natureNeedsUser, republicationAnnonceDisparue } from './shared';
 
-export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay'];
+// Les plateformes que le stock sait TRAITER — c'est une liste de DONNÉES : elle
+// décide quels jobs entrent dans l'état d'un article (indexEtatStock) et quels
+// compteurs existent. Opla y entre au lot C : sans elle, un job opla serait
+// invisible de tout l'écran Stock le jour de l'ouverture.
+// ⛔ Inerte pour qui n'a pas de job opla : aucun compteur ne bouge, aucune
+// ligne n'apparaît. L'AFFICHAGE, lui, passe par la liste d'en dessous.
+export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'];
+
+// ⛔ CE QUI S'AFFICHE PAR DÉFAUT RESTE À QUATRE, et ce n'est pas un oubli.
+// `compteursStock` compte `pasEncore[p]` = les articles qui ne sont PAS sur p :
+// pour Opla, c'est TOUT LE STOCK de tout le monde. Servir cette liste aux chips
+// de diffusion ferait donc apparaître « Pas encore sur Opla · 214 » chez chaque
+// utilisateur, en promettant une publication qui n'existe pas — la fuite exacte
+// que LENS_PLATFORMS a déjà failli produire. Opla ne s'affiche qu'aux comptes
+// qui la portent dans profiles.plateformes_visibles (même mécanisme que
+// PLATFORMS_A_VENIR côté stepper).
+export const PLATEFORMES_STOCK_OUVERTES = ['vinted', 'leboncoin', 'beebs', 'ebay'];
+export const PLATEFORMES_STOCK_A_VENIR = ['opla'];
 
 export const LIBELLE_PLATEFORME = {
-  vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay',
+  vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla',
 };
 
 // ── Le champ qui manque, dit en français ────────────────────────────────────

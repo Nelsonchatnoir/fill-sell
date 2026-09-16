@@ -1709,6 +1709,9 @@ const BOUCLE_NEEDS_USER_MAX = 4;
 // personne n'écrit — et ne se déclencherait jamais.
 const NU_CHANNEL_BY_PLATFORM = {
   vinted: "vintedAspects", leboncoin: "lbcAspects", beebs: "beebsAspects", ebay: "ebayAspects",
+  // `opla` ajoutée au lot C, dans le MÊME commit que son miroir de StockTab.jsx :
+  // ces deux tables ne se désalignent que quand on en touche une seule.
+  opla: "oplaAspects",
 };
 
 // Cible d'écriture de la réponse, calculée comme StockTab.jsx la calcule.
@@ -8949,6 +8952,7 @@ const SESSION_PROBE_INTERVALS_MS = {
   leboncoin: 60 * 60 * 1000,
   ebay: 60 * 60 * 1000,
   beebs: 60 * 60 * 1000,
+  opla: 60 * 60 * 1000, // lot C — même cadence que les trois autres non-Vinted
 };
 const SESSION_PROBE_INTERVAL_MS = SESSION_PROBE_INTERVALS_MS.vinted;
 const intervalleSonde = (pf) => SESSION_PROBE_INTERVALS_MS[pf] ?? SESSION_PROBE_INTERVAL_MS;
@@ -9111,12 +9115,66 @@ async function arbitrerSessionEbay(result) {
   };
 }
 
-async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay", "beebs"]) {
+// ── SONDE DE SESSION OPLA (lot C, 2026-09-16) ──────────────────────────────
+// Signaux MESURÉS le 16/09 sur la vraie session de Nico, pas déduits :
+//     GET /api/public/me   avec session  → 200 {"user":{…}}
+//                          sans session  → 401 {"message":"Unauthorized"}
+// ⛔ La PAGE de dépôt ne sert à rien ici : /sell/create rend 200 avec ET sans
+//    session (SPA, redirection côté client) — le piège Beebs, mesuré identique.
+//
+// ⚠️ LE 401 N'EST PAS PRIS POUR ARGENT COMPTANT, et c'est la leçon Vinted
+// appliquée d'avance : là-bas un access_token périmé rend 401 alors que la
+// session VIT (seule la page sait la rafraîchir), et ce 401 pris pour une
+// déconnexion a produit le faux bandeau du 30/07. Opla pose un marqueur
+// JS-lisible, `opla_has_session`, qu'on lit par chrome.cookies (permission déjà
+// au manifest) :
+//     401 SANS le marqueur  → false  (ni jeton, ni marqueur : déconnexion nette)
+//     401 AVEC le marqueur  → null   (jeton à rafraîchir : on n'accuse pas)
+//     200 avec user.id      → true
+//     tout le reste         → null
+//
+// ⚠️ CE QUI RESTE À VÉRIFIER LE JOUR DE L'OUVERTURE, dit franchement : (a) je
+// n'ai PAS pu mesurer ce fetch depuis le service worker — la 0.6.40 qui tourne
+// chez Nico n'a pas la permission d'hôte opla.co. Si Opla rejette le worker en
+// 429 comme il rejette curl, la sonde rendra null : indéterminé, jamais un faux
+// verdict, donc jamais un job retenu à tort. (b) Je n'ai pas vérifié que
+// `opla_has_session` DISPARAÎT à la déconnexion — le tester aurait déconnecté
+// Nico d'Opla. C'est pour ça que le marqueur ne sert qu'à REFUSER de conclure,
+// jamais à conclure tout seul.
+async function sonderSessionOpla() {
+  // ⛔ PAS UNE REQUÊTE CHEZ QUI NE PEUT PAS L'ÉMETTRE. Le paquet CWS ne porte
+  // pas la permission d'hôte opla.co (elle est retirée avant chaque
+  // empaquetage) : la sonde y échouerait de toute façon, mais elle coûterait
+  // une requête réseau par heure à TOUT le parc pour rendre null. On demande
+  // donc au navigateur si la permission est là — le seul test qui distingue
+  // exactement le build qui peut sonder de celui qui ne peut pas, et qui se
+  // corrigera tout seul le jour où opla.co partira dans un paquet.
+  try {
+    const autorise = await chrome.permissions.contains({ origins: ["https://www.opla.co/*"] });
+    if (!autorise) return { etat: null, http: null };
+  } catch { /* API indisponible : on tente, l'échec retombera en null */ }
+  let marqueur = null;
+  try {
+    marqueur = await chrome.cookies.get({ url: "https://www.opla.co/", name: "opla_has_session" });
+  } catch { /* cookies illisibles : marqueur inconnu, on reste prudent */ }
+  const r = await fetch("https://www.opla.co/api/public/me", {
+    credentials: "include", redirect: "follow", headers: { Accept: "application/json" },
+  });
+  if (r.ok) {
+    let id = null;
+    try { id = (await r.json())?.user?.id ?? null; } catch { /* corps illisible */ }
+    return { etat: id ? true : null, http: r.status };
+  }
+  if (r.status === 401) return { etat: marqueur ? null : false, http: r.status };
+  return { etat: null, http: r.status };
+}
+
+async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay", "beebs", "opla"]) {
   const probe = async (fn) => { try { return await fn(); } catch { return { etat: null, http: null }; } };
   // Plateforme non demandée = NON MESURÉE : null/null, jamais une valeur
   // recopiée (2026-09-08). C'est ecrireExtensionSessions qui fusionne.
   const sonde = (pf, fn) => (plateformes.includes(pf) ? probe(fn) : Promise.resolve({ etat: null, http: null }));
-  const [vinted, leboncoin, ebay, beebs] = await Promise.all([
+  const [vinted, leboncoin, ebay, beebs, opla] = await Promise.all([
     sonde("vinted", async () => {
       const r = await fetch("https://www.vinted.fr/api/v2/users/current", {
         headers: { Accept: "application/json" }, credentials: "include",
@@ -9171,6 +9229,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
       // quasiment jamais false (null = indéterminé, par conception).
       return { etat: /\/(login|signin|connexion)|\/auth(\/|$)/i.test(u.pathname) ? false : null, http: r.status };
     }),
+    sonde("opla", sonderSessionOpla),
   ]);
   const maintenant = new Date().toISOString();
   const parPlateforme = {};
@@ -9181,7 +9240,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     // quand : les lecteurs (popup, app) jugent la fraîcheur PAR plateforme.
     sondees: plateformes.slice(),
     checked_at_par_plateforme: parPlateforme,
-    vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat,
+    vinted: vinted.etat, leboncoin: leboncoin.etat, ebay: ebay.etat, beebs: beebs.etat, opla: opla.etat,
     // Boutique Vinted connectée (multi-boutiques, 2026-09-03) — null quand la
     // sonde n'a pas pu la lire (401 ambigu compris). L'app l'affiche telle
     // quelle, jamais un repli sur une identité mémorisée.
@@ -9189,7 +9248,7 @@ async function probePlatformSessions(plateformes = ["vinted", "leboncoin", "ebay
     // Statut HTTP BRUT du relevé, par plateforme (traçabilité 2026-07-30) —
     // c'est lui qui dit si un null vient d'un 401 (token à rafraîchir), d'un
     // 403 (challenge) ou d'un échec réseau (null).
-    http: { vinted: vinted.http, leboncoin: leboncoin.http, ebay: ebay.http, beebs: beebs.http },
+    http: { vinted: vinted.http, leboncoin: leboncoin.http, ebay: ebay.http, beebs: beebs.http, opla: opla.http },
   };
 }
 
@@ -9265,7 +9324,11 @@ async function ecrireExtensionSessions(accessToken, sub, releve, previous) {
   });
 }
 
-async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "leboncoin", "ebay", "beebs"], motif = "poll", forcer = false } = {}) {
+// `opla` dans la liste par défaut (lot C) : c'est ce qui fait que l'attente de
+// session fonctionnera le jour de l'ouverture, sans qu'il faille y repenser.
+// Elle ne coûte rien au parc : sonderSessionOpla rend null SANS requête tant que
+// la permission d'hôte opla.co n'est pas dans le paquet.
+async function reportPlatformSessions(accessToken, { plateformes = ["vinted", "leboncoin", "ebay", "beebs", "opla"], motif = "poll", forcer = false } = {}) {
   // Throttle PERSISTÉ, par plateforme et à la cadence de CHAQUE plateforme
   // (cf. en-tête de SESSION_PROBE_INTERVALS_MS).
   // `forcer` : le bouton « Vérifier » du popup passe outre — c'est un geste
