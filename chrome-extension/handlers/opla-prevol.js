@@ -50,11 +50,11 @@
   const OPLA_PHOTOS_MAX = 20;            // ✅ mesuré : 22 posées → 20 retenues EN SILENCE
   const OPLA_PHOTOS_MIN = 1;             // ✅ « Une image est requise au minimum. »
 
-  // ⚠️ DÉCISION, PAS UNE OBSERVATION. Opla n'annonce aucun prix plancher et
-  // accepte 0,50 €. Ce plancher est à NOUS : il existe pour qu'une erreur de
-  // parsing (centimes pris pour des euros, virgule perdue) ne parte pas en
-  // ligne. Le 14/09 une annonce de test est partie à 0,50 € faute de cette
-  // borne. Valeur à confirmer par Nico.
+  // ✅ DÉCISION DE NICO, PRISE LE 2026-09-16 : le plancher Opla est 1,00 €.
+  // Ce n'est pas une observation — Opla n'annonce aucun plancher et accepte
+  // 0,50 € (une annonce de test y est partie le 14/09, faute de cette borne).
+  // C'est NOTRE garde contre l'erreur de parsing : centimes pris pour des
+  // euros, virgule perdue. La valeur n'est plus « à confirmer ».
   const OPLA_PRIX_MIN_CENTIMES = 100; // 1,00 €
 
   // ── ✅ SEUIL DE PROFIL VÉRIFIÉ — mesuré au lot A (2026-09-16) ─────────────
@@ -66,11 +66,17 @@
   // Le lot 2 avait attribué ce 403 à la TRANSITION draft → available : c'était
   // faux, il ne tient qu'au prix (docs/OPLA_VENTE.md § 4).
   //
-  // ⛔ Ce n'est PAS un refus de pré-vol, et c'est délibéré : le seuil ne joue
-  // que pour un profil NON vérifié, et le pré-vol est pur — il ne sait pas si
-  // CE vendeur l'est. Refuser ici punirait les profils vérifiés pour une règle
-  // qui ne les concerne pas. On avertit, et c'est le serveur qui tranche (le
-  // handler traduit son 403 en question à l'utilisateur, jamais en « HTTP 403 »).
+  // ✅ DÉCISION DE NICO (2026-09-16) : c'est un REFUS DE PRÉ-VOL, au même titre
+  // que le plafond de 1 000 €. Le lot A en avait fait un simple avertissement,
+  // au motif que le seuil ne joue que pour un profil NON vérifié et que le
+  // pré-vol, étant pur, ne sait pas si CE vendeur l'est ; Nico a tranché
+  // l'inverse, et c'est appliqué tel quel. Conséquence assumée, écrite ici pour
+  // qu'elle ne se redécouvre pas : un vendeur au profil VÉRIFIÉ ne pourra pas
+  // publier au-dessus de 300 € sur Opla tant que le pré-vol ne saura pas lire
+  // son statut. Le jour où ça gênera, le correctif est de lui passer
+  // `profilVerifie`, pas de relâcher la borne.
+  // Ce qui reste vrai, et qui motive le refus : l'envoi coûte le montage des
+  // photos AVANT le POST — un 403 les gaspille toutes.
   const OPLA_SEUIL_PROFIL_VERIFIE_CENTIMES = 30000; // 300,00 €
 
   const MOTIFS = Object.freeze({
@@ -100,7 +106,7 @@
     PRIX_ABSENT: "opla_prix_absent",
     PRIX_TROP_HAUT: "opla_prix_trop_haut",
     PRIX_TROP_BAS: "opla_prix_trop_bas",
-    PRIX_PROFIL_VERIFIE: "opla_prix_exige_profil_verifie", // avertissement, jamais un refus
+    PRIX_PROFIL_VERIFIE: "opla_prix_exige_profil_verifie", // REFUS (décision Nico 16/09)
     TITRE_ABSENT: "opla_titre_absent",
     PHOTOS_ABSENTES: "opla_photos_absentes",
     PHOTOS_TROP_NOMBREUSES: "opla_photos_trop_nombreuses",
@@ -110,7 +116,13 @@
   // énumère lui-même dans son refus de schéma.
   const OPLA_ETATS = Object.freeze(["new-with-tags", "new", "like-new", "good", "fair"]);
 
-  const refus = (motif, message, champ) => ({ ok: false, motif, message, champ });
+  // `options` = ce que l'utilisateur peut CHOISIR pour débloquer, sous la forme
+  // [{code,title}]. Absentes quand il n'y a rien à proposer (prix, marque,
+  // photos : l'utilisateur corrige, il ne choisit pas dans une liste).
+  const refus = (motif, message, champ, options) => ({
+    ok: false, motif, message, champ,
+    ...(Array.isArray(options) && options.length ? { options } : {}),
+  });
 
   /**
    * Pré-vol COMPLET. Pur : aucune requête, aucun DOM.
@@ -154,14 +166,31 @@
     }
 
     // ── 3. CATÉGORIE — la garde qui n'existe que chez nous ──────────────────
+    // ⛔ CHAQUE REFUS DE CATÉGORIE PART AVEC SES OPTIONS — celles du NIVEAU QUI
+    //    A ÉCHOUÉ, jamais les racines. C'est `ref.optionsNiveauEchoue`, calculé
+    //    sur l'arbre LIVE que le handler vient de charger. Un référentiel qui
+    //    ne l'expose pas (selftests historiques) rend simplement [] : le refus
+    //    reste exact, il est seulement moins aidant.
+    //    Sans ça on rejouerait le défaut Blaf69 du 16/09 : proposer les 8
+    //    racines à quelqu'un dont la racine était déjà la bonne, c'est lui
+    //    faire refaire le même choix pour rebuter au même endroit.
+    const optionsDe = (c) => (typeof ref.optionsNiveauEchoue === "function"
+      ? ref.optionsNiveauEchoue(c, pf.oplaCategoryPath ?? job.categoryPath ?? [])
+      : []);
     const code = pf.oplaCategoryCode;
-    if (!code) return refus(MOTIFS.CATEGORIE_ABSENTE, "Aucune catégorie Opla n'a été résolue pour cet article.", "category");
+    if (!code) {
+      return refus(
+        MOTIFS.CATEGORIE_ABSENTE,
+        "Aucune catégorie Opla n'a été résolue pour cet article.",
+        "category", optionsDe(""),
+      );
+    }
     if (!ref.noeuds.has(code)) {
       return refus(
         MOTIFS.CATEGORIE_INCONNUE,
         `La catégorie Opla « ${code} » n'existe pas dans l'arbre. ` +
         `Opla l'accepterait en 200 et l'annonce serait invisible : on refuse.`,
-        "category",
+        "category", optionsDe(code),
       );
     }
     if (!ref.feuilles.has(code)) {
@@ -169,7 +198,7 @@
         MOTIFS.CATEGORIE_PAS_UNE_FEUILLE,
         `« ${code} » est un nœud intermédiaire de l'arbre Opla, pas une feuille. ` +
         `Seules les feuilles sont déposables.`,
-        "category",
+        "category", optionsDe(code),
       );
     }
 
@@ -177,11 +206,21 @@
     // ⛔ jamais « ce code existe-t-il dans la liste plate ? » : 7 codes sont
     //    partagés entre deux grilles (cf. bandeau).
     const grille = ref.grillePour(code);
-    const taille = pf.taille ? String(pf.taille) : null;
+    // `oplaSizeChoice` PRIME : c'est la taille que l'utilisateur a cochée dans
+    // la grille de CETTE feuille, au needs_user précédent. Elle prime sur
+    // `taille` (la valeur de l'inventaire, celle qui vient d'échouer) — sans
+    // quoi on lui reposerait indéfiniment la même question.
+    const taille = pf.oplaSizeChoice ? String(pf.oplaSizeChoice)
+      : (pf.taille ? String(pf.taille) : null);
     let tailleRetenue = taille;
     if (grille && grille.length) {
+      // La grille de CETTE feuille part en options : c'est la liste exacte, ni
+      // l'union des 150 entrées (qui accepterait « 90C » sur un t-shirt), ni
+      // une grille déduite de la branche (elle ne l'est pas — BELTS est en G1
+      // quand le reste des accessoires femme est en G0).
+      const optionsTaille = grille.map((t) => ({ code: t, title: t }));
       if (!taille) {
-        return refus(MOTIFS.TAILLE_REQUISE, `La catégorie « ${code} » exige une taille.`, "size");
+        return refus(MOTIFS.TAILLE_REQUISE, `La catégorie « ${code} » exige une taille.`, "size", optionsTaille);
       }
       if (grille.indexOf(taille) === -1) {
         return refus(
@@ -189,7 +228,7 @@
           `La taille « ${taille} » n'appartient pas à la grille de « ${code} » ` +
           `(${grille.length} valeurs : ${grille.slice(0, 6).join(", ")}…). ` +
           `Opla l'accepterait en 200 : on refuse.`,
-          "size",
+          "size", optionsTaille,
         );
       }
     } else if (taille) {
@@ -241,14 +280,16 @@
         "price",
       );
     }
-    // Au-dessus de 300 €, Opla exigera un profil vérifié (403). On ne refuse
-    // pas — on le TRACE, pour que le 403 qui suivra soit lisible d'un coup
-    // d'œil dans la trace du job au lieu d'avoir l'air d'une panne.
+    // Au-dessus de 300 €, Opla exige un profil vérifié et répond 403 — APRÈS
+    // que les photos soient montées. On refuse donc AVANT l'envoi, comme pour
+    // le plafond de 1 000 €, avec le seuil et les deux issues NOMMÉS.
     if (centimes > OPLA_SEUIL_PROFIL_VERIFIE_CENTIMES) {
-      avertissements.push(
-        `${MOTIFS.PRIX_PROFIL_VERIFIE}: ${(centimes / 100).toFixed(2)} € au-dessus du seuil ` +
-        `de ${OPLA_SEUIL_PROFIL_VERIFIE_CENTIMES / 100} € — Opla refusera (403) si le profil du ` +
-        `vendeur n'est pas vérifié`,
+      return refus(
+        MOTIFS.PRIX_PROFIL_VERIFIE,
+        `Opla exige un profil vérifié au-dessus de ${OPLA_SEUIL_PROFIL_VERIFIE_CENTIMES / 100} € ; ` +
+        `cette annonce est à ${(centimes / 100).toFixed(2)} €. Baisser le prix, ou faire vérifier ` +
+        `le profil sur Opla. Rien n'a été envoyé.`,
+        "price",
       );
     }
 

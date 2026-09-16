@@ -36,7 +36,13 @@ const ALLOWED_ORIGINS = [
   "https://fillsell.app", "capacitor://localhost", "https://localhost", "http://localhost:5173",
 ];
 
-const PLATEFORMES = ["vinted", "leboncoin", "beebs", "ebay"] as const;
+// `opla` ajoutée le 2026-09-16, et SEULEMENT maintenant : cette liste est un
+// type, et l'y mettre plus tôt aurait câblé vers rien — l'app n'avait pas
+// d'arbre Opla à ratisser, donc jamais de candidates à faire trancher. Elle en
+// a un depuis src/utils/arbres/oplaFeuilles.js (886 feuilles relevées).
+// ⛔ Rien d'autre ne change ici : cette fonction ne connaît toujours aucun
+//    arbre, elle arbitre DANS la liste que l'appelant lui envoie.
+const PLATEFORMES = ["vinted", "leboncoin", "beebs", "ebay", "opla"] as const;
 type Plateforme = typeof PLATEFORMES[number];
 
 interface Candidat { chemin: string[]; id?: string | null; source?: string }

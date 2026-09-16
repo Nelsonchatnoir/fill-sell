@@ -911,7 +911,24 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
     // ⚠️ MÊME ORDRE que categoryKeyOf (background.js:4061) : une clé calculée
     // différemment ne retrouverait tout simplement jamais la ligne écrite.
     const chemin = pf.categoryPath ?? pf.beebsCategoryPath ?? pf.lbcCategoryPath ?? null;
-    const categoryKey = Array.isArray(chemin) ? chemin.join(" > ") : null;
+    // ── OPLA : la clé est un CODE, pas un chemin de libellés (2026-09-16) ────
+    // Les quatre autres clés sont des chemins joints par " > " — fragiles par
+    // nature : la plateforme renomme un niveau et la ligne ne se retrouve plus.
+    // Opla, elle, numérote ses catégories par des codes stables
+    // (« SUMMER_DRESSES »), qui sont ce que son API attend de toute façon. On
+    // les emploie tels quels, et on traduit le champ : le needs_user Opla
+    // s'appelle oplaCategoryChoice / oplaSizeChoice, le catalogue range ces
+    // options sous category / size — comme pour les quatre autres.
+    // ⚠️ REPLI, jamais le chemin nominal : normalement le handler joint les
+    // options du NIVEAU QUI A ÉCHOUÉ au job (il a l'arbre live sous la main).
+    // On n'arrive ici que s'il n'a pas pu — et on sert alors les enfants de la
+    // catégorie du job, à défaut les racines. Moins précis, jamais faux.
+    const OPLA_CHAMP = { oplaCategoryChoice: "category", oplaSizeChoice: "size" };
+    const estOpla = job.platform === "opla";
+    const champOpla = estOpla ? OPLA_CHAMP[String(f?.field_key ?? "")] : null;
+    const categoryKey = estOpla
+      ? (champOpla ? (String(pf.oplaCategoryCode ?? "").trim() || "ROOT") : null)
+      : (Array.isArray(chemin) ? chemin.join(" > ") : null);
     if (job.platform === "ebay" || !f || (Array.isArray(f.allowed_values) && f.allowed_values.length) || !categoryKey) return;
     // ── Listes DÉPENDANTES Maison & Jardin d'abord (2026-09-08) ─────────────
     // Le catalogue plat porte la liste du DERNIER passage : decoration_type y
@@ -930,10 +947,16 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
           .select("allowed_values")
           .eq("platform", job.platform)
           .eq("category_key", categoryKey.slice(0, 300))
-          .eq("field_key", String(f.field_key).slice(0, 120))
+          .eq("field_key", (champOpla ?? String(f.field_key)).slice(0, 120))
           .maybeSingle();
+        // Opla range ses options en {code,title} : c'est le TITRE qu'on montre
+        // (l'utilisateur ne choisit pas « SUMMER_DRESSES »), et c'est lui que le
+        // handler retraduit en code au passage suivant. Les quatre autres
+        // portent des chaînes nues, inchangées.
         const vals = Array.isArray(data?.allowed_values)
-          ? data.allowed_values.filter(Boolean).map(String)
+          ? data.allowed_values
+            .map((v) => (v && typeof v === "object" ? v.title ?? v.code : v))
+            .filter(Boolean).map(String)
           : [];
         if (alive && vals.length) setCatalogueAllowed(vals);
       } catch { /* best-effort : on retombe sur le message « valeurs indisponibles » */ }

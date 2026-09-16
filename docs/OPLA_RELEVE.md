@@ -255,7 +255,18 @@ images:[ "<cle>" ]                   moderationStatus      status
 ## 7. Catalogue de catégories — relevé INTÉGRAL
 
 Source : `GET /api/public/config/articles`. Fichier : `docs/opla/categories.tsv`
-(1014 lignes, empreinte SHA-256 `d0ceda69abcf359e` **confrontée au live et identique**).
+(1014 lignes, empreinte SHA-256 **`6d284b5821c72ea7`**).
+
+> ⛔ **EMPREINTE CORRIGÉE LE 2026-09-16.** Cette ligne portait
+> `d0ceda69abcf359e`, et ce chiffre ne correspondait à **rien de
+> reproductible** : ni au fichier, ni au live, ni à aucune projection. Les
+> quatre empreintes du § 7.4, elles, étaient justes — d'où la confusion.
+> **La donnée, elle, était bonne** : le 16/09, l'arbre live a été rechargé,
+> réaplati dans la forme exacte du TSV, et son empreinte est ressortie
+> IDENTIQUE à celle du fichier sur disque. 1014 nœuds, 886 feuilles, 8 racines,
+> profondeur max 4 — inchangé depuis la phase 0.
+> Commande reproductible, la seule à employer désormais :
+> `sha256sum docs/opla/categories.tsv | cut -c1-16`
 
 | | |
 |---|---|
@@ -318,8 +329,17 @@ n'en reçoit qu'une.
 | **G4** | 70 | **1** | `TAILLE_UNIQUE, XS … XXL` + `75A … 115G` (bonnets) |
 
 Table complète : `docs/opla/categorie-grille.tsv` (886 lignes, empreinte
-`34db6508a83fd1d3` **confrontée au live et identique**).
-Définition des grilles : `docs/opla/grilles-tailles.tsv`.
+**`e24f8ec875ea8138`**). Définition des grilles :
+`docs/opla/grilles-tailles.tsv` (empreinte **`fdcafb7f3701602c`**).
+
+> ⛔ **EMPREINTE CORRIGÉE LE 2026-09-16**, même cas qu'au § 7 : la valeur
+> `34db6508a83fd1d3` écrite ici n'était reproductible par aucun calcul.
+> La donnée est bonne, et elle a été revérifiée **feuille par feuille** le
+> 16/09 : les 886 `?category=<CODE>` rejoués contre le live rendent
+> exactement la même attribution (projection `code+grille` identique des deux
+> côtés), et les **10 cas contre-intuitifs du § 7.3 sont tous reconfirmés**.
+> Répartition mesurée : G0 489 · G1 209 · G2 102 · G3 85 · G4 1.
+> Contrôle permanent : `node scripts/opla-catalogue-selftest.mjs` (§ 6).
 
 **La G4 n'a qu'une seule feuille : `BRAS` (Soutiens-gorge).** C'est elle qui explique les
 doublons : la grille lingerie redéclare `TAILLE_UNIQUE`/`XS…XXL` en tête de ses bonnets.

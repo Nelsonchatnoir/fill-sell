@@ -222,13 +222,59 @@ async function oplaChargerReferentiel() {
   if (!arbre.ok) throw new Error(`Arbre Opla indisponible (HTTP ${arbre.statut})`);
   const noeuds = new Set();
   const feuilles = new Set();
-  (function parcours(liste) {
+  // ── LA PARENTÉ, relevée en même temps (2026-09-16) ────────────────────────
+  // Elle ne coûte RIEN de plus (on parcourt déjà l'arbre) et c'est elle qui
+  // permet de proposer LE NIVEAU QUI A ÉCHOUÉ au lieu des 8 racines.
+  // Défaut observé le 16/09 sur Vinted (Blaf69, Achille Talon) : le job a buté
+  // sur la FEUILLE « Bandes dessinées… » et l'app a proposé les racines du
+  // catalogue. L'utilisateur aurait rechoisi « Livres et médias », déjà bon, et
+  // rebuté au même endroit. Une question qui ne peut pas débloquer coûte un
+  // geste ET la confiance.
+  const titres = new Map();
+  const parents = new Map();
+  const enfants = new Map(); // code parent ("" = racines) → [{code,title}]
+  (function parcours(liste, parent) {
     for (const n of liste || []) {
       noeuds.add(n.code);
-      if (n.categories && n.categories.length) parcours(n.categories);
+      titres.set(n.code, n.title);
+      parents.set(n.code, parent || null);
+      const cle = parent || "";
+      if (!enfants.has(cle)) enfants.set(cle, []);
+      enfants.get(cle).push({ code: n.code, title: n.title });
+      if (n.categories && n.categories.length) parcours(n.categories, n.code);
       else feuilles.add(n.code);
     }
-  })(arbre.corps.categories);
+  })(arbre.corps.categories, "");
+
+  const enfantsDe = (code) => enfants.get(String(code ?? "")) ?? [];
+
+  /**
+   * Les options à proposer quand la catégorie ne convient pas. MÊME RÈGLE que
+   * supabase/functions/_shared/opla-catalogue.ts (scripts/opla-catalogue-selftest.mjs
+   * vérifie que les deux répondent pareil) :
+   *   · nœud intermédiaire → ses PROPRES enfants (descendre d'un cran) ;
+   *   · feuille            → ses FRÈRES (le voisinage du choix qui n'a pas convenu) ;
+   *   · code inconnu       → on descend le chemin de libellés tant qu'il est
+   *     reconnu, et on propose les enfants du dernier nœud reconnu.
+   * Les racines ne sortent QUE si rien n'a été reconnu — le seul cas où elles
+   * sont la bonne réponse.
+   */
+  const optionsNiveauEchoue = (code, chemin) => {
+    const c = String(code ?? "").trim();
+    if (noeuds.has(c)) {
+      return feuilles.has(c) ? enfantsDe(parents.get(c) ?? "") : enfantsDe(c);
+    }
+    let ancre = "";
+    for (const segment of Array.isArray(chemin) ? chemin : []) {
+      const cible = String(segment ?? "").trim().toLowerCase();
+      if (!cible) break;
+      const suivant = enfantsDe(ancre).find((e) => String(e.title).trim().toLowerCase() === cible);
+      if (!suivant) break;
+      if (feuilles.has(suivant.code)) return enfantsDe(ancre); // c'est la feuille qui a échoué
+      ancre = suivant.code;
+    }
+    return enfantsDe(ancre);
+  };
 
   // Paramètres par feuille : `sizes` présent ⇔ la catégorie a un champ Taille.
   // Mémoïsé — une feuille par job, pas 886.
@@ -261,7 +307,10 @@ async function oplaChargerReferentiel() {
     cache.set(code, p);
     return p.tailles;
   };
-  return { noeuds, feuilles, grillePour, couleursPour, matieresPour, precharger };
+  return {
+    noeuds, feuilles, grillePour, couleursPour, matieresPour, precharger,
+    titres, enfantsDe, optionsNiveauEchoue,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -392,8 +441,30 @@ async function fillListingForm(job) {
   try {
     // 1. RÉFÉRENTIEL + préchargement de la feuille visée.
     oplaEtape("referentiel");
-    const code = String(job?.platform_fields?.oplaCategoryCode ?? "").trim();
     const ref = await oplaChargerReferentiel();
+    // ── LA RÉPONSE DE L'UTILISATEUR, CONSOMMÉE ICI (2026-09-16) ─────────────
+    // Le needs_user de catégorie écrit `platform_fields.oplaCategoryChoice` :
+    // un LIBELLÉ, celui que l'utilisateur a coché parmi les options du niveau
+    // qui avait échoué. On le retraduit en CODE — le POST Opla n'accepte que
+    // le code — en cherchant dans les options de CE NIVEAU, jamais dans tout
+    // l'arbre : deux branches portent le même libellé (« Vestes » existe sous
+    // WOMENS et sous MEN_PULLOVERS_SWEATERS), et prendre le premier venu
+    // rangerait l'annonce dans l'autre rayon, en 200, sans un mot.
+    // Un choix qui mène à un nœud intermédiaire laisse le job repasser au
+    // pré-vol : il redemandera, UN CRAN PLUS BAS, avec les bonnes options.
+    const choix = String(job?.platform_fields?.oplaCategoryChoice ?? "").trim();
+    let code = String(job?.platform_fields?.oplaCategoryCode ?? "").trim();
+    if (choix) {
+      const niveau = ref.optionsNiveauEchoue(code, job?.platform_fields?.oplaCategoryPath ?? job?.categoryPath ?? []);
+      const trouve = niveau.find((o) => String(o.title).trim().toLowerCase() === choix.toLowerCase());
+      if (trouve) {
+        oplaTracer(`categorie: choix utilisateur « ${choix} » → ${trouve.code} (niveau de ${niveau.length} options)`);
+        code = trouve.code;
+        job = { ...job, platform_fields: { ...(job.platform_fields ?? {}), oplaCategoryCode: code } };
+      } else {
+        oplaTracer(`categorie: choix utilisateur « ${choix} » ABSENT du niveau courant — ignoré, on redemandera`);
+      }
+    }
     if (code) await ref.precharger(code);
     oplaTracer(`referentiel: ${ref.feuilles.size} feuilles, categorie « ${code || "(absente)"} »`);
 
@@ -407,13 +478,33 @@ async function fillListingForm(job) {
     // scripts/content-scripts-selftest.mjs l'a refusé, et il avait raison.
     const verdict = globalThis.oplaPrevol(job, ref);
     if (!verdict.ok) {
-      oplaTracer(`prevol REFUSE: ${verdict.motif}`);
+      oplaTracer(`prevol REFUSE: ${verdict.motif}${verdict.options ? ` (${verdict.options.length} options proposées)` : ""}`);
+      // ── LA QUESTION TYPÉE (2026-09-16) ────────────────────────────────────
+      // Quand le pré-vol sait QUOI proposer, on ne rend pas un message à lire :
+      // on rend une LISTE À COCHER, au format du socle needs_user (celui de
+      // vinted.js « niveau introuvable »). `target.root: null` = la réponse
+      // s'écrit à la racine de platform_fields, là où le prochain passage la
+      // lit. Les libellés partent en allowed_values, le code reste à nous :
+      // l'utilisateur choisit dans SA langue, jamais dans des codes opaques.
+      const champNU = verdict.champ === "size"
+        ? { key: "oplaSizeChoice", label: "Taille Opla" }
+        : { key: "oplaCategoryChoice", label: "Catégorie Opla" };
+      const options = Array.isArray(verdict.options) ? verdict.options : [];
       return oplaSortie({
         success: false,
         needsUser: true,
         error: verdict.message ?? `Opla refuserait cette annonce : ${verdict.motif}. Rien n'a été envoyé.`,
         motif_prevol: verdict.motif,
         champ: verdict.champ ?? null,
+        ...(options.length ? {
+          needsUserField: {
+            field_key: champNU.key,
+            field_label: champNU.label,
+            allowed_values: options.map((o) => String(o.title ?? o.code)),
+            input_type: "selection_only",
+            target: { root: null, key: champNU.key },
+          },
+        } : {}),
         t0,
       });
     }

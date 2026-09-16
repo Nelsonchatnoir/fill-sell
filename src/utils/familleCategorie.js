@@ -87,6 +87,16 @@ const RACINES = {
     "Maison": "maison", "Électronique": "electronique", "Livres et médias": "loisirs",
     "Loisirs et collections": "loisirs", "Sport": "loisirs",
   },
+  // ── opla (2026-09-16) : les 8 racines relevées, telles quelles ────────────
+  // Sans cette entrée, familleDeChemin rend null sur TOUTE feuille Opla, et le
+  // garde-fou de famille devient PERMISSIF — exactement la classe de faute du
+  // 02/09. « Femmes », « Hommes » et « Enfants » restent hors table (comme
+  // chez Vinted) : ce sont des genres, pas des familles — c'est le niveau 2 qui
+  // dit mode / beauté, et le filtre de genre s'en charge déjà.
+  opla: {
+    "Culture et Loisirs": "loisirs", "Jeux et jouets": "loisirs", "Sport": "loisirs",
+    "Maison": "maison", "Fait main": "maison",
+  },
 };
 
 // Ce que chaque famille TOLÈRE en face (en plus d'elle-même).

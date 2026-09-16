@@ -62,6 +62,28 @@ function parseIndente(texte, { marqueurFeuille, tiret }) {
   return feuilles;
 }
 
+/**
+ * Opla : TSV « profondeur \t code \t titre \t parent \t feuille » (phase 0,
+ * revérifié contre le live le 2026-09-16). Le relevé DIT quelles lignes sont
+ * des feuilles — on ne le devine pas par la profondeur du voisin, comme chez
+ * Beebs : l'arbre Opla a des feuilles à TOUS les niveaux (0 à 4).
+ * ⚠️ L'`id` d'une feuille Opla est son CODE (« SUMMER_DRESSES »), pas un
+ * nombre : c'est lui que le POST de création attend dans `category`.
+ */
+function parseOplaTsv(texte) {
+  const feuilles = [];
+  const pile = [];
+  for (const l of texte.split(/\r?\n/).slice(1)) {
+    if (!l.trim()) continue;
+    const [prof, code, titre, , feuille] = l.split("\t");
+    const p = Number(prof);
+    pile.length = p;
+    pile[p] = titre;
+    if (feuille === "F") feuilles.push({ chemin: pile.slice(0, p + 1), id: code });
+  }
+  return feuilles;
+}
+
 /** Leboncoin : arbre à 2 niveaux décrit en markdown, « - Racine : A | B | C ». */
 function parseLeboncoin(texte) {
   const feuilles = [];
@@ -96,7 +118,13 @@ function moduleFeuilles(nom, feuilles, source) {
   };
   const compact = feuilles.map((f) => {
     const c = f.chemin.map(clef);
-    return f.id ? [c, Number(f.id)] : [c];
+    // ⚠️ L'id reste une CHAÎNE quand ce n'en est pas un nombre : eBay numérote
+    // ses catégories, Opla les nomme (« SUMMER_DRESSES »). `Number()` en dur
+    // rendait NaN, et le code de catégorie — la seule chose que le POST Opla
+    // attend — se perdait. La sortie des quatre autres ne bouge pas d'un octet :
+    // leurs ids sont numériques ou absents.
+    if (!f.id) return [c];
+    return [c, /^\d+$/.test(String(f.id)) ? Number(f.id) : String(f.id)];
   });
   const entete =
     `// ⚠️ FICHIER GÉNÉRÉ — ne pas éditer à la main.\n` +
@@ -122,6 +150,7 @@ const jeux = [
   ["vinted", parseIndente(lire("docs/vinted-catalog-tree.txt"), { marqueurFeuille: true, tiret: false }), "docs/vinted-catalog-tree.txt"],
   ["beebs", parseIndente(lire("docs/beebs-categories-raw.txt"), { marqueurFeuille: false, tiret: true }), "docs/beebs-categories-raw.txt"],
   ["leboncoin", parseLeboncoin(lire("docs/leboncoin-form-survey.md")), "docs/leboncoin-form-survey.md"],
+  ["opla", parseOplaTsv(lire("docs/opla/categories.tsv")), "docs/opla/categories.tsv"],
 ];
 
 let ko = 0;

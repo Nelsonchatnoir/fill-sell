@@ -35,6 +35,10 @@ export async function feuillesDe(plateforme) {
     case "ebay": mod = await import("./arbres/ebayFeuilles.js"); break;
     case "beebs": mod = await import("./arbres/beebsFeuilles.js"); break;
     case "leboncoin": mod = await import("./arbres/leboncoinFeuilles.js"); break;
+    // opla (2026-09-16) : 886 feuilles, `id` = le CODE Opla (« SUMMER_DRESSES »),
+    // pas un nombre — c'est lui que le POST de création attend. Chargé en
+    // import() dynamique comme les quatre autres : rien au démarrage de l'app.
+    case "opla": mod = await import("./arbres/oplaFeuilles.js"); break;
     default: return [];
   }
   const feuilles = mod?.FEUILLES ?? [];
