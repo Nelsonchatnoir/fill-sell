@@ -28,6 +28,10 @@ export interface SaleOrchestration {
   inventaireUpdated: boolean;
   siblingsCancelled: number;
   pendingRemoval: number;
+  // Retraits armés PAR L'ORCHESTRATION elle-même (2026-09-16) : dépôts Beebs
+  // encore en vérification, sans lien — le seul cas où l'utilisateur n'a
+  // aucun bandeau où cliquer. Compris dans pendingRemoval.
+  retraitsArmes: number;
   emailSent: boolean;
 }
 
@@ -61,7 +65,7 @@ export async function orchestrateSale(
 ): Promise<SaleOrchestration> {
   const none: SaleOrchestration = {
     ok: false, venteCreated: false, inventaireUpdated: false,
-    siblingsCancelled: 0, pendingRemoval: 0, emailSent: false,
+    siblingsCancelled: 0, pendingRemoval: 0, retraitsArmes: 0, emailSent: false,
   };
 
   const { data: job, error: jobErr } = await admin
@@ -228,10 +232,11 @@ export async function orchestrateSale(
   // ── 4. Frères : annulation TOTALE + marquage des annonces encore live ─────
   let siblingsCancelled = 0;
   let pendingRemoval = 0;
+  let retraitsArmes = 0;
   if (job.inventaire_id != null) {
     const { data: siblings } = await admin
       .from("cross_post_jobs")
-      .select("id, status, listing_url, platform_fields, platform")
+      .select("id, status, listing_url, platform_fields, platform, title")
       .eq("user_id", userId)
       .eq("inventaire_id", job.inventaire_id)
       // republish inclus (2026-08-09) : un frère republié encore en ligne est
@@ -240,7 +245,14 @@ export async function orchestrateSale(
       // vinted action='republish' resté 'published' après la vente LBC).
       .in("action", ["publish", "republish"])
       .neq("id", job.id)
-      .in("status", ["pending", "processing", "published"]);
+      // needs_user inclus (2026-09-16, GO Nico) : un frère qui ATTEND une
+      // réponse (catégorie eBay à confirmer, champ manquant) n'est ni en file
+      // ni en ligne — il était donc ignoré ici, survivait à la vente, et
+      // repartait à la première relance. Cas mesuré : sweat 1788797665293
+      // vendu sur Vinted le 07/09 22:53, frère eBay 89b51621 en needs_user
+      // depuis 18:18, relancé en lot le 10/09 → publié trois jours APRÈS la
+      // vente, encore en ligne le 16/09. Un article vendu n'attend plus rien.
+      .in("status", ["pending", "processing", "needs_user", "published"]);
 
     for (const sib of siblings ?? []) {
       // ⚠️ NE PLUS EXIGER listing_url (2026-07-22, cas réel : la montre G-Shock
@@ -286,6 +298,71 @@ export async function orchestrateSale(
       if (sibErr) { console.error(`[sale] Cancel sibling ${sib.id}:`, sibErr.message); continue; }
       siblingsCancelled++;
       if (wasLive) pendingRemoval++;
+      // ── BEEBS SANS LIEN : ON ARME LE RETRAIT NOUS-MÊMES (2026-09-16, GO Nico)
+      // Le dépôt reste 'published' (décision du 11/09, ci-dessus) — mais le
+      // bandeau de retrait de l'app ne lit que les frères 'cancelled' : ce
+      // dépôt-là n'y apparaissait jamais, personne n'armait rien, et le bloc
+      // « retrait Beebs sans lien » de get-pending-jobs (qui recopie le lien du
+      // dépôt sur le retrait dès qu'il arrive, ou le clôt au bout de 7 jours)
+      // n'avait AUCUN job à servir. Cas mesuré : ensemble de sport
+      // 1788463952919004 vendu sur Vinted le 15/09 08:02, dépôt Beebs 1d074570
+      // laissé 'published' + retrait_attend_lien, zéro retrait armé.
+      // C'est la seule exception à « le clic de l'utilisateur arme le
+      // retrait » : ici il n'a AUCUN endroit où cliquer. Même forme de job
+      // qu'armRemovals (removal_url_missing, aucun lien — jamais de ciblage
+      // par titre) ; retrait_attend_lien est le marqueur que get-pending-jobs
+      // lit. Idempotent : un retrait Beebs déjà actif sur l'article → rien.
+      if (beebsSansLien) {
+        try {
+          const { data: deja } = await admin.from("cross_post_jobs").select("id")
+            .eq("user_id", userId).eq("inventaire_id", job.inventaire_id)
+            .eq("platform", "beebs").eq("action", "delete")
+            .in("status", ["pending", "processing", "needs_user"]).limit(1);
+          if (!(deja ?? []).length) {
+            const armeLe = new Date().toISOString();
+            const { data: arme, error: armeErr } = await admin.from("cross_post_jobs").insert({
+              user_id: userId,
+              inventaire_id: job.inventaire_id,
+              platform: "beebs",
+              action: "delete",
+              status: "pending",
+              photo_option: "original",
+              title: sib.title ?? job.title ?? null,
+              listing_url: null,
+              platform_fields: {
+                removal_url_missing: true,
+                retrait_attend_lien: { depuis: armeLe, motif: "depot_beebs_en_verification_a_la_vente" },
+                arme_par: { chemin: "vente_beebs_sans_lien", job_vendu: job.id, depot: sib.id, le: armeLe },
+              },
+            }).select("id").maybeSingle();
+            if (armeErr) {
+              console.error(`[sale] retrait Beebs sans lien (dépôt ${sib.id}) non armé :`, armeErr.message);
+            } else {
+              retraitsArmes++;
+              // Le retrait existe : plus rien à proposer (même geste qu'armRemovals).
+              const pfDepot = {
+                ...((patch.platform_fields as Record<string, unknown>) ?? {}),
+                pending_removal: false,
+                retrait_arme: { job: arme?.id ?? null, le: armeLe },
+              };
+              await admin.from("cross_post_jobs").update({ platform_fields: pfDepot }).eq("id", sib.id);
+              // Journal d'audit (src/utils/journalRetraits.js) : un retrait armé
+              // sans geste utilisateur laisse sa ligne, sous son propre chemin.
+              const { error: jErr } = await admin.from("usage_logs").insert({
+                user_id: userId,
+                feature: "retrait_annonces",
+                metadata: {
+                  chemin: "vente_beebs_sans_lien", plateformes: ["beebs"], n_annonces: 1, n_articles: 1,
+                  article_id: String(job.inventaire_id), job_vendu: job.id,
+                },
+              });
+              if (jErr) console.warn("[sale] retrait_annonces non journalisé :", jErr.message);
+            }
+          }
+        } catch (e) {
+          console.error(`[sale] retrait Beebs sans lien (dépôt ${sib.id}) :`, e instanceof Error ? e.message : String(e));
+        }
+      }
     }
   }
 
@@ -307,9 +384,14 @@ export async function orchestrateSale(
       const ligneArgent = benefice === null
         ? `vendu ${prixVente.toFixed(0)}€. Ajoute son prix d'achat dans FillSell pour connaître ton bénéfice.`
         : `${benefice >= 0 ? "+" : ""}${benefice.toFixed(0)}€ de bénéfice.`;
-      const removalLine = pendingRemoval > 0
-        ? `\n\n${pendingRemoval} annonce${pendingRemoval > 1 ? "s" : ""} du même article ${pendingRemoval > 1 ? "sont" : "est"} encore en ligne sur d'autres plateformes — ouvre FillSell pour ${pendingRemoval > 1 ? "les" : "la"} retirer en un clic.`
-        : "";
+      // Les retraits armés ici même (Beebs sans lien) n'attendent aucun clic :
+      // on ne les compte pas dans l'invitation, on les annonce à part.
+      const aRetirerParClic = pendingRemoval - retraitsArmes;
+      const removalLine = (aRetirerParClic > 0
+        ? `\n\n${aRetirerParClic} annonce${aRetirerParClic > 1 ? "s" : ""} du même article ${aRetirerParClic > 1 ? "sont" : "est"} encore en ligne sur d'autres plateformes — ouvre FillSell pour ${aRetirerParClic > 1 ? "les" : "la"} retirer en un clic.`
+        : "") + (retraitsArmes > 0
+        ? "\n\nSon dépôt Beebs, encore en vérification, sera retiré automatiquement dès que Beebs l'aura mis en ligne."
+        : "");
       const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/email-tunnel`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-cron-secret": cronSecret },
@@ -330,7 +412,7 @@ export async function orchestrateSale(
 
   console.log(
     `[sale] job=${job.id} ${job.platform} → sold | vente=${venteCreated} inventaire=${inventaireUpdated} ` +
-    `frères annulés=${siblingsCancelled} à retirer=${pendingRemoval} email=${emailSent}`
+    `frères annulés=${siblingsCancelled} à retirer=${pendingRemoval} retraits armés=${retraitsArmes} email=${emailSent}`
   );
-  return { ok: true, venteCreated, inventaireUpdated, siblingsCancelled, pendingRemoval, emailSent };
+  return { ok: true, venteCreated, inventaireUpdated, siblingsCancelled, pendingRemoval, retraitsArmes, emailSent };
 }
