@@ -86,6 +86,9 @@ const cas = [
   ['prix a 0,50 € (l incident du 14/09)', avec({ price: 0.5 }), M.PRIX_TROP_BAS],
   ['prix a 1200 € (au-dessus du plafond Opla)', avec({ price: 1200 }), M.PRIX_TROP_HAUT],
   ['prix a 1000 € (pile au plafond) → passe', avec({ price: 1000 }), null],
+  // ✅ lot A : le seuil de profil vérifié (300 €) AVERTIT, il ne refuse JAMAIS —
+  // il ne joue que pour un profil non vérifié, que le pré-vol ne connaît pas.
+  ['prix a 500 € (au-dessus du seuil profil vérifié) → PASSE quand même', avec({ price: 500 }), null],
   ['prix a 0', avec({ price: 0 }), M.PRIX_ABSENT],
 
   // photos
@@ -144,6 +147,17 @@ const vSansGrille = oplaPrevol(avec({ platform_fields: { oplaCategoryCode: 'MAIS
 verif.push(['metadata.sizes ABSENT si la catégorie n a pas de grille', !vSansGrille.corps.metadata || !('sizes' in vSansGrille.corps.metadata)]);
 verif.push(['taille omise → AVERTISSEMENT, pas un silence',
   (vSansGrille.avertissements || []).some(a => String(a).includes(M.TAILLE_INATTENDUE))]);
+
+// ── SEUIL DE PROFIL VÉRIFIÉ (lot A, 2026-09-16) ──────────────────────────────
+// 403 phone_verification_required / high_value_listing / thresholdCents 30000.
+// Le pré-vol ne peut pas trancher (il ignore si CE vendeur est vérifié) : il
+// trace, pour que le 403 qui suivra soit lisible au lieu d'avoir l'air d'une panne.
+const vCher = oplaPrevol(avec({ price: 500 }), ref);
+verif.push(['au-dessus de 300 € → avertissement qui NOMME le seuil',
+  (vCher.avertissements || []).some(a => String(a).includes(M.PRIX_PROFIL_VERIFIE))]);
+const vPile = oplaPrevol(avec({ price: 300 }), ref);
+verif.push(['pile a 300 € → AUCUN avertissement (le refus est « plus de 300 € »)',
+  !(vPile.avertissements || []).some(a => String(a).includes(M.PRIX_PROFIL_VERIFIE))]);
 
 // ── COULEURS ET MATIÈRES — la garde ajoutée au lot 7 ─────────────────────────
 // Opla n'inspecte NI l'une NI l'autre : « Marine » partirait tel quel dans un

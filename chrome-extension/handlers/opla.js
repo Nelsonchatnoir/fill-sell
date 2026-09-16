@@ -492,6 +492,28 @@ async function fillListingForm(job) {
         (creation.statut === 201 ? " (201 SANS id exploitable — vérifier l'enveloppe de la réponse)" : "") +
         ` · corps: ${extrait}`
       );
+      // ── LE 403 DU PROFIL VÉRIFIÉ — mesuré au lot A (2026-09-16) ──────────
+      // Opla refuse toute annonce à plus de 300 € tant que le profil du vendeur
+      // n'est pas vérifié, et il le dit PROPREMENT : un code machine, le seuil
+      // en centimes, et un message français déjà actionnable. Le rendre en
+      // « Opla a refusé le dépôt (HTTP 403). » serait jeter tout ça pour dire à
+      // l'utilisateur un nombre qu'il ne peut pas interpréter, sur un problème
+      // qu'il peut résoudre seul (baisser le prix, ou vérifier son profil).
+      // C'est un needs_user : rien n'est cassé, il manque une décision humaine.
+      const refus = creation.corps && typeof creation.corps === "object" ? creation.corps : null;
+      if (creation.statut === 403 && refus?.error === "phone_verification_required") {
+        const seuil = Number.isFinite(refus.thresholdCents) ? ` (seuil : ${refus.thresholdCents / 100} €)` : "";
+        return oplaSortie({
+          success: false,
+          needsUser: true,
+          error: String(refus.message ?? "Opla exige un profil vérifié pour une annonce de ce prix.").trim() + seuil,
+          motif_prevol: "opla_profil_non_verifie",
+          champ: "price",
+          http: creation.statut,
+          reponse: extrait,
+          t0,
+        });
+      }
       return oplaSortie({
         success: false,
         error: `Opla a refusé le dépôt (HTTP ${creation.statut}).`,

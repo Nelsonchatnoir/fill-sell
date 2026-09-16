@@ -57,6 +57,22 @@
   // borne. Valeur à confirmer par Nico.
   const OPLA_PRIX_MIN_CENTIMES = 100; // 1,00 €
 
+  // ── ✅ SEUIL DE PROFIL VÉRIFIÉ — mesuré au lot A (2026-09-16) ─────────────
+  // Opla refuse en 403 toute annonce à PLUS de 300 €, création directe comme
+  // mise en ligne d'un brouillon, tant que le profil n'est pas vérifié :
+  //   403 {"error":"phone_verification_required","reason":"high_value_listing",
+  //        "thresholdCents":30000,
+  //        "message":"Seuls les articles à plus de 300 € demandent un profil vérifié. …"}
+  // Le lot 2 avait attribué ce 403 à la TRANSITION draft → available : c'était
+  // faux, il ne tient qu'au prix (docs/OPLA_VENTE.md § 4).
+  //
+  // ⛔ Ce n'est PAS un refus de pré-vol, et c'est délibéré : le seuil ne joue
+  // que pour un profil NON vérifié, et le pré-vol est pur — il ne sait pas si
+  // CE vendeur l'est. Refuser ici punirait les profils vérifiés pour une règle
+  // qui ne les concerne pas. On avertit, et c'est le serveur qui tranche (le
+  // handler traduit son 403 en question à l'utilisateur, jamais en « HTTP 403 »).
+  const OPLA_SEUIL_PROFIL_VERIFIE_CENTIMES = 30000; // 300,00 €
+
   const MOTIFS = Object.freeze({
     CATEGORIE_ABSENTE: "opla_categorie_absente",
     CATEGORIE_INCONNUE: "opla_categorie_inconnue",
@@ -84,6 +100,7 @@
     PRIX_ABSENT: "opla_prix_absent",
     PRIX_TROP_HAUT: "opla_prix_trop_haut",
     PRIX_TROP_BAS: "opla_prix_trop_bas",
+    PRIX_PROFIL_VERIFIE: "opla_prix_exige_profil_verifie", // avertissement, jamais un refus
     TITRE_ABSENT: "opla_titre_absent",
     PHOTOS_ABSENTES: "opla_photos_absentes",
     PHOTOS_TROP_NOMBREUSES: "opla_photos_trop_nombreuses",
@@ -224,6 +241,16 @@
         "price",
       );
     }
+    // Au-dessus de 300 €, Opla exigera un profil vérifié (403). On ne refuse
+    // pas — on le TRACE, pour que le 403 qui suivra soit lisible d'un coup
+    // d'œil dans la trace du job au lieu d'avoir l'air d'une panne.
+    if (centimes > OPLA_SEUIL_PROFIL_VERIFIE_CENTIMES) {
+      avertissements.push(
+        `${MOTIFS.PRIX_PROFIL_VERIFIE}: ${(centimes / 100).toFixed(2)} € au-dessus du seuil ` +
+        `de ${OPLA_SEUIL_PROFIL_VERIFIE_CENTIMES / 100} € — Opla refusera (403) si le profil du ` +
+        `vendeur n'est pas vérifié`,
+      );
+    }
 
     // ── 8. COULEURS ET MATIÈRES — la garde qui manquait (lot 7) ─────────────
     // Le pré-vol gardait la catégorie et la taille, et laissait passer
@@ -311,6 +338,7 @@
     OPLA_ETATS,
     OPLA_BORNES: Object.freeze({
       OPLA_PRIX_MAX_CENTIMES, OPLA_PRIX_MIN_CENTIMES,
+      OPLA_SEUIL_PROFIL_VERIFIE_CENTIMES,
       OPLA_TITRE_MAX, OPLA_DESCRIPTION_MAX,
       OPLA_PHOTOS_MAX, OPLA_PHOTOS_MIN,
     }),

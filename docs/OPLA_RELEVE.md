@@ -576,10 +576,10 @@ Liste franche, **remise à jour après le lot 1**. Rien de ce qui suit n'est dan
 | 9b | **Valeurs de refus de `moderationStatus`** | notre article a été approuvé ; `moderationReasons` est resté vide | déposer un article volontairement refusable — **à ne pas faire sans décision** |
 | ~~10~~ | ✅ **ATTEINTE au lot 2** par `ShowWindow(SW_MINIMIZE)` (§ 16.1) — **aucune divergence**. Reste non prouvé : l'onglet **ACTIF** d'une fenêtre réduite, faute de pouvoir activer mon onglet sans voler le focus (§ 16.2). | | |
 | 11 | **Bandeau de consentement à l'état vierge** | il faudrait purger `@cookie_consent`, donc modifier l'état de consentement de Nico | une session de test dédiée, ou son accord explicite |
-| ~~12~~ | ✅ **RÉPONDU au lot 2** (§ 16.6) : `PATCH {status:"available"}` rend **403 `phone_verification_required`**. La vérification du téléphone gouverne la **transition `draft → available`** — pas la création directe, qui est passée sans elle au lot 1. | | |
+| ~~12~~ | ⛔ **RÉPONSE DU LOT 2 FAUSSE, corrigée au lot A (2026-09-16, `docs/OPLA_VENTE.md` § 4).** Le 403 `phone_verification_required` ne porte PAS sur la transition `draft → available` : il porte sur le **PRIX** (`reason:"high_value_listing"`, `thresholdCents:30000`). **Au-dessus de 300 €, profil vérifié exigé** — création directe comprise. En dessous, la transition passe en 200 avec `phoneVerified:false`. | | |
 | 13 | **Glisser-déposer de photos** | non testé — l'`input[type=file]` a suffi | test dédié, faible intérêt |
 | 14 | **Endpoint exact de recherche de marque** | passe par **Algolia** (app `TGB5B13MIB`) | capturer le POST Algolia pendant une frappe |
-| ~~15~~ | ✅ **RÉPONDU au lot 2** (§ 16.6) : `PATCH {asDraft:false}` → **400 `empty_patch`** (`asDraft` est un drapeau de **création** seulement) ; `PATCH {status:"available"}` → **403 téléphone**. Aucune annonce n'a été remise en ligne. | | |
+| ~~15~~ | ✅ **RÉPONDU au lot 2** (§ 16.6) : `PATCH {asDraft:false}` → **400 `empty_patch`** (`asDraft` est un drapeau de **création** seulement). ⚠️ Le « 403 téléphone » qui suivait est un **effet du prix**, pas de la remise en ligne — cf. ligne 12 et `docs/OPLA_VENTE.md` § 4 ; une annonce a bel et bien été remise en ligne au lot A, à 299 €, avec `phoneVerified:false`. | | |
 | 16 | **Pourquoi « Enregistrer » ne déclenche rien** | reproduit sur deux articles, y compris en appelant le `onClick` React directement ; la cause est interne au composant | lecture du code non minifié, ou renoncement définitif au chemin DOM (cf. § 15.4) |
 | 17 | **Sort des photos orphelines** | les fichiers posés puis retirés avant publication restent sur `temp/` en S3 | sans objet pour nous, mais à ne pas aggraver : ne poser que ce qu'on publie |
 
@@ -1195,6 +1195,16 @@ accepterait **tous les trois**. C'est précisément le piège.
 
 ## 16.6 Les points restés ouverts — fermés, ou dits fermement
 
+> ⛔⛔ **L'ENSEIGNEMENT n° 2 CI-DESSOUS EST FAUX. Corrigé le 2026-09-16 (lot A) —
+> voir `docs/OPLA_VENTE.md` § 4.** En deux mots : le 403 ne vient PAS de la
+> transition `draft → available`, il vient du **PRIX**. Le corps complet, que ce
+> lot-ci n'avait pas lu, porte `reason:"high_value_listing"` et
+> `thresholdCents:30000` : **au-dessus de 300 €, Opla exige un profil vérifié**,
+> à la création COMME à la mise en ligne. En dessous, `PATCH {status:"available"}`
+> passe en 200 avec `phoneVerified:false` — mesuré le 16/09 sur le même compte,
+> le même article, à la même minute. Le reste de ce paragraphe (le § 1 sur
+> `asDraft`) tient.
+
 **`draft` → `available` : la réponse est NON, pas comme ça.** Mesuré :
 
 ```
@@ -1205,11 +1215,12 @@ PATCH {"status": "available"}   →  403  {"error":"phone_verification_required"
 Deux enseignements :
 1. **`asDraft` est un drapeau de CRÉATION seulement** — PATCH ne le connaît pas et
    considère le corps comme vide.
-2. **`phone_verification_required`** — voilà enfin ce que gouverne `phoneVerified:false`,
+2. ~~**`phone_verification_required`** — voilà enfin ce que gouverne `phoneVerified:false`,
    resté sans réponse depuis la phase 0. **Publier exige un téléphone vérifié.**
    ⚠️ Et pourtant l'annonce du lot 1 est partie `available` **sans** téléphone vérifié :
    la contrainte porte donc sur la **transition** `draft → available`, pas sur la
-   création directe. Différence à ne pas confondre — et à reconfirmer avant le lot 4.
+   création directe.~~ **FAUX — c'est le prix (> 300 €) qui l'exige, pas la
+   transition. Cf. l'encadré ci-dessus et `docs/OPLA_VENTE.md` § 4.**
 
 **`moderationStatus` en cas de refus : NON PROVOQUÉ, délibérément.** Il aurait fallu
 publier quelque chose de douteux. Tu avais dit de ne pas le faire sans décision : je ne
