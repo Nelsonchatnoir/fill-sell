@@ -19,6 +19,13 @@ workflows:
         script: |
           rm -rf node_modules/.vite
           npm run build
+          # Images de partage social (Open Graph) : utiles au WEB, inutiles dans
+          # un binaire. Elles pesaient 1,79 Mo sur 6,11 Mo de bundle — 29 % de
+          # ce que chaque nouvel arrivant télécharge, pour des balises <meta>
+          # que personne ne lit sur un téléphone. On ne touche PAS
+          # og-image-fillsell.png (240 Ko, référencée par index.html).
+          rm -f dist/og-image.png dist/og-image-en.png
+          echo "Poids du bundle embarqué : $(du -sh dist | cut -f1)"
       - name: Sync Capacitor
         script: npx cap sync ios
       - name: Restore App.entitlements
@@ -35,76 +42,35 @@ workflows:
           </dict>
           </plist>
           EOF
-      # ⚠️ CETTE ÉTAPE ÉCRASE le fichier que `npx cap sync ios` vient de
-      # générer. Tout plugin ajouté au projet DOIT donc être répercuté ICI À LA
-      # MAIN, sinon il est absent du binaire iOS alors que tout est correct
-      # côté sources — panne silencieuse, invisible en local.
-      # Le seul contenu qui justifie l'écrasement est AppleSignInPlugin
-      # (plugin natif maison, ios/App/App/AppleSignInPlugin.swift, que cap sync
-      # ne peut pas connaître).
-      # DETTE CONNUE (2026-07-29) : le bloc SplashScreen ci-dessous a dérivé de
-      # capacitor.config.ts (backgroundColor #1D9E75 ici, #10201B en source
-      # depuis le 26/07 ; launchAutoHide / launchFadeOutDuration /
-      # androidScaleType absents). NON corrigé volontairement — ce serait un
-      # changement visuel non demandé dans le build soumis ce soir. À traiter à
-      # part, idéalement en remplaçant cet écrasement par un patch jq du
-      # fichier généré.
-      - name: Fix capacitor.config.json
-        script: |
-          cat > ios/App/App/capacitor.config.json << 'EOF'
-          {
-            "appId": "app.fillsell.app",
-            "appName": "FillSell",
-            "webDir": "dist",
-            "server": { "androidScheme": "https" },
-            "plugins": {
-              "SplashScreen": {
-                "launchShowDuration": 2000,
-                "backgroundColor": "#1D9E75",
-                "showSpinner": false
-              },
-              "CapacitorUpdater": {
-                "autoUpdate": "atBackground",
-                "defaultChannel": "production",
-                "appReadyTimeout": 10000,
-                "resetWhenUpdate": true
-              }
-            },
-            "packageClassList": [
-              "AppPlugin",
-              "CAPBrowserPlugin",
-              "CAPCameraPlugin",
-              "CameraPlugin",
-              "SplashScreenPlugin",
-              "CapacitorUpdaterPlugin",
-              "NativePurchasesPlugin",
-              "AppleSignInPlugin"
-            ]
-          }
-          EOF
-      - name: Verify capacitor.config.json
-        script: |
-          echo "=== capacitor.config.json content ==="
-          cat ios/App/App/capacitor.config.json
-          # Garde (2026-07-29) : l'étape précédente écrase un fichier généré.
-          # Un plugin oublié dans packageClassList ne casse RIEN au build — il
-          # produit un binaire où le plugin n'existe pas, constat repoussé à
-          # TestFlight. On échoue ici, tout de suite, plutôt que là-bas.
-          for classe in CapacitorUpdaterPlugin NativePurchasesPlugin AppleSignInPlugin; do
-            if ! grep -q "\"$classe\"" ios/App/App/capacitor.config.json; then
-              echo "ERREUR : $classe absent de packageClassList — plugin non embarqué dans le binaire iOS"
-              exit 1
-            fi
-          done
-          echo "packageClassList : plugins critiques présents"
+      # ── capacitor.config.json : le fichier GÉNÉRÉ fait foi (2026-09-16) ──
+      # AVANT, cette étape RÉÉCRIVAIT le fichier entier avec un contenu figé
+      # dans ce YAML. Effet mesuré : capacitor.config.ts n'atteignait jamais le
+      # binaire iOS. Le bloc figé avait dérivé — backgroundColor #1D9E75 quand
+      # la source dit #10201B depuis le 26/07, et launchAutoHide,
+      # launchFadeOutDuration, androidScaleType absents. Le splash livré ne
+      # ressemblait pas au design system, et aucune relecture des sources ne
+      # pouvait le montrer.
+      # Le script n'AJOUTE plus que ce que cap sync ne peut pas deviner
+      # (AppleSignInPlugin, plugin natif maison) et échoue si un plugin
+      # critique manque — un plugin oublié ne casse pas le build, il produit un
+      # binaire muet dont on ne s'aperçoit qu'au TestFlight.
+      - name: Patch capacitor.config.json
+        script: node scripts/patch-ios-capacitor-config.mjs
       - name: Set build number
         script: |
-          # 2.3 = la soumission SUIVANTE (la review 2.2 est en cours sur ASC —
-          # ne pas lancer ce build avant sa validation). Aligné sur Android
-          # versionName 2.3 / versionCode 19.
+          # ⚠️ CE NUMÉRO EST FIGÉ ICI, ET IL ÉCRASE LE pbxproj. Il est resté à
+          # 2.3 du 27/07 au 16/09 : bumper MARKETING_VERSION dans Xcode ne
+          # servait à rien, agvtool le ramenait à 2.3 à chaque build. Toute
+          # montée de version passe par CETTE ligne, pas seulement par le
+          # pbxproj — sinon le binaire repart sous l'ancien numéro.
+          # 2.7 (16/09) : premier binaire depuis le 27/07. Aligné sur
+          # package.json 2.7.0 et Android versionName 2.7.0 / versionCode 29.
+          # L'alignement avec package.json n'est pas cosmétique : Capgo compare
+          # la version d'un bundle OTA à celle du natif installé et ne sert
+          # jamais un bundle numéroté plus bas.
           BUILD_NUMBER=$(date +%y%m%d%H%M)
           echo "Build number (timestamp): $BUILD_NUMBER"
-          cd ios/App && agvtool new-marketing-version 2.3 && agvtool new-version -all $BUILD_NUMBER
+          cd ios/App && agvtool new-marketing-version 2.7 && agvtool new-version -all $BUILD_NUMBER
       - name: Build IPA
         script: |
           xcode-project use-profiles
