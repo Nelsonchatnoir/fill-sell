@@ -4229,7 +4229,14 @@ const StockTab = memo(function StockTab({
   // du stock, il ne doit donc pas apparaître dans les deux endroits à la fois.
   // Le `stockFiltre` que lit tout le reste du composant est recalculé plus bas,
   // après la lecture des brouillons.
-  stock, sold, stockFiltre: stockFiltreComplet, soldFiltre, stockVisible, soldVisible, stockVal, stockQty, soldQty,
+  // ⛔ `stockVisible` N'EST PLUS DESTRUCTURÉ ICI (2026-09-16). App.jsx le passe
+  //    toujours, mais c'est `stockFiltre.slice(0,10)` pris AVANT le retrait des
+  //    brouillons : c'était la dernière porte par laquelle un brouillon entrait
+  //    dans la liste « En stock » — le 15/09 a renommé stockFiltre et oublié la
+  //    tranche qui en descend. Le composant recalcule la sienne juste sous le
+  //    stockFiltre local, sur la liste SANS brouillons. Ne jamais le
+  //    redestructurer : deux tranches, c'est deux listes qui divergent.
+  stock, sold, stockFiltre: stockFiltreComplet, soldFiltre, soldVisible, stockVal, stockQty, soldQty,
   // Voice/AI state
   voiceStep, setVoiceStep, voiceParsed, setVoiceParsed,
   voiceZoneResults, setVoiceZoneResults, voiceZoneOpen, setVoiceZoneOpen,
@@ -5195,10 +5202,11 @@ const StockTab = memo(function StockTab({
   // Point UNIQUE de filtrage : tout ce qui décrit la liste en aval — index
   // d'état, compteurs de filtres, tris, cartes — en dérive, donc rien ne peut
   // annoncer un nombre que l'écran n'applique pas.
-  // ⚠️ LIMITE ASSUMÉE : les totaux du bandeau (stockVal, stockQty) sont calculés
-  //    par App.jsx sur `items` et comptent encore les brouillons. Leur valeur
-  //    monétaire, elle, est juste : un brouillon a prix_achat NULL, donc il
-  //    n'entre dans aucun total investi (règle VIDE ≠ ZÉRO du 03/08).
+  // (LIMITE LEVÉE le 2026-09-16 par 9ef42fd : `stockQty` ne compte plus les
+  //  brouillons — App.jsx y relit la MÊME règle, `brouillon = true` ET aucun
+  //  job. `stockVal` n'a jamais eu besoin d'être touché : un brouillon a
+  //  prix_achat NULL, il n'entre donc dans aucun total investi — règle
+  //  VIDE ≠ ZÉRO du 03/08.)
   const idsBrouillons = useMemo(
     () => new Set(brouillons.map(b => String(b.item.id))),
     [brouillons],
@@ -5206,6 +5214,32 @@ const StockTab = memo(function StockTab({
   const stockFiltre = useMemo(
     () => (idsBrouillons.size ? stockFiltreComplet.filter(i => !idsBrouillons.has(String(i.id))) : stockFiltreComplet),
     [stockFiltreComplet, idsBrouillons],
+  );
+  // ── LA TRANCHE AFFICHÉE EN DÉRIVE AUSSI (2026-09-16) — le défaut réparé ────
+  // Le point de filtrage ci-dessus se disait « UNIQUE », et il l'était pour
+  // l'en-tête, les compteurs, les tris et le « Voir plus ». Mais `listeStock`
+  // construisait sa liste PAR DÉFAUT sur le `stockVisible` de App.jsx, tranché
+  // AVANT le retrait des brouillons — et ses DEUX branches les laissaient
+  // passer (un brouillon n'a aucun job, il n'est donc jamais dans
+  // `horsLigneIds`, qui ne connaît que les republications à l'étape 'deleted').
+  // Les 7 brouillons de Nico s'affichaient ainsi en cartes de stock
+  // ordinaires — avec « Vendre » et « + prix d'achat », des gestes qui
+  // n'existent pas sur un brouillon — pendant que l'en-tête de la section, lui,
+  // comptait déjà sans eux.
+  // MÊME FORMULE QUE App.jsx:3402, appliquée à la liste SANS brouillons. C'est
+  // désormais la SEULE tranche du composant : aucune version « complète » ne
+  // subsiste à côté d'elle, donc rien ne peut diverger au prochain réglage.
+  // ⛔ ON NE CACHE RIEN. Un brouillon retiré d'ici reste atteignable par la
+  //    pastille de la rangée d'actions, présente dès qu'il en existe UN. Cette
+  //    rangée vit dans le bloc `stock.length>0` et un brouillon EST dans
+  //    `stock` (il n'est retiré que de la liste filtrée) : la porte ne peut
+  //    donc pas se refermer sur le dernier d'entre eux.
+  // ⚠️ DÉCLARÉ ICI, sous le stockFiltre qu'il lit et AU-DESSUS de `listeStock`
+  //    (règle É5 / TDZ) — c'est ce fichier qui a produit l'écran blanc du
+  //    15/09 sur `modeBrouillons`.
+  const stockVisible = useMemo(
+    () => (showAllStock ? stockFiltre : stockFiltre.slice(0, 10)),
+    [stockFiltre, showAllStock],
   );
   // ── Plafond quotidien d'exécution : état SERVEUR (2026-08-29 soir) ───────
   // La retenue vit dans get-pending-jobs (v18+) et elle est ACTIVE — la
