@@ -572,7 +572,7 @@ export async function lireDerniereSyncReussie(userId) {
   if (!userId) return null;
   const { data, error } = await supabase
     .from('vinted_sync_runs')
-    .select('id,finished_at,declencheur,vinted_login')
+    .select('id,finished_at,declencheur,vinted_login,items_vus')
     .eq('user_id', userId)
     .eq('kind', 'dressing')
     .eq('status', 'done')

@@ -423,7 +423,7 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
    sémantique (grisé = masquée/brouillon/retrait, gelé = republication) vit
    dans l'opacité du span et reste inchangée. */
 .stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:18px 7px 6px;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
-.stock-v2 .glogos .plogo{background:rgba(255,255,255,0.93);border-radius:8px;padding:3px;box-shadow:0 1px 4px rgba(16,32,27,0.25);}
+.stock-v2 .glogos .plogo{background:rgba(255,255,255,0.93);border-radius:8px;padding:3px;box-shadow:0 1px 4px rgba(16,32,27,0.25);display:inline-flex;align-items:center;justify-content:center;line-height:0;}
 .stock-v2 .gqty{position:absolute;bottom:7px;right:8px;background:rgba(255,255,255,0.93);color:var(--ink);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;z-index:2;}
 .stock-v2 .gbody{padding:9px 10px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;}
 /* ── RANGÉES CONDITIONNELLES (3e passe du 27/08) : une rangée absente ne
@@ -2868,34 +2868,67 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     rouge:  { bg: '#FEF2F2', bord: '#FECACA',               texte: '#B91C1C' },
   };
 
-  // ── LIGNE (refonte du 17/09 soir) : dans le bloc unique « Mes annonces en
-  // ligne », Vinted est une ligne comme les quatre autres — logo, nom, dernier
-  // relevé + nombre, bouton « Relever ». Même état, même `lancer`, même suite
-  // (attente, blocage, bilan) rendue sous la ligne. Le parent récupère `lancer`
-  // (registerLancer) pour « Tout relever ». La CARTE d'aujourd'hui reste le
-  // rendu quand le relevé multiplateforme est fermé.
-  if (typeof registerLancer === 'function') registerLancer(lancer);
-  const ligneMode = variante === 'ligne';
-  const boutonInactif = !peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee;
-  const etatLigne = (() => {
-    if (enCours) return fr ? 'Relevé en cours…' : 'Scanning…';
-    if (envoi) return fr ? 'Envoi de la demande…' : 'Sending request…';
-    if (enAttenteDistante) return fr ? 'Demande en attente de ton ordinateur' : 'Waiting for your computer';
-    if (attenteOccupee) return fr ? 'Demande en attente — elle passe en premier' : 'Request waiting — it goes first';
-    const fini = derniereReussie?.finished_at ? Date.parse(derniereReussie.finished_at) : NaN;
-    if (!Number.isFinite(fini)) return fr ? 'Jamais relevée' : 'Never scanned';
-    const vus = Number(derniereReussie?.items_vus ?? 0);
-    const login = typeof derniereReussie?.vinted_login === 'string' && derniereReussie.vinted_login.trim() ? derniereReussie.vinted_login.trim() : null;
-    return fr
-      ? `Relevé ${depuisTexte(fini)} · ${vus} annonce${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`
-      : `Scanned ${depuisTexte(fini)} · ${vus} listing${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`;
-  })();
+  // La question « c'est ta boutique ? » — rendue par la CARTE et par la LIGNE.
+  const blocQuestionBoutique = (avis&&avis===bilan&&bilan?.decision==='boutique') ? (
+        boutiqueRefusee?(
+          <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:"#5C6560"}}>
+            {fr
+              ?"Rien n'a été touché. Ouvre vinted.fr dans ce navigateur, connecte-toi à TA boutique, puis relance."
+              :"Nothing was touched. Open vinted.fr in this browser, sign in to YOUR shop, then run the sync again."}
+            <button onClick={()=>{setBoutiqueRefusee(false);lancer();}}
+              style={{display:"block",width:"100%",marginTop:8,padding:"9px 0",borderRadius:9,border:"1px solid #E7E3D8",background:"#fff",color:"#1B6E62",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {fr?"J'ai changé de boutique — relancer":"I switched shops — run again"}
+            </button>
+          </div>
+        ):(
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={confirmerBoutique} disabled={confirmBusy||!run?.vinted_user_id}
+              style={{flex:1.4,padding:"10px 8px",borderRadius:10,border:"none",background:confirmBusy?"#9CB8B2":"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,cursor:confirmBusy?"default":"pointer",fontFamily:"inherit"}}>
+              {confirmBusy
+                ?(fr?"Ajout…":"Adding…")
+                :(fr?"✓ C'est ma boutique — l'ajouter":"✓ It's my shop — add it")}
+            </button>
+            <button onClick={()=>setBoutiqueRefusee(true)} disabled={confirmBusy}
+              style={{flex:1,padding:"10px 8px",borderRadius:10,border:"1px solid #E7E3D8",background:"#F6F5F1",color:"#5C6560",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {fr?"Non, pas la mienne":"No, not mine"}
+            </button>
+          </div>
+        )
+  ) : null;
 
-  return (
-    <div style={ligneMode
-      ? {display:"flex",flexDirection:"column",gap:8}
-      : {background:"#fff",borderRadius:12,border:"1px solid #E7E3D8",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
-      {ligneMode ? (
+  // ── LIGNE (refonte du 17/09 soir, exigence Nico : Vinted AU MÊME RANG) ────
+  // Dans le bloc unique « Mes annonces en ligne », Vinted est UNE ligne
+  // identique aux quatre autres — logo, nom, dernier relevé + nombre, bouton
+  // « Relever ». Rien de plus : ni « Détails », ni le rappel des 24 h, ni
+  // l'accroche cross-post, ni « En savoir plus ». Ce qui est retiré de
+  // l'affichage ne retire aucune capacité : même `lancer`, synchro automatique
+  // inchangée ; l'état (en cours, attente, cadence, extension absente, échec)
+  // vit DANS la ligne ; et les deux gestes qui ne peuvent pas disparaître
+  // restent sous elle — l'installation de l'extension sur un stock vide, et la
+  // question « c'est ta boutique ? ». Le parent récupère `lancer`
+  // (registerLancer) pour « Tout relever ». La CARTE reste le rendu quand le
+  // relevé multiplateforme est fermé.
+  if (typeof registerLancer === 'function') registerLancer(lancer);
+  if (variante === 'ligne') {
+    const boutonInactif = !peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee;
+    const etatLigne = (() => {
+      if (enCours) return fr ? 'Relevé en cours…' : 'Scanning…';
+      if (envoi) return fr ? 'Envoi de la demande…' : 'Sending request…';
+      if (enAttenteDistante) return fr ? 'Demande en attente de ton ordinateur' : 'Waiting for your computer';
+      if (attenteOccupee) return fr ? 'Demande en attente — elle passe en premier' : 'Request waiting — it goes first';
+      if (blocage && source !== 'stock_empty') return MESSAGE_BLOCAGE;
+      if (enCadence && cadenceTexte) return cadenceTexte;
+      if (avisEnVue && avisEnVue.ton !== 'vert') return String(avisEnVue.texte ?? '').split('\n')[0].slice(0, 160);
+      const fini = derniereReussie?.finished_at ? Date.parse(derniereReussie.finished_at) : NaN;
+      if (!Number.isFinite(fini)) return fr ? 'Jamais relevée' : 'Never scanned';
+      const vus = Number(derniereReussie?.items_vus ?? 0);
+      const login = typeof derniereReussie?.vinted_login === 'string' && derniereReussie.vinted_login.trim() ? derniereReussie.vinted_login.trim() : null;
+      return fr
+        ? `Relevé ${depuisTexte(fini)} · ${vus} annonce${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`
+        : `Scanned ${depuisTexte(fini)} · ${vus} listing${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`;
+    })();
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
         <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:12,background:'#F6F5F1',border:'1px solid #E7E3D8'}}>
           <PlatformLogo platform="vinted" size={20}/>
           <div style={{flex:1,minWidth:0}}>
@@ -2909,14 +2942,26 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
             </button>
           )}
         </div>
-      ) : (
+        {blocage&&source==='stock_empty'&&(
+          <InstallExtensionCta
+            lang={lang} isNative={isNative}
+            userId={user?.id??null} userEmail={user?.email??null}
+            source="stock_vide" message={MESSAGE_BLOCAGE}
+          />
+        )}
+        {blocQuestionBoutique}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{background:"#fff",borderRadius:12,border:"1px solid #E7E3D8",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <PlatformLogo platform="vinted" size={20}/>
         <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
           {fr?"Tu vends déjà sur Vinted ?":"Already selling on Vinted?"}
         </div>
       </div>
-      )}
 
       {/* ── Stock VIDE sans extension : un CTA VIVANT, jamais un bouton mort
           (2026-09-01, audit Stock vide). Le bouton « Synchroniser » grisé en
@@ -2939,8 +2984,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           userId={user?.id??null} userEmail={user?.email??null}
           source="stock_vide" message={MESSAGE_BLOCAGE}
         />
-      ):(ligneMode?null:(
-      <SecondaryButton disabled={boutonInactif} onClick={lancer}>
+      ):(
+      <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee} onClick={lancer}>
         {enCours
           ? (fr?"Synchronisation en cours…":"Syncing…")
           : envoi
@@ -2953,13 +2998,13 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
                   ? (fr?"Actualiser mes annonces Vinted":"Refresh my Vinted listings")
                   : (fr?"Relever mes annonces Vinted":"Scan my Vinted listings")}
       </SecondaryButton>
-      ))}
+      )}
 
       {/* Une ligne grise, pas un encart. Deux choses, dans cet ordre : l'HEURE
           RÉELLE de la dernière synchro (un fait, affiché à chaque fois qu'il
           existe) et le rappel que c'est automatique (une promesse, donc
           conditionnée). */}
-      {!ligneMode&&ligneSync&&(
+      {ligneSync&&(
         <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{ligneSync}</div>
       )}
 
@@ -3074,32 +3119,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           Une QUESTION, deux réponses — jamais un écran mort. « Oui » écrit la
           boutique dans la liste puis relance la sync ; « Non » donne le geste
           (changer de compte Vinted dans Chrome) et un bouton de relance. */}
-      {avis&&avis===bilan&&bilan?.decision==='boutique'&&(
-        boutiqueRefusee?(
-          <div style={{background:"#F6F5F1",border:"1px solid #E7E3D8",borderRadius:10,padding:"10px 12px",fontSize:12,lineHeight:1.5,color:"#5C6560"}}>
-            {fr
-              ?"Rien n'a été touché. Ouvre vinted.fr dans ce navigateur, connecte-toi à TA boutique, puis relance."
-              :"Nothing was touched. Open vinted.fr in this browser, sign in to YOUR shop, then run the sync again."}
-            <button onClick={()=>{setBoutiqueRefusee(false);lancer();}}
-              style={{display:"block",width:"100%",marginTop:8,padding:"9px 0",borderRadius:9,border:"1px solid #E7E3D8",background:"#fff",color:"#1B6E62",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              {fr?"J'ai changé de boutique — relancer":"I switched shops — run again"}
-            </button>
-          </div>
-        ):(
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={confirmerBoutique} disabled={confirmBusy||!run?.vinted_user_id}
-              style={{flex:1.4,padding:"10px 8px",borderRadius:10,border:"none",background:confirmBusy?"#9CB8B2":"linear-gradient(120deg,#2F9E90,#1B6E62)",color:"#fff",fontSize:12.5,fontWeight:700,cursor:confirmBusy?"default":"pointer",fontFamily:"inherit"}}>
-              {confirmBusy
-                ?(fr?"Ajout…":"Adding…")
-                :(fr?"✓ C'est ma boutique — l'ajouter":"✓ It's my shop — add it")}
-            </button>
-            <button onClick={()=>setBoutiqueRefusee(true)} disabled={confirmBusy}
-              style={{flex:1,padding:"10px 8px",borderRadius:10,border:"1px solid #E7E3D8",background:"#F6F5F1",color:"#5C6560",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              {fr?"Non, pas la mienne":"No, not mine"}
-            </button>
-          </div>
-        )
-      )}
+      {blocQuestionBoutique}
 
       {/* ── REPLI « Détails » — FERMÉ PAR DÉFAUT (lisibilité 2026-09-04) ─────
           Trois blocs qui empilaient du texte sous les deux lignes utiles
