@@ -41,7 +41,7 @@ import { plateformesRepubliables, republierArticle, messageRefusRepublication, r
 // coin_config.sync_multi_ouverte = 0 : le bloc n'existe pas, aucun texte ne
 // l'annonce (lireSyncMultiOuverte, fail-closed).
 import RelevesPlateformes from '../components/RelevesPlateformes';
-import { lireSyncMultiOuverte } from '../utils/syncPlateformes';
+import { lireSyncMultiOuverte, lireStatsAnnoncesParArticle } from '../utils/syncPlateformes';
 import { useFondFige } from '../utils/modale';
 import {
   plateformesDuCompte, plateformesDeLArticle,
@@ -1993,6 +1993,71 @@ const REPRISE_AUTO_RE = /^\[reprise-auto\] tentative (\d+)\/(\d+) prevue (\S+) �
 // Vinted, il reflète celui connecté dans Chrome — le « switch », c'est
 // Chrome. Le marquage des disparitions est protégé par l'identité du RUN,
 // côté extension : sync mono-compte.)
+
+// ── VUES ET FAVORIS PAR PLATEFORME (2026-09-18, demande Nico) ────────────────
+// La carte additionne les compteurs Vinted (vinted_view_count /
+// vinted_favourite_count) et ceux relevés sur les autres plateformes
+// (annonces_plateforme.vues / favoris, rattachées à l'article). Le tap ouvre
+// ce détail : d'où viennent les vues, plateforme par plateforme. NULL = la
+// plateforme ne le montre pas — affiché « — », jamais 0.
+function StatsPlateformesPopup({ lang, item, stats = [], onClose }) {
+  const fr = lang !== 'en';
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  const lignes = [];
+  if (item?.vinted_view_count != null || item?.vinted_favourite_count != null) {
+    lignes.push({ platform: 'vinted', vues: item.vinted_view_count ?? null, favoris: item.vinted_favourite_count ?? null });
+  }
+  const ordre = ['leboncoin', 'beebs', 'ebay', 'opla'];
+  for (const s of [...stats].sort((a, b) => ordre.indexOf(a.platform) - ordre.indexOf(b.platform))) {
+    lignes.push({ platform: s.platform, vues: s.vues ?? null, favoris: s.favoris ?? null, vu_le: s.vu_le });
+  }
+  const somme = (k) => lignes.reduce((t, l) => t + (l[k] ?? 0), 0);
+  const nb = (v) => (v == null ? '—' : String(v));
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(16,32,27,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 12 }}>
+      <div onClick={(e) => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 18, padding: '14px 16px 16px', boxShadow: '0 12px 40px rgba(16,32,27,0.25)', fontFamily: 'inherit' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#10201B' }}>{fr ? 'Vues et favoris' : 'Views and favourites'}</div>
+            <div style={{ fontSize: 11.5, color: '#8A8578', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item?.title}</div>
+          </div>
+          <button type="button" onClick={onClose} aria-label={fr ? 'Fermer' : 'Close'}
+            style={{ width: 32, height: 32, borderRadius: 999, border: '1px solid #E7E3D8', background: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1, color: '#5C6560' }}>×</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {lignes.map((l) => (
+            <div key={l.platform} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12, background: '#F6F5F1', border: '1px solid #E7E3D8' }}>
+              <PlatformLogo platform={l.platform} size={20} />
+              <div style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13, color: '#10201B' }}>{PLATFORM_LABELS[l.platform] ?? l.platform}</div>
+              <span style={{ fontSize: 13, color: '#10201B', minWidth: 48, textAlign: 'right' }}>👁️ {nb(l.vues)}</span>
+              <span style={{ fontSize: 13, color: '#10201B', minWidth: 48, textAlign: 'right' }}>❤️ {nb(l.favoris)}</span>
+            </div>
+          ))}
+          {lignes.length === 0 && (
+            <div style={{ fontSize: 12.5, color: '#8A8578' }}>{fr ? 'Aucun compteur relevé pour cet article.' : 'No counters collected for this item.'}</div>
+          )}
+          {lignes.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px' }}>
+              <div style={{ flex: 1, fontWeight: 700, fontSize: 13, color: '#5C6560' }}>{fr ? 'Total' : 'Total'}</div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#10201B', minWidth: 48, textAlign: 'right' }}>👁️ {somme('vues')}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#10201B', minWidth: 48, textAlign: 'right' }}>❤️ {somme('favoris')}</span>
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: 10, lineHeight: 1.5 }}>
+          {fr ? 'Vinted : synchro du dressing. Les autres : dernier relevé de « Mes annonces ». « — » = la plateforme ne le montre pas.'
+            : 'Vinted: closet sync. Others: last “My listings” scan. “—” = the platform does not show it.'}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null, variante = 'carte', registerLancer = null }) {
   const fr = lang !== 'en';
@@ -4860,6 +4925,18 @@ const StockTab = memo(function StockTab({
     lireSyncMultiOuverte(user?.id).then((v) => { if (!annule) setSyncMultiOuverte(v === true); }).catch(() => {});
     return () => { annule = true; };
   }, [user?.id]);
+  // Vues / favoris par plateforme (18/09) : relus au montage puis toutes les
+  // 2 min — c'est la base qu'on relit (le relevé y écrit), jamais l'extension.
+  const [statsPlateformes, setStatsPlateformes] = useState({});
+  const [statsPopup, setStatsPopup] = useState(null);
+  useEffect(() => {
+    if (!user?.id || !syncMultiOuverte) return undefined;
+    let annule = false;
+    const charger = () => lireStatsAnnoncesParArticle(user.id).then((s) => { if (!annule) setStatsPlateformes(s ?? {}); }).catch(() => {});
+    charger();
+    const t = setInterval(charger, 120000);
+    return () => { annule = true; clearInterval(t); };
+  }, [user?.id, syncMultiOuverte]);
   useEffect(() => {
     let annule = false;
     supabase.from('coin_config').select('value').eq('key', 'republication_multi_ouverte').maybeSingle()
@@ -8615,8 +8692,14 @@ const StockTab = memo(function StockTab({
                   // d'édition (les ids ventes/inventaire se chevauchent).
                   const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""});
                   const photoUrl=premierePhoto(item.photos);
-                  const vues=item.vinted_view_count;
-                  const favs=item.vinted_favourite_count;
+                  // Compteurs FUSIONNÉS (18/09) : Vinted + ce que les relevés
+                  // ont vu sur les autres plateformes pour cet article. Le tap
+                  // sur la ligne ouvre le détail par plateforme.
+                  const statsPf=statsPlateformes[String(item.id)]??[];
+                  const vuesPf=statsPf.some(x=>x.vues!=null)?statsPf.reduce((t,x)=>t+(x.vues??0),0):null;
+                  const favsPf=statsPf.some(x=>x.favoris!=null)?statsPf.reduce((t,x)=>t+(x.favoris??0),0):null;
+                  const vues=(item.vinted_view_count==null&&vuesPf==null)?null:(item.vinted_view_count??0)+(vuesPf??0);
+                  const favs=(item.vinted_favourite_count==null&&favsPf==null)?null:(item.vinted_favourite_count??0)+(favsPf??0);
                   return(
                     // ── Carte GALERIE (2026-08-27, refonte validée Nico) ─────
                     // Hiérarchie : 1. statut (pastille sur la photo), 2. logos
@@ -8992,8 +9075,11 @@ const StockTab = memo(function StockTab({
                                 </div>
                               )}
                               {(vues!=null||favs!=null)&&(
-                                <div className="gstatsrow"
-                                  title={lang==='fr'?'Vues et favoris sur Vinted':'Views and favourites on Vinted'}>
+                                <div className="gstatsrow" role="button" tabIndex={0}
+                                  title={lang==='fr'?'Vues et favoris — toucher pour le détail par plateforme':'Views and favourites — tap for the per-platform detail'}
+                                  style={{cursor:'pointer'}}
+                                  onClick={e=>{e.stopPropagation();setStatsPopup(item);}}
+                                  onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();setStatsPopup(item);}}}>
                                   {vues!=null&&<span>👁️ {vues}</span>}
                                   {favs!=null&&<span>❤️ {favs}</span>}
                                 </div>
@@ -9800,6 +9886,13 @@ const StockTab = memo(function StockTab({
           <RepublishProgressSheet lang={lang} job={frais} reprise={repubPlafondReprise} onClose={()=>setRepubProgress(null)} onSaisieRelance={validerSaisieRelance}/>
         );
       })()}
+      {/* Détail des vues / favoris par plateforme (18/09) — ouvert par la
+          ligne 👁 ❤️ de la carte. */}
+      {statsPopup&&(
+        <StatsPlateformesPopup lang={lang} item={statsPopup}
+          stats={statsPlateformes[String(statsPopup.id)]??[]}
+          onClose={()=>setStatsPopup(null)}/>
+      )}
       {/* ── Republication automatique — LIGNE REPLIÉE EN PIED DE PAGE (17/09 soir).
           Titre, état, créneau, chevron ; le détail derrière le tap (réglages).
           Monté seulement si le module est exposé (planifieeExposee). */}

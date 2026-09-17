@@ -11574,6 +11574,34 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         candidats.push(carte.querySelector?.("img")?.getAttribute("alt"));
         return meilleurTitre(candidats.filter(Boolean));
       };
+      // Vues / favoris, quand la liste les MONTRE (jamais devinés, null sinon) :
+      //   · Leboncoin : aria-label / <title> « 2 vues pour cette annonce »,
+      //     « 0 mises en favoris pour cette annonce » ;
+      //   · eBay : cellules shui-dt-column__visitCount / __watchCount (premier
+      //     entier de la cellule) ;
+      //   · Beebs : deux entiers à icône dans la carte, l'œil puis le cœur.
+      // Relevés le 18/09 00:25 sur les trois pages réelles.
+      const entierDe = (t) => { const m = String(t ?? "").match(/\d[\d\s]*/); return m ? Number(m[0].replace(/\s+/g, "")) : null; };
+      const statsDeCarte = (carte) => {
+        const st = { vues: null, favoris: null };
+        if (plateforme === "leboncoin") {
+          for (const e of carte.querySelectorAll?.("[aria-label], title") ?? []) {
+            const t = propre(e.getAttribute?.("aria-label") ?? e.textContent);
+            if (st.vues === null && /^\d[\d\s]*\s+vues?\b/i.test(t)) st.vues = entierDe(t);
+            else if (st.favoris === null && /^\d[\d\s]*\s+mises?\s+en\s+favoris?/i.test(t)) st.favoris = entierDe(t);
+          }
+        } else if (plateforme === "ebay") {
+          const v = carte.querySelector?.("td.shui-dt-column__visitCount, [class*='column__visitCount']");
+          const w = carte.querySelector?.("td.shui-dt-column__watchCount, [class*='column__watchCount']");
+          if (v) st.vues = entierDe(feuillesDe(v)[0]?.texte);
+          if (w) st.favoris = entierDe(feuillesDe(w)[0]?.texte);
+        } else if (plateforme === "beebs") {
+          const nombres = feuillesDe(carte).filter((f) => /^\d+$/.test(f.texte) && f.el.parentElement?.querySelector("svg"));
+          if (nombres[0]) st.vues = Number(nombres[0].texte);
+          if (nombres[1]) st.favoris = Number(nombres[1].texte);
+        }
+        return st;
+      };
       // Toutes les ancres d'une même annonce (photo + titre) servent au titre.
       const ancresParId = new Map();
       for (const a of ancres) {
@@ -11599,7 +11627,8 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         const photo = img?.currentSrc || img?.src || null;
         if (!titre) diag.sans_titre++;
         if (prix === null) diag.sans_prix++;
-        annonces.push({ listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null });
+        const stats = statsDeCarte(carte);
+        annonces.push({ listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null, vues: stats.vues, favoris: stats.favoris });
       }
       const suivant = document.querySelector("a[rel='next'], a[aria-label*='suivant' i], a[aria-label*='next' i], button[aria-label*='suivant' i]");
       return { annonces, suivant: suivant ? (suivant.href || true) : null, diag };
@@ -11964,10 +11993,18 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     }
     console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
     const { annonces, complet, erreur, illisibles } = await releverAnnoncesPlateforme(platform);
+    // Vues / favoris : colonnes posées par la migration 20260918001000 — on ne
+    // les envoie que si la base les a (un upsert avec une colonne inconnue est
+    // refusé EN ENTIER, relevé perdu). Sondé une fois par run.
+    const statsPossibles = await restRequest("annonces_plateforme?select=vues,favoris&limit=1", token).then(() => true).catch(() => false);
+    // ⚠️ Number(null) vaut 0 : un prix ILLISIBLE doit rester NULL (bande
+    //    incertaine), jamais devenir 0 € — même règle pour vues / favoris.
+    const nombreOuNull = (v) => (v == null || v === "" ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
     const lignes = annonces.map((a) => ({
       user_id: userId, platform, listing_id: String(a.listing_id), url: a.url ?? null,
-      titre: a.titre ?? null, prix: Number.isFinite(Number(a.prix)) ? Number(a.prix) : null,
+      titre: a.titre ?? null, prix: nombreOuNull(a.prix),
       photo_url: a.photo_url ?? null,
+      ...(statsPossibles ? { vues: nombreOuNull(a.vues), favoris: nombreOuNull(a.favoris) } : {}),
       statut_plateforme: ["en_ligne", "en_verification", "desactivee", "vendue"].includes(a.statut) ? a.statut : "inconnu",
       run_id: run.id, vu_le: maintenant(), disparu_le: null, updated_at: maintenant(),
     }));

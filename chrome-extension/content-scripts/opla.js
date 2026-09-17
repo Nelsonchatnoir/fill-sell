@@ -144,9 +144,12 @@ async function listerMesArticles() {
         : mod === "pending" ? "en_verification"
         : /reject|refus|inactive|disabled|archived/.test(st) || mod === "rejected" ? "desactivee"
         : (mod === "approved" || mod === "") ? "en_ligne" : "inconnu";
+      // Vignette : l'API rend une CLÉ (« images/apple|… »), servie sur le
+      // CloudFront (oplaUrlImage) — sans ça le relevé Opla n'avait pas de photo.
+      // Vues / favoris : viewCount / favouriteCount, présents dans le résumé.
       const img = Array.isArray(a?.images) ? a.images[0] : (Array.isArray(a?.photos) ? a.photos[0] : null);
-      const photo = typeof img === "string" ? img : (img?.url ?? img?.src ?? null);
-      articles.push({ listing_id: id, url: oplaUrlPublique(id), titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null });
+      const entier = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : null);
+      articles.push({ listing_id: id, url: oplaUrlPublique(id), titre, prix, statut, photo_url: oplaUrlImage(img), vues: entier(a?.viewCount), favoris: entier(a?.favouriteCount) });
     }
     cursor = r.corps.nextCursor ?? r.corps.next_cursor ?? null;
     if (!cursor || !liste.length) break;
@@ -167,19 +170,19 @@ const OPLA_CDN_IMAGES = "https://d2f61lx5s6m7uh.cloudfront.net/";
 const OPLA_ETAT_LIBELLE = Object.freeze({
   "new-with-tags": "Neuf avec étiquette", "new": "Neuf sans étiquette", "like-new": "Très bon état", "good": "Bon état", "fair": "Satisfaisant",
 });
+function oplaUrlImage(i) {
+  const v = typeof i === "string" ? i : (i?.url ?? i?.src ?? i?.key ?? null);
+  if (!v) return null;
+  if (/^https?:/.test(v)) return v;
+  return OPLA_CDN_IMAGES + String(v).replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
+}
 async function capturerArticle(id) {
   if (!/^art_/.test(id)) return { success: false, error: "identifiant Opla inattendu" };
   const r = await oplaJson(OPLA_ENDPOINTS.article(id));
   if (!r.ok || !r.corps || typeof r.corps !== "object") return { success: false, error: `fiche Opla illisible (HTTP ${r.statut})` };
   const a = r.corps.article && typeof r.corps.article === "object" ? r.corps.article : r.corps;
-  const urlImage = (i) => {
-    const v = typeof i === "string" ? i : (i?.url ?? i?.src ?? i?.key ?? null);
-    if (!v) return null;
-    if (/^https?:/.test(v)) return v;
-    return OPLA_CDN_IMAGES + String(v).replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
-  };
   const images = (Array.isArray(a.images) ? a.images : (Array.isArray(a.imageUrls) ? a.imageUrls : []))
-    .map(urlImage).filter(Boolean);
+    .map(oplaUrlImage).filter(Boolean);
   const md = a.metadata && typeof a.metadata === "object" ? a.metadata : {};
   const liste = (v) => (Array.isArray(v) && v.length ? v.map(String).join(", ") : null);
   const entier = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);

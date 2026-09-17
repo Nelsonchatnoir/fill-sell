@@ -133,3 +133,25 @@ export function texteRefusReleve(res, lang = 'fr', platform = null) {
   };
   return M[res?.reason] ?? res?.message ?? (fr ? 'Relevé impossible.' : 'Scan failed.');
 }
+
+// Vues / favoris relevés par plateforme, par ARTICLE rattaché (colonnes posées
+// par la migration 20260918001000). Base sans ces colonnes → {} : rien ne
+// casse, la carte garde ses compteurs Vinted. NULL = la plateforme ne le
+// montre pas — jamais compté comme 0.
+export async function lireStatsAnnoncesParArticle(userId) {
+  if (!userId) return {};
+  const { data, error } = await supabase
+    .from('annonces_plateforme')
+    .select('platform,inventaire_id,vues,favoris,vu_le')
+    .eq('user_id', userId).not('inventaire_id', 'is', null).is('disparu_le', null)
+    .order('vu_le', { ascending: false })
+    .limit(2000);
+  if (error) return {};
+  const par = {};
+  for (const a of data ?? []) {
+    if (a.vues == null && a.favoris == null) continue;
+    const k = String(a.inventaire_id);
+    (par[k] ??= []).push({ platform: a.platform, vues: a.vues, favoris: a.favoris, vu_le: a.vu_le });
+  }
+  return par;
+}
