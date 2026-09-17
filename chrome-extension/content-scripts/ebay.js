@@ -2050,7 +2050,7 @@ function contexteBrouillonApi() {
 async function putChampBrouillon(ctx, champs, motifRelecture, warnings, libelle) {
   try {
     const uuid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const r = await fetch(`/lstng/api/listing_draft/${ctx.draftId}?mode=${encodeURIComponent(ctx.mode)}`, {
+    const r = await fetchBorne(`/lstng/api/listing_draft/${ctx.draftId}?mode=${encodeURIComponent(ctx.mode)}`, {
       method: "PUT", credentials: "same-origin",
       headers: { "Content-Type": "application/json", srt: ctx.srt, Accept: "application/json" },
       body: JSON.stringify({ requestId: uuid, removedFields: [], ...champs }),
@@ -2144,7 +2144,7 @@ async function putDescriptionViaDraftApi(text, warnings) {
       .map((line) => line.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])))
       .join("<br>");
     const uuid = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const r = await fetch(`/lstng/api/listing_draft/${draftId}?mode=${encodeURIComponent(mode)}`, {
+    const r = await fetchBorne(`/lstng/api/listing_draft/${draftId}?mode=${encodeURIComponent(mode)}`, {
       method: "PUT", credentials: "same-origin",
       headers: { "Content-Type": "application/json", srt, Accept: "application/json" },
       body: JSON.stringify({ requestId: uuid, removedFields: [], description: `<p>${html}</p>` }),
@@ -2585,6 +2585,30 @@ function findOptionCascade(root, optionSelector, text, { sizeField = false } = {
   return null;
 }
 
+// ── FETCH BORNÉ (2026-09-17, cf. vinted.js) : un fetch() sans signal pend à vie
+// si le serveur garde la connexion ouverte (DataDome muet, réseau noir).
+// L'AbortController est FIABLE ici — ce code tourne dans l'ONGLET vivant, pas
+// dans le service worker qui meurt. Au délai : abort + erreur nommée, reprise
+// par les gardes existantes (jamais dans error, toujours last_diagnostic). ────
+const FETCH_BORNE_MS = 30_000;
+async function fetchBorne(input, init = {}, timeoutMs = FETCH_BORNE_MS) {
+  const ctrl = new AbortController();
+  const minuteur = setTimeout(() => { try { ctrl.abort(); } catch { /* déjà abandonné */ } }, timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    if (ctrl.signal.aborted || e?.name === "AbortError") {
+      const cible = String(typeof input === "string" ? input : (input?.url ?? "requête")).slice(0, 80);
+      const err = new Error(`Pas de réponse en ${Math.round(timeoutMs / 1000)} s (${cible}) — requête abandonnée`);
+      err.timeoutBorne = true;
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(minuteur);
+  }
+}
+
 async function urlToFile(url, index) {
   // fetch() SOUS LE CORS DE LA PAGE HÔTE (MV3) : une photo hébergée hors de
   // notre storage (CDN Vinted d'un article importé du dressing, avant que
@@ -2616,7 +2640,7 @@ async function urlToFile(url, index) {
     const cible = essai === 0 ? url : `${url}${url.includes("?") ? "&" : "?"}r=${Date.now()}_${essai}`;
     try {
       exception = null;
-      res = await fetch(cible);
+      res = await fetchBorne(cible, {}, 20_000);
     } catch (e) {
       exception = e;
       res = null;
