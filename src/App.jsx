@@ -2121,6 +2121,20 @@ export default function App({ loginOnly = false }){
   // Annonces constatées HORS LIGNE sans preuve de vente (Phase B, 2026-07-12) :
   // le doute n'est jamais écrit en base — l'utilisateur confirme ou infirme.
   const [unavailableListings,setUnavailableListings]=useState([]);
+  // ── ALERTES « PLUS EN LIGNE » MASQUABLES (2026-09-17, demande d'une PRO) ──
+  // Deux masques, RÉVERSIBLES, qui ne touchent QUE l'affichage :
+  //   · par alerte : platform_fields.alerte_masquee_pour = l'épisode
+  //     (unavailable_since) — le veilleur peut repasser cent fois, tant que
+  //     l'épisode est le même l'alerte reste masquée ; un NOUVEL épisode (annonce
+  //     revue en ligne puis redisparue) la réaffiche ;
+  //   · par plateforme : profiles.platform_settings.alertes_hors_ligne_masquees
+  //     [plateforme] = true, en attendant le rattachement automatique.
+  // Le veilleur, la détection de vente et « 🎉 Vendue ! » (preuve positive)
+  // ne changent pas d'un pixel : on tait la QUESTION, pas la surveillance. Une
+  // vente réelle se déclare toujours depuis la fiche (« Vendre »), et le
+  // retrait des copies part comme d'habitude.
+  const [alertesMasqueesPf,setAlertesMasqueesPf]=useState({});
+  const [montrerMasquees,setMontrerMasquees]=useState(false);
   const [confirmingSale,setConfirmingSale]=useState(null);
   // (Bandeau « vérification impossible » SUPPRIMÉ le 2026-08-15 — décision
   // produit : seul un bandeau de VENTE détectée parle à l'utilisateur. Le
@@ -3040,6 +3054,7 @@ export default function App({ loginOnly = false }){
       setSettingsLbcRue(p.data?.platform_settings?.leboncoin?.rue||'');
       setSettingsLbcCp(p.data?.platform_settings?.leboncoin?.code_postal||'');
       setSettingsLbcVille(p.data?.platform_settings?.leboncoin?.ville||'');
+      setAlertesMasqueesPf(p.data?.platform_settings?.alertes_hors_ligne_masquees||{});
       setCancelAtPeriodEnd(p.data?.subscription_cancel_at_period_end===true);
       setCancelPeriodEnd(p.data?.subscription_period_end||null);
       setExtensionBuild(p.data?.extension_build??null);
@@ -4007,6 +4022,38 @@ export default function App({ loginOnly = false }){
     if(job.platform==='vinted'&&job.inventaire_id!=null) await annulerRepublicationsDisparues([job.inventaire_id]);
     setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
     track('dismiss_unavailable',{platform:job.platform});
+  }
+
+  // ── Masquer / réafficher une alerte « plus en ligne » (2026-09-17) ────────
+  // Question seulement : une preuve positive de vente n'est jamais masquée.
+  const alerteEstMasquee=(job)=>{
+    const pf=job.platform_fields||{};
+    if(pf.sale_signal==='sold')return false;
+    if(alertesMasqueesPf?.[job.platform]===true)return true;
+    return !!pf.alerte_masquee_pour&&pf.alerte_masquee_pour===String(pf.unavailable_since??'');
+  };
+  async function masquerAlerte(job,on){
+    const pf={...(job.platform_fields||{})};
+    if(on){pf.alerte_masquee_pour=String(pf.unavailable_since??'');pf.alerte_masquee_le=new Date().toISOString();}
+    else{delete pf.alerte_masquee_pour;delete pf.alerte_masquee_le;}
+    // Le job reste 'published' et SURVEILLÉ : seule la clé d'affichage change.
+    const{data:upd,error}=await supabase.from('cross_post_jobs')
+      .update({platform_fields:pf}).eq('id',job.id).eq('status','published').select('id');
+    if(error||!upd?.length){console.error('[masquerAlerte]',error?.message??'update refusé');return;}
+    setUnavailableListings(prev=>prev.map(j=>j.id===job.id?{...j,platform_fields:pf}:j));
+    track(on?'alerte_hors_ligne_masquee':'alerte_hors_ligne_reaffichee',{platform:job.platform});
+  }
+  async function masquerAlertesPlateforme(platform,on){
+    if(!user?.id)return;
+    // Lecture-fusion-écriture : platform_settings porte aussi l'adresse
+    // Leboncoin et les réglages de republication — jamais d'écrasement global.
+    const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
+    const base=cur?.platform_settings||{};
+    const next={...base,alertes_hors_ligne_masquees:{...(base.alertes_hors_ligne_masquees||{}),[platform]:on}};
+    const{data:upd,error}=await supabase.from('profiles').update({platform_settings:next}).eq('id',user.id).select('id');
+    if(error||!upd?.length){console.error('[masquerAlertesPlateforme]',error?.message??'update refusé');return;}
+    setAlertesMasqueesPf(next.alertes_hors_ligne_masquees);
+    track(on?'alertes_plateforme_masquees':'alertes_plateforme_reaffichees',{platform});
   }
 
   // Republications EN FILE d'articles que l'utilisateur vient de déclarer
@@ -7238,6 +7285,44 @@ export default function App({ loginOnly = false }){
           );
         })}
 
+        {/* ── Masquer les alertes « plus en ligne » (2026-09-17) : par plateforme
+            (chips) et compteur des masquées, réversible. Aucune écriture sur le
+            veilleur ni sur la vente. */}
+        {(()=>{
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',opla:'Opla'};
+          const questions=unavailableListings.filter(j=>(j.platform_fields||{}).sale_signal!=='sold');
+          if(!questions.length)return null;
+          const masquees=questions.filter(alerteEstMasquee);
+          const plateformes=[...new Set(questions.map(j=>j.platform))];
+          return (
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:12,color:UI.mute2,margin:"0 0 10px"}}>
+              <span style={{fontWeight:600}}>{lang==='fr'?'Alertes « plus en ligne »':'“No longer online” alerts'}</span>
+              {plateformes.map(p=>{
+                const on=alertesMasqueesPf?.[p]===true;
+                return (
+                  <button key={p} type="button" onClick={()=>masquerAlertesPlateforme(p,!on)}
+                    title={lang==='fr'?"Masque toutes les alertes de cette plateforme en attendant le rattachement automatique. La surveillance continue.":"Hides every alert from this platform until automatic matching. Monitoring continues."}
+                    style={{padding:"4px 10px",borderRadius:999,border:`1px solid ${on?UI.teal:UI.border}`,background:on?"#E7F3F0":"transparent",color:on?UI.tealDeep:UI.mute2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                    {on?(lang==='fr'?`${PLAT[p]??p} : masquées`:`${PLAT[p]??p}: hidden`):(lang==='fr'?`Masquer ${PLAT[p]??p}`:`Hide ${PLAT[p]??p}`)}
+                  </button>
+                );
+              })}
+              {masquees.length>0&&(
+                <button type="button" onClick={()=>setMontrerMasquees(v=>!v)}
+                  style={{marginLeft:"auto",background:"none",border:"none",color:UI.tealDeep,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:0}}>
+                  {montrerMasquees
+                    ?(lang==='fr'?'Cacher les masquées':'Hide the hidden ones')
+                    :(lang==='fr'?`${masquees.length} masquée${masquees.length>1?'s':''} · afficher`:`${masquees.length} hidden · show`)}
+                </button>
+              )}
+              <span style={{width:"100%",fontSize:11.5,color:UI.mute}}>
+                {lang==='fr'
+                  ?'Masquer ne coupe rien : la surveillance continue, et une vente se déclare toujours depuis la fiche de l’article.'
+                  :'Hiding stops nothing: monitoring continues, and a sale is still recorded from the item card.'}
+              </span>
+            </div>
+          );
+        })()}
         {/* Annonce hors ligne : on demande TOUJOURS, on n'écrit jamais tout seul.
             Deux libellés selon la force du signal, un seul comportement — le clic
             "Oui" est le SEUL chemin qui écrit en base (vente, inventaire, marges).
@@ -7245,10 +7330,14 @@ export default function App({ loginOnly = false }){
             fiable, passe par ici — le prix réel peut différer du prix affiché
             (négociation) et un vendeur à volume ne corrigerait jamais après coup. */}
         {unavailableListings.map(job=>{
-          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire'};
+          const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire',opla:'Opla'};
           const plat=PLAT[job.platform]||job.platform;
           const busy=confirmingSale===job.id;
           const pf=job.platform_fields||{};
+          // Masquée (par alerte ou par plateforme) : cachée tant que
+          // « afficher » n'est pas demandé — l'alerte existe toujours.
+          const masquee=alerteEstMasquee(job);
+          if(masquee&&!montrerMasquees)return null;
           // GARDE A (2026-08-24) : article en REPUBLICATION vivante → l'absence
           // de son annonce Vinted est la nôtre (suppression avant recréation),
           // jamais une vente. Aucun bandeau, la republication suit son cours.
@@ -7340,6 +7429,15 @@ export default function App({ loginOnly = false }){
                   style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
                   {lang==='fr'?"Non, je l'ai retirée":"No, I removed it"}
                 </button>
+                {!vendu&&(
+                  <button disabled={busy} onClick={()=>masquerAlerte(job,!masquee)}
+                    title={masquee
+                      ?(lang==='fr'?"Réaffiche cette alerte.":"Shows this alert again.")
+                      :(lang==='fr'?"Masque cette alerte sans rien décider : l'annonce reste surveillée, tu pourras la réafficher.":"Hides this alert without deciding anything: the listing stays monitored, you can show it again.")}
+                    style={{padding:"9px 14px",borderRadius:999,border:"none",background:"transparent",color:UI.mute2,fontSize:13,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                    {masquee?(lang==='fr'?'Réafficher':'Show again'):(lang==='fr'?'Masquer':'Hide')}
+                  </button>
+                )}
               </div>
             </div>
           );
