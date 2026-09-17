@@ -1790,6 +1790,53 @@ serve(async (req) => {
       }
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    // REQUALIFICATION DES ERREURS TECHNIQUES BRUTES — AFFICHAGE SEUL (2026-09-17)
+    // ══════════════════════════════════════════════════════════════════════
+    // Remplace le TEXTE affiché quand le brut envoyé par l'extension est
+    // technique/anglais, et conserve ce brut dans platform_fields.error_technique
+    // (rien n'est perdu, requêtable comme le brut l'était dans `error`). Ne
+    // change NI le statut, NI les tentatives, NI l'étape : c'est le point de
+    // passage unique où ces bruts repartaient verbatim dans cross_post_jobs.error
+    // (fuite du 17/09 : « Could not establish connection. Receiving end does not
+    // exist. » affiché à une PRO). Ne s'applique QUE si aucun autre requalif n'a
+    // pris la main (messageEffectif null, aucun pfX posé) ET si l'extension a
+    // envoyé platform_fields (préservation garantie sans lecture) — un texte non
+    // reconnu reste TEL QUEL (« en cas de doute, on ne traduit pas »). Parc
+    // entier, sans OTA.
+    let erreurTechniqueBrute: string | null = null;
+    {
+      const aucunAutreRequalif = messageEffectif == null && champsACompleter == null
+        && bfcacheRearms == null && !pfCanalCoupe && !pfDisparue && !pfPhotoReprise
+        && !pfAttenteSession && !pfRepareEtat && !pfGrilleReprise && !pfGrilleRefus
+        && !pfDepotOptions && !pfDepotNonFinalise;
+      const surface = statutEffectif === "failed" || statutEffectif === "pending" || statutEffectif === "needs_user";
+      const brut = typeof body.error === "string" ? body.error : "";
+      const bodyPfOk = body.platform_fields != null && typeof body.platform_fields === "object";
+      if (aucunAutreRequalif && surface && brut && bodyPfOk) {
+        // G1 — canal extension/onglet coupé (signatures Chrome + libellés d'onglet
+        // de travail, timeouts de chargement). Rien d'actionnable dans le brut.
+        const G1_RE = /Could not establish connection|Receiving end does not exist|The message port closed|message channel closed|A listener indicated an asynchronous response|No tab with id|Onglet de travail ferm|onglet navigué\/rechargé|pas de réponse du content script|sonde injoignable|onglet de travail Vinted\s*:|Timeout:\s*(?:la page|pas de réponse)/i;
+        // G4a — fuite de développeur ENTIÈREMENT technique (nom de champ interne,
+        // chemin de fichier source, catégorie non mappée). Geste utile : régénérer.
+        const G4A_RE = /platform_fields\.[a-zA-Z_]+ absent|non mappé vers le catalogue|Catégorie\s*:\s*feuille .* introuvable/i;
+        let clair: string | null = null;
+        if (G1_RE.test(brut)) {
+          clair = statutEffectif === "pending"
+            ? "L'opération a été interrompue sur ton ordinateur. Elle reprend toute seule, rien à faire de ton côté."
+            : "L'opération n'a pas pu aboutir sur ton ordinateur. Relance-la depuis la fiche de l'article quand tu veux.";
+        } else if (G4A_RE.test(brut)) {
+          clair = "Cet article n'a pas encore de catégorie sur cette plateforme. Régénère son annonce depuis l'app, puis relance la publication.";
+        }
+        if (clair) {
+          messageEffectif = clair;
+          erreurTechniqueBrute = brut;
+          raisonRequalif = raisonRequalif ?? "erreur technique brute requalifiée (affichage seul, brut conservé en diagnostic)";
+          console.log(`[update-job-status] userId=${user.id} job=${jobId} — erreur technique requalifiée à l'affichage (statut ${statutEffectif} inchangé, brut conservé dans error_technique)`);
+        }
+      }
+    }
+
     const patch: Record<string, unknown> = { status: statutEffectif };
 
     // platform_fields optionnel : l'extension envoie l'objet DÉJÀ fusionné
@@ -1962,6 +2009,22 @@ serve(async (req) => {
     // colonne dédiée, purement diagnostique, jamais bloquante.
     if (typeof body.handler_build === "string" && body.handler_build) {
       patch.handler_build = body.handler_build.slice(0, 120);
+    }
+
+    // Brut technique conservé (requalification d'affichage plus haut) : ajouté à
+    // platform_fields SANS rien écraser. patch.platform_fields porte déjà l'objet
+    // complet de l'extension (posé au début de l'assemblage) et le garde
+    // aucunAutreRequalif garantit qu'aucun pfX ne l'a remplacé — on fusionne une
+    // seule clé. Le diagnostic reste requêtable par error_technique->>'brut'.
+    if (erreurTechniqueBrute != null && patch.platform_fields && typeof patch.platform_fields === "object") {
+      patch.platform_fields = {
+        ...(patch.platform_fields as Record<string, unknown>),
+        error_technique: {
+          brut: erreurTechniqueBrute.slice(0, 2000),
+          at: new Date().toISOString(),
+          pose_par: "update-job-status (requalification affichage G1/G4)",
+        },
+      };
     }
 
     if (statutEffectif === "published") {
