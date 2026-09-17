@@ -632,7 +632,18 @@ serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     for (const j of ((coupes ?? []) as any[])) {
       const pf0 = j.platform_fields ?? {};
-      const since = Date.parse(pf0.processing_since ?? pf0.deleted_at ?? j.created_at ?? "");
+      // Âge mesuré sur deleted_at (moment RÉEL du retrait, recalé sur l'horloge
+      // serveur par update-job-status) et NON sur processing_since (2026-09-17).
+      // processing_since est réécrit à CHAQUE re-prise du job : sur une machine
+      // au service worker erratique (suspendu/relancé sans finir la recréation),
+      // il repartait sans cesse à ~0, l'horloge de 30 min ne mûrissait jamais, et
+      // l'annonce restait HORS LIGNE en rebondissant (cas Nyxlaire). deleted_at,
+      // lui, ne bouge plus après le retrait → l'âge reflète le vrai temps hors
+      // ligne. Repli processing_since puis created_at si deleted_at est
+      // absent/illisible. Rien d'autre ne change : toujours un simple
+      // RE-ARMEMENT (compare-and-swap sur 'processing', capture 'valide' exigée,
+      // re-sonde de l'état réel avant recréation) — jamais une recréation serveur.
+      const since = Date.parse(pf0.deleted_at ?? pf0.processing_since ?? j.created_at ?? "");
       if (!Number.isFinite(since) || now - since < REPRISE_DELETED_MIN * 60_000) continue;
       const capId = Number(pf0.capture_id);
       if (!Number.isFinite(capId)) continue; // capture absente : garde-fou, on ne touche pas
