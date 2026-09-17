@@ -73,6 +73,10 @@ import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } fro
 import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
 import { sonderAnnonceVinted, lireBoutiquesVinted } from './utils/vintedSync';
 import { plateformesReserveesParRepublication } from './utils/publicationState';
+// Propositions du moteur de rattachement (2026-09-17, sync lot 2) : une
+// annonce relevée au même titre qu'un dépôt « plus en ligne » → le bandeau
+// pose la bonne question (« c'est la même ? ») au lieu de « vendue ? ».
+import { lirePropositionsParJob, deciderRapprochement } from './utils/syncPlateformes';
 import Toast from './components/Toast';
 import ConversionModal, { COIN_CONFIG_FALLBACK } from './components/ConversionModal';
 import { businessOfferVisible } from './config/businessOffer';
@@ -2134,6 +2138,7 @@ export default function App({ loginOnly = false }){
   // vente réelle se déclare toujours depuis la fiche (« Vendre »), et le
   // retrait des copies part comme d'habitude.
   const [alertesMasqueesPf,setAlertesMasqueesPf]=useState({});
+  const [propositionsParJob,setPropositionsParJob]=useState({});
   const [montrerMasquees,setMontrerMasquees]=useState(false);
   const [confirmingSale,setConfirmingSale]=useState(null);
   // (Bandeau « vérification impossible » SUPPRIMÉ le 2026-08-15 — décision
@@ -3167,6 +3172,8 @@ export default function App({ loginOnly = false }){
       .eq('user_id',uid).eq('status','published').in('action',['publish','republish'])
       .not('platform_fields->>unavailable_since','is',null);
     setUnavailableListings(unavail||[]);
+    // Propositions du moteur de rattachement (best-effort, jamais bloquant).
+    lirePropositionsParJob(uid).then((p)=>setPropositionsParJob(p||{})).catch(()=>setPropositionsParJob({}));
 
     // Republications VIVANTES (pending/processing/needs_user) : leurs articles
     // sont EXCLUS de tout bandeau « Vendue ? » et de la revue des disparus —
@@ -4022,6 +4029,26 @@ export default function App({ loginOnly = false }){
     if(job.platform==='vinted'&&job.inventaire_id!=null) await annulerRepublicationsDisparues([job.inventaire_id]);
     setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
     track('dismiss_unavailable',{platform:job.platform});
+  }
+
+  // ── « C'est la même annonce ? » (2026-09-17, rattachement) ─────────────────
+  // Oui → le dépôt est RECÂBLÉ sur la nouvelle annonce (serveur), ses drapeaux
+  // « plus en ligne » levés : le bandeau disparaît, la surveillance continue
+  // sur le nouveau lien. Non → la proposition est écartée, le bandeau
+  // « vendue ? » reprend sa place (rien d'autre n'est décidé).
+  async function accepterProposition(job,annonce){
+    setConfirmingSale(job.id);
+    try{
+      const r=await deciderRapprochement(annonce.id,'attache',job.inventaire_id??null);
+      if(!r?.ok){setToast({visible:true,message:r?.message??r?.reason??t('genericError')});setTimeout(()=>setToast({visible:false,message:""}),3000);return;}
+      setUnavailableListings(prev=>prev.filter(j=>j.id!==job.id));
+      setPropositionsParJob(prev=>{const n={...prev};delete n[job.id];return n;});
+      track('rattachement_bandeau',{platform:job.platform,decision:'attache'});
+    }finally{setConfirmingSale(null);}
+  }
+  async function refuserProposition(job,annonce){
+    const r=await deciderRapprochement(annonce.id,'refus_proposition');
+    if(r?.ok){setPropositionsParJob(prev=>{const n={...prev};delete n[job.id];return n;});track('rattachement_bandeau',{platform:job.platform,decision:'refus'});}
   }
 
   // ── Masquer / réafficher une alerte « plus en ligne » (2026-09-17) ────────
@@ -7338,6 +7365,34 @@ export default function App({ loginOnly = false }){
           // « afficher » n'est pas demandé — l'alerte existe toujours.
           const masquee=alerteEstMasquee(job);
           if(masquee&&!montrerMasquees)return null;
+          const proposition=pf.sale_signal!=='sold'?(propositionsParJob[job.id]??null):null;
+          if(proposition){
+            return (
+              <div key={job.id} style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.teal}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
+                <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
+                  <strong>{lang==='fr'?'Annonce remplacée ?':'Listing replaced?'}</strong>
+                  <br/>
+                  {lang==='fr'
+                    ?<>« {job.title||'Article'} » n'est plus à son ancienne adresse sur <strong>{plat}</strong>, mais une annonce au même titre{proposition.prix!=null?` (${proposition.prix} €)`:''} est en ligne. C'est la même ?</>
+                    :<>“{job.title||'Item'}” is no longer at its old address on <strong>{plat}</strong>, but a listing with the same title{proposition.prix!=null?` (€${proposition.prix})`:''} is online. Is it the same one?</>}
+                  {proposition.url&&<> <a href={proposition.url} target="_blank" rel="noreferrer" style={{color:UI.tealDeep,fontWeight:600}}>{lang==='fr'?'Voir l’annonce':'View listing'}</a></>}
+                </div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <button disabled={busy} onClick={()=>accepterProposition(job,proposition)}
+                    style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                    {busy?'…':(lang==='fr'?"Oui, c'est elle":'Yes, that’s it')}
+                  </button>
+                  <button disabled={busy} onClick={()=>refuserProposition(job,proposition)}
+                    style={{padding:"9px 16px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.mute2,fontSize:13.5,fontWeight:600,cursor:busy?"default":"pointer",fontFamily:"inherit"}}>
+                    {lang==='fr'?'Non':'No'}
+                  </button>
+                </div>
+                <div style={{fontSize:11.5,color:UI.mute,lineHeight:1.5}}>
+                  {lang==='fr'?'« Oui » rattache la nouvelle annonce à cet article et lève l’alerte — rien n’est retiré, aucune vente n’est enregistrée.':'“Yes” links the new listing to this item and clears the alert — nothing is removed, no sale is recorded.'}
+                </div>
+              </div>
+            );
+          }
           // GARDE A (2026-08-24) : article en REPUBLICATION vivante → l'absence
           // de son annonce Vinted est la nôtre (suppression avant recréation),
           // jamais une vente. Aucun bandeau, la republication suit son cours.

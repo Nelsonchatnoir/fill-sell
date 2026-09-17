@@ -40,6 +40,7 @@ html.lp-smooth{scroll-behavior:smooth}
 @keyframes fsTickB{0%,50%{opacity:0;transform:scale(.4)}62%,100%{opacity:1;transform:scale(1)}}
 @keyframes fsTickC{0%,60%{opacity:0;transform:scale(.4)}72%,100%{opacity:1;transform:scale(1)}}
 @keyframes fsTickD{0%,70%{opacity:0;transform:scale(.4)}82%,100%{opacity:1;transform:scale(1)}}
+@keyframes fsTickE{0%,78%{opacity:0;transform:scale(.4)}90%,100%{opacity:1;transform:scale(1)}}
 @keyframes fsPkt{0%{opacity:0;offset-distance:0%}8%{opacity:1}92%{opacity:1}100%{opacity:0;offset-distance:100%}}
 @keyframes fsDash{to{stroke-dashoffset:-28}}
 @keyframes fsSweep{0%,12%{clip-path:inset(0 100% 0 0)}42%,88%{clip-path:inset(0 0 0 0)}100%{clip-path:inset(0 100% 0 0)}}
@@ -57,13 +58,15 @@ l'animation Instagram. Deltas calés sur la géométrie absolue de la scène. */
    destination sont à left:318 top:88/188/288, 58px — centres (347,117),
    (347,217), (347,317). D'où (286,15), (286,115), (286,215). Déplacer la
    vignette dans LandingPage.jsx oblige à recalculer ces six nombres. */
-@keyframes fsHA{0%,6%{opacity:0;transform:translate(0,0) scale(.4)}12%{opacity:1;transform:translate(0,0) scale(1)}36%{opacity:1;transform:translate(286px,15px) scale(1)}44%,100%{opacity:0;transform:translate(286px,15px) scale(.2)}}
-@keyframes fsHB{0%,16%{opacity:0;transform:translate(0,0) scale(.4)}22%{opacity:1;transform:translate(0,0) scale(1)}46%{opacity:1;transform:translate(286px,115px) scale(1)}54%,100%{opacity:0;transform:translate(286px,115px) scale(.2)}}
-@keyframes fsHC{0%,26%{opacity:0;transform:translate(0,0) scale(.4)}32%{opacity:1;transform:translate(0,0) scale(1)}56%{opacity:1;transform:translate(286px,215px) scale(1)}64%,100%{opacity:0;transform:translate(286px,215px) scale(.2)}}
+@keyframes fsHA{0%,6%{opacity:0;transform:translate(0,0) scale(.4)}12%{opacity:1;transform:translate(0,0) scale(1)}36%{opacity:1;transform:translate(286px,-13px) scale(1)}44%,100%{opacity:0;transform:translate(286px,-13px) scale(.2)}}
+@keyframes fsHB{0%,16%{opacity:0;transform:translate(0,0) scale(.4)}22%{opacity:1;transform:translate(0,0) scale(1)}46%{opacity:1;transform:translate(286px,59px) scale(1)}54%,100%{opacity:0;transform:translate(286px,59px) scale(.2)}}
+@keyframes fsHC{0%,26%{opacity:0;transform:translate(0,0) scale(.4)}32%{opacity:1;transform:translate(0,0) scale(1)}56%{opacity:1;transform:translate(286px,131px) scale(1)}64%,100%{opacity:0;transform:translate(286px,131px) scale(.2)}}
+@keyframes fsHD{0%,36%{opacity:0;transform:translate(0,0) scale(.4)}42%{opacity:1;transform:translate(0,0) scale(1)}66%{opacity:1;transform:translate(286px,203px) scale(1)}74%,100%{opacity:0;transform:translate(286px,203px) scale(.2)}}
 @keyframes fsHTA{0%,36%{opacity:0;transform:scale(.4)}44%,100%{opacity:1;transform:scale(1)}}
 @keyframes fsHTB{0%,46%{opacity:0;transform:scale(.4)}54%,100%{opacity:1;transform:scale(1)}}
 @keyframes fsHTC{0%,56%{opacity:0;transform:scale(.4)}64%,100%{opacity:1;transform:scale(1)}}
-@keyframes fsHRepub{0%,62%{opacity:0;transform:translateY(10px)}72%,100%{opacity:1;transform:none}}
+@keyframes fsHTD{0%,66%{opacity:0;transform:scale(.4)}74%,100%{opacity:1;transform:scale(1)}}
+@keyframes fsHRepub{0%,72%{opacity:0;transform:translateY(10px)}82%,100%{opacity:1;transform:none}}
 /* Scène du hero réduite sous 560px. transform-origin CENTRÉ en X (le design
    disait `top left`) : la scène fait 440px de large dans une colonne de ~330,
    elle est donc centrée en négatif (left ≈ -32) AVANT d'être réduite — avec une

@@ -10,7 +10,7 @@
 // début pour couvrir même une exécution qui échouerait en cours de route.
 globalThis.__fillsellVintedCharge = true;
 
-const VINTED_BUILD = "2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
+const VINTED_BUILD = "2026-09-17-taille-candidats-onglets (0.6.42 : « W32 L34 » → W32, toutes les formes dans TOUS les onglets, diagnostic dans last_diagnostic) · 2026-09-14-ping-et-ecouteur-unique (0.6.34 : VINTED_PING répond « je suis là » — c'est le seul verdict fiable de « l'onglet est prêt », l'événement de chargement se manque ; drapeau __fillsellVintedCharge posé en première instruction et écouteur enregistré UNE SEULE FOIS, pour qu'une réinjection ne double jamais les handlers ni ne redéclare les const) — précédent : 2026-09-09-envoi-journalise-et-taille-lettree (l'ENVOI de la création est journalisé avant la réponse ; 42 → XL sur une grille purement lettrée)";
 console.log(`[vinted.js] build ${VINTED_BUILD}`);
 
 // Content script Vinted — remplit le formulaire de dépôt d'annonce.
@@ -2620,6 +2620,7 @@ async function fillListingForm(job) {
             (optionsTaille.length > 12 ? ` … (+${optionsTaille.length - 12} autres)` : "") +
             `. Si la catégorie est la bonne, corrige la taille de l'article depuis l'app ; sinon regénère ` +
             `l'annonce pour corriger sa catégorie. Puis relance la publication.`,
+          diagnostic: diagnosticTailleDerniere ? `taille demandée « ${fields.taille} » — ${diagnosticTailleDerniere}`.slice(0, 1900) : undefined,
           warnings,
           discoveredRequired: requis?.discovered ?? [],
         };
@@ -2642,6 +2643,7 @@ async function fillListingForm(job) {
           (optionsTaille.length > 12 ? ` … (+${optionsTaille.length - 12} autres)` : "") +
           `. Si la catégorie est la bonne, corrige la taille de l'article depuis l'app ; sinon regénère ` +
           `l'annonce pour corriger sa catégorie. Puis relance la publication.`,
+        diagnostic: diagnosticTailleDerniere ? `taille demandée « ${fields.taille} » — ${diagnosticTailleDerniere}`.slice(0, 1900) : undefined,
         warnings,
         discoveredRequired: (await computeVintedRequiredState().catch(() => ({ discovered: [] }))).discovered,
       };
@@ -4953,9 +4955,35 @@ async function activerOngletTaille(onglet) {
   return false; // déjà actif, ou onglet sans effet : les options courantes font foi
 }
 
+// ── LES FORMES UTILES D'UN LIBELLÉ DE TAILLE (2026-09-17, « W32 L34 ») ──────
+// Vinted ne prend que le TOUR DE TAILLE d'un jean / pantalon (W32), jamais la
+// longueur : « W32 L34 », « W32/L34 », « 32x34 », « 32/34 », « W32L34 » sont
+// cherchés tels quels d'abord (une grille combinée pourrait les porter), puis
+// sous la forme « W32 », puis « 32 » (nombre nu : la garde anti-nombre-nu de la
+// cascade reste active). Un préfixe d'onglet (EU/UK/FR/IT/US) est aussi
+// retiré en dernier recours (l'ancien filet, inchangé). L'ordre des candidats
+// EST la règle : jamais une forme réduite avant la forme entière.
+function candidatsTailleVinted(libelle) {
+  const l = String(libelle ?? "").trim();
+  const out = [];
+  const push = (v) => { const t = String(v ?? "").trim(); if (t && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t); };
+  push(l);
+  const jean = l.match(/^\s*W?\s*(\d{2})\s*(?:[xX\/\-\s]\s*L?|L)\s*(\d{2})\s*$/i);
+  if (jean) { push(`W${jean[1]}`); push(jean[1]); }
+  const w = l.match(/^\s*W\s+(\d{2})\s*$/i);
+  if (w) { push(`W${w[1]}`); push(w[1]); }
+  push(l.replace(/^(EU|UK|FR|IT|US)\s+/i, ""));
+  return out;
+}
+// Ce que le dernier échec de taille a VU (candidats, onglets, options) — lu par
+// le verdict de fillListingForm et écrit dans last_diagnostic. Avant : vide,
+// on cherchait à l'aveugle.
+let diagnosticTailleDerniere = null;
+
 async function selectTailleVinted(fields, warnings) {
   const ids = (Array.isArray(fields.taille_ids) ? fields.taille_ids : []).map(Number).filter(Number.isFinite);
   const libelle = String(fields.taille ?? "").trim();
+  diagnosticTailleDerniere = null;
   try {
     await openDropdown(TAILLE_TRIGGER_SEL);
     await attendreOptionsTaille();
@@ -4991,35 +5019,52 @@ async function selectTailleVinted(fields, warnings) {
       warnings.push(note);
       return true;
     }
-    // ── 2. par libellé, tel quel ─────────────────────────────────────────
+    // ── 2. par LIBELLÉ : CANDIDATS × ONGLETS (2026-09-17, « W32 L34 ») ──────
+    // Avant : un libellé sans préfixe EU/UK/FR/IT/US n'était cherché que dans
+    // le PREMIER onglet (lettré), tel quel — « W32 L34 » tombait sur XS…8XL alors
+    // que l'onglet des tours de taille portait W32 (nouvel inscrit du 17/09,
+    // premier et seul job). Désormais : chaque forme utile du libellé
+    // (candidatsTailleVinted) est cherchée dans l'onglet préféré par son préfixe
+    // puis dans TOUS les autres, cascade courte par onglet ; le relevé de
+    // chaque onglet vu nourrit le diagnostic. Vaut pour la publication ET la
+    // recréation (même fonction, même fabrique).
     if (!libelle) throw new Error(`aucun des ids ${JSON.stringify(ids)} dans les onglets ${JSON.stringify(onglets.map((o) => o.texte))}`);
-    if (onglets.length) {
-      const m = libelle.match(TAILLE_PREFIXE_ONGLET_RE);
-      const voulu = m ? m[1].toUpperCase() : null;
-      const onglet = voulu ? onglets.find((o) => o.texte.toUpperCase() === voulu) : onglets[0];
-      if (onglet) {
-        await humanPause();
-        await activerOngletTaille(onglet);
+    const candidats = candidatsTailleVinted(libelle);
+    const ongletsVus = [];
+    const releverOnglet = (texte) => {
+      const options = Array.from(document.querySelectorAll(TAILLE_OPTIONS_SEL)).map((el) => el.textContent.trim()).filter(Boolean);
+      if (!ongletsVus.some((o) => o.onglet === texte)) ongletsVus.push({ onglet: texte, options: options.slice(0, 40) });
+    };
+    const ordreOnglets = (candidat) => {
+      if (!onglets.length) return [null];
+      const m = candidat.match(TAILLE_PREFIXE_ONGLET_RE);
+      const voulu = m ? m[1].toUpperCase() : (/^W\d/i.test(candidat) ? "W" : null);
+      const pref = voulu
+        ? onglets.find((o) => o.texte.toUpperCase() === voulu || (voulu === "W" && /^(W|US)\b|WAIST|TOUR/i.test(o.texte)))
+        : null;
+      const premier = pref ?? onglets[0];
+      return [premier, ...onglets.filter((o) => o !== premier)];
+    };
+    let match = null;
+    let candidatRetenu = null;
+    boucle: for (const candidat of candidats) {
+      for (const onglet of ordreOnglets(candidat)) {
+        if (onglet) { await humanPause(); await activerOngletTaille(onglet); }
+        releverOnglet(onglet ? onglet.texte : "(sans onglet)");
+        try {
+          match = await waitForOptionCascade(TAILLE_OPTIONS_SEL, candidat, onglet ? 1500 : 5000, { sizeField: true });
+          candidatRetenu = candidat;
+          break boucle;
+        } catch { /* forme suivante / onglet suivant */ }
       }
     }
-    // ── 3. FILET : le libellé SANS son préfixe (le comportement d'avant) ─────
-    // Le strip « EU » était la VOIE PRINCIPALE jusqu'à la 0.6.24 incluse, et il
-    // posait JUSTE sur les grilles COMBINÉES (« M / 38 / 10 » : le segment
-    // « 38 » matchait par cascade). Le retirer sans filet ferait régresser une
-    // capture préfixée qui tomberait sur une grille combinée — cas non mesuré
-    // dans le parc (les libellés préfixés viennent des groupes 81-85, qui sont
-    // précisément les grilles SÉPARÉES), mais on ne parie pas là-dessus : il
-    // redevient ce qu'il aurait toujours dû être, un DERNIER recours, tenté
-    // seulement quand l'id ET le libellé entier ont échoué. Court : la cascade
-    // rend la main dès que les options sont rendues sans correspondance.
-    const nu = libelle.replace(/^(EU|UK|FR|IT|US)\s+/i, "");
-    let match;
-    try {
-      match = await waitForOptionCascade(TAILLE_OPTIONS_SEL, libelle, 5000, { sizeField: true });
-    } catch (e) {
-      if (nu === libelle) throw e; // pas de préfixe à retirer : l'échec est l'échec
-      match = await waitForOptionCascade(TAILLE_OPTIONS_SEL, nu, 2000, { sizeField: true });
-      const note = `taille: « ${libelle} » absent de la grille — repli sans préfixe sur « ${nu} »`;
+    if (!match) {
+      diagnosticTailleDerniere = `candidats essayés : ${candidats.map((c) => `« ${c} »`).join(", ")} — onglets vus : ` +
+        ongletsVus.map((o) => `${o.onglet} [${o.options.slice(0, 20).join(", ")}${o.options.length > 20 ? `, … +${o.options.length - 20}` : ""}]`).join(" ; ");
+      throw new Error(`« ${libelle} »${candidats.length > 1 ? ` (ni ${candidats.slice(1).map((c) => `« ${c} »`).join(", ")})` : ""} dans aucun onglet ${JSON.stringify(onglets.map((o) => o.texte))}`);
+    }
+    if (candidatRetenu !== libelle) {
+      const note = `taille: « ${libelle} » absent tel quel — posée sous la forme « ${candidatRetenu} »`;
       console.warn(`[vinted] ≈ ${note}`);
       warnings.push(note);
     }

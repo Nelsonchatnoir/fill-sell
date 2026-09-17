@@ -490,6 +490,26 @@ serve(async (req) => {
         if (cmds?.length) syncCommand = { id: cmds[0].id as string };
       } catch (_e) { /* la file de sync ne doit JAMAIS bloquer la distribution des jobs */ }
     }
+    // ── Relevés multiplateforme (2026-09-17, sync lot 1) : les demandes
+    // kind='annonces' en file (une par plateforme), servies aux extensions
+    // ≥ 0.6.42 seulement — une plus ancienne ne sait pas relever. Même TTL de
+    // 6 h, même purge. Best-effort : jamais un point de panne.
+    let syncCommandsAnnonces: Array<{ id: string; platform: string }> = [];
+    if (versionAuMoins(version, "0.6.42") && !includeProcessing) {
+      try {
+        const ttl = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+        const { data: cmds } = await userClient
+          .from("vinted_sync_runs")
+          .select("id, platform")
+          .eq("kind", "annonces")
+          .eq("status", "queued")
+          .gte("queued_at", ttl)
+          .order("queued_at", { ascending: true })
+          .limit(4);
+        syncCommandsAnnonces = ((cmds ?? []) as Array<{ id: unknown; platform: unknown }>)
+          .map((c) => ({ id: String(c.id), platform: String(c.platform) }));
+      } catch (_e) { /* idem */ }
+    }
 
     // action + listing_url (2026-07-11) : les jobs de SUPPRESSION
     // (action='delete', armés par le bandeau semi-auto de l'app après une
@@ -3380,6 +3400,7 @@ serve(async (req) => {
       jobs: out,
       annonces_en_attente: annoncesAttente,
       sync_command: syncCommand,
+      sync_commands_annonces: syncCommandsAnnonces,
       // sync_prioritaire/jobs_retenus_sync portent désormais AUSSI le backlog
       // retenu (cf. bandeau ci-dessus) : « il reste du travail, ne dors pas ».
       sync_prioritaire: travailRetenu > 0,

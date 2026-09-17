@@ -115,6 +115,46 @@ function oplaIdDepuisUrl(url) {
   return m ? m[1] : null;
 }
 
+// ── RELEVÉ DES ANNONCES DU VENDEUR (2026-09-17, sync multiplateforme lot 1) ──
+// GET /public/me/articles?view=summary&limit=50 → { articles, nextCursor }
+// (relevé lot 1, docs/OPLA_RELEVE.md § 15). Lecture seule, page par page,
+// borné à 40 pages. Les champs d'un article « summary » n'ont pas été relevés
+// un par un : on lit défensivement (id / title / price / moderationStatus /
+// status / images) et on rend ce qu'on a — l'identifiant seul suffit au
+// moteur de rattachement (par identifiant, puis par titre s'il est là).
+async function listerMesArticles() {
+  const articles = [];
+  let cursor = null;
+  let complet = true;
+  for (let page = 0; page < 40; page++) {
+    const chemin = OPLA_ENDPOINTS.mesArticles + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+    const r = await oplaJson(chemin);
+    if (r.statut === 401 || r.statut === 403) return { success: false, error: `session Opla refusée (HTTP ${r.statut})`, needsUser: true };
+    if (!r.ok || !r.corps || typeof r.corps !== "object") return { success: false, error: `liste Opla illisible (HTTP ${r.statut})` };
+    const liste = Array.isArray(r.corps.articles) ? r.corps.articles : (Array.isArray(r.corps.items) ? r.corps.items : []);
+    for (const a of liste) {
+      const id = String(a?.id ?? a?.articleId ?? "").trim();
+      if (!/^art_/.test(id)) continue;
+      const titre = String(a?.title ?? a?.name ?? a?.titre ?? "").trim() || null;
+      const prixBrut = a?.price ?? a?.prix ?? (Number.isFinite(Number(a?.priceCents)) ? Number(a.priceCents) / 100 : null);
+      const prix = Number.isFinite(Number(prixBrut)) ? Number(prixBrut) : null;
+      const mod = String(a?.moderationStatus ?? "").toLowerCase();
+      const st = String(a?.status ?? a?.state ?? "").toLowerCase();
+      const statut = /sold|vendu/.test(st) ? "vendue"
+        : mod === "pending" ? "en_verification"
+        : /reject|refus|inactive|disabled|archived/.test(st) || mod === "rejected" ? "desactivee"
+        : (mod === "approved" || mod === "") ? "en_ligne" : "inconnu";
+      const img = Array.isArray(a?.images) ? a.images[0] : (Array.isArray(a?.photos) ? a.photos[0] : null);
+      const photo = typeof img === "string" ? img : (img?.url ?? img?.src ?? null);
+      articles.push({ listing_id: id, url: oplaUrlPublique(id), titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null });
+    }
+    cursor = r.corps.nextCursor ?? r.corps.next_cursor ?? null;
+    if (!cursor || !liste.length) break;
+    if (page === 39) complet = false;
+  }
+  return { success: true, articles, complet };
+}
+
 // ⛔ Les bornes (prix max/min, titre, description, photos) NE SONT PAS
 // redéclarées ici : elles vivent dans `content-scripts/opla-prevol.js`, qui est
 // injecté dans le MÊME monde isolé que ce fichier. Les redéclarer en `const`
@@ -903,6 +943,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
     // « es-tu là ? » — réponse SYNCHRONE, aucune lecture de page, aucun effet.
     if (msg?.type === "OPLA_PING") {
       sendResponse({ success: true, pong: true, actif: OPLA_ACTIF });
+      return true;
+    }
+    if (msg?.type === "OPLA_LISTE_ARTICLES") {
+      listerMesArticles()
+        .then((r) => sendResponse(r))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
       return true;
     }
     if (msg?.type === "DELETE_LISTING" || msg?.type === "REPUBLISH_LISTING") {

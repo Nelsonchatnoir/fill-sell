@@ -37,6 +37,11 @@ import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasquee
 // Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
 // appel RPC générique, refus en mots — utils/republication.js, source unique.
 import { plateformesRepubliables, republierArticle, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
+// Relevé des annonces par plateforme (2026-09-17, sync lot 2) — FERMÉ tant que
+// coin_config.sync_multi_ouverte = 0 : le bloc n'existe pas, aucun texte ne
+// l'annonce (lireSyncMultiOuverte, fail-closed).
+import RelevesPlateformes from '../components/RelevesPlateformes';
+import { lireSyncMultiOuverte } from '../utils/syncPlateformes';
 import { useFondFige } from '../utils/modale';
 import {
   PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR,
@@ -2401,8 +2406,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // Le bilan et la cadence ne s'affichent que débloqué.
   const blocage = !peutLancer && (sondeFinie || capaciteConnue);
   const MESSAGE_BLOCAGE = fr
-    ? "Installe l'extension FillSell sur ton ordinateur pour synchroniser ton dressing."
-    : 'Install the FillSell extension on your computer to sync your closet.';
+    ? "Installe l'extension FillSell sur ton ordinateur pour relever tes annonces."
+    : 'Install the FillSell extension on your computer to scan your listings.';
   // Distinct de MESSAGE_BLOCAGE, et ça compte : l'extension EST installée, le
   // geste n'est pas de l'installer mais d'ouvrir Chrome. Dit AVANT l'action —
   // une demande mise en file que personne ne réclamera est le pire des retours.
@@ -2476,10 +2481,10 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       ? derniereReussie.vinted_login.trim() : null;
     if (login) {
       return fr
-        ? `Dressing @${login} synchronisé ${quand}.`
-        : `@${login} wardrobe synced ${quand}.`;
+        ? `Annonces Vinted de @${login} relevées ${quand}.`
+        : `@${login} Vinted listings scanned ${quand}.`;
     }
-    return fr ? `Dressing synchronisé ${quand}.` : `Wardrobe synced ${quand}.`;
+    return fr ? `Annonces Vinted relevées ${quand}.` : `Vinted listings scanned ${quand}.`;
   })();
   // Le rappel « c'est automatique », lui, garde ses conditions : il PROMET
   // quelque chose, contrairement à l'heure ci-dessus qui ne fait que constater.
@@ -2599,8 +2604,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       if (r?.reason === 'cadence') {
         const m = r.prochaine_dans_min ?? 15;
         return fr
-          ? `Ton dressing vient d'être synchronisé — tu pourras actualiser dans ~${m} min.`
-          : `Your closet was just synced — you can refresh in ~${m} min.`;
+          ? `Tes annonces Vinted viennent d'être relevées — tu pourras actualiser dans ~${m} min.`
+          : `Your Vinted listings were just scanned — you can refresh in ~${m} min.`;
       }
       if (r?.reason === 'deja_en_attente') {
         return fr
@@ -2648,8 +2653,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         const min = Math.max(1, Math.ceil((prochaine - Date.now()) / 60000));
         const lus = run.items_vus ?? 0;
         return { ton: 'orange', texte: fr
-          ? `La lecture de ton dressing a été coupée${lus > 0 ? ` après ${lus} article${lus > 1 ? 's' : ''}` : ''}. Elle reprend toute seule dans ~${min} min (tentative ${repriseAuto[1]}/${repriseAuto[2]}), là où elle s'est arrêtée — laisse Chrome ouvert, rien d'autre à faire.`
-          : `Reading your closet was cut off${lus > 0 ? ` after ${lus} item${lus > 1 ? 's' : ''}` : ''}. It resumes on its own in ~${min} min (attempt ${repriseAuto[1]}/${repriseAuto[2]}), right where it stopped — keep Chrome open, nothing else to do.` };
+          ? `La lecture de tes annonces Vinted a été coupée${lus > 0 ? ` après ${lus} article${lus > 1 ? 's' : ''}` : ''}. Elle reprend toute seule dans ~${min} min (tentative ${repriseAuto[1]}/${repriseAuto[2]}), là où elle s'est arrêtée — laisse Chrome ouvert, rien d'autre à faire.`
+          : `Reading your Vinted listings was cut off${lus > 0 ? ` after ${lus} item${lus > 1 ? 's' : ''}` : ''}. It resumes on its own in ~${min} min (attempt ${repriseAuto[1]}/${repriseAuto[2]}), right where it stopped — keep Chrome open, nothing else to do.` };
       }
     }
     if (run.status === 'done') {
@@ -2673,11 +2678,11 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
       // plusieurs boutiques. Reconnu sur la [note] posée par l'extension.
       if (/changement de compte Vinted/i.test(String(run.erreur ?? ''))) {
         return { ton: 'vert', texte: fr
-          ? `Dressing synchronisé — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour. Compte Vinted différent de la dernière synchro : rien n'a été marqué « plus en ligne » ce coup-ci.`
+          ? `Annonces Vinted relevées — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour. Compte Vinted différent de la dernière synchro : rien n'a été marqué « plus en ligne » ce coup-ci.`
           : `Closet synced — ${run.items_crees ?? 0} item${(run.items_crees ?? 0) === 1 ? '' : 's'} imported, ${run.items_maj ?? 0} updated. Different Vinted account than last sync: nothing was marked "no longer online" this time.` };
       }
       return { ton: 'vert', texte: fr
-        ? `Dressing synchronisé — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour.`
+        ? `Annonces Vinted relevées — ${run.items_crees ?? 0} article${(run.items_crees ?? 0) > 1 ? 's' : ''} importé${(run.items_crees ?? 0) > 1 ? 's' : ''}, ${run.items_maj ?? 0} mis à jour.`
         : `Closet synced — ${run.items_crees ?? 0} item${(run.items_crees ?? 0) === 1 ? '' : 's'} imported, ${run.items_maj ?? 0} updated.` };
     }
     // ── RELEVÉ INCOMPLET (2026-09-13) ────────────────────────────────────────
@@ -2906,8 +2911,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
               : enAttenteDistante
                 ? (fr?"Demande en attente":"Request pending")
                 : dejaSync
-                  ? (fr?"Actualiser mon dressing":"Refresh my closet")
-                  : (fr?"Synchroniser mon dressing Vinted":"Sync my Vinted closet")}
+                  ? (fr?"Actualiser mes annonces Vinted":"Refresh my Vinted listings")
+                  : (fr?"Relever mes annonces Vinted":"Scan my Vinted listings")}
       </SecondaryButton>
       )}
 
@@ -3082,7 +3087,7 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
                   la ligne d'état porte déjà. */}
               {bilanRepliable&&(
                 <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>
-                  {String(bilan.texte).replace(/^(Dressing synchronisé|Closet synced) — /,'')}
+                  {String(bilan.texte).replace(/^(Annonces Vinted relevées|Vinted listings scanned|Dressing synchronisé|Closet synced) — /,'')}
                 </div>
               )}
               {autoTexte&&(
@@ -3149,8 +3154,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
         {infosDepliees&&(
           <div style={{marginBottom:4}}>
             {fr
-              ? "On lit tes annonces en ligne (titre, prix, photos, vues, favoris). Rien n'est publié, modifié ni supprimé sur Vinted."
-              : "We read your online listings (title, price, photos, views, favourites). Nothing is published, edited or deleted on Vinted."}
+              ? "On lit tes annonces en ligne (titre, prix, photos, vues, favoris) et on les rattache à ton stock : un article, une fiche. Rien n'est publié, modifié ni supprimé."
+              : "We read your online listings (title, price, photos, views, favourites) and match them to your stock: one item, one card. Nothing is published, edited or deleted."}
             {/* Sur le stock VIDE, seules ces deux phrases (le contrat de
                 lecture, mot pour mot) s'affichent : la limite de l'historique
                 et le prix d'achat à compléter répondent à des questions que
@@ -4766,6 +4771,12 @@ const StockTab = memo(function StockTab({
   // une ligne SQL. La RPC porte la même porte côté serveur : l'app ne fait que
   // ne pas PROPOSER ce que le serveur refuserait.
   const [multiOuverte, setMultiOuverte] = useState(false);
+  const [syncMultiOuverte, setSyncMultiOuverte] = useState(false);
+  useEffect(() => {
+    let annule = false;
+    lireSyncMultiOuverte(user?.id).then((v) => { if (!annule) setSyncMultiOuverte(v === true); }).catch(() => {});
+    return () => { annule = true; };
+  }, [user?.id]);
   useEffect(() => {
     let annule = false;
     supabase.from('coin_config').select('value').eq('key', 'republication_multi_ouverte').maybeSingle()
@@ -6788,6 +6799,13 @@ const StockTab = memo(function StockTab({
           onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
           boutiquesVinted={boutiquesVinted}
           rechargerBoutiques={rechargerBoutiques}
+        />
+        {/* Relevé des annonces sur les autres plateformes (2026-09-17) :
+            rendu SEULEMENT quand l'interrupteur serveur est ouvert. */}
+        <RelevesPlateformes
+          lang={lang} user={user} items={items} ouvert={syncMultiOuverte}
+          extensionStatus={extensionStatus}
+          onRattache={rafraichirApresSync}
         />
       </div>
       {/* ── Stock VIDE, mobile : la carte d'ajout DESCEND (2026-09-01) ────────

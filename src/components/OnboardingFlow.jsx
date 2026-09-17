@@ -50,6 +50,9 @@ import PlatformLogo from './platform-logos/PlatformLogo';
 import ExtensionPitchScreen from './ExtensionPitchScreen';
 import { supabase } from '../lib/supabase';
 import { lireCapaciteSyncCompte, demanderSyncDressingServeur } from '../utils/vintedSync';
+// Relevé multiplateforme (2026-09-17) : les mots de l'onboarding ne l'annoncent
+// QUE si l'interrupteur serveur est ouvert (même interrupteur que le code).
+import { lireSyncMultiOuverte } from '../utils/syncPlateformes';
 import { useEnvoiLienExtension, messageEchecLien } from '../hooks/useEnvoiLienExtension';
 
 const C = {
@@ -85,6 +88,13 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
   // (surTelephone) — sur un téléphone, installer ici est impossible, on envoie
   // le lien vers l'ordinateur.
   const surTelephone = Capacitor.isNativePlatform() || window.innerWidth < 768;
+  const [multi, setMulti] = useState(false);
+  useEffect(() => {
+    let annule = false;
+    lireSyncMultiOuverte(user?.id).then((v) => { if (!annule) setMulti(v === true); }).catch(() => {});
+    return () => { annule = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [step, setStep] = useState(lireEtatInitial);
   const [showPitch, setShowPitch] = useState(false);
   const [syncEnvoyee, setSyncEnvoyee] = useState(false);
@@ -220,11 +230,16 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
   if (step === 'choix') {
     return ecran(
       <>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
-          <PlatformLogo platform="vinted" size={44} />
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 18 }}>
+          {/* Cinq plateformes, une seule fiche par article (2026-09-17). */}
+          <PlatformLogo platform="vinted" size={40} />
+          <PlatformLogo platform="leboncoin" size={40} />
+          <PlatformLogo platform="ebay" size={40} />
+          <PlatformLogo platform="beebs" size={40} />
+          <PlatformLogo platform="opla" size={40} />
         </div>
         <h1 style={{ margin: '0 0 22px', fontSize: 25, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, textAlign: 'center', lineHeight: 1.2 }}>
-          {fr ? 'Tu vends déjà sur Vinted ?' : 'Already selling on Vinted?'}
+          {fr ? 'Tu vends déjà en ligne ?' : 'Already selling online?'}
         </h1>
 
         <button
@@ -232,7 +247,11 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
           style={{ ...btn, background: `linear-gradient(120deg,${C.teal},${C.tealDeep})`, color: '#fff', marginBottom: 12, boxShadow: '0 12px 26px -10px rgba(47,158,144,0.5)' }}
         >
           <div style={{ fontSize: 16, fontWeight: 700 }}>{fr ? "Oui, j'ai déjà des annonces" : 'Yes, I have listings'}</div>
-          <div style={{ fontSize: 13, fontWeight: 500, opacity: 0.85, marginTop: 3 }}>{fr ? 'On les importe, tu ne refais rien' : "We import them — you redo nothing"}</div>
+          <div style={{ fontSize: 13, fontWeight: 500, opacity: 0.85, marginTop: 3 }}>
+            {multi
+              ? (fr ? 'On relève tes annonces Vinted, Leboncoin, Beebs, eBay et Opla — une fiche par article, tu ne refais rien' : 'We scan your Vinted, Leboncoin, Beebs, eBay and Opla listings — one card per item, you redo nothing')
+              : (fr ? 'On importe tes annonces Vinted, tu ne refais rien' : 'We import your Vinted listings — you redo nothing')}
+          </div>
         </button>
 
         <button
@@ -240,7 +259,7 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
           style={{ ...btn, background: C.paper, color: C.ink, border: `1px solid ${C.border}` }}
         >
           <div style={{ fontSize: 16, fontWeight: 700 }}>{fr ? 'Non, je commence' : "No, I'm starting out"}</div>
-          <div style={{ fontSize: 13, fontWeight: 500, color: C.mute2, marginTop: 3 }}>{fr ? 'On crée ta première annonce' : 'We create your first listing'}</div>
+          <div style={{ fontSize: 13, fontWeight: 500, color: C.mute2, marginTop: 3 }}>{fr ? 'On crée ta première annonce, publiée sur les cinq plateformes' : 'We create your first listing, published on all five platforms'}</div>
         </button>
       </>
     );
@@ -255,8 +274,8 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
         </h1>
         <p style={{ margin: '0 0 14px', fontSize: 14, lineHeight: 1.6, color: C.mute2, textAlign: 'center' }}>
           {fr
-            ? 'Pour lire ton dressing Vinted, FillSell utilise une petite extension Chrome installée sur ton ordinateur. Elle se sert de ton compte déjà connecté — FillSell ne connaît jamais ton mot de passe. Une minute, une seule fois.'
-            : 'To read your Vinted wardrobe, FillSell uses a small Chrome extension installed on your computer. It uses your already-signed-in account — FillSell never knows your password. One minute, once.'}
+            ? 'Pour lire tes annonces en ligne, FillSell utilise une petite extension Chrome installée sur ton ordinateur. Elle se sert de ton compte déjà connecté — FillSell ne connaît jamais ton mot de passe. Une minute, une seule fois.'
+            : 'To read your online listings, FillSell uses a small Chrome extension installed on your computer. It uses your already-signed-in account — FillSell never knows your password. One minute, once.'}
         </p>
 
         {/* Le contrat — même phrase que la carte de sync du Stock, mot pour mot. */}
@@ -355,7 +374,7 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
       </div>
       <h1 style={{ margin: '0 0 16px', fontSize: 23, fontWeight: 700, letterSpacing: '-0.02em', color: C.ink, textAlign: 'center', lineHeight: 1.25 }}>
         {syncEnvoyee
-          ? (fr ? 'Ton dressing arrive' : 'Your wardrobe is coming')
+          ? (fr ? 'Tes annonces arrivent' : 'Your listings are coming')
           : surTelephone
             // Le titre dit l'ÉTAT, jamais un envoi qui n'a pas eu lieu.
             ? (envoi.etat === 'envoye'
@@ -381,8 +400,8 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
           <p style={{ margin: '10px 0 12px', fontSize: 13, lineHeight: 1.55, color: C.mute2, textAlign: 'center' }}>
             {envoi.etat === 'envoye'
               ? (fr
-                  ? "Ouvre-le sur ton ordinateur, même dans trois jours : une minute d'installation, et ton dressing arrive ici tout seul — rien à recliquer."
-                  : 'Open it on your computer, even in three days: one minute to install, and your wardrobe arrives here on its own — nothing to click again.')
+                  ? "Ouvre-le sur ton ordinateur, même dans trois jours : une minute d'installation, et tes annonces arrivent ici toutes seules — rien à recliquer."
+                  : 'Open it on your computer, even in three days: one minute to install, and your listings arrive here on their own — nothing to click again.')
               : (fr ? "Il part à l'adresse de ton compte et t'attendra devant ton ordinateur." : 'It goes to your account address and will be waiting at your computer.')}
           </p>
 
@@ -449,7 +468,7 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
             {fr ? "Installer l'extension" : 'Install the extension'}
           </button>
           <p style={{ margin: '10px 0 0', fontSize: 13, lineHeight: 1.55, color: C.mute2, textAlign: 'center' }}>
-            {fr ? 'Ton dressing arrivera ici tout seul, deux minutes après.' : 'Your wardrobe will arrive here on its own, two minutes later.'}
+            {fr ? 'Tes annonces arriveront ici toutes seules, deux minutes après.' : 'Your listings will arrive here on their own, two minutes later.'}
           </p>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: '10px 12px', margin: '18px 0 10px' }}>
             <span style={{ width: 13, height: 13, border: `2px solid ${C.teal}`, borderTopColor: 'transparent', borderRadius: 99, display: 'inline-block', animation: 'fsObSpin 1s linear infinite' }} />
@@ -479,10 +498,10 @@ export default function OnboardingFlow({ lang, user, onDone, demanderPseudo = fa
           onExtensionSeen={() => setShowPitch(false)}
           // « synchroniser » partout depuis le 2026-08-09 : c'est le mot du
           // bouton de la carte Vinted, celui du dashboard, et celui-ci.
-          eyebrow={fr ? 'Pour synchroniser ton dressing' : 'To sync your closet'}
+          eyebrow={fr ? 'Pour relever tes annonces' : 'To scan your listings'}
           body={fr
-            ? "Elle lit ton dressing Vinted avec ton compte déjà connecté dans ton navigateur — jamais ton mot de passe — puis publie tes annonces quand tu le décides. Gratuite, installée une seule fois."
-            : 'It reads your Vinted wardrobe with the account already signed in to your browser — never your password — then publishes your listings when you decide. Free, installed once.'}
+            ? "Elle lit tes annonces avec tes comptes déjà connectés dans ton navigateur — jamais tes mots de passe — puis publie sur les cinq plateformes quand tu le décides. Gratuite, installée une seule fois."
+            : 'It reads your listings with the accounts already signed in to your browser — never your passwords — then publishes on all five platforms when you decide. Free, installed once.'}
         />
       )}
     </>

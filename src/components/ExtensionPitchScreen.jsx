@@ -78,8 +78,8 @@ export default function ExtensionPitchScreen({
     fr ? 'Lien extension FillSell (à ouvrir sur ordinateur)' : 'FillSell extension link (open on a computer)'
   )}&body=${encodeURIComponent(
     fr
-      ? `Installe l'extension FillSell sur ton ordinateur :\n${EXTENSION_URL}\n\nElle synchronise ton dressing Vinted en quelques secondes et publie tes annonces sur Vinted, Leboncoin, eBay, Beebs et Opla.`
-      : `Install the FillSell extension on your computer:\n${EXTENSION_URL}\n\nIt syncs your Vinted wardrobe in seconds and posts your listings on Vinted, Leboncoin, eBay and Beebs.`
+      ? `Installe l'extension FillSell sur ton ordinateur :\n${EXTENSION_URL}\n\nElle relève tes annonces Vinted en quelques secondes et publie tes annonces sur Vinted, Leboncoin, eBay, Beebs et Opla.`
+      : `Install the FillSell extension on your computer:\n${EXTENSION_URL}\n\nIt scans your Vinted listings in seconds and posts your listings on Vinted, Leboncoin, eBay, Beebs and Opla.`
   )}`;
 
   async function copyLink() {
@@ -263,8 +263,8 @@ export default function ExtensionPitchScreen({
           {/* ── Secondaire : après l'action, pour qui veut savoir ───────────── */}
           <p style={{ margin: '0 0 12px', fontSize: 13, color: C.mute2, lineHeight: 1.55, textAlign: 'center' }}>
             {body ?? (fr
-              ? "C'est elle qui met tes annonces en ligne pour toi sur Vinted, Leboncoin, eBay, Beebs et Opla. Elle est gratuite — et dès son installation, tout ton dressing Vinted se synchronise dans FillSell en quelques secondes."
-              : 'It posts your listings for you on Vinted, Leboncoin, eBay and Beebs. It is free — and as soon as it is installed, your entire Vinted wardrobe syncs into FillSell within seconds.')}
+              ? "C'est elle qui met tes annonces en ligne pour toi sur Vinted, Leboncoin, eBay, Beebs et Opla. Elle est gratuite — et dès son installation, toutes tes annonces Vinted remontent dans FillSell en quelques secondes."
+              : 'It posts your listings for you on Vinted, Leboncoin, eBay, Beebs and Opla. It is free — and as soon as it is installed, all your Vinted listings sync into FillSell within seconds.')}
           </p>
 
           {supabase && userId && (

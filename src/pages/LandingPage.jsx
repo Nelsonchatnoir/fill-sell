@@ -132,6 +132,20 @@ function getInitialLang() {
 const EN = {
   "Comment ça marche": "How it works",
   "Import Vinted": "Vinted import",
+  "Relevé de tes annonces": "Your listings, scanned",
+  "5 plateformes, tes comptes": "5 marketplaces, your accounts",
+  "Relevé de tes annonces gratuit et illimité": "Free, unlimited listing scan",
+  "Tes annonces Vinted entrent en un clic": "Your Vinted listings come in with one click",
+  "Tes annonces entrent en un clic, sur les cinq plateformes": "Your listings come in with one click, on all five marketplaces",
+  "Publié sur les 5 plateformes": "Published on all 5 marketplaces",
+  "Un seul ajout part sur Vinted, Leboncoin, eBay, Beebs et Opla — avec tes comptes. Cinq fois plus d'acheteurs, pas cinq fois le travail.": "One single add goes to Vinted, Leboncoin, eBay, Beebs and Opla — with your accounts. Five times more buyers, not five times the work.",
+  "Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay, Beebs et Opla avec tes comptes. Cinq fois plus d'acheteurs devant le même article, sans cinq fois le travail.": "You fill it in once. FillSell publishes on Vinted, Leboncoin, eBay, Beebs and Opla with your accounts. Five times more buyers on the same item — without five times the work.",
+  "Opla": "Opla",
+  "Résultats": "Results",
+  "Tu as déjà des annonces en ligne ?": "Already have listings online?",
+  "Mes annonces Vinted": "My Vinted listings",
+  "FillSell relit tes annonces Vinted, Leboncoin, Beebs, eBay et Opla et les rattache à ton stock : un article, une fiche. On lit — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis où republier.": "FillSell re-reads your Vinted, Leboncoin, Beebs, eBay and Opla listings and matches them to your stock: one item, one card. We read — we never publish, edit or delete anything. Then you choose where to repost.",
+  "Importer mes annonces": "Import my listings",
   "Publication": "Publishing",
   "Tarifs": "Pricing",
   "Se connecter": "Log in",
@@ -342,6 +356,7 @@ export default function LandingPage() {
   const [lang, setLang] = useState(getInitialLang);
   const [menuOpen, setMenuOpen] = useState(false);
   const [grants, setGrants] = useState(GRANTS_FALLBACK);
+  const [syncMulti, setSyncMulti] = useState(false);
 
   const isNative = Capacitor.isNativePlatform();
   /* Même drapeau que l'app : refermer l'offre Business dans businessOffer.js
@@ -373,9 +388,14 @@ export default function LandingPage() {
           .in('key', ['quota_annonces_free', 'quota_annonces_premium', 'quota_annonces_pro',
                       'quota_annonces_business',
                       'republication_avie_free', 'quota_republication_premium', 'quota_republication_pro',
-                      'quota_retouche_premium', 'quota_retouche_pro', 'quota_retouche_business']);
+                      'quota_retouche_premium', 'quota_retouche_pro', 'quota_retouche_business',
+                      'sync_multi_ouverte']);
         if (error || !data?.length || !vivant) return;
         const parKey = Object.fromEntries(data.map((r) => [r.key, r.value]));
+        // Relevé multiplateforme (2026-09-17) : la landing n'annonce le relevé
+        // Leboncoin/Beebs/eBay/Opla QUE si l'interrupteur serveur est ouvert —
+        // le même que celui du code (fail-closed : absent = fermé).
+        setSyncMulti(Number(parKey.sync_multi_ouverte) === 1);
         setGrants({
           ADS_FREE:          parKey.quota_annonces_free         ?? GRANTS_FALLBACK.ADS_FREE,
           ADS_PREMIUM:       parKey.quota_annonces_premium      ?? GRANTS_FALLBACK.ADS_PREMIUM,
@@ -508,7 +528,7 @@ export default function LandingPage() {
             </a>
             <nav data-nav-links="1" style={{ display: "flex", gap: "4px", marginLeft: "6px" }}>
               <a href="#comment" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t("Comment ça marche")}</a>
-              <a href="#import" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t("Import Vinted")}</a>
+              <a href="#import" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t(syncMulti ? "Relevé de tes annonces" : "Import Vinted")}</a>
               <a href="#publication" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t("Publication")}</a>
               <a href="#tarifs" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t("Tarifs")}</a>
               <a href="#faq" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px" }}>{t("FAQ")}</a>
@@ -532,7 +552,7 @@ export default function LandingPage() {
           <div data-menu="1" style={{ display: menuOpen ? "block" : "none", borderTop: "1px solid #E7E3D8", background: "rgba(250,250,248,.98)", padding: "10px 16px 14px" }}>
             <nav style={{ display: "flex", flexDirection: "column" }}>
               <a href="#comment" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("Comment ça marche")}</a>
-              <a href="#import" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("Import Vinted")}</a>
+              <a href="#import" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t(syncMulti ? "Relevé de tes annonces" : "Import Vinted")}</a>
               <a href="#publication" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("Publication")}</a>
               <a href="#tarifs" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("Tarifs")}</a>
               <a href="#faq" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("FAQ")}</a>
@@ -657,6 +677,7 @@ export default function LandingPage() {
                                 <PlatformLogo platform="leboncoin" size={9} />
                                 <PlatformLogo platform="ebay" size={9} />
                                 <PlatformLogo platform="beebs" size={9} />
+                                <PlatformLogo platform="opla" size={9} />
                               </span>
                             </span>
                             <span style={{ display: "block", textAlign: "center", background: "linear-gradient(135deg,#2F9E90,#1B6E62)", color: "#fff", borderRadius: "5px", padding: "2.5px 0", fontWeight: "700", fontSize: "6px" }}>{t("Publier")}</span>
@@ -672,12 +693,13 @@ export default function LandingPage() {
                     </div>
                   </div>
                 </div>
-                {/* Les copies qui s'échappent du téléphone vers les 3 autres plateformes */}
+                {/* Les copies qui s'échappent du téléphone vers les 4 autres plateformes (Opla, 17/09) */}
                 <div style={{ position: "absolute", zIndex: "2", left: "41px", top: "82px", width: "40px", height: "40px", borderRadius: "7px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHA 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
                 <div style={{ position: "absolute", zIndex: "2", left: "41px", top: "82px", width: "40px", height: "40px", borderRadius: "7px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHB 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
                 <div style={{ position: "absolute", zIndex: "2", left: "41px", top: "82px", width: "40px", height: "40px", borderRadius: "7px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHC 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
+                <div style={{ position: "absolute", zIndex: "2", left: "41px", top: "82px", width: "40px", height: "40px", borderRadius: "7px", backgroundImage: "url(/landing/casquette-volcom.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", boxShadow: "0 0 0 2px #F6F5F1,0 8px 18px rgba(0,0,0,.45)", animation: "fsHD 6s cubic-bezier(.45,.05,.2,1) infinite" }} />
                 {/* Destinations */}
-                <div style={{ position: "absolute", left: "318px", top: "88px", width: "58px", height: "58px", borderRadius: "15px", background: "rgba(246,245,241,.06)", border: "1px solid rgba(78,205,196,.28)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ position: "absolute", left: "318px", top: "60px", width: "58px", height: "58px", borderRadius: "15px", background: "rgba(246,245,241,.06)", border: "1px solid rgba(78,205,196,.28)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <PlatformLogo platform="leboncoin" size={40} />
                   <span style={{ position: "absolute", right: "-7px", top: "-7px", animation: "fsHTA 6s ease infinite", display: "flex" }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="#4ECDC4">
@@ -686,7 +708,7 @@ export default function LandingPage() {
                     </svg>
                   </span>
                 </div>
-                <div style={{ position: "absolute", left: "318px", top: "188px", width: "58px", height: "58px", borderRadius: "15px", background: "rgba(246,245,241,.06)", border: "1px solid rgba(78,205,196,.28)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ position: "absolute", left: "318px", top: "132px", width: "58px", height: "58px", borderRadius: "15px", background: "rgba(246,245,241,.06)", border: "1px solid rgba(78,205,196,.28)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <PlatformLogo platform="ebay" size={40} />
                   <span style={{ position: "absolute", right: "-7px", top: "-7px", animation: "fsHTB 6s ease infinite", display: "flex" }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="#4ECDC4">
@@ -695,9 +717,18 @@ export default function LandingPage() {
                     </svg>
                   </span>
                 </div>
-                <div style={{ position: "absolute", left: "318px", top: "288px", width: "58px", height: "58px", borderRadius: "15px", background: "rgba(246,245,241,.06)", border: "1px solid rgba(78,205,196,.28)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ position: "absolute", left: "318px", top: "204px", width: "58px", height: "58px", borderRadius: "15px", background: "rgba(246,245,241,.06)", border: "1px solid rgba(78,205,196,.28)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <PlatformLogo platform="beebs" size={40} />
                   <span style={{ position: "absolute", right: "-7px", top: "-7px", animation: "fsHTC 6s ease infinite", display: "flex" }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#4ECDC4">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M20 6 9 17l-5-5" fill="none" stroke="#10302B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
+                    </svg>
+                  </span>
+                </div>
+                <div style={{ position: "absolute", left: "318px", top: "276px", width: "58px", height: "58px", borderRadius: "15px", background: "rgba(246,245,241,.06)", border: "1px solid rgba(78,205,196,.28)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <PlatformLogo platform="opla" size={40} />
+                  <span style={{ position: "absolute", right: "-7px", top: "-7px", animation: "fsHTD 6s ease infinite", display: "flex" }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="#4ECDC4">
                       <circle cx="12" cy="12" r="10" />
                       <path d="M20 6 9 17l-5-5" fill="none" stroke="#10302B" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
@@ -735,7 +766,7 @@ export default function LandingPage() {
                 <circle cx="12" cy="12" r="10" />
                 <path d="M20 6 9 17l-5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
               </svg>
-              <span style={{ fontWeight: "700", fontSize: "13.5px", color: "#10201B", whiteSpace: "nowrap" }}>{t("Import Vinted gratuit et illimité")}</span>
+              <span style={{ fontWeight: "700", fontSize: "13.5px", color: "#10201B", whiteSpace: "nowrap" }}>{t(syncMulti ? "Relevé de tes annonces gratuit et illimité" : "Import Vinted gratuit et illimité")}</span>
             </div>
             <span data-proof-sep="1" style={{ width: "1px", height: "20px", background: "#D8D3C6", flexShrink: "0" }} />
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: "0 0 auto" }}>
@@ -744,8 +775,9 @@ export default function LandingPage() {
                 <PlatformLogo platform="leboncoin" size={22} />
                 <PlatformLogo platform="ebay" size={22} />
                 <PlatformLogo platform="beebs" size={22} />
+                <PlatformLogo platform="opla" size={22} />
               </div>
-              <span style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", whiteSpace: "nowrap" }}>{t("4 plateformes, tes comptes")}</span>
+              <span style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", whiteSpace: "nowrap" }}>{t("5 plateformes, tes comptes")}</span>
             </div>
             <span data-proof-3="1" data-proof-sep="1" style={{ width: "1px", height: "20px", background: "#D8D3C6", flexShrink: "0" }} />
             <div data-proof-3="1" style={{ display: "flex", alignItems: "center", gap: "8px", flex: "0 0 auto" }}>
@@ -773,7 +805,7 @@ export default function LandingPage() {
                   <PlatformLogo platform="vinted" size={44} />
                   <div style={{ fontWeight: "700", fontSize: "32px", letterSpacing: "-.04em", color: "#4ECDC4", lineHeight: "1" }}>{t("1")}</div>
                 </div>
-                <div style={{ fontWeight: "700", fontSize: "20px", letterSpacing: "-.02em", color: "#F6F5F1", marginBottom: "8px" }}>{t("Ton dressing Vinted entre en un clic")}</div>
+                <div style={{ fontWeight: "700", fontSize: "20px", letterSpacing: "-.02em", color: "#F6F5F1", marginBottom: "8px" }}>{t(syncMulti ? "Tes annonces entrent en un clic, sur les cinq plateformes" : "Tes annonces Vinted entrent en un clic")}</div>
                 <div style={{ fontWeight: "500", fontSize: "14.5px", lineHeight: "1.55", color: "rgba(246,245,241,.72)" }}>
                   {t("200 annonces déjà en ligne ? Titres, prix, photos : tout arrive dans ton stock. On lit, on ne publie ni ne supprime rien.")}
                 </div>
@@ -784,12 +816,13 @@ export default function LandingPage() {
                     <PlatformLogo platform="leboncoin" size={30} />
                     <PlatformLogo platform="ebay" size={30} />
                     <PlatformLogo platform="beebs" size={30} />
+                    <PlatformLogo platform="opla" size={30} />
                   </div>
                   <div style={{ fontWeight: "700", fontSize: "32px", letterSpacing: "-.04em", color: "#4ECDC4", lineHeight: "1" }}>{t("2")}</div>
                 </div>
-                <div style={{ fontWeight: "700", fontSize: "20px", letterSpacing: "-.02em", color: "#F6F5F1", marginBottom: "8px" }}>{t("Publié sur les 4 plateformes")}</div>
+                <div style={{ fontWeight: "700", fontSize: "20px", letterSpacing: "-.02em", color: "#F6F5F1", marginBottom: "8px" }}>{t("Publié sur les 5 plateformes")}</div>
                 <div style={{ fontWeight: "500", fontSize: "14.5px", lineHeight: "1.55", color: "rgba(246,245,241,.72)" }}>
-                  {t("Un seul ajout part sur Vinted, Leboncoin, eBay et Beebs — avec tes comptes. Quatre fois plus d'acheteurs, pas quatre fois le travail.")}
+                  {t("Un seul ajout part sur Vinted, Leboncoin, eBay, Beebs et Opla — avec tes comptes. Cinq fois plus d'acheteurs, pas cinq fois le travail.")}
                 </div>
               </div>
               <div data-r="1" style={{ background: "rgba(246,245,241,.05)", border: "1px solid rgba(78,205,196,.22)", borderRadius: "22px", padding: "28px" }}>
@@ -870,6 +903,7 @@ export default function LandingPage() {
                           <PlatformLogo platform="leboncoin" size={12} />
                           <PlatformLogo platform="ebay" size={12} />
                           <PlatformLogo platform="beebs" size={12} />
+                          <PlatformLogo platform="opla" size={12} />
                           <span style={{ marginLeft: "auto", fontWeight: "700", fontSize: "7px", letterSpacing: ".06em", color: "#2F9E90" }}>{t("EXTENSION")}</span>
                         </div>
                         <div style={{ height: "4px", borderRadius: "99px", background: "#D8D3C6" }} />
@@ -914,7 +948,7 @@ export default function LandingPage() {
               <div style={{ width: "340px", background: "rgba(246,245,241,.05)", border: "1px solid rgba(78,205,196,.22)", borderRadius: "24px", padding: "22px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
                   <PlatformLogo platform="vinted" size={30} />
-                  <div style={{ fontWeight: "700", fontSize: "14.5px", color: "#F6F5F1" }}>{t("Mon dressing Vinted")}</div>
+                  <div style={{ fontWeight: "700", fontSize: "14.5px", color: "#F6F5F1" }}>{t("Mes annonces Vinted")}</div>
                   <span style={{ marginLeft: "auto", fontWeight: "700", fontSize: "11.5px", letterSpacing: ".04em", color: "#4ECDC4", background: "rgba(78,205,196,.12)", border: "1px solid rgba(78,205,196,.3)", borderRadius: "999px", padding: "4px 10px", whiteSpace: "nowrap" }}>{t("Lecture seule")}</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: "9px" }}>
@@ -938,17 +972,19 @@ export default function LandingPage() {
               </div>
             </div>
             <div style={{ flex: "1 1 380px", minWidth: "300px" }}>
-              <div style={{ fontWeight: "700", fontSize: "12px", textTransform: "uppercase", letterSpacing: ".12em", color: "#4ECDC4", marginBottom: "14px" }}>{t("Import Vinted")}</div>
+              <div style={{ fontWeight: "700", fontSize: "12px", textTransform: "uppercase", letterSpacing: ".12em", color: "#4ECDC4", marginBottom: "14px" }}>{t(syncMulti ? "Relevé de tes annonces" : "Import Vinted")}</div>
               <h2 style={{ fontWeight: "700", fontSize: "clamp(28px,3.6vw,44px)", lineHeight: "1.06", letterSpacing: "-.03em", margin: "0 0 16px", color: "#F6F5F1", textWrap: "pretty" }}>
-                {t("Tu as déjà 200 annonces sur Vinted ?")}{" "}
+                {t(syncMulti ? "Tu as déjà des annonces en ligne ?" : "Tu as déjà 200 annonces sur Vinted ?")}{" "}
                 <span style={{ backgroundImage: "linear-gradient(90deg,#4ECDC4 0%,#4ECDC4 40%,#C6F5EF 50%,#4ECDC4 60%,#4ECDC4 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("Tu ne les refais pas.")}</span>
               </h2>
               <p style={{ fontWeight: "500", fontSize: "clamp(15px,1.4vw,18px)", lineHeight: "1.55", color: "rgba(246,245,241,.74)", maxWidth: "480px", margin: "0 0 24px", textWrap: "pretty" }}>
-                {t("FillSell importe ton dressing en un clic : titres, prix, photos, tout arrive dans ton stock. On lit tes annonces — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis lesquelles envoyer sur Leboncoin, eBay, Beebs et Opla.")}
+                {t(syncMulti
+                  ? "FillSell relit tes annonces Vinted, Leboncoin, Beebs, eBay et Opla et les rattache à ton stock : un article, une fiche. On lit — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis où republier."
+                  : "FillSell importe ton dressing en un clic : titres, prix, photos, tout arrive dans ton stock. On lit tes annonces — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis lesquelles envoyer sur Leboncoin, eBay, Beebs et Opla.")}
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
                 <a href="/login?mode=signup" onClick={onSignup("import")} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "15px", color: "#10302B", padding: "14px 24px", borderRadius: "14px", background: "#4ECDC4" }}>
-                  {t("Importer mon dressing")}{" "}
+                  {t("Importer mes annonces")}{" "}
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14" />
                     <path d="M13 6l6 6-6 6" />
@@ -969,7 +1005,7 @@ export default function LandingPage() {
                 <span style={{ backgroundImage: "linear-gradient(90deg,#2F9E90 0%,#2F9E90 40%,#6FDFD3 50%,#2F9E90 60%,#2F9E90 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("Quatre plateformes.")}</span>
               </h2>
               <p style={{ fontWeight: "500", fontSize: "clamp(15px,1.4vw,18px)", lineHeight: "1.55", color: "#5C6560", margin: "0", textWrap: "pretty" }}>
-                {t("Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay et Beebs avec tes comptes. Quatre fois plus d'acheteurs devant le même article, sans quatre fois le travail.")}
+                {t("Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay, Beebs et Opla avec tes comptes. Cinq fois plus d'acheteurs devant le même article, sans cinq fois le travail.")}
               </p>
             </div>
             <div data-r="1" style={{ background: "#F6F5F1", border: "1px solid #E7E3D8", borderRadius: "26px", padding: "clamp(28px,4vw,52px) clamp(20px,3vw,44px)" }}>
@@ -1030,6 +1066,18 @@ export default function LandingPage() {
                     <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("Beebs")}</span>
                     <span style={{ flex: "1" }} />
                     <span style={{ flexShrink: "0", animation: "fsTickD 5.2s ease infinite", display: "flex" }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="#2F9E90">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M20 6 9 17l-5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
+                      </svg>
+                    </span>
+                  </div>
+                  <div style={{ position: "relative", overflow: "hidden", display: "flex", alignItems: "center", gap: "9px", background: "#EDEAE0", border: "1px solid #E7E3D8", borderRadius: "13px", padding: "12px 15px" }}>
+                    <div style={{ position: "absolute", zIndex: "2", right: "10px", top: "50%", width: "28px", height: "28px", borderRadius: "8px", backgroundImage: "url(/landing/chaussures-cyrillus.webp)", backgroundSize: "cover", backgroundPosition: "center", boxShadow: "0 0 0 2px #F6F5F1,0 6px 14px rgba(16,32,27,.3)", animation: "fsArrD 5.2s cubic-bezier(.45,.05,.2,1) infinite" }} />
+                    <PlatformLogo platform="opla" size={30} />
+                    <span style={{ fontWeight: "700", fontSize: "13px", minWidth: "0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("Opla")}</span>
+                    <span style={{ flex: "1" }} />
+                    <span style={{ flexShrink: "0", animation: "fsTickE 5.2s ease infinite", display: "flex" }}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="#2F9E90">
                         <circle cx="12" cy="12" r="10" />
                         <path d="M20 6 9 17l-5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
@@ -1100,7 +1148,7 @@ export default function LandingPage() {
                     <div style={{ fontWeight: "500", fontSize: "13px", lineHeight: "1.35", color: "rgba(246,245,241,.75)", marginTop: "5px" }}>{t("Elle remonte en tête des résultats toutes les 24 h.")}</div>
                   </div>
                 </div>
-                <div style={{ fontWeight: "700", fontSize: "10px", textTransform: "uppercase", letterSpacing: ".1em", color: "rgba(246,245,241,.5)", marginBottom: "10px" }}>{t("Résultats Vinted")}</div>
+                <div style={{ fontWeight: "700", fontSize: "10px", textTransform: "uppercase", letterSpacing: ".1em", color: "rgba(246,245,241,.5)", marginBottom: "10px" }}>{t("Résultats")}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "9px 11px", borderRadius: "11px", background: "rgba(78,205,196,.14)", border: "1px solid rgba(78,205,196,.4)" }}>
                     <div style={{ width: "30px", height: "30px", borderRadius: "8px", flexShrink: "0", backgroundImage: "url(/landing/short-polo.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat" }} />
@@ -1351,7 +1399,7 @@ export default function LandingPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F9E90" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
                       <path d="M20 6 9 17l-5-5" />
                     </svg>
-                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4" }}>{t("Import Vinted gratuit et illimité")}</span>
+                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4" }}>{t(syncMulti ? "Relevé de tes annonces gratuit et illimité" : "Import Vinted gratuit et illimité")}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: "9px" }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F9E90" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>

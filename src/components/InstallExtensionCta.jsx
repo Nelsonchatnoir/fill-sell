@@ -64,7 +64,7 @@ export default function InstallExtensionCta({
               <div style={{ background: '#F0FDFB', border: '1px solid rgba(47,158,144,0.25)', borderRadius: 10, padding: '10px 12px', fontSize: 12.5, lineHeight: 1.5, color: '#1B6E62', textAlign: 'center', wordBreak: 'break-word' }}>
                 {fr ? 'Lien envoyé à ' : 'Link sent to '}<strong>{envoi.email}</strong>
                 <div style={{ fontSize: 11.5, fontWeight: 500, marginTop: 2, color: '#5C6560' }}>
-                  {fr ? 'Ouvre-le sur ton ordinateur, dans Chrome — ton dressing arrivera ici tout seul.' : 'Open it on your computer, in Chrome — your closet will arrive here on its own.'}
+                  {fr ? 'Ouvre-le sur ton ordinateur, dans Chrome — tes annonces arriveront ici toutes seules.' : 'Open it on your computer, in Chrome — your listings will arrive here on their own.'}
                 </div>
               </div>
               <button

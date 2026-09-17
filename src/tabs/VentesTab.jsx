@@ -180,8 +180,8 @@ function SalesTicker({ lang, setTab, extensionAbsente = false, onExtensionInfo =
         </div>
         <div style={{fontSize:13.5,fontWeight:500,lineHeight:1.5,color:UI.mute,maxWidth:290,margin:'8px auto 0'}}>
           {fr
-            ?"Dès qu'un article part sur Vinted, Leboncoin, eBay, Beebs ou Opla, il apparaît ici avec ta marge — et FillSell te proposera de retirer les autres annonces. Tes ventes Vinted récentes remontent aussi quand tu synchronises ton dressing."
-            :'As soon as an item sells on Vinted, Leboncoin, eBay or Beebs, it shows up here with your margin — and FillSell will offer to remove the other listings. Your recent Vinted sales also come across when you sync your closet.'}
+            ?"Dès qu'un article part sur Vinted, Leboncoin, eBay, Beebs ou Opla, il apparaît ici avec ta marge — et FillSell te proposera de retirer les autres annonces. Tes ventes Vinted récentes remontent aussi quand tu relèves tes annonces Vinted."
+            :'As soon as an item sells on Vinted, Leboncoin, eBay, Beebs or Opla, it shows up here with your margin — and FillSell will offer to remove the other listings. Your recent Vinted sales also come across when you scan your Vinted listings.'}
         </div>
       </div>
 

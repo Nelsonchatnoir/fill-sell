@@ -762,6 +762,12 @@ async function scheduleAlarm() {
     periodInMinutes: 24 * 60,
     delayInMinutes: 10, // pas au démarrage : on laisse la publication passer d'abord
   });
+  // Relevés des annonces par plateforme (2026-09-17) : même cadence que le
+  // dressing, décalée de 25 min — inerte tant que sync_multi_ouverte = 0.
+  await creerAlarmeSiBesoin(SYNC_ANNONCES_ALARM, {
+    periodInMinutes: 24 * 60,
+    delayInMinutes: 25,
+  });
 }
 
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -783,6 +789,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === SYNC_DRESSING_ALARM) {
     syncDressingVinted({ declencheur: "cron" }).catch((e) =>
       console.error("[sync-dressing][cron]", e?.message ?? e));
+  }
+  if (alarm.name === SYNC_ANNONCES_ALARM) {
+    withJobFlowLock("releve-annonces-cron", releverQuotidien).catch((e) =>
+      console.error("[releve][cron]", e?.message ?? e));
   }
   // Reprise de sync après un 403 anti-robot (une alarme PAR user — le suffixe
   // est l'userId). Cf. reprendreSyncApresRetry403 et son bandeau.
@@ -1936,6 +1946,13 @@ function pollAndProcessJobs() {
     // Fire-and-forget, et lui-même reprend le verrou : il ne peut pas
     // s'exécuter pendant la sync distante lancée juste après.
     appliquerMajSiSansRisque("fin de cycle").catch(() => {});
+    // Relevés d'annonces (2026-09-17) : commandes de l'app et demandes du
+    // veilleur, SOUS le verrou de flux (jamais en même temps qu'un job ou
+    // qu'une sync) — fire-and-forget, le run rend compte en base.
+    if (commandesAnnoncesEnAttente.length || relevesDemandes.size) {
+      withJobFlowLock("releve-annonces", traiterRelevesEnAttente).catch((e) =>
+        console.error("[releve]", e?.message ?? e));
+    }
     if (!cmd) return;
     traiterCommandeSyncDistante(cmd).catch((e) =>
       console.error("[sync-dressing][distant]", e?.message ?? e));
@@ -2430,6 +2447,9 @@ async function pollAndProcessJobsUnlocked() {
     });
     jobs = rep.jobs;
     commandeSyncEnAttente = rep.sync_command ?? null;
+    // Relevés multiplateforme (2026-09-17) : [{ id, platform }] — servis aux
+    // extensions ≥ 0.6.42 seulement, traités après le poll (verrou rendu).
+    commandesAnnoncesEnAttente = Array.isArray(rep.sync_commands_annonces) ? rep.sync_commands_annonces : [];
     // keepalive_actif (2026-09-17) : strictement `=== true` — un serveur qui ne
     // le connaît pas (ou qui l'a coupé) laisse le chemin d'aujourd'hui.
     keepaliveActif = rep.keepalive_actif === true;
@@ -11354,6 +11374,324 @@ async function capturerEtPersisterDepuisExtension({ vintedItemId, inventaireId, 
 //   3. exécution — la ligne étant déjà 'running', syncDressingUnlocked la
 //      reprend telle quelle au lieu d'en créer une seconde (l'index unique
 //      un_seul_actif l'interdirait de toute façon).
+// ══════════════════════════════════════════════════════════════════════════════
+// RELEVÉ DES ANNONCES PAR PLATEFORME (2026-09-17) — sync multiplateforme, lot 1
+// docs/SYNC_MULTIPLATEFORME_CONCEPTION.md
+// ══════════════════════════════════════════════════════════════════════════════
+// Un « dressing » n'existe qu'à Vinted. Ailleurs on relève une LISTE
+// d'annonces sur « Mes annonces » (Leboncoin, Beebs, eBay) ou par l'API du
+// vendeur (Opla) : identifiant, lien, titre, prix, statut. Le relevé est
+// écrit dans annonces_plateforme, puis le MOTEUR serveur (rapprocher_releve)
+// rattache : par identifiant (un dépôt FillSell = certain), par titre exact +
+// prix + sans homonyme (certain, automatique — c'est ce qui recâble un dépôt
+// « plus en ligne » remplacé sous un autre identifiant par une autre
+// extension), sinon PROPOSE (c'est le bouton de l'utilisateur), sinon rien.
+// ⛔ Un relevé n'est NI une publication NI une republication : aucun quota,
+//    aucun compteur, aucune unité. Il ne publie, ne modifie ni ne retire rien.
+// ⛔ FERMÉ PAR DÉFAUT : coin_config.sync_multi_ouverte = 1 (ou le drapeau du
+//    profil beta_flags.inventaire_multi_pf) — relu à CHAQUE relevé, fail-closed.
+// Trois déclencheurs, un seul chemin (lancerRelevePlateforme) :
+//   · la commande de l'app (vinted_sync_runs kind='annonces' queued, servie
+//     par get-pending-jobs dans sync_commands_annonces) ;
+//   · l'alarme quotidienne, pour les plateformes où le compte a des dépôts
+//     (cadence serveur 20 h, comme le cron du dressing) ;
+//   · le veilleur, quand une annonce Leboncoin/Beebs/eBay disparaît de son
+//     lien : on va voir « Mes annonces » AVANT de laisser vivre une alerte
+//     « plus en ligne » qui peut n'être qu'un remplacement.
+const SYNC_ANNONCES_ALARM = "fillsell-sync-annonces";
+const RELEVE_PLATEFORMES = ["leboncoin", "beebs", "ebay", "opla"];
+const RELEVE_PAGES = {
+  leboncoin: [{ url: "https://www.leboncoin.fr/compte/part/mes-annonces", statut: "en_ligne" }],
+  beebs: [
+    { url: "https://www.beebs.app/fr/account/my-adverts", statut: "en_ligne" },
+    { url: "https://www.beebs.app/fr/account/my-adverts/creating", statut: "en_verification" },
+  ],
+  ebay: [{ url: "https://www.ebay.fr/sh/lst/active", statut: "en_ligne" }],
+};
+const RELEVE_PAGES_MAX = 20;         // pagination / défilement : borne dure
+const RELEVE_CADENCE_CRON_MS = 20 * 3600_000;
+let relevesDemandes = new Set();     // plateformes à relever après le poll (veilleur)
+let commandesAnnoncesEnAttente = []; // [{ id, platform }] servies par get-pending-jobs
+let releveEnCours = false;
+
+async function syncMultiOuverte(token, userId) {
+  try {
+    const cfg = await restRequest("coin_config?key=eq.sync_multi_ouverte&select=value", token);
+    if (Number(cfg?.[0]?.value) === 1) return true;
+    const prof = await restRequest(`profiles?id=eq.${userId}&select=beta_flags`, token);
+    return prof?.[0]?.beta_flags?.inventaire_multi_pf === true;
+  } catch { return false; } // fail-closed
+}
+
+// Tous les liens d'annonce de la page, avec le titre et le prix lus dans la
+// carte qui les porte (même méthode que findListingLinkInPage : la carte est
+// le dernier ancêtre qui ne contient qu'UNE annonce — aucun sélecteur à
+// maintenir). Défilement borné pour les listes paresseuses.
+async function releverLiensAnnoncesDansOnglet(tabId, platform) {
+  const pattern = LISTING_URL_PATTERNS[platform];
+  if (!pattern) return { annonces: [], diag: { motif: "pattern absent" } };
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: async (src, plateforme) => {
+      const re = new RegExp(src, "i");
+      const idDe = (url) => {
+        const m = plateforme === "leboncoin" ? url.match(/\/(\d{6,})(?:[/?#]|$)/)
+          : plateforme === "beebs" ? url.match(/\/p\/(\d+)(?:[-/?#]|$)/)
+          : plateforme === "ebay" ? url.match(/\/itm\/(?:[^/?#]*\/)?(\d{9,})/)
+          : null;
+        return m ? m[1] : null;
+      };
+      const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+      const compter = () => Array.from(document.querySelectorAll("a[href]")).filter((a) => re.test(a.href)).length;
+      // Défilement : tant que la liste grandit (listes paresseuses), borné.
+      let avant = compter();
+      for (let i = 0; i < 12; i++) {
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        await dormir(900);
+        const apres = compter();
+        if (apres <= avant) break;
+        avant = apres;
+      }
+      window.scrollTo(0, 0);
+      const ancres = Array.from(document.querySelectorAll("a[href]"));
+      const annoncesDe = (n) => new Set(
+        Array.from(n.querySelectorAll ? n.querySelectorAll("a[href]") : [])
+          .map((a) => (a.href.match(re) || [])[0]).filter(Boolean).map((u) => idDe(u) ?? u)
+      );
+      const carteDe = (ancre) => {
+        let scope = ancre;
+        for (let n = ancre.parentElement, d = 0; n && d < 15; n = n.parentElement, d++) {
+          if (annoncesDe(n).size > 1) break;
+          scope = n;
+        }
+        return scope;
+      };
+      const parId = new Map();
+      for (const a of ancres) {
+        const m = a.href.match(re);
+        if (!m) continue;
+        const url = m[0];
+        const id = idDe(url);
+        if (!id) continue;
+        const carte = carteDe(a);
+        const texte = (carte.textContent || "").replace(/\s+/g, " ").trim();
+        // Titre : attribut title / aria-label / alt d'image / texte de l'ancre,
+        // le premier non vide et de longueur plausible.
+        const candidatsTitre = [
+          a.getAttribute("title"), a.getAttribute("aria-label"),
+          carte.querySelector?.("h1,h2,h3,h4,[class*='title'],[data-qa-id*='title']")?.textContent,
+          a.querySelector?.("img")?.getAttribute("alt"), a.textContent,
+        ].map((t) => (t || "").replace(/\s+/g, " ").trim()).filter((t) => t.length >= 3 && t.length <= 200);
+        const titre = candidatsTitre[0] ?? null;
+        const prixM = texte.match(/(\d{1,5}(?:[.,]\d{1,2})?)\s?€/);
+        const prix = prixM ? Number(prixM[1].replace(",", ".")) : null;
+        const bas = texte.toLowerCase();
+        const statut = /désactiv|desactiv|inactive|expir/.test(bas) ? "desactivee"
+          : /vendu|sold/.test(bas) ? "vendue" : null;
+        const photo = carte.querySelector?.("img")?.currentSrc || carte.querySelector?.("img")?.src || null;
+        if (!parId.has(id)) parId.set(id, { listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null });
+        else if (!parId.get(id).titre && titre) parId.get(id).titre = titre;
+      }
+      const suivant = document.querySelector("a[rel='next'], a[aria-label*='suivant' i], a[aria-label*='next' i], button[aria-label*='suivant' i]");
+      return { annonces: [...parId.values()], suivant: suivant ? (suivant.href || true) : null, diag: { ancres: ancres.length } };
+    },
+    args: [pattern.source, platform],
+  });
+  return res?.result ?? { annonces: [], diag: null };
+}
+
+// Le relevé d'UNE plateforme, page par page, borné. Rend { annonces, complet }.
+async function releverAnnoncesPlateforme(platform) {
+  const annonces = new Map();
+  let complet = true;
+  if (platform === "opla") {
+    if (!(await oplaAccesAccorde())) return { annonces: [], complet: false, erreur: "accès Opla non accordé" };
+    await assurerScriptsOpla();
+    const tabId = await getOrCreateWorkTab("opla", "https://www.opla.co/");
+    const r = await sendMessageToTab(tabId, { type: "OPLA_LISTE_ARTICLES" }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+    if (!r?.success) return { annonces: [], complet: false, erreur: r?.error ?? "liste Opla illisible" };
+    for (const a of r.articles ?? []) if (a?.listing_id) annonces.set(a.listing_id, a);
+    return { annonces: [...annonces.values()], complet: r.complet !== false };
+  }
+  for (const page of RELEVE_PAGES[platform] ?? []) {
+    const tabId = await getOrCreateWorkTab(platform, page.url);
+    let url = page.url;
+    for (let n = 0; n < RELEVE_PAGES_MAX; n++) {
+      if (n > 0) {
+        const loaded = waitForTabComplete(tabId);
+        await neutralizeBeforeUnload(tabId);
+        await chrome.tabs.update(tabId, { url: url + (url.includes("#") ? "" : WORK_TAB_FRAGMENT) });
+        await loaded;
+      }
+      await sleep(randInt(1500, 3000));
+      // Mur de connexion : un relevé qui ne voit rien parce qu'il n'est pas
+      // connecté n'est PAS un relevé vide — il est INCOMPLET (aucune disparition
+      // ne sera datée dessus).
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      if (tab?.url && /\/(?:connexion|login|signin|auth|identification)/i.test(tab.url)) {
+        return { annonces: [...annonces.values()], complet: false, erreur: `session ${platform} : page de connexion` };
+      }
+      const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) } }));
+      for (const a of r.annonces ?? []) {
+        if (!annonces.has(a.listing_id)) annonces.set(a.listing_id, { ...a, statut: a.statut ?? page.statut });
+      }
+      if (!r.suivant || typeof r.suivant !== "string" || r.suivant === url) break;
+      url = r.suivant.replace(WORK_TAB_FRAGMENT, "");
+      if (n === RELEVE_PAGES_MAX - 1) complet = false; // borne atteinte : relevé partiel
+      await sleep(randInt(1200, 2400));
+    }
+  }
+  return { annonces: [...annonces.values()], complet };
+}
+
+// UN chemin pour tous les déclencheurs : crée ou réclame le run, relève,
+// écrit, laisse le moteur rattacher, clôt le run — et dit tout dans
+// vinted_sync_runs (kind 'annonces', platform).
+async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId = null } = {}) {
+  if (!RELEVE_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
+  if (releveEnCours) return { ok: false, reason: "deja_en_cours" };
+  const session = await getValidSession();
+  if (!session?.access_token) return { ok: false, reason: "session" };
+  const token = session.access_token;
+  const userId = decodeJwtSub(token);
+  if (!userId) return { ok: false, reason: "session" };
+  if (!(await syncMultiOuverte(token, userId))) {
+    if (runId) {
+      await restRequest(`vinted_sync_runs?id=eq.${runId}&status=eq.queued`, token, {
+        method: "PATCH", body: JSON.stringify({ status: "cancelled", finished_at: new Date().toISOString(), erreur: "relevé multiplateforme fermé (interrupteur serveur)" }),
+      }).catch(() => {});
+    }
+    return { ok: false, reason: "ferme" };
+  }
+  releveEnCours = true;
+  const maintenant = () => new Date().toISOString();
+  let run = null;
+  try {
+    if (runId) {
+      const r = await restRequest(`vinted_sync_runs?id=eq.${runId}&status=eq.queued`, token, {
+        method: "PATCH", headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ status: "running", claimed_at: maintenant(), started_at: maintenant(), updated_at: maintenant(), extension_build: FILLSELL_BUILD_ID }),
+      }).catch(() => null);
+      run = Array.isArray(r) && r.length ? r[0] : null;
+      if (!run) return { ok: false, reason: "commande_deja_reclamee" };
+    } else {
+      if (declencheur === "cron") {
+        const derniers = await restRequest(
+          `vinted_sync_runs?user_id=eq.${userId}&kind=eq.annonces&platform=eq.${platform}&status=eq.done&select=finished_at&order=finished_at.desc&limit=1`, token,
+        ).catch(() => null);
+        const t = Date.parse(derniers?.[0]?.finished_at ?? "");
+        if (Number.isFinite(t) && Date.now() - t < RELEVE_CADENCE_CRON_MS) return { ok: false, reason: "cadence" };
+      }
+      const r = await restRequest("vinted_sync_runs", token, {
+        method: "POST", headers: { Prefer: "return=representation" },
+        body: JSON.stringify({ user_id: userId, kind: "annonces", platform, status: "running", declencheur, extension_build: FILLSELL_BUILD_ID }),
+      }).catch((e) => { console.warn(`[releve][${platform}] run non créé :`, String(e?.message ?? e)); return null; });
+      run = Array.isArray(r) && r.length ? r[0] : null;
+      if (!run) return { ok: false, reason: "run_non_cree" };
+    }
+    console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
+    const { annonces, complet, erreur } = await releverAnnoncesPlateforme(platform);
+    const lignes = annonces.map((a) => ({
+      user_id: userId, platform, listing_id: String(a.listing_id), url: a.url ?? null,
+      titre: a.titre ?? null, prix: Number.isFinite(Number(a.prix)) ? Number(a.prix) : null,
+      photo_url: a.photo_url ?? null,
+      statut_plateforme: ["en_ligne", "en_verification", "desactivee", "vendue"].includes(a.statut) ? a.statut : "inconnu",
+      run_id: run.id, vu_le: maintenant(), disparu_le: null, updated_at: maintenant(),
+    }));
+    let ecrites = 0;
+    for (let i = 0; i < lignes.length; i += 100) {
+      const lot = lignes.slice(i, i + 100);
+      await restRequest("annonces_plateforme?on_conflict=user_id,platform,listing_id", token, {
+        method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(lot),
+      });
+      ecrites += lot.length;
+    }
+    if (!complet || erreur) {
+      await restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
+        method: "PATCH", body: JSON.stringify({ erreur: `[incomplet] ${erreur ?? "borne de pagination atteinte"}`, updated_at: maintenant() }),
+      }).catch(() => {});
+    }
+    // LE MOTEUR : rattachements par identifiant, automatiques (certains) et
+    // propositions — tout vit côté serveur, rien n'est décidé ici.
+    let bilan = null;
+    try {
+      const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/rpc/rapprocher_releve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
+        body: JSON.stringify({ p_run_id: run.id }),
+      });
+      bilan = await res.json().catch(() => null);
+    } catch (e) {
+      console.warn(`[releve][${platform}] moteur de rattachement injoignable :`, String(e?.message ?? e));
+    }
+    const fin = {
+      status: annonces.length === 0 && (erreur || !complet) ? "failed" : "done",
+      finished_at: maintenant(), updated_at: maintenant(),
+      items_vus: annonces.length, items_crees: Number(bilan?.auto) || 0, items_maj: Number(bilan?.par_job) || 0,
+      total_entries: annonces.length,
+      erreur: [erreur ? `[incomplet] ${erreur}` : (!complet ? "[incomplet] borne de pagination atteinte" : null),
+               bilan?.ok ? `[rattachement] par identifiant ${bilan.par_job}, automatiques ${bilan.auto}, proposées ${bilan.proposees}, sans candidat ${bilan.sans_candidat}, disparues ${bilan.disparues}` : null]
+        .filter(Boolean).join(" · ") || null,
+    };
+    await restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, { method: "PATCH", body: JSON.stringify(fin) }).catch(() => {});
+    console.log(`[releve][${platform}] run ${run.id} → ${fin.status} : ${annonces.length} annonce(s), ${ecrites} écrite(s)${fin.erreur ? ` — ${fin.erreur}` : ""}`);
+    return { ok: fin.status === "done", relevees: annonces.length, bilan };
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    console.error(`[releve][${platform}] échec :`, msg);
+    if (run?.id) {
+      await restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, {
+        method: "PATCH", body: JSON.stringify({ status: "failed", finished_at: maintenant(), updated_at: maintenant(), erreur: msg.slice(0, 300) }),
+      }).catch(() => {});
+    }
+    return { ok: false, reason: "erreur", message: msg };
+  } finally {
+    releveEnCours = false;
+  }
+}
+
+// Après le poll : les commandes de l'app d'abord, puis les demandes du veilleur.
+async function traiterRelevesEnAttente() {
+  const commandes = commandesAnnoncesEnAttente;
+  commandesAnnoncesEnAttente = [];
+  for (const cmd of commandes) {
+    if (!cmd?.id || !cmd?.platform) continue;
+    await lancerRelevePlateforme({ platform: cmd.platform, declencheur: "bouton_distant", runId: cmd.id })
+      .catch((e) => console.error("[releve][distant]", e?.message ?? e));
+  }
+  const demandes = [...relevesDemandes];
+  relevesDemandes = new Set();
+  for (const platform of demandes) {
+    await lancerRelevePlateforme({ platform, declencheur: "veilleur" })
+      .catch((e) => console.error("[releve][veilleur]", e?.message ?? e));
+  }
+}
+
+// Le veilleur vient de voir une annonce disparaître de son lien : on ira voir
+// « Mes annonces » à la fin de ce cycle (jamais pendant : le poll tient le
+// verrou et l'onglet). Une demande par plateforme et par cycle.
+function demanderRelevePourRattachement(platform) {
+  if (RELEVE_PLATEFORMES.includes(platform)) relevesDemandes.add(platform);
+}
+
+// Alarme quotidienne : une plateforme par passage, seulement celles où le
+// compte a des dépôts en ligne (sinon il n'y a rien à rattacher).
+async function releverQuotidien() {
+  const session = await getValidSession();
+  if (!session?.access_token) return;
+  const token = session.access_token;
+  const userId = decodeJwtSub(token);
+  if (!userId || !(await syncMultiOuverte(token, userId))) return;
+  for (const platform of RELEVE_PLATEFORMES) {
+    const jobs = await restRequest(
+      `cross_post_jobs?user_id=eq.${userId}&platform=eq.${platform}&status=eq.published&action=in.(publish,republish)&select=id&limit=1`, token,
+    ).catch(() => []);
+    if (!Array.isArray(jobs) || !jobs.length) continue;
+    await lancerRelevePlateforme({ platform, declencheur: "cron" }).catch((e) => console.error("[releve][cron]", e?.message ?? e));
+  }
+}
+
+
 async function traiterCommandeSyncDistante(cmd) {
   const session = await getValidSession();
   if (!session?.access_token) return;
@@ -13503,6 +13841,12 @@ async function checkPublishedListings(session) {
           }
         }
       } else if (!pf.unavailable_since) {
+        // Relevé de rattachement (2026-09-17) : une disparition SANS preuve de
+        // vente peut n'être qu'un remplacement (autre extension, nouvel
+        // identifiant). On demande un relevé de « Mes annonces » pour la fin du
+        // cycle — le moteur serveur recâble et lève l'alerte si c'est le cas.
+        // Le drapeau est posé quand même : le veilleur ne se tait jamais.
+        if (state === "unavailable") demanderRelevePourRattachement(job.platform);
         patch.platform_fields = {
           ...pf,
           unavailable_since: new Date().toISOString(),
