@@ -225,19 +225,19 @@ function lignesDiff(fr, palier, K) {
   const annonces = K[`quota_annonces_${palier}`];
   const retouches = K[`quota_retouche_${palier}`] ?? 0;
   const repubTexte = palier === 'free'
-    ? (fr ? `${K.republication_avie_free ?? 50} republications Vinted offertes, à vie`
-          : `${K.republication_avie_free ?? 50} Vinted repostings included, for life`)
+    ? (fr ? `${K.republication_avie_free ?? 50} republications offertes, à vie`
+          : `${K.republication_avie_free ?? 50} repostings included, for life`)
     : palier === 'business'
-      ? (fr ? 'Republications Vinted illimitées — tu republies quand tu veux, autant que tu veux'
-            : 'Unlimited Vinted repostings — repost whenever you want, as much as you want')
-      : (fr ? `${(K[`quota_republication_${palier}`] ?? 0).toLocaleString('fr-FR')} republications Vinted par mois`
-            : `${(K[`quota_republication_${palier}`] ?? 0).toLocaleString('en-US')} Vinted repostings a month`);
+      ? (fr ? 'Republications illimitées — tu republies quand tu veux, autant que tu veux'
+            : 'Unlimited repostings — repost whenever you want, as much as you want')
+      : (fr ? `${(K[`quota_republication_${palier}`] ?? 0).toLocaleString('fr-FR')} republications par mois`
+            : `${(K[`quota_republication_${palier}`] ?? 0).toLocaleString('en-US')} repostings a month`);
   return [
     {
       ok: true,
       texte: fr
-        ? `${annonces} annonces créées et publiées sur les 4 plateformes par mois`
-        : `${annonces} listings created and published on all 4 platforms a month`,
+        ? `${annonces} annonces créées et publiées sur les 5 plateformes par mois`
+        : `${annonces} listings created and published on all 5 platforms a month`,
     },
     { ok: true, texte: repubTexte },
     {
@@ -818,8 +818,8 @@ export default function ConversionModal({
             {quotaCas.geste === 'retouches'
               ? (fr ? <>En Premium, tu passes à {K.quota_retouche_premium} retouches IA par mois.</>
                     : <>On Premium you get {K.quota_retouche_premium} AI touch-ups a month.</>)
-              : (fr ? <>En Premium, tu passes à {K.quota_annonces_premium} annonces par mois, publiées sur les 4 plateformes.</>
-                    : <>On Premium you get {K.quota_annonces_premium} listings a month, published on all 4 platforms.</>)}
+              : (fr ? <>En Premium, tu passes à {K.quota_annonces_premium} annonces par mois, publiées sur les 5 plateformes.</>
+                    : <>On Premium you get {K.quota_annonces_premium} listings a month, published on all 5 platforms.</>)}
           </div>
         </div>
       )}

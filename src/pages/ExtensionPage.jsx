@@ -32,9 +32,9 @@ export default function ExtensionPage() {
   // section personnalisée devra être conditionnelle à une session présente.
   useSeo({
     path: "/extension",
-    title: "Extension Chrome FillSell — publier sur Vinted, Leboncoin, eBay",
-    description: "Installez l'extension Chrome FillSell : une annonce publiée en une fois sur Vinted, Leboncoin, eBay et Beebs, et retirée des autres plateformes en un tap après la vente.",
-    ogTitle: "Extension Chrome FillSell — une annonce, 4 plateformes",
+    title: "Extension Chrome FillSell — publier sur Vinted, Leboncoin, eBay, Beebs, Opla",
+    description: "Installez l'extension Chrome FillSell : une annonce publiée en une fois sur Vinted, Leboncoin, eBay, Beebs et Opla, et retirée des autres plateformes en un tap après la vente.",
+    ogTitle: "Extension Chrome FillSell — une annonce, 5 plateformes",
     ogType: "website",
   });
 
@@ -49,7 +49,7 @@ export default function ExtensionPage() {
           `${GUIDE}/extension-install-step-6-toolbar-icon.png`,
           "FillSell icon pinned in the Chrome toolbar, next to the puzzle piece"],
         ["Sign in",
-          "Click the FillSell icon → « Sign in » → log in on fillsell.app. The extension picks up your session automatically. Then log in to your Vinted, Leboncoin, Beebs and eBay accounts in your browser as usual — the extension uses these active sessions to list on your behalf.",
+          "Click the FillSell icon → « Sign in » → log in on fillsell.app. The extension picks up your session automatically. Then log in to your Vinted, Leboncoin, Beebs, eBay and Opla accounts in your browser as usual — the extension uses these active sessions to list on your behalf.",
           null, null],
       ]
     : [
@@ -61,7 +61,7 @@ export default function ExtensionPage() {
           `${GUIDE}/extension-install-step-6-toolbar-icon.png`,
           "Icône FillSell épinglée dans la barre d'outils Chrome, à côté de la pièce de puzzle"],
         ["Connecte-toi",
-          "Clique sur l'icône FillSell → « Se connecter » → connecte-toi sur fillsell.app. L'extension récupère ta session automatiquement. Connecte-toi ensuite à tes comptes Vinted, Leboncoin, Beebs et eBay dans ton navigateur, comme d'habitude — l'extension utilise ces sessions actives pour publier à ta place.",
+          "Clique sur l'icône FillSell → « Se connecter » → connecte-toi sur fillsell.app. L'extension récupère ta session automatiquement. Connecte-toi ensuite à tes comptes Vinted, Leboncoin, Beebs, eBay et Opla dans ton navigateur, comme d'habitude — l'extension utilise ces sessions actives pour publier à ta place.",
           null, null],
       ];
 
@@ -85,8 +85,8 @@ export default function ExtensionPage() {
         </div>
         <p style={{ margin: "0 0 20px", fontSize: 14, lineHeight: 1.5, color: UI.mute2 }}>
           {en
-            ? "The FillSell extension auto-fills your generated listings on Vinted, Leboncoin, Beebs and eBay, straight from your browser."
-            : "L'extension FillSell publie automatiquement tes annonces générées sur Vinted, Leboncoin, Beebs et eBay, directement depuis ton navigateur."}
+            ? "The FillSell extension auto-fills your generated listings on Vinted, Leboncoin, Beebs, eBay and Opla, straight from your browser."
+            : "L'extension FillSell publie automatiquement tes annonces générées sur Vinted, Leboncoin, Beebs, eBay et Opla, directement depuis ton navigateur."}
         </p>
 
         {/* Disponible sur le Web Store (2026-07-25) */}
@@ -120,12 +120,12 @@ export default function ExtensionPage() {
             {(en
               ? [
                   ["🧥", "Your entire Vinted wardrobe syncs into the app on its own — titles, prices, photos, within seconds."],
-                  ["🚀", "Your listings go out to Vinted, Leboncoin, eBay and Beebs without retyping anything."],
+                  ["🚀", "Your listings go out to Vinted, Leboncoin, eBay, Beebs and Opla without retyping anything."],
                   ["🔒", "We read your listings: titles, prices, photos. Nothing is published, edited or deleted."],
                 ]
               : [
                   ["🧥", "Ton dressing Vinted remonte tout seul dans l'app — titres, prix, photos, en quelques secondes."],
-                  ["🚀", "Tes annonces partent sur Vinted, Leboncoin, eBay et Beebs sans rien ressaisir."],
+                  ["🚀", "Tes annonces partent sur Vinted, Leboncoin, eBay, Beebs et Opla sans rien ressaisir."],
                   ["🔒", "On lit tes annonces : titres, prix, photos. Rien n'est publié, modifié ni supprimé."],
                 ]
             ).map(([emo, txt], i) => (

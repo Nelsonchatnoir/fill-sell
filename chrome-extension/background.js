@@ -2049,7 +2049,13 @@ async function recoverStaleProcessingJobs(session) {
           console.warn(`[background] point de reprise (job ${job.id}) illisible — filet plateforme :`, String(e?.message ?? e));
         }
       }
-      const existing = existingDepuisOnglet ?? await staleJobExistingListingUrl(job).catch((e) => {
+      // Republication Leboncoin/Beebs AVANT le retrait (2026-09-17) : l'annonce
+      // d'ORIGINE est encore en ligne — la retrouver par son titre serait un
+      // faux succès (« published » sur l'ancienne URL, rien republié). Le filet
+      // ne vaut qu'à l'étape 'deleted', où l'ancienne annonce n'existe plus.
+      const republishAvantRetrait = job.action === "republish" && job.platform !== "vinted"
+        && (pf.republish_step ?? "a_capturer") !== "deleted";
+      const existing = republishAvantRetrait ? null : existingDepuisOnglet ?? await staleJobExistingListingUrl(job).catch((e) => {
         console.warn(`[background] Filet anti-doublon (job ${job.id}) :`, String(e?.message ?? e));
         return null;
       });
@@ -2097,6 +2103,13 @@ async function recoverStaleProcessingJobs(session) {
         }
         const done = { ...pf };
         delete done.processing_since;
+        // Une republication conclue par ce filet est une RECRÉATION aboutie :
+        // l'étape le dit (l'app lit republish_step / recreated_at).
+        if (job.action === "republish") {
+          done.republish_step = "recreated";
+          done.recreated_at = new Date().toISOString();
+          delete done.next_action_after;
+        }
         console.log(
           `[background] Job ${job.id} (${job.platform}) bloqué en 'processing' ${minutes} min MAIS l'annonce ` +
           `EXISTE déjà côté plateforme (${existing}) — published direct, aucune re-soumission (doublon évité)`
@@ -11957,7 +11970,7 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
   const reservesRepublish = [];
   try {
     const enVol = await restRequest(
-      `cross_post_jobs?user_id=eq.${userId}&action=eq.republish` +
+      `cross_post_jobs?user_id=eq.${userId}&action=eq.republish&platform=eq.vinted` +
       `&status=in.(pending,processing,needs_user)` +
       `&platform_fields->>republish_step=eq.deleted&select=id,title,platform_fields`,
       token, { headers: { Prefer: "return=representation" } },
@@ -13908,7 +13921,11 @@ async function recoverMissingListingUrls(session) {
         // produit a été capté au dépôt, la re-capture Beebs devient une simple
         // lecture HTTP de /fr/p/<id> — plus aucune navigation d'onglet.
         "?select=id,platform,title,created_at,published_at,platform_fields,reservation_id,platform_listing_id" +
-        "&status=eq.published&action=eq.publish&listing_url=is.null" +
+        // republish inclus (2026-09-17) : une republication Beebs redéposée a
+        // son URL différée exactement comme un dépôt — sans elle, ni veilleur
+        // ni retrait ; le cron fail_publish_without_listing_url ne la touche
+        // pas (publish seul), ce filet est donc le seul à la retrouver.
+        "&status=eq.published&action=in.(publish,republish)&listing_url=is.null" +
         // eBay ajouté le 2026-07-20. Le filtre datait de d4a0c32 (2026-07-12),
         // quand SEULS leboncoin et beebs avaient une page de récupération. eBay
         // a été ajouté à LISTING_URL_RECOVERY_PAGES par 3d2566c — et ce filtre
@@ -14327,7 +14344,30 @@ const DELETE_TARGETS = {
 async function cancelPublishAfterDelete(accessToken, deleteJob, opts = {}) {
   try {
     let pubs = null;
-    if (deleteJob.listing_url) {
+    if (deleteJob.platform !== "vinted" && deleteJob.listing_url) {
+      // ── Hors Vinted (2026-09-17, republication Leboncoin/Beebs) ─────────────
+      // Même leçon que Vinted : une URL a plusieurs formes (avec / sans slug,
+      // avec / sans paramètres). On matche sur l'IDENTIFIANT de l'annonce
+      // (idAnnonceDepuisUrl, ou platform_listing_id), restreint aux jobs de
+      // l'article quand on le connaît — jamais un préfixe d'URL. Sans
+      // identifiant lisible : égalité stricte d'URL, comme avant.
+      const idCible = idAnnonceDepuisUrl(deleteJob.platform, deleteJob.listing_url);
+      const rows = await restRequest(
+        "cross_post_jobs?select=id,platform_fields,listing_url,platform_listing_id" +
+          `&action=in.(publish,republish)&status=eq.published&platform=eq.${deleteJob.platform}` +
+          `&id=neq.${deleteJob.id}` +
+          (deleteJob.inventaire_id != null
+            ? `&inventaire_id=eq.${deleteJob.inventaire_id}`
+            : `&listing_url=eq.${encodeURIComponent(deleteJob.listing_url)}`),
+        accessToken
+      );
+      pubs = (rows ?? []).filter((r) => {
+        if (!idCible) return String(r.listing_url ?? "") === String(deleteJob.listing_url);
+        const idR = idAnnonceDepuisUrl(deleteJob.platform, r.listing_url)
+          ?? (r.platform_listing_id != null && String(r.platform_listing_id).trim() ? String(r.platform_listing_id).trim() : null);
+        return idR === idCible;
+      });
+    } else if (deleteJob.listing_url) {
       // ⚠️ ÉGALITÉ D'URL = PIÈGE (corrigé le 2026-08-05). Une même annonce a
       // DEUX URLs valides : avec slug (…/items/8428482383-short-de-bain-…)
       // et sans (…/items/8428482383). Le job publish porte la première, le job
@@ -15236,6 +15276,395 @@ async function traiterIntrouvable404Republication({ accessToken, job, pf, userId
   return { status: "failed", error: msg };
 }
 
+// ── LE GESTE DE RETRAIT, PARTAGÉ (2026-09-17) ───────────────────────────────
+// Cœur de processDeleteJob (onglet de travail, DELETE_LISTING, repli Beebs par
+// « Mes annonces » filtrée, relevé qui survit à l'échec), sorti tel quel pour
+// servir AUSSI la republication Leboncoin/Beebs (processRepublishJobPlateforme,
+// étape 'captured'). Deux appelants, un seul geste : les gardes d'identité
+// du handler, le repli et le relevé ne peuvent pas diverger. Les VERDICTS
+// (état réel, ré-armement, attente de session) restent à chaque appelant :
+// un retrait et une republication ne concluent pas pareil. Rend { result,
+// tabId } ; lève comme avant (canal coupé, onglet indisponible) — l'appelant
+// attrape.
+async function executerRetraitViaHandler(job, accessToken) {
+  const target = DELETE_TARGETS[job.platform]?.(job);
+  if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
+
+  // Même onglet de travail persistant que la publication (anti-DataDome).
+  const tabId = await getOrCreateWorkTab(job.platform, target);
+
+  // Observation fenêtre de travail (2026-07-30) : même relevé au démarrage
+  // que la publication — voir releverEtatFenetreTravail. Jamais bloquant.
+  stampEtatFenetre(job, "at_start", await releverEtatFenetreTravail(job.platform));
+  if (job.platform_fields?.work_window_state) {
+    await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields })
+      .catch((e2) => console.warn(`[background] Job ${job.id} : relevé fenêtre non persisté —`, String(e2?.message ?? e2)));
+  }
+
+  // Onglet activé DANS la fenêtre de travail dédiée (aucun impact chez
+  // l'utilisateur — cf. paintTab v2). ⚠️ La fenêtre étant minimisée, la
+  // peinture n'est plus garantie : si la page de suppression exige un rendu
+  // (contrôles à 0×0, handlers React non attachés), le content script échoue
+  // et le job repart en needsUser (ci-dessous) plutôt que d'imposer une
+  // fenêtre à l'écran. Contrainte produit : invisible avant tout.
+  const restore = await paintTab(tabId);
+  let result;
+  try {
+    result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
+  } finally {
+    await restore();
+  }
+
+  // ── BEEBS : REPLI PAR « MES ANNONCES » FILTRÉE PAR LE TITRE (2026-09-11) ─
+  // La page de l'annonce n'a pas montré son bouton propriétaire (annonce déjà
+  // retirée, autre compte connecté, page non rendue) : on ouvre « Mes
+  // annonces » filtrée côté serveur par ?searchText=<titre> — mesuré : la
+  // liste ne contient alors que les annonces dont le TITRE contient les mots
+  // — et le handler y cherche la carte par IDENTIFIANT (case name=<id>,
+  // lien /p/<id>-). Le titre filtre, l'identifiant décide ; sans carte
+  // portant l'identifiant, « introuvable » → attente (règle du 11/09), jamais
+  // une autre carte. Sans titre, la liste non filtrée (première page).
+  if (job.platform === "beebs" && result && !result.success && result.pageAnnonceSansControle) {
+    const titre = String(job.title ?? "").trim();
+    const urlRepli = "https://www.beebs.app/fr/account/my-adverts" + (titre ? `?searchText=${encodeURIComponent(titre)}` : "");
+    console.log(
+      `[background] Job ${job.id} : page de l'annonce sans bouton propriétaire — repli « Mes annonces »` +
+      `${titre ? " filtrée par le titre" : ""}, carte par identifiant`,
+    );
+    const tracePage = Array.isArray(result.trace) ? result.trace : [];
+    const tabRepli = await getOrCreateWorkTab("beebs", urlRepli);
+    const restoreRepli = await paintTab(tabRepli);
+    try {
+      result = await sendMessageToTab(tabRepli, { type: "DELETE_LISTING", job });
+    } finally {
+      await restoreRepli();
+    }
+    if (result && typeof result === "object") {
+      result.trace = [...tracePage, "— repli « Mes annonces » —", ...(Array.isArray(result.trace) ? result.trace : [])];
+    }
+  }
+
+  // ── LE RELEVÉ SURVIT À L'ÉCHEC (2026-09-14) ──────────────────────────────
+  // Le chemin de PUBLICATION range depuis toujours result.diagnostic dans
+  // platform_fields.last_diagnostic — c'est ce relevé, et lui seul, qui a
+  // tranché le mur Didomi deux fois. Le chemin de SUPPRESSION produisait la
+  // même ligne (« actions relevées : … », leboncoin.js) et la mettait dans
+  // `trace`, qui n'est écrite QUE sur succès : sur échec rearmBounded n'écrit
+  // que error / needsUserAttempts / next_action_after, et le relevé mourait
+  // avec le service worker. Le job b01b37d0 est ainsi arrivé en base avec un
+  // last_diagnostic VIDE, et trois hypothèses également plausibles.
+  // Mutation de la COPIE MÉMOIRE (même règle que processing_since :
+  // update-job-status écrase platform_fields en entier) — toutes les écritures
+  // en aval le portent alors sans avoir à le leur passer une par une.
+  // Chaîne BRUTE, jamais un objet {quoi}, donc jamais lue par
+  // causeHumaineConnue : un relevé technique ne doit pas atterrir à l'écran.
+  if (result?.diagnostic) {
+    job.platform_fields = {
+      ...(job.platform_fields ?? {}),
+      last_diagnostic: String(result.diagnostic).slice(0, 2000),
+    };
+  }
+
+  return { result, tabId };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// REPUBLICATION LEBONCOIN / BEEBS (2026-09-17) — RETRAIT PUIS REDÉPÔT
+// docs/REPUBLICATION_MULTIPLATEFORME_CONCEPTION.md
+// ══════════════════════════════════════════════════════════════════════════════
+// Même vocabulaire d'étapes que Vinted (platform_fields.republish_step :
+// 'a_capturer' → 'captured' → 'deleted' → 'recreated'), mêmes lecteurs (app,
+// get-pending-jobs, handler-watch) — mais PAS la machine Vinted : ici il n'y a
+// ni capture (la source de la recréation est le job de dépôt d'origine, recopié
+// sur le job par la RPC : titre, description, prix, photos, platform_fields,
+// republish_snapshot v2), ni pré-vol une-passe (le retrait et le redépôt sont
+// deux gestes distincts, sur deux pages), ni dressing à relire.
+//   a_capturer : RIEN n'est touché — l'état RÉEL de l'annonce est vérifié
+//                (checkListingState) : plus en ligne → failed qui le dit ;
+//                illisible → attente bornée puis needs_user ; active → captured.
+//   captured   : invariant « une seule annonce hors ligne à la fois » PAR
+//                PLATEFORME, puis le retrait par le handler de suppression
+//                existant (executerRetraitViaHandler = le cœur de
+//                processDeleteJob, gardes d'identité comprises), mêmes
+//                réactions qu'un retrait : session morte → attente, anti-robot
+//                → reprise gratuite bornée, transitoire → reprise espacée —
+//                annonce INTACTE. Retirée (ou déjà absente, confirmé par l'état
+//                réel) → 'deleted', deleted_at, l'ancien dépôt passe 'cancelled'
+//                (republished_pending : le veilleur ne posera pas de faux
+//                « vendue ? »), listing_url / platform_listing_id VIDÉS (l'URL
+//                morte ne doit plus être scannée), pause humaine 2-5 min.
+//   deleted    : le redépôt = processJob avec le MÊME job présenté comme un
+//                'publish' (même remplisseur, mêmes pré-vols, mêmes filets
+//                canal coupé / « Mes annonces »). published → 'recreated' ;
+//                failed → JAMAIS un failed sec après un retrait : requalifié
+//                needs_user (« retirée, pas redéposée, Republier maintenant »,
+//                relancer_republish reprend directement ici) ; needsUser /
+//                reprise espacée → inchangés, le poll suivant rejoue l'étape.
+// Opla n'entre pas ici (modification en place, processOplaRepublishJob).
+const REPUBLISH_PF_ETAT_ESSAIS_MAX = 4;
+
+// L'identifiant d'annonce dans une URL, par plateforme — la seule partie
+// stable d'un lien (slug ou non, paramètres ou non). null = pas d'identifiant
+// lisible : l'appelant retombe sur l'égalité d'URL, jamais sur une devinette.
+function idAnnonceDepuisUrl(platform, url) {
+  const u = String(url ?? "");
+  if (!u) return null;
+  const re = {
+    vinted: /\/items\/(\d+)/,
+    leboncoin: /\/(\d{6,})(?:[/?#]|$)/,
+    beebs: /\/p\/(\d+)(?:[-/?#]|$)/,
+    ebay: /\/itm\/(?:[^/?#]*\/)?(\d{9,})/,
+    opla: /(art_[A-Za-z0-9_-]+)/,
+  }[platform];
+  const m = re ? u.match(re) : null;
+  return m ? m[1] : null;
+}
+
+async function processRepublishJobPlateforme(job, accessToken) {
+  const pf = { ...(job.platform_fields ?? {}) };
+  const step = pf.republish_step ?? "a_capturer";
+  const label = LABEL_PLATEFORME[job.platform] ?? job.platform;
+  console.log(`[background] Job ${job.id} → ${job.platform} (REPUBLISH retrait+redépôt, étape ${step})`);
+
+  // Mêmes portes de cadence que Vinted : espacement entre gestes, attente
+  // programmée (pause après retrait, reprise espacée, attente de session).
+  if (Date.now() - dernierGesteRepublishAt < REPUBLISH_ESPACEMENT_MS) {
+    return { status: "skipped", error: "espacement entre gestes de republication" };
+  }
+  if (pf.next_action_after && Date.now() < Date.parse(pf.next_action_after)) {
+    return { status: "skipped", error: "attente programmée avant le geste suivant" };
+  }
+  const snapshot = pf.republish_snapshot && typeof pf.republish_snapshot === "object" ? pf.republish_snapshot : null;
+
+  // ── Étape 0 : VÉRIFIER, ne rien toucher ────────────────────────────────────
+  if (step === "a_capturer") {
+    if (!job.listing_url || !snapshot || !String(job.title ?? "").trim()) {
+      const msg = `Republication ${label} impossible : le job ne porte pas le lien de l'annonce ou sa copie de dépôt. ` +
+        "Rien n'a été touché, ton annonce est intacte.";
+      await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
+      return { status: "failed", error: msg };
+    }
+    const { state, raison } = await checkListingState(job.listing_url, job.platform)
+      .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
+    pf.republish_etat_reel = { at: new Date().toISOString(), state: String(state), ...(raison ? { raison: String(raison).slice(0, 80) } : {}) };
+    if (state === "unavailable" || state === "sold") {
+      const msg = `Republication impossible : cette annonce n'est plus en ligne sur ${label} (retirée, vendue ou désactivée depuis sa mise en ligne). ` +
+        "FillSell n'a rien retiré. Si l'article est vendu, marque-le vendu ; sinon publie-le à nouveau depuis sa fiche.";
+      await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
+      await recordRecentResult(job, "failed", msg).catch(() => {});
+      return { status: "failed", error: msg };
+    }
+    if (state !== "active") {
+      // Illisible (anti-robot, HTTP non-ok) : on ne retire JAMAIS sur un doute.
+      // Attente bornée, aucune tentative consommée, puis needs_user honnête.
+      const n = (Number(pf.republish_etat_indetermine?.n) || 0) + 1;
+      if (n <= REPUBLISH_PF_ETAT_ESSAIS_MAX) {
+        pf.republish_etat_indetermine = {
+          n, depuis: pf.republish_etat_indetermine?.depuis ?? new Date().toISOString(),
+          dernier: new Date().toISOString(), raison: raison ? String(raison).slice(0, 80) : null,
+        };
+        pf.next_action_after = new Date(Date.now() + 15 * 60_000).toISOString();
+        await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+        console.log(`[republish] job ${job.id} : état ${label} illisible (${n}/${REPUBLISH_PF_ETAT_ESSAIS_MAX}) — nouvel essai dans 15 min, aucune tentative consommée`);
+        return { status: "skipped", error: `état de l'annonce ${label} illisible (${n}/${REPUBLISH_PF_ETAT_ESSAIS_MAX})` };
+      }
+      const msg = `Republication en pause AVANT tout retrait : l'état de ton annonce ${label} n'a pas pu être vérifié (${causeLectureImpossible(raison)}). ` +
+        "Ton annonce est intacte. Relance la republication depuis la fiche de l'article, Chrome ouvert.";
+      await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+      return { status: "needsUser", error: msg };
+    }
+    delete pf.republish_etat_indetermine;
+    pf.republish_step = "captured";
+    await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pf, error: null });
+    console.log(`[background] Job ${job.id} → annonce ${label} vérifiée en ligne, retrait au prochain passage`);
+    return { status: "skipped", error: "annonce vérifiée en ligne — retrait au prochain passage" };
+  }
+
+  // ── Étape 1 : RETRAIT ──────────────────────────────────────────────────────
+  if (step === "captured") {
+    if (!job.listing_url) {
+      const msg = `Republication ${label} sans lien d'annonce : rien n'a été touché.`;
+      await updateJobStatus(accessToken, job.id, "failed", { platform_fields: pf, error: msg });
+      return { status: "failed", error: msg };
+    }
+    // Invariant « une seule annonce hors ligne à la fois », par plateforme
+    // (même échec fermé que Vinted : lecture impossible → on ne retire pas).
+    try {
+      const horsLigne = await restRequest(
+        `cross_post_jobs?user_id=eq.${decodeJwtSub(accessToken)}&action=eq.republish` +
+        `&platform=eq.${job.platform}&id=neq.${job.id}&status=in.(pending,processing)` +
+        `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
+        accessToken, { headers: { Prefer: "return=representation" } },
+      );
+      if (Array.isArray(horsLigne) && horsLigne.length) {
+        console.log(`[republish] job ${job.id} : retrait reporté — une annonce ${label} du compte est déjà hors ligne (job ${horsLigne[0].id})`);
+        return { status: "skipped", error: `une annonce ${label} est déjà hors ligne — sa recréation passe d'abord` };
+      }
+    } catch (e) {
+      console.warn(`[republish] job ${job.id} : invariant hors-ligne invérifiable (${e?.message ?? e}) — retrait reporté`);
+      return { status: "skipped", error: "invariant hors-ligne invérifiable — retrait reporté" };
+    }
+
+    pf.processing_since = new Date().toISOString();
+    delete pf.next_action_after;
+    job.platform_fields = pf;
+    await updateJobStatus(accessToken, job.id, "processing", { platform_fields: pf });
+
+    let result = null;
+    try {
+      ({ result } = await executerRetraitViaHandler(job, accessToken));
+    } catch (e) {
+      const msg = String(e?.message ?? e);
+      dernierGesteRepublishAt = Date.now();
+      if (/message channel closed|Receiving end does not exist/i.test(msg)) {
+        // Canal coupé PAR la navigation du retrait : l'état réel tranche.
+        const { state } = await checkListingState(job.listing_url, job.platform).catch(() => ({ state: "unknown" }));
+        if (state === "unavailable" || state === "sold") {
+          result = { success: true, trace: ["canal coupé par la navigation du retrait — annonce absente : retrait confirmé par l'état réel"], confirmeParEtat: true };
+        } else {
+          await rearmBounded(accessToken, job, `Retrait ${label} interrompu (onglet navigué ou rechargé) : ${msg}`);
+          return { status: "retry", error: msg };
+        }
+      } else {
+        await rearmBounded(accessToken, job, `Retrait ${label} interrompu : ${msg}`);
+        return { status: "retry", error: msg };
+      }
+    }
+    dernierGesteRepublishAt = Date.now();
+    const pfApres = { ...pf, ...(job.platform_fields ?? {}) };
+
+    let retire = result?.success === true;
+    let confirmePar = result?.confirmeParEtat ? "etat_annonce" : "handler";
+    if (!retire && result && !result.dryRun) {
+      const { state, raison } = await checkListingState(job.listing_url, job.platform)
+        .catch(() => ({ state: "unknown", raison: "lecture_impossible" }));
+      if (state === "unavailable" || state === "sold") {
+        retire = true; confirmePar = "etat_annonce";
+      } else if (motifSessionMorte(job.platform, result.error)) {
+        noterSessionDeconnectee(accessToken, job.platform).catch(() => {});
+        await marquerAttenteSession(accessToken, job, result.error);
+        return { status: "needsUser", error: result.error };
+      } else if (/^CHALLENGE /i.test(String(result.error ?? ""))) {
+        const { borne } = await marquerBlocageAntiRobot(accessToken, job, String(result.error));
+        if (!borne) return { status: "retry", error: String(result.error) };
+        await rearmBounded(accessToken, job, String(result.error));
+        return { status: "retry", error: String(result.error) };
+      } else if (result.needsUser) {
+        await rearmBounded(accessToken, job, String(result.error ?? "retrait non abouti"));
+        return { status: "needsUser", error: result.error };
+      } else {
+        // Refus, transitoire, « à reprendre » : reprise espacée, annonce intacte
+        // — « intacte » n'est affirmé que sur un état relevé « active ».
+        const motif = motifLisible(result.error ?? "retrait non abouti", 200);
+        const msg = state === "active"
+          ? `Retrait ${label} non abouti (${motif}). Ton annonce est TOUJOURS en ligne (vérifié), rien n'a été touché.`
+          : `Retrait ${label} non abouti (${motif}). L'état de l'annonce n'a pas pu être vérifié : ${causeLectureImpossible(raison)}.`;
+        await rearmBounded(accessToken, job, msg);
+        return { status: "retry", error: msg };
+      }
+    }
+    if (!retire) {
+      await rearmBounded(accessToken, job, `Le retrait ${label} n'a rendu aucun résultat exploitable.`);
+      return { status: "retry", error: "retrait sans résultat" };
+    }
+
+    // ── RETIRÉE : étape actée, ancien dépôt clôturé, URL morte vidée ────────
+    pfApres.republish_step = "deleted";
+    pfApres.deleted_at = new Date().toISOString();
+    pfApres.old_listing_url = job.listing_url;
+    if (job.platform_listing_id) pfApres.old_platform_listing_id = String(job.platform_listing_id);
+    pfApres.republish_retrait = { at: pfApres.deleted_at, confirme_par: confirmePar, trace: (result?.trace ?? []).slice(-12).map((l) => String(l).slice(0, 200)) };
+    delete pfApres.processing_since;
+    delete pfApres.needsUserAttempts;
+    pfApres.next_action_after = new Date(Date.now() + randInt(120_000, 300_000)).toISOString();
+    await updateJobStatus(accessToken, job.id, "pending", { platform_fields: pfApres, error: null });
+    await cancelPublishAfterDelete(accessToken, job, {
+      marqueur: "republished_pending",
+      erreur: `Annonce en cours de republication sur ${label} (retirée puis redéposée pour remonter dans le fil) — pas une vente`,
+    });
+    // L'URL de l'annonce retirée ne doit plus être scannée (veilleur) ni
+    // ciblée (retrait) : le job la garde en mémoire (old_listing_url), pas en
+    // colonne. update-job-status ne sait pas vider listing_url : PATCH direct.
+    await restRequest(`cross_post_jobs?id=eq.${job.id}`, accessToken, {
+      method: "PATCH", body: JSON.stringify({ listing_url: null, platform_listing_id: null }),
+    }).catch((e) => console.warn(`[republish] job ${job.id} : listing_url de l'ancienne annonce non vidée —`, String(e?.message ?? e)));
+    console.log(`[background] Job ${job.id} : annonce ${label} retirée (${confirmePar}) — redépôt au prochain passage`);
+    return { status: "retry", error: "annonce retirée — redépôt au prochain passage" };
+  }
+
+  // ── Étape 2 : REDÉPÔT ──────────────────────────────────────────────────────
+  if (step === "deleted") {
+    if (!snapshot) {
+      const msg = `Ton annonce a été retirée de ${label} et sa copie de dépôt est introuvable sur le job — tes données restent dans ton stock : publie l'article à nouveau depuis sa fiche.`;
+      await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg });
+      return { status: "needsUser", error: msg };
+    }
+    // Le MÊME job, présenté au chemin de dépôt : même id (les écritures de
+    // statut le concernent), action 'publish' pour le routage, sans URL (elle
+    // est morte), clés de republication conservées (elles survivent aux
+    // réécritures entières de platform_fields par update-job-status).
+    const jobRecreation = {
+      ...job,
+      action: "publish",
+      listing_url: null,
+      platform_listing_id: null,
+      platform_fields: { ...pf, republish_recreation: true },
+    };
+    delete jobRecreation.platform_fields.next_action_after;
+    const resultat = await processJob(jobRecreation, accessToken);
+    dernierGesteRepublishAt = Date.now();
+
+    if (resultat?.status === "published") {
+      // update-job-status a écrit published + nouvelle URL/id : on ne le
+      // rappelle pas (il redaterait published_at), on complète les clés.
+      try {
+        const rows = await restRequest(`cross_post_jobs?id=eq.${job.id}&select=platform_fields,listing_url`, accessToken);
+        const pfBase = { ...(rows?.[0]?.platform_fields ?? {}) };
+        pfBase.republish_step = "recreated";
+        pfBase.recreated_at = new Date().toISOString();
+        pfBase.new_listing_url = rows?.[0]?.listing_url ?? resultat.listingUrl ?? null;
+        delete pfBase.next_action_after;
+        delete pfBase.republish_recreation;
+        delete pfBase.needsUserAttempts;
+        await restRequest(`cross_post_jobs?id=eq.${job.id}`, accessToken, {
+          method: "PATCH", body: JSON.stringify({ platform_fields: pfBase }),
+        });
+      } catch (e) {
+        console.warn(`[republish] job ${job.id} : marqueur 'recreated' non écrit (annonce bien en ligne) —`, String(e?.message ?? e));
+      }
+      console.log(`[background] Republish ${job.id} (${label}) : redéposée → ${resultat.listingUrl ?? "(URL différée)"}`);
+      return resultat;
+    }
+    if (resultat?.status === "failed") {
+      // JAMAIS un failed sec après un retrait : le trigger de solde vient de
+      // tirer sur 'failed' (pepite_remboursee), on relit la base pour ne pas
+      // l'effacer, et on rend la main avec le seul geste qui débloque.
+      let pfBase = { ...pf };
+      try {
+        const rows = await restRequest(`cross_post_jobs?id=eq.${job.id}&select=platform_fields`, accessToken);
+        pfBase = { ...(rows?.[0]?.platform_fields ?? {}) };
+      } catch { /* la copie locale suffit */ }
+      pfBase.republish_step = "deleted";
+      pfBase.deleted_at = pfBase.deleted_at ?? pf.deleted_at ?? null;
+      delete pfBase.republish_recreation;
+      delete pfBase.next_action_after;
+      const msg = `Ton annonce a été retirée de ${label} et n'a pas pu être redéposée automatiquement : ${motifLisible(resultat.error ?? "raison inconnue", 220)}. ` +
+        "Rien n'est perdu : titre, description, photos et champs sont sauvegardés. Clique « Republier maintenant » depuis la fiche de l'article.";
+      await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pfBase, error: msg.slice(0, 590) });
+      return { status: "needsUser", error: msg };
+    }
+    // needsUser (champ à trancher, session), retry (reprise espacée) : le job
+    // reste 'republish' à l'étape 'deleted' — le poll suivant, ou la relance,
+    // rejoue le redépôt. Rien de plus à écrire ici.
+    return resultat ?? { status: "retry", error: "redépôt sans résultat" };
+  }
+
+  const msg = `Étape de republication inconnue : ${step}`;
+  await updateJobStatus(accessToken, job.id, "needs_user", { platform_fields: pf, error: msg }).catch(() => {});
+  return { status: "needsUser", error: msg };
+}
+
+
 // ── OPLA : UNE MODIFICATION EN PLACE, DONC PAS CETTE MACHINE (lot 7) ────────
 // La machine ci-dessous est celle de Vinted : capture → SUPPRESSION → attente
 // → recréation. Elle existe parce que Vinted n'a pas d'autre moyen de remonter
@@ -15297,6 +15726,9 @@ async function processOplaRepublishJob(job, accessToken) {
 
 async function processRepublishJob(job, accessToken) {
   if (job.platform === "opla") return processOplaRepublishJob(job, accessToken);
+  // Leboncoin / Beebs (2026-09-17) : retrait puis redépôt depuis la copie du
+  // dépôt d'origine — processRepublishJobPlateforme, pas la machine Vinted.
+  if (job.platform === "leboncoin" || job.platform === "beebs") return processRepublishJobPlateforme(job, accessToken);
   const pf = { ...(job.platform_fields ?? {}) };
   // Défaut = 'a_capturer', PREMIÈRE étape de la machine (corrigé le 2026-08-05,
   // il était resté à 'captured', l'ancienne première étape d'avant la migration
@@ -15531,7 +15963,10 @@ async function processRepublishJob(job, accessToken) {
     try {
       const horsLigne = await restRequest(
         `cross_post_jobs?user_id=eq.${decodeJwtSub(accessToken)}&action=eq.republish` +
-        `&id=neq.${job.id}&status=in.(pending,processing)` +
+        // Par PLATEFORME (2026-09-17, republication Leboncoin/Beebs) : une annonce
+        // Leboncoin hors ligne n'a pas à retenir un retrait Vinted — les deux
+        // chaînes ne partagent ni page, ni fenêtre hors ligne.
+        `&platform=eq.vinted&id=neq.${job.id}&status=in.(pending,processing)` +
         `&platform_fields->>republish_step=eq.deleted&select=id&limit=1`,
         accessToken, { headers: { Prefer: "return=representation" } },
       );
@@ -16685,83 +17120,11 @@ async function processDeleteJob(job, accessToken) {
     delete job.platform_fields.next_action_after;
     await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields });
 
-    const target = DELETE_TARGETS[job.platform]?.(job);
-    if (!target) throw new Error(`Pas de cible de suppression pour ${job.platform}`);
-
-    // Même onglet de travail persistant que la publication (anti-DataDome).
-    const tabId = await getOrCreateWorkTab(job.platform, target);
-
-    // Observation fenêtre de travail (2026-07-30) : même relevé au démarrage
-    // que la publication — voir releverEtatFenetreTravail. Jamais bloquant.
-    stampEtatFenetre(job, "at_start", await releverEtatFenetreTravail(job.platform));
-    if (job.platform_fields?.work_window_state) {
-      await updateJobStatus(accessToken, job.id, "processing", { platform_fields: job.platform_fields })
-        .catch((e2) => console.warn(`[background] Job ${job.id} : relevé fenêtre non persisté —`, String(e2?.message ?? e2)));
-    }
-
-    // Onglet activé DANS la fenêtre de travail dédiée (aucun impact chez
-    // l'utilisateur — cf. paintTab v2). ⚠️ La fenêtre étant minimisée, la
-    // peinture n'est plus garantie : si la page de suppression exige un rendu
-    // (contrôles à 0×0, handlers React non attachés), le content script échoue
-    // et le job repart en needsUser (ci-dessous) plutôt que d'imposer une
-    // fenêtre à l'écran. Contrainte produit : invisible avant tout.
-    const restore = await paintTab(tabId);
-    let result;
-    try {
-      result = await sendMessageToTab(tabId, { type: "DELETE_LISTING", job });
-    } finally {
-      await restore();
-    }
-
-    // ── BEEBS : REPLI PAR « MES ANNONCES » FILTRÉE PAR LE TITRE (2026-09-11) ─
-    // La page de l'annonce n'a pas montré son bouton propriétaire (annonce déjà
-    // retirée, autre compte connecté, page non rendue) : on ouvre « Mes
-    // annonces » filtrée côté serveur par ?searchText=<titre> — mesuré : la
-    // liste ne contient alors que les annonces dont le TITRE contient les mots
-    // — et le handler y cherche la carte par IDENTIFIANT (case name=<id>,
-    // lien /p/<id>-). Le titre filtre, l'identifiant décide ; sans carte
-    // portant l'identifiant, « introuvable » → attente (règle du 11/09), jamais
-    // une autre carte. Sans titre, la liste non filtrée (première page).
-    if (job.platform === "beebs" && result && !result.success && result.pageAnnonceSansControle) {
-      const titre = String(job.title ?? "").trim();
-      const urlRepli = "https://www.beebs.app/fr/account/my-adverts" + (titre ? `?searchText=${encodeURIComponent(titre)}` : "");
-      console.log(
-        `[background] Job ${job.id} : page de l'annonce sans bouton propriétaire — repli « Mes annonces »` +
-        `${titre ? " filtrée par le titre" : ""}, carte par identifiant`,
-      );
-      const tracePage = Array.isArray(result.trace) ? result.trace : [];
-      const tabRepli = await getOrCreateWorkTab("beebs", urlRepli);
-      const restoreRepli = await paintTab(tabRepli);
-      try {
-        result = await sendMessageToTab(tabRepli, { type: "DELETE_LISTING", job });
-      } finally {
-        await restoreRepli();
-      }
-      if (result && typeof result === "object") {
-        result.trace = [...tracePage, "— repli « Mes annonces » —", ...(Array.isArray(result.trace) ? result.trace : [])];
-      }
-    }
-
-    // ── LE RELEVÉ SURVIT À L'ÉCHEC (2026-09-14) ──────────────────────────────
-    // Le chemin de PUBLICATION range depuis toujours result.diagnostic dans
-    // platform_fields.last_diagnostic — c'est ce relevé, et lui seul, qui a
-    // tranché le mur Didomi deux fois. Le chemin de SUPPRESSION produisait la
-    // même ligne (« actions relevées : … », leboncoin.js) et la mettait dans
-    // `trace`, qui n'est écrite QUE sur succès : sur échec rearmBounded n'écrit
-    // que error / needsUserAttempts / next_action_after, et le relevé mourait
-    // avec le service worker. Le job b01b37d0 est ainsi arrivé en base avec un
-    // last_diagnostic VIDE, et trois hypothèses également plausibles.
-    // Mutation de la COPIE MÉMOIRE (même règle que processing_since :
-    // update-job-status écrase platform_fields en entier) — toutes les écritures
-    // en aval le portent alors sans avoir à le leur passer une par une.
-    // Chaîne BRUTE, jamais un objet {quoi}, donc jamais lue par
-    // causeHumaineConnue : un relevé technique ne doit pas atterrir à l'écran.
-    if (result?.diagnostic) {
-      job.platform_fields = {
-        ...(job.platform_fields ?? {}),
-        last_diagnostic: String(result.diagnostic).slice(0, 2000),
-      };
-    }
+    // ── Le retrait lui-même (onglet, DELETE_LISTING, repli Beebs, relevé) vit
+    // dans executerRetraitViaHandler (2026-09-17) : le MÊME code sert la
+    // republication Leboncoin/Beebs (processRepublishJobPlateforme) — deux
+    // appelants, un seul geste, aucune divergence possible.
+    const { result } = await executerRetraitViaHandler(job, accessToken);
 
     // ⚠️ « ANNONCE INTROUVABLE » PEUT VOULOIR DIRE « DÉJÀ SUPPRIMÉE » (2026-07-13,
     // vécu sur les deux annonces eBay : elles étaient bel et bien retirées, et le

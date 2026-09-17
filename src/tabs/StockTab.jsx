@@ -34,6 +34,9 @@ import { sortirDuBrouillon, manquesDeLaFiche } from '../utils/brouillon';
 // disparaît plus quand on relance (platform_fields.erreurs_archivees).
 import { archiverErreur } from '../../supabase/functions/_shared/erreurs-archivees.js';
 import { computeRemovalInfo, plateformesReserveesParRepublication, vintedMasqueeMalgreJobs, vintedPresenceArticle, republishAnnulable, estArretUtilisateur, MARQUEUR_ARRET_UTILISATEUR } from '../utils/publicationState';
+// Republication multiplateforme (2026-09-17) : éligibilité par plateforme,
+// appel RPC générique, refus en mots — utils/republication.js, source unique.
+import { plateformesRepubliables, republierArticle, messageRefusRepublication, republishAReprendre, LABEL_PLATEFORME as LABEL_PF, LABEL_COURT as LABEL_PF_COURT } from '../utils/republication';
 import { useFondFige } from '../utils/modale';
 import {
   PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR,
@@ -67,7 +70,7 @@ import {
   lireDernierRunDressing, lireDerniereSyncReussie,
   confirmerBoutiqueVinted, lireBoutiqueConnectee,
   DETAIL_VERSION_MIN, demanderDetailArticleVinted, ecouterDetailArticleVinted,
-  republishVisiblePour, republierArticleVinted, relancerRepublishVinted,
+  republishVisiblePour, relancerRepublishVinted,
 } from '../utils/vintedSync';
 
 // ── Échecs actionnables (chantier onboarding 2026-07-27) ──────────────────────
@@ -4166,9 +4169,21 @@ function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise =
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null }) {
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
+  // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
+  // Chaque article arrive avec SES plateformes republiables à l'instant
+  // (utils/republication.plateformesRepubliables : en ligne, pas de
+  // republication vivante, pas de cadence 24 h, interrupteur serveur). La
+  // feuille propose l'union, toutes cochées ; un article n'est envoyé que sur
+  // celles qui le concernent. Vinted seul → rendu et comportement d'avant.
+  const plateformesUnion = [...new Set(items.flatMap(({ plateformes }) => plateformes ?? ['vinted']))];
+  const [sel, setSel] = useState(() => new Set(plateformesUnion));
+  const cochee = (p) => sel.has(p);
+  const basculer = (p) => setSel((prev) => { const n = new Set(prev); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  const nomsSel = plateformesUnion.filter(cochee);
+  const libelleSel = nomsSel.length === 0 ? '' : nomsSel.map((p) => LABEL_PF[p] ?? p).join(fr ? ' et ' : ' and ');
   const [pct, setPct] = useState(0);
   const [prixLibre, setPrixLibre] = useState(solo && items[0].prixActuel != null ? String(items[0].prixActuel) : '');
   const arrondi = (p) => p == null ? null : Math.max(REPUB_PLANCHER_EUR, Math.floor(p * (1 - pct / 100)));
@@ -4183,17 +4198,20 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
     plafonne: pct > 0 && prixActuel != null && Math.floor(prixActuel * (1 - pct / 100)) < REPUB_PLANCHER_EUR,
   }));
   const plafonnes = lotApercu.filter(a => a.plafonne);
+  // Nombre de republications qui vont partir = somme, par article, des
+  // plateformes cochées qui le concernent.
+  const nbEnvois = items.reduce((n, { plateformes }) => n + (plateformes ?? ['vinted']).filter(cochee).length, 0);
   // Bascule quotas (02/09) : prixUnitaire null = republication non facturée →
   // aucun coût affiché (fragment vide), le libellé reste « Republier … ».
-  // (Nettoyage unités 02/09 soir : montant en chiffres nus, plus d'icône.)
-  const cout = prixUnitaire != null ? <>{items.length * prixUnitaire}</> : null;
+  const cout = prixUnitaire != null ? <>{nbEnvois * prixUnitaire}</> : null;
   const confirmer = () => {
-    onConfirm(items.map(({ item, prixActuel }) => {
+    if (!nbEnvois) return;
+    onConfirm(items.map(({ item, prixActuel, plateformes }) => {
       let prix = null; // null = garder le prix de l'annonce
       if (solo) { if (prixFinalSolo != null && prixFinalSolo !== prixActuel) prix = prixFinalSolo; }
       else if (pct > 0 && prixActuel != null) prix = arrondi(prixActuel);
-      return { item, prix };
-    }));
+      return { item, prix, plateformes: (plateformes ?? ['vinted']).filter(cochee) };
+    }).filter((c) => c.plateformes.length));
   };
   const chip = (p, label) => (
     <button key={p} onClick={() => { setPct(p); if (solo && items[0].prixActuel != null) setPrixLibre(String(p === 0 ? items[0].prixActuel : Math.max(REPUB_PLANCHER_EUR, Math.floor(items[0].prixActuel * (1 - p / 100))))); }}
@@ -4202,33 +4220,55 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
       {label}
     </button>
   );
+  // Ce que la republication FAIT sur chaque plateforme — dit AVANT le clic,
+  // une ligne par plateforme, jamais un paragraphe.
+  const explication = {
+    vinted: fr ? 'Supprimée puis recréée à l’identique : elle remonte dans le fil.' : 'Deleted then recreated identically: it climbs back up the feed.',
+    leboncoin: fr ? 'Retirée puis redéposée avec la même fiche : elle repart en tête. Hors ligne quelques minutes.' : 'Removed then re-posted with the same listing: back on top. Offline for a few minutes.',
+    beebs: fr ? 'Retirée puis redéposée : elle repasse par la vérification Beebs avant d’être visible.' : 'Removed then re-posted: it goes through Beebs verification again before it is visible.',
+    opla: fr ? 'Modifiée en place, sans retrait : l’annonce garde son lien.' : 'Updated in place, no removal: the listing keeps its link.',
+  };
+  const titre = solo
+    ? (fr ? 'Republier' : 'Repost')
+    : (fr ? `Republier ${items.length} annonces` : `Repost ${items.length} listings`);
+  const bouton = (() => {
+    const cible = nomsSel.length === 1 ? (fr ? `sur ${libelleSel}` : `on ${libelleSel}`) : (fr ? `sur ${nomsSel.length} plateformes` : `on ${nomsSel.length} platforms`);
+    if (!nomsSel.length) return fr ? 'Choisis au moins une plateforme' : 'Pick at least one platform';
+    if (solo) return fr ? <>Republier {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` à ${prixFinalSolo} €` : ''}{cout && <> · {cout}</>}</> : <>Repost {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` at €${prixFinalSolo}` : ''}{cout && <> · {cout}</>}</>;
+    return fr ? <>Republier les {items.length} {cible}{pct > 0 ? ` à −${pct} %` : ''}{cout && <> · {cout}</>}</> : <>Repost {items.length} {cible}{pct > 0 ? ` at −${pct}%` : ''}{cout && <> · {cout}</>}</>;
+  })();
   return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'rgba(16,32,27,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: '#EDEAE0', borderRadius: '26px 26px 0 0', maxHeight: '92vh', overflowY: 'auto', padding: '18px 18px calc(env(safe-area-inset-bottom,0px) + 24px)', fontFamily: "'Space Grotesk', sans-serif" }}>
-        {/* ── LA PLATEFORME EST NOMMÉE (2026-08-31) ────────────────────────
-            La modale disait « Republier cet article · En ligne à 14 € » sans
-            jamais écrire Vinted. Or la republication est Vinted UNIQUEMENT :
-            elle supprime puis recrée l'annonce pour la faire remonter dans le
-            fil. Sur un article qui a AUSSI une annonce Leboncoin et une eBay en
-            ligne — le cas qui a déclenché ce correctif — rien ne disait à
-            l'utilisateur que ses deux autres annonces ne seraient pas
-            rafraîchies, ni pire, supprimées et recréées.
-            Nommé aux TROIS endroits où la décision se prend : le titre (la
-            portée), la ligne de prix (l'état de départ, celle qui lève
-            l'ambiguïté avec les annonces LBC/eBay elles aussi « en ligne »), et
-            le bouton (l'action). Pas dans le sous-titre : quatre mentions dans
-            une feuille de cette taille, c'est du bruit, pas de la clarté.
-            ⚠️ LIBELLÉ SEUL — aucun comportement touché : ni le calcul du prix,
-            ni les paliers −5/−10/−15 %, ni le débit. */}
-        <div style={{ fontSize: 17, fontWeight: 700, color: '#10201B', marginBottom: 4 }}>
-          {solo
-            ? (fr ? 'Republier sur Vinted' : 'Repost on Vinted')
-            : (fr ? `Republier ${items.length} annonces sur Vinted` : `Repost ${items.length} listings on Vinted`)}
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, background: '#EDEAE0', borderRadius: '26px 26px 0 0', maxHeight: '92vh', overflowY: 'auto', padding: '18px 18px 22px', boxSizing: 'border-box', fontFamily: 'inherit' }}>
+        {/* ── LA PLATEFORME EST NOMMÉE (2026-08-31), ET DÉSORMAIS CHOISIE
+            (2026-09-17) : la feuille dit sur quoi la republication porte —
+            titre, cases, ligne de prix, bouton — et ce qu'elle fait sur
+            chacune. Un seul choix possible = une case cochée, non décochable
+            visuellement mais présente : la destination reste écrite. */}
+        <div style={{ fontSize: 17, fontWeight: 700, color: '#10201B', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>{titre}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            {nomsSel.map((p) => <PlatformLogo key={p} platform={p} size={16} />)}
+          </span>
         </div>
         <div style={{ fontSize: 12.5, color: '#5C6560', lineHeight: 1.5, marginBottom: 12 }}>
           {fr ? "Baisser un peu le prix aide l'annonce à repartir — à toi de voir." : 'A small price drop helps the listing take off again — up to you.'}
         </div>
-        {solo && (
+        {(plateformesUnion.length > 1 || multiOuverte) && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+            {plateformesUnion.map((p) => (
+              <label key={p} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 11px', borderRadius: 12, cursor: 'pointer',
+                border: `1px solid ${cochee(p) ? '#2F9E90' : '#E7E3D8'}`, background: cochee(p) ? '#F0FDFB' : '#F6F5F1' }}>
+                <input type="checkbox" checked={cochee(p)} onChange={() => basculer(p)} style={{ marginTop: 3 }} aria-label={LABEL_PF[p] ?? p} />
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 13, color: '#10201B', minWidth: 0 }}>
+                  <PlatformLogo platform={p} size={14} />{LABEL_PF[p] ?? p}
+                </span>
+                <span style={{ flex: 1, fontSize: 11.5, color: '#5C6560', lineHeight: 1.45 }}>{explication[p]}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        {solo && cochee('vinted') && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 13, color: '#5C6560', fontWeight: 600 }}>
               {items[0].prixActuel != null
@@ -4244,6 +4284,11 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           {chip(0, fr ? 'Garder' : 'Keep')}{chip(5, '−5 %')}{chip(10, '−10 %')}{chip(15, '−15 %')}
         </div>
+        {nomsSel.some((p) => p !== 'vinted') && pct > 0 && (
+          <div style={{ fontSize: 12, color: '#5C6560', lineHeight: 1.5, marginBottom: 12 }}>
+            {fr ? 'La baisse s’applique au prix de chaque annonce, plateforme par plateforme.' : 'The drop applies to each listing’s price, platform by platform.'}
+          </div>
+        )}
         {!solo && pct > 0 && (
           <div style={{ background: '#F6F5F1', border: '1px solid #E7E3D8', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#5C6560', lineHeight: 1.55, marginBottom: 12 }}>
             {lotApercu.slice(0, 3).map((a, i) => (
@@ -4252,7 +4297,7 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
             {lotApercu.length > 3 && <div>… {lotApercu.length - 3} {fr ? 'autres' : 'more'}</div>}
             {plafonnes.length > 0 && (
               <div style={{ marginTop: 6, color: '#9A3412', fontWeight: 600 }}>
-                {fr ? `${plafonnes.length} article${plafonnes.length > 1 ? 's' : ''} au plancher de ${REPUB_PLANCHER_EUR} € : ` : `${plafonnes.length} item${plafonnes.length > 1 ? 's' : ''} at the €${REPUB_PLANCHER_EUR} floor: `}
+                {fr ? `${plafonnes.length} article${plafonnes.length > 1 ? 's' : ''} au plancher de ${REPUB_PLANCHER_EUR} € : ` : `${plafonnes.length} item${plafonnes.length > 1 ? 's' : ''} at the ${REPUB_PLANCHER_EUR} € floor: `}
                 {plafonnes.slice(0, 3).map(a => a.titre ?? '—').join(' · ')}{plafonnes.length > 3 ? '…' : ''}
               </div>
             )}
@@ -4264,27 +4309,27 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
             attendront une autre boutique. On n'empêche RIEN : tous les jobs se
             créent, ceux des autres boutiques repartent seuls à la connexion.
             Aucun seuil de nombre de boutiques (une seule épinglée + Chrome
-            ailleurs = déjà une attente, cas ornellaracano). */}
+            ailleurs = déjà une attente, cas ornellaracano). Vinted seul :
+            les autres plateformes n'ont pas de boutiques Vinted. */}
         {(() => {
-          if (!boutiqueConnectee?.userId) return null;
-          const jobsAVenir = items.map(({ item }) => ({ action: 'republish', platform: 'vinted', status: 'pending', inventaire_id: item?.id }));
-          const origines = new Map(items.map(({ item }) => [String(item?.id), item?.vinted_account_id == null ? '' : String(item.vinted_account_id).trim()]));
+          if (!boutiqueConnectee?.userId || !cochee('vinted')) return null;
+          const itemsVinted = items.filter(({ plateformes }) => (plateformes ?? ['vinted']).includes('vinted'));
+          const jobsAVenir = itemsVinted.map(({ item }) => ({ action: 'republish', platform: 'vinted', status: 'pending', inventaire_id: item?.id }));
+          const origines = new Map(itemsVinted.map(({ item }) => [String(item?.id), item?.vinted_account_id == null ? '' : String(item.vinted_account_id).trim()]));
           const etat = etatAttenteBoutique({ jobs: jobsAVenir, origines, connectee: boutiqueConnectee, boutiques: boutiquesVinted ?? [], lang });
           if (!etat) return null;
-          const partentMaintenant = items.length - etat.total;
+          const partentMaintenant = itemsVinted.length - etat.total;
           return (
             <div style={{ background: '#FFF6E3', border: '1px solid #EED9A6', borderRadius: 12, padding: '10px 12px', fontSize: 12, color: '#8A6100', lineHeight: 1.55, marginBottom: 12 }}>
-              {fr ? `${partentMaintenant} partent maintenant.` : `${partentMaintenant} start now.`}
+              {fr ? `${partentMaintenant} partent maintenant sur Vinted.` : `${partentMaintenant} start now on Vinted.`}
               {lignesAttenteBoutique(etat, lang).map((l, i) => <div key={i}>⏳ {l}</div>)}
               <div style={{ marginTop: 4, color: '#8A8578' }}>{phraseRassurance(lang)}</div>
             </div>
           );
         })()}
-        <button onClick={confirmer}
-          style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: 'linear-gradient(120deg,#2F9E90,#1B6E62)', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}>
-          {solo
-            ? (fr ? <>Republier sur Vinted{prixFinalSolo != null ? ` à ${prixFinalSolo} €` : ''}{cout && <> · {cout}</>}</> : <>Repost on Vinted{prixFinalSolo != null ? ` at €${prixFinalSolo}` : ''}{cout && <> · {cout}</>}</>)
-            : (fr ? <>Republier les {items.length} sur Vinted{pct > 0 ? ` à −${pct} %` : ''}{cout && <> · {cout}</>}</> : <>Repost {items.length} on Vinted{pct > 0 ? ` at −${pct}%` : ''}{cout && <> · {cout}</>}</>)}
+        <button onClick={confirmer} disabled={!nbEnvois}
+          style={{ width: '100%', padding: 14, border: 'none', borderRadius: 999, background: nbEnvois ? 'linear-gradient(120deg,#2F9E90,#1B6E62)' : '#B9C4C0', color: '#fff', fontSize: 14, fontWeight: 700, fontFamily: 'inherit', cursor: nbEnvois ? 'pointer' : 'default' }}>
+          {bouton}
         </button>
         {/* (Le CTA « Gratuite et illimitée avec Premium » du 07/08 est mort le
             08/08 avec la gratuité plan : la republication coûte le même prix
@@ -4297,6 +4342,7 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
     document.body
   );
 }
+
 
 const StockTab = memo(function StockTab({
   // Config
@@ -4713,6 +4759,20 @@ const StockTab = memo(function StockTab({
     else setPlanifieeEcran('reglages');
   };
   const [republishPrice, setRepublishPrice] = useState(null);
+  // ── Republication multiplateforme : UN interrupteur serveur (2026-09-17) ──
+  // coin_config.republication_multi_ouverte (0/1), même doctrine qu'Opla :
+  // lecture isolée, FAIL-CLOSED (clé absente, illisible, lecture ratée →
+  // Vinted seul, rien ne change pour personne). Ouvrir / fermer tout le parc =
+  // une ligne SQL. La RPC porte la même porte côté serveur : l'app ne fait que
+  // ne pas PROPOSER ce que le serveur refuserait.
+  const [multiOuverte, setMultiOuverte] = useState(false);
+  useEffect(() => {
+    let annule = false;
+    supabase.from('coin_config').select('value').eq('key', 'republication_multi_ouverte').maybeSingle()
+      .then(({ data, error }) => { if (!annule) setMultiOuverte(!error && Number(data?.value) === 1); })
+      .catch(() => { if (!annule) setMultiOuverte(false); });
+    return () => { annule = true; };
+  }, []);
   const [repubBusy, setRepubBusy] = useState(null);          // inventaire_id en cours
   const [repubMsgs, setRepubMsgs] = useState({});            // inventaire_id → {ton, texte}
   // ── ARRÊT DE LA VAGUE (07/09/2026, demande Ornella) ───────────────────────
@@ -4856,53 +4916,48 @@ const StockTab = memo(function StockTab({
     ? `Limite du jour atteinte : ${res?.plafond ?? 3} republications par jour en Free. Rien n'a été débité — ça repart demain.`
     : `Daily limit reached: ${res?.plafond ?? 3} reposts a day on Free. Nothing was charged — it resets tomorrow.`);
 
-  async function lancerRepublication(item, prixRepublication = null) {
+  async function lancerRepublication(item, prixRepublication = null, plateformes = ['vinted']) {
     if (repubBusy || repubEnPause) return;
     if (extensionNeverSeen === true) { setExtPitchItem(item); return; }
     setRepubBusy(item.id);
     setRepubMsgs(m => ({ ...m, [item.id]: null }));
     try {
-      const res = await republierArticleVinted(supabase, {
-        inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication,
-      });
-      if (!res.success) {
-        if (rejetMaintenance(res)) { setRepubMaintenance(true); return; }
-        if (res.reason === 'plafond_republication_free') {
-          if (!ouvrirModalePlafondRepub(res)) {
-            setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: msgPlafondRepub(res) } }));
+      // ── Multiplateforme (2026-09-17) : une RPC PAR plateforme cochée, en
+      // séquence — chaque refus est nommé avec sa plateforme, chaque succès
+      // pose sa pastille. Vinted seul = exactement le chemin d'avant.
+      const liste = (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']);
+      const refus = [];
+      for (const platform of liste) {
+        const res = await republierArticle(supabase, {
+          platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication,
+        });
+        if (!res.success) {
+          if (rejetMaintenance(res)) { setRepubMaintenance(true); return; }
+          if (res.reason === 'plafond_republication_free') {
+            if (!ouvrirModalePlafondRepub(res)) {
+              setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: msgPlafondRepub(res) } }));
+            }
+            return;
           }
-          return;
+          const texte = messageRefusRepublication(res, lang, platform);
+          refus.push(liste.length > 1 ? `${LABEL_PF[platform] ?? platform} : ${texte}` : texte);
+          continue;
         }
-        const raisons = {
-          // capture_* ont disparu du RPC : la capture ne se fait plus au clic.
-          // Un échec de capture se produit désormais à l'exécution et clôt le
-          // job en 'failed' avec un message écrit par l'extension.
-          extension_trop_ancienne: lang === 'fr'
-            ? "L'extension de ton ordinateur doit passer en 0.5.0 ou plus récente pour republier."
-            : 'The extension on your computer needs version 0.5.0 or newer to repost.',
-          republish_en_cours: lang === 'fr' ? 'Une republication est déjà en cours sur cet article.' : 'A repost is already running for this item.',
-          cadence_24h: lang === 'fr' ? 'Déjà republié il y a moins de 24 h — une republication par article et par jour.' : 'Already reposted less than 24 h ago — one repost per item per day.',
-          // Bascule quotas (02/09) : insufficient_coins est mort (prix à 0).
-          // Le plafond MENSUEL des payants s'affiche en inline sobre — ils
-          // paient déjà, pas de modale de conversion ici.
-          plafond_republication_mensuel: lang === 'fr'
-            ? `Tes ${res.plafond ?? ''} republications du mois sont faites — ça repart au prochain cycle.`
-            : `Your ${res.plafond ?? ''} monthly repostings are done — back next cycle.`,
-        };
-        setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: res.message ?? raisons[res.reason] ?? res.error ?? (lang === 'fr' ? 'Republication impossible.' : 'Repost failed.') } }));
-        return;
+        // Patch optimiste : la carte montre l'état « en file » sans attendre le
+        // poll de 20 s (même principe que la publication).
+        const now = new Date().toISOString();
+        setJobsByInventaire(prev => ({
+          ...prev,
+          [item.id]: [...(prev[item.id] ?? []), {
+            id: `optimistic-repub-${item.id}-${platform}-${now}`, inventaire_id: item.id, platform,
+            action: 'republish', status: 'pending', error: null, created_at: now, listing_url: null, title: item.title,
+            platform_fields: { republish_step: 'a_capturer', ...(platform === 'vinted' ? { vinted_item_id: String(item.vinted_item_id) } : { republish_platform: platform }) },
+          }],
+        }));
       }
-      // Patch optimiste : la carte montre l'état « en file » sans attendre le
-      // poll de 20 s (même principe que la publication).
-      const now = new Date().toISOString();
-      setJobsByInventaire(prev => ({
-        ...prev,
-        [item.id]: [...(prev[item.id] ?? []), {
-          id: `optimistic-repub-${item.id}-${now}`, inventaire_id: item.id, platform: 'vinted',
-          action: 'republish', status: 'pending', error: null, created_at: now, listing_url: null, title: item.title,
-          platform_fields: { republish_step: 'a_capturer', vinted_item_id: String(item.vinted_item_id) },
-        }],
-      }));
+      if (refus.length) {
+        setRepubMsgs(m => ({ ...m, [item.id]: { ton: 'orange', texte: refus.join(' · ') } }));
+      }
       // AUCUN message de mise en file ici (2026-08-05). Il disait « elle
       // partira à la prochaine ouverture de Chrome » — le discours du PIRE cas,
       // faux dès que Chrome tourne, où l'attente réelle est le passage du poll
@@ -4914,6 +4969,7 @@ const StockTab = memo(function StockTab({
       setRepubBusy(null);
     }
   }
+
 
   // ── Feuille de prix (2026-08-05, validée) ─────────────────────────────────
   // LE geste Vinted : baisser un peu pour remonter. Ouverte au clic Republier
@@ -4931,6 +4987,9 @@ const StockTab = memo(function StockTab({
       items: itemsCibles.map(it => ({
         item: it,
         prixActuel: prixAnnonces[it.vinted_item_id] ?? (Number(it.sell) || null),
+        // Les plateformes republiables MAINTENANT pour cet article (Vinted
+        // seul tant que l'interrupteur serveur est à 0).
+        plateformes: plateformesRepubliables(it, jobsByInventaire[it.id] || [], { multiOuverte }),
       })),
     });
   }
@@ -4965,6 +5024,10 @@ const StockTab = memo(function StockTab({
     // résiduel arrivait ici en Free, on ouvre la modale et RIEN ne part.
     if (repubLotReserve) { ouvrirModaleLotReserve(); return; }
     if (repubEnPause) return;
+    // Multiplateforme (2026-09-17) : une paire (article, plateforme) par
+    // republication à créer — la boucle ne change pas, elle compte des paires.
+    cibles = (cibles ?? []).flatMap(({ item, prix, plateformes }) =>
+      (Array.isArray(plateformes) && plateformes.length ? plateformes : ['vinted']).map((platform) => ({ item, prix, platform })));
     if (!cibles.length || repubLot?.fait != null && repubLot.fait < repubLot.total) return;
     setRepubLot({ fait: 0, total: cibles.length, refus: [] });
     const refus = [];
@@ -4987,10 +5050,11 @@ const StockTab = memo(function StockTab({
     // FillSell doit rester ouvert pendant la mise en file ; la file, elle,
     // vit en base et survit à tout.
     for (let i = 0; i < cibles.length; i++) {
-      const { item, prix } = cibles[i];
+      const { item, prix, platform = 'vinted' } = cibles[i];
+      const nomArticle = platform === 'vinted' ? item.title : `${item.title} (${LABEL_PF[platform] ?? platform})`;
       try {
-        const res = await republierArticleVinted(supabase, {
-          inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prix,
+        const res = await republierArticle(supabase, {
+          platform, inventaireId: item.id, vintedItemId: item.vinted_item_id, prixRepublication: prix,
         });
         if (res.success) {
           if (batchId && res.job_id) {
@@ -5011,10 +5075,10 @@ const StockTab = memo(function StockTab({
           setJobsByInventaire(prev => ({
             ...prev,
             [item.id]: [...(prev[item.id] ?? []), {
-              id: `optimistic-repub-${item.id}-${now}`, inventaire_id: item.id, platform: 'vinted',
+              id: `optimistic-repub-${item.id}-${platform}-${now}`, inventaire_id: item.id, platform,
               action: 'republish', status: 'pending', error: null, created_at: now, listing_url: null, title: item.title,
               bulk_batch_id: batchId,
-              platform_fields: { republish_step: 'a_capturer', vinted_item_id: String(item.vinted_item_id) },
+              platform_fields: { republish_step: 'a_capturer', ...(platform === 'vinted' ? { vinted_item_id: String(item.vinted_item_id) } : { republish_platform: platform }) },
             }],
           }));
         } else {
@@ -5027,16 +5091,16 @@ const StockTab = memo(function StockTab({
           // lisible dans les refus, la modale de conversion (UNE par lot), et
           // on coupe : pas une ligne de refus par article restant.
           if (res.reason === 'plafond_republication_free') {
-            refus.push({ titre: item.title, raison: msgPlafondRepub(res) });
+            refus.push({ titre: nomArticle, raison: msgPlafondRepub(res) });
             setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] });
             ouvrirModalePlafondRepub(res);
             break;
           }
-          refus.push({ titre: item.title, raison: res.reason ?? res.error ?? 'refus' });
+          refus.push({ titre: nomArticle, raison: messageRefusRepublication(res, lang, platform) });
         }
       } catch (e) {
         if (rejetMaintenance({ error: e?.message ?? e })) { setRepubMaintenance(true); setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] }); break; }
-        refus.push({ titre: item.title, raison: String(e?.message ?? e) });
+        refus.push({ titre: nomArticle, raison: String(e?.message ?? e) });
       }
       setRepubLot({ fait: i + 1, total: cibles.length, refus: [...refus] });
     }
@@ -5204,10 +5268,16 @@ const StockTab = memo(function StockTab({
       && Date.now() - Date.parse(last.platform_fields.recreated_at) < 24 * 3600 * 1000) return 'cadence';
     return 'ok';
   };
+  // Sélectionnable en lot (2026-09-17) : Vinted republiable (repubEtat, règle
+  // historique) OU une autre plateforme republiable quand l'interrupteur
+  // serveur est ouvert — la MÊME expression que la feuille et le bouton
+  // (utils/republication.plateformesRepubliables).
+  const repubSelectionnable = (i) => repubEtat(i) === 'ok'
+    || (multiOuverte && plateformesRepubliables(i, jobsByInventaire[i.id] || [], { multiOuverte: true }).some((p) => p !== 'vinted'));
   // Lit la liste COMPLÈTE (déclarée avant la lecture des brouillons) : sans
   // conséquence, un brouillon n'a par définition aucun job et repubEtat le rend
   // donc toujours 'ineligible' — il ne peut pas entrer dans un lot.
-  const repubActionnables = republishActif ? stockFiltreComplet.filter(i => repubEtat(i) === 'ok') : [];
+  const repubActionnables = republishActif ? stockFiltreComplet.filter(repubSelectionnable) : [];
 
   // ── Bandeau de lot + signalement hors-ligne (2026-08-07, validé Nico) ─────
   // ⚠️ TOUT ce bloc lit jobsByInventaire : il vit APRÈS sa déclaration (règle
@@ -5681,7 +5751,7 @@ const StockTab = memo(function StockTab({
   // ⛔ C'est le SEUL lot du produit : publier passe toujours par le stepper,
   // un article à la fois. Rien ici ne doit suggérer un envoi groupé.
   const repubActionnablesVue = stockRetenu
-    ? stockRetenu.filter(i => repubEtat(i) === 'ok')
+    ? stockRetenu.filter(repubSelectionnable)
     : repubActionnables;
 
   const listeStock = useMemo(() => {
@@ -8186,6 +8256,11 @@ const StockTab = memo(function StockTab({
                   // jumelles (même helper, même garde de fraîcheur).
                   const repubEligible=republishActif&&item.vinted_item_id&&!item.disparu_le&&item.statut!=="vendu"
                     &&!vintedMasquee;
+                  // ── Multiplateforme (2026-09-17) : les plateformes republiables
+                  // MAINTENANT (Vinted comprise) — une seule expression, celle de
+                  // la feuille et du lot. Le bouton existe dès qu'il y en a une.
+                  const repubMaintenant=republishActif?plateformesRepubliables(item,jobsAll,{multiOuverte}):[];
+                  const repubEligibleTout=repubEligible||repubMaintenant.length>0;
                   // Vocabulaire d'étape partagé pastille ↔ feuille (une seule
                   // source : etapeRepublication). null = rien à afficher.
                   // ⚠️ Volontairement décorrélé de repubEligible (2026-08-05) :
@@ -8197,11 +8272,18 @@ const StockTab = memo(function StockTab({
                   // l'en-tête (utils/attenteBoutique) : plus jamais un
                   // « en attente » muet sur la fiche (07/09).
                   const attenteFiche=repubLatest?messageFicheAttenteBoutique({connectee:boutiqueConnectee,origine:item.vinted_account_id,boutiques:boutiquesVinted,action:repubLatest.action==='delete'?'delete':'republish',lang}):null;
-                  const repubEtape=republishActif?etapeRepublication(repubLatest,lang!=='en',repubPlafondReprise,attenteFiche,item):null;
+                  const repubEtape=(()=>{
+                    const e=republishActif?etapeRepublication(repubLatest,lang!=='en',repubPlafondReprise,attenteFiche,item):null;
+                    // Une republication Leboncoin/Beebs/Opla nomme sa plateforme
+                    // sur la pastille (2026-09-17) : « LBC · Retrait… ».
+                    return e&&e.court&&repubLatest&&repubLatest.platform&&repubLatest.platform!=='vinted'
+                      ?{...e,court:`${LABEL_PF_COURT[repubLatest.platform]??repubLatest.platform} · ${e.court}`}
+                      :e;
+                  })();
                   // La pastille dit déjà l'état : le message transitoire ne le
                   // répète pas. Il ne reste affiché que quand il apporte autre
                   // chose (refus, échec de relance).
-                  const repubNote=repubEligible&&repubMsgs[item.id]&&!repubEtape?repubMsgs[item.id]:null;
+                  const repubNote=repubEligibleTout&&repubMsgs[item.id]&&!repubEtape?repubMsgs[item.id]:null;
                   // ── UN SEUL badge dans ce slot (2026-08-05, décision Nico) ──
                   // La pastille de republication et la pastille de statut
                   // plateforme s'affichaient ENSEMBLE et, à l'arrivée, disaient
@@ -8366,7 +8448,7 @@ const StockTab = memo(function StockTab({
                   // retrait), le compteur reste stable, seule la pastille du
                   // slot anime. Affichage pur : publishedActive lui-même ne
                   // change pas, les gardes métier restent intactes.
-                  const vintedGeleParRepub=repubOccupeSlot&&!!item.vinted_item_id&&!publishedActive.includes("vinted");
+                  const vintedGeleParRepub=repubOccupeSlot&&repubLatest?.platform==='vinted'&&!!item.vinted_item_id&&!publishedActive.includes("vinted");
                   // ── Vinted lu sur l'ARTICLE (2026-09-11, signalement
                   // Joséphine) : MÊME source que le filtre Diffusion et le
                   // bandeau vente — vintedPresenceArticle (publicationState).
@@ -8814,7 +8896,7 @@ const StockTab = memo(function StockTab({
                               d'achat). La ligne s'ouvre désormais AUSSI pour
                               la republication en lot ; les morceaux propres
                               au prix d'achat restent gatés sur paIncomplet. */}
-                          {(paIncomplet(item)||(modeRepublish&&repubEtat(item)==="ok"))&&(
+                          {(paIncomplet(item)||(modeRepublish&&repubSelectionnable(item)))&&(
                             <div className="pa-line" onClick={e=>e.stopPropagation()}>
                               {modePrixAchat&&paIncomplet(item)&&(
                                 <input type="checkbox" className="pa-check" checked={paSel.has(item.id)}
@@ -8827,7 +8909,7 @@ const StockTab = memo(function StockTab({
                                   SEULE sur la ligne (article au prix déjà
                                   renseigné) : une case nue de 17 px, sans un
                                   mot, ne se comprend ni ne se vise à 390 px. */}
-                              {modeRepublish&&repubEtat(item)==="ok"&&(
+                              {modeRepublish&&repubSelectionnable(item)&&(
                                 <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}} onClick={e=>e.stopPropagation()}>
                                   <input type="checkbox" className="pa-check" checked={repubSel.has(item.id)}
                                     onChange={()=>setRepubSel(prev=>{const n=new Set(prev);if(n.has(item.id))n.delete(item.id);else n.add(item.id);return n;})}
@@ -9241,31 +9323,35 @@ const StockTab = memo(function StockTab({
                                 Le bouton dit POURQUOI il est inerte, il
                                 n'échoue jamais après le clic sur une borne
                                 connue (cadence 24 h, republish vivant). */}
-                            {repubEligible&&(()=>{
-                              const st=repubLatest?.status;
+                            {repubEligibleTout&&(()=>{
+                              // Le job à REPRENDRE d'abord (needs_user le plus récent,
+                              // toutes plateformes), sinon le dernier : c'est lui que
+                              // « Republier maintenant / Compléter / Relancer » vise.
+                              const repubCible=republishAReprendre(jobsAll)??repubLatest;
+                              const st=repubCible?.status;
                               // Gel Livres (2026-08-28 soir) : AUCUN bouton tant
                               // que le job porte gel_livres_le — la pastille
                               // « En pause » dit tout, et un Relancer/Republier
                               // créerait un job NEUF hors gel (c'est le trou
                               // que le passage en 'cancelled' vient de fermer).
                               // Détection par le marqueur seul, jamais le statut.
-                              if(repubLatest?.platform_fields?.gel_livres_le)return null;
+                              if(repubCible?.platform_fields?.gel_livres_le)return null;
                               const vivant=st==="pending"||st==="processing"||st==="needs_user";
                               if(st==="needs_user"){
                                 // Après suppression (étape 'deleted'), le geste n'est pas une
                                 // « relance » abstraite : c'est REMETTRE L'ANNONCE EN LIGNE
                                 // depuis le snapshot sauvegardé — le bouton le dit (2026-08-12).
-                                const apresSuppr=repubLatest?.platform_fields?.republish_step==='deleted';
+                                const apresSuppr=repubCible?.platform_fields?.republish_step==='deleted';
                                 // Capture incomplète avec champ saisissable (2026-08-21) : une
                                 // relance à vide re-échouerait en boucle — le bouton ouvre la
                                 // feuille de saisie (la même que la pastille), qui valide ET
                                 // relance en un geste.
-                                const aSaisir=(repubLatest?.platform_fields?.champs_a_completer??[])
+                                const aSaisir=(repubCible?.platform_fields?.champs_a_completer??[])
                                   .some(c=>repubCleSaisie(c) in REPUB_SAISISSABLES);
                                 if(aSaisir&&!apresSuppr){
                                   return(
                                   <button className="btn-vendre" disabled={repubBusy===item.id}
-                                    onClick={e=>{e.stopPropagation();setRepubProgress(repubLatest);}}
+                                    onClick={e=>{e.stopPropagation();setRepubProgress(repubCible);}}
                                     style={{opacity:repubBusy===item.id?0.6:1}}>
                                     {lang==='fr'?'✋ Compléter':'✋ Fill in'}
                                   </button>);
@@ -9279,18 +9365,18 @@ const StockTab = memo(function StockTab({
                                 // pas lu par le pré-vol) — le mini-éditeur à choix fermé,
                                 // lui, écrit categoryLevelChoice/vintedAspects que la
                                 // recréation consomme désormais.
-                                const aChoisir=!aSaisir&&!!repubLatest?.platform_fields?.needsUserField;
+                                const aChoisir=!aSaisir&&!!repubCible?.platform_fields?.needsUserField;
                                 if(aChoisir&&!apresSuppr){
                                   return(
                                   <button className="btn-vendre" disabled={repubBusy===item.id}
-                                    onClick={e=>{e.stopPropagation();setNeedsUserJob(repubLatest);}}
+                                    onClick={e=>{e.stopPropagation();setNeedsUserJob(repubCible);}}
                                     style={{opacity:repubBusy===item.id?0.6:1}}>
                                     {lang==='fr'?'✋ Compléter':'✋ Fill in'}
                                   </button>);
                                 }
                                 return(
                                 <button className="btn-vendre" disabled={repubBusy===item.id}
-                                  onClick={e=>{e.stopPropagation();relancerRepublication(item,repubLatest);}}
+                                  onClick={e=>{e.stopPropagation();relancerRepublication(item,repubCible);}}
                                   style={{opacity:repubBusy===item.id?0.6:1}}>
                                   {repubBusy===item.id?(lang==='fr'?'Relance…':'Relaunching…')
                                     :apresSuppr?(lang==='fr'?'🔁 Republier maintenant':'🔁 Republish now')
@@ -9303,16 +9389,20 @@ const StockTab = memo(function StockTab({
                               // fantôme « 🔁 En cours » ne faisait que répéter
                               // ce qu'elle disait déjà, sur la colonne qui doit
                               // rester celle des ACTIONS.
-                              if(vivant)return null;
-                              if(st==="published"&&repubLatest?.platform_fields?.recreated_at
-                                &&Date.now()-Date.parse(repubLatest.platform_fields.recreated_at)<24*3600*1000){
-                                const restant=Math.max(1,Math.ceil((24*3600*1000-(Date.now()-Date.parse(repubLatest.platform_fields.recreated_at)))/3600000));
+                              // Une republication en vol sur UNE plateforme ne prive pas les
+                              // autres du bouton (2026-09-17) : il disparaît seulement
+                              // quand plus rien n'est republiable maintenant.
+                              if(vivant&&!repubMaintenant.length)return null;
+                              if(!repubMaintenant.length&&st==="published"&&repubCible?.platform_fields?.recreated_at
+                                &&Date.now()-Date.parse(repubCible.platform_fields.recreated_at)<24*3600*1000){
+                                const restant=Math.max(1,Math.ceil((24*3600*1000-(Date.now()-Date.parse(repubCible.platform_fields.recreated_at)))/3600000));
                                 return(
                                   <button className="btn-vendre btn-cooldown" disabled style={{opacity:0.55,cursor:"default"}}
                                     title={lang==='fr'?`Une republication par article et par 24 h — de nouveau possible dans ~${restant} h.`:`One repost per item per 24 h — available again in ~${restant} h.`}>
                                     {lang==='fr'?`🔁 Dans ~${restant} h`:`🔁 In ~${restant} h`}
                                   </button>);
                               }
+                              if(!repubMaintenant.length)return null;
                               return(
                                 <button className="btn-vendre" disabled={repubEnPause||repubBusy===item.id}
                                   onClick={e=>{
@@ -9324,9 +9414,11 @@ const StockTab = memo(function StockTab({
                                   style={{opacity:repubEnPause?0.45:repubBusy===item.id?0.6:1,cursor:repubEnPause?"default":undefined}}
                                   title={repubEnPause
                                     ?(pausedReasons.vinted||(lang==='fr'?"Republication en maintenance — de retour très vite.":"Reposting under maintenance — back very soon."))
-                                    :(lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed.")}>
+                                    :(repubMaintenant.length===1&&repubMaintenant[0]==='vinted'
+                                      ?(lang==='fr'?"Supprime puis recrée l'annonce à l'identique pour la faire remonter dans le fil Vinted.":"Deletes then recreates the listing identically to bump it in the Vinted feed.")
+                                      :(lang==='fr'?`Remonte l'annonce sur ${repubMaintenant.map(p=>LABEL_PF[p]??p).join(', ')} : retirée puis redéposée à l'identique (Opla : modifiée en place).`:`Bumps the listing on ${repubMaintenant.map(p=>LABEL_PF[p]??p).join(', ')}: removed then re-posted identically (Opla: updated in place).`))}>
                                   {repubBusy===item.id
-                                    ?(lang==='fr'?'Capture…':'Capturing…')
+                                    ?(lang==='fr'?'Envoi…':'Sending…')
                                     /* Logo Vinted À LA PLACE de l'émoji 🔁 (2026-09-01, audit
                                        onboarding) : « Publier » et « Republier » ne se
                                        distinguaient que par deux lettres — le logo dit la
@@ -9338,14 +9430,18 @@ const StockTab = memo(function StockTab({
                                     :(republishPrice!=null
                                       ?(
                                         <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,lineHeight:1}}>
-                                          <PlatformLogo platform="vinted" size={12}/>
+                                          <span style={{display:"inline-flex",alignItems:"center",gap:2}}>
+                                            {repubMaintenant.map(p=><PlatformLogo key={p} platform={p} size={12}/>)}
+                                          </span>
                                           {lang==='fr'?'Republier':'Repost'}
                                           <span style={{whiteSpace:"nowrap"}}>({republishPrice})</span>
                                         </span>
                                       )
                                       :(
                                         <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",gap:4,lineHeight:1}}>
-                                          <PlatformLogo platform="vinted" size={12}/>
+                                          <span style={{display:"inline-flex",alignItems:"center",gap:2}}>
+                                            {repubMaintenant.map(p=><PlatformLogo key={p} platform={p} size={12}/>)}
+                                          </span>
                                           {lang==='fr'?'Republier':'Repost'}
                                         </span>
                                       ))}
@@ -9546,10 +9642,12 @@ const StockTab = memo(function StockTab({
           prixUnitaire={republishPrice}
           boutiquesVinted={boutiquesVinted}
           boutiqueConnectee={boutiqueConnectee}
+          multiOuverte={multiOuverte}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles)=>{
             setRepubSheet(null);
-            if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix);
+            if(!cibles.length)return;
+            if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix,cibles[0].plateformes);
             else lancerRepublicationLot(cibles);
           }}
         />

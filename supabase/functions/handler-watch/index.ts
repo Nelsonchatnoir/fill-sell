@@ -224,6 +224,10 @@ serve(async (req) => {
   }
 
   const jobs = (rows ?? []) as Job[];
+  // Republication multiplateforme (2026-09-17) : les messages nomment la
+  // plateforme du job — « sur Vinted » n'est plus vrai pour tout le monde.
+  const libellePlateforme = (p: unknown): string =>
+    ({ vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", ebay: "eBay", opla: "Opla" } as Record<string, string>)[String(p ?? "")] ?? "Vinted";
 
   // ── Annonces HORS LIGNE orphelines (2026-08-07, 3d-b validé Nico) ─────────
   // Un job republish resté à l'étape 'deleted' plus de 30 min = une annonce
@@ -241,7 +245,7 @@ serve(async (req) => {
     const seuilIso = new Date(now - 30 * 60_000).toISOString();
     const { data: bruts } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, title, status, platform_fields")
+      .select("id, user_id, platform, title, status, platform_fields")
       .eq("action", "republish")
       .in("status", ["pending", "processing", "needs_user", "failed"])
       .filter("platform_fields->>republish_step", "eq", "deleted")
@@ -269,7 +273,7 @@ serve(async (req) => {
         return `
     <div style="margin:0 0 12px;padding:12px 14px;border:1px solid #FED7AA;border-radius:12px;background:#FFF7ED;font-family:sans-serif;">
       <div style="font-size:14px;font-weight:700;color:#9A3412;">
-        ${esc(p.username ?? p.email ?? j.user_id)} — « ${esc(j.title ?? "(sans titre)")} »
+        ${esc(p.username ?? p.email ?? j.user_id)} — « ${esc(j.title ?? "(sans titre)")} » · ${esc(libellePlateforme(j.platform))}
       </div>
       <div style="font-size:13px;color:#374151;margin-top:4px;">
         Hors ligne depuis <strong>${horsLigneMin != null ? `${horsLigneMin} min` : "durée inconnue"}</strong>
@@ -288,8 +292,9 @@ serve(async (req) => {
     </h1>
     <p style="margin:0 0 14px;font-size:12px;font-family:sans-serif;color:#9CA3AF;">
       Étape 'deleted' depuis plus de 30 min — l'extension du compte ne recrée pas
-      (endormie, session perdue…). L'annonce Vinted est retirée, la capture est en
-      base : rien n'est perdu, mais personne ne le voit. Une alerte par job.
+      (endormie, session perdue…). L'annonce est retirée de sa plateforme, la copie
+      (capture Vinted, ou snapshot du dépôt ailleurs) est en base : rien n'est perdu,
+      mais personne ne le voit. Une alerte par job.
     </p>
     ${lignes.join("")}
   </div>
@@ -433,7 +438,9 @@ serve(async (req) => {
         // Publication seule : une republication 'a_capturer' n'a rien déposé.
         if (repriseRapide && j.action === "publish") pf.verifier_doublon_avant_publication = true;
 
-        if (j.action === "republish" && pf.republish_step === "captured") {
+        // Vinted seul (2026-09-17) : hors Vinted la « capture » est la copie du
+        // dépôt d'origine sur le job, elle ne périme pas — ré-armement simple.
+        if (j.action === "republish" && pf.republish_step === "captured" && j.platform === "vinted") {
           // Capture à vérifier EN BASE (platform_fields ne porte que capture_id).
           // Extension muette ≥ 24 h = aucune recapture possible entre-temps :
           // une capture illisible ou sans horodatage est traitée comme périmée.
@@ -471,7 +478,7 @@ serve(async (req) => {
         // déclenchée à 45 min ferait mentir l'écran dans l'autre sens.
         const msg = repriseRapide && j.action === "republish"
           ? "Reprise après interruption : l'ordinateur qui portait cette republication ne s'est plus " +
-            "manifesté depuis une demi-heure. Rien n'a été touché sur Vinted (ton annonce est en ligne) ; " +
+            `manifesté depuis une demi-heure. Rien n'a été touché sur ${libellePlateforme(j.platform)} (ton annonce est en ligne) ; ` +
             "la republication est remise en file et repartira automatiquement dès qu'une extension " +
             "connectée se réveille — rien à faire de ton côté."
           : repriseRapide
@@ -624,7 +631,7 @@ serve(async (req) => {
   try {
     const { data: coupes } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, created_at, platform_fields")
+      .select("id, user_id, platform, created_at, platform_fields")
       .eq("status", "processing")
       .eq("action", "republish")
       .filter("platform_fields->>republish_step", "eq", "deleted")
@@ -645,14 +652,21 @@ serve(async (req) => {
       // re-sonde de l'état réel avant recréation) — jamais une recréation serveur.
       const since = Date.parse(pf0.deleted_at ?? pf0.processing_since ?? j.created_at ?? "");
       if (!Number.isFinite(since) || now - since < REPRISE_DELETED_MIN * 60_000) continue;
-      const capId = Number(pf0.capture_id);
-      if (!Number.isFinite(capId)) continue; // capture absente : garde-fou, on ne touche pas
-      const { data: cap } = await supabase
-        .from("vinted_republish_captures")
-        .select("verdict")
-        .eq("id", capId)
-        .maybeSingle();
-      if (cap?.verdict !== "valide") continue; // incomplète ou introuvable : idem
+      // Hors Vinted (2026-09-17) : la « capture » est le job lui-même
+      // (republish_snapshot v2 = copie du dépôt d'origine, posée par la RPC) —
+      // présente, elle vaut une capture 'valide' ; absente, même garde-fou.
+      const snapshotHorsVinted = j.platform !== "vinted"
+        && Number((pf0.republish_snapshot as Record<string, unknown> | null)?.version) >= 2;
+      if (!snapshotHorsVinted) {
+        const capId = Number(pf0.capture_id);
+        if (!Number.isFinite(capId)) continue; // capture absente : garde-fou, on ne touche pas
+        const { data: cap } = await supabase
+          .from("vinted_republish_captures")
+          .select("verdict")
+          .eq("id", capId)
+          .maybeSingle();
+        if (cap?.verdict !== "valide") continue; // incomplète ou introuvable : idem
+      }
       const pf = { ...pf0 };
       delete pf.processing_since;
       delete pf.stale_recoveries;
@@ -710,7 +724,7 @@ serve(async (req) => {
   try {
     const { data: coupes } = await supabase
       .from("cross_post_jobs")
-      .select("id, user_id, created_at, platform_fields")
+      .select("id, user_id, platform, created_at, platform_fields")
       .eq("status", "processing")
       .eq("action", "republish")
       .filter("platform_fields->>republish_step", "eq", "captured")
@@ -720,20 +734,27 @@ serve(async (req) => {
       const pf0 = j.platform_fields ?? {};
       const since = Date.parse(pf0.processing_since ?? j.created_at ?? "");
       if (!Number.isFinite(since) || now - since < REPRISE_CAPTURED_MIN * 60_000) continue;
-      const capId = Number(pf0.capture_id);
-      if (!Number.isFinite(capId)) continue; // capture absente : garde-fou, on ne touche pas
-      const { data: cap } = await supabase
-        .from("vinted_republish_captures")
-        .select("verdict")
-        .eq("id", capId)
-        .maybeSingle();
-      if (cap?.verdict !== "valide") continue; // incomplète ou introuvable : idem
+      // Hors Vinted (2026-09-17) : la « capture » est le job lui-même
+      // (republish_snapshot v2 = copie du dépôt d'origine, posée par la RPC) —
+      // présente, elle vaut une capture 'valide' ; absente, même garde-fou.
+      const snapshotHorsVinted = j.platform !== "vinted"
+        && Number((pf0.republish_snapshot as Record<string, unknown> | null)?.version) >= 2;
+      if (!snapshotHorsVinted) {
+        const capId = Number(pf0.capture_id);
+        if (!Number.isFinite(capId)) continue; // capture absente : garde-fou, on ne touche pas
+        const { data: cap } = await supabase
+          .from("vinted_republish_captures")
+          .select("verdict")
+          .eq("id", capId)
+          .maybeSingle();
+        if (cap?.verdict !== "valide") continue; // incomplète ou introuvable : idem
+      }
       const pf = { ...pf0 };
       delete pf.processing_since;
       delete pf.stale_recoveries;
       const msg =
         "Reprise après interruption : l'ordinateur a été coupé après la capture de l'annonce, " +
-        "avant tout retrait. Ton annonce est toujours en ligne sur Vinted, rien n'a été supprimé. " +
+        `avant tout retrait. Ton annonce est toujours en ligne sur ${libellePlateforme(j.platform)}, rien n'a été supprimé. ` +
         "Le job est remis en file et repartira tout seul dès qu'une extension connectée se " +
         "réveille — rien à faire de ton côté.";
       const { data: maj } = await supabase

@@ -184,6 +184,11 @@ function texteMotifCompte(motif, fr) {
     auto_reserve_pro:        fr ? 'Le compte n’était plus Pro.' : 'The account was no longer Pro.',
     insufficient_coins:      fr ? 'Solde insuffisant.' : 'Insufficient balance.',
     exception:               fr ? 'Incident côté serveur — rien n’a été retiré.' : 'Server-side incident — nothing was removed.',
+    // 17/09 : la garde anti-rafale parle (docs/REPUBLICATION_PLANIFIEE_MULTI_BOUTIQUES.md).
+    annonce_hors_ligne:      fr ? 'Créneau bloqué : une annonce retirée attendait sa recréation.' : 'Slot blocked: a removed listing was waiting to be recreated.',
+    republication_en_vol:    fr ? 'Créneau bloqué : une republication était déjà en cours.' : 'Slot blocked: a repost was already under way.',
+    parques_autre_boutique:  fr ? 'Des republications attendent une autre boutique (elles repartiront seules à la connexion).' : 'Some reposts are waiting for another shop (they resume on their own when you sign in).',
+    prevues_atteintes:       fr ? 'Tout ce qui était prévu est parti.' : 'Everything planned went out.',
   };
   return M[motif] ?? (fr ? `Arrêt du passage (${motif}).` : `Pass stopped (${motif}).`);
 }
@@ -223,6 +228,10 @@ function synthese(etat, { fr, enService, extensionStatus }) {
   const manque = actif && dernier?.statut === 'manque';
   const ext = extensionRefuse(extensionStatus);
   const nombre = nombreAttendu(etat, { enService, extensionStatus });
+  // 17/09 : ce que le serveur dit du créneau COURANT — la note de blocage en
+  // cours (garde anti-rafale, sans leve_le) et les remontées déjà faites.
+  const blocage = actif && etat?.blocage && typeof etat.blocage === 'object' ? etat.blocage : null;
+  const faitesLive = Number.isFinite(Number(etat?.faites_live)) ? Number(etat.faites_live) : null;
   const moteurLegacy = !actif && etat?.moteur === 'legacy';
   const invalide = r?.invalide ?? null;
 
@@ -243,8 +252,11 @@ function synthese(etat, { fr, enService, extensionStatus }) {
     etatLigne = fr ? 'Active · compteur du mois plein' : 'On · monthly counter full'; etatTon = 'amber';
   } else if (manque) {
     etatLigne = fr ? 'Active · dernier créneau manqué' : 'On · last slot missed'; etatTon = 'amber';
+  } else if (dans && blocage) {
+    etatLigne = fr ? 'Active · en attente d’une republication en vol' : 'On · waiting for a repost under way'; etatTon = 'amber';
   } else if (dans) {
-    etatLigne = fr ? `Active · en cours jusqu'à ${fmtHHMM(a, fr)}` : `On · running until ${fmtHHMM(a, fr)}`; etatTon = 'teal';
+    const deja = faitesLive > 0 ? (fr ? ` · ${nf(faitesLive, fr)} ${plur(faitesLive, 'remontée', 'remontées')}` : ` · ${nf(faitesLive, fr)} reposted`) : '';
+    etatLigne = fr ? `Active · en cours jusqu'à ${fmtHHMM(a, fr)}${deja}` : `On · running until ${fmtHHMM(a, fr)}${deja}`; etatTon = 'teal';
   } else {
     etatLigne = fr ? `Active · ${fmtCreneau(de, a, fr)} · ${resumeJours(jours, fr)}` : `On · ${fmtCreneau(de, a, fr)} · ${resumeJours(jours, fr)}`; etatTon = 'teal';
   }
@@ -270,6 +282,23 @@ function synthese(etat, { fr, enService, extensionStatus }) {
       titre: fr ? `${nf(quota, fr)} republications ce mois : le compteur est plein.` : `${nf(quota, fr)} reposts this month: the counter is full.`,
       corps: fr ? 'Les republications reprennent au renouvellement de ton forfait. Tes réglages et ta file sont conservés.'
                 : 'Reposting resumes when your plan renews. Your settings and queue are kept.' };
+  } else if (actif && dans && blocage) {
+    const n = Number(blocage.en_vol) || 0;
+    const parques = Number(blocage.parques_autre_boutique) || 0;
+    const horsLigne = blocage.motif === 'annonce_hors_ligne';
+    avis = { ton: 'amber',
+      titre: horsLigne
+        ? (fr ? 'Le créneau attend : une annonce retirée n’est pas encore recréée.' : 'The slot is waiting: a removed listing is not recreated yet.')
+        : (fr ? `Le créneau attend : ${nf(n, fr)} ${plur(n, 'republication', 'republications')} en cours.` : `The slot is waiting: ${nf(n, fr)} ${plur(n, 'repost', 'reposts')} under way.`),
+      corps: (horsLigne
+        ? (fr ? 'Rien ne part tant qu’une annonce est hors ligne : sa recréation passe d’abord, puis le créneau reprend tout seul.'
+              : 'Nothing goes out while a listing is offline: its recreation comes first, then the slot resumes on its own.')
+        : (fr ? 'Les republications déjà lancées passent d’abord — jamais deux gestes à la fois. Le créneau reprend tout seul derrière.'
+              : 'Reposts already launched go first — never two moves at once. The slot resumes on its own afterwards.'))
+        + (parques > 0
+          ? (fr ? ` ${nf(parques, fr)} ${plur(parques, 'republication attend', 'republications attendent')} une autre de tes boutiques : connecte-toi à cette boutique sur vinted.fr pour les libérer.`
+                : ` ${nf(parques, fr)} ${plur(parques, 'repost is', 'reposts are')} waiting for another of your shops: sign in to that shop on vinted.fr to release them.`)
+          : '') };
   } else if (manque) {
     const h = fmtCreneau(dernier.de, dernier.a, fr);
     const j = jourHistorique(dernier.debut, dernier.fuseau ?? fuseau, fr);
@@ -279,7 +308,9 @@ function synthese(etat, { fr, enService, extensionStatus }) {
         ? (fr ? `${j}, ${h} : rien n’est parti.` : `${j}, ${h}: nothing went out.`)
         : (fr ? `${j}, ${h} : rien n’est parti, Chrome était fermé.` : `${j}, ${h}: nothing went out, Chrome was closed.`),
       corps: dernier.extension_vue
-        ? (fr ? 'L’historique dit pourquoi, annonce par annonce.' : 'The history says why, listing by listing.')
+        ? (dernier?.sautes?._bloque_en_vol
+          ? (fr ? 'Le créneau est resté bloqué derrière une republication en vol — l’historique le montre.' : 'The slot stayed blocked behind a repost under way — the history shows it.')
+          : (fr ? 'L’historique dit pourquoi, annonce par annonce.' : 'The history says why, listing by listing.'))
         : (fr ? `Les annonces éligibles sont toujours en file. Prochaine tentative ${prochainTxt ?? 'au prochain créneau'}, dès que Chrome est ouvert.`
               : `Eligible listings are still queued. Next attempt ${prochainTxt ?? 'at the next slot'}, as soon as Chrome is open.`) };
   } else if (actif && quotaProche) {
@@ -294,7 +325,7 @@ function synthese(etat, { fr, enService, extensionStatus }) {
   }
 
   return { r, fuseau, actif, autorise, creneau, de, a, jours, fen, dans, prochain, fin, quota, faits, quotaConnu, quotaPlein, quotaProche,
-    dernier, manque, ext, nombre, moteurLegacy, invalide, etatLigne, etatTon, avis };
+    dernier, manque, ext, nombre, moteurLegacy, invalide, etatLigne, etatTon, avis, blocage, faitesLive };
 }
 
 const tonCouleur = (ton) => (ton === 'teal' ? P.teal : ton === 'amber' ? P.amberInk : P.mute);
@@ -967,6 +998,9 @@ export function RepublicationPlanifieeHistorique({ lang, userId, etat, onClose }
             let phrase;
             if (c.statut === 'en_cours') phrase = fr ? `Créneau en cours — ${nOk} ${plur(nOk, 'remontée', 'remontées')} pour l'instant${enVol.length ? `, ${enVol.length} en cours` : ''}.` : `Slot running — ${nOk} reposted so far${enVol.length ? `, ${enVol.length} under way` : ''}.`;
             else if (c.statut === 'vide') phrase = fr ? 'Aucune annonce éligible ce jour-là.' : 'No eligible listing that day.';
+            else if (manque && c.sautes?._bloque_en_vol) phrase = fr
+              ? `Rien n'est parti : le créneau est resté bloqué derrière ${c.sautes._bloque_en_vol.motif === 'annonce_hors_ligne' ? 'une annonce retirée non recréée' : 'une republication en cours'}.`
+              : `Nothing went out: the slot stayed blocked behind ${c.sautes._bloque_en_vol.motif === 'annonce_hors_ligne' ? 'a removed listing not yet recreated' : 'a repost under way'}.`;
             else if (manque) phrase = c.extension_vue
               ? (fr ? `Rien n'est parti. ${eligibles} ${plur(eligibles, 'annonce était éligible', 'annonces étaient éligibles')}.` : `Nothing went out. ${eligibles} ${plur(eligibles, 'listing was', 'listings were')} eligible.`)
               : (fr ? `Chrome était fermé. Les ${eligibles} ${plur(eligibles, 'annonce éligible attend', 'annonces éligibles attendent')} le créneau suivant.` : `Chrome was closed. The ${eligibles} eligible ${plur(eligibles, 'listing waits', 'listings wait')} for the next slot.`);
@@ -1018,10 +1052,25 @@ export function RepublicationPlanifieeHistorique({ lang, userId, etat, onClose }
                     {sautesArticles.map(([item, n]) => (
                       <LigneDetail key={item} ton="mute" titre={n?.titre || `#${item}`} sous={`${fr ? 'Sautée — ' : 'Skipped — '}${texteMotifSaut(n?.motif, fr)}`} />
                     ))}
-                    {notesCompte.map(([k, n]) => (
-                      <LigneDetail key={k} ton="amber" titre={texteMotifCompte(n?.motif ?? k.replace(/^_/, ''), fr)}
-                        sous={n?.at ? (fr ? `À ${heureDans(n.at, fuseau, fr) ?? '—'}` : `At ${heureDans(n.at, fuseau, fr) ?? '—'}`) : null} />
-                    ))}
+                    {notesCompte.map(([k, n]) => {
+                      // _bloque_en_vol (17/09) : un ÉTAT daté de bout en bout, pas un fait ponctuel.
+                      if (k === '_bloque_en_vol') {
+                        const de = heureDans(n?.depuis ?? n?.at, fuseau, fr);
+                        const a = n?.leve_le ? heureDans(n.leve_le, fuseau, fr) : null;
+                        const enVol = Number(n?.en_vol) || 0;
+                        const parques = Number(n?.parques_autre_boutique) || 0;
+                        const sous = (a
+                          ? (fr ? `De ${de ?? '—'} à ${a}` : `From ${de ?? '—'} to ${a}`)
+                          : (fr ? `Depuis ${de ?? '—'}` : `Since ${de ?? '—'}`))
+                          + (enVol ? (fr ? ` · ${enVol} en vol` : ` · ${enVol} under way`) : '')
+                          + (parques ? (fr ? ` · ${parques} en attente d’une autre boutique` : ` · ${parques} waiting for another shop`) : '');
+                        return <LigneDetail key={k} ton="amber" titre={texteMotifCompte(n?.motif ?? 'republication_en_vol', fr)} sous={sous} />;
+                      }
+                      return (
+                        <LigneDetail key={k} ton="amber" titre={texteMotifCompte(n?.motif ?? k.replace(/^_/, ''), fr)}
+                          sous={n?.at ? (fr ? `À ${heureDans(n.at, fuseau, fr) ?? '—'}` : `At ${heureDans(n.at, fuseau, fr) ?? '—'}`) : null} />
+                      );
+                    })}
                   </div>
                 )}
               </div>

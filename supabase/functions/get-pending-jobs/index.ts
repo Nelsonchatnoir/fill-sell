@@ -697,8 +697,10 @@ serve(async (req) => {
     let relachesLbcPro = 0;
     if (!includeProcessing && !includeNeedsUser) {
       try {
+        // republish AUSSI (2026-09-17, republication Leboncoin) : le redépôt
+        // passe par le même formulaire pro — même porte, même relâchement.
         const estPublishLbc = (j: { platform: string; action: string | null }) =>
-          j.platform === "leboncoin" && (j.action ?? "publish") === "publish";
+          j.platform === "leboncoin" && ((j.action ?? "publish") === "publish" || j.action === "republish");
         const pfDe = (j: { platform_fields: unknown }) =>
           ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
         const candidats = out.filter(estPublishLbc);

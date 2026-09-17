@@ -1246,7 +1246,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
     {
       icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
       titleFr:"Tes annonces remontent toutes seules", titleEn:"Your listings climb back on their own",
-      descFr:"Une annonce qui dort est republiée pour repasser en tête de recherche Vinted, au rythme d'une vraie personne — sans que tu touches à rien.", descEn:"A listing that sits gets reposted back to the top of Vinted search, at a human pace — without you touching a thing.",
+      descFr:"Une annonce qui dort est republiée pour repasser en tête des résultats, au rythme d'une vraie personne — sans que tu touches à rien.", descEn:"A listing that sits gets reposted back to the top of the results, at a human pace — without you touching a thing.",
     },
     {
       // Le retrait n'est jamais « tout seul » — détection automatique,
@@ -1386,7 +1386,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
           <h2 style={{margin:0,fontWeight:700,fontSize:20,letterSpacing:"-0.01em",color:UI.ink}}>{fr?"Photographie, l'annonce est écrite":"Photograph it, the listing is written"}</h2>
           <p style={{margin:"10px 0 0",fontSize:14.5,lineHeight:1.55,color:UI.mute,fontWeight:400}}>
             {fr
-              ? <>L'IA reconnaît ton article, estime son prix et <span style={{color:UI.tealDeep,fontWeight:600}}>rédige l'annonce</span> pour les quatre plateformes. L'extension la publie depuis ton ordinateur.</>
+              ? <>L'IA reconnaît ton article, estime son prix et <span style={{color:UI.tealDeep,fontWeight:600}}>rédige l'annonce</span> pour les cinq plateformes. L'extension la publie depuis ton ordinateur.</>
               : <>The AI recognises your item, estimates its price and <span style={{color:UI.tealDeep,fontWeight:600}}>writes the listing</span> for all four marketplaces. The extension publishes it from your computer.</>
             }
           </p>
@@ -1449,13 +1449,13 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
   const annonces = K[`quota_annonces_${suffixe}`];
   const retouches = K[`quota_retouche_${suffixe}`];
   const repub = business
-    ? (lang === 'en' ? 'Unlimited Vinted repostings' : 'Republications Vinted illimitées')
+    ? (lang === 'en' ? 'Unlimited repostings' : 'Republications illimitées')
     : (lang === 'en'
-        ? `${(K[`quota_republication_${suffixe}`] ?? 0).toLocaleString('en-US')} Vinted repostings a month`
-        : `${(K[`quota_republication_${suffixe}`] ?? 0).toLocaleString('fr-FR')} republications Vinted par mois`);
+        ? `${(K[`quota_republication_${suffixe}`] ?? 0).toLocaleString('en-US')} repostings a month`
+        : `${(K[`quota_republication_${suffixe}`] ?? 0).toLocaleString('fr-FR')} republications par mois`);
   const PERKS = lang === 'en'
     ? [
-        { icon: '📝', label: `${annonces} listings created and published on all 4 platforms a month` },
+        { icon: '📝', label: `${annonces} listings created and published on all 5 platforms a month` },
         { icon: '🔁', label: repub },
         ...(pro || business ? [{ icon: '🤖', label: 'Automatic reposting' }] : []),
         { icon: '✨', label: `AI touch-up — ${retouches} enhanced photos a month` },
@@ -1464,7 +1464,7 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
         { icon: '📤', label: 'Import / Export Excel' },
       ]
     : [
-        { icon: '📝', label: `${annonces} annonces créées et publiées sur les 4 plateformes par mois` },
+        { icon: '📝', label: `${annonces} annonces créées et publiées sur les 5 plateformes par mois` },
         { icon: '🔁', label: repub },
         ...(pro || business ? [{ icon: '🤖', label: 'Republication automatique' }] : []),
         { icon: '✨', label: `Retouche IA — ${retouches} photos embellies par mois` },

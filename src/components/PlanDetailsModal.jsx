@@ -106,13 +106,13 @@ export default function PlanDetailsModal({ isPro, isBusiness, lang, onClose, sup
   // cartes de ConversionModal : gestes réels, volumes lus dans coin_config,
   // le mot « plafond » banni, la cadence 45/j de l'auto jamais affichée.
   const features = [
-    fr ? `${qAnnonces} annonces créées et publiées sur les 4 plateformes par mois`
+    fr ? `${qAnnonces} annonces créées et publiées sur les 5 plateformes par mois`
        : `${qAnnonces} listings created and published on all 4 platforms a month`,
     isBusiness
-      ? (fr ? 'Republications Vinted illimitées — tu republies quand tu veux, autant que tu veux'
-            : 'Unlimited Vinted repostings — repost whenever you want, as much as you want')
-      : (fr ? `${(qRepub ?? 0).toLocaleString('fr-FR')} republications Vinted par mois`
-            : `${(qRepub ?? 0).toLocaleString('en-US')} Vinted repostings a month`),
+      ? (fr ? 'Republications illimitées — tu republies quand tu veux, autant que tu veux'
+            : 'Unlimited repostings — repost whenever you want, as much as you want')
+      : (fr ? `${(qRepub ?? 0).toLocaleString('fr-FR')} republications par mois`
+            : `${(qRepub ?? 0).toLocaleString('en-US')} repostings a month`),
     ...(isPro || isBusiness
       ? [fr ? 'Republication automatique — tes annonces remontent toutes seules, sans que tu y touches'
             : 'Automatic reposting — your listings bump themselves, without you touching anything']
