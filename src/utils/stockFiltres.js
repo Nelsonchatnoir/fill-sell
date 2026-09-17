@@ -106,6 +106,18 @@ function cleNue(brut) {
  */
 export function champManquant(job, lang = 'fr') {
   const pf = job?.platform_fields ?? {};
+  // Plusieurs champs demandés ensemble (needsUserFields, 2026-09-17 soir) :
+  // on les nomme tous — « l'état et Poids du colis » — jamais le premier seul.
+  const plusieurs = Array.isArray(pf.needsUserFields) && pf.needsUserFields.length > 1 ? pf.needsUserFields : null;
+  if (plusieurs) {
+    const mots = plusieurs.map((c) => {
+      const b = String(c?.field_label ?? c?.field_key ?? '').replace(/\*\s*$/, '').trim();
+      if (!b) return null;
+      const fr = CHAMPS_FR[cleNue(b)] ?? b;
+      return lang === 'en' ? (CHAMPS_FR_EN[fr] ?? fr) : fr;
+    }).filter(Boolean);
+    if (mots.length) return mots.join(lang === 'en' ? ' and ' : ' et ');
+  }
   const brut = pf.needsUserField?.field_label
     ?? pf.needsUserField?.field_key
     ?? (Array.isArray(pf.champs_a_completer) ? pf.champs_a_completer[0] : null);

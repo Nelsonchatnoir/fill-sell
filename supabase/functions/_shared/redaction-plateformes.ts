@@ -563,8 +563,8 @@ export async function redigerAnnoncesPlateformes({ apiKey, platforms, itemContex
     let traceIsbn: Record<string, unknown> = {};
     {
       const ETAT_PAR_PLATEFORME: Record<string, Record<string, string>> = {
-        neuf_etiquette: { vinted: "Neuf avec étiquette", ebay: "Neuf avec étiquette", beebs: "Neuf, avec étiquette", leboncoin: "État neuf",          vestiaire: "Neuf avec étiquette" },
-        neuf_sans:      { vinted: "Neuf sans étiquette", ebay: "Neuf sans étiquette", beebs: "Neuf, sans étiquette", leboncoin: "État neuf",          vestiaire: "Neuf sans étiquette" },
+        neuf_etiquette: { vinted: "Neuf avec étiquette", ebay: "Neuf avec étiquette", beebs: "Neuf, avec étiquette", leboncoin: "Neuf avec étiquette", vestiaire: "Neuf avec étiquette" },
+        neuf_sans:      { vinted: "Neuf sans étiquette", ebay: "Neuf sans étiquette", beebs: "Neuf, sans étiquette", leboncoin: "Neuf sans étiquette", vestiaire: "Neuf sans étiquette" },
         tres_bon:       { vinted: "Très bon état",       ebay: "Très bon état",       beebs: "Très bon état",        leboncoin: "Très bon état",      vestiaire: "Très bon état" },
         bon:            { vinted: "Bon état",            ebay: "Bon état",            beebs: "Bon état",             leboncoin: "Bon état",           vestiaire: "Bon état" },
         satisfaisant:   { vinted: "Satisfaisant",        ebay: "Satisfaisant",        beebs: "État moyen",           leboncoin: "État satisfaisant",  vestiaire: "Bon état" },

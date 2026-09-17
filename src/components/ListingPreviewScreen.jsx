@@ -535,6 +535,7 @@ function getPlatformFieldsConfig(t) {
     satisfactory:  { value:"Satisfaisant",         label:t("conditionSatisfactory") },
     new_:          { value:"Neuf",                 label:t("conditionNew") },
     correct:       { value:"État correct",         label:t("conditionCorrect") },
+    satisfactoryLbc: { value:"État satisfaisant",    label:t("conditionSatisfactory") },
     forParts:      { value:"Pour pièces",          label:t("conditionForParts") },
   };
   // Beebs écrit ses états AVEC une virgule et n'a pas de "Satisfaisant" : son
@@ -695,7 +696,7 @@ function getPlatformFieldsConfig(t) {
       { key:"isbn",      label:"ISBN",                   type:"text" },
     ],
     leboncoin: [
-      { key:"etat",         label:t("fieldConditionLabel"),     type:"select", options:[condition.new_, condition.veryGood, condition.good, condition.correct, condition.forParts] },
+      { key:"etat",         label:t("fieldConditionLabel"),     type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactoryLbc, condition.forParts, condition.new_] },
       // Taille indispensable pour les chaussures : la Pointure est un critère
       // OBLIGATOIRE du rayon Mode>Chaussures LBC ("Veuillez choisir une
       // pointure" bloque l'aperçu — relevé campagne 2026-07-08). Sans cette

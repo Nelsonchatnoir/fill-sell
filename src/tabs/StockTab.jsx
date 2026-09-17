@@ -347,7 +347,7 @@ const RELANCE_COPIE_CLES_RETIREES = [
   // rien répondu (94fa18aa de Joe0410, 0893d8ee/2df7a6b3 de Marie-Pierre).
   // needsUserResolved reste : ce sont les CHOIX de l'utilisateur, que les
   // handlers respectent (« déjà rempli → conservé »).
-  'needsUserBoucle', 'boucle_needs_user', 'needsUserField',
+  'needsUserBoucle', 'boucle_needs_user', 'needsUserField', 'needsUserFields',
   'needs_user_tick_le', 'needs_user_actif_ms', 'needs_user_vu_le', 'needs_user_vu_erreur',
   'beebs_valeurs_posees', 'listing_url_recovery', 'beebs_moderation',
 ];
@@ -843,6 +843,19 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   useFermetureEchap(onClose);
   const f = job.platform_fields?.needsUserField ?? null;
   const [value, setValue] = useState("");
+  // ── PLUSIEURS CHAMPS EN UN GESTE (2026-09-17 soir, formulaire Leboncoin PRO)
+  // Leboncoin marque « État » ET « Poids du colis » invalides ensemble ; la
+  // modale ne demandait que le premier — répondre, relancer, rebuter sur le
+  // second. L'extension (0.6.42) pose platform_fields.needsUserFields (tous
+  // les bloqueurs, ≤ 4, chacun avec sa cible et sa liste relevée) ; le
+  // premier reste needsUserField (contrat inchangé). Ici : un select par
+  // champ supplémentaire, tout s'écrit à la validation, une seule relance.
+  const champsSup = useMemo(() => {
+    const liste = Array.isArray(job.platform_fields?.needsUserFields) ? job.platform_fields.needsUserFields : [];
+    return liste.slice(0, 4).filter((c) => c && c.field_key && c.field_label && (!f || c.field_key !== f.field_key));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id]);
+  const [valeursSup, setValeursSup] = useState({});
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState(null);
   // ── Champs SERVEUR saisissables en texte libre (2026-09-12, dossier Anaïs) ──
@@ -1087,6 +1100,8 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
   // peut la saisir. Vide = bouton grisé, jamais un envoi à vide.
   const descriptionSaisie = String(texte.description ?? "").trim();
   const descriptionManquante = descriptionRequise && !descriptionSaisie;
+  // Un champ supplémentaire vide = bouton grisé (sauf relance sans valeur).
+  const champsSupManquants = !valeursIndisponibles && champsSup.some((c) => !String(valeursSup[c.field_key] ?? "").trim());
 
   // `sansValeur` (2026-07-22) : relance SANS rien écrire, pour le cas
   // « valeurs indisponibles ». Le job repart en pending avec un budget de
@@ -1097,6 +1112,7 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
     const v = String(value ?? "").trim();
     if (f && !v && !sansValeur) return;
     if (descriptionManquante) return;
+    if (!sansValeur && champsSupManquants) return;
     setSaving(true); setErrMsg(null);
     try {
       const pf = job.platform_fields ?? {};
@@ -1132,6 +1148,20 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
         const resolvedKey = target.root ? `${target.root}.${target.key}` : String(target.key);
         newPf.needsUserResolved = { ...(pf.needsUserResolved ?? {}), [resolvedKey]: v };
       }
+      // Champs supplémentaires (needsUserFields) : même routage, même trace
+      // « tranché par l'utilisateur », dans la MÊME écriture.
+      if (!sansValeur) {
+        for (const c of champsSup) {
+          const vSup = String(valeursSup[c.field_key] ?? "").trim();
+          if (!vSup) continue;
+          const cible = (c.target && c.target.key) ? c.target : { root: NU_CHANNEL_BY_PLATFORM[job.platform] ?? null, key: c.field_key };
+          if (cible.root) newPf[cible.root] = { ...(newPf[cible.root] ?? pf[cible.root] ?? {}), [cible.key]: vSup };
+          else newPf[cible.key] = vSup;
+          const cleRes = cible.root ? `${cible.root}.${cible.key}` : String(cible.key);
+          newPf.needsUserResolved = { ...(newPf.needsUserResolved ?? pf.needsUserResolved ?? {}), [cleRes]: vSup };
+        }
+      }
+      delete newPf.needsUserFields;
       // Description : colonne du JOB (c'est elle que l'extension envoie à
       // Vinted), et trace « tranché par l'utilisateur ».
       if (descriptionRequise) {
@@ -1232,6 +1262,29 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
             idBase={`nu-${job.id}`}
           />
         ))}
+        {!valeursIndisponibles && champsSup.map((c) => {
+          const liste = listeDeChoixExploitable(c.allowed_values) ? [...new Set(c.allowed_values.map(String))] : [];
+          return (
+            <div key={c.field_key} style={{ marginTop: 16 }}>
+              <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink, marginBottom:4 }}>
+                {c.field_label}
+              </div>
+              <div style={{ fontSize:12.5, lineHeight:1.5, color:"#6B7A75", marginBottom:8 }}>
+                {lang === "en"
+                  ? `${platformLabel} also requires this field. Pick a value — everything leaves in one go.`
+                  : `${platformLabel} exige aussi ce champ. Choisis une valeur — tout repart en un seul geste.`}
+              </div>
+              <AspectValueInput
+                value={valeursSup[c.field_key] ?? ""}
+                allowedValues={liste}
+                strict={false}
+                onChange={(v) => setValeursSup((prev) => ({ ...prev, [c.field_key]: v }))}
+                T={NU_T}
+                idBase={`nu-${job.id}-${c.field_key}`}
+              />
+            </div>
+          );
+        })}
         {descriptionRequise && (
           <div style={{ marginTop: f ? 16 : 0 }}>
             <div style={{ fontSize:15, fontWeight:600, color:NU_T.ink, marginBottom:4 }}>
@@ -1267,8 +1320,8 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
           </button>
           <button
             onClick={() => valider({ sansValeur: valeursIndisponibles })}
-            disabled={saving || (!!f && !valeursIndisponibles && !String(value ?? "").trim()) || descriptionManquante}
-            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value ?? "").trim()) || descriptionManquante ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
+            disabled={saving || (!!f && !valeursIndisponibles && !String(value ?? "").trim()) || descriptionManquante || champsSupManquants}
+            style={{ flex:1.4, padding:"10px 0", borderRadius:12, border:"none", background: saving || (!!f && !valeursIndisponibles && !String(value ?? "").trim()) || descriptionManquante || champsSupManquants ? "#B9C4C0" : "#1B6E62", color:"#fff", fontSize:13, fontWeight:700, cursor: saving ? "wait" : "pointer", fontFamily:"inherit" }}
           >
             {saving
               ? (lang === "en" ? "Saving…" : "Enregistrement…")

@@ -1747,6 +1747,9 @@ async function fillListingForm(job) {
   let freeCta = null;
   let reclicsApercu = 0;
   let sondeNotee = false;
+  // Une seule re-pose de l'état au verdict, un seul re-clic du Continuer
+  // (2026-09-17 soir) — jamais une boucle.
+  let reposeEtatFaite = false;
   // ── 0.6.24 : LE DÉPÔT, C'EST LA REQUÊTE adsubmit — PLUS JAMAIS UN RE-CLIC DESSUS ──
   // Doublon du 09/09 (job a2849f53, Nico) : Leboncoin met l'annonce EN
   // VÉRIFICATION, donc son POST /api/adsubmit/v2/classifieds est LENT ; la
@@ -1994,7 +1997,7 @@ async function fillListingForm(job) {
         // vide est parti à l'aperçu sans un mot). On ne bloque rien de plus
         // qu'aujourd'hui : cette branche ne rend QUE des échecs.
         const bloqueurs = [];
-        for (const c of (bruts ?? []).slice(0, 3)) {
+        for (const c of (bruts ?? []).slice(0, 4)) {
           const cle = c.el ? cleSemantiqueDuChamp(c.el) : "";
           if (!cle) continue;   // champ sans clé sémantique : rien où écrire la réponse
           const f = { key: cle, label: c.nom, message: c.texte };
@@ -2006,15 +2009,49 @@ async function fillListingForm(job) {
           } catch { /* relevé best-effort */ }
           bloqueurs.push(f);
         }
-        const champBloquant = bloqueurs.length
-          ? {
-              field_key: bloqueurs[0].key,
-              field_label: bloqueurs[0].label,
-              target: cibleBloquee(bloqueurs[0]),
-              input_type: "dropdown",
-              ...(bloqueurs[0].options ? { allowed_values: bloqueurs[0].options } : {}),
+        // ── RE-POSE DE L'ÉTAT SUR PLACE (2026-09-17 soir) ────────────────────
+        // Le contrôle existe MAINTENANT (on vient de lire sa liste). Si l'un des
+        // états connus du job y correspond EXACTEMENT, on le pose ici, on relit,
+        // et — si plus rien ne bloque — on re-clique UNE fois le Continuer.
+        // Jamais une question pour une valeur qu'on a déjà.
+        const etatCandidatsVerdict = etatCandidatsLeboncoin(fields);
+        let reposes = 0;
+        if (!reposeEtatFaite && etatCandidatsVerdict.length) {
+          for (let i = bloqueurs.length - 1; i >= 0; i--) {
+            const b = bloqueurs[i];
+            if (!/(_condition$|^condition$)/.test(b.key) || !Array.isArray(b.options) || !b.options.length) continue;
+            const cible = etatLeboncoinExactParmi(etatCandidatsVerdict, b.options);
+            if (!cible) {
+              warnings.push(`état: aucun des états connus (${etatCandidatsVerdict.join(" / ")}) ne correspond EXACTEMENT à la liste [${b.options.join(", ")}] — question posée avec cette liste`);
+              continue;
             }
-          : null;
+            const ok = await fillCriterionSafe("état", `label[for="${CSS.escape(b.key)}"]`, [cible], warnings,
+              { etatExact: true, libelle: LBC_ETAT_LIBELLE_RE, attendreMs: 1500 });
+            if (ok) {
+              bloqueurs.splice(i, 1);
+              reposes++;
+              warnings.push(`état: « ${cible} » re-posé au verdict — le contrôle n'existait pas au moment du remplissage (formulaire pro)`);
+            }
+          }
+        }
+        if (reposes && !bloqueurs.length && !reposeEtatFaite) {
+          const encore = findButtonByExactText("Continuer");
+          if (encore) {
+            reposeEtatFaite = true;
+            warnings.push("dépôt: Continuer re-cliqué une fois après la re-pose de l'état (plus aucun champ marqué invalide)");
+            console.log("[leboncoin] verdict : état re-posé, plus aucun bloqueur → Continuer re-cliqué (une fois)");
+            realClick(encore);
+            continue;
+          }
+        }
+        const champNeedsUser = (f) => ({
+          field_key: f.key,
+          field_label: f.label,
+          target: cibleBloquee(f),
+          input_type: "dropdown",
+          ...(f.options ? { allowed_values: f.options } : {}),
+        });
+        const champBloquant = bloqueurs.length ? champNeedsUser(bloqueurs[0]) : null;
         // Ce que l'utilisateur LIT : uniquement un refus que Leboncoin (ou le
         // navigateur) formule lui-même. Une liste de champs est un
         // DIAGNOSTIC — elle part en annexe, jamais à l'écran (règle du 02/09).
@@ -2048,15 +2085,21 @@ async function fillListingForm(job) {
           // toutes les 5 min » et « on te demande ».
           success: false, needsUser: true, warnings, unfilledRequired, discoveredRequired: enumerated,
           ...(champBloquant ? { needsUserField: champBloquant } : {}),
+          // TOUS les champs que Leboncoin marque invalides, en une fois
+          // (2026-09-17 soir) : répondre à l'état pour rebuter sur le poids
+          // coûtait une relance par champ. L'app les demande ensemble.
+          ...(bloqueurs.length > 1 ? { needsUserFields: bloqueurs.map(champNeedsUser) } : {}),
           ...(bloqueurs.length ? { serverRequired: bloqueurs.map((f) => ({ key: f.key, label: f.label, message: f.message })) } : {}),
           error:
             (champBloquant
               // Un champ NOMMÉ et une liste : c'est une question, pas un
               // échec. Le mini-éditeur du Stock prend le relais.
-              ? `Leboncoin demande « ${champBloquant.field_label} » pour ton compte, et ce champ n'est pas dans ta fiche FillSell. ` +
-                (champBloquant.allowed_values?.length
-                  ? "Choisis une valeur dans le Stock et la publication repart."
-                  : "Complète-le dans le Stock et la publication repart.")
+              ? (bloqueurs.length > 1
+                  ? `Leboncoin demande ${bloqueurs.map((f) => `« ${f.label} »`).join(", ")} pour ton compte : choisis ces valeurs dans le Stock (un seul geste) et la publication repart. `
+                  : `Leboncoin demande « ${champBloquant.field_label} » pour ton compte, et ce champ n'est pas dans ta fiche FillSell. ` +
+                    (champBloquant.allowed_values?.length
+                      ? "Choisis une valeur dans le Stock et la publication repart."
+                      : "Complète-le dans le Stock et la publication repart."))
             : lisibles.length
               ? `Leboncoin refuse le formulaire : « ${lisibles.join(" » · « ")} » — ` +
                 // « corrige l'annonce dans FillSell » n'est vrai que si le refus
@@ -2243,12 +2286,20 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   if (!hasCriteria) {
     console.log("[leboncoin] Aucun critère combobox sur cette étape (flux paginé ou catégorie sans critères) — remplissages de critères sautés.");
   }
-  if (hasCriteria && fields.etat) {
-    // Le critère état s'appelle "condition" sur certaines catégories (relevé
-    // Montres & Bijoux) mais "clothing_condition" sur le rayon Vêtements
-    // (relevé campagne 2026-07-08) — même pattern suffixe que _brand/_material.
+  // ── ÉTAT (réécrit 2026-09-17 soir, dossier MeMiniandMove) ─────────────────
+  // Le critère s'appelle "condition" sur certaines catégories (relevé Montres
+  // & Bijoux, et le formulaire PRO) mais "clothing_condition" sur le rayon
+  // Vêtements particulier. Correspondance EXACTE contre la liste live, à
+  // partir des états connus du job (etatCandidatsLeboncoin) — plus jamais la
+  // cascade, qui aurait rapproché « Neuf » de « Neuf sans étiquette ».
+  // Contrôle absent à ce stade (formulaire pro : rendu tard) → seconde passe
+  // avant le Continuer, cf. plus bas.
+  const etatCandidats = etatCandidatsLeboncoin(fields);
+  let etatPose = false;
+  if (hasCriteria && etatCandidats.length) {
     relayerEtape("criteres");
-    await fillCriterionSafe("état", 'label[for="condition"], label[for$="_condition"]', fields.etat, warnings);
+    etatPose = await fillCriterionSafe("état", LBC_ETAT_LABEL_SELECTOR, etatCandidats, warnings,
+      { skipIfPrefilled: true, etatExact: true, libelle: LBC_ETAT_LIBELLE_RE });
   }
   if (hasCriteria && (fields.univers || fields.genre)) {
     const ok = await fillUnivers(fields.univers || fields.genre, warnings);
@@ -2269,6 +2320,9 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // _type, et le second n'était JAMAIS posé (dette signalée le 07/09).
   const lbcAspectsJob = fields.lbcAspects && typeof fields.lbcAspects === "object" ? fields.lbcAspects : {};
   const valeurAspect = (k) => String(lbcAspectsJob[k] ?? "").trim();
+  // Clés du canal générique dont le contrôle n'existait pas encore au premier
+  // passage (2026-09-17 soir) — rejouées en seconde passe, avant le Continuer.
+  const clesAbsentesPremierePasse = [];
   let cleEcriteParProduit = null;
   if (hasCriteria && fields.lbcProduit) {
     // Produit* : critère OBLIGATOIRE dont les options dépendent de
@@ -2388,7 +2442,7 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
   // label[for=clé], exactement comme pour une clé libre — la logique de choix
   // de la valeur ne change pas, seule sa route vers la page.
   const dedieAvaitValeur = (forKey) => {
-    if (/(_condition$|^condition$)/.test(forKey)) return !!fields.etat;
+    if (/(_condition$|^condition$)/.test(forKey)) return etatCandidats.length > 0;
     if (/(_univers$|_universe$)/.test(forKey)) return !!(fields.univers || fields.genre);
     // _type : SEULE la clé que le bloc Produit a réellement écrite est sautée
     // (2026-09-07) — « lbcProduit existe » ne veut plus dire « tous les _type
@@ -2420,6 +2474,12 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       .sort((a, b) => position(a[0]) - position(b[0]));
     for (const [forKey, val] of entrees) {
       if (handledForKeys.test(forKey) && dedieAvaitValeur(forKey)) continue;
+      // Contrôle absent MAINTENANT (formulaire pro : Poids du colis, Quantité
+      // rendus tard) → noté pour la seconde passe, cf. plus bas.
+      if (!findCriterionInput(`label[for="${forKey}"]`) && !(LBC_LIBELLES_PRO[forKey] && findCriterionInputByLabelText(LBC_LIBELLES_PRO[forKey]))) {
+        clesAbsentesPremierePasse.push([forKey, val]);
+        continue;
+      }
       // `composants` sur tout le canal générique (2026-09-07) : l'étage est
       // STRICT (tous les composants de l'option présents dans notre valeur, ou
       // notre valeur entière égale à l'un d'eux) — il ne peut rapprocher que
@@ -2476,6 +2536,40 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       unfilledRequired.push("quantite");
     } else {
       console.log(`[leboncoin] Quantité renseignée : ${quantiteInput.value}`);
+    }
+  }
+
+  // ── SECONDE PASSE : LES CRITÈRES RENDUS TARD (2026-09-17 soir, formulaire PRO)
+  // Sur le formulaire d'un compte PRO, État / Poids du colis / Quantité
+  // apparaissent APRÈS les critères classiques — le premier passage ne les
+  // voit pas, le verdict les voit (c'est comme ça que 15 jobs ont demandé un
+  // état déjà connu). On rejoue ici, une fois tout rendu : l'état s'il n'a
+  // pas été posé, et chaque clé lbcAspects dont le contrôle manquait. Attente
+  // UNIQUE et bornée (6 s) pour tout le lot — le bloc pro se rend d'un coup.
+  // Un contrôle toujours absent est alors NOMMÉ dans les warnings : plus
+  // jamais un « champ non posé » silencieux.
+  if (hasCriteria) {
+    const tardifs = [];
+    if (!etatPose && etatCandidats.length && !VALEURS_NON_RECONNUES["état"]) {
+      tardifs.push({ nom: "état", selecteur: LBC_ETAT_LABEL_SELECTOR, valeur: etatCandidats,
+        options: { skipIfPrefilled: true, etatExact: true, libelle: LBC_ETAT_LIBELLE_RE } });
+    }
+    for (const [forKey, val] of clesAbsentesPremierePasse) {
+      tardifs.push({ nom: forKey, selecteur: `label[for="${forKey}"]`, valeur: val,
+        options: { skipIfPrefilled: true, composants: true, libelle: LBC_LIBELLES_PRO[forKey] ?? null } });
+    }
+    if (tardifs.length) {
+      const present = (t) => findCriterionInput(t.selecteur) ?? (t.options.libelle ? findCriterionInputByLabelText(t.options.libelle) : null);
+      await waitFor(() => tardifs.some((t) => present(t)), 6000);
+      for (const t of tardifs) {
+        const ok = await fillCriterionSafe(t.nom, t.selecteur, t.valeur, warnings, { ...t.options, attendreMs: 0 });
+        if (ok && t.nom === "état") etatPose = true;
+        if (!ok && !present(t)) {
+          const note = `${t.nom}: contrôle introuvable même en seconde passe (${t.selecteur}${t.options.libelle ? ` / libellé ${t.options.libelle}` : ""}) — valeur « ${Array.isArray(t.valeur) ? t.valeur[0] : t.valeur} » non posée`;
+          console.warn(`[leboncoin] ⚠️ ${note}`);
+          warnings.push(note);
+        }
+      }
     }
   }
 
@@ -2673,6 +2767,13 @@ async function lbcRemplirJusquAApercu(job, fields, warnings, unfilledRequired) {
       discoveredRequired: enumerated,
       serverRequired: blockedFields.map((f) => ({ key: f.key, label: f.label, message: f.message })),
       ...(needsUserField ? { needsUserField } : {}),
+      // Plusieurs champs bloqués par la validation → tous en une fois (2026-09-17 soir).
+      ...(blockedFields.length > 1 ? {
+        needsUserFields: blockedFields.slice(0, 4).map((f) => ({
+          field_key: f.key, field_label: f.label, target: cibleBloquee(f), input_type: "dropdown",
+          ...(f.options ? { allowed_values: f.options } : {}),
+        })),
+      } : {}),
     } };
   }
 
@@ -3113,6 +3214,122 @@ function cleSemantiqueDuChamp(el) {
   return "";
 }
 
+// ── FORMULAIRE PRO : LES DEUX COMBOBOXES QUI REFUSAIENT (2026-09-17 soir) ─────
+// CE QUE ÇA A COÛTÉ : MeMiniandMove, 15 jobs, 0 publication. Le relevé 0.6.41
+// (« champs marqués invalides par Leboncoin ») nommait « État* » et « Poids du
+// colis* » — et sur 4 de ces jobs l'état du job (« Très bon état ») figurait
+// AU MOT PRÈS dans la liste. Aucun warning « état: … » dans les 15 jobs, ni
+// « champ sauté », ni « match fuzzy » : fillCriterionSafe avait rendu false
+// SANS RIEN DIRE, parce que findCriterionInput ne trouvait pas le contrôle au
+// moment du remplissage — sur le formulaire pro, les listes État / Poids du
+// colis / Quantité sont rendues APRÈS les critères classiques (marque,
+// matière, type), donc après le passage du bloc dédié. Au verdict, le même
+// sélecteur les trouvait (releverOptionsCritere lisait leurs options).
+// Trois réponses, toutes ici :
+//   1. ANCRAGE PAR LE LIBELLÉ en repli (« État », « Poids du colis »,
+//      « Quantité ») — jamais par les ids React :form-field-_r_XX_, qui
+//      changent à chaque rendu ; le label[for] sémantique reste la voie
+//      nominale ;
+//   2. une SECONDE PASSE avant le Continuer, quand tout le formulaire est
+//      rendu (cf. lbcRemplirJusquAApercu) ;
+//   3. une RELECTURE après chaque clic d'option : la valeur posée est relue
+//      dans le contrôle ; si elle n'y est pas, second geste (séquence pointer
+//      complète) puis warning NOMMÉ — plus jamais un « succès » silencieux.
+// Et l'ÉTAT ne passe plus par la cascade : correspondance EXACTE seulement
+// (règle Nico du 17/09 : « Neuf » sur une grille « avec/sans étiquette » ne se
+// devine PAS — un « neuf avec étiquette » livré sans étiquette est un litige).
+const LBC_ETAT_LABEL_SELECTOR = 'label[for="condition"], label[for$="_condition"]';
+const LBC_ETAT_LIBELLE_RE = /^État\b/;
+// Libellés des critères que le formulaire PRO rend tard (relevé 16-17/09) —
+// repli quand label[for] ne mène à rien.
+const LBC_LIBELLES_PRO = {
+  condition: LBC_ETAT_LIBELLE_RE,
+  clothing_condition: LBC_ETAT_LIBELLE_RE,
+  estimated_parcel_weight: /^Poids du colis/,
+  quantity: /^Quantité/,
+};
+
+function findCriterionInputByLabelText(re) {
+  for (const label of document.querySelectorAll("label, legend")) {
+    const txt = (label.textContent || "").replace(/\s+/g, " ").trim();
+    if (!txt || !re.test(txt)) continue;
+    let wrap = label.parentElement;
+    for (let i = 0; i < 4 && wrap; i++) {
+      const inputs = wrap.querySelectorAll('input[role="combobox"]');
+      if (inputs.length === 1) return inputs[0];
+      if (inputs.length > 1) break; // wrapper partagé : on ne devine pas
+      wrap = wrap.parentElement;
+    }
+  }
+  return null;
+}
+
+// Relit la valeur du contrôle après une sélection : bornée (~1,2 s), pure
+// lecture. `ok` = le libellé cliqué est bien la valeur affichée.
+async function relireCombobox(input, label) {
+  const attendu = normalizeFuzzy(label);
+  let valeur = "";
+  for (let i = 0; i < 12; i++) {
+    valeur = String(input.value ?? "").trim();
+    const nv = normalizeFuzzy(valeur);
+    if (nv && attendu && (nv === attendu || containsAsWords(nv, attendu) || containsAsWords(attendu, nv))) return { ok: true, valeur };
+    await sleep(100);
+  }
+  return { ok: false, valeur };
+}
+
+// ── ÉTAT : correspondance EXACTE contre la liste LIVE, jamais « au plus proche »
+// MÊMES règles que get-pending-jobs (etatLeboncoinExact) — deux grilles vues :
+//   A (Loisirs, Maison, Divers…) : État neuf · Très bon état · Bon état · État satisfaisant (· Pour pièces)
+//   B (Mode)                      : Neuf avec étiquette · Neuf sans étiquette · Très bon état · Bon état · État satisfaisant
+//   · valeur présente telle quelle dans la liste → elle ;
+//   · « Neuf avec/sans étiquette » sur une grille SANS étiquette → « État neuf » ;
+//   · « Neuf » nu sur la grille B → RIEN (avec/sans ne se devine pas) ;
+//   · « Satisfaisant »/« Correct » → « État satisfaisant » si la liste l'a.
+const normEtatLbc = (v) => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+function etatLeboncoinExactParmi(candidats, grille) {
+  const parNorm = new Map(grille.map((g) => [normEtatLbc(g), g]));
+  const etatNeuf = parNorm.get("etat neuf") ?? null;
+  const avec = parNorm.get("neuf avec etiquette") ?? null;
+  const sans = parNorm.get("neuf sans etiquette") ?? null;
+  for (const c of candidats) {
+    const v = normEtatLbc(c);
+    if (!v) continue;
+    const exact = parNorm.get(v);
+    if (exact) return exact;
+    if (v === "neuf avec etiquette" || v === "neuf sans etiquette") {
+      if (!avec && !sans && etatNeuf) return etatNeuf;
+      continue;
+    }
+    if (v === "neuf" || v === "etat neuf") { if (etatNeuf) return etatNeuf; continue; }
+    if (v === "satisfaisant" || v === "correct" || v === "etat correct" || v === "etat satisfaisant") {
+      const sat = parNorm.get("etat satisfaisant");
+      if (sat) return sat;
+    }
+  }
+  return null;
+}
+function trouverOptionEtatExacte(scope, optionSelector, candidats) {
+  const options = [...scope.querySelectorAll(optionSelector)]
+    .map((el) => ({ el, label: el.textContent.trim() })).filter((o) => o.label);
+  const cible = etatLeboncoinExactParmi(candidats, options.map((o) => o.label));
+  if (!cible) return null;
+  const o = options.find((x) => x.label === cible);
+  return o ? { ...o, norm: normalizeFuzzy(o.label), stage: "exact" } : null;
+}
+// Les états connus du job, du plus sûr au moins sûr : la RÉPONSE de
+// l'utilisateur (needsUserResolved.etat → platform_fields.etat), l'état EXACT
+// servi par get-pending-jobs (lbcAspects.condition, mappé sur la grille de la
+// catégorie), l'état PRÉCIS de la fiche (lbc_etat_precis, saisi sur Vinted),
+// puis l'état du job (qui a pu être aplati en « Neuf » par l'ancien stepper).
+function etatCandidatsLeboncoin(fields) {
+  const aspects = fields?.lbcAspects && typeof fields.lbcAspects === "object" ? fields.lbcAspects : {};
+  const resolu = fields?.needsUserResolved && typeof fields.needsUserResolved === "object" && fields.needsUserResolved.etat
+    ? String(fields.etat ?? "").trim() : "";
+  return [...new Set([resolu, aspects.condition, fields?.lbc_etat_precis, fields?.etat]
+    .map((v) => String(v ?? "").trim()).filter(Boolean))];
+}
+
 function findCriterionInput(labelSelector) {
   const label = document.querySelector(labelSelector);
   if (!label) return null;
@@ -3242,15 +3459,28 @@ function prefilledMatchesTarget(prefilled, rawValue) {
 // sans marque se trouve moins bien : c'est de la vente perdue, tous les jours.
 // `composants` : rapprochement par composants EXACTS (« 38 - M » ⊂
 // « M / 38 / 10 », « Marine » ∈ « Marine / Turquoise »), cf. findOptionCascade.
-async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false, fallbackValues = [], rechercheParFrappe = false, composants = false } = {}) {
+async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, { skipIfPrefilled = false, sizeField = false, fallbackValues = [], rechercheParFrappe = false, composants = false, libelle = null, attendreMs = 0, etatExact = false } = {}) {
   try {
-    const input = findCriterionInput(labelSelector);
+    // `etatExact` (2026-09-17 soir) : rawValue est une LISTE de candidats (du
+    // plus sûr au moins sûr) et la sélection se fait par correspondance
+    // EXACTE contre la liste live — jamais la cascade (cf. LBC_ETAT_LIBELLE_RE).
+    const rawList = Array.isArray(rawValue)
+      ? rawValue.map((v) => String(v ?? "").trim()).filter(Boolean) : [rawValue];
+    if (Array.isArray(rawValue)) rawValue = rawList[0] ?? "";
+    // Ancrage : label[for] sémantique d'abord, LIBELLÉ visible en repli, et
+    // attente bornée si demandée (formulaire pro : contrôles rendus tard).
+    const chercher = () => findCriterionInput(labelSelector) ?? (libelle ? findCriterionInputByLabelText(libelle) : null);
+    let input = chercher();
+    if (!input && attendreMs > 0) input = await waitFor(chercher, attendreMs);
     if (!input) {
       // Critère absent pour cette catégorie : normal (champs dynamiques), silencieux.
       return false;
     }
     const prefilled = skipIfPrefilled && input.value.trim() ? input.value.trim() : null;
-    if (prefilled && prefilledMatchesTarget(prefilled, rawValue)) {
+    const prefilledConvient = prefilled && (etatExact
+      ? etatLeboncoinExactParmi(rawList, [prefilled]) != null
+      : prefilledMatchesTarget(prefilled, rawValue));
+    if (prefilledConvient) {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" conservé (matche "${rawValue}")`;
       console.log(`[leboncoin] ${note}`);
       warnings.push(note);
@@ -3392,7 +3622,9 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
       return false;
     }
 
-    let match = findOptionCascade(scope, optionSelector, rawValue, { sizeField, composants });
+    let match = etatExact
+      ? trouverOptionEtatExacte(scope, optionSelector, rawList)
+      : findOptionCascade(scope, optionSelector, rawValue, { sizeField, composants });
     let valeurPosee = rawValue;
     if (!match && !prefilled) {
       // Pas d'option pour notre valeur et rien à préserver : replis génériques
@@ -3421,12 +3653,52 @@ async function fillCriterionSafe(fieldName, labelSelector, rawValue, warnings, {
         warnings.push(note);
         return true;
       }
+      if (etatExact) {
+        // Aucun état connu ne correspond EXACTEMENT : on ne choisit PAS à la
+        // place du vendeur (avec/sans étiquette), on laisse Leboncoin nommer
+        // le champ au Continuer — la question part alors avec cette liste.
+        document.body.click();
+        await humanPause();
+        const note = `${fieldName}: aucun des états connus (${rawList.join(" / ")}) ne correspond EXACTEMENT à la liste Leboncoin [${available.join(", ")}] — champ laissé vide, jamais « au plus proche »`;
+        console.warn(`[leboncoin] ⚠️ ${note}`);
+        warnings.push(note);
+        VALEURS_NON_RECONNUES[fieldName] = String(rawValue);
+        return false;
+      }
       VALEURS_NON_RECONNUES[fieldName] = String(rawValue);
       throw new Error(`option "${rawValue}" sans correspondance. Options: ${JSON.stringify(available)}`);
     }
     await humanPause(); // temps de "lecture" de la liste avant le clic
     match.el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await humanPause();
+    // ── RELECTURE APRÈS CLIC (2026-09-17 soir) ───────────────────────────────
+    // Un clic qui ne « prend » pas rendait `true` sans un mot. On relit la
+    // valeur du contrôle ; si elle n'y est pas : second geste (séquence
+    // pointer complète sur l'option retrouvée), relecture, et à défaut un
+    // warning NOMMÉ + retour false — le verdict saura que la valeur a été
+    // posée et refusée par le contrôle, pas « oubliée ».
+    const relecture = await relireCombobox(input, match.label);
+    if (!relecture.ok) {
+      input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await sleep(500);
+      const menu2 = document.getElementById(input.getAttribute("aria-controls"));
+      const scope2 = menu2 || document;
+      const attendu = normalizeFuzzy(match.label);
+      const cible2 = [...scope2.querySelectorAll(optionSelector)].find((o) => normalizeFuzzy(o.textContent) === attendu);
+      if (cible2) { realClick(cible2); await humanPause(); }
+      const relecture2 = await relireCombobox(input, match.label);
+      if (!relecture2.ok) {
+        const note = `${fieldName}: option « ${match.label} » cliquée mais NON retenue par le contrôle (relecture « ${relecture2.valeur || "vide"} ») — champ laissé tel quel`;
+        console.warn(`[leboncoin] ⚠️ ${note}`);
+        warnings.push(note);
+        document.body.click();
+        await humanPause();
+        return false;
+      }
+      const note = `${fieldName}: option « ${match.label} » retenue au second geste (séquence pointer complète)`;
+      console.log(`[leboncoin] ${note}`);
+      warnings.push(note);
+    }
     if (prefilled) {
       const note = `${fieldName}: pré-rempli LBC "${prefilled}" remplacé par l'option "${match.label}"`;
       console.warn(`[leboncoin] ⚠️ ${note}`);

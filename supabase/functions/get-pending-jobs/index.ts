@@ -500,7 +500,7 @@ serve(async (req) => {
     // Les jobs voie='api' sont pour ebay-api-worker, jamais pour Chrome.
     const lireFile = () => userClient
       .from("cross_post_jobs")
-      .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at")
+      .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at, error")
       .in("status", statuses)
       .eq("voie", "extension")
       .order("created_at", { ascending: true });
@@ -511,7 +511,7 @@ serve(async (req) => {
     // de fond, toutes les 2 min, lit la file sans l'embed et ne paie rien.
     const lireFileAvecArticle = () => userClient
       .from("cross_post_jobs")
-      .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at, inventaire:inventaire_id(vinted_item_id, disparu_le, vinted_status)")
+      .select("id, platform, action, status, title, description, price, photos, photo_option, platform_fields, inventaire_id, listing_url, created_at, error, inventaire:inventaire_id(vinted_item_id, disparu_le, vinted_status)")
       .in("status", statuses)
       .eq("voie", "extension")
       .order("created_at", { ascending: true });
@@ -681,9 +681,16 @@ serve(async (req) => {
     //     action publish seule (retraits et republications intacts).
     //     Best-effort : réglage, preuve ou écriture illisibles → le poll
     //     distribue comme avant, jamais un point de panne.
+    // Motif RÉÉCRIT le 17/09 soir : le relevé 0.6.41 de MeMiniandMove (15 jobs)
+    // a montré que Quantité est pré-remplie par Leboncoin ; les DEUX listes
+    // que le formulaire pro marque en erreur sont « État » et « Poids du
+    // colis » — deux comboboxes rendues APRÈS les autres critères, que
+    // l'extension ≤ 0.6.41 ne trouvait pas au moment du remplissage (elle
+    // demandait alors un état qu'elle avait déjà). La 0.6.42 les pose
+    // (seconde passe, ancrage par libellé, relecture après clic).
     const MSG_LBC_PRO_ATTENTE =
-      "Ton compte Leboncoin est un compte pro : son formulaire exige deux informations " +
-      "(Poids du colis, Quantité) que la version actuelle de l'extension FillSell ne sait pas encore renseigner. " +
+      "Ton compte Leboncoin est un compte pro : son formulaire porte deux listes (État, Poids du colis) " +
+      "que la version actuelle de l'extension FillSell ne remplit pas encore. " +
       "La mise à jour de l'extension arrive toute seule par Chrome, et cette publication repart alors sans geste de ta part. " +
       "Rien n'a été publié, rien à corriger.";
     let heldLbcPro = 0;
@@ -759,8 +766,18 @@ serve(async (req) => {
                   next_action_after_avant: ancien ? (ancien.next_action_after_avant ?? null) : (pf["next_action_after"] ?? null),
                   pose_par: "get-pending-jobs",
                 };
+                // L'erreur précédente n'est JAMAIS perdue (2026-09-17 soir, règle Nico :
+                // « on a déjà perdu deux fois l'information en relançant avec
+                // error = null ») : elle part dans erreurs_archivees, même forme
+                // que l'app (archiverErreur), avant que le message de retenue
+                // ne prenne sa place.
+                const erreurAvant = String((j as unknown as { error?: unknown }).error ?? "").trim();
+                const archives = Array.isArray(pf["erreurs_archivees"]) ? (pf["erreurs_archivees"] as unknown[]) : [];
+                const archivesApres = erreurAvant && erreurAvant !== MSG_LBC_PRO_ATTENTE
+                  ? [...archives, { at: new Date(maintenant).toISOString(), error: erreurAvant.slice(0, 2000), status: "pending", motif: "porte_pro_lbc (retenue)" }].slice(-12)
+                  : archives;
                 const { error: uErr } = await userClient.from("cross_post_jobs")
-                  .update({ error: MSG_LBC_PRO_ATTENTE, platform_fields: { ...pf, porte_pro_lbc: marque, next_action_after: rdv } })
+                  .update({ error: MSG_LBC_PRO_ATTENTE, platform_fields: { ...pf, porte_pro_lbc: marque, next_action_after: rdv, ...(archivesApres.length ? { erreurs_archivees: archivesApres } : {}) } })
                   .eq("id", j.id).eq("status", "pending");
                 if (uErr) console.warn(`[get-pending-jobs] porte pro Leboncoin : retenue du job ${String(j.id).slice(0, 8)} non écrite (${uErr.message}) — retenu quand même pour ce poll`);
               }
@@ -2756,6 +2773,52 @@ serve(async (req) => {
         bébé: "Enfant", bebe: "Enfant", junior: "Enfant", maternité: "Maternité", maternite: "Maternité",
       };
       const RACINE_VINTED: Record<string, string> = { femmes: "Femme", hommes: "Homme", enfants: "Enfant" };
+      // ── Helpers ÉTAT (2026-09-17 soir) — voir le bloc « ÉTAT » plus bas ──
+      const normEtatLbc = (v: unknown): string => String(v ?? "")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+      const etatLeboncoinExact = (valeur: string, grille: string[]): string | null => {
+        const v = normEtatLbc(valeur);
+        if (!v || !grille.length) return null;
+        const parNorm = new Map(grille.map((g) => [normEtatLbc(g), g] as [string, string]));
+        const exact = parNorm.get(v);
+        if (exact) return exact;
+        const etatNeuf = parNorm.get("etat neuf") ?? null;
+        const avec = parNorm.get("neuf avec etiquette") ?? null;
+        const sans = parNorm.get("neuf sans etiquette") ?? null;
+        if (v === "neuf avec etiquette" || v === "neuf sans etiquette") {
+          return (!avec && !sans && etatNeuf) ? etatNeuf : null;
+        }
+        if (v === "neuf" || v === "etat neuf") return etatNeuf; // grille B → null : ne se devine pas
+        if (v === "satisfaisant" || v === "correct" || v === "etat correct" || v === "etat satisfaisant") {
+          return parNorm.get("etat satisfaisant") ?? null;
+        }
+        return null;
+      };
+      const grillesEtatCache = new Map<string, { grille: string[]; source: string } | null>();
+      const grilleEtatLeboncoin = async (
+        pf: Record<string, unknown>, chemin: string,
+      ): Promise<{ grille: string[]; source: string } | null> => {
+        const nuf = (pf.needsUserField && typeof pf.needsUserField === "object") ? (pf.needsUserField as Record<string, unknown>) : null;
+        if (nuf && /(_condition$|^condition$)/.test(String(nuf.field_key ?? "")) && Array.isArray(nuf.allowed_values) && nuf.allowed_values.length) {
+          return { grille: (nuf.allowed_values as unknown[]).map(String), source: "liste relevée sur le formulaire (needsUserField)" };
+        }
+        if (!chemin) return null;
+        if (grillesEtatCache.has(chemin)) return grillesEtatCache.get(chemin) ?? null;
+        let trouve: { grille: string[]; source: string } | null = null;
+        const { data: rows } = await userClient
+          .from("platform_category_aspects").select("field_key, allowed_values")
+          .eq("platform", "leboncoin").eq("category_key", chemin.slice(0, 300))
+          .in("field_key", ["condition", "clothing_condition"]);
+        for (const key of ["condition", "clothing_condition"]) {
+          const row = (rows ?? []).find((r: { field_key: string }) => r.field_key === key) as { allowed_values?: unknown } | undefined;
+          if (Array.isArray(row?.allowed_values) && row.allowed_values.length) {
+            trouve = { grille: (row.allowed_values as unknown[]).map(String), source: `catalogue platform_category_aspects (${key})` };
+            break;
+          }
+        }
+        grillesEtatCache.set(chemin, trouve);
+        return trouve;
+      };
       const TAILLE_AGE_RE = /^\s*\d{1,2}\s*(ans?|mois)\b|^\s*\d{2,3}\s*cm\b/i;
       const normaliser = (v: unknown): string | null => {
         const s = String(v ?? "").trim().toLowerCase();
@@ -2782,6 +2845,17 @@ serve(async (req) => {
       // needs_user avec la liste relevée. Poser une couleur ne peut donc pas
       // produire une valeur fausse.
       const couleurParArticle = new Map<number, string>();
+      // ── ÉTAT PRÉCIS de la fiche (2026-09-17 soir, dossier MeMiniandMove) ──
+      // `inventaire.attributs.etat.v` (source vinted_detail / vinted_liste)
+      // porte l'état EXACT saisi par le vendeur sur Vinted : « Neuf avec
+      // étiquette », « Neuf sans étiquette », « Très bon état »… Le job, lui,
+      // portait « Neuf » : l'app APLATISSAIT l'état (ETAT_PAR_PLATEFORME
+      // rendait « État neuf » pour Leboncoin, puis le select du stepper —
+      // options « Neuf », « État correct » — le rabattait sur « Neuf »). On
+      // demandait ensuite à l'utilisatrice une valeur qu'on avait au mot près.
+      // La source est corrigée (redaction-plateformes + stepper) ; ici, pour
+      // les jobs déjà en file et pour toujours : la fiche fait foi.
+      const etatParArticle = new Map<number, string>();
       try {
         const ids = [...new Set((out as unknown as Array<Record<string, unknown>>)
           .filter((j) => j.platform === "leboncoin" && j.action === "publish" && j.inventaire_id != null)
@@ -2798,6 +2872,11 @@ serve(async (req) => {
               ? String((brut as Record<string, unknown>).v ?? "").trim()
               : String(brut ?? "").trim();
             if (v) couleurParArticle.set(Number(f.id), v);
+            const brutEtat = a?.etat;
+            const e = (brutEtat && typeof brutEtat === "object")
+              ? String((brutEtat as Record<string, unknown>).v ?? "").trim()
+              : String(brutEtat ?? "").trim();
+            if (e) etatParArticle.set(Number(f.id), e);
           }
         }
       } catch (e) {
@@ -2888,6 +2967,68 @@ serve(async (req) => {
           }
         }
 
+        // ── ÉTAT : correspondance EXACTE contre la grille de la catégorie ────
+        // (2026-09-17 soir, dossier MeMiniandMove — 15 jobs pro en needs_user
+        // « État* » alors que l'état était connu.) Servi dans
+        // lbcAspects.condition, que la 0.6.42 pose en priorité sur
+        // platform_fields.etat. Deux grilles observées côté Leboncoin :
+        //   A (Loisirs, Maison, Divers…) : État neuf · Très bon état · Bon état · État satisfaisant (· Pour pièces)
+        //   B (Mode)                      : Neuf avec étiquette · Neuf sans étiquette · Très bon état · Bon état · État satisfaisant
+        // RÈGLES (toutes EXACTES, jamais « au plus proche ») :
+        //   · la valeur de la fiche (Vinted) reprise TELLE QUELLE quand la grille la porte ;
+        //   · « Neuf avec/sans étiquette » sur une grille SANS étiquette → « État neuf » ;
+        //   · « Neuf » nu sur la grille B → RIEN (avec/sans étiquette ne se devine PAS :
+        //     une annonce « neuf avec étiquette » livrée sans étiquette est un litige) ;
+        //   · « Satisfaisant »/« Correct » → « État satisfaisant » si la grille l'a ;
+        //   · rien ne matche → rien de posé, l'extension nomme la liste (needs_user).
+        // Ordre des sources : la réponse de l'utilisateur dans l'app
+        // (needsUserResolved.etat) > l'état précis de la fiche > l'état du job.
+        // Grille : la liste relevée sur SON formulaire (needsUserField), sinon
+        // le catalogue platform_category_aspects (condition, puis
+        // clothing_condition). Sans grille connue, on sert l'état précis à
+        // part (lbc_etat_precis) : la 0.6.42 le mappe sur la liste LIVE.
+        try {
+          const aspectsE = (pf.lbcAspects && typeof pf.lbcAspects === "object") ? (pf.lbcAspects as Record<string, unknown>) : {};
+          if (!String(aspectsE.condition ?? "").trim()) {
+            const resolu = (pf.needsUserResolved && typeof pf.needsUserResolved === "object"
+              && String((pf.needsUserResolved as Record<string, unknown>).etat ?? "").trim())
+              ? String(pf.etat ?? "").trim() : "";
+            const precis = j.inventaire_id != null ? (etatParArticle.get(Number(j.inventaire_id)) ?? "") : "";
+            const brut = String(pf.etat ?? "").trim();
+            const candidatsEtat = [...new Set([resolu, precis, brut].filter(Boolean))];
+            if (candidatsEtat.length) {
+              const g = await grilleEtatLeboncoin(pf, chemin);
+              if (g) {
+                let pose: string | null = null;
+                let depuis = "";
+                for (const c of candidatsEtat) {
+                  const m = etatLeboncoinExact(c, g.grille);
+                  if (m) {
+                    pose = m;
+                    depuis = c === resolu ? "réponse de l'utilisateur (needsUserResolved.etat)"
+                      : c === precis ? "inventaire.attributs.etat (état saisi sur Vinted)" : "platform_fields.etat";
+                    break;
+                  }
+                }
+                if (pose) {
+                  pf.lbcAspects = { ...aspectsE, condition: pose };
+                  trace.etat = { valeur: pose, avant: brut || null, source: `${depuis} ↔ ${g.source}` };
+                } else {
+                  console.log(`[get-pending-jobs] état Leboncoin ${String(j.id).slice(0, 8)} (${chemin}) : « ${candidatsEtat.join(" / ")} » sans correspondance EXACTE dans la grille [${g.grille.join(", ")}] — rien posé, la liste reste à trancher`);
+                }
+              }
+              if (precis && !pf.lbc_etat_precis && normEtatLbc(precis) !== normEtatLbc(brut)) {
+                // Sans grille (ou sans correspondance), l'extension 0.6.42 mappe
+                // elle-même contre la liste LIVE : elle doit connaître la valeur PRÉCISE.
+                pf.lbc_etat_precis = precis;
+                trace.etat_precis = { valeur: precis, avant: brut || null, source: "inventaire.attributs.etat (état saisi sur Vinted)" };
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[get-pending-jobs] état Leboncoin ${String(j.id).slice(0, 8)} : ${String((e as Error)?.message ?? e)} — job servi sans mapping d'état`);
+        }
+
         // ── Produit (Maison & Jardin > Décoration, univers « Autre » → « Autre ») ──
         if (chemin === "Maison & Jardin > Décoration" && String(pf.univers ?? "").trim() === "Autre") {
           const aspects = (pf.lbcAspects && typeof pf.lbcAspects === "object") ? (pf.lbcAspects as Record<string, unknown>) : {};
@@ -2904,7 +3045,7 @@ serve(async (req) => {
           console.log(`[get-pending-jobs] Leboncoin ${String(j.id).slice(0, 8)} (${chemin}) : ${Object.entries(trace).map(([k, v]) => `${k} ← « ${(v as Record<string, unknown>).valeur} » (${(v as Record<string, unknown>).source})`).join(" ; ")}`);
         }
       }
-      if (lbcDeduits) console.log(`[get-pending-jobs] user=${user.id} Univers/Produit Leboncoin posés par déduction : ${lbcDeduits}`);
+      if (lbcDeduits) console.log(`[get-pending-jobs] user=${user.id} Univers/Couleur/État/Produit Leboncoin posés depuis des sources certaines : ${lbcDeduits}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] déduction Univers/Produit Leboncoin : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
     }

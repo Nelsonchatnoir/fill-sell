@@ -4449,11 +4449,53 @@ async function markNeedsUser(accessToken, job, result) {
     }
   }
 
-  console.warn(`[background] Job ${job.id} : champ à trancher « ${f.field_label} » → needs_user (attend l'utilisateur, aucune re-tentative)`);
+  // ── PLUSIEURS CHAMPS À LA FOIS (2026-09-17 soir, formulaire Leboncoin PRO) ──
+  // Leboncoin marque « État » ET « Poids du colis » invalides ensemble ; ne
+  // porter que le premier coûtait une relance par champ (elle répond à
+  // l'état, ça repart, ça rebute sur le poids). Le handler rend
+  // `needsUserFields` (tous les bloqueurs, ≤ 4) ; on les persiste à côté de
+  // needsUserField (qui reste le premier, contrat inchangé pour tout ce qui le
+  // lit : garde anti-boucle, badge, natureNeedsUser). L'app les demande en un
+  // seul geste. Enrichissement catalogue par champ, best-effort.
+  let needsUserFields = null;
+  if (Array.isArray(result.needsUserFields) && result.needsUserFields.length > 1) {
+    needsUserFields = [];
+    for (const c of result.needsUserFields.slice(0, 4)) {
+      if (!c?.field_key || !c?.field_label) continue;
+      let av = Array.isArray(c.allowed_values) && c.allowed_values.length ? c.allowed_values : null;
+      if (!av) {
+        try {
+          const rows = await restRequest(
+            `platform_category_aspects?platform=eq.${encodeURIComponent(job.platform)}` +
+            `&category_key=eq.${encodeURIComponent(categoryKeyOf(job).slice(0, 300))}` +
+            `&field_key=eq.${encodeURIComponent(String(c.field_key).slice(0, 120))}` +
+            "&select=allowed_values",
+            accessToken
+          );
+          const cat = rows?.[0]?.allowed_values;
+          if (Array.isArray(cat) && cat.length) av = cat;
+        } catch { /* best-effort */ }
+      }
+      needsUserFields.push({
+        platform: job.platform,
+        field_key: String(c.field_key).slice(0, 120),
+        field_label: String(c.field_label).slice(0, 200),
+        ...(c.target && c.target.key ? { target: { root: c.target.root ?? null, key: String(c.target.key).slice(0, 200) } } : {}),
+        ...(av ? { allowed_values: av.slice(0, 200).map((v) => String(v)) } : {}),
+        ...(c.input_type ? { input_type: String(c.input_type).slice(0, 40) } : {}),
+      });
+    }
+    if (needsUserFields.length < 2) needsUserFields = null;
+  }
+
+  console.warn(`[background] Job ${job.id} : champ à trancher « ${f.field_label} »${needsUserFields ? ` (+ ${needsUserFields.length - 1} autre(s), demandés ensemble)` : ""} → needs_user (attend l'utilisateur, aucune re-tentative)`);
+  const pfSansAnciens = { ...(job.platform_fields ?? {}) };
+  delete pfSansAnciens.needsUserFields; // jamais une liste d'un passage précédent
   await updateJobStatus(accessToken, job.id, "needs_user", {
     error: result.error,
     platform_fields: {
-      ...(job.platform_fields ?? {}),
+      ...pfSansAnciens,
+      ...(needsUserFields ? { needsUserFields } : {}),
       needsUserField: {
         platform: job.platform,
         field_key: String(f.field_key).slice(0, 120),
