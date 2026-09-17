@@ -45,12 +45,6 @@ export const PLATFORM_LISTINGS_URLS = {
 // identique — celle-ci est la source des modules qui n'en dépendent pas.
 export const PLATFORM_LABELS = { vinted:"Vinted", leboncoin:"Leboncoin", beebs:"Beebs", ebay:"eBay" };
 const HUMANIZE_PLATFORM_LABELS = PLATFORM_LABELS;
-// Noms de site « en clair » pour les textes réécrits (chantier messages
-// masqués, 2026-08-14). Jamais l'URL relevée du message stocké : c'est un
-// diagnostic (page d'auth, query, fragment), pas une destination. La
-// navigation reste portée par le bouton contextuel de StockTab, qui lit
-// l'erreur BRUTE — inchangée en base.
-const HUMANIZE_PLATFORM_SITES = { vinted: 'vinted.fr', leboncoin: 'leboncoin.fr', beebs: 'beebs.app', ebay: 'ebay.fr' };
 // Statuts d'où un job ne repart JAMAIS tout seul. Miroir du trigger
 // cross_post_job_settle_reservation (migration 20260805000000), qui rend la
 // unité réservée sur exactement ces statuts-là. 'sold' en est volontairement
@@ -78,6 +72,12 @@ const TECH_ERR_MARKERS_RE = new RegExp([
   '\\b(?:status|statut)\\s*[0-9]{3}\\b',
   'outerHTML|querySelector|data-testid|sélecteur|selector|chevron',
   'platform_fields|needsUser|payload',
+  // Erreurs Chrome en prose anglaise (canal/onglet coupé) : sans marqueur,
+  // elles passaient par le « message déjà humain » et s'affichaient telles
+  // quelles (fuite du 17/09). Marquées techniques → jamais affichées brutes.
+  'could not establish connection|receiving end does not exist|message (?:port|channel) closed|no tab with id|an asynchronous response',
+  // Préfixes de log internes jamais destinés au vendeur.
+  '\\bLIVE\\s*:|Observabilit[ée]\\s*:|\\[cause',
 ].join('|'), 'i');
 
 // ── Bascule quotas (02/09) : plus de monnaie interne — purge à l'AFFICHAGE ───
@@ -345,17 +345,17 @@ export function humanizeJobError(job, lang = 'fr') {
       // pour ce qu'elle est — quelques minutes, pas un rattrapage — sans
       // promettre qu'elle aboutira.
       return en
-        ? `${name} is showing an anti-robot check. Open ${name} in Chrome and pass it now — one automatic retry is left, within minutes.`
-        : `${name} affiche une vérification anti-robot. Ouvre ${name} dans Chrome et valide-la maintenant — il reste une tentative automatique, dans les minutes qui viennent.`;
+        ? `${name} is showing an anti-robot check. Open ${name} on your computer and pass it now — one automatic retry is left, within minutes.`
+        : `${name} affiche une vérification anti-robot. Ouvre ${name} sur ton ordinateur et valide-la maintenant — il reste une tentative automatique, dans les minutes qui viennent.`;
     }
     // Terminé : c'est fini, personne ne reprendra. (Nettoyage unités 03/09 :
     // plus aucune mention de décompte — la monnaie interne n'existe plus.)
     const acte = job?.action === 'republish' ? 'republication' : 'publication';
     return en
       ? `${name} showed an anti-robot check instead of the listing form: nothing was published and the job has stopped.`
-        + ` Open ${name} in Chrome, pass the check, then start the ${acte} again yourself from the item.`
+        + ` Open ${name} on your computer, pass the check, then start the ${acte} again yourself from the item.`
       : `${name} a affiché une vérification anti-robot à la place du formulaire : rien n'a été publié et le job est arrêté.`
-        + ` Ouvre ${name} dans Chrome, passe la vérification, puis relance la ${acte} toi-même depuis la fiche de l'article.`;
+        + ` Ouvre ${name} sur ton ordinateur, passe la vérification, puis relance la ${acte} toi-même depuis la fiche de l'article.`;
   }
 
   // ── Step-up de reconnexion vente eBay (RÉÉCRIT ICI depuis le 2026-08-14) ──
@@ -384,8 +384,8 @@ export function humanizeJobError(job, lang = 'fr') {
       ? 'Nothing was published and the job has stopped.'
       : 'Nothing was published, and the remaining automatic retries will fail too until you sign in again.';
     return en
-      ? `eBay requires you to sign in again before it lets you list an item, even though your eBay session is still valid elsewhere. ${etatEn} In order: open ebay.fr in Chrome, click "Sell", sign in again, then restart the publication from the item in the app.`
-      : `eBay demande une reconnexion avant de laisser déposer une annonce, même si ta session eBay est encore valide ailleurs. ${etatFr} Dans l'ordre : ouvre ebay.fr dans Chrome, clique « Vendre », reconnecte-toi, puis relance la publication depuis la fiche de l'article.`;
+      ? `eBay requires you to sign in again before it lets you list an item, even though your eBay session is still valid elsewhere. ${etatEn} In order: open eBay on your computer, click "Sell", sign in again, then restart the publication from the item in the app.`
+      : `eBay demande une reconnexion avant de laisser déposer une annonce, même si ta session eBay est encore valide ailleurs. ${etatFr} Dans l'ordre : ouvre eBay sur ton ordinateur, clique « Vendre », reconnecte-toi, puis relance la publication depuis la fiche de l'article.`;
   }
 
   // ── Soumission eBay jamais partie, brouillon conservé (2026-08-14) ─────────
@@ -410,8 +410,8 @@ export function humanizeJobError(job, lang = 'fr') {
     if (draftId) {
       const termine = JOB_STATUS_TERMINAL.has(job?.status);
       return en
-        ? `The "List item" click never left the browser on eBay: nothing was published${termine ? ' and the job has stopped' : ''}. Your listing is not lost though: eBay kept it as a DRAFT (no. ${draftId}). Find it on ebay.fr under My eBay > Selling > Drafts to finish listing it yourself.`
-        : `Le clic « Mettre en vente » n'est jamais parti chez eBay : rien n'a été publié${termine ? ' et le job est arrêté' : ''}. Ton annonce n'est pas perdue pour autant : eBay l'a conservée en BROUILLON (n° ${draftId}). Retrouve-la sur ebay.fr dans Mon eBay > Vendre > Brouillons pour terminer la mise en vente toi-même.`;
+        ? `The "List item" click never left the browser on eBay: nothing was published${termine ? ' and the job has stopped' : ''}. Your listing is not lost though: eBay kept it as a DRAFT (no. ${draftId}). Find it on eBay under My eBay > Selling > Drafts to finish listing it yourself.`
+        : `Le clic « Mettre en vente » n'est jamais parti chez eBay : rien n'a été publié${termine ? ' et le job est arrêté' : ''}. Ton annonce n'est pas perdue pour autant : eBay l'a conservée en BROUILLON (n° ${draftId}). Retrouve-la sur eBay dans Mon eBay > Vendre > Brouillons pour terminer la mise en vente toi-même.`;
     }
   }
 
@@ -434,11 +434,10 @@ export function humanizeJobError(job, lang = 'fr') {
   // affirmé que là où le message source l'affirme (variantes « annulée »).
   if (/^Republication (annulée|en pause) avant toute suppression/i.test(raw)
       && TECH_ERR_MARKERS_RE.test(raw)) {
-    const site = HUMANIZE_PLATFORM_SITES[job?.platform] || name;
     if (/^Republication annulée/i.test(raw) && /session/i.test(raw) && /refusée/i.test(raw)) {
       return en
-        ? `The relisting was cancelled before anything was deleted: your ${name} session was refused. Your listing is untouched. Sign in to ${site} again in Chrome, then restart the relisting from the item.`
-        : `Republication annulée avant toute suppression : ta session ${name} a été refusée. Ton annonce est intacte. Reconnecte-toi sur ${site} dans Chrome, puis relance la republication depuis la fiche de l'article.`;
+        ? `The relisting was cancelled before anything was deleted: your ${name} session was refused. Your listing is untouched. Sign in to ${name} again on your computer, then restart the relisting from the item.`
+        : `Republication annulée avant toute suppression : ta session ${name} a été refusée. Ton annonce est intacte. Reconnecte-toi à ${name} sur ton ordinateur, puis relance la republication depuis la fiche de l'article.`;
     }
     if (/^Republication annulée/i.test(raw) && /introuvable/i.test(raw)) {
       return en
@@ -464,17 +463,16 @@ export function humanizeJobError(job, lang = 'fr') {
   // courte sans « page observée » garde son circuit actuel (promesse retirée
   // ou tel quel).
   if (/^Connexion (Vinted|Leboncoin|Beebs|eBay) requise/i.test(raw) && /page observée/i.test(raw)) {
-    const site = HUMANIZE_PLATFORM_SITES[job?.platform] || name;
     const termine = JOB_STATUS_TERMINAL.has(job?.status);
     const acte = job?.action === 'republish' ? (en ? 'relisting' : 'republication') : 'publication';
     if (termine) {
       return en
-        ? `${name} showed its sign-in page instead of the listing form: nothing was published and the job has stopped. Sign in to ${site} in Chrome, then restart the ${acte} from the item.`
-        : `${name} a affiché sa page de connexion à la place du formulaire de vente : rien n'a été publié et le job est arrêté. Connecte-toi sur ${site} dans Chrome, puis relance la ${acte} depuis la fiche de l'article.`;
+        ? `${name} showed its sign-in page instead of the listing form: nothing was published and the job has stopped. Sign in to ${name} on your computer, then restart the ${acte} from the item.`
+        : `${name} a affiché sa page de connexion à la place du formulaire de vente : rien n'a été publié et le job est arrêté. Connecte-toi à ${name} sur ton ordinateur, puis relance la ${acte} depuis la fiche de l'article.`;
     }
     return en
-      ? `${name} is showing its sign-in page instead of the listing form. Sign in to ${site} in Chrome now — an automatic retry happens within minutes, otherwise relaunch the ${acte} from the item.`
-      : `${name} affiche sa page de connexion à la place du formulaire de vente. Connecte-toi sur ${site} dans Chrome maintenant — une tentative automatique a lieu dans les minutes qui viennent, sinon relance la ${acte} depuis la fiche de l'article.`;
+      ? `${name} is showing its sign-in page instead of the listing form. Sign in to ${name} on your computer now — an automatic retry happens within minutes, otherwise relaunch the ${acte} from the item.`
+      : `${name} affiche sa page de connexion à la place du formulaire de vente. Connecte-toi à ${name} sur ton ordinateur maintenant — une tentative automatique a lieu dans les minutes qui viennent, sinon relance la ${acte} depuis la fiche de l'article.`;
   }
 
   // Annulations posées à la main par le support (« Annulé par le support /
@@ -513,8 +511,8 @@ export function humanizeJobError(job, lang = 'fr') {
   // compte vendeur. Action utilisateur, pas un échec.
   if (job?.platform === 'ebay' && /\/fpa\/upgrade/i.test(raw)) {
     return en
-      ? 'eBay asks you to upgrade your seller account before listing. Open ebay.fr in Chrome, follow the upgrade steps eBay shows, then restart the publication from the item.'
-      : "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce. Ouvre ebay.fr dans Chrome, suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.";
+      ? 'eBay asks you to upgrade your seller account before listing. Open eBay on your computer, follow the upgrade steps eBay shows, then restart the publication from the item.'
+      : "eBay demande une mise à niveau de ton compte vendeur avant de pouvoir déposer une annonce. Ouvre eBay sur ton ordinateur, suis les étapes de mise à niveau qu'eBay affiche, puis relance la publication depuis la fiche de l'article.";
   }
 
   // Couleur hors palette (COULEUR INTROUVABLE : ..., vinted.js 2026-07-30) :
@@ -587,6 +585,25 @@ export function humanizeJobError(job, lang = 'fr') {
       : `La publication sur ${name} a été interrompue par un imprévu technique. Le job est arrêté — relance depuis la fiche de l'article ; le détail complet est enregistré pour le support.`;
   }
 
+  // ── Canal extension / onglet coupé (2026-09-17) ───────────────────────────
+  // « Could not establish connection », « Receiving end does not exist », «
+  // message channel closed », onglet de travail fermé/rechargé, timeouts de
+  // chargement : de la prose Chrome, en anglais, SANS marqueur technique — elle
+  // passait par le « message déjà humain » ci-dessous et s'affichait telle
+  // quelle (fuite du 17/09). Le serveur requalifie déjà ces bruts au moment de
+  // l'écriture (update-job-status) ; cette branche couvre l'affichage pour tout
+  // brut qui arriverait encore par un autre chemin. Reprise seule (job vivant)
+  // ou arrêt (terminal), jamais de « Chrome »/« onglet »/URL.
+  if (/Could not establish connection|Receiving end does not exist|The message port closed|message channel closed|An asynchronous response|Onglet de travail ferm|onglet navigué\/rechargé|pas de réponse du content script|sonde injoignable/i.test(raw)) {
+    return JOB_STATUS_TERMINAL.has(job?.status)
+      ? (en
+        ? 'The operation could not complete on your computer. Relaunch it from the item whenever you like.'
+        : "L'opération n'a pas pu aboutir sur ton ordinateur. Relance-la depuis la fiche de l'article quand tu veux.")
+      : (en
+        ? 'The operation was interrupted on your computer. It resumes on its own, nothing to do on your side.'
+        : "L'opération a été interrompue sur ton ordinateur. Elle reprend toute seule, rien à faire de ton côté.");
+  }
+
   // Message déjà humain (court, sans marqueur technique) : tel quel.
   if (!TECH_ERR_MARKERS_RE.test(raw) && raw.length <= 300) return raw;
 
@@ -623,6 +640,10 @@ export function humanizeJobError(job, lang = 'fr') {
       .replace(/\s*(?:r[ée]ponse\s+serveur\s+)?HTTP\s*\/?\s*\d{3}\s*/gi, ' ')
       // URL nue (jamais à l'écran).
       .replace(/https?:\/\/\S+/g, '')
+      // Préfixe de log interne « LIVE : » et marqueurs « [cause403] » (audit
+      // messages, 2026-09-17) — jamais destinés au vendeur.
+      .replace(/\bLIVE\s*:\s*/gi, '')
+      .replace(/\s*\[cause[^\]]*\]/gi, '')
       .replace(/\s{2,}/g, ' ')
       // ⚠️ « : » VOLONTAIREMENT HORS de cette classe : en français l'espace
       // avant le deux-points est correct, et le retirer donnait
