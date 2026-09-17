@@ -607,12 +607,39 @@ async function deleteDepuisListe(job, adId, trace, t) {
 // le clique depuis la carte de « Mes annonces » ou depuis le panneau de la page
 // d'annonce, et il mène à la même page dédiée.
 async function confirmerSuppression(job, adId, trace, t) {
+  // ── DEUX FORMES DE CONFIRMATION (2026-09-17 soir) ──────────────────────────
+  // Jusqu'au 16/09 17:05 (trace du retrait réussi fc3912c2) : le contrôle était
+  // un LIEN <a href="/compte/mes-annonces/suppression"> et la confirmation une
+  // PAGE dédiée portant « Valider la suppression ». Relevé le 17/09 21:55 sur
+  // la fiche 3269791464 et sur la carte de « Mes annonces » : le contrôle est
+  // devenu un BOUTON aria-haspopup="dialog" (fiche : texte « Supprimer
+  // l’annonce » ; carte : <svg data-title="SvgTrashOutline"> + libellé caché
+  // « Supprimer ») qui ouvre une MODALE sur la page même — role="dialog",
+  // « Supprimer l’annonce — Êtes-vous sûr de vouloir supprimer l’annonce
+  // ci-dessous ? », récap (titre, prix, catégorie, ville), bouton « Valider »
+  // data-qa-id="delete-ad-modal-confirm", croix de fermeture. AUCUNE
+  // navigation, aucun motif demandé. D'où six retraits ce soir (3 comptes)
+  // morts sur « Page /suppression … introuvable après le clic » : le clic
+  // ouvrait bien la modale, on attendait une URL qui ne vient plus.
+  // Les deux formes sont acceptées : la page dédiée d'abord (si Leboncoin
+  // la ressert), la modale sinon. Le filet du background ne bouge pas : une
+  // confirmation introuvable reste un échec SANS geste, l'annonce en ligne.
+  let modale = null;
   const confirmBtn = await waitFor(() => {
-    if (!/suppression/.test(location.pathname)) return null;
-    return findButtonByExactText("Valider la suppression");
+    if (/suppression/.test(location.pathname)) return findButtonByExactText("Valider la suppression");
+    modale = trouverModaleSuppressionLbc();
+    return modale ? boutonConfirmationModaleLbc(modale) : null;
   }, 10_000);
-  if (!confirmBtn) return { success: false, error: "Page /suppression ou bouton « Valider la suppression » introuvable après le clic poubelle", trace };
-  t(`page de confirmation atteinte : ${location.pathname} — "Valider la suppression"`);
+  if (!confirmBtn) {
+    const dialogues = Array.from(document.querySelectorAll('[role="dialog"], dialog, [aria-modal="true"]')).length;
+    t(`ni page /suppression ni modale de suppression après le clic — ${location.pathname}, ${dialogues} dialogue(s) dans la page`);
+    return { success: false, error: "Page /suppression ou modale « Supprimer l’annonce » introuvable après le clic sur Supprimer", trace };
+  }
+  if (modale) {
+    t(`modale de suppression ouverte sur ${location.pathname} — bouton « ${(confirmBtn.textContent ?? "").replace(/\s+/g, " ").trim() || "Valider"} »${confirmBtn.getAttribute("data-qa-id") ? ` (data-qa-id="${confirmBtn.getAttribute("data-qa-id")}")` : ""}`);
+  } else {
+    t(`page de confirmation atteinte : ${location.pathname} — "Valider la suppression"`);
+  }
 
   // ── GARDE nº2a : L'ÉTAT QUE LA PAGE VA RÉELLEMENT SUPPRIMER ────────────────
   // Trouvé en inspectant la page de la robe le 2026-07-22 : le lien « Supprimer
@@ -637,8 +664,14 @@ async function confirmerSuppression(job, adId, trace, t) {
   // Une seule annonce sélectionnée, et c'est la nôtre : sinon abandon sec. Le
   // cas « plusieurs » vient de la sélection groupée par cases à cocher de « Mes
   // annonces » — un état résiduel qui emporterait plusieurs annonces d'un coup.
+  // ⚠️ Modale (17/09) : cet état est celui de l'ANCIENNE page dédiée. La modale
+  // s'ouvre sur la page de l'annonce, dont l'identifiant a déjà été prouvé par
+  // l'URL et le titre (garde nº1), et son récap nomme l'annonce (garde nº2b
+  // ci-dessous, appliquée au texte de la modale seule). Une valeur périmée de
+  // localStorage — la montre d'une session précédente — ferait ici abandonner
+  // à tort un retrait parfaitement ciblé : on ne la lit que sur la page dédiée.
   let selection = null;
-  try { selection = JSON.parse(localStorage.getItem("selectedAdsForDeletion") ?? "null"); } catch { selection = null; }
+  if (!modale) { try { selection = JSON.parse(localStorage.getItem("selectedAdsForDeletion") ?? "null"); } catch { selection = null; } }
   const ads = Array.isArray(selection?.ads) ? selection.ads : null;
   const idsSelection = ads ? ads.map((a) => String(a?.list_id ?? "")).filter(Boolean) : [];
   if (idsSelection.length) {
@@ -660,6 +693,8 @@ async function confirmerSuppression(job, adId, trace, t) {
       };
     }
     t(`cible de suppression vérifiée par identifiant : list_id ${idsSelection[0]} — « ${sujets} »`);
+  } else if (modale) {
+    t("modale sur la page de l'annonce : identité portée par l'URL et le titre vérifiés (garde nº1), récap vérifié ci-dessous");
   } else {
     t("état selectedAdsForDeletion absent ou illisible — on retombe sur la vérification par texte");
   }
@@ -681,7 +716,11 @@ async function confirmerSuppression(job, adId, trace, t) {
   //   · la page nomme une AUTRE annonce  → ABANDON SEC, on ne valide pas.
   // ⚠️ Le 3e cas est le seul qui puisse détruire quelque chose, et c'est
   // exactement celui qu'eBay nous a appris à refuser.
-  const contexteConfirm = (document.body.textContent ?? "") + " " + location.href;
+  // Modale : son propre texte (récap : titre, prix, catégorie, ville) — pas le
+  // corps de la page, qui nomme trivialement l'annonce puisqu'on est dessus.
+  const contexteConfirm = modale
+    ? (modale.textContent ?? "").replace(/\s+/g, " ")
+    : (document.body.textContent ?? "") + " " + location.href;
   const preuveConfirm = annonceNommee(contexteConfirm, job, adId);
   if (preuveConfirm) {
     t(`page de confirmation vérifiée : ${preuveConfirm}`);
@@ -705,15 +744,48 @@ async function confirmerSuppression(job, adId, trace, t) {
 
   await humanPause(900, 1800);
   realClick(confirmBtn);
-  // Attendu : "Votre demande de suppression a bien été prise en compte".
+  // Attendu (page dédiée) : "Votre demande de suppression a bien été prise en
+  // compte". Modale (17/09) : elle se ferme, la page passe en « désactivée »
+  // ou une notification « supprimée » apparaît — lu pour la trace seulement.
   await sleep(3000);
   // ⚠️ textContent, PAS innerText : l'onglet de travail vit dans une fenêtre
   // minimisée, jamais rendue — innerText y est TOUJOURS vide (il dépend du
   // layout). La confirmation ultime reste de toute façon celle du background,
   // qui interroge la plateforme.
   const corps = (document.body.textContent ?? "").replace(/\s+/g, " ");
-  t(`résultat : ${corps.includes("suppression a bien été prise en compte") ? "confirmation reçue" : "confirmation non lue sur la page (déléguée au background)"}`);
+  const modaleEncoreOuverte = modale ? !!trouverModaleSuppressionLbc() : false;
+  const lu = corps.includes("suppression a bien été prise en compte") || /annonce (a bien été|a été|est) supprimée|est désactivée/i.test(corps);
+  t(`résultat : ${lu ? "confirmation reçue" : modale ? `modale ${modaleEncoreOuverte ? "toujours ouverte" : "refermée"} — confirmation déléguée au background` : "confirmation non lue sur la page (déléguée au background)"}`);
   return { success: true, trace };
+}
+
+// ── Modale de suppression Leboncoin (relevé du 2026-09-17 soir) ──────────────
+// role="dialog" sur la page même, texte « Supprimer l’annonce / Êtes-vous sûr
+// de vouloir supprimer l’annonce ci-dessous ? » + récap, bouton « Valider »
+// data-qa-id="delete-ad-modal-confirm". Visibilité lue sur le style calculé,
+// jamais sur le layout ni l'opacité (fenêtre de travail minimisée, animations
+// figées — cf. findLbcDelete).
+function estVisibleSansLayoutLbc(el) {
+  for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    if (n.getAttribute("aria-hidden") === "true") return false;
+    const st = getComputedStyle(n);
+    if (st.display === "none" || st.visibility === "hidden") return false;
+  }
+  return true;
+}
+function trouverModaleSuppressionLbc() {
+  const dialogues = Array.from(document.querySelectorAll('[role="dialog"], dialog[open], [aria-modal="true"]'));
+  return dialogues.find((d) => /supprim/i.test(d.textContent ?? "") && estVisibleSansLayoutLbc(d)) ?? null;
+}
+function boutonConfirmationModaleLbc(modale) {
+  const parQa = modale.querySelector('[data-qa-id="delete-ad-modal-confirm"], [data-testid="button-delete-confirm"]');
+  if (parQa && estVisibleSansLayoutLbc(parQa)) return parQa;
+  // Repli par texte EXACT (forme comparable) : « Valider », « Valider la
+  // suppression », « Supprimer », « Supprimer l’annonce », « Confirmer ». Le
+  // bouton qui A OUVERT la modale (« Supprimer l’annonce ») est hors d'elle.
+  const libelles = ["valider", "valider la suppression", "supprimer", "supprimer l annonce", "confirmer", "confirmer la suppression"];
+  return Array.from(modale.querySelectorAll('button, [role="button"]'))
+    .find((b) => libelles.includes(lbcNorm(b.textContent ?? "")) && estVisibleSansLayoutLbc(b)) ?? null;
 }
 
 // Relevé réel 2026-07-12 : le contrôle de suppression n'est PAS (plus ?) un
