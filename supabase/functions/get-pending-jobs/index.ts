@@ -3216,6 +3216,23 @@ serve(async (req) => {
     }).length;
     const travailRetenu = heldSync + heldBacklog;
 
+    // ── keepalive_actif (2026-09-17) : INTERRUPTEUR SERVEUR du maintien en vie
+    // du worker pendant un job (0.6.42, port de remplissage). Lu dans
+    // coin_config 'keepalive_actif' : 0 = ÉTEINT ; absent, illisible ou ≠ 0 =
+    // ALLUMÉ (décision Nico : allumé pour tout le parc, coupable en une ligne).
+    //   update coin_config set value = 0 where key = 'keepalive_actif';
+    // L'extension le relit à chaque poll (≤ 2 min) et retombe sur son chemin
+    // d'aujourd'hui. Lecture tolérante : elle ne bloque jamais la distribution.
+    let keepaliveActif = true;
+    try {
+      const { data: cfgKa } = await userClient
+        .from("coin_config").select("value").eq("key", "keepalive_actif").maybeSingle();
+      if (cfgKa && Number(cfgKa.value) === 0) keepaliveActif = false;
+    } catch (_e) { /* allumé par défaut */ }
+    // Trace quand il est COUPÉ : la preuve, dans les logs, que l'interrupteur
+    // a bien joué pour ce poll (rien n'est loggé à l'état allumé, le normal).
+    if (!keepaliveActif) console.log(`[get-pending-jobs] userId=${user.id} : keepalive_actif=0 → port de remplissage ÉTEINT pour ce poll (chemin classique)`);
+
     return json({
       jobs: out,
       annonces_en_attente: annoncesAttente,
@@ -3224,6 +3241,7 @@ serve(async (req) => {
       // retenu (cf. bandeau ci-dessus) : « il reste du travail, ne dors pas ».
       sync_prioritaire: travailRetenu > 0,
       jobs_retenus_sync: travailRetenu,
+      keepalive_actif: keepaliveActif,
       boutique_pause: boutiquePause,
       // beebs_interdits (2026-09-11) : dépôts passés en needs_user à ce poll
       // parce que l'article tombe sous les règles du catalogue Beebs.
