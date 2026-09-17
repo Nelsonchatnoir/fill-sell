@@ -14,6 +14,7 @@ import AnalyseMarche, { analyseFiabilite } from '../components/AnalyseMarche';
 import LensIdentite from '../components/LensIdentite';
 import { useTranslation } from '../i18n/useTranslation';
 import { UI, Loader, PrimaryButton, PremiumButton } from '../components/ui';
+import { PLATEFORMES_STOCK_OUVERTES } from "../utils/stockFiltres";
 
 const CANVAS    = '#F6F5F1';
 const INK       = '#10201B';
@@ -29,7 +30,7 @@ const MUTE      = '#6B7A75';
 // serait mise à défiler sur l'écran d'accueil Lens de TOUT LE MONDE, en
 // promettant une publication qui n'existe pas. Une plateforme n'entre ici
 // qu'une fois réellement publiable.
-const LENS_PLATFORMS = ["vinted", "leboncoin", "beebs", "ebay"];
+const LENS_PLATFORMS = PLATEFORMES_STOCK_OUVERTES; // même table que le stock (utils/stockFiltres)
 
 // Feuille bas-écran « Prendre une photo / Choisir dans la photothèque »,
 // partagée entre l'écran de scan (viseur) et l'écran résultat (grille photos).

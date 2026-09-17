@@ -43,7 +43,10 @@ function ilYA(iso, fr) {
   return fr ? `il y a ${j} j` : `${j} d ago`;
 }
 
-export default function RelevesPlateformes({ lang, user, items = [], ouvert = false, extensionStatus = null, onRattache = null }) {
+// `plateformes` : la liste du COMPTE (plateformesDuCompte, StockTab) — le même
+// jeu que les cartes, les chips et la modale de retrait. Sans elle, le plafond.
+export default function RelevesPlateformes({ lang, user, items = [], ouvert = false, extensionStatus = null, onRattache = null, plateformes = null }) {
+  const listePlateformes = Array.isArray(plateformes) ? plateformes.filter((p) => PLATEFORMES_RELEVE.includes(p)) : PLATEFORMES_RELEVE;
   const fr = lang !== 'en';
   const [runs, setRuns] = useState({});
   const [compte, setCompte] = useState({});
@@ -106,7 +109,7 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
           : 'FillSell re-reads “My listings” on each platform and matches what it recognises to your stock — one item, one card. You decide the rest. Nothing is published, edited or removed.'}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {PLATEFORMES_RELEVE.map((p) => {
+        {listePlateformes.map((p) => {
           const run = runs[p] ?? null;
           const c = compte[p] ?? null;
           const enCours = run && (run.status === 'queued' || run.status === 'running');

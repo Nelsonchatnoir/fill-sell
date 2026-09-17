@@ -9,8 +9,13 @@
 // profil beta_flags.inventaire_multi_pf) — l'app ne PROPOSE rien de ce que le
 // serveur refuserait, et n'annonce rien qui n'existe pas encore.
 import { supabase } from '../lib/supabase';
+import { PLATEFORMES_STOCK } from './stockFiltres';
 
-export const PLATEFORMES_RELEVE = ['leboncoin', 'beebs', 'ebay', 'opla'];
+// Dérivée de la table unique du stock (utils/stockFiltres) : toutes sauf
+// Vinted, qui a son propre relevé (carte « Relever mes annonces Vinted »).
+// L'AFFICHAGE par compte passe par la prop `plateformes` de RelevesPlateformes
+// (plateformesDuCompte, calculée par StockTab) — ceci est le plafond.
+export const PLATEFORMES_RELEVE = PLATEFORMES_STOCK.filter((p) => p !== 'vinted');
 export const LABEL_RELEVE = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
 
 // L'interrupteur, FAIL-CLOSED : clé absente, illisible, lecture ratée → fermé.

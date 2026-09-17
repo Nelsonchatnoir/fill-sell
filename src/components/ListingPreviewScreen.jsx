@@ -43,6 +43,7 @@ import {
   CHILD_MONTH_SIZES, CHILD_YEAR_SIZES, CHILD_SHOE_EU_MIN, CHILD_SHOE_EU_MAX,
   isChildGenre, childAxesForGenre, toPlatformChildSize, lbcChildSizeCategory,
 } from "../utils/childSizes";
+import { PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR } from "../utils/stockFiltres";
 
 // Palette identique à LensTab.jsx et à la navbar (thème clair 2026).
 const T = {
@@ -85,7 +86,7 @@ const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B3
 // entre part dans les jobs de publication. Y mettre Opla la cocherait par
 // défaut et enverrait un job opla — exactement ce que ce lot interdit.
 // L'affichage passe par PLATFORMS_A_VENIR, ci-dessous, et par lui seul.
-const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
+const PLATFORMS_DEFAULT = PLATEFORMES_STOCK_OUVERTES; // même table que le stock (utils/stockFiltres)
 // ── Plateformes VISIBLES mais PAS FORCÉMENT OUVERTES (lot 7, puis 17/09) ────
 // Affichées aux comptes qui les voient (profiles.plateformes_visibles, ou
 // l'interrupteur serveur coin_config.opla_ouvert — cf. App.jsx). La case
@@ -94,7 +95,7 @@ const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
 // fail-closed) ; sinon elle reste `disabled`, avec son motif. Opla reste HORS
 // de PLATFORMS_DEFAULT : sélectionnable, jamais présélectionnée — cette
 // liste-là alimente les jobs.
-const PLATFORMS_A_VENIR = ["opla"];
+const PLATFORMS_A_VENIR = PLATEFORMES_STOCK_A_VENIR; // idem
 // Borne de build (coin_config, entier major×10000 + minor×100 + patch) → « 0.6.42 ».
 function libelleVersionExtension(code) {
   const n = Number(code);

@@ -44,7 +44,7 @@ import RelevesPlateformes from '../components/RelevesPlateformes';
 import { lireSyncMultiOuverte } from '../utils/syncPlateformes';
 import { useFondFige } from '../utils/modale';
 import {
-  PLATEFORMES_STOCK_OUVERTES, PLATEFORMES_STOCK_A_VENIR,
+  plateformesDuCompte, plateformesDeLArticle,
   LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
   filtrerStock, trierStock, TRIS_STOCK, libelleTri, pastillesEtat, etatPlateformes,
 } from '../utils/stockFiltres';
@@ -1347,13 +1347,11 @@ function NeedsUserModal({ job, lang, onClose, onDone }) {
 // computeRemovalInfo vit dans utils/publicationState.js depuis le 2026-07-25
 // (S7) : le stepper en a besoin aussi, et l'importer depuis StockTab aurait
 // créé un cycle (StockTab importe déjà ListingPreviewScreen).
-// ⛔ RESTE À QUATRE, et c'est volontaire. Cette popup rend UNE LIGNE PAR ENTRÉE,
-// publiée ou non (c'est tout son intérêt : un blocage Beebs y apparaît même sans
-// annonce). Y mettre Opla en dur afficherait donc « Opla — pas publiée ici » à
-// TOUS les utilisateurs, pour une plateforme fermée. Les plateformes pas encore
-// ouvertes arrivent par la prop `plateformesAVenir`, déjà filtrée par
-// profiles.plateformes_visibles — même mécanisme que PLATFORMS_A_VENIR au stepper.
-const RM_PLATFORMS = ["vinted", "leboncoin", "beebs", "ebay"];
+// Cette popup rend UNE LIGNE PAR ENTRÉE, publiée ou non (c'est tout son
+// intérêt : un blocage Beebs y apparaît même sans annonce). Ses lignes viennent
+// de la prop `plateformes` = plateformesDeLArticle (utils/stockFiltres) : les
+// plateformes du compte + celles où l'article porte une annonce vivante. Aucune
+// liste en dur ici (2026-09-17 soir : Opla manquait sur les cartes).
 
 // ── listing_url manquant : transitoire ou définitif ? (2026-07-27) ───────────
 // L'extension re-capture les listing_url manquants à chaque cycle de poll via
@@ -1658,7 +1656,7 @@ function JobStatusModal({ item, jobs, lang, pausedSet, extensionStatus, onClose,
 // Bénéfice décisif : elle liste les QUATRE plateformes même quand l'annonce n'y
 // est pas publiée. Un blocage Beebs y apparaît donc toujours — là où le logo
 // sur la photo, lui, n'existe que pour les plateformes en ligne.
-function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer, plateformesAVenir = [] }) {
+function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRemove, onCompleter, onRelancer, plateformes = [] }) {
   useFermetureEchap(onClose);
   const [confirming, setConfirming] = useState(null);
   const [errMsg, setErrMsg] = useState(null);
@@ -1691,7 +1689,7 @@ function RemovePlatformsModal({ item, jobsAll, lang, busyPlatform, onClose, onRe
             : "Each removal deletes the listing on that platform only — the others are untouched."}
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {[...RM_PLATFORMS, ...plateformesAVenir].map(p => {
+          {plateformes.map(p => {
             const label = PLATFORM_LABELS[p] || p;
             const isPublished = published.includes(p);
             const state = removalState[p];
@@ -4174,7 +4172,7 @@ function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise =
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false }) {
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
@@ -4184,7 +4182,16 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
   // feuille propose l'union, toutes cochées ; un article n'est envoyé que sur
   // celles qui le concernent. Vinted seul → rendu et comportement d'avant.
   const plateformesUnion = [...new Set(items.flatMap(({ plateformes }) => plateformes ?? ['vinted']))];
-  const [sel, setSel] = useState(() => new Set(plateformesUnion));
+  // Pré-remplie avec le DERNIER choix fait dans une feuille (choixInitial,
+  // mémorisé par StockTab pour la session) : si deux feuilles se suivent, la
+  // seconde repart de ce qui a été coché, jamais du défaut « tout coché ».
+  // Défaut du 17/09 21:53 : Vinted recochée au second écran, 5 jobs créés au
+  // lieu du périmètre voulu. Une plateforme absente de l'union est ignorée ;
+  // un choix mémorisé qui ne recoupe rien rend l'union (rien de vide).
+  const [sel, setSel] = useState(() => {
+    const memo = (Array.isArray(choixInitial) ? choixInitial : []).filter((p) => plateformesUnion.includes(p));
+    return new Set(memo.length ? memo : plateformesUnion);
+  });
   const cochee = (p) => sel.has(p);
   const basculer = (p) => setSel((prev) => { const n = new Set(prev); if (n.has(p)) n.delete(p); else n.add(p); return n; });
   const nomsSel = plateformesUnion.filter(cochee);
@@ -4211,12 +4218,14 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
   const cout = prixUnitaire != null ? <>{nbEnvois * prixUnitaire}</> : null;
   const confirmer = () => {
     if (!nbEnvois) return;
+    // Le choix de plateformes remonte avec les cibles : StockTab le mémorise
+    // pour pré-remplir la feuille suivante (jamais le défaut).
     onConfirm(items.map(({ item, prixActuel, plateformes }) => {
       let prix = null; // null = garder le prix de l'annonce
       if (solo) { if (prixFinalSolo != null && prixFinalSolo !== prixActuel) prix = prixFinalSolo; }
       else if (pct > 0 && prixActuel != null) prix = arrondi(prixActuel);
       return { item, prix, plateformes: (plateformes ?? ['vinted']).filter(cochee) };
-    }).filter((c) => c.plateformes.length));
+    }).filter((c) => c.plateformes.length), nomsSel);
   };
   const chip = (p, label) => (
     <button key={p} onClick={() => { setPct(p); if (solo && items[0].prixActuel != null) setPrixLibre(String(p === 0 ? items[0].prixActuel : Math.max(REPUB_PLANCHER_EUR, Math.floor(items[0].prixActuel * (1 - p / 100))))); }}
@@ -4235,12 +4244,20 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
   };
   const titre = solo
     ? (fr ? 'Republier' : 'Repost')
-    : (fr ? `Republier ${items.length} annonces` : `Repost ${items.length} listings`);
+    : (fr ? `Republier ${items.length} articles` : `Repost ${items.length} items`);
   const bouton = (() => {
     const cible = nomsSel.length === 1 ? (fr ? `sur ${libelleSel}` : `on ${libelleSel}`) : (fr ? `sur ${nomsSel.length} plateformes` : `on ${nomsSel.length} platforms`);
     if (!nomsSel.length) return fr ? 'Choisis au moins une plateforme' : 'Pick at least one platform';
     if (solo) return fr ? <>Republier {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` à ${prixFinalSolo} €` : ''}{cout && <> · {cout}</>}</> : <>Repost {cible}{prixFinalSolo != null && cochee('vinted') && nomsSel.length === 1 ? ` at €${prixFinalSolo}` : ''}{cout && <> · {cout}</>}</>;
-    return fr ? <>Republier les {items.length} {cible}{pct > 0 ? ` à −${pct} %` : ''}{cout && <> · {cout}</>}</> : <>Repost {items.length} {cible}{pct > 0 ? ` at −${pct}%` : ''}{cout && <> · {cout}</>}</>;
+    // Le compte affiché est celui des PAIRES article × plateforme qui vont
+    // partir (nbEnvois) — c'est ce que la mise en file comptera ensuite. Le
+    // nombre d'articles et la cible restent dits entre parenthèses.
+    const detail = fr
+      ? ` (${items.length} article${items.length > 1 ? 's' : ''} ${cible})`
+      : ` (${items.length} item${items.length > 1 ? 's' : ''} ${cible})`;
+    return fr
+      ? <>Republier {nbEnvois} annonce{nbEnvois > 1 ? 's' : ''}{detail}{pct > 0 ? ` à −${pct} %` : ''}{cout && <> · {cout}</>}</>
+      : <>Repost {nbEnvois} listing{nbEnvois > 1 ? 's' : ''}{detail}{pct > 0 ? ` at −${pct}%` : ''}{cout && <> · {cout}</>}</>;
   })();
   return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'rgba(16,32,27,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -4990,6 +5007,11 @@ const StockTab = memo(function StockTab({
   // des absurdités — l'aperçu nomme les articles plafonnés). Champ libre en
   // solo : minimum 1 € (la garde de publication existante).
   const [repubSheet, setRepubSheet] = useState(null); // {items:[{item, prixActuel}]}
+  // Dernier choix de plateformes fait dans une feuille de republication (cette
+  // session) : la feuille suivante en repart. Un seul endroit décide en mode
+  // lot (la barre) ; hors lot, la carte — et si deux feuilles se suivent malgré
+  // tout, la seconde est pré-remplie, jamais au défaut (défaut du 17/09).
+  const [choixPlateformesRepub, setChoixPlateformesRepub] = useState(null);
   const [repubProgress, setRepubProgress] = useState(null); // job republish affiché en détail
   // (repubGratuit est mort le 2026-08-08 : la republication coûte
   // price_republish pour tous les paliers, plus aucun prix conditionné.)
@@ -5000,7 +5022,7 @@ const StockTab = memo(function StockTab({
         prixActuel: prixAnnonces[it.vinted_item_id] ?? (Number(it.sell) || null),
         // Les plateformes republiables MAINTENANT pour cet article (Vinted
         // seul tant que l'interrupteur serveur est à 0).
-        plateformes: plateformesRepubliables(it, jobsByInventaire[it.id] || [], { multiOuverte }),
+        plateformes: plateformesRepubliables(it, jobsByInventaire[it.id] || [], { multiOuverte, plateformesOuvertes }),
       })),
     });
   }
@@ -5284,7 +5306,7 @@ const StockTab = memo(function StockTab({
   // serveur est ouvert — la MÊME expression que la feuille et le bouton
   // (utils/republication.plateformesRepubliables).
   const repubSelectionnable = (i) => repubEtat(i) === 'ok'
-    || (multiOuverte && plateformesRepubliables(i, jobsByInventaire[i.id] || [], { multiOuverte: true }).some((p) => p !== 'vinted'));
+    || (multiOuverte && plateformesRepubliables(i, jobsByInventaire[i.id] || [], { multiOuverte: true, plateformesOuvertes }).some((p) => p !== 'vinted'));
   // Lit la liste COMPLÈTE (déclarée avant la lecture des brouillons) : sans
   // conséquence, un brouillon n'a par définition aucun job et repubEtat le rend
   // donc toujours 'ineligible' — il ne peut pas entrer dans un lot.
@@ -5734,15 +5756,16 @@ const StockTab = memo(function StockTab({
     [stockFiltre, jobsByInventaire, lang],
   );
   const comptesStock = useMemo(() => compteursStock(stockFiltre, indexEtat), [stockFiltre, indexEtat]);
-  // ⛔ Les chips de diffusion ne servent PAS PLATEFORMES_STOCK (qui porte
-  // désormais opla) : `pasEncore.opla` vaut TOUT le stock de tout le monde, et
-  // le chip « Pas encore sur Opla · 214 » partirait chez chaque utilisateur en
-  // promettant une publication qui n'existe pas. On affiche les quatre
-  // ouvertes, plus celles que CE compte porte dans plateformes_visibles.
-  const plateformesStockAffichees = useMemo(
-    () => [...PLATEFORMES_STOCK_OUVERTES, ...PLATEFORMES_STOCK_A_VENIR.filter(p => plateformesVisibles.includes(p))],
-    [plateformesVisibles],
-  );
+  // UNE seule liste pour tout l'écran (2026-09-17 soir, manque Opla sur les
+  // cartes) : les plateformes que CE compte peut viser aujourd'hui —
+  // plateformesDuCompte (utils/stockFiltres), Opla incluse dès que App.jsx la
+  // déclare ouverte (opla_ouvert = 1 ET extension ≥ borne, fail-closed). Chips
+  // de diffusion, pastilles, bouton Publier, « En ligne (n/N) », Republier et
+  // bloc de relevé la lisent tous : ils ne peuvent plus se contredire.
+  // ⛔ Jamais PLATEFORMES_STOCK directement : `pasEncore.opla` vaut TOUT le
+  // stock d'un compte qui n'a pas Opla, et le chip promettrait une publication
+  // qui n'existe pas pour lui.
+  const plateformesCompte = useMemo(() => plateformesDuCompte(plateformesOuvertes), [plateformesOuvertes]);
 
   // Quand un filtre OU un tri est actif, on repart de la liste COMPLÈTE
   // (stockFiltre) et on recoupe ici : filtrer ou trier APRÈS le slice de
@@ -6804,6 +6827,7 @@ const StockTab = memo(function StockTab({
             rendu SEULEMENT quand l'interrupteur serveur est ouvert. */}
         <RelevesPlateformes
           lang={lang} user={user} items={items} ouvert={syncMultiOuverte}
+          plateformes={plateformesCompte.filter(p=>p!=='vinted')}
           extensionStatus={extensionStatus}
           onRattache={rafraichirApresSync}
         />
@@ -7589,7 +7613,7 @@ const StockTab = memo(function StockTab({
                   {lang==='fr'?'En ligne sur':'Live on'}
                 </div>
                 <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:3}}>
-                  {plateformesStockAffichees.filter(p=>comptesStock.enLigne[p]>0).map(p=>{
+                  {plateformesCompte.filter(p=>comptesStock.enLigne[p]>0).map(p=>{
                     const actif=filtreDiffusion?.mode==='en_ligne'&&filtreDiffusion.platform===p;
                     return (
                       <button key={`el-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'en_ligne',platform:p});setMenuTri(false);setShowAllStock(false);}}
@@ -7603,7 +7627,7 @@ const StockTab = memo(function StockTab({
                   {lang==='fr'?'Pas encore sur':'Not yet on'}
                 </div>
                 <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:3}}>
-                  {plateformesStockAffichees.filter(p=>comptesStock.pasEncore[p]>0).map(p=>{
+                  {plateformesCompte.filter(p=>comptesStock.pasEncore[p]>0).map(p=>{
                     const actif=filtreDiffusion?.mode==='pas_encore'&&filtreDiffusion.platform===p;
                     return (
                       <button key={`pe-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'pas_encore',platform:p});setMenuTri(false);setShowAllStock(false);}}
@@ -8277,7 +8301,7 @@ const StockTab = memo(function StockTab({
                   // ── Multiplateforme (2026-09-17) : les plateformes republiables
                   // MAINTENANT (Vinted comprise) — une seule expression, celle de
                   // la feuille et du lot. Le bouton existe dès qu'il y en a une.
-                  const repubMaintenant=republishActif?plateformesRepubliables(item,jobsAll,{multiOuverte}):[];
+                  const repubMaintenant=republishActif?plateformesRepubliables(item,jobsAll,{multiOuverte,plateformesOuvertes}):[];
                   const repubEligibleTout=repubEligible||repubMaintenant.length>0;
                   // Vocabulaire d'étape partagé pastille ↔ feuille (une seule
                   // source : etapeRepublication). null = rien à afficher.
@@ -8485,14 +8509,17 @@ const StockTab = memo(function StockTab({
                   // disparue — et le tap → modal de retrait doit rester
                   // possible). Garde-fou de fraîcheur dans le helper : un job
                   // 'published' postérieur au relevé l'emporte. nbEnLigne et le
-                  // bouton « En ligne (N/4) » restent sur logosEnLigne : la
+                  // bouton « En ligne (n/N) » restent sur logosEnLigne : la
                   // plateforme est occupée par une annonce EXISTANTE — la
                   // rouvrir à « Publier » créerait un doublon.
                   const enLigne=logosEnLigne.some(p=>!(p==="vinted"&&vintedMasquee));
-                  // Compteur de plateformes réellement en ligne : pilote le 3e état
-                  // du bouton (4/4 = plus rien à publier).
-                  const nbEnLigne=logosEnLigne.length;
-                  const toutEnLigne=nbEnLigne>=RM_PLATFORMS.length;
+                  // Compteur de plateformes réellement en ligne PARMI celles du
+                  // compte (plateformesCompte, Opla comprise quand elle est
+                  // ouverte) : pilote le 3e état du bouton (n/N = plus rien à
+                  // publier). Une annonce sur une plateforme refermée reste dans
+                  // les pastilles (logosEnLigne) mais ne compte pas ici.
+                  const nbEnLigne=logosEnLigne.filter(p=>plateformesCompte.includes(p)).length;
+                  const toutEnLigne=nbEnLigne>=plateformesCompte.length;
                   // Plateformes où l'article n'est PAS en ligne (2026-09-01,
                   // audit onboarding) : portées par le bouton « Publier » en
                   // logos — sur un article importé de Vinted, « Publier » nu
@@ -8500,7 +8527,7 @@ const StockTab = memo(function StockTab({
                   // Même source que la pastille et le compteur (logosEnLigne) :
                   // le stepper n'ouvrira que ces plateformes-là, le bouton
                   // montre exactement ce qu'il fera.
-                  const aPublier=RM_PLATFORMS.filter(p=>!logosEnLigne.includes(p));
+                  const aPublier=plateformesCompte.filter(p=>!logosEnLigne.includes(p));
                   // _table:'inventaire' — cible d'écriture explicite de la modale
                   // d'édition (les ids ventes/inventaire se chevauchent).
                   const openEdit=()=>setEditItem({...item,_table:'inventaire',frais:(item.statut==='vendu'?item.sellingFees:item.purchaseCosts)??0,sell:item.sell??""});
@@ -9316,7 +9343,7 @@ const StockTab = memo(function StockTab({
                                 {detailFetchId===item.id
                                   ?(lang==='fr'?'Récupération…':'Fetching…')
                                   :toutEnLigne
-                                  ?(lang==='fr'?`En ligne (${nbEnLigne}/${RM_PLATFORMS.length})`:`Live (${nbEnLigne}/${RM_PLATFORMS.length})`)
+                                  ?(lang==='fr'?`En ligne (${nbEnLigne}/${plateformesCompte.length})`:`Live (${nbEnLigne}/${plateformesCompte.length})`)
                                   /* Le verbe + les DESTINATIONS (2026-09-01) : les logos des
                                      plateformes manquantes remplacent le point d'interrogation
                                      qu'était « Publier » nu sur un article déjà en ligne
@@ -9421,6 +9448,13 @@ const StockTab = memo(function StockTab({
                                   </button>);
                               }
                               if(!repubMaintenant.length)return null;
+                              // UN SEUL endroit choisit les plateformes (défaut du
+                              // 17/09 21:53) : en mode lot, la carte porte sa case à
+                              // cocher et la barre « Republier les N » ouvre LA feuille
+                              // du lot — le bouton de carte, qui ouvrait une seconde
+                              // feuille avec son propre défaut, disparaît tant que le
+                              // mode est armé.
+                              if(modeRepublish)return null;
                               return(
                                 <button className="btn-vendre" disabled={repubEnPause||repubBusy===item.id}
                                   onClick={e=>{
@@ -9661,9 +9695,11 @@ const StockTab = memo(function StockTab({
           boutiquesVinted={boutiquesVinted}
           boutiqueConnectee={boutiqueConnectee}
           multiOuverte={multiOuverte}
+          choixInitial={choixPlateformesRepub}
           onClose={()=>setRepubSheet(null)}
-          onConfirm={(cibles)=>{
+          onConfirm={(cibles,choix)=>{
             setRepubSheet(null);
+            if(Array.isArray(choix)&&choix.length)setChoixPlateformesRepub(choix);
             if(!cibles.length)return;
             if(cibles.length===1)lancerRepublication(cibles[0].item,cibles[0].prix,cibles[0].plateformes);
             else lancerRepublicationLot(cibles);
@@ -9904,7 +9940,7 @@ const StockTab = memo(function StockTab({
           onCompleter={(job)=>setNeedsUserJob(job)}
           onRelancer={(job,mode)=>relancerJobEchoue(job,mode)}
           onRemove={armRemoveJob}
-          plateformesAVenir={PLATEFORMES_STOCK_A_VENIR.filter(p=>plateformesVisibles.includes(p))}
+          plateformes={plateformesDeLArticle(jobsByInventaire[removeModalItem.id]||[],plateformesOuvertes)}
         />
       )}
       {jobStatusItem&&(

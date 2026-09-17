@@ -18,8 +18,11 @@
 // republication vivante sur cette plateforme, aucune aboutie depuis 24 h.
 import { computeRemovalInfo, vintedMasqueeMalgreJobs } from './publicationState';
 import { republierArticleVinted } from './vintedSync';
+import { PLATEFORMES_STOCK, plateformesDuCompte } from './stockFiltres';
 
-export const PLATEFORMES_REPUBLIABLES = ['vinted', 'leboncoin', 'beebs', 'opla'];
+// Dérivée de la table unique du stock (utils/stockFiltres) : tout sauf eBay —
+// eBay reste HORS republication (garde-fou du 17/09), rien d'autre n'est exclu.
+export const PLATEFORMES_REPUBLIABLES = PLATEFORMES_STOCK.filter((p) => p !== 'ebay');
 export const LABEL_PLATEFORME = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
 export const LABEL_COURT = { vinted: 'Vinted', leboncoin: 'LBC', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla' };
 
@@ -63,8 +66,12 @@ export function repubEtatPlateforme(item, jobsAll, platform) {
 // Les plateformes republiables MAINTENANT pour un article (dans l'ordre
 // d'affichage). `multiOuverte` = interrupteur serveur lu par l'app : à faux,
 // Vinted seul — rien ne change pour personne tant qu'il est à 0.
-export function plateformesRepubliables(item, jobsAll, { multiOuverte = false } = {}) {
-  const liste = multiOuverte ? PLATEFORMES_REPUBLIABLES : ['vinted'];
+// `plateformesOuvertes` (App.jsx) : Opla n'entre que si elle est ouverte pour
+// CE compte — même condition que la carte, le stepper et les chips
+// (plateformesDuCompte), jamais une liste à part.
+export function plateformesRepubliables(item, jobsAll, { multiOuverte = false, plateformesOuvertes = [] } = {}) {
+  const compte = plateformesDuCompte(plateformesOuvertes);
+  const liste = (multiOuverte ? PLATEFORMES_REPUBLIABLES : ['vinted']).filter((p) => compte.includes(p));
   return liste.filter((p) => repubEtatPlateforme(item, jobsAll, p) === 'ok');
 }
 

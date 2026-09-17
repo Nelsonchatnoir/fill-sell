@@ -52,10 +52,40 @@ export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'
 // de diffusion ferait donc apparaître « Pas encore sur Opla · 214 » chez chaque
 // utilisateur, en promettant une publication qui n'existe pas — la fuite exacte
 // que LENS_PLATFORMS a déjà failli produire. Opla ne s'affiche qu'aux comptes
-// qui la portent dans profiles.plateformes_visibles (même mécanisme que
-// PLATFORMS_A_VENIR côté stepper).
+// pour lesquels App.jsx la déclare OUVERTE (coin_config.opla_ouvert = 1 ET
+// extension du compte ≥ opla_extension_min, fail-closed) — via
+// plateformesDuCompte, ci-dessous, et par lui seul.
 export const PLATEFORMES_STOCK_OUVERTES = ['vinted', 'leboncoin', 'beebs', 'ebay'];
 export const PLATEFORMES_STOCK_A_VENIR = ['opla'];
+
+// ─── UNE SEULE RÉPONSE À « QUELLES PLATEFORMES ? » (2026-09-17 soir) ─────────
+// Manque relevé par Nico : Opla absente des cartes du stock (pastilles, bouton
+// Publier, « En ligne (4/4) », Republier) alors que le bloc de relevé la
+// listait — deux endroits décidaient différemment, c'était ça le défaut.
+//  · plateformesDuCompte(ouvertes) : ce que CE compte peut viser AUJOURD'HUI =
+//    les quatre historiques + celles que App.jsx déclare ouvertes
+//    (plateformesOuvertes). Dénominateur du « En ligne (n/N) », logos du bouton
+//    Publier, chips de diffusion, plateformes republiables, lignes du bloc de
+//    relevé : tous la lisent, aucun ne l'énumère lui-même.
+//  · plateformesDeLArticle(jobsAll, ouvertes) : la même liste PLUS toute
+//    plateforme où l'article porte une annonce VIVANTE (job published, en file
+//    ou à compléter), même si elle n'est plus ouverte : une annonce qui existe
+//    se voit et se retire toujours (modale de retrait).
+// Ordre = celui de PLATEFORMES_STOCK. Les listes des autres modules (stepper,
+// Lens, republication, relevé) sont DÉRIVÉES des trois constantes ci-dessus.
+export function plateformesDuCompte(plateformesOuvertes = []) {
+  return [...PLATEFORMES_STOCK_OUVERTES, ...PLATEFORMES_STOCK_A_VENIR.filter((p) => plateformesOuvertes.includes(p))];
+}
+const STATUTS_VIVANTS = new Set(['published', 'pending', 'processing', 'needs_user']);
+export function plateformesDeLArticle(jobsAll, plateformesOuvertes = []) {
+  const base = plateformesDuCompte(plateformesOuvertes);
+  const portees = new Set();
+  for (const j of jobsAll ?? []) {
+    if (!j || j.action === 'delete' || !STATUTS_VIVANTS.has(j.status)) continue;
+    if (PLATEFORMES_STOCK.includes(j.platform) && !base.includes(j.platform)) portees.add(j.platform);
+  }
+  return portees.size ? [...base, ...PLATEFORMES_STOCK.filter((p) => portees.has(p))] : base;
+}
 
 export const LIBELLE_PLATEFORME = {
   vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla',
