@@ -160,7 +160,18 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // téléversé, remplacé par la 0.6.41 (correctifs Leboncoin pro + Opla en
 // permission optionnelle). Même règle que 0.6.21 : le Web Store refuse tout
 // numéro inférieur à la dernière version publiée — numéro brûlé.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40'];
+// 0.6.41 ajoutée le 17/09 au bump 0.6.42 : zip CWS-0.6.41-A-TELEVERSER-fda01d4
+// TÉLÉVERSÉ, ACCEPTÉ et SERVI par le Chrome Web Store dans la nuit du 16→17/09
+// — preuve en base, pas déclarée : Nyxlaire (0ded24f0, compte externe créé le
+// 17/09 08:31, jamais en unpacked) et MeMiniandMove (63ad8597) remontent
+// extension_version='0.6.41' / extension_build='2026-09-16T22:04:43Z+fda01d4',
+// exactement le BUILD_ID du zip. Numéro mort : plus jamais re-packagé
+// (doctrine 0.6.6). Le paquet courant est la 0.6.42 : borne fetch
+// (AbortController, 30 s API / 20 s photo) sur vinted/leboncoin/beebs/ebay +
+// couche 2 (priorité d'un republish 'deleted' bornée : N=3 gels sans verdict →
+// bout de file, reste pending/visible/rattrapable). ⚠️ EXTENSION_MIN_BUILD
+// NON touché : décision de Nico, à part, lue dans le paquet publié.
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41'];
 // 0.6.38 ajoutée le 15/09 au bump 0.6.39 : PUBLIÉE, ACCEPTÉE et SERVIE par le
 // Chrome Web Store — relevé en base, pas déclaré : 27 comptes en
 // profiles.extension_version='0.6.38', extension_build
