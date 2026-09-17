@@ -6963,13 +6963,22 @@ export default function ListingPreviewScreen({
         if (g && g !== "Mixte") return false; // choix explicite respecté
         const icon = iconFor(platform);
         if (platform === "vinted") return vintedGenreRequired(icon);
+        // Opla (2026-09-17 soir) : 62 % des feuilles sont sous une racine genrée
+        // (docs/OPLA_MAPPING.md § 7). Sans genre, « t-shirt » tombe sur 4 feuilles
+        // (femme/homme/fille/garçon), rien n'est posé, et l'extension pose la
+        // question (job cb3dfbb6). On résout donc le genre comme pour les trois
+        // autres — mais le défaut « Femme » ne sert JAMAIS à Opla (cf.
+        // autoGenreDefaut) : mieux vaut une question qu'un rayon femme posé en
+        // 200 sur un t-shirt homme.
+        if (platform === "opla") return true;
         // 🌸 + Mixte résout un vrai rayon eBay (Parfums mixtes) : pas touché.
         if (platform === "ebay") return ebayGenreRequired(icon) && !getEbayCategoryId(icon, g);
         if (platform === "beebs") return beebsGenreRequired(icon);
         return false;
       };
       let autoGenre = null;
-      if (["vinted", "ebay", "beebs"].some(genreUnresolved)) {
+      let autoGenreDefaut = false; // « Femme » posé faute de mieux — jamais servi à Opla
+      if (["vinted", "ebay", "beebs", "opla"].some(genreUnresolved)) {
         autoGenre = [
           edited.vinted?.platform_fields?.genre,
           edited.ebay?.platform_fields?.genre,
@@ -6993,8 +7002,11 @@ export default function ListingPreviewScreen({
             if (["Femme", "Homme", "Fille", "Garçon", "Bébé"].includes(gRes?.genre)) autoGenre = gRes.genre;
           } catch { /* IA indisponible : défaut ci-dessous */ }
         }
-        if (!autoGenre) autoGenre = "Femme";
+        if (!autoGenre) { autoGenre = "Femme"; autoGenreDefaut = true; }
       }
+      // Le genre servi à la résolution de catégorie : le défaut « Femme » vaut
+      // pour Vinted/eBay/Beebs (rayon obligatoire), pas pour Opla.
+      const genrePourCategorie = (platform) => (platform === "opla" && autoGenreDefaut ? "" : autoGenre) || "";
 
       // ── Garde-fou d'insert (2026-07-30) : aucune valeur manifestement
       // incomplète ou non voulue ne part en prod sans trace. Deux classes
@@ -7236,7 +7248,7 @@ export default function ListingPreviewScreen({
       if (motCategorie) {
         await Promise.all(plateformesAPublier.map(async (platform) => {
           const pfE = edited[platform]?.platform_fields ?? {};
-          const genrePf = pfE.genre || pfE.univers || autoGenre || "";
+          const genrePf = pfE.genre || pfE.univers || genrePourCategorie(platform);
           try {
             const r = await resoudreParMot(motCategorie, platform, { genre: genrePf, famille: familleObjet });
             if (r.certitude === "exact") categorieParMotParPf[platform] = r;
@@ -7281,7 +7293,7 @@ export default function ListingPreviewScreen({
           const pfE = edited[platform]?.platform_fields ?? {};
           try {
             const liste = await candidatsParMot(motCategorie, platform, {
-              genre: pfE.genre || pfE.univers || autoGenre || "",
+              genre: pfE.genre || pfE.univers || genrePourCategorie(platform),
               titre: edited[platform]?.title || initialListing?.titre || "",
               famille: familleObjet,
             });

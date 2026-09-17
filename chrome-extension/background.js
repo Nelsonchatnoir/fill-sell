@@ -3234,6 +3234,22 @@ async function processJob(rawJob, accessToken) {
       };
     }
 
+    // Catégorie ACQUISE par le handler (Opla, 2026-09-17 soir) — même mécanique
+    // de copie mémoire que last_diagnostic. Le code traduit d'un choix
+    // utilisateur, ou déduit du mot-objet, et son chemin, sont recopiés sur le
+    // job ; le choix consommé est effacé. Sans ça, chaque passage repartait
+    // des 8 racines (job cb3dfbb6 : « Hommes », « Vêtements », puis les racines
+    // à nouveau — trois questions, zéro progrès, et la garde anti-boucle aurait
+    // coupé à la quatrième). Clés FERMÉES : un handler ne réécrit pas
+    // platform_fields à sa guise.
+    if (result?.categorieRetenue && typeof result.categorieRetenue === "object") {
+      const maj = {};
+      for (const k of ["oplaCategoryCode", "oplaCategoryPath", "oplaCategoryChoice"]) {
+        if (k in result.categorieRetenue) maj[k] = result.categorieRetenue[k];
+      }
+      job.platform_fields = { ...(job.platform_fields ?? {}), ...maj };
+    }
+
     // Trace de la bascule de format eBay (2026-08-31, chantier « Prix de
     // départ ») : persistée sur TOUTES les issues, réussites comprises —
     // même mécanique de copie mémoire que last_diagnostic. C'est elle qui
@@ -11425,8 +11441,31 @@ async function syncMultiOuverte(token, userId) {
 
 // Tous les liens d'annonce de la page, avec le titre et le prix lus dans la
 // carte qui les porte (même méthode que findListingLinkInPage : la carte est
-// le dernier ancêtre qui ne contient qu'UNE annonce — aucun sélecteur à
-// maintenir). Défilement borné pour les listes paresseuses.
+// le dernier ancêtre qui ne contient qu'UNE annonce). Défilement borné pour
+// les listes paresseuses.
+//
+// ⛔ LE TEXTE D'UNE CARTE N'EST JAMAIS `textContent` (défaut du 17/09, premier
+//    relevé réel, compte nicolas.svobodny) : textContent COLLE les nœuds de
+//    texte voisins. Sur le Hub vendeur eBay, « Achat immédiat · 800423009959 »
+//    puis « 12,00 € » devenaient « …80042300995912,00 € », et la regex de prix
+//    lisait 95912 — 6 annonces sur 6, aucune rattachable par titre + prix. Sur
+//    Leboncoin, le lien porte le titre DEUX fois (version desktop entière,
+//    version mobile tronquée « …poitri... ») et le titre sortait doublé :
+//    0 rattachement « certain » possible, la bande titre exact ne matchait
+//    jamais.
+//    Règles, mesurées sur les trois pages « Mes annonces » réelles le 17/09 :
+//    · le PRIX se lit dans une FEUILLE (élément sans enfant) qui n'est QU'un
+//      prix, devise comprise (« 12,00 € » eBay, « 18 € » Leboncoin, « 8,00€ »
+//      Beebs) — jamais par une regex sur le texte aplati de la carte. Frais de
+//      port, mensualités, boutons : ce ne sont pas des feuilles-prix, ils ne
+//      passent pas. Illisible → null, JAMAIS un nombre au hasard : le moteur
+//      rapproche alors sur le titre seul (bande incertaine) ;
+//    · le TITRE se lit dans le lien de l'annonce (première feuille plausible
+//      NON tronquée), à défaut dans le titre de la carte ou l'alt de la photo ;
+//    · quand la page NOMME ses champs (eBay : cellules shui-dt-column__title /
+//      shui-dt-column__price), on lit ces champs-là d'abord ;
+//    · le relevé compte ce qu'il n'a pas su lire (diag.sans_prix / sans_titre),
+//      et le run le dit dans vinted_sync_runs.erreur.
 async function releverLiensAnnoncesDansOnglet(tabId, platform) {
   const pattern = LISTING_URL_PATTERNS[platform];
   if (!pattern) return { annonces: [], diag: { motif: "pattern absent" } };
@@ -11466,34 +11505,104 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         }
         return scope;
       };
-      const parId = new Map();
+      const propre = (s) => String(s ?? "").replace(/[\s\u00a0\u202f]+/g, " ").trim();
+      // Les FEUILLES porteuses de texte d'un nœud, dans l'ordre du document.
+      // C'est l'unité de lecture : une feuille = un champ, jamais collé au voisin.
+      const feuillesDe = (n) => {
+        const out = [];
+        if (!n || !n.querySelectorAll) return out;
+        if (!n.children.length) { const t = propre(n.textContent); if (t) out.push({ el: n, texte: t }); return out; }
+        for (const e of n.querySelectorAll("*")) {
+          if (e.children.length) continue;
+          const t = propre(e.textContent);
+          if (t) out.push({ el: e, texte: t });
+        }
+        return out;
+      };
+      // Un prix, et RIEN d'autre, devise comprise (« 12,00 € », « 8,00€ »,
+      // « 1 250 € », « EUR 12 »). Tout le reste rend null — jamais un nombre.
+      const prixDe = (texte) => {
+        const t = propre(texte);
+        const m = t.match(/^(?:(?:EUR|€)\s*)?(\d[\d .,]*?)\s*(€|EUR)?$/i);
+        if (!m) return null;
+        if (!m[2] && !/^(?:EUR|€)/i.test(t)) return null;
+        let s = m[1].replace(/ /g, "");
+        if (/^\d+[.,]\d{1,2}$/.test(s)) s = s.replace(",", ".");
+        else if (/^\d{1,3}(?:[.,]\d{3})+$/.test(s)) s = s.replace(/[.,]/g, "");
+        else if (!/^\d+$/.test(s)) return null;
+        const v = Number(s);
+        return Number.isFinite(v) && v > 0 && v <= 100000 ? Math.round(v * 100) / 100 : null;
+      };
+      const barre = (el) => Boolean(el.closest && el.closest("s, del, strike, [class*='strike' i], [class*='barre' i]"));
+      const prixDeCarte = (carte) => {
+        const zone = plateforme === "ebay"
+          ? (carte.querySelector?.("td.shui-dt-column__price, [class*='column__price']") ?? carte)
+          : carte;
+        for (const f of feuillesDe(zone)) {
+          if (barre(f.el)) continue;
+          const v = prixDe(f.texte);
+          if (v !== null) return v;
+        }
+        return null;
+      };
+      const BOUTON = /^(modifier|supprimer|dupliquer|booster|vendez plus vite|enregistrer|annuler|voir|partager|sponsoriser|recherche de prix|achat immédiat|ou offre directe|edit|delete|relist|sell similar)\b/i;
+      const titrePlausible = (t) => Boolean(t) && t.length >= 3 && t.length <= 200 && prixDe(t) === null && !BOUTON.test(t) && !/^\d[\d\s.,]*$/.test(t);
+      const tronque = (t) => /(…|\.\.\.)$/.test(t);
+      const meilleurTitre = (textes) => {
+        const ok = textes.map(propre).filter(titrePlausible);
+        return ok.find((t) => !tronque(t)) ?? ok[0] ?? null;
+      };
+      const titreDeCarte = (carte, ancresAnnonce) => {
+        if (plateforme === "ebay") {
+          const cell = carte.querySelector?.("td.shui-dt-column__title, [class*='column__title']");
+          if (cell) {
+            const t = meilleurTitre(Array.from(cell.querySelectorAll("a[href]")).filter((a) => re.test(a.href)).map((a) => a.textContent));
+            if (t) return t;
+            const m = String(cell.querySelector("img[alt]")?.getAttribute("alt") ?? "").match(/Annonce\s+(.+)$/i);
+            if (m && titrePlausible(propre(m[1]))) return propre(m[1]);
+          }
+        }
+        const candidats = [];
+        for (const a of ancresAnnonce) {
+          candidats.push(a.getAttribute("title"), a.getAttribute("aria-label"));
+          for (const f of feuillesDe(a)) candidats.push(f.texte);
+        }
+        for (const e of carte.querySelectorAll?.("h1,h2,h3,h4,[class*='title' i],[data-qa-id*='title' i]") ?? []) {
+          for (const f of feuillesDe(e)) candidats.push(f.texte);
+        }
+        for (const a of ancresAnnonce) candidats.push(a.querySelector?.("img")?.getAttribute("alt"));
+        candidats.push(carte.querySelector?.("img")?.getAttribute("alt"));
+        return meilleurTitre(candidats.filter(Boolean));
+      };
+      // Toutes les ancres d'une même annonce (photo + titre) servent au titre.
+      const ancresParId = new Map();
       for (const a of ancres) {
         const m = a.href.match(re);
         if (!m) continue;
-        const url = m[0];
-        const id = idDe(url);
+        const id = idDe(m[0]);
         if (!id) continue;
+        if (!ancresParId.has(id)) ancresParId.set(id, []);
+        ancresParId.get(id).push(a);
+      }
+      const diag = { ancres: ancres.length, sans_prix: 0, sans_titre: 0 };
+      const annonces = [];
+      for (const [id, liste] of ancresParId) {
+        const a = liste[0];
+        const url = a.href.match(re)[0];
         const carte = carteDe(a);
-        const texte = (carte.textContent || "").replace(/\s+/g, " ").trim();
-        // Titre : attribut title / aria-label / alt d'image / texte de l'ancre,
-        // le premier non vide et de longueur plausible.
-        const candidatsTitre = [
-          a.getAttribute("title"), a.getAttribute("aria-label"),
-          carte.querySelector?.("h1,h2,h3,h4,[class*='title'],[data-qa-id*='title']")?.textContent,
-          a.querySelector?.("img")?.getAttribute("alt"), a.textContent,
-        ].map((t) => (t || "").replace(/\s+/g, " ").trim()).filter((t) => t.length >= 3 && t.length <= 200);
-        const titre = candidatsTitre[0] ?? null;
-        const prixM = texte.match(/(\d{1,5}(?:[.,]\d{1,2})?)\s?€/);
-        const prix = prixM ? Number(prixM[1].replace(",", ".")) : null;
-        const bas = texte.toLowerCase();
+        const titre = titreDeCarte(carte, liste);
+        const prix = prixDeCarte(carte);
+        const bas = feuillesDe(carte).map((f) => f.texte).join(" ").toLowerCase();
         const statut = /désactiv|desactiv|inactive|expir/.test(bas) ? "desactivee"
           : /vendu|sold/.test(bas) ? "vendue" : null;
-        const photo = carte.querySelector?.("img")?.currentSrc || carte.querySelector?.("img")?.src || null;
-        if (!parId.has(id)) parId.set(id, { listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null });
-        else if (!parId.get(id).titre && titre) parId.get(id).titre = titre;
+        const img = carte.querySelector?.("img");
+        const photo = img?.currentSrc || img?.src || null;
+        if (!titre) diag.sans_titre++;
+        if (prix === null) diag.sans_prix++;
+        annonces.push({ listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null });
       }
       const suivant = document.querySelector("a[rel='next'], a[aria-label*='suivant' i], a[aria-label*='next' i], button[aria-label*='suivant' i]");
-      return { annonces: [...parId.values()], suivant: suivant ? (suivant.href || true) : null, diag: { ancres: ancres.length } };
+      return { annonces, suivant: suivant ? (suivant.href || true) : null, diag };
     },
     args: [pattern.source, platform],
   });
@@ -11504,6 +11613,7 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
 async function releverAnnoncesPlateforme(platform) {
   const annonces = new Map();
   let complet = true;
+  const illisibles = { prix: 0, titre: 0 }; // ce que le relevé n'a PAS su lire (jamais deviné)
   if (platform === "opla") {
     if (!(await oplaAccesAccorde())) return { annonces: [], complet: false, erreur: "accès Opla non accordé" };
     await assurerScriptsOpla();
@@ -11532,6 +11642,8 @@ async function releverAnnoncesPlateforme(platform) {
         return { annonces: [...annonces.values()], complet: false, erreur: `session ${platform} : page de connexion` };
       }
       const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) } }));
+      illisibles.prix += Number(r.diag?.sans_prix) || 0;
+      illisibles.titre += Number(r.diag?.sans_titre) || 0;
       for (const a of r.annonces ?? []) {
         if (!annonces.has(a.listing_id)) annonces.set(a.listing_id, { ...a, statut: a.statut ?? page.statut });
       }
@@ -11541,7 +11653,210 @@ async function releverAnnoncesPlateforme(platform) {
       await sleep(randInt(1200, 2400));
     }
   }
-  return { annonces: [...annonces.values()], complet };
+  return { annonces: [...annonces.values()], complet, illisibles };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CAPTURE COMPLÈTE D'UNE ANNONCE (2026-09-17 soir, demande Nico)
+// ══════════════════════════════════════════════════════════════════════════════
+// Le relevé de « Mes annonces » ne voit qu'une vignette, un titre, un prix.
+// Importer une annonce avec ça, c'est un article à UNE photo, sans
+// description ni taille — l'inverse de la synchro Vinted, qui capture tout.
+// Ici, pour chaque annonce relevée PAS ENCORE capturée (colonne
+// annonces_plateforme.capture_le), on ouvre sa fiche dans l'onglet de travail
+// et on lit ce que la fiche EXPOSE : toutes les photos, la description, la
+// marque, la taille, l'état, la couleur, la matière, la catégorie.
+//   · Leboncoin : __NEXT_DATA__ (props.pageProps.ad : images.urls_large,
+//     body, attributes) ; à défaut ld+json Product + critères + galerie.
+//   · Beebs : ld+json Product (image[], description, brand, color) + lignes
+//     « État / Taille / Marque / Couleur / Matière » + fil d'Ariane.
+//   · eBay : ld+json Product (image[] → s-l1600) + état + caractéristiques.
+//     La description vit sur itm.ebaydesc.com, hors de nos permissions :
+//     absente, et la capture le dit (description_absente).
+//   · Opla : GET /public/articles/<id> par le content script (API).
+// Relevés réels du 17/09 (Casio 3242179311, Beebs 33700062, eBay
+// 800423009959) : les trois fiches exposent leurs photos en clair.
+// Borné : CAPTURE_MAX_PAR_RUN fiches par relevé (le reste au suivant), pause
+// aléatoire entre deux fiches. Écrit par PATCH, une annonce à la fois ; si la
+// colonne n'existe pas encore (migration non appliquée), on le note et on
+// s'arrête — le relevé lui-même n'en dépend pas.
+const CAPTURE_MAX_PAR_RUN = 30;
+
+// Lecture EN PAGE : une fonction, un switch par plateforme, zéro requête.
+function capturerFicheEnPage(plateforme) {
+  const propre = (s) => String(s ?? "").replace(/[\s  ]+/g, " ").trim();
+  const sansQuery = (u) => String(u ?? "").split("?")[0];
+  const texteDeHtml = (h) => {
+    const d = document.createElement("div");
+    d.innerHTML = String(h ?? "").replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n");
+    return (d.textContent || "").replace(/[ \t ]+/g, " ").replace(/\n\s*\n+/g, "\n").trim();
+  };
+  const ld = Array.from(document.querySelectorAll("script[type='application/ld+json']"))
+    .map((s) => { try { return JSON.parse(s.textContent); } catch { return null; } })
+    .filter(Boolean).flatMap((x) => (Array.isArray(x) ? x : [x]))
+    .find((x) => x && /Product/i.test(String(x["@type"]))) ?? null;
+  const ldImages = () => (Array.isArray(ld?.image) ? ld.image : (ld?.image ? [ld.image] : []))
+    .map((i) => (typeof i === "string" ? i : i?.url ?? i?.contentUrl ?? null)).filter((u) => /^https?:/.test(String(u)));
+  const feuilles = () => Array.from(document.querySelectorAll("body *")).filter((e) => !e.children.length && propre(e.textContent));
+  // Lignes « Libellé / Valeur » : la feuille dont le texte EST le libellé, et la
+  // feuille voisine dans le même parent.
+  const ligneLibellee = (libelles) => {
+    for (const f of feuilles()) {
+      if (!libelles.includes(propre(f.textContent))) continue;
+      const voisins = Array.from(f.parentElement?.querySelectorAll("*") ?? []).filter((x) => !x.children.length && x !== f).map((x) => propre(x.textContent)).filter(Boolean);
+      if (voisins[0]) return voisins[0];
+    }
+    return null;
+  };
+  const out = { photos: [], description: null, marque: null, taille: null, etat: null, couleur: null, matiere: null, categorie: null, source: null };
+  if (plateforme === "leboncoin") {
+    let ad = null;
+    try { ad = JSON.parse(document.getElementById("__NEXT_DATA__")?.textContent ?? "null")?.props?.pageProps?.ad ?? null; } catch { ad = null; }
+    if (ad && typeof ad === "object") {
+      out.source = "next_data";
+      const grandes = Array.isArray(ad.images?.urls_large) && ad.images.urls_large.length ? ad.images.urls_large : (ad.images?.urls ?? []);
+      out.photos = grandes.filter((u) => /^https?:/.test(String(u)));
+      out.description = typeof ad.body === "string" && ad.body.trim() ? ad.body.trim() : null;
+      const attr = (re) => { for (const a of ad.attributes ?? []) if (re.test(String(a?.key ?? ""))) return a.value_label ?? a.value ?? null; return null; };
+      // ⚠️ « estimated_parcel_size » = S/M/L du COLIS, pas la taille du vêtement
+      // (relevé 3242179311 : une montre « taille S »). Exclu par le mot parcel.
+      out.marque = attr(/brand$/i); out.taille = attr(/^(?!.*parcel)(?:.*_)?size$/i); out.etat = attr(/^condition$|_condition$/i);
+      out.couleur = attr(/colou?r$/i); out.matiere = attr(/material$/i);
+      out.categorie = ad.category_name ?? null;
+    } else {
+      out.source = "dom";
+      out.description = ld?.description ? texteDeHtml(ld.description) : (propre(document.querySelector("[data-qa-id='adview_description_container']")?.textContent) || null);
+      const crit = (re) => {
+        for (const e of document.querySelectorAll("[data-qa-id^='criteria_item_']")) {
+          if (!re.test(String(e.getAttribute("data-qa-id")).replace("criteria_item_", ""))) continue;
+          const parts = Array.from(e.querySelectorAll("*")).filter((x) => !x.children.length).map((x) => propre(x.textContent)).filter(Boolean);
+          if (parts[1]) return parts[1];
+        }
+        return null;
+      };
+      out.marque = crit(/brand$/i); out.taille = crit(/^(?!.*parcel)(?:.*_)?size$/i); out.etat = crit(/^condition$|_condition$/i);
+      out.couleur = crit(/colou?r$/i); out.matiere = crit(/material$/i);
+      out.categorie = ld?.category ?? null;
+      // Galerie : les images AVANT la description (les « annonces similaires »
+      // viennent après), dédoublonnées par identifiant.
+      const desc = document.querySelector("[data-qa-id='adview_description_container']");
+      const avant = (el) => !desc || Boolean(el.compareDocumentPosition(desc) & Node.DOCUMENT_POSITION_FOLLOWING);
+      const vues = new Set();
+      for (const img of document.querySelectorAll("img")) {
+        const u = sansQuery(img.currentSrc || img.src);
+        const m = u.match(/lbcpb1\/images\/(?:[0-9a-f]{2}\/){3}([0-9a-f]+)/);
+        if (!m || !avant(img) || vues.has(m[1])) continue;
+        vues.add(m[1]); out.photos.push(u);
+      }
+      for (const u of ldImages()) if (!out.photos.includes(sansQuery(u))) out.photos.unshift(u);
+    }
+  } else if (plateforme === "beebs") {
+    out.source = ld ? "ld_json" : "dom";
+    out.photos = ldImages();
+    out.description = ld?.description ? texteDeHtml(ld.description) : null;
+    out.marque = ld?.brand?.name ?? (typeof ld?.brand === "string" ? ld.brand : null) ?? ligneLibellee(["Marque"]);
+    out.couleur = ld?.color ?? ligneLibellee(["Couleur"]);
+    out.taille = ligneLibellee(["Taille"]); out.etat = ligneLibellee(["État", "Etat"]); out.matiere = ligneLibellee(["Matière", "Matiere"]);
+    const fil = Array.from(document.querySelectorAll("nav a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter((t) => t && !/^accueil$/i.test(t));
+    out.categorie = fil.length ? fil.join(" > ") : null;
+    if (!out.photos.length) {
+      const vues = new Set();
+      for (const img of document.querySelectorAll("img")) {
+        const u = sansQuery(img.currentSrc || img.src);
+        if (!/cdn\.beebs\.app\/[0-9a-f-]{20,}/i.test(u) || vues.has(u)) continue;
+        vues.add(u); out.photos.push(u);
+      }
+    }
+  } else if (plateforme === "ebay") {
+    out.source = ld ? "ld_json" : "dom";
+    out.photos = ldImages().map((u) => u.replace(/s-l\d+(\.\w+)$/, "s-l1600$1"));
+    if (!out.photos.length) {
+      const vues = new Set();
+      for (const img of document.querySelectorAll("img")) {
+        const m = sansQuery(img.currentSrc || img.src).match(/i\.ebayimg\.com\/images\/g\/([^/]+)\/s-l\d+(\.\w+)?/);
+        if (!m || vues.has(m[1])) continue;
+        vues.add(m[1]); out.photos.push(`https://i.ebayimg.com/images/g/${m[1]}/s-l1600${m[2] ?? ".jpg"}`);
+      }
+    }
+    // Caractéristiques : le bloc « elevated-info » (État / Taille / Marque en
+    // tête de fiche) et les lignes ux-labels-values (la ligne porte la classe
+    // de base SANS « __ », le libellé et la valeur sont ses enfants). Relevé
+    // sur 800423009959 le 17/09 : Marque Primark, Taille XS, État « Occasion -
+    // Très bon état », Couleur Vert, Matière « Coton 60% Polyester 40% ».
+    const spec = (re) => {
+      for (const lab of document.querySelectorAll(".ux-labels-values__labels, .elevated-info__item__label")) {
+        const lib = propre(lab.textContent).replace(/\s*:\s*$/, "");
+        if (!re.test(lib)) continue;
+        const row = lab.closest("[class*='ux-labels-values']:not([class*='__'])") ?? lab.closest(".elevated-info__item") ?? lab.parentElement;
+        const direct = propre(row?.querySelector(".ux-labels-values__values, .elevated-info__item__value")?.textContent);
+        const val = direct || Array.from(row?.querySelectorAll("*") ?? []).filter((x) => !x.children.length && x !== lab && !lab.contains(x)).map((x) => propre(x.textContent)).find(Boolean);
+        if (val) return val;
+      }
+      return null;
+    };
+    out.marque = spec(/^(marque|brand)$/i); out.taille = spec(/^(taille|size)/i); out.couleur = spec(/^(couleur|colou?r)$/i); out.matiere = spec(/^(mati[eè]re|material)$/i);
+    out.etat = spec(/^(état|condition)$/i)
+      || propre(document.querySelector(".x-item-condition-text, [data-testid='x-item-condition']")?.textContent).replace(/^(état|condition)\s*:?\s*/i, "") || null;
+    out.description_absente = "itm.ebaydesc.com hors permissions";
+    out.categorie = Array.from(document.querySelectorAll("nav.breadcrumbs a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter(Boolean).join(" > ") || null;
+  }
+  out.photos = [...new Set(out.photos.map(String))].slice(0, 30);
+  return out;
+}
+
+// La capture des annonces d'un relevé qui ne l'ont pas encore été, bornée.
+async function capturerAnnonces(platform, annonces, { token, userId }) {
+  const bilan = { capturees: 0, echecs: 0, restantes: 0, motif: null };
+  if (!Array.isArray(annonces) || !annonces.length) return bilan;
+  let deja;
+  try {
+    const rows = await restRequest(
+      `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&capture_le=not.is.null&select=listing_id&limit=5000`, token,
+    );
+    deja = new Set((Array.isArray(rows) ? rows : []).map((r) => String(r.listing_id)));
+  } catch (e) {
+    bilan.motif = "colonne capture absente (migration non appliquée)";
+    console.warn(`[releve][${platform}] capture impossible :`, bilan.motif, String(e?.message ?? e));
+    return bilan;
+  }
+  const aCapturer = annonces.filter((a) => a?.listing_id && (platform === "opla" || a.url) && !deja.has(String(a.listing_id)));
+  bilan.restantes = Math.max(0, aCapturer.length - CAPTURE_MAX_PAR_RUN);
+  for (const a of aCapturer.slice(0, CAPTURE_MAX_PAR_RUN)) {
+    try {
+      let capture = null;
+      if (platform === "opla") {
+        const tabId = await getOrCreateWorkTab("opla", "https://www.opla.co/");
+        const r = await sendMessageToTab(tabId, { type: "OPLA_CAPTURE_ARTICLE", listingId: String(a.listing_id) })
+          .catch((e) => ({ success: false, error: String(e?.message ?? e) }));
+        if (!r?.success || !r.capture) throw new Error(r?.error ?? "fiche Opla illisible");
+        capture = r.capture;
+      } else {
+        const tabId = await getOrCreateWorkTab(platform, a.url);
+        const tab = await chrome.tabs.get(tabId).catch(() => null);
+        if (String(tab?.url ?? "").split("#")[0] !== String(a.url).split("#")[0]) {
+          const loaded = waitForTabComplete(tabId, a.url);
+          await neutralizeBeforeUnload(tabId);
+          await chrome.tabs.update(tabId, { url: a.url + WORK_TAB_FRAGMENT });
+          await loaded;
+        }
+        await sleep(randInt(1200, 2200));
+        const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: capturerFicheEnPage, args: [platform] });
+        capture = res?.result ?? null;
+        if (!capture || (!capture.photos?.length && !capture.description)) throw new Error("fiche illisible (ni photo ni description)");
+      }
+      const at = new Date().toISOString();
+      await restRequest(
+        `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&listing_id=eq.${encodeURIComponent(String(a.listing_id))}`, token,
+        { method: "PATCH", body: JSON.stringify({ capture: { ...capture, at }, capture_le: at, updated_at: at }) },
+      );
+      bilan.capturees++;
+    } catch (e) {
+      bilan.echecs++;
+      console.warn(`[releve][${platform}] capture ${a.listing_id} en échec :`, String(e?.message ?? e));
+    }
+    await sleep(randInt(1500, 3000));
+  }
+  return bilan;
 }
 
 // UN chemin pour tous les déclencheurs : crée ou réclame le run, relève,
@@ -11590,7 +11905,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       if (!run) return { ok: false, reason: "run_non_cree" };
     }
     console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
-    const { annonces, complet, erreur } = await releverAnnoncesPlateforme(platform);
+    const { annonces, complet, erreur, illisibles } = await releverAnnoncesPlateforme(platform);
     const lignes = annonces.map((a) => ({
       user_id: userId, platform, listing_id: String(a.listing_id), url: a.url ?? null,
       titre: a.titre ?? null, prix: Number.isFinite(Number(a.prix)) ? Number(a.prix) : null,
@@ -11611,6 +11926,10 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
         method: "PATCH", body: JSON.stringify({ erreur: `[incomplet] ${erreur ?? "borne de pagination atteinte"}`, updated_at: maintenant() }),
       }).catch(() => {});
     }
+    // CAPTURE COMPLÈTE (photos, description, attributs) des annonces pas
+    // encore capturées — bornée, jamais bloquante pour le relevé.
+    const capture = await capturerAnnonces(platform, annonces, { token, userId })
+      .catch((e) => ({ capturees: 0, echecs: 0, restantes: 0, motif: String(e?.message ?? e) }));
     // LE MOTEUR : rattachements par identifiant, automatiques (certains) et
     // propositions — tout vit côté serveur, rien n'est décidé ici.
     let bilan = null;
@@ -11630,7 +11949,13 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       items_vus: annonces.length, items_crees: Number(bilan?.auto) || 0, items_maj: Number(bilan?.par_job) || 0,
       total_entries: annonces.length,
       erreur: [erreur ? `[incomplet] ${erreur}` : (!complet ? "[incomplet] borne de pagination atteinte" : null),
-               bilan?.ok ? `[rattachement] par identifiant ${bilan.par_job}, automatiques ${bilan.auto}, proposées ${bilan.proposees}, sans candidat ${bilan.sans_candidat}, disparues ${bilan.disparues}` : null]
+               // Ce que le relevé n'a pas su lire, dit dans le run : un prix
+               // illisible reste null (bande incertaine), jamais un nombre.
+               illisibles && (illisibles.prix || illisibles.titre)
+                 ? `[relevé] illisible : prix sur ${illisibles.prix} annonce(s), titre sur ${illisibles.titre}` : null,
+               bilan?.ok ? `[rattachement] par identifiant ${bilan.par_job}, automatiques ${bilan.auto}, proposées ${bilan.proposees}, sans candidat ${bilan.sans_candidat}, disparues ${bilan.disparues}` : null,
+               (capture.capturees || capture.echecs || capture.restantes || capture.motif)
+                 ? `[capture] ${capture.capturees} fiche(s) capturée(s)${capture.echecs ? `, ${capture.echecs} en échec` : ""}${capture.restantes ? `, ${capture.restantes} au prochain relevé` : ""}${capture.motif ? ` — ${capture.motif}` : ""}` : null]
         .filter(Boolean).join(" · ") || null,
     };
     await restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, { method: "PATCH", body: JSON.stringify(fin) }).catch(() => {});

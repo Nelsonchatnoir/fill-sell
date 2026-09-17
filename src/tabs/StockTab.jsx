@@ -1990,7 +1990,7 @@ const REPRISE_AUTO_RE = /^\[reprise-auto\] tentative (\d+)\/(\d+) prevue (\S+) �
 // Chrome. Le marquage des disparitions est protégé par l'identité du RUN,
 // côté extension : sync mono-compte.)
 
-function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null }) {
+function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null, variante = 'carte', registerLancer = null }) {
   const fr = lang !== 'en';
   // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
   // doctrine du 09/08. Le CTA d'installation sur stock vide — l'e-mail en un
@@ -2868,14 +2868,55 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
     rouge:  { bg: '#FEF2F2', bord: '#FECACA',               texte: '#B91C1C' },
   };
 
+  // ── LIGNE (refonte du 17/09 soir) : dans le bloc unique « Mes annonces en
+  // ligne », Vinted est une ligne comme les quatre autres — logo, nom, dernier
+  // relevé + nombre, bouton « Relever ». Même état, même `lancer`, même suite
+  // (attente, blocage, bilan) rendue sous la ligne. Le parent récupère `lancer`
+  // (registerLancer) pour « Tout relever ». La CARTE d'aujourd'hui reste le
+  // rendu quand le relevé multiplateforme est fermé.
+  if (typeof registerLancer === 'function') registerLancer(lancer);
+  const ligneMode = variante === 'ligne';
+  const boutonInactif = !peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee;
+  const etatLigne = (() => {
+    if (enCours) return fr ? 'Relevé en cours…' : 'Scanning…';
+    if (envoi) return fr ? 'Envoi de la demande…' : 'Sending request…';
+    if (enAttenteDistante) return fr ? 'Demande en attente de ton ordinateur' : 'Waiting for your computer';
+    if (attenteOccupee) return fr ? 'Demande en attente — elle passe en premier' : 'Request waiting — it goes first';
+    const fini = derniereReussie?.finished_at ? Date.parse(derniereReussie.finished_at) : NaN;
+    if (!Number.isFinite(fini)) return fr ? 'Jamais relevée' : 'Never scanned';
+    const vus = Number(derniereReussie?.items_vus ?? 0);
+    const login = typeof derniereReussie?.vinted_login === 'string' && derniereReussie.vinted_login.trim() ? derniereReussie.vinted_login.trim() : null;
+    return fr
+      ? `Relevé ${depuisTexte(fini)} · ${vus} annonce${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`
+      : `Scanned ${depuisTexte(fini)} · ${vus} listing${vus > 1 ? 's' : ''}${login ? ` · @${login}` : ''}`;
+  })();
+
   return (
-    <div style={{background:"#fff",borderRadius:12,border:"1px solid #E7E3D8",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+    <div style={ligneMode
+      ? {display:"flex",flexDirection:"column",gap:8}
+      : {background:"#fff",borderRadius:12,border:"1px solid #E7E3D8",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+      {ligneMode ? (
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:12,background:'#F6F5F1',border:'1px solid #E7E3D8'}}>
+          <PlatformLogo platform="vinted" size={20}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:700,fontSize:13,color:'#10201B'}}>Vinted</div>
+            <div style={{fontSize:11.5,color:'#5C6560',lineHeight:1.4}}>{etatLigne}</div>
+          </div>
+          {!(blocage&&source==='stock_empty')&&(
+            <button type="button" disabled={boutonInactif} onClick={lancer}
+              style={{padding:'7px 12px',borderRadius:999,border:'1px solid #E7E3D8',background:'#fff',color:boutonInactif?'#8A8578':'#1B6E62',fontSize:12.5,fontWeight:700,cursor:boutonInactif?'default':'pointer',fontFamily:'inherit',flexShrink:0}}>
+              {enCours ? (fr?'En cours':'Running') : envoi ? (fr?'Envoi…':'Sending…') : (fr?'Relever':'Scan')}
+            </button>
+          )}
+        </div>
+      ) : (
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <PlatformLogo platform="vinted" size={20}/>
         <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
           {fr?"Tu vends déjà sur Vinted ?":"Already selling on Vinted?"}
         </div>
       </div>
+      )}
 
       {/* ── Stock VIDE sans extension : un CTA VIVANT, jamais un bouton mort
           (2026-09-01, audit Stock vide). Le bouton « Synchroniser » grisé en
@@ -2898,8 +2939,8 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
           userId={user?.id??null} userEmail={user?.email??null}
           source="stock_vide" message={MESSAGE_BLOCAGE}
         />
-      ):(
-      <SecondaryButton disabled={!peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee} onClick={lancer}>
+      ):(ligneMode?null:(
+      <SecondaryButton disabled={boutonInactif} onClick={lancer}>
         {enCours
           ? (fr?"Synchronisation en cours…":"Syncing…")
           : envoi
@@ -2912,13 +2953,13 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
                   ? (fr?"Actualiser mes annonces Vinted":"Refresh my Vinted listings")
                   : (fr?"Relever mes annonces Vinted":"Scan my Vinted listings")}
       </SecondaryButton>
-      )}
+      ))}
 
       {/* Une ligne grise, pas un encart. Deux choses, dans cet ordre : l'HEURE
           RÉELLE de la dernière synchro (un fait, affiché à chaque fois qu'il
           existe) et le rappel que c'est automatique (une promesse, donc
           conditionnée). */}
-      {ligneSync&&(
+      {!ligneMode&&ligneSync&&(
         <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A8578"}}>{ligneSync}</div>
       )}
 
@@ -4500,6 +4541,7 @@ const StockTab = memo(function StockTab({
   // Cible du CTA « publie-les aussi… » de la carte de sync (2026-09-01) :
   // la grille d'articles, où vivent les boutons Publier. Navigation pure.
   const galerieRef = useRef(null);
+  const lancerVintedRef = useRef(null); // « Tout relever » (bloc unique) appelle le lancer de la ligne Vinted
   useEffect(() => () => { if (detailNoteTimer.current) clearTimeout(detailNoteTimer.current); }, []);
   const montrerNoteDetail = (message) => {
     setDetailNote(message);
@@ -6621,18 +6663,9 @@ const StockTab = memo(function StockTab({
             (Pro) ou modale de conversion (autres). Monté seulement si le
             module est exposé (cf. planifieeExposee) — sinon l'ancien bloc É6
             reste en bas de liste, intact. */}
-        {planifieeExposee&&(
-          <RepublicationPlanifieeBloc
-            lang={lang}
-            etat={planifiee.etat}
-            interrupteur={planifiee.interrupteur}
-            extensionStatus={extensionStatus}
-            busy={planifiee.busy}
-            onOuvrirReglages={()=>setPlanifieeEcran('reglages')}
-            onActiver={planifieeActiver}
-            onActiverNonPro={planifieeActiverNonPro}
-          />
-        )}
+        {/* (Republication automatique : depuis le 17/09 soir, une ligne repliée
+            en PIED de page — voir le bas du composant. Le haut de page va droit
+            au stock : bloc de synchro, recherche, cartes.) */}
         {/* ── Écran de progression des republications (v3 du 28/08 soir) :
             UN actif, une file, un repli — le traitement réel est SÉQUENTIEL
             (une republication toutes les ~3 min) ; les barres par job de
@@ -6812,25 +6845,51 @@ const StockTab = memo(function StockTab({
             composant porte l'état du run (sonde extension, poll de
             progression) — une instance par branche serait démontée/remontée
             au premier article importé, état perdu en plein suivi. */}
-        <VintedDressingSync
-          lang={lang} user={user} isNative={isNative}
-          extensionStatus={extensionStatus}
-          source={stock.length===0?'stock_empty':'stock_liste'}
-          onDone={rafraichirApresSync}
-          repubEnVol={repubVivants}
-          repubRepriseA={repubRepriseA}
-          onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
-          boutiquesVinted={boutiquesVinted}
-          rechargerBoutiques={rechargerBoutiques}
-        />
-        {/* Relevé des annonces sur les autres plateformes (2026-09-17) :
-            rendu SEULEMENT quand l'interrupteur serveur est ouvert. */}
-        <RelevesPlateformes
-          lang={lang} user={user} items={items} ouvert={syncMultiOuverte}
-          plateformes={plateformesCompte.filter(p=>p!=='vinted')}
-          extensionStatus={extensionStatus}
-          onRattache={rafraichirApresSync}
-        />
+        {/* ── UN SEUL BLOC « Mes annonces en ligne » (refonte du 17/09 soir) :
+            les CINQ plateformes en lignes identiques, Vinted comprise (même
+            format, plus aucun traitement particulier), « Tout relever » en
+            bas. GARDE-FOU : seulement quand l'interrupteur du relevé est
+            ouvert — sinon la carte Vinted seule, comme avant. GARDE-FOU : la
+            liste des plateformes est celle des cartes (plateformesDuCompte),
+            jamais une troisième liste. */}
+        {syncMultiOuverte ? (
+          <div style={{background:'#fff',border:'1px solid #E7E3D8',borderRadius:20,padding:'14px 16px',display:'flex',flexDirection:'column',gap:10}}>
+            <RelevesPlateformes
+              lang={lang} user={user} items={items} ouvert={syncMultiOuverte} integre
+              plateformes={plateformesCompte.filter(p=>p!=='vinted')}
+              extensionStatus={extensionStatus}
+              onRattache={rafraichirApresSync}
+              lancerVinted={()=>{ try { lancerVintedRef.current?.(); } catch { /* la ligne Vinted dit le refus */ } }}
+              ligneVinted={
+                <VintedDressingSync
+                  lang={lang} user={user} isNative={isNative}
+                  extensionStatus={extensionStatus}
+                  source={stock.length===0?'stock_empty':'stock_liste'}
+                  onDone={rafraichirApresSync}
+                  repubEnVol={repubVivants}
+                  repubRepriseA={repubRepriseA}
+                  onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
+                  boutiquesVinted={boutiquesVinted}
+                  rechargerBoutiques={rechargerBoutiques}
+                  variante="ligne"
+                  registerLancer={(fn)=>{ lancerVintedRef.current=fn; }}
+                />
+              }
+            />
+          </div>
+        ) : (
+          <VintedDressingSync
+            lang={lang} user={user} isNative={isNative}
+            extensionStatus={extensionStatus}
+            source={stock.length===0?'stock_empty':'stock_liste'}
+            onDone={rafraichirApresSync}
+            repubEnVol={repubVivants}
+            repubRepriseA={repubRepriseA}
+            onVoirArticles={()=>galerieRef.current?.scrollIntoView({behavior:'smooth',block:'start'})}
+            boutiquesVinted={boutiquesVinted}
+            rechargerBoutiques={rechargerBoutiques}
+          />
+        )}
       </div>
       {/* ── Stock VIDE, mobile : la carte d'ajout DESCEND (2026-09-01) ────────
           Quatre portes se concurrençaient au premier écran d'un compte à
@@ -9717,6 +9776,24 @@ const StockTab = memo(function StockTab({
           <RepublishProgressSheet lang={lang} job={frais} reprise={repubPlafondReprise} onClose={()=>setRepubProgress(null)} onSaisieRelance={validerSaisieRelance}/>
         );
       })()}
+      {/* ── Republication automatique — LIGNE REPLIÉE EN PIED DE PAGE (17/09 soir).
+          Titre, état, créneau, chevron ; le détail derrière le tap (réglages).
+          Monté seulement si le module est exposé (planifieeExposee). */}
+      {planifieeExposee&&(
+        <div style={{marginTop:16}}>
+          <RepublicationPlanifieeBloc
+            lang={lang}
+            variante="pied"
+            etat={planifiee.etat}
+            interrupteur={planifiee.interrupteur}
+            extensionStatus={extensionStatus}
+            busy={planifiee.busy}
+            onOuvrirReglages={()=>setPlanifieeEcran('reglages')}
+            onActiver={planifieeActiver}
+            onActiverNonPro={planifieeActiverNonPro}
+          />
+        </div>
+      )}
       {/* ── Republication par créneaux : les deux écrans plein (13/09) ────
           Réglages (ouvert par le bloc compact) et historique (ouvert depuis
           le pied des réglages). Portails ; l'historique revient aux

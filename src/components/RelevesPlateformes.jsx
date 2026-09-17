@@ -45,7 +45,11 @@ function ilYA(iso, fr) {
 
 // `plateformes` : la liste du COMPTE (plateformesDuCompte, StockTab) — le même
 // jeu que les cartes, les chips et la modale de retrait. Sans elle, le plafond.
-export default function RelevesPlateformes({ lang, user, items = [], ouvert = false, extensionStatus = null, onRattache = null, plateformes = null }) {
+// `integre` (refonte du 17/09 soir) : le bloc unique « Mes annonces en ligne »
+// du Stock — sans cadre propre (le parent le pose), Vinted en PREMIÈRE ligne
+// (`ligneVinted`, même format que les quatre autres), « Tout relever » en bas
+// (`lancerVinted` + les relevés des autres plateformes, à la suite).
+export default function RelevesPlateformes({ lang, user, items = [], ouvert = false, extensionStatus = null, onRattache = null, plateformes = null, integre = false, ligneVinted = null, lancerVinted = null }) {
   const listePlateformes = Array.isArray(plateformes) ? plateformes.filter((p) => PLATEFORMES_RELEVE.includes(p)) : PLATEFORMES_RELEVE;
   const fr = lang !== 'en';
   const [runs, setRuns] = useState({});
@@ -85,6 +89,26 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
     track('releve_plateforme_demande', { platform, reason: r.reason });
     recharger();
   };
+  // « Tout relever » : Vinted d'abord (son propre chemin), puis chaque
+  // plateforme à la suite. Les refus (cadence, relevé déjà en cours…) sont
+  // réunis en UN message ; ce qui part, part.
+  const [toutBusy, setToutBusy] = useState(false);
+  const toutRelever = async () => {
+    if (busy || toutBusy) return;
+    setToutBusy(true); setMessage(null);
+    try { if (typeof lancerVinted === 'function') lancerVinted(); } catch { /* la ligne Vinted dit le refus */ }
+    const refus = [];
+    for (const p of listePlateformes) {
+      const run = runs[p] ?? null;
+      if (run && (run.status === 'queued' || run.status === 'running')) continue;
+      const r = await demanderRelevePlateforme(p).catch((e) => ({ ok: false, reason: 'erreur', message: String(e?.message ?? e) }));
+      if (!r?.ok) { refus.push(`${LABEL_RELEVE[p]} : ${texteRefusReleve(r, lang, p)}`); continue; }
+      track('releve_plateforme_demande', { platform: p, reason: r.reason, depuis: 'tout_relever' });
+    }
+    setToutBusy(false);
+    if (refus.length) setMessage({ ton: 'orange', texte: refus.join(' · ') });
+    recharger();
+  };
 
   if (!ouvert || !user?.id) return null;
 
@@ -92,9 +116,15 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
   const nbARattacher = aRattacher.length;
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${P.border}`, borderRadius: 20, padding: '14px 16px', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={integre
+      ? { display: 'flex', flexDirection: 'column', gap: 10 }
+      : { background: '#fff', border: `1px solid ${P.border}`, borderRadius: 20, padding: '14px 16px', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: P.ink }}>{fr ? 'Mes annonces sur les autres plateformes' : 'My listings on the other platforms'}</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: P.ink }}>
+          {integre
+            ? (fr ? 'Mes annonces en ligne' : 'My listings online')
+            : (fr ? 'Mes annonces sur les autres plateformes' : 'My listings on the other platforms')}
+        </div>
         <span style={{ flex: 1 }} />
         {nbARattacher > 0 && (
           <button type="button" onClick={() => setEcran(true)}
@@ -109,6 +139,7 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
           : 'FillSell re-reads “My listings” on each platform and matches what it recognises to your stock — one item, one card. You decide the rest. Nothing is published, edited or removed.'}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {integre && ligneVinted}
         {listePlateformes.map((p) => {
           const run = runs[p] ?? null;
           const c = compte[p] ?? null;
@@ -137,6 +168,13 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
           );
         })}
       </div>
+      {integre && (
+        <button type="button" disabled={!!busy || toutBusy || !extVue} onClick={toutRelever}
+          title={!extVue ? (fr ? "Il faut l'extension Chrome sur un ordinateur." : 'The Chrome extension on a computer is needed.') : undefined}
+          style={{ width: '100%', padding: '10px 12px', borderRadius: 999, border: `1px solid ${P.border}`, background: '#fff', color: (busy || toutBusy || !extVue) ? P.mute : P.tealDeep, fontSize: 13, fontWeight: 700, cursor: (busy || toutBusy || !extVue) ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+          {toutBusy ? (fr ? 'Envoi…' : 'Sending…') : (fr ? 'Tout relever' : 'Scan all')}
+        </button>
+      )}
       {message && (
         <div style={{ fontSize: 12, lineHeight: 1.5, color: message.ton === 'orange' ? P.amberInk : P.mute2, background: message.ton === 'orange' ? P.amberBg : 'transparent', border: message.ton === 'orange' ? `1px solid ${P.amberBd}` : 'none', borderRadius: 10, padding: message.ton === 'orange' ? '8px 10px' : 0 }}>
           {message.texte}
@@ -244,8 +282,8 @@ function EcranRattachement({ lang, items, annonces, onClose, onDecision }) {
                       <>
                         {prop && (
                           <div style={{ background: P.amberBg, border: `1px solid ${P.amberBd}`, borderRadius: 10, padding: '8px 10px', fontSize: 12.5, color: P.amberInk, lineHeight: 1.5 }}>
-                            {fr ? <>C’est peut-être <strong>« {propTitre ?? (prop.job_id ? 'une de tes annonces' : 'un article de ton stock')} »</strong>{prop.motif === 'prix_different' ? ' — le prix diffère' : prop.motif === 'homonymes' ? ' — plusieurs articles portent ce titre' : prop.motif === 'plusieurs_candidats' ? ' — plusieurs candidats' : ''}.</>
-                                : <>This may be <strong>“{propTitre ?? (prop.job_id ? 'one of your listings' : 'an item in your stock')}”</strong>{prop.motif === 'prix_different' ? ' — the price differs' : prop.motif === 'homonymes' ? ' — several items share this title' : prop.motif === 'plusieurs_candidats' ? ' — several candidates' : ''}.</>}
+                            {fr ? <>C’est peut-être <strong>« {propTitre ?? (prop.job_id ? 'une de tes annonces' : 'un article de ton stock')} »</strong>{prop.motif === 'prix_inconnu' ? ' — le prix n’a pas pu être lu' : prop.motif === 'prix_different' ? ' — le prix diffère' : prop.motif === 'homonymes' ? ' — plusieurs articles portent ce titre' : prop.motif === 'plusieurs_candidats' ? ' — plusieurs candidats' : ''}.</>
+                                : <>This may be <strong>“{propTitre ?? (prop.job_id ? 'one of your listings' : 'an item in your stock')}”</strong>{prop.motif === 'prix_inconnu' ? ' — the price could not be read' : prop.motif === 'prix_different' ? ' — the price differs' : prop.motif === 'homonymes' ? ' — several items share this title' : prop.motif === 'plusieurs_candidats' ? ' — several candidates' : ''}.</>}
                             <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                               <button type="button" disabled={busy === a.id} onClick={() => decider(a, 'attache', prop.inventaire_id ?? null)}
                                 style={{ padding: '7px 12px', borderRadius: 999, border: 'none', background: `linear-gradient(120deg,${P.teal},${P.tealDeep})`, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>

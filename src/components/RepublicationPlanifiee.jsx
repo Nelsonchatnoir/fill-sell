@@ -468,7 +468,7 @@ function EcranPlein({ titre, sousTitre, onClose, droite = null, children, pied =
 // nombre qui va réellement partir (cellule droite). Un avis en pied SEULEMENT
 // s'il change ce que le nombre veut dire (créneau manqué, hors service,
 // extension muette, compteur plein, créneau qui borne).
-export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extensionStatus, busy = false, onOuvrirReglages, onActiver, onActiverNonPro }) {
+export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extensionStatus, busy = false, onOuvrirReglages, onActiver, onActiverNonPro, variante = 'bloc' }) {
   const fr = lang !== 'en';
   const enService = interrupteur === 1;
   const s = synthese(etat, { fr, enService, extensionStatus });
@@ -503,6 +503,35 @@ export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extension
         : (fr ? 'si Chrome est ouvert' : 'if Chrome is open');
       if (nombre.n === 0) nombreCouleur = P.mute;
     }
+  }
+
+  // ── PIED DE PAGE (refonte du 17/09 soir) : une ligne repliée — icône, titre,
+  // état, créneau, chevron. Le détail (cellules, « Activer », avis) vit
+  // derrière le tap : les réglages. Le haut de page va droit au stock.
+  if (variante === 'pied') {
+    return (
+      <div className="rp-tap" role="button" tabIndex={0} onClick={ouvrir} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrir(); } }}
+        aria-label={fr ? 'Republication automatique — réglages' : 'Automatic reposting — settings'}
+        style={{ background: '#fff', border: `1px solid ${P.border}`, borderRadius: 16, boxShadow: '0 1px 4px rgba(16,32,27,.05)', overflow: 'hidden', fontFamily: FONT, color: P.ink }}>
+        <style>{CSS}</style>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px' }}>
+          <IconeCycle actif={actif} attention={s.etatTon === 'amber'} tourne={actif && enService && s.etatTon !== 'amber'} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: '-.01em' }}>{fr ? 'Republication automatique' : 'Automatic reposting'}</span>
+              <PastillePro />
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 500, fontSize: 12, marginTop: 2, color: tonCouleur(s.etatTon), minWidth: 0 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, background: tonCouleur(s.etatTon) }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {s.etatLigne}{creneauValeur ? ` · ${creneauValeur}` : ''}{creneauSous ? ` (${creneauSous})` : ''}
+              </span>
+            </div>
+          </div>
+          <ChevronRight size={18} color={P.mute} style={{ flexShrink: 0 }} />
+        </div>
+      </div>
+    );
   }
 
   return (

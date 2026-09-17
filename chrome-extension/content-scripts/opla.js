@@ -155,6 +155,36 @@ async function listerMesArticles() {
   return { success: true, articles, complet };
 }
 
+// CAPTURE COMPLÈTE d'un article (relevé, 2026-09-17 soir) : la fiche publique
+// par l'API — photos, description, marque, état, taille, couleurs, matières,
+// chemin de catégorie. Codes Opla tels quels (condition « good », couleur
+// « BROWN ») : c'est l'import qui les lira. Aucune écriture, aucun quota.
+async function capturerArticle(id) {
+  if (!/^art_/.test(id)) return { success: false, error: "identifiant Opla inattendu" };
+  const r = await oplaJson(OPLA_ENDPOINTS.article(id));
+  if (!r.ok || !r.corps || typeof r.corps !== "object") return { success: false, error: `fiche Opla illisible (HTTP ${r.statut})` };
+  const a = r.corps.article && typeof r.corps.article === "object" ? r.corps.article : r.corps;
+  const images = (Array.isArray(a.images) ? a.images : (Array.isArray(a.imageUrls) ? a.imageUrls : []))
+    .map((i) => (typeof i === "string" ? i : (i?.url ?? i?.src ?? null)))
+    .filter((u) => /^https?:/.test(String(u)));
+  const md = a.metadata && typeof a.metadata === "object" ? a.metadata : {};
+  const liste = (v) => (Array.isArray(v) && v.length ? v.map(String).join(", ") : null);
+  return {
+    success: true,
+    capture: {
+      photos: images,
+      description: typeof a.description === "string" && a.description.trim() ? a.description.trim() : null,
+      marque: a.brand ?? null,
+      taille: Array.isArray(md.sizes) ? (md.sizes[0] ?? null) : null,
+      etat: a.condition ?? null,
+      couleur: liste(md.colors),
+      matiere: liste(md.materials),
+      categorie: Array.isArray(a.categoriesPath) ? a.categoriesPath.join(" > ") : (a.category ?? null),
+      source: "api",
+    },
+  };
+}
+
 // ⛔ Les bornes (prix max/min, titre, description, photos) NE SONT PAS
 // redéclarées ici : elles vivent dans `content-scripts/opla-prevol.js`, qui est
 // injecté dans le MÊME monde isolé que ce fichier. Les redéclarer en `const`
@@ -315,6 +345,58 @@ async function oplaChargerReferentiel() {
     return enfantsDe(ancre);
   };
 
+  // ── LE CHEMIN D'UN CODE, ET LA DESCENTE PAR LE MOT (2026-09-17 soir) ──────
+  // Défaut vu sur le job cb3dfbb6 (t-shirt homme, catégorie absente à
+  // l'insert) : la question proposait les 8 racines, l'utilisateur répondait
+  // « Hommes », le pré-vol rebutait sur MENS (nœud intermédiaire) et proposait
+  // ses 3 enfants ; il répondait « Vêtements »… et le passage suivant
+  // repartait des 8 racines, le code traduit du choix n'étant jamais écrit sur
+  // le job. Trois questions, zéro progrès, et la garde anti-boucle aurait
+  // coupé à la quatrième.
+  // Ici : (1) le chemin de libellés d'un code (persisté avec lui, cf.
+  // categorieRetenue dans fillListingForm) ; (2) une feuille désignée par son
+  // chemin ENTIER — la forme de la réponse quand la question proposait des
+  // feuilles ; (3) les feuilles dont le libellé EST le mot-objet du job
+  // (jetons comparables : minuscules sans accents, pluriels ramenés, mots
+  // vides ôtés — même règle que src/utils/categorieParMot.js), sous un nœud
+  // donné ou dans tout l'arbre. Une seule → on descend sans question ;
+  // plusieurs → UNE question, au niveau des feuilles, avec leur chemin entier.
+  const SEPARATEUR_CHEMIN = " › ";
+  const cheminDe = (code) => {
+    const out = [];
+    for (let c = String(code ?? "").trim(), n = 0; c && noeuds.has(c) && n < 12; c = parents.get(c) ?? "", n++) out.unshift(titres.get(c));
+    return out;
+  };
+  const comparable = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+  const MOTS_VIDES = new Set(["de", "des", "du", "le", "la", "les", "l", "d", "et", "ou", "a", "au", "aux", "en", "par", "sur", "avec", "autre", "autres", "divers"]);
+  const jetons = (s) => comparable(s).replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
+    .map((t) => t.replace(/(?<=\p{L}{3})[sx]$/u, "")).filter((t) => t && !MOTS_VIDES.has(t)).sort().join(" ");
+  const sousArbre = (code) => {
+    const c = String(code ?? "").trim();
+    if (!c || !noeuds.has(c)) return null; // null = tout l'arbre
+    const dedans = new Set();
+    (function descend(k) { for (const e of enfantsDe(k)) { dedans.add(e.code); descend(e.code); } })(c);
+    return dedans;
+  };
+  const feuillesParMot = (mot, racine) => {
+    const jm = jetons(mot);
+    if (!jm) return [];
+    const perimetre = sousArbre(racine);
+    const out = [];
+    for (const f of feuilles) {
+      if (perimetre && !perimetre.has(f)) continue;
+      if (jetons(titres.get(f)) === jm) out.push({ code: f, title: titres.get(f), chemin: cheminDe(f) });
+    }
+    return out;
+  };
+  const feuilleParChemin = (libelle) => {
+    const l = String(libelle ?? "");
+    if (!l.includes(SEPARATEUR_CHEMIN.trim())) return null;
+    const cible = comparable(l.split(/\s*›\s*/).join(SEPARATEUR_CHEMIN));
+    for (const f of feuilles) if (comparable(cheminDe(f).join(SEPARATEUR_CHEMIN)) === cible) return f;
+    return null;
+  };
+
   // Paramètres par feuille : `sizes` présent ⇔ la catégorie a un champ Taille.
   // Mémoïsé — une feuille par job, pas 886.
   //
@@ -349,6 +431,7 @@ async function oplaChargerReferentiel() {
   return {
     noeuds, feuilles, grillePour, couleursPour, matieresPour, precharger,
     titres, enfantsDe, optionsNiveauEchoue,
+    cheminDe, feuillesParMot, feuilleParChemin, SEPARATEUR_CHEMIN,
   };
 }
 
@@ -491,19 +574,61 @@ async function fillListingForm(job) {
     // rangerait l'annonce dans l'autre rayon, en 200, sans un mot.
     // Un choix qui mène à un nœud intermédiaire laisse le job repasser au
     // pré-vol : il redemandera, UN CRAN PLUS BAS, avec les bonnes options.
-    const choix = String(job?.platform_fields?.oplaCategoryChoice ?? "").trim();
-    let code = String(job?.platform_fields?.oplaCategoryCode ?? "").trim();
+    const pf0 = job?.platform_fields ?? {};
+    const choix = String(pf0.oplaCategoryChoice ?? "").trim();
+    let code = String(pf0.oplaCategoryCode ?? "").trim();
     if (choix) {
-      const niveau = ref.optionsNiveauEchoue(code, job?.platform_fields?.oplaCategoryPath ?? job?.categoryPath ?? []);
-      const trouve = niveau.find((o) => String(o.title).trim().toLowerCase() === choix.toLowerCase());
-      if (trouve) {
-        oplaTracer(`categorie: choix utilisateur « ${choix} » → ${trouve.code} (niveau de ${niveau.length} options)`);
-        code = trouve.code;
-        job = { ...job, platform_fields: { ...(job.platform_fields ?? {}), oplaCategoryCode: code } };
+      // (a) Un CHEMIN ENTIER (« Hommes › Vêtements › … › T-shirts ») : la
+      //     question précédente proposait des FEUILLES (descente par le mot).
+      const feuille = ref.feuilleParChemin(choix);
+      if (feuille) {
+        oplaTracer(`categorie: choix utilisateur « ${choix} » → ${feuille} (feuille, par son chemin)`);
+        code = feuille;
       } else {
-        oplaTracer(`categorie: choix utilisateur « ${choix} » ABSENT du niveau courant — ignoré, on redemandera`);
+        // (b) Un libellé du NIVEAU qui avait échoué.
+        const niveau = ref.optionsNiveauEchoue(code, pf0.oplaCategoryPath ?? job?.categoryPath ?? []);
+        const trouve = niveau.find((o) => String(o.title).trim().toLowerCase() === choix.toLowerCase());
+        if (trouve) {
+          oplaTracer(`categorie: choix utilisateur « ${choix} » → ${trouve.code} (niveau de ${niveau.length} options)`);
+          code = trouve.code;
+        } else {
+          oplaTracer(`categorie: choix utilisateur « ${choix} » ABSENT du niveau courant — ignoré, on redemandera`);
+        }
       }
     }
+    // ── LA DESCENTE PAR LE MOT (2026-09-17 soir) ─────────────────────────────
+    // Catégorie absente ou nœud intermédiaire, et le job nomme son objet
+    // (categorie_objet_ia / categorie_mot_cle_titre, posés par l'app) : on
+    // cherche les FEUILLES dont le libellé EST ce mot, sous le nœud acquis ou
+    // dans tout l'arbre. Une seule → on y va sans question (« Hommes » +
+    // « t-shirt » = MEN_TOP_T_SHIRTS). Plusieurs → UNE question, au niveau des
+    // feuilles, avec leur chemin entier — jamais trois questions racine →
+    // rayon → sous-rayon.
+    const mot = String(pf0.categorie_objet_ia ?? pf0.categorie_mot_cle_titre ?? "").trim();
+    let feuillesCandidates = [];
+    if (mot && (!code || (ref.noeuds.has(code) && !ref.feuilles.has(code)))) {
+      const sous = ref.feuillesParMot(mot, code || null);
+      const ou = code ? `sous ${code}` : "dans tout l'arbre";
+      if (sous.length === 1) {
+        oplaTracer(`categorie: mot « ${mot} » → ${sous[0].code} (feuille unique ${ou})`);
+        code = sous[0].code;
+      } else if (sous.length > 1) {
+        feuillesCandidates = sous;
+        oplaTracer(`categorie: mot « ${mot} » → ${sous.length} feuilles ${ou} — question au niveau des feuilles`);
+      } else {
+        oplaTracer(`categorie: mot « ${mot} » sans feuille ${ou}`);
+      }
+    }
+    // Ce qui est acquis est ACQUIS : le code (même intermédiaire) et son chemin
+    // partent avec le résultat sur TOUTES les issues (oplaSortie), et le
+    // background les recopie sur le job. Le choix consommé est effacé — relu au
+    // passage suivant, il se traduirait contre un autre niveau.
+    oplaCategorieRetenue = {
+      ...(code && ref.noeuds.has(code) ? { oplaCategoryCode: code, oplaCategoryPath: ref.cheminDe(code) } : {}),
+      ...(choix ? { oplaCategoryChoice: null } : {}),
+    };
+    if (!Object.keys(oplaCategorieRetenue).length) oplaCategorieRetenue = null;
+    if (code) job = { ...job, platform_fields: { ...pf0, oplaCategoryCode: code } };
     if (code) await ref.precharger(code);
     oplaTracer(`referentiel: ${ref.feuilles.size} feuilles, categorie « ${code || "(absente)"} »`);
 
@@ -528,7 +653,11 @@ async function fillListingForm(job) {
       const champNU = verdict.champ === "size"
         ? { key: "oplaSizeChoice", label: "Taille Opla" }
         : { key: "oplaCategoryChoice", label: "Catégorie Opla" };
-      const options = Array.isArray(verdict.options) ? verdict.options : [];
+      // Quand la descente par le mot a trouvé PLUSIEURS feuilles, la question
+      // porte sur ELLES (chemin entier) — pas sur le niveau du pré-vol.
+      const options = verdict.champ === "category" && feuillesCandidates.length
+        ? feuillesCandidates.map((f) => ({ code: f.code, title: f.chemin.join(ref.SEPARATEUR_CHEMIN) }))
+        : (Array.isArray(verdict.options) ? verdict.options : []);
       return oplaSortie({
         success: false,
         needsUser: true,
@@ -691,6 +820,9 @@ function oplaSortie(resultat) {
   const { t0, ...reste } = resultat;
   return {
     ...reste,
+    // La catégorie acquise (fillListingForm), sur toutes les issues — c'est
+    // ce que le background recopie sur le job (categorieRetenue).
+    ...(oplaCategorieRetenue ? { categorieRetenue: oplaCategorieRetenue } : {}),
     diagnostic: oplaTrace.slice(-30).join(" | "),
     etape: oplaEtapeCourante,
     duree_ms: t0 ? Date.now() - t0 : null,
@@ -930,6 +1062,10 @@ function oplaEtape(nom) {
 
 // ── Trace du relevé, jointe au POINT DE SORTIE UNIQUE ───────────────────────
 const oplaTrace = [];
+// La catégorie acquise au cours du passage (code + chemin, choix consommé) :
+// posée par fillListingForm, jointe à TOUTES les sorties par oplaSortie, remise
+// à zéro avec la trace à chaque message.
+let oplaCategorieRetenue = null;
 function oplaTracer(quoi) { oplaTrace.push(`${new Date().toISOString()} ${quoi}`); }
 
 // ── Écouteur ────────────────────────────────────────────────────────────────
@@ -945,6 +1081,12 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
       sendResponse({ success: true, pong: true, actif: OPLA_ACTIF });
       return true;
     }
+    if (msg?.type === "OPLA_CAPTURE_ARTICLE") {
+      capturerArticle(String(msg.listingId ?? ""))
+        .then((r) => sendResponse(r))
+        .catch((err) => sendResponse({ success: false, error: String(err?.message ?? err) }));
+      return true;
+    }
     if (msg?.type === "OPLA_LISTE_ARTICLES") {
       listerMesArticles()
         .then((r) => sendResponse(r))
@@ -957,7 +1099,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
       // — le content script survit d'un job à l'autre sur l'onglet de travail
       // persistant. Le diagnostic écrit en base aurait décrit un autre job.
       oplaEtapeCourante = null;
-      oplaTrace.length = 0;
+      oplaTrace.length = 0; oplaCategorieRetenue = null;
       const action = msg.type === "DELETE_LISTING" ? deleteListing : republishListing;
       action(msg.job)
         .then((r) => sendResponse({ ...r, trace: [...oplaTrace], fill_step: oplaEtapeCourante }))
@@ -973,7 +1115,7 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
     if (msg?.type !== "FILL_LISTING") return;
 
     oplaEtapeCourante = null;
-    oplaTrace.length = 0;
+    oplaTrace.length = 0; oplaCategorieRetenue = null;
     // trace jointe sur TOUTES les issues, réussites comprises (motif ebay.js)
     fillListingForm(msg.job)
       .then((r) => sendResponse({ ...r, trace: [...oplaTrace], fill_step: oplaEtapeCourante }))
