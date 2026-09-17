@@ -422,8 +422,12 @@ const STOCK_CSS = buildCardCss('stock-v2') + `
    même recette que la pastille de statut. AFFICHAGE SEULEMENT : la
    sémantique (grisé = masquée/brouillon/retrait, gelé = republication) vit
    dans l'opacité du span et reste inchangée. */
-.stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:5px;padding:18px 7px 6px;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
-.stock-v2 .glogos .plogo{background:rgba(255,255,255,0.93);border-radius:8px;padding:3px;box-shadow:0 1px 4px rgba(16,32,27,0.25);display:inline-flex;align-items:center;justify-content:center;line-height:0;}
+/* Rangée des logos (17/09 soir) : CINQ plateformes tiennent sur une carte
+   de téléphone (2 colonnes, ~156 pt) — 5 × 24 + 4 × 4 = 136 dans 142 utiles —
+   et si un jour ça déborde, la rangée se REPLIE vers le haut (wrap-reverse)
+   au lieu de coller au bord droit (capture Nico 23:57 : Beebs à ras). */
+.stock-v2 .glogos{position:absolute;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap-reverse;align-items:center;gap:4px;padding:18px 7px 6px;box-sizing:border-box;background:linear-gradient(180deg,rgba(16,32,27,0) 0%,rgba(16,32,27,0.42) 100%);z-index:1;}
+.stock-v2 .glogos .plogo{background:rgba(255,255,255,0.93);border-radius:8px;padding:2px;box-shadow:0 1px 4px rgba(16,32,27,0.25);display:inline-flex;align-items:center;justify-content:center;line-height:0;}
 .stock-v2 .gqty{position:absolute;bottom:7px;right:8px;background:rgba(255,255,255,0.93);color:var(--ink);font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;z-index:2;}
 .stock-v2 .gbody{padding:9px 10px 10px;display:flex;flex-direction:column;gap:6px;min-width:0;flex:1;}
 /* ── RANGÉES CONDITIONNELLES (3e passe du 27/08) : une rangée absente ne
