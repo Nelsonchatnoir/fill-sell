@@ -131,28 +131,26 @@ function getInitialLang() {
    français plutôt que sur du vide. Dictionnaire fourni par le design. */
 const EN = {
   "Comment ça marche": "How it works",
-  "Import Vinted": "Vinted import",
-  "Relevé de tes annonces": "Your listings, scanned",
+  "Synchronisation": "Sync",
+  "Synchronisation multi-comptes": "Multi-account sync",
+  "Synchronisation gratuite et illimitée": "Free, unlimited sync",
   "5 plateformes, tes comptes": "5 marketplaces, your accounts",
-  "Relevé de tes annonces gratuit et illimité": "Free, unlimited listing scan",
-  "Tes annonces Vinted entrent en un clic": "Your Vinted listings come in with one click",
-  "Tes annonces entrent en un clic, sur les cinq plateformes": "Your listings come in with one click, on all five marketplaces",
+  "Tes annonces entrent en un clic, depuis tous tes comptes": "Your listings come in with one click, from all your accounts",
   "Publié sur les 5 plateformes": "Published on all 5 marketplaces",
   "Un seul ajout part sur Vinted, Leboncoin, eBay, Beebs et Opla — avec tes comptes. Cinq fois plus d'acheteurs, pas cinq fois le travail.": "One single add goes to Vinted, Leboncoin, eBay, Beebs and Opla — with your accounts. Five times more buyers, not five times the work.",
   "Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay, Beebs et Opla avec tes comptes. Cinq fois plus d'acheteurs devant le même article, sans cinq fois le travail.": "You fill it in once. FillSell publishes on Vinted, Leboncoin, eBay, Beebs and Opla with your accounts. Five times more buyers on the same item — without five times the work.",
   "Opla": "Opla",
   "Résultats": "Results",
   "Tu as déjà des annonces en ligne ?": "Already have listings online?",
-  "Mes annonces Vinted": "My Vinted listings",
-  "FillSell relit tes annonces Vinted, Leboncoin, Beebs, eBay et Opla et les rattache à ton stock : un article, une fiche. On lit — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis où republier.": "FillSell re-reads your Vinted, Leboncoin, Beebs, eBay and Opla listings and matches them to your stock: one item, one card. We read — we never publish, edit or delete anything. Then you choose where to repost.",
-  "Importer mes annonces": "Import my listings",
+  "FillSell relit tes annonces Vinted, Leboncoin, eBay, Beebs et Opla et les rattache à ton stock : un article, une fiche, même s'il est en ligne sur plusieurs comptes. On lit — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis où publier et où republier.": "FillSell re-reads your Vinted, Leboncoin, eBay, Beebs and Opla listings and matches them to your stock: one item, one card, even when it's live on several accounts. We read — we never publish, edit or delete anything. Then you choose where to publish and where to repost.",
+  "Synchroniser mes comptes": "Sync my accounts",
   "Publication": "Publishing",
   "Tarifs": "Pricing",
   "Se connecter": "Log in",
   "Commencer": "Get started",
   "Tes annonces,": "Your listings,",
   "publiées partout : Vinted, Leboncoin, eBay, Beebs et Opla.": "published everywhere: Vinted, Leboncoin, eBay, Beebs and Opla.",
-  "Tu importes tes annonces Vinted en un clic. L'IA écrit les annonces. FillSell les publie sur les 5 plateformes avec tes propres comptes, et republie tes annonces pour qu'elles remontent.": "Import your Vinted listings in one click. The AI writes the listings. FillSell publishes them to all 5 marketplaces with your own accounts, and reposts your listings so they climb back up.",
+  "Tu synchronises tes comptes en un clic. L'IA écrit les annonces. FillSell les publie sur les 5 plateformes avec tes propres comptes, et republie tes annonces pour qu'elles remontent.": "Sync your accounts in one click. The AI writes the listings. FillSell publishes them to all 5 marketplaces with your own accounts, and reposts your listings so they climb back up.",
   "Commencer gratuitement": "Start free",
   "Installer l'extension Chrome": "Install the Chrome extension",
   "Gratuite · installée une seule fois · aucun mot de passe": "Free · installed once · no passwords",
@@ -167,11 +165,10 @@ const EN = {
   "4 plateformes, tes comptes": "4 marketplaces, your accounts",
   "Sur l'App Store et Google Play": "On the App Store and Google Play",
   "Jamais tes mots de passe": "Never your passwords",
-  "Tu importes. On publie partout.": "You import. We publish everywhere.",
+  "Tu synchronises. On publie partout.": "You sync. We publish everywhere.",
   "On republie tes annonces.": "We repost your listings.",
   "Ton téléphone pilote.": "Your phone drives.",
   "Ton ordinateur exécute.": "Your computer executes.",
-  "Tu as déjà 200 annonces sur Vinted ?": "Already 200 listings on Vinted?",
   "Tu ne les refais pas.": "You won't redo them.",
   "Une annonce.": "One listing.",
   "Cinq plateformes.": "Five marketplaces.",
@@ -188,9 +185,9 @@ const EN = {
   "Prêt à publier partout,": "Ready to list everywhere,",
   "sans effort ?": "effortlessly?",
   "Trois choses, c'est tout": "Three things, that's it",
-  "Tu importes. On publie partout. On republie tes annonces.": "You import. We publish everywhere. We repost your listings.",
+  "Tu synchronises. On publie partout. On republie tes annonces.": "You sync. We publish everywhere. We repost your listings.",
   "Ton dressing Vinted entre en un clic": "Your Vinted wardrobe comes in with one click",
-  "200 annonces déjà en ligne ? Titres, prix, photos : tout arrive dans ton stock. On lit, on ne publie ni ne supprime rien.": "Already 200 listings online? Titles, prices, photos — everything lands in your stock. We read; we never publish or delete anything.",
+  "200 annonces déjà en ligne sur Vinted, Leboncoin, eBay, Beebs ou Opla ? Titres, prix, photos : tout arrive dans ton stock. On lit, on ne publie ni ne supprime rien.": "Already 200 listings live on Vinted, Leboncoin, eBay, Beebs or Opla? Titles, prices, photos: everything lands in your stock. We read; we never publish or delete anything.",
   "Publié sur les 4 plateformes": "Published on all 4 marketplaces",
   "Un seul ajout part sur Vinted, Leboncoin, eBay et Beebs — avec tes comptes. Quatre fois plus d'acheteurs, pas quatre fois le travail.": "One single add goes to Vinted, Leboncoin, eBay and Beebs — with your accounts. Four times more buyers, not four times the work.",
   "Republiées toutes seules": "Reposted, all by themselves",
@@ -207,12 +204,9 @@ const EN = {
   "Ton ordinateur est éteint ? Rien n'est perdu — tes annonces attendent en file et partent à la prochaine ouverture de Chrome.": "Computer off? Nothing is lost — your listings wait in line and go out the next time Chrome opens.",
   "Mon dressing Vinted": "My Vinted wardrobe",
   "Lecture seule": "Read-only",
-  "214 annonces importées": "214 listings imported",
+  "214 annonces à jour": "214 listings up to date",
   "en 40 secondes": "in 40 seconds",
-  "Tu as déjà 200 annonces sur Vinted ? Tu ne les refais pas.": "Already 200 listings on Vinted? You won't redo them.",
-  "FillSell importe tes annonces Vinted en un clic : titres, prix, photos, tout arrive dans ton stock. On lit tes annonces — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis lesquelles envoyer sur Leboncoin, eBay, Beebs et Opla.": "FillSell imports your Vinted listings in one click: titles, prices, photos — everything lands in your stock. We read your listings; we never publish, edit or delete anything. Then you pick which ones to send to Leboncoin, eBay, Beebs and Opla.",
   "Importer mon dressing": "Import my wardrobe",
-  "Import gratuit et illimité": "Free, unlimited import",
   "Une annonce. Cinq plateformes.": "One listing. Five marketplaces.",
   "Tu remplis une fois. FillSell publie sur Vinted, Leboncoin, eBay et Beebs avec tes comptes. Quatre fois plus d'acheteurs devant le même article, sans quatre fois le travail.": "You fill it in once. FillSell publishes on Vinted, Leboncoin, eBay and Beebs with your accounts. Four times more buyers on the same item — without four times the work.",
   "1 seul ajout": "1 single add",
@@ -267,7 +261,6 @@ const EN = {
   "0 €": "€0",
   "{ADS_FREE} annonces publiées / mois": "{ADS_FREE} listings published / mo",
   "{REPUB_FREE} republications offertes, à vie": "{REPUB_FREE} repostings included, for life",
-  "Import Vinted gratuit et illimité": "Free, unlimited Vinted import",
   "Publication auto sur Vinted, Leboncoin, eBay, Beebs & Opla": "Auto-publishing to Vinted, Leboncoin, eBay, Beebs & Opla",
   "Calcul de marge instantané": "Instant margin calculator",
   "Suivi de tes ventes": "Track your sales",
@@ -313,7 +306,7 @@ const EN = {
   "Je peux annuler quand je veux ?": "Can I cancel anytime?",
   "Oui. Premium et Pro sont sans engagement : tu changes d'offre ou tu arrêtes en un clic depuis l'app.": "Yes. Premium and Pro have no commitment — switch plans or stop in one tap from the app.",
   "Prêt à publier partout, sans effort ?": "Ready to list everywhere, effortlessly?",
-  "Importe tes annonces Vinted, laisse l'IA écrire, et vends sur les 5 plateformes. Gratuit pour commencer — sans carte bancaire.": "Import your Vinted listings, let the AI write, and sell on all 5 marketplaces. Free to start — no credit card required.",
+  "Synchronise tes comptes, laisse l'IA écrire, et vends sur les 5 plateformes. Gratuit pour commencer — sans carte bancaire.": "Sync your accounts, let the AI write, and sell on all 5 marketplaces. Free to start — no credit card required.",
   "Revente automatisée · © 2026": "Automated reselling · © 2026",
   "Mentions légales": "Legal notice",
   "Confidentialité": "Privacy",
@@ -356,7 +349,6 @@ export default function LandingPage() {
   const [lang, setLang] = useState(getInitialLang);
   const [menuOpen, setMenuOpen] = useState(false);
   const [grants, setGrants] = useState(GRANTS_FALLBACK);
-  const [syncMulti, setSyncMulti] = useState(false);
 
   const isNative = Capacitor.isNativePlatform();
   /* Même drapeau que l'app : refermer l'offre Business dans businessOffer.js
@@ -388,14 +380,9 @@ export default function LandingPage() {
           .in('key', ['quota_annonces_free', 'quota_annonces_premium', 'quota_annonces_pro',
                       'quota_annonces_business',
                       'republication_avie_free', 'quota_republication_premium', 'quota_republication_pro',
-                      'quota_retouche_premium', 'quota_retouche_pro', 'quota_retouche_business',
-                      'sync_multi_ouverte']);
+                      'quota_retouche_premium', 'quota_retouche_pro', 'quota_retouche_business']);
         if (error || !data?.length || !vivant) return;
         const parKey = Object.fromEntries(data.map((r) => [r.key, r.value]));
-        // Relevé multiplateforme (2026-09-17) : la landing n'annonce le relevé
-        // Leboncoin/Beebs/eBay/Opla QUE si l'interrupteur serveur est ouvert —
-        // le même que celui du code (fail-closed : absent = fermé).
-        setSyncMulti(Number(parKey.sync_multi_ouverte) === 1);
         setGrants({
           ADS_FREE:          parKey.quota_annonces_free         ?? GRANTS_FALLBACK.ADS_FREE,
           ADS_PREMIUM:       parKey.quota_annonces_premium      ?? GRANTS_FALLBACK.ADS_PREMIUM,
@@ -528,7 +515,7 @@ export default function LandingPage() {
             </a>
             <nav data-nav-links="1" style={{ display: "flex", gap: "4px", marginLeft: "6px" }}>
               <a href="#comment" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t("Comment ça marche")}</a>
-              <a href="#import" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t(syncMulti ? "Relevé de tes annonces" : "Import Vinted")}</a>
+              <a href="#import" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t("Synchronisation")}</a>
               <a href="#publication" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t("Publication")}</a>
               <a href="#tarifs" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px", whiteSpace: "nowrap" }}>{t("Tarifs")}</a>
               <a href="#faq" style={{ fontWeight: "600", fontSize: "13.5px", color: "#5C6560", padding: "7px 11px", borderRadius: "9px" }}>{t("FAQ")}</a>
@@ -552,7 +539,7 @@ export default function LandingPage() {
           <div data-menu="1" style={{ display: menuOpen ? "block" : "none", borderTop: "1px solid #E7E3D8", background: "rgba(250,250,248,.98)", padding: "10px 16px 14px" }}>
             <nav style={{ display: "flex", flexDirection: "column" }}>
               <a href="#comment" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("Comment ça marche")}</a>
-              <a href="#import" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t(syncMulti ? "Relevé de tes annonces" : "Import Vinted")}</a>
+              <a href="#import" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("Synchronisation")}</a>
               <a href="#publication" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("Publication")}</a>
               <a href="#tarifs" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("Tarifs")}</a>
               <a href="#faq" onClick={closeMenu} style={{ fontWeight: "600", fontSize: "15px", color: "#10201B", padding: "13px 6px", borderBottom: "1px solid #E7E3D8" }}>{t("FAQ")}</a>
@@ -577,7 +564,7 @@ export default function LandingPage() {
                 <span style={{ backgroundImage: "linear-gradient(90deg,#2F9E90 0%,#2F9E90 40%,#6FDFD3 50%,#2F9E90 60%,#2F9E90 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("publiées partout : Vinted, Leboncoin, eBay, Beebs et Opla.")}</span>
               </h1>
               <p style={{ fontWeight: "500", fontSize: "clamp(16px,1.5vw,19px)", lineHeight: "1.55", color: "#5C6560", maxWidth: "520px", margin: "0 0 30px", textWrap: "pretty" }}>
-                {t("Tu importes tes annonces Vinted en un clic. L'IA écrit les annonces. FillSell les publie sur les 5 plateformes avec tes propres comptes, et republie tes annonces pour qu'elles remontent.")}
+                {t("Tu synchronises tes comptes en un clic. L'IA écrit les annonces. FillSell les publie sur les 5 plateformes avec tes propres comptes, et republie tes annonces pour qu'elles remontent.")}
               </p>
               <div style={{ display: "flex", gap: "13px", flexWrap: "wrap", alignItems: "center" }}>
                 <a href="/login?mode=signup" onClick={onSignup("hero")} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "15.5px", color: "#fff", padding: "15px 26px", borderRadius: "14px", background: "linear-gradient(135deg,#2F9E90,#1B6E62)", boxShadow: "0 12px 26px -10px rgba(27,110,98,.55)", whiteSpace: "nowrap" }}>
@@ -767,7 +754,7 @@ export default function LandingPage() {
                 <circle cx="12" cy="12" r="10" />
                 <path d="M20 6 9 17l-5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
               </svg>
-              <span style={{ fontWeight: "700", fontSize: "13.5px", color: "#10201B", whiteSpace: "nowrap" }}>{t(syncMulti ? "Relevé de tes annonces gratuit et illimité" : "Import Vinted gratuit et illimité")}</span>
+              <span style={{ fontWeight: "700", fontSize: "13.5px", color: "#10201B", whiteSpace: "nowrap" }}>{t("Synchronisation gratuite et illimitée")}</span>
             </div>
             <span data-proof-sep="1" style={{ width: "1px", height: "20px", background: "#D8D3C6", flexShrink: "0" }} />
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: "0 0 auto" }}>
@@ -796,19 +783,19 @@ export default function LandingPage() {
             <div style={{ textAlign: "center", maxWidth: "680px", margin: "0 auto 44px" }}>
               <div style={{ fontWeight: "700", fontSize: "12px", textTransform: "uppercase", letterSpacing: ".12em", color: "#4ECDC4", marginBottom: "14px" }}>{t("Trois choses, c'est tout")}</div>
               <h2 style={{ fontWeight: "700", fontSize: "clamp(28px,3.6vw,44px)", lineHeight: "1.06", letterSpacing: "-.03em", margin: "0", color: "#F6F5F1", textWrap: "pretty" }}>
-                {t("Tu importes. On publie partout.")}{" "}
+                {t("Tu synchronises. On publie partout.")}{" "}
                 <span style={{ backgroundImage: "linear-gradient(90deg,#4ECDC4 0%,#4ECDC4 40%,#C6F5EF 50%,#4ECDC4 60%,#4ECDC4 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("On republie tes annonces.")}</span>
               </h2>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: "18px" }}>
               <div data-r="1" style={{ background: "rgba(246,245,241,.05)", border: "1px solid rgba(78,205,196,.22)", borderRadius: "22px", padding: "28px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "18px" }}>
-                  <PlatformLogo platform="vinted" size={44} />
+                  <span style={{ display: "flex", gap: "5px" }}><PlatformLogo platform="vinted" size={28} /><PlatformLogo platform="leboncoin" size={28} /><PlatformLogo platform="ebay" size={28} /><PlatformLogo platform="beebs" size={28} /><PlatformLogo platform="opla" size={28} /></span>
                   <div style={{ fontWeight: "700", fontSize: "32px", letterSpacing: "-.04em", color: "#4ECDC4", lineHeight: "1" }}>{t("1")}</div>
                 </div>
-                <div style={{ fontWeight: "700", fontSize: "20px", letterSpacing: "-.02em", color: "#F6F5F1", marginBottom: "8px" }}>{t(syncMulti ? "Tes annonces entrent en un clic, sur les cinq plateformes" : "Tes annonces Vinted entrent en un clic")}</div>
+                <div style={{ fontWeight: "700", fontSize: "20px", letterSpacing: "-.02em", color: "#F6F5F1", marginBottom: "8px" }}>{t("Tes annonces entrent en un clic, depuis tous tes comptes")}</div>
                 <div style={{ fontWeight: "500", fontSize: "14.5px", lineHeight: "1.55", color: "rgba(246,245,241,.72)" }}>
-                  {t("200 annonces déjà en ligne ? Titres, prix, photos : tout arrive dans ton stock. On lit, on ne publie ni ne supprime rien.")}
+                  {t("200 annonces déjà en ligne sur Vinted, Leboncoin, eBay, Beebs ou Opla ? Titres, prix, photos : tout arrive dans ton stock. On lit, on ne publie ni ne supprime rien.")}
                 </div>
               </div>
               <div data-r="1" style={{ background: "rgba(246,245,241,.05)", border: "1px solid rgba(78,205,196,.22)", borderRadius: "22px", padding: "28px" }}>
@@ -947,15 +934,14 @@ export default function LandingPage() {
             </div>
           </div>
         </section>
-        {/* ══════════ IMPORT VINTED ══════════ */}
+        {/* ══════════ SYNCHRONISATION MULTI-COMPTES ══════════ */}
         <section id="import" style={{ background: "radial-gradient(110% 120% at 100% 0%,rgba(78,205,196,.16),transparent 55%),#10302B", padding: "clamp(56px,7vw,110px) 22px" }}>
           <div style={{ maxWidth: "1120px", margin: "0 auto", display: "flex", gap: "clamp(28px,4vw,64px)", flexWrap: "wrap-reverse", alignItems: "center", justifyContent: "center" }}>
             {/* Visuel : le dressing qui se remplit */}
             <div data-r="1" style={{ flex: "1 1 340px", minWidth: "290px", display: "flex", justifyContent: "center" }}>
               <div style={{ width: "340px", background: "rgba(246,245,241,.05)", border: "1px solid rgba(78,205,196,.22)", borderRadius: "24px", padding: "22px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
-                  <PlatformLogo platform="vinted" size={30} />
-                  <div style={{ fontWeight: "700", fontSize: "14.5px", color: "#F6F5F1" }}>{t("Mes annonces Vinted")}</div>
+                  <span style={{ display: "flex", gap: "4px" }}><PlatformLogo platform="vinted" size={24} /><PlatformLogo platform="leboncoin" size={24} /><PlatformLogo platform="ebay" size={24} /><PlatformLogo platform="beebs" size={24} /><PlatformLogo platform="opla" size={24} /></span>
                   <span style={{ marginLeft: "auto", fontWeight: "700", fontSize: "11.5px", letterSpacing: ".04em", color: "#4ECDC4", background: "rgba(78,205,196,.12)", border: "1px solid rgba(78,205,196,.3)", borderRadius: "999px", padding: "4px 10px", whiteSpace: "nowrap" }}>{t("Lecture seule")}</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: "9px" }}>
@@ -968,36 +954,34 @@ export default function LandingPage() {
                   <div style={{ aspectRatio: "1", minWidth: "0", borderRadius: "12px", backgroundImage: "url(/landing/tshirt-ours.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", animation: "fsTile 4.6s ease infinite .72s" }} />
                   <div style={{ aspectRatio: "1", minWidth: "0", borderRadius: "12px", backgroundImage: "url(/landing/sweat-ohlins.webp)", backgroundSize: "cover", backgroundPosition: "center", backgroundRepeat: "no-repeat", animation: "fsTile 4.6s ease infinite .84s" }} />
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "9px", marginTop: "16px", paddingTop: "15px", borderTop: "1px solid rgba(78,205,196,.18)" }}>
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "9px", marginTop: "16px", paddingTop: "15px", borderTop: "1px solid rgba(78,205,196,.18)" }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="#4ECDC4" style={{ flexShrink: "0" }}>
                     <circle cx="12" cy="12" r="10" />
                     <path d="M20 6 9 17l-5-5" fill="none" stroke="#10302B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" transform="scale(0.72) translate(4.6,4.6)" />
                   </svg>
-                  <span style={{ fontWeight: "700", fontSize: "13px", color: "#4ECDC4" }}>{t("214 annonces importées")}</span>
+                  <span style={{ fontWeight: "700", fontSize: "13px", color: "#4ECDC4" }}>{t("214 annonces à jour")}</span>
                   <span style={{ marginLeft: "auto", fontWeight: "500", fontSize: "12px", color: "rgba(246,245,241,.6)" }}>{t("en 40 secondes")}</span>
                 </div>
               </div>
             </div>
             <div style={{ flex: "1 1 380px", minWidth: "300px" }}>
-              <div style={{ fontWeight: "700", fontSize: "12px", textTransform: "uppercase", letterSpacing: ".12em", color: "#4ECDC4", marginBottom: "14px" }}>{t(syncMulti ? "Relevé de tes annonces" : "Import Vinted")}</div>
+              <div style={{ fontWeight: "700", fontSize: "12px", textTransform: "uppercase", letterSpacing: ".12em", color: "#4ECDC4", marginBottom: "14px" }}>{t("Synchronisation multi-comptes")}</div>
               <h2 style={{ fontWeight: "700", fontSize: "clamp(28px,3.6vw,44px)", lineHeight: "1.06", letterSpacing: "-.03em", margin: "0 0 16px", color: "#F6F5F1", textWrap: "pretty" }}>
-                {t(syncMulti ? "Tu as déjà des annonces en ligne ?" : "Tu as déjà 200 annonces sur Vinted ?")}{" "}
+                {t("Tu as déjà des annonces en ligne ?")}{" "}
                 <span style={{ backgroundImage: "linear-gradient(90deg,#4ECDC4 0%,#4ECDC4 40%,#C6F5EF 50%,#4ECDC4 60%,#4ECDC4 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("Tu ne les refais pas.")}</span>
               </h2>
               <p style={{ fontWeight: "500", fontSize: "clamp(15px,1.4vw,18px)", lineHeight: "1.55", color: "rgba(246,245,241,.74)", maxWidth: "480px", margin: "0 0 24px", textWrap: "pretty" }}>
-                {t(syncMulti
-                  ? "FillSell relit tes annonces Vinted, Leboncoin, Beebs, eBay et Opla et les rattache à ton stock : un article, une fiche. On lit — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis où republier."
-                  : "FillSell importe tes annonces Vinted en un clic : titres, prix, photos, tout arrive dans ton stock. On lit tes annonces — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis lesquelles envoyer sur Leboncoin, eBay, Beebs et Opla.")}
+                {t("FillSell relit tes annonces Vinted, Leboncoin, eBay, Beebs et Opla et les rattache à ton stock : un article, une fiche, même s'il est en ligne sur plusieurs comptes. On lit — on ne publie, ne modifie ni ne supprime rien. Ensuite, tu choisis où publier et où republier.")}
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
                 <a href="/login?mode=signup" onClick={onSignup("import")} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "15px", color: "#10302B", padding: "14px 24px", borderRadius: "14px", background: "#4ECDC4" }}>
-                  {t("Importer mes annonces")}{" "}
+                  {t("Synchroniser mes comptes")}{" "}
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14" />
                     <path d="M13 6l6 6-6 6" />
                   </svg>
                 </a>
-                <span style={{ fontWeight: "600", fontSize: "13.5px", color: "rgba(246,245,241,.7)" }}>{t("Import gratuit et illimité")}</span>
+                <span style={{ fontWeight: "600", fontSize: "13.5px", color: "rgba(246,245,241,.7)" }}>{t("Synchronisation gratuite et illimitée")}</span>
               </div>
             </div>
           </div>
@@ -1414,7 +1398,7 @@ export default function LandingPage() {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F9E90" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
                       <path d="M20 6 9 17l-5-5" />
                     </svg>
-                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4" }}>{t(syncMulti ? "Relevé de tes annonces gratuit et illimité" : "Import Vinted gratuit et illimité")}</span>
+                    <span style={{ fontWeight: "500", fontSize: "13.5px", lineHeight: "1.4" }}>{t("Synchronisation gratuite et illimitée")}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "flex-start", gap: "9px" }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F9E90" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: "0", marginTop: "2px" }}>
@@ -1598,7 +1582,7 @@ export default function LandingPage() {
               <span style={{ backgroundImage: "linear-gradient(90deg,#4ECDC4 0%,#4ECDC4 40%,#C6F5EF 50%,#4ECDC4 60%,#4ECDC4 100%)", backgroundSize: "300% 100%", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent", animation: "fsShimmer 4.5s ease-in-out infinite" }}>{t("sans effort ?")}</span>
             </h2>
             <p style={{ fontWeight: "500", fontSize: "clamp(15px,1.4vw,18px)", lineHeight: "1.5", color: "rgba(246,245,241,.78)", margin: "0 auto 30px", maxWidth: "520px" }}>
-              {t("Importe tes annonces Vinted, laisse l'IA écrire, et vends sur les 5 plateformes. Gratuit pour commencer — sans carte bancaire.")}
+              {t("Synchronise tes comptes, laisse l'IA écrire, et vends sur les 5 plateformes. Gratuit pour commencer — sans carte bancaire.")}
             </p>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "12px", flexWrap: "wrap" }}>
               <a href="/login?mode=signup" onClick={onSignup("final")} style={{ display: "inline-flex", alignItems: "center", gap: "9px", fontWeight: "700", fontSize: "16px", color: "#10201B", background: "#F6F5F1", padding: "16px 30px", borderRadius: "14px", boxShadow: "0 16px 34px -14px rgba(0,0,0,.5)" }}>
