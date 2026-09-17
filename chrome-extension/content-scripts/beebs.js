@@ -88,6 +88,16 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     }
     if (msg?.type !== "FILL_LISTING") return;
 
+    // Port de remplissage (2026-09-17) : si CE job est déjà en cours par le
+    // port, on répond avec la MÊME promesse — jamais deux remplissages.
+    {
+      const enCours = globalThis.__fillsellRemplissage;
+      if (enCours?.promesse && enCours.jobId === String(msg.job?.id ?? "")) {
+        enCours.promesse.then((r) => sendResponse(r));
+        return true;
+      }
+    }
+
     fillListingForm(msg.job)
       .then((result) => sendResponse(result))
       // err.diagnostic (2026-08-06) : annexe technique séparée du message
@@ -491,6 +501,77 @@ function estPageBotShieldBeebs() {
 // pour juger (« quel état pour CE produit ? »), et poserValeurSurChamp est
 // appelée depuis une dizaine d'endroits qui n'ont pas le job sous la main.
 let titreArticleCourant = "";
+
+// ── PORT DE REMPLISSAGE CONTENT-SCRIPT (2026-09-17) : le worker ne meurt plus
+// en plein job — même mécanique que vinted.js (voir son bandeau). « pret »
+// avant tout geste, battement 20 s, résultat sur le port, état dans la page,
+// UN SEUL remplissage par job et par page quel que soit le canal. Inerte sans
+// port ouvert. Échec levé → même forme que le canal classique (needsUser borné
+// et diagnostic relayés).
+const FILL_PORT_NOM = "fillsell-remplissage";
+function marquerPhase(phase, envoye) {
+  try {
+    const r = globalThis.__fillsellRemplissage;
+    if (!r) return;
+    if (phase) r.phase = String(phase);
+    if (envoye === true) r.envoye = true;
+  } catch { /* jamais bloquant */ }
+}
+function etatRemplissagePublic() {
+  const r = globalThis.__fillsellRemplissage;
+  if (!r) return null;
+  return { jobId: r.jobId, phase: r.phase ?? null, envoye: r.envoye === true, enCours: r.enCours === true, resultat: r.resultat ?? null };
+}
+function lancerRemplissageUnique(job) {
+  const jobId = String(job?.id ?? "");
+  const r = globalThis.__fillsellRemplissage;
+  if (r && r.jobId === jobId && r.promesse) return r.promesse;
+  const etat = { jobId, phase: "debut", envoye: false, enCours: true, resultat: null, since: Date.now(), promesse: null };
+  globalThis.__fillsellRemplissage = etat;
+  etat.promesse = fillListingForm(job)
+    .then(
+      (result) => result,
+      (err) => ({
+        success: false,
+        error: String(err?.message ?? err),
+        ...(err?.needsUser === true ? { needsUser: true } : {}),
+        ...(err?.diagnostic ? { diagnostic: String(err.diagnostic) } : {}),
+      }),
+    )
+    .then((resultat) => { etat.resultat = resultat; etat.enCours = false; etat.phase = "termine"; return resultat; });
+  return etat.promesse;
+}
+if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__fillsellPortEcouteur) {
+  globalThis.__fillsellPortEcouteur = true;
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port?.name !== FILL_PORT_NOM) return;
+    let battement = null;
+    const envoyer = (m) => { try { port.postMessage(m); } catch { /* port fermé */ } };
+    const suivre = (jobId) => {
+      clearInterval(battement);
+      battement = setInterval(() => envoyer({ type: "vivant", jobId, phase: globalThis.__fillsellRemplissage?.phase ?? null }), 20_000);
+      const r = globalThis.__fillsellRemplissage;
+      const p = (r && r.jobId === jobId && r.promesse) ? r.promesse : Promise.resolve(null);
+      p.then((resultat) => { clearInterval(battement); if (resultat) envoyer({ type: "resultat", jobId, resultat }); });
+    };
+    port.onMessage.addListener((m) => {
+      if (!m) return;
+      if (m.type === "etat?") { envoyer({ type: "etat", etat: etatRemplissagePublic() }); return; }
+      if (m.type === "FILL_LISTING_PORT") {
+        const jobId = String(m.job?.id ?? "");
+        const r = globalThis.__fillsellRemplissage;
+        if (r && r.enCours && r.jobId !== jobId) { envoyer({ type: "occupe", jobId }); return; }
+        envoyer({ type: "pret", jobId }); // AVANT tout geste
+        lancerRemplissageUnique(m.job);
+        suivre(jobId);
+        return;
+      }
+      if (m.type === "rattache") { suivre(String(m.jobId ?? "")); return; }
+    });
+    port.onDisconnect.addListener(() => { clearInterval(battement); /* le remplissage continue ; son résultat reste dans la page */ });
+  });
+}
+// ── FIN PORT DE REMPLISSAGE CONTENT-SCRIPT ──────────────────────────────────
 
 async function fillListingForm(job) {
   titreArticleCourant = String(job?.title ?? "");

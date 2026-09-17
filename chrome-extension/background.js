@@ -1907,6 +1907,16 @@ let commandeSyncEnAttente = null;
 // Nombre de jobs que le serveur a retenus POUR laisser passer la sync de ce
 // cycle (get-pending-jobs, champ sync_prioritaire). 0 = file honnêtement vide.
 let syncPrioritaireDuCycle = 0;
+// ── MAINTIEN EN VIE PENDANT UN JOB (2026-09-17, chantier « le worker meurt en
+// plein job ») — drapeau SERVEUR, relu à chaque poll ───────────────────────
+// get-pending-jobs.keepalive_actif (source : coin_config.keepalive_actif,
+// 0 = éteint). Éteint, absent, ou serveur muet : TOUT le port de remplissage
+// est inerte et le chemin d'aujourd'hui s'exécute à l'identique
+// (envoyerFillListing → sendMessageToTab, mêmes arguments). Mémoire seule,
+// jamais persisté : un worker neuf repart ÉTEINT jusqu'à son premier poll.
+// Couper pour tout le parc, sans paquet :
+//   update coin_config set value = 0 where key = 'keepalive_actif';
+let keepaliveActif = false;
 
 function pollAndProcessJobs() {
   const p = withJobFlowLock("poll", pollAndProcessJobsUnlocked);
@@ -2008,7 +2018,38 @@ async function recoverStaleProcessingJobs(session) {
     // inoffensif (« introuvable » géré), et « published » y serait un
     // contresens.
     if (job.action !== "delete") {
-      const existing = await staleJobExistingListingUrl(job).catch((e) => {
+      // ── Point de reprise (2026-09-17, keepalive) : AVANT le filet plateforme,
+      // demander à l'onglet ce qu'il sait de CE job. Derrière le drapeau
+      // serveur. Sans certitude → le filet ci-dessous, jamais un renvoi.
+      //   · il travaille encore (pas envoyé, < 20 min) → on n'y touche pas ce
+      //     cycle (naviguer par-dessus tuerait le remplissage en cours) ;
+      //   · résultat avec URL → published direct (mêmes gardes que « existing ») ;
+      //   · envoyé sans résultat → doute : le filet plateforme tranche.
+      let existingDepuisOnglet = null;
+      if (keepaliveActif) {
+        try {
+          const cp = await lireCheckpointRemplissage();
+          if (cp && String(cp.jobId) === String(job.id) && Number.isFinite(Number(cp.tabId))) {
+            const etat = await etatRemplissageOnglet(Number(cp.tabId));
+            const ageCp = now - (Number(cp.since) || now);
+            if (etat && String(etat.jobId ?? "") === String(job.id)) {
+              if (etat.enCours && !etat.envoye && ageCp < 20 * 60_000) {
+                console.log(`[background] Job ${job.id} : remplissage encore EN COURS dans l'onglet ${cp.tabId} (${Math.round(ageCp / 60000)} min) — reprise stale différée, on ne navigue pas par-dessus`);
+                continue;
+              }
+              if (etat.resultat?.success && etat.resultat?.listingUrl) {
+                existingDepuisOnglet = String(etat.resultat.listingUrl);
+                console.log(`[background] Job ${job.id} : résultat retrouvé dans l'onglet ${cp.tabId} (${existingDepuisOnglet}) — aucun renvoi`);
+              } else if (etat.envoye) {
+                console.log(`[background] Job ${job.id} : envoi parti dans l'onglet ${cp.tabId}, verdict inconnu — le filet plateforme tranche, aucun renvoi`);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn(`[background] point de reprise (job ${job.id}) illisible — filet plateforme :`, String(e?.message ?? e));
+        }
+      }
+      const existing = existingDepuisOnglet ?? await staleJobExistingListingUrl(job).catch((e) => {
         console.warn(`[background] Filet anti-doublon (job ${job.id}) :`, String(e?.message ?? e));
         return null;
       });
@@ -2376,6 +2417,9 @@ async function pollAndProcessJobsUnlocked() {
     });
     jobs = rep.jobs;
     commandeSyncEnAttente = rep.sync_command ?? null;
+    // keepalive_actif (2026-09-17) : strictement `=== true` — un serveur qui ne
+    // le connaît pas (ou qui l'a coupé) laisse le chemin d'aujourd'hui.
+    keepaliveActif = rep.keepalive_actif === true;
     // sync_prioritaire (2026-09-04) : le serveur a VOLONTAIREMENT vidé ce
     // cycle pour laisser passer la demande de sync qu'il vient de nous
     // confier. Distinct d'une file réellement vide — et c'est exactement la
@@ -3074,7 +3118,7 @@ async function processJob(rawJob, accessToken) {
     // on lui envoie le job et on attend le résultat du remplissage.
     let result;
     try {
-      result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job });
+      result = await envoyerFillListing(tabId, job);
     } finally {
       // L'utilisateur retrouve son onglet même si le remplissage a jeté.
       if (release) await release().catch(() => {});
@@ -4488,7 +4532,7 @@ async function retryInTempTab(job, handler, originalResult) {
     // l'URL (fragment perdu), l'onglet reste reconnu comme à nous.
     await chrome.storage.session.set({ [TEMP_TAB_ID_KEY]: tab.id }).catch(() => {});
     await waitForTabComplete(tab.id, tempUrl + TEMP_TAB_FRAGMENT);
-    const result = await sendMessageToTab(tab.id, { type: "FILL_LISTING", job });
+    const result = await envoyerFillListing(tab.id, job);
     if (result?.draftBlocked) {
       // Le content script a déjà tenté de retirer le brouillon (storage) et
       // l'onglet NEUF le restaure quand même : message final en UNE ligne
@@ -15643,7 +15687,7 @@ async function processRepublishJob(job, accessToken) {
       await installNetworkProbe(tabId, "vinted");
       let result;
       try {
-        result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job: jobRecreation });
+        result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la republication : ${String(e?.message ?? e)}` };
       }
@@ -16018,7 +16062,7 @@ async function processRepublishJob(job, accessToken) {
       await installNetworkProbe(tabId, "vinted");
       let result;
       try {
-        result = await sendMessageToTab(tabId, { type: "FILL_LISTING", job: jobRecreation });
+        result = await envoyerFillListing(tabId, jobRecreation);
       } catch (e) {
         result = { success: false, error: `canal coupé pendant la recréation : ${String(e?.message ?? e)}` };
       }
@@ -16887,6 +16931,172 @@ function sendMessageToTabOnce(tabId, message, timeoutMs) {
 // donc jamais atteint la page : le renvoyer ne peut pas dupliquer un
 // remplissage (contrairement à un timeout, où l'on ne sait pas). On ne rejoue
 // QUE ce cas, jamais les autres.
+// ── PORT DE REMPLISSAGE (2026-09-17) — début du bloc testé par le harnais ──
+// POURQUOI : le remplissage était UN sendMessage attendu jusqu'à 300 000 ms —
+// exactement le seuil où Chrome termine un worker MV3 sur un appel unique
+// (5 min), avec en plus la mort à 30 s d'inactivité entre deux gestes. Le
+// worker mourait en plein job, le job restait 'processing' sans verdict, et
+// un 'deleted' repassait rang 0 à chaque réveil (cas Nyxlaire, 17/09).
+// COMMENT : un PORT longue durée (tabs.connect). Chaque message reçu remet le
+// compteur d'inactivité à zéro (Chrome ≥ 114) et un port n'a pas de plafond
+// « appel unique ». Le content script répond « pret » IMMÉDIATEMENT (avant
+// tout geste), bat toutes les 20 s, pousse ses jalons, et rend le résultat
+// sur le port. Le background attend le verdict SUR le port, borné à
+// FILL_BORNE_MS (10 min = 2,3 × le p99 mesuré sur 30 j : 258 s, 2 962 jobs).
+// CONTRAT IDENTIQUE À sendMessageToTab : on rend le résultat du content
+// script, ou on REJETTE avec les MÊMES signatures d'erreur qu'aujourd'hui —
+// « Timeout: pas de réponse du content script » (borne) et la signature
+// Chrome du canal coupé (onglet parti). Aucun site d'appel ne change de
+// sémantique ; toutes les ceintures anti-doublon existantes (sonde réseau,
+// dressing, « Mes annonces », requalification v37) s'appliquent telles
+// quelles. Seule différence : le rejet ARRIVE, au lieu de ne jamais arriver.
+// FAIL-OPEN : connect impossible, aucun écouteur de port, « pret » absent
+// sous 5 s → sendMessageToTab, le chemin d'aujourd'hui. ⛔ JAMAIS de second
+// envoi après un « pret » : dès lors le remplissage appartient à l'onglet ;
+// une coupure devient un canal coupé (ceintures), jamais un renvoi. Dans le
+// doute, on ne republie pas.
+// POINT DE REPRISE : l'état du remplissage vit dans la PAGE
+// (globalThis.__fillsellRemplissage côté content script) — il survit à la
+// mort du worker et meurt avec la page. Un worker revenu demande « etat? »
+// et RETROUVE le résultat, ou se RATTACHE au remplissage en cours, sans rien
+// relancer. Le checkpoint chrome.storage.session ne sert qu'à savoir sur
+// quel onglet demander (recoverStaleProcessingJobs).
+const FILL_PORT_NOM = "fillsell-remplissage";
+const FILL_BORNE_MS = 10 * 60_000;
+const FILL_PRET_DELAI_MS = 5_000;
+const FILL_CHECKPOINT_KEY = "fillsell_remplissage_en_cours";
+const CANAL_COUPE_SIGNATURE =
+  "A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received";
+
+async function lireCheckpointRemplissage() {
+  try {
+    const st = await chrome.storage.session.get(FILL_CHECKPOINT_KEY);
+    return st?.[FILL_CHECKPOINT_KEY] ?? null;
+  } catch { return null; }
+}
+async function ecrireCheckpointRemplissage(cp) {
+  try {
+    if (cp) await chrome.storage.session.set({ [FILL_CHECKPOINT_KEY]: cp });
+    else await chrome.storage.session.remove(FILL_CHECKPOINT_KEY);
+  } catch { /* le checkpoint est un confort, jamais bloquant */ }
+}
+
+// Demande à l'onglet où il en est — SANS rien lancer. null = pas d'écouteur
+// de port, pas d'état, ou pas de réponse sous 2 s = AUCUNE certitude.
+function etatRemplissageOnglet(tabId, { connect } = {}) {
+  const connecter = connect ?? ((id, opts) => chrome.tabs.connect(id, opts));
+  return new Promise((resolve) => {
+    let port = null; let fini = false; let timer = null;
+    const fin = (v) => {
+      if (fini) return; fini = true; clearTimeout(timer);
+      try { port?.disconnect(); } catch { /* déjà fermé */ }
+      resolve(v);
+    };
+    timer = setTimeout(() => fin(null), 2000);
+    try {
+      port = connecter(tabId, { name: FILL_PORT_NOM });
+      port.onMessage.addListener((m) => { if (m?.type === "etat") fin(m.etat ?? null); });
+      port.onDisconnect.addListener(() => fin(null));
+      port.postMessage({ type: "etat?" });
+    } catch { fin(null); }
+  });
+}
+
+function attendreVerdictSurPort(tabId, job, { connect, fallback, borneMs, maintenant, rattache }) {
+  const jobId = String(job?.id ?? "");
+  return new Promise((resolve, reject) => {
+    let port = null; let pret = rattache === true; let fini = false; let dernierePhase = null;
+    let timerBorne = null; let timerPret = null;
+    const clore = () => {
+      fini = true; clearTimeout(timerBorne); clearTimeout(timerPret);
+      try { port?.disconnect(); } catch { /* déjà fermé */ }
+      ecrireCheckpointRemplissage(null).catch(() => {});
+    };
+    const ok = (v) => { if (fini) return; clore(); resolve(v); };
+    const ko = (e) => { if (fini) return; clore(); reject(e); };
+    // Repli = chemin d'aujourd'hui, autorisé UNIQUEMENT tant qu'aucun « pret »
+    // n'est arrivé : le content script n'a alors rien lancé.
+    const replier = () => {
+      if (fini || pret) return;
+      fini = true; clearTimeout(timerBorne); clearTimeout(timerPret);
+      try { port?.disconnect(); } catch { /* déjà fermé */ }
+      Promise.resolve().then(() => fallback(tabId, { type: "FILL_LISTING", job })).then(resolve, reject);
+    };
+    try {
+      port = connect(tabId, { name: FILL_PORT_NOM });
+    } catch { return replier(); }
+    port.onMessage.addListener((m) => {
+      if (!m || String(m.jobId ?? "") !== jobId) return;
+      if (m.type === "pret") {
+        pret = true; clearTimeout(timerPret);
+        ecrireCheckpointRemplissage({ jobId, tabId, since: maintenant(), phase: "debut" }).catch(() => {});
+        return;
+      }
+      if (m.type === "occupe") {
+        // Invariant violé (un autre remplissage tient l'onglet) : on ne lance
+        // rien, on rend la main comme sur un timeout → reprise transitoire.
+        ko(new Error("Timeout: pas de réponse du content script (onglet de travail occupé par un autre remplissage)"));
+        return;
+      }
+      if (m.type === "vivant") { if (m.phase) dernierePhase = String(m.phase); return; }
+      if (m.type === "resultat") { ok(m.resultat); return; }
+    });
+    port.onDisconnect.addListener(() => {
+      if (fini) return;
+      if (!pret) return replier();              // jamais « pret » : rien n'a été lancé
+      ko(new Error(CANAL_COUPE_SIGNATURE));     // lancé puis coupé : ceintures, pas de renvoi
+    });
+    if (rattache) {
+      try { port.postMessage({ type: "rattache", jobId }); } catch { return ko(new Error(CANAL_COUPE_SIGNATURE)); }
+    } else {
+      timerPret = setTimeout(() => { if (!pret) replier(); }, FILL_PRET_DELAI_MS);
+      try { port.postMessage({ type: "FILL_LISTING_PORT", job }); } catch { return replier(); }
+    }
+    timerBorne = setTimeout(() => {
+      ko(new Error(
+        `Timeout: pas de réponse du content script (borne ${Math.round(borneMs / 60000)} min dépassée, ` +
+        `dernière phase : ${dernierePhase ?? "inconnue"})`,
+      ));
+    }, borneMs);
+  });
+}
+
+// deps = injection pour le harnais de simulation ; en production, tout vient
+// de chrome.* et de sendMessageToTab.
+async function remplirAvecPort(tabId, job, deps = {}) {
+  const connect = deps.connect ?? ((id, opts) => chrome.tabs.connect(id, opts));
+  const fallback = deps.fallback ?? ((t, m) => sendMessageToTab(t, m));
+  const borneMs = deps.borneMs ?? FILL_BORNE_MS;
+  const maintenant = deps.now ?? (() => Date.now());
+  const jobId = String(job?.id ?? "");
+  // 0. Un remplissage de CE job vit-il déjà dans l'onglet (worker mort puis
+  //    revenu) ? Terminé → son résultat, sans rien renvoyer. En cours → on s'y
+  //    rattache. Envoyé mais sans résultat → doute → canal coupé (ceintures).
+  const etat = await etatRemplissageOnglet(tabId, { connect });
+  if (etat && String(etat.jobId ?? "") === jobId) {
+    if (etat.resultat) return etat.resultat;
+    if (etat.enCours) return attendreVerdictSurPort(tabId, job, { connect, fallback, borneMs, maintenant, rattache: true });
+    if (etat.envoye) throw new Error(CANAL_COUPE_SIGNATURE);
+  }
+  return attendreVerdictSurPort(tabId, job, { connect, fallback, borneMs, maintenant, rattache: false });
+}
+
+// Point d'entrée UNIQUE des quatre sites d'envoi de FILL_LISTING. Drapeau
+// éteint = chemin d'aujourd'hui, argument pour argument.
+function envoyerFillListing(tabId, job) {
+  if (!keepaliveActif) return sendMessageToTab(tabId, { type: "FILL_LISTING", job });
+  return remplirAvecPort(tabId, job).catch((e) => {
+    const msg = String(e?.message ?? e);
+    if (msg.startsWith("Timeout:") || msg === CANAL_COUPE_SIGNATURE) throw e;
+    // Défaut INTERNE inattendu du port : on ne sait pas si le remplissage est
+    // parti → jamais un second envoi. Traité comme un canal coupé : les
+    // ceintures existantes tranchent.
+    console.warn("[background] port de remplissage : défaut interne, traité comme canal coupé —", msg);
+    throw new Error(CANAL_COUPE_SIGNATURE);
+  });
+}
+// ── FIN PORT DE REMPLISSAGE ─────────────────────────────────────────────────
+
 async function sendMessageToTab(tabId, message, timeoutMs = 300_000) {
   const RETRY_WINDOW_MS = 20_000;
   const deadline = Date.now() + RETRY_WINDOW_MS;

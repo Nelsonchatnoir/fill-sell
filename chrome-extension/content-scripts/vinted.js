@@ -481,6 +481,16 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage && !globalThis.__
     }
     if (msg?.type !== "FILL_LISTING") return;
 
+    // Port de remplissage (2026-09-17) : si CE job est déjà en cours par le
+    // port, on répond avec la MÊME promesse — jamais deux remplissages.
+    {
+      const enCours = globalThis.__fillsellRemplissage;
+      if (enCours?.promesse && enCours.jobId === String(msg.job?.id ?? "")) {
+        enCours.promesse.then((r) => sendResponse(r));
+        return true;
+      }
+    }
+
     fillListingForm(msg.job)
       .then((result) => sendResponse(result))
       // err.diagnostic (2026-08-06) : annexe technique séparée du message
@@ -1738,6 +1748,81 @@ function estPageBotShieldVinted() {
   return /geo\.captcha|captcha-delivery|\bAre you a human\b|Vérification que vous n/i.test(debut);
 }
 
+// ── PORT DE REMPLISSAGE CONTENT-SCRIPT (2026-09-17) : le worker ne meurt plus
+// en plein job ─────────────────────────────────────────────────────────────
+// Miroir de remplirAvecPort (background.js). Un port longue durée porté par CE
+// script : « pret » IMMÉDIAT (avant tout geste), battement toutes les 20 s,
+// jalons de phase, résultat sur le port. L'état vit dans la PAGE
+// (globalThis.__fillsellRemplissage) : il survit à la mort du worker et meurt
+// avec la page — la bonne durée de vie. Un worker revenu demande « etat? » et
+// retrouve le résultat, ou se rattache, sans rien relancer. UN SEUL
+// remplissage par job et par page, quel que soit le canal (port ou message
+// classique) : lancerRemplissageUnique rend la même promesse aux deux. Inerte
+// tant qu'aucun port n'est ouvert (drapeau serveur éteint = rien ne change).
+const FILL_PORT_NOM = "fillsell-remplissage";
+function marquerPhase(phase, envoye) {
+  try {
+    const r = globalThis.__fillsellRemplissage;
+    if (!r) return;
+    if (phase) r.phase = String(phase);
+    if (envoye === true) r.envoye = true;
+  } catch { /* jamais bloquant */ }
+}
+function etatRemplissagePublic() {
+  const r = globalThis.__fillsellRemplissage;
+  if (!r) return null;
+  return { jobId: r.jobId, phase: r.phase ?? null, envoye: r.envoye === true, enCours: r.enCours === true, resultat: r.resultat ?? null };
+}
+function resultatDepuisErreurRemplissage(err) {
+  return {
+    success: false,
+    error: String(err?.message ?? err),
+    ...(err?.diagnostic ? { diagnostic: String(err.diagnostic) } : {}),
+  };
+}
+function lancerRemplissageUnique(job) {
+  const jobId = String(job?.id ?? "");
+  const r = globalThis.__fillsellRemplissage;
+  if (r && r.jobId === jobId && r.promesse) return r.promesse;
+  const etat = { jobId, phase: "debut", envoye: false, enCours: true, resultat: null, since: Date.now(), promesse: null };
+  globalThis.__fillsellRemplissage = etat;
+  etat.promesse = fillListingForm(job)
+    .then((result) => result, (err) => resultatDepuisErreurRemplissage(err))
+    .then((resultat) => { etat.resultat = resultat; etat.enCours = false; etat.phase = "termine"; return resultat; });
+  return etat.promesse;
+}
+if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__fillsellPortEcouteur) {
+  globalThis.__fillsellPortEcouteur = true;
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port?.name !== FILL_PORT_NOM) return;
+    let battement = null;
+    const envoyer = (m) => { try { port.postMessage(m); } catch { /* port fermé */ } };
+    const suivre = (jobId) => {
+      clearInterval(battement);
+      battement = setInterval(() => envoyer({ type: "vivant", jobId, phase: globalThis.__fillsellRemplissage?.phase ?? null }), 20_000);
+      const r = globalThis.__fillsellRemplissage;
+      const p = (r && r.jobId === jobId && r.promesse) ? r.promesse : Promise.resolve(null);
+      p.then((resultat) => { clearInterval(battement); if (resultat) envoyer({ type: "resultat", jobId, resultat }); });
+    };
+    port.onMessage.addListener((m) => {
+      if (!m) return;
+      if (m.type === "etat?") { envoyer({ type: "etat", etat: etatRemplissagePublic() }); return; }
+      if (m.type === "FILL_LISTING_PORT") {
+        const jobId = String(m.job?.id ?? "");
+        const r = globalThis.__fillsellRemplissage;
+        if (r && r.enCours && r.jobId !== jobId) { envoyer({ type: "occupe", jobId }); return; }
+        envoyer({ type: "pret", jobId }); // AVANT tout geste : le background sait que ça part
+        lancerRemplissageUnique(m.job);
+        suivre(jobId);
+        return;
+      }
+      if (m.type === "rattache") { suivre(String(m.jobId ?? "")); return; }
+    });
+    port.onDisconnect.addListener(() => { clearInterval(battement); /* le remplissage continue ; son résultat reste dans la page */ });
+  });
+}
+// ── FIN PORT DE REMPLISSAGE CONTENT-SCRIPT ──────────────────────────────────
+
 async function fillListingForm(job) {
   console.log("[vinted] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
 
@@ -2912,6 +2997,7 @@ async function fillListingForm(job) {
     });
     if (photoGardeNote) warnings.push(photoGardeNote);
   }
+  marquerPhase("photos_posees");
 
   // RE-VÉRIFICATION DU PRIX À L'INSTANT DU CLIC (bug réel 2026-07-18) — la vérif
   // faite pendant fillPriceField ne protège pas d'un re-render survenu DEPUIS
@@ -3040,8 +3126,10 @@ async function fillListingForm(job) {
   // publish.submit (migré au registre — criticité red, clé SANS fallback, §8
   // de l'audit ; l'assert du registre — visible au sens getComputedStyle +
   // enabled — s'applique désormais avant le clic).
+  marquerPhase("soumission");
   const publishBtn = await waitForKey("publish.submit");
   publishBtn.click();
+  marquerPhase("envoye", true); // à partir d'ici : dans le doute, on ne renvoie JAMAIS
   await sleep(2500);
 
   // Modale "Ajoute des photos à cette annonce" (marques premium, < 3 photos) :

@@ -30,6 +30,16 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
     }
     if (msg?.type !== "FILL_LISTING") return;
 
+    // Port de remplissage (2026-09-17) : si CE job est déjà en cours par le
+    // port, on répond avec la MÊME promesse — jamais deux remplissages.
+    {
+      const enCours = globalThis.__fillsellRemplissage;
+      if (enCours?.promesse && enCours.jobId === String(msg.job?.id ?? "")) {
+        enCours.promesse.then((r) => sendResponse(r));
+        return true;
+      }
+    }
+
     etapeCourante = null; // nouveau job : le relevé d'étape repart de zéro
     fillListingForm(msg.job)
       .then((result) => sendResponse(result))
@@ -821,6 +831,69 @@ function lbcResultatConsentement(consent, trace) {
     trace,
   };
 }
+
+// ── PORT DE REMPLISSAGE CONTENT-SCRIPT (2026-09-17) : le worker ne meurt plus
+// en plein job — même mécanique que vinted.js (voir son bandeau). « pret »
+// avant tout geste, battement 20 s, résultat sur le port, état dans la page,
+// UN SEUL remplissage par job et par page quel que soit le canal. Inerte sans
+// port ouvert. Échec interne → reponseEchecInterne, comme le canal classique.
+const FILL_PORT_NOM = "fillsell-remplissage";
+function marquerPhase(phase, envoye) {
+  try {
+    const r = globalThis.__fillsellRemplissage;
+    if (!r) return;
+    if (phase) r.phase = String(phase);
+    if (envoye === true) r.envoye = true;
+  } catch { /* jamais bloquant */ }
+}
+function etatRemplissagePublic() {
+  const r = globalThis.__fillsellRemplissage;
+  if (!r) return null;
+  return { jobId: r.jobId, phase: r.phase ?? null, envoye: r.envoye === true, enCours: r.enCours === true, resultat: r.resultat ?? null };
+}
+function lancerRemplissageUnique(job) {
+  const jobId = String(job?.id ?? "");
+  const r = globalThis.__fillsellRemplissage;
+  if (r && r.jobId === jobId && r.promesse) return r.promesse;
+  const etat = { jobId, phase: "debut", envoye: false, enCours: true, resultat: null, since: Date.now(), promesse: null };
+  globalThis.__fillsellRemplissage = etat;
+  etapeCourante = null; // nouveau job : le relevé d'étape repart de zéro (comme le canal classique)
+  etat.promesse = fillListingForm(job)
+    .then((result) => result, (err) => reponseEchecInterne(err))
+    .then((resultat) => { etat.resultat = resultat; etat.enCours = false; etat.phase = "termine"; return resultat; });
+  return etat.promesse;
+}
+if (typeof chrome !== "undefined" && chrome.runtime?.onConnect && !globalThis.__fillsellPortEcouteur) {
+  globalThis.__fillsellPortEcouteur = true;
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port?.name !== FILL_PORT_NOM) return;
+    let battement = null;
+    const envoyer = (m) => { try { port.postMessage(m); } catch { /* port fermé */ } };
+    const suivre = (jobId) => {
+      clearInterval(battement);
+      battement = setInterval(() => envoyer({ type: "vivant", jobId, phase: globalThis.__fillsellRemplissage?.phase ?? null }), 20_000);
+      const r = globalThis.__fillsellRemplissage;
+      const p = (r && r.jobId === jobId && r.promesse) ? r.promesse : Promise.resolve(null);
+      p.then((resultat) => { clearInterval(battement); if (resultat) envoyer({ type: "resultat", jobId, resultat }); });
+    };
+    port.onMessage.addListener((m) => {
+      if (!m) return;
+      if (m.type === "etat?") { envoyer({ type: "etat", etat: etatRemplissagePublic() }); return; }
+      if (m.type === "FILL_LISTING_PORT") {
+        const jobId = String(m.job?.id ?? "");
+        const r = globalThis.__fillsellRemplissage;
+        if (r && r.enCours && r.jobId !== jobId) { envoyer({ type: "occupe", jobId }); return; }
+        envoyer({ type: "pret", jobId }); // AVANT tout geste
+        lancerRemplissageUnique(m.job);
+        suivre(jobId);
+        return;
+      }
+      if (m.type === "rattache") { suivre(String(m.jobId ?? "")); return; }
+    });
+    port.onDisconnect.addListener(() => { clearInterval(battement); /* le remplissage continue ; son résultat reste dans la page */ });
+  });
+}
+// ── FIN PORT DE REMPLISSAGE CONTENT-SCRIPT ──────────────────────────────────
 
 async function fillListingForm(job) {
   console.log("[leboncoin] fillListingForm — job:", job.id, job.title, DRY_RUN ? "(DRY_RUN)" : "(LIVE)");
@@ -1840,6 +1913,7 @@ async function fillListingForm(job) {
             (sonde.illisible ? " [sonde illisible : traitée comme partie, par prudence]" : "")
           );
         }
+        marquerPhase("envoye", true); // adsubmit parti : dans le doute, on ne renvoie JAMAIS
         const r = await attendreReponseAdsubmit(60_000);
         noterReponseAdsubmit(r);
         if (refusAdsubmit) return verdictRefusAdsubmit();
@@ -1867,7 +1941,8 @@ async function fillListingForm(job) {
       if (!depotAccepte && !refusAdsubmit) {
         const s = await depotRequeteVue();
         if (s.seen) {
-          const r = await attendreReponseAdsubmit(60_000);
+          marquerPhase("envoye", true); // adsubmit parti : dans le doute, on ne renvoie JAMAIS
+        const r = await attendreReponseAdsubmit(60_000);
           noterReponseAdsubmit(r);
           if (refusAdsubmit) return verdictRefusAdsubmit();
           if (!depotAccepte && r.timeout) return succesModerationEnCours(r.sonde);
