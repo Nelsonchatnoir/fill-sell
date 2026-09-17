@@ -3187,12 +3187,43 @@ serve(async (req) => {
     }
 
 
+    // ── MAINTIEN EN ÉVEIL : COMPTER LA FILE RETENUE, PAS SEULEMENT SERVIE ───
+    // (2026-09-17) L'arbitrage keep-awake de l'extension additionne
+    // `jobs.length` (les jobs DISTRIBUÉS ce cycle) + `jobs_retenus_sync`. Avec
+    // le compte-gouttes des republications et les jobs retenus (session connue
+    // morte, pause, next_action_after), la distribution tombe à 0-1 alors que
+    // la file réelle compte des dizaines de jobs : l'extension relâchait alors
+    // l'éveil et la MACHINE S'ENDORMAIT sur un gros lot (cas Nyxlaire 17/09 :
+    // 68 jobs en file, plus une seule demande d'éveil depuis 10:08).
+    // On replie donc le BACKLOG RETENU dans `jobs_retenus_sync` — le SEUL champ
+    // que l'extension lit déjà pour cet arbitrage (sync_prioritaire), et qui
+    // n'a AUCUN autre lecteur (app, popup, serveur). Purement additif à la
+    // réponse : la distribution `out` n'est pas touchée. Réparé pour tout le
+    // parc SANS nouveau paquet CWS.
+    // Borné au travail IMMINENT (next_action_after nul ou ≤ +15 min) : on ne
+    // tient pas une machine éveillée pour des republications planifiées loin ;
+    // le plafond de 4 h côté extension reste le garde-fou absolu. `jobs` est la
+    // file pending déjà en mémoire, `out` son sous-ensemble distribué : aucun
+    // appel de plus.
+    const _outIds = new Set(out.map((j) => String(j.id)));
+    const _nowMs = Date.now();
+    const heldBacklog = (jobs ?? []).filter((j) => {
+      if (_outIds.has(String(j.id))) return false; // déjà distribué ce cycle
+      const naa = (j.platform_fields as Record<string, unknown> | null)?.["next_action_after"];
+      if (!naa) return true; // prêt maintenant (retenu par le compte-gouttes / une garde de ce cycle)
+      const t = Date.parse(String(naa));
+      return !Number.isFinite(t) || t <= _nowMs + 15 * 60_000; // échéance imminente
+    }).length;
+    const travailRetenu = heldSync + heldBacklog;
+
     return json({
       jobs: out,
       annonces_en_attente: annoncesAttente,
       sync_command: syncCommand,
-      sync_prioritaire: heldSync > 0,
-      jobs_retenus_sync: heldSync,
+      // sync_prioritaire/jobs_retenus_sync portent désormais AUSSI le backlog
+      // retenu (cf. bandeau ci-dessus) : « il reste du travail, ne dors pas ».
+      sync_prioritaire: travailRetenu > 0,
+      jobs_retenus_sync: travailRetenu,
       boutique_pause: boutiquePause,
       // beebs_interdits (2026-09-11) : dépôts passés en needs_user à ce poll
       // parce que l'article tombe sous les règles du catalogue Beebs.
