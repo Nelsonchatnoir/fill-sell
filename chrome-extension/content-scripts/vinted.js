@@ -585,13 +585,48 @@ function entetesApiVinted(extra) {
 
 // Identité Vinted du compte connecté DANS CE NAVIGATEUR. L'id du dressing ne
 // peut pas venir de FillSell : c'est la session Vinted de l'utilisateur qui
+// ── FETCH BORNÉ (2026-09-17) : une requête qui ne répond jamais ne doit plus
+// figer le remplissage ──────────────────────────────────────────────────────
+// Un fetch() SANS signal PEND indéfiniment si le serveur garde la connexion
+// ouverte (blocage DataDome silencieux, réseau qui avale la requête). C'était
+// LA cause de « une étape qui ne rend jamais la main » : fillListingForm ne se
+// terminait pas, le content script ne répondait pas, et le job restait
+// 'processing' SANS verdict ni diagnostic. Ici l'AbortController est FIABLE,
+// contrairement au minuteur du service worker (qui meurt avec lui) : ce code
+// tourne dans l'ONGLET, vivant pendant tout le remplissage. Au délai on ABORTE
+// et on jette une erreur NOMMÉE (l'URL abrégée) ; les try/catch existants la
+// renvoient telle quelle → elle finit dans last_diagnostic (jamais dans error),
+// et les ceintures anti-doublon du background (sonde réseau + relecture du
+// dressing) tranchent AVANT toute conclusion → aucune double publication, aucune
+// annonce laissée hors ligne. 30 s : très au-delà d'un appel sain (<5 s), très
+// en deçà de la reprise stale (15 min) — ne coupe jamais un remplissage lent
+// mais sain, ne fige plus jamais sur un remplissage mort.
+const FETCH_BORNE_MS = 30_000;
+async function fetchBorne(input, init = {}, timeoutMs = FETCH_BORNE_MS) {
+  const ctrl = new AbortController();
+  const minuteur = setTimeout(() => { try { ctrl.abort(); } catch { /* déjà abandonné */ } }, timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    if (ctrl.signal.aborted || e?.name === "AbortError") {
+      const cible = String(typeof input === "string" ? input : (input?.url ?? "requête Vinted")).slice(0, 80);
+      const err = new Error(`Vinted n'a pas répondu en ${Math.round(timeoutMs / 1000)} s (${cible}) — requête abandonnée`);
+      err.timeoutBorne = true;
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(minuteur);
+  }
+}
+
 // fait foi, et lui seul sait sur quel compte il est connecté.
 async function vintedUtilisateurCourant() {
   if (estPageBotShieldVinted()) {
     return { success: false, botShield: true, error: "CHALLENGE Vinted (bot-shield)" };
   }
   try {
-    const r = await fetch("/api/v2/users/current", {
+    const r = await fetchBorne("/api/v2/users/current", {
       headers: entetesApiVinted(), credentials: "include",
     });
     // Motifs DISTINCTS, code HTTP réel inclus : ils finissent mot pour mot
@@ -690,7 +725,7 @@ async function lirePageDressing(page, userId) {
   const url = `/api/v2/wardrobe/${encodeURIComponent(userId)}/items?page=${page}&per_page=96`;
   let resp;
   try {
-    resp = await fetch(url, { headers: entetesApiVinted(), credentials: "include" });
+    resp = await fetchBorne(url, { headers: entetesApiVinted(), credentials: "include" });
   } catch (e) {
     return { success: false, error: `réseau : ${String(e?.message ?? e)}` };
   }
@@ -776,7 +811,7 @@ async function lireDetailArticle(vintedItemId) {
   }
   let resp;
   try {
-    resp = await fetch(`/api/v2/item_upload/items/${encodeURIComponent(id)}`, {
+    resp = await fetchBorne(`/api/v2/item_upload/items/${encodeURIComponent(id)}`, {
       headers: { Accept: "application/json" }, credentials: "include",
     });
   } catch (e) {
@@ -849,7 +884,7 @@ async function lireReferentielVinted(cle, chemin, extraire, diag, opts = {}) {
   }
   const trace = { cle, url: chemin };
   try {
-    const r = await fetch(chemin, { headers: { Accept: "application/json" }, credentials: "include" });
+    const r = await fetchBorne(chemin, { headers: { Accept: "application/json" }, credentials: "include" });
     trace.status = r.status;
     trace.content_type = (r.headers.get("content-type") ?? "").split(";")[0] || null;
     const brut = await r.text();
@@ -1429,7 +1464,7 @@ function getVintedCookie(name) {
 // de session), pas le code d'erreur du delete.
 async function vintedSessionEtat(t) {
   try {
-    const r = await fetch("/api/v2/users/current", {
+    const r = await fetchBorne("/api/v2/users/current", {
       headers: { Accept: "application/json" },
       credentials: "include",
     });
@@ -1548,7 +1583,7 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
   }
 
   try {
-    const resp = await fetch(endpoint, {
+    const resp = await fetchBorne(endpoint, {
       method: "POST",
       credentials: "include",
       headers: {
@@ -6063,7 +6098,10 @@ async function urlToFile(url, index) {
     const cible = essai === 0 ? url : `${url}${url.includes("?") ? "&" : "?"}r=${Date.now()}_${essai}`;
     try {
       exception = null;
-      res = await fetch(cible);
+      // Borne par tentative (20 s) : la boucle de reprises ci-dessus gère un
+      // abandon comme n'importe quel échec réseau ; sans borne, une lecture de
+      // photo qui pend figeait tout le remplissage (cf. bandeau fetchBorne).
+      res = await fetchBorne(cible, {}, 20_000);
     } catch (e) {
       exception = e;
       res = null;
