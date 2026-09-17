@@ -1984,6 +1984,14 @@ async function recoverStaleProcessingJobs(session) {
     const cleaned = { ...pf, stale_recoveries: recoveries };
     delete cleaned.processing_since;
 
+    // Couche 2 (2026-09-17) : un republish 'deleted' repris en stale a GELÉ sans
+    // verdict. On compte le gel pour que prioriteRepub le relègue en bout de
+    // file après DELETED_HANG_DEMOTE — il cesse alors de confisquer le compte,
+    // tout en restant pending/visible/rattrapable.
+    if (job.action === "republish" && pf.republish_step === "deleted") {
+      cleaned.deleted_hang_count = (Number(pf.deleted_hang_count) || 0) + 1;
+    }
+
     // ── Filet anti-DOUBLON sur reprise stale (2026-07-19) ─────────────────────
     // TROU IDENTIFIÉ À L'INVESTIGATION : si le worker meurt APRÈS que la
     // plateforme a accepté le dépôt mais AVANT l'écriture du statut, le
@@ -2475,8 +2483,19 @@ async function pollAndProcessJobsUnlocked() {
   // de passage, jamais la cadence.
   // Tri STABLE (index d'origine en départage) : à rang égal, l'ordre de la
   // file est conservé, donc created_at ASC tel que rendu par le serveur.
+  // Couche 2 (2026-09-17) : au-delà de DELETED_HANG_DEMOTE gels sans verdict, un
+  // republish 'deleted' cesse de tenir le rang 0 et passe en BOUT de file. La
+  // priorité 'deleted' reste la règle (annonce hors ligne = passe devant) — on
+  // ne la casse pas, on la BORNE : un job qui fige à chaque reprise confisquait
+  // le compte entier (cas Nyxlaire). Relégué, il reste 'pending', VISIBLE
+  // (pastille « hors ligne » de l'app) et RATTRAPABLE (balayage 72 h de
+  // handler-watch → needs_user si vraiment coincé) : on borne, on n'oublie pas.
+  const DELETED_HANG_DEMOTE = 3;
   const prioriteRepub = (j) => {
-    if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") return 0;
+    if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") {
+      const hang = Number(j.platform_fields?.deleted_hang_count) || 0;
+      return hang >= DELETED_HANG_DEMOTE ? 3 : 0;
+    }
     if (j.action === "publish" || j.action === "delete") return 1;
     return 2;
   };
@@ -2485,7 +2504,9 @@ async function pollAndProcessJobsUnlocked() {
     .sort((a, b) => {
       const pa = prioriteRepub(a[0]), pb = prioriteRepub(b[0]);
       if (pa !== pb) return pa - pb;
-      if (pa === 0) {
+      // Entre 'deleted' (rang 0 comme relégués rang 3) : la plus ancienne
+      // suppression d'abord — l'annonce hors ligne depuis le plus longtemps.
+      if (pa === 0 || pa === 3) {
         const da = Date.parse(a[0].platform_fields?.deleted_at ?? "") || 0;
         const db = Date.parse(b[0].platform_fields?.deleted_at ?? "") || 0;
         if (da !== db) return da - db;

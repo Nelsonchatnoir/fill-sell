@@ -656,6 +656,10 @@ serve(async (req) => {
       const pf = { ...pf0 };
       delete pf.processing_since;
       delete pf.stale_recoveries;
+      // Couche 2 (2026-09-17) : compter le gel sans verdict — prioriteRepub côté
+      // extension relègue en bout de file un 'deleted' repris DELETED_HANG_DEMOTE
+      // fois, pour qu'il cesse de confisquer le compte (il reste pending/visible).
+      pf.deleted_hang_count = (Number(pf0.deleted_hang_count) || 0) + 1;
       const msg =
         "Reprise après interruption : l'ordinateur a été coupé juste après le retrait de l'annonce, " +
         "avant sa recréation. Le job est remis en file et la recréation repartira toute seule dès " +
