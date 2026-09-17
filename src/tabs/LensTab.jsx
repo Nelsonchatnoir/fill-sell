@@ -98,8 +98,13 @@ function PhotoSourceSheet({ open, onClose, onCamera, onGallery, lang, maxPhotos 
   );
 }
 
-function PlatformMarquee() {
-  const list = [...LENS_PLATFORMS, ...LENS_PLATFORMS];
+// `plateformes` : les quatre ouvertes + celles que l'app déclare OUVERTES
+// pour ce compte (plateformesOuvertes, calculé par App.jsx sur l'interrupteur
+// serveur ET la borne de build — la MÊME condition qui active la case du
+// stepper, 2026-09-17 soir). Un bandeau qui promettrait Opla à quelqu'un dont
+// la case est grisée serait pire que pas de bandeau.
+function PlatformMarquee({ plateformes = LENS_PLATFORMS }) {
+  const list = [...plateformes, ...plateformes];
   return (
     <div style={{ position:'relative', width:'100%', overflow:'hidden', padding:'4px 0', WebkitMaskImage:'linear-gradient(90deg, transparent, black 12%, black 88%, transparent)', maskImage:'linear-gradient(90deg, transparent, black 12%, black 88%, transparent)' }}>
       <div className="lens-marquee-track" style={{ display:'flex', gap:12, width:'max-content' }}>
@@ -116,6 +121,7 @@ function PlatformMarquee() {
 
 function LensScanHome({
   lang, currency, isPremium, isNative, isPro,
+  plateformesOuvertes = [],
   lensPhotos, setLensPhotos, setLensResult, setLensAdded,
   lensDesc, setLensDesc, lensMicActive, lensMicLoading, toggleLensMic,
   lensPlaceholderFade, lensPlaceholderIdx,
@@ -314,7 +320,7 @@ function LensScanHome({
           <p style={{ textAlign:'center', fontSize:11, fontWeight:500, textTransform:'uppercase', letterSpacing:'0.14em', marginBottom:12, color:'#A6A192' }}>
             {t('lensMarqueeCaption')}
           </p>
-          <PlatformMarquee />
+          <PlatformMarquee plateformes={[...LENS_PLATFORMS, ...plateformesOuvertes.filter((p) => !LENS_PLATFORMS.includes(p))]} />
         </div>
       </div>
 
@@ -599,6 +605,9 @@ const LensTab = memo(function LensTab({
   ebayCompte = null,
   // Drapeau d'affichage par profil (lot 7 Opla) : transmis au stepper tel quel.
   plateformesVisibles = [],
+  // Opla ouverte (interrupteur serveur + borne de build, App.jsx) : au stepper
+  // et au bandeau, même condition (2026-09-17 soir).
+  plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
   extensionNeverSeen = null,
   // Battement serveur de l'extension — relayé au stepper pour la ligne
   // « ordinateur éteint » au-dessus du CTA Publier (2026-08-13).
@@ -813,6 +822,9 @@ const LensTab = memo(function LensTab({
           identifyFailed={identifyEchec}
           ebayCompte={ebayCompte}
           plateformesVisibles={plateformesVisibles}
+          plateformesOuvertes={plateformesOuvertes}
+          oplaMotifGrise={oplaMotifGrise}
+          oplaExtensionMin={oplaExtensionMin}
           // Lens unifié (02/09 soir) : le scan payé (mode "annonce") rapporte
           // les annonces déjà rédigées — le stepper les applique sans
           // régénérer. Le parcours identify n'en porte jamais (listingSource
@@ -847,6 +859,7 @@ const LensTab = memo(function LensTab({
       <>
         <LensScanHome
           lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro}
+          plateformesOuvertes={plateformesOuvertes}
           lensPhotos={lensPhotos} setLensPhotos={setLensPhotos} setLensResult={setLensResult} setLensAdded={setLensAdded}
           lensDesc={lensDesc} setLensDesc={setLensDesc} lensMicActive={lensMicActive} lensMicLoading={lensMicLoading} toggleLensMic={toggleLensMic}
           lensPlaceholderFade={lensPlaceholderFade} lensPlaceholderIdx={lensPlaceholderIdx}

@@ -86,13 +86,55 @@ const PLATFORM_COLORS   = { vinted:"#09B584", leboncoin:"#EA5B0C", beebs:"#FF6B3
 // défaut et enverrait un job opla — exactement ce que ce lot interdit.
 // L'affichage passe par PLATFORMS_A_VENIR, ci-dessous, et par lui seul.
 const PLATFORMS_DEFAULT = ["vinted","leboncoin","beebs","ebay"];
-// ── Plateformes VISIBLES mais PAS ENCORE OUVERTES (2026-09-15, lot 7) ───────
-// Affichées aux seuls comptes qui les portent dans
-// profiles.plateformes_visibles, et TOUJOURS grisées : la case est `disabled`,
-// aucun job ne peut donc être créé pour elles. Le jour de l'ouverture, une
-// plateforme quitte cette liste pour PLATFORMS_DEFAULT — et ce jour-là il
-// faudra AUSSI un handler (`implemented: true`) et OPLA_ACTIF levé.
+// ── Plateformes VISIBLES mais PAS FORCÉMENT OUVERTES (lot 7, puis 17/09) ────
+// Affichées aux comptes qui les voient (profiles.plateformes_visibles, ou
+// l'interrupteur serveur coin_config.opla_ouvert — cf. App.jsx). La case
+// n'est ACTIVE que si App.jsx la déclare dans `plateformesOuvertes`
+// (interrupteur à 1 ET extension du compte ≥ coin_config.opla_extension_min,
+// fail-closed) ; sinon elle reste `disabled`, avec son motif. Opla reste HORS
+// de PLATFORMS_DEFAULT : sélectionnable, jamais présélectionnée — cette
+// liste-là alimente les jobs.
 const PLATFORMS_A_VENIR = ["opla"];
+// Borne de build (coin_config, entier major×10000 + minor×100 + patch) → « 0.6.42 ».
+function libelleVersionExtension(code) {
+  const n = Number(code);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  return `${Math.floor(n / 10000)}.${Math.floor((n % 10000) / 100)}.${n % 100}`;
+}
+// ── OPLA : états, table 1 pour 1 (docs/OPLA_MAPPING.md § 5) ─────────────────
+// Libellé FR de la copie (le vocabulaire Vinted, le nôtre) → code que l'API
+// Opla attend dans `condition`. « Neuf » nu (valeur ambiguë d'anciens jobs) →
+// `new` (Neuf sans étiquette) : on n'affirme jamais une étiquette qu'on n'a
+// pas vue. Un libellé hors table reste tel quel : le pré-vol du connecteur
+// (opla-prevol.js) refuse alors AVANT tout envoi et nomme la cause.
+const OPLA_ETAT_PAR_LIBELLE = {
+  "neuf avec etiquette": "new-with-tags",
+  "neuf sans etiquette": "new",
+  "neuf": "new",
+  "tres bon etat": "like-new",
+  "bon etat": "good",
+  "satisfaisant": "fair",
+  "etat satisfaisant": "fair",
+  "correct": "fair",
+  "etat correct": "fair",
+};
+// La copie Opla dérive de la copie Vinted (même marché, même ton, mêmes
+// libellés d'état) : generate-listing ne rédige que quatre annonces, et une
+// plateforme cochée SANS copie est écartée en silence (plateformesSansAnnonce).
+// Les champs propres à Opla se calculent à l'insert du job (bloc « opla » de
+// handlePublish), jamais ici.
+function deriverCopieOpla(vinted) {
+  const pf = vinted?.platform_fields ?? {};
+  const garder = ["etat", "taille", "genre", "marque", "modele", "matiere", "couleur", "categorie"];
+  const copie = {};
+  for (const k of garder) if (pf[k] != null && String(pf[k]).trim() !== "") copie[k] = pf[k];
+  return {
+    title: String(vinted?.title ?? ""),
+    description: String(vinted?.description ?? ""),
+    platform_fields: copie,
+    price: vinted?.price ?? null,
+  };
+}
 
 // Minimum de photos exigé pour publier — c'est le minimum de VINTED sur les
 // marques premium (VINTED_MIN_PHOTOS, chrome-extension/content-scripts/vinted.js).
@@ -231,10 +273,10 @@ const NO_BRAND_VALUE = "Sans marque";
 
 const SHARED_FIELD_KEYS = ["taille", "couleur", "matiere", "marque"];
 const SHARED_PROPAGATION = {
-  taille:  ["vinted", "beebs", "leboncoin", "ebay"],
-  couleur: ["vinted", "beebs", "ebay"],
-  matiere: ["vinted", "beebs", "leboncoin", "ebay"],
-  marque:  ["vinted", "beebs", "leboncoin", "ebay"],
+  taille:  ["vinted", "beebs", "leboncoin", "ebay", "opla"],
+  couleur: ["vinted", "beebs", "ebay", "opla"],
+  matiere: ["vinted", "beebs", "leboncoin", "ebay", "opla"],
+  marque:  ["vinted", "beebs", "leboncoin", "ebay", "opla"],
 };
 const SHARED_GUARD = {
   taille:  ["vinted", "beebs", "ebay"],
@@ -695,6 +737,20 @@ function getPlatformFieldsConfig(t) {
       // mergeFieldsWithLens, qui ne tourne que pour les clés de cette config.
       { key:"isbn",      label:"ISBN",                   type:"text" },
     ],
+    // Opla (2026-09-17 soir) : les libellés d'état sont ceux de Vinted (table
+    // 1 pour 1 vers les codes Opla, OPLA_ETAT_PAR_LIBELLE) ; taille/genre/
+    // marque/matière/couleur comme Vinted — le pré-vol du connecteur valide
+    // la taille contre la grille de la feuille et jette couleur/matière hors
+    // liste avec avertissement, jamais en silence.
+    opla: [
+      { key:"etat",      label:t("fieldConditionLabel"), type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactory] },
+      { key:"taille",    label:t("fieldSizeLabel"),      type:"select", options: size, groups: sizeGroups, childGroups: childSizeGroups },
+      { key:"genre",     label:t("fieldGenderLabel"),    type:"select", options: gender },
+      { key:"marque",    label:t("fieldBrandLabel"),     type:"text" },
+      { key:"matiere",   label:t("fieldMaterialLabel"),  type:"text" },
+      { key:"couleur",   label:t("fieldColorLabel"),     type:"text" },
+      { key:"categorie", label:t("fieldCategoryLabel"),  type:"text" },
+    ],
     leboncoin: [
       { key:"etat",         label:t("fieldConditionLabel"),     type:"select", options:[condition.newWithTag, condition.newWithoutTag, condition.veryGood, condition.good, condition.satisfactoryLbc, condition.forParts, condition.new_] },
       // Taille indispensable pour les chaussures : la Pointure est un critère
@@ -1004,8 +1060,8 @@ const EBAY_DEPARTMENT_BY_GENRE = {
 // champ dans platform_fields de la copie, consommée telle quelle par le
 // content script correspondant (codes serveur Vinted, attributs for= LBC,
 // libellés exacts Beebs).
-const GENERIC_ASPECTS_PF_KEY = { vinted: "vintedAspects", leboncoin: "lbcAspects", beebs: "beebsAspects" };
-const GENERIC_PLATFORM_LABELS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs" };
+const GENERIC_ASPECTS_PF_KEY = { vinted: "vintedAspects", leboncoin: "lbcAspects", beebs: "beebsAspects", opla: "oplaAspects" };
+const GENERIC_PLATFORM_LABELS = { vinted: "Vinted", leboncoin: "Leboncoin", beebs: "Beebs", opla: "Opla" };
 
 function defaultConditionFor(field) {
   if (!field || field.type !== "select") return DEFAULT_CONDITION;
@@ -1407,6 +1463,10 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
   // Plateformes visibles mais pas encore ouvertes pour CE compte (lot 7 Opla).
   // Defaut [] : un compte sans drapeau voit exactement les quatre d avant.
   plateformesAVenir = [],
+  // Celles de plateformesAVenir qui sont OUVERTES pour ce compte (interrupteur
+  // serveur + borne de build, App.jsx) : la case devient cliquable. Motif de
+  // la case grisée sinon ('fermee' | 'extension') et borne affichée.
+  plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisHidden,
   // Compte eBay pas encore utilisable (07/09/2026, demande Joséphine). Vaut
@@ -1423,6 +1483,16 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
   pausedPlatforms = [], pausedReasons = {} }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
+  // Motif d'une plateforme visible mais grisée (Opla, 17/09 soir) : ouverte
+  // côté serveur mais extension du compte trop ancienne → « mise à jour » ;
+  // sinon « pas encore ouverte ». Le fait, pas une date.
+  const motifAVenir = (p) => oplaMotifGrise === 'extension'
+    ? (lang === 'en'
+        ? `${PLATFORM_LABELS[p]} opens with the next FillSell extension update${oplaExtensionMin ? ` (${libelleVersionExtension(oplaExtensionMin)})` : ''} — it arrives on its own through Chrome.`
+        : `${PLATFORM_LABELS[p]} s'active avec la prochaine mise à jour de l'extension FillSell${oplaExtensionMin ? ` (${libelleVersionExtension(oplaExtensionMin)})` : ''} — elle arrive toute seule par Chrome.`)
+    : (lang === 'en'
+        ? `${PLATFORM_LABELS[p]} is being prepared — visible here, not open for publishing yet.`
+        : `${PLATFORM_LABELS[p]} est en préparation — visible ici, pas encore ouverte à la publication.`);
   const MAX = MAX_PHOTOS;
   const drag = usePhotoDrag(onReorderPhotos);
 
@@ -1823,16 +1893,16 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           // une plateforme sans handler — la case `disabled` ne passe jamais
           // par setSelected, donc la plateforme n'entre jamais dans `rows`,
           // donc jamais dans spend_coins_and_publish.
-          const pasEncoreOuverte = plateformesAVenir.includes(p);
+          // (17/09 soir) Levé par l'interrupteur serveur ET la borne de build,
+          // calculés par App.jsx (plateformesOuvertes) — jamais par l'article.
+          const pasEncoreOuverte = plateformesAVenir.includes(p) && !plateformesOuvertes.includes(p);
           const disabled = pasEncoreOuverte || support !== "supported" || dejaEnLigne || enCours || compteAbsent || enPause;
           return (
             <button
               key={p}
               disabled={disabled}
               title={pasEncoreOuverte
-                ? (lang === 'en'
-                    ? `${PLATFORM_LABELS[p]} isn't open for publishing yet`
-                    : `${PLATFORM_LABELS[p]} n'est pas encore ouverte à la publication`)
+                ? motifAVenir(p)
                 : dejaEnLigne
                 ? (lang === 'en' ? `Already live on ${PLATFORM_LABELS[p]}` : `Déjà en ligne sur ${PLATFORM_LABELS[p]}`)
                 : enCours
@@ -1866,7 +1936,9 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
               {PLATFORM_LABELS[p]}
               {pasEncoreOuverte && (
                 <span style={{ fontSize:11, fontWeight:600 }}>
-                  · {lang === 'en' ? 'soon' : 'bientôt'}
+                  · {oplaMotifGrise === 'extension'
+                      ? (lang === 'en' ? 'update' : 'mise à jour')
+                      : (lang === 'en' ? 'soon' : 'bientôt')}
                 </span>
               )}
               {dejaEnLigne && (
@@ -1910,11 +1982,9 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
       {/* Plateforme visible mais pas encore ouverte : UNE phrase sous la
           rangée, même forme que les cinq autres motifs. Elle dit le fait, pas
           une date — on n'en promet aucune. */}
-      {plateformesAVenir.map(p => (
+      {plateformesAVenir.filter(p => !plateformesOuvertes.includes(p)).map(p => (
         <p key={`avenir-${p}`} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
-          {lang === 'en'
-            ? `${PLATFORM_LABELS[p]} is being prepared — visible here, not open for publishing yet.`
-            : `${PLATFORM_LABELS[p]} est en préparation — visible ici, pas encore ouverte à la publication.`}
+          {motifAVenir(p)}
         </p>
       ))}
       {PLATFORMS_DEFAULT.filter(p => (publishedSet?.has(p) || queuedSet?.has(p))).length > 0 && (
@@ -3551,6 +3621,9 @@ const FREE_STOCK_LIMIT = FREE_STOCK_LIMIT_FALLBACK;
 export default function ListingPreviewScreen({
   // profiles.plateformes_visibles, lu par App.jsx. AFFICHAGE SEULEMENT.
   plateformesVisibles = [],
+  // Opla OUVERTE pour ce compte (interrupteur serveur + borne de build,
+  // App.jsx) : la case devient cliquable et la copie Opla se dérive.
+  plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
   inventaireId, userId, initialPhotos: initialPhotosProp = [], initialListing: initialListingProp = null, supabase, lang, onClose,
   // eBay par API (lot 2b, 06/09) : true = ce compte publie eBay par le worker
   // serveur (profiles.ebay_voie_api, posé par Nico). Un article SANS PHOTO ne
@@ -5369,6 +5442,21 @@ export default function ListingPreviewScreen({
       .filter(p => !(lbcAdresseManquante?.plateformes ?? []).includes(p))
       .filter(p => platformSupport?.[p] !== "prohibited")
   ), [selected, platformListings, lbcAdresseManquante, platformSupport]);
+  // ── COPIE OPLA DÉRIVÉE DE LA COPIE VINTED (2026-09-17 soir) ─────────────
+  // Pour les seuls comptes qui VOIENT Opla — inerte pour tous les autres.
+  // Aucune écriture si la copie existe déjà (brouillon repris, édition à la
+  // main) : l'effet ne fait que COMBLER une absence, une fois.
+  useEffect(() => {
+    if (!plateformesVisibles.includes("opla")) return;
+    const src = edited?.vinted;
+    if (!src || edited?.opla) return;
+    const copie = deriverCopieOpla(src);
+    setEdited(prev => (!prev?.vinted || prev?.opla) ? prev : { ...prev, opla: copie });
+    setPlatformListings(prev => (prev?.platforms?.vinted && !prev.platforms.opla)
+      ? { ...prev, platforms: { ...prev.platforms, opla: { title: copie.title, description: copie.description, platform_fields: { ...copie.platform_fields } } } }
+      : prev);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edited?.vinted, edited?.opla, plateformesVisibles]);
   // ── Exemption extension « eBay seul + voie API » (2026-09-06, GO Nico) ──
   // L'écran d'accroche extension (extensionBlocked) protège une file qui
   // n'aurait PERSONNE pour l'exécuter. Quand le lot ne contient QUE eBay et
@@ -7558,6 +7646,33 @@ export default function ListingPreviewScreen({
             if (lbcFormat) pf.format_colis = lbcFormat;
           }
         }
+        if (platform === "opla") {
+          // ── OPLA (2026-09-17 soir) — champs attendus par le connecteur
+          // (content-scripts/opla-prevol.js, docs/OPLA_MAPPING.md § 2) :
+          // oplaCategoryCode (feuille), etat (5 codes), marque (obligatoire,
+          // texte libre), taille (code de la grille de la feuille), couleurs[]
+          // / matieres[] (résolus par le pré-vol contre la liste de la feuille,
+          // l'inconnu est JETÉ avec avertissement — jamais envoyé tel quel).
+          // Catégorie : le MOT → feuille Opla (categorieParMot, id = code).
+          // Sans feuille certaine on ne pose RIEN : le pré-vol pose alors la
+          // question avec les options du NIVEAU qui a échoué (jamais les 8
+          // racines — défaut Blaf69 du 16/09, à ne pas reproduire).
+          const parMotOpla = parMot?.id ? parMot : null;
+          if (parMotOpla) {
+            pf.oplaCategoryCode = String(parMotOpla.id);
+            pf.oplaCategoryPath = parMotOpla.chemin;
+          }
+          const codeEtat = OPLA_ETAT_PAR_LIBELLE[texteComparable(String(pf.etat ?? "")).toLowerCase()];
+          if (codeEtat) { pf.opla_etat_libelle = pf.etat; pf.etat = codeEtat; }
+          // Marque obligatoire chez Opla (« La marque est obligatoire. »),
+          // champ libre : « Sans marque » dit l'absence, comme sur Vinted.
+          if (!String(pf.marque ?? "").trim()) pf.marque = "Sans marque";
+          if (pf.taille) pf.taille = String(pf.taille).replace(/^EU\s*/i, "").trim();
+          if (pf.couleur) {
+            pf.couleurs = String(pf.couleur).split(/\s+et\s+|[,/&+]/i).map(s => s.trim()).filter(Boolean).slice(0, 3);
+          }
+          if (pf.matiere) pf.matieres = [String(pf.matiere).trim()].filter(Boolean);
+        }
         // ── Tailles ENFANT (2026-07-15) : conversion canonique → libellé
         // EXACT de la plateforme (référentiel childSizes.js, relevé DOM réel
         // docs/sizes-baby-child-raw.txt). Les copies affichées gardent la
@@ -8587,6 +8702,9 @@ export default function ListingPreviewScreen({
             platformSupport={platformSupport}
             motifSupport={motifSupport}
             plateformesAVenir={PLATFORMS_A_VENIR.filter(p => plateformesVisibles.includes(p))}
+            plateformesOuvertes={plateformesOuvertes}
+            oplaMotifGrise={oplaMotifGrise}
+            oplaExtensionMin={oplaExtensionMin}
             publishedSet={publishedSet}
             queuedSet={queuedSet}
             ebayBloque={ebayBloque}

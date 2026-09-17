@@ -4307,6 +4307,10 @@ const StockTab = memo(function StockTab({
   ebayCompte = null,
   // Drapeau d'affichage par profil (lot 7 Opla) : transmis au stepper tel quel.
   plateformesVisibles = [],
+  // Opla ouverte par l'interrupteur serveur + borne de build (2026-09-17 soir,
+  // calculé par App.jsx) : plateformes réellement SÉLECTIONNABLES, motif de
+  // la case grisée, borne affichée. Transmis au stepper tels quels.
+  plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
   // (iapProduct retiré le 2026-08-09 : son seul lecteur était le sous-titre
   // d'IAPUpgradeBlock, qui annonçait le prix Premium sous un bouton menant à
   // trois tarifs.)
@@ -9822,6 +9826,9 @@ const StockTab = memo(function StockTab({
           userId={user.id}
           ebayCompte={ebayCompte}
           plateformesVisibles={plateformesVisibles}
+          plateformesOuvertes={plateformesOuvertes}
+          oplaMotifGrise={oplaMotifGrise}
+          oplaExtensionMin={oplaExtensionMin}
           alreadyPublished={[...new Set([
             ...computeRemovalInfo(jobsByInventaire[publishItem.id]||[]).publishedActive,
             ...plateformesReserveesParRepublication(jobsByInventaire[publishItem.id]||[]),

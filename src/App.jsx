@@ -2197,6 +2197,21 @@ export default function App({ loginOnly = false }){
   // exactement l'app d'avant. La colonne n'a PAS d'UPDATE accordé à
   // authenticated — personne ne peut s'ouvrir une plateforme depuis l'app.
   const [plateformesVisibles,setPlateformesVisibles]=useState([]);
+  // ── OPLA : UN SEUL INTERRUPTEUR SERVEUR + BORNE DE BUILD (2026-09-17 soir) ──
+  // coin_config.opla_ouvert (0 = case grisée, 1 = case active) et
+  // coin_config.opla_extension_min (build minimal, même encodage que
+  // lbc_pro_extension_min : 0.6.42 → 642). La case n'est ACTIVE que si
+  // opla_ouvert = 1 ET que l'extension de CE compte (profiles.extension_version)
+  // est ≥ la borne : cocher Opla débite et crée le job AVANT que l'extension
+  // ait son mot à dire (vérifié au lot 7) — une extension trop ancienne
+  // laisserait un débit et un job pending à vie. FAIL-CLOSED : clé absente,
+  // illisible ou lecture ratée → grisée. Ouvrir / fermer tout le parc = une
+  // ligne SQL sur coin_config, sans paquet ni déploiement.
+  // plateformes_visibles (profil) garde la PRIORITÉ D'AFFICHAGE : les comptes
+  // qui le portent voient la case même quand l'interrupteur est à 0 ; il ne
+  // l'active jamais à lui seul (la borne de build n'est jamais contournée).
+  const [oplaConfig,setOplaConfig]=useState({ouvert:false,min:null,lu:false});
+  const [extensionVersion,setExtensionVersion]=useState(null);
   // ── LA VOIE RÉELLE, lue UNE fois pour toute l'app (07/09/2026) ────────────
   // Le drapeau seul ne dit PAS par où part un job eBay : le trigger
   // cross_post_jobs_voie_ebay exige EN PLUS un compte relié, non révoqué, ses
@@ -2260,6 +2275,22 @@ export default function App({ loginOnly = false }){
     return ext!=null&&Number.isFinite(min)&&ext<min;
   })();
   const extBannerKey=`${extensionBuild}|${EXT_MIN_BUILD}`;
+  // ── Opla : ce que l'app en montre (2026-09-17 soir) ─────────────────────
+  // Encodage identique à get-pending-jobs (major×10000 + minor×100 + patch) ;
+  // version absente ou illisible = 0 : une extension qui ne sait pas se
+  // nommer n'a pas Opla.
+  const codeVersionExtension=(v)=>{const m=String(v??'').trim().match(/^(\d+)\.(\d+)\.(\d+)/);return m?Number(m[1])*10000+Number(m[2])*100+Number(m[3]):0;};
+  const oplaActivable=oplaConfig.lu&&oplaConfig.ouvert&&oplaConfig.min!=null&&codeVersionExtension(extensionVersion)>=oplaConfig.min;
+  // Visible = ouverte pour tout le parc (opla_ouvert) OU portée par le
+  // drapeau du profil. Ouverte (case active) = oplaActivable, et rien d'autre.
+  const plateformesVisiblesEffectives=useMemo(
+    ()=>(oplaConfig.ouvert&&!plateformesVisibles.includes('opla'))?[...plateformesVisibles,'opla']:plateformesVisibles,
+    [oplaConfig.ouvert,plateformesVisibles],
+  );
+  const plateformesOuvertes=useMemo(()=>oplaActivable?['opla']:[],[oplaActivable]);
+  // Motif de la case grisée quand Opla est visible : 'extension' = ouverte
+  // mais l'extension de ce compte est trop ancienne ; 'fermee' sinon.
+  const oplaMotifGrise=(oplaConfig.ouvert&&oplaConfig.min!=null)?'extension':'fermee';
   // Source UNIQUE de « la bannière est à l'écran » : lue par le rendu ET par
   // le rafraîchissement ci-dessous, pour qu'ils ne puissent pas diverger.
   const extBannerVisible=extensionOutdated&&extBannerDismissedFor!==extBannerKey;
@@ -2965,6 +2996,18 @@ export default function App({ loginOnly = false }){
         if(error){setPlateformesVisibles([]);return;}
         setPlateformesVisibles(Array.isArray(data?.plateformes_visibles)?data.plateformes_visibles:[]);
       });
+    // ── Opla : interrupteur serveur + version d'extension du compte ─────────
+    // Deux lectures ISOLÉES (même raison que ci-dessus : l'échec de l'une ne
+    // coûte que le drapeau qu'elle porte). Fail-closed dans les deux cas.
+    supabase.from('coin_config').select('key, value').in('key',['opla_ouvert','opla_extension_min'])
+      .then(({data,error})=>{
+        if(error||!Array.isArray(data)){setOplaConfig({ouvert:false,min:null,lu:true});return;}
+        const par=Object.fromEntries(data.map(r=>[r.key,Number(r.value)]));
+        const min=Number.isFinite(par.opla_extension_min)&&par.opla_extension_min>0?par.opla_extension_min:null;
+        setOplaConfig({ouvert:par.opla_ouvert===1,min,lu:true});
+      });
+    supabase.from('profiles').select('extension_version').eq('id',uid).maybeSingle()
+      .then(({data,error})=>{setExtensionVersion(error?null:(data?.extension_version??null));});
     // ── Quel bundle cette personne exécute-t-elle ? (2026-09-16) ────────────
     // Rien ne le disait côté serveur : « zéro usage_logs » et « bundle trop
     // vieux pour contenir l'écran d'onboarding » laissaient la MÊME trace
@@ -7460,7 +7503,10 @@ export default function App({ loginOnly = false }){
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
             extensionNeverSeen={extensionNeverSeen}
             ebayCompte={ebayCompte}
-            plateformesVisibles={plateformesVisibles}
+            plateformesVisibles={plateformesVisiblesEffectives}
+            plateformesOuvertes={plateformesOuvertes}
+            oplaMotifGrise={oplaMotifGrise}
+            oplaExtensionMin={oplaConfig.min}
             iapLoading={iapLoading}
             stock={stock} sold={sold}
             stockFiltre={stockFiltre} soldFiltre={soldFiltre}
@@ -7538,7 +7584,10 @@ export default function App({ loginOnly = false }){
             isPremium={isPremium} isNative={isNative} user={user}
             quotas={quotas}
             ebayCompte={ebayCompte}
-            plateformesVisibles={plateformesVisibles}
+            plateformesVisibles={plateformesVisiblesEffectives}
+            plateformesOuvertes={plateformesOuvertes}
+            oplaMotifGrise={oplaMotifGrise}
+            oplaExtensionMin={oplaConfig.min}
             iapLoading={iapLoading}
             lensPhotos={lensPhotos} setLensPhotos={setLensPhotos}
             lensResult={lensResult} setLensResult={setLensResult}

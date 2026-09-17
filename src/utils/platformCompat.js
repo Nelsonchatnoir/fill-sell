@@ -50,5 +50,12 @@ export function getPlatformSupport(icon, article = null) {
     // catalogue Beebs — jamais le titre, jamais l'IA ; doute = statut d'avant.
     beebs: article && verdictBeebsInterdit(article) ? "prohibited" : beebsCategoryStatus(icon),
     ebay: ebayCategoryStatus(icon),
+    // Opla (2026-09-17 soir, ouverture par interrupteur serveur) : aucune
+    // table de compat par icône — l'arbre Opla (886 feuilles) couvre la mode,
+    // la maison, les loisirs, l'enfant ; le pré-vol du connecteur refuse AVANT
+    // envoi ce qui ne se range pas (catégorie, taille) et pose la question avec
+    // les options du niveau qui a échoué. « supported » ici veut dire : la case
+    // n'est jamais grisée pour un motif de catégorie qu'on ne sait pas juger.
+    opla: "supported",
   };
 }
