@@ -157,18 +157,32 @@ async function listerMesArticles() {
 
 // CAPTURE COMPLÈTE d'un article (relevé, 2026-09-17 soir) : la fiche publique
 // par l'API — photos, description, marque, état, taille, couleurs, matières,
-// chemin de catégorie. Codes Opla tels quels (condition « good », couleur
-// « BROWN ») : c'est l'import qui les lira. Aucune écriture, aucun quota.
+// chemin de catégorie, vues et favoris. Aucune écriture, aucun quota.
+// ⚠️ `images` rend des CLÉS (« images/apple|000159.….2004/art_…/ima_….webp »),
+//    pas des URL (relevé 18/09 00:20 sur art_9c05d05d…) : le site les sert sur
+//    le CloudFront ci-dessous, chaque segment encodé (« | » → %7C) — vérifié
+//    200 image/webp. Les codes d'état (« like-new ») sont rendus en libellé
+//    (miroir de OPLA_ETAT_PAR_LIBELLE côté app).
+const OPLA_CDN_IMAGES = "https://d2f61lx5s6m7uh.cloudfront.net/";
+const OPLA_ETAT_LIBELLE = Object.freeze({
+  "new-with-tags": "Neuf avec étiquette", "new": "Neuf sans étiquette", "like-new": "Très bon état", "good": "Bon état", "fair": "Satisfaisant",
+});
 async function capturerArticle(id) {
   if (!/^art_/.test(id)) return { success: false, error: "identifiant Opla inattendu" };
   const r = await oplaJson(OPLA_ENDPOINTS.article(id));
   if (!r.ok || !r.corps || typeof r.corps !== "object") return { success: false, error: `fiche Opla illisible (HTTP ${r.statut})` };
   const a = r.corps.article && typeof r.corps.article === "object" ? r.corps.article : r.corps;
+  const urlImage = (i) => {
+    const v = typeof i === "string" ? i : (i?.url ?? i?.src ?? i?.key ?? null);
+    if (!v) return null;
+    if (/^https?:/.test(v)) return v;
+    return OPLA_CDN_IMAGES + String(v).replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
+  };
   const images = (Array.isArray(a.images) ? a.images : (Array.isArray(a.imageUrls) ? a.imageUrls : []))
-    .map((i) => (typeof i === "string" ? i : (i?.url ?? i?.src ?? null)))
-    .filter((u) => /^https?:/.test(String(u)));
+    .map(urlImage).filter(Boolean);
   const md = a.metadata && typeof a.metadata === "object" ? a.metadata : {};
   const liste = (v) => (Array.isArray(v) && v.length ? v.map(String).join(", ") : null);
+  const entier = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
   return {
     success: true,
     capture: {
@@ -176,10 +190,12 @@ async function capturerArticle(id) {
       description: typeof a.description === "string" && a.description.trim() ? a.description.trim() : null,
       marque: a.brand ?? null,
       taille: Array.isArray(md.sizes) ? (md.sizes[0] ?? null) : null,
-      etat: a.condition ?? null,
+      etat: a.condition ? (OPLA_ETAT_LIBELLE[String(a.condition)] ?? String(a.condition)) : null,
       couleur: liste(md.colors),
       matiere: liste(md.materials),
       categorie: Array.isArray(a.categoriesPath) ? a.categoriesPath.join(" > ") : (a.category ?? null),
+      vues: entier(a.viewCount),
+      favoris: entier(a.favouriteCount),
       source: "api",
     },
   };

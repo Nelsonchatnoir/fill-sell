@@ -11717,11 +11717,21 @@ function capturerFicheEnPage(plateforme) {
       const grandes = Array.isArray(ad.images?.urls_large) && ad.images.urls_large.length ? ad.images.urls_large : (ad.images?.urls ?? []);
       out.photos = grandes.filter((u) => /^https?:/.test(String(u)));
       out.description = typeof ad.body === "string" && ad.body.trim() ? ad.body.trim() : null;
-      const attr = (re) => { for (const a of ad.attributes ?? []) if (re.test(String(a?.key ?? ""))) return a.value_label ?? a.value ?? null; return null; };
-      // ⚠️ « estimated_parcel_size » = S/M/L du COLIS, pas la taille du vêtement
-      // (relevé 3242179311 : une montre « taille S »). Exclu par le mot parcel.
-      out.marque = attr(/brand$/i); out.taille = attr(/^(?!.*parcel)(?:.*_)?size$/i); out.etat = attr(/^condition$|_condition$/i);
-      out.couleur = attr(/colou?r$/i); out.matiere = attr(/material$/i);
+      // Attributs par LIBELLÉ d'abord (« Taille », « Pointure », « Marque »…),
+      // par clé ensuite. Relevé 18/09 00:05 : la taille était NULL sur 5
+      // fiches sur 5 — Leboncoin la range sous `clothing_st` (libellé
+      // « Taille »), que « clé finissant par size » ne voyait pas. La marque
+      // n'existe que quand Leboncoin la connaît (« Tommy Hilfiger » oui,
+      // « Picture Organic Clothing » non : null, jamais deviné du titre).
+      const attrs = Array.isArray(ad.attributes) ? ad.attributes : [];
+      const valeurDe = (a) => (a?.value_label ?? a?.value ?? null);
+      const parLibelle = (labels) => { for (const a of attrs) if (labels.includes(String(a?.key_label ?? "").trim().toLowerCase())) return valeurDe(a); return null; };
+      const parCle = (re) => { for (const a of attrs) if (re.test(String(a?.key ?? ""))) return valeurDe(a); return null; };
+      out.marque = parLibelle(["marque"]) ?? parCle(/brand$/i);
+      out.taille = parLibelle(["taille", "pointure"]) ?? parCle(/^(?!.*parcel)(?:.*_)?(size|st)$/i);
+      out.etat = parLibelle(["état", "etat"]) ?? parCle(/^condition$|_condition$/i);
+      out.couleur = parLibelle(["couleur"]) ?? parCle(/colou?r$/i);
+      out.matiere = parLibelle(["matière", "matiere"]) ?? parCle(/material$/i);
       out.categorie = ad.category_name ?? null;
     } else {
       out.source = "dom";
@@ -11734,8 +11744,16 @@ function capturerFicheEnPage(plateforme) {
         }
         return null;
       };
-      out.marque = crit(/brand$/i); out.taille = crit(/^(?!.*parcel)(?:.*_)?size$/i); out.etat = crit(/^condition$|_condition$/i);
-      out.couleur = crit(/colou?r$/i); out.matiere = crit(/material$/i);
+      const critLib = (labels) => {
+        for (const e of document.querySelectorAll("[data-qa-id^='criteria_item_']")) {
+          const parts = Array.from(e.querySelectorAll("*")).filter((x) => !x.children.length).map((x) => propre(x.textContent)).filter(Boolean);
+          if (parts[0] && labels.includes(parts[0].toLowerCase()) && parts[1]) return parts[1];
+        }
+        return null;
+      };
+      out.marque = critLib(["marque"]) ?? crit(/brand$/i); out.taille = critLib(["taille", "pointure"]) ?? crit(/^(?!.*parcel)(?:.*_)?(size|st)$/i);
+      out.etat = critLib(["état", "etat"]) ?? crit(/^condition$|_condition$/i);
+      out.couleur = critLib(["couleur"]) ?? crit(/colou?r$/i); out.matiere = critLib(["matière", "matiere"]) ?? crit(/material$/i);
       out.categorie = ld?.category ?? null;
       // Galerie : les images AVANT la description (les « annonces similaires »
       // viennent après), dédoublonnées par identifiant.
@@ -11804,9 +11822,46 @@ function capturerFicheEnPage(plateforme) {
   return out;
 }
 
+// L'article RATTACHÉ à l'annonce qu'on vient de capturer est COMPLÉTÉ — jamais
+// écrasé : seuls ses champs VIDES reçoivent la capture. Photos : absentes, ou
+// réduites à UNE photo qui n'est pas à nous (la vignette du relevé d'un article
+// importé avant la capture — robe Camaïeu, 18/09 00:07 : « toujours une seule
+// photo dans le stepper après un relevé réussi »). Une photo déposée dans
+// FillSell (stockage Supabase), une description écrite, une marque saisie, un
+// attribut déjà porté : intouchés.
+async function completerArticleDepuisCapture(inventaireId, capture, platform, { token, userId, vignette }) {
+  const rows = await restRequest(
+    `inventaire?id=eq.${inventaireId}&user_id=eq.${userId}&select=id,photos,description,marque,attributs`, token,
+  ).catch(() => null);
+  const art = Array.isArray(rows) ? rows[0] : null;
+  if (!art) return false;
+  const patch = {};
+  const photos = Array.isArray(art.photos) ? art.photos.filter(Boolean).map(String) : [];
+  const aNous = (u) => /supabase\.co|fillsell\.app/i.test(u);
+  const seulementVignette = photos.length === 0
+    || (photos.length === 1 && !aNous(photos[0]));
+  if (seulementVignette && Array.isArray(capture?.photos) && capture.photos.length) patch.photos = capture.photos;
+  if (!String(art.description ?? "").trim() && capture?.description) patch.description = String(capture.description);
+  if (!String(art.marque ?? "").trim() && capture?.marque) patch.marque = String(capture.marque);
+  const attr = art.attributs && typeof art.attributs === "object" && !Array.isArray(art.attributs) ? { ...art.attributs } : {};
+  const at = new Date().toISOString();
+  let attrMaj = false;
+  for (const k of ["taille", "etat", "couleur", "matiere", "marque"]) {
+    const v = capture?.[k];
+    if (v == null || !String(v).trim() || attr[k]) continue;
+    attr[k] = { v: String(v).trim(), source: `releve_${platform}`, at };
+    attrMaj = true;
+  }
+  if (attrMaj) patch.attributs = attr;
+  if (!Object.keys(patch).length) return false;
+  await restRequest(`inventaire?id=eq.${inventaireId}&user_id=eq.${userId}`, token, { method: "PATCH", body: JSON.stringify(patch) });
+  console.log(`[releve][${platform}] article ${inventaireId} complété depuis la capture : ${Object.keys(patch).join(", ")}`);
+  return true;
+}
+
 // La capture des annonces d'un relevé qui ne l'ont pas encore été, bornée.
 async function capturerAnnonces(platform, annonces, { token, userId }) {
-  const bilan = { capturees: 0, echecs: 0, restantes: 0, motif: null };
+  const bilan = { capturees: 0, echecs: 0, restantes: 0, completes: 0, motif: null };
   if (!Array.isArray(annonces) || !annonces.length) return bilan;
   let deja;
   try {
@@ -11845,11 +11900,14 @@ async function capturerAnnonces(platform, annonces, { token, userId }) {
         if (!capture || (!capture.photos?.length && !capture.description)) throw new Error("fiche illisible (ni photo ni description)");
       }
       const at = new Date().toISOString();
-      await restRequest(
-        `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&listing_id=eq.${encodeURIComponent(String(a.listing_id))}`, token,
-        { method: "PATCH", body: JSON.stringify({ capture: { ...capture, at }, capture_le: at, updated_at: at }) },
+      const maj = await restRequest(
+        `annonces_plateforme?user_id=eq.${userId}&platform=eq.${platform}&listing_id=eq.${encodeURIComponent(String(a.listing_id))}&select=inventaire_id`, token,
+        { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ capture: { ...capture, at }, capture_le: at, updated_at: at }) },
       );
       bilan.capturees++;
+      // L'article DÉJÀ rattaché est complété (champs vides seulement).
+      const invId = Array.isArray(maj) ? maj[0]?.inventaire_id : null;
+      if (invId && await completerArticleDepuisCapture(invId, capture, platform, { token, userId, vignette: a.photo_url })) bilan.completes++;
     } catch (e) {
       bilan.echecs++;
       console.warn(`[releve][${platform}] capture ${a.listing_id} en échec :`, String(e?.message ?? e));
@@ -11955,7 +12013,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
                  ? `[relevé] illisible : prix sur ${illisibles.prix} annonce(s), titre sur ${illisibles.titre}` : null,
                bilan?.ok ? `[rattachement] par identifiant ${bilan.par_job}, automatiques ${bilan.auto}, proposées ${bilan.proposees}, sans candidat ${bilan.sans_candidat}, disparues ${bilan.disparues}` : null,
                (capture.capturees || capture.echecs || capture.restantes || capture.motif)
-                 ? `[capture] ${capture.capturees} fiche(s) capturée(s)${capture.echecs ? `, ${capture.echecs} en échec` : ""}${capture.restantes ? `, ${capture.restantes} au prochain relevé` : ""}${capture.motif ? ` — ${capture.motif}` : ""}` : null]
+                 ? `[capture] ${capture.capturees} fiche(s) capturée(s)${capture.completes ? `, ${capture.completes} article(s) complété(s)` : ""}${capture.echecs ? `, ${capture.echecs} en échec` : ""}${capture.restantes ? `, ${capture.restantes} au prochain relevé` : ""}${capture.motif ? ` — ${capture.motif}` : ""}` : null]
         .filter(Boolean).join(" · ") || null,
     };
     await restRequest(`vinted_sync_runs?id=eq.${run.id}`, token, { method: "PATCH", body: JSON.stringify(fin) }).catch(() => {});
