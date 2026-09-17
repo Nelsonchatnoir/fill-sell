@@ -637,6 +637,149 @@ serve(async (req) => {
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
     }
 
+    // ── PORTE « FORMULAIRE PRO LEBONCOIN » : RETENU JUSQU'À L'EXTENSION QUI
+    // SAIT LE NOMMER (2026-09-17, GO Nico) ──────────────────────────────────
+    // CE QUE ÇA A COÛTÉ : MeMiniandMove (compte Leboncoin PRO) — 8 jobs failed
+    // à 5/5, 15 en file, 0 annonce publiée ; Victor (même formulaire), 5
+    // failed le 11/09. Le formulaire d'un compte PRO tient sur UNE page et
+    // porte deux critères requis que l'extension ≤ 0.6.40 ne remplit pas et
+    // ne sait pas nommer : « Poids du colis » (estimated_parcel_weight, aucun
+    // code ne l'a jamais rempli) et « Quantité » (quantity — une COMBOBOX sur
+    // le formulaire pro, là où le code vise un input texte). Chaque tentative
+    // meurt sur le même refus sans nom, cinq fois, puis failed. Mesuré le
+    // 17/09 sur ses 7 essais 0.6.40 : la couleur (v69) n'y change rien,
+    // Leboncoin la pré-remplissait déjà depuis le titre. La 0.6.41 (5940db9)
+    // transforme ce refus en needs_user NOMMÉ, liste relevée sur place →
+    // mini-éditeur du Stock. Avant elle, tenter = brûler.
+    //
+    // RÈGLE. Un job publish Leboncoin d'un compte PRO est RETENU (reste
+    // 'pending', aucune tentative consommée) tant que l'extension appelante
+    // est plus ancienne que `coin_config.lbc_pro_extension_min`, et RELÂCHÉ au
+    // premier poll d'une extension à jour — sans geste, sans surveillance.
+    //   · Compte PRO = preuve portée par le compte lui-même : `custom_ref`
+    //     (Référence) ou `general_sales_condition` (CGV) relevés dans l'erreur
+    //     d'un de ses jobs Leboncoin — marqueurs du 10/09 : 18/18 chez les
+    //     comptes pro, 0/7 chez les particuliers. Un compte pro jamais tenté
+    //     n'a pas de preuve : son premier job tourne une fois, la produit, et
+    //     tout le reste est retenu dès le poll suivant.
+    //   · Réglage : coin_config.lbc_pro_extension_min, ENTIER =
+    //     major×10000 + minor×100 + patch (0.6.41 → 641). 0 ou clé absente =
+    //     porte OUVERTE : rien n'est retenu, et tout ce qui l'était est
+    //     relâché. C'est LE geste unique pour forcer avant la mise à jour :
+    //     `update coin_config set value = 0 where key = 'lbc_pro_extension_min'`.
+    //   · Retenue ÉCRITE une fois par job : marqueur `porte_pro_lbc`, message
+    //     lisible (à la place de « corrige l'annonce… », qui demandait un
+    //     geste impossible) et next_action_after à +7 j. Le rendez-vous
+    //     futur tient la porte de reprise espacée de l'extension (ceinture si
+    //     un job passait quand même) ET exclut le job du mail
+    //     job_pending_relaunch (email-tunnel : « un job qui a un rendez-vous
+    //     n'attend pas un humain »). Re-stampé seulement quand il expire.
+    //   · Relâche = marqueur retiré, rendez-vous retiré, message effacé, job
+    //     servi dans la MÊME réponse — l'extension à jour le traite au poll
+    //     qui la révèle.
+    //   · Périmètre : poll d'EXÉCUTION seul (le popup voit la file entière),
+    //     action publish seule (retraits et republications intacts).
+    //     Best-effort : réglage, preuve ou écriture illisibles → le poll
+    //     distribue comme avant, jamais un point de panne.
+    const MSG_LBC_PRO_ATTENTE =
+      "Ton compte Leboncoin est un compte pro : son formulaire exige deux informations " +
+      "(Poids du colis, Quantité) que la version actuelle de l'extension FillSell ne sait pas encore renseigner. " +
+      "La mise à jour de l'extension arrive toute seule par Chrome, et cette publication repart alors sans geste de ta part. " +
+      "Rien n'a été publié, rien à corriger.";
+    let heldLbcPro = 0;
+    let relachesLbcPro = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      try {
+        const estPublishLbc = (j: { platform: string; action: string | null }) =>
+          j.platform === "leboncoin" && (j.action ?? "publish") === "publish";
+        const pfDe = (j: { platform_fields: unknown }) =>
+          ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+        const candidats = out.filter(estPublishLbc);
+        if (candidats.length) {
+          const { data: cfgMin } = await userClient
+            .from("coin_config").select("value").eq("key", "lbc_pro_extension_min").maybeSingle();
+          const minCode = Number(cfgMin?.value ?? 0);
+          // Même encodage que la clé : 0.6.41 → 641. Version absente ou
+          // illisible = 0 : un build trop vieux pour se nommer n'a pas le
+          // correctif.
+          const codeVersion = (v: string): number => {
+            const m = String(v ?? "").trim().match(/^(\d+)\.(\d+)\.(\d+)/);
+            return m ? Number(m[1]) * 10000 + Number(m[2]) * 100 + Number(m[3]) : 0;
+          };
+          const extCode = codeVersion(version);
+          const porteOuverte = !(Number.isFinite(minCode) && minCode > 0) || extCode >= minCode;
+          const marques = candidats.filter((j) => pfDe(j)["porte_pro_lbc"] != null);
+          if (porteOuverte) {
+            for (const j of marques) {
+              const pf = { ...pfDe(j) };
+              delete pf["porte_pro_lbc"];
+              delete pf["next_action_after"];
+              const { error: uErr } = await userClient.from("cross_post_jobs")
+                .update({ error: null, platform_fields: pf })
+                .eq("id", j.id).eq("status", "pending");
+              if (uErr) {
+                console.warn(`[get-pending-jobs] porte pro Leboncoin : relâche du job ${String(j.id).slice(0, 8)} non écrite (${uErr.message}) — job servi tel quel`);
+                continue;
+              }
+              (j as unknown as Record<string, unknown>).platform_fields = pf;
+              relachesLbcPro++;
+            }
+            if (relachesLbcPro) {
+              console.log(
+                `[get-pending-jobs] userId=${user.id} : porte pro Leboncoin OUVERTE (extension ${version || "?"} = ${extCode}, ` +
+                `min ${minCode}) → ${relachesLbcPro} job(s) relâché(s) et servi(s)`,
+              );
+            }
+          } else {
+            let pro = marques.length > 0;
+            if (!pro) {
+              const { data: preuve } = await userClient
+                .from("cross_post_jobs").select("id")
+                .eq("platform", "leboncoin")
+                .or("error.ilike.*custom_ref*,error.ilike.*general_sales_condition*")
+                .limit(1);
+              pro = (preuve ?? []).length > 0;
+            }
+            if (pro) {
+              const maintenant = Date.now();
+              const rdv = new Date(maintenant + 7 * 24 * 3_600_000).toISOString();
+              for (const j of candidats) {
+                const pf = pfDe(j);
+                const ancien = (pf["porte_pro_lbc"] && typeof pf["porte_pro_lbc"] === "object")
+                  ? pf["porte_pro_lbc"] as Record<string, unknown> : null;
+                const echeance = Date.parse(String(pf["next_action_after"] ?? ""));
+                const rdvTient = Number.isFinite(echeance) && echeance > maintenant + 24 * 3_600_000;
+                if (ancien && rdvTient) continue; // déjà retenu, rendez-vous valide : rien à écrire
+                const marque = {
+                  depuis: String(ancien?.depuis ?? new Date(maintenant).toISOString()),
+                  motif: "formulaire Leboncoin pro : Poids du colis + Quantité non remplis par une extension trop ancienne",
+                  extension_vue: version || null,
+                  extension_min: minCode,
+                  rendez_vous: rdv,
+                  next_action_after_avant: ancien ? (ancien.next_action_after_avant ?? null) : (pf["next_action_after"] ?? null),
+                  pose_par: "get-pending-jobs",
+                };
+                const { error: uErr } = await userClient.from("cross_post_jobs")
+                  .update({ error: MSG_LBC_PRO_ATTENTE, platform_fields: { ...pf, porte_pro_lbc: marque, next_action_after: rdv } })
+                  .eq("id", j.id).eq("status", "pending");
+                if (uErr) console.warn(`[get-pending-jobs] porte pro Leboncoin : retenue du job ${String(j.id).slice(0, 8)} non écrite (${uErr.message}) — retenu quand même pour ce poll`);
+              }
+              const ids = new Set(candidats.map((j) => String(j.id)));
+              out = out.filter((j) => !ids.has(String(j.id)));
+              heldLbcPro = ids.size;
+              console.log(
+                `[get-pending-jobs] userId=${user.id} : porte pro Leboncoin FERMÉE (extension ${version || "?"} = ${extCode} < min ${minCode}) ` +
+                `→ ${heldLbcPro} job(s) publish Leboncoin retenu(s) en pending, aucune tentative consommée : ` +
+                `${candidats.map((j) => String(j.id).slice(0, 8)).join(", ")}`,
+              );
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] porte pro Leboncoin : ${String((e as Error)?.message ?? e)} — distribution normale`);
+      }
+    }
+
     // ── UNE REPUBLICATION ORPHELINE N'EST JAMAIS SERVIE (2026-09-06) ────────
     // Supprimer un article n'annulait pas ses REPUBLICATIONS (App.jsx,
     // buildDeletePlan, corrigé le même jour). La FK
@@ -3065,6 +3208,11 @@ serve(async (req) => {
       // créneau ? sinon `reprise` = prochaine tentative (instant serveur).
       creneau_republish: creneauRepublish,
       jobs_retenus_creneau: heldCreneau,
+      // porte pro Leboncoin (2026-09-17) : jobs publish Leboncoin retenus à
+      // ce poll parce que l'extension est trop ancienne pour le formulaire
+      // pro, et jobs relâchés parce qu'elle vient de se mettre à jour.
+      jobs_retenus_lbc_pro: heldLbcPro,
+      jobs_relaches_lbc_pro: relachesLbcPro,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
