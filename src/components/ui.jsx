@@ -154,7 +154,14 @@ export function LoaderScreen({ label, background=UI.canvas }) {
 }
 
 // Sélecteur segmenté (périodes, filtres courts) — pilules teintées, active = encre pleine.
-export function SegmentedPills({ options, value, onChange, labelFn }) {
+// `taille` (2026-09-18) : 'sm' par défaut — le gabarit historique, tous les
+// appelants existants sont inchangés. 'lg' porte la pilule à 44 px de haut,
+// la zone tactile minimale exigée sur la page Réglages (langue), sans rien
+// changer d'autre : mêmes couleurs, même forme, même comportement.
+export function SegmentedPills({ options, value, onChange, labelFn, taille = 'sm' }) {
+  const gabarit = taille === 'lg'
+    ? { padding:'12px 18px', fontSize:13 }
+    : { padding:'6px 14px', fontSize:12 };
   return (
     <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
       {options.map(opt => {
@@ -164,7 +171,7 @@ export function SegmentedPills({ options, value, onChange, labelFn }) {
             key={opt}
             onClick={() => onChange(opt)}
             style={{
-              padding:'6px 14px', borderRadius:999, border:'none', fontSize:12, fontWeight:600,
+              ...gabarit, borderRadius:999, border:'none', fontWeight:600,
               fontFamily:'inherit', cursor:'pointer', transition:'background 0.15s, color 0.15s',
               background: active ? UI.ink : UI.chip,
               color: active ? '#FFFFFF' : UI.mute2,
