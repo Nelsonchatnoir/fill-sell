@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 // (PepiteIcon / PepiteAmount / PACKS : imports morts le 02/09 soir — plus une
 // unité ne s'affiche dans cette modale.)
 import PlanBadge, { PremiumBadge, ProBadge, BusinessBadge } from './PlanBadge';
@@ -497,8 +498,22 @@ function PlansStack({ fr, tiers, K, onUpgrade, showFree = false }) {
   );
 }
 
+// ⛔ PORTAIL SUR document.body — OBLIGATOIRE, ET DÉMONTRÉ (2026-09-18).
+// Rendue dans l’arbre d’App, cette feuille vit sous .app-root, qui est un
+// conteneur de défilement/rognage. WebKit y peint les position:fixed DANS
+// SA COUCHE : par-dessus une page elle-même portalisée sur body (la page
+// Réglages, z-index 400), la feuille restait INVISIBLE malgré son z-index
+// 9990 — constaté sur Safari iOS par Nico, bundle vérifié à l’empreinte.
+// Aucun ancêtre ne porte transform/filter/contain/isolation : ce n’est donc
+// pas explicable par l’empilement CSS, c’est un comportement WebKit. Le
+// portail est le seul remède qui marche dans ce dépôt (c’est déjà celui des
+// écrans de republication, qui s’affichent correctement).
+// ⛔ CHANGEMENT DE POINT DE MONTAGE, ET RIEN D’AUTRE : même balisage, mêmes
+//    styles, mêmes gestes, même télémétrie. Les hôtes (App, stepper) ne
+//    voient aucune différence — un portail ne change ni le contexte React,
+//    ni les props, ni les événements.
 function Sheet({ onClose, children }) {
-  return (
+  return createPortal(
     <>
       <style>{ANIM}</style>
       <div
@@ -526,7 +541,8 @@ function Sheet({ onClose, children }) {
           {children}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 
