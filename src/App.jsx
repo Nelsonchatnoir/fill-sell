@@ -2933,9 +2933,19 @@ export default function App({ loginOnly = false }){
   // l'oublie se voit en base ('non_precisee') au lieu de se fondre dans la
   // masse.
   function openUpgradeModal(tier,origine='non_precisee',trigger='generic'){
-    if(tier==='pro'||tier==='premium'||tier==='business'){startTierCheckout(tier,origine);return;}
-    logTunnel('premium_cta_click',{origine,declencheur:'clic'});
-    setConversionModal({open:true,trigger,origine});
+    // ⛔ L'ORIGINE EST UNE CHAÎNE, SANS EXCEPTION (18/09/2026).
+    // Un appelant qui écrit `onClick={ouvrirOffres}` passe l'ÉVÉNEMENT du clic
+    // en premier argument. Il finissait alors dans le metadata d'usage_logs —
+    // et postgrest-js sérialise le corps SYNCHRONEMENT dans son `then()` :
+    // JSON.stringify refuse un SyntheticEvent (la fibre React qu'il porte est
+    // circulaire), l'exception remontait DANS cette fonction, et
+    // setConversionModal n'était jamais atteint. Un CTA parfaitement muet,
+    // sans la moindre trace en base — la ligne « Comparer les formules » des
+    // Réglages. Normalisé ici, une fois, pour tous les appelants.
+    const org=(typeof origine==='string'&&origine)?origine:'non_precisee';
+    if(tier==='pro'||tier==='premium'||tier==='business'){startTierCheckout(tier,org);return;}
+    logTunnel('premium_cta_click',{origine:org,declencheur:'clic'});
+    setConversionModal({open:true,trigger,origine:org});
   }
 
   // silencieux (2026-07-13) : les rafraîchissements d'ARRIÈRE-PLAN (retour de
