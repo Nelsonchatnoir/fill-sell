@@ -21,9 +21,21 @@
 import { useEffect, useState } from 'react';
 import { Receipt, ListOrdered, RefreshCw } from 'lucide-react';
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase';
+import PlanBadge from '../components/PlanBadge';
 import { R } from './theme';
 import { Groupe, Carte, Ligne, Jauge, JaugeRepublication, BandeInfo, Bouton, Note } from './ReglagesUI';
 import { consommationVisible } from './quotas';
+
+// Point d'entrée tracé, dans le vocabulaire du tunnel (App.jsx) : sans lui,
+// `premium_cta_click` et `offers_modal_open` retombent sur 'non_precisee' et
+// on ne sait plus d'où viennent les conversions.
+// ⛔ UNE CHAÎNE, jamais l'événement du clic : `onClick={c.ouvrirOffres}` passe
+//    le SyntheticEvent en premier argument, il finit dans le metadata du log,
+//    et JSON.stringify le refuse (le fibre React qu'il porte est circulaire).
+//    postgrest-js sérialise le corps SYNCHRONEMENT dans `then()` : l'exception
+//    remonte donc dans openUpgradeModal AVANT l'ouverture, et la modale ne
+//    s'ouvre jamais. C'est exactement ce qui rendait cette ligne muette.
+const ORIGINE = 'reglages_abonnement';
 
 const LIEN_APPLE = 'https://apps.apple.com/account/subscriptions';
 const LIEN_APPLE_ACHATS = 'https://reportaproblem.apple.com/';
@@ -80,29 +92,43 @@ export default function SousPageAbonnement({ c, T }) {
 
   return (
     <>
-      {/* ── La formule, sans son prix ─────────────────────────────────── */}
-      <div style={{
-        padding: 20, borderRadius: 18, display: 'flex', flexDirection: 'column', gap: 10,
-        background: `linear-gradient(135deg,${R.deep} 0%,${R.deepBas} 100%)`,
+      {/* ── LA FORMULE — une carte de la page, pas un aplat sombre ───────
+          Le bandeau vert foncé plein cadre était le seul élément de ce genre
+          dans toute l'app : plus sombre, plus massif que ses voisines, et son
+          contenu touchait le bord haut. Même carte blanche à bord fin, même
+          rayon, même respiration que les cartes voisines — et le palier se
+          signale par le badge doré qu'on a déjà sur la carte d'identité.
+          ⛔ AUCUN PRIX ICI : les comptes Founder paient un tarif legacy
+             (9,99 €), afficher le prix courant serait faux pour eux. Règle
+             de PlanDetailsModal, elle vaut ici. */}
+      <Carte style={{
+        display: 'flex', flexDirection: 'column', gap: 12, padding: 18,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {c.isPremium && (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill={R.or} aria-hidden="true">
-              <path d="M3 6l5 4 4-6 4 6 5-4-2 12H5L3 6z" />
-            </svg>
-          )}
-          <span style={{ fontSize: 20, fontWeight: 700, color: '#fff', letterSpacing: '-0.02em' }}>
-            {c.isPremium ? T.formule(c.nomFormule) : T.formuleGratuite}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {c.isPremium
+            ? <PlanBadge isPremium={c.isPremium} isPro={c.isPro} isBusiness={c.isBusiness} />
+            : <strong style={{ fontSize: 17, fontWeight: 700, color: R.ink, letterSpacing: '-0.02em' }}>{T.formuleGratuite}</strong>}
         </div>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.5, color: 'rgba(255,255,255,0.72)' }}>
-          {!c.isPremium
-            ? T.gratuitIntro
-            : c.resiliation.resilie
-              ? T.abonnementResilie(c.resiliation.finLe)
-              : T.abonnementActif}
-        </p>
-      </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={{ fontSize: 14.5, fontWeight: 500, color: R.ink, lineHeight: 1.45 }}>
+            {!c.isPremium
+              ? T.gratuitIntro
+              : c.resiliation.resilie
+                ? T.abonnementResilie(c.resiliation.finLe)
+                : T.abonnementActif}
+          </span>
+          {/* Le prochain prélèvement, et SEULEMENT quand c'en est un : abonné
+              actif, non résilié, avec un canal de paiement connu (client
+              Stripe côté web, boutique côté natif). Un compte gratuit ou
+              offert porte la même échéance en base — ancrée sur sa date
+              d'inscription — et l'appeler « prélèvement » serait faux. */}
+          {c.isPremium && !c.resiliation.resilie && c.prochainPrelevement && (clientStripe || c.natif) && (
+            <span style={{ fontSize: 13.5, color: R.texteSecondaire, lineHeight: 1.45 }}>
+              {T.prochainPrelevement(c.prochainPrelevement)}
+            </span>
+          )}
+        </div>
+      </Carte>
 
       {/* ── Consommation du mois, avec le RESTE ───────────────────────── */}
       {compteurs && (
@@ -134,7 +160,11 @@ export default function SousPageAbonnement({ c, T }) {
       {/* ── Gérer ─────────────────────────────────────────────────────── */}
       <Groupe intitule={T.gerer}>
         <Carte>
-          <Ligne icone={ListOrdered} libelle={c.isPremium ? T.comparerFormules : T.voirOffres} onClick={c.ouvrirOffres} />
+          <Ligne
+            icone={ListOrdered}
+            libelle={c.isPremium ? T.comparerFormules : T.voirOffres}
+            onClick={() => c.ouvrirOffres(ORIGINE)}
+          />
           {!c.natif && clientStripe && (
             <Ligne
               icone={Receipt}
@@ -168,14 +198,14 @@ export default function SousPageAbonnement({ c, T }) {
           {c.resiliation.resilie ? (
             <BandeInfo>{c.resiliation.message || T.abonnementResilie(c.resiliation.finLe)}</BandeInfo>
           ) : c.resiliation.etape === 0 ? (
-            <Bouton ton="creux" onClick={() => c.resiliation.setEtape(1)} style={{ width: '100%', minHeight: 50, color: R.mute2 }}>
+            <Bouton ton="danger-creux" onClick={() => c.resiliation.setEtape(1)} style={{ width: '100%', minHeight: 50 }}>
               {T.seDesabonner}
             </Bouton>
           ) : (
             <Carte pad style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: R.ink }}>{T.confirmerResiliation}</div>
-                <p style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.5, color: R.mute2 }}>{T.resiliationDetail}</p>
+                <p style={{ margin: '4px 0 0', fontSize: 13, lineHeight: 1.5, color: R.texteSecondaire }}>{T.resiliationDetail}</p>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <Bouton ton="danger-plein" onClick={c.resiliation.lancer} enCours={c.resiliation.enCours}>
