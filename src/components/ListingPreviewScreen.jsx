@@ -1468,6 +1468,9 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
   // serveur + borne de build, App.jsx) : la case devient cliquable. Motif de
   // la case grisée sinon ('fermee' | 'extension') et borne affichée.
   plateformesOuvertes = [], oplaMotifGrise = 'fermee', oplaExtensionMin = null,
+  // Permission d'hôte opla.co : true accordée · false pas accordée · null on
+  // ne sait rien. On ne pose la question QUE sur false (cf. ListingPreview).
+  oplaAcces = null,
   modeleAConfirmer = false, modelePropose = null, modeleSource = null, onConfirmModele = null, identifyFailed = false,
   onAnalyze, analyzing, analysisResult, analysisError, analysisHidden,
   // Compte eBay pas encore utilisable (07/09/2026, demande Joséphine). Vaut
@@ -1988,6 +1991,29 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           {motifAVenir(p)}
         </p>
       ))}
+      {/* ── OPLA : L'AUTORISATION SE DEMANDE ICI, AU MOMENT DE COCHER ─────────
+          (2026-09-18, décision Nico.) Quelqu'un qui vient d'installer l'app
+          n'ira jamais fouiller dans les réglages : cocher Opla menait à un
+          échec, et le seul remède vivait dans une page qu'il ne connaît pas.
+          ⚠️ CONTRAINTE CHROME, non contournable : chrome.permissions.request()
+          n'obéit qu'à un geste dans une PAGE D'EXTENSION. Une page web ne peut
+          PAS accorder cette permission — on ne promet donc aucun bouton qui le
+          ferait. On dit le geste exact, où il se trouve, et ce qu'on y verra.
+          On dit aussi que rien n'est perdu : le job part en needs_user nommé
+          (needs_user_source='opla_acces') et repart TOUT SEUL à l'octroi
+          (background.js, rearmerJobsOplaEnAttente).
+          Affiché UNIQUEMENT sur oplaAcces === false : « on ne sait pas » ne
+          déclenche rien. */}
+      {selected.has("opla") && plateformesOuvertes.includes("opla") && oplaAcces === false && (
+        <div style={{ margin:"8px 0 0", padding:"10px 12px", borderRadius:12,
+          background:"#FBF3EC", border:"1px solid #EED9A6" }}>
+          <p style={{ margin:0, fontSize:12, color:"#8A6100", fontWeight:600, lineHeight:1.45 }}>
+            {lang === "en"
+              ? <>Opla needs your permission once, and it can only be granted from the extension: click the FillSell icon in Chrome’s toolbar — the panel shows “Autoriser Opla”. You can publish before that: the Opla listing waits for the permission, then goes out on its own.</>
+              : <>Opla demande ton autorisation une seule fois, et elle ne peut s’accorder que dans l’extension : clique sur l’icône FillSell dans la barre d’outils de Chrome, le panneau affiche « Autoriser Opla ». Tu peux publier avant : l’annonce Opla attend l’autorisation, puis part toute seule.</>}
+          </p>
+        </div>
+      )}
       {PLATFORMS_DEFAULT.filter(p => (publishedSet?.has(p) || queuedSet?.has(p))).length > 0 && (
         <p style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {lang === 'en'
@@ -2038,9 +2064,13 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
       {!ebayBloque && !ebayVoieApi && selected.has("ebay") && (platformSupport?.ebay ?? "supported") === "supported" && onParametrerEbay && (
         <div style={{ margin:"8px 0 0", display:"flex", flexWrap:"wrap", alignItems:"center", gap:8 }}>
           <p style={{ margin:0, flex:"1 1 200px", minWidth:0, fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
+            {/* La proposition dit ce qu'on GAGNE, pas ce qui manque : rien
+                n'est bloqué, la voie extension publie exactement comme avant
+                si la personne passe son chemin. Le drapeau ebay_voie_api
+                n'est posé QUE par le serveur, après connexion prouvée. */}
             {lang === "en"
-              ? "eBay goes through the extension. Prefer publishing from our servers? Link your eBay account."
-              : "eBay part par l'extension. Publier depuis nos serveurs ? Relie ton compte eBay."}
+              ? "eBay goes through the extension, so your computer has to be on. Link your eBay account and your listings go out from our servers, even with your computer off."
+              : "eBay part par l'extension : ton ordinateur doit être allumé. Relie ton compte eBay et tes annonces partent de nos serveurs, même ordinateur éteint."}
           </p>
           <button
             type="button"
@@ -3748,8 +3778,26 @@ export default function ListingPreviewScreen({
   // ramenée à 12 min (throttle sonde 10 min + marge) — un relevé plus vieux
   // n'a plus valeur d'affichage.
   const [platformSessions, setPlatformSessions] = useState(null);
+  // ── OPLA : LA PERMISSION D'HÔTE EST-ELLE ACCORDÉE ? (2026-09-18) ──────────
+  // true = accordée · false = pas accordée · null = on ne sait rien (aucun
+  // relevé d'extension). On ne pose la question à l'écran que sur `false`.
+  //
+  // Comment on le sait SANS pouvoir interroger l'extension (le manifeste n'a
+  // pas d'externally_connectable : une page web ne peut pas lui parler) :
+  //   · `opla_acces` — dit explicitement par l'extension quand elle le sait ;
+  //   · à défaut, la SONDE fait preuve : sonderSessionOpla rend son verdict
+  //     AVANT tout réseau si la permission manque, donc une valeur true/false
+  //     ou un code HTTP relevé sur opla.co ne peut exister QUE permission
+  //     accordée. C'est ce qui rend la détection juste dès aujourd'hui, sans
+  //     attendre un paquet Chrome Web Store.
+  const [oplaAcces, setOplaAcces] = useState(null);
   useEffect(() => {
-    if (step !== 3 || !supabase || !userId) return;
+    // Étape 1 (choix des plateformes) ET étape 3 (publication) : la rangée de
+    // cases est à l'étape 1, et c'est là qu'on doit pouvoir dire à quelqu'un
+    // qui coche Opla que son autorisation manque — l'y apprendre à l'étape 3
+    // serait l'apprendre trop tard. Même lecture, mêmes deux requêtes, aucune
+    // de plus : le relevé ne tourne que pendant que l'étape est affichée.
+    if ((step !== 1 && step !== 3) || !supabase || !userId) return;
     let stale = false;
     const lire = async () => {
       // ── DEUX SOURCES, LE PLUS RÉCENT TRANCHE (2026-09-15) ────────────────
@@ -3780,7 +3828,17 @@ export default function ListingPreviewScreen({
         if (!Number.isFinite(t)) continue;
         if (!publicationsOk[j.platform] || t > publicationsOk[j.platform]) publicationsOk[j.platform] = t;
       }
-      setPlatformSessions(sessionsAffichables(profil?.data?.extension_sessions, publicationsOk));
+      const brutes = profil?.data?.extension_sessions ?? null;
+      setPlatformSessions(sessionsAffichables(brutes, publicationsOk));
+      // ⚠️ Number(null) vaut 0, qui est FINI : un http.opla absent passerait
+      // pour un code relevé et on conclurait « permission accordée » à tort.
+      // On exige donc une valeur présente ET numérique.
+      const httpOpla = brutes?.http?.opla;
+      setOplaAcces(brutes
+        ? (brutes.opla_acces === true
+          || brutes.opla === true || brutes.opla === false
+          || (httpOpla != null && httpOpla !== '' && Number.isFinite(Number(httpOpla))))
+        : null);
     };
     lire();
     const timer = setInterval(lire, 60 * 1000);
@@ -4192,7 +4250,22 @@ export default function ListingPreviewScreen({
   // Les plateformes déjà en ligne ou en file ne sont JAMAIS pré-cochées — y
   // compris à la reprise d'un brouillon (une publication a pu aboutir ou
   // partir en file entre-temps).
-  const [selected, setSelected]         = useState(() => new Set((draft?.selected ?? PLATFORMS_DEFAULT).filter(p => !lockedSet.has(p))));
+  // ── OPLA AU MÊME RANG QUE LES QUATRE AUTRES (2026-09-18, décision Nico) ────
+  // PLATFORMS_DEFAULT restait à quatre : garde-fou posé quand Opla n'avait
+  // jamais tourné que sur le compte de Nico. Le cycle est prouvé, elle entre
+  // dans la présélection.
+  // ⛔ MAIS PAR `plateformesOuvertes`, JAMAIS par la constante. Cette liste
+  //    vient d'App.jsx : coin_config.opla_ouvert = 1 ET extension DU COMPTE
+  //    ≥ coin_config.opla_extension_min, fail-closed. Un compte sous la borne
+  //    ne voit RIEN changer — c'est cette borne qui empêche un job de naître
+  //    (et d'être débité) avant que l'extension ait son mot à dire.
+  // ⛔ La constante PLATFORMS_DEFAULT n'est PAS touchée : elle sert aussi de
+  //    filtre aux annonces d'un scan et aux phrases sous la rangée, deux
+  //    endroits où Opla n'a rien à faire aujourd'hui.
+  const [selected, setSelected]         = useState(() => new Set(
+    (draft?.selected ?? [...PLATFORMS_DEFAULT, ...PLATFORMS_A_VENIR.filter(p => plateformesOuvertes.includes(p))])
+      .filter(p => !lockedSet.has(p)),
+  ));
   const [publishing, setPublishing]     = useState(false);
   const [publishError, setPublishError] = useState("");
   const [done, setDone]                 = useState(false);
@@ -8718,6 +8791,7 @@ export default function ListingPreviewScreen({
             plateformesOuvertes={plateformesOuvertes}
             oplaMotifGrise={oplaMotifGrise}
             oplaExtensionMin={oplaExtensionMin}
+            oplaAcces={oplaAcces}
             publishedSet={publishedSet}
             queuedSet={queuedSet}
             ebayBloque={ebayBloque}
