@@ -115,6 +115,7 @@ import VoiceResultCard from './components/voice/VoiceResultCard';
 // Avertissement « encore en ligne » — MÊME composant que la carte vocale
 // inventory_sell. Les deux chemins de vente disent la même chose, une seule fois.
 import AvertissementAnnoncesEnLigne from './components/AvertissementAnnoncesEnLigne';
+import { createPortal } from 'react-dom';
 import { useFondFige } from './utils/modale';
 import ReglagesPage from './reglages/ReglagesPage';
 import FusionArticleModal from './components/FusionArticleModal';
@@ -1492,7 +1493,15 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
     ? 'Your benefits are active right now'
     : 'Tes avantages sont actifs dès maintenant';
   const cta = lang === 'en' ? '🚀 Start selling' : '🚀 Commencer à vendre';
-  return (
+  // ⛔ PORTAIL SUR document.body — même raison que les trois autres (18/09) :
+  // rendue dans l'arbre d'App, cette modale vit sous `.app-root`, conteneur
+  // de défilement/rognage où WebKit peint les position:fixed dans SA couche.
+  // Elle est JOIGNABLE depuis les Réglages : « Comparer les formules » →
+  // modale des offres → achat in-app (iOS/Android) → cette modale-ci. Sans
+  // portail, quelqu'un qui vient de PAYER depuis les Réglages ne verrait
+  // rien du tout. C'est le pire des chemins à laisser cassé.
+  // ⛔ Point de montage seul : mêmes styles, même z-index (10100), même CTA.
+  return createPortal((
     <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:10100,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',padding:'20px',animation:'fadeInOverlay 0.25s ease'}}>
       <style>{`
         @keyframes fadeInOverlay{from{opacity:0}to{opacity:1}}
@@ -1522,7 +1531,7 @@ function PremiumWelcomeModal({ lang, onClose, tier = 'premium' }) {
         </div>
       </div>
     </div>
-  );
+  ),document.body);
 }
 
 // ── FAB vocal flottant : RETIRÉ DE L'INTERFACE (2026-08-11, décision Nico) ───
@@ -8903,8 +8912,19 @@ export default function App({ loginOnly = false }){
       />
 
 
-      {/* ── BUG REPORT MODAL ── */}
-      {showBugReport&&(
+      {/* ── BUG REPORT MODAL ──────────────────────────────────────────────
+          ⛔ PORTAIL SUR document.body — OBLIGATOIRE, ET DÉMONTRÉ (18/09).
+          Rendue dans l'arbre d'App, cette pop-up vit sous `.app-root`, qui
+          est un conteneur de défilement/rognage : WebKit y peint les
+          position:fixed DANS SA COUCHE. Par-dessus une page elle-même
+          portalisée sur body (les Réglages, z-index 400), elle restait
+          INVISIBLE malgré son z-index 10000 — « Signaler un bug » avait
+          l'air mort, et la couche n'apparaissait qu'en quittant la page.
+          Aucun ancêtre ne porte transform/filter/contain/isolation : ce
+          n'est pas explicable par l'empilement CSS, c'est WebKit.
+          ⛔ CHANGEMENT DE POINT DE MONTAGE, ET RIEN D'AUTRE : même balisage,
+             mêmes styles, même envoi, mêmes métadonnées. */}
+      {showBugReport&&createPortal((
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:10000,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowBugReport(false)}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"20px 20px 0 0",width:"100%",padding:"24px 20px 32px",animation:"slideUpModal 0.3s cubic-bezier(0.22,1,0.36,1)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
@@ -8968,7 +8988,7 @@ export default function App({ loginOnly = false }){
             </button>
           </div>
         </div>
-      )}
+      ),document.body)}
 
       {showOnboardingFlow&&user&&(
         <OnboardingFlow
