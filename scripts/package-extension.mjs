@@ -171,7 +171,18 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // couche 2 (priorité d'un republish 'deleted' bornée : N=3 gels sans verdict →
 // bout de file, reste pending/visible/rattrapable). ⚠️ EXTENSION_MIN_BUILD
 // NON touché : décision de Nico, à part, lue dans le paquet publié.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41', '0.6.42', '0.6.43'];
+// 0.6.43 ajoutee le 18/09 au soir : PUBLIEE, ACCEPTEE et SERVIE par le Chrome
+// Web Store le jour meme. Relevee en base, pas declaree : 12 comptes en
+// profiles.extension_version='0.6.43', extension_build
+// '2026-09-18T16:36:03Z+c113c34', qui est exactement le BUILD_ID du zip
+// c113c34. Le numero est mort : plus jamais re-package (doctrine 0.6.6).
+// 0.6.42 ajoutee le MEME jour, et c'etait un OUBLI : elle est servie depuis le
+// 17/09 au soir (38 comptes, extension_build '2026-09-17T22:25:29Z+196afe6')
+// et n'avait jamais ete inscrite ici. Rien ne protegeait donc contre un
+// re-packaging que le Web Store aurait rejete - exactement le trou rattrape le
+// 06/08 pour les 0.4.7/0.4.8.
+// ⛔ 0.6.44 n'y entre PAS : produite ce soir, pas encore televersee.
 // 0.6.38 ajoutée le 15/09 au bump 0.6.39 : PUBLIÉE, ACCEPTÉE et SERVIE par le
 // Chrome Web Store — relevé en base, pas déclaré : 27 comptes en
 // profiles.extension_version='0.6.38', extension_build

@@ -1461,7 +1461,29 @@ export const EXTENSION_LAST_COMMIT = '2026-09-18T20:16:05Z'; // recale b747e9f (
 // sont donc inscrites NULLE PART — ni ici, ni dans ALREADY_PUBLISHED : les
 // inscrire ferait croire à des versions servies qui n'existent pas.
 // Ancienne valeur : 2026-08-26T19:48:07Z (0.6.9, servie depuis le 27/08).
-export const EXTENSION_MIN_BUILD = '2026-09-12T08:29:11Z';
+// ── PROMOTION DU 18/09/2026 AU SOIR : 0.6.32 -> 0.6.43 ──────────────────────
+// La 0.6.43 est ACCEPTEE et SERVIE par le Chrome Web Store depuis ce soir
+// (declare par Nico, puis RELU en base : 12 comptes en extension_version
+// '0.6.43' / extension_build '2026-09-18T16:36:03Z+c113c34' a 22h35, contre 38
+// encore en 0.6.42). La banniere « extension obsolete » peut donc s'allumer :
+// il existe enfin une version que tout le monde peut installer.
+// ⚠️ LA VALEUR POSEE EST LE BUILD_ID DU ZIP (2026-09-18T16:36:03Z), PAS
+// EXTENSION_LAST_COMMIT. Le printout de package-extension.mjs propose
+// LAST_COMMIT : il se trompe, et le bandeau du 09/08 (incident 0.5.6) le dit
+// deja vingt lignes plus haut. Ici l'ecart est de 32 s (commit c113c34 a
+// 16:35:45Z, zip a 16:36:03Z) ; recopier LAST_COMMIT d'AUJOURD'HUI
+// (2026-09-18T20:16:05Z, le bump 0.6.44) aurait ete bien pire : tout le parc,
+// 0.6.43 COMPRIS, aurait vu un bandeau reclamant une version que le Store
+// n'a pas encore - le bug du 29/07, a la lettre.
+// PUBLISHED_BUILD_IDS n'est PAS touche, et c'est un choix : la garde ne
+// l'exige que quand MIN_BUILD depasse LAST_COMMIT, et 16:36:03Z reste
+// anterieur a 20:16:05Z. Le registre borne une tolerance, il ne tient pas le
+// journal des publications - c'est ALREADY_PUBLISHED qui le tient.
+// Effet : banniere pour tout build anterieur au 18/09 16:36:03Z (0.6.42 et
+// avant). Elle ne BLOQUE rien - App.jsx ne s'en sert que pour un bandeau
+// refermable (extensionOutdated), aucune fonction n'est coupee.
+// Ancienne valeur : 2026-09-12T08:29:11Z (0.6.32, servie depuis le 12/09).
+export const EXTENSION_MIN_BUILD = '2026-09-18T16:36:03Z';
 
 // ── Registre des BUILD_ID RÉELLEMENT PUBLIÉS (2026-09-12) ──────────────────
 // Pourquoi il existe : l'invariant « MIN_BUILD <= EXTENSION_LAST_COMMIT » est
