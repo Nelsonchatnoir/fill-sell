@@ -61,7 +61,7 @@ const SOUS_PAGES = {
 export default function ReglagesPage({
   onClose, lang, setLang, user,
   isPremium, isPro, isBusiness,
-  natif, plateforme, extensionInstallable, extensionVersion, extensionStatus,
+  natif, plateforme, extensionInstallable, extensionVersion, extensionStatus, appBuild,
   quotas, username, setUsername,
   currency, saveCurrency, devises,
   adresseLbc, setAdresseLbc,
@@ -153,6 +153,9 @@ export default function ReglagesPage({
     user, lang, setLang,
     isPremium, isPro, isBusiness, nomFormule,
     natif, plateforme, extensionInstallable, extensionVersion,
+    // Forme courte de l empreinte de build : « 2026-09-18T11:39:26Z+99a9179-dirty »
+    // devient « 99a9179 », qui se compare au git log en une seconde.
+    appBuild: String(appBuild ?? '').split('+')[1]?.replace(/-dirty$/, '') || null,
     quotas, remiseAZero, prochainPrelevement,
     username, setUsername,
     currency, deviseLabel, saveCurrency, devises,
@@ -250,7 +253,22 @@ function Hub({ c, T }) {
         );
       })}
 
-      {c.extensionVersion && <PiedPage>{T.extensionVersion(c.extensionVersion)}</PiedPage>}
+      {/* ── QUEL BUNDLE TOURNE ? (18/09/2026) ────────────────────────────
+          Question posée à chaque correctif, et impossible à trancher depuis
+          un téléphone : Safari garde les fichiers en cache, et l’ancien
+          chunk répond encore 200 chez Vercel — du vieux code peut donc
+          tourner sans le moindre signe, sans 404, sans rien. L’empreinte du
+          build est ici, en clair : elle se compare au `git log` en une
+          seconde, depuis le téléphone.
+          ⛔ Ce n’est PAS un numéro de version — celui-là se lit sur le canal
+          Capgo, jamais dans le source. C’est l’empreinte du bundle, posée à
+          la compilation (__FILLSELL_APP_BUILD__, vite.config.js). */}
+      {(c.extensionVersion || c.appBuild) && (
+        <PiedPage>
+          {[c.extensionVersion && T.extensionVersion(c.extensionVersion), c.appBuild && T.appBuild(c.appBuild)]
+            .filter(Boolean).join(' · ')}
+        </PiedPage>
+      )}
     </>
   );
 }
