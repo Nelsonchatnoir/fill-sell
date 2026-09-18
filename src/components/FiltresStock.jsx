@@ -104,12 +104,16 @@ function useRetourAndroid(onFermer) {
 }
 
 // Échap ferme aussi : une couche sans sortie au clavier n'est pas terminée.
+// Même ref que ci-dessus : l'écouteur se pose UNE fois, il ne se réabonne pas à
+// chaque rendu parce que l'appelant passe une flèche anonyme.
 function useEchap(onFermer) {
+  const ref = useRef(onFermer);
+  useEffect(() => { ref.current = onFermer; }, [onFermer]);
   useEffect(() => {
-    const surTouche = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onFermer?.(); } };
+    const surTouche = (e) => { if (e.key === 'Escape') { e.stopPropagation(); ref.current?.(); } };
     document.addEventListener('keydown', surTouche);
     return () => document.removeEventListener('keydown', surTouche);
-  }, [onFermer]);
+  }, []);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -118,10 +122,14 @@ function useEchap(onFermer) {
 // Une seule coque, donc un seul endroit où vivent : le portail, le fond
 // cliquable, la safe-area basse, le verrou de geste, Échap et le retour
 // Android. Deux coques, ce serait deux occasions d'en oublier une.
-function Coque({ lang, titre, gauche, onFermer, z = Z_FEUILLE, children, pied }) {
+// `actif` : cette couche est-elle AU PREMIER PLAN ? Une liste ouverte par la
+// feuille la passe à false — sans quoi Échap et le retour Android fermeraient
+// les DEUX d'un coup (les écouteurs vivent sur `document` et sur le plugin :
+// stopPropagation ne retient pas un voisin enregistré sur le même nœud).
+function Coque({ lang, titre, gauche, onFermer, z = Z_FEUILLE, actif = true, children, pied }) {
   useFondFige(true);
-  useEchap(onFermer);
-  useRetourAndroid(onFermer);
+  useEchap(actif ? onFermer : null);
+  useRetourAndroid(actif ? onFermer : null);
 
   return createPortal(
     <div
@@ -507,16 +515,25 @@ export function LigneCompte({ lang, texte, libelleTri, onOuvrirTri, ouvert, onTo
 //          ou [{ cle, intitule, type:'ligne', valeur, onOuvrir }]
 // Un groupe sans option n'est pas rendu — pas d'intitulé orphelin.
 //
+// Un groupe de chips peut porter, au lieu d'`options`, des `sections`
+// [{ titre, options }] : UN intitulé, deux rangées nommées. C'est le cas de
+// « Plateforme », où « En ligne sur Vinted » et « Pas encore sur Vinted » sont
+// deux questions différentes — les mettre à plat donnerait onze chips à
+// libellés longs, et deux intitulés en donnerait un de trop.
+//
 // ⛔ FERMER NE PERD RIEN. Chaque choix s'applique à l'instant où on le touche :
 // il n'y a pas d'état « en attente de validation » dans cette feuille, donc rien
 // à annuler et rien à perdre. Le bouton du bas n'est pas un « Valider » : il
 // ANNONCE le résultat, recalculé en direct, et referme.
-export function FeuilleFiltres({ lang, groupes = [], nbResultat, onReinitialiser, onFermer, reinitialisable }) {
+const optionsDuGroupe = (g) => (g.sections ? g.sections.flatMap((s) => s.options ?? []) : (g.options ?? []));
+
+export function FeuilleFiltres({ lang, groupes = [], nbResultat, onReinitialiser, onFermer, reinitialisable, actif = true }) {
   const f = fr(lang);
-  const rendus = groupes.filter((g) => (g.type === 'ligne' ? true : (g.options ?? []).length > 0));
+  const rendus = groupes.filter((g) => (g.type === 'ligne' ? true : optionsDuGroupe(g).length > 0));
   return (
     <Coque
       lang={lang}
+      actif={actif}
       titre={f ? 'Filtrer' : 'Filter'}
       onFermer={onFermer}
       gauche={reinitialisable ? (
@@ -554,6 +571,17 @@ export function FeuilleFiltres({ lang, groupes = [], nbResultat, onReinitialiser
         <Groupe key={g.cle} intitule={g.intitule}>
           {g.type === 'ligne' ? (
             <LigneGroupe intitule={g.libelleLigne ?? g.intitule} valeur={g.valeur} onOuvrir={g.onOuvrir} lang={lang} />
+          ) : g.sections ? (
+            g.sections.filter((s) => (s.options ?? []).length).map((s) => (
+              <div key={s.cle ?? s.titre} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <span style={{ margin: '0 2px', fontSize: 12, fontWeight: 600, color: R.texteSecondaire }}>{s.titre}</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {s.options.map((o) => (
+                    <Chip key={o.cle} libelle={o.libelle} compte={o.compte} actif={o.actif} onTap={o.onTap} desactive={o.desactive} />
+                  ))}
+                </div>
+              </div>
+            ))
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {g.options.map((o) => (
