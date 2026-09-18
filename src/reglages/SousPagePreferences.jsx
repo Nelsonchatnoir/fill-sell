@@ -48,7 +48,7 @@ export default function SousPagePreferences({ c, T }) {
             </Bouton>
           </div>
           <div style={{ paddingTop: 14, borderTop: `1px solid ${R.ligneDouce}`, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: R.mute2 }}>{T.email}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: R.texteSecondaire }}>{T.email}</span>
             <span style={{ fontSize: 15, color: R.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {c.user?.email}
             </span>

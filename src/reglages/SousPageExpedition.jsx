@@ -114,7 +114,7 @@ export default function SousPageExpedition({ c, T }) {
           />
         </div>
 
-        {cpErreur && <div style={{ fontSize: 12.5, color: R.negative, fontWeight: 600 }}>{T.cpInvalide}</div>}
+        {cpErreur && <div style={{ fontSize: 12.5, color: R.negatifTexte, fontWeight: 600 }}>{T.cpInvalide}</div>}
 
         {ban?.kind === 'proposition' && (
           <div style={{ background: R.menthe, border: `1px solid ${R.mentheBord}`, borderRadius: 12, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -40,7 +40,7 @@ export default function SousPageCompte({ c, T }) {
               </Bouton>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: R.negative }}>{T.reinitQuestion}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: R.negatifTexte }}>{T.reinitQuestion}</span>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Bouton ton="danger-plein" onClick={reset.lancer}>{T.reinitConfirme}</Bouton>
                   <Bouton ton="creux" onClick={reset.annuler}>{T.annuler}</Bouton>
@@ -59,8 +59,8 @@ export default function SousPageCompte({ c, T }) {
             {suppression.step === 1 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: R.negative }}>{T.supprEtes}</div>
-                  <div style={{ fontSize: 13, color: R.mute2, marginTop: 2 }}>{T.supprIrreversible}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: R.negatifTexte }}>{T.supprEtes}</div>
+                  <div style={{ fontSize: 13, color: R.texteSecondaire, marginTop: 2 }}>{T.supprIrreversible}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Bouton ton="danger-plein" onClick={() => suppression.setStep(2)}>{T.continuer}</Bouton>
@@ -71,8 +71,8 @@ export default function SousPageCompte({ c, T }) {
             {suppression.step === 2 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: R.negative }}>{T.supprFinale}</div>
-                  <div style={{ fontSize: 13, color: R.mute2, marginTop: 2, lineHeight: 1.5 }}>{T.supprFinaleTexte}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: R.negatifTexte }}>{T.supprFinale}</div>
+                  <div style={{ fontSize: 13, color: R.texteSecondaire, marginTop: 2, lineHeight: 1.5 }}>{T.supprFinaleTexte}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <Bouton ton="danger-plein" onClick={suppression.lancer} enCours={suppression.enCours}>
