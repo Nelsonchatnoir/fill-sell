@@ -1,4 +1,5 @@
 import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { parseFrontmatter, slugFromPath, sortPosts } from '../src/blog/frontmatter.js';
 
@@ -32,6 +33,41 @@ import { parseFrontmatter, slugFromPath, sortPosts } from '../src/blog/frontmatt
 // Toute rupture (balise attendue absente de index.html, traduction inconnue,
 // CSS du blog introuvable) fait ÉCHOUER le build — jamais une page servie avec
 // les métadonnées de la home en silence.
+//
+// ═══════════════════════════════════════════════════════════════════════════
+// ⛔ writeBundle, ET SURTOUT PAS closeBundle (correctif du 2026-09-18)
+// ═══════════════════════════════════════════════════════════════════════════
+// NEUF déploiements Vercel en ERROR depuis un mois, tous sur la même trace :
+//   Error: ENOENT: no such file or directory, open '/vercel/path0/dist/index.html'
+//     at async PluginContextImpl.closeBundle … plugin: 'prerender-blog'
+// Le dernier, le 18/09 à 12:09 (commit 5983c2c). Relevé dans SES logs :
+//     12:09:44.991  vite v8.0.3 building client environment for production...
+//     12:09:45.582  transforming...✓ 357 modules transformed.
+//     12:09:45.783  ✗ Build failed in 792ms
+// 357 modules, là où un build sain de cette app en transforme 2 229 (mesuré
+// localement le même jour, même version de Vite). Et AUCUNE ligne
+// « rendering chunks... » : le bundle n'a jamais été rendu, donc jamais écrit,
+// donc dist/index.html n'a jamais existé. Durée totale 8 s contre 13 à 19 s
+// pour les builds qui passent.
+//
+// LA CAUSE N'EST DONC PAS CHEZ NOUS — mais le message, si. `closeBundle` est
+// appelé par Rolldown À LA FERMETURE DU BUNDLE, y compris sur le chemin
+// d'ERREUR. Quand le build échoue avant l'écriture, notre hook part quand même
+// lire un fichier qui n'a jamais été écrit, lève ENOENT, et CETTE erreur-là
+// REMPLACE celle qui avait réellement fait tomber le build. On a donc passé un
+// mois à regarder le pansement en croyant voir la plaie.
+// `writeBundle`, lui, n'est appelé QU'APRÈS une écriture réussie : sur un
+// build qui échoue, il ne s'exécute pas, et la vraie erreur remonte intacte.
+//
+// (Hypothèse de Nico écartée sur pièces : ce n'est pas une course entre builds
+//  concurrents. Chaque build Vercel a son propre conteneur et son propre
+//  /vercel/path0 — rien n'est partagé — et le déploiement précédent était
+//  terminé 131 s avant le départ de celui-ci.)
+//
+// Le filet `existsSync` ci-dessous n'est PAS un try/catch qui masque : il ne
+// couvre QUE l'absence de l'entrée, il le DIT en clair dans les logs, et il
+// laisse toutes les autres ruptures (balise manquante, traduction inconnue,
+// CSS introuvable) faire échouer le build comme avant.
 
 const SITE_ORIGIN = 'https://fillsell.app';
 const BLOG_DIR = 'src/blog';
@@ -221,14 +257,31 @@ export default function prerenderBlog() {
     apply: 'build',
     configResolved(config) { outDir = config.build.outDir; },
 
-    async closeBundle() {
+    // `order: 'post'` : après les writeBundle des autres plugins, pour lire un
+    // dist complet (le zip de l'extension et build.json sont déjà écrits).
+    writeBundle: {
+      order: 'post',
+      async handler() {
+      const dist = path.resolve(outDir);
+      const entree = path.join(dist, 'index.html');
+      // LE FILET, ÉTROIT ET BRUYANT. Avec writeBundle il ne devrait jamais
+      // servir ; s'il sert un jour, on veut le voir dans les logs de build et
+      // NON perdre le déploiement pour du pré-rendu de blog.
+      if (!existsSync(entree)) {
+        console.warn(
+          `[prerender-blog] ⚠️ SAUTÉ : ${entree} est absent alors que le bundle vient d'être écrit. ` +
+          `Les pages /blog/<slug> et sitemap.xml ne sont PAS régénérés pour ce build ` +
+          `(le blog reste servi par le fallback SPA). Le build n'est pas mis en échec pour autant.`,
+        );
+        return;
+      }
+
       // Chargés ici et pas en tête de fichier : react-markdown n'a rien à faire
       // dans le processus du serveur de dev.
       const [{ default: React }, { renderToStaticMarkup }, { default: ReactMarkdown }, { default: remarkGfm }] =
         await Promise.all([import('react'), import('react-dom/server'), import('react-markdown'), import('remark-gfm')]);
 
-      const dist = path.resolve(outDir);
-      const template = await readFile(path.join(dist, 'index.html'), 'utf8');
+      const template = await readFile(entree, 'utf8');
       const assets = await readdir(path.join(dist, 'assets'));
       const blogCss = assets.find(f => /^blog-.*\.css$/.test(f));
       if (!blogCss) throw new Error('[prerender-blog] assets/blog-*.css introuvable : le HTML statique serait servi sans style');
@@ -276,6 +329,7 @@ export default function prerenderBlog() {
 
       await writeFile(path.join(dist, 'sitemap.xml'), sitemapXml(posts, bySlug));
       console.log(`[prerender-blog] ${posts.length} article(s) + liste prérendus, sitemap.xml généré`);
+      },
     },
   };
 }
