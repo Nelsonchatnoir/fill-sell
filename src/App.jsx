@@ -3607,17 +3607,6 @@ export default function App({ loginOnly = false }){
   useEffect(()=>{setShowAllStock(false);},[filterMarque]);
   useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);},[search]);
   useEffect(()=>{if(scrollRef.current)scrollRef.current.scrollTop=0;},[tab]);
-  // ── « Ajouter un article » SE REPLIE QUAND ON LE QUITTE (2026-09-18) ──────
-  // Posé avec la refonte du haut du Stock : le pli est un état de PASSAGE, pas
-  // une préférence. Il ne se mémorise nulle part (useState à false, aucun
-  // localStorage) et il se referme dès qu'on quitte l'onglet — sinon on y
-  // revient sur un formulaire ouvert qu'on n'a pas redemandé, et les articles
-  // repartent sous la ligne de flottaison, ce qu'on vient justement de
-  // corriger.
-  // ⚠️ Ne touche PAS au contenu vivant : une analyse en cours, un résultat ou
-  //    une erreur forcent l'affichage côté StockTab, quoi que disent ces deux
-  //    drapeaux. Rien en cours ne peut donc être masqué par ce repli.
-  useEffect(()=>{if(tab!==1){setVoiceZoneOpen(false);setShowManualForm(false);}},[tab]);
   useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);setFilterMarque("Toutes");setFilterMarqueSold("Toutes");},[filterType]);
   const soldVisible=useMemo(()=>soldShowAll?soldFiltre:soldFiltre.slice(0,10),[soldFiltre,soldShowAll]);
   const stockVisible=useMemo(()=>showAllStock?stockFiltre:stockFiltre.slice(0,10),[stockFiltre,showAllStock]);

@@ -47,15 +47,8 @@ import { useFondFige } from '../utils/modale';
 import {
   plateformesDuCompte, plateformesDeLArticle,
   LIBELLE_PLATEFORME, indexEtatStock, compteursStock,
-  filtrerStock, trierStock, TRIS_STOCK, libelleTri, libelleTriCourt, pastillesEtat, etatPlateformes,
+  filtrerStock, trierStock, TRIS_STOCK, libelleTri, pastillesEtat, etatPlateformes,
 } from '../utils/stockFiltres';
-// Le haut du Stock (2026-09-18) : barre + « Filtrer », pastilles de sortie,
-// ligne « À traiter », ligne de compte, et les deux feuilles. Ce module ne
-// filtre RIEN — il reçoit des options déjà calculées et un onTap par option.
-import {
-  BarreFiltres, PastillesFiltres, LigneATraiter, LigneCompte,
-  FeuilleFiltres, FeuilleListe, Z_FEUILLE_DESSUS,
-} from '../components/FiltresStock';
 import VoiceResultCard from '../components/voice/VoiceResultCard';
 import { Btn } from '../components/voice/VoiceKit';
 import { VOICE_KIT_CSS } from '../components/voice/tokens';
@@ -66,7 +59,7 @@ import { natureNeedsUser, texteEnCoursConfirmation, lienVerificationEbay,
   getTypeStyle, typeLabel, marqueLabel, parseLocDesc, detectType,
   getRotatingExamples, SKELETON_SOLD,
   CURRENCY_SYMBOLS, VOICE_FREE_LIMIT,
-  catClass, detectObjectIcon, buildCardCss,
+  getCatTileColor, catClass, detectObjectIcon, buildCardCss,
   PLATFORM_LOGIN_URLS, PLATFORM_LISTINGS_URLS, LBC_DEPOSIT_URL, humanizeJobError,
   jobErrorSansFaussePromesse, jobActionRequise,
   fraicheurExtension, detecterRetardHorloge,
@@ -3469,13 +3462,38 @@ const texteErreurRepublishAuto = (code, fr) => {
 //    laisse croire qu'en supprimer récupère de la limite. Mais répété sur
 //    chaque carte, ça devient un reproche : une ligne, pas douze.
 // ═══════════════════════════════════════════════════════════════════════════
-// (EnTeteSection — l'en-tête repliable « chevron · nom · pastille de compte ·
-//  valeur à droite » — vivait ici. Son dernier lecteur, « En stock », est
-//  devenu la LIGNE DE COMPTE du 18/09 : « 15 articles · 45,00 € » à gauche, le
-//  tri à droite, le repli gardé sur le même chevron et la même préférence
-//  localStorage. Supprimé plutôt que laissé mort : eslint ne signale pas un
-//  composant capitalisé inutilisé, varsIgnorePattern l'exempte — c'est le
-//  piège nommé en tête de ce fichier.)
+// ── EN-TÊTE DE SECTION REPLIABLE (2026-09-15 soir) ───────────────────────────
+// Une SEULE ligne d'environ 44 px : chevron, nom, pastille de compte, et à
+// droite ce que la section dit d'elle-même (sa valeur, sa mention). Partagé par
+// « Brouillons » et « En stock » — deux en-têtes recopiés divergeraient au
+// premier ajustement, et c'est précisément l'empilement qu'on retire.
+// ⚠️ Le repli est un état d'AFFICHAGE : il ne touche ni le filtrage, ni les
+//    compteurs, ni la base. La pastille et la valeur restent LUES replié.
+function EnTeteSection({ titre, compte, droite, ouvert, onToggle, lang }) {
+  return (
+    <button
+      onClick={onToggle}
+      aria-expanded={ouvert}
+      style={{width:"100%",display:"flex",alignItems:"center",gap:8,minHeight:44,padding:"0 2px",
+        background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+      <span aria-hidden="true" style={{fontSize:13,color:"#8A8578",width:12,flexShrink:0,
+        transform:ouvert?"rotate(90deg)":"none",transition:"transform .15s"}}>›</span>
+      <span style={{fontSize:13,fontWeight:700,color:"#10201B",flexShrink:0}}>{titre}</span>
+      {compte != null && (
+        <span style={{background:"#E7F3F0",color:"#1B6E62",borderRadius:20,padding:"2px 9px",fontSize:11,fontWeight:700,flexShrink:0}}>
+          {compte}
+        </span>
+      )}
+      <span style={{flex:1}}/>
+      {droite && (
+        <span style={{fontSize:12,color:"#8A8578",fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>{droite}</span>
+      )}
+      <span className="sr-only" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0 0 0 0)"}}>
+        {ouvert ? (lang === 'en' ? 'Collapse' : 'Replier') : (lang === 'en' ? 'Expand' : 'Déplier')}
+      </span>
+    </button>
+  );
+}
 
 // ── LA LISTE DES BROUILLONS — le CONTENU d'un mode, pas une section ─────────
 // (2026-09-15 soir, correction de Nico sur pièce) Cette liste a d'abord été une
@@ -4603,9 +4621,7 @@ const StockTab = memo(function StockTab({
   rechargerBoutiques = null,
   search, setSearch, soldShowAll, setSoldShowAll,
   showAllStock, setShowAllStock,
-  // (pillsExpandedStock / setPillsExpandedStock retirés le 18/09 avec la rangée
-  //  des marques : la liste cherchable de la feuille a remplacé le dépliant.)
-  pillsExpandedSold, setPillsExpandedSold,
+  pillsExpandedSold, setPillsExpandedSold, pillsExpandedStock, setPillsExpandedStock,
   importMsg,
   // Handlers
   addItemsFromVoice, resetVoiceFlow, callVoiceParse, addItem,
@@ -5827,29 +5843,22 @@ const StockTab = memo(function StockTab({
     try { localStorage.setItem(cle, suivant ? '1' : '0'); } catch { /* stockage indisponible : le repli marche, il ne survit juste pas */ }
     return suivant;
   });
-  // ── LE HAUT DU STOCK, REFONDU (2026-09-18) ────────────────────────────────
-  // `menuTri` (un panneau déplié en place sous une rangée de boutons) et les
-  // deux fabriques de style qui l'habillaient — btnLigneStock, chipDiffusion —
-  // sont partis avec les trois rangées de filtres. À leur place : UNE feuille
-  // qui monte du bas, et des listes pour les groupes à beaucoup de valeurs.
-  //  · feuilleFiltres : la feuille principale (État · Plateforme · Boutique ·
-  //    Catégorie · Marque) ;
-  //  · listeOuverte  : la petite feuille par-dessus — 'marque' (cherchable,
-  //    ouverte DEPUIS la feuille), 'tri' (depuis la ligne de compte),
-  //    'a_traiter' (depuis sa ligne, et c'est la porte des MODES, jamais un
-  //    filtre).
-  const [feuilleFiltres, setFeuilleFiltres] = useState(false);
-  const [listeOuverte, setListeOuverte] = useState(null);
+  const [menuTri, setMenuTri] = useState(false);
   const aucunFiltreStock = () => { setFiltreDiffusion(null); setFiltreProbleme(null); };
-  // « Réinitialiser », en haut de la feuille : les CINQ dimensions de filtrage,
-  // et elles seules. Le tri ne se réinitialise pas (il ne restreint rien, il
-  // n'est pas dans la feuille) et la recherche non plus — elle a sa propre
-  // croix, dans la barre, sous les yeux.
-  const reinitialiserFiltresStock = () => {
-    setFiltreDiffusion(null); setFiltreProbleme(null);
-    setFilterType("Tous"); setFilterMarque("Toutes"); setFilterBoutique("Toutes");
-    setShowAllStock(false);
-  };
+  // Même dessin que le bouton « Marques (N) › » voisin : on n'introduit pas
+  // une seconde grammaire de bouton dans une ligne qui en a déjà une.
+  const btnLigneStock = (actif) => ({
+    padding: "3px 9px", borderRadius: 99, fontSize: 10, fontWeight: 700, cursor: "pointer",
+    border: `1px solid ${actif ? "#1B6E62" : "rgba(0,0,0,0.1)"}`,
+    background: actif ? "#1B6E62" : "transparent", color: actif ? "#fff" : "#6B7A75",
+    lineHeight: 1.4, fontFamily: "inherit", whiteSpace: "nowrap",
+  });
+  const chipDiffusion = (actif, pointille) => ({
+    padding: "6px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 700, cursor: "pointer",
+    border: `1px ${pointille && !actif ? "dashed" : "solid"} ${actif ? "#1B6E62" : "#E7E3D8"}`,
+    background: actif ? "#1B6E62" : (pointille ? "#fff" : "#F7F5EF"),
+    color: actif ? "#fff" : "#5C6560", fontFamily: "inherit", whiteSpace: "nowrap",
+  });
   // ── LE CLIC DOIT AMENER QUELQUE PART (2026-09-04) ─────────────────────────
   // Le bandeau filtrait bien la liste, mais la vue ne bougeait pas : les
   // articles retenus sont plus bas dans la page, et sur un écran de portable
@@ -6604,219 +6613,6 @@ const StockTab = memo(function StockTab({
     if(ok){setPaSel(new Set());setPaLot("");}
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // LE HAUT DU STOCK — CE QUE LA BARRE, LES PASTILLES ET LA FEUILLE LISENT
-  // ══════════════════════════════════════════════════════════════════════════
-  // ⚠️ DÉCLARÉ ICI, tout en bas du corps et JUSTE AU-DESSUS du seul `return` :
-  // ces valeurs lisent nbSansPrix, repubEnPause, comptesStock, brouillons,
-  // plateformesCompte… tous déclarés plus haut. Une déclaration plus bas, c'est
-  // une zone morte temporelle, c'est-à-dire un écran blanc au montage — ce
-  // fichier l'a produit deux fois (03/09 et 15/09), on ne recommence pas.
-  //
-  // ⛔ AUCUN CALCUL DE FILTRAGE NEUF. Ce bloc ne fait que NOMMER ce qui existe
-  // déjà : les mêmes états (filterType, filterMarque, filterBoutique,
-  // filtreDiffusion, filtreProbleme, triStock), les mêmes compteurs
-  // (comptesStock), les mêmes setters, les mêmes conditions d'apparition. La
-  // liste rendue est exactement celle d'avant — c'est une refonte de
-  // présentation.
-  const qteStock=(l)=>(l??[]).reduce((a,i)=>a+(i.quantite||1),0);
-
-  // ── « AJOUTER UN ARTICLE » TOMBE À UNE LIGNE (2026-09-18) ─────────────────
-  // La carte tenait trois choses dépliées en permanence : les onglets
-  // Écrire/Parler, « Ajouter manuellement », et la rangée Import/Export Excel.
-  // Au repos, il ne reste qu'UNE ligne à hauteur de bouton, avec son chevron.
-  // ⛔ RIEN N'EST SUPPRIMÉ, TOUT EST REPLIÉ. L'Excel entre dans le pli : il
-  //    reste à DEUX taps (déplier, puis Importer), et c'est une fonction que
-  //    des Pro utilisent.
-  // ⚠️ Le pli ne masque JAMAIS du contenu vivant : une analyse en cours, un
-  //    résultat, une erreur ou le formulaire manuel ouvert forcent l'affichage,
-  //    quoi que dise le drapeau — sinon un « Analyser » lancé rendrait un écran
-  //    vide. Calculé ici une fois, lu par le pli ET par la carte (deux
-  //    expressions divergentes, c'était la porte d'entrée du bug).
-  const ajoutContenuVivant=(voiceStep==="done"&&voiceZoneResults.length>0)||voiceStep==="error"||voiceStep==="parsing"||voiceLoading;
-  const ajoutDeplie=voiceZoneOpen||showManualForm||ajoutContenuVivant;
-
-  // Les catégories réellement présentes — même règle qu'avant : une catégorie
-  // sans article en stock ne s'affiche pas, « Tous » excepté.
-  const categoriesStock=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"]
-    .filter(tp=>tp==="Tous"||stock.some(i=>i.type===tp));
-
-  // Les marques, dans l'ordre d'avant : « Toutes », les marques, puis « sans
-  // marque » en dernier — et recalculées sur la catégorie active, exactement
-  // comme la rangée qu'elles remplacent.
-  const marquesStock=(()=>{
-    const brutes=[...new Set(stock
-      .filter(i=>filterType==="Tous"||i.type===filterType)
-      .map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null)
-      .filter(Boolean))];
-    if(!brutes.length) return [];
-    return ["Toutes",...brutes.filter(b=>b.toLowerCase()!=="sans marque"),...brutes.filter(b=>b.toLowerCase()==="sans marque")];
-  })();
-
-  // ── LES FILTRES POSÉS ─────────────────────────────────────────────────────
-  // Le cœur de la demande : chaque filtre actif est une pastille avec sa croix,
-  // sous la barre, et on en sort d'un doigt sans rouvrir la feuille.
-  // ⛔ Le TRI n'est pas ici : il ne restreint rien, il n'y a donc rien à
-  //    retirer — il vit nommé sur la ligne de compte.
-  // ⛔ La RECHERCHE non plus : sa croix est dans la barre, sous les yeux.
-  const pastillesFiltresStock=[];
-  if(filtreProbleme) pastillesFiltresStock.push({
-    cle:'probleme',
-    libelle:filtreProbleme==='a_completer'?(lang==='fr'?'À compléter':'To complete'):(lang==='fr'?'En échec':'Failed'),
-    onRetirer:()=>{setFiltreProbleme(null);setShowAllStock(false);},
-  });
-  if(filtreDiffusion) pastillesFiltresStock.push({
-    cle:'diffusion',
-    libelle:filtreDiffusion.mode==='jamais'
-      ?(lang==='fr'?'Jamais publié':'Never published')
-      :`${filtreDiffusion.mode==='en_ligne'?(lang==='fr'?'En ligne sur':'Live on'):(lang==='fr'?'Pas encore sur':'Not yet on')} ${LIBELLE_PLATEFORME[filtreDiffusion.platform]}`,
-    onRetirer:()=>{setFiltreDiffusion(null);setShowAllStock(false);},
-  });
-  if(filterBoutique!=="Toutes") pastillesFiltresStock.push({
-    cle:'boutique',
-    libelle:filterBoutique==="sans_origine"
-      ?(lang==='fr'?'Sans origine':'No origin')
-      :`@${boutiquesVinted.find(b=>String(b.user_id)===filterBoutique)?.login??filterBoutique}`,
-    onRetirer:()=>{setFilterBoutique("Toutes");setShowAllStock(false);},
-  });
-  if(filterType!=="Tous") pastillesFiltresStock.push({
-    cle:'type', libelle:typeLabel(filterType,lang),
-    onRetirer:()=>{setFilterType("Tous");setShowAllStock(false);},
-  });
-  if(filterMarque!=="Toutes") pastillesFiltresStock.push({
-    cle:'marque', libelle:marqueLabel(filterMarque,lang),
-    onRetirer:()=>{setFilterMarque("Toutes");setShowAllStock(false);},
-  });
-
-  // ── « À TRAITER » — LES TROIS MODES, ET RIEN D'AUTRE ──────────────────────
-  // Un mode change ce qu'on peut FAIRE (cartes différentes, sélection
-  // multiple, en-tête de sortie) : il ne se cumule pas avec un filtre et n'a
-  // donc rien à faire dans la feuille. Il garde son point d'entrée à lui.
-  // ⛔ MÊMES CONDITIONS QU'AVANT, au mot près — aucune porte neuve, aucune
-  //    porte fermée. Le tap fait EXACTEMENT ce que faisait la pastille.
-  // ⛔ Total nul ⇒ la ligne n'existe pas (règle 1).
-  const chantiersStock=[];
-  if(brouillons.length>0) chantiersStock.push({
-    cle:'brouillons', emoji:'✏️', compte:brouillons.length,
-    libelle:lang==='fr'?(brouillons.length>1?'Brouillons à finir':'Brouillon à finir'):(brouillons.length>1?'Drafts to finish':'Draft to finish'),
-    detail:lang==='fr'?"Annonces générées, pas encore publiées — déjà décomptées de ta limite.":'Listings generated, not published yet — already counted towards your limit.',
-    onTap:()=>{setListeOuverte(null);setModeBrouillons(true);setModePrixAchat(false);setModeRepublish(false);setShowAllStock(false);},
-  });
-  if(nbSansPrix>0) chantiersStock.push({
-    cle:'sans_prix', emoji:'🏷', compte:nbSansPrix,
-    libelle:lang==='fr'?"Sans prix d'achat":'Without purchase price',
-    detail:lang==='fr'?"Sans lui, ni marge ni bénéfice ne se calculent.":'Without it, neither margin nor profit can be computed.',
-    onTap:()=>{setListeOuverte(null);setModePrixAchat(true);setModeBrouillons(false);setPaSel(new Set());setPaOpenId(null);setPaErr(null);},
-  });
-  if(republishActif&&repubActionnablesVue.length>0) chantiersStock.push({
-    cle:'republier', emoji:'🔁', compte:repubActionnablesVue.length,
-    libelle:lang==='fr'?'À republier':'To repost',
-    // Maintenance en cours : la ligne s'éteint au lieu de faire semblant de
-    // répondre — même règle que la pastille qu'elle remplace. (Le palier Free,
-    // lui, reste PLEINEMENT actif : c'est un geste réservé, pas un bouton
-    // cassé, et le tap ouvre la modale de conversion.)
-    detail:repubEnPause?(lang==='fr'?'Indisponible pour le moment.':'Unavailable right now.'):undefined,
-    desactive:repubEnPause,
-    onTap:()=>{
-      if(repubEnPause)return;
-      setListeOuverte(null);
-      if(repubLotReserve){ouvrirModaleLotReserve();return;}
-      setModeRepublish(true);setModeBrouillons(false);setRepubSel(new Set());setRepubLot(null);
-    },
-  });
-  const nbATraiter=chantiersStock.reduce((a,c)=>a+(c.compte||0),0);
-
-  // ── LES GROUPES DE LA FEUILLE ─────────────────────────────────────────────
-  // Ordre : État · Plateforme · Boutique · Catégorie · Marque.
-  // ⛔ Un chip à 0 n'existe pas — c'est la règle produit « le nombre avant le
-  //    clic » : une porte qui ne mène à rien n'est pas une porte.
-  // ⛔ Un groupe sans option n'est pas rendu (la feuille s'en charge).
-  // ⛔ Pas de groupe « Tri » : un tri ne restreint rien. Il vit sur la ligne de
-  //    compte, nommé en permanence — un intitulé de moins dans la feuille, et
-  //    c'est aussi ce que montre la maquette.
-  const groupesFiltresStock=[];
-  {
-    const etats=[];
-    if(comptesStock.aCompleter>0) etats.push({
-      cle:'a_completer', libelle:lang==='fr'?'À compléter':'To complete', compte:comptesStock.aCompleter,
-      actif:filtreProbleme==='a_completer',
-      onTap:()=>{setFiltreProbleme(filtreProbleme==='a_completer'?null:'a_completer');setShowAllStock(false);},
-    });
-    if(comptesStock.enEchec>0) etats.push({
-      cle:'en_echec', libelle:lang==='fr'?'En échec':'Failed', compte:comptesStock.enEchec,
-      actif:filtreProbleme==='en_echec',
-      onTap:()=>{setFiltreProbleme(filtreProbleme==='en_echec'?null:'en_echec');setShowAllStock(false);},
-    });
-    groupesFiltresStock.push({cle:'etat',intitule:lang==='fr'?'État':'Status',type:'chips',options:etats});
-  }
-  {
-    const enLigne=plateformesCompte.filter(p=>comptesStock.enLigne[p]>0).map(p=>{
-      const actif=filtreDiffusion?.mode==='en_ligne'&&filtreDiffusion.platform===p;
-      return {cle:`el-${p}`,libelle:LIBELLE_PLATEFORME[p],compte:comptesStock.enLigne[p],actif,
-        onTap:()=>{setFiltreDiffusion(actif?null:{mode:'en_ligne',platform:p});setShowAllStock(false);}};
-    });
-    const pasEncore=plateformesCompte.filter(p=>comptesStock.pasEncore[p]>0).map(p=>{
-      const actif=filtreDiffusion?.mode==='pas_encore'&&filtreDiffusion.platform===p;
-      return {cle:`pe-${p}`,libelle:LIBELLE_PLATEFORME[p],compte:comptesStock.pasEncore[p],actif,
-        onTap:()=>{setFiltreDiffusion(actif?null:{mode:'pas_encore',platform:p});setShowAllStock(false);}};
-    });
-    // « Jamais publié » n'est PAS « pas encore sur Leboncoin » : l'un n'est
-    // nulle part, l'autre est déjà en ligne ailleurs. Il ferme la rangée.
-    if(comptesStock.jamais>0){
-      const actif=filtreDiffusion?.mode==='jamais';
-      pasEncore.push({cle:'jamais',libelle:lang==='fr'?'Nulle part':'Nowhere',compte:comptesStock.jamais,actif,
-        onTap:()=>{setFiltreDiffusion(actif?null:{mode:'jamais'});setShowAllStock(false);}});
-    }
-    groupesFiltresStock.push({
-      cle:'plateforme', intitule:lang==='fr'?'Plateforme':'Marketplace', type:'chips',
-      sections:[
-        {cle:'el',titre:lang==='fr'?'En ligne sur':'Live on',options:enLigne},
-        {cle:'pe',titre:lang==='fr'?'Pas encore sur':'Not yet on',options:pasEncore},
-      ],
-    });
-  }
-  // Boutique : groupe CONDITIONNEL — il n'existe que sur un compte à 2
-  // boutiques Vinted ou plus, et il apparaît tout seul le jour où le compte y
-  // passe. Une boutique n'est pas une plateforme : un intitulé doit vouloir
-  // dire la même chose pour tout le monde, il a donc le sien.
-  if(boutiquesVinted.length>=2){
-    const bo=[{cle:'b-toutes',libelle:lang==='fr'?'Toutes':'All',actif:filterBoutique==="Toutes",
-      onTap:()=>{setFilterBoutique("Toutes");setShowAllStock(false);}}];
-    for(const b of boutiquesVinted){
-      const id=String(b.user_id);
-      bo.push({cle:`b-${id}`,libelle:`${boutiqueConnectee?.userId===id?'● ':''}@${b.login??b.user_id}`,
-        actif:filterBoutique===id,onTap:()=>{setFilterBoutique(id);setShowAllStock(false);}});
-    }
-    // « Sans origine » : les articles jamais estampillés (vinted_account_id
-    // NULL — saisis à la main, ou importés avant le multi-boutiques) doivent
-    // rester atteignables une fois les boutiques posées.
-    if(stock.some(i=>i.vinted_account_id==null)) bo.push({
-      cle:'b-sans', libelle:lang==='fr'?'Sans origine':'No origin', actif:filterBoutique==="sans_origine",
-      onTap:()=>{setFilterBoutique("sans_origine");setShowAllStock(false);},
-    });
-    groupesFiltresStock.push({cle:'boutique',intitule:lang==='fr'?'Boutique':'Shop',type:'chips',options:bo});
-  }
-  groupesFiltresStock.push({
-    cle:'categorie', intitule:lang==='fr'?'Catégorie':'Category', type:'chips',
-    options:categoriesStock.length>1?categoriesStock.map(tp=>({
-      cle:`t-${tp}`,
-      libelle:tp==="Tous"?(lang==='en'?'All':'Toutes'):typeLabel(tp,lang),
-      actif:filterType===tp,
-      onTap:()=>{setFilterType(tp);setShowAllStock(false);},
-    })):[],
-  });
-  // Marque : une LIGNE, pas des chips — un compte Pro peut avoir deux cents
-  // marques, et deux cents chips ne se lisent pas. Peu de valeurs → chips ;
-  // beaucoup → une ligne qui ouvre une liste cherchable.
-  if(marquesStock.length>1) groupesFiltresStock.push({
-    cle:'marque', intitule:lang==='fr'?'Marque':'Brand', type:'ligne',
-    valeur:filterMarque==="Toutes"?(lang==='fr'?'Toutes':'All'):marqueLabel(filterMarque,lang),
-    onOuvrir:()=>setListeOuverte('marque'),
-  });
-  // Le nombre annoncé par le bouton du pied de la feuille : la MÊME liste que
-  // les cartes, recalculée à chaque choix.
-  const nbResultatFeuille=qteStock(stockRetenu??stockFiltre);
-
   return (
     <>
       <style>{STOCK_TOP_CSS}</style>
@@ -7261,10 +7057,7 @@ const StockTab = memo(function StockTab({
           de fait), 3. la carte d'ajout complète, repliée, en bas. Aucun
           chemin supprimé. Un compte AVEC articles garde l'ordre actuel. */}
       <div style={!isMobile?{display:"grid",gridTemplateColumns:"300px 1fr",gap:20,alignItems:"start",width:"100%"}:{display:"flex",flexDirection:"column",gap:16,width:"100%",boxSizing:"border-box"}}>
-        {/* La carte se resserre sur son pli : 20 px de marge autour d'une
-            ligne unique, ça faisait un pavé de 70 px avant le premier article.
-            Dépliée, elle retrouve exactement la respiration d'avant. */}
-        <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:ajoutDeplie?20:"6px 14px",display:"flex",flexDirection:"column",gap:ajoutDeplie?12:0,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",...(isMobile&&stock.length===0?{order:2}:{})}}>
+        <div className="stock-top-v2" style={{background:"#fff",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:12,border:"1px solid rgba(0,0,0,0.06)",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",...(isMobile&&stock.length===0?{order:2}:{})}}>
           {/* ── Zone de saisie IA — REPLIÉE PAR DÉFAUT (2026-08-09) ──────────
               Le drapeau voiceZoneOpen existait depuis toujours, mais valait
               `true` et AUCUN bouton ne le basculait (setVoiceZoneOpen était
@@ -7281,14 +7074,11 @@ const StockTab = memo(function StockTab({
               alors « Recommencer » / « Réessayer », qui ramènent à l'état
               replié. */}
           {(()=>{
-            // (Le calcul de `contenuVivant` vivait ici ; il est remonté dans le
-            // corps sous le nom `ajoutContenuVivant` — la carte en a besoin
-            // AUSSI, pour son pli et pour la rangée Excel, et deux expressions
-            // jumelles auraient fini par diverger.)
-            if(ajoutContenuVivant) return null;
+            const contenuVivant=(voiceStep==="done"&&voiceZoneResults.length>0)||voiceStep==="error"||voiceStep==="parsing"||voiceLoading;
+            if(contenuVivant) return null;
             return (
               <button type="button" onClick={()=>setVoiceZoneOpen(v=>!v)}
-                style={{display:"flex",alignItems:"center",gap:9,width:"100%",minHeight:44,padding:voiceZoneOpen?"2px 0 6px":"2px 0",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:voiceZoneOpen?"2px 0 6px":"2px 0",background:"transparent",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                 <span style={{flexShrink:0,width:30,height:30,borderRadius:9,background:"rgba(47,158,144,0.10)",display:"flex",alignItems:"center",justifyContent:"center",color:"#1B6E62"}}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
                 </span>
@@ -7627,13 +7417,8 @@ const StockTab = memo(function StockTab({
               serveur, ouvert à tous) — déplacé et réduit, logique intacte.
               Stock VIDE (2026-09-01) : la rangée n'apparaît qu'un des deux
               plis ouvert — l'Excel n'a rien à faire au premier plan d'un
-              stock à zéro.
-              2026-09-18 : la MÊME règle vaut maintenant pour un stock REMPLI.
-              La rangée restait visible en permanence, et c'était la deuxième
-              chose empilée avant le premier article. Elle entre dans le pli :
-              déplier « Ajouter un article », puis « Importer » — deux taps,
-              jamais plus, pour une fonction que des Pro utilisent. */}
-          {ajoutDeplie&&(
+              stock à zéro. Stock rempli : toujours visible, comme avant. */}
+          {(stock.length>0||voiceZoneOpen||showManualForm)&&(
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",paddingTop:2,borderTop:"1px solid rgba(0,0,0,0.05)"}}>
             <span style={{flex:1,minWidth:0,fontSize:11.5,fontWeight:600,color:"#8A8578",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={t('importDesc')}>
               {t('importExcel')}
@@ -7692,112 +7477,44 @@ const StockTab = memo(function StockTab({
             </div>
           )}
 
-          {/* ── LE HAUT DE LA LISTE, REFONDU (2026-09-18) ────────────────────
-              Ici vivaient la barre de recherche PUIS une rangée de catégories
-              (« Tous / Mode / High-Tech / Livres… ») qui défilait, et plus bas
-              deux autres rangées de natures différentes. Trois rangées avant le
-              premier article, et aucun moyen de savoir ce qui était posé.
-              Il ne reste au repos que ces trois lignes, dans cet ordre :
-                1. recherche + « Filtrer » ;
-                2. les filtres POSÉS, chacun avec sa croix (rien si aucun) ;
-                3. « À traiter · N » (rien s'il n'y a rien à traiter).
-              Les catégories, les marques, les plateformes, les boutiques et le
-              tri n'ont pas disparu : ils vivent dans la feuille et dans les
-              listes, montées plus bas (portails sur document.body).
-              ⚠️ MÊME GARDE QU'AVANT SUR LA BARRE (2026-08-09) : masquée tant
-              qu'il n'y a RIEN à chercher — sur un compte vide elle occupait une
-              ligne pleine largeur au-dessus d'un « 0 art. », et un tap y
-              ouvrait le clavier pour fouiller le vide. `stock` est la liste
-              BRUTE (la filtrée, c'est stockFiltre) : la barre ne peut donc pas
-              se cacher elle-même en ne trouvant rien. Et la clause `|| search`
-              reste la ceinture du cas limite — dernier article vendu pendant
-              qu'une recherche est saisie : sans elle, la barre disparaîtrait
-              avec un filtre actif et plus aucun moyen de l'effacer. */}
+          {/* ── Barre de recherche + Filtres type ──
+              Masquée tant qu'il n'y a RIEN à chercher (2026-08-09) : sur un
+              compte vide elle occupait une ligne pleine largeur au-dessus d'un
+              « 0 art. », et un tap y ouvrait le clavier pour fouiller le vide.
+              `stock` est la liste BRUTE (la filtrée, c'est stockFiltre) : la
+              barre ne peut donc pas se cacher elle-même en ne trouvant rien.
+              La clause `|| search` est la ceinture du cas limite — dernier
+              article vendu pendant qu'une recherche est saisie : sans elle, la
+              barre disparaîtrait avec un filtre actif et plus aucun moyen de
+              l'effacer. */}
           {(stock.length>0||search)&&(
-            <BarreFiltres
-              lang={lang}
-              search={search}
-              setSearch={setSearch}
-              nbFiltres={pastillesFiltresStock.length}
-              onOuvrir={()=>setFeuilleFiltres(true)}
-            />
+          <div style={{display:"flex",alignItems:"center",gap:8,background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:12,padding:"10px 16px"}}>
+            <span style={{fontSize:14,flexShrink:0}}>🔍</span>
+            <input value={search} onChange={e=>setSearch(e.target.value)}
+              placeholder={lang==='fr'?"Rechercher...":"Search..."}
+              style={{flex:1,border:"none",outline:"none",fontSize:14,background:"transparent",fontFamily:"inherit",color:"#10201B"}}/>
+            {search&&<button onClick={()=>setSearch("")} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:"#A3A9A6",flexShrink:0,padding:0,lineHeight:1}}>✕</button>}
+          </div>
           )}
-          <PastillesFiltres
-            lang={lang}
-            pastilles={pastillesFiltresStock}
-            onToutEffacer={reinitialiserFiltresStock}
-          />
-          {/* Rescapé de la rangée des boutiques : le décalage avec la boutique
-              REGARDÉE. Il est dit ICI, sous la pastille qui le provoque — la
-              boutique ACTIVE, elle, reste annoncée par l'en-tête permanent
-              au-dessus de la liste (07/09). */}
-          {boutiquesVinted.length>=2&&boutiqueConnectee&&filterBoutique!=="Toutes"&&filterBoutique!=="sans_origine"&&filterBoutique!==boutiqueConnectee.userId&&(
-            <div style={{fontSize:11.5,lineHeight:1.5,color:"#8A6100",padding:"0 2px"}}>
-              {lang==='fr'
-                ?'Tu regardes une autre boutique : ses republications et ses retraits attendront que tu la connectes sur vinted.fr.'
-                :'You are viewing another shop: its reposts and removals will wait until you sign in to it on vinted.fr.'}
-            </div>
-          )}
-          {/* La porte des trois MODES — jamais dans la feuille de filtres : un
-              mode ne se cumule pas et change ce qu'on peut FAIRE. */}
-          {!modeBrouillons&&!modePrixAchat&&!modeRepublish&&(
-            <LigneATraiter lang={lang} total={nbATraiter} onOuvrir={()=>setListeOuverte('a_traiter')}/>
-          )}
-
-          {/* ── LES COUCHES ──────────────────────────────────────────────────
-              Montées ici, à côté de ce qui les ouvre — mais rendues sur
-              document.body (createPortal, dans FiltresStock) : l'app vit sous
-              `.app-root`, qui rogne et défile, et WebKit y peint les
-              position:fixed DANS LA COUCHE DE CE CONTENEUR, z-index ou pas.
-              `actif` : la feuille passe au second plan quand la liste des
-              marques s'ouvre par-dessus, sinon Échap et le retour Android
-              fermeraient les deux d'un coup. */}
-          {feuilleFiltres&&(
-            <FeuilleFiltres
-              lang={lang}
-              actif={!listeOuverte}
-              groupes={groupesFiltresStock}
-              nbResultat={nbResultatFeuille}
-              reinitialisable={pastillesFiltresStock.length>0}
-              onReinitialiser={reinitialiserFiltresStock}
-              onFermer={()=>setFeuilleFiltres(false)}
-            />
-          )}
-          {listeOuverte==='marque'&&(
-            <FeuilleListe
-              lang={lang} recherche z={Z_FEUILLE_DESSUS}
-              titre={lang==='fr'?'Marque':'Brand'}
-              options={marquesStock.map(m=>({
-                cle:m,
-                // « Toutes » reste atteignable quoi qu'on tape : c'est la
-                // sortie du filtre, elle ne se cherche pas.
-                epingle:m==="Toutes",
-                libelle:m==="Toutes"?(lang==='fr'?'Toutes les marques':'All brands'):marqueLabel(m,lang),
-                actif:filterMarque===m,
-                onTap:()=>{setFilterMarque(m);setShowAllStock(false);setListeOuverte(null);},
-              }))}
-              onFermer={()=>setListeOuverte(null)}
-            />
-          )}
-          {listeOuverte==='tri'&&(
-            <FeuilleListe
-              lang={lang}
-              titre={lang==='fr'?'Trier':'Sort'}
-              options={TRIS_STOCK.map(k=>({
-                cle:k, libelle:libelleTri(k,lang), actif:triStock===k,
-                onTap:()=>{setTriStock(k);setShowAllStock(false);setListeOuverte(null);},
-              }))}
-              onFermer={()=>setListeOuverte(null)}
-            />
-          )}
-          {listeOuverte==='a_traiter'&&(
-            <FeuilleListe
-              lang={lang}
-              titre={lang==='fr'?'À traiter':'To handle'}
-              options={chantiersStock}
-              onFermer={()=>setListeOuverte(null)}
-            />
-          )}
+          {(()=>{
+            // Basé uniquement sur stock (pas sold) : les pills de catégorie filtrent la
+            // section EN STOCK ci-dessous (VENDUS est masqué dans Stock IA) — une catégorie
+            // sans article en stock ne doit plus s'afficher, même si elle a des ventes passées.
+            const presentTypes=["Tous","Mode","High-Tech","Maison","Électroménager","Jouets","Livres","Sport","Auto-Moto","Beauté","Musique","Collection","Multimédia","Jardin","Bricolage","Autre"].filter(tp=>tp==="Tous"||stock.some(i=>i.type===tp));
+            return presentTypes.length>1&&(
+              <div className="cat-filters">
+                {presentTypes.map(tp=>{
+                  const isActive=filterType===tp;
+                  return(
+                    <button key={tp} className={`fpill${isActive?" active":""}`} onClick={()=>setFilterType(tp)}>
+                      <span className="fdot" style={{background:tp==="Tous"?"linear-gradient(155deg,#2F9E90,#1B6E62)":getCatTileColor(tp)}}/>
+                      {tp==="Tous"?(lang==='en'?'All':'Tous'):typeLabel(tp,lang)}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* ── VENDUS — masqués dans Stock IA (visibles dans Ventes) ──────────
               Section désactivée VOLONTAIREMENT par b13fde1 (« hide sold items
@@ -7957,36 +7674,21 @@ const StockTab = memo(function StockTab({
                 La valeur passe à DROITE de l'en-tête au lieu d'occuper sa propre
                 pastille flottante — même calcul, au centime près. */}
             {(()=>{
-              // ── LA LIGNE DE COMPTE DIT CE QUE L'ÉCRAN MONTRE (2026-09-18) ──
-              // Elle comptait `stockFiltre`, c'est-à-dire la liste AVANT les
-              // filtres de plateforme et d'état : sous « Pas encore sur
-              // Leboncoin » elle annonçait tout le stock pendant que la galerie
-              // en montrait quatorze. On part donc de la MÊME liste que les
-              // cartes (`stockRetenu ?? stockFiltre` — exactement la source de
-              // `listeStock`), et on nomme le dénominateur dès que le compte
-              // s'écarte du total : « 8 articles sur 15 ». C'est la seule façon
-              // de comprendre, d'un coup d'œil, qu'on ne regarde pas tout.
-              // Le total ne bouge jamais : TOUT le stock, brouillons exclus —
-              // ils ne sont pas du stock, ils ont leur propre mode.
-              const _liste=stockRetenu??stockFiltre;
-              const _fQty=qteStock(_liste);
-              const _total=qteStock(stock.filter(i=>!idsBrouillons.has(String(i.id))));
+              // Reflète le filtre actif (catégorie/marque/recherche) au lieu du total global :
+              // même formule que stockQty/stockVal (App.jsx) mais appliquée à stockFiltre.
+              const _fQty=stockFiltre.reduce((a,i)=>a+(i.quantite||1),0);
               // PIÈGE : `a+i.buy*(i.quantite||1)` sans même un `||0` — un seul
               // article au prix d'achat undefined produisait un NaN qui
               // contaminait TOUT le total (« NaN € »), et un null valait 0 €.
               // totalInvesti() écarte les articles au prix inconnu ; le compteur
               // d'articles (_fQty), lui, continue de tous les compter.
-              const _fVal=totalInvesti(_liste);
-              const _mot=lang==='fr'?(_fQty>1?'articles':'article'):(_fQty>1?'items':'item');
-              const _texte=_fQty!==_total
-                ?`${_fQty} ${_mot} ${lang==='fr'?'sur':'of'} ${_total} · ${fmt(_fVal)}`
-                :`${_fQty} ${_mot} · ${fmt(_fVal)}`;
+              const _fVal=totalInvesti(stockFiltre);
               return (
-                <LigneCompte
+                <EnTeteSection
                   lang={lang}
-                  texte={_texte}
-                  libelleTri={stock.length?libelleTriCourt(triStock,lang):null}
-                  onOuvrirTri={()=>setListeOuverte('tri')}
+                  titre={t('enStockLabel')}
+                  compte={_fQty}
+                  droite={fmt(_fVal)}
                   ouvert={sectionStockOuverte}
                   onToggle={()=>basculerSection('fs_stock_en_stock_ouvert',setSectionStockOuverte)}
                 />
@@ -7994,32 +7696,260 @@ const StockTab = memo(function StockTab({
             })()}
 
             {!sectionStockOuverte?null:<>
-            {/* ── LES TROIS RANGÉES SONT DANS LA FEUILLE (2026-09-18) ───────
-                Vivaient ICI, les unes sous les autres et tous les jours :
-                  · la rangée [Plan gratuit][Toutes][Marques][Trier ▾] ;
-                  · la rangée de pastilles « 1 à compléter » / « N » (échec) /
-                    « 7 brouillons » / « N sans prix » / « Republier N » ;
-                  · le panneau « Trier + Diffusion », déplié EN PLACE sous
-                    cette rangée, qui poussait les articles encore plus bas ;
-                  · la bande « Filtré : … Tout afficher » ;
-                  · la rangée des boutiques Vinted.
-                Trois rangées de natures différentes, et la sortie d'un filtre
-                qui consistait à retrouver la pastille tapée pour la retaper.
+            {/* ── LES FILTRES, UNE SEULE LIGNE ──────────────────────────────
+                [Toutes] [Marques] [Trier ⌄] — et elle DÉFILE horizontalement
+                plutôt que de passer à deux lignes : repasser à deux lignes,
+                c'est exactement ce qu'on vient de retirer.
+                « Diffusion » a fusionné dans « Trier » : un seul bouton, un seul
+                panneau, aucune option perdue (cf. le panneau plus bas).
+                « Marques » perd son compte et son chevron — le nom suffit, le
+                détail est dans le menu. La pastille « Plan gratuit » reste ici :
+                c'est un état de compte, pas un filtre, et elle ne s'affiche que
+                sur un compte gratuit au plafond. */}
+            <div style={{display:"flex",alignItems:"center",gap:6,overflowX:"auto",flexWrap:"nowrap",padding:"2px 0 6px",WebkitOverflowScrolling:"touch"}}>
+              {!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&<span style={{fontSize:10,fontWeight:700,background:"#FFF4EE",color:"#F9A26C",borderRadius:99,padding:"2px 8px",border:"1px solid #F9A26C44",flexShrink:0,whiteSpace:"nowrap"}}>{lang==='fr'?'Plan gratuit':'Free plan'}</span>}
+              {(()=>{const _b=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];if(!_b.length)return null;return(<>{!pillsExpandedStock&&(<button onClick={()=>setFilterMarque("Toutes")} style={{padding:"5px 12px",borderRadius:99,fontSize:11.5,fontWeight:700,cursor:"pointer",border:"none",flexShrink:0,whiteSpace:"nowrap",fontFamily:"inherit",background:filterMarque==="Toutes"?"#1B6E62":"#F2F0E9",color:filterMarque==="Toutes"?"#fff":"#6B7A75"}}>{lang==='en'?'All':'Toutes'}</button>)}<button onClick={()=>setPillsExpandedStock(v=>!v)} style={{...btnLigneStock(pillsExpandedStock||filterMarque!=="Toutes"),flexShrink:0,whiteSpace:"nowrap"}}>{lang==='en'?'Brands':'Marques'}{pillsExpandedStock?' ▴':''}</button></>);})()}
+              {/* Trier — porte AUSSI la diffusion depuis la fusion. Le libellé
+                  dit ce qui est actif, sinon on ne saurait pas pourquoi la
+                  liste est courte : tri nommé, et point vert si un filtre de
+                  diffusion est posé. */}
+              <button onClick={()=>{setMenuTri(v=>!v);}}
+                style={{...btnLigneStock(triStock!=='defaut'||!!filtreDiffusion||menuTri),flexShrink:0,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:5}}>
+                {filtreDiffusion&&<span aria-hidden="true" style={{width:6,height:6,borderRadius:99,background:"currentColor",display:"inline-block"}}/>}
+                {lang==='fr'?'Trier':'Sort'}{triStock!=='defaut'?` : ${libelleTri(triStock,lang)}`:''} {menuTri?'▴':'▾'}
+              </button>
+            </div>
 
-                TOUT EST REPRIS, RIEN N'EST PERDU — ailleurs :
-                  · les FILTRES (état, plateforme, boutique, catégorie, marque)
-                    dans la feuille qui monte du bas, groupés par nature ;
-                  · le TRI sur la ligne de compte, à droite, toujours nommé ;
-                  · les MODES (brouillons, sans prix, republier) derrière la
-                    ligne « À traiter · N » — un mode change ce qu'on peut
-                    FAIRE, il ne se cumule pas, il ne vit pas avec les filtres ;
-                  · les filtres POSÉS en pastilles à croix, au-dessus de la
-                    liste, sans rien rouvrir.
-                (La pastille « Plan gratuit » est partie avec la rangée : elle
-                ne pouvait plus s'afficher depuis le 04/09 — quotaFree vaut 0
-                tant que STOCK_ILLIMITE est vrai, et sa condition était
-                « quotaFree >= FREE_STOCK_LIMIT_FALLBACK ». L'historique git la
-                restitue avec le reste du quota, cf. la note juste plus bas.) */}
+            {/* ── LES TROIS BANDEAUX SONT DEVENUS TROIS PASTILLES ───────────
+                (2026-09-15 soir) Ici s'empilaient, pleine largeur et tous les
+                jours : « 1 En échec », « 3 articles sans prix d'achat » avec sa
+                phrase d'explication, et « Republier en lot (11) » avec la
+                sienne (« Supprime puis recrée chaque annonce… 4983 restantes ce
+                mois-ci »). Trois blocs de deux lignes chacun, avant le premier
+                article.
+                Chaque pastille reste TAPABLE et ouvre EXACTEMENT le détail
+                existant : rien n'est retiré, le texte est replié. Les phrases
+                explicatives se lisent une fois, dans le détail ouvert — pas
+                tous les jours sur l'écran d'accueil.
+                ⛔ Une pastille dont le compte est à zéro n'existe pas.
+                ⛔ La ligne DÉFILE, elle ne passe jamais à deux lignes.
+                L'échec garde son fond rouge pâle — visible du coin de l'œil, il
+                ne crie plus ; les autres sont neutres. */}
+            {(()=>{
+              const pastille=(cle,{actif,couleur,fond,bord,point,emoji,libelle,onClick,eteinte})=>(
+                <button key={cle} onClick={onClick} disabled={!!eteinte}
+                  style={{display:"inline-flex",alignItems:"center",gap:6,minHeight:34,padding:"6px 12px",borderRadius:99,
+                    cursor:eteinte?"default":"pointer",opacity:eteinte?0.45:1,
+                    fontFamily:"inherit",fontSize:12,fontWeight:700,flexShrink:0,whiteSpace:"nowrap",
+                    background:actif?couleur:fond,border:`1px solid ${actif?couleur:bord}`,color:actif?"#fff":couleur}}>
+                  {point&&<span aria-hidden="true" style={{width:6,height:6,borderRadius:99,background:"currentColor",flex:"0 0 auto"}}/>}
+                  {emoji&&<span aria-hidden="true" style={{fontSize:13}}>{emoji}</span>}
+                  {libelle}
+                </button>
+              );
+              const p=[];
+              if(comptesStock.aCompleter>0)p.push(pastille('a_completer',{
+                actif:filtreProbleme==='a_completer',couleur:"#8A6100",fond:"#FFF6E3",bord:"#EED9A6",point:true,
+                libelle:`${comptesStock.aCompleter} ${lang==='fr'?'à compléter':'to complete'}`,
+                onClick:()=>{setFiltreProbleme(filtreProbleme==='a_completer'?null:'a_completer');setShowAllStock(false);setMenuTri(false);},
+              }));
+              if(comptesStock.enEchec>0)p.push(pastille('en_echec',{
+                actif:filtreProbleme==='en_echec',couleur:"#B91C1C",fond:"#FEF2F2",bord:"#FECACA",point:true,
+                libelle:String(comptesStock.enEchec),
+                onClick:()=>{setFiltreProbleme(filtreProbleme==='en_echec'?null:'en_echec');setShowAllStock(false);setMenuTri(false);},
+              }));
+              // Brouillons, prix d'achat, republication : la pastille ARME le
+              // mode, et le mode ouvre son propre en-tête détaillé (pa-call)
+              // juste en dessous — celui qui porte l'explication et la sortie.
+              // On ne montre donc la pastille que MODE FERMÉ, sinon les deux se
+              // répéteraient.
+              // ⚠️ Brouillons : pastille NEUTRE, entre l'échec et « sans prix ».
+              //    Aucune couleur d'alerte, aucun mot de panne — un brouillon
+              //    n'a jamais été tenté. Aucun brouillon ⇒ pastille absente, et
+              //    l'écran redevient celui d'avant, à l'identique.
+              if(!modeBrouillons&&!modePrixAchat&&!modeRepublish&&brouillons.length>0)p.push(pastille('brouillons',{
+                actif:false,couleur:"#5C6560",fond:"#F7F5EF",bord:"#E7E3D8",emoji:"✏️",
+                libelle:`${brouillons.length} ${lang==='fr'?(brouillons.length>1?'brouillons':'brouillon'):(brouillons.length>1?'drafts':'draft')}`,
+                onClick:()=>{setModeBrouillons(true);setModePrixAchat(false);setModeRepublish(false);setShowAllStock(false);setMenuTri(false);},
+              }));
+              if(!modeBrouillons&&!modePrixAchat&&!modeRepublish&&nbSansPrix>0)p.push(pastille('sans_prix',{
+                actif:false,couleur:"#5C6560",fond:"#F7F5EF",bord:"#E7E3D8",emoji:"🏷",
+                libelle:`${nbSansPrix} ${lang==='fr'?'sans prix':'without price'}`,
+                onClick:()=>{setModePrixAchat(true);setModeBrouillons(false);setPaSel(new Set());setPaOpenId(null);setPaErr(null);setMenuTri(false);},
+              }));
+              if(!modeBrouillons&&!modeRepublish&&!modePrixAchat&&republishActif&&repubActionnablesVue.length>0)p.push(pastille('republier',{
+                actif:false,couleur:"#5C6560",fond:"#F7F5EF",bord:"#E7E3D8",emoji:"🔁",
+                libelle:`${lang==='fr'?'Republier':'Repost'} ${repubActionnablesVue.length}`,
+                // Maintenance en cours : la pastille s'éteint au lieu de faire
+                // semblant de répondre — même règle que le bandeau qu'elle
+                // remplace. (Le palier Free, lui, garde une pastille PLEINEMENT
+                // active : c'est un geste réservé, pas un bouton cassé — le tap
+                // ouvre la modale de conversion.)
+                eteinte:repubEnPause,
+                onClick:()=>{
+                  if(repubEnPause)return;
+                  if(repubLotReserve){ouvrirModaleLotReserve();return;}
+                  setModeRepublish(true);setModeBrouillons(false);setRepubSel(new Set());setRepubLot(null);setMenuTri(false);
+                },
+              }));
+              if(!p.length)return null;
+              return <div style={{display:"flex",alignItems:"center",gap:7,overflowX:"auto",flexWrap:"nowrap",marginBottom:10,paddingBottom:2,WebkitOverflowScrolling:"touch"}}>{p}</div>;
+            })()}
+
+            {/* ── PANNEAU « DIFFUSION » (2026-09-08) ────────────────────────
+                Les deux rangées vivent ici, dépliées à la demande : hauteur
+                ZÉRO au repos, et « Pas encore sur Leboncoin » reste à un seul
+                tap — pas caché derrière un inverseur.
+                ⛔ Un chip à 0 ne s'affiche pas : le nombre avant le clic est la
+                règle, et une porte qui ne mène à rien n'est pas une porte.
+                ⛔ « Pas encore sur X » sert à TROUVER les articles, jamais à en
+                envoyer un lot : la publication passe toujours par le stepper,
+                un article à la fois. Aucun bouton d'ensemble ici. */}
+            {menuTri&&(
+              <div style={{marginBottom:12,background:"#fff",border:"1px solid #E7E3D8",borderRadius:14,padding:"10px 10px 11px"}}>
+                {/* ── TRI ── (fusionné ici le 2026-09-15 soir : « Diffusion » et
+                    « Trier » étaient deux boutons et deux panneaux dans une
+                    ligne de filtres qui débordait. Un seul bouton, un seul
+                    panneau, AUCUNE option perdue — les trois jeux se suivent.) */}
+                <div style={{fontSize:9.5,fontWeight:700,letterSpacing:".09em",textTransform:"uppercase",color:"#8A8578",margin:"0 2px 6px"}}>
+                  {lang==='fr'?'Trier':'Sort'}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:2,marginBottom:4}}>
+                  {TRIS_STOCK.map(k=>(
+                    <button key={k} onClick={()=>{setTriStock(k);setMenuTri(false);setShowAllStock(false);}}
+                      style={{textAlign:"left",padding:"9px 11px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"inherit",
+                        fontSize:12.5,fontWeight:triStock===k?700:600,
+                        background:triStock===k?"#E7F3F0":"transparent",color:triStock===k?"#1B6E62":"#5C6560"}}>
+                      {triStock===k?'✓ ':''}{libelleTri(k,lang)}
+                    </button>
+                  ))}
+                </div>
+                <div style={{fontSize:9.5,fontWeight:700,letterSpacing:".09em",textTransform:"uppercase",color:"#8A8578",margin:"11px 2px 6px"}}>
+                  {lang==='fr'?'En ligne sur':'Live on'}
+                </div>
+                <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:3}}>
+                  {plateformesCompte.filter(p=>comptesStock.enLigne[p]>0).map(p=>{
+                    const actif=filtreDiffusion?.mode==='en_ligne'&&filtreDiffusion.platform===p;
+                    return (
+                      <button key={`el-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'en_ligne',platform:p});setMenuTri(false);setShowAllStock(false);}}
+                        style={chipDiffusion(actif,false)}>
+                        {LIBELLE_PLATEFORME[p]} <span style={{color:actif?"rgba(255,255,255,.72)":"#8A8578"}}>{comptesStock.enLigne[p]}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{fontSize:9.5,fontWeight:700,letterSpacing:".09em",textTransform:"uppercase",color:"#8A8578",margin:"11px 2px 6px"}}>
+                  {lang==='fr'?'Pas encore sur':'Not yet on'}
+                </div>
+                <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:3}}>
+                  {plateformesCompte.filter(p=>comptesStock.pasEncore[p]>0).map(p=>{
+                    const actif=filtreDiffusion?.mode==='pas_encore'&&filtreDiffusion.platform===p;
+                    return (
+                      <button key={`pe-${p}`} onClick={()=>{setFiltreDiffusion(actif?null:{mode:'pas_encore',platform:p});setMenuTri(false);setShowAllStock(false);}}
+                        style={chipDiffusion(actif,true)}>
+                        {LIBELLE_PLATEFORME[p]} <span style={{color:actif?"rgba(255,255,255,.72)":"#8A8578"}}>{comptesStock.pasEncore[p]}</span>
+                      </button>
+                    );
+                  })}
+                  {comptesStock.jamais>0&&(()=>{
+                    // « Jamais publié » n'est PAS « pas encore sur Leboncoin » :
+                    // l'un n'est nulle part, l'autre est déjà en ligne ailleurs.
+                    const actif=filtreDiffusion?.mode==='jamais';
+                    return (
+                      <button onClick={()=>{setFiltreDiffusion(actif?null:{mode:'jamais'});setMenuTri(false);setShowAllStock(false);}}
+                        style={chipDiffusion(actif,true)}>
+                        {lang==='fr'?'Jamais publié':'Never published'} <span style={{color:actif?"rgba(255,255,255,.72)":"#8A8578"}}>{comptesStock.jamais}</span>
+                      </button>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* (Le menu de tri du 08/09 vivait ici, dans son propre panneau.
+                Il a fusionné avec « Diffusion » juste au-dessus le 15/09 soir :
+                un bouton, un panneau, trois jeux d'options à la suite.) */}
+
+            {/* ── FILTRES ACTIFS ────────────────────────────────────────────
+                Toujours sous les yeux dès qu'un filtre est posé : on ne doit
+                jamais se demander « pourquoi je ne vois que 12 articles ». */}
+            {(filtreDiffusion||filtreProbleme)&&(
+              <div style={{marginBottom:12,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",
+                background:"#E7F3F0",border:"1px solid rgba(27,110,98,.22)",borderRadius:12,padding:"7px 9px"}}>
+                <span style={{fontSize:11.5,fontWeight:700,color:"#1B6E62"}}>{lang==='fr'?'Filtré :':'Filtered:'}</span>
+                {filtreProbleme&&(
+                  <button onClick={()=>setFiltreProbleme(null)}
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 8px 4px 9px",background:"#fff",
+                      border:"1px solid rgba(27,110,98,.26)",borderRadius:99,fontSize:11.5,fontWeight:600,color:"#1B6E62",cursor:"pointer",fontFamily:"inherit"}}>
+                    {filtreProbleme==='a_completer'?(lang==='fr'?'À compléter':'To complete'):(lang==='fr'?'En échec':'Failed')}
+                    <span style={{color:"#6B7280",fontSize:13,lineHeight:1}}>✕</span>
+                  </button>
+                )}
+                {filtreDiffusion&&(
+                  <button onClick={()=>setFiltreDiffusion(null)}
+                    style={{display:"inline-flex",alignItems:"center",gap:6,padding:"4px 8px 4px 9px",background:"#fff",
+                      border:"1px solid rgba(27,110,98,.26)",borderRadius:99,fontSize:11.5,fontWeight:600,color:"#1B6E62",cursor:"pointer",fontFamily:"inherit"}}>
+                    {filtreDiffusion.mode==='jamais'
+                      ?(lang==='fr'?'Jamais publié':'Never published')
+                      :`${filtreDiffusion.mode==='en_ligne'?(lang==='fr'?'En ligne sur':'Live on'):(lang==='fr'?'Pas encore sur':'Not yet on')} ${LIBELLE_PLATEFORME[filtreDiffusion.platform]}`}
+                    <span style={{color:"#6B7280",fontSize:13,lineHeight:1}}>✕</span>
+                  </button>
+                )}
+                <button onClick={aucunFiltreStock}
+                  style={{marginLeft:"auto",fontSize:11.5,fontWeight:700,color:"#1B6E62",background:"none",border:"none",
+                    textDecoration:"underline",cursor:"pointer",fontFamily:"inherit"}}>
+                  {lang==='fr'?'Tout afficher':'Show all'}
+                </button>
+              </div>
+            )}
+
+            {/* (Les deux chips pleins « À compléter » et « En échec » du 08/09
+                vivaient ici, sur leur propre rangée pleine largeur. Ils sont
+                devenus deux pastilles de la ligne unique, plus haut — mêmes
+                couleurs, même filtre, même bascule au re-clic.) */}
+
+            {boutiquesVinted.length>=2&&(
+              <div style={{marginBottom:12}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  <button onClick={()=>setFilterBoutique("Toutes")}
+                    style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterBoutique==="Toutes"?"#1B6E62":"#F2F0E9",color:filterBoutique==="Toutes"?"#fff":"#6B7A75",fontFamily:"inherit"}}>
+                    {lang==='fr'?'Toutes les boutiques':'All shops'}
+                  </button>
+                  {boutiquesVinted.map(b=>{
+                    const id=String(b.user_id);
+                    const actif=filterBoutique===id;
+                    const connectee=boutiqueConnectee?.userId===id;
+                    return (
+                      <button key={id} onClick={()=>setFilterBoutique(id)}
+                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:actif?"#1B6E62":"#F2F0E9",color:actif?"#fff":"#6B7A75",fontFamily:"inherit"}}>
+                        {connectee?'● ':''}@{b.login??b.user_id}
+                      </button>
+                    );
+                  })}
+                  {/* « Sans origine » (03/09 soir) : les articles jamais
+                      estampillés (vinted_account_id NULL — saisis à la main,
+                      ou importés avant le multi-boutiques) doivent rester
+                      atteignables une fois les pills posées. Rendue seulement
+                      s'il en existe au moins un. */}
+                  {stock.some(i=>i.vinted_account_id==null)&&(
+                    <button onClick={()=>setFilterBoutique("sans_origine")}
+                      style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",background:filterBoutique==="sans_origine"?"#1B6E62":"#F2F0E9",color:filterBoutique==="sans_origine"?"#fff":"#6B7A75",fontFamily:"inherit"}}>
+                      {lang==='fr'?'Sans origine':'No origin'}
+                    </button>
+                  )}
+                </div>
+                {/* La boutique active et les attentes sont dites dans l'en-tête
+                    permanent, au-dessus de la liste (07/09). Ici ne reste que
+                    le décalage avec la boutique REGARDÉE, dit avec le geste. */}
+                {boutiqueConnectee&&filterBoutique!=="Toutes"&&filterBoutique!=="sans_origine"&&filterBoutique!==boutiqueConnectee.userId&&(
+                  <div style={{fontSize:11,lineHeight:1.5,color:"#8A6100",marginTop:5}}>
+                    {lang==='fr'
+                      ?'Tu regardes une autre boutique : ses republications et ses retraits attendront que tu la connectes sur vinted.fr.'
+                      :'You are viewing another shop: its reposts and removals will wait until you sign in to it on vinted.fr.'}
+                  </div>
+                )}
+              </div>
+            )}
             {/* ── Quota du plan : LIGNE SUPPRIMÉE le 2026-09-04 ────────────────
                 Le stock est devenu ILLIMITÉ POUR TOUS (garde serveur
                 check_inventory_limit levée, migration 20260904120100). Il n'y
@@ -8035,10 +7965,27 @@ const StockTab = memo(function StockTab({
                 Retour arrière : ce bloc est restitué par l'historique git
                 (commit de ce jour), en même temps que STOCK_ILLIMITE = false
                 et le retour arrière SQL. */}
-            {/* (La rangée des marques, dépliée par « Marques ▴ », vivait ici.
-                Elle est devenue une LIGNE de la feuille — « Marque · Toutes ›
-                » — qui ouvre une liste CHERCHABLE : un compte Pro peut avoir
-                deux cents marques, et deux cents chips ne se lisent pas.) */}
+            {(()=>{
+              const _sbAll=[...new Set(stock.filter(i=>filterType==="Tous"||i.type===filterType).map(i=>i.marque?.trim()?i.marque.trim().charAt(0).toUpperCase()+i.marque.trim().slice(1).toLowerCase():null).filter(Boolean))];
+              const marquesStockFiltreesParType=["Toutes",..._sbAll.filter(b=>b.toLowerCase()!=="sans marque"),..._sbAll.filter(b=>b.toLowerCase()==="sans marque")];
+              if(marquesStockFiltreesParType.length<=1) return null;
+              const _open=pillsExpandedStock;
+              return(
+                <div style={{marginBottom:12}}>
+
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",maxHeight:_open?"2000px":"0",overflow:"hidden",opacity:_open?1:0,transition:"max-height 0.3s ease, opacity 0.2s ease"}}>
+                    {marquesStockFiltreesParType.map(m=>(
+                      <button key={m} onClick={()=>setFilterMarque(m)}
+                        style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",border:"none",transition:"all 0.15s",
+                          background:filterMarque===m?"#1B6E62":"#F2F0E9",
+                          color:filterMarque===m?"#fff":"#6B7A75"}}>
+                        {m==="Toutes"?(lang==='en'?'All':'Toutes'):marqueLabel(m,lang)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {/* ── Prix d'achat manquants : compteur-invitation cliquable ──
                 Même contrat que VentesTab : on n'oblige jamais, pas de rouge.
                 Reste affiché à 0 quand le mode est ouvert (sinon plus de sortie). */}
