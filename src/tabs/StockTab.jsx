@@ -244,25 +244,42 @@ function failJobAction(job, lang) {
 // têtes SUCCESSEURS (posées par l'extension 0.6.13 pour le même cas) entrent
 // du même geste : « Brouillon eBay resté au format « Enchères » » et « Le
 // formulaire eBay est resté en mode « Enchères » ».
-const RELANCE_RECUPERABLE_RE = new RegExp(
-  '^(' + [
-    'CHALLENGE\\s',
-    'REAUTH VENTE',
-    'Connexion\\s+\\S+\\s+requise',
-    'Publication interrompue',
-    'Onglet suspendu par Chrome',
-    'Un brouillon Leboncoin non terminé',
-    'Adresse requise pour (Leboncoin|Beebs)',
-    'Le champ adresse de Leboncoin contient déjà',
-    'eBay exige une mise à niveau',
-    'Ton Vinted est réglé dans une autre langue',
-    'RESTRICTION VINTED',
-    'Impossible de vérifier les champs obligatoires Vinted',
-    "La catégorie Vinted n['’]a pas pu être sélectionnée",
-    'Publication eBay bloquée',
-    'Brouillon eBay resté au format',
-    'Le formulaire eBay est resté en mode',
-  ].join('|') + ')', 'i');
+// ═══════════════════════════════════════════════════════════════════════════
+// ⛔ LA PORTE EST OUVERTE PAR DÉFAUT (2026-09-18, décision Nico)
+// ═══════════════════════════════════════════════════════════════════════════
+// CE QUI VIVAIT ICI : `RELANCE_RECUPERABLE_RE`, une liste BLANCHE de phrases
+// ancrée sur `^`. Un job en échec n'avait de bouton « Relancer » que si son
+// message COMMENÇAIT par l'une des quinze phrases inscrites — CHALLENGE,
+// REAUTH VENTE, « Adresse requise pour… », RESTRICTION VINTED, etc.
+// Conséquence : tout message NEUF — donc tout défaut qu'on vient de découvrir —
+// était un cul-de-sac. Plus de tentative, pas de reprise, RIEN à cliquer. Et
+// silencieusement : quand une porte manque, il n'y a rien à voir.
+// Vécu le 18/09 : la derby de Pippa refusée par Beebs (« Beebs n'a pas de rayon
+// reconnu pour… », message absent de la liste) est morte sur place, et deux
+// jobs ont dû être remis en file À LA MAIN en base — exactement ce qu'on
+// s'interdit.
+//
+// MESURÉ AVANT D'INVERSER : sur les 94 jobs `failed` des 14 derniers jours,
+// ZÉRO n'est définitif au sens « la plateforme refuse cet objet, et ça ne
+// changera pas ». Pas un article interdit, pas un compte sanctionné. Tout
+// était soit notre trou de mapping, soit un transitoire, soit un geste à
+// demander.
+//
+// ⇒ RELANÇABLE PAR DÉFAUT. On ne ferme que ce qui est vraiment mort, et la
+//   liste noire est donc VIDE aujourd'hui — c'est le bon résultat. Elle existe
+//   pour qu'on ait où écrire le jour où un vrai définitif apparaîtra, pas pour
+//   être remplie.
+//
+// ⛔ LA RÈGLE, ET ELLE NE SOUFFRE PAS D'EXCEPTION : un échec peut être
+//    définitif du point de vue de la PLATEFORME ; il ne doit jamais l'être du
+//    point de vue de la PERSONNE.
+// ⚠️ Ce n'est pas une boucle : le bouton reste une action de l'utilisateur,
+//    plafonnée à RELANCE_MANUELLE_MAX par job avec son cooldown. Un job
+//    relancé repart avec un compteur NEUF (needsUserAttempts = 0), jamais
+//    sans compteur.
+const RELANCE_DEFINITIVE_RE = null;
+const relanceDefinitive = (erreur) =>
+  (RELANCE_DEFINITIVE_RE ? RELANCE_DEFINITIVE_RE.test(String(erreur ?? '')) : false);
 const RELANCE_MANUELLE_MAX = 3;
 const RELANCE_MANUELLE_COOLDOWN_MS = 10 * 60 * 1000;
 // ── ÉLARGI le 31/08 (consigne Nico : « le bouton Relancer, PARTOUT ») ─────────
@@ -301,7 +318,11 @@ function relanceManuelleInfo(job, jobsArticle) {
   // needs_user EN COURS chez la plateforme (2026-09-10) : la requête est
   // partie, une relance ferait le doublon — aucun bouton, nulle part.
   if (natureNeedsUser(job) === 'en_cours') return null;
-  if ((job?.action ?? 'publish') !== 'publish') return null;
+  // ⛔ LES RETRAITS AUSSI (2026-09-18) : un « delete » en échec laisse une
+  //    annonce EN LIGNE alors que l'article est vendu. C'est le pire des cas,
+  //    il lui faut une porte plus qu'aux autres.
+  const actionJob = job?.action ?? 'publish';
+  if (actionJob !== 'publish' && actionJob !== 'delete') return null;
   if (job?.platform_fields?.listing_url_abandon) return null;
   const pf = job?.platform_fields ?? {};
   const faitesJob = Number(pf.relances_manuelles) || 0;
@@ -317,9 +338,21 @@ function relanceManuelleInfo(job, jobsArticle) {
     return { mode: 'repend', epuise: false, attenteMin: attenteMs > 0 ? Math.ceil(attenteMs / 60000) : 0 };
   }
 
+  // ── UN RETRAIT SE RE-PEND, IL NE SE COPIE JAMAIS ─────────────────────────
+  // Traité ICI, avant le mode copie, et la place n'est pas un détail : `copie`
+  // insère un job de PUBLICATION via spend_coins_and_publish. Copier un retrait
+  // raté publierait l'annonce qu'on essayait de retirer, et la ferait payer.
+  // Re-pend, donc : zéro débit, compteur neuf, et l'état réel re-vérifié par le
+  // handler avant le moindre geste — le garde-fou du retrait ne bouge pas.
+  if (actionJob === 'delete') {
+    if (faitesJob >= RELANCE_MANUELLE_MAX) return { mode: 'repend', epuise: true };
+    const attenteMs = Number.isFinite(derniereJob) ? derniereJob + RELANCE_MANUELLE_COOLDOWN_MS - Date.now() : 0;
+    return { mode: 'repend', epuise: false, attenteMin: attenteMs > 0 ? Math.ceil(attenteMs / 60000) : 0 };
+  }
+
   // Mode re-pend (comportement d'origine).
   if (job.status === 'failed'
-      && RELANCE_RECUPERABLE_RE.test(String(job.error ?? ''))
+      && !relanceDefinitive(job.error)
       && faitesJob < RELANCE_MANUELLE_MAX) {
     const attenteMs = Number.isFinite(derniereJob) ? derniereJob + RELANCE_MANUELLE_COOLDOWN_MS - Date.now() : 0;
     return { mode: 'repend', epuise: false, attenteMin: attenteMs > 0 ? Math.ceil(attenteMs / 60000) : 0 };
