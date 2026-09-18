@@ -1,6 +1,46 @@
 import { useEffect } from 'react';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ⛔ LA RÈGLE DES COUCHES — À LIRE AVANT D'EN ÉCRIRE UNE NOUVELLE (2026-09-18)
+// ═══════════════════════════════════════════════════════════════════════════
+// Ce fichier est importé par TOUTE couche flottante de l'app (c'est lui qui
+// porte useFondFige). La règle vit donc ici, une seule fois, pour être lue par
+// qui en écrit une nouvelle.
+//
+//   TOUTE COUCHE FLOTTANTE — modale, feuille, toast, bandeau — SE MONTE SUR
+//   `document.body` PAR createPortal. Sans exception.
+//
+// POURQUOI, et ce n'est pas une préférence de style : l'application entière
+// vit sous `.app-root`, qui rogne et défile (overflow). WebKit y peint les
+// `position:fixed` DANS LA COUCHE DE CE CONTENEUR. Une couche rendue là ne
+// peut donc PAS passer au-dessus d'une page elle-même portalisée sur body —
+// quel que soit son z-index.
+//
+// CE QUE ÇA A COÛTÉ, pour que personne ne recommence : la page Réglages est un
+// portail (z-index 400). « Comparer les formules » (z-index 9990), « Signaler
+// un bug » (10000), le Toast de confirmation (500) et la modale de bienvenue
+// après achat (10100) étaient rendus dans `.app-root` : les quatre restaient
+// INVISIBLES par-dessus les Réglages. On cliquait, l'app ouvrait bien la
+// couche, personne ne la voyait — et elle apparaissait en quittant la page.
+// Le pire : le Toast portait « ❌ Erreur lors de la sauvegarde ». On
+// enregistrait sans savoir si ça avait marché. Diagnostiqué et corrigé le
+// 18/09 (portails), après avoir d'abord cherché du côté du z-index et du
+// cache : les deux étaient innocents.
+//
+// COROLLAIRES :
+//   · le z-index d'une couche ne se compare qu'aux autres couches
+//     PORTALISÉES — entre une couche portalisée et une couche qui ne l'est
+//     pas, le z-index ne dit rien ;
+//   · un motif souvent cité, `-webkit-overflow-scrolling: touch`, N'EST PAS la
+//     cause : la propriété a été retirée de WebKit avec iOS 13 (2019) et n'a
+//     plus d'effet. Elle traîne encore dans App.css — inerte, non retirée
+//     faute de pouvoir la tester sur Safari.
+//
+// LE TEST, UNE MINUTE : ouvrir la couche neuve DEPUIS LA PAGE RÉGLAGES. Si on
+// ne la voit pas, elle n'est pas portalisée.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
 // UNE MODALE OUVERTE : LE GESTE NE VA PLUS AU FOND, ET RIEN N'EST FIGÉ
 // ═══════════════════════════════════════════════════════════════════════════
 // Histoire courte, parce qu'elle explique la forme du code.
