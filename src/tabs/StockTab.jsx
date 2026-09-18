@@ -9963,10 +9963,16 @@ const StockTab = memo(function StockTab({
           s'éteint sans attendre le poll de 20 s), la relecture périodique
           confirme ensuite l'état réel. */}
       {/* Échec détaillé + action directe (chantier onboarding 2026-07-27).
-          Portail document.body OBLIGATOIRE : StockTab vit dans le conteneur
-          scroll (.wrap.page-pad) et le WKWebView iOS peint les position:fixed
-          d'un scroller touch SOUS la tab bar / le FAB (même piège que la
-          feuille photo Lens, fix 41c2b2d). Le message d'erreur est déjà
+          Portail document.body OBLIGATOIRE — la conclusion tient, le MOTIF
+          écrit ici était faux et m'a fait chercher à côté le 18/09 : il
+          accusait `-webkit-overflow-scrolling: touch`, propriété RETIRÉE de
+          WebKit avec iOS 13 (2019), donc sans effet sur les iPhone d'
+          aujourd'hui. Le vrai motif est le conteneur lui-même : l'app vit
+          sous `.app-root`, qui rogne et défile, et WebKit y peint les
+          position:fixed DANS SA COUCHE — quel que soit leur z-index. La règle
+          générale est écrite une seule fois, dans utils/modale.js.
+          (Même piège que la feuille photo Lens, fix 41c2b2d.)
+          Le message d'erreur est déjà
           humanisé côté extension ; on y ajoute le lien de connexion ou du
           brouillon LBC quand il s'applique. */}
       {/* Note douce du détail Vinted (repli) — portail à z-index supérieur au
