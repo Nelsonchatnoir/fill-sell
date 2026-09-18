@@ -58,6 +58,7 @@ const FR = {
     ? `Abonnement résilié. Ton accès reste ouvert jusqu'au ${d}.`
     : "Abonnement résilié. Ton accès reste ouvert jusqu'à la fin de la période payée.",
   gratuitIntro: 'Tu utilises FillSell en formule gratuite.',
+  prochainPrelevement: (d) => 'Prochain prélèvement le ' + d + '.',
   gerer: 'Gérer',
   comparerFormules: 'Comparer les formules',
   voirOffres: 'Voir les offres',
@@ -196,6 +197,7 @@ const EN = {
     ? `Subscription cancelled. Your access stays open until ${d}.`
     : 'Subscription cancelled. Your access stays open until the end of the paid period.',
   gratuitIntro: 'You are on the free plan.',
+  prochainPrelevement: (d) => 'Next payment on ' + d + '.',
   gerer: 'Manage',
   comparerFormules: 'Compare plans',
   voirOffres: 'See plans',
