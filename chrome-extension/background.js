@@ -11739,6 +11739,42 @@ function capturerFicheEnPage(plateforme) {
   const ldImages = () => (Array.isArray(ld?.image) ? ld.image : (ld?.image ? [ld.image] : []))
     .map((i) => (typeof i === "string" ? i : i?.url ?? i?.contentUrl ?? null)).filter((u) => /^https?:/.test(String(u)));
   const feuilles = () => Array.from(document.querySelectorAll("body *")).filter((e) => !e.children.length && propre(e.textContent));
+  // ── UNE PHRASE D'INTERFACE N'EST PAS UNE VALEUR (2026-09-18) ──────────────
+  // Les liens d'aide d'eBay (« En savoir plus à propos de l'état », « Afficher
+  // toutes les définitions des états ») et le texte réservé aux lecteurs
+  // d'écran (« la page s'ouvre dans une nouvelle fenêtre ou un nouvel onglet »)
+  // vivent DANS la cellule de valeur. Un `textContent` de cellule les collait
+  // à la valeur : 593 caractères écrits dans `attributs.etat` de XEWER le
+  // 18/09, propagés ensuite sur quatre plateformes.
+  const BRUIT_INTERFACE_RE = /en savoir plus|afficher toutes les d[ée]finitions|la page s['’]ouvre|s['’]ouvre dans (un|une) nouvel|opens in a new (window|tab)|learn more|see all condition definitions|consulter la page/i;
+  // La valeur d'une cellule, lue PAR FEUILLE — jamais le textContent du
+  // conteneur (leçon du 17/09 : « textContent collait id+prix »). On joint les
+  // feuilles pour ne pas couper « Coton 60% Polyester 40% », on écarte celles
+  // qui vivent dans un lien (un lien n'est jamais la valeur) et celles qui sont
+  // une phrase d'interface. Si tout est du bruit, on rend "" — écrire rien
+  // plutôt qu'écrire faux.
+  // ⚠️ DÉDOUBLONNAGE : eBay rend la valeur DEUX fois dans la cellule d'état
+  //    (la visible, et une copie pour les lecteurs d'écran). Sans ce filtre on
+  //    écrivait « Occasion Occasion » — vérifié sur l'annonce 377487844090.
+  //    On compare en minuscules et on garde le premier venu, donc l'ordre du
+  //    document : « Coton 60% Polyester 40% », dont les feuilles sont toutes
+  //    différentes, reste entier.
+  const valeurDeCellule = (cell) => {
+    if (!cell) return "";
+    const vus = new Set();
+    const parts = [];
+    for (const x of cell.querySelectorAll("*")) {
+      if (x.children.length || x.closest("a")) continue;
+      const t = propre(x.textContent);
+      if (!t || BRUIT_INTERFACE_RE.test(t)) continue;
+      const cle = t.toLowerCase();
+      if (vus.has(cle)) continue;
+      vus.add(cle);
+      parts.push(t);
+    }
+    const txt = parts.length ? parts.join(" ") : propre(cell.textContent);
+    return BRUIT_INTERFACE_RE.test(txt) ? "" : txt;
+  };
   // Lignes « Libellé / Valeur » : la feuille dont le texte EST le libellé, et la
   // feuille voisine dans le même parent.
   const ligneLibellee = (libelles) => {
@@ -11847,15 +11883,31 @@ function capturerFicheEnPage(plateforme) {
         const lib = propre(lab.textContent).replace(/\s*:\s*$/, "");
         if (!re.test(lib)) continue;
         const row = lab.closest("[class*='ux-labels-values']:not([class*='__'])") ?? lab.closest(".elevated-info__item") ?? lab.parentElement;
-        const direct = propre(row?.querySelector(".ux-labels-values__values, .elevated-info__item__value")?.textContent);
-        const val = direct || Array.from(row?.querySelectorAll("*") ?? []).filter((x) => !x.children.length && x !== lab && !lab.contains(x)).map((x) => propre(x.textContent)).find(Boolean);
+        // ⚠️ `direct` faisait un textContent de la CELLULE de valeur — le même
+        //    défaut que le repli d'état, et il servait les CINQ attributs dès
+        //    que la cellule contenait autre chose que la valeur (c'est le cas
+        //    de la ligne « État », qui porte le lien d'aide). Lu par feuille.
+        const direct = valeurDeCellule(row?.querySelector(".ux-labels-values__values, .elevated-info__item__value"));
+        const val = direct || Array.from(row?.querySelectorAll("*") ?? []).filter((x) => !x.children.length && x !== lab && !lab.contains(x)).map((x) => propre(x.textContent)).filter((t) => t && !BRUIT_INTERFACE_RE.test(t)).find(Boolean);
         if (val) return val;
       }
       return null;
     };
     out.marque = spec(/^(marque|brand)$/i); out.taille = spec(/^(taille|size)/i); out.couleur = spec(/^(couleur|colou?r)$/i); out.matiere = spec(/^(mati[eè]re|material)$/i);
+    // ── « - Sans marque/Générique - » N'EST PAS UNE MARQUE ────────────────
+    // C'est la case « je n'en ai pas » d'eBay, qui impose une valeur dans ce
+    // champ. L'écrire dans la fiche la propage ensuite sur quatre plateformes
+    // comme si c'était un nom de marque. Vocabulaire eBay, tirets et barres
+    // obliques compris — celui de Leboncoin (VALEUR_GENERIQUE_RE,
+    // leboncoin.js) ne couvre ni cette forme ni les libellés anglais, et n'a
+    // rien à faire ici.
+    const SANS_MARQUE_EBAY_RE = /^[\s\-–—]*(sans\s*marque(\s*\/\s*g[ée]n[ée]rique)?|g[ée]n[ée]rique|unbranded(\s*\/\s*generic)?|generic|does\s*not\s*apply|ne\s*s['’]applique\s*pas|non\s*applicable|sans\s*objet|n\/?a|non\s*sp[ée]cifi[ée]e?|unspecified)[\s\-–—]*$/i;
+    if (out.marque && SANS_MARQUE_EBAY_RE.test(out.marque)) out.marque = null;
+    // Le repli d'état : `[data-testid='x-item-condition']` est le MODULE état,
+    // pas la valeur. Lu par feuille, comme le reste, puis le libellé de tête
+    // est retiré.
     out.etat = spec(/^(état|condition)$/i)
-      || propre(document.querySelector(".x-item-condition-text, [data-testid='x-item-condition']")?.textContent).replace(/^(état|condition)\s*:?\s*/i, "") || null;
+      || valeurDeCellule(document.querySelector(".x-item-condition-text, [data-testid='x-item-condition']")).replace(/^(état|condition)\s*:?\s*/i, "") || null;
     out.description_absente = "itm.ebaydesc.com hors permissions";
     out.categorie = Array.from(document.querySelectorAll("nav.breadcrumbs a, [class*='breadcrumb' i] a")).map((a) => propre(a.textContent)).filter(Boolean).join(" > ") || null;
   }
@@ -11870,6 +11922,30 @@ function capturerFicheEnPage(plateforme) {
 // photo dans le stepper après un relevé réussi »). Une photo déposée dans
 // FillSell (stockage Supabase), une description écrite, une marque saisie, un
 // attribut déjà porté : intouchés.
+// ── ÉCRIRE RIEN PLUTÔT QU'ÉCRIRE FAUX (2026-09-18, cas XEWER) ──────────────
+// Un attribut de fiche est une VALEUR : une taille, une couleur, un état. Ce
+// n'est jamais une phrase. Le 18/09, le relevé eBay a écrit 593 caractères du
+// texte d'aide d'eBay dans `attributs.etat` — et un champ pollué se propage sur
+// quatre plateformes, alors qu'un champ vide se complète.
+// Deux critères, volontairement grossiers, et valables pour les CINQ attributs
+// et les QUATRE plateformes — pas seulement pour le défaut du jour :
+//   · une longueur aberrante (80 caractères : « Coton 60% Polyester 40% » en
+//     fait 23, « Occasion - Très bon état » 24 ; la marque la plus longue du
+//     parc, « Picture Organic Clothing », 24) ;
+//   · une phrase d'interface, quelle que soit la plateforme qui l'a laissée
+//     traîner dans sa cellule de valeur.
+// ⛔ Ce n'est PAS un nettoyage de valeur : on ne rogne rien, on ne devine rien.
+//    C'est un refus d'écrire. La valeur juste reviendra au relevé suivant.
+const ATTRIBUT_LONGUEUR_MAX = 80;
+const ATTRIBUT_PHRASE_INTERFACE_RE = /en savoir plus|afficher toutes les d[ée]finitions|la page s['’]ouvre|s['’]ouvre dans (un|une) nouvel|opens in a new (window|tab)|learn more|see all condition definitions|consulter la page|voir les d[ée]tails/i;
+function valeurAttributSaine(v) {
+  const t = String(v ?? "").trim();
+  if (!t) return false;
+  if (t.length > ATTRIBUT_LONGUEUR_MAX) return false;
+  if (ATTRIBUT_PHRASE_INTERFACE_RE.test(t)) return false;
+  return true;
+}
+
 async function completerArticleDepuisCapture(inventaireId, capture, platform, { token, userId, vignette }) {
   const rows = await restRequest(
     `inventaire?id=eq.${inventaireId}&user_id=eq.${userId}&select=id,photos,description,marque,attributs`, token,
@@ -11883,13 +11959,40 @@ async function completerArticleDepuisCapture(inventaireId, capture, platform, { 
     || (photos.length === 1 && !aNous(photos[0]));
   if (seulementVignette && Array.isArray(capture?.photos) && capture.photos.length) patch.photos = capture.photos;
   if (!String(art.description ?? "").trim() && capture?.description) patch.description = String(capture.description);
-  if (!String(art.marque ?? "").trim() && capture?.marque) patch.marque = String(capture.marque);
+  if (!String(art.marque ?? "").trim() && capture?.marque && valeurAttributSaine(capture.marque)) patch.marque = String(capture.marque);
   const attr = art.attributs && typeof art.attributs === "object" && !Array.isArray(art.attributs) ? { ...art.attributs } : {};
   const at = new Date().toISOString();
   let attrMaj = false;
+  // ── RÉPARATION — l'EXCEPTION, étroite et nommée (2026-09-18, décision Nico)
+  // La règle générale ne bouge pas : on complète, on n'écrase pas (boucle
+  // suivante, inchangée). Ici, et ici seulement, on RETIRE un attribut — et il
+  // faut les DEUX conditions réunies :
+  //   · il a été posé par un RELEVÉ (source `releve_*`), jamais par la
+  //     personne — une saisie n'est jamais touchée, même bizarre ;
+  //   · ET sa valeur échoue la garde ci-dessus.
+  // Une valeur de relevé qui échoue la garde n'est pas une donnée, c'est du
+  // bruit : la retirer n'est pas écraser, c'est réparer. Le champ redevient
+  // vide, donc complétable par le relevé suivant — aucune écriture en base
+  // depuis un script, le rattrapage passe par le chemin normal.
+  // ⛔ FAIL-CLOSED : pas d'objet, pas de `source` lisible ⇒ on ne touche à rien.
+  // ⛔ On retire MÊME SI la capture du jour n'a rien pour remplacer : garder le
+  //    bruit en attendant mieux, c'est le laisser partir sur quatre plateformes.
+  for (const k of ["taille", "etat", "couleur", "matiere", "marque"]) {
+    const a = attr[k];
+    if (!a || typeof a !== "object" || Array.isArray(a)) continue;
+    if (!String(a.source ?? "").startsWith("releve_")) continue;
+    if (valeurAttributSaine(a.v)) continue;
+    delete attr[k];
+    attrMaj = true;
+    console.log(`[releve][${platform}] article ${inventaireId} : attribut « ${k} » RETIRÉ — valeur de relevé illisible (${String(a.v ?? "").length} car., source ${a.source}) : « ${String(a.v ?? "").slice(0, 60)}… »`);
+  }
   for (const k of ["taille", "etat", "couleur", "matiere", "marque"]) {
     const v = capture?.[k];
     if (v == null || !String(v).trim() || attr[k]) continue;
+    if (!valeurAttributSaine(v)) {
+      console.log(`[releve][${platform}] article ${inventaireId} : attribut « ${k} » NON écrit — la capture ne rend pas une valeur (${String(v).length} car.) : « ${String(v).slice(0, 60)}… »`);
+      continue;
+    }
     attr[k] = { v: String(v).trim(), source: `releve_${platform}`, at };
     attrMaj = true;
   }
