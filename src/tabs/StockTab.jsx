@@ -21,6 +21,8 @@ import InstallExtensionCta from '../components/InstallExtensionCta';
 import { useRepublicationPlanifiee, republicationPlanifieeExposee } from '../hooks/useRepublicationPlanifiee';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
+import OplaAutorisationModal from '../components/OplaAutorisationModal';
+import { useOplaAcces } from '../utils/oplaAcces';
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import GalleryPhoto, { premierePhoto } from '../components/GalleryPhoto';
@@ -4355,7 +4357,7 @@ function RepublishProgressSheet({ lang, job, onClose, onSaisieRelance, reprise =
 
 // Grille 2026-08-08 : la republication coûte price_republish pour TOUT LE
 // MONDE — l'ancienne prop `gratuit` (Premium/Pro) est morte avec la gratuité.
-function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null }) {
+function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiquesVinted = [], boutiqueConnectee = null, multiOuverte = false, choixInitial = null, oplaAcces = null }) {
   const fr = lang !== 'en';
   const solo = items.length === 1;
   // ── PLATEFORMES (2026-09-17, republication multiplateforme) ───────────────
@@ -4376,7 +4378,15 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
     return new Set(memo.length ? memo : plateformesUnion);
   });
   const cochee = (p) => sel.has(p);
-  const basculer = (p) => setSel((prev) => { const n = new Set(prev); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  const basculerVraiment = (p) => setSel((prev) => { const n = new Set(prev); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  // ⛔ OPLA : la question au clic, ici aussi (18/09/2026). Cocher Opla sans
+  // l’autorisation d’hôte ouvre la modale sur place ; « Continuer » coche
+  // quand même, la republication attendra l’autorisation et repartira seule.
+  const [oplaModale, setOplaModale] = useState(false);
+  const basculer = (p) => {
+    if (p === 'opla' && !sel.has(p) && oplaAcces === false) { setOplaModale(true); return; }
+    basculerVraiment(p);
+  };
   const nomsSel = plateformesUnion.filter(cochee);
   const libelleSel = nomsSel.length === 0 ? '' : nomsSel.map((p) => LABEL_PF[p] ?? p).join(fr ? ' et ' : ' and ');
   const [pct, setPct] = useState(0);
@@ -4543,6 +4553,15 @@ function RepublishSheet({ lang, items, prixUnitaire, onClose, onConfirm, boutiqu
           {fr ? 'Annuler' : 'Cancel'}
         </button>
       </div>
+      {/* La modale Opla — au clic sur la case, sur place. */}
+      {oplaModale && (
+        <OplaAutorisationModal
+          lang={lang}
+          contexte="republication"
+          onContinuer={() => { setOplaModale(false); basculerVraiment('opla'); }}
+          onClose={() => setOplaModale(false)}
+        />
+      )}
     </div>,
     document.body
   );
@@ -5186,6 +5205,9 @@ const StockTab = memo(function StockTab({
   // lot (la barre) ; hors lot, la carte — et si deux feuilles se suivent malgré
   // tout, la seconde est pré-remplie, jamais au défaut (défaut du 17/09).
   const [choixPlateformesRepub, setChoixPlateformesRepub] = useState(null);
+  // Opla : l’autorisation d’hôte, pour la feuille de republication — la
+  // question s’y pose au clic, comme partout ailleurs (18/09/2026).
+  const { acces: oplaAccesRepub } = useOplaAcces({ userId: user?.id });
   const [repubProgress, setRepubProgress] = useState(null); // job republish affiché en détail
   // (repubGratuit est mort le 2026-08-08 : la republication coûte
   // price_republish pour tous les paliers, plus aucun prix conditionné.)
@@ -9898,6 +9920,7 @@ const StockTab = memo(function StockTab({
           boutiqueConnectee={boutiqueConnectee}
           multiOuverte={multiOuverte}
           choixInitial={choixPlateformesRepub}
+          oplaAcces={oplaAccesRepub}
           onClose={()=>setRepubSheet(null)}
           onConfirm={(cibles,choix)=>{
             setRepubSheet(null);
