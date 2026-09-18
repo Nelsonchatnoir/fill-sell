@@ -65,3 +65,19 @@ export function formaterRemiseAZero(iso, lang) {
   if (!Number.isFinite(t)) return null;
   return new Date(t).toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', { day: '2-digit', month: '2-digit' });
 }
+
+// La MÊME date, en entier, pour la carte de formule : chez un abonné,
+// `next_grant_at` EST la fin de période rendue par la boutique (Stripe
+// current_period_end, Apple expiresDate, Google expiryTime — jamais un calcul
+// maison, cf. migration 20260728160000), donc la date du prochain prélèvement.
+// ⛔ Chez un compte GRATUIT ou OFFERT, la même colonne est ancrée sur
+//    profiles.created_at : ce n'est PAS un prélèvement. C'est à l'appelant de
+//    ne l'appeler « prélèvement » que s'il y a un canal de paiement — cette
+//    fonction ne fait que formater.
+export function formaterDatePleine(iso, lang) {
+  const t = Date.parse(iso ?? '');
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toLocaleDateString(lang === 'en' ? 'en-GB' : 'fr-FR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
+}
