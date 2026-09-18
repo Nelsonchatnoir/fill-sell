@@ -301,6 +301,32 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
   );
 }
 
+// ── POURQUOI LE MOTEUR HÉSITE, en une demi-phrase ────────────────────────────
+// `faisceau` (2026-09-18) : le titre exact n'a rien donné, et la proposition
+// vient du SECOND TOUR — recouvrement des mots du titre, marque, prix, taille
+// (rapprocher_classer, migration 20260918091000). Elle n'est JAMAIS un
+// rattachement automatique : c'est une présomption, l'utilisateur tranche.
+// On nomme les signaux qui ont vraiment joué, pas le score : « 0,73 » ne dit
+// rien à personne, « le prix et la marque correspondent » se vérifie d'un œil.
+function motifProposition(prop, fr) {
+  const m = prop?.motif;
+  if (m === 'prix_inconnu') return fr ? ' — le prix n’a pas pu être lu' : ' — the price could not be read';
+  if (m === 'prix_different') return fr ? ' — le prix diffère' : ' — the price differs';
+  if (m === 'homonymes') return fr ? ' — plusieurs articles portent ce titre' : ' — several items share this title';
+  if (m === 'plusieurs_candidats') return fr ? ' — plusieurs candidats' : ' — several candidates';
+  if (m !== 'faisceau') return '';
+  const s = prop.signaux && typeof prop.signaux === 'object' ? prop.signaux : {};
+  const preuves = [];
+  if (s.prix === 'exact') preuves.push(fr ? 'le prix' : 'the price');
+  else if (s.prix === 'proche') preuves.push(fr ? 'le prix, à peu près' : 'roughly the price');
+  if (s.marque) preuves.push(fr ? 'la marque' : 'the brand');
+  if (s.taille) preuves.push(fr ? 'la taille' : 'the size');
+  const base = fr ? ' — le titre est écrit autrement' : ' — the title is worded differently';
+  if (!preuves.length) return base;
+  return fr ? `${base}, mais ${preuves.join(' et ')} correspond${preuves.length > 1 ? 'ent' : ''}`
+            : `${base}, but ${preuves.join(' and ')} match${preuves.length > 1 ? '' : 'es'}`;
+}
+
 // ── L'écran : une annonce par ligne, la proposition du moteur quand il y en a ─
 function EcranRattachement({ lang, items, annonces, onClose, onDecision }) {
   const fr = lang !== 'en';
@@ -390,8 +416,8 @@ function EcranRattachement({ lang, items, annonces, onClose, onDecision }) {
                       <>
                         {prop && (
                           <div style={{ background: P.amberBg, border: `1px solid ${P.amberBd}`, borderRadius: 10, padding: '8px 10px', fontSize: 12.5, color: P.amberInk, lineHeight: 1.5 }}>
-                            {fr ? <>C’est peut-être <strong>« {propTitre ?? (prop.job_id ? 'une de tes annonces' : 'un article de ton stock')} »</strong>{prop.motif === 'prix_inconnu' ? ' — le prix n’a pas pu être lu' : prop.motif === 'prix_different' ? ' — le prix diffère' : prop.motif === 'homonymes' ? ' — plusieurs articles portent ce titre' : prop.motif === 'plusieurs_candidats' ? ' — plusieurs candidats' : ''}.</>
-                                : <>This may be <strong>“{propTitre ?? (prop.job_id ? 'one of your listings' : 'an item in your stock')}”</strong>{prop.motif === 'prix_inconnu' ? ' — the price could not be read' : prop.motif === 'prix_different' ? ' — the price differs' : prop.motif === 'homonymes' ? ' — several items share this title' : prop.motif === 'plusieurs_candidats' ? ' — several candidates' : ''}.</>}
+                            {fr ? <>C’est peut-être <strong>« {propTitre ?? (prop.job_id ? 'une de tes annonces' : 'un article de ton stock')} »</strong>{motifProposition(prop, true)}.</>
+                                : <>This may be <strong>“{propTitre ?? (prop.job_id ? 'one of your listings' : 'an item in your stock')}”</strong>{motifProposition(prop, false)}.</>}
                             <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                               <button type="button" disabled={busy === a.id} onClick={() => decider(a, 'attache', prop.inventaire_id ?? null)}
                                 style={{ padding: '7px 12px', borderRadius: 999, border: 'none', background: `linear-gradient(120deg,${P.teal},${P.tealDeep})`, color: '#fff', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
