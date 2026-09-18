@@ -314,6 +314,15 @@ function motifProposition(prop, fr) {
   if (m === 'prix_different') return fr ? ' — le prix diffère' : ' — the price differs';
   if (m === 'homonymes') return fr ? ' — plusieurs articles portent ce titre' : ' — several items share this title';
   if (m === 'plusieurs_candidats') return fr ? ' — plusieurs candidats' : ' — several candidates';
+  // 'homonymes_tranches' (2026-09-18, A3) : N articles STRICTEMENT identiques
+  // (même titre, même prix). Le choix est arbitraire de toute façon — le
+  // moteur en prend un selon une règle explicite et on le DIT, plutôt que de
+  // poser une question dont aucune réponse ne serait plus juste qu'une autre.
+  if (m === 'homonymes_tranches') {
+    const n = Number(prop.choix_arbitraire?.total ?? prop.candidats_total ?? 0);
+    return fr ? ` — tu as ${n || 'plusieurs'} articles identiques, on a pris le plus ancien`
+              : ` — you have ${n || 'several'} identical items, we took the oldest`;
+  }
   if (m !== 'faisceau') return '';
   const s = prop.signaux && typeof prop.signaux === 'object' ? prop.signaux : {};
   const preuves = [];
