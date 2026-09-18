@@ -64,6 +64,23 @@ const GESTE = {
   beebs:     { fr: 'Retrait puis redépôt', en: 'Remove then repost' },
   opla:      { fr: 'Modification sur place', en: 'Edited in place' },
 };
+// ⛔ EST-CE QUE CE GESTE FAIT RÉELLEMENT REMONTER L'ANNONCE ? (mesuré le 18/09)
+// Sur Opla : NON, et ce n'est pas une opinion. Le fil du catalogue est servi
+// par un index Algolia (`prod-articles`, via /api/catalog/browse) SANS aucun
+// `sortBy` : c'est donc le classement par défaut de l'index. Relevé sur
+// 600 annonces d'affilée, il est entièrement expliqué par
+//   boostScore DESC, puis createdAt DESC
+//   · createdAt  : 1 inversion sur 599 — et cette inversion unique tombe
+//                  EXACTEMENT à la frontière boostScore 1 → 0 (rang 451) ;
+//   · publishedAt: 8 inversions, exactement les 8 annonces où publishedAt
+//                  diffère de createdAt — l'ordre suit donc createdAt ;
+//   · updatedAt  : 267 inversions sur 599 — aucun rapport avec l'ordre.
+// Or notre republication Opla est un PATCH en place : elle ne déplace QUE
+// `updatedAt`. Elle ne fait donc rien remonter du tout. Tant qu'un vrai
+// retrait + redépôt n'est pas livré et prouvé, l'écran DOIT le dire : sans
+// ça, le module consommerait le plafond du jour du compte (et le quota
+// mensuel, commun aux quatre plateformes) pour un résultat nul.
+const REMONTE_LE_FIL = { vinted: true, leboncoin: true, beebs: true, opla: false };
 
 // ── Palette : celle des maquettes (RepublicationAutoCard.dc.html) = UI de
 // ui.jsx + les deux ambres de la carte. ─────────────────────────────────────
@@ -237,6 +254,10 @@ function texteErreurReglage(code, fr) {
 // Rend null quand tout va bien.
 function manqueDePlateforme(etat, session) {
   if (!etat) return null;
+  const pf = etat.platform ?? 'vinted';
+  // Le geste existe et marche, mais il ne REMONTE rien : c'est le plus
+  // trompeur des trois, et donc celui qu'il faut dire en premier.
+  if (REMONTE_LE_FIL[pf] === false) return 'sans_effet';
   if (etat.ouverte === false) return 'fermee';
   if (Number(etat.annonces_en_ligne) === 0) return 'sans_annonces';
   if (session === 'ko') return 'session';
@@ -244,6 +265,13 @@ function manqueDePlateforme(etat, session) {
 }
 function texteManque(manque, pf, fr) {
   const nom = NOMS[pf] ?? pf;
+  if (manque === 'sans_effet') {
+    return {
+      court: fr ? 'Ne ferait pas remonter' : 'Would not bump',
+      long: fr ? `Sur ${nom}, la place d'une annonce dans le fil dépend de sa date de CRÉATION. Notre republication modifie l'annonce sur place : elle ne change pas cette date, donc elle ne la fait pas remonter. Tant qu'un vrai retrait puis redépôt n'est pas livré et vérifié, l'activer consommerait ton plafond du jour sans rien changer — on préfère te le dire.`
+               : `On ${nom}, a listing's place in the feed depends on its CREATION date. Our repost edits the listing in place: it does not change that date, so it does not bump it. Until a real remove-then-repost is shipped and verified, turning this on would use up your daily cap for nothing — we would rather tell you.`,
+    };
+  }
   if (manque === 'fermee') {
     return {
       court: fr ? 'Pas encore disponible' : 'Not available yet',
