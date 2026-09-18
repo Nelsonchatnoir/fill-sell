@@ -24,6 +24,7 @@ import { track } from '../analytics/analytics';
 import {
   PLATEFORMES_RELEVE, LABEL_RELEVE, demanderRelevePlateforme, lireDerniersRunsReleve,
   lireAnnoncesARattacher, compterAnnoncesParPlateforme, deciderRapprochement, texteRefusReleve,
+  lireDernierRunVinted,
 } from '../utils/syncPlateformes';
 
 const P = {
@@ -49,14 +50,38 @@ function ilYA(iso, fr) {
 // du Stock — sans cadre propre (le parent le pose), Vinted en PREMIÈRE ligne
 // (`ligneVinted`, même format que les quatre autres), « Tout relever » en bas
 // (`lancerVinted` + les relevés des autres plateformes, à la suite).
-export default function RelevesPlateformes({ lang, user, items = [], ouvert = false, extensionStatus = null, onRattache = null, plateformes = null, integre = false, ligneVinted = null, lancerVinted = null }) {
+//
+// ── UNE SEULE LIGNE PAR DÉFAUT (refonte du 18/09, constat Nico) ─────────────
+// L'état précédent : CINQ lignes identiques, chacune avec son bouton, plus un
+// « Tout relever », plus deux paragraphes. Le bloc le plus chargé de l'écran
+// Stock, pour un geste qui est le même cinq fois.
+// Désormais :
+//   · UN bouton principal, « Tout relever » — il relève tout ;
+//   · SOUS lui, une ligne d'état courte, toutes plateformes confondues
+//     (dernier relevé + nombre d'annonces vues) ;
+//   · le détail par plateforme derrière un repli FERMÉ par défaut, qui garde
+//     les boutons individuels, les motifs et les délais ;
+//   · UNE phrase d'explication, pas deux. Le rappel « un relevé ne compte ni
+//     comme une publication ni comme une republication » descend dans le repli.
+// ⛔ UN SEUL VERBE : « Relever ». Pas de « Synchroniser », pas d'« Actualiser »,
+//    pas de « Scanner » — ni ici, ni dans la ligne Vinted, ni dans les refus.
+// ⛔ CE QUI NE PEUT PAS DISPARAÎTRE DANS LE REPLI :
+//    · une plateforme non connectée / sans session garde sa ligne et SON MOTIF
+//      dans le repli (elle n'est jamais retirée de la liste) ;
+//    · un délai de cadence qui EMPÊCHE de relever se dit sur la ligne
+//      principale, replié ou non (`cadenceBloquante`).
+// ⛔ Le moteur de relevé n'est pas touché : `lancer`, `toutRelever`,
+//    `demanderRelevePlateforme` et les refus sont ceux d'avant, au mot près.
+export default function RelevesPlateformes({ lang, user, items = [], ouvert = false, extensionStatus = null, onRattache = null, plateformes = null, integre = false, ligneVinted = null, lancerVinted = null, etatVinted = null }) {
   const listePlateformes = Array.isArray(plateformes) ? plateformes.filter((p) => PLATEFORMES_RELEVE.includes(p)) : PLATEFORMES_RELEVE;
   const fr = lang !== 'en';
   const [runs, setRuns] = useState({});
+  const [runVinted, setRunVinted] = useState(null);
   const [compte, setCompte] = useState({});
   const [aRattacher, setARattacher] = useState([]);
   const [busy, setBusy] = useState(null);      // plateforme en cours de demande
   const [message, setMessage] = useState(null);
+  const [detail, setDetail] = useState(false); // le repli — FERMÉ par défaut
   const [ecran, setEcran] = useState(false);
   // `tick` : un relevé demandé ou une décision prise relance la lecture sans
   // attendre le poll de 30 s (le run et les annonces rendent compte en base —
@@ -69,11 +94,12 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
     let annule = false;
     const uid = user.id;
     const charger = async () => {
-      const [r, c, a] = await Promise.all([
+      const [r, c, a, v] = await Promise.all([
         lireDerniersRunsReleve(uid), compterAnnoncesParPlateforme(uid), lireAnnoncesARattacher(uid),
+        lireDernierRunVinted(uid),
       ]);
       if (annule) return;
-      setRuns(r); setCompte(c); setARattacher(a);
+      setRuns(r); setCompte(c); setARattacher(a); setRunVinted(v);
     };
     const t0 = setTimeout(charger, 0);
     const t = setInterval(charger, 30000);
@@ -115,6 +141,36 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
   const extVue = Number.isFinite(Date.parse(extensionStatus?.lastSeenAt ?? ''));
   const nbARattacher = aRattacher.length;
 
+  // ── LA LIGNE D'ÉTAT UNIQUE — toutes plateformes confondues ────────────────
+  // Le « dernier relevé », c'est le PLUS RÉCENT des relevés réussis (Vinted
+  // compris) ; le nombre, c'est la SOMME de ce que chaque dernier relevé
+  // réussi a vu. Une plateforme jamais relevée n'ajoute rien et ne retire
+  // rien — elle a sa ligne et son motif dans le repli.
+  const relevesReussis = [
+    ...(runVinted?.finished_at ? [{ fini: Date.parse(runVinted.finished_at), vus: Number(runVinted.items_vus ?? 0) }] : []),
+    ...listePlateformes
+      .map((p) => runs[p])
+      .filter((r) => r?.status === 'done' && r.finished_at)
+      .map((r) => ({ fini: Date.parse(r.finished_at), vus: Number(r.items_vus ?? 0) })),
+  ].filter((r) => Number.isFinite(r.fini));
+  const dernierFini = relevesReussis.length ? Math.max(...relevesReussis.map((r) => r.fini)) : null;
+  const totalVus = relevesReussis.reduce((t, r) => t + (Number.isFinite(r.vus) ? r.vus : 0), 0);
+  const enCoursQuelquePart = !!etatVinted?.enCours
+    || listePlateformes.some((p) => runs[p] && (runs[p].status === 'queued' || runs[p].status === 'running'));
+  // Le délai de cadence ne se cache PAS dans le repli : s'il empêche de
+  // relever, il se lit sur la ligne principale. Vinted le remonte (etatVinted),
+  // les autres plateformes ne l'exposent qu'au refus — leur cadence sort donc
+  // dans `message`, à la même place.
+  const cadenceBloquante = etatVinted?.cadenceTexte ?? null;
+  const ligneEtat = (() => {
+    if (enCoursQuelquePart) return fr ? 'Relevé en cours…' : 'Scan running…';
+    if (cadenceBloquante) return cadenceBloquante;
+    if (dernierFini == null) return fr ? 'Jamais relevé' : 'Never scanned';
+    return fr
+      ? `Relevé ${ilYA(new Date(dernierFini).toISOString(), fr)} · ${totalVus} annonce${totalVus > 1 ? 's' : ''}`
+      : `Scanned ${ilYA(new Date(dernierFini).toISOString(), fr)} · ${totalVus} listing${totalVus > 1 ? 's' : ''}`;
+  })();
+
   return (
     <div style={integre
       ? { display: 'flex', flexDirection: 'column', gap: 10 }
@@ -133,12 +189,54 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
           </button>
         )}
       </div>
+      {/* UNE phrase — pas deux paragraphes. Ce qui a été retiré d'ici
+          (« un même article, une seule fiche », « le reste, tu le tranches »,
+          et le rappel sur la publication) vit dans le repli, en entier. */}
       <div style={{ fontSize: 12, lineHeight: 1.5, color: P.mute2 }}>
-        {fr
-          ? 'FillSell relit « Mes annonces » sur chaque plateforme et rattache ce qu’il reconnaît à ton stock — un même article, une seule fiche. Le reste, tu le tranches. Rien n’est publié, modifié ni retiré.'
-          : 'FillSell re-reads “My listings” on each platform and matches what it recognises to your stock — one item, one card. You decide the rest. Nothing is published, edited or removed.'}
+        {integre
+          ? (fr
+            ? 'FillSell relit « Mes annonces » sur chaque plateforme et rattache ce qu’il reconnaît à ton stock — rien n’est publié, modifié ni retiré.'
+            : 'FillSell re-reads “My listings” on each platform and matches what it recognises to your stock — nothing is published, edited or removed.')
+          : (fr
+            ? 'FillSell relit « Mes annonces » sur chaque plateforme et rattache ce qu’il reconnaît à ton stock — un même article, une seule fiche. Le reste, tu le tranches. Rien n’est publié, modifié ni retiré.'
+            : 'FillSell re-reads “My listings” on each platform and matches what it recognises to your stock — one item, one card. You decide the rest. Nothing is published, edited or removed.')}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {/* ── LE GESTE PRINCIPAL, puis son état. Un seul bouton, un seul verbe. ── */}
+      {integre && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <button type="button" disabled={!!busy || toutBusy || !extVue} onClick={toutRelever}
+            title={!extVue ? (fr ? "Il faut l'extension Chrome sur un ordinateur." : 'The Chrome extension on a computer is needed.') : undefined}
+            style={{
+              width: '100%', padding: '12px 14px', borderRadius: 999, border: 'none', fontSize: 14, fontWeight: 700, fontFamily: 'inherit',
+              background: (busy || toutBusy || !extVue) ? '#E7E3D8' : `linear-gradient(120deg,${P.teal},${P.tealDeep})`,
+              color: (busy || toutBusy || !extVue) ? P.mute : '#fff',
+              cursor: (busy || toutBusy || !extVue) ? 'default' : 'pointer',
+            }}>
+            {toutBusy ? (fr ? 'Envoi…' : 'Sending…') : (fr ? 'Tout relever' : 'Scan all')}
+          </button>
+          <div style={{ fontSize: 12, color: P.mute2, lineHeight: 1.45, textAlign: 'center' }}>{ligneEtat}</div>
+          {!extVue && (
+            <div style={{ fontSize: 11.5, color: P.mute, lineHeight: 1.45, textAlign: 'center' }}>
+              {fr ? "Il faut l'extension Chrome ouverte sur un ordinateur." : 'The Chrome extension must be open on a computer.'}
+            </div>
+          )}
+        </div>
+      )}
+      {/* ── LE DÉTAIL, REPLIÉ ─────────────────────────────────────────────────
+          Fermé par défaut. Il garde TOUT ce qui était à l'écran avant : la
+          ligne de chaque plateforme (Vinted comprise), son état, son motif
+          quand elle ne peut pas être relevée, et son bouton. Une plateforme
+          qui n'a pas de session n'est pas retirée de la liste — elle reste
+          visible ici, avec sa raison. */}
+      {integre && (
+        <button type="button" onClick={() => setDetail((d) => !d)} aria-expanded={detail}
+          style={{ alignSelf: 'flex-start', padding: '4px 0', border: 'none', background: 'none', color: P.tealDeep, fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          {detail
+            ? (fr ? '▾ Masquer le détail par plateforme' : '▾ Hide the per-platform detail')
+            : (fr ? `▸ Détail par plateforme (${listePlateformes.length + 1})` : `▸ Per-platform detail (${listePlateformes.length + 1})`)}
+        </button>
+      )}
+      <div style={{ display: integre && !detail ? 'none' : 'flex', flexDirection: 'column', gap: 6 }}>
         {integre && ligneVinted}
         {listePlateformes.map((p) => {
           const run = runs[p] ?? null;
@@ -167,23 +265,33 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
             </div>
           );
         })}
+        {/* Le rappel descend DANS le repli (exigence du 18/09) : il est vrai,
+            il rassure, mais il n'a pas à peser sur l'écran à chaque ouverture
+            du Stock. Hors bloc intégré, il reste à sa place, sous les lignes. */}
+        <div style={{ fontSize: 11.5, color: P.mute, lineHeight: 1.5, marginTop: 2 }}>
+          {fr ? 'Un relevé ne compte ni comme une publication ni comme une republication. Une annonce importée reste en lecture seule tant que FillSell ne l’a pas déposée.'
+            : 'A scan never counts as a publication or a repost. An imported listing stays read-only until FillSell has published it.'}
+        </div>
       </div>
-      {integre && (
+      {/* ⛔ Les lignes ne sont pas DÉMONTÉES quand le repli est fermé, elles
+          sont masquées (display:none). `ligneVinted` est le composant qui
+          porte l'état du relevé Vinted et qui publie `lancer` au parent
+          (registerLancer) : le démonter reviendrait à casser « Tout relever »
+          et à perdre le suivi en cours au premier repli. */}
+      {!integre && (
         <button type="button" disabled={!!busy || toutBusy || !extVue} onClick={toutRelever}
           title={!extVue ? (fr ? "Il faut l'extension Chrome sur un ordinateur." : 'The Chrome extension on a computer is needed.') : undefined}
           style={{ width: '100%', padding: '10px 12px', borderRadius: 999, border: `1px solid ${P.border}`, background: '#fff', color: (busy || toutBusy || !extVue) ? P.mute : P.tealDeep, fontSize: 13, fontWeight: 700, cursor: (busy || toutBusy || !extVue) ? 'default' : 'pointer', fontFamily: 'inherit' }}>
           {toutBusy ? (fr ? 'Envoi…' : 'Sending…') : (fr ? 'Tout relever' : 'Scan all')}
         </button>
       )}
+      {/* Les refus (cadence d'une plateforme, relevé déjà en cours, session
+          absente) restent sur la ligne PRINCIPALE, jamais dans le repli. */}
       {message && (
         <div style={{ fontSize: 12, lineHeight: 1.5, color: message.ton === 'orange' ? P.amberInk : P.mute2, background: message.ton === 'orange' ? P.amberBg : 'transparent', border: message.ton === 'orange' ? `1px solid ${P.amberBd}` : 'none', borderRadius: 10, padding: message.ton === 'orange' ? '8px 10px' : 0 }}>
           {message.texte}
         </div>
       )}
-      <div style={{ fontSize: 11.5, color: P.mute, lineHeight: 1.5 }}>
-        {fr ? 'Un relevé ne compte ni comme une publication ni comme une republication. Une annonce importée reste en lecture seule tant que FillSell ne l’a pas déposée.'
-          : 'A scan never counts as a publication or a repost. An imported listing stays read-only until FillSell has published it.'}
-      </div>
       {ecran && (
         <EcranRattachement lang={lang} items={items} annonces={aRattacher}
           onClose={() => setEcran(false)}

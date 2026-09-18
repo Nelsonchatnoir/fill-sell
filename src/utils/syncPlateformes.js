@@ -60,6 +60,28 @@ export async function lireDerniersRunsReleve(userId) {
   return par;
 }
 
+// ── LE DERNIER RELEVÉ VINTED (2026-09-18) ────────────────────────────────────
+// Le bloc « Mes annonces en ligne » ne montre plus qu'UNE ligne d'état, toutes
+// plateformes confondues. Vinted y pèse le plus lourd — l'omettre donnerait un
+// total faux. Or son relevé n'est PAS `kind='annonces'` : la synchro du
+// dressing s'écrit dans la MÊME table sous `kind='dressing'` (vérifié en base
+// le 18/09 : 1 469 runs 'dressing'/vinted contre 0 'annonces'/vinted).
+// ⚠️ Lecture SEULE, et pour le seul total : l'état vivant de Vinted (relevé en
+//    cours, délai de cadence, extension absente) reste calculé par
+//    VintedDressingSync, qui le remonte au bloc. Deux sources de vérité sur le
+//    même état, c'est la garantie que l'une mentira.
+export async function lireDernierRunVinted(userId) {
+  if (!userId) return null;
+  const { data, error } = await supabase
+    .from('vinted_sync_runs')
+    .select('id,platform,status,items_vus,erreur,queued_at,started_at,finished_at')
+    .eq('user_id', userId).eq('kind', 'dressing').eq('status', 'done')
+    .order('finished_at', { ascending: false, nullsFirst: false })
+    .limit(1);
+  if (error) return null;
+  return (data ?? [])[0] ?? null;
+}
+
 // Les annonces relevées PAS ENCORE rattachées (ni ignorées, ni disparues).
 export async function lireAnnoncesARattacher(userId) {
   if (!userId) return [];

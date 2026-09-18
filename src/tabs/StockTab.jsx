@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useMemo, useRef } from 'react';
+import { memo, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 // RefreshCw / ChevronDown / ChevronUp retirés le 2026-09-04 avec RepubBlocActif
 // et RepubTerminees, leurs seuls lecteurs. ⚠️ eslint ne les signalait pas :
@@ -2000,66 +2000,89 @@ const REPRISE_AUTO_RE = /^\[reprise-auto\] tentative (\d+)\/(\d+) prevue (\S+) �
 // (annonces_plateforme.vues / favoris, rattachées à l'article). Le tap ouvre
 // ce détail : d'où viennent les vues, plateforme par plateforme. NULL = la
 // plateforme ne le montre pas — affiché « — », jamais 0.
+//
+// ⛔ UNE VRAIE MODALE, PAS UNE FEUILLE DU BAS (correctif du 18/09, constat
+//    iPhone de Nico) : cette pop-up s'ouvrait en `alignItems:'flex-end'` avec
+//    son propre z-index (1200) et SANS le socle des modales. Résultat mesuré à
+//    l'écran : la barre Tableau/Stock/Lens/Ventes/Stats passait PAR-DESSUS —
+//    la ligne « Total » coupée en deux, le bouton Lens sur le contenu.
+//    La cause est écrite depuis le 08/09 en tête de src/App.css : `.bnav`
+//    porte un `backdrop-filter`, donc SA PROPRE couche de compositing, que
+//    WebKit place au-dessus quel que soit le z-index. Le seul remède qui
+//    marche est de la RETIRER pendant la modale — c'est ce que fait
+//    `useFermetureEchap` (→ useFondFige → html.fs-modale-ouverte .bnav
+//    {display:none}). Le bouton Lens vit DANS .bnav : il part avec elle.
+//    On reprend donc le vocabulaire des autres modales du fichier, celui de
+//    « À compléter » : MODAL_VOILE (voile + centrage + safe-area par le
+//    padding), MODAL_CARTE (carte arrondie, maxHeight 100dvh), MODAL_CORPS
+//    (le corps défile, jamais la page). Le portail vers <body> ferme la
+//    dernière porte : même si un ancêtre du Stock créait un contexte
+//    d'empilement, la modale n'y est plus.
+// ⚠️ Ne PAS toucher à la barre de navigation ni au bouton Lens pour ça : rien
+//    n'est modifié chez eux, c'est la modale qui monte au-dessus.
 function StatsPlateformesPopup({ lang, item, stats = [], onClose }) {
   const fr = lang !== 'en';
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useFermetureEchap(onClose);
   const lignes = [];
   if (item?.vinted_view_count != null || item?.vinted_favourite_count != null) {
     lignes.push({ platform: 'vinted', vues: item.vinted_view_count ?? null, favoris: item.vinted_favourite_count ?? null });
   }
   const ordre = ['leboncoin', 'beebs', 'ebay', 'opla'];
+  // Une plateforme sans annonce en ligne n'a PAS de ligne : `stats` ne porte
+  // que les annonces rattachées et non disparues (lireStatsAnnoncesParArticle),
+  // et celles dont les deux compteurs sont nuls sont déjà écartées à la source.
   for (const s of [...stats].sort((a, b) => ordre.indexOf(a.platform) - ordre.indexOf(b.platform))) {
+    if (s.vues == null && s.favoris == null) continue;
     lignes.push({ platform: s.platform, vues: s.vues ?? null, favoris: s.favoris ?? null, vu_le: s.vu_le });
   }
   const somme = (k) => lignes.reduce((t, l) => t + (l[k] ?? 0), 0);
   const nb = (v) => (v == null ? '—' : String(v));
-  return (
-    <div role="dialog" aria-modal="true" onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(16,32,27,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 12 }}>
-      <div onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 18, padding: '14px 16px 16px', boxShadow: '0 12px 40px rgba(16,32,27,0.25)', fontFamily: 'inherit' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: '#10201B' }}>{fr ? 'Vues et favoris' : 'Views and favourites'}</div>
-            <div style={{ fontSize: 11.5, color: '#8A8578', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item?.title}</div>
+  return createPortal(
+    <div role="dialog" aria-modal="true" onClick={onClose} style={MODAL_VOILE}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...MODAL_CARTE, maxWidth: 420 }}>
+        <div style={MODAL_CORPS}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: NU_T.ink }}>{fr ? 'Vues et favoris' : 'Views and favourites'}</div>
+              <div style={{ fontSize: 11.5, color: NU_T.mute, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item?.title}</div>
+            </div>
+            <button type="button" onClick={onClose} aria-label={fr ? 'Fermer' : 'Close'}
+              style={{ width: 32, height: 32, flexShrink: 0, borderRadius: 999, border: `1px solid ${NU_T.border}`, background: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1, color: '#5C6560', fontFamily: 'inherit' }}>×</button>
           </div>
-          <button type="button" onClick={onClose} aria-label={fr ? 'Fermer' : 'Close'}
-            style={{ width: 32, height: 32, borderRadius: 999, border: '1px solid #E7E3D8', background: '#fff', cursor: 'pointer', fontSize: 16, lineHeight: 1, color: '#5C6560' }}>×</button>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {lignes.map((l) => (
-            <div key={l.platform} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12, background: '#F6F5F1', border: '1px solid #E7E3D8' }}>
-              <PlatformLogo platform={l.platform} size={20} />
-              <div style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13, color: '#10201B' }}>{PLATFORM_LABELS[l.platform] ?? l.platform}</div>
-              <span style={{ fontSize: 13, color: '#10201B', minWidth: 48, textAlign: 'right' }}>👁️ {nb(l.vues)}</span>
-              <span style={{ fontSize: 13, color: '#10201B', minWidth: 48, textAlign: 'right' }}>❤️ {nb(l.favoris)}</span>
-            </div>
-          ))}
-          {lignes.length === 0 && (
-            <div style={{ fontSize: 12.5, color: '#8A8578' }}>{fr ? 'Aucun compteur relevé pour cet article.' : 'No counters collected for this item.'}</div>
-          )}
-          {lignes.length > 1 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px' }}>
-              <div style={{ flex: 1, fontWeight: 700, fontSize: 13, color: '#5C6560' }}>{fr ? 'Total' : 'Total'}</div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#10201B', minWidth: 48, textAlign: 'right' }}>👁️ {somme('vues')}</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#10201B', minWidth: 48, textAlign: 'right' }}>❤️ {somme('favoris')}</span>
-            </div>
-          )}
-        </div>
-        <div style={{ fontSize: 11.5, color: '#8A8578', marginTop: 10, lineHeight: 1.5 }}>
-          {fr ? 'Vinted : synchro du dressing. Les autres : dernier relevé de « Mes annonces ». « — » = la plateforme ne le montre pas.'
-            : 'Vinted: closet sync. Others: last “My listings” scan. “—” = the platform does not show it.'}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {lignes.map((l) => (
+              <div key={l.platform} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12, background: '#fff', border: `1px solid ${NU_T.border}` }}>
+                <PlatformLogo platform={l.platform} size={20} />
+                <div style={{ flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13, color: NU_T.ink }}>{PLATFORM_LABELS[l.platform] ?? l.platform}</div>
+                <span style={{ fontSize: 13, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}>👁️ {nb(l.vues)}</span>
+                <span style={{ fontSize: 13, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}>❤️ {nb(l.favoris)}</span>
+              </div>
+            ))}
+            {lignes.length === 0 && (
+              <div style={{ fontSize: 12.5, color: NU_T.mute }}>{fr ? 'Aucun compteur relevé pour cet article.' : 'No counters collected for this item.'}</div>
+            )}
+            {/* Le Total est DÉTACHÉ : un trait au-dessus, pas de cadre — il ne
+                se lit pas comme une sixième plateforme. */}
+            {lignes.length > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 10px 2px', marginTop: 4, borderTop: `1px solid ${NU_T.border}` }}>
+                <div style={{ flex: 1, fontWeight: 700, fontSize: 13, color: '#5C6560' }}>{fr ? 'Total' : 'Total'}</div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}>👁️ {somme('vues')}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: NU_T.ink, minWidth: 48, textAlign: 'right' }}>❤️ {somme('favoris')}</span>
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: 11.5, color: NU_T.mute, marginTop: 12, lineHeight: 1.5 }}>
+            {fr ? 'Vinted : synchro du dressing. Les autres : dernier relevé de « Mes annonces ». « — » = la plateforme ne le montre pas.'
+              : 'Vinted: closet sync. Others: last “My listings” scan. “—” = the platform does not show it.'}
+          </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null, variante = 'carte', registerLancer = null }) {
+function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 'stock_empty', onDone, repubEnVol = 0, repubRepriseA = null, onVoirArticles = null, boutiquesVinted = [], rechargerBoutiques = null, variante = 'carte', registerLancer = null, registerEtat = null }) {
   const fr = lang !== 'en';
   // (Le message de blocage reste UNIQUE, tous supports — cf. MESSAGE_BLOCAGE,
   // doctrine du 09/08. Le CTA d'installation sur stock vide — l'e-mail en un
@@ -2978,6 +3001,37 @@ function VintedDressingSync({ lang, user, isNative, extensionStatus, source = 's
   // (registerLancer) pour « Tout relever ». La CARTE reste le rendu quand le
   // relevé multiplateforme est fermé.
   if (typeof registerLancer === 'function') registerLancer(lancer);
+  // ── L'ÉTAT DE VINTED REMONTE AU BLOC (2026-09-18) ─────────────────────────
+  // Le bloc « Mes annonces en ligne » ne montre plus qu'UNE ligne d'état par
+  // défaut, toutes plateformes confondues, et le détail par plateforme est
+  // replié. Deux choses ne peuvent pas rester enfermées dans le repli :
+  //   · le relevé EN COURS (sinon le bouton principal paraît inerte) ;
+  //   · le DÉLAI DE CADENCE qui empêche de relever — s'il bloque, il se dit
+  //     sur la ligne principale (garde-fou du 18/09).
+  // Rien d'autre ne remonte : le blocage d'extension et l'échec du dernier
+  // relevé restent DANS la ligne Vinted (donc dans le repli), où ils sont déjà
+  // écrits au mot près — les redire ailleurs ferait deux formulations.
+  // La cadence et le blocage d'extension de Vinted vivent ICI seulement : le
+  // bloc lit les autres plateformes en base (vinted_sync_runs), mais l'état de
+  // Vinted est calculé dans ce composant. On le remonte donc tel quel — jamais
+  // recalculé ailleurs, ce serait une deuxième source de vérité.
+  // ⚠️ Dans un effet, pas pendant le rendu : `registerLancer` ci-dessus le
+  //    fait (dette héritée), on ne la reproduit pas sur un setState parent.
+  // ⛔ La signature remonte en TEXTE et l'abonné vit dans une ref : un parent
+  //    qui passe une lambda en ligne changerait d'identité à chaque rendu et
+  //    on relancerait son setState en boucle. Ici l'effet ne dépend que de ce
+  //    qui a VRAIMENT changé.
+  const registerEtatRef = useRef(registerEtat);
+  registerEtatRef.current = registerEtat;
+  const etatVintedRemonte = useMemo(() => JSON.stringify({
+    enCours: !!enCours || !!envoi || !!enAttenteDistante || !!attenteOccupee,
+    cadenceTexte: enCadence && cadenceTexte ? String(cadenceTexte) : null,
+  }), [enCours, envoi, enAttenteDistante, attenteOccupee, enCadence, cadenceTexte]);
+  useEffect(() => {
+    const fn = registerEtatRef.current;
+    if (typeof fn !== 'function') return;
+    try { fn(JSON.parse(etatVintedRemonte)); } catch { /* jamais un point de panne */ }
+  }, [etatVintedRemonte]);
   if (variante === 'ligne') {
     const boutonInactif = !peutLancer||enCours||enCadence||envoi||enAttenteDistante||attenteOccupee;
     const etatLigne = (() => {
@@ -4631,6 +4685,14 @@ const StockTab = memo(function StockTab({
   // la grille d'articles, où vivent les boutons Publier. Navigation pure.
   const galerieRef = useRef(null);
   const lancerVintedRef = useRef(null); // « Tout relever » (bloc unique) appelle le lancer de la ligne Vinted
+  // État de Vinted remonté par sa ligne (relevé en cours, délai de cadence,
+  // extension absente) — la ligne d'état unique du bloc « Mes annonces en
+  // ligne » en a besoin, et elle n'est PAS repliable. Cf. registerEtat dans
+  // VintedDressingSync : identité stable, sinon l'effet boucle.
+  const [etatVinted, setEtatVinted] = useState(null);
+  const noterEtatVinted = useCallback((e) => {
+    setEtatVinted((avant) => (JSON.stringify(avant) === JSON.stringify(e) ? avant : e));
+  }, []);
   useEffect(() => () => { if (detailNoteTimer.current) clearTimeout(detailNoteTimer.current); }, []);
   const montrerNoteDetail = (message) => {
     setDetailNote(message);
@@ -6961,6 +7023,7 @@ const StockTab = memo(function StockTab({
               extensionStatus={extensionStatus}
               onRattache={rafraichirApresSync}
               lancerVinted={()=>{ try { lancerVintedRef.current?.(); } catch { /* la ligne Vinted dit le refus */ } }}
+              etatVinted={etatVinted}
               ligneVinted={
                 <VintedDressingSync
                   lang={lang} user={user} isNative={isNative}
@@ -6974,6 +7037,7 @@ const StockTab = memo(function StockTab({
                   rechargerBoutiques={rechargerBoutiques}
                   variante="ligne"
                   registerLancer={(fn)=>{ lancerVintedRef.current=fn; }}
+                  registerEtat={noterEtatVinted}
                 />
               }
             />
