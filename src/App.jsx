@@ -118,6 +118,8 @@ import AvertissementAnnoncesEnLigne from './components/AvertissementAnnoncesEnLi
 import { useFondFige } from './utils/modale';
 import ReglagesPage from './reglages/ReglagesPage';
 import FusionArticleModal from './components/FusionArticleModal';
+import FileAnnoncesADepiler from './components/FileAnnoncesADepiler';
+import RevueAutresPlateformes from './components/RevueAutresPlateformes';
 import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
@@ -4143,6 +4145,29 @@ export default function App({ loginOnly = false }){
       &&!soldFlags.has(String(i.id)));
   },[items,unavailableListings,republishActifsInv]);
 
+  // ── LA FILE DES QUATRE AUTRES PLATEFORMES (2026-09-18, point a) ───────────
+  // Elle ne peut pas se lire comme celle de Vinted : `disparusATrancher`
+  // s'appuie sur des colonnes Vinted de l'ARTICLE (disparu_le, vinted_item_id,
+  // vinted_status) qui n'ont pas d'équivalent par plateforme. Ici le signal est
+  // le drapeau du JOB, et c'est donc une file de jobs.
+  // On écarte : la preuve positive de vente (sale_signal='sold'), qui garde son
+  // bandeau « 🎉 Vendue » plus riche et qu'on ne redemande pas ; et les alertes
+  // masquées pour cet épisode, qui sont déjà une réponse (« je ne sais pas »).
+  const disparusAutresPf=useMemo(()=>unavailableListings.filter(j=>{
+    if(j.platform==='vinted')return false;
+    const pf=j.platform_fields||{};
+    if(pf.sale_signal==='sold')return false;
+    if(alertesMasqueesPf?.[j.platform]===true)return false;
+    if(pf.alerte_masquee_pour&&pf.alerte_masquee_pour===String(pf.unavailable_since??''))return false;
+    return true;
+  }),[unavailableListings,alertesMasqueesPf]);
+
+  // Le compteur de tête : ce qui attend VRAIMENT une réponse, les deux files
+  // réunies. Les jobs 'sold' et 'cancelled' qui portent encore le drapeau n'y
+  // sont pas — ils ne réclament rien (582 et 19 côté Vinted, relevés le 18/09)
+  // — et `unavailableListings` ne charge que les 'published'.
+  const nbADepiler=disparusATrancher.length+disparusAutresPf.length;
+
   // Prix pré-rempli de la revue = dernier prix AFFICHÉ sur Vinted (relevés
   // vinted_listing_snapshots), comme dans VentesTab. PROPOSÉ dans un champ
   // éditable, jamais écrit sans le clic « Vendue » de la ligne.
@@ -7391,6 +7416,17 @@ export default function App({ loginOnly = false }){
             Décision produit 2026-07-12 : même Vinted, dont la preuve de vente est
             fiable, passe par ici — le prix réel peut différer du prix affiché
             (négociation) et un vendeur à volume ne corrigerait jamais après coup. */}
+        {/* ── LE COMPTEUR DE LA FILE, EN TÊTE (2026-09-18, point b) ──────────
+            Il est posé AVANT la liste des annonces une par une, et c'est tout
+            le correctif : le bandeau « Passer en revue » existait déjà et la
+            zone des bandeaux est globale (aucun garde `tab===`, donc déjà
+            visible sur le Tableau) — mais il était rendu APRÈS cette liste.
+            Sur un compte à 263 alertes, il fallait franchir 263 cartes pour
+            trouver le chemin qui les traite toutes. Le compteur n'était pas
+            absent, il était enterré sous la file elle-même.
+            Information et pas injonction : cf. le bandeau du composant. */}
+        <FileAnnoncesADepiler lang={lang} nb={nbADepiler} onOuvrir={()=>setDisparusModal(true)} />
+
         {unavailableListings.map(job=>{
           const PLAT={vinted:'Vinted',leboncoin:'Leboncoin',beebs:'Beebs',ebay:'eBay',vestiaire:'Vestiaire',opla:'Opla'};
           const plat=PLAT[job.platform]||job.platform;
@@ -7538,25 +7574,16 @@ export default function App({ loginOnly = false }){
             (jusqu'à 174 articles à la même minute), la revue se fait dans une
             modale groupée. La file ne se vide QUE par les décisions de
             l'utilisateur — aucun article n'en sort par ancienneté. */}
-        {disparusATrancher.length>0&&(
-          <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderLeft:`4px solid ${UI.amber}`,borderRadius:16,padding:"14px 16px",marginBottom:14,display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{fontSize:14,color:UI.ink,lineHeight:1.55}}>
-              <strong>⚠️ {lang==='fr'
-                ?`${disparusATrancher.length} annonce${disparusATrancher.length>1?'s':''} Vinted ${disparusATrancher.length>1?'ne sont plus':'n’est plus'} en ligne`
-                :`${disparusATrancher.length} Vinted listing${disparusATrancher.length>1?'s are':' is'} no longer online`}</strong>
-              <br/>
-              {lang==='fr'
-                ?<>Vendues, ou retirées ? Passe-les en revue — rien n'est enregistré sans ton choix, article par article.</>
-                :<>Sold, or removed? Review them — nothing is recorded without your choice, item by item.</>}
-            </div>
-            <div>
-              <button onClick={()=>setDisparusModal(true)}
-                style={{padding:"9px 18px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                {lang==='fr'?`Passer en revue (${disparusATrancher.length})`:`Review (${disparusATrancher.length})`}
-              </button>
-            </div>
-          </div>
-        )}
+        {/* (L'ancien bandeau ambre « ⚠️ N annonces Vinted ne sont plus en
+            ligne — Passer en revue » vivait ICI, après la liste. Retiré le
+            18/09 : FileAnnoncesADepiler, posé en tête, mène au MÊME modal,
+            compte les cinq plateformes au lieu de Vinted seule, et le fait
+            sans ⚠️ ni ambre. Le garder aurait donné deux entrées pour un seul
+            chemin, dont une en couleur d'alarme — exactement ce qu'on veut
+            éviter à quelqu'un qui a 263 lignes en retard. Le bandeau PAR
+            ANNONCE au-dessus et la pastille « plus en ligne » de la carte
+            article, eux, ne bougent pas : ce sont les chemins de celui qui
+            tombe dessus par hasard.) */}
 
         {/* ── Modale de revue des disparus ── */}
         {disparusModal&&(
@@ -7565,18 +7592,24 @@ export default function App({ loginOnly = false }){
             <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#fff",borderRadius:20,padding:"22px",width:"min(94vw,620px)",boxShadow:"0 24px 80px rgba(0,0,0,0.2)",maxHeight:"84vh",overflowY:"auto"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
                 <div style={{fontSize:16,fontWeight:700,color:UI.ink}}>
-                  {lang==='fr'?`Annonces plus en ligne (${disparusATrancher.length})`:`Listings no longer online (${disparusATrancher.length})`}
+                  {lang==='fr'?`Annonces plus en ligne (${nbADepiler})`:`Listings no longer online (${nbADepiler})`}
                 </div>
                 <button onClick={()=>disparusBusy==null&&setDisparusModal(false)} aria-label={lang==='fr'?'Fermer':'Close'}
                   style={{border:"none",background:"transparent",fontSize:20,color:UI.mute2,cursor:"pointer",lineHeight:1}}>✕</button>
               </div>
               <div style={{fontSize:12.5,color:UI.mute2,lineHeight:1.5,marginBottom:12}}>
                 {lang==='fr'
-                  ?<>Ces annonces ont disparu de ton dressing Vinted sans que Vinted les marque « vendues ». Pour chacune : <strong>Vendue</strong> (confirme le prix réellement reçu) ou <strong>Pas vendue</strong> (retirée, expirée…). Un article en cours de republication n'apparaît jamais ici.</>
-                  :<>These listings disappeared from your Vinted wardrobe without Vinted marking them “sold”. For each one: <strong>Sold</strong> (confirm the amount you actually received) or <strong>Not sold</strong> (removed, expired…). An item being republished never shows up here.</>}
+                  ?<>Ces annonces ne sont plus en ligne, sans que la plateforme les marque « vendues ». Pour chacune : <strong>Vendue</strong> (confirme le prix réellement reçu) ou <strong>Pas vendue</strong> (retirée, expirée…). Un article en cours de republication n'apparaît jamais ici.</>
+                  :<>These listings are no longer online, without the platform marking them “sold”. For each one: <strong>Sold</strong> (confirm the amount you actually received) or <strong>Not sold</strong> (removed, expired…). An item being republished never shows up here.</>}
               </div>
               {/* Barre de lot : la sélection ne sert qu'au « Pas vendues » —
-                  une vente exige un prix confirmé LIGNE PAR LIGNE. */}
+                  une vente exige un prix confirmé LIGNE PAR LIGNE.
+                  ⚠️ VINTED UNIQUEMENT : « pas vendue » en lot écrit
+                  inventaire.vinted_status='closed', qui n'a pas d'équivalent
+                  par plateforme. Masquée quand la file Vinted est vide, sinon
+                  un compte n'ayant que des alertes Leboncoin verrait un
+                  « Tout sélectionner » qui ne sélectionne rien. */}
+              {disparusATrancher.length>0&&(<>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,flexWrap:"wrap"}}>
                 <label style={{display:"inline-flex",alignItems:"center",gap:6,fontSize:12.5,fontWeight:600,color:UI.mute2,cursor:"pointer"}}>
                   <input type="checkbox"
@@ -7656,6 +7689,28 @@ export default function App({ loginOnly = false }){
                     :`Show more (${disparusATrancher.length-disparusRendu} left)`}
                 </button>
               )}
+              </>)}
+
+              {/* ── LES QUATRE AUTRES PLATEFORMES (2026-09-18, point a) ──────
+                  Bloc à part, et non un élargissement du précédent : la file
+                  Vinted se lit sur des colonnes Vinted de l'ARTICLE
+                  (disparu_le, vinted_item_id, vinted_status) et sa réponse
+                  « pas vendue » s'écrit dans vinted_status='closed'. Rien de
+                  tout ça n'existe par plateforme. Ici, le signal est le
+                  drapeau du JOB, et les deux réponses sont CELLES DU BANDEAU,
+                  inchangées : confirmSaleFromBanner et dismissUnavailable.
+                  Elles partagent même les brouillons de prix du bandeau
+                  (salePriceDraft / buyPriceDraft) — une valeur tapée ici est
+                  la même que celle tapée là-bas, jamais deux états qui
+                  divergent. */}
+              <RevueAutresPlateformes
+                lang={lang} jobs={disparusAutresPf} busyId={confirmingSale}
+                devise={currency==='EUR'?'€':currency}
+                prixDraft={salePriceDraft} setPrixDraft={setSalePriceDraft}
+                achatDraft={buyPriceDraft} setAchatDraft={setBuyPriceDraft}
+                onVendue={confirmSaleFromBanner}
+                onRetiree={dismissUnavailable}
+              />
             </div>
           </>
         )}
