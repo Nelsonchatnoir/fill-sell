@@ -8849,6 +8849,46 @@ export default function App({ loginOnly = false }){
                 await performItemDeletion(item,plan);
                 setDeleteConfirm(null);
               };
+              // ── SECOND CHOIX (2026-09-18, point C) : la fiche part, les
+              //    annonces restent en ligne. Le défaut ne change pas — ce
+              //    bouton est secondaire et n'est JAMAIS présélectionné.
+              // 🚨 Il crée volontairement des annonces en ligne sans article :
+              //    l'état des 50 orphelines du 16/09. La différence est que
+              //    l'annonce n'est pas laissée sous forme de job orphelin (que
+              //    plus aucun écran ne montre) mais écrite dans
+              //    annonces_plateforme SANS inventaire_id — donc affichée
+              //    immédiatement dans « Rattacher N annonces » (bloc « Mes
+              //    annonces en ligne » du Stock), avec Choisir / Importer /
+              //    Ignorer. Tout est fait côté serveur, en une transaction :
+              //    l'annonce est écrite AVANT que la fiche soit supprimée.
+              const supprimerFicheSeule=async()=>{
+                if(suppressionRef.current)return;
+                suppressionRef.current=true;
+                setSuppressionEnCours(item?.id??true);
+                try{
+                  const{data,error}=await supabase.rpc('inventaire_supprimer_sans_retrait',{p_inventaire:item.id});
+                  if(error)throw new Error(error.message);
+                  if(!data?.ok)throw new Error(String(data?.reason??'echec'));
+                  logSuppressionArticle(user.id,{
+                    chemin:CHEMINS_RETRAIT.SUPPRESSION_ARTICLE,
+                    articleId:item.id,
+                    nAnnonces:0,
+                    extra:{vente:'conservee',annonces_laissees_en_ligne:data.annonces_laissees??0,jobs_clos:data.jobs_clos??0},
+                  });
+                  await fetchAll(user.id);
+                  setDeleteConfirm(null);
+                  setToast({visible:true,message:lang==='fr'
+                    ?`Fiche supprimée. ${data.annonces_laissees??0} annonce${(data.annonces_laissees??0)>1?'s':''} laissée${(data.annonces_laissees??0)>1?'s':''} en ligne — à retrouver dans « Rattacher ».`
+                    :`Item deleted. ${data.annonces_laissees??0} listing${(data.annonces_laissees??0)>1?'s':''} left online — find them under “Match”.`});
+                  setTimeout(()=>setToast({visible:false,message:''}),6000);
+                }catch(e){
+                  setToast({visible:true,message:(lang==='fr'?'Échec : ':'Failed: ')+String(e?.message??e)});
+                  setTimeout(()=>setToast({visible:false,message:''}),6000);
+                }finally{
+                  suppressionRef.current=false;
+                  setSuppressionEnCours(null);
+                }
+              };
               return (
               <>
                 <div style={{fontSize:13,color:"#6B7280",marginBottom:16,lineHeight:1.5}}>
@@ -8964,6 +9004,19 @@ export default function App({ loginOnly = false }){
                       {suppressionEnCours?(lang==='fr'?'Retrait en cours…':'Removing…'):(lang==='fr'?'🗑️ Retirer les annonces et supprimer':'🗑️ Remove listings and delete')}
                       <div style={{fontSize:11,fontWeight:400,color:UI.negative,opacity:0.8,marginTop:2}}>
                         {lang==='fr'?'Le retrait part en tâche de fond, puis l\'article est supprimé':'Removal runs in the background, then the item is deleted'}
+                      </div>
+                    </button>
+                  )}
+                  {/* Le SECOND choix. Secondaire par la forme autant que par le
+                      rang : il est sous le bouton par défaut, sans couleur
+                      d'alerte, et il dit où les annonces se retrouvent. */}
+                  {!horsLigne&&(plan?.online?.length>0)&&(
+                    <button disabled={!!suppressionEnCours} onClick={supprimerFicheSeule}
+                      style={{width:"100%",padding:"12px",background:UI.chip,border:`1px solid ${UI.border}`,borderRadius:14,fontSize:13,fontWeight:600,color:UI.ink,cursor:suppressionEnCours?"default":"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                      {lang==='fr'?'Supprimer la fiche, laisser les annonces en ligne':'Delete the item, leave the listings online'}
+                      <div style={{fontSize:11,fontWeight:400,color:UI.mute2,marginTop:2}}>
+                        {lang==='fr'?'Elles réapparaissent dans « Rattacher », prêtes à être rattachées'
+                                    :'They reappear under “Match”, ready to be linked'}
                       </div>
                     </button>
                   )}
