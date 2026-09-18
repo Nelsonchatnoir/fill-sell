@@ -205,7 +205,11 @@ async function publier(admin: SupabaseClient, env: EbayEnv, token: string, job: 
     return { job: job.id, issue: "needs_user", motif: quoi, choix: categorie.choix, detail: categorie.motif };
   }
   const categoryId = categorie.id;
-  if (categorie.source !== "mapping" && categorie.source !== "mapping_confirme_par_relance") {
+  // `mapping_confirme_par_attributs` (18/09) rejoint les deux autres sources
+  // qui RENDENT le mapping de l'app : son chemin est déjà celui du job, le
+  // réécrire ne ferait qu'ajouter une écriture sans effet.
+  if (categorie.source !== "mapping" && categorie.source !== "mapping_confirme_par_relance"
+      && categorie.source !== "mapping_confirme_par_attributs") {
     pf.ebayCategoryPath = categorie.chemin;
     // pf est une copie de travail : le chemin retenu doit aussi atteindre le
     // job (marquer() écrit job.platform_fields).
@@ -661,11 +665,73 @@ async function resoudreCategorie(env: EbayEnv, token: string, job: Pick<Job, "ti
       const racineTop = String(top.chemin[0] ?? "");
       const memeRacineQueTop = suggestions.filter((x) => (x.chemin[0] ?? "") === racineTop).length;
       const dejaTranche = Boolean((pf as Record<string, unknown>).ebayCategorieAttente);
+      // ── NOS PROPRES ATTRIBUTS CONFIRMENT-ILS NOTRE CATÉGORIE ? ────────────
+      // (2026-09-18, T-shirt Jean-Jacques Goldman d'Ornella parti au rayon DVD)
+      //
+      // La règle v2 ne pesait QUE le consensus d'eBay : mapping absent de ses
+      // suggestions + racine différente ⇒ on écartait notre catégorie et on ne
+      // proposait QUE les siennes. Sur « T-shirt Jean-Jacques Goldman », eBay a
+      // lu le nom de l'artiste et proposé huit rayons Musique/DVD ; notre
+      // 15687 « … > T-shirts » était juste, et devenait impossible à garder :
+      // relancer publiait en DVD, et le message conseillait de changer une
+      // icône DÉJÀ bonne (👕) et un genre DÉJÀ bon (Homme). Une impasse.
+      //
+      // ⛔ ON NE RETIRE PAS LA GARDE — elle attrape de VRAIS cas. Mesuré sur 30
+      // jours, elle s'est déclenchée DEUX fois, et les deux sont opposées :
+      //   · T-shirt Goldman : `ebayAspects` = {Type:"T-shirt", Département:
+      //     "Homme"} → nos attributs CONFIRMENT notre catégorie. eBay a tort.
+      //   · « Livre sur Kisling » (carhoa, 14/09), mappé « Jouets et jeux >
+      //     Modélisme ferroviaire > Livres » : `ebayAspects` = null → RIEN ne
+      //     confirme notre catégorie, et eBay dit « Livres, BD, revues ».
+      //     eBay a raison, et il faut continuer à demander.
+      // Le discriminant n'est donc pas « qui parle le plus fort », c'est
+      // « avons-nous une preuve à nous ? » — la règle de Nico mot pour mot :
+      // une suggestion eBay ne remplace jamais une catégorie que l'app a
+      // déterminée ET QUE SES PROPRES ATTRIBUTS CONFIRMENT.
+      //
+      // ⚠️ Les valeurs NEUTRES ne confirment rien : « Ne s'applique pas » est
+      // posé en aveugle par l'app (défaut MPN, Modèle sans marque) — le compter
+      // ferait passer pour une preuve ce qui n'est qu'un remplissage.
+      const aspectsJob = (pf.ebayAspects && typeof pf.ebayAspects === "object")
+        ? (pf.ebayAspects as Record<string, unknown>) : {};
+      const aspectsPortants = Object.entries(aspectsJob)
+        .map(([k, v]) => [k, String(v ?? "").trim()] as [string, string])
+        .filter(([, v]) => v && v.toLowerCase() !== "ne s'applique pas");
+      const attributsConfirment = aspectsPortants.length > 0;
       const racineContestee = n >= 3 && !mappeeDansLaListe && Boolean(racineTop) && racineTop !== racineMappee;
+      if (racineContestee && attributsConfirment) {
+        // Nos attributs tiennent : la contradiction d'eBay est un signal contre
+        // SA suggestion, pas contre la nôtre. On publie, sans question.
+        console.log(
+          `[ebay-api-worker] catégorie : eBay conteste « ${racineMappee} » (il propose « ${racineTop} »), ` +
+          `mais nos attributs confirment notre catégorie — mapping CONSERVÉ (` +
+          `${aspectsPortants.map(([k, v]) => `${k}=${v}`).join(", ")})`,
+        );
+        return {
+          id: mappee,
+          chemin: cheminMappe,
+          source: "mapping_confirme_par_attributs",
+          detail:
+            `eBay proposait « ${racineTop} » (${memeRacineQueTop}/${n} suggestions) et notre mapping n'y figure pas, ` +
+            `mais les attributs de l'article confirment « ${cheminMappe.join(" > ")} » (${mappee}) : ` +
+            `${aspectsPortants.map(([k, v]) => `${k}=${v}`).join(", ")}. Suggestion eBay écartée.`,
+          suggestions: resume,
+        };
+      }
       if (racineContestee && !dejaTranche) {
         return {
-          choix: suggestions.slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
-          motif: `classé par l'app en « ${cheminMappe.join(" > ")} » (${mappee}) ; eBay le voit plutôt en « ${racineTop} » (${memeRacineQueTop} suggestions sur ${n}, la 1re : ${top.chemin.join(" > ")})`,
+          // NOTRE CATÉGORIE EST TOUJOURS DANS LA LISTE, ET EN TÊTE (règle Nico
+          // du 18/09). Avant, `choix` ne portait QUE les suggestions d'eBay :
+          // la personne n'avait littéralement aucun moyen de garder la nôtre.
+          // ⚠️ Elle n'est PAS le défaut dans CETTE branche : on n'y arrive que
+          // lorsque rien de chez nous ne la confirme (cas « Livre sur
+          // Kisling »), et une relance à l'aveugle publierait un livre au rayon
+          // Jouets. Elle est offerte, pas imposée.
+          choix: [
+            ...(mappee ? [{ id: mappee, chemin: cheminMappe.join(" > ") }] : []),
+            ...suggestions.slice(0, 5).map((x) => ({ id: x.id, chemin: x.chemin.join(" > ") })),
+          ],
+          motif: `classé par l'app en « ${cheminMappe.join(" > ")} » (${mappee}) ; eBay le voit plutôt en « ${racineTop} » (${memeRacineQueTop} suggestions sur ${n}, la 1re : ${top.chemin.join(" > ")}) ; AUCUN attribut de l'article ne confirme notre catégorie (ebayAspects vide) — c'est ce qui distingue ce cas du T-shirt Goldman`,
           suggestions: resume,
         };
       }
