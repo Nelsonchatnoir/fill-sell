@@ -1262,7 +1262,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
       // que la landing. Icône cloche : FillSell PRÉVIENT, l'utilisateur agit.
       icon:<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>,
       titleFr:"Vendu quelque part ? Tu retires les autres en un tap", titleEn:"Sold somewhere? Remove the others in one tap",
-      descFr:"Vendu sur Vinted ? FillSell te prévient — tu retires Leboncoin, eBay et Beebs en un tap.", descEn:"Sold on Vinted? FillSell lets you know — you remove Leboncoin, eBay and Beebs in one tap.",
+      descFr:"FillSell repère l'annonce disparue, sur n'importe laquelle des cinq — tu confirmes, et tu retires les autres en un tap.", descEn:"FillSell spots the listing that is gone, on any of the five — you confirm, and remove the others in one tap.",
     },
     {
       icon:<MicSvg size={20} stroke="currentColor"/>,
@@ -1309,7 +1309,7 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
               et de là elles partent sur les trois autres plateformes. C'est
               aussi exactement ce que fait le bouton juste dessous. */}
           <h1 style={{margin:0,fontWeight:700,fontSize:25,lineHeight:1.2,letterSpacing:"-0.02em",color:UI.ink}}>
-            {fr?"Tes annonces Vinted remontent ici — et repartent sur Leboncoin, eBay et Beebs.":"Your Vinted listings land here — and go out to Leboncoin, eBay and Beebs."}
+            {fr?"Tes annonces Vinted remontent ici — et repartent sur Leboncoin, Beebs, eBay et Opla.":"Your Vinted listings land here — and go out to Leboncoin, Beebs, eBay and Opla."}
           </h1>
           <button
             onClick={onImport}
@@ -1338,9 +1338,11 @@ function EmptyStateDashboard({ lang, onImport, onOpenLens, extensionAbsente = fa
           geste : elle ne garde que la suite (la vente confirmée met tout à
           jour). */}
       <div style={{textAlign:"center",padding:"2px 4px 0"}}>
-        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"UNE ANNONCE PRÉPARÉE UNE FOIS, DÉPOSÉE SUR LES QUATRE":"ONE LISTING PREPARED ONCE, POSTED TO ALL FOUR"}</p>
+        <p style={{margin:0,fontWeight:700,fontSize:10.5,letterSpacing:"0.14em",color:"#A39D8E"}}>{fr?"UNE ANNONCE PRÉPARÉE UNE FOIS, DÉPOSÉE SUR LES CINQ":"ONE LISTING PREPARED ONCE, POSTED TO ALL FIVE"}</p>
         <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:12,marginTop:14}}>
-          {["vinted","leboncoin","ebay","beebs"].map(p=>(
+          {/* Ordre canonique du stock (utils/stockFiltres.PLATEFORMES_STOCK) :
+              la même suite partout, jamais une liste réécrite à la main. */}
+          {["vinted","leboncoin","beebs","ebay","opla"].map(p=>(
             <span key={p} style={{display:"inline-flex",borderRadius:10,boxShadow:"0 2px 6px rgba(16,32,27,0.09)"}}>
               <PlatformLogo platform={p} size={36}/>
             </span>
