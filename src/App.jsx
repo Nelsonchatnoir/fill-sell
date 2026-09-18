@@ -2000,7 +2000,11 @@ export default function App({ loginOnly = false }){
   const [iSaved,setISaved]=useState(false);
   const [iEmplacement,setIEmplacement]=useState("");
   const [iPlateforme,setIPlateforme]=useState("");
-  const [filterMarque,setFilterMarque]=useState("Toutes");
+  // ── MARQUES : UNE LISTE, PAS UNE CHAÎNE (2026-09-18) ──────────────────────
+  // « Nike ET Adidas » est le cas normal d'un vendeur, pas l'exception.
+  // ⛔ LISTE VIDE = AUCUN FILTRE. Pas de valeur sentinelle, pas de « Toutes »
+  //    qui traîne : l'absence de filtre se lit sur la longueur, point.
+  const [filterMarque,setFilterMarque]=useState([]);
   const [filterMarqueSold,setFilterMarqueSold]=useState("Toutes");
   const [pillsExpandedStock,setPillsExpandedStock]=useState(false);
   const [pillsExpandedSold,setPillsExpandedSold]=useState(false);
@@ -3543,6 +3547,24 @@ export default function App({ loginOnly = false }){
     const q=query.toLowerCase().trim();
     return item.title?.toLowerCase().includes(q)||item.marque?.toLowerCase().includes(q)||item.description?.toLowerCase().includes(q)||item.type?.toLowerCase().includes(q);
   }
+  // ── LA CEINTURE, ET LES CLÉS DE COMPARAISON (2026-09-18) ──────────────────
+  // `filterMarque` est une LISTE depuis le passage au multiple. Cette fonction
+  // accepte aussi une chaîne — l'ancienne forme — et la rend comme une liste
+  // d'une marque, « Toutes » valant l'absence de filtre. Elle ne sert à rien en
+  // pratique (l'état n'est persisté nulle part, un rechargement le remet à []),
+  // mais elle garantit que RIEN ne peut planter au premier rendu si une valeur
+  // d'avant la mise à jour arrivait par un chemin qu'on n'a pas vu.
+  // ⚠️ DÉCLARÉES ICI, au-dessus de `stockFiltre` qui les lit : plus bas, c'est
+  //    une zone morte temporelle, c'est-à-dire un écran blanc au montage.
+  const normaliserMarques=(v)=>{
+    if(Array.isArray(v))return v.filter(m=>String(m??'').trim());
+    const s=String(v??'').trim();
+    return (!s||s==='Toutes')?[]:[s];
+  };
+  // Les clés de comparaison, calculées UNE fois : `marqueKey` normalise (casse,
+  // espaces) — le libellé de la liste est recalculé (« Capitalisée ») quand la
+  // marque de l'article est brute, et une égalité stricte raterait.
+  const clesMarques=useMemo(()=>new Set(normaliserMarques(filterMarque).map(marqueKey)),[filterMarque]);
   // ── Tri du Stock en DEUX groupes (2026-08-07, validé Nico) ────────────────
   // Groupe 1 : articles SANS annonce Vinted en ligne — ordre d'origine
   // (créé récemment d'abord) : c'est le flux « je viens de l'ajouter, je
@@ -3568,7 +3590,17 @@ export default function App({ loginOnly = false }){
       // (« Capitalisée »), la marque de l'article est brute — un
       // .toLowerCase() sans trim ni normalisation des espaces laissait
       // passer à côté. Même clé ici et dans le garde-fou plus bas.
-      .filter(i=>filterMarque==="Toutes"||marqueKey(i.marque)===marqueKey(filterMarque))
+      // ── LES MARQUES : UN « OU » ENTRE ELLES, UN « ET » AVEC LE RESTE ──────
+      // (2026-09-18) L'article est retenu si SA marque est dans la liste — et
+      // cette liste se combine en ET avec la catégorie, la boutique et la
+      // recherche, exactement comme avant. Liste vide ⇒ filtre inerte.
+      // ⚠️ `normaliserMarques` est une CEINTURE, pas une fonctionnalité : la
+      //    valeur n'est persistée nulle part (useState pur), donc aucune
+      //    chaîne d'avant l'OTA ne peut survivre à un rechargement. Mais si
+      //    une seule y parvenait, elle serait lue comme une liste d'UNE marque
+      //    au lieu de faire exploser `.map` sur une chaîne. Le coût est de
+      //    trois lignes, l'écran blanc coûtait une demi-journée.
+      .filter(i=>!clesMarques.size||clesMarques.has(marqueKey(i.marque)))
       .filter(i=>searchMatch(i,search));
     const enLigneVinted=(i)=>!!i.vinted_item_id&&!i.disparu_le;
     const g1=filtres.filter(i=>!enLigneVinted(i));
@@ -3583,7 +3615,7 @@ export default function App({ loginOnly = false }){
       })
       .map(([i])=>i);
     return [...g1,...g2];
-  },[stock,filterType,filterMarque,filterBoutique,search]);
+  },[stock,filterType,clesMarques,filterBoutique,search]);
   const soldFiltre=useMemo(()=>sold
     .filter(i=>filterType==="Tous"||i.type===filterType)
     .filter(i=>filterMarqueSold==="Toutes"||marqueKey(i.marque)===marqueKey(filterMarqueSold))
@@ -3600,7 +3632,7 @@ export default function App({ loginOnly = false }){
   // on les garde, avec la MÊME clé que le filtre. Ils ne se déclenchent donc
   // plus que quand la marque a VRAIMENT disparu.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(()=>{if(filterMarque!=="Toutes"&&!stock.some(i=>marqueKey(i.marque)===marqueKey(filterMarque)))setFilterMarque("Toutes");},[stock,filterMarque]);
+  useEffect(()=>{const l=normaliserMarques(filterMarque);if(!l.length)return;const vivantes=l.filter(m=>stock.some(i=>marqueKey(i.marque)===marqueKey(m)));if(vivantes.length!==l.length)setFilterMarque(vivantes);},[stock,filterMarque]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(()=>{if(filterMarqueSold!=="Toutes"&&!sold.some(i=>marqueKey(i.marque)===marqueKey(filterMarqueSold)))setFilterMarqueSold("Toutes");},[sold,filterMarqueSold]);
   useEffect(()=>{setSoldShowAll(false);},[filterMarqueSold]);
@@ -3618,7 +3650,7 @@ export default function App({ loginOnly = false }){
   //    une erreur forcent l'affichage côté StockTab, quoi que disent ces deux
   //    drapeaux. Rien en cours ne peut donc être masqué par ce repli.
   useEffect(()=>{if(tab!==1){setVoiceZoneOpen(false);setShowManualForm(false);}},[tab]);
-  useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);setFilterMarque("Toutes");setFilterMarqueSold("Toutes");},[filterType]);
+  useEffect(()=>{setSoldShowAll(false);setShowAllStock(false);setFilterMarque([]);setFilterMarqueSold("Toutes");},[filterType]);
   const soldVisible=useMemo(()=>soldShowAll?soldFiltre:soldFiltre.slice(0,10),[soldFiltre,soldShowAll]);
   const stockVisible=useMemo(()=>showAllStock?stockFiltre:stockFiltre.slice(0,10),[stockFiltre,showAllStock]);
   // ── « Je ne sais plus » qui TIENT au rechargement (2026-08-11) ────────────

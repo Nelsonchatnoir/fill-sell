@@ -607,7 +607,12 @@ export function FeuilleFiltres({ lang, groupes = [], nbResultat, onReinitialiser
 // des marques. Trois feuilles distinctes auraient été trois grammaires à tenir.
 // `recherche` : true pose un champ en haut. Il ne filtre que l'AFFICHAGE de
 // cette liste — aucun rapport avec la recherche du stock.
-export function FeuilleListe({ lang, titre, options = [], onFermer, recherche = false, z = Z_FEUILLE }) {
+// `multiple` : on coche plusieurs lignes d'affilée et la feuille NE SE FERME
+// PAS au choix — c'est le pied qui referme, en annonçant le résultat. Une liste
+// qui se referme à chaque coche rend la sélection multiple inutilisable, et
+// c'est exactement ce qu'on veut éviter pour les marques (« Nike ET Adidas »
+// est le cas normal d'un vendeur, pas l'exception).
+export function FeuilleListe({ lang, titre, options = [], onFermer, recherche = false, multiple = false, nbResultat = null, z = Z_FEUILLE }) {
   const f = fr(lang);
   const [q, setQ] = useState('');
   const champRef = useRef(null);
@@ -620,7 +625,29 @@ export function FeuilleListe({ lang, titre, options = [], onFermer, recherche = 
   }, [options, q]);
 
   return (
-    <Coque lang={lang} titre={titre} onFermer={onFermer} z={z}>
+    <Coque
+      lang={lang}
+      titre={titre}
+      onFermer={onFermer}
+      z={z}
+      pied={multiple && nbResultat != null ? (
+        <button
+          type="button"
+          onClick={onFermer}
+          className="fs-focus"
+          style={{
+            width: '100%', minHeight: 52, borderRadius: 14, border: 'none', cursor: 'pointer',
+            background: R.tealDeep, color: '#fff', fontFamily: 'inherit', fontSize: 15, fontWeight: 700,
+          }}
+        >
+          {nbResultat === 0
+            ? (f ? 'Aucun article' : 'No items')
+            : f
+              ? `Voir ${nbResultat === 1 ? "l'article" : `les ${nbResultat} articles`}`
+              : `Show ${nbResultat === 1 ? 'the item' : `the ${nbResultat} items`}`}
+        </button>
+      ) : null}
+    >
       {recherche && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 9, background: R.card,

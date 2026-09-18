@@ -5847,7 +5847,7 @@ const StockTab = memo(function StockTab({
   // croix, dans la barre, sous les yeux.
   const reinitialiserFiltresStock = () => {
     setFiltreDiffusion(null); setFiltreProbleme(null);
-    setFilterType("Tous"); setFilterMarque("Toutes"); setFilterBoutique("Toutes");
+    setFilterType("Tous"); setFilterMarque([]); setFilterBoutique("Toutes");
     setShowAllStock(false);
   };
   // ── LE CLIC DOIT AMENER QUELQUE PART (2026-09-04) ─────────────────────────
@@ -6621,6 +6621,15 @@ const StockTab = memo(function StockTab({
   // présentation.
   const qteStock=(l)=>(l??[]).reduce((a,i)=>a+(i.quantite||1),0);
 
+  // ── LES MARQUES CHOISIES — UNE LISTE (2026-09-18) ─────────────────────────
+  // Même ceinture que dans App.jsx : une chaîne d'avant le passage au multiple
+  // se lit comme une liste d'UNE marque plutôt que de faire exploser `.filter`
+  // au premier rendu. L'état n'est persisté nulle part, donc ce cas ne devrait
+  // jamais se produire — mais il ne coûte rien de ne pas planter.
+  const marquesChoisies = Array.isArray(filterMarque)
+    ? filterMarque.filter(m=>String(m??'').trim())
+    : (String(filterMarque??'').trim() && filterMarque!=="Toutes" ? [String(filterMarque)] : []);
+
   // ── « AJOUTER UN ARTICLE » TOMBE À UNE LIGNE (2026-09-18) ─────────────────
   // La carte tenait trois choses dépliées en permanence : les onglets
   // Écrire/Parler, « Ajouter manuellement », et la rangée Import/Export Excel.
@@ -6683,9 +6692,12 @@ const StockTab = memo(function StockTab({
     cle:'type', libelle:typeLabel(filterType,lang),
     onRetirer:()=>{setFilterType("Tous");setShowAllStock(false);},
   });
-  if(filterMarque!=="Toutes") pastillesFiltresStock.push({
-    cle:'marque', libelle:marqueLabel(filterMarque,lang),
-    onRetirer:()=>{setFilterMarque("Toutes");setShowAllStock(false);},
+  // ── UNE PASTILLE PAR MARQUE (2026-09-18) ─────────────────────────────────
+  // Et pas une pastille « 3 marques » : on doit pouvoir en retirer UNE sans
+  // perdre les deux autres. C'est tout l'intérêt de la rangée de sortie.
+  for(const m of marquesChoisies) pastillesFiltresStock.push({
+    cle:`marque-${m}`, libelle:marqueLabel(m,lang),
+    onRetirer:()=>{setFilterMarque(marquesChoisies.filter(x=>x!==m));setShowAllStock(false);},
   });
 
   // ── « À TRAITER » — LES TROIS MODES, ET RIEN D'AUTRE ──────────────────────
@@ -6810,7 +6822,13 @@ const StockTab = memo(function StockTab({
   // beaucoup → une ligne qui ouvre une liste cherchable.
   if(marquesStock.length>1) groupesFiltresStock.push({
     cle:'marque', intitule:lang==='fr'?'Marque':'Brand', type:'ligne',
-    valeur:filterMarque==="Toutes"?(lang==='fr'?'Toutes':'All'):marqueLabel(filterMarque,lang),
+    // « Nike, Adidas » si ça tient, « 3 marques » sinon — la ligne dit ce
+    // qui est posé sans jamais déborder sur un compte qui en a deux cents.
+    valeur:!marquesChoisies.length
+      ?(lang==='fr'?'Toutes':'All')
+      :marquesChoisies.length<=2
+        ?marquesChoisies.map(m=>marqueLabel(m,lang)).join(', ')
+        :(lang==='fr'?`${marquesChoisies.length} marques`:`${marquesChoisies.length} brands`),
     onOuvrir:()=>setListeOuverte('marque'),
   });
   // Le nombre annoncé par le bouton du pied de la feuille : la MÊME liste que
@@ -7765,16 +7783,29 @@ const StockTab = memo(function StockTab({
           )}
           {listeOuverte==='marque'&&(
             <FeuilleListe
-              lang={lang} recherche z={Z_FEUILLE_DESSUS}
+              lang={lang} recherche multiple z={Z_FEUILLE_DESSUS}
               titre={lang==='fr'?'Marque':'Brand'}
+              // ⛔ SÉLECTION MULTIPLE : la liste NE SE FERME PAS au choix — on
+              //    en coche plusieurs d'affilée, et c'est le pied de la feuille
+              //    qui referme en annonçant le résultat. Une liste qui se
+              //    referme à chaque coche rend le multiple inutilisable.
+              nbResultat={qteStock(stockRetenu??stockFiltre)}
               options={marquesStock.map(m=>({
                 cle:m,
-                // « Toutes » reste atteignable quoi qu'on tape : c'est la
-                // sortie du filtre, elle ne se cherche pas.
+                // « Toutes les marques » reste atteignable quoi qu'on tape :
+                // c'est la SORTIE du filtre, elle ne se cherche pas. Et elle
+                // vide la liste au lieu d'ajouter une valeur sentinelle.
                 epingle:m==="Toutes",
                 libelle:m==="Toutes"?(lang==='fr'?'Toutes les marques':'All brands'):marqueLabel(m,lang),
-                actif:filterMarque===m,
-                onTap:()=>{setFilterMarque(m);setShowAllStock(false);setListeOuverte(null);},
+                actif:m==="Toutes"?!marquesChoisies.length:marquesChoisies.includes(m),
+                onTap:m==="Toutes"
+                  ?()=>{setFilterMarque([]);setShowAllStock(false);}
+                  :()=>{
+                    setFilterMarque(marquesChoisies.includes(m)
+                      ?marquesChoisies.filter(x=>x!==m)
+                      :[...marquesChoisies,m]);
+                    setShowAllStock(false);
+                  },
               }))}
               onFermer={()=>setListeOuverte(null)}
             />
@@ -8106,7 +8137,7 @@ const StockTab = memo(function StockTab({
               const nSel=affiches.reduce((a,i)=>a+(paSel.has(i.id)?1:0),0);
               const tout=nSel>0&&nSel===affiches.length;
               const partiel=nSel>0&&!tout;
-              const filtresActifs=filterType!=="Tous"||filterMarque!=="Toutes"||filterBoutique!=="Toutes"||!!String(search??"").trim();
+              const filtresActifs=filterType!=="Tous"||marquesChoisies.length>0||filterBoutique!=="Toutes"||!!String(search??"").trim();
               const libelle=lang==='fr'
                 ?`Tout sélectionner (${affiches.length}${filtresActifs?' affichés':''})`
                 :`Select all (${affiches.length}${filtresActifs?' shown':''})`;
@@ -9852,7 +9883,7 @@ const StockTab = memo(function StockTab({
                   if(listeStock.length)return null;
                   const actifs=[];
                   if(filterType!=="Tous")actifs.push(typeLabel(filterType,lang));
-                  if(filterMarque!=="Toutes")actifs.push(marqueLabel(filterMarque,lang));
+                  for(const m of marquesChoisies)actifs.push(marqueLabel(m,lang));
                   // Filtre boutique (03/09 soir) : nommé par le PSEUDO, jamais
                   // l'identifiant — même règle que les pills.
                   if(filterBoutique!=="Toutes"){
@@ -9884,7 +9915,7 @@ const StockTab = memo(function StockTab({
                           :`Rien dans ton stock ne correspond à : ${actifs.join(' · ')}.`}
                       </div>
                       <button
-                        onClick={()=>{setFilterType("Tous");setFilterMarque("Toutes");setFilterBoutique("Toutes");setSearch("");aucunFiltreStock();}}
+                        onClick={()=>{setFilterType("Tous");setFilterMarque([]);setFilterBoutique("Toutes");setSearch("");aucunFiltreStock();}}
                         style={{padding:"9px 16px",borderRadius:999,border:"1px solid #2F9E90",background:"#fff",color:"#1B6E62",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                         {lang==='en'?'Clear filters':'Réinitialiser les filtres'}
                       </button>
