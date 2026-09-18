@@ -47,6 +47,38 @@ Toujours mettre le contenu des réponses textuelles dans un bloc de code (``` ``
 - **Code applicatif** (React, Edge Functions, extension Chrome) : commit et push **directement sur `main`**, plus de branche feature ni de PR (consigne 2026-07-21). Toujours build/vérifier avant de push — le push tient lieu de validation.
 - Déployer les Edge Functions concernées quand elles changent (cf. section dédiée).
 
+### ⛔ UN SEUL PUSH SUR `main` PAR LOT (consigne 2026-09-18, payée deux fois)
+
+« Fichier par fichier » veut dire **commits**, JAMAIS déploiements. Les commits
+restent séparés pour la lisibilité — ils **partent ensemble**.
+
+Un push = un déploiement Vercel = **tous les chunks renommés**. Le 18/09, six
+pushs en dix minutes (dont quatre déploiements en trente-trois secondes) ont
+mis la prod à l'écran blanc : chaque onglet ouvert pointait sur des fichiers
+qui venaient d'être supprimés. Le code était bon, le build vert.
+
+Empiler les commits en local, vérifier, puis pousser **une fois**. Un fichier
+neuf à sortir avant son câblage reste un COMMIT séparé dans le MÊME push.
+
+### ⛔ ÉCRAN BLANC : LE BUILD AVANT LE CODE
+
+Ordre de diagnostic, non négociable — une demi-journée perdue le 11/09 et une
+autre le 18/09 pour avoir cherché dans les fichiers d'abord :
+
+1. **l'empreinte du build** — en bas de la page Réglages, ou
+   `curl https://fillsell.app/build.json` : elle dit quel commit tourne
+   vraiment chez la personne ;
+2. **un rechargement forcé** — si l'écran revient, c'était un chunk périmé et
+   il n'y a rien à corriger dans le code ;
+3. **l'état du déploiement Vercel** (READY ou ERROR) ;
+4. **alors seulement**, ouvrir un fichier.
+
+⚠️ Un écran blanc n'est pas forcément une exception de rendu : avec `lazy()` +
+`<Suspense fallback={null}>`, un 404 sur un chunk rend exactement le même écran
+vide qu'un crash, **et le build est vert dans les deux cas**. Depuis e67aae3 la
+garde `vite:preloadError` (src/main.jsx) recharge une fois toute seule — un
+écran blanc qui SURVIT à ça, alors oui, c'est du code.
+
 ## Déploiement des Edge Functions
 
 Toutes les fonctions webhook et cron doivent être déployées avec `--no-verify-jwt` :
