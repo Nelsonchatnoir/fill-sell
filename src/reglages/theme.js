@@ -18,7 +18,7 @@ export const R = {
   ...UI,
   page: UI.canvas,          // fond de la page plein écran
   ligneDouce: '#EFEDE5',
-  chevron: '#B3BAB4',
+  chevron: '#8A8578',       // = UI.mute : 3,67:1 sur blanc, seuil des GRAPHIQUES
   deep: '#1C4038',
   deepBas: '#0D1F1A',
   or: '#E7B84C',
@@ -26,6 +26,23 @@ export const R = {
   mentheBord: '#D6E2DE',
   dangerBord: '#EBD5D3',
   dangerDoux: '#F4E6E4',
+
+  // ── CONTRASTE : TOUT TEXTE PASSE 4,5:1, SUR LES DEUX FONDS ────────────────
+  // La page a DEUX fonds : le papier de la page (#EDEAE0) sous les intitulés
+  // de groupe, les notes et le pied, et le blanc des cartes sous les lignes.
+  // Les gris de UI ne tiennent pas sur le premier — mesuré :
+  //     UI.mute  #8A8578 → 3,06:1 sur #EDEAE0   ✗   (intitulés, pied de page)
+  //     UI.mute2 #6B7A75 → 3,76:1 sur #EDEAE0   ✗
+  //     #5C6560          → 4,94:1 sur #EDEAE0, 5,93:1 sur blanc   ✓
+  // #5C6560 vit DÉJÀ dans l'app (PlanDetailsModal, ListingPreviewScreen) : on
+  // ne crée pas un gris de plus, on prend celui qui passe.
+  texteSecondaire: '#5C6560',
+  // Idem pour le rouge : UI.negative plafonne à 4,36:1 sur blanc et 3,62:1 sur
+  // le papier de la page — sous le seuil dans les deux cas. Assombri pour le
+  // TEXTE seulement : 5,73:1 sur blanc, 4,76:1 sur la page, 5,25:1 sur paper.
+  // Les BORDURES et les APLATS gardent UI.negative — un trait n'a pas à
+  // passer le seuil du texte, et la teinte de la marque ne bouge pas.
+  negatifTexte: '#9B5148',
 };
 
 // Hauteur minimale d'une ligne cliquable. 56 px de ligne, 44 px de zone
