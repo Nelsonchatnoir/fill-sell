@@ -378,6 +378,28 @@ export function libelleTri(tri, lang = 'fr') {
   }[tri] ?? (fr ? "Annonce la plus ancienne" : 'Oldest listing');
 }
 
+// ── LE MÊME TRI, EN COURT (2026-09-18) ──────────────────────────────────────
+// Le tri est nommé en PERMANENCE sur la ligne de compte du Stock, à droite de
+// « 15 articles · 45,00 € ». « Annonce la plus ancienne » y mange la moitié de
+// la largeur d'un téléphone et pousse le compte à l'ellipse.
+// ⛔ CE N'EST PAS UN SECOND VOCABULAIRE, c'est le même, abrégé — et il vit
+//    ICI, collé à libelleTri, pour qu'on ne puisse pas renommer l'un sans voir
+//    l'autre. La liste de choix, elle, garde le libellé LONG : c'est là qu'on
+//    choisit, donc là qu'il faut être explicite.
+// ⛔ La dimension reste dite (« Annonce » / « Ajout » / « Prix ») : sans elle,
+//    « Plus anciens » et « Plus anciennes » seraient deux tris différents à une
+//    lettre près.
+export function libelleTriCourt(tri, lang = 'fr') {
+  const fr = lang !== 'en';
+  return {
+    defaut: fr ? 'Annonce ancienne' : 'Oldest listing',
+    prix_desc: fr ? 'Prix ↓' : 'Price ↓',
+    prix_asc: fr ? 'Prix ↑' : 'Price ↑',
+    ajout_desc: fr ? 'Ajout récent' : 'Newest added',
+    ajout_asc: fr ? 'Ajout ancien' : 'Oldest added',
+  }[tri] ?? (fr ? 'Annonce ancienne' : 'Oldest listing');
+}
+
 // ── La pastille de la carte ─────────────────────────────────────────────────
 // ⛔ UN NOM DE PLATEFORME NE SE TRONQUE JAMAIS (réserve Nico du 08/09) : un
 // « 1 échec · Leb… » ne dit rien à personne, c'est pire que pas de nom. La
