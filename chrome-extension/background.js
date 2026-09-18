@@ -11546,16 +11546,75 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
       };
       const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
       const compter = () => Array.from(document.querySelectorAll("a[href]")).filter((a) => re.test(a.href)).length;
-      // Défilement : tant que la liste grandit (listes paresseuses), borné.
-      let avant = compter();
-      for (let i = 0; i < 12; i++) {
+      // ── CE QUE LA PAGE DIT AVOIR (LOT 1) ─ lu AVANT de défiler ────────────
+      // Leboncoin : le compteur d'onglet « En ligne (N) » (même lecture que
+      // lbcMesAnnoncesEtat). Il sert DEUX FOIS : c'est la CIBLE du défilement
+      // (lot 2) et le juge de couverture (lot 1) — sans lui, « 30 sur 181 » se
+      // croyait complet et faisait dater 151 annonces EN LIGNE comme disparues.
+      // On lui laisse le temps d'être peint (hydratation React) avant de
+      // conclure qu'il est absent : un compteur pas encore rendu n'est pas une
+      // liste non rendue. Absent au bout du compte = liste non rendue
+      // (redirection du compte PRO vers « / », challenge) : jamais « 0 ».
+      const lireTotal = () => {
+        const mc = (document.body?.innerText ?? "").match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
+        return mc ? parseInt(mc[1], 10) : null;
+      };
+      let totalEnLigne = null;
+      let surLaListe = true;
+      if (plateforme === "leboncoin") {
+        const limiteCompteur = Date.now() + 5000;
+        totalEnLigne = lireTotal();
+        while (totalEnLigne === null && Date.now() < limiteCompteur) {
+          await dormir(400);
+          totalEnLigne = lireTotal();
+        }
+        if (totalEnLigne === null) surLaListe = false;
+      }
+      // ── DÉFILEMENT PATIENT (LOT 2, 2026-09-19) ────────────────────────────
+      // « Mes annonces » a un DÉFILEMENT INFINI — lu dans son bundle, pas
+      // supposé : en atteignant le sentinel du bas, la page incrémente SON
+      // offset de son limit (30), rappelle dashboard/v1/search et EMPILE le
+      // résultat (STACK_ADS), tant que offset+limit < total. Le plafond de 30
+      // qu'on relevait n'était donc PAS celui de la page : c'était CETTE
+      // boucle, qui attendait 900 ms fixes puis rompait au premier palier sans
+      // croissance — alors que le lot suivant n'arrive qu'après un aller-retour
+      // réseau, souvent plus long. On attend donc la CROISSANCE (sondage court,
+      // on repart dès qu'elle vient), jamais une durée au hasard.
+      // ⛔ BORNES DURES — un relevé qui ne finit jamais est pire qu'un relevé
+      //    partiel : 40 paliers (40 × 30 = 1 200 annonces, au-dessus du plus
+      //    gros compte du parc, 1 065) et 120 s de défilement au total.
+      //    Toute sortie autre que « cible » laisse la garde du lot 1 conclure
+      //    « [incomplet] » — on ne conclut JAMAIS sur ce qu'on n'a pas vu.
+      // ⚠️ Petits comptes : à 5 annonces pour 5 annoncées, la première
+      //    condition sort AVANT le moindre défilement et la moindre attente.
+      const PALIERS_MAX = 40;
+      const DUREE_MAX_MS = 120_000;
+      // Attente par palier : 6 s quand on a une cible (on SAIT qu'il reste des
+      // annonces, le réseau vaut la peine d'être attendu) ; 2 s sinon
+      // (Beebs/eBay, pas de compteur : on ne paie pas l'attente pour rien).
+      const ATTENTE_PALIER_MS = totalEnLigne !== null ? 6000 : 2000;
+      const debutDefilement = Date.now();
+      let vus = compter();
+      let paliers = 0;
+      let arret = "cible";
+      for (;;) {
+        if (totalEnLigne !== null && vus >= totalEnLigne) { arret = "cible"; break; }
+        if (paliers >= PALIERS_MAX) { arret = "paliers"; break; }
+        if (Date.now() - debutDefilement > DUREE_MAX_MS) { arret = "duree"; break; }
         window.scrollTo(0, document.documentElement.scrollHeight);
-        await dormir(900);
-        const apres = compter();
-        if (apres <= avant) break;
-        avant = apres;
+        const limitePalier = Date.now() + ATTENTE_PALIER_MS;
+        let apres = vus;
+        while (Date.now() < limitePalier) {
+          await dormir(250);
+          apres = compter();
+          if (apres > vus) break;
+        }
+        paliers++;
+        if (apres <= vus) { arret = "sans_croissance"; break; }
+        vus = apres;
       }
       window.scrollTo(0, 0);
+      const defilement = { paliers, arret, vus, cible: totalEnLigne };
       const ancres = Array.from(document.querySelectorAll("a[href]"));
       const annoncesDe = (n) => new Set(
         Array.from(n.querySelectorAll ? n.querySelectorAll("a[href]") : [])
@@ -11695,20 +11754,7 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         annonces.push({ listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null, vues: stats.vues, favoris: stats.favoris });
       }
       const suivant = document.querySelector("a[rel='next'], a[aria-label*='suivant' i], a[aria-label*='next' i], button[aria-label*='suivant' i]");
-      // ── COUVERTURE (2026-09-18, LOT 1) ─ combien la page DIT en avoir ──────
-      // Leboncoin : « En ligne (N) », le compteur d'onglet (même lecture que
-      // lbcMesAnnoncesEtat). Il dit si le relevé a tout vu — sans lui, « 30 sur
-      // 181 » se croyait complet et faisait dater 151 annonces EN LIGNE comme
-      // disparues. Compteur absent = liste non rendue (redirection du compte
-      // PRO vers « / », challenge, squelette) : surLaListe=false, jamais « 0 ».
-      let totalEnLigne = null;
-      let surLaListe = true;
-      if (plateforme === "leboncoin") {
-        const mc = (document.body?.innerText ?? "").match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
-        if (mc) totalEnLigne = parseInt(mc[1], 10);
-        else surLaListe = false;
-      }
-      return { annonces, suivant: suivant ? (suivant.href || true) : null, diag, totalEnLigne, surLaListe };
+      return { annonces, suivant: suivant ? (suivant.href || true) : null, diag, totalEnLigne, surLaListe, defilement };
     },
     args: [pattern.source, platform],
   });
@@ -11724,6 +11770,9 @@ async function releverAnnoncesPlateforme(platform) {
   // et si elle a bien rendu sa liste. Cf. verdict de couverture en fin de fonction.
   let lbcTotalEnLigne = null;
   let lbcListeRendue = true;
+  // Trace du défilement patient (LOT 2), remontée telle quelle dans le run :
+  // c'est elle qui rend la preuve LISIBLE en prod (vu / annoncé, motif d'arrêt).
+  const defilements = [];
   if (platform === "opla") {
     // `absente` : la plateforme n'est pas là (permission jamais accordée). Ce
     // n'est PAS un échec de relevé — cf. lancerRelevePlateforme.
@@ -11771,6 +11820,7 @@ async function releverAnnoncesPlateforme(platform) {
         if (Number.isFinite(r.totalEnLigne)) lbcTotalEnLigne = r.totalEnLigne;
         if (r.surLaListe === false) lbcListeRendue = false;
       }
+      if (r.defilement) defilements.push(r.defilement);
       if (!r.suivant || typeof r.suivant !== "string" || r.suivant === url) break;
       url = r.suivant.replace(WORK_TAB_FRAGMENT, "");
       if (n === RELEVE_PAGES_MAX - 1) complet = false; // borne atteinte : relevé partiel
@@ -11798,7 +11848,16 @@ async function releverAnnoncesPlateforme(platform) {
       erreurCouverture = `couverture partielle : ${annonces.size} annonce(s) vue(s) sur ${lbcTotalEnLigne} « en ligne » — le reste n'est ni relevé ni conclu disparu`;
     }
   }
-  return { annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture };
+  // Le défilement DIT ce qu'il a fait, même quand tout s'est bien passé : sans
+  // cette ligne, un relevé réussi ne prouve rien (on ne verrait que items_vus,
+  // sans le « sur combien »). C'est ce qu'on lira au premier relevé d'un gros
+  // compte (XEWER 181, Joe0410 232) pour savoir si le défilement a mordu.
+  const defilementResume = defilements.length
+    ? defilements.map((d) => `${d.paliers} palier(s), ${d.vus} vue(s)`
+        + (Number.isFinite(d.cible) ? ` sur ${d.cible} annoncée(s)` : "")
+        + ` — arrêt ${d.arret}`).join(" | ")
+    : null;
+  return { annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture, defilement: defilementResume };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -12211,7 +12270,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       if (!run) return { ok: false, reason: "run_non_cree" };
     }
     console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
-    const { annonces, complet, erreur, illisibles, absente } = await releverAnnoncesPlateforme(platform);
+    const { annonces, complet, erreur, illisibles, absente, defilement } = await releverAnnoncesPlateforme(platform);
     // Vues / favoris : colonnes posées par la migration 20260918001000 — on ne
     // les envoie que si la base les a (un upsert avec une colonne inconnue est
     // refusé EN ENTIER, relevé perdu). Sondé une fois par run.
@@ -12277,6 +12336,9 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       items_vus: annonces.length, items_crees: Number(bilan?.auto) || 0, items_maj: Number(bilan?.par_job) || 0,
       total_entries: annonces.length,
       erreur: [erreur ? `[incomplet] ${erreur}` : (!complet ? "[incomplet] borne de pagination atteinte" : null),
+               // Le défilement patient (LOT 2), TOUJOURS dit — y compris quand
+               // il a tout vu : c'est la seule trace qui prouve qu'il a mordu.
+               defilement ? `[défilement] ${defilement}` : null,
                // Ce que le relevé n'a pas su lire, dit dans le run : un prix
                // illisible reste null (bande incertaine), jamais un nombre.
                illisibles && (illisibles.prix || illisibles.titre)
