@@ -26,6 +26,10 @@ import {
 // déduire le genre. Aucune décision de dépôt n'est prise ici — le pré-vol de
 // l'extension reste la seule garde.
 import { oplaNoeud } from "../_shared/opla-catalogue.ts";
+// La RÉSOLUTION de la catégorie Opla (2026-09-18) : l'arbre est déjà là, la
+// fiche aussi — et l'extension 0.6.42 déployée consomme ce qu'on pose ici
+// (opla.js:701 lit oplaCategoryCode, opla.js:479 sort dès que c'est une feuille).
+import { cheminLisible, normaliserTailleOpla, optionsFeuilles, resoudreCategorieOpla } from "../_shared/opla-resolution.ts";
 
 // L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
 // version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
@@ -2894,7 +2898,7 @@ serve(async (req) => {
           .map((j) => Number(j.inventaire_id)))];
         if (ids.length) {
           const { data: fiches } = await userClient
-            .from("inventaire").select("id, attributs").in("id", ids);
+            .from("inventaire").select("id, attributs, titre").in("id", ids);
           for (const f of (fiches ?? []) as Array<{ id: number; attributs: unknown }>) {
             const a = (f.attributs && typeof f.attributs === "object") ? (f.attributs as Record<string, unknown>) : null;
             const brut = a?.couleur;
@@ -3258,10 +3262,15 @@ serve(async (req) => {
       if (depotsOpla.length) {
         const ids = [...new Set(depotsOpla.map((j) => Number(j.inventaire_id)))];
         const attrsParArticle = new Map<number, Record<string, unknown>>();
+        // Le TITRE en plus des attributs (2026-09-18) : c'est le dernier
+        // recours pour chercher la feuille Opla quand le job vient du Stock et
+        // n'a donc aucun mot-objet (ceux-ci ne sont posés que par le stepper).
+        const titreParArticle = new Map<number, string>();
         const { data: fiches } = await userClient
-          .from("inventaire").select("id, attributs").in("id", ids);
-        for (const f of (fiches ?? []) as Array<{ id: number; attributs: unknown }>) {
+          .from("inventaire").select("id, attributs, titre").in("id", ids);
+        for (const f of (fiches ?? []) as Array<{ id: number; attributs: unknown; titre: unknown }>) {
           if (f.attributs && typeof f.attributs === "object") attrsParArticle.set(Number(f.id), f.attributs as Record<string, unknown>);
+          if (String(f.titre ?? "").trim()) titreParArticle.set(Number(f.id), String(f.titre).trim());
         }
         // { v, at, source } (écriture actuelle) ou la chaîne nue des lignes
         // anciennes — la chaîne nue n'a pas de source, on ne la retient pas.
@@ -3299,6 +3308,59 @@ serve(async (req) => {
           const pf = ((j.platform_fields ?? {}) as Record<string, unknown>);
           const attrs = attrsParArticle.get(Number(j.inventaire_id));
           const trace: Record<string, unknown> = {};
+
+          // ── LA CATÉGORIE D'ABORD : TOUT LE RESTE EN DÉPEND (2026-09-18) ────
+          // Mesure de Nico : la chemise H&M a une catégorie résolue et tout est
+          // posé ; la robe Maje n'en a pas et rien ne l'est. Le genre se déduit
+          // de la BRANCHE (genreDeLaBranche, juste en dessous) et la taille se
+          // valide contre la grille de LA FEUILLE : sans catégorie, les deux
+          // sont impossibles. On la résout donc ICI, avant eux.
+          //
+          // ⚠️ LES MOTS. L'extension cherche la feuille avec
+          // `categorie_objet_ia` et `categorie_mot_cle_titre` — mais ces deux
+          // champs ne sont posés QUE par le stepper (ListingPreviewScreen).
+          // Un job créé depuis le Stock arrive donc SANS aucun mot, la
+          // recherche ne rend rien et la descente s'arrête sur un nœud : c'est
+          // la deuxième porte vers « on propose un nœud puis on le refuse ». On
+          // ajoute le TITRE de l'article en dernier recours — la recherche est
+          // conservatrice (trois passes, plafond, et il faut que le libellé de
+          // la feuille soit entièrement contenu dans le mot), elle ne fabrique
+          // pas de correspondance à partir d'un titre bavard.
+          // ⚠️ ON RE-RÉSOUT AUSSI QUAND LE CODE N'EST PAS UNE FEUILLE. Le job
+          //    eba8a512 porte oplaCategoryCode = MEN_TOPS_T_SHIRTS — un NŒUD,
+          //    choisi par l'utilisateur dans une liste qui n'aurait jamais dû le
+          //    lui proposer. Un nœud n'est pas déposable : ce n'est pas une
+          //    catégorie, c'est une réponse à une mauvaise question. On le
+          //    reprend comme point de départ, et si la branche est une impasse
+          //    la résolution repart des racines toute seule.
+          const codeCourant = String(pf.oplaCategoryCode ?? "").trim();
+          if (!codeCourant || !oplaNoeud(codeCourant)?.feuille) {
+            const mots = [pf.categorie_objet_ia, pf.categorie_mot_cle_titre, titreParArticle.get(Number(j.inventaire_id))]
+              .map((m) => String(m ?? "").trim()).filter(Boolean);
+            const genreConnu = String(pf.genre ?? "").trim() || valeurCertaine(attrs, "genre")?.v || null;
+            const r = resoudreCategorieOpla({ mots, depart: codeCourant || null, genre: genreConnu });
+            if (r.code) {
+              pf.oplaCategoryCode = r.code;
+              trace.oplaCategoryCode = { valeur: r.code, avant: codeCourant || null, source: `arbre Opla → ${cheminLisible(r.code)}` };
+            } else if (r.candidats.length) {
+              // ⛔ ON NE PROPOSE QUE DES FEUILLES. C'est la règle : si seules
+              //    les feuilles sont déposables, seules les feuilles
+              //    apparaissent dans la liste. L'extension relit
+              //    `oplaCategoryAsk` en PRIORITÉ ABSOLUE (opla.js:706-712) et
+              //    accepte le code qu'elle y trouve — donc une feuille profonde
+              //    répond en UN geste, là où on brûlait trois paliers.
+              pf.oplaCategoryAsk = {
+                ancre: null,
+                options: optionsFeuilles(r.candidats),
+                le: new Date().toISOString(),
+              };
+              trace.oplaCategoryAsk = {
+                valeur: `${r.candidats.length} feuilles`, avant: null,
+                source: `arbre Opla — question posée sur des feuilles (${r.etapes.at(-1) ?? "ambiguïté"})`,
+              };
+            }
+          }
+
           for (const cle of ["taille", "couleur", "matiere", "etat", "marque"]) {
             if (String(pf[cle] ?? "").trim()) continue;
             const t = valeurCertaine(attrs, cle);
@@ -3306,6 +3368,27 @@ serve(async (req) => {
             pf[cle] = t.v;
             trace[cle] = { valeur: t.v, avant: null, source: `inventaire.attributs.${cle} (${t.source})` };
           }
+
+          // ── LA TAILLE, NORMALISÉE AVANT D'ÊTRE REFUSÉE ────────────────────
+          // « L / 40 / 12 » est du format composé Vinted ; la grille Opla attend
+          // « L ». La valeur est JUSTE, c'est le format qui ne l'est pas — et le
+          // pré-vol compare en égalité stricte (opla-prevol.js:229).
+          // ⛔ Pas de correspondance ⇒ ON NE TOUCHE À RIEN. On ne retire pas la
+          //    taille (elle reste lisible dans le message du pré-vol) et on ne
+          //    met JAMAIS la plus proche : « 59 cm » → « 1-3 mois » est
+          //    exactement l'erreur qu'on a déjà payée côté Vinted.
+          {
+            const feuille = String(pf.oplaCategoryCode ?? "").trim();
+            const brute = String(pf.taille ?? "").trim();
+            if (feuille && brute) {
+              const norm = normaliserTailleOpla(feuille, brute);
+              if (norm && norm !== brute) {
+                pf.taille = norm;
+                trace.taille = { valeur: norm, avant: brute, source: `grille Opla de ${cheminLisible(feuille)}` };
+              }
+            }
+          }
+
           if (!String(pf.genre ?? "").trim()) {
             const g = genreDeLaBranche(String(pf.oplaCategoryCode ?? "").trim());
             if (g) {
