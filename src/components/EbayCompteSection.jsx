@@ -316,7 +316,15 @@ const selection = { background: `${UI.teal}1A`, borderColor: UI.teal, color: UI.
 const champ = { padding: '8px 12px', borderRadius: 10, border: `1px solid ${UI.border}`, fontSize: 13, fontWeight: 600, color: UI.ink, background: UI.card, outline: 'none', fontFamily: 'inherit', minWidth: 0, width: '100%', boxSizing: 'border-box' };
 const messageErreur = { fontSize: 12, color: UI.negative, fontWeight: 600, lineHeight: 1.45 };
 
-export default function EbayCompteSection({ lang = 'fr', user }) {
+// `vue` (2026-09-18, page Réglages) : quelle PARTIE de cette section on rend.
+//   'complet'       — la section entière, telle qu'elle a toujours été.
+//   'transporteurs' — la seule politique de livraison (les transporteurs, leurs
+//                     prix, le délai d'expédition), pour le groupe EXPÉDITION
+//                     des Réglages, où on va désormais les chercher.
+// ⛔ AUCUNE LOGIQUE N'EST DÉPLACÉE : l'état eBay, la checklist, les écritures
+//    et `rendreLivraison` sont les mêmes objets, au même endroit. C'est
+//    strictement un choix de rendu.
+export default function EbayCompteSection({ lang = 'fr', user, vue = 'complet' }) {
   const langue = lang === 'fr' ? 'fr' : 'en';
   const t = T[langue];
   const userId = user?.id ?? null;
@@ -934,6 +942,44 @@ export default function EbayCompteSection({ lang = 'fr', user }) {
       </div>
     );
   };
+
+  // ── VUE « TRANSPORTEURS » (Réglages › Expédition, 2026-09-18) ────────────
+  // La même politique de livraison, au même endroit du code : on ne rend que
+  // cette partie-là. Non connecté → le même bouton de connexion que la section
+  // complète, parce qu'il n'y a pas de transporteurs sans compte relié.
+  if (vue === 'transporteurs') {
+    return (
+      <div style={{ background: UI.paper, border: `1px solid ${UI.border}`, borderRadius: 14, padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <PlatformLogo platform="ebay" size={22} />
+            <Eyebrow style={{ margin: 0 }}>{t.transporteurs}</Eyebrow>
+          </div>
+          {etat !== null && <Pastille ton={tonPastille}>{textePastille}</Pastille>}
+        </div>
+
+        {!connecte && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 12.5, color: UI.mute2, lineHeight: 1.55 }}>{aReconnecter ? t.reconnexion : t.intro}</div>
+            <button type="button" onClick={connecter} disabled={busy != null || chargement} style={{ ...boutonPlein(busy != null || chargement), alignSelf: 'flex-start' }}>
+              {busy === 'connexion' ? '…' : (aReconnecter ? t.reconnecter : t.connecter)}
+            </button>
+          </div>
+        )}
+
+        {connecte && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontSize: 12.5, color: UI.mute2, lineHeight: 1.5 }}>{t.transporteursIntro}</div>
+            {chargement && !checklist && <div style={{ fontSize: 12, color: UI.mute2 }}>{t.verif}</div>}
+            {ligneLivraison && rendreLivraison(ligneLivraison, true)}
+          </div>
+        )}
+
+        {erreurAction && <div role="alert" style={{ marginTop: 8, ...messageErreur }}>{erreurAction}</div>}
+        {erreurChargement && <div role="alert" style={{ marginTop: 8, ...messageErreur }}>{erreurChargement}</div>}
+      </div>
+    );
+  }
 
   return (
     <div style={{ background: UI.paper, border: `1px solid ${UI.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 12 }}>
