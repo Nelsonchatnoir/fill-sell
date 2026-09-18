@@ -35,6 +35,7 @@
 // l'édite pas. Ce module se construit sur ses primitives exportées.
 // ═══════════════════════════════════════════════════════════════════════════
 import { oplaChemin, oplaEnfants, oplaNoeud, oplaTaillesDe } from "./opla-catalogue.ts";
+import { tailleDansGrille } from "./tailles.js";
 
 // ── LE VOCABULAIRE, CALQUÉ SUR L'EXTENSION ─────────────────────────────────
 // ⚠️ Ces trois fonctions sont le JUMEAU EXACT de opla.js:389-392. Si elles
@@ -328,11 +329,27 @@ export function normaliserTailleOpla(codeFeuille: string, taille: unknown): stri
   if (!brut) return null;
   const grille = oplaTaillesDe(codeFeuille).map((t) => t.code);
   if (!grille.length) return null; // catégorie sans champ Taille : aucune valeur n'est valide
-  const essais = [brut, ...brut.split("/").map((s) => s.trim())].filter(Boolean);
-  for (const e of essais) {
-    const direct = grille.find((g) => g === e);
-    if (direct) return direct;
+
+  // ── LE VOCABULAIRE PARTAGÉ D'ABORD (2026-09-18) ──────────────────────────
+  // Cette fonction ne savait traduire qu'un format composé (« L / 40 / 12 » →
+  // « L ») et le pliage de casse. Elle ne savait PAS lire un âge : « 12 ans »
+  // contre une grille qui écrit « 12Y » — la même taille — était refusé, et
+  // le jogging Zara d'Ornella est resté indéposable (18/09, 18:20).
+  // `tailleDansGrille` couvre l'exact, l'orthographe, les âges, les demi-
+  // pointures, la taille unique et les étiquettes composites des DEUX côtés,
+  // sans jamais convertir un système en un autre.
+  const t = tailleDansGrille(brut, grille);
+  if (t) return t.valeur;
+
+  // ── LE DÉ-PRÉFIXAGE PAYS EN DERNIER, ET PLUS EN PREMIER ──────────────────
+  // ⚠️ `sansPrefixePays` est le seul étage qui puisse se TROMPER de système :
+  // « UK 12 » et « FR 12 » ne sont pas la même taille, et retirer le préfixe
+  // les rend identiques. Il était en tête ; il passe en dernier recours, donc
+  // il ne peut plus court-circuiter une correspondance sûre. Conservé tel quel
+  // (comportement en prod), pas étendu.
+  for (const e of [brut, ...brut.split("/").map((s) => s.trim())].filter(Boolean)) {
     const sansPays = sansPrefixePays(e);
+    if (sansPays === e) continue; // rien à retirer : déjà jugé ci-dessus
     const c = grille.find((g) => comparable(g) === comparable(sansPays));
     if (c) return c;
   }
