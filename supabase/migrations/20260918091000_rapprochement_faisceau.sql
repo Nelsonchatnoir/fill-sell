@@ -51,11 +51,25 @@
 -- absents du stock. Le faisceau ne doit pas inventer un rapprochement pour
 -- faire baisser un compteur.
 --
--- PÉRIMÈTRE DES CANDIDATS : les articles du stock qui n'ont PAS déjà un dépôt
--- FillSell publié sur cette plateforme, et qui ne sont pas déjà rattachés à
--- une annonce vivante de cette plateforme. Les deux autres cas sont couverts
--- par l'identifiant et par le premier tour ; les rouvrir ici créerait des
--- propositions en doublon.
+-- PÉRIMÈTRE DES CANDIDATS — deux cas, et le second compte autant que le premier :
+--   (a) l'article n'a AUCUN dépôt FillSell publié sur cette plateforme : elle
+--       l'a mis en ligne à la main, nous n'en savons rien ;
+--   (b) l'article a un dépôt publié sur cette plateforme MAIS son annonce n'est
+--       plus en ligne (absente du relevé, aucune annonce vivante rattachée) :
+--       l'ancienne a été retirée et une NOUVELLE a été reposée à la main.
+--       C'est le dossier Joséphine, et c'est ce qu'on lui a écrit le 17/09.
+--       Le premier tour couvre déjà ce cas (bande B1) — mais au TITRE EXACT
+--       seulement. Reposée avec une autre formulation, l'annonce retombait
+--       dans le vide. Ici on porte le `job_id` du dépôt remplacé : quand elle
+--       répond « oui », rapprochement_decider passe par
+--       rapprocher_recabler_job, qui RECÂBLE l'ancien job sur la nouvelle URL
+--       ET efface unavailable_since / unavailable_pending_since / sale_signal.
+--       Le message « Annonce plus en ligne » déjà affiché disparaît donc du
+--       même geste — c'était la seconde moitié de la promesse.
+-- Exclus dans les deux cas : un article dont le dépôt est ENCORE en ligne
+-- (l'identifiant s'en charge) et un article déjà rattaché à une annonce
+-- vivante de cette plateforme (une annonce vivante par article et par
+-- plateforme) — les rouvrir créerait des propositions en doublon.
 --
 -- MOTIF 'faisceau' : il est neuf, donc mesurable. Comparé aux lignes 'aucune'
 -- posées par la migration 20260918090000 (appliquée AVANT celle-ci,
@@ -144,7 +158,7 @@ BEGIN
     END IF;
     FOR v_c IN
       SELECT q.* FROM (
-        SELECT i.id AS inventaire_id, i.titre, i.prix_vente AS prix,
+        SELECT i.id AS inventaire_id, i.titre, i.prix_vente AS prix, jr.id AS job_remplace,
                (k.communs / NULLIF(k.largeur, 0)) AS recouvrement,
                (s.m <> '' AND position(s.m in v_t) > 0) AS marque_ok,
                (s.ta <> '' AND (' ' || v_t || ' ') LIKE ('% ' || s.ta || ' %')) AS taille_ok,
@@ -168,9 +182,28 @@ BEGIN
           SELECT (SELECT count(*) FROM unnest(s.jt) x WHERE x = ANY (v_ja))::numeric AS communs,
                  greatest(COALESCE(array_length(s.jt, 1), 0), COALESCE(array_length(v_ja, 1), 0))::numeric AS largeur
         ) k
+        -- Le dépôt FillSell REMPLACÉ, s'il y en a un : c'est lui qu'on
+        -- recâblera si elle dit « oui », et c'est son recâblage qui efface le
+        -- message « Annonce plus en ligne ». Le WHERE ci-dessous garantit que
+        -- ce dépôt n'est plus en ligne — sinon l'article n'est pas candidat.
+        LEFT JOIN LATERAL (
+          SELECT j.id FROM cross_post_jobs j
+          WHERE j.user_id = p_user AND j.inventaire_id = i.id AND j.platform = p_platform
+            AND j.action IN ('publish', 'republish') AND j.status = 'published'
+          ORDER BY COALESCE(j.published_at, j.created_at) DESC LIMIT 1
+        ) jr ON true
         WHERE i.user_id = p_user AND i.statut = 'stock' AND i.disparu_le IS NULL
-          AND NOT EXISTS (SELECT 1 FROM cross_post_jobs j WHERE j.inventaire_id = i.id AND j.platform = p_platform
-                            AND j.action IN ('publish', 'republish') AND j.status = 'published')
+          -- Un dépôt ENCORE en ligne (vu dans ce relevé, ou portant une annonce
+          -- vivante) écarte l'article : c'est l'identifiant qui s'en occupe.
+          AND NOT EXISTS (
+            SELECT 1 FROM cross_post_jobs j
+            WHERE j.user_id = p_user AND j.inventaire_id = i.id AND j.platform = p_platform
+              AND j.action IN ('publish', 'republish') AND j.status = 'published'
+              AND (COALESCE(j.platform_listing_id, '') = ANY (p_vus)
+                   OR EXISTS (SELECT 1 FROM unnest(p_vus) v WHERE v <> '' AND (
+                        (v ~ '^\d+$' AND COALESCE(j.listing_url, '') ~ ('(^|[^0-9])' || v || '([^0-9]|$)'))
+                        OR (v !~ '^\d+$' AND position(v in COALESCE(j.listing_url, '')) > 0)))
+                   OR EXISTS (SELECT 1 FROM annonces_plateforme ap2 WHERE ap2.job_id = j.id AND ap2.disparu_le IS NULL)))
           AND NOT EXISTS (SELECT 1 FROM annonces_plateforme ap WHERE ap.user_id = p_user AND ap.platform = p_platform
                             AND ap.inventaire_id = i.id AND ap.disparu_le IS NULL)
       ) q
@@ -188,7 +221,7 @@ BEGIN
     LOOP
       v_nf := v_nf + 1;
       v_cf := v_cf || jsonb_build_object(
-        'type', 'inventaire', 'job_id', NULL, 'inventaire_id', v_c.inventaire_id,
+        'type', 'inventaire', 'job_id', v_c.job_remplace, 'inventaire_id', v_c.inventaire_id,
         'prix', v_c.prix, 'titre', v_c.titre,
         'score', round(least(0.85,
             0.50 * v_c.recouvrement
@@ -205,7 +238,8 @@ BEGIN
     v_best := v_cf -> 0;
     -- ⛔ 'propose', toujours. Le second tour n'a pas de sortie 'certain'.
     RETURN jsonb_build_object('bande', 'propose', 'inventaire_id', (v_best ->> 'inventaire_id')::bigint,
-                              'job_id', NULL, 'score', (v_best ->> 'score')::numeric,
+                              'job_id', NULLIF(v_best ->> 'job_id', '')::uuid,
+                              'score', (v_best ->> 'score')::numeric,
                               'motif', 'faisceau', 'candidats', v_cf,
                               'signaux', v_best -> 'signaux');
   END IF;
