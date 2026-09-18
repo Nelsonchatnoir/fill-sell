@@ -11649,7 +11649,9 @@ async function releverAnnoncesPlateforme(platform) {
   let complet = true;
   const illisibles = { prix: 0, titre: 0 }; // ce que le relevé n'a PAS su lire (jamais deviné)
   if (platform === "opla") {
-    if (!(await oplaAccesAccorde())) return { annonces: [], complet: false, erreur: "accès Opla non accordé" };
+    // `absente` : la plateforme n'est pas là (permission jamais accordée). Ce
+    // n'est PAS un échec de relevé — cf. lancerRelevePlateforme.
+    if (!(await oplaAccesAccorde())) return { annonces: [], complet: false, absente: true, erreur: "accès Opla non accordé" };
     await assurerScriptsOpla();
     const tabId = await getOrCreateWorkTab("opla", "https://www.opla.co/");
     const r = await sendMessageToTab(tabId, { type: "OPLA_LISTE_ARTICLES" }).catch((e) => ({ success: false, error: String(e?.message ?? e) }));
@@ -11673,7 +11675,12 @@ async function releverAnnoncesPlateforme(platform) {
       // ne sera datée dessus).
       const tab = await chrome.tabs.get(tabId).catch(() => null);
       if (tab?.url && /\/(?:connexion|login|signin|auth|identification)/i.test(tab.url)) {
-        return { annonces: [...annonces.values()], complet: false, erreur: `session ${platform} : page de connexion` };
+        // `absente` : pas de session sur cette plateforme dans ce Chrome —
+        // pas de compte, ou déconnecté. Ce n'est pas un relevé raté, il n'y a
+        // rien à relever. Ne vaut que si RIEN n'a été collecté (le mur peut
+        // aussi tomber en page 3 d'un relevé qui marchait) — la décision est
+        // prise dans lancerRelevePlateforme, sur le compte d'annonces.
+        return { annonces: [...annonces.values()], complet: false, absente: true, erreur: `session ${platform} : page de connexion` };
       }
       const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) } }));
       illisibles.prix += Number(r.diag?.sans_prix) || 0;
@@ -11997,7 +12004,7 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
       if (!run) return { ok: false, reason: "run_non_cree" };
     }
     console.log(`[releve][${platform}] run ${run.id} (${declencheur}) — relevé de « Mes annonces »`);
-    const { annonces, complet, erreur, illisibles } = await releverAnnoncesPlateforme(platform);
+    const { annonces, complet, erreur, illisibles, absente } = await releverAnnoncesPlateforme(platform);
     // Vues / favoris : colonnes posées par la migration 20260918001000 — on ne
     // les envoie que si la base les a (un upsert avec une colonne inconnue est
     // refusé EN ENTIER, relevé perdu). Sondé une fois par run.
@@ -12043,8 +12050,22 @@ async function lancerRelevePlateforme({ platform, declencheur = "bouton", runId 
     } catch (e) {
       console.warn(`[releve][${platform}] moteur de rattachement injoignable :`, String(e?.message ?? e));
     }
+    // ── UNE PLATEFORME ABSENTE N'EST PAS UN ÉCHEC (2026-09-18) ───────────────
+    // Constat Nico : Leo-paul Hug a pris QUATRE runs `failed` en une matinée —
+    // « accès Opla non accordé », « session ebay : page de connexion »,
+    // « session beebs : page de connexion » — alors qu'il n'a de compte sur
+    // AUCUNE des trois. Son journal était plein d'échecs qui n'en étaient pas.
+    // Une plateforme sans compte ni permission n'a rien à relever : elle est
+    // ABSENTE. Statut à part, jamais compté comme un run raté.
+    // ⛔ Ne vaut que si RIEN n'a été collecté : un mur de connexion rencontré
+    //    en page 3 d'un relevé qui marchait reste un relevé INCOMPLET (donc
+    //    `failed` si rien n'en est sorti, `done` sinon), pas une absence.
+    // ⛔ Le moteur de rattachement est appelé comme avant, sans exception : sa
+    //    propre garde (`v_complet`, qui lit le marqueur « [incomplet] ») lui
+    //    interdit déjà de dater la moindre disparition sur un relevé pareil.
+    const rienARelever = absente === true && annonces.length === 0;
     const fin = {
-      status: annonces.length === 0 && (erreur || !complet) ? "failed" : "done",
+      status: rienARelever ? "absente" : (annonces.length === 0 && (erreur || !complet) ? "failed" : "done"),
       finished_at: maintenant(), updated_at: maintenant(),
       items_vus: annonces.length, items_crees: Number(bilan?.auto) || 0, items_maj: Number(bilan?.par_job) || 0,
       total_entries: annonces.length,
