@@ -6364,12 +6364,29 @@ async function lbcDepotRequestSeen(tabId, since) {
     const apres = (x) => { const at = Number(x?.at); return !Number.isFinite(at) || at >= Number(since || 0); };
     const reponses = captures.filter((c) => surLbc(c) && nonGet(c) && adsubmit(c) && apres(c));
     const envoisAd = envois.filter((e) => surLbc(e) && nonGet(e) && adsubmit(e) && apres(e));
-    const autres = captures.filter((c) => surLbc(c) && nonGet(c) && !adsubmit(c) && apres(c)).length;
+    const autresCaptures = captures.filter((c) => surLbc(c) && nonGet(c) && !adsubmit(c) && apres(c));
+    const autres = autresCaptures.length;
     const derniere = reponses[reponses.length - 1] ?? null;
-    const requetes = reponses.slice(0, 8).map((c) => ({
-      url: String(c?.url ?? "").replace(/^https?:\/\/api\.leboncoin\.fr/i, "").slice(0, 120),
-      status: c?.status ?? null,
-    }));
+    const chemin = (c) => String(c?.url ?? "").replace(/^https?:\/\/api\.leboncoin\.fr/i, "").slice(0, 120);
+    const requetes = reponses.slice(0, 8).map((c) => ({ url: chemin(c), status: c?.status ?? null }));
+    // ── CE QU'ON N'A PAS SU NOMMER NE SE JETTE PLUS (2026-09-18) ────────────
+    // `autres` n'était qu'un COMPTEUR, et il mourait avec la page : quand un
+    // dépôt aboutit sans adsubmit (compte PRO, cf. lbcAdIdHorsAdsubmit), rien
+    // en base ne disait par où il était passé. Les chemins partent désormais
+    // dans la trace du job — c'est eux qui graveront la route réelle du dépôt
+    // pro, au lieu d'une nuit de plus à chercher.
+    // Les 8 DERNIERS : ce sont ceux qui suivent le clic final.
+    const autresRequetes = autresCaptures.slice(-8).map((c) => ({ url: chemin(c), status: c?.status ?? null }));
+    // L'id d'annonce lu hors adsubmit, sur une clé qui NOMME une annonce
+    // (cf. lbcAdIdHorsAdsubmit dans la sonde) : le PREMIER après le clic, et
+    // seulement s'il est unique — deux ids différents, c'est qu'on n'a pas
+    // compris ce qu'on lit, et on préfère rien à une URL d'annonce fausse.
+    const idsHors = [...new Set(
+      autresCaptures.map((c) => c?.lbcAdIdHorsAdsubmit?.id).filter((v) => /^\d{6,}$/.test(String(v ?? "")))
+    )];
+    const captureHors = idsHors.length === 1
+      ? autresCaptures.find((c) => String(c?.lbcAdIdHorsAdsubmit?.id ?? "") === idsHors[0])
+      : null;
     return {
       seen: reponses.length > 0 || envoisAd.length > 0,
       requetes,
@@ -6382,9 +6399,20 @@ async function lbcDepotRequestSeen(tabId, since) {
         at: derniere?.at ?? null,
       },
       autres,
+      autresRequetes,
+      horsAdsubmit: captureHors
+        ? {
+            id: idsHors[0],
+            cle: captureHors.lbcAdIdHorsAdsubmit?.cle ?? null,
+            url: chemin(captureHors),
+            status: captureHors.status ?? null,
+            at: captureHors.at ?? null,
+          }
+        : null,
+      idsHorsAdsubmit: idsHors.length > 1 ? idsHors.slice(0, 4) : undefined,
     };
   } catch {
-    return { seen: true, requetes: [], adsubmit: { envoye: true, illisible: true, envois: 0, reponses: 0, status: null, detail: null }, autres: 0 };
+    return { seen: true, requetes: [], adsubmit: { envoye: true, illisible: true, envois: 0, reponses: 0, status: null, detail: null }, autres: 0, autresRequetes: [], horsAdsubmit: null };
   }
 }
 
@@ -6862,6 +6890,36 @@ async function installNetworkProbe(tabId, platform) {
                 details,
                 extrait: corps.slice(0, 600).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "\uFFFD"),
               };
+            }
+          } catch { /* pur relevé */ }
+          // ── L'ID D'UNE ANNONCE NE VIENT PAS FORCÉMENT D'ADSUBMIT ──────────
+          // (2026-09-18, MeMiniandMove — le seul compte PRO du parc.) Six
+          // dépôts Leboncoin ABOUTIS le soir même (option gratuite prise,
+          // « Votre annonce est publiée » lu) et ZÉRO capture /api/adsubmit/ :
+          // le parcours pro ne passe pas par cette route. Résultat en base :
+          // lbc_depot.adsubmit = null, aucun listing_url, aucun
+          // platform_listing_id — six annonces en ligne qu'on ne sait plus ni
+          // suivre ni retirer.
+          // On relève donc l'id sur TOUTE réponse non-GET d'api.leboncoin.fr,
+          // et SEULEMENT sur une clé qui NOMME une annonce (ad_id, list_id,
+          // classified_id). JAMAIS `"id"` nu : les uploads de photos et les
+          // appels de pricing partent sur le même hôte pendant le dépôt, et
+          // une URL d'annonce fausse est le pire défaut de ce projet (13/07
+          // eBay, 10/09 Leboncoin — la mauvaise annonce supprimée).
+          // Clé SÉPARÉE : ceci ne se fera jamais passer pour un adsubmit.
+          try {
+            const u = String(url);
+            if (/api\.leboncoin\.fr/i.test(u) && !/\/api\/adsubmit\//i.test(u)
+                && Number(status) >= 200 && Number(status) < 300) {
+              const corps = String(txt ?? "");
+              const m = corps.match(/"(ad_id|list_id|classified_id)"\s*:\s*"?(\d{6,})/i);
+              if (m) {
+                extras.lbcAdIdHorsAdsubmit = {
+                  cle: m[1],
+                  id: m[2],
+                  extrait: corps.slice(0, 300).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "�"),
+                };
+              }
             }
           } catch { /* pur relevé */ }
           try {
@@ -8023,7 +8081,8 @@ async function captureListingUrl(tabId, platform, job = null, timeoutMs = 25_000
   const idSur = idAdsubmitLbc(platform, job, result);
   if (idSur) {
     console.log(
-      `[background] captureListingUrl(leboncoin) : l'adsubmit a rendu l'id ${idSur} — ` +
+      `[background] captureListingUrl(leboncoin) : le dépôt a rendu l'id ${idSur} ` +
+      `(${result?.lbcDepot?.sans_adsubmit?.source === "hors_adsubmit" ? "hors adsubmit" : "adsubmit"}) — ` +
       "aucune recherche par titre. L'URL sera posée PAR ID à la re-capture, " +
       "quand l'annonce sortira de vérification."
     );
@@ -14519,7 +14578,33 @@ async function lbcMesAnnoncesEtat(tabId) {
         //    le test d'URL les élimine sans rien deviner.
         const u = new URL(location.href);
         if (!/(^|\.)leboncoin\.fr$/.test(u.hostname)) return { vue: false, motif: `hote_${u.hostname}`, enLigne: null, visibles: 0 };
-        if (!/^\/compte\/part\/mes-annonces\/?$/.test(u.pathname)) return { vue: false, motif: `chemin_${u.pathname}`, enLigne: null, visibles: 0 };
+        // ── « MES ANNONCES » N'EST PAS `/part/` POUR TOUT LE MONDE (2026-09-18)
+        // MeMiniandMove, le seul compte PRO du parc : navigué vers
+        // /compte/part/mes-annonces, l'onglet atterrit sur `/`. Relevé sur ses
+        // 6 dépôts du 18/09 au soir (moderation_probe « chemin_/ »), et NULLE
+        // PART ailleurs dans le parc — les particuliers rendent la page.
+        // Conséquence : tout le filet Leboncoin (re-capture du lien, sonde de
+        // modération) lisait une page vide pour elle, en silence.
+        // Le segment du milieu n'est donc plus imposé : `/compte/<quoi>/
+        // mes-annonces` suffit. Ça n'élargit rien pour un particulier (son
+        // chemin matche les deux) et ça accepte la page pro le jour où on y
+        // arrive — sans avoir DEVINÉ son URL, ce qui reste interdit.
+        if (!/^\/compte\/[^/]+\/mes-annonces\/?$/.test(u.pathname)) {
+          // On ne conclut rien, mais on relève les liens « mes annonces » que
+          // la page d'atterrissage porte ELLE-MÊME : c'est le caller qui en
+          // suivra un, et c'est ce relevé qui gravera le vrai chemin.
+          const liensCompte = [...new Set(
+            Array.from(document.querySelectorAll("a[href]"))
+              .filter((a) => {
+                const h = a.getAttribute("href") ?? "";
+                const t = `${a.getAttribute("aria-label") ?? ""} ${a.textContent ?? ""}`.replace(/\s+/g, " ").trim();
+                return /\/compte\/[^/]+\/mes-annonces/.test(h) || /^mes annonces$/i.test(t);
+              })
+              .map((a) => { try { const l = new URL(a.href); return /(^|\.)leboncoin\.fr$/.test(l.hostname) ? l.href : null; } catch { return null; } })
+              .filter(Boolean)
+          )].slice(0, 5);
+          return { vue: false, motif: `chemin_${u.pathname}`, enLigne: null, visibles: 0, liensCompte };
+        }
         // 2. La page a VRAIMENT rendu sa liste. Marqueur = l'onglet « En
         //    ligne (N) », présent même à 0 annonce (relevé live : « En ligne (4)
         //    · Expirées (0) »). Un squelette de chargement, une page d'erreur ou
@@ -14913,6 +14998,8 @@ async function recoverMissingListingUrls(session) {
     let lbcDernierMotif = null;
     let lbcPagesRendues = 0;
     let lbcPaginationDom = null;
+    let lbcCheminSuivi = null;   // le lien « mes annonces » suivi après une redirection
+    let lbcCheminReel = null;    // ce qu'on a appris de la page d'atterrissage
     for (let pi = 0; pi < pagesAVisiter.length; pi++) {
       const pageUrl = pagesAVisiter[pi];
       if (!remaining.length) break;
@@ -14934,6 +15021,27 @@ async function recoverMissingListingUrls(session) {
       const etatPage = estLbc ? await lbcMesAnnoncesEtat(tabId) : null;
       if (etatPage) {
         lbcDernierMotif = etatPage.motif;
+        // ── LA PAGE A REDIRIGÉ : ON SUIT LE LIEN QU'ELLE PORTE (2026-09-18) ──
+        // Compte PRO : /compte/part/mes-annonces renvoie sur `/`. On ne
+        // devine pas l'URL pro — on suit le lien « mes annonces » que la page
+        // d'atterrissage offre, UNE seule fois. Si elle n'en porte aucun, le
+        // relevé part avec le verdict (lbcCheminReel) et c'est lui qui dira
+        // quel est le vrai chemin, au lieu d'une nuit de plus à chercher.
+        if (estLbc && /^chemin_/.test(String(etatPage.motif)) && !lbcCheminSuivi) {
+          const atterri = String(etatPage.motif).slice("chemin_".length);
+          const candidat = (etatPage.liensCompte ?? []).find((h) => !pagesAVisiter.includes(h));
+          lbcCheminReel = { atterri, liens: etatPage.liensCompte ?? [] };
+          if (candidat && pagesAVisiter.length < LBC_PAGINATION_MAX_PAGES) {
+            lbcCheminSuivi = candidat;
+            pagesAVisiter.push(candidat);
+            console.log(`[background] sonde LBC : « Mes annonces » a redirigé vers ${atterri} — lien de compte suivi : ${candidat}`);
+          } else {
+            console.warn(
+              `[background] sonde LBC : « Mes annonces » a redirigé vers ${atterri} et la page ne porte aucun lien ` +
+              "« mes annonces » — chemin réel INCONNU, relevé dans moderation_probe.chemin_reel pour décision."
+            );
+          }
+        }
         if (Number.isFinite(etatPage.enLigne)) lbcEnLigne = etatPage.enLigne;
         const avant = liensLbcVus.size;
         for (const lien of etatPage.liens ?? []) liensLbcVus.add(lien);
@@ -15083,6 +15191,10 @@ async function recoverMissingListingUrls(session) {
             // c'est ce relevé qui dira quel est le VRAI schéma de pagination
             // de « Mes annonces » — `?page=N` n'a jamais rapporté de neuf.
             ...(lbcPaginationDom ? { pagination: lbcPaginationDom } : {}),
+            // Où « Mes annonces » nous a REELLEMENT envoyés, et les liens de
+            // compte vus là (2026-09-18, compte PRO) : c'est ce relevé qui
+            // gravera le chemin pro, jamais une supposition.
+            ...(lbcCheminReel ? { chemin_reel: lbcCheminReel, chemin_suivi: lbcCheminSuivi } : {}),
           };
       console.log(
         `[background] sonde LBC : verdict cumulé ${etatCumul.vue ? "LISTE COUVERTE" : "non concluant"} ` +

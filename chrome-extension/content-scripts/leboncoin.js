@@ -1509,7 +1509,7 @@ async function fillListingForm(job) {
       });
       // Sonde illisible : on ne PRÉTEND pas que rien n'est parti (prudence,
       // même catch que la sonde eBay).
-      if (!r || typeof r !== "object") return { seen: true, requetes: [], illisible: true, adsubmit: { envoye: true, illisible: true, envois: 0, reponses: 0, status: null, detail: null }, autres: 0 };
+      if (!r || typeof r !== "object") return { seen: true, requetes: [], illisible: true, adsubmit: { envoye: true, illisible: true, envois: 0, reponses: 0, status: null, detail: null }, autres: 0, autresRequetes: [], horsAdsubmit: null };
       return {
         seen: r.seen === true, requetes: Array.isArray(r.requetes) ? r.requetes : [], illisible: false,
         // 0.6.24 : la garde ne compte QUE adsubmit (envois + réponses) — cf.
@@ -1517,8 +1517,12 @@ async function fillListingForm(job) {
         // dans la RÉPONSE d'adsubmit par la sonde.
         adsubmit: r.adsubmit && typeof r.adsubmit === "object" ? r.adsubmit : { envoye: r.seen === true, illisible: false, envois: 0, reponses: 0, status: null, detail: null },
         autres: Number(r.autres) || 0,
+        // 2026-09-18 : les requêtes de dépôt qui ne sont PAS un adsubmit, et
+        // l'id d'annonce qu'une d'elles a éventuellement rendu (compte PRO).
+        autresRequetes: Array.isArray(r.autresRequetes) ? r.autresRequetes : [],
+        horsAdsubmit: r.horsAdsubmit && typeof r.horsAdsubmit === "object" ? r.horsAdsubmit : null,
       };
-    } catch { return { seen: true, requetes: [], illisible: true, adsubmit: { envoye: true, illisible: true, envois: 0, reponses: 0, status: null, detail: null }, autres: 0 }; }
+    } catch { return { seen: true, requetes: [], illisible: true, adsubmit: { envoye: true, illisible: true, envois: 0, reponses: 0, status: null, detail: null }, autres: 0, autresRequetes: [], horsAdsubmit: null }; }
   };
 
   // Écrans post-aperçu, avancés d'écran en écran (3 max) :
@@ -1906,6 +1910,39 @@ async function fillListingForm(job) {
     "adsubmit_envoye_sans_reponse",
     `adsubmit envoyé, aucune réponse lue en 60 s (${JSON.stringify(sonde?.adsubmit ?? null)}) — annonce en cours de vérification chez Leboncoin`
   );
+  // ── PUBLIÉ SANS IDENTIFIANT : CE QUI RESTE À DIRE (2026-09-18) ────────────
+  // CE QUI S'EST PASSÉ. MeMiniandMove, seul compte PRO du parc, 6 dépôts
+  // aboutis le 18/09 au soir : « Votre annonce est publiée » lu, option
+  // gratuite prise — et aucune capture /api/adsubmit/, donc aucun id, aucun
+  // lien. Six annonces en ligne dont FillSell ne sait plus rien : ni vente
+  // détectée, ni copie retirée ailleurs quand l'une se vend.
+  // CE QU'ON NE FAIT PAS : refuser le `published`. L'annonce EXISTE (chemin
+  // gratuit cliqué + confirmation lue) ; la déclarer en échec la ferait
+  // republier, et un doublon Leboncoin coûte plus cher qu'un lien manquant
+  // (leçon du 09/09). Le cron de 03 h 30 se charge des 48 h, et il PRÉVIENT
+  // avant de laisser republier.
+  // CE QU'ON FAIT : on prend l'id partout où il est lisible, et à défaut on
+  // écrit dans la trace ce que la sonde a VU partir — c'est ce relevé qui
+  // gravera la route réelle du dépôt pro, au prochain dépôt, sans une nuit de
+  // plus.
+  const releveSansId = async () => {
+    try {
+      const s = await depotRequeteVue();
+      if (/^\d{6,}$/.test(String(s.horsAdsubmit?.id ?? ""))) {
+        console.log(`[leboncoin] id d'annonce lu HORS adsubmit (${s.horsAdsubmit.cle} sur ${s.horsAdsubmit.url}) : ${s.horsAdsubmit.id}`);
+        return { id: String(s.horsAdsubmit.id), trace: { source: "hors_adsubmit", ...s.horsAdsubmit } };
+      }
+      return {
+        id: null,
+        trace: {
+          source: "aucun_id",
+          autres: s.autres ?? 0,
+          requetes: (s.autresRequetes ?? []).slice(0, 8),
+          sonde_illisible: s.illisible === true,
+        },
+      };
+    } catch { return { id: null, trace: { source: "sonde_ko" } }; }
+  };
   // /options = DÉPÔT ACCEPTÉ (point 3) : Leboncoin ne sert cet écran qu'après
   // avoir accepté l'annonce. Une page encore VIDE (titres [], boutons []) n'est
   // pas un écran inconnu, elle n'a pas fini de se rendre : on attend son rendu
@@ -1915,12 +1952,18 @@ async function fillListingForm(job) {
   const surEcranOptions = () => /\/deposer-une-annonce\/options/.test(location.pathname);
   // Aucun warning utilisateur ici : la modération est l'état NORMAL d'un dépôt
   // Leboncoin, pas une réserve. La note part dans la trace (lbc_depot.note).
-  const succesDepotAccepte = (preuve, note) => {
+  const succesDepotAccepte = async (preuve, note) => {
+    // Sans id adsubmit, on relit la sonde une dernière fois : l'id est
+    // peut-être ailleurs (compte PRO), et sinon la trace dit ce qui est parti.
+    const sansId = depotAccepte?.id ? null : await releveSansId();
     console.log(`[leboncoin] dépôt ACCEPTÉ (${preuve}) — ${note} — lien par la re-capture`);
     return {
       success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated,
-      lbcAdId: depotAccepte?.id ?? null,
-      lbcDepot: { preuve, note: String(note).slice(0, 400), adsubmit: depotAccepte, at: new Date().toISOString() },
+      lbcAdId: depotAccepte?.id ?? sansId?.id ?? null,
+      lbcDepot: {
+        preuve, note: String(note).slice(0, 400), adsubmit: depotAccepte, at: new Date().toISOString(),
+        ...(sansId ? { sans_adsubmit: sansId.trace } : {}),
+      },
     };
   };
   // ── /options SANS L'OPTION GRATUITE = DÉPÔT NON FINALISÉ (2026-09-13) ─────
@@ -2290,12 +2333,21 @@ async function fillListingForm(job) {
     };
   }
   console.log(`[leboncoin] dépôt CONFIRMÉ (${preuve})`);
+  // 2026-09-18 : c'est PAR ICI que sont passés les 6 dépôts pro sans id
+  // (lbc_depot = { preuve: "confirmation (…)", adsubmit: null }). La
+  // confirmation ne suffit pas à retrouver une annonce : on relit la sonde,
+  // on prend l'id où qu'il soit, et à défaut on garde la trace de ce qui est
+  // parti (cf. releveSansId).
+  const sansId = depotAccepte?.id ? null : await releveSansId();
   return {
     success: true, listingUrl: null, warnings, unfilledRequired, discoveredRequired: enumerated,
     // 0.6.24 : l'id adsubmit (s'il a été lu) et la trace du dépôt voyagent avec
     // le succès — platform_listing_id + platform_fields.lbc_depot côté background.
-    lbcAdId: depotAccepte?.id ?? null,
-    lbcDepot: { preuve: `confirmation (${preuve})`, adsubmit: depotAccepte, at: new Date().toISOString() },
+    lbcAdId: depotAccepte?.id ?? sansId?.id ?? null,
+    lbcDepot: {
+      preuve: `confirmation (${preuve})`, adsubmit: depotAccepte, at: new Date().toISOString(),
+      ...(sansId ? { sans_adsubmit: sansId.trace } : {}),
+    },
   };
 }
 
