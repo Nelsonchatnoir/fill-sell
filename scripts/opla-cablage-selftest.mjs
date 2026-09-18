@@ -4,11 +4,16 @@
 // moitiés comptent autant :
 //   1. Opla est VRAIMENT branchée — un job opla entre dans l'état d'un article,
 //      il est trié, il est nommé. Sinon le câblage est décoratif.
-//   2. RIEN ne bouge pour les 2 364 comptes qui n'ont pas le drapeau — et en
-//      particulier aucun « Pas encore sur Opla » ne s'affiche. Ce contrôle-là
-//      n'est pas théorique : compteursStock compte `pasEncore.opla` = TOUT le
-//      stock de tout le monde, et c'est EXACTEMENT ce qui serait parti à
-//      l'écran si les chips servaient PLATEFORMES_STOCK.
+//   2. les QUATRE autres ne bougent pas d'un cran.
+//      ⚠️ CE POINT A CHANGÉ DE SENS LE 18/09/2026. Il disait : « RIEN ne bouge
+//      pour les 2 364 comptes qui n'ont pas le drapeau, et en particulier aucun
+//      "Pas encore sur Opla" ne s'affiche ». C'était le garde-fou du lot C,
+//      quand Opla n'avait tourné que sur un compte. Décision Nico du 18/09,
+//      prise deux fois : Opla est ouverte à TOUT LE MONDE, sans condition. La
+//      chip « Pas encore sur Opla · N » s'affiche donc, avec de gros chiffres,
+//      et elle dit vrai — ce n'est plus une promesse creuse, Opla se publie.
+//      Ce que le test protège désormais : les quatre historiques, leur ordre
+//      et leurs compteurs, inchangés au passage.
 //
 //   node scripts/opla-cablage-selftest.mjs
 import { register } from 'node:module';
@@ -80,40 +85,43 @@ console.log('\n1. Opla est vraiment branchée côté DONNÉES');
   ok('le retrait sait viser l’annonce Opla', rm.published.includes('opla'), rm.published);
 }
 
-console.log('\n2. ⛔ Rien ne bouge pour un compte SANS le drapeau');
+console.log('\n2. ✅ Opla est une plateforme comme les quatre autres (18/09/2026)');
 {
-  ok('PLATEFORMES_STOCK_OUVERTES reste à QUATRE',
-    PLATEFORMES_STOCK_OUVERTES.length === 4 && !PLATEFORMES_STOCK_OUVERTES.includes('opla'),
+  // ── LA RÈGLE A CHANGÉ, ET C’EST UNE DÉCISION, PAS UNE DÉRIVE ────────────
+  // Ici vivait le contrôle inverse : « PLATEFORMES_STOCK_OUVERTES reste à
+  // QUATRE », « Opla vit dans la liste à venir », « aucun chip Opla ». Ce
+  // garde-fou datait du lot C, quand Opla n’avait tourné que sur un compte.
+  // Décision Nico du 18/09, prise deux fois : Opla est ouverte à TOUT LE
+  // MONDE, sans condition — ni palier, ni version d’extension. Le test suit
+  // la décision ; ce qu’il protège désormais, c’est que les QUATRE autres ne
+  // bougent pas d’un cran au passage.
+  ok('PLATEFORMES_STOCK_OUVERTES porte les CINQ',
+    PLATEFORMES_STOCK_OUVERTES.length === 5 && PLATEFORMES_STOCK_OUVERTES.includes('opla'),
     PLATEFORMES_STOCK_OUVERTES);
-  ok('Opla vit dans la liste « à venir »',
-    PLATEFORMES_STOCK_A_VENIR.length === 1 && PLATEFORMES_STOCK_A_VENIR[0] === 'opla',
-    PLATEFORMES_STOCK_A_VENIR);
+  ok('la liste « à venir » est VIDE',
+    PLATEFORMES_STOCK_A_VENIR.length === 0, PLATEFORMES_STOCK_A_VENIR);
 
-  // LA DÉMONSTRATION DU DANGER, pas une supposition : trois articles publiés
-  // sur les 4 plateformes, aucun sur Opla.
+  // La conséquence assumée, mesurée plutôt que supposée : trois articles
+  // publiés sur les quatre historiques, aucun sur Opla.
   const arts = [article('1', [job('vinted')]), article('2', [job('leboncoin')]), article('3', [job('ebay')])];
   const index = indexEtatStock(arts.map((a) => a.item), Object.fromEntries(arts.map((a) => [a.item.id, a.jobs])), 'fr');
   const c = compteursStock(arts.map((a) => a.item), index);
-  ok('⚠️ pasEncore.opla vaut TOUT le stock — c’est ça qui aurait fuité',
+  ok('pasEncore.opla vaut encore tout le stock — la chip le dira, et c’est vrai',
     c.pasEncore.opla === 3, c.pasEncore.opla);
-  ok('et pourtant aucun chip Opla : la liste d’affichage ne le porte pas',
-    !PLATEFORMES_STOCK_OUVERTES.some((p) => c.pasEncore[p] !== undefined && p === 'opla'));
 
-  // Ce que rendrait la rangée de chips pour chacun des deux comptes.
-  const chips = (visibles) => [...PLATEFORMES_STOCK_OUVERTES, ...PLATEFORMES_STOCK_A_VENIR.filter((p) => visibles.includes(p))];
-  ok('compte SANS drapeau : quatre chips, aucune Opla',
-    chips([]).length === 4 && !chips([]).includes('opla'), chips([]));
-  ok('compte AVEC le drapeau : Opla en cinquième',
-    chips(['opla']).length === 5 && chips(['opla'])[4] === 'opla', chips(['opla']));
-  ok('un drapeau inconnu n’ajoute rien', chips(['vestiaire']).length === 4, chips(['vestiaire']));
-
-  // La modale de retrait rend UNE LIGNE PAR ENTRÉE, publiée ou non : c'est le
-  // deuxième endroit où Opla aurait fuité chez tout le monde.
-  const RM = ['vinted', 'leboncoin', 'beebs', 'ebay'];
-  const lignes = (visibles) => [...RM, ...PLATEFORMES_STOCK_A_VENIR.filter((p) => visibles.includes(p))];
-  ok('retrait, compte SANS drapeau : quatre lignes', lignes([]).length === 4, lignes([]));
-  ok('retrait, compte AVEC : cinq lignes, Opla en dernier',
-    lignes(['opla']).length === 5 && lignes(['opla'])[4] === 'opla', lignes(['opla']));
+  // La rangée de chips et la modale de retrait : cinq, pour tout le monde,
+  // quel que soit l’argument — il ne commande plus rien.
+  ok('chips : cinq sans drapeau',
+    stock.plateformesDuCompte([]).length === 5 && stock.plateformesDuCompte([]).includes('opla'),
+    stock.plateformesDuCompte([]));
+  ok('chips : cinq avec le drapeau, sans doublon',
+    stock.plateformesDuCompte(['opla']).length === 5, stock.plateformesDuCompte(['opla']));
+  ok('chips : un drapeau inconnu n’ajoute rien',
+    stock.plateformesDuCompte(['vestiaire']).length === 5, stock.plateformesDuCompte(['vestiaire']));
+  ok('Opla est en DERNIER — l’ordre des quatre historiques ne bouge pas',
+    stock.plateformesDuCompte([])[4] === 'opla'
+    && stock.plateformesDuCompte([]).slice(0, 4).join(',') === 'vinted,leboncoin,beebs,ebay',
+    stock.plateformesDuCompte([]));
 }
 
 console.log('\n3. Les quatre en service, avant/après, à l’identique');
@@ -134,7 +142,7 @@ console.log('\n3. Les quatre en service, avant/après, à l’identique');
 
 console.log(
   echecs === 0
-    ? '\nTOUT PASSE — Opla est branchée, et invisible pour qui n’a pas le drapeau\n'
+    ? '\nTOUT PASSE — Opla est branchée, ouverte à tout le monde, et les quatre autres n’ont pas bougé\n'
     : `\n${echecs} CONTRÔLE(S) EN ÉCHEC\n`,
 );
 process.exit(echecs === 0 ? 0 : 1);
