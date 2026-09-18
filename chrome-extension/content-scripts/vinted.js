@@ -5523,28 +5523,57 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
     const cellule = document.getElementById(`catalog-suggestion-${suggestion.id}`);
     if (cellule) {
       await humanPause();
+      // ── CE QUE PORTAIT LE CHAMP AVANT LE CLIC (2026-09-18, correctif 3) ───
+      // Sans cette lecture, on ne peut pas distinguer « le clic n'a rien fait »
+      // de « le clic a posé une catégorie sous un libellé qu'on n'attendait
+      // pas ». On jetait donc peut-être des succès.
+      const valeurChamp = () => {
+        const t = document.querySelector('#category, [data-testid="catalog-select-dropdown-input"]');
+        return String(t?.textContent ?? t?.value ?? "").trim();
+      };
+      const avant = valeurChamp();
       (cellule.querySelector('input[type="radio"], [role="radio"]') ?? cellule).click();
       await sleep(400);
+      // ⚠️ ON N'EXIGE PLUS LE LIBELLÉ EXACT. Le test d'avant réclamait que le
+      // champ CONTIENNE `suggestion.libelle` ; Vinted peut très bien y écrire
+      // le chemin complet, ou le nom canonique de la feuille. Ce qui prouve le
+      // succès, c'est que le champ ait CHANGÉ et ne soit plus vide : rien
+      // d'autre que notre clic ne pouvait le remplir à cet instant.
       const pose = await waitFor(() => {
-        const t = document.querySelector('#category, [data-testid="catalog-select-dropdown-input"]');
-        const txt = String(t?.textContent ?? t?.value ?? "").trim();
-        return txt && normalizeFuzzy(txt).includes(normalizeFuzzy(suggestion.libelle)) ? txt : null;
+        const txt = valeurChamp();
+        return txt && txt !== avant ? txt : null;
       }, 4000);
       if (pose) {
+        const conforme = normalizeFuzzy(pose).includes(normalizeFuzzy(suggestion.libelle));
         console.log(
           `[vinted] catégorie : notre valeur « ${(path ?? []).join(" > ")} » n'était qu'une ` +
           `supposition (aucun mot-objet, aucun catalogue Vinted) — suggestion Vinted ` +
           `« ${suggestion.libelle} » retenue` +
+          (conforme ? "" : ` (le champ porte « ${pose} », libellé différent de la suggestion — accepté : seul notre clic pouvait le remplir)`) +
           (arbitre ? ` (choisie par l'IA parmi ${suggestionsVinted.length} suggestions)`
                    : suggestionsVinted.length > 1 ? ` (1re des ${suggestionsVinted.length} — arbitrage indisponible)` : "")
         );
-        categorieSuggestionRetenue = suggestion.libelle;
+        categorieSuggestionRetenue = conforme ? suggestion.libelle : `${suggestion.libelle} → ${pose}`;
         return;
       }
       console.warn(
         `[vinted] suggestion « ${suggestion.libelle} » cliquée mais effet NON constaté — ` +
         `repli sur la descente d'arbre habituelle`
       );
+      // ── ROUVRIR LA PORTE QU'ON VIENT DE FERMER (2026-09-18, correctif 1) ──
+      // ⛔ C'EST LE DÉFAUT LUI-MÊME, et il a coûté 3 articles sur 3 (Ornella
+      // 10/09 et 18/09, Xewer 18/09 — 0 publication en onze jours).
+      // La cellule de suggestion est un RADIO : le clic est une SÉLECTION
+      // FINALE, il FERME le panneau. On repliait ensuite sur la descente
+      // d'arbre, qui ne fait que LIRE (attendreOptionsCatalogue) et ne rouvre
+      // rien : elle trouvait zéro option au niveau 0 et concluait « le panneau
+      // ne s'est pas affiché ». Le message accusait le rendu ; le coupable
+      // était ce clic, deux lignes plus haut.
+      // Mesuré : 3/3 des jobs `categorie_incertaine` contre 0/35 435 sans le
+      // drapeau. openDropdown est sûr ici — clickUntilPanelOpens ne clique PAS
+      // si le panneau est déjà ouvert (l.4194), donc jamais de bascule.
+      await openDropdown('#category, [data-testid="catalog-select-dropdown-input"]')
+        .catch((e) => console.warn(`[vinted] réouverture du panneau après suggestion : ${e?.message ?? e}`));
     }
   }
 
@@ -5581,6 +5610,30 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
           levelLabel = choixUtilisateur;
           path[i] = choixUtilisateur;
           console.log(`[vinted] catégorie : niveau ${i} remplacé par le choix utilisateur « ${choixUtilisateur} »`);
+        } catch { match = null; }
+      }
+      // ── LE FILET GÉNÉRIQUE : UN PANNEAU VIDE EST PEUT-ÊTRE UN PANNEAU
+      //    FERMÉ (2026-09-18, correctif 2) ───────────────────────────────────
+      // attendreOptionsCatalogue ne fait que LIRE. Elle ne sait pas distinguer
+      // « ouvert mais pas encore peuplé » de « fermé » — elle rend [] dans les
+      // deux cas, et les deux produisent le MÊME message, qui accuse le rendu.
+      // Le correctif 1 (plus haut) ferme le chemin CONNU qui laissait la porte
+      // close ; celui-ci couvre tous les autres, y compris ceux qu'on n'a pas
+      // encore trouvés : on rouvre UNE fois, on relit, on réessaie CE niveau.
+      // ⛔ Seulement quand AUCUNE option n'est lisible : un panneau déjà peuplé
+      //    n'est jamais retouché, donc aucun chemin qui marche aujourd'hui ne
+      //    change de comportement. openDropdown est sûr — clickUntilPanelOpens
+      //    ne clique pas si le panneau est déjà ouvert (l.4194).
+      // Placé AVANT le bloc de diagnostic, et non dedans : une réouverture qui
+      // réussit doit court-circuiter les quatre sorties d'échec, pas les
+      // traverser.
+      if (!match && !(await visibleCatalogChoices()).length) {
+        console.warn(`[vinted] catégorie niveau ${i} « ${levelLabel} » : aucune option lisible — réouverture du panneau puis relecture`);
+        await openDropdown('#category, [data-testid="catalog-select-dropdown-input"]')
+          .catch((e) => console.warn(`[vinted] réouverture du panneau : ${e?.message ?? e}`));
+        try {
+          match = await waitForStableCatalogOption(catalogOptionSel, levelLabel, matchOpts);
+          console.log(`[vinted] catégorie niveau ${i} « ${levelLabel} » : trouvé APRÈS réouverture — la porte était fermée, pas le panneau vide`);
         } catch { match = null; }
       }
       if (!match) {
