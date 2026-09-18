@@ -1657,14 +1657,58 @@ async function deleteVintedItemViaApi(itemId, t, trace, opts = {}) {
       const session = await vintedSessionEtat(t);
       verdict.conclusion = "refus";
       verdict.session = String(session);
+
+      // ── 403 + SESSION VALIDE = ANTI-ROBOT. ON NE LE DEMANDE PLUS À
+      //    L'UTILISATEUR (2026-09-18) ──────────────────────────────────────
+      // Mesuré sur le job 8fca9e7d (parka d'Ornella, 17:51) :
+      //   HTTP 403 · /api/v2/items/9881718460/delete
+      //   {"code":106,"message":"Accès refusé","message_code":"access_denied"}
+      //   session « valide »
+      // Et c'est déjà tranché dans ce dépôt depuis le 12/08 : sur Vinted, un
+      // 403 est rendu par la couche anti-robot AVANT que le cookie de session
+      // soit regardé. Ce n'est NI une déconnexion, NI un jeton CSRF périmé —
+      // un CSRF périmé ne répond pas `access_denied` code 106 sur cet
+      // endpoint. Le message hésitait entre deux causes parce que le CODE
+      // n'avait jamais tranché ; la réponse, elle, est nette. On la nomme.
+      //
+      // ⇒ PRÉFIXE `CHALLENGE ` : c'est le signal que background.js route vers
+      //   marquerBlocageAntiRobot — reprise gratuite toutes les 20 min, bornée
+      //   à 6 h par épisode, AUCUNE tentative consommée. On réutilise le
+      //   chemin déjà éprouvé sur Leboncoin plutôt que d'en inventer un second.
+      // ⇒ `needsUser: false` : un anti-robot n'est pas une question à poser.
+      //   Il n'y a rien à corriger, il faut attendre — et on sait attendre.
+      //
+      // ⛔ LE GARDE-FOU NE BOUGE PAS D'UN POUCE : rien n'a été soumis, aucune
+      //    suppression n'est conclue, et l'état réel de l'annonce est relu par
+      //    le background avant le moindre geste.
+      // ⚠️ Le 401 reste un besoin d'utilisateur : là, la session est vraiment
+      //    morte et il faut se reconnecter — aucune attente ne le réparera.
+      const codeVinted = (() => {
+        try { const j = JSON.parse(corps || "{}"); return String(j.message_code ?? j.code ?? "").trim(); }
+        catch { return ""; }
+      })();
+      if (resp.status === 403 && session !== "expiree") {
+        verdict.conclusion = "refus_anti_robot";
+        t(`403 anti-robot (${codeVinted || "code inconnu"}), session ${session} — reprise espacée, aucune tentative consommée`);
+        return {
+          success: false,
+          needsUser: false,
+          error:
+            `CHALLENGE Vinted a refusé la suppression : protection anti-robot (HTTP 403` +
+            `${codeVinted ? `, ${codeVinted}` : ""}), ta session est valide. ` +
+            `Rien n'a été supprimé et ton annonce est intacte. On réessaie tout seul dans quelques minutes.`,
+          trace,
+          verdict,
+        };
+      }
       return {
         success: false,
         needsUser: true,
         error:
           session === "expiree"
             ? `Suppression Vinted refusée (HTTP ${resp.status}) : session Vinted expirée. Se reconnecter à Vinted.`
-            : `Suppression Vinted refusée (HTTP ${resp.status}) alors que la session est ${session} — ` +
-              `refus CSRF ou protection anti-bot, PAS une déconnexion. Réponse : ${corps.slice(0, 120) || "(vide)"}`,
+            : `Suppression Vinted refusée (HTTP ${resp.status}) alors que la session est ${session}. ` +
+              `Rien n'a été soumis. Réponse : ${corps.slice(0, 120) || "(vide)"}`,
         trace,
         verdict,
       };
@@ -5325,6 +5369,30 @@ const RENOMMAGES_RACINE_VINTED = { "Divertissement": "Livres et médias" };
 // dédupliqués. C'est cette liste qui part en allowed_values du mini-éditeur :
 // l'utilisateur choisit parmi ce que Vinted affiche RÉELLEMENT, la catégorie
 // existe donc toujours dans l'arbre du moment.
+// ── LE PANNEAU MET PARFOIS PLUS LONGTEMPS À SE RENDRE (2026-09-18) ─────────
+// Mesuré sur le job b1e0c1b5 (« EA Sports FC 25 – PS5 », XEWER, 17:54) :
+// l'échec tombe au NIVEAU 0, « Électronique » — la liste RACINE, celle qui
+// existe toujours dès que le panneau est ouvert. Et le chiffre dit que ce
+// n'est pas le sélecteur : 678 publications Vinted réussies en 24 h sur
+// 16 comptes, UN SEUL panneau vide. Un sélecteur mort échouerait 679 fois
+// sur 679. C'est un état de rendu, et il suffit d'attendre un peu plus.
+const CATALOG_PREMIER_NIVEAU_MS = 12000;
+
+// Attend qu'AU MOINS UNE option de catalogue soit lisible, bornée, puis rend
+// la liste. `visibleCatalogChoices` lit le DOM à l'instant : appelée trop tôt
+// elle rend [] et l'appelant conclut « le panneau ne s'est pas affiché » alors
+// qu'il était en train d'arriver. Jamais d'exception — une liste vide est une
+// réponse, et l'appelant sait déjà quoi en dire.
+async function attendreOptionsCatalogue(timeoutMs = 4000) {
+  const debut = Date.now();
+  let options = await visibleCatalogChoices();
+  while (!options.length && Date.now() - debut < timeoutMs) {
+    await sleep(120);
+    options = await visibleCatalogChoices();
+  }
+  return options;
+}
+
 async function visibleCatalogChoices(limit = 30) {
   const S = await sel();
   const labels = Array.from(document.querySelectorAll(S.selectorFor("vinted", "publish.catalog_option")))
@@ -5487,7 +5555,14 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
     // includes() dangereux — cf. waitForStableCatalogOption). Aux niveaux
     // suivants le repli reste permis (libellés composés type « Robes midi »).
     // Les suggestions sont exclues à TOUS les niveaux (cf. estSuggestionCatalogue).
-    const matchOpts = { exactOnly: i === 0, exclude: estSuggestionCatalogue };
+    // Le PREMIER niveau attend plus longtemps : le panneau doit d'abord
+    // S'OUVRIR, alors qu'aux niveaux suivants il est déjà là et ne fait que
+    // re-rendre sa liste (cf. CATALOG_PREMIER_NIVEAU_MS).
+    const matchOpts = {
+      exactOnly: i === 0,
+      exclude: estSuggestionCatalogue,
+      ...(i === 0 ? { timeoutMs: CATALOG_PREMIER_NIVEAU_MS } : {}),
+    };
 
     let match;
     try {
@@ -5509,7 +5584,9 @@ async function selectCategory(path, fields = {}, titreArticle = "") {
         } catch { match = null; }
       }
       if (!match) {
-        const options = await visibleCatalogChoices();
+        // Dernière chance bornée avant de conclure « panneau vide » : on
+        //    attend qu'UNE option, n'importe laquelle, soit lisible.
+        const options = await attendreOptionsCatalogue();
         // 2. INTERFACE NON FRANÇAISE (cas Adam 23/08 : Women/Men/Books &
         //    Media) : une vraie liste racine sans AUCUNE racine FR. Aucun
         //    retry ni choix n'y peut rien — seul l'utilisateur peut repasser
