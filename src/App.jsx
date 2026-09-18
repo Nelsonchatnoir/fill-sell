@@ -8388,6 +8388,13 @@ export default function App({ loginOnly = false }){
         </>
       )}
 
+      {/* `appBuild` : l'empreinte du bundle qui tourne, affichée en pied de la
+          page — la seule façon de répondre depuis un téléphone à « est-ce que
+          j'ai bien la correction ? ». Safari garde les fichiers en cache, et
+          l'ancien chunk répond encore 200 chez Vercel : du vieux code peut
+          donc tourner sans 404 ni le moindre signe. APP_BUILD_ID est posé à la
+          compilation (__FILLSELL_APP_BUILD__, vite.config.js), déclaré l. 58 —
+          bien avant ce rendu. */}
       {/* ── RÉGLAGES — UNE PAGE, PLUS UNE POP-UP (18/09/2026) ───────────────
           Ce qu'il y avait ici : une pop-up de 490 lignes qui empilait compte,
           forfait, pseudo, adresse Leboncoin, eBay, encart Apple, support,
@@ -8418,6 +8425,7 @@ export default function App({ loginOnly = false }){
           extensionInstallable={!isNative&&!isMobileViewport}
           extensionVersion={extensionVersion}
           extensionStatus={{lastSeenAt:extensionLastSeenAt,build:extensionBuild,outdated:extensionOutdated}}
+          appBuild={APP_BUILD_ID}
           quotas={quotas}
           username={username}
           setUsername={setUsername}
