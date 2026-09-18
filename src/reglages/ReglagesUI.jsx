@@ -24,6 +24,26 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useFondFige } from '../utils/modale';
 import { R, CSS_REGLAGES } from './theme';
 
+// ── Z-INDEX 400, ET C'EST TOUT LE SUJET DES « LIGNES MORTES » ──────────────
+// La page est un PORTAIL sur document.body ; les couches que l'app ouvre
+// par-dessus (modale des offres 9990, pop-up « signaler un bug » 10000, Toast
+// 500) vivent, elles, DANS `.app-root`. À 9985, la page passait DEVANT elles :
+// on cliquait, l'app ouvrait bien la couche, et personne ne la voyait —
+// « Comparer les formules » et « Signaler un bug » avaient l'air morts, et les
+// toasts « ✅ enregistré » ne s'affichaient jamais.
+// Le Toast le prouve sans discussion possible : z-index 500, il ne POUVAIT pas
+// passer devant 9985. (Sur iOS s'ajoute le piège déjà documenté ailleurs dans
+// ce dépôt : `.app-root` porte -webkit-overflow-scrolling:touch, et WKWebView
+// peint les position:fixed de ce conteneur DANS SA COUCHE, z-index ou pas.)
+// 400 rétablit l'ordre d'avant la refonte — l'ancienne pop-up de réglages
+// vivait à 200, sous exactement les mêmes couches — tout en restant au-dessus
+// de la barre du haut (10) et de la nav (50).
+// ⛔ NE PAS REMONTER cette valeur sans vérifier ce qu'elle enterre.
+const STYLE_ECRAN = {
+  position: 'fixed', inset: 0, zIndex: 400, background: R.page,
+  display: 'flex', flexDirection: 'column', color: R.ink, fontFamily: 'inherit',
+};
+
 // ── ÉCRAN PLEIN ────────────────────────────────────────────────────────────
 // `actif` : l'écran est-il au PREMIER PLAN ? Un écran tiers ouvert par-dessus
 // (les réglages de republication, par exemple) le passe à false — sans quoi
@@ -51,10 +71,7 @@ export function EcranReglages({ titre, onRetour, actif = true, pile = false, cle
       aria-modal="true"
       aria-label={titre}
       className="rg-ecran"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9985, background: R.page,
-        display: 'flex', flexDirection: 'column', color: R.ink, fontFamily: 'inherit',
-      }}
+      style={STYLE_ECRAN}
     >
       <style>{CSS_REGLAGES}</style>
 
@@ -112,9 +129,9 @@ export function Groupe({ intitule, appoint, ton, children }) {
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, padding: '0 4px' }}>
           <h2 style={{
             margin: 0, fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-            letterSpacing: '0.12em', color: ton === 'danger' ? R.negative : R.mute,
+            letterSpacing: '0.12em', color: ton === 'danger' ? R.negatifTexte : R.texteSecondaire,
           }}>{intitule}</h2>
-          {appoint && <span style={{ fontSize: 12, color: R.mute, fontWeight: 500 }}>{appoint}</span>}
+          {appoint && <span style={{ fontSize: 12, color: R.texteSecondaire, fontWeight: 500 }}>{appoint}</span>}
         </div>
       )}
       {children}
@@ -149,7 +166,7 @@ export function Ligne({ icone: Icone, libelle, valeur, alerte = false, onClick, 
       <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 500, color: R.ink }}>{libelle}</span>
       {valeur != null && valeur !== '' && (
         <span style={{
-          fontSize: 13, fontWeight: 500, color: alerte ? R.negative : R.mute,
+          fontSize: 13, fontWeight: 500, color: alerte ? R.negatifTexte : R.texteSecondaire,
           flexShrink: 0, maxWidth: '48%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{valeur}</span>
       )}
@@ -187,7 +204,7 @@ export function Jauge({ libelle, consomme, plafond, reste, sous }) {
         <span style={{ fontSize: 15, fontWeight: 700, color: R.ink, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
           {Number.isFinite(fait) ? fait.toLocaleString('fr-FR') : '—'}
           {Number.isFinite(total) && total > 0 && (
-            <span style={{ color: R.mute, fontWeight: 500 }}> / {total.toLocaleString('fr-FR')}</span>
+            <span style={{ color: R.texteSecondaire, fontWeight: 500 }}> / {total.toLocaleString('fr-FR')}</span>
           )}
         </span>
       </div>
@@ -200,7 +217,7 @@ export function Jauge({ libelle, consomme, plafond, reste, sous }) {
           }} />
         </div>
       )}
-      {sous && <span style={{ fontSize: 12, color: R.mute }}>{sous}</span>}
+      {sous && <span style={{ fontSize: 12, color: R.texteSecondaire }}>{sous}</span>}
     </div>
   );
 }
@@ -290,7 +307,7 @@ export function CarteIdentite({ nom, email, badge }) {
           }}>{nom}</strong>
         )}
         <span style={{
-          fontSize: 13, color: R.mute2, lineHeight: 1.35,
+          fontSize: 13, color: R.texteSecondaire, lineHeight: 1.35,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{email}</span>
       </div>
@@ -306,7 +323,7 @@ export function Pastille({ ton, children }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
       <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 4, background: couleur, flexShrink: 0 }} />
-      <span style={{ fontSize: 13, color: R.mute2, fontWeight: 500 }}>{children}</span>
+      <span style={{ fontSize: 13, color: R.texteSecondaire, fontWeight: 500 }}>{children}</span>
     </span>
   );
 }
@@ -315,7 +332,7 @@ export function Pastille({ ton, children }) {
 export function Champ({ label, erreur, style, ...reste }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, ...style }}>
-      <span style={{ fontSize: 13, fontWeight: 500, color: R.mute2 }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 500, color: R.texteSecondaire }}>{label}</span>
       <input
         {...reste}
         style={{
@@ -341,8 +358,8 @@ export function Bouton({ ton = 'plein', enCours = false, disabled, children, sty
   const tons = {
     plein: { border: 'none', background: `linear-gradient(120deg,${R.teal},${R.tealDeep})`, color: '#fff' },
     creux: { border: `1px solid ${R.border}`, background: R.card, color: R.ink },
-    'danger-creux': { border: `1px solid ${R.negative}`, background: R.card, color: R.negative },
-    'danger-plein': { border: 'none', background: R.negative, color: '#fff' },
+    'danger-creux': { border: `1px solid ${R.negative}`, background: R.card, color: R.negatifTexte },
+    'danger-plein': { border: 'none', background: R.negatifTexte, color: '#fff' },
   };
   return (
     <button type="button" disabled={disabled || enCours} className="rg-focus" style={{ ...base, ...tons[ton], ...style }} {...reste}>
@@ -370,7 +387,7 @@ export function BlocSensible({ titre, texte, children, dernier = false }) {
     }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <strong style={{ fontSize: 15, fontWeight: 700, color: R.ink }}>{titre}</strong>
-        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: R.mute2 }}>{texte}</p>
+        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: R.texteSecondaire }}>{texte}</p>
       </div>
       {children}
     </div>
@@ -379,10 +396,10 @@ export function BlocSensible({ titre, texte, children, dernier = false }) {
 
 // ── NOTE SOUS UNE CARTE ────────────────────────────────────────────────────
 export function Note({ children }) {
-  return <p style={{ margin: 0, padding: '0 4px', fontSize: 12, lineHeight: 1.5, color: R.mute }}>{children}</p>;
+  return <p style={{ margin: 0, padding: '0 4px', fontSize: 12, lineHeight: 1.5, color: R.texteSecondaire }}>{children}</p>;
 }
 
 // ── PIED DE PAGE ───────────────────────────────────────────────────────────
 export function PiedPage({ children }) {
-  return <div style={{ textAlign: 'center', fontSize: 12, color: R.chevron, paddingTop: 4 }}>{children}</div>;
+  return <div style={{ textAlign: 'center', fontSize: 12, color: R.texteSecondaire, paddingTop: 4 }}>{children}</div>;
 }
