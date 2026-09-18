@@ -26,9 +26,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { track } from '../analytics/analytics';
 import PlanBadge from '../components/PlanBadge';
 import {
-  RepublicationPlanifieeReglages, RepublicationPlanifieeHistorique,
+  RepublicationPlanifieePlateformes, RepublicationPlanifieeReglages, RepublicationPlanifieeHistorique,
 } from '../components/RepublicationPlanifiee';
-import { useRepublicationPlanifiee, republicationPlanifieeExposee } from '../hooks/useRepublicationPlanifiee';
+import { useRepublicationPlanifiee, republicationPlanifieeExposee, PLATEFORMES_PLANIFIEES } from '../hooks/useRepublicationPlanifiee';
 import { plateformesDuCompte } from '../utils/stockFiltres';
 import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
@@ -49,6 +49,10 @@ import SousPageCompte from './SousPageCompte';
 // │ et son composant. Une sous-page de plus = une ligne de plus ici, et      │
 // │ `ouvre:'<son id>'` sur l'entrée qui l'ouvre (plan.js).                   │
 // └──────────────────────────────────────────────────────────────────────────┘
+// Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes
+// et que le module de republication).
+const NOMS_PF_REPUB = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla' };
+
 const SOUS_PAGES = {
   abonnement:    { titre: (T) => T.gAbonnement,    Composant: SousPageAbonnement },
   plateformes:   { titre: (T) => T.gPlateformes,   Composant: SousPagePlateformes },
@@ -74,9 +78,12 @@ export default function ReglagesPage({
   // Écran tiers monté PAR-DESSUS la page (portail à z-index supérieur) : tant
   // qu'il est là, la page n'écoute plus Échap — sinon une touche fermerait
   // les deux couches d'un coup.
-  const [ecranRepub, setEcranRepub] = useState(null); // null | 'reglages' | 'historique'
+  // null | 'liste' | 'historique' | une plateforme ('vinted', 'leboncoin', …)
+  const [ecranRepub, setEcranRepub] = useState(null);
 
-  const planifiee = useRepublicationPlanifiee({ userId: user?.id });
+  // `multi: true` — c'est le SEUL écran qui a besoin des quatre plateformes.
+  // Le Stock, lui, garde l'appel d'avant (cf. l'encadré du hook).
+  const planifiee = useRepublicationPlanifiee({ userId: user?.id, multi: true });
   const planifieeExposee = republicationPlanifieeExposee(planifiee);
   // UNE SEULE RÉPONSE À « QUELLES PLATEFORMES ? » : celle du Stock
   // (utils/stockFiltres.plateformesDuCompte), jamais une liste recopiée ici —
@@ -100,10 +107,10 @@ export default function ReglagesPage({
 
   // ── Republication automatique : MÊME PORTE QU'AU PIED DU STOCK ───────────
   // Un compte non autorisé (module réservé au Pro) tombe sur la modale de
-  // conversion, exactement comme avant ; un compte autorisé ouvre l'écran de
-  // réglages existant. Rien d'autre n'a bougé : ni le hook, ni l'écran, ni
-  // les écritures.
-  const repubAutorisee = planifiee.etat?.autorise === true;
+  // conversion, exactement comme avant — même origine, même geste, rien
+  // n'écrit. Un compte autorisé ouvre désormais la LISTE DES PLATEFORMES
+  // (18/09), qui ouvre elle-même l'écran de réglages de celle qu'on choisit.
+  const repubAutorisee = planifiee.etatMulti?.autorise === true || planifiee.etat?.autorise === true;
   const ouvrirRepublication = () => {
     if (!repubAutorisee) {
       track('premium_click', { source: 'reglages_republication_planifiee' });
@@ -111,8 +118,24 @@ export default function ReglagesPage({
       return;
     }
     track('republication_planifiee', { action: 'ouvrir_reglages', depuis: 'reglages' });
-    setEcranRepub('reglages');
+    setEcranRepub('liste');
   };
+  // Les sessions par plateforme sont DÉJÀ lues par cette page (l'entrée
+  // « Plateformes ») : on les sert au module plutôt que d'ouvrir une seconde
+  // lecture qui pourrait dire autre chose.
+  const sessionsRepub = useMemo(() => {
+    const out = {};
+    for (const pf of PLATEFORMES_PLANIFIEES) out[pf] = sessions?.etats?.[pf] ?? null;
+    return out;
+  }, [sessions]);
+  // Les plateformes ACTIVES, dans l'ordre d'affichage. Sert la ligne du hub :
+  // une seule → son nom et son créneau ; plusieurs → combien.
+  const repubActives = useMemo(
+    () => PLATEFORMES_PLANIFIEES
+      .map((pf) => planifiee.parPlateforme?.[pf])
+      .filter((e) => e?.actif === true),
+    [planifiee.parPlateforme],
+  );
 
   // ── LA DATE DE REMISE À ZÉRO EST LUE EN BASE, PAS DÉDUITE ──────────────
   // coin_wallets.next_grant_at : l'échéance que la fonction de grant lit
@@ -168,12 +191,19 @@ export default function ReglagesPage({
     sessions, plateformesSession,
     republication: {
       exposee: planifieeExposee,
-      actif: planifiee.etat?.actif === true,
-      // Le créneau tel que le serveur le rend (`reglage.de` / `reglage.a`) —
-      // jamais recalculé, jamais deviné : sans réglage, pas de créneau.
-      creneau: planifiee.etat?.reglage?.de && planifiee.etat?.reglage?.a
-        ? `${String(planifiee.etat.reglage.de).slice(0, 5)}–${String(planifiee.etat.reglage.a).slice(0, 5)}`
-        : null,
+      // ⚠️ 18/09 : le module porte QUATRE plateformes. « actif » veut donc dire
+      // « au moins une », et la valeur affichée dans le hub dit LAQUELLE quand
+      // il n'y en a qu'une (avec son créneau), et COMBIEN au-delà. Tout est lu
+      // sur le serveur : sans réglage, pas de créneau, et jamais deviné.
+      actif: repubActives.length > 0,
+      creneau: repubActives.length === 1
+        ? [NOMS_PF_REPUB[repubActives[0].platform] ?? repubActives[0].platform,
+           repubActives[0].reglage?.de && repubActives[0].reglage?.a
+             ? `${String(repubActives[0].reglage.de).slice(0, 5)}–${String(repubActives[0].reglage.a).slice(0, 5)}`
+             : null].filter(Boolean).join(' · ')
+        : repubActives.length > 1
+          ? `${repubActives.length} ${T.plateformesActives}`
+          : null,
     },
     ouvrirRepublication, ouvrirOffres, ouvrirSignalementBug, toast, ouvrir,
     resiliation, restauration, reset, suppression, deconnexion,
@@ -188,18 +218,38 @@ export default function ReglagesPage({
         {SousPage ? <SousPage c={c} T={T} /> : <Hub c={c} T={T} />}
       </EcranReglages>
 
-      {/* ── Republication automatique : les deux écrans existants, montés
-          tels quels (portails, z-index au-dessus de la page). */}
-      {ecranRepub === 'reglages' && (
+      {/* ── Republication automatique : trois écrans, montés en portail
+          au-dessus de la page (z-index supérieur). Le chemin est
+          LISTE → une plateforme → retour à la liste ; l'historique, commun
+          aux quatre, se referme sur la liste. */}
+      {ecranRepub === 'liste' && (
+        <RepublicationPlanifieePlateformes
+          lang={lang}
+          etatMulti={planifiee.etatMulti}
+          parPlateforme={planifiee.parPlateforme}
+          sessions={sessionsRepub}
+          interrupteur={planifiee.interrupteur}
+          extensionStatus={extensionStatus}
+          busy={planifiee.busy}
+          erreur={planifiee.erreur}
+          onOuvrirPlateforme={(pf) => setEcranRepub(pf)}
+          onOuvrirHistorique={() => setEcranRepub('historique')}
+          onPauseGenerale={(reprendre) => planifiee.pauseGenerale(reprendre)}
+          onClose={() => setEcranRepub(null)}
+        />
+      )}
+      {PLATEFORMES_PLANIFIEES.includes(ecranRepub) && (
         <RepublicationPlanifieeReglages
           lang={lang}
-          etat={planifiee.etat}
+          platform={ecranRepub}
+          session={sessionsRepub[ecranRepub] ?? null}
+          etat={planifiee.parPlateforme?.[ecranRepub] ?? null}
           interrupteur={planifiee.interrupteur}
           extensionStatus={extensionStatus}
           busy={planifiee.busy}
           erreur={planifiee.erreur}
           regler={planifiee.regler}
-          onClose={() => setEcranRepub(null)}
+          onClose={() => setEcranRepub('liste')}
           onOuvrirHistorique={() => setEcranRepub('historique')}
         />
       )}
@@ -208,7 +258,7 @@ export default function ReglagesPage({
           lang={lang}
           userId={user?.id}
           etat={planifiee.etat}
-          onClose={() => setEcranRepub('reglages')}
+          onClose={() => setEcranRepub('liste')}
         />
       )}
     </>

@@ -114,6 +114,9 @@ const FR = {
 
   // ── Automatismes ────────────────────────────────────────────────────────
   republicationAuto: 'Republication automatique',
+  // 18/09 : le module porte quatre plateformes — la ligne du hub dit combien
+  // sont actives quand il y en a plus d'une.
+  plateformesActives: 'plateformes actives',
   actif: 'Actif',
   inactif: 'Inactif',
 
@@ -254,6 +257,7 @@ const EN = {
   transporteursValeurEbay: 'eBay',
 
   republicationAuto: 'Automatic reposting',
+  plateformesActives: 'platforms on',
   actif: 'On',
   inactif: 'Off',
 
