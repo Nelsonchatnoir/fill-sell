@@ -157,6 +157,10 @@ const FR = {
 
   // ── Pied de page ────────────────────────────────────────────────────────
   extensionVersion: (v) => `Extension ${v}`,
+  // Le bundle qui tourne VRAIMENT, lisible depuis le téléphone. Sert à
+  // répondre en un coup d'oeil à « est-ce que j'ai bien la correction ? » —
+  // Safari garde les fichiers en cache, et l'ancien chunk repond encore 200.
+  appBuild: (b) => `app ${b}`,
 };
 
 const EN = {
@@ -288,6 +292,7 @@ const EN = {
   supprDefinitif: 'Delete permanently',
 
   extensionVersion: (v) => `Extension ${v}`,
+  appBuild: (b) => `app ${b}`,
 };
 
 export function txt(lang) {
