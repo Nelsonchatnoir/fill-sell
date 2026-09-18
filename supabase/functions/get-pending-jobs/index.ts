@@ -20,6 +20,12 @@ import {
   champsArbitrablesBeebs,
   rapprocherValeursBeebs,
 } from "../_shared/beebs-valeurs.ts";
+// L'arbre Opla, côté serveur (fichier GÉNÉRÉ par scripts/gen-opla-catalogue.mjs,
+// vérifié contre le référentiel live par scripts/opla-catalogue-selftest.mjs).
+// Ici, pour une seule chose : lire la BRANCHE d'une catégorie résolue afin d'en
+// déduire le genre. Aucune décision de dépôt n'est prise ici — le pré-vol de
+// l'extension reste la seule garde.
+import { oplaNoeud } from "../_shared/opla-catalogue.ts";
 
 // L'arbitrage de valeur par l'IA vit dans l'extension à partir de CETTE
 // version (commit 5b07edc, LISTE_FERMEE_CHOISIR) et il y travaille sur la liste
@@ -2878,6 +2884,10 @@ serve(async (req) => {
       // La source est corrigée (redaction-plateformes + stepper) ; ici, pour
       // les jobs déjà en file et pour toujours : la fiche fait foi.
       const etatParArticle = new Map<number, string>();
+      // La TRANCHE DE COLIS de la fiche (2026-09-18) — uniquement comme CLÉ de
+      // la mémoire du poids, ci-dessous. ⛔ Jamais comme source d'un poids :
+      // « Petit » ne dit pas « De 250 g à 500 g » (règle du 28/08).
+      const colisParArticle = new Map<number, string>();
       try {
         const ids = [...new Set((out as unknown as Array<Record<string, unknown>>)
           .filter((j) => j.platform === "leboncoin" && j.action === "publish" && j.inventaire_id != null)
@@ -2899,11 +2909,116 @@ serve(async (req) => {
               ? String((brutEtat as Record<string, unknown>).v ?? "").trim()
               : String(brutEtat ?? "").trim();
             if (e) etatParArticle.set(Number(f.id), e);
+            const brutColis = a?.colis;
+            const co = (brutColis && typeof brutColis === "object")
+              ? String((brutColis as Record<string, unknown>).v ?? "").trim()
+              : String(brutColis ?? "").trim();
+            if (co) colisParArticle.set(Number(f.id), co);
           }
         }
       } catch (e) {
         console.warn(`[get-pending-jobs] couleur Leboncoin : lecture des fiches impossible (${String((e as Error)?.message ?? e)}) — jobs servis sans couleur, comme avant`);
       }
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // MÉMOIRE DE VENDEUR, PAR COMPTE (2026-09-18, dossier MeMiniandMove)
+      // ═══════════════════════════════════════════════════════════════════════
+      // 18 jobs Leboncoin en needs_user, le plus vieux du 15/09, zéro tentative
+      // brûlée. Deux champs, et deux seulement, bloquent — relevés sur SES jobs
+      // (12 demandent les deux, 6 le poids seul) :
+      //   · « Poids du colis* »      (estimated_parcel_weight, dropdown, 11 valeurs)
+      //   · « Type d'article neuf* » (new_item_type, dropdown, 8 valeurs)
+      // Ce sont des champs OBLIGATOIRES du formulaire PRO ; le formulaire
+      // particulier ne les a pas.
+      //
+      // ⛔ NI L'UN NI L'AUTRE NE SE DEVINE, ET C'EST TRANCHÉ.
+      //   · Le POIDS ne se déduit PAS d'attributs.colis (Petit/Moyen/Grand) :
+      //     deux vocabulaires différents (règle du 28/08, bandeau
+      //     LBC_POIDS_PAR_FORMAT), et un poids déclaré faux, c'est
+      //     l'utilisatrice qui paie la différence à la livraison.
+      //   · « Type d'article neuf » n'est PAS l'état : c'est une qualification
+      //     commerciale de vendeur pro. Rien dans « Neuf avec étiquette » ne
+      //     dit « Déstockage » plutôt que « Retour client ».
+      // Donc : on ne devine pas, ON SE SOUVIENT. Elle répond UNE fois, et la
+      // réponse ressert à tous ses articles suivants.
+      //
+      // LA SOURCE DE LA MÉMOIRE, ET RIEN D'AUTRE : `needsUserResolved`, que
+      // l'app écrit au moment où l'utilisateur tranche (StockTab, « ✋ Compléter »),
+      // sous la clé « lbcAspects.<champ> ». C'est la SEULE trace qui distingue
+      // « elle a répondu » de « on a servi » : la valeur qu'on sert ici
+      // n'atterrit que dans lbcAspects, jamais dans needsUserResolved. La
+      // mémoire ne peut donc pas se nourrir d'elle-même.
+      //
+      // ⛔ PAR COMPTE, JAMAIS PARTAGÉE. On relit les jobs de CE user
+      //    (userClient est déjà borné par RLS, et le filtre user_id le dit en
+      //    clair). On ne passe SURTOUT PAS par platform_category_aspects : ce
+      //    catalogue est partagé et il a causé deux régressions le 16/09 en
+      //    diffusant à tout le parc ce qui n'avait été observé que chez une
+      //    seule personne.
+      //
+      // LE POIDS EST MÉMORISÉ PAR TRANCHE DE COLIS, pas globalement : une robe
+      // et une paire de bottes n'ont pas le même poids. La tranche, c'est
+      // `platform_fields.format_colis` du job — relevé en base sur ses 18 jobs :
+      // « Lettre », « Petit colis », « Moyen colis » — et à défaut
+      // `inventaire.attributs.colis.v`, puis « (absent) ». Elle répond une fois
+      // par tranche rencontrée.
+      //
+      // SI LA VALEUR MÉMORISÉE EST REFUSÉE par le formulaire, on ne boucle pas :
+      // l'appariement côté extension est STRICT (elle ouvre le menu et clique
+      // une option par composant exact), une valeur hors liste laisse le champ
+      // vide et repart en needs_user avec la liste relevée. La nouvelle réponse
+      // devient la plus récente et remplace la mémoire.
+      const MEMOIRE_CLES = ["new_item_type", "estimated_parcel_weight"] as const;
+      const trancheColis = (pf: Record<string, unknown>, articleId: unknown): string => {
+        const f = String(pf.format_colis ?? "").trim();
+        if (f) return f;
+        const c = articleId != null ? (colisParArticle.get(Number(articleId)) ?? "") : "";
+        return c || "(absent)";
+      };
+      const memoire: { new_item_type: string | null; poids: Map<string, string> } = {
+        new_item_type: null, poids: new Map(),
+      };
+      try {
+        const besoin = (out as unknown as Array<Record<string, unknown>>).some((j) => {
+          if (j.platform !== "leboncoin" || j.action !== "publish") return false;
+          const pf = (j.platform_fields ?? {}) as Record<string, unknown>;
+          const a = (pf.lbcAspects && typeof pf.lbcAspects === "object") ? (pf.lbcAspects as Record<string, unknown>) : {};
+          return MEMOIRE_CLES.some((k) => !String(a[k] ?? "").trim());
+        });
+        if (besoin) {
+          // Les 200 jobs Leboncoin les plus récents de ce compte. La réponse
+          // cherchée est presque toujours dans les premiers ; au-delà, la
+          // question revient une fois — jamais une valeur fausse.
+          // ⚠️ `created_at` est le seul horodatage de cross_post_jobs (pas
+          //    d'updated_at, vérifié au schéma) : c'est un PROXY de l'ordre des
+          //    réponses, pas l'heure de la réponse elle-même.
+          const { data: passes } = await userClient
+            .from("cross_post_jobs")
+            .select("id, created_at, inventaire_id, platform_fields")
+            .eq("user_id", user.id).eq("platform", "leboncoin")
+            .order("created_at", { ascending: false })
+            .limit(200);
+          for (const p of (passes ?? []) as Array<Record<string, unknown>>) {
+            const pf = (p.platform_fields ?? {}) as Record<string, unknown>;
+            const res = (pf.needsUserResolved && typeof pf.needsUserResolved === "object")
+              ? (pf.needsUserResolved as Record<string, unknown>) : null;
+            if (!res) continue;
+            const type = String(res["lbcAspects.new_item_type"] ?? "").trim();
+            if (type && !memoire.new_item_type) memoire.new_item_type = type;
+            const poids = String(res["lbcAspects.estimated_parcel_weight"] ?? "").trim();
+            if (poids) {
+              const t = trancheColis(pf, p.inventaire_id);
+              if (!memoire.poids.has(t)) memoire.poids.set(t, poids);
+            }
+          }
+          if (memoire.new_item_type || memoire.poids.size) {
+            console.log(`[get-pending-jobs] mémoire vendeur Leboncoin user=${user.id} : type d'article neuf « ${memoire.new_item_type ?? "(jamais répondu)"} » ; poids par tranche ${memoire.poids.size ? [...memoire.poids].map(([t, v]) => `${t} → ${v}`).join(" ; ") : "(jamais répondu)"}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[get-pending-jobs] mémoire vendeur Leboncoin : lecture impossible (${String((e as Error)?.message ?? e)}) — jobs servis sans mémoire, la question sera posée comme avant`);
+      }
+
       for (const j of out as unknown as Array<Record<string, unknown>>) {
         if (j.platform !== "leboncoin" || j.action !== "publish") continue;
         const pf = (j.platform_fields && typeof j.platform_fields === "object")
@@ -3061,15 +3176,154 @@ serve(async (req) => {
           }
         }
 
+        // ── MÉMOIRE DE VENDEUR (2026-09-18) : les deux champs pro qu'on ne
+        //    devine pas et qu'on ne redemande plus. Cf. le bandeau plus haut.
+        //    Servis seulement quand le job ne les porte pas déjà — un aspect
+        //    déjà tranché n'est jamais écrasé. `condition` et `toy_type`, qui
+        //    marchent, ne sont pas touchés : on ajoute des clés au même sac.
+        {
+          const aspectsM = (pf.lbcAspects && typeof pf.lbcAspects === "object") ? (pf.lbcAspects as Record<string, unknown>) : {};
+          const ajouts: Record<string, string> = {};
+          if (memoire.new_item_type && !String(aspectsM.new_item_type ?? "").trim()) {
+            ajouts.new_item_type = memoire.new_item_type;
+            trace.new_item_type = {
+              valeur: memoire.new_item_type, avant: null,
+              source: "mémoire du compte (réponse de l'utilisateur à « Type d'article neuf », needsUserResolved)",
+            };
+          }
+          if (!String(aspectsM.estimated_parcel_weight ?? "").trim()) {
+            const t = trancheColis(pf, j.inventaire_id);
+            const p = memoire.poids.get(t);
+            if (p) {
+              ajouts.estimated_parcel_weight = p;
+              trace.estimated_parcel_weight = {
+                valeur: p, avant: null,
+                source: `mémoire du compte pour la tranche « ${t} » (réponse de l'utilisateur à « Poids du colis », needsUserResolved)`,
+              };
+            } else if (memoire.poids.size) {
+              // Une tranche jamais rencontrée : on NE prend PAS le poids d'une
+              // autre tranche. Une robe et une paire de bottes, ce n'est pas le
+              // même colis — et un poids faux se paie à la livraison.
+              console.log(`[get-pending-jobs] poids Leboncoin ${String(j.id).slice(0, 8)} : tranche « ${t} » jamais répondue (connues : ${[...memoire.poids.keys()].join(", ")}) — la question est posée, aucun report d'une autre tranche`);
+            }
+          }
+          if (Object.keys(ajouts).length) pf.lbcAspects = { ...aspectsM, ...ajouts };
+        }
+
         if (Object.keys(trace).length) {
           pf.lbc_deduit = { ...trace, le: new Date().toISOString(), pose_par: "get-pending-jobs (sources certaines)" };
           lbcDeduits++;
           console.log(`[get-pending-jobs] Leboncoin ${String(j.id).slice(0, 8)} (${chemin}) : ${Object.entries(trace).map(([k, v]) => `${k} ← « ${(v as Record<string, unknown>).valeur} » (${(v as Record<string, unknown>).source})`).join(" ; ")}`);
         }
       }
-      if (lbcDeduits) console.log(`[get-pending-jobs] user=${user.id} Univers/Couleur/État/Produit Leboncoin posés depuis des sources certaines : ${lbcDeduits}`);
+      if (lbcDeduits) console.log(`[get-pending-jobs] user=${user.id} Univers/Couleur/État/Produit/mémoire vendeur Leboncoin posés depuis des sources certaines : ${lbcDeduits}`);
     } catch (e) {
       console.warn(`[get-pending-jobs] déduction Univers/Produit Leboncoin : ${String((e as Error)?.message ?? e)} — jobs servis tels quels`);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // DÉPÔT OPLA : LES CHAMPS ÉTAIENT DANS LA FICHE ET N'ARRIVAIENT PAS AU JOB
+    // (2026-09-18) — même mécanique que la couleur Leboncoin (v69, 9c55333)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Mesuré sur le job eba8a512 (« Ego Maillot Muangthong », 18/09 09:20) :
+    // platform_fields porte genre "", taille "", couleur "", matiere "" — quatre
+    // chaînes VIDES. Or la fiche de l'article 1785575885276 les a toutes :
+    // taille « L » (capture), couleur « Blanc » (capture), matière
+    // « Polyester » (releve_ebay), état « Très bon état » (capture).
+    // Elles n'étaient recopiées nulle part : le stepper ne les résout pour Opla
+    // que quand l'utilisateur ouvre l'écran, et un job créé depuis le Stock
+    // part sans. Le pré-vol Opla exige la taille dès que la feuille a une
+    // grille : quatre champs vides, c'est une question de plus par champ.
+    //
+    // ⚠️ CE N'EST PAS UNE DÉDUCTION : c'est la valeur ENREGISTRÉE de l'article,
+    //    la même que celle servie à Vinted. Rien n'est inventé.
+    // ⛔ SOURCES CERTAINES SEULEMENT : `capture` (relevé sur l'annonce),
+    //    `vinted_*` (synchro du dressing), `releve_*` (relevé « Mes annonces »
+    //    sur une plateforme). JAMAIS `backfill_job`, jamais une valeur d'IA —
+    //    même règle que le bloc Beebs du 13/09.
+    // ⛔ ET RIEN NE PEUT DEVENIR FAUX : le pré-vol Opla (opla-prevol.js) valide
+    //    la taille contre la grille de LA FEUILLE et JETTE couleur et matière
+    //    hors liste avec un avertissement. Une valeur qui ne convient pas
+    //    laisse le champ vide, elle ne part jamais en 200.
+    //
+    // LE GENRE NE SE DEMANDE PAS : il se lit sur la BRANCHE de la catégorie une
+    // fois celle-ci résolue — racine MENS = Homme, WOMEN_ROOT = Femme, et sous
+    // CHILDREN_NEW le rayon (Vêtements pour filles / pour garçons). Les racines
+    // non genrées (Maison, Sport, Culture et Loisirs, Jeux et jouets, Fait main)
+    // ne posent rien : un genre inventé là serait un genre faux.
+    let oplaCompletes = 0;
+    try {
+      const depotsOpla = (out as unknown as Array<Record<string, unknown>>)
+        .filter((j) => j.platform === "opla" && j.action === "publish" && j.inventaire_id != null);
+      if (depotsOpla.length) {
+        const ids = [...new Set(depotsOpla.map((j) => Number(j.inventaire_id)))];
+        const attrsParArticle = new Map<number, Record<string, unknown>>();
+        const { data: fiches } = await userClient
+          .from("inventaire").select("id, attributs").in("id", ids);
+        for (const f of (fiches ?? []) as Array<{ id: number; attributs: unknown }>) {
+          if (f.attributs && typeof f.attributs === "object") attrsParArticle.set(Number(f.id), f.attributs as Record<string, unknown>);
+        }
+        // { v, at, source } (écriture actuelle) ou la chaîne nue des lignes
+        // anciennes — la chaîne nue n'a pas de source, on ne la retient pas.
+        const valeurCertaine = (attrs: Record<string, unknown> | undefined, cle: string): { v: string; source: string } | null => {
+          const e = attrs?.[cle];
+          if (!e || typeof e !== "object") return null;
+          const v = String((e as Record<string, unknown>).v ?? "").trim();
+          const source = String((e as Record<string, unknown>).source ?? "");
+          if (!v || !/^(capture|vinted|releve)/.test(source)) return null;
+          return { v, source };
+        };
+        const GENRE_RAYON: Record<string, string> = {
+          GIRLS_NEW: "Fille", BOYS_NEW: "Garçon",
+        };
+        const genreDeLaBranche = (code: string): { genre: string; via: string } | null => {
+          if (!code || !oplaNoeud(code)) return null;
+          // On remonte jusqu'à la racine en gardant le dernier rayon traversé.
+          let c: string | null = code;
+          let rayon = code;
+          for (let n = 0; c && n < 12; n++) {
+            const noeud = oplaNoeud(c);
+            if (!noeud?.parent) break;
+            rayon = c;
+            c = noeud.parent;
+          }
+          const racine = c ?? "";
+          if (racine === "MENS") return { genre: "Homme", via: "racine Hommes" };
+          if (racine === "WOMEN_ROOT") return { genre: "Femme", via: "racine Femmes" };
+          if (racine === "CHILDREN_NEW" && GENRE_RAYON[rayon]) {
+            return { genre: GENRE_RAYON[rayon], via: `rayon ${oplaNoeud(rayon)?.titre ?? rayon}` };
+          }
+          return null; // racine non genrée : on ne pose rien
+        };
+        for (const j of depotsOpla) {
+          const pf = ((j.platform_fields ?? {}) as Record<string, unknown>);
+          const attrs = attrsParArticle.get(Number(j.inventaire_id));
+          const trace: Record<string, unknown> = {};
+          for (const cle of ["taille", "couleur", "matiere", "etat", "marque"]) {
+            if (String(pf[cle] ?? "").trim()) continue;
+            const t = valeurCertaine(attrs, cle);
+            if (!t) continue;
+            pf[cle] = t.v;
+            trace[cle] = { valeur: t.v, avant: null, source: `inventaire.attributs.${cle} (${t.source})` };
+          }
+          if (!String(pf.genre ?? "").trim()) {
+            const g = genreDeLaBranche(String(pf.oplaCategoryCode ?? "").trim());
+            if (g) {
+              pf.genre = g.genre;
+              trace.genre = { valeur: g.genre, avant: null, source: `branche de la catégorie Opla (${g.via})` };
+            }
+          }
+          if (Object.keys(trace).length) {
+            pf.opla_deduit = { ...trace, le: new Date().toISOString(), pose_par: "get-pending-jobs (fiche de l'article + branche de catégorie)" };
+            j.platform_fields = pf;
+            oplaCompletes++;
+            console.log(`[get-pending-jobs] Opla ${String(j.id).slice(0, 8)} : ${Object.entries(trace).map(([k, v]) => `${k} ← « ${(v as Record<string, unknown>).valeur} » (${(v as Record<string, unknown>).source})`).join(" ; ")}`);
+          }
+        }
+        if (oplaCompletes) console.log(`[get-pending-jobs] user=${user.id} jobs Opla complétés depuis la fiche : ${oplaCompletes}`);
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] complément Opla depuis la fiche : ${String((e as Error)?.message ?? e)} — jobs servis tels quels, comme avant`);
     }
 
     // ── TAILLE VINTED SANS CORRESPONDANCE : OPTION NEUTRE, EN REPRISE ───────
