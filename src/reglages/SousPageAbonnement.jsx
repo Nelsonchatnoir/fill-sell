@@ -78,7 +78,13 @@ export default function SousPageAbonnement({ c, T }) {
       });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.url) throw new Error(json?.error ?? `HTTP ${res.status}`);
-      window.open(json.url, '_blank', 'noopener,noreferrer');
+      // ⛔ PAS `window.open` : le geste de l'utilisateur est consommé par le
+      // `await` ci-dessus, et Safari iOS bloque alors l'ouverture — la ligne
+      // n'aurait rien fait sur téléphone, exactement le défaut qu'on vient de
+      // corriger deux fois. On navigue, comme le checkout Stripe et la
+      // connexion eBay le font déjà (App.jsx, utils/ebayCompte) ; le portail
+      // ramène ici par son return_url. Ligne servie au WEB seulement.
+      window.location.assign(json.url);
     } catch (e) {
       console.warn('[reglages] portail de facturation indisponible —', e?.message ?? e);
       setFacturesRepli(true);
