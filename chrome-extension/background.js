@@ -11695,7 +11695,20 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
         annonces.push({ listing_id: id, url, titre, prix, statut, photo_url: photo && /^https?:/.test(photo) ? photo : null, vues: stats.vues, favoris: stats.favoris });
       }
       const suivant = document.querySelector("a[rel='next'], a[aria-label*='suivant' i], a[aria-label*='next' i], button[aria-label*='suivant' i]");
-      return { annonces, suivant: suivant ? (suivant.href || true) : null, diag };
+      // ── COUVERTURE (2026-09-18, LOT 1) ─ combien la page DIT en avoir ──────
+      // Leboncoin : « En ligne (N) », le compteur d'onglet (même lecture que
+      // lbcMesAnnoncesEtat). Il dit si le relevé a tout vu — sans lui, « 30 sur
+      // 181 » se croyait complet et faisait dater 151 annonces EN LIGNE comme
+      // disparues. Compteur absent = liste non rendue (redirection du compte
+      // PRO vers « / », challenge, squelette) : surLaListe=false, jamais « 0 ».
+      let totalEnLigne = null;
+      let surLaListe = true;
+      if (plateforme === "leboncoin") {
+        const mc = (document.body?.innerText ?? "").match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
+        if (mc) totalEnLigne = parseInt(mc[1], 10);
+        else surLaListe = false;
+      }
+      return { annonces, suivant: suivant ? (suivant.href || true) : null, diag, totalEnLigne, surLaListe };
     },
     args: [pattern.source, platform],
   });
@@ -11707,6 +11720,10 @@ async function releverAnnoncesPlateforme(platform) {
   const annonces = new Map();
   let complet = true;
   const illisibles = { prix: 0, titre: 0 }; // ce que le relevé n'a PAS su lire (jamais deviné)
+  // Couverture Leboncoin (LOT 1, 2026-09-18) : ce que la page DIT avoir en ligne,
+  // et si elle a bien rendu sa liste. Cf. verdict de couverture en fin de fonction.
+  let lbcTotalEnLigne = null;
+  let lbcListeRendue = true;
   if (platform === "opla") {
     // `absente` : la plateforme n'est pas là (permission jamais accordée). Ce
     // n'est PAS un échec de relevé — cf. lancerRelevePlateforme.
@@ -11741,11 +11758,18 @@ async function releverAnnoncesPlateforme(platform) {
         // prise dans lancerRelevePlateforme, sur le compte d'annonces.
         return { annonces: [...annonces.values()], complet: false, absente: true, erreur: `session ${platform} : page de connexion` };
       }
-      const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) } }));
+      const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) }, surLaListe: false }));
       illisibles.prix += Number(r.diag?.sans_prix) || 0;
       illisibles.titre += Number(r.diag?.sans_titre) || 0;
       for (const a of r.annonces ?? []) {
         if (!annonces.has(a.listing_id)) annonces.set(a.listing_id, { ...a, statut: a.statut ?? page.statut });
+      }
+      // Couverture Leboncoin (LOT 1) : on retient le compteur « En ligne (N) »
+      // et le fait que la liste ait été rendue. Une page non rendue (redirection
+      // du compte, challenge) ne vaut jamais « 0 annonce » — elle vaut incomplet.
+      if (platform === "leboncoin") {
+        if (Number.isFinite(r.totalEnLigne)) lbcTotalEnLigne = r.totalEnLigne;
+        if (r.surLaListe === false) lbcListeRendue = false;
       }
       if (!r.suivant || typeof r.suivant !== "string" || r.suivant === url) break;
       url = r.suivant.replace(WORK_TAB_FRAGMENT, "");
@@ -11753,7 +11777,28 @@ async function releverAnnoncesPlateforme(platform) {
       await sleep(randInt(1200, 2400));
     }
   }
-  return { annonces: [...annonces.values()], complet, illisibles };
+  // ── VERDICT DE COUVERTURE LEBONCOIN (LOT 1, 2026-09-18) ───────────────────
+  // « Mes annonces » rend ~30 cartes et ne porte AUCUN « page suivante »
+  // exploitable : un gros compte (181, 232, 1065) n'en montre jamais plus.
+  // Sans garde, complet restait true et rapprocher_releve datait disparu_le
+  // sur tout ce qui débordait du top-30 — des annonces EN LIGNE (prouvé le
+  // 18/09 : « Cars 2 » XEWER, « Costume Brice » Joséphine, HTTP 200/active,
+  // marquées disparues). On compare le vu au compteur « En ligne (N) » et on se
+  // marque INCOMPLET si on en a vu moins ; le moteur ne datera alors aucune
+  // disparition (rapprocher_releve.v_complet lit ce préfixe « [incomplet] »).
+  // ⚠️ La bascule vers le vrai chemin PRO et un vrai balayage au-delà de 30
+  //    restent à décider (lots suivants) : ici on ne fait que NE PLUS MENTIR.
+  let erreurCouverture = null;
+  if (platform === "leboncoin") {
+    if (!lbcListeRendue) {
+      complet = false;
+      erreurCouverture = "« Mes annonces » n'a pas rendu sa liste (redirection du compte, challenge ou page non peinte) — rien n'est conclu disparu";
+    } else if (Number.isFinite(lbcTotalEnLigne) && annonces.size < lbcTotalEnLigne) {
+      complet = false;
+      erreurCouverture = `couverture partielle : ${annonces.size} annonce(s) vue(s) sur ${lbcTotalEnLigne} « en ligne » — le reste n'est ni relevé ni conclu disparu`;
+    }
+  }
+  return { annonces: [...annonces.values()], complet, illisibles, erreur: erreurCouverture };
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
