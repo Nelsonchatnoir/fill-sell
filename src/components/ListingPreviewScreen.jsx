@@ -8,6 +8,7 @@ import ExtensionPitchScreen from "./ExtensionPitchScreen";
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
 // montants dormants s'affichent en chiffres nus, plus aucune iconographie.)
 import PlatformLogo from "./platform-logos/PlatformLogo";
+import OplaAutorisationModal from "./OplaAutorisationModal";
 import AnalyseMarche from "./AnalyseMarche";
 // Photos : lecture tolérante (chaîne ou objet), écriture TOUJOURS en objets
 // `{ type, url }` — la forme de generate-listing, la seule que les handlers
@@ -1487,6 +1488,15 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
   pausedPlatforms = [], pausedReasons = {} }) {
   const { t, tpl } = useTranslation(lang);
   const addRef = useRef();
+  // ── OPLA : la modale d’autorisation, ouverte AU CLIC (18/09/2026) ────────
+  // Elle ne bloque jamais : « Continuer » coche quand même. Voir
+  // components/OplaAutorisationModal pour ce qui se passe ensuite.
+  const [oplaModale, setOplaModale] = useState(false);
+  const basculerPlateforme = (p) => setSelected(prev => {
+    const s = new Set(prev);
+    s.has(p) ? s.delete(p) : s.add(p);
+    return s;
+  });
   // Motif d'une plateforme visible mais grisée (Opla, 17/09 soir) : ouverte
   // côté serveur mais extension du compte trop ancienne → « mise à jour » ;
   // sinon « pas encore ouverte ». Le fait, pas une date.
@@ -1918,11 +1928,17 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
                 : enPause
                 ? messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p])
                 : undefined}
-              onClick={() => !disabled && setSelected(prev => {
-                const s = new Set(prev);
-                s.has(p) ? s.delete(p) : s.add(p);
-                return s;
-              })}
+              onClick={() => {
+                if (disabled) return;
+                // ⛔ OPLA : LA QUESTION SE POSE ICI, AU CLIC (18/09/2026).
+                // Cocher Opla sans autorisation ouvre la modale SUR PLACE,
+                // avec le geste exact. Elle ne bloque pas : « Continuer »
+                // coche quand même — l’annonce attendra l’autorisation et
+                // partira toute seule. Décocher ne demande rien, et
+                // « on ne sait pas » (oplaAcces null) ne demande rien non plus.
+                if (p === "opla" && !selected.has(p) && oplaAcces === false) { setOplaModale(true); return; }
+                basculerPlateforme(p);
+              }}
               style={{
                 display:"flex", alignItems:"center", gap:7,
                 padding:"7px 16px 7px 8px", borderRadius:999,
@@ -1991,29 +2007,6 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           {motifAVenir(p)}
         </p>
       ))}
-      {/* ── OPLA : L'AUTORISATION SE DEMANDE ICI, AU MOMENT DE COCHER ─────────
-          (2026-09-18, décision Nico.) Quelqu'un qui vient d'installer l'app
-          n'ira jamais fouiller dans les réglages : cocher Opla menait à un
-          échec, et le seul remède vivait dans une page qu'il ne connaît pas.
-          ⚠️ CONTRAINTE CHROME, non contournable : chrome.permissions.request()
-          n'obéit qu'à un geste dans une PAGE D'EXTENSION. Une page web ne peut
-          PAS accorder cette permission — on ne promet donc aucun bouton qui le
-          ferait. On dit le geste exact, où il se trouve, et ce qu'on y verra.
-          On dit aussi que rien n'est perdu : le job part en needs_user nommé
-          (needs_user_source='opla_acces') et repart TOUT SEUL à l'octroi
-          (background.js, rearmerJobsOplaEnAttente).
-          Affiché UNIQUEMENT sur oplaAcces === false : « on ne sait pas » ne
-          déclenche rien. */}
-      {selected.has("opla") && plateformesOuvertes.includes("opla") && oplaAcces === false && (
-        <div style={{ margin:"8px 0 0", padding:"10px 12px", borderRadius:12,
-          background:"#FBF3EC", border:"1px solid #EED9A6" }}>
-          <p style={{ margin:0, fontSize:12, color:"#8A6100", fontWeight:600, lineHeight:1.45 }}>
-            {lang === "en"
-              ? <>Opla needs your permission once, and it can only be granted from the extension: click the FillSell icon in Chrome’s toolbar — the panel shows “Autoriser Opla”. You can publish before that: the Opla listing waits for the permission, then goes out on its own.</>
-              : <>Opla demande ton autorisation une seule fois, et elle ne peut s’accorder que dans l’extension : clique sur l’icône FillSell dans la barre d’outils de Chrome, le panneau affiche « Autoriser Opla ». Tu peux publier avant : l’annonce Opla attend l’autorisation, puis part toute seule.</>}
-          </p>
-        </div>
-      )}
       {PLATFORMS_DEFAULT.filter(p => (publishedSet?.has(p) || queuedSet?.has(p))).length > 0 && (
         <p style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {lang === 'en'
@@ -2081,6 +2074,15 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
             {lang === "en" ? "Link eBay" : "Relier eBay"}
           </button>
         </div>
+      )}
+      {/* La modale Opla — au clic, sur place, jamais un renvoi ailleurs. */}
+      {oplaModale && (
+        <OplaAutorisationModal
+          lang={lang}
+          contexte="publication"
+          onContinuer={() => { setOplaModale(false); basculerPlateforme("opla"); }}
+          onClose={() => setOplaModale(false)}
+        />
       )}
       {selected.size === 0 && (
         <p style={{ margin:"8px 0 0", fontSize:12.5, color:"#EF4444", fontWeight:600 }}>
