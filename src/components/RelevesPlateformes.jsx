@@ -32,6 +32,30 @@ const P = {
   teal: '#2F9E90', tealDeep: '#1B6E62', amberBg: '#FFF6E3', amberBd: '#EED9A6', amberInk: '#8A6100',
 };
 
+// ── UNE PLATEFORME ABSENTE N'EST PAS UN RELEVÉ RATÉ (2026-09-18) ────────────
+// Constat Nico : Leo-paul Hug a pris QUATRE runs `failed` en une matinée —
+// « accès Opla non accordé », « session ebay : page de connexion », idem
+// Beebs — alors qu'il n'a de compte sur AUCUNE des trois. Son journal était
+// plein d'échecs qui n'en étaient pas.
+//
+// DEUX PORTES, et c'est délibéré :
+//   · `status === 'absente'` — ce que l'extension écrira à partir de la 0.6.43 ;
+//   · à défaut, la SIGNATURE de l'échec sur un run `failed` sans une seule
+//     annonce vue. C'est ce qui éteint le bruit DÈS AUJOURD'HUI, pour tout le
+//     parc et pour les runs DÉJÀ enregistrés, sans réécrire une seule ligne
+//     en base — aucun compte n'est réparé à la main.
+// ⛔ La condition `items_vus === 0` n'est pas décorative : un mur de connexion
+//    rencontré en page 3 d'un relevé qui marchait reste un vrai incident.
+// Les deux motifs sont les messages que l'extension écrit elle-même
+// (background.js, releverAnnoncesPlateforme) — couplage étroit, assumé, et la
+// porte par statut le rendra inutile quand tout le parc sera à jour.
+function absenceDePlateforme(run) {
+  if (!run) return false;
+  if (run.status === 'absente') return true;
+  if (run.status !== 'failed' || (run.items_vus ?? 0) > 0) return false;
+  return /accès opla non accordé|page de connexion/i.test(String(run.erreur ?? ''));
+}
+
 function ilYA(iso, fr) {
   const t = Date.parse(iso ?? '');
   if (!Number.isFinite(t)) return null;
@@ -247,6 +271,11 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
           else if (run?.status === 'done') etat = fr
             ? `Relevé ${ilYA(run.finished_at, fr) ?? ''} · ${run.items_vus ?? 0} annonce${(run.items_vus ?? 0) > 1 ? 's' : ''}${c?.aRattacher ? ` · ${c.aRattacher} à rattacher` : ''}`
             : `Scanned ${ilYA(run.finished_at, fr) ?? ''} · ${run.items_vus ?? 0} listing${(run.items_vus ?? 0) > 1 ? 's' : ''}${c?.aRattacher ? ` · ${c.aRattacher} to match` : ''}`;
+          else if (absenceDePlateforme(run)) etat = /opla/i.test(String(run.erreur ?? ''))
+            ? (fr ? "Opla n'est pas encore autorisée dans l'extension — rien à relever."
+                  : 'Opla is not authorised in the extension yet — nothing to scan.')
+            : (fr ? `Pas connecté à ${LABEL_RELEVE[p]} dans Chrome — rien à relever.`
+                  : `Not signed in to ${LABEL_RELEVE[p]} in Chrome — nothing to scan.`);
           else if (run?.status === 'failed') etat = fr ? `Dernier relevé en échec — ${String(run.erreur ?? '').replace(/^\[incomplet\]\s*/, '').slice(0, 90) || 'réessaie'}` : `Last scan failed — ${String(run.erreur ?? '').slice(0, 90) || 'try again'}`;
           else if (run?.status === 'expired' || run?.status === 'cancelled') etat = fr ? 'Dernière demande expirée (ordinateur éteint)' : 'Last request expired (computer off)';
           else etat = fr ? 'Jamais relevée' : 'Never scanned';
