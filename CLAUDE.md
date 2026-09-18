@@ -81,30 +81,79 @@ garde `vite:preloadError` (src/main.jsx) recharge une fois toute seule — un
 
 ## Déploiement des Edge Functions
 
-Toutes les fonctions webhook et cron doivent être déployées avec `--no-verify-jwt` :
-- email-tunnel
-- apple-iap-webhook
-- google-play-webhook
-- stripe-webhook
-- tiktok-event
-- apple-subscription-status
-- apple-notification-history
-- ops-digest
-- handler-watch
-- republish-purge
-- lens-temp-purge (ménage quotidien du bucket lens-temp, 03:50 UTC — cron
-  pg_net, jamais de purge côté client : un client ne voit que SON scan, c'est
-  ce qui effaçait les photos d'articles avant le 15/09)
-- email-desinscription (page publique de désinscription : l'appelant n'est PAS
-  connecté, c'est tout l'intérêt — un verify_jwt à true rendrait le lien des
-  emails inopérant et bloquerait toute campagne)
+### ⛔ LE GESTE, AVANT TOUT DÉPLOIEMENT — UNE LIGNE, À COPIER
 
-(`send-merine-reply` a été supprimée en prod le 28/07/2026 — un one-shot en
-`verify_jwt = false` que plus rien n'appelait.)
+```
+npx supabase functions list | grep -o '"slug":"<nom>"[^}]*' | grep -o '"version":[0-9]*\|"verify_jwt":[a-z]*'
+```
+
+**On lit l'état RÉEL avant, on le relit après.** Un déploiement sans
+`--no-verify-jwt` remet `verify_jwt` à `true` : le cron ou le webhook tombe en
+401, en silence, et personne ne le voit avant que les jobs s'empilent.
+C'est ce geste qui a évité de casser le cron `ebay-api-worker-2min` le
+18/09 — la fonction tourne en `false` et **ne figurait pas** dans la liste
+ci-dessous, qui était la seule source consultée jusque-là.
+
+### LA RÈGLE — C'EST L'APPELANT QUI DÉCIDE, PAS LA LISTE
+
+Une liste se périme à chaque fonction ajoutée : c'est exactement comme ça que
+le trou d'`ebay-api-worker` est né. La question n'est jamais « est-elle dans la
+liste ? » mais **« qui l'appelle, et cet appelant a-t-il une session
+Supabase ? »** :
+
+| L'appelant | verify_jwt | Ce que la fonction doit faire |
+|---|---|---|
+| pg_cron / pg_net (trigger) | **false** | garde `x-cron-secret` obligatoire |
+| Webhook externe (Stripe, Apple, Google, eBay) | **false** | vérifier la signature de l'émetteur |
+| Lien public, redirection OAuth | **false** | jeton dans l'URL, jamais rien d'implicite |
+| App ou extension (JWT utilisateur) | **true** (défaut) | rien, la plateforme garde |
+| DEUX appelants dont un sans session | **false** | garde maison à deux branches |
+
+⛔ `verify_jwt: false` n'est JAMAIS « pas d'authentification » : c'est
+« l'authentification est faite par la fonction elle-même ». Une fonction en
+`false` sans garde propre est une porte ouverte.
 
 Commande : `supabase functions deploy <nom> --no-verify-jwt`
 
-Ne jamais déployer ces fonctions sans ce flag, sinon `verify_jwt` repasse à `true` et les appels externes (Apple, Stripe, Google, pg_net) sont bloqués en 401.
+### L'ÉTAT RELEVÉ LE 18/09/2026 — 33 fonctions en `verify_jwt: false` sur 57
+
+Relevé par `functions list`, pas recopié. Il se périme : le geste ci-dessus
+fait foi, pas ce tableau.
+
+**Appelées par pg_cron (`x-cron-secret`)** — `cron.job` le prouve :
+`ebay-api-worker` (*/2) · `republish-auto-sweep` (*/3) · `handler-watch` (*/3)
+· `email-tunnel` (9h + horaire, **et** le trigger `handle_new_user`) ·
+`ops-digest` (8h50) · `republish-purge` (3h40) · `lens-temp-purge` (3h50 —
+jamais de purge côté client : un client ne voit que SON scan, c'est ce qui
+effaçait les photos d'articles avant le 15/09).
+
+**Webhooks externes** (l'émetteur n'a pas de session) : `stripe-webhook` ·
+`apple-iap-webhook` · `google-play-webhook` · `ebay-account-deletion` ·
+`ebay-oauth-callback` (redirection eBay).
+
+**Appel public assumé** : `email-desinscription` (le lien des emails ; un
+`verify_jwt` à true le rendrait inopérant et bloquerait toute campagne) ·
+`apple-subscription-status` · `apple-notification-history`.
+
+**Font leur PROPRE garde** : `resolve-categorie` (deux appelants : l'app avec
+JWT, le worker eBay avec `x-cron-secret`) · `voice-intent` (Bearer + getUser
+maison, pour maîtriser sa réponse 401/CORS) · `update-job-status` ·
+`check-listing-status`.
+
+**One-shots déployés à la main** (14) : `send-relance`,
+`send-batch-notifications`, `send-chantier-zip`, et les `send-<prénom>-<date>`.
+
+⚠️ **DEUX ÉCARTS CONNUS, NON CORRIGÉS — à trancher, pas à patcher en passant :**
+- `update-job-status` et `check-listing-status` portent dans leur propre
+  en-tête « verify_jwt reste à true / peut rester au défaut : l'appel porte
+  toujours un JWT user » — et tournent pourtant en **false**. Le code et la
+  prod ne disent pas la même chose. Les deux font leur garde maison, donc rien
+  n'est ouvert ; mais l'un des deux textes est faux.
+- `tiktok-event` était listé ici et **n'existe plus** parmi les 57 fonctions
+  actives. Retiré de la liste le 18/09.
+
+(`send-merine-reply` a été supprimée en prod le 28/07/2026 — un one-shot en
+`verify_jwt = false` que plus rien n'appelait.)
 
 **Numéros de version** : ne JAMAIS écrire un numéro de version de fonction
 (rapport, STATUS.md, commentaire, commit) sans l'avoir lu dans
