@@ -1070,19 +1070,83 @@ function defaultConditionFor(field) {
   return findMatchingOption(DEFAULT_CONDITION, field.options ?? []) || DEFAULT_CONDITION;
 }
 
-function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
+// ── LES ATTRIBUTS DE LA FICHE, ET LA SOURCE NE DÉCIDE JAMAIS ───────────────
+// `inventaire.attributs` porte { v, at, source } — écrit par le relevé de
+// CHAQUE plateforme (releve_ebay, releve_leboncoin, releve_beebs, releve_opla)
+// comme par la synchro Vinted (vinted_liste, vinted_detail) et par la capture.
+// ⛔ ON LIT LA VALEUR, QUELLE QUE SOIT SON ORIGINE. Une taille est une taille :
+//    le système sait déjà reprendre une fiche Vinted et l'adapter ailleurs, il
+//    doit faire PAREIL depuis eBay, Leboncoin, Beebs ou Opla. `source` sert à
+//    tracer et à arbitrer un conflit — jamais à décider si on lit.
+// (La chaîne nue est acceptée aussi : les lignes anciennes n'ont pas d'objet.)
+const CLES_FICHE = {
+  etat: "etat", condition: "etat",
+  taille: "taille", size: "taille",
+  couleur: "couleur", color: "couleur",
+  matiere: "matiere", material: "matiere",
+  genre: "genre",
+  marque: "marque", brand: "marque",
+};
+function valeurAttributFiche(attributs, fieldKey) {
+  const cle = CLES_FICHE[fieldKey];
+  if (!cle || !attributs || typeof attributs !== "object" || Array.isArray(attributs)) return null;
+  const e = attributs[cle];
+  const v = e && typeof e === "object" && !Array.isArray(e) ? e.v : e;
+  const t = String(v ?? "").trim();
+  return t || null;
+}
+
+// ── L'ADAPTATION PAR PLATEFORME, POUR LA TAILLE ────────────────────────────
+// findMatchingOption EST l'adaptateur par plateforme, et il est déjà branché
+// sur chaque champ `select` : c'est lui qui transforme une valeur en l'option
+// que CETTE plateforme propose. Il lui manque une seule chose, le format
+// COMPOSÉ de Vinted : « L / 40 / 12 » contre une grille qui attend « L »
+// (Opla), « 40 » (Leboncoin) ou « 12 ». On découpe donc sur « / » et on lui
+// redemande segment par segment, dans l'ordre du libellé.
+// ⚠️ MÊME ÉTAGE que `resoudreTailleEbay` (extension, « taille-segment ») et que
+//    `normaliserTailleOpla` (serveur, posé ce matin). Aucun des deux n'est
+//    importable ici — l'un est un content script, l'autre un module Deno qui
+//    traîne un catalogue d'1 Mo — mais la RÈGLE est la même et
+//    l'appariement reste fait par findMatchingOption : on ajoute le découpage
+//    devant, pas une seconde grammaire de correspondance.
+// ⛔ AUCUNE APPROXIMATION : sans correspondance, "" — le champ reste vide sur
+//    CETTE plateforme, et seulement sur celle-là. Jamais la taille la plus
+//    proche (« 59 cm » → « 1-3 mois » est l'erreur déjà payée côté Vinted).
+function optionTaillePlateforme(valeur, options) {
+  const direct = findMatchingOption(valeur, options, { sizeField: true });
+  if (direct) return direct;
+  const segments = String(valeur ?? "").split("/").map((s) => s.trim()).filter(Boolean);
+  if (segments.length < 2) return "";
+  for (const seg of segments) {
+    const m = findMatchingOption(seg, options, { sizeField: true });
+    if (m) return m;
+  }
+  return "";
+}
+
+function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs, attributsFiche = null) {
   const result = {};
   for (const field of fieldConfigs) {
     // sizeField : arme la garde anti-nombre-nu de findMatchingOption, comme
     // opts.sizeField des content scripts. Mêmes clés que le switch ci-dessous.
     const estTaille = field.key === "taille" || field.key === "size";
+    const adapter = (brut) => (estTaille
+      ? optionTaillePlateforme(brut, field.options)
+      : findMatchingOption(brut, field.options, { sizeField: false }));
     const fromApi = platformFields?.[field.key];
     if (fromApi && fromApi !== "null") {
       result[field.key] = field.type === "select"
-        ? (findMatchingOption(fromApi, field.options, { sizeField: estTaille }) || fromApi)
+        ? (adapter(fromApi) || fromApi)
         : fromApi;
       continue;
     }
+    // ── L'ORDRE, ET IL EST DÉFINITIF (2026-09-18) ─────────────────────────
+    //   saisie/IA (ci-dessus) > ATTRIBUT DE LA FICHE > estimation Lens > défaut
+    // Une ESTIMATION n'écrase jamais une valeur relevée. Avant aujourd'hui la
+    // fiche n'était pas lue du tout : `taille` interrogeait l'estimation Lens
+    // (`taille_estimee`), et genre/matière/couleur n'avaient AUCUN cas — d'où
+    // quatre tirets à l'écran pendant que la base portait les valeurs.
+    const ficheVal = valeurAttributFiche(attributsFiche, field.key);
     let lensVal = null;
     switch (field.key) {
       case "etat":
@@ -1100,12 +1164,17 @@ function mergeFieldsWithLens(platformFields, lensResult, fieldConfigs) {
       // repli que modele — il fait arriver la valeur au formulaire y compris
       // sur un job généré AVANT le redéploiement de generate-listing.
       case "isbn":        lensVal = lensResult?.attributs_visibles?.isbn_ean ?? null; break;
+      // ⛔ genre / matiere / couleur n'ont VOLONTAIREMENT pas de cas Lens : le
+      //    Lens ne les estime pas. Ils viennent de la fiche, et d'elle seule —
+      //    c'est justement ce qui manquait, et ce que `ficheVal` apporte.
       default:            lensVal = null;
     }
-    result[field.key] = lensVal
-      ? (field.type === "select"
-          ? (findMatchingOption(lensVal, field.options, { sizeField: estTaille }) || "")
-          : lensVal)
+    // La fiche D'ABORD, l'estimation ensuite. `??` et non `||` : une valeur
+    // vide de la fiche n'existe pas (valeurAttributFiche rend null), mais on
+    // ne veut surtout pas qu'un « 0 » ou un « S » soit pris pour un manque.
+    const brut = ficheVal ?? lensVal;
+    result[field.key] = brut
+      ? (field.type === "select" ? (adapter(brut) || "") : brut)
       : "";
     // Aucune source n'a donné l'état (IA, Lens, ligne de stock) — ou en a donné
     // un que la plateforme ne connaît pas : défaut. L'utilisateur voit la valeur
@@ -5234,7 +5303,12 @@ export default function ListingPreviewScreen({
             // (source "reconnue"/"web"/absente) ne doit pas remplir le champ
             // Modèle de Vinted ni l'aspect eBay du même nom.
             lensPourChamps,
-            platformFieldsConfig[p] ?? []
+            platformFieldsConfig[p] ?? [],
+            // Les attributs de la FICHE — toutes plateformes d'origine
+            // confondues. C'est le chaînon qui manquait : sans lui, taille,
+            // genre, matière et couleur restaient en base et l'écran affichait
+            // quatre tirets (mesuré sur 1789676224963 et 1789676272841).
+            initialListing?.attributs ?? null
           ),
           price: data.price ?? price ?? null,
         };

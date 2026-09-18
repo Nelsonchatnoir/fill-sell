@@ -751,7 +751,7 @@ function getMargeMessage(marginPct,marginEur,lang='fr'){
 // la règle de comptabilisation les lit (prixAchatConnu), et l'UI s'en sert pour
 // marquer « prix d'achat à compléter » sur les articles importés du dressing.
 // Un champ oublié ici est un champ invisible pour toute l'app.
-function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,prix_achat_inconnu:v.prix_achat_inconnu===true,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",
+function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.prix_achat,prix_achat_inconnu:v.prix_achat_inconnu===true,sell:v.prix_vente,margin:v.margin,marginPct:v.margin_pct,statut:v.statut,date:v.date,date_ajout:v.created_at||v.date_achat||v.date,marque:v.marque||"",description:v.description||"",type:v.type||"Autre",attributs:v.attributs??null,
   // `type` garde son repli « Autre » : il pilote l'icône, la couleur de tuile
   // et les filtres, qui ont tous besoin d'une valeur. Mais ce repli EFFACE la
   // différence entre « non classé » et « classé Autre par l'utilisateur » —

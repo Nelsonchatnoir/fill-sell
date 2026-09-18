@@ -10290,6 +10290,20 @@ const StockTab = memo(function StockTab({
             // la fiche, jamais sur un blocage.
             vinted_catalog_id: publishItem.vinted_catalog_id ?? null,
             marque:      publishItem.marque      ?? null,
+            // ── LES ATTRIBUTS DE LA FICHE ENTRENT DANS LE STEPPER (18/09) ──
+            // Cet objet est une liste BLANCHE, et `attributs` n'y était pas :
+            // taille, genre, matière et couleur mouraient ICI, à la porte.
+            // L'écran affichait quatre tirets pendant que la base portait
+            // « 38 · Bleu · Synthétique » (1789676224963) et
+            // « XS · Vert · Coton 60% Polyester 40% » (1789676272841).
+            // ⛔ On passe l'OBJET tel qu'il est en base ({ v, at, source }) :
+            //    c'est le lecteur partagé (mergeFieldsWithLens) qui sait le
+            //    lire, et lui seul — on ne l'aplatit pas au passage, sinon on
+            //    perdrait la source, qui sert à tracer et à arbitrer.
+            // ⛔ Et la SOURCE NE FILTRE RIEN : releve_ebay, releve_leboncoin,
+            //    releve_beebs, releve_opla, vinted_liste, vinted_detail,
+            //    capture — toutes se valent. Une taille est une taille.
+            attributs:   publishItem.attributs   ?? null,
             // Prix connu de la ligne inventaire (2026-07-13, job 3d194668) :
             // pré-remplissage SYNCHRONE de la carte — le fallback DB du
             // stepper existe mais arrive en async, et surtout il ne couvre
