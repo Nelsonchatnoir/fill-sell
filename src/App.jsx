@@ -2298,22 +2298,37 @@ export default function App({ loginOnly = false }){
     return ext!=null&&Number.isFinite(min)&&ext<min;
   })();
   const extBannerKey=`${extensionBuild}|${EXT_MIN_BUILD}`;
-  // ── Opla : ce que l'app en montre (2026-09-17 soir) ─────────────────────
-  // Encodage identique à get-pending-jobs (major×10000 + minor×100 + patch) ;
-  // version absente ou illisible = 0 : une extension qui ne sait pas se
-  // nommer n'a pas Opla.
-  const codeVersionExtension=(v)=>{const m=String(v??'').trim().match(/^(\d+)\.(\d+)\.(\d+)/);return m?Number(m[1])*10000+Number(m[2])*100+Number(m[3]):0;};
-  const oplaActivable=oplaConfig.lu&&oplaConfig.ouvert&&oplaConfig.min!=null&&codeVersionExtension(extensionVersion)>=oplaConfig.min;
-  // Visible = ouverte pour tout le parc (opla_ouvert) OU portée par le
-  // drapeau du profil. Ouverte (case active) = oplaActivable, et rien d'autre.
+  // ── OPLA EST OUVERTE À TOUT LE MONDE (2026-09-18, décision Nico) ─────────
+  // Ici vivaient DEUX verrous qui décidaient si Opla se voyait : l'interrupteur
+  // coin_config.opla_ouvert et la borne de build opla_extension_min, comparée
+  // à la version d'extension du compte. Résultat mesuré : 290 comptes sur les
+  // 323 qui déclarent une version étaient SOUS la borne — un nouvel inscrit ne
+  // voyait Opla nulle part, ni dans le stepper, ni dans « Mes annonces en
+  // ligne ». C'est fini : Opla est une plateforme comme les quatre autres
+  // (utils/stockFiltres.PLATEFORMES_STOCK_OUVERTES), sans condition.
+  //
+  // CE QUI REMPLACE LA BORNE — et ce n'est plus un masquage :
+  //   · l'AUTORISATION Chrome (opla.co) se demande SUR PLACE, au clic, par une
+  //     modale (components/OplaAutorisationModal) ;
+  //   · l'action n'est jamais perdue. Extension qui connaît Opla sans
+  //     l'autorisation → job en `needs_user` NOMMÉ, relancé seul par
+  //     rearmerJobsOplaEnAttente à l'octroi. Extension trop ancienne pour
+  //     connaître Opla → PLATFORM_HANDLERS ne la route pas et le job est
+  //     « laissé en pending » (background.js) : jamais échoué, jamais perdu,
+  //     il part à la première mise à jour de l'extension.
+  //
+  // Les deux clés coin_config restent lues et passées : elles ne commandent
+  // plus la visibilité, et `plateformesOuvertes` reste servi à qui l'attend —
+  // plateformesDuCompte rend désormais les cinq quel que soit son argument.
+  const oplaActivable=true;
   const plateformesVisiblesEffectives=useMemo(
-    ()=>(oplaConfig.ouvert&&!plateformesVisibles.includes('opla'))?[...plateformesVisibles,'opla']:plateformesVisibles,
-    [oplaConfig.ouvert,plateformesVisibles],
+    ()=>plateformesVisibles.includes('opla')?plateformesVisibles:[...plateformesVisibles,'opla'],
+    [plateformesVisibles],
   );
   const plateformesOuvertes=useMemo(()=>oplaActivable?['opla']:[],[oplaActivable]);
-  // Motif de la case grisée quand Opla est visible : 'extension' = ouverte
-  // mais l'extension de ce compte est trop ancienne ; 'fermee' sinon.
-  const oplaMotifGrise=(oplaConfig.ouvert&&oplaConfig.min!=null)?'extension':'fermee';
+  // Plus aucune case n'est grisée pour Opla : le motif reste pour les
+  // appelants qui le lisent encore, il ne sert plus à rien de visible.
+  const oplaMotifGrise='fermee';
   // Source UNIQUE de « la bannière est à l'écran » : lue par le rendu ET par
   // le rafraîchissement ci-dessous, pour qu'ils ne puissent pas diverger.
   const extBannerVisible=extensionOutdated&&extBannerDismissedFor!==extBannerKey;
