@@ -781,16 +781,24 @@ function renderPlateformes() {
   let sues = 0;
   for (const p of PLATFORMS) {
     // ── OPLA, PERMISSION OPTIONNELLE (2026-09-16) ─────────────────────────
-    // Sans job Opla ni accès accordé : pas de ligne (cf. PLATFORMS). Avec des
-    // jobs et sans accès : LA ligne qui porte le geste — c'est le seul endroit
-    // où chrome.permissions.request peut s'exécuter (clic, page d'extension).
+    // ── LE BOUTON EST TOUJOURS LÀ TANT QUE L'ACCÈS MANQUE (2026-09-18) ────
+    // Avant : la ligne n'apparaissait QUE si des jobs Opla attendaient déjà.
+    // Conséquence, vécue : l'app disait « clique sur l'icône FillSell, le
+    // panneau affiche Autoriser Opla » — et quelqu'un qui voulait simplement
+    // RELEVER Opla n'y trouvait rien, parce qu'aucun job n'attendait. Le
+    // chemin le plus court n'existait pas vraiment.
+    // Opla est ouverte à tout le monde (décision du 18/09) : le geste doit
+    // être atteignable à tout moment. C'est le SEUL endroit où
+    // chrome.permissions.request peut s'exécuter (clic, page d'extension).
     // Accès accordé : ligne ordinaire, mêmes états et même « Vérifier ».
     if (p.optionnel && state.oplaAcces !== true) {
       const n = state.oplaEnAttente.length;
-      if (!n) continue;
+      const sous = n
+        ? `${n} annonce${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ton autorisation d'accès à ${escapeHtml(hostOf(p.key))}`
+        : `Autorise l'accès à ${escapeHtml(hostOf(p.key))} pour publier et relever tes annonces`;
       lignes.push(
         `<div class="plat">${logoHtml(p.key)}<div class="plat-txt"><div class="plat-nom">${escapeHtml(p.name)}</div>` +
-        `<div class="plat-sous">${n} annonce${n > 1 ? "s" : ""} attend${n > 1 ? "ent" : ""} ton autorisation d'accès à ${escapeHtml(hostOf(p.key))}</div></div>` +
+        `<div class="plat-sous">${sous}</div></div>` +
         `<button class="btn-outline" data-autoriser-opla type="button">Autoriser Opla</button></div>`,
       );
       continue;
