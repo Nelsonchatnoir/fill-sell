@@ -8273,18 +8273,22 @@ const StockTab = memo(function StockTab({
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   {[
                     {
-                      fr:["Synchronise ton dressing Vinted","Titres, prix, photos, vues et favoris remontent tout seuls dans ton stock."],
-                      en:["Sync your Vinted closet","Titles, prices, photos, views and favourites come across on their own."],
-                      logos:["vinted"],
+                      // Le relevé couvre les CINQ depuis le 17/09. Le dressing
+                      // Vinted, lui, remonte EN ENTIER (vues et favoris) : la
+                      // capacité n’est pas la même partout, on l’écrit plutôt
+                      // que de l’aplatir.
+                      fr:["Relève tes annonces en ligne","Les cinq plateformes remontent dans ton stock — le dressing Vinted en entier, vues et favoris compris."],
+                      en:["Scan your live listings","All five marketplaces come across into your stock — the Vinted closet in full, views and favourites included."],
+                      logos:["vinted","leboncoin","beebs","ebay","opla"],
                     },
                     {
                       // Même formulation que l'eyebrow des logos du Tableau
                       // vide (App.jsx, 2026-09-01) : un seul discours pour un
                       // seul geste — « préparée une fois, déposée sur les
                       // quatre ».
-                      fr:["Publie sur 4 plateformes","Une annonce préparée une fois, déposée sur Vinted, Leboncoin, eBay et Beebs."],
-                      en:["Publish on 4 marketplaces","One listing prepared once, posted to Vinted, Leboncoin, eBay and Beebs."],
-                      logos:["vinted","leboncoin","ebay","beebs"],
+                      fr:["Publie sur 5 plateformes","Une annonce préparée une fois, déposée sur Vinted, Leboncoin, Beebs, eBay et Opla."],
+                      en:["Publish on 5 marketplaces","One listing prepared once, posted to Vinted, Leboncoin, Beebs, eBay and Opla."],
+                      logos:["vinted","leboncoin","beebs","ebay","opla"],
                     },
                     {
                       // Même phrase que la carte republication du Tableau vide
@@ -8292,13 +8296,17 @@ const StockTab = memo(function StockTab({
                       // touches à rien » : ici on décrit la republication à la
                       // demande (1 unité), l'automatique reste un avantage
                       // Pro (cf. ⚠️ du bandeau au-dessus).
-                      fr:["Republie ce qui stagne","Une annonce qui dort est republiée pour repasser en tête de recherche Vinted, au rythme d'une vraie personne."],
-                      en:["Repost what stalls","A listing that sits gets reposted back to the top of Vinted search, at a human pace."],
+                      // ⚠️ eBay est HORS republication (garde-fou du 17/09,
+                      // utils/republication.PLATEFORMES_REPUBLIABLES). On le dit :
+                      // « en tête de recherche Vinted » était faux depuis que la
+                      // republication couvre Leboncoin, Beebs et Opla.
+                      fr:["Republie ce qui stagne","Une annonce qui dort repasse en tête des résultats, au rythme d'une vraie personne — partout sauf sur eBay."],
+                      en:["Repost what stalls","A listing that sits climbs back to the top of the results, at a human pace — everywhere except eBay."],
                       logos:[],
                     },
                     {
-                      fr:["Vendu quelque part ?","FillSell le détecte et te prévient — tu retires l'article des autres plateformes en un tap."],
-                      en:["Sold somewhere?","FillSell spots it and tells you — you remove the item from the others in one tap."],
+                      fr:["Vendu quelque part ?","FillSell repère l'annonce disparue, sur n'importe laquelle des cinq — tu confirmes, et tu retires les autres en un tap."],
+                      en:["Sold somewhere?","FillSell spots the listing that is gone, on any of the five — you confirm, and remove the others in one tap."],
                       logos:[],
                     },
                   ].map((et,i)=>{
