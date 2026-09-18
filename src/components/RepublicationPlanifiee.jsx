@@ -49,7 +49,21 @@ import { ChevronLeft, ChevronRight, RefreshCw, Minus, Plus, History } from 'luci
 import { supabase } from '../lib/supabase';
 import { track } from '../analytics/analytics';
 import { useFondFige } from '../utils/modale';
-import { fuseauLocal, extensionRefuse, nombreAttendu } from '../hooks/useRepublicationPlanifiee';
+import PlatformLogo from './platform-logos/PlatformLogo';
+import { fuseauLocal, extensionRefuse, nombreAttendu, PLATEFORMES_PLANIFIEES } from '../hooks/useRepublicationPlanifiee';
+
+// Noms propres : ils ne se traduisent pas (même table que SousPagePlateformes).
+const NOMS = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', opla: 'Opla' };
+// Ce que fait une republication, PAR PLATEFORME — et c'est différent :
+// Vinted / Leboncoin / Beebs retirent puis redéposent (l'annonce change
+// d'identifiant) ; Opla MODIFIE L'ANNONCE EN PLACE (PATCH, même identifiant,
+// rien n'est supprimé). Le dire, plutôt que laisser croire à un cycle unique.
+const GESTE = {
+  vinted:    { fr: 'Retrait puis redépôt', en: 'Remove then repost' },
+  leboncoin: { fr: 'Retrait puis redépôt', en: 'Remove then repost' },
+  beebs:     { fr: 'Retrait puis redépôt', en: 'Remove then repost' },
+  opla:      { fr: 'Modification sur place', en: 'Edited in place' },
+};
 
 // ── Palette : celle des maquettes (RepublicationAutoCard.dc.html) = UI de
 // ui.jsx + les deux ambres de la carte. ─────────────────────────────────────
@@ -189,6 +203,14 @@ function texteMotifCompte(motif, fr) {
     republication_en_vol:    fr ? 'Créneau bloqué : une republication était déjà en cours.' : 'Slot blocked: a repost was already under way.',
     parques_autre_boutique:  fr ? 'Des republications attendent une autre boutique (elles repartiront seules à la connexion).' : 'Some reposts are waiting for another shop (they resume on their own when you sign in).',
     prevues_atteintes:       fr ? 'Tout ce qui était prévu est parti.' : 'Everything planned went out.',
+    // 18/09 : multiplateforme.
+    plafond_compte:          fr ? 'Plafond du jour de ton forfait atteint, toutes plateformes confondues.' : 'Your plan’s daily cap reached, all platforms together.',
+    plafond_compte_atteint:  fr ? 'Plafond du jour de ton forfait atteint, toutes plateformes confondues.' : 'Your plan’s daily cap reached, all platforms together.',
+    echecs_consecutifs:      fr ? 'Deux retraits de suite ont échoué : on s’est arrêté pour aujourd’hui.' : 'Two removals failed in a row: stopped for today.',
+    plateforme_fermee:       fr ? 'Cette plateforme n’est pas ouverte à la republication automatique.' : 'This platform is not open to automatic reposting.',
+    module_inactif:          fr ? 'Le module n’est pas actif sur cette plateforme.' : 'The module is not on for this platform.',
+    annonce_introuvable:     fr ? 'Aucune annonce FillSell en ligne à republier.' : 'No live FillSell listing to repost.',
+    article_vendu:           fr ? 'Article vendu.' : 'Item sold.',
   };
   return M[motif] ?? (fr ? `Arrêt du passage (${motif}).` : `Pass stopped (${motif}).`);
 }
@@ -199,15 +221,60 @@ function texteErreurReglage(code, fr) {
     jours_invalides:  fr ? 'Choisis au moins un jour.' : 'Pick at least one day.',
     reseau:           fr ? 'Réglage non enregistré (réseau). Réessaie.' : 'Setting not saved (network). Try again.',
     unauthorized:     fr ? 'Session expirée — reconnecte-toi.' : 'Session expired — sign in again.',
+    invalid_platform: fr ? 'Plateforme inconnue.' : 'Unknown platform.',
   };
   return M[code] ?? (fr ? `Réglage refusé (${code}).` : `Setting refused (${code}).`);
+}
+
+// ── CE QUI MANQUE À UNE PLATEFORME, DIT SUR PLACE (garde-fou du 18/09) ──────
+// Une plateforme à laquelle le compte n'est pas relié ne doit JAMAIS être
+// proposée comme si elle allait marcher. Trois causes DISTINCTES, jamais un
+// « indisponible » muet : chacune dit quoi faire, ou qu'il n'y a rien à faire.
+//   · fermée        → FillSell ne l'a pas ouverte (rien à faire, ça viendra) ;
+//   · sans_annonces → aucune annonce FillSell en ligne sur cette plateforme :
+//                     il n'y a littéralement rien à remonter ;
+//   · session       → session déconnectée dans Chrome (relevé par l'extension).
+// Rend null quand tout va bien.
+function manqueDePlateforme(etat, session) {
+  if (!etat) return null;
+  if (etat.ouverte === false) return 'fermee';
+  if (Number(etat.annonces_en_ligne) === 0) return 'sans_annonces';
+  if (session === 'ko') return 'session';
+  return null;
+}
+function texteManque(manque, pf, fr) {
+  const nom = NOMS[pf] ?? pf;
+  if (manque === 'fermee') {
+    return {
+      court: fr ? 'Pas encore disponible' : 'Not available yet',
+      long: fr ? `La republication automatique sur ${nom} n’est pas encore ouverte par FillSell. Tes réglages seront conservés le jour où elle le sera.`
+               : `Automatic reposting on ${nom} is not open yet at FillSell. Your settings will be kept for the day it is.`,
+    };
+  }
+  if (manque === 'sans_annonces') {
+    return {
+      court: fr ? 'Aucune annonce à remonter' : 'Nothing to repost',
+      long: fr ? `Aucune de tes annonces ${nom} n’est passée par FillSell : il n’y a rien à remonter ici. Publie sur ${nom} depuis FillSell, et cette plateforme s’activera d’elle-même.`
+               : `None of your ${nom} listings went through FillSell, so there is nothing to repost here. Publish to ${nom} from FillSell and this platform will come alive on its own.`,
+    };
+  }
+  if (manque === 'session') {
+    return {
+      court: fr ? 'Non connectée dans Chrome' : 'Not signed in on Chrome',
+      long: fr ? `Ta session ${nom} est déconnectée dans Chrome. Reconnecte-toi sur ${nom}, la republication reprendra toute seule.`
+               : `Your ${nom} session is signed out in Chrome. Sign back in to ${nom} and reposting resumes on its own.`,
+    };
+  }
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SYNTHÈSE D'ÉTAT — une seule lecture de l'état pour les trois surfaces.
 // ═══════════════════════════════════════════════════════════════════════════
-function synthese(etat, { fr, enService, extensionStatus }) {
+function synthese(etat, { fr, enService, extensionStatus, session = null }) {
   const r = etat?.reglage ?? null;
+  const pf = etat?.platform ?? 'vinted';
+  const manquePf = manqueDePlateforme(etat, session);
   const fuseau = r?.fuseau ?? fuseauLocal();
   const actif = etat?.actif === true;
   const autorise = etat?.autorise === true;
@@ -231,6 +298,9 @@ function synthese(etat, { fr, enService, extensionStatus }) {
   // 17/09 : ce que le serveur dit du créneau COURANT — la note de blocage en
   // cours (garde anti-rafale, sans leve_le) et les remontées déjà faites.
   const blocage = actif && etat?.blocage && typeof etat.blocage === 'object' ? etat.blocage : null;
+  // 18/09 : le disjoncteur — cette plateforme s'est arrêtée pour la journée
+  // après N échecs de retrait consécutifs (coin_config, N = 2).
+  const disjoncteur = actif && etat?.disjoncteur && typeof etat.disjoncteur === 'object' ? etat.disjoncteur : null;
   const faitesLive = Number.isFinite(Number(etat?.faites_live)) ? Number(etat.faites_live) : null;
   const moteurLegacy = !actif && etat?.moteur === 'legacy';
   const invalide = r?.invalide ?? null;
@@ -244,6 +314,10 @@ function synthese(etat, { fr, enService, extensionStatus }) {
     else { etatLigne = fr ? 'Inactive' : 'Off'; }
   } else if (enService === false) {
     etatLigne = fr ? 'Active · pas encore en service' : 'On · not in service yet'; etatTon = 'amber';
+  } else if (manquePf) {
+    etatLigne = `${fr ? 'Active' : 'On'} · ${texteManque(manquePf, pf, fr).court.toLowerCase()}`; etatTon = 'amber';
+  } else if (disjoncteur) {
+    etatLigne = fr ? 'Active · arrêtée pour aujourd’hui' : 'On · stopped for today'; etatTon = 'amber';
   } else if (ext === 'jamais') {
     etatLigne = fr ? 'Active · extension Chrome jamais vue' : 'On · Chrome extension never seen'; etatTon = 'amber';
   } else if (ext === 'muette') {
@@ -268,6 +342,19 @@ function synthese(etat, { fr, enService, extensionStatus }) {
       titre: fr ? 'Pas encore en service' : 'Not in service yet',
       corps: fr ? 'Tes réglages sont enregistrés. Les créneaux ne sont pas encore ouverts par FillSell : rien ne partira d’ici là, et tu n’as rien à faire.'
                 : 'Your settings are saved. FillSell has not opened time slots yet: nothing will go out until then, and there is nothing to do.' };
+  } else if (manquePf) {
+    const t = texteManque(manquePf, pf, fr);
+    avis = { ton: 'amber', titre: t.court, corps: t.long };
+  } else if (disjoncteur) {
+    // Ce n'est pas un incident de compte : c'est la plateforme qui a refusé
+    // deux retraits de suite. On le dit sans alarmer, et on dit ce qui est
+    // certain — aucune annonce n'a été perdue, la reprise est automatique.
+    const nom = NOMS[pf] ?? pf;
+    avis = { ton: 'amber',
+      titre: fr ? `${nom} a refusé deux retraits de suite : on s’est arrêté pour aujourd’hui.`
+                : `${nom} refused two removals in a row: stopped for today.`,
+      corps: fr ? 'C’est une sécurité : plutôt que d’insister, le créneau s’arrête. Tes annonces sont intactes, et la republication repart d’elle-même demain. Les autres plateformes continuent normalement.'
+                : 'This is a safety net: rather than insisting, the slot stops. Your listings are untouched, reposting resumes on its own tomorrow, and the other platforms carry on.' };
   } else if (actif && ext === 'jamais') {
     avis = { ton: 'amber',
       titre: fr ? 'Il manque l’extension Chrome' : 'The Chrome extension is missing',
@@ -324,7 +411,8 @@ function synthese(etat, { fr, enService, extensionStatus }) {
                 : 'At the real pace of your reposts, pauses included. The others wait for the next slot — never a burst.' };
   }
 
-  return { r, fuseau, actif, autorise, creneau, de, a, jours, fen, dans, prochain, fin, quota, faits, quotaConnu, quotaPlein, quotaProche,
+  return { r, pf, manquePf, disjoncteur, fuseau, actif, autorise, creneau, de, a, jours, fen, dans, prochain, fin,
+    quota, faits, quotaConnu, quotaPlein, quotaProche,
     dernier, manque, ext, nombre, moteurLegacy, invalide, etatLigne, etatTon, avis, blocage, faitesLive };
 }
 
@@ -462,6 +550,205 @@ function EcranPlein({ titre, sousTitre, onClose, droite = null, children, pied =
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 0. LA LISTE DES PLATEFORMES — l'écran d'entrée du module (2026-09-18)
+// ═══════════════════════════════════════════════════════════════════════════
+// Le module est multiplateforme : Vinted, Leboncoin, Beebs, Opla ont CHACUNE
+// leur créneau, leurs jours, leur plafond, son ancienneté et son ordre. Un seul
+// écran de réglages ne pouvait plus les porter — et quatre onglets auraient
+// caché trois états sur quatre.
+//
+// CET ÉCRAN NE RÈGLE RIEN. Il montre l'état des quatre d'un coup d'œil et ouvre
+// celui qu'on veut changer (RepublicationPlanifieeReglages, l'écran existant,
+// porté sur une plateforme). Une cinquième plateforme = une ligne de plus.
+//
+// L'INTERRUPTEUR DU HAUT. Avec quatre plateformes, il ne peut plus « activer »
+// (activer laquelle ?). Il MET TOUT EN PAUSE : le couper arrête les
+// plateformes actives en MÉMORISANT lesquelles ; le remettre relance
+// exactement celles-là, pas les autres. Chaque plateforme garde son propre
+// interrupteur, dans son écran.
+//
+// LE NOMBRE TOTAL est borné par l'ENVELOPPE DE COMPTE (le plafond du palier
+// vaut pour les quatre réunies) et vaut « — » dès qu'une plateforme rend un
+// nombre inconnu. Jamais une somme optimiste.
+function LignePlateforme({ pf, etat, session, fr, enService, extensionStatus, onOuvrir }) {
+  const nom = NOMS[pf] ?? pf;
+  const configure = etat?.configure === true;
+  const s = synthese(etat, { fr, enService, extensionStatus, session });
+  const manque = s.manquePf;
+  const actif = s.actif;
+  const n = s.nombre?.n;
+
+  // Le ton de la pastille : vert = ça tourne, ambre = ça tourne mais quelque
+  // chose l'empêche, gris = à l'arrêt. Jamais de rouge : rien n'est cassé.
+  const ton = !actif ? 'mute' : (manque || s.disjoncteur || s.etatTon === 'amber') ? 'amber' : 'teal';
+  const couleur = tonCouleur(ton);
+
+  // La ligne de droite : ce qu'on veut savoir sans entrer.
+  const valeur = actif
+    ? `${fmtCreneau(s.de, s.a, fr)} · ${s.r?.plafond_jour ?? '—'}${fr ? '/j' : '/d'}`
+    : configure ? (fr ? 'En pause' : 'Paused') : (fr ? 'Non réglée' : 'Not set');
+
+  // La ligne du dessous : l'état, en une phrase courte, la plus utile.
+  const sous = actif
+    ? (manque ? texteManque(manque, pf, fr).court
+      : s.disjoncteur ? (fr ? 'Arrêtée pour aujourd’hui' : 'Stopped for today')
+      : s.dans ? (fr ? `En cours jusqu'à ${fmtHHMM(s.a, fr)}` : `Running until ${fmtHHMM(s.a, fr)}`)
+      : n == null ? (fr ? 'Prochain créneau' : 'Next slot')
+      : (fr ? `${nf(n, fr)} ${plur(n, 'annonce remontera', 'annonces remonteront')}` : `${nf(n, fr)} ${plur(n, 'listing', 'listings')} will go up`))
+    : manque ? texteManque(manque, pf, fr).court
+    : Number.isFinite(Number(etat?.annonces_en_ligne))
+      ? (fr ? `${nf(Number(etat.annonces_en_ligne), fr)} ${plur(Number(etat.annonces_en_ligne), 'annonce en ligne', 'annonces en ligne')}`
+            : `${nf(Number(etat.annonces_en_ligne), fr)} ${plur(Number(etat.annonces_en_ligne), 'listing online', 'listings online')}`)
+      : '';
+
+  return (
+    <button type="button" className="rp-btn rp-tap" onClick={onOuvrir}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
+               padding: '13px 18px', background: 'transparent', borderTop: `1px solid ${P.border}`, minHeight: 64 }}>
+      <PlatformLogo platform={pf} size={30} desature={!actif} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 14.5, letterSpacing: '-.01em', color: P.ink }}>{nom}</div>
+        {sous && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontWeight: 500, fontSize: 12.5, color: couleur, minWidth: 0 }}>
+            <span style={{ width: 6, height: 6, borderRadius: 99, flexShrink: 0, background: couleur }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sous}</span>
+          </div>
+        )}
+      </div>
+      <span style={{ fontWeight: 600, fontSize: 12.5, color: actif ? P.ink : P.mute, whiteSpace: 'nowrap' }}>{valeur}</span>
+      <ChevronRight size={17} color={P.mute} style={{ flexShrink: 0 }} />
+    </button>
+  );
+}
+
+export function RepublicationPlanifieePlateformes({
+  lang, etatMulti, parPlateforme, sessions, interrupteur, extensionStatus, busy, erreur,
+  onOuvrirPlateforme, onOuvrirHistorique, onClose, onPauseGenerale,
+}) {
+  const fr = lang !== 'en';
+  const enService = interrupteur === 1;
+  const palierNom = etatMulti?.palier === 'business' ? 'Business' : 'Pro';
+  const autorise = etatMulti?.autorise === true;
+  const actives = Number(etatMulti?.actives) || 0;
+  const enveloppe = etatMulti?.enveloppe ?? null;
+  const vinted = parPlateforme?.vinted ?? null;
+  const quota = Number(vinted?.quota_mensuel);
+  const faits = Number(vinted?.faits_mois);
+  const quotaConnu = Number.isFinite(quota) && quota > 0 && Number.isFinite(faits);
+
+  // Le TOTAL : la somme des nombres par plateforme, bornée par l'enveloppe du
+  // compte. Une plateforme dont le nombre est inconnu rend le total inconnu —
+  // « — » plutôt qu'une promesse.
+  const total = useMemo(() => {
+    let somme = 0; let connu = false;
+    for (const pf of PLATEFORMES_PLANIFIEES) {
+      const e = parPlateforme?.[pf];
+      if (!e?.actif) continue;
+      const n = nombreAttendu(e, { enService, extensionStatus });
+      if (!n || n.n == null) return null;
+      somme += n.n; connu = true;
+    }
+    if (!connu) return 0;
+    const reste = Number(enveloppe?.restants_compte);
+    return Number.isFinite(reste) ? Math.min(somme, reste) : somme;
+  }, [parPlateforme, enService, extensionStatus, enveloppe]);
+
+  // Une seule plateforme est-elle DANS son créneau en ce moment ?
+  const enCours = PLATEFORMES_PLANIFIEES.some((pf) => parPlateforme?.[pf]?.fenetre?.dans_creneau === true
+    && parPlateforme?.[pf]?.actif === true);
+
+  const ligneEtat = (() => {
+    if (!autorise) return { txt: fr ? 'Réservée au plan Pro' : 'Pro plan feature', ton: 'mute' };
+    if (!actives) return { txt: fr ? 'Aucune plateforme active' : 'No platform on', ton: 'mute' };
+    if (!enService) return { txt: fr ? 'Pas encore en service' : 'Not in service yet', ton: 'amber' };
+    const combien = fr ? `${actives} ${plur(actives, 'plateforme active', 'plateformes actives')}` : `${actives} ${plur(actives, 'platform on', 'platforms on')}`;
+    if (total == null) return { txt: combien, ton: 'teal' };
+    if (enCours) return { txt: fr ? `${combien} · ${nf(total, fr)} en cours` : `${combien} · ${nf(total, fr)} running`, ton: 'teal' };
+    return { txt: fr ? `${combien} · ${nf(total, fr)} au prochain créneau` : `${combien} · ${nf(total, fr)} next slot`, ton: 'teal' };
+  })();
+
+  // « Tout mettre en pause » : visible dès qu'il y a quelque chose à couper, ou
+  // quelque chose à reprendre (une pause générale est mémorisée).
+  const enPauseGenerale = PLATEFORMES_PLANIFIEES.some((pf) => parPlateforme?.[pf]?.reglage?.pause_generale === true);
+  const interrupteurHaut = (actives > 0 || enPauseGenerale) ? (
+    <Interrupteur on={actives > 0} disabled={busy || !autorise}
+      onChange={() => { track('republication_planifiee', { action: actives > 0 ? 'pause_generale' : 'reprise_generale' }); onPauseGenerale?.(actives === 0); }}
+      label={actives > 0 ? (fr ? 'Tout mettre en pause' : 'Pause everything') : (fr ? 'Tout relancer' : 'Resume everything')} />
+  ) : null;
+
+  return (
+    <EcranPlein titre={fr ? 'Republication automatique' : 'Automatic reposting'} onClose={onClose} droite={interrupteurHaut}>
+      <div style={{ background: '#fff', border: `1px solid ${P.border}`, borderRadius: 20, boxShadow: '0 1px 4px rgba(16,32,27,.05)', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px 14px' }}>
+          <IconeCycle actif={actives > 0} attention={ligneEtat.ton === 'amber'} tourne={actives > 0 && enService && ligneEtat.ton === 'teal'} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-.01em' }}>{fr ? 'Par créneaux' : 'By time slots'}</span>
+              <span style={{ fontWeight: 600, fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: P.mute2, background: P.chip, borderRadius: 999, padding: '3px 8px' }}>{palierNom}</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 3, fontWeight: 500, fontSize: 12.5, color: tonCouleur(ligneEtat.ton) }}>
+              <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, background: tonCouleur(ligneEtat.ton) }} />
+              <span>{ligneEtat.txt}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Les trois chiffres du compte, communs aux quatre plateformes. */}
+        {autorise && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 1, background: P.border, borderTop: `1px solid ${P.border}` }}>
+            <Cellule label={fr ? 'Plateformes' : 'Platforms'} valeur={`${actives}/${PLATEFORMES_PLANIFIEES.length}`} sous={fr ? 'actives' : 'on'} />
+            <Cellule label={enCours ? (fr ? 'En cours' : 'Running') : (fr ? 'Prochain créneau' : 'Next slot')}
+              valeur={total == null ? '—' : nf(total, fr)}
+              sous={fr ? plur(total ?? 0, 'annonce', 'annonces') : plur(total ?? 0, 'listing', 'listings')} />
+            {quotaConnu ? (
+              <Cellule label={fr ? 'Ce mois' : 'This month'} valeur={nf(faits, fr)} sous={`${fr ? 'sur' : 'of'} ${nf(quota, fr)}`}
+                enfant={<div style={{ height: 4, borderRadius: 99, background: 'rgba(16,32,27,.08)', marginTop: 9, overflow: 'hidden' }}><div style={{ height: '100%', borderRadius: 99, background: faits / quota >= 0.9 ? P.amber : P.teal, width: `${Math.min(100, Math.round(100 * faits / quota))}%` }} /></div>} />
+            ) : (
+              <Cellule label={fr ? 'Ce mois' : 'This month'} valeur={Number.isFinite(faits) ? nf(faits, fr) : '—'} sous={fr ? 'sans maximum' : 'no maximum'} />
+            )}
+          </div>
+        )}
+
+        {/* L'enveloppe : le plafond du palier vaut pour les QUATRE réunies. */}
+        {autorise && Number.isFinite(Number(enveloppe?.restants_compte)) && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 18px', borderTop: `1px solid ${P.border}`, background: P.paper }}>
+            <span style={{ width: 6, height: 6, borderRadius: 99, flexShrink: 0, marginTop: 6, background: P.teal }} />
+            <span style={{ fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2 }}>
+              {fr ? `Ton forfait ${palierNom} autorise ${nf(Number(enveloppe.plafond_compte), fr)} republications par jour, toutes plateformes réunies — il en reste ${nf(Number(enveloppe.restants_compte), fr)} aujourd'hui. Elles passent une par une : ton ordinateur n'en fait qu'une à la fois.`
+                  : `Your ${palierNom} plan allows ${nf(Number(enveloppe.plafond_compte), fr)} reposts a day across all platforms — ${nf(Number(enveloppe.restants_compte), fr)} left today. They go one at a time: your computer handles a single one at once.`}
+            </span>
+          </div>
+        )}
+
+        {!autorise && (
+          <div style={{ padding: '12px 18px', borderTop: `1px solid ${P.border}`, fontSize: 12.5, color: P.rouge, background: P.rougeBg, fontWeight: 600 }}>
+            {texteErreurReglage('auto_reserve_pro', fr)}
+          </div>
+        )}
+        {erreur && (
+          <div style={{ padding: '12px 18px', borderTop: `1px solid ${P.border}`, fontSize: 12.5, color: P.rouge, background: P.rougeBg, fontWeight: 600 }}>
+            {texteErreurReglage(erreur, fr)}
+          </div>
+        )}
+
+        {PLATEFORMES_PLANIFIEES.map((pf) => (
+          <LignePlateforme key={pf} pf={pf} etat={parPlateforme?.[pf] ?? null} session={sessions?.[pf] ?? null}
+            fr={fr} enService={enService} extensionStatus={extensionStatus}
+            onOuvrir={() => { track('republication_planifiee', { action: 'ouvrir_plateforme', platform: pf }); onOuvrirPlateforme?.(pf); }} />
+        ))}
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '12px 18px', background: P.paper, borderTop: `1px solid ${P.border}` }}>
+          <button type="button" className="rp-btn" onClick={() => { track('republication_planifiee', { action: 'ouvrir_historique' }); onOuvrirHistorique?.(); }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', fontWeight: 700, fontSize: 13, color: P.teal, whiteSpace: 'nowrap', padding: 0 }}>
+            <History size={15} strokeWidth={2.2} />{fr ? "Voir l'historique" : 'See history'}<ChevronRight size={15} />
+          </button>
+        </div>
+      </div>
+    </EcranPlein>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 1. LE BLOC COMPACT — en tête du Stock.
 // ═══════════════════════════════════════════════════════════════════════════
 // Trois choses : l'état (ligne sous le titre), le créneau (cellule gauche), le
@@ -586,12 +873,18 @@ export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extension
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. L'ÉCRAN DE RÉGLAGES
 // ═══════════════════════════════════════════════════════════════════════════
-export function RepublicationPlanifieeReglages({ lang, etat, interrupteur, extensionStatus, busy, erreur, regler, onClose, onOuvrirHistorique }) {
+export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', session = null, etat, interrupteur, extensionStatus, busy, erreur, regler, onClose, onOuvrirHistorique }) {
   const fr = lang !== 'en';
   const enService = interrupteur === 1;
-  const s = synthese(etat, { fr, enService, extensionStatus });
+  const s = synthese(etat, { fr, enService, extensionStatus, session });
   const r = s.r;
   const actif = s.actif;
+  // 18/09 : cet écran est celui d'UNE plateforme. Tout ce qu'il écrit porte
+  // son nom (`platform` dans le patch) ; tout ce qu'il lit vient de l'état de
+  // cette plateforme. Une plateforme que FillSell n'a pas ouverte se règle
+  // quand même — mais rien ne partira, et l'écran le dit.
+  const pf = etat?.platform ?? platform;
+  const nomPf = NOMS[pf] ?? pf;
   const plafondPalier = Number(etat?.plafond_palier) || 0;
   const illimite = plafondPalier >= PLAFOND_ILLIMITE;
   const palierNom = etat?.palier === 'business' ? 'Business' : 'Pro';
@@ -624,20 +917,20 @@ export function RepublicationPlanifieeReglages({ lang, etat, interrupteur, exten
     if (!r) return; // pas de réglage : rien à écrire tant qu'on n'active pas
     enAttente.current = { ...enAttente.current, ...patch };
     clearTimeout(minuterie.current);
-    const envoyer = () => { const p = enAttente.current; enAttente.current = {}; if (Object.keys(p).length) regler(p); };
+    const envoyer = () => { const p = enAttente.current; enAttente.current = {}; if (Object.keys(p).length) regler(p, pf); };
     if (immediat) envoyer(); else minuterie.current = setTimeout(envoyer, 500);
-  }, [r, regler]);
+  }, [r, regler, pf]);
   useEffect(() => () => clearTimeout(minuterie.current), []);
 
   const basculer = () => {
     if (actif) {
-      track('republication_planifiee', { action: 'couper' });
-      regler({ actif: false, arret_motif: 'utilisateur' });
+      track('republication_planifiee', { action: 'couper', platform: pf });
+      regler({ actif: false, arret_motif: 'utilisateur' }, pf);
     } else {
-      track('republication_planifiee', { action: 'activer', depuis: 'reglages' });
+      track('republication_planifiee', { action: 'activer', depuis: 'reglages', platform: pf });
       // À l'activation on envoie le brouillon ENTIER : un compte qui a réglé
       // avant d'activer ne perd rien, et le serveur borne tout.
-      regler({ actif: true, ...brouillon });
+      regler({ actif: true, ...brouillon }, pf);
     }
   };
 
@@ -676,15 +969,20 @@ export function RepublicationPlanifieeReglages({ lang, etat, interrupteur, exten
   );
 
   return (
-    <EcranPlein titre={fr ? 'Republication automatique' : 'Automatic reposting'} onClose={onClose}
-      droite={<Interrupteur on={actif} onChange={basculer} disabled={busy || !s.autorise || !persoValide} label={fr ? 'Activer la republication automatique' : 'Turn on automatic reposting'} />}>
+    <EcranPlein titre={nomPf} sousTitre={fr ? 'Republication automatique' : 'Automatic reposting'} onClose={onClose}
+      droite={<Interrupteur on={actif} onChange={basculer} disabled={busy || !s.autorise || !persoValide} label={fr ? `Activer la republication automatique sur ${nomPf}` : `Turn on automatic reposting on ${nomPf}`} />}>
       <div style={{ background: '#fff', border: `1px solid ${P.border}`, borderRadius: 20, boxShadow: '0 1px 4px rgba(16,32,27,.05)', overflow: 'hidden' }}>
-        {/* En-tête de carte : icône + état + PRO. */}
+        {/* En-tête de carte : le LOGO de la plateforme (on sait où on est du
+            premier coup d'œil), ce que la republication y fait réellement, et
+            l'état. Le geste n'est pas le même partout : Opla modifie l'annonce
+            sur place, les trois autres la retirent et la redéposent. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px 14px', borderBottom: `1px solid ${P.border}` }}>
-          <IconeCycle actif={actif} attention={s.etatTon === 'amber'} tourne={actif && enService && s.etatTon !== 'amber'} />
+          <div style={{ width: 44, height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <PlatformLogo platform={pf} size={34} desature={!actif} />
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-.01em' }}>{fr ? 'Par créneaux' : 'By time slots'}</span>
+              <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-.01em' }}>{GESTE[pf]?.[fr ? 'fr' : 'en'] ?? nomPf}</span>
               <span style={{ fontWeight: 600, fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: P.mute2, background: P.chip, borderRadius: 999, padding: '3px 8px' }}>{palierNom}</span>
             </div>
             <div style={{ marginTop: 3 }}>{ligneEtat}</div>
@@ -840,6 +1138,19 @@ export function RepublicationPlanifieeReglages({ lang, etat, interrupteur, exten
                     : (fr ? `Jusqu'à ${brouillon.plafond_jour} par jour. Le palier ${palierNom} permet jusqu'à ${plafondPalier}.` : `Up to ${brouillon.plafond_jour} a day. The ${palierNom} plan allows up to ${plafondPalier}.`)}
                 {' '}{fr ? 'Ce qui part réellement dépend aussi des annonces éligibles et de la durée du créneau.' : 'What actually goes out also depends on eligible listings and slot length.'}
               </div>
+              {/* L'ENVELOPPE (18/09) : le plafond du palier est celui du
+                  COMPTE, pas de la plateforme. Quatre plateformes s'y
+                  partagent la journée — et il n'y a qu'un Chrome pour les
+                  quatre. Le dire ici, à l'endroit où l'on règle le chiffre. */}
+              {Number.isFinite(Number(etat?.aujourdhui?.restants_compte)) && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, fontWeight: 500, fontSize: 12.5, lineHeight: 1.45, color: P.mute2 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 99, background: P.teal, flexShrink: 0, marginTop: 6 }} />
+                  <span>
+                    {fr ? `Ce plafond est celui de ${nomPf}. Toutes plateformes confondues, ton forfait autorise ${nf(plafondPalier, fr)} republications par jour — il en reste ${nf(Number(etat.aujourdhui.restants_compte), fr)} aujourd'hui.`
+                        : `This cap is for ${nomPf}. Across all platforms your plan allows ${nf(plafondPalier, fr)} reposts a day — ${nf(Number(etat.aujourdhui.restants_compte), fr)} left today.`}
+                  </span>
+                </div>
+              )}
             </div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{fr ? 'En ligne depuis plus de' : 'Live for more than'}</div>
@@ -857,7 +1168,12 @@ export function RepublicationPlanifieeReglages({ lang, etat, interrupteur, exten
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <Pilule actif={brouillon.ordre === 'anciennes'} disabled={busy || !s.autorise} onClick={() => appliquer({ ordre: 'anciennes' }, { immediat: true })}>{fr ? 'Les plus anciennes d’abord' : 'Oldest first'}</Pilule>
               <Pilule actif={brouillon.ordre === 'prix'} disabled={busy || !s.autorise} onClick={() => appliquer({ ordre: 'prix' }, { immediat: true })}>{fr ? 'Prix élevé d’abord' : 'Highest price first'}</Pilule>
-              <Pilule actif={brouillon.ordre === 'vues'} disabled={busy || !s.autorise} onClick={() => appliquer({ ordre: 'vues' }, { immediat: true })}>{fr ? 'Les moins vues d’abord' : 'Least viewed first'}</Pilule>
+              {/* « Les moins vues » n'existe QUE sur Vinted : c'est le seul
+                  endroit où l'on relève un compteur de vues. Ailleurs, ce
+                  choix trierait sur du vide — on ne le propose pas. */}
+              {pf === 'vinted' && (
+                <Pilule actif={brouillon.ordre === 'vues'} disabled={busy || !s.autorise} onClick={() => appliquer({ ordre: 'vues' }, { immediat: true })}>{fr ? 'Les moins vues d’abord' : 'Least viewed first'}</Pilule>
+              )}
             </div>
             {brouillon.ordre === 'vues' && (
               <div style={{ fontWeight: 500, fontSize: 12, color: P.mute, marginTop: 8 }}>
@@ -924,7 +1240,7 @@ export function RepublicationPlanifieeHistorique({ lang, userId, etat, onClose }
       try {
         const depuis = new Date(Date.now() - 30 * 86400000).toISOString();
         const rows = await lireTout(() => supabase.from('republish_creneaux')
-          .select('id,jour,de,a,fuseau,debut,fin,statut,boutique,eligibles_debut,prevues,faites,sautes,extension_vue,espacement_sec')
+          .select('id,platform,jour,de,a,fuseau,debut,fin,statut,boutique,eligibles_debut,prevues,faites,sautes,extension_vue,espacement_sec')
           .eq('user_id', userId).gte('debut', depuis).order('debut', { ascending: false }));
         if (annule) return;
         setCreneaux(rows);
@@ -1045,6 +1361,9 @@ export function RepublicationPlanifieeHistorique({ lang, userId, etat, onClose }
               <div key={c.id} style={{ padding: '14px 0', borderBottom: idx < visibles.length - 1 ? `1px solid ${P.border}` : 'none' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <span style={{ width: 8, height: 8, borderRadius: 99, background: couleurPoint, flexShrink: 0 }} />
+                  {/* 18/09 : l'historique est commun aux quatre plateformes —
+                      sans son logo, une ligne ne dit plus de quoi elle parle. */}
+                  <PlatformLogo platform={c.platform ?? 'vinted'} size={16} />
                   <span style={{ fontWeight: 700, fontSize: 13.5 }}>{titre}</span>
                   <span style={{ flex: 1 }} />
                   {manque
