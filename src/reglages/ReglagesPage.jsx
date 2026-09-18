@@ -33,7 +33,7 @@ import { plateformesDuCompte } from '../utils/stockFiltres';
 import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
 import { useSessionsPlateformes } from './useSessionsPlateformes';
-import { consommationVisible, lireProchaineRemiseAZero, formaterRemiseAZero } from './quotas';
+import { consommationVisible, lireProchaineRemiseAZero, formaterRemiseAZero, formaterDatePleine } from './quotas';
 import {
   EcranReglages, Groupe, Carte, Ligne, Jauge, JaugeRepublication, CarteIdentite, PiedPage,
 } from './ReglagesUI';
@@ -130,6 +130,11 @@ export default function ReglagesPage({
     return () => { mort = true; };
   }, [user?.id]);
   const remiseAZero = useMemo(() => formaterRemiseAZero(prochainGrant, lang), [prochainGrant, lang]);
+  // La MÊME échéance, en date pleine, pour la carte de formule. Chez un abonné
+  // elle vient de la boutique : c'est la date du prochain prélèvement. Chez un
+  // compte gratuit ou offert, elle est ancrée sur la date d'inscription — la
+  // carte ne la nomme donc « prélèvement » que s'il y a un canal de paiement.
+  const prochainPrelevement = useMemo(() => formaterDatePleine(prochainGrant, lang), [prochainGrant, lang]);
   const deviseLabel = useMemo(
     () => devises?.find((d) => d.code === currency)?.label ?? currency,
     [devises, currency],
@@ -148,7 +153,7 @@ export default function ReglagesPage({
     user, lang, setLang,
     isPremium, isPro, isBusiness, nomFormule,
     natif, plateforme, extensionInstallable, extensionVersion,
-    quotas, remiseAZero,
+    quotas, remiseAZero, prochainPrelevement,
     username, setUsername,
     currency, deviseLabel, saveCurrency, devises,
     adresseLbc: {
