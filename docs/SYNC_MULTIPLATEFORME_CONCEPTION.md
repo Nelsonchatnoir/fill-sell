@@ -107,3 +107,45 @@ Landing / FAQ / onboarding : aujourd'hui « importe ton dressing Vinted » est
 **vrai** et doit le rester tant que le lot 2 n'est pas livré. Les textes du
 lot 2 : « FillSell lit tes annonces Vinted, Leboncoin, Beebs et eBay et les
 rattache à ton stock — tu confirmes, il n'invente rien. »
+
+---
+
+## ⛔ VOIE 1 (brancher le dressing Vinted sur le moteur) — ABANDONNÉE LE 18/09/2026
+
+**Décision de Nico, sur mesure. Ne pas la ressortir comme « le remède aux
+alertes Vinted » : elle ne l'est pas.**
+
+L'idée : faire écrire à la synchro du dressing ses résultats dans
+`annonces_plateforme`, et lever la garde `v_pf NOT IN ('leboncoin','beebs',
+'ebay','opla')` de `rapprocher_releve`, pour que Vinted passe par le même
+moteur que les quatre autres. Le gain attendu : récupérer par l'identifiant
+les annonces republiées sous un NOUVEL id, que le veilleur a prises pour des
+disparitions.
+
+**LE CHIFFRE QUI L'A TUÉE : ZÉRO.** Classement des 2 326 alertes Vinted
+actives (jobs `published`), le 18/09 :
+
+| catégorie | n | comptes |
+|---|---|---|
+| article marqué disparu par la synchro | 887 | 33 |
+| même annonce, jamais revue depuis l'alerte | 552 | 24 |
+| pending (pas encore une alerte) | 509 | 37 |
+| vente, hors périmètre | 262 | 63 |
+| **article VIVANT sous une AUTRE annonce** | **0** | **0** |
+| autre statut · article absent | 12 · 3 | |
+
+Aucun article n'est vivant sur Vinted sous un identifiant différent de celui
+de son job. Le rattachement par identifiant n'a donc **rien** à récupérer, et
+le faisceau non plus : ces annonces ne sont pas dans « Mes annonces », c'est
+précisément pour ça qu'elles sont en alerte.
+
+**Ce que voie 1 reste :** une unification de plomberie (un moteur, un écran,
+une file de rattachement pour les cinq plateformes). Légitime, mais c'est un
+autre débat, et il coûte un paquet CWS. Si elle revient, que ce soit pour ce
+motif-là — pas pour les alertes.
+
+**Le vrai sujet, lui, est ailleurs :** sur les 887 « disparues » hors soupçon
+de vente, **887 n'ont AUCUNE vente enregistrée en face** (33 comptes). Deux
+sources indépendantes disent que l'annonce n'est plus là, et rien ne dit ce
+qu'elle est devenue. Voir le bandeau « Vendue ? » et la revue en lot des
+disparus (App.jsx) — l'outil existe, c'est la file qui n'est pas traitée.
