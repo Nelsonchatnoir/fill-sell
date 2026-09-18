@@ -20,6 +20,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import PlatformLogo from './platform-logos/PlatformLogo';
+import OplaAutorisationModal from './OplaAutorisationModal';
+import { useOplaAcces } from '../utils/oplaAcces';
 import { track } from '../analytics/analytics';
 import {
   PLATEFORMES_RELEVE, LABEL_RELEVE, demanderRelevePlateforme, lireDerniersRunsReleve,
@@ -130,8 +132,16 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
     return () => { annule = true; clearTimeout(t0); clearInterval(t); };
   }, [ouvert, user?.id, tick]);
 
+  // ── OPLA : la question au moment du clic (18/09/2026) ────────────────────
+  // Relever Opla sans l’autorisation d’hôte ne rend RIEN (la sonde ne part
+  // même pas). On le dit sur place, avec le geste, plutôt que de laisser
+  // repartir un run vide. Pas d’autorisation connue → pas de modale : on ne
+  // harcèle pas sur un « je ne sais pas ».
+  const { acces: oplaAcces, relire: relireOplaAcces } = useOplaAcces({ userId: user?.id });
+  const [oplaModale, setOplaModale] = useState(false);
   const lancer = async (platform) => {
     if (busy) return;
+    if (platform === 'opla' && oplaAcces === false) { setOplaModale(true); return; }
     setBusy(platform); setMessage(null);
     const r = await demanderRelevePlateforme(platform).catch((e) => ({ ok: false, reason: 'erreur', message: String(e?.message ?? e) }));
     setBusy(null);
@@ -151,6 +161,13 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
     for (const p of listePlateformes) {
       const run = runs[p] ?? null;
       if (run && (run.status === 'queued' || run.status === 'running')) continue;
+      // Opla sans autorisation : sautée, avec son motif. Un geste GLOBAL ne
+      // doit pas faire surgir une modale — le bouton « Relever » d’Opla, lui,
+      // la pose (c’est le clic qui la vise).
+      if (p === 'opla' && oplaAcces === false) {
+        refus.push(fr ? 'Opla : autorisation à donner dans l’extension.' : 'Opla: permission to grant in the extension.');
+        continue;
+      }
       const r = await demanderRelevePlateforme(p).catch((e) => ({ ok: false, reason: 'erreur', message: String(e?.message ?? e) }));
       if (!r?.ok) { refus.push(`${LABEL_RELEVE[p]} : ${texteRefusReleve(r, lang, p)}`); continue; }
       track('releve_plateforme_demande', { platform: p, reason: r.reason, depuis: 'tout_relever' });
@@ -325,6 +342,15 @@ export default function RelevesPlateformes({ lang, user, items = [], ouvert = fa
         <EcranRattachement lang={lang} items={items} annonces={aRattacher}
           onClose={() => setEcran(false)}
           onDecision={async () => { await recharger(); if (typeof onRattache === 'function') onRattache(); }} />
+      )}
+      {/* La modale Opla — au clic sur « Relever », sur place. À sa fermeture
+          on relit l’autorisation : la personne vient peut-être de l’accorder. */}
+      {oplaModale && (
+        <OplaAutorisationModal
+          lang={lang}
+          contexte="releve"
+          onClose={() => { setOplaModale(false); relireOplaAcces().catch(() => {}); }}
+        />
       )}
     </div>
   );
