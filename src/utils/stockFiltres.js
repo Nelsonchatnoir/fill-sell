@@ -46,17 +46,30 @@ import { natureNeedsUser, republicationAnnonceDisparue } from './shared';
 // ligne n'apparaît. L'AFFICHAGE, lui, passe par la liste d'en dessous.
 export const PLATEFORMES_STOCK = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'];
 
-// ⛔ CE QUI S'AFFICHE PAR DÉFAUT RESTE À QUATRE, et ce n'est pas un oubli.
-// `compteursStock` compte `pasEncore[p]` = les articles qui ne sont PAS sur p :
-// pour Opla, c'est TOUT LE STOCK de tout le monde. Servir cette liste aux chips
-// de diffusion ferait donc apparaître « Pas encore sur Opla · 214 » chez chaque
-// utilisateur, en promettant une publication qui n'existe pas — la fuite exacte
-// que LENS_PLATFORMS a déjà failli produire. Opla ne s'affiche qu'aux comptes
-// pour lesquels App.jsx la déclare OUVERTE (coin_config.opla_ouvert = 1 ET
-// extension du compte ≥ opla_extension_min, fail-closed) — via
-// plateformesDuCompte, ci-dessous, et par lui seul.
-export const PLATEFORMES_STOCK_OUVERTES = ['vinted', 'leboncoin', 'beebs', 'ebay'];
-export const PLATEFORMES_STOCK_A_VENIR = ['opla'];
+// ── OPLA EST UNE PLATEFORME COMME LES QUATRE AUTRES (2026-09-18) ────────────
+// Décision Nico, prise deux fois : ouverte à TOUT LE MONDE, sans condition —
+// ni palier, ni version d'extension. Elle entre donc dans la liste ouverte, et
+// la liste « à venir » se vide.
+//
+// Ce qui vivait ici avant : Opla était tenue hors de cette liste tant qu'elle
+// n'avait tourné que sur un compte, et App.jsx la déclarait ouverte au cas par
+// cas (coin_config.opla_ouvert ET extension ≥ opla_extension_min). Le cycle
+// est prouvé ; la borne masquait Opla à 290 comptes sur 323 qui déclarent une
+// version — un nouvel inscrit ne la voyait nulle part.
+//
+// ⚠️ CONSÉQUENCE ASSUMÉE, dite ici pour qu'elle ne surprenne personne :
+// `compteursStock` compte `pasEncore[p]` = les articles qui ne sont PAS sur p.
+// Pour Opla, c'est encore presque tout le stock de chacun — la chip
+// « Pas encore sur Opla · N » va donc apparaître avec de gros chiffres. Ce
+// n'est plus une promesse creuse comme au lot 5 : Opla se publie vraiment, et
+// la chip mène à une action qui marche.
+//
+// ⛔ CE QUI RESTE CONDITIONNEL n'est PAS la visibilité, c'est l'AUTORISATION
+//    Chrome (opla.co, permission d'hôte optionnelle). Elle se demande SUR
+//    PLACE, au clic — components/OplaAutorisationModal — jamais par un
+//    masquage, et jamais dans les réglages.
+export const PLATEFORMES_STOCK_OUVERTES = ['vinted', 'leboncoin', 'beebs', 'ebay', 'opla'];
+export const PLATEFORMES_STOCK_A_VENIR = [];
 
 // ─── UNE SEULE RÉPONSE À « QUELLES PLATEFORMES ? » (2026-09-17 soir) ─────────
 // Manque relevé par Nico : Opla absente des cartes du stock (pastilles, bouton
