@@ -95,7 +95,7 @@ import LensTab from './tabs/LensTab';
 import VentesTab from './tabs/VentesTab';
 import StatsTab from './tabs/StatsTab';
 import DashboardTab from './tabs/DashboardTab';
-import { UI, Eyebrow, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
+import { UI, PrimaryButton, PremiumButton, SecondaryButton, IconButton, Loader, SegmentedPills } from './components/ui';
 import PlatformLogo from './components/platform-logos/PlatformLogo';
 import PlanBadge from './components/PlanBadge';
 import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
@@ -104,7 +104,6 @@ import OnboardingFlow, { ONBOARD_DONE_KEY } from './components/OnboardingFlow';
 // que d'en inventer un second.
 import { RENVOI_LOCK_MS } from './hooks/useEnvoiLienExtension';
 import ExtensionPitchScreen from './components/ExtensionPitchScreen';
-import EbayCompteSection from './components/EbayCompteSection';
 import { extensionTraceeAilleurs } from './utils/extensionTrace';
 import { lireEtatEbay, ebayCompteUtilisable } from './utils/ebayCompte';
 import PlanDetailsModal from './components/PlanDetailsModal';
@@ -117,6 +116,9 @@ import VoiceResultCard from './components/voice/VoiceResultCard';
 // inventory_sell. Les deux chemins de vente disent la même chose, une seule fois.
 import AvertissementAnnoncesEnLigne from './components/AvertissementAnnoncesEnLigne';
 import { useFondFige } from './utils/modale';
+import ReglagesPage from './reglages/ReglagesPage';
+import FusionArticleModal from './components/FusionArticleModal';
+import { lireFusionsActives, defaireFusion } from './utils/fusionArticles';
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Tooltip, Filler);
 ChartJS.defaults.font.family = "'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif";
 import './App.css';
@@ -769,7 +771,7 @@ function mapItem(v){return{id:v.id,title:v.titre,prix_achat:v.prix_achat,buy:v.p
   // Vinted est comparé en chaîne partout (pill, garde serveur). Aucun cast,
   // aucun trim, aucun repli — on transporte la valeur telle qu'elle est, et
   // `??` plutôt que `||` pour ne pas transformer une chaîne vide en null.
-  vinted_account_id:v.vinted_account_id??null,disparu_le:v.disparu_le||null,vinted_status:v.vinted_status||null,last_synced_at:v.last_synced_at||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
+  vinted_account_id:v.vinted_account_id??null,fusionne_dans:v.fusionne_dans??null,disparu_le:v.disparu_le||null,vinted_status:v.vinted_status||null,last_synced_at:v.last_synced_at||null,vinted_view_count:v.vinted_view_count??null,vinted_favourite_count:v.vinted_favourite_count??null,listed_at_guess:v.listed_at_guess||null};}
 
 function stripMarque(nom,marque){
   if(!marque)return nom;
@@ -2389,7 +2391,6 @@ export default function App({ loginOnly = false }){
   },[]);
   const [showPremiumWelcome,setShowPremiumWelcome]=useState(false);
   const [conversionModal,setConversionModal]=useState({open:false,trigger:'generic'});
-  const [settingsPseudoInput,setSettingsPseudoInput]=useState('');
   // Adresse de remise Leboncoin (profiles.platform_settings.leboncoin) :
   // requise par le wizard LBC à chaque dépôt (champ "À quelle adresse se trouve
   // le bien ?", non pré-rempli depuis le compte LBC — vérifié), saisie une fois
@@ -2399,15 +2400,6 @@ export default function App({ loginOnly = false }){
   const [settingsLbcRue,setSettingsLbcRue]=useState('');
   const [settingsLbcCp,setSettingsLbcCp]=useState('');
   const [settingsLbcVille,setSettingsLbcVille]=useState('');
-  const [settingsLbcAddressSaving,setSettingsLbcAddressSaving]=useState(false);
-  // Vérification BAN de l'adresse (2026-08-13, item 3 du chantier LBC) :
-  // null = rien à afficher ; {kind:'proposition', rue,cp,ville,label} = la BAN
-  // propose une forme normalisée différente de la saisie ; {kind:'introuvable'}
-  // = aucune correspondance BAN (rue neuve, lieu-dit, outre-mer…) — on N'EMPÊCHE
-  // JAMAIS l'enregistrement (décision Nico 13/08), on avertit et on laisse
-  // forcer. Remis à null dès que la saisie change.
-  const [settingsLbcBan,setSettingsLbcBan]=useState(null);
-  const [settingsPseudoSaving,setSettingsPseudoSaving]=useState(false);
   const [showBugReport,setShowBugReport]=useState(false);
   const [bugMessage,setBugMessage]=useState("");
   const [bugSending,setBugSending]=useState(false);
@@ -2427,6 +2419,15 @@ export default function App({ loginOnly = false }){
   const listRef=useRef(null);
   const scrollRef=useRef(null);
   const [editItem,setEditItem]=useState(null);
+  // ── FUSION D'ARTICLES (2026-09-18, point B/1) ──────────────────────────────
+  // `fusionItem` = l'article depuis lequel on a ouvert « C'est le même qu'un
+  // article de mon stock ». `fusionsActives` = les fusions non défaites,
+  // indexées par l'article GARDÉ — c'est là que « défaire » s'offre, parce que
+  // c'est le seul des deux qui soit encore visible dans le stock (l'absorbé
+  // porte `fusionne_dans` et le chargement de l'inventaire l'écarte).
+  const [fusionItem,setFusionItem]=useState(null);
+  const [fusionsActives,setFusionsActives]=useState({});
+  const [defusionBusy,setDefusionBusy]=useState(null);
   const [sellModal,setSellModal]=useState(null); // {item,sellPrice:'',sellingFees:'',rememberFees:false}
   const [deleteConfirm,setDeleteConfirm]=useState(null); // {type:'soldItem'|'sale', item?, sale?}
   // ── VERROU DE SUPPRESSION (2026-09-16) ─────────────────────────────────────
@@ -2451,7 +2452,6 @@ export default function App({ loginOnly = false }){
   // plutôt qu'un correctif par écran. Le hook compte les modales ouvertes : deux
   // superposées ne se déverrouillent pas l'une l'autre.
   useFondFige(disparusModal);
-  useFondFige(showSettings);
   useFondFige(showBugReport);
   useFondFige(!!importModal);
   useFondFige(!!editItem);
@@ -2991,6 +2991,10 @@ export default function App({ loginOnly = false }){
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
     if(!i.error) setItems((i.data||[]).map(mapItem));
+    // Les fusions vivantes, pour offrir « défaire » sur l'article gardé.
+    // Lecture SÉPARÉE et best-effort, comme la pastille ci-dessous : son échec
+    // ne peut pas casser l'écran, il retire seulement le bouton de retour.
+    lireFusionsActives(uid).then(setFusionsActives).catch(()=>{});
     // ── COMBIEN D'ARTICLES ATTENDENT UNE INFO (2026-09-08) ───────────────────
     // Le compteur doit se voir SANS ouvrir le Stock : l'utilisatrice de
     // référence avait 14 articles bloqués et ne le savait pas (sur le parc :
@@ -4484,6 +4488,31 @@ export default function App({ loginOnly = false }){
       // les suppressions suivantes de la session.
       suppressionRef.current=false;
       setSuppressionEnCours(null);
+    }
+  }
+
+  // ── DÉFAIRE UNE FUSION (2026-09-18, point 1) ───────────────────────────────
+  // `inventaire_defusionner` ne rend que ce que le journal dit avoir bougé :
+  // l'article absorbé retrouve son historique et réapparaît dans le stock, et
+  // les champs repris sur le gardé retrouvent leur valeur d'AVANT. Rien n'est
+  // recalculé, rien n'est deviné.
+  async function defaireLaFusion(f){
+    if(defusionBusy)return;
+    setDefusionBusy(f.id);
+    try{
+      const r=await defaireFusion(f.id);
+      if(!r?.ok)throw new Error(r?.message??String(r?.reason??'echec'));
+      await fetchAll(user.id);
+      setFusionsActives(await lireFusionsActives(user.id).catch(()=>({})));
+      setEditItem(null);
+      setToast({visible:true,message:lang==='fr'?"Fusion défaite — l'article est revenu dans ton stock avec son historique."
+                                               :'Merge undone — the item is back in your stock with its history.'});
+      setTimeout(()=>setToast({visible:false,message:''}),6000);
+    }catch(e){
+      setToast({visible:true,message:(lang==='fr'?'Échec : ':'Failed: ')+String(e?.message??e)});
+      setTimeout(()=>setToast({visible:false,message:''}),6000);
+    }finally{
+      setDefusionBusy(null);
     }
   }
 
@@ -7177,7 +7206,7 @@ export default function App({ loginOnly = false }){
             // complète (cf. CLAUDE.md). Aucune logique nouvelle ici.
             <PlanBadge isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} onClick={()=>setShowPremiumModal(true)} />
           ):null}
-          <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");setSettingsPseudoInput(username);}} title="Paramètres" className="tb-icon-btn-light">⚙️</button>
+          <button onClick={()=>{setShowSettings(true);setCancelStep(0);setCancelMsg("");}} title="Réglages" aria-label="Réglages" className="tb-icon-btn-light">⚙️</button>
         </div>
       </div>
 
@@ -7809,6 +7838,25 @@ export default function App({ loginOnly = false }){
           Le NOM passe d'un input mono-ligne (titre long illisible) à un
           textarea de 2 lignes : un titre long se lit et s'édite en entier —
           même valeur écrite, aucun changement de sauvegarde. */}
+      {/* La modale de fusion vit HORS de celle d'édition : ouvrir l'une ferme
+          l'autre (setEditItem(null)), sinon deux voiles se superposeraient et
+          le geste de fermeture deviendrait ambigu. */}
+      {fusionItem&&(
+        <FusionArticleModal
+          lang={lang} user={user} item={fusionItem} items={items}
+          onClose={()=>setFusionItem(null)}
+          onFait={async(r)=>{
+            setFusionItem(null);
+            await fetchAll(user.id);
+            setFusionsActives(await lireFusionsActives(user.id).catch(()=>({})));
+            setToast({visible:true,message:lang==='fr'
+              ?`Fusion faite. Les annonces des deux fiches sont sur l'article gardé, toujours en ligne.`
+              :`Merged. Both items' listings are on the kept item, still online.`});
+            setTimeout(()=>setToast({visible:false,message:''}),6000);
+            void r;
+          }}
+        />
+      )}
       {editItem&&(()=>{
         const S={
           eyebrow:{display:"flex",alignItems:"center",gap:7,fontSize:10.5,fontWeight:700,color:"#8A8578",textTransform:"uppercase",letterSpacing:"0.07em"},
@@ -8006,6 +8054,51 @@ export default function App({ loginOnly = false }){
                   <div style={{fontSize:10,color:"#8A8578",textAlign:"right",marginTop:2}}>{(editItem.description||"").length}/200</div>
                 </div>
               </div>
+
+              {/* ── DOUBLON : « C'est le même qu'un article de mon stock » ──────
+                  (2026-09-18, point 1.) La carte est le seul endroit où
+                  l'utilisateur a les deux objets sous les yeux, donc le seul
+                  où le doublon se voit. Disponible sur N'IMPORTE QUEL article
+                  — un doublon peut venir d'ailleurs — mais mis en avant sur
+                  ceux nés d'un relevé (origine 'releve_…') : ce sont eux que
+                  l'import automatique va multiplier.
+                  Jamais sur un article NEUF (rien à fusionner) ni sur un
+                  article déjà absorbé (le chargement de l'inventaire les
+                  écarte, mais la garde reste écrite). */}
+              {!editItem._isNew&&editItem.id!=null&&editItem.fusionne_dans==null&&(()=>{
+                const duReleve=typeof editItem.origine==='string'&&editItem.origine.startsWith('releve_');
+                const mesFusions=fusionsActives[String(editItem.id)]??[];
+                return (
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <button type="button" onClick={()=>{setFusionItem(editItem);setEditItem(null);}}
+                      style={{width:"100%",padding:"11px 12px",borderRadius:12,textAlign:"left",cursor:"pointer",fontFamily:"inherit",
+                        border:`1px solid ${duReleve?"#2F9E90":"#E7E3D8"}`,background:duReleve?"#F0FDFB":"#F6F5F1"}}>
+                      <div style={{fontSize:13,fontWeight:700,color:"#10201B"}}>
+                        {lang==='fr'?"C'est le même qu'un article de mon stock":'This is the same as an item in my stock'}
+                      </div>
+                      <div style={{fontSize:11.5,color:"#5C6560",marginTop:2,lineHeight:1.45}}>
+                        {duReleve
+                          ?(lang==='fr'?"Cet article vient d'un relevé — s'il fait doublon, fusionne les deux fiches."
+                                       :'This item came from a scan — if it duplicates another, merge the two.')
+                          :(lang==='fr'?"Réunir les deux fiches en une seule, sans rien perdre."
+                                       :'Merge the two items into one, losing nothing.')}
+                      </div>
+                    </button>
+                    {mesFusions.map(f=>(
+                      <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 11px",borderRadius:12,background:"#F6F5F1",border:"1px solid #E7E3D8"}}>
+                        <div style={{flex:1,minWidth:0,fontSize:11.5,color:"#5C6560",lineHeight:1.45}}>
+                          {lang==='fr'?`Fusionné avec un autre article le ${new Date(f.created_at).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')}`
+                                      :`Merged with another item on ${new Date(f.created_at).toLocaleDateString(lang==='fr'?'fr-FR':'en-GB')}`}
+                        </div>
+                        <button type="button" disabled={defusionBusy===f.id} onClick={()=>defaireLaFusion(f)}
+                          style={{flexShrink:0,padding:"7px 12px",borderRadius:999,border:"1px solid #E7E3D8",background:"#fff",color:defusionBusy===f.id?"#8A8578":"#1B6E62",fontSize:12.5,fontWeight:700,cursor:defusionBusy===f.id?"default":"pointer",fontFamily:"inherit"}}>
+                          {defusionBusy===f.id?(lang==='fr'?'…':'…'):(lang==='fr'?'Défaire':'Undo')}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
             </div>
             <div style={{display:"flex",gap:10,marginTop:16}}>
@@ -8213,484 +8306,59 @@ export default function App({ loginOnly = false }){
         </>
       )}
 
-      {/* ── SETTINGS DRAWER ── */}
+      {/* ── RÉGLAGES — UNE PAGE, PLUS UNE POP-UP (18/09/2026) ───────────────
+          Ce qu'il y avait ici : une pop-up de 490 lignes qui empilait compte,
+          forfait, pseudo, adresse Leboncoin, eBay, encart Apple, support,
+          mentions légales, langue, devise, déconnexion, suppression de compte,
+          réinitialisation et signalement de bug — tout au même niveau, tout à
+          faire défiler.
+          Ce qu'il y a maintenant : src/reglages/ — un hub de lignes cliquables
+          et sept groupes, le reste en sous-pages. Le plan de la page se
+          déclare dans src/reglages/plan.js, pas ici.
+          ⛔ CE BLOC N'EST QUE DU CÂBLAGE. Chaque fonction passée est celle
+             qu'appelait déjà la pop-up : résiliation, restauration d'achats,
+             réinitialisation, suppression de compte, déconnexion, devise. Rien
+             n'a changé de sens, rien n'a changé d'appel serveur.
+          ⛔ Monté SEULEMENT pendant l'ouverture : fermé, il ne coûte ni rendu,
+             ni requête, ni écouteur — et son état de navigation repart à zéro
+             à chaque ouverture, comme la pop-up d'avant. */}
       {showSettings&&(
-        <>
-          <div onClick={()=>{setShowSettings(false);setDeleteStep(0);}} style={{position:"fixed",inset:0,zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 16px",background:"rgba(16,32,27,0.45)",backdropFilter:"blur(2px)",animation:"fadeInBd 0.2s ease"}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:UI.card,borderRadius:24,width:"100%",maxWidth:384,padding:24,border:`1px solid ${UI.border}`,boxShadow:"0 24px 64px rgba(16,32,27,0.18)",maxHeight:"90vh",overflowY:"auto",animation:"fadeInBd 0.2s ease"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
-              <div style={{fontSize:16,fontWeight:700,color:UI.ink}}>{t('parametres')}</div>
-              <IconButton onClick={()=>{setShowSettings(false);setDeleteStep(0);}} icon={X} size={32} bg={UI.chip} iconColor={UI.mute2} />
-            </div>
-
-            {/* Profil */}
-            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <Eyebrow>{t('monCompte')}</Eyebrow>
-              <div style={{fontSize:13,fontWeight:600,color:UI.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📧 {user?.email}</div>
-              {isPremium&&(
-                <div style={{marginTop:8}}>
-                  <PlanBadge isPremium={isPremium} isPro={isPro} isBusiness={isBusiness} />
-                </div>
-              )}
-            </div>
-
-            {/* ── Mon forfait ce mois-ci (bascule quotas, 02/09) ──────────────
-                Remplace le panneau « Mes unités » (solde, recharge,
-                historique) : l'état du compte se dit en gestes réels, lus
-                dans quotas_etat. Un geste sans plafond configuré ne
-                s'affiche pas ; la republication dit son mode (à vie /
-                mensuel / illimité). Sobre, jamais alarmiste. */}
-            {quotas&&!quotas.error&&(
-              <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-                <Eyebrow>{lang==='fr'?'Mon forfait ce mois-ci':'My plan this month'}</Eyebrow>
-                <div style={{display:"flex",flexDirection:"column",gap:6,fontSize:12.5,color:UI.ink,fontWeight:600}}>
-                  {quotas.annonces?.plafond!=null&&(
-                    <div style={{display:"flex",justifyContent:"space-between"}}>
-                      <span>{lang==='fr'?'Annonces créées':'Listings created'}</span>
-                      <span style={{fontVariantNumeric:"tabular-nums"}}>{quotas.annonces.consommes} / {quotas.annonces.plafond}</span>
-                    </div>
-                  )}
-                  {/* (Ligne « Scans Lens » retirée le 02/09 soir — fusion
-                      scans+annonces : un scan consomme une annonce du
-                      forfait, la ligne du dessus dit tout. Le serveur
-                      renvoie d'ailleurs scans.plafond null depuis la
-                      migration de fusion.) */}
-                  {quotas.retouches?.plafond!=null&&quotas.retouches.plafond>0&&(
-                    <div style={{display:"flex",justifyContent:"space-between"}}>
-                      <span>{lang==='fr'?'Retouches IA':'AI touch-ups'}</span>
-                      <span style={{fontVariantNumeric:"tabular-nums"}}>{quotas.retouches.consommes} / {quotas.retouches.plafond}</span>
-                    </div>
-                  )}
-                  <div style={{display:"flex",justifyContent:"space-between"}}>
-                    <span>{lang==='fr'?'Republications':'Repostings'}</span>
-                    <span style={{fontVariantNumeric:"tabular-nums"}}>
-                      {quotas.republication?.mode==='illimite'
-                        ?(lang==='fr'?'illimitées':'unlimited')
-                        :quotas.republication?.plafond!=null
-                          ?(quotas.republication.mode==='avie'
-                            ?(lang==='fr'?`${quotas.republication.restantes} restantes sur ${quotas.republication.plafond} offertes`:`${quotas.republication.restantes} left of ${quotas.republication.plafond} included`)
-                            :`${quotas.republication.faites} / ${quotas.republication.plafond}`)
-                          :'—'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Pseudo */}
-            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <Eyebrow style={{marginBottom:8}}>{lang==='fr'?'Mon pseudo':'My username'}</Eyebrow>
-              <div style={{display:"flex",gap:8}}>
-                <input
-                  value={settingsPseudoInput}
-                  onChange={e=>setSettingsPseudoInput(e.target.value.slice(0,30))}
-                  placeholder={lang==='fr'?'Prénom ou pseudo…':'First name or nickname…'}
-                  style={{flex:1,padding:"8px 12px",borderRadius:10,border:`1px solid ${UI.border}`,fontSize:13,fontWeight:600,color:UI.ink,background:UI.card,outline:"none",fontFamily:"inherit",minWidth:0}}
-                />
-                <button
-                  onClick={async()=>{
-                    setSettingsPseudoSaving(true);
-                    const val=settingsPseudoInput.trim();
-                    // .select() : sans lui, un update filtré par RLS (0 ligne) ne
-                    // renvoie PAS d'erreur → faux "✅" (cas vécu : policy UPDATE absente).
-                    const{data:upd,error}=await supabase.from('profiles').update({username:val}).eq('id',user.id).select('username');
-                    setSettingsPseudoSaving(false);
-                    if(error||!upd?.length){
-                      setToast({visible:true,message:lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'});
-                    }else{
-                      setUsername(val);
-                      setToast({visible:true,message:lang==='fr'?'✅ Pseudo enregistré !':'✅ Username saved!'});
-                    }
-                    setTimeout(()=>setToast({visible:false,message:''}),3000);
-                  }}
-                  disabled={settingsPseudoSaving}
-                  style={{padding:"8px 14px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13,fontWeight:600,cursor:settingsPseudoSaving?"not-allowed":"pointer",opacity:settingsPseudoSaving?0.7:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
-                >
-                  {settingsPseudoSaving?"…":(lang==='fr'?'Enregistrer':'Save')}
-                </button>
-              </div>
-            </div>
-
-            {/* Adresse de remise Leboncoin — requise par le wizard LBC à chaque
-                dépôt (non pré-remplie depuis le compte LBC, vérifié) ; l'extension
-                la tape dans l'autocomplete et choisit la 1re suggestion. Saisie en
-                3 champs (rue / code postal / ville), recomposée en string unique
-                à l'enregistrement. */}
-            {(()=>{
-              const cpValid=/^\d{5}$/.test(settingsLbcCp.trim());
-              const cpTouched=settingsLbcCp.trim().length>0;
-              const cpError=cpTouched&&!cpValid;
-              const inputStyle=(err)=>({width:"100%",boxSizing:"border-box",padding:"8px 12px",borderRadius:10,border:`1px solid ${err?UI.negative:UI.border}`,fontSize:13,fontWeight:600,color:UI.ink,background:UI.card,outline:"none",fontFamily:"inherit",minWidth:0});
-              // Écriture effective (lecture-fusion-écriture : platform_settings est
-              // partagé entre plateformes, ne jamais écraser les clés des autres).
-              // String unique attendue par le handler (content-scripts/leboncoin.js) :
-              // jointure par espaces, sans virgule — l'autocomplete LBC (type Google
-              // Places) matche mieux "12 rue de la paix 69001 lyon" que la même
-              // chaîne ponctuée (cf. commentaire fillAddress).
-              const enregistrerAdresseLbc=async(rue,cp,ville)=>{
-                const adresse=[rue,cp,ville].filter(Boolean).join(' ');
-                const{data:cur}=await supabase.from('profiles').select('platform_settings').eq('id',user.id).maybeSingle();
-                const next={...(cur?.platform_settings||{}),leboncoin:{...(cur?.platform_settings?.leboncoin||{}),rue,code_postal:cp,ville,adresse}};
-                // .select() : sans lui, un update filtré par RLS (0 ligne) ne
-                // renvoie PAS d'erreur → faux "✅" (cas vécu : policy UPDATE absente).
-                const{data:upd,error}=await supabase.from('profiles').update({platform_settings:next}).eq('id',user.id).select('platform_settings');
-                const failed=error||!upd?.length;
-                if(!failed){setSettingsLbcRue(rue);setSettingsLbcCp(cp);setSettingsLbcVille(ville);setSettingsLbcBan(null);}
-                setToast({visible:true,message:failed?(lang==='fr'?'❌ Erreur lors de la sauvegarde':'❌ Save failed'):(lang==='fr'?'✅ Adresse enregistrée !':'✅ Address saved!')});
-                setTimeout(()=>setToast({visible:false,message:''}),3000);
-              };
-              // Vérification BAN au clic Enregistrer (2026-08-13, échec réel du jour :
-              // « saint antoines du rochers » tapé pour Saint-Antoine-du-Rocher — deux
-              // dépôts LBC échoués « sans suggestion dans l'autocomplete », que 10 s de
-              // normalisation ICI auraient évités). La BAN (api-adresse.data.gouv.fr)
-              // est publique, gratuite, CORS ouvert. TROIS issues, aucune ne bloque :
-              //   · trouvée ≈ identique à la saisie → enregistrement direct ;
-              //   · trouvée mais différente → proposition en premier choix, la saisie
-              //     manuelle reste forçable ;
-              //   · introuvable → avertissement clair + « Enregistrer quand même »
-              //     (rues neuves, lieux-dits, outre-mer : décision Nico 13/08, on ne
-              //     bloque JAMAIS l'enregistrement) ;
-              //   · service en panne → enregistrement direct, pas d'alarme à tort.
-              const normBan=(s)=>String(s??'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
-              const verifierPuisEnregistrer=async()=>{
-                setSettingsLbcAddressSaving(true);
-                const rue=settingsLbcRue.trim();
-                const cp=settingsLbcCp.trim();
-                const ville=settingsLbcVille.trim();
-                const saisie=[rue,cp,ville].filter(Boolean).join(' ');
-                let feature=null,banIndisponible=false;
-                try{
-                  const rep=await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(saisie)}&limit=1&autocomplete=0`);
-                  if(!rep.ok)throw new Error(`HTTP ${rep.status}`);
-                  feature=(await rep.json())?.features?.[0]??null;
-                }catch{banIndisponible=true;}
-                if(banIndisponible){await enregistrerAdresseLbc(rue,cp,ville);setSettingsLbcAddressSaving(false);return;}
-                // Score plancher : sous 0.4 la BAN « trouve » n'importe quoi (elle rend
-                // toujours son moins mauvais candidat) — on traite comme introuvable.
-                if(!feature||Number(feature.properties?.score??0)<0.4){
-                  setSettingsLbcBan({kind:'introuvable'});
-                  setSettingsLbcAddressSaving(false);
-                  return;
-                }
-                const p=feature.properties??{};
-                // Recomposition dans NOS 3 champs : rue = numéro + voie (p.name porte
-                // déjà « 3 Allée des Guisniers » ; les lieux-dits y vivent aussi).
-                const banRue=String(p.name??'').trim();
-                const banCp=String(p.postcode??cp).trim();
-                const banVille=String(p.city??ville).trim();
-                const banAdresse=[banRue,banCp,banVille].filter(Boolean).join(' ');
-                if(normBan(banAdresse)===normBan(saisie)){
-                  await enregistrerAdresseLbc(rue,cp,ville); // identique modulo accents/casse : zéro friction
-                }else{
-                  setSettingsLbcBan({kind:'proposition',rue:banRue,cp:banCp,ville:banVille,label:String(p.label??banAdresse)});
-                }
-                setSettingsLbcAddressSaving(false);
-              };
-              return (
-            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,padding:"14px 16px",marginBottom:12}}>
-              <Eyebrow style={{marginBottom:8}}>{lang==='fr'?'Adresse de remise Leboncoin':'Leboncoin pickup address'}</Eyebrow>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                <input
-                  value={settingsLbcRue}
-                  onChange={e=>{setSettingsLbcRue(e.target.value.slice(0,120));setSettingsLbcBan(null);}}
-                  placeholder={lang==='fr'?'Rue — ex : 12 rue de la Paix':'Street — e.g. 12 rue de la Paix'}
-                  style={inputStyle(false)}
-                />
-                <div style={{display:"flex",gap:8}}>
-                  <input
-                    value={settingsLbcCp}
-                    onChange={e=>{setSettingsLbcCp(e.target.value.replace(/\D/g,'').slice(0,5));setSettingsLbcBan(null);}}
-                    inputMode="numeric"
-                    placeholder={lang==='fr'?'Code postal':'Postal code'}
-                    style={{...inputStyle(cpError),flex:"0 0 110px"}}
-                  />
-                  <input
-                    value={settingsLbcVille}
-                    onChange={e=>{setSettingsLbcVille(e.target.value.slice(0,80));setSettingsLbcBan(null);}}
-                    placeholder={lang==='fr'?'Ville':'City'}
-                    style={{...inputStyle(false),flex:1}}
-                  />
-                </div>
-                {cpError&&(
-                  <div style={{fontSize:11,color:UI.negative,fontWeight:600}}>
-                    {lang==='fr'?'Le code postal doit contenir 5 chiffres.':'Postal code must be 5 digits.'}
-                  </div>
-                )}
-                {settingsLbcBan?.kind==='proposition'&&(
-                  <div style={{background:"#F0FDFB",border:"1px solid rgba(13,148,136,0.25)",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
-                    <div style={{fontSize:12,color:"#1B6E62",lineHeight:1.5}}>
-                      {lang==='fr'?<>Adresse reconnue : <b>{settingsLbcBan.label}</b></>:<>Address found: <b>{settingsLbcBan.label}</b></>}
-                    </div>
-                    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                      <button
-                        onClick={async()=>{setSettingsLbcAddressSaving(true);await enregistrerAdresseLbc(settingsLbcBan.rue,settingsLbcBan.cp,settingsLbcBan.ville);setSettingsLbcAddressSaving(false);}}
-                        disabled={settingsLbcAddressSaving}
-                        style={{padding:"7px 12px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
-                      >
-                        {lang==='fr'?'Utiliser cette adresse':'Use this address'}
-                      </button>
-                      <button
-                        onClick={async()=>{setSettingsLbcAddressSaving(true);await enregistrerAdresseLbc(settingsLbcRue.trim(),settingsLbcCp.trim(),settingsLbcVille.trim());setSettingsLbcAddressSaving(false);}}
-                        disabled={settingsLbcAddressSaving}
-                        style={{padding:"7px 12px",borderRadius:999,border:`1px solid ${UI.border}`,background:UI.card,color:UI.ink,fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
-                      >
-                        {lang==='fr'?'Garder ma saisie':'Keep my entry'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {settingsLbcBan?.kind==='introuvable'&&(
-                  <div style={{background:"#FFF7ED",border:"1px solid #FED7AA",borderRadius:10,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
-                    <div style={{fontSize:12,color:"#9A3412",lineHeight:1.5}}>
-                      {lang==='fr'
-                        ?'⚠️ Adresse non reconnue (Base Adresse Nationale) — vérifie l\'orthographe de la rue et de la ville. Tu peux quand même l\'enregistrer, mais la publication Leboncoin risque d\'échouer sur cette adresse.'
-                        :'⚠️ Address not recognized (French national address base) — check the street and city spelling. You can still save it, but Leboncoin publishing may fail with this address.'}
-                    </div>
-                    <button
-                      onClick={async()=>{setSettingsLbcAddressSaving(true);await enregistrerAdresseLbc(settingsLbcRue.trim(),settingsLbcCp.trim(),settingsLbcVille.trim());setSettingsLbcAddressSaving(false);}}
-                      disabled={settingsLbcAddressSaving}
-                      style={{alignSelf:"flex-start",padding:"7px 12px",borderRadius:999,border:"1px solid #FED7AA",background:UI.card,color:"#9A3412",fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}
-                    >
-                      {lang==='fr'?'Enregistrer quand même':'Save anyway'}
-                    </button>
-                  </div>
-                )}
-                {!settingsLbcBan&&(
-                <button
-                  onClick={verifierPuisEnregistrer}
-                  disabled={settingsLbcAddressSaving||cpError}
-                  style={{alignSelf:"flex-start",padding:"8px 14px",borderRadius:999,border:"none",background:`linear-gradient(120deg,${UI.teal},${UI.tealDeep})`,color:"#fff",fontSize:13,fontWeight:600,cursor:(settingsLbcAddressSaving||cpError)?"not-allowed":"pointer",opacity:(settingsLbcAddressSaving||cpError)?0.6:1,transition:"all 0.2s",fontFamily:"inherit",whiteSpace:"nowrap"}}
-                >
-                  {settingsLbcAddressSaving?"…":(lang==='fr'?'Enregistrer':'Save')}
-                </button>
-                )}
-              </div>
-              <div style={{fontSize:11,color:UI.mute,marginTop:8,lineHeight:1.4}}>
-                {lang==='fr'?'Utilisée pour le champ « adresse du bien » lors de la publication automatique sur Leboncoin. Jamais affichée sur l\'annonce.':'Used for the "item address" field when auto-publishing on Leboncoin. Never shown on the listing.'}
-              </div>
-            </div>
-              );
-            })()}
-
-            {/* ── Compte eBay (lot 0-1 API eBay, 05/09) : connexion OAuth +
-                checklist vendeur. La voie formulaire reste inchangée. ── */}
-            <EbayCompteSection lang={lang} user={user} />
-
-            {/* Désabonnement — visible uniquement si premium */}
-            {isPremium&&(
-              <div style={{marginBottom:12}}>
-                {platform==='ios'?(
-                  /* iOS IAP : géré par Apple */
-                  <div style={{background:`${UI.teal}12`,border:`1px solid ${UI.teal}55`,borderRadius:12,padding:"12px 14px",fontSize:13,color:UI.tealDeep,fontWeight:600,lineHeight:1.6}}>
-                    ⭐ {lang==='fr'
-                      ? 'Pour gérer votre abonnement, allez dans Réglages → Apple ID → Abonnements.'
-                      : 'To manage your subscription, go to Settings → Apple ID → Subscriptions.'}
-                  </div>
-                ):platform==='android'?(
-                  /* Android IAP : géré par Google Play */
-                  <div style={{background:`${UI.teal}12`,border:`1px solid ${UI.teal}55`,borderRadius:12,padding:"12px 14px",fontSize:13,color:UI.tealDeep,fontWeight:600,lineHeight:1.6}}>
-                    ⭐ {lang==='fr'
-                      ? <span>Pour gérer votre abonnement, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:UI.tealDeep,textDecoration:"underline"}}>ouvrez vos abonnements Google Play</a>.</span>
-                      : <span>To manage your subscription, <a href="https://play.google.com/store/account/subscriptions?sku=app.fillsell.premium.sub&package=app.fillsell.app" target="_blank" rel="noreferrer" style={{color:UI.tealDeep,textDecoration:"underline"}}>open your Google Play subscriptions</a>.</span>}
-                  </div>
-                ):(cancelAtPeriodEnd||cancelMsg)?(
-                  <div style={{background:`${UI.teal}12`,border:`1px solid ${UI.teal}55`,borderRadius:12,padding:"12px 14px",fontSize:13,color:UI.tealDeep,fontWeight:600,lineHeight:1.5}}>
-                    ✅ {cancelMsg||(lang==='fr'
-                      ? `Abonnement annulé. Tu gardes l'accès premium jusqu'au${cancelPeriodEnd?` ${cancelPeriodEnd}`:" la fin de la période"}.`
-                      : `Subscription cancelled. You keep premium access until${cancelPeriodEnd?` ${cancelPeriodEnd}`:" the end of the period"}.`)}
-                  </div>
-                ):cancelStep===0?(
-                  <button onClick={()=>setCancelStep(1)} style={{width:"100%",padding:"11px",background:"transparent",border:`1.5px solid ${UI.amber}99`,borderRadius:999,color:UI.amber,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s",textAlign:"left",display:"flex",alignItems:"center",gap:8}}
-                    onMouseEnter={e=>e.currentTarget.style.background=`${UI.amber}0F`}
-                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-                  >
-                    <span>📭</span> {t('seDesabonner')}
-                  </button>
-                ):(
-                  <div style={{background:`${UI.amber}14`,border:`1.5px solid ${UI.amber}66`,borderRadius:12,padding:"14px"}}>
-                    <div style={{fontSize:13,fontWeight:600,color:UI.ink,marginBottom:10}}>{lang==='fr'?'Confirmer la résiliation ?':'Confirm cancellation?'}</div>
-                    <div style={{fontSize:12,color:UI.mute2,marginBottom:12,lineHeight:1.5}}>{lang==='fr'?'Tu conserveras l\'accès Premium jusqu\'à la fin de ta période en cours. Aucun remboursement au prorata.':'You will keep Premium access until the end of your current period. No prorated refund.'}</div>
-                    <div style={{display:"flex",gap:8}}>
-                      <button onClick={handleCancelSubscription} disabled={cancelLoading} style={{flex:1,padding:"9px",background:UI.amber,border:"none",borderRadius:999,color:"#fff",fontSize:13,fontWeight:600,cursor:cancelLoading?"not-allowed":"pointer",opacity:cancelLoading?0.7:1,transition:"all 0.2s"}}>
-                        {cancelLoading?"...":(lang==='fr'?'Confirmer':'Confirm')}
-                      </button>
-                      <button onClick={()=>setCancelStep(0)} disabled={cancelLoading} style={{flex:1,padding:"9px",background:"transparent",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}>
-                        {lang==='fr'?'Annuler':'Cancel'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Restaurer les achats — iOS non-premium uniquement */}
-            {isNative&&!isPremium&&(
-              <button onClick={handleIAPRestore} disabled={iapLoading}
-                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,background:"transparent",border:"none",color:UI.ink,fontSize:"inherit",fontFamily:"inherit",cursor:iapLoading?"not-allowed":"pointer",transition:"background 0.15s",marginBottom:2,textAlign:"left",opacity:iapLoading?0.6:1}}
-                onMouseEnter={e=>{if(!iapLoading)e.currentTarget.style.background=UI.chip;}}
-                onMouseLeave={e=>{e.currentTarget.style.background="transparent";}}
-              >
-                <span style={{fontSize:18,flexShrink:0}}>🔄</span>
-                <div style={{fontSize:14,fontWeight:600}}>{iapLoading?(lang==='fr'?'Restauration...':'Restoring...'):(lang==='fr'?'Restaurer mes achats':'Restore purchases')}</div>
-              </button>
-            )}
-
-            {/* Support */}
-            <a href="mailto:support@fillsell.app" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
-              onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-            >
-              <span style={{fontSize:18,flexShrink:0}}>💬</span>
-              <div>
-                <div style={{fontSize:14,fontWeight:600}}>{t('support')}</div>
-                <div style={{fontSize:12,color:UI.mute2}}>support@fillsell.app</div>
-              </div>
-            </a>
-
-            {/* Extension Chrome — desktop uniquement : impossible à installer
-                depuis un mobile (app native comme navigateur mobile). */}
-            {!isNative&&!isMobileViewport&&(
-              <a href="/extension" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:2,cursor:"pointer"}}
-                onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-              >
-                <span style={{fontSize:18,flexShrink:0}}>🧩</span>
-                <div>
-                  <div style={{fontSize:14,fontWeight:600}}>{lang==='fr'?'Extension Chrome':'Chrome extension'}</div>
-                  <div style={{fontSize:12,color:UI.mute2}}>{lang==='fr'?'Publier depuis ton navigateur':'Publish from your browser'}</div>
-                </div>
-              </a>
-            )}
-
-            {/* Mentions légales */}
-            <a href="/legal" style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:12,textDecoration:"none",color:UI.ink,transition:"background 0.15s",marginBottom:20,cursor:"pointer"}}
-              onMouseEnter={e=>e.currentTarget.style.background=UI.chip}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-            >
-              <span style={{fontSize:18,flexShrink:0}}>📄</span>
-              <div style={{fontSize:14,fontWeight:600}}>{t('mentionsLegales')}</div>
-            </a>
-
-            {/* Langue */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,marginBottom:12}}>
-              <span style={{fontWeight:700,fontSize:14,color:UI.ink}}>{t('langue')}</span>
-              <SegmentedPills options={['fr','en']} value={lang} onChange={l=>{track('change_language',{language:l});setLang(l);}} labelFn={l=>l.toUpperCase()} />
-            </div>
-
-            {/* Devise */}
-            <div style={{background:UI.paper,border:`1px solid ${UI.border}`,borderRadius:14,marginBottom:12,padding:"14px 16px"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span style={{fontWeight:700,fontSize:14,color:UI.ink}}>{t('devise')}</span>
-                <select value={currency} onChange={e=>saveCurrency(e.target.value)}
-                  style={{padding:"6px 10px",borderRadius:10,border:`1px solid ${UI.border}`,fontSize:13,fontWeight:700,color:UI.ink,background:UI.card,cursor:"pointer",fontFamily:"inherit",outline:"none"}}>
-                  {['Europe','America','Africa','Asia/Pacific'].map(reg=>(
-                    <optgroup key={reg} label={reg==='America'&&lang!=='en'?'Amériques':reg==='Africa'&&lang!=='en'?'Afrique':reg==='Asia/Pacific'?lang==='en'?'Asia & Pacific':'Asie & Pacifique':reg}>
-                      {CURRENCIES_LIST.filter(c=>c.reg===reg).map(c=>(
-                        <option key={c.code} value={c.code}>{c.label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-              <div style={{fontSize:11,color:UI.mute,marginTop:8,lineHeight:1.4}}>
-                {lang==='en'?'⚠️ Changing currency does not convert your existing data.':'⚠️ Changer la devise ne convertit pas vos données existantes.'}
-              </div>
-            </div>
-
-            {/* Déconnexion */}
-            <button onClick={()=>{handleLogout();setShowSettings(false);}} style={{width:"100%",padding:"13px",background:"transparent",border:`1.5px solid ${UI.negative}88`,borderRadius:999,color:UI.negative,fontSize:14,fontWeight:600,cursor:"pointer",transition:"all 0.2s"}}
-              onMouseEnter={e=>e.currentTarget.style.background=`${UI.negative}0F`}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}
-            >{t('seDeconnecter')}</button>
-
-            {/* Suppression de compte */}
-            <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${UI.border}`}}>
-              {deleteStep===0&&(
-                <button onClick={()=>setDeleteStep(1)}
-                  style={{width:"100%",padding:"11px",background:"transparent",border:"none",borderRadius:12,color:UI.mute,fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.2s",textAlign:"center"}}
-                  onMouseEnter={e=>e.currentTarget.style.color=UI.negative}
-                  onMouseLeave={e=>e.currentTarget.style.color=UI.mute}
-                >
-                  {lang==='fr'?'Supprimer mon compte':'Delete my account'}
-                </button>
-              )}
-              {deleteStep===1&&(
-                <div style={{background:`${UI.negative}0F`,border:`1.5px solid ${UI.negative}44`,borderRadius:12,padding:"14px"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:UI.negative,marginBottom:6}}>
-                    {lang==='fr'?'Êtes-vous sûr ?':'Are you sure?'}
-                  </div>
-                  <div style={{fontSize:12,color:UI.mute2,marginBottom:12,lineHeight:1.5}}>
-                    {lang==='fr'?'Cette action est irréversible.':'This action is irreversible.'}
-                  </div>
-                  <div style={{display:"flex",gap:8}}>
-                    <button onClick={()=>setDeleteStep(2)} style={{flex:1,padding:"9px",background:UI.negative,border:"none",borderRadius:999,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"}}>
-                      {lang==='fr'?'Continuer':'Continue'}
-                    </button>
-                    <button onClick={()=>setDeleteStep(0)} style={{flex:1,padding:"9px",background:"transparent",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-                      {lang==='fr'?'Annuler':'Cancel'}
-                    </button>
-                  </div>
-                </div>
-              )}
-              {deleteStep===2&&(
-                <div style={{background:`${UI.negative}0F`,border:`2px solid ${UI.negative}`,borderRadius:12,padding:"14px"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:UI.negative,marginBottom:6}}>
-                    {lang==='fr'?'Confirmation finale':'Final confirmation'}
-                  </div>
-                  <div style={{fontSize:12,color:UI.mute2,marginBottom:12,lineHeight:1.5}}>
-                    {lang==='fr'
-                      ?'Toutes vos données seront supprimées définitivement. Cette action ne peut pas être annulée.'
-                      :'All your data will be permanently deleted. This action cannot be undone.'}
-                  </div>
-                  <div style={{display:"flex",gap:8}}>
-                    <button onClick={handleDeleteAccount} disabled={deleteLoading}
-                      style={{flex:1,padding:"9px",background:UI.negative,border:"none",borderRadius:999,color:"#fff",fontSize:13,fontWeight:600,cursor:deleteLoading?"not-allowed":"pointer",opacity:deleteLoading?0.7:1}}>
-                      {deleteLoading?"...":(lang==='fr'?'Supprimer définitivement':'Delete permanently')}
-                    </button>
-                    <button onClick={()=>setDeleteStep(0)} disabled={deleteLoading} style={{flex:1,padding:"9px",background:"transparent",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:13,fontWeight:600,cursor:"pointer"}}>
-                      {lang==='fr'?'Annuler':'Cancel'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Réinitialisation inventaire — discrète, tout en bas */}
-            <div style={{marginTop:8,paddingTop:12,borderTop:`1px solid ${UI.border}`,textAlign:"center"}}>
-              {resetStep===0&&(
-                <button onClick={handleReset}
-                  style={{background:"none",border:"none",color:UI.mute,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",padding:"4px 8px",borderRadius:8,transition:"color 0.15s"}}
-                  onMouseEnter={e=>e.currentTarget.style.color=UI.negative}
-                  onMouseLeave={e=>e.currentTarget.style.color=UI.mute}
-                >{lang==='fr'?'Réinitialiser l\'inventaire':'Reset inventory'}</button>
-              )}
-              {resetStep===1&&(
-                <div>
-                  <div style={{fontSize:12,color:UI.mute,marginBottom:8}}>{lang==='fr'?'⚠️ Supprimer tout le stock et les ventes ?':'⚠️ Delete all stock and sales?'}</div>
-                  <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-                    <button onClick={handleReset} style={{padding:"5px 14px",background:"none",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Confirmer':'Confirm'}</button>
-                    <button onClick={()=>setResetStep(0)} style={{padding:"5px 14px",background:"none",border:`1px solid ${UI.border}`,borderRadius:999,color:UI.mute2,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{lang==='fr'?'Annuler':'Cancel'}</button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Signaler un bug — masqué sans compte : l'envoi exige un Bearer
-                utilisateur, un bouton visible hors session serait un bouton
-                qui ne fait rien. */}
-            {user&&(
-            <button onClick={()=>{setShowBugReport(true);setBugMessage("");}}
-              style={{display:"block",width:"100%",background:"none",border:"none",textAlign:"center",fontSize:12,color:UI.mute,marginTop:16,cursor:"pointer",textDecoration:"underline",textUnderlineOffset:3,fontFamily:"inherit",padding:0}}
-            >
-              🐛 {lang==='fr'?'Signaler un bug':'Report a bug'}
-            </button>
-            )}
-          </div>
-          </div>
-          <style>{`
-            @keyframes fadeInBd{from{opacity:0}to{opacity:1}}
-          `}</style>
-        </>
+        <ReglagesPage
+          onClose={()=>{setShowSettings(false);setDeleteStep(0);setResetStep(0);}}
+          lang={lang}
+          setLang={setLang}
+          user={user}
+          isPremium={isPremium}
+          isPro={isPro}
+          isBusiness={isBusiness}
+          natif={isNative}
+          plateforme={platform}
+          extensionInstallable={!isNative&&!isMobileViewport}
+          extensionVersion={extensionVersion}
+          extensionStatus={{lastSeenAt:extensionLastSeenAt,build:extensionBuild,outdated:extensionOutdated}}
+          quotas={quotas}
+          username={username}
+          setUsername={setUsername}
+          currency={currency}
+          saveCurrency={saveCurrency}
+          devises={CURRENCIES_LIST}
+          adresseLbc={{rue:settingsLbcRue,cp:settingsLbcCp,ville:settingsLbcVille}}
+          setAdresseLbc={({rue,cp,ville})=>{setSettingsLbcRue(rue);setSettingsLbcCp(cp);setSettingsLbcVille(ville);}}
+          plateformesOuvertes={plateformesOuvertes}
+          onToast={(message)=>{setToast({visible:true,message});setTimeout(()=>setToast({visible:false,message:''}),3000);}}
+          ouvrirOffres={(origine)=>openUpgradeModal(null,origine??'reglages')}
+          ouvrirSignalementBug={()=>{setShowBugReport(true);setBugMessage("");}}
+          resiliation={{
+            etape:cancelStep,setEtape:setCancelStep,enCours:cancelLoading,
+            lancer:handleCancelSubscription,
+            resilie:cancelAtPeriodEnd||Boolean(cancelMsg),
+            finLe:cancelPeriodEnd,message:cancelMsg,
+          }}
+          restauration={{enCours:iapLoading,lancer:handleIAPRestore}}
+          reset={{step:resetStep,lancer:handleReset,annuler:()=>setResetStep(0)}}
+          suppression={{step:deleteStep,setStep:setDeleteStep,enCours:deleteLoading,lancer:handleDeleteAccount}}
+          deconnexion={()=>{handleLogout();setShowSettings(false);}}
+        />
       )}
 
       {/* ── CONVERSION MODAL (fusion ex-UpgradeModal : vocal, Lens, publish, stock, générique) ── */}
