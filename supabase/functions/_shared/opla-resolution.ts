@@ -263,7 +263,21 @@ export function resoudreCategorieOpla(
     break;
   }
   const n = code ? oplaNoeud(code) : null;
-  return { code: n?.feuille ? code : null, candidats: [], etapes };
+  if (n?.feuille) return { code, candidats: [], etapes };
+
+  // ── L'ANCRE PEUT ÊTRE UNE IMPASSE, ET C'EST UN CAS RÉEL ──────────────────
+  // Job eba8a512 (« Maillot Muangthong United ») : il porte déjà
+  // oplaCategoryCode = MEN_TOPS_T_SHIRTS, un NŒUD choisi par l'utilisateur dans
+  // une liste qui n'aurait jamais dû le proposer. Or la bonne feuille —
+  // MEN_JERSEYS — vit sous SPORTSWEAR, PAS sous ce nœud : chercher dessous rend
+  // toujours [], et la descente n'en sort jamais. On reprend donc depuis la
+  // racine plutôt que de tourner en rond dans la branche où on nous a égarés.
+  if (depart) {
+    etapes.push(`ancre « ${depart} » sans issue — reprise depuis les racines`);
+    const global = resoudreCategorieOpla({ mots, genre });
+    return { code: global.code, candidats: global.candidats, etapes: [...etapes, ...global.etapes] };
+  }
+  return { code: null, candidats: [], etapes };
 }
 
 // ── LES OPTIONS D'UNE QUESTION : DES FEUILLES, ET RIEN D'AUTRE ─────────────
