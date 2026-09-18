@@ -270,7 +270,11 @@ export function oplaOptionsNiveauEchoue(
   for (const segment of Array.isArray(chemin) ? chemin : []) {
     const cible = String(segment ?? "").trim().toLowerCase();
     if (!cible) break;
-    const suivant = oplaEnfants(ancre ?? "").find((e) => e.titre.trim().toLowerCase() === cible);
+    // Type explicite : sans lui, TS7022 — ancre est réassignée depuis
+    // suivant.code, donc son type se référence lui-même. Personne ne le voyait
+    // tant qu'aucune fonction type-vérifiée n'importait ce module (2026-09-18,
+    // get-pending-jobs lit la branche pour en déduire le genre Opla).
+    const suivant: OplaNoeud | undefined = oplaEnfants(ancre ?? "").find((e) => e.titre.trim().toLowerCase() === cible);
     if (!suivant) break;
     if (suivant.feuille) return rendre(ancre, profondeur); // la feuille elle-même a échoué
     ancre = suivant.code;
