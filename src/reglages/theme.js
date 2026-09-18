@@ -43,6 +43,14 @@ export const CSS_REGLAGES = `
 @keyframes rgGlisse { from { opacity: 0; transform: translateX(18px) } to { opacity: 1; transform: translateX(0) } }
 .rg-ecran { animation: rgEntree .16s ease }
 .rg-pile { animation: rgGlisse .18s cubic-bezier(.22,.61,.36,1) }
+/* ⛔ LE CORPS DÉFILE, IL NE COMPRIME PAS (défaut du 18/09, capture Nico).
+   Le corps est une colonne flex ET la zone de défilement. Or dans une colonne
+   flex, les enfants ont flex-shrink:1 par défaut : dès que le contenu dépasse
+   la hauteur de l'écran, le navigateur les ÉCRASE au lieu de laisser défiler.
+   Résultat vu en prod : la carte d'identité rabotée en hauteur, l'avatar qui
+   déborde de son cadre et l'e-mail coupé EN DEUX dans l'épaisseur des lettres.
+   Une carte doit s'adapter à son contenu, jamais l'inverse. */
+.rg-corps > * { flex-shrink: 0 }
 .rg-ligne {
   display: flex; align-items: center; gap: 12px;
   min-height: ${HAUTEUR_LIGNE}px; padding: 12px 16px;

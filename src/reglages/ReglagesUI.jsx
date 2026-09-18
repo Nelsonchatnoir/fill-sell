@@ -88,7 +88,7 @@ export function EcranReglages({ titre, onRetour, actif = true, pile = false, cle
           d'entrée rejoue. */}
       <div
         key={cle}
-        className={pile ? 'rg-pile' : undefined}
+        className={pile ? 'rg-corps rg-pile' : 'rg-corps'}
         style={{
           flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch',
           padding: '20px 16px calc(env(safe-area-inset-bottom,0px) + 36px)',
@@ -259,20 +259,42 @@ export function BandeInfo({ children, lien, libelleLien }) {
 }
 
 // ── CARTE D'IDENTITÉ ───────────────────────────────────────────────────────
+// ⛔ CE QUI DÉBORDE SE TRONQUE À L'HORIZONTALE, JAMAIS À LA VERTICALE.
+// Le cas COURANT, pas l'exception : un e-mail long (« nicolas.svobodny@
+// gmail.com ») et un pseudo long. Les trois règles qui le garantissent :
+//   · la carte n'a AUCUNE hauteur imposée — elle suit son contenu (le corps
+//     de l'écran ne comprime plus ses enfants, cf. .rg-corps dans theme.js) ;
+//   · la colonne de texte porte minWidth:0 — sans lui, un enfant flex refuse
+//     de descendre sous la largeur de son contenu et l'ellipse ne s'applique
+//     jamais ;
+//   · pseudo ET e-mail portent chacun leur ellipse. Le pseudo aussi : sans
+//     elle, un pseudo long pousse le badge de palier hors du cadre.
 export function CarteIdentite({ nom, email, badge }) {
-  const initiale = (nom || email || '?').trim().charAt(0).toUpperCase();
+  // Première lettre RÉELLE : un pseudo vide ou fait d'espaces retombe sur
+  // l'e-mail, et un compte sans les deux garde un repère plutôt qu'un vide.
+  const source = String(nom ?? '').trim() || String(email ?? '').trim();
+  const initiale = source ? source.charAt(0).toUpperCase() : '?';
   return (
     <Carte style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 16 }}>
       <div aria-hidden="true" style={{
-        width: 52, height: 52, borderRadius: 26, flexShrink: 0,
+        width: 52, height: 52, borderRadius: 26, flexShrink: 0, flexGrow: 0,
         background: `linear-gradient(135deg,${R.teal},${R.tealDeep})`, color: '#fff',
-        fontSize: 22, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 22, fontWeight: 700, lineHeight: 1,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>{initiale}</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1, minWidth: 0 }}>
-        {nom && <strong style={{ fontSize: 17, fontWeight: 700, color: R.ink, letterSpacing: '-0.02em' }}>{nom}</strong>}
-        <span style={{ fontSize: 13, color: R.mute2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: '1 1 auto', minWidth: 0 }}>
+        {nom && (
+          <strong style={{
+            fontSize: 17, fontWeight: 700, color: R.ink, letterSpacing: '-0.02em',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{nom}</strong>
+        )}
+        <span style={{
+          fontSize: 13, color: R.mute2, lineHeight: 1.35,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{email}</span>
       </div>
-      {badge}
+      {badge && <span style={{ flexShrink: 0, display: 'inline-flex' }}>{badge}</span>}
     </Carte>
   );
 }
