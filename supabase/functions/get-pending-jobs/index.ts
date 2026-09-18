@@ -130,6 +130,44 @@ serve(async (req) => {
     if (includeProcessing) statuses.push("processing");
     if (includeNeedsUser) statuses.push("needs_user");
 
+    // ── LES CRÉNEAUX, PAR PLATEFORME (2026-09-18) ──────────────────────────
+    // Le module planifié est multiplateforme : Vinted, Leboncoin, Beebs, Opla
+    // ont CHACUNE leur créneau, leurs jours et leur plafond. Un job Leboncoin
+    // ne se juge donc plus sur la fenêtre Vinted — c'était le seul endroit du
+    // serveur qui l'aurait fait.
+    // UN aller-retour pour les quatre (republish_planifiee_fenetres_courantes).
+    // Repli sur l'ancienne RPC mono-plateforme si la migration n'est pas encore
+    // jouée : le comportement d'avant, à l'identique, jamais un point de panne.
+    type Fenetre = { actif: boolean; dans_creneau: boolean; reprise: string | null; fin: string | null };
+    const PF_CRENEAU = ["vinted", "leboncoin", "beebs", "opla"] as const;
+    let creneauxCache: Record<string, Fenetre> | null | undefined;
+    const lireCreneaux = async (): Promise<Record<string, Fenetre>> => {
+      if (creneauxCache !== undefined && creneauxCache !== null) return creneauxCache;
+      const out: Record<string, Fenetre> = {};
+      const poser = (pf: string, f: Record<string, unknown> | null) => {
+        if (!f || f.actif !== true) return;
+        out[pf] = {
+          actif: true,
+          dans_creneau: f.dans_creneau === true,
+          reprise: (f.prochaine_tentative as string | null) ?? null,
+          fin: (f.courant_fin as string | null) ?? null,
+        };
+      };
+      try {
+        const { data, error } = await userClient.rpc("republish_planifiee_fenetres_courantes");
+        if (error) throw error;
+        const m = (data ?? {}) as Record<string, Record<string, unknown> | null>;
+        for (const pf of PF_CRENEAU) poser(pf, m[pf] ?? null);
+      } catch (_e) {
+        try {
+          const { data: fen } = await userClient.rpc("republish_planifiee_fenetre_courante");
+          poser("vinted", (fen ?? null) as Record<string, unknown> | null);
+        } catch (_e2) { /* aucun module lisible : rien n'est retenu */ }
+      }
+      creneauxCache = out;
+      return out;
+    };
+
     // ── État de la RETENUE d'exécution des republications ───────────────────
     // (2026-08-29, régime refondu le 2026-09-04) UNE seule définition,
     // calculée ICI et nulle part ailleurs. Sert à la retenue du claim
@@ -378,24 +416,17 @@ serve(async (req) => {
       // creneau_republish (2026-09-12) : la fenêtre du module planifié, pour
       // que les cartes des jobs auto retenus hors créneau disent « Dès 08h00 »
       // avec le MÊME instant que celui qui retient. RPC absente → null.
-      let creneau: Record<string, unknown> | null = null;
+      // 18/09 : les quatre fenêtres. `creneau_republish` garde la forme d'avant
+      // (la fenêtre VINTED) — l'app d'aujourd'hui la lit telle quelle et ne
+      // change pas de comportement ; `creneaux_republish` porte les quatre,
+      // pour que la carte d'un job retenu annonce l'heure de SA plateforme.
+      const creneaux = await lireCreneaux();
+      const creneau = creneaux["vinted"] ?? null;
       try {
-        const { data: fen } = await userClient.rpc("republish_planifiee_fenetre_courante");
-        const f = (fen ?? null) as Record<string, unknown> | null;
-        if (f && f.actif === true) {
-          creneau = {
-            actif: true,
-            dans_creneau: f.dans_creneau === true,
-            reprise: (f.prochaine_tentative as string | null) ?? null,
-            fin: (f.courant_fin as string | null) ?? null,
-          };
-        }
-      } catch (_e) { /* null = pas de module, ou migration pas encore jouée */ }
-      try {
-        return json({ plafond_republish: await etatPlafondRepublish(), annonces_en_attente: attente, creneau_republish: creneau });
+        return json({ plafond_republish: await etatPlafondRepublish(), annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux });
       } catch (_e) {
         // L'app masque le bandeau sur null : jamais un bandeau sur une panne.
-        return json({ plafond_republish: null, annonces_en_attente: attente, creneau_republish: creneau });
+        return json({ plafond_republish: null, annonces_en_attente: attente, creneau_republish: creneau, creneaux_republish: creneaux });
       }
     }
 
@@ -1128,35 +1159,42 @@ serve(async (req) => {
     // Best-effort : RPC absente (migration pas encore jouée) ou illisible →
     // rien de retenu, jamais un point de panne. Périmètre : le poll
     // d'exécution seul (le popup continue de voir la file complète).
+    // ⚠️ 18/09 — PAR PLATEFORME. Chaque plateforme a SON créneau : un job
+    // Leboncoin retenu sur la fenêtre Vinted serait une retenue à tort (et
+    // inversement, un job Leboncoin servi pendant le créneau Vinted serait une
+    // republication hors créneau). La fenêtre de CHAQUE job est celle de SA
+    // plateforme, et une plateforme sans module actif ne retient rien.
     let heldCreneau = 0;
     let creneauRepublish: Record<string, unknown> | null = null;
+    let creneauxRepublish: Record<string, unknown> | null = null;
     const autoHorsDeleted = (j: { action: string; platform_fields: unknown }) => {
       const pf = (j.platform_fields as Record<string, unknown> | null) ?? {};
       return j.action === "republish" && pf["republish_source"] === "auto" && pf["republish_step"] !== "deleted";
     };
     if (!includeProcessing && !includeNeedsUser && out.some(autoHorsDeleted)) {
       try {
-        const { data: fen } = await userClient.rpc("republish_planifiee_fenetre_courante");
-        const f = (fen ?? null) as Record<string, unknown> | null;
-        if (f && f.actif === true) {
-          const dans = f.dans_creneau === true;
-          creneauRepublish = {
-            actif: true,
-            dans_creneau: dans,
-            reprise: (f.prochaine_tentative as string | null) ?? null,
-            fin: (f.courant_fin as string | null) ?? null,
-          };
-          if (!dans) {
-            const avant = out.length;
-            out = out.filter((j) => !autoHorsDeleted(j));
-            heldCreneau = avant - out.length;
-            if (heldCreneau) {
-              console.log(
-                `[get-pending-jobs] userId=${user.id} : hors créneau de republication planifiée — ` +
-                `${heldCreneau} republication(s) auto retenue(s) en pending jusqu'à ${String(f.prochaine_tentative ?? "?")} ` +
-                `(étape 'deleted' exemptée, manuel non concerné)`,
-              );
-            }
+        const fenetres = await lireCreneaux();
+        if (Object.keys(fenetres).length) {
+          creneauxRepublish = fenetres;
+          creneauRepublish = fenetres["vinted"] ?? null;
+          const retenus: Record<string, number> = {};
+          const avant = out.length;
+          out = out.filter((j) => {
+            if (!autoHorsDeleted(j)) return true;
+            const f = fenetres[String((j as { platform?: string }).platform ?? "")];
+            if (!f || f.dans_creneau) return true;
+            retenus[String((j as { platform?: string }).platform ?? "?")] =
+              (retenus[String((j as { platform?: string }).platform ?? "?")] ?? 0) + 1;
+            return false;
+          });
+          heldCreneau = avant - out.length;
+          if (heldCreneau) {
+            console.log(
+              `[get-pending-jobs] userId=${user.id} : hors créneau de republication planifiée — ` +
+              Object.entries(retenus).map(([pf, n]) =>
+                `${n} ${pf} jusqu'à ${String(fenetres[pf]?.reprise ?? "?")}`).join(" · ") +
+              ` (étape 'deleted' exemptée, manuel non concerné)`,
+            );
           }
         }
       } catch (_e) { /* filet best-effort : jamais un point de panne */ }
@@ -4072,6 +4110,9 @@ serve(async (req) => {
       // creneau_republish (2026-09-12) : module planifié actif ? dans le
       // créneau ? sinon `reprise` = prochaine tentative (instant serveur).
       creneau_republish: creneauRepublish,
+      // creneaux_republish (2026-09-18) : les quatre fenêtres, par plateforme.
+      // `creneau_republish` reste la fenêtre VINTED, pour l'app d'avant.
+      creneaux_republish: creneauxRepublish,
       jobs_retenus_creneau: heldCreneau,
       // porte pro Leboncoin (2026-09-17) : jobs publish Leboncoin retenus à
       // ce poll parce que l'extension est trop ancienne pour le formulaire
