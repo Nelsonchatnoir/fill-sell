@@ -22,7 +22,7 @@
 //    réinitialisation, suppression, déconnexion, devise) ; les écritures
 //    directes (pseudo, adresse Leboncoin) sont recopiées au geste près dans
 //    leurs sous-pages. Ce lot DÉPLACE et REGROUPE, il ne décide rien.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { track } from '../analytics/analytics';
 import PlanBadge from '../components/PlanBadge';
 import {
@@ -33,7 +33,7 @@ import { plateformesDuCompte } from '../utils/stockFiltres';
 import { txt } from './textes';
 import { GROUPES, entreesVisibles } from './plan';
 import { useSessionsPlateformes } from './useSessionsPlateformes';
-import { consommationVisible, dateRemiseAZero } from './quotas';
+import { consommationVisible, lireProchaineRemiseAZero, formaterRemiseAZero } from './quotas';
 import {
   EcranReglages, Groupe, Carte, Ligne, Jauge, JaugeRepublication, CarteIdentite, PiedPage,
 } from './ReglagesUI';
@@ -114,7 +114,22 @@ export default function ReglagesPage({
     setEcranRepub('reglages');
   };
 
-  const remiseAZero = useMemo(() => dateRemiseAZero(quotas?.cycle_debut, lang), [quotas?.cycle_debut, lang]);
+  // ── LA DATE DE REMISE À ZÉRO EST LUE EN BASE, PAS DÉDUITE ──────────────
+  // coin_wallets.next_grant_at : l'échéance que la fonction de grant lit
+  // elle-même pour décider d'accorder ou non. Le renouvellement est à DATE
+  // ANNIVERSAIRE par compte, jamais le 1er du mois (cf. quotas.js). Lecture
+  // unique à l'ouverture de la page (une ligne, RLS « own wallet read ») ;
+  // illisible → null → la page n'affiche AUCUNE date.
+  const [prochainGrant, setProchainGrant] = useState(null);
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let mort = false;
+    lireProchaineRemiseAZero(user.id)
+      .then((iso) => { if (!mort) setProchainGrant(iso); })
+      .catch(() => { /* illisible : aucune date affichée, jamais une inventée */ });
+    return () => { mort = true; };
+  }, [user?.id]);
+  const remiseAZero = useMemo(() => formaterRemiseAZero(prochainGrant, lang), [prochainGrant, lang]);
   const deviseLabel = useMemo(
     () => devises?.find((d) => d.code === currency)?.label ?? currency,
     [devises, currency],
