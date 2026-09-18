@@ -3242,9 +3242,14 @@ async function processJob(rawJob, accessToken) {
     // à nouveau — trois questions, zéro progrès, et la garde anti-boucle aurait
     // coupé à la quatrième). Clés FERMÉES : un handler ne réécrit pas
     // platform_fields à sa guise.
+    // `oplaCategoryAsk` (2026-09-18) : la LISTE qui a été montrée à
+    // l'utilisateur quand la catégorie lui a été demandée — { ancre, options:
+    // [{code,title}] }. C'est contre elle que le passage suivant relit la
+    // réponse. Sans elle, le job 7d31c111 relisait « Accessoires » contre un
+    // niveau recalculé (et reperdu) : 5 questions, zéro progrès, FAILED.
     if (result?.categorieRetenue && typeof result.categorieRetenue === "object") {
       const maj = {};
-      for (const k of ["oplaCategoryCode", "oplaCategoryPath", "oplaCategoryChoice"]) {
+      for (const k of ["oplaCategoryCode", "oplaCategoryPath", "oplaCategoryChoice", "oplaCategoryAsk"]) {
         if (k in result.categorieRetenue) maj[k] = result.categorieRetenue[k];
       }
       job.platform_fields = { ...(job.platform_fields ?? {}), ...maj };

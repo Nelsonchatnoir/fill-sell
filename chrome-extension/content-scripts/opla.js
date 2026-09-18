@@ -397,16 +397,105 @@ async function oplaChargerReferentiel() {
     (function descend(k) { for (const e of enfantsDe(k)) { dedans.add(e.code); descend(e.code); } })(c);
     return dedans;
   };
-  const feuillesParMot = (mot, racine) => {
-    const jm = jetons(mot);
-    if (!jm) return [];
+  // ── LA RECHERCHE PAR LE MOT, EN TROIS PASSES (2026-09-18) ─────────────────
+  // Défaut mesuré sur le job eba8a512 (« Ego Maillot Muangthong United blanc
+  // Yamaha », 18/09 09:20) : le job porte DEUX mots-objets —
+  // categorie_objet_ia = « maillot de football » et categorie_mot_cle_titre =
+  // « maillot ». L'ancien code n'en lisait qu'UN (`a ?? b`), l'égalité stricte
+  // des jetons ne trouvait rien pour « football maillot », et le pré-vol
+  // repartait en question sur les 13 enfants de MEN_CLOTHING — alors que
+  // MEN_JERSEYS (« Maillots », sous SPORTSWEAR, sous MEN_CLOTHING) est la
+  // seule feuille que ces mots désignent.
+  //
+  // Donc : TOUS les mots candidats, et trois passes, de la plus sûre à la plus
+  // large. On s'arrête à la PREMIÈRE passe qui rend quelque chose — une passe
+  // plus large ne ferait qu'ajouter du bruit à un résultat déjà trouvé.
+  //   1. ÉGALITÉ     : les jetons du libellé SONT ceux du mot
+  //                    (« t-shirt » = « T-shirts ») ;
+  //   2. LIBELLÉ ⊆ MOT : le mot nomme le libellé et le précise
+  //                    (« maillot de football » ⊃ « Maillots ») — sûre, parce
+  //                    que c'est le LIBELLÉ qui doit être entièrement contenu ;
+  //   3. MOT ⊆ LIBELLÉ : le mot est une partie du libellé
+  //                    (« montre » ⊂ « Montres connectées ») — la plus large,
+  //                    d'où le plafond ci-dessous.
+  // ⛔ PLAFOND : au-delà de OPLA_CANDIDATS_MAX feuilles, la passe ne « trouve »
+  //    rien d'utile — c'est une liste à cocher illisible, pas une réponse. On
+  //    la jette et on laisse la descente poser la question AU NIVEAU, qui tient
+  //    sur un écran. Une question qui ne peut pas être répondue coûte un geste
+  //    ET la confiance (leçon Blaf69 du 16/09).
+  const OPLA_CANDIDATS_MAX = 12;
+  const feuillesParMot = (mots, racine) => {
+    const listeMots = (Array.isArray(mots) ? mots : [mots])
+      .map((m) => jetons(m)).filter(Boolean);
+    if (!listeMots.length) return [];
     const perimetre = sousArbre(racine);
-    const out = [];
+    const dedans = [];
     for (const f of feuilles) {
       if (perimetre && !perimetre.has(f)) continue;
-      if (jetons(titres.get(f)) === jm) out.push({ code: f, title: titres.get(f), chemin: cheminDe(f) });
+      const jt = jetons(titres.get(f));
+      if (jt) dedans.push({ code: f, title: titres.get(f), jetons: jt.split(" ") });
     }
-    return out;
+    const passes = [
+      (jt, jm) => jt.join(" ") === jm.join(" "),
+      (jt, jm) => jt.every((t) => jm.includes(t)),
+      (jt, jm) => jm.every((t) => jt.includes(t)),
+    ];
+    for (const passe of passes) {
+      for (const mot of listeMots) {
+        const jm = mot.split(" ");
+        const out = dedans.filter((f) => passe(f.jetons, jm))
+          .map((f) => ({ code: f.code, title: f.title, chemin: cheminDe(f.code) }));
+        if (out.length && out.length <= OPLA_CANDIDATS_MAX) return out;
+      }
+    }
+    return [];
+  };
+
+  // ── LA DESCENTE AUTOMATIQUE (2026-09-18) ──────────────────────────────────
+  // Avant, arriver à MEN_TOP_T_SHIRTS coûtait TROIS needs_user : Hommes, puis
+  // Vêtements, puis Hauts et t-shirts — une question par niveau, alors qu'un
+  // seul de ces niveaux était réellement ambigu. Ici, tant qu'il n'y a qu'un
+  // chemin plausible on descend TOUT SEUL, et on ne s'arrête que sur le niveau
+  // qui demande vraiment un arbitrage.
+  //
+  // Deux façons de descendre sans demander :
+  //   · par le MOT : une seule feuille du sous-arbre porte le nom de l'objet ;
+  //   · par la FORME de l'arbre : un nœud à UN SEUL enfant n'offre aucun choix
+  //     — poser la question serait faire cocher la seule case disponible.
+  // Et un cas où l'on s'arrête pour de bon : plusieurs feuilles nommées par le
+  // mot → UNE question, au niveau des FEUILLES, avec leur chemin entier.
+  //
+  // ⛔ ON NE S'ARRÊTE JAMAIS SUR UN NŒUD INTERMÉDIAIRE POUR ÉVITER LA QUESTION.
+  //    Le serveur Opla accepte une catégorie inexistante en 200 et produit une
+  //    annonce silencieusement morte (établi au lot 1) : la descente rend ce
+  //    qu'elle a atteint, et c'est le PRÉ-VOL — la seule garde — qui tranche.
+  // ⛔ Et on ne remonte JAMAIS : partir d'un nœud acquis et finir plus haut
+  //    ferait perdre ce que l'utilisateur a déjà tranché.
+  const descendre = (depart, mots) => {
+    let code = String(depart ?? "").trim();
+    if (code && !noeuds.has(code)) code = ""; // un code inconnu n'est pas une ancre
+    const etapes = [];
+    for (let garde = 0; garde < 12; garde++) {
+      if (code && feuilles.has(code)) break;
+      const parMot = feuillesParMot(mots, code || null);
+      if (parMot.length === 1) {
+        etapes.push(`mot → ${parMot[0].code} (feuille unique ${code ? `sous ${code}` : "dans tout l'arbre"})`);
+        code = parMot[0].code;
+        continue;
+      }
+      if (parMot.length > 1) {
+        etapes.push(`mot → ${parMot.length} feuilles ${code ? `sous ${code}` : "dans tout l'arbre"} — question au niveau des feuilles`);
+        return { code, candidats: parMot, etapes };
+      }
+      const enf = enfantsDe(code || "");
+      if (enf.length === 1) {
+        etapes.push(`enfant unique → ${enf[0].code} (aucun choix à proposer)`);
+        code = enf[0].code;
+        continue;
+      }
+      break; // ambiguïté réelle : c'est ICI que la question se pose
+    }
+    return { code, candidats: [], etapes };
   };
   const feuilleParChemin = (libelle) => {
     const l = String(libelle ?? "");
@@ -450,7 +539,7 @@ async function oplaChargerReferentiel() {
   return {
     noeuds, feuilles, grillePour, couleursPour, matieresPour, precharger,
     titres, enfantsDe, optionsNiveauEchoue,
-    cheminDe, feuillesParMot, feuilleParChemin, SEPARATEUR_CHEMIN,
+    cheminDe, feuillesParMot, feuilleParChemin, descendre, SEPARATEUR_CHEMIN,
   };
 }
 
@@ -587,64 +676,91 @@ async function fillListingForm(job) {
     // Le needs_user de catégorie écrit `platform_fields.oplaCategoryChoice` :
     // un LIBELLÉ, celui que l'utilisateur a coché parmi les options du niveau
     // qui avait échoué. On le retraduit en CODE — le POST Opla n'accepte que
-    // le code — en cherchant dans les options de CE NIVEAU, jamais dans tout
-    // l'arbre : deux branches portent le même libellé (« Vestes » existe sous
-    // WOMENS et sous MEN_PULLOVERS_SWEATERS), et prendre le premier venu
-    // rangerait l'annonce dans l'autre rayon, en 200, sans un mot.
-    // Un choix qui mène à un nœud intermédiaire laisse le job repasser au
-    // pré-vol : il redemandera, UN CRAN PLUS BAS, avec les bonnes options.
+    // le code — jamais en cherchant le libellé dans tout l'arbre : deux
+    // branches portent le même libellé (« Vestes » existe sous WOMENS et sous
+    // MEN_PULLOVERS_SWEATERS), et prendre le premier venu rangerait l'annonce
+    // dans l'autre rayon, en 200, sans un mot.
+    //
+    // ⛔ LA RÉPONSE SE RAPPROCHE DU NIVEAU QUI A POSÉ LA QUESTION (2026-09-18).
+    //    C'est ce qui a tué le job 7d31c111 (« Casio Montre G-Shock noire »,
+    //    17/09 22:57) : FAILED après 5 questions, journal
+    //    « choix utilisateur "Accessoires" ABSENT du niveau courant — ignoré,
+    //    on redemandera ». Relevé en base : oplaCategoryCode = NULL sur ce job.
+    //    La question avait été posée depuis une ancre DÉDUITE (la descente du
+    //    chemin de libellés) que rien ne persistait ; au passage suivant,
+    //    l'ancre était reperdue, `optionsNiveauEchoue("")` rendait les 8
+    //    RACINES, « Accessoires » n'en est pas une, et la même question
+    //    revenait. Cinq fois.
+    //    Le remède est à la racine : la question PART AVEC SES OPTIONS
+    //    (`oplaCategoryAsk` = { ancre, options:[{code,title}] }, persisté par
+    //    categorieRetenue comme le reste), et la réponse se relit contre CETTE
+    //    liste-là. Plus aucune retraduction « contre le niveau courant », donc
+    //    plus aucun moyen que le niveau ait bougé entre-temps.
     const pf0 = job?.platform_fields ?? {};
     const choix = String(pf0.oplaCategoryChoice ?? "").trim();
     let code = String(pf0.oplaCategoryCode ?? "").trim();
+    let choixConsomme = false;
     if (choix) {
-      // (a) Un CHEMIN ENTIER (« Hommes › Vêtements › … › T-shirts ») : la
-      //     question précédente proposait des FEUILLES (descente par le mot).
-      const feuille = ref.feuilleParChemin(choix);
-      if (feuille) {
-        oplaTracer(`categorie: choix utilisateur « ${choix} » → ${feuille} (feuille, par son chemin)`);
-        code = feuille;
+      // (a) LA LISTE QUI A ÉTÉ MONTRÉE. Source de vérité : c'est exactement ce
+      //     que l'utilisateur avait sous les yeux, code compris.
+      const ask = pf0.oplaCategoryAsk;
+      const posees = Array.isArray(ask?.options) ? ask.options : [];
+      const dansAsk = posees.find((o) => String(o?.title ?? "").trim().toLowerCase() === choix.toLowerCase());
+      if (dansAsk?.code) {
+        oplaTracer(`categorie: choix utilisateur « ${choix} » → ${dansAsk.code} (liste posée à la question, ancre ${ask?.ancre ?? "(racines)"})`);
+        code = String(dansAsk.code);
+        choixConsomme = true;
       } else {
-        // (b) Un libellé du NIVEAU qui avait échoué.
-        const niveau = ref.optionsNiveauEchoue(code, pf0.oplaCategoryPath ?? job?.categoryPath ?? []);
-        const trouve = niveau.find((o) => String(o.title).trim().toLowerCase() === choix.toLowerCase());
-        if (trouve) {
-          oplaTracer(`categorie: choix utilisateur « ${choix} » → ${trouve.code} (niveau de ${niveau.length} options)`);
-          code = trouve.code;
+        // (b) Un CHEMIN ENTIER (« Hommes › Vêtements › … › T-shirts ») : la
+        //     forme des réponses posées avant que la liste soit persistée.
+        const feuille = ref.feuilleParChemin(choix);
+        if (feuille) {
+          oplaTracer(`categorie: choix utilisateur « ${choix} » → ${feuille} (feuille, par son chemin)`);
+          code = feuille;
+          choixConsomme = true;
         } else {
-          oplaTracer(`categorie: choix utilisateur « ${choix} » ABSENT du niveau courant — ignoré, on redemandera`);
+          // (c) REPLI HISTORIQUE, pour les jobs posés avant le 18/09 : le
+          //     libellé relu contre le niveau qui échouerait aujourd'hui.
+          const niveau = ref.optionsNiveauEchoue(code, pf0.oplaCategoryPath ?? job?.categoryPath ?? []);
+          const trouve = niveau.find((o) => String(o.title).trim().toLowerCase() === choix.toLowerCase());
+          if (trouve) {
+            oplaTracer(`categorie: choix utilisateur « ${choix} » → ${trouve.code} (repli : niveau de ${niveau.length} options)`);
+            code = trouve.code;
+            choixConsomme = true;
+          } else {
+            oplaTracer(`categorie: choix utilisateur « ${choix} » introuvable, ni dans la liste posée ni au niveau courant — on redemandera`);
+          }
         }
       }
     }
-    // ── LA DESCENTE PAR LE MOT (2026-09-17 soir) ─────────────────────────────
-    // Catégorie absente ou nœud intermédiaire, et le job nomme son objet
-    // (categorie_objet_ia / categorie_mot_cle_titre, posés par l'app) : on
-    // cherche les FEUILLES dont le libellé EST ce mot, sous le nœud acquis ou
-    // dans tout l'arbre. Une seule → on y va sans question (« Hommes » +
-    // « t-shirt » = MEN_TOP_T_SHIRTS). Plusieurs → UNE question, au niveau des
-    // feuilles, avec leur chemin entier — jamais trois questions racine →
-    // rayon → sous-rayon.
-    const mot = String(pf0.categorie_objet_ia ?? pf0.categorie_mot_cle_titre ?? "").trim();
-    let feuillesCandidates = [];
-    if (mot && (!code || (ref.noeuds.has(code) && !ref.feuilles.has(code)))) {
-      const sous = ref.feuillesParMot(mot, code || null);
-      const ou = code ? `sous ${code}` : "dans tout l'arbre";
-      if (sous.length === 1) {
-        oplaTracer(`categorie: mot « ${mot} » → ${sous[0].code} (feuille unique ${ou})`);
-        code = sous[0].code;
-      } else if (sous.length > 1) {
-        feuillesCandidates = sous;
-        oplaTracer(`categorie: mot « ${mot} » → ${sous.length} feuilles ${ou} — question au niveau des feuilles`);
-      } else {
-        oplaTracer(`categorie: mot « ${mot} » sans feuille ${ou}`);
-      }
-    }
+    // ── LA DESCENTE AUTOMATIQUE (2026-09-17 soir, élargie le 18/09) ──────────
+    // Elle part de ce qui est acquis — y compris du code qu'on vient de
+    // traduire — et descend TANT QU'IL N'Y A QU'UN CHEMIN PLAUSIBLE : une
+    // feuille que le mot-objet désigne seule, ou un nœud à enfant unique.
+    // C'est ce qui fait qu'une réponse utilisateur ne s'arrête plus net au
+    // niveau suivant : elle consomme son niveau ET relance la descente en
+    // dessous. « Hommes » + « t-shirt » va jusqu'à MEN_TOP_T_SHIRTS d'un trait.
+    // Les DEUX mots-objets posés par l'app sont servis (categorie_objet_ia ET
+    // categorie_mot_cle_titre) : sur le job eba8a512, le premier
+    // (« maillot de football ») ne trouve rien et le second (« maillot ») mène
+    // droit à MEN_JERSEYS — l'ancien `a ?? b` n'en lisait qu'un.
+    const mots = [pf0.categorie_objet_ia, pf0.categorie_mot_cle_titre]
+      .map((m) => String(m ?? "").trim()).filter(Boolean);
+    const descente = ref.descendre(code, mots);
+    for (const e of descente.etapes) oplaTracer(`categorie: ${e}`);
+    const feuillesCandidates = descente.candidats;
+    code = descente.code;
     // Ce qui est acquis est ACQUIS : le code (même intermédiaire) et son chemin
     // partent avec le résultat sur TOUTES les issues (oplaSortie), et le
     // background les recopie sur le job. Le choix consommé est effacé — relu au
     // passage suivant, il se traduirait contre un autre niveau.
+    // ⚠️ `oplaCategoryAsk` est EFFACÉ ici et ne sera réécrit que si une
+    //    question repart plus bas : une liste périmée qui survit est
+    //    exactement le défaut qu'on corrige.
     oplaCategorieRetenue = {
       ...(code && ref.noeuds.has(code) ? { oplaCategoryCode: code, oplaCategoryPath: ref.cheminDe(code) } : {}),
       ...(choix ? { oplaCategoryChoice: null } : {}),
+      ...(choixConsomme || pf0.oplaCategoryAsk ? { oplaCategoryAsk: null } : {}),
     };
     if (!Object.keys(oplaCategorieRetenue).length) oplaCategorieRetenue = null;
     if (code) job = { ...job, platform_fields: { ...pf0, oplaCategoryCode: code } };
@@ -677,6 +793,25 @@ async function fillListingForm(job) {
       const options = verdict.champ === "category" && feuillesCandidates.length
         ? feuillesCandidates.map((f) => ({ code: f.code, title: f.chemin.join(ref.SEPARATEUR_CHEMIN) }))
         : (Array.isArray(verdict.options) ? verdict.options : []);
+      // ── LA QUESTION PART AVEC SA LISTE (2026-09-18) ───────────────────────
+      // Le prochain passage relira la réponse CONTRE CETTE LISTE, pas contre
+      // un niveau recalculé — c'est la correction de fond du job 7d31c111
+      // (5 questions, réponse « Accessoires » jetée à chaque fois parce que
+      // l'ancre n'était persistée nulle part). On garde le CODE de chaque
+      // option : c'est lui qui lève l'ambiguïté des libellés en double
+      // (« Vestes » existe sous deux branches).
+      // ⛔ Uniquement pour la CATÉGORIE : la taille se relit contre la grille
+      //    de la feuille, qui est déjà une liste fermée et stable.
+      if (verdict.champ === "category" && options.length) {
+        oplaCategorieRetenue = {
+          ...(oplaCategorieRetenue ?? {}),
+          oplaCategoryAsk: {
+            ancre: code && ref.noeuds.has(code) ? code : null,
+            options: options.map((o) => ({ code: String(o.code), title: String(o.title ?? o.code) })),
+            le: new Date().toISOString(),
+          },
+        };
+      }
       return oplaSortie({
         success: false,
         needsUser: true,
