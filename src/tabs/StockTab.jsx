@@ -19,7 +19,6 @@ import ExtensionReminderModal, { shouldShowExtensionReminder } from '../componen
 import ExtensionPitchScreen from '../components/ExtensionPitchScreen';
 import InstallExtensionCta from '../components/InstallExtensionCta';
 import { useRepublicationPlanifiee, republicationPlanifieeExposee } from '../hooks/useRepublicationPlanifiee';
-import { RepublicationPlanifieeBloc, RepublicationPlanifieeReglages, RepublicationPlanifieeHistorique } from '../components/RepublicationPlanifiee';
 import { etatAttenteBoutique, lignesAttenteBoutique, phraseBoutiqueActive, phraseRassurance, messageFicheAttenteBoutique } from '../utils/attenteBoutique';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 // (import PepiteAmount retiré au nettoyage unités du 02/09 soir — les
@@ -4935,44 +4934,14 @@ const StockTab = memo(function StockTab({
   }, [user?.id]);
   const republishActif = republishVisiblePour(user?.email)
     && (capaciteExt?.inconnu === false ? capaciteExt.capable === true : !isNative);
-  // ── Republication automatique PAR CRÉNEAUX (lot app du 13/09) ─────────────
-  // État lu au serveur (republish_planifiee_etat, poll 2 min onglet visible)
-  // et interrupteur global coin_config.republish_planifiee_actif. EXPOSÉ si
-  // l'interrupteur vaut 1 ou si le compte porte déjà un réglage (test) ;
-  // sinon l'écran garde l'ancien bloc É6 tel quel — personne ne change de
-  // module par accident. Le bloc compact vit EN TÊTE du Stock ; les deux
-  // écrans (réglages, historique) sont des portails plein écran.
+  // ── Republication automatique PAR CRÉNEAUX — LE MODULE A DÉMÉNAGÉ ────────
+  // Son bloc vivait en pied de page du Stock ; c'est un RÉGLAGE, il vit
+  // désormais dans Réglages › Automatismes (18/09/2026), qui monte les deux
+  // écrans (réglages, historique) et porte la même porte Pro. Le Stock ne
+  // garde de ce hook que planifieeExposee : il décide encore si l'ancien
+  // bloc É6 s'affiche ou non — la seule chose qui en dépendait ici.
   const planifiee = useRepublicationPlanifiee({ userId: user?.id });
   const planifieeExposee = republicationPlanifieeExposee(planifiee);
-  const [planifieeEcran, setPlanifieeEcran] = useState(null); // null | 'reglages' | 'historique'
-  // Non-Pro : « Activer » ouvre la modale de conversion existante — le
-  // serveur (`autorise`) fait foi, exactement le geste de l'accroche É6.
-  const planifieeActiverNonPro = () => {
-    track('premium_click', { source: 'stock_republication_planifiee' });
-    openUpgradeModal?.(null, 'stock_republication_planifiee');
-  };
-  // Pro, module inactif : « Activer » écrit {actif:true} (défauts serveur :
-  // matin 8h–10h, plafond du palier, 7 jours) puis ouvre les réglages sur
-  // l'état RENDU par le serveur — le nombre affiché est le sien, pas le nôtre.
-  const planifieeActiver = async () => {
-    track('republication_planifiee', { action: 'activer', depuis: 'bloc_stock' });
-    // Un compte qui vient de l'ancien moteur garde SES réglages (ancienneté,
-    // plafond du jour) : les défauts serveur (30 j, plafond du palier)
-    // changeraient sa cadence sans qu'il ait rien demandé — Joséphine (20 j /
-    // 20 par jour) verrait « 0 vont partir » à 30 j. Le serveur borne
-    // (7..365, ≤ palier) ; le réglage reste modifiable dans l'écran.
-    const legacy = planifiee.etat?.legacy;
-    const repris = {};
-    if (legacy && typeof legacy === 'object') {
-      const age = Number(legacy.age_jours); const plafond = Number(legacy.plafond_jour);
-      if (Number.isFinite(age) && age > 0) repris.age_jours = age;
-      if (Number.isFinite(plafond) && plafond > 0) repris.plafond_jour = plafond;
-    }
-    const r = await planifiee.regler({ actif: true, ...repris });
-    if (r?.ok) setPlanifieeEcran('reglages');
-    else if (r?.reason === 'auto_reserve_pro') planifieeActiverNonPro();
-    else setPlanifieeEcran('reglages');
-  };
   const [republishPrice, setRepublishPrice] = useState(null);
   // ── Republication multiplateforme : UN interrupteur serveur (2026-09-17) ──
   // coin_config.republication_multi_ouverte (0/1), même doctrine qu'Opla :
@@ -9956,49 +9925,6 @@ const StockTab = memo(function StockTab({
         <StatsPlateformesPopup lang={lang} item={statsPopup}
           stats={statsPlateformes[String(statsPopup.id)]??[]}
           onClose={()=>setStatsPopup(null)}/>
-      )}
-      {/* ── Republication automatique — LIGNE REPLIÉE EN PIED DE PAGE (17/09 soir).
-          Titre, état, créneau, chevron ; le détail derrière le tap (réglages).
-          Monté seulement si le module est exposé (planifieeExposee). */}
-      {planifieeExposee&&(
-        <div style={{marginTop:16}}>
-          <RepublicationPlanifieeBloc
-            lang={lang}
-            variante="pied"
-            etat={planifiee.etat}
-            interrupteur={planifiee.interrupteur}
-            extensionStatus={extensionStatus}
-            busy={planifiee.busy}
-            onOuvrirReglages={()=>setPlanifieeEcran('reglages')}
-            onActiver={planifieeActiver}
-            onActiverNonPro={planifieeActiverNonPro}
-          />
-        </div>
-      )}
-      {/* ── Republication par créneaux : les deux écrans plein (13/09) ────
-          Réglages (ouvert par le bloc compact) et historique (ouvert depuis
-          le pied des réglages). Portails ; l'historique revient aux
-          réglages à la fermeture. */}
-      {planifieeEcran==='reglages'&&(
-        <RepublicationPlanifieeReglages
-          lang={lang}
-          etat={planifiee.etat}
-          interrupteur={planifiee.interrupteur}
-          extensionStatus={extensionStatus}
-          busy={planifiee.busy}
-          erreur={planifiee.erreur}
-          regler={planifiee.regler}
-          onClose={()=>setPlanifieeEcran(null)}
-          onOuvrirHistorique={()=>setPlanifieeEcran('historique')}
-        />
-      )}
-      {planifieeEcran==='historique'&&(
-        <RepublicationPlanifieeHistorique
-          lang={lang}
-          userId={user?.id}
-          etat={planifiee.etat}
-          onClose={()=>setPlanifieeEcran('reglages')}
-        />
       )}
       {/* Mini-éditeur « À compléter » (socle needs_user, 2026-07-19).
           Fermeture sans valider → aucun écrit, le job reste needs_user et le
