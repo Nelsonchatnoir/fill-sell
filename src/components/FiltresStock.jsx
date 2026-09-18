@@ -492,18 +492,23 @@ export function LigneCompte({ lang, texte, libelleTri, onOuvrirTri, ouvert, onTo
           {ouvert ? (f ? 'Replier' : 'Collapse') : (f ? 'Déplier' : 'Expand')}
         </span>
       </button>
-      <button
-        type="button"
-        onClick={onOuvrirTri}
-        className="fs-focus"
-        style={{
-          flexShrink: 0, minHeight: TOUCHE, padding: '0 6px', background: 'transparent', border: 'none',
-          cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: R.tealDeep,
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {libelleTri}
-      </button>
+      {/* Rien à trier ⇒ pas de bouton : sur un compte vide, c'était une porte
+          qui ne menait nulle part, juste au-dessus de l'écran d'accueil. */}
+      {libelleTri && (
+        <button
+          type="button"
+          onClick={onOuvrirTri}
+          aria-label={f ? `Trier — ${libelleTri}` : `Sort — ${libelleTri}`}
+          className="fs-focus"
+          style={{
+            flexShrink: 0, minHeight: TOUCHE, padding: '0 6px', background: 'transparent', border: 'none',
+            cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: R.tealDeep,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {libelleTri}
+        </button>
+      )}
     </div>
   );
 }
