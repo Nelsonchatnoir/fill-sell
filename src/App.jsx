@@ -2980,7 +2980,13 @@ export default function App({ loginOnly = false }){
       // portaient sur une partie des données sans que rien ne le signale. La
       // sync du dressing, qui importe des centaines d'annonces d'un coup, en
       // faisait un problème quotidien.
-      supabase.from('inventaire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(3000),
+      // `fusionne_dans is null` (2026-09-18, point B) : un article ABSORBÉ par
+      // une fusion n'est ni supprimé ni vendu — il garde un pointeur vers celui
+      // qui l'a repris, et tout son historique a déménagé là-bas. Il n'a plus
+      // rien à faire dans le stock, mais il doit rester en base pour que la
+      // fusion se défasse. UN SEUL endroit filtre, ici : c'est la seule requête
+      // qui charge l'inventaire de l'app.
+      supabase.from('inventaire').select('*').eq('user_id',uid).is('fusionne_dans',null).order('created_at',{ascending:false}).order('id',{ascending:false}).limit(3000),
       supabase.from('profiles').select('is_premium,is_pro,is_business,is_comped,is_founder,apple_original_transaction_id,google_purchase_token,subscription_cancel_at_period_end,subscription_period_end,currency,username,platform_settings,extension_last_seen_at,extension_build,onboarded_at,ebay_voie_api').eq('id',uid).maybeSingle(),
     ]);
     if(!v.error) setSales((v.data||[]).map(mapSale));
