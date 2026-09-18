@@ -13,6 +13,9 @@ import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
 // Règles du catalogue Beebs (2026-09-11) : le MÊME fichier que l'app
 // (src/utils/platformCompat.js) — module JS sans import, chargé tel quel.
 import { verdictBeebsInterdit, messageBeebsInterdit } from "../_shared/beebs-interdits.js";
+// ISBN : même table de vérité que le content script (normalisation, filtre du
+// remplissage « 13 zéros », lecture dans le texte libre). Module JS sans import.
+import { normalizeIsbn, resoudreIsbn } from "../_shared/isbn.js";
 import {
   type AspectRow,
   BEEBS_CHAMPS_DEDIES,
@@ -1666,6 +1669,311 @@ serve(async (req) => {
       }
     }
 
+    // ══ RIEN NE SE SUPPRIME TANT QUE LA RECRÉATION N'EST PAS GARANTIE ═══════
+    // (2026-09-18, GO Nico — job 839f1077, xxewwer, Pro abonné du jour)
+    //
+    // CE QUI S'EST PASSÉ. « Maquillage Fabienne Sévigné » — un LIVRE relié, en
+    // « Livres et médias > Livres > Non-fiction », catégorie exacte. L'annonce
+    // d'origine portait `isbn = "0000000000000"`, le remplissage de Vinted. Le
+    // handler refuse à juste titre d'envoyer treize zéros (15/09,
+    // estIsbnDeRemplissage) — donc l'étape ISBN ne tourne plus DU TOUT, et le
+    // POST part sans ISBN. L'annonce a été SUPPRIMÉE à 17:42, le refus est
+    // tombé à 17:49 : `{"field":"isbn"}`. Annonce perdue, compte qui vient de
+    // payer. On a supprimé sans savoir rendre.
+    //
+    // POURQUOI LE PRÉ-VOL DE LA PAGE N'A RIEN VU, et c'est le cœur du défaut :
+    // computeVintedRequiredState (vinted.js) ne juge les requis que sur la
+    // config /attributes que Vinted sert à la page — et cette config déclare
+    // `isbn` **required: false** (relevé DOM du 17/07, toujours en base). Le
+    // serveur, lui, refuse le dépôt sans ISBN : c'est écrit noir sur blanc dans
+    // platform_category_aspects depuis le 31/08 (source `server_400`), pour les
+    // DEUX branches Livres. La connaissance était acquise depuis 18 jours,
+    // personne ne la relisait avant de supprimer. Même forme que la Couleur
+    // (« le 400 prouvé prime sur la config ») — corrigée pour `color`, jamais
+    // généralisée.
+    //
+    // DEUX GESTES, DANS CET ORDRE. D'abord CHERCHER la valeur au lieu de la
+    // demander (consigne Nico : « l'ISBN est dans sa description, on va pas le
+    // lui faire remplir à la main, il a rien demandé » — il y était :
+    // « ✅ ISBN 2-902634-36-6 »). Ensuite seulement, s'il manque encore un
+    // requis PROUVÉ de la catégorie de destination : NE PAS SERVIR le job à
+    // l'étape qui supprime. L'annonce reste EN LIGNE et la question est posée
+    // sur une annonce vivante — l'inverse exact d'aujourd'hui.
+    //
+    // MESURÉ AVANT D'ÊTRE POSÉ (14 jours, 1 841 republications, dont 50 Livres
+    // dans la portée) : la garde aurait arrêté 2 jobs — les deux livres de
+    // carhoa à « 0000000000000 », sans ISBN nulle part, ni sur l'annonce ni
+    // dans la description. ZÉRO arrêt à tort sur 645 État, 478 Taille, 392
+    // Couleur, 55 Marque, 30 Plateforme de jeu : toutes ces valeurs sont bien
+    // là, dans la réponse de la personne, les item_attributes capturés ou le
+    // snapshot — encore fallait-il aller les y chercher, c'est ce que fait
+    // valeurDisponible.
+    // La déduction d'ISBN, elle, mesurée sur 400 annonces réelles (livres,
+    // vêtements, jeux, coques, DVD) : 1 seule trouvée — celle de Xewer, la
+    // bonne — et 0 faux positif. Aucune année, dimension, taille ni référence
+    // prise pour un ISBN, grâce à l'ancrage obligatoire de _shared/isbn.js.
+    //
+    // ⛔ L'ÉTAPE 'deleted' NE BLOQUE JAMAIS (B.5) : l'annonce d'origine n'existe
+    // déjà plus, refuser de servir laisserait la personne sans rien. On y fait
+    // la déduction — qui peut sauver le job, et qui a sauvé celui de Xewer —
+    // mais aucun blocage. Seule l'étape 'captured', celle qui tient encore
+    // l'annonce en ligne, a le droit de dire non.
+    let isbnDeduits = 0;
+    let heldRequisDestination = 0;
+    if (!includeProcessing && !includeNeedsUser) {
+      const pfOf = (j: { platform_fields: unknown }) =>
+        ((j.platform_fields as Record<string, unknown> | null) ?? {});
+      const stepDe = (j: { platform_fields: unknown }) => {
+        const s = String(pfOf(j)["republish_step"] ?? "");
+        return s === "captured" || s === "deleted" ? s : "a_capturer";
+      };
+      const snapDe = (pf: Record<string, unknown>) =>
+        (pf.republish_snapshot && typeof pf.republish_snapshot === "object")
+          ? (pf.republish_snapshot as Record<string, unknown>) : null;
+      // Clé de catégorie = le chemin capturé, tel qu'il est écrit dans
+      // platform_category_aspects (« A > B > C »). Pas de chemin = pas de
+      // catégorie de destination connue = on ne juge rien (doute = servi).
+      const cleCategorie = (pf: Record<string, unknown>) => {
+        const chemin = snapDe(pf)?.categoryPath;
+        if (!Array.isArray(chemin) || !chemin.length) return null;
+        return chemin.map((v) => String(v ?? "").trim()).filter(Boolean).join(" > ") || null;
+      };
+
+      const candidats = out.filter((j) =>
+        j.platform === "vinted" && j.action === "republish" && stepDe(j) !== "a_capturer");
+
+      if (candidats.length) {
+        try {
+          // ── Geste 1 : l'ISBN se CHERCHE avant de se demander ──────────────
+          // Servi seulement (aucune écriture en base), exactement comme le
+          // filet « langue du livre » : le job SERVI est enrichi, le prochain
+          // poll re-déduira la même chose. vintedAspects.isbn est le canal
+          // normal — le pont _bridge de vinted.js le recopie vers le champ
+          // dédié, et une valeur déjà présente (réponse de la personne) prime
+          // toujours : resoudreIsbn la rend en premier.
+          for (const j of candidats) {
+            const pf = pfOf(j);
+            const snap = snapDe(pf);
+            const va = (pf.vintedAspects && typeof pf.vintedAspects === "object")
+              ? (pf.vintedAspects as Record<string, unknown>) : {};
+            // Périmètre : les Livres, reconnus au chemin capturé — la seule
+            // branche où Vinted réclame un ISBN.
+            const cle = cleCategorie(pf);
+            if (!cle || !/(^|>)\s*Livres\s*(>|$)/i.test(cle)) continue;
+            if (String(va.isbn ?? "").trim()) continue; // déjà tranché
+            const trouve = resoudreIsbn({
+              reponse: va.isbn,
+              capture: snap?.isbn,
+              description: snap?.description ?? j.description,
+              titre: snap?.titre ?? j.title,
+            });
+            if (!trouve) continue;
+            j.platform_fields = {
+              ...pf,
+              vintedAspects: { ...va, isbn: trouve.isbn13 },
+              isbn_deduit_serveur: {
+                valeur: trouve.isbn13,
+                trouve: trouve.trouve,
+                source: trouve.source,
+                le: new Date().toISOString(),
+              },
+            };
+            isbnDeduits++;
+            console.log(
+              `[get-pending-jobs] republish ${String(j.id).slice(0, 8)} : ISBN ${trouve.isbn13} ` +
+              `déduit (${trouve.source} : « ${trouve.trouve} ») — aucune question posée`,
+            );
+          }
+
+          // ── Geste 2 : le pré-vol des requis de la catégorie de DESTINATION ─
+          // Seuls les jobs à l'étape 'captured' sont jugés : ce sont les seuls
+          // dont l'annonce est encore en ligne, donc les seuls qu'on puisse
+          // encore épargner.
+          const aJuger = candidats.filter((j) => stepDe(j) === "captured" && cleCategorie(pfOf(j)));
+          if (aJuger.length) {
+            const cles = [...new Set(aJuger.map((j) => cleCategorie(pfOf(j))!))];
+            // ⛔ `source = 'server_400'` ET RIEN D'AUTRE, et c'est mesuré.
+            // Un requis venu de la config de la PAGE (`source = 'dom'`) n'est
+            // pas une preuve : le formulaire pré-remplit, la boucle générique
+            // comble, et ça republie très bien. Simulé sur 14 jours, juger sur
+            // le `dom` aurait arrêté une jupe de stessygaudin (046da722,
+            // « Longueur de la jupe » absente des attributs capturés) qui est
+            // partie sans encombre. Un `server_400`, lui, est Vinted qui a
+            // REFUSÉ ce champ précis sur cette catégorie précise : c'est la
+            // seule preuve qui autorise à retenir une suppression.
+            // Portée réelle aujourd'hui : isbn (2 branches Livres), color (8),
+            // brand (3), internal_memory_capacity (1). Sur 14 jours : 2 arrêts,
+            // 0 à tort.
+            const { data: requisRows } = await userClient
+              .from("platform_category_aspects")
+              .select("category_key, field_key, field_label")
+              .eq("platform", "vinted").eq("required", true)
+              .eq("source", "server_400").in("category_key", cles);
+            const requisParCle = new Map<string, Array<{ key: string; label: string }>>();
+            for (const r of ((requisRows ?? []) as Record<string, unknown>[])) {
+              const k = String(r.category_key);
+              const key = String(r.field_key ?? "").trim();
+              if (!key) continue;
+              const liste = requisParCle.get(k) ?? [];
+              // Un même champ peut être déclaré par plusieurs sources (dom,
+              // server_400) : une seule entrée, le 400 ne change pas le nom.
+              if (!liste.some((x) => x.key === key)) {
+                liste.push({ key, label: String(r.field_label ?? key).trim() || key });
+              }
+              requisParCle.set(k, liste);
+            }
+
+            // Les attributs CAPTURÉS sur l'annonce d'origine : c'est eux qui
+            // portent « Plateforme », « Classement du contenu », « Longueur de
+            // la jupe »… Le content script les résout sur le formulaire
+            // (itemAttributesCaptures). Sans cette lecture, la garde bloquerait
+            // 69 republications parfaitement valides sur 14 jours — mesuré.
+            const capIds = [...new Set(aJuger
+              .map((j) => Number(pfOf(j).capture_id))
+              .filter((n) => Number.isFinite(n) && n > 0))];
+            const codesParCapture = new Map<number, Set<string>>();
+            if (capIds.length) {
+              const { data: caps } = await userClient
+                .from("vinted_republish_captures").select("id, payload").in("id", capIds);
+              for (const c of ((caps ?? []) as Record<string, unknown>[])) {
+                const natif = ((c.payload as Record<string, unknown> | null)?.natif ?? null) as Record<string, unknown> | null;
+                const attrs = Array.isArray(natif?.item_attributes) ? (natif!.item_attributes as unknown[]) : [];
+                const codes = new Set<string>();
+                for (const a of attrs) {
+                  const o = (a && typeof a === "object") ? (a as Record<string, unknown>) : null;
+                  const code = String(o?.code ?? "").trim().toLowerCase();
+                  if (code && Array.isArray(o?.ids) && (o!.ids as unknown[]).length) codes.add(code);
+                }
+                codesParCapture.set(Number(c.id), codes);
+              }
+            }
+
+            // Une valeur est DISPONIBLE si l'un des trois canaux la porte. On
+            // reproduit ce que le handler saura lire, ni plus (sinon on bloque
+            // à tort) ni moins (sinon on supprime à tort).
+            const valeurDisponible = (j: typeof aJuger[number], champ: string) => {
+              const pf = pfOf(j);
+              const snap = snapDe(pf);
+              const va = (pf.vintedAspects && typeof pf.vintedAspects === "object")
+                ? (pf.vintedAspects as Record<string, unknown>) : {};
+              const texte = (v: unknown) => String(v ?? "").trim().length > 0;
+              // ⛔ L'ISBN EST LE SEUL CHAMP OÙ « PRÉSENT » NE VEUT RIEN DIRE, et
+              // c'est TOUTE la leçon du 18/09 : l'annonce de Xewer portait bien
+              // un ISBN — treize zéros. Présent, de clé de contrôle valide, et
+              // refusé par Vinted. Un champ dont on sait valider la forme se
+              // juge sur sa VALEUR, jamais sur sa présence : ici on exige ce
+              // que le formulaire exigera (normalizeIsbn, le même code).
+              if (champ === "isbn") {
+                return normalizeIsbn(va.isbn).ok || normalizeIsbn(snap?.isbn).ok;
+              }
+              if (texte(va[champ])) return true;                                     // 1. réponse / déduction
+              if (codesParCapture.get(Number(pf.capture_id))?.has(champ.toLowerCase())) return true; // 2. attributs capturés
+              switch (champ) {                                                        // 3. snapshot
+                case "condition": return texte(snap?.etat);
+                case "brand": return texte(snap?.marque);
+                case "size": return texte(snap?.taille) || texte(snap?.size_id)
+                  || (Array.isArray(snap?.taille_ids) && (snap!.taille_ids as unknown[]).length > 0);
+                case "color": return (Array.isArray(snap?.couleurs) && (snap!.couleurs as unknown[]).length > 0)
+                  || texte(snap?.color1_id);
+                default: return false;
+              }
+            };
+
+            const aRetenir = new Set<string>();
+            for (const j of aJuger) {
+              const pf = pfOf(j);
+              const manquants = (requisParCle.get(cleCategorie(pf)!) ?? [])
+                .filter((r) => !valeurDisponible(j, r.key));
+              if (!manquants.length) continue;
+              const premier = manquants[0];
+              const libelles = manquants.map((m) => m.label).join(" », « ");
+              // ── ON NE POSE PAS TROIS FOIS LA MÊME QUESTION ────────────────
+              // Cette garde écrit `needs_user` DIRECTEMENT en base : elle ne
+              // passe pas par updateJobStatus, donc l'anti-boucle de
+              // l'extension (gardeAntiBoucleNeedsUser, BOUCLE_NEEDS_USER_MAX)
+              // ne la voit jamais. Sans borne ici, quelqu'un qui n'a pas
+              // l'ISBN de son livre — il existe des livres sans ISBN, et des
+              // gens qui ne veulent pas le chercher — reprendrait la même
+              // question à chaque relance, indéfiniment. Au 4e tour on arrête
+              // de demander : `needsUserField` n'est plus posé, donc l'app ne
+              // rouvre plus la modale, et le message dit la seule chose qui
+              // compte — l'annonce est toujours en ligne, il n'y a rien à
+              // rattraper.
+              const tours = Number((pf.prevol_destination as Record<string, unknown> | undefined)?.tours ?? 0) + 1;
+              const onRedemande = tours <= 3;
+              // Message écrit à la personne : ce qu'on n'a PAS fait d'abord
+              // (« ton annonce est toujours en ligne »), puis ce qu'on demande.
+              // C'est l'inverse exact du message d'après-suppression.
+              const message = onRedemande
+                ? `Ton annonce est TOUJOURS EN LIGNE : on ne l'a pas retirée. ` +
+                  `Pour la republier, Vinted réclame « ${libelles} » et on ne l'a trouvé ni sur ton annonce ` +
+                  `ni dans sa description. Complète ce champ et la republication repartira toute seule — ` +
+                  `tant que ce n'est pas fait, rien n'est touché.`
+                : `Ton annonce est TOUJOURS EN LIGNE et elle y reste. On ne sait pas la republier sans ` +
+                  `« ${libelles} », que Vinted exige pour cette catégorie — on ne te le redemande plus. ` +
+                  `Rien n'a été retiré, rien n'est perdu.`;
+              // ⚠️ Au tour d'arrêt, `needsUserField` doit être RETIRÉ, pas
+              // seulement « non reposé » : il traîne dans platform_fields
+              // depuis le tour précédent et l'app rouvrirait la modale.
+              const pfEcrit: Record<string, unknown> = { ...(j.platform_fields as Record<string, unknown>) };
+              delete pfEcrit.needsUserField;
+              delete pfEcrit.needsUserFields;
+              const { data: maj } = await userClient.from("cross_post_jobs")
+                .update({
+                  status: "needs_user",
+                  error: message,
+                  platform_fields: {
+                    ...pfEcrit,
+                    ...(onRedemande
+                      ? {
+                        needsUserField: {
+                          field_key: premier.key,
+                          field_label: premier.label,
+                          platform: "vinted",
+                          target: { root: "vintedAspects", key: premier.key },
+                        },
+                        ...(manquants.length > 1
+                          ? {
+                            needsUserFields: manquants.map((m) => ({
+                              field_key: m.key,
+                              field_label: m.label,
+                              target: { root: "vintedAspects", key: m.key },
+                            })),
+                          }
+                          : {}),
+                      }
+                      : {}),
+                    prevol_destination: {
+                      categorie: cleCategorie(pf),
+                      manquants: manquants.map((m) => m.key),
+                      tours,
+                      redemande: onRedemande,
+                      le: new Date().toISOString(),
+                      source: "get-pending-jobs",
+                    },
+                  },
+                })
+                .eq("id", j.id).eq("status", "pending").select("id");
+              aRetenir.add(String(j.id));
+              console.log(
+                `[get-pending-jobs] republish ${String(j.id).slice(0, 8)} NON SERVI à l'étape 'captured' : ` +
+                `requis « ${manquants.map((m) => m.key).join(", ")} » introuvable(s) pour « ${cleCategorie(pf)} » — ` +
+                `needs_user, ANNONCE INTACTE${(maj ?? []).length ? "" : " (déjà sortie de pending)"}`,
+              );
+            }
+            if (aRetenir.size) {
+              const avant = out.length;
+              out = out.filter((j) => !aRetenir.has(String(j.id)));
+              heldRequisDestination = avant - out.length;
+            }
+          }
+        } catch (_e) {
+          // Best-effort, jamais un point de panne : en cas de pépin la
+          // republication repart comme avant ce bloc.
+        }
+      }
+    }
+
     console.log(
       `[get-pending-jobs] userId=${user.id} → ${out.length} job(s) distribué(s)` +
       (heldBack ? `, ${heldBack} retenu(s) (plateforme(s) en pause: ${[...paused].join(", ")})` : "") +
@@ -1677,7 +1985,9 @@ serve(async (req) => {
       (heldSession ? `, ${heldSession} job(s) retenu(s) (session plateforme connue morte)` : "") +
       (heldRetraitBeebs ? `, ${heldRetraitBeebs} retrait(s) beebs retenu(s) (sans lien : attente, jamais par titre)` : "") +
       (heldBeebsInterdit ? `, ${heldBeebsInterdit} dépôt(s) beebs → needs_user (article refusé par le catalogue Beebs)` : "") +
-      (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : ""),
+      (heldRetrait0625 ? `, ${heldRetrait0625} republish retenu(s) (coupe-circuit retrait taille_par_id)` : "") +
+      (isbnDeduits ? `, ${isbnDeduits} ISBN déduit(s) sans rien demander` : "") +
+      (heldRequisDestination ? `, ${heldRequisDestination} republish → needs_user AVANT suppression (requis de la catégorie de destination introuvable)` : ""),
     );
 
     // ── Contexte du popup (2026-08-04) ──────────────────────────────────────
@@ -3747,6 +4057,11 @@ serve(async (req) => {
       // beebs_interdits (2026-09-11) : dépôts passés en needs_user à ce poll
       // parce que l'article tombe sous les règles du catalogue Beebs.
       beebs_interdits: heldBeebsInterdit,
+      // Pré-vol de la catégorie de DESTINATION (2026-09-18) : republications
+      // arrêtées AVANT toute suppression faute d'un requis prouvé, et ISBN
+      // retrouvés tout seuls (description/titre) plutôt que demandés.
+      jobs_retenus_prevol_destination: heldRequisDestination,
+      isbn_deduits: isbnDeduits,
       // sessions_pause (2026-09-10) : par plateforme connue morte, combien de
       // jobs attendent, depuis quelle observation, et quel job sert de sonde.
       sessions_pause: sessionsPause,
