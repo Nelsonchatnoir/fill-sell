@@ -956,6 +956,50 @@ serve(async (req) => {
   //     22/08 (même formulation) sont ainsi couverts SANS être réécrits.
   //   - Écritures en compare-and-swap (.eq status needs_user) : un job relancé
   //     entre-temps n'est jamais écrasé. Best-effort intégral.
+  // ── OPLA PARQUÉE FAUTE D'ACCÈS : DONNER UNE ISSUE À LA FILE (2026-09-19) ──
+  // Cas fondateur, ornellaracano le 19/09 à 09:15. Elle publie 5 annonces Opla
+  // le 18/09 entre 15:35 et 19:34 avec l'extension 0.6.42 — la permission
+  // d'hôte opla.co est donc bien accordée. Son extension passe en 0.6.44 dans
+  // la soirée. Le lendemain matin, le PREMIER job Opla traité par la 0.6.44 est
+  // un RETRAIT : `chrome.permissions.contains` rend false, le job est parqué en
+  // needs_user. Le même article est retiré de Beebs, Leboncoin et Vinted à la
+  // seconde près ; il reste EN VENTE sur Opla.
+  //
+  // ⚠️ CE QUE JE N'AI PAS PU PROUVER : pourquoi la permission a disparu. Le
+  // manifeste déclare `optional_host_permissions: ["https://www.opla.co/*"]`
+  // À L'IDENTIQUE en 0.6.42, 0.6.43 et 0.6.44 (relu dans les trois commits de
+  // paquet), et l'empaquetage ne la retire pas — le commentaire contraire dans
+  // background.js (sonderSessionOpla) est PÉRIMÉ, il date des 0.6.38/0.6.39.
+  // Le fait mesurable est celui-ci : aucun job Opla n'est passé sous 0.6.44,
+  // et le premier a buté sur l'accès.
+  //
+  // CE QUI EST CORRIGÉ ICI, ET SEULEMENT ÇA : la file n'avait AUCUNE issue.
+  // `marquerAttenteAccesOpla` (background.js) EFFACE `next_action_after`, et le
+  // seul ré-armement vit dans `chrome.permissions.onAdded` — c'est-à-dire un
+  // clic dans le menu Chrome que personne ne sait devoir faire. Aucun des
+  // 4 jobs Opla d'Ornella ne portait de date de reprise.
+  //
+  // La reprise est SERVEUR, donc sans paquet : on repasse le job en `pending`,
+  // espacé et borné. L'extension relit `chrome.permissions.contains` à CHAQUE
+  // job (jamais un cache) : si l'accès est revenu, le job passe tout seul ;
+  // sinon il se re-parque, et notre compteur survit (marquerAttenteAccesOpla
+  // recopie platform_fields). Coût d'une reprise à vide : un aller-retour de
+  // statut, aucun onglet ouvert, rien à nourrir côté anti-bot.
+  const OPLA_ACCES_REPRISES_MAX = 6;          // ~3 h de tentatives, puis on arrête
+  const OPLA_ACCES_DELAI_MS = 30 * 60_000;    // une reprise par demi-heure au plus
+  // Le message que la personne LIT dans l'app. L'extension écrit « ouvre le
+  // menu FillSell et appuie sur Autoriser Opla » : envoyer quelqu'un cliquer
+  // dans un menu Chrome qu'il ignore, pour un retrait qu'il n'a pas demandé
+  // deux fois, c'est notre défaut, pas le sien (décision Nico, 19/09). On dit
+  // ce que NOUS faisons, et ce qui reste vrai de l'annonce.
+  const OPLA_ACCES_MSG_RETRAIT =
+    "Le retrait sur Opla n'a pas pu se faire : l'accès à opla.co a été refusé à l'extension. " +
+    "On réessaie tout seuls. ⚠️ En attendant, l'annonce est peut-être encore en ligne sur Opla " +
+    "alors qu'elle a été retirée ailleurs — vérifie-la si l'article est vendu.";
+  const OPLA_ACCES_MSG_DEPOT =
+    "La publication sur Opla attend : l'accès à opla.co a été refusé à l'extension. " +
+    "On réessaie tout seuls, il n'y a rien à faire de ton côté. Les autres plateformes ne sont pas concernées.";
+
   const PREFIXE_GARDE_LIVRES =
     "Republication mise en pause AVANT toute suppression — ton annonce est intacte sur Vinted. Motif : blocage connu sur la catégorie Livres";
   let needsUserVus = 0;
@@ -998,6 +1042,18 @@ serve(async (req) => {
       if (j.action === "republish" && j.platform_fields?.republish_step === "deleted") return false;
       if (j.platform_fields?.needs_user_source === "livres_isbn_garde" ||
           String(j.error ?? "").startsWith(PREFIXE_GARDE_LIVRES)) return false;
+      // ── EXCLUSION OPLA/ACCÈS, tant que les reprises ne sont pas épuisées ──
+      // Même doctrine que la garde Livres : ces jobs n'attendent pas un geste
+      // que la personne SAIT devoir faire — ils attendent une permission
+      // Chrome qui a disparu sans qu'elle y touche. Le balayage ci-dessous les
+      // solderait en `failed` ; pour un RETRAIT (cas d'Ornella le 19/09), un
+      // `failed` veut dire « l'annonce reste en ligne sur Opla pendant qu'elle
+      // est retirée des trois autres plateformes » — c'est le scénario de
+      // double vente. On les laisse donc à la reprise automatique (plus bas),
+      // et le solde ne reprend la main qu'une fois celle-ci épuisée : la file
+      // garde une issue, elle ne devient pas éternelle.
+      if (j.platform === "opla" && j.platform_fields?.needs_user_source === "opla_acces" &&
+          (Number(j.platform_fields?.opla_acces_reprises) || 0) < OPLA_ACCES_REPRISES_MAX) return false;
       return true;
     });
     const lastSeen = new Map<string, number>();
@@ -1080,6 +1136,81 @@ serve(async (req) => {
     }
   } catch (e) {
     console.error("[handler-watch] règlement des needs_user à échéance:", (e as Error)?.message ?? e);
+  }
+
+  // ── REPRISE AUTOMATIQUE DES JOBS OPLA PARQUÉS FAUTE D'ACCÈS ───────────────
+  // (constantes et raisons en tête de la section needs_user ci-dessus)
+  // Écritures en compare-and-swap (.eq status needs_user) et erreurs isolées
+  // par job : la base peut refuser UNE relance (trigger « article vendu » du
+  // 16/09) sans arrêter les autres.
+  let oplaReprises = 0;
+  let oplaMessages = 0;
+  try {
+    const { data: parques } = await supabase
+      .from("cross_post_jobs")
+      .select("id, user_id, action, error, created_at, platform_fields")
+      .eq("platform", "opla")
+      .eq("status", "needs_user")
+      .eq("platform_fields->>needs_user_source", "opla_acces");
+    // deno-lint-ignore no-explicit-any
+    const rows = (parques ?? []) as any[];
+    if (rows.length) {
+      const vus = new Map<string, number>();
+      const ids = [...new Set(rows.map((j) => String(j.user_id)))];
+      for (let i = 0; i < ids.length; i += 200) {
+        const { data: profs } = await supabase
+          .from("profiles").select("id, extension_last_seen_at").in("id", ids.slice(i, i + 200));
+        // deno-lint-ignore no-explicit-any
+        for (const p of (profs ?? []) as any[]) vus.set(String(p.id), Date.parse(p.extension_last_seen_at ?? ""));
+      }
+      const maintenant = Date.now();
+      for (const j of rows) {
+        const pf = { ...(j.platform_fields ?? {}) };
+        const reprises = Number(pf.opla_acces_reprises) || 0;
+        // Le message d'abord, une seule fois : il est lu dans l'app même si la
+        // reprise n'a pas encore eu lieu. On stampe AUSSI needs_user_vu_erreur
+        // pour que la réécriture ne passe pas pour un « nouvel épisode » et ne
+        // remette pas le compteur des 72 h à zéro à chaque passage.
+        if (!pf.opla_acces_message_pose) {
+          const msg = j.action === "delete" ? OPLA_ACCES_MSG_RETRAIT : OPLA_ACCES_MSG_DEPOT;
+          pf.opla_acces_message_pose = true;
+          pf.needs_user_vu_erreur = msg.slice(0, 200);
+          const { error: mErr } = await supabase
+            .from("cross_post_jobs")
+            .update({ error: msg, platform_fields: pf })
+            .eq("id", j.id)
+            .eq("status", "needs_user");
+          if (!mErr) oplaMessages++;
+        }
+        if (reprises >= OPLA_ACCES_REPRISES_MAX) continue;
+        const depuis = Date.parse(
+          pf.opla_acces_reprise_le ?? pf.opla_acces_attendu_le ?? j.created_at ?? "",
+        );
+        if (!Number.isFinite(depuis) || maintenant - depuis < OPLA_ACCES_DELAI_MS) continue;
+        // Une reprise n'a de sens que si une extension tourne : sans elle, le
+        // job repasserait en `pending` pour attendre au même endroit, en
+        // consommant une des six tentatives pour rien.
+        const vu = vus.get(String(j.user_id));
+        if (!Number.isFinite(vu as number) || (vu as number) < depuis) continue;
+        pf.opla_acces_reprises = reprises + 1;
+        pf.opla_acces_reprise_le = new Date(maintenant).toISOString();
+        delete pf.next_action_after;
+        delete pf.processing_since;
+        const { error: rErr } = await supabase
+          .from("cross_post_jobs")
+          .update({ status: "pending", platform_fields: pf })
+          .eq("id", j.id)
+          .eq("status", "needs_user");
+        if (rErr) {
+          console.warn(`[handler-watch] opla/accès : reprise refusée pour ${j.id} — ${rErr.message}`);
+          continue;
+        }
+        oplaReprises++;
+        console.log(`[handler-watch] job ${j.id} (opla/${j.action}) accès non accordé → reprise ${reprises + 1}/${OPLA_ACCES_REPRISES_MAX}`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] reprise des jobs Opla parqués:", (e as Error)?.message ?? e);
   }
 
   // ── Déblocage AUTO de la garde Livres (2026-08-27 soir, décision Nico) ────
@@ -1410,7 +1541,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1465,7 +1596,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1519,7 +1650,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
     headers: { "Content-Type": "application/json" },
   });
 });
