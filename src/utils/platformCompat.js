@@ -4,11 +4,19 @@
 // maintenir ici : ajouter une catégorie dans un mapping suffit à débloquer la
 // checkbox de la plateforme correspondante.
 //
-// Quatre états par plateforme (cf. chaque *CategoryStatus) :
+// Cinq états par plateforme (cf. chaque *CategoryStatus) :
 //   "supported"   — au moins un chemin réel, validé contre le crawl archivé
 //                   (scripts/audit-coverage.mjs --strict)
 //   "unavailable" — absence CONFIRMÉE par crawl (null explicite) : l'article
 //                   n'est pas vendable sur cette plateforme
+//   "no_default"  — (2026-09-19) la branche EXISTE sur la plateforme, mais
+//                   l'icône est un DÉFAUT DE TYPE (🏠 ⚡ 🌿 📦 selon la
+//                   plateforme) : aucun mot-clé ne nomme l'objet, donc aucune
+//                   feuille par défaut sûre. Se dit à l'écran comme
+//                   "unmapped" — « pas encore prise en charge » — et JAMAIS
+//                   « non vendable », qui était un mensonge mesuré (un
+//                   vendeur avait 102 ventes Vinted dans la famille même que
+//                   l'écran déclarait invendable sur Vinted).
 //   "unmapped"    — catégorie pas encore mappée/crawlée (fréquent côté Beebs,
 //                   crawl partiel) : peut-être vendable, mapping à faire
 //   "prohibited"  — la catégorie existe et l'article y entrerait, mais la
@@ -38,8 +46,8 @@ import { verdictBeebsInterdit } from "../../supabase/functions/_shared/beebs-int
  *   comportement d'avant 2026-08-11 à l'identique. ⚠️ Vinted et eBay ne le
  *   reçoivent pas, et c'est délibéré — c'est là que ces articles doivent partir.
  * @returns {{ vinted: string, leboncoin: string, beebs: string, ebay: string }}
- *   statut ("supported" | "unavailable" | "unmapped" | "prohibited") par
- *   plateforme
+ *   statut ("supported" | "unavailable" | "no_default" | "unmapped" |
+ *   "prohibited") par plateforme
  */
 export function getPlatformSupport(icon, article = null) {
   return {
