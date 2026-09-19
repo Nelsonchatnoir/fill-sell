@@ -130,3 +130,18 @@ export function estCdnPlateforme(u: unknown): u is string {
     return CDN_DOMAINES_PLATEFORMES.some((d) => h === d || h.endsWith(`.${d}`));
   } catch { return false; }
 }
+
+// Les CDN de plateformes AUTRES que Vinted. Le partage est volontaire :
+// · Vinted reste EXCLU du rapatriement de masse — décision Nico du 06/09,
+//   c'est une question de volume (313 493 photos en base contre 516 pour
+//   toutes les autres plateformes réunies, relevé du 19/09), pas de principe ;
+// · ces 516-là, elles, sont rapatriables d'un bloc, et il le faut : l'une des
+//   quatre (Beebs) refuse déjà le CORS, donc ses photos ne sont réutilisables
+//   NULLE PART tant qu'elles restent chez elle.
+export function estCdnPlateformeHorsVinted(u: unknown): u is string {
+  if (!estCdnPlateforme(u)) return false;
+  try {
+    const h = new URL(u as string).hostname.toLowerCase();
+    return !["vinted.net", "vinted.fr", "vinted.com"].some((d) => h === d || h.endsWith(`.${d}`));
+  } catch { return false; }
+}

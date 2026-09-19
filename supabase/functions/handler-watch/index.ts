@@ -8,7 +8,7 @@ import { archiverErreur } from "../_shared/erreurs-archivees.js";
 // seule source, partagée avec generate-listing (elle a divergé une fois : le
 // filet ne connaissait que Vinted et les photos Beebs d'un article importé
 // n'étaient jamais rapatriées, 19/09).
-import { estCdnPlateforme } from "../_shared/photos-rapatriement.ts";
+import { estCdnPlateforme, estCdnPlateformeHorsVinted } from "../_shared/photos-rapatriement.ts";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -1513,12 +1513,14 @@ serve(async (req) => {
       supabase
         .from("cross_post_jobs")
         .select("id, user_id, inventaire_id, status, photos, platform_fields")
-        .eq("action", "publish")
+        // 19/09 : 'republish' était absent — un redépôt repart des photos du
+        // job SOURCE, donc des mêmes URLs de plateforme, et n'avait aucun filet.
+        .in("action", ["publish", "republish"])
         .eq("status", "pending"),
       supabase
         .from("cross_post_jobs")
         .select("id, user_id, inventaire_id, status, photos, platform_fields")
-        .eq("action", "publish")
+        .in("action", ["publish", "republish"])
         .eq("status", "failed")
         .gte("created_at", seuil7jIso)
         .ilike("error", "%hors FillSell%"),
@@ -1601,6 +1603,78 @@ serve(async (req) => {
     console.error("[handler-watch] rapatriement photos hors FillSell:", (e as Error)?.message ?? e);
   }
 
+  // ── Photos des articles IMPORTÉS, ramenées chez nous (2026-09-19) ─────────
+  // Le filet du dessus répare un job. Celui-ci répare la FICHE, et c'est ce
+  // qui rend la photo réutilisable partout : publication, republication,
+  // export, et tout ce qui viendra.
+  //
+  // Pourquoi il a fallu l'écrire. Un article importé d'un relevé garde les
+  // URLs de sa plateforme. Mesuré le 19/09 depuis une origine tierce :
+  // cdn.beebs.app ne sert AUCUN en-tête CORS — l'image se charge en <img>,
+  // `fetch()` la refuse. Une photo Beebs n'est donc lisible par AUCUNE page de
+  // dépôt : ni Leboncoin, ni Opla, ni eBay. Elle n'est pas « à nous » au sens
+  // où on pourrait s'en servir ; elle est regardable, pas réutilisable.
+  //
+  // Périmètre, et pourquoi il s'arrête là : 135 articles dans tout le parc
+  // (72 releve_leboncoin, 45 releve_beebs, 13 releve_ebay, 1 releve_opla),
+  // soit 516 photos. Vinted est EXCLU — 313 493 photos, décision du 06/09,
+  // affaire de volume et pas de principe (estCdnPlateformeHorsVinted).
+  //
+  // Bornes : on plafonne en PHOTOS et pas en articles (un article à 20 photos
+  // ne doit pas manger le cycle de 3 min), une photo qui échoue garde son URL
+  // d'origine et repassera au tour suivant, et on n'écrit que si quelque
+  // chose a changé. Best-effort intégral : ce bloc ne fait jamais tomber le
+  // reste de handler-watch.
+  const PHOTOS_FICHES_MAX = 24;
+  let photosFichesRapatriees = 0;
+  let fichesPhotosMaj = 0;
+  try {
+    const { data: fiches } = await supabase
+      .from("inventaire")
+      .select("id, user_id, photos")
+      .in("origine", ["releve_leboncoin", "releve_beebs", "releve_ebay", "releve_opla"])
+      .limit(500);
+    let budget = PHOTOS_FICHES_MAX;
+    for (const f of (fiches ?? [])) {
+      if (budget <= 0) break;
+      if (!Array.isArray(f.photos)) continue;
+      const externes = [...new Set((f.photos as unknown[]).map(urlDePhoto).filter(estCdnPlateformeHorsVinted))] as string[];
+      if (!externes.length) continue;
+      const remplacements = new Map<string, string>();
+      for (const src of externes) {
+        if (budget <= 0) break;
+        budget--;
+        const nv = await rapatriePhoto(supabase, src, `${f.user_id}/rapatrie-fiche/${f.id}/${now}_${remplacements.size}`);
+        if (nv) remplacements.set(src, nv);
+      }
+      if (!remplacements.size) continue;
+      // Même réalignement URL par URL qu'ailleurs : strings nues ET objets
+      // {type,url} coexistent en base, la structure est PRÉSERVÉE.
+      // deno-lint-ignore no-explicit-any
+      const nouvelles = (f.photos as unknown[]).map((p: any) => {
+        const u = urlDePhoto(p);
+        const nv = u ? remplacements.get(u) : undefined;
+        if (!nv) return p;
+        return typeof p === "string" ? nv : { ...p, url: nv };
+      });
+      if (JSON.stringify(nouvelles) === JSON.stringify(f.photos)) continue;
+      const { error: majErr } = await supabase
+        .from("inventaire")
+        .update({ photos: nouvelles })
+        .eq("id", f.id)
+        .eq("user_id", f.user_id);
+      if (majErr) {
+        console.error(`[handler-watch] fiche ${f.id}: photos rapatriées mais update refusé — ${majErr.message}`);
+      } else {
+        photosFichesRapatriees += remplacements.size;
+        fichesPhotosMaj++;
+        console.log(`[handler-watch] fiche ${f.id}: ${remplacements.size} photo(s) ramenée(s) chez nous`);
+      }
+    }
+  } catch (e) {
+    console.error("[handler-watch] rapatriement photos des fiches importées:", (e as Error)?.message ?? e);
+  }
+
   // Regroupement par (plateforme, signature) en excluant les refus légitimes.
   type Cluster = {
     platform: string;
@@ -1639,7 +1713,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1694,7 +1768,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1748,7 +1822,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
     headers: { "Content-Type": "application/json" },
   });
 });
