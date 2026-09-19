@@ -1826,7 +1826,23 @@ serve(async (req) => {
             ? "L'opération a été interrompue sur ton ordinateur. Elle reprend toute seule, rien à faire de ton côté."
             : "L'opération n'a pas pu aboutir sur ton ordinateur. Relance-la depuis la fiche de l'article quand tu veux.";
         } else if (G4A_RE.test(brut)) {
-          clair = "Cet article n'a pas encore de catégorie sur cette plateforme. Régénère son annonce depuis l'app, puis relance la publication.";
+          // ⛔ « Régénère son annonce depuis l'app » N'A AUCUN SENS POUR UNE
+          // REPUBLICATION (2026-09-19). Une republication porte sur une
+          // annonce DÉJÀ EN LIGNE : elle a forcément une catégorie, et cette
+          // catégorie est chez nous depuis le relevé
+          // (annonces_plateforme.capture). On demandait à la personne de
+          // refaire un travail déjà fait — et régénérer ne pose de toute
+          // façon rien sur un job de republication, écrit par la RPC
+          // spend_coins_and_republish.
+          // Depuis le même jour, get-pending-jobs pose la catégorie AU SERVICE
+          // du job, depuis l'annonce en ligne. Un redépôt qui arrive quand
+          // même ici n'a donc pas de relevé exploitable : le geste utile est
+          // de resynchroniser les annonces, jamais de régénérer.
+          const { data: jAct } = await userClient
+            .from("cross_post_jobs").select("action").eq("id", jobId).maybeSingle();
+          clair = jAct?.action === "republish"
+            ? "On n'a pas retrouvé la catégorie de ton annonce en ligne. Relance une synchronisation de tes annonces depuis le Stock, puis remets la republication en route — il n'y a rien à refaire côté annonce."
+            : "Cet article n'a pas encore de catégorie sur cette plateforme. Régénère son annonce depuis l'app, puis relance la publication.";
         }
         if (clair) {
           messageEffectif = clair;

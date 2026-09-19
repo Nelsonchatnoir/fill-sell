@@ -7,6 +7,33 @@ import { ORDRE_EXACT_D_ABORD, TAILLE_PREFIXEE_RE, normaliserTaille, tailleAServi
  *  conversion nombre → lettre à la publication. Une forme préfixée (« EU 36 »)
  *  est le domaine de la republication, une lettre n'a rien à convertir. */
 const NOMBRE_NU_TAILLE_RE = /^\d{1,3}$/;
+// ── L'ARBRE LEBONCOIN RELEVÉ, pour retrouver la RACINE d'une feuille ───────
+// (2026-09-19) Le relevé Leboncoin ne capture que la FEUILLE (« Livres »,
+// « Ameublement ») : le fil d'Ariane du site n'affiche pas la racine. Nos 79
+// feuilles la portent, et leurs libellés sont UNIQUES (vérifié : zéro
+// doublon), donc « Ameublement » détermine « Maison & Jardin > Ameublement »
+// sans ambiguïté.
+// ⛔ On importe le fichier GÉNÉRÉ (scripts/gen-arbres-feuilles.mjs), jamais
+//    une liste recopiée ici : une liste parallèle divergerait au premier
+//    relevé. C'est un module de DONNÉES, sans aucun import — même traitement
+//    que _shared/beebs-interdits.js juste en dessous.
+// ⚠️ COUPLAGE À NOMMER : cette fonction doit être redéployée quand l'arbre
+//    Leboncoin est re-relevé. Elle est la troisième à lire src/ (avec
+//    generate-listing et ebay-api-worker).
+import { FEUILLES as FEUILLES_LBC } from "../../../src/utils/arbres/leboncoinFeuilles.js";
+const _normFeuille = (s: unknown) =>
+  String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+const _LBC_PAR_FEUILLE = new Map<string, string[]>(
+  (FEUILLES_LBC as Array<{ chemin: string[] }>).map((f) => [_normFeuille(f.chemin[f.chemin.length - 1]), f.chemin]),
+);
+/** [racine, feuille] pour un libellé de feuille Leboncoin relevé, ou null. */
+function cheminLbcDepuisFeuille(libelle: unknown): string[] | null {
+  // Le relevé peut rendre un fil d'Ariane complet sur d'autres plateformes :
+  // on prend toujours le DERNIER segment, qui nomme la feuille.
+  const segs = String(libelle ?? "").split(">").map((s) => s.trim()).filter(Boolean);
+  const dernier = segs[segs.length - 1] ?? "";
+  return _LBC_PAR_FEUILLE.get(_normFeuille(dernier)) ?? null;
+}
 import { nettoyerDescriptionLeboncoin } from "../_shared/description-leboncoin.ts";
 import { completerDescriptionBeebs } from "../_shared/description-beebs.ts";
 import { tempererMajuscules } from "../_shared/titre-majuscules.ts";
@@ -861,6 +888,89 @@ serve(async (req) => {
       } catch (e) {
         console.warn(`[get-pending-jobs] porte pro Leboncoin : ${String((e as Error)?.message ?? e)} — distribution normale`);
       }
+    }
+
+    // ══ UNE REPUBLICATION D'ANNONCE EN LIGNE A FORCÉMENT UNE CATÉGORIE ══════
+    // (2026-09-19) Les jobs de republication sont écrits par la RPC
+    // spend_coins_and_republish, qui ne pose aucun platform_fields : un
+    // redépôt Leboncoin partait donc SANS lbcCategoryPath, le content script
+    // rendait « platform_fields.lbcCategoryPath absent », et update-job-status
+    // le traduisait en « Cet article n'a pas encore de catégorie sur cette
+    // plateforme. Régénère son annonce depuis l'app. »
+    // C'est faux deux fois : l'annonce EST en ligne, donc elle a une
+    // catégorie ; et cette catégorie est chez nous depuis le relevé, dans
+    // annonces_plateforme.capture. On demandait à la personne de refaire un
+    // travail déjà fait.
+    // MESURÉ sur 7 jours : 30 republications Leboncoin servies sans chemin,
+    // 23 en needs_user, et les 30 avaient leur catégorie en base.
+    //
+    // ⛔ LEBONCOIN NE CAPTURE QUE LA FEUILLE (« Livres », « Ameublement »),
+    //    jamais la racine. On la RÉSOUT contre l'arbre relevé — les 79
+    //    libellés de feuille y sont UNIQUES (vérifié : zéro doublon), donc la
+    //    racine est déterminée, pas devinée. Aucune liste écrite à la main.
+    // ⛔ On écrit seulement là où il n'y a RIEN. Un chemin déjà posé — par
+    //    l'app, ou à la main — n'est jamais touché.
+    // ⛔ Statut 'pending' au moment de l'écriture : jamais un job qu'un
+    //    content script a déjà pris (règle du 12/09).
+    // ⛔ Périmètre : Leboncoin, action 'republish'. Les autres plateformes et
+    //    les publications neuves ne sont pas touchées — leur chemin vient de
+    //    l'app, et le trou mesuré est ici.
+    try {
+      const pfDeJob = (j: { platform_fields: unknown }) =>
+        ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+      const aCombler = out.filter((j) =>
+        j.action === "republish" && j.platform === "leboncoin" && j.status === "pending" &&
+        j.inventaire_id != null && !pfDeJob(j)["lbcCategoryPath"]
+      );
+      if (aCombler.length) {
+        const ids = [...new Set(aCombler.map((j) => j.inventaire_id))];
+        const { data: annonces } = await userClient
+          .from("annonces_plateforme")
+          .select("inventaire_id, capture, vu_le")
+          .eq("platform", "leboncoin")
+          .in("inventaire_id", ids)
+          .order("vu_le", { ascending: false });
+        // La plus récemment vue gagne, par article.
+        const categorieDe = new Map<number, string>();
+        for (const a of (annonces ?? [])) {
+          const inv = (a as { inventaire_id: number }).inventaire_id;
+          if (categorieDe.has(inv)) continue;
+          const c = ((a as { capture?: { categorie?: unknown } }).capture ?? {})?.categorie;
+          const s = String(c ?? "").trim();
+          if (s) categorieDe.set(inv, s);
+        }
+        let poses = 0;
+        const sansCategorie: string[] = [];
+        for (const j of aCombler) {
+          const brut = categorieDe.get(j.inventaire_id as number);
+          if (!brut) { sansCategorie.push(String(j.id).slice(0, 8)); continue; }
+          const chemin = cheminLbcDepuisFeuille(brut);
+          if (!chemin) { sansCategorie.push(`${String(j.id).slice(0, 8)} (« ${brut} » hors arbre)`); continue; }
+          const pf = { ...pfDeJob(j) };
+          pf["lbcCategoryPath"] = chemin;
+          pf["categorie_origine"] = {
+            plateforme: "leboncoin", capturee: brut, chemin,
+            le: new Date().toISOString(),
+            pose_par: "get-pending-jobs (catégorie de l'annonce en ligne, relevée)",
+          };
+          const { error: uErr } = await userClient.from("cross_post_jobs")
+            .update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending");
+          if (uErr) {
+            console.warn(`[get-pending-jobs] catégorie d'origine : job ${String(j.id).slice(0, 8)} non écrit (${uErr.message}) — servi tel quel`);
+            continue;
+          }
+          (j as unknown as Record<string, unknown>).platform_fields = pf;
+          poses++;
+        }
+        if (poses) {
+          console.log(`[get-pending-jobs] user=${user.id} : ${poses} republication(s) Leboncoin complétée(s) depuis la catégorie de l'annonce en ligne`);
+        }
+        if (sansCategorie.length) {
+          console.warn(`[get-pending-jobs] user=${user.id} : ${sansCategorie.length} republication(s) Leboncoin sans catégorie retrouvable — ${sansCategorie.join(", ")}`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] catégorie d'origine : ${String((e as Error)?.message ?? e)} — distribution normale`);
     }
 
     // ── UNE REPUBLICATION ORPHELINE N'EST JAMAIS SERVIE (2026-09-06) ────────
