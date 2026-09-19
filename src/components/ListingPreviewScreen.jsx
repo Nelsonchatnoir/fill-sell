@@ -6589,6 +6589,38 @@ export default function ListingPreviewScreen({
         // (genericKnownSource ne connaît pas title) → « manquant » en texte
         // libre et CTA bloqué à tort, à chaque publication de la catégorie.
         if (key === "title") return { key, label, state: "ok", value: edited[platform]?.title ?? "", allowedValues };
+        // ── `photos` et `description` : les DEUX JUMELLES DE `title` (2026-09-19) ─
+        // Mêmes clés apprises d'un 400 serveur, même absence de source dans
+        // genericKnownSource (qui ne connaît pour Vinted que brand · model ·
+        // stockage · condition · color · size · material · isbn), donc même
+        // faux « manquant » et même CTA bloqué à tort. `title` avait été
+        // neutralisé ; ses deux jumelles ne l'avaient pas été.
+        // Mesuré sur 7 jours : 6 questions posées pour rien — les photos
+        // demandées à quelqu'un dont le job en portait 3, la description à
+        // quelqu'un dont le job en portait 443 caractères. Ça a coûté les
+        // 2 SEULS `publie_sans_plateforme` de la semaine (deux publications
+        // parties SANS Vinted) et 2 des 7 abandons.
+        // Ni l'une ni l'autre n'est un champ de formulaire : le job porte
+        // TOUJOURS ses photos (processedPhotos, posées au step Photos — la
+        // Génération ne tourne pas sans elles) et sa description (edited
+        // [platform].description, écrite au step Génération).
+        // ⚠️ La ligne catalogue OSCILLE : vinted/photos et vinted/description
+        // sont à required=false aujourd'hui, elles étaient à true les 13→16/09
+        // quand elles ont bloqué (le chargement ne prend que required=true,
+        // cf. .eq("required", true) plus haut). La neutralisation est donc
+        // posée ICI, côté écran, et tient quelle que soit la valeur du
+        // catalogue au prochain relevé.
+        // ⛔ Ceci ne retire AUCUNE protection : une description Vinted vide
+        // reste bloquée par `descriptionVideVinted` (garde dédiée, qui dit où
+        // l'écrire et ouvre la carte Vinted), et une publication eBay sans
+        // photo reste refusée à l'insert du job. On retire une question, pas
+        // un filet.
+        if (key === "photos") {
+          return { key, label, state: "ok", value: String(processedPhotos?.length ?? 0), allowedValues };
+        }
+        if (key === "description") {
+          return { key, label, state: "ok", value: edited[platform]?.description ?? "", allowedValues };
+        }
         const src = String(genericKnownSource(platform, key, pf) ?? "").trim();
         if (src) {
           // Valeur DÉDIÉE validée contre la liste fermée du catalogue quand
@@ -6664,7 +6696,10 @@ export default function ListingPreviewScreen({
       if (status.length) out[platform] = status;
     }
     return Object.keys(out).length ? out : null;
-  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig]); // eslint-disable-line react-hooks/exhaustive-deps
+    // processedPhotos.length : la neutralisation de `photos` ci-dessus affiche
+    // le compte réel — sans cette dépendance il resterait figé à celui du
+    // premier rendu après une photo ajoutée ou retirée au step Photos.
+  }, [genericAspectsCatalog, plateformesPubliables, edited, genericCategoryKeysSig, processedPhotos?.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── UN SEUL endroit de saisie (2026-08-28, remplace l'unicité du 30/07) ────
   // L'ancienne règle répartissait la saisie entre le rouge et les bleus selon
