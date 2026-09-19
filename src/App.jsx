@@ -2290,6 +2290,12 @@ export default function App({ loginOnly = false }){
   const [republishActifsInv,setRepublishActifsInv]=useState(()=>new Set());
   const [firstItemAdded,setFirstItemAdded]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
+  // Écran sur lequel les Réglages s'ouvrent (20/09) : null = le hub, comme
+  // toujours. Le module de republication automatique, en pied du Stock, y
+  // mène directement — on ouvre l'écran QUI EXISTE au lieu d'en monter une
+  // seconde copie dans l'onglet Stock. Remis à null à la fermeture, sinon
+  // l'ouverture suivante par la roue dentée atterrirait au même endroit.
+  const [reglagesEcran,setReglagesEcran]=useState(null);
   const [coinWallet,setCoinWallet]=useState(null);
   // Bascule quotas (02/09) : compteurs par geste (quotas_etat) — remplacent le
   // solde d'unités partout où il s'affichait. null = rien d'affiché.
@@ -8211,6 +8217,7 @@ export default function App({ loginOnly = false }){
           <StockTab
             lang={lang} currency={currency} isPremium={isPremium} isNative={isNative} isPro={isPro} isBusiness={isBusiness}
             ouvrirModalePlafond={ouvrirModalePlafond}
+            ouvrirReglagesRepublication={()=>{setReglagesEcran('republication');setShowSettings(true);}}
             quotas={quotas}
             items={items} user={user} voiceUsedToday={voiceUsedToday}
             extensionStatus={{ lastSeenAt: extensionLastSeenAt, build: extensionBuild, outdated: extensionOutdated }}
@@ -8859,7 +8866,8 @@ export default function App({ loginOnly = false }){
              à chaque ouverture, comme la pop-up d'avant. */}
       {showSettings&&(
         <ReglagesPage
-          onClose={()=>{setShowSettings(false);setDeleteStep(0);setResetStep(0);}}
+          onClose={()=>{setShowSettings(false);setReglagesEcran(null);setDeleteStep(0);setResetStep(0);}}
+          ecranInitial={reglagesEcran}
           lang={lang}
           setLang={setLang}
           user={user}

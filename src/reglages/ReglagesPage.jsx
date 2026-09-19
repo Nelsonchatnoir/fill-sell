@@ -71,6 +71,11 @@ export default function ReglagesPage({
   adresseLbc, setAdresseLbc,
   plateformesOuvertes,
   onToast, ouvrirOffres, ouvrirSignalementBug,
+  // Écran ouvert D'EMBLÉE à l'arrivée (20/09) : le module de republication
+  // automatique, en pied du Stock, mène ICI plutôt que de remonter une
+  // deuxième copie des trois écrans dans l'onglet Stock. Lu une seule fois,
+  // au montage — la page est montée à neuf à chaque ouverture des Réglages.
+  ecranInitial = null,
   resiliation, restauration, reset, suppression, deconnexion,
 }) {
   const T = txt(lang);
@@ -79,7 +84,7 @@ export default function ReglagesPage({
   // qu'il est là, la page n'écoute plus Échap — sinon une touche fermerait
   // les deux couches d'un coup.
   // null | 'liste' | 'historique' | une plateforme ('vinted', 'leboncoin', …)
-  const [ecranRepub, setEcranRepub] = useState(null);
+  const [ecranRepub, setEcranRepub] = useState(ecranInitial === 'republication' ? 'liste' : null);
 
   // `multi: true` — c'est le SEUL écran qui a besoin des quatre plateformes.
   // Le Stock, lui, garde l'appel d'avant (cf. l'encadré du hook).
