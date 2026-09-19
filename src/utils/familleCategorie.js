@@ -194,8 +194,24 @@ export function famillesCompatibles(a, b) {
  * cadre — la lire rangeait des jouets en « mode » et faisait écarter leur
  * rayon Jeux, le bon.
  */
-export function familleDeLObjet({ catalogId = null, icone = null, sourceIcone = "" } = {}) {
+export function familleDeLObjet({ catalogId = null, icone = null, sourceIcone = "", origine = null } = {}) {
   if (brancheModeDuCatalogue(catalogId)) return { famille: "mode", source: "catalog_vinted" };
+  // ── LA CATÉGORIE D'ORIGINE (2026-09-19) — même RANG que le catalogue
+  // Vinted, et pour la même raison : c'est une catégorie DÉCLARÉE sur la
+  // plateforme qui héberge déjà l'annonce, pas une déduction de notre part.
+  // Elle vient juste après le catalog_id, qui reste la source la plus ancienne
+  // et la mieux éprouvée, et AVANT l'icône — dont l'en-tête de ce fichier dit
+  // déjà qu'elle ne fait autorité que sur quatre sources nommées.
+  // Le catalog_id ne sait dire qu'UNE famille (mode, par construction : sa
+  // table ne couvre que les branches mode de Vinted) ; l'origine en couvre
+  // les huit. Mesuré : 188 des 192 catégories d'origine relevées rendent une
+  // famille.
+  // ⛔ Famille indécidable → on ne rend rien, et le comportement d'avant
+  //    reprend à l'identique. Une origine ne force jamais un défaut.
+  if (origine?.platform && Array.isArray(origine?.chemin) && origine.chemin.length) {
+    const f = familleDeChemin(origine.platform, origine.chemin);
+    if (f) return { famille: f, source: `categorie_origine_${origine.platform}` };
+  }
   if (icone && SOURCES_ICONE_AUTORITE.has(String(sourceIcone))) {
     const f = familleDeChemin("leboncoin", getLbcCategoryPath(icone) ?? []);
     if (f) return { famille: f, source: `icone_${sourceIcone}` };

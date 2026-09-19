@@ -456,4 +456,81 @@ export function valeurDecritLObjet(mot, valeurs, libelle = null) {
   return { niveau: "aucun", valeur: null };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LA CATÉGORIE D'ORIGINE — retrouver la FEUILLE que le vendeur a lui-même
+// choisie sur la plateforme d'où l'article vient (2026-09-19)
+// ═══════════════════════════════════════════════════════════════════════════
+// Le relevé écrit depuis le 17/09 la catégorie de chaque annonce en ligne dans
+// annonces_plateforme.capture->>'categorie' : un fil d'Ariane (« Maison >
+// Petit électroménager > Yaourtières ») pour Beebs/eBay/Opla, la feuille seule
+// (« Décoration ») pour Leboncoin. Personne ne la lisait.
+//
+// ⛔ CE N'EST PAS UN RÉSOLVEUR DE MOTS. resoudreParMot compare des JETONS avec
+//    ses filtres de genre et de famille ; ici on cherche une feuille qu'on
+//    CONNAÎT déjà, par égalité de libellé ou d'identifiant. Passer un chemin
+//    entier dans le tokeniseur du mot produirait des faux positifs sur les
+//    libellés longs — ce sont deux opérations différentes, pas une variante.
+//
+// MESURÉ sur les 204 catégories d'origine relevées en prod : 192 (94 %) se
+// retrouvent dans nos arbres. Les 12 restantes sont des défauts de CAPTURE
+// (bruit de recherche eBay, fil dupliqué, nœud intermédiaire Opla) ou de vrais
+// trous de notre index eBay — aucune n'est un défaut de cette fonction.
+//
+// ⛔ Ce que ça NE fait PAS : choisir une catégorie sur la plateforme de
+//    DESTINATION. La traduction libellé → libellé ne marche pas (mesuré :
+//    40 % vers Vinted, 1 à 13 % ailleurs). L'origine sert à renseigner les
+//    FILTRES — famille et genre — que la cascade du mot utilise déjà.
+const norm = (s) => String(s ?? "").toLowerCase().normalize("NFD")
+  .replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+
+/**
+ * La feuille de NOTRE arbre qui correspond à une catégorie capturée.
+ * @param {string} plateforme  la plateforme d'ORIGINE (celle du relevé)
+ * @param {string} capturee    capture->>'categorie', fil d'Ariane ou feuille
+ * @returns {Promise<{chemin: string[], id: string|null}|null>}
+ */
+export async function feuilleDepuisOrigine(plateforme, capturee) {
+  const brut = String(capturee ?? "").trim();
+  if (!brut) return null;
+  const feuilles = await feuillesDe(plateforme);
+  if (!feuilles.length) return null;
+  // Le dernier segment du fil d'Ariane nomme la feuille. Chez Opla c'est un
+  // CODE (« MAISON_SA_ACCESSORIES »), qui est justement l'`id` de nos feuilles.
+  const segments = brut.split(">").map((s) => s.trim()).filter(Boolean);
+  const dernier = segments[segments.length - 1] ?? brut;
+  const parId = feuilles.find((f) => f.id != null && String(f.id) === dernier);
+  if (parId) return { chemin: parId.chemin, id: parId.id ?? null };
+  const cible = norm(dernier);
+  const parLibelle = feuilles.find((f) => norm(f.chemin[f.chemin.length - 1]) === cible);
+  if (parLibelle) return { chemin: parLibelle.chemin, id: parLibelle.id ?? null };
+  return null;
+}
+
+// Le GENRE que porte une catégorie d'origine, quand elle le dit en clair —
+// Beebs suffixe ses feuilles « (femme) », « (fille) », eBay écrit « Femme :
+// vêtements », Opla code GIRLS_/MENS_. Mesuré : 85 des 192 origines résolues
+// (44 %) le portent. Aujourd'hui ce genre est DEVINÉ ; là il est déclaré.
+// ⛔ Rend une valeur du vocabulaire interne, ou null. Jamais un défaut : un
+//    genre faux ferme des feuilles justes.
+// ⛔ Motifs écrits SANS ACCENT et en minuscules : le texte est normalisé avant
+//    le test. `\b` de JavaScript est ASCII — dans « Bébé », le « é » n'est pas
+//    un caractère de mot, donc \bbébé\b ne matche JAMAIS. Mesuré : « Mode >
+//    Bébé > Pyjamas (bébé) » rendait null avec les motifs accentués.
+const GENRES_ORIGINE = [
+  [/\bbebes?\b|\bbabies\b|\bbaby\b/, "Bébé"],
+  [/\bfilles?\b|\bgirls?\b/, "Fille"],
+  [/\bgarcons?\b|\bboys?\b/, "Garçon"],
+  [/\bfemmes?\b|\bmaternite\b|\bwomens?\b/, "Femme"],
+  [/\bhommes?\b|\bmens?\b/, "Homme"],
+];
+export function genreDepuisOrigine(capturee) {
+  // Les séparateurs deviennent des espaces AVANT le test : « _ » est un
+  // caractère de mot pour \b, donc « GIRLS_NEW » ne matchait pas \bgirls\b —
+  // et les codes Opla sont écrits comme ça. Parenthèses et « : » aussi, pour
+  // que « (femme) » et « Femme : vêtements » tombent sur le même motif.
+  const t = norm(String(capturee ?? "").replace(/[_>/():,]+/g, " "));
+  for (const [re, genre] of GENRES_ORIGINE) if (re.test(t)) return genre;
+  return null;
+}
+
 export const _internes = { memeEnsemble, inclus, genreNormalise, ACCEPTE, VIDES, VIDES_STRICTS };

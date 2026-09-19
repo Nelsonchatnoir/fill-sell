@@ -29,7 +29,7 @@ import { gardeFouCategorie, categorieIncertaine } from "../utils/categorieGardeF
 // chargé par Vite ici et par Deno là-bas) : la garde qui refuse de nourrir la
 // passe 2 avec une description anglaise DOIT juger exactement comme le serveur.
 import { estAnglaisAvere } from "../../supabase/functions/_shared/langue.js";
-import { resoudreParMot, candidatsParMot, valeurDecritLObjet } from "../utils/categorieParMot";
+import { resoudreParMot, candidatsParMot, valeurDecritLObjet, feuilleDepuisOrigine, genreDepuisOrigine } from "../utils/categorieParMot";
 import { familleDeLObjet, plausibiliteDuChemin } from "../utils/familleCategorie";
 import { mentionsAutrePlateforme, messageMentions } from "../utils/descriptionMentions";
 import { normalizeVintedTitle } from "../utils/vintedTitle";
@@ -4225,6 +4225,54 @@ export default function ListingPreviewScreen({
       .catch(() => {});
     return () => { vivant = false; };
   }, [inventaireId, supabase]);
+  // ── LA CATÉGORIE D'ORIGINE (2026-09-19) ───────────────────────────────────
+  // Depuis le 17/09, le relevé écrit dans annonces_plateforme.capture la
+  // catégorie de chaque annonce DÉJÀ EN LIGNE — celle que la personne a
+  // choisie elle-même sur l'autre plateforme. Personne ne la lisait : 850
+  // annonces, 478 articles, en deux jours, et la publication continuait de
+  // deviner la famille et le genre à partir du titre.
+  // On la lit ICI, à côté de la ligne inventaire, et on la résout contre NOS
+  // arbres relevés (feuilleDepuisOrigine) pour obtenir un CHEMIN réel.
+  // ⛔ Elle ne CHOISIT aucune catégorie de destination — la traduction
+  //    libellé → libellé ne marche pas (mesuré : 40 % vers Vinted, 1 à 13 %
+  //    ailleurs). Elle renseigne deux FILTRES que la cascade du mot utilise
+  //    déjà : la famille et le genre.
+  // ⛔ Échec de lecture, aucune annonce, catégorie introuvable dans nos
+  //    arbres → null, et tout se passe exactement comme avant.
+  const [origineCat, setOrigineCat] = useState(null);
+  useEffect(() => {
+    if (!inventaireId) { setOrigineCat(null); return undefined; }
+    let vivant = true;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("annonces_plateforme")
+          .select("platform, capture, vu_le")
+          .eq("inventaire_id", inventaireId)
+          .is("disparu_le", null)
+          .order("vu_le", { ascending: false })
+          .limit(8);
+        if (!vivant || !Array.isArray(data) || !data.length) return;
+        for (const ligne of data) {
+          const brut = ligne?.capture?.categorie;
+          if (!brut || !ligne?.platform) continue;
+          const feuille = await feuilleDepuisOrigine(ligne.platform, brut);
+          if (!vivant) return;
+          if (feuille) {
+            setOrigineCat({
+              platform: ligne.platform,
+              chemin: feuille.chemin,
+              id: feuille.id ?? null,
+              genre: genreDepuisOrigine(brut),
+              brut: String(brut),
+            });
+            return;
+          }
+        }
+      } catch { /* l'origine est un BONUS : son absence ne bloque rien */ }
+    })();
+    return () => { vivant = false; };
+  }, [inventaireId, supabase]);
   const attributV = (cle) => {
     const champ = attributsBase && typeof attributsBase === "object" ? attributsBase[cle] : null;
     const v = champ && typeof champ === "object" ? champ.v : null;
@@ -7521,7 +7569,13 @@ export default function ListingPreviewScreen({
       const motCleTitre = detectObjectKeywordDetail(frTitrePublication, "")?.mot ?? null;
       const catalogVintedFiche = initialListing?.vinted_catalog_id ?? null;
       const familleLivresFiche = initialListing?.famille === "livres_medias" || /^livres?$/i.test(String(initialListing?.categorie ?? ""));
-      if (!activeAiObjet && !motCleTitre && !catalogVintedFiche && !familleLivresFiche) {
+      // ⛔ 5ᵉ CLÉ : la catégorie d'ORIGINE (2026-09-19). Même nature que le
+      // catalogue Vinted juste à côté — une catégorie déclarée par la personne
+      // sur la plateforme qui héberge déjà l'annonce. Un article importé d'un
+      // relevé n'est PAS un article dont on ne sait rien : refuser de publier
+      // « faute de savoir ce que c'est » alors que sa catégorie est en base
+      // depuis le relevé, c'est refuser une information qu'on possède.
+      if (!activeAiObjet && !motCleTitre && !catalogVintedFiche && !familleLivresFiche && !origineCat) {
         console.warn(`[publish] catégorie NON reconnue pour « ${frTitrePublication} » (ni mot IA, ni mot-clé au titre) — publication retenue, on demande`);
         throw new Error(lang === "en"
           ? `We couldn't recognise what this item is from « ${frTitrePublication} », so we won't guess its category. Name the object in the title (e.g. "jumpsuit", "trivet", "jacket") or regenerate the listing, then publish again. Nothing was charged.`
@@ -7546,8 +7600,14 @@ export default function ListingPreviewScreen({
       const detIconeFamille = resolveArticleIconDetail({ initialListing, edited, pf: pfFamille, aiIcon: activeAiIcon, aiObjet: activeAiObjet });
       const familleObjetDetail = familleDeLObjet({
         catalogId: catalogVintedFiche, icone: detIconeFamille.icon, sourceIcone: detIconeFamille.source,
+        // La catégorie d'origine entre ici comme source CERTAINE, au même rang
+        // que le catalogue Vinted (cf. familleDeLObjet). Le catalog_id ne sait
+        // dire qu'une famille — « mode » — parce que sa table ne couvre que
+        // les branches mode de Vinted ; l'origine en couvre les huit.
+        origine: origineCat,
       });
       const familleObjet = familleObjetDetail.famille;
+      if (origineCat) console.log(`[publish] catégorie d'origine (${origineCat.platform}) : ${origineCat.chemin.join(" > ")}${origineCat.genre ? ` · genre ${origineCat.genre}` : ""}`);
       if (familleObjet) console.log(`[publish] famille de l'objet : ${familleObjet} (source ${familleObjetDetail.source})`);
       const categorieParMotParPf = {};
       // Feuilles écartées par le garde-fou d'escamotage (2026-09-12) : une
@@ -7559,7 +7619,16 @@ export default function ListingPreviewScreen({
       if (motCategorie) {
         await Promise.all(plateformesAPublier.map(async (platform) => {
           const pfE = edited[platform]?.platform_fields ?? {};
-          const genrePf = pfE.genre || pfE.univers || genrePourCategorie(platform);
+          // ── LE GENRE DE L'ORIGINE, EN DERNIER RECOURS (2026-09-19) ────────
+          // Beebs suffixe ses feuilles « (femme) », « (fille) », eBay écrit
+          // « Femme : vêtements », Opla code GIRLS_/MENS_ : 85 des 192
+          // catégories d'origine relevées portent un genre EXPLICITE. Il ne
+          // passe qu'APRÈS ce que la fiche dit d'elle-même — la personne a pu
+          // corriger le genre dans l'app, et sa correction prime toujours.
+          // ⛔ Sert UNIQUEMENT à filtrer les feuilles candidates ici. Il
+          //    n'est jamais écrit dans platform_fields.genre : ce champ-là
+          //    part dans le formulaire, il ne se déduit pas d'un autre site.
+          const genrePf = pfE.genre || pfE.univers || genrePourCategorie(platform) || origineCat?.genre || "";
           try {
             const r = await resoudreParMot(motCategorie, platform, { genre: genrePf, famille: familleObjet });
             if (r.certitude === "exact") categorieParMotParPf[platform] = r;
@@ -7604,7 +7673,9 @@ export default function ListingPreviewScreen({
           const pfE = edited[platform]?.platform_fields ?? {};
           try {
             const liste = await candidatsParMot(motCategorie, platform, {
-              genre: pfE.genre || pfE.univers || genrePourCategorie(platform),
+              // Même cascade qu'à l'étape 2 : le genre de l'origine ne parle
+              // qu'après la fiche, et ne sert qu'au filtrage des candidates.
+              genre: pfE.genre || pfE.univers || genrePourCategorie(platform) || origineCat?.genre || "",
               titre: edited[platform]?.title || initialListing?.titre || "",
               famille: familleObjet,
             });
