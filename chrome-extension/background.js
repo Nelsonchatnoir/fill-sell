@@ -12892,6 +12892,60 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
     const cause403 = await classifierCause403();
     ident = await sonder();
 
+    // ── UN 401 À LA PREMIÈRE SONDE N'EST PAS UNE DÉCONNEXION (2026-09-19) ────
+    // CAS QUI L'OUVRE, Xouxou ce matin : clic à 11:01 → sync FAILED à 11:03
+    // « sonde de session Vinted : session Vinted absente ou expirée [HTTP 401] ».
+    // Nouveau clic à 11:04 → sync DONE à 11:05, 107 articles lus. MÊME
+    // navigateur, MÊME session, deux minutes d'écart. La session était là ; le
+    // premier essai a échoué pour rien, et la personne a recliqué quatre fois
+    // en quatorze minutes sans comprendre.
+    //
+    // CE QUE ÇA DIT DE LA CAUSE. Le commentaire de vinted.js pose l'hypothèse
+    // que « la page vient d'être chargée et a rafraîchi son token, donc un 401
+    // est un vrai signal ». Le cas Xouxou la dément : l'hypothèse tient sur un
+    // token DÉJÀ rafraîchi, et rien ne garantit que ce rafraîchissement soit
+    // terminé quand notre sonde part. Un 401 sur la toute première lecture
+    // après chargement est donc AMBIGU — exactement comme le 401 de la sonde
+    // du service worker, que le code reconnaît déjà comme ambigu.
+    // ⚠️ Je nomme le mécanisme le plus probable (rafraîchissement de session
+    //    pas encore abouti) sans le prouver : ce que je PROUVE, c'est que le
+    //    même navigateur répond 200 deux minutes plus tard. Le correctif ne
+    //    dépend pas du mécanisme exact — il dépend du fait que c'est
+    //    RÉCUPÉRABLE, et ça, c'est mesuré.
+    //
+    // CE QU'ON FAIT : on recharge la page Vinted et on resonde, au plus DEUX
+    // fois, espacé. Si les trois lectures disent 401, alors seulement on
+    // échoue — et le message dit qu'on a essayé, au lieu d'affirmer une
+    // absence de session qu'on n'a pas établie.
+    // ⛔ Bornes dures : 2 reprises, 3 s puis 8 s. Un compte réellement
+    //    déconnecté le sait en moins de quinze secondes.
+    // ⛔ N'EST PAS TOUCHÉ : le chemin 403 (verdictInconnu + reprise armée), qui
+    //    marche et qui a servi proprement à DeadRoz, Alexandre et Levistage.
+    //    Ni le chemin qui réussit : une sonde qui rend success ne passe même
+    //    pas par ici.
+    const RESONDE_401_DELAIS_MS = [3000, 8000];
+    let resondes401 = 0;
+    while (!ident?.success && ident?.httpStatus === 401 && resondes401 < RESONDE_401_DELAIS_MS.length) {
+      const attente = RESONDE_401_DELAIS_MS[resondes401];
+      resondes401 += 1;
+      console.log(`[sync-dressing] 401 à la sonde (essai ${resondes401}/${RESONDE_401_DELAIS_MS.length + 1}) — rechargement de la page Vinted puis nouvelle lecture dans ${attente} ms`);
+      try {
+        const charge = waitForTabComplete(tabId);
+        await neutralizeBeforeUnload(tabId);
+        await chrome.tabs.update(tabId, { url: `https://www.vinted.fr/${WORK_TAB_FRAGMENT}` });
+        await charge;
+      } catch (e) {
+        console.warn("[sync-dressing] rechargement Vinted impossible avant re-sonde :", e?.message ?? e);
+      }
+      await sleep(attente);
+      ident = await sonder();
+    }
+    // La trace le DIT, toujours : une reprise silencieuse masquerait un vrai
+    // échec, et c'est précisément ce qu'on reproche au message d'aujourd'hui.
+    const noteResonde401 = resondes401
+      ? ` | [resonde401] ${resondes401} nouvelle(s) lecture(s) après un premier 401 — ${ident?.success ? "session retrouvée" : "toujours refusée"}`
+      : "";
+
     // ── Verdict INCONNU sur 403 anti-robot : reprise en arrière-plan ─────────
     // On ne conclut pas à une déconnexion (le 403 est rendu par la couche
     // anti-robot AVANT que le cookie de session soit regardé), et on ne
@@ -12977,7 +13031,14 @@ async function syncDressingUnlocked(declencheur, repriseRetry403 = false, repris
       // Le code HTTP est ré-annexé quand il existe : c'est lui qui permet de
       // distinguer 401 et 403 en base, sans dépendre du texte.
       const codeHttp = Number.isFinite(ident?.httpStatus) ? ` [HTTP ${ident.httpStatus}]` : "";
-      return await echec(`sonde de session Vinted : ${ident?.error ?? "échec inconnu"}${codeHttp}`);
+      // Sur un 401 confirmé par TROIS lectures dont deux après rechargement, on
+      // ne dit plus « session absente ou expirée » comme si on le savait : on
+      // dit ce qu'on a fait et ce qu'on a obtenu. C'était faux chez Xouxou.
+      const motif = resondes401 && ident?.httpStatus === 401
+        ? `Vinted a refusé la lecture du compte ${resondes401 + 1} fois de suite (HTTP 401), rechargement de la page compris. `
+          + "Si tu es bien connecté(e) à Vinted dans ce navigateur, réessaie dans quelques minutes ; sinon, reconnecte-toi."
+        : `sonde de session Vinted : ${ident?.error ?? "échec inconnu"}${codeHttp}`;
+      return await echec(`${motif}${noteResonde401}`);
     }
   }
 
