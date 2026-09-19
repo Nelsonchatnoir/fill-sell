@@ -308,6 +308,26 @@ export function optionsFeuilles(candidats: FeuilleOpla[]): Array<{ code: string;
   return candidats.map((f) => ({ code: f.code, title: f.chemin.join(SEPARATEUR_CHEMIN) }));
 }
 
+// ── L'IDENTITÉ D'UNE QUESTION (2026-09-19) ────────────────────────────────
+// Une question Opla, c'est SA LISTE D'OPTIONS et rien d'autre : deux articles
+// qui produisent le même ensemble de feuilles voient la même modale, au mot
+// près. Cette clé sert à ne poser cette question-là qu'UNE fois par compte
+// (get-pending-jobs, profiles.platform_settings.opla.categories).
+//
+// ⛔ LES CODES, PAS LES LIBELLÉS : deux branches portent le même libellé
+//    (« Robes » sous Robes et sous Vêtements de sport) — une clé de libellés
+//    confondrait deux questions différentes et rejouerait une réponse dans le
+//    mauvais rayon, en 200, sans un mot.
+// ⛔ TRIÉE ET DÉDUPLIQUÉE : l'ordre des candidats suit celui de l'index des
+//    feuilles ; si demain il change, la même question doit garder la même clé,
+//    sinon toutes les réponses déjà données seraient reposées en silence.
+// ⛔ UNE FEUILLE DE PLUS OU DE MOINS ⇒ AUTRE CLÉ ⇒ ON REDEMANDE. C'est la
+//    garde qui empêche de rejouer une réponse pour une question qu'il n'a
+//    jamais vue.
+export function cleFourche(options: Array<{ code?: unknown }>): string {
+  return [...new Set(options.map((o) => String(o?.code ?? "").trim()).filter(Boolean))].sort().join("|");
+}
+
 // ── LA TAILLE : ON NORMALISE AVANT DE REFUSER ──────────────────────────────
 // Défaut mesuré : chemise H&M, taille « L / 40 / 12 » (format composé Vinted)
 // refusée par la grille Opla qui attend « L ». La valeur est JUSTE, c'est le
