@@ -11874,6 +11874,38 @@ async function releverAnnoncesPlateforme(platform) {
     for (const a of r.articles ?? []) if (a?.listing_id) annonces.set(a.listing_id, a);
     return { annonces: [...annonces.values()], complet: r.complet !== false };
   }
+
+  // ── LEBONCOIN : L'ADRESSE D'ABORD, LE DÉFILEMENT EN REPLI (2026-09-19) ────
+  // Le plafond de ~30 annonces qui bloquait ce chantier était celui de NOTRE
+  // boucle de défilement, pas celui de Leboncoin. L'endpoint que la page
+  // elle-même interroge honore `offset` et rend `list_id`, `url`, `status` et
+  // le compteur « en ligne ». On l'appelle ; s'il se tait, on retombe sur le
+  // défilement, inchangé à l'octet près.
+  if (platform === "leboncoin") {
+    const api = await releverLeboncoinParApi().catch((e) => ({ ok: false, motif: String(e?.message ?? e) }));
+    if (api?.ok && Array.isArray(api.annonces)) {
+      for (const a of api.annonces) annonces.set(a.listing_id, a);
+      lbcTotalEnLigne = Number.isFinite(api.actives) ? api.actives : null;
+      lbcListeRendue = true;
+      if (api.motif) complet = false;
+      console.log(`[releve][leboncoin] par l'adresse : ${api.annonces.length} annonce(s) en ${api.pages} page(s), ${api.enLigne} en ligne sur ${api.actives ?? "?"} annoncée(s)${api.motif ? ` — ${api.motif}` : ""}`);
+      // Le juge de couverture compare les EN LIGNE aux EN LIGNE : on ne compte
+      // pas les annonces d'un autre statut, qui ne sont pas dans « En ligne (N) ».
+      const enLigneApi = api.enLigne;
+      const jugement = !Number.isFinite(lbcTotalEnLigne) || enLigneApi < lbcTotalEnLigne;
+      return {
+        annonces: [...annonces.values()],
+        complet: complet && !jugement,
+        illisibles,
+        erreur: jugement
+          ? `couverture partielle : ${enLigneApi} annonce(s) vue(s) sur ${lbcTotalEnLigne ?? "?"} « en ligne » — le reste n'est ni relevé ni conclu disparu`
+          : (api.motif ? `relevé par l'adresse interrompu (${api.motif})` : null),
+        defilement: `[adresse] ${api.pages} page(s) de ${LBC_API_PAGE}`,
+      };
+    }
+    console.warn(`[releve][leboncoin] relevé par l'adresse indisponible (${api?.motif ?? "sans motif"}) — repli sur le défilement`);
+  }
+
   let dernierTabId = null; // onglet de travail de la plateforme, réutilisé après la boucle
   for (const page of RELEVE_PAGES[platform] ?? []) {
     const tabId = await getOrCreateWorkTab(platform, page.url);
@@ -12600,8 +12632,537 @@ async function releverQuotidien() {
     if (!Array.isArray(jobs) || !jobs.length) continue;
     await lancerRelevePlateforme({ platform, declencheur: "cron" }).catch((e) => console.error("[releve][cron]", e?.message ?? e));
   }
+  // ── LES VENTES, DANS LA FOULÉE (2026-09-19) ──────────────────────────────
+  // Aucune alarme de plus, aucune cadence propre : on se greffe sur le passage
+  // quotidien du relevé de stock. Et SANS la garde « au moins un dépôt » qui
+  // précède : c'est tout l'objet du chantier — une vente peut porter sur une
+  // annonce qu'on n'a jamais publiée.
+  await releverVentesQuotidien().catch((e) => console.error("[ventes][cron]", e?.message ?? e));
 }
 
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LEBONCOIN — LE STOCK SE LIT COMME LES VENTES : PAR L'ADRESSE (2026-09-19)
+// ══════════════════════════════════════════════════════════════════════════════
+// On faisait DÉFILER « Mes annonces » et on plafonnait à ~30 annonces. Ce
+// plafond n'a jamais été celui de Leboncoin : c'était celui de notre boucle, et
+// celui du corps que la PAGE envoie (`limit:30, offset:0`, EN DUR dans son
+// bundle). L'endpoint, lui, ne plafonne pas.
+//
+// RELEVÉ LE 19/09 DANS LE NAVIGATEUR DE NICO, sur son compte (« Electrastuff »),
+// en rejouant l'appel que la page émet :
+//   POST https://api.leboncoin.fr/api/dashboard/v1/search
+//   en-têtes : authorization: Bearer <localStorage.luat> · content-type: json
+//   corps    : { context, filters:{owner:{user_id}}, limit, offset,
+//                sort_by, sort_order, include_inactive, include_draft }
+//   réponse  : { account_stats:{all_ads, active_ads, inactive_ads},
+//                total, total_private, total_pro, pivot, ads[], … }
+//   ads[]    : ad_type · attributes · body · brand · buyer_fee · category_id ·
+//              category_name · counters · first_publication_date · images ·
+//              index_date · list_id · location · options · owner · price ·
+//              price_cents · similar · stats{Views,Leads,Phones,Replies,
+//              Messages,Favorites} · status · subject · url
+//
+// CE QUI A ÉTÉ PROUVÉ, ET CE QUI NE L'A PAS ÉTÉ — les deux comptent :
+//   ✅ `offset` est HONORÉ : {limit:2, offset:3} rend exactement les annonces
+//      4 et 5 de la liste complète. La pagination fonctionne.
+//   ✅ `limit` à 100, 500, 1 000 et 10 000 : HTTP 200, aucun refus.
+//   ✅ `list_id` ET `url` sont rendus — les deux choses qui manquaient au
+//      défilement sur certains comptes — plus `subject`, `price`, `status`,
+//      `images` et `stats` (vues et favoris Leboncoin, qu'on n'avait pas).
+//   ✅ `account_stats.active_ads` donne le compteur « En ligne (N) » sans
+//      lire le DOM : c'est LUI le juge de couverture.
+//   ⚠️ Le compte de test n'a que 5 annonces : on n'a PAS pu observer un rendu
+//      de plus de 30 en une réponse. Ce qui est prouvé, c'est que le serveur
+//      accepte le limit et honore l'offset — pas qu'il rend 1 000 lignes d'un
+//      coup. D'où la boucle par offset ci-dessous (100 par page), qui est
+//      correcte dans les deux cas, et le juge de couverture qui tranche.
+//
+// ⛔ LE JETON EST CELUI DE LA PAGE. Un fetch nu rend 401 : ce n'est pas un
+//    échec, c'est la méthode. On lit `localStorage.luat` et le cookie
+//    `lbc_user_id` DEPUIS la page leboncoin.fr, et rien ne sort de l'onglet.
+// ⛔ ON NE SUPPRIME PAS LE DÉFILEMENT. Si l'API se tait (jeton absent, mur de
+//    connexion, changement de route), on retombe sur le chemin d'avant, à
+//    l'octet près. Une voie neuve ne vaut pas qu'on perde l'ancienne.
+// ⛔ ET ON GARDE LA GARDE « [incomplet] » : vu < active_ads → incomplet, et
+//    rapprocher_releve ne date alors AUCUNE disparition.
+const LBC_API_PAGE = 100;
+const LBC_API_PAGES_MAX = 30;   // 3 000 annonces — très au-dessus du parc
+
+async function releverLeboncoinParApi() {
+  return executerDansOngletPlateforme("leboncoin", async (perPage, pagesMax) => {
+    const tok = localStorage.getItem("luat");
+    const ck = Object.fromEntries(document.cookie.split(";").map((c) => {
+      const i = c.indexOf("="); return [c.slice(0, i).trim(), c.slice(i + 1)];
+    }));
+    const uid = ck["lbc_user_id"];
+    if (!tok || !uid) return { ok: false, motif: tok ? "user_id_absent" : "jeton_absent" };
+
+    const nombre = (v) => {
+      const n = Array.isArray(v) ? Number(v[0]) : Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const vues = new Map();
+    let actives = null, total = null, pages = 0, motif = null;
+    for (let offset = 0; pages < pagesMax; offset += perPage) {
+      let j = null;
+      try {
+        const r = await fetch("https://api.leboncoin.fr/api/dashboard/v1/search", {
+          method: "POST",
+          headers: { authorization: `Bearer ${tok}`, "content-type": "application/json" },
+          body: JSON.stringify({
+            context: "list", filters: { owner: { user_id: uid } },
+            limit: perPage, offset, sort_by: "time", sort_order: "desc",
+            include_inactive: true, include_draft: true,
+          }),
+        });
+        if (r.status !== 200) { motif = `http_${r.status}`; break; }
+        j = await r.json();
+      } catch { motif = "reseau"; break; }
+      pages++;
+      const ads = Array.isArray(j?.ads) ? j.ads : null;
+      if (ads === null) { motif = "forme_inattendue"; break; }
+      if (Number.isFinite(j?.account_stats?.active_ads)) actives = j.account_stats.active_ads;
+      if (Number.isFinite(j?.total)) total = j.total;
+      for (const a of ads) {
+        const id = a?.list_id != null ? String(a.list_id) : null;
+        if (!id) continue;
+        // On ne garde EN LIGNE que ce que Leboncoin appelle `active` — c'est
+        // exactement ce que montre l'onglet « En ligne » qu'on relevait avant.
+        // Une annonce d'un autre statut n'est pas jetée : elle entre avec un
+        // statut « inconnu », donc elle ne sera PAS datée disparue par erreur.
+        const actif = String(a?.status ?? "") === "active";
+        const cents = nombre(a?.price_cents);
+        vues.set(id, {
+          listing_id: id,
+          url: a?.url ? String(a.url) : `https://www.leboncoin.fr/ad/${id}`,
+          titre: a?.subject ? String(a.subject) : null,
+          prix: cents != null ? cents / 100 : nombre(a?.price),
+          photo_url: a?.images?.thumb_url ?? a?.images?.urls_thumb?.[0] ?? a?.images?.urls?.[0] ?? null,
+          vues: nombre(a?.stats?.Views),
+          favoris: nombre(a?.stats?.Favorites),
+          statut: actif ? "en_ligne" : "inconnu",
+          source_releve: "api_dashboard",
+        });
+      }
+      if (ads.length < perPage) break;
+      if (Number.isFinite(total) && offset + perPage >= total) break;
+      await new Promise((r) => setTimeout(r, 700 + Math.random() * 900));
+    }
+    const liste = [...vues.values()];
+    return {
+      ok: liste.length > 0 || (!motif && actives === 0),
+      annonces: liste, actives, total, pages, motif,
+      enLigne: liste.filter((a) => a.statut === "en_ligne").length,
+    };
+  }, [LBC_API_PAGE, LBC_API_PAGES_MAX]);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SYNCHRONISATION DES VENTES (2026-09-19) — VINTED · LEBONCOIN · OPLA
+// (eBay est SERVEUR SEUL : supabase/functions/ebay-ventes-sync, aucun Chrome.)
+//
+// On relevait le STOCK sur quatre plateformes et on ne relevait PAS les VENTES.
+// Une vente ne se lisait que si une annonce QU'ON AVAIT PUBLIÉE disparaissait —
+// donc jamais pour une vente faite hors FillSell. Mesuré le 19/09 : 18 112
+// articles `statut='vendu'` pour 3 033 lignes de vente, et 16 700 ventes Vinted
+// sans le moindre montant.
+//
+// ⛔ CE QUE CE CODE NE FAIT PAS, ET NE FERA JAMAIS :
+//    ni job, ni retrait d'annonce, ni unité consommée, ni quota, ni e-mail, ni
+//    bascule de `inventaire.statut`. La preuve de vente reste au bandeau. Un
+//    relevé remplit des cases, il ne déclenche rien.
+// ⛔ AUCUNE DONNÉE PERSONNELLE D'ACHETEUR ne traverse : ni pseudo, ni nom, ni
+//    identifiant d'acheteur. `ref` est l'identifiant de la COMMANDE.
+// ⛔ Tout part d'un ONGLET de la plateforme, jamais du service worker : c'est
+//    la session du vendeur qui autorise la lecture, et DataDome l'exige.
+//
+// UNE seule porte d'écriture pour les quatre : la RPC enregistrer_ventes_relevees.
+// ══════════════════════════════════════════════════════════════════════════════
+const VENTES_PLATEFORMES = ["vinted", "leboncoin", "opla"];
+const VENTES_CADENCE_MS = 20 * 3600_000;     // même cadence que le relevé de stock
+const VENTES_ETAT_KEY = "ventes_releve_etat";
+// Plafond MESURÉ le 19/09 sur le compte de Nico : demander per_page=200 rend
+// 100 et recalcule total_pages. Même famille que le dressing (96) — la
+// pagination page/per_page est déjà résolue, on la réutilise.
+const VINTED_VENTES_PAGE = 100;
+// ⛔ LE DÉTAIL SE CADENCE. Une vente = un appel /transactions/{id}, et le plus
+//    gros compte du parc porte 1 982 ventes : un rattrapage naïf, c'est
+//    1 982 appels d'affilée sur une plateforme sous DataDome. On en fait 40 par
+//    passage, on retient ce qui est fait, et une interruption ne perd rien.
+const VINTED_DETAIL_PAR_RUN = 40;
+const VINTED_DETAIL_MEMOIRE = 6000;          // bornes de la mémoire locale
+const VENTES_PAGES_MAX = 40;                 // borne dure de pagination
+const LBC_VENTES_PAGE = 100;
+const OPLA_VENTES_PAGE = 50;
+let releveVentesEnCours = false;
+
+async function lireEtatVentes() {
+  try { return (await chrome.storage.local.get(VENTES_ETAT_KEY))[VENTES_ETAT_KEY] ?? {}; }
+  catch { return {}; }
+}
+async function ecrireEtatVentes(etat) {
+  try { await chrome.storage.local.set({ [VENTES_ETAT_KEY]: etat }); } catch { /* confort */ }
+}
+
+// Un appel dans le MONDE MAIN de l'onglet de travail de la plateforme : mêmes
+// gardes que fetchListingHtml (onglet figé par un beforeunload natif = BLOCKED,
+// nommé, jamais confondu avec une page illisible).
+async function executerDansOngletPlateforme(platform, func, args = []) {
+  const tabId = await workTabForFetch(platform).catch(() => null);
+  if (tabId == null) return { ok: false, motif: "onglet_indisponible" };
+  try {
+    const inject = chrome.scripting.executeScript({ target: { tabId }, world: "MAIN", args, func });
+    let timer;
+    const guard = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("BLOCKED_TAB")), 45_000); });
+    let res;
+    try { [res] = await Promise.race([inject, guard]); } finally { clearTimeout(timer); }
+    return res?.result ?? { ok: false, motif: "sans_resultat" };
+  } catch (e) {
+    const msg = String(e?.message ?? e);
+    return { ok: false, motif: msg.includes("BLOCKED_TAB") ? "onglet_fige" : "injection_impossible", detail: msg };
+  }
+}
+
+// Les références de commande DÉJÀ en base, pour s'arrêter dès qu'on retombe sur
+// du connu. ⚠️ PAGINÉ : PostgREST tronque à 1 000 sans prévenir (leçon
+// email_logs du 03/08) — on boucle par tranches jusqu'à épuisement.
+async function refsVentesConnues(token, userId, platform) {
+  const vues = new Set();
+  for (let page = 0; page < 12; page++) {
+    const rows = await restRequest(
+      `ventes?user_id=eq.${userId}&plateforme_code=eq.${platform}&commande_ref=not.is.null` +
+      `&select=commande_ref&order=id.desc&limit=1000&offset=${page * 1000}`, token,
+    ).catch(() => null);
+    if (!Array.isArray(rows) || !rows.length) break;
+    for (const r of rows) if (r?.commande_ref) vues.add(String(r.commande_ref));
+    if (rows.length < 1000) break;
+  }
+  return vues;
+}
+
+async function envoyerVentesRelevees(token, platform, rows) {
+  if (!rows.length) return { recues: 0 };
+  const res = await fetch(`${FILLSELL_CONFIG.SUPABASE_URL}/rest/v1/rpc/enregistrer_ventes_relevees`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: FILLSELL_CONFIG.SUPABASE_ANON_KEY },
+    body: JSON.stringify({ p_platform: platform, p_rows: rows }),
+  });
+  const bilan = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(`rpc ventes ${platform} → HTTP ${res.status} ${JSON.stringify(bilan ?? {}).slice(0, 200)}`);
+  return bilan ?? {};
+}
+
+// ── VINTED ───────────────────────────────────────────────────────────────────
+// Deux temps, et c'est voulu :
+//   1. la LISTE — /api/v2/my_orders?type=sold : titre, date, montant, statut.
+//      Le montant y est celui que touche le VENDEUR (vérifié le 19/09 sur deux
+//      ventes réelles : price = offer.price, et total_amount_without_tax =
+//      price + service_fee) ;
+//   2. le DÉTAIL — /api/v2/transactions/{id} : l'`item_id`, qui fait passer le
+//      rattachement de probable à CERTAIN (c'est inventaire.vinted_item_id).
+// ⛔ `service_fee` est la PROTECTION ACHETEUR, pas une commission vendeur :
+//    Vinted ne prélève rien au vendeur en C2C. On ne la soustrait JAMAIS de la
+//    recette, et elle ne part pas en `frais`.
+// ⛔ Le statut retenu est la valeur MACHINE `transaction_user_status`
+//    (completed / failed), jamais la phrase française de `status`.
+async function lireVentesVinted(connues) {
+  return executerDansOngletPlateforme("vinted", async (perPage, pagesMax, refsConnues) => {
+    const dejaVu = new Set(refsConnues);
+    const api = async (chemin) => {
+      const r = await fetch(chemin, { credentials: "include", headers: { Accept: "application/json" }, cache: "no-store" });
+      if (r.status === 401) return { http: 401 };
+      if (r.status === 403) return { http: 403 };
+      const t = await r.text();
+      if (!t.trim().startsWith("{")) return { http: r.status };
+      try { return { http: r.status, j: JSON.parse(t) }; } catch { return { http: r.status }; }
+    };
+    const rows = []; const aDetailler = [];
+    let page = 1, total = null, stop = false, motif = null;
+    while (page <= pagesMax && !stop) {
+      const { http, j } = await api(`/api/v2/my_orders?type=sold&page=${page}&per_page=${perPage}`);
+      if (http !== 200 || !j) { motif = `http_${http}`; break; }
+      total = j?.pagination?.total_entries ?? total;
+      const cmds = Array.isArray(j.my_orders) ? j.my_orders : [];
+      if (!cmds.length) break;
+      let nouveaux = 0;
+      for (const o of cmds) {
+        const ref = String(o?.transaction_id ?? "");
+        if (!ref) continue;
+        if (!dejaVu.has(ref)) nouveaux++;
+        rows.push({
+          ref, titre: o?.title ?? null,
+          prix: o?.price?.amount != null ? parseFloat(String(o.price.amount)) : null,
+          devise: o?.price?.currency_code ?? null,
+          vendu_le: o?.date ?? null,
+          statut: String(o?.transaction_user_status ?? ""),
+          listing_id: null, url: null, frais: null, lot: false,
+          // L'item_id arrive au second temps : le moteur ne doit PAS trancher
+          // sur le titre en attendant (inventaire_id ne s'écrase pas ensuite).
+          id_attendu: true,
+        });
+        aDetailler.push(ref);
+      }
+      // On s'arrête dès qu'une page entière est déjà connue : inutile de
+      // remonter 20 mois d'historique à chaque passage.
+      if (nouveaux === 0 && dejaVu.size) { stop = true; break; }
+      if (cmds.length < perPage) break;
+      page++;
+      await new Promise((r) => setTimeout(r, 700 + Math.random() * 900));
+    }
+    return { ok: rows.length > 0 || !motif, rows, aDetailler, total, pages: page, motif };
+  }, [VINTED_VENTES_PAGE, VENTES_PAGES_MAX, [...connues]]);
+}
+
+// Le DÉTAIL, par petits paquets. Rend les lignes enrichies de leur `listing_id`
+// (item_id) — la RPC ne fait que compléter ce qui était vide.
+async function lireDetailsVentesVinted(refs) {
+  return executerDansOngletPlateforme("vinted", async (liste) => {
+    const rows = []; const faits = []; let echecs = 0;
+    for (const ref of liste) {
+      await new Promise((r) => setTimeout(r, 900 + Math.random() * 1200));
+      let j = null, http = 0;
+      try {
+        const r = await fetch(`/api/v2/transactions/${encodeURIComponent(ref)}`, {
+          credentials: "include", headers: { Accept: "application/json" }, cache: "no-store",
+        });
+        http = r.status;
+        const t = await r.text();
+        if (t.trim().startsWith("{")) j = JSON.parse(t);
+      } catch { /* réseau : on réessaiera */ }
+      const tr = j?.transaction;
+      if (http !== 200 || !tr) { echecs++; continue; }
+      // Un LOT (plusieurs articles dans une commande) : order.item_ids en porte
+      // plus d'un. On ne l'impute à AUCUN article — un montant unique pour
+      // plusieurs objets ne se répartit pas tout seul.
+      const ids = Array.isArray(tr?.order?.item_ids) ? tr.order.item_ids : [];
+      const lot = ids.length > 1;
+      rows.push({
+        ref: String(ref),
+        titre: tr?.item_title ?? tr?.title ?? null,
+        prix: tr?.offer?.price?.amount != null ? parseFloat(String(tr.offer.price.amount)) : null,
+        devise: tr?.offer?.price?.currency_code ?? null,
+        vendu_le: tr?.debit_processed_at ?? tr?.status_updated_at ?? null,
+        statut: String(tr?.user_side === "seller" ? "completed" : ""),
+        listing_id: lot ? null : (tr?.item_id != null ? String(tr.item_id) : null),
+        url: null,
+        // ⛔ service_fee = protection ACHETEUR. Elle ne part PAS en frais vendeur.
+        frais: null,
+        lot,
+      });
+      faits.push(String(ref));
+    }
+    return { ok: true, rows, faits, echecs };
+  }, [refs]);
+}
+
+// ── LEBONCOIN ────────────────────────────────────────────────────────────────
+// `GET api.leboncoin.fr/api/consumergoods/proxy/v3/pages/transactions`
+// ?created_at[lt]=<ISO>&limit=N&user_kind=seller — relevé le 19/09 sur le compte
+// de Nico. Le jeton est celui que porte la page (localStorage `luat`) : un fetch
+// nu rend 401, c'est attendu, c'est la méthode.
+// Champs rendus : id.purchase_id · created_at · updated_at · item{title,
+// thumbnail_url, price, type} · price · user_name · step.
+// ⛔ AUCUN identifiant d'annonce, AUCUN lien : le rattachement passe par la
+//    bande INCERTAINE du moteur (titre + prix), jamais par une devinette.
+// ⛔ C'est `price` (le montant de la transaction) qu'on retient, jamais
+//    `item.price` (le prix de l'annonce).
+// ⛔ `item.type === 'bundle'` = vente GROUPÉE : un seul montant pour plusieurs
+//    annonces. Jamais rattachée à un article.
+// ⛔ Les ventes en MAIN PROPRE n'y sont pas, et n'y seront jamais : cette page
+//    ne liste que le paiement leboncoin. Ce n'est pas un bug, c'est la limite.
+async function lireVentesLeboncoin(connues) {
+  return executerDansOngletPlateforme("leboncoin", async (perPage, pagesMax, refsConnues) => {
+    const tok = localStorage.getItem("luat");
+    if (!tok) return { ok: false, motif: "jeton_absent" };
+    const H = { authorization: `Bearer ${tok}`, accept: "application/json" };
+    // 🚨 LE COMPTE PRO D'ABORD. Les routes /compte/part/… redirigent vers « / »
+    // sur un compte pro (défaut du 18/09 : tout le filet lisait une page vide en
+    // silence). Aucun compte pro n'a pu être relevé ici : on ne relève donc les
+    // ventes QUE sur un compte `individual`, et on NOMME le type sinon.
+    let type = null;
+    try {
+      const r = await fetch("https://api.leboncoin.fr/api/account/v2/members/me/account", { headers: H });
+      if (r.status === 200) type = (await r.json())?.account?.type ?? null;
+      else return { ok: false, motif: `compte_http_${r.status}` };
+    } catch { return { ok: false, motif: "compte_illisible" }; }
+    if (type !== "individual") return { ok: false, motif: `compte_non_individual_${type ?? "inconnu"}`, typeCompte: type };
+
+    const dejaVu = new Set(refsConnues);
+    const rows = [];
+    let curseur = new Date().toISOString(), pages = 0, motif = null;
+    while (pages < pagesMax) {
+      const u = "https://api.leboncoin.fr/api/consumergoods/proxy/v3/pages/transactions"
+        + `?created_at%5Blt%5D=${encodeURIComponent(curseur)}&limit=${perPage}&user_kind=seller`;
+      let lot = null;
+      try {
+        const r = await fetch(u, { headers: H });
+        if (r.status !== 200) { motif = `http_${r.status}`; break; }
+        lot = await r.json();
+      } catch { motif = "reseau"; break; }
+      pages++;
+      if (!Array.isArray(lot) || !lot.length) break;
+      let nouveaux = 0;
+      for (const t of lot) {
+        const ref = t?.id?.purchase_id != null ? String(t.id.purchase_id) : null;
+        if (!ref) continue;
+        if (!dejaVu.has(ref)) nouveaux++;
+        rows.push({
+          ref, titre: t?.item?.title ?? null,
+          prix: Number.isFinite(Number(t?.price)) ? Number(t.price) : null,
+          devise: "EUR", vendu_le: t?.created_at ?? null,
+          statut: String(t?.step ?? ""), listing_id: null, url: null, frais: null,
+          lot: String(t?.item?.type ?? "") === "bundle",
+        });
+      }
+      // Pagination KEYSET par date : on descend et on s'arrête à la première
+      // page entièrement connue.
+      if (nouveaux === 0 && dejaVu.size) break;
+      const dernier = lot[lot.length - 1]?.created_at;
+      if (!dernier || dernier === curseur) break;
+      curseur = dernier;
+      if (lot.length < perPage) break;
+      await new Promise((r) => setTimeout(r, 800 + Math.random() * 900));
+    }
+    return { ok: !motif || rows.length > 0, rows, pages, motif, typeCompte: type };
+  }, [LBC_VENTES_PAGE, VENTES_PAGES_MAX, [...connues]]);
+}
+
+// ── OPLA ─────────────────────────────────────────────────────────────────────
+// `GET /api/public/me/checkouts?limit=N` — c'est l'appel que fait la page
+// « Mes ventes » (/account/sales), relevé le 19/09. Session Opla requise (au
+// contraire de l'oracle d'article, public) et ONGLET requis (le service worker
+// rend 429).
+// ⚠️ LA SEULE DES QUATRE QUI N'EST PAS PROUVÉE. Aucune vente Opla n'existe : le
+//    compte de Nico rend `{"items":[],"nextCursor":null}`. Les champs lus
+//    ci-dessous viennent du COMPOSANT DE COMMANDE du site (totalCents ??
+//    offeredPriceCents, createdAt, status, articles) — du code client, pas d'un
+//    corps observé. D'où la garde : une forme inattendue ne produit AUCUNE
+//    ligne, elle se NOMME et s'arrête.
+async function lireVentesOpla(connues) {
+  if (!(await oplaAccesAccorde())) return { ok: false, motif: "acces_opla_non_accorde" };
+  return executerDansOngletPlateforme("opla", async (perPage, pagesMax, refsConnues) => {
+    const dejaVu = new Set(refsConnues);
+    const rows = []; let curseur = null, pages = 0, motif = null, formeInattendue = 0;
+    while (pages < pagesMax) {
+      const u = `/api/public/me/checkouts?limit=${perPage}` + (curseur ? `&cursor=${encodeURIComponent(curseur)}` : "");
+      let j = null;
+      try {
+        const r = await fetch(u, { credentials: "include", cache: "no-store", headers: { Accept: "application/json" } });
+        if (r.status !== 200) { motif = `http_${r.status}`; break; }
+        j = await r.json();
+      } catch { motif = "reseau"; break; }
+      pages++;
+      const items = Array.isArray(j?.items) ? j.items : null;
+      if (items === null) { motif = "forme_inattendue"; break; }
+      if (!items.length) break;
+      let nouveaux = 0;
+      for (const c of items) {
+        const ref = c?.id != null ? String(c.id) : null;
+        const cents = c?.totalCents ?? c?.offeredPriceCents ?? null;
+        const arts = Array.isArray(c?.articles) ? c.articles : (Array.isArray(c?.items) ? c.items : []);
+        if (!ref || c?.status == null) { formeInattendue++; continue; }
+        if (!dejaVu.has(ref)) nouveaux++;
+        const unSeul = arts.length === 1 ? arts[0] : null;
+        rows.push({
+          ref,
+          titre: unSeul?.title ?? c?.title ?? null,
+          prix: Number.isFinite(Number(cents)) ? Number(cents) / 100 : null,
+          devise: "EUR",
+          vendu_le: c?.createdAt ?? null,
+          statut: String(c.status),
+          listing_id: unSeul?.id != null ? String(unSeul.id) : null,
+          url: unSeul?.id ? `https://www.opla.co/product/${unSeul.id}` : null,
+          frais: null,
+          lot: arts.length > 1,
+        });
+      }
+      if (nouveaux === 0 && dejaVu.size) break;
+      curseur = j?.nextCursor ?? null;
+      if (!curseur) break;
+      await new Promise((r) => setTimeout(r, 700 + Math.random() * 800));
+    }
+    return { ok: !motif, rows, pages, motif, formeInattendue };
+  }, [OPLA_VENTES_PAGE, VENTES_PAGES_MAX, [...connues]]);
+}
+
+// ── L'ORCHESTRATION, UNE PLATEFORME À LA FOIS ───────────────────────────────
+async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
+  if (!VENTES_PLATEFORMES.includes(platform)) return { ok: false, reason: "plateforme" };
+  if (releveVentesEnCours) return { ok: false, reason: "deja_en_cours" };
+  const session = await getValidSession();
+  if (!session?.access_token) return { ok: false, reason: "session" };
+  const token = session.access_token;
+  const userId = decodeJwtSub(token);
+  if (!userId) return { ok: false, reason: "session" };
+  // Même interrupteur serveur que le relevé de stock, relu à CHAQUE passage,
+  // fail-closed : rien ne part si la vanne est fermée.
+  if (!(await syncMultiOuverte(token, userId))) return { ok: false, reason: "ferme" };
+
+  releveVentesEnCours = true;
+  const etat = await lireEtatVentes();
+  try {
+    if (declencheur === "cron") {
+      const t = Number(etat?.[platform]?.dernierAt);
+      if (Number.isFinite(t) && Date.now() - t < VENTES_CADENCE_MS) return { ok: false, reason: "cadence" };
+    }
+    const connues = await refsVentesConnues(token, userId, platform);
+    const lecture = platform === "vinted" ? await lireVentesVinted(connues)
+      : platform === "leboncoin" ? await lireVentesLeboncoin(connues)
+      : await lireVentesOpla(connues);
+
+    if (!lecture?.ok && !(lecture?.rows?.length)) {
+      console.warn(`[ventes][${platform}] rien relevé — ${lecture?.motif ?? "motif inconnu"}`);
+      etat[platform] = { ...(etat[platform] ?? {}), dernierAt: Date.now(), dernierMotif: lecture?.motif ?? null };
+      await ecrireEtatVentes(etat);
+      return { ok: false, reason: lecture?.motif ?? "illisible" };
+    }
+
+    let bilan = await envoyerVentesRelevees(token, platform, lecture.rows ?? []);
+
+    // VINTED, SECOND TEMPS : le détail, cadencé, pour l'identifiant d'annonce.
+    let bilanDetail = null;
+    if (platform === "vinted") {
+      const deja = new Set(etat.vinted?.detailles ?? []);
+      const file = (lecture.aDetailler ?? []).filter((r) => !deja.has(r)).slice(0, VINTED_DETAIL_PAR_RUN);
+      if (file.length) {
+        const det = await lireDetailsVentesVinted(file);
+        if (det?.rows?.length) bilanDetail = await envoyerVentesRelevees(token, "vinted", det.rows);
+        const mem = [...deja, ...(det?.faits ?? [])];
+        etat.vinted = { ...(etat.vinted ?? {}), detailles: mem.slice(-VINTED_DETAIL_MEMOIRE) };
+        console.log(`[ventes][vinted] détail : ${det?.faits?.length ?? 0} lu(s), ${det?.echecs ?? 0} échec(s), ${(lecture.aDetailler ?? []).length - deja.size - file.length} en attente`);
+      }
+    }
+
+    etat[platform] = { ...(etat[platform] ?? {}), dernierAt: Date.now(), dernierMotif: lecture?.motif ?? null };
+    await ecrireEtatVentes(etat);
+    console.log(
+      `[ventes][${platform}] (${declencheur}) ${lecture.rows?.length ?? 0} ligne(s) lue(s) — ` +
+      `créées ${bilan?.creees ?? 0}, adoptées ${bilan?.adoptees ?? 0}, déjà connues ${bilan?.deja_connues ?? 0}, ` +
+      `rattachées ${bilan?.rattachees ?? 0}, lots ${bilan?.lots ?? 0}, annulées ${bilan?.annulees ?? 0}` +
+      (bilan?.statuts_inconnus && Object.keys(bilan.statuts_inconnus).length ? ` — statuts inconnus : ${JSON.stringify(bilan.statuts_inconnus)}` : "") +
+      (lecture?.motif ? ` — ${lecture.motif}` : ""),
+    );
+    return { ok: true, bilan, bilanDetail, motif: lecture?.motif ?? null };
+  } catch (e) {
+    console.error(`[ventes][${platform}] échec :`, String(e?.message ?? e));
+    return { ok: false, reason: "erreur", message: String(e?.message ?? e) };
+  } finally {
+    releveVentesEnCours = false;
+  }
+}
+
+// Après le relevé de stock quotidien : les ventes, une plateforme à la fois.
+// Aucune cadence propre, aucun minuteur de plus — on se greffe sur le passage
+// existant, comme le veilleur Opla se greffe sur checkPublishedListings.
+async function releverVentesQuotidien() {
+  const session = await getValidSession();
+  if (!session?.access_token) return;
+  for (const platform of VENTES_PLATEFORMES) {
+    await lancerReleveVentes({ platform, declencheur: "cron" })
+      .catch((e) => console.error("[ventes][cron]", e?.message ?? e));
+  }
+}
 
 async function traiterCommandeSyncDistante(cmd) {
   const session = await getValidSession();
