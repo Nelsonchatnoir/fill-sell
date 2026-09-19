@@ -150,6 +150,11 @@ verify_jwt = false
 [functions.ebay-api-worker]
 verify_jwt = false
 
+# Synchronisation des VENTES eBay (19/09) : API d'ordres, serveur seul, appelée
+# par pg_cron (x-cron-secret) — jamais par l'app, jamais par l'extension.
+[functions.ebay-ventes-sync]
+verify_jwt = false
+
 # Paiement / compte : le JWT identifie le titulaire, jamais optionnel.
 # eBay par API (lot 0-1, 05/09) : appelées par l'app avec le JWT utilisateur.
 [functions.ebay-oauth-start]
