@@ -12176,7 +12176,13 @@ function capturerFicheEnPage(plateforme) {
     }
     return null;
   };
-  const out = { photos: [], description: null, marque: null, taille: null, etat: null, couleur: null, matiere: null, categorie: null, source: null };
+  // `attributs_bruts` : TOUT ce que la page donne, quand elle le donne en
+  // paires clé/valeur (Leboncoin __NEXT_DATA__ → ad.attributes). `null` = on
+  // n'a pas eu accès à cette matière ; `[]` = on l'a eue et elle était vide.
+  // `capture_complete` : false tant qu'une branche n'a pas pu tout prendre —
+  // le repli DOM lit des lignes à l'écran, pas des paires, et rend donc
+  // MOINS. Un lecteur doit pouvoir le savoir sans le deviner (2026-09-19).
+  const out = { photos: [], description: null, marque: null, taille: null, etat: null, couleur: null, matiere: null, categorie: null, source: null, attributs_bruts: null, capture_complete: false };
   if (plateforme === "leboncoin") {
     let ad = null;
     try { ad = JSON.parse(document.getElementById("__NEXT_DATA__")?.textContent ?? "null")?.props?.pageProps?.ad ?? null; } catch { ad = null; }
@@ -12201,6 +12207,29 @@ function capturerFicheEnPage(plateforme) {
       out.couleur = parLibelle(["couleur"]) ?? parCle(/colou?r$/i);
       out.matiere = parLibelle(["matière", "matiere"]) ?? parCle(/material$/i);
       out.categorie = ad.category_name ?? null;
+      // ── ON PREND TOUT CE QUE LA PAGE DONNE (2026-09-19) ──────────────────
+      // Les dix champs ci-dessus sont une liste écrite à la main, et elle ne
+      // recouvre presque pas ce que Leboncoin EXIGE au dépôt. Mesuré sur les
+      // 26 republications en file d'un compte : 24 bloquées, et toujours sur
+      // Produit (12), Genre (7), Univers (5), Type (2), Quantité (1) — cinq
+      // champs qu'aucune des dix clés ne porte, alors qu'ils sont là, dans
+      // `ad.attributes`, depuis le début. On les jetait.
+      // ⛔ AUCUNE LISTE ICI. On recopie le tableau tel quel : clé technique,
+      //    libellé affiché, valeur, valeur affichée. Ce que la page donne, et
+      //    rien de choisi par nous — donc rien à maintenir quand Leboncoin
+      //    ajoute un critère.
+      // Les dix champs nommés RESTENT : ils sont déjà lus par la
+      // republication et par l'app, et les déplacer casserait leurs lecteurs.
+      // Ceci est un AJOUT, pas un remplacement.
+      out.attributs_bruts = attrs
+        .filter((a) => a && (a.key != null || a.key_label != null))
+        .map((a) => ({
+          key: a.key != null ? String(a.key) : null,
+          key_label: a.key_label != null ? String(a.key_label) : null,
+          value: a.value != null ? String(a.value) : null,
+          value_label: a.value_label != null ? String(a.value_label) : null,
+        }));
+      out.capture_complete = true;
     } else {
       out.source = "dom";
       out.description = ld?.description ? texteDeHtml(ld.description) : (propre(document.querySelector("[data-qa-id='adview_description_container']")?.textContent) || null);
@@ -12223,6 +12252,27 @@ function capturerFicheEnPage(plateforme) {
       out.etat = critLib(["état", "etat"]) ?? crit(/^condition$|_condition$/i);
       out.couleur = critLib(["couleur"]) ?? crit(/colou?r$/i); out.matiere = critLib(["matière", "matiere"]) ?? crit(/material$/i);
       out.categorie = ld?.category ?? null;
+      // ── TOUT CE QUE LA PAGE DONNE, ICI AUSSI (2026-09-19) ────────────────
+      // Le repli DOM n'a pas `ad.attributes`, mais il a les lignes
+      // « Libellé / Valeur » de l'encart critères : on les recopie telles
+      // quelles, sans en choisir aucune. Il n'y a pas de clé technique sur
+      // cette page — `key` reste null, seul le libellé affiché existe.
+      // ⛔ `capture_complete` reste FALSE : cette branche rend ce que l'écran
+      //    montre, pas ce que l'annonce porte. Un critère que Leboncoin
+      //    n'affiche pas est invisible ici, et un lecteur doit le savoir.
+      out.attributs_bruts = Array.from(document.querySelectorAll("[data-qa-id^='criteria_item_']"))
+        .map((e) => {
+          const parts = Array.from(e.querySelectorAll("*")).filter((x) => !x.children.length)
+            .map((x) => propre(x.textContent)).filter(Boolean);
+          if (!parts[0] || !parts[1]) return null;
+          return {
+            key: null,
+            key_label: String(parts[0]),
+            value: null,
+            value_label: String(parts[1]),
+          };
+        })
+        .filter(Boolean);
       // Galerie : les images AVANT la description (les « annonces similaires »
       // viennent après), dédoublonnées par identifiant.
       const desc = document.querySelector("[data-qa-id='adview_description_container']");
@@ -16023,11 +16073,53 @@ async function recoverMissingListingUrls(session) {
         // même titre (le doublon du 09/09) ne se confondent plus, et un titre
         // remanié par Leboncoin ne fait plus rater le lien. Le motif ne peut
         // matcher que CETTE annonce : le repli « lien unique » y est sans danger.
+        // ── L'IDENTIFIANT CERTAIN D'ABORD (2026-09-19) ─────────────────────
+        // Au dépôt, Leboncoin nous rend LUI-MÊME l'identifiant de l'annonce :
+        // /api/adsubmit/ répond 201 avec `ad_id`, archivé dans
+        // platform_fields.lbc_depot.adsubmit.id. On ne le lisait pas — on
+        // cherchait par `platform_listing_id`, qui sur une republication
+        // porte encore l'ANCIEN id (l'annonce qu'on vient de supprimer), et à
+        // défaut par TITRE.
+        // MESURÉ le 19/09 : 9 URL portées par 2 articles ou plus, sur 4
+        // comptes, toutes des titres jumeaux (« Carhartt T-shirt coton noir
+        // XL » ×2, « Ordi tablette Genius XL » et « Vtech ordi tablette
+        // genius XL »…). Conséquence : le retrait d'un article supprime
+        // l'annonce d'un AUTRE.
+        // ⛔ Un titre n'est pas un identifiant. C'est la règle déjà écrite
+        //    pour Beebs — « sans lien, JAMAIS par titre » — jamais appliquée
+        //    ici.
+        const idCertainLbc = String(job.platform_fields?.lbc_depot?.adsubmit?.id ?? "").trim();
+        const idPourRecherche = platform === "leboncoin"
+          ? (/^\d{6,}$/.test(idCertainLbc) ? idCertainLbc : String(job.platform_listing_id ?? ""))
+          : String(job.platform_listing_id ?? "");
         let urlParId = null;
-        if (platform === "leboncoin" && /^\d{6,}$/.test(String(job.platform_listing_id ?? ""))) {
-          const motifParIdLbc = String.raw`https://www\.leboncoin\.fr/ad/[^#\s"'/]+/` + String(job.platform_listing_id) + String.raw`(?![0-9])`;
+        if (platform === "leboncoin" && /^\d{6,}$/.test(idPourRecherche)) {
+          const motifParIdLbc = String.raw`https://www\.leboncoin\.fr/ad/[^#\s"'/]+/` + idPourRecherche + String.raw`(?![0-9])`;
           urlParId = (await findListingLinkInPage(tabId, motifParIdLbc, null).catch(() => ({ url: null }))).url ?? null;
-          if (urlParId) console.log(`[background] listing_url récupéré PAR ID (leboncoin, job ${job.id}, id ${job.platform_listing_id}) : ${urlParId}`);
+          if (urlParId) {
+            const provenance = idPourRecherche === idCertainLbc ? "id CERTAIN du dépôt (adsubmit 201)" : "platform_listing_id";
+            console.log(`[background] listing_url récupéré PAR ID (leboncoin, job ${job.id}, ${provenance} ${idPourRecherche}) : ${urlParId}`);
+          }
+        }
+        // ── ET SANS IDENTIFIANT, LE TITRE NE TRANCHE QUE S'IL EST UNIQUE ───
+        // Deux jobs de la même passe qui portent le même titre (aux accents
+        // et à la casse près) ne peuvent pas être départagés par lui : on
+        // n'attribue rien, et la passe suivante réessaiera — avec, d'ici là,
+        // l'identifiant certain du dépôt. Mieux vaut une URL manquante
+        // qu'une URL croisée : la première se rattrape, la seconde fait
+        // supprimer l'annonce de quelqu'un d'autre.
+        const titreComparable = (t) => String(t ?? "").toLowerCase()
+          .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
+        const monTitre = titreComparable(job.title);
+        const titreAmbigu = !urlParId && monTitre
+          && remaining.filter((autre) => autre !== job && titreComparable(autre.title) === monTitre).length > 0;
+        if (titreAmbigu) {
+          console.warn(
+            `[background] recover(${platform}) job ${job.id} : titre « ${job.title} » porté par un AUTRE job de la même passe — ` +
+            "aucune URL attribuée (un titre n'est pas un identifiant)",
+          );
+          stillMissing.push(job);
+          continue;
         }
         // requireTitle : on est sur une page de LISTE, et on y cherche PLUSIEURS
         // jobs à la fois — le repli « lien unique » y serait catastrophique
