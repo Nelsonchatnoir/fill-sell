@@ -1625,21 +1625,34 @@ serve(async (req) => {
   // d'origine et repassera au tour suivant, et on n'écrit que si quelque
   // chose a changé. Best-effort intégral : ce bloc ne fait jamais tomber le
   // reste de handler-watch.
+  //
+  // ── DEUX ÉTAGES DEPUIS LE 19/09 SOIR — une FILE, puis un filet ───────────
+  // Le balayage par origine avait deux défauts qu'on a nommés avant de les
+  // corriger : une FENÊTRE DE 3 MIN entre l'import et la réparation (publier
+  // pendant ce temps-là partait avec des URL illisibles), et un PLAFOND de
+  // 500 lignes sans tri, donc une famine silencieuse au-delà.
+  //   1. LA FILE : l'import pose lui-même `inventaire.photos_a_rapatrier`
+  //      (rapprocher_importer). On lit la file, on sert, on en sort. Plus de
+  //      recherche, plus de plafond, et la fenêtre tombe au prochain cycle.
+  //   2. LE FILET : l'ancien balayage, gardé pour l'ARRIÉRÉ (aucun backfill —
+  //      une fiche existante n'est pas réécrite pour entrer dans la file) et
+  //      pour les photos qui ont résisté à l'étage 1.
+  // Les deux partagent UN budget : la file est servie d'abord.
   const PHOTOS_FICHES_MAX = 24;
+  const FILE_FICHES_MAX = 60;
   let photosFichesRapatriees = 0;
   let fichesPhotosMaj = 0;
+  let fichesFileSorties = 0;
   try {
-    const { data: fiches } = await supabase
-      .from("inventaire")
-      .select("id, user_id, photos")
-      .in("origine", ["releve_leboncoin", "releve_beebs", "releve_ebay", "releve_opla"])
-      .limit(500);
     let budget = PHOTOS_FICHES_MAX;
-    for (const f of (fiches ?? [])) {
-      if (budget <= 0) break;
-      if (!Array.isArray(f.photos)) continue;
+    // Le traitement d'UNE fiche. Rend true si au moins une photo a changé de
+    // maison. Commun à la file et au filet : deux copies dériveraient, on sait
+    // maintenant à quoi ça ressemble.
+    // deno-lint-ignore no-explicit-any
+    const rapatrieUneFiche = async (f: any): Promise<boolean> => {
+      if (!Array.isArray(f.photos)) return false;
       const externes = [...new Set((f.photos as unknown[]).map(urlDePhoto).filter(estCdnPlateformeHorsVinted))] as string[];
-      if (!externes.length) continue;
+      if (!externes.length) return false;
       const remplacements = new Map<string, string>();
       for (const src of externes) {
         if (budget <= 0) break;
@@ -1647,7 +1660,7 @@ serve(async (req) => {
         const nv = await rapatriePhoto(supabase, src, `${f.user_id}/rapatrie-fiche/${f.id}/${now}_${remplacements.size}`);
         if (nv) remplacements.set(src, nv);
       }
-      if (!remplacements.size) continue;
+      if (!remplacements.size) return false;
       // Même réalignement URL par URL qu'ailleurs : strings nues ET objets
       // {type,url} coexistent en base, la structure est PRÉSERVÉE.
       // deno-lint-ignore no-explicit-any
@@ -1657,7 +1670,7 @@ serve(async (req) => {
         if (!nv) return p;
         return typeof p === "string" ? nv : { ...p, url: nv };
       });
-      if (JSON.stringify(nouvelles) === JSON.stringify(f.photos)) continue;
+      if (JSON.stringify(nouvelles) === JSON.stringify(f.photos)) return false;
       const { error: majErr } = await supabase
         .from("inventaire")
         .update({ photos: nouvelles })
@@ -1665,10 +1678,70 @@ serve(async (req) => {
         .eq("user_id", f.user_id);
       if (majErr) {
         console.error(`[handler-watch] fiche ${f.id}: photos rapatriées mais update refusé — ${majErr.message}`);
+        return false;
+      }
+      photosFichesRapatriees += remplacements.size;
+      fichesPhotosMaj++;
+      console.log(`[handler-watch] fiche ${f.id}: ${remplacements.size} photo(s) ramenée(s) chez nous`);
+      return true;
+    };
+
+    // ── 1. LA FILE — les fiches que l'import a marquées lui-même ────────────
+    // `inventaire.photos_a_rapatrier` est posé par rapprocher_importer, le
+    // SEUL point d'écriture d'un article importé (vérifié en prod : deux
+    // fonctions contiennent un INSERT INTO inventaire, celle-ci et la fusion).
+    // Le drapeau dit « pas encore EXAMINÉE », pas « photo étrangère » : la
+    // liste des hôtes reste ici et ici seulement.
+    //
+    // ⛔ ON SORT DE LA FILE DANS TOUS LES CAS, même quand rien n'a pu être
+    // rapatrié. Une URL morte laisserait sinon sa fiche en tête de file pour
+    // toujours et mangerait le budget de tous les cycles suivants — la file
+    // affamerait ce qu'elle est censée servir. Ce qui a échoué retombe sur le
+    // filet du 2., qui repasse sans se lasser.
+    const { data: file, error: fileErr } = await supabase
+      .from("inventaire")
+      .select("id, user_id, photos")
+      .eq("photos_a_rapatrier", true)
+      .order("id", { ascending: true })
+      .limit(FILE_FICHES_MAX);
+    if (fileErr) {
+      // Colonne absente (migration pas encore appliquée) : on le dit une fois
+      // par cycle et le filet fait le travail, comme avant.
+      console.error(`[handler-watch] file photos: lecture impossible — ${fileErr.message}`);
+    }
+    for (const f of (file ?? [])) {
+      if (budget > 0) await rapatrieUneFiche(f);
+      const { error: sortieErr } = await supabase
+        .from("inventaire")
+        .update({ photos_a_rapatrier: false })
+        .eq("id", f.id)
+        .eq("user_id", f.user_id);
+      if (sortieErr) {
+        console.error(`[handler-watch] fiche ${f.id}: sortie de file refusée — ${sortieErr.message}`);
       } else {
-        photosFichesRapatriees += remplacements.size;
-        fichesPhotosMaj++;
-        console.log(`[handler-watch] fiche ${f.id}: ${remplacements.size} photo(s) ramenée(s) chez nous`);
+        fichesFileSorties++;
+      }
+      if (budget <= 0) break;
+    }
+
+    // ── 2. LE FILET — l'arriéré d'avant la file, et les échecs du 1. ────────
+    // Balayage par origine, hérité du 19/09 après-midi. Il ne sert plus qu'à
+    // ça : les fiches importées AVANT que la file n'existe (aucun backfill,
+    // décision de Nico : on ne réécrit pas une fiche existante pour la faire
+    // entrer dans la file), et celles dont une photo a résisté au 1.
+    // ⚠️ Son `.limit(500)` SANS tri est un plafond connu : au-delà de 500
+    // articles `releve_*` dans le parc, les lignes 501+ ne seraient jamais
+    // vues. C'est précisément ce que la file supprime pour les NOUVEAUX
+    // imports ; ce reliquat est à retirer quand l'arriéré sera vide.
+    if (budget > 0) {
+      const { data: fiches } = await supabase
+        .from("inventaire")
+        .select("id, user_id, photos")
+        .in("origine", ["releve_leboncoin", "releve_beebs", "releve_ebay", "releve_opla"])
+        .limit(500);
+      for (const f of (fiches ?? [])) {
+        if (budget <= 0) break;
+        await rapatrieUneFiche(f);
       }
     }
   } catch (e) {
@@ -1713,7 +1786,7 @@ serve(async (req) => {
   }
 
   if (alerts.length === 0) {
-    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, clean: true, scanned: jobs.length, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1768,7 +1841,7 @@ serve(async (req) => {
   }
 
   if (toEmail.length === 0) {
-    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+    return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: 0, note: "tous en cooldown", orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -1822,7 +1895,7 @@ serve(async (req) => {
     console.error("[handler-watch] RESEND_API_KEY manquant — incident détecté mais non notifié");
   }
 
-  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
+  return new Response(JSON.stringify({ ok: true, alerts: alerts.length, sent: sent ? toEmail.length : 0, orphelins_alertes: orphelinsAlertes, processing_rearmes: processingRearmes, deleted_rearmes: deletedRearmes, captured_rearmes: capturedRearmes, etats_repares: etatsRepares, processing_needs_user: processingNeedsUser, needs_user_vus: needsUserVus, needs_user_soldes: needsUserSoldes, needs_user_ticks: needsUserTicks, opla_acces_reprises: oplaReprises, opla_acces_messages: oplaMessages, orphelines_rattachees: orphelinesRattachees, livres_debloques: livresDebloques, couleur_debloques: couleurDebloques, photos_jobs_rapatries: photosJobsRapatries, photos_jobs_rearmes: photosJobsRearmes, photos_fiches_rapatriees: photosFichesRapatriees, fiches_photos_maj: fichesPhotosMaj, fiches_file_sorties: fichesFileSorties, sync_runs_expires: syncRunsExpires, sync_queues_expirees: syncQueuesExpirees }), {
     headers: { "Content-Type": "application/json" },
   });
 });
