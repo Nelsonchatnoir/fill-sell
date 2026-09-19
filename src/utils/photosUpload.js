@@ -40,7 +40,7 @@
 //    aussi : <uid>/raw/<lot>_<i>.jpg, où <lot> est le Date.now() de la fournée.
 
 import { versImageDecodable, chargerImage } from "./imageDecode";
-import { entreesPhotos } from "./photos";
+import { entreesPhotos, urlsPhotos } from "./photos";
 
 /** Côté le plus large après compression, et qualité JPEG. Valeurs d'origine. */
 export const LARGEUR_MAX_UPLOAD = 1024;
@@ -138,4 +138,69 @@ export async function televerserPhotos(supabase, {
     }
   }
   return { urls, entrees: entreesPhotos(urls), illisibles, ts };
+}
+
+// ── LE MÉNAGE QUAND UN ARTICLE EST SUPPRIMÉ (2026-09-19) ───────────────────
+// Supprimer un article ne supprimait RIEN dans le bucket : c'est la source des
+// orphelines que la migration du 16/09 a dû lister à la main après coup.
+//
+// ⛔ CE N'EST PAS LE CLIENT QUI DÉCIDE. Il envoie les noms des photos de
+//    l'article et le SERVEUR répond lesquels sont sûrs à supprimer, en
+//    appliquant les CINQ verrous du 16/09 (RPC photos_article_supprimables,
+//    en lecture seule). Le client ne supprime que ce qui lui est rendu.
+// ⛔ NON BLOQUANT, comme dans delete-account : un échec ici ne doit jamais
+//    empêcher ni annuler la suppression de l'article. On journalise, on passe.
+// ⛔ À APPELER APRÈS la suppression de la ligne inventaire, jamais avant :
+//    tant qu'elle existe, ses propres photos sont « référencées » (verrou 1)
+//    et rien ne serait jugé supprimable.
+
+const PREFIXE_PUBLIC = "/storage/v1/object/public/listing-photos/";
+
+/**
+ * Les NOMS d'objets du bucket portés par une liste de photos, quelle que soit
+ * leur forme (chaîne ou { type, url }).
+ * ⛔ La query `?v=<ts>` est COUPÉE : c'est le piège du 16/09 — comparer l'URL
+ *    telle quelle ne matche rien, et la première mesure rendait « 0 photo
+ *    référencée sur 3 738 », c'est-à-dire « supprimez tout ».
+ */
+export function nomsObjetDepuisPhotos(liste) {
+  const noms = [];
+  for (const url of urlsPhotos(liste)) {
+    const i = url.indexOf(PREFIXE_PUBLIC);
+    if (i < 0) continue;                       // photo hébergée ailleurs (CDN Vinted…)
+    const nom = url.slice(i + PREFIXE_PUBLIC.length).split("?")[0];
+    if (nom) noms.push(decodeURIComponent(nom));
+  }
+  return [...new Set(noms)];
+}
+
+/**
+ * Fait le ménage des photos d'un article supprimé. Ne lève jamais.
+ * @returns {Promise<{supprimees: number, examinees: number, motif?: string}>}
+ */
+export async function menagePhotosArticle(supabase, photos) {
+  const examinees = nomsObjetDepuisPhotos(photos);
+  if (!examinees.length) return { supprimees: 0, examinees: 0 };
+  try {
+    const { data, error } = await supabase.rpc("photos_article_supprimables", { p_noms: examinees });
+    if (error) {
+      console.warn("[photos] ménage : le serveur n'a pas pu trancher —", error.message);
+      return { supprimees: 0, examinees: examinees.length, motif: error.message };
+    }
+    // `RETURNS SETOF text` rend un tableau de chaînes ; on tolère la forme
+    // objet au cas où PostgREST la renverrait nommée.
+    const aSupprimer = (data ?? [])
+      .map(r => (typeof r === "string" ? r : r?.photos_article_supprimables))
+      .filter(Boolean);
+    if (!aSupprimer.length) return { supprimees: 0, examinees: examinees.length };
+    const { error: rmErr } = await supabase.storage.from(BUCKET_PHOTOS).remove(aSupprimer);
+    if (rmErr) {
+      console.warn("[photos] ménage : suppression storage en échec —", rmErr.message);
+      return { supprimees: 0, examinees: examinees.length, motif: rmErr.message };
+    }
+    return { supprimees: aSupprimer.length, examinees: examinees.length };
+  } catch (e) {
+    console.warn("[photos] ménage ignoré —", e?.message ?? e);
+    return { supprimees: 0, examinees: examinees.length, motif: String(e?.message ?? e) };
+  }
 }

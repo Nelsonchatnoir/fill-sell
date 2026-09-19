@@ -75,7 +75,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from './lib/supabase';
 import { consumePostLoginTarget } from './lib/postLoginRedirect';
 import { FREE_STOCK_LIMIT_FALLBACK, compteArticlesQuota, quotaStockAtteint } from './utils/stockLimit';
 import { versImageDecodable, messageDecodage, reduireSousLimiteIA } from './utils/imageDecode';
-import { televerserPhotos } from './utils/photosUpload';
+import { televerserPhotos, menagePhotosArticle } from './utils/photosUpload';
 import { entreesPhotos, MAX_PHOTOS } from './utils/photos';
 import { moveItem } from './utils/photosGalerie';
 import { sonderAnnonceVinted, lireBoutiquesVinted, ecouterPresenceExtension, pinguerExtension, versionAuMoins } from './utils/vintedSync';
@@ -5006,6 +5006,19 @@ export default function App({ loginOnly = false }){
     }
     const{error:iErr}=await supabase.from('inventaire').delete().eq('id',item.id);
     if(iErr)throw new Error(iErr.message);
+    // ── LE MÉNAGE DES PHOTOS (2026-09-19) — APRÈS la suppression, jamais avant
+    // Tant que la ligne inventaire existe, ses propres photos sont
+    // « référencées » et le serveur n'en jugerait aucune supprimable.
+    // ⛔ NON BLOQUANT : l'article est déjà supprimé, et une photo qui survit
+    //    ne coûte que de l'octet. On ne fait PAS échouer la suppression pour
+    //    ça — même règle que delete-account.
+    // ⛔ Ce n'est pas le client qui décide : le serveur applique les 5 verrous
+    //    du 16/09 (RPC photos_article_supprimables, en lecture seule) et le
+    //    client ne supprime que ce qui lui est rendu.
+    try{
+      const menage=await menagePhotosArticle(supabase,item.photos);
+      if(menage.supprimees)console.info(`[photos] ${menage.supprimees}/${menage.examinees} photo(s) de l'article supprimée(s) du bucket`);
+    }catch(e){console.warn('[photos] ménage ignoré —',e?.message??e);}
     // ── Journal d'audit (13/09) — APRÈS le point de non-retour ──────────────
     // Posé ICI, une fois la ligne inventaire réellement supprimée : avant, on
     // journaliserait une suppression qu'une FK peut encore refuser (la vente
