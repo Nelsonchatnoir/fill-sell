@@ -8604,11 +8604,49 @@ function extractListingId(url, platform) {
 // (410 + mêmes marqueurs). D'où "unavailable" (bandeau « Plus en ligne —
 // vendue ? », l'utilisateur tranche) et jamais "sold" : la preuve de vente ne
 // peut venir que de la page vendeur (mes-transactions).
+// ── LEBONCOIN DIT « Article vendu » SUR L'ANNONCE VIVANTE (2026-09-19) ───────
+// Relevé au navigateur, sur des pages publiques, en vue VISITEUR (aucun
+// contrôle propriétaire sur la page, aucun bouton d'achat) : une annonce vendue
+// par la Transaction sécurisée reste EN 200 et porte, juste avant son <h1>,
+// un nœud unique <p class="text-body-2 text-neutral">Article vendu</p>.
+// C'est la clé i18n `transaction-status-sold`, rendue CÔTÉ SERVEUR.
+//
+// ⛔ DEUX PIÈGES, ET LES DEUX SONT MORTELS :
+//   1. LE DICTIONNAIRE. Le HTML de CHAQUE annonce — vendue ou non — contient
+//      "transaction-status-sold":{"text":"Article vendu"}. Chercher la chaîne
+//      nue déclarerait vendues les 225 annonces vivantes du relevé. On exige
+//      donc la forme RENDUE (>…<), jamais la forme dictionnaire ("text":"…").
+//      C'est exactement le piège déjà documenté pour Beebs ("sold":"Vendu").
+//   2. LA PAGE MORTE. Une annonce disparue rend 410 avec « Cette annonce est
+//      désactivée » ET le texte « Le bien a déjà été vendu et l'annonceur a
+//      supprimé son annonce » — une liste de CAUSES POSSIBLES, générique.
+//      Elle ne prouve rien : ce chemin-là reste "unavailable", jamais "sold".
+//      (Le 410 est de toute façon tranché en amont, avant d'arriver ici.)
+//
+// ANCRAGE AVANT LE <h1> : le bas de page liste les annonces recommandées
+// d'autres vendeurs. Aucune n'a porté le badge dans le relevé, mais l'ancre
+// coûte une ligne et ferme définitivement ce faux positif-là.
+//
+// MESURÉ LE 19/09 sur 248 annonces distinctes tirées au hasard parmi nos
+// 539 jobs Leboncoin 'published' sans drapeau : 227 en HTTP 200 — dont 2 (0,9 %)
+// portant le marqueur — et 21 en 410/404 restées INDÉTERMINÉES. Les deux
+// vendues portaient le marqueur UNE fois, au même endroit, et l'une d'elles
+// avait été lue « active » par ce détecteur 1 h 20 plus tôt : `list_id` est
+// présent sur une page vendue aussi, et on passait à côté du <p> voisin.
+const LBC_MARQUEUR_VENDU = />\s*Article vendu\s*</;
+function lbcMarqueurVendu(html) {
+  const iH1 = html.search(/<h1[\s>]/i);
+  if (iH1 <= 0) return false;
+  return LBC_MARQUEUR_VENDU.test(html.slice(0, iH1));
+}
+
 function detectLeboncoinState(html, adId) {
   if (!adId) return "unknown";
   // \"list_id\":3232382692 — JSON échappé ou non, valeur quotée ou non
   const idField = new RegExp('\\\\?"(?:list_id|listId)\\\\?":\\s*\\\\?"?' + adId + '(?![0-9])');
-  if (idField.test(html)) return "active";
+  // L'annonce est bien celle qu'on croit ET elle est servie : c'est LÀ, et
+  // nulle part ailleurs, qu'une preuve positive de vente peut être lue.
+  if (idField.test(html)) return lbcMarqueurVendu(html) ? "sold" : "active";
   // Preuve positive de DISPARITION — le filet pour une page morte servie en
   // HTTP 200 (le 410 nominal est déjà tranché en amont). Balises uniques
   // relevées en réel, jamais le texte brut du document.
@@ -9066,7 +9104,17 @@ async function checkListingState(url, platform) {
   for (let tir = 1; tir <= LBC_CHECK_TIRS; tir++) {
     if (tir > 1) await sleep(randInt(700, 1600));
     const res = await lireEtatAnnonce(url, platform);
-    if (res.state === "unavailable" || res.state === "sold") {
+    // ⛔ UNE VENTE LEBONCOIN N'EST PAS UNE ANNONCE MORTE (2026-09-19). Depuis
+    // que detectLeboncoinState sait lire « Article vendu », "sold" se lit sur
+    // une page EN 200, bien vivante. La mémoriser comme morte (30 jours) ferait
+    // deux dégâts : toute relecture ultérieure court-circuiterait Leboncoin
+    // pour rendre "unavailable", et une preuve POSITIVE se dégraderait en
+    // simple doute « plus en ligne ». Verdict immédiat, aucune mémorisation.
+    if (res.state === "sold") {
+      console.log(`[background] leboncoin : VENTE lue sur la page VIVANTE au tir ${tir}/${LBC_CHECK_TIRS} — preuve positive, verdict immédiat`);
+      return res;
+    }
+    if (res.state === "unavailable") {
       console.log(`[background] leboncoin : annonce MORTE constatée au tir ${tir}/${LBC_CHECK_TIRS} — verdict définitif (mémorisé)`);
       await memoriserLbcMorte(url);
       return res;

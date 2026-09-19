@@ -34,7 +34,8 @@
     "selftest:opla-cablage": "node scripts/opla-cablage-selftest.mjs",
     "selftest:opla-catalogue": "node scripts/opla-catalogue-selftest.mjs",
     "gen:opla-catalogue": "node scripts/gen-opla-catalogue.mjs",
-    "selftest:tailles": "node scripts/tailles-selftest.mjs"
+    "selftest:tailles": "node scripts/tailles-selftest.mjs",
+    "selftest:leboncoin-vendu": "node scripts/leboncoin-vendu-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
