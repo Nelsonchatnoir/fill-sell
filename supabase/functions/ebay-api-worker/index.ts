@@ -1387,11 +1387,25 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
   if (error) return { erreur: error.message };
   const candidats = (bruts ?? []) as JobVeille[];
   const maintenant = Date.now();
-  // Les trois verrous d'idempotence, AVANT le moindre appel réseau.
+  // Les verrous d'idempotence, AVANT le moindre appel réseau.
+  //
+  // ⚠️ CORRIGÉ APRÈS VÉRIFICATION EN PROD (19/09, premier passage) : le verrou
+  // portait sur la PRÉSENCE de `sale_signal`, pas sur sa VALEUR. Or ce champ a
+  // deux valeurs, et une seule est une vente (background.js) :
+  //     sale_signal = "sold"        → bandeau affirmatif « Vendue »
+  //     sale_signal = "unavailable" → bandeau INTERROGATIF « Plus en ligne ? »
+  // Résultat au premier passage : le « Lot de 24 DVD » (307173381042), qui EST
+  // vendu et qui portait déjà un « unavailable » posé le matin même, a été
+  // SAUTÉ — c'est-à-dire exactement l'article qu'il fallait trouver. Même
+  // chose pour `unavailable_since`, qui ne dit rien d'une vente.
+  //
+  // La règle juste : on ne re-signale jamais une vente DÉJÀ PROUVÉE, mais on
+  // a le droit — et le devoir — de faire PASSER une question à une certitude.
+  // C'est tout l'intérêt d'une preuve positive : elle tranche ce que
+  // l'absence laissait en suspens.
   const eligibles = candidats.filter((j) => {
     const pf = j.platform_fields ?? {};
-    if (pf.sale_signal) return false;          // déjà signalé (extension ou nous)
-    if (pf.unavailable_since) return false;    // déjà en question : on n'écrase pas
+    if (pf.sale_signal === "sold") return false;   // vente déjà prouvée : rien à ajouter
     const vu = Date.parse(String(pf.veille_ebay_le ?? ""));
     return !Number.isFinite(vu) || maintenant - vu >= VEILLE_CADENCE_MS;
   });
@@ -1434,7 +1448,10 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
     visites++;
     const pf: Record<string, unknown> = { ...(job.platform_fields ?? {}), veille_ebay_le: new Date().toISOString() };
     if (etat.verdict === "vendue") {
-      pf.unavailable_since = new Date().toISOString();
+      // On n'écrase JAMAIS un horodatage déjà posé : si le job était déjà « en
+      // question », la date d'origine est la bonne — on ne fait que remplacer
+      // la question par la réponse.
+      if (!pf.unavailable_since) pf.unavailable_since = new Date().toISOString();
       pf.sale_signal = "sold";
       if (etat.prix != null) pf.detected_price = etat.prix;
       // La date RÉELLE de fin rendue par eBay, gardée telle quelle : c'est la
@@ -1445,7 +1462,8 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
     } else if (etat.verdict === "terminee_sans_vente") {
       // Bandeau INTERROGATIF, jamais affirmatif : l'annonce est terminée, on
       // ne sait pas pourquoi, et eBay dit explicitement 0 vendu.
-      pf.unavailable_since = new Date().toISOString();
+      // Idem : on ne réécrit pas une date déjà posée par un autre mécanisme.
+      if (!pf.unavailable_since) pf.unavailable_since = new Date().toISOString();
       pf.fin_ebay = { fin: etat.fin, vendus: 0, vu_le: new Date().toISOString() };
       terminees++;
     } else if (etat.verdict === "indetermine") {
