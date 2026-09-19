@@ -1416,7 +1416,7 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
     return va - vb;
   });
   const lot = eligibles.slice(0, VEILLE_LOT_MAX);
-  if (!lot.length) return { candidats: candidats.length, visites: 0, ventes: 0 };
+  if (!lot.length) return { candidats: candidats.length, visites: 0, ventes: 0, orphelines: 0 };
 
   // 3e verrou : l'article est-il DÉJÀ vendu en base ? Une vente actée ne
   // relance jamais de chaîne de retrait (même garde anti-rétroactivité que la
@@ -1478,7 +1478,60 @@ async function veillerVentesEbay(admin: SupabaseClient, env: EbayEnv): Promise<R
       .update({ platform_fields: pf }).eq("id", job.id).eq("status", "published");
     if (uErr) console.warn(`[ebay-api-worker] veille : écriture refusée sur ${job.id} — ${uErr.message}`);
   }
-  return { candidats: candidats.length, eligibles: eligibles.length, visites, ventes, terminees, indeterminees, coupe };
+  // ── LES ANNONCES IMPORTÉES SONT VEILLÉES AUSSI (2026-09-19) ──────────────
+  // Le veilleur ci-dessus ne voit que ce qui porte un JOB. Or le relevé du Hub
+  // remplit `annonces_plateforme` avec des annonces eBay que nous n'avons pas
+  // publiées — elles ne sont rattachées à aucun job tant que le moteur ne les
+  // a pas appariées, et elles n'étaient donc surveillées par PERSONNE. Une
+  // vente dessus passait totalement inaperçue.
+  // Ici on les visite avec la MÊME preuve positive et les MÊMES règles, et on
+  // écrit sur la LIGNE D'ANNONCE (jamais sur un job, il n'y en a pas) :
+  //   vendue            → `vendue_le` + le détail eBay dans `capture`
+  //   terminée sans vente → rien d'affirmé, juste la trace de la visite
+  // ⛔ ON N'ÉCRIT PAS `disparu_le` : ce champ est le verdict du RELEVÉ, et la
+  //    doctrine est constante — une absence ne prouve rien, et ici on ne
+  //    constate même pas une absence, on lit un état. Les deux ne se marchent
+  //    pas dessus.
+  // ⛔ Même budget : ce qui reste du lot après les jobs, jamais davantage.
+  let orphelines = 0;
+  const resteLot = VEILLE_LOT_MAX - visites;
+  if (!coupe && resteLot > 0) {
+    try {
+      const { data: sansJob } = await admin.from("annonces_plateforme")
+        .select("id, listing_id, capture")
+        .eq("platform", "ebay").is("job_id", null).is("disparu_le", null)
+        .is("inventaire_id", null)
+        .limit(VEILLE_CANDIDATS_MAX);
+      const aVoir = ((sansJob ?? []) as Array<{ id: string; listing_id: string; capture: Record<string, unknown> | null }>)
+        .filter((a) => /^\d{9,15}$/.test(String(a.listing_id ?? "")))
+        .filter((a) => {
+          const cap = a.capture ?? {};
+          if (cap.vendue_le) return false; // déjà conclu vendu : on n'y revient pas
+          const vu = Date.parse(String(cap.veille_ebay_le ?? ""));
+          return !Number.isFinite(vu) || Date.now() - vu >= VEILLE_CADENCE_MS;
+        })
+        .slice(0, resteLot);
+      for (const a of aVoir) {
+        const etat = await lireEtatAnnonceEbay(env, token, String(a.listing_id));
+        if (etat.verdict === "indetermine" && etat.limite) break; // coupé : on se tait
+        orphelines++;
+        const cap: Record<string, unknown> = { ...(a.capture ?? {}), veille_ebay_le: new Date().toISOString() };
+        if (etat.verdict === "vendue") {
+          cap.vendue_le = etat.fin;
+          cap.vente_ebay = { fin: etat.fin, vendus: etat.vendus, prix: etat.prix, vu_le: new Date().toISOString() };
+          console.log(`[ebay-api-worker] VENTE eBay sur l'annonce importée ${a.listing_id} (fin ${etat.fin}) — aucun job, trace posée sur la ligne d'annonce`);
+        } else if (etat.verdict === "terminee_sans_vente") {
+          cap.fin_ebay = { fin: etat.fin, vendus: 0, vu_le: new Date().toISOString() };
+        }
+        await admin.from("annonces_plateforme")
+          .update({ capture: cap, updated_at: new Date().toISOString() })
+          .eq("id", a.id).is("disparu_le", null);
+      }
+    } catch (e) {
+      console.warn("[ebay-api-worker] veille des annonces importées :", (e as Error)?.message ?? e);
+    }
+  }
+  return { candidats: candidats.length, eligibles: eligibles.length, visites, ventes, terminees, indeterminees, orphelines, coupe };
 }
 
 const PROCESSING_MAX_MS = 10 * 60_000;
