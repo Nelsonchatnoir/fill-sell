@@ -19,6 +19,7 @@
 import { useState } from 'react';
 import PlatformLogo from '../components/platform-logos/PlatformLogo';
 import EbayCompteSection from '../components/EbayCompteSection';
+import OplaCategoriesMemorisees from './OplaCategoriesMemorisees';
 import { R } from './theme';
 import { Groupe, Carte, Pastille, Bouton, Note } from './ReglagesUI';
 
@@ -63,6 +64,11 @@ export default function SousPagePlateformes({ c, T }) {
         {oplaExplique && <Note>{T.autoriserOplaComment}</Note>}
         <Note>{T.sessionsNote}</Note>
       </Groupe>
+
+      {/* Les questions de catégorie Opla déjà tranchées — le bloc ne s'affiche
+          que s'il y en a. C'est le droit de changer d'avis : sans lui, une
+          réponse mémorisée ne serait plus jamais redemandée. */}
+      <OplaCategoriesMemorisees c={c} T={T} />
 
       {/* Compte vendeur eBay — la section existante, montée telle quelle :
           connexion OAuth, checklist vendeur, lieu d'expédition. Ses

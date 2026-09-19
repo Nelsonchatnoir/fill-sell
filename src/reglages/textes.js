@@ -89,6 +89,13 @@ const FR = {
   sessionsNote: "Ces états viennent de l'extension sur ton ordinateur : pour reconnecter une plateforme, connecte-toi dessus dans Chrome.",
   sessionsAucune: "L'extension n'a encore relevé aucune session.",
   compteVendeurEbay: 'Compte vendeur eBay',
+  // Catégories Opla tranchées une fois — cf. OplaCategoriesMemorisees.jsx.
+  oplaMemTitre: 'Catégories Opla que tu as choisies',
+  oplaMemExemple: 'Par exemple pour',
+  oplaMemParmi: 'Choisie parmi',
+  oublier: 'Oublier',
+  oplaMemOubliee: '✅ Oubliée — la question te sera reposée',
+  oplaMemNote: "On te repose la question dès que tu oublies la réponse.",
 
   // ── Expédition ──────────────────────────────────────────────────────────
   adresseRemise: 'Adresse de remise',
@@ -234,6 +241,12 @@ const EN = {
   sessionsNote: 'These states come from the extension on your computer: to reconnect a platform, sign in to it in Chrome.',
   sessionsAucune: 'The extension has not reported any session yet.',
   compteVendeurEbay: 'eBay seller account',
+  oplaMemTitre: 'Opla categories you picked',
+  oplaMemExemple: 'For instance for',
+  oplaMemParmi: 'Picked among',
+  oublier: 'Forget',
+  oplaMemOubliee: '✅ Forgotten — you will be asked again',
+  oplaMemNote: 'You are asked again as soon as you forget an answer.',
 
   adresseRemise: 'Pickup address',
   adresseRemiseLbc: 'Leboncoin pickup address',
