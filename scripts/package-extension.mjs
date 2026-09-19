@@ -171,7 +171,18 @@ const ZIP_DIR = path.join(ROOT, 'build');
 // couche 2 (priorité d'un republish 'deleted' bornée : N=3 gels sans verdict →
 // bout de file, reste pending/visible/rattrapable). ⚠️ EXTENSION_MIN_BUILD
 // NON touché : décision de Nico, à part, lue dans le paquet publié.
-const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41', '0.6.42', '0.6.43', '0.6.44', '0.6.45'];
+const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6', '0.4.7', '0.4.8', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.5', '0.5.6', '0.5.7', '0.5.8', '0.5.9', '0.6.1', '0.6.2', '0.6.3', '0.6.4', '0.6.5', '0.6.6', '0.6.7', '0.6.8', '0.6.9', '0.6.10', '0.6.11', '0.6.12', '0.6.13', '0.6.14', '0.6.17', '0.6.19', '0.6.20', '0.6.21', '0.6.22', '0.6.23', '0.6.24', '0.6.25', '0.6.26', '0.6.27', '0.6.28', '0.6.32', '0.6.33', '0.6.34', '0.6.35', '0.6.36', '0.6.38', '0.6.39', '0.6.40', '0.6.41', '0.6.42', '0.6.43', '0.6.44', '0.6.45', '0.6.46'];
+// 0.6.46 ajoutee le 19/09 : TELEVERSEE et EN EXAMEN au Chrome Web Store (zip
+// fillsell-extension-0.6.46-1604cf2-cws.zip, BUILD_ID
+// '2026-09-19T12:23:44Z+1604cf2', declare par Nico en seance). Le numero est
+// mort DES LE TELEVERSEMENT, pas a l'acceptation : le Store refuse un renvoi de
+// la meme version, et un refus d'examen se corrige en BUMPANT, jamais en
+// re-envoyant le meme numero. Sans cette ligne, le script aurait laisse
+// refabriquer une 0.6.46 que le Store aurait rejetee - c'est exactement le trou
+// rattrape le 06/08 (0.4.7/0.4.8) puis le 18/09 (0.6.42).
+// ⛔ EXTENSION_MIN_BUILD reste a 2026-09-18T16:36:03Z : il ne bouge qu'a
+// l'ACCEPTATION, pas au televersement. Pose trop tot, tout le parc voit une
+// banniere « extension obsolete » sans version a installer (vecu le 29/07).
 // 0.6.44 et 0.6.45 ajoutees le 19/09 : PUBLIEES et SERVIES par le Chrome Web
 // Store. Relevees en base, pas declarees : 10 comptes en
 // profiles.extension_version='0.6.44' (extension_build
@@ -179,9 +190,9 @@ const ALREADY_PUBLISHED = ['0.4.0', '0.4.2', '0.4.3', '0.4.4', '0.4.5', '0.4.6',
 // '2026-09-18T22:19:14Z+713d53f'), tous vus dans l'heure. Les deux numeros
 // sont morts : plus jamais re-package (doctrine 0.6.6). Sans cette
 // inscription, rien n'empechait un re-empaquetage que le Store rejetterait.
-// ⛔ 0.6.46 n'y entre PAS : le manifeste y est passe, mais AUCUN paquet n'est
-// fabrique (ordre de Nico le 19/09 : d'autres correctifs s'ajoutent, le paquet
-// partira d'un seul coup).
+// (Cette note disait « 0.6.46 n'y entre PAS : aucun paquet n'est fabrique ».
+//  Elle est PERIMEE depuis le 19/09 apres-midi : le paquet a ete fabrique et
+//  televerse, voir la ligne 0.6.46 en tete de ce bloc.)
 // 0.6.43 ajoutee le 18/09 au soir : PUBLIEE, ACCEPTEE et SERVIE par le Chrome
 // Web Store le jour meme. Relevee en base, pas declaree : 12 comptes en
 // profiles.extension_version='0.6.43', extension_build
