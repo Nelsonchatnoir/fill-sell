@@ -794,7 +794,7 @@ export function RepublicationPlanifieePlateformes({
 // nombre qui va réellement partir (cellule droite). Un avis en pied SEULEMENT
 // s'il change ce que le nombre veut dire (créneau manqué, hors service,
 // extension muette, compteur plein, créneau qui borne).
-export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extensionStatus, busy = false, onOuvrirReglages, onActiver, onActiverNonPro, variante = 'bloc' }) {
+export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extensionStatus, busy = false, onOuvrirReglages, onActiver, onActiverNonPro, variante = 'bloc', plateformesActives = null }) {
   const fr = lang !== 'en';
   const enService = interrupteur === 1;
   const s = synthese(etat, { fr, enService, extensionStatus });
@@ -831,30 +831,64 @@ export function RepublicationPlanifieeBloc({ lang, etat, interrupteur, extension
     }
   }
 
-  // ── PIED DE PAGE (refonte du 17/09 soir) : une ligne repliée — icône, titre,
-  // état, créneau, chevron. Le détail (cellules, « Activer », avis) vit
-  // derrière le tap : les réglages. Le haut de page va droit au stock.
+  // ── PIED DE LISTE DU STOCK (17/09 soir, remis le 20/09) ───────────────────
+  // Une ligne repliée : icône, titre, UNE phrase, l'état, et le geste à droite.
+  // Le détail (créneaux, plafonds, historique) vit derrière le tap — l'écran de
+  // réglages, celui qui existe déjà.
+  //
+  // IL EST MONTRÉ À TOUS LES PALIERS, y compris gratuit (demande de Nico,
+  // 20/09) : masquer la fonction aux comptes qui ne l'ont pas, c'est masquer
+  // l'argument de vente avec l'outil — la même erreur que la gate d'É6,
+  // corrigée le 31/08. Pour qui n'y a pas droit, le geste de droite devient
+  // « Activer » et ouvre la modale d'offres ; rien ne s'ouvre jamais tout seul.
   if (variante === 'pied') {
+    const noms = (Array.isArray(plateformesActives) ? plateformesActives : [])
+      .map((pf) => NOMS[pf] ?? pf);
+    // L'état, en une ligne. Quand c'est réglé, on NOMME les plateformes — c'est
+    // la première question qu'on se pose en voyant « active ».
+    let ligne;
+    if (!autorise) ligne = fr ? 'Incluse à partir du plan Pro' : 'Included from the Pro plan';
+    else if (noms.length) {
+      const liste = noms.length === 1 ? noms[0]
+        : `${noms.slice(0, -1).join(', ')}${fr ? ' et ' : ' and '}${noms[noms.length - 1]}`;
+      ligne = fr ? `Active sur ${liste}` : `On for ${liste}`;
+      if (creneauValeur) ligne += ` · ${creneauValeur}`;
+    } else ligne = s.etatLigne;
+    const ton = autorise ? tonCouleur(s.etatTon) : P.mute;
     return (
       <div className="rp-tap" role="button" tabIndex={0} onClick={ouvrir} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrir(); } }}
         aria-label={fr ? 'Republication automatique — réglages' : 'Automatic reposting — settings'}
         style={{ background: '#fff', border: `1px solid ${P.border}`, borderRadius: 16, boxShadow: '0 1px 4px rgba(16,32,27,.05)', overflow: 'hidden', fontFamily: FONT, color: P.ink }}>
         <style>{CSS}</style>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px' }}>
           <IconeCycle actif={actif} attention={s.etatTon === 'amber'} tourne={actif && enService && s.etatTon !== 'amber'} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: '-.01em' }}>{fr ? 'Republication automatique' : 'Automatic reposting'}</span>
               <PastillePro />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 500, fontSize: 12, marginTop: 2, color: tonCouleur(s.etatTon), minWidth: 0 }}>
-              <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, background: tonCouleur(s.etatTon) }} />
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {s.etatLigne}{creneauValeur ? ` · ${creneauValeur}` : ''}{creneauSous ? ` (${creneauSous})` : ''}
-              </span>
+            {/* UNE phrase. Elle dit ce que ça fait, jamais comment c'est fait —
+                et surtout pas que « le téléphone ne suffit pas ». */}
+            <div style={{ fontSize: 12, lineHeight: 1.45, color: P.mute2, marginTop: 3 }}>
+              {fr
+                ? 'Tes annonces remontent toutes seules, sans que tu aies à y penser.'
+                : 'Your listings move back to the top on their own, with nothing to do.'}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 500, fontSize: 12, marginTop: 4, color: ton, minWidth: 0 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 99, flexShrink: 0, background: ton }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ligne}</span>
             </div>
           </div>
-          <ChevronRight size={18} color={P.mute} style={{ flexShrink: 0 }} />
+          {/* Le geste : les réglages pour qui y a droit, l'offre pour les
+              autres. Un seul bouton, jamais les deux. */}
+          {autorise ? (
+            <ChevronRight size={18} color={P.mute} style={{ flexShrink: 0 }} />
+          ) : (
+            <button type="button" onClick={activer} disabled={busy} className="rp-btn"
+              style={{ flexShrink: 0, height: 36, padding: '0 16px', borderRadius: 999, fontSize: 12.5, fontWeight: 800, color: '#fff', background: `linear-gradient(120deg,${P.teal},${P.tealDeep})`, boxShadow: '0 6px 16px rgba(47,158,144,.28)', whiteSpace: 'nowrap' }}>
+              {fr ? 'Activer' : 'Turn on'}
+            </button>
+          )}
         </div>
       </div>
     );

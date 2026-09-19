@@ -773,6 +773,11 @@ export default function ConversionModal({
   // FillSell. », sans la puce de compteur) — dégradé, jamais cassé.
   const repubCap = trigger === 'republish_cap';
   const repubLot = trigger === 'republish_lot';
+  // Republication AUTOMATIQUE (20/09) : le module en pied de Stock est
+  // montré à tous les paliers ; ceux qui n'y ont pas droit arrivent ici et
+  // doivent lire POURQUOI. `autorise` vaut pro/business côté serveur
+  // (republish_palier) — c'est donc Pro qu'on nomme, jamais Premium.
+  const repubAuto = trigger === 'republish_auto';
   const quotaCas = trigger === 'quota_geste' ? (quotaInfo ?? {}) : null;
   const repubPremium = (K.quota_republication_premium ?? 1500).toLocaleString(fr ? 'fr-FR' : 'en-US');
   return (
@@ -792,6 +797,8 @@ export default function ConversionModal({
             ? (fr ? 'Tes republications offertes sont épuisées.' : 'Your included repostings are used up.')
             : repubLot
               ? (fr ? 'Republie ton stock en un geste.' : 'Repost your stock in one move.')
+            : repubAuto
+              ? (fr ? 'Laisse tes annonces remonter toutes seules.' : 'Let your listings rise on their own.')
               : quotaCas
                 ? (quotaCas.geste === 'retouches'
                     ? (fr ? 'Tes retouches du mois sont faites.' : "This month's touch-ups are done.")
@@ -818,6 +825,20 @@ export default function ConversionModal({
         </div>
       )}
 
+      {repubAuto && (
+        <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 16, padding: '12px 14px', marginBottom: 14 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, color: C.ink }}>
+            {fr
+              ? <>La republication automatique est incluse à partir du plan Pro.</>
+              : <>Automatic reposting is included from the Pro plan.</>}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.5, color: C.mute2, marginTop: 6 }}>
+            {fr
+              ? <>Tu choisis le créneau et le rythme : tes annonces remontent toutes seules, sans que tu aies à y penser.</>
+              : <>You pick the time slot and the pace: your listings rise on their own, with nothing to do.</>}
+          </div>
+        </div>
+      )}
       {quotaCas && (
         /* Même gabarit que les encarts republication : le FAIT (quota du
            cycle atteint, rien décompté au-delà), puis ce que le palier
