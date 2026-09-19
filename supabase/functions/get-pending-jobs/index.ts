@@ -973,6 +973,90 @@ serve(async (req) => {
       console.warn(`[get-pending-jobs] catégorie d'origine : ${String((e as Error)?.message ?? e)} — distribution normale`);
     }
 
+    // ══ DEUX ARTICLES, UNE SEULE ANNONCE : ON NE RETIRE RIEN (2026-09-19) ═══
+    // Mesuré ce soir : 9 URL Leboncoin portées par 2 articles ou plus, sur 4
+    // comptes. Cause établie — la passe de récupération de l'URL
+    // (background.js, findListingLinkInPage) attribue l'annonce PAR TITRE
+    // quand elle n'a pas d'identifiant, et deux titres jumeaux se croisent
+    // (« Carhartt T-shirt coton noir XL » ×2, « Ordi tablette Genius XL » et
+    // « Vtech ordi tablette genius XL »…). C'est la règle déjà écrite pour
+    // Beebs — « sans lien, JAMAIS par titre » — jamais appliquée ici.
+    //
+    // La conséquence est le pire geste du produit : le retrait d'un article
+    // supprime l'annonce d'un AUTRE. Tant que le croisement existe, aucun
+    // geste destructeur ne part.
+    // ⛔ PÉRIMÈTRE : les jobs qui vont RETIRER — action 'delete', et
+    //    'republish' dont l'étape suivante est le retrait ('captured'). Une
+    //    publication neuve ne détruit rien : elle passe.
+    // ⛔ On RETIENT, on ne requalifie pas : statut inchangé, aucune tentative
+    //    consommée, rien de débité. Le job repart tout seul dès que le
+    //    croisement est défait — exactement comme la porte pro Leboncoin.
+    // ⛔ Comparaison sur l'URL NORMALISÉE : c'est l'identifiant d'annonce qui
+    //    compte, pas le slug de catégorie qui le précède.
+    try {
+      const idAnnonce = (url: unknown) => {
+        const m = String(url ?? "").match(/\/(\d{6,})(?:[/?#]|$)/);
+        return m ? m[1] : null;
+      };
+      const vaRetirer = (j: { action: string | null; platform_fields: unknown }) => {
+        const a = j.action ?? "publish";
+        if (a === "delete") return true;
+        if (a !== "republish") return false;
+        const pf = ((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>;
+        return String(pf["republish_step"] ?? "a_capturer") === "captured";
+      };
+      const destructeurs = out.filter((j) => vaRetirer(j) && idAnnonce(j.listing_url) && j.inventaire_id != null);
+      if (destructeurs.length) {
+        // Qui d'autre, chez CETTE personne, porte la même annonce ? On relit
+        // la base : le lot servi ne contient qu'une partie de ses jobs.
+        const ids = [...new Set(destructeurs.map((j) => idAnnonce(j.listing_url)))];
+        const { data: tousJobs } = await userClient
+          .from("cross_post_jobs")
+          .select("id, inventaire_id, listing_url, title")
+          .eq("user_id", user.id)
+          .not("listing_url", "is", null)
+          .not("inventaire_id", "is", null)
+          .in("status", ["pending", "processing", "published", "needs_user"]);
+        const articlesParAnnonce = new Map<string, Map<number, string>>();
+        for (const r of (tousJobs ?? [])) {
+          const row = r as { inventaire_id: number; listing_url: string; title: string | null };
+          const key = idAnnonce(row.listing_url);
+          if (!key || !ids.includes(key)) continue;
+          if (!articlesParAnnonce.has(key)) articlesParAnnonce.set(key, new Map());
+          articlesParAnnonce.get(key)!.set(row.inventaire_id, String(row.title ?? "").slice(0, 60));
+        }
+        const retenus: string[] = [];
+        const bloques = new Set<string>();
+        for (const j of destructeurs) {
+          const key = idAnnonce(j.listing_url)!;
+          const articles = articlesParAnnonce.get(key);
+          if (!articles || articles.size < 2) continue;
+          const autres = [...articles.entries()].filter(([inv]) => inv !== j.inventaire_id);
+          bloques.add(String(j.id));
+          retenus.push(`${String(j.id).slice(0, 8)} (annonce ${key} aussi portée par ${autres.map(([, t]) => `« ${t} »`).join(", ")})`);
+          const pf = { ...(((j.platform_fields && typeof j.platform_fields === "object") ? j.platform_fields : {}) as Record<string, unknown>) };
+          pf["retrait_bloque_url_partagee"] = {
+            le: new Date().toISOString(),
+            annonce: key,
+            autres_articles: autres.map(([inv, t]) => ({ inventaire_id: inv, titre: t })),
+            motif: "deux articles portent la meme annonce : retirer celui-ci supprimerait l annonce de l autre",
+          };
+          await userClient.from("cross_post_jobs")
+            .update({ platform_fields: pf }).eq("id", j.id).eq("status", "pending")
+            .then(() => {}, () => {});
+        }
+        if (retenus.length) {
+          out = out.filter((j) => !bloques.has(String(j.id)));
+          console.warn(
+            `[get-pending-jobs] user=${user.id} : ${retenus.length} geste(s) de RETRAIT retenu(s) — deux articles portent la même annonce, ` +
+            `rien n'est retiré, aucune tentative consommée : ${retenus.join(" ; ")}`,
+          );
+        }
+      }
+    } catch (e) {
+      console.warn(`[get-pending-jobs] garde URL partagée : ${String((e as Error)?.message ?? e)} — distribution normale`);
+    }
+
     // ── UNE REPUBLICATION ORPHELINE N'EST JAMAIS SERVIE (2026-09-06) ────────
     // Supprimer un article n'annulait pas ses REPUBLICATIONS (App.jsx,
     // buildDeletePlan, corrigé le même jour). La FK
