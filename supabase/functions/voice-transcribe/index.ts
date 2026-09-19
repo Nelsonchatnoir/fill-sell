@@ -134,10 +134,47 @@ serve(async (req) => {
     } catch { /* jamais bloquant */ }
   };
 
+  // ── UNE HALLUCINATION NE DOIT PAS COÛTER UNE UNITÉ (2026-09-19) ────────────
+  // MESURÉ sur 30 jours, 234 appels : 63 hallucinations sur les 194 appels
+  // tracés, soit 32 %. Et le chiffre qui décide : 23 des 37 « credits_video »
+  // étaient le TOUT PREMIER essai vocal du compte. Quelqu'un découvre la
+  // fonction, parle, l'app lui répond qu'elle n'a rien entendu — et lui prend
+  // une unité. C'est un défaut d'accueil, et le rembourser n'est pas une
+  // faveur, c'est de l'honnêteté.
+  //
+  // COMMENT, SANS TOUCHER AU COMPTEUR DE QUOTA. `check_and_log_usage` compte
+  // les lignes `usage_logs` dont `feature = 'voice'` ; elle n'a aucune notion
+  // de remboursement et je ne la modifie pas — c'est le quota payant, on ne
+  // bricole pas sa fonction pour un cas particulier. On DÉPLACE la ligne sous
+  // un autre nom de feature : elle sort du compte, et la télémétrie n'est pas
+  // perdue pour autant (même id, même metadata, `rembourse: true`).
+  // Réversible d'un UPDATE, et aucune migration.
+  const FEATURE_REMBOURSEE = "voice_remboursee";
+  const rembourserUnite = (issue: string, detail: Record<string, unknown> = {}) => {
+    if (!quotaLogId) return;
+    try {
+      const p = adminClient.from("usage_logs")
+        .update({ feature: FEATURE_REMBOURSEE, metadata: { issue, ...detail, rembourse: true } })
+        .eq("id", quotaLogId)
+        .then(() => {}, () => {});
+      (globalThis as any).EdgeRuntime?.waitUntil?.(p);
+    } catch { /* jamais bloquant */ }
+  };
+
   try {
     const formData = await req.formData();
     const audioFile = formData.get("audio") as File | null;
     const lang = (formData.get("lang") as string | null) ?? "fr";
+    // ── LA DURÉE, ENFIN MESURÉE (2026-09-19) ──────────────────────────────
+    // On sait que l'app (audio/mp4) hallucine 2,5 fois plus que le web
+    // (21,5 % contre 8,3 %) et on ne sait pas POURQUOI : enregistrement trop
+    // court, micro ouvert en retard, appui double. Aucune de ces trois causes
+    // n'est distinguable sans la durée — elle n'était mesurée nulle part.
+    // L'app l'envoie désormais ; elle est journalisée avec le poids de
+    // l'audio, sur TOUTES les issues. Deux semaines de ce chiffre et la cause
+    // sera nommée au lieu d'être supposée.
+    const dureeBrute = Number(formData.get("duree_ms"));
+    const dureeMs = Number.isFinite(dureeBrute) && dureeBrute >= 0 ? Math.round(dureeBrute) : null;
 
     if (!audioFile) {
       marquerIssue("format", { detail: "audio_absent" });
@@ -198,7 +235,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      marquerIssue("whisper_ko", { detail: "http", statut: response.status, mime: mimeType || null });
+      marquerIssue("whisper_ko", { detail: "http", statut: response.status, mime: mimeType || null, octets: audioFile.size, duree_ms: dureeMs });
       return new Response(
         JSON.stringify({ error: errData?.error?.message ?? "OpenAI API error" }),
         { status: 500, headers: { "Content-Type": "application/json", ...CORS } }
@@ -220,20 +257,29 @@ serve(async (req) => {
       console.warn("[voice-transcribe] hallucination_filtree", JSON.stringify({
         raison: filtre, texte: texte.slice(0, 120),
       }));
-      marquerIssue("hallucine", { raison: filtre, mime: mimeType || null });
+      // L'unité est RENDUE : la ligne sort du compte du quota (cf. en-tête).
+      rembourserUnite("hallucine", { raison: filtre, mime: mimeType || null, octets: audioFile.size, duree_ms: dureeMs });
       return new Response(JSON.stringify({
         text: "",
         filtered: filtre,
+        // `rembourse` dit à l'app de rendre l'unité côté compteur gratuit
+        // aussi : les deux compteurs doivent raconter la même chose.
+        rembourse: true,
+        // ⛔ LE MESSAGE N'ACCUSE PLUS PERSONNE (2026-09-19). L'ancien disait
+        // « réessayez en parlant plus près du micro » : il renvoyait la faute
+        // à quelqu'un dont l'enregistrement peut très bien avoir été coupé par
+        // NOUS (micro pas encore ouvert, appui trop bref). On dit ce qui s'est
+        // passé, on dit que ça n'a rien coûté, et on ne donne pas de leçon.
         error: lang === "en"
-          ? "No speech detected — try again closer to the microphone."
-          : "Aucune parole détectée — réessayez en parlant plus près du micro.",
+          ? "We couldn't make anything out of that recording — it happens when it's very short or the mic hadn't opened yet. Nothing was charged: try again."
+          : "On n'a rien pu tirer de cet enregistrement — ça arrive quand il est très court ou que le micro n'était pas encore ouvert. Ça ne t'a rien coûté : réessaie.",
       }), { headers: { "Content-Type": "application/json", ...CORS } });
     }
 
     // Whisper a répondu 200 avec un texte vide : c'est ce que le front affiche
     // en « Aucune parole détectée ». Distinguer 'vide' de 'ok' est tout l'objet
     // de cette instrumentation — la réponse rendue ne change pas d'un octet.
-    marquerIssue(texte ? "ok" : "vide", { mime: mimeType || null });
+    marquerIssue(texte ? "ok" : "vide", { mime: mimeType || null, octets: audioFile.size, duree_ms: dureeMs });
     return new Response(JSON.stringify({ text: texte }), {
       headers: { "Content-Type": "application/json", ...CORS },
     });
