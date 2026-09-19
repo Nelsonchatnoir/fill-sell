@@ -36,12 +36,14 @@ const P = {
   ink: '#10201B', paper: '#F6F5F1', border: '#E7E3D8', mute: '#8A8578', mute2: '#5C6560',
   teal: '#2F9E90', tealDeep: '#1B6E62',
 };
-const LABEL = { leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', vestiaire: 'Vestiaire' };
+// vinted y figure depuis le 19/09 : le bloc sert aussi de liste « à vérifier »,
+// qui n'est pas Vinted-only (le report se pose sur un JOB, toutes plateformes).
+const LABEL = { vinted: 'Vinted', leboncoin: 'Leboncoin', beebs: 'Beebs', ebay: 'eBay', opla: 'Opla', vestiaire: 'Vestiaire' };
 
 export default function RevueAutresPlateformes({
   lang, jobs = [], busyId = null, devise = '€',
   prixDraft = {}, setPrixDraft, achatDraft = {}, setAchatDraft,
-  onVendue, onRetiree,
+  onVendue, onRetiree, titre = null, aide = null,
 }) {
   if (!jobs.length) return null;
   const fr = lang !== 'en';
@@ -53,8 +55,11 @@ export default function RevueAutresPlateformes({
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: P.mute, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
-        {fr ? `Sur les autres plateformes (${jobs.length})` : `On the other platforms (${jobs.length})`}
+        {titre ?? (fr ? `Sur les autres plateformes (${jobs.length})` : `On the other platforms (${jobs.length})`)}
       </div>
+      {aide && (
+        <div style={{ fontSize: 12, fontWeight: 500, color: P.mute2, lineHeight: 1.45, marginBottom: 8 }}>{aide}</div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {jobs.map((job) => {
           const busy = busyId === job.id;
