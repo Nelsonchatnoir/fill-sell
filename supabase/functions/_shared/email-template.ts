@@ -241,6 +241,34 @@ export function statut(
  *
  * Cible tactile : 56 px de haut au doigt (18 px de marge + 20 px de ligne),
  * au-dessus des 44 px recommandés par Apple et des 48 px de Material.
+ *
+ * ── CENTRAGE VERTICAL DU LIBELLÉ (19/09/2026) ──────────────────────────────
+ * Le libellé ne tombait pas au milieu du bouton. Trois causes, une par
+ * famille de client — aucune ne se voyait sur les deux autres :
+ *
+ *  1. LA CELLULE GARDAIT SON PROPRE STRUT. Le <td> vert n'avait ni font-size
+ *     ni line-height : il conservait la ligne de texte héritée, et plusieurs
+ *     clients (Gmail web, Apple Mail) réservent encore la place du jambage
+ *     SOUS l'enfant bloc. Quelques pixels de vide en bas, donc un libellé qui
+ *     paraît remonté. `font-size:0; line-height:0` sur la cellule supprime ce
+ *     strut ; l'<a>, lui, repose sa propre ligne de 20 px.
+ *
+ *  2. OUTLOOK IGNORE LE PADDING D'UN <a>. Le moteur Word ne l'applique pas,
+ *     même en display:block : le bouton s'y réduisait à la hauteur du texte,
+ *     sans marge haute ni basse. `mso-padding-alt:18px 36px` sur la CELLULE
+ *     restitue exactement les mêmes marges côté Word — même géométrie, même
+ *     56 px — et `valign="middle"` centre le contenu dans la cellule.
+ *
+ *  3. LA FLÈCHE ET SON ESPACEUR ÉTIRAIENT LA LIGNE. L'espaceur de 12 px
+ *     contenait un &nbsp; à 17 px : il traînait sa propre boîte de glyphe
+ *     dans la ligne, et la flèche &#8594; dépasse la line-height de 20 px sur
+ *     certaines piles de repli. La boîte de ligne grandissait vers le bas, et
+ *     le texte remontait d'autant. `font-size:0` sur l'espaceur le réduit à sa
+ *     largeur, et line-height + mso-line-height-rule:exactly sur le libellé
+ *     fixent la ligne à 20 px, flèche comprise.
+ *
+ * ⛔ NI la couleur, NI la taille, NI le texte ne changent. La hauteur totale
+ *    reste 18 + 20 + 18 = 56 px, à l'identique.
  */
 export function boutonPrincipal(texte: string, url: string): Html {
   const href = urlSure(url);
@@ -248,24 +276,29 @@ export function boutonPrincipal(texte: string, url: string): Html {
   return brut(
     `<tr><td align="left" class="fs-pad" style="padding:30px 34px 4px 34px; background-color:#FFFFFF;">` +
       `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="fs-btn" style="border-radius:14px;">` +
-      `<tr><td align="center" bgcolor="#1D9E75" style="background-color:#1D9E75; background-image:linear-gradient(135deg,#25B083 0%,#17835F 100%); border-radius:14px; box-shadow:0 10px 24px rgba(29,158,117,0.32);">` +
+      `<tr><td align="center" valign="middle" bgcolor="#1D9E75" style="background-color:#1D9E75; background-image:linear-gradient(135deg,#25B083 0%,#17835F 100%); border-radius:14px; box-shadow:0 10px 24px rgba(29,158,117,0.32); font-size:0; line-height:0; mso-padding-alt:18px 36px;">` +
       `<a href="${href}" target="_blank" class="fs-btn-txt" style="display:block; padding:18px 36px; font-family:${POLICE}; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#FFFFFF !important; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">` +
-      `<span style="color:#FFFFFF !important; text-decoration:none;">${echapper(texte)}` +
-      `<span style="display:inline-block; width:12px;">&nbsp;</span>&#8594;</span>` +
+      `<span style="color:#FFFFFF !important; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">${echapper(texte)}` +
+      `<span style="display:inline-block; width:12px; font-size:0; line-height:20px;">&nbsp;</span>&#8594;</span>` +
       `</a>` +
       `</td></tr></table>` +
       `</td></tr>`,
   );
 }
 
-/** Bouton secondaire (contour, vert sur blanc). URL invalide = bloc absent. */
+/**
+ * Bouton secondaire (contour, vert sur blanc). URL invalide = bloc absent.
+ * Même correction de centrage vertical que boutonPrincipal (19/09/2026) : la
+ * structure est identique, le défaut l'était aussi. Rien d'autre ne bouge —
+ * hauteur totale inchangée, 14 + 20 + 14 = 48 px.
+ */
 export function boutonSecondaire(texte: string, url: string): Html {
   const href = urlSure(url);
   if (!href) return brut("");
   return brut(
     `<tr><td align="left" class="fs-pad" style="padding:26px 34px 0 34px; background-color:#FFFFFF;">` +
       `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="fs-btn" style="border-radius:12px;">` +
-      `<tr><td align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF; border:1px solid #C9DED6; border-radius:12px;">` +
+      `<tr><td align="center" valign="middle" bgcolor="#FFFFFF" style="background-color:#FFFFFF; border:1px solid #C9DED6; border-radius:12px; font-size:0; line-height:0; mso-padding-alt:14px 26px;">` +
       `<a href="${href}" target="_blank" style="display:block; padding:14px 26px; font-family:${POLICE}; font-size:15px; font-weight:700; color:#17835F; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">${echapper(texte)}</a>` +
       `</td></tr></table>` +
       `</td></tr>`,
