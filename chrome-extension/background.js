@@ -12901,7 +12901,10 @@ async function lireVentesVinted(connues) {
           // sur le titre en attendant (inventaire_id ne s'écrase pas ensuite).
           id_attendu: true,
         });
-        aDetailler.push(ref);
+        // Le statut voyage AVEC la référence : le détail ne doit PAS le
+        // redéduire. Une commande `failed` classée annulée au premier temps ne
+        // doit pas ressusciter en « completed » au second.
+        aDetailler.push({ ref, statut: String(o?.transaction_user_status ?? "") });
       }
       // On s'arrête dès qu'une page entière est déjà connue : inutile de
       // remonter 20 mois d'historique à chaque passage.
@@ -12919,7 +12922,7 @@ async function lireVentesVinted(connues) {
 async function lireDetailsVentesVinted(refs) {
   return executerDansOngletPlateforme("vinted", async (liste) => {
     const rows = []; const faits = []; let echecs = 0;
-    for (const ref of liste) {
+    for (const { ref, statut } of liste) {
       await new Promise((r) => setTimeout(r, 900 + Math.random() * 1200));
       let j = null, http = 0;
       try {
@@ -12943,7 +12946,8 @@ async function lireDetailsVentesVinted(refs) {
         prix: tr?.offer?.price?.amount != null ? parseFloat(String(tr.offer.price.amount)) : null,
         devise: tr?.offer?.price?.currency_code ?? null,
         vendu_le: tr?.debit_processed_at ?? tr?.status_updated_at ?? null,
-        statut: String(tr?.user_side === "seller" ? "completed" : ""),
+        // Le statut vient de la LISTE, jamais redéduit ici (cf. aDetailler).
+        statut,
         listing_id: lot ? null : (tr?.item_id != null ? String(tr.item_id) : null),
         url: null,
         // ⛔ service_fee = protection ACHETEUR. Elle ne part PAS en frais vendeur.
@@ -13009,7 +13013,12 @@ async function lireVentesLeboncoin(connues) {
         if (!dejaVu.has(ref)) nouveaux++;
         rows.push({
           ref, titre: t?.item?.title ?? null,
-          prix: Number.isFinite(Number(t?.price)) ? Number(t.price) : null,
+          // ⛔ `price` EST EN CENTIMES. Relevé le 19/09 en recoupant l'API et
+          //    l'écran : 1800 pour une vente affichée « 18 € », 11000 pour
+          //    « 110 € », 2100 pour « 21 € ». Le prendre tel quel écrivait un
+          //    chiffre d'affaires cent fois trop gros — et personne ne l'aurait
+          //    vu passer. `item.price` est dans la même unité.
+          prix: Number.isFinite(Number(t?.price)) ? Number(t.price) / 100 : null,
           devise: "EUR", vendu_le: t?.created_at ?? null,
           statut: String(t?.step ?? ""), listing_id: null, url: null, frais: null,
           lot: String(t?.item?.type ?? "") === "bundle",
@@ -13124,13 +13133,14 @@ async function lancerReleveVentes({ platform, declencheur = "cron" } = {}) {
     let bilanDetail = null;
     if (platform === "vinted") {
       const deja = new Set(etat.vinted?.detailles ?? []);
-      const file = (lecture.aDetailler ?? []).filter((r) => !deja.has(r)).slice(0, VINTED_DETAIL_PAR_RUN);
+      const restants = (lecture.aDetailler ?? []).filter((r) => r?.ref && !deja.has(r.ref));
+      const file = restants.slice(0, VINTED_DETAIL_PAR_RUN);
       if (file.length) {
         const det = await lireDetailsVentesVinted(file);
         if (det?.rows?.length) bilanDetail = await envoyerVentesRelevees(token, "vinted", det.rows);
         const mem = [...deja, ...(det?.faits ?? [])];
         etat.vinted = { ...(etat.vinted ?? {}), detailles: mem.slice(-VINTED_DETAIL_MEMOIRE) };
-        console.log(`[ventes][vinted] détail : ${det?.faits?.length ?? 0} lu(s), ${det?.echecs ?? 0} échec(s), ${(lecture.aDetailler ?? []).length - deja.size - file.length} en attente`);
+        console.log(`[ventes][vinted] détail : ${det?.faits?.length ?? 0} lu(s), ${det?.echecs ?? 0} échec(s), ${restants.length - file.length} en attente au prochain passage`);
       }
     }
 
