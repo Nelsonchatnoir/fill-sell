@@ -4,6 +4,11 @@ import { etatDepuisCapture } from "../_shared/vinted-etat.ts";
 // Archive des erreurs remplacées (2026-09-12) : même fichier que l'app et
 // update-job-status — une remise en pending automatique n'efface plus le motif.
 import { archiverErreur } from "../_shared/erreurs-archivees.js";
+// Liste FERMÉE des CDN des plateformes dont on importe des annonces — UNE
+// seule source, partagée avec generate-listing (elle a divergé une fois : le
+// filet ne connaissait que Vinted et les photos Beebs d'un article importé
+// n'étaient jamais rapatriées, 19/09).
+import { estCdnPlateforme } from "../_shared/photos-rapatriement.ts";
 
 // handler-watch — surveillance QUASI TEMPS RÉEL des handlers de l'extension.
 // Appelée par pg_cron toutes les 3 min (header x-cron-secret, même mécanique
@@ -115,19 +120,12 @@ const esc = (s: unknown) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // ── Rapatriement des photos CDN (filet publication, 2026-08-27) ─────────────
-// Mêmes gardes que generate-listing/republish-capture-photos : hôtes Vinted
-// FERMÉS (jamais un proxy ouvert), taille plafonnée, timeout, séquentiel.
+// Mêmes gardes que generate-listing/republish-capture-photos : hôtes de
+// plateformes FERMÉS (jamais un proxy ouvert), taille plafonnée, timeout,
+// séquentiel. La liste des hôtes vit dans _shared/photos-rapatriement.ts.
 const PHOTO_BUCKET = "listing-photos";
 const PHOTO_MAX_OCTETS = 10 * 1024 * 1024;
 const PHOTO_TIMEOUT_MS = 15_000;
-
-function estCdnVinted(u: unknown): u is string {
-  if (typeof u !== "string") return false;
-  try {
-    const url = new URL(u);
-    return url.protocol === "https:" && /(^|\.)vinted\.(net|fr|com)$/i.test(url.hostname);
-  } catch { return false; }
-}
 
 // Les photos d'un job coexistent en deux formes : strings nues et objets
 // {type, url} — même frontière que le réalignement de generate-listing.
@@ -1475,7 +1473,19 @@ serve(async (req) => {
   }
 
   // ── Photos encore HORS FillSell au moment de publier (2026-08-27) ─────────
-  // Cas réel : job leboncoin 94cbe6d9 (« Plateau vintage », Sandrine) —
+  // ⚠️ 19/09 : ce filet ne connaissait que le CDN VINTED. Un article importé
+  // d'un relevé Beebs/Leboncoin/Opla/eBay garde les URLs de SA plateforme —
+  // il passait donc à travers les deux mailles. Cas réel : compte Amiral,
+  // 7 photos sur cdn.beebs.app, job leboncoin 14052f3e 'failed' et job opla
+  // 4de01b3d qui rejouait « photo 1 illisible (Failed to fetch) » toutes les
+  // 5 min. Mesuré le même jour : cdn.beebs.app ne sert AUCUN en-tête CORS
+  // (l'image se charge en <img> mais `fetch()` la refuse), alors que
+  // img.leboncoin.fr, i.ebayimg.com et le CloudFront d'Opla l'acceptent
+  // aujourd'hui — « aujourd'hui » étant justement ce qui vient de changer
+  // chez Beebs. Le filet couvre donc les CINQ sources d'import
+  // (estCdnPlateforme, _shared/photos-rapatriement.ts), pas la seule qui
+  // refuse à cette heure.
+  // Cas d'origine : job leboncoin 94cbe6d9 (« Plateau vintage », Sandrine) —
   // generate-listing avait rapatrié 7 photos sur 8 (HTTP 520 Storage
   // transitoire, une seule tentative, `continue` silencieux), la restante sur
   // images1.vinted.net a fait échouer la publication sur la page de dépôt
@@ -1515,13 +1525,13 @@ serve(async (req) => {
     ]);
     // deno-lint-ignore no-explicit-any
     const candidats = ([...(enAttente ?? []), ...(rates ?? [])] as any[])
-      .filter((j) => Array.isArray(j.photos) && (j.photos as unknown[]).some((p) => estCdnVinted(urlDePhoto(p))));
+      .filter((j) => Array.isArray(j.photos) && (j.photos as unknown[]).some((p) => estCdnPlateforme(urlDePhoto(p))));
     for (const j of candidats) {
       const pf = { ...(j.platform_fields ?? {}) };
       const balayages = Number(pf.photo_rehost_sweeps ?? 0);
       if (!Number.isFinite(balayages) || balayages >= 2) continue;
       pf.photo_rehost_sweeps = balayages + 1;
-      const externes = [...new Set((j.photos as unknown[]).map(urlDePhoto).filter(estCdnVinted))] as string[];
+      const externes = [...new Set((j.photos as unknown[]).map(urlDePhoto).filter(estCdnPlateforme))] as string[];
       const remplacements = new Map<string, string>();
       for (let i = 0; i < externes.length; i++) {
         const nv = await rapatriePhoto(
@@ -1545,7 +1555,7 @@ serve(async (req) => {
         patch.status = "pending";
         patch.error =
           "Reprise automatique : une photo de l'annonce était restée hébergée hors FillSell " +
-          "(article importé du dressing). Elle a été rapatriée et la publication repart toute seule — rien à faire.";
+          "(article importé d'une autre plateforme). Elle a été rapatriée et la publication repart toute seule — rien à faire.";
       }
       const { data: majJob, error: upJobErr } = await supabase
         .from("cross_post_jobs")
