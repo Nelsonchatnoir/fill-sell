@@ -277,8 +277,8 @@ export function boutonPrincipal(texte: string, url: string): Html {
     `<tr><td align="left" class="fs-pad" style="padding:30px 34px 4px 34px; background-color:#FFFFFF;">` +
       `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="fs-btn" style="border-radius:14px;">` +
       `<tr><td align="center" valign="middle" bgcolor="#1D9E75" style="background-color:#1D9E75; background-image:linear-gradient(135deg,#25B083 0%,#17835F 100%); border-radius:14px; box-shadow:0 10px 24px rgba(29,158,117,0.32); font-size:0; line-height:0; mso-padding-alt:18px 36px;">` +
-      `<a href="${href}" target="_blank" class="fs-btn-txt" style="display:block; padding:18px 36px; font-family:${POLICE}; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#FFFFFF !important; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">` +
-      `<span style="color:#FFFFFF !important; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">${echapper(texte)}` +
+      `<a href="${href}" target="_blank" class="fs-btn-txt" style="display:block; box-sizing:border-box; text-align:center; padding:18px 36px; font-family:${POLICE}; font-size:17px; font-weight:700; letter-spacing:-0.01em; color:#FFFFFE !important; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">` +
+      `<span style="color:#FFFFFE !important; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">${echapper(texte)}` +
       `<span style="display:inline-block; width:12px; font-size:0; line-height:20px;">&nbsp;</span>&#8594;</span>` +
       `</a>` +
       `</td></tr></table>` +
@@ -299,7 +299,7 @@ export function boutonSecondaire(texte: string, url: string): Html {
     `<tr><td align="left" class="fs-pad" style="padding:26px 34px 0 34px; background-color:#FFFFFF;">` +
       `<table role="presentation" cellpadding="0" cellspacing="0" border="0" class="fs-btn" style="border-radius:12px;">` +
       `<tr><td align="center" valign="middle" bgcolor="#FFFFFF" style="background-color:#FFFFFF; border:1px solid #C9DED6; border-radius:12px; font-size:0; line-height:0; mso-padding-alt:14px 26px;">` +
-      `<a href="${href}" target="_blank" style="display:block; padding:14px 26px; font-family:${POLICE}; font-size:15px; font-weight:700; color:#17835F; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">${echapper(texte)}</a>` +
+      `<a href="${href}" target="_blank" style="display:block; box-sizing:border-box; text-align:center; padding:14px 26px; font-family:${POLICE}; font-size:15px; font-weight:700; color:#17835F; text-decoration:none; line-height:20px; mso-line-height-rule:exactly;">${echapper(texte)}</a>` +
       `</td></tr></table>` +
       `</td></tr>`,
   );
@@ -671,11 +671,27 @@ export function renderEmail(opts: OptionsEmail): string {
      bouton gardait donc son vert et perdait son texte blanc.
      Le fond reste #1D9E75 dans les deux modes : le contraste du blanc
      dessus est de 3,6:1, au-dessus du seuil « texte large » (17 px, 700). */
-  .fs-btn-txt, .fs-btn-txt span { color:#FFFFFF !important; }
+  /* ⚠️ #FFFFFE, PAS #FFFFFF — ET CE N'EST PAS UNE COQUILLE (19/09/2026).
+     Relevé sur Gmail Android en thème sombre : le libellé du bouton
+     ressortait SOMBRE sur le vert, malgré les trois ceintures posées le
+     14/09 (inline !important sur le <a>, sur le <span>, et ces règles-ci).
+     Aucune ne pouvait gagner : Gmail n'applique pas une feuille de styles
+     concurrente, il RÉÉCRIT les couleurs après coup, et sa règle est de
+     basculer les teintes NEUTRES (le blanc et le noir purs) tout en laissant
+     les couleurs SATURÉES tranquilles. C'est visible dans le même message :
+     le fond vert et le wordmark teal sont intacts, le corps de texte
+     gris-noir est devenu clair — et #FFFFFF, la plus neutre des valeurs,
+     a basculé avec lui.
+     Un point de bleu en moins suffit à sortir de la catégorie « neutre » :
+     #FFFFFE n'est pas inversé, et l'écart avec le blanc pur (1/255 sur un
+     seul canal) n'est perceptible par aucun œil ni aucun écran. Le blanc
+     reste un blanc, le contraste sur #1D9E75 ne bouge pas (3,6:1, au-dessus
+     du seuil « texte large » à 17 px / 700). */
+  .fs-btn-txt, .fs-btn-txt span { color:#FFFFFE !important; }
   [data-ogsc] .fs-btn-txt, [data-ogsc] .fs-btn-txt span,
-  [data-ogsb] .fs-btn-txt, [data-ogsb] .fs-btn-txt span { color:#FFFFFF !important; }
+  [data-ogsb] .fs-btn-txt, [data-ogsb] .fs-btn-txt span { color:#FFFFFE !important; }
   @media (prefers-color-scheme: dark) {
-    .fs-btn-txt, .fs-btn-txt span { color:#FFFFFF !important; }
+    .fs-btn-txt, .fs-btn-txt span { color:#FFFFFE !important; }
   }
 
   @media only screen and (max-width:620px) {
@@ -683,7 +699,22 @@ export function renderEmail(opts: OptionsEmail): string {
     .fs-pad { padding-left:22px !important; padding-right:22px !important; }
     .fs-h1 { font-size:25px !important; line-height:32px !important; }
     .fs-body { font-size:16px !important; line-height:27px !important; }
-    .fs-btn, .fs-btn a { width:100% !important; display:block !important; text-align:center !important; }
+    /* ── LE LIBELLÉ ÉTAIT DÉCENTRÉ DE 36 PX SUR MOBILE (19/09/2026) ────────
+       La règle posait width:100% sur le <a> EN PLUS de la table. Or le <a>
+       porte 36 px de padding de chaque côté et le modèle de boîte par défaut
+       (content-box) AJOUTE ce padding à la largeur : la boîte du lien faisait
+       donc « largeur du bouton + 72 px ». Le texte, centré dans cette boîte
+       trop large, tombait 36 px à droite du milieu réel du bouton, et la
+       flèche finale sortait carrément du vert — coupée par le coin arrondi.
+       C'est exactement ce que montrait le rendu Gmail mobile.
+
+       Le width:100% sur le <a> ne servait à rien : un display:block occupe
+       déjà toute la largeur de sa cellule. On le retire, c'est la TABLE qui
+       porte la pleine largeur. Le texte se centre alors sur le milieu vrai
+       du bouton, dans tous les clients — y compris ceux qui ignorent
+       box-sizing, gardé en ceinture pour les autres. */
+    .fs-btn { width:100% !important; }
+    .fs-btn a { box-sizing:border-box !important; display:block !important; text-align:center !important; }
     .fs-hide-sm { display:none !important; }
   }
 </style>
