@@ -370,16 +370,50 @@ serve(async (req) => {
       `amount_due=${invoice.amount_due ?? "?"}`
     );
 
+    // ── POURQUOI LE MAIL CLIENT N'EST JAMAIS PARTI (relevé du 19/09/2026) ────
+    // Zéro ligne 'payment_failed:%' dans email_logs depuis la mise en service
+    // du 07/08, alors que des échecs RÉELS ont eu lieu (05/09 et 08/09, tous
+    // deux traités à la main ensuite). La cause n'est ni Stripe, ni la dédup :
+    // email-tunnel n'envoie au client que si user_id ET email sont présents,
+    // et user_id arrivait à NULL.
+    //
+    // profiles.stripe_customer_id n'est écrit qu'APRÈS un paiement abouti
+    // (checkout.session.completed / invoice.paid) ou sur le chemin d'upgrade
+    // in situ. Une PREMIÈRE souscription qui échoue ne l'a donc jamais écrit :
+    // la recherche par customer id ne rend rien, et tous les échecs observés
+    // étaient précisément des premières souscriptions. L'alerte ops partait
+    // bien (elle, ne dépend de rien) — c'est pour ça que l'incident était vu
+    // sans que le client soit prévenu.
+    //
+    // Second filet : l'ADRESSE de la facture. C'est celle que la personne a
+    // saisie dans Checkout, et elle existe dès la première tentative.
     let userId: string | null = null;
     let lang: string | null = null;
+    let emailCompte: string | null = null;
     if (customerId) {
       const { data: prof } = await supabase
         .from("profiles")
-        .select("id, lang")
+        .select("id, lang, email")
         .eq("stripe_customer_id", customerId)
         .maybeSingle();
       userId = prof?.id ?? null;
       lang = prof?.lang ?? null;
+      emailCompte = prof?.email ?? null;
+    }
+    const emailFacture = invoice.customer_email ?? null;
+    if (!userId && emailFacture) {
+      const adresse = emailFacture.trim().toLowerCase();
+      const { data: parMail } = await supabase
+        .from("profiles")
+        .select("id, lang, email")
+        .ilike("email", adresse)
+        .maybeSingle();
+      if (parMail?.id) {
+        userId = parMail.id;
+        lang = lang ?? parMail.lang ?? null;
+        emailCompte = emailCompte ?? parMail.email ?? null;
+        console.log(`[webhook] compte retrouvé par adresse (pas de stripe_customer_id) : ${userId}`);
+      }
     }
 
     // Cause FINE via le PaymentIntent : authentication_required ≠ carte
@@ -423,7 +457,10 @@ serve(async (req) => {
       : "Premium";
     await signalerPaiementEchoue({
       user_id: userId,
-      email: invoice.customer_email ?? null,
+      // L'adresse de la facture d'abord (celle que la personne vient de
+      // saisir), le profil en repli — une facture sans customer_email ne doit
+      // plus faire sauter le mail.
+      email: emailFacture ?? emailCompte,
       lang,
       invoice_id: invoice.id,
       cause,
