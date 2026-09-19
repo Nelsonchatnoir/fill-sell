@@ -86,6 +86,12 @@ import {
   republishVisiblePour, relancerRepublishVinted,
 } from '../utils/vintedSync';
 
+// Plafond de la description saisie à la main (2026-09-19). UNE constante,
+// trois usages (slice à la frappe, maxLength, compteur) : le chiffre était
+// écrit trois fois. Cf. le bloc du <textarea> pour la mesure qui a permis de
+// passer de 200 à 500.
+const DESC_MANUELLE_MAX = 500;
+
 // ── Échecs actionnables (chantier onboarding 2026-07-27) ──────────────────────
 // Les erreurs « connexion requise » et « brouillon LBC en cours » portent déjà
 // la marche à suivre (messages humanisés côté extension) — mais elles étaient
@@ -7604,17 +7610,35 @@ const StockTab = memo(function StockTab({
           )}
           <div>
             <div style={{fontSize:11,fontWeight:700,color:"#A3A9A6",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:6}}>📝 {lang==='fr'?"Description (optionnel)":"Description (optional)"}</div>
+            {/* ── 200 → 500 CARACTÈRES (2026-09-19) ────────────────────────
+                Le plafond était un `maxLength` d'écran, écrit à TROIS
+                endroits (slice, maxLength, compteur) — il ne venait ni de la
+                base (`inventaire.description` est un `text` sans limite) ni
+                d'une plateforme. Un vendeur Business l'a demandé : « 200
+                caractères c'est trop peu, le but est d'avoir une description
+                la plus complète possible ».
+                MESURÉ AVANT DE LE LEVER, sur les publications RÉUSSIES du
+                parc — la plus longue description acceptée par chaque
+                plateforme : Leboncoin 1 639 · eBay 1 310 · Vinted 1 310 ·
+                Beebs 1 126 · Opla 1 067 (plafond relevé 2 000). Aucune ne
+                refusera 500 : on ne déplace donc pas le refus au moment de
+                la publication.
+                ⚠️ Ce champ n'est pas celui qui part : generate-listing
+                réécrit la description par plateforme. Le plafond bridait
+                surtout ce que la personne DONNE à l'IA.
+                UNE constante, trois usages : les trois chiffres avaient déjà
+                commencé à diverger de leur intention. */}
             <textarea
               value={iDesc}
-              onChange={e=>setIDesc(e.target.value.slice(0,200))}
+              onChange={e=>setIDesc(e.target.value.slice(0,DESC_MANUELLE_MAX))}
               placeholder={lang==='fr'?"Ex: Lot de 3 pièces, taille M, état neuf...":"Ex: Bundle of 3, size M, brand new..."}
-              maxLength={200}
-              rows={2}
+              maxLength={DESC_MANUELLE_MAX}
+              rows={4}
               style={{width:"100%",padding:"10px 14px",borderRadius:14,border:`1.5px solid ${iDesc?C.teal:"rgba(0,0,0,0.12)"}`,fontSize:13,color:C.text,fontFamily:"inherit",resize:"none",outline:"none",background:"#fff",transition:"border-color 0.15s",boxSizing:"border-box",lineHeight:1.5}}
               onFocus={e=>e.currentTarget.style.borderColor=C.teal}
               onBlur={e=>e.currentTarget.style.borderColor=iDesc?C.teal:"rgba(0,0,0,0.12)"}
             />
-            <div style={{fontSize:10,color:C.label,textAlign:"right",marginTop:2}}>{iDesc.length}/200</div>
+            <div style={{fontSize:10,color:C.label,textAlign:"right",marginTop:2}}>{iDesc.length}/{DESC_MANUELLE_MAX}</div>
           </div>
           <div>
             <Field label={lang==='fr'?"Emplacement (optionnel)":"Storage location (optional)"} value={iEmplacement} set={setIEmplacement} placeholder={lang==='fr'?"Ex: Tiroir 45A, Portant 3, Étagère B...":"Ex: Drawer 45A, Rack 3, Shelf B..."} icon="📦"/>
