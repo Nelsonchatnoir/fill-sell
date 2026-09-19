@@ -992,6 +992,10 @@ serve(async (req) => {
   // dans un menu Chrome qu'il ignore, pour un retrait qu'il n'a pas demandé
   // deux fois, c'est notre défaut, pas le sien (décision Nico, 19/09). On dit
   // ce que NOUS faisons, et ce qui reste vrai de l'annonce.
+  // Le message que l'EXTENSION écrit (background.js, OPLA_MSG_ACCES). On le
+  // reconnaît par son début pour ne réécrire QUE lui — jamais un message
+  // qu'on aurait déjà posé, jamais celui d'une autre cause.
+  const PREFIXE_OPLA_ACCES_EXTENSION = "Opla attend ton autorisation";
   const OPLA_ACCES_MSG_RETRAIT =
     "Le retrait sur Opla n'a pas pu se faire : l'accès à opla.co a été refusé à l'extension. " +
     "On réessaie tout seuls. ⚠️ En attendant, l'annonce est peut-être encore en ligne sur Opla " +
@@ -1167,13 +1171,18 @@ serve(async (req) => {
       for (const j of rows) {
         const pf = { ...(j.platform_fields ?? {}) };
         const reprises = Number(pf.opla_acces_reprises) || 0;
-        // Le message d'abord, une seule fois : il est lu dans l'app même si la
-        // reprise n'a pas encore eu lieu. On stampe AUSSI needs_user_vu_erreur
-        // pour que la réécriture ne passe pas pour un « nouvel épisode » et ne
-        // remette pas le compteur des 72 h à zéro à chaque passage.
-        if (!pf.opla_acces_message_pose) {
+        // Le message, réécrit CHAQUE FOIS que celui de l'extension revient —
+        // et il revient : à chaque re-parking, marquerAttenteAccesOpla réécrit
+        // `error` avec sa formulation « ouvre le menu FillSell ». VÉRIFIÉ EN
+        // PROD le 19/09 à 10:06 : un drapeau posé une seule fois se faisait
+        // écraser au premier re-parking et la personne relisait le message
+        // Chrome. Le test porte donc sur le TEXTE, jamais sur un drapeau : il
+        // est idempotent (on ne réécrit que ce qui vient de l'extension) et il
+        // se tait de lui-même dès que les reprises cessent.
+        // On stampe AUSSI needs_user_vu_erreur pour que la réécriture ne passe
+        // pas pour un « nouvel épisode » au balayage des 72 h.
+        if (String(j.error ?? "").startsWith(PREFIXE_OPLA_ACCES_EXTENSION)) {
           const msg = j.action === "delete" ? OPLA_ACCES_MSG_RETRAIT : OPLA_ACCES_MSG_DEPOT;
-          pf.opla_acces_message_pose = true;
           pf.needs_user_vu_erreur = msg.slice(0, 200);
           const { error: mErr } = await supabase
             .from("cross_post_jobs")
