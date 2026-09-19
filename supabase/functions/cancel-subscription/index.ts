@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.18.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { envoyerEmail } from "../_shared/desinscription.ts";
+import { dateSeuleParis, langue, mailResiliation } from "../_shared/emails-fillsell.ts";
 
 // ⚠️ http://localhost:5173 (Vite dev) : sans lui, tout appel depuis le développement
 // casse dès le PRÉFLIGHT CORS (« header has a value 'https://fillsell.app' that is not
@@ -38,8 +40,6 @@ const supabaseAdmin = createClient(
 // 'resiliation_ar' ne doit donc JAMAIS entrer dans l'index partiel
 // email_logs_one_shot_unique — sinon la deuxième résiliation d'un même
 // utilisateur échouerait en 23505 et l'accusé ne partirait pas.
-const RESEND_API = "https://api.resend.com/emails";
-const FROM = "FillSell <support@fillsell.app>";
 const TYPE_AR = "resiliation_ar";
 
 function nomFormule(p: { is_business?: boolean; is_pro?: boolean }): string {
@@ -48,61 +48,58 @@ function nomFormule(p: { is_business?: boolean; is_pro?: boolean }): string {
   return "Premium";
 }
 
+/**
+ * L'accusé part par la PORTE UNIQUE, dans le gabarit de marque.
+ *
+ * Ce qui a changé le 19/09/2026 :
+ *  · il avait AUCUN habillage — un <div> nu, sans logo, sans en-tête, sans
+ *    pied, sans mentions légales. Pour un document qui sert de preuve de
+ *    résiliation, ça ressemblait à un mail cassé ;
+ *  · il signait « L'équipe FillSell » quand tout le reste du parc signe
+ *    « Nico » ;
+ *  · il n'existait qu'en français, alors que profiles.lang est lu partout
+ *    ailleurs ;
+ *  · ⚠️ la date de FIN d'accès était formatée en UTC (getUTCDate/Month/Year,
+ *    plus bas dans le fichier) alors que la date de DEMANDE annonçait « heure
+ *    de Paris » : un jour d'écart possible en fin de mois. Les deux passent
+ *    par dateParis/dateSeuleParis.
+ *
+ * Toujours non bloquant : l'annulation est déjà actée chez Stripe quand on
+ * arrive ici, une panne de mail ne doit ni la faire échouer ni la rejouer.
+ */
 async function envoyerAccuseResiliation(
   email: string,
   userId: string,
   formule: string,
-  finAcces: string | null,
+  finAcces: Date | null,
+  lang: string | null | undefined,
 ): Promise<void> {
-  const cle = Deno.env.get("RESEND_API_KEY");
-  if (!cle) {
-    console.error("[cancel-subscription] RESEND_API_KEY absente — accusé de réception NON envoyé");
-    return;
-  }
-  const demandeLe = new Date().toLocaleString("fr-FR", {
-    timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-  const ligneFin = finAcces
-    ? `Ton accès ${formule} reste actif jusqu'au <strong>${finAcces}</strong> inclus. Aucun nouveau prélèvement ne sera effectué après cette date.`
-    : `Ton accès ${formule} prend fin à l'issue de la période déjà payée. Aucun nouveau prélèvement ne sera effectué.`;
-  const html = `<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:15px;line-height:1.6;color:#0F172A">
-<p>Bonjour,</p>
-<p>Nous confirmons la <strong>résiliation de ton abonnement FillSell</strong>.</p>
-<ul>
-<li>Demande reçue le <strong>${demandeLe}</strong> (heure de Paris)</li>
-<li>Formule résiliée : <strong>${formule}</strong></li>
-<li>${ligneFin}</li>
-</ul>
-<p>Ton compte, ton inventaire et ton historique de ventes <strong>restent accessibles</strong> : tu repasses simplement en formule gratuite. Rien n'est supprimé.</p>
-<p>Si tu changes d'avis, tu peux te réabonner à tout moment depuis l'application.</p>
-<p style="color:#64748B;font-size:13px">Cet e-mail est l'accusé de réception de ta demande de résiliation. Conserve-le.</p>
-<p>— L'équipe FillSell</p>
-</div>`;
   try {
-    const res = await fetch(RESEND_API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cle}` },
-      body: JSON.stringify({
-        from: FROM,
-        to: [email],
-        subject: "Ta résiliation FillSell est bien enregistrée",
-        html,
-      }),
+    const { sujet, html } = mailResiliation(
+      { formule, demandeLe: new Date(), finAcces },
+      langue(lang),
+    );
+    const r = await envoyerEmail({
+      to: email,
+      subject: sujet,
+      html,
+      // ⛔ TYPE RÉCURRENT : un même compte peut résilier plusieurs fois dans
+      // sa vie. 'resiliation_ar' ne doit JAMAIS entrer dans l'index partiel
+      // email_logs_one_shot_unique — sinon la deuxième résiliation échouerait
+      // en 23505 et l'accusé, exigé par l'article L215-1-1, ne partirait pas.
+      type: TYPE_AR,
+      userId,
+      categorie: "support",
+      dedup: "journal",
     });
-    if (!res.ok) {
-      console.error(`[cancel-subscription] Resend a refusé l'accusé (HTTP ${res.status}) :`, await res.text());
-      return;
+    if (r.envoye) {
+      console.log(`[cancel-subscription] accusé de réception envoyé à l'utilisateur ${userId}`);
+    } else {
+      console.error("[cancel-subscription] accusé NON envoyé :", r.motif ?? "inconnu", r.status ?? "");
     }
-    console.log(`[cancel-subscription] accusé de réception envoyé à l'utilisateur ${userId}`);
   } catch (e) {
     console.error("[cancel-subscription] envoi de l'accusé impossible :", (e as Error)?.message ?? e);
-    return;
   }
-  // Trace : jamais bloquante, jamais muette. Une violation 23505 ici voudrait
-  // dire que le type a été ajouté par erreur à l'index one-shot.
-  const { error } = await supabaseAdmin.from("email_logs").insert({ user_id: userId, email_type: TYPE_AR });
-  if (error) console.error("[cancel-subscription] email_logs (accusé) :", error.message);
 }
 
 serve(async (req) => {
@@ -172,9 +169,14 @@ serve(async (req) => {
       const canceled = await stripe.subscriptions.update(subscriptions.data[0].id, {
         cancel_at_period_end: true,
       });
-      // current_period_end = date réelle de fin de période payée
-      const d = new Date(canceled.current_period_end * 1000);
-      periodEnd = `${String(d.getUTCDate()).padStart(2,"0")}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${d.getUTCFullYear()}`;
+      // current_period_end = date réelle de fin de période payée.
+      // ⚠️ HEURE DE PARIS, pas UTC : jusqu'au 19/09 cette ligne formatait en
+      // UTC (getUTCDate/getUTCMonth/getUTCFullYear) pendant que l'accusé
+      // annonçait « heure de Paris » juste au-dessus. Une période finissant le
+      // 30 à 23 h 30 UTC s'affichait « 30/09 » ici et « 01/10 » à Paris : un
+      // jour d'écart sur le document qui sert de preuve de résiliation.
+      const fin = new Date(canceled.current_period_end * 1000);
+      periodEnd = dateSeuleParis(fin);
       console.log("[cancel-subscription] cancel_at_period_end=true, fin le:", periodEnd);
       await supabaseAdmin.from("profiles").update({ subscription_period_end: periodEnd }).eq("id", user.id);
       // L'accusé ne part QUE d'ici : Stripe a accepté l'annulation, la date de
@@ -182,7 +184,11 @@ serve(async (req) => {
       const destinataire = user?.email ?? null;
       const idUtilisateur = user?.id ?? null;
       if (destinataire && idUtilisateur) {
-        await envoyerAccuseResiliation(destinataire, idUtilisateur, nomFormule(profile), periodEnd);
+        const { data: profilLangue } = await supabaseAdmin
+          .from("profiles").select("lang").eq("id", idUtilisateur).maybeSingle();
+        await envoyerAccuseResiliation(
+          destinataire, idUtilisateur, nomFormule(profile), fin, profilLangue?.lang,
+        );
       } else {
         console.error("[cancel-subscription] utilisateur sans e-mail — accusé de réception impossible");
       }

@@ -10,7 +10,8 @@
 // le JWT (auth.getUser), côté serveur. Un client compromis ne peut donc pas
 // faire envoyer ce mail à un tiers — la fonction n'écrit qu'à son porteur.
 //
-// Mail TRANSACTIONNEL (l'utilisateur vient de le demander, il l'attend) :
+// Mail TRANSACTIONNEL (l'utilisateur vient de le demander, il l'attend) — la
+// catégorie 'support' de la porte le porte désormais :
 // - pas d'en-tête List-Unsubscribe, pas de garde `marketing_optout` : un
 //   opt-out marketing ne doit pas bloquer un lien qu'on vient de réclamer ;
 // - journalisé en email_logs sous le type RÉCURRENT 'extension_link' — donc
@@ -24,6 +25,8 @@
 // fois. Sans conséquence — contrairement à un doublon de mail marketing.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { envoyerEmail } from "../_shared/desinscription.ts";
+import { langue, mailLienExtension } from "../_shared/emails-fillsell.ts";
 
 // http://localhost:5173 (Vite dev) obligatoire : sans lui tout appel depuis le
 // développement casse au PRÉFLIGHT CORS.
@@ -34,11 +37,6 @@ const ALLOWED_ORIGINS = [
   "http://localhost:5173",
 ];
 
-const RESEND_API = "https://api.resend.com/emails";
-const FROM = "FillSell <support@fillsell.app>";
-const LOGO_URL = "https://fillsell.app/logo.png";
-const EXTENSION_URL = "https://fillsell.app/extension";
-
 const TYPE_LOG = "extension_link";
 const FENETRE_MS = 60_000;
 
@@ -46,100 +44,6 @@ const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
-
-// Gabarit identique à celui d'email-tunnel (en-tête logo, carte blanche sur
-// fond sable, pied fillsell.app) : dupliqué et non partagé, comme le reste des
-// fonctions de ce projet.
-function emailHtml(isFr: boolean): string {
-  const content = `
-    <h1 style="margin:0 0 12px;font-size:24px;font-weight:800;letter-spacing:-0.02em;
-      color:#111827;font-family:sans-serif;">
-      ${isFr ? "Ton lien pour installer l'extension" : "Your link to install the extension"}
-    </h1>
-    <p style="color:#6B7280;font-size:15px;line-height:1.65;margin:0 0 20px;
-      font-family:sans-serif;">
-      ${isFr
-        ? "Ouvre ce mail <strong>sur ton ordinateur</strong>, dans Chrome, et clique sur le bouton. L'installation prend une minute, une seule fois."
-        : "Open this email <strong>on your computer</strong>, in Chrome, and click the button. Installing takes a minute, once."}
-    </p>
-    <a href="${EXTENSION_URL}" class="cta"
-       style="display:block;text-align:center;background:#2DD4BF;color:#fff;
-         font-weight:800;font-size:15px;padding:14px 24px;border-radius:12px;
-         text-decoration:none;font-family:sans-serif;margin:0 0 14px;">
-      ${isFr ? "Installer l'extension FillSell" : "Install the FillSell extension"}
-    </a>
-    <p style="color:#9CA3AF;font-size:12.5px;line-height:1.6;margin:0 0 24px;
-      font-family:sans-serif;word-break:break-all;">
-      ${isFr ? "Le bouton ne marche pas ? Copie ce lien&nbsp;: " : "Button not working? Copy this link: "}
-      <a href="${EXTENSION_URL}" style="color:#3EACA0;">${EXTENSION_URL}</a>
-    </p>
-    <div style="background:#F0FDF9;border-radius:12px;padding:20px;margin:0 0 20px;">
-      <p style="margin:0 0 8px;font-weight:800;font-size:15px;color:#111827;font-family:sans-serif;">
-        ${isFr ? "Ce qui se passe ensuite" : "What happens next"}
-      </p>
-      <p style="margin:0;color:#374151;font-size:14px;line-height:1.65;font-family:sans-serif;">
-        ${isFr
-          ? "Dès l'extension installée, ton dressing Vinted remonte tout seul dans FillSell — titres, prix, photos. On lit tes annonces&nbsp;: rien n'est publié, modifié ni supprimé. Tu retrouveras tes articles dans ton stock, même si tu as fermé l'application."
-          : "As soon as the extension is installed, your Vinted wardrobe flows into FillSell on its own — titles, prices, photos. We read your listings: nothing is published, edited or deleted. Your items will be in your stock, even if you closed the app."}
-      </p>
-    </div>
-    <p style="color:#111827;font-size:15px;line-height:1.5;margin:0;
-      font-family:sans-serif;font-weight:700;">
-      Nico<br><span style="font-weight:500;color:#6B7280;font-size:13px;">FillSell</span>
-    </p>`;
-  return `<!DOCTYPE html>
-<html lang="${isFr ? "fr" : "en"}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@1,800&display=swap');
-body{margin:0;padding:0;background:#F2F2EE;}
-.brand-name{
-  background:linear-gradient(135deg,#3EACA0 0%,#E8956D 100%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  background-clip:text;
-}
-a.cta:hover{background:#26b8a6!important;}
-</style>
-</head>
-<body>
-<div style="background:#F2F2EE;padding:16px 0 48px;">
-  <div style="max-width:560px;margin:0 auto;padding:0 16px;">
-    <div style="text-align:center;padding:32px 0 24px;">
-      <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
-        <tr>
-          <td style="vertical-align:middle;padding-right:10px;">
-            <img src="${LOGO_URL}" width="40" height="40" alt="FillSell"
-                 style="display:block;border-radius:10px;">
-          </td>
-          <td style="vertical-align:middle;">
-            <span class="brand-name"
-                  style="font-family:'Plus Jakarta Sans',sans-serif;font-style:italic;
-                    font-weight:800;font-size:22px;color:#3EACA0;
-                    background:linear-gradient(135deg,#3EACA0 0%,#E8956D 100%);
-                    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-                    background-clip:text;">FillSell</span>
-          </td>
-        </tr>
-      </table>
-    </div>
-    <div style="background:#fff;border-radius:16px;padding:32px;
-      box-shadow:0 1px 4px rgba(0,0,0,0.06);">
-      ${content}
-    </div>
-    <div style="text-align:center;padding:24px 0 0;
-      font-size:12px;color:#9CA3AF;font-family:sans-serif;line-height:1.6;">
-      FillSell ·
-      <a href="https://fillsell.app" style="color:#9CA3AF;text-decoration:none;">
-        fillsell.app
-      </a>
-    </div>
-  </div>
-</div>
-</body>
-</html>`;
-}
 
 serve(async (req) => {
   const origin = req.headers.get("origin") || "";
@@ -198,60 +102,35 @@ serve(async (req) => {
     }
   }
 
-  const resendKey = Deno.env.get("RESEND_API_KEY");
-  if (!resendKey) {
-    console.error("send_extension_link_sans_cle");
-    return json({ ok: false, reason: "send_failed" }, 500);
-  }
+  // L'envoi, la ligne email_logs et le journal des échecs vivent dans la
+  // PORTE UNIQUE (_shared/desinscription.ts). Cette fonction ne fait plus que
+  // authentifier, limiter le débit, et lire le verdict.
+  //
+  // dedup 'journal' : type RÉCURRENT (renvoyer le lien est légitime), donc
+  // écriture APRÈS envoi, et surtout PAS dans l'index one-shot.
+  // categorie 'support' : l'utilisateur vient de réclamer ce lien — un opt-out
+  // marketing ne doit pas le bloquer.
+  const { sujet, html } = mailLienExtension(langue(lang));
+  const r = await envoyerEmail({
+    to: destinataire,
+    subject: sujet,
+    html,
+    type: TYPE_LOG,
+    userId: authUser.id,
+    categorie: "support",
+    dedup: "journal",
+  });
 
-  const isFr = lang !== "en";
-  let httpResend = 0;
-  let detailResend: unknown = null;
-  try {
-    const res = await fetch(RESEND_API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
-      body: JSON.stringify({
-        from: FROM,
-        to: [destinataire],
-        subject: isFr
-          ? "Ton lien pour installer l'extension FillSell"
-          : "Your link to install the FillSell extension",
-        html: emailHtml(isFr),
-      }),
-    });
-    httpResend = res.status;
-    const brut = await res.text();
-    try { detailResend = JSON.parse(brut); } catch { detailResend = brut; }
-    if (!res.ok) {
-      console.error("send_extension_link_resend_echec", JSON.stringify({ http: httpResend, detail: detailResend }));
-      return json({ ok: false, reason: "send_failed" }, 502);
-    }
-  } catch (e) {
-    console.error("send_extension_link_resend_exception", String(e));
-    return json({ ok: false, reason: "send_failed" }, 502);
+  if (!r.envoye) {
+    console.error("send_extension_link_echec", JSON.stringify({ motif: r.motif, http: r.status ?? 0 }));
+    return json({ ok: false, reason: "send_failed" }, r.motif === "sans_cle" ? 500 : 502);
   }
-
-  // Journal APRÈS l'envoi, et jamais bloquant : le mail est parti, un insert
-  // raté ne doit pas faire répondre « échec » (l'app relancerait un envoi).
-  // Conséquence assumée : sans la ligne, la fenêtre de 60 s ne s'applique pas
-  // au prochain appel — un limiteur, pas une garantie d'unicité.
-  const { error: logErr } = await supabaseAdmin
-    .from("email_logs")
-    .insert({ user_id: authUser.id, email_type: TYPE_LOG });
-  if (logErr) {
-    console.error("send_extension_link_log_echec", logErr.message);
-    // Journal lu chaque matin par l'ops-digest de 8h50 — même canal que le
-    // tunnel. Son propre échec ne fait que du console.error : jamais de throw,
-    // le mail est déjà parti.
-    const { error: journalErr } = await supabaseAdmin.from("email_log_echecs").insert({
-      user_id: authUser.id,
-      email_type: TYPE_LOG,
-      code: (logErr as { code?: string }).code ?? null,
-      erreur: logErr.message,
-    });
-    if (journalErr) console.error("send_extension_link_journal_echec", journalErr.message);
-  }
+  // Journal raté : le mail est PARTI, on ne répond jamais « échec » (l'app
+  // relancerait un envoi). Conséquence assumée, inchangée : sans la ligne, la
+  // fenêtre de 60 s ne s'applique pas au prochain appel — un limiteur, pas une
+  // garantie d'unicité. La porte l'a déjà consigné dans email_log_echecs,
+  // relu chaque matin par l'ops-digest de 8h50.
+  if (r.journalise === false) console.error("send_extension_link_log_echec", destinataire);
 
   return json({ ok: true, email: destinataire }, 200);
 });
