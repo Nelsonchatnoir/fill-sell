@@ -4622,7 +4622,7 @@ const StockTab = memo(function StockTab({
   // Manual form state
   showManualForm, setShowManualForm, manualMode, setManualMode,
   iTitle, setITitle, iQuantite, setIQuantite, iMarque, setIMarque,
-  iType, setIType, iBuy, setIBuy, iPurchaseCosts, setIPurchaseCosts,
+  iType, setIType, iBuy, setIBuy, iBuyInconnu, setIBuyInconnu, iPurchaseCosts, setIPurchaseCosts,
   iAlreadySold, setIAlreadySold, iSell, setISell,
   iSellingFees, setISellingFees, iRememberSellingFees, setIRememberSellingFees,
   iDesc, setIDesc, iEmplacement, setIEmplacement, iPlateforme, setIPlateforme, iSaved, firstItemAdded,
@@ -4695,6 +4695,21 @@ const StockTab = memo(function StockTab({
     onStepperOpenChange?.(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items]);
+  // ── CE QUI MANQUE POUR AJOUTER UN ARTICLE (2026-09-19) ────────────────────
+  // UNE source pour la règle : le bouton s'en sert pour se désactiver, la
+  // phrase sous le bouton pour dire quoi. Les deux ne peuvent plus diverger —
+  // c'est précisément ce qui a laissé un vendeur devant un bouton gris muet
+  // pendant une heure (dossier Louis THONET, 19/09).
+  // Le prix d'achat reste requis, MAIS « je ne sais pas » (iBuyInconnu) le
+  // satisfait — il écrit prix_achat_inconnu, jamais 0 (règle du 03/08).
+  const champsManquantsAjout = useMemo(() => {
+    const m = [];
+    if (!iTitle) m.push(lang === 'fr' ? "le nom" : "the name");
+    if (!iBuy && !iBuyInconnu) m.push(lang === 'fr' ? "le prix d'achat" : "the purchase price");
+    if (iAlreadySold && !iSell) m.push(lang === 'fr' ? "le prix de vente" : "the sale price");
+    return m;
+  }, [iTitle, iBuy, iBuyInconnu, iAlreadySold, iSell, lang]);
+
   // ── Détail Vinted au clic « Publier » (2026-08-03 soir) ────────────────────
   // Un article importé du dressing a ses PHOTOS en base (la sync les écrit)
   // mais PAS sa description : la liste wardrobe ne la porte pas, elle ne vit
@@ -7532,8 +7547,34 @@ const StockTab = memo(function StockTab({
             </select>
           </div>
           <div>
-            <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={iBuy} set={setIBuy} placeholder="0,00" type="number" icon="🛒" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
-            {items.length===0&&<div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Prix auquel tu as acheté l'article":"Price you paid for the item"}</div>}
+            <Field label={lang==='fr'?"Prix d'achat":"Purchase price"} value={iBuyInconnu?"":iBuy} set={v=>{setIBuy(v);if(v)setIBuyInconnu(false);}} placeholder={iBuyInconnu?(lang==='fr'?"Je ne sais pas":"I don't know"):"0,00"} type="number" icon="🛒" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
+            {/* La phrase d'aide ne dépend PLUS du nombre d'articles (19/09) :
+                elle était réservée au tout premier ajout, c'est-à-dire à la
+                seule personne qui n'en a pas encore besoin. */}
+            <div style={{fontSize:11,color:C.label,marginTop:4,paddingLeft:4}}>{lang==='fr'?"Prix auquel tu as acheté l'article":"Price you paid for the item"}</div>
+            {/* ── LA SORTIE « JE NE SAIS PAS » (2026-09-19) ──────────────────
+                ⛔ Elle écrit prix_achat = NULL + prix_achat_inconnu = true.
+                JAMAIS 0 : 0 veut dire « article gratuit assumé » et compte
+                dans les marges (règle du 03/08). Un vendeur qui imprime ses
+                articles en 3D n'a pas de prix d'achat — jusqu'ici il devait
+                inventer un nombre pour que le bouton s'allume. */}
+            <button
+              type="button"
+              onClick={()=>{setIBuyInconnu(v=>{const n=!v;if(n)setIBuy("");return n;});}}
+              style={{marginTop:6,marginLeft:4,padding:"6px 12px",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:11.5,fontWeight:700,
+                border:`1.5px solid ${iBuyInconnu?"#1B6E62":"rgba(0,0,0,0.12)"}`,
+                background:iBuyInconnu?"#E7F3F0":"transparent",
+                color:iBuyInconnu?"#1B6E62":"#6B7A75"}}
+            >
+              {iBuyInconnu?"✓ ":""}{lang==='fr'?"Je ne sais pas":"I don't know"}
+            </button>
+            {iBuyInconnu&&(
+              <div style={{fontSize:11,color:C.label,marginTop:6,paddingLeft:4,lineHeight:1.5}}>
+                {lang==='fr'
+                  ?"L'article entre en stock sans prix d'achat : il ne comptera ni dans tes marges ni dans ton total investi, et on ne te reposera pas la question."
+                  :"The item goes into stock with no purchase price: it won't count towards your margins or your total invested, and we won't ask again."}
+              </div>
+            )}
           </div>
           <div>
             <Field label={lang==='fr'?"Frais d'achat (optionnel)":"Purchase fees (optional)"} value={iPurchaseCosts} set={setIPurchaseCosts} placeholder={lang==='fr'?"Livraison fournisseur, réparation...":"Supplier shipping, repair..."} type="number" icon="🛍️" suffix={CURRENCY_SYMBOLS[currency]||'€'}/>
@@ -7595,21 +7636,34 @@ const StockTab = memo(function StockTab({
             ? <PremiumBanner userEmail={user?.email} origine="banniere_stock"/>
             : !isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&isNative
             ? null
-            : <button className="btn-pill-primary" onClick={addItem} disabled={!iTitle||!iBuy||(iAlreadySold&&!iSell)} style={{opacity:(!iTitle||!iBuy||(iAlreadySold&&!iSell))?0.5:1}}>
+            : <button className="btn-pill-primary" onClick={addItem} disabled={champsManquantsAjout.length>0} style={{opacity:champsManquantsAjout.length?0.5:1}}
+                title={champsManquantsAjout.length?(lang==='fr'?`Il manque : ${champsManquantsAjout.join(", ")}`:`Missing: ${champsManquantsAjout.join(", ")}`):undefined}>
                 {iSaved?(lang==='fr'?"✓ Ajouté !":"✓ Added!"):items.length===0?(lang==='fr'?"Ajoute ton premier article → vois ton bénéfice 🚀":"Add your first item → see your profit 🚀"):t('ajouterArticle')}
               </button>
           }
           {isNative&&!isPremium&&quotaFree>=FREE_STOCK_LIMIT_FALLBACK&&(
             <IAPUpgradeBlock lang={lang} iapLoading={iapLoading} onPurchase={()=>openUpgradeModal(null,'banniere_stock')} onRestore={handleIAPRestore}/>
           )}
-          {items.length===0&&!iSaved&&!(iTitle&&iBuy)&&(
-            <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4}}>
-              {lang==='fr'?'Tu es à 1 étape de voir tes premiers profits 💰':'You are 1 step away from seeing your first profits 💰'}
+          {/* ── LE BOUTON DIT CE QUI MANQUE (2026-09-19) ────────────────────
+              Jusqu'ici il passait à opacity 0.5 et se taisait, et les deux
+              phrases d'aide étaient réservées à `items.length === 0` : un
+              vendeur avec 78 articles voyait un bouton gris et RIEN d'autre
+              (dossier Louis THONET, 19/09 19:41). Le champ bloquant — le prix
+              d'achat — est plus haut dans le formulaire, hors écran.
+              La phrase nomme le champ, pour tout le monde. */}
+          {!iSaved&&champsManquantsAjout.length>0&&(
+            <div style={{textAlign:"center",fontSize:12,color:C.label,marginTop:-4,lineHeight:1.5}}>
+              {lang==='fr'
+                ?`Il manque ${champsManquantsAjout.length>1?'encore':''} : ${champsManquantsAjout.join(" · ")}`
+                :`Still missing: ${champsManquantsAjout.join(" · ")}`}
+              {items.length===0&&(lang==='fr'?' — tu es à 1 étape de voir tes premiers profits 💰':' — you are 1 step away from seeing your first profits 💰')}
             </div>
           )}
-          {items.length===0&&!iSaved&&iTitle&&iBuy&&(
+          {!iSaved&&champsManquantsAjout.length===0&&(
             <div style={{textAlign:"center",fontSize:12,color:C.teal,fontWeight:600,marginTop:-4}}>
-              {lang==='fr'?'✓ Prêt ! Clique pour ajouter et voir ton bénéfice instantanément':'✓ Ready! Click to add and see your profit instantly'}
+              {items.length===0
+                ?(lang==='fr'?'✓ Prêt ! Clique pour ajouter et voir ton bénéfice instantanément':'✓ Ready! Click to add and see your profit instantly')
+                :(lang==='fr'?'✓ Prêt — clique pour ajouter':'✓ Ready — click to add')}
             </div>
           )}
           {firstItemAdded&&(

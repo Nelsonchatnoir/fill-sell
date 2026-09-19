@@ -2046,6 +2046,15 @@ export default function App({ loginOnly = false }){
   const [appLoading,setAppLoading]=useState(true);
   const [iTitle,setITitle]=useState("");
   const [iBuy,setIBuy]=useState("");
+  // « Je ne sais pas » sur le prix d'achat (2026-09-19, dossier Louis THONET).
+  // Le formulaire EXIGEAIT un prix d'achat : un vendeur qui imprime lui-même
+  // ses articles en 3D n'en a aucun, et ses deux seules issues étaient
+  // d'inventer un nombre ou de taper 0. ⛔ 0 veut dire « article gratuit
+  // assumé » et compte dans les marges (règle du 03/08) — l'écrire pour dire
+  // « je ne sais pas » produit une marge de 100 % sur du vent. L'état juste
+  // existe déjà en base, `prix_achat_inconnu`, et le rattrapage en masse du
+  // Stock l'utilise depuis toujours ; il manquait seulement à la création.
+  const [iBuyInconnu,setIBuyInconnu]=useState(false);
   const [iSell,setISell]=useState("");
   const [iMarque,setIMarque]=useState("");
   const [iType,setIType]=useState("");
@@ -4058,29 +4067,49 @@ export default function App({ loginOnly = false }){
   }
 
   async function addItem(){
-    if(!iTitle||!iBuy)return;
+    // Même garde que le bouton (StockTab) : le prix d'achat n'est plus exigé
+    // quand la personne a répondu « je ne sais pas ».
+    if(!iTitle||(!iBuy&&!iBuyInconnu))return;
     if(!isPremium&&quotaStockAtteint(compteArticlesQuota(items),FREE_STOCK_LIMIT_FALLBACK)){try{ouvrirModalePlafond('plafond_stock',{trigger:'stock'});}catch{setToast({visible:true,message:lang==='en'?`${FREE_STOCK_LIMIT_FALLBACK} item limit reached.`:`Limite de ${FREE_STOCK_LIMIT_FALLBACK} articles atteinte.`});setTimeout(()=>setToast({visible:false,message:""}),4000);}return;}
-    const b=parseFloat(iBuy)||0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
-    const cogs=b+pc;const mg=hasS?s-cogs-sf:0;const mgp=hasS?(mg/s)*100:0;
+    // ⛔ PRIX D'ACHAT : VIDE ≠ ZÉRO (règle du 03/08). `iBuyInconnu` écrit
+    // prix_achat = NULL + prix_achat_inconnu = true — l'article sort de TOUS
+    // les calculs de marge, de bénéfice et de total investi, et on ne repose
+    // plus la question. Écrire 0 à la place en ferait un « article gratuit
+    // assumé », compté normalement : une marge de 100 % sur du vent.
+    // `b` reste un nombre pour les calculs locaux ; c'est `prixAchat` qui part
+    // en base, et il vaut null quand le prix est inconnu.
+    const prixAchat=iBuyInconnu?null:(parseFloat(iBuy)||0);
+    const b=prixAchat??0;const pc=parseFloat(iPurchaseCosts)||0;const s=iAlreadySold?(parseFloat(iSell)||0):0;const sf=iAlreadySold?(parseFloat(iSellingFees)||0):0;const hasS=iAlreadySold&&s>0;
+    // Sans prix d'achat connu, il n'y a NI marge NI bénéfice à calculer : les
+    // deux restent null, comme pour toute ligne à prix_achat inconnu.
+    const margeCalculable=prixAchat!=null;
+    const cogs=b+pc;const mg=hasS&&margeCalculable?s-cogs-sf:0;const mgp=hasS&&margeCalculable?(mg/s)*100:0;
     const marqueNormalized=normalizeMarque(iMarque);
     const typeAuto=iType||detectType(iTitle,marqueNormalized);
-    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:hasS?s:null,margin:hasS?mg:null,margin_pct:hasS?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null,plateforme:iPlateforme||null};
+    const row={id:Date.now(),user_id:user.id,titre:iTitle,prix_achat:prixAchat,prix_achat_inconnu:iBuyInconnu||false,prix_vente:hasS?s:null,margin:hasS&&margeCalculable?mg:null,margin_pct:hasS&&margeCalculable?mgp:null,statut:hasS?"vendu":"stock",date:new Date().toISOString(),marque:marqueNormalized,description:iDesc||null,type:typeAuto,purchase_costs:pc,selling_fees:hasS?sf:0,quantite:iQuantite||1,emplacement:iEmplacement||null,plateforme:iPlateforme||null};
     const{data,error}=await supabase.from('inventaire').insert([row]).select().single();
     if(!error){
-      track('add_item', { purchase_price: b, has_sell_price: hasS });
+      track('add_item', { purchase_price: prixAchat, prix_achat_inconnu: iBuyInconnu, has_sell_price: hasS });
       setItems(prev=>[mapItem(data),...prev]);
       if(hasS){
-        const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:b,prix_vente:s,benefice:mg,marque:marqueNormalized||null,type:typeAuto||null,description:iDesc||null,emplacement:iEmplacement||null,date:new Date().toISOString().split('T')[0],plateforme:iPlateforme||null};
+        // La vente porte la MÊME règle que l'inventaire : prix d'achat
+        // inconnu → null, et pas de bénéfice calculé. Le chiffre d'affaires
+        // (prix_vente), lui, est vrai dans tous les cas et ne se filtre jamais.
+        const srow={id:Date.now()+1,user_id:user.id,titre:iTitle,prix_achat:prixAchat,prix_vente:s,benefice:margeCalculable?mg:null,marque:marqueNormalized||null,type:typeAuto||null,description:iDesc||null,emplacement:iEmplacement||null,date:new Date().toISOString().split('T')[0],plateforme:iPlateforme||null};
         const{data:sd}=await supabase.from('ventes').insert([srow]).select().single();
         if(sd) setSales(prev=>[mapSale(sd),...prev]);
       }
     }
     if(items.length===0) setFirstItemAdded(true);
     setISaved(true);setTimeout(()=>setISaved(false),1600);
-    setToast({visible:true,message:hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(cogs)}`});
+    // Prix d'achat inconnu : ni bénéfice, ni « Investi » — annoncer un
+    // montant serait annoncer un chiffre faux. On confirme l'ajout, point.
+    setToast({visible:true,message:!margeCalculable
+      ? t('articleAjoute')
+      : hasS?`${t('articleAjoute')} · +${fmt(mg)} ${t('dansTonSuivi')}`:`${t('articleAjoute')} · ${lang==='fr'?'Investi':'Invested'} ${fmt(cogs)}`});
     setTimeout(()=>setToast({visible:false,message:""}),3000);
     if(hasS&&iRememberSellingFees) localStorage.setItem('savedFees',String(sf));
-    setITitle("");setIBuy("");setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");setIPlateforme("");
+    setITitle("");setIBuy("");setIBuyInconnu(false);setIPurchaseCosts("");setISell("");if(!iRememberSellingFees)setISellingFees("");setIAlreadySold(false);setIMarque("");setIType("");setIDesc("");setIQuantite(1);setIEmplacement("");setIPlateforme("");
     setTimeout(()=>{if(listRef.current)listRef.current.scrollIntoView({behavior:"smooth"});},300);
   }
 
@@ -8140,6 +8169,7 @@ export default function App({ loginOnly = false }){
             iMarque={iMarque} setIMarque={setIMarque}
             iType={iType} setIType={setIType}
             iBuy={iBuy} setIBuy={setIBuy}
+            iBuyInconnu={iBuyInconnu} setIBuyInconnu={setIBuyInconnu}
             iPurchaseCosts={iPurchaseCosts} setIPurchaseCosts={setIPurchaseCosts}
             iAlreadySold={iAlreadySold} setIAlreadySold={setIAlreadySold}
             iSell={iSell} setISell={setISell}

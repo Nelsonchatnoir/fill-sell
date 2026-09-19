@@ -111,7 +111,11 @@ export const translations = {
     calculerHero:"Calcule ta marge instantanément",
     calculerSub:"Entre le prix d'achat et de vente ci-dessous",
     fraisHint:"Livraison, emballage, commissions...",
-    prixHint:"Sans prix → stock. Avec prix → vendu.",
+    // ⛔ « Sans prix → stock. Avec prix → vendu. » (jusqu'au 19/09) parlait du
+    // prix de VENTE, et s'affichait collé sous un bouton désactivé parce que
+    // le prix d'ACHAT était vide : elle se lisait « tu peux laisser le prix
+    // vide » — le contraire de la vérité, à 40 pixels du bouton.
+    prixHint:"Le prix de vente décide : vide → l'article entre en stock, rempli → il est compté comme vendu.",
     venteLabel:"{n} vente{s}",
     toutesVentes:"toutes ventes",
     redirection:"Redirection...",
@@ -454,7 +458,7 @@ export const translations = {
     calculerHero:"Calculate your margin instantly",
     calculerSub:"Enter the purchase and selling price below",
     fraisHint:"Shipping, packaging, commissions...",
-    prixHint:"No price → in stock. With price → sold.",
+    prixHint:"The sale price decides: leave it empty → the item goes into stock, fill it in → it counts as sold.",
     venteLabel:"{n} sale{s}",
     toutesVentes:"all sales",
     redirection:"Redirecting...",
