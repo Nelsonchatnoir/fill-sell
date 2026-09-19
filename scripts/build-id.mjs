@@ -1512,7 +1512,31 @@ export const PUBLISHED_BUILD_IDS = {
   '2026-08-26T19:48:07Z': '0.6.9',  // publié par le CWS le 27/08 vers midi
   '2026-09-12T08:29:11Z': '0.6.32', // publié par le CWS le 12/09
   '2026-09-13T10:16:27Z': '0.6.33', // publié par le CWS le 13/09 (15 comptes servis le jour même, relu en base)
+  // 0.6.43 : inscrite le 19/09, OUBLI du 18/09 au soir — la promotion de
+  // EXTENSION_MIN_BUILD vers ce build (ae92d49) et l'ajout à ALREADY_PUBLISHED
+  // ont bien eu lieu, pas celui-ci. Publication ÉTABLIE et relevée en base, pas
+  // déclarée : extension_build '2026-09-18T16:36:03Z+c113c34' sur des comptes
+  // réels dès le 18/09 au soir. Son absence ici privait la bannière de la SEULE
+  // façon de nommer la version minimale attendue (cf. EXTENSION_MIN_VERSION).
+  '2026-09-18T16:36:03Z': '0.6.43',
 };
+
+// ── Numéro de version MINIMAL attendu (2026-09-19) ──────────────────────────
+// DÉRIVÉ, jamais saisi : c'est la version du paquet désigné par
+// EXTENSION_MIN_BUILD, lue dans le registre ci-dessus. null si le build minimal
+// n'y figure pas — et alors le signal de présence de l'extension ne peut PAS
+// éteindre la bannière (versionAuMoins rend false sur une borne illisible),
+// exactement comme avant. Aucune valeur au jugé : un numéro inventé ici
+// éteindrait la bannière chez des gens réellement en retard.
+//
+// À QUOI IL SERT. La bannière se fonde sur profiles.extension_build, stampé par
+// get-pending-jobs au poll de l'extension (2 min). Quelqu'un qui vient de
+// mettre à jour attend donc jusqu'à 2 min que la base le sache — pendant
+// lesquelles l'app lui dit encore qu'il ne l'a pas fait. Le content script,
+// lui, annonce sa version dans la PAGE, instantanément (window.postMessage
+// __fillsellExt, cf. utils/vintedSync). Ce numéro est ce à quoi l'app compare
+// cette annonce pour éteindre la bannière SANS attendre la base.
+export const EXTENSION_MIN_VERSION = PUBLISHED_BUILD_IDS[EXTENSION_MIN_BUILD] ?? null;
 
 // Garde-fou : échoue bruyamment si un commit touchant chrome-extension/ est
 // postérieur à EXTENSION_LAST_COMMIT (constante pas bumpée → le paquet publié
