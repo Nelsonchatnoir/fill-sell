@@ -171,6 +171,17 @@ const cap1 = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const nf = (n, fr) => new Intl.NumberFormat(fr ? 'fr-FR' : 'en-GB').format(n);
 const plur = (n, s, p) => (n > 1 ? p : s);
 
+// Depuis le 19/09 chaque créneau porte SA boutique : `vu_le` est donc la vraie
+// dernière fois que ce dressing est passé. Avant, toutes les lignes portaient
+// la première boutique vue — ce chiffre n'existait pas et aurait menti.
+// null = jamais servi (aucun créneau à son nom). 0 = aujourd'hui.
+function joursDepuis(t) {
+  if (!t) return null;
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000));
+}
+
 // Libellé d'un jour ISO (1 = lundi).
 const JOURS = { fr: ['L', 'M', 'M', 'J', 'V', 'S', 'D'], en: ['M', 'T', 'W', 'T', 'F', 'S', 'S'] };
 function resumeJours(jours, fr) {
@@ -1080,6 +1091,16 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
                   const estConnectee = connectee != null && String(connectee) === id;
                   const eligB = Number(parBoutique[id]);
                   const capB = Number(brouillon.plafond_boutique?.[id]) || brouillon.plafond_jour;
+                  // Une boutique qui a de quoi republier et qu'on n'a pas vue
+                  // depuis 3 jours, ce n'est pas un détail : c'est Chrome qui
+                  // n'est jamais sur son compte au bon moment. On le DIT.
+                  const jours = joursDepuis(b.vu_le);
+                  const enRetard = actif && !estConnectee && eligB > 0 && (jours == null || jours >= 3);
+                  const retard = !enRetard ? null
+                    : jours == null
+                      ? (fr ? 'jamais servie depuis l’activation' : 'never served since it was turned on')
+                      : (fr ? `pas servie depuis ${nf(jours, fr)} ${plur(jours, 'jour', 'jours')}`
+                            : `not served for ${nf(jours, fr)} ${plur(jours, 'day', 'days')}`);
                   return (
                     <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 14, background: P.paper, border: `1px solid ${P.border}`, flexWrap: 'wrap' }}>
                       <div style={{ flex: 1, minWidth: 140 }}>
@@ -1089,6 +1110,11 @@ export function RepublicationPlanifieeReglages({ lang, platform = 'vinted', sess
                           {estConnectee ? (fr ? 'Chrome connecté · passe ce créneau' : 'Chrome signed in · goes this slot') : (fr ? 'Attend que Chrome soit sur ce compte' : 'Waits for Chrome on this account')}
                           {actif && Number.isFinite(eligB) && <span style={{ color: P.mute2 }}>· {eligB} {fr ? 'éligibles' : 'eligible'}</span>}
                         </div>
+                        {retard && (
+                          <div style={{ fontWeight: 600, fontSize: 12, marginTop: 4, color: P.amberInk }}>
+                            {retard} — {fr ? 'connecte Chrome à ce compte pendant le créneau.' : 'sign Chrome in to this account during the slot.'}
+                          </div>
+                        )}
                       </div>
                       <Stepper valeur={capB} min={1} max={brouillon.plafond_jour} pas={5} disabled={busy || !s.autorise} label={fr ? `Plafond ${nom}` : `Cap ${nom}`}
                         suffixe={fr ? '/jour' : '/day'}
