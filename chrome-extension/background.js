@@ -11806,6 +11806,12 @@ async function releverAnnoncesPlateforme(platform) {
   // rôle que le compteur Leboncoin — cible de la pagination ET juge de
   // couverture. Sans lui, aucune disparition n'est conclue.
   let ebayTotalEnCours = null;
+  // Couverture Beebs (2026-09-19) : `nbHits` de l'index public. Beebs est la
+  // seule des trois à n'exposer AUCUN compteur dans sa page — c'est l'index qui
+  // le donne, et lui seul. `beebsIndexMotif` porte la raison quand il se tait :
+  // un index muet n'est pas un dressing vide.
+  let beebsTotalIndex = null;
+  let beebsIndexMotif = null;
   // Trace du défilement patient (LOT 2), remontée telle quelle dans le run :
   // c'est elle qui rend la preuve LISIBLE en prod (vu / annoncé, motif d'arrêt).
   const defilements = [];
@@ -11820,8 +11826,10 @@ async function releverAnnoncesPlateforme(platform) {
     for (const a of r.articles ?? []) if (a?.listing_id) annonces.set(a.listing_id, a);
     return { annonces: [...annonces.values()], complet: r.complet !== false };
   }
+  let dernierTabId = null; // onglet de travail de la plateforme, réutilisé après la boucle
   for (const page of RELEVE_PAGES[platform] ?? []) {
     const tabId = await getOrCreateWorkTab(platform, page.url);
+    dernierTabId = tabId;
     let url = page.url;
     for (let n = 0; n < RELEVE_PAGES_MAX; n++) {
       if (n > 0) {
@@ -11895,30 +11903,97 @@ async function releverAnnoncesPlateforme(platform) {
   // disparition (rapprocher_releve.v_complet lit ce préfixe « [incomplet] »).
   // ⚠️ La bascule vers le vrai chemin PRO et un vrai balayage au-delà de 30
   //    restent à décider (lots suivants) : ici on ne fait que NE PLUS MENTIR.
-  let erreurCouverture = null;
-  if (platform === "leboncoin") {
-    if (!lbcListeRendue) {
-      complet = false;
-      erreurCouverture = "« Mes annonces » n'a pas rendu sa liste (redirection du compte, challenge ou page non peinte) — rien n'est conclu disparu";
-    } else if (Number.isFinite(lbcTotalEnLigne) && annonces.size < lbcTotalEnLigne) {
-      complet = false;
-      erreurCouverture = `couverture partielle : ${annonces.size} annonce(s) vue(s) sur ${lbcTotalEnLigne} « en ligne » — le reste n'est ni relevé ni conclu disparu`;
+  // ── BEEBS : LE DRESSING COMPLET PAR L'INDEX PUBLIC (2026-09-19) ───────────
+  // Le relevé de page ne voit qu'une fraction du dressing (60 sur 197 chez
+  // josephinecerni) et « Mes annonces » n'expose ni compteur ni paramètre
+  // d'URL. L'index de recherche PUBLIC de Beebs — celui que leur propre site
+  // interroge — rend le total exact ET la liste entière en une requête.
+  // L'appel part du CONTENT SCRIPT, depuis une page beebs.app : c'est de là que
+  // leur site l'émet, et ça n'exige aucune permission d'hôte nouvelle.
+  // ⛔ IL COMPLÈTE LA LISTE ET DONNE LE COMPTEUR. Il ne juge JAMAIS une
+  //    disparition : sans champ de statut, une annonce vendue ou retirée y est
+  //    absente comme une annonce qui n'a jamais existé.
+  // ⛔ S'il se tait (injoignable, vendeur introuvable, total approché), on ne
+  //    conclut RIEN : le relevé garde ce que la page a donné et se marque
+  //    INCOMPLET. Un index muet n'est pas un dressing vide.
+  if (platform === "beebs" && dernierTabId != null) {
+    const graines = [...annonces.keys()].slice(0, 5);
+    const idx = await sendMessageToTab(dernierTabId, { type: "BEEBS_DRESSING_INDEX", listingIds: graines }, 30_000)
+      .catch((e) => ({ ok: false, motif: `canal indisponible : ${String(e?.message ?? e).slice(0, 60)}` }));
+    if (!idx?.ok) {
+      beebsIndexMotif = String(idx?.motif ?? "index sans réponse").slice(0, 140);
+    } else if (!idx.exhaustif || !Number.isFinite(idx.total)) {
+      // Total approché : il ne peut pas servir de juge. On garde quand même les
+      // annonces qu'il a rendues — elles sont vraies, c'est le COMPTE qui ne
+      // l'est pas.
+      beebsIndexMotif = "total approché (exhaustiveNbHits faux)";
+    } else {
+      beebsTotalIndex = idx.total;
+      if (idx.complet === false) complet = false; // borne de pages atteinte
     }
+    let ajoutees = 0;
+    for (const a of idx?.articles ?? []) {
+      if (!a?.listing_id) continue;
+      if (annonces.has(a.listing_id)) {
+        // La page fait foi sur ce qu'elle a vu ; l'index ne comble que les
+        // trous (vues/favoris, que « Mes annonces » ne montre pas).
+        const dejaLa = annonces.get(a.listing_id);
+        if (dejaLa.vues == null && a.vues != null) dejaLa.vues = a.vues;
+        if (dejaLa.favoris == null && a.favoris != null) dejaLa.favoris = a.favoris;
+        continue;
+      }
+      // Une annonce que SEUL l'index connaît est forcément visible : c'est tout
+      // ce qu'il contient. Elle entre donc « en_ligne », jamais « en
+      // vérification » (qui, elle, ne sort que de la page dédiée).
+      annonces.set(a.listing_id, { ...a, statut: "en_ligne", source_releve: "index_public" });
+      ajoutees += 1;
+    }
+    if (ajoutees) console.log(`[releve][beebs] index public : ${ajoutees} annonce(s) que la page n'avait pas rendues`);
   }
-  // ── VERDICT DE COUVERTURE eBAY (2026-09-19) ───────────────────────────────
-  // Même doctrine, même phrase, même conséquence : tant que la somme des pages
-  // n'atteint pas « Gérer les annonces en cours(N) », on se marque INCOMPLET et
-  // rapprocher_releve ne date AUCUNE disparition. C'est ce qui a évité, le
-  // 18/09 côté Leboncoin, de déclarer mortes deux annonces bien vivantes.
-  // ⚠️ Compteur absent = on ne sait pas : incomplet aussi. On préfère ne rien
-  //    conclure plutôt que conclure sur une page dont on ignore la couverture.
-  if (platform === "ebay") {
-    if (!Number.isFinite(ebayTotalEnCours)) {
+
+  // ── UN SEUL JUGE DE COUVERTURE POUR LES TROIS RELEVÉS (2026-09-19) ────────
+  // Leboncoin, eBay et Beebs ont chacun leur compteur et leur façon de le
+  // rendre ; ils n'ont PAS trois doctrines. La règle est unique et tient en
+  // trois lignes : la liste n'a pas été rendue → incomplet ; pas de compteur →
+  // couverture INCONNUE → incomplet ; vu < compteur → incomplet. Dans les trois
+  // cas rapprocher_releve ne date AUCUNE disparition (il lit le préfixe
+  // « [incomplet] »).
+  // ⛔ « incomplet » n'est pas un échec : c'est le refus de conclure sur ce
+  //    qu'on n'a pas vu. C'est cette règle qui a évité, le 18/09, de déclarer
+  //    mortes deux annonces Leboncoin bien vivantes.
+  // ⚠️ CE QUI EST COMPTÉ N'EST PAS LE MÊME SELON LA SOURCE. L'index Beebs ne
+  //    contient que les annonces VISIBLES : le comparer au total des annonces
+  //    relevées, « en cours de vérification » comprises, ferait mentir le
+  //    verdict dans les deux sens. On compare donc les EN LIGNE aux EN LIGNE.
+  const enLigne = () => [...annonces.values()].filter((a) => a.statut === "en_ligne").length;
+  const COUVERTURE = {
+    leboncoin: {
+      total: lbcTotalEnLigne, comptees: annonces.size, libelle: "« en ligne »", listeRendue: lbcListeRendue,
+      absent: "« Mes annonces » n'a pas rendu sa liste (redirection du compte, challenge ou page non peinte)",
+    },
+    ebay: {
+      total: ebayTotalEnCours, comptees: annonces.size, libelle: "« en cours »", listeRendue: true,
+      absent: "le Hub vendeur n'a pas rendu son compteur « annonces en cours »",
+    },
+    beebs: {
+      total: beebsTotalIndex, comptees: enLigne(), libelle: "dans l'index public de Beebs", listeRendue: true,
+      absent: beebsIndexMotif
+        ? `l'index public de Beebs n'a rien pu dire (${beebsIndexMotif})`
+        : "l'index public de Beebs n'a pas rendu de total exact",
+    },
+  };
+  let erreurCouverture = null;
+  const juge = COUVERTURE[platform];
+  if (juge) {
+    if (!juge.listeRendue) {
       complet = false;
-      erreurCouverture = "le Hub vendeur n'a pas rendu son compteur « annonces en cours » — couverture inconnue, rien n'est conclu disparu";
-    } else if (annonces.size < ebayTotalEnCours) {
+      erreurCouverture = `${juge.absent} — rien n'est conclu disparu`;
+    } else if (!Number.isFinite(juge.total)) {
       complet = false;
-      erreurCouverture = `couverture partielle : ${annonces.size} annonce(s) vue(s) sur ${ebayTotalEnCours} « en cours » — le reste n'est ni relevé ni conclu disparu`;
+      erreurCouverture = `${juge.absent} — couverture inconnue, rien n'est conclu disparu`;
+    } else if (juge.comptees < juge.total) {
+      complet = false;
+      erreurCouverture = `couverture partielle : ${juge.comptees} annonce(s) vue(s) sur ${juge.total} ${juge.libelle} — le reste n'est ni relevé ni conclu disparu`;
     }
   }
   // Le défilement DIT ce qu'il a fait, même quand tout s'est bien passé : sans

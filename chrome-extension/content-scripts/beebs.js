@@ -78,8 +78,132 @@ const DRY_RUN = false;
 // typeof guard : permet d'injecter ce fichier tel quel dans une page pour un
 // dry-run piloté (hors extension), où chrome.runtime n'existe pas — même
 // pattern que ebay.js.
+// ═══════════════════════════════════════════════════════════════════════════
+// LE DRESSING COMPLET PAR L'INDEX DE RECHERCHE PUBLIC (2026-09-19)
+// ═══════════════════════════════════════════════════════════════════════════
+// LE CHIFFRE QUI MOTIVE TOUT : josephinecerni, 197 annonces dans l'index,
+// 60 vues par notre relevé de page. On connaissait moins d'un tiers de son
+// inventaire Beebs — et « Mes annonces » n'expose NI compteur total NI
+// paramètre d'URL (?page, ?limit, ?offset testés le 19/09 : tous ignorés),
+// donc rien ne permettait ni de savoir qu'il manquait quelque chose, ni
+// d'aller le chercher.
+//
+// LE CHEMIN, ET POURQUOI IL EST LÉGITIME. C'est l'appel que le site de Beebs
+// émet lui-même pour sa propre recherche : index `prod_MARKETPLACE_mobile`,
+// App ID et clé de RECHERCHE PUBLIQUE lus dans leur bundle. Aucune clé
+// d'administration, aucun index privé, aucune usurpation de leur application.
+// L'appel part d'ICI, depuis une page beebs.app, exactement comme le leur —
+// pas du service worker, qui n'a pas (et n'a pas à avoir) la permission d'hôte
+// sur algolia.net.
+//
+// MESURÉ EN DIRECT le 19/09 : `filters:"objectID:<id>"` rend le `user_id` du
+// vendeur depuis n'importe laquelle de ses annonces ;
+// `facetFilters:["user_id:<uid>"]` + `hitsPerPage:1000` rend TOUT son dressing
+// en UNE requête, en 2 ms, avec `nbHits` exact (`exhaustiveNbHits: true`) ;
+// page 0 et page 1 ne se chevauchent pas.
+//
+// 🚨 CE QUE CET INDEX NE FERA JAMAIS : JUGER UNE DISPARITION. Il ne porte
+// AUCUN champ de statut — une annonce vendue ou retirée en est absente
+// exactement comme une annonce qui n'a jamais existé. Une absence ne prouve
+// rien, ici comme partout. Il sert de COMPTEUR et de LISTE, point.
+// C'est la règle qui a coûté deux annonces vivantes déclarées mortes le 18/09.
+const BEEBS_ALGOLIA_APP = "1KX9QI8HAR";
+// Clé de RECHERCHE publique (search-only), celle du bundle du site.
+const BEEBS_ALGOLIA_CLE = "6ef32e91f3a1843e72a7c7ca93cc6dd6";
+const BEEBS_ALGOLIA_INDEX = "prod_MARKETPLACE_mobile";
+const BEEBS_ALGOLIA_PAGE = 1000;   // rend un dressing entier en une requête
+const BEEBS_ALGOLIA_PAGES_MAX = 6; // 6 000 annonces : borne dure, jamais infinie
+
+async function beebsAlgolia(corps) {
+  const r = await fetch(
+    `https://${BEEBS_ALGOLIA_APP.toLowerCase()}-dsn.algolia.net/1/indexes/${BEEBS_ALGOLIA_INDEX}/query`,
+    {
+      method: "POST",
+      headers: {
+        "X-Algolia-Application-Id": BEEBS_ALGOLIA_APP,
+        "X-Algolia-API-Key": BEEBS_ALGOLIA_CLE,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(corps),
+    },
+  );
+  if (!r.ok) throw new Error(`index Beebs HTTP ${r.status}`);
+  return r.json();
+}
+
+// Rend { ok, total, exhaustif, articles[] } — ou { ok:false, motif } sans
+// jamais lever : un index muet n'est pas un dressing vide, l'appelant garde
+// son relevé de page et se marque INCOMPLET.
+async function beebsDressingParIndex(listingIdsConnus) {
+  const graines = (Array.isArray(listingIdsConnus) ? listingIdsConnus : [])
+    .map((x) => String(x ?? "").trim()).filter((x) => /^\d+$/.test(x)).slice(0, 5);
+  if (!graines.length) return { ok: false, motif: "aucune annonce connue pour retrouver le vendeur" };
+  let uid = null;
+  for (const g of graines) {
+    try {
+      const r = await beebsAlgolia({ filters: `objectID:${g}`, hitsPerPage: 1, attributesToRetrieve: ["user_id"] });
+      const v = r?.hits?.[0]?.user_id;
+      if (v != null && String(v).trim()) { uid = String(v).trim(); break; }
+    } catch (e) {
+      return { ok: false, motif: `index injoignable (${String(e?.message ?? e).slice(0, 60)})` };
+    }
+  }
+  if (!uid) return { ok: false, motif: "vendeur introuvable dans l'index à partir des annonces connues" };
+
+  const articles = [];
+  const vus = new Set();
+  let total = null;
+  let exhaustif = true;
+  let complet = true;
+  for (let page = 0; page < BEEBS_ALGOLIA_PAGES_MAX; page++) {
+    let r;
+    try {
+      r = await beebsAlgolia({
+        facetFilters: [[`user_id:${uid}`]], hitsPerPage: BEEBS_ALGOLIA_PAGE, page,
+        attributesToRetrieve: ["objectID", "title", "price", "image", "product_nb_views", "product_nb_favorite"],
+      });
+    } catch (e) {
+      return { ok: false, motif: `index injoignable (${String(e?.message ?? e).slice(0, 60)})` };
+    }
+    if (total === null) {
+      total = Number.isFinite(r?.nbHits) ? r.nbHits : null;
+      // ⛔ Un total APPROCHÉ ne vaut pas compteur : il ne peut pas servir de
+      // juge de couverture, et on le dit plutôt que de s'en servir quand même.
+      exhaustif = r?.exhaustiveNbHits !== false;
+    }
+    const hits = Array.isArray(r?.hits) ? r.hits : [];
+    for (const h of hits) {
+      const id = String(h?.objectID ?? "").trim();
+      if (!/^\d+$/.test(id) || vus.has(id)) continue;
+      vus.add(id);
+      const prix = Number(h?.price);
+      const entier = (v) => (Number.isFinite(Number(v)) && v !== null && v !== "" ? Number(v) : null);
+      articles.push({
+        listing_id: id,
+        url: `https://www.beebs.app/fr/p/${id}`,
+        titre: String(h?.title ?? "").trim() || null,
+        prix: Number.isFinite(prix) && prix > 0 ? prix : null,
+        photo_url: typeof h?.image === "string" && h.image ? h.image : null,
+        // Bonus GRATUIT : l'index les porte, la page non. On les prend, on ne
+        // construit rien autour.
+        vues: entier(h?.product_nb_views),
+        favoris: entier(h?.product_nb_favorite),
+      });
+    }
+    if (hits.length < BEEBS_ALGOLIA_PAGE) break;
+    if (page === BEEBS_ALGOLIA_PAGES_MAX - 1) complet = false;
+  }
+  return { ok: true, uid, total, exhaustif, complet, articles };
+}
+
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type === "BEEBS_DRESSING_INDEX") {
+      beebsDressingParIndex(msg.listingIds)
+        .then((r) => sendResponse(r))
+        .catch((err) => sendResponse({ ok: false, motif: String(err?.message ?? err) }));
+      return true;
+    }
     if (msg?.type === "DELETE_LISTING") {
       deleteListing(msg.job)
         .then((result) => sendResponse(result))
