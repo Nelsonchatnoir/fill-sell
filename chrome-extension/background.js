@@ -11486,8 +11486,26 @@ const RELEVE_PAGES = {
     { url: "https://www.beebs.app/fr/account/my-adverts", statut: "en_ligne" },
     { url: "https://www.beebs.app/fr/account/my-adverts/creating", statut: "en_verification" },
   ],
-  ebay: [{ url: "https://www.ebay.fr/sh/lst/active", statut: "en_ligne" }],
+  // ── eBAY : UNE PAGE DE 200, PAS UN DÉFILEMENT (2026-09-19) ────────────────
+  // Les « 50 pile » de XEWER, cinq relevés d'affilée, n'étaient PAS un plafond
+  // de défilement : c'est la TAILLE DE PAGE du Hub vendeur. Relevé LIVE dans le
+  // navigateur de Nico le 19/09, trois preuves :
+  //   · le hub porte un contrôle « Objets par page » réglé à 50 ;
+  //   · naviguer sur ?limit=200 affiche « Objets par page 200 » — le paramètre
+  //     est LU par la page ;
+  //   · la zone « Results Pagination » contient de VRAIS <a href> dont la query
+  //     porte exactement `offset`, `limit` et `sort`.
+  // Donc eBay se pagine PAR L'ADRESSE : aucun rendu requis, rien à observer,
+  // rien qui dépende d'une fenêtre visible. C'est la seule des trois pages
+  // « Mes annonces » dans ce cas, et c'est le chemin le plus sûr du lot.
+  // 200 est le maximum accepté par le contrôle ; au-delà on pagine par offset.
+  ebay: [{ url: "https://www.ebay.fr/sh/lst/active?limit=200&offset=0", statut: "en_ligne" }],
 };
+// Pages eBay au maximum par relevé : 200 × 15 = 3 000 annonces, très au-dessus
+// du plus gros compte du parc. Au-delà, le relevé se marque INCOMPLET plutôt
+// que de tourner sans fin — on ne conclut jamais sur ce qu'on n'a pas lu.
+const RELEVE_EBAY_PAGE_MAX = 15;
+const RELEVE_EBAY_TAILLE_PAGE = 200;
 const RELEVE_PAGES_MAX = 20;         // pagination / défilement : borne dure
 const RELEVE_CADENCE_CRON_MS = 20 * 3600_000;
 let relevesDemandes = new Set();     // plateformes à relever après le poll (veilleur)
@@ -11555,20 +11573,34 @@ async function releverLiensAnnoncesDansOnglet(tabId, platform) {
       // conclure qu'il est absent : un compteur pas encore rendu n'est pas une
       // liste non rendue. Absent au bout du compte = liste non rendue
       // (redirection du compte PRO vers « / », challenge) : jamais « 0 ».
+      // eBay a EXACTEMENT le même compteur, et personne ne le lisait : le Hub
+      // vendeur titre « Gérer les annonces en cours(N) » (relevé LIVE le
+      // 19/09 dans le navigateur de Nico, compte à 6 annonces). Sans lui,
+      // « arrêt sans_croissance » voulait dire deux choses opposées — « je
+      // suis bloqué » et « j'ai tout vu » — et rien ne permettait de les
+      // distinguer.
       const lireTotal = () => {
-        const mc = (document.body?.innerText ?? "").match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
+        const txt = document.body?.innerText ?? "";
+        const mc = plateforme === "ebay"
+          ? txt.match(/annonces?\s+en\s+cours\s*\(\s*(\d+)\s*\)/i)
+          : txt.match(/En\s+ligne\s*\(\s*(\d+)\s*\)/i);
         return mc ? parseInt(mc[1], 10) : null;
       };
       let totalEnLigne = null;
       let surLaListe = true;
-      if (plateforme === "leboncoin") {
+      if (plateforme === "leboncoin" || plateforme === "ebay") {
         const limiteCompteur = Date.now() + 5000;
         totalEnLigne = lireTotal();
         while (totalEnLigne === null && Date.now() < limiteCompteur) {
           await dormir(400);
           totalEnLigne = lireTotal();
         }
-        if (totalEnLigne === null) surLaListe = false;
+        // ⚠️ Le compteur absent ne veut PAS dire la même chose des deux côtés.
+        // Leboncoin : la liste n'a pas été rendue (redirection PRO, challenge)
+        // — on ne conclut rien. eBay : le Hub peut très bien avoir rendu sa
+        // table sans que ce titre soit peint ; on se contente de ne pas avoir
+        // de cible, et la garde de couverture ne se déclenche pas.
+        if (totalEnLigne === null && plateforme === "leboncoin") surLaListe = false;
       }
       // ── DÉFILEMENT PATIENT (LOT 2, 2026-09-19) ────────────────────────────
       // « Mes annonces » a un DÉFILEMENT INFINI — lu dans son bundle, pas
@@ -11770,6 +11802,10 @@ async function releverAnnoncesPlateforme(platform) {
   // et si elle a bien rendu sa liste. Cf. verdict de couverture en fin de fonction.
   let lbcTotalEnLigne = null;
   let lbcListeRendue = true;
+  // Couverture eBay (2026-09-19) : « Gérer les annonces en cours(N) ». Même
+  // rôle que le compteur Leboncoin — cible de la pagination ET juge de
+  // couverture. Sans lui, aucune disparition n'est conclue.
+  let ebayTotalEnCours = null;
   // Trace du défilement patient (LOT 2), remontée telle quelle dans le run :
   // c'est elle qui rend la preuve LISIBLE en prod (vu / annoncé, motif d'arrêt).
   const defilements = [];
@@ -11807,6 +11843,7 @@ async function releverAnnoncesPlateforme(platform) {
         // prise dans lancerRelevePlateforme, sur le compte d'annonces.
         return { annonces: [...annonces.values()], complet: false, absente: true, erreur: `session ${platform} : page de connexion` };
       }
+      const vusAvantPage = annonces.size; // sert la garde « cette page n'a rien ajouté »
       const r = await releverLiensAnnoncesDansOnglet(tabId, platform).catch((e) => ({ annonces: [], diag: { erreur: String(e?.message ?? e) }, surLaListe: false }));
       illisibles.prix += Number(r.diag?.sans_prix) || 0;
       illisibles.titre += Number(r.diag?.sans_titre) || 0;
@@ -11820,7 +11857,27 @@ async function releverAnnoncesPlateforme(platform) {
         if (Number.isFinite(r.totalEnLigne)) lbcTotalEnLigne = r.totalEnLigne;
         if (r.surLaListe === false) lbcListeRendue = false;
       }
+      if (platform === "ebay" && Number.isFinite(r.totalEnLigne)) ebayTotalEnCours = r.totalEnLigne;
       if (r.defilement) defilements.push(r.defilement);
+      // ── eBAY : LA PAGE SUIVANTE SE CONSTRUIT, ELLE NE SE CHERCHE PAS ───────
+      // On ne dépend PAS du lien « suivant » de la page (le Hub n'en expose
+      // pas toujours un exploitable) : on connaît le schéma, on avance
+      // l'offset de la taille de page tant qu'il reste des annonces à voir
+      // d'après le compteur. Trois gardes, dans cet ordre :
+      //   1. sans compteur, on ne devine pas — une seule page et on s'arrête
+      //      (la garde de couverture ne conclura alors aucune disparition) ;
+      //   2. on s'arrête dès que le vu atteint le compteur ;
+      //   3. on s'arrête si la page n'a RIEN ajouté (liste plus courte que
+      //      prévu, fin réelle) — jamais de boucle sur une page vide.
+      if (platform === "ebay") {
+        if (!Number.isFinite(ebayTotalEnCours)) break;
+        if (annonces.size >= ebayTotalEnCours) break;
+        if (annonces.size <= vusAvantPage) break;
+        if (n >= RELEVE_EBAY_PAGE_MAX - 1) { complet = false; break; }
+        url = `https://www.ebay.fr/sh/lst/active?limit=${RELEVE_EBAY_TAILLE_PAGE}&offset=${annonces.size}`;
+        await sleep(randInt(1200, 2400));
+        continue;
+      }
       if (!r.suivant || typeof r.suivant !== "string" || r.suivant === url) break;
       url = r.suivant.replace(WORK_TAB_FRAGMENT, "");
       if (n === RELEVE_PAGES_MAX - 1) complet = false; // borne atteinte : relevé partiel
@@ -11846,6 +11903,22 @@ async function releverAnnoncesPlateforme(platform) {
     } else if (Number.isFinite(lbcTotalEnLigne) && annonces.size < lbcTotalEnLigne) {
       complet = false;
       erreurCouverture = `couverture partielle : ${annonces.size} annonce(s) vue(s) sur ${lbcTotalEnLigne} « en ligne » — le reste n'est ni relevé ni conclu disparu`;
+    }
+  }
+  // ── VERDICT DE COUVERTURE eBAY (2026-09-19) ───────────────────────────────
+  // Même doctrine, même phrase, même conséquence : tant que la somme des pages
+  // n'atteint pas « Gérer les annonces en cours(N) », on se marque INCOMPLET et
+  // rapprocher_releve ne date AUCUNE disparition. C'est ce qui a évité, le
+  // 18/09 côté Leboncoin, de déclarer mortes deux annonces bien vivantes.
+  // ⚠️ Compteur absent = on ne sait pas : incomplet aussi. On préfère ne rien
+  //    conclure plutôt que conclure sur une page dont on ignore la couverture.
+  if (platform === "ebay") {
+    if (!Number.isFinite(ebayTotalEnCours)) {
+      complet = false;
+      erreurCouverture = "le Hub vendeur n'a pas rendu son compteur « annonces en cours » — couverture inconnue, rien n'est conclu disparu";
+    } else if (annonces.size < ebayTotalEnCours) {
+      complet = false;
+      erreurCouverture = `couverture partielle : ${annonces.size} annonce(s) vue(s) sur ${ebayTotalEnCours} « en cours » — le reste n'est ni relevé ni conclu disparu`;
     }
   }
   // Le défilement DIT ce qu'il a fait, même quand tout s'est bien passé : sans
