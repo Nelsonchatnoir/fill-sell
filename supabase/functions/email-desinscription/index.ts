@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { desinscrire } from "../_shared/desinscription.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -70,7 +71,7 @@ serve(async (req) => {
     const db = admin();
     const { data: ligne, error } = await db
       .from("email_destinataires")
-      .select("email, desinscrit, desinscrit_le, reinscrit_le")
+      .select("email, user_id, desinscrit, desinscrit_le, reinscrit_le")
       .eq("jeton", jeton)
       .maybeSingle();
 
@@ -93,21 +94,30 @@ serve(async (req) => {
       return json({ error: "action_inconnue" }, 400);
     }
 
-    const desinscrire = action === "desinscrire";
-    const maj = desinscrire
-      ? { desinscrit: true, desinscrit_le: new Date().toISOString(), origine: "lien_email" }
-      : { desinscrit: false, reinscrit_le: new Date().toISOString() };
+    // ── FUSION DES DEUX REGISTRES (19/09/2026) ───────────────────────────────
+    // Ce point d'entrée n'écrivait que email_destinataires — que le tunnel et
+    // les blasts ne lisaient pas. Quelqu'un qui se désinscrivait ICI continuait
+    // de recevoir le welcome et les campagnes. Il passe désormais par
+    // desinscrire() (_shared/desinscription.ts), qui pose l'état dans le
+    // registre canonique ET la ligne d'audit email_logs 'marketing_optout'
+    // lue par les chemins historiques. Une désinscription, quel que soit le
+    // canal, vaut pour tout.
+    const veutPartir = action === "desinscrire";
+    const r = await desinscrire({
+      email: ligne.email as string,
+      userId: (ligne.user_id as string | null) ?? null,
+      origine: "lien_email",
+      reinscrire: !veutPartir,
+    });
 
-    const { error: erreurMaj } = await db
-      .from("email_destinataires")
-      .update(maj)
-      .eq("jeton", jeton);
-
-    if (erreurMaj) return json({ error: "erreur_base" }, 500);
+    if (!r.ok) {
+      console.error("desinscription_echec", r.erreur);
+      return json({ error: "erreur_base" }, 500);
+    }
 
     return json({
       email_masque: masquer(ligne.email),
-      desinscrit: desinscrire,
+      desinscrit: veutPartir,
     });
   } catch (_e) {
     return json({ error: "erreur" }, 500);
