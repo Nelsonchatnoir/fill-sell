@@ -186,6 +186,44 @@ const SUPPORT_MESSAGE_KEY = {
 };
 const supportMessage = (t, support, platformLabel) =>
   t(SUPPORT_MESSAGE_KEY[support] ?? "platformUnmapped").replace("{platform}", platformLabel);
+
+// ── LA PORTE (2026-09-19) — QUI A LE DROIT D'ÊTRE COCHÉ ────────────────────
+// Jusqu'ici la case était grisée dès que le statut de compat n'était pas
+// "supported", c'est-à-dire dès que L'ICÔNE ne trouvait pas de feuille. Or
+// l'icône n'est plus le seul chemin vers une catégorie depuis le 07/09 : au
+// clic Publier, le MOT de l'objet est résolu contre les feuilles relevées
+// (categorieParMot, « exact ou rien »), puis les candidates ratissées sont
+// soumises à resolve-categorie, qui tranche DANS la liste. Ces deux chemins
+// n'ont pas besoin de l'icône — et ils sont posés AVANT elle aux quatre
+// points de pose (`parMot?.chemin ?? getXCategoryPath(icon)`).
+// Griser sur l'icône seule, c'était donc fermer la porte AVANT d'avoir essayé
+// les deux autres chemins. Mesuré sur le dossier Louis THONET : l'article
+// n'avait reçu AUCUN appel IA — zéro ligne dans usage_logs — parce que Vinted
+// et Beebs étaient sorties de la sélection trois écrans plus tôt.
+//
+// ⛔ CE QUI RESTE FERMÉ, ET C'EST TOUT :
+//   "unavailable" — la branche N'EXISTE PAS sur la plateforme (absence
+//                   confirmée par crawl). Aucun chemin ne peut y mener : ni
+//                   le mot, ni l'IA, ni l'origine. 🎵 sur Vinted, 🎵 🏆 🌿
+//                   sur Beebs, Auto-Moto partout… On n'ouvre pas une case
+//                   vers une branche qui n'existe pas.
+//   "prohibited"  — la plateforme REFUSE ce produit. Ce n'est pas un trou de
+//                   catalogue, c'est un refus de vente.
+// Tout le reste ("no_default", "unmapped") laisse la case cliquable : la
+// branche existe, c'est NOTRE mapping par icône qui manque, et les deux
+// autres chemins ont le droit d'essayer.
+// ⛔ L'ICÔNE ELLE-MÊME N'EST PAS TOUCHÉE. Elle continue de porter le genre
+//    obligatoire, les gardes taille/couleur/marque/matière, les interdits
+//    Beebs et le quota de photos Leboncoin. On change QUI décide de la case,
+//    pas ce que l'icône est.
+// ⛔ CONTREPARTIE OBLIGATOIRE, plus bas dans handlePublish : une case ouverte
+//    qui n'aboutit à AUCUN chemin ne doit pas partir quand même. Sans chemin,
+//    les content scripts rendent { ok:false } avec un message de développeur
+//    (« platform_fields.categoryPath absent… compléter src/utils/… ») APRÈS
+//    le débit. La plateforme est donc écartée AVANT le débit, comme l'est
+//    déjà une plateforme sans annonce générée.
+const CATEGORIE_FERMEE = new Set(["unavailable", "prohibited"]);
+const categorieFermee = (support) => CATEGORIE_FERMEE.has(support ?? "supported");
 // Plateforme EN PAUSE (platform_health.paused, 2026-09-09) : le texte lu par
 // l'utilisateur est message_fr / message_en, écrit en base (sans
 // redéploiement) ; à défaut, repli générique i18n. Jamais `reason` (interne).
@@ -2056,7 +2094,11 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           // (17/09 soir) Levé par l'interrupteur serveur ET la borne de build,
           // calculés par App.jsx (plateformesOuvertes) — jamais par l'article.
           const pasEncoreOuverte = plateformesAVenir.includes(p) && !plateformesOuvertes.includes(p);
-          const disabled = pasEncoreOuverte || support !== "supported" || dejaEnLigne || enCours || compteAbsent || enPause;
+          // La porte (cf. CATEGORIE_FERMEE) : seule une branche ABSENTE ou un
+          // produit INTERDIT ferme la case. Un trou de mapping par icône ne
+          // ferme plus rien — le mot et l'arbitrage ont le droit d'essayer.
+          const fermeeCategorie = categorieFermee(support);
+          const disabled = pasEncoreOuverte || fermeeCategorie || dejaEnLigne || enCours || compteAbsent || enPause;
           return (
             <button
               key={p}
@@ -2069,7 +2111,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
                 ? (lang === 'en' ? `Already being published on ${PLATFORM_LABELS[p]}` : `Publication déjà en cours sur ${PLATFORM_LABELS[p]}`)
                 : compteAbsent
                 ? messageCompteEbay(ebayMotif, lang)
-                : support !== "supported"
+                : fermeeCategorie
                 ? (motifSupport ? motifSupport(p, support) : supportMessage(t, support, PLATFORM_LABELS[p]))
                 : enPause
                 ? messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p])
@@ -2160,7 +2202,11 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
             : "Les plateformes déjà en ligne ou en cours de publication ne sont pas retouchées — seules les manquantes seront publiées."}
         </p>
       )}
-      {PLATFORMS_DEFAULT.filter(p => (platformSupport?.[p] ?? "supported") !== "supported").map(p => (
+      {/* Le motif ne s'écrit que sous une case RÉELLEMENT fermée : une case
+          ouverte n'a rien à justifier, et afficher « pas encore prise en
+          charge » sous une plateforme cochable serait un diagnostic à
+          l'écran — jamais. */}
+      {PLATFORMS_DEFAULT.filter(p => categorieFermee(platformSupport?.[p])).map(p => (
         <p key={p} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {motifSupport ? motifSupport(p, platformSupport[p]) : supportMessage(t, platformSupport[p], PLATFORM_LABELS[p])}
         </p>
@@ -2169,7 +2215,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           celle écrite en base (message_fr/message_en) — ton neutre, pas une
           erreur. Pas répétée si la case est déjà grisée pour un motif déjà
           affiché (catégorie non supportée, déjà en ligne, en cours). */}
-      {PLATFORMS_DEFAULT.filter(p => pausedPlatforms.includes(p) && (platformSupport?.[p] ?? "supported") === "supported" && !publishedSet?.has(p) && !queuedSet?.has(p)).map(p => (
+      {PLATFORMS_DEFAULT.filter(p => pausedPlatforms.includes(p) && !categorieFermee(platformSupport?.[p]) && !publishedSet?.has(p) && !queuedSet?.has(p)).map(p => (
         <p key={`pause-${p}`} style={{ margin:"8px 0 0", fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
           {messagePause(tpl, pausedReasons, p, PLATFORM_LABELS[p])}
         </p>
@@ -2178,7 +2224,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           Réglages › Compte eBay (la MÊME section, ouverte par-dessus le
           stepper — le brouillon n'est pas perdu, on ne ferme rien). Ton
           neutre : ce n'est pas une erreur, c'est une étape qui reste. */}
-      {ebayBloque && (platformSupport?.ebay ?? "supported") === "supported" && (
+      {ebayBloque && !categorieFermee(platformSupport?.ebay) && (
         <div style={{ margin:"8px 0 0", display:"flex", flexWrap:"wrap", alignItems:"center", gap:8 }}>
           <p style={{ margin:0, flex:"1 1 200px", minWidth:0, fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
             {messageCompteEbay(ebayMotif, lang)}
@@ -2200,7 +2246,7 @@ export function StepPhotos({ photos, onAddPhotos, onRemovePhoto, onReorderPhotos
           liaison OAuth, même section Réglages › Compte eBay ouverte par-dessus
           le stepper. Le drapeau ebay_voie_api n'est posé QUE par le serveur,
           après une connexion prouvée (ebay-oauth-callback) — jamais ici. */}
-      {!ebayBloque && !ebayVoieApi && selected.has("ebay") && (platformSupport?.ebay ?? "supported") === "supported" && onParametrerEbay && (
+      {!ebayBloque && !ebayVoieApi && selected.has("ebay") && !categorieFermee(platformSupport?.ebay) && onParametrerEbay && (
         <div style={{ margin:"8px 0 0", display:"flex", flexWrap:"wrap", alignItems:"center", gap:8 }}>
           <p style={{ margin:0, flex:"1 1 200px", minWidth:0, fontSize:12, color:T.mute2, fontWeight:600, lineHeight:1.4 }}>
             {/* La proposition dit ce qu'on GAGNE, pas ce qui manque : rien
@@ -4591,7 +4637,11 @@ export default function ListingPreviewScreen({
   }, [initialListing, articlePourCompat]);
   useEffect(() => {
     setSelected(prev => {
-      const next = new Set([...prev].filter(p => platformSupport[p] === "supported"));
+      // La porte (CATEGORIE_FERMEE) : on ne décoche que ce qui est RÉELLEMENT
+      // fermé — branche absente sur la plateforme, ou produit interdit. Un
+      // simple trou de mapping par icône décochait la plateforme séance
+      // tenante, avant que le mot ou l'arbitrage aient pu être essayés.
+      const next = new Set([...prev].filter(p => !categorieFermee(platformSupport[p])));
       return next.size === prev.size ? prev : next;
     });
   }, [platformSupport]);
@@ -7594,7 +7644,10 @@ export default function ListingPreviewScreen({
       // Chemins posés depuis l'ICÔNE (aucun mot exact, aucun arbitrage) — relevés
       // ici par plateforme pour être VÉRIFIÉS contre le mot juste après.
       const poseParIcone = {};
-      const rows = plateformesAPublier.map(platform => {
+      // `let` et non `const` (2026-09-19) : la porte étant ouverte plus haut,
+      // une plateforme peut arriver ici sans qu'AUCUN chemin de catégorie
+      // n'ait abouti. Elle est alors écartée du lot AVANT le débit, plus bas.
+      let rows = plateformesAPublier.map(platform => {
         const pf = { ...(edited[platform]?.platform_fields ?? {}) };
         // Photos du JOB, par plateforme. Identiques à processedPhotos partout —
         // SAUF plafonnement Leboncoin (quota gratuit par feuille, cf. bloc LBC
@@ -8155,6 +8208,53 @@ export default function ListingPreviewScreen({
             if (row.platform === "leboncoin") pf.lbcCategorieIncertaine = true;
           }
         }
+      }
+      // ══ LA CONTREPARTIE DE LA PORTE — AUCUN JOB SANS CATÉGORIE (2026-09-19) ══
+      // La case n'est plus grisée sur un simple trou de mapping par icône : le
+      // mot et l'arbitrage ont le droit d'essayer. Mais s'ils échouent AUSSI,
+      // le job partirait sans chemin — et c'est le pire des états, mesuré dans
+      // les content scripts : vinted.js rend « platform_fields.categoryPath
+      // absent — article non mappé vers le catalogue Vinted […] compléter
+      // src/utils/vintedCategories.js », leboncoin.js et ebay.js ont leur
+      // équivalent. Un message de développeur, montré à la personne, APRÈS le
+      // débit. Une case grisée honnête valait mieux que ça.
+      // On écarte donc la plateforme ICI, avant le débit — exactement comme
+      // une plateforme sans annonce générée ou sans adresse de remise.
+      // ⛔ Beebs avec `categorie_a_choisir` n'est PAS écartée : c'est le
+      //    chemin prévu, son content script POSE la question sur le
+      //    formulaire (beebs.js, « Beebs n'a pas de rayon reconnu pour … »).
+      // ⛔ Opla n'est pas concernée : sa catégorie est posée côté serveur par
+      //    get-pending-jobs, et son pré-vol demande quand il ne sait pas.
+      const CHEMIN_DU_JOB = {
+        vinted:    pf => pf.categoryPath,
+        leboncoin: pf => pf.lbcCategoryPath,
+        beebs:     pf => pf.beebsCategoryPath ?? pf.categorie_a_choisir,
+        ebay:      pf => pf.ebayCategoryId,
+      };
+      const sansCategorie = rows.filter(r => {
+        const lire = CHEMIN_DU_JOB[r.platform];
+        if (!lire) return false; // opla et tout futur handler serveur
+        const v = lire(r.platform_fields);
+        return Array.isArray(v) ? v.length === 0 : !v;
+      }).map(r => r.platform);
+      if (sansCategorie.length) {
+        console.warn(`[publish] écartées avant débit, aucun chemin de catégorie trouvé : ${sansCategorie.join(", ")}`);
+        rows = rows.filter(r => !sansCategorie.includes(r.platform));
+        if (!rows.length) {
+          // Plus rien à publier : on le dit, et on dit le GESTE — nommer
+          // l'objet dans le titre, comme la règle (a) plus haut. Jamais un
+          // nom de champ interne, jamais « non vendable » : la plateforme
+          // vend cet article, c'est nous qui ne savons pas le ranger.
+          throw new Error(lang === "en"
+            ? `We couldn't find a category on ${sansCategorie.map(p => PLATFORM_LABELS[p] ?? p).join(", ")} for this item. Name the object in the title (e.g. "storage box", "jacket") or regenerate the listing, then publish again. Nothing was charged.`
+            : `On n'a pas trouvé de catégorie sur ${sansCategorie.map(p => PLATFORM_LABELS[p] ?? p).join(", ")} pour cet article. Nomme l'objet dans le titre (« boîte de rangement », « veste »…) ou régénère l'annonce, puis republie. Rien n'a été débité.`);
+        }
+        // Il reste des plateformes publiables : elles partent, et celle-là
+        // est laissée de côté SANS être débitée — même comportement que
+        // `plateformesSansAnnonce`, qui est écartée en silence depuis
+        // toujours quand il reste au moins une plateforme. (Le dire à
+        // l'écran demanderait un récapitulatif de fin de publication, qui
+        // n'existe pas ici : à traiter à part, pas en passant.)
       }
       // ── Aspects obligatoires eBay (2026-07-11, Phase 2 du référentiel) ──
       // ebay_item_aspects (peuplée depuis l'API Taxonomy, lecture ouverte à
