@@ -283,5 +283,11 @@ END;
 $fn$;
 
 REVOKE ALL ON FUNCTION public.enregistrer_ventes_relevees(text, jsonb, uuid) FROM public;
+-- ⚠️ Et de `anon` NOMMÉMENT. Supabase accorde EXECUTE à `anon` par défaut sur
+-- toute fonction du schéma public, et `REVOKE … FROM public` ne l'enlève PAS
+-- (vérifié en prod le 19/09 : anon_peut = true juste après la création). Or
+-- cette fonction est SECURITY DEFINER et accepte un `p_user` quand auth.uid()
+-- est NULL : un appel anonyme aurait pu écrire pour n'importe quel compte.
+REVOKE EXECUTE ON FUNCTION public.enregistrer_ventes_relevees(text, jsonb, uuid) FROM anon;
 GRANT EXECUTE ON FUNCTION public.enregistrer_ventes_relevees(text, jsonb, uuid) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.ventes_statut_classe(text, text) TO authenticated, service_role;
